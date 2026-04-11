@@ -104,7 +104,7 @@ export default function Home() {
             sans que cela te coûte plus cher !
           </p>
           <div className="hero-btns">
-            <Link to="/contact" className="btn-primary btn-large">Recevoir mon devis gratuitement</Link>
+            <Link to="/contact#formulaire" className="btn-primary btn-large">Recevoir mon devis gratuitement</Link>
             <Link to="/services" className="btn-white btn-large">Découvrir mes services</Link>
           </div>
         </div>
@@ -225,7 +225,7 @@ export default function Home() {
                 <li>Conseils et recommandations personnalisés</li>
                 <li>Carnet de voyage sur mesure</li>
               </ul>
-              <Link to="/contact" className="btn-primary">Recevoir un devis</Link>
+              <Link to="/contact#formulaire" className="btn-primary">Recevoir un devis</Link>
             </div>
 
             <div className="formule-card">
@@ -241,7 +241,7 @@ export default function Home() {
                 <li>Conseils et recommandations personnalisés</li>
                 <li>Carnet de voyage sur mesure</li>
               </ul>
-              <Link to="/contact" className="btn-primary">Recevoir un devis</Link>
+              <Link to="/contact#formulaire" className="btn-primary">Recevoir un devis</Link>
             </div>
 
             <div className="formule-card">
@@ -255,12 +255,12 @@ export default function Home() {
                 <li>Conseils et recommandations personnalisés</li>
                 <li>Carnet de voyage sur mesure</li>
               </ul>
-              <Link to="/contact" className="btn-primary">Recevoir un devis</Link>
+              <Link to="/contact#formulaire" className="btn-primary">Recevoir un devis</Link>
             </div>
           </div>
           <p className="formule-note">
             Tu ne trouves pas la formule qui te correspond ? Voyage de groupe, lune de miel,
-            anniversaire, voyage surprise ? <Link to="/contact">Contacte-moi</Link> pour un devis gratuit !
+            anniversaire, voyage surprise ? <Link to="/contact#formulaire">Contacte-moi</Link> pour un devis gratuit !
           </p>
         </div>
       </section>
@@ -325,7 +325,7 @@ export default function Home() {
             parfaitement organisé ? Je t'aide à créer un séjour personnalisé qui te
             ressemble, sans faire exploser ton budget.</p>
           <div className="cta-btns">
-            <Link to="/contact" className="btn-white btn-large">Me contacter</Link>
+            <Link to="/contact#formulaire" className="btn-white btn-large">Me contacter</Link>
             <Link to="/services" className="btn-secondary btn-large" style={{borderColor: 'white', color: 'white'}}>
               Voir mes services
             </Link>

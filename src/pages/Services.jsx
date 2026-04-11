@@ -240,7 +240,7 @@ export default function Services() {
                 accompagnement complet pour organiser un voyage sur mesure. Idéal pour un anniversaire,
                 un mariage, Noël ou un cadeau commun.
               </p>
-              <Link to="/contact" style={{display: 'inline-block', marginTop: '12px', color: 'var(--primary)', fontWeight: '600', textDecoration: 'none'}}>
+              <Link to="/contact#formulaire" style={{display: 'inline-block', marginTop: '12px', color: 'var(--primary)', fontWeight: '600', textDecoration: 'none'}}>
                 Commander une carte →
               </Link>
             </div>
@@ -258,7 +258,7 @@ export default function Services() {
               de ton projet et voir comment je peux t'accompagner.
             </p>
           </div>
-          <Link to="/contact" className="btn-white btn-large" style={{marginTop: '24px'}}>
+          <Link to="/contact#formulaire" className="btn-white btn-large" style={{marginTop: '24px'}}>
             Réserver mon appel gratuit
           </Link>
         </div>

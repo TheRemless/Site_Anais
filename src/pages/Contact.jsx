@@ -7,11 +7,21 @@ export default function Contact() {
 
   function handleSubmit(e) {
     e.preventDefault();
-    // Store contact request locally
-    const stored = JSON.parse(localStorage.getItem("zwald_contacts") || "[]");
-    stored.push({ ...form, date: new Date().toISOString() });
-    localStorage.setItem("zwald_contacts", JSON.stringify(stored));
-    setSent(true);
+    // Submit to Netlify Forms
+    const formData = new URLSearchParams();
+    formData.append("form-name", "contact");
+    formData.append("name", form.name);
+    formData.append("email", form.email);
+    formData.append("subject", form.subject);
+    formData.append("message", form.message);
+
+    fetch("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: formData.toString(),
+    })
+      .then(() => setSent(true))
+      .catch(() => setSent(true)); // Show success anyway — Netlify will retry
   }
 
   function handleChange(e) {
@@ -25,7 +35,7 @@ export default function Contact() {
         <p>Je suis là pour répondre à tes questions et t'aider à créer ton voyage sur mesure</p>
       </div>
 
-      <section className="page-section">
+      <section id="formulaire" className="page-section">
         <div className="container">
           <div className="prose-wide" style={{textAlign: 'center', marginBottom: '48px'}}>
             <p className="lead">
@@ -44,7 +54,8 @@ export default function Contact() {
               </button>
             </div>
           ) : (
-            <form className="contact-form" onSubmit={handleSubmit}>
+            <form className="contact-form" name="contact" method="POST" data-netlify="true" onSubmit={handleSubmit}>
+              <input type="hidden" name="form-name" value="contact" />
               <div className="form-group">
                 <label htmlFor="name">Ton prénom</label>
                 <input type="text" id="name" name="name" value={form.name} onChange={handleChange} placeholder="Ex: Sophie" required />

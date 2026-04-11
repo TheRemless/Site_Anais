@@ -96,7 +96,7 @@ export default function BlogPost() {
             <p>Je t'accompagne dans la création de ton itinéraire sur mesure en Thaïlande.</p>
           </div>
           <div style={{display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap', marginTop: '24px'}}>
-            <Link to="/contact" className="btn-primary">Me contacter</Link>
+            <Link to="/contact#formulaire" className="btn-primary">Me contacter</Link>
             <Link to="/blog" className="btn-secondary">Voir tous les articles</Link>
           </div>
         </div>

@@ -99,7 +99,7 @@ export default function CoursThai() {
             <p>PDF inclus — Même prix seul, en couple ou en famille — Sans engagement</p>
             <p>Tarif dégressif pour plusieurs sessions — <strong>-10% pour les clients Zwald Travel Planner</strong></p>
           </div>
-          <Link to="/contact" className="btn-white btn-large" style={{marginTop: '24px'}}>
+          <Link to="/contact#formulaire" className="btn-white btn-large" style={{marginTop: '24px'}}>
             Réserver un créneau
           </Link>
         </div>

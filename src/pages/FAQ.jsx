@@ -95,7 +95,7 @@ export default function FAQ() {
               ou de ton projet de voyage gratuitement.
             </p>
           </div>
-          <Link to="/contact" className="btn-primary btn-large" style={{marginTop: '24px'}}>
+          <Link to="/contact#formulaire" className="btn-primary btn-large" style={{marginTop: '24px'}}>
             Me contacter
           </Link>
         </div>

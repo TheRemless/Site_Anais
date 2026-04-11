@@ -119,7 +119,7 @@ export default function APropos() {
             Si tu as envie d'un itinéraire construit pour toi, qui respecte ton budget,
             avec une personne de confiance à tes côtés, je serais ravie de t'accompagner.
           </p>
-          <Link to="/contact" className="btn-white btn-large">Me contacter</Link>
+          <Link to="/contact#formulaire" className="btn-white btn-large">Me contacter</Link>
         </div>
       </section>
     </div>
