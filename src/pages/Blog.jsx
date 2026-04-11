@@ -54,6 +54,7 @@ export default function Blog() {
               un complément idéal pour préparer un voyage avec confiance et sérénité. Aucun spam, promis !
             </p>
           </div>
+          <div className="ml-embedded" data-form="Ew3n64"></div>
         </div>
       </section>
     </div>

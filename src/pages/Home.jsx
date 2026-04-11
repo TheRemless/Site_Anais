@@ -88,21 +88,6 @@ function TestimonialsCarousel({ testimonials }) {
 }
 
 export default function Home() {
-  const [nlEmail, setNlEmail] = useState("");
-  const [nlDone, setNlDone] = useState(false);
-
-  function handleNewsletter(e) {
-    e.preventDefault();
-    if (!nlEmail.trim()) return;
-    const stored = JSON.parse(localStorage.getItem("zwald_newsletter") || "[]");
-    if (!stored.includes(nlEmail.trim())) {
-      stored.push(nlEmail.trim());
-      localStorage.setItem("zwald_newsletter", JSON.stringify(stored));
-    }
-    setNlDone(true);
-    setNlEmail("");
-  }
-
   return (
     <div className="home">
 
@@ -348,27 +333,14 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ============ NEWSLETTER ============ */}
+      {/* ============ NEWSLETTER (MailerLite) ============ */}
       <section className="newsletter">
         <div className="container">
           <h3>Prépare ton voyage avec confiance et sérénité</h3>
           <p>J'ai créé une newsletter dans laquelle je partage régulièrement des nouveautés,
             des promotions en avant-première, des conseils et astuces de voyage, ainsi que
             mes meilleures adresses et recommandations locales. Aucun spam, promis !</p>
-          {nlDone ? (
-            <p className="newsletter-success-msg">Merci ! Tu es bien inscrit(e) à la newsletter.</p>
-          ) : (
-            <form className="newsletter-form" onSubmit={handleNewsletter}>
-              <input
-                type="email"
-                placeholder="Ton adresse email..."
-                value={nlEmail}
-                onChange={(e) => setNlEmail(e.target.value)}
-                required
-              />
-              <button type="submit" className="btn-primary">Je m'abonne</button>
-            </form>
-          )}
+          <div className="ml-embedded" data-form="Ew3n64"></div>
         </div>
       </section>
     </div>
