@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* Warm Tropical Palette */
+    --primary: #0E7C6B;        /* Teal tropical */
+    --primary-dark: #0A5E52;
+    --primary-light: #12A68E;
+
+    --accent: #E8863A;         /* Orange chaleureux */
+    --accent-dark: #D0702A;
+    --accent-light: #F2A86B;
+
+    --warm: #F5E6D3;           /* Sable chaud */
+    --warm-dark: #E8D5BE;
+
+    /* Backgrounds */
+    --bg-white: #FFFAF5;       /* Blanc cassé chaud */
+    --bg-cream: #FFF5EB;       /* Crème */
+    --bg-sand: #F5E6D3;        /* Sable */
+    --bg-teal: #0E7C6B;        /* Teal sections */
+    --bg-teal-light: #E8F5F2;  /* Teal très clair */
+    --bg-dark: #1A2332;        /* Sections sombres */
+
+    /* Text */
+    --text-dark: #1A2332;
+    --text-medium: #3D4F5F;
+    --text-light: #6B7D8D;
+    --text-lighter: #9AABB8;
+    --text-gray: #6B7D8D;
+    --text-on-dark: #F5F0EB;
+    --text-on-teal: #FFFFFF;
+
+    /* Borders */
+    --border-color: #E5DDD4;
+    --border-light: #F0E8DF;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--bg-white);
+    color: var(--text-dark);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  /* Buttons */
+  .btn-primary {
+    padding: 0.8rem 1.8rem;
+    background-color: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    text-decoration: none;
+    display: inline-block;
+    letter-spacing: 0.3px;
+  }
+  .btn-primary:hover {
+    background-color: var(--accent-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(232, 134, 58, 0.3);
+  }
+
+  .btn-secondary {
+    padding: 0.8rem 1.8rem;
+    background-color: transparent;
+    color: var(--primary);
+    border: 2px solid var(--primary);
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn-secondary:hover {
+    background-color: var(--primary);
+    color: white;
+    transform: translateY(-2px);
+  }
+
+  .btn-white {
+    padding: 0.8rem 1.8rem;
+    background-color: white;
+    color: var(--primary);
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn-white:hover {
+    background-color: rgba(255,255,255,0.9);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  }
+
+  .btn-large {
+    padding: 1rem 2.2rem;
+    font-size: 1.05rem;
+  }
+
+  .gradient-text {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg-cream); }
+  ::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+  ::selection { background-color: var(--primary); color: white; }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+}
