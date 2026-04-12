@@ -273,7 +273,6 @@ export default function Services() {
               recommandations locales directement dans ta boîte mail. Aucun spam, promis !
             </p>
           </div>
-          <MailerLiteForm />
         </div>
       </section>
     </div>
