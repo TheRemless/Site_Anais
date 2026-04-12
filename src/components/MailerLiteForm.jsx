@@ -1,26 +1,24 @@
 import { useEffect, useRef } from "react";
 
+/**
+ * MailerLiteForm component for React SPAs.
+ *
+ * MailerLite's universal script scans the DOM once on load.
+ * In a React SPA, we need to re-trigger the scan when the component mounts
+ * and the placeholder div is available in the DOM.
+ */
 export default function MailerLiteForm({ formId = "Ew3n64" }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
-    // MailerLite only scans the DOM once on initial page load.
-    // In a React SPA, navigating to a new page doesn't reload the page,
-    // so we need to re-trigger MailerLite to find the new form div.
-    const timer = setTimeout(() => {
-      // If MailerLite already rendered the form inside our div, skip
-      if (containerRef.current && containerRef.current.childNodes.length > 0) {
-        return;
-      }
-      // Re-inject the MailerLite universal script to force a fresh scan
-      const existingScript = document.querySelector('script[src="https://assets.mailerlite.com/js/universal.js"]');
-      if (existingScript) {
-        existingScript.remove();
-      }
-      // Reset the ml function so it re-initializes
-      if (window.ml) {
-        window.ml = undefined;
-      }
+    // 1. If ml is already defined, we can just call it to re-scan
+    if (window.ml) {
+      window.ml("account", "2261194");
+    }
+
+    // 2. Also ensure the script is loaded if it's not already
+    // Sometimes the script in index.html might fail or be blocked
+    if (!document.querySelector('script[src*="assets.mailerlite.com/js/universal.js"]')) {
       const script = document.createElement("script");
       script.src = "https://assets.mailerlite.com/js/universal.js";
       script.async = true;
@@ -30,10 +28,24 @@ export default function MailerLiteForm({ formId = "Ew3n64" }) {
         }
       };
       document.head.appendChild(script);
+    }
+
+    // 3. Re-trigger after a short delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      if (window.ml) {
+        window.ml("account", "2261194");
+      }
     }, 500);
 
     return () => clearTimeout(timer);
   }, []);
 
-  return <div ref={containerRef} className="ml-embedded" data-form={formId}></div>;
+  return (
+    <div
+      ref={containerRef}
+      className="ml-embedded"
+      data-form={formId}
+      style={{ minHeight: "150px" }} // Added min-height to avoid layout jump and ensure visibility
+    ></div>
+  );
 }
