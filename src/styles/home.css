@@ -10,7 +10,7 @@
   justify-content: center;
   text-align: center;
   padding: 160px 24px 100px;
-  background: #0E7C6B;
+  background: #1A9B8C;
   overflow: hidden;
 }
 .hero-bg-image {
@@ -23,7 +23,7 @@
 .hero-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(14,124,107,0.75) 0%, rgba(10,94,82,0.80) 40%, rgba(26,35,50,0.85) 100%);
+  background: linear-gradient(135deg, rgba(26,155,140,0.75) 0%, rgba(14,122,109,0.80) 40%, rgba(26,35,50,0.85) 100%);
   z-index: 1;
 }
 .hero-inner {
@@ -151,15 +151,129 @@
   gap: 6px;
   height: 280px;
 }
-.photo-strip-inner img {
-  height: 100%;
+.strip-photo-wrap {
+  position: relative;
   flex: 1;
   min-width: 0;
-  object-fit: cover;
+  cursor: pointer;
+  overflow: hidden;
   transition: flex 0.4s ease;
 }
-.photo-strip-inner img:hover {
+.strip-photo-wrap:hover {
   flex: 2;
+}
+.strip-photo-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.strip-zoom-icon {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.strip-photo-wrap:hover .strip-zoom-icon {
+  opacity: 1;
+}
+.strip-zoom-icon svg {
+  width: 36px;
+  height: 36px;
+  color: white;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4));
+}
+
+/* ============ LIGHTBOX ============ */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.92);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: lb-fade-in 0.2s ease;
+}
+@keyframes lb-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.lightbox-content {
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.lightbox-content img {
+  max-width: 100%;
+  max-height: 82vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.lightbox-caption {
+  color: rgba(255,255,255,0.75);
+  font-size: 0.9rem;
+  text-align: center;
+}
+.lightbox-close {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: white;
+  font-size: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  z-index: 10000;
+}
+.lightbox-close:hover {
+  background: rgba(255,255,255,0.3);
+}
+.lightbox-arrow {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: white;
+  font-size: 40px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  z-index: 10000;
+  line-height: 1;
+}
+.lightbox-arrow:hover {
+  background: rgba(255,255,255,0.3);
+}
+.lightbox-prev { left: 16px; }
+.lightbox-next { right: 16px; }
+
+@media (max-width: 600px) {
+  .lightbox-arrow { width: 40px; height: 40px; font-size: 28px; }
+  .lightbox-prev { left: 8px; }
+  .lightbox-next { right: 8px; }
 }
 
 /* ============ WHY ME ============ */

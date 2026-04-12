@@ -160,11 +160,10 @@ export default function Galerie() {
           <h2>Reste connecté(e)</h2>
           <div className="prose" style={{textAlign: 'center', maxWidth: '600px', margin: '0 auto 24px'}}>
             <p>
-              Abonne-toi à ma newsletter pour recevoir mes derniers conseils voyage
+              Suis-moi sur les réseaux pour découvrir mes derniers conseils voyage
               et mes meilleures adresses en Asie.
             </p>
           </div>
-          <div className="ml-embedded" data-form="Ew3n64"></div>
         </div>
       </section>
     </div>

@@ -45,18 +45,6 @@ export default function Blog() {
         </div>
       </section>
 
-      <section className="page-section bg-cream" style={{textAlign: 'center'}}>
-        <div className="container">
-          <h2>Reste informé(e)</h2>
-          <div className="prose" style={{textAlign: 'center'}}>
-            <p>
-              Je partage régulièrement des ressources, promotions et conseils exclusifs dans ma newsletter :
-              un complément idéal pour préparer un voyage avec confiance et sérénité. Aucun spam, promis !
-            </p>
-          </div>
-          <div className="ml-embedded" data-form="Ew3n64"></div>
-        </div>
-      </section>
     </div>
   );
 }

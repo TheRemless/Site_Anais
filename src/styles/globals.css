@@ -2,14 +2,14 @@
 
 @layer base {
   :root {
-    /* Warm Tropical Palette */
-    --primary: #0E7C6B;        /* Teal tropical */
-    --primary-dark: #0A5E52;
-    --primary-light: #12A68E;
+    /* Zwald Brand Palette — calquée sur le logo */
+    --primary: #1A9B8C;        /* Teal logo */
+    --primary-dark: #0E7A6D;
+    --primary-light: #24B5A5;
 
-    --accent: #E8863A;         /* Orange chaleureux */
-    --accent-dark: #D0702A;
-    --accent-light: #F2A86B;
+    --accent: #E06048;         /* Corail terracotta */
+    --accent-dark: #C44A34;
+    --accent-light: #EE8470;
 
     --warm: #F5E6D3;           /* Sable chaud */
     --warm-dark: #E8D5BE;
@@ -18,8 +18,8 @@
     --bg-white: #FFFAF5;       /* Blanc cassé chaud */
     --bg-cream: #FFF5EB;       /* Crème */
     --bg-sand: #F5E6D3;        /* Sable */
-    --bg-teal: #0E7C6B;        /* Teal sections */
-    --bg-teal-light: #E8F5F2;  /* Teal très clair */
+    --bg-teal: #1A9B8C;        /* Teal sections */
+    --bg-teal-light: #E6F6F4;  /* Teal très clair */
     --bg-dark: #1A2332;        /* Sections sombres */
 
     /* Text */
