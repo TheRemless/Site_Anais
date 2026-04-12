@@ -341,6 +341,7 @@ export default function Home() {
             des promotions en avant-première, des conseils et astuces de voyage, ainsi que
             mes meilleures adresses et recommandations locales. Aucun spam, promis !</p>
         </div>
+        <div className="ml-embedded" data-form="Ew3n64"></div>
       </section>
     </div>
   );

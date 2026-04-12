@@ -101,10 +101,11 @@ export default function FAQ() {
           <div style={{marginTop: '60px', paddingTop: '40px', borderTop: '1px solid rgba(0,0,0,0.05)'}}>
             <h3>Reste informé(e)</h3>
             <p style={{maxWidth: '600px', margin: '0 auto 24px', color: 'var(--text-medium)'}}>
-              Rejoins ma newsletter pour recevoir mes derniers conseils, astuces et recommandations locales directement dans ta boîte mail.
+              Rejoins ma newsletter pour recevoir mes derniers conseils, astuces et recommandations locales directement
+              dans ta boîte mail.
             </p>
-            <MailerLiteForm />
           </div>
+        <div className="ml-embedded" data-form="Ew3n64"></div>
         </div>
       </section>
     </div>

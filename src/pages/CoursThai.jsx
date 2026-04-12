@@ -114,7 +114,6 @@ export default function CoursThai() {
               un complément idéal pour préparer un voyage avec confiance et sérénité.
             </p>
           </div>
-          <MailerLiteForm />
         </div>
       </section>
     </div>

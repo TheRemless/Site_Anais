@@ -132,7 +132,6 @@ export default function APropos() {
               recommandations locales directement dans ta boîte mail.
             </p>
           </div>
-          <MailerLiteForm />
         </div>
       </section>
     </div>

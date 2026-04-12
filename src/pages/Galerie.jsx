@@ -164,7 +164,7 @@ export default function Galerie() {
               et mes meilleures adresses en Asie.
             </p>
           </div>
-          <MailerLiteForm />
+          <div className="ml-embedded" data-form="Ew3n64"></div>
         </div>
       </section>
     </div>
