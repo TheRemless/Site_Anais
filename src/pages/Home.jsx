@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import "../styles/home.css";
 
@@ -88,29 +88,7 @@ function TestimonialsCarousel({ testimonials }) {
   );
 }
 
-const STRIP_PHOTOS = [
-  { src: "/images/IMG_5519.jpg", alt: "Temple blanc, Chiang Rai" },
-  { src: "/images/FullSizeRender.jpg", alt: "Singe sur la plage, Krabi" },
-  { src: "/images/IMG_6424.jpg", alt: "Canal de Bangkok avec Bouddha doré" },
-  { src: "/images/IMG_9507.jpg", alt: "Rencontre avec un éléphant" },
-  { src: "/images/IMG_2016.jpg", alt: "Coucher de soleil sur la plage" },
-];
-
 export default function Home() {
-  const [lightbox, setLightbox] = useState(null); // index or null
-
-  function openLightbox(i) { setLightbox(i); }
-  function closeLightbox() { setLightbox(null); }
-  function prevPhoto(e) { e.stopPropagation(); setLightbox((lightbox - 1 + STRIP_PHOTOS.length) % STRIP_PHOTOS.length); }
-  function nextPhoto(e) { e.stopPropagation(); setLightbox((lightbox + 1) % STRIP_PHOTOS.length); }
-
-  // Close on Escape key
-  useEffect(() => {
-    function onKey(e) { if (e.key === "Escape") closeLightbox(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [lightbox]);
-
   return (
     <div className="home">
 
@@ -144,7 +122,7 @@ export default function Home() {
               <h2>Bienvenue ! Moi c'est Anaïs</h2>
               <p>
                 Je suis Travel Planner spécialisée en Thaïlande. Je vis en Thaïlande
-                depuis plus de 2 ans et j'aide les voyageurs francophones à organiser
+                depuis plus de 3 ans et j'aide les voyageurs francophones à organiser
                 leur séjour en toute simplicité et sérénité.
               </p>
               <p>
@@ -187,34 +165,13 @@ export default function Home() {
       {/* ============ PHOTO GALLERY STRIP ============ */}
       <section className="photo-strip">
         <div className="photo-strip-inner">
-          {STRIP_PHOTOS.map((photo, i) => (
-            <div key={i} className="strip-photo-wrap" onClick={() => openLightbox(i)}>
-              <img src={photo.src} alt={photo.alt} />
-              <div className="strip-zoom-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <circle cx="11" cy="11" r="7"/>
-                  <line x1="16.5" y1="16.5" x2="22" y2="22"/>
-                  <line x1="11" y1="8" x2="11" y2="14"/>
-                  <line x1="8" y1="11" x2="14" y2="11"/>
-                </svg>
-              </div>
-            </div>
-          ))}
+          <img src="/images/IMG_5519.jpg" alt="Temple blanc, Chiang Rai" />
+          <img src="/images/FullSizeRender.jpg" alt="Singe sur la plage, Krabi" />
+          <img src="/images/IMG_6424.jpg" alt="Canal de Bangkok avec Bouddha doré" />
+          <img src="/images/IMG_9507.jpg" alt="Rencontre avec un éléphant" />
+          <img src="/images/IMG_2016.jpg" alt="Coucher de soleil sur la plage" />
         </div>
       </section>
-
-      {/* ============ LIGHTBOX ============ */}
-      {lightbox !== null && (
-        <div className="lightbox-overlay" onClick={closeLightbox}>
-          <button className="lightbox-close" onClick={closeLightbox} aria-label="Fermer">✕</button>
-          <button className="lightbox-arrow lightbox-prev" onClick={prevPhoto} aria-label="Précédent">‹</button>
-          <div className="lightbox-content" onClick={e => e.stopPropagation()}>
-            <img src={STRIP_PHOTOS[lightbox].src} alt={STRIP_PHOTOS[lightbox].alt} />
-            <p className="lightbox-caption">{STRIP_PHOTOS[lightbox].alt}</p>
-          </div>
-          <button className="lightbox-arrow lightbox-next" onClick={nextPhoto} aria-label="Suivant">›</button>
-        </div>
-      )}
 
       {/* ============ POURQUOI MOI ============ */}
       <section className="why-me">
@@ -377,6 +334,16 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ============ NEWSLETTER (MailerLite) ============ */}
+      <section className="newsletter">
+        <div className="container">
+          <h3>Prépare ton voyage avec confiance et sérénité</h3>
+          <p>J'ai créé une newsletter dans laquelle je partage régulièrement des nouveautés,
+            des promotions en avant-première, des conseils et astuces de voyage, ainsi que
+            mes meilleures adresses et recommandations locales. Aucun spam, promis !</p>
+          <div className="ml-embedded" data-form="Ew3n64"></div>
+        </div>
+      </section>
     </div>
   );
 }

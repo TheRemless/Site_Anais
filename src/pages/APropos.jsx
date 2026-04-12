@@ -52,7 +52,7 @@ export default function APropos() {
               <h2>La Thaïlande, ma maison</h2>
               <p>
                 Après avoir parcouru l'Asie du Sud-Est pendant 6 mois, c'est en Thaïlande
-                que j'ai posé mes valises. Je vis ici depuis plus de 2 ans et je découvre
+                que j'ai posé mes valises. Je vis ici depuis plus de 3 ans et je découvre
                 chaque jour de nouvelles facettes de ce pays incroyable.
               </p>
               <p>
