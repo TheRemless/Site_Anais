@@ -5,7 +5,7 @@ import "../styles/home.css";
 
 const TESTIMONIALS = [
   {
-    name: "Sophiee",
+    name: "Sophie",
     trip: "Koh Lanta",
     text: "Un immense merci à Anaïs ! Elle a vraiment pris le temps de comprendre mes envies et a su transformer mes attentes en un voyage sur-mesure absolument parfait. Elle connaît tous les meilleurs plans : restaurants locaux, excursions au top, activités à prix imbattables… Résultat : j'ai profité de vacances exceptionnelles tout en faisant de belles économies !"
   },
