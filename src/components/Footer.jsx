@@ -43,8 +43,8 @@ export default function Footer() {
     {showNewsletter && <NewsletterModal onClose={() => setShowNewsletter(false)} />}
     <footer className="footer">
       <div className="footer-newsletter">
-        <strong>Restez inspiré·e ✈</strong>
-        <p>Conseils voyage, bons plans Thaïlande et nouveautés — directement dans votre boîte mail.</p>
+        <strong>Restes inspiré·e ✈</strong>
+        <p>Conseils voyage, bons plans Thaïlande et nouveautés — directement dans ta boîte mail.</p>
         <button className="btn-newsletter" onClick={() => setShowNewsletter(true)}>
           <MailOpenIcon />
           S'abonner à la newsletter
@@ -98,7 +98,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="footer-bottom">
-        <p>&copy; {new Date().getFullYear()} Zwald Travel Planner — Anaïs Zwald</p>
+        <p>&copy; {new Date().getFullYear()} Zwald Travel Planner CO., LTD. n° d’entreprise: 0815569000065</p>
       </div>
     </footer>
     </>
