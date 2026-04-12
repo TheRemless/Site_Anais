@@ -1,6 +1,5 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
-import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/galerie.css";
 
 const GALLERY_IMAGES = [

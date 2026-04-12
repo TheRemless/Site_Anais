@@ -1,5 +1,4 @@
 import { useParams, Link } from "react-router-dom";
-import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/pages.css";
 
 const BLOG_CONTENT = {
