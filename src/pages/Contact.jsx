@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "../styles/pages.css";
+import MailerLiteForm from "../components/MailerLiteForm";
 
 export default function Contact() {
   const [form, setForm] = useState({ name: "", email: "", subject: "voyage", message: "" });

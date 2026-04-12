@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/home.css";
 
 const TESTIMONIALS = [
@@ -340,7 +341,7 @@ export default function Home() {
           <p>J'ai créé une newsletter dans laquelle je partage régulièrement des nouveautés,
             des promotions en avant-première, des conseils et astuces de voyage, ainsi que
             mes meilleures adresses et recommandations locales. Aucun spam, promis !</p>
-          <div className="ml-embedded" data-form="Ew3n64"></div>
+          <MailerLiteForm />
         </div>
       </section>
     </div>

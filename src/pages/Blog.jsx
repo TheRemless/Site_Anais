@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/pages.css";
 
 const BLOG_POSTS = [
@@ -54,7 +55,7 @@ export default function Blog() {
               un complément idéal pour préparer un voyage avec confiance et sérénité. Aucun spam, promis !
             </p>
           </div>
-          <div className="ml-embedded" data-form="Ew3n64"></div>
+          <MailerLiteForm />
         </div>
       </section>
     </div>
