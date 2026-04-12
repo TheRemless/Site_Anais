@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import "../styles/home.css";
+
 
 const TESTIMONIALS = [
   {
@@ -88,6 +89,25 @@ function TestimonialsCarousel({ testimonials }) {
 }
 
 export default function Home() {
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://assets.mailerlite.com/js/universal.js";
+    script.async = true;
+
+    script.onload = () => {
+      window.ml = window.ml || function () {
+        (window.ml.q = window.ml.q || []).push(arguments);
+      };
+      window.ml("account", "2261194");
+    };
+
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
   return (
     <div className="home">
 
