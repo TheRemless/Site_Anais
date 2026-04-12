@@ -1,4 +1,5 @@
 import { useParams, Link } from "react-router-dom";
+import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/pages.css";
 
 const BLOG_CONTENT = {
@@ -98,6 +99,13 @@ export default function BlogPost() {
           <div style={{display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap', marginTop: '24px'}}>
             <Link to="/contact#formulaire" className="btn-primary">Me contacter</Link>
             <Link to="/blog" className="btn-secondary">Voir tous les articles</Link>
+          </div>
+          <div style={{marginTop: '48px', paddingTop: '48px', borderTop: '1px solid rgba(0,0,0,0.05)'}}>
+            <h3>Prépare ton voyage avec confiance</h3>
+            <p style={{maxWidth: '600px', margin: '0 auto 24px', color: 'var(--text-medium)'}}>
+              Rejoins ma newsletter pour recevoir mes derniers conseils, astuces et recommandations locales directement dans ta boîte mail.
+            </p>
+            <MailerLiteForm />
           </div>
         </div>
       </section>

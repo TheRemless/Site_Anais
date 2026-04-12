@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
+import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/galerie.css";
 
 const GALLERY_IMAGES = [
@@ -153,6 +154,19 @@ export default function Galerie() {
           <p>Rejoins-moi pour une aventure inoubliable</p>
           <button className="btn-primary btn-large btn-glow">Commencer mon voyage</button>
         </motion.div>
+      </section>
+
+      <section className="page-section bg-cream" style={{textAlign: 'center'}}>
+        <div className="container">
+          <h2>Reste connecté(e)</h2>
+          <div className="prose" style={{textAlign: 'center', maxWidth: '600px', margin: '0 auto 24px'}}>
+            <p>
+              Abonne-toi à ma newsletter pour recevoir mes derniers conseils voyage
+              et mes meilleures adresses en Asie.
+            </p>
+          </div>
+          <MailerLiteForm />
+        </div>
       </section>
     </div>
   );

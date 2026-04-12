@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/pages.css";
 
 export default function CoursThai() {
@@ -102,6 +103,19 @@ export default function CoursThai() {
           <Link to="/contact#formulaire" className="btn-white btn-large" style={{marginTop: '24px'}}>
             Réserver un créneau
           </Link>
+        </div>
+      </section>
+
+      <section className="page-section bg-cream" style={{textAlign: 'center'}}>
+        <div className="container">
+          <h2>Reste informé(e)</h2>
+          <div className="prose" style={{textAlign: 'center'}}>
+            <p>
+              Je partage régulièrement des ressources, promotions et conseils exclusifs dans ma newsletter :
+              un complément idéal pour préparer un voyage avec confiance et sérénité.
+            </p>
+          </div>
+          <MailerLiteForm />
         </div>
       </section>
     </div>

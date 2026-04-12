@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
+import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/destinations.css";
 
 const DESTINATIONS = [
@@ -151,6 +152,19 @@ export default function Destinations() {
           <p>Je vais t'aider à trouver la destination parfaite selon tes envies</p>
           <button className="btn-primary btn-large btn-glow">Réserver une consultation</button>
         </motion.div>
+      </section>
+
+      <section className="page-section" style={{textAlign: 'center', background: 'var(--bg-sand)'}}>
+        <div className="container">
+          <h2>Reste informé(e)</h2>
+          <div className="prose" style={{textAlign: 'center', maxWidth: '600px', margin: '0 auto 24px'}}>
+            <p>
+              Rejoins ma newsletter pour recevoir mes derniers conseils, astuces et
+              recommandations locales directement dans ta boîte mail.
+            </p>
+          </div>
+          <MailerLiteForm />
+        </div>
       </section>
     </div>
   );

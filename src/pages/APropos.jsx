@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/pages.css";
 
 export default function APropos() {
@@ -120,6 +121,19 @@ export default function APropos() {
             avec une personne de confiance à tes côtés, je serais ravie de t'accompagner.
           </p>
           <Link to="/contact#formulaire" className="btn-white btn-large">Me contacter</Link>
+        </div>
+      </section>
+
+      <section className="page-section" style={{textAlign: 'center'}}>
+        <div className="container">
+          <h2>Reste connecté(e)</h2>
+          <div className="prose" style={{textAlign: 'center', maxWidth: '600px', margin: '0 auto 24px'}}>
+            <p>
+              Rejoins ma newsletter pour recevoir mes derniers conseils, astuces et
+              recommandations locales directement dans ta boîte mail.
+            </p>
+          </div>
+          <MailerLiteForm />
         </div>
       </section>
     </div>

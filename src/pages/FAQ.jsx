@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/pages.css";
 
 const FAQS = [
@@ -98,6 +99,13 @@ export default function FAQ() {
           <Link to="/contact#formulaire" className="btn-primary btn-large" style={{marginTop: '24px'}}>
             Me contacter
           </Link>
+          <div style={{marginTop: '60px', paddingTop: '40px', borderTop: '1px solid rgba(0,0,0,0.05)'}}>
+            <h3>Reste informé(e)</h3>
+            <p style={{maxWidth: '600px', margin: '0 auto 24px', color: 'var(--text-medium)'}}>
+              Rejoins ma newsletter pour recevoir mes derniers conseils, astuces et recommandations locales directement dans ta boîte mail.
+            </p>
+            <MailerLiteForm />
+          </div>
         </div>
       </section>
     </div>

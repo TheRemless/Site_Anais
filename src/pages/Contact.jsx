@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/pages.css";
 
 export default function Contact() {
@@ -109,6 +110,19 @@ export default function Contact() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="page-section bg-cream" style={{textAlign: 'center'}}>
+        <div className="container">
+          <h2>Prépare ton voyage avec confiance</h2>
+          <div className="prose" style={{textAlign: 'center'}}>
+            <p>
+              Rejoins ma newsletter pour recevoir mes derniers conseils, astuces et
+              recommandations locales directement dans ta boîte mail.
+            </p>
+          </div>
+          <MailerLiteForm />
         </div>
       </section>
 
