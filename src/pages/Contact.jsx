@@ -1,5 +1,4 @@
 import { useState } from "react";
-import MailerLiteForm from "../components/MailerLiteForm";
 import "../styles/pages.css";
 
 export default function Contact() {
