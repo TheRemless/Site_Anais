@@ -262,7 +262,7 @@
 .blog-read-link {
   display: inline-block;
   margin-top: 12px;
-  color: var(--accent);
+  color: var(--primary);
   font-weight: 600;
   font-size: 0.9rem;
 }

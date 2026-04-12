@@ -39,7 +39,7 @@
 .header-gradient-2 {
   width: 350px;
   height: 350px;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--tertiary) 100%);
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--bg-dark) 100%);
   bottom: -50px;
   right: 10%;
 }
@@ -195,7 +195,7 @@
 .step-number {
   width: 60px;
   height: 60px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   color: #fff;
   border-radius: 50%;
   display: flex;

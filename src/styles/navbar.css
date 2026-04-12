@@ -38,6 +38,18 @@
   transform: scale(1.05);
 }
 
+.navbar-brand-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-dark);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+@media (max-width: 600px) {
+  .navbar-brand-name { display: none; }
+}
+
 .navbar-desktop {
   display: flex;
   gap: 32px;

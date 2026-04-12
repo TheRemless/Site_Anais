@@ -21,6 +21,7 @@ export default function NavBar() {
       <div className="navbar-container">
         <Link to="/" className="navbar-logo">
           <img src="/images/cropped-logo-2025.png" alt="Zwald Travel Planner" className="logo-img" />
+          <span className="navbar-brand-name">Zwald Travel Planner</span>
         </Link>
 
         <div className="navbar-desktop">

@@ -7,9 +7,9 @@
     --primary-dark: #0E7A6D;
     --primary-light: #24B5A5;
 
-    --accent: #E06048;         /* Corail terracotta */
-    --accent-dark: #C44A34;
-    --accent-light: #EE8470;
+    --accent: #1A2332;         /* Noir profond (CTAs) */
+    --accent-dark: #0D1520;
+    --accent-light: #2D3F52;
 
     --warm: #F5E6D3;           /* Sable chaud */
     --warm-dark: #E8D5BE;
@@ -59,10 +59,10 @@
   /* Buttons */
   .btn-primary {
     padding: 0.8rem 1.8rem;
-    background-color: var(--accent);
+    background-color: #1A2332;
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: 50px;
     font-weight: 600;
     font-size: 0.95rem;
     cursor: pointer;
@@ -72,9 +72,9 @@
     letter-spacing: 0.3px;
   }
   .btn-primary:hover {
-    background-color: var(--accent-dark);
+    background-color: #0D1520;
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(232, 134, 58, 0.3);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
   }
 
   .btn-secondary {
@@ -121,7 +121,7 @@
   }
 
   .gradient-text {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;

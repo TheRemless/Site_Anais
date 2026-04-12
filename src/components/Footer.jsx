@@ -31,7 +31,7 @@ export default function Footer() {
       <div className="footer-container">
         <div className="footer-col">
           <div className="footer-logo">
-            <div className="footer-logo-circle">Z</div>
+            <img src="/images/cropped-logo-2025.png" alt="Zwald Travel Planner" className="footer-logo-img" />
             <strong>Zwald Travel Planner</strong>
           </div>
           <p>Organisatrice de voyages sur-mesure en Thaïlande et Asie du Sud-Est</p>

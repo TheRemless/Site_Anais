@@ -36,7 +36,7 @@
 }
 
 .header-particle:nth-child(2) {
-  background: var(--accent);
+  background: var(--primary-light);
   bottom: 10%;
   right: 10%;
 }
@@ -256,7 +256,7 @@
 /* CTA */
 .cta-galerie {
   padding: 100px 24px;
-  background: linear-gradient(135deg, var(--secondary) 0%, var(--accent) 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--bg-dark) 100%);
   text-align: center;
   color: #fff;
 }

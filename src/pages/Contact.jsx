@@ -67,13 +67,13 @@ export default function Contact() {
               <div className="form-group">
                 <label htmlFor="subject">Sujet</label>
                 <select id="subject" name="subject" value={form.subject} onChange={handleChange}>
-                  <option value="voyage">Voyage sur mesure</option>
-                  <option value="devis">Demande de devis</option>
-                  <option value="appel">Appel découverte</option>
-                  <option value="cours">Cours de thaï</option>
-                  <option value="carte">Carte cadeau</option>
-                  <option value="guide">Mini-guide PDF</option>
-                  <option value="autre">Autre question</option>
+                  <option value="Voyage">Voyage sur mesure</option>
+                  <option value="Devis">Demande de devis</option>
+                  <option value="Appel">Appel découverte</option>
+                  <option value="Cours">Cours de thaï</option>
+                  <option value="Carte">Carte cadeau</option>
+                  <option value="Guide">Mini-guide PDF</option>
+                  <option value="Autre">Autre question</option>
                 </select>
               </div>
               <div className="form-group">

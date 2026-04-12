@@ -39,7 +39,7 @@
 .header-blob-2 {
   width: 350px;
   height: 350px;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--tertiary) 100%);
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--bg-dark) 100%);
   bottom: -50px;
   right: 10%;
 }

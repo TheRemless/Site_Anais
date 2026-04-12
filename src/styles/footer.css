@@ -17,17 +17,11 @@
   gap: 12px;
   margin-bottom: 12px;
 }
-.footer-logo-circle {
-  width: 36px;
-  height: 36px;
+.footer-logo-img {
+  height: 44px;
+  width: auto;
   border-radius: 50%;
-  background: var(--primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: 800;
-  font-size: 14px;
+  flex-shrink: 0;
 }
 .footer-logo strong {
   color: white;
@@ -54,7 +48,7 @@
   padding: 4px 0;
   transition: color 0.2s;
 }
-.footer-col a:hover { color: var(--accent-light); }
+.footer-col a:hover { color: white; }
 .footer-contact-link {
   display: flex !important;
   align-items: center;

@@ -17,7 +17,7 @@
 
 .stars span {
   font-size: 24px;
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .section-header > p:last-child {
