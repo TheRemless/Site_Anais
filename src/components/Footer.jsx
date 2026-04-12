@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import "../styles/footer.css";
+import "../styles/newsletter-modal.css";
+import NewsletterModal from "./NewsletterModal";
 
 const MailIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -25,9 +28,28 @@ const FacebookIcon = () => (
   </svg>
 );
 
+const MailOpenIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z"/>
+    <path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10"/>
+  </svg>
+);
+
 export default function Footer() {
+  const [showNewsletter, setShowNewsletter] = useState(false);
+
   return (
+    <>
+    {showNewsletter && <NewsletterModal onClose={() => setShowNewsletter(false)} />}
     <footer className="footer">
+      <div className="footer-newsletter">
+        <strong>Restez inspiré·e ✈</strong>
+        <p>Conseils voyage, bons plans Thaïlande et nouveautés — directement dans votre boîte mail.</p>
+        <button className="btn-newsletter" onClick={() => setShowNewsletter(true)}>
+          <MailOpenIcon />
+          S'abonner à la newsletter
+        </button>
+      </div>
       <div className="footer-container">
         <div className="footer-col">
           <div className="footer-logo">
@@ -79,5 +101,6 @@ export default function Footer() {
         <p>&copy; {new Date().getFullYear()} Zwald Travel Planner — Anaïs Zwald</p>
       </div>
     </footer>
+    </>
   );
 }

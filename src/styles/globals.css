@@ -11,29 +11,29 @@
     --accent-dark: #0D1520;
     --accent-light: #2D3F52;
 
-    --warm: #F5E6D3;           /* Sable chaud */
-    --warm-dark: #E8D5BE;
+    --warm: #C8E8E4;           /* Teal pâle (remplace sable) */
+    --warm-dark: #A8D8D3;
 
     /* Backgrounds */
-    --bg-white: #FFFAF5;       /* Blanc cassé chaud */
-    --bg-cream: #FFF5EB;       /* Crème */
-    --bg-sand: #F5E6D3;        /* Sable */
+    --bg-white: #F7FDFC;       /* Blanc teinté teal */
+    --bg-cream: #EBF8F6;       /* Teal très très clair */
+    --bg-sand: #D4EDE9;        /* Teal clair doux */
     --bg-teal: #1A9B8C;        /* Teal sections */
     --bg-teal-light: #E6F6F4;  /* Teal très clair */
     --bg-dark: #1A2332;        /* Sections sombres */
 
     /* Text */
     --text-dark: #1A2332;
-    --text-medium: #3D4F5F;
-    --text-light: #6B7D8D;
-    --text-lighter: #9AABB8;
-    --text-gray: #6B7D8D;
-    --text-on-dark: #F5F0EB;
+    --text-medium: #2E4A45;
+    --text-light: #4A706A;
+    --text-lighter: #7AA09A;
+    --text-gray: #4A706A;
+    --text-on-dark: #EBF8F6;
     --text-on-teal: #FFFFFF;
 
     /* Borders */
-    --border-color: #E5DDD4;
-    --border-light: #F0E8DF;
+    --border-color: #BEE0DB;
+    --border-light: #D4EDE9;
   }
 
   * {
