@@ -340,7 +340,6 @@ export default function Home() {
           <p>J'ai créé une newsletter dans laquelle je partage régulièrement des nouveautés,
             des promotions en avant-première, des conseils et astuces de voyage, ainsi que
             mes meilleures adresses et recommandations locales. Aucun spam, promis !</p>
-          <MailerLiteForm />
         </div>
       </section>
     </div>
