@@ -1,0 +1,283 @@
+/* =============================================
+   HERO
+   ============================================= */
+.hero-tag-fl p {
+  display: inline-block !important;
+  padding: 8px 20px !important;
+  background: rgba(255,255,255,0.12) !important;
+  border: 1px solid rgba(255,255,255,0.25) !important;
+  border-radius: 50px !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px !important;
+  margin: 0 0 16px !important;
+  line-height: 1.2 !important;
+  color: rgba(255,255,255,0.9) !important;
+}
+
+/* =============================================
+   INTRO IMAGE (ux_image wrapper)
+   ============================================= */
+.intro-img-fl,
+.intro-img-fl .ux-img {
+  border-radius: 20px !important;
+  overflow: hidden !important;
+}
+.intro-img-fl img {
+  object-position: center top !important;
+}
+
+/* =============================================
+   AUDIENCE CARDS
+   ============================================= */
+.audience-card-fl {
+  background: #ffffff !important;
+  border-radius: 16px !important;
+  padding: 32px 24px !important;
+  text-align: center !important;
+  border: 1px solid #BEE0DB !important;
+  box-sizing: border-box !important;
+}
+.audience-icon-fl p {
+  font-size: 2.5rem !important;
+  line-height: 1 !important;
+  margin: 0 0 16px !important;
+}
+.audience-card-fl p {
+  color: #2E4A45 !important;
+  font-size: 0.95rem !important;
+  line-height: 1.6 !important;
+  margin: 0 !important;
+}
+
+/* =============================================
+   WHY ME CARDS
+   ============================================= */
+.why-card-fl {
+  background: white !important;
+  border-radius: 16px !important;
+  padding: 32px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06) !important;
+  border: 1px solid #D4EDE9 !important;
+  box-sizing: border-box !important;
+}
+.why-icon-fl p {
+  font-size: 2.5rem !important;
+  line-height: 1 !important;
+  margin: 0 0 16px !important;
+}
+.why-card-fl h3 {
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  color: #1C2B28 !important;
+  margin-bottom: 12px !important;
+}
+.why-card-fl p {
+  color: #4A706A !important;
+  line-height: 1.7 !important;
+  font-size: 0.95rem !important;
+  margin: 0 !important;
+}
+
+/* =============================================
+   FORMULE CARDS (HTML in [text] blocks)
+   ============================================= */
+.formule-card-fl {
+  background: white;
+  border-radius: 20px;
+  padding: 40px 32px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  border: 1px solid #D4EDE9;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+.formule-badge-fl {
+  display: inline-block;
+  background: #0E7C6B;
+  color: white;
+  padding: 4px 16px;
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  width: fit-content;
+}
+.formule-card-fl h3 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #1C2B28;
+  margin-bottom: 6px;
+}
+.formule-audience-fl {
+  color: #7AA09A;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+}
+.formule-price-fl {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #0E7C6B;
+  margin-bottom: 20px;
+}
+.formule-price-fl span {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #7AA09A;
+}
+.formule-card-fl ul {
+  list-style: none !important;
+  padding: 0 !important;
+  margin-bottom: 28px !important;
+  flex: 1;
+}
+.formule-card-fl ul li {
+  padding: 7px 0 !important;
+  color: #2E4A45 !important;
+  font-size: 0.9rem !important;
+  border-bottom: 1px solid #EBF8F6;
+}
+.formule-card-fl ul li::before {
+  content: "✓ ";
+  color: #0E7C6B;
+  font-weight: 700;
+}
+a.btn-formule-fl {
+  display: inline-block !important;
+  padding: 12px 28px !important;
+  background: #1A2332 !important;
+  color: white !important;
+  border-radius: 50px !important;
+  font-weight: 600 !important;
+  font-size: 0.95rem !important;
+  text-decoration: none !important;
+  transition: all 0.3s !important;
+  text-align: center !important;
+  margin-top: auto;
+}
+a.btn-formule-fl:hover {
+  background: #0E7C6B !important;
+  transform: translateY(-2px);
+  color: white !important;
+}
+
+/* =============================================
+   PROCESS STEPS
+   ============================================= */
+.process-step-fl {
+  text-align: center !important;
+  padding: 24px 16px !important;
+}
+.step-num-fl p {
+  font-size: 3.5rem !important;
+  font-weight: 900 !important;
+  background: linear-gradient(135deg, #0E7C6B, #1A9B8C) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  line-height: 1 !important;
+  margin: 0 0 12px !important;
+}
+.process-step-fl h3 {
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  color: #1C2B28 !important;
+  margin-bottom: 8px !important;
+}
+.process-step-fl p {
+  color: #4A706A !important;
+  font-size: 0.9rem !important;
+  line-height: 1.6 !important;
+  margin: 0 !important;
+}
+/* Don't apply step-num-fl color to other p inside the step */
+.step-num-fl ~ * p {
+  -webkit-text-fill-color: initial !important;
+}
+
+/* =============================================
+   TESTIMONIALS
+   ============================================= */
+.testimonial-card-fl {
+  background: rgba(255,255,255,0.05) !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  border-radius: 20px !important;
+  padding: 40px !important;
+  margin-bottom: 24px !important;
+  box-sizing: border-box !important;
+}
+.testimonial-quote-fl p {
+  font-size: 5rem !important;
+  line-height: 0.8 !important;
+  color: rgba(255,255,255,0.15) !important;
+  font-family: Georgia, serif !important;
+  margin: 0 0 16px !important;
+}
+.testimonial-author-fl {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+.testimonial-author-fl strong {
+  color: white !important;
+  font-size: 1rem !important;
+  display: block !important;
+}
+.testimonial-author-fl span {
+  color: rgba(255,255,255,0.6) !important;
+  font-size: 0.85rem !important;
+}
+
+/* =============================================
+   OTHER SERVICES CARDS
+   ============================================= */
+.other-card-fl {
+  background: white !important;
+  border-radius: 16px !important;
+  padding: 36px !important;
+  border: 1px solid #D4EDE9 !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.05) !important;
+  text-align: center !important;
+  box-sizing: border-box !important;
+}
+.other-emoji-fl p {
+  font-size: 3rem !important;
+  line-height: 1 !important;
+  margin: 0 0 16px !important;
+}
+.other-card-fl h3 {
+  font-size: 1.15rem !important;
+  font-weight: 700 !important;
+  color: #1C2B28 !important;
+  margin-bottom: 12px !important;
+}
+.other-card-fl p {
+  color: #4A706A !important;
+  font-size: 0.9rem !important;
+  line-height: 1.7 !important;
+  margin-bottom: 8px !important;
+}
+.other-price-fl p {
+  font-weight: 700 !important;
+  color: #0E7C6B !important;
+  font-size: 1rem !important;
+  margin-bottom: 20px !important;
+}
+
+/* =============================================
+   CTA FINAL
+   ============================================= */
+.cta-final-fl {
+  background: linear-gradient(135deg, #0E7C6B 0%, #1A2332 100%) !important;
+}
+
+/* =============================================
+   GENERAL SPACING HELPERS
+   ============================================= */
+/* Make sure [row] in audience/why sections has a gap */
+.audience-card-fl,
+.why-card-fl,
+.other-card-fl {
+  margin-bottom: 16px;
+}
