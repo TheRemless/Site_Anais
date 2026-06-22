@@ -32,10 +32,6 @@
 .hero-btns { display: flex; gap: 16px; margin-top: 38px; flex-wrap: wrap; opacity: 1; transform: translateY(0); transition: opacity 0.9s var(--ease) 0.78s, transform 0.9s var(--ease) 0.78s; }
 /* pre-entrance hidden state — only while JS has NOT yet flagged the hero ready */
 .hero.pre .eyebrow, .hero.pre h1, .hero.pre .hero-sub, .hero.pre .hero-btns { opacity: 0; transform: translateY(26px); }
-.hero-scroll { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 8px; color: rgba(255,255,255,0.7); font-size: 0.68rem; letter-spacing: 0.24em; text-transform: uppercase; }
-.hero-scroll .mouse { width: 24px; height: 38px; border: 1.5px solid rgba(255,255,255,0.6); border-radius: 14px; position: relative; }
-.hero-scroll .mouse::after { content: ""; position: absolute; top: 7px; left: 50%; width: 3px; height: 7px; background: #fff; border-radius: 2px; transform: translateX(-50%); animation: scrollWheel 1.8s ease infinite; }
-@keyframes scrollWheel { 0% { opacity: 0; transform: translate(-50%, 0); } 40% { opacity: 1; } 80%,100% { opacity: 0; transform: translate(-50%, 12px); } }
 
 /* trust strip under hero */
 .trust-bar { background: var(--navy); color: var(--on-dark-mute); }
@@ -244,3 +240,23 @@
 .intro-media .photo-badge .n { font-family: var(--serif); font-size: 2.2rem; font-weight: 600; color: var(--teal); line-height: 1; }
 .intro-media .photo-badge .t { font-size: 0.78rem; color: var(--ink-mute); font-weight: 600; margin-top: 4px; }
 @media (max-width: 560px) { .intro-media .photo-badge { right: 0; bottom: -20px; padding: 16px 20px; } }
+
+/* ---------- Nav "Nouveau" badge ---------- */
+.nav-tag { font-family: var(--sans); font-size: 0.56rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; background: var(--sand); color: var(--navy); padding: 2px 7px; border-radius: 20px; margin-left: 6px; vertical-align: middle; line-height: 1.6; }
+.mobile-menu .nav-tag { font-size: 0.6rem; }
+
+/* ---------- Girls Trips — date cards ---------- */
+.dates-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; max-width: 860px; margin: 0 auto; }
+.date-card { display: flex; align-items: center; gap: 20px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius-lg); padding: 24px 26px; transition: transform 0.45s var(--ease), box-shadow 0.45s var(--ease), border-color 0.45s; }
+.date-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-md); border-color: var(--line); }
+.date-card .dc-month { flex-shrink: 0; width: 64px; height: 64px; border-radius: 14px; background: var(--bg-mint); color: var(--teal-dark); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.date-card .dc-month .d { font-family: var(--serif); font-size: 1.5rem; font-weight: 600; }
+.date-card .dc-month .m { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 3px; }
+.date-card .dc-body strong { display: block; font-size: 1.12rem; color: var(--ink); }
+.date-card .dc-body span { font-size: 0.88rem; color: var(--ink-mute); }
+.date-card .dc-places { margin-left: auto; flex-shrink: 0; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--teal-dark); background: var(--bg-mint); padding: 7px 13px; border-radius: 30px; }
+@media (max-width: 680px) { .dates-grid { grid-template-columns: 1fr; } .date-card .dc-places { margin-left: 0; } }
+
+/* warm-toned section for Girls Trips accents */
+.bg-sand { background: linear-gradient(160deg, #FBF3EA 0%, #F6ECF0 100%); }
+.option-flag { display: inline-flex; align-items: center; gap: 8px; background: rgba(224,163,107,0.16); color: #9A5B2E; font-size: 0.82rem; font-weight: 600; padding: 8px 16px; border-radius: 40px; }

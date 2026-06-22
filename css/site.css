@@ -208,11 +208,11 @@ section { position: relative; }
 .nav-links { display: flex; align-items: center; gap: 4px; list-style: none; }
 .nav-links a {
   font-size: 0.9rem; font-weight: 600; color: var(--ink-soft);
-  padding: 9px 15px; border-radius: 40px; position: relative;
+  padding: 9px 13px; border-radius: 40px; position: relative; white-space: nowrap;
   transition: color 0.3s;
 }
 .nav-links a::after {
-  content: ""; position: absolute; left: 15px; right: 15px; bottom: 4px; height: 1.5px;
+  content: ""; position: absolute; left: 13px; right: 13px; bottom: 4px; height: 1.5px;
   background: var(--teal); transform: scaleX(0); transform-origin: left; transition: transform 0.35s var(--ease);
 }
 .nav-links a:hover { color: var(--teal-dark); }
@@ -270,23 +270,20 @@ section { position: relative; }
 .footer-social a:hover { background: var(--teal); border-color: var(--teal); color: #fff; transform: translateY(-3px); }
 .footer-social svg { width: 17px; height: 17px; }
 
-/* ---------- Page hero (interior pages) ---------- */
+/* ---------- Page hero (interior pages) — editorial, bottom-anchored ---------- */
 .page-hero {
-  position: relative; padding: calc(var(--nav-h) + 90px) 0 90px;
-  background: var(--teal); color: #fff; overflow: hidden; isolation: isolate;
+  position: relative; display: flex; align-items: flex-end;
+  min-height: 56vh; padding: calc(var(--nav-h) + 72px) 0 60px;
+  background: var(--navy); color: #fff; overflow: hidden; isolation: isolate;
 }
-.page-hero.has-img { padding: calc(var(--nav-h) + 130px) 0 110px; }
-.page-hero .ph-bg { position: absolute; inset: 0; z-index: -2; }
+.page-hero.has-img { min-height: 70vh; }
+.page-hero .ph-bg { position: absolute; inset: -10% 0; z-index: -2; }
 .page-hero .ph-bg img { width: 100%; height: 100%; object-fit: cover; }
-.page-hero .ph-overlay { position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(10,92,82,0.55), rgba(11,28,38,0.78)); }
-.page-hero .eyebrow { color: var(--sand-soft); margin-bottom: 18px; }
+.page-hero .ph-overlay { position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(11,28,38,0.30) 0%, rgba(11,28,38,0.10) 40%, rgba(9,38,44,0.80) 90%); }
+.page-hero .eyebrow { color: var(--sand-soft); margin-bottom: 20px; }
 .page-hero .eyebrow::before { background: var(--sand-soft); }
-.page-hero h1 { color: #fff; max-width: 16ch; }
-.page-hero p { color: rgba(255,255,255,0.9); font-size: 1.2rem; margin-top: 20px; max-width: 52ch; }
-.page-hero::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 90px; z-index: -1;
-  background: linear-gradient(180deg, transparent, var(--bg));
-}
+.page-hero h1 { color: #fff; max-width: 20ch; font-size: clamp(2.6rem, 5.4vw, 4.6rem); line-height: 1.02; }
+.page-hero p { color: rgba(255,255,255,0.92); font-size: clamp(1.05rem, 1.5vw, 1.3rem); margin-top: 22px; max-width: 54ch; }
 
 /* ---------- Reveal animations ---------- */
 [data-reveal] { opacity: 0; transform: translateY(34px); transition: opacity 1s var(--ease), transform 1s var(--ease); will-change: opacity, transform; }
@@ -368,7 +365,7 @@ section { position: relative; }
 
 /* CTA band */
 .cta-band { position: relative; overflow: hidden; isolation: isolate; }
-.cta-band .ph-bg { position: absolute; inset: 0; z-index: -2; }
+.cta-band .ph-bg { position: absolute; inset: -10% 0; z-index: -2; }
 .cta-band .ph-bg img { width: 100%; height: 100%; object-fit: cover; }
 .cta-band .ph-overlay { position: absolute; inset: 0; z-index: -1; background: linear-gradient(120deg, rgba(11,28,38,0.86), rgba(10,92,82,0.7)); }
 .cta-band .container { text-align: center; }
@@ -383,13 +380,15 @@ section { position: relative; }
 .divider.center { margin: 22px auto; }
 
 /* ---------- Responsive ---------- */
+@media (max-width: 1040px) {
+  .nav-links, .nav-cta { display: none; }
+  .nav-toggle { display: flex; }
+}
 @media (max-width: 980px) {
   .footer-grid { grid-template-columns: 1fr 1fr; gap: 36px; }
   .cols-4 { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 860px) {
-  .nav-links, .nav-cta { display: none; }
-  .nav-toggle { display: flex; }
   .split { grid-template-columns: 1fr; gap: 40px; }
   .split.reverse .split-media { order: 0; }
   .split-media img { aspect-ratio: 4/3; }
