@@ -27,14 +27,14 @@
     + "padding:22px 24px;box-shadow:0 24px 60px rgba(0,0,0,.35);font-family:'Manrope',system-ui,sans-serif;"
     + "transform:translateY(140%);transition:transform .55s cubic-bezier(.22,1,.36,1);}"
     + ".zwc.show{transform:translateY(0);}"
-    + ".zwc h4{font-family:'Manrope',sans-serif;font-size:1rem;font-weight:700;margin:0 0 6px;color:#fff;}"
+    + ".zwc-title{font-family:'Manrope',sans-serif;font-size:1rem;font-weight:700;margin:0 0 6px;color:#fff;}"
     + ".zwc p{font-size:.88rem;line-height:1.55;color:rgba(230,244,241,.72);margin:0 0 16px;}"
     + ".zwc p a{color:#24B5A5;text-decoration:underline;}"
     + ".zwc-row{display:flex;gap:10px;flex-wrap:wrap;}"
     + ".zwc-btn{flex:1;min-width:120px;cursor:pointer;border-radius:50px;padding:11px 18px;font:inherit;"
     + "font-size:.88rem;font-weight:600;border:1px solid transparent;transition:transform .3s,background .3s,border-color .3s;}"
     + ".zwc-btn:hover{transform:translateY(-2px);}"
-    + ".zwc-accept{background:#1A9B8C;color:#fff;}.zwc-accept:hover{background:#24B5A5;}"
+    + ".zwc-accept{background:#0E7A6D;color:#fff;}.zwc-accept:hover{background:#1A9B8C;}"
     + ".zwc-refuse{background:transparent;color:#E6F4F1;border-color:rgba(255,255,255,.3);}"
     + ".zwc-refuse:hover{border-color:#fff;}"
     + "@media(max-width:520px){.zwc{left:12px;right:12px;bottom:12px;padding:20px;}}";
@@ -48,7 +48,7 @@
     var d = document.createElement("div");
     d.className = "zwc"; d.setAttribute("role", "dialog"); d.setAttribute("aria-label", "Consentement aux cookies");
     d.innerHTML =
-      '<h4>🍪 Cookies &amp; confidentialit\u00e9</h4>' +
+      '<div class="zwc-title">🍪 Cookies &amp; confidentialit\u00e9</div>' +
       '<p>J\'utilise des cookies de mesure d\'audience (Google Analytics) pour am\u00e9liorer le site. ' +
       'Tu peux accepter ou refuser. En savoir plus dans la ' +
       '<a href="politique-confidentialite.html">politique de confidentialit\u00e9</a>.</p>' +
