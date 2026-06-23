@@ -39,6 +39,10 @@
 .trust-bar .ti { display: inline-flex; align-items: center; gap: 10px; font-size: 0.92rem; font-weight: 500; }
 .trust-bar .ti svg { width: 18px; height: 18px; color: var(--teal-light); flex-shrink: 0; }
 .trust-bar .sep { width: 1px; height: 18px; background: rgba(255,255,255,0.16); }
+a.ti { color: inherit; text-decoration: none; transition: color 0.3s; }
+a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.stat .lbl a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 1px; transition: color 0.3s, border-color 0.3s; }
+.stat .lbl a:hover { color: #fff; border-color: #fff; }
 
 /* ---------- Stats ---------- */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
