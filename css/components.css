@@ -259,8 +259,50 @@
 
 /* warm-toned section for Girls Trips accents */
 .bg-sand { background: linear-gradient(160deg, #FBF3EA 0%, #F6ECF0 100%); }
+.footer-legal a { color: var(--on-dark-dim, rgba(230,244,241,0.6)); text-decoration: none; transition: color .25s; }
+.footer-legal a:hover { color: var(--teal-light, #24B5A5); }
 .option-flag { display: inline-flex; align-items: center; gap: 8px; background: rgba(224,163,107,0.16); color: #9A5B2E; font-size: 0.82rem; font-weight: 600; padding: 8px 16px; border-radius: 40px; }
 
 /* embedded Tally form */
 .tally-wrap { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 16px; padding: 14px; box-shadow: var(--shadow-sm); }
 .tally-wrap iframe { width: 1px; min-width: 100%; border: 0; display: block; min-height: 480px; border-radius: 10px; }
+
+/* ============================================================
+   ARTICLE / PROSE
+   ============================================================ */
+.article-hero { position: relative; overflow: hidden; padding: 150px 0 0; background: var(--bg-mint); }
+.article-hero .container { position: relative; z-index: 2; }
+.article-meta-top { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 22px; }
+.article-meta-top .b-cat { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #fff; background: var(--teal); padding: 6px 13px; border-radius: 30px; }
+.article-meta-top .m { font-size: 0.88rem; color: var(--ink-mute); }
+.article-hero h1 { font-size: clamp(2.2rem, 4.4vw, 3.6rem); max-width: 20ch; line-height: 1.05; }
+.article-hero .standfirst { font-size: clamp(1.1rem, 1.7vw, 1.35rem); color: var(--ink-mute); max-width: 60ch; margin-top: 22px; line-height: 1.6; }
+.article-cover { margin-top: 48px; aspect-ratio: 16/8; overflow: hidden; }
+.article-cover img { width: 100%; height: 100%; object-fit: cover; }
+
+.prose { max-width: 720px; margin: 0 auto; font-size: 1.12rem; line-height: 1.8; color: var(--ink-medium, #355551); }
+.prose > * + * { margin-top: 1.35em; }
+.prose h2 { font-size: clamp(1.7rem, 2.6vw, 2.2rem); margin-top: 1.9em; line-height: 1.15; color: var(--ink); }
+.prose h3 { font-size: clamp(1.25rem, 1.8vw, 1.45rem); margin-top: 1.6em; color: var(--ink); }
+.prose p { color: var(--ink-medium, #3a5a55); }
+.prose strong { color: var(--ink); font-weight: 700; }
+.prose a { color: var(--teal-dark); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+.prose ul, .prose ol { padding-left: 0; list-style: none; display: grid; gap: 12px; }
+.prose ul li { position: relative; padding-left: 30px; }
+.prose ul li::before { content: ""; position: absolute; left: 4px; top: 0.62em; width: 8px; height: 8px; border-radius: 50%; background: var(--teal); }
+.prose ol { counter-reset: li; }
+.prose ol li { position: relative; padding-left: 42px; counter-increment: li; }
+.prose ol li::before { content: counter(li); position: absolute; left: 0; top: 0.1em; width: 28px; height: 28px; border-radius: 50%; background: var(--bg-mint); color: var(--teal-dark); font-family: var(--sans); font-size: 0.85rem; font-weight: 700; display: grid; place-items: center; }
+.prose figure { margin: 2.4em 0; }
+.prose figure img { width: 100%; border-radius: var(--radius-lg); }
+.prose figcaption { font-size: 0.85rem; color: var(--ink-faint); text-align: center; margin-top: 10px; }
+.prose blockquote { margin: 2em 0; padding: 6px 0 6px 28px; border-left: 3px solid var(--teal); font-family: var(--serif); font-style: italic; font-size: 1.35rem; line-height: 1.5; color: var(--ink); }
+.callout { background: var(--bg-mint); border-radius: var(--radius-lg); padding: 26px 30px; margin: 2.2em 0; }
+.callout p { margin: 0; }
+.callout .ct { display: flex; align-items: center; gap: 10px; font-family: var(--sans); font-weight: 700; color: var(--teal-dark); margin-bottom: 8px; font-size: 0.95rem; }
+.callout .ct svg { width: 20px; height: 20px; }
+.article-share { max-width: 720px; margin: 48px auto 0; padding-top: 28px; border-top: 1px solid var(--line-soft); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.article-share span { font-weight: 600; color: var(--ink); }
+.article-share a { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-mint); color: var(--teal-dark); transition: transform 0.3s var(--ease), background 0.3s; }
+.article-share a:hover { transform: translateY(-3px); background: var(--teal); color: #fff; }
+.article-share a svg { width: 18px; height: 18px; }
