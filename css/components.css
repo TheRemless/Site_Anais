@@ -106,6 +106,10 @@
 .formule.featured ul li { color: var(--on-dark); }
 .formule ul li svg { width: 17px; height: 17px; color: var(--teal); flex-shrink: 0; margin-top: 3px; }
 .formule.featured ul li svg { color: var(--teal-light); }
+.formule ul li.no { color: var(--ink-faint); }
+.formule ul li.no svg { color: var(--ink-faint); }
+.formule.featured ul li.no { color: var(--on-dark-mute); }
+.formule.featured ul li.no svg { color: var(--on-dark-mute); }
 .formule .btn { width: 100%; justify-content: center; }
 @media (max-width: 860px) { .formules { grid-template-columns: 1fr; } .formule.featured { transform: none; } .formule.featured:hover { transform: translateY(-8px); } }
 
