@@ -206,6 +206,27 @@
     });
   }
 
+  /* ---------- Conversion tracking (GA4 events, consent-aware) ---------- */
+  function track(name, params) {
+    if (typeof window.gtag === "function") window.gtag("event", name, params || {});
+    else { window.dataLayer = window.dataLayer || []; window.dataLayer.push(Object.assign({ event: name }, params || {})); }
+  }
+  function initTracking() {
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a");
+      if (!a) return;
+      var href = a.getAttribute("href") || "";
+      if (/wa\.me|whatsapp/i.test(href)) track("whatsapp_click", { link_url: href });
+      else if (/tally\.so/i.test(href)) track("preinscription_girls_trips", { link_url: href });
+      else if (/contact\.html/i.test(href) && a.classList.contains("btn")) track("cta_devis_click", { link_text: (a.textContent || "").trim().slice(0, 60) });
+    });
+    var contactForm = document.querySelector("form[name='contact'], form[data-netlify]");
+    if (contactForm) contactForm.addEventListener("submit", function () { track("generate_lead", { form: "contact" }); });
+    var nlForm = document.querySelector("form.nl-form, form[data-newsletter]");
+    if (nlForm) nlForm.addEventListener("submit", function () { track("newsletter_signup", {}); });
+  }
+  window.ZWALD_track = track;
+
   var _started = false;
   function start() {
     if (_started) return;
@@ -222,6 +243,7 @@
     initAccordion();
     initCarousel();
     initLightbox();
+    initTracking();
     // Footer year
     var y = document.getElementById("footer-year");
     if (y) y.textContent = new Date().getFullYear();
