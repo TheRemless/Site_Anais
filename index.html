@@ -291,6 +291,41 @@
   </div>
 </section>
 
+<!-- ============ ESTIMATEUR ============ -->
+<section class="section-pad" id="estimateur">
+  <div class="container">
+    <div class="section-head center" data-reveal>
+      <p class="eyebrow center">Estimation express</p>
+      <h2>Combien coûte ton voyage ?</h2>
+      <p>Choisis ta formule et la durée : tu vois une estimation tout de suite. C'est indicatif — ton devis personnalisé reste gratuit et sans engagement.</p>
+    </div>
+    <div class="estimator" data-reveal data-est>
+      <div class="est-panel est-controls">
+        <div class="est-field">
+          <span class="est-label" id="est-formule-label">Ta formule</span>
+          <div class="est-segment" role="radiogroup" aria-labelledby="est-formule-label">
+            <label class="est-opt is-active"><input type="radio" name="est-formule" value="29" data-name="Light" checked><span class="est-opt-name">Light</span><span class="est-opt-price">29 CHF<small>/jour</small></span></label>
+            <label class="est-opt"><input type="radio" name="est-formule" value="40" data-name="Solo / Duo"><span class="est-opt-name">Solo / Duo</span><span class="est-opt-price">40 CHF<small>/jour</small></span></label>
+            <label class="est-opt"><input type="radio" name="est-formule" value="43" data-name="Famille"><span class="est-opt-name">Famille</span><span class="est-opt-price">43 CHF<small>/jour</small></span></label>
+          </div>
+        </div>
+        <div class="est-field">
+          <span class="est-label">Durée du voyage&nbsp;: <strong class="est-days-out" data-est-days>12</strong> jours</span>
+          <input type="range" class="est-range" min="3" max="30" value="12" step="1" aria-label="Nombre de jours de voyage" data-est-range>
+          <div class="est-scale"><span>3 jours</span><span>30 jours</span></div>
+        </div>
+      </div>
+      <div class="est-panel est-result" aria-live="polite">
+        <span class="est-result-label">Estimation de l'organisation</span>
+        <div class="est-amount"><span data-est-amount>480</span> <span class="est-cur">CHF</span></div>
+        <p class="est-detail" data-est-detail>Formule Light · 12 jours</p>
+        <p class="est-fine">Tarif indicatif, paiement en CHF, aucune commission.</p>
+        <a class="btn btn-white" href="contact.html" data-magnetic><span>Recevoir mon devis gratuit <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ PROCESS ============ -->
 <section class="section-pad">
   <div class="container">
@@ -411,6 +446,7 @@
   </footer>
 
 <script src="js/site.js"></script>
+<script src="js/estimator.js"></script>
 <script src="js/consent.js"></script>
 <script>ZWALD.init({ page: "home", lightNav: true });</script>
 </body>
