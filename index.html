@@ -291,36 +291,47 @@
   </div>
 </section>
 
-<!-- ============ ESTIMATEUR ============ -->
+<!-- ============ CALCULATEUR D'ÉCONOMIES ============ -->
 <section class="section-pad" id="estimateur">
   <div class="container">
     <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Estimation express</p>
-      <h2>Combien coûte ton voyage ?</h2>
-      <p>Choisis ta formule et la durée : tu vois une estimation tout de suite. C'est indicatif — ton devis personnalisé reste gratuit et sans engagement.</p>
+      <p class="eyebrow center">Le vrai calcul</p>
+      <h2>Combien tu économises avec moi</h2>
+      <p>Organiser seul, c'est souvent payer le prix « touriste ». Avec mes prix locaux — hébergement, activités, transports — tu voyages au juste prix. De quoi couvrir mon accompagnement… et repartir gagnant.</p>
     </div>
     <div class="estimator" data-reveal data-est>
       <div class="est-panel est-controls">
         <div class="est-field">
-          <span class="est-label" id="est-formule-label">Ta formule</span>
-          <div class="est-segment" role="radiogroup" aria-labelledby="est-formule-label">
-            <label class="est-opt is-active"><input type="radio" name="est-formule" value="29" data-name="Light" checked><span class="est-opt-name">Light</span><span class="est-opt-price">29 CHF<small>/jour</small></span></label>
-            <label class="est-opt"><input type="radio" name="est-formule" value="40" data-name="Solo / Duo"><span class="est-opt-name">Solo / Duo</span><span class="est-opt-price">40 CHF<small>/jour</small></span></label>
-            <label class="est-opt"><input type="radio" name="est-formule" value="43" data-name="Famille"><span class="est-opt-name">Famille</span><span class="est-opt-price">43 CHF<small>/jour</small></span></label>
+          <span class="est-label" id="est-people-label">Vous êtes</span>
+          <div class="est-segment" role="radiogroup" aria-labelledby="est-people-label">
+            <label class="est-opt is-active"><input type="radio" name="est-people" value="2" data-rate="40" checked><span class="est-opt-name">Duo</span><span class="est-opt-price">2 voyageurs</span></label>
+            <label class="est-opt"><input type="radio" name="est-people" value="1" data-rate="40"><span class="est-opt-name">Solo</span><span class="est-opt-price">1 voyageur</span></label>
+            <label class="est-opt"><input type="radio" name="est-people" value="4" data-rate="43"><span class="est-opt-name">Famille</span><span class="est-opt-price">3–4 voyageurs</span></label>
           </div>
         </div>
         <div class="est-field">
-          <span class="est-label">Durée du voyage&nbsp;: <strong class="est-days-out" data-est-days>12</strong> jours</span>
-          <input type="range" class="est-range" min="3" max="30" value="12" step="1" aria-label="Nombre de jours de voyage" data-est-range>
+          <span class="est-label">Durée du voyage&nbsp;: <strong data-est-days>14</strong> jours</span>
+          <input type="range" class="est-range" min="3" max="30" value="14" step="1" aria-label="Nombre de jours de voyage" data-est-days-range>
           <div class="est-scale"><span>3 jours</span><span>30 jours</span></div>
         </div>
+        <div class="est-field">
+          <span class="est-label">Budget sur place&nbsp;: <strong data-est-budget>150</strong> CHF / jour / pers.</span>
+          <input type="range" class="est-range" min="60" max="350" value="150" step="10" aria-label="Budget par jour et par personne" data-est-budget-range>
+          <div class="est-scale"><span>60 CHF</span><span>350 CHF</span></div>
+        </div>
       </div>
-      <div class="est-panel est-result" aria-live="polite">
-        <span class="est-result-label">Estimation de l'organisation</span>
-        <div class="est-amount"><span data-est-amount>480</span> <span class="est-cur">CHF</span></div>
-        <p class="est-detail" data-est-detail>Formule Light · 12 jours</p>
-        <p class="est-fine">Tarif indicatif, paiement en CHF, aucune commission.</p>
+      <div class="est-panel est-result">
+        <div aria-live="polite">
+          <span class="est-result-label">Tu économises environ</span>
+          <div class="est-amount"><span data-est-amount>630</span> <span class="est-cur">CHF</span></div>
+          <p class="est-detail">sur tes réservations — prix locaux, zéro piège à touristes</p>
+          <div class="est-coverage">
+            <span class="est-coverage-line">Mon accompagnement&nbsp;: <strong data-est-fee>560</strong> CHF</span>
+            <span class="est-coverage-msg" data-est-msg>✨ Entièrement couvert par tes économies — tu es gagnant·e.</span>
+          </div>
+        </div>
         <a class="btn btn-white" href="contact.html" data-magnetic><span>Recevoir mon devis gratuit <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+        <p class="est-fine">Estimation indicative (économie moyenne ~15% sur tes réservations). Ton devis reste gratuit et sans engagement.</p>
       </div>
     </div>
   </div>
