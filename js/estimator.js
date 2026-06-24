@@ -17,6 +17,7 @@
   var budgetOut = root.querySelector("[data-est-budget]");
   var amountOut = root.querySelector("[data-est-amount]");
   var feeOut = root.querySelector("[data-est-fee]");
+  var giftOut = root.querySelector("[data-est-gift]");
   var msgOut = root.querySelector("[data-est-msg]");
   if (!daysRange || !budgetRange || !amountOut) return;
 
@@ -41,10 +42,16 @@
     if (daysOut) daysOut.textContent = days;
     if (budgetOut) budgetOut.textContent = daily;
 
+    var freeDays = Math.floor(days / 14); // 1 jour offert par tranche de 14
+    var billableDays = days - freeDays;
     var saving = Math.round(daily * days * people * SAVING_RATE);
-    var fee = rate * days;
+    var fee = rate * billableDays;
     amountOut.textContent = format(saving);
     if (feeOut) feeOut.textContent = format(fee);
+    if (giftOut) {
+      var s = freeDays > 1 ? "s" : "";
+      giftOut.textContent = freeDays > 0 ? "🎁 " + freeDays + " jour" + s + " offert" + s : "";
+    }
 
     if (msgOut) {
       if (saving >= fee) {
