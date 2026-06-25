@@ -1,0 +1,32 @@
+---
+active: ""
+navLight: true
+---
+{% extends "base.njk" %}
+
+{% block head %}{% raw %}
+<title>Page introuvable (404) — Zwald Travel Planner</title>
+<meta name="description" content="La page demandée est introuvable.">
+<link rel="canonical" href="https://www.zwaldtravelplanner.com/404.html">
+<meta name="robots" content="noindex, follow">
+{% endraw %}{% endblock %}
+
+{% block content %}{% raw %}
+<section class="page-hero has-img" style="min-height:80vh;display:flex;align-items:center" data-screen-label="Page 404">
+  <div class="ph-bg"><img src="images/IMG_4231.jpg" alt="Eaux turquoise de Thaïlande"></div>
+  <div class="ph-overlay"></div>
+  <div class="container" style="text-align:center">
+    <p class="eyebrow center" style="justify-content:center;margin-bottom:18px;color:#fff">Erreur 404</p>
+    <h1 style="margin-inline:auto">Cette page s'est perdue en route</h1>
+    <p style="margin:22px auto 0;max-width:52ch">La page que tu cherches n'existe pas ou a été déplacée. Mais ton prochain voyage, lui, est encore à portée de main.</p>
+    <div class="hero-btns" style="justify-content:center;margin-top:34px">
+      <a class="btn btn-white btn-lg" href="index.html"><span>Retour à l'accueil</span></a>
+      <a class="btn btn-ghost on-dark btn-lg" href="contact.html"><span>Me contacter</span></a>
+    </div>
+  </div>
+</section>
+{% endraw %}{% endblock %}
+
+{% block scripts %}{% raw %}
+<script>ZWALD.init();</script>
+{% endraw %}{% endblock %}

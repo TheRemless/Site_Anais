@@ -205,6 +205,11 @@ section { position: relative; }
 .brand-sub { font-family: var(--sans); font-size: 0.56rem; letter-spacing: 0.34em; text-transform: uppercase; color: var(--teal-dark); margin-top: 3px; }
 .nav.nav-light:not(.scrolled) .brand-name { color: #fff; }
 .nav.nav-light:not(.scrolled) .brand-sub { color: var(--sand-soft); }
+/* Scrim behind the transparent nav so white links stay legible over any hero image */
+.nav.nav-light:not(.scrolled)::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, rgba(11,28,38,0.5) 0%, rgba(11,28,38,0) 100%);
+}
 
 .nav-links { display: flex; align-items: center; gap: 4px; list-style: none; }
 .nav-links a {
