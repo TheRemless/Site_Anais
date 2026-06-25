@@ -1,0 +1,13 @@
+{
+  "name": "zwald-travel-planner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Site Zwald Travel Planner — généré avec Eleventy (header/footer partagés).",
+  "scripts": {
+    "build": "eleventy",
+    "serve": "eleventy --serve"
+  },
+  "devDependencies": {
+    "@11ty/eleventy": "^3.0.0"
+  }
+}

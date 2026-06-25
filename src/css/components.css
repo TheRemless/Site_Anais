@@ -281,10 +281,11 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .article-hero { position: relative; overflow: hidden; padding: 150px 0 0; background: var(--bg-mint); }
 .article-hero .container { position: relative; z-index: 2; }
 .article-meta-top { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 22px; }
-.article-meta-top .b-cat { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #fff; background: var(--teal); padding: 6px 13px; border-radius: 30px; }
-.article-meta-top .m { font-size: 0.88rem; color: var(--ink-mute); }
+.article-meta-top .b-cat { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #fff; background: var(--teal-dark); padding: 6px 13px; border-radius: 30px; }
+.article-meta-top .m { font-size: 0.88rem; color: #44544f; }
+.article-hero .text-link { color: var(--teal-deep); }
 .article-hero h1 { font-size: clamp(2.2rem, 4.4vw, 3.6rem); max-width: 20ch; line-height: 1.05; }
-.article-hero .standfirst { font-size: clamp(1.1rem, 1.7vw, 1.35rem); color: var(--ink-mute); max-width: 60ch; margin-top: 22px; line-height: 1.6; }
+.article-hero .standfirst { font-size: clamp(1.1rem, 1.7vw, 1.35rem); color: #44544f; max-width: 60ch; margin-top: 22px; line-height: 1.6; }
 .article-cover { margin-top: 48px; aspect-ratio: 16/8; overflow: hidden; }
 .article-cover img { width: 100%; height: 100%; object-fit: cover; }
 
@@ -307,7 +308,7 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .prose blockquote { margin: 2em 0; padding: 6px 0 6px 28px; border-left: 3px solid var(--teal); font-family: var(--serif); font-style: italic; font-size: 1.35rem; line-height: 1.5; color: var(--ink); }
 .callout { background: var(--bg-mint); border-radius: var(--radius-lg); padding: 26px 30px; margin: 2.2em 0; }
 .callout p { margin: 0; }
-.callout .ct { display: flex; align-items: center; gap: 10px; font-family: var(--sans); font-weight: 700; color: var(--teal-dark); margin-bottom: 8px; font-size: 0.95rem; }
+.callout .ct { display: flex; align-items: center; gap: 10px; font-family: var(--sans); font-weight: 700; color: var(--teal-deep); margin-bottom: 8px; font-size: 0.95rem; }
 .callout .ct svg { width: 20px; height: 20px; }
 .article-share { max-width: 720px; margin: 48px auto 0; padding-top: 28px; border-top: 1px solid var(--line-soft); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .article-share span { font-weight: 600; color: var(--ink); }

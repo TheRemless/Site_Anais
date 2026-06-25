@@ -1,0 +1,29 @@
+<header class="nav{% if navLight %} nav-light{% endif %}">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="Zwald Travel Planner — accueil">
+        <img width="42" height="42" decoding="async" src="images/logo.png" alt="">
+        <span class="brand-text"><span class="brand-name">Zwald</span> <span class="brand-sub">Travel Planner</span></span>
+      </a>
+      <nav aria-label="Navigation principale"><ul class="nav-links">
+          <li><a href="index.html"{% if active == "index.html" %} class="active"{% endif %}>Accueil</a></li>
+          <li><a href="services.html"{% if active == "services.html" %} class="active"{% endif %}>Services</a></li>
+          <li><a href="girls-trips.html"{% if active == "girls-trips.html" %} class="active"{% endif %}>Girls Trips <span class="nav-tag">Nouveau</span></a></li>
+          <li><a href="a-propos.html"{% if active == "a-propos.html" %} class="active"{% endif %}>À propos</a></li>
+          <li><a href="galerie.html"{% if active == "galerie.html" %} class="active"{% endif %}>Galerie</a></li>
+          <li><a href="blog.html"{% if active == "blog.html" %} class="active"{% endif %}>Blog</a></li>
+          <li><a href="faq.html"{% if active == "faq.html" %} class="active"{% endif %}>FAQ</a></li>
+      </ul></nav>
+      <div class="nav-cta"><a class="btn btn-teal" href="contact.html"><span>Devis gratuit</span></a></div>
+      <button class="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    </div>
+  </header>
+<div class="mobile-menu">
+    <a href="index.html"{% if active == "index.html" %} class="active"{% endif %}>Accueil</a>
+    <a href="services.html"{% if active == "services.html" %} class="active"{% endif %}>Services</a>
+    <a href="girls-trips.html"{% if active == "girls-trips.html" %} class="active"{% endif %}>Girls Trips <span class="nav-tag">Nouveau</span></a>
+    <a href="a-propos.html"{% if active == "a-propos.html" %} class="active"{% endif %}>À propos</a>
+    <a href="galerie.html"{% if active == "galerie.html" %} class="active"{% endif %}>Galerie</a>
+    <a href="blog.html"{% if active == "blog.html" %} class="active"{% endif %}>Blog</a>
+    <a href="faq.html"{% if active == "faq.html" %} class="active"{% endif %}>FAQ</a>
+    <a href="contact.html"{% if active == "contact.html" %} class="active"{% endif %}>Contact</a>
+  </div>
