@@ -202,7 +202,7 @@ section { position: relative; }
 .brand:hover img { transform: rotate(-8deg) scale(1.05); }
 .brand-text { display: flex; flex-direction: column; line-height: 1; }
 .brand-name { font-family: var(--serif); font-size: 1.28rem; font-weight: 600; letter-spacing: 0.02em; color: var(--ink); }
-.brand-sub { font-family: var(--sans); font-size: 0.56rem; letter-spacing: 0.34em; text-transform: uppercase; color: var(--teal-dark); margin-top: 3px; }
+.brand-sub { font-family: var(--sans); font-size: 0.56rem; letter-spacing: 0.34em; text-transform: uppercase; color: var(--teal-deep); margin-top: 3px; }
 .nav.nav-light:not(.scrolled) .brand-name { color: #fff; }
 .nav.nav-light:not(.scrolled) .brand-sub { color: var(--sand-soft); }
 /* Scrim behind the transparent nav so white links stay legible over any hero image */
