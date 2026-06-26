@@ -155,8 +155,8 @@
   /* ---------- Carousel (testimonials) ---------- */
   function initCarousel() {
     document.querySelectorAll("[data-carousel]").forEach(function (root) {
-      var track = root.querySelector(".carousel-track");
-      var slides = [].slice.call(track.children);
+      var viewport = root.querySelector(".carousel-viewport");
+      var slides = [].slice.call(root.querySelector(".carousel-track").children);
       var prev = root.querySelector("[data-prev]");
       var next = root.querySelector("[data-next]");
       var dotsWrap = root.querySelector(".carousel-dots");
@@ -171,14 +171,23 @@
 
       function go(idx) {
         i = (idx + n) % n;
-        track.style.transform = "translateX(" + (-i * 100) + "%)";
-        slides.forEach(function (s, k) { s.classList.toggle("active", k === i); });
+        viewport.scrollTo({ left: i * viewport.clientWidth, behavior: "smooth" });
         dots.forEach(function (d, k) { d.classList.toggle("active", k === i); });
       }
       function rest() { clearInterval(timer); timer = setInterval(function () { go(i + 1); }, 6500); }
+
+      /* Sync dots when user swipes natively */
+      viewport.addEventListener("scroll", function () {
+        var snapped = Math.round(viewport.scrollLeft / viewport.clientWidth);
+        if (snapped !== i && snapped >= 0 && snapped < n) {
+          i = snapped;
+          dots.forEach(function (d, k) { d.classList.toggle("active", k === i); });
+          rest();
+        }
+      }, { passive: true });
+
       if (prev) prev.addEventListener("click", function () { go(i - 1); rest(); });
       if (next) next.addEventListener("click", function () { go(i + 1); rest(); });
-      addSwipe(root.querySelector(".carousel-viewport") || root, function () { go(i + 1); rest(); }, function () { go(i - 1); rest(); });
       go(0); rest();
     });
   }

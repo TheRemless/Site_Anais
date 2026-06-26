@@ -119,9 +119,10 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 
 /* ---------- Testimonials carousel ---------- */
 .carousel { position: relative; max-width: 880px; margin: 0 auto; }
-.carousel-viewport { overflow: hidden; }
-.carousel-track { display: flex; transition: transform 0.7s var(--ease); }
-.carousel-slide { min-width: 100%; padding: 8px; }
+.carousel-viewport { overflow-x: scroll; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; scroll-behavior: smooth; }
+.carousel-viewport::-webkit-scrollbar { display: none; }
+.carousel-track { display: flex; }
+.carousel-slide { min-width: 100%; flex-shrink: 0; padding: 8px; scroll-snap-align: start; }
 .tcard { background: var(--surface); border-radius: 16px; padding: clamp(34px, 5vw, 56px); box-shadow: var(--shadow-sm); text-align: center; }
 .tcard .quote { font-family: var(--serif); font-size: 4rem; line-height: 0.5; color: var(--teal); opacity: 0.35; height: 30px; }
 .tcard .stars { display: flex; gap: 4px; justify-content: center; margin-bottom: 18px; color: var(--sand); }
