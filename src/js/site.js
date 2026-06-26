@@ -15,14 +15,17 @@
   /* ---------- Swipe utility ---------- */
   function addSwipe(target, onLeft, onRight) {
     var startX;
-    target.addEventListener("touchstart", function (e) {
-      startX = e.touches[0].clientX;
-    }, { passive: true });
-    target.addEventListener("touchend", function (e) {
-      var dx = e.changedTouches[0].clientX - startX;
+    target.style.touchAction = "pan-y";
+    target.addEventListener("pointerdown", function (e) {
+      startX = e.clientX;
+    });
+    target.addEventListener("pointerup", function (e) {
+      if (startX === undefined) return;
+      var dx = e.clientX - startX;
+      startX = undefined;
       if (Math.abs(dx) < 50) return;
       if (dx < 0) onLeft(); else onRight();
-    }, { passive: true });
+    });
   }
 
   /* ---------- Nav (mobile toggle + scroll state) ---------- */
