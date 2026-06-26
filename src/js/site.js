@@ -12,6 +12,19 @@
     return t.content.firstChild;
   }
 
+  /* ---------- Swipe utility ---------- */
+  function addSwipe(target, onLeft, onRight) {
+    var startX;
+    target.addEventListener("touchstart", function (e) {
+      startX = e.touches[0].clientX;
+    }, { passive: true });
+    target.addEventListener("touchend", function (e) {
+      var dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) < 50) return;
+      if (dx < 0) onLeft(); else onRight();
+    }, { passive: true });
+  }
+
   /* ---------- Nav (mobile toggle + scroll state) ---------- */
   function attachNav() {
     var nav = document.querySelector(".nav");
@@ -162,6 +175,7 @@
       function rest() { clearInterval(timer); timer = setInterval(function () { go(i + 1); }, 6500); }
       if (prev) prev.addEventListener("click", function () { go(i - 1); rest(); });
       if (next) next.addEventListener("click", function () { go(i + 1); rest(); });
+      addSwipe(root, function () { go(i + 1); rest(); }, function () { go(i - 1); rest(); });
       go(0); rest();
     });
   }
@@ -198,6 +212,7 @@
     box.querySelector(".lb-prev").addEventListener("click", function () { show(cur - 1); });
     box.querySelector(".lb-next").addEventListener("click", function () { show(cur + 1); });
     box.addEventListener("click", function (e) { if (e.target === box) close(); });
+    addSwipe(box, function () { show(cur + 1); }, function () { show(cur - 1); });
     document.addEventListener("keydown", function (e) {
       if (!box.classList.contains("open")) return;
       if (e.key === "Escape") close();
