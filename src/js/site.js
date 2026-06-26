@@ -152,6 +152,56 @@
     });
   }
 
+  /* ---------- Photo marquee — drag/swipe to browse ---------- */
+  function initMarquee() {
+    document.querySelectorAll(".marquee").forEach(function (marquee) {
+      var track = marquee.querySelector(".marquee-track");
+      if (!track) return;
+      var dragging = false, startX = 0, startTX = 0;
+
+      function getTX() {
+        var m = getComputedStyle(track).transform;
+        return m === "none" ? 0 : new DOMMatrix(m).m41;
+      }
+
+      marquee.addEventListener("pointerdown", function (e) {
+        dragging = true;
+        startX = e.clientX;
+        startTX = getTX();
+        track.style.animationPlayState = "paused";
+        track.style.transform = "translateX(" + startTX + "px)";
+        marquee.setPointerCapture(e.pointerId);
+      });
+
+      marquee.addEventListener("pointermove", function (e) {
+        if (!dragging) return;
+        e.preventDefault();
+        track.style.transform = "translateX(" + (startTX + e.clientX - startX) + "px)";
+      }, { passive: false });
+
+      function endDrag() {
+        if (!dragging) return;
+        dragging = false;
+        var finalX = getTX();
+        var halfW = track.scrollWidth / 2;
+        /* Normalize to [−halfW, 0] so the loop stays seamless */
+        var norm = ((finalX % halfW) - halfW) % halfW;
+        var progress = Math.abs(norm) / halfW; /* 0→1 */
+        track.style.transform = "";
+        track.style.animation = "none";
+        track.offsetHeight; /* force reflow to restart animation */
+        track.style.animation = "marquee 48s linear " + (-(progress * 48)) + "s infinite";
+      }
+
+      marquee.addEventListener("pointerup", endDrag);
+      marquee.addEventListener("pointercancel", function () {
+        dragging = false;
+        track.style.transform = "";
+        track.style.animationPlayState = "running";
+      });
+    });
+  }
+
   /* ---------- Carousel (testimonials) ---------- */
   function initCarousel() {
     document.querySelectorAll("[data-carousel]").forEach(function (root) {
@@ -282,6 +332,7 @@
     initCounters();
     initAccordion();
     initCarousel();
+    initMarquee();
     initLightbox();
     initTracking();
     // Footer year
