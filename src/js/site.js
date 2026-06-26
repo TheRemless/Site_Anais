@@ -186,6 +186,14 @@
         }
       }, { passive: true });
 
+      /* Trackpad/desktop horizontal scroll — body overflow-x:hidden blocks native wheel deltaX */
+      viewport.addEventListener("wheel", function (e) {
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+          e.preventDefault();
+          viewport.scrollLeft += e.deltaX;
+        }
+      }, { passive: false });
+
       if (prev) prev.addEventListener("click", function () { go(i - 1); rest(); });
       if (next) next.addEventListener("click", function () { go(i + 1); rest(); });
       go(0); rest();
