@@ -152,53 +152,81 @@
     });
   }
 
-  /* ---------- Photo marquee — drag/swipe to browse ---------- */
+  /* ---------- Photo marquee — JS RAF loop + drag/swipe ---------- */
   function initMarquee() {
     document.querySelectorAll(".marquee").forEach(function (marquee) {
       var track = marquee.querySelector(".marquee-track");
       if (!track) return;
-      var dragging = false, startX = 0, startTX = 0;
 
-      function getTX() {
-        var m = getComputedStyle(track).transform;
-        return m === "none" ? 0 : new DOMMatrix(m).m41;
+      /* Hand off to JS — kill CSS animation */
+      track.style.animation = "none";
+
+      var AUTO_SPEED = 1.2;   /* px per frame (~72px/s at 60fps) */
+      var halfW = track.scrollWidth / 2;
+      var x = 0;
+      var vel = -AUTO_SPEED;
+      var dragging = false;
+      var hovered = false;
+      var prevX = 0;
+      var dragVel = 0;
+      var dragDist = 0;       /* total distance dragged — blocks accidental clicks */
+
+      /* Pause auto-scroll on hover (desktop) */
+      marquee.addEventListener("mouseenter", function () { hovered = true; });
+      marquee.addEventListener("mouseleave", function () { hovered = false; });
+
+      /* Main animation loop */
+      function tick() {
+        if (!dragging && !hovered) {
+          /* Ease vel toward AUTO_SPEED (absorbs drag momentum smoothly) */
+          vel += (-AUTO_SPEED - vel) * 0.06;
+          x += vel;
+          /* Seamless loop */
+          if (x <= -halfW) x += halfW;
+          if (x > 0) x -= halfW;
+          track.style.transform = "translateX(" + x + "px)";
+        }
+        requestAnimationFrame(tick);
       }
+      requestAnimationFrame(tick);
 
+      /* Drag / swipe */
       marquee.addEventListener("pointerdown", function (e) {
         dragging = true;
-        startX = e.clientX;
-        startTX = getTX();
-        track.style.animationPlayState = "paused";
-        track.style.transform = "translateX(" + startTX + "px)";
+        prevX = e.clientX;
+        dragVel = 0;
+        dragDist = 0;
         marquee.setPointerCapture(e.pointerId);
       });
 
       marquee.addEventListener("pointermove", function (e) {
         if (!dragging) return;
         e.preventDefault();
-        track.style.transform = "translateX(" + (startTX + e.clientX - startX) + "px)";
+        var dx = e.clientX - prevX;
+        dragVel = dx;
+        dragDist += Math.abs(dx);
+        x += dx;
+        if (x <= -halfW) x += halfW;
+        if (x > 0) x -= halfW;
+        track.style.transform = "translateX(" + x + "px)";
+        prevX = e.clientX;
       }, { passive: false });
 
       function endDrag() {
         if (!dragging) return;
         dragging = false;
-        var finalX = getTX();
-        var halfW = track.scrollWidth / 2;
-        /* Normalize to [−halfW, 0] so the loop stays seamless */
-        var norm = ((finalX % halfW) - halfW) % halfW;
-        var progress = Math.abs(norm) / halfW; /* 0→1 */
-        track.style.transform = "";
-        track.style.animation = "none";
-        track.offsetHeight; /* force reflow to restart animation */
-        track.style.animation = "marquee 48s linear " + (-(progress * 48)) + "s infinite";
+        vel = dragVel; /* hand off momentum to auto-loop */
       }
-
       marquee.addEventListener("pointerup", endDrag);
       marquee.addEventListener("pointercancel", function () {
         dragging = false;
-        track.style.transform = "";
-        track.style.animationPlayState = "running";
+        vel = -AUTO_SPEED;
       });
+
+      /* Block lightbox opening if user was dragging, not tapping */
+      marquee.addEventListener("click", function (e) {
+        if (dragDist > 8) e.stopImmediatePropagation();
+      }, true);
     });
   }
 
