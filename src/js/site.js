@@ -232,6 +232,11 @@
     if (_started) return;
     _started = true;
     attachNav();
+    // WhatsApp FAB delayed reveal
+    var waFab = document.querySelector('.wa-fab');
+    if (waFab) {
+      setTimeout(function () { waFab.classList.add('visible'); }, 600);
+    }
     // Hero entrance: drop the .pre state shortly after load so transitions play.
     // setTimeout (not rAF) so it fires even if the tab is backgrounded/throttled — content must never stay hidden.
     var hero = document.querySelector(".hero.pre");

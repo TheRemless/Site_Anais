@@ -333,3 +333,26 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
   .legal-layout { grid-template-columns: 1fr; }
   .legal-toc { display: none; }
 }
+
+/* ---------- WhatsApp FAB ---------- */
+.wa-fab {
+  position: fixed; bottom: 28px; right: 28px; z-index: 200;
+  display: flex; align-items: center; gap: 10px;
+  background: #25D366; color: #fff;
+  padding: 14px 20px 14px 16px;
+  border-radius: 50px;
+  box-shadow: 0 6px 24px rgba(37,211,102,0.38);
+  font-family: var(--sans); font-size: 0.9rem; font-weight: 600;
+  text-decoration: none;
+  opacity: 0; transform: translateY(16px);
+  transition: opacity 0.5s var(--ease), transform 0.5s var(--ease), box-shadow 0.4s var(--ease), padding 0.4s var(--ease);
+  will-change: transform;
+}
+.wa-fab.visible { opacity: 1; transform: translateY(0); }
+.wa-fab:hover { box-shadow: 0 10px 32px rgba(37,211,102,0.52); }
+.wa-fab-label { white-space: nowrap; }
+
+@media (max-width: 560px) {
+  .wa-fab { padding: 14px; border-radius: 50%; bottom: 20px; right: 20px; }
+  .wa-fab-label { display: none; }
+}
