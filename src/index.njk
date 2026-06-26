@@ -61,6 +61,7 @@ navLight: true
   ]
 }
 </script>
+<link rel="stylesheet" href="https://sibforms.com/forms/end-form/build/sib-styles.css">
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
@@ -337,6 +338,8 @@ navLight: true
   </div>
 </section>
 
+{% endraw %}{% include "newsletter.njk" %}{% raw %}
+
 <!-- ============ FINAL CTA ============ -->
 <section class="cta-band section-pad">
   <div class="ph-bg" data-parallax="0.12"><img loading="lazy" decoding="async" src="images/IMG_2016.jpg" alt="Coucher de soleil sur une plage de Thaïlande" width="1920" height="1280"></div>
@@ -355,4 +358,13 @@ navLight: true
 
 {% block scripts %}{% raw %}
 <script>ZWALD.init({ page: "home", lightNav: true });</script>
+<script>
+  window.REQUIRED_CODE_ERROR_MESSAGE = 'Veuillez choisir un indicatif';
+  window.LOCALE = 'fr';
+  window.EMAIL_INVALID_MESSAGE = window.SMS_INVALID_MESSAGE = "Les informations fournies ne sont pas valides. Vérifiez le format du champ et réessayez.";
+  window.REQUIRED_ERROR_MESSAGE = "Merci de ne pas laisser ce champ vide.";
+  window.GENERIC_INVALID_MESSAGE = "Les informations fournies ne sont pas valides. Vérifiez le format du champ et réessayez.";
+  var AUTOHIDE = Boolean(0);
+</script>
+<script defer src="https://sibforms.com/forms/end-form/build/main.js"></script>
 {% endraw %}{% endblock %}

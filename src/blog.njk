@@ -62,31 +62,6 @@ navLight: true
 }
 </script>
 <link rel="stylesheet" href="https://sibforms.com/forms/end-form/build/sib-styles.css">
-<style>
-/* Brevo form — reskin to match Zwald design */
-.sib-form { background: transparent !important; }
-#sib-container { background: transparent !important; border: none !important; max-width: 480px !important; margin: 0 auto !important; }
-#sib-container input.input {
-  font-family: var(--sans) !important; font-size: 1rem !important;
-  padding: 14px 20px !important; border-radius: 50px !important;
-  border: 1px solid var(--line) !important; background: #fff !important;
-  color: var(--ink) !important; width: 100% !important; box-sizing: border-box !important;
-}
-#sib-container input.input::placeholder { color: var(--ink-faint) !important; font-family: var(--sans) !important; }
-#sib-container input.input:focus { outline: 2px solid var(--teal) !important; border-color: var(--teal) !important; }
-.sib-form-block__button {
-  font-family: var(--sans) !important; font-size: 0.95rem !important; font-weight: 600 !important;
-  background: var(--teal) !important; color: #fff !important;
-  padding: 14px 28px !important; border-radius: 50px !important;
-  border: none !important; cursor: pointer !important; width: 100% !important;
-  transition: box-shadow 0.4s !important;
-}
-.sib-form-block__button:hover { box-shadow: 0 16px 34px -12px rgba(26,155,140,0.55) !important; }
-.sib-form-block { text-align: center !important; }
-.sib-form__declaration { display: none !important; } /* masque le badge Brevo — mention dans politique de confidentialité */
-#error-message { border-radius: 10px !important; max-width: 480px !important; margin: 0 auto !important; }
-#success-message { border-radius: 10px !important; max-width: 480px !important; margin: 0 auto !important; font-family: var(--sans) !important; }
-</style>
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
