@@ -175,7 +175,7 @@
       function rest() { clearInterval(timer); timer = setInterval(function () { go(i + 1); }, 6500); }
       if (prev) prev.addEventListener("click", function () { go(i - 1); rest(); });
       if (next) next.addEventListener("click", function () { go(i + 1); rest(); });
-      addSwipe(root, function () { go(i + 1); rest(); }, function () { go(i - 1); rest(); });
+      addSwipe(root.querySelector(".carousel-viewport") || root, function () { go(i + 1); rest(); }, function () { go(i - 1); rest(); });
       go(0); rest();
     });
   }
@@ -212,7 +212,7 @@
     box.querySelector(".lb-prev").addEventListener("click", function () { show(cur - 1); });
     box.querySelector(".lb-next").addEventListener("click", function () { show(cur + 1); });
     box.addEventListener("click", function (e) { if (e.target === box) close(); });
-    addSwipe(box, function () { show(cur + 1); }, function () { show(cur - 1); });
+    addSwipe(box.querySelector(".lb-figure") || box, function () { show(cur + 1); }, function () { show(cur - 1); });
     document.addEventListener("keydown", function (e) {
       if (!box.classList.contains("open")) return;
       if (e.key === "Escape") close();
