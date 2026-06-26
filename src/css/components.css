@@ -243,7 +243,7 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 
 /* intro overlap photo */
 .intro-media { position: relative; }
-.intro-media .photo-main { border-radius: 16px; aspect-ratio: 4/5; object-fit: cover; width: 100%; box-shadow: var(--shadow-md); }
+.intro-media .photo-main { border-radius: 16px; aspect-ratio: 4/5; object-fit: cover; width: 100%; height: auto; box-shadow: var(--shadow-md); }
 .intro-media .photo-badge { position: absolute; bottom: -26px; right: -26px; background: var(--surface); border-radius: 14px; padding: 22px 26px; box-shadow: var(--shadow-md); text-align: center; }
 .intro-media .photo-badge .n { font-family: var(--serif); font-size: 2.2rem; font-weight: 600; color: var(--teal); line-height: 1; }
 .intro-media .photo-badge .t { font-size: 0.78rem; color: var(--ink-mute); font-weight: 600; margin-top: 4px; }
