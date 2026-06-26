@@ -61,6 +61,32 @@ navLight: true
   ]
 }
 </script>
+<link rel="stylesheet" href="https://sibforms.com/forms/end-form/build/sib-styles.css">
+<style>
+/* Brevo form — reskin to match Zwald design */
+.sib-form { background: transparent !important; }
+#sib-container { background: transparent !important; border: none !important; max-width: 480px !important; margin: 0 auto !important; }
+#sib-container input.input {
+  font-family: var(--sans) !important; font-size: 1rem !important;
+  padding: 14px 20px !important; border-radius: 50px !important;
+  border: 1px solid var(--line) !important; background: #fff !important;
+  color: var(--ink) !important; width: 100% !important; box-sizing: border-box !important;
+}
+#sib-container input.input::placeholder { color: var(--ink-faint) !important; font-family: var(--sans) !important; }
+#sib-container input.input:focus { outline: 2px solid var(--teal) !important; border-color: var(--teal) !important; }
+.sib-form-block__button {
+  font-family: var(--sans) !important; font-size: 0.95rem !important; font-weight: 600 !important;
+  background: var(--teal) !important; color: #fff !important;
+  padding: 14px 28px !important; border-radius: 50px !important;
+  border: none !important; cursor: pointer !important; width: 100% !important;
+  transition: box-shadow 0.4s !important;
+}
+.sib-form-block__button:hover { box-shadow: 0 16px 34px -12px rgba(26,155,140,0.55) !important; }
+.sib-form-block { text-align: center !important; }
+.sib-form__declaration { display: none !important; } /* masque le badge Brevo — mention dans politique de confidentialité */
+#error-message { border-radius: 10px !important; max-width: 480px !important; margin: 0 auto !important; }
+#success-message { border-radius: 10px !important; max-width: 480px !important; margin: 0 auto !important; font-family: var(--sans) !important; }
+</style>
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
@@ -140,15 +166,74 @@ navLight: true
     <p class="eyebrow center" style="justify-content:center;margin-bottom:18px">Newsletter</p>
     <h2>Prépare ton voyage avec confiance</h2>
     <p class="mt-s" style="color:var(--ink-mute);max-width:54ch;margin-inline:auto">Rejoins ma newsletter pour recevoir mes derniers conseils, astuces et recommandations locales directement dans ta boîte mail. Aucun spam, promis.</p>
-    <form class="mt-m" style="display:flex;gap:12px;max-width:460px;margin:32px auto 0;flex-wrap:wrap;justify-content:center" onsubmit="event.preventDefault();this.querySelector('input').value='';this.querySelector('.nl-ok').style.display='block';">
-      <input type="email" required placeholder="ton@email.com" aria-label="Adresse email" style="flex:1;min-width:220px;padding:14px 18px;border:1px solid var(--line);border-radius:50px;background:#fff;font-family:var(--sans);font-size:1rem">
-      <button class="btn btn-teal" type="submit"><span>Je m'inscris</span></button>
-      <p class="nl-ok" style="display:none;width:100%;color:var(--teal-dark);font-weight:600;margin-top:6px">Merci ! Tu es bien inscrit(e). 🌴</p>
-    </form>
+    <div class="mt-l">
+      <div id="sib-form-container" class="sib-form-container">
+        <div id="error-message" class="sib-form-message-panel" style="font-size:15px;text-align:center;color:#661d1d;background-color:#ffeded;border-color:#ff4949;">
+          <div class="sib-form-message-panel__text sib-form-message-panel__text--center">
+            <span class="sib-form-message-panel__inner-text">L'inscription n'a pas pu être enregistrée. Veuillez réessayer.</span>
+          </div>
+        </div>
+        <div id="success-message" class="sib-form-message-panel" style="font-size:15px;text-align:center;color:#085229;background-color:#e7faf0;border-color:#13ce66;">
+          <div class="sib-form-message-panel__text sib-form-message-panel__text--center">
+            <span class="sib-form-message-panel__inner-text">Merci pour ton inscription ! À très vite dans ta boîte mail. 🌴</span>
+          </div>
+        </div>
+        <div id="sib-container" class="sib-container--large sib-container--vertical">
+          <form id="sib-form" method="POST" action="https://771f2f29.sibforms.com/serve/MUIFAH8sqsoFIHIP47ui9d8SyFkd3IQMB4Tdrqk0fK_Ps1YGTHeFdTPDiOPhM1wtRrKYSNT1e4fEf9fCcKa2HZ_v1IDf_mtAN0EhWfsIb1OO9WjCearQPn5wIwkNcEQC1vpJk9UulT9rzADHq9nMfUaAtOjHCADLJNPNgArdS1HFySKH-v1WoxVNajNZGIY6l_--eekrhK_ewIRg" data-type="subscription">
+            <div style="padding:8px 0">
+              <div class="sib-input sib-form-block">
+                <div class="form__entry entry_block">
+                  <div class="form__label-row">
+                    <div class="entry__field">
+                      <input class="input" maxlength="200" type="text" id="FIRSTNAME" name="FIRSTNAME" autocomplete="given-name" placeholder="ton prénom" data-required="true" required />
+                    </div>
+                  </div>
+                  <label class="entry__error entry__error--primary" style="font-size:14px;color:#661d1d;background:#ffeded;border-color:#ff4949;border-radius:8px;"></label>
+                </div>
+              </div>
+            </div>
+            <div style="padding:8px 0">
+              <div class="sib-input sib-form-block">
+                <div class="form__entry entry_block">
+                  <div class="form__label-row">
+                    <div class="entry__field">
+                      <input class="input" type="email" id="EMAIL" name="EMAIL" autocomplete="email" placeholder="ton@email.com" data-required="true" required />
+                    </div>
+                  </div>
+                  <label class="entry__error entry__error--primary" style="font-size:14px;color:#661d1d;background:#ffeded;border-color:#ff4949;border-radius:8px;"></label>
+                </div>
+              </div>
+            </div>
+            <div style="padding:8px 0">
+              <div class="sib-form-block">
+                <button class="sib-form-block__button sib-form-block__button-with-loader" form="sib-form" type="submit">
+                  <svg class="icon clickable__icon progress-indicator__icon sib-hide-loader-icon" viewBox="0 0 512 512"><path d="M460.116 373.846l-20.823-12.022c-5.541-3.199-7.54-10.159-4.663-15.874 30.137-59.886 28.343-131.652-5.386-189.946-33.641-58.394-94.896-95.833-161.827-99.676C261.028 55.961 256 50.751 256 44.352V20.309c0-6.904 5.808-12.337 12.703-11.982 83.556 4.306 160.163 50.864 202.11 123.677 42.063 72.696 44.079 162.316 6.031 236.832-3.14 6.148-10.75 8.461-16.728 5.01z"/></svg>
+                  Je m'inscris
+                </button>
+              </div>
+            </div>
+            <input type="text" name="email_address_check" value="" class="input--hidden">
+            <input type="hidden" name="locale" value="fr">
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 {% endraw %}{% endblock %}
 
 {% block scripts %}{% raw %}
 <script>ZWALD.init({ page: "blog" });</script>
+<script>
+  window.REQUIRED_CODE_ERROR_MESSAGE = 'Veuillez choisir un indicatif';
+  window.LOCALE = 'fr';
+  window.EMAIL_INVALID_MESSAGE = window.SMS_INVALID_MESSAGE = "Les informations fournies ne sont pas valides. Vérifiez le format du champ et réessayez.";
+  window.REQUIRED_ERROR_MESSAGE = "Merci de ne pas laisser ce champ vide.";
+  window.GENERIC_INVALID_MESSAGE = "Les informations fournies ne sont pas valides. Vérifiez le format du champ et réessayez.";
+  window.INVALID_NUMBER = "Numéro invalide.";
+  window.INVALID_DATE = "Date invalide.";
+  window.REQUIRED_MULTISELECT_MESSAGE = 'Veuillez sélectionner au moins une option.';
+  var AUTOHIDE = Boolean(0);
+</script>
+<script defer src="https://sibforms.com/forms/end-form/build/main.js"></script>
 {% endraw %}{% endblock %}
