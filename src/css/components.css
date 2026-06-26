@@ -119,9 +119,10 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 
 /* ---------- Testimonials carousel ---------- */
 .carousel { position: relative; max-width: 880px; margin: 0 auto; }
-.carousel-viewport { overflow: hidden; }
-.carousel-track { display: flex; transition: transform 0.7s var(--ease); }
-.carousel-slide { min-width: 100%; padding: 8px; }
+.carousel-viewport { overflow-x: scroll; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; scroll-behavior: smooth; display: flex; touch-action: pan-x; overscroll-behavior-x: contain; }
+.carousel-viewport::-webkit-scrollbar { display: none; }
+.carousel-track { display: contents; }
+.carousel-slide { flex: 0 0 100%; padding: 8px; scroll-snap-align: start; }
 .tcard { background: var(--surface); border-radius: 16px; padding: clamp(34px, 5vw, 56px); box-shadow: var(--shadow-sm); text-align: center; }
 .tcard .quote { font-family: var(--serif); font-size: 4rem; line-height: 0.5; color: var(--teal); opacity: 0.35; height: 30px; }
 .tcard .stars { display: flex; gap: 4px; justify-content: center; margin-bottom: 18px; color: var(--sand); }
@@ -243,7 +244,7 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 
 /* intro overlap photo */
 .intro-media { position: relative; }
-.intro-media .photo-main { border-radius: 16px; aspect-ratio: 4/5; object-fit: cover; width: 100%; box-shadow: var(--shadow-md); }
+.intro-media .photo-main { border-radius: 16px; aspect-ratio: 4/5; object-fit: cover; width: 100%; height: auto; box-shadow: var(--shadow-md); }
 .intro-media .photo-badge { position: absolute; bottom: -26px; right: -26px; background: var(--surface); border-radius: 14px; padding: 22px 26px; box-shadow: var(--shadow-md); text-align: center; }
 .intro-media .photo-badge .n { font-family: var(--serif); font-size: 2.2rem; font-weight: 600; color: var(--teal); line-height: 1; }
 .intro-media .photo-badge .t { font-size: 0.78rem; color: var(--ink-mute); font-weight: 600; margin-top: 4px; }
@@ -315,3 +316,70 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .article-share a { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-mint); color: var(--teal-dark); transition: transform 0.3s var(--ease), background 0.3s; }
 .article-share a:hover { transform: translateY(-3px); background: var(--teal); color: #fff; }
 .article-share a svg { width: 18px; height: 18px; }
+
+/* ---------- Legal pages (mentions, CGV, confidentialité) — readable layout with sticky TOC ---------- */
+.legal-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: start; max-width: 1040px; margin: 0 auto; }
+.legal-toc { position: sticky; top: 96px; align-self: start; }
+.legal-toc-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--teal-deep); margin-bottom: 14px; }
+.legal-toc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); }
+.legal-toc li { margin: 0; }
+.legal-toc a { display: block; padding: 7px 0 7px 16px; margin-left: -1px; border-left: 2px solid transparent; font-size: 0.85rem; color: var(--ink-mute); line-height: 1.35; transition: color 0.25s, border-color 0.25s; }
+.legal-toc a:hover { color: var(--teal-deep); }
+.legal-toc a.active { color: var(--teal-deep); border-left-color: var(--teal); font-weight: 600; }
+.legal-content { max-width: 720px; }
+.legal-content h2 { margin-top: 46px; padding-top: 28px; border-top: 1px solid var(--line-soft); scroll-margin-top: 96px; }
+.legal-content h2:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.legal-content h3 { scroll-margin-top: 96px; }
+@media (max-width: 880px) {
+  .legal-layout { grid-template-columns: 1fr; }
+  .legal-toc { display: none; }
+}
+
+/* ---------- WhatsApp FAB ---------- */
+.wa-fab {
+  position: fixed; bottom: 28px; right: 28px; z-index: 200;
+  display: flex; align-items: center; gap: 10px;
+  background: #25D366; color: #fff;
+  padding: 14px 20px 14px 16px;
+  border-radius: 50px;
+  box-shadow: 0 6px 24px rgba(37,211,102,0.38);
+  font-family: var(--sans); font-size: 0.9rem; font-weight: 600;
+  text-decoration: none;
+  opacity: 0; transform: translateY(16px);
+  transition: opacity 0.5s var(--ease), transform 0.5s var(--ease), box-shadow 0.4s var(--ease), padding 0.4s var(--ease);
+  will-change: transform;
+}
+.wa-fab.visible { opacity: 1; transform: translateY(0); }
+.wa-fab:hover { box-shadow: 0 10px 32px rgba(37,211,102,0.52); }
+.wa-fab-label { white-space: nowrap; }
+
+@media (max-width: 560px) {
+  .wa-fab { padding: 14px; border-radius: 50%; bottom: 20px; right: 20px; }
+  .wa-fab-label { display: none; }
+}
+
+/* ---------- Girls Trips mosaic ---------- */
+.girls-mosaic { position: relative; }
+.girls-mosaic-inner { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; border-radius: var(--radius-lg); overflow: hidden; aspect-ratio: 4/5; }
+.girls-mosaic-inner img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.8s var(--ease); }
+.girls-mosaic-inner:hover img { transform: scale(1.04); }
+.gm-main { grid-column: 1; grid-row: 1 / 3; }
+.gm-s1  { grid-column: 2; grid-row: 1; }
+.gm-s2  { grid-column: 2; grid-row: 2; }
+
+@media (max-width: 860px) {
+  .girls-mosaic-inner { aspect-ratio: 4/3; grid-template-rows: 1fr; }
+  .gm-main { grid-row: 1; }
+  .gm-s1, .gm-s2 { display: none; }
+}
+
+/* ---------- Contact page testimonial ---------- */
+.contact-testi {
+  background: var(--bg-mint); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); padding: 24px 28px;
+  margin-bottom: 20px;
+}
+.contact-testi .stars { display: flex; gap: 3px; margin-bottom: 12px; }
+.contact-testi .stars svg { width: 16px; height: 16px; color: var(--sand); }
+.contact-testi blockquote { font-family: var(--serif); font-size: 1.08rem; font-style: italic; color: var(--ink); line-height: 1.55; margin: 0 0 12px; }
+.contact-testi cite { font-size: 0.84rem; font-weight: 600; color: var(--teal-dark); font-style: normal; }

@@ -354,7 +354,7 @@ section { position: relative; }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(40px, 6vw, 88px); align-items: center; }
 .split.reverse .split-media { order: 2; }
 .split-media { position: relative; }
-.split-media img { width: 100%; border-radius: var(--radius-lg); aspect-ratio: 4/5; object-fit: cover; }
+.split-media img { width: 100%; height: auto; border-radius: var(--radius-lg); aspect-ratio: 4/5; object-fit: cover; }
 .split-media.tall img { aspect-ratio: 3/4; }
 .media-tag {
   position: absolute; bottom: 18px; left: 18px; background: rgba(255,255,255,0.92); backdrop-filter: blur(6px);
