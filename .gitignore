@@ -31,3 +31,8 @@ dist-ssr
 /.idea/
 node_modules/
 _site/
+
+# Claude / AI tooling (not part of the site)
+/.superpowers/
+/docs/superpowers/
+/graphify-out/
