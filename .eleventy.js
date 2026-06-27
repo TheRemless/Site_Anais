@@ -4,6 +4,7 @@ module.exports = function (eleventyConfig) {
     "src/css": "css",
     "src/js": "js",
     "src/images": "images",
+    "src/favicon.ico": "favicon.ico",
     "src/robots.txt": "robots.txt",
     "src/sitemap.xml": "sitemap.xml",
     "src/site.webmanifest": "site.webmanifest"

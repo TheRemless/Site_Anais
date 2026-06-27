@@ -1,9 +1,3 @@
 [build]
   command = "npm run build"
   publish = "_site"
-
-# Serve favicon.ico — Google looks here first before <link rel="icon">
-[[redirects]]
-  from = "/favicon.ico"
-  to = "/images/favicon-48x48.png"
-  status = 200
