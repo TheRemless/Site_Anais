@@ -61,6 +61,32 @@ navLight: true
   ]
 }
 </script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@23.1.0/build/css/intlTelInput.css">
+<style>
+/* intl-tel-input — reskin Zwald */
+.iti { width: 100%; }
+.iti__search-input { font-family: var(--sans) !important; }
+.iti__tel-input {
+  width: 100% !important;
+  font-family: var(--sans) !important;
+  font-size: 1rem !important;
+  padding: 14px 16px 14px 90px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius) !important;
+  background: #fff !important;
+  color: var(--ink) !important;
+  transition: border-color 0.3s !important;
+}
+.iti__tel-input:focus {
+  outline: none !important;
+  border-color: var(--teal) !important;
+  box-shadow: 0 0 0 3px rgba(26,155,140,0.12) !important;
+}
+.iti__flag-container { left: 0; }
+.iti__selected-dial-code { font-family: var(--sans); font-size: 0.9rem; color: var(--ink-soft); }
+.iti__country-list { font-family: var(--sans); font-size: 0.9rem; border-color: var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+.iti__country.iti__highlight { background: var(--bg-mint); }
+</style>
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
@@ -86,7 +112,7 @@ navLight: true
               <div class="field"><label for="name">Ton prénom</label><input type="text" id="name" name="name" placeholder="Ex : Sophie" required></div>
               <div class="field"><label for="email">Ton email</label><input type="email" id="email" name="email" placeholder="sophie@email.com" required></div>
             </div>
-            <div class="field"><label for="phone">Ton numéro de téléphone</label><input type="tel" id="phone" name="phone" placeholder="Ex : +33 6 12 34 56 78" required></div>
+            <div class="field"><label for="phone">Ton numéro de téléphone</label><input type="tel" id="phone" name="phone" placeholder="06 12 34 56 78" required></div>
             <div class="field"><label for="subject">Sujet</label>
               <select id="subject" name="subject">
                 <option>Voyage sur mesure</option>
@@ -157,12 +183,25 @@ navLight: true
 {% endraw %}{% endblock %}
 
 {% block scripts %}{% raw %}
+<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@23.1.0/build/js/intlTelInput.min.js"></script>
 <script>
   ZWALD.init({ page: "contact" });
+
+  // Initialisation intl-tel-input
+  var phoneInput = document.getElementById("phone");
+  var iti = window.intlTelInput(phoneInput, {
+    preferredCountries: ["fr", "ch", "be", "lu"],
+    initialCountry: "fr",
+    separateDialCode: true,
+    utilsScript: "https://cdn.jsdelivr.net/npm/intl-tel-input@23.1.0/build/js/utils.js"
+  });
+
   document.getElementById("contactForm").addEventListener("submit", function (e) {
     e.preventDefault();
     var form = this;
     var name = document.getElementById("name").value.trim();
+    // Remplacer la valeur du champ par le numéro complet avec indicatif international
+    phoneInput.value = iti.getNumber();
     // Confirmation immédiate (UX), puis envoi réel vers Netlify Forms en arrière-plan
     document.getElementById("successMsg").textContent =
       "Merci pour ton message" + (name ? ", " + name : "") + " ! Je te réponds dans les plus brefs délais (généralement sous 24-48h).";
