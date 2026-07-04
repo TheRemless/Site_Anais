@@ -19,6 +19,9 @@
       ad_user_data: "denied",
       ad_personalization: "denied"
     });
+    // Let other scripts (e.g. the newsletter widget) react to the visitor's choice
+    // instead of loading their own third-party cookies unconditionally.
+    window.dispatchEvent(new CustomEvent("zw-consent", { detail: { granted: granted } }));
   }
 
   var css = ""
@@ -51,7 +54,7 @@
       '<div class="zwc-title">🍪 Cookies &amp; confidentialit\u00e9</div>' +
       '<p>J\'utilise des cookies de mesure d\'audience (Google Analytics) pour am\u00e9liorer le site. ' +
       'Tu peux accepter ou refuser. En savoir plus dans la ' +
-      '<a href="politique-confidentialite.html">politique de confidentialit\u00e9</a>.</p>' +
+      '<a href="/politique-confidentialite/">politique de confidentialit\u00e9</a>.</p>' +
       '<div class="zwc-row">' +
         '<button class="zwc-btn zwc-refuse" type="button">Refuser</button>' +
         '<button class="zwc-btn zwc-accept" type="button">Accepter</button>' +
