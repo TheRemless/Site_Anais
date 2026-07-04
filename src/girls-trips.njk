@@ -170,11 +170,11 @@ navLight: true
     </div>
     <div class="dates-grid">
       <div class="date-card" data-reveal data-reveal-delay="1"><div class="dc-month"><span class="d">06</span><span class="m">Déc</span></div><div class="dc-body"><strong>6 – 12 décembre 2026</strong><span>7 jours · Koh Lanta &amp; Krabi</span></div><span class="dc-places">8 places</span></div>
-      <div class="date-card" data-reveal data-reveal-delay="2"><div class="dc-month"><span class="d">17</span><span class="m">Jan</span></div><div class="dc-body"><strong>17 – 23 janvier 2027</strong><span>7 jours · Koh Lanta &amp; Krabi</span></div><span class="dc-places">8 places</span></div>
-      <div class="date-card" data-reveal data-reveal-delay="1"><div class="dc-month"><span class="d">28</span><span class="m">Fév</span></div><div class="dc-body"><strong>28 février – 6 mars 2027</strong><span>7 jours · Koh Lanta &amp; Krabi</span></div><span class="dc-places">8 places</span></div>
-      <div class="date-card" data-reveal data-reveal-delay="2"><div class="dc-month"><span class="d">28</span><span class="m">Mar</span></div><div class="dc-body"><strong>28 mars – 3 avril 2027</strong><span>7 jours · Koh Lanta &amp; Krabi</span></div><span class="dc-places">8 places</span></div>
+      <div class="date-card" data-reveal data-reveal-delay="2"><div class="dc-month"><span class="d">17</span><span class="m">Jan</span></div><div class="dc-body"><strong>17 – 23 janvier 2027</strong><span>7 jours · Koh Lanta &amp; Krabi</span></div><span class="dc-places">7 places</span></div>
+      <div class="date-card" data-reveal data-reveal-delay="1"><div class="dc-month"><span class="d">28</span><span class="m">Fév</span></div><div class="dc-body"><strong>28 février – 6 mars 2027</strong><span>7 jours · Koh Lanta &amp; Krabi</span></div><span class="dc-places">6 places</span></div>
+      <div class="date-card" data-reveal data-reveal-delay="2"><div class="dc-month"><span class="d">28</span><span class="m">Mar</span></div><div class="dc-body"><strong>28 mars – 3 avril 2027</strong><span>7 jours · Koh Lanta &amp; Krabi</span></div><span class="dc-places">7 places</span></div>
     </div>
-    <p class="text-center mt-l" data-reveal style="color:var(--ink-mute);font-size:0.95rem">⚠️ Vols internationaux non inclus · Le séjour est confirmé à partir de 5 participantes. Merci de ne pas réserver tes vols avant la confirmation officielle du groupe.</p>
+    <p class="text-center mt-l" data-reveal style="color:var(--ink-mute);font-size:0.95rem">📅 Les dates peuvent être adaptées selon les disponibilités du groupe de participantes — d'autres dates sont possibles sur demande. ⚠️ Vols internationaux non inclus · Le séjour est confirmé dès que 5 participantes sont inscrites. Merci de ne pas réserver tes vols avant la confirmation officielle du groupe.</p>
   </div>
 </section>
 
@@ -214,6 +214,20 @@ navLight: true
   </div>
 </section>
 
+<!-- ============ BROCHURE ============ -->
+<section class="section-pad bg-cream">
+  <div class="container narrow text-center" data-reveal>
+    <p class="eyebrow center" style="justify-content:center;margin-bottom:18px">Pour décider ensemble</p>
+    <h2>Toute l'aventure dans une brochure</h2>
+    <p class="mt-s" style="color:var(--ink-mute);max-width:52ch;margin-inline:auto">Programme complet, photos et infos pratiques : télécharge la brochure et partage-la avec tes copines pour décider ensemble.</p>
+    <div class="hero-btns mt-l" style="justify-content:center;animation:none;opacity:1">
+      <a class="btn btn-teal btn-lg" href="/files/girls-trips-brochure.pdf" download data-magnetic><span>Télécharger la brochure <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v13m0 0l-4.5-4.5M12 16l4.5-4.5"/><path d="M4 19.5h16"/></svg></span></a>
+      <button type="button" class="btn btn-ghost btn-lg" id="brochure-share"><span>Partager <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="5" r="2.4"/><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="19" r="2.4"/><path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6"/></svg></span></button>
+    </div>
+    <p class="mt-s" style="color:var(--ink-faint);font-size:0.85rem">PDF · environ 13 Mo</p>
+  </div>
+</section>
+
 <!-- ============ CTA ============ -->
 <section class="cta-band section-pad">
   <div class="ph-bg" data-parallax="0.12"><img loading="lazy" decoding="async" src="/images/girls/sunset-koh-lanta.jpeg" alt="Coucher de soleil sur la plage de Koh Lanta"></div>
@@ -231,5 +245,26 @@ navLight: true
 {% endraw %}{% endblock %}
 
 {% block scripts %}{% raw %}
-<script>ZWALD.init({ page: "girls" });</script>
+<script>
+  ZWALD.init({ page: "girls" });
+  (function () {
+    var btn = document.getElementById("brochure-share");
+    if (!btn) return;
+    var url = location.origin + "/files/girls-trips-brochure.pdf";
+    var label = btn.querySelector("span");
+    var defaultLabel = label.innerHTML;
+    btn.addEventListener("click", function () {
+      if (navigator.share) {
+        navigator.share({ title: "Girls Trips en Thaïlande — Zwald Travel Planner", text: "La brochure de mon prochain Girls Trip en Thaïlande :", url: url }).catch(function () {});
+        return;
+      }
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(function () {
+          label.textContent = "Lien copié !";
+          setTimeout(function () { label.innerHTML = defaultLabel; }, 2000);
+        });
+      }
+    });
+  })();
+</script>
 {% endraw %}{% endblock %}
