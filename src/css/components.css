@@ -399,3 +399,7 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 /* Compact horizontal layout (homepage & à propos) */
 .nl-compact #sib-container { max-width: 540px !important; }
 .nl-compact .sib-form-block__button { width: auto !important; white-space: nowrap !important; }
+
+/* Consent-gated newsletter placeholder, shown until cookies are accepted (reuses .callout's box) */
+.nl-gate { text-align: center; }
+.nl-gate p { color: var(--ink-mute); margin-bottom: 14px; }

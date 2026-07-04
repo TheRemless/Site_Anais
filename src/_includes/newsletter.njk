@@ -4,7 +4,11 @@
     <h2>Prépare ton voyage avec confiance</h2>
     <p class="mt-s" style="color:var(--ink-mute);max-width:52ch;margin-inline:auto">Conseils, adresses locales et astuces de voyage directement dans ta boîte mail. Aucun spam, promis.</p>
     <div class="mt-l nl-compact">
-      <div id="sib-form-container" class="sib-form-container">
+      <div id="nl-consent-gate" class="callout nl-gate">
+        <p>Active les cookies pour afficher le formulaire d'inscription.</p>
+        <button type="button" class="btn btn-ghost" onclick="if(window.ZW_openConsent){ZW_openConsent();}">Gérer mes cookies</button>
+      </div>
+      <div id="sib-form-container" class="sib-form-container" hidden>
         <div id="error-message" class="sib-form-message-panel" style="font-size:15px;text-align:center;color:#661d1d;background-color:#ffeded;border-color:#ff4949;">
           <div class="sib-form-message-panel__text sib-form-message-panel__text--center">
             <span class="sib-form-message-panel__inner-text">L'inscription n'a pas pu être enregistrée. Veuillez réessayer.</span>
@@ -57,3 +61,4 @@
     </div>
   </div>
 </section>
+<script src="/js/newsletter-consent.js"></script>
