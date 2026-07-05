@@ -30,7 +30,7 @@
 </head>
 <body>
 {% include "header.njk" %}
-<main>
+<main{% if mainClass %} class="{{ mainClass }}"{% endif %}>
 {% block content %}{% endblock %}
 </main>
 {% include "footer.njk" %}

@@ -86,6 +86,8 @@ navLight: true
 .iti__selected-dial-code { font-family: var(--sans); font-size: 0.9rem; color: var(--ink-soft); }
 .iti__country-list { font-family: var(--sans); font-size: 0.9rem; border-color: var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
 .iti__country.iti__highlight { background: var(--bg-mint); }
+[data-subject-group] { animation: subjectFade 0.35s ease; }
+@keyframes subjectFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 </style>
 {% endraw %}{% endblock %}
 
@@ -116,6 +118,7 @@ navLight: true
             <div class="field"><label for="subject">Sujet</label>
               <select id="subject" name="subject">
                 <option>Voyage sur mesure</option>
+                <option>Girls Trips ✨</option>
                 <option>Demande de devis</option>
                 <option>Appel découverte</option>
                 <option>Cours de thaï</option>
@@ -124,7 +127,61 @@ navLight: true
                 <option>Autre question</option>
               </select>
             </div>
-            <div class="field"><label for="message">Ton message</label><textarea id="message" name="message" placeholder="Parle-moi de ton projet : tes dates, ton budget, le nombre de voyageurs, tes envies… ou pose-moi tes questions." required></textarea></div>
+            <div data-subject-group="devis">
+              <div class="form-row">
+                <div class="field"><label for="dates">Dates approximatives</label><input type="text" id="dates" name="dates" placeholder="Ex : février 2027, flexible"></div>
+                <div class="field"><label for="duree">Durée envisagée</label><input type="text" id="duree" name="duree" placeholder="Ex : 2 semaines"></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label for="voyageurs">Nombre de voyageurs</label><input type="text" id="voyageurs" name="voyageurs" inputmode="numeric" placeholder="Ex : 2"></div>
+                <div class="field"><label for="budget">Budget indicatif (optionnel)</label><input type="text" id="budget" name="budget" placeholder="Ex : 100 CHF / jour / pers., hors vols"></div>
+              </div>
+            </div>
+            <div data-subject-group="girls" style="display:none">
+              <div class="field"><label for="gt_depart">Départ souhaité</label>
+                <select id="gt_depart" name="gt_depart">
+                  <option>6 – 12 décembre 2026</option>
+                  <option>17 – 23 janvier 2027</option>
+                  <option>28 février – 6 mars 2027</option>
+                  <option>28 mars – 3 avril 2027</option>
+                  <option>Flexible, à discuter</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <div class="field"><label for="gt_groupe">Tu viens seule ou entre copines ?</label><input type="text" id="gt_groupe" name="gt_groupe" placeholder="Ex : seule / avec 2 copines"></div>
+                <div class="field"><label for="gt_krabi">Extension Krabi (+3 jours) ?</label>
+                  <select id="gt_krabi" name="gt_krabi">
+                    <option>À discuter</option>
+                    <option>Oui</option>
+                    <option>Non</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div data-subject-group="appel" style="display:none">
+              <div class="field"><label for="dispo_appel">Tes disponibilités</label><input type="text" id="dispo_appel" name="dispo_appel" placeholder="Ex : en semaine après 18h"></div>
+            </div>
+            <div data-subject-group="cours" style="display:none">
+              <div class="form-row">
+                <div class="field"><label for="cours_participants">Nombre de participants</label><input type="text" id="cours_participants" name="cours_participants" inputmode="numeric" placeholder="Ex : 2"></div>
+                <div class="field"><label for="cours_dispo">Disponibilités souhaitées</label><input type="text" id="cours_dispo" name="cours_dispo" placeholder="Ex : le soir ou le week-end"></div>
+              </div>
+            </div>
+            <div data-subject-group="cadeau" style="display:none">
+              <div class="form-row">
+                <div class="field"><label for="cadeau_montant">Montant souhaité</label>
+                  <select id="cadeau_montant" name="cadeau_montant">
+                    <option>50 CHF</option>
+                    <option>100 CHF</option>
+                    <option>200 CHF</option>
+                    <option>Autre montant</option>
+                  </select>
+                </div>
+                <div class="field"><label for="cadeau_pour">Pour qui / quelle occasion ?</label><input type="text" id="cadeau_pour" name="cadeau_pour" placeholder="Ex : ma sœur, pour ses 30 ans"></div>
+              </div>
+            </div>
+            <div class="field"><label for="message">Ton message</label><textarea id="message" name="message" placeholder="Parle-moi de ton projet, de tes envies… ou pose-moi tes questions." required></textarea></div>
+            <div id="formError" role="alert" style="display:none;background:#ffeded;color:#661d1d;border-radius:10px;padding:12px 16px;font-size:0.9rem;margin-bottom:14px">Oups, ton message n'est pas parti. Réessaie dans un instant, ou écris-moi directement sur <a href="https://wa.me/66958683846" target="_blank" rel="noopener">WhatsApp</a>.</div>
             <button type="submit" class="btn btn-teal btn-lg" style="width:100%;justify-content:center"><span>Envoyer mon message</span></button>
             <p style="text-align:center;font-size:0.82rem;color:var(--ink-faint);margin-top:14px">Réponse généralement sous 24-48h · Devis gratuit et sans engagement</p>
             <p style="text-align:center;font-size:0.84rem;margin-top:10px">
@@ -196,20 +253,67 @@ navLight: true
     utilsScript: "https://cdn.jsdelivr.net/npm/intl-tel-input@23.1.0/build/js/utils.js"
   });
 
+  // Champs conditionnels selon le sujet choisi
+  var SUBJECT_GROUPS = {
+    "Voyage sur mesure": "devis",
+    "Demande de devis": "devis",
+    "Girls Trips ✨": "girls",
+    "Appel découverte": "appel",
+    "Cours de thaï": "cours",
+    "Carte cadeau": "cadeau"
+  };
+  var subjectSelect = document.getElementById("subject");
+  function updateSubjectGroups() {
+    var key = SUBJECT_GROUPS[subjectSelect.value] || null;
+    var groups = document.querySelectorAll("[data-subject-group]");
+    for (var i = 0; i < groups.length; i++) {
+      var group = groups[i];
+      var active = group.getAttribute("data-subject-group") === key;
+      group.style.display = active ? "" : "none";
+      var fields = group.querySelectorAll("input, select, textarea");
+      for (var j = 0; j < fields.length; j++) { fields[j].disabled = !active; }
+    }
+  }
+  subjectSelect.addEventListener("change", updateSubjectGroups);
+  updateSubjectGroups(); // état initial (gère aussi un sujet restauré par le navigateur)
+
   document.getElementById("contactForm").addEventListener("submit", function (e) {
     e.preventDefault();
     var form = this;
+    var submitBtn = form.querySelector('button[type="submit"]');
+    var btnLabel = submitBtn.querySelector("span");
+    var originalLabel = btnLabel.textContent;
+    var errorBox = document.getElementById("formError");
     var name = document.getElementById("name").value.trim();
+
+    // Masquer une éventuelle erreur d'un essai précédent
+    errorBox.style.display = "none";
+
     // Remplacer la valeur du champ par le numéro complet avec indicatif international
     phoneInput.value = iti.getNumber();
-    // Confirmation immédiate (UX), puis envoi réel vers Netlify Forms en arrière-plan
-    document.getElementById("successMsg").textContent =
-      "Merci pour ton message" + (name ? ", " + name : "") + " ! Je te réponds dans les plus brefs délais (généralement sous 24-48h).";
-    form.style.display = "none";
-    document.getElementById("formSuccess").style.display = "block";
+
+    // Désactiver le bouton pendant l'envoi
+    submitBtn.disabled = true;
+    btnLabel.textContent = "Envoi en cours…";
+
     var data = new URLSearchParams(new FormData(form)).toString();
     fetch("/", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: data })
-      .catch(function () { /* Netlify réessaiera ; la confirmation est déjà affichée */ });
+      .then(function (response) {
+        if (!response.ok) { throw new Error("HTTP " + response.status); }
+        // Envoi confirmé : on affiche le bloc succès
+        document.getElementById("successMsg").textContent =
+          "Merci pour ton message" + (name ? ", " + name : "") + " ! Je te réponds dans les plus brefs délais (généralement sous 24-48h).";
+        form.style.display = "none";
+        document.getElementById("formSuccess").style.display = "block";
+      })
+      .catch(function () {
+        // Réponse non-ok ou erreur réseau : on prévient honnêtement
+        errorBox.style.display = "block";
+      })
+      .finally(function () {
+        submitBtn.disabled = false;
+        btnLabel.textContent = originalLabel;
+      });
   });
 </script>
 {% endraw %}{% endblock %}
