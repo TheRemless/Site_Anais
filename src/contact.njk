@@ -251,6 +251,30 @@ navLight: true
     utilsScript: "https://cdn.jsdelivr.net/npm/intl-tel-input@23.1.0/build/js/utils.js"
   });
 
+  // Champs conditionnels selon le sujet choisi
+  var SUBJECT_GROUPS = {
+    "Voyage sur mesure": "devis",
+    "Demande de devis": "devis",
+    "Girls Trips ✨": "girls",
+    "Appel découverte": "appel",
+    "Cours de thaï": "cours",
+    "Carte cadeau": "cadeau"
+  };
+  var subjectSelect = document.getElementById("subject");
+  function updateSubjectGroups() {
+    var key = SUBJECT_GROUPS[subjectSelect.value] || null;
+    var groups = document.querySelectorAll("[data-subject-group]");
+    for (var i = 0; i < groups.length; i++) {
+      var group = groups[i];
+      var active = group.getAttribute("data-subject-group") === key;
+      group.style.display = active ? "" : "none";
+      var fields = group.querySelectorAll("input, select, textarea");
+      for (var j = 0; j < fields.length; j++) { fields[j].disabled = !active; }
+    }
+  }
+  subjectSelect.addEventListener("change", updateSubjectGroups);
+  updateSubjectGroups(); // état initial (gère aussi un sujet restauré par le navigateur)
+
   document.getElementById("contactForm").addEventListener("submit", function (e) {
     e.preventDefault();
     var form = this;
