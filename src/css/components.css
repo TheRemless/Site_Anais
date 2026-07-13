@@ -440,4 +440,4 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .offer-panel .feature-list li .tick { background: #fff; }
 .offer-panel .option-flag { background: #fff; }
 @media (max-width: 720px) { .offer-panel { padding: 22px; } }
-.offer-panel .split-media.tall img { aspect-ratio: 3/4; }
+.offer-panel .split-media.tall img { aspect-ratio: 4/5; }
