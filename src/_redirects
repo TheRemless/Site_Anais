@@ -9,7 +9,10 @@
 /blog.html                                      /blog/                                     301
 /faq.html                                       /faq/                                      301
 /contact.html                                   /contact/                                  301
-/cours-thai.html                                /cours-thai/                               301
+
+# Cours de thaï retiré du catalogue — anciens liens/index Google renvoyés vers Services.
+/cours-thai.html                                /services/                                 301
+/cours-thai/                                    /services/                                 301
 /itineraire-2-semaines-thailande.html           /itineraire-2-semaines-thailande/          301
 /erreurs-a-eviter-voyage-thailande.html         /erreurs-a-eviter-voyage-thailande/        301
 /organiser-voyage-thailande-sans-agence.html    /organiser-voyage-thailande-sans-agence/   301
