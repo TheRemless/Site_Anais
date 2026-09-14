@@ -167,7 +167,7 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 @media (max-width: 860px) { .gallery { columns: 2; } }
 @media (max-width: 520px) { .gallery { columns: 1; } }
 
-/* ---------- Info cards (cours-thai) ---------- */
+/* ---------- Info cards ---------- */
 .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .info-card { background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius-lg); padding: 26px; }
 .info-card .k { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--teal-dark); margin-bottom: 8px; }
