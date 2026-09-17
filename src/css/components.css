@@ -454,3 +454,4 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .currency-switch-mobile { margin: 18px 0 0; }
 .currency-switch-mobile select { width: 100%; }
 .currency-note { display: block; margin-top: 6px; font-size: 0.78rem; color: var(--ink-faint); }
+.currency-note[hidden] { display: none; }
