@@ -62,7 +62,7 @@
       var chf = parseFloat(prices[i].getAttribute("data-chf"));
       if (!isNaN(chf)) prices[i].textContent = formatPrice(chf, currency, rates);
     }
-    var notes = document.querySelectorAll(".price-note");
+    var notes = document.querySelectorAll(".currency-note");
     for (var j = 0; j < notes.length; j++) {
       notes[j].hidden = (currency === "CHF");
     }

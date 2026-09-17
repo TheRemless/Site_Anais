@@ -453,4 +453,4 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .nav.nav-light:not(.scrolled) .currency-switch select { background-color: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.4); color: #fff; }
 .currency-switch-mobile { margin: 18px 0 0; }
 .currency-switch-mobile select { width: 100%; }
-.price-note { display: block; margin-top: 6px; font-size: 0.78rem; color: var(--ink-faint); }
+.currency-note { display: block; margin-top: 6px; font-size: 0.78rem; color: var(--ink-faint); }
