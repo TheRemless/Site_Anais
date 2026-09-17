@@ -235,12 +235,6 @@ section { position: relative; }
 .nav.nav-light:not(.scrolled) .nav-links a { color: rgba(255,255,255,0.88); }
 .nav.nav-light:not(.scrolled) .nav-links a:hover, .nav.nav-light:not(.scrolled) .nav-links a.active { color: #fff; }
 .nav.nav-light:not(.scrolled) .nav-links a::after { background: #fff; }
-.lang-switch { margin-left: 10px; display: flex; align-items: center; gap: 6px; font-size: 0.86rem; font-weight: 600; }
-.lang-switch a { color: inherit; text-decoration: none; opacity: 0.6; }
-.lang-switch a:hover { opacity: 1; text-decoration: underline; }
-.lang-switch .lang-current { opacity: 1; }
-.nav.nav-light:not(.scrolled) .lang-switch { color: #fff; }
-.lang-switch-mobile { margin: 14px 0 0; }
 .nav-cta { margin-left: 12px; }
 .nav .btn { padding: 0.7rem 1.4rem; font-size: 0.85rem; }
 .nav.nav-light:not(.scrolled) .nav-cta .btn { background: #fff; color: var(--teal-dark); border-color: #fff; }
