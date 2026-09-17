@@ -19,6 +19,13 @@
           <option value="THB">THB</option>
         </select>
       </div>
+      <div class="lang-switch">
+        {% if lang == "fr" %}
+        <span class="lang-current">FR</span><a href="{{ langAlt or '/en/' }}">EN</a>
+        {% else %}
+        <a href="{{ langAlt }}">FR</a><span class="lang-current">EN</span>
+        {% endif %}
+      </div>
       <div class="nav-cta"><a class="btn btn-teal" href="{{ '/en/contact/' if lang == 'en' else '/contact/' }}"><span>{{ 'nav.cta' | t(lang) }}</span></a></div>
       <button class="nav-toggle" aria-label="{{ 'nav.openMenu' | t(lang) }}" aria-expanded="false"><span></span><span></span><span></span></button>
     </div>
@@ -37,5 +44,12 @@
         <option value="GBP">GBP</option>
         <option value="THB">THB</option>
       </select>
+    </div>
+    <div class="lang-switch lang-switch-mobile">
+      {% if lang == "fr" %}
+      <span class="lang-current">FR</span><a href="{{ langAlt or '/en/' }}">EN</a>
+      {% else %}
+      <a href="{{ langAlt }}">FR</a><span class="lang-current">EN</span>
+      {% endif %}
     </div>
   </div>
