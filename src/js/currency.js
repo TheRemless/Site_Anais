@@ -40,6 +40,61 @@
     return converted + " " + currency;
   }
 
+  function loadRates(callback) {
+    var url = "https://cdn.jsdelivr.net/gh/TheRemless/Site_Anais@master/data/currency-rates.json";
+    if (typeof fetch !== "function") { callback(FALLBACK_RATES); return; }
+    fetch(url, { cache: "no-store" })
+      .then(function (res) { if (!res.ok) throw new Error("bad status"); return res.json(); })
+      .then(function (data) {
+        if (data && data.rates && typeof data.rates.EUR === "number") {
+          callback(data.rates);
+        } else {
+          callback(FALLBACK_RATES);
+        }
+      })
+      .catch(function () { callback(FALLBACK_RATES); });
+  }
+
+  function applyCurrency(currency, rates) {
+    document.documentElement.setAttribute("data-currency", currency);
+    var prices = document.querySelectorAll(".price-chf");
+    for (var i = 0; i < prices.length; i++) {
+      var chf = parseFloat(prices[i].getAttribute("data-chf"));
+      if (!isNaN(chf)) prices[i].textContent = formatPrice(chf, currency, rates);
+    }
+    var notes = document.querySelectorAll(".price-note");
+    for (var j = 0; j < notes.length; j++) {
+      notes[j].hidden = (currency === "CHF");
+    }
+    var selects = document.querySelectorAll("#currency-switch, #currency-switch-mobile");
+    for (var k = 0; k < selects.length; k++) { selects[k].value = currency; }
+  }
+
+  function init() {
+    if (!document.querySelector(".price-chf") && !document.getElementById("currency-switch")) return;
+    var stored = null;
+    try { stored = localStorage.getItem("zwald_currency"); } catch (e) { /* private mode etc. */ }
+    var currency = (stored && SUPPORTED.indexOf(stored) !== -1)
+      ? stored
+      : detectCurrency(navigator.language || "");
+
+    loadRates(function (rates) {
+      applyCurrency(currency, rates);
+      var selects = document.querySelectorAll("#currency-switch, #currency-switch-mobile");
+      for (var i = 0; i < selects.length; i++) {
+        selects[i].addEventListener("change", function (e) {
+          var next = e.target.value;
+          applyCurrency(next, rates);
+          try { localStorage.setItem("zwald_currency", next); } catch (err) { /* ignore */ }
+        });
+      }
+    });
+  }
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("DOMContentLoaded", init);
+  }
+
   return {
     SUPPORTED: SUPPORTED,
     FALLBACK_RATES: FALLBACK_RATES,

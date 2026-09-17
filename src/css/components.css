@@ -441,3 +441,16 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .offer-panel .option-flag { background: #fff; }
 @media (max-width: 720px) { .offer-panel { padding: 22px; } }
 .offer-panel .split-media.tall img { aspect-ratio: 4/5; }
+
+/* ---------- Sélecteur de devise ---------- */
+.currency-switch { margin-left: 14px; display: flex; align-items: center; }
+.currency-switch select {
+  font-family: var(--sans); font-size: 0.85rem; font-weight: 600;
+  border: 1px solid var(--line); border-radius: 20px; padding: 6px 28px 6px 14px;
+  background: var(--surface) url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%234B4740%22 stroke-width=%222.2%22%3E%3Cpath d=%22M6 9l6 6 6-6%22/%3E%3C/svg%3E') no-repeat right 8px center / 14px;
+  -webkit-appearance: none; appearance: none; cursor: pointer; color: var(--ink);
+}
+.nav.nav-light:not(.scrolled) .currency-switch select { background-color: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.4); color: #fff; }
+.currency-switch-mobile { margin: 18px 0 0; }
+.currency-switch-mobile select { width: 100%; }
+.price-note { display: block; margin-top: 6px; font-size: 0.78rem; color: var(--ink-faint); }
