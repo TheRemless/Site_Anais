@@ -2,28 +2,25 @@
     <div class="container">
       <div class="footer-grid">
         <div class="footer-brand">
-          <a class="brand" href="/"><img loading="lazy" decoding="async" src="/images/logo.png" alt="" style="width:46px;height:46px;border-radius:50%"><span class="brand-text"><span class="brand-name">Zwald</span> <span class="brand-sub">Travel Planner</span></span></a>
-          <p>Travel planner installée en Thaïlande. Des itinéraires sur mesure, pensés pour toi, de A à Z.</p>
+          <a class="brand" href="{{ '/en/' if lang == 'en' else '/' }}"><img loading="lazy" decoding="async" src="/images/logo.png" alt="" style="width:46px;height:46px;border-radius:50%"><span class="brand-text"><span class="brand-name">Zwald</span> <span class="brand-sub">Travel Planner</span></span></a>
+          <p>{{ "footer.tagline" | t(lang) }}</p>
         </div>
-        <div><h2>Explorer</h2><ul>
-          <li><a href="/">Accueil</a></li>
-          <li><a href="/services/">Services</a></li>
-          <li><a href="/girls-trips/">Girls Trips</a></li>
-          <li><a href="/a-propos/">À propos</a></li>
-          <li><a href="/galerie/">Galerie</a></li>
-          <li><a href="/blog/">Blog</a></li>
-          <li><a href="/faq/">FAQ</a></li>
-          <li><a href="/contact/">Contact</a></li>
+        <div><h2>{{ "footer.explorer" | t(lang) }}</h2><ul>
+        {%- for item in nav %}
+          {%- set href = item.hrefEn if lang == "en" else item.hrefFr %}
+          <li><a href="{{ href }}">{{ item.labelKey | t(lang) }}{% if lang == "en" and item.hrefEn == item.hrefFr %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a></li>
+        {%- endfor %}
+          <li><a href="{{ '/en/contact/' if lang == 'en' else '/contact/' }}">{{ "nav.contact" | t(lang) }}</a></li>
         </ul></div>
-        <div><h2>Services</h2><ul>
-          <li><a href="/services/">Voyages sur mesure</a></li>
-          <li><a href="/girls-trips/">Girls Trips</a></li>
-          <li><a href="/cartes-cadeaux/">Cartes cadeaux</a></li>
-          <li><a href="/mini-guides/">Mini-guides PDF</a></li>
+        <div><h2>{{ "footer.services" | t(lang) }}</h2><ul>
+          <li><a href="{{ '/en/services/' if lang == 'en' else '/services/' }}">{{ "footer.customTrips" | t(lang) }}</a></li>
+          <li><a href="{{ '/en/girls-trips/' if lang == 'en' else '/girls-trips/' }}">{{ "nav.girlstrips" | t(lang) }}</a></li>
+          <li><a href="{{ '/en/cartes-cadeaux/' if lang == 'en' else '/cartes-cadeaux/' }}">{{ "footer.giftcards" | t(lang) }}</a></li>
+          <li><a href="/mini-guides/">{{ "footer.miniGuides" | t(lang) }}{% if lang == "en" %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a></li>
         </ul></div>
-        <div><h2>Contact</h2><ul>
+        <div><h2>{{ "footer.contact" | t(lang) }}</h2><ul>
           <li><a href="https://wa.me/66958683846" target="_blank" rel="noopener">WhatsApp · +66 95 868 38 46</a></li>
-          <li><a href="/contact/">Appel découverte gratuit</a></li>
+          <li><a href="{{ '/en/contact/' if lang == 'en' else '/contact/' }}">{{ "footer.discoveryCall" | t(lang) }}</a></li>
         </ul>
         <div class="footer-social" style="margin-top:18px">
           <a href="https://www.instagram.com/zwaldtravelplanner/" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></a>
@@ -33,8 +30,8 @@
         </div>
       </div>
       <div class="footer-bottom">
-        <span>© <span id="footer-year">2026</span> Zwald Travel Planner — Vos voyages sur mesure de A à Z</span>
-        <span class="footer-legal"><a href="/mentions-legales/">Mentions légales</a> · <a href="/cgv/">CGV</a> · <a href="/politique-confidentialite/">Confidentialité</a> · <a href="#" onclick="if(window.ZW_openConsent){ZW_openConsent();}return false;">Cookies</a></span>
+        <span>© <span id="footer-year">2026</span> Zwald Travel Planner — {{ "footer.rights" | t(lang) }}</span>
+        <span class="footer-legal"><a href="/mentions-legales/">{{ "footer.legalNotice" | t(lang) }}{% if lang == "en" %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a> · <a href="/cgv/">{{ "footer.cgv" | t(lang) }}{% if lang == "en" %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a> · <a href="/politique-confidentialite/">{{ "footer.privacy" | t(lang) }}{% if lang == "en" %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a> · <a href="#" onclick="if(window.ZW_openConsent){ZW_openConsent();}return false;">{{ "footer.cookies" | t(lang) }}</a></span>
       </div>
     </div>
   </footer>

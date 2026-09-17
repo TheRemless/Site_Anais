@@ -1,20 +1,17 @@
 <header class="nav{% if navLight %} nav-light{% endif %}">
     <div class="nav-inner">
-      <a class="brand" href="/" aria-label="Zwald Travel Planner — accueil">
+      <a class="brand" href="{{ '/en/' if lang == 'en' else '/' }}" aria-label="{{ 'brand.ariaLabel' | t(lang) }}">
         <img width="42" height="42" decoding="async" src="/images/logo.png" alt="">
         <span class="brand-text"><span class="brand-name">Zwald</span> <span class="brand-sub">Travel Planner</span></span>
       </a>
-      <nav aria-label="Navigation principale"><ul class="nav-links">
-          <li><a href="/"{% if active == "/" %} class="active"{% endif %}>Accueil</a></li>
-          <li><a href="/services/"{% if active == "/services/" %} class="active"{% endif %}>Services</a></li>
-          <li><a href="/girls-trips/"{% if active == "/girls-trips/" %} class="active"{% endif %}>Girls Trips <span class="nav-tag">Nouveau</span></a></li>
-          <li><a href="/a-propos/"{% if active == "/a-propos/" %} class="active"{% endif %}>À propos</a></li>
-          <li><a href="/galerie/"{% if active == "/galerie/" %} class="active"{% endif %}>Galerie</a></li>
-          <li><a href="/blog/"{% if active == "/blog/" %} class="active"{% endif %}>Blog</a></li>
-          <li><a href="/faq/"{% if active == "/faq/" %} class="active"{% endif %}>FAQ</a></li>
+      <nav aria-label="{{ 'nav.ariaMain' | t(lang) }}"><ul class="nav-links">
+        {%- for item in nav %}
+          {%- set href = item.hrefEn if lang == "en" else item.hrefFr %}
+          <li><a href="{{ href }}"{% if active == href %} class="active"{% endif %}>{{ item.labelKey | t(lang) }}{% if item.tagKey %} <span class="nav-tag">{{ item.tagKey | t(lang) }}</span>{% endif %}{% if lang == "en" and item.hrefEn == item.hrefFr %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a></li>
+        {%- endfor %}
       </ul></nav>
       <div class="currency-switch">
-        <select id="currency-switch" aria-label="Choisir la devise">
+        <select id="currency-switch" aria-label="{{ 'currency.ariaLabel' | t(lang) }}">
           <option value="CHF">CHF</option>
           <option value="EUR">EUR</option>
           <option value="USD">USD</option>
@@ -22,26 +19,37 @@
           <option value="THB">THB</option>
         </select>
       </div>
-      <div class="nav-cta"><a class="btn btn-teal" href="/contact/"><span>Devis gratuit</span></a></div>
-      <button class="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false"><span></span><span></span><span></span></button>
+      <div class="lang-switch">
+        {% if lang == "fr" %}
+        <span class="lang-current">FR</span><a href="{{ langAlt or '/en/' }}" hreflang="en" lang="en">EN</a>
+        {% else %}
+        <a href="{{ langAlt }}" hreflang="fr" lang="fr">FR</a><span class="lang-current">EN</span>
+        {% endif %}
+      </div>
+      <div class="nav-cta"><a class="btn btn-teal" href="{{ '/en/contact/' if lang == 'en' else '/contact/' }}"><span>{{ 'nav.cta' | t(lang) }}</span></a></div>
+      <button class="nav-toggle" aria-label="{{ 'nav.openMenu' | t(lang) }}" aria-expanded="false"><span></span><span></span><span></span></button>
     </div>
   </header>
 <div class="mobile-menu">
-    <a href="/"{% if active == "/" %} class="active"{% endif %}>Accueil</a>
-    <a href="/services/"{% if active == "/services/" %} class="active"{% endif %}>Services</a>
-    <a href="/girls-trips/"{% if active == "/girls-trips/" %} class="active"{% endif %}>Girls Trips <span class="nav-tag">Nouveau</span></a>
-    <a href="/a-propos/"{% if active == "/a-propos/" %} class="active"{% endif %}>À propos</a>
-    <a href="/galerie/"{% if active == "/galerie/" %} class="active"{% endif %}>Galerie</a>
-    <a href="/blog/"{% if active == "/blog/" %} class="active"{% endif %}>Blog</a>
-    <a href="/faq/"{% if active == "/faq/" %} class="active"{% endif %}>FAQ</a>
-    <a href="/contact/"{% if active == "/contact/" %} class="active"{% endif %}>Contact</a>
+  {%- for item in nav %}
+    {%- set href = item.hrefEn if lang == "en" else item.hrefFr %}
+    <a href="{{ href }}"{% if active == href %} class="active"{% endif %}>{{ item.labelKey | t(lang) }}{% if item.tagKey %} <span class="nav-tag">{{ item.tagKey | t(lang) }}</span>{% endif %}{% if lang == "en" and item.hrefEn == item.hrefFr %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a>
+  {%- endfor %}
+    <a href="{{ '/en/contact/' if lang == 'en' else '/contact/' }}"{% if active == ('/en/contact/' if lang == 'en' else '/contact/') %} class="active"{% endif %}>{{ 'nav.contact' | t(lang) }}</a>
     <div class="currency-switch currency-switch-mobile">
-      <select id="currency-switch-mobile" aria-label="Choisir la devise">
+      <select id="currency-switch-mobile" aria-label="{{ 'currency.ariaLabel' | t(lang) }}">
         <option value="CHF">CHF</option>
         <option value="EUR">EUR</option>
         <option value="USD">USD</option>
         <option value="GBP">GBP</option>
         <option value="THB">THB</option>
       </select>
+    </div>
+    <div class="lang-switch lang-switch-mobile">
+      {% if lang == "fr" %}
+      <span class="lang-current">FR</span><a href="{{ langAlt or '/en/' }}" hreflang="en" lang="en">EN</a>
+      {% else %}
+      <a href="{{ langAlt }}" hreflang="fr" lang="fr">FR</a><span class="lang-current">EN</span>
+      {% endif %}
     </div>
   </div>

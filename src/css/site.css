@@ -402,6 +402,9 @@ section { position: relative; }
      text at narrow widths; the mobile-menu instance (.currency-switch-mobile)
      is the correct equivalent there and must stay visible. */
   .nav-inner > .currency-switch { display: none; }
+  /* même correctif que le sélecteur de devise : un second contrôle
+     direct enfant de .nav-inner chevauche le nom du site sous 1040px */
+  .nav-inner > .lang-switch { display: none; }
   /* keep the primary CTA visible on mobile, compact */
   .nav-cta { margin-left: auto; margin-right: 6px; }
   .nav-cta .btn { padding: 0.55rem 1.05rem; font-size: 0.8rem; }

@@ -18,4 +18,11 @@
   <url><loc>https://zwaldtravelplanner.com/cartes-cadeaux/</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://zwaldtravelplanner.com/mini-guides/</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://zwaldtravelplanner.com/quand-partir-en-thailande/</loc><changefreq>yearly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zwaldtravelplanner.com/en/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://zwaldtravelplanner.com/en/services/</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://zwaldtravelplanner.com/en/girls-trips/</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://zwaldtravelplanner.com/en/a-propos/</loc><changefreq>yearly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zwaldtravelplanner.com/en/faq/</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://zwaldtravelplanner.com/en/contact/</loc><changefreq>yearly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://zwaldtravelplanner.com/en/cartes-cadeaux/</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
 </urlset>
