@@ -9,13 +9,51 @@ function firstName(name) {
   return (name || "").trim().split(/\s+/)[0] || "";
 }
 
-function buildBodies(name, subject) {
+function buildBodies(name, subject, lang) {
   const prenom = firstName(name);
-  const merci = prenom ? "Merci " + prenom + " !" : "Merci !";
   const girls = subject === "Girls Trips ✨";
+
+  if (lang === "en") {
+    const thanks = prenom ? "Thank you " + prenom + "!" : "Thank you!";
+    const girlsReminder =
+      "Just a quick reminder: spots are limited and the departure is confirmed from 5 sign-ups — I'll be back in touch soon with all the details.";
+    const lines = [
+      thanks,
+      "",
+      "I've received your request" + (subject ? ' about "' + subject + '"' : "") + ".",
+      "I'll get back to you personally as soon as possible, usually within 24-48h.",
+    ];
+    if (girls) lines.push("", girlsReminder);
+    lines.push(
+      "",
+      "Talk soon,",
+      "Anaïs",
+      "",
+      "Zwald Travel Planner — Your Tailor-Made Trips from A to Z",
+      "https://zwaldtravelplanner.com",
+      "WhatsApp: +66 95 868 38 46",
+      "Instagram: https://www.instagram.com/zwaldtravelplanner/"
+    );
+    const text = lines.join("\n");
+    const html =
+      '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1c2b2d;line-height:1.6;max-width:560px">' +
+      "<p><strong>" + thanks + "</strong></p>" +
+      "<p>I've received your request" + (subject ? " about &ldquo;" + subject + "&rdquo;" : "") + ".<br>" +
+      "I'll get back to you personally as soon as possible, usually within 24-48h.</p>" +
+      (girls ? "<p>" + girlsReminder + "</p>" : "") +
+      "<p>Talk soon,<br>Anaïs</p>" +
+      '<p style="color:#5b6b6d;font-size:13px;border-top:1px solid #e3ecec;padding-top:12px">' +
+      "Zwald Travel Planner — Your Tailor-Made Trips from A to Z<br>" +
+      '<a href="https://zwaldtravelplanner.com" style="color:#0a828d">zwaldtravelplanner.com</a> · ' +
+      '<a href="https://wa.me/66958683846" style="color:#0a828d">WhatsApp</a> · ' +
+      '<a href="https://www.instagram.com/zwaldtravelplanner/" style="color:#0a828d">Instagram</a></p>' +
+      "</div>";
+    return { text: text, html: html };
+  }
+
+  const merci = prenom ? "Merci " + prenom + " !" : "Merci !";
   const rappelGirls =
     "Petit rappel : les places sont limitées et le départ est confirmé dès 5 inscrites — je reviens vite vers toi avec tous les détails.";
-
   const lines = [
     merci,
     "",
@@ -34,7 +72,6 @@ function buildBodies(name, subject) {
     "Instagram : https://www.instagram.com/zwaldtravelplanner/"
   );
   const text = lines.join("\n");
-
   const html =
     '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1c2b2d;line-height:1.6;max-width:560px">' +
     "<p><strong>" + merci + "</strong></p>" +
@@ -48,9 +85,10 @@ function buildBodies(name, subject) {
     '<a href="https://wa.me/66958683846" style="color:#0a828d">WhatsApp</a> · ' +
     '<a href="https://www.instagram.com/zwaldtravelplanner/" style="color:#0a828d">Instagram</a></p>' +
     "</div>";
-
   return { text: text, html: html };
 }
+
+module.exports.buildBodies = buildBodies;
 
 exports.handler = async function (event) {
   const ok = { statusCode: 200, body: "" };
@@ -87,12 +125,13 @@ exports.handler = async function (event) {
     auth: { user: user, pass: pass },
   });
 
-  const bodies = buildBodies(data.name, data.subject);
+  const lang = data.lang === "en" ? "en" : "fr";
+  const bodies = buildBodies(data.name, data.subject, lang);
   try {
     await transporter.sendMail({
       from: '"Anaïs — Zwald Travel Planner" <' + user + ">",
       to: to,
-      subject: "J'ai bien reçu ta demande — Zwald Travel Planner",
+      subject: lang === "en" ? "I've received your request — Zwald Travel Planner" : "J'ai bien reçu ta demande — Zwald Travel Planner",
       text: bodies.text,
       html: bodies.html,
     });
