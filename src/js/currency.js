@@ -43,7 +43,7 @@
   function loadRates(callback) {
     var url = "https://cdn.jsdelivr.net/gh/TheRemless/Site_Anais@master/data/currency-rates.json";
     if (typeof fetch !== "function") { callback(FALLBACK_RATES); return; }
-    fetch(url, { cache: "no-store" })
+    fetch(url)
       .then(function (res) { if (!res.ok) throw new Error("bad status"); return res.json(); })
       .then(function (data) {
         if (data && data.rates && typeof data.rates.EUR === "number") {
@@ -78,16 +78,30 @@
       ? stored
       : detectCurrency(navigator.language || "");
 
+    // Taux actifs, partagés par le rendu initial (fallback) et le change
+    // listener : mis à jour en place quand loadRates() reçoit les vrais taux,
+    // pour que le listener utilise toujours les meilleurs taux connus.
+    var activeRates = FALLBACK_RATES;
+
+    // Rendu immédiat avec les taux de repli : jamais de flash CHF, l'état
+    // de repos est toujours correct (ou au pire approximatif via fallback).
+    applyCurrency(currency, activeRates);
+
+    var selects = document.querySelectorAll("#currency-switch, #currency-switch-mobile");
+    for (var i = 0; i < selects.length; i++) {
+      selects[i].addEventListener("change", function (e) {
+        currency = e.target.value;
+        applyCurrency(currency, activeRates);
+        try { localStorage.setItem("zwald_currency", currency); } catch (err) { /* ignore */ }
+      });
+    }
+
     loadRates(function (rates) {
-      applyCurrency(currency, rates);
-      var selects = document.querySelectorAll("#currency-switch, #currency-switch-mobile");
-      for (var i = 0; i < selects.length; i++) {
-        selects[i].addEventListener("change", function (e) {
-          var next = e.target.value;
-          applyCurrency(next, rates);
-          try { localStorage.setItem("zwald_currency", next); } catch (err) { /* ignore */ }
-        });
-      }
+      activeRates = rates;
+      // Re-applique avec la devise sélectionnée actuellement (l'utilisateur
+      // a pu la changer pendant que le fetch était en cours), pas forcément
+      // celle lue au chargement.
+      applyCurrency(currency, activeRates);
     });
   }
 

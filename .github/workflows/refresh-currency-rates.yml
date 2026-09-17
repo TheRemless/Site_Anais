@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: refresh-currency-rates
+  cancel-in-progress: false
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -45,6 +49,7 @@ jobs:
           cat data/currency-rates.json
 
       - name: Commit and push if changed
+        if: github.ref == 'refs/heads/master'
         run: |
           git config user.name "zwald-rates-bot"
           git config user.email "actions@github.com"
@@ -54,9 +59,10 @@ jobs:
             exit 0
           fi
           git commit -m "chore: refresh currency rates"
+          git pull --rebase
           git push
 
       - name: Purge jsDelivr cache
-        if: success()
+        if: success() && github.ref == 'refs/heads/master'
         run: |
           curl -s "https://purge.jsdelivr.net/gh/TheRemless/Site_Anais@master/data/currency-rates.json" || true
