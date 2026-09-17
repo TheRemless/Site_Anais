@@ -9,6 +9,10 @@ function firstName(name) {
   return (name || "").trim().split(/\s+/)[0] || "";
 }
 
+function escapeHtml(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function buildBodies(name, subject, lang) {
   const prenom = firstName(name);
   const girls = subject === "Girls Trips ✨";
@@ -38,7 +42,7 @@ function buildBodies(name, subject, lang) {
     const html =
       '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1c2b2d;line-height:1.6;max-width:560px">' +
       "<p><strong>" + thanks + "</strong></p>" +
-      "<p>I've received your request" + (subject ? " about &ldquo;" + subject + "&rdquo;" : "") + ".<br>" +
+      "<p>I've received your request" + (subject ? " about &ldquo;" + escapeHtml(subject) + "&rdquo;" : "") + ".<br>" +
       "I'll get back to you personally as soon as possible, usually within 24-48h.</p>" +
       (girls ? "<p>" + girlsReminder + "</p>" : "") +
       "<p>Talk soon,<br>Anaïs</p>" +
@@ -75,7 +79,7 @@ function buildBodies(name, subject, lang) {
   const html =
     '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1c2b2d;line-height:1.6;max-width:560px">' +
     "<p><strong>" + merci + "</strong></p>" +
-    "<p>J'ai bien reçu ta demande" + (subject ? " concernant «&nbsp;" + subject + "&nbsp;»" : "") + ".<br>" +
+    "<p>J'ai bien reçu ta demande" + (subject ? " concernant «&nbsp;" + escapeHtml(subject) + "&nbsp;»" : "") + ".<br>" +
     "Je te réponds personnellement dans les plus brefs délais, généralement sous 24-48h.</p>" +
     (girls ? "<p>" + rappelGirls + "</p>" : "") +
     "<p>À très vite,<br>Anaïs</p>" +

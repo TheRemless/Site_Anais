@@ -1,6 +1,6 @@
 <header class="nav{% if navLight %} nav-light{% endif %}">
     <div class="nav-inner">
-      <a class="brand" href="/" aria-label="{{ 'brand.ariaLabel' | t(lang) }}">
+      <a class="brand" href="{{ '/en/' if lang == 'en' else '/' }}" aria-label="{{ 'brand.ariaLabel' | t(lang) }}">
         <img width="42" height="42" decoding="async" src="/images/logo.png" alt="">
         <span class="brand-text"><span class="brand-name">Zwald</span> <span class="brand-sub">Travel Planner</span></span>
       </a>
@@ -21,9 +21,9 @@
       </div>
       <div class="lang-switch">
         {% if lang == "fr" %}
-        <span class="lang-current">FR</span><a href="{{ langAlt or '/en/' }}">EN</a>
+        <span class="lang-current">FR</span><a href="{{ langAlt or '/en/' }}" hreflang="en" lang="en">EN</a>
         {% else %}
-        <a href="{{ langAlt }}">FR</a><span class="lang-current">EN</span>
+        <a href="{{ langAlt }}" hreflang="fr" lang="fr">FR</a><span class="lang-current">EN</span>
         {% endif %}
       </div>
       <div class="nav-cta"><a class="btn btn-teal" href="{{ '/en/contact/' if lang == 'en' else '/contact/' }}"><span>{{ 'nav.cta' | t(lang) }}</span></a></div>
@@ -47,9 +47,9 @@
     </div>
     <div class="lang-switch lang-switch-mobile">
       {% if lang == "fr" %}
-      <span class="lang-current">FR</span><a href="{{ langAlt or '/en/' }}">EN</a>
+      <span class="lang-current">FR</span><a href="{{ langAlt or '/en/' }}" hreflang="en" lang="en">EN</a>
       {% else %}
-      <a href="{{ langAlt }}">FR</a><span class="lang-current">EN</span>
+      <a href="{{ langAlt }}" hreflang="fr" lang="fr">FR</a><span class="lang-current">EN</span>
       {% endif %}
     </div>
   </div>

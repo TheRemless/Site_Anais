@@ -45,6 +45,7 @@
   function injectStyle() {
     var s = document.createElement("style"); s.textContent = css; document.head.appendChild(s);
   }
+  // Dictionnaire local : ce fichier est copié tel quel en prod (pas de bundler), impossible de lire i18n.json au build.
   var CONSENT_TEXT = {
     fr: {
       title: "🍪 Cookies &amp; confidentialit\u00e9",

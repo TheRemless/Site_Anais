@@ -463,3 +463,4 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .lang-switch .lang-current { opacity: 1; }
 .nav.nav-light:not(.scrolled) .lang-switch { color: #fff; }
 .lang-switch-mobile { margin: 14px 0 0; }
+.lang-switch-mobile a { font-family: inherit; font-size: inherit; font-weight: inherit; padding: 0; border-bottom: 0; }

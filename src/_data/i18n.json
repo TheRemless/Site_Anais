@@ -28,10 +28,7 @@
     "footer.cgv": "CGV",
     "footer.privacy": "Confidentialité",
     "footer.cookies": "Cookies",
-    "footer.frOnly": " (FR)",
-    "cookie.title": "🍪 Cookies & confidentialité",
-    "cookie.refuse": "Refuser",
-    "cookie.accept": "Accepter"
+    "footer.frOnly": " (FR)"
   },
   "en": {
     "nav.home": "Home",
@@ -62,9 +59,6 @@
     "footer.cgv": "Terms & conditions",
     "footer.privacy": "Privacy",
     "footer.cookies": "Cookies",
-    "footer.frOnly": " (FR)",
-    "cookie.title": "🍪 Cookies & privacy",
-    "cookie.refuse": "Decline",
-    "cookie.accept": "Accept"
+    "footer.frOnly": " (FR)"
   }
 }
