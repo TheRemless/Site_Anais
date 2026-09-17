@@ -20,3 +20,11 @@ test("buildBodies : sujet hors Girls Trips, pas de rappel, dans les deux langues
   assert.doesNotMatch(fr.text, /Petit rappel/);
   assert.doesNotMatch(en.text, /Just a quick reminder/);
 });
+
+test("buildBodies : nom et sujet échappés dans le HTML, pas dans le texte brut", () => {
+  const { text, html } = buildBodies("<b>Marc</b>", "Devis & co", "fr");
+  assert.match(text, /^Merci <b>Marc<\/b> !/);
+  assert.match(html, /&lt;b&gt;Marc&lt;\/b&gt;/);
+  assert.doesNotMatch(html, /<strong><b>/);
+  assert.match(html, /Devis &amp; co/);
+});

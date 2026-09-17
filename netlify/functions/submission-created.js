@@ -19,6 +19,7 @@ function buildBodies(name, subject, lang) {
 
   if (lang === "en") {
     const thanks = prenom ? "Thank you " + prenom + "!" : "Thank you!";
+    const thanksHtml = prenom ? "Thank you " + escapeHtml(prenom) + "!" : "Thank you!";
     const girlsReminder =
       "Just a quick reminder: spots are limited and the departure is confirmed from 5 sign-ups — I'll be back in touch soon with all the details.";
     const lines = [
@@ -41,7 +42,7 @@ function buildBodies(name, subject, lang) {
     const text = lines.join("\n");
     const html =
       '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1c2b2d;line-height:1.6;max-width:560px">' +
-      "<p><strong>" + thanks + "</strong></p>" +
+      "<p><strong>" + thanksHtml + "</strong></p>" +
       "<p>I've received your request" + (subject ? " about &ldquo;" + escapeHtml(subject) + "&rdquo;" : "") + ".<br>" +
       "I'll get back to you personally as soon as possible, usually within 24-48h.</p>" +
       (girls ? "<p>" + girlsReminder + "</p>" : "") +
@@ -56,6 +57,7 @@ function buildBodies(name, subject, lang) {
   }
 
   const merci = prenom ? "Merci " + prenom + " !" : "Merci !";
+  const merciHtml = prenom ? "Merci " + escapeHtml(prenom) + " !" : "Merci !";
   const rappelGirls =
     "Petit rappel : les places sont limitées et le départ est confirmé dès 5 inscrites — je reviens vite vers toi avec tous les détails.";
   const lines = [
@@ -78,7 +80,7 @@ function buildBodies(name, subject, lang) {
   const text = lines.join("\n");
   const html =
     '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1c2b2d;line-height:1.6;max-width:560px">' +
-    "<p><strong>" + merci + "</strong></p>" +
+    "<p><strong>" + merciHtml + "</strong></p>" +
     "<p>J'ai bien reçu ta demande" + (subject ? " concernant «&nbsp;" + escapeHtml(subject) + "&nbsp;»" : "") + ".<br>" +
     "Je te réponds personnellement dans les plus brefs délais, généralement sous 24-48h.</p>" +
     (girls ? "<p>" + rappelGirls + "</p>" : "") +
