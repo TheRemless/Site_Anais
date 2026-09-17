@@ -50,13 +50,15 @@
       title: "🍪 Cookies &amp; confidentialit\u00e9",
       body: "J\'utilise des cookies de mesure d\'audience (Google Analytics) pour am\u00e9liorer le site. Tu peux accepter ou refuser. En savoir plus dans la <a href=\"/politique-confidentialite/\">politique de confidentialit\u00e9</a>.",
       refuse: "Refuser",
-      accept: "Accepter"
+      accept: "Accepter",
+      ariaLabel: "Consentement aux cookies"
     },
     en: {
       title: "🍪 Cookies &amp; privacy",
       body: "I use audience measurement cookies (Google Analytics) to improve the site. You can accept or decline. Learn more in the <a href=\"/politique-confidentialite/\">privacy policy</a> (FR).",
       refuse: "Decline",
-      accept: "Accept"
+      accept: "Accept",
+      ariaLabel: "Cookie consent"
     }
   };
 
@@ -66,7 +68,7 @@
     var consentLang = (document.documentElement.lang === "en") ? "en" : "fr";
     var ct = CONSENT_TEXT[consentLang];
     var d = document.createElement("div");
-    d.className = "zwc"; d.setAttribute("role", "dialog"); d.setAttribute("aria-label", "Consentement aux cookies");
+    d.className = "zwc"; d.setAttribute("role", "dialog"); d.setAttribute("aria-label", ct.ariaLabel);
     d.innerHTML =
       '<div class="zwc-title">' + ct.title + '</div>' +
       '<p>' + ct.body + '</p>' +
