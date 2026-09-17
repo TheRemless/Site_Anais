@@ -1,0 +1,68 @@
+name: Refresh currency rates
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-currency-rates
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch rates from frankfurter.app
+        run: |
+          curl -sfL "https://api.frankfurter.app/latest?base=CHF&symbols=EUR,USD,GBP,THB" -o /tmp/frankfurter.json
+          cat /tmp/frankfurter.json
+
+      - name: Build data/currency-rates.json
+        run: |
+          mkdir -p data
+          node -e "
+            const fs = require('fs');
+            const src = JSON.parse(fs.readFileSync('/tmp/frankfurter.json', 'utf8'));
+            const required = ['EUR', 'USD', 'GBP', 'THB'];
+            const missing = required.filter(c => typeof (src.rates || {})[c] !== 'number');
+            if (missing.length > 0) {
+              console.error('Missing or non-numeric rates:', missing.join(', '));
+              process.exit(1);
+            }
+            const out = {
+              base: 'CHF',
+              rates: src.rates,
+              updated_at: new Date().toISOString()
+            };
+            fs.writeFileSync('data/currency-rates.json', JSON.stringify(out, null, 2) + '\n');
+          "
+          cat data/currency-rates.json
+
+      - name: Commit and push if changed
+        if: github.ref == 'refs/heads/master'
+        run: |
+          git config user.name "zwald-rates-bot"
+          git config user.email "actions@github.com"
+          git add data/currency-rates.json
+          if git diff --cached --quiet; then
+            echo "No change, skipping commit"
+            exit 0
+          fi
+          git commit -m "chore: refresh currency rates"
+          git pull --rebase
+          git push
+
+      - name: Purge jsDelivr cache
+        if: success() && github.ref == 'refs/heads/master'
+        run: |
+          curl -s "https://purge.jsdelivr.net/gh/TheRemless/Site_Anais@master/data/currency-rates.json" || true

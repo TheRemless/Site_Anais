@@ -5,7 +5,8 @@
   "description": "Site Zwald Travel Planner — généré avec Eleventy (header/footer partagés).",
   "scripts": {
     "build": "eleventy",
-    "serve": "eleventy --serve"
+    "serve": "eleventy --serve",
+    "test": "node --test"
   },
   "devDependencies": {
     "@11ty/eleventy": "^3.0.0"

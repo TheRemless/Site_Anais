@@ -13,6 +13,15 @@
           <li><a href="/blog/"{% if active == "/blog/" %} class="active"{% endif %}>Blog</a></li>
           <li><a href="/faq/"{% if active == "/faq/" %} class="active"{% endif %}>FAQ</a></li>
       </ul></nav>
+      <div class="currency-switch">
+        <select id="currency-switch" aria-label="Choisir la devise">
+          <option value="CHF">CHF</option>
+          <option value="EUR">EUR</option>
+          <option value="USD">USD</option>
+          <option value="GBP">GBP</option>
+          <option value="THB">THB</option>
+        </select>
+      </div>
       <div class="nav-cta"><a class="btn btn-teal" href="/contact/"><span>Devis gratuit</span></a></div>
       <button class="nav-toggle" aria-label="Ouvrir le menu" aria-expanded="false"><span></span><span></span><span></span></button>
     </div>
@@ -26,4 +35,13 @@
     <a href="/blog/"{% if active == "/blog/" %} class="active"{% endif %}>Blog</a>
     <a href="/faq/"{% if active == "/faq/" %} class="active"{% endif %}>FAQ</a>
     <a href="/contact/"{% if active == "/contact/" %} class="active"{% endif %}>Contact</a>
+    <div class="currency-switch currency-switch-mobile">
+      <select id="currency-switch-mobile" aria-label="Choisir la devise">
+        <option value="CHF">CHF</option>
+        <option value="EUR">EUR</option>
+        <option value="USD">USD</option>
+        <option value="GBP">GBP</option>
+        <option value="THB">THB</option>
+      </select>
+    </div>
   </div>
