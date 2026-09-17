@@ -45,19 +45,34 @@
   function injectStyle() {
     var s = document.createElement("style"); s.textContent = css; document.head.appendChild(s);
   }
+  var CONSENT_TEXT = {
+    fr: {
+      title: "🍪 Cookies &amp; confidentialit\u00e9",
+      body: "J\'utilise des cookies de mesure d\'audience (Google Analytics) pour am\u00e9liorer le site. Tu peux accepter ou refuser. En savoir plus dans la <a href=\"/politique-confidentialite/\">politique de confidentialit\u00e9</a>.",
+      refuse: "Refuser",
+      accept: "Accepter"
+    },
+    en: {
+      title: "🍪 Cookies &amp; privacy",
+      body: "I use audience measurement cookies (Google Analytics) to improve the site. You can accept or decline. Learn more in the <a href=\"/politique-confidentialite/\">privacy policy</a> (FR).",
+      refuse: "Decline",
+      accept: "Accept"
+    }
+  };
+
   var bannerEl = null;
   function buildBanner() {
     if (bannerEl) return bannerEl;
+    var consentLang = (document.documentElement.lang === "en") ? "en" : "fr";
+    var ct = CONSENT_TEXT[consentLang];
     var d = document.createElement("div");
     d.className = "zwc"; d.setAttribute("role", "dialog"); d.setAttribute("aria-label", "Consentement aux cookies");
     d.innerHTML =
-      '<div class="zwc-title">🍪 Cookies &amp; confidentialit\u00e9</div>' +
-      '<p>J\'utilise des cookies de mesure d\'audience (Google Analytics) pour am\u00e9liorer le site. ' +
-      'Tu peux accepter ou refuser. En savoir plus dans la ' +
-      '<a href="/politique-confidentialite/">politique de confidentialit\u00e9</a>.</p>' +
+      '<div class="zwc-title">' + ct.title + '</div>' +
+      '<p>' + ct.body + '</p>' +
       '<div class="zwc-row">' +
-        '<button class="zwc-btn zwc-refuse" type="button">Refuser</button>' +
-        '<button class="zwc-btn zwc-accept" type="button">Accepter</button>' +
+        '<button class="zwc-btn zwc-refuse" type="button">' + ct.refuse + '</button>' +
+        '<button class="zwc-btn zwc-accept" type="button">' + ct.accept + '</button>' +
       '</div>';
     document.body.appendChild(d);
     d.querySelector(".zwc-accept").addEventListener("click", function () { choose("granted"); });
