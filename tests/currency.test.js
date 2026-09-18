@@ -16,9 +16,9 @@ test("detectCurrency: Suisse (toutes langues) -> CHF", () => {
   assert.equal(detectCurrency("it-CH"), "CHF");
 });
 
-test("detectCurrency: US -> USD, GB -> GBP", () => {
-  assert.equal(detectCurrency("en-US"), "USD");
-  assert.equal(detectCurrency("en-GB"), "GBP");
+test("detectCurrency: US et GB -> CHF (USD/GBP retirés, CHF par défaut)", () => {
+  assert.equal(detectCurrency("en-US"), "CHF");
+  assert.equal(detectCurrency("en-GB"), "CHF");
 });
 
 test("detectCurrency: locale inconnue ou sans région -> CHF", () => {
@@ -28,18 +28,23 @@ test("detectCurrency: locale inconnue ou sans région -> CHF", () => {
 });
 
 test("formatPrice: CHF reste inchangé", () => {
-  assert.equal(formatPrice(29, "CHF", { EUR: 1.06, USD: 1.22, GBP: 0.91, THB: 40.6 }), "29 CHF");
+  assert.equal(formatPrice(29, "CHF", { EUR: 1.06, THB: 40.6 }), "29 CHF");
 });
 
 test("formatPrice: conversion et arrondi à l'unité", () => {
-  const rates = { EUR: 1.0583, USD: 1.221, GBP: 0.9074, THB: 40.598 };
+  const rates = { EUR: 1.0583, THB: 40.598 };
   assert.equal(formatPrice(29, "EUR", rates), "31 EUR");
   assert.equal(formatPrice(790, "THB", rates), "32072 THB");
-  assert.equal(formatPrice(70, "USD", rates), "85 USD");
 });
 
-test("FALLBACK_RATES a les 4 devises non-CHF avec des nombres positifs", () => {
-  for (const code of ["EUR", "USD", "GBP", "THB"]) {
+test("formatPrice: devise retirée (USD/GBP) retombe sur CHF même si demandée", () => {
+  const rates = { EUR: 1.0583, THB: 40.598 };
+  assert.equal(formatPrice(70, "USD", rates), "70 CHF");
+  assert.equal(formatPrice(70, "GBP", rates), "70 CHF");
+});
+
+test("FALLBACK_RATES a les 2 devises non-CHF avec des nombres positifs", () => {
+  for (const code of ["EUR", "THB"]) {
     assert.equal(typeof FALLBACK_RATES[code], "number");
     assert.ok(FALLBACK_RATES[code] > 0);
   }

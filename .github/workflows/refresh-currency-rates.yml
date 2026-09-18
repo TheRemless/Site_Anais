@@ -24,7 +24,7 @@ jobs:
 
       - name: Fetch rates from frankfurter.app
         run: |
-          curl -sfL "https://api.frankfurter.app/latest?base=CHF&symbols=EUR,USD,GBP,THB" -o /tmp/frankfurter.json
+          curl -sfL "https://api.frankfurter.app/latest?base=CHF&symbols=EUR,THB" -o /tmp/frankfurter.json
           cat /tmp/frankfurter.json
 
       - name: Build data/currency-rates.json
@@ -33,7 +33,7 @@ jobs:
           node -e "
             const fs = require('fs');
             const src = JSON.parse(fs.readFileSync('/tmp/frankfurter.json', 'utf8'));
-            const required = ['EUR', 'USD', 'GBP', 'THB'];
+            const required = ['EUR', 'THB'];
             const missing = required.filter(c => typeof (src.rates || {})[c] !== 'number');
             if (missing.length > 0) {
               console.error('Missing or non-numeric rates:', missing.join(', '));
