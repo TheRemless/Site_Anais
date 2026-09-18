@@ -66,10 +66,17 @@
     }
     var selects = document.querySelectorAll("#currency-switch, #currency-switch-mobile");
     for (var k = 0; k < selects.length; k++) { selects[k].value = currency; }
+
+    var pills = document.querySelectorAll(".currency-pill");
+    for (var p = 0; p < pills.length; p++) {
+      var isCur = pills[p].getAttribute("data-currency") === currency;
+      pills[p].classList.toggle("active", isCur);
+      pills[p].setAttribute("aria-pressed", isCur ? "true" : "false");
+    }
   }
 
   function init() {
-    if (!document.querySelector(".price-chf") && !document.getElementById("currency-switch")) return;
+    if (!document.querySelector(".price-chf") && !document.querySelector(".currency-pill") && !document.getElementById("currency-switch")) return;
     var stored = null;
     try { stored = localStorage.getItem("zwald_currency"); } catch (e) { /* private mode etc. */ }
     var currency = (stored && SUPPORTED.indexOf(stored) !== -1)
@@ -91,6 +98,18 @@
         currency = e.target.value;
         applyCurrency(currency, activeRates);
         try { localStorage.setItem("zwald_currency", currency); } catch (err) { /* ignore */ }
+      });
+    }
+
+    var pills = document.querySelectorAll(".currency-pill");
+    for (var j = 0; j < pills.length; j++) {
+      pills[j].addEventListener("click", function (e) {
+        var code = e.currentTarget.getAttribute("data-currency");
+        if (code && SUPPORTED.indexOf(code) !== -1) {
+          currency = code;
+          applyCurrency(currency, activeRates);
+          try { localStorage.setItem("zwald_currency", currency); } catch (err) { /* ignore */ }
+        }
       });
     }
 

@@ -10,18 +10,21 @@
           <li><a href="{{ href }}"{% if active == href %} class="active"{% endif %}>{{ item.labelKey | t(lang) }}{% if item.tagKey %} <span class="nav-tag">{{ item.tagKey | t(lang) }}</span>{% endif %}{% if lang == "en" and item.hrefEn == item.hrefFr %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a></li>
         {%- endfor %}
       </ul></nav>
-      <div class="currency-switch">
-        <select id="currency-switch" aria-label="{{ 'currency.ariaLabel' | t(lang) }}">
+      <div class="currency-switch currency-pills" role="group" aria-label="{{ 'currency.ariaLabel' | t(lang) }}">
+        <select id="currency-switch" class="sr-only" aria-label="{{ 'currency.ariaLabel' | t(lang) }}">
           <option value="CHF">CHF</option>
           <option value="EUR">EUR</option>
           <option value="THB">THB</option>
         </select>
+        <button type="button" class="currency-pill active" data-currency="CHF" aria-pressed="true">CHF</button>
+        <button type="button" class="currency-pill" data-currency="EUR" aria-pressed="false">EUR</button>
+        <button type="button" class="currency-pill" data-currency="THB" aria-pressed="false">THB</button>
       </div>
-      <div class="lang-switch">
+      <div class="lang-switch lang-pills" role="group" aria-label="Langue">
         {% if lang == "fr" %}
-        <span class="lang-current">FR</span><a href="{{ langAlt or '/en/' }}" hreflang="en" lang="en">EN</a>
+        <span class="lang-pill active" aria-current="true">FR</span><a class="lang-pill" href="{{ langAlt or '/en/' }}" hreflang="en" lang="en">EN</a>
         {% else %}
-        <a href="{{ langAlt }}" hreflang="fr" lang="fr">FR</a><span class="lang-current">EN</span>
+        <a class="lang-pill" href="{{ langAlt }}" hreflang="fr" lang="fr">FR</a><span class="lang-pill active" aria-current="true">EN</span>
         {% endif %}
       </div>
       <div class="nav-cta"><a class="btn btn-teal" href="{{ '/en/contact/' if lang == 'en' else '/contact/' }}"><span>{{ 'nav.cta' | t(lang) }}</span></a></div>
@@ -34,18 +37,21 @@
     <a href="{{ href }}"{% if active == href %} class="active"{% endif %}>{{ item.labelKey | t(lang) }}{% if item.tagKey %} <span class="nav-tag">{{ item.tagKey | t(lang) }}</span>{% endif %}{% if lang == "en" and item.hrefEn == item.hrefFr %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a>
   {%- endfor %}
     <a href="{{ '/en/contact/' if lang == 'en' else '/contact/' }}"{% if active == ('/en/contact/' if lang == 'en' else '/contact/') %} class="active"{% endif %}>{{ 'nav.contact' | t(lang) }}</a>
-    <div class="currency-switch currency-switch-mobile">
-      <select id="currency-switch-mobile" aria-label="{{ 'currency.ariaLabel' | t(lang) }}">
+    <div class="currency-switch currency-switch-mobile currency-pills" role="group" aria-label="{{ 'currency.ariaLabel' | t(lang) }}">
+      <select id="currency-switch-mobile" class="sr-only" aria-label="{{ 'currency.ariaLabel' | t(lang) }}">
         <option value="CHF">CHF</option>
         <option value="EUR">EUR</option>
         <option value="THB">THB</option>
       </select>
+      <button type="button" class="currency-pill active" data-currency="CHF" aria-pressed="true">CHF</button>
+      <button type="button" class="currency-pill" data-currency="EUR" aria-pressed="false">EUR</button>
+      <button type="button" class="currency-pill" data-currency="THB" aria-pressed="false">THB</button>
     </div>
-    <div class="lang-switch lang-switch-mobile">
+    <div class="lang-switch lang-switch-mobile lang-pills" role="group" aria-label="Langue">
       {% if lang == "fr" %}
-      <span class="lang-current">FR</span><a href="{{ langAlt or '/en/' }}" hreflang="en" lang="en">EN</a>
+      <span class="lang-pill active" aria-current="true">FR</span><a class="lang-pill" href="{{ langAlt or '/en/' }}" hreflang="en" lang="en">EN</a>
       {% else %}
-      <a href="{{ langAlt }}" hreflang="fr" lang="fr">FR</a><span class="lang-current">EN</span>
+      <a class="lang-pill" href="{{ langAlt }}" hreflang="fr" lang="fr">FR</a><span class="lang-pill active" aria-current="true">EN</span>
       {% endif %}
     </div>
   </div>

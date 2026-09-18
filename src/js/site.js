@@ -95,17 +95,53 @@
     update();
   }
 
-  /* ---------- Magnetic buttons ---------- */
+  /* ---------- Magnetic buttons (Smooth Lerp / RAF) ---------- */
   function initMagnetic() {
     if (window.matchMedia("(hover: none)").matches) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     document.querySelectorAll("[data-magnetic]").forEach(function (b) {
+      var targetX = 0, targetY = 0;
+      var currX = 0, currY = 0;
+      var rafId = null;
+
+      function step() {
+        currX += (targetX - currX) * 0.16;
+        currY += (targetY - currY) * 0.16;
+
+        b.style.transform = "translate3d(" + currX.toFixed(2) + "px," + currY.toFixed(2) + "px, 0)";
+
+        if (Math.abs(targetX - currX) > 0.05 || Math.abs(targetY - currY) > 0.05) {
+          rafId = requestAnimationFrame(step);
+        } else {
+          currX = targetX;
+          currY = targetY;
+          if (targetX === 0 && targetY === 0) {
+            b.style.transform = "";
+          } else {
+            b.style.transform = "translate3d(" + currX.toFixed(2) + "px," + currY.toFixed(2) + "px, 0)";
+          }
+          rafId = null;
+        }
+      }
+
       b.addEventListener("mousemove", function (e) {
         var r = b.getBoundingClientRect();
         var x = e.clientX - r.left - r.width / 2;
         var y = e.clientY - r.top - r.height / 2;
-        b.style.transform = "translate(" + x * 0.25 + "px," + y * 0.3 + "px)";
+        targetX = x * 0.28;
+        targetY = y * 0.32;
+        if (!rafId) {
+          rafId = requestAnimationFrame(step);
+        }
       });
-      b.addEventListener("mouseleave", function () { b.style.transform = ""; });
+
+      b.addEventListener("mouseleave", function () {
+        targetX = 0;
+        targetY = 0;
+        if (!rafId) {
+          rafId = requestAnimationFrame(step);
+        }
+      });
     });
   }
 

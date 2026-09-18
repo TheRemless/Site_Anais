@@ -5,8 +5,8 @@
   "lang": "fr",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F8FDFC",
-  "theme_color": "#1A9B8C",
+  "background_color": "#FAF8F5",
+  "theme_color": "#0A828D",
   "icons": [
     { "src": "/images/favicon-48x48.png", "sizes": "48x48", "type": "image/png" },
     { "src": "/images/icon-192.png", "sizes": "192x192", "type": "image/png" },
