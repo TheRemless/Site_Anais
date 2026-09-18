@@ -1,63 +1,53 @@
 # Zwald Travel Planner — site web
 
-Site vitrine statique (HTML / CSS / JavaScript), sans build ni dépendances.
-Multi-pages, optimisé pour le référencement (SEO) et prêt à héberger n'importe où.
+Site vitrine de Zwald Travel Planner (zwaldtravelplanner.com), généré avec [Eleventy](https://www.11ty.dev/) (Nunjucks). Pas de framework front-end, pas de bundler — CSS et JS vanilla.
+
+## Stack
+
+- **Générateur** : Eleventy 3, templates Nunjucks (`.njk`)
+- **Hébergement** : Netlify — build automatique sur `master`, deploy preview sur chaque pull request
+- **Formulaire de contact** : Netlify Forms + une fonction serverless (`netlify/functions/submission-created.js`) qui envoie l'e-mail de confirmation via SMTP (Infomaniak)
+- **Tests** : `node --test` (intégré à Node, aucune dépendance de test)
 
 ## Structure
 
 ```
-index.html          Accueil
-services.html       Services
-cours-thai.html     Cours de thaï
-a-propos.html       À propos
-galerie.html        Galerie
-blog.html           Blog
-faq.html            FAQ
-contact.html        Contact
-css/                Styles (site.css = design system, components.css = composants)
-js/site.js          Comportements (menu, animations, lightbox, carrousel, formulaire)
-images/             Photos + logo
-robots.txt          Indexation moteurs de recherche
-sitemap.xml         Plan du site pour Google
+src/
+  *.njk              18 pages françaises (accueil, services, girls-trips, faq…)
+  en/                7 pages anglaises, miroirs manuels des pages FR équivalentes
+  _includes/         base.njk (squelette partagé), header.njk, footer.njk, newsletter.njk
+  _data/             lang.js, i18n.json, nav.js — données du sélecteur de langue et de la nav
+  css/               site.css (layout/nav), components.css (composants)
+  js/                currency.js, consent.js, site.js, newsletter-consent.js, legal.js
+netlify/functions/   submission-created.js — email de confirmation du formulaire de contact
+.github/workflows/   ci.yml (tests sur chaque PR), refresh-currency-rates.yml (cron quotidien)
+data/                currency-rates.json — maintenu uniquement par la GitHub Action, ne pas éditer à la main
+tests/               currency.test.js, i18n.test.js, submission-created.test.js
 ```
 
-## Tester en local
-Double-cliquez sur `index.html` : le site s'ouvre dans le navigateur, sans rien installer.
-(Le formulaire de contact n'enverra rien en local — voir plus bas.)
+## Développer en local
 
-## ⚠️ Avant la mise en ligne — remplacer le domaine
-Un domaine provisoire `https://www.zwaldtravelplanner.com` est utilisé dans les balises SEO.
-**Remplacez-le par votre vrai domaine** (recherche/remplacement global) dans :
-- les 8 fichiers `.html` (balises `canonical`, `og:url`, `og:image`, données structurées)
-- `robots.txt`
-- `sitemap.xml`
+```bash
+npm ci            # installe les dépendances depuis le lockfile
+npm run serve     # serveur de dev Eleventy, rechargement automatique
+npm run build     # génère le site statique dans _site/
+npm test          # lance tous les tests
+```
 
-## Déploiement (Netlify recommandé)
-1. Poussez le dépôt sur GitHub.
-2. Sur Netlify : « Add new site » → « Import from GitHub » → sélectionnez le dépôt.
-3. **Build command** : laissez vide. **Publish directory** : `/` (la racine).
-4. Déployez. C'est tout — aucun build nécessaire.
+Aucun test visuel automatisé : vérifier les changements d'interface dans un vrai navigateur, en largeur bureau **et** mobile.
 
-(Fonctionne aussi sur Vercel, GitHub Pages, Cloudflare Pages, ou tout hébergement statique.)
+## Sélecteur de devise
 
-## Formulaire de contact (Netlify Forms)
-La page contact est déjà câblée pour **Netlify Forms** (attribut `data-netlify` + champ caché).
-Une fois le site déployé sur Netlify :
-1. Onglet **Forms** du tableau de bord → le formulaire « contact » apparaît avec les messages reçus.
-2. **Forms → Form notifications → Add notification → Email notification** : ajoutez l'adresse e-mail
-   d'Anaïs pour recevoir chaque demande par mail.
-3. Un piège anti-spam (« honeypot ») est déjà en place.
+CHF (référence réelle, jamais convertie dans les CGV ni le formulaire de contact) détectée par défaut, EUR détectée automatiquement pour les visiteurs en zone euro, THB sélectionnable à la main. Taux rafraîchis une fois par jour par `.github/workflows/refresh-currency-rates.yml` (frankfurter.app), lus via jsDelivr — pas de redéploiement Netlify déclenché par ce rafraîchissement (voir `netlify.toml`, clause `ignore`). Tout prix affiché doit porter `class="price-chf" data-chf="MONTANT"`.
 
-➡️ Sur un autre hébergeur que Netlify, remplacez l'envoi par Formspree ou EmailJS.
+## Sélecteur de langue
 
-## SEO — ce qui est déjà en place
-- Une page HTML réelle par section, avec `<title>` et meta description uniques.
-- Open Graph + Twitter Cards (aperçu avec image lors d'un partage sur les réseaux / messageries).
-- Données structurées JSON-LD `TravelAgency` (nom, logo, photo, réseaux, zone desservie)
-  → permet à Google d'associer le **logo** et les infos de l'entreprise.
-- `robots.txt` + `sitemap.xml`.
-- Favicon et icône Apple (logo).
+7 pages ont une version anglaise sous `/en/` (accueil, services, girls-trips, cartes cadeaux, FAQ, contact, à propos). Le reste du site reste français uniquement. Sélecteur manuel dans le header, pas de détection ni de redirection automatique. Libellés partagés (nav, footer, bannière cookies) dans `src/_data/i18n.json`, consommés via le filtre Nunjucks `t`.
 
-### Après mise en ligne
-- Déclarez le site dans **Google Search Console** et soumettez `sitemap.xml`.
-- Vérifiez l'aperçu de partage sur https://www.opengraph.xyz (collez votre URL).
+## Déploiement
+
+Le site est déjà configuré sur Netlify (build auto sur `master`). Les variables d'environnement (SMTP) et les réglages de domaine se gèrent depuis le tableau de bord Netlify du compte propriétaire, pas depuis ce dépôt.
+
+## Convention de travail
+
+Toujours passer par une branche + pull request, jamais de commit direct sur `master`. Attendre que la CI et la deploy preview Netlify soient vertes avant de merger.
