@@ -195,7 +195,11 @@ section { position: relative; }
 
 /* ---------- Navbar ---------- */
 .nav {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  /* z-index au-dessus de .mobile-menu (105) : .nav crée son propre contexte
+     d'empilement, donc le z-index élevé de .nav-toggle (110) ne suffit pas
+     à le faire passer au-dessus de .mobile-menu tant que .nav lui-même est
+     en dessous — sinon le bouton pour fermer le menu reste caché derrière. */
+  position: fixed; top: 0; left: 0; right: 0; z-index: 106;
   height: var(--nav-h);
   display: flex; align-items: center;
   transition: background 0.4s var(--ease), box-shadow 0.4s var(--ease), height 0.4s var(--ease);
@@ -243,6 +247,10 @@ section { position: relative; }
 .nav-toggle span { width: 26px; height: 2px; background: var(--ink); border-radius: 2px; transition: transform 0.4s var(--ease), opacity 0.3s; }
 .nav.nav-light:not(.scrolled) .nav-toggle span { background: #fff; }
 .nav-open .nav-toggle span { background: var(--ink); }
+/* Le menu mobile a un fond clair : le bouton doit rester foncé (donc visible)
+   même sur une page à header transparent/clair non défilé, sinon la croix
+   de fermeture est blanche sur un fond quasi blanc — invisible. */
+body.nav-open .nav.nav-light:not(.scrolled) .nav-toggle span { background: var(--ink); }
 .nav-open .nav-toggle span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
 .nav-open .nav-toggle span:nth-child(2) { opacity: 0; }
 .nav-open .nav-toggle span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
@@ -251,7 +259,9 @@ section { position: relative; }
 .mobile-menu {
   position: fixed; inset: 0; z-index: 105;
   background: var(--bg);
-  display: flex; flex-direction: column; justify-content: center; padding: 0 40px;
+  display: flex; flex-direction: column; justify-content: flex-start;
+  padding: calc(var(--nav-h) + 20px) 40px 40px;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
   transform: translateY(-100%); transition: transform 0.55s var(--ease);
   visibility: hidden;
 }
