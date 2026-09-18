@@ -455,8 +455,12 @@ body.nav-open .nav.nav-light:not(.scrolled) .nav-toggle span { background: var(-
 }
 @media (max-width: 560px) {
   body { font-size: 16px; }
-  .container { padding: 0 22px; }
-  .nav-inner { padding: 0 16px; }
+  .container { padding: 0 20px; }
+  .nav-inner { padding: 0 14px; }
+  .brand-sub { display: none; }
+  .nav-toggle { flex-shrink: 0; }
+  .nav-cta { margin-left: auto; margin-right: 6px; flex-shrink: 1; }
+  .nav-cta .btn { padding: 0.45rem 0.85rem; font-size: 0.78rem; white-space: nowrap; }
   .cols-4 { grid-template-columns: 1fr; }
   .footer-grid { grid-template-columns: 1fr; }
   .card { padding: 26px; }

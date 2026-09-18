@@ -74,8 +74,8 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .tl-item p { color: var(--ink-mute); font-size: 0.98rem; }
 
 /* ---------- Photo marquee strip ---------- */
-.marquee { overflow: hidden; padding: 0; background: var(--navy); }
-.marquee-track { display: flex; gap: 16px; padding: 16px; width: max-content; animation: marquee 48s linear infinite; }
+.marquee { overflow: hidden; padding: 12px 0; background: var(--bg-cream); border-top: 1px solid var(--line-soft); }
+.marquee-track { display: flex; gap: 16px; padding: 12px 16px; width: max-content; animation: marquee 48s linear infinite; }
 .marquee:hover .marquee-track { animation-play-state: paused; }
 @keyframes marquee { to { transform: translateX(-50%); } }
 .marquee-item { width: 300px; height: 220px; border-radius: var(--radius-lg); overflow: hidden; cursor: pointer; position: relative; flex-shrink: 0; }
@@ -717,9 +717,9 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
   width: 100%;
   height: auto;
   border-radius: 4px 4px 0 0;
-  aspect-ratio: 3/4;
+  aspect-ratio: 1 / 1;
   object-fit: cover;
-  object-position: top center;
+  object-position: center 65%;
   box-shadow: 0 20px 45px -12px rgba(13,31,28,0.35);
 }
 .anais-portrait-wrap .portrait-caption {
@@ -890,9 +890,16 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
   .hero-editorial-left {
     order: 1;
   }
+  .stamp-circle {
+    top: 8px;
+    right: 8px;
+    width: 76px;
+    height: 76px;
+  }
   .anais-portrait-wrap {
     left: 8px;
     bottom: -10px;
+    width: clamp(150px, 44%, 190px);
   }
 }
 @media (max-width: 540px) {
@@ -1196,6 +1203,7 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .polaroid-frame img {
   display: block;
   width: 100%;
+  height: auto;
   aspect-ratio: 1 / 1;
   object-fit: cover;
   object-position: center 65%;
