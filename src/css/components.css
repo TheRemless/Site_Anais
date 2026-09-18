@@ -829,6 +829,49 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
   align-items: center;
 }
 
+.hero-trust-proof {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+  max-width: 480px;
+  flex-wrap: wrap;
+}
+.hero-trust-proof .proof-stars {
+  color: #DF9834;
+  letter-spacing: 2px;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.hero-trust-proof .proof-link {
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  transition: color 0.25s;
+}
+.hero-trust-proof .proof-link strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+.hero-trust-proof .proof-link span {
+  color: var(--ink-mute);
+}
+.hero-trust-proof .proof-link:hover {
+  color: var(--teal);
+}
+.hero-trust-proof .proof-link:hover strong {
+  color: var(--teal);
+}
+
+
+
 /* Responsive hero diptyque */
 @media (max-width: 900px) {
   .home-hero {
@@ -855,6 +898,13 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 @media (max-width: 540px) {
   .geo-badge { font-size: 0.64rem; }
   .home-hero h1 { font-size: clamp(2.4rem, 8vw, 3.4rem); }
+  .hero-trust-proof {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 22px;
+    padding-top: 14px;
+  }
 }
 
 /* ================================================================
