@@ -388,8 +388,8 @@
     }
     // Hero entrance: drop the .pre state shortly after load so transitions play.
     // setTimeout (not rAF) so it fires even if the tab is backgrounded/throttled — content must never stay hidden.
-    var hero = document.querySelector(".hero.pre");
-    if (hero) { setTimeout(function () { hero.classList.remove("pre"); }, 80); }
+    var heroes = document.querySelectorAll(".hero.pre, .home-hero.pre");
+    if (heroes.length) { setTimeout(function () { heroes.forEach(function(h) { h.classList.remove("pre"); }); }, 80); }
     initReveal();
     initParallax();
     initMagnetic();
