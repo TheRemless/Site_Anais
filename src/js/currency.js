@@ -13,13 +13,13 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  var SUPPORTED = ["CHF", "EUR", "USD", "GBP", "THB"];
+  var SUPPORTED = ["CHF", "EUR", "THB"];
   var EURO_ZONE_REGIONS = ["FR", "BE", "LU", "DE", "AT", "ES", "IT", "PT", "NL", "IE", "FI", "GR"];
 
   // Repli si le fichier de taux est injoignable (fetch échoué). Mis à jour
   // à la main de temps en temps — ces valeurs ne servent qu'en dernier
   // recours, les vraies valeurs viennent de data/currency-rates.json.
-  var FALLBACK_RATES = { EUR: 1.06, USD: 1.22, GBP: 0.91, THB: 40.6 };
+  var FALLBACK_RATES = { EUR: 1.06, THB: 40.6 };
 
   function detectCurrency(locale) {
     if (!locale || typeof locale !== "string") return "CHF";
@@ -27,8 +27,6 @@
     var region = parts.length > 1 ? parts[1].toUpperCase() : "";
     if (region === "CH") return "CHF";
     if (EURO_ZONE_REGIONS.indexOf(region) !== -1) return "EUR";
-    if (region === "US") return "USD";
-    if (region === "GB") return "GBP";
     return "CHF";
   }
 
