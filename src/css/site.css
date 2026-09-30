@@ -465,6 +465,11 @@ body.nav-open .nav.nav-light:not(.scrolled) .nav-toggle span { background: var(-
   .footer-grid { grid-template-columns: 1fr; }
   .card { padding: 26px; }
 }
+@media (max-width: 420px) {
+  .brand img { width: 36px; height: 36px; }
+  .brand-name { font-size: 1.15rem; }
+  .nav-cta .btn { padding: 0.38rem 0.72rem; font-size: 0.74rem; }
+}
 
 /* Screen reader only utility */
 .sr-only {
