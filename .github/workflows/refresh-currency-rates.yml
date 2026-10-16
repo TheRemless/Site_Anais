@@ -22,9 +22,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Fetch rates from frankfurter.app
+      - name: Fetch rates from Frankfurter
         run: |
-          curl -sfL "https://api.frankfurter.app/latest?base=CHF&symbols=EUR,THB" -o /tmp/frankfurter.json
+          # -S affiche l'erreur HTTP dans le journal ; --retry absorbe les pannes
+          # passagères (5xx, 429, timeouts) comme celle du 2026-10-11.
+          curl -sSfL --retry 3 --retry-delay 15 --connect-timeout 10 --max-time 30 \
+            "https://api.frankfurter.dev/v1/latest?base=CHF&symbols=EUR,THB" -o /tmp/frankfurter.json
           cat /tmp/frankfurter.json
 
       - name: Build data/currency-rates.json
