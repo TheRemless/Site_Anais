@@ -57,12 +57,21 @@
       transfer: {
         from: el("t-from").value,
         to: el("t-to").value,
-        toOther: el("t-toOther").value,
         time: el("t-time").value,
-        people: num("t-people"),
+        adults: num("t-adults"),
+        children: num("t-children"),
+        babies: num("t-babies"),
+        childSeat: el("t-childSeat").checked,
+        babySeat: el("t-babySeat").checked,
         mode: radio("t-mode") || "private"
       },
-      boat: { tour: el("b-tour").value, adults: num("b-adults"), children: num("b-children"), mode: radio("b-mode") || "private" },
+      boat: {
+        tour: el("b-tour").value,
+        adults: num("b-adults"),
+        children: num("b-children"),
+        babies: num("b-babies"),
+        mode: radio("b-mode") || "private"
+      },
       activity: { activity: el("a-activity").value, people: num("a-people") }
     };
   }
@@ -72,15 +81,19 @@
     setRadio("dateChoice", s.dateChoice);
     el("dateOther").value = s.dateOther || "";
     el("hotel").value = s.hotel || "";
-    selectValue("t-from", s.transfer.from);
-    selectValue("t-to", s.transfer.to);
-    el("t-toOther").value = s.transfer.toOther || "";
+    el("t-from").value = s.transfer.from || "";
+    el("t-to").value = s.transfer.to || "";
     el("t-time").value = s.transfer.time || "";
-    el("t-people").value = s.transfer.people;
+    el("t-adults").value = s.transfer.adults;
+    el("t-children").value = s.transfer.children;
+    el("t-babies").value = s.transfer.babies;
+    el("t-childSeat").checked = !!s.transfer.childSeat;
+    el("t-babySeat").checked = !!s.transfer.babySeat;
     setRadio("t-mode", s.transfer.mode);
     selectValue("b-tour", s.boat.tour);
     el("b-adults").value = s.boat.adults;
     el("b-children").value = s.boat.children;
+    el("b-babies").value = s.boat.babies;
     setRadio("b-mode", s.boat.mode);
     selectValue("a-activity", s.activity.activity);
     el("a-people").value = s.activity.people;
@@ -95,7 +108,13 @@
       group.hidden = !on;
       group.disabled = !on;
     });
-    form.querySelector('[data-show-when="other"]').hidden = !(type === "transfer" && el("t-to").value === "Other");
+    // Pour un transfert, le lieu de prise en charge est déjà dans « From ».
+    var hotel = document.getElementById("hotel-field");
+    hotel.hidden = type === "transfer";
+    el("hotel").disabled = type === "transfer";
+    // La case siège n'apparaît que s'il y a au moins un enfant ou un bébé.
+    form.querySelector('[data-show-when="children"]').hidden = num("t-children") < 1;
+    form.querySelector('[data-show-when="babies"]').hidden = num("t-babies") < 1;
     form.querySelector('[data-show-when="other-date"]').hidden = radio("dateChoice") !== "other";
     el("dateOther").min = F.bangkokToday(new Date());
   }
@@ -105,7 +124,11 @@
   }
 
   /* Erreurs affichées sous chaque champ, focus sur le premier champ fautif. */
-  var ERROR_FIELDS = { to: "t-to", toOther: "t-toOther", tour: "b-tour", activity: "a-activity", date: "dateChoice" };
+  var ERROR_FIELDS = { from: "t-from", to: "t-to", tour: "b-tour", activity: "a-activity", date: "dateChoice" };
+  function errorTarget(key) {
+    if (key !== "adults") return { id: "err-" + key, field: ERROR_FIELDS[key] };
+    return radio("type") === "boat" ? { id: "err-adults-boat", field: "b-adults" } : { id: "err-adults", field: "t-adults" };
+  }
   function clearErrors() {
     form.querySelectorAll(".err").forEach(function (p) { p.hidden = true; p.textContent = ""; });
     form.querySelectorAll("[aria-invalid]").forEach(function (f) { f.removeAttribute("aria-invalid"); });
@@ -114,7 +137,8 @@
     clearErrors();
     var first = null;
     Object.keys(errors).forEach(function (key) {
-      var p = document.getElementById("err-" + key);
+      var target = errorTarget(key);
+      var p = document.getElementById(target.id);
       if (p) {
         p.textContent = errors[key];
         p.hidden = false;
@@ -122,7 +146,7 @@
       }
       var field = key === "date"
         ? (radio("dateChoice") === "other" ? el("dateOther") : form.querySelector('input[name="dateChoice"]'))
-        : el(ERROR_FIELDS[key]);
+        : el(target.field);
       if (field) {
         if (key !== "date" || field.name === "dateOther") field.setAttribute("aria-invalid", "true");
         if (!first) first = field;
@@ -146,6 +170,7 @@
     var input = button.parentNode.querySelector("input");
     var next = (parseInt(input.value, 10) || 0) + parseInt(button.getAttribute("data-step"), 10);
     input.value = Math.min(parseInt(input.max, 10), Math.max(parseInt(input.min, 10), next));
+    refresh();
     save();
   });
 
@@ -226,13 +251,18 @@
   /* Liens « Get a price » : présélectionnent le service et ouvrent le panneau.
      Sans <dialog> (très vieux navigateurs), on remonte au formulaire du haut. */
   var TYPE_FIELD = { transfer: "t-to", boat: "b-tour", activity: "a-activity" };
+  function preselect(type, value) {
+    var field = el(TYPE_FIELD[type]);
+    if (field.tagName === "SELECT") selectValue(TYPE_FIELD[type], value);
+    else field.value = value;
+  }
   document.addEventListener("click", function (event) {
     var link = event.target.closest("a.get[data-type]");
     if (!link) return;
     event.preventDefault();
     var type = link.getAttribute("data-type");
     setRadio("type", type);
-    selectValue(TYPE_FIELD[type], link.getAttribute("data-value"));
+    preselect(type, link.getAttribute("data-value"));
     refresh();
     save();
     clearErrors();

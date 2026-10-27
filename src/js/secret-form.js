@@ -12,7 +12,7 @@
   "use strict";
 
   var WHATSAPP = "66958683846";
-  var DRAFT_VERSION = 1;
+  var DRAFT_VERSION = 2;
   var DRAFT_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
   var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -62,6 +62,13 @@
     return typeof value === "string" ? value.trim() : "";
   }
 
+  // Âges utilisés par l'équipe : bébé jusqu'à 2 ans, enfant de 3 à 11 ans, adulte dès 12 ans.
+  function travellers(lines, group) {
+    if (group.adults > 0) lines.push("Adults: " + group.adults);
+    if (group.children > 0) lines.push("Children (3-11): " + group.children);
+    if (group.babies > 0) lines.push("Babies (0-2): " + group.babies);
+  }
+
   function buildMessage(state, today) {
     var lines = ["Hi Secret Travel & Tour!"];
     var date = resolveDate(state.dateChoice, state.dateOther, today);
@@ -69,20 +76,20 @@
 
     if (state.type === "transfer") {
       var t = state.transfer;
-      var to = t.to === "Other" ? clean(t.toOther) : clean(t.to);
       lines.push("I'd like a price for a transfer.");
       if (clean(t.from)) lines.push("From: " + clean(t.from));
-      if (to) lines.push("To: " + to);
+      if (clean(t.to)) lines.push("To: " + clean(t.to));
       if (dateLine) lines.push(dateLine);
       if (clean(t.time)) lines.push("Pickup or flight time: " + clean(t.time));
-      if (t.people > 0) lines.push("People: " + t.people);
+      travellers(lines, t);
+      if (t.children > 0 && t.childSeat) lines.push("Child seat needed");
+      if (t.babies > 0 && t.babySeat) lines.push("Baby seat needed");
       lines.push(t.mode === "shared" ? "Shared minivan" : "Private minivan");
     } else if (state.type === "boat") {
       var b = state.boat;
       lines.push("I'd like a price for a boat tour: " + clean(b.tour) + ".");
       if (dateLine) lines.push(dateLine);
-      if (b.adults > 0) lines.push("Adults: " + b.adults);
-      if (b.children > 0) lines.push("Children: " + b.children);
+      travellers(lines, b);
       lines.push(b.mode === "join-in" ? "Join-in trip" : "Private boat");
     } else {
       var a = state.activity;
@@ -91,7 +98,8 @@
       if (a.people > 0) lines.push("People: " + a.people);
     }
 
-    if (clean(state.hotel)) lines.push("Hotel or area: " + clean(state.hotel));
+    // Pour un transfert, le lieu de prise en charge est déjà dans « From ».
+    if (state.type !== "transfer" && clean(state.hotel)) lines.push("Hotel or area: " + clean(state.hotel));
     return lines.join("\n");
   }
 
@@ -102,12 +110,12 @@
   function validate(state, today) {
     var errors = {};
     if (state.type === "transfer") {
-      if (!clean(state.transfer.to)) errors.to = "Choose where you're going.";
-      else if (state.transfer.to === "Other" && !clean(state.transfer.toOther)) {
-        errors.toOther = "Tell us where you're going.";
-      }
+      if (!clean(state.transfer.from)) errors.from = "Tell us where we pick you up.";
+      if (!clean(state.transfer.to)) errors.to = "Tell us where you're going.";
+      if (!(state.transfer.adults > 0)) errors.adults = "At least one adult travels.";
     } else if (state.type === "boat") {
       if (!clean(state.boat.tour)) errors.tour = "Choose a boat tour.";
+      if (!(state.boat.adults > 0)) errors.adults = "At least one adult joins the tour.";
     } else if (!clean(state.activity.activity)) {
       errors.activity = "Choose an activity.";
     }

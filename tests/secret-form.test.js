@@ -12,8 +12,8 @@ function baseState(overrides) {
       dateChoice: "tomorrow",
       dateOther: "",
       hotel: "Lanta Sand Resort",
-      transfer: { from: "Koh Lanta", to: "Krabi Airport", toOther: "", time: "10:30", people: 3, mode: "private" },
-      boat: { tour: "4 Islands", adults: 2, children: 1, mode: "join-in" },
+      transfer: { from: "Lanta Sand Resort", to: "Krabi Airport", time: "10:30", adults: 2, children: 1, babies: 0, childSeat: true, babySeat: false, mode: "private" },
+      boat: { tour: "4 Islands", adults: 2, children: 1, babies: 0, mode: "join-in" },
       activity: { activity: "Thai cooking class", people: 2 }
     },
     overrides
@@ -45,35 +45,38 @@ test("formatDate : libellés relatifs et date complète", () => {
   assert.equal(F.formatDate("2026-11-24", TODAY), "Tue 24 Nov 2026");
 });
 
-test("buildMessage : transfert complet, une info par ligne", () => {
+test("buildMessage : transfert complet, une info par ligne, sans hôtel", () => {
   assert.equal(
     F.buildMessage(baseState(), TODAY),
     [
       "Hi Secret Travel & Tour!",
       "I'd like a price for a transfer.",
-      "From: Koh Lanta",
+      "From: Lanta Sand Resort",
       "To: Krabi Airport",
       "Date: Tomorrow (Sun 15 Nov)",
       "Pickup or flight time: 10:30",
-      "People: 3",
-      "Private minivan",
-      "Hotel or area: Lanta Sand Resort"
+      "Adults: 2",
+      "Children (3-11): 1",
+      "Child seat needed",
+      "Private minivan"
     ].join("\n")
   );
 });
 
-test("buildMessage : destination « Other » et champs vides omis", () => {
-  const s = baseState({ hotel: "  " });
-  s.transfer = { from: "Koh Lanta", to: "Other", toOther: "Koh Lipe pier", time: "", people: 1, mode: "shared" };
+test("buildMessage : transfert avec bébé et siège bébé, champs vides omis", () => {
+  const s = baseState();
+  s.transfer = { from: " Ao Nang ", to: "Koh Lanta", time: "", adults: 1, children: 0, babies: 1, childSeat: true, babySeat: true, mode: "shared" };
   assert.equal(
     F.buildMessage(s, TODAY),
     [
       "Hi Secret Travel & Tour!",
       "I'd like a price for a transfer.",
-      "From: Koh Lanta",
-      "To: Koh Lipe pier",
+      "From: Ao Nang",
+      "To: Koh Lanta",
       "Date: Tomorrow (Sun 15 Nov)",
-      "People: 1",
+      "Adults: 1",
+      "Babies (0-2): 1",
+      "Baby seat needed",
       "Shared minivan"
     ].join("\n")
   );
@@ -81,7 +84,7 @@ test("buildMessage : destination « Other » et champs vides omis", () => {
 
 test("buildMessage : excursion en bateau, enfants à 0 omis", () => {
   const s = baseState({ type: "boat", dateChoice: "other", dateOther: "2026-11-24" });
-  s.boat = { tour: "Koh Rok & Koh Haa", adults: 2, children: 0, mode: "private" };
+  s.boat = { tour: "Koh Rok & Koh Haa", adults: 2, children: 0, babies: 0, mode: "private" };
   assert.equal(
     F.buildMessage(s, TODAY),
     [
@@ -95,9 +98,10 @@ test("buildMessage : excursion en bateau, enfants à 0 omis", () => {
   );
 });
 
-test("buildMessage : excursion partagée avec enfants", () => {
+test("buildMessage : excursion partagée avec enfants et bébé", () => {
   const s = baseState({ type: "boat", dateChoice: "today" });
-  assert.match(F.buildMessage(s, TODAY), /\nAdults: 2\nChildren: 1\nJoin-in trip\n/);
+  s.boat.babies = 1;
+  assert.match(F.buildMessage(s, TODAY), /\nAdults: 2\nChildren \(3-11\): 1\nBabies \(0-2\): 1\nJoin-in trip\nHotel or area: Lanta Sand Resort$/);
 });
 
 test("buildMessage : activité", () => {
@@ -123,6 +127,15 @@ test("validate : formulaire complet sans erreur", () => {
   assert.deepEqual(F.validate(baseState(), TODAY), {});
 });
 
+test("validate : au moins un adulte", () => {
+  const t = baseState();
+  t.transfer = Object.assign({}, t.transfer, { adults: 0 });
+  assert.ok(F.validate(t, TODAY).adults);
+  const b = baseState({ type: "boat" });
+  b.boat = Object.assign({}, b.boat, { adults: 0 });
+  assert.ok(F.validate(b, TODAY).adults);
+});
+
 test("validate : date manquante", () => {
   const errors = F.validate(baseState({ dateChoice: "" }), TODAY);
   assert.deepEqual(Object.keys(errors), ["date"]);
@@ -135,12 +148,12 @@ test("validate : autre date vide ou passée", () => {
 
 test("validate : service manquant selon le type", () => {
   const t = baseState();
-  t.transfer = Object.assign({}, t.transfer, { to: "" });
+  t.transfer = Object.assign({}, t.transfer, { to: " " });
   assert.ok(F.validate(t, TODAY).to);
 
-  const o = baseState();
-  o.transfer = Object.assign({}, o.transfer, { to: "Other", toOther: " " });
-  assert.ok(F.validate(o, TODAY).toOther);
+  const f = baseState();
+  f.transfer = Object.assign({}, f.transfer, { from: "" });
+  assert.ok(F.validate(f, TODAY).from);
 
   const b = baseState({ type: "boat" });
   b.boat = Object.assign({}, b.boat, { tour: "" });
