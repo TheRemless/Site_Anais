@@ -43,7 +43,7 @@ test("/taxi/ : le sitemap la liste une seule fois", () => {
 
 test("liens internes : /secret/ pointe vers /taxi/ et /taxi/ vers /secret/", () => {
   assert.match(read("src/secret.njk"), /href="\/taxi\/"/);
-  assert.ok(taxi.services.some((s) => s.link && s.link.href === "/secret/"));
+  assert.equal(taxi.tours.link.href, "/secret/");
 });
 
 test("/taxi/ : questions fréquentes tirées du site de VIP Taxi Lanta, chacune avec confirmed", () => {
