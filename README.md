@@ -51,3 +51,4 @@ Le site est déjà configuré sur Netlify (build auto sur `master`). Les variabl
 ## Convention de travail
 
 Toujours passer par une branche + pull request, jamais de commit direct sur `master`. Attendre que la CI et la deploy preview Netlify soient vertes avant de merger.
+
