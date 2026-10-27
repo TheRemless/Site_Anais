@@ -56,7 +56,7 @@ test("buildMessage : un transfert complet, une info par ligne", () => {
       "From: Lanta Sand Resort",
       "To: Krabi Airport",
       "Date: Tomorrow (Sun 15 Nov)",
-      "Pickup or flight time: 10:30",
+      "Pickup time: 10:30",
       "Adults: 2",
       "Children (3-11): 1",
       "Child seat needed"
@@ -66,7 +66,7 @@ test("buildMessage : un transfert complet, une info par ligne", () => {
 
 test("buildMessage : les champs vides ne figurent pas dans le message", () => {
   const message = F.buildMessage(values({ time: "", children: 0, child_seat: false }), TODAY);
-  assert.doesNotMatch(message, /Pickup or flight time/);
+  assert.doesNotMatch(message, /Pickup time/);
   assert.doesNotMatch(message, /Children/);
   assert.doesNotMatch(message, /seat/);
   assert.match(message, /Adults: 2/);
