@@ -10,8 +10,36 @@
     "title": "Private taxi & minivan in Koh Lanta",
     "lead": "Reliable private taxi and minivan service from Koh Lanta to airports, piers, cities and provinces across Southern Thailand.",
     "note": "Private transfers, no sharing, no hidden fees.",
-    "photo": null,
+    "photo": {
+      "src": "/images/taxi/hero-van.webp",
+      "width": 1000,
+      "height": 750,
+      "alt": "The rear of the minivan, open, showing tan leather seats and a lit ceiling"
+    },
     "confirmed": false
+  },
+  "gallery": {
+    "title": "Our minivan",
+    "photos": [
+      {
+        "src": "/images/taxi/van-exterior.webp",
+        "width": 900,
+        "height": 675,
+        "alt": "Silver minivan seen from the side, parked on the street"
+      },
+      {
+        "src": "/images/taxi/van-seats.webp",
+        "width": 900,
+        "height": 675,
+        "alt": "Minivan interior with diamond-stitched tan leather seats and a lit ceiling"
+      },
+      {
+        "src": "/images/taxi/van-ceiling.webp",
+        "width": 900,
+        "height": 675,
+        "alt": "Lit ceiling and tan leather seats inside the minivan"
+      }
+    ]
   },
   "services": [
     {

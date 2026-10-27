@@ -25,10 +25,25 @@ test("taxi.json : le lien des excursions bateau pointe vers /secret/", () => {
   assert.equal(boats.link.href, "/secret/");
 });
 
-test("taxiView : liste les entrées à confirmer et la photo du hero", () => {
+test("taxiView : liste les entrées à confirmer, et la photo du hero seulement si elle manque", () => {
   const view = taxiView();
   assert.ok(view.toConfirm.length > 0);
-  assert.ok(view.toConfirm.some((line) => /photo/i.test(line)));
+  assert.equal(
+    view.toConfirm.some((line) => /vehicle photo/.test(line)),
+    !taxi.hero.photo
+  );
+});
+
+test("taxi.json : chaque photo a un chemin existant, des dimensions et un texte alternatif", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const photos = [taxi.hero.photo].concat(taxi.gallery.photos, taxi.services.map((s) => s.photo)).filter(Boolean);
+  assert.ok(photos.length >= 4);
+  for (const p of photos) {
+    assert.ok(fs.existsSync(path.join(__dirname, "../src", p.src)), p.src);
+    assert.ok(p.width > 0 && p.height > 0, p.src);
+    assert.ok(p.alt && p.alt.length > 10, p.src);
+  }
 });
 
 test("taxiView : bandeau visible hors production, masqué en production", () => {
