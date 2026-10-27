@@ -93,7 +93,7 @@ test("buildMessage : excursion en bateau, enfants à 0 omis", () => {
       "Date: Tue 24 Nov 2026",
       "Adults: 2",
       "Private boat",
-      "Hotel or area: Lanta Sand Resort"
+      "Hotel or accommodation: Lanta Sand Resort"
     ].join("\n")
   );
 });
@@ -101,7 +101,7 @@ test("buildMessage : excursion en bateau, enfants à 0 omis", () => {
 test("buildMessage : excursion partagée avec enfants et bébé", () => {
   const s = baseState({ type: "boat", dateChoice: "today" });
   s.boat.babies = 1;
-  assert.match(F.buildMessage(s, TODAY), /\nAdults: 2\nChildren \(3-11\): 1\nBabies \(0-2\): 1\nJoin-in trip\nHotel or area: Lanta Sand Resort$/);
+  assert.match(F.buildMessage(s, TODAY), /\nAdults: 2\nChildren \(3-11\): 1\nBabies \(0-2\): 1\nJoin-in trip\nHotel or accommodation: Lanta Sand Resort$/);
 });
 
 test("buildMessage : activité", () => {
@@ -113,7 +113,7 @@ test("buildMessage : activité", () => {
       "I'd like a price for an activity: Thai cooking class.",
       "Date: Today (Sat 14 Nov)",
       "People: 2",
-      "Hotel or area: Long Beach"
+      "Hotel or accommodation: Long Beach"
     ].join("\n")
   );
 });

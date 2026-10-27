@@ -99,7 +99,7 @@
     }
 
     // Pour un transfert, le lieu de prise en charge est déjà dans « From ».
-    if (state.type !== "transfer" && clean(state.hotel)) lines.push("Hotel or area: " + clean(state.hotel));
+    if (state.type !== "transfer" && clean(state.hotel)) lines.push("Hotel or accommodation: " + clean(state.hotel));
     return lines.join("\n");
   }
 
