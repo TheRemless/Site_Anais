@@ -1,0 +1,194 @@
+---
+permalink: /taxi/
+eleventyExcludeFromCollections: true
+---
+{#- Page autonome de VIP Taxi Lanta (Mr. Brown), prestataire de transferts à Koh Lanta.
+    Volontairement hors de base.njk, comme /secret/ : identité du prestataire, sans header,
+    footer, bannière cookies ni Google Analytics. Formulaire Netlify Forms (name="taxi"),
+    pas d'autre canal de contact. Champs repris du formulaire de transfert de /secret/.
+    L'auto-réponse Zwald ne s'applique pas à ce formulaire
+    (voir netlify/functions/submission-created.js). -#}
+{% macro field(name, label, type, attrs, hint) %}
+<div class="field">
+  <label for="f-{{ name }}">{{ label }}</label>
+  {% if hint %}<p class="hint" id="h-{{ name }}">{{ hint }}</p>{% endif %}
+  <input id="f-{{ name }}" name="{{ name }}" type="{{ type }}" {{ attrs | safe }} aria-required="true" aria-describedby="{% if hint %}h-{{ name }} {% endif %}e-{{ name }}">
+  <p class="err" id="e-{{ name }}" hidden></p>
+</div>
+{% endmacro %}
+{% macro person(name, label, ages, value, min) %}
+<div class="person">
+  <label for="f-{{ name }}">{{ label }} <span class="ages">{{ ages }}</span></label>
+  <div class="step">
+    <button type="button" data-step="-1" data-for="{{ name }}" aria-label="One less {{ label | lower }}">&minus;</button>
+    <input id="f-{{ name }}" name="{{ name }}" type="number" inputmode="numeric" min="{{ min }}" max="20" value="{{ value }}" aria-describedby="e-adults">
+    <button type="button" data-step="1" data-for="{{ name }}" aria-label="One more {{ label | lower }}">+</button>
+  </div>
+</div>
+{% endmacro %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIP Taxi Lanta | Private taxi &amp; minivan in Koh Lanta</title>
+<meta name="description" content="Private taxi, minivan and airport transfers from Koh Lanta to Krabi, Phuket, Surat Thani and across Southern Thailand. Send a request and the team confirms on WhatsApp.">
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://zwaldtravelplanner.com/taxi/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://zwaldtravelplanner.com/taxi/">
+<meta property="og:title" content="VIP Taxi Lanta | Private taxi &amp; minivan in Koh Lanta">
+<meta property="og:description" content="Private transfers from Koh Lanta to airports, piers and cities across Southern Thailand.">
+<meta property="og:image" content="https://zwaldtravelplanner.com/images/taxi/og-taxi.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="VIP Taxi Lanta, Mr. Brown, private taxis and minivans">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/taxi/icon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/images/taxi/apple-touch-icon.png">
+<meta name="theme-color" content="#140D09">
+<link rel="preload" as="font" type="font/woff2" href="/css/fonts/marcellus-400-normal-latin.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="/css/fonts/figtree-400-normal-latin.woff2" crossorigin>
+<link rel="stylesheet" href="/css/taxi.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+{% if taxiView.showDraftBanner %}
+<details class="draft">
+  <summary><span><strong>Preview only.</strong> {{ taxiView.toConfirm | length }} items not confirmed by VIP Taxi Lanta yet</span></summary>
+  <ul>{% for item in taxiView.toConfirm %}<li>{{ item }}</li>{% endfor %}</ul>
+</details>
+{% endif %}
+
+<section class="hero">
+  <img class="hero-photo" src="{{ taxi.hero.photo.src }}" srcset="{{ taxi.hero.photo.srcset }}" sizes="100vw" width="{{ taxi.hero.photo.width }}" height="{{ taxi.hero.photo.height }}" alt="{{ taxi.hero.photo.alt }}" fetchpriority="high">
+  <header class="bar">
+    <div class="plate"><img src="/images/taxi/logo.webp" width="640" height="640" alt="VIP Taxi Lanta, Mr. Brown"></div>
+    <div class="word">VIP TAXI LANTA<small>{{ taxi.business.tagline }}, {{ taxi.business.owner }}</small></div>
+  </header>
+  <div class="hero-in">
+    <h1>{{ taxi.hero.title }}</h1>
+    <p class="lead">{{ taxi.hero.lead }} {{ taxi.hero.note }}</p>
+    <a class="btn" href="#request">Request a transfer</a>
+  </div>
+</section>
+
+<main id="main">
+  <section class="sec" aria-labelledby="h-services">
+    <h2 id="h-services">What we do</h2>
+    <div class="svc">
+      {% for s in taxi.services %}
+      <div>
+        <h3>{{ s.title }}</h3>
+        <p>{{ s.text }}</p>
+        {% if s.link %}<a href="{{ s.link.href }}">{{ s.link.label }}</a>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="strip" role="group" aria-label="{{ taxi.gallery.title }}">
+    {% for p in taxi.gallery.photos %}
+    <img src="{{ p.src }}" width="{{ p.width }}" height="{{ p.height }}" alt="{{ p.alt }}" loading="lazy">
+    {% endfor %}
+  </div>
+
+  <section class="sec" aria-labelledby="h-why">
+    <h2 id="h-why">Why VIP Taxi Lanta</h2>
+    <div class="why">
+      {% for w in taxi.why %}
+      <div><h3>{{ w.title }}</h3><p>{{ w.text }}</p></div>
+      {% endfor %}
+    </div>
+    <p class="rating"><a href="{{ taxi.business.reviewsUrl }}" rel="noopener">{{ taxi.rating.text }}</a></p>
+  </section>
+
+  <section class="sec" aria-labelledby="h-how">
+    <h2 id="h-how">How it works</h2>
+    <ol class="steps">
+      {% for st in taxi.steps %}
+      <li><div><h3>{{ st.title }}</h3><p>{{ st.text }}</p></div></li>
+      {% endfor %}
+    </ol>
+    <p class="pay">{{ taxi.payment.text }}</p>
+  </section>
+
+  <section class="card" id="request" aria-labelledby="h-request">
+    <h2 id="h-request">Request a transfer</h2>
+    <form id="taxi-form" name="taxi" method="POST" data-netlify="true" netlify-honeypot="bot-field" novalidate>
+      <input type="hidden" name="form-name" value="taxi">
+      <p class="hp" aria-hidden="true"><label>Do not fill this in: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+
+      <div class="row">
+        {{ field("name", "Name", "text", 'autocomplete="name"') }}
+        {{ field("phone", "Phone (WhatsApp)", "tel", 'autocomplete="tel" inputmode="tel"', "With the country code, for example +33 6 12 34 56 78.") }}
+      </div>
+      <div class="row">
+        {{ field("from", "From", "text", 'list="places" autocomplete="off"', "Your hotel, an airport, a pier, a town.") }}
+        {{ field("to", "To", "text", 'list="places" autocomplete="off"') }}
+      </div>
+      <datalist id="places">{% for place in taxi.places %}<option value="{{ place }}">{% endfor %}</datalist>
+
+      <fieldset class="field" aria-describedby="e-date">
+        <legend>Date</legend>
+        <div class="seg">
+          <label><input type="radio" name="date_choice" value="today"><span>Today</span></label>
+          <label><input type="radio" name="date_choice" value="tomorrow"><span>Tomorrow</span></label>
+          <label><input type="radio" name="date_choice" value="other"><span>Other date</span></label>
+        </div>
+        <div class="date-other" id="date-other" hidden>
+          <label class="sr" for="f-date_other">Choose a date</label>
+          <input id="f-date_other" name="date_other" type="date">
+        </div>
+        <p class="err" id="e-date" hidden></p>
+      </fieldset>
+
+      {{ field("time", "Pick-up time or flight time", "time", "") }}
+
+      <div class="field">
+        <div class="people">
+          {{ person("adults", "Adults", "12+", 2, 1) }}
+          {{ person("children", "Children", "3 to 11", 0, 0) }}
+          {{ person("babies", "Babies", "0 to 2", 0, 0) }}
+        </div>
+        <p class="err" id="e-adults" hidden></p>
+      </div>
+
+      <div class="seats">
+        <div class="check" id="seat-child" hidden><input type="checkbox" id="f-child_seat" name="child_seat"><label for="f-child_seat">We need a child seat</label></div>
+        <div class="check" id="seat-baby" hidden><input type="checkbox" id="f-baby_seat" name="baby_seat"><label for="f-baby_seat">We need a baby seat</label></div>
+      </div>
+
+      <div class="field">
+        <label for="f-notes">Other information</label>
+        <textarea id="f-notes" name="notes" rows="4"></textarea>
+      </div>
+
+      <div class="field">
+        <div class="check"><input type="checkbox" id="f-consent" name="consent" aria-describedby="e-consent"><label for="f-consent">I agree to be contacted on WhatsApp</label></div>
+        <p class="err" id="e-consent" hidden></p>
+      </div>
+
+      <button class="btn" type="submit" id="send">Send my request</button>
+      <p class="status" id="form-status" role="status" aria-live="polite"></p>
+      <p class="after">Once we receive your request, the team contacts you on WhatsApp to confirm. Payment is made in cash to the driver on the day.</p>
+    </form>
+
+    <div class="done" id="done" hidden tabindex="-1">
+      <h3>Thank you, we received your request.</h3>
+      <p>Our team will confirm on WhatsApp as soon as possible.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="plate"><img src="/images/taxi/logo.webp" width="640" height="640" alt="" loading="lazy"></div>
+  <p>VIP Taxi Lanta by {{ taxi.business.owner }}</p>
+  <p>{{ taxi.business.place }}</p>
+</footer>
+
+<script src="/js/taxi-form.js" defer></script>
+<script src="/js/taxi.js" defer></script>
+</body>
+</html>

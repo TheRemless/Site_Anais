@@ -1,0 +1,152 @@
+{
+  "business": {
+    "name": "VIP Taxi Lanta",
+    "owner": "Mr. Brown",
+    "tagline": "Private taxis & minivans",
+    "place": "Koh Lanta, Krabi, Thailand",
+    "reviewsUrl": "https://maps.app.goo.gl/hnm3donEq7uR56Dr6"
+  },
+  "hero": {
+    "title": "Private taxi & minivan in Koh Lanta",
+    "lead": "Reliable private taxi and minivan service from Koh Lanta to airports, piers, cities and provinces across Southern Thailand.",
+    "note": "Private transfers, no sharing, no hidden fees.",
+    "photo": {
+      "src": "/images/taxi/hero-ceiling-1800.webp",
+      "srcset": "/images/taxi/hero-ceiling-900.webp 900w, /images/taxi/hero-ceiling-1800.webp 1800w",
+      "width": 1800,
+      "height": 1350,
+      "alt": "Lit ceiling and tan leather seats inside the minivan"
+    },
+    "confirmed": false
+  },
+  "gallery": {
+    "title": "Our minivan",
+    "photos": [
+      {
+        "src": "/images/taxi/van-exterior.webp",
+        "width": 900,
+        "height": 675,
+        "alt": "Silver minivan seen from the side, parked on the street"
+      },
+      {
+        "src": "/images/taxi/van-seats.webp",
+        "width": 900,
+        "height": 675,
+        "alt": "Minivan interior with diamond-stitched tan leather seats and a lit ceiling"
+      },
+      {
+        "src": "/images/taxi/van-welcome.webp",
+        "width": 900,
+        "height": 675,
+        "alt": "Lit ceiling with a Welcome sign above rows of tan leather seats"
+      }
+    ]
+  },
+  "services": [
+    {
+      "id": "airport",
+      "title": "Airport transfers",
+      "text": "From and to Krabi, Phuket and Surat Thani airports.",
+      "photo": null,
+      "link": null,
+      "confirmed": false
+    },
+    {
+      "id": "long-distance",
+      "title": "Long-distance private transfers",
+      "text": "Krabi Town, Ao Nang, Phuket, Surat Thani, Trang, Khao Lak, Khao Sok, Donsak Pier, Cheow Lan Pier and more.",
+      "photo": null,
+      "link": null,
+      "confirmed": false
+    },
+    {
+      "id": "local",
+      "title": "Local taxi on Koh Lanta",
+      "text": "Private rides around the island.",
+      "photo": null,
+      "link": null,
+      "confirmed": false
+    },
+    {
+      "id": "tours",
+      "title": "Private day tours",
+      "text": "Half-day and full-day private tours around Koh Lanta: beaches, Old Town, waterfall, viewpoints.",
+      "photo": null,
+      "link": null,
+      "confirmed": false
+    },
+    {
+      "id": "boats",
+      "title": "Longtail and speedboat excursions",
+      "text": "Private or group trips by boat around Koh Lanta.",
+      "photo": null,
+      "link": {
+        "href": "/secret/",
+        "label": "See Secret Travel & Tour"
+      },
+      "confirmed": false
+    }
+  ],
+  "why": [
+    {
+      "title": "Private only",
+      "text": "No sharing, no stress, no waiting.",
+      "confirmed": false
+    },
+    {
+      "title": "Professional drivers",
+      "text": "Friendly drivers who know the region well.",
+      "confirmed": false
+    },
+    {
+      "title": "Clean and comfortable vehicles",
+      "text": "Taxi and minivan for your transfer.",
+      "confirmed": false
+    },
+    {
+      "title": "Direct confirmation",
+      "text": "The team confirms your booking with you on WhatsApp.",
+      "confirmed": false
+    }
+  ],
+  "rating": {
+    "text": "Rated 5 stars on Google by international travelers",
+    "confirmed": false
+  },
+  "steps": [
+    {
+      "title": "Send your request",
+      "text": "Date, time, passengers, pick-up and drop-off.",
+      "confirmed": false
+    },
+    {
+      "title": "Get your confirmation",
+      "text": "Our team replies on WhatsApp with the price and the details.",
+      "confirmed": false
+    },
+    {
+      "title": "Meet your driver",
+      "text": "Your driver is on time at the pick-up point.",
+      "confirmed": false
+    }
+  ],
+  "payment": {
+    "text": "Cash to the driver on the day. No prepayment. No hidden fees.",
+    "confirmed": false
+  },
+  "places": [
+    "Koh Lanta",
+    "Krabi Airport",
+    "Krabi Town",
+    "Ao Nang",
+    "Phuket Airport",
+    "Phuket Bus Terminal",
+    "Surat Thani Airport",
+    "Surat Thani Bus Terminal",
+    "Khao Lak",
+    "Khao Sok",
+    "Trang",
+    "Donsak Pier",
+    "Cheow Lan Pier"
+  ]
+}

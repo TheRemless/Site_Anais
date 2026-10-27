@@ -1,0 +1,172 @@
+/* Page /taxi/ (VIP Taxi Lanta), direction « Night cabin » : l'intérieur du van de nuit,
+   cuir cognac et plafond doré, sur fond espresso. Autonome : ne dépend ni de site.css ni de
+   components.css. Polices auto-hébergées ci-dessous (Marcellus pour les titres, Figtree). */
+@font-face { font-family: 'Marcellus'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/css/fonts/marcellus-400-normal-latin.woff2') format('woff2'); }
+@font-face { font-family: 'Figtree'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/css/fonts/figtree-400-normal-latin.woff2') format('woff2'); }
+@font-face { font-family: 'Figtree'; font-style: normal; font-weight: 500; font-display: swap;
+  src: url('/css/fonts/figtree-500-normal-latin.woff2') format('woff2'); }
+@font-face { font-family: 'Figtree'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('/css/fonts/figtree-700-normal-latin.woff2') format('woff2'); }
+
+:root {
+  --bg: #140D09;
+  --bg-2: #1F140E;
+  --text: #F2E6D2;
+  --mute: #C2B199;
+  --amber: #F0B13A;
+  --amber-hi: #F6C25E;
+  --ink: #20130A;
+  --paper: #F2E6D2;
+  --mute-ink: #5A4A3A;
+  --err: #9B1C1C;
+  --line: rgba(240, 177, 58, .32);
+  --serif: 'Marcellus', Georgia, serif;
+  --sans: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 1.0625rem/1.65 var(--sans); }
+img { display: block; max-width: 100%; height: auto; }
+/* Les règles display (form, .check…) ne doivent jamais réafficher un élément hidden. */
+[hidden] { display: none !important; }
+a { color: var(--amber); }
+h1, h2, h3 { margin: 0; font-family: var(--serif); font-weight: 400; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
+
+.skip { position: absolute; left: -9999px; top: 0; z-index: 20; padding: .75rem 1rem; background: var(--amber); color: var(--ink); }
+.skip:focus { left: 0; }
+
+/* Bandeau d'aperçu : jamais en production (voir taxiView.js). */
+.draft { position: relative; z-index: 6; background: var(--bg-2); border-bottom: 1px solid var(--line); padding: 0 1.25rem; font-size: .875rem; }
+.draft summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; }
+.draft ul { margin: 0 0 .75rem; padding-left: 1.1rem; list-style: disc; columns: 1; color: var(--mute); }
+
+/* Hero : la photo du plafond occupe tout l'écran, le titre se pose en bas. */
+.hero { position: relative; display: grid; align-items: end; min-height: 100svh; overflow: hidden; }
+.hero-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+.hero::after { content: ""; position: absolute; inset: 0; z-index: 1;
+  background: linear-gradient(to top, var(--bg) 4%, rgba(20, 13, 9, .64) 44%, rgba(20, 13, 9, .12) 82%); }
+.bar { position: absolute; z-index: 3; inset: 0 0 auto 0; display: flex; align-items: center; gap: .8rem; padding: 1rem 1.25rem 2.5rem;
+  background: linear-gradient(to bottom, rgba(20, 13, 9, .82), rgba(20, 13, 9, 0)); }
+.plate { flex: none; width: 56px; height: 56px; overflow: hidden; border-radius: 14px; background: #fff; }
+.plate img { width: 100%; height: 100%; object-fit: cover; }
+.word { font: 400 1.25rem/1.1 var(--serif); letter-spacing: .14em; }
+.word small { display: block; margin-top: .25rem; font: 500 .8125rem/1.3 var(--sans); letter-spacing: .02em; color: var(--text); opacity: .86; }
+.hero-in { position: relative; z-index: 2; max-width: 46rem; padding: 0 1.25rem 3rem; }
+h1 { margin-bottom: 1rem; font-size: clamp(2.6rem, 11vw, 5.2rem); line-height: 1.02; }
+.lead { max-width: 34rem; margin: 0 0 1.75rem; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 1.6rem;
+  border: 0; border-radius: 999px; background: var(--amber); color: var(--ink);
+  font: 700 1rem/1 var(--sans); text-decoration: none; cursor: pointer; transition: background-color .2s ease; }
+.btn:hover { background: var(--amber-hi); }
+.btn[disabled] { opacity: .55; cursor: not-allowed; }
+
+/* Sections */
+.sec { max-width: 64rem; margin: 0 auto; padding: 4rem 1.25rem 0; }
+h2 { margin-bottom: 2rem; font-size: clamp(1.9rem, 6vw, 2.8rem); line-height: 1.1; }
+h3 { font-size: 1.4rem; line-height: 1.25; }
+
+.svc div { padding: 1.4rem 0; border-top: 1px solid var(--line); }
+.svc div:last-child { border-bottom: 1px solid var(--line); }
+.svc h3 { margin-bottom: .35rem; }
+.svc p { margin: 0; color: var(--mute); }
+.svc a { display: inline-block; min-height: 44px; margin-top: .25rem; line-height: 44px; font-weight: 700; }
+
+.strip { display: flex; gap: .75rem; margin-top: 4rem; padding: 0 1.25rem 1rem; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.strip::-webkit-scrollbar { display: none; }
+.strip img { flex: 0 0 82%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 18px; scroll-snap-align: center; }
+
+.why { display: grid; gap: 1.75rem; }
+.why div { padding-top: .9rem; border-top: 2px solid var(--amber); }
+.why h3 { margin-bottom: .25rem; font-size: 1.3rem; }
+.why p { margin: 0; color: var(--mute); }
+.rating { margin: 2rem 0 0; }
+
+.steps { counter-reset: step; display: grid; gap: 1.5rem; }
+.steps li { counter-increment: step; display: grid; grid-template-columns: 3rem 1fr; gap: 1rem; align-items: start; }
+.steps li::before { content: counter(step); font: 400 2.6rem/1 var(--serif); color: var(--amber); }
+.steps h3 { margin-bottom: .2rem; font-size: 1.25rem; }
+.steps p { margin: 0; color: var(--mute); }
+.pay { margin: 2rem 0 0; padding-top: 1.25rem; border-top: 1px solid var(--line); font-weight: 500; }
+
+/* Formulaire : une carte ivoire sur le fond sombre. */
+.card { max-width: 46rem; margin: 4rem 1.25rem 0; padding: 1.5rem; border-radius: 24px; background: var(--paper); color: var(--ink); scroll-margin-top: 1rem; }
+.card :focus-visible { outline-color: var(--ink); }
+.card a { color: var(--ink); }
+.card h2 { margin-bottom: 1.25rem; font-size: 2rem; }
+form { display: grid; gap: 1.1rem; }
+.field > label, .field > legend, .check label { display: block; margin-bottom: .3rem; font-weight: 700; font-size: .95rem; }
+fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+legend { padding: 0; }
+.hint { margin: 0 0 .3rem; font-size: .875rem; color: var(--mute-ink); }
+input[type="text"], input[type="tel"], input[type="date"], input[type="time"], input[type="number"], textarea {
+  width: 100%; min-height: 50px; padding: .6rem .9rem; border: 1.5px solid var(--ink); border-radius: 12px;
+  background: #fff; color: var(--ink); font: 400 1rem/1.4 var(--sans); }
+textarea { min-height: 7rem; resize: vertical; }
+.row { display: grid; gap: 1.1rem; }
+
+/* Choix rapides de la date */
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+.seg label { position: relative; }
+.seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.seg span { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 .4rem; text-align: center;
+  border: 1.5px solid var(--ink); border-radius: 12px; background: #fff; font-weight: 700; font-size: .95rem; cursor: pointer; }
+.seg input:checked + span { background: var(--ink); color: var(--paper); }
+.seg input:focus-visible + span { outline: 3px solid var(--ink); outline-offset: 3px; }
+.date-other { margin-top: .6rem; }
+
+/* Compteurs : une ligne par catégorie, libellé à gauche et boutons à droite. */
+.people { display: grid; gap: .25rem; }
+.person { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 56px; }
+.person label { margin: 0; font-weight: 700; }
+.ages { font-weight: 400; color: var(--mute-ink); }
+.step { display: flex; align-items: center; gap: .4rem; }
+.step button { width: 44px; height: 44px; border: 1.5px solid var(--ink); border-radius: 50%; background: #fff; color: var(--ink); font: 700 1.25rem/1 var(--sans); cursor: pointer; }
+.step button:active { background: var(--ink); color: var(--paper); }
+.step input { width: 3.4rem; min-height: 44px; padding: 0; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+.step input::-webkit-outer-spin-button, .step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.check { display: flex; align-items: center; gap: .75rem; min-height: 44px; }
+.check input { flex: none; width: 24px; height: 24px; accent-color: var(--ink); cursor: pointer; }
+.check label { flex: 1; display: flex; align-items: center; min-height: 44px; margin: 0; font-weight: 400; cursor: pointer; }
+.seats { display: grid; gap: .5rem; }
+
+[aria-invalid="true"] { border-color: var(--err); border-width: 2px; }
+.err { margin: .35rem 0 0; color: var(--err); font-size: .9375rem; font-weight: 700; }
+.err::before { content: "Error: "; }
+.hp, .sr { position: absolute; left: -9999px; }
+.card .btn { width: 100%; background: var(--ink); color: var(--paper); }
+.card .btn:hover { background: #3A2412; }
+.status { min-height: 1.5rem; margin: 0; font-weight: 700; }
+.status.bad { color: var(--err); }
+.after { margin: 0; font-size: .875rem; color: var(--mute-ink); }
+.done { padding: .5rem 0; }
+.done h3 { margin-bottom: .5rem; font-size: 1.7rem; }
+.done p { margin: 0; }
+
+footer { padding: 4rem 1.25rem 3rem; text-align: center; }
+footer .plate { width: 150px; height: 150px; margin: 0 auto 1rem; border-radius: 24px; }
+footer p { margin: 0; color: var(--mute); }
+
+@media (min-width: 48rem) {
+  .bar { padding: 1.5rem 3rem 3rem; }
+  .hero { min-height: min(100svh, 56rem); }
+  .hero-in { margin-left: max(0px, calc(50vw - 32rem)); padding: 0 3rem 5rem; }
+  .svc { display: grid; grid-template-columns: 1fr 1fr; column-gap: 3rem; }
+  .svc div:nth-last-child(2) { border-bottom: 1px solid var(--line); }
+  .strip { max-width: 64rem; margin-left: auto; margin-right: auto; overflow: visible; }
+  .strip img { flex: 1 1 0; min-width: 0; }
+  .why { grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+  .steps { grid-template-columns: repeat(3, 1fr); }
+  .card { margin-left: auto; margin-right: auto; padding: 2.5rem; }
+  .row { grid-template-columns: 1fr 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
