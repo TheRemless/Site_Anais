@@ -35,7 +35,6 @@ test("secret.json : les photos citées existent", () => {
   for (const t of items) {
     if (t.photo) assert.ok(fs.existsSync(path.join(IMAGES, t.photo)), t.photo + " introuvable");
   }
-  if (secret.team.photo) assert.ok(fs.existsSync(path.join(IMAGES, secret.team.photo)), secret.team.photo + " introuvable");
 });
 
 test("secret.json : infos de la fiche Google complètes et raison sociale officielle", () => {

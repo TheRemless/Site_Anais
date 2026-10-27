@@ -9,8 +9,6 @@ function toConfirm() {
     if (!t.confirmed) items.push(`${t.name}: description and details`);
     if (!t.photo) items.push(`${t.name}: photo`);
   }
-  if (!secret.licence) items.push("TAT licence number");
-  if (!secret.team.text || !secret.team.photo) items.push("Who we are: text and team photo");
   return items;
 }
 
