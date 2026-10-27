@@ -96,6 +96,14 @@ function buildBodies(name, subject, lang) {
 
 module.exports.buildBodies = buildBodies;
 
+// L'auto-réponse est celle de Zwald : elle ne doit partir que pour le formulaire de contact
+// (FR et EN s'appellent tous deux "contact"). Les autres formulaires du site, comme la
+// demande de taxi, ont leur propre circuit de réponse.
+function isContactSubmission(payload) {
+  return Boolean(payload) && payload.form_name === "contact";
+}
+module.exports.isContactSubmission = isContactSubmission;
+
 exports.handler = async function (event) {
   const ok = { statusCode: 200, body: "" };
 
@@ -106,13 +114,18 @@ exports.handler = async function (event) {
     return ok;
   }
 
-  let data;
+  let payload;
   try {
-    data = JSON.parse(event.body).payload.data || {};
+    payload = JSON.parse(event.body).payload;
   } catch (e) {
     console.log("Auto-réponse ignorée : payload illisible.", e.message);
     return ok;
   }
+  if (!isContactSubmission(payload)) {
+    console.log("Auto-réponse ignorée : formulaire « " + (payload && payload.form_name) + " ».");
+    return ok;
+  }
+  const data = payload.data || {};
 
   const to = (data.email || "").trim();
   if (!EMAIL_RE.test(to)) {
