@@ -1,8 +1,9 @@
 /* Page /taxi/ (VIP Taxi Lanta) : logique du formulaire « Request a transfer ».
-   Mêmes champs que le formulaire de transfert de /secret/ (From, To, date en trois choix,
-   heure, adultes, enfants, bébés, sièges), sans le choix du transport ni privé ou partagé :
-   ce service est toujours privé et en voiture ou minivan. Calcule les dates à l'heure de
-   Koh Lanta, valide la saisie et encode le corps envoyé à Netlify Forms.
+   Même principe que le formulaire de transfert de /secret/ : le formulaire rédige un message
+   WhatsApp que le visiteur envoie lui-même au numéro de Zwald (Anaïs). Rien n'est envoyé à
+   un serveur, il n'y a ni nom ni téléphone à saisir. Champs : From, To, date en trois choix,
+   heure, adultes, enfants, bébés, sièges. Pas de choix du transport ni de privé ou partagé :
+   ce service est toujours privé.
    Exporté en CommonJS pour les tests (node --test) et exposé sur window pour la page. */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
@@ -13,12 +14,9 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  var FORM_NAME = "taxi";
-  var MAX_PASSENGERS = 20;
-
-  function trim(value) {
-    return String(value == null ? "" : value).trim();
-  }
+  var WHATSAPP = "66958683846";
+  var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   // « Today » et « Tomorrow » suivent l'heure de Koh Lanta, pas celle du téléphone,
   // qui peut être restée à l'heure européenne.
@@ -53,100 +51,76 @@
     return d.getUTCFullYear() === p[0] && d.getUTCMonth() === p[1] - 1 && d.getUTCDate() === p[2];
   }
 
+  function clean(value) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
   // Date ISO choisie par le visiteur, ou "" tant qu'il n'a rien choisi.
   function resolveDate(choice, other, today) {
     if (choice === "today") return today;
     if (choice === "tomorrow") return addDays(today, 1);
-    if (choice === "other") return trim(other);
+    if (choice === "other") return clean(other);
     return "";
   }
 
-  function count(value) {
-    var s = trim(value);
-    return /^\d+$/.test(s) ? Number(s) : NaN;
+  function formatDate(iso, today) {
+    var d = toUTC(iso);
+    var short = DAYS[d.getUTCDay()] + " " + d.getUTCDate() + " " + MONTHS[d.getUTCMonth()];
+    if (iso === today) return "Today (" + short + ")";
+    if (iso === addDays(today, 1)) return "Tomorrow (" + short + ")";
+    return short + " " + d.getUTCFullYear();
   }
 
-  function validate(values, today) {
-    var v = values || {};
-    var errors = {};
+  function num(value) {
+    var n = Number(value);
+    return n > 0 ? Math.floor(n) : 0;
+  }
 
-    if (!trim(v.name)) errors.name = "Please enter your name.";
-
-    var phone = trim(v.phone).replace(/[\s().-]/g, "");
-    if (!/^\+?\d{7,15}$/.test(phone)) {
-      errors.phone = "Enter your WhatsApp number with the country code, for example +33 6 12 34 56 78.";
-    }
-
-    if (!trim(v.from)) errors.from = "Tell us where we pick you up.";
-    if (!trim(v.to)) errors.to = "Tell us where you are going.";
-
+  // Âges utilisés par l'équipe : bébé jusqu'à 2 ans, enfant de 3 à 11 ans, adulte dès 12 ans.
+  function buildMessage(v, today) {
+    var lines = ["Hi VIP Taxi Lanta!", "I'd like a price for a transfer."];
     var date = resolveDate(v.date_choice, v.date_other, today);
-    if (!date) errors.date = "Choose your date of travel.";
-    else if (!isRealDate(date)) errors.date = "Enter a valid date.";
-    else if (date < today) errors.date = "Choose today or a later date.";
+    var adults = num(v.adults);
+    var children = num(v.children);
+    var babies = num(v.babies);
 
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(trim(v.time))) errors.time = "Enter the pick-up or flight time.";
-
-    // Une seule erreur pour les trois compteurs, affichée sous la rangée.
-    var adults = count(v.adults);
-    var children = trim(v.children) === "" ? 0 : count(v.children);
-    var babies = trim(v.babies) === "" ? 0 : count(v.babies);
-    if (isNaN(children) || isNaN(babies)) {
-      errors.adults = "Use whole numbers for children and babies.";
-    } else if (isNaN(adults) || adults < 1) {
-      errors.adults = "We need at least 1 adult (12 or older).";
-    } else if (adults + children + babies > MAX_PASSENGERS) {
-      errors.adults = "We can take up to " + MAX_PASSENGERS + " passengers in total.";
-    }
-
-    if (!v.consent) errors.consent = "Please tick the box so we can reply on WhatsApp.";
-
-    return errors;
-  }
-
-  function plural(n, one, many) {
-    return n + " " + (n === 1 ? one : many);
-  }
-
-  function summary(adults, children, babies) {
-    var parts = [plural(adults, "adult", "adults")];
-    if (children) parts.push(plural(children, "child", "children"));
-    if (babies) parts.push(plural(babies, "baby", "babies"));
-    return parts.join(", ");
-  }
-
-  function encodeBody(values, today) {
-    var v = values || {};
-    var adults = count(v.adults) || 0;
-    var children = count(v.children) || 0;
-    var babies = count(v.babies) || 0;
-    var params = new URLSearchParams();
-    params.set("form-name", FORM_NAME);
-    params.set("bot-field", trim(v.bot_field));
-    params.set("name", trim(v.name));
-    params.set("phone", trim(v.phone));
-    params.set("from", trim(v.from));
-    params.set("to", trim(v.to));
-    params.set("date", resolveDate(v.date_choice, v.date_other, today));
-    params.set("time", trim(v.time));
-    params.set("adults", String(adults));
-    params.set("children", String(children));
-    params.set("babies", String(babies));
-    params.set("passengers", summary(adults, children, babies));
+    if (clean(v.from)) lines.push("From: " + clean(v.from));
+    if (clean(v.to)) lines.push("To: " + clean(v.to));
+    if (date && isRealDate(date)) lines.push("Date: " + formatDate(date, today));
+    if (clean(v.time)) lines.push("Pickup or flight time: " + clean(v.time));
+    if (adults > 0) lines.push("Adults: " + adults);
+    if (children > 0) lines.push("Children (3-11): " + children);
+    if (babies > 0) lines.push("Babies (0-2): " + babies);
     // Un siège ne se demande que s'il y a un enfant ou un bébé : une case restée cochée
     // après avoir remis le compteur à zéro est ignorée.
-    params.set("child_seat", children > 0 && v.child_seat ? "Yes" : "No");
-    params.set("baby_seat", babies > 0 && v.baby_seat ? "Yes" : "No");
-    params.set("notes", trim(v.notes));
-    params.set("consent", v.consent ? "Yes" : "No");
-    return params.toString();
+    if (children > 0 && v.child_seat) lines.push("Child seat needed");
+    if (babies > 0 && v.baby_seat) lines.push("Baby seat needed");
+    return lines.join("\n");
+  }
+
+  function waUrl(message) {
+    return "https://wa.me/" + WHATSAPP + "?text=" + encodeURIComponent(message);
+  }
+
+  function validate(v, today) {
+    var errors = {};
+    if (!clean(v.from)) errors.from = "Tell us where we pick you up.";
+    if (!clean(v.to)) errors.to = "Tell us where you're going.";
+    if (!(num(v.adults) > 0)) errors.adults = "At least one adult travels.";
+
+    var date = resolveDate(v.date_choice, v.date_other, today);
+    if (!date || !isRealDate(date)) errors.date = "Choose a date.";
+    else if (date < today) errors.date = "This date has already passed.";
+    return errors;
   }
 
   return {
     bangkokToday: bangkokToday,
     addDays: addDays,
     resolveDate: resolveDate,
-    validate: validate,
-    encodeBody: encodeBody
+    formatDate: formatDate,
+    buildMessage: buildMessage,
+    waUrl: waUrl,
+    validate: validate
   };
 });
