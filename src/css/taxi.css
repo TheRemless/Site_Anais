@@ -1,0 +1,137 @@
+/* Page /taxi/ (VIP Taxi Lanta). Autonome : ne dépend ni de site.css ni de components.css.
+   Les polices viennent de /css/fonts.css (auto-hébergées). */
+:root {
+  --paper: #FBF6EA;
+  --paper-2: #F2E8CF;
+  --ink: #1C1E28;
+  --muted: #4B5062;
+  --gold: #C8A04A;
+  --gold-deep: #7A5718;
+  --err: #9B1C1C;
+  --radius: 12px;
+  --serif: 'Cormorant Garamond', Georgia, serif;
+  --sans: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 1rem/1.6 var(--sans);
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--gold-deep); }
+.wrap { width: 100%; max-width: 40rem; margin: 0 auto; padding: 0 1rem; }
+
+.skip {
+  position: absolute; left: -9999px; top: 0;
+  background: var(--ink); color: var(--paper); padding: .75rem 1rem; z-index: 10;
+}
+.skip:focus { left: 0; }
+
+:focus-visible { outline: 3px solid var(--gold-deep); outline-offset: 2px; }
+
+/* Bandeau d'aperçu : jamais en production (voir taxiView.js). */
+.draft { background: var(--paper-2); border-bottom: 1.5px solid var(--ink); padding: .75rem 1rem; font-size: .875rem; }
+.draft p { margin: 0 0 .25rem; }
+.draft ul { margin: 0; padding-left: 1.1rem; columns: 1; }
+
+/* Hero */
+.hero { background: var(--paper-2); border-bottom: 3px solid var(--gold); padding: 1.5rem 0 2.5rem; }
+/* Le logo est fourni sur fond blanc : multiply le fond dans le crème du hero. */
+.logo { width: min(18rem, 78%); height: auto; margin: 0 auto 1rem; mix-blend-mode: multiply; }
+h1 { margin: 0 0 1rem; font: 700 clamp(2.25rem, 9vw, 3.5rem)/1.05 var(--serif); }
+.lead { margin: 0 0 .75rem; font-size: 1.0625rem; }
+.note { margin: 0 0 1.5rem; font-weight: 600; }
+.photo-todo {
+  margin-top: 1.5rem; padding: 2.5rem 1rem; text-align: center;
+  border: 1.5px dashed var(--ink); border-radius: var(--radius); color: var(--muted);
+}
+.hero-photo { width: 100%; margin-top: 1.5rem; border-radius: var(--radius); aspect-ratio: 4 / 3; object-fit: cover; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 48px; padding: .75rem 1.5rem;
+  background: var(--gold); color: var(--ink);
+  font: 700 1rem/1 var(--sans); text-decoration: none;
+  border: 1.5px solid var(--ink); border-radius: var(--radius);
+  cursor: pointer; transition: background-color .2s ease;
+}
+.btn:hover { background: #D6B15F; }
+.btn[disabled] { opacity: .55; cursor: not-allowed; }
+
+/* Sections */
+.sec { padding: 2.5rem 0; }
+.sec + .sec { border-top: 1px solid var(--paper-2); }
+h2 { margin: 0 0 1.25rem; font: 700 2rem/1.1 var(--serif); }
+h3 { margin: 0 0 .25rem; font: 700 1.25rem/1.25 var(--serif); }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+
+.svc { padding: 1rem 0; border-top: 1.5px solid var(--ink); }
+.svc:last-child { border-bottom: 1.5px solid var(--ink); }
+.svc p { margin: 0; color: var(--muted); }
+.svc img { margin-top: .75rem; border-radius: var(--radius); }
+.svc-link { display: inline-block; margin-top: .5rem; min-height: 44px; line-height: 44px; font-weight: 700; }
+
+.gallery { display: grid; gap: .75rem; }
+.gallery img { width: 100%; border-radius: var(--radius); aspect-ratio: 4 / 3; object-fit: cover; }
+
+.why { display: grid; gap: 1rem; }
+.why li { padding-left: 1rem; border-left: 3px solid var(--gold); }
+.why p { margin: 0; color: var(--muted); }
+.rating { margin: 1.5rem 0 0; font-weight: 600; }
+
+.steps { counter-reset: step; display: grid; gap: 1rem; }
+.steps li { counter-increment: step; display: grid; grid-template-columns: 2.5rem 1fr; gap: .75rem; }
+.steps li::before {
+  content: counter(step); width: 2.5rem; height: 2.5rem; border-radius: 50%;
+  background: var(--ink); color: var(--paper); font: 700 1.25rem/2.5rem var(--serif); text-align: center;
+}
+.steps p { margin: 0; color: var(--muted); }
+.pay { margin: 1.5rem 0 0; padding: 1rem; background: var(--paper-2); border-radius: var(--radius); font-weight: 600; }
+
+/* Formulaire */
+.form-sec { background: var(--paper-2); padding: 2.5rem 0 3rem; scroll-margin-top: 1rem; }
+form { display: grid; gap: 1.25rem; }
+.field label, .check label { display: block; font-weight: 700; margin-bottom: .35rem; }
+.help { margin: 0 0 .35rem; font-size: .875rem; color: var(--muted); }
+input[type="text"], input[type="tel"], input[type="date"], input[type="time"], input[type="number"], textarea {
+  width: 100%; min-height: 48px; padding: .6rem .75rem;
+  font: 400 1rem/1.4 var(--sans); color: var(--ink);
+  background: #fff; border: 1.5px solid var(--ink); border-radius: 8px;
+}
+textarea { min-height: 7rem; resize: vertical; }
+.row { display: grid; gap: 1.25rem; }
+.checks { display: grid; gap: .5rem; }
+.check { display: flex; align-items: center; gap: .75rem; min-height: 44px; }
+.check input { width: 24px; height: 24px; flex: none; accent-color: var(--ink); cursor: pointer; }
+.check label { margin: 0; font-weight: 400; cursor: pointer; }
+[aria-invalid="true"] { border-color: var(--err); border-width: 2px; }
+.err { margin: .35rem 0 0; color: var(--err); font-size: .9375rem; font-weight: 600; }
+.err::before { content: "Error: "; }
+.hp { position: absolute; left: -9999px; }
+.status { margin: 0; min-height: 1.5rem; font-weight: 600; }
+.status.bad { color: var(--err); }
+.after { margin: 0; font-size: .875rem; color: var(--muted); }
+.done { padding: 1.5rem; background: #fff; border: 1.5px solid var(--ink); border-radius: var(--radius); }
+.done h3 { font-size: 1.5rem; }
+.done p { margin: .5rem 0 0; }
+
+footer { padding: 2rem 0 3rem; background: var(--ink); color: var(--paper); text-align: center; }
+footer p { margin: 0; }
+footer .name { font: 700 1.25rem/1.2 var(--serif); letter-spacing: .1em; }
+footer .place { margin-top: .25rem; color: var(--gold); }
+
+@media (min-width: 40rem) {
+  .hero { padding: 2.5rem 0 4rem; }
+  .row { grid-template-columns: 1fr 1fr; }
+  .why { grid-template-columns: 1fr 1fr; }
+  .gallery { grid-template-columns: 1fr 1fr 1fr; }
+  .draft ul { columns: 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
