@@ -1,6 +1,6 @@
 // Données calculées pour la page /secret/ à partir de secret.json :
-// liste des infos encore à confirmer par l'équipe et affichage du bandeau d'aperçu
-// (jamais en production).
+// données structurées pour Google (fidèles à la fiche Google Maps), liste des infos
+// encore à confirmer par l'équipe et affichage du bandeau d'aperçu (jamais en production).
 const secret = require("./secret.json");
 
 function toConfirm() {
@@ -10,10 +10,39 @@ function toConfirm() {
     if (!t.photo) items.push(`${t.name}: photo`);
   }
   if (!secret.licence) items.push("TAT licence number");
-  if (!secret.contact.googleMaps) items.push("Google Maps link");
-  if (!secret.contact.replyHours) items.push("WhatsApp reply hours");
   if (!secret.team.text || !secret.team.photo) items.push("Who we are: text and team photo");
   return items;
+}
+
+// Uniquement des faits présents sur la fiche Google : pas de prix, pas d'avis, pas de description inventée.
+function jsonLd() {
+  const b = secret.business;
+  return {
+    "@context": "https://schema.org",
+    "@type": "TravelAgency",
+    name: b.name,
+    url: "https://zwaldtravelplanner.com/secret/",
+    image: "https://zwaldtravelplanner.com/images/secret/og-secret.jpg",
+    logo: "https://zwaldtravelplanner.com/images/secret/apple-touch-icon.png",
+    telephone: b.phone,
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: b.address.street,
+      addressLocality: b.address.locality,
+      addressRegion: b.address.region,
+      postalCode: b.address.postalCode,
+      addressCountry: b.address.country
+    },
+    geo: { "@type": "GeoCoordinates", latitude: b.geo.lat, longitude: b.geo.lng },
+    openingHoursSpecification: {
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+      opens: b.hours.opens,
+      closes: b.hours.closes
+    },
+    sameAs: [b.googleMaps],
+    parentOrganization: { "@type": "Organization", name: b.operator, url: "https://zwaldtravelplanner.com/" }
+  };
 }
 
 module.exports = function () {
@@ -23,6 +52,7 @@ module.exports = function () {
   }
 
   return {
+    jsonLd: jsonLd(),
     toConfirm: pending,
     // Netlify fournit CONTEXT=production uniquement pour le site en ligne.
     showDraftBanner: process.env.CONTEXT !== "production" && pending.length > 0
