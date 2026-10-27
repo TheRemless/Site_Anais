@@ -82,6 +82,30 @@ test("buildMessage : transfert avec bébé et siège bébé, champs vides omis",
   );
 });
 
+test("buildMessage : transfert en speedboat, sans ligne de siège", () => {
+  const s = baseState();
+  s.transfer = { from: "Koh Lanta", to: "Koh Phi Phi", time: "", adults: 2, children: 1, babies: 0, childSeat: true, babySeat: false, mode: "shared", vehicle: "speedboat" };
+  assert.equal(
+    F.buildMessage(s, TODAY),
+    [
+      "Hi Secret Travel & Tour!",
+      "I'd like a price for a transfer.",
+      "From: Koh Lanta",
+      "To: Koh Phi Phi",
+      "Date: Tomorrow (Sun 15 Nov)",
+      "Adults: 2",
+      "Children (3-11): 1",
+      "Shared speedboat"
+    ].join("\n")
+  );
+});
+
+test("buildMessage : transfert sans véhicule précisé (ancien brouillon) = minivan", () => {
+  const s = baseState();
+  delete s.transfer.vehicle;
+  assert.match(F.buildMessage(s, TODAY), /\nPrivate minivan$/);
+});
+
 test("buildMessage : excursion en bateau, enfants à 0 omis", () => {
   const s = baseState({ type: "boat", dateChoice: "other", dateOther: "2026-11-24" });
   s.boat = { tour: "Koh Rok & Koh Haa", adults: 2, children: 0, babies: 0, mode: "private" };

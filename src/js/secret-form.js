@@ -81,10 +81,13 @@
       if (clean(t.to)) lines.push("To: " + clean(t.to));
       if (dateLine) lines.push(dateLine);
       if (clean(t.time)) lines.push("Pickup or flight time: " + clean(t.time));
+      // Les anciens brouillons n'ont pas de véhicule : c'était forcément un minivan.
+      var vehicle = t.vehicle === "speedboat" ? "speedboat" : "minivan";
       travellers(lines, t);
-      if (t.children > 0 && t.childSeat) lines.push("Child seat needed");
-      if (t.babies > 0 && t.babySeat) lines.push("Baby seat needed");
-      lines.push(t.mode === "shared" ? "Shared minivan" : "Private minivan");
+      // Les sièges enfant et bébé ne concernent que le minivan.
+      if (vehicle === "minivan" && t.children > 0 && t.childSeat) lines.push("Child seat needed");
+      if (vehicle === "minivan" && t.babies > 0 && t.babySeat) lines.push("Baby seat needed");
+      lines.push((t.mode === "shared" ? "Shared " : "Private ") + vehicle);
     } else if (state.type === "boat") {
       var b = state.boat;
       lines.push("I'd like a price for a boat tour: " + clean(b.tour) + ".");

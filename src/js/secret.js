@@ -55,6 +55,7 @@
         adults: num("t-adults"),
         children: num("t-children"),
         babies: num("t-babies"),
+        vehicle: radio("t-vehicle") || "minivan",
         childSeat: el("t-childSeat").checked,
         babySeat: el("t-babySeat").checked,
         mode: radio("t-mode") || "private"
@@ -84,6 +85,7 @@
     el("t-childSeat").checked = !!s.transfer.childSeat;
     el("t-babySeat").checked = !!s.transfer.babySeat;
     setRadio("t-mode", s.transfer.mode);
+    setRadio("t-vehicle", s.transfer.vehicle || "minivan");
     selectValue("b-tour", s.boat.tour);
     el("b-adults").value = s.boat.adults;
     el("b-children").value = s.boat.children;
@@ -106,7 +108,9 @@
     var hotel = document.getElementById("hotel-field");
     hotel.hidden = type === "transfer";
     el("hotel").disabled = type === "transfer";
-    // La case siège n'apparaît que s'il y a au moins un enfant ou un bébé.
+    // Les sièges enfant et bébé ne concernent que le minivan,
+    // et chaque case n'apparaît que s'il y a au moins un enfant ou un bébé.
+    form.querySelector('[data-show-when="minivan"]').hidden = radio("t-vehicle") === "speedboat";
     form.querySelector('[data-show-when="children"]').hidden = num("t-children") < 1;
     form.querySelector('[data-show-when="babies"]').hidden = num("t-babies") < 1;
     form.querySelector('[data-show-when="other-date"]').hidden = radio("dateChoice") !== "other";
