@@ -1,6 +1,6 @@
 /* Page /secret/ : branchement du formulaire « What do you need? » sur la page.
    Onglets, choix de date, compteurs, brouillon gardé sur le téléphone, panneau du formulaire
-   ouvert depuis le catalogue et bouton WhatsApp flottant. La logique pure est dans secret-form.js. */
+   ouvert depuis le catalogue. La logique pure est dans secret-form.js. */
 (function () {
   "use strict";
 
@@ -12,7 +12,6 @@
   var slot = document.getElementById("ask-slot");
   var sheet = document.getElementById("sheet");
   var sheetBody = document.getElementById("sheet-body");
-  var fab = document.getElementById("fab");
   if (!form || !F) return;
 
   var lastTrigger = null;
@@ -207,7 +206,6 @@
       sheet.showModal();
     }
     store("sessionStorage", SHEET_KEY, "open");
-    if (fab) fab.hidden = true;
     return true;
   }
 
@@ -215,7 +213,6 @@
     slot.appendChild(form);
     slot.style.minHeight = "";
     store("sessionStorage", SHEET_KEY, null);
-    updateFab();
     if (lastTrigger && document.contains(lastTrigger)) lastTrigger.focus();
     lastTrigger = null;
   }
@@ -272,26 +269,6 @@
     var firstDate = form.querySelector('input[name="dateChoice"]:checked') || form.querySelector('input[name="dateChoice"]');
     firstDate.focus({ preventScroll: true });
   });
-
-  /* Bouton flottant : une fois le haut de page dépassé, mais pas quand le formulaire est à l'écran
-     ni quand le panneau est ouvert. */
-  var heroPassed = false;
-  var formVisible = false;
-  function updateFab() {
-    if (fab) fab.hidden = !heroPassed || formVisible || (sheet && sheet.open);
-  }
-  var hero = document.getElementById("hero");
-  if (fab && hero && "IntersectionObserver" in window) {
-    new IntersectionObserver(function (entries) {
-      var e = entries[0];
-      heroPassed = !e.isIntersecting && e.boundingClientRect.top < 0;
-      updateFab();
-    }).observe(hero);
-    new IntersectionObserver(function (entries) {
-      formVisible = entries[0].isIntersecting;
-      updateFab();
-    }).observe(slot);
-  }
 
   /* Restauration : brouillon du téléphone, puis panneau rouvert si la page a été rechargée pendant qu'il était ouvert. */
   var restored = F.restoreDraft(read("localStorage", DRAFT_KEY), new Date());
