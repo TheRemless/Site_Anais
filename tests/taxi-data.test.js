@@ -4,7 +4,7 @@ const taxi = require("../src/_data/taxi.json");
 const taxiView = require("../src/_data/taxiView.js");
 
 function entries() {
-  return [taxi.hero, taxi.rating, taxi.payment].concat(taxi.services, taxi.why, taxi.steps, taxi.faq);
+  return [taxi.hero, taxi.tours, taxi.rating, taxi.payment].concat(taxi.services, taxi.why, taxi.steps, taxi.faq);
 }
 
 test("taxi.json : chaque entrée porte un booléen confirmed", () => {
@@ -19,10 +19,14 @@ test("taxi.json : aucun prix et aucun contact direct dans les textes", () => {
   assert.doesNotMatch(all, /wa\.me|tel:|@outlook|mailto:/i);
 });
 
-test("taxi.json : le lien des excursions bateau pointe vers /secret/", () => {
-  const boats = taxi.services.find((s) => s.id === "boats");
-  assert.ok(boats, "service boats manquant");
-  assert.equal(boats.link.href, "/secret/");
+test("taxi.json : les tours et sorties en bateau sont confiés à Secret Travel & Tour", () => {
+  assert.equal(taxi.tours.link.href, "/secret/");
+  assert.match(taxi.tours.link.label, /Secret Travel & Tour/);
+  assert.match(taxi.tours.text, /Secret Travel & Tour/);
+  // VIP Taxi Lanta ne les propose plus lui-même dans sa liste de services.
+  const ids = taxi.services.map((s) => s.id);
+  assert.ok(!ids.includes("tours") && !ids.includes("boats"), ids.join(", "));
+  assert.ok(taxi.faq.some((f) => /Secret Travel & Tour/.test(f.a)), "la FAQ renvoie vers Secret");
 });
 
 test("taxiView : liste les entrées à confirmer, et la photo du hero seulement si elle manque", () => {
@@ -37,8 +41,8 @@ test("taxiView : liste les entrées à confirmer, et la photo du hero seulement 
 test("taxi.json : chaque photo a un chemin existant, des dimensions et un texte alternatif", () => {
   const fs = require("node:fs");
   const path = require("node:path");
-  const photos = [taxi.hero.photo].concat(taxi.gallery.photos, taxi.services.map((s) => s.photo)).filter(Boolean);
-  assert.ok(photos.length >= 4);
+  const photos = [taxi.hero.photo, taxi.tours.photo].concat(taxi.gallery.photos, taxi.services.map((s) => s.photo)).filter(Boolean);
+  assert.ok(photos.length >= 5);
   for (const p of photos) {
     assert.ok(fs.existsSync(path.join(__dirname, "../src", p.src)), p.src);
     assert.ok(p.width > 0 && p.height > 0, p.src);

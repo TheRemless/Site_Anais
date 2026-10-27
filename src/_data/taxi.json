@@ -56,6 +56,21 @@
       }
     ]
   },
+  "tours": {
+    "title": "Day tours and boat trips",
+    "text": "Private day tours around Koh Lanta and longtail or speedboat excursions are handled by Secret Travel & Tour. Choose your trip on their page and get a price on WhatsApp.",
+    "link": {
+      "href": "/secret/",
+      "label": "See Secret Travel & Tour"
+    },
+    "photo": {
+      "src": "/images/secret/koh-phi-phi.webp",
+      "width": 800,
+      "height": 596,
+      "alt": "A longtail boat in turquoise water below limestone cliffs"
+    },
+    "confirmed": false
+  },
   "services": [
     {
       "id": "airport",
@@ -79,25 +94,6 @@
       "text": "Private rides around the island.",
       "photo": null,
       "link": null,
-      "confirmed": false
-    },
-    {
-      "id": "tours",
-      "title": "Private day tours",
-      "text": "Half-day and full-day private tours around Koh Lanta: beaches, Old Town, waterfall, viewpoints.",
-      "photo": null,
-      "link": null,
-      "confirmed": false
-    },
-    {
-      "id": "boats",
-      "title": "Longtail and speedboat excursions",
-      "text": "Private or group trips by boat around Koh Lanta.",
-      "photo": null,
-      "link": {
-        "href": "/secret/",
-        "label": "See Secret Travel & Tour"
-      },
       "confirmed": false
     }
   ],
@@ -148,21 +144,6 @@
     "text": "Cash to the driver on the day. No prepayment. No hidden fees.",
     "confirmed": false
   },
-  "places": [
-    "Koh Lanta",
-    "Krabi Airport",
-    "Krabi Town",
-    "Ao Nang",
-    "Phuket Airport",
-    "Phuket Bus Terminal",
-    "Surat Thani Airport",
-    "Surat Thani Bus Terminal",
-    "Khao Lak",
-    "Khao Sok",
-    "Trang",
-    "Donsak Pier",
-    "Cheow Lan Pier"
-  ],
   "faq": [
     {
       "q": "Is the transfer private?",
@@ -185,9 +166,24 @@
       "confirmed": false
     },
     {
-      "q": "Do you offer private day tours around Koh Lanta?",
-      "a": "Yes. We offer half-day and full-day private tours to beaches, Old Town, waterfalls and viewpoints.",
+      "q": "Can I book day tours or boat trips too?",
+      "a": "Day tours around Koh Lanta and boat trips are handled by Secret Travel & Tour. You can choose a trip and ask for a price on their page.",
       "confirmed": false
     }
+  ],
+  "places": [
+    "Koh Lanta",
+    "Krabi Airport",
+    "Krabi Town",
+    "Ao Nang",
+    "Phuket Airport",
+    "Phuket Bus Terminal",
+    "Surat Thani Airport",
+    "Surat Thani Bus Terminal",
+    "Khao Lak",
+    "Khao Sok",
+    "Trang",
+    "Donsak Pier",
+    "Cheow Lan Pier"
   ]
 }
