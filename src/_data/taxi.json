@@ -64,10 +64,10 @@
       "label": "See Secret Travel & Tour"
     },
     "photo": {
-      "src": "/images/secret/koh-phi-phi.webp",
-      "width": 800,
-      "height": 596,
-      "alt": "A longtail boat in turquoise water below limestone cliffs"
+      "src": "/images/taxi/van-seats.webp",
+      "width": 900,
+      "height": 675,
+      "alt": "Minivan interior with diamond-stitched tan leather seats and a lit ceiling"
     },
     "confirmed": false
   },
