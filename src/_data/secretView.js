@@ -34,12 +34,6 @@ function jsonLd() {
       addressCountry: b.address.country
     },
     geo: { "@type": "GeoCoordinates", latitude: b.geo.lat, longitude: b.geo.lng },
-    openingHoursSpecification: {
-      "@type": "OpeningHoursSpecification",
-      dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-      opens: b.hours.opens,
-      closes: b.hours.closes
-    },
     sameAs: [b.googleMaps],
     parentOrganization: { "@type": "Organization", name: b.operator, url: "https://zwaldtravelplanner.com/" }
   };

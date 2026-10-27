@@ -209,7 +209,8 @@
     refresh();
     save();
     clearErrors();
-    form.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    // Saut direct : le défilement animé ne se déclenche pas partout et laissait parfois la page sur place.
+    document.getElementById("tell-us").scrollIntoView({ block: "start" });
     var firstDate = form.querySelector('input[name="dateChoice"]:checked') || form.querySelector('input[name="dateChoice"]');
     firstDate.focus({ preventScroll: true });
   });

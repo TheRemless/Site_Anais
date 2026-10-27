@@ -18,6 +18,10 @@ test("secret.json : lieux suggérés pour les transferts, sans doublon", () => {
   assert.equal(new Set(secret.places).size, secret.places.length);
 });
 
+test("secret.json : phrase des inclusions des excursions en bateau", () => {
+  assert.match(secret.boatToursIncluded, /hotel transfer, lunch and snorkel gear/);
+});
+
 test("secret.json : chaque excursion ou activité est complète", () => {
   for (const t of items) {
     assert.ok(t.name && t.description, t.id);
@@ -41,7 +45,6 @@ test("secret.json : infos de la fiche Google complètes et raison sociale offici
   assert.match(b.phone, /^\+66\d{9}$/);
   assert.ok(b.address.street && b.address.locality && b.address.region && b.address.postalCode);
   assert.equal(typeof b.geo.lat, "number");
-  assert.match(b.hours.opens, /^\d\d:\d\d$/);
   assert.match(b.googleMaps, /^https:\/\/maps\.google\.com\/\?cid=\d+$/);
 });
 
@@ -51,7 +54,7 @@ test("secretView : données structurées TravelAgency fidèles à la fiche", () 
   assert.equal(ld.name, secret.business.name);
   assert.equal(ld.telephone, secret.business.phone);
   assert.equal(ld.address.postalCode, "81150");
-  assert.equal(ld.openingHoursSpecification.dayOfWeek.length, 7);
+  assert.equal(ld.openingHoursSpecification, undefined);
   assert.equal(ld.parentOrganization.name, "Zwald Travel Planner Co., Ltd.");
   assert.deepEqual(ld.sameAs, [secret.business.googleMaps]);
   assert.equal(ld.priceRange, undefined);
