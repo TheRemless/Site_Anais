@@ -4,7 +4,21 @@
     "owner": "Mr. Brown",
     "tagline": "Private taxis & minivans",
     "place": "Koh Lanta, Krabi, Thailand",
-    "reviewsUrl": "https://maps.app.goo.gl/hnm3donEq7uR56Dr6"
+    "reviewsUrl": "https://maps.app.goo.gl/hnm3donEq7uR56Dr6",
+    "areaServed": [
+      "Koh Lanta",
+      "Krabi",
+      "Ao Nang",
+      "Phuket",
+      "Surat Thani",
+      "Trang",
+      "Khao Lak",
+      "Khao Sok"
+    ],
+    "sameAs": [
+      "https://maps.app.goo.gl/hnm3donEq7uR56Dr6",
+      "https://viptaxilanta.wordpress.com/"
+    ]
   },
   "hero": {
     "title": "Private taxi & minivan in Koh Lanta",
@@ -148,5 +162,32 @@
     "Trang",
     "Donsak Pier",
     "Cheow Lan Pier"
+  ],
+  "faq": [
+    {
+      "q": "Is the transfer private?",
+      "a": "Yes. Every transfer is private, with no sharing, so you travel only with your group.",
+      "confirmed": false
+    },
+    {
+      "q": "How do I pay for my taxi or minivan?",
+      "a": "You pay in cash to the driver on the day of the transfer. There is no prepayment and no hidden fees.",
+      "confirmed": false
+    },
+    {
+      "q": "How do I book a transfer from Koh Lanta?",
+      "a": "Fill in the request form on this page. It opens WhatsApp with your message ready, and the team replies with the price and the details.",
+      "confirmed": false
+    },
+    {
+      "q": "Which places do you drive to from Koh Lanta?",
+      "a": "Krabi Town and Krabi airport, Ao Nang, Phuket and Phuket airport, Surat Thani airport and bus terminal, Trang, Khao Lak, Khao Sok, Donsak Pier and Cheow Lan Pier, and more.",
+      "confirmed": false
+    },
+    {
+      "q": "Do you offer private day tours around Koh Lanta?",
+      "a": "Yes. We offer half-day and full-day private tours to beaches, Old Town, waterfalls and viewpoints.",
+      "confirmed": false
+    }
   ]
 }
