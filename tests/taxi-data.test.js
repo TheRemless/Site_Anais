@@ -43,7 +43,18 @@ test("taxi.json : chaque photo a un chemin existant, des dimensions et un texte 
     assert.ok(fs.existsSync(path.join(__dirname, "../src", p.src)), p.src);
     assert.ok(p.width > 0 && p.height > 0, p.src);
     assert.ok(p.alt && p.alt.length > 10, p.src);
+    // Chaque fichier cité dans srcset ("chemin 900w, chemin 1800w") doit exister aussi.
+    for (const candidate of (p.srcset || "").split(",").filter(Boolean)) {
+      const file = candidate.trim().split(/\s+/)[0];
+      assert.ok(fs.existsSync(path.join(__dirname, "../src", file)), file);
+    }
   }
+});
+
+test("taxi.json : destinations proposées dans From et To, sans doublon", () => {
+  assert.ok(taxi.places.length >= 8);
+  assert.equal(new Set(taxi.places).size, taxi.places.length);
+  for (const place of taxi.places) assert.ok(place.trim() && !/[<>"]/.test(place), place);
 });
 
 test("taxiView : bandeau visible hors production, masqué en production", () => {

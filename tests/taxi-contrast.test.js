@@ -26,15 +26,16 @@ function ratio(a, b) {
 
 // [texte, fond] : tous les couples de texte réellement utilisés dans la page.
 const PAIRS = [
+  ["text", "bg"],
+  ["mute", "bg"],
+  ["amber", "bg"],
+  ["text", "bg-2"],
+  ["mute", "bg-2"],
+  ["ink", "amber"],
   ["ink", "paper"],
-  ["muted", "paper"],
-  ["ink", "paper-2"],
-  ["muted", "paper-2"],
-  ["gold-deep", "paper"],
+  ["mute-ink", "paper"],
   ["err", "paper"],
-  ["ink", "gold"],
-  ["paper", "ink"],
-  ["gold", "ink"]
+  ["paper", "ink"]
 ];
 
 for (const [fg, bg] of PAIRS) {
