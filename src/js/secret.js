@@ -1,20 +1,15 @@
 /* Page /secret/ : branchement du formulaire « What do you need? » sur la page.
-   Onglets, choix de date, compteurs, brouillon gardé sur le téléphone, panneau du formulaire
-   ouvert depuis le catalogue. La logique pure est dans secret-form.js. */
+   Onglets, choix de date, compteurs, brouillon gardé sur le téléphone et liens « Get a price »
+   qui mènent au formulaire. La logique pure est dans secret-form.js. */
 (function () {
   "use strict";
 
   var F = window.SECRET_FORM;
   var DRAFT_KEY = "secret-form-v1";
-  var SHEET_KEY = "secret-sheet-v1";
 
   var form = document.getElementById("ask");
-  var slot = document.getElementById("ask-slot");
-  var sheet = document.getElementById("sheet");
-  var sheetBody = document.getElementById("sheet-body");
   if (!form || !F) return;
 
-  var lastTrigger = null;
 
   /* Stockage : peut être indisponible (navigation privée, stockage bloqué). */
   function store(area, key, value) {
@@ -195,58 +190,7 @@
     refresh();
   });
 
-  /* Panneau : l'unique formulaire de la page est déplacé dans le <dialog>, puis remis à sa place.
-     La hauteur de son emplacement est gardée pour que la page ne saute pas. */
-  function openSheet(trigger) {
-    if (!sheet || typeof sheet.showModal !== "function") return false;
-    lastTrigger = trigger || null;
-    if (!sheet.open) {
-      slot.style.minHeight = slot.offsetHeight + "px";
-      sheetBody.appendChild(form);
-      sheet.showModal();
-    }
-    store("sessionStorage", SHEET_KEY, "open");
-    return true;
-  }
-
-  function onSheetClosed() {
-    slot.appendChild(form);
-    slot.style.minHeight = "";
-    store("sessionStorage", SHEET_KEY, null);
-    if (lastTrigger && document.contains(lastTrigger)) lastTrigger.focus();
-    lastTrigger = null;
-  }
-
-  if (sheet) {
-    sheet.addEventListener("close", onSheetClosed);
-    document.getElementById("sheet-close").addEventListener("click", function () { sheet.close(); });
-    // Un toucher sur le fond assombri (hors du panneau) ferme le panneau.
-    sheet.addEventListener("click", function (event) {
-      if (event.target !== sheet) return;
-      var r = sheet.getBoundingClientRect();
-      var inside = event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom;
-      if (!inside) sheet.close();
-    });
-    // Glisser l'en-tête du panneau vers le bas le ferme.
-    var head = sheet.querySelector(".sheet-head");
-    var startY = null;
-    head.addEventListener("touchstart", function (e) { startY = e.touches[0].clientY; }, { passive: true });
-    head.addEventListener("touchmove", function (e) {
-      if (startY === null) return;
-      var dy = Math.max(0, e.touches[0].clientY - startY);
-      sheet.style.transform = "translateY(" + dy + "px)";
-    }, { passive: true });
-    head.addEventListener("touchend", function (e) {
-      if (startY === null) return;
-      var dy = e.changedTouches[0].clientY - startY;
-      startY = null;
-      sheet.style.transform = "";
-      if (dy > 80) sheet.close();
-    });
-  }
-
-  /* Liens « Get a price » : présélectionnent le service et ouvrent le panneau.
-     Sans <dialog> (très vieux navigateurs), on remonte au formulaire du haut. */
+  /* Liens « Get a price » : présélectionnent le service et descendent jusqu'au formulaire. */
   var TYPE_FIELD = { transfer: "t-to", boat: "b-tour", activity: "a-activity" };
   function preselect(type, value) {
     var field = el(TYPE_FIELD[type]);
@@ -265,16 +209,15 @@
     refresh();
     save();
     clearErrors();
-    if (!openSheet(link)) form.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    form.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
     var firstDate = form.querySelector('input[name="dateChoice"]:checked') || form.querySelector('input[name="dateChoice"]');
     firstDate.focus({ preventScroll: true });
   });
 
-  /* Restauration : brouillon du téléphone, puis panneau rouvert si la page a été rechargée pendant qu'il était ouvert. */
+  /* Restauration du brouillon gardé sur le téléphone. */
   var restored = F.restoreDraft(read("localStorage", DRAFT_KEY), new Date());
   if (restored) {
     try { setState(restored); } catch (e) { store("localStorage", DRAFT_KEY, null); }
   }
   refresh();
-  if (read("sessionStorage", SHEET_KEY) === "open") openSheet(null);
 })();
