@@ -54,7 +54,7 @@ test("buildMessage : transfert complet, une info par ligne, sans hôtel", () => 
       "From: Lanta Sand Resort",
       "To: Krabi Airport",
       "Date: Tomorrow (Sun 15 Nov)",
-      "Pickup or flight time: 10:30",
+      "Pickup time: 10:30",
       "Adults: 2",
       "Children (3-11): 1",
       "Child seat needed",

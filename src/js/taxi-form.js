@@ -87,7 +87,7 @@
     if (clean(v.from)) lines.push("From: " + clean(v.from));
     if (clean(v.to)) lines.push("To: " + clean(v.to));
     if (date && isRealDate(date)) lines.push("Date: " + formatDate(date, today));
-    if (clean(v.time)) lines.push("Pickup or flight time: " + clean(v.time));
+    if (clean(v.time)) lines.push("Pickup time: " + clean(v.time));
     if (adults > 0) lines.push("Adults: " + adults);
     if (children > 0) lines.push("Children (3-11): " + children);
     if (babies > 0) lines.push("Babies (0-2): " + babies);

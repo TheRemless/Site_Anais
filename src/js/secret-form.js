@@ -80,7 +80,7 @@
       if (clean(t.from)) lines.push("From: " + clean(t.from));
       if (clean(t.to)) lines.push("To: " + clean(t.to));
       if (dateLine) lines.push(dateLine);
-      if (clean(t.time)) lines.push("Pickup or flight time: " + clean(t.time));
+      if (clean(t.time)) lines.push("Pickup time: " + clean(t.time));
       // Les anciens brouillons n'ont pas de véhicule : c'était forcément un minivan.
       var vehicle = t.vehicle === "speedboat" ? "speedboat" : "minivan";
       travellers(lines, t);
