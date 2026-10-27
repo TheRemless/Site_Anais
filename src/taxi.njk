@@ -115,14 +115,17 @@ eleventyExcludeFromCollections: true
   </section>
 
   <section class="card" id="request" aria-labelledby="h-request">
-    <h2 id="h-request">Request a transfer</h2>
-    <p class="intro">Tell us where and when. Your message is ready to send on WhatsApp and the team replies with a price.</p>
-    <a class="btn nojs-cta" href="https://wa.me/66958683846?text=Hi%20VIP%20Taxi%20Lanta%21">Message us on WhatsApp</a>
+    <div class="card-intro">
+      <h2 id="h-request">Request a transfer</h2>
+      <p class="intro">Tell us where and when. Your message is ready to send on WhatsApp and the team replies with a price.</p>
+      <a class="btn nojs-cta" href="https://wa.me/66958683846?text=Hi%20VIP%20Taxi%20Lanta%21">Message us on WhatsApp</a>
+    </div>
     <form id="taxi-form" novalidate>
       <div class="row">
-        {{ field("from", "From", "text", 'list="places" autocomplete="off"', "Your hotel, an airport, a pier, a town.", true) }}
+        {{ field("from", "From", "text", 'list="places" autocomplete="off"', "", true) }}
         {{ field("to", "To", "text", 'list="places" autocomplete="off"', "", true) }}
       </div>
+      <p class="hint hint-pair">Use your hotel, an airport, a pier or a town.</p>
       <datalist id="places">{% for place in taxi.places %}<option value="{{ place }}">{% endfor %}</datalist>
 
       <fieldset class="field" aria-describedby="e-date">
