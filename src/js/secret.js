@@ -257,12 +257,14 @@
     else field.value = value;
   }
   document.addEventListener("click", function (event) {
-    var link = event.target.closest("a.get[data-type]");
+    var link = event.target.closest("a.get[data-type], a[data-open-form]");
     if (!link) return;
     event.preventDefault();
     var type = link.getAttribute("data-type");
-    setRadio("type", type);
-    preselect(type, link.getAttribute("data-value"));
+    if (type) {
+      setRadio("type", type);
+      if (link.getAttribute("data-value")) preselect(type, link.getAttribute("data-value"));
+    }
     refresh();
     save();
     clearErrors();
@@ -271,15 +273,22 @@
     firstDate.focus({ preventScroll: true });
   });
 
-  /* Bouton flottant : seulement une fois le formulaire du haut dépassé, jamais quand le panneau est ouvert. */
-  var formAbove = false;
+  /* Bouton flottant : une fois le haut de page dépassé, mais pas quand le formulaire est à l'écran
+     ni quand le panneau est ouvert. */
+  var heroPassed = false;
+  var formVisible = false;
   function updateFab() {
-    if (fab) fab.hidden = !formAbove || (sheet && sheet.open);
+    if (fab) fab.hidden = !heroPassed || formVisible || (sheet && sheet.open);
   }
-  if (fab && "IntersectionObserver" in window) {
+  var hero = document.getElementById("hero");
+  if (fab && hero && "IntersectionObserver" in window) {
     new IntersectionObserver(function (entries) {
       var e = entries[0];
-      formAbove = !e.isIntersecting && e.boundingClientRect.top < 0;
+      heroPassed = !e.isIntersecting && e.boundingClientRect.top < 0;
+      updateFab();
+    }).observe(hero);
+    new IntersectionObserver(function (entries) {
+      formVisible = entries[0].isIntersecting;
       updateFab();
     }).observe(slot);
   }
