@@ -22,6 +22,8 @@ body {
   font: 400 1rem/1.6 var(--sans);
 }
 img { max-width: 100%; height: auto; display: block; }
+/* Les règles display (form, .check…) ne doivent jamais réafficher un élément hidden. */
+[hidden] { display: none !important; }
 a { color: var(--gold-deep); }
 .wrap { width: 100%; max-width: 40rem; margin: 0 auto; padding: 0 1rem; }
 
@@ -35,8 +37,8 @@ a { color: var(--gold-deep); }
 
 /* Bandeau d'aperçu : jamais en production (voir taxiView.js). */
 .draft { background: var(--paper-2); border-bottom: 1.5px solid var(--ink); padding: .75rem 1rem; font-size: .875rem; }
-.draft p { margin: 0 0 .25rem; }
-.draft ul { margin: 0; padding-left: 1.1rem; columns: 1; }
+.draft summary { min-height: 44px; display: flex; align-items: center; gap: .35rem; cursor: pointer; }
+.draft ul { margin: .5rem 0 0; padding-left: 1.1rem; columns: 1; }
 
 /* Hero */
 .hero { background: var(--paper-2); border-bottom: 3px solid var(--gold); padding: 1.5rem 0 2.5rem; }
@@ -107,7 +109,7 @@ textarea { min-height: 7rem; resize: vertical; }
 .checks { display: grid; gap: .5rem; }
 .check { display: flex; align-items: center; gap: .75rem; min-height: 44px; }
 .check input { width: 24px; height: 24px; flex: none; accent-color: var(--ink); cursor: pointer; }
-.check label { margin: 0; font-weight: 400; cursor: pointer; }
+.check label { flex: 1; display: flex; align-items: center; min-height: 44px; margin: 0; font-weight: 400; cursor: pointer; }
 [aria-invalid="true"] { border-color: var(--err); border-width: 2px; }
 .err { margin: .35rem 0 0; color: var(--err); font-size: .9375rem; font-weight: 600; }
 .err::before { content: "Error: "; }

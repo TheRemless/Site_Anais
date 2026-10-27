@@ -45,10 +45,10 @@ eleventyExcludeFromCollections: true
 <a class="skip" href="#main">Skip to content</a>
 
 {% if taxiView.showDraftBanner %}
-<aside class="draft" role="note">
-  <p><strong>Preview only.</strong> Not confirmed by VIP Taxi Lanta yet:</p>
+<details class="draft">
+  <summary><span><strong>Preview only.</strong> {{ taxiView.toConfirm | length }} items not confirmed by VIP Taxi Lanta yet</span></summary>
   <ul>{% for item in taxiView.toConfirm %}<li>{{ item }}</li>{% endfor %}</ul>
-</aside>
+</details>
 {% endif %}
 
 <header class="hero">
