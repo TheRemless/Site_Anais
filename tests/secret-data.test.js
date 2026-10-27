@@ -13,9 +13,9 @@ test("secret.json : identifiants uniques", () => {
   assert.equal(new Set(ids).size, ids.length);
 });
 
-test("secret.json : chaque trajet a ses coordonnées, sa durée et son étiquette de carte", () => {
+test("secret.json : chaque trajet a ses coordonnées et son étiquette de carte", () => {
   for (const r of secret.routes) {
-    assert.ok(r.name && r.duration, r.id);
+    assert.ok(r.name, r.id);
     assert.equal(typeof r.lat, "number", r.id);
     assert.equal(typeof r.lng, "number", r.id);
     assert.ok(Array.isArray(r.label) && r.label.length === 3, r.id);

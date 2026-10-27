@@ -12,7 +12,7 @@ function project(lat, lng) {
 function toConfirm() {
   const items = [];
   for (const r of secret.routes) {
-    if (!r.confirmed) items.push(`Transfer to ${r.name} (${r.duration})`);
+    if (!r.confirmed) items.push(`Transfers to ${r.name}`);
   }
   for (const t of secret.tours.concat(secret.activities)) {
     if (!t.confirmed) items.push(`${t.name}: description and details`);
