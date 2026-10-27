@@ -4,24 +4,19 @@ const F = require("../src/js/taxi-form.js");
 
 const TODAY = "2026-11-14"; // un samedi
 
-function valid(overrides) {
+function values(overrides) {
   return Object.assign(
     {
-      name: "Claire Martin",
-      phone: "+33 6 12 34 56 78",
       from: "Lanta Sand Resort",
       to: "Krabi Airport",
       date_choice: "tomorrow",
       date_other: "",
       time: "10:30",
-      adults: "2",
-      children: "1",
-      babies: "0",
+      adults: 2,
+      children: 1,
+      babies: 0,
       child_seat: true,
-      baby_seat: false,
-      notes: "Flight TG123",
-      consent: true,
-      bot_field: ""
+      baby_seat: false
     },
     overrides
   );
@@ -46,83 +41,73 @@ test("resolveDate : Today, Tomorrow et Other date", () => {
   assert.equal(F.resolveDate("", "", TODAY), "");
 });
 
-test("validate : une demande complète est valide", () => {
-  assert.deepEqual(F.validate(valid(), TODAY), {});
+test("formatDate : Today et Tomorrow en toutes lettres, sinon jour et année", () => {
+  assert.equal(F.formatDate("2026-11-14", TODAY), "Today (Sat 14 Nov)");
+  assert.equal(F.formatDate("2026-11-15", TODAY), "Tomorrow (Sun 15 Nov)");
+  assert.equal(F.formatDate("2026-12-24", TODAY), "Thu 24 Dec 2026");
 });
 
-test("validate : les champs obligatoires vides sont signalés", () => {
-  const errors = F.validate(
-    valid({ name: " ", phone: "", from: "", to: "", date_choice: "", time: "", adults: "", consent: false }),
-    TODAY
+test("buildMessage : un transfert complet, une info par ligne", () => {
+  assert.equal(
+    F.buildMessage(values(), TODAY),
+    [
+      "Hi VIP Taxi Lanta!",
+      "I'd like a price for a transfer.",
+      "From: Lanta Sand Resort",
+      "To: Krabi Airport",
+      "Date: Tomorrow (Sun 15 Nov)",
+      "Pickup or flight time: 10:30",
+      "Adults: 2",
+      "Children (3-11): 1",
+      "Child seat needed"
+    ].join("\n")
   );
-  assert.deepEqual(Object.keys(errors).sort(), ["adults", "consent", "date", "from", "name", "phone", "time", "to"]);
 });
 
-test("validate : Other date demande une date réelle, d'aujourd'hui ou plus tard", () => {
-  assert.match(F.validate(valid({ date_choice: "other", date_other: "" }), TODAY).date, /Choose your date/);
-  assert.match(F.validate(valid({ date_choice: "other", date_other: "2026-02-30" }), TODAY).date, /valid date/);
-  assert.match(F.validate(valid({ date_choice: "other", date_other: "2026-11-13" }), TODAY).date, /today or a later date/);
-  assert.equal(F.validate(valid({ date_choice: "other", date_other: TODAY }), TODAY).date, undefined);
+test("buildMessage : les champs vides ne figurent pas dans le message", () => {
+  const message = F.buildMessage(values({ time: "", children: 0, child_seat: false }), TODAY);
+  assert.doesNotMatch(message, /Pickup or flight time/);
+  assert.doesNotMatch(message, /Children/);
+  assert.doesNotMatch(message, /seat/);
+  assert.match(message, /Adults: 2/);
 });
 
-test("validate : au moins un adulte, comptes entiers, 20 personnes au plus", () => {
-  assert.match(F.validate(valid({ adults: "0" }), TODAY).adults, /at least 1 adult/);
-  assert.match(F.validate(valid({ adults: "abc" }), TODAY).adults, /at least 1 adult/);
-  assert.match(F.validate(valid({ children: "-1" }), TODAY).adults, /whole numbers/);
-  assert.match(F.validate(valid({ babies: "1.5" }), TODAY).adults, /whole numbers/);
-  assert.match(F.validate(valid({ adults: "15", children: "4", babies: "2" }), TODAY).adults, /20 passengers/);
-  assert.equal(F.validate(valid({ adults: "20", children: "0", babies: "0" }), TODAY).adults, undefined);
+test("buildMessage : bébés et siège bébé", () => {
+  const message = F.buildMessage(values({ children: 0, child_seat: false, babies: 1, baby_seat: true }), TODAY);
+  assert.match(message, /Babies \(0-2\): 1/);
+  assert.match(message, /Baby seat needed/);
 });
 
-test("validate : téléphone avec indicatif, espaces et tirets tolérés", () => {
-  for (const ok of ["+33 6 12 34 56 78", "+66-95-868-3846", "0958683846", "(+66) 95 868 3846"]) {
-    assert.equal(F.validate(valid({ phone: ok }), TODAY).phone, undefined, ok);
-  }
-  for (const bad of ["123", "abc", "+33 6 12 AB 56 78"]) {
-    assert.match(F.validate(valid({ phone: bad }), TODAY).phone, /country code/, bad);
-  }
+test("buildMessage : un siège coché sans enfant ni bébé est ignoré", () => {
+  const message = F.buildMessage(values({ children: 0, babies: 0, child_seat: true, baby_seat: true }), TODAY);
+  assert.doesNotMatch(message, /seat/);
 });
 
-test("validate : l'heure doit être au format HH:MM", () => {
-  assert.equal(F.validate(valid({ time: "00:00" }), TODAY).time, undefined);
-  assert.equal(F.validate(valid({ time: "23:59" }), TODAY).time, undefined);
-  assert.match(F.validate(valid({ time: "24:00" }), TODAY).time, /pick-up or flight time/);
-  assert.match(F.validate(valid({ time: "9h" }), TODAY).time, /pick-up or flight time/);
+test("buildMessage : espaces autour des lieux retirés", () => {
+  const message = F.buildMessage(values({ from: "  Long Beach  ", to: " Phuket Airport " }), TODAY);
+  assert.match(message, /^From: Long Beach$/m);
+  assert.match(message, /^To: Phuket Airport$/m);
 });
 
-test("encodeBody : relisible par URLSearchParams, avec le nom du formulaire et la date résolue", () => {
-  const params = new URLSearchParams(F.encodeBody(valid({ name: "  Zoë & Co  " }), TODAY));
-  assert.equal(params.get("form-name"), "taxi");
-  assert.equal(params.get("name"), "Zoë & Co");
-  assert.equal(params.get("phone"), "+33 6 12 34 56 78");
-  assert.equal(params.get("from"), "Lanta Sand Resort");
-  assert.equal(params.get("to"), "Krabi Airport");
-  assert.equal(params.get("date"), "2026-11-15");
-  assert.equal(params.get("time"), "10:30");
-  assert.equal(params.get("bot-field"), "");
+test("waUrl : numéro de WhatsApp d'Anaïs et message encodé", () => {
+  const url = F.waUrl("Hi VIP Taxi Lanta!\nFrom: Zoë & Co");
+  assert.ok(url.startsWith("https://wa.me/66958683846?text="));
+  assert.equal(decodeURIComponent(url.split("?text=")[1]), "Hi VIP Taxi Lanta!\nFrom: Zoë & Co");
+  assert.match(url, /%0A/);
 });
 
-test("encodeBody : la répartition des passagers est en clair", () => {
-  const params = new URLSearchParams(F.encodeBody(valid({ adults: "2", children: "1", babies: "1" }), TODAY));
-  assert.equal(params.get("adults"), "2");
-  assert.equal(params.get("children"), "1");
-  assert.equal(params.get("babies"), "1");
-  assert.equal(params.get("passengers"), "2 adults, 1 child, 1 baby");
-  const adultsOnly = new URLSearchParams(F.encodeBody(valid({ adults: "1", children: "0", babies: "0" }), TODAY));
-  assert.equal(adultsOnly.get("passengers"), "1 adult");
+test("validate : une demande complète est valide", () => {
+  assert.deepEqual(F.validate(values(), TODAY), {});
 });
 
-test("encodeBody : un siège n'est demandé que s'il y a un enfant ou un bébé", () => {
-  const withKids = new URLSearchParams(F.encodeBody(valid({ children: "1", babies: "1", child_seat: true, baby_seat: true }), TODAY));
-  assert.equal(withKids.get("child_seat"), "Yes");
-  assert.equal(withKids.get("baby_seat"), "Yes");
-  // Case restée cochée après avoir remis les compteurs à zéro : ignorée.
-  const noKids = new URLSearchParams(F.encodeBody(valid({ children: "0", babies: "0", child_seat: true, baby_seat: true }), TODAY));
-  assert.equal(noKids.get("child_seat"), "No");
-  assert.equal(noKids.get("baby_seat"), "No");
+test("validate : départ, arrivée, date et un adulte sont obligatoires, l'heure ne l'est pas", () => {
+  const errors = F.validate(values({ from: " ", to: "", date_choice: "", adults: 0, time: "" }), TODAY);
+  assert.deepEqual(Object.keys(errors).sort(), ["adults", "date", "from", "to"]);
 });
 
-test("encodeBody : consentement en Yes ou No", () => {
-  assert.equal(new URLSearchParams(F.encodeBody(valid(), TODAY)).get("consent"), "Yes");
-  assert.equal(new URLSearchParams(F.encodeBody(valid({ consent: false }), TODAY)).get("consent"), "No");
+test("validate : Other date doit être une vraie date, d'aujourd'hui ou plus tard", () => {
+  assert.match(F.validate(values({ date_choice: "other", date_other: "" }), TODAY).date, /Choose a date/);
+  assert.match(F.validate(values({ date_choice: "other", date_other: "2026-02-30" }), TODAY).date, /Choose a date/);
+  assert.match(F.validate(values({ date_choice: "other", date_other: "2026-11-13" }), TODAY).date, /already passed/);
+  assert.equal(F.validate(values({ date_choice: "other", date_other: TODAY }), TODAY).date, undefined);
 });
