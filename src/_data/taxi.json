@@ -4,7 +4,21 @@
     "owner": "Mr. Brown",
     "tagline": "Private taxis & minivans",
     "place": "Koh Lanta, Krabi, Thailand",
-    "reviewsUrl": "https://maps.app.goo.gl/hnm3donEq7uR56Dr6"
+    "reviewsUrl": "https://maps.app.goo.gl/hnm3donEq7uR56Dr6",
+    "areaServed": [
+      "Koh Lanta",
+      "Krabi",
+      "Ao Nang",
+      "Phuket",
+      "Surat Thani",
+      "Trang",
+      "Khao Lak",
+      "Khao Sok"
+    ],
+    "sameAs": [
+      "https://maps.app.goo.gl/hnm3donEq7uR56Dr6",
+      "https://viptaxilanta.wordpress.com/"
+    ]
   },
   "hero": {
     "title": "Private taxi & minivan in Koh Lanta",
@@ -42,6 +56,21 @@
       }
     ]
   },
+  "tours": {
+    "title": "Day tours and boat trips",
+    "text": "Private day tours around Koh Lanta and longtail or speedboat excursions are handled by Secret Travel & Tour. Choose your trip on their page and get a price on WhatsApp.",
+    "link": {
+      "href": "/secret/",
+      "label": "See Secret Travel & Tour"
+    },
+    "photo": {
+      "src": "/images/secret/koh-phi-phi.webp",
+      "width": 800,
+      "height": 596,
+      "alt": "A longtail boat in turquoise water below limestone cliffs"
+    },
+    "confirmed": false
+  },
   "services": [
     {
       "id": "airport",
@@ -65,25 +94,6 @@
       "text": "Private rides around the island.",
       "photo": null,
       "link": null,
-      "confirmed": false
-    },
-    {
-      "id": "tours",
-      "title": "Private day tours",
-      "text": "Half-day and full-day private tours around Koh Lanta: beaches, Old Town, waterfall, viewpoints.",
-      "photo": null,
-      "link": null,
-      "confirmed": false
-    },
-    {
-      "id": "boats",
-      "title": "Longtail and speedboat excursions",
-      "text": "Private or group trips by boat around Koh Lanta.",
-      "photo": null,
-      "link": {
-        "href": "/secret/",
-        "label": "See Secret Travel & Tour"
-      },
       "confirmed": false
     }
   ],
@@ -134,6 +144,33 @@
     "text": "Cash to the driver on the day. No prepayment. No hidden fees.",
     "confirmed": false
   },
+  "faq": [
+    {
+      "q": "Is the transfer private?",
+      "a": "Yes. Every transfer is private, with no sharing, so you travel only with your group.",
+      "confirmed": false
+    },
+    {
+      "q": "How do I pay for my taxi or minivan?",
+      "a": "You pay in cash to the driver on the day of the transfer. There is no prepayment and no hidden fees.",
+      "confirmed": false
+    },
+    {
+      "q": "How do I book a transfer from Koh Lanta?",
+      "a": "Fill in the request form on this page. It opens WhatsApp with your message ready, and the team replies with the price and the details.",
+      "confirmed": false
+    },
+    {
+      "q": "Which places do you drive to from Koh Lanta?",
+      "a": "Krabi Town and Krabi airport, Ao Nang, Phuket and Phuket airport, Surat Thani airport and bus terminal, Trang, Khao Lak, Khao Sok, Donsak Pier and Cheow Lan Pier, and more.",
+      "confirmed": false
+    },
+    {
+      "q": "Can I book day tours or boat trips too?",
+      "a": "Day tours around Koh Lanta and boat trips are handled by Secret Travel & Tour. You can choose a trip and ask for a price on their page.",
+      "confirmed": false
+    }
+  ],
   "places": [
     "Koh Lanta",
     "Krabi Airport",
