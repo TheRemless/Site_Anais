@@ -137,15 +137,6 @@ eleventyExcludeFromCollections: true
     <p class="pay">{{ taxi.payment.text }}</p>
   </section>
 
-  <section class="sec" aria-labelledby="h-faq">
-    <h2 id="h-faq">Common questions</h2>
-    <div class="faq">
-      {% for f in taxi.faq %}
-      <div><h3>{{ f.q }}</h3><p>{{ f.a }}</p></div>
-      {% endfor %}
-    </div>
-  </section>
-
   <section class="card" id="request" aria-labelledby="h-request">
     <div class="card-intro">
       <h2 id="h-request">Request a transfer</h2>
@@ -195,6 +186,15 @@ eleventyExcludeFromCollections: true
       </button>
       <p class="note">Opens WhatsApp with your message ready. Your details stay on your phone until you send.</p>
     </form>
+  </section>
+
+  <section class="sec" aria-labelledby="h-faq">
+    <h2 id="h-faq">Common questions</h2>
+    <div class="faq">
+      {% for f in taxi.faq %}
+      <div><h3>{{ f.q }}</h3><p>{{ f.a }}</p></div>
+      {% endfor %}
+    </div>
   </section>
 </main>
 

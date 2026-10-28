@@ -76,7 +76,7 @@
     {
       "id": "airport",
       "title": "Airport transfers",
-      "text": "From and to Krabi, Phuket and Surat Thani airports.",
+      "text": "Private transfers between Koh Lanta and Krabi Airport (KBV), Phuket Airport (HKT) or Surat Thani Airport (URT), in both directions.",
       "photo": null,
       "link": null,
       "confirmed": false
@@ -84,7 +84,7 @@
     {
       "id": "long-distance",
       "title": "Long-distance private transfers",
-      "text": "Krabi Town, Ao Nang, Phuket, Surat Thani, Trang, Khao Lak, Khao Sok, Donsak Pier, Cheow Lan Pier and more.",
+      "text": "Between Koh Lanta and Krabi Town, Ao Nang, Phuket, Surat Thani, Trang, Khao Lak, Khao Sok, Donsak Pier, Cheow Lan Pier or any other place in Southern Thailand.",
       "photo": null,
       "link": null,
       "confirmed": false
@@ -147,6 +147,11 @@
   },
   "faq": [
     {
+      "q": "How do I book a transfer?",
+      "a": "Fill in the request form on this page. It opens WhatsApp with your message ready, and the team replies with the price and the details.",
+      "confirmed": false
+    },
+    {
       "q": "Is the transfer private?",
       "a": "Yes. Every transfer is private, with no sharing, so you travel only with your group.",
       "confirmed": false
@@ -154,11 +159,6 @@
     {
       "q": "How do I pay for my taxi or minivan?",
       "a": "You pay in cash to the driver on the day of the transfer. There is no prepayment and no hidden fees.",
-      "confirmed": false
-    },
-    {
-      "q": "How do I book a transfer?",
-      "a": "Fill in the request form on this page. It opens WhatsApp with your message ready, and the team replies with the price and the details.",
       "confirmed": false
     },
     {
@@ -174,6 +174,31 @@
     {
       "q": "Do you offer airport transfers to and from Koh Lanta?",
       "a": "Yes. We drive private transfers between Krabi, Phuket and Surat Thani airports and Koh Lanta, in both directions.",
+      "confirmed": false
+    },
+    {
+      "q": "How do I get from Krabi Airport to Koh Lanta?",
+      "a": "Book a private taxi or minivan from Krabi Airport (KBV) to Koh Lanta. Enter Krabi Airport as the pickup and Koh Lanta as the destination in the request form, and the team replies with the price and the details.",
+      "confirmed": false
+    },
+    {
+      "q": "Can you pick me up at Phuket Airport and take me to Koh Lanta?",
+      "a": "Yes. We drive private transfers from Phuket Airport (HKT) to Koh Lanta and back. Send your date and time in the request form and the team replies with the price.",
+      "confirmed": false
+    },
+    {
+      "q": "Can you take me to the airport when I leave Koh Lanta?",
+      "a": "Yes. Enter your hotel or Koh Lanta as the pickup and the airport as the destination, with your date and pickup time. We drive to Krabi, Phuket and Surat Thani airports.",
+      "confirmed": false
+    },
+    {
+      "q": "Can you drive me to a pier such as Donsak or Cheow Lan?",
+      "a": "Yes. Donsak Pier and Cheow Lan Pier are among the places we drive to. Enter the pier as your pickup or destination in the request form.",
+      "confirmed": false
+    },
+    {
+      "q": "Can I travel with children or babies?",
+      "a": "Yes. The request form lets you add children and babies and ask for a child seat or a baby seat.",
       "confirmed": false
     },
     {

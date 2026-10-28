@@ -137,3 +137,25 @@ test("répétition de « Koh Lanta » plafonnée à 24 occurrences dans les text
   const hits = (dataText.match(/Koh Lanta/g) || []).length;
   assert.ok(hits <= 24, `${hits} occurrences de « Koh Lanta »`);
 });
+
+test("services : les aéroports sont nommés avec leurs codes, dans les deux sens", () => {
+  const text = taxi.services.map((s) => s.text).join(" ");
+  for (const code of ["KBV", "HKT", "URT"]) assert.match(text, new RegExp(code));
+  assert.match(text, /both directions/);
+  assert.match(text, /Koh Lanta/);
+});
+
+test("FAQ : questions précises sur les trajets depuis les aéroports, le retour et les enfants", () => {
+  const questions = taxi.faq.map((f) => f.q).join(" | ");
+  assert.match(questions, /Krabi Airport to Koh Lanta/);
+  assert.match(questions, /Phuket Airport/);
+  assert.match(questions, /leave Koh Lanta/);
+  assert.match(questions, /children or babies/);
+  assert.ok(taxi.faq.length >= 10, `${taxi.faq.length} questions`);
+  assert.equal(new Set(taxi.faq.map((f) => f.q)).size, taxi.faq.length, "pas de question en double");
+});
+
+test("mise en page : la FAQ vient après le formulaire", () => {
+  assert.ok(njk.indexOf('id="h-faq"') > njk.indexOf('id="request"'), "FAQ sous le formulaire");
+  assert.ok(njk.indexOf('id="h-faq"') < njk.indexOf("</main>"), "FAQ dans <main>");
+});
