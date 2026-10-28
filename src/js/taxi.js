@@ -131,6 +131,16 @@
     window.location.href = F.waUrl(F.buildMessage(values, today()));
   });
 
+  // Un lien d'itinéraire pré-remplit From et To puis amène au formulaire (l'ancre fait le reste).
+  Array.prototype.forEach.call(document.querySelectorAll("[data-from]"), function (link) {
+    link.addEventListener("click", function () {
+      el("from").value = link.getAttribute("data-from");
+      el("to").value = link.getAttribute("data-to");
+      showError("from", "");
+      showError("to", "");
+    });
+  });
+
   syncDate();
   syncSeats();
 })();

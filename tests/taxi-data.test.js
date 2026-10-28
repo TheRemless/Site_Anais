@@ -4,7 +4,7 @@ const taxi = require("../src/_data/taxi.json");
 const taxiView = require("../src/_data/taxiView.js");
 
 function entries() {
-  return [taxi.hero, taxi.tours, taxi.rating, taxi.payment].concat(taxi.services, taxi.why, taxi.steps, taxi.faq);
+  return [taxi.hero, taxi.tours, taxi.rating, taxi.payment].concat(taxi.services, taxi.why, taxi.steps, taxi.faq, taxi.routes);
 }
 
 test("taxi.json : chaque entrée porte un booléen confirmed", () => {

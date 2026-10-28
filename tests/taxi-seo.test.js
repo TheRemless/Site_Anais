@@ -41,7 +41,9 @@ test("/taxi/ : le service couvre tout le sud de la Thaïlande, Koh Lanta est la 
   assert.match(taxi.hero.lead, /Koh Lanta/);
   assert.match(njk, /h-services">[^<]*Southern Thailand/);
   // Aucune question ne présente l'offre comme limitée au départ de Koh Lanta.
-  assert.ok(!taxi.faq.some((f) => /from Koh Lanta/i.test(f.q)), "question trop restrictive dans la FAQ");
+  // Exceptions : « to and from Koh Lanta » (les deux sens) et « Do you only drive from Koh Lanta? » (réponse : No).
+  const restrictive = taxi.faq.filter((f) => /(?<!to and )from Koh Lanta/i.test(f.q) && !/only drive from Koh Lanta/i.test(f.q));
+  assert.deepEqual(restrictive.map((f) => f.q), [], "question trop restrictive dans la FAQ");
   const where = taxi.faq.find((f) => /Southern Thailand/.test(f.q));
   assert.ok(where, "question sur la zone couverte");
   assert.match(where.a, /Phuket/);
@@ -83,4 +85,77 @@ test("données structurées : TaxiService, zone desservie, aucun fait non vérif
 test("la page insère les données structurées", () => {
   assert.match(njk, /application\/ld\+json/);
   assert.match(njk, /taxiView\.jsonLd/);
+});
+
+test("itinéraires : au moins 10 trajets tirés de la liste de destinations, avec codes d'aéroport", () => {
+  assert.ok(taxi.routes.length >= 10, `${taxi.routes.length} itinéraires`);
+  const titles = taxi.routes.map((r) => r.title).join(" | ");
+  for (const code of ["KBV", "HKT", "URT"]) assert.match(titles, new RegExp(code));
+  for (const r of taxi.routes) {
+    assert.equal(typeof r.confirmed, "boolean", r.title);
+    assert.ok(r.title, r.title);
+  }
+});
+
+test("itinéraires : chaque trajet pré-remplit From et To, sauf « ailleurs » qui laisse libre", () => {
+  const anywhere = taxi.routes.filter((r) => !r.from && !r.to);
+  assert.equal(anywhere.length, 1, "une seule entrée « ailleurs dans le sud de la Thaïlande »");
+  assert.match(anywhere[0].title, /Southern Thailand/);
+  for (const r of taxi.routes.filter((x) => x.from || x.to)) {
+    assert.ok(r.from && r.to, r.title);
+    assert.ok(r.from === "Koh Lanta" || r.to === "Koh Lanta", r.title);
+    // Les lieux proposés doivent exister dans la liste suggérée de la page.
+    for (const place of [r.from, r.to]) assert.ok(taxi.places.includes(place), `${place} absent de places`);
+  }
+});
+
+test("itinéraires : aucune durée, distance ni prix inventé", () => {
+  const all = JSON.stringify(taxi.routes) + JSON.stringify(taxi.faq);
+  assert.doesNotMatch(all, /\b\d+\s?(h|hr|hrs|hours?|min|minutes?|km|kms|baht|thb)\b|฿|€|\$/i);
+});
+
+test("FAQ : précise que l'offre ne se limite pas à Koh Lanta et qu'elle couvre les aéroports", () => {
+  const notOnly = taxi.faq.find((f) => /only drive from Koh Lanta/i.test(f.q));
+  assert.ok(notOnly, "question « seulement depuis Koh Lanta »");
+  assert.match(notOnly.a, /Southern Thailand/);
+  assert.match(notOnly.a, /Ko Lanta/);
+  const airports = taxi.faq.find((f) => /airport transfers?/i.test(f.q));
+  assert.ok(airports, "question sur les transferts aéroport");
+  assert.match(airports.a, /Krabi/);
+  assert.match(airports.a, /Phuket/);
+  assert.match(airports.a, /Surat Thani/);
+});
+
+test("variante d'orthographe « Ko Lanta » présente mais pas répétée à outrance", () => {
+  const text = JSON.stringify(taxi);
+  const count = (text.match(/Ko Lanta/g) || []).length;
+  assert.ok(count >= 1 && count <= 3, `${count} occurrences de « Ko Lanta »`);
+});
+
+test("la page affiche les itinéraires avec un lien qui pré-remplit le formulaire, sans texte caché en double", () => {
+  assert.doesNotMatch(njk, /class="sr"> \{\{ r\.title/);
+  assert.match(njk, /aria-describedby="route-/);
+  assert.match(njk, /taxi\.routes/);
+  assert.match(njk, /data-from/);
+  assert.match(njk, /data-to/);
+  assert.match(njk, /h-routes/);
+});
+
+test("données structurées : catalogue des services sans prix", () => {
+  const ld = taxiView().jsonLd;
+  assert.equal(ld.hasOfferCatalog["@type"], "OfferCatalog");
+  const items = ld.hasOfferCatalog.itemListElement;
+  assert.ok(items.length >= 3);
+  assert.doesNotMatch(JSON.stringify(ld), /"price"|priceCurrency/i);
+});
+
+// Le nom de la base figure dans chaque titre d'itinéraire (« Krabi Airport (KBV) and Koh Lanta »), c'est voulu :
+// c'est la formulation que les gens tapent. Sur la page rendue, cela représente environ 3 % des mots visibles.
+// Ce plafond en nombre d'occurrences (21 aujourd'hui) empêche d'ajouter de la répétition sans y penser.
+test("répétition de « Koh Lanta » plafonnée à 24 occurrences dans les textes de la page", () => {
+  const shown = ["title", "text", "lead", "note", "q", "a"];
+  const dataText = [taxi.hero, taxi.tours, taxi.rating, taxi.payment].concat(taxi.services, taxi.routes, taxi.why, taxi.steps, taxi.faq)
+    .map((item) => shown.map((k) => item[k]).filter(Boolean).join(" ")).join(" ");
+  const hits = (dataText.match(/Koh Lanta/g) || []).length;
+  assert.ok(hits <= 24, `${hits} occurrences de « Koh Lanta »`);
 });
