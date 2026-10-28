@@ -64,6 +64,10 @@ export function creer(config) {
     async equipe(entiteId) {
       return verifie(await sb.rpc("equipe_de", { e: entiteId }));
     },
+    // Tableau analytique : tous les chiffres sont calculés par la base.
+    async analyses({ entiteId, du, au, jour }) {
+      return verifie(await sb.rpc("tableau_analytique", { e: entiteId, du, au, jour }));
+    },
     // Journal d'activité : les plus récentes d'abord, par pages (le journal peut devenir très long).
     async journal({ entiteId, table, userId, avant, limite = 50 }) {
       let q = sb.from("journal").select("*").eq("entite_id", entiteId).order("created_at", { ascending: false }).limit(limite);

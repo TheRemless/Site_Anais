@@ -300,3 +300,22 @@ kbd { display: inline-block; min-width: 1.6em; padding: 1px 7px; font: inherit; 
 .filtres { display: flex; flex-wrap: wrap; gap: 0 16px; }
 .filtres .champ { min-width: 200px; }
 @media (min-width: 760px) { .journal-ligne { grid-template-columns: 11rem 1fr; } }
+
+/* Analyses */
+.graphique { display: block; width: 100%; height: auto; margin: 8px 0; }
+.graphique .grille { stroke: var(--bord); stroke-width: 1; }
+.graphique .axe { fill: var(--texte-2); font-size: 11px; font-family: inherit; }
+.barre-facture { fill: #0b9999; }
+.barre-encaisse { fill: #c77d00; }
+.legende { display: flex; gap: 18px; margin: 0 0 4px; font-size: 0.9rem; color: var(--texte-2); }
+.pastille-facture, .pastille-encaisse { display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: -1px; border-radius: 2px; }
+.pastille-facture { background: #0b9999; }
+.pastille-encaisse { background: #c77d00; }
+.analyse-table td { padding: 8px 12px; }
+.barre-cellule { width: 34%; }
+.barre-h { display: block; height: 10px; background: var(--teal); border-radius: 2px; }
+.num.sec { color: var(--texte-2); font-size: 0.88rem; }
+.deux-colonnes { display: grid; gap: 0 32px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1100px) { .deux-colonnes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-weight: 600; }
+@media (max-width: 719px) { .barre-cellule { display: none; } }

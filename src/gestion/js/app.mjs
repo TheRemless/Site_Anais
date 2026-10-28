@@ -9,6 +9,7 @@ import { catalogue } from "./views/catalogue.mjs";
 import { vueReglages } from "./views/reglages.mjs";
 import { vueAdmin } from "./views/admin.mjs";
 import { vueJournal } from "./views/journal.mjs";
+import { vueAnalyses } from "./views/analyses.mjs";
 
 const ROUTES = [
   [/^#?\/?$/, "tableau", tableauDeBord],
@@ -22,6 +23,7 @@ const ROUTES = [
   [/^#\/reglages$/, "reglages", vueReglages],
   [/^#\/admin$/, "admin", vueAdmin],
   [/^#\/journal$/, "journal", vueJournal],
+  [/^#\/analyses$/, "analyses", vueAnalyses],
 ];
 
 const racine = document.getElementById("app");
@@ -117,6 +119,7 @@ function menu() {
     ["#/dossiers", "Dossiers", "dossiers"],
     ["#/clients", "Clients", "clients"],
     ["#/catalogue", "Catalogue", "catalogue"],
+    ...(peut("analytics.voir") && peut("finances.voir") ? [["#/analyses", "Analyses", "analyses"]] : []),
     ...(estAdmin() ? [["#/reglages", "Réglages", "reglages"]] : []),
     ...(peut("journal.voir") ? [["#/journal", "Journal", "journal"]] : []),
   ];
@@ -226,7 +229,7 @@ function ouvrirAide() {
       "div",
       { class: "modal-corps" },
       h("h3", null, "Partout, hors d'un champ de saisie"),
-      tableau([ligne(["?"], "Afficher cette aide"), ligne(["n"], "Nouveau dossier"), ligne(["/"], "Aller à la recherche"), ligne(["g", "t"], "Tableau de bord"), ligne(["g", "d"], "Dossiers"), ligne(["g", "c"], "Clients"), ligne(["g", "k"], "Catalogue"), ligne(["g", "r"], "Réglages (administrateurs)"), ligne(["Échap"], "Fermer une fenêtre")]),
+      tableau([ligne(["?"], "Afficher cette aide"), ligne(["n"], "Nouveau dossier"), ligne(["/"], "Aller à la recherche"), ligne(["g", "t"], "Tableau de bord"), ligne(["g", "d"], "Dossiers"), ligne(["g", "c"], "Clients"), ligne(["g", "k"], "Catalogue"), ligne(["g", "r"], "Réglages (administrateurs)"), ligne(["g", "a"], "Analyses"), ligne(["g", "j"], "Journal d'activité"), ligne(["g", "m"], "Administration (administratrice générale)"), ligne(["Échap"], "Fermer une fenêtre")]),
       h("h3", null, "Dans un devis ou une facture"),
       tableau([ligne([`${mod}+Z`], "Annuler la dernière modification"), ligne([`${mod}+Maj+Z`, `${mac ? "" : "Ctrl+Y"}`].filter(Boolean).slice(0, 1), `Rétablir${mac ? "" : " (ou Ctrl+Y)"}`), ligne([`${mod}+S`], "Enregistrer tout de suite"), ligne([`${mod}+P`], "Télécharger le PDF")]),
       h("p", { class: "aide" }, "Les raccourcis propres au navigateur, comme Ctrl+T, Ctrl+W ou Ctrl+N, ne peuvent pas être pris en charge par un site. Les autres sont désactivés pendant la saisie dans un champ pour ne pas gêner l'écriture.")
@@ -242,7 +245,7 @@ document.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if (sequence === "g") {
     sequence = null;
-    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(estSuperAdmin() ? { a: "#/admin" } : {}) };
+    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(peut("analytics.voir") && peut("finances.voir") ? { a: "#/analyses" } : {}), ...(estSuperAdmin() ? { m: "#/admin" } : {}) };
     if (cibles[k]) (e.preventDefault(), (location.hash = cibles[k]));
     return;
   }

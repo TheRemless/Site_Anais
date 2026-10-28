@@ -3,6 +3,7 @@
 import { aujourdhui, ajouterJours } from "./calc.mjs";
 import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
+import { analyserLocal } from "./analyses.mjs";
 
 const CLE = "gestion-zwald-demo-v3";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
@@ -132,6 +133,12 @@ export function creer() {
     async equipe(entiteId) {
       const ids = new Set(data.membres.filter((m) => m.entite_id === entiteId).map((m) => m.user_id));
       return data.profils.filter((p) => p.actif && (p.super_admin || ids.has(p.user_id))).map((p) => ({ user_id: p.user_id, nom: p.nom, email: p.email }));
+    },
+    async analyses({ entiteId, du, au, jour }) {
+      const p = permissionsDans(contexte(), entiteId);
+      if (!(p.includes("analytics.voir") && p.includes("finances.voir"))) throw new Error("Droit insuffisant pour voir les analyses");
+      const de = (t) => data[t].filter((r) => r.entite_id === entiteId);
+      return analyserLocal({ dossiers: de("dossiers"), documents: de("documents"), paiements: de("paiements"), clients: de("clients"), profils: data.profils, reglages: data.reglages[entiteId] }, du, au, jour);
     },
     async journal({ entiteId, table, userId, avant, limite = 50 }) {
       if (!permissionsDans(contexte(), entiteId).includes("journal.voir")) return [];
