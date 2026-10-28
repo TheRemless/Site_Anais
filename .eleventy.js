@@ -16,12 +16,16 @@ module.exports = function (eleventyConfig) {
     "src/js": "js",
     "src/images": "images",
     "src/files": "files",
+    "src/gestion": "gestion",
     "src/favicon.ico": "favicon.ico",
     "src/robots.txt": "robots.txt",
     "src/sitemap.xml": "sitemap.xml",
     "src/site.webmanifest": "site.webmanifest",
     "src/_redirects": "_redirects"
   });
+
+  // L'outil de gestion est une application autonome : ses fichiers ne sont jamais traités comme des gabarits.
+  eleventyConfig.ignores.add("src/gestion/**");
 
   return {
     dir: {

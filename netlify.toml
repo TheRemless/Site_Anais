@@ -5,3 +5,12 @@
 
 [functions]
   directory = "netlify/functions"
+
+# Outil de gestion privé : jamais indexé, jamais intégré dans une autre page, toujours revalidé.
+[[headers]]
+  for = "/gestion/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "no-referrer"
+    Cache-Control = "no-cache"
