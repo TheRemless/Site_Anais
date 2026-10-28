@@ -5,7 +5,7 @@ import { resume, setDevise, setMasquerMontants } from "./calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
 
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue"];
+const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches"];
 const CLE_ENTITE = "gestion-zwald-entite";
 
 export const etat = { store: null, brut: null, db: null, session: null, moi: null, entiteId: null };
@@ -82,25 +82,74 @@ export const estAdmin = () => peut("reglages.ecrire");
 
 export const reglages = () => etat.db.reglages;
 
+// ---- Chargement à la demande ---------------------------------------------------------------------------------
+// Documents et paiements ne sont pas chargés avec les listes : on les charge à l'ouverture d'un dossier.
+function fusionnerDossier({ dossier, documents, paiements }) {
+  if (!dossier) return null;
+  const i = etat.brut.dossiers.findIndex((x) => x.id === dossier.id);
+  if (i >= 0) etat.brut.dossiers[i] = dossier;
+  else etat.brut.dossiers.push(dossier);
+  etat.brut.documents = etat.brut.documents.filter((d) => d.dossier_id !== dossier.id).concat(documents);
+  etat.brut.paiements = etat.brut.paiements.filter((p) => p.dossier_id !== dossier.id).concat(paiements);
+  rebatir();
+  return dossier;
+}
+
+export async function chargerDossier(id) {
+  return fusionnerDossier(await etat.store.dossierComplet(id));
+}
+
+// Charge le document et tout son dossier (le devis et la facture se complètent, les paiements comptent dans la facture).
+export async function chargerDocument(docId) {
+  const r = await etat.store.documentComplet(docId);
+  return r ? fusionnerDossier(r) : null;
+}
+
+// Après une modification de documents ou de paiements, la base a recalculé le résumé du dossier : on le relit.
+async function actualiserResume(dossierId) {
+  const d = await etat.store.resumeDossier(dossierId);
+  const i = etat.brut.dossiers.findIndex((x) => x.id === dossierId);
+  if (d && i >= 0) {
+    etat.brut.dossiers[i] = d;
+    rebatir();
+  }
+}
+
+export const paiementsPeriode = (du, au) => (peut("finances.voir") ? etat.store.paiementsPeriode({ entiteId: etat.entiteId, du, au }) : Promise.resolve([]));
+export const piecesDossier = (id) => etat.store.piecesDossier(id);
+export const lienPiece = (p) => etat.store.lienPiece(p);
+export async function ajouterPiece(dossierId, fichier) {
+  return etat.store.ajouterPiece({ entiteId: etat.entiteId, dossierId, fichier });
+}
+export const supprimerPiece = (p) => etat.store.supprimerPiece(p);
+
+export const tousPaiements = () => etat.store.tousPaiements(etat.entiteId);
+export const tousDocuments = () => etat.store.tousDocuments(etat.entiteId);
+
 export async function inserer(table, row) {
   const ligne = TABLES.includes(table) ? { entite_id: etat.entiteId, ...row } : row;
   const r = await etat.store.inserer(table, ligne);
   etat.brut[table].push(r);
   rebatir();
+  if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
   return r;
 }
 
 export async function modifier(table, id, patch) {
   const r = await etat.store.modifier(table, id, patch);
   const i = etat.brut[table].findIndex((x) => x.id === id);
-  etat.brut[table][i] = r;
+  // Le résumé d'un dossier (total, encaissé) ne fait pas partie de la ligne renvoyée par la modification : on le garde.
+  etat.brut[table][i] = table === "dossiers" ? { ...etat.brut[table][i], ...r } : r;
   rebatir();
+  if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
   return r;
 }
 
 export async function supprimer(table, id) {
+  const avant = etat.brut[table].find((x) => x.id === id);
   await etat.store.supprimer(table, id);
   etat.brut[table] = etat.brut[table].filter((x) => x.id !== id);
+  if ((table === "documents" || table === "paiements") && avant) await actualiserResume(avant.dossier_id);
   if (table === "dossiers") {
     etat.brut.documents = etat.brut.documents.filter((d) => d.dossier_id !== id);
     etat.brut.paiements = etat.brut.paiements.filter((p) => p.dossier_id !== id);

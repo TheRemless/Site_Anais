@@ -9,6 +9,8 @@ import { catalogue } from "./views/catalogue.mjs";
 import { vueReglages } from "./views/reglages.mjs";
 import { vueAdmin } from "./views/admin.mjs";
 import { vueJournal } from "./views/journal.mjs";
+import { vueAnalyses } from "./views/analyses.mjs";
+import { vueTaches, mesTaches } from "./views/taches.mjs";
 
 const ROUTES = [
   [/^#?\/?$/, "tableau", tableauDeBord],
@@ -22,6 +24,8 @@ const ROUTES = [
   [/^#\/reglages$/, "reglages", vueReglages],
   [/^#\/admin$/, "admin", vueAdmin],
   [/^#\/journal$/, "journal", vueJournal],
+  [/^#\/analyses$/, "analyses", vueAnalyses],
+  [/^#\/taches$/, "taches", vueTaches],
 ];
 
 const racine = document.getElementById("app");
@@ -112,11 +116,15 @@ function bandeauDemo() {
 }
 
 function menu() {
+  const ajd = new Date().toISOString().slice(0, 10);
+  const enRetard = mesTaches().filter((t) => t.echeance && t.echeance <= ajd).length;
   const elements = [
     ["#/", "Tableau de bord", "tableau"],
     ["#/dossiers", "Dossiers", "dossiers"],
     ["#/clients", "Clients", "clients"],
+    ["#/taches", enRetard ? `Tâches (${enRetard})` : "Tâches", "taches"],
     ["#/catalogue", "Catalogue", "catalogue"],
+    ...(peut("analytics.voir") && peut("finances.voir") ? [["#/analyses", "Analyses", "analyses"]] : []),
     ...(estAdmin() ? [["#/reglages", "Réglages", "reglages"]] : []),
     ...(peut("journal.voir") ? [["#/journal", "Journal", "journal"]] : []),
   ];
@@ -163,7 +171,8 @@ function coque() {
   return h("div", { class: "coque" }, menu(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, barreMobile(), h("main", { id: "principal", tabindex: "-1" })));
 }
 
-function afficher() {
+let rendu = 0;
+async function afficher() {
   if (!etat.session) {
     vider(racine).append(vueConnexion());
     document.title = "Connexion - Gestion";
@@ -198,10 +207,14 @@ function afficher() {
   }
   const [re, cleRoute, vue] = trouvee;
   const principal = document.getElementById("principal");
+  const moi = ++rendu;
   let noeud;
   try {
-    noeud = vue(...hash.match(re).slice(1));
+    noeud = await vue(...hash.match(re).slice(1));
+    // Une navigation plus récente a pris le relais pendant le chargement : on abandonne celle-ci.
+    if (moi !== rendu) return;
   } catch (err) {
+    if (moi !== rendu) return;
     console.error(err);
     noeud = h("div", { class: "vide" }, h("h1", null, "Cet écran n'a pas pu s'afficher"), h("p", null, err.message), h("a", { href: "#/" }, "Retour au tableau de bord"));
   }
@@ -226,7 +239,7 @@ function ouvrirAide() {
       "div",
       { class: "modal-corps" },
       h("h3", null, "Partout, hors d'un champ de saisie"),
-      tableau([ligne(["?"], "Afficher cette aide"), ligne(["n"], "Nouveau dossier"), ligne(["/"], "Aller à la recherche"), ligne(["g", "t"], "Tableau de bord"), ligne(["g", "d"], "Dossiers"), ligne(["g", "c"], "Clients"), ligne(["g", "k"], "Catalogue"), ligne(["g", "r"], "Réglages (administrateurs)"), ligne(["Échap"], "Fermer une fenêtre")]),
+      tableau([ligne(["?"], "Afficher cette aide"), ligne(["n"], "Nouveau dossier"), ligne(["/"], "Aller à la recherche"), ligne(["g", "t"], "Tableau de bord"), ligne(["g", "d"], "Dossiers"), ligne(["g", "c"], "Clients"), ligne(["g", "k"], "Catalogue"), ligne(["g", "f"], "Tâches"), ligne(["g", "r"], "Réglages (administrateurs)"), ligne(["g", "a"], "Analyses"), ligne(["g", "j"], "Journal d'activité"), ligne(["g", "m"], "Administration (administratrice générale)"), ligne(["Échap"], "Fermer une fenêtre")]),
       h("h3", null, "Dans un devis ou une facture"),
       tableau([ligne([`${mod}+Z`], "Annuler la dernière modification"), ligne([`${mod}+Maj+Z`, `${mac ? "" : "Ctrl+Y"}`].filter(Boolean).slice(0, 1), `Rétablir${mac ? "" : " (ou Ctrl+Y)"}`), ligne([`${mod}+S`], "Enregistrer tout de suite"), ligne([`${mod}+P`], "Télécharger le PDF")]),
       h("p", { class: "aide" }, "Les raccourcis propres au navigateur, comme Ctrl+T, Ctrl+W ou Ctrl+N, ne peuvent pas être pris en charge par un site. Les autres sont désactivés pendant la saisie dans un champ pour ne pas gêner l'écriture.")
@@ -242,7 +255,7 @@ document.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if (sequence === "g") {
     sequence = null;
-    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(estSuperAdmin() ? { a: "#/admin" } : {}) };
+    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", f: "#/taches", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(peut("analytics.voir") && peut("finances.voir") ? { a: "#/analyses" } : {}), ...(estSuperAdmin() ? { m: "#/admin" } : {}) };
     if (cibles[k]) (e.preventDefault(), (location.hash = cibles[k]));
     return;
   }

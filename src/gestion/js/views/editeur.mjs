@@ -1,4 +1,4 @@
-import { etat, modifier, nomClient, reglages, naviguer, peut } from "../etat.mjs";
+import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument } from "../etat.mjs";
 import { h, champ, toast, num, vider } from "../ui.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
 import { nouvelleLigne } from "../defauts.mjs";
@@ -11,7 +11,12 @@ const MAX_HISTORIQUE = 100;
 const historiques = new Map();
 const positions = new Map();
 
-export function editeur(id) {
+export async function editeur(id) {
+  await chargerDocument(id);
+  return editeurVue(id);
+}
+
+function editeurVue(id) {
   const source = etat.db.documents.find((d) => d.id === id);
   if (!source) return vide("Document introuvable", "Il a peut-être été supprimé.", h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Retour aux dossiers"));
   const doc = structuredClone(source);

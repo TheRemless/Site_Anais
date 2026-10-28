@@ -88,11 +88,23 @@ create table dossiers (
   annule boolean not null default false,
   notes text,
   responsable_id uuid references profils (user_id) on delete set null default auth.uid(),
+  devis_envoye_le date,
+  a_facture boolean not null default false,
   cree_par uuid default auth.uid(),
   modifie_par uuid,
   unique (entite_id, ref),
   unique (id, entite_id),
   foreign key (client_id, entite_id) references clients (id, entite_id) on delete restrict
+);
+
+-- Résumé financier d'un dossier, tenu à jour par la base : les listes n'ont plus besoin de charger les documents.
+-- Table à part pour que le droit « montants » s'applique aussi à ces chiffres.
+create table dossiers_resume (
+  dossier_id uuid primary key references dossiers (id) on delete cascade,
+  entite_id uuid not null references entites (id) on delete cascade,
+  total numeric(14, 2) not null default 0,
+  devise text,
+  recu numeric(14, 2) not null default 0
 );
 
 create table documents (
@@ -140,6 +152,42 @@ create table catalogue (
   actif boolean not null default true
 );
 
+-- Tâches et rappels, liés ou non à un dossier, avec une échéance et une personne responsable.
+create table taches (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  dossier_id uuid,
+  titre text not null,
+  description text not null default '',
+  echeance date,
+  assignee_id uuid references profils (user_id) on delete set null,
+  fait boolean not null default false,
+  fait_le timestamptz,
+  fait_par uuid,
+  cree_par uuid default auth.uid(),
+  modifie_par uuid,
+  foreign key (dossier_id, entite_id) references dossiers (id, entite_id) on delete cascade
+);
+create index on taches (entite_id, fait, echeance);
+create index on taches (assignee_id);
+create index on taches (dossier_id);
+
+-- Pièces jointes d'un dossier : le fichier est dans le stockage privé « pieces », cette table garde son nom et son chemin.
+create table pieces_jointes (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  dossier_id uuid not null,
+  nom text not null,
+  type text,
+  taille bigint,
+  chemin text not null unique,
+  cree_par uuid default auth.uid(),
+  foreign key (dossier_id, entite_id) references dossiers (id, entite_id) on delete cascade
+);
+create index on pieces_jointes (dossier_id);
+
 create index on clients (entite_id);
 create index on dossiers (entite_id);
 create index on dossiers (responsable_id);
@@ -148,13 +196,14 @@ create index on documents (dossier_id);
 create index on paiements (entite_id);
 create index on paiements (dossier_id);
 create index on catalogue (entite_id);
+create index on dossiers_resume (entite_id);
 create index on roles (entite_id);
 create index on membres (entite_id);
 create index on journal (entite_id, created_at desc);
 
 -- Qui peut faire quoi, calculé à partir de la connexion en cours (auth.uid()) et de son rôle dans l'entreprise.
 create or replace function toutes_permissions() returns text[] language sql immutable as $$
-  select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]
+  select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]
 $$;
 
 create or replace function est_super_admin() returns boolean language sql stable security definer set search_path = public as $$
@@ -187,6 +236,39 @@ create or replace function equipe_de(e uuid) returns table (user_id uuid, nom te
   where p.actif and est_membre(e) and (p.super_admin or exists (select 1 from membres m where m.user_id = p.user_id and m.entite_id = e))
 $$;
 
+-- Recalcule le résumé d'un dossier (total du dernier document, devise, encaissé, devis envoyé) après toute
+-- modification de ses documents ou de ses paiements.
+create or replace function recalculer_dossier(did uuid) returns void language plpgsql security definer set search_path = public as $$
+declare
+  ent uuid;
+  f jsonb;
+  v jsonb;
+  ve date;
+begin
+  select entite_id into ent from dossiers where id = did;
+  if ent is null then return; end if;
+  select contenu into f from documents where dossier_id = did and type = 'facture' order by date_emission desc, created_at desc limit 1;
+  select contenu, envoye_le into v, ve from documents where dossier_id = did and type = 'devis' order by date_emission desc, created_at desc limit 1;
+  update dossiers set devis_envoye_le = ve, a_facture = (f is not null)
+  where id = did and (devis_envoye_le is distinct from ve or a_facture is distinct from (f is not null));
+  insert into dossiers_resume (dossier_id, entite_id, total, devise, recu)
+  values (did, ent, coalesce(total_document(coalesce(f, v)), 0), coalesce(f, v)->>'devise', (select coalesce(sum(montant), 0) from paiements where dossier_id = did))
+  on conflict (dossier_id) do update set total = excluded.total, devise = excluded.devise, recu = excluded.recu;
+end
+$$;
+
+create or replace function maj_resume() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'DELETE' then
+    perform recalculer_dossier(old.dossier_id);
+  else
+    perform recalculer_dossier(new.dossier_id);
+    if tg_op = 'UPDATE' and old.dossier_id <> new.dossier_id then perform recalculer_dossier(old.dossier_id); end if;
+  end if;
+  return null;
+end
+$$;
+
 create or replace function creer_profil() returns trigger language plpgsql security definer set search_path = public as $$
 begin
   -- Le tout premier compte créé devient administrateur général.
@@ -197,6 +279,10 @@ $$;
 
 create or replace function noter_modification() returns trigger language plpgsql as $$
 begin
+  -- Le recalcul automatique du résumé d'un dossier n'est pas une modification de la personne connectée.
+  if tg_table_name = 'dossiers' and (to_jsonb(new) - array['devis_envoye_le', 'a_facture', 'modifie_par']) = (to_jsonb(old) - array['devis_envoye_le', 'a_facture', 'modifie_par']) then
+    return new;
+  end if;
   new.modifie_par = auth.uid();
   return new;
 end
@@ -222,12 +308,14 @@ begin
     when 'paiements' then (ligne->>'montant') || ' ' || coalesce((select ref from dossiers where id = (ligne->>'dossier_id')::uuid), '')
     when 'catalogue' then ligne->>'libelle'
     when 'roles' then ligne->>'nom'
+    when 'taches' then ligne->>'titre'
+    when 'pieces_jointes' then ligne->>'nom'
     when 'membres' then coalesce((select email from profils where user_id = (ligne->>'user_id')::uuid), '')
     else ''
   end;
   if tg_op = 'UPDATE' and tg_table_name <> 'reglages' then
     for k in select jsonb_object_keys(ligne) loop
-      continue when k in ('updated_at', 'modifie_par');
+      continue when k in ('updated_at', 'modifie_par', 'devis_envoye_le', 'a_facture');
       if ligne->k is distinct from ancien->k then
         champs := champs || jsonb_build_object(k, case when length((ligne->k)::text) <= 120 and length((ancien->k)::text) <= 120 then jsonb_build_object('avant', ancien->k, 'apres', ligne->k) else to_jsonb('modifié'::text) end);
       end if;
@@ -237,6 +325,83 @@ begin
   insert into journal (entite_id, user_id, table_name, action, cible, libelle, details)
   values ((ligne->>'entite_id')::uuid, auth.uid(), tg_table_name, lower(tg_op), cible, libelle, champs);
   return null;
+end
+$$;
+
+-- Total net d'un document, calculé comme l'application (lignes, remises en pourcentage ou en montant).
+create or replace function total_document(c jsonb) returns numeric language sql immutable as $$
+  with l as (
+    select coalesce(e->>'kind', 'ligne') as kind,
+      case
+        when e->>'unite' ~ '^-?[0-9]+(\.[0-9]+)?$' and e->>'qte' ~ '^-?[0-9]+(\.[0-9]+)?$' then round((e->>'unite')::numeric * (e->>'qte')::numeric, 2)
+        when e->>'montant' ~ '^-?[0-9]+(\.[0-9]+)?$' then round((e->>'montant')::numeric, 2)
+        else 0
+      end as brut,
+      case when e->>'pct' ~ '^-?[0-9]+(\.[0-9]+)?$' then (e->>'pct')::numeric end as pct
+    from jsonb_array_elements(coalesce(c->'lignes', '[]'::jsonb)) e
+  ), s as (
+    select coalesce(sum(brut) filter (where kind not in ('remise', 'texte')), 0) as st from l
+  )
+  select round(s.st - coalesce((select sum(case when pct is not null then round(s.st * pct / 100, 2) else brut end) from l where kind = 'remise'), 0), 2) from s
+$$;
+
+-- Tableau analytique d'une entreprise sur une période. Calculé dans la base pour rester rapide avec de gros volumes.
+-- Réservé aux rôles qui ont les droits « analyses » et « montants ». Les chiffres portent sur toute l'entreprise,
+-- même pour un rôle limité à ses dossiers.
+create or replace function tableau_analytique(e uuid, du date, au date, jour date default current_date) returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  dev text;
+  res jsonb;
+begin
+  if not (a_permission(e, 'analytics.voir') and a_permission(e, 'finances.voir')) then
+    raise exception 'Droit insuffisant pour voir les analyses' using errcode = '42501';
+  end if;
+  select coalesce(valeur->>'devise', '') into dev from reglages where entite_id = e;
+  dev := coalesce(dev, '');
+  with dos as (
+    select d.id, d.client_id, d.pays, d.responsable_id, d.accepte_le, d.annule, d.created_at,
+      f.contenu as fc, f.date_emission as f_date, v.contenu as dc, v.date_emission as v_date
+    from dossiers d
+    left join lateral (select contenu, date_emission from documents x where x.dossier_id = d.id and x.type = 'facture' order by x.date_emission desc, x.created_at desc limit 1) f on true
+    left join lateral (select contenu, date_emission from documents x where x.dossier_id = d.id and x.type = 'devis' order by x.date_emission desc, x.created_at desc limit 1) v on true
+    where d.entite_id = e
+  ), tot as (
+    select dos.*, total_document(coalesce(fc, dc)) as total, coalesce(coalesce(fc, dc)->>'devise', dev) as devise,
+      coalesce((select sum(p.montant) from paiements p where p.dossier_id = dos.id), 0) as recu,
+      coalesce(f_date, accepte_le, v_date) as date_ref
+    from dos where coalesce(fc, dc) is not null
+  ), retenus as (
+    select * from tot where not annule and (accepte_le is not null or fc is not null) and date_ref between du and au
+  )
+  select jsonb_build_object(
+    'facture_par_mois', coalesce((select jsonb_agg(x order by x.mois, x.devise) from (
+        select to_char(xd.date_emission, 'YYYY-MM') as mois, coalesce(xd.contenu->>'devise', dev) as devise, round(sum(total_document(xd.contenu)), 2) as montant, count(*)::int as nombre
+        from documents xd where xd.entite_id = e and xd.type = 'facture' and xd.date_emission between du and au group by 1, 2) x), '[]'::jsonb),
+    'encaisse_par_mois', coalesce((select jsonb_agg(x order by x.mois, x.devise) from (
+        select to_char(p.date, 'YYYY-MM') as mois, coalesce(t.devise, dev) as devise, round(sum(p.montant), 2) as montant, count(*)::int as nombre
+        from paiements p left join tot t on t.id = p.dossier_id where p.entite_id = e and p.date between du and au group by 1, 2) x), '[]'::jsonb),
+    'devis', (select jsonb_build_object(
+        'emis', count(*)::int,
+        'acceptes', (count(*) filter (where accepte_le is not null))::int,
+        'delai_moyen_jours', (select round(avg(accepte_le - v_date), 1) from dos where v_date between du and au and accepte_le is not null and accepte_le >= v_date))
+        from dos where v_date between du and au),
+    'impayes', coalesce((select jsonb_agg(jsonb_build_object('tranche', x.tranche, 'devise', x.devise, 'montant', x.montant, 'nombre', x.nombre) order by x.ordre, x.devise) from (
+        select case when age <= 30 then 1 when age <= 60 then 2 when age <= 90 then 3 else 4 end as ordre,
+               case when age <= 30 then '0-30' when age <= 60 then '31-60' when age <= 90 then '61-90' else '90+' end as tranche,
+               devise, round(sum(reste), 2) as montant, count(*)::int as nombre
+        from (select devise, total - recu as reste, jour - coalesce(f_date, accepte_le) as age from tot where not annule and (accepte_le is not null or fc is not null) and total - recu > 0) q
+        group by 1, 2, 3) x), '[]'::jsonb),
+    'top_clients', coalesce((select jsonb_agg(x) from (
+        select trim(coalesce(c.prenom, '') || ' ' || coalesce(c.nom, '')) as client, r.devise, round(sum(r.total), 2) as montant, count(*)::int as nombre
+        from retenus r join clients c on c.id = r.client_id group by r.client_id, c.prenom, c.nom, r.devise order by sum(r.total) desc, 1 limit 10) x), '[]'::jsonb),
+    'par_pays', coalesce((select jsonb_agg(x) from (
+        select coalesce(nullif(pays, ''), 'Non renseigné') as pays, devise, round(sum(total), 2) as montant, count(*)::int as nombre
+        from retenus group by 1, 2 order by sum(total) desc, 1) x), '[]'::jsonb),
+    'par_responsable', coalesce((select jsonb_agg(x) from (
+        select coalesce(nullif(trim(coalesce(p.nom, p.email, '')), ''), 'Sans responsable') as responsable, r.devise, round(sum(r.total), 2) as montant, count(*)::int as nombre
+        from retenus r left join profils p on p.user_id = r.responsable_id group by 1, 2 order by sum(r.total) desc, 1) x), '[]'::jsonb)
+  ) into res;
+  return res;
 end
 $$;
 
@@ -253,6 +418,11 @@ create trigger journaliser after insert or update or delete on catalogue for eac
 create trigger journaliser after insert or update or delete on reglages for each row execute function journaliser();
 create trigger journaliser after insert or update or delete on roles for each row execute function journaliser();
 create trigger journaliser after insert or update or delete on membres for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on taches for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on pieces_jointes for each row execute function journaliser();
+
+create trigger maj_resume after insert or update or delete on documents for each row execute function maj_resume();
+create trigger maj_resume after insert or update or delete on paiements for each row execute function maj_resume();
 
 create trigger sur_nouvel_utilisateur after insert on auth.users for each row execute function creer_profil();
 
@@ -314,6 +484,31 @@ create policy "créer des paiements" on paiements for insert to authenticated wi
 create policy "modifier des paiements" on paiements for update to authenticated using (a_permission(entite_id, 'paiements.ecrire') and exists (select 1 from dossiers d where d.id = paiements.dossier_id)) with check (a_permission(entite_id, 'paiements.ecrire'));
 create policy "supprimer des paiements" on paiements for delete to authenticated using (a_permission(entite_id, 'paiements.ecrire') and exists (select 1 from dossiers d where d.id = paiements.dossier_id));
 
+alter table dossiers_resume enable row level security;
+create policy "lire les résumés" on dossiers_resume for select to authenticated using (a_permission(entite_id, 'finances.voir') and exists (select 1 from dossiers d where d.id = dossiers_resume.dossier_id));
+revoke insert, update, delete on dossiers_resume from authenticated;
+
+-- Les rôles créés après la première migration ne doivent donner aucun droit à la clé publique.
+revoke all on all tables in schema public from anon;
+
+alter table taches enable row level security;
+alter table pieces_jointes enable row level security;
+
+create policy "lire les tâches" on taches for select to authenticated using (est_membre(entite_id) and (assignee_id = auth.uid() or ((voit_tout(entite_id) or assignee_id = auth.uid() or cree_par = auth.uid()) and (dossier_id is null or exists (select 1 from dossiers d where d.id = taches.dossier_id)))));
+create policy "créer des tâches" on taches for insert to authenticated with check (a_permission(entite_id, 'taches.ecrire') and (dossier_id is null or exists (select 1 from dossiers d where d.id = taches.dossier_id)));
+create policy "modifier des tâches" on taches for update to authenticated using ((a_permission(entite_id, 'taches.ecrire') and (voit_tout(entite_id) or assignee_id = auth.uid() or cree_par = auth.uid())) or assignee_id = auth.uid()) with check (a_permission(entite_id, 'taches.ecrire') or assignee_id = auth.uid());
+create policy "supprimer des tâches" on taches for delete to authenticated using (a_permission(entite_id, 'taches.ecrire') and (voit_tout(entite_id) or assignee_id = auth.uid() or cree_par = auth.uid()));
+
+create policy "lire les pièces jointes" on pieces_jointes for select to authenticated using (a_permission(entite_id, 'dossiers.lire') and exists (select 1 from dossiers d where d.id = pieces_jointes.dossier_id));
+create policy "ajouter des pièces jointes" on pieces_jointes for insert to authenticated with check (a_permission(entite_id, 'dossiers.ecrire') and exists (select 1 from dossiers d where d.id = pieces_jointes.dossier_id));
+create policy "supprimer des pièces jointes" on pieces_jointes for delete to authenticated using (a_permission(entite_id, 'dossiers.ecrire') and exists (select 1 from dossiers d where d.id = pieces_jointes.dossier_id));
+
+-- Stockage privé des fichiers. Le premier dossier du chemin est l'identifiant de l'entreprise.
+insert into storage.buckets (id, name, public) values ('pieces', 'pieces', false) on conflict (id) do nothing;
+create policy "lire les fichiers" on storage.objects for select to authenticated using (bucket_id = 'pieces' and exists (select 1 from pieces_jointes p where p.chemin = storage.objects.name));
+create policy "ajouter des fichiers" on storage.objects for insert to authenticated with check (bucket_id = 'pieces' and a_permission(((storage.foldername(name))[1])::uuid, 'dossiers.ecrire'));
+create policy "supprimer des fichiers" on storage.objects for delete to authenticated using (bucket_id = 'pieces' and exists (select 1 from pieces_jointes p where p.chemin = storage.objects.name and a_permission(p.entite_id, 'dossiers.ecrire')));
+
 -- Entreprises, rôles et réglages de départ, modifiables ensuite depuis le panneau d'administration.
 insert into entites (id, slug, nom, ordre) values
   ('00000000-0000-4000-8000-000000000001', 'ztp', 'Zwald Travel Planner', 1),
@@ -324,8 +519,8 @@ insert into roles (entite_id, nom, description, portee, permissions, systeme)
 select e.id, v.nom, v.description, v.portee, v.permissions, true
 from entites e
 cross join (values
-  ('Administrateur', 'Tous les droits dans l''entreprise.', 'toute', array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]),
-  ('Éditeur', 'Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.', 'toute', array['clients.lire', 'clients.ecrire', 'dossiers.lire', 'dossiers.ecrire', 'documents.ecrire', 'finances.voir', 'paiements.ecrire', 'catalogue.ecrire']::text[]),
+  ('Administrateur', 'Tous les droits dans l''entreprise.', 'toute', array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]),
+  ('Éditeur', 'Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.', 'toute', array['clients.lire', 'clients.ecrire', 'dossiers.lire', 'dossiers.ecrire', 'documents.ecrire', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire']::text[]),
   ('Lecteur', 'Consultation seulement, montants visibles.', 'toute', array['clients.lire', 'dossiers.lire', 'finances.voir', 'analytics.voir']::text[])
 ) as v (nom, description, portee, permissions);
 

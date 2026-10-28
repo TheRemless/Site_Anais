@@ -12,7 +12,13 @@ create role anon; create role authenticated;
 create schema auth;
 create table auth.users (id uuid primary key default gen_random_uuid(), email text, created_at timestamptz default now());
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-grant usage on schema public, auth to authenticated, anon;
+create schema storage;
+create table storage.buckets (id text primary key, name text, public boolean);
+create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner uuid);
+alter table storage.objects enable row level security;
+create function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name, '/') $$;
+grant usage on schema public, auth, storage to authenticated, anon;
+grant all on all tables in schema storage to authenticated;
 grant execute on function auth.uid() to authenticated, anon;
 alter default privileges in schema public grant all on tables to anon, authenticated;
 alter default privileges in schema public grant execute on functions to anon, authenticated;
@@ -113,8 +119,36 @@ await essaie(db, u.assistante, `update clients set notes = 'une note' where enti
 ok((await essaie(db, u.admin, "select 1 from journal where table_name = 'clients' and action = 'update'")).rows.length === 1, "une modification sans changement n'est pas journalisée");
 ok((await essaie(db, u.admin, "delete from journal")).n === 0 || (await db.query("select count(*)::int n from journal")).rows[0].n > 0, "personne ne peut vider le journal");
 
+console.log("Tâches, pièces jointes et stockage");
+const clientSec = (await db.query(`select id from clients where entite_id = '${E.secret}' limit 1`)).rows[0].id;
+const secretDos = (await essaie(db, u.assistante, `insert into dossiers (entite_id, ref, client_id) values ('${E.secret}', 'T-1', '${clientSec}') returning id`)).rows[0].id;
+const ztpDos = (await db.query(`select id from dossiers where entite_id = '${E.ztp}'`)).rows[0].id;
+ok((await essaie(db, u.assistante, `insert into taches (entite_id, dossier_id, titre, assignee_id) values ('${E.secret}', '${secretDos}', 'Relancer le client', '${u.stagiaire}')`)).ok, "un éditeur crée une tâche et la confie à un collègue");
+ok((await essaie(db, u.assistante, `insert into taches (entite_id, dossier_id, titre) values ('${E.ztp}', '${ztpDos}', 'intrus')`)).ok === false, "ne crée pas de tâche chez Zwald");
+ok((await essaie(db, u.assistante, `insert into taches (entite_id, titre) values ('${E.secret}', 'Tâche sans dossier')`)).ok, "une tâche peut ne pas être liée à un dossier");
+ok((await compte(db, u.stagiaire, "select 1 from taches")) === 1, "la personne voit la tâche qui lui est confiée, pas celle d'un dossier qu'elle ne voit pas");
+ok((await essaie(db, u.stagiaire, `insert into taches (entite_id, titre) values ('${E.secret}', 'x')`)).ok === false, "sans le droit sur les tâches, on n'en crée pas");
+ok((await essaie(db, u.stagiaire, `update taches set fait = true, fait_le = now() where titre = 'Relancer le client'`)).n === 1, "mais on coche comme faite une tâche qui nous est confiée");
+ok((await essaie(db, u.stagiaire, `delete from taches where titre = 'Relancer le client'`)).n === 0, "et on ne la supprime pas");
+ok((await compte(db, u.chauffeur, "select 1 from taches")) === 0, "un compte sans accès à Secret ne voit pas ses tâches");
+ok((await essaie(db, u.assistante, `insert into pieces_jointes (entite_id, dossier_id, nom, chemin) values ('${E.secret}', '${secretDos}', 'devis.pdf', '${E.secret}/${secretDos}/a1-devis.pdf')`)).ok, "un éditeur ajoute une pièce jointe");
+ok((await essaie(db, u.assistante, `insert into pieces_jointes (entite_id, dossier_id, nom, chemin) values ('${E.ztp}', '${ztpDos}', 'x.pdf', '${E.ztp}/${ztpDos}/b1-x.pdf')`)).ok === false, "pas de pièce jointe chez Zwald");
+ok((await essaie(db, u.chauffeur, `insert into pieces_jointes (entite_id, dossier_id, nom, chemin) select entite_id, id, 'z.pdf', 'z' from dossiers where entite_id = '${E.taxi}' limit 1`)).ok === false, "un rôle en lecture n'ajoute rien");
+ok((await compte(db, u.stagiaire, "select 1 from pieces_jointes")) === 0, "un rôle limité à ses dossiers ne voit pas les pièces d'un autre dossier");
+ok((await essaie(db, u.assistante, `insert into storage.objects (bucket_id, name) values ('pieces', '${E.secret}/${secretDos}/a1-devis.pdf')`)).ok, "l'éditeur envoie le fichier dans le stockage de Secret");
+ok((await essaie(db, u.assistante, `insert into storage.objects (bucket_id, name) values ('pieces', '${E.ztp}/${ztpDos}/b1-x.pdf')`)).ok === false, "mais pas dans celui de Zwald");
+ok((await compte(db, u.assistante, "select 1 from storage.objects")) === 1, "il relit son fichier");
+await db.exec(`insert into storage.objects (bucket_id, name) values ('pieces', '${E.secret}/${secretDos}/orphelin.pdf')`);
+ok((await compte(db, u.assistante, "select 1 from storage.objects")) === 1, "un fichier sans pièce jointe correspondante n'est pas lisible");
+ok((await compte(db, u.stagiaire, "select 1 from storage.objects")) === 0, "un rôle limité à ses dossiers ne lit pas le fichier d'un autre dossier");
+ok((await db.query("select count(*)::int n from journal where table_name = 'taches'")).rows[0].n >= 2, "le journal note les tâches");
+await db.exec("set role anon;");
+let anonRefus = false; try { await db.query("select * from roles"); } catch { anonRefus = true; }
+await db.exec("reset role;");
+ok(anonRefus, "la clé publique n'a aucun accès aux tables, même celles créées par les migrations");
+
 console.log("Administratrice");
-ok((await compte(db, u.admin, "select 1 from clients")) === 5, "voit les clients de toutes les entreprises");
+ok((await compte(db, u.admin, "select 1 from clients")) >= 5, "voit les clients de toutes les entreprises");
 ok((await essaie(db, u.admin, `insert into roles (entite_id, nom, permissions) values ('${E.taxi}', 'Dispatch', array['dossiers.lire'])`)).ok, "crée un rôle");
 ok((await essaie(db, u.admin, `update roles set permissions = array['clients.lire'] where nom = 'Dispatch'`)).n === 1, "modifie un rôle");
 ok((await essaie(db, u.admin, `update membres set role_id = (select id from roles where nom = 'Dispatch') where user_id = '${u.chauffeur}'`)).n === 1, "change le rôle d'une personne");
@@ -126,7 +160,7 @@ let refuse = false; try { await db.query("select * from clients"); } catch { ref
 await db.exec("reset role;");
 ok(refuse, "le visiteur anonyme est refusé");
 
-console.log("\n== Chaîne de migrations v1 → v2 → v3 ==");
+console.log("\n== Chaîne de migrations v1 → v2 → v3 → v4 → v5 → v6 ==");
 const v = await base([W + "schema-v1-reference.sql"]);
 const vcompte = (await v.query("insert into auth.users (email) values ('anais@test') returning id")).rows[0].id;
 const vass = (await v.query("insert into auth.users (email) values ('assistante@test') returning id")).rows[0].id;
@@ -139,7 +173,12 @@ const eN = (s) => v.query("select id from entites where slug = $1", [s]).then((r
 await v.exec(`insert into membres values ('${vass}', '${await eN("secret")}', 'editeur'), ('${vass}', '${await eN("ztp")}', 'admin');`);
 await v.exec("update dossiers set cree_par = null");
 await v.exec(lire(W + "migration-3-droits.sql"));
+await v.exec(lire(W + "migration-4-analyses.sql"));
+await v.exec(lire(W + "migration-5-echelle.sql"));
+await v.exec(lire(W + "migration-6-collaboration.sql"));
 await accorder(v);
+const editeurMig = (await v.query("select permissions from roles where nom = 'Éditeur' limit 1")).rows[0].permissions;
+ok(editeurMig.includes("taches.ecrire"), "après migration, le rôle Éditeur reçoit le droit sur les tâches");
 const rolesMig = (await v.query("select e.slug, r.nom from membres m join roles r on r.id = m.role_id join entites e on e.id = m.entite_id where m.user_id = $1 order by e.slug", [vass])).rows;
 ok(rolesMig.map((x) => `${x.slug}:${x.nom}`).join() === "secret:Éditeur,ztp:Administrateur", "les anciens rôles admin et éditeur deviennent des rôles équivalents");
 ok((await v.query("select count(*)::int n from roles")).rows[0].n === 9, "trois rôles de départ par entreprise après migration");

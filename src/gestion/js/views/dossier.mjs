@@ -1,14 +1,22 @@
-import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe } from "../etat.mjs";
+import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef } from "../calc.mjs";
 import { uid } from "../defauts.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
+import { sectionTachesDossier } from "./taches.mjs";
+import { sectionPieces } from "./pieces.mjs";
 import { pastille, vide, pdf, voyageTexte } from "./commun.mjs";
 
 const rafraichir = () => naviguer(location.hash);
 const dernier = (docs, type) => docs.filter((d) => d.type === type).sort((a, b) => (a.created_at > b.created_at ? 1 : -1)).pop();
 
-export function ficheDossier(id) {
+// Les documents et paiements d'un dossier se chargent à son ouverture.
+export async function ficheDossier(id) {
+  await chargerDossier(id);
+  return ficheDossierVue(id);
+}
+
+function ficheDossierVue(id) {
   const r = resumeDossier(id);
   if (!r) return vide("Dossier introuvable", "Il a peut-être été supprimé.", h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Retour aux dossiers"));
   const { dossier: d, client, paiements } = r;
@@ -294,6 +302,8 @@ export function ficheDossier(id) {
         : h("p", { class: "vide-court" }, "Aucun document.")
     ),
     droit.finances ? h("section", null, h("h2", null, "Paiements reçus"), tableauPaiements, droit.paiements ? [h("h3", null, "Enregistrer un paiement"), formPaiement] : null) : null,
+    sectionTachesDossier(d.id),
+    sectionPieces(d),
     h("section", null, h("h2", null, "Notes internes"), champ("Visibles seulement ici, jamais sur les documents", notes)),
     !(droit.dossiers || droit.supprimer) ? null : h(
       "section",

@@ -17,6 +17,10 @@ Ces règles sont appliquées par la base de données elle-même, pas seulement p
 
 Le **journal d'activité** (écran Journal, pour les rôles qui ont ce droit) garde la trace de chaque création, modification et suppression, avec la personne et l'heure. Il ne peut être ni modifié ni vidé, et ne recopie jamais le contenu des réglages.
 
+## Tableau analytique
+
+L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants ») montre sur la période choisie : facturé et encaissé par mois en graphique, reste à encaisser, impayés par ancienneté, devis émis et acceptés avec le délai moyen d'acceptation, meilleurs clients, répartition par destination ou service et par responsable. Les montants sont séparés par devise. Les chiffres sont calculés par la base (fonction `tableau_analytique`), donc l'écran reste rapide avec de gros volumes. Ils portent sur toute l'entreprise, même pour un rôle limité à ses dossiers.
+
 ## Installation neuve
 
 1. Créer le projet Supabase (région Europe), puis **SQL Editor**, coller `docs/gestion/schema.sql`, **Run**.
@@ -29,6 +33,9 @@ Le **journal d'activité** (écran Journal, pour les rôles qui ont ce droit) ga
 À chaque étape, exécuter le fichier dans **SQL Editor** puis publier la version correspondante de l'outil juste après (l'ancienne version ne fonctionne plus avec les nouvelles tables).
 1. De la première version vers plusieurs entreprises : `migration-2-entreprises.sql`.
 2. Des rôles fixes vers les rôles personnalisables, le responsable de dossier et le journal : `migration-3-droits.sql`. Les anciens rôles « admin » et « éditeur » deviennent les rôles Administrateur et Éditeur de chaque entreprise.
+3. Tableau analytique : `migration-4-analyses.sql` (ajoute seulement des fonctions, ne modifie aucune donnée).
+4. Passage à l'échelle : `migration-5-echelle.sql` (résumé de chaque dossier tenu à jour par la base, recalculé pour les dossiers existants). À exécuter avant de publier la version correspondante de l'outil.
+5. Tâches et pièces jointes : `migration-6-collaboration.sql` (deux tables, un espace de stockage privé `pieces`, le droit « Gérer les tâches » ajouté aux rôles Administrateur et Éditeur). Supabase Storage doit être disponible, ce qui est le cas par défaut.
 
 ## Ajouter une personne (l'assistante par exemple)
 
@@ -58,6 +65,18 @@ Touche `?` (hors d'un champ de saisie) ouvre la liste. En résumé :
 ## Devise et équivalents d'un document
 
 Chaque devis ou facture choisit sa devise (liste modifiable dans Réglages) et peut afficher l'équivalent dans une ou plusieurs autres devises, à titre indicatif, avec le taux saisi pour ce document. Les totaux du tableau de bord sont regroupés par devise.
+
+## Tâches, pièces jointes et attribution en lot
+
+- **Tâches** : menu *Tâches*, ou section *Tâches* d'un dossier. Une tâche a un titre, une échéance facultative et une personne en charge. Elle peut être liée à un dossier ou non. Chacun voit les tâches qui lui sont confiées (la case suffit pour les terminer, même sans le droit « Gérer les tâches »). Les tâches de l'équipe et la création sont réservées aux rôles qui ont ce droit. Les tâches du jour et en retard apparaissent sur le tableau de bord.
+- **Pièces jointes** : dans la fiche d'un dossier (10 Mo par fichier). Les fichiers sont privés, les liens de téléchargement expirent après 5 minutes. Ils suivent les droits du dossier : qui ne voit pas le dossier ne voit pas ses fichiers. Supprimer un dossier laisse ses fichiers dans le stockage (ils ne sont plus accessibles depuis l'outil) : on peut les retirer depuis le tableau de bord Supabase, rubrique Storage.
+- **Attribution en lot** : dans la liste des dossiers, cocher plusieurs lignes puis choisir le nouveau responsable. Chaque changement est inscrit au journal.
+
+## Volumes et performances
+
+À la connexion, l'outil charge seulement les clients, les dossiers (avec leur total, leur encaissé et leur devise) et le catalogue. Les devis, factures et paiements, qui sont les données les plus lourdes, ne se chargent qu'à l'ouverture d'un dossier. Le résumé de chaque dossier est tenu à jour par la base (déclencheurs sur les documents et les paiements), jamais calculé dans le navigateur. Le tableau analytique, l'encaissé du mois et les exports lisent aussi directement la base.
+
+Ordre de grandeur : confortable jusqu'à quelques dizaines de milliers de dossiers et de clients. Au-delà, il faudra passer les listes en pagination côté base (la recherche de client y est déjà préparée). Le résumé suit le droit « voir les montants » : sans ce droit, les totaux d'un dossier ne sont pas lisibles.
 
 ## À savoir
 

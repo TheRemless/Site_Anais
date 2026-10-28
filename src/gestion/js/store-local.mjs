@@ -1,12 +1,14 @@
 // Stockage de démonstration : tout reste dans le navigateur (localStorage), rien n'est envoyé.
 // Il reproduit les droits de la vraie base : l'utilisateur de démo ne reçoit que ce que son rôle lui montre.
-import { aujourdhui, ajouterJours } from "./calc.mjs";
+import { aujourdhui, ajouterJours, totalDossier, sommePaiements } from "./calc.mjs";
 import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
+import { analyserLocal } from "./analyses.mjs";
 
-const CLE = "gestion-zwald-demo-v3";
+const CLE = "gestion-zwald-demo-v4";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue"];
+const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches"];
+const LIMITE_DEMO = 1.5 * 1024 * 1024;
 
 export function creer() {
   let data;
@@ -36,13 +38,30 @@ export function creer() {
   };
   charge();
 
+  // Résumé d'un dossier, comme le tient la base : seul le droit « montants » donne accès aux chiffres.
+  const avecResume = (d, finances) => {
+    const docs = data.documents.filter((x) => x.dossier_id === d.id);
+    const devis = docs.filter((x) => x.type === "devis").sort((a, b) => (a.date_emission + a.created_at < b.date_emission + b.created_at ? -1 : 1)).pop();
+    const base = { ...d, devis_envoye_le: (devis && devis.envoye_le) || null, a_facture: docs.some((x) => x.type === "facture") };
+    if (!finances) return base;
+    const doc = docs.filter((x) => x.type === "facture").pop() || devis;
+    return { ...base, total: totalDossier(docs), devise: (doc && doc.contenu.devise) || null, recu: sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id)) };
+  };
+  const dossiersVisibles = () => {
+    const ctx = contexte();
+    const ids = new Set(accessibles());
+    const visible = (d) => voitTout(ctx, d.entite_id) || d.responsable_id === utilisateur.user_id || d.cree_par === utilisateur.user_id;
+    return data.dossiers.filter((d) => ids.has(d.entite_id) && permissionsDans(ctx, d.entite_id).includes("dossiers.lire") && visible(d));
+  };
+  const financesDe = (entiteId) => permissionsDans(contexte(), entiteId).includes("finances.voir");
+
   const contexte = () => ({ profil: utilisateur, membres: data.membres, roles: data.roles });
   const accessibles = () => (utilisateur.super_admin ? data.entites.map((e) => e.id) : data.membres.filter((m) => m.user_id === utilisateur.user_id).map((m) => m.entite_id));
   const nomDe = (id) => (data.profils.find((p) => p.user_id === id) || {}).nom || null;
 
   // Journal tenu à la main, comme le fait le déclencheur de la vraie base.
   const journaliser = (table, action, ligne, details = {}) => {
-    const libelle = { dossiers: ligne.ref, clients: [ligne.prenom, ligne.nom].filter(Boolean).join(" "), catalogue: ligne.libelle, roles: ligne.nom, documents: `${ligne.type || ""} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim(), paiements: `${ligne.montant} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim() }[table] || "";
+    const libelle = { dossiers: ligne.ref, clients: [ligne.prenom, ligne.nom].filter(Boolean).join(" "), catalogue: ligne.libelle, roles: ligne.nom, taches: ligne.titre, pieces_jointes: ligne.nom, documents: `${ligne.type || ""} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim(), paiements: `${ligne.montant} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim() }[table] || "";
     data.journal.unshift({ id: Date.now() + Math.random(), created_at: new Date().toISOString(), entite_id: ligne.entite_id || null, user_id: utilisateur.user_id, table_name: table, action, cible: ligne.id || "", libelle, details });
     data.journal.length = Math.min(data.journal.length, 500);
   };
@@ -65,8 +84,12 @@ export function creer() {
       const idsDossiers = new Set(dossiers.map((d) => d.id));
       out.dossiers = dossiers;
       out.clients = data.clients.filter((c) => ids.has(c.entite_id) && permissionsDans(ctx, c.entite_id).includes("clients.lire") && (voitTout(ctx, c.entite_id) || c.cree_par === uidCourant || dossiers.some((d) => d.client_id === c.id)));
-      out.documents = data.documents.filter((d) => idsDossiers.has(d.dossier_id) && permissionsDans(ctx, d.entite_id).includes("finances.voir"));
-      out.paiements = data.paiements.filter((p) => idsDossiers.has(p.dossier_id) && permissionsDans(ctx, p.entite_id).includes("finances.voir"));
+      out.dossiers = dossiers.map((d) => avecResume(d, financesDe(d.entite_id)));
+      // Comme avec la vraie base, documents et paiements se chargent à l'ouverture d'un dossier.
+      out.documents = [];
+      out.paiements = [];
+      const peutTache = (t) => t.assignee_id === uidCourant || (ids.has(t.entite_id) && (voitTout(ctx, t.entite_id) || t.cree_par === uidCourant) && (!t.dossier_id || idsDossiers.has(t.dossier_id)));
+      out.taches = (data.taches || []).filter((t) => ids.has(t.entite_id) && peutTache(t));
       out.catalogue = data.catalogue.filter((c) => ids.has(c.entite_id));
       out.profils = utilisateur.super_admin ? data.profils : data.profils.filter((p) => p.user_id === uidCourant);
       out.membres = utilisateur.super_admin ? data.membres : data.membres.filter((m) => m.user_id === uidCourant);
@@ -132,6 +155,67 @@ export function creer() {
     async equipe(entiteId) {
       const ids = new Set(data.membres.filter((m) => m.entite_id === entiteId).map((m) => m.user_id));
       return data.profils.filter((p) => p.actif && (p.super_admin || ids.has(p.user_id))).map((p) => ({ user_id: p.user_id, nom: p.nom, email: p.email }));
+    },
+    // Pièces jointes de démonstration : gardées dans le navigateur, 1,5 Mo au plus par fichier.
+    async piecesDossier(dossierId) {
+      return structuredClone((data.pieces || []).filter((p) => p.dossier_id === dossierId));
+    },
+    async ajouterPiece({ entiteId, dossierId, fichier }) {
+      if (fichier.size > LIMITE_DEMO) throw new Error("En démonstration, les fichiers sont limités à 1,5 Mo.");
+      const contenu = await new Promise((ok, ko) => {
+        const l = new FileReader();
+        l.onload = () => ok(l.result);
+        l.onerror = () => ko(new Error("Lecture du fichier impossible."));
+        l.readAsDataURL(fichier);
+      });
+      const piece = { id: uid(), created_at: new Date().toISOString(), entite_id: entiteId, dossier_id: dossierId, nom: fichier.name, type: fichier.type, taille: fichier.size, chemin: `${entiteId}/${dossierId}/${uid()}`, cree_par: utilisateur.user_id };
+      (data.pieces = data.pieces || []).push(piece);
+      (data.fichiers = data.fichiers || {})[piece.chemin] = contenu;
+      journaliser("pieces_jointes", "insert", piece);
+      sauve();
+      return structuredClone(piece);
+    },
+    async lienPiece(piece) {
+      return (data.fichiers || {})[piece.chemin];
+    },
+    async supprimerPiece(piece) {
+      data.pieces = (data.pieces || []).filter((p) => p.id !== piece.id);
+      delete (data.fichiers || {})[piece.chemin];
+      journaliser("pieces_jointes", "delete", piece);
+      sauve();
+    },
+    async resumeDossier(id) {
+      const d = dossiersVisibles().find((x) => x.id === id);
+      return d ? structuredClone(avecResume(d, financesDe(d.entite_id))) : null;
+    },
+    async dossierComplet(id) {
+      const dossier = await this.resumeDossier(id);
+      if (!dossier) return { dossier: null, documents: [], paiements: [] };
+      const f = financesDe(dossier.entite_id);
+      return structuredClone({ dossier, documents: f ? data.documents.filter((x) => x.dossier_id === id) : [], paiements: f ? data.paiements.filter((x) => x.dossier_id === id) : [] });
+    },
+    async documentComplet(docId) {
+      const doc = data.documents.find((x) => x.id === docId);
+      return doc ? this.dossierComplet(doc.dossier_id) : null;
+    },
+    async paiementsPeriode({ entiteId, du, au }) {
+      if (!financesDe(entiteId)) return [];
+      const ids = new Set(dossiersVisibles().map((d) => d.id));
+      return structuredClone(data.paiements.filter((p) => p.entite_id === entiteId && ids.has(p.dossier_id) && p.date >= du && p.date <= au));
+    },
+    async tousDocuments(entiteId) {
+      if (!financesDe(entiteId)) return [];
+      const ids = new Set(dossiersVisibles().map((x) => x.id));
+      return structuredClone(data.documents.filter((x) => x.entite_id === entiteId && ids.has(x.dossier_id)));
+    },
+    async tousPaiements(entiteId) {
+      return this.paiementsPeriode({ entiteId, du: "0000-01-01", au: "9999-12-31" });
+    },
+    async analyses({ entiteId, du, au, jour }) {
+      const p = permissionsDans(contexte(), entiteId);
+      if (!(p.includes("analytics.voir") && p.includes("finances.voir"))) throw new Error("Droit insuffisant pour voir les analyses");
+      const de = (t) => data[t].filter((r) => r.entite_id === entiteId);
+      return analyserLocal({ dossiers: de("dossiers"), documents: de("documents"), paiements: de("paiements"), clients: de("clients"), profils: data.profils, reglages: data.reglages[entiteId] }, du, au, jour);
     },
     async journal({ entiteId, table, userId, avant, limite = 50 }) {
       if (!permissionsDans(contexte(), entiteId).includes("journal.voir")) return [];

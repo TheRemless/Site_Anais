@@ -3,11 +3,14 @@ import { etat, peut, equipe, entiteActive } from "../etat.mjs";
 import { h, vider } from "../ui.mjs";
 import { vide } from "./commun.mjs";
 
-const OBJETS = { dossiers: "le dossier", clients: "le client", documents: "le document", paiements: "le paiement", catalogue: "l'entrée du catalogue", reglages: "les réglages", roles: "le rôle", membres: "l'accès de" };
+const OBJETS = { dossiers: "le dossier", clients: "le client", documents: "le document", paiements: "le paiement", catalogue: "l'entrée du catalogue", reglages: "les réglages", roles: "le rôle", membres: "l'accès de", taches: "la tâche", pieces_jointes: "la pièce jointe" };
 const VERBES = { insert: "a créé", update: "a modifié", delete: "a supprimé" };
-const CHAMPS = { bandeau: "le titre", accepte_le: "la date d'acceptation", annule: "l'annulation", date_depart: "la date de début", date_retour: "la date de fin", client_id: "le client", responsable_id: "le responsable", notes: "les notes", contenu: "le contenu", date_emission: "la date d'émission", envoye_le: "la date d'envoi", montant: "le montant", date: "la date", moyen: "le moyen de paiement", nom: "le nom", prenom: "le prénom", adresse: "l'adresse", telephone: "le téléphone", email: "l'e-mail", prix: "le prix", libelle: "le libellé", actif: "l'état actif", permissions: "les droits", portee: "la portée", role_id: "le rôle" };
+const CHAMPS = { bandeau: "le titre", accepte_le: "la date d'acceptation", annule: "l'annulation", date_depart: "la date de début", date_retour: "la date de fin", client_id: "le client", responsable_id: "le responsable", notes: "les notes", contenu: "le contenu", date_emission: "la date d'émission", envoye_le: "la date d'envoi", montant: "le montant", date: "la date", moyen: "le moyen de paiement", nom: "le nom", prenom: "le prénom", adresse: "l'adresse", telephone: "le téléphone", email: "l'e-mail", prix: "le prix", libelle: "le libellé", actif: "l'état actif", permissions: "les droits", portee: "la portée", role_id: "le rôle", titre: "le titre", echeance: "l'échéance", assignee_id: "la personne en charge", fait: "l'état de la tâche" };
 
-const valeur = (v) => (v === null || v === undefined || v === "" ? "vide" : typeof v === "object" ? JSON.stringify(v) : String(v));
+const valeur = (v, cle) => (v === null || v === undefined || v === "" ? "vide" : typeof v === "object" ? JSON.stringify(v) : CHAMPS_PERSONNE.includes(cle) && PERSONNES.has(v) ? PERSONNES.get(v) : String(v));
+
+const PERSONNES = new Map();
+const CHAMPS_PERSONNE = ["responsable_id", "assignee_id", "fait_par"];
 
 function detail(l) {
   const entrees = Object.entries(l.details || {});
@@ -19,7 +22,7 @@ function detail(l) {
   );
 }
 
-const TABLES = [["", "Tout"], ["dossiers", "Dossiers"], ["clients", "Clients"], ["documents", "Devis et factures"], ["paiements", "Paiements"], ["catalogue", "Catalogue"], ["reglages", "Réglages"], ["roles", "Rôles"], ["membres", "Accès"]];
+const TABLES = [["", "Tout"], ["dossiers", "Dossiers"], ["clients", "Clients"], ["documents", "Devis et factures"], ["paiements", "Paiements"], ["catalogue", "Catalogue"], ["reglages", "Réglages"], ["roles", "Rôles"], ["membres", "Accès"], ["taches", "Tâches"], ["pieces_jointes", "Pièces jointes"]];
 
 export function vueJournal() {
   if (!peut("journal.voir")) return vide("Accès réservé", "Le journal d'activité est réservé aux personnes qui en ont le droit.", h("a", { class: "bouton secondaire", href: "#/" }, "Retour au tableau de bord"));
@@ -52,8 +55,14 @@ export function vueJournal() {
 
   const selTable = h("select", { id: "jr-table", onchange: (e) => ((filtres.table = e.target.value), charger(true)) }, TABLES.map(([v, l]) => h("option", { value: v }, l)));
   const selPersonne = h("select", { id: "jr-user", onchange: (e) => ((filtres.userId = e.target.value), charger(true)) }, h("option", { value: "" }, "Tout le monde"));
-  equipe().then((gens) => gens.forEach((p) => selPersonne.append(h("option", { value: p.user_id }, p.nom || p.email))));
-  charger(true);
+  equipe()
+    .then((gens) =>
+      gens.forEach((p) => {
+        PERSONNES.set(p.user_id, p.nom || p.email);
+        selPersonne.append(h("option", { value: p.user_id }, p.nom || p.email));
+      })
+    )
+    .finally(() => charger(true));
 
   return h(
     "div",

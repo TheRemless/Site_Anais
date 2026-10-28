@@ -201,37 +201,45 @@ export function echeanceAcompte(dossier, reglages) {
   return ajouterJours(dossier.accepte_le, Number(reglages.conditions.delai_jours) || 0);
 }
 
-export function statutDossier({ dossier, documents, paiements, reglages }) {
-  if (dossier.annule) return "annule";
-  const total = totalDossier(documents);
-  const recu = sommePaiements(paiements);
+// Statut à partir de faits déjà connus : c'est ce qui permet de l'afficher sans charger les documents du dossier.
+export function statutDepuis({ annule, total, recu, accepteLe, devisEnvoyeLe, pct }) {
+  if (annule) return "annule";
   if (total > 0 && recu >= total) return "solde";
-  const acompte = acompteDu(total, reglages.conditions.acompte_pct);
+  const acompte = acompteDu(total, pct);
   if (acompte > 0 && recu >= acompte) return "acompte";
-  if (dossier.accepte_le) return "accepte";
-  const devis = dernier(documents, "devis");
-  if (devis && devis.envoye_le) return "devis_envoye";
+  if (accepteLe) return "accepte";
+  if (devisEnvoyeLe) return "devis_envoye";
   return "brouillon";
 }
 
-// Résumé d'un dossier pour les listes et le tableau de bord.
+export function statutDossier({ dossier, documents, paiements, reglages }) {
+  const devis = dernier(documents, "devis");
+  return statutDepuis({ annule: dossier.annule, total: totalDossier(documents), recu: sommePaiements(paiements), accepteLe: dossier.accepte_le, devisEnvoyeLe: devis && devis.envoye_le, pct: reglages.conditions.acompte_pct });
+}
+
+// Résumé d'un dossier pour les listes et le tableau de bord. Quand ses documents et paiements ne sont pas chargés
+// (cas courant avec la vraie base), on s'appuie sur le résumé tenu à jour par la base (total, encaissé, devise).
 export function resume(dossier, db, reglages) {
   const documents = db.documents.filter((d) => d.dossier_id === dossier.id);
   const paiements = db.paiements.filter((p) => p.dossier_id === dossier.id);
-  const total = totalDossier(documents);
-  const recu = sommePaiements(paiements);
-  const doc = dernier(documents, "facture") || dernier(documents, "devis");
+  const charge = documents.length > 0 || paiements.length > 0;
+  const devis = dernier(documents, "devis");
+  const doc = dernier(documents, "facture") || devis;
+  const total = charge ? totalDossier(documents) : Number(dossier.total) || 0;
+  const recu = charge ? sommePaiements(paiements) : Number(dossier.recu) || 0;
+  const devisEnvoyeLe = charge ? (devis && devis.envoye_le) || null : dossier.devis_envoye_le || null;
   return {
     dossier,
     client: db.clients.find((c) => c.id === dossier.client_id) || null,
     documents,
     paiements,
     // Devise du dossier : celle de son dernier document, sinon celle de l'entreprise.
-    devise: (doc && doc.contenu.devise) || reglages.devise || null,
+    devise: (doc && doc.contenu.devise) || (!charge && dossier.devise) || reglages.devise || null,
     total,
     recu,
     reste: arrondi(total - recu),
-    statut: statutDossier({ dossier, documents, paiements, reglages }),
+    devisEnvoyeLe,
+    statut: statutDepuis({ annule: dossier.annule, total, recu, accepteLe: dossier.accepte_le, devisEnvoyeLe, pct: reglages.conditions.acompte_pct }),
   };
 }
 
@@ -246,9 +254,8 @@ export function aFaire(resumes, today, reglages) {
       if (ech && ech < today) items.push({ type: "acompte_retard", resume: r, jours: joursEntre(ech, today) });
     }
     if (r.statut === "devis_envoye") {
-      const devis = dernier(r.documents, "devis");
-      const depuis = joursEntre(devis.envoye_le, today);
-      if (depuis >= relance) items.push({ type: "devis_relance", resume: r, jours: depuis });
+      const depuis = r.devisEnvoyeLe ? joursEntre(r.devisEnvoyeLe, today) : 0;
+      if (r.devisEnvoyeLe && depuis >= relance) items.push({ type: "devis_relance", resume: r, jours: depuis });
     }
     if (r.statut === "acompte" && d.date_depart) {
       const avant = joursEntre(today, d.date_depart);

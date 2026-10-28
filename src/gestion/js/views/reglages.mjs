@@ -1,5 +1,5 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
-import { etat, enregistrerReglages, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut } from "../etat.mjs";
+import { etat, enregistrerReglages, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments } from "../etat.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
@@ -21,17 +21,17 @@ function csv(lignes) {
 const nomFichierEntite = (base, ext) => `${base}-${entiteActive().slug}-${aujourdhui()}.${ext}`;
 
 function exporterDossiers() {
-  const lignes = [["Référence", "Client", "Intitulé", "Statut", "Total", "Reçu", "Reste", "Devise", "Devis émis le", "Accepté le", "Début", "Fin"]];
+  const lignes = [["Référence", "Client", "Intitulé", "Statut", "Total", "Reçu", "Reste", "Devise", "Créé le", "Accepté le", "Début", "Fin"]];
   for (const r of resumes()) {
-    const devis = r.documents.find((d) => d.type === "devis");
-    lignes.push([r.dossier.ref, nomClient(r.client), r.dossier.pays, STATUTS[r.statut], r.total, r.recu, r.reste, r.devise || reglages().devise, devis ? formatDate(devis.date_emission) : "", formatDate(r.dossier.accepte_le), formatDate(r.dossier.date_depart), formatDate(r.dossier.date_retour)]);
+    lignes.push([r.dossier.ref, nomClient(r.client), r.dossier.pays, STATUTS[r.statut], r.total, r.recu, r.reste, r.devise || reglages().devise, formatDate(r.dossier.created_at), formatDate(r.dossier.accepte_le), formatDate(r.dossier.date_depart), formatDate(r.dossier.date_retour)]);
   }
   telecharger(nomFichierEntite("dossiers", "csv"), csv(lignes), "text/csv;charset=utf-8");
 }
 
-function exporterPaiements() {
+async function exporterPaiements() {
+  const paiements = await tousPaiements();
   const lignes = [["Date", "Référence", "Client", "Type", "Moyen", "Montant", "Devise", "Montant d'origine", "Devise d'origine", "Note"]];
-  for (const p of [...etat.db.paiements].sort((a, b) => (a.date > b.date ? 1 : -1))) {
+  for (const p of paiements) {
     const d = etat.db.dossiers.find((x) => x.id === p.dossier_id);
     const c = d && etat.db.clients.find((x) => x.id === d.client_id);
     lignes.push([formatDate(p.date), d ? d.ref : "", nomClient(c), p.type, p.moyen, p.montant, ((d && resumeDossier(d.id)) || {}).devise || reglages().devise, p.origine_montant ?? "", p.origine_devise, p.note]);
@@ -39,9 +39,12 @@ function exporterPaiements() {
   telecharger(nomFichierEntite("paiements", "csv"), csv(lignes), "text/csv;charset=utf-8");
 }
 
-function exporterTout() {
+async function exporterTout() {
   const sauvegarde = { version: 2, entreprise: entiteActive().slug, exporte_le: new Date().toISOString() };
   for (const t of TABLES) sauvegarde[t] = etat.db[t];
+  // Documents et paiements ne sont pas en mémoire : on les lit dans la base.
+  sauvegarde.documents = await tousDocuments();
+  sauvegarde.paiements = await tousPaiements();
   telecharger(nomFichierEntite("sauvegarde", "json"), JSON.stringify(sauvegarde, null, 2), "application/json");
   toast("Sauvegarde téléchargée. Gardez ce fichier en lieu sûr : il contient les données clients.");
 }
