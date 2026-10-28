@@ -153,6 +153,7 @@ function editeurVue(id) {
 
   // ---- Champs généraux --------------------------------------------------------------------------------
   const date = h("input", { id: "d-date", type: "date", value: doc.date_emission, oninput: (e) => ((doc.date_emission = e.target.value), change()) });
+  const prestataire = h("input", { id: "d-prestataire", value: c.prestataire || "", placeholder: "Qui réalise le service, si ce n'est pas vous", oninput: (e) => ((c.prestataire = e.target.value), change()) });
   const bandeau = h("input", { id: "d-bandeau", value: c.bandeau, oninput: (e) => ((c.bandeau = e.target.value), change()) });
   const colonnes = h(
     "select",
@@ -499,7 +500,7 @@ function editeurVue(id) {
   const formulaire = h(
     "div",
     { class: "editeur-form" },
-    h("fieldset", null, h("legend", null, "En-tête"), h("div", { class: "grille-form" }, champ("Date d'émission", date), champ("Colonnes", colonnes), champ("Devise du document", deviseSel)), champ("Titre dans la bande de couleur", bandeau)),
+    h("fieldset", null, h("legend", null, "En-tête"), h("div", { class: "grille-form" }, champ("Date d'émission", date), champ("Colonnes", colonnes), champ("Devise du document", deviseSel)), champ("Titre dans la bande de couleur", bandeau), champ("Prestataire du service (facultatif)", prestataire)),
     h("fieldset", null, h("legend", null, "Contenu"), listeLignes, h("div", { class: "ajouts" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("bloc", { intro: "comprenant:" })) }, "Ajouter un bloc de formule"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("ligne")) }, "Ajouter une ligne"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("remise")) }, "Ajouter une remise"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("texte")) }, "Ajouter une note")), champ("Catalogue", depuisCatalogue), totalTexte),
     blocRecu,
     h(

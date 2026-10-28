@@ -154,6 +154,10 @@ test("nouvelleRef : séquence annuelle par entreprise", async () => {
   assert.equal(nouvelleRef({ ...args, refsExistantes: [] }), "ST-2026-0001");
   assert.equal(nouvelleRef({ ...args, refsExistantes: ["ST-2026-0001", "ST-2026-0009", "ST-2025-0040", "X"] }), "ST-2026-0010");
   assert.equal(nouvelleRef({ ...args, numerotation: { mode: "sequence", prefixe: "" }, refsExistantes: ["2026-0003"] }), "2026-0004");
+  // Numéros à trois chiffres (INV-2026-001), la suite reprend après un numéro saisi à la main.
+  const trois = { ...args, numerotation: { mode: "sequence", prefixe: "INV", chiffres: 3 } };
+  assert.equal(nouvelleRef({ ...trois, refsExistantes: [] }), "INV-2026-001");
+  assert.equal(nouvelleRef({ ...trois, refsExistantes: ["INV-2026-001", "INV-2026-009"] }), "INV-2026-010");
 });
 
 test("nouvelleRef : initiales, avec lettre si la référence existe déjà", async () => {
@@ -199,4 +203,15 @@ test("resume : sans documents chargés, le dossier s'appuie sur le résumé tenu
   const sansChiffres = resume({ ...dossier, total: undefined, recu: undefined, devise: undefined }, { documents: [], paiements: [], clients: [] }, regl);
   assert.equal(sansChiffres.statut, "accepte");
   assert.equal(sansChiffres.devise, "CHF");
+});
+
+test("réglages : nouvelles options complétées pour une entreprise existante", async () => {
+  const { completerReglages } = await import("../src/gestion/js/defauts.mjs");
+  const r = completerReglages({ emetteur: { nom: "X" }, libelles: { facture: "INVOICE" } });
+  assert.equal(r.apparence.entete, "classique");
+  assert.equal(r.numerotation.chiffres, 4);
+  assert.equal(r.emetteur.sous_titre, "");
+  assert.equal(r.libelles.facture, "INVOICE");
+  assert.equal(r.libelles.colonne_montant, "");
+  assert.equal(r.libelles.prestataire, "Prestataire :");
 });
