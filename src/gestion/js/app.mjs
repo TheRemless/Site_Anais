@@ -1,5 +1,5 @@
-import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif } from "./etat.mjs";
-import { h, vider, toast } from "./ui.mjs";
+import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut } from "./etat.mjs";
+import { h, vider, toast, modal } from "./ui.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { listeDossiers, nouveauDossier } from "./views/dossiers.mjs";
 import { ficheDossier } from "./views/dossier.mjs";
@@ -8,6 +8,7 @@ import { listeClients, ficheClient } from "./views/clients.mjs";
 import { catalogue } from "./views/catalogue.mjs";
 import { vueReglages } from "./views/reglages.mjs";
 import { vueAdmin } from "./views/admin.mjs";
+import { vueJournal } from "./views/journal.mjs";
 
 const ROUTES = [
   [/^#?\/?$/, "tableau", tableauDeBord],
@@ -20,6 +21,7 @@ const ROUTES = [
   [/^#\/catalogue$/, "catalogue", catalogue],
   [/^#\/reglages$/, "reglages", vueReglages],
   [/^#\/admin$/, "admin", vueAdmin],
+  [/^#\/journal$/, "journal", vueJournal],
 ];
 
 const racine = document.getElementById("app");
@@ -116,6 +118,7 @@ function menu() {
     ["#/clients", "Clients", "clients"],
     ["#/catalogue", "Catalogue", "catalogue"],
     ...(estAdmin() ? [["#/reglages", "Réglages", "reglages"]] : []),
+    ...(peut("journal.voir") ? [["#/journal", "Journal", "journal"]] : []),
   ];
   const logo = etat.db.reglages.apparence.logo;
   return h(
@@ -128,7 +131,8 @@ function menu() {
       "div",
       { class: "menu-bas" },
       estSuperAdmin() ? h("a", { class: "lien-admin", href: "#/admin", "data-cle": "admin" }, "Administration") : null,
-      h("span", { class: "compte" }, etat.moi.nom || etat.session.email, roleActif() ? ` · ${roleActif() === "admin" ? "administrateur" : "éditeur"}` : ""),
+      h("button", { class: "lien", type: "button", onclick: ouvrirAide, title: "Raccourcis clavier (?)" }, "Raccourcis clavier"),
+      h("span", { class: "compte" }, etat.moi.nom || etat.session.email, roleActif() ? ` · ${roleActif()}` : ""),
       etat.store.mode === "supabase"
         ? h(
             "button",
@@ -202,12 +206,56 @@ function afficher() {
     noeud = h("div", { class: "vide" }, h("h1", null, "Cet écran n'a pas pu s'afficher"), h("p", null, err.message), h("a", { href: "#/" }, "Retour au tableau de bord"));
   }
   principal.replaceChildren(noeud);
-  principal.className = noeud.dataset && noeud.dataset.large ? "large" : "";
+  principal.className = [noeud.dataset && noeud.dataset.large ? "large" : "", noeud.dataset && noeud.dataset.plein ? "plein" : ""].filter(Boolean).join(" ");
   document.title = `${(noeud.dataset && noeud.dataset.titre) || "Gestion"} - ${entiteActive().nom}`;
+  // Les pages à deux volets prennent exactement la hauteur restante de la fenêtre, bandeaux éventuels compris.
+  document.documentElement.style.setProperty("--decalage", `${Math.round(principal.getBoundingClientRect().top + window.scrollY + 48)}px`);
   for (const a of document.querySelectorAll(".menu a[data-cle]")) a.toggleAttribute("aria-current", a.dataset.cle === cleRoute);
   if (hash !== derniereVue) window.scrollTo(0, 0);
   derniereVue = hash;
 }
+
+function ouvrirAide() {
+  const ligne = (touches, texte) => h("tr", null, h("td", null, ...touches.flatMap((t, i) => (i ? [" puis ", h("kbd", null, t)] : [h("kbd", null, t)]))), h("td", null, texte));
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+  const mod = mac ? "Cmd" : "Ctrl";
+  const tableau = (lignes) => h("table", { class: "tableau simple raccourcis" }, h("tbody", null, lignes));
+  modal(
+    "Raccourcis clavier",
+    h(
+      "div",
+      { class: "modal-corps" },
+      h("h3", null, "Partout, hors d'un champ de saisie"),
+      tableau([ligne(["?"], "Afficher cette aide"), ligne(["n"], "Nouveau dossier"), ligne(["/"], "Aller à la recherche"), ligne(["g", "t"], "Tableau de bord"), ligne(["g", "d"], "Dossiers"), ligne(["g", "c"], "Clients"), ligne(["g", "k"], "Catalogue"), ligne(["g", "r"], "Réglages (administrateurs)"), ligne(["Échap"], "Fermer une fenêtre")]),
+      h("h3", null, "Dans un devis ou une facture"),
+      tableau([ligne([`${mod}+Z`], "Annuler la dernière modification"), ligne([`${mod}+Maj+Z`, `${mac ? "" : "Ctrl+Y"}`].filter(Boolean).slice(0, 1), `Rétablir${mac ? "" : " (ou Ctrl+Y)"}`), ligne([`${mod}+S`], "Enregistrer tout de suite"), ligne([`${mod}+P`], "Télécharger le PDF")]),
+      h("p", { class: "aide" }, "Les raccourcis propres au navigateur, comme Ctrl+T, Ctrl+W ou Ctrl+N, ne peuvent pas être pris en charge par un site. Les autres sont désactivés pendant la saisie dans un champ pour ne pas gêner l'écriture.")
+    )
+  );
+}
+
+// Raccourcis simples, actifs seulement quand on n'écrit pas dans un champ et qu'aucune fenêtre n'est ouverte.
+let sequence = null;
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || !etat.session || !etat.db) return;
+  if (e.target.matches("input, textarea, select, [contenteditable]") || document.querySelector(".modal-fond")) return;
+  const k = e.key.toLowerCase();
+  if (sequence === "g") {
+    sequence = null;
+    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(estSuperAdmin() ? { a: "#/admin" } : {}) };
+    if (cibles[k]) (e.preventDefault(), (location.hash = cibles[k]));
+    return;
+  }
+  if (k === "g") {
+    sequence = "g";
+    setTimeout(() => (sequence = null), 1200);
+  } else if (k === "n") (e.preventDefault(), (location.hash = "#/dossiers/nouveau"));
+  else if (k === "?") (e.preventDefault(), ouvrirAide());
+  else if (k === "/") {
+    const champ = document.getElementById("recherche") || document.getElementById("rech-clients");
+    if (champ) (e.preventDefault(), champ.focus());
+  }
+});
 
 window.addEventListener("hashchange", afficher);
 

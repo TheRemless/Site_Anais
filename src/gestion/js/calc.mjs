@@ -31,9 +31,30 @@ export function setDevise(code) {
   devise = code || "CHF";
 }
 
-export function formatMontant(n) {
+// `code` permet d'afficher un montant dans la devise propre à un document.
+// Sans le droit « finances », les montants ne s'affichent pas : tirets à la place des chiffres.
+let masquer = false;
+export function setMasquerMontants(oui) {
+  masquer = !!oui;
+}
+
+export function formatMontant(n, code) {
+  if (masquer) return "—";
   const v = arrondi(n);
-  return `${v < 0 ? "- " : ""}${devise} ${formatNombre(v)}`;
+  return `${v < 0 ? "- " : ""}${code || devise} ${formatNombre(v)}`;
+}
+
+export const devisePar = () => devise;
+
+// Somme de montants en plusieurs devises : « CHF 550 · THB 1'200 ».
+export function formatSommes(paires, defaut) {
+  const sommes = new Map();
+  for (const { montant, devise: d } of paires) {
+    const code = d || defaut || devise;
+    sommes.set(code, arrondi((sommes.get(code) || 0) + (Number(montant) || 0)));
+  }
+  if (!sommes.size) return formatMontant(0, defaut);
+  return [...sommes].map(([code, v]) => formatMontant(v, code)).join(" · ");
 }
 
 export function formatDate(iso) {
@@ -91,11 +112,18 @@ export function remiseJours(qteJours) {
   return Math.floor((Number(qteJours) || 0) / 14);
 }
 
-export function equivalents(total, taux) {
-  return {
-    eur: Math.round(total * (Number(taux && taux.eur) || 0)),
-    thb: Math.round(total * (Number(taux && taux.thb) || 0)),
-  };
+// Lignes d'équivalent indicatif d'un document. L'ancien format (eur et thb) est converti.
+export function lignesEquivalents(eq, taux) {
+  if (!eq) return [];
+  if (Array.isArray(eq.lignes)) return eq.lignes;
+  return [
+    { code: "EUR", taux: eq.eur ?? (taux && taux.eur) },
+    { code: "THB", taux: eq.thb ?? (taux && taux.thb) },
+  ];
+}
+
+export function equivalents(total, lignes) {
+  return (lignes || []).filter((l) => l.code && Number(l.taux) > 0).map((l) => ({ code: l.code, montant: Math.round(total * Number(l.taux)) }));
 }
 
 const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
@@ -192,11 +220,14 @@ export function resume(dossier, db, reglages) {
   const paiements = db.paiements.filter((p) => p.dossier_id === dossier.id);
   const total = totalDossier(documents);
   const recu = sommePaiements(paiements);
+  const doc = dernier(documents, "facture") || dernier(documents, "devis");
   return {
     dossier,
     client: db.clients.find((c) => c.id === dossier.client_id) || null,
     documents,
     paiements,
+    // Devise du dossier : celle de son dernier document, sinon celle de l'entreprise.
+    devise: (doc && doc.contenu.devise) || reglages.devise || null,
     total,
     recu,
     reste: arrondi(total - recu),

@@ -6,13 +6,16 @@ L'outil est dans `src/gestion/` et s'ouvre sur `/gestion/`. Il gère plusieurs e
 
 ## Qui voit quoi
 
-| Rôle | Voit | Peut faire |
-|---|---|---|
-| Administratrice générale | Toutes les entreprises | Tout, y compris créer des entreprises et donner des accès (écran Administration) |
-| Administrateur d'une entreprise | Cette entreprise | Tout dans cette entreprise, réglages compris (écran Réglages) |
-| Éditeur d'une entreprise | Cette entreprise | Clients, dossiers, devis, factures, paiements, catalogue. Pas les réglages (donc pas l'IBAN), pas la suppression d'un dossier |
+- **Administratrice générale** : voit toutes les entreprises, a tous les droits partout, gère les entreprises, les rôles et les accès (écran Administration).
+- **Rôle dans une entreprise** : chaque personne a un rôle par entreprise, ou aucun accès. Un rôle est un ensemble de droits précis, que l'administratrice crée et modifie librement entreprise par entreprise (écran Administration, « Rôles et droits »). Trois rôles sont créés avec chaque entreprise : Administrateur (tout), Éditeur (clients, dossiers, devis, factures, paiements, catalogue) et Lecteur (consultation).
 
-Ces règles sont appliquées par la base de données elle-même. Un éditeur de Secret et Taxi ne peut rien lire ni écrire chez Zwald, même en contournant l'interface. `docs/gestion/verif-securite.mjs` le vérifie sur un Postgres en mémoire.
+Les droits disponibles : voir, modifier et supprimer les clients et les dossiers, modifier et supprimer les devis et factures, **voir les montants** (sans ce droit, ni documents ni paiements ne sont lisibles), enregistrer les paiements, modifier le catalogue, modifier les réglages (coordonnées bancaires comprises), exporter, voir le tableau analytique, voir le journal d'activité.
+
+La **portée** d'un rôle peut se limiter aux dossiers dont la personne est responsable ou qu'elle a créés. Chaque dossier a un responsable, modifiable depuis la fiche du dossier.
+
+Ces règles sont appliquées par la base de données elle-même, pas seulement par l'interface. Un éditeur de Secret et Taxi ne peut rien lire ni écrire chez Zwald, même en contournant l'écran. `docs/gestion/verif-securite.mjs` le vérifie sur un Postgres en mémoire (installation neuve et chaîne de migrations).
+
+Le **journal d'activité** (écran Journal, pour les rôles qui ont ce droit) garde la trace de chaque création, modification et suppression, avec la personne et l'heure. Il ne peut être ni modifié ni vidé, et ne recopie jamais le contenu des réglages.
 
 ## Installation neuve
 
@@ -21,15 +24,16 @@ Ces règles sont appliquées par la base de données elle-même. Un éditeur de 
 3. **Authentication**, **Users**, **Add user** : créer le compte de l'administratrice (Auto Confirm User). Le tout premier compte devient automatiquement administratrice générale.
 4. Renseigner l'URL du projet et la clé `anon public` dans `src/gestion/js/config.mjs`, puis publier.
 
-## Mise à jour d'une base déjà installée (première version)
+## Mise à jour d'une base déjà installée
 
-1. **SQL Editor**, coller `docs/gestion/migration-2-entreprises.sql`, **Run**. Les données existantes deviennent celles de Zwald Travel Planner et les comptes existants deviennent administrateurs généraux.
-2. Publier la nouvelle version de l'outil juste après (l'ancienne version ne fonctionne plus avec les nouvelles tables).
+À chaque étape, exécuter le fichier dans **SQL Editor** puis publier la version correspondante de l'outil juste après (l'ancienne version ne fonctionne plus avec les nouvelles tables).
+1. De la première version vers plusieurs entreprises : `migration-2-entreprises.sql`.
+2. Des rôles fixes vers les rôles personnalisables, le responsable de dossier et le journal : `migration-3-droits.sql`. Les anciens rôles « admin » et « éditeur » deviennent les rôles Administrateur et Éditeur de chaque entreprise.
 
 ## Ajouter une personne (l'assistante par exemple)
 
 1. Dans Supabase : **Authentication**, **Users**, **Add user**, saisir son e-mail et un mot de passe, cocher **Auto Confirm User**.
-2. Dans l'outil : **Administration**, **Utilisateurs**, **Gérer l'accès** sur son nom. Choisir **Éditeur** pour Secret Travel & Tour et pour VIP Taxi Lanta, **Aucun accès** pour Zwald Travel Planner.
+2. Dans l'outil : **Administration**, **Utilisateurs**, **Gérer l'accès** sur son nom. Choisir un rôle pour chaque entreprise (par exemple Éditeur pour Secret Travel & Tour et VIP Taxi Lanta), **Aucun accès** pour Zwald Travel Planner.
 3. Pour couper l'accès d'une personne sans supprimer son compte, décocher **Compte actif**.
 
 ## Réglages d'une entreprise
@@ -43,6 +47,17 @@ L'écran **Réglages** (administrateurs) couvre tout ce qui apparaît sur les do
 - **Sauvegarde** : sauvegarde complète, exports pour Excel, import. Ces fichiers concernent seulement l'entreprise active.
 
 Une entreprise nouvellement créée démarre avec des réglages vides. Le tableau de bord indique ce qu'il manque tant que ce n'est pas rempli.
+
+## Raccourcis clavier
+
+Touche `?` (hors d'un champ de saisie) ouvre la liste. En résumé :
+- Partout : `n` nouveau dossier, `/` recherche, `g` puis `t`, `d`, `c`, `k` ou `r` pour aller au tableau de bord, aux dossiers, aux clients, au catalogue ou aux réglages.
+- Dans un devis ou une facture : `Ctrl+Z` annuler, `Ctrl+Maj+Z` ou `Ctrl+Y` rétablir, `Ctrl+S` enregistrer, `Ctrl+P` télécharger le PDF (`Cmd` à la place de `Ctrl` sur Mac). L'historique garde les 100 dernières modifications du document ouvert.
+- Un site ne peut pas prendre le contrôle des raccourcis réservés au navigateur (`Ctrl+T`, `Ctrl+W`, `Ctrl+N`, `Ctrl+Tab`).
+
+## Devise et équivalents d'un document
+
+Chaque devis ou facture choisit sa devise (liste modifiable dans Réglages) et peut afficher l'équivalent dans une ou plusieurs autres devises, à titre indicatif, avec le taux saisi pour ce document. Les totaux du tableau de bord sont regroupés par devise.
 
 ## À savoir
 

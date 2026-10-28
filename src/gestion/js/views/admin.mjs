@@ -1,13 +1,80 @@
 // Administration : entreprises et accès des utilisateurs. Réservée à l'administratrice générale.
-import { etat, estSuperAdmin, creerEntite, modifierEntite, definirAcces, modifierProfil, naviguer } from "../etat.mjs";
-import { h, champ, modal, toast, slug } from "../ui.mjs";
+import { etat, estSuperAdmin, creerEntite, modifierEntite, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer } from "../etat.mjs";
+import { PERMISSIONS, DEPENDANCES } from "../defauts.mjs";
+import { h, champ, modal, toast, slug, confirmer } from "../ui.mjs";
 import { vide } from "./commun.mjs";
 
-const ROLES = [
-  ["", "Aucun accès"],
-  ["editeur", "Éditeur : documents, clients, paiements"],
-  ["admin", "Administrateur : tout, y compris les réglages"],
+const PORTEES = [
+  ["toute", "Tous les dossiers de l'entreprise"],
+  ["mes_dossiers", "Seulement les dossiers dont la personne est responsable ou qu'elle a créés"],
 ];
+
+// Éditeur d'un rôle : nom, portée et une case à cocher par droit, avec leurs dépendances.
+function roleModal(entite, role, apres) {
+  const nouveau = !role.id;
+  const verrou = role.systeme && role.nom === "Administrateur";
+  const nom = h("input", { id: "rl-nom", value: role.nom || "", required: true, disabled: role.systeme });
+  const description = h("input", { id: "rl-desc", value: role.description || "" });
+  const portee = h("select", { id: "rl-portee", disabled: verrou }, PORTEES.map(([v, l]) => h("option", { value: v }, l)));
+  portee.value = role.portee || "toute";
+  const choisis = new Set(role.permissions || []);
+  const cases = new Map();
+  const majCases = () => cases.forEach((c, code) => (c.checked = choisis.has(code)));
+  const basculer = (code, coche) => {
+    if (coche) {
+      choisis.add(code);
+      (DEPENDANCES[code] || []).forEach((d) => choisis.add(d));
+    } else {
+      choisis.delete(code);
+      for (const [autre, requis] of Object.entries(DEPENDANCES)) if (requis.includes(code)) choisis.delete(autre);
+    }
+    majCases();
+  };
+  const groupes = [...new Set(PERMISSIONS.map((p) => p.groupe))];
+  const blocs = groupes.map((g) =>
+    h(
+      "fieldset",
+      null,
+      h("legend", null, g),
+      PERMISSIONS.filter((p) => p.groupe === g).map((p) => {
+        const c = h("input", { type: "checkbox", id: `perm-${p.code}`, disabled: verrou, onchange: (e) => basculer(p.code, e.target.checked) });
+        cases.set(p.code, c);
+        return h("div", null, h("label", { class: "case", for: `perm-${p.code}` }, c, p.libelle), p.aide ? h("p", { class: "aide decale" }, p.aide) : null);
+      })
+    )
+  );
+  majCases();
+  const fermer = modal(
+    nouveau ? `Nouveau rôle pour ${entite.nom}` : `Rôle « ${role.nom} »`,
+    h(
+      "form",
+      {
+        class: "modal-corps",
+        onsubmit: async (e) => {
+          e.preventDefault();
+          const valeurs = { nom: nom.value.trim(), description: description.value.trim(), portee: portee.value, permissions: [...choisis] };
+          if (etat.brut.roles.some((r) => r.entite_id === entite.id && r.id !== role.id && r.nom.toLowerCase() === valeurs.nom.toLowerCase())) return toast("Ce nom de rôle existe déjà.", true);
+          try {
+            if (nouveau) await inserer("roles", { ...valeurs, entite_id: entite.id, systeme: false });
+            else await modifier("roles", role.id, valeurs);
+            fermer();
+            toast("Rôle enregistré. Il s'applique tout de suite.");
+            apres();
+          } catch (err) {
+            toast(`Enregistrement impossible : ${err.message}`, true);
+          }
+        },
+      },
+      champ("Nom du rôle", nom),
+      champ("Description", description, "Pour s'y retrouver dans la liste."),
+      champ("Dossiers visibles", portee, verrou ? "L'administrateur a tous les droits, ce rôle n'est pas modifiable." : null),
+      h("p", { class: "aide" }, "Chaque case ajoute un droit. Un droit en suppose d'autres : « modifier » coche automatiquement « voir »."),
+      ...blocs,
+      h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), verrou ? null : h("button", { type: "submit", class: "principal" }, "Enregistrer le rôle"))
+    ),
+    { large: true }
+  );
+}
 
 function nouvelleEntiteModal(apres) {
   const nom = h("input", { id: "ne-nom", required: true });
@@ -79,8 +146,8 @@ function accesModal(profil, apres) {
   const superAdmin = h("input", { id: "ua-super", type: "checkbox", checked: profil.super_admin, disabled: moi });
   const selects = etat.brut.entites.map((e) => {
     const m = etat.brut.membres.find((x) => x.user_id === profil.user_id && x.entite_id === e.id);
-    const sel = h("select", { id: `ua-${e.id}` }, ROLES.map(([v, l]) => h("option", { value: v }, l)));
-    sel.value = m ? m.role : "";
+    const sel = h("select", { id: `ua-${e.id}` }, h("option", { value: "" }, "Aucun accès"), etat.brut.roles.filter((r) => r.entite_id === e.id).map((r) => h("option", { value: r.id }, r.nom)));
+    sel.value = m ? m.role_id : "";
     return [e, sel];
   });
   const grille = h("div", { class: "acces-grille" }, selects.map(([e, sel]) => champ(e.nom + (e.actif ? "" : " (désactivée)"), sel)));
@@ -99,7 +166,7 @@ function accesModal(profil, apres) {
             await modifierProfil(profil.user_id, { nom: nom.value.trim() || null, actif: moi ? true : actif.checked, super_admin: moi ? true : superAdmin.checked });
             for (const [e, sel] of selects) {
               const avant = etat.brut.membres.find((x) => x.user_id === profil.user_id && x.entite_id === e.id);
-              if ((avant ? avant.role : "") !== sel.value) await definirAcces(profil.user_id, e.id, sel.value || null);
+              if ((avant ? avant.role_id : "") !== sel.value) await definirAcces(profil.user_id, e.id, sel.value || null);
             }
             fermer();
             toast("Accès enregistrés.");
@@ -126,7 +193,7 @@ export function vueAdmin() {
   const nbMembres = (id) => etat.brut.membres.filter((m) => m.entite_id === id).length;
   const resumeAcces = (p) => {
     if (p.super_admin) return "Toutes les entreprises, en administratrice";
-    const l = etat.brut.membres.filter((m) => m.user_id === p.user_id).map((m) => `${(etat.brut.entites.find((e) => e.id === m.entite_id) || { nom: "?" }).nom} (${m.role === "admin" ? "administrateur" : "éditeur"})`);
+    const l = etat.brut.membres.filter((m) => m.user_id === p.user_id).map((m) => `${(etat.brut.entites.find((e) => e.id === m.entite_id) || { nom: "?" }).nom} (${(etat.brut.roles.find((r) => r.id === m.role_id) || { nom: "?" }).nom})`);
     return l.length ? l.join(", ") : "Aucun accès";
   };
 
@@ -145,6 +212,47 @@ export function vueAdmin() {
         h("thead", null, h("tr", null, ["Entreprise", "Code", "Personnes", "Statut", ""].map((t) => h("th", { scope: "col" }, t)))),
         h("tbody", null, entites.map((e) => h("tr", null, h("td", { "data-label": "Entreprise" }, e.nom), h("td", { "data-label": "Code", class: "ref" }, e.slug), h("td", { "data-label": "Personnes" }, nbMembres(e.id)), h("td", { "data-label": "Statut" }, e.actif ? "Active" : "Désactivée"), h("td", { class: "action-cellule" }, h("button", { class: "secondaire petit", type: "button", onclick: () => modifierEntiteModal(e, rafraichir) }, "Modifier")))))
       )
+    ),
+    h(
+      "section",
+      null,
+      h("h2", null, "Rôles et droits"),
+      h("p", { class: "aide" }, "Un rôle est un ensemble de droits, défini pour chaque entreprise. Vous pouvez en créer autant que nécessaire (comptable, chauffeur, stagiaire…) et décider précisément ce que chacun voit et peut faire. Les droits d'un rôle s'appliquent tout de suite à toutes les personnes qui l'ont."),
+      ...entites.map((e) => {
+        const roles = etat.brut.roles.filter((r) => r.entite_id === e.id).sort((a, b) => (b.systeme - a.systeme) || a.nom.localeCompare(b.nom));
+        const usage = (r) => etat.brut.membres.filter((m) => m.role_id === r.id).length;
+        return h(
+          "div",
+          { class: "bloc-roles" },
+          h("div", { class: "entete petit-entete" }, h("h3", null, e.nom), h("button", { class: "secondaire petit", type: "button", onclick: () => roleModal(e, {}, rafraichir) }, "Nouveau rôle")),
+          h(
+            "table",
+            { class: "tableau simple" },
+            h("thead", null, h("tr", null, ["Rôle", "Dossiers visibles", "Droits", "Personnes", ""].map((t) => h("th", { scope: "col" }, t)))),
+            h(
+              "tbody",
+              null,
+              roles.map((r) =>
+                h(
+                  "tr",
+                  null,
+                  h("td", { "data-label": "Rôle" }, h("strong", null, r.nom), r.description ? h("span", { class: "sous-ligne" }, r.description) : null),
+                  h("td", { "data-label": "Dossiers visibles" }, r.portee === "toute" ? "Tous" : "Ses dossiers"),
+                  h("td", { "data-label": "Droits" }, `${r.permissions.length} sur ${PERMISSIONS.length}`),
+                  h("td", { "data-label": "Personnes" }, usage(r)),
+                  h(
+                    "td",
+                    { class: "action-cellule" },
+                    h("button", { class: "secondaire petit", type: "button", onclick: () => roleModal(e, r, rafraichir) }, "Modifier"),
+                    h("button", { class: "secondaire petit", type: "button", onclick: () => roleModal(e, { nom: `${r.nom} (copie)`, description: r.description, portee: r.portee, permissions: r.permissions }, rafraichir) }, "Dupliquer"),
+                    r.systeme || usage(r) ? null : h("button", { class: "lien danger-texte", type: "button", onclick: async () => { if (await confirmer(`Supprimer le rôle « ${r.nom} » ?`, "Supprimer", true)) { await supprimer("roles", r.id); rafraichir(); } } }, "Supprimer")
+                  )
+                )
+              )
+            )
+          )
+        );
+      })
     ),
     h(
       "section",

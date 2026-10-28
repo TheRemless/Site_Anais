@@ -1,5 +1,5 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
-import { etat, enregistrerReglages, recharger, resumes, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin } from "../etat.mjs";
+import { etat, enregistrerReglages, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut } from "../etat.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
@@ -24,7 +24,7 @@ function exporterDossiers() {
   const lignes = [["Référence", "Client", "Intitulé", "Statut", "Total", "Reçu", "Reste", "Devise", "Devis émis le", "Accepté le", "Début", "Fin"]];
   for (const r of resumes()) {
     const devis = r.documents.find((d) => d.type === "devis");
-    lignes.push([r.dossier.ref, nomClient(r.client), r.dossier.pays, STATUTS[r.statut], r.total, r.recu, r.reste, reglages().devise, devis ? formatDate(devis.date_emission) : "", formatDate(r.dossier.accepte_le), formatDate(r.dossier.date_depart), formatDate(r.dossier.date_retour)]);
+    lignes.push([r.dossier.ref, nomClient(r.client), r.dossier.pays, STATUTS[r.statut], r.total, r.recu, r.reste, r.devise || reglages().devise, devis ? formatDate(devis.date_emission) : "", formatDate(r.dossier.accepte_le), formatDate(r.dossier.date_depart), formatDate(r.dossier.date_retour)]);
   }
   telecharger(nomFichierEntite("dossiers", "csv"), csv(lignes), "text/csv;charset=utf-8");
 }
@@ -34,7 +34,7 @@ function exporterPaiements() {
   for (const p of [...etat.db.paiements].sort((a, b) => (a.date > b.date ? 1 : -1))) {
     const d = etat.db.dossiers.find((x) => x.id === p.dossier_id);
     const c = d && etat.db.clients.find((x) => x.id === d.client_id);
-    lignes.push([formatDate(p.date), d ? d.ref : "", nomClient(c), p.type, p.moyen, p.montant, reglages().devise, p.origine_montant ?? "", p.origine_devise, p.note]);
+    lignes.push([formatDate(p.date), d ? d.ref : "", nomClient(c), p.type, p.moyen, p.montant, ((d && resumeDossier(d.id)) || {}).devise || reglages().devise, p.origine_montant ?? "", p.origine_devise, p.note]);
   }
   telecharger(nomFichierEntite("paiements", "csv"), csv(lignes), "text/csv;charset=utf-8");
 }
@@ -85,6 +85,7 @@ const LIBELLES = [
   ["sous_total", "Sous-total"],
   ["remise", "Remise"],
   ["montant_recu", "Montant reçu"],
+  ["equivalent", "Début de la ligne d'équivalent indicatif"],
   ["conditions", "Titre des conditions de paiement"],
   ["signature_1", "Signature du client, première ligne (devis)"],
   ["signature_2", "Signature du client, seconde ligne"],
@@ -273,7 +274,7 @@ export function vueReglages() {
       null,
       h("fieldset", null, h("legend", null, "Conditions"), h("div", { class: "grille-form" }, texte("Acompte demandé (%, 0 si aucun)", "conditions.acompte_pct", { type: "number" }), texte("Délai de paiement de l'acompte (jours)", "conditions.delai_jours", { type: "number" }), texte("Relancer un devis sans réponse après (jours)", "conditions.relance_jours", { type: "number" })), texte("Mention de TVA", "conditions.tva_mention", { aide: "Par exemple « TVA non applicable ». Vide pour ne rien afficher." }), texte("Lien des conditions générales", "conditions.cgv_url", { type: "url" })),
       h("fieldset", null, h("legend", null, "Dossiers"), champ("Numérotation", modeNum), prefixe, texte("Nom du champ « pays »", "dossier.libelle_pays", { aide: "Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier." }), liste("Valeurs proposées, une par ligne", "listes.pays"), texte("Modèle du titre du document", "dossier.modele_bandeau", { aide: "{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}." })),
-      h("fieldset", null, h("legend", null, "Listes"), liste("Civilités des clients, une par ligne", "listes.civilites"), champ("Moyens de paiement, un par ligne", moyens))
+      h("fieldset", null, h("legend", null, "Listes"), liste("Civilités des clients, une par ligne", "listes.civilites"), liste("Devises proposées pour un document, une par ligne", "listes.devises", "Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs."), champ("Moyens de paiement, un par ligne", moyens))
     ),
     textes: h(
       "div",
@@ -321,7 +322,7 @@ export function vueReglages() {
     ["fonctionnement", "Dossiers et listes"],
     ["textes", "Textes des documents"],
     ["apparence", "Apparence"],
-    ["donnees", "Sauvegarde"],
+    ...(peut("exports.faire") ? [["donnees", "Sauvegarde"]] : []),
   ];
   const barre = h("div", { class: "onglets sous-onglets" });
   const montrer = (cle) => {
@@ -353,7 +354,7 @@ export function vueReglages() {
 
   const racine = h(
     "div",
-    { "data-titre": "Réglages", "data-large": "1" },
+    { "data-titre": "Réglages", "data-large": "1", "data-plein": "1" },
     h("div", { class: "entete" }, h("div", null, h("h1", null, "Réglages"), h("p", { class: "sous" }, entiteActive().nom)), estSuperAdmin() ? h("a", { class: "bouton secondaire", href: "#/admin" }, "Administration : entreprises et accès") : null),
     barre,
     h("form", { class: "reglages-grille", onsubmit: enregistrer }, h("div", { class: "reglages-colonne" }, ...Object.values(sections), h("div", { class: "actions barre-fixe" }, indicateur, boutonEnregistrer)), zoneApercu)

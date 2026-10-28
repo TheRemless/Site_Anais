@@ -1,4 +1,4 @@
-import { etat, inserer, modifier, supprimer, naviguer } from "../etat.mjs";
+import { etat, inserer, modifier, supprimer, naviguer, peut } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
 
@@ -57,7 +57,7 @@ export function catalogue() {
   return h(
     "div",
     { "data-titre": "Catalogue" },
-    h("div", { class: "entete" }, h("h1", null, "Catalogue"), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, "Nouvelle entrée")),
+    h("div", { class: "entete" }, h("h1", null, "Catalogue"), peut("catalogue.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, "Nouvelle entrée") : null),
     h("p", { class: "sous" }, "Les formules et les prix que vous reprenez souvent dans les devis. Un prix modifié ici ne change pas les documents déjà créés."),
     GENRES.map(([genre, titre, aide]) => {
       const lignes = etat.db.catalogue.filter((x) => x.kind === genre).sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
@@ -71,7 +71,7 @@ export function catalogue() {
               "table",
               { class: "tableau simple" },
               h("thead", null, h("tr", null, h("th", { scope: "col" }, "Libellé"), h("th", { scope: "col", class: "num" }, "Prix"), h("th", { scope: "col" }, "Éditeur"), h("th", null))),
-              h("tbody", null, lignes.map((x) => h("tr", null, h("td", { "data-label": "Libellé" }, x.libelle), h("td", { class: "num", "data-label": "Prix" }, x.prix != null ? formatMontant(x.prix) : "variable"), h("td", { "data-label": "Éditeur" }, x.actif ? "Proposé" : "Masqué"), h("td", { class: "action-cellule" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrir(x) }, "Modifier")))))
+              h("tbody", null, lignes.map((x) => h("tr", null, h("td", { "data-label": "Libellé" }, x.libelle), h("td", { class: "num", "data-label": "Prix" }, x.prix != null ? formatMontant(x.prix) : "variable"), h("td", { "data-label": "Éditeur" }, x.actif ? "Proposé" : "Masqué"), h("td", { class: "action-cellule" }, peut("catalogue.ecrire") ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrir(x) }, "Modifier") : null))))
             )
           : h("p", { class: "vide-court" }, "Aucune entrée.")
       );

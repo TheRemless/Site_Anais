@@ -4,6 +4,46 @@
 
 export const uid = () => crypto.randomUUID();
 
+// Catalogue des droits : chaque rôle est un ensemble de ces codes. Le même catalogue sert à la base (schema.sql)
+// et à l'écran des rôles, pour qu'ils ne puissent pas diverger.
+export const PERMISSIONS = [
+  { code: "clients.lire", groupe: "Clients", libelle: "Voir les clients" },
+  { code: "clients.ecrire", groupe: "Clients", libelle: "Créer et modifier les clients" },
+  { code: "clients.supprimer", groupe: "Clients", libelle: "Supprimer un client" },
+  { code: "dossiers.lire", groupe: "Dossiers", libelle: "Voir les dossiers" },
+  { code: "dossiers.ecrire", groupe: "Dossiers", libelle: "Créer et modifier les dossiers" },
+  { code: "dossiers.supprimer", groupe: "Dossiers", libelle: "Supprimer un dossier" },
+  { code: "documents.ecrire", groupe: "Devis et factures", libelle: "Créer et modifier les devis et factures" },
+  { code: "documents.supprimer", groupe: "Devis et factures", libelle: "Supprimer un devis ou une facture" },
+  { code: "finances.voir", groupe: "Finances", libelle: "Voir les montants : devis, factures et paiements", aide: "Sans ce droit, la personne voit les clients et les dossiers mais aucun chiffre." },
+  { code: "paiements.ecrire", groupe: "Finances", libelle: "Enregistrer et corriger les paiements" },
+  { code: "catalogue.ecrire", groupe: "Catalogue", libelle: "Modifier le catalogue de formules et de prix" },
+  { code: "reglages.ecrire", groupe: "Administration", libelle: "Modifier les réglages de l'entreprise (coordonnées bancaires comprises)" },
+  { code: "exports.faire", groupe: "Administration", libelle: "Exporter et sauvegarder les données" },
+  { code: "analytics.voir", groupe: "Administration", libelle: "Voir le tableau analytique" },
+  { code: "journal.voir", groupe: "Administration", libelle: "Voir le journal d'activité" },
+];
+export const TOUTES_PERMISSIONS = PERMISSIONS.map((p) => p.code);
+
+// Un droit en suppose d'autres : on ne peut pas modifier ce qu'on ne peut pas voir.
+export const DEPENDANCES = {
+  "clients.ecrire": ["clients.lire"],
+  "clients.supprimer": ["clients.lire"],
+  "dossiers.ecrire": ["dossiers.lire", "clients.lire"],
+  "dossiers.supprimer": ["dossiers.lire"],
+  "documents.ecrire": ["dossiers.lire", "finances.voir"],
+  "documents.supprimer": ["dossiers.lire", "finances.voir"],
+  "paiements.ecrire": ["dossiers.lire", "finances.voir"],
+  "analytics.voir": ["finances.voir"],
+};
+
+// Rôles créés avec chaque entreprise. Ils se modifient ensuite librement dans l'écran Administration.
+export const ROLES_SYSTEME = [
+  { nom: "Administrateur", description: "Tous les droits dans l'entreprise.", portee: "toute", permissions: TOUTES_PERMISSIONS },
+  { nom: "Éditeur", description: "Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.", portee: "toute", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire", "catalogue.ecrire"] },
+  { nom: "Lecteur", description: "Consultation seulement, montants visibles.", portee: "toute", permissions: ["clients.lire", "dossiers.lire", "finances.voir", "analytics.voir"] },
+];
+
 export const LIBELLES_FR = {
   devis: "DEVIS",
   facture: "FACTURE",
@@ -16,6 +56,7 @@ export const LIBELLES_FR = {
   sous_total: "SOUS-TOTAL",
   remise: "Remise",
   montant_recu: "Montant reçu",
+  equivalent: "Équivalent indicatif :",
   conditions: "CONDITIONS DE PAIEMENT",
   signature_1: "NOM, PRENOM, DATE ET SIGNATURE DU CLIENT",
   signature_2: "précédé de la mention “Bon pour accord”",
@@ -38,6 +79,7 @@ export const LIBELLES_EN = {
   sous_total: "SUBTOTAL",
   remise: "Discount",
   montant_recu: "Amount received",
+  equivalent: "Indicative equivalent:",
   conditions: "PAYMENT TERMS",
   signature_1: "FULL NAME, DATE AND SIGNATURE OF THE CLIENT",
   signature_2: "preceded by the words “Approved”",
@@ -79,7 +121,7 @@ export const REGLAGES_NEUTRE = {
   taux: { eur: 1.058, thb: 40.54 },
   numerotation: { mode: "sequence", prefixe: "" },
   dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Pays" },
-  listes: { pays: [], civilites: ["Madame", "Monsieur", "Mademoiselle"], moyens: MOYENS_DEFAUT },
+  listes: { pays: [], civilites: ["Madame", "Monsieur", "Mademoiselle"], moyens: MOYENS_DEFAUT, devises: ["CHF", "EUR", "THB", "USD"] },
   apparence: { couleur: "#0b9999", couleur_clair: "#53b7b7", logo: "", titre_image: "", type_images: null, titre_texte: "", qr_image: "", qr_pseudo: "" },
   libelles: LIBELLES_FR,
   textes: { variantes: [{ id: "standard", nom: "Standard", corps: "", cloture: "" }] },
@@ -186,9 +228,25 @@ export function donneesDemo(ajd, ajouterJours) {
   const e3 = { id: uid(), created_at: j(-90), slug: "taxi", nom: "Taxi démo", actif: true, ordre: 3 };
   const admin = { user_id: uid(), email: "admin@demo.local", nom: "Administratrice démo", super_admin: true, actif: true };
   const assistante = { user_id: uid(), email: "assistante@demo.local", nom: "Assistante démo", super_admin: false, actif: true };
+  const stagiaire = { user_id: uid(), email: "stagiaire@demo.local", nom: "Stagiaire démo", super_admin: false, actif: true };
+  const comptable = { user_id: uid(), email: "comptable@demo.local", nom: "Comptable démo", super_admin: false, actif: true };
+  const roles = [];
+  const roleDe = {};
+  for (const e of [e1, e2, e3]) {
+    for (const r of ROLES_SYSTEME) {
+      const ro = { id: uid(), created_at: j(-90), entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: [...r.permissions], systeme: true };
+      roles.push(ro);
+      roleDe[`${e.id}:${r.nom}`] = ro.id;
+    }
+  }
+  const rSans = { id: uid(), created_at: j(-30), entite_id: e3.id, nom: "Sans chiffres", description: "Voit les clients et les dossiers, jamais les montants.", portee: "toute", permissions: ["clients.lire", "dossiers.lire"], systeme: false };
+  const rSes = { id: uid(), created_at: j(-30), entite_id: e2.id, nom: "Ses dossiers", description: "Travaille uniquement sur les dossiers dont elle est responsable.", portee: "mes_dossiers", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire"], systeme: false };
+  roles.push(rSans, rSes);
   const membres = [
-    { user_id: assistante.user_id, entite_id: e2.id, role: "editeur" },
-    { user_id: assistante.user_id, entite_id: e3.id, role: "editeur" },
+    { user_id: assistante.user_id, entite_id: e2.id, role_id: roleDe[`${e2.id}:Éditeur`] },
+    { user_id: assistante.user_id, entite_id: e3.id, role_id: roleDe[`${e3.id}:Éditeur`] },
+    { user_id: stagiaire.user_id, entite_id: e2.id, role_id: rSes.id },
+    { user_id: comptable.user_id, entite_id: e3.id, role_id: rSans.id },
   ];
   const reglages = { [e1.id]: REGLAGES_DEMO_AGENCE, [e2.id]: REGLAGES_DEMO_TOURS, [e3.id]: REGLAGES_DEMO_TAXI };
 
@@ -236,14 +294,14 @@ export function donneesDemo(ajd, ajouterJours) {
   // Entreprise 2 : excursions, facturation directe en bahts
   const c5 = client(e2, "Monsieur", "Ben", "Walker", "Hotel Sunset, Room 12\nKoh Lanta", "+44 7000 000000");
   const c6 = client(e2, "Madame", "Anna", "Keller", "Hotel Palm, Bungalow 3\nKoh Lanta", "+49 160 0000000");
-  ajoute(e2, c5, j(-6), "Excursion", "Excursion - 4 îles", { accepte_le: j(-6) }, null, { envoye_le: j(-6), contenu: contenu("Excursion - 4 îles", [nouvelleLigne("ligne", { libelle: "Tour des 4 îles, par personne", unite: 1200, qte: 2 })], "detail") });
-  ajoute(e2, c6, j(-2), "Transfert", "Transfert aéroport", { accepte_le: j(-2) }, null, { contenu: contenu("Transfert aéroport", [ligne("Transfert Krabi aéroport, Koh Lanta", 1500)], "total") }, [{ date: j(-1), montant: 1500, type: "solde", moyen: "especes" }]);
+  ajoute(e2, c5, j(-6), "Excursion", "Excursion - 4 îles", { accepte_le: j(-6), responsable_id: assistante.user_id }, null, { envoye_le: j(-6), contenu: contenu("Excursion - 4 îles", [nouvelleLigne("ligne", { libelle: "Tour des 4 îles, par personne", unite: 1200, qte: 2 })], "detail") });
+  ajoute(e2, c6, j(-2), "Transfert", "Transfert aéroport", { accepte_le: j(-2), responsable_id: stagiaire.user_id }, null, { contenu: contenu("Transfert aéroport", [ligne("Transfert Krabi aéroport, Koh Lanta", 1500)], "total") }, [{ date: j(-1), montant: 1500, type: "solde", moyen: "especes" }]);
   [["region", "Tour des 4 îles", 1200], ["region", "Transfert aéroport", 1500]].forEach(([kind, libelle, prix], i) => catalogue.push({ id: uid(), created_at: j(-90), entite_id: e2.id, kind, libelle, intro: "", puces: [], prix, ordre: i + 1, actif: true }));
 
   // Entreprise 3 : taxi
   const c7 = client(e3, "Madame", "Lea", "Moreau", "Hotel Sea, Koh Lanta", "+33 6 00 00 00 07");
-  ajoute(e3, c7, j(-1), "Aéroport", "Trajet aéroport", { accepte_le: j(-1) }, null, { contenu: contenu("Trajet aéroport", [ligne("Taxi Krabi aéroport, Koh Lanta", 1800)], "total") });
+  ajoute(e3, c7, j(-1), "Aéroport", "Trajet aéroport", { accepte_le: j(-1), responsable_id: assistante.user_id }, null, { contenu: contenu("Trajet aéroport", [ligne("Taxi Krabi aéroport, Koh Lanta", 1800)], "total") });
   catalogue.push({ id: uid(), created_at: j(-90), entite_id: e3.id, kind: "region", libelle: "Taxi Krabi aéroport, Koh Lanta", intro: "", puces: [], prix: 1800, ordre: 1, actif: true });
 
-  return { entites: [e1, e2, e3], profils: [admin, assistante], membres, reglages, clients, dossiers, documents, paiements, catalogue };
+  return { entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, journal: [] };
 }

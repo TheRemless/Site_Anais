@@ -64,6 +64,8 @@
 .sheet .barre.fonce { background: var(--teal); }
 .sheet .montant.txt { font-style: italic; }
 .sheet .note { margin: 2mm 0 0; font-size: 7.2pt; font-style: italic; letter-spacing: 0.04em; line-height: 3.4mm; color: var(--texte); }
+.sheet .equivalent { text-align: right; font-size: 7.6pt; font-weight: 500; letter-spacing: 0.06em; color: var(--texte); margin: 1.6mm 1mm 0 0; }
+.sheet .equivalent + .tva { margin-top: 0.6mm; }
 .sheet .tva { text-align: right; font-style: italic; font-size: 6.8pt; letter-spacing: 0.114em; color: var(--gris); margin: 1.4mm 1mm 0 0; }
 
 .sheet .conditions { margin: 7mm -3mm 0 -6mm; }

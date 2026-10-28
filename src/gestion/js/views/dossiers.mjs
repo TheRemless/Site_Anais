@@ -1,8 +1,9 @@
-import { etat, resumes, inserer, nomClient, naviguer, reglages } from "../etat.mjs";
+import { etat, resumes, inserer, nomClient, naviguer, reglages, peut } from "../etat.mjs";
 import { h, champ, vider } from "../ui.mjs";
 import { formatMontant, aujourdhui, nouvelleRef, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte } from "./commun.mjs";
+import { selecteurClient } from "./selecteur-client.mjs";
 
 const ONGLETS = [
   ["cours", "En cours", ["brouillon", "devis_envoye", "accepte", "acompte"]],
@@ -12,6 +13,7 @@ const ONGLETS = [
 ];
 
 const filtre = { onglet: "cours", q: "" };
+const PAGE = 50;
 const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 export function listeDossiers() {
@@ -23,10 +25,12 @@ export function listeDossiers() {
     placeholder: "Nom du client, référence, pays",
     oninput: (e) => {
       filtre.q = e.target.value;
+      limite = PAGE;
       dessiner();
     },
   });
 
+  let limite = PAGE;
   function dessiner() {
     const statuts = ONGLETS.find(([k]) => k === filtre.onglet)[2];
     const q = sansAccents(filtre.q);
@@ -39,7 +43,7 @@ export function listeDossiers() {
       corps.append(
         etat.db.dossiers.length
           ? vide("Aucun dossier ne correspond", "Essayez un autre onglet ou effacez la recherche.")
-          : vide("Aucun dossier pour l'instant", "Un dossier regroupe le client, le voyage, le devis, la facture et les paiements.", h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Créer le premier dossier"))
+          : vide("Aucun dossier pour l'instant", "Un dossier regroupe le client, le voyage, le devis, la facture et les paiements.", peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Créer le premier dossier") : null)
       );
       return;
     }
@@ -51,7 +55,7 @@ export function listeDossiers() {
         h(
           "tbody",
           null,
-          lignes.map((r) =>
+          lignes.slice(0, limite).map((r) =>
             h(
               "tr",
               null,
@@ -59,13 +63,15 @@ export function listeDossiers() {
               h("td", { "data-label": "Référence", class: "ref" }, r.dossier.ref),
               h("td", { "data-label": "Intitulé" }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
               h("td", { "data-label": "Statut" }, pastille(r.statut)),
-              h("td", { "data-label": "Total", class: "num" }, r.total ? formatMontant(r.total) : "-"),
-              h("td", { "data-label": "Reste", class: "num" }, r.total ? formatMontant(r.reste) : "-")
+              h("td", { "data-label": "Total", class: "num" }, r.total ? formatMontant(r.total, r.devise) : "-"),
+              h("td", { "data-label": "Reste", class: "num" }, r.total ? formatMontant(r.reste, r.devise) : "-")
             )
           )
         )
       )
     );
+    if (lignes.length > limite) corps.append(h("p", { class: "plus" }, h("button", { class: "secondaire", type: "button", onclick: () => ((limite += PAGE), dessiner()) }, `Afficher plus (${lignes.length - limite} restants)`)));
+    else if (lignes.length > PAGE) corps.append(h("p", { class: "aide plus" }, `${lignes.length} dossiers affichés.`));
   }
 
   const onglets = h(
@@ -79,6 +85,7 @@ export function listeDossiers() {
           "aria-pressed": cle === filtre.onglet ? "true" : "false",
           onclick: (e) => {
             filtre.onglet = cle;
+            limite = PAGE;
             for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false");
             dessiner();
           },
@@ -91,23 +98,19 @@ export function listeDossiers() {
   return h(
     "div",
     { "data-titre": "Dossiers" },
-    h("div", { class: "entete" }, h("h1", null, "Dossiers"), h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier")),
+    h("div", { class: "entete" }, h("h1", null, "Dossiers"), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier") : null),
     h("div", { class: "barre-outils" }, onglets, h("div", { class: "champ recherche" }, h("label", { for: "recherche" }, "Rechercher"), recherche)),
     corps
   );
 }
 
 export function nouveauDossier() {
+  if (!peut("dossiers.ecrire")) return vide("Accès réservé", "Votre rôle ne permet pas de créer un dossier.", h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Retour aux dossiers"));
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const regl = reglages();
   const listePays = [...regl.listes.pays, "Autre"];
   const libellePays = regl.dossier.libelle_pays || "Pays";
-  const selClient = h(
-    "select",
-    { id: "client", onchange: majClient },
-    h("option", { value: "" }, "Nouveau client"),
-    [...etat.db.clients].sort((a, b) => nomClient(a).localeCompare(nomClient(b))).map((c) => h("option", { value: c.id }, nomClient(c)))
-  );
+  const selClient = selecteurClient({ valeur: params.get("client") || "", avecNouveau: peut("clients.ecrire"), surChangement: () => majClient() });
   const nvCivilite = h("select", { id: "civ" }, regl.listes.civilites.map((c) => h("option", { value: c }, c)));
   const nvPrenom = h("input", { id: "prenom", autocomplete: "off", oninput: majRef });
   const nvNom = h("input", { id: "nom", autocomplete: "off", oninput: majRef });
@@ -131,7 +134,7 @@ export function nouveauDossier() {
   const paysChoisi = () => (pays.value === "Autre" ? paysLibre.value.trim() : pays.value);
 
   function majClient() {
-    blocNouveau.hidden = selClient.value !== "";
+    blocNouveau.hidden = !selClient.nouveau;
     majRef();
   }
   function majBandeau() {
@@ -145,7 +148,7 @@ export function nouveauDossier() {
   }
   function majRef() {
     if (refManuelle) return;
-    const c = selClient.value ? etat.db.clients.find((x) => x.id === selClient.value) : { prenom: nvPrenom.value, nom: nvNom.value };
+    const c = selClient.valeur ? etat.db.clients.find((x) => x.id === selClient.valeur) : selClient.nouveau ? { prenom: nvPrenom.value, nom: nvNom.value } : null;
     const pret = c && (c.prenom || c.nom) && (regl.numerotation.mode === "sequence" || paysChoisi());
     ref.value = pret ? nouvelleRef({ numerotation: regl.numerotation, prenom: c.prenom, nom: c.nom, dateIso: aujourdhui(), pays: paysChoisi(), refsExistantes: etat.db.dossiers.map((d) => d.ref) }) : "";
   }
@@ -156,7 +159,12 @@ export function nouveauDossier() {
   async function creer(e) {
     e.preventDefault();
     erreur.textContent = "";
-    if (!selClient.value && !nvNom.value.trim()) {
+    if (!selClient.valeur && !selClient.nouveau) {
+      erreur.textContent = "Choisissez un client dans la recherche, ou créez-en un.";
+      document.getElementById("client").focus();
+      return;
+    }
+    if (selClient.nouveau && !nvNom.value.trim()) {
       erreur.textContent = "Indiquez le nom du client.";
       nvNom.focus();
       return;
@@ -173,7 +181,7 @@ export function nouveauDossier() {
     bouton.disabled = true;
     bouton.textContent = "Création…";
     try {
-      let clientId = selClient.value;
+      let clientId = selClient.valeur;
       if (!clientId) {
         const c = await inserer("clients", { civilite: nvCivilite.value, prenom: nvPrenom.value.trim(), nom: nvNom.value.trim(), adresse: nvAdresse.value.trim(), telephone: nvTel.value.trim(), email: "", notes: "" });
         clientId = c.id;
@@ -205,8 +213,6 @@ export function nouveauDossier() {
     }
   }
 
-  const preselection = params.get("client");
-  if (preselection) selClient.value = preselection;
   majClient();
   majBandeau();
 
@@ -217,7 +223,7 @@ export function nouveauDossier() {
     h(
       "form",
       { class: "formulaire", onsubmit: creer },
-      h("fieldset", null, h("legend", null, "Client"), champ("Client", selClient), blocNouveau),
+      h("fieldset", null, h("legend", null, "Client"), selClient.noeud, blocNouveau),
       h(
         "fieldset",
         null,

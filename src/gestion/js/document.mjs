@@ -1,6 +1,6 @@
 // Rendu du devis ou de la facture au format A4. Le même rendu sert à l'aperçu et au PDF.
 // Tout ce qui est propre à une entreprise (textes, logo, couleurs, coordonnées) vient de ses réglages.
-import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, formatNombre, acompteDu } from "./calc.mjs";
+import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, lignesEquivalents, formatNombre, acompteDu } from "./calc.mjs";
 import { h, markup } from "./ui.mjs";
 
 const lignes = (texte) => (texte || "").split("\n").filter((l) => l.trim() !== "");
@@ -17,14 +17,18 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const variante = c.variante === "perso" ? { corps: c.conditions_corps || "", cloture: c.conditions_cloture || "" } : variantes.find((v) => v.id === c.variante) || variantes[0] || { corps: "", cloture: "" };
 
   const pct = Number(reglages.conditions.acompte_pct) || 0;
-  const eq = c.equivalents && c.equivalents.actif ? equivalents(t.net, { eur: c.equivalents.eur ?? reglages.taux.eur, thb: c.equivalents.thb ?? reglages.taux.thb }) : null;
+  // Devise propre au document, sinon celle de l'entreprise.
+  const dev = c.devise || reglages.devise;
+  const eq = c.equivalents && c.equivalents.actif ? equivalents(t.net, lignesEquivalents(c.equivalents, reglages.taux)) : [];
+  const SYMBOLES = { EUR: "€", USD: "$" };
+  const texteEq = (x) => `${formatNombre(x.montant)} ${SYMBOLES[x.code] || x.code}`;
   const vars = {
     acompte: pct,
     solde: 100 - pct,
     delai: reglages.conditions.delai_jours,
-    total: `${formatNombre(t.net)} ${reglages.devise}`.trim(),
-    indicatif: eq ? ` (soit ${formatNombre(eq.eur)} €, soit ${formatNombre(eq.thb)} THB, à titre indicatif)` : "",
-    acompte_chf: formatMontant(acompteDu(t.net, pct)),
+    total: `${formatNombre(t.net)} ${dev}`.trim(),
+    indicatif: eq.length ? ` (soit ${eq.map(texteEq).join(", soit ")}, à titre indicatif)` : "",
+    acompte_chf: formatMontant(acompteDu(t.net, pct), dev),
     entreprise: e.nom,
     cgv_url: reglages.conditions.cgv_url || "",
   };
@@ -43,7 +47,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
             l.intro ? ` ${l.intro}` : null,
             l.puces && l.puces.length ? h("ul", null, l.puces.map((x) => h("li", null, x))) : null
           );
-    const unite = aDetail ? (l.kind === "remise" && l.pct != null ? `-${l.pct}%` : formatMontant(l.unite)) : l.kind === "remise" && l.pct != null ? `-${l.pct}%` : "";
+    const unite = aDetail ? (l.kind === "remise" && l.pct != null ? `-${l.pct}%` : formatMontant(l.unite, dev)) : l.kind === "remise" && l.pct != null ? `-${l.pct}%` : "";
     const qte = aDetail ? String(l.qte) : l.kind === "remise" && l.pct != null && detail ? "1" : "";
     return h(
       "div",
@@ -51,7 +55,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
       description,
       detail ? h("div", { class: "unite" }, unite) : null,
       detail ? h("div", { class: "qte" }, qte) : null,
-      h("div", { class: l.texte_montant ? "montant txt" : "montant" }, l.texte_montant || (aMontant ? formatMontant(montant) : ""))
+      h("div", { class: l.texte_montant ? "montant txt" : "montant" }, l.texte_montant || (aMontant ? formatMontant(montant, dev) : ""))
     );
   };
 
@@ -103,18 +107,19 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
       { class: "sheet-corps" },
       h("div", { class: "bandeau" }, h("div", { class: "bandeau-titre" }, c.bandeau), detail ? h("div", { class: "unite" }, lb.unite) : null, detail ? h("div", { class: "qte" }, lb.qte) : null, h("div", { class: "montant" }, lb.total)),
       h("div", { class: "lignes" }, normales),
-      sousTotal ? barre(lb.sous_total, formatMontant(t.sousTotal), "clair") : null,
+      sousTotal ? barre(lb.sous_total, formatMontant(t.sousTotal, dev), "clair") : null,
       sousTotal && (remises.length || t.recu > 0)
         ? h(
             "div",
             { class: "lignes sous" },
             remises,
             t.recu > 0
-              ? h("div", { class: "ligne recu" }, h("div", { class: "desc" }, h("strong", null, c.libelle_recu || lb.montant_recu)), detail ? h("div", { class: "unite" }) : null, detail ? h("div", { class: "qte" }) : null, h("div", { class: "montant" }, formatMontant(-t.recu)))
+              ? h("div", { class: "ligne recu" }, h("div", { class: "desc" }, h("strong", null, c.libelle_recu || lb.montant_recu)), detail ? h("div", { class: "unite" }) : null, detail ? h("div", { class: "qte" }) : null, h("div", { class: "montant" }, formatMontant(-t.recu, dev)))
               : null
           )
         : null,
-      barre(lb.total, formatMontant(t.reste), "fonce"),
+      barre(lb.total, formatMontant(t.reste, dev), "fonce"),
+      eq.length ? h("p", { class: "equivalent" }, `${lb.equivalent} ${eq.map(texteEq).join(" · ")}`) : null,
       tvaTexte ? h("p", { class: "tva" }, tvaTexte) : null,
       notes,
       h(

@@ -1,4 +1,4 @@
-import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier, reglages } from "../etat.mjs";
+import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier, reglages, peut } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, vider } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
 import { pastille, vide } from "./commun.mjs";
@@ -33,13 +33,14 @@ function formulaireClient(client, apres) {
     h("div", { class: "grille-form" }, champ("Civilité", civ), champ("Prénom", prenom), champ("Nom", nom), champ("Téléphone", tel), champ("E-mail", email, "Pour votre usage, il n'apparaît pas sur les documents.")),
     champ("Adresse, telle qu'elle doit apparaître sur le devis", adresse),
     champ("Notes", notes),
-    h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, "Enregistrer le client"))
+    peut("clients.ecrire") ? h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, "Enregistrer le client")) : h("p", { class: "aide" }, "Lecture seule : votre rôle ne permet pas de modifier les clients.")
   );
 }
 
 export function listeClients() {
   const corps = h("div");
-  const q = h("input", { id: "rech-clients", type: "search", placeholder: "Nom, téléphone, ville", oninput: dessiner });
+  const q = h("input", { id: "rech-clients", type: "search", placeholder: "Nom, téléphone, ville", oninput: () => ((limite = 50), dessiner()) });
+  let limite = 50;
   function dessiner() {
     const t = sansAccents(q.value);
     const clients = etat.db.clients.filter((c) => !t || sansAccents(`${nomClient(c)} ${c.telephone} ${c.adresse}`).includes(t)).sort((a, b) => nomClient(a).localeCompare(nomClient(b)));
@@ -56,7 +57,7 @@ export function listeClients() {
         h(
           "tbody",
           null,
-          clients.map((c) =>
+          clients.slice(0, limite).map((c) =>
             h(
               "tr",
               null,
@@ -69,6 +70,7 @@ export function listeClients() {
         )
       )
     );
+    if (clients.length > limite) corps.append(h("p", { class: "plus" }, h("button", { class: "secondaire", type: "button", onclick: () => ((limite += 50), dessiner()) }, `Afficher plus (${clients.length - limite} restants)`)));
   }
   dessiner();
   return h(
@@ -78,7 +80,7 @@ export function listeClients() {
       "div",
       { class: "entete" },
       h("h1", null, "Clients"),
-      h(
+      !peut("clients.ecrire") ? null : h(
         "button",
         {
           class: "principal",
@@ -103,7 +105,7 @@ export function ficheClient(id) {
     "div",
     { "data-titre": nomClient(client) },
     h("a", { class: "retour", href: "#/clients" }, "Clients"),
-    h("div", { class: "entete" }, h("h1", null, nomClient(client)), h("a", { class: "bouton principal", href: `#/dossiers/nouveau?client=${id}` }, "Nouveau dossier pour ce client")),
+    h("div", { class: "entete" }, h("h1", null, nomClient(client)), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: `#/dossiers/nouveau?client=${id}` }, "Nouveau dossier pour ce client") : null),
     h("section", null, h("h2", null, "Coordonnées"), formulaireClient(client, () => naviguer(location.hash))),
     h(
       "section",
@@ -117,12 +119,12 @@ export function ficheClient(id) {
             h(
               "tbody",
               null,
-              dossiers.map((r) => h("tr", null, h("td", { "data-label": "Référence" }, h("a", { href: `#/dossier/${r.dossier.id}` }, r.dossier.ref)), h("td", { "data-label": "Statut" }, pastille(r.statut)), h("td", { class: "num", "data-label": "Total" }, formatMontant(r.total)), h("td", { class: "num", "data-label": "Reste" }, formatMontant(r.reste))))
+              dossiers.map((r) => h("tr", null, h("td", { "data-label": "Référence" }, h("a", { href: `#/dossier/${r.dossier.id}` }, r.dossier.ref)), h("td", { "data-label": "Statut" }, pastille(r.statut)), h("td", { class: "num", "data-label": "Total" }, formatMontant(r.total, r.devise)), h("td", { class: "num", "data-label": "Reste" }, formatMontant(r.reste, r.devise))))
             )
           )
         : h("p", { class: "vide-court" }, "Aucun dossier pour ce client.")
     ),
-    h(
+    !peut("clients.supprimer") ? null : h(
       "section",
       { class: "zone-danger" },
       h("h2", null, "Supprimer ce client"),
