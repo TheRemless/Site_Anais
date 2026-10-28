@@ -29,9 +29,12 @@ test("taxi.json : les tours et sorties en bateau sont confiés à Secret Travel 
   assert.ok(taxi.faq.some((f) => /Secret Travel & Tour/.test(f.a)), "la FAQ renvoie vers Secret");
 });
 
-test("taxiView : liste les entrées à confirmer, et la photo du hero seulement si elle manque", () => {
+test("taxiView : liste chaque entrée non confirmée, et la photo du hero seulement si elle manque", () => {
   const view = taxiView();
-  assert.ok(view.toConfirm.length > 0);
+  const unconfirmed = [taxi.hero, taxi.tours, taxi.rating, taxi.payment]
+    .concat(taxi.services, taxi.why, taxi.steps, taxi.faq)
+    .filter((item) => !item.confirmed).length;
+  assert.equal(view.toConfirm.length, unconfirmed + (taxi.hero.photo ? 0 : 1));
   assert.equal(
     view.toConfirm.some((line) => /vehicle photo/.test(line)),
     !taxi.hero.photo
@@ -64,10 +67,12 @@ test("taxi.json : destinations proposées dans From et To, sans doublon", () => 
 test("taxiView : bandeau visible hors production, masqué en production", () => {
   const saved = process.env.CONTEXT;
   try {
+    // Hors production, le bandeau n'apparaît que s'il reste quelque chose à confirmer.
     delete process.env.CONTEXT;
-    assert.equal(taxiView().showDraftBanner, true);
+    const pending = taxiView().toConfirm.length > 0;
+    assert.equal(taxiView().showDraftBanner, pending);
     process.env.CONTEXT = "deploy-preview";
-    assert.equal(taxiView().showDraftBanner, true);
+    assert.equal(taxiView().showDraftBanner, pending);
     process.env.CONTEXT = "production";
     assert.equal(taxiView().showDraftBanner, false);
   } finally {
