@@ -1,9 +1,11 @@
 // Stockage réel : Supabase (Postgres) avec connexion e-mail et mot de passe.
+// Les droits sont appliqués par la base (règles RLS), pas par ce fichier.
 import { createClient } from "../vendor/supabase.mjs";
-import { REGLAGES_DEFAUT } from "./defauts.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue"];
 const PAGE = 1000;
+// Colonne de tri de chaque table (toutes n'ont pas de created_at).
+const TRI = { membres: "entite_id", reglages: "entite_id" };
 
 function verifie({ data, error }) {
   if (error) throw new Error(error.message);
@@ -16,7 +18,7 @@ export function creer(config) {
   async function toutes(table) {
     const lignes = [];
     for (let debut = 0; ; debut += PAGE) {
-      const page = verifie(await sb.from(table).select("*").order("created_at").range(debut, debut + PAGE - 1));
+      const page = verifie(await sb.from(table).select("*").order(TRI[table] || "created_at").range(debut, debut + PAGE - 1));
       lignes.push(...page);
       if (page.length < PAGE) return lignes;
     }
@@ -26,7 +28,7 @@ export function creer(config) {
     mode: "supabase",
     async session() {
       const { data } = await sb.auth.getSession();
-      return data.session ? { email: data.session.user.email } : null;
+      return data.session ? { id: data.session.user.id, email: data.session.user.email } : null;
     },
     async connecter(email, mdp) {
       const { error } = await sb.auth.signInWithPassword({ email, password: mdp });
@@ -37,9 +39,8 @@ export function creer(config) {
     },
     async charger() {
       const out = {};
-      for (const t of TABLES) out[t] = await toutes(t);
-      const r = verifie(await sb.from("reglages").select("valeur").eq("cle", "principal").maybeSingle());
-      out.reglages = r ? r.valeur : REGLAGES_DEFAUT;
+      for (const t of ["entites", "profils", "membres", ...TABLES]) out[t] = await toutes(t);
+      out.reglages = Object.fromEntries((await toutes("reglages")).map((r) => [r.entite_id, r.valeur]));
       return out;
     },
     async inserer(table, row) {
@@ -51,8 +52,17 @@ export function creer(config) {
     async supprimer(table, id) {
       verifie(await sb.from(table).delete().eq("id", id).select());
     },
-    async enregistrerReglages(reglages) {
-      verifie(await sb.from("reglages").upsert({ cle: "principal", valeur: reglages }).select());
+    async enregistrerReglages(entiteId, valeur) {
+      verifie(await sb.from("reglages").upsert({ entite_id: entiteId, valeur }).select());
+    },
+    async modifierProfil(userId, patch) {
+      verifie(await sb.from("profils").update(patch).eq("user_id", userId).select());
+    },
+    async donnerAcces(userId, entiteId, role) {
+      verifie(await sb.from("membres").upsert({ user_id: userId, entite_id: entiteId, role }).select());
+    },
+    async retirerAcces(userId, entiteId) {
+      verifie(await sb.from("membres").delete().eq("user_id", userId).eq("entite_id", entiteId).select());
     },
     async importer(tables) {
       // Ordre imposé par les clés étrangères.
@@ -60,7 +70,6 @@ export function creer(config) {
         const rows = tables[t] || [];
         for (let i = 0; i < rows.length; i += 200) verifie(await sb.from(t).upsert(rows.slice(i, i + 200)).select("id"));
       }
-      if (tables.reglages) await this.enregistrerReglages(tables.reglages);
     },
   };
 }

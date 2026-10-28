@@ -1,6 +1,7 @@
-import { etat, resumes, nomClient, reglages } from "../etat.mjs";
+import { etat, resumes, nomClient, reglages, estAdmin, entiteActive } from "../etat.mjs";
+import { reglagesIncomplets } from "../defauts.mjs";
 import { h } from "../ui.mjs";
-import { aFaire, aujourdhui, formatChf, formatDate, acompteDu, joursEntre, nomMois } from "../calc.mjs";
+import { aFaire, aujourdhui, formatMontant, formatDate, acompteDu, joursEntre, nomMois } from "../calc.mjs";
 import { pastille } from "./commun.mjs";
 
 const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
@@ -9,14 +10,15 @@ function phrase(item) {
   const r = item.resume;
   if (item.type === "acompte_retard") {
     const manque = acompteDu(r.total, reglages().conditions.acompte_pct) - r.recu;
-    return `Acompte attendu depuis ${pluriel(item.jours, "jour", "jours")} (${formatChf(manque)})`;
+    return `Acompte attendu depuis ${pluriel(item.jours, "jour", "jours")} (${formatMontant(manque)})`;
   }
-  if (item.type === "solde_proche") return `Départ dans ${pluriel(item.jours, "jour", "jours")}, reste ${formatChf(r.reste)} à encaisser`;
+  if (item.type === "solde_proche") return `Départ dans ${pluriel(item.jours, "jour", "jours")}, reste ${formatMontant(r.reste)} à encaisser`;
   return `Devis envoyé il y a ${pluriel(item.jours, "jour", "jours")}, sans réponse`;
 }
 
 export function tableauDeBord() {
   const ajd = aujourdhui();
+  const manque = reglagesIncomplets(reglages());
   const rs = resumes();
   const encaisser = rs.filter((r) => r.statut === "accepte" || r.statut === "acompte");
   const attente = rs.filter((r) => r.statut === "devis_envoye");
@@ -31,13 +33,16 @@ export function tableauDeBord() {
   return h(
     "div",
     { "data-titre": "Tableau de bord" },
+    manque.length
+      ? h("div", { class: "bandeau-info", role: "status" }, `Les réglages de ${entiteActive().nom} ne sont pas terminés : il manque ${manque.join(", ")}. `, estAdmin() ? h("a", { href: "#/reglages" }, "Les compléter") : "Prévenez l'administratrice.")
+      : null,
     h("div", { class: "entete" }, h("h1", null, "Tableau de bord"), h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier")),
     h(
       "div",
       { class: "chiffres" },
-      chiffre(formatChf(encaisser.reduce((s, r) => s + r.reste, 0)), "Reste à encaisser", pluriel(encaisser.length, "dossier accepté", "dossiers acceptés")),
-      chiffre(formatChf(ceMois.reduce((s, p) => s + Number(p.montant), 0)), `Encaissé en ${nomMois(ajd)}`, pluriel(ceMois.length, "paiement", "paiements")),
-      chiffre(formatChf(attente.reduce((s, r) => s + r.total, 0)), "Devis en attente de réponse", pluriel(attente.length, "devis envoyé", "devis envoyés"))
+      chiffre(formatMontant(encaisser.reduce((s, r) => s + r.reste, 0)), "Reste à encaisser", pluriel(encaisser.length, "dossier accepté", "dossiers acceptés")),
+      chiffre(formatMontant(ceMois.reduce((s, p) => s + Number(p.montant), 0)), `Encaissé en ${nomMois(ajd)}`, pluriel(ceMois.length, "paiement", "paiements")),
+      chiffre(formatMontant(attente.reduce((s, r) => s + r.total, 0)), "Devis en attente de réponse", pluriel(attente.length, "devis envoyé", "devis envoyés"))
     ),
     h("section", null, h("h2", null, "À faire"), taches.length
       ? h(
@@ -74,7 +79,7 @@ export function tableauDeBord() {
                   h("td", { "data-label": "Client" }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client))),
                   h("td", { "data-label": "Voyage" }, r.dossier.pays),
                   h("td", { "data-label": "Statut" }, pastille(r.statut)),
-                  h("td", { class: "num", "data-label": "Reste à payer" }, formatChf(r.reste))
+                  h("td", { class: "num", "data-label": "Reste à payer" }, formatMontant(r.reste))
                 )
               )
             )

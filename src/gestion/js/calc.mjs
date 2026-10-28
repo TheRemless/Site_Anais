@@ -4,7 +4,7 @@
 export const STATUTS = {
   brouillon: "Brouillon",
   devis_envoye: "Devis envoyé",
-  accepte: "Accepté, acompte attendu",
+  accepte: "Accepté, paiement attendu",
   acompte: "Acompte reçu",
   solde: "Soldé",
   annule: "Annulé",
@@ -25,9 +25,15 @@ export function formatNombre(n) {
   return dec === "00" ? milliers : `${milliers}.${dec}`;
 }
 
-export function formatChf(n) {
+// La devise est celle de l'entreprise active, posée une fois à son changement.
+let devise = "CHF";
+export function setDevise(code) {
+  devise = code || "CHF";
+}
+
+export function formatMontant(n) {
   const v = arrondi(n);
-  return `${v < 0 ? "- " : ""}CHF ${formatNombre(v)}`;
+  return `${v < 0 ? "- " : ""}${devise} ${formatNombre(v)}`;
 }
 
 export function formatDate(iso) {
@@ -119,6 +125,23 @@ export function genererRef(prenom, nom, dateIso, pays) {
   return `${initiales(prenom, nom)}${dateIso.replaceAll("-", "")} ${pays}`.trim();
 }
 
+// Référence d'un nouveau dossier : initiales, date et pays, ou séquence annuelle (ST-2026-0001).
+export function nouvelleRef({ numerotation, prenom, nom, dateIso, pays, refsExistantes }) {
+  const existe = (r) => refsExistantes.includes(r);
+  if (numerotation && numerotation.mode === "sequence") {
+    const prefixe = (numerotation.prefixe || "").trim();
+    const annee = dateIso.slice(0, 4);
+    const debut = `${prefixe ? prefixe + "-" : ""}${annee}-`;
+    const dernier = refsExistantes.filter((r) => r.startsWith(debut)).map((r) => parseInt(r.slice(debut.length), 10)).filter(Number.isFinite);
+    return `${debut}${String((dernier.length ? Math.max(...dernier) : 0) + 1).padStart(4, "0")}`;
+  }
+  const base = genererRef(prenom, nom, dateIso, pays);
+  if (!existe(base)) return base;
+  const [code, ...reste] = base.split(" ");
+  for (const l of "bcdefghij") if (!existe(`${code}${l} ${reste.join(" ")}`.trim())) return `${code}${l} ${reste.join(" ")}`.trim();
+  return base;
+}
+
 export function nomFichier(type, doc, dossier, client) {
   const nom = sansAccents(client && client.nom).split(/\s+/)[0] || "client";
   const t = type === "facture" ? "Facture" : "Devis";
@@ -187,7 +210,7 @@ export function aFaire(resumes, today, reglages) {
   const items = [];
   for (const r of resumes) {
     const d = r.dossier;
-    if (r.statut === "accepte") {
+    if (r.statut === "accepte" && acompteDu(r.total, reglages.conditions.acompte_pct) > 0) {
       const ech = echeanceAcompte(d, reglages);
       if (ech && ech < today) items.push({ type: "acompte_retard", resume: r, jours: joursEntre(ech, today) });
     }

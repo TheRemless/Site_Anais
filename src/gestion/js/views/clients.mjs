@@ -1,13 +1,15 @@
-import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier } from "../etat.mjs";
+import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier, reglages } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, vider } from "../ui.mjs";
-import { formatChf } from "../calc.mjs";
+import { formatMontant } from "../calc.mjs";
 import { pastille, vide } from "./commun.mjs";
 
 const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 function formulaireClient(client, apres) {
-  const civ = h("select", { id: "c-civ", value: client.civilite || "Madame" }, ["Madame", "Monsieur", "Mademoiselle"].map((x) => h("option", { value: x }, x)));
-  civ.value = client.civilite || "Madame";
+  const civilites = [...reglages().listes.civilites];
+  if (client.civilite && !civilites.includes(client.civilite)) civilites.push(client.civilite);
+  const civ = h("select", { id: "c-civ" }, civilites.map((x) => h("option", { value: x }, x)));
+  civ.value = client.civilite || civilites[0] || "";
   const prenom = h("input", { id: "c-prenom", value: client.prenom || "" });
   const nom = h("input", { id: "c-nom", value: client.nom || "", required: true });
   const tel = h("input", { id: "c-tel", type: "tel", value: client.telephone || "" });
@@ -115,7 +117,7 @@ export function ficheClient(id) {
             h(
               "tbody",
               null,
-              dossiers.map((r) => h("tr", null, h("td", { "data-label": "Référence" }, h("a", { href: `#/dossier/${r.dossier.id}` }, r.dossier.ref)), h("td", { "data-label": "Statut" }, pastille(r.statut)), h("td", { class: "num", "data-label": "Total" }, formatChf(r.total)), h("td", { class: "num", "data-label": "Reste" }, formatChf(r.reste))))
+              dossiers.map((r) => h("tr", null, h("td", { "data-label": "Référence" }, h("a", { href: `#/dossier/${r.dossier.id}` }, r.dossier.ref)), h("td", { "data-label": "Statut" }, pastille(r.statut)), h("td", { class: "num", "data-label": "Total" }, formatMontant(r.total)), h("td", { class: "num", "data-label": "Reste" }, formatMontant(r.reste))))
             )
           )
         : h("p", { class: "vide-court" }, "Aucun dossier pour ce client.")

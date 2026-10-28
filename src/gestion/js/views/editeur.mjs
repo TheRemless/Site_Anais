@@ -1,6 +1,6 @@
 import { etat, modifier, nomClient, reglages } from "../etat.mjs";
 import { h, champ, toast, num, vider } from "../ui.mjs";
-import { totaux, formatChf, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
+import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
 import { nouvelleLigne } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
 
@@ -87,7 +87,7 @@ export function editeur(id) {
     h("option", { value: "total" }, "Montant seulement"),
     h("option", { value: "detail" }, "Unité, quantité et total")
   );
-  const pied = h("select", { id: "d-pied", value: c.pied, onchange: (e) => ((c.pied = e.target.value), change()) }, h("option", { value: "qr" }, "Coordonnées bancaires et QR Wise"), h("option", { value: "email" }, "Renvoi vers l'e-mail de paiement"));
+  const pied = h("select", { id: "d-pied", value: c.pied, onchange: (e) => ((c.pied = e.target.value), change()) }, h("option", { value: "qr" }, "Coordonnées et informations de paiement"), h("option", { value: "email" }, "Renvoi vers le message de paiement"));
   const textePerso = h("div");
   const corpsPerso = h("textarea", { id: "d-perso-corps", rows: 9, oninput: (e) => ((c.conditions_corps = e.target.value), change()) });
   const cloturePerso = h("textarea", { id: "d-perso-cloture", rows: 3, oninput: (e) => ((c.conditions_cloture = e.target.value), change()) });
@@ -99,7 +99,7 @@ export function editeur(id) {
     "select",
     {
       id: "d-var",
-      value: c.variante,
+      value: c.variante || (regl.textes.variantes[0] || {}).id,
       onchange: (e) => {
         if (e.target.value === "perso" && !c.conditions_corps) {
           const base = regl.textes.variantes.find((v) => v.id === c.variante) || regl.textes.variantes[0];
@@ -136,7 +136,7 @@ export function editeur(id) {
     if (c.montant_recu != null) valeur.disabled = false;
     else valeur.disabled = true;
     const info = h("p", { class: "aide" });
-    const majInfo = () => (info.textContent = c.montant_recu == null ? `Calculé d'après les paiements enregistrés : ${formatChf(sommePaiements(paiements))}.` : "Valeur saisie à la main.");
+    const majInfo = () => (info.textContent = c.montant_recu == null ? `Calculé d'après les paiements enregistrés : ${formatMontant(sommePaiements(paiements))}.` : "Valeur saisie à la main.");
     manuel.addEventListener("change", () => {
       if (manuel.checked) {
         c.montant_recu = sommePaiements(paiements);
@@ -165,10 +165,10 @@ export function editeur(id) {
 
   function majMontants() {
     const t = totaux(c, recuActuel());
-    totalTexte.textContent = estFacture ? `Total de la facture : ${formatChf(t.net)}, reste à payer ${formatChf(t.reste)}` : `Total du devis : ${formatChf(t.net)}`;
+    totalTexte.textContent = estFacture ? `Total de la facture : ${formatMontant(t.net)}, reste à payer ${formatMontant(t.reste)}` : `Total du devis : ${formatMontant(t.net)}`;
     c.lignes.forEach((l, i) => {
       const el = listeLignes.querySelector(`[data-calc="${l.id}"]`);
-      if (el) el.textContent = formatChf(t.montants[i]);
+      if (el) el.textContent = formatMontant(t.montants[i]);
     });
   }
 

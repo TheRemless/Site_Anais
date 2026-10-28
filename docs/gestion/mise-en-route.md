@@ -1,34 +1,52 @@
-# Gestion Zwald : mise en route
+# Gestion : mise en route et administration
 
-L'outil est dans `src/gestion/` et s'ouvre sur `/gestion/`. Tant que `src/gestion/js/config.mjs` est vide, il tourne en mode démonstration (faux clients, données dans le navigateur). Pour passer en réel, il faut une base Supabase. Comptez 15 minutes.
+L'outil est dans `src/gestion/` et s'ouvre sur `/gestion/`. Il gère plusieurs entreprises (Zwald Travel Planner, Secret Travel & Tour, VIP Taxi Lanta) et plusieurs utilisateurs. Chaque entreprise a ses propres clients, dossiers, documents, paiements, catalogue, réglages, logo et devise.
 
-## 1. Créer la base
+`/gestion/?demo` ouvre une démonstration avec de faux clients, sans toucher à la vraie base.
 
-1. Créer un compte sur supabase.com avec l'adresse de Jérémy ou d'Anaïs.
-2. Nouveau projet nommé `gestion-zwald`, région Europe (Frankfurt ou la plus proche). Noter le mot de passe de base de données dans un gestionnaire de mots de passe.
-3. Menu **SQL Editor**, nouvelle requête, coller tout le contenu de `docs/gestion/schema.sql`, puis **Run**. Le message « Success » suffit. Ce fichier contient les coordonnées bancaires : ne pas le publier.
+## Qui voit quoi
 
-## 2. Fermer les inscriptions et créer le compte d'Anaïs
+| Rôle | Voit | Peut faire |
+|---|---|---|
+| Administratrice générale | Toutes les entreprises | Tout, y compris créer des entreprises et donner des accès (écran Administration) |
+| Administrateur d'une entreprise | Cette entreprise | Tout dans cette entreprise, réglages compris (écran Réglages) |
+| Éditeur d'une entreprise | Cette entreprise | Clients, dossiers, devis, factures, paiements, catalogue. Pas les réglages (donc pas l'IBAN), pas la suppression d'un dossier |
 
-1. Menu **Authentication**, **Sign In / Providers**, désactiver **Allow new users to sign up**. Sans cela, n'importe qui pourrait se créer un compte.
-2. Menu **Authentication**, **Users**, **Add user**, **Create new user**. Saisir l'e-mail d'Anaïs et un mot de passe solide, cocher **Auto Confirm User**.
+Ces règles sont appliquées par la base de données elle-même. Un éditeur de Secret et Taxi ne peut rien lire ni écrire chez Zwald, même en contournant l'interface. `docs/gestion/verif-securite.mjs` le vérifie sur un Postgres en mémoire.
 
-## 3. Relier l'outil
+## Installation neuve
 
-1. Menu **Project Settings**, **API**. Copier le **Project URL** et la clé **anon public**.
-2. Les coller dans `src/gestion/js/config.mjs` (ou les transmettre pour que ce soit fait). Ces deux valeurs sont publiques par conception, la sécurité vient de la connexion et des règles de la base.
-3. Publier le site comme d'habitude.
+1. Créer le projet Supabase (région Europe), puis **SQL Editor**, coller `docs/gestion/schema.sql`, **Run**.
+2. **Authentication**, **Sign In / Providers** : désactiver **Allow new users to sign up**.
+3. **Authentication**, **Users**, **Add user** : créer le compte de l'administratrice (Auto Confirm User). Le tout premier compte devient automatiquement administratrice générale.
+4. Renseigner l'URL du projet et la clé `anon public` dans `src/gestion/js/config.mjs`, puis publier.
 
-## 4. Premier lancement
+## Mise à jour d'une base déjà installée (première version)
 
-1. Ouvrir `https://zwaldtravelplanner.com/gestion/` et se connecter.
-2. Écran **Réglages** : vérifier l'adresse de l'entreprise (« 290 Moo 2 » vient de son devis le plus récent), les coordonnées bancaires, les taux EUR et THB, puis enregistrer.
-3. Écran **Catalogue** : vérifier les prix. Ils ont été déduits de ses anciens devis (par exemple Koh Samui apparaît à 150 et à 200).
-4. Facultatif : **Réglages**, **Restaurer ou importer une sauvegarde**, choisir `clients-historique.json` pour reprendre ses 22 clients de l'ancien fichier Canva. Ce fichier est dans `~/Desktop/Site_Anais-import/` et ne doit pas être ajouté au dépôt.
+1. **SQL Editor**, coller `docs/gestion/migration-2-entreprises.sql`, **Run**. Les données existantes deviennent celles de Zwald Travel Planner et les comptes existants deviennent administrateurs généraux.
+2. Publier la nouvelle version de l'outil juste après (l'ancienne version ne fonctionne plus avec les nouvelles tables).
+
+## Ajouter une personne (l'assistante par exemple)
+
+1. Dans Supabase : **Authentication**, **Users**, **Add user**, saisir son e-mail et un mot de passe, cocher **Auto Confirm User**.
+2. Dans l'outil : **Administration**, **Utilisateurs**, **Gérer l'accès** sur son nom. Choisir **Éditeur** pour Secret Travel & Tour et pour VIP Taxi Lanta, **Aucun accès** pour Zwald Travel Planner.
+3. Pour couper l'accès d'une personne sans supprimer son compte, décocher **Compte actif**.
+
+## Réglages d'une entreprise
+
+L'écran **Réglages** (administrateurs) couvre tout ce qui apparaît sur les documents :
+- **Entreprise** : nom, adresse, téléphone, bloc de contact du pied de page.
+- **Paiement** : devise, informations de paiement, QR code (image à envoyer soi-même), taux indicatifs.
+- **Dossiers et listes** : acompte, délais, TVA, lien des conditions générales, numérotation (initiales et pays ou séquence annuelle comme ST-2026-0001), pays ou services proposés, civilités, moyens de paiement.
+- **Textes des documents** : tous les intitulés (DEVIS, TOTAL, signature…) avec un bouton pour les remplir en anglais, la phrase sur les conditions générales et les variantes de conditions de paiement (autant que voulu).
+- **Apparence** : logo, titre, couleurs. L'aperçu à droite montre un document d'exemple avec les réglages en cours.
+- **Sauvegarde** : sauvegarde complète, exports pour Excel, import. Ces fichiers concernent seulement l'entreprise active.
+
+Une entreprise nouvellement créée démarre avec des réglages vides. Le tableau de bord indique ce qu'il manque tant que ce n'est pas rempli.
 
 ## À savoir
 
-- Un projet Supabase gratuit peut être mis en pause après une semaine sans activité. Il se réactive depuis le tableau de bord Supabase. Se connecter à l'outil au moins une fois par semaine évite le problème.
-- **Réglages**, **Télécharger une sauvegarde complète** produit un fichier avec toutes les données. À faire une fois par mois.
+- Un projet Supabase gratuit peut être mis en pause après une semaine sans activité. Il se réactive depuis le tableau de bord Supabase.
 - Le PDF se génère par l'impression du navigateur : choisir « Enregistrer au format PDF ». Le nom de fichier est déjà rempli.
-- Les anciens dossiers (devis et factures de 2026) restent dans le fichier Canva. Leurs montants sont trop ambigus dans le PDF pour être repris sans risque d'erreur.
+- Import de l'historique Zwald (`historique-complet.json`) : choisir l'entreprise **Zwald Travel Planner** dans le menu, puis **Réglages**, **Sauvegarde**, **Restaurer ou importer**. L'import va dans l'entreprise active.
+- Le fichier `schema.sql` et la migration contiennent les coordonnées bancaires : ne pas les publier.

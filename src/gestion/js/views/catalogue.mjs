@@ -1,6 +1,6 @@
 import { etat, inserer, modifier, supprimer, naviguer } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
-import { formatChf } from "../calc.mjs";
+import { formatMontant } from "../calc.mjs";
 
 const GENRES = [
   ["formule", "Formules", "Un bloc avec son titre et sa liste de prestations, éventuellement avec un prix par jour."],
@@ -71,7 +71,7 @@ export function catalogue() {
               "table",
               { class: "tableau simple" },
               h("thead", null, h("tr", null, h("th", { scope: "col" }, "Libellé"), h("th", { scope: "col", class: "num" }, "Prix"), h("th", { scope: "col" }, "Éditeur"), h("th", null))),
-              h("tbody", null, lignes.map((x) => h("tr", null, h("td", { "data-label": "Libellé" }, x.libelle), h("td", { class: "num", "data-label": "Prix" }, x.prix != null ? formatChf(x.prix) : "variable"), h("td", { "data-label": "Éditeur" }, x.actif ? "Proposé" : "Masqué"), h("td", { class: "action-cellule" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrir(x) }, "Modifier")))))
+              h("tbody", null, lignes.map((x) => h("tr", null, h("td", { "data-label": "Libellé" }, x.libelle), h("td", { class: "num", "data-label": "Prix" }, x.prix != null ? formatMontant(x.prix) : "variable"), h("td", { "data-label": "Éditeur" }, x.actif ? "Proposé" : "Masqué"), h("td", { class: "action-cellule" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrir(x) }, "Modifier")))))
             )
           : h("p", { class: "vide-court" }, "Aucune entrée.")
       );

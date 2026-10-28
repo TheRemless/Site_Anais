@@ -135,3 +135,33 @@ export function inline(texte) {
 }
 
 export const num = (v) => (v === "" || v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
+
+// Charge une image choisie par l'utilisateur, la réduit et la renvoie en adresse de données (stockée dans les réglages).
+export function chargerImage(fichier, maxPx = 800) {
+  return new Promise((resolve, reject) => {
+    if (!fichier || !fichier.type.startsWith("image/")) return reject(new Error("Ce fichier n'est pas une image."));
+    if (fichier.size > 5 * 1024 * 1024) return reject(new Error("Image trop lourde (5 Mo maximum)."));
+    const lecteur = new FileReader();
+    lecteur.onerror = () => reject(new Error("Lecture de l'image impossible."));
+    lecteur.onload = () => {
+      // Un SVG reste tel quel, il ne pèse presque rien et reste net à l'impression.
+      if (fichier.type === "image/svg+xml") return resolve(lecteur.result);
+      const img = new Image();
+      img.onerror = () => reject(new Error("Image illisible."));
+      img.onload = () => {
+        const echelle = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * echelle);
+        canvas.height = Math.round(img.height * echelle);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.src = lecteur.result;
+    };
+    lecteur.readAsDataURL(fichier);
+  });
+}
+
+export function slug(texte) {
+  return (texte || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
