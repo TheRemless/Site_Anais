@@ -14,11 +14,11 @@ test("/taxi/ : la page est indexable", () => {
   assert.match(njk, /<meta name="robots" content="index, follow/);
 });
 
-test("/taxi/ : balise title de 60 caractères au plus, avec le mot-clé et la marque", () => {
+test("/taxi/ : balise title de 60 caractères au plus, avec le mot-clé, la zone et la marque", () => {
   const title = decode(njk.match(/<title>(.*?)<\/title>/)[1]);
   assert.ok(title.length <= 60, `${title.length} caractères : ${title}`);
   assert.match(title, /Taxi/i);
-  assert.match(title, /Koh Lanta/);
+  assert.match(title, /Southern Thailand/);
   assert.match(title, /VIP Taxi Lanta/);
 });
 
@@ -26,13 +26,25 @@ test("/taxi/ : meta description de 120 à 160 caractères, avec un appel à l'ac
   const description = decode(njk.match(/<meta name="description" content="(.*?)">/)[1]);
   assert.ok(description.length >= 120 && description.length <= 160, `${description.length} caractères`);
   assert.match(description, /Request|Book|Send/);
-  assert.match(description, /Krabi/);
+  assert.match(description, /Southern Thailand/);
+  assert.match(description, /Koh Lanta/);
 });
 
 test("/taxi/ : un seul h1, qui contient le mot-clé principal", () => {
   assert.equal((njk.match(/<h1[ >]/g) || []).length, 1);
   assert.match(taxi.hero.title, /taxi/i);
-  assert.match(taxi.hero.title, /Koh Lanta/);
+  assert.match(taxi.hero.title, /Southern Thailand/);
+});
+
+test("/taxi/ : le service couvre tout le sud de la Thaïlande, Koh Lanta est la base", () => {
+  assert.match(taxi.hero.lead, /Southern Thailand/);
+  assert.match(taxi.hero.lead, /Koh Lanta/);
+  assert.match(njk, /h-services">[^<]*Southern Thailand/);
+  // Aucune question ne présente l'offre comme limitée au départ de Koh Lanta.
+  assert.ok(!taxi.faq.some((f) => /from Koh Lanta/i.test(f.q)), "question trop restrictive dans la FAQ");
+  const where = taxi.faq.find((f) => /Southern Thailand/.test(f.q));
+  assert.ok(where, "question sur la zone couverte");
+  assert.match(where.a, /Phuket/);
 });
 
 test("/taxi/ : le sitemap la liste une seule fois", () => {
@@ -61,7 +73,7 @@ test("données structurées : TaxiService, zone desservie, aucun fait non vérif
   assert.equal(ld["@type"], "TaxiService");
   assert.equal(ld.url, "https://zwaldtravelplanner.com/taxi/");
   const area = JSON.stringify(ld.areaServed);
-  for (const place of ["Koh Lanta", "Krabi", "Phuket", "Surat Thani"]) assert.match(area, new RegExp(place));
+  for (const place of ["Southern Thailand", "Koh Lanta", "Krabi", "Phuket", "Surat Thani"]) assert.match(area, new RegExp(place));
   // Pas de note ni d'avis inventés, pas de téléphone ni d'e-mail (décision : le formulaire est le canal unique).
   assert.doesNotMatch(JSON.stringify(ld), /aggregateRating|"review"|ratingValue|telephone|email|priceRange/i);
   // Le JSON-LD doit rester du JSON valide une fois sérialisé pour la page.
