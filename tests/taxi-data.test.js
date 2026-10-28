@@ -4,7 +4,7 @@ const taxi = require("../src/_data/taxi.json");
 const taxiView = require("../src/_data/taxiView.js");
 
 function entries() {
-  return [taxi.hero, taxi.tours, taxi.rating, taxi.payment].concat(taxi.services, taxi.why, taxi.steps, taxi.faq, taxi.routes);
+  return [taxi.hero, taxi.tours, taxi.rating, taxi.payment].concat(taxi.services, taxi.why, taxi.steps, taxi.faq);
 }
 
 test("taxi.json : chaque entrée porte un booléen confirmed", () => {
@@ -32,7 +32,7 @@ test("taxi.json : les tours et sorties en bateau sont confiés à Secret Travel 
 test("taxiView : liste chaque entrée non confirmée, et la photo du hero seulement si elle manque", () => {
   const view = taxiView();
   const unconfirmed = [taxi.hero, taxi.tours, taxi.rating, taxi.payment]
-    .concat(taxi.services, taxi.routes, taxi.why, taxi.steps, taxi.faq)
+    .concat(taxi.services, taxi.why, taxi.steps, taxi.faq)
     .filter((item) => !item.confirmed).length;
   assert.equal(view.toConfirm.length, unconfirmed + (taxi.hero.photo ? 0 : 1));
   assert.equal(

@@ -87,30 +87,8 @@ test("la page insère les données structurées", () => {
   assert.match(njk, /taxiView\.jsonLd/);
 });
 
-test("itinéraires : au moins 10 trajets tirés de la liste de destinations, avec codes d'aéroport", () => {
-  assert.ok(taxi.routes.length >= 10, `${taxi.routes.length} itinéraires`);
-  const titles = taxi.routes.map((r) => r.title).join(" | ");
-  for (const code of ["KBV", "HKT", "URT"]) assert.match(titles, new RegExp(code));
-  for (const r of taxi.routes) {
-    assert.equal(typeof r.confirmed, "boolean", r.title);
-    assert.ok(r.title, r.title);
-  }
-});
-
-test("itinéraires : chaque trajet pré-remplit From et To, sauf « ailleurs » qui laisse libre", () => {
-  const anywhere = taxi.routes.filter((r) => !r.from && !r.to);
-  assert.equal(anywhere.length, 1, "une seule entrée « ailleurs dans le sud de la Thaïlande »");
-  assert.match(anywhere[0].title, /Southern Thailand/);
-  for (const r of taxi.routes.filter((x) => x.from || x.to)) {
-    assert.ok(r.from && r.to, r.title);
-    assert.ok(r.from === "Koh Lanta" || r.to === "Koh Lanta", r.title);
-    // Les lieux proposés doivent exister dans la liste suggérée de la page.
-    for (const place of [r.from, r.to]) assert.ok(taxi.places.includes(place), `${place} absent de places`);
-  }
-});
-
-test("itinéraires : aucune durée, distance ni prix inventé", () => {
-  const all = JSON.stringify(taxi.routes) + JSON.stringify(taxi.faq);
+test("FAQ : aucune durée, distance ni prix inventé", () => {
+  const all = JSON.stringify(taxi.faq);
   assert.doesNotMatch(all, /\b\d+\s?(h|hr|hrs|hours?|min|minutes?|km|kms|baht|thb)\b|฿|€|\$/i);
 });
 
@@ -132,13 +110,15 @@ test("variante d'orthographe « Ko Lanta » présente mais pas répétée à out
   assert.ok(count >= 1 && count <= 3, `${count} occurrences de « Ko Lanta »`);
 });
 
-test("la page affiche les itinéraires avec un lien qui pré-remplit le formulaire, sans texte caché en double", () => {
-  assert.doesNotMatch(njk, /class="sr"> \{\{ r\.title/);
-  assert.match(njk, /aria-describedby="route-/);
-  assert.match(njk, /taxi\.routes/);
-  assert.match(njk, /data-from/);
-  assert.match(njk, /data-to/);
-  assert.match(njk, /h-routes/);
+test("From et To sont des listes déroulantes de lieux populaires où l'on peut aussi écrire librement", () => {
+  assert.doesNotMatch(njk, /h-routes|class="routes"|class="chips"|Request this transfer|<datalist|list="places"/);
+  assert.doesNotMatch(njk, /taxi\.routes/);
+  assert.match(njk, /macro combo\(/);
+  assert.match(njk, /combo\("from", "From", taxi\.places\)/);
+  assert.match(njk, /combo\("to", "To", taxi\.places\)/);
+  for (const attr of ['role="combobox"', 'aria-autocomplete="list"', 'aria-expanded="false"', 'role="listbox"', 'role="option"']) {
+    assert.ok(njk.includes(attr), attr);
+  }
 });
 
 test("données structurées : catalogue des services sans prix", () => {
@@ -149,13 +129,33 @@ test("données structurées : catalogue des services sans prix", () => {
   assert.doesNotMatch(JSON.stringify(ld), /"price"|priceCurrency/i);
 });
 
-// Le nom de la base figure dans chaque titre d'itinéraire (« Krabi Airport (KBV) and Koh Lanta »), c'est voulu :
-// c'est la formulation que les gens tapent. Sur la page rendue, cela représente environ 3 % des mots visibles.
-// Ce plafond en nombre d'occurrences (21 aujourd'hui) empêche d'ajouter de la répétition sans y penser.
+// Ce plafond en nombre d'occurrences empêche d'ajouter de la répétition sans y penser.
 test("répétition de « Koh Lanta » plafonnée à 24 occurrences dans les textes de la page", () => {
   const shown = ["title", "text", "lead", "note", "q", "a"];
-  const dataText = [taxi.hero, taxi.tours, taxi.rating, taxi.payment].concat(taxi.services, taxi.routes, taxi.why, taxi.steps, taxi.faq)
+  const dataText = [taxi.hero, taxi.tours, taxi.rating, taxi.payment].concat(taxi.services, taxi.why, taxi.steps, taxi.faq)
     .map((item) => shown.map((k) => item[k]).filter(Boolean).join(" ")).join(" ");
   const hits = (dataText.match(/Koh Lanta/g) || []).length;
   assert.ok(hits <= 24, `${hits} occurrences de « Koh Lanta »`);
+});
+
+test("services : les aéroports sont nommés avec leurs codes, dans les deux sens", () => {
+  const text = taxi.services.map((s) => s.text).join(" ");
+  for (const code of ["KBV", "HKT", "URT"]) assert.match(text, new RegExp(code));
+  assert.match(text, /both directions/);
+  assert.match(text, /Koh Lanta/);
+});
+
+test("FAQ : questions précises sur les trajets depuis les aéroports, le retour et les enfants", () => {
+  const questions = taxi.faq.map((f) => f.q).join(" | ");
+  assert.match(questions, /Krabi Airport to Koh Lanta/);
+  assert.match(questions, /Phuket Airport/);
+  assert.match(questions, /leave Koh Lanta/);
+  assert.match(questions, /children or babies/);
+  assert.ok(taxi.faq.length >= 10, `${taxi.faq.length} questions`);
+  assert.equal(new Set(taxi.faq.map((f) => f.q)).size, taxi.faq.length, "pas de question en double");
+});
+
+test("mise en page : la FAQ vient après le formulaire", () => {
+  assert.ok(njk.indexOf('id="h-faq"') > njk.indexOf('id="request"'), "FAQ sous le formulaire");
+  assert.ok(njk.indexOf('id="h-faq"') < njk.indexOf("</main>"), "FAQ dans <main>");
 });

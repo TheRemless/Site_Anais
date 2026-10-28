@@ -114,6 +114,20 @@
     return errors;
   }
 
+  // Minuscules sans accents, pour comparer ce que tape le visiteur aux lieux proposés.
+  function fold(text) {
+    return String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  }
+
+  // Lieux de la liste déroulante qui contiennent la saisie, dans l'ordre d'origine. Champ vide : toute la liste.
+  // Avec showAllOnExact, un lieu déjà choisi remontre toute la liste pour pouvoir en changer.
+  function filterPlaces(places, query, options) {
+    var q = fold(query);
+    if (!q) return places.slice();
+    if (options && options.showAllOnExact && places.some(function (p) { return fold(p) === q; })) return places.slice();
+    return places.filter(function (p) { return fold(p).indexOf(q) !== -1; });
+  }
+
   return {
     bangkokToday: bangkokToday,
     addDays: addDays,
@@ -121,6 +135,7 @@
     formatDate: formatDate,
     buildMessage: buildMessage,
     waUrl: waUrl,
-    validate: validate
+    validate: validate,
+    filterPlaces: filterPlaces
   };
 });

@@ -15,6 +15,19 @@ eleventyExcludeFromCollections: true
   <p class="err" id="e-{{ name }}" hidden></p>
 </div>
 {% endmacro %}
+{% macro combo(name, label, places) %}
+<div class="field combo">
+  <label for="f-{{ name }}">{{ label }}</label>
+  <div class="combo-box">
+    <input id="f-{{ name }}" name="{{ name }}" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lb-{{ name }}" aria-required="true" aria-describedby="e-{{ name }}" autocomplete="off" autocapitalize="words" spellcheck="false">
+    <div class="combo-pop" hidden>
+      <p class="combo-head" aria-hidden="true">Popular places, or type your own</p>
+      <ul id="lb-{{ name }}" role="listbox" aria-label="Popular places">{% for place in places %}<li role="option" id="o-{{ name }}-{{ loop.index }}">{{ place }}</li>{% endfor %}</ul>
+    </div>
+  </div>
+  <p class="err" id="e-{{ name }}" hidden></p>
+</div>
+{% endmacro %}
 {% macro person(name, label, ages, value, min) %}
 <div class="person">
   <label for="f-{{ name }}">{{ label }} <span class="ages">{{ ages }}</span></label>
@@ -95,20 +108,6 @@ eleventyExcludeFromCollections: true
     {% endfor %}
   </div>
 
-  <section class="sec" aria-labelledby="h-routes">
-    <h2 id="h-routes">Popular private transfers</h2>
-    <p class="routes-intro">Private taxi or minivan, in both directions, with no sharing. Pick a route and the form is ready.</p>
-    <div class="routes">
-      {% for r in taxi.routes %}
-      <div>
-        <h3 id="route-{{ loop.index }}">{{ r.title }}</h3>
-        {% if r.text %}<p>{{ r.text }}</p>{% endif %}
-        <a href="#request" aria-describedby="route-{{ loop.index }}"{% if r.from %} data-from="{{ r.from }}" data-to="{{ r.to }}"{% endif %}>Request this transfer</a>
-      </div>
-      {% endfor %}
-    </div>
-  </section>
-
   <section class="tours" aria-labelledby="h-tours">
     <img src="{{ taxi.tours.photo.src }}" width="{{ taxi.tours.photo.width }}" height="{{ taxi.tours.photo.height }}" alt="{{ taxi.tours.photo.alt }}" loading="lazy">
     <div class="tours-body">
@@ -138,15 +137,6 @@ eleventyExcludeFromCollections: true
     <p class="pay">{{ taxi.payment.text }}</p>
   </section>
 
-  <section class="sec" aria-labelledby="h-faq">
-    <h2 id="h-faq">Common questions</h2>
-    <div class="faq">
-      {% for f in taxi.faq %}
-      <div><h3>{{ f.q }}</h3><p>{{ f.a }}</p></div>
-      {% endfor %}
-    </div>
-  </section>
-
   <section class="card" id="request" aria-labelledby="h-request">
     <div class="card-intro">
       <h2 id="h-request">Request a transfer</h2>
@@ -155,11 +145,10 @@ eleventyExcludeFromCollections: true
     </div>
     <form id="taxi-form" novalidate>
       <div class="row">
-        {{ field("from", "From", "text", 'list="places" autocomplete="off"', "", true) }}
-        {{ field("to", "To", "text", 'list="places" autocomplete="off"', "", true) }}
+        {{ combo("from", "From", taxi.places) }}
+        {{ combo("to", "To", taxi.places) }}
       </div>
       <p class="hint hint-pair">Use your hotel, an airport, a pier or a town.</p>
-      <datalist id="places">{% for place in taxi.places %}<option value="{{ place }}">{% endfor %}</datalist>
 
       <fieldset class="field" aria-describedby="e-date">
         <legend>Date</legend>
@@ -197,6 +186,15 @@ eleventyExcludeFromCollections: true
       </button>
       <p class="note">Opens WhatsApp with your message ready. Your details stay on your phone until you send.</p>
     </form>
+  </section>
+
+  <section class="sec" aria-labelledby="h-faq">
+    <h2 id="h-faq">Common questions</h2>
+    <div class="faq">
+      {% for f in taxi.faq %}
+      <div><h3>{{ f.q }}</h3><p>{{ f.a }}</p></div>
+      {% endfor %}
+    </div>
   </section>
 </main>
 
