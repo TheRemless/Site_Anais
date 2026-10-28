@@ -6,6 +6,7 @@
     "place": "Koh Lanta, Krabi, Thailand",
     "reviewsUrl": "https://maps.app.goo.gl/hnm3donEq7uR56Dr6",
     "areaServed": [
+      "Southern Thailand",
       "Koh Lanta",
       "Krabi",
       "Ao Nang",
@@ -21,8 +22,8 @@
     ]
   },
   "hero": {
-    "title": "Private taxi & minivan in Koh Lanta",
-    "lead": "Reliable private taxi and minivan service from Koh Lanta to airports, piers, cities and provinces across Southern Thailand.",
+    "title": "Private taxi & minivan in Southern Thailand",
+    "lead": "Reliable private taxi and minivan service across Southern Thailand: airports, piers, cities and provinces. Based in Koh Lanta.",
     "note": "Private transfers, no sharing, no hidden fees.",
     "photo": {
       "src": "/images/taxi/hero-ceiling-1800.webp",
@@ -156,13 +157,13 @@
       "confirmed": false
     },
     {
-      "q": "How do I book a transfer from Koh Lanta?",
+      "q": "How do I book a transfer?",
       "a": "Fill in the request form on this page. It opens WhatsApp with your message ready, and the team replies with the price and the details.",
       "confirmed": false
     },
     {
-      "q": "Which places do you drive to from Koh Lanta?",
-      "a": "Krabi Town and Krabi airport, Ao Nang, Phuket and Phuket airport, Surat Thani airport and bus terminal, Trang, Khao Lak, Khao Sok, Donsak Pier and Cheow Lan Pier, and more.",
+      "q": "Where do you drive in Southern Thailand?",
+      "a": "Across Southern Thailand: Krabi Town and Krabi airport, Ao Nang, Phuket and Phuket airport, Surat Thani airport and bus terminal, Trang, Khao Lak, Khao Sok, Donsak Pier and Cheow Lan Pier, and more. Our base is Koh Lanta.",
       "confirmed": false
     },
     {
