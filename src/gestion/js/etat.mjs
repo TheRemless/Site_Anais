@@ -1,8 +1,9 @@
 // État partagé : le magasin de données, la copie en mémoire des tables et l'entreprise active.
 // `brut` contient tout ce que la base laisse voir à la personne connectée, `db` seulement l'entreprise active.
 import { creerStore } from "./store.mjs";
-import { resume, setDevise } from "./calc.mjs";
-import { completerReglages } from "./defauts.mjs";
+import { resume, setDevise, setMasquerMontants } from "./calc.mjs";
+import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
+import { permissionsDans, roleDans } from "./droits.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue"];
 const CLE_ENTITE = "gestion-zwald-entite";
@@ -46,8 +47,10 @@ function rebatir() {
   const db = {};
   for (const t of TABLES) db[t] = etat.brut[t].filter((r) => r.entite_id === e);
   db.reglages = completerReglages(etat.brut.reglages[e]);
+  db.roles = etat.brut.roles.filter((r) => r.entite_id === e);
   etat.db = db;
   setDevise(db.reglages.devise);
+  setMasquerMontants(!peut("finances.voir"));
 }
 
 export function changerEntite(id) {
@@ -63,14 +66,19 @@ export function changerEntite(id) {
   else window.dispatchEvent(new HashChangeEvent("hashchange"));
 }
 
-// Droits : l'administrateur général est administrateur partout, les autres selon leur accès à l'entreprise active.
+// Droits : l'administratrice générale a tous les droits partout, les autres ceux du rôle qu'elles ont dans l'entreprise active.
+// L'interface s'en sert pour n'afficher que ce qui est permis, la base refuse de toute façon le reste.
 export const estSuperAdmin = () => !!(etat.moi && etat.moi.super_admin && etat.moi.actif);
+const contexte = () => ({ profil: etat.moi, membres: etat.brut.membres, roles: etat.brut.roles });
+export const permissionsActives = () => permissionsDans(contexte(), etat.entiteId);
+export const peut = (code) => !!etat.brut && permissionsActives().includes(code);
 export function roleActif() {
-  if (estSuperAdmin()) return "admin";
-  const m = etat.brut.membres.find((x) => x.user_id === etat.session.id && x.entite_id === etat.entiteId);
-  return m && etat.moi.actif ? m.role : null;
+  if (estSuperAdmin()) return "Administratrice générale";
+  const r = roleDans(contexte(), etat.entiteId);
+  return r ? r.nom : null;
 }
-export const estAdmin = () => roleActif() === "admin";
+// Compatibilité : « administrateur » veut dire pouvoir modifier les réglages.
+export const estAdmin = () => peut("reglages.ecrire");
 
 export const reglages = () => etat.db.reglages;
 
@@ -112,6 +120,7 @@ export async function creerEntite(nom, slug) {
   const e = await etat.store.inserer("entites", { nom, slug, actif: true, ordre });
   const base = completerReglages({ emetteur: { nom } });
   await etat.store.enregistrerReglages(e.id, base);
+  for (const r of ROLES_SYSTEME) etat.brut.roles.push(await etat.store.inserer("roles", { entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: r.permissions, systeme: true }));
   etat.brut.entites.push(e);
   etat.brut.reglages[e.id] = base;
   rebatir();
@@ -125,12 +134,12 @@ export async function modifierEntite(id, patch) {
   rebatir();
 }
 
-export async function definirAcces(userId, entiteId, role) {
-  if (role) {
-    await etat.store.donnerAcces(userId, entiteId, role);
+export async function definirAcces(userId, entiteId, roleId) {
+  if (roleId) {
+    await etat.store.donnerAcces(userId, entiteId, roleId);
     const m = etat.brut.membres.find((x) => x.user_id === userId && x.entite_id === entiteId);
-    if (m) m.role = role;
-    else etat.brut.membres.push({ user_id: userId, entite_id: entiteId, role });
+    if (m) m.role_id = roleId;
+    else etat.brut.membres.push({ user_id: userId, entite_id: entiteId, role_id: roleId });
   } else {
     await etat.store.retirerAcces(userId, entiteId);
     etat.brut.membres = etat.brut.membres.filter((x) => !(x.user_id === userId && x.entite_id === entiteId));
@@ -142,6 +151,8 @@ export async function modifierProfil(userId, patch) {
   Object.assign(etat.brut.profils.find((p) => p.user_id === userId), patch);
   if (etat.moi && etat.moi.user_id === userId) Object.assign(etat.moi, patch);
 }
+
+export const equipe = () => etat.store.equipe(etat.entiteId);
 
 export const resumes = () => etat.db.dossiers.map((d) => resume(d, etat.db, etat.db.reglages));
 export const resumeDossier = (id) => {

@@ -39,7 +39,7 @@ export function creer(config) {
     },
     async charger() {
       const out = {};
-      for (const t of ["entites", "profils", "membres", ...TABLES]) out[t] = await toutes(t);
+      for (const t of ["entites", "profils", "roles", "membres", ...TABLES]) out[t] = await toutes(t);
       out.reglages = Object.fromEntries((await toutes("reglages")).map((r) => [r.entite_id, r.valeur]));
       return out;
     },
@@ -58,8 +58,21 @@ export function creer(config) {
     async modifierProfil(userId, patch) {
       verifie(await sb.from("profils").update(patch).eq("user_id", userId).select());
     },
-    async donnerAcces(userId, entiteId, role) {
-      verifie(await sb.from("membres").upsert({ user_id: userId, entite_id: entiteId, role }).select());
+    async donnerAcces(userId, entiteId, roleId) {
+      verifie(await sb.from("membres").upsert({ user_id: userId, entite_id: entiteId, role_id: roleId }).select());
+    },
+    async equipe(entiteId) {
+      return verifie(await sb.rpc("equipe_de", { e: entiteId }));
+    },
+    // Journal d'activité : les plus récentes d'abord, par pages (le journal peut devenir très long).
+    async journal({ entiteId, table, userId, avant, limite = 50 }) {
+      let q = sb.from("journal").select("*").eq("entite_id", entiteId).order("created_at", { ascending: false }).limit(limite);
+      if (table) q = q.eq("table_name", table);
+      if (userId) q = q.eq("user_id", userId);
+      if (avant) q = q.lt("created_at", avant);
+      const lignes = verifie(await q);
+      const noms = new Map((await sb.rpc("equipe_de", { e: entiteId })).data?.map((p) => [p.user_id, p.nom || p.email]) || []);
+      return lignes.map((l) => ({ ...l, auteur: noms.get(l.user_id) || null }));
     },
     async retirerAcces(userId, entiteId) {
       verifie(await sb.from("membres").delete().eq("user_id", userId).eq("entite_id", entiteId).select());

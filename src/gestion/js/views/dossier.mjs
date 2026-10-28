@@ -1,4 +1,4 @@
-import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages } from "../etat.mjs";
+import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef } from "../calc.mjs";
 import { uid } from "../defauts.mjs";
@@ -13,6 +13,13 @@ export function ficheDossier(id) {
   if (!r) return vide("Dossier introuvable", "Il a peut-être été supprimé.", h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Retour aux dossiers"));
   const { dossier: d, client, paiements } = r;
   const fm = (n, code) => formatMontant(n, code || r.devise);
+  // Ce que le rôle de la personne permet de faire sur ce dossier.
+  const droit = { dossiers: peut("dossiers.ecrire"), docs: peut("documents.ecrire"), paiements: peut("paiements.ecrire"), finances: peut("finances.voir"), supprimer: peut("dossiers.supprimer") };
+  const responsable = h("span", null);
+  equipe().then((gens) => {
+    const p = gens.find((x) => x.user_id === d.responsable_id);
+    responsable.textContent = p ? ` · Responsable : ${p.nom || p.email}` : "";
+  });
   const regl = reglages();
   const MOYENS = regl.listes.moyens.map((m) => [m.id, m.label]);
   const devis = dernier(r.documents, "devis");
@@ -101,6 +108,11 @@ export function ficheDossier(id) {
     const depart = h("input", { id: "m-depart", type: "date", value: d.date_depart || "" });
     const retour = h("input", { id: "m-retour", type: "date", value: d.date_retour || "" });
     const accepte = h("input", { id: "m-accepte", type: "date", value: d.accepte_le || "" });
+    const respSel = h("select", { id: "m-resp" }, h("option", { value: d.responsable_id || "" }, "Chargement…"));
+    equipe().then((gens) => {
+      respSel.replaceChildren(h("option", { value: "" }, "Personne"), ...gens.map((p) => h("option", { value: p.user_id }, p.nom || p.email)));
+      respSel.value = d.responsable_id || "";
+    });
     const ref = h("input", { id: "m-ref", value: d.ref });
     const fermer = modal(
       "Modifier le dossier",
@@ -114,14 +126,14 @@ export function ficheDossier(id) {
               toast("Cette référence existe déjà.", true);
               return;
             }
-            await modifier("dossiers", d.id, { client_id: selClient.valeur || d.client_id, pays: pays.value.trim(), date_depart: depart.value || null, date_retour: retour.value || null, accepte_le: accepte.value || null, ref: ref.value.trim() });
+            await modifier("dossiers", d.id, { client_id: selClient.valeur || d.client_id, pays: pays.value.trim(), date_depart: depart.value || null, date_retour: retour.value || null, accepte_le: accepte.value || null, ref: ref.value.trim(), responsable_id: respSel.value || null });
             fermer();
             toast("Dossier modifié.");
             rafraichir();
           },
         },
         selClient.noeud,
-        h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || "Pays", pays), champ("Référence", ref), champ("Début", depart), champ("Fin", retour), champ("Date d'acceptation du devis", accepte, "Laissez vide si le client n'a pas encore accepté.")),
+        h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || "Pays", pays), champ("Référence", ref), champ("Début", depart), champ("Fin", retour), champ("Date d'acceptation du devis", accepte, "Laissez vide si le client n'a pas encore accepté."), champ("Responsable du dossier", respSel, "Avec un rôle limité à « ses dossiers », la personne ne voit que ceux dont elle est responsable.")),
         h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), h("button", { type: "submit", class: "principal" }, "Enregistrer"))
       )
     );
@@ -189,7 +201,7 @@ export function ficheDossier(id) {
                 h(
                   "td",
                   { class: "action-cellule" },
-                  h(
+                  !droit.paiements ? null : h(
                     "button",
                     {
                       class: "lien danger-texte",
@@ -226,6 +238,7 @@ export function ficheDossier(id) {
 
   const notes = h("textarea", {
     id: "notes",
+    readonly: !droit.dossiers,
     rows: 3,
     value: d.notes || "",
     onblur: async (e) => {
@@ -244,10 +257,10 @@ export function ficheDossier(id) {
     h(
       "div",
       { class: "entete" },
-      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, h("span", { class: "ref" }, d.ref), d.bandeau ? ` · ${voyageTexte(d.bandeau, d.pays)}` : "")),
-      h("div", { class: "entete-actions" }, pastille(r.statut), h("button", { class: "secondaire", type: "button", onclick: dupliquer }, "Dupliquer"), h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, "Modifier le dossier"))
+      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, h("span", { class: "ref" }, d.ref), d.bandeau ? ` · ${voyageTexte(d.bandeau, d.pays)}` : "", responsable)),
+      h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, "Dupliquer") : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, "Modifier le dossier") : null)
     ),
-    h(
+    !droit.finances ? null : h(
       "div",
       { class: "chiffres compacts" },
       ...[["Total", fm(r.total)], ...(acompte > 0 ? [[`Acompte (${regl.conditions.acompte_pct}%)`, fm(acompte)]] : []), ["Reçu", fm(r.recu)], ["Reste à payer", fm(r.reste)]].map(([l, v]) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, l), h("p", { class: "chiffre-valeur" }, v)))
@@ -260,14 +273,14 @@ export function ficheDossier(id) {
         "ol",
         { class: "etapes" },
         ...(avecDevis ? [etape(!!devis, "Devis créé", devis ? `Émis le ${formatDate(devis.date_emission)}` : "", devis ? h("a", { class: "bouton secondaire petit", href: `#/doc/${devis.id}` }, "Ouvrir le devis") : null)] : []),
-        ...(avecDevis ? [etape(!!(devis && devis.envoye_le), "Devis envoyé au client", devis && devis.envoye_le ? `Le ${formatDate(devis.envoye_le)}` : "Une fois le PDF expédié, notez-le ici pour suivre les relances.", devis && !devis.envoye_le ? h("button", { class: "secondaire petit", type: "button", onclick: marquerEnvoye }, "Marquer comme envoyé") : null)] : []),
-        ...(avecDevis ? [etape(!!d.accepte_le, "Devis accepté", d.accepte_le ? `Le ${formatDate(d.accepte_le)}${echeance && r.recu < acompte ? `, acompte attendu avant le ${formatDate(echeance)}` : ""}` : "", !d.accepte_le ? h("button", { class: "secondaire petit", type: "button", onclick: accepter }, "Le client a accepté") : null)] : []),
-        ...(acompte > 0 ? [etape(r.recu >= acompte, "Acompte reçu", r.recu >= acompte && acompte > 0 ? `${fm(r.recu)} reçus` : acompte ? `${fm(acompte)} attendus` : "Le total du devis est à zéro.", r.recu < acompte ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); document.getElementById("p-montant").focus(); } }, "Enregistrer un paiement") : null)] : []),
-        etape(!!facture, "Facture", facture ? `Émise le ${formatDate(facture.date_emission)}${facture.envoye_le ? `, envoyée le ${formatDate(facture.envoye_le)}` : ""}` : "À créer quand la prestation est prête, ou dès l'acompte reçu.", facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, "Ouvrir la facture") : h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, "Créer la facture")),
+        ...(avecDevis ? [etape(!!(devis && devis.envoye_le), "Devis envoyé au client", devis && devis.envoye_le ? `Le ${formatDate(devis.envoye_le)}` : "Une fois le PDF expédié, notez-le ici pour suivre les relances.", devis && !devis.envoye_le && droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: marquerEnvoye }, "Marquer comme envoyé") : null)] : []),
+        ...(avecDevis ? [etape(!!d.accepte_le, "Devis accepté", d.accepte_le ? `Le ${formatDate(d.accepte_le)}${echeance && r.recu < acompte ? `, acompte attendu avant le ${formatDate(echeance)}` : ""}` : "", !d.accepte_le && droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: accepter }, "Le client a accepté") : null)] : []),
+        ...(acompte > 0 && droit.finances ? [etape(r.recu >= acompte, "Acompte reçu", r.recu >= acompte && acompte > 0 ? `${fm(r.recu)} reçus` : acompte ? `${fm(acompte)} attendus` : "Le total du devis est à zéro.", r.recu < acompte && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); document.getElementById("p-montant").focus(); } }, "Enregistrer un paiement") : null)] : []),
+        etape(!!facture, "Facture", facture ? `Émise le ${formatDate(facture.date_emission)}${facture.envoye_le ? `, envoyée le ${formatDate(facture.envoye_le)}` : ""}` : "À créer quand la prestation est prête, ou dès l'acompte reçu.", facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, "Ouvrir la facture") : droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, "Créer la facture") : null),
         etape(r.statut === "solde", "Dossier soldé", r.statut === "solde" ? "Tout est encaissé." : r.total ? `Reste ${fm(r.reste)} à encaisser.` : "")
       )
     ),
-    h(
+    !droit.finances ? null : h(
       "section",
       null,
       h("h2", null, "Documents"),
@@ -280,16 +293,16 @@ export function ficheDossier(id) {
           )
         : h("p", { class: "vide-court" }, "Aucun document.")
     ),
-    h("section", null, h("h2", null, "Paiements reçus"), tableauPaiements, h("h3", null, "Enregistrer un paiement"), formPaiement),
+    droit.finances ? h("section", null, h("h2", null, "Paiements reçus"), tableauPaiements, droit.paiements ? [h("h3", null, "Enregistrer un paiement"), formPaiement] : null) : null,
     h("section", null, h("h2", null, "Notes internes"), champ("Visibles seulement ici, jamais sur les documents", notes)),
-    h(
+    !(droit.dossiers || droit.supprimer) ? null : h(
       "section",
       { class: "zone-danger" },
       h("h2", null, d.annule ? "Dossier annulé" : "Annuler ou supprimer"),
       h(
         "div",
         { class: "actions gauche" },
-        h(
+        !droit.dossiers ? null : h(
           "button",
           {
             class: "secondaire",
@@ -303,7 +316,7 @@ export function ficheDossier(id) {
           },
           d.annule ? "Réactiver le dossier" : "Marquer comme annulé"
         ),
-        h(
+        !droit.supprimer ? null : h(
           "button",
           {
             class: "danger",

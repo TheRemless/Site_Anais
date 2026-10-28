@@ -1,5 +1,5 @@
--- Gestion Zwald : schéma complet de la base Supabase (plusieurs entreprises, plusieurs utilisateurs).
--- À coller une seule fois dans Supabase, menu « SQL Editor », puis « Run ». Pour mettre à jour une base déjà installée avec la première version, utiliser migration-2-entreprises.sql.
+-- Gestion : schéma complet de la base Supabase (plusieurs entreprises, rôles personnalisables, journal d'activité).
+-- À coller une seule fois dans Supabase, menu « SQL Editor », puis « Run ». Pour mettre à jour une base existante, utiliser les fichiers migration-*.sql dans l'ordre.
 -- Contient les coordonnées de l'entreprise : ce fichier ne doit pas être publié.
 
 create extension if not exists pgcrypto;
@@ -22,16 +22,40 @@ create table profils (
   actif boolean not null default true
 );
 
+create table roles (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  nom text not null,
+  description text not null default '',
+  portee text not null default 'toute' check (portee in ('toute', 'mes_dossiers')),
+  permissions text[] not null default '{}',
+  systeme boolean not null default false,
+  unique (entite_id, nom)
+);
+
 create table membres (
   user_id uuid not null references profils (user_id) on delete cascade,
   entite_id uuid not null references entites (id) on delete cascade,
-  role text not null check (role in ('admin', 'editeur')),
+  role_id uuid not null references roles (id) on delete restrict,
   primary key (user_id, entite_id)
 );
 
 create table reglages (
   entite_id uuid primary key references entites (id) on delete cascade,
   valeur jsonb not null
+);
+
+create table journal (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  entite_id uuid references entites (id) on delete cascade,
+  user_id uuid,
+  table_name text not null,
+  action text not null,
+  cible text,
+  libelle text,
+  details jsonb not null default '{}'
 );
 
 create table clients (
@@ -63,6 +87,7 @@ create table dossiers (
   accepte_le date,
   annule boolean not null default false,
   notes text,
+  responsable_id uuid references profils (user_id) on delete set null default auth.uid(),
   cree_par uuid default auth.uid(),
   modifie_par uuid,
   unique (entite_id, ref),
@@ -117,28 +142,50 @@ create table catalogue (
 
 create index on clients (entite_id);
 create index on dossiers (entite_id);
+create index on dossiers (responsable_id);
 create index on documents (entite_id);
 create index on documents (dossier_id);
 create index on paiements (entite_id);
 create index on paiements (dossier_id);
 create index on catalogue (entite_id);
+create index on roles (entite_id);
 create index on membres (entite_id);
+create index on journal (entite_id, created_at desc);
 
--- Qui peut faire quoi, calculé à partir de la connexion en cours (auth.uid()).
+-- Qui peut faire quoi, calculé à partir de la connexion en cours (auth.uid()) et de son rôle dans l'entreprise.
+create or replace function toutes_permissions() returns text[] language sql immutable as $$
+  select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]
+$$;
+
 create or replace function est_super_admin() returns boolean language sql stable security definer set search_path = public as $$
   select coalesce((select super_admin and actif from profils where user_id = auth.uid()), false)
 $$;
 
-create or replace function role_dans(e uuid) returns text language sql stable security definer set search_path = public as $$
+create or replace function permissions_dans(e uuid) returns text[] language sql stable security definer set search_path = public as $$
   select case
-    when est_super_admin() then 'admin'
-    else (select m.role from membres m join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif)
+    when est_super_admin() then toutes_permissions()
+    else coalesce((select r.permissions from membres m join roles r on r.id = m.role_id join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif), '{}')
   end
 $$;
 
-create or replace function peut_lire(e uuid) returns boolean language sql stable security definer set search_path = public as $$ select role_dans(e) is not null $$;
-create or replace function peut_ecrire(e uuid) returns boolean language sql stable security definer set search_path = public as $$ select coalesce(role_dans(e) in ('admin', 'editeur'), false) $$;
-create or replace function est_admin_de(e uuid) returns boolean language sql stable security definer set search_path = public as $$ select coalesce(role_dans(e) = 'admin', false) $$;
+create or replace function a_permission(e uuid, code text) returns boolean language sql stable security definer set search_path = public as $$
+  select code = any (permissions_dans(e))
+$$;
+
+create or replace function est_membre(e uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select est_super_admin() or exists (select 1 from membres m join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif)
+$$;
+
+-- Un rôle peut se limiter aux dossiers dont la personne est responsable ou qu'elle a créés.
+create or replace function voit_tout(e uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select est_super_admin() or coalesce((select r.portee = 'toute' from membres m join roles r on r.id = m.role_id join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif), false)
+$$;
+
+-- Les collègues d'une entreprise, pour choisir un responsable de dossier sans ouvrir la table des profils.
+create or replace function equipe_de(e uuid) returns table (user_id uuid, nom text, email text) language sql stable security definer set search_path = public as $$
+  select p.user_id, p.nom, p.email from profils p
+  where p.actif and est_membre(e) and (p.super_admin or exists (select 1 from membres m where m.user_id = p.user_id and m.entite_id = e))
+$$;
 
 create or replace function creer_profil() returns trigger language plpgsql security definer set search_path = public as $$
 begin
@@ -155,68 +202,132 @@ begin
 end
 $$;
 
+-- Journal d'activité : qui a fait quoi. Les valeurs longues (documents, réglages) ne sont pas recopiées.
+create or replace function journaliser() returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  ligne jsonb;
+  ancien jsonb;
+  champs jsonb := '{}';
+  k text;
+  libelle text;
+  cible text;
+begin
+  ligne := case when tg_op = 'DELETE' then to_jsonb(old) else to_jsonb(new) end;
+  ancien := case when tg_op = 'UPDATE' then to_jsonb(old) else null end;
+  cible := coalesce(ligne->>'id', (ligne->>'entite_id') || coalesce(':' || (ligne->>'user_id'), ''));
+  libelle := case tg_table_name
+    when 'dossiers' then ligne->>'ref'
+    when 'clients' then trim(coalesce(ligne->>'prenom', '') || ' ' || coalesce(ligne->>'nom', ''))
+    when 'documents' then (ligne->>'type') || ' ' || coalesce((select ref from dossiers where id = (ligne->>'dossier_id')::uuid), '')
+    when 'paiements' then (ligne->>'montant') || ' ' || coalesce((select ref from dossiers where id = (ligne->>'dossier_id')::uuid), '')
+    when 'catalogue' then ligne->>'libelle'
+    when 'roles' then ligne->>'nom'
+    when 'membres' then coalesce((select email from profils where user_id = (ligne->>'user_id')::uuid), '')
+    else ''
+  end;
+  if tg_op = 'UPDATE' and tg_table_name <> 'reglages' then
+    for k in select jsonb_object_keys(ligne) loop
+      continue when k in ('updated_at', 'modifie_par');
+      if ligne->k is distinct from ancien->k then
+        champs := champs || jsonb_build_object(k, case when length((ligne->k)::text) <= 120 and length((ancien->k)::text) <= 120 then jsonb_build_object('avant', ancien->k, 'apres', ligne->k) else to_jsonb('modifié'::text) end);
+      end if;
+    end loop;
+    if champs = '{}'::jsonb then return null; end if;
+  end if;
+  insert into journal (entite_id, user_id, table_name, action, cible, libelle, details)
+  values ((ligne->>'entite_id')::uuid, auth.uid(), tg_table_name, lower(tg_op), cible, libelle, champs);
+  return null;
+end
+$$;
+
 create trigger noter_modification before update on clients for each row execute function noter_modification();
 create trigger noter_modification before update on dossiers for each row execute function noter_modification();
 create trigger noter_modification before update on documents for each row execute function noter_modification();
 create trigger noter_modification before update on paiements for each row execute function noter_modification();
 
+create trigger journaliser after insert or update or delete on clients for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on dossiers for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on documents for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on paiements for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on catalogue for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on reglages for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on roles for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on membres for each row execute function journaliser();
+
 create trigger sur_nouvel_utilisateur after insert on auth.users for each row execute function creer_profil();
 
--- Sécurité : le visiteur anonyme n'a accès à rien. Une personne connectée ne voit que les entreprises dont elle est membre.
+-- Sécurité : le visiteur anonyme n'a accès à rien. Une personne connectée n'accède qu'aux entreprises dont elle est
+-- membre, avec les droits de son rôle, et seulement aux dossiers que la portée de son rôle lui montre.
 revoke all on all tables in schema public from anon;
 
 alter table entites enable row level security;
 alter table profils enable row level security;
+alter table roles enable row level security;
 alter table membres enable row level security;
 alter table reglages enable row level security;
+alter table journal enable row level security;
 alter table clients enable row level security;
 alter table dossiers enable row level security;
 alter table documents enable row level security;
 alter table paiements enable row level security;
 alter table catalogue enable row level security;
 
-create policy "voir ses entreprises" on entites for select to authenticated using (peut_lire(id));
+create policy "voir ses entreprises" on entites for select to authenticated using (est_membre(id));
 create policy "gérer les entreprises" on entites for all to authenticated using (est_super_admin()) with check (est_super_admin());
 
 create policy "voir son profil" on profils for select to authenticated using (user_id = auth.uid() or est_super_admin());
 create policy "gérer les profils" on profils for update to authenticated using (est_super_admin()) with check (est_super_admin());
 
+create policy "voir les rôles" on roles for select to authenticated using (est_membre(entite_id));
+create policy "gérer les rôles" on roles for all to authenticated using (est_super_admin()) with check (est_super_admin());
+
 create policy "voir ses accès" on membres for select to authenticated using (user_id = auth.uid() or est_super_admin());
 create policy "gérer les accès" on membres for all to authenticated using (est_super_admin()) with check (est_super_admin());
 
-create policy "lire les réglages" on reglages for select to authenticated using (peut_lire(entite_id));
-create policy "modifier les réglages" on reglages for all to authenticated using (est_admin_de(entite_id)) with check (est_admin_de(entite_id));
+create policy "lire les réglages" on reglages for select to authenticated using (est_membre(entite_id));
+create policy "modifier les réglages" on reglages for all to authenticated using (a_permission(entite_id, 'reglages.ecrire')) with check (a_permission(entite_id, 'reglages.ecrire'));
 
-create policy "lire" on clients for select to authenticated using (peut_lire(entite_id));
-create policy "créer" on clients for insert to authenticated with check (peut_ecrire(entite_id));
-create policy "modifier" on clients for update to authenticated using (peut_ecrire(entite_id)) with check (peut_ecrire(entite_id));
-create policy "supprimer" on clients for delete to authenticated using (est_admin_de(entite_id));
+create policy "lire le journal" on journal for select to authenticated using (a_permission(entite_id, 'journal.voir'));
+revoke insert, update, delete on journal from authenticated;
 
-create policy "lire" on dossiers for select to authenticated using (peut_lire(entite_id));
-create policy "créer" on dossiers for insert to authenticated with check (peut_ecrire(entite_id));
-create policy "modifier" on dossiers for update to authenticated using (peut_ecrire(entite_id)) with check (peut_ecrire(entite_id));
-create policy "supprimer" on dossiers for delete to authenticated using (est_admin_de(entite_id));
+create policy "lire le catalogue" on catalogue for select to authenticated using (est_membre(entite_id));
+create policy "modifier le catalogue" on catalogue for all to authenticated using (a_permission(entite_id, 'catalogue.ecrire')) with check (a_permission(entite_id, 'catalogue.ecrire'));
 
-create policy "lire" on documents for select to authenticated using (peut_lire(entite_id));
-create policy "créer" on documents for insert to authenticated with check (peut_ecrire(entite_id));
-create policy "modifier" on documents for update to authenticated using (peut_ecrire(entite_id)) with check (peut_ecrire(entite_id));
-create policy "supprimer" on documents for delete to authenticated using (est_admin_de(entite_id));
+create policy "lire les dossiers" on dossiers for select to authenticated using (a_permission(entite_id, 'dossiers.lire') and (voit_tout(entite_id) or responsable_id = auth.uid() or cree_par = auth.uid()));
+create policy "créer des dossiers" on dossiers for insert to authenticated with check (a_permission(entite_id, 'dossiers.ecrire'));
+create policy "modifier des dossiers" on dossiers for update to authenticated using (a_permission(entite_id, 'dossiers.ecrire') and (voit_tout(entite_id) or responsable_id = auth.uid() or cree_par = auth.uid())) with check (a_permission(entite_id, 'dossiers.ecrire'));
+create policy "supprimer des dossiers" on dossiers for delete to authenticated using (a_permission(entite_id, 'dossiers.supprimer') and (voit_tout(entite_id) or responsable_id = auth.uid() or cree_par = auth.uid()));
 
-create policy "lire" on paiements for select to authenticated using (peut_lire(entite_id));
-create policy "créer" on paiements for insert to authenticated with check (peut_ecrire(entite_id));
-create policy "modifier" on paiements for update to authenticated using (peut_ecrire(entite_id)) with check (peut_ecrire(entite_id));
-create policy "supprimer" on paiements for delete to authenticated using (peut_ecrire(entite_id));
+create policy "lire les clients" on clients for select to authenticated using (a_permission(entite_id, 'clients.lire') and (voit_tout(entite_id) or cree_par = auth.uid() or exists (select 1 from dossiers d where d.client_id = clients.id)));
+create policy "créer des clients" on clients for insert to authenticated with check (a_permission(entite_id, 'clients.ecrire'));
+create policy "modifier des clients" on clients for update to authenticated using (a_permission(entite_id, 'clients.ecrire')) with check (a_permission(entite_id, 'clients.ecrire'));
+create policy "supprimer des clients" on clients for delete to authenticated using (a_permission(entite_id, 'clients.supprimer'));
 
-create policy "lire" on catalogue for select to authenticated using (peut_lire(entite_id));
-create policy "créer" on catalogue for insert to authenticated with check (peut_ecrire(entite_id));
-create policy "modifier" on catalogue for update to authenticated using (peut_ecrire(entite_id)) with check (peut_ecrire(entite_id));
-create policy "supprimer" on catalogue for delete to authenticated using (est_admin_de(entite_id));
+-- Montants : sans le droit « finances », ni devis, ni factures, ni paiements ne sont lisibles.
+create policy "lire les documents" on documents for select to authenticated using (a_permission(entite_id, 'finances.voir') and exists (select 1 from dossiers d where d.id = documents.dossier_id));
+create policy "créer des documents" on documents for insert to authenticated with check (a_permission(entite_id, 'documents.ecrire') and exists (select 1 from dossiers d where d.id = documents.dossier_id));
+create policy "modifier des documents" on documents for update to authenticated using (a_permission(entite_id, 'documents.ecrire') and exists (select 1 from dossiers d where d.id = documents.dossier_id)) with check (a_permission(entite_id, 'documents.ecrire'));
+create policy "supprimer des documents" on documents for delete to authenticated using (a_permission(entite_id, 'documents.supprimer') and exists (select 1 from dossiers d where d.id = documents.dossier_id));
 
--- Entreprises et réglages de départ, modifiables ensuite depuis le panneau d'administration.
+create policy "lire les paiements" on paiements for select to authenticated using (a_permission(entite_id, 'finances.voir') and exists (select 1 from dossiers d where d.id = paiements.dossier_id));
+create policy "créer des paiements" on paiements for insert to authenticated with check (a_permission(entite_id, 'paiements.ecrire') and exists (select 1 from dossiers d where d.id = paiements.dossier_id));
+create policy "modifier des paiements" on paiements for update to authenticated using (a_permission(entite_id, 'paiements.ecrire') and exists (select 1 from dossiers d where d.id = paiements.dossier_id)) with check (a_permission(entite_id, 'paiements.ecrire'));
+create policy "supprimer des paiements" on paiements for delete to authenticated using (a_permission(entite_id, 'paiements.ecrire') and exists (select 1 from dossiers d where d.id = paiements.dossier_id));
+
+-- Entreprises, rôles et réglages de départ, modifiables ensuite depuis le panneau d'administration.
 insert into entites (id, slug, nom, ordre) values
   ('00000000-0000-4000-8000-000000000001', 'ztp', 'Zwald Travel Planner', 1),
   ('00000000-0000-4000-8000-000000000002', 'secret', 'Secret Travel & Tour', 2),
   ('00000000-0000-4000-8000-000000000003', 'taxi', 'VIP Taxi Lanta', 3);
+
+insert into roles (entite_id, nom, description, portee, permissions, systeme)
+select e.id, v.nom, v.description, v.portee, v.permissions, true
+from entites e
+cross join (values
+  ('Administrateur', 'Tous les droits dans l''entreprise.', 'toute', array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]),
+  ('Éditeur', 'Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.', 'toute', array['clients.lire', 'clients.ecrire', 'dossiers.lire', 'dossiers.ecrire', 'documents.ecrire', 'finances.voir', 'paiements.ecrire', 'catalogue.ecrire']::text[]),
+  ('Lecteur', 'Consultation seulement, montants visibles.', 'toute', array['clients.lire', 'dossiers.lire', 'finances.voir', 'analytics.voir']::text[])
+) as v (nom, description, portee, permissions);
 
 insert into reglages (entite_id, valeur) values
   ('00000000-0000-4000-8000-000000000001', $json${
@@ -285,6 +396,12 @@ insert into reglages (entite_id, valeur) values
         "id": "autre",
         "label": "Autre"
       }
+    ],
+    "devises": [
+      "CHF",
+      "EUR",
+      "THB",
+      "USD"
     ]
   },
   "apparence": {
@@ -312,6 +429,7 @@ insert into reglages (entite_id, valeur) values
     "sous_total": "SOUS-TOTAL",
     "remise": "Remise",
     "montant_recu": "Montant reçu",
+    "equivalent": "Équivalent indicatif :",
     "conditions": "CONDITIONS DE PAIEMENT",
     "signature_1": "NOM, PRENOM, DATE ET SIGNATURE DU CLIENT",
     "signature_2": "précédé de la mention “Bon pour accord”",
@@ -400,6 +518,12 @@ insert into reglages (entite_id, valeur) values
         "id": "autre",
         "label": "Autre"
       }
+    ],
+    "devises": [
+      "CHF",
+      "EUR",
+      "THB",
+      "USD"
     ]
   },
   "apparence": {
@@ -424,6 +548,7 @@ insert into reglages (entite_id, valeur) values
     "sous_total": "SOUS-TOTAL",
     "remise": "Remise",
     "montant_recu": "Montant reçu",
+    "equivalent": "Équivalent indicatif :",
     "conditions": "CONDITIONS DE PAIEMENT",
     "signature_1": "NOM, PRENOM, DATE ET SIGNATURE DU CLIENT",
     "signature_2": "précédé de la mention “Bon pour accord”",
@@ -506,6 +631,12 @@ insert into reglages (entite_id, valeur) values
         "id": "autre",
         "label": "Autre"
       }
+    ],
+    "devises": [
+      "CHF",
+      "EUR",
+      "THB",
+      "USD"
     ]
   },
   "apparence": {
@@ -530,6 +661,7 @@ insert into reglages (entite_id, valeur) values
     "sous_total": "SOUS-TOTAL",
     "remise": "Remise",
     "montant_recu": "Montant reçu",
+    "equivalent": "Équivalent indicatif :",
     "conditions": "CONDITIONS DE PAIEMENT",
     "signature_1": "NOM, PRENOM, DATE ET SIGNATURE DU CLIENT",
     "signature_2": "précédé de la mention “Bon pour accord”",

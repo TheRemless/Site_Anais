@@ -1,5 +1,5 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
-import { etat, enregistrerReglages, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin } from "../etat.mjs";
+import { etat, enregistrerReglages, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut } from "../etat.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
@@ -322,7 +322,7 @@ export function vueReglages() {
     ["fonctionnement", "Dossiers et listes"],
     ["textes", "Textes des documents"],
     ["apparence", "Apparence"],
-    ["donnees", "Sauvegarde"],
+    ...(peut("exports.faire") ? [["donnees", "Sauvegarde"]] : []),
   ];
   const barre = h("div", { class: "onglets sous-onglets" });
   const montrer = (cle) => {

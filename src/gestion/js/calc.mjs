@@ -32,7 +32,14 @@ export function setDevise(code) {
 }
 
 // `code` permet d'afficher un montant dans la devise propre à un document.
+// Sans le droit « finances », les montants ne s'affichent pas : tirets à la place des chiffres.
+let masquer = false;
+export function setMasquerMontants(oui) {
+  masquer = !!oui;
+}
+
 export function formatMontant(n, code) {
+  if (masquer) return "—";
   const v = arrondi(n);
   return `${v < 0 ? "- " : ""}${code || devise} ${formatNombre(v)}`;
 }

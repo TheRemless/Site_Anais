@@ -1,4 +1,4 @@
-import { etat, modifier, nomClient, reglages, naviguer } from "../etat.mjs";
+import { etat, modifier, nomClient, reglages, naviguer, peut } from "../etat.mjs";
 import { h, champ, toast, num, vider } from "../ui.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
 import { nouvelleLigne } from "../defauts.mjs";
@@ -511,6 +511,7 @@ export function editeur(id) {
     )
   );
 
+  const lectureSeule = !peut("documents.ecrire");
   const racine = h(
     "div",
     { "data-titre": `${estFacture ? "Facture" : "Devis"} ${dossier.ref}`, "data-large": "1", "data-plein": "1" },
@@ -522,8 +523,13 @@ export function editeur(id) {
       h("div", { class: "entete-actions" }, statut, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: "Télécharger le PDF (Ctrl+P)", onclick: () => pdf({ ...doc }) }, "Télécharger le PDF"))
     ),
     h("p", { class: "aide-pdf" }, `Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « ${estFacture ? "Facture" : "Devis"} ${dossier.ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.`),
+    lectureSeule ? h("p", { class: "bandeau-info" }, "Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.") : null,
     h("div", { class: "editeur" }, formulaire, zoneApercu)
   );
+  if (lectureSeule) {
+    for (const el of formulaire.querySelectorAll("input, select, textarea, button")) el.disabled = true;
+    for (const b of [btnAnnuler, btnRetablir, boutonEnvoi]) b.disabled = true;
+  }
 
   // Après un « annuler », l'écran est reconstruit : on retrouve les positions de défilement.
   const pos = positions.get(id);

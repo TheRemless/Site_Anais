@@ -1,4 +1,4 @@
-import { etat, resumes, nomClient, reglages, estAdmin, entiteActive } from "../etat.mjs";
+import { etat, resumes, nomClient, reglages, estAdmin, entiteActive, peut } from "../etat.mjs";
 import { reglagesIncomplets } from "../defauts.mjs";
 import { h } from "../ui.mjs";
 import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois } from "../calc.mjs";
@@ -37,14 +37,14 @@ export function tableauDeBord() {
     manque.length
       ? h("div", { class: "bandeau-info", role: "status" }, `Les réglages de ${entiteActive().nom} ne sont pas terminés : il manque ${manque.join(", ")}. `, estAdmin() ? h("a", { href: "#/reglages" }, "Les compléter") : "Prévenez l'administratrice.")
       : null,
-    h("div", { class: "entete" }, h("h1", null, "Tableau de bord"), h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier")),
-    h(
+    h("div", { class: "entete" }, h("h1", null, "Tableau de bord"), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier") : null),
+    peut("finances.voir") ? h(
       "div",
       { class: "chiffres" },
       chiffre(formatSommes(encaisser.map((r) => ({ montant: r.reste, devise: r.devise })), reglages().devise), "Reste à encaisser", pluriel(encaisser.length, "dossier accepté", "dossiers acceptés")),
       chiffre(formatSommes(ceMois.map((p) => ({ montant: p.montant, devise: deviseDe[p.dossier_id] })), reglages().devise), `Encaissé en ${nomMois(ajd)}`, pluriel(ceMois.length, "paiement", "paiements")),
       chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), "Devis en attente de réponse", pluriel(attente.length, "devis envoyé", "devis envoyés"))
-    ),
+    ) : null,
     h("section", null, h("h2", null, "À faire"), taches.length
       ? h(
           "ul",

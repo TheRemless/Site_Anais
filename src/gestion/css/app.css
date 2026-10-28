@@ -286,3 +286,17 @@ kbd { display: inline-block; min-width: 1.6em; padding: 1px 7px; font: inherit; 
 .combo-choisi { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 4px 12px; background: var(--teal-100); border-radius: var(--rayon); }
 .combo-choisi p { margin: 0; }
 .plus { margin: 12px 0 0; }
+.aide.decale { margin: -6px 0 8px 30px; }
+.bloc-roles { margin: 0 0 24px; }
+.bloc-roles h3 { margin: 0; }
+
+/* Journal d'activité */
+.journal { background: var(--surface); border: 1px solid var(--bord); border-radius: 8px; }
+.journal-ligne { display: grid; gap: 4px 16px; padding: 12px 16px; border-bottom: 1px solid var(--bord); }
+.journal-ligne:last-child { border-bottom: 0; }
+.journal-ligne time { color: var(--texte-2); font-size: 0.88rem; font-variant-numeric: lining-nums tabular-nums; }
+.journal-ligne p { margin: 0; }
+.journal-detail { margin: 4px 0 0; padding-left: 18px; color: var(--texte-2); font-size: 0.9rem; }
+.filtres { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.filtres .champ { min-width: 200px; }
+@media (min-width: 760px) { .journal-ligne { grid-template-columns: 11rem 1fr; } }

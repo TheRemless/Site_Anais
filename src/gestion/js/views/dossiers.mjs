@@ -1,4 +1,4 @@
-import { etat, resumes, inserer, nomClient, naviguer, reglages } from "../etat.mjs";
+import { etat, resumes, inserer, nomClient, naviguer, reglages, peut } from "../etat.mjs";
 import { h, champ, vider } from "../ui.mjs";
 import { formatMontant, aujourdhui, nouvelleRef, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
@@ -43,7 +43,7 @@ export function listeDossiers() {
       corps.append(
         etat.db.dossiers.length
           ? vide("Aucun dossier ne correspond", "Essayez un autre onglet ou effacez la recherche.")
-          : vide("Aucun dossier pour l'instant", "Un dossier regroupe le client, le voyage, le devis, la facture et les paiements.", h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Créer le premier dossier"))
+          : vide("Aucun dossier pour l'instant", "Un dossier regroupe le client, le voyage, le devis, la facture et les paiements.", peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Créer le premier dossier") : null)
       );
       return;
     }
@@ -98,18 +98,19 @@ export function listeDossiers() {
   return h(
     "div",
     { "data-titre": "Dossiers" },
-    h("div", { class: "entete" }, h("h1", null, "Dossiers"), h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier")),
+    h("div", { class: "entete" }, h("h1", null, "Dossiers"), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier") : null),
     h("div", { class: "barre-outils" }, onglets, h("div", { class: "champ recherche" }, h("label", { for: "recherche" }, "Rechercher"), recherche)),
     corps
   );
 }
 
 export function nouveauDossier() {
+  if (!peut("dossiers.ecrire")) return vide("Accès réservé", "Votre rôle ne permet pas de créer un dossier.", h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Retour aux dossiers"));
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const regl = reglages();
   const listePays = [...regl.listes.pays, "Autre"];
   const libellePays = regl.dossier.libelle_pays || "Pays";
-  const selClient = selecteurClient({ valeur: params.get("client") || "", avecNouveau: true, surChangement: () => majClient() });
+  const selClient = selecteurClient({ valeur: params.get("client") || "", avecNouveau: peut("clients.ecrire"), surChangement: () => majClient() });
   const nvCivilite = h("select", { id: "civ" }, regl.listes.civilites.map((c) => h("option", { value: c }, c)));
   const nvPrenom = h("input", { id: "prenom", autocomplete: "off", oninput: majRef });
   const nvNom = h("input", { id: "nom", autocomplete: "off", oninput: majRef });

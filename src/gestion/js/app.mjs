@@ -1,4 +1,4 @@
-import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif } from "./etat.mjs";
+import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut } from "./etat.mjs";
 import { h, vider, toast, modal } from "./ui.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { listeDossiers, nouveauDossier } from "./views/dossiers.mjs";
@@ -8,6 +8,7 @@ import { listeClients, ficheClient } from "./views/clients.mjs";
 import { catalogue } from "./views/catalogue.mjs";
 import { vueReglages } from "./views/reglages.mjs";
 import { vueAdmin } from "./views/admin.mjs";
+import { vueJournal } from "./views/journal.mjs";
 
 const ROUTES = [
   [/^#?\/?$/, "tableau", tableauDeBord],
@@ -20,6 +21,7 @@ const ROUTES = [
   [/^#\/catalogue$/, "catalogue", catalogue],
   [/^#\/reglages$/, "reglages", vueReglages],
   [/^#\/admin$/, "admin", vueAdmin],
+  [/^#\/journal$/, "journal", vueJournal],
 ];
 
 const racine = document.getElementById("app");
@@ -116,6 +118,7 @@ function menu() {
     ["#/clients", "Clients", "clients"],
     ["#/catalogue", "Catalogue", "catalogue"],
     ...(estAdmin() ? [["#/reglages", "Réglages", "reglages"]] : []),
+    ...(peut("journal.voir") ? [["#/journal", "Journal", "journal"]] : []),
   ];
   const logo = etat.db.reglages.apparence.logo;
   return h(
@@ -129,7 +132,7 @@ function menu() {
       { class: "menu-bas" },
       estSuperAdmin() ? h("a", { class: "lien-admin", href: "#/admin", "data-cle": "admin" }, "Administration") : null,
       h("button", { class: "lien", type: "button", onclick: ouvrirAide, title: "Raccourcis clavier (?)" }, "Raccourcis clavier"),
-      h("span", { class: "compte" }, etat.moi.nom || etat.session.email, roleActif() ? ` · ${roleActif() === "admin" ? "administrateur" : "éditeur"}` : ""),
+      h("span", { class: "compte" }, etat.moi.nom || etat.session.email, roleActif() ? ` · ${roleActif()}` : ""),
       etat.store.mode === "supabase"
         ? h(
             "button",
@@ -239,7 +242,7 @@ document.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if (sequence === "g") {
     sequence = null;
-    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(estSuperAdmin() ? { a: "#/admin" } : {}) };
+    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(estSuperAdmin() ? { a: "#/admin" } : {}) };
     if (cibles[k]) (e.preventDefault(), (location.hash = cibles[k]));
     return;
   }
