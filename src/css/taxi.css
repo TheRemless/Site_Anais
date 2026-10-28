@@ -176,6 +176,8 @@ textarea { min-height: 7rem; resize: vertical; }
 footer { padding: 4rem 1.25rem 3rem; text-align: center; }
 footer .plate { width: 150px; height: 150px; margin: 0 auto 1rem; border-radius: 24px; }
 footer p { margin: 0; color: var(--mute); }
+footer .foot-legal { margin-top: 1.25rem; font-size: .8125rem; }
+footer .foot-legal a { color: var(--mute); }
 
 @media (min-width: 48rem) {
   .bar { padding: 1.5rem var(--edge) 3rem; }

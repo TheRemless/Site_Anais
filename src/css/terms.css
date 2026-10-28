@@ -1,0 +1,47 @@
+/* Conditions de réservation /booking-terms/ (Secret Travel & Tour et VIP Taxi Lanta).
+   Mise en page neutre, commune aux deux enseignes : un document à lire, rien d'autre. */
+
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(fonts/open-sans-variable-normal-latin.woff2) format('woff2');
+}
+
+:root {
+  --paper: #FBF8F1;
+  --ink: #17322E;
+  --ink-soft: #4A625D;
+  --accent: #0A5E52;
+  --rule: #E2DCCD;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 16px/1.7 'Open Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); }
+a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.terms { max-width: 720px; margin: 0 auto; padding: 32px 20px 64px; }
+.lang { margin: 0; text-align: right; font-size: 14px; }
+h1 { margin: 24px 0 4px; font-size: 32px; line-height: 1.15; }
+.sub { margin: 0; color: var(--ink-soft); font-size: 17px; }
+.updated { margin: 8px 0 0; color: var(--ink-soft); font-size: 14px; }
+.note { margin: 16px 0 0; color: var(--ink-soft); font-size: 15px; font-style: italic; }
+h2 { margin: 36px 0 8px; padding-top: 20px; border-top: 1px solid var(--rule); font-size: 19px; line-height: 1.3; }
+p { margin: 0 0 10px; }
+ul { margin: 0 0 10px; padding-left: 20px; }
+li { margin-bottom: 6px; }
+
+@media (min-width: 900px) {
+  .terms { padding-top: 48px; }
+  h1 { font-size: 40px; }
+}

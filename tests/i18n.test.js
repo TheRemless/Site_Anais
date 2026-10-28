@@ -41,7 +41,8 @@ test("i18n : aucun lien de corps de page en français dans src/en/", () => {
   const enDir = path.join(__dirname, "..", "src", "en");
   // Hors périmètre, volontairement non vérifié ici : ces hrefs restent français
   // même dans src/en/ (pages non traduites) : /galerie/, /mini-guides/,
-  // /mentions-legales/, /cgv/, /politique-confidentialite/.
+  // /mentions-legales/, /politique-confidentialite/, et /cgv/ dans le
+  // bandeau de src/en/cgv.njk qui renvoie volontairement vers la version française.
   const inScopeFrHrefs = TRANSLATED_PAGES.map((f) => {
     const slug = f === "index.njk" ? "" : f.replace(".njk", "/");
     return "href=\"/" + slug + "\"";
