@@ -95,7 +95,7 @@ create policy "personnes connectées" on reglages for all to authenticated using
 insert into reglages (cle, valeur) values ('principal', $json${
   "emetteur": {
     "nom": "Zwald Travel Planner Co., Ltd.",
-    "adresse": "290 Moo 2\n81150, Koh Lanta, Krabi",
+    "adresse": "292 Moo 2\n81150, Koh Lanta, Krabi",
     "telephone": "+ 66 95 868 38 46",
     "contact_nom": "Anaïs Zwald",
     "whatsapp": "+66 95 868 38 46 (WhatsApp)",

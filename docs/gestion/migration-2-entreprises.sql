@@ -46,7 +46,7 @@ insert into reglages (entite_id, valeur) values
   ('00000000-0000-4000-8000-000000000001', $json${
   "emetteur": {
     "nom": "Zwald Travel Planner Co., Ltd.",
-    "adresse": "290 Moo 2\n81150, Koh Lanta, Krabi",
+    "adresse": "292 Moo 2\n81150, Koh Lanta, Krabi",
     "telephone": "+ 66 95 868 38 46",
     "contact": "Anaïs Zwald\n+66 95 868 38 46 (WhatsApp)\nzwaldtravelplanner@gmail.com"
   },
