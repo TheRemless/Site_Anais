@@ -92,6 +92,30 @@
 .sheet-pied .wise .pseudo { writing-mode: vertical-rl; font-size: 8pt; letter-spacing: 0.1em; text-decoration: underline; color: #000; padding-top: 3mm; }
 .sheet-pied.email { grid-template-columns: 96mm 1fr; padding-left: 15.4mm; }
 
+/* Variante d'en-tête : logo et titre centrés, référence et date sous l'adresse, espacement des lettres normal. */
+.sheet-emetteur .sous-titre { display: block; color: var(--teal); font-size: 8pt; letter-spacing: 0.1em; margin-bottom: 0.8mm; }
+.sheet-client .etiquette { color: var(--gris); }
+.sheet-client .separe { margin-top: 4mm; }
+.sheet-tete.centre { height: 93mm; }
+.sheet-tete.centre .sheet-logo { right: auto; left: 50%; transform: translateX(-50%); top: 3.5mm; width: 36mm; height: 36mm; }
+.sheet-tete.centre .sheet-type-texte { top: 40mm; font-family: Georgia, "Times New Roman", serif; font-size: 24pt; font-weight: 600; letter-spacing: 0.14em; padding-left: 0.14em; color: #2b3a3c; }
+.sheet-refdate { position: absolute; left: 15mm; top: 80mm; }
+.sheet-refdate p { letter-spacing: 0.02em; line-height: 4.8mm; }
+.entete-centre .sheet-emetteur p,
+.entete-centre .sheet-client p,
+.entete-centre .desc strong,
+.entete-centre .desc ul,
+.entete-centre .montant,
+.entete-centre .conditions .texte,
+.entete-centre .sheet-pied p { letter-spacing: 0.02em; }
+.entete-centre .sheet-pied .pied-col:first-child p { letter-spacing: 0.02em; }
+.sheet .tva.devise p { line-height: 3.4mm; }
+.sheet-pied .pied-note { grid-column: 1 / -1; margin-top: 2.4mm; font-style: italic; font-size: 7.4pt; text-align: center; }
+.sheet-pied .pied-note p { letter-spacing: 0.02em; line-height: 3.4mm; }
+.sheet-pied.seul { display: block; padding-left: 0; }
+.sheet-pied.seul .pied-col h4 { text-align: center; margin-bottom: 1.2mm; }
+.sheet-pied.seul .pied-col p { margin-left: 37mm; line-height: 4.4mm; }
+
 @page { size: A4; margin: 0; }
 @media print {
   .sheet { min-height: 296mm; }

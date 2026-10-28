@@ -1,7 +1,7 @@
 // Rendu du devis ou de la facture au format A4. Le même rendu sert à l'aperçu et au PDF.
 // Tout ce qui est propre à une entreprise (textes, logo, couleurs, coordonnées) vient de ses réglages.
 import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, lignesEquivalents, formatNombre, acompteDu } from "./calc.mjs";
-import { h, markup } from "./ui.mjs";
+import { h, markup, inline } from "./ui.mjs";
 
 const lignes = (texte) => (texte || "").split("\n").filter((l) => l.trim() !== "");
 
@@ -22,7 +22,10 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const eq = c.equivalents && c.equivalents.actif ? equivalents(t.net, lignesEquivalents(c.equivalents, reglages.taux)) : [];
   const SYMBOLES = { EUR: "€", USD: "$" };
   const texteEq = (x) => `${formatNombre(x.montant)} ${SYMBOLES[x.code] || x.code}`;
+  const NOMS_DEVISES = { CHF: "Swiss Franc", EUR: "Euro", THB: "Thai Baht", USD: "US Dollar", GBP: "Pound Sterling" };
   const vars = {
+    devise: dev,
+    devise_nom: NOMS_DEVISES[dev] || dev,
     acompte: pct,
     solde: 100 - pct,
     delai: reglages.conditions.delai_jours,
@@ -78,34 +81,48 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const avecQr = complet && !!ap.qr_image;
   const colonnes = [];
   if (lignes(e.contact).length) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.coordonnees), lignes(e.contact).map((l) => h("p", null, l))));
-  if (complet ? paiementLignes.length : lb.pied_court) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.infos_paiement), complet ? paiementLignes.map((l) => h("p", null, l)) : h("p", { class: "italique" }, lb.pied_court)));
+  if (complet ? paiementLignes.length : lb.pied_court) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.infos_paiement), complet ? paiementLignes.map((l) => h("p", null, inline(l))) : h("p", { class: "italique" }, lb.pied_court)));
   if (avecQr) colonnes.push(h("div", { class: "pied-col wise" }, lb.qr_titre ? h("h4", null, lb.qr_titre) : null, h("div", { class: "qr-ligne" }, h("img", { src: ap.qr_image, alt: "QR code" }), ap.qr_pseudo ? h("span", { class: "pseudo" }, ap.qr_pseudo) : null)));
 
   const cgvTexte = c.cgv === false || !lb.cgv ? null : h("div", { class: "cgv" }, markup(lb.cgv, vars));
 
+  const centre = ap.entete === "centre";
+  const refTexte = `${estFacture ? lb.ref_facture : lb.ref_devis} ${dossier.ref}`;
+  const dateTexte = `${lb.date_emission} ${formatDate(doc.date_emission)}`;
+  const nomClient = client ? [client.civilite, [client.prenom, client.nom].filter(Boolean).join(" "), ...lignes(client.adresse)].filter(Boolean) : [];
+
   return h(
     "div",
-    { class: `sheet ${detail ? "detail" : "total"}`, style: `--teal: ${ap.couleur}; --teal-clair: ${ap.couleur_clair}` },
+    { class: `sheet ${detail ? "detail" : "total"}${centre ? " entete-centre" : ""}`, style: `--teal: ${ap.couleur}; --teal-clair: ${ap.couleur_clair}` },
     h(
       "header",
-      { class: "sheet-tete" },
-      h("p", { class: "sheet-ref" }, `${estFacture ? lb.ref_facture : lb.ref_devis} ${dossier.ref}`),
+      { class: `sheet-tete${centre ? " centre" : ""}` },
+      centre ? null : h("p", { class: "sheet-ref" }, refTexte),
       ap.logo ? h("img", { class: "sheet-logo", src: ap.logo, alt: e.nom }) : null,
-      ap.titre_image ? h("img", { class: "sheet-titre", src: ap.titre_image, alt: e.nom }) : h("p", { class: "sheet-titre-texte" }, ap.titre_texte || e.nom),
+      centre ? null : ap.titre_image ? h("img", { class: "sheet-titre", src: ap.titre_image, alt: e.nom }) : h("p", { class: "sheet-titre-texte" }, ap.titre_texte || e.nom),
       ap.type_images && ap.type_images[type] ? h("img", { class: "sheet-type", src: ap.type_images[type], alt: estFacture ? lb.facture : lb.devis }) : h("p", { class: "sheet-type-texte" }, estFacture ? lb.facture : lb.devis),
-      h("div", { class: "sheet-emetteur" }, h("strong", null, e.nom.toUpperCase()), lignes(e.adresse).map((l) => h("p", null, l)), e.telephone ? h("p", null, e.telephone) : null),
+      h(
+        "div",
+        { class: "sheet-emetteur" },
+        h("strong", null, e.nom.toUpperCase()),
+        e.sous_titre ? h("span", { class: "sous-titre" }, e.sous_titre.toUpperCase()) : null,
+        lignes(e.adresse).map((l) => h("p", null, l)),
+        e.telephone ? h("p", null, e.telephone) : null
+      ),
       h(
         "div",
         { class: "sheet-client" },
-        client ? [client.civilite, [client.prenom, client.nom].filter(Boolean).join(" "), ...lignes(client.adresse)].filter(Boolean).map((l) => h("p", { class: "gras" }, l)) : null,
-        client && client.telephone ? h("p", null, client.telephone) : null
+        lb.facture_a && client ? h("p", { class: "etiquette" }, lb.facture_a) : null,
+        nomClient.map((l) => h("p", { class: "gras" }, l)),
+        client && client.telephone ? h("p", null, client.telephone) : null,
+        c.prestataire && c.prestataire.trim() ? [lb.prestataire ? h("p", { class: "etiquette separe" }, lb.prestataire) : null, h("p", { class: lb.prestataire ? "gras" : "gras separe" }, c.prestataire.trim())] : null
       ),
-      h("p", { class: "sheet-date" }, `${lb.date_emission} ${formatDate(doc.date_emission)}`)
+      centre ? h("div", { class: "sheet-refdate" }, h("p", null, refTexte), h("p", null, dateTexte)) : h("p", { class: "sheet-date" }, dateTexte)
     ),
     h(
       "main",
       { class: "sheet-corps" },
-      h("div", { class: "bandeau" }, h("div", { class: "bandeau-titre" }, c.bandeau), detail ? h("div", { class: "unite" }, lb.unite) : null, detail ? h("div", { class: "qte" }, lb.qte) : null, h("div", { class: "montant" }, lb.total)),
+      h("div", { class: "bandeau" }, h("div", { class: "bandeau-titre" }, c.bandeau), detail ? h("div", { class: "unite" }, lb.unite) : null, detail ? h("div", { class: "qte" }, lb.qte) : null, h("div", { class: "montant" }, lb.colonne_montant || lb.total)),
       h("div", { class: "lignes" }, normales),
       sousTotal ? barre(lb.sous_total, formatMontant(t.sousTotal, dev), "clair") : null,
       sousTotal && (remises.length || t.recu > 0)
@@ -118,9 +135,10 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
               : null
           )
         : null,
-      barre(lb.total, formatMontant(t.reste, dev), "fonce"),
+      barre(lb.total_final || lb.total, formatMontant(t.reste, dev), "fonce"),
       eq.length ? h("p", { class: "equivalent" }, `${lb.equivalent} ${eq.map(texteEq).join(" · ")}`) : null,
       tvaTexte ? h("p", { class: "tva" }, tvaTexte) : null,
+      lb.note_devise ? h("div", { class: "tva devise" }, markup(lb.note_devise, vars)) : null,
       notes,
       h(
         "section",
@@ -132,6 +150,6 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
         estFacture || !lb.signature_1 ? null : h("p", { class: "signature" }, h("strong", null, lb.signature_1), h("br"), h("strong", null, h("em", null, lb.signature_2)))
       )
     ),
-    h("footer", { class: `sheet-pied ${avecQr ? "qr" : "email"}` }, colonnes)
+    h("footer", { class: `sheet-pied ${avecQr ? "qr" : "email"}${colonnes.length === 1 ? " seul" : ""}` }, colonnes, lb.pied_note ? h("div", { class: "pied-note" }, markup(lb.pied_note, vars)) : null)
   );
 }

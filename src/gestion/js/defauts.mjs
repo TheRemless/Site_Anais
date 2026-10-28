@@ -55,6 +55,8 @@ export const LIBELLES_FR = {
   unite: "UNITÉ",
   qte: "QTÉ",
   total: "TOTAL",
+  colonne_montant: "",
+  total_final: "",
   sous_total: "SOUS-TOTAL",
   remise: "Remise",
   montant_recu: "Montant reçu",
@@ -66,6 +68,10 @@ export const LIBELLES_FR = {
   infos_paiement: "INFORMATIONS DE PAIEMENT",
   pied_court: "voir les instructions de paiement transmises par e-mail.",
   qr_titre: "",
+  facture_a: "",
+  prestataire: "Prestataire :",
+  note_devise: "",
+  pied_note: "",
   cgv: "Le client reconnaît avoir pris connaissance des [Conditions Générales de Vente]({cgv_url}) de {entreprise} et les accepter sans réserve. La signature du présent devis vaut acceptation des CGV et engagement contractuel.",
 };
 
@@ -78,6 +84,8 @@ export const LIBELLES_EN = {
   unite: "UNIT",
   qte: "QTY",
   total: "TOTAL",
+  colonne_montant: "",
+  total_final: "",
   sous_total: "SUBTOTAL",
   remise: "Discount",
   montant_recu: "Amount received",
@@ -89,6 +97,10 @@ export const LIBELLES_EN = {
   infos_paiement: "PAYMENT DETAILS",
   pied_court: "see the payment instructions sent by e-mail.",
   qr_titre: "",
+  facture_a: "",
+  prestataire: "Service provider:",
+  note_devise: "",
+  pied_note: "",
   cgv: "The client acknowledges having read the [Terms and Conditions]({cgv_url}) of {entreprise} and accepts them without reservation. Signing this quote constitutes acceptance of the Terms and Conditions and a binding commitment.",
 };
 
@@ -116,15 +128,15 @@ _Les coordonnées de paiement Wise sont indiquées dans l'e-mail accompagnant le
 
 // Réglages d'une entreprise nouvellement créée : aucun fait propre à une entreprise réelle.
 export const REGLAGES_NEUTRE = {
-  emetteur: { nom: "", adresse: "", telephone: "", contact: "" },
+  emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", contact: "" },
   paiement: { texte: "" },
   devise: "",
   conditions: { acompte_pct: 0, delai_jours: 10, relance_jours: 7, tva_mention: "", cgv_url: "" },
   taux: { eur: 1.058, thb: 40.54 },
-  numerotation: { mode: "sequence", prefixe: "" },
+  numerotation: { mode: "sequence", prefixe: "", chiffres: 4 },
   dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Pays" },
   listes: { pays: [], civilites: ["Madame", "Monsieur", "Mademoiselle"], moyens: MOYENS_DEFAUT, devises: ["CHF", "EUR", "THB", "USD"] },
-  apparence: { couleur: "#0b9999", couleur_clair: "#53b7b7", logo: "", titre_image: "", type_images: null, titre_texte: "", qr_image: "", qr_pseudo: "" },
+  apparence: { couleur: "#0b9999", couleur_clair: "#53b7b7", entete: "classique", logo: "", titre_image: "", type_images: null, titre_texte: "", qr_image: "", qr_pseudo: "" },
   libelles: LIBELLES_FR,
   textes: { variantes: [{ id: "standard", nom: "Standard", corps: "", cloture: "" }] },
 };
@@ -170,6 +182,7 @@ export const CONTENU_DEFAUT = () => ({
   equivalents: { actif: false },
   pied: "qr",
   variante: "",
+  prestataire: "",
   tva: true,
   montant_recu: null,
 });

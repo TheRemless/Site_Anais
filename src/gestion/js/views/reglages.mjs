@@ -85,6 +85,8 @@ const LIBELLES = [
   ["unite", "Colonne du prix unitaire"],
   ["qte", "Colonne de la quantité"],
   ["total", "Total"],
+  ["colonne_montant", "Colonne des montants (vide : comme le total)"],
+  ["total_final", "Barre du total final (vide : comme le total)"],
   ["sous_total", "Sous-total"],
   ["remise", "Remise"],
   ["montant_recu", "Montant reçu"],
@@ -96,7 +98,14 @@ const LIBELLES = [
   ["infos_paiement", "Titre du bloc de paiement (pied de page)"],
   ["pied_court", "Message de paiement du pied de page court"],
   ["qr_titre", "Titre au-dessus du QR code"],
+  ["facture_a", "Étiquette au-dessus du client (vide : aucune)"],
+  ["prestataire", "Étiquette du prestataire du service"],
+  ["note_devise", "Ligne sous le total (ex. Currency: {devise} ({devise_nom}))"],
+  ["pied_note", "Note en bas de page, sous les coordonnées"],
 ];
+// Textes que « Remplir en français / en anglais » ne doit pas écraser : ils sont propres à l'entreprise.
+const LIBELLES_PROPRES = ["qr_titre", "facture_a", "note_devise", "pied_note"];
+const garder = (libelles) => Object.fromEntries(LIBELLES_PROPRES.map((k) => [k, libelles[k]]));
 
 const lire = (o, chemin) => chemin.split(".").reduce((a, k) => (a ? a[k] : undefined), o);
 function ecrire(o, chemin, v) {
@@ -230,6 +239,9 @@ export function vueReglages() {
   };
   dessinerVariantes();
 
+  const entete = h("select", { id: uid(), onchange: (e) => ((r.apparence.entete = e.target.value), marque()) }, h("option", { value: "classique" }, "Classique : logo à droite, titre en grand"), h("option", { value: "centre" }, "Centrée : logo et titre du document au centre"));
+  entete.value = r.apparence.entete;
+
   const moyens = h("textarea", { id: uid(), rows: 5 });
   moyens.value = r.listes.moyens.map((m) => m.label).join("\n");
   moyens.addEventListener("input", () => {
@@ -239,10 +251,12 @@ export function vueReglages() {
     marque();
   });
 
-  const modeNum = h("select", { id: uid(), onchange: (e) => ((r.numerotation.mode = e.target.value), (prefixe.hidden = e.target.value !== "sequence"), marque()) }, h("option", { value: "sequence" }, "Numéro de séquence par année (ex. ST-2026-0001)"), h("option", { value: "initiales" }, "Initiales, date et pays (ex. LD20261009 Thaïlande)"));
+  const modeNum = h("select", { id: uid(), onchange: (e) => ((r.numerotation.mode = e.target.value), (prefixe.hidden = chiffres.hidden = e.target.value !== "sequence"), marque()) }, h("option", { value: "sequence" }, "Numéro de séquence par année (ex. ST-2026-0001)"), h("option", { value: "initiales" }, "Initiales, date et pays (ex. LD20261009 Thaïlande)"));
   modeNum.value = r.numerotation.mode;
   const prefixe = texte("Préfixe des numéros", "numerotation.prefixe", { aide: "Par exemple ST pour obtenir ST-2026-0001. Peut rester vide." });
   prefixe.hidden = r.numerotation.mode !== "sequence";
+  const chiffres = texte("Nombre de chiffres du numéro", "numerotation.chiffres", { type: "number", aide: "4 donne ST-2026-0001, 3 donne ST-2026-001." });
+  chiffres.hidden = r.numerotation.mode !== "sequence";
 
   const libellesGrille = h("div", { class: "grille-form" });
   const dessinerLibelles = () => {
@@ -262,7 +276,7 @@ export function vueReglages() {
     entreprise: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Identité sur les documents"), texte("Nom de l'entreprise", "emetteur.nom"), texte("Adresse", "emetteur.adresse", { multi: true, rows: 3 }), texte("Téléphone affiché sous l'adresse", "emetteur.telephone")),
+      h("fieldset", null, h("legend", null, "Identité sur les documents"), texte("Nom de l'entreprise", "emetteur.nom"), texte("Sous-titre sous le nom (facultatif)", "emetteur.sous_titre", { aide: "Par exemple « by Nom de la société mère »." }), texte("Adresse", "emetteur.adresse", { multi: true, rows: 3 }), texte("Téléphone affiché sous l'adresse", "emetteur.telephone")),
       h("fieldset", null, h("legend", null, "Bloc de contact du pied de page"), texte("Une ligne par information", "emetteur.contact", { multi: true, rows: 4, aide: "Nom de la personne, WhatsApp, e-mail, site… Ce que vous voulez voir en bas de chaque document." }))
     ),
     paiement: h(
@@ -276,19 +290,19 @@ export function vueReglages() {
       "div",
       null,
       h("fieldset", null, h("legend", null, "Conditions"), h("div", { class: "grille-form" }, texte("Acompte demandé (%, 0 si aucun)", "conditions.acompte_pct", { type: "number" }), texte("Délai de paiement de l'acompte (jours)", "conditions.delai_jours", { type: "number" }), texte("Relancer un devis sans réponse après (jours)", "conditions.relance_jours", { type: "number" })), texte("Mention de TVA", "conditions.tva_mention", { aide: "Par exemple « TVA non applicable ». Vide pour ne rien afficher." }), texte("Lien des conditions générales", "conditions.cgv_url", { type: "url" })),
-      h("fieldset", null, h("legend", null, "Dossiers"), champ("Numérotation", modeNum), prefixe, texte("Nom du champ « pays »", "dossier.libelle_pays", { aide: "Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier." }), liste("Valeurs proposées, une par ligne", "listes.pays"), texte("Modèle du titre du document", "dossier.modele_bandeau", { aide: "{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}." })),
+      h("fieldset", null, h("legend", null, "Dossiers"), champ("Numérotation", modeNum), prefixe, chiffres, texte("Nom du champ « pays »", "dossier.libelle_pays", { aide: "Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier." }), liste("Valeurs proposées, une par ligne", "listes.pays"), texte("Modèle du titre du document", "dossier.modele_bandeau", { aide: "{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}." })),
       h("fieldset", null, h("legend", null, "Listes"), liste("Civilités des clients, une par ligne", "listes.civilites"), liste("Devises proposées pour un document, une par ligne", "listes.devises", "Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs."), champ("Moyens de paiement, un par ligne", moyens))
     ),
     textes: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Textes fixes des documents"), h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ((r.libelles = { ...r.libelles, ...LIBELLES_FR, qr_titre: r.libelles.qr_titre, cgv: LIBELLES_FR.cgv }), dessinerLibelles(), marque()) }, "Remplir en français"), h("button", { class: "secondaire petit", type: "button", onclick: () => ((r.libelles = { ...r.libelles, ...LIBELLES_EN, qr_titre: r.libelles.qr_titre }), dessinerLibelles(), marque()) }, "Remplir en anglais")), libellesGrille),
+      h("fieldset", null, h("legend", null, "Textes fixes des documents"), h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ((r.libelles = { ...r.libelles, ...LIBELLES_FR, ...garder(r.libelles), cgv: LIBELLES_FR.cgv }), dessinerLibelles(), marque()) }, "Remplir en français"), h("button", { class: "secondaire petit", type: "button", onclick: () => ((r.libelles = { ...r.libelles, ...LIBELLES_EN, ...garder(r.libelles) }), dessinerLibelles(), marque()) }, "Remplir en anglais")), libellesGrille),
       h("fieldset", null, h("legend", null, "Conditions de paiement proposées"), h("p", { class: "aide" }, "Chaque devis choisit une de ces variantes, ou son propre texte. Une ligne commençant par « - » devient une puce. **gras**, _italique_. Les mots entre accolades se remplissent seuls : {acompte}, {solde}, {delai}, {total}, {indicatif}."), blocVariantes)
     ),
     apparence: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Logo et titre"), image("Logo en haut à droite", "apparence.logo", { maxPx: 600 }), texte("Titre en grand sur le document", "apparence.titre_texte", { aide: "Le nom de l'entreprise si vide. Ignoré quand une image de titre est choisie." }), image("Image du titre (facultative)", "apparence.titre_image", { maxPx: 1600, aide: "Pour un lettrage particulier. Elle remplace le titre écrit." })),
+      h("fieldset", null, h("legend", null, "Logo et titre"), champ("Disposition de l'en-tête", entete), image("Logo", "apparence.logo", { maxPx: 600 }), texte("Titre en grand sur le document", "apparence.titre_texte", { aide: "Le nom de l'entreprise si vide. Ignoré quand une image de titre est choisie." }), image("Image du titre (facultative)", "apparence.titre_image", { maxPx: 1600, aide: "Pour un lettrage particulier. Elle remplace le titre écrit." })),
       h(
         "fieldset",
         null,

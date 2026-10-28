@@ -161,7 +161,7 @@ export function nouvelleRef({ numerotation, prenom, nom, dateIso, pays, refsExis
     const annee = dateIso.slice(0, 4);
     const debut = `${prefixe ? prefixe + "-" : ""}${annee}-`;
     const dernier = refsExistantes.filter((r) => r.startsWith(debut)).map((r) => parseInt(r.slice(debut.length), 10)).filter(Number.isFinite);
-    return `${debut}${String((dernier.length ? Math.max(...dernier) : 0) + 1).padStart(4, "0")}`;
+    return `${debut}${String((dernier.length ? Math.max(...dernier) : 0) + 1).padStart(Number(numerotation.chiffres) || 4, "0")}`;
   }
   const base = genererRef(prenom, nom, dateIso, pays);
   if (!existe(base)) return base;
