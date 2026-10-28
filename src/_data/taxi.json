@@ -32,7 +32,7 @@
       "height": 1350,
       "alt": "Lit ceiling and tan leather seats inside the minivan"
     },
-    "confirmed": false
+    "confirmed": true
   },
   "gallery": {
     "title": "Our minivan",
@@ -70,7 +70,7 @@
       "height": 596,
       "alt": "A longtail boat in turquoise water below limestone cliffs"
     },
-    "confirmed": false
+    "confirmed": true
   },
   "services": [
     {
@@ -79,7 +79,7 @@
       "text": "From and to Krabi, Phuket and Surat Thani airports.",
       "photo": null,
       "link": null,
-      "confirmed": false
+      "confirmed": true
     },
     {
       "id": "long-distance",
@@ -87,7 +87,7 @@
       "text": "Krabi Town, Ao Nang, Phuket, Surat Thani, Trang, Khao Lak, Khao Sok, Donsak Pier, Cheow Lan Pier and more.",
       "photo": null,
       "link": null,
-      "confirmed": false
+      "confirmed": true
     },
     {
       "id": "local",
@@ -95,91 +95,91 @@
       "text": "Private rides around the island.",
       "photo": null,
       "link": null,
-      "confirmed": false
+      "confirmed": true
     }
   ],
   "why": [
     {
       "title": "Private only",
       "text": "No sharing, no stress, no waiting.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Professional drivers",
       "text": "Friendly drivers who know the region well.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Clean and comfortable vehicles",
       "text": "Taxi and minivan for your transfer.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Direct confirmation",
       "text": "The team confirms your booking with you on WhatsApp.",
-      "confirmed": false
+      "confirmed": true
     }
   ],
   "rating": {
     "text": "Rated 5 stars on Google by international travelers",
-    "confirmed": false
+    "confirmed": true
   },
   "steps": [
     {
       "title": "Send your request",
       "text": "Date, time, passengers, pick-up and drop-off.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Get your confirmation",
       "text": "Our team replies on WhatsApp with the price and the details.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Meet your driver",
       "text": "Your driver is on time at the pick-up point.",
-      "confirmed": false
+      "confirmed": true
     }
   ],
   "payment": {
     "text": "Cash to the driver on the day. No prepayment. No hidden fees.",
-    "confirmed": false
+    "confirmed": true
   },
   "faq": [
     {
       "q": "Is the transfer private?",
       "a": "Yes. Every transfer is private, with no sharing, so you travel only with your group.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "q": "How do I pay for my taxi or minivan?",
       "a": "You pay in cash to the driver on the day of the transfer. There is no prepayment and no hidden fees.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "q": "How do I book a transfer?",
       "a": "Fill in the request form on this page. It opens WhatsApp with your message ready, and the team replies with the price and the details.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "q": "Where do you drive in Southern Thailand?",
       "a": "Across Southern Thailand: Krabi Town and Krabi airport, Ao Nang, Phuket and Phuket airport, Surat Thani airport and bus terminal, Trang, Khao Lak, Khao Sok, Donsak Pier and Cheow Lan Pier, and more.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "q": "Do you only drive from Koh Lanta?",
       "a": "No. Koh Lanta (also written Ko Lanta) is our base, but we drive across Southern Thailand. Tell us where we pick you up and where you are going in the request form.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "q": "Do you offer airport transfers to and from Koh Lanta?",
       "a": "Yes. We drive private transfers between Krabi, Phuket and Surat Thani airports and Koh Lanta, in both directions.",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "q": "Can I book day tours or boat trips too?",
       "a": "Day tours around Koh Lanta and boat trips are handled by Secret Travel & Tour. You can choose a trip and ask for a price on their page.",
-      "confirmed": false
+      "confirmed": true
     }
   ],
   "places": [
@@ -202,80 +202,80 @@
       "title": "Krabi Airport (KBV) and Koh Lanta",
       "from": "Krabi Airport",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Krabi Town and Koh Lanta",
       "from": "Krabi Town",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Ao Nang and Koh Lanta",
       "from": "Ao Nang",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Phuket Airport (HKT) and Koh Lanta",
       "from": "Phuket Airport",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Phuket Bus Terminal and Koh Lanta",
       "from": "Phuket Bus Terminal",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Surat Thani Airport (URT) and Koh Lanta",
       "from": "Surat Thani Airport",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Surat Thani Bus Terminal and Koh Lanta",
       "from": "Surat Thani Bus Terminal",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Trang and Koh Lanta",
       "from": "Trang",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Khao Lak and Koh Lanta",
       "from": "Khao Lak",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Khao Sok and Koh Lanta",
       "from": "Khao Sok",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Donsak Pier and Koh Lanta",
       "from": "Donsak Pier",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Cheow Lan Pier and Koh Lanta",
       "from": "Cheow Lan Pier",
       "to": "Koh Lanta",
-      "confirmed": false
+      "confirmed": true
     },
     {
       "title": "Anywhere else in Southern Thailand",
       "from": "",
       "to": "",
       "text": "Koh Lanta is our base, but we drive across Southern Thailand. Tell us where we pick you up and where you are going.",
-      "confirmed": false
+      "confirmed": true
     }
   ]
 }
