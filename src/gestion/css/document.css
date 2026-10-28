@@ -1,0 +1,91 @@
+/* Feuille A4 du devis et de la facture. Dimensions relevées sur le modèle Canva d'Anaïs. */
+.sheet {
+  --teal: #0b9999;
+  --teal-clair: #53b7b7;
+  --texte: #3d3b3a;
+  --gris: #5d6362;
+  width: 210mm;
+  min-height: 297mm;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: #fff;
+  color: var(--texte);
+  font-family: "Raleway", system-ui, sans-serif;
+  font-size: 9pt;
+  line-height: 1.45;
+  letter-spacing: 0.05em;
+}
+.sheet, .sheet * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.sheet p { margin: 0; }
+.sheet em { font-style: italic; }
+
+.sheet-tete { position: relative; height: 86mm; flex: none; }
+.sheet-ref { position: absolute; left: 12mm; top: 9.5mm; color: var(--gris); font-size: 8.5pt; letter-spacing: 0.142em; }
+.sheet-logo { position: absolute; right: 9.5mm; top: 15mm; width: 25.5mm; height: 25.5mm; }
+.sheet-titre { position: absolute; left: 50%; transform: translateX(-50%); top: 24.5mm; height: 7.1mm; }
+.sheet-type { position: absolute; left: 50%; transform: translateX(-50%); top: 37.8mm; height: 5.3mm; }
+.sheet-emetteur { position: absolute; left: 15mm; top: 52.5mm; }
+.sheet-emetteur strong { display: block; color: var(--teal); font-size: 9.5pt; letter-spacing: 0.143em; margin-bottom: 0.4mm; }
+.sheet-emetteur p { letter-spacing: 0.163em; line-height: 4.8mm; }
+.sheet-client { position: absolute; right: 15mm; top: 56mm; text-align: right; }
+.sheet-client p { letter-spacing: 0.163em; line-height: 4.75mm; }
+.sheet-client .gras { font-weight: 700; }
+.sheet-date { position: absolute; left: 15mm; top: 79mm; letter-spacing: 0.114em; }
+
+.sheet-corps { margin: 0 20.5mm 0 21mm; flex: none; }
+.sheet .bandeau,
+.sheet .ligne { display: grid; grid-template-columns: 1fr 26mm; align-items: start; }
+.sheet.detail .bandeau,
+.sheet.detail .ligne { grid-template-columns: 1fr 20mm 12mm 26mm; }
+.sheet .bandeau { background: var(--teal-clair); color: #fff; font-weight: 700; font-size: 8.5pt; letter-spacing: 0.15em; min-height: 10mm; align-items: center; }
+.sheet .bandeau-titre { padding: 1mm 0 1mm 4.6mm; text-transform: uppercase; }
+.sheet .bandeau .montant { padding-right: 7mm; }
+.sheet .unite,
+.sheet .qte { text-align: center; }
+.sheet .montant { text-align: right; padding-right: 6.5mm; letter-spacing: 0.163em; white-space: nowrap; }
+
+.sheet .lignes { padding: 3.5mm 0 2.5mm; }
+.sheet .lignes.sous { padding: 2.5mm 0 3mm; }
+.sheet .ligne { padding: 0.45mm 0; }
+.sheet .desc { padding-left: 7.4mm; padding-right: 2mm; }
+.sheet .desc strong { font-weight: 700; font-size: 9.5pt; letter-spacing: 0.1em; }
+.sheet .desc ul { margin: 0.6mm 0 0 3.2mm; padding: 0; list-style: disc; font-style: italic; font-size: 8.4pt; line-height: 3.5mm; letter-spacing: 0.17em; }
+.sheet .desc li { margin: 0; padding-left: 0.5mm; }
+.sheet .ligne.bloc { margin-bottom: 1.4mm; }
+.sheet .remise strong { font-size: 8.5pt; }
+.sheet .ligne.recu .desc strong { letter-spacing: 0.1em; }
+
+.sheet .barre { display: flex; justify-content: flex-end; align-items: center; gap: 6mm; padding-right: 6.5mm; height: 6.9mm; color: #fff; font-weight: 700; font-size: 9pt; letter-spacing: 0.168em; }
+.sheet .barre.clair { background: var(--teal-clair); }
+.sheet .barre.fonce { background: var(--teal); }
+.sheet .tva { text-align: right; font-style: italic; font-size: 6.8pt; letter-spacing: 0.114em; color: var(--gris); margin: 1.4mm 1mm 0 0; }
+
+.sheet .conditions { margin: 7mm -3mm 0 -6mm; }
+.sheet .conditions h3 { margin: 0 0 2mm; color: var(--teal); font-size: 9.5pt; letter-spacing: 0.136em; }
+.sheet .conditions .texte { letter-spacing: 0.05em; }
+.sheet .conditions .texte p { line-height: 3.9mm; }
+.sheet .conditions .texte ul { margin: 0; padding-left: 5mm; list-style: disc; }
+.sheet .conditions .texte li { line-height: 3.9mm; padding-left: 0.5mm; }
+.sheet .conditions .texte .espace { height: 2.4mm; }
+.sheet .conditions .cloture { margin-top: 3.4mm; }
+.sheet .cgv { margin-top: 2mm; font-style: italic; font-size: 7.2pt; line-height: 3.3mm; letter-spacing: 0.04em; }
+.sheet .cgv a { color: inherit; text-decoration: underline; }
+.sheet .signature { margin-top: 6mm; text-align: right; padding-right: 4mm; font-size: 8pt; line-height: 3.7mm; letter-spacing: 0.211em; }
+
+.sheet-pied { margin: auto 12mm 0; padding: 3mm 0 6mm 3.5mm; border-top: 0.25mm solid #000; display: grid; grid-template-columns: 62mm 71mm 1fr; align-items: start; }
+.sheet-pied h4 { margin: 0 0 1.6mm; color: var(--teal); font-size: 9.5pt; letter-spacing: 0.142em; }
+.sheet-pied p { letter-spacing: 0.168em; line-height: 4.5mm; }
+.sheet-pied .pied-col:first-child p { letter-spacing: 0.09em; }
+.sheet-pied .italique { font-style: italic; letter-spacing: 0.05em; line-height: 3.9mm; padding-right: 8mm; }
+.sheet-pied .wise h4 { white-space: nowrap; margin-left: -1mm; letter-spacing: 0.02em; font-size: 8.2pt; }
+.sheet-pied .wise .qr-ligne { display: flex; align-items: flex-start; gap: 1.6mm; margin-left: 14.5mm; }
+.sheet-pied .wise img { display: block; width: 30.7mm; height: 31.1mm; }
+.sheet-pied .wise .pseudo { writing-mode: vertical-rl; font-size: 8pt; letter-spacing: 0.1em; text-decoration: underline; color: #000; padding-top: 3mm; }
+.sheet-pied.email { grid-template-columns: 96mm 1fr; padding-left: 15.4mm; }
+
+@page { size: A4; margin: 0; }
+@media print {
+  .sheet { min-height: 296mm; }
+}
