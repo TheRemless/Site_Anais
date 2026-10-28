@@ -1,4 +1,4 @@
-import { etat, resumes, nomClient, reglages, estAdmin, entiteActive, peut } from "../etat.mjs";
+import { etat, resumes, nomClient, reglages, estAdmin, entiteActive, peut, paiementsPeriode } from "../etat.mjs";
 import { reglagesIncomplets } from "../defauts.mjs";
 import { h } from "../ui.mjs";
 import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois } from "../calc.mjs";
@@ -16,14 +16,14 @@ function phrase(item) {
   return `Devis envoyé il y a ${pluriel(item.jours, "jour", "jours")}, sans réponse`;
 }
 
-export function tableauDeBord() {
+export async function tableauDeBord() {
   const ajd = aujourdhui();
   const manque = reglagesIncomplets(reglages());
   const rs = resumes();
   const encaisser = rs.filter((r) => r.statut === "accepte" || r.statut === "acompte");
   const attente = rs.filter((r) => r.statut === "devis_envoye");
   const deviseDe = Object.fromEntries(rs.map((r) => [r.dossier.id, r.devise]));
-  const ceMois = etat.db.paiements.filter((p) => p.date.slice(0, 7) === ajd.slice(0, 7));
+  const ceMois = await paiementsPeriode(`${ajd.slice(0, 7)}-01`, `${ajd.slice(0, 7)}-31`);
   const taches = aFaire(rs, ajd, reglages());
   const departs = rs
     .filter((r) => r.dossier.date_depart && r.statut !== "annule" && r.dossier.date_depart >= ajd && joursEntre(ajd, r.dossier.date_depart) <= 60)

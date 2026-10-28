@@ -126,7 +126,7 @@ let refuse = false; try { await db.query("select * from clients"); } catch { ref
 await db.exec("reset role;");
 ok(refuse, "le visiteur anonyme est refusé");
 
-console.log("\n== Chaîne de migrations v1 → v2 → v3 → v4 ==");
+console.log("\n== Chaîne de migrations v1 → v2 → v3 → v4 → v5 ==");
 const v = await base([W + "schema-v1-reference.sql"]);
 const vcompte = (await v.query("insert into auth.users (email) values ('anais@test') returning id")).rows[0].id;
 const vass = (await v.query("insert into auth.users (email) values ('assistante@test') returning id")).rows[0].id;
@@ -140,6 +140,7 @@ await v.exec(`insert into membres values ('${vass}', '${await eN("secret")}', 'e
 await v.exec("update dossiers set cree_par = null");
 await v.exec(lire(W + "migration-3-droits.sql"));
 await v.exec(lire(W + "migration-4-analyses.sql"));
+await v.exec(lire(W + "migration-5-echelle.sql"));
 await accorder(v);
 const rolesMig = (await v.query("select e.slug, r.nom from membres m join roles r on r.id = m.role_id join entites e on e.id = m.entite_id where m.user_id = $1 order by e.slug", [vass])).rows;
 ok(rolesMig.map((x) => `${x.slug}:${x.nom}`).join() === "secret:Éditeur,ztp:Administrateur", "les anciens rôles admin et éditeur deviennent des rôles équivalents");

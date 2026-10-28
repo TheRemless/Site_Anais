@@ -107,6 +107,7 @@ test("aFaire : acompte en retard, devis à relancer, solde proche", async () => 
     paiements,
     reste: 0,
     total: 400,
+    devisEnvoyeLe: (documents.find((d) => d.type === "devis") || {}).envoye_le || null,
     statut: null,
   });
   const lignes = [{ kind: "bloc", unite: 40, qte: 10 }]; // 400
@@ -183,4 +184,19 @@ test("equivalents : plusieurs devises, ancien format converti", async () => {
   const anciennes = lignesEquivalents({ actif: true, eur: 1.1 }, { eur: 1, thb: 40 });
   assert.deepEqual(anciennes, [{ code: "EUR", taux: 1.1 }, { code: "THB", taux: 40 }]);
   assert.deepEqual(lignesEquivalents({ actif: true, lignes: [{ code: "USD", taux: 1.2 }] }), [{ code: "USD", taux: 1.2 }]);
+});
+
+test("resume : sans documents chargés, le dossier s'appuie sur le résumé tenu par la base", async () => {
+  const { resume } = await load();
+  const regl = { devise: "CHF", conditions: { acompte_pct: 50, delai_jours: 10, relance_jours: 7 } };
+  const dossier = { id: "d", client_id: "c", accepte_le: "2026-10-01", annule: false, total: 360, recu: 180, devise: "THB", devis_envoye_le: "2026-09-20", a_facture: false };
+  const r = resume(dossier, { documents: [], paiements: [], clients: [{ id: "c" }] }, regl);
+  assert.equal(r.total, 360);
+  assert.equal(r.reste, 180);
+  assert.equal(r.devise, "THB");
+  assert.equal(r.devisEnvoyeLe, "2026-09-20");
+  assert.equal(r.statut, "acompte");
+  const sansChiffres = resume({ ...dossier, total: undefined, recu: undefined, devise: undefined }, { documents: [], paiements: [], clients: [] }, regl);
+  assert.equal(sansChiffres.statut, "accepte");
+  assert.equal(sansChiffres.devise, "CHF");
 });

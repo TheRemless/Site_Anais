@@ -34,6 +34,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 1. De la première version vers plusieurs entreprises : `migration-2-entreprises.sql`.
 2. Des rôles fixes vers les rôles personnalisables, le responsable de dossier et le journal : `migration-3-droits.sql`. Les anciens rôles « admin » et « éditeur » deviennent les rôles Administrateur et Éditeur de chaque entreprise.
 3. Tableau analytique : `migration-4-analyses.sql` (ajoute seulement des fonctions, ne modifie aucune donnée).
+4. Passage à l'échelle : `migration-5-echelle.sql` (résumé de chaque dossier tenu à jour par la base, recalculé pour les dossiers existants). À exécuter avant de publier la version correspondante de l'outil.
 
 ## Ajouter une personne (l'assistante par exemple)
 
@@ -63,6 +64,12 @@ Touche `?` (hors d'un champ de saisie) ouvre la liste. En résumé :
 ## Devise et équivalents d'un document
 
 Chaque devis ou facture choisit sa devise (liste modifiable dans Réglages) et peut afficher l'équivalent dans une ou plusieurs autres devises, à titre indicatif, avec le taux saisi pour ce document. Les totaux du tableau de bord sont regroupés par devise.
+
+## Volumes et performances
+
+À la connexion, l'outil charge seulement les clients, les dossiers (avec leur total, leur encaissé et leur devise) et le catalogue. Les devis, factures et paiements, qui sont les données les plus lourdes, ne se chargent qu'à l'ouverture d'un dossier. Le résumé de chaque dossier est tenu à jour par la base (déclencheurs sur les documents et les paiements), jamais calculé dans le navigateur. Le tableau analytique, l'encaissé du mois et les exports lisent aussi directement la base.
+
+Ordre de grandeur : confortable jusqu'à quelques dizaines de milliers de dossiers et de clients. Au-delà, il faudra passer les listes en pagination côté base (la recherche de client y est déjà préparée). Le résumé suit le droit « voir les montants » : sans ce droit, les totaux d'un dossier ne sont pas lisibles.
 
 ## À savoir
 

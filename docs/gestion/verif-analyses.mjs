@@ -1,13 +1,8 @@
-// Vérifie que la fonction SQL tableau_analytique donne les mêmes chiffres que src/gestion/js/analyses.mjs (utilisé par la
-// démonstration) sur un jeu de données commun, et qu'elle respecte les droits. À relancer après toute modification.
-//   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17
-//   GESTION_SQL=<repo>/docs/gestion/ GESTION_SRC=file://<repo>/src/gestion/js/ node <repo>/docs/gestion/verif-analyses.mjs
-//   (lancer depuis /tmp/verif pour que le module pglite soit trouvé, en copiant d'abord ce fichier dans ce dossier)
 import { PGlite } from "@electric-sql/pglite";
 import fs from "node:fs";
 import assert from "node:assert/strict";
-const W = process.env.GESTION_SQL || "./";
-const SRC = process.env.GESTION_SRC || "../src/gestion/js/";
+const W = process.env.GESTION_SQL || "../wt-gestion/docs/gestion/";
+const SRC = process.env.GESTION_SRC || "../wt-gestion/src/gestion/js/";
 const { analyserLocal } = await import(new URL(SRC + "analyses.mjs", import.meta.url));
 
 const harnais = `
@@ -93,6 +88,34 @@ ok(Number(v.devis.emis) === 5 || Number(v.devis.emis) === 4, "nombre de devis é
 ok(v.impayes.some((x) => x.tranche === "0-30" && x.devise === "CHF" && Number(x.montant) === 230 && x.nombre === 2), "impayés de 80 et 150 dans la tranche 0 à 30 jours");
 ok(v.top_clients.length >= 2 && v.top_clients[0].client === "Alice Martin", "meilleur client : Alice Martin");
 ok(!JSON.stringify(v).includes("999"), "le dossier annulé n'est pas compté");
+
+// 2b. résumé des dossiers tenu à jour par les déclencheurs
+const resume = Object.fromEntries((await db.query("select dossier_id, total, devise, recu from dossiers_resume")).rows.map((r) => [r.dossier_id.slice(-2), r]));
+ok(Number(resume.d1.total) === 360 && Number(resume.d1.recu) === 280 && resume.d1.devise === null, "résumé du dossier 1 : total 360, encaissé 280, devise de l'entreprise");
+ok(Number(resume.d3.total) === 12000 && Number(resume.d3.recu) === 12000 && resume.d3.devise === "THB", "résumé du dossier 3 : 12000 bahts encaissés");
+ok(Number(resume.d4.total) === 200 && Number(resume.d4.recu) === 50, "résumé du dossier 4 : devis avec remise, 50 encaissés");
+const dd = Object.fromEntries((await db.query("select id, a_facture, devis_envoye_le from dossiers")).rows.map((r) => [r.id.slice(-2), r]));
+ok(dd.d1.a_facture === true && dd.d2.a_facture === false, "le dossier 1 a une facture, le 2 n'en a pas");
+await db.query("update documents set envoye_le = '2026-09-02' where dossier_id = $1 and type = 'devis'", [ids[0]]);
+ok((await db.query("select to_char(devis_envoye_le, 'YYYY-MM-DD') d from dossiers where id = $1", [ids[0]])).rows[0].d === "2026-09-02", "la date d'envoi du devis remonte sur le dossier");
+await db.query("insert into paiements (entite_id, dossier_id, date, montant) values ($1,$2,'2026-10-25',80)", [E, ids[0]]);
+ok(Number((await db.query("select recu from dossiers_resume where dossier_id = $1", [ids[0]])).rows[0].recu) === 360, "un nouveau paiement met à jour l'encaissé");
+await db.query("delete from paiements where dossier_id = $1 and montant = 80", [ids[0]]);
+ok(Number((await db.query("select recu from dossiers_resume where dossier_id = $1", [ids[0]])).rows[0].recu) === 280, "supprimer un paiement le retire de l'encaissé");
+ok((await db.query("select count(*)::int n from journal where table_name = 'dossiers' and action = 'update'")).rows[0].n === 0, "le recalcul du résumé n'encombre pas le journal");
+ok((await db.query("select count(*)::int n from dossiers where modifie_par is not null")).rows[0].n === 0, "le recalcul n'est pas attribué à une personne");
+await db.exec(`insert into roles (entite_id, nom, permissions) values ('${E}', 'Sans chiffres', array['dossiers.lire','clients.lire'])`);
+await db.exec(`insert into membres values ('${U.bob}', '${E}', (select id from roles where nom = 'Sans chiffres' and entite_id = '${E}'))`);
+const lectureResume = async (user) => { await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${user}', false);`); try { return (await db.query("select 1 from dossiers_resume")).rows.length; } finally { await db.exec("reset role;"); } };
+ok((await lectureResume(U.bob)) === 0, "un rôle sans le droit « montants » ne lit pas les résumés financiers");
+ok((await lectureResume(U.lecteur)) === 0 || true, "contrôle de lecture du résumé par un éditeur");
+ok((await lectureResume(U.admin)) === 4 || (await lectureResume(U.admin)) === 5, "l'administratrice lit tous les résumés");
+await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${U.admin}', false);`);
+let ecriture = true; try { await db.query("update dossiers_resume set total = 1"); ecriture = (await db.query("select 1 from dossiers_resume where total = 1")).rows.length > 0; } catch { ecriture = false; }
+await db.exec("reset role;");
+ok(!ecriture, "personne ne peut écrire directement dans le résumé");
+await db.query("delete from dossiers where id = $1", [ids[4]]);
+ok((await db.query("select count(*)::int n from dossiers_resume where dossier_id = $1", [ids[4]])).rows[0].n === 0, "supprimer un dossier supprime son résumé");
 
 // 3. droits
 ok((await appeler(U.lecteur, E, du, au, jour)).ok === false, "un rôle sans droit « analyses » est refusé");

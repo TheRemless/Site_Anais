@@ -166,7 +166,8 @@ function coque() {
   return h("div", { class: "coque" }, menu(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, barreMobile(), h("main", { id: "principal", tabindex: "-1" })));
 }
 
-function afficher() {
+let rendu = 0;
+async function afficher() {
   if (!etat.session) {
     vider(racine).append(vueConnexion());
     document.title = "Connexion - Gestion";
@@ -201,10 +202,14 @@ function afficher() {
   }
   const [re, cleRoute, vue] = trouvee;
   const principal = document.getElementById("principal");
+  const moi = ++rendu;
   let noeud;
   try {
-    noeud = vue(...hash.match(re).slice(1));
+    noeud = await vue(...hash.match(re).slice(1));
+    // Une navigation plus récente a pris le relais pendant le chargement : on abandonne celle-ci.
+    if (moi !== rendu) return;
   } catch (err) {
+    if (moi !== rendu) return;
     console.error(err);
     noeud = h("div", { class: "vide" }, h("h1", null, "Cet écran n'a pas pu s'afficher"), h("p", null, err.message), h("a", { href: "#/" }, "Retour au tableau de bord"));
   }

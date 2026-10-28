@@ -88,11 +88,23 @@ create table dossiers (
   annule boolean not null default false,
   notes text,
   responsable_id uuid references profils (user_id) on delete set null default auth.uid(),
+  devis_envoye_le date,
+  a_facture boolean not null default false,
   cree_par uuid default auth.uid(),
   modifie_par uuid,
   unique (entite_id, ref),
   unique (id, entite_id),
   foreign key (client_id, entite_id) references clients (id, entite_id) on delete restrict
+);
+
+-- Résumé financier d'un dossier, tenu à jour par la base : les listes n'ont plus besoin de charger les documents.
+-- Table à part pour que le droit « montants » s'applique aussi à ces chiffres.
+create table dossiers_resume (
+  dossier_id uuid primary key references dossiers (id) on delete cascade,
+  entite_id uuid not null references entites (id) on delete cascade,
+  total numeric(14, 2) not null default 0,
+  devise text,
+  recu numeric(14, 2) not null default 0
 );
 
 create table documents (
@@ -148,6 +160,7 @@ create index on documents (dossier_id);
 create index on paiements (entite_id);
 create index on paiements (dossier_id);
 create index on catalogue (entite_id);
+create index on dossiers_resume (entite_id);
 create index on roles (entite_id);
 create index on membres (entite_id);
 create index on journal (entite_id, created_at desc);
@@ -187,6 +200,39 @@ create or replace function equipe_de(e uuid) returns table (user_id uuid, nom te
   where p.actif and est_membre(e) and (p.super_admin or exists (select 1 from membres m where m.user_id = p.user_id and m.entite_id = e))
 $$;
 
+-- Recalcule le résumé d'un dossier (total du dernier document, devise, encaissé, devis envoyé) après toute
+-- modification de ses documents ou de ses paiements.
+create or replace function recalculer_dossier(did uuid) returns void language plpgsql security definer set search_path = public as $$
+declare
+  ent uuid;
+  f jsonb;
+  v jsonb;
+  ve date;
+begin
+  select entite_id into ent from dossiers where id = did;
+  if ent is null then return; end if;
+  select contenu into f from documents where dossier_id = did and type = 'facture' order by date_emission desc, created_at desc limit 1;
+  select contenu, envoye_le into v, ve from documents where dossier_id = did and type = 'devis' order by date_emission desc, created_at desc limit 1;
+  update dossiers set devis_envoye_le = ve, a_facture = (f is not null)
+  where id = did and (devis_envoye_le is distinct from ve or a_facture is distinct from (f is not null));
+  insert into dossiers_resume (dossier_id, entite_id, total, devise, recu)
+  values (did, ent, coalesce(total_document(coalesce(f, v)), 0), coalesce(f, v)->>'devise', (select coalesce(sum(montant), 0) from paiements where dossier_id = did))
+  on conflict (dossier_id) do update set total = excluded.total, devise = excluded.devise, recu = excluded.recu;
+end
+$$;
+
+create or replace function maj_resume() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'DELETE' then
+    perform recalculer_dossier(old.dossier_id);
+  else
+    perform recalculer_dossier(new.dossier_id);
+    if tg_op = 'UPDATE' and old.dossier_id <> new.dossier_id then perform recalculer_dossier(old.dossier_id); end if;
+  end if;
+  return null;
+end
+$$;
+
 create or replace function creer_profil() returns trigger language plpgsql security definer set search_path = public as $$
 begin
   -- Le tout premier compte créé devient administrateur général.
@@ -197,6 +243,10 @@ $$;
 
 create or replace function noter_modification() returns trigger language plpgsql as $$
 begin
+  -- Le recalcul automatique du résumé d'un dossier n'est pas une modification de la personne connectée.
+  if tg_table_name = 'dossiers' and (to_jsonb(new) - array['devis_envoye_le', 'a_facture', 'modifie_par']) = (to_jsonb(old) - array['devis_envoye_le', 'a_facture', 'modifie_par']) then
+    return new;
+  end if;
   new.modifie_par = auth.uid();
   return new;
 end
@@ -227,7 +277,7 @@ begin
   end;
   if tg_op = 'UPDATE' and tg_table_name <> 'reglages' then
     for k in select jsonb_object_keys(ligne) loop
-      continue when k in ('updated_at', 'modifie_par');
+      continue when k in ('updated_at', 'modifie_par', 'devis_envoye_le', 'a_facture');
       if ligne->k is distinct from ancien->k then
         champs := champs || jsonb_build_object(k, case when length((ligne->k)::text) <= 120 and length((ancien->k)::text) <= 120 then jsonb_build_object('avant', ancien->k, 'apres', ligne->k) else to_jsonb('modifié'::text) end);
       end if;
@@ -331,6 +381,9 @@ create trigger journaliser after insert or update or delete on reglages for each
 create trigger journaliser after insert or update or delete on roles for each row execute function journaliser();
 create trigger journaliser after insert or update or delete on membres for each row execute function journaliser();
 
+create trigger maj_resume after insert or update or delete on documents for each row execute function maj_resume();
+create trigger maj_resume after insert or update or delete on paiements for each row execute function maj_resume();
+
 create trigger sur_nouvel_utilisateur after insert on auth.users for each row execute function creer_profil();
 
 -- Sécurité : le visiteur anonyme n'a accès à rien. Une personne connectée n'accède qu'aux entreprises dont elle est
@@ -390,6 +443,10 @@ create policy "lire les paiements" on paiements for select to authenticated usin
 create policy "créer des paiements" on paiements for insert to authenticated with check (a_permission(entite_id, 'paiements.ecrire') and exists (select 1 from dossiers d where d.id = paiements.dossier_id));
 create policy "modifier des paiements" on paiements for update to authenticated using (a_permission(entite_id, 'paiements.ecrire') and exists (select 1 from dossiers d where d.id = paiements.dossier_id)) with check (a_permission(entite_id, 'paiements.ecrire'));
 create policy "supprimer des paiements" on paiements for delete to authenticated using (a_permission(entite_id, 'paiements.ecrire') and exists (select 1 from dossiers d where d.id = paiements.dossier_id));
+
+alter table dossiers_resume enable row level security;
+create policy "lire les résumés" on dossiers_resume for select to authenticated using (a_permission(entite_id, 'finances.voir') and exists (select 1 from dossiers d where d.id = dossiers_resume.dossier_id));
+revoke insert, update, delete on dossiers_resume from authenticated;
 
 -- Entreprises, rôles et réglages de départ, modifiables ensuite depuis le panneau d'administration.
 insert into entites (id, slug, nom, ordre) values
