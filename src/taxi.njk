@@ -95,20 +95,6 @@ eleventyExcludeFromCollections: true
     {% endfor %}
   </div>
 
-  <section class="sec" aria-labelledby="h-routes">
-    <h2 id="h-routes">Popular private transfers</h2>
-    <p class="routes-intro">Private taxi or minivan, in both directions, with no sharing. Pick a route and the form is ready.</p>
-    <div class="routes">
-      {% for r in taxi.routes %}
-      <div>
-        <h3 id="route-{{ loop.index }}">{{ r.title }}</h3>
-        {% if r.text %}<p>{{ r.text }}</p>{% endif %}
-        <a href="#request" aria-describedby="route-{{ loop.index }}"{% if r.from %} data-from="{{ r.from }}" data-to="{{ r.to }}"{% endif %}>Request this transfer</a>
-      </div>
-      {% endfor %}
-    </div>
-  </section>
-
   <section class="tours" aria-labelledby="h-tours">
     <img src="{{ taxi.tours.photo.src }}" width="{{ taxi.tours.photo.width }}" height="{{ taxi.tours.photo.height }}" alt="{{ taxi.tours.photo.alt }}" loading="lazy">
     <div class="tours-body">
@@ -154,6 +140,13 @@ eleventyExcludeFromCollections: true
       <a class="btn nojs-cta" href="https://wa.me/66958683846?text=Hi%20VIP%20Taxi%20Lanta%21">Message us on WhatsApp</a>
     </div>
     <form id="taxi-form" novalidate>
+      <div class="routes-pick">
+        <p class="chips-label" id="chips-label">Popular routes to and from Koh Lanta</p>
+        <div class="chips" role="group" aria-labelledby="chips-label">
+          {% for r in taxi.routes %}<button type="button" class="chip" data-from="{{ r.from }}" data-to="{{ r.to }}">{{ r.label }}</button>
+          {% endfor %}
+        </div>
+      </div>
       <div class="row">
         {{ field("from", "From", "text", 'list="places" autocomplete="off"', "", true) }}
         {{ field("to", "To", "text", 'list="places" autocomplete="off"', "", true) }}

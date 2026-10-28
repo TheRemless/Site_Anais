@@ -199,82 +199,75 @@
   ],
   "routes": [
     {
-      "title": "Krabi Airport (KBV) and Koh Lanta",
+      "label": "Krabi Airport (KBV)",
       "from": "Krabi Airport",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Krabi Town and Koh Lanta",
+      "label": "Krabi Town",
       "from": "Krabi Town",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Ao Nang and Koh Lanta",
+      "label": "Ao Nang",
       "from": "Ao Nang",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Phuket Airport (HKT) and Koh Lanta",
+      "label": "Phuket Airport (HKT)",
       "from": "Phuket Airport",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Phuket Bus Terminal and Koh Lanta",
+      "label": "Phuket Bus Terminal",
       "from": "Phuket Bus Terminal",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Surat Thani Airport (URT) and Koh Lanta",
+      "label": "Surat Thani Airport (URT)",
       "from": "Surat Thani Airport",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Surat Thani Bus Terminal and Koh Lanta",
+      "label": "Surat Thani Bus Terminal",
       "from": "Surat Thani Bus Terminal",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Trang and Koh Lanta",
+      "label": "Trang",
       "from": "Trang",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Khao Lak and Koh Lanta",
+      "label": "Khao Lak",
       "from": "Khao Lak",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Khao Sok and Koh Lanta",
+      "label": "Khao Sok",
       "from": "Khao Sok",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Donsak Pier and Koh Lanta",
+      "label": "Donsak Pier",
       "from": "Donsak Pier",
       "to": "Koh Lanta",
       "confirmed": false
     },
     {
-      "title": "Cheow Lan Pier and Koh Lanta",
+      "label": "Cheow Lan Pier",
       "from": "Cheow Lan Pier",
       "to": "Koh Lanta",
-      "confirmed": false
-    },
-    {
-      "title": "Anywhere else in Southern Thailand",
-      "from": "",
-      "to": "",
-      "text": "Koh Lanta is our base, but we drive across Southern Thailand. Tell us where we pick you up and where you are going.",
       "confirmed": false
     }
   ]

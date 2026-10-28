@@ -91,12 +91,6 @@ h3 { font-size: 1.4rem; line-height: 1.25; }
 .tours-body p { margin: 0; color: var(--mute); }
 
 /* Itinéraires : un titre par trajet, pour que chaque formulation de recherche trouve sa réponse. */
-.routes-intro { margin: -1rem 0 1.5rem; color: var(--mute); }
-.routes div { padding: 1.2rem 0; border-top: 1px solid var(--line); }
-.routes::after { content: ""; display: block; border-top: 1px solid var(--line); }
-.routes h3 { margin-bottom: .3rem; font-size: 1.2rem; }
-.routes p { margin: 0 0 .15rem; color: var(--mute); font-size: .95rem; }
-.routes a { display: inline-block; min-height: 44px; line-height: 44px; font-weight: 700; }
 
 .why { display: grid; gap: 1.75rem; }
 .why div { padding-top: .9rem; border-top: 2px solid var(--amber); }
@@ -132,6 +126,12 @@ input[type="text"], input[type="tel"], input[type="date"], input[type="time"], i
   background: #fff; color: var(--ink); font: 400 1rem/1.4 var(--sans); }
 textarea { min-height: 7rem; resize: vertical; }
 .row { display: grid; gap: 1.1rem; }
+.chips-label { margin: 0 0 .5rem; font-weight: 700; font-size: .95rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.chip { min-height: 44px; padding: 0 1rem; border: 1.5px solid var(--ink); border-radius: 999px; background: transparent;
+  color: var(--ink); font: 500 .9rem/1 var(--sans); cursor: pointer; touch-action: manipulation; transition: background-color .15s, color .15s; }
+.chip:hover, .chip:active { background: var(--ink); color: var(--paper); }
+.chip:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
 /* Choix rapides de la date */
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
@@ -184,8 +184,6 @@ footer p { margin: 0; color: var(--mute); }
   .strip { overflow: visible; }
   .strip img { flex: 1 1 0; min-width: 0; }
   .why { grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
-  .routes { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 2.5rem; }
-  .routes::after { grid-column: 1 / -1; }
   .tours { grid-template-columns: 1fr 1fr; }
   .tours img { height: 100%; aspect-ratio: auto; min-height: 22rem; }
   .tours-body { padding: 3rem; }

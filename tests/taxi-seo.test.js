@@ -87,23 +87,21 @@ test("la page insère les données structurées", () => {
   assert.match(njk, /taxiView\.jsonLd/);
 });
 
-test("itinéraires : au moins 10 trajets tirés de la liste de destinations, avec codes d'aéroport", () => {
+test("itinéraires : au moins 10 pastilles tirées de la liste de destinations, avec codes d'aéroport", () => {
   assert.ok(taxi.routes.length >= 10, `${taxi.routes.length} itinéraires`);
-  const titles = taxi.routes.map((r) => r.title).join(" | ");
-  for (const code of ["KBV", "HKT", "URT"]) assert.match(titles, new RegExp(code));
+  const labels = taxi.routes.map((r) => r.label).join(" | ");
+  for (const code of ["KBV", "HKT", "URT"]) assert.match(labels, new RegExp(code));
   for (const r of taxi.routes) {
-    assert.equal(typeof r.confirmed, "boolean", r.title);
-    assert.ok(r.title, r.title);
+    assert.equal(typeof r.confirmed, "boolean", r.label);
+    assert.ok(r.label, "chaque pastille a un libellé court");
+    assert.ok(r.label.length <= 32, `${r.label} : libellé trop long pour une pastille`);
   }
 });
 
-test("itinéraires : chaque trajet pré-remplit From et To, sauf « ailleurs » qui laisse libre", () => {
-  const anywhere = taxi.routes.filter((r) => !r.from && !r.to);
-  assert.equal(anywhere.length, 1, "une seule entrée « ailleurs dans le sud de la Thaïlande »");
-  assert.match(anywhere[0].title, /Southern Thailand/);
-  for (const r of taxi.routes.filter((x) => x.from || x.to)) {
-    assert.ok(r.from && r.to, r.title);
-    assert.ok(r.from === "Koh Lanta" || r.to === "Koh Lanta", r.title);
+test("itinéraires : chaque pastille remplit From et To avec Koh Lanta d'un côté", () => {
+  for (const r of taxi.routes) {
+    assert.ok(r.from && r.to, r.label);
+    assert.ok(r.from === "Koh Lanta" || r.to === "Koh Lanta", r.label);
     // Les lieux proposés doivent exister dans la liste suggérée de la page.
     for (const place of [r.from, r.to]) assert.ok(taxi.places.includes(place), `${place} absent de places`);
   }
@@ -132,13 +130,17 @@ test("variante d'orthographe « Ko Lanta » présente mais pas répétée à out
   assert.ok(count >= 1 && count <= 3, `${count} occurrences de « Ko Lanta »`);
 });
 
-test("la page affiche les itinéraires avec un lien qui pré-remplit le formulaire, sans texte caché en double", () => {
-  assert.doesNotMatch(njk, /class="sr"> \{\{ r\.title/);
-  assert.match(njk, /aria-describedby="route-/);
+test("les itinéraires sont des pastilles dans le formulaire, plus un bloc de section", () => {
+  assert.doesNotMatch(njk, /h-routes/);
+  assert.doesNotMatch(njk, /class="routes"/);
+  assert.doesNotMatch(njk, /Request this transfer/);
   assert.match(njk, /taxi\.routes/);
-  assert.match(njk, /data-from/);
-  assert.match(njk, /data-to/);
-  assert.match(njk, /h-routes/);
+  const form = njk.slice(njk.indexOf('<form id="taxi-form"'));
+  const chips = form.indexOf('class="chips"');
+  assert.ok(chips > 0, "groupe de pastilles dans le formulaire");
+  assert.ok(chips < form.indexOf('class="row"'), "les pastilles précèdent les champs From et To");
+  assert.match(form, /<button type="button" class="chip" data-from=/);
+  assert.match(form, /role="group" aria-labelledby="chips-label"/);
 });
 
 test("données structurées : catalogue des services sans prix", () => {
@@ -149,11 +151,10 @@ test("données structurées : catalogue des services sans prix", () => {
   assert.doesNotMatch(JSON.stringify(ld), /"price"|priceCurrency/i);
 });
 
-// Le nom de la base figure dans chaque titre d'itinéraire (« Krabi Airport (KBV) and Koh Lanta »), c'est voulu :
-// c'est la formulation que les gens tapent. Sur la page rendue, cela représente environ 3 % des mots visibles.
-// Ce plafond en nombre d'occurrences (21 aujourd'hui) empêche d'ajouter de la répétition sans y penser.
+// Les pastilles d'itinéraire n'ont que le nom du lieu (« Krabi Airport (KBV) »), Koh Lanta est dans le libellé du groupe.
+// Ce plafond en nombre d'occurrences empêche d'ajouter de la répétition sans y penser.
 test("répétition de « Koh Lanta » plafonnée à 24 occurrences dans les textes de la page", () => {
-  const shown = ["title", "text", "lead", "note", "q", "a"];
+  const shown = ["title", "label", "text", "lead", "note", "q", "a"];
   const dataText = [taxi.hero, taxi.tours, taxi.rating, taxi.payment].concat(taxi.services, taxi.routes, taxi.why, taxi.steps, taxi.faq)
     .map((item) => shown.map((k) => item[k]).filter(Boolean).join(" ")).join(" ");
   const hits = (dataText.match(/Koh Lanta/g) || []).length;

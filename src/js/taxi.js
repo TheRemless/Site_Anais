@@ -131,11 +131,17 @@
     window.location.href = F.waUrl(F.buildMessage(values, today()));
   });
 
-  // Un lien d'itinéraire pré-remplit From et To puis amène au formulaire (l'ancre fait le reste).
-  Array.prototype.forEach.call(document.querySelectorAll("[data-from]"), function (link) {
-    link.addEventListener("click", function () {
-      el("from").value = link.getAttribute("data-from");
-      el("to").value = link.getAttribute("data-to");
+  // Une pastille d'itinéraire remplit From et To. Si Koh Lanta est déjà dans From, le lieu va dans To (trajet inverse).
+  Array.prototype.forEach.call(form.querySelectorAll(".chip"), function (chip) {
+    chip.addEventListener("click", function () {
+      var from = chip.getAttribute("data-from");
+      var to = chip.getAttribute("data-to");
+      if (el("from").value.trim().toLowerCase() === to.toLowerCase()) {
+        el("to").value = from;
+      } else {
+        el("from").value = from;
+        el("to").value = to;
+      }
       showError("from", "");
       showError("to", "");
     });
