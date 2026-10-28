@@ -60,6 +60,8 @@
 .sheet .barre { display: flex; justify-content: flex-end; align-items: center; gap: 6mm; padding-right: 6.5mm; height: 6.9mm; color: #fff; font-weight: 700; font-size: 9pt; letter-spacing: 0.168em; }
 .sheet .barre.clair { background: var(--teal-clair); }
 .sheet .barre.fonce { background: var(--teal); }
+.sheet .montant.txt { font-style: italic; }
+.sheet .note { margin: 2mm 0 0; font-size: 7.2pt; font-style: italic; letter-spacing: 0.04em; line-height: 3.4mm; color: var(--texte); }
 .sheet .tva { text-align: right; font-style: italic; font-size: 6.8pt; letter-spacing: 0.114em; color: var(--gris); margin: 1.4mm 1mm 0 0; }
 
 .sheet .conditions { margin: 7mm -3mm 0 -6mm; }

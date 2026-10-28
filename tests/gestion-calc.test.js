@@ -70,10 +70,10 @@ test("formatChf et formatDate", async () => {
 
 test("genererRef : initiales, date AAAAMMJJ et pays comme dans les devis existants", async () => {
   const { genererRef } = await load();
-  assert.equal(genererRef("Laurent", "Drapier", "2026-10-09", "Thaïlande"), "LD20261009 Thaïlande");
-  assert.equal(genererRef("Myriam", "Dieni Medwed", "2026-09-12", "Thaïlande"), "MD20260912 Thaïlande");
-  assert.equal(genererRef("Lorianne", "Bürki", "2026-08-15", "Vietnam"), "LB20260815 Vietnam");
-  assert.equal(genererRef("Gaëlle", "Dayer Aliprandi", "2026-01-23", "Thaïlande"), "GD20260123 Thaïlande");
+  assert.equal(genererRef("Louis", "Dupont", "2026-10-09", "Thaïlande"), "LD20261009 Thaïlande");
+  assert.equal(genererRef("Marie", "Dubois Martin", "2026-09-12", "Thaïlande"), "MD20260912 Thaïlande");
+  assert.equal(genererRef("Lucie", "Bürgi", "2026-08-15", "Vietnam"), "LB20260815 Vietnam");
+  assert.equal(genererRef("Gaëlle", "Dayer Rossi", "2026-01-23", "Thaïlande"), "GD20260123 Thaïlande");
 });
 
 test("statutDossier : le statut découle des faits", async () => {

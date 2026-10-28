@@ -88,7 +88,35 @@ export function editeur(id) {
     h("option", { value: "detail" }, "Unité, quantité et total")
   );
   const pied = h("select", { id: "d-pied", value: c.pied, onchange: (e) => ((c.pied = e.target.value), change()) }, h("option", { value: "qr" }, "Coordonnées bancaires et QR Wise"), h("option", { value: "email" }, "Renvoi vers l'e-mail de paiement"));
-  const variante = h("select", { id: "d-var", value: c.variante, onchange: (e) => ((c.variante = e.target.value), change()) }, regl.textes.variantes.map((v) => h("option", { value: v.id }, v.nom)));
+  const textePerso = h("div");
+  const corpsPerso = h("textarea", { id: "d-perso-corps", rows: 9, oninput: (e) => ((c.conditions_corps = e.target.value), change()) });
+  const cloturePerso = h("textarea", { id: "d-perso-cloture", rows: 3, oninput: (e) => ((c.conditions_cloture = e.target.value), change()) });
+  corpsPerso.value = c.conditions_corps || "";
+  cloturePerso.value = c.conditions_cloture || "";
+  textePerso.append(champ("Conditions de paiement de ce document", corpsPerso, "Une ligne commençant par « - » devient une puce. **gras**, _italique_."), champ("Fin de texte", cloturePerso));
+  textePerso.hidden = c.variante !== "perso";
+  const variante = h(
+    "select",
+    {
+      id: "d-var",
+      value: c.variante,
+      onchange: (e) => {
+        if (e.target.value === "perso" && !c.conditions_corps) {
+          const base = regl.textes.variantes.find((v) => v.id === c.variante) || regl.textes.variantes[0];
+          c.conditions_corps = base.corps;
+          c.conditions_cloture = base.cloture;
+          corpsPerso.value = c.conditions_corps;
+          cloturePerso.value = c.conditions_cloture;
+        }
+        c.variante = e.target.value;
+        textePerso.hidden = c.variante !== "perso";
+        change();
+      },
+    },
+    regl.textes.variantes.map((v) => h("option", { value: v.id }, v.nom)),
+    h("option", { value: "perso" }, "Texte propre à ce document")
+  );
+  const cgv = h("input", { id: "d-cgv", type: "checkbox", checked: c.cgv !== false, onchange: (e) => ((c.cgv = e.target.checked), change()) });
   const tva = h("input", { id: "d-tva", type: "checkbox", checked: c.tva, onchange: (e) => ((c.tva = e.target.checked), change()) });
   if (!c.tva) tva.checked = false;
   const eq = c.equivalents || (c.equivalents = { actif: false });
@@ -127,7 +155,8 @@ export function editeur(id) {
       change();
     });
     majInfo();
-    blocRecu = h("fieldset", null, h("legend", null, "Montant reçu"), info, h("label", { class: "case", for: "d-recu-manuel" }, manuel, "Saisir le montant à la main"), champ("Montant reçu (CHF)", valeur));
+    const libelleRecu = h("input", { id: "d-recu-lib", value: c.libelle_recu || "", placeholder: "Montant reçu", oninput: (e) => ((c.libelle_recu = e.target.value.trim() || null), change()) });
+    blocRecu = h("fieldset", null, h("legend", null, "Montant reçu"), info, h("label", { class: "case", for: "d-recu-manuel" }, manuel, "Saisir le montant à la main"), champ("Montant reçu (CHF)", valeur), champ("Intitulé affiché sur la facture", libelleRecu, "Par exemple « Acompte reçu »."));
   }
 
   // Lignes
@@ -155,8 +184,8 @@ export function editeur(id) {
     const detail = c.colonnes === "detail";
     const maj = (champNom, conv = (v) => v) => (e) => ((l[champNom] = conv(e.target.value)), change());
     const libelle = h("input", { id: `l${l.id}-lib`, value: l.libelle, oninput: maj("libelle") });
-    const kindTexte = { bloc: "Bloc de formule", ligne: "Ligne", remise: "Remise", texte: "Texte" }[l.kind];
-    const champs = [champ(l.kind === "remise" ? "Intitulé de la remise" : "Libellé", libelle)];
+    const kindTexte = { bloc: "Bloc de formule", ligne: "Ligne", remise: "Remise", texte: "Note sous le tableau" }[l.kind];
+    const champs = [champ(l.kind === "remise" ? "Intitulé de la remise" : l.kind === "texte" ? "Texte de la note" : "Libellé", libelle)];
     if (l.kind === "bloc") {
       champs.push(champ("Complément après le libellé", h("input", { id: `l${l.id}-intro`, value: l.intro, placeholder: "comprenant:", oninput: maj("intro") })));
       const puces = h("textarea", { id: `l${l.id}-puces`, rows: 4, oninput: (e) => ((l.puces = e.target.value.split("\n").map((x) => x.trim()).filter(Boolean)), change()) });
@@ -181,12 +210,13 @@ export function editeur(id) {
       montants.push(champ("Type de remise", mode));
       if (l.pct != null) montants.push(champ("Pourcentage", h("input", { id: `l${l.id}-pct`, type: "number", step: "0.1", min: "0", value: l.pct, oninput: maj("pct", num) })));
     }
-    if (l.pct == null) {
+    if (l.kind !== "texte" && l.pct == null) {
       if (detail) {
         montants.push(champ("Prix unitaire (CHF)", h("input", { id: `l${l.id}-u`, type: "number", step: "0.01", value: l.unite ?? "", oninput: maj("unite", num) })));
         montants.push(champ("Quantité", h("input", { id: `l${l.id}-q`, type: "number", step: "1", value: l.qte ?? "", oninput: maj("qte", num) })));
       }
       montants.push(champ(detail ? "Total fixe (si pas de quantité)" : l.kind === "bloc" ? "Montant (vide si le prix est sur les lignes suivantes)" : "Montant (CHF)", h("input", { id: `l${l.id}-m`, type: "number", step: "0.01", value: l.montant ?? "", oninput: maj("montant", num) })));
+      montants.push(champ("Texte à la place du montant", h("input", { id: `l${l.id}-t`, value: l.texte_montant ?? "", placeholder: "inclus, offert", oninput: (e) => ((l.texte_montant = e.target.value.trim() || null), change()) })));
     }
     const presetRemise =
       l.kind === "remise" && detail
@@ -315,14 +345,16 @@ export function editeur(id) {
     "div",
     { class: "editeur-form" },
     h("fieldset", null, h("legend", null, "En-tête"), h("div", { class: "grille-form" }, champ("Date d'émission", date), champ("Colonnes", colonnes)), champ("Titre dans la bande de couleur", bandeau)),
-    h("fieldset", null, h("legend", null, "Contenu"), listeLignes, h("div", { class: "ajouts" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("bloc", { intro: "comprenant:" })) }, "Ajouter un bloc de formule"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("ligne")) }, "Ajouter une ligne"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("remise")) }, "Ajouter une remise")), champ("Catalogue", depuisCatalogue), totalTexte),
+    h("fieldset", null, h("legend", null, "Contenu"), listeLignes, h("div", { class: "ajouts" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("bloc", { intro: "comprenant:" })) }, "Ajouter un bloc de formule"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("ligne")) }, "Ajouter une ligne"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("remise")) }, "Ajouter une remise"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("texte")) }, "Ajouter une note")), champ("Catalogue", depuisCatalogue), totalTexte),
     blocRecu,
     h(
       "fieldset",
       null,
       h("legend", null, "Bas de page et mentions"),
       champ("Conditions de paiement", variante),
+      textePerso,
       champ("Pied de page", pied),
+      h("label", { class: "case", for: "d-cgv" }, cgv, "Afficher la phrase sur les Conditions Générales de Vente"),
       h("label", { class: "case", for: "d-tva" }, tva, `Afficher « ${regl.conditions.tva_mention} »`),
       h("label", { class: "case", for: "d-eq" }, eqActif, "Afficher l'équivalent en euros et en bahts, à titre indicatif"),
       eqTaux

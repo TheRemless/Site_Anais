@@ -11,7 +11,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const p = reglages.paiement;
   const detail = c.colonnes === "detail";
   const estFacture = type === "facture";
-  const variante = reglages.textes.variantes.find((v) => v.id === c.variante) || reglages.textes.variantes[0];
+  const variante = c.variante === "perso" ? { corps: c.conditions_corps || "", cloture: c.conditions_cloture || "" } : reglages.textes.variantes.find((v) => v.id === c.variante) || reglages.textes.variantes[0];
 
   const pct = Number(reglages.conditions.acompte_pct) || 0;
   const eq = c.equivalents && c.equivalents.actif ? equivalents(t.net, { eur: c.equivalents.eur ?? reglages.taux.eur, thb: c.equivalents.thb ?? reglages.taux.thb }) : null;
@@ -26,7 +26,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
 
   const ligneDoc = (l, i) => {
     const montant = t.montants[i];
-    const aMontant = l.kind === "remise" || montant !== 0 || l.unite != null || l.montant != null;
+    const aMontant = l.kind === "remise" || montant !== 0 || l.unite != null || l.montant != null || !!l.texte_montant;
     const aDetail = detail && l.unite != null && l.qte != null;
     const description =
       l.kind === "remise"
@@ -46,14 +46,18 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
       description,
       detail ? h("div", { class: "unite" }, unite) : null,
       detail ? h("div", { class: "qte" }, qte) : null,
-      h("div", { class: "montant" }, aMontant ? formatChf(montant) : "")
+      h("div", { class: l.texte_montant ? "montant txt" : "montant" }, l.texte_montant || (aMontant ? formatChf(montant) : ""))
     );
   };
 
   // Les remises passent après le sous-total.
   const normales = [];
   const remises = [];
-  c.lignes.forEach((l, i) => (l.kind === "remise" ? remises : normales).push(ligneDoc(l, i)));
+  const notes = [];
+  c.lignes.forEach((l, i) => {
+    if (l.kind === "texte") notes.push(h("p", { class: "note" }, l.libelle));
+    else (l.kind === "remise" ? remises : normales).push(ligneDoc(l, i));
+  });
   const sousTotal = afficherSousTotal(c, recu);
 
   const barre = (libelle, valeur, classe) =>
@@ -106,25 +110,28 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
             { class: "lignes sous" },
             remises,
             t.recu > 0
-              ? h("div", { class: "ligne recu" }, h("div", { class: "desc" }, h("strong", null, "Montant reçu")), detail ? h("div", { class: "unite" }) : null, detail ? h("div", { class: "qte" }) : null, h("div", { class: "montant" }, formatChf(-t.recu)))
+              ? h("div", { class: "ligne recu" }, h("div", { class: "desc" }, h("strong", null, c.libelle_recu || "Montant reçu")), detail ? h("div", { class: "unite" }) : null, detail ? h("div", { class: "qte" }) : null, h("div", { class: "montant" }, formatChf(-t.recu)))
               : null
           )
         : null,
       barre("TOTAL", formatChf(t.reste), "fonce"),
       tvaTexte ? h("p", { class: "tva" }, tvaTexte) : null,
+      notes,
       h(
         "section",
         { class: "conditions" },
         h("h3", null, "CONDITIONS DE PAIEMENT"),
         h("div", { class: "texte" }, markup(variante.corps, vars)),
         h("div", { class: "texte cloture" }, markup(variante.cloture, vars)),
-        h(
-          "p",
-          { class: "cgv" },
-          "Le client reconnaît avoir pris connaissance des ",
-          h("a", { href: reglages.conditions.cgv_url }, "Conditions Générales de Vente"),
-          " de Zwald Travel Planner CO., LTD. et les accepter sans réserve. La signature du présent devis vaut acceptation des CGV et engagement contractuel."
-        ),
+        c.cgv === false
+          ? null
+          : h(
+              "p",
+              { class: "cgv" },
+              "Le client reconnaît avoir pris connaissance des ",
+              h("a", { href: reglages.conditions.cgv_url }, "Conditions Générales de Vente"),
+              " de Zwald Travel Planner CO., LTD. et les accepter sans réserve. La signature du présent devis vaut acceptation des CGV et engagement contractuel."
+            ),
         estFacture ? null : h("p", { class: "signature" }, h("strong", null, "NOM, PRENOM, DATE ET SIGNATURE DU CLIENT"), h("br"), h("strong", null, h("em", null, "précédé de la mention “Bon pour accord”")))
       )
     ),
