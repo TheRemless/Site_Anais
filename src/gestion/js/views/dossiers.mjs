@@ -3,6 +3,7 @@ import { h, champ, vider } from "../ui.mjs";
 import { formatMontant, aujourdhui, nouvelleRef, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte } from "./commun.mjs";
+import { selecteurClient } from "./selecteur-client.mjs";
 
 const ONGLETS = [
   ["cours", "En cours", ["brouillon", "devis_envoye", "accepte", "acompte"]],
@@ -12,6 +13,7 @@ const ONGLETS = [
 ];
 
 const filtre = { onglet: "cours", q: "" };
+const PAGE = 50;
 const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 export function listeDossiers() {
@@ -23,10 +25,12 @@ export function listeDossiers() {
     placeholder: "Nom du client, référence, pays",
     oninput: (e) => {
       filtre.q = e.target.value;
+      limite = PAGE;
       dessiner();
     },
   });
 
+  let limite = PAGE;
   function dessiner() {
     const statuts = ONGLETS.find(([k]) => k === filtre.onglet)[2];
     const q = sansAccents(filtre.q);
@@ -51,7 +55,7 @@ export function listeDossiers() {
         h(
           "tbody",
           null,
-          lignes.map((r) =>
+          lignes.slice(0, limite).map((r) =>
             h(
               "tr",
               null,
@@ -66,6 +70,8 @@ export function listeDossiers() {
         )
       )
     );
+    if (lignes.length > limite) corps.append(h("p", { class: "plus" }, h("button", { class: "secondaire", type: "button", onclick: () => ((limite += PAGE), dessiner()) }, `Afficher plus (${lignes.length - limite} restants)`)));
+    else if (lignes.length > PAGE) corps.append(h("p", { class: "aide plus" }, `${lignes.length} dossiers affichés.`));
   }
 
   const onglets = h(
@@ -79,6 +85,7 @@ export function listeDossiers() {
           "aria-pressed": cle === filtre.onglet ? "true" : "false",
           onclick: (e) => {
             filtre.onglet = cle;
+            limite = PAGE;
             for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false");
             dessiner();
           },
@@ -102,12 +109,7 @@ export function nouveauDossier() {
   const regl = reglages();
   const listePays = [...regl.listes.pays, "Autre"];
   const libellePays = regl.dossier.libelle_pays || "Pays";
-  const selClient = h(
-    "select",
-    { id: "client", onchange: majClient },
-    h("option", { value: "" }, "Nouveau client"),
-    [...etat.db.clients].sort((a, b) => nomClient(a).localeCompare(nomClient(b))).map((c) => h("option", { value: c.id }, nomClient(c)))
-  );
+  const selClient = selecteurClient({ valeur: params.get("client") || "", avecNouveau: true, surChangement: () => majClient() });
   const nvCivilite = h("select", { id: "civ" }, regl.listes.civilites.map((c) => h("option", { value: c }, c)));
   const nvPrenom = h("input", { id: "prenom", autocomplete: "off", oninput: majRef });
   const nvNom = h("input", { id: "nom", autocomplete: "off", oninput: majRef });
@@ -131,7 +133,7 @@ export function nouveauDossier() {
   const paysChoisi = () => (pays.value === "Autre" ? paysLibre.value.trim() : pays.value);
 
   function majClient() {
-    blocNouveau.hidden = selClient.value !== "";
+    blocNouveau.hidden = !selClient.nouveau;
     majRef();
   }
   function majBandeau() {
@@ -145,7 +147,7 @@ export function nouveauDossier() {
   }
   function majRef() {
     if (refManuelle) return;
-    const c = selClient.value ? etat.db.clients.find((x) => x.id === selClient.value) : { prenom: nvPrenom.value, nom: nvNom.value };
+    const c = selClient.valeur ? etat.db.clients.find((x) => x.id === selClient.valeur) : selClient.nouveau ? { prenom: nvPrenom.value, nom: nvNom.value } : null;
     const pret = c && (c.prenom || c.nom) && (regl.numerotation.mode === "sequence" || paysChoisi());
     ref.value = pret ? nouvelleRef({ numerotation: regl.numerotation, prenom: c.prenom, nom: c.nom, dateIso: aujourdhui(), pays: paysChoisi(), refsExistantes: etat.db.dossiers.map((d) => d.ref) }) : "";
   }
@@ -156,7 +158,12 @@ export function nouveauDossier() {
   async function creer(e) {
     e.preventDefault();
     erreur.textContent = "";
-    if (!selClient.value && !nvNom.value.trim()) {
+    if (!selClient.valeur && !selClient.nouveau) {
+      erreur.textContent = "Choisissez un client dans la recherche, ou créez-en un.";
+      document.getElementById("client").focus();
+      return;
+    }
+    if (selClient.nouveau && !nvNom.value.trim()) {
       erreur.textContent = "Indiquez le nom du client.";
       nvNom.focus();
       return;
@@ -173,7 +180,7 @@ export function nouveauDossier() {
     bouton.disabled = true;
     bouton.textContent = "Création…";
     try {
-      let clientId = selClient.value;
+      let clientId = selClient.valeur;
       if (!clientId) {
         const c = await inserer("clients", { civilite: nvCivilite.value, prenom: nvPrenom.value.trim(), nom: nvNom.value.trim(), adresse: nvAdresse.value.trim(), telephone: nvTel.value.trim(), email: "", notes: "" });
         clientId = c.id;
@@ -205,8 +212,6 @@ export function nouveauDossier() {
     }
   }
 
-  const preselection = params.get("client");
-  if (preselection) selClient.value = preselection;
   majClient();
   majBandeau();
 
@@ -217,7 +222,7 @@ export function nouveauDossier() {
     h(
       "form",
       { class: "formulaire", onsubmit: creer },
-      h("fieldset", null, h("legend", null, "Client"), champ("Client", selClient), blocNouveau),
+      h("fieldset", null, h("legend", null, "Client"), selClient.noeud, blocNouveau),
       h(
         "fieldset",
         null,

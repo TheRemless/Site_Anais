@@ -275,3 +275,14 @@ input.couleur { width: 72px; padding: 2px; }
 .raccourcis td { padding: 8px 10px; }
 .raccourcis td:first-child { width: 46%; white-space: nowrap; }
 kbd { display: inline-block; min-width: 1.6em; padding: 1px 7px; font: inherit; font-size: 0.85rem; font-weight: 600; text-align: center; background: #fff; border: 1px solid var(--bord-fort); border-radius: 4px; }
+
+/* Recherche de client */
+.combo { position: relative; }
+.combo-liste { position: absolute; z-index: 40; left: 0; right: 0; max-height: 340px; margin: 4px 0 0; padding: 4px; overflow-y: auto; list-style: none; background: var(--surface); border: 1px solid var(--bord-fort); border-radius: var(--rayon); }
+.combo-liste li { display: flex; flex-direction: column; justify-content: center; min-height: 44px; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+.combo-liste li[aria-selected="true"] { background: var(--teal-100); }
+.combo-liste .combo-creer { border-top: 1px solid var(--bord); border-radius: 0 0 4px 4px; color: var(--teal-700); font-weight: 600; }
+.combo-liste .combo-vide { color: var(--texte-2); cursor: default; }
+.combo-choisi { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 4px 12px; background: var(--teal-100); border-radius: var(--rayon); }
+.combo-choisi p { margin: 0; }
+.plus { margin: 12px 0 0; }

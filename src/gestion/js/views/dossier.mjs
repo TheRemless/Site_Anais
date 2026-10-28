@@ -2,6 +2,7 @@ import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer,
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef } from "../calc.mjs";
 import { uid } from "../defauts.mjs";
+import { selecteurClient } from "./selecteur-client.mjs";
 import { pastille, vide, pdf, voyageTexte } from "./commun.mjs";
 
 const rafraichir = () => naviguer(location.hash);
@@ -61,7 +62,7 @@ export function ficheDossier(id) {
   const dupliquer = () => {
     const modele = devis || facture;
     if (!modele) return toast("Ce dossier n'a pas encore de document à copier.", true);
-    const sel = h("select", { id: "dup-client" }, [...etat.db.clients].sort((a, b) => nomClient(a).localeCompare(nomClient(b))).map((c) => h("option", { value: c.id, selected: c.id === d.client_id }, nomClient(c))));
+    const sel = selecteurClient({ id: "dup-client", libelle: "Pour quel client ?", valeur: d.client_id });
     const fermer = modal(
       "Dupliquer ce dossier",
       h(
@@ -70,7 +71,7 @@ export function ficheDossier(id) {
           class: "modal-corps",
           onsubmit: async (e) => {
             e.preventDefault();
-            const cl = etat.db.clients.find((x) => x.id === sel.value);
+            const cl = etat.db.clients.find((x) => x.id === sel.valeur);
             try {
               const ref = nouvelleRef({ numerotation: regl.numerotation, prenom: cl.prenom, nom: cl.nom, dateIso: ajd, pays: d.pays || "", refsExistantes: etat.db.dossiers.map((x) => x.ref) });
               const nd = await inserer("dossiers", { ref, client_id: cl.id, pays: d.pays, bandeau: d.bandeau, date_depart: null, date_retour: null, accepte_le: null, annule: false, notes: "" });
@@ -87,14 +88,15 @@ export function ficheDossier(id) {
             }
           },
         },
-        champ("Pour quel client ?", sel, "Le document est copié avec toutes ses lignes, sans paiement ni date d'envoi. Créez d'abord le client s'il n'existe pas encore."),
+        sel.noeud,
+        h("p", { class: "aide" }, "Le document est copié avec toutes ses lignes, sans paiement ni date d'envoi. Créez d'abord le client s'il n'existe pas encore."),
         h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), h("button", { type: "submit", class: "principal" }, "Créer la copie"))
       )
     );
   };
 
   const modifierDossier = () => {
-    const selClient = h("select", { id: "m-client" }, etat.db.clients.map((c) => h("option", { value: c.id, selected: c.id === d.client_id }, nomClient(c))));
+    const selClient = selecteurClient({ id: "m-client", valeur: d.client_id });
     const pays = h("input", { id: "m-pays", value: d.pays || "" });
     const depart = h("input", { id: "m-depart", type: "date", value: d.date_depart || "" });
     const retour = h("input", { id: "m-retour", type: "date", value: d.date_retour || "" });
@@ -112,13 +114,13 @@ export function ficheDossier(id) {
               toast("Cette référence existe déjà.", true);
               return;
             }
-            await modifier("dossiers", d.id, { client_id: selClient.value, pays: pays.value.trim(), date_depart: depart.value || null, date_retour: retour.value || null, accepte_le: accepte.value || null, ref: ref.value.trim() });
+            await modifier("dossiers", d.id, { client_id: selClient.valeur || d.client_id, pays: pays.value.trim(), date_depart: depart.value || null, date_retour: retour.value || null, accepte_le: accepte.value || null, ref: ref.value.trim() });
             fermer();
             toast("Dossier modifié.");
             rafraichir();
           },
         },
-        champ("Client", selClient),
+        selClient.noeud,
         h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || "Pays", pays), champ("Référence", ref), champ("Début", depart), champ("Fin", retour), champ("Date d'acceptation du devis", accepte, "Laissez vide si le client n'a pas encore accepté.")),
         h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), h("button", { type: "submit", class: "principal" }, "Enregistrer"))
       )

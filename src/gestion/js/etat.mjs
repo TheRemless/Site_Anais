@@ -149,6 +149,31 @@ export const resumeDossier = (id) => {
   return d ? resume(d, etat.db, etat.db.reglages) : null;
 };
 
+const sansAccents = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+// Recherche de clients de l'entreprise active : tous les mots saisis doivent apparaître dans le nom, le téléphone,
+// l'e-mail ou l'adresse. Sans saisie, les clients ayant eu un dossier récemment. Asynchrone pour pouvoir passer
+// à une recherche côté serveur quand les clients seront trop nombreux pour tenir dans le navigateur.
+export async function chercherClients(q, limite = 8) {
+  const mots = sansAccents(q).split(/\s+/).filter(Boolean);
+  if (!mots.length) {
+    const dernier = new Map();
+    for (const d of etat.db.dossiers) if (!dernier.has(d.client_id) || d.created_at > dernier.get(d.client_id)) dernier.set(d.client_id, d.created_at);
+    return [...etat.db.clients].sort((a, b) => (dernier.get(b.id) || "").localeCompare(dernier.get(a.id) || "") || nomClient(a).localeCompare(nomClient(b))).slice(0, limite);
+  }
+  return etat.db.clients
+    .map((c) => {
+      const nom = sansAccents(nomClient(c));
+      const tout = `${nom} ${sansAccents(`${c.telephone} ${c.email} ${c.adresse}`)}`;
+      if (!mots.every((m) => tout.includes(m))) return null;
+      return { c, rang: mots.every((m) => nom.startsWith(m) || nom.includes(` ${m}`)) ? 0 : 1 };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.rang - b.rang || nomClient(a.c).localeCompare(nomClient(b.c)))
+    .slice(0, limite)
+    .map((x) => x.c);
+}
+
 export const nomClient = (c) => (c ? [c.prenom, c.nom].filter(Boolean).join(" ") : "Client inconnu");
 
 export function naviguer(hash) {

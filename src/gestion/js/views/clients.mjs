@@ -39,7 +39,8 @@ function formulaireClient(client, apres) {
 
 export function listeClients() {
   const corps = h("div");
-  const q = h("input", { id: "rech-clients", type: "search", placeholder: "Nom, téléphone, ville", oninput: dessiner });
+  const q = h("input", { id: "rech-clients", type: "search", placeholder: "Nom, téléphone, ville", oninput: () => ((limite = 50), dessiner()) });
+  let limite = 50;
   function dessiner() {
     const t = sansAccents(q.value);
     const clients = etat.db.clients.filter((c) => !t || sansAccents(`${nomClient(c)} ${c.telephone} ${c.adresse}`).includes(t)).sort((a, b) => nomClient(a).localeCompare(nomClient(b)));
@@ -56,7 +57,7 @@ export function listeClients() {
         h(
           "tbody",
           null,
-          clients.map((c) =>
+          clients.slice(0, limite).map((c) =>
             h(
               "tr",
               null,
@@ -69,6 +70,7 @@ export function listeClients() {
         )
       )
     );
+    if (clients.length > limite) corps.append(h("p", { class: "plus" }, h("button", { class: "secondaire", type: "button", onclick: () => ((limite += 50), dessiner()) }, `Afficher plus (${clients.length - limite} restants)`)));
   }
   dessiner();
   return h(
