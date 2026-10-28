@@ -5,10 +5,10 @@ const taxi = require("./taxi.json");
 
 function toConfirm() {
   const items = [];
-  const groups = [[taxi.hero], [taxi.tours], taxi.services, taxi.routes, taxi.why, taxi.steps, taxi.faq, [taxi.rating], [taxi.payment]];
+  const groups = [[taxi.hero], [taxi.tours], taxi.services, taxi.why, taxi.steps, taxi.faq, [taxi.rating], [taxi.payment]];
   for (const group of groups) {
     for (const item of group) {
-      if (!item.confirmed) items.push(`${item.title || item.label || item.q || item.text}: text to confirm`);
+      if (!item.confirmed) items.push(`${item.title || item.q || item.text}: text to confirm`);
     }
   }
   if (!taxi.hero.photo) items.push(`${taxi.hero.title}: vehicle photo`);

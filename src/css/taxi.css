@@ -126,12 +126,14 @@ input[type="text"], input[type="tel"], input[type="date"], input[type="time"], i
   background: #fff; color: var(--ink); font: 400 1rem/1.4 var(--sans); }
 textarea { min-height: 7rem; resize: vertical; }
 .row { display: grid; gap: 1.1rem; }
-.chips-label { margin: 0 0 .5rem; font-weight: 700; font-size: .95rem; }
-.chips { display: flex; flex-wrap: wrap; gap: .5rem; }
-.chip { min-height: 44px; padding: 0 1rem; border: 1.5px solid var(--ink); border-radius: 999px; background: transparent;
-  color: var(--ink); font: 500 .9rem/1 var(--sans); cursor: pointer; touch-action: manipulation; transition: background-color .15s, color .15s; }
-.chip:hover, .chip:active { background: var(--ink); color: var(--paper); }
-.chip:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.combo-box { position: relative; }
+.combo-pop { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; right: 0; max-height: min(18rem, 42vh); overflow-y: auto;
+  border: 1.5px solid var(--ink); border-radius: 12px; background: #fff; box-shadow: 0 12px 28px rgb(20 13 9 / .22); overscroll-behavior: contain; }
+.combo-head { margin: 0; padding: .7rem .9rem .3rem; font-size: .8rem; color: var(--mute-ink); }
+.combo-pop ul { margin: 0; padding: .25rem; list-style: none; }
+.combo-pop li { display: flex; align-items: center; min-height: 44px; padding: 0 .65rem; border-radius: 8px; cursor: pointer; }
+.combo-pop li:hover, .combo-pop li.is-active { background: var(--ink); color: var(--paper); }
+.combo-pop li[hidden] { display: none; }
 
 /* Choix rapides de la date */
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }

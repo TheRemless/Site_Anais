@@ -111,3 +111,27 @@ test("validate : Other date doit être une vraie date, d'aujourd'hui ou plus tar
   assert.match(F.validate(values({ date_choice: "other", date_other: "2026-11-13" }), TODAY).date, /already passed/);
   assert.equal(F.validate(values({ date_choice: "other", date_other: TODAY }), TODAY).date, undefined);
 });
+
+const PLACES = ["Koh Lanta", "Krabi Airport", "Krabi Town", "Phuket Airport", "Surat Thani Airport", "Ao Nang"];
+
+test("filterPlaces : champ vide ou espaces, toute la liste dans l'ordre d'origine", () => {
+  assert.deepEqual(F.filterPlaces(PLACES, ""), PLACES);
+  assert.deepEqual(F.filterPlaces(PLACES, "   "), PLACES);
+  assert.deepEqual(F.filterPlaces(PLACES, undefined), PLACES);
+});
+
+test("filterPlaces : correspondance sans tenir compte de la casse, des accents ni de la position", () => {
+  assert.deepEqual(F.filterPlaces(PLACES, "krabi"), ["Krabi Airport", "Krabi Town"]);
+  assert.deepEqual(F.filterPlaces(PLACES, "AIRPORT"), ["Krabi Airport", "Phuket Airport", "Surat Thani Airport"]);
+  assert.deepEqual(F.filterPlaces(PLACES, "thàni"), ["Surat Thani Airport"]);
+});
+
+test("filterPlaces : aucun résultat pour un lieu libre (hôtel, adresse)", () => {
+  assert.deepEqual(F.filterPlaces(PLACES, "Lanta Sand Resort"), []);
+});
+
+test("filterPlaces : un lieu déjà choisi remontre toute la liste", () => {
+  assert.deepEqual(F.filterPlaces(PLACES, "Krabi Airport", { showAllOnExact: true }), PLACES);
+  assert.deepEqual(F.filterPlaces(PLACES, "krabi airport", { showAllOnExact: true }), PLACES);
+  assert.deepEqual(F.filterPlaces(PLACES, "Krabi", { showAllOnExact: true }), ["Krabi Airport", "Krabi Town"]);
+});

@@ -15,6 +15,19 @@ eleventyExcludeFromCollections: true
   <p class="err" id="e-{{ name }}" hidden></p>
 </div>
 {% endmacro %}
+{% macro combo(name, label, places) %}
+<div class="field combo">
+  <label for="f-{{ name }}">{{ label }}</label>
+  <div class="combo-box">
+    <input id="f-{{ name }}" name="{{ name }}" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lb-{{ name }}" aria-required="true" aria-describedby="e-{{ name }}" autocomplete="off" autocapitalize="words" spellcheck="false">
+    <div class="combo-pop" hidden>
+      <p class="combo-head" aria-hidden="true">Popular places, or type your own</p>
+      <ul id="lb-{{ name }}" role="listbox" aria-label="Popular places">{% for place in places %}<li role="option" id="o-{{ name }}-{{ loop.index }}">{{ place }}</li>{% endfor %}</ul>
+    </div>
+  </div>
+  <p class="err" id="e-{{ name }}" hidden></p>
+</div>
+{% endmacro %}
 {% macro person(name, label, ages, value, min) %}
 <div class="person">
   <label for="f-{{ name }}">{{ label }} <span class="ages">{{ ages }}</span></label>
@@ -140,19 +153,11 @@ eleventyExcludeFromCollections: true
       <a class="btn nojs-cta" href="https://wa.me/66958683846?text=Hi%20VIP%20Taxi%20Lanta%21">Message us on WhatsApp</a>
     </div>
     <form id="taxi-form" novalidate>
-      <div class="routes-pick">
-        <p class="chips-label" id="chips-label">Popular routes to and from Koh Lanta</p>
-        <div class="chips" role="group" aria-labelledby="chips-label">
-          {% for r in taxi.routes %}<button type="button" class="chip" data-from="{{ r.from }}" data-to="{{ r.to }}">{{ r.label }}</button>
-          {% endfor %}
-        </div>
-      </div>
       <div class="row">
-        {{ field("from", "From", "text", 'list="places" autocomplete="off"', "", true) }}
-        {{ field("to", "To", "text", 'list="places" autocomplete="off"', "", true) }}
+        {{ combo("from", "From", taxi.places) }}
+        {{ combo("to", "To", taxi.places) }}
       </div>
       <p class="hint hint-pair">Use your hotel, an airport, a pier or a town.</p>
-      <datalist id="places">{% for place in taxi.places %}<option value="{{ place }}">{% endfor %}</datalist>
 
       <fieldset class="field" aria-describedby="e-date">
         <legend>Date</legend>
