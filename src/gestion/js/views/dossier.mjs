@@ -3,6 +3,8 @@ import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef } from "../calc.mjs";
 import { uid } from "../defauts.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
+import { sectionTachesDossier } from "./taches.mjs";
+import { sectionPieces } from "./pieces.mjs";
 import { pastille, vide, pdf, voyageTexte } from "./commun.mjs";
 
 const rafraichir = () => naviguer(location.hash);
@@ -300,6 +302,8 @@ function ficheDossierVue(id) {
         : h("p", { class: "vide-court" }, "Aucun document.")
     ),
     droit.finances ? h("section", null, h("h2", null, "Paiements reçus"), tableauPaiements, droit.paiements ? [h("h3", null, "Enregistrer un paiement"), formPaiement] : null) : null,
+    sectionTachesDossier(d.id),
+    sectionPieces(d),
     h("section", null, h("h2", null, "Notes internes"), champ("Visibles seulement ici, jamais sur les documents", notes)),
     !(droit.dossiers || droit.supprimer) ? null : h(
       "section",

@@ -1,8 +1,11 @@
+// Vérifie que la fonction SQL tableau_analytique donne les mêmes chiffres que src/gestion/js/analyses.mjs, que le résumé des
+// dossiers suit les documents et paiements, et que les droits sont respectés. À relancer après toute modification.
+//   (même mise en place que verif-securite.mjs ; GESTION_SRC=file://<repo>/src/gestion/js/)
 import { PGlite } from "@electric-sql/pglite";
 import fs from "node:fs";
 import assert from "node:assert/strict";
-const W = process.env.GESTION_SQL || "../wt-gestion/docs/gestion/";
-const SRC = process.env.GESTION_SRC || "../wt-gestion/src/gestion/js/";
+const W = process.env.GESTION_SQL || "./";
+const SRC = process.env.GESTION_SRC || "../src/gestion/js/";
 const { analyserLocal } = await import(new URL(SRC + "analyses.mjs", import.meta.url));
 
 const harnais = `
@@ -10,6 +13,10 @@ create role anon; create role authenticated;
 create schema auth;
 create table auth.users (id uuid primary key default gen_random_uuid(), email text, created_at timestamptz default now());
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+create schema storage;
+create table storage.buckets (id text primary key, name text, public boolean);
+create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner uuid);
+create function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name, '/') $$;
 grant usage on schema public, auth to authenticated, anon;
 alter default privileges in schema public grant all on tables to anon, authenticated;
 alter default privileges in schema public grant execute on functions to anon, authenticated;

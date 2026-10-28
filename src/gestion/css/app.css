@@ -319,3 +319,22 @@ kbd { display: inline-block; min-width: 1.6em; padding: 1px 7px; font: inherit; 
 @media (min-width: 1100px) { .deux-colonnes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-weight: 600; }
 @media (max-width: 719px) { .barre-cellule { display: none; } }
+
+/* Tâches et pièces jointes */
+.taches-liste { list-style: none; margin: 0 0 12px; padding: 0; background: var(--surface); border: 1px solid var(--bord); border-radius: 8px; }
+.tache { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--bord); }
+.tache:last-child { border-bottom: 0; }
+.tache input[type="checkbox"] { margin: 0; }
+.tache-texte { flex: 1; display: flex; flex-direction: column; }
+.tache-meta { font-size: 0.88rem; color: var(--texte-2); }
+.tache.faite .tache-texte strong { text-decoration: line-through; color: var(--texte-2); font-weight: 500; }
+.tache.retard .tache-meta { color: var(--danger); font-weight: 600; }
+.tache.jour .tache-meta { color: #8a5200; font-weight: 600; }
+.tache-form { margin-bottom: 20px; }
+.pieces-liste { list-style: none; margin: 0 0 12px; padding: 0; background: var(--surface); border: 1px solid var(--bord); border-radius: 8px; }
+.piece { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--bord); }
+.piece:last-child { border-bottom: 0; }
+.piece .sous-ligne { font-size: 0.85rem; }
+.barre-selection { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 14px; background: var(--teal-100); border: 1px solid var(--bord-fort); border-radius: var(--rayon); }
+.barre-selection select { width: auto; min-width: 200px; }
+.case-cellule { width: 44px; }

@@ -17,6 +17,7 @@ export const PERMISSIONS = [
   { code: "documents.supprimer", groupe: "Devis et factures", libelle: "Supprimer un devis ou une facture" },
   { code: "finances.voir", groupe: "Finances", libelle: "Voir les montants : devis, factures et paiements", aide: "Sans ce droit, la personne voit les clients et les dossiers mais aucun chiffre." },
   { code: "paiements.ecrire", groupe: "Finances", libelle: "Enregistrer et corriger les paiements" },
+  { code: "taches.ecrire", groupe: "Tâches", libelle: "Créer et modifier les tâches et rappels", aide: "Chacun peut toujours cocher comme faites les tâches qui lui sont confiées." },
   { code: "catalogue.ecrire", groupe: "Catalogue", libelle: "Modifier le catalogue de formules et de prix" },
   { code: "reglages.ecrire", groupe: "Administration", libelle: "Modifier les réglages de l'entreprise (coordonnées bancaires comprises)" },
   { code: "exports.faire", groupe: "Administration", libelle: "Exporter et sauvegarder les données" },
@@ -35,12 +36,13 @@ export const DEPENDANCES = {
   "documents.supprimer": ["dossiers.lire", "finances.voir"],
   "paiements.ecrire": ["dossiers.lire", "finances.voir"],
   "analytics.voir": ["finances.voir"],
+  "taches.ecrire": ["dossiers.lire"],
 };
 
 // Rôles créés avec chaque entreprise. Ils se modifient ensuite librement dans l'écran Administration.
 export const ROLES_SYSTEME = [
   { nom: "Administrateur", description: "Tous les droits dans l'entreprise.", portee: "toute", permissions: TOUTES_PERMISSIONS },
-  { nom: "Éditeur", description: "Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.", portee: "toute", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire", "catalogue.ecrire"] },
+  { nom: "Éditeur", description: "Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.", portee: "toute", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire", "taches.ecrire", "catalogue.ecrire"] },
   { nom: "Lecteur", description: "Consultation seulement, montants visibles.", portee: "toute", permissions: ["clients.lire", "dossiers.lire", "finances.voir", "analytics.voir"] },
 ];
 
@@ -303,5 +305,14 @@ export function donneesDemo(ajd, ajouterJours) {
   ajoute(e3, c7, j(-1), "Aéroport", "Trajet aéroport", { accepte_le: j(-1), responsable_id: assistante.user_id }, null, { contenu: contenu("Trajet aéroport", [ligne("Taxi Krabi aéroport, Koh Lanta", 1800)], "total") });
   catalogue.push({ id: uid(), created_at: j(-90), entite_id: e3.id, kind: "region", libelle: "Taxi Krabi aéroport, Koh Lanta", intro: "", puces: [], prix: 1800, ordre: 1, actif: true });
 
-  return { entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, journal: [] };
+  const tache = (e, titre, jours, assignee, dossier, extra = {}) => ({ id: uid(), created_at: j(-3), entite_id: e.id, dossier_id: dossier ? dossier.id : null, titre, description: "", echeance: jours === null ? null : j(jours), assignee_id: assignee ? assignee.user_id : null, fait: false, fait_le: null, fait_par: null, cree_par: admin.user_id, ...extra });
+  const taches = [
+    tache(e1, "Relancer Julien Rochat pour son devis", 0, admin, dossiers[1]),
+    tache(e1, "Envoyer le carnet de voyage de Marc Delaye", 6, admin, dossiers[3]),
+    tache(e1, "Mettre à jour les prix de la haute saison", null, null, null),
+    tache(e2, "Confirmer l'heure de prise en charge", 1, assistante, dossiers[5]),
+    tache(e2, "Envoyer la facture du transfert", -1, stagiaire, dossiers[6]),
+    tache(e3, "Vérifier le planning de la semaine", 2, assistante, null),
+  ];
+  return { entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, taches, pieces: [], fichiers: {}, journal: [] };
 }

@@ -35,6 +35,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 2. Des rôles fixes vers les rôles personnalisables, le responsable de dossier et le journal : `migration-3-droits.sql`. Les anciens rôles « admin » et « éditeur » deviennent les rôles Administrateur et Éditeur de chaque entreprise.
 3. Tableau analytique : `migration-4-analyses.sql` (ajoute seulement des fonctions, ne modifie aucune donnée).
 4. Passage à l'échelle : `migration-5-echelle.sql` (résumé de chaque dossier tenu à jour par la base, recalculé pour les dossiers existants). À exécuter avant de publier la version correspondante de l'outil.
+5. Tâches et pièces jointes : `migration-6-collaboration.sql` (deux tables, un espace de stockage privé `pieces`, le droit « Gérer les tâches » ajouté aux rôles Administrateur et Éditeur). Supabase Storage doit être disponible, ce qui est le cas par défaut.
 
 ## Ajouter une personne (l'assistante par exemple)
 
@@ -64,6 +65,12 @@ Touche `?` (hors d'un champ de saisie) ouvre la liste. En résumé :
 ## Devise et équivalents d'un document
 
 Chaque devis ou facture choisit sa devise (liste modifiable dans Réglages) et peut afficher l'équivalent dans une ou plusieurs autres devises, à titre indicatif, avec le taux saisi pour ce document. Les totaux du tableau de bord sont regroupés par devise.
+
+## Tâches, pièces jointes et attribution en lot
+
+- **Tâches** : menu *Tâches*, ou section *Tâches* d'un dossier. Une tâche a un titre, une échéance facultative et une personne en charge. Elle peut être liée à un dossier ou non. Chacun voit les tâches qui lui sont confiées (la case suffit pour les terminer, même sans le droit « Gérer les tâches »). Les tâches de l'équipe et la création sont réservées aux rôles qui ont ce droit. Les tâches du jour et en retard apparaissent sur le tableau de bord.
+- **Pièces jointes** : dans la fiche d'un dossier (10 Mo par fichier). Les fichiers sont privés, les liens de téléchargement expirent après 5 minutes. Ils suivent les droits du dossier : qui ne voit pas le dossier ne voit pas ses fichiers. Supprimer un dossier laisse ses fichiers dans le stockage (ils ne sont plus accessibles depuis l'outil) : on peut les retirer depuis le tableau de bord Supabase, rubrique Storage.
+- **Attribution en lot** : dans la liste des dossiers, cocher plusieurs lignes puis choisir le nouveau responsable. Chaque changement est inscrit au journal.
 
 ## Volumes et performances
 

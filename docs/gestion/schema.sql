@@ -152,6 +152,42 @@ create table catalogue (
   actif boolean not null default true
 );
 
+-- Tâches et rappels, liés ou non à un dossier, avec une échéance et une personne responsable.
+create table taches (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  dossier_id uuid,
+  titre text not null,
+  description text not null default '',
+  echeance date,
+  assignee_id uuid references profils (user_id) on delete set null,
+  fait boolean not null default false,
+  fait_le timestamptz,
+  fait_par uuid,
+  cree_par uuid default auth.uid(),
+  modifie_par uuid,
+  foreign key (dossier_id, entite_id) references dossiers (id, entite_id) on delete cascade
+);
+create index on taches (entite_id, fait, echeance);
+create index on taches (assignee_id);
+create index on taches (dossier_id);
+
+-- Pièces jointes d'un dossier : le fichier est dans le stockage privé « pieces », cette table garde son nom et son chemin.
+create table pieces_jointes (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  dossier_id uuid not null,
+  nom text not null,
+  type text,
+  taille bigint,
+  chemin text not null unique,
+  cree_par uuid default auth.uid(),
+  foreign key (dossier_id, entite_id) references dossiers (id, entite_id) on delete cascade
+);
+create index on pieces_jointes (dossier_id);
+
 create index on clients (entite_id);
 create index on dossiers (entite_id);
 create index on dossiers (responsable_id);
@@ -167,7 +203,7 @@ create index on journal (entite_id, created_at desc);
 
 -- Qui peut faire quoi, calculé à partir de la connexion en cours (auth.uid()) et de son rôle dans l'entreprise.
 create or replace function toutes_permissions() returns text[] language sql immutable as $$
-  select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]
+  select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]
 $$;
 
 create or replace function est_super_admin() returns boolean language sql stable security definer set search_path = public as $$
@@ -272,6 +308,8 @@ begin
     when 'paiements' then (ligne->>'montant') || ' ' || coalesce((select ref from dossiers where id = (ligne->>'dossier_id')::uuid), '')
     when 'catalogue' then ligne->>'libelle'
     when 'roles' then ligne->>'nom'
+    when 'taches' then ligne->>'titre'
+    when 'pieces_jointes' then ligne->>'nom'
     when 'membres' then coalesce((select email from profils where user_id = (ligne->>'user_id')::uuid), '')
     else ''
   end;
@@ -380,6 +418,8 @@ create trigger journaliser after insert or update or delete on catalogue for eac
 create trigger journaliser after insert or update or delete on reglages for each row execute function journaliser();
 create trigger journaliser after insert or update or delete on roles for each row execute function journaliser();
 create trigger journaliser after insert or update or delete on membres for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on taches for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on pieces_jointes for each row execute function journaliser();
 
 create trigger maj_resume after insert or update or delete on documents for each row execute function maj_resume();
 create trigger maj_resume after insert or update or delete on paiements for each row execute function maj_resume();
@@ -448,6 +488,27 @@ alter table dossiers_resume enable row level security;
 create policy "lire les résumés" on dossiers_resume for select to authenticated using (a_permission(entite_id, 'finances.voir') and exists (select 1 from dossiers d where d.id = dossiers_resume.dossier_id));
 revoke insert, update, delete on dossiers_resume from authenticated;
 
+-- Les rôles créés après la première migration ne doivent donner aucun droit à la clé publique.
+revoke all on all tables in schema public from anon;
+
+alter table taches enable row level security;
+alter table pieces_jointes enable row level security;
+
+create policy "lire les tâches" on taches for select to authenticated using (est_membre(entite_id) and (assignee_id = auth.uid() or ((voit_tout(entite_id) or assignee_id = auth.uid() or cree_par = auth.uid()) and (dossier_id is null or exists (select 1 from dossiers d where d.id = taches.dossier_id)))));
+create policy "créer des tâches" on taches for insert to authenticated with check (a_permission(entite_id, 'taches.ecrire') and (dossier_id is null or exists (select 1 from dossiers d where d.id = taches.dossier_id)));
+create policy "modifier des tâches" on taches for update to authenticated using ((a_permission(entite_id, 'taches.ecrire') and (voit_tout(entite_id) or assignee_id = auth.uid() or cree_par = auth.uid())) or assignee_id = auth.uid()) with check (a_permission(entite_id, 'taches.ecrire') or assignee_id = auth.uid());
+create policy "supprimer des tâches" on taches for delete to authenticated using (a_permission(entite_id, 'taches.ecrire') and (voit_tout(entite_id) or assignee_id = auth.uid() or cree_par = auth.uid()));
+
+create policy "lire les pièces jointes" on pieces_jointes for select to authenticated using (a_permission(entite_id, 'dossiers.lire') and exists (select 1 from dossiers d where d.id = pieces_jointes.dossier_id));
+create policy "ajouter des pièces jointes" on pieces_jointes for insert to authenticated with check (a_permission(entite_id, 'dossiers.ecrire') and exists (select 1 from dossiers d where d.id = pieces_jointes.dossier_id));
+create policy "supprimer des pièces jointes" on pieces_jointes for delete to authenticated using (a_permission(entite_id, 'dossiers.ecrire') and exists (select 1 from dossiers d where d.id = pieces_jointes.dossier_id));
+
+-- Stockage privé des fichiers. Le premier dossier du chemin est l'identifiant de l'entreprise.
+insert into storage.buckets (id, name, public) values ('pieces', 'pieces', false) on conflict (id) do nothing;
+create policy "lire les fichiers" on storage.objects for select to authenticated using (bucket_id = 'pieces' and exists (select 1 from pieces_jointes p where p.chemin = storage.objects.name));
+create policy "ajouter des fichiers" on storage.objects for insert to authenticated with check (bucket_id = 'pieces' and a_permission(((storage.foldername(name))[1])::uuid, 'dossiers.ecrire'));
+create policy "supprimer des fichiers" on storage.objects for delete to authenticated using (bucket_id = 'pieces' and exists (select 1 from pieces_jointes p where p.chemin = storage.objects.name and a_permission(p.entite_id, 'dossiers.ecrire')));
+
 -- Entreprises, rôles et réglages de départ, modifiables ensuite depuis le panneau d'administration.
 insert into entites (id, slug, nom, ordre) values
   ('00000000-0000-4000-8000-000000000001', 'ztp', 'Zwald Travel Planner', 1),
@@ -458,8 +519,8 @@ insert into roles (entite_id, nom, description, portee, permissions, systeme)
 select e.id, v.nom, v.description, v.portee, v.permissions, true
 from entites e
 cross join (values
-  ('Administrateur', 'Tous les droits dans l''entreprise.', 'toute', array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]),
-  ('Éditeur', 'Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.', 'toute', array['clients.lire', 'clients.ecrire', 'dossiers.lire', 'dossiers.ecrire', 'documents.ecrire', 'finances.voir', 'paiements.ecrire', 'catalogue.ecrire']::text[]),
+  ('Administrateur', 'Tous les droits dans l''entreprise.', 'toute', array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]),
+  ('Éditeur', 'Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.', 'toute', array['clients.lire', 'clients.ecrire', 'dossiers.lire', 'dossiers.ecrire', 'documents.ecrire', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire']::text[]),
   ('Lecteur', 'Consultation seulement, montants visibles.', 'toute', array['clients.lire', 'dossiers.lire', 'finances.voir', 'analytics.voir']::text[])
 ) as v (nom, description, portee, permissions);
 

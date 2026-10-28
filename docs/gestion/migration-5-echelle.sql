@@ -17,7 +17,7 @@ create index on dossiers_resume (entite_id);
 
 -- Qui peut faire quoi, calculé à partir de la connexion en cours (auth.uid()) et de son rôle dans l'entreprise.
 create or replace function toutes_permissions() returns text[] language sql immutable as $$
-  select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]
+  select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]
 $$;
 
 create or replace function est_super_admin() returns boolean language sql stable security definer set search_path = public as $$
@@ -122,6 +122,8 @@ begin
     when 'paiements' then (ligne->>'montant') || ' ' || coalesce((select ref from dossiers where id = (ligne->>'dossier_id')::uuid), '')
     when 'catalogue' then ligne->>'libelle'
     when 'roles' then ligne->>'nom'
+    when 'taches' then ligne->>'titre'
+    when 'pieces_jointes' then ligne->>'nom'
     when 'membres' then coalesce((select email from profils where user_id = (ligne->>'user_id')::uuid), '')
     else ''
   end;

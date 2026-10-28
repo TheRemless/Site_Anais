@@ -1,5 +1,5 @@
-import { etat, resumes, inserer, nomClient, naviguer, reglages, peut } from "../etat.mjs";
-import { h, champ, vider } from "../ui.mjs";
+import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe } from "../etat.mjs";
+import { h, champ, vider, toast } from "../ui.mjs";
 import { formatMontant, aujourdhui, nouvelleRef, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte } from "./commun.mjs";
@@ -14,10 +14,35 @@ const ONGLETS = [
 
 const filtre = { onglet: "cours", q: "" };
 const PAGE = 50;
+// Dossiers cochés pour une action groupée (changer de responsable).
+const selection = new Set();
 const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 export function listeDossiers() {
+  selection.clear();
   const corps = h("div");
+  const groupee = peut("dossiers.ecrire");
+  const barre = h("div", { class: "barre-selection", hidden: true });
+  const majBarre = () => {
+    barre.hidden = selection.size === 0;
+    if (barre.hidden) return;
+    const sel = h("select", { id: "attrib-resp", "aria-label": "Nouveau responsable" }, h("option", { value: "" }, "Choisir un responsable…"));
+    equipe().then((gens) => gens.forEach((p) => sel.append(h("option", { value: p.user_id }, p.nom || p.email))));
+    barre.replaceChildren(
+      h("strong", null, `${selection.size} dossier${selection.size > 1 ? "s" : ""} sélectionné${selection.size > 1 ? "s" : ""}`),
+      sel,
+      h("button", { class: "principal petit", type: "button", onclick: async () => {
+        if (!sel.value) return toast("Choisissez d'abord un responsable.", true);
+        let n = 0;
+        for (const id of [...selection]) { try { await modifier("dossiers", id, { responsable_id: sel.value }); n++; } catch (err) { toast(`Un dossier n'a pas pu être modifié : ${err.message}`, true); } }
+        selection.clear();
+        toast(`Responsable changé pour ${n} dossier${n > 1 ? "s" : ""}.`);
+        majBarre();
+        dessiner();
+      } }, "Attribuer"),
+      h("button", { class: "lien", type: "button", onclick: () => (selection.clear(), majBarre(), dessiner()) }, "Tout désélectionner")
+    );
+  };
   const recherche = h("input", {
     id: "recherche",
     type: "search",
@@ -51,7 +76,7 @@ export function listeDossiers() {
       h(
         "table",
         { class: "tableau" },
-        h("thead", null, h("tr", null, ["Client", "Référence", "Intitulé", "Statut", "Total", "Reste"].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : null }, t)))),
+        h("thead", null, h("tr", null, groupee ? h("th", { class: "case-cellule", scope: "col" }, h("input", { type: "checkbox", "aria-label": "Sélectionner les dossiers affichés", checked: lignes.slice(0, limite).every((r) => selection.has(r.dossier.id)), onchange: (e) => { lignes.slice(0, limite).forEach((r) => (e.target.checked ? selection.add(r.dossier.id) : selection.delete(r.dossier.id))); majBarre(); dessiner(); } })) : null, ["Client", "Référence", "Intitulé", "Statut", "Total", "Reste"].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : null }, t)))),
         h(
           "tbody",
           null,
@@ -59,6 +84,7 @@ export function listeDossiers() {
             h(
               "tr",
               null,
+              groupee ? h("td", { class: "case-cellule" }, h("input", { type: "checkbox", "aria-label": `Sélectionner ${nomClient(r.client)}`, checked: selection.has(r.dossier.id), onchange: (e) => { if (e.target.checked) selection.add(r.dossier.id); else selection.delete(r.dossier.id); majBarre(); } })) : null,
               h("td", { "data-label": "Client" }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client))),
               h("td", { "data-label": "Référence", class: "ref" }, r.dossier.ref),
               h("td", { "data-label": "Intitulé" }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
@@ -95,11 +121,13 @@ export function listeDossiers() {
     )
   );
   dessiner();
+  majBarre();
   return h(
     "div",
     { "data-titre": "Dossiers" },
     h("div", { class: "entete" }, h("h1", null, "Dossiers"), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier") : null),
     h("div", { class: "barre-outils" }, onglets, h("div", { class: "champ recherche" }, h("label", { for: "recherche" }, "Rechercher"), recherche)),
+    barre,
     corps
   );
 }

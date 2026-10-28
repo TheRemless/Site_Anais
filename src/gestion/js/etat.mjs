@@ -5,7 +5,7 @@ import { resume, setDevise, setMasquerMontants } from "./calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
 
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue"];
+const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches"];
 const CLE_ENTITE = "gestion-zwald-entite";
 
 export const etat = { store: null, brut: null, db: null, session: null, moi: null, entiteId: null };
@@ -116,6 +116,13 @@ async function actualiserResume(dossierId) {
 }
 
 export const paiementsPeriode = (du, au) => (peut("finances.voir") ? etat.store.paiementsPeriode({ entiteId: etat.entiteId, du, au }) : Promise.resolve([]));
+export const piecesDossier = (id) => etat.store.piecesDossier(id);
+export const lienPiece = (p) => etat.store.lienPiece(p);
+export async function ajouterPiece(dossierId, fichier) {
+  return etat.store.ajouterPiece({ entiteId: etat.entiteId, dossierId, fichier });
+}
+export const supprimerPiece = (p) => etat.store.supprimerPiece(p);
+
 export const tousPaiements = () => etat.store.tousPaiements(etat.entiteId);
 export const tousDocuments = () => etat.store.tousDocuments(etat.entiteId);
 
