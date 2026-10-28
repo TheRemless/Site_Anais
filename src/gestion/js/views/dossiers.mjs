@@ -59,8 +59,8 @@ export function listeDossiers() {
               h("td", { "data-label": "Référence", class: "ref" }, r.dossier.ref),
               h("td", { "data-label": "Intitulé" }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
               h("td", { "data-label": "Statut" }, pastille(r.statut)),
-              h("td", { "data-label": "Total", class: "num" }, r.total ? formatMontant(r.total) : "-"),
-              h("td", { "data-label": "Reste", class: "num" }, r.total ? formatMontant(r.reste) : "-")
+              h("td", { "data-label": "Total", class: "num" }, r.total ? formatMontant(r.total, r.devise) : "-"),
+              h("td", { "data-label": "Reste", class: "num" }, r.total ? formatMontant(r.reste, r.devise) : "-")
             )
           )
         )

@@ -117,7 +117,7 @@ export function ficheClient(id) {
             h(
               "tbody",
               null,
-              dossiers.map((r) => h("tr", null, h("td", { "data-label": "Référence" }, h("a", { href: `#/dossier/${r.dossier.id}` }, r.dossier.ref)), h("td", { "data-label": "Statut" }, pastille(r.statut)), h("td", { class: "num", "data-label": "Total" }, formatMontant(r.total)), h("td", { class: "num", "data-label": "Reste" }, formatMontant(r.reste))))
+              dossiers.map((r) => h("tr", null, h("td", { "data-label": "Référence" }, h("a", { href: `#/dossier/${r.dossier.id}` }, r.dossier.ref)), h("td", { "data-label": "Statut" }, pastille(r.statut)), h("td", { class: "num", "data-label": "Total" }, formatMontant(r.total, r.devise)), h("td", { class: "num", "data-label": "Reste" }, formatMontant(r.reste, r.devise))))
             )
           )
         : h("p", { class: "vide-court" }, "Aucun dossier pour ce client.")

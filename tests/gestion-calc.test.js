@@ -168,3 +168,19 @@ test("aFaire : sans acompte demandé, pas d'alerte d'acompte en retard", async (
   const r = { dossier: { id: "a", accepte_le: "2026-10-01" }, documents: [devis([{ kind: "bloc", montant: 100 }])], paiements: [], reste: 100, statut: "accepte", total: 100 };
   assert.deepEqual(aFaire([r], "2026-10-28", regl0), []);
 });
+
+test("formatMontant : devise propre au document et sommes en plusieurs devises", async () => {
+  const { formatMontant, formatSommes, setDevise } = await load();
+  setDevise("CHF");
+  assert.equal(formatMontant(1200, "THB"), "THB 1'200");
+  assert.equal(formatSommes([{ montant: 550, devise: "CHF" }, { montant: 1200, devise: "THB" }, { montant: 50, devise: "CHF" }], "CHF"), "CHF 600 · THB 1'200");
+  assert.equal(formatSommes([], "THB"), "THB 0");
+});
+
+test("equivalents : plusieurs devises, ancien format converti", async () => {
+  const { equivalents, lignesEquivalents } = await load();
+  assert.deepEqual(equivalents(360, [{ code: "EUR", taux: 1.058 }, { code: "THB", taux: 40.54 }, { code: "USD", taux: "" }]), [{ code: "EUR", montant: 381 }, { code: "THB", montant: 14594 }]);
+  const anciennes = lignesEquivalents({ actif: true, eur: 1.1 }, { eur: 1, thb: 40 });
+  assert.deepEqual(anciennes, [{ code: "EUR", taux: 1.1 }, { code: "THB", taux: 40 }]);
+  assert.deepEqual(lignesEquivalents({ actif: true, lignes: [{ code: "USD", taux: 1.2 }] }), [{ code: "USD", taux: 1.2 }]);
+});

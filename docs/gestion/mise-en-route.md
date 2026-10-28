@@ -44,6 +44,17 @@ L'écran **Réglages** (administrateurs) couvre tout ce qui apparaît sur les do
 
 Une entreprise nouvellement créée démarre avec des réglages vides. Le tableau de bord indique ce qu'il manque tant que ce n'est pas rempli.
 
+## Raccourcis clavier
+
+Touche `?` (hors d'un champ de saisie) ouvre la liste. En résumé :
+- Partout : `n` nouveau dossier, `/` recherche, `g` puis `t`, `d`, `c`, `k` ou `r` pour aller au tableau de bord, aux dossiers, aux clients, au catalogue ou aux réglages.
+- Dans un devis ou une facture : `Ctrl+Z` annuler, `Ctrl+Maj+Z` ou `Ctrl+Y` rétablir, `Ctrl+S` enregistrer, `Ctrl+P` télécharger le PDF (`Cmd` à la place de `Ctrl` sur Mac). L'historique garde les 100 dernières modifications du document ouvert.
+- Un site ne peut pas prendre le contrôle des raccourcis réservés au navigateur (`Ctrl+T`, `Ctrl+W`, `Ctrl+N`, `Ctrl+Tab`).
+
+## Devise et équivalents d'un document
+
+Chaque devis ou facture choisit sa devise (liste modifiable dans Réglages) et peut afficher l'équivalent dans une ou plusieurs autres devises, à titre indicatif, avec le taux saisi pour ce document. Les totaux du tableau de bord sont regroupés par devise.
+
 ## À savoir
 
 - Un projet Supabase gratuit peut être mis en pause après une semaine sans activité. Il se réactive depuis le tableau de bord Supabase.

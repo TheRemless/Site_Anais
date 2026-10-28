@@ -1,7 +1,7 @@
 import { etat, resumes, nomClient, reglages, estAdmin, entiteActive } from "../etat.mjs";
 import { reglagesIncomplets } from "../defauts.mjs";
 import { h } from "../ui.mjs";
-import { aFaire, aujourdhui, formatMontant, formatDate, acompteDu, joursEntre, nomMois } from "../calc.mjs";
+import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois } from "../calc.mjs";
 import { pastille } from "./commun.mjs";
 
 const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
@@ -10,9 +10,9 @@ function phrase(item) {
   const r = item.resume;
   if (item.type === "acompte_retard") {
     const manque = acompteDu(r.total, reglages().conditions.acompte_pct) - r.recu;
-    return `Acompte attendu depuis ${pluriel(item.jours, "jour", "jours")} (${formatMontant(manque)})`;
+    return `Acompte attendu depuis ${pluriel(item.jours, "jour", "jours")} (${formatMontant(manque, r.devise)})`;
   }
-  if (item.type === "solde_proche") return `Départ dans ${pluriel(item.jours, "jour", "jours")}, reste ${formatMontant(r.reste)} à encaisser`;
+  if (item.type === "solde_proche") return `Départ dans ${pluriel(item.jours, "jour", "jours")}, reste ${formatMontant(r.reste, r.devise)} à encaisser`;
   return `Devis envoyé il y a ${pluriel(item.jours, "jour", "jours")}, sans réponse`;
 }
 
@@ -22,6 +22,7 @@ export function tableauDeBord() {
   const rs = resumes();
   const encaisser = rs.filter((r) => r.statut === "accepte" || r.statut === "acompte");
   const attente = rs.filter((r) => r.statut === "devis_envoye");
+  const deviseDe = Object.fromEntries(rs.map((r) => [r.dossier.id, r.devise]));
   const ceMois = etat.db.paiements.filter((p) => p.date.slice(0, 7) === ajd.slice(0, 7));
   const taches = aFaire(rs, ajd, reglages());
   const departs = rs
@@ -40,9 +41,9 @@ export function tableauDeBord() {
     h(
       "div",
       { class: "chiffres" },
-      chiffre(formatMontant(encaisser.reduce((s, r) => s + r.reste, 0)), "Reste à encaisser", pluriel(encaisser.length, "dossier accepté", "dossiers acceptés")),
-      chiffre(formatMontant(ceMois.reduce((s, p) => s + Number(p.montant), 0)), `Encaissé en ${nomMois(ajd)}`, pluriel(ceMois.length, "paiement", "paiements")),
-      chiffre(formatMontant(attente.reduce((s, r) => s + r.total, 0)), "Devis en attente de réponse", pluriel(attente.length, "devis envoyé", "devis envoyés"))
+      chiffre(formatSommes(encaisser.map((r) => ({ montant: r.reste, devise: r.devise })), reglages().devise), "Reste à encaisser", pluriel(encaisser.length, "dossier accepté", "dossiers acceptés")),
+      chiffre(formatSommes(ceMois.map((p) => ({ montant: p.montant, devise: deviseDe[p.dossier_id] })), reglages().devise), `Encaissé en ${nomMois(ajd)}`, pluriel(ceMois.length, "paiement", "paiements")),
+      chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), "Devis en attente de réponse", pluriel(attente.length, "devis envoyé", "devis envoyés"))
     ),
     h("section", null, h("h2", null, "À faire"), taches.length
       ? h(
@@ -79,7 +80,7 @@ export function tableauDeBord() {
                   h("td", { "data-label": "Client" }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client))),
                   h("td", { "data-label": "Voyage" }, r.dossier.pays),
                   h("td", { "data-label": "Statut" }, pastille(r.statut)),
-                  h("td", { class: "num", "data-label": "Reste à payer" }, formatMontant(r.reste))
+                  h("td", { class: "num", "data-label": "Reste à payer" }, formatMontant(r.reste, r.devise))
                 )
               )
             )

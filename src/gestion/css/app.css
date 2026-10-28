@@ -258,3 +258,20 @@ input.couleur { width: 72px; padding: 2px; }
   .menu .entite-choix, .menu .entite-nom { display: block; }
   .entite-mobile { display: none; }
 }
+
+/* Éditeur et réglages : le formulaire et l'aperçu défilent chacun de leur côté sur grand écran. */
+@media (min-width: 1180px) {
+  #principal.plein { height: calc(100dvh - var(--decalage, 80px)); }
+  #principal.plein > div { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .plein .editeur, .plein .reglages-grille { flex: 1; min-height: 0; align-items: stretch; grid-template-rows: minmax(0, 1fr); }
+  .plein .editeur-form, .plein .apercu, .plein .reglages-colonne { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 8px; }
+  .plein .apercu { position: static; }
+}
+.eq-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.eq-ligne input { width: 120px; }
+.eq-ligne select { width: auto; min-width: 96px; }
+.eq-egal { font-weight: 600; }
+.eq-bloc { margin: 4px 0 12px 30px; }
+.raccourcis td { padding: 8px 10px; }
+.raccourcis td:first-child { width: 46%; white-space: nowrap; }
+kbd { display: inline-block; min-width: 1.6em; padding: 1px 7px; font: inherit; font-size: 0.85rem; font-weight: 600; text-align: center; background: #fff; border: 1px solid var(--bord-fort); border-radius: 4px; }
