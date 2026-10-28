@@ -60,11 +60,12 @@ test("remiseJours : un jour par tranche de 14", async () => {
   assert.equal(remiseJours(28), 2);
 });
 
-test("formatChf et formatDate", async () => {
-  const { formatChf, formatDate } = await load();
-  assert.equal(formatChf(540), "CHF 540");
-  assert.equal(formatChf(1234.5), "CHF 1'234.50");
-  assert.equal(formatChf(-43), "- CHF 43");
+test("formatMontant et formatDate", async () => {
+  const { formatMontant, formatDate, setDevise } = await load();
+  setDevise("CHF");
+  assert.equal(formatMontant(540), "CHF 540");
+  assert.equal(formatMontant(1234.5), "CHF 1'234.50");
+  assert.equal(formatMontant(-43), "- CHF 43");
   assert.equal(formatDate("2026-10-09"), "09/10/2026");
 });
 
@@ -105,6 +106,7 @@ test("aFaire : acompte en retard, devis à relancer, solde proche", async () => 
     documents,
     paiements,
     reste: 0,
+    total: 400,
     statut: null,
   });
   const lignes = [{ kind: "bloc", unite: 40, qte: 10 }]; // 400
@@ -134,4 +136,35 @@ test("periodeTexte : même mois, deux mois, deux années", async () => {
   assert.equal(periodeTexte("2026-12-28", "2027-01-10"), "DU 28 DÉCEMBRE 2026 AU 10 JANVIER 2027");
   assert.equal(periodeTexte("2026-11-05", ""), "NOVEMBRE 2026");
   assert.equal(periodeTexte("", ""), "");
+});
+
+test("formatMontant suit la devise de l'entreprise active", async () => {
+  const { formatMontant, setDevise } = await load();
+  setDevise("THB");
+  assert.equal(formatMontant(1500), "THB 1'500");
+  setDevise("CHF");
+  assert.equal(formatMontant(1500), "CHF 1'500");
+});
+
+test("nouvelleRef : séquence annuelle par entreprise", async () => {
+  const { nouvelleRef } = await load();
+  const numerotation = { mode: "sequence", prefixe: "ST" };
+  const args = { numerotation, dateIso: "2026-11-02", prenom: "", nom: "", pays: "" };
+  assert.equal(nouvelleRef({ ...args, refsExistantes: [] }), "ST-2026-0001");
+  assert.equal(nouvelleRef({ ...args, refsExistantes: ["ST-2026-0001", "ST-2026-0009", "ST-2025-0040", "X"] }), "ST-2026-0010");
+  assert.equal(nouvelleRef({ ...args, numerotation: { mode: "sequence", prefixe: "" }, refsExistantes: ["2026-0003"] }), "2026-0004");
+});
+
+test("nouvelleRef : initiales, avec lettre si la référence existe déjà", async () => {
+  const { nouvelleRef } = await load();
+  const args = { numerotation: { mode: "initiales" }, dateIso: "2026-10-09", prenom: "Louis", nom: "Dupont", pays: "Thaïlande" };
+  assert.equal(nouvelleRef({ ...args, refsExistantes: [] }), "LD20261009 Thaïlande");
+  assert.equal(nouvelleRef({ ...args, refsExistantes: ["LD20261009 Thaïlande"] }), "LD20261009b Thaïlande");
+});
+
+test("aFaire : sans acompte demandé, pas d'alerte d'acompte en retard", async () => {
+  const { aFaire } = await load();
+  const regl0 = { conditions: { acompte_pct: 0, delai_jours: 10, relance_jours: 7 } };
+  const r = { dossier: { id: "a", accepte_le: "2026-10-01" }, documents: [devis([{ kind: "bloc", montant: 100 }])], paiements: [], reste: 100, statut: "accepte", total: 100 };
+  assert.deepEqual(aFaire([r], "2026-10-28", regl0), []);
 });

@@ -26,6 +26,8 @@
 .sheet-logo { position: absolute; right: 9.5mm; top: 15mm; width: 25.5mm; height: 25.5mm; }
 .sheet-titre { position: absolute; left: 50%; transform: translateX(-50%); top: 24.5mm; height: 7.1mm; }
 .sheet-type { position: absolute; left: 50%; transform: translateX(-50%); top: 37.8mm; height: 5.3mm; }
+.sheet-titre-texte { position: absolute; left: 12mm; right: 12mm; top: 24mm; margin: 0; text-align: center; color: var(--teal); font-size: 25pt; font-weight: 700; letter-spacing: 0.04em; line-height: 1.1; }
+.sheet-type-texte { position: absolute; left: 0; right: 0; top: 38mm; margin: 0; text-align: center; font-size: 14pt; font-weight: 500; letter-spacing: 0.6em; text-transform: uppercase; padding-left: 0.6em; }
 .sheet-emetteur { position: absolute; left: 15mm; top: 52.5mm; }
 .sheet-emetteur strong { display: block; color: var(--teal); font-size: 9.5pt; letter-spacing: 0.143em; margin-bottom: 0.4mm; }
 .sheet-emetteur p { letter-spacing: 0.163em; line-height: 4.8mm; }
@@ -73,6 +75,7 @@
 .sheet .conditions .texte .espace { height: 2.4mm; }
 .sheet .conditions .cloture { margin-top: 3.4mm; }
 .sheet .cgv { margin-top: 2mm; font-style: italic; font-size: 7.2pt; line-height: 3.3mm; letter-spacing: 0.04em; }
+.sheet .cgv p { line-height: 3.3mm; }
 .sheet .cgv a { color: inherit; text-decoration: underline; }
 .sheet .signature { margin-top: 6mm; text-align: right; padding-right: 4mm; font-size: 8pt; line-height: 3.7mm; letter-spacing: 0.211em; }
 

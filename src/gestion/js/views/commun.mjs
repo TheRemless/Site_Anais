@@ -1,4 +1,4 @@
-import { h } from "../ui.mjs";
+import { h, vider } from "../ui.mjs";
 import { STATUTS, sommePaiements, nomFichier } from "../calc.mjs";
 import { etat, imprimer } from "../etat.mjs";
 import { renderDocument } from "../document.mjs";
@@ -44,4 +44,26 @@ export function voyageTexte(bandeau, pays) {
   if (!bandeau) return pays || "";
   const t = bandeau.replace(/^VOYAGE (EN|AU)\s+/i, "").toLowerCase();
   return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// Aperçu A4 réduit à la largeur disponible. `fabrique` renvoie une feuille neuve à chaque appel.
+export function apercuA4(fabrique) {
+  const echelle = h("div", { class: "apercu-echelle" });
+  const cadre = h("div", { class: "apercu-cadre" }, echelle);
+  const zone = h("div", { class: "apercu" }, cadre);
+  const ajuster = () => {
+    const largeur = zone.clientWidth;
+    if (!largeur || !echelle.firstChild) return;
+    const s = Math.min(1, (largeur - 2) / 794);
+    echelle.style.transform = `scale(${s})`;
+    cadre.style.height = `${echelle.firstChild.offsetHeight * s}px`;
+    cadre.style.width = `${794 * s}px`;
+  };
+  const redessiner = () => {
+    vider(echelle).append(fabrique());
+    ajuster();
+  };
+  new ResizeObserver(() => requestAnimationFrame(ajuster)).observe(zone);
+  redessiner();
+  return { zone, redessiner };
 }

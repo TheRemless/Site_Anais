@@ -1,6 +1,6 @@
 import { etat, resumes, inserer, nomClient, naviguer, reglages } from "../etat.mjs";
 import { h, champ, vider } from "../ui.mjs";
-import { formatChf, aujourdhui, genererRef, periodeTexte, STATUTS } from "../calc.mjs";
+import { formatMontant, aujourdhui, nouvelleRef, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte } from "./commun.mjs";
 
@@ -47,7 +47,7 @@ export function listeDossiers() {
       h(
         "table",
         { class: "tableau" },
-        h("thead", null, h("tr", null, ["Client", "Référence", "Voyage", "Statut", "Total", "Reste"].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : null }, t)))),
+        h("thead", null, h("tr", null, ["Client", "Référence", "Intitulé", "Statut", "Total", "Reste"].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : null }, t)))),
         h(
           "tbody",
           null,
@@ -57,10 +57,10 @@ export function listeDossiers() {
               null,
               h("td", { "data-label": "Client" }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client))),
               h("td", { "data-label": "Référence", class: "ref" }, r.dossier.ref),
-              h("td", { "data-label": "Voyage" }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
+              h("td", { "data-label": "Intitulé" }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
               h("td", { "data-label": "Statut" }, pastille(r.statut)),
-              h("td", { "data-label": "Total", class: "num" }, r.total ? formatChf(r.total) : "-"),
-              h("td", { "data-label": "Reste", class: "num" }, r.total ? formatChf(r.reste) : "-")
+              h("td", { "data-label": "Total", class: "num" }, r.total ? formatMontant(r.total) : "-"),
+              h("td", { "data-label": "Reste", class: "num" }, r.total ? formatMontant(r.reste) : "-")
             )
           )
         )
@@ -97,26 +97,28 @@ export function listeDossiers() {
   );
 }
 
-const PAYS = ["Thaïlande", "Indonésie", "Vietnam", "Autre"];
-
 export function nouveauDossier() {
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
+  const regl = reglages();
+  const listePays = [...regl.listes.pays, "Autre"];
+  const libellePays = regl.dossier.libelle_pays || "Pays";
   const selClient = h(
     "select",
     { id: "client", onchange: majClient },
     h("option", { value: "" }, "Nouveau client"),
     [...etat.db.clients].sort((a, b) => nomClient(a).localeCompare(nomClient(b))).map((c) => h("option", { value: c.id }, nomClient(c)))
   );
-  const nvCivilite = h("select", { id: "civ" }, ["Madame", "Monsieur", "Mademoiselle"].map((c) => h("option", { value: c }, c)));
+  const nvCivilite = h("select", { id: "civ" }, regl.listes.civilites.map((c) => h("option", { value: c }, c)));
   const nvPrenom = h("input", { id: "prenom", autocomplete: "off", oninput: majRef });
   const nvNom = h("input", { id: "nom", autocomplete: "off", oninput: majRef });
   const nvAdresse = h("textarea", { id: "adr", rows: 3, placeholder: "Rue et numéro\nCode postal, ville, pays" });
   const nvTel = h("input", { id: "tel", type: "tel", autocomplete: "off" });
   const blocNouveau = h("div", { class: "grille-form" }, champ("Civilité", nvCivilite), champ("Prénom", nvPrenom), champ("Nom", nvNom), champ("Téléphone", nvTel), champ("Adresse", nvAdresse));
 
-  const pays = h("select", { id: "pays", onchange: majBandeau }, PAYS.map((p) => h("option", { value: p }, p)));
-  const paysLibre = h("input", { id: "pays-libre", placeholder: "Pays", oninput: majBandeau });
-  const champPaysLibre = champ("Autre pays", paysLibre);
+  const pays = h("select", { id: "pays", onchange: majBandeau }, listePays.map((p) => h("option", { value: p }, p)));
+  const paysLibre = h("input", { id: "pays-libre", oninput: majBandeau });
+  const champPaysLibre = champ(`${libellePays} (autre)`, paysLibre);
+  const typeDoc = h("select", { id: "type-doc" }, h("option", { value: "devis" }, "Un devis"), h("option", { value: "facture" }, "Directement une facture"));
   const depart = h("input", { id: "depart", type: "date", onchange: majBandeau });
   const retour = h("input", { id: "retour", type: "date", onchange: majBandeau });
   const bandeau = h("input", { id: "bandeau" });
@@ -135,27 +137,21 @@ export function nouveauDossier() {
   function majBandeau() {
     champPaysLibre.hidden = pays.value !== "Autre";
     if (!bandeauManuel) {
-      const p = paysChoisi();
       const periode = periodeTexte(depart.value, retour.value);
-      bandeau.value = p ? `VOYAGE EN ${p.toUpperCase()}${periode ? ` - ${periode}` : ""}` : "";
+      // Un modèle sans pays ou sans période ne garde pas de séparateur orphelin.
+      bandeau.value = regl.dossier.modele_bandeau.replace("{PAYS}", paysChoisi().toUpperCase()).replace("{PERIODE}", periode).replace(/^[\s-]+|[\s-]+$/g, "");
     }
     majRef();
-  }
-  function refLibre(base) {
-    const existe = (r) => etat.db.dossiers.some((d) => d.ref === r);
-    if (!existe(base)) return base;
-    const [code, ...reste] = base.split(" ");
-    for (const l of "bcdefghij") if (!existe(`${code}${l} ${reste.join(" ")}`)) return `${code}${l} ${reste.join(" ")}`;
-    return base;
   }
   function majRef() {
     if (refManuelle) return;
     const c = selClient.value ? etat.db.clients.find((x) => x.id === selClient.value) : { prenom: nvPrenom.value, nom: nvNom.value };
-    ref.value = c && (c.prenom || c.nom) && paysChoisi() ? refLibre(genererRef(c.prenom, c.nom, aujourdhui(), paysChoisi())) : "";
+    const pret = c && (c.prenom || c.nom) && (regl.numerotation.mode === "sequence" || paysChoisi());
+    ref.value = pret ? nouvelleRef({ numerotation: regl.numerotation, prenom: c.prenom, nom: c.nom, dateIso: aujourdhui(), pays: paysChoisi(), refsExistantes: etat.db.dossiers.map((d) => d.ref) }) : "";
   }
 
   const erreur = h("p", { class: "erreur-form", role: "alert" });
-  const bouton = h("button", { class: "principal", type: "submit" }, "Créer le dossier et le devis");
+  const bouton = h("button", { class: "principal", type: "submit" }, "Créer le dossier");
 
   async function creer(e) {
     e.preventDefault();
@@ -165,8 +161,8 @@ export function nouveauDossier() {
       nvNom.focus();
       return;
     }
-    if (!paysChoisi() || !ref.value.trim()) {
-      erreur.textContent = "Indiquez le pays du voyage et la référence.";
+    if (!ref.value.trim()) {
+      erreur.textContent = `Indiquez la référence${regl.numerotation.mode === "sequence" ? "" : ` et le champ « ${libellePays} »`}.`;
       return;
     }
     if (etat.db.dossiers.some((d) => d.ref === ref.value.trim())) {
@@ -189,23 +185,23 @@ export function nouveauDossier() {
         bandeau: bandeau.value.trim(),
         date_depart: depart.value || null,
         date_retour: retour.value || null,
-        accepte_le: null,
+        accepte_le: typeDoc.value === "facture" ? aujourdhui() : null,
         annule: false,
         notes: "",
       });
       const doc = await inserer("documents", {
         dossier_id: d.id,
-        type: "devis",
+        type: typeDoc.value,
         date_emission: aujourdhui(),
         envoye_le: null,
         updated_at: new Date().toISOString(),
-        contenu: { ...CONTENU_DEFAUT(), bandeau: bandeau.value.trim(), equivalents: { actif: false, eur: reglages().taux.eur, thb: reglages().taux.thb } },
+        contenu: { ...CONTENU_DEFAUT(), bandeau: bandeau.value.trim(), variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false, eur: regl.taux.eur, thb: regl.taux.thb } },
       });
       naviguer(`#/doc/${doc.id}`);
     } catch (err) {
       erreur.textContent = err.message;
       bouton.disabled = false;
-      bouton.textContent = "Créer le dossier et le devis";
+      bouton.textContent = "Créer le dossier";
     }
   }
 
@@ -225,10 +221,11 @@ export function nouveauDossier() {
       h(
         "fieldset",
         null,
-        h("legend", null, "Voyage"),
-        h("div", { class: "grille-form" }, champ("Pays", pays), champPaysLibre, champ("Départ", depart), champ("Retour", retour)),
-        champ("Titre affiché sur le devis", bandeau, "Se remplit avec le pays et les dates. Modifiable à la main."),
-        champ("Référence", ref, "Initiales, date du jour et pays, comme sur les devis actuels.")
+        h("legend", null, "Dossier"),
+        h("div", { class: "grille-form" }, champ(libellePays, pays), champPaysLibre, champ("Début", depart), champ("Fin", retour)),
+        champ("Titre affiché sur le document", bandeau, "Se remplit avec le modèle de l'entreprise, le pays et les dates. Modifiable à la main."),
+        champ("Référence", ref, regl.numerotation.mode === "sequence" ? "Numéro suivant de l'année pour cette entreprise." : "Initiales, date du jour et pays."),
+        champ("Premier document", typeDoc)
       ),
       erreur,
       h("div", { class: "actions" }, h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Annuler"), bouton)

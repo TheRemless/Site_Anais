@@ -1,4 +1,4 @@
-import { init, etat, recharger } from "./etat.mjs";
+import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif } from "./etat.mjs";
 import { h, vider, toast } from "./ui.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { listeDossiers, nouveauDossier } from "./views/dossiers.mjs";
@@ -7,14 +7,7 @@ import { editeur } from "./views/editeur.mjs";
 import { listeClients, ficheClient } from "./views/clients.mjs";
 import { catalogue } from "./views/catalogue.mjs";
 import { vueReglages } from "./views/reglages.mjs";
-
-const NAV = [
-  ["#/", "Tableau de bord", "tableau"],
-  ["#/dossiers", "Dossiers", "dossiers"],
-  ["#/clients", "Clients", "clients"],
-  ["#/catalogue", "Catalogue", "catalogue"],
-  ["#/reglages", "Réglages", "reglages"],
-];
+import { vueAdmin } from "./views/admin.mjs";
 
 const ROUTES = [
   [/^#?\/?$/, "tableau", tableauDeBord],
@@ -26,6 +19,7 @@ const ROUTES = [
   [/^#\/client\/([\w-]+)$/, "clients", ficheClient],
   [/^#\/catalogue$/, "catalogue", catalogue],
   [/^#\/reglages$/, "reglages", vueReglages],
+  [/^#\/admin$/, "admin", vueAdmin],
 ];
 
 const racine = document.getElementById("app");
@@ -49,7 +43,7 @@ function vueConnexion() {
           await etat.store.connecter(email.value.trim(), mdp.value);
           etat.session = await etat.store.session();
           await recharger();
-          demarrer();
+          afficher();
         } catch (err) {
           erreur.textContent = err.message;
           bouton.disabled = false;
@@ -62,82 +56,143 @@ function vueConnexion() {
     erreur,
     bouton
   );
-  return h("div", { class: "connexion" }, h("img", { src: "assets/logo.png", alt: "", class: "connexion-logo" }), h("h1", null, "Gestion Zwald"), h("p", { class: "sous" }, "Devis, factures et suivi des paiements."), form);
+  return h("div", { class: "connexion" }, h("h1", null, "Gestion"), h("p", { class: "sous" }, "Devis, factures et suivi des paiements."), form);
 }
 
-function coque() {
-  const demo =
-    etat.store.mode === "demo"
-      ? h(
-          "div",
-          { class: "bandeau-demo" },
-          "Mode démonstration : les clients sont fictifs et les données restent dans ce navigateur.",
-          h(
+function selecteurEntite() {
+  const liste = entitesAccessibles();
+  if (liste.length < 2) return liste.length ? h("p", { class: "entite-nom" }, liste[0].nom) : null;
+  const sel = h("select", { id: "entite", "aria-label": "Entreprise", onchange: (e) => changerEntite(e.target.value) }, liste.map((e) => h("option", { value: e.id }, e.nom)));
+  sel.value = etat.entiteId;
+  return h("div", { class: "entite-choix" }, sel);
+}
+
+function bandeauDemo() {
+  const s = etat.store;
+  const sel = h(
+    "select",
+    {
+      id: "demo-utilisateur",
+      "aria-label": "Se connecter en tant que",
+      onchange: async (e) => {
+        s.changerUtilisateurDemo(e.target.value);
+        etat.session = await s.session();
+        await recharger();
+        location.hash = "#/";
+        afficher();
+      },
+    },
+    s.utilisateursDemo().map((u) => h("option", { value: u.id }, `${u.nom}${u.super_admin ? " (voit tout)" : ""}`))
+  );
+  sel.value = s.utilisateurDemo();
+  return h(
+    "div",
+    { class: "bandeau-demo" },
+    h("span", null, "Mode démonstration : clients fictifs, données dans ce navigateur."),
+    h("label", { class: "demo-choix" }, "Utilisateur : ", sel),
+    h(
+      "button",
+      {
+        class: "lien",
+        type: "button",
+        onclick: async () => {
+          await s.reinitialiser();
+          etat.session = await s.session();
+          await recharger();
+          location.hash = "#/";
+          afficher();
+          toast("Démo réinitialisée.");
+        },
+      },
+      "Repartir de zéro"
+    )
+  );
+}
+
+function menu() {
+  const elements = [
+    ["#/", "Tableau de bord", "tableau"],
+    ["#/dossiers", "Dossiers", "dossiers"],
+    ["#/clients", "Clients", "clients"],
+    ["#/catalogue", "Catalogue", "catalogue"],
+    ...(estAdmin() ? [["#/reglages", "Réglages", "reglages"]] : []),
+  ];
+  const logo = etat.db.reglages.apparence.logo;
+  return h(
+    "nav",
+    { class: "menu", "aria-label": "Navigation principale" },
+    h("a", { class: "marque", href: "#/" }, logo ? h("img", { src: logo, alt: "" }) : null, h("span", null, "Gestion")),
+    selecteurEntite(),
+    h("ul", null, elements.map(([href, libelle, cle]) => h("li", null, h("a", { href, "data-cle": cle }, libelle)))),
+    h(
+      "div",
+      { class: "menu-bas" },
+      estSuperAdmin() ? h("a", { class: "lien-admin", href: "#/admin", "data-cle": "admin" }, "Administration") : null,
+      h("span", { class: "compte" }, etat.moi.nom || etat.session.email, roleActif() ? ` · ${roleActif() === "admin" ? "administrateur" : "éditeur"}` : ""),
+      etat.store.mode === "supabase"
+        ? h(
             "button",
             {
               class: "lien",
               type: "button",
               onclick: async () => {
-                await etat.store.reinitialiser();
-                await recharger();
-                window.dispatchEvent(new HashChangeEvent("hashchange"));
-                toast("Démo réinitialisée.");
+                await etat.store.deconnecter();
+                etat.session = null;
+                etat.brut = null;
+                etat.db = null;
+                afficher();
               },
             },
-            "Repartir de zéro"
+            "Se déconnecter"
           )
-        )
-      : null;
-  return h(
-    "div",
-    { class: "coque" },
-    h(
-      "nav",
-      { class: "menu", "aria-label": "Navigation principale" },
-      h("a", { class: "marque", href: "#/" }, h("img", { src: "assets/logo.png", alt: "" }), h("span", null, "Gestion Zwald")),
-      h("ul", null, NAV.map(([href, libelle, cle]) => h("li", null, h("a", { href, "data-cle": cle }, libelle)))),
-      h(
-        "div",
-        { class: "menu-bas" },
-        etat.store.mode === "supabase"
-          ? [
-              h("span", { class: "compte" }, etat.session.email),
-              h(
-                "button",
-                {
-                  class: "lien",
-                  type: "button",
-                  onclick: async () => {
-                    await etat.store.deconnecter();
-                    etat.session = null;
-                    etat.db = null;
-                    demarrer();
-                  },
-                },
-                "Se déconnecter"
-              ),
-            ]
-          : null
-      )
-    ),
-    h("div", { class: "contenu" }, demo, h("main", { id: "principal", tabindex: "-1" }))
+        : null
+    )
   );
+}
+
+// Sur téléphone le menu est en bas de l'écran : le choix d'entreprise passe en haut de la page.
+function barreMobile() {
+  return h("div", { class: "entite-mobile" }, selecteurEntite(), estSuperAdmin() ? h("a", { href: "#/admin" }, "Administration") : null);
+}
+
+function coque() {
+  return h("div", { class: "coque" }, menu(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, barreMobile(), h("main", { id: "principal", tabindex: "-1" })));
 }
 
 function afficher() {
   if (!etat.session) {
     vider(racine).append(vueConnexion());
-    document.title = "Connexion - Gestion Zwald";
+    document.title = "Connexion - Gestion";
     return;
   }
-  if (!racine.querySelector(".coque")) vider(racine).append(coque());
+  if (!entiteActive()) {
+    vider(racine).append(
+      h(
+        "div",
+        { class: "connexion" },
+        h("h1", null, "Aucun accès pour l'instant"),
+        h("p", { class: "sous" }, `Votre compte (${etat.session.email}) n'a pas encore accès à une entreprise. Demandez à l'administratrice de vous en donner un.`),
+        etat.store.mode === "demo" ? bandeauDemo() : null,
+        etat.store.mode === "supabase" ? h("button", { class: "secondaire", type: "button", onclick: async () => (await etat.store.deconnecter(), (etat.session = null), afficher()) }, "Se déconnecter") : null
+      )
+    );
+    document.title = "Aucun accès - Gestion";
+    return;
+  }
+  // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change.
+  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}`;
+  const existante = racine.querySelector(".coque");
+  if (!existante || existante.dataset.cle !== cle) {
+    vider(racine).append(coque());
+    racine.querySelector(".coque").dataset.cle = cle;
+  }
   const hash = location.hash || "#/";
   const trouvee = ROUTES.find(([re]) => re.test(hash));
   if (!trouvee) {
     location.replace("#/");
     return;
   }
-  const [re, cle, vue] = trouvee;
+  const [re, cleRoute, vue] = trouvee;
   const principal = document.getElementById("principal");
   let noeud;
   try {
@@ -148,20 +203,16 @@ function afficher() {
   }
   principal.replaceChildren(noeud);
   principal.className = noeud.dataset && noeud.dataset.large ? "large" : "";
-  document.title = `${(noeud.dataset && noeud.dataset.titre) || "Gestion"} - Gestion Zwald`;
-  for (const a of document.querySelectorAll(".menu a[data-cle]")) a.toggleAttribute("aria-current", a.dataset.cle === cle);
+  document.title = `${(noeud.dataset && noeud.dataset.titre) || "Gestion"} - ${entiteActive().nom}`;
+  for (const a of document.querySelectorAll(".menu a[data-cle]")) a.toggleAttribute("aria-current", a.dataset.cle === cleRoute);
   if (hash !== derniereVue) window.scrollTo(0, 0);
   derniereVue = hash;
-}
-
-function demarrer() {
-  afficher();
 }
 
 window.addEventListener("hashchange", afficher);
 
 init()
-  .then(demarrer)
+  .then(afficher)
   .catch((err) => {
     console.error(err);
     vider(racine).append(h("div", { class: "vide" }, h("h1", null, "Connexion à la base impossible"), h("p", null, err.message), h("button", { class: "principal", onclick: () => location.reload() }, "Réessayer")));

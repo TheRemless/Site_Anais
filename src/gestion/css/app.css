@@ -224,3 +224,37 @@ legend { padding: 0 6px; font-weight: 700; }
   #zone-impression { display: block; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.bandeau-info { margin: 0 0 20px; padding: 10px 14px; background: #fff4d6; border: 1px solid #e8d49a; border-radius: var(--rayon); color: #5a4300; font-size: 0.92rem; }
+.bandeau-info a { color: #5a4300; font-weight: 600; }
+
+/* Entreprises, utilisateurs, réglages */
+.entite-choix, .entite-nom { margin: 0 0 14px; padding: 0 8px; }
+.entite-nom { font-weight: 700; color: var(--texte-2); font-size: 0.9rem; }
+.entite-choix select { min-height: 40px; font-weight: 600; }
+.lien-admin { font-size: 0.9rem; }
+.demo-choix { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.demo-choix select { width: auto; min-height: 36px; padding: 2px 8px; }
+.petit-entete { margin-bottom: 8px; }
+.sous-ligne { display: block; font-size: 0.85rem; color: var(--texte-2); }
+.acces-grille { margin-top: 8px; }
+.sous-onglets { margin: 0 0 20px; overflow-x: auto; flex-wrap: nowrap; border-bottom: 1px solid var(--bord); }
+.sous-onglets button { white-space: nowrap; }
+.reglages-grille { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); align-items: start; max-width: none; }
+@media (min-width: 1180px) { .reglages-grille { grid-template-columns: minmax(420px, 560px) minmax(0, 1fr); } .reglages-grille .apercu { position: sticky; top: 16px; } }
+.reglages-colonne { min-width: 0; }
+.barre-fixe { position: sticky; bottom: 0; z-index: 5; justify-content: space-between; align-items: center; margin: 0; padding: 12px 0; background: var(--fond); border-top: 1px solid var(--bord); }
+.vignette { display: flex; align-items: center; justify-content: center; min-height: 80px; max-width: 280px; margin: 4px 0 8px; padding: 8px; background: #fff; border: 1px dashed var(--bord-fort); border-radius: var(--rayon); }
+.vignette img { max-width: 100%; max-height: 120px; }
+input.couleur { width: 72px; padding: 2px; }
+.pleine-largeur { grid-column: 1 / -1; }
+
+[hidden] { display: none !important; }
+
+.menu .entite-choix, .menu .entite-nom { display: none; }
+.entite-mobile { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; }
+.entite-mobile .entite-choix, .entite-mobile .entite-nom { margin: 0; padding: 0; flex: 1; }
+@media (min-width: 900px) {
+  .menu .entite-choix, .menu .entite-nom { display: block; }
+  .entite-mobile { display: none; }
+}

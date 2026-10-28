@@ -1,5 +1,6 @@
 // Rendu du devis ou de la facture au format A4. Le même rendu sert à l'aperçu et au PDF.
-import { totaux, afficherSousTotal, formatChf, formatDate, equivalents, formatNombre, acompteDu } from "./calc.mjs";
+// Tout ce qui est propre à une entreprise (textes, logo, couleurs, coordonnées) vient de ses réglages.
+import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, formatNombre, acompteDu } from "./calc.mjs";
 import { h, markup } from "./ui.mjs";
 
 const lignes = (texte) => (texte || "").split("\n").filter((l) => l.trim() !== "");
@@ -8,10 +9,12 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const c = doc.contenu;
   const t = totaux(c, recu);
   const e = reglages.emetteur;
-  const p = reglages.paiement;
+  const lb = reglages.libelles;
+  const ap = reglages.apparence;
   const detail = c.colonnes === "detail";
   const estFacture = type === "facture";
-  const variante = c.variante === "perso" ? { corps: c.conditions_corps || "", cloture: c.conditions_cloture || "" } : reglages.textes.variantes.find((v) => v.id === c.variante) || reglages.textes.variantes[0];
+  const variantes = reglages.textes.variantes;
+  const variante = c.variante === "perso" ? { corps: c.conditions_corps || "", cloture: c.conditions_cloture || "" } : variantes.find((v) => v.id === c.variante) || variantes[0] || { corps: "", cloture: "" };
 
   const pct = Number(reglages.conditions.acompte_pct) || 0;
   const eq = c.equivalents && c.equivalents.actif ? equivalents(t.net, { eur: c.equivalents.eur ?? reglages.taux.eur, thb: c.equivalents.thb ?? reglages.taux.thb }) : null;
@@ -19,9 +22,11 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
     acompte: pct,
     solde: 100 - pct,
     delai: reglages.conditions.delai_jours,
-    total: `${formatNombre(t.net)} CHF`,
+    total: `${formatNombre(t.net)} ${reglages.devise}`.trim(),
     indicatif: eq ? ` (soit ${formatNombre(eq.eur)} €, soit ${formatNombre(eq.thb)} THB, à titre indicatif)` : "",
-    acompte_chf: formatChf(acompteDu(t.net, pct)),
+    acompte_chf: formatMontant(acompteDu(t.net, pct)),
+    entreprise: e.nom,
+    cgv_url: reglages.conditions.cgv_url || "",
   };
 
   const ligneDoc = (l, i) => {
@@ -30,7 +35,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
     const aDetail = detail && l.unite != null && l.qte != null;
     const description =
       l.kind === "remise"
-        ? h("div", { class: "desc remise" }, h("strong", null, "Remise"), l.libelle ? ": " : "", l.libelle ? h("em", null, l.libelle) : null)
+        ? h("div", { class: "desc remise" }, h("strong", null, lb.remise), l.libelle ? ": " : "", l.libelle ? h("em", null, l.libelle) : null)
         : h(
             "div",
             { class: l.kind === "bloc" ? "desc bloc" : "desc" },
@@ -38,7 +43,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
             l.intro ? ` ${l.intro}` : null,
             l.puces && l.puces.length ? h("ul", null, l.puces.map((x) => h("li", null, x))) : null
           );
-    const unite = aDetail ? (l.kind === "remise" && l.pct != null ? `-${l.pct}%` : formatChf(l.unite)) : l.kind === "remise" && l.pct != null ? `-${l.pct}%` : "";
+    const unite = aDetail ? (l.kind === "remise" && l.pct != null ? `-${l.pct}%` : formatMontant(l.unite)) : l.kind === "remise" && l.pct != null ? `-${l.pct}%` : "";
     const qte = aDetail ? String(l.qte) : l.kind === "remise" && l.pct != null && detail ? "1" : "";
     return h(
       "div",
@@ -46,11 +51,11 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
       description,
       detail ? h("div", { class: "unite" }, unite) : null,
       detail ? h("div", { class: "qte" }, qte) : null,
-      h("div", { class: l.texte_montant ? "montant txt" : "montant" }, l.texte_montant || (aMontant ? formatChf(montant) : ""))
+      h("div", { class: l.texte_montant ? "montant txt" : "montant" }, l.texte_montant || (aMontant ? formatMontant(montant) : ""))
     );
   };
 
-  // Les remises passent après le sous-total.
+  // Les remises passent après le sous-total, les notes à la fin.
   const normales = [];
   const remises = [];
   const notes = [];
@@ -60,101 +65,68 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   });
   const sousTotal = afficherSousTotal(c, recu);
 
-  const barre = (libelle, valeur, classe) =>
-    h("div", { class: `barre ${classe}` }, h("span", { class: "barre-libelle" }, libelle), h("span", { class: "barre-valeur" }, valeur));
-
+  const barre = (libelle, valeur, classe) => h("div", { class: `barre ${classe}` }, h("span", { class: "barre-libelle" }, libelle), h("span", { class: "barre-valeur" }, valeur));
   const tvaTexte = c.tva ? reglages.conditions.tva_mention : "";
-  const colonnesPied = c.pied === "qr";
+
+  // Pied de page : coordonnées, informations de paiement et QR code, selon ce qui est renseigné.
+  const paiementLignes = lignes(reglages.paiement.texte);
+  const complet = c.pied === "qr";
+  const avecQr = complet && !!ap.qr_image;
+  const colonnes = [];
+  if (lignes(e.contact).length) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.coordonnees), lignes(e.contact).map((l) => h("p", null, l))));
+  if (complet ? paiementLignes.length : lb.pied_court) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.infos_paiement), complet ? paiementLignes.map((l) => h("p", null, l)) : h("p", { class: "italique" }, lb.pied_court)));
+  if (avecQr) colonnes.push(h("div", { class: "pied-col wise" }, lb.qr_titre ? h("h4", null, lb.qr_titre) : null, h("div", { class: "qr-ligne" }, h("img", { src: ap.qr_image, alt: "QR code" }), ap.qr_pseudo ? h("span", { class: "pseudo" }, ap.qr_pseudo) : null)));
+
+  const cgvTexte = c.cgv === false || !lb.cgv ? null : h("div", { class: "cgv" }, markup(lb.cgv, vars));
 
   return h(
     "div",
-    { class: `sheet ${detail ? "detail" : "total"}` },
+    { class: `sheet ${detail ? "detail" : "total"}`, style: `--teal: ${ap.couleur}; --teal-clair: ${ap.couleur_clair}` },
     h(
       "header",
       { class: "sheet-tete" },
-      h("p", { class: "sheet-ref" }, `${estFacture ? "Facture" : "Devis"}: réf. ${dossier.ref}`),
-      h("img", { class: "sheet-logo", src: "assets/logo.png", alt: "Zwald Travel Planner" }),
-      h("img", { class: "sheet-titre", src: "assets/title.png", alt: "Zwald Travel Planner" }),
-      h("img", { class: "sheet-type", src: estFacture ? "assets/facture.png" : "assets/devis.png", alt: estFacture ? "Facture" : "Devis" }),
-      h(
-        "div",
-        { class: "sheet-emetteur" },
-        h("strong", null, e.nom.toUpperCase()),
-        lignes(e.adresse).map((l) => h("p", null, l)),
-        h("p", null, e.telephone)
-      ),
+      h("p", { class: "sheet-ref" }, `${estFacture ? lb.ref_facture : lb.ref_devis} ${dossier.ref}`),
+      ap.logo ? h("img", { class: "sheet-logo", src: ap.logo, alt: e.nom }) : null,
+      ap.titre_image ? h("img", { class: "sheet-titre", src: ap.titre_image, alt: e.nom }) : h("p", { class: "sheet-titre-texte" }, ap.titre_texte || e.nom),
+      ap.type_images && ap.type_images[type] ? h("img", { class: "sheet-type", src: ap.type_images[type], alt: estFacture ? lb.facture : lb.devis }) : h("p", { class: "sheet-type-texte" }, estFacture ? lb.facture : lb.devis),
+      h("div", { class: "sheet-emetteur" }, h("strong", null, e.nom.toUpperCase()), lignes(e.adresse).map((l) => h("p", null, l)), e.telephone ? h("p", null, e.telephone) : null),
       h(
         "div",
         { class: "sheet-client" },
         client ? [client.civilite, [client.prenom, client.nom].filter(Boolean).join(" "), ...lignes(client.adresse)].filter(Boolean).map((l) => h("p", { class: "gras" }, l)) : null,
         client && client.telephone ? h("p", null, client.telephone) : null
       ),
-      h("p", { class: "sheet-date" }, `Date d'émission: ${formatDate(doc.date_emission)}`)
+      h("p", { class: "sheet-date" }, `${lb.date_emission} ${formatDate(doc.date_emission)}`)
     ),
     h(
       "main",
       { class: "sheet-corps" },
-      h(
-        "div",
-        { class: "bandeau" },
-        h("div", { class: "bandeau-titre" }, c.bandeau),
-        detail ? h("div", { class: "unite" }, "UNITÉ") : null,
-        detail ? h("div", { class: "qte" }, "QTÉ") : null,
-        h("div", { class: "montant" }, "TOTAL")
-      ),
+      h("div", { class: "bandeau" }, h("div", { class: "bandeau-titre" }, c.bandeau), detail ? h("div", { class: "unite" }, lb.unite) : null, detail ? h("div", { class: "qte" }, lb.qte) : null, h("div", { class: "montant" }, lb.total)),
       h("div", { class: "lignes" }, normales),
-      sousTotal ? barre("SOUS-TOTAL", formatChf(t.sousTotal), "clair") : null,
+      sousTotal ? barre(lb.sous_total, formatMontant(t.sousTotal), "clair") : null,
       sousTotal && (remises.length || t.recu > 0)
         ? h(
             "div",
             { class: "lignes sous" },
             remises,
             t.recu > 0
-              ? h("div", { class: "ligne recu" }, h("div", { class: "desc" }, h("strong", null, c.libelle_recu || "Montant reçu")), detail ? h("div", { class: "unite" }) : null, detail ? h("div", { class: "qte" }) : null, h("div", { class: "montant" }, formatChf(-t.recu)))
+              ? h("div", { class: "ligne recu" }, h("div", { class: "desc" }, h("strong", null, c.libelle_recu || lb.montant_recu)), detail ? h("div", { class: "unite" }) : null, detail ? h("div", { class: "qte" }) : null, h("div", { class: "montant" }, formatMontant(-t.recu)))
               : null
           )
         : null,
-      barre("TOTAL", formatChf(t.reste), "fonce"),
+      barre(lb.total, formatMontant(t.reste), "fonce"),
       tvaTexte ? h("p", { class: "tva" }, tvaTexte) : null,
       notes,
       h(
         "section",
         { class: "conditions" },
-        h("h3", null, "CONDITIONS DE PAIEMENT"),
-        h("div", { class: "texte" }, markup(variante.corps, vars)),
-        h("div", { class: "texte cloture" }, markup(variante.cloture, vars)),
-        c.cgv === false
-          ? null
-          : h(
-              "p",
-              { class: "cgv" },
-              "Le client reconnaît avoir pris connaissance des ",
-              h("a", { href: reglages.conditions.cgv_url }, "Conditions Générales de Vente"),
-              " de Zwald Travel Planner CO., LTD. et les accepter sans réserve. La signature du présent devis vaut acceptation des CGV et engagement contractuel."
-            ),
-        estFacture ? null : h("p", { class: "signature" }, h("strong", null, "NOM, PRENOM, DATE ET SIGNATURE DU CLIENT"), h("br"), h("strong", null, h("em", null, "précédé de la mention “Bon pour accord”")))
+        variante.corps || variante.cloture ? h("h3", null, lb.conditions) : null,
+        variante.corps ? h("div", { class: "texte" }, markup(variante.corps, vars)) : null,
+        variante.cloture ? h("div", { class: "texte cloture" }, markup(variante.cloture, vars)) : null,
+        cgvTexte,
+        estFacture || !lb.signature_1 ? null : h("p", { class: "signature" }, h("strong", null, lb.signature_1), h("br"), h("strong", null, h("em", null, lb.signature_2)))
       )
     ),
-    h(
-      "footer",
-      { class: `sheet-pied ${colonnesPied ? "qr" : "email"}` },
-      h(
-        "div",
-        { class: "pied-col" },
-        h("h4", null, "COORDONNÉES"),
-        h("p", null, e.contact_nom),
-        h("p", null, e.whatsapp),
-        h("p", null, e.email)
-      ),
-      h(
-        "div",
-        { class: "pied-col" },
-        h("h4", null, "INFORMATIONS DE PAIEMENT"),
-        colonnesPied
-          ? [h("p", null, `Banque: ${p.banque}`), h("p", null, `IBAN: ${p.iban}`), h("p", null, `Swift: ${p.swift}`), h("p", null, p.titulaire), h("p", null, p.ville_titulaire)]
-          : h("p", { class: "italique" }, "voir les instructions de paiement transmises par e-mail.")
-      ),
-      colonnesPied ? h("div", { class: "pied-col wise" }, h("h4", null, "WISE - virements internationaux"), h("div", { class: "qr-ligne" }, h("img", { src: "assets/qr-wise.png", alt: "QR code Wise" }), h("span", { class: "pseudo" }, p.wise_pseudo))) : null
-    )
+    h("footer", { class: `sheet-pied ${avecQr ? "qr" : "email"}` }, colonnes)
   );
 }
