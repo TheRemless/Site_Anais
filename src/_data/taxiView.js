@@ -5,7 +5,7 @@ const taxi = require("./taxi.json");
 
 function toConfirm() {
   const items = [];
-  const groups = [[taxi.hero], [taxi.tours], taxi.services, taxi.why, taxi.steps, taxi.faq, [taxi.rating], [taxi.payment]];
+  const groups = [[taxi.hero], [taxi.tours], taxi.services, taxi.routes, taxi.why, taxi.steps, taxi.faq, [taxi.rating], [taxi.payment]];
   for (const group of groups) {
     for (const item of group) {
       if (!item.confirmed) items.push(`${item.title || item.q || item.text}: text to confirm`);
@@ -39,6 +39,15 @@ function jsonLd() {
         addressRegion: "Krabi",
         addressCountry: "TH"
       }
+    },
+    // Catalogue des services, sans prix : aucun tarif n'a été validé.
+    hasOfferCatalog: {
+      "@type": "OfferCatalog",
+      name: "Private taxi and minivan transfers",
+      itemListElement: taxi.services.map((s) => ({
+        "@type": "Offer",
+        itemOffered: { "@type": "Service", name: s.title, description: s.text }
+      }))
     },
     sameAs: b.sameAs
   };

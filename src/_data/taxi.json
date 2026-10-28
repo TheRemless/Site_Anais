@@ -163,7 +163,17 @@
     },
     {
       "q": "Where do you drive in Southern Thailand?",
-      "a": "Across Southern Thailand: Krabi Town and Krabi airport, Ao Nang, Phuket and Phuket airport, Surat Thani airport and bus terminal, Trang, Khao Lak, Khao Sok, Donsak Pier and Cheow Lan Pier, and more. Our base is Koh Lanta.",
+      "a": "Across Southern Thailand: Krabi Town and Krabi airport, Ao Nang, Phuket and Phuket airport, Surat Thani airport and bus terminal, Trang, Khao Lak, Khao Sok, Donsak Pier and Cheow Lan Pier, and more.",
+      "confirmed": false
+    },
+    {
+      "q": "Do you only drive from Koh Lanta?",
+      "a": "No. Koh Lanta (also written Ko Lanta) is our base, but we drive across Southern Thailand. Tell us where we pick you up and where you are going in the request form.",
+      "confirmed": false
+    },
+    {
+      "q": "Do you offer airport transfers to and from Koh Lanta?",
+      "a": "Yes. We drive private transfers between Krabi, Phuket and Surat Thani airports and Koh Lanta, in both directions.",
       "confirmed": false
     },
     {
@@ -186,5 +196,86 @@
     "Trang",
     "Donsak Pier",
     "Cheow Lan Pier"
+  ],
+  "routes": [
+    {
+      "title": "Krabi Airport (KBV) and Koh Lanta",
+      "from": "Krabi Airport",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Krabi Town and Koh Lanta",
+      "from": "Krabi Town",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Ao Nang and Koh Lanta",
+      "from": "Ao Nang",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Phuket Airport (HKT) and Koh Lanta",
+      "from": "Phuket Airport",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Phuket Bus Terminal and Koh Lanta",
+      "from": "Phuket Bus Terminal",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Surat Thani Airport (URT) and Koh Lanta",
+      "from": "Surat Thani Airport",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Surat Thani Bus Terminal and Koh Lanta",
+      "from": "Surat Thani Bus Terminal",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Trang and Koh Lanta",
+      "from": "Trang",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Khao Lak and Koh Lanta",
+      "from": "Khao Lak",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Khao Sok and Koh Lanta",
+      "from": "Khao Sok",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Donsak Pier and Koh Lanta",
+      "from": "Donsak Pier",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Cheow Lan Pier and Koh Lanta",
+      "from": "Cheow Lan Pier",
+      "to": "Koh Lanta",
+      "confirmed": false
+    },
+    {
+      "title": "Anywhere else in Southern Thailand",
+      "from": "",
+      "to": "",
+      "text": "Koh Lanta is our base, but we drive across Southern Thailand. Tell us where we pick you up and where you are going.",
+      "confirmed": false
+    }
   ]
 }
