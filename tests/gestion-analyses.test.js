@@ -22,10 +22,10 @@ test("analyserLocal : facturé, encaissé, impayés et conversion sur une pério
   const r = analyserLocal({ dossiers, documents, paiements, clients: [{ id: "c1", prenom: "Alice", nom: "Martin" }], profils: [], reglages: { devise: "CHF" } }, "2026-07-01", "2026-12-31", "2026-11-01");
   assert.deepEqual(r.facture_par_mois, [{ mois: "2026-10", devise: "CHF", montant: 360, nombre: 1 }]);
   assert.deepEqual(r.encaisse_par_mois, [{ mois: "2026-09", devise: "CHF", montant: 180, nombre: 1 }]);
-  assert.equal(r.devis.emis, 4);
+  assert.equal(r.devis.emis, 3);
   assert.equal(r.devis.acceptes, 2);
   assert.deepEqual(r.impayes, [{ tranche: "0-30", devise: "CHF", montant: 180, nombre: 1 }]);
   assert.equal(r.top_clients[0].client, "Alice Martin");
   assert.equal(r.top_clients[0].montant, 360);
-  assert.ok(!JSON.stringify(r).includes("999") || r.devis.emis === 4);
+  assert.ok(!JSON.stringify(r.top_clients).includes("999"), "le dossier annulé n'est pas compté");
 });
