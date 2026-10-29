@@ -498,3 +498,32 @@ details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-w
 /* Boutons qui ne montrent qu'une icône : zone de clic de 40 px, nom donné par aria-label et title. */
 .bouton-icone { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; padding: 0; }
 .bouton-icone svg { display: block; }
+
+/* Vue d'ensemble des sociétés : une couleur par société, partagée entre le graphique, la légende et le tableau. */
+.serie-0 { fill: #0b9999; background: #0b9999; }
+.serie-1 { fill: #c77d00; background: #c77d00; }
+.serie-2 { fill: #6f4fa6; background: #6f4fa6; }
+.serie-3 { fill: #3a6ea5; background: #3a6ea5; }
+.serie-4 { fill: #8a8f3a; background: #8a8f3a; }
+.pastille { display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: -1px; border-radius: 2px; }
+.evol { font-variant-numeric: tabular-nums; font-weight: 600; }
+.evol.plus { color: #1b6e3a; }
+.evol.moins { color: #a63a2e; }
+.evol.neutre { color: var(--texte-2); font-weight: 400; }
+.chiffre-detail .evol { font-size: 0.88rem; }
+.tableau-defilant { overflow-x: auto; }
+.tableau-groupe th, .tableau-groupe td { white-space: nowrap; }
+.tableau-groupe .total-ligne td { border-top: 2px solid var(--bord-fort); }
+.tableau-groupe .aide-inline { font-weight: 400; color: var(--texte-2); font-size: 0.85rem; }
+.part-cellule .barre-h { display: inline-block; width: 60px; max-width: 60px; height: 8px; margin-right: 8px; vertical-align: middle; }
+.entete-section { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
+.entete-section .champ { margin: 0; display: flex; align-items: center; gap: 8px; }
+.entete-section .champ label { margin: 0; }
+.taux-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px 24px; }
+.taux-ligne { display: flex; align-items: center; gap: 8px; }
+.taux-ligne input { max-width: 160px; }
+@media (max-width: 719px) {
+  .tableau-groupe th, .tableau-groupe td { white-space: normal; }
+  .tableau-groupe .total-ligne td { border-top: 0; }
+  .tableau-groupe .total-ligne { border-top: 2px solid var(--bord-fort); }
+}

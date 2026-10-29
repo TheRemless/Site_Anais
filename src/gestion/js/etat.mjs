@@ -72,6 +72,12 @@ export const estSuperAdmin = () => !!(etat.moi && etat.moi.super_admin && etat.m
 const contexte = () => ({ profil: etat.moi, membres: etat.brut.membres, roles: etat.brut.roles });
 export const permissionsActives = () => permissionsDans(contexte(), etat.entiteId);
 export const peut = (code) => !!etat.brut && permissionsActives().includes(code);
+// Entreprises dont la personne peut voir les analyses et les montants : c'est le périmètre de la vue d'ensemble.
+export const entitesAnalysables = () =>
+  entitesAccessibles().filter((e) => {
+    const p = permissionsDans(contexte(), e.id);
+    return p.includes("analytics.voir") && p.includes("finances.voir");
+  });
 export function roleActif() {
   if (estSuperAdmin()) return "Administratrice générale";
   const r = roleDans(contexte(), etat.entiteId);
