@@ -92,7 +92,12 @@ export function formulaireReservation(r, apres) {
   const retourHeure = h("input", { id: "v-retour-heure", type: "time", value: dt.retour_heure || "" });
   const permis = h("input", { id: "v-permis", value: dt.permis || "", placeholder: "International driving licence shown" });
   const caution = h("input", { id: "v-caution", value: dt.caution || "", placeholder: "3,000 THB, returned at drop-off" });
-  const details = () => ({ ...dt, chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, permis: permis.value.trim(), caution: caution.value.trim() });
+  const embarquement = h("input", { id: "v-embarquement", value: dt.embarquement || "", placeholder: "Saladan Pier" });
+  const checkin = h("textarea", { id: "v-checkin", rows: 2, placeholder: "Check-in at the pier 45 minutes before departure…" });
+  checkin.value = dt.checkin || "";
+  const bateau = h("input", { id: "v-bateau", value: dt.bateau || "", placeholder: "Longtail, speedboat" });
+  const programme = h("input", { id: "v-programme", value: dt.programme || "", placeholder: "Program A, 10 min session" });
+  const details = () => ({ ...dt, chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim() });
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
   const prestation = r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null;
   const type = typeVoucher(r, prestation);
@@ -110,11 +115,15 @@ export function formulaireReservation(r, apres) {
     retour_heure: () => champ("Heure de retour", retourHeure),
     permis: () => champ("Permis de conduire", permis),
     caution: () => champ("Caution", caution),
+    embarquement: () => champ("Embarcadère ou point de check-in", embarquement, "Sinon celui de la compagnie pour le lieu de départ."),
+    checkin: () => champ("Consigne de check-in", checkin, "Sinon celle de la compagnie, en anglais."),
+    bateau: () => champ("Bateau", bateau, "Sinon celui de la prestation."),
+    programme: () => champ("Programme ou option", programme, "Sinon le groupe de la prestation."),
     remarques: () => champ("Remarques sur le voucher", remarques),
     remarques_paiement: () => champ("Remarque de paiement", remarquesPaiement),
   };
   const blocVoucher = type
-    ? h("fieldset", null, h("legend", null, TITRES_VOUCHER[type]), h("p", { class: "aide" }, "Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation."), h("div", { class: "grille-form" }, (CHAMPS_VOUCHER[type] || []).filter((c) => !["remarques", "remarques_paiement"].includes(c)).map((c) => CHAMPS[c]())), (CHAMPS_VOUCHER[type] || []).filter((c) => ["remarques", "remarques_paiement"].includes(c)).map((c) => CHAMPS[c]()))
+    ? h("fieldset", null, h("legend", null, TITRES_VOUCHER[type]), h("p", { class: "aide" }, "Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation."), h("div", { class: "grille-form" }, (CHAMPS_VOUCHER[type] || []).filter((c) => !["remarques", "remarques_paiement", "checkin"].includes(c)).map((c) => CHAMPS[c]())), (CHAMPS_VOUCHER[type] || []).filter((c) => ["checkin", "remarques", "remarques_paiement"].includes(c)).map((c) => CHAMPS[c]()))
     : null;
   return h(
     "form",
