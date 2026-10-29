@@ -403,7 +403,12 @@ begin
         from retenus group by 1, 2 order by sum(total) desc, 1) x), '[]'::jsonb),
     'par_responsable', coalesce((select jsonb_agg(x) from (
         select coalesce(nullif(trim(coalesce(p.nom, p.email, '')), ''), 'Sans responsable') as responsable, r.devise, round(sum(r.total), 2) as montant, count(*)::int as nombre
-        from retenus r left join profils p on p.user_id = r.responsable_id group by 1, 2 order by sum(r.total) desc, 1) x), '[]'::jsonb)
+        from retenus r left join profils p on p.user_id = r.responsable_id group by 1, 2 order by sum(r.total) desc, 1) x), '[]'::jsonb),
+    -- Devis en attente au jour donné : émis, ni acceptés, ni annulés, ni facturés. C'est le chiffre d'affaires possible.
+    'pipeline', coalesce((select jsonb_agg(x order by x.devise) from (
+        select devise, round(sum(total), 2) as montant, count(*)::int as nombre
+        from tot where not annule and accepte_le is null and fc is null and dc is not null and v_date <= jour group by 1) x), '[]'::jsonb),
+    'activite', jsonb_build_object('dossiers', (select count(*)::int from retenus), 'clients', (select count(distinct client_id)::int from retenus))
   ) into res;
   return res;
 end
@@ -728,6 +733,7 @@ insert into reglages (entite_id, valeur) values
     "delai_jours": 10,
     "relance_jours": 7,
     "tva_mention": "TVA non applicable",
+    "tva_mention_en": "",
     "cgv_url": "https://zwaldtravelplanner.com/cgv/"
   },
   "taux": {
@@ -830,6 +836,35 @@ insert into reglages (entite_id, valeur) values
     "pied_note": "",
     "cgv": "Le client reconnaît avoir pris connaissance des [Conditions Générales de Vente]({cgv_url}) de {entreprise} et les accepter sans réserve. La signature du présent devis vaut acceptation des CGV et engagement contractuel."
   },
+  "libelles_en": {
+    "devis": "QUOTE",
+    "facture": "INVOICE",
+    "facture_locale": "",
+    "ref_devis": "Quote: ref.",
+    "ref_facture": "Invoice: ref.",
+    "date_emission": "Date of issue:",
+    "unite": "UNIT",
+    "qte": "QTY",
+    "total": "TOTAL",
+    "colonne_montant": "",
+    "total_final": "",
+    "sous_total": "SUBTOTAL",
+    "remise": "Discount",
+    "montant_recu": "Amount received",
+    "equivalent": "Indicative equivalent:",
+    "conditions": "PAYMENT TERMS",
+    "signature_1": "FULL NAME, DATE AND SIGNATURE OF THE CLIENT",
+    "signature_2": "preceded by the words “Approved”",
+    "coordonnees": "CONTACT",
+    "infos_paiement": "PAYMENT DETAILS",
+    "pied_court": "see the payment instructions sent by e-mail.",
+    "qr_titre": "",
+    "facture_a": "",
+    "prestataire": "Service provider:",
+    "note_devise": "",
+    "pied_note": "",
+    "cgv": "The client acknowledges having read the [Terms and Conditions]({cgv_url}) of {entreprise} and accepts them without reservation. Signing this quote constitutes acceptance of the Terms and Conditions and a binding commitment."
+  },
   "textes": {
     "variantes": [
       {
@@ -866,6 +901,7 @@ insert into reglages (entite_id, valeur) values
     "delai_jours": 10,
     "relance_jours": 7,
     "tva_mention": "",
+    "tva_mention_en": "",
     "cgv_url": ""
   },
   "taux": {
@@ -960,6 +996,35 @@ insert into reglages (entite_id, valeur) values
     "note_devise": "",
     "pied_note": "",
     "cgv": "Le client reconnaît avoir pris connaissance des [Conditions Générales de Vente]({cgv_url}) de {entreprise} et les accepter sans réserve. La signature du présent devis vaut acceptation des CGV et engagement contractuel."
+  },
+  "libelles_en": {
+    "devis": "QUOTE",
+    "facture": "INVOICE",
+    "facture_locale": "",
+    "ref_devis": "Quote: ref.",
+    "ref_facture": "Invoice: ref.",
+    "date_emission": "Date of issue:",
+    "unite": "UNIT",
+    "qte": "QTY",
+    "total": "TOTAL",
+    "colonne_montant": "",
+    "total_final": "",
+    "sous_total": "SUBTOTAL",
+    "remise": "Discount",
+    "montant_recu": "Amount received",
+    "equivalent": "Indicative equivalent:",
+    "conditions": "PAYMENT TERMS",
+    "signature_1": "FULL NAME, DATE AND SIGNATURE OF THE CLIENT",
+    "signature_2": "preceded by the words “Approved”",
+    "coordonnees": "CONTACT",
+    "infos_paiement": "PAYMENT DETAILS",
+    "pied_court": "see the payment instructions sent by e-mail.",
+    "qr_titre": "",
+    "facture_a": "",
+    "prestataire": "Service provider:",
+    "note_devise": "",
+    "pied_note": "",
+    "cgv": "The client acknowledges having read the [Terms and Conditions]({cgv_url}) of {entreprise} and accepts them without reservation. Signing this quote constitutes acceptance of the Terms and Conditions and a binding commitment."
   },
   "textes": {
     "variantes": [
@@ -991,6 +1056,7 @@ insert into reglages (entite_id, valeur) values
     "delai_jours": 10,
     "relance_jours": 7,
     "tva_mention": "",
+    "tva_mention_en": "",
     "cgv_url": ""
   },
   "taux": {
@@ -1085,6 +1151,35 @@ insert into reglages (entite_id, valeur) values
     "note_devise": "",
     "pied_note": "",
     "cgv": "Le client reconnaît avoir pris connaissance des [Conditions Générales de Vente]({cgv_url}) de {entreprise} et les accepter sans réserve. La signature du présent devis vaut acceptation des CGV et engagement contractuel."
+  },
+  "libelles_en": {
+    "devis": "QUOTE",
+    "facture": "INVOICE",
+    "facture_locale": "",
+    "ref_devis": "Quote: ref.",
+    "ref_facture": "Invoice: ref.",
+    "date_emission": "Date of issue:",
+    "unite": "UNIT",
+    "qte": "QTY",
+    "total": "TOTAL",
+    "colonne_montant": "",
+    "total_final": "",
+    "sous_total": "SUBTOTAL",
+    "remise": "Discount",
+    "montant_recu": "Amount received",
+    "equivalent": "Indicative equivalent:",
+    "conditions": "PAYMENT TERMS",
+    "signature_1": "FULL NAME, DATE AND SIGNATURE OF THE CLIENT",
+    "signature_2": "preceded by the words “Approved”",
+    "coordonnees": "CONTACT",
+    "infos_paiement": "PAYMENT DETAILS",
+    "pied_court": "see the payment instructions sent by e-mail.",
+    "qr_titre": "",
+    "facture_a": "",
+    "prestataire": "Service provider:",
+    "note_devise": "",
+    "pied_note": "",
+    "cgv": "The client acknowledges having read the [Terms and Conditions]({cgv_url}) of {entreprise} and accepts them without reservation. Signing this quote constitutes acceptance of the Terms and Conditions and a binding commitment."
   },
   "textes": {
     "variantes": [
