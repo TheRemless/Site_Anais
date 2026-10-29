@@ -43,7 +43,15 @@ test("marge d'un document : total moins les nets connus, lignes sans net compté
   assert.deepEqual(m, { vente: 4700, nets: 3100, marge: 1600, pct: 34, avecNet: 2, sansNet: 1 });
   assert.equal(margeDocument({ lignes: [] }).avecNet, 0);
 });
-import { convertir, dateIso } from "../docs/gestion/import-partenaires.mjs";
+import { convertir, dateIso, finDePeriode } from "../docs/gestion/import-partenaires.mjs";
+
+test("fin de contrat lue dans la validité ou la saison, jamais dans une date de signature", () => {
+  assert.equal(finDePeriode("Oct 2026 – Juin 2027"), "2027-06-30");
+  assert.equal(finDePeriode("Haute saison 15 oct 2026 – 20 mai 2027"), "2027-05-20");
+  assert.equal(finDePeriode("Contrat octobre 2026 à juin 2027"), "2027-06-30");
+  assert.equal(finDePeriode("Contrat 2026-2027 signé par Satun le 21 avr 2026, périodes variables"), null);
+  assert.equal(finDePeriode(""), null);
+});
 
 test("marge : montant et pourcentage, null quand il manque un prix", () => {
   assert.deepEqual(marge(1000, 600), { montant: 400, pct: 40 });

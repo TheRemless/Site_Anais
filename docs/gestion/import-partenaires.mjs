@@ -17,6 +17,13 @@ export function dateIso(texte) {
   return `${m[3]}-${String(mois).padStart(2, "0")}-${String(jour).padStart(2, "0")}`;
 }
 
+export function finDePeriode(texte) {
+  const parts = String(texte || "").split(/–|→| à | au /);
+  if (parts.length < 2) return null;
+  const m = parts[parts.length - 1].match(/(?:\d{1,2}\s+)?[a-zéû]+\.?\s+\d{4}/i);
+  return m ? dateIso(m[0]) : null;
+}
+
 const nombre = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
 const texte = (v) => (v === null || v === undefined ? "" : Array.isArray(v) ? v.join(", ") : String(v));
 
@@ -57,8 +64,9 @@ export function convertir(D, entiteId, uid = randomUUID, maintenant = new Date()
       ordre: ++ordre,
       actif: true,
     };
-    const fin = (p.validity || "").split(/–|-|→/).pop();
-    row.contrat.fin = dateIso(fin.trim().replace(/^(\w+)\s(\d{4})$/, "$1 $2"));
+    // Fin du contrat : la date après le séparateur de la validité (« Oct 2026 – Juin 2027 »), sinon celle de la saison
+    // (« Haute saison 15 oct 2026 – 20 mai 2027 »). Un texte sans période (« 2026-2027 », « signé le… ») ne donne rien.
+    row.contrat.fin = finDePeriode(p.validity) || finDePeriode(p.season);
     out.partenaires.push(row);
     parId[p.id] = row;
     if (p.bank || p.payment) out.partenaires_prives.push({ ...base(), partenaire_id: row.id, banque: p.bank || {}, paiement: texte(p.payment) });
