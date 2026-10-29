@@ -92,7 +92,7 @@ const v = sql.v;
 ok(v.facture_par_mois.some((x) => x.mois === "2026-10" && x.devise === "CHF" && Number(x.montant) === 360), "facture d'octobre : 400 moins 10 % = 360");
 ok(v.facture_par_mois.some((x) => x.mois === "2026-08" && x.devise === "THB" && Number(x.montant) === 12000), "facture en bahts séparée des francs");
 ok(Number(v.devis.emis) === 5 || Number(v.devis.emis) === 4, "nombre de devis émis sur la période : " + v.devis.emis);
-ok(v.impayes.some((x) => x.tranche === "0-30" && x.devise === "CHF" && Number(x.montant) === 230 && x.nombre === 2), "impayés de 80 et 150 dans la tranche 0 à 30 jours");
+ok(v.impayes.length === 1 && v.impayes[0].tranche === "0-30" && v.impayes[0].devise === "CHF" && Number(v.impayes[0].montant) === 80 && v.impayes[0].nombre === 1, "impayés : seulement les dossiers facturés (80), comptés depuis la date de la facture, pas le devis accepté sans facture");
 ok(v.top_clients.length >= 2 && v.top_clients[0].client === "Alice Martin", "meilleur client : Alice Martin");
 ok(!JSON.stringify(v).includes("999"), "le dossier annulé n'est pas compté");
 

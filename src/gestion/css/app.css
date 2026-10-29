@@ -338,3 +338,7 @@ details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-w
 .barre-selection { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 14px; background: var(--teal-100); border: 1px solid var(--bord-fort); border-radius: var(--rayon); }
 .barre-selection select { width: auto; min-width: 200px; }
 .case-cellule { width: 44px; }
+
+/* Boutons qui ne montrent qu'une icône : zone de clic de 40 px, nom donné par aria-label et title. */
+.bouton-icone { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; padding: 0; }
+.bouton-icone svg { display: block; }

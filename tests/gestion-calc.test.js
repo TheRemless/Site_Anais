@@ -214,6 +214,9 @@ test("réglages : nouvelles options complétées pour une entreprise existante",
   assert.equal(r.libelles.facture, "INVOICE");
   assert.equal(r.libelles.colonne_montant, "");
   assert.equal(r.libelles.prestataire, "Prestataire :");
+  assert.equal(r.libelles_en.facture, "INVOICE");
+  assert.equal(r.libelles_en.prestataire, "Service provider:");
+  assert.equal(r.conditions.tva_mention_en, "");
 });
 
 test("facture locale : taux entre devises et conversion du contenu", async () => {

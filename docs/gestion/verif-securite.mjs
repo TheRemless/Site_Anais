@@ -177,6 +177,7 @@ await v.exec(lire(W + "migration-4-analyses.sql"));
 await v.exec(lire(W + "migration-5-echelle.sql"));
 await v.exec(lire(W + "migration-6-collaboration.sql"));
 await v.exec(lire(W + "migration-7-facture-locale.sql"));
+await v.exec(lire(W + "migration-8-impayes.sql"));
 await v.exec("update dossiers set accepte_le = '2026-10-02' where id in (select id from dossiers limit 1)");
 const avant = (await v.query("select total from dossiers_resume order by dossier_id limit 1")).rows[0];
 await v.exec("insert into documents (entite_id, dossier_id, type, date_emission, contenu) select entite_id, id, 'facture_locale', '2026-10-03', '{\"lignes\":[{\"kind\":\"formule\",\"montant\":9999}]}' from dossiers limit 1");

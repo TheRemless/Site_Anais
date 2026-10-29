@@ -2,7 +2,7 @@
 // Tout ce qui est propre à une entreprise (textes, logo, couleurs, coordonnées) vient de ses réglages.
 import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, lignesEquivalents, formatNombre, acompteDu } from "./calc.mjs";
 import { h, markup, inline } from "./ui.mjs";
-import { modePaiement } from "./defauts.mjs";
+import { modePaiement, LIBELLES_EN } from "./defauts.mjs";
 
 const lignes = (texte) => (texte || "").split("\n").filter((l) => l.trim() !== "");
 
@@ -10,7 +10,9 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const c = doc.contenu;
   const t = totaux(c, recu);
   const e = reglages.emetteur;
-  const lb = reglages.libelles;
+  const en = c.langue === "en";
+  // Document en anglais : textes fixes anglais des réglages (ceux de la langue principale ne sont pas touchés).
+  const lb = en ? { ...LIBELLES_EN, ...(reglages.libelles_en || {}) } : reglages.libelles;
   const ap = reglages.apparence;
   const detail = c.colonnes === "detail";
   const locale = type === "facture_locale";
@@ -19,7 +21,8 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const numero = (c.numero || "").trim() || dossier.ref;
   const titreType = locale ? lb.facture_locale || lb.facture : estFacture ? lb.facture : lb.devis;
   const variantes = reglages.textes.variantes;
-  const variante = c.variante === "perso" ? { corps: c.conditions_corps || "", cloture: c.conditions_cloture || "" } : variantes.find((v) => v.id === c.variante) || variantes[0] || { corps: "", cloture: "" };
+  const choisie = c.variante === "perso" ? { corps: c.conditions_corps || "", cloture: c.conditions_cloture || "" } : variantes.find((v) => v.id === c.variante) || variantes[0] || { corps: "", cloture: "" };
+  const variante = en && c.variante !== "perso" ? { corps: choisie.corps_en || choisie.corps, cloture: choisie.cloture_en || choisie.cloture } : choisie;
 
   const pct = Number(reglages.conditions.acompte_pct) || 0;
   // Devise propre au document, sinon celle de l'entreprise.
@@ -35,7 +38,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
     solde: 100 - pct,
     delai: reglages.conditions.delai_jours,
     total: `${formatNombre(t.net)} ${dev}`.trim(),
-    indicatif: eq.length ? ` (soit ${eq.map(texteEq).join(", soit ")}, à titre indicatif)` : "",
+    indicatif: eq.length ? (en ? ` (approx. ${eq.map(texteEq).join(", approx. ")}, for reference only)` : ` (soit ${eq.map(texteEq).join(", soit ")}, à titre indicatif)`) : "",
     acompte_chf: formatMontant(acompteDu(t.net, pct), dev),
     entreprise: e.nom,
     cgv_url: reglages.conditions.cgv_url || "",
@@ -78,7 +81,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const sousTotal = afficherSousTotal(c, recu);
 
   const barre = (libelle, valeur, classe) => h("div", { class: `barre ${classe}` }, h("span", { class: "barre-libelle" }, libelle), h("span", { class: "barre-valeur" }, valeur));
-  const tvaTexte = c.tva ? reglages.conditions.tva_mention : "";
+  const tvaTexte = c.tva ? (en && reglages.conditions.tva_mention_en) || reglages.conditions.tva_mention : "";
 
   // Pied de page : coordonnées, informations de paiement et QR code, selon ce qui est renseigné.
   const paiementLignes = lignes(mode.texte);

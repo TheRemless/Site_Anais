@@ -133,13 +133,14 @@ export const REGLAGES_NEUTRE = {
   emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", contact: "" },
   paiement: { texte: "", nom: "", autres: [] },
   devise: "",
-  conditions: { acompte_pct: 0, delai_jours: 10, relance_jours: 7, tva_mention: "", cgv_url: "" },
+  conditions: { acompte_pct: 0, delai_jours: 10, relance_jours: 7, tva_mention: "", tva_mention_en: "", cgv_url: "" },
   taux: { eur: 1.058, thb: 40.54 },
   numerotation: { mode: "sequence", prefixe: "", chiffres: 4 },
   dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Pays" },
   listes: { pays: [], civilites: ["Madame", "Monsieur", "Mademoiselle"], moyens: MOYENS_DEFAUT, devises: ["CHF", "EUR", "THB", "USD"] },
   apparence: { couleur: "#0b9999", couleur_clair: "#53b7b7", entete: "classique", logo: "", titre_image: "", type_images: null, titre_texte: "", qr_image: "", qr_pseudo: "" },
   libelles: LIBELLES_FR,
+  libelles_en: LIBELLES_EN,
   textes: { variantes: [{ id: "standard", nom: "Standard", corps: "", cloture: "" }] },
 };
 
@@ -192,6 +193,7 @@ export const CONTENU_DEFAUT = () => ({
   equivalents: { actif: false },
   pied: "qr",
   variante: "",
+  langue: "",
   prestataire: "",
   tva: true,
   montant_recu: null,

@@ -226,13 +226,19 @@ export function vueReglages() {
         corps.value = v.corps;
         const cloture = h("textarea", { id: `v${i}-clo`, rows: 3, oninput: (e) => ((v.cloture = e.target.value), marque()) });
         cloture.value = v.cloture;
+        const corpsEn = h("textarea", { id: `v${i}-corps-en`, rows: 6, oninput: (e) => ((v.corps_en = e.target.value), marque()) });
+        corpsEn.value = v.corps_en || "";
+        const clotureEn = h("textarea", { id: `v${i}-clo-en`, rows: 3, oninput: (e) => ((v.cloture_en = e.target.value), marque()) });
+        clotureEn.value = v.cloture_en || "";
         return h(
           "div",
           { class: "carte-ligne" },
           h("div", { class: "carte-ligne-tete" }, h("strong", null, `Variante ${i + 1}`), h("span", { class: "outils" }, r.textes.variantes.length > 1 ? h("button", { class: "lien danger-texte", type: "button", onclick: () => (r.textes.variantes.splice(i, 1), dessinerVariantes(), marque()) }, "Supprimer") : null)),
           champ("Nom (visible dans la liste du devis)", nom),
           champ("Conditions de paiement", corps),
-          champ("Fin du texte", cloture)
+          champ("Fin du texte", cloture),
+          champ("Conditions de paiement en anglais (facultatif)", corpsEn, "Utilisées quand le document est écrit en anglais. Vide : le texte ci-dessus est repris."),
+          champ("Fin du texte en anglais (facultatif)", clotureEn)
         );
       }),
       h("button", { class: "secondaire petit", type: "button", onclick: () => (r.textes.variantes.push({ id: `v-${Date.now().toString(36)}`, nom: "Nouvelle variante", corps: "", cloture: "" }), dessinerVariantes(), marque()) }, "Ajouter une variante")
@@ -280,17 +286,33 @@ export function vueReglages() {
   chiffres.hidden = r.numerotation.mode !== "sequence";
 
   const libellesGrille = h("div", { class: "grille-form" });
+  // Les mêmes textes existent en deux versions : ceux de la langue principale et ceux des documents en anglais.
+  let langueTextes = "principale";
+  const cibleTextes = () => (langueTextes === "en" ? r.libelles_en : r.libelles);
   const dessinerLibelles = () => {
+    const cible = cibleTextes();
     libellesGrille.replaceChildren(
       ...LIBELLES.map(([cle, nom]) => {
-        const el = h("input", { id: `lb-${cle}`, value: r.libelles[cle] ?? "", oninput: (e) => ((r.libelles[cle] = e.target.value), marque()) });
+        const el = h("input", { id: `lb-${cle}`, value: cible[cle] ?? "", oninput: (e) => ((cible[cle] = e.target.value), marque()) });
         return champ(nom, el);
       })
     );
-    const cgv = h("textarea", { id: "lb-cgv", rows: 4, oninput: (e) => ((r.libelles.cgv = e.target.value), marque()) });
-    cgv.value = r.libelles.cgv ?? "";
+    const cgv = h("textarea", { id: "lb-cgv", rows: 4, oninput: (e) => ((cible.cgv = e.target.value), marque()) });
+    cgv.value = cible.cgv ?? "";
     libellesGrille.append(h("div", { class: "pleine-largeur" }, champ("Phrase sur les conditions générales", cgv, "Laissez vide pour ne pas l'afficher. [texte](lien) crée un lien. {cgv_url} et {entreprise} se remplissent seuls.")));
   };
+  const remplirTextes = (base) => {
+    const cle = langueTextes === "en" ? "libelles_en" : "libelles";
+    r[cle] = { ...r[cle], ...base, ...garder(r[cle]) };
+    dessinerLibelles();
+    marque();
+  };
+  const choixLangue = h(
+    "select",
+    { id: "lb-langue", "aria-label": "Langue des textes à modifier", onchange: (e) => ((langueTextes = e.target.value), dessinerLibelles()) },
+    h("option", { value: "principale" }, "Textes de la langue principale (documents habituels)"),
+    h("option", { value: "en" }, "Textes des documents en anglais")
+  );
   dessinerLibelles();
 
   const sections = {
@@ -311,14 +333,14 @@ export function vueReglages() {
     fonctionnement: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Conditions"), h("div", { class: "grille-form" }, texte("Acompte demandé (%, 0 si aucun)", "conditions.acompte_pct", { type: "number" }), texte("Délai de paiement de l'acompte (jours)", "conditions.delai_jours", { type: "number" }), texte("Relancer un devis sans réponse après (jours)", "conditions.relance_jours", { type: "number" })), texte("Mention de TVA", "conditions.tva_mention", { aide: "Par exemple « TVA non applicable ». Vide pour ne rien afficher." }), texte("Lien des conditions générales", "conditions.cgv_url", { type: "url" })),
+      h("fieldset", null, h("legend", null, "Conditions"), h("div", { class: "grille-form" }, texte("Acompte demandé (%, 0 si aucun)", "conditions.acompte_pct", { type: "number" }), texte("Délai de paiement de l'acompte (jours)", "conditions.delai_jours", { type: "number" }), texte("Relancer un devis sans réponse après (jours)", "conditions.relance_jours", { type: "number" })), texte("Mention de TVA", "conditions.tva_mention", { aide: "Par exemple « TVA non applicable ». Vide pour ne rien afficher." }), texte("Mention de TVA en anglais (facultatif)", "conditions.tva_mention_en", { aide: "Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise." }), texte("Lien des conditions générales", "conditions.cgv_url", { type: "url" })),
       h("fieldset", null, h("legend", null, "Dossiers"), champ("Numérotation", modeNum), prefixe, chiffres, texte("Nom du champ « pays »", "dossier.libelle_pays", { aide: "Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier." }), liste("Valeurs proposées, une par ligne", "listes.pays"), texte("Modèle du titre du document", "dossier.modele_bandeau", { aide: "{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}." })),
       h("fieldset", null, h("legend", null, "Listes"), liste("Civilités des clients, une par ligne", "listes.civilites"), liste("Devises proposées pour un document, une par ligne", "listes.devises", "Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs."), champ("Moyens de paiement, un par ligne", moyens))
     ),
     textes: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Textes fixes des documents"), h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ((r.libelles = { ...r.libelles, ...LIBELLES_FR, ...garder(r.libelles), cgv: LIBELLES_FR.cgv }), dessinerLibelles(), marque()) }, "Remplir en français"), h("button", { class: "secondaire petit", type: "button", onclick: () => ((r.libelles = { ...r.libelles, ...LIBELLES_EN, ...garder(r.libelles) }), dessinerLibelles(), marque()) }, "Remplir en anglais")), libellesGrille),
+      h("fieldset", null, h("legend", null, "Textes fixes des documents"), h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => remplirTextes(LIBELLES_FR) }, "Remplir en français"), h("button", { class: "secondaire petit", type: "button", onclick: () => remplirTextes(LIBELLES_EN) }, "Remplir en anglais")), champ("Langue des textes à modifier", choixLangue, "Un document peut être écrit en anglais depuis son en-tête (par exemple la facture locale). Il utilise alors la version anglaise de ces textes."), libellesGrille),
       h("fieldset", null, h("legend", null, "Conditions de paiement proposées"), h("p", { class: "aide" }, "Chaque devis choisit une de ces variantes, ou son propre texte. Une ligne commençant par « - » devient une puce. **gras**, _italique_. Les mots entre accolades se remplissent seuls : {acompte}, {solde}, {delai}, {total}, {indicatif}."), blocVariantes)
     ),
     apparence: h(

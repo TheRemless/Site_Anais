@@ -87,6 +87,7 @@ function ficheDossierVue(id) {
     majTaux();
     const mode = h("select", { id: "loc-mode" }, modes.map((m) => h("option", { value: m.id }, m.nom)));
     mode.value = modes[modes.length - 1].id;
+    const langue = h("select", { id: "loc-langue" }, h("option", { value: "en" }, "English"), h("option", { value: "" }, "Langue principale"));
     const numero = h("input", { id: "loc-numero", value: `${d.ref}-L` });
     const fermer = modal(
       "Créer la facture locale",
@@ -102,6 +103,7 @@ function ficheDossierVue(id) {
             contenu.lignes = contenu.lignes.map((l) => ({ ...l, id: uid() }));
             contenu.paiement = mode.value;
             contenu.numero = numero.value.trim();
+            contenu.langue = langue.value;
             const f = await inserer("documents", { dossier_id: d.id, type: "facture_locale", date_emission: facture.date_emission, envoye_le: null, updated_at: new Date().toISOString(), contenu });
             fermer();
             naviguer(`#/doc/${f.id}`);
@@ -110,6 +112,7 @@ function ficheDossierVue(id) {
         h("p", { class: "aide" }, `Copie de la facture avec les montants convertis. Vous pouvez ensuite tout corriger ligne par ligne. Les paiements restent sur la facture du client (${devSource}).`),
         h("div", { class: "grille-form" }, champ("Devise de la facture locale", cible), champ(`Taux (1 ${devSource} = … )`, taux, "Pré-rempli d'après les réglages, modifiable.")),
         modes.length > 1 ? champ("Informations de paiement", mode) : null,
+        champ("Langue de la facture", langue, "Les titres, libellés et conditions de paiement passent en anglais. Les textes des lignes (intitulés, descriptions) sont copiés tels quels : à traduire dans l'éditeur."),
         champ("Numéro affiché", numero, "Remplace la référence du dossier sur cette facture."),
         h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), h("button", { type: "submit", class: "principal" }, "Créer la facture locale"))
       )
