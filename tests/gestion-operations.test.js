@@ -1,11 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService } from "../src/gestion/js/operations-calc.mjs";
+import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER } from "../src/gestion/js/operations-calc.mjs";
 
 test("vouchers : modèle d'après la prestation, numéro, statut de paiement", () => {
   assert.equal(typeVoucher({ trajet_id: "t" }, null), "transfert");
   assert.equal(typeVoucher({}, { famille: "excursion", groupe: "Excursions en groupe" }), "bateau");
   assert.equal(typeVoucher({}, { famille: "activite" }), "activite");
+  assert.equal(typeVoucher({}, { famille: "location" }), "location");
+  assert.ok(CHAMPS_VOUCHER.location.includes("retour_date") && !CHAMPS_VOUCHER.bateau.includes("vol"), "chaque modèle a ses champs");
   assert.equal(typeVoucher({}, { famille: "transfert" }), "transfert");
   assert.equal(typeVoucher({}, { famille: "frais" }), null);
   assert.equal(typeVoucher({ libelle: "Koh Lanta → Krabi" }, null), "transfert");
@@ -111,4 +113,10 @@ test("dû aux partenaires par mois : net prévu, payé, reste, marge, lignes san
   assert.equal(d[1].reste, 0);
   assert.equal(nomMoisCourt("2026-12"), "Décembre 2026");
   assert.equal(dateTexte("2026-12-10", "th"), "10/12/2026");
+});
+
+test("dates du dossier déduites des réservations : première et dernière date de service, annulées exclues", () => {
+  assert.deepEqual(datesDepuisReservations([{ date_service: "2026-11-15", statut: "confirme" }, { date_service: "2026-11-14", statut: "a_demander" }, { date_service: "2026-12-01", statut: "annule" }]), { date_depart: "2026-11-14", date_retour: "2026-11-15" });
+  assert.deepEqual(datesDepuisReservations([{ date_service: "2026-11-15", statut: "confirme" }]), { date_depart: "2026-11-15", date_retour: null });
+  assert.deepEqual(datesDepuisReservations([{ date_service: null, statut: "confirme" }]), { date_depart: null, date_retour: null });
 });

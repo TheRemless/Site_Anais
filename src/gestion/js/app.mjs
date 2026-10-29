@@ -452,7 +452,7 @@ document.addEventListener("keydown", (e) => {
   // Ctrl+K (Cmd+K sur Mac) ouvre la recherche partout, même pendant une saisie.
   if ((e.ctrlKey || e.metaKey) && !e.altKey && k === "k" && !document.querySelector(".modal-fond")) return e.preventDefault(), ouvrirRecherche();
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.target.matches("input, textarea, select, [contenteditable]") || document.querySelector(".modal-fond")) return;
+  if ((e.target && e.target.matches && e.target.matches("input, textarea, select, [contenteditable]")) || document.querySelector(".modal-fond")) return;
   if (sequence === "g") {
     sequence = null;
     const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", f: "#/taches", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(peut("analytics.voir") && peut("finances.voir") ? { a: "#/analyses" } : {}), ...(entitesAnalysables().length > 1 ? { v: "#/groupe" } : {}), ...(estSuperAdmin() ? { m: "#/admin" } : {}) };

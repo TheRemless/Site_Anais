@@ -192,14 +192,14 @@ function ficheDossierVue(id) {
               toast("Cette référence existe déjà.", true);
               return;
             }
-            await modifier("dossiers", d.id, { client_id: selClient.valeur || d.client_id, pays: pays.value.trim(), date_depart: depart.value || null, date_retour: retour.value || null, accepte_le: accepte.value || null, ref: ref.value.trim(), responsable_id: respSel.value || null });
+            await modifier("dossiers", d.id, excursions ? { client_id: selClient.valeur || d.client_id, ref: ref.value.trim(), responsable_id: respSel.value || null } : { client_id: selClient.valeur || d.client_id, pays: pays.value.trim(), date_depart: depart.value || null, date_retour: retour.value || null, accepte_le: accepte.value || null, ref: ref.value.trim(), responsable_id: respSel.value || null });
             fermer();
             toast("Dossier modifié.");
             rafraichir();
           },
         },
         selClient.noeud,
-        h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || "Pays", pays), champ("Référence", ref), champ("Début", depart), champ("Fin", retour), champ("Date d'acceptation du devis", accepte, "Laissez vide si le client n'a pas encore accepté."), champ("Responsable du dossier", respSel, "Avec un rôle limité à « ses dossiers », la personne ne voit que ceux dont elle est responsable.")),
+        excursions ? h("div", { class: "grille-form" }, champ("Numéro de facture", ref), champ("Responsable", respSel), h("p", { class: "aide pleine-largeur" }, "Les dates du dossier sont celles de ses réservations, elles se mettent à jour toutes seules.")) : h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || "Pays", pays), champ("Référence", ref), champ("Début", depart), champ("Fin", retour), champ("Date d'acceptation du devis", accepte, "Laissez vide si le client n'a pas encore accepté."), champ("Responsable du dossier", respSel, "Avec un rôle limité à « ses dossiers », la personne ne voit que ceux dont elle est responsable.")),
         h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), h("button", { type: "submit", class: "principal" }, "Enregistrer"))
       )
     );

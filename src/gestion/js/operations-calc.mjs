@@ -108,12 +108,29 @@ export function duParPartenaire(reservations, netDe) {
 
 // ---- Vouchers (mode excursions) ------------------------------------------------------------------------------
 // Trois modèles : bateau (excursions en mer), transfert, activité. Les frais de parc n'ont pas de voucher.
+// Quatre modèles : bateau, transfert, activité, location. Chacun a ses champs propres sur la réservation.
+export const CHAMPS_VOUCHER = {
+  bateau: ["chambre", "type_tour", "parc", "parc_texte", "remarques", "remarques_paiement"],
+  transfert: ["drop_off", "vol", "bagages", "type_transfert", "remarques", "remarques_paiement"],
+  activite: ["chambre", "heure_service", "remarques", "remarques_paiement"],
+  location: ["chambre", "retour_date", "retour_heure", "permis", "caution", "remarques", "remarques_paiement"],
+};
+export const TITRES_VOUCHER = { bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher", location: "Rental Voucher" };
+
+// Dates du dossier déduites de ses réservations (hors annulées) : la première et la dernière date de service.
+export function datesDepuisReservations(reservations) {
+  const dates = reservations.filter((r) => r.statut !== "annule" && r.date_service).map((r) => r.date_service).sort();
+  if (!dates.length) return { date_depart: null, date_retour: null };
+  return { date_depart: dates[0], date_retour: dates.length > 1 && dates[dates.length - 1] !== dates[0] ? dates[dates.length - 1] : null };
+}
+
 export function typeVoucher(reservation, prestation) {
   if (reservation.trajet_id) return "transfert";
   const f = prestation ? prestation.famille : "";
   if (f === "frais") return null;
   if (f === "transfert") return "transfert";
-  if (f === "activite" || f === "location") return "activite";
+  if (f === "location") return "location";
+  if (f === "activite") return "activite";
   if (f === "excursion") return /taxi|van|transfert/i.test((prestation && prestation.groupe) || "") ? "transfert" : "bateau";
   return /transfer|taxi|van|→/i.test(reservation.libelle || "") ? "transfert" : "activite";
 }

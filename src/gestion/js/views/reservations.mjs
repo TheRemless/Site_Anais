@@ -1,8 +1,10 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
-import { etat, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, netReservation, enregistrerLie, reglages, entiteActive } from "../etat.mjs";
+import { etat, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, netReservation, enregistrerLie, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService } from "../operations-calc.mjs";
+import { choisirPrestation } from "./choix-prestation.mjs";
+import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
@@ -85,7 +87,35 @@ export function formulaireReservation(r, apres) {
   const remarques = h("textarea", { id: "v-remarques", rows: 2, placeholder: "Vu par le client et le prestataire, en anglais" });
   remarques.value = dt.remarques || "";
   const remarquesPaiement = h("input", { id: "v-rem-paiement", value: dt.remarques_paiement || "", placeholder: "Deposit 1,000 THB received, balance at the pier" });
-  const details = () => ({ ...dt, chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim() });
+  const heureService = h("input", { id: "v-heure-service", value: dt.heure_service || "", placeholder: "10:00 - 12:00" });
+  const retourDate = h("input", { id: "v-retour-date", type: "date", value: dt.retour_date || "" });
+  const retourHeure = h("input", { id: "v-retour-heure", type: "time", value: dt.retour_heure || "" });
+  const permis = h("input", { id: "v-permis", value: dt.permis || "", placeholder: "International driving licence shown" });
+  const caution = h("input", { id: "v-caution", value: dt.caution || "", placeholder: "3,000 THB, returned at drop-off" });
+  const details = () => ({ ...dt, chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, permis: permis.value.trim(), caution: caution.value.trim() });
+  // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
+  const prestation = r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null;
+  const type = typeVoucher(r, prestation);
+  const CHAMPS = {
+    chambre: () => champ("Chambre", chambre, "Sinon celle de l'adresse du client."),
+    drop_off: () => champ("Drop-off", dropOff),
+    vol: () => champ("Numéro de vol", vol),
+    bagages: () => champ("Bagages", bagages),
+    type_tour: () => champ("Type de tour", typeTour),
+    type_transfert: () => champ("Type de transfert", typeTransfert),
+    parc: () => champ("Frais de parc", parc),
+    parc_texte: () => champ("Texte des frais de parc", parcTexte),
+    heure_service: () => champ("Horaire de l'activité", heureService, "Imprimé après la date."),
+    retour_date: () => champ("Date de retour", retourDate),
+    retour_heure: () => champ("Heure de retour", retourHeure),
+    permis: () => champ("Permis de conduire", permis),
+    caution: () => champ("Caution", caution),
+    remarques: () => champ("Remarques sur le voucher", remarques),
+    remarques_paiement: () => champ("Remarque de paiement", remarquesPaiement),
+  };
+  const blocVoucher = type
+    ? h("fieldset", null, h("legend", null, TITRES_VOUCHER[type]), h("p", { class: "aide" }, "Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation."), h("div", { class: "grille-form" }, (CHAMPS_VOUCHER[type] || []).filter((c) => !["remarques", "remarques_paiement"].includes(c)).map((c) => CHAMPS[c]())), (CHAMPS_VOUCHER[type] || []).filter((c) => ["remarques", "remarques_paiement"].includes(c)).map((c) => CHAMPS[c]()))
+    : null;
   return h(
     "form",
     {
@@ -110,17 +140,8 @@ export function formulaireReservation(r, apres) {
     h("div", { class: "grille-form compacte" }, champ("Adultes", adultes), champ("Enfants", enfants), champ("Bébés", bebes), peut("finances.voir") ? champ("Vendu au client", vente) : null),
     nets ? h("div", { class: "grille-form compacte" }, champ("Net prévu", netPrevu, "Ce que le partenaire facturera."), champ("Net payé", netPaye), champ("Payé le", payeLe)) : null,
     champ("Notes internes", notes, "Jamais sur le voucher."),
-    h(
-      "fieldset",
-      null,
-      h("legend", null, "Voucher"),
-      h("p", { class: "aide" }, "Ce qui s'imprime sur le voucher en plus de la réservation. En automatique, le type de tour, le type de transfert et les frais de parc sont déduits de la prestation."),
-      h("div", { class: "grille-form" }, champ("Chambre", chambre, "Sinon celle de l'adresse du client."), champ("Drop-off (transfert)", dropOff), champ("Vol (transfert)", vol), champ("Bagages (transfert)", bagages)),
-      h("div", { class: "grille-form" }, champ("Type de tour (bateau)", typeTour), champ("Type de transfert", typeTransfert), champ("Frais de parc (bateau)", parc), champ("Texte des frais de parc", parcTexte)),
-      champ("Remarques sur le voucher", remarques),
-      champ("Remarque de paiement", remarquesPaiement)
-    ),
-    h("div", { class: "actions" }, r.id && peut("dossiers.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(`Supprimer la réservation « ${r.libelle} » ?`, "Supprimer", true)) { await supprimer("reservations", r.id); apres(null); } } }, "Supprimer") : null, h("button", { class: "principal", type: "submit" }, "Enregistrer"))
+    blocVoucher,
+    h("div", { class: "actions" }, r.id && peut("dossiers.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(`Supprimer la réservation « ${r.libelle} » ?`, "Supprimer", true)) { await supprimer("reservations", r.id); await synchroniserDatesDossier(r.dossier_id); apres(null); } } }, "Supprimer") : null, h("button", { class: "principal", type: "submit" }, "Enregistrer"))
   );
 }
 
@@ -140,7 +161,46 @@ export async function creerReservations(doc) {
       toast(`Une réservation n'a pas pu être créée : ${err.message}`, true);
     }
   }
+  await synchroniserDatesDossier(doc.dossier_id);
   toast(`${n} réservation${n > 1 ? "s" : ""} créée${n > 1 ? "s" : ""}, à demander aux partenaires.`);
+}
+
+// En mode excursions, les dates du dossier sont celles de ses réservations : première et dernière date de service.
+export async function synchroniserDatesDossier(dossierId) {
+  if (!modeExcursions()) return;
+  const d = etat.db.dossiers.find((x) => x.id === dossierId);
+  if (!d) return;
+  const dates = datesDepuisReservations(etat.db.reservations.filter((r) => r.dossier_id === dossierId));
+  if (dates.date_depart !== (d.date_depart || null) || dates.date_retour !== (d.date_retour || null)) await modifier("dossiers", dossierId, dates);
+}
+
+// Ajouter des services à un dossier existant : les lignes vont dans la facture (créée si besoin), puis chacune a sa réservation.
+export function ajouterServices(d, doc, apres) {
+  const regl = reglages();
+  const langue = /invoice/i.test((regl.libelles && regl.libelles.facture) || "") ? "en" : "";
+  choisirPrestation({
+    langue,
+    devise: regl.devise,
+    sansCompagnie: true,
+    onAjout: async (nouvelles) => {
+      try {
+        const lignes = nouvelles.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, libelle: l.kind === "texte" ? l.libelle : descriptionService(l, langue), intro: "" }));
+        let cible = doc;
+        if (!cible) {
+          cible = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: new Date().toISOString().slice(0, 10), envoye_le: null, updated_at: new Date().toISOString(), contenu: { ...CONTENU_DEFAUT(), colonnes: "total", langue, variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: [] } });
+        }
+        const contenu = structuredClone(cible.contenu);
+        contenu.lignes = [...(contenu.lignes || []), ...lignes];
+        const partenaires = [...new Set(contenu.lignes.map((l) => nomPartenaire(l.partenaire_id)).filter(Boolean))];
+        if (partenaires.length) contenu.prestataire = partenaires.join(", ");
+        const maj = await modifier("documents", cible.id, { contenu, updated_at: new Date().toISOString() });
+        await creerReservations(maj);
+        apres();
+      } catch (err) {
+        toast(`Ajout impossible : ${err.message}`, true);
+      }
+    },
+  });
 }
 
 export function sectionReservationsDossier(d, doc) {
@@ -156,10 +216,10 @@ export function sectionReservationsDossier(d, doc) {
       { class: "entete petit-entete" },
       h("h2", null, "Réservations auprès des partenaires"),
       ecrit
-        ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc), rafraichir()) }, `Créer ${manquantes} réservation${manquantes > 1 ? "s" : ""} depuis ${doc.type === "devis" ? "le devis" : "la facture"}`) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal("Nouvelle réservation", formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir()))); } }, "Nouvelle réservation"))
+        ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc), rafraichir()) }, `Créer ${manquantes} réservation${manquantes > 1 ? "s" : ""} depuis ${doc.type === "devis" ? "le devis" : "la facture"}`) : null, modeExcursions() ? h("button", { class: "principal petit", type: "button", onclick: () => ajouterServices(d, doc, rafraichir) }, "Ajouter un service") : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal("Nouvelle réservation", formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir()))); } }, modeExcursions() ? "Réservation à la main" : "Nouvelle réservation"))
         : null
     ),
-    rs.length ? listeReservations(rs, { avecDossier: false, apres: rafraichir }) : h("p", { class: "vide-court" }, doc && manquantes ? "Les lignes de partenaires du document peuvent devenir des réservations en un clic." : "Aucune réservation. Elles se créent depuis les lignes de partenaires du devis, ou à la main.")
+    rs.length ? listeReservations(rs, { avecDossier: false, apres: rafraichir }) : h("p", { class: "vide-court" }, doc && manquantes ? "Les lignes de partenaires du document peuvent devenir des réservations en un clic." : modeExcursions() ? "Aucune réservation. « Ajouter un service » met la prestation sur la facture et crée sa réservation." : "Aucune réservation. Elles se créent depuis les lignes de partenaires du devis, ou à la main.")
   );
 }
 
