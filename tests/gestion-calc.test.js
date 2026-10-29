@@ -215,3 +215,44 @@ test("réglages : nouvelles options complétées pour une entreprise existante",
   assert.equal(r.libelles.colonne_montant, "");
   assert.equal(r.libelles.prestataire, "Prestataire :");
 });
+
+test("facture locale : taux entre devises et conversion du contenu", async () => {
+  const { tauxVers, convertirContenu, totaux, resume } = await load();
+  const regl = { devise: "CHF", taux: { eur: 1.058, thb: 40.54 }, conditions: { acompte_pct: 0 } };
+  assert.equal(tauxVers(regl, "CHF", "THB"), 40.54);
+  assert.equal(tauxVers(regl, "THB", "CHF"), Math.round((1 / 40.54) * 10000) / 10000);
+  assert.equal(tauxVers(regl, "EUR", "THB"), Math.round((40.54 / 1.058) * 10000) / 10000);
+  assert.equal(tauxVers(regl, "CHF", "USD"), null);
+
+  const source = { devise: "CHF", colonnes: "detail", montant_recu: 100, libelle_recu: "Acompte", equivalents: { actif: true, eur: 1.05 }, lignes: [{ id: "a", kind: "formule", libelle: "Bateau", unite: 10, qte: 2, montant: 20 }, { id: "b", kind: "texte", libelle: "Note", montant: null, unite: null }] };
+  const c = convertirContenu(source, 40, "THB");
+  assert.equal(c.devise, "THB");
+  assert.equal(c.lignes[0].montant, 800);
+  assert.equal(c.lignes[0].unite, 400);
+  assert.equal(c.lignes[1].montant, null);
+  assert.equal(c.montant_recu, null);
+  assert.equal(c.libelle_recu, undefined);
+  assert.equal(c.equivalents.actif, false);
+  assert.equal(source.lignes[0].montant, 20, "la source n'est pas modifiée");
+
+  // Une facture locale ne compte ni dans le total ni dans le reste à payer du dossier.
+  const dossier = { id: "d1", client_id: "c1", accepte_le: "2026-10-01", annule: false };
+  const docs = [
+    { dossier_id: "d1", type: "facture", date_emission: "2026-10-02", created_at: "1", contenu: { devise: "CHF", lignes: [{ kind: "formule", montant: 20 }] } },
+    { dossier_id: "d1", type: "facture_locale", date_emission: "2026-10-02", created_at: "2", contenu: c },
+  ];
+  const r = resume(dossier, { documents: docs, paiements: [], clients: [] }, regl);
+  assert.equal(r.total, 20);
+});
+
+test("modes de paiement : le principal puis les autres", async () => {
+  const { modesPaiement, modePaiement, completerReglages } = await import("../src/gestion/js/defauts.mjs");
+  const r = completerReglages({ paiement: { texte: "IBAN CH", autres: [{ id: "thb", nom: "Banque thaïlandaise", texte: "Account 123" }] }, apparence: { qr_image: "qr.png" } });
+  const modes = modesPaiement(r);
+  assert.equal(modes.length, 2);
+  assert.equal(modes[0].nom, "Principal");
+  assert.equal(modes[0].qr_image, "qr.png");
+  assert.equal(modePaiement(r, "thb").texte, "Account 123");
+  assert.equal(modePaiement(r, "inconnu").texte, "IBAN CH", "un mode supprimé retombe sur le principal");
+  assert.equal(modePaiement(r, "").qr_image, "qr.png");
+});

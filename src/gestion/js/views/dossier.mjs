@@ -1,7 +1,7 @@
 import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
-import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef } from "../calc.mjs";
-import { uid } from "../defauts.mjs";
+import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, convertirContenu } from "../calc.mjs";
+import { uid, modesPaiement } from "../defauts.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { sectionTachesDossier } from "./taches.mjs";
 import { sectionPieces } from "./pieces.mjs";
@@ -32,6 +32,7 @@ function ficheDossierVue(id) {
   const MOYENS = regl.listes.moyens.map((m) => [m.id, m.label]);
   const devis = dernier(r.documents, "devis");
   const facture = dernier(r.documents, "facture");
+  const locale = dernier(r.documents, "facture_locale");
   const avecDevis = !!devis || !facture;
   const acompte = acompteDu(r.total, regl.conditions.acompte_pct);
   const echeance = echeanceAcompte(d, regl);
@@ -71,6 +72,48 @@ function ficheDossierVue(id) {
     base.montant_recu = null;
     const f = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: ajd, envoye_le: null, updated_at: new Date().toISOString(), contenu: base });
     naviguer(`#/doc/${f.id}`);
+  };
+
+  // Facture locale : la même facture dans la devise du pays (bahts) et avec d'autres informations de paiement, pour la comptabilité thaïlandaise.
+  // Elle ne compte ni dans le total du dossier ni dans les statistiques.
+  const creerLocale = () => {
+    const devSource = facture.contenu.devise || regl.devise;
+    const devises = [...new Set([regl.devise, ...regl.listes.devises])].filter((x) => x !== devSource);
+    const modes = modesPaiement(regl);
+    const cible = h("select", { id: "loc-devise", onchange: () => majTaux() }, (devises.length ? devises : [devSource]).map((x) => h("option", { value: x }, x)));
+    cible.value = devises.includes("THB") ? "THB" : cible.value;
+    const taux = h("input", { id: "loc-taux", type: "number", step: "0.0001", min: "0" });
+    const majTaux = () => (taux.value = tauxVers(regl, devSource, cible.value) ?? "");
+    majTaux();
+    const mode = h("select", { id: "loc-mode" }, modes.map((m) => h("option", { value: m.id }, m.nom)));
+    mode.value = modes[modes.length - 1].id;
+    const numero = h("input", { id: "loc-numero", value: `${d.ref}-L` });
+    const fermer = modal(
+      "Créer la facture locale",
+      h(
+        "form",
+        {
+          class: "modal-corps",
+          onsubmit: async (e) => {
+            e.preventDefault();
+            const t = num(taux.value);
+            if (!t || t <= 0) return toast("Indiquez le taux de conversion.", true);
+            const contenu = convertirContenu(facture.contenu, t, cible.value);
+            contenu.lignes = contenu.lignes.map((l) => ({ ...l, id: uid() }));
+            contenu.paiement = mode.value;
+            contenu.numero = numero.value.trim();
+            const f = await inserer("documents", { dossier_id: d.id, type: "facture_locale", date_emission: facture.date_emission, envoye_le: null, updated_at: new Date().toISOString(), contenu });
+            fermer();
+            naviguer(`#/doc/${f.id}`);
+          },
+        },
+        h("p", { class: "aide" }, `Copie de la facture avec les montants convertis. Vous pouvez ensuite tout corriger ligne par ligne. Les paiements restent sur la facture du client (${devSource}).`),
+        h("div", { class: "grille-form" }, champ("Devise de la facture locale", cible), champ(`Taux (1 ${devSource} = … )`, taux, "Pré-rempli d'après les réglages, modifiable.")),
+        modes.length > 1 ? champ("Informations de paiement", mode) : null,
+        champ("Numéro affiché", numero, "Remplace la référence du dossier sur cette facture."),
+        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), h("button", { type: "submit", class: "principal" }, "Créer la facture locale"))
+      )
+    );
   };
 
   // Une copie du devis pour un nouveau dossier, comme dupliquer une page dans l'ancien fichier.
@@ -297,9 +340,10 @@ function ficheDossierVue(id) {
             "table",
             { class: "tableau simple" },
             h("thead", null, h("tr", null, ["Document", "Émis le", "Envoyé le", "Total", ""].map((t, i) => h("th", { scope: "col", class: i === 3 ? "num" : null }, t)))),
-            h("tbody", null, r.documents.filter((x) => x.type === "devis").map((x) => ligneDoc(x, "Devis")), r.documents.filter((x) => x.type === "facture").map((x) => ligneDoc(x, "Facture")))
+            h("tbody", null, r.documents.filter((x) => x.type === "devis").map((x) => ligneDoc(x, "Devis")), r.documents.filter((x) => x.type === "facture").map((x) => ligneDoc(x, "Facture")), r.documents.filter((x) => x.type === "facture_locale").map((x) => ligneDoc(x, "Facture locale")))
           )
-        : h("p", { class: "vide-court" }, "Aucun document.")
+        : h("p", { class: "vide-court" }, "Aucun document."),
+      facture && !locale && droit.docs ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, "Créer la facture locale")) : null
     ),
     droit.finances ? h("section", null, h("h2", null, "Paiements reçus"), tableauPaiements, droit.paiements ? [h("h3", null, "Enregistrer un paiement"), formPaiement] : null) : null,
     sectionTachesDossier(d.id),
