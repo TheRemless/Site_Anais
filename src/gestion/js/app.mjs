@@ -1,5 +1,7 @@
-import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut } from "./etat.mjs";
-import { h, vider, toast, modal } from "./ui.mjs";
+import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer } from "./etat.mjs";
+import { h, vider, toast, modal, icone } from "./ui.mjs";
+import { STATUTS } from "./calc.mjs";
+import { sousTitreDossier } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { listeDossiers, nouveauDossier } from "./views/dossiers.mjs";
 import { ficheDossier } from "./views/dossier.mjs";
@@ -115,60 +117,202 @@ function bandeauDemo() {
   );
 }
 
-function menu() {
+// Écrans ouverts à la personne connectée, groupés comme dans la barre latérale.
+function ecrans() {
   const ajd = new Date().toISOString().slice(0, 10);
   const enRetard = mesTaches().filter((t) => t.echeance && t.echeance <= ajd).length;
-  const elements = [
-    ["#/", "Tableau de bord", "tableau"],
-    ["#/dossiers", "Dossiers", "dossiers"],
-    ["#/clients", "Clients", "clients"],
-    ["#/taches", enRetard ? `Tâches (${enRetard})` : "Tâches", "taches"],
-    ["#/catalogue", "Catalogue", "catalogue"],
-    ...(peut("analytics.voir") && peut("finances.voir") ? [["#/analyses", "Analyses", "analyses"]] : []),
-    ...(estAdmin() ? [["#/reglages", "Réglages", "reglages"]] : []),
-    ...(peut("journal.voir") ? [["#/journal", "Journal", "journal"]] : []),
-  ];
+  const si = (ok, item) => (ok ? [item] : []);
+  return [
+    { titre: "Opérations", items: [{ href: "#/", libelle: "Aujourd'hui", cle: "tableau", icone: "soleil" }, { href: "#/taches", libelle: "Tâches", cle: "taches", icone: "taches", badge: enRetard }] },
+    { titre: "Ventes", items: [{ href: "#/dossiers", libelle: "Dossiers", cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: "Clients", cle: "clients", icone: "clients" }, { href: "#/catalogue", libelle: "Catalogue", cle: "catalogue", icone: "catalogue" }] },
+    {
+      titre: "Administration",
+      items: [
+        ...si(peut("analytics.voir") && peut("finances.voir"), { href: "#/analyses", libelle: "Analyses", cle: "analyses", icone: "analyses" }),
+        ...si(peut("journal.voir"), { href: "#/journal", libelle: "Journal", cle: "journal", icone: "journal" }),
+        ...si(estAdmin(), { href: "#/reglages", libelle: "Réglages", cle: "reglages", icone: "reglages" }),
+        ...si(estSuperAdmin(), { href: "#/admin", libelle: "Administration", cle: "admin", icone: "admin" }),
+      ],
+    },
+  ].filter((s) => s.items.length);
+}
+// Les trois écrans qui ont leur onglet sur téléphone, le reste passe par « Plus ».
+const ONGLETS_MOBILES = ["tableau", "dossiers", "clients"];
+const tousEcrans = () => ecrans().flatMap((s) => s.items);
+
+const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": `${e.badge} en retard` }, e.badge) : null);
+const sections = (liste, apres) => liste.map((s) => h("div", { class: "menu-section" }, h("p", { class: "menu-section-titre" }, s.titre), h("ul", null, s.items.map((e) => h("li", null, lienEcran(e, apres))))));
+
+async function deconnecter() {
+  await etat.store.deconnecter();
+  etat.session = null;
+  etat.brut = null;
+  etat.db = null;
+  afficher();
+}
+
+function blocCompte() {
+  const nom = etat.moi.nom || etat.session.email;
+  const initiales = nom.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((s) => s.charAt(0).toUpperCase()).join("");
+  return h("div", { class: "compte" }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
+}
+const outilsCompte = (apres) => [
+  h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirAide()), "aria-label": "Raccourcis clavier", title: "Raccourcis clavier (?)" }, icone("clavier")),
+  etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: deconnecter, "aria-label": "Se déconnecter", title: "Se déconnecter" }, icone("deconnexion")) : null,
+];
+
+// Ordinateur : barre latérale avec les écrans par section, la recherche et le compte.
+function menu() {
   const logo = etat.db.reglages.apparence.logo;
   return h(
     "nav",
     { class: "menu", "aria-label": "Navigation principale" },
     h("a", { class: "marque", href: "#/" }, logo ? h("img", { src: logo, alt: "" }) : null, h("span", null, "Gestion")),
     selecteurEntite(),
-    h("ul", null, elements.map(([href, libelle, cle]) => h("li", null, h("a", { href, "data-cle": cle }, libelle)))),
+    h("button", { class: "recherche-bouton", type: "button", onclick: ouvrirRecherche }, icone("recherche", 18), h("span", null, "Rechercher"), h("kbd", null, "/")),
+    sections(ecrans()),
+    h("div", { class: "menu-bas" }, blocCompte(), h("div", { class: "menu-outils" }, outilsCompte()))
+  );
+}
+
+// Téléphone : l'entreprise et la recherche en haut, quatre onglets en bas.
+function barreHaut() {
+  const logo = etat.db.reglages.apparence.logo;
+  return h("header", { class: "barre-haut" }, logo ? h("img", { class: "barre-logo", src: logo, alt: "" }) : null, selecteurEntite(), h("button", { class: "bouton-icone lien", type: "button", onclick: ouvrirRecherche, "aria-label": "Rechercher" }, icone("recherche", 22)));
+}
+
+function barreOnglets() {
+  const tous = tousEcrans();
+  const onglet = (e, contenu) => h("span", { class: "onglet-icone" }, icone(e.icone, 22), contenu);
+  const badgePlus = tous.filter((e) => !ONGLETS_MOBILES.includes(e.cle)).reduce((n, e) => n + (e.badge || 0), 0);
+  return h(
+    "nav",
+    { class: "barre-onglets", "aria-label": "Navigation principale" },
     h(
-      "div",
-      { class: "menu-bas" },
-      estSuperAdmin() ? h("a", { class: "lien-admin", href: "#/admin", "data-cle": "admin" }, "Administration") : null,
-      h("button", { class: "lien", type: "button", onclick: ouvrirAide, title: "Raccourcis clavier (?)" }, "Raccourcis clavier"),
-      h("span", { class: "compte" }, etat.moi.nom || etat.session.email, roleActif() ? ` · ${roleActif()}` : ""),
-      etat.store.mode === "supabase"
-        ? h(
-            "button",
-            {
-              class: "lien",
-              type: "button",
-              onclick: async () => {
-                await etat.store.deconnecter();
-                etat.session = null;
-                etat.brut = null;
-                etat.db = null;
-                afficher();
-              },
-            },
-            "Se déconnecter"
-          )
-        : null
+      "ul",
+      null,
+      ONGLETS_MOBILES.map((cle) => tous.find((e) => e.cle === cle)).filter(Boolean).map((e) => h("li", null, h("a", { href: e.href, "data-cle": e.cle, class: "onglet" }, onglet(e, e.badge ? h("span", { class: "badge" }, e.badge) : null), h("span", null, e.libelle)))),
+      h("li", null, h("button", { type: "button", class: "onglet", "data-cle": "plus", onclick: ouvrirPlus }, onglet({ icone: "plus" }, badgePlus ? h("span", { class: "badge" }, badgePlus) : null), h("span", null, "Plus")))
     )
   );
 }
 
-// Sur téléphone le menu est en bas de l'écran : le choix d'entreprise passe en haut de la page.
-function barreMobile() {
-  return h("div", { class: "entite-mobile" }, selecteurEntite(), estSuperAdmin() ? h("a", { href: "#/admin" }, "Administration") : null);
+// Feuille « Plus » : les écrans sans onglet, le compte et la déconnexion.
+function ouvrirPlus() {
+  const restants = ecrans().map((s) => ({ ...s, items: s.items.filter((e) => !ONGLETS_MOBILES.includes(e.cle)) })).filter((s) => s.items.length);
+  let fermer;
+  const apres = () => fermer();
+  fermer = modal("Plus", h("div", { class: "feuille-menu" }, sections(restants, apres), h("div", { class: "feuille-pied" }, blocCompte(), h("div", { class: "menu-outils" }, outilsCompte(apres)))), { feuille: true });
 }
 
 function coque() {
-  return h("div", { class: "coque" }, menu(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, barreMobile(), h("main", { id: "principal", tabindex: "-1" })));
+  return h("div", { class: "coque" }, menu(), h("div", { class: "contenu-coque" }, barreHaut(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, h("main", { id: "principal", tabindex: "-1" }))), barreOnglets());
+}
+
+// ---- Recherche globale ----------------------------------------------------------------------------------------
+const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const resultatDossier = (r) => ({ groupe: "Dossiers", icone: "dossiers", titre: nomClient(r.client), detail: sousTitreDossier(r.dossier), droite: STATUTS[r.statut], href: `#/dossier/${r.dossier.id}` });
+const resultatEcran = (e) => ({ groupe: "Écrans", icone: e.icone, titre: e.libelle, href: e.href });
+
+// Tous les mots saisis doivent apparaître. Sans saisie : les derniers dossiers et la liste des écrans.
+function chercher(q) {
+  const mots = sansAccents(q).split(/\s+/).filter(Boolean);
+  const correspond = (texte) => mots.every((m) => texte.includes(m));
+  if (!mots.length) return [...resumes().sort((a, b) => b.dossier.created_at.localeCompare(a.dossier.created_at)).slice(0, 5).map(resultatDossier), ...tousEcrans().map(resultatEcran)];
+  const out = [];
+  if (peut("dossiers.ecrire") && mots.every((m) => "nouveau dossier".includes(m))) out.push({ groupe: "Actions", icone: "ajouter", titre: "Nouveau dossier", href: "#/dossiers/nouveau" });
+  resumes()
+    .filter((r) => correspond(sansAccents(`${nomClient(r.client)} ${r.dossier.ref} ${r.dossier.pays} ${r.dossier.bandeau}`)))
+    .sort((a, b) => b.dossier.created_at.localeCompare(a.dossier.created_at))
+    .slice(0, 6)
+    .forEach((r) => out.push(resultatDossier(r)));
+  etat.db.clients
+    .filter((c) => correspond(sansAccents(`${nomClient(c)} ${c.telephone} ${c.email} ${c.adresse}`)))
+    .slice(0, 6)
+    .forEach((c) => out.push({ groupe: "Clients", icone: "clients", titre: nomClient(c), detail: [c.telephone, (c.adresse || "").split("\n").filter(Boolean).pop()].filter(Boolean).join(" · "), href: `#/client/${c.id}` }));
+  tousEcrans().filter((e) => correspond(sansAccents(e.libelle))).forEach((e) => out.push(resultatEcran(e)));
+  return out;
+}
+
+function ouvrirRecherche() {
+  if (document.querySelector(".palette-fond")) return;
+  const precedent = document.activeElement;
+  const champ = h("input", { id: "palette-champ", type: "search", placeholder: "Client, référence, écran…", autocomplete: "off", "aria-label": "Rechercher", role: "combobox", "aria-expanded": "true", "aria-controls": "palette-liste", "aria-autocomplete": "list" });
+  const liste = h("ul", { id: "palette-liste", class: "palette-liste", role: "listbox" });
+  let resultats = [];
+  let actif = 0;
+  const fermer = () => {
+    fond.remove();
+    document.removeEventListener("keydown", touche);
+    if (precedent && precedent.focus) precedent.focus();
+  };
+  const ouvrir = (r) => {
+    if (!r) return;
+    fermer();
+    naviguer(r.href);
+  };
+  const touche = (e) => {
+    if (e.key === "Escape") (e.preventDefault(), fermer());
+  };
+  const marquer = () => {
+    [...liste.querySelectorAll("[role=option]")].forEach((li, i) => {
+      li.setAttribute("aria-selected", i === actif ? "true" : "false");
+      if (i === actif) {
+        champ.setAttribute("aria-activedescendant", li.id);
+        li.scrollIntoView({ block: "nearest" });
+      }
+    });
+  };
+  function dessiner() {
+    resultats = chercher(champ.value);
+    actif = 0;
+    vider(liste);
+    if (!resultats.length) {
+      liste.append(h("li", { class: "palette-vide" }, `Rien pour « ${champ.value.trim()} ». Essayez un nom, une référence de dossier ou le nom d'un écran.`));
+      return;
+    }
+    let groupe = null;
+    resultats.forEach((r, i) => {
+      if (r.groupe !== groupe) {
+        groupe = r.groupe;
+        liste.append(h("li", { class: "palette-groupe", role: "presentation" }, groupe));
+      }
+      liste.append(
+        h(
+          "li",
+          { role: "option", id: `palette-${i}`, "aria-selected": i === actif ? "true" : "false", onmousedown: (e) => e.preventDefault(), onclick: () => ouvrir(r), onmousemove: () => actif !== i && ((actif = i), marquer()) },
+          icone(r.icone, 18),
+          h("span", { class: "palette-texte" }, h("strong", null, r.titre), r.detail ? h("span", null, r.detail) : null),
+          r.droite ? h("span", { class: "palette-droite" }, r.droite) : null
+        )
+      );
+    });
+    marquer();
+  }
+  champ.addEventListener("input", dessiner);
+  champ.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!resultats.length) return;
+      actif = (actif + (e.key === "ArrowDown" ? 1 : resultats.length - 1)) % resultats.length;
+      marquer();
+    } else if (e.key === "Enter") (e.preventDefault(), ouvrir(resultats[actif]));
+  });
+  const fond = h(
+    "div",
+    { class: "modal-fond palette-fond", onmousedown: (e) => e.target === fond && fermer() },
+    h(
+      "div",
+      { class: "palette", role: "dialog", "aria-modal": "true", "aria-label": "Recherche" },
+      h("div", { class: "palette-champ" }, icone("recherche", 20), champ, h("button", { class: "bouton-icone lien", type: "button", onclick: fermer, "aria-label": "Fermer" }, icone("fermer", 20))),
+      liste,
+      h("p", { class: "palette-aide" }, h("span", null, h("kbd", null, "↑"), h("kbd", null, "↓"), " choisir"), h("span", null, h("kbd", null, "Entrée"), " ouvrir"), h("span", null, h("kbd", null, "Échap"), " fermer"))
+    )
+  );
+  document.body.append(fond);
+  document.addEventListener("keydown", touche);
+  dessiner();
+  champ.focus();
 }
 
 let rendu = 0;
@@ -216,14 +360,15 @@ async function afficher() {
   } catch (err) {
     if (moi !== rendu) return;
     console.error(err);
-    noeud = h("div", { class: "vide" }, h("h1", null, "Cet écran n'a pas pu s'afficher"), h("p", null, err.message), h("a", { href: "#/" }, "Retour au tableau de bord"));
+    noeud = h("div", { class: "vide" }, h("h1", null, "Cet écran n'a pas pu s'afficher"), h("p", null, err.message), h("a", { href: "#/" }, "Retour à l'accueil"));
   }
   principal.replaceChildren(noeud);
   principal.className = [noeud.dataset && noeud.dataset.large ? "large" : "", noeud.dataset && noeud.dataset.plein ? "plein" : ""].filter(Boolean).join(" ");
   document.title = `${(noeud.dataset && noeud.dataset.titre) || "Gestion"} - ${entiteActive().nom}`;
   // Les pages à deux volets prennent exactement la hauteur restante de la fenêtre, bandeaux éventuels compris.
   document.documentElement.style.setProperty("--decalage", `${Math.round(principal.getBoundingClientRect().top + window.scrollY + 48)}px`);
-  for (const a of document.querySelectorAll(".menu a[data-cle]")) a.toggleAttribute("aria-current", a.dataset.cle === cleRoute);
+  // L'onglet « Plus » est marqué quand l'écran ouvert n'a pas d'onglet à lui.
+  for (const a of document.querySelectorAll("nav [data-cle]")) a.toggleAttribute("aria-current", a.dataset.cle === cleRoute || (a.dataset.cle === "plus" && !ONGLETS_MOBILES.includes(cleRoute)));
   if (hash !== derniereVue) window.scrollTo(0, 0);
   derniereVue = hash;
 }
@@ -239,7 +384,7 @@ function ouvrirAide() {
       "div",
       { class: "modal-corps" },
       h("h3", null, "Partout, hors d'un champ de saisie"),
-      tableau([ligne(["?"], "Afficher cette aide"), ligne(["n"], "Nouveau dossier"), ligne(["/"], "Aller à la recherche"), ligne(["g", "t"], "Tableau de bord"), ligne(["g", "d"], "Dossiers"), ligne(["g", "c"], "Clients"), ligne(["g", "k"], "Catalogue"), ligne(["g", "f"], "Tâches"), ligne(["g", "r"], "Réglages (administrateurs)"), ligne(["g", "a"], "Analyses"), ligne(["g", "j"], "Journal d'activité"), ligne(["g", "m"], "Administration (administratrice générale)"), ligne(["Échap"], "Fermer une fenêtre")]),
+      tableau([ligne(["?"], "Afficher cette aide"), ligne(["n"], "Nouveau dossier"), ligne(["/"], "Rechercher un client, un dossier ou un écran"), ligne([`${mod}+K`], "Rechercher (aussi dans un champ)"), ligne(["g", "t"], "Aujourd'hui"), ligne(["g", "d"], "Dossiers"), ligne(["g", "c"], "Clients"), ligne(["g", "k"], "Catalogue"), ligne(["g", "f"], "Tâches"), ligne(["g", "r"], "Réglages (administrateurs)"), ligne(["g", "a"], "Analyses"), ligne(["g", "j"], "Journal d'activité"), ligne(["g", "m"], "Administration (administratrice générale)"), ligne(["Échap"], "Fermer une fenêtre")]),
       h("h3", null, "Dans un devis ou une facture"),
       tableau([ligne([`${mod}+Z`], "Annuler la dernière modification"), ligne([`${mod}+Maj+Z`, `${mac ? "" : "Ctrl+Y"}`].filter(Boolean).slice(0, 1), `Rétablir${mac ? "" : " (ou Ctrl+Y)"}`), ligne([`${mod}+S`], "Enregistrer tout de suite"), ligne([`${mod}+P`], "Télécharger le PDF")]),
       h("p", { class: "aide" }, "Les raccourcis propres au navigateur, comme Ctrl+T, Ctrl+W ou Ctrl+N, ne peuvent pas être pris en charge par un site. Les autres sont désactivés pendant la saisie dans un champ pour ne pas gêner l'écriture.")
@@ -250,9 +395,12 @@ function ouvrirAide() {
 // Raccourcis simples, actifs seulement quand on n'écrit pas dans un champ et qu'aucune fenêtre n'est ouverte.
 let sequence = null;
 document.addEventListener("keydown", (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey || !etat.session || !etat.db) return;
-  if (e.target.matches("input, textarea, select, [contenteditable]") || document.querySelector(".modal-fond")) return;
+  if (!etat.session || !etat.db) return;
   const k = e.key.toLowerCase();
+  // Ctrl+K (Cmd+K sur Mac) ouvre la recherche partout, même pendant une saisie.
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && k === "k" && !document.querySelector(".modal-fond")) return e.preventDefault(), ouvrirRecherche();
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.matches("input, textarea, select, [contenteditable]") || document.querySelector(".modal-fond")) return;
   if (sequence === "g") {
     sequence = null;
     const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", f: "#/taches", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(peut("analytics.voir") && peut("finances.voir") ? { a: "#/analyses" } : {}), ...(estSuperAdmin() ? { m: "#/admin" } : {}) };
@@ -264,10 +412,7 @@ document.addEventListener("keydown", (e) => {
     setTimeout(() => (sequence = null), 1200);
   } else if (k === "n") (e.preventDefault(), (location.hash = "#/dossiers/nouveau"));
   else if (k === "?") (e.preventDefault(), ouvrirAide());
-  else if (k === "/") {
-    const champ = document.getElementById("recherche") || document.getElementById("rech-clients");
-    if (champ) (e.preventDefault(), champ.focus());
-  }
+  else if (k === "/") (e.preventDefault(), ouvrirRecherche());
 });
 
 window.addEventListener("hashchange", afficher);

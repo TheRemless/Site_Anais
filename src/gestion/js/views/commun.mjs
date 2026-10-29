@@ -12,6 +12,20 @@ export function vide(titre, texte, action) {
   return h("div", { class: "vide" }, h("h2", null, titre), h("p", null, texte), action || null);
 }
 
+// « HM20261028 Thaïlande · novembre 2026 » : la référence puis l'intitulé, sans répéter le pays que la référence porte déjà.
+export function sousTitreDossier(d) {
+  const intitule = voyageTexte(d.bandeau, d.pays);
+  const pays = (d.pays || "").trim();
+  const complement = pays && intitule.toLowerCase().startsWith(pays.toLowerCase()) ? intitule.slice(pays.length).replace(/^\s*-\s*/, "") : intitule;
+  return [d.ref, complement].filter(Boolean).join(" · ");
+}
+
+// Liste en cartes pour le téléphone, à côté d'un tableau réservé au grand écran (classe `seulement-bureau`).
+// `carte` renvoie le contenu d'une carte : au besoin une case à cocher, puis un lien `.carte-lien`.
+export function cartes(items, carte) {
+  return h("ul", { class: "cartes seulement-mobile" }, items.map((x) => h("li", { class: "carte" }, carte(x))));
+}
+
 export function telecharger(nom, contenu, type) {
   const url = URL.createObjectURL(new Blob([contenu], { type }));
   const a = h("a", { href: url, download: nom });
