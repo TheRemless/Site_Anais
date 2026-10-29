@@ -178,7 +178,8 @@ test("conversion de la base partenaires : nets et banque à part, trajets, alert
   assert.equal(r.prestations[1].partenaire_id, null);
   assert.equal(r.trajets.length, 1);
   assert.equal(r.trajets[0].partenaire_id, bund.id);
-  assert.deepEqual(r.trajets_nets[0], { id: r.trajets_nets[0].id, created_at: "2026-10-29T00:00:00Z", entite_id: "E1", trajet_id: r.trajets[0].id, net_adulte: 600, net_enfant: 400 });
+  assert.deepEqual(r.trajets_nets[0], { id: r.trajets_nets[0].id, entite_id: "E1", trajet_id: r.trajets[0].id, net_adulte: 600, net_enfant: 400 });
+  assert.ok(r.partenaires_prives.concat(r.prestations_nets).every((x) => !("created_at" in x)), "les tables de nets n'ont pas de created_at");
   assert.deepEqual(r.taches.map((t) => t.titre), ["Contrat à signer", "[Critique] Frais de parc jamais inclus"]);
   assert.equal(r.taches[1].partenaire_id, longtail.id);
   assert.ok(r.taches[1].description.includes("À faire : Écrire sur le devis"));

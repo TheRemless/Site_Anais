@@ -30,6 +30,8 @@ const texte = (v) => (v === null || v === undefined ? "" : Array.isArray(v) ? v.
 export function convertir(D, entiteId, uid = randomUUID, maintenant = new Date().toISOString()) {
   const out = { version: 2, entreprise: "secret", exporte_le: maintenant, partenaires: [], partenaires_prives: [], prestations: [], prestations_nets: [], trajets: [], trajets_nets: [], taches: [] };
   const base = () => ({ id: uid(), created_at: maintenant, entite_id: entiteId });
+  // Les tables de nets n'ont pas de colonne created_at.
+  const lie = () => ({ id: uid(), entite_id: entiteId });
   const parId = {};
   const parNom = (nom) => {
     const n = String(nom || "").toLowerCase();
@@ -69,7 +71,7 @@ export function convertir(D, entiteId, uid = randomUUID, maintenant = new Date()
     row.contrat.fin = finDePeriode(p.validity) || finDePeriode(p.season);
     out.partenaires.push(row);
     parId[p.id] = row;
-    if (p.bank || p.payment) out.partenaires_prives.push({ ...base(), partenaire_id: row.id, banque: p.bank || {}, paiement: texte(p.payment) });
+    if (p.bank || p.payment) out.partenaires_prives.push({ ...lie(), partenaire_id: row.id, banque: p.bank || {}, paiement: texte(p.payment) });
     for (const t of p.todo || []) out.taches.push({ ...base(), partenaire_id: row.id, dossier_id: null, titre: t, description: `À régler avec ${p.name}.`, echeance: null, assignee_id: null, fait: false, fait_le: null, fait_par: null });
   }
   // Guichets, règles enfants, commissions, check-in et points d'embarquement sur la fiche du partenaire concerné.
@@ -109,7 +111,7 @@ export function convertir(D, entiteId, uid = randomUUID, maintenant = new Date()
   const prestation = (p, famille, groupe, libelle, prix, unite, details, net, extra = {}) => {
     const row = { ...base(), partenaire_id: p ? p.id : null, famille, groupe: texte(groupe), libelle: texte(libelle), libelle_en: "", details, prix_vente: nombre(prix), unite, sur_place: false, ordre: out.prestations.length + 1, actif: true, ...extra };
     out.prestations.push(row);
-    if (net !== null && net !== undefined && net !== "") out.prestations_nets.push({ ...base(), prestation_id: row.id, net: nombre(net), net_enfant: null, note: "" });
+    if (net !== null && net !== undefined && net !== "") out.prestations_nets.push({ ...lie(), prestation_id: row.id, net: nombre(net), net_enfant: null, note: "" });
     return row;
   };
   for (const x of D.excursions || []) {
@@ -148,7 +150,7 @@ export function convertir(D, entiteId, uid = randomUUID, maintenant = new Date()
     const p = r.co === "B" ? bund : satun;
     const row = { ...base(), partenaire_id: p ? p.id : null, numero: r.no, de: r.frm, vers: r.to, mode: r.mode, depart: r.dep, arrivee: r.arr, duree: r.dur, prix_adulte: nombre(r.ad), prix_enfant: nombre(r.ch), bebe: texte(r.inf), periode: texte(r.per), fenetres: r.win || [], actif: true };
     out.trajets.push(row);
-    if (nombre(r.adn) !== null || nombre(r.chn) !== null) out.trajets_nets.push({ ...base(), trajet_id: row.id, net_adulte: nombre(r.adn), net_enfant: nombre(r.chn) });
+    if (nombre(r.adn) !== null || nombre(r.chn) !== null) out.trajets_nets.push({ ...lie(), trajet_id: row.id, net_adulte: nombre(r.adn), net_enfant: nombre(r.chn) });
   }
 
   // ---- Alertes : des tâches liées au premier partenaire concerné ----

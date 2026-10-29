@@ -153,6 +153,9 @@ export const MESSAGES_DEFAUT = [
 // Réglages d'une entreprise nouvellement créée : aucun fait propre à une entreprise réelle.
 export const REGLAGES_NEUTRE = {
   messages: MESSAGES_DEFAUT,
+  // Écrans propres à l'entreprise : null = automatique (Partenaires dès qu'il y a un partenaire, Réservations et Messages
+  // avec Partenaires, Catalogue toujours), true = affiché, false = masqué.
+  modules: { partenaires: null, reservations: null, messages: null, catalogue: null },
   emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", contact: "" },
   paiement: { texte: "", nom: "", autres: [] },
   devise: "",
