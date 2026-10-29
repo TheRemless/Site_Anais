@@ -75,7 +75,12 @@ begin
         from retenus group by 1, 2 order by sum(total) desc, 1) x), '[]'::jsonb),
     'par_responsable', coalesce((select jsonb_agg(x) from (
         select coalesce(nullif(trim(coalesce(p.nom, p.email, '')), ''), 'Sans responsable') as responsable, r.devise, round(sum(r.total), 2) as montant, count(*)::int as nombre
-        from retenus r left join profils p on p.user_id = r.responsable_id group by 1, 2 order by sum(r.total) desc, 1) x), '[]'::jsonb)
+        from retenus r left join profils p on p.user_id = r.responsable_id group by 1, 2 order by sum(r.total) desc, 1) x), '[]'::jsonb),
+    -- Devis en attente au jour donné : émis, ni acceptés, ni annulés, ni facturés. C'est le chiffre d'affaires possible.
+    'pipeline', coalesce((select jsonb_agg(x order by x.devise) from (
+        select devise, round(sum(total), 2) as montant, count(*)::int as nombre
+        from tot where not annule and accepte_le is null and fc is null and dc is not null and v_date <= jour group by 1) x), '[]'::jsonb),
+    'activite', jsonb_build_object('dossiers', (select count(*)::int from retenus), 'clients', (select count(distinct client_id)::int from retenus))
   ) into res;
   return res;
 end

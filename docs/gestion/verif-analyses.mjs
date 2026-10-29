@@ -95,6 +95,8 @@ ok(Number(v.devis.emis) === 5 || Number(v.devis.emis) === 4, "nombre de devis é
 ok(v.impayes.length === 1 && v.impayes[0].tranche === "0-30" && v.impayes[0].devise === "CHF" && Number(v.impayes[0].montant) === 80 && v.impayes[0].nombre === 1, "impayés : seulement les dossiers facturés (80), comptés depuis la date de la facture, pas le devis accepté sans facture");
 ok(v.top_clients.length >= 2 && v.top_clients[0].client === "Alice Martin", "meilleur client : Alice Martin");
 ok(!JSON.stringify(v).includes("999"), "le dossier annulé n'est pas compté");
+ok(v.pipeline.length === 1 && v.pipeline[0].devise === "CHF" && Number(v.pipeline[0].montant) === 500 && v.pipeline[0].nombre === 1, "devis en attente : 500 CHF (ni accepté, ni annulé, ni facturé)");
+ok(Number(v.activite.dossiers) === 3 && Number(v.activite.clients) === 2, "activité : 3 dossiers retenus pour 2 clients");
 
 // 2b. résumé des dossiers tenu à jour par les déclencheurs
 const resume = Object.fromEntries((await db.query("select dossier_id, total, devise, recu from dossiers_resume")).rows.map((r) => [r.dossier_id.slice(-2), r]));
