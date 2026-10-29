@@ -5,6 +5,8 @@ import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu,
 import { pastille, cartes, voyageTexte } from "./commun.mjs";
 import { mesTaches, listeTaches } from "./taches.mjs";
 import { contratsAEcheance } from "../partenaires-calc.mjs";
+import { agenda } from "../operations-calc.mjs";
+import { listeReservations } from "./reservations.mjs";
 
 const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
 
@@ -34,6 +36,10 @@ export async function tableauDeBord() {
   const ceMois = await paiementsPeriode(`${ajd.slice(0, 7)}-01`, `${ajd.slice(0, 7)}-31`);
   const taches = aFaire(rs, ajd, reglages());
   const contrats = peut("partenaires.lire") ? contratsAEcheance(etat.db.partenaires, ajd) : [];
+  const ag = agenda(etat.db.reservations, ajd);
+  const aConfirmer = [...ag.enRetard, ...ag.aConfirmer];
+  const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
+  const sectionAgenda = (titre, rs, videTexte) => h("section", null, h("h2", null, titre, h("span", { class: "tag" }, rs.length)), rs.length ? listeReservations(rs, { apres: rafraichir }) : h("p", { class: "vide-court" }, videTexte));
   const departs = rs
     .filter((r) => r.dossier.date_depart && r.statut !== "annule" && r.dossier.date_depart >= ajd && joursEntre(ajd, r.dossier.date_depart) <= 60)
     .sort((a, b) => (a.dossier.date_depart > b.dossier.date_depart ? 1 : -1));
@@ -54,6 +60,11 @@ export async function tableauDeBord() {
       chiffre(formatSommes(ceMois.map((p) => ({ montant: p.montant, devise: deviseDe[p.dossier_id] })), reglages().devise), `Encaissé en ${nomMois(ajd)}`, pluriel(ceMois.length, "paiement", "paiements")),
       chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), "Devis en attente de réponse", pluriel(attente.length, "devis envoyé", "devis envoyés"))
     ) : null,
+    etat.db.reservations.length || etat.db.partenaires.length ? sectionAgenda("Départs et pickups aujourd'hui", ag.aujourdhui, "Aucun service aujourd'hui.") : null,
+    ag.demain.length ? sectionAgenda("Demain", ag.demain, "") : null,
+    aConfirmer.length
+      ? h("section", null, h("h2", null, "À confirmer auprès des partenaires", h("span", { class: "tag" }, aConfirmer.length)), listeReservations(aConfirmer.slice(0, 6), { apres: rafraichir }), aConfirmer.length > 6 ? h("p", { class: "plus" }, h("a", { href: "#/reservations?statut=ouvertes" }, `Voir les ${aConfirmer.length} réservations à confirmer`)) : null)
+      : null,
     mesTaches().length
       ? h("section", null, h("h2", null, "Mes tâches"), listeTaches(mesTaches().slice(0, 6)), mesTaches().length > 6 ? h("p", { class: "plus" }, h("a", { href: "#/taches" }, `Voir les ${mesTaches().length} tâches`)) : h("p", { class: "plus" }, h("a", { href: "#/taches" }, "Toutes les tâches")))
       : null,

@@ -7,6 +7,7 @@ import { sectionTachesDossier } from "./taches.mjs";
 import { sectionPieces } from "./pieces.mjs";
 import { pastille, vide, pdf, sousTitreDossier } from "./commun.mjs";
 import { margeDocument } from "../partenaires-calc.mjs";
+import { sectionReservationsDossier } from "./reservations.mjs";
 
 const rafraichir = () => naviguer(location.hash);
 const dernier = (docs, type) => docs.filter((d) => d.type === type).sort((a, b) => (a.created_at > b.created_at ? 1 : -1)).pop();
@@ -354,6 +355,7 @@ function ficheDossierVue(id) {
       facture && !locale && droit.docs ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, "Créer la facture locale")) : null
     ),
     droit.finances ? h("section", null, h("h2", null, "Paiements reçus"), tableauPaiements, droit.paiements ? [h("h3", null, "Enregistrer un paiement"), formPaiement] : null) : null,
+    sectionReservationsDossier(d, facture || devis || null),
     sectionTachesDossier(d.id),
     sectionPieces(d),
     h("section", null, h("h2", null, "Notes internes"), champ("Visibles seulement ici, jamais sur les documents", notes)),

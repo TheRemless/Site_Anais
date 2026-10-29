@@ -5,11 +5,11 @@ import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal } from "./analyses.mjs";
 
-const CLE = "gestion-zwald-demo-v5";
+const CLE = "gestion-zwald-demo-v6";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets"];
+const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
 const PARTENAIRES_PUBLIC = ["partenaires", "prestations", "trajets"];
-const PARTENAIRES_NETS = ["partenaires_prives", "prestations_nets", "trajets_nets"];
+const PARTENAIRES_NETS = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
 const LIMITE_DEMO = 1.5 * 1024 * 1024;
 
 export function creer() {
@@ -66,7 +66,7 @@ export function creer() {
   const journaliser = (table, action, ligne, details = {}) => {
     // Les tables de nets ne passent pas par le journal, comme dans la vraie base.
     if (PARTENAIRES_NETS.includes(table)) return;
-    const libelle = { dossiers: ligne.ref, clients: [ligne.prenom, ligne.nom].filter(Boolean).join(" "), catalogue: ligne.libelle, roles: ligne.nom, taches: ligne.titre, pieces_jointes: ligne.nom, partenaires: ligne.nom, prestations: ligne.libelle, trajets: `${ligne.de} → ${ligne.vers}`, documents: `${ligne.type || ""} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim(), paiements: `${ligne.montant} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim() }[table] || "";
+    const libelle = { dossiers: ligne.ref, clients: [ligne.prenom, ligne.nom].filter(Boolean).join(" "), catalogue: ligne.libelle, roles: ligne.nom, taches: ligne.titre, pieces_jointes: ligne.nom, partenaires: ligne.nom, prestations: ligne.libelle, trajets: `${ligne.de} → ${ligne.vers}`, reservations: ligne.libelle, documents: `${ligne.type || ""} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim(), paiements: `${ligne.montant} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim() }[table] || "";
     data.journal.unshift({ id: Date.now() + Math.random(), created_at: new Date().toISOString(), entite_id: ligne.entite_id || null, user_id: utilisateur.user_id, table_name: table, action, cible: ligne.id || "", libelle, details });
     data.journal.length = Math.min(data.journal.length, 500);
   };
@@ -99,6 +99,10 @@ export function creer() {
       const droit = (eid, code) => permissionsDans(ctx, eid).includes(code);
       for (const t of PARTENAIRES_PUBLIC) out[t] = data[t].filter((r) => ids.has(r.entite_id) && droit(r.entite_id, "partenaires.lire"));
       for (const t of PARTENAIRES_NETS) out[t] = data[t].filter((r) => ids.has(r.entite_id) && droit(r.entite_id, "partenaires.nets"));
+      // Les réservations suivent les dossiers : qui ne voit pas le dossier ne voit pas ses réservations.
+      out.reservations = data.reservations.filter((r) => idsDossiers.has(r.dossier_id));
+      const idsRes = new Set(out.reservations.map((r) => r.id));
+      out.reservations_nets = out.reservations_nets.filter((n) => idsRes.has(n.reservation_id));
       out.profils = utilisateur.super_admin ? data.profils : data.profils.filter((p) => p.user_id === uidCourant);
       out.membres = utilisateur.super_admin ? data.membres : data.membres.filter((m) => m.user_id === uidCourant);
       return structuredClone(out);

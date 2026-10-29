@@ -133,8 +133,26 @@ Le montant total de la prestation s'élève à **{total}**{indicatif}.
 Afin d'éviter les frais liés aux virements internationaux, le paiement peut être effectué facilement via **Wise**, en CHF ou en EUR, selon votre préférence.
 _Les coordonnées de paiement Wise sont indiquées dans l'e-mail accompagnant le devis._`;
 
+// Messages types proposés au départ, modifiables dans l'écran Messages. Variables : {client}, {prenom}, {date}, {hotel},
+// {heure}, {a_heure} (« à 08:00 », vide sans heure), {personnes}, {prestation}, {partenaire}, {reference}, {entreprise}, {telephone}.
+// Les textes thaïs sont des propositions à faire relire par une personne qui lit le thaï avant usage réel.
+export const MESSAGES_DEFAUT = [
+  { id: "confirmation-fr", cle: "confirmation", titre: "Confirmation au client", langue: "fr", corps: "Bonjour {prenom},\n\nVotre réservation est confirmée :\n• {prestation}\n• Date : {date}\n• {personnes}\n• Prise en charge : {hotel}{a_heure}\n\nMerci de votre confiance, à très vite !\n{entreprise}\n{telephone}" },
+  { id: "confirmation-en", cle: "confirmation", titre: "Confirmation to the client", langue: "en", corps: "Hello {prenom},\n\nYour booking is confirmed:\n• {prestation}\n• Date: {date}\n• {personnes}\n• Pickup: {hotel}{a_heure}\n\nThank you for your trust, see you soon!\n{entreprise}\n{telephone}" },
+  { id: "rappel-fr", cle: "rappel", titre: "Rappel de la veille", langue: "fr", corps: "Bonjour {prenom},\n\nPetit rappel pour demain : {prestation}.\nPrise en charge à {heure} à {hotel}. Merci d'être prêt·e quelques minutes avant.\nPensez à l'eau, la crème solaire et les espèces pour les frais de parc.\n\nBonne journée,\n{entreprise}" },
+  { id: "rappel-en", cle: "rappel", titre: "Reminder for tomorrow", langue: "en", corps: "Hello {prenom},\n\nA quick reminder for tomorrow: {prestation}.\nPickup at {heure} at {hotel}. Please be ready a few minutes early.\nBring water, sunscreen and cash for the national park fees.\n\nHave a great day,\n{entreprise}" },
+  { id: "avis-fr", cle: "avis", titre: "Demande d'avis après le voyage", langue: "fr", corps: "Bonjour {prenom},\n\nNous espérons que vous avez aimé {prestation}. Un petit avis en ligne nous aiderait énormément, merci d'avance !\n\nÀ bientôt à Koh Lanta,\n{entreprise}" },
+  { id: "avis-en", cle: "avis", titre: "Review request after the trip", langue: "en", corps: "Hello {prenom},\n\nWe hope you enjoyed {prestation}. A short online review would help us a lot, thank you in advance!\n\nSee you again in Koh Lanta,\n{entreprise}" },
+  { id: "meteo-fr", cle: "meteo", titre: "Météo, report ou annulation", langue: "fr", corps: "Bonjour {prenom},\n\nLa météo de {date} ne permet pas de maintenir {prestation} en toute sécurité. Nous vous proposons de reporter à une autre date ou de vous rembourser intégralement. Dites-nous ce que vous préférez.\n\n{entreprise}" },
+  { id: "meteo-en", cle: "meteo", titre: "Weather, postponement or cancellation", langue: "en", corps: "Hello {prenom},\n\nThe weather on {date} does not allow us to run {prestation} safely. We can move it to another date or refund you in full. Let us know what you prefer.\n\n{entreprise}" },
+  { id: "partenaire-en", cle: "partenaire", titre: "Booking request to the partner", langue: "en", corps: "Hello {partenaire},\n\nBooking request from {entreprise}:\n• {prestation}\n• Date: {date}\n• {personnes}\n• Pickup: {hotel}{a_heure}\n• Client: {client}\n• Our ref: {reference}\n\nPlease confirm. Thank you!" },
+  { id: "partenaire-th", cle: "partenaire", titre: "ขอจองกับพาร์ทเนอร์ (à relire)", langue: "th", corps: "สวัสดีค่ะ {partenaire}\n\nขอจองจาก {entreprise}:\n• {prestation}\n• วันที่ {date}\n• {personnes}\n• รับที่ {hotel}{a_heure}\n• ลูกค้า: {client}\n• อ้างอิง: {reference}\n\nรบกวนยืนยันด้วยนะคะ ขอบคุณค่ะ" },
+  { id: "rappel-th", cle: "rappel", titre: "เตือนก่อนวันเดินทาง (à relire)", langue: "th", corps: "สวัสดีค่ะ {prenom}\n\nขอเตือนสำหรับพรุ่งนี้: {prestation}\nรถรับเวลา {heure} ที่ {hotel} กรุณาเตรียมตัวล่วงหน้าเล็กน้อยนะคะ\n\nขอบคุณค่ะ\n{entreprise}" },
+];
+
 // Réglages d'une entreprise nouvellement créée : aucun fait propre à une entreprise réelle.
 export const REGLAGES_NEUTRE = {
+  messages: MESSAGES_DEFAUT,
   emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", contact: "" },
   paiement: { texte: "", nom: "", autres: [] },
   devise: "",
@@ -390,6 +408,21 @@ export function donneesDemo(ajd, ajouterJours) {
   trajet(ferry, "Koh Lanta", "Koh Phi Phi", "Ferry", "11:00", "12:30", "1 h 30", 800, 650, 600, 500);
   trajet(ferry, "Koh Phi Phi", "Koh Lanta", "Ferry", "14:30", "16:00", "1 h 30", 800, 650, 600, 500);
 
+  // Réservations auprès des partenaires pour les dossiers de l'entreprise 2.
+  const reservations = [];
+  const reservations_nets = [];
+  const reservation = (dossier, x, libelle, date, extra, nets) => {
+    const r = { id: uid(), created_at: j(-2), updated_at: j(-2), entite_id: e2.id, dossier_id: dossier.id, ligne_id: "", prestation_id: x ? x.id : null, trajet_id: null, partenaire_id: x ? x.partenaire_id : null, libelle, date_service: date, heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: null, notes: "", cree_par: admin.user_id, ...extra };
+    reservations.push(r);
+    if (nets) reservations_nets.push({ id: uid(), entite_id: e2.id, reservation_id: r.id, net_prevu: null, net_paye: null, paye_le: null, ...nets });
+    return r;
+  };
+  reservation(dossiers[5], prestations[0], "4 îles en longtail, journée", j(1), { heure_pickup: "08:00", lieu_pickup: "Hotel Sunset, Klong Dao", statut: "confirme", reference_partenaire: "LT-2211", montant_vente: 2400 }, { net_prevu: 1600 });
+  reservation(dossiers[5], prestations[3], "Koh Rok et Koh Ha, frais de parc", j(1), { statut: "confirme", personnes: { adultes: 2, enfants: 0, bebes: 0 }, notes: "À payer en espèces sur l'île." }, null);
+  reservation(dossiers[6], prestations[5], "Aéroport de Krabi → Koh Lanta", j(0), { heure_pickup: "14:30", lieu_pickup: "Aéroport de Krabi, vol FD3217", statut: "demande", montant_vente: 2500, personnes: { adultes: 1, enfants: 1, bebes: 0 } }, { net_prevu: 2250 });
+  reservation(dossiers[5], prestations[8], "Coucher de soleil en longtail, 2 h", j(3), { montant_vente: 1400 }, { net_prevu: 1000 });
+  reservation(dossiers[6], prestations[6], "Koh Lanta → Aéroport de Phuket", j(-20), { statut: "confirme", heure_pickup: "06:00", lieu_pickup: "Hotel Palm", montant_vente: 4500 }, { net_prevu: 4050, net_paye: 4050, paye_le: j(-15) });
+
   const tache = (e, titre, jours, assignee, dossier, extra = {}) => ({ id: uid(), created_at: j(-3), entite_id: e.id, dossier_id: dossier ? dossier.id : null, partenaire_id: null, titre, description: "", echeance: jours === null ? null : j(jours), assignee_id: assignee ? assignee.user_id : null, fait: false, fait_le: null, fait_par: null, cree_par: admin.user_id, ...extra });
   const taches = [
     tache(e1, "Relancer Julien Rochat pour son devis", 0, admin, dossiers[1]),
@@ -400,5 +433,5 @@ export function donneesDemo(ajd, ajouterJours) {
     tache(e2, "[À vérifier] Obtenir le contrat signé de Longtail démo", null, null, null, { partenaire_id: longtail.id, description: "Le contrat du dossier n'est pas contresigné." }),
     tache(e3, "Vérifier le planning de la semaine", 2, assistante, null),
   ];
-  return { entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, taches, partenaires, partenaires_prives, prestations, prestations_nets, trajets, trajets_nets, pieces: [], fichiers: {}, journal: [] };
+  return { entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, taches, partenaires, partenaires_prives, prestations, prestations_nets, trajets, trajets_nets, reservations, reservations_nets, pieces: [], fichiers: {}, journal: [] };
 }

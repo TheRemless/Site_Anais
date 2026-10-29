@@ -17,8 +17,15 @@ import { listePartenaires, fichePartenaire } from "./views/partenaires.mjs";
 import { vueTarifs } from "./views/tarifs.mjs";
 import { vueTrajets } from "./views/trajets.mjs";
 import { vueRegles } from "./views/regles.mjs";
+import { vueReservations } from "./views/reservations.mjs";
+import { vueMessages } from "./views/messages.mjs";
+import { vueDu } from "./views/du.mjs";
+import { agenda } from "./operations-calc.mjs";
 
 const ROUTES = [
+  [/^#\/reservations(?:\?.*)?$/, "reservations", vueReservations],
+  [/^#\/messages$/, "messages", vueMessages],
+  [/^#\/du$/, "du", vueDu],
   [/^#\/partenaires$/, "partenaires", listePartenaires],
   [/^#\/partenaire\/([\w-]+)$/, "partenaires", fichePartenaire],
   [/^#\/tarifs(?:\?.*)?$/, "tarifs", vueTarifs],
@@ -131,8 +138,10 @@ function ecrans() {
   const ajd = new Date().toISOString().slice(0, 10);
   const enRetard = mesTaches().filter((t) => t.echeance && t.echeance <= ajd).length;
   const si = (ok, item) => (ok ? [item] : []);
+  const ag = agenda(etat.db.reservations, ajd);
+  const aConfirmer = ag.enRetard.length + ag.aConfirmer.length;
   return [
-    { titre: "Opérations", items: [{ href: "#/", libelle: "Aujourd'hui", cle: "tableau", icone: "soleil" }, { href: "#/taches", libelle: "Tâches", cle: "taches", icone: "taches", badge: enRetard }] },
+    { titre: "Opérations", items: [{ href: "#/", libelle: "Aujourd'hui", cle: "tableau", icone: "soleil" }, { href: "#/reservations", libelle: "Réservations", cle: "reservations", icone: "reservations", badge: aConfirmer }, { href: "#/taches", libelle: "Tâches", cle: "taches", icone: "taches", badge: enRetard }, { href: "#/messages", libelle: "Messages", cle: "messages", icone: "messages" }] },
     { titre: "Ventes", items: [{ href: "#/dossiers", libelle: "Dossiers", cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: "Clients", cle: "clients", icone: "clients" }, { href: "#/catalogue", libelle: "Catalogue", cle: "catalogue", icone: "catalogue" }] },
     {
       titre: "Partenaires",
@@ -142,6 +151,7 @@ function ecrans() {
             { href: "#/tarifs", libelle: "Tarifs", cle: "tarifs", icone: "tarifs" },
             { href: "#/trajets", libelle: "Trajets", cle: "trajets", icone: "bateau" },
             { href: "#/regles", libelle: "Règles", cle: "regles", icone: "regles" },
+            ...si(peut("partenaires.nets"), { href: "#/du", libelle: "Dû aux partenaires", cle: "du", icone: "du" }),
           ]
         : [],
     },

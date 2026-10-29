@@ -170,6 +170,19 @@ ok((await essaie(db, u.assistante, `insert into taches (entite_id, partenaire_id
 const jp = await essaie(db, u.admin, "select table_name from journal where table_name in ('partenaires', 'prestations', 'trajets', 'prestations_nets', 'partenaires_prives')");
 ok(jp.rows.some((r) => r.table_name === "prestations") && !jp.rows.some((r) => r.table_name === "prestations_nets" || r.table_name === "partenaires_prives"), "le journal note les prestations mais jamais les nets ni la banque");
 
+console.log("Réservations auprès des partenaires");
+const resa = (await essaie(db, u.assistante, `insert into reservations (entite_id, dossier_id, partenaire_id, libelle, date_service, montant_vente) values ('${E.secret}', '${secretDos}', '${pSecret}', '4 îles', '2026-12-10', 2400) returning id`)).rows[0];
+ok(!!resa, "un éditeur crée une réservation sur un dossier de Secret");
+ok((await essaie(db, u.assistante, `insert into reservations (entite_id, dossier_id, libelle) values ('${E.ztp}', '${ztpDos}', 'intrus')`)).ok === false, "mais pas sur un dossier de Zwald");
+ok((await essaie(db, u.assistante, `insert into reservations_nets (entite_id, reservation_id, net_prevu) values ('${E.secret}', '${resa.id}', 1600)`)).ok === false, "sans le droit « nets », pas de net prévu");
+ok((await essaie(db, u.admin, `insert into reservations_nets (entite_id, reservation_id, net_prevu) values ('${E.secret}', '${resa.id}', 1600)`)).ok, "l'administratrice enregistre le net prévu");
+ok((await compte(db, u.comptable, "select 1 from reservations")) === 1 && (await compte(db, u.comptable, "select 1 from reservations_nets")) === 0, "un rôle qui voit les dossiers voit la réservation, jamais son net");
+ok((await compte(db, u.stagiaire, "select 1 from reservations")) === 0, "un rôle limité à ses dossiers ne voit pas la réservation d'un autre dossier");
+ok((await essaie(db, u.chauffeur, "select 1 from reservations")).rows.length === 0, "un compte sans accès à Secret ne voit rien");
+ok((await essaie(db, u.assistante, `update reservations set statut = 'confirme' where id = '${resa.id}'`)).n === 1, "l'éditeur confirme la réservation");
+ok((await db.query("select count(*)::int n from journal where table_name = 'reservations'")).rows[0].n >= 2, "le journal note les réservations");
+ok((await db.query("select count(*)::int n from journal where table_name = 'reservations_nets'")).rows[0].n === 0, "mais jamais leurs nets");
+
 console.log("Administratrice");
 ok((await compte(db, u.admin, "select 1 from clients")) >= 5, "voit les clients de toutes les entreprises");
 ok((await essaie(db, u.admin, `insert into roles (entite_id, nom, permissions) values ('${E.taxi}', 'Dispatch', array['dossiers.lire'])`)).ok, "crée un rôle");
@@ -183,7 +196,7 @@ let refuse = false; try { await db.query("select * from clients"); } catch { ref
 await db.exec("reset role;");
 ok(refuse, "le visiteur anonyme est refusé");
 
-console.log("\n== Chaîne de migrations v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9 ==");
+console.log("\n== Chaîne de migrations v1 → v2 → … → v9 → v10 ==");
 const v = await base([W + "schema-v1-reference.sql"]);
 const vcompte = (await v.query("insert into auth.users (email) values ('anais@test') returning id")).rows[0].id;
 const vass = (await v.query("insert into auth.users (email) values ('assistante@test') returning id")).rows[0].id;
@@ -202,6 +215,7 @@ await v.exec(lire(W + "migration-6-collaboration.sql"));
 await v.exec(lire(W + "migration-7-facture-locale.sql"));
 await v.exec(lire(W + "migration-8-impayes.sql"));
 await v.exec(lire(W + "migration-9-partenaires.sql"));
+await v.exec(lire(W + "migration-10-reservations.sql"));
 await v.exec("update dossiers set accepte_le = '2026-10-02' where id in (select id from dossiers limit 1)");
 const avant = (await v.query("select total from dossiers_resume order by dossier_id limit 1")).rows[0];
 await v.exec("insert into documents (entite_id, dossier_id, type, date_emission, contenu) select entite_id, id, 'facture_locale', '2026-10-03', '{\"lignes\":[{\"kind\":\"formule\",\"montant\":9999}]}' from dossiers limit 1");

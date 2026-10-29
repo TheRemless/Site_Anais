@@ -313,6 +313,7 @@ begin
     when 'partenaires' then ligne->>'nom'
     when 'prestations' then ligne->>'libelle'
     when 'trajets' then (ligne->>'de') || ' → ' || (ligne->>'vers')
+    when 'reservations' then ligne->>'libelle'
     when 'membres' then coalesce((select email from profils where user_id = (ligne->>'user_id')::uuid), '')
     else ''
   end;
@@ -631,6 +632,60 @@ create policy "lire les nets des trajets" on trajets_nets for select to authenti
 create policy "modifier les nets des trajets" on trajets_nets for all to authenticated using (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'partenaires.ecrire')) with check (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'partenaires.ecrire'));
 create policy "lire les données privées des partenaires" on partenaires_prives for select to authenticated using (a_permission(entite_id, 'partenaires.nets'));
 create policy "modifier les données privées des partenaires" on partenaires_prives for all to authenticated using (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'partenaires.ecrire')) with check (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'partenaires.ecrire'));
+
+-- Réservations auprès des partenaires : une par ligne de partenaire vendue. Elles suivent les droits du dossier.
+-- Le net prévu et le net payé sont dans une table à part, lisible avec le droit « partenaires.nets ».
+create table reservations (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  dossier_id uuid not null,
+  ligne_id text not null default '',
+  prestation_id uuid references prestations (id) on delete set null,
+  trajet_id uuid references trajets (id) on delete set null,
+  partenaire_id uuid references partenaires (id) on delete set null,
+  libelle text not null,
+  date_service date,
+  heure_pickup text not null default '',
+  lieu_pickup text not null default '',
+  personnes jsonb not null default '{}',
+  statut text not null default 'a_demander' check (statut in ('a_demander', 'demande', 'confirme', 'annule')),
+  reference_partenaire text not null default '',
+  montant_vente numeric(12, 2),
+  notes text not null default '',
+  cree_par uuid default auth.uid(),
+  modifie_par uuid,
+  unique (id, entite_id),
+  foreign key (dossier_id, entite_id) references dossiers (id, entite_id) on delete cascade
+);
+create table reservations_nets (
+  id uuid primary key default gen_random_uuid(),
+  entite_id uuid not null,
+  reservation_id uuid not null unique,
+  net_prevu numeric(12, 2),
+  net_paye numeric(12, 2),
+  paye_le date,
+  foreign key (reservation_id, entite_id) references reservations (id, entite_id) on delete cascade
+);
+create index on reservations (entite_id);
+create index on reservations (dossier_id);
+create index on reservations (partenaire_id);
+create index on reservations (entite_id, date_service);
+
+create trigger noter_modification before update on reservations for each row execute function noter_modification();
+create trigger journaliser after insert or update or delete on reservations for each row execute function journaliser();
+
+alter table reservations enable row level security;
+alter table reservations_nets enable row level security;
+revoke all on reservations, reservations_nets from anon;
+
+create policy "lire les réservations" on reservations for select to authenticated using (a_permission(entite_id, 'dossiers.lire') and exists (select 1 from dossiers d where d.id = reservations.dossier_id));
+create policy "créer des réservations" on reservations for insert to authenticated with check (a_permission(entite_id, 'dossiers.ecrire') and exists (select 1 from dossiers d where d.id = reservations.dossier_id));
+create policy "modifier des réservations" on reservations for update to authenticated using (a_permission(entite_id, 'dossiers.ecrire') and exists (select 1 from dossiers d where d.id = reservations.dossier_id)) with check (a_permission(entite_id, 'dossiers.ecrire'));
+create policy "supprimer des réservations" on reservations for delete to authenticated using (a_permission(entite_id, 'dossiers.ecrire') and exists (select 1 from dossiers d where d.id = reservations.dossier_id));
+create policy "lire les nets des réservations" on reservations_nets for select to authenticated using (a_permission(entite_id, 'partenaires.nets') and exists (select 1 from reservations r where r.id = reservations_nets.reservation_id));
+create policy "modifier les nets des réservations" on reservations_nets for all to authenticated using (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'dossiers.ecrire') and exists (select 1 from reservations r where r.id = reservations_nets.reservation_id)) with check (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'dossiers.ecrire'));
 
 -- Stockage privé des fichiers. Le premier dossier du chemin est l'identifiant de l'entreprise.
 insert into storage.buckets (id, name, public) values ('pieces', 'pieces', false) on conflict (id) do nothing;
