@@ -5,7 +5,7 @@ import { uid, modesPaiement } from "../defauts.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { sectionTachesDossier } from "./taches.mjs";
 import { sectionPieces } from "./pieces.mjs";
-import { pastille, vide, pdf, voyageTexte } from "./commun.mjs";
+import { pastille, vide, pdf, sousTitreDossier } from "./commun.mjs";
 
 const rafraichir = () => naviguer(location.hash);
 const dernier = (docs, type) => docs.filter((d) => d.type === type).sort((a, b) => (a.created_at > b.created_at ? 1 : -1)).pop();
@@ -311,7 +311,7 @@ function ficheDossierVue(id) {
     h(
       "div",
       { class: "entete" },
-      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, h("span", { class: "ref" }, d.ref), d.bandeau ? ` · ${voyageTexte(d.bandeau, d.pays)}` : "", responsable)),
+      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, sousTitreDossier(d), responsable)),
       h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, "Dupliquer") : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, "Modifier le dossier") : null)
     ),
     !droit.finances ? null : h(
