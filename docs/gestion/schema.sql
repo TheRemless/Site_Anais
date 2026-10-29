@@ -659,6 +659,8 @@ create table reservations (
   reference_partenaire text not null default '',
   montant_vente numeric(12, 2),
   notes text not null default '',
+  -- Ce qui figure sur le voucher : chambre, drop-off, vol, bagages, type de tour ou de transfert, frais de parc, remarques.
+  details jsonb not null default '{}',
   cree_par uuid default auth.uid(),
   modifie_par uuid,
   unique (id, entite_id),

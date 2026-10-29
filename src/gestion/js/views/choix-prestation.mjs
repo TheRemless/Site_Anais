@@ -5,7 +5,8 @@ import { h, modal, toast } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
 import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet } from "../partenaires-calc.mjs";
 
-export function choisirPrestation({ langue = "", devise = "THB", onAjout }) {
+// `sansCompagnie` : le nom de la compagnie n'est pas répété dans le libellé des trajets (facture de Secret).
+export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCompagnie = false }) {
   let onglet = etat.db.prestations.some((x) => x.actif !== false) ? "tarifs" : "trajets";
   const date = h("input", { id: "cp-date", type: "date", onchange: () => dessiner() });
   const q = h("input", { id: "cp-q", type: "search", placeholder: "Île, excursion, transfert, compagnie…", autocomplete: "off", oninput: () => dessiner() });
@@ -56,7 +57,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout }) {
             { class: "choix" },
             h("div", { class: "choix-texte" }, h("strong", null, `${t.de} → ${t.vers}, ${t.depart}`), h("span", null, [nomPartenaire(t.partenaire_id), t.mode, t.duree, t.periode && t.periode !== "Toute la période du contrat" ? t.periode : ""].filter(Boolean).join(" · "))),
             h("div", { class: "choix-prix" }, h("strong", null, prix(t.prix_adulte)), h("span", null, t.prix_enfant !== null && t.prix_enfant !== undefined ? `enfant ${prix(t.prix_enfant)}` : "par adulte")),
-            h("div", { class: "choix-actions" }, ad, ch, h("button", { class: "principal petit", type: "button", onclick: () => { const l = lignesDepuisTrajet(t, netTrajet(t), { langue, date: date.value, adultes: Number(ad.querySelector("input").value) || 0, enfants: Number(ch.querySelector("input").value) || 0, compagnie: nomPartenaire(t.partenaire_id) }); if (!l.length) return toast("Indiquez au moins un adulte ou un enfant.", true); ajoute(l, `${t.de} → ${t.vers}`); } }, "Ajouter"))
+            h("div", { class: "choix-actions" }, ad, ch, h("button", { class: "principal petit", type: "button", onclick: () => { const l = lignesDepuisTrajet(t, netTrajet(t), { langue, date: date.value, adultes: Number(ad.querySelector("input").value) || 0, enfants: Number(ch.querySelector("input").value) || 0, compagnie: sansCompagnie ? "" : nomPartenaire(t.partenaire_id) }); if (!l.length) return toast("Indiquez au moins un adulte ou un enfant.", true); ajoute(l, `${t.de} → ${t.vers}`); } }, "Ajouter"))
           )
         );
       }

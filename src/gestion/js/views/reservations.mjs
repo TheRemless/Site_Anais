@@ -69,15 +69,33 @@ export function formulaireReservation(r, apres) {
   const payeLe = h("input", { id: "r-paye-le", type: "date", value: (n && n.paye_le) || "" });
   const notes = h("textarea", { id: "r-notes", rows: 2 });
   notes.value = r.notes || "";
+  // Ce qui figure sur le voucher et que la réservation seule ne dit pas.
+  const dt = r.details || {};
+  const chambre = h("input", { id: "v-chambre", value: dt.chambre || "" });
+  const dropOff = h("input", { id: "v-drop", value: dt.drop_off || "", placeholder: "Hôtel, embarcadère, aéroport" });
+  const vol = h("input", { id: "v-vol", value: dt.vol || "", placeholder: "FD 3217" });
+  const bagages = h("input", { id: "v-bagages", value: dt.bagages || "", placeholder: "2 valises, 1 sac" });
+  const typeTour = h("select", { id: "v-tour" }, h("option", { value: "" }, "Automatique d'après la prestation"), h("option", { value: "join" }, "Join tour"), h("option", { value: "prive" }, "Private tour"));
+  typeTour.value = dt.type_tour || "";
+  const typeTransfert = h("select", { id: "v-transfert" }, h("option", { value: "" }, "Automatique d'après la prestation"), h("option", { value: "taxi" }, "Private taxi"), h("option", { value: "minivan" }, "Private minivan"), h("option", { value: "partage" }, "Shared minivan"));
+  typeTransfert.value = dt.type_transfert || "";
+  const parc = h("select", { id: "v-parc" }, h("option", { value: "" }, "Automatique d'après la prestation"), h("option", { value: "inclus" }, "Included"), h("option", { value: "non" }, "Not included"), h("option", { value: "aucun" }, "Ne rien afficher"));
+  parc.value = dt.parc || "";
+  const parcTexte = h("input", { id: "v-parc-texte", value: dt.parc_texte || "", placeholder: "400 THB per adult, 200 THB per child, cash on the island" });
+  const remarques = h("textarea", { id: "v-remarques", rows: 2, placeholder: "Vu par le client et le prestataire, en anglais" });
+  remarques.value = dt.remarques || "";
+  const remarquesPaiement = h("input", { id: "v-rem-paiement", value: dt.remarques_paiement || "", placeholder: "Deposit 1,000 THB received, balance at the pier" });
+  const details = () => ({ ...dt, chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim() });
   return h(
     "form",
     {
       class: "modal-corps",
       onsubmit: async (e) => {
         e.preventDefault();
-        const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0, bebes: num(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: num(vente.value), notes: notes.value.trim() };
+        const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0, bebes: num(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: num(vente.value), notes: notes.value.trim(), details: details() };
         try {
           const res = r.id ? await modifier("reservations", r.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
+          if (res && res.id && res.details === undefined) res.details = valeurs.details;
           if (nets && (netPrevu.value !== "" || netPaye.value !== "" || payeLe.value || n)) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: num(netPrevu.value), net_paye: num(netPaye.value), paye_le: payeLe.value || null });
           toast("Réservation enregistrée.");
           apres(res);
@@ -91,7 +109,17 @@ export function formulaireReservation(r, apres) {
     h("div", { class: "grille-form compacte" }, champ("Date du service", date), champ("Heure de pickup", heure), champ("Lieu de pickup", lieu)),
     h("div", { class: "grille-form compacte" }, champ("Adultes", adultes), champ("Enfants", enfants), champ("Bébés", bebes), peut("finances.voir") ? champ("Vendu au client", vente) : null),
     nets ? h("div", { class: "grille-form compacte" }, champ("Net prévu", netPrevu, "Ce que le partenaire facturera."), champ("Net payé", netPaye), champ("Payé le", payeLe)) : null,
-    champ("Notes", notes),
+    champ("Notes internes", notes, "Jamais sur le voucher."),
+    h(
+      "fieldset",
+      null,
+      h("legend", null, "Voucher"),
+      h("p", { class: "aide" }, "Ce qui s'imprime sur le voucher en plus de la réservation. En automatique, le type de tour, le type de transfert et les frais de parc sont déduits de la prestation."),
+      h("div", { class: "grille-form" }, champ("Chambre", chambre, "Sinon celle de l'adresse du client."), champ("Drop-off (transfert)", dropOff), champ("Vol (transfert)", vol), champ("Bagages (transfert)", bagages)),
+      h("div", { class: "grille-form" }, champ("Type de tour (bateau)", typeTour), champ("Type de transfert", typeTransfert), champ("Frais de parc (bateau)", parc), champ("Texte des frais de parc", parcTexte)),
+      champ("Remarques sur le voucher", remarques),
+      champ("Remarque de paiement", remarquesPaiement)
+    ),
     h("div", { class: "actions" }, r.id && peut("dossiers.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(`Supprimer la réservation « ${r.libelle} » ?`, "Supprimer", true)) { await supprimer("reservations", r.id); apres(null); } } }, "Supprimer") : null, h("button", { class: "principal", type: "submit" }, "Enregistrer"))
   );
 }

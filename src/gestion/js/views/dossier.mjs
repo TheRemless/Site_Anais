@@ -7,8 +7,8 @@ import { sectionTachesDossier } from "./taches.mjs";
 import { sectionPieces } from "./pieces.mjs";
 import { pastille, vide, pdf, sousTitreDossier } from "./commun.mjs";
 import { margeDocument } from "../partenaires-calc.mjs";
-import { sectionReservationsDossier } from "./reservations.mjs";
-import { vouchersDuDossier, imprimerVoucher, imprimerTousLesVouchers } from "./voucher.mjs";
+import { sectionReservationsDossier, formulaireReservation } from "./reservations.mjs";
+import { vouchersDuDossier, imprimerVoucher, imprimerTousLesVouchers, apercuVoucher } from "./voucher.mjs";
 import { numeroVoucher } from "../operations-calc.mjs";
 
 const rafraichir = () => naviguer(location.hash);
@@ -362,9 +362,9 @@ function ficheDossierVue(id) {
           { id: "vouchers" },
           h("div", { class: "entete petit-entete" }, h("h2", null, "Vouchers"), vouchers.length > 1 ? h("button", { class: "secondaire petit", type: "button", onclick: () => imprimerTousLesVouchers(d.id) }, "Tous les vouchers en PDF") : null),
           vouchers.length
-            ? h("ul", { class: "cartes" }, vouchers.map((x) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, x.reservation.libelle), h("span", { class: "carte-droite" }, h("strong", null, numeroVoucher(d.ref, x.index))), h("span", { class: "carte-sous" }, `${{ bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher" }[x.type]} · ${x.reservation.date_service ? formatDate(x.reservation.date_service) : "date à fixer"}${x.reservation.heure_pickup ? ` · pickup ${x.reservation.heure_pickup}` : ""}`), h("span", { class: "carte-pied" }, h("span", null, r.statut === "solde" ? "Payé" : r.recu > 0 ? "Acompte" : "À payer sur place ou en attente"), h("span", { class: "carte-actions" }, h("button", { class: "principal petit", type: "button", onclick: () => imprimerVoucher(x) }, "Voucher PDF")))))))
+            ? h("ul", { class: "cartes" }, vouchers.map((x) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, x.reservation.libelle), h("span", { class: "carte-droite" }, h("strong", null, numeroVoucher(d.ref, x.index))), h("span", { class: "carte-sous" }, `${{ bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher" }[x.type]} · ${x.reservation.date_service ? formatDate(x.reservation.date_service) : "date à fixer"}${x.reservation.heure_pickup ? ` · pickup ${x.reservation.heure_pickup}` : ""}`), h("span", { class: "carte-pied" }, h("span", null, r.statut === "solde" ? "Payé" : r.recu > 0 ? "Acompte" : "À payer sur place ou en attente"), h("span", { class: "carte-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => apercuVoucher(x) }, "Aperçu"), droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal("Réservation et voucher", formulaireReservation(x.reservation, () => (fermer(), rafraichir()))); } }, "Modifier") : null, h("button", { class: "principal petit", type: "button", onclick: () => imprimerVoucher(x) }, "Voucher PDF")))))))
             : h("p", { class: "vide-court" }, "Un voucher par réservation (les frais de parc n'en ont pas). Créez d'abord les réservations ci-dessous."),
-          h("p", { class: "aide" }, "Le même voucher se donne au client et au prestataire. Les cases Paid, Deposit ou Pay on site suivent les paiements enregistrés sur la facture.")
+          h("p", { class: "aide" }, "Le même voucher se donne au client et au prestataire. Les cases Paid, Deposit ou Pay on site suivent les paiements enregistrés sur la facture. « Modifier » ouvre la réservation avec les champs du voucher : chambre, drop-off, vol, bagages, type de tour ou de transfert, frais de parc, remarques.")
         )
       : null,
     !droit.finances ? null : h(

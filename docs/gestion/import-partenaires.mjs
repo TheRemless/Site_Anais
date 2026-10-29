@@ -3,8 +3,15 @@
 //   node docs/gestion/import-partenaires.mjs <data.json> <entite_id> > partenaires-import.json
 // Le fichier produit contient les prix nets et les coordonnées bancaires des partenaires : il ne se publie pas.
 import fs from "node:fs";
-import { randomUUID } from "node:crypto";
-import { uniteDepuisTexte } from "../../src/gestion/js/partenaires-calc.mjs";
+import { randomUUID, createHash } from "node:crypto";
+import { uniteDepuisTexte, libelleClient } from "../../src/gestion/js/partenaires-calc.mjs";
+
+// Identifiant stable à partir d'une clé lisible : régénérer le fichier redonne les mêmes identifiants, donc un
+// nouvel import remplace les lignes au lieu de les dupliquer.
+export function idStable(cle) {
+  const h = createHash("sha1").update(String(cle)).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
 
 const MOIS = { jan: 1, janv: 1, fev: 2, fév: 2, mar: 3, mars: 3, avr: 4, mai: 5, juin: 6, juil: 7, aou: 8, aoû: 8, août: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12, déc: 12 };
 // « 21 avr 2026 » ou « Juin 2027 » en date ISO (dernier jour du mois quand le jour manque).
@@ -27,11 +34,13 @@ export function finDePeriode(texte) {
 const nombre = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
 const texte = (v) => (v === null || v === undefined ? "" : Array.isArray(v) ? v.join(", ") : String(v));
 
-export function convertir(D, entiteId, uid = randomUUID, maintenant = new Date().toISOString()) {
+export function convertir(D, entiteId, uid = null, maintenant = new Date().toISOString()) {
+  let n = 0;
+  const prochain = () => (uid ? uid() : idStable(`${entiteId}:${++n}`));
   const out = { version: 2, entreprise: "secret", exporte_le: maintenant, partenaires: [], partenaires_prives: [], prestations: [], prestations_nets: [], trajets: [], trajets_nets: [], taches: [] };
-  const base = () => ({ id: uid(), created_at: maintenant, entite_id: entiteId });
+  const base = () => ({ id: prochain(), created_at: maintenant, entite_id: entiteId });
   // Les tables de nets n'ont pas de colonne created_at.
-  const lie = () => ({ id: uid(), entite_id: entiteId });
+  const lie = () => ({ id: prochain(), entite_id: entiteId });
   const parId = {};
   const parNom = (nom) => {
     const n = String(nom || "").toLowerCase();
@@ -109,7 +118,7 @@ export function convertir(D, entiteId, uid = randomUUID, maintenant = new Date()
 
   // ---- Prestations ----
   const prestation = (p, famille, groupe, libelle, prix, unite, details, net, extra = {}) => {
-    const row = { ...base(), partenaire_id: p ? p.id : null, famille, groupe: texte(groupe), libelle: texte(libelle), libelle_en: "", details, prix_vente: nombre(prix), unite, sur_place: false, ordre: out.prestations.length + 1, actif: true, ...extra };
+    const row = { ...base(), partenaire_id: p ? p.id : null, famille, groupe: texte(groupe), libelle: texte(libelle), libelle_en: libelleClient(texte(libelle)), details, prix_vente: nombre(prix), unite, sur_place: false, ordre: out.prestations.length + 1, actif: true, ...extra };
     out.prestations.push(row);
     if (net !== null && net !== undefined && net !== "") out.prestations_nets.push({ ...lie(), prestation_id: row.id, net: nombre(net), net_enfant: null, note: "" });
     return row;

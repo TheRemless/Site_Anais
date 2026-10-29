@@ -422,7 +422,7 @@ export function donneesDemo(ajd, ajouterJours) {
   const reservations = [];
   const reservations_nets = [];
   const reservation = (dossier, x, libelle, date, extra, nets) => {
-    const r = { id: uid(), created_at: j(-2), updated_at: j(-2), entite_id: e2.id, dossier_id: dossier.id, ligne_id: "", prestation_id: x ? x.id : null, trajet_id: null, partenaire_id: x ? x.partenaire_id : null, libelle, date_service: date, heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: null, notes: "", cree_par: admin.user_id, ...extra };
+    const r = { id: uid(), created_at: j(-2), updated_at: j(-2), entite_id: e2.id, dossier_id: dossier.id, ligne_id: "", prestation_id: x ? x.id : null, trajet_id: null, partenaire_id: x ? x.partenaire_id : null, libelle, date_service: date, heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: null, notes: "", details: {}, cree_par: admin.user_id, ...extra };
     reservations.push(r);
     if (nets) reservations_nets.push({ id: uid(), entite_id: e2.id, reservation_id: r.id, net_prevu: null, net_paye: null, paye_le: null, ...nets });
     return r;

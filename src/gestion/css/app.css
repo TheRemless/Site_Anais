@@ -419,6 +419,8 @@ input.couleur { width: 72px; padding: 2px; }
 .v-note { margin: 10mm 0 0; font-size: 12.5pt; }
 .v-merci { margin: 10mm 0 0; font-style: italic; font-size: 12.5pt; }
 #zone-impression .voucher { margin: 0 auto; }
+.apercu-voucher .apercu-cadre { margin-bottom: 12px; }
+.apercu-voucher .voucher { min-height: 0; }
 
 /* Sélecteur de prestation dans l'éditeur */
 .choix-liste { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--bord); border-radius: 8px; }

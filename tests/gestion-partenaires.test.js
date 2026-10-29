@@ -34,7 +34,7 @@ test("lignes de devis depuis un trajet : adultes puis enfants, nets séparés", 
   assert.equal(l[1].libelle, "Speedboat Koh Lanta → Koh Lipe, départ 10:30 avec Bundhaya, enfant");
   assert.deepEqual([l[1].unite, l[1].qte, l[1].net], [1500, 1, 1200]);
   assert.equal(lignesDepuisTrajet(t, null, { adultes: 0, enfants: 0 }).length, 0);
-  assert.equal(lignesDepuisTrajet(t, null, { langue: "en", adultes: 1 })[0].libelle, "Speedboat Koh Lanta → Koh Lipe, departure 10:30");
+  assert.equal(lignesDepuisTrajet(t, null, { langue: "en", adultes: 1 })[0].libelle, "Speedboat transfer: Koh Lanta → Koh Lipe, departure 10:30");
 });
 
 test("marge d'un document : total moins les nets connus, lignes sans net comptées", () => {
@@ -43,7 +43,35 @@ test("marge d'un document : total moins les nets connus, lignes sans net compté
   assert.deepEqual(m, { vente: 4700, nets: 3100, marge: 1600, pct: 34, avecNet: 2, sansNet: 1 });
   assert.equal(margeDocument({ lignes: [] }).avecNet, 0);
 });
-import { convertir, dateIso, finDePeriode } from "../docs/gestion/import-partenaires.mjs";
+import { convertir, dateIso, finDePeriode, idStable } from "../docs/gestion/import-partenaires.mjs";
+import { libelleClient } from "../src/gestion/js/partenaires-calc.mjs";
+
+test("libellé client : notes internes retirées, anglais, personnes et âges traduits", () => {
+  assert.equal(libelleClient("4 Îles (Koh Chuek, Koh Mook Emerald Cave, Koh Ngai, Koh Maa), Adulte"), "4 Islands (Koh Chuek, Koh Mook Emerald Cave, Koh Ngai, Koh Maa)");
+  assert.equal(libelleClient("4 Îles (Koh Chuek, Koh Mook Emerald Cave, Koh Ngai, Koh Maa), Enfant (4-10 ans)"), "4 Islands (Koh Chuek, Koh Mook Emerald Cave, Koh Ngai, Koh Maa), child (4-10)");
+  assert.equal(libelleClient("Privatisation Koh Rok (Koh Rok Nok & Koh Rok Nai)"), "Private Koh Rok (Koh Rok Nok & Koh Rok Nai)");
+  assert.equal(libelleClient("Extension Koh Kradan sur tour 4 îles privé (ถ้าไป 4 เกาะกระดาน บวกเพิ่ม)"), "Koh Kradan extension on the private 4 Islands tour");
+  assert.equal(libelleClient("Au choix: Koh Rok OU 4 Îles OU Koh Phi Phi"), "Koh Rok or 4 Islands or Koh Phi Phi");
+  assert.equal(libelleClient("Programme B : Private Fishing & Seafood, À partir de 3 personnes"), "Program B : Private Fishing & Seafood, from 3 people");
+  assert.equal(libelleClient("Programme A : Sunrise View (Lever de soleil dans la mangrove), Base 1-2 pers"), "Program A : Sunrise View (sunrise in the mangrove), for 1 to 2 people");
+  assert.equal(libelleClient("P1: ATV 30 mins (Zone circuit sécurisée), Conducteur Enfant (6-12 ans)"), "P1: ATV 30 mins (safe track), driver child (6-12)");
+  assert.equal(libelleClient("10 min · Small Single Seat (1 place enfant/ado), Tout public"), "10 min · Small Single Seat (single seat, child or teen)");
+  assert.equal(libelleClient("Marché et déjeuner, Partner Chef"), "Market visit and lunch class, Partner Chef");
+  assert.equal(libelleClient("Aéroport de Krabi → Koh Lanta"), "Krabi Airport → Koh Lanta");
+  assert.equal(libelleClient("Pakbara pier → Aéroport de Hatyai"), "Pakbara Pier → Hat Yai Airport");
+  assert.equal(libelleClient("Toyota Fortuner 7 places"), "Toyota Fortuner 7 seats");
+  assert.equal(libelleClient(""), "");
+});
+
+test("identifiants d'import stables : même clé, même identifiant, au format uuid", () => {
+  assert.equal(idStable("E1:1"), idStable("E1:1"));
+  assert.notEqual(idStable("E1:1"), idStable("E1:2"));
+  assert.match(idStable("x"), /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/);
+  let n = 0;
+  const a = convertir({ partners: [{ id: "P01", name: "A", phones: [], email: [] }], excursions: [], routes: [], alerts: [] }, "E1");
+  const b = convertir({ partners: [{ id: "P01", name: "A", phones: [], email: [] }], excursions: [], routes: [], alerts: [] }, "E1");
+  assert.equal(a.partenaires[0].id, b.partenaires[0].id);
+});
 
 test("fin de contrat lue dans la validité ou la saison, jamais dans une date de signature", () => {
   assert.equal(finDePeriode("Oct 2026 – Juin 2027"), "2027-06-30");
@@ -172,6 +200,7 @@ test("conversion de la base partenaires : nets et banque à part, trajets, alert
   assert.equal(exc.famille, "excursion");
   assert.equal(exc.groupe, "Excursions en groupe (join tour)");
   assert.equal(exc.unite, "pp");
+  assert.equal(exc.libelle_en, "4 Islands");
   assert.ok(!("net" in exc));
   assert.deepEqual(r.prestations_nets.map((x) => [x.prestation_id, x.net]), [[exc.id, 600]]);
   assert.equal(r.prestations[1].sur_place, true);

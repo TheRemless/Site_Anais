@@ -63,8 +63,10 @@ async function importer(fichier) {
     return;
   }
   const resume = TABLES.map((t) => `${(data[t] || []).length} ${t}`).join(", ");
-  if (!(await confirmer(`Importer ${resume} dans l'entreprise « ${entiteActive().nom} » ? Les éléments qui ont le même identifiant seront remplacés, les autres sont conservés.`, "Importer"))) return;
+  const remplace = !!(data.partenaires && data.partenaires.length) && document.getElementById("import-remplacer") && document.getElementById("import-remplacer").checked;
+  if (!(await confirmer(`Importer ${resume} dans l'entreprise « ${entiteActive().nom} » ?${remplace ? " Les partenaires, tarifs, trajets et tâches de partenaires actuels seront d'abord supprimés." : " Les éléments qui ont le même identifiant seront remplacés, les autres sont conservés."}`, "Importer"))) return;
   try {
+    if (remplace) await etat.store.supprimerPartenaires(etat.entiteId);
     const rows = {};
     // Les tables de nets n'ont pas de date de création : une sauvegarde ou un import plus ancien peut en porter une.
     const SANS_DATE = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
@@ -419,6 +421,7 @@ export function vueReglages() {
         h("h2", null, "Sauvegarde et exports"),
         h("p", { class: "aide" }, `Ces fichiers concernent seulement l'entreprise « ${entiteActive().nom} ». Une sauvegarde contient les données clients : gardez-la en lieu sûr.`),
         h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: exporterTout }, "Télécharger une sauvegarde complète"), h("button", { class: "secondaire", type: "button", onclick: exporterDossiers }, "Exporter les dossiers (Excel)"), h("button", { class: "secondaire", type: "button", onclick: exporterPaiements }, "Exporter les paiements (Excel)")),
+        peut("partenaires.ecrire") ? h("label", { class: "case", for: "import-remplacer" }, h("input", { id: "import-remplacer", type: "checkbox", checked: true }), "Si le fichier contient des partenaires, remplacer la base partenaires (supprime d'abord les partenaires, tarifs, trajets et tâches de partenaires actuels)") : null,
         champ("Restaurer ou importer une sauvegarde", h("input", { id: "import-fichier", type: "file", accept: "application/json,.json", onchange: (e) => e.target.files[0] && importer(e.target.files[0]) }), `Elle sera importée dans « ${entiteActive().nom} ». Les éléments déjà présents avec le même identifiant sont remplacés.`)
       )
     ),

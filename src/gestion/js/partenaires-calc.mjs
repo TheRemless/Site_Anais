@@ -115,6 +115,78 @@ export function contratsAEcheance(partenaires, ajd, jours = 30) {
     .sort((a, b) => a.fin.localeCompare(b.fin));
 }
 
+// ---- Libellé pour le client ----------------------------------------------------------------------------------
+// Les libellés importés viennent des brochures en français, avec des notes internes (« Base 1-2 pers », thaï entre
+// parenthèses, « Adulte » en fin de ligne). Le client reçoit un libellé propre, en anglais, sans ces notes.
+const TRADUCTIONS = [
+  [/\s*\([^()]*[฀-๿][^()]*\)/g, ""],
+  [/\bTour Partagé \(Join\)/gi, "Join tour"],
+  [/\bTour Partagé \(Speedboat\)/gi, "Join speedboat tour"],
+  [/\bPrivatisation \(Charter\)/gi, "Private charter"],
+  [/\bPrivatisation Speedboat\b/gi, "Private speedboat"],
+  [/\bPrivé \(Radeau Bois\)/gi, "Private wooden raft"],
+  [/\bOption Supplément\b/gi, "Option"],
+  [/\bPrivatisation\b/g, "Private"],
+  [/\bExtension Koh Kradan sur tour 4 îles privé/gi, "Koh Kradan extension on the private 4 Islands tour"],
+  [/\bAu choix\s*:\s*/gi, ""],
+  [/\s+OU\s+/g, " or "],
+  [/4 Îles/gi, "4 Islands"],
+  [/\bÎles?\b/g, "Islands"],
+  [/\bCoucher de soleil & Vin\b/gi, "sunset & wine"],
+  [/\bCoucher de soleil\b/gi, "sunset"],
+  [/\bLever de soleil dans la mangrove\b/gi, "sunrise in the mangrove"],
+  [/\bLever de soleil\b/gi, "sunrise"],
+  [/,?\s*Base 1-2 pers\b/gi, ", for 1 to 2 people"],
+  [/,?\s*Personne supplémentaire\b/gi, ", extra person"],
+  [/,?\s*À partir de (\d+) personnes\b/gi, ", from $1 people"],
+  [/\((\d+) heures?\)/gi, "($1 hours)"],
+  [/\b(\d+) Heures?\b/gi, "$1 hour"],
+  [/\bProgramme\b/g, "Program"],
+  [/\bSanctuaire Éléphants\b/gi, "Elephant sanctuary"],
+  [/\bQuad Tout-Terrain\b/gi, "ATV"],
+  [/\bQuad & Kayak Mangrove\b/gi, "ATV & mangrove kayak"],
+  [/\bKarting Électrique\b/gi, "Electric go-kart"],
+  [/\(Zone circuit sécurisée\)/gi, "(safe track)"],
+  [/\(Forêt & Point de vue panoramique\)/gi, "(forest & viewpoint)"],
+  [/\(1 place enfant\/ado\)/gi, "(single seat, child or teen)"],
+  [/\(2 places format compact\)/gi, "(compact double seat)"],
+  [/\(1 place adulte grand format\)/gi, "(large single seat)"],
+  [/\(2 places adulte biplace\)/gi, "(large double seat)"],
+  [/\bSculpture sur fruits et légumes\b/gi, "Fruit and vegetable carving"],
+  [/\bMarché et déjeuner\b/gi, "Market visit and lunch class"],
+  [/\bDîner\b/g, "Dinner class"],
+  [/\bConducteur\b/g, "driver"],
+  [/\bPassager\b/g, "passenger"],
+  [/,?\s*Tout public\b/gi, ""],
+  [/\bEnfant \((\d+)-(\d+) ans\)/gi, "child ($1-$2)"],
+  [/,?\s*Adulte\b/g, ""],
+  [/\bEnfant\b/g, "child"],
+  [/\bAéroport de Hatyai\b/gi, "Hat Yai Airport"],
+  [/\bAéroport de (\w+)/gi, "$1 Airport"],
+  [/\bAéroport et ville de Phuket\b/gi, "Phuket Airport and town"],
+  [/\bPakbara pier\b/gi, "Pakbara Pier"],
+  [/\bTour de l'île en une journée\b/gi, "Island tour, full day"],
+  [/\bvers\b/g, "to"],
+  [/\(Phra Ae Nord\)/gi, "(Phra Ae North)"],
+  [/\(Centre plage\)/gi, "(beach centre)"],
+  [/\b(\d+) places\b/gi, "$1 seats"],
+  [/\((\d+)\s*(?:à|-|–)\s*(\d+) personnes\)/gi, "($1 to $2 people)"],
+  [/\b(\d+)\s*(?:à|-|–)\s*(\d+) personnes\b/gi, "$1 to $2 people"],
+  [/\bpersonnes\b/g, "people"],
+  [/\bpersonne\b/g, "person"],
+  [/\bMinivan privé\b/gi, "Private minivan"],
+  [/\bBerline privée\b/gi, "Private car"],
+  [/\bNavette partagée\b/gi, "Shared minivan"],
+  [/\bjournée\b/g, "full day"],
+  [/\s*[,;]\s*$/g, ""],
+  [/\s{2,}/g, " "],
+];
+export function libelleClient(libelle) {
+  let t = String(libelle || "");
+  for (const [re, par] of TRADUCTIONS) t = t.replace(re, par);
+  return t.trim();
+}
+
 // ---- Lignes de devis depuis une prestation ou un trajet ------------------------------------------------------
 // La ligne garde la prestation, le partenaire, le net et la date du service : le document reste lisible seul
 // (le net n'est visible que par qui lit le document, donc qui a déjà le droit « montants »).
@@ -134,13 +206,15 @@ export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1,
   const en = langue === "en";
   const base = { id: uid(), intro: "", puces: [], unite: null, qte: null, montant: null, pct: null, prestation_id: x.id, partenaire_id: x.partenaire_id || null, date_service: date || null };
   if (x.sur_place) return { ...base, kind: "texte", libelle: noteSurPlace(x, langue, devise), sur_place: true };
-  return { ...base, kind: "ligne", libelle: en ? x.libelle_en || x.libelle : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: Number(qte) || 1, net: net && net.net !== null && net.net !== undefined ? Number(net.net) : null };
+  // En anglais : le libellé anglais de la prestation, sinon le libellé nettoyé et traduit pour le client.
+  return { ...base, kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: Number(qte) || 1, net: net && net.net !== null && net.net !== undefined ? Number(net.net) : null };
 }
 
 // Un trajet donne une ligne par adulte et, s'il y a des enfants et un prix enfant, une ligne enfant.
+// `compagnie` vide : le prestataire n'est pas répété dans le libellé (il figure déjà sur la facture de Secret).
 export function lignesDepuisTrajet(t, net, { langue = "", date = "", adultes = 1, enfants = 0, compagnie = "", uid = nouvelId } = {}) {
   const en = langue === "en";
-  const titre = `${t.mode || (en ? "Boat" : "Bateau")} ${t.de} → ${t.vers}, ${en ? "departure" : "départ"} ${t.depart}${compagnie ? ` ${en ? "with" : "avec"} ${compagnie}` : ""}`;
+  const titre = en ? `${t.mode || "Boat"} transfer: ${t.de} → ${t.vers}, departure ${t.depart}${compagnie ? ` with ${compagnie}` : ""}` : `${t.mode || "Bateau"} ${t.de} → ${t.vers}, départ ${t.depart}${compagnie ? ` avec ${compagnie}` : ""}`;
   const base = { intro: "", puces: [], montant: null, pct: null, trajet_id: t.id, partenaire_id: t.partenaire_id || null, date_service: date || null };
   const out = [];
   if (Number(adultes) > 0) out.push({ ...base, id: uid(), kind: "ligne", libelle: titre, intro: `(${en ? "per adult" : "par adulte"})`, unite: t.prix_adulte, qte: Number(adultes), net: net && net.net_adulte !== null && net.net_adulte !== undefined ? Number(net.net_adulte) : null });
