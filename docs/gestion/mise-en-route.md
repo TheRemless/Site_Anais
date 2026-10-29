@@ -39,6 +39,8 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 6. Facture locale : `migration-7-facture-locale.sql` (autorise le type de document « facture_locale », ne modifie aucune donnée).
 7. Impayés comptés depuis la date de la facture : `migration-8-impayes.sql` (remplace seulement la fonction du tableau analytique, ne modifie aucune donnée).
 8. Vue d'ensemble des sociétés : `migration-9-groupe.sql` (ajoute les devis en attente et l'activité au tableau analytique, ne modifie aucune donnée).
+9. Base partenaires : `migration-10-partenaires.sql` (six tables, trois droits donnés aux rôles de départ, ne modifie aucune donnée existante).
+10. Réservations : `migration-11-reservations.sql` (deux tables, ne modifie aucune donnée existante).
 
 ## Ajouter une personne (l'assistante par exemple)
 
@@ -97,6 +99,26 @@ Menu **Vue d'ensemble** (raccourci `g` puis `v`), visible dès qu'une personne a
 - Une période au choix et une devise de consolidation (« Tout ramener en »). Les montants de chaque société sont convertis à titre indicatif avec les taux des réglages ; ils se corrigent en bas de page (le taux saisi reste dans le navigateur). Une devise sans taux est signalée et n'entre pas dans les totaux, rien n'est deviné.
 - Chiffres du groupe : facturé et encaissé avec l'évolution par rapport à la période précédente de même longueur, impayés en cours, devis en attente (envoyés, ni acceptés ni annulés ni facturés : le chiffre d'affaires possible), taux d'acceptation des devis, facture moyenne, dossiers et clients.
 - Tableau par société avec la part de chacune dans le facturé, graphique par mois empilé par société (facturé ou encaissé), meilleurs clients et destinations toutes sociétés confondues, export Excel.
+## Partenaires, tarifs et trajets
+
+Le menu **Partenaires** (droit « Voir les partenaires ») réunit ce que l'agence sait de ses prestataires : fiche de contact avec les numéros cliquables (appel, WhatsApp, copie), règles (annulation, enfants, commissions, check-in, points d'embarquement, heures de pickup), contrat avec sa date de fin, tarifs et trajets. Les écrans **Tarifs** (par famille : excursions, activités, locations, transferts, frais de parc), **Trajets** (départ, arrivée, date du voyage, compagnie, avec les fenêtres saisonnières) et **Règles** (tout ce qu'il faut relire avant un devis) lisent les mêmes données. La recherche globale les trouve aussi.
+
+- **Prix nets, marges et coordonnées bancaires** des partenaires demandent le droit « Voir les prix nets ». Ils sont dans des tables à part (`prestations_nets`, `trajets_nets`, `partenaires_prives`) que la base ne renvoie pas aux autres rôles, et qui ne passent jamais par le journal d'activité. Par défaut, seul le rôle Administrateur l'a.
+- **Modifier** (droit « Modifier les partenaires ») : la fiche, les prestations et les trajets se changent depuis l'outil. Les heures de pickup, les guichets et les points d'embarquement importés ne se modifient pas encore depuis l'écran.
+- Les **tâches** peuvent être liées à un partenaire (section « À régler avec ce partenaire » de sa fiche). Les contrats qui se terminent dans les trente jours apparaissent dans Aujourd'hui.
+- **Reprise de la base partenaires de Secret Travel & Tour** : `node docs/gestion/import-partenaires.mjs <data.json> <entite_id> > partenaires-import.json` produit un fichier à importer dans l'entreprise Secret par Réglages, Sauvegarde, Restaurer ou importer. Le fichier contient les nets et les banques des partenaires : il ne se publie pas et ne se garde pas dans le dépôt. L'identifiant de l'entreprise Secret est `00000000-0000-4000-8000-000000000002` sur une installation faite avec `schema.sql`.
+- La sauvegarde complète d'une entreprise comprend désormais ses partenaires (nets compris si la personne a le droit de les lire).
+
+### Devis et factures reliés aux partenaires
+
+Dans l'éditeur d'un devis ou d'une facture, le bouton **Prestation d'un partenaire** ouvre la base : un onglet Tarifs (par famille, avec quantité) et un onglet Trajets (avec la date du voyage, les adultes et les enfants). La ligne créée reprend le libellé (en anglais si le document l'est et si la prestation a un libellé anglais), le prix de vente comme prix unitaire et l'unité entre parenthèses. Les frais de parc payés sur place deviennent une note sous le tableau, hors total. Chaque ligne garde la prestation ou le trajet, le partenaire, le net et la **date du service** (modifiable sur la ligne) : c'est ce qui servira aux réservations. Sur la fiche du dossier, les rôles qui voient les nets lisent la **marge** (total du document qui fait foi moins les nets connus), avec le nombre de lignes dont le net n'est pas connu.
+
+## Opérations : réservations, Aujourd'hui, messages, dû aux partenaires
+
+- **Réservations** : une par ligne de partenaire vendue. Dans la fiche d'un dossier, « Créer les réservations depuis le devis » en fait une par ligne (date du service, personnes, montant vendu, net prévu pour qui voit les nets). Chaque réservation a un statut (à demander, demandée, confirmée, annulée), une heure et un lieu de pickup, la référence donnée par le partenaire et des notes. Elles suivent les droits du dossier : qui ne voit pas le dossier ne voit pas ses réservations. L'écran **Réservations** les montre jour par jour avec période, statut, partenaire et recherche.
+- **Aujourd'hui** ajoute les départs et pickups du jour et de demain, puis ce qui reste à confirmer auprès des partenaires. La pastille du menu Réservations compte ces dernières.
+- **Messages types** (écran Messages) : confirmation, rappel de la veille, demande d'avis, météo et demande au partenaire, en français, anglais et thaï. Les administrateurs les modifient, tout le monde les utilise. Depuis une réservation, « Partenaire » prépare la demande en anglais (bouton WhatsApp vers son numéro) et « Client » la confirmation ou le rappel. Les variables entre accolades sont remplies d'après la réservation, le client, le dossier et l'entreprise. Les textes thaïs sont des propositions à faire relire par une personne qui lit le thaï.
+- **Dû aux partenaires** (droit « prix nets ») : par partenaire et par mois du service, net prévu, net payé, reste et marge sur les ventes, avec « Marquer payé » qui note la date du jour sur toutes les réservations du mois. Le net prévu et le net payé sont dans `reservations_nets`, jamais dans le journal.
 
 ## Impayés par ancienneté
 

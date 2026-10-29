@@ -2,14 +2,16 @@
 // Les droits sont appliqués par la base (règles RLS), pas par ce fichier.
 import { createClient } from "../vendor/supabase.mjs";
 
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue"];
+// Ordre d'import imposé par les clés étrangères.
+const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
 // Documents et paiements ne se chargent pas à la connexion : ils sont lourds et nombreux. Chaque dossier porte un
 // résumé (total, encaissé, devise) tenu à jour par la base, le détail se charge à l'ouverture du dossier.
-const CHARGEES = ["clients", "dossiers", "catalogue"];
+// Les tables de nets reviennent vides pour qui n'a pas le droit « partenaires.nets » : la base filtre.
+const CHARGEES = ["clients", "dossiers", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
 const LIMITE_FICHIER = 10 * 1024 * 1024;
 const PAGE = 1000;
 // Colonne de tri de chaque table (toutes n'ont pas de created_at).
-const TRI = { membres: "entite_id", reglages: "entite_id", dossiers_resume: "dossier_id" };
+const TRI = { membres: "entite_id", reglages: "entite_id", dossiers_resume: "dossier_id", partenaires_prives: "partenaire_id", prestations_nets: "prestation_id", trajets_nets: "trajet_id", reservations_nets: "reservation_id" };
 
 function verifie({ data, error }) {
   if (error) throw new Error(error.message);

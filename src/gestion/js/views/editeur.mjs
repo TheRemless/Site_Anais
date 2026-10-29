@@ -3,6 +3,7 @@ import { h, champ, toast, num, vider, icone } from "../ui.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
 import { nouvelleLigne, modesPaiement } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
+import { choisirPrestation } from "./choix-prestation.mjs";
 
 const LARGEUR_FEUILLE = 794; // 210 mm à 96 dpi
 const MAX_HISTORIQUE = 100;
@@ -343,6 +344,17 @@ function editeurVue(id) {
     const libelle = h("input", { id: `l${l.id}-lib`, value: l.libelle, oninput: maj("libelle") });
     const kindTexte = { bloc: "Bloc de formule", ligne: "Ligne", remise: "Remise", texte: "Note sous le tableau" }[l.kind];
     const champs = [champ(l.kind === "remise" ? "Intitulé de la remise" : l.kind === "texte" ? "Texte de la note" : "Libellé", libelle)];
+    // Ligne venue d'un partenaire : la date du service se garde avec la ligne, le net s'affiche pour qui a le droit.
+    if ((l.prestation_id || l.trajet_id) && l.kind !== "texte") {
+      champs.push(
+        h(
+          "div",
+          { class: "ligne-partenaire" },
+          champ("Date du service", h("input", { id: `l${l.id}-ds`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), change()) })),
+          peut("partenaires.nets") && l.net != null ? h("p", { class: "aide" }, `Net partenaire : ${formatMontant(l.net, devDoc())}${l.qte ? ` × ${l.qte}` : ""}`) : null
+        )
+      );
+    }
     if (l.kind === "bloc") {
       champs.push(champ("Complément après le libellé", h("input", { id: `l${l.id}-intro`, value: l.intro, placeholder: "comprenant:", oninput: maj("intro") })));
       const puces = h("textarea", { id: `l${l.id}-puces`, rows: 4, oninput: (e) => ((l.puces = e.target.value.split("\n").map((x) => x.trim()).filter(Boolean)), change()) });
@@ -511,7 +523,7 @@ function editeurVue(id) {
     "div",
     { class: "editeur-form" },
     h("fieldset", null, h("legend", null, "En-tête"), h("div", { class: "grille-form" }, champ("Date d'émission", date), champ("Colonnes", colonnes), champ("Devise du document", deviseSel)), champ("Titre dans la bande de couleur", bandeau), champ("Prestataire du service (facultatif)", prestataire), h("div", { class: "grille-form" }, champ("Langue du document", selLangue), modes.length > 1 ? champ("Informations de paiement", selPaiement) : null, champ("Numéro affiché (facultatif)", numeroDoc, "Remplace la référence du dossier sur ce document."))),
-    h("fieldset", null, h("legend", null, "Contenu"), listeLignes, h("div", { class: "ajouts" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("bloc", { intro: "comprenant:" })) }, "Ajouter un bloc de formule"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("ligne")) }, "Ajouter une ligne"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("remise")) }, "Ajouter une remise"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("texte")) }, "Ajouter une note")), champ("Catalogue", depuisCatalogue), totalTexte),
+    h("fieldset", null, h("legend", null, "Contenu"), listeLignes, h("div", { class: "ajouts" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("bloc", { intro: "comprenant:" })) }, "Ajouter un bloc de formule"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("ligne")) }, "Ajouter une ligne"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("remise")) }, "Ajouter une remise"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("texte")) }, "Ajouter une note"), peut("partenaires.lire") && (etat.db.prestations.length || etat.db.trajets.length) ? h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue: c.langue, devise: devDoc(), onAjout: (lignes) => { lignes.forEach((l) => c.lignes.push(l)); dessinerLignes(); change(); } }) }, "Prestation d'un partenaire") : null), champ("Catalogue", depuisCatalogue), totalTexte),
     blocRecu,
     h(
       "fieldset",
