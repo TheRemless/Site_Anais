@@ -56,6 +56,7 @@ L'écran **Réglages** (administrateurs) couvre tout ce qui apparaît sur les do
 - **Dossiers et listes** : acompte, délais, TVA, lien des conditions générales, numérotation (initiales et pays ou séquence annuelle comme ST-2026-0001), pays ou services proposés, civilités, moyens de paiement.
 - **Textes des documents** : tous les intitulés (DEVIS, TOTAL, signature…) avec un bouton pour les remplir en anglais, la phrase sur les conditions générales et les variantes de conditions de paiement (autant que voulu).
 - **Apparence** : logo, titre, couleurs. L'aperçu à droite montre un document d'exemple avec les réglages en cours.
+- **Écrans** : les écrans propres à l'entreprise (Partenaires, Réservations, Messages, Catalogue), chacun en automatique, affiché ou masqué. En automatique, Partenaires n'apparaît que dans une entreprise qui a des partenaires, Réservations et Messages suivent, Catalogue est toujours là : Zwald et Secret n'ont donc pas le même menu sans rien régler.
 - **Sauvegarde** : sauvegarde complète, exports pour Excel, import. Ces fichiers concernent seulement l'entreprise active.
 
 Une entreprise nouvellement créée démarre avec des réglages vides. Le tableau de bord indique ce qu'il manque tant que ce n'est pas rempli.

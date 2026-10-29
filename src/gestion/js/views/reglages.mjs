@@ -66,7 +66,9 @@ async function importer(fichier) {
   if (!(await confirmer(`Importer ${resume} dans l'entreprise « ${entiteActive().nom} » ? Les éléments qui ont le même identifiant seront remplacés, les autres sont conservés.`, "Importer"))) return;
   try {
     const rows = {};
-    for (const t of TABLES) rows[t] = (data[t] || []).map((r) => ({ ...r, entite_id: etat.entiteId }));
+    // Les tables de nets n'ont pas de date de création : une sauvegarde ou un import plus ancien peut en porter une.
+    const SANS_DATE = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
+    for (const t of TABLES) rows[t] = (data[t] || []).map(({ created_at, ...r }) => ({ ...r, ...(SANS_DATE.includes(t) ? {} : { created_at }), entite_id: etat.entiteId }));
     await etat.store.importer(rows);
     await recharger();
     toast("Import terminé.");
@@ -364,6 +366,27 @@ export function vueReglages() {
       ),
       r.apparence.type_images ? h("fieldset", null, h("legend", null, "Titres en images"), h("p", { class: "aide" }, "Les mots DEVIS et FACTURE sont des images. Retirez-les pour les remplacer par les textes de l'onglet « Textes »."), h("button", { class: "secondaire petit", type: "button", onclick: (e) => ((r.apparence.type_images = null), e.target.closest("fieldset").remove(), marque()) }, "Utiliser des textes à la place")) : null
     ),
+    ecrans: h(
+      "div",
+      null,
+      h(
+        "fieldset",
+        null,
+        h("legend", null, "Écrans de cette entreprise"),
+        h("p", { class: "aide" }, `Chaque entreprise a ses besoins : les écrans choisis ici n'apparaissent que pour « ${entiteActive().nom} ». En automatique, Partenaires s'affiche dès qu'un partenaire existe, Réservations et Messages suivent Partenaires, Catalogue est toujours là.`),
+        h(
+          "div",
+          { class: "grille-form" },
+          ...[["partenaires", "Partenaires, tarifs, trajets, règles et dû"], ["reservations", "Réservations et agenda du jour"], ["messages", "Messages types"], ["catalogue", "Catalogue de formules"]].map(([cle, libelle]) => {
+            const v = (r.modules || {})[cle];
+            const sel = h("select", { id: `mod-${cle}`, onchange: (e) => { r.modules = r.modules || {}; r.modules[cle] = { auto: null, oui: true, non: false }[e.target.value]; marque(); } }, h("option", { value: "auto" }, "Automatique"), h("option", { value: "oui" }, "Affiché"), h("option", { value: "non" }, "Masqué"));
+            sel.value = v === true ? "oui" : v === false ? "non" : "auto";
+            return champ(libelle, sel);
+          })
+        ),
+        h("p", { class: "aide" }, "Le menu se met à jour après l'enregistrement. Les droits des rôles s'appliquent toujours en plus.")
+      )
+    ),
     donnees: h(
       "div",
       null,
@@ -384,13 +407,14 @@ export function vueReglages() {
     ["fonctionnement", "Dossiers et listes"],
     ["textes", "Textes des documents"],
     ["apparence", "Apparence"],
+    ["ecrans", "Écrans"],
     ...(peut("exports.faire") ? [["donnees", "Sauvegarde"]] : []),
   ];
   const barre = h("div", { class: "onglets sous-onglets" });
   const montrer = (cle) => {
     for (const [k, el] of Object.entries(sections)) el.hidden = k !== cle;
     for (const b of barre.children) b.setAttribute("aria-pressed", b.dataset.cle === cle ? "true" : "false");
-    zoneApercu.hidden = cle === "donnees";
+    zoneApercu.hidden = cle === "donnees" || cle === "ecrans";
     boutonEnregistrer.hidden = cle === "donnees";
     if (cle !== "donnees") redessiner();
   };

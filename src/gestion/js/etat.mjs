@@ -88,6 +88,16 @@ export const estAdmin = () => peut("reglages.ecrire");
 
 export const reglages = () => etat.db.reglages;
 
+// Chaque entreprise choisit ses écrans (Réglages, Écrans). En automatique, Partenaires apparaît dès qu'il y a un partenaire,
+// Réservations et Messages suivent Partenaires, Catalogue est toujours là. Zwald et Secret n'ont donc pas le même menu.
+export function moduleActif(nom) {
+  const v = ((etat.db && etat.db.reglages.modules) || {})[nom];
+  if (v === true || v === false) return v;
+  if (nom === "partenaires") return etat.db.partenaires.length > 0;
+  if (nom === "reservations" || nom === "messages") return moduleActif("partenaires");
+  return true;
+}
+
 // ---- Chargement à la demande ---------------------------------------------------------------------------------
 // Documents et paiements ne sont pas chargés avec les listes : on les charge à l'ouverture d'un dossier.
 function fusionnerDossier({ dossier, documents, paiements }) {

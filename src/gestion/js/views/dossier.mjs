@@ -1,4 +1,4 @@
-import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier } from "../etat.mjs";
+import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, convertirContenu } from "../calc.mjs";
 import { uid, modesPaiement } from "../defauts.mjs";
@@ -355,7 +355,7 @@ function ficheDossierVue(id) {
       facture && !locale && droit.docs ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, "Créer la facture locale")) : null
     ),
     droit.finances ? h("section", null, h("h2", null, "Paiements reçus"), tableauPaiements, droit.paiements ? [h("h3", null, "Enregistrer un paiement"), formPaiement] : null) : null,
-    sectionReservationsDossier(d, facture || devis || null),
+    moduleActif("reservations") ? sectionReservationsDossier(d, facture || devis || null) : null,
     sectionTachesDossier(d.id),
     sectionPieces(d),
     h("section", null, h("h2", null, "Notes internes"), champ("Visibles seulement ici, jamais sur les documents", notes)),

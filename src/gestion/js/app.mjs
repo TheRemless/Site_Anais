@@ -1,4 +1,4 @@
-import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables } from "./etat.mjs";
+import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif } from "./etat.mjs";
 import { h, vider, toast, modal, icone } from "./ui.mjs";
 import { STATUTS, formatMontant } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
@@ -143,11 +143,11 @@ function ecrans() {
   const ag = agenda(etat.db.reservations, ajd);
   const aConfirmer = ag.enRetard.length + ag.aConfirmer.length;
   return [
-    { titre: "Opérations", items: [{ href: "#/", libelle: "Aujourd'hui", cle: "tableau", icone: "soleil" }, { href: "#/reservations", libelle: "Réservations", cle: "reservations", icone: "reservations", badge: aConfirmer }, { href: "#/taches", libelle: "Tâches", cle: "taches", icone: "taches", badge: enRetard }, { href: "#/messages", libelle: "Messages", cle: "messages", icone: "messages" }] },
-    { titre: "Ventes", items: [{ href: "#/dossiers", libelle: "Dossiers", cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: "Clients", cle: "clients", icone: "clients" }, { href: "#/catalogue", libelle: "Catalogue", cle: "catalogue", icone: "catalogue" }] },
+    { titre: "Opérations", items: [{ href: "#/", libelle: "Aujourd'hui", cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: "Réservations", cle: "reservations", icone: "reservations", badge: aConfirmer }), { href: "#/taches", libelle: "Tâches", cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: "Messages", cle: "messages", icone: "messages" })] },
+    { titre: "Ventes", items: [{ href: "#/dossiers", libelle: "Dossiers", cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: "Clients", cle: "clients", icone: "clients" }, ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: "Catalogue", cle: "catalogue", icone: "catalogue" })] },
     {
       titre: "Partenaires",
-      items: si(peut("partenaires.lire"), null).length
+      items: si(peut("partenaires.lire") && moduleActif("partenaires"), null).length
         ? [
             { href: "#/partenaires", libelle: "Partenaires", cle: "partenaires", icone: "partenaires" },
             { href: "#/tarifs", libelle: "Tarifs", cle: "tarifs", icone: "tarifs" },
@@ -171,7 +171,7 @@ function ecrans() {
 }
 // Les trois écrans qui ont leur onglet sur téléphone, le reste passe par « Plus ». Partenaires prend la place de
 // Clients dès que la personne a le droit de les voir.
-const ongletsMobiles = () => ["tableau", "dossiers", peut("partenaires.lire") ? "partenaires" : "clients"];
+const ongletsMobiles = () => ["tableau", "dossiers", peut("partenaires.lire") && moduleActif("partenaires") ? "partenaires" : "clients"];
 const tousEcrans = () => ecrans().flatMap((s) => s.items);
 
 const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": `${e.badge} en retard` }, e.badge) : null);
@@ -266,7 +266,7 @@ function chercher(q) {
     .filter((c) => correspond(sansAccents(`${nomClient(c)} ${c.telephone} ${c.email} ${c.adresse}`)))
     .slice(0, 6)
     .forEach((c) => out.push({ groupe: "Clients", icone: "clients", titre: nomClient(c), detail: [c.telephone, (c.adresse || "").split("\n").filter(Boolean).pop()].filter(Boolean).join(" · "), href: `#/client/${c.id}` }));
-  if (peut("partenaires.lire")) {
+  if (peut("partenaires.lire") && moduleActif("partenaires")) {
     etat.db.partenaires
       .filter((p) => p.actif !== false && correspond(sansAccents(`${p.nom} ${p.nom_thai} ${p.categorie} ${p.role}`)))
       .slice(0, 5)

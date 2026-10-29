@@ -1,4 +1,4 @@
-import { etat, resumes, nomClient, reglages, estAdmin, entiteActive, peut, paiementsPeriode } from "../etat.mjs";
+import { etat, resumes, nomClient, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif } from "../etat.mjs";
 import { reglagesIncomplets } from "../defauts.mjs";
 import { h } from "../ui.mjs";
 import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois } from "../calc.mjs";
@@ -35,7 +35,7 @@ export async function tableauDeBord() {
   const deviseDe = Object.fromEntries(rs.map((r) => [r.dossier.id, r.devise]));
   const ceMois = await paiementsPeriode(`${ajd.slice(0, 7)}-01`, `${ajd.slice(0, 7)}-31`);
   const taches = aFaire(rs, ajd, reglages());
-  const contrats = peut("partenaires.lire") ? contratsAEcheance(etat.db.partenaires, ajd) : [];
+  const contrats = peut("partenaires.lire") && moduleActif("partenaires") ? contratsAEcheance(etat.db.partenaires, ajd) : [];
   const ag = agenda(etat.db.reservations, ajd);
   const aConfirmer = [...ag.enRetard, ...ag.aConfirmer];
   const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -60,9 +60,9 @@ export async function tableauDeBord() {
       chiffre(formatSommes(ceMois.map((p) => ({ montant: p.montant, devise: deviseDe[p.dossier_id] })), reglages().devise), `Encaissé en ${nomMois(ajd)}`, pluriel(ceMois.length, "paiement", "paiements")),
       chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), "Devis en attente de réponse", pluriel(attente.length, "devis envoyé", "devis envoyés"))
     ) : null,
-    etat.db.reservations.length || etat.db.partenaires.length ? sectionAgenda("Départs et pickups aujourd'hui", ag.aujourdhui, "Aucun service aujourd'hui.") : null,
-    ag.demain.length ? sectionAgenda("Demain", ag.demain, "") : null,
-    aConfirmer.length
+    moduleActif("reservations") ? sectionAgenda("Départs et pickups aujourd'hui", ag.aujourdhui, "Aucun service aujourd'hui.") : null,
+    moduleActif("reservations") && ag.demain.length ? sectionAgenda("Demain", ag.demain, "") : null,
+    moduleActif("reservations") && aConfirmer.length
       ? h("section", null, h("h2", null, "À confirmer auprès des partenaires", h("span", { class: "tag" }, aConfirmer.length)), listeReservations(aConfirmer.slice(0, 6), { apres: rafraichir }), aConfirmer.length > 6 ? h("p", { class: "plus" }, h("a", { href: "#/reservations?statut=ouvertes" }, `Voir les ${aConfirmer.length} réservations à confirmer`)) : null)
       : null,
     mesTaches().length
