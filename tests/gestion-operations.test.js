@@ -1,9 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER } from "../src/gestion/js/operations-calc.mjs";
+import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin } from "../src/gestion/js/operations-calc.mjs";
 
 test("vouchers : modèle d'après la prestation, numéro, statut de paiement", () => {
-  assert.equal(typeVoucher({ trajet_id: "t" }, null), "transfert");
+  assert.equal(typeVoucher({ trajet_id: "t" }, null), "billet", "un trajet de compagnie est un billet de bateau");
+  assert.equal(typeVoucher({}, { famille: "transfert", groupe: "Speedboat Koh Lanta", libelle: "x" }), "billet");
+  assert.equal(typeVoucher({}, { famille: "excursion", groupe: "Option Supplément", libelle: "Extension Koh Kradan" }), null, "une option n'a pas de voucher");
+  assert.equal(typeVoucher({}, { famille: "excursion", groupe: "Excursions en taxi", libelle: "Krabi day trip" }), "activite", "une journée en taxi est une activité");
+  assert.equal(typeVoucher({ libelle: "Speedboat transfer: Koh Lanta → Koh Lipe" }, null), "billet");
   assert.equal(typeVoucher({}, { famille: "excursion", groupe: "Excursions en groupe" }), "bateau");
   assert.equal(typeVoucher({}, { famille: "activite" }), "activite");
   assert.equal(typeVoucher({}, { famille: "location" }), "location");
@@ -20,7 +24,8 @@ test("vouchers : modèle d'après la prestation, numéro, statut de paiement", (
 test("vouchers : privé ou join, frais de parc, type de transfert, hôtel et chambre", () => {
   assert.equal(estPrive({ groupe: "Privatisation", libelle: "Koh Rok" }, {}), true);
   assert.equal(estPrive({ groupe: "Excursions en groupe", libelle: "4 îles" }, {}), false);
-  assert.deepEqual(fraisDeParc({ details: { parc: "Frais de parc 200 ฿ par adulte, à payer sur place." } }), { inclus: false, texte: "Frais de parc 200 ฿ par adulte, à payer sur place." });
+  assert.deepEqual(fraisDeParc({ details: { parc: "Adulte étranger: 400 ฿ | Enfant: 200 ฿\n(Thaï: 40 ฿ / 20 ฿)" } }), { inclus: false, texte: "Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB), cash on the day" });
+  assert.deepEqual(fraisDeParc({ details: { parc: "Compris dans la prestation" } }), { inclus: true, texte: "" });
   assert.equal(fraisDeParc({ details: { parc: "Park fees included" } }).inclus, true);
   assert.equal(fraisDeParc(null).inclus, null);
   assert.equal(typeTransfert({ groupe: "Navette partagée Hatyai" }, {}), "partage");
@@ -58,6 +63,30 @@ test("réservations depuis un document : une par ligne de partenaire, ligne enfa
   assert.deepEqual(r[1].reservation.personnes, { adultes: 0, enfants: 1, bebes: 0 });
   assert.equal(r[1].reservation.trajet_id, "t1");
   assert.equal(r[1].net, 1200);
+});
+
+test("réservations : les lignes adulte et enfant d'un même bateau donnent une seule réservation", () => {
+  const doc = {
+    dossier_id: "D1",
+    contenu: {
+      lignes: [
+        { id: "a", kind: "ligne", titre: "Speedboat transfer: Koh Lanta → Koh Lipe, departure 10:30", libelle: "…", intro: "(per adult)", unite: 1900, qte: 2, net: 1500, trajet_id: "t1", partenaire_id: "B", date_service: "2026-12-12" },
+        { id: "b", kind: "ligne", titre: "Speedboat transfer: Koh Lanta → Koh Lipe, departure 10:30, child", libelle: "…", intro: "(per child)", unite: 1500, qte: 1, net: 1200, trajet_id: "t1", partenaire_id: "B", date_service: "2026-12-12" },
+        { id: "c", kind: "ligne", titre: "4 Islands (Koh Chuek), child (4-10)", libelle: "…", intro: "(per child)", unite: 900, qte: 1, net: 600, prestation_id: "x2", partenaire_id: "L", date_service: "2026-12-10" },
+        { id: "d", kind: "ligne", titre: "4 Islands (Koh Chuek)", libelle: "…", intro: "(per person)", unite: 1200, qte: 2, net: 800, prestation_id: "x1", partenaire_id: "L", date_service: "2026-12-10" },
+        { id: "e", kind: "ligne", titre: "4 Islands (Koh Chuek)", libelle: "…", intro: "(per person)", unite: 1200, qte: 1, net: 800, prestation_id: "x1", partenaire_id: "L", date_service: "2026-12-11" },
+      ],
+    },
+  };
+  let n = 0;
+  const r = reservationsDepuisDocument(doc, { uid: () => `R${++n}` });
+  assert.equal(r.length, 3, "bateau, 4 îles du 10, 4 îles du 11");
+  assert.deepEqual([r[0].reservation.libelle, r[0].reservation.personnes, r[0].reservation.montant_vente, r[0].net, r[0].reservation.details], ["Speedboat transfer: Koh Lanta → Koh Lipe, departure 10:30", { adultes: 2, enfants: 1, bebes: 0 }, 5300, 4200, { lignes_ids: ["a", "b"] }]);
+  assert.equal(r[1].reservation.ligne_id, "d", "la ligne adulte mène, même si la ligne enfant vient avant");
+  assert.deepEqual(r[1].reservation.personnes, { adultes: 2, enfants: 1, bebes: 0 });
+  assert.equal(r[1].reservation.prestation_id, "x1");
+  assert.deepEqual(r[2].reservation.personnes, { adultes: 1, enfants: 0, bebes: 0 });
+  assert.equal(reservationsDepuisDocument(doc, { existantes: [{ ligne_id: "d", details: { lignes_ids: ["c", "d"] } }, { ligne_id: "a", details: { lignes_ids: ["a", "b"] } }] }).length, 1, "les lignes déjà réservées ne reviennent pas");
 });
 
 test("personnes en texte dans les trois langues", () => {
@@ -119,4 +148,16 @@ test("dates du dossier déduites des réservations : première et dernière date
   assert.deepEqual(datesDepuisReservations([{ date_service: "2026-11-15", statut: "confirme" }, { date_service: "2026-11-14", statut: "a_demander" }, { date_service: "2026-12-01", statut: "annule" }]), { date_depart: "2026-11-14", date_retour: "2026-11-15" });
   assert.deepEqual(datesDepuisReservations([{ date_service: "2026-11-15", statut: "confirme" }]), { date_depart: "2026-11-15", date_retour: null });
   assert.deepEqual(datesDepuisReservations([{ date_service: null, statut: "confirme" }]), { date_depart: null, date_retour: null });
+});
+
+test("billet de bateau : embarcadère de la compagnie et consigne de check-in en anglais", () => {
+  const bund = { regles: { points_embarquement: [{ lieu: "Koh Lanta", ou: "Saladan Pier" }, { lieu: "Phuket", ou: "Rassada Pier, comptoir n°11" }] } };
+  assert.equal(pointEmbarquement(bund, "Koh Lanta"), "Saladan Pier");
+  assert.equal(pointEmbarquement(bund, "Phuket"), "Rassada Pier, comptoir n°11");
+  assert.equal(pointEmbarquement(bund, "Koh Lipe"), "");
+  assert.equal(pointEmbarquement(null, "Koh Lanta"), "");
+  assert.match(consigneCheckin("Bundhaya Speed Boat", { de: "Koh Lanta", vers: "Koh Lipe" }), /45 minutes before departure/);
+  assert.match(consigneCheckin("Bundhaya Speed Boat", { de: "Koh Lipe", vers: "Langkawi" }), /90 minutes.*passport/i);
+  assert.match(consigneCheckin("Satun Pakbara Speed Boat Club", { de: "Koh Lanta", vers: "Koh Ngai" }), /30 minutes before departure/);
+  assert.match(consigneCheckin("Ferry démo", {}), /30 minutes before departure/);
 });

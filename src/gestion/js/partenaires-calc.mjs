@@ -127,6 +127,15 @@ const TRADUCTIONS = [
   [/\bPrivé \(Radeau Bois\)/gi, "Private wooden raft"],
   [/\bOption Supplément\b/gi, "Option"],
   [/\bPrivatisation\b/g, "Private"],
+  [/\bExcursion d'une journée\b/gi, "Full-day trip"],
+  [/\bExcursion d'une demi-journée\b/gi, "Half-day trip"],
+  [/\bfrontière malaisienne\b/gi, "Malaysian border"],
+  [/\bAssociation des taxis de Saladan\b/gi, "Saladan Taxi Association"],
+  [/\bdécouverte de\b/gi, "discovery of"],
+  [/\bAéroport de Hat ?yai\b/gi, "Hat Yai Airport"],
+  [/\bAéroport de Krabi\b/gi, "Krabi Airport"],
+  [/\bAéroport de Trang\b/gi, "Trang Airport"],
+  [/\bvisa run\b/gi, "visa run"],
   [/\bExtension Koh Kradan sur tour 4 îles privé/gi, "Koh Kradan extension on the private 4 Islands tour"],
   [/\bAu choix\s*:\s*/gi, ""],
   [/\s+OU\s+/g, " or "],
@@ -180,6 +189,8 @@ const TRADUCTIONS = [
   [/\bjournée\b/g, "full day"],
   [/\s*[,;]\s*$/g, ""],
   [/\s{2,}/g, " "],
+  // En dernier, pour ne pas casser les règles qui contiennent « et ».
+  [/(\S)\s+et\s+(\S)/g, "$1 and $2"],
 ];
 export function libelleClient(libelle) {
   let t = String(libelle || "");

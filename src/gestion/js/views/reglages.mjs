@@ -217,7 +217,7 @@ export function vueReglages() {
   };
   const { zone: zoneApercu, redessiner } = apercuA4(exemple);
   let typeApercuVoucher = "bateau";
-  const choixApercuVoucher = h("select", { id: "apercu-voucher-type", onchange: (e) => ((typeApercuVoucher = e.target.value), redessinerVoucher()) }, [["bateau", "Boat Tour"], ["transfert", "Transfer"], ["activite", "Activity & Tour"], ["location", "Rental"]].map(([v, l]) => h("option", { value: v }, l)));
+  const choixApercuVoucher = h("select", { id: "apercu-voucher-type", onchange: (e) => ((typeApercuVoucher = e.target.value), redessinerVoucher()) }, [["billet", "Boat Ticket"], ["bateau", "Boat Tour"], ["transfert", "Transfer"], ["activite", "Activity & Tour"], ["location", "Rental"]].map(([v, l]) => h("option", { value: v }, l)));
   const { zone: zoneVoucher, redessiner: redessinerVoucher } = apercuA4(() => voucherExemple(r, typeApercuVoucher));
   zoneVoucher.hidden = true;
   let minuteur = null;

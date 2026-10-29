@@ -8,20 +8,35 @@ const brut = (l) => (l.unite !== null && l.unite !== undefined && l.unite !== ""
 
 // Une réservation par ligne de partenaire du document, sauf celles qui existent déjà (même ligne).
 // Le net prévu est renvoyé à part : il va dans la table protégée.
+// Les lignes adulte et enfant d'un même bateau ou d'une même excursion (même partenaire, même date, même nom
+// sans le suffixe enfant) donnent une seule réservation, avec les adultes et les enfants réunis.
+const estLigneEnfant = (l) => /enfant|child/i.test(l.intro || "") || /,\s*(child|enfant)\b/i.test(l.titre || l.libelle || "");
+const nomSansEnfant = (l) => String(l.titre || l.libelle || "").replace(/,\s*(child|enfant)\b.*$/i, "").trim();
 export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelId } = {}) {
-  const deja = new Set(existantes.map((r) => r.ligne_id));
-  const out = [];
+  const deja = new Set(existantes.flatMap((r) => [r.ligne_id, ...((r.details && r.details.lignes_ids) || [])]));
+  const groupes = new Map();
   for (const l of (doc.contenu && doc.contenu.lignes) || []) {
     if (l.kind === "texte" || l.kind === "remise" || !(l.prestation_id || l.trajet_id) || deja.has(l.id)) continue;
+    const cle = `${l.trajet_id || ""}|${l.partenaire_id || ""}|${l.date_service || ""}|${sansAccentsMin(nomSansEnfant(l))}`;
     const qte = l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1;
-    const enfant = /enfant|child/i.test(l.intro || "");
-    out.push({
-      // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
-      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: l.titre || l.libelle, date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: enfant ? { adultes: 0, enfants: qte, bebes: 0 } : { adultes: qte, enfants: 0, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: brut(l), notes: "", details: {} },
-      net: l.net !== null && l.net !== undefined ? Math.round(Number(l.net) * qte * 100) / 100 : null,
-    });
+    const enfant = estLigneEnfant(l);
+    const g = groupes.get(cle) || { lignes: [], adultes: 0, enfants: 0, vente: 0, net: null, premiere: null };
+    if (!g.premiere || (!enfant && estLigneEnfant(g.premiere))) g.premiere = l;
+    g.lignes.push(l);
+    if (enfant) g.enfants += qte;
+    else g.adultes += qte;
+    g.vente += brut(l) || 0;
+    if (l.net !== null && l.net !== undefined) g.net = (g.net || 0) + Math.round(Number(l.net) * qte * 100) / 100;
+    groupes.set(cle, g);
   }
-  return out;
+  return [...groupes.values()].map((g) => {
+    const l = g.premiere;
+    return {
+      // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
+      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", details: g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {} },
+      net: g.net,
+    };
+  });
 }
 
 // « 2 adultes, 1 enfant », « 2 adults, 1 child », « ผู้ใหญ่ 2 คน เด็ก 1 คน ».
@@ -109,13 +124,34 @@ export function duParPartenaire(reservations, netDe) {
 // ---- Vouchers (mode excursions) ------------------------------------------------------------------------------
 // Trois modèles : bateau (excursions en mer), transfert, activité. Les frais de parc n'ont pas de voucher.
 // Quatre modèles : bateau, transfert, activité, location. Chacun a ses champs propres sur la réservation.
+// Cinq modèles : billet de bateau (trajets des compagnies), excursion en bateau, transfert terrestre, activité, location.
 export const CHAMPS_VOUCHER = {
-  bateau: ["chambre", "type_tour", "parc", "parc_texte", "remarques", "remarques_paiement"],
+  billet: ["embarquement", "checkin", "bagages", "remarques", "remarques_paiement"],
+  bateau: ["chambre", "type_tour", "bateau", "parc", "parc_texte", "remarques", "remarques_paiement"],
   transfert: ["drop_off", "vol", "bagages", "type_transfert", "remarques", "remarques_paiement"],
-  activite: ["chambre", "heure_service", "remarques", "remarques_paiement"],
+  activite: ["chambre", "programme", "heure_service", "remarques", "remarques_paiement"],
   location: ["chambre", "retour_date", "retour_heure", "permis", "caution", "remarques", "remarques_paiement"],
 };
-export const TITRES_VOUCHER = { bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher", location: "Rental Voucher" };
+export const TITRES_VOUCHER = { billet: "Boat Ticket Voucher", bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher", location: "Rental Voucher" };
+
+// Point d'embarquement de la compagnie pour un lieu de départ (« Koh Lanta » → « Saladan Pier »).
+export function pointEmbarquement(partenaire, lieu) {
+  const points = (partenaire && partenaire.regles && partenaire.regles.points_embarquement) || [];
+  const cible = sansAccentsMin(lieu);
+  const p = points.find((x) => sansAccentsMin(x.lieu) === cible) || points.find((x) => cible && (sansAccentsMin(x.lieu).includes(cible) || cible.includes(sansAccentsMin(x.lieu))));
+  return p ? p.ou : "";
+}
+
+// Consigne de check-in en anglais, d'après la compagnie et la ligne (Langkawi demande les passeports).
+export function consigneCheckin(nomCompagnie, trajet = {}) {
+  const c = sansAccentsMin(nomCompagnie);
+  const langkawi = /langkawi/i.test(`${trajet.de || ""} ${trajet.vers || ""}`);
+  if (langkawi) return c.includes("bundhaya") ? "Check-in 90 minutes before departure, counter closes 45 minutes before. Passport of each passenger required (immigration), kept by the captain during the crossing." : "Check-in 90 minutes before departure for immigration formalities. Passport of each passenger required.";
+  if (c.includes("bundhaya")) return "Check-in at the pier 45 minutes before departure, counter closes 15 minutes before. Please bring this voucher and your passport or ID.";
+  if (c.includes("satun")) return "Please present this voucher at the counter 30 minutes before departure, counter closes 20 minutes before. Passport or ID required.";
+  return "Please arrive at the pier 30 minutes before departure with this voucher and your passport or ID.";
+}
+const sansAccentsMin = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
 // Dates du dossier déduites de ses réservations (hors annulées) : la première et la dernière date de service.
 export function datesDepuisReservations(reservations) {
@@ -125,13 +161,18 @@ export function datesDepuisReservations(reservations) {
 }
 
 export function typeVoucher(reservation, prestation) {
-  if (reservation.trajet_id) return "transfert";
+  if (reservation.trajet_id) return "billet";
   const f = prestation ? prestation.famille : "";
+  const g = `${(prestation && prestation.groupe) || ""} ${(prestation && prestation.libelle) || ""}`;
   if (f === "frais") return null;
-  if (f === "transfert") return "transfert";
+  // Une option (extension d'île, supplément) se note sur le voucher du tour, elle n'a pas le sien.
+  if (/^option|supplément|supplement|extension/i.test(g)) return null;
+  if (f === "transfert") return /speedboat|ferry|bateau|boat/i.test(g) ? "billet" : "transfert";
   if (f === "location") return "location";
   if (f === "activite") return "activite";
-  if (f === "excursion") return /taxi|van|transfert/i.test((prestation && prestation.groupe) || "") ? "transfert" : "bateau";
+  // Une excursion à la journée en taxi (VIP Taxi) est une activité, pas un transfert.
+  if (f === "excursion") return /taxi|van/i.test((prestation && prestation.groupe) || "") ? "activite" : "bateau";
+  if (/speedboat|ferry/i.test(reservation.libelle || "")) return "billet";
   return /transfer|taxi|van|→/i.test(reservation.libelle || "") ? "transfert" : "activite";
 }
 
@@ -147,12 +188,70 @@ export function statutPaiementVoucher({ total = 0, recu = 0 } = {}) {
 // Join ou privé, d'après le groupe ou le libellé de la prestation.
 export const estPrive = (prestation, reservation) => /priv|charter/i.test(`${(prestation && prestation.groupe) || ""} ${(prestation && prestation.libelle) || ""} ${(reservation && reservation.libelle) || ""}`);
 
-// Frais de parc : inclus seulement si la prestation le dit, sinon « non inclus » avec le texte de la base.
+// Frais de parc : inclus seulement si la prestation le dit (« compris », « inclus »), sinon « non inclus » avec le
+// texte de la base traduit en anglais pour le client.
 export function fraisDeParc(prestation) {
   const texte = (prestation && prestation.details && prestation.details.parc) || "";
   if (!texte) return { inclus: null, texte: "" };
-  return { inclus: /inclu|included/i.test(texte) && !/non inclu|not included|pas inclu|jamais/i.test(texte), texte };
+  const inclus = /inclu|included|compris/i.test(texte) && !/non inclu|not included|pas inclu|non compris|jamais/i.test(texte);
+  return { inclus, texte: inclus ? "" : texteParcEn(texte) };
 }
+
+// « Adulte étranger: 400 ฿ | Enfant: 200 ฿ (Thaï: 40 ฿ / 20 ฿) » → « Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB), cash on the day ».
+export function texteParcEn(texte) {
+  let s = String(texte || "").replace(/\s*\n\s*/g, " ").trim();
+  s = s.replace(/^Selon destination\s*\(([^)]*)\)\s*/i, "$1, depending on the destination");
+  s = s.replace(/(\d+)\s*à\s*(\d+)/g, "$1 to $2");
+  s = s.replace(/\(\s*([\d\s\/฿]+?)\s*thaï\s*\)/gi, "(Thai nationals $1)");
+  s = s.replace(/\(\s*Thaï\s*:\s*/gi, "(Thai nationals ");
+  s = s.replace(/Enfant thaï\s*:\s*/gi, "Thai child ");
+  s = s.replace(/Adulte étranger\s*:\s*/gi, "adult ").replace(/Enfant étranger\s*:\s*/gi, "child ").replace(/Enfant\s*:\s*/gi, "child ");
+  s = s.replace(/\/\s*adulte étranger/gi, "per adult").replace(/\/\s*enfant/gi, "per child").replace(/\/\s*adulte/gi, "per adult");
+  s = s.replace(/฿\s*\/\s*(\d+)\s*฿/g, "/ $1 THB").replace(/฿/g, "THB");
+  s = s.replace(/\s*\|\s*/g, ", ").replace(/,?\s*À régler en espèces sur place/i, "");
+  s = s.replace(/\s+/g, " ").replace(/\s+,/g, ",").replace(/\(\s+/g, "(").replace(/\s+\)/g, ")").trim();
+  s = s.charAt(0).toUpperCase() + s.slice(1);
+  return /cash/i.test(s) ? s : `${s}, cash on the day`;
+}
+
+// Capacité du bateau quand la base en donne une en personnes (« 1 à 2 personnes »), rien pour « Par personne ».
+export function capaciteBateau(prestation) {
+  const c = (prestation && prestation.details && prestation.details.capacite) || "";
+  return /\d/.test(c) && !/^par\b/i.test(c) ? c.replace(/\s*(à|-)\s*/g, " to ").replace(/personnes?/i, "people") : "";
+}
+
+// « Speedboat Privé\nRattana Pier » → bateau en anglais et quai de départ.
+const BATEAUX = [[/Speedboat Privé/i, "Private speedboat"], [/Longtail Privé/i, "Private longtail"], [/Longtail Traditionnel/i, "Traditional longtail"], [/Radeau Traditionnel/i, "Traditional wooden raft"], [/Radeau/i, "Wooden raft"]];
+export function bateauEtQuai(prestation) {
+  const lignes = String((prestation && prestation.details && prestation.details.bateau) || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const bateau = BATEAUX.reduce((s, [re, en]) => s.replace(re, en), lignes[0] || "");
+  const quai = lignes.slice(1).find((l) => /pier|quai|jetty/i.test(l)) || "";
+  return { bateau, quai };
+}
+
+// Horaires de la base quand ils sont une plage d'heures (« 09h00 - 16h00 (Journée) » → « 09:00 - 16:00 (full day) »),
+// rien quand ce sont des jours d'ouverture, qui n'ont pas leur place sur un voucher.
+const PARENTHESES = [[/journée/i, "full day"], [/flexible/i, "flexible"], [/trajet\s*~?\s*(\d{1,2}h\d{2})/i, "about $1 ride"], [/départ/i, "departure"], [/bateau/i, "boat"]];
+export function horairesTexte(horaires) {
+  const premiere = String(horaires || "").split("\n")[0].trim();
+  const m = premiere.match(/^(\d{1,2})[h:](\d{0,2})\s*(?:-|–|>|→)\s*(\d{1,2})[h:](\d{0,2})\s*(\(.*\))?$/);
+  if (!m) return "";
+  const hh = (h, mn) => `${h.padStart(2, "0")}:${(mn || "00").padEnd(2, "0")}`;
+  const suite = m[5] ? ` ${PARENTHESES.reduce((s, [re, en]) => s.replace(re, en), m[5]).replace(/(departure \d{1,2})h(\d{2})/i, "$1:$2")}` : "";
+  return `${hh(m[1], m[2])} - ${hh(m[3], m[4])}${suite}`;
+}
+
+// Durée de la base en anglais (« 2 heures (1h+1h) » → « 2 hours (1h+1h) », « Environ 3h00 » → « About 3h00 »).
+export function dureeTexte(duree) {
+  const premiere = String(duree || "").split("\n")[0].trim();
+  return premiere.replace(/journée complète/i, "Full day").replace(/environ/i, "About").replace(/heures?/i, "hours").replace(/session (\d+) minutes/i, "$1-minute session");
+}
+
+// Prix affiché par personne seulement quand la prestation se vend à la personne (adulte, enfant) ou qu'elle n'est pas connue (trajet).
+export const venduParPersonne = (prestation) => !prestation || !prestation.unite || ["pp", "ad", "ch", "pers"].includes(prestation.unite);
+
+// Un transfert qui parle d'aéroport ou de vol a une ligne « numéro de vol », les autres non.
+export const concerneUnVol = (...textes) => /airport|aéroport|aeroport|flight|vol\b/i.test(textes.filter(Boolean).join(" "));
 
 // Type de transfert d'après le groupe de la prestation.
 export function typeTransfert(prestation, reservation) {
