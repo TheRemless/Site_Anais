@@ -93,10 +93,13 @@ export const reglages = () => etat.db.reglages;
 export function moduleActif(nom) {
   const v = ((etat.db && etat.db.reglages.modules) || {})[nom];
   if (v === true || v === false) return v;
-  if (nom === "partenaires") return etat.db.partenaires.length > 0;
+  if (nom === "partenaires") return etat.db.partenaires.length > 0 || modeExcursions();
   if (nom === "reservations" || nom === "messages") return moduleActif("partenaires");
+  if (nom === "catalogue") return !modeExcursions();
   return true;
 }
+// Mode excursions (Secret) : pas de devis, facture directe, vouchers. Sinon voyages sur mesure (Zwald).
+export const modeExcursions = () => !!etat.db && etat.db.reglages.fonctionnement === "excursions";
 
 // ---- Chargement à la demande ---------------------------------------------------------------------------------
 // Documents et paiements ne sont pas chargés avec les listes : on les charge à l'ouverture d'un dossier.

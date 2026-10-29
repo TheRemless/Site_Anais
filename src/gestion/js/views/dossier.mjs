@@ -1,4 +1,4 @@
-import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif } from "../etat.mjs";
+import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, convertirContenu } from "../calc.mjs";
 import { uid, modesPaiement } from "../defauts.mjs";
@@ -8,6 +8,8 @@ import { sectionPieces } from "./pieces.mjs";
 import { pastille, vide, pdf, sousTitreDossier } from "./commun.mjs";
 import { margeDocument } from "../partenaires-calc.mjs";
 import { sectionReservationsDossier } from "./reservations.mjs";
+import { vouchersDuDossier, imprimerVoucher, imprimerTousLesVouchers } from "./voucher.mjs";
+import { numeroVoucher } from "../operations-calc.mjs";
 
 const rafraichir = () => naviguer(location.hash);
 const dernier = (docs, type) => docs.filter((d) => d.type === type).sort((a, b) => (a.created_at > b.created_at ? 1 : -1)).pop();
@@ -35,7 +37,9 @@ function ficheDossierVue(id) {
   const devis = dernier(r.documents, "devis");
   const facture = dernier(r.documents, "facture");
   const locale = dernier(r.documents, "facture_locale");
-  const avecDevis = !!devis || !facture;
+  // Mode excursions (Secret) : pas de devis, la facture vient en premier, puis les vouchers.
+  const excursions = modeExcursions();
+  const avecDevis = !excursions && (!!devis || !facture);
   const acompte = acompteDu(r.total, regl.conditions.acompte_pct);
   const echeance = echeanceAcompte(d, regl);
   const ajd = aujourdhui();
@@ -43,6 +47,8 @@ function ficheDossierVue(id) {
   const docMarge = facture || devis;
   const marge = droit.finances && peut("partenaires.nets") && docMarge ? margeDocument(docMarge.contenu, totaux(docMarge.contenu).net) : null;
   const ligneMarge = marge && marge.avecNet ? [["Marge", fm(marge.marge), `${marge.pct} %${marge.sansNet ? `, ${marge.sansNet} ligne${marge.sansNet > 1 ? "s" : ""} sans net connu` : ""}`]] : [];
+  const reservations = etat.db.reservations.filter((x) => x.dossier_id === d.id && x.statut !== "annule");
+  const vouchers = excursions ? vouchersDuDossier(d.id) : [];
 
   // Étapes du dossier : le statut en découle, ces boutons ne font qu'enregistrer des faits.
   const etape = (fait, titre, detail, action) => h("li", { class: fait ? "etape fait" : "etape" }, h("span", { class: "etape-etat" }, fait ? "Fait" : "À faire"), h("div", { class: "etape-texte" }, h("strong", null, titre), detail ? h("span", null, detail) : null), action || null);
@@ -234,7 +240,7 @@ function ficheDossierVue(id) {
         rafraichir();
       },
     },
-    h("div", { class: "grille-form" }, champ("Date de réception", dateP), champ("Montant reçu (CHF)", montantP), champ("Moyen de paiement", moyenP), champ("Note", noteP), champ("Montant d'origine, si payé en devise", origineM), champ("Devise d'origine", origineD)),
+    h("div", { class: "grille-form" }, champ("Date de réception", dateP), champ(`Montant reçu (${r.devise || regl.devise})`, montantP), champ("Moyen de paiement", moyenP), champ("Note", noteP), champ("Montant d'origine, si payé en devise", origineM), champ("Devise d'origine", origineD)),
     h("div", { class: "actions" }, h("button", { type: "submit", class: "principal" }, "Enregistrer le paiement"))
   );
 
@@ -318,7 +324,7 @@ function ficheDossierVue(id) {
       "div",
       { class: "entete" },
       h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, sousTitreDossier(d), responsable)),
-      h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, "Dupliquer") : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, "Modifier le dossier") : null)
+      h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, "Dupliquer") : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, "Modifier le dossier") : null)
     ),
     !droit.finances ? null : h(
       "div",
@@ -329,7 +335,17 @@ function ficheDossierVue(id) {
       "section",
       null,
       h("h2", null, "Avancement"),
-      h(
+      excursions
+        ? h(
+            "ol",
+            { class: "etapes" },
+            etape(!!facture, "Facture", facture ? `Émise le ${formatDate(facture.date_emission)}${facture.envoye_le ? `, envoyée le ${formatDate(facture.envoye_le)}` : ", pas encore marquée envoyée"}` : "À créer.", facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, "Ouvrir la facture") : droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, "Créer la facture") : null),
+            etape(r.statut === "solde", "Payée", r.statut === "solde" ? `${fm(r.recu)} reçus` : r.recu > 0 ? `Acompte de ${fm(r.recu)} reçu, reste ${fm(r.reste)}` : "En attente du paiement (virement, Wise ou espèces).", r.statut !== "solde" && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); document.getElementById("p-montant").focus(); } }, "Enregistrer un paiement") : null),
+            etape(vouchers.length > 0 && r.statut === "solde", "Vouchers envoyés", vouchers.length ? `${vouchers.length} voucher${vouchers.length > 1 ? "s" : ""} pour le client et les prestataires, à envoyer une fois payé.` : "Les vouchers se préparent depuis les réservations du dossier.", vouchers.length ? h("a", { class: "bouton secondaire petit", href: "#vouchers", onclick: (e) => { e.preventDefault(); document.getElementById("vouchers").scrollIntoView({ behavior: "smooth" }); } }, "Voir les vouchers") : null),
+            etape(reservations.length > 0 && reservations.every((x) => x.statut === "confirme"), "Confirmé par les partenaires", reservations.length ? `${reservations.filter((x) => x.statut === "confirme").length} sur ${reservations.length} confirmée${reservations.length > 1 ? "s" : ""}` : "Aucune réservation.", null),
+            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), "Service fait", d.date_depart ? `Service${d.date_retour && d.date_retour !== d.date_depart ? "s" : ""} le ${formatDate(d.date_depart)}${d.date_retour && d.date_retour !== d.date_depart ? ` au ${formatDate(d.date_retour)}` : ""}` : "", null)
+          )
+        : h(
         "ol",
         { class: "etapes" },
         ...(avecDevis ? [etape(!!devis, "Devis créé", devis ? `Émis le ${formatDate(devis.date_emission)}` : "", devis ? h("a", { class: "bouton secondaire petit", href: `#/doc/${devis.id}` }, "Ouvrir le devis") : null)] : []),
@@ -340,6 +356,17 @@ function ficheDossierVue(id) {
         etape(r.statut === "solde", "Dossier soldé", r.statut === "solde" ? "Tout est encaissé." : r.total ? `Reste ${fm(r.reste)} à encaisser.` : "")
       )
     ),
+    excursions && droit.finances
+      ? h(
+          "section",
+          { id: "vouchers" },
+          h("div", { class: "entete petit-entete" }, h("h2", null, "Vouchers"), vouchers.length > 1 ? h("button", { class: "secondaire petit", type: "button", onclick: () => imprimerTousLesVouchers(d.id) }, "Tous les vouchers en PDF") : null),
+          vouchers.length
+            ? h("ul", { class: "cartes" }, vouchers.map((x) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, x.reservation.libelle), h("span", { class: "carte-droite" }, h("strong", null, numeroVoucher(d.ref, x.index))), h("span", { class: "carte-sous" }, `${{ bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher" }[x.type]} · ${x.reservation.date_service ? formatDate(x.reservation.date_service) : "date à fixer"}${x.reservation.heure_pickup ? ` · pickup ${x.reservation.heure_pickup}` : ""}`), h("span", { class: "carte-pied" }, h("span", null, r.statut === "solde" ? "Payé" : r.recu > 0 ? "Acompte" : "À payer sur place ou en attente"), h("span", { class: "carte-actions" }, h("button", { class: "principal petit", type: "button", onclick: () => imprimerVoucher(x) }, "Voucher PDF")))))))
+            : h("p", { class: "vide-court" }, "Un voucher par réservation (les frais de parc n'en ont pas). Créez d'abord les réservations ci-dessous."),
+          h("p", { class: "aide" }, "Le même voucher se donne au client et au prestataire. Les cases Paid, Deposit ou Pay on site suivent les paiements enregistrés sur la facture.")
+        )
+      : null,
     !droit.finances ? null : h(
       "section",
       null,
@@ -352,7 +379,7 @@ function ficheDossierVue(id) {
             h("tbody", null, r.documents.filter((x) => x.type === "devis").map((x) => ligneDoc(x, "Devis")), r.documents.filter((x) => x.type === "facture").map((x) => ligneDoc(x, "Facture")), r.documents.filter((x) => x.type === "facture_locale").map((x) => ligneDoc(x, "Facture locale")))
           )
         : h("p", { class: "vide-court" }, "Aucun document."),
-      facture && !locale && droit.docs ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, "Créer la facture locale")) : null
+      facture && !locale && droit.docs && !excursions ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, "Créer la facture locale")) : null
     ),
     droit.finances ? h("section", null, h("h2", null, "Paiements reçus"), tableauPaiements, droit.paiements ? [h("h3", null, "Enregistrer un paiement"), formPaiement] : null) : null,
     moduleActif("reservations") ? sectionReservationsDossier(d, facture || devis || null) : null,

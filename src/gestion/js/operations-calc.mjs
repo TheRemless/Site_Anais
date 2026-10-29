@@ -16,7 +16,8 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     const qte = l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1;
     const enfant = /enfant|child/i.test(l.intro || "");
     out.push({
-      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: l.libelle, date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: enfant ? { adultes: 0, enfants: qte, bebes: 0 } : { adultes: qte, enfants: 0, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: brut(l), notes: "" },
+      // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
+      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: l.titre || l.libelle, date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: enfant ? { adultes: 0, enfants: qte, bebes: 0 } : { adultes: qte, enfants: 0, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: brut(l), notes: "" },
       net: l.net !== null && l.net !== undefined ? Math.round(Number(l.net) * qte * 100) / 100 : null,
     });
   }
@@ -103,6 +104,61 @@ export function duParPartenaire(reservations, netDe) {
   return [...groupes.values()]
     .map((g) => ({ ...g, vente: arr(g.vente), net_prevu: arr(g.net_prevu), net_paye: arr(g.net_paye), reste: arr(g.net_prevu - g.net_paye), marge: arr(g.vente - g.net_prevu) }))
     .sort((a, b) => b.mois.localeCompare(a.mois) || (b.reste - a.reste));
+}
+
+// ---- Vouchers (mode excursions) ------------------------------------------------------------------------------
+// Trois modèles : bateau (excursions en mer), transfert, activité. Les frais de parc n'ont pas de voucher.
+export function typeVoucher(reservation, prestation) {
+  if (reservation.trajet_id) return "transfert";
+  const f = prestation ? prestation.famille : "";
+  if (f === "frais") return null;
+  if (f === "transfert") return "transfert";
+  if (f === "activite" || f === "location") return "activite";
+  if (f === "excursion") return /taxi|van|transfert/i.test((prestation && prestation.groupe) || "") ? "transfert" : "bateau";
+  return /transfer|taxi|van|→/i.test(reservation.libelle || "") ? "transfert" : "activite";
+}
+
+export const numeroVoucher = (ref, index) => `${ref}-${index}`;
+
+// Statut de paiement imprimé sur le voucher, d'après ce que le dossier a encaissé.
+export function statutPaiementVoucher({ total = 0, recu = 0 } = {}) {
+  if (total > 0 && recu >= total) return "paye";
+  if (recu > 0) return "acompte";
+  return "sur_place";
+}
+
+// Join ou privé, d'après le groupe ou le libellé de la prestation.
+export const estPrive = (prestation, reservation) => /priv|charter/i.test(`${(prestation && prestation.groupe) || ""} ${(prestation && prestation.libelle) || ""} ${(reservation && reservation.libelle) || ""}`);
+
+// Frais de parc : inclus seulement si la prestation le dit, sinon « non inclus » avec le texte de la base.
+export function fraisDeParc(prestation) {
+  const texte = (prestation && prestation.details && prestation.details.parc) || "";
+  if (!texte) return { inclus: null, texte: "" };
+  return { inclus: /inclu|included/i.test(texte) && !/non inclu|not included|pas inclu|jamais/i.test(texte), texte };
+}
+
+// Type de transfert d'après le groupe de la prestation.
+export function typeTransfert(prestation, reservation) {
+  const t = `${(prestation && prestation.groupe) || ""} ${(reservation && reservation.libelle) || ""}`;
+  if (/partag|shared|navette|join/i.test(t)) return "partage";
+  if (/taxi|berline|voiture|car\b/i.test(t)) return "taxi";
+  return "minivan";
+}
+
+// Hôtel et numéro de chambre d'après l'adresse du client (« Hotel Sunset, Room 12 ») ou le lieu de pickup.
+export function hotelEtChambre(client = {}, reservation = {}) {
+  const source = reservation.lieu_pickup || (client.adresse || "").split("\n")[0] || "";
+  const m = source.match(/(?:room|chambre|ch\.?)\s*(?:no\.?\s*)?([A-Za-z0-9-]+)/i);
+  return { hotel: source.replace(/[,\s]*(?:room|chambre|ch\.?)\s*(?:no\.?\s*)?[A-Za-z0-9-]+\s*$/i, "").trim(), chambre: m ? m[1] : "" };
+}
+
+// Libellé d'une ligne de facture en mode excursions : prestation, personnes et date.
+export function descriptionService(ligne, langue = "en") {
+  const en = langue === "en";
+  const qte = ligne.qte !== null && ligne.qte !== undefined && ligne.qte !== "" ? Number(ligne.qte) : 0;
+  const enfant = /enfant|child/i.test(ligne.intro || "");
+  const pax = qte ? `${qte} ${enfant ? (en ? (qte > 1 ? "children" : "child") : qte > 1 ? "enfants" : "enfant") : en ? (qte > 1 ? "passengers" : "passenger") : qte > 1 ? "personnes" : "personne"}` : "";
+  return [ligne.libelle, pax, ligne.date_service ? dateTexte(ligne.date_service, langue) : ""].filter(Boolean).join(", ");
 }
 
 const arr = (n) => Math.round(n * 100) / 100;
