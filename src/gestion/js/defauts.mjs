@@ -2,30 +2,32 @@
 // Les vraies coordonnées (téléphone, e-mail, banque) ne sont pas dans ce fichier car il est servi publiquement :
 // elles viennent de la table « reglages » (voir docs/gestion/schema.sql).
 
+import { N_ } from "./i18n.mjs";
+
 export const uid = () => crypto.randomUUID();
 
 // Catalogue des droits : chaque rôle est un ensemble de ces codes. Le même catalogue sert à la base (schema.sql)
 // et à l'écran des rôles, pour qu'ils ne puissent pas diverger.
 export const PERMISSIONS = [
-  { code: "clients.lire", groupe: "Clients", libelle: "Voir les clients" },
-  { code: "clients.ecrire", groupe: "Clients", libelle: "Créer et modifier les clients" },
-  { code: "clients.supprimer", groupe: "Clients", libelle: "Supprimer un client" },
-  { code: "dossiers.lire", groupe: "Dossiers", libelle: "Voir les dossiers" },
-  { code: "dossiers.ecrire", groupe: "Dossiers", libelle: "Créer et modifier les dossiers" },
-  { code: "dossiers.supprimer", groupe: "Dossiers", libelle: "Supprimer un dossier" },
-  { code: "documents.ecrire", groupe: "Devis et factures", libelle: "Créer et modifier les devis et factures" },
-  { code: "documents.supprimer", groupe: "Devis et factures", libelle: "Supprimer un devis ou une facture" },
-  { code: "finances.voir", groupe: "Finances", libelle: "Voir les montants : devis, factures et paiements", aide: "Sans ce droit, la personne voit les clients et les dossiers mais aucun chiffre." },
-  { code: "paiements.ecrire", groupe: "Finances", libelle: "Enregistrer et corriger les paiements" },
-  { code: "taches.ecrire", groupe: "Tâches", libelle: "Créer et modifier les tâches et rappels", aide: "Chacun peut toujours cocher comme faites les tâches qui lui sont confiées." },
-  { code: "catalogue.ecrire", groupe: "Catalogue", libelle: "Modifier le catalogue de formules et de prix" },
-  { code: "partenaires.lire", groupe: "Partenaires", libelle: "Voir les partenaires, leurs tarifs et leurs trajets" },
-  { code: "partenaires.ecrire", groupe: "Partenaires", libelle: "Modifier les partenaires, les tarifs et les trajets" },
-  { code: "partenaires.nets", groupe: "Partenaires", libelle: "Voir les prix nets, les marges et les coordonnées bancaires des partenaires", aide: "Sans ce droit, la personne voit les prix de vente mais ni les nets ni les marges." },
-  { code: "reglages.ecrire", groupe: "Administration", libelle: "Modifier les réglages de l'entreprise (coordonnées bancaires comprises)" },
-  { code: "exports.faire", groupe: "Administration", libelle: "Exporter et sauvegarder les données" },
-  { code: "analytics.voir", groupe: "Administration", libelle: "Voir le tableau analytique" },
-  { code: "journal.voir", groupe: "Administration", libelle: "Voir le journal d'activité" },
+  { code: "clients.lire", groupe: N_("Clients"), libelle: N_("Voir les clients") },
+  { code: "clients.ecrire", groupe: N_("Clients"), libelle: N_("Créer et modifier les clients") },
+  { code: "clients.supprimer", groupe: N_("Clients"), libelle: N_("Supprimer un client") },
+  { code: "dossiers.lire", groupe: N_("Dossiers"), libelle: N_("Voir les dossiers") },
+  { code: "dossiers.ecrire", groupe: N_("Dossiers"), libelle: N_("Créer et modifier les dossiers") },
+  { code: "dossiers.supprimer", groupe: N_("Dossiers"), libelle: N_("Supprimer un dossier") },
+  { code: "documents.ecrire", groupe: N_("Devis et factures"), libelle: N_("Créer et modifier les devis et factures") },
+  { code: "documents.supprimer", groupe: N_("Devis et factures"), libelle: N_("Supprimer un devis ou une facture") },
+  { code: "finances.voir", groupe: N_("Finances"), libelle: N_("Voir les montants : devis, factures et paiements"), aide: N_("Sans ce droit, la personne voit les clients et les dossiers mais aucun chiffre.") },
+  { code: "paiements.ecrire", groupe: N_("Finances"), libelle: N_("Enregistrer et corriger les paiements") },
+  { code: "taches.ecrire", groupe: N_("Tâches"), libelle: N_("Créer et modifier les tâches et rappels"), aide: N_("Chacun peut toujours cocher comme faites les tâches qui lui sont confiées.") },
+  { code: "catalogue.ecrire", groupe: N_("Catalogue"), libelle: N_("Modifier le catalogue de formules et de prix") },
+  { code: "partenaires.lire", groupe: N_("Partenaires"), libelle: N_("Voir les partenaires, leurs tarifs et leurs trajets") },
+  { code: "partenaires.ecrire", groupe: N_("Partenaires"), libelle: N_("Modifier les partenaires, les tarifs et les trajets") },
+  { code: "partenaires.nets", groupe: N_("Partenaires"), libelle: N_("Voir les prix nets, les marges et les coordonnées bancaires des partenaires"), aide: N_("Sans ce droit, la personne voit les prix de vente mais ni les nets ni les marges.") },
+  { code: "reglages.ecrire", groupe: N_("Administration"), libelle: N_("Modifier les réglages de l'entreprise (coordonnées bancaires comprises)") },
+  { code: "exports.faire", groupe: N_("Administration"), libelle: N_("Exporter et sauvegarder les données") },
+  { code: "analytics.voir", groupe: N_("Administration"), libelle: N_("Voir le tableau analytique") },
+  { code: "journal.voir", groupe: N_("Administration"), libelle: N_("Voir le journal d'activité") },
 ];
 export const TOUTES_PERMISSIONS = PERMISSIONS.map((p) => p.code);
 
@@ -46,9 +48,9 @@ export const DEPENDANCES = {
 
 // Rôles créés avec chaque entreprise. Ils se modifient ensuite librement dans l'écran Administration.
 export const ROLES_SYSTEME = [
-  { nom: "Administrateur", description: "Tous les droits dans l'entreprise.", portee: "toute", permissions: TOUTES_PERMISSIONS },
-  { nom: "Éditeur", description: "Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.", portee: "toute", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire", "taches.ecrire", "catalogue.ecrire", "partenaires.lire", "partenaires.ecrire"] },
-  { nom: "Lecteur", description: "Consultation seulement, montants visibles.", portee: "toute", permissions: ["clients.lire", "dossiers.lire", "finances.voir", "analytics.voir", "partenaires.lire"] },
+  { nom: N_("Administrateur"), description: N_("Tous les droits dans l'entreprise."), portee: "toute", permissions: TOUTES_PERMISSIONS },
+  { nom: N_("Éditeur"), description: N_("Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression."), portee: "toute", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire", "taches.ecrire", "catalogue.ecrire", "partenaires.lire", "partenaires.ecrire"] },
+  { nom: N_("Lecteur"), description: N_("Consultation seulement, montants visibles."), portee: "toute", permissions: ["clients.lire", "dossiers.lire", "finances.voir", "analytics.voir", "partenaires.lire"] },
 ];
 
 export const LIBELLES_FR = {
@@ -112,12 +114,12 @@ export const LIBELLES_EN = {
 };
 
 export const MOYENS_DEFAUT = [
-  { id: "virement", label: "Virement bancaire" },
-  { id: "wise", label: "Wise" },
-  { id: "paypal", label: "PayPal" },
-  { id: "twint", label: "TWINT" },
-  { id: "especes", label: "Espèces" },
-  { id: "autre", label: "Autre" },
+  { id: "virement", label: N_("Virement bancaire") },
+  { id: "wise", label: N_("Wise") },
+  { id: "paypal", label: N_("PayPal") },
+  { id: "twint", label: N_("TWINT") },
+  { id: "especes", label: N_("Espèces") },
+  { id: "autre", label: N_("Autre") },
 ];
 
 export const COND_QR = `Un acompte de {acompte}% de la facture (non-remboursable) est demandé à la signature du devis, payable à {delai} jours, le reste du montant est à verser à la réception du carnet de voyage.

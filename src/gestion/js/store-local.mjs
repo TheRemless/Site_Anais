@@ -4,6 +4,7 @@ import { aujourdhui, ajouterJours, totalDossier, sommePaiements } from "./calc.m
 import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal } from "./analyses.mjs";
+import { tr } from "./i18n.mjs";
 
 const CLE = "gestion-zwald-demo-v8";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
@@ -145,6 +146,10 @@ export function creer() {
       journaliser("reglages", "update", { entite_id: entiteId, id: entiteId });
       sauve();
     },
+    async definirMaLangue(code) {
+      utilisateur.langue = code;
+      sauve();
+    },
     async modifierProfil(userId, patch) {
       Object.assign(data.profils.find((p) => p.user_id === userId), patch);
       sauve();
@@ -173,11 +178,11 @@ export function creer() {
       return structuredClone((data.pieces || []).filter((p) => p.dossier_id === dossierId));
     },
     async ajouterPiece({ entiteId, dossierId, fichier }) {
-      if (fichier.size > LIMITE_DEMO) throw new Error("En démonstration, les fichiers sont limités à 1,5 Mo.");
+      if (fichier.size > LIMITE_DEMO) throw new Error(tr("En démonstration, les fichiers sont limités à 1,5 Mo."));
       const contenu = await new Promise((ok, ko) => {
         const l = new FileReader();
         l.onload = () => ok(l.result);
-        l.onerror = () => ko(new Error("Lecture du fichier impossible."));
+        l.onerror = () => ko(new Error(tr("Lecture du fichier impossible.")));
         l.readAsDataURL(fichier);
       });
       const piece = { id: uid(), created_at: new Date().toISOString(), entite_id: entiteId, dossier_id: dossierId, nom: fichier.name, type: fichier.type, taille: fichier.size, chemin: `${entiteId}/${dossierId}/${uid()}`, cree_par: utilisateur.user_id };
@@ -225,7 +230,7 @@ export function creer() {
     },
     async analyses({ entiteId, du, au, jour }) {
       const p = permissionsDans(contexte(), entiteId);
-      if (!(p.includes("analytics.voir") && p.includes("finances.voir"))) throw new Error("Droit insuffisant pour voir les analyses");
+      if (!(p.includes("analytics.voir") && p.includes("finances.voir"))) throw new Error(tr("Droit insuffisant pour voir les analyses"));
       const de = (t) => data[t].filter((r) => r.entite_id === entiteId);
       return analyserLocal({ dossiers: de("dossiers"), documents: de("documents"), paiements: de("paiements"), clients: de("clients"), profils: data.profils, reglages: data.reglages[entiteId] }, du, au, jour);
     },

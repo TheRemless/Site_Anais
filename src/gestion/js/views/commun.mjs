@@ -1,11 +1,11 @@
 import { h, vider } from "../ui.mjs";
-import { STATUTS, sommePaiements, nomFichier } from "../calc.mjs";
+import { libelleStatut, sommePaiements, nomFichier } from "../calc.mjs";
 import { etat, imprimer } from "../etat.mjs";
 import { renderDocument } from "../document.mjs";
 
 // Le statut est toujours écrit en toutes lettres, le point de couleur ne fait que l'accompagner.
 export function pastille(code) {
-  return h("span", { class: `statut s-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), STATUTS[code]);
+  return h("span", { class: `statut s-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), libelleStatut(code));
 }
 
 export function vide(titre, texte, action) {

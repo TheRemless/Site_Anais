@@ -19,7 +19,8 @@ create table profils (
   email text,
   nom text,
   super_admin boolean not null default false,
-  actif boolean not null default true
+  actif boolean not null default true,
+  langue text check (langue in ('fr', 'en'))
 );
 
 create table roles (
@@ -235,6 +236,13 @@ create or replace function equipe_de(e uuid) returns table (user_id uuid, nom te
   select p.user_id, p.nom, p.email from profils p
   where p.actif and est_membre(e) and (p.super_admin or exists (select 1 from membres m where m.user_id = p.user_id and m.entite_id = e))
 $$;
+
+-- Chacun change sa propre langue sans pouvoir modifier le reste de son profil (la table reste réservée à l'administratrice).
+create or replace function definir_ma_langue(l text) returns void language sql security definer set search_path = public as $$
+  update profils set langue = l where user_id = auth.uid() and l in ('fr', 'en')
+$$;
+revoke all on function definir_ma_langue(text) from public, anon;
+grant execute on function definir_ma_langue(text) to authenticated;
 
 -- Recalcule le résumé d'un dossier (total du dernier document, devise, encaissé, devis envoyé) après toute
 -- modification de ses documents ou de ses paiements.

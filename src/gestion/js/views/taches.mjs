@@ -3,6 +3,7 @@ import { etat, peut, equipe, modifier, inserer, supprimer, entiteActive } from "
 import { h, champ, toast, confirmer, vider } from "../ui.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
 import { vide } from "./commun.mjs";
+import { tr, N_, pluriel } from "../i18n.mjs";
 
 const par = (a, b) => (a.echeance || "9999").localeCompare(b.echeance || "9999") || a.created_at.localeCompare(b.created_at);
 
@@ -33,13 +34,13 @@ export function listeTaches(taches, { avecDossier = true } = {}) {
           type: "checkbox",
           checked: t.fait,
           disabled: !modifiable,
-          "aria-label": `Marquer « ${t.titre} » comme ${t.fait ? "à faire" : "faite"}`,
+          "aria-label": t.fait ? tr("Marquer « {titre} » comme à faire", { titre: t.titre }) : tr("Marquer « {titre} » comme faite", { titre: t.titre }),
           onchange: async (e) => {
             try {
               await modifier("taches", t.id, { fait: e.target.checked, fait_le: e.target.checked ? new Date().toISOString() : null, fait_par: e.target.checked ? etat.session.id : null });
               window.dispatchEvent(new HashChangeEvent("hashchange"));
             } catch (err) {
-              toast(`Modification impossible : ${err.message}`, true);
+              toast(tr("Modification impossible : {message}", { message: err.message }), true);
               e.target.checked = t.fait;
             }
           },
@@ -48,7 +49,7 @@ export function listeTaches(taches, { avecDossier = true } = {}) {
           "div",
           { class: "tache-texte" },
           h("strong", null, t.titre),
-          h("span", { class: "tache-meta" }, t.echeance ? `Pour le ${formatDate(t.echeance)}` : "Sans échéance", qui, avecDossier && dossier ? [" · ", h("a", { href: `#/dossier/${dossier.id}` }, dossier.ref)] : null)
+          h("span", { class: "tache-meta" }, t.echeance ? tr("Pour le {date}", { date: formatDate(t.echeance) }) : tr("Sans échéance"), qui, avecDossier && dossier ? [" · ", h("a", { href: `#/dossier/${dossier.id}` }, dossier.ref)] : null)
         ),
         peut("taches.ecrire")
           ? h(
@@ -56,15 +57,15 @@ export function listeTaches(taches, { avecDossier = true } = {}) {
               {
                 class: "lien danger-texte",
                 type: "button",
-                "aria-label": `Supprimer la tâche « ${t.titre} »`,
+                "aria-label": tr("Supprimer la tâche « {titre} »", { titre: t.titre }),
                 onclick: async () => {
-                  if (await confirmer(`Supprimer la tâche « ${t.titre} » ?`, "Supprimer", true)) {
+                  if (await confirmer(tr("Supprimer la tâche « {titre} » ?", { titre: t.titre }), tr("Supprimer"), true)) {
                     await supprimer("taches", t.id);
                     window.dispatchEvent(new HashChangeEvent("hashchange"));
                   }
                 },
               },
-              "Supprimer"
+              tr("Supprimer")
             )
           : null
       )
@@ -77,11 +78,11 @@ export function listeTaches(taches, { avecDossier = true } = {}) {
 // Formulaire d'ajout. `dossierId` lie la tâche à un dossier, sinon elle est libre.
 export function formulaireTache(dossierId = null) {
   if (!peut("taches.ecrire")) return null;
-  const titre = h("input", { id: `t-titre-${dossierId || "libre"}`, required: true, placeholder: "Par exemple : rappeler le client" });
+  const titre = h("input", { id: `t-titre-${dossierId || "libre"}`, required: true, placeholder: tr("Par exemple : rappeler le client") });
   const echeance = h("input", { id: `t-ech-${dossierId || "libre"}`, type: "date" });
-  const sel = h("select", { id: `t-qui-${dossierId || "libre"}` }, h("option", { value: etat.session.id }, "Moi"));
+  const sel = h("select", { id: `t-qui-${dossierId || "libre"}` }, h("option", { value: etat.session.id }, tr("Moi")));
   equipe().then((gens) => {
-    sel.replaceChildren(h("option", { value: "" }, "Personne"), ...gens.map((p) => h("option", { value: p.user_id }, p.user_id === etat.session.id ? "Moi" : p.nom || p.email)));
+    sel.replaceChildren(h("option", { value: "" }, tr("Personne")), ...gens.map((p) => h("option", { value: p.user_id }, p.user_id === etat.session.id ? tr("Moi") : p.nom || p.email)));
     sel.value = etat.session.id;
   });
   return h(
@@ -92,15 +93,15 @@ export function formulaireTache(dossierId = null) {
         e.preventDefault();
         try {
           await inserer("taches", { dossier_id: dossierId, titre: titre.value.trim(), description: "", echeance: echeance.value || null, assignee_id: sel.value || null, fait: false });
-          toast("Tâche ajoutée.");
+          toast(tr("Tâche ajoutée."));
           window.dispatchEvent(new HashChangeEvent("hashchange"));
         } catch (err) {
-          toast(`Ajout impossible : ${err.message}`, true);
+          toast(tr("Ajout impossible : {message}", { message: err.message }), true);
         }
       },
     },
-    h("div", { class: "grille-form" }, champ("Nouvelle tâche", titre), champ("Pour le", echeance), champ("Confiée à", sel)),
-    h("div", { class: "actions" }, h("button", { class: "secondaire", type: "submit" }, "Ajouter la tâche"))
+    h("div", { class: "grille-form" }, champ(tr("Nouvelle tâche"), titre), champ(tr("Pour le"), echeance), champ(tr("Confiée à"), sel)),
+    h("div", { class: "actions" }, h("button", { class: "secondaire", type: "submit" }, tr("Ajouter la tâche")))
   );
 }
 
@@ -111,14 +112,14 @@ export function sectionTachesDossier(dossierId) {
   return h(
     "section",
     null,
-    h("h2", null, "Tâches"),
-    ouvertes.length ? listeTaches(ouvertes, { avecDossier: false }) : h("p", { class: "vide-court" }, "Aucune tâche en cours pour ce dossier."),
-    faites.length ? h("details", null, h("summary", null, `${faites.length} tâche${faites.length > 1 ? "s" : ""} terminée${faites.length > 1 ? "s" : ""}`), listeTaches(faites, { avecDossier: false })) : null,
+    h("h2", null, tr("Tâches")),
+    ouvertes.length ? listeTaches(ouvertes, { avecDossier: false }) : h("p", { class: "vide-court" }, tr("Aucune tâche en cours pour ce dossier.")),
+    faites.length ? h("details", null, h("summary", null, pluriel(faites.length, N_("{n} tâche terminée"), N_("{n} tâches terminées"))), listeTaches(faites, { avecDossier: false })) : null,
     formulaireTache(dossierId)
   );
 }
 
-const FILTRES = [["mes", "Mes tâches"], ["equipe", "Toute l'équipe"], ["faites", "Terminées"]];
+const FILTRES = [["mes", N_("Mes tâches")], ["equipe", N_("Toute l'équipe")], ["faites", N_("Terminées")]];
 let filtreCourant = "mes";
 
 export function vueTaches() {
@@ -129,23 +130,23 @@ export function vueTaches() {
     faites: etat.db.taches.filter((t) => t.fait).sort((a, b) => (b.fait_le || "").localeCompare(a.fait_le || "")),
   };
   const groupes = [
-    ["En retard", (t) => t.echeance && t.echeance < ajd],
-    ["Aujourd'hui", (t) => t.echeance === ajd],
-    ["À venir", (t) => t.echeance && t.echeance > ajd],
-    ["Sans échéance", (t) => !t.echeance],
+    [tr("En retard"), (t) => t.echeance && t.echeance < ajd],
+    [tr("Aujourd'hui"), (t) => t.echeance === ajd],
+    [tr("À venir"), (t) => t.echeance && t.echeance > ajd],
+    [tr("Sans échéance"), (t) => !t.echeance],
   ];
   const corps = h("div");
   const dessiner = () => {
     vider(corps);
     const liste = tout[filtreCourant];
-    if (!liste.length) return corps.append(vide(filtreCourant === "faites" ? "Aucune tâche terminée récemment" : "Rien à faire", filtreCourant === "mes" ? "Aucune tâche ne vous est confiée pour l'instant." : "Aucune tâche dans cette liste."));
+    if (!liste.length) return corps.append(vide(filtreCourant === "faites" ? tr("Aucune tâche terminée récemment") : tr("Rien à faire"), filtreCourant === "mes" ? tr("Aucune tâche ne vous est confiée pour l'instant.") : tr("Aucune tâche dans cette liste.")));
     if (filtreCourant === "faites") return corps.append(listeTaches(liste));
     for (const [titre, test] of groupes) {
       const l = liste.filter(test);
       if (l.length) corps.append(h("section", null, h("h2", null, `${titre} (${l.length})`), listeTaches(l)));
     }
   };
-  const onglets = h("div", { class: "onglets" }, FILTRES.map(([k, l]) => h("button", { type: "button", "aria-pressed": k === filtreCourant ? "true" : "false", onclick: (e) => { filtreCourant = k; for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false"); dessiner(); } }, l)));
+  const onglets = h("div", { class: "onglets" }, FILTRES.map(([k, l]) => h("button", { type: "button", "aria-pressed": k === filtreCourant ? "true" : "false", onclick: (e) => { filtreCourant = k; for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false"); dessiner(); } }, tr(l))));
   dessiner();
-  return h("div", { "data-titre": "Tâches" }, h("div", { class: "entete" }, h("div", null, h("h1", null, "Tâches"), h("p", { class: "sous" }, entiteActive().nom))), formulaireTache(null), h("div", { class: "barre-outils" }, onglets), corps);
+  return h("div", { "data-titre": tr("Tâches") }, h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Tâches")), h("p", { class: "sous" }, entiteActive().nom))), formulaireTache(null), h("div", { class: "barre-outils" }, onglets), corps);
 }

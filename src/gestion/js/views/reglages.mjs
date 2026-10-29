@@ -6,6 +6,7 @@ import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
 import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4 } from "./commun.mjs";
+import { tr, N_ } from "../i18n.mjs";
 
 // Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
@@ -23,7 +24,7 @@ function csv(lignes) {
 const nomFichierEntite = (base, ext) => `${base}-${entiteActive().slug}-${aujourdhui()}.${ext}`;
 
 function exporterDossiers() {
-  const lignes = [["Référence", "Client", "Intitulé", "Statut", "Total", "Reçu", "Reste", "Devise", "Créé le", "Accepté le", "Début", "Fin"]];
+  const lignes = [[tr("Référence"), tr("Client"), tr("Intitulé"), tr("Statut"), tr("Total"), tr("Reçu"), tr("Reste"), tr("Devise"), tr("Créé le"), tr("Accepté le"), tr("Début"), tr("Fin")]];
   for (const r of resumes()) {
     lignes.push([r.dossier.ref, nomClient(r.client), r.dossier.pays, STATUTS[r.statut], r.total, r.recu, r.reste, r.devise || reglages().devise, formatDate(r.dossier.created_at), formatDate(r.dossier.accepte_le), formatDate(r.dossier.date_depart), formatDate(r.dossier.date_retour)]);
   }
@@ -32,7 +33,7 @@ function exporterDossiers() {
 
 async function exporterPaiements() {
   const paiements = await tousPaiements();
-  const lignes = [["Date", "Référence", "Client", "Type", "Moyen", "Montant", "Devise", "Montant d'origine", "Devise d'origine", "Note"]];
+  const lignes = [[tr("Date"), tr("Référence"), tr("Client"), tr("Type"), tr("Moyen"), tr("Montant"), tr("Devise"), tr("Montant d'origine"), tr("Devise d'origine"), tr("Note")]];
   for (const p of paiements) {
     const d = etat.db.dossiers.find((x) => x.id === p.dossier_id);
     const c = d && etat.db.clients.find((x) => x.id === d.client_id);
@@ -48,7 +49,7 @@ async function exporterTout() {
   sauvegarde.documents = await tousDocuments();
   sauvegarde.paiements = await tousPaiements();
   telecharger(nomFichierEntite("sauvegarde", "json"), JSON.stringify(sauvegarde, null, 2), "application/json");
-  toast("Sauvegarde téléchargée. Gardez ce fichier en lieu sûr : il contient les données clients.");
+  toast(tr("Sauvegarde téléchargée. Gardez ce fichier en lieu sûr : il contient les données clients."));
 }
 
 async function importer(fichier) {
@@ -56,16 +57,16 @@ async function importer(fichier) {
   try {
     data = JSON.parse(await fichier.text());
   } catch {
-    toast("Ce fichier n'est pas une sauvegarde valide.", true);
+    toast(tr("Ce fichier n'est pas une sauvegarde valide."), true);
     return;
   }
   if (!data || !TABLES.every((t) => data[t] === undefined || Array.isArray(data[t]))) {
-    toast("Ce fichier n'a pas le format d'une sauvegarde.", true);
+    toast(tr("Ce fichier n'a pas le format d'une sauvegarde."), true);
     return;
   }
   const resume = TABLES.map((t) => `${(data[t] || []).length} ${t}`).join(", ");
   const remplace = !!(data.partenaires && data.partenaires.length) && document.getElementById("import-remplacer") && document.getElementById("import-remplacer").checked;
-  if (!(await confirmer(`Importer ${resume} dans l'entreprise « ${entiteActive().nom} » ?${remplace ? " Les partenaires, tarifs, trajets et tâches de partenaires actuels seront d'abord supprimés." : " Les éléments qui ont le même identifiant seront remplacés, les autres sont conservés."}`, "Importer"))) return;
+  if (!(await confirmer(tr("Importer {resume} dans l'entreprise « {nom} » ?", { resume, nom: entiteActive().nom }) + (remplace ? tr(" Les partenaires, tarifs, trajets et tâches de partenaires actuels seront d'abord supprimés.") : tr(" Les éléments qui ont le même identifiant seront remplacés, les autres sont conservés.")), tr("Importer")))) return;
   try {
     if (remplace) await etat.store.supprimerPartenaires(etat.entiteId);
     const rows = {};
@@ -74,41 +75,41 @@ async function importer(fichier) {
     for (const t of TABLES) rows[t] = (data[t] || []).map(({ created_at, ...r }) => ({ ...r, ...(SANS_DATE.includes(t) ? {} : { created_at }), entite_id: etat.entiteId }));
     await etat.store.importer(rows);
     await recharger();
-    toast("Import terminé.");
+    toast(tr("Import terminé."));
     naviguer("#/dossiers");
   } catch (err) {
-    toast(`Import impossible : ${err.message}`, true);
+    toast(tr("Import impossible : {message}", { message: err.message }), true);
   }
 }
 
 // ---- Page de réglages ---------------------------------------------------------------------------------------
 const LIBELLES = [
-  ["devis", "Titre du devis"],
-  ["facture", "Titre de la facture"],
-  ["facture_locale", "Titre de la facture locale (vide : comme la facture)"],
-  ["ref_devis", "Début de la référence (devis)"],
-  ["ref_facture", "Début de la référence (facture)"],
-  ["date_emission", "Libellé de la date"],
-  ["unite", "Colonne du prix unitaire"],
-  ["qte", "Colonne de la quantité"],
-  ["total", "Total"],
-  ["colonne_montant", "Colonne des montants (vide : comme le total)"],
-  ["total_final", "Barre du total final (vide : comme le total)"],
-  ["sous_total", "Sous-total"],
-  ["remise", "Remise"],
-  ["montant_recu", "Montant reçu"],
-  ["equivalent", "Début de la ligne d'équivalent indicatif"],
-  ["conditions", "Titre des conditions de paiement"],
-  ["signature_1", "Signature du client, première ligne (devis)"],
-  ["signature_2", "Signature du client, seconde ligne"],
-  ["coordonnees", "Titre du bloc de contact (pied de page)"],
-  ["infos_paiement", "Titre du bloc de paiement (pied de page)"],
-  ["pied_court", "Message de paiement du pied de page court"],
-  ["qr_titre", "Titre au-dessus du QR code"],
-  ["facture_a", "Étiquette au-dessus du client (vide : aucune)"],
-  ["prestataire", "Étiquette du prestataire du service"],
-  ["note_devise", "Ligne sous le total (ex. Currency: {devise} ({devise_nom}))"],
-  ["pied_note", "Note en bas de page, sous les coordonnées"],
+  ["devis", N_("Titre du devis")],
+  ["facture", N_("Titre de la facture")],
+  ["facture_locale", N_("Titre de la facture locale (vide : comme la facture)")],
+  ["ref_devis", N_("Début de la référence (devis)")],
+  ["ref_facture", N_("Début de la référence (facture)")],
+  ["date_emission", N_("Libellé de la date")],
+  ["unite", N_("Colonne du prix unitaire")],
+  ["qte", N_("Colonne de la quantité")],
+  ["total", N_("Total")],
+  ["colonne_montant", N_("Colonne des montants (vide : comme le total)")],
+  ["total_final", N_("Barre du total final (vide : comme le total)")],
+  ["sous_total", N_("Sous-total")],
+  ["remise", N_("Remise")],
+  ["montant_recu", N_("Montant reçu")],
+  ["equivalent", N_("Début de la ligne d'équivalent indicatif")],
+  ["conditions", N_("Titre des conditions de paiement")],
+  ["signature_1", N_("Signature du client, première ligne (devis)")],
+  ["signature_2", N_("Signature du client, seconde ligne")],
+  ["coordonnees", N_("Titre du bloc de contact (pied de page)")],
+  ["infos_paiement", N_("Titre du bloc de paiement (pied de page)")],
+  ["pied_court", N_("Message de paiement du pied de page court")],
+  ["qr_titre", N_("Titre au-dessus du QR code")],
+  ["facture_a", N_("Étiquette au-dessus du client (vide : aucune)")],
+  ["prestataire", N_("Étiquette du prestataire du service")],
+  ["note_devise", N_("Ligne sous le total (ex. Currency: {devise} ({devise_nom}))")],
+  ["pied_note", N_("Note en bas de page, sous les coordonnées")],
 ];
 // Textes que « Remplir en français / en anglais » ne doit pas écraser : ils sont propres à l'entreprise.
 const LIBELLES_PROPRES = ["qr_titre", "facture_locale", "facture_a", "note_devise", "pied_note"];
@@ -122,13 +123,13 @@ function ecrire(o, chemin, v) {
 }
 
 export function vueReglages() {
-  if (!estAdmin()) return vide("Accès réservé", "Les réglages d'une entreprise sont réservés à ses administrateurs.", h("a", { class: "bouton secondaire", href: "#/" }, "Retour au tableau de bord"));
+  if (!estAdmin()) return vide(tr("Accès réservé"), tr("Les réglages d'une entreprise sont réservés à ses administrateurs."), h("a", { class: "bouton secondaire", href: "#/" }, tr("Retour au tableau de bord")));
   const r = structuredClone(reglages());
   let modifie = false;
   const indicateur = h("span", { class: "etat-enregistrement", role: "status" }, "");
   const marque = () => {
     modifie = true;
-    indicateur.textContent = "Modifications non enregistrées";
+    indicateur.textContent = tr("Modifications non enregistrées");
     redessinerApercu();
   };
   window.addEventListener("hashchange", () => (modifie = false), { once: true });
@@ -145,7 +146,7 @@ export function vueReglages() {
       ecrire(r, chemin, type === "number" ? num(el.value) ?? 0 : el.value);
       marque();
     });
-    return champ(libelle, el, aide);
+    return champ(tr(libelle), el, aide);
   };
   const liste = (libelle, chemin, aide) => {
     const el = h("textarea", { id: uid(), rows: 4 });
@@ -154,14 +155,14 @@ export function vueReglages() {
       ecrire(r, chemin, el.value.split("\n").map((x) => x.trim()).filter(Boolean));
       marque();
     });
-    return champ(libelle, el, aide);
+    return champ(tr(libelle), el, aide);
   };
   const image = (libelle, chemin, { maxPx = 800, aide } = {}) => {
     const apercu = h("div", { class: "vignette" });
     const info = h("p", { class: "aide" });
     const maj = () => {
       const v = lire(r, chemin);
-      apercu.replaceChildren(v ? h("img", { src: v, alt: "" }) : h("span", { class: "aide" }, "Aucune image"));
+      apercu.replaceChildren(v ? h("img", { src: v, alt: "" }) : h("span", { class: "aide" }, tr("Aucune image")));
       retirer.hidden = !v;
     };
     const retirer = h(
@@ -175,7 +176,7 @@ export function vueReglages() {
           marque();
         },
       },
-      "Retirer l'image"
+      tr("Retirer l'image")
     );
     const id = uid();
     const fichier = h("input", {
@@ -197,7 +198,7 @@ export function vueReglages() {
       },
     });
     maj();
-    return h("div", { class: "champ" }, h("label", { for: id }, libelle), apercu, fichier, retirer, info, aide ? h("p", { class: "aide" }, aide) : null);
+    return h("div", { class: "champ" }, h("label", { for: id }, tr(libelle)), apercu, fichier, retirer, info, aide ? h("p", { class: "aide" }, aide) : null);
   };
 
   // Aperçu d'un document d'exemple avec les réglages en cours de saisie
@@ -217,7 +218,7 @@ export function vueReglages() {
   };
   const { zone: zoneApercu, redessiner } = apercuA4(exemple);
   let typeApercuVoucher = "bateau";
-  const choixApercuVoucher = h("select", { id: "apercu-voucher-type", onchange: (e) => ((typeApercuVoucher = e.target.value), redessinerVoucher()) }, [["billet", "Boat Ticket"], ["bateau", "Boat Tour"], ["transfert", "Transfer"], ["activite", "Activity & Tour"], ["location", "Rental"]].map(([v, l]) => h("option", { value: v }, l)));
+  const choixApercuVoucher = h("select", { id: "apercu-voucher-type", onchange: (e) => ((typeApercuVoucher = e.target.value), redessinerVoucher()) }, [["billet", tr("Boat Ticket")], ["bateau", tr("Boat Tour")], ["transfert", tr("Transfer")], ["activite", tr("Activity & Tour")], ["location", tr("Rental")]].map(([v, l]) => h("option", { value: v }, l)));
   const { zone: zoneVoucher, redessiner: redessinerVoucher } = apercuA4(() => voucherExemple(r, typeApercuVoucher));
   zoneVoucher.hidden = true;
   let minuteur = null;
@@ -243,15 +244,15 @@ export function vueReglages() {
         return h(
           "div",
           { class: "carte-ligne" },
-          h("div", { class: "carte-ligne-tete" }, h("strong", null, `Variante ${i + 1}`), h("span", { class: "outils" }, r.textes.variantes.length > 1 ? h("button", { class: "lien danger-texte", type: "button", onclick: () => (r.textes.variantes.splice(i, 1), dessinerVariantes(), marque()) }, "Supprimer") : null)),
-          champ("Nom (visible dans la liste du devis)", nom),
-          champ("Conditions de paiement", corps),
-          champ("Fin du texte", cloture),
-          champ("Conditions de paiement en anglais (facultatif)", corpsEn, "Utilisées quand le document est écrit en anglais. Vide : le texte ci-dessus est repris."),
-          champ("Fin du texte en anglais (facultatif)", clotureEn)
+          h("div", { class: "carte-ligne-tete" }, h("strong", null, tr("Variante {x}", { x: i + 1 })), h("span", { class: "outils" }, r.textes.variantes.length > 1 ? h("button", { class: "lien danger-texte", type: "button", onclick: () => (r.textes.variantes.splice(i, 1), dessinerVariantes(), marque()) }, tr("Supprimer")) : null)),
+          champ(tr("Nom (visible dans la liste du devis)"), nom),
+          champ(tr("Conditions de paiement"), corps),
+          champ(tr("Fin du texte"), cloture),
+          champ(tr("Conditions de paiement en anglais (facultatif)"), corpsEn, tr("Utilisées quand le document est écrit en anglais. Vide : le texte ci-dessus est repris.")),
+          champ(tr("Fin du texte en anglais (facultatif)"), clotureEn)
         );
       }),
-      h("button", { class: "secondaire petit", type: "button", onclick: () => (r.textes.variantes.push({ id: `v-${Date.now().toString(36)}`, nom: "Nouvelle variante", corps: "", cloture: "" }), dessinerVariantes(), marque()) }, "Ajouter une variante")
+      h("button", { class: "secondaire petit", type: "button", onclick: () => (r.textes.variantes.push({ id: `v-${Date.now().toString(36)}`, nom: tr("Nouvelle variante"), corps: "", cloture: "" }), dessinerVariantes(), marque()) }, tr("Ajouter une variante"))
     );
   };
   dessinerVariantes();
@@ -264,19 +265,19 @@ export function vueReglages() {
         h(
           "div",
           { class: "carte-ligne" },
-          h("div", { class: "carte-ligne-tete" }, h("strong", null, m.nom || `Informations ${i + 2}`), h("span", { class: "outils" }, h("button", { class: "lien danger-texte", type: "button", onclick: () => (r.paiement.autres.splice(i, 1), dessinerAutres(), marque()) }, "Supprimer"))),
-          texte("Nom (visible dans la liste du document)", `paiement.autres.${i}.nom`, { placeholder: "Par exemple : Banque thaïlandaise (THB)" }),
-          texte("Informations de paiement du pied de page", `paiement.autres.${i}.texte`, { multi: true, rows: 5, aide: "Une ligne par information. **gras** possible." }),
-          image("QR code (facultatif)", `paiement.autres.${i}.qr_image`, { maxPx: 700 }),
-          texte("Texte à côté du QR code", `paiement.autres.${i}.qr_pseudo`)
+          h("div", { class: "carte-ligne-tete" }, h("strong", null, m.nom || tr("Informations {x}", { x: i + 2 })), h("span", { class: "outils" }, h("button", { class: "lien danger-texte", type: "button", onclick: () => (r.paiement.autres.splice(i, 1), dessinerAutres(), marque()) }, tr("Supprimer")))),
+          texte(N_("Nom (visible dans la liste du document)"), `paiement.autres.${i}.nom`, { placeholder: tr("Par exemple : Banque thaïlandaise (THB)") }),
+          texte(N_("Informations de paiement du pied de page"), `paiement.autres.${i}.texte`, { multi: true, rows: 5, aide: tr("Une ligne par information. **gras** possible.") }),
+          image(N_("QR code (facultatif)"), `paiement.autres.${i}.qr_image`, { maxPx: 700 }),
+          texte(N_("Texte à côté du QR code"), `paiement.autres.${i}.qr_pseudo`)
         )
       ),
-      h("button", { class: "secondaire petit", type: "button", onclick: () => (r.paiement.autres.push({ id: `p-${Date.now().toString(36)}`, nom: "", texte: "", qr_image: "", qr_pseudo: "" }), dessinerAutres(), marque()) }, "Ajouter d'autres informations de paiement")
+      h("button", { class: "secondaire petit", type: "button", onclick: () => (r.paiement.autres.push({ id: `p-${Date.now().toString(36)}`, nom: "", texte: "", qr_image: "", qr_pseudo: "" }), dessinerAutres(), marque()) }, tr("Ajouter d'autres informations de paiement"))
     );
   };
   dessinerAutres();
 
-  const entete = h("select", { id: uid(), onchange: (e) => ((r.apparence.entete = e.target.value), marque()) }, h("option", { value: "classique" }, "Classique : logo à droite, titre en grand"), h("option", { value: "centre" }, "Centrée : logo et titre du document au centre"));
+  const entete = h("select", { id: uid(), onchange: (e) => ((r.apparence.entete = e.target.value), marque()) }, h("option", { value: "classique" }, tr("Classique : logo à droite, titre en grand")), h("option", { value: "centre" }, tr("Centrée : logo et titre du document au centre")));
   entete.value = r.apparence.entete;
 
   const moyens = h("textarea", { id: uid(), rows: 5 });
@@ -288,11 +289,11 @@ export function vueReglages() {
     marque();
   });
 
-  const modeNum = h("select", { id: uid(), onchange: (e) => ((r.numerotation.mode = e.target.value), (prefixe.hidden = chiffres.hidden = e.target.value !== "sequence"), marque()) }, h("option", { value: "sequence" }, "Numéro de séquence par année (ex. ST-2026-0001)"), h("option", { value: "initiales" }, "Initiales, date et pays (ex. LD20261009 Thaïlande)"));
+  const modeNum = h("select", { id: uid(), onchange: (e) => ((r.numerotation.mode = e.target.value), (prefixe.hidden = chiffres.hidden = e.target.value !== "sequence"), marque()) }, h("option", { value: "sequence" }, tr("Numéro de séquence par année (ex. ST-2026-0001)")), h("option", { value: "initiales" }, tr("Initiales, date et pays (ex. LD20261009 Thaïlande)")));
   modeNum.value = r.numerotation.mode;
-  const prefixe = texte("Préfixe des numéros", "numerotation.prefixe", { aide: "Par exemple ST pour obtenir ST-2026-0001. Peut rester vide." });
+  const prefixe = texte(N_("Préfixe des numéros"), "numerotation.prefixe", { aide: tr("Par exemple ST pour obtenir ST-2026-0001. Peut rester vide.") });
   prefixe.hidden = r.numerotation.mode !== "sequence";
-  const chiffres = texte("Nombre de chiffres du numéro", "numerotation.chiffres", { type: "number", aide: "4 donne ST-2026-0001, 3 donne ST-2026-001." });
+  const chiffres = texte(N_("Nombre de chiffres du numéro"), "numerotation.chiffres", { type: "number", aide: tr("4 donne ST-2026-0001, 3 donne ST-2026-001.") });
   chiffres.hidden = r.numerotation.mode !== "sequence";
 
   const libellesGrille = h("div", { class: "grille-form" });
@@ -304,12 +305,12 @@ export function vueReglages() {
     libellesGrille.replaceChildren(
       ...LIBELLES.map(([cle, nom]) => {
         const el = h("input", { id: `lb-${cle}`, value: cible[cle] ?? "", oninput: (e) => ((cible[cle] = e.target.value), marque()) });
-        return champ(nom, el);
+        return champ(tr(nom), el);
       })
     );
     const cgv = h("textarea", { id: "lb-cgv", rows: 4, oninput: (e) => ((cible.cgv = e.target.value), marque()) });
     cgv.value = cible.cgv ?? "";
-    libellesGrille.append(h("div", { class: "pleine-largeur" }, champ("Phrase sur les conditions générales", cgv, "Laissez vide pour ne pas l'afficher. [texte](lien) crée un lien. {cgv_url} et {entreprise} se remplissent seuls.")));
+    libellesGrille.append(h("div", { class: "pleine-largeur" }, champ(tr("Phrase sur les conditions générales"), cgv, tr("Laissez vide pour ne pas l'afficher. [texte](lien) crée un lien. {cgv_url} et {entreprise} se remplissent seuls."))));
   };
   const remplirTextes = (base) => {
     const cle = langueTextes === "en" ? "libelles_en" : "libelles";
@@ -319,9 +320,9 @@ export function vueReglages() {
   };
   const choixLangue = h(
     "select",
-    { id: "lb-langue", "aria-label": "Langue des textes à modifier", onchange: (e) => ((langueTextes = e.target.value), dessinerLibelles()) },
-    h("option", { value: "principale" }, "Textes de la langue principale (documents habituels)"),
-    h("option", { value: "en" }, "Textes des documents en anglais")
+    { id: "lb-langue", "aria-label": tr("Langue des textes à modifier"), onchange: (e) => ((langueTextes = e.target.value), dessinerLibelles()) },
+    h("option", { value: "principale" }, tr("Textes de la langue principale (documents habituels)")),
+    h("option", { value: "en" }, tr("Textes des documents en anglais"))
   );
   dessinerLibelles();
 
@@ -329,49 +330,49 @@ export function vueReglages() {
     entreprise: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Identité sur les documents"), texte("Nom de l'entreprise", "emetteur.nom"), texte("Sous-titre sous le nom (facultatif)", "emetteur.sous_titre", { aide: "Par exemple « by Nom de la société mère »." }), texte("Adresse", "emetteur.adresse", { multi: true, rows: 3 }), texte("Téléphone affiché sous l'adresse", "emetteur.telephone")),
-      h("fieldset", null, h("legend", null, "Bloc de contact du pied de page"), texte("Une ligne par information", "emetteur.contact", { multi: true, rows: 4, aide: "Nom de la personne, WhatsApp, e-mail, site… Ce que vous voulez voir en bas de chaque document." }))
+      h("fieldset", null, h("legend", null, tr("Identité sur les documents")), texte(N_("Nom de l'entreprise"), "emetteur.nom"), texte(N_("Sous-titre sous le nom (facultatif)"), "emetteur.sous_titre", { aide: tr("Par exemple « by Nom de la société mère ».") }), texte(N_("Adresse"), "emetteur.adresse", { multi: true, rows: 3 }), texte(N_("Téléphone affiché sous l'adresse"), "emetteur.telephone")),
+      h("fieldset", null, h("legend", null, tr("Bloc de contact du pied de page")), texte(N_("Une ligne par information"), "emetteur.contact", { multi: true, rows: 4, aide: tr("Nom de la personne, WhatsApp, e-mail, site… Ce que vous voulez voir en bas de chaque document.") }))
     ),
     paiement: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Devise et paiement"), texte("Devise des montants", "devise", { aide: "Code court affiché devant les montants, par exemple CHF, THB ou EUR. Changer la devise ne convertit pas les montants déjà saisis." }), texte("Informations de paiement du pied de page", "paiement.texte", { multi: true, rows: 5, aide: "Une ligne par information : banque, IBAN, titulaire… Ce texte s'affiche tel quel sur les documents." }), texte("Nom de ces informations (liste du document)", "paiement.nom", { placeholder: "Principal" })),
-      h("fieldset", null, h("legend", null, "Autres informations de paiement"), h("p", { class: "aide" }, "Utile quand certains documents se paient ailleurs, par exemple une facture locale en bahts avec une banque thaïlandaise. Chaque devis ou facture choisit les informations à afficher."), blocAutres),
-      h("fieldset", null, h("legend", null, "QR code de paiement"), image("Image du QR code", "apparence.qr_image", { maxPx: 700 }), texte("Texte à côté du QR code", "apparence.qr_pseudo", { aide: "Par exemple un pseudo Wise. Vide pour ne rien afficher." })),
-      h("fieldset", null, h("legend", null, "Équivalents indicatifs"), h("p", { class: "aide" }, "Utilisés seulement quand vous affichez l'équivalent en euros et en bahts sur un devis. À mettre à jour de temps en temps."), h("div", { class: "grille-form" }, texte("1 unité de la devise en euros", "taux.eur", { type: "number", step: "0.001" }), texte("1 unité de la devise en bahts", "taux.thb", { type: "number", step: "0.01" })))
+      h("fieldset", null, h("legend", null, tr("Devise et paiement")), texte(N_("Devise des montants"), "devise", { aide: tr("Code court affiché devant les montants, par exemple CHF, THB ou EUR. Changer la devise ne convertit pas les montants déjà saisis.") }), texte(N_("Informations de paiement du pied de page"), "paiement.texte", { multi: true, rows: 5, aide: tr("Une ligne par information : banque, IBAN, titulaire… Ce texte s'affiche tel quel sur les documents.") }), texte(N_("Nom de ces informations (liste du document)"), "paiement.nom", { placeholder: tr("Principal") })),
+      h("fieldset", null, h("legend", null, tr("Autres informations de paiement")), h("p", { class: "aide" }, tr("Utile quand certains documents se paient ailleurs, par exemple une facture locale en bahts avec une banque thaïlandaise. Chaque devis ou facture choisit les informations à afficher.")), blocAutres),
+      h("fieldset", null, h("legend", null, tr("QR code de paiement")), image(N_("Image du QR code"), "apparence.qr_image", { maxPx: 700 }), texte(N_("Texte à côté du QR code"), "apparence.qr_pseudo", { aide: tr("Par exemple un pseudo Wise. Vide pour ne rien afficher.") })),
+      h("fieldset", null, h("legend", null, tr("Équivalents indicatifs")), h("p", { class: "aide" }, tr("Utilisés seulement quand vous affichez l'équivalent en euros et en bahts sur un devis. À mettre à jour de temps en temps.")), h("div", { class: "grille-form" }, texte(N_("1 unité de la devise en euros"), "taux.eur", { type: "number", step: "0.001" }), texte(N_("1 unité de la devise en bahts"), "taux.thb", { type: "number", step: "0.01" })))
     ),
     fonctionnement: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Conditions"), h("div", { class: "grille-form" }, texte("Acompte demandé (%, 0 si aucun)", "conditions.acompte_pct", { type: "number" }), texte("Délai de paiement de l'acompte (jours)", "conditions.delai_jours", { type: "number" }), texte("Relancer un devis sans réponse après (jours)", "conditions.relance_jours", { type: "number" })), texte("Mention de TVA", "conditions.tva_mention", { aide: "Par exemple « TVA non applicable ». Vide pour ne rien afficher." }), texte("Mention de TVA en anglais (facultatif)", "conditions.tva_mention_en", { aide: "Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise." }), texte("Lien des conditions générales", "conditions.cgv_url", { type: "url" })),
-      h("fieldset", null, h("legend", null, "Dossiers"), champ("Numérotation", modeNum), prefixe, chiffres, texte("Nom du champ « pays »", "dossier.libelle_pays", { aide: "Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier." }), liste("Valeurs proposées, une par ligne", "listes.pays"), texte("Modèle du titre du document", "dossier.modele_bandeau", { aide: "{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}." })),
-      h("fieldset", null, h("legend", null, "Listes"), liste("Civilités des clients, une par ligne", "listes.civilites"), liste("Devises proposées pour un document, une par ligne", "listes.devises", "Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs."), champ("Moyens de paiement, un par ligne", moyens))
+      h("fieldset", null, h("legend", null, tr("Conditions")), h("div", { class: "grille-form" }, texte(N_("Acompte demandé (%, 0 si aucun)"), "conditions.acompte_pct", { type: "number" }), texte(N_("Délai de paiement de l'acompte (jours)"), "conditions.delai_jours", { type: "number" }), texte(N_("Relancer un devis sans réponse après (jours)"), "conditions.relance_jours", { type: "number" })), texte(N_("Mention de TVA"), "conditions.tva_mention", { aide: tr("Par exemple « TVA non applicable ». Vide pour ne rien afficher.") }), texte(N_("Mention de TVA en anglais (facultatif)"), "conditions.tva_mention_en", { aide: tr("Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise.") }), texte(N_("Lien des conditions générales"), "conditions.cgv_url", { type: "url" })),
+      h("fieldset", null, h("legend", null, tr("Dossiers")), champ(tr("Numérotation"), modeNum), prefixe, chiffres, texte(N_("Nom du champ « pays »"), "dossier.libelle_pays", { aide: tr("Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier.") }), liste(N_("Valeurs proposées, une par ligne"), "listes.pays"), texte(N_("Modèle du titre du document"), "dossier.modele_bandeau", { aide: tr("{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}.") })),
+      h("fieldset", null, h("legend", null, tr("Listes")), liste(N_("Civilités des clients, une par ligne"), "listes.civilites"), liste(N_("Devises proposées pour un document, une par ligne"), "listes.devises", tr("Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs.")), champ(tr("Moyens de paiement, un par ligne"), moyens))
     ),
     textes: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Textes fixes des documents"), h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => remplirTextes(LIBELLES_FR) }, "Remplir en français"), h("button", { class: "secondaire petit", type: "button", onclick: () => remplirTextes(LIBELLES_EN) }, "Remplir en anglais")), champ("Langue des textes à modifier", choixLangue, "Un document peut être écrit en anglais depuis son en-tête (par exemple la facture locale). Il utilise alors la version anglaise de ces textes."), libellesGrille),
-      h("fieldset", null, h("legend", null, "Conditions de paiement proposées"), h("p", { class: "aide" }, "Chaque devis choisit une de ces variantes, ou son propre texte. Une ligne commençant par « - » devient une puce. **gras**, _italique_. Les mots entre accolades se remplissent seuls : {acompte}, {solde}, {delai}, {total}, {indicatif}."), blocVariantes)
+      h("fieldset", null, h("legend", null, tr("Textes fixes des documents")), h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => remplirTextes(LIBELLES_FR) }, tr("Remplir en français")), h("button", { class: "secondaire petit", type: "button", onclick: () => remplirTextes(LIBELLES_EN) }, tr("Remplir en anglais"))), champ(tr("Langue des textes à modifier"), choixLangue, tr("Un document peut être écrit en anglais depuis son en-tête (par exemple la facture locale). Il utilise alors la version anglaise de ces textes.")), libellesGrille),
+      h("fieldset", null, h("legend", null, tr("Conditions de paiement proposées")), h("p", { class: "aide" }, tr("Chaque devis choisit une de ces variantes, ou son propre texte. Une ligne commençant par « - » devient une puce. **gras**, _italique_. Les mots entre accolades se remplissent seuls : {acompte}, {solde}, {delai}, {total}, {indicatif}.")), blocVariantes)
     ),
     apparence: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Logo et titre"), champ("Disposition de l'en-tête", entete), image("Logo", "apparence.logo", { maxPx: 600 }), texte("Titre en grand sur le document", "apparence.titre_texte", { aide: "Le nom de l'entreprise si vide. Ignoré quand une image de titre est choisie." }), image("Image du titre (facultative)", "apparence.titre_image", { maxPx: 1600, aide: "Pour un lettrage particulier. Elle remplace le titre écrit." })),
+      h("fieldset", null, h("legend", null, tr("Logo et titre")), champ(tr("Disposition de l'en-tête"), entete), image(N_("Logo"), "apparence.logo", { maxPx: 600 }), texte(N_("Titre en grand sur le document"), "apparence.titre_texte", { aide: tr("Le nom de l'entreprise si vide. Ignoré quand une image de titre est choisie.") }), image(N_("Image du titre (facultative)"), "apparence.titre_image", { maxPx: 1600, aide: tr("Pour un lettrage particulier. Elle remplace le titre écrit.") })),
       h(
         "fieldset",
         null,
-        h("legend", null, "Couleurs"),
+        h("legend", null, tr("Couleurs")),
         h(
           "div",
           { class: "grille-form" },
-          ...[["Couleur principale (barre de total, titres)", "apparence.couleur"], ["Couleur claire (bandeau)", "apparence.couleur_clair"]].map(([libelle, chemin]) => {
+          ...[[tr("Couleur principale (barre de total, titres)"), "apparence.couleur"], [tr("Couleur claire (bandeau)"), "apparence.couleur_clair"]].map(([libelle, chemin]) => {
             const el = h("input", { id: uid(), type: "color", value: lire(r, chemin), oninput: (e) => (ecrire(r, chemin, e.target.value), marque()) });
             el.className = "couleur";
             return champ(libelle, el);
           })
         )
       ),
-      r.apparence.type_images ? h("fieldset", null, h("legend", null, "Titres en images"), h("p", { class: "aide" }, "Les mots DEVIS et FACTURE sont des images. Retirez-les pour les remplacer par les textes de l'onglet « Textes »."), h("button", { class: "secondaire petit", type: "button", onclick: (e) => ((r.apparence.type_images = null), e.target.closest("fieldset").remove(), marque()) }, "Utiliser des textes à la place")) : null
+      r.apparence.type_images ? h("fieldset", null, h("legend", null, tr("Titres en images")), h("p", { class: "aide" }, tr("Les mots DEVIS et FACTURE sont des images. Retirez-les pour les remplacer par les textes de l'onglet « Textes ».")), h("button", { class: "secondaire petit", type: "button", onclick: (e) => ((r.apparence.type_images = null), e.target.closest("fieldset").remove(), marque()) }, tr("Utiliser des textes à la place"))) : null
     ),
     ecrans: h(
       "div",
@@ -379,45 +380,45 @@ export function vueReglages() {
       h(
         "fieldset",
         null,
-        h("legend", null, "Écrans de cette entreprise"),
-        h("p", { class: "aide" }, `Chaque entreprise a ses besoins : les écrans choisis ici n'apparaissent que pour « ${entiteActive().nom} ». En automatique, Partenaires s'affiche dès qu'un partenaire existe, Réservations et Messages suivent Partenaires, Catalogue est toujours là.`),
+        h("legend", null, tr("Écrans de cette entreprise")),
+        h("p", { class: "aide" }, tr("Chaque entreprise a ses besoins : les écrans choisis ici n'apparaissent que pour « {nom} ». En automatique, Partenaires s'affiche dès qu'un partenaire existe, Réservations et Messages suivent Partenaires, Catalogue est toujours là.", { nom: entiteActive().nom })),
         h(
           "div",
           { class: "grille-form" },
-          ...[["partenaires", "Partenaires, tarifs, trajets, règles et dû"], ["reservations", "Réservations et agenda du jour"], ["messages", "Messages types"], ["catalogue", "Catalogue de formules"]].map(([cle, libelle]) => {
+          ...[["partenaires", tr("Partenaires, tarifs, trajets, règles et dû")], ["reservations", tr("Réservations et agenda du jour")], ["messages", tr("Messages types")], ["catalogue", tr("Catalogue de formules")]].map(([cle, libelle]) => {
             const v = (r.modules || {})[cle];
-            const sel = h("select", { id: `mod-${cle}`, onchange: (e) => { r.modules = r.modules || {}; r.modules[cle] = { auto: null, oui: true, non: false }[e.target.value]; marque(); } }, h("option", { value: "auto" }, "Automatique"), h("option", { value: "oui" }, "Affiché"), h("option", { value: "non" }, "Masqué"));
+            const sel = h("select", { id: `mod-${cle}`, onchange: (e) => { r.modules = r.modules || {}; r.modules[cle] = { auto: null, oui: true, non: false }[e.target.value]; marque(); } }, h("option", { value: "auto" }, tr("Automatique")), h("option", { value: "oui" }, tr("Affiché")), h("option", { value: "non" }, tr("Masqué")));
             sel.value = v === true ? "oui" : v === false ? "non" : "auto";
             return champ(libelle, sel);
           })
         ),
-        h("p", { class: "aide" }, "Le menu se met à jour après l'enregistrement. Les droits des rôles s'appliquent toujours en plus.")
+        h("p", { class: "aide" }, tr("Le menu se met à jour après l'enregistrement. Les droits des rôles s'appliquent toujours en plus."))
       ),
       h(
         "fieldset",
         null,
-        h("legend", null, "Fonctionnement"),
+        h("legend", null, tr("Fonctionnement")),
         champ(
-          "Façon de travailler",
+          tr("Façon de travailler"),
           (() => {
-            const sel = h("select", { id: "fonctionnement", onchange: (e) => ((r.fonctionnement = e.target.value), marque()) }, h("option", { value: "sur_mesure" }, "Voyages sur mesure : devis, acompte, facture"), h("option", { value: "excursions" }, "Excursions et transferts : facture directe, puis vouchers"));
+            const sel = h("select", { id: "fonctionnement", onchange: (e) => ((r.fonctionnement = e.target.value), marque()) }, h("option", { value: "sur_mesure" }, tr("Voyages sur mesure : devis, acompte, facture")), h("option", { value: "excursions" }, tr("Excursions et transferts : facture directe, puis vouchers")));
             sel.value = r.fonctionnement === "excursions" ? "excursions" : "sur_mesure";
             return sel;
           })(),
-          "En mode excursions, un nouveau dossier crée la facture et les réservations d'un coup, sans devis ni acompte, et chaque réservation a son voucher pour le client et le prestataire."
+          tr("En mode excursions, un nouveau dossier crée la facture et les réservations d'un coup, sans devis ni acompte, et chaque réservation a son voucher pour le client et le prestataire.")
         )
       ),
       h(
         "fieldset",
         null,
-        h("legend", null, "Vouchers (mode excursions)"),
-        h("p", { class: "aide" }, "Les vouchers sont en anglais. Un champ vide reprend la valeur de l'onglet Entreprise (nom, sous-titre, adresse, téléphone) ; le logo est celui de l'onglet Apparence. L'aperçu à droite suit vos modifications."),
-        h("div", { class: "grille-form" }, texte("Nom affiché", "voucher.nom", { placeholder: r.emetteur.nom }), texte("Sous-titre", "voucher.sous_titre", { placeholder: r.emetteur.sous_titre || "by Zwald Travel Planner CO., LTD." }), texte("Numéro de licence TAT", "voucher.licence"), texte("WhatsApp affiché", "voucher.whatsapp", { placeholder: r.emetteur.telephone }), texte("E-mail affiché", "voucher.email", { type: "email" })),
-        texte("Adresse sur une ligne", "voucher.adresse", { placeholder: (r.emetteur.adresse || "").split("\n").join(", ") }),
-        champ("Modèle de l'aperçu", choixApercuVoucher),
-        texte("Texte de fin", "voucher.merci", { multi: true, rows: 2, aide: "{entreprise} est remplacé par le nom affiché." }),
-        texte("Texte de fin des vouchers de transfert", "voucher.merci_transfert", { multi: true, rows: 2 }),
-        texte("Note des vouchers de transfert", "voucher.note_transfert", { multi: true, rows: 2 })
+        h("legend", null, tr("Vouchers (mode excursions)")),
+        h("p", { class: "aide" }, tr("Les vouchers sont en anglais. Un champ vide reprend la valeur de l'onglet Entreprise (nom, sous-titre, adresse, téléphone) ; le logo est celui de l'onglet Apparence. L'aperçu à droite suit vos modifications.")),
+        h("div", { class: "grille-form" }, texte(N_("Nom affiché"), "voucher.nom", { placeholder: r.emetteur.nom }), texte(N_("Sous-titre"), "voucher.sous_titre", { placeholder: r.emetteur.sous_titre || tr("by Zwald Travel Planner CO., LTD.") }), texte(N_("Numéro de licence TAT"), "voucher.licence"), texte(N_("WhatsApp affiché"), "voucher.whatsapp", { placeholder: r.emetteur.telephone }), texte(N_("E-mail affiché"), "voucher.email", { type: "email" })),
+        texte(N_("Adresse sur une ligne"), "voucher.adresse", { placeholder: (r.emetteur.adresse || "").split("\n").join(", ") }),
+        champ(tr("Modèle de l'aperçu"), choixApercuVoucher),
+        texte(N_("Texte de fin"), "voucher.merci", { multi: true, rows: 2, aide: tr("{entreprise} est remplacé par le nom affiché.") }),
+        texte(N_("Texte de fin des vouchers de transfert"), "voucher.merci_transfert", { multi: true, rows: 2 }),
+        texte(N_("Note des vouchers de transfert"), "voucher.note_transfert", { multi: true, rows: 2 })
       )
     ),
     donnees: h(
@@ -426,23 +427,23 @@ export function vueReglages() {
       h(
         "section",
         null,
-        h("h2", null, "Sauvegarde et exports"),
-        h("p", { class: "aide" }, `Ces fichiers concernent seulement l'entreprise « ${entiteActive().nom} ». Une sauvegarde contient les données clients : gardez-la en lieu sûr.`),
-        h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: exporterTout }, "Télécharger une sauvegarde complète"), h("button", { class: "secondaire", type: "button", onclick: exporterDossiers }, "Exporter les dossiers (Excel)"), h("button", { class: "secondaire", type: "button", onclick: exporterPaiements }, "Exporter les paiements (Excel)")),
-        peut("partenaires.ecrire") ? h("label", { class: "case", for: "import-remplacer" }, h("input", { id: "import-remplacer", type: "checkbox", checked: true }), "Si le fichier contient des partenaires, remplacer la base partenaires (supprime d'abord les partenaires, tarifs, trajets et tâches de partenaires actuels)") : null,
-        champ("Restaurer ou importer une sauvegarde", h("input", { id: "import-fichier", type: "file", accept: "application/json,.json", onchange: (e) => e.target.files[0] && importer(e.target.files[0]) }), `Elle sera importée dans « ${entiteActive().nom} ». Les éléments déjà présents avec le même identifiant sont remplacés.`)
+        h("h2", null, tr("Sauvegarde et exports")),
+        h("p", { class: "aide" }, tr("Ces fichiers concernent seulement l'entreprise « {nom} ». Une sauvegarde contient les données clients : gardez-la en lieu sûr.", { nom: entiteActive().nom })),
+        h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: exporterTout }, tr("Télécharger une sauvegarde complète")), h("button", { class: "secondaire", type: "button", onclick: exporterDossiers }, tr("Exporter les dossiers (Excel)")), h("button", { class: "secondaire", type: "button", onclick: exporterPaiements }, tr("Exporter les paiements (Excel)"))),
+        peut("partenaires.ecrire") ? h("label", { class: "case", for: "import-remplacer" }, h("input", { id: "import-remplacer", type: "checkbox", checked: true }), tr("Si le fichier contient des partenaires, remplacer la base partenaires (supprime d'abord les partenaires, tarifs, trajets et tâches de partenaires actuels)")) : null,
+        champ(tr("Restaurer ou importer une sauvegarde"), h("input", { id: "import-fichier", type: "file", accept: "application/json,.json", onchange: (e) => e.target.files[0] && importer(e.target.files[0]) }), tr("Elle sera importée dans « {nom} ». Les éléments déjà présents avec le même identifiant sont remplacés.", { nom: entiteActive().nom }))
       )
     ),
   };
 
   const ONGLETS = [
-    ["entreprise", "Entreprise"],
-    ["paiement", "Paiement"],
-    ["fonctionnement", "Dossiers et listes"],
-    ["textes", "Textes des documents"],
-    ["apparence", "Apparence"],
-    ["ecrans", "Écrans"],
-    ...(peut("exports.faire") ? [["donnees", "Sauvegarde"]] : []),
+    ["entreprise", tr("Entreprise")],
+    ["paiement", tr("Paiement")],
+    ["fonctionnement", tr("Dossiers et listes")],
+    ["textes", tr("Textes des documents")],
+    ["apparence", tr("Apparence")],
+    ["ecrans", tr("Écrans")],
+    ...(peut("exports.faire") ? [["donnees", tr("Sauvegarde")]] : []),
   ];
   const barre = h("div", { class: "onglets sous-onglets" });
   const montrer = (cle) => {
@@ -456,19 +457,19 @@ export function vueReglages() {
   };
   ONGLETS.forEach(([cle, libelle]) => barre.append(h("button", { type: "button", "data-cle": cle, "aria-pressed": "false", onclick: () => montrer(cle) }, libelle)));
 
-  const boutonEnregistrer = h("button", { class: "principal", type: "submit" }, "Enregistrer les réglages");
+  const boutonEnregistrer = h("button", { class: "principal", type: "submit" }, tr("Enregistrer les réglages"));
   const enregistrer = async (e) => {
     e.preventDefault();
-    if (!r.textes.variantes.length) return toast("Gardez au moins une variante de conditions de paiement.", true);
+    if (!r.textes.variantes.length) return toast(tr("Gardez au moins une variante de conditions de paiement."), true);
     r.devise = (r.devise || "").trim().toUpperCase();
     boutonEnregistrer.disabled = true;
     try {
       await enregistrerReglages(r);
       modifie = false;
-      indicateur.textContent = "Enregistré";
-      toast("Réglages enregistrés.");
+      indicateur.textContent = tr("Enregistré");
+      toast(tr("Réglages enregistrés."));
     } catch (err) {
-      toast(`Enregistrement impossible : ${err.message}`, true);
+      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
     } finally {
       boutonEnregistrer.disabled = false;
     }
@@ -476,8 +477,8 @@ export function vueReglages() {
 
   const racine = h(
     "div",
-    { "data-titre": "Réglages", "data-large": "1", "data-plein": "1" },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, "Réglages"), h("p", { class: "sous" }, entiteActive().nom)), estSuperAdmin() ? h("a", { class: "bouton secondaire", href: "#/admin" }, "Administration : entreprises et accès") : null),
+    { "data-titre": tr("Réglages"), "data-large": "1", "data-plein": "1" },
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réglages")), h("p", { class: "sous" }, entiteActive().nom)), estSuperAdmin() ? h("a", { class: "bouton secondaire", href: "#/admin" }, tr("Administration : entreprises et accès")) : null),
     barre,
     h("form", { class: "reglages-grille", onsubmit: enregistrer }, h("div", { class: "reglages-colonne" }, ...Object.values(sections), h("div", { class: "actions barre-fixe" }, indicateur, boutonEnregistrer)), zoneApercu, zoneVoucher)
   );

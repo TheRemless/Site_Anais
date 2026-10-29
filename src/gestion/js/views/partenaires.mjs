@@ -5,13 +5,14 @@ import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
 import { FAMILLES, nomFamille, libelleUnite, marge, correspond, UNITES } from "../partenaires-calc.mjs";
 import { vide, cartes } from "./commun.mjs";
 import { listeTaches } from "./taches.mjs";
+import { tr, N_ } from "../i18n.mjs";
 
 export const GROUPES = [
-  ["mer", "Bateaux et excursions en mer"],
-  ["activite", "Activités et expériences"],
-  ["location", "Locations"],
-  ["transport", "Transferts et taxis"],
-  ["autre", "Autres"],
+  ["mer", N_("Bateaux et excursions en mer")],
+  ["activite", N_("Activités et expériences")],
+  ["location", N_("Locations")],
+  ["transport", N_("Transferts et taxis")],
+  ["autre", N_("Autres")],
 ];
 
 export const prix = (n) => (n === null || n === undefined || n === "" ? "—" : formatMontant(n));
@@ -36,9 +37,9 @@ export function chiffres(numero) {
 async function copier(texte) {
   try {
     await navigator.clipboard.writeText(texte);
-    toast("Copié.");
+    toast(tr("Copié."));
   } catch {
-    toast("Copie impossible dans ce navigateur.", true);
+    toast(tr("Copie impossible dans ce navigateur."), true);
   }
 }
 
@@ -49,8 +50,8 @@ export function telephone(t) {
     { class: "tel" },
     d ? h("a", { href: `tel:${d}` }, t.numero) : h("span", null, t.numero),
     t.libelle ? h("span", { class: "tag" }, t.libelle) : null,
-    d && t.whatsapp ? h("a", { class: "bouton-icone lien", href: `https://wa.me/${d.replace("+", "")}`, target: "_blank", rel: "noopener", "aria-label": `WhatsApp ${t.numero}`, title: "WhatsApp" }, icone("whatsapp")) : null,
-    h("button", { class: "bouton-icone lien", type: "button", "aria-label": `Copier ${t.numero}`, title: "Copier", onclick: () => copier(t.numero) }, icone("copier"))
+    d && t.whatsapp ? h("a", { class: "bouton-icone lien", href: `https://wa.me/${d.replace("+", "")}`, target: "_blank", rel: "noopener", "aria-label": tr("WhatsApp {numero}", { numero: t.numero }), title: tr("WhatsApp") }, icone("whatsapp")) : null,
+    h("button", { class: "bouton-icone lien", type: "button", "aria-label": tr("Copier {numero}", { numero: t.numero }), title: tr("Copier"), onclick: () => copier(t.numero) }, icone("copier"))
   );
 }
 
@@ -60,7 +61,7 @@ export function etatContrat(p) {
   const fini = c.fin && c.fin < ajd;
   const bientot = c.fin && !fini && c.fin <= ajouterJours(ajd, 30);
   const code = fini ? "fini" : bientot || c.etat === "attention" ? "attention" : "ok";
-  const texte = fini ? `Contrat terminé le ${formatDate(c.fin)}` : bientot ? `Expire le ${formatDate(c.fin)}` : c.statut || (c.fin ? `Jusqu'au ${formatDate(c.fin)}` : "Sans date de fin");
+  const texte = fini ? tr("Contrat terminé le {date}", { date: formatDate(c.fin) }) : bientot ? tr("Expire le {date}", { date: formatDate(c.fin) }) : c.statut || (c.fin ? tr("Jusqu'au {date}", { date: formatDate(c.fin) }) : tr("Sans date de fin"));
   return h("span", { class: `statut etat-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), texte);
 }
 const ajouterJours = (iso, n) => {
@@ -75,13 +76,13 @@ const liste = (items) => (items && items.length ? h("ul", { class: "liste-regles
 // ---- Liste --------------------------------------------------------------------------------------------------
 export function listePartenaires() {
   const corps = h("div");
-  const q = h("input", { id: "rech-partenaires", type: "search", placeholder: "Nom, catégorie, personne", oninput: () => dessiner() });
+  const q = h("input", { id: "rech-partenaires", type: "search", placeholder: tr("Nom, catégorie, personne"), oninput: () => dessiner() });
   function dessiner() {
     corps.replaceChildren();
     const tous = etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => (a.ordre || 0) - (b.ordre || 0) || a.nom.localeCompare(b.nom));
     const visibles = tous.filter((p) => correspond(`${p.nom} ${p.nom_thai} ${p.categorie} ${p.role} ${(p.contact || {}).personne || ""}`, q.value));
     if (!visibles.length) {
-      corps.append(tous.length ? vide("Aucun partenaire ne correspond", "Essayez une autre recherche.") : vide("Aucun partenaire pour l'instant", "Un partenaire regroupe ses contacts, ses tarifs, ses trajets, ses règles et son contrat.", peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, "Ajouter le premier partenaire") : null));
+      corps.append(tous.length ? vide(tr("Aucun partenaire ne correspond"), tr("Essayez une autre recherche.")) : vide(tr("Aucun partenaire pour l'instant"), tr("Un partenaire regroupe ses contacts, ses tarifs, ses trajets, ses règles et son contrat."), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, tr("Ajouter le premier partenaire")) : null));
       return;
     }
     for (const [code, titre] of GROUPES) {
@@ -91,7 +92,7 @@ export function listePartenaires() {
         h(
           "section",
           null,
-          h("h2", null, titre),
+          h("h2", null, tr(titre)),
           h(
             "ul",
             { class: "cartes grille" },
@@ -118,14 +119,14 @@ export function listePartenaires() {
     }
   }
   const ouvrirFormulaire = (p) => {
-    const fermer = modal(p.id ? "Modifier le partenaire" : "Nouveau partenaire", formulairePartenaire(p, (r) => (fermer(), naviguer(`#/partenaire/${r.id}`))), { large: true });
+    const fermer = modal(p.id ? tr("Modifier le partenaire") : tr("Nouveau partenaire"), formulairePartenaire(p, (r) => (fermer(), naviguer(`#/partenaire/${r.id}`))), { large: true });
   };
   dessiner();
   return h(
     "div",
-    { "data-titre": "Partenaires" },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, "Partenaires"), h("p", { class: "sous" }, `${etat.db.partenaires.filter((p) => p.actif !== false).length} partenaires, ${etat.db.prestations.filter((p) => p.actif !== false).length} tarifs, ${etat.db.trajets.length} trajets`)), h("div", { class: "entete-actions" }, h("a", { class: "bouton secondaire", href: "#/tarifs" }, "Tarifs"), h("a", { class: "bouton secondaire", href: "#/trajets" }, "Trajets"), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, "Nouveau partenaire") : null)),
-    h("div", { class: "barre-outils" }, h("div", { class: "champ recherche" }, h("label", { for: "rech-partenaires" }, "Rechercher"), q)),
+    { "data-titre": tr("Partenaires") },
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Partenaires")), h("p", { class: "sous" }, tr("{n} partenaires, {n2} tarifs, {n3} trajets", { n: etat.db.partenaires.filter((p) => p.actif !== false).length, n2: etat.db.prestations.filter((p) => p.actif !== false).length, n3: etat.db.trajets.length }))), h("div", { class: "entete-actions" }, h("a", { class: "bouton secondaire", href: "#/tarifs" }, tr("Tarifs")), h("a", { class: "bouton secondaire", href: "#/trajets" }, tr("Trajets")), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, tr("Nouveau partenaire")) : null)),
+    h("div", { class: "barre-outils" }, h("div", { class: "champ recherche" }, h("label", { for: "rech-partenaires" }, tr("Rechercher")), q)),
     corps
   );
 }
@@ -133,7 +134,7 @@ export function listePartenaires() {
 // ---- Fiche --------------------------------------------------------------------------------------------------
 export function fichePartenaire(id) {
   const p = partenaireDe(id);
-  if (!p) return vide("Partenaire introuvable", "Il a peut-être été supprimé.", h("a", { class: "bouton secondaire", href: "#/partenaires" }, "Retour aux partenaires"));
+  if (!p) return vide(tr("Partenaire introuvable"), tr("Il a peut-être été supprimé."), h("a", { class: "bouton secondaire", href: "#/partenaires" }, tr("Retour aux partenaires")));
   const c = p.contact || {};
   const r = p.regles || {};
   const ct = p.contrat || {};
@@ -143,8 +144,8 @@ export function fichePartenaire(id) {
   const trajets = etat.db.trajets.filter((x) => x.partenaire_id === p.id);
   const taches = etat.db.taches.filter((t) => t.partenaire_id === p.id && !t.fait);
   const rafraichir = () => naviguer(location.hash);
-  const bloc = (titre, ...contenu) => (contenu.flat().some(Boolean) ? h("section", { class: "bloc" }, h("h2", null, titre), ...contenu) : null);
-  const ligne = (libelle, valeur) => (valeur ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, libelle), h("span", null, valeur)) : null);
+  const bloc = (titre, ...contenu) => (contenu.flat().some(Boolean) ? h("section", { class: "bloc" }, h("h2", null, tr(titre)), ...contenu) : null);
+  const ligne = (libelle, valeur) => (valeur ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, tr(libelle)), h("span", null, valeur)) : null);
 
   const groupes = [...new Set(prestations.map((x) => x.groupe || nomFamille(x.famille)))];
   const tarifs = groupes.map((g) => {
@@ -155,14 +156,14 @@ export function fichePartenaire(id) {
   return h(
     "div",
     { "data-titre": p.nom, "data-large": true },
-    h("a", { class: "retour", href: "#/partenaires" }, "Partenaires"),
+    h("a", { class: "retour", href: "#/partenaires" }, tr("Partenaires")),
     h(
       "div",
       { class: "entete" },
       h("div", null, h("h1", null, p.nom), h("p", { class: "sous" }, [p.role, p.categorie].filter(Boolean).join(" · "), p.nom_thai ? h("span", { class: "sous-ligne", lang: "th" }, p.nom_thai) : null)),
-      h("div", { class: "entete-actions" }, etatContrat(p), ecrit ? h("button", { class: "secondaire", type: "button", onclick: () => { const fermer = modal("Modifier le partenaire", formulairePartenaire(p, () => (fermer(), rafraichir())), { large: true }); } }, "Modifier") : null)
+      h("div", { class: "entete-actions" }, etatContrat(p), ecrit ? h("button", { class: "secondaire", type: "button", onclick: () => { const fermer = modal(tr("Modifier le partenaire"), formulairePartenaire(p, () => (fermer(), rafraichir())), { large: true }); } }, tr("Modifier")) : null)
     ),
-    p.actif === false ? h("div", { class: "bandeau-info" }, "Ce partenaire est marqué comme inactif : il n'apparaît plus dans les listes ni dans les devis.") : null,
+    p.actif === false ? h("div", { class: "bandeau-info" }, tr("Ce partenaire est marqué comme inactif : il n'apparaît plus dans les listes ni dans les devis.")) : null,
     h(
       "div",
       { class: "deux-colonnes fiche" },
@@ -170,35 +171,35 @@ export function fichePartenaire(id) {
         "div",
         null,
         bloc(
-          "Contact",
-          ligne("Personne", c.personne),
-          (c.telephones || []).length ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, "Téléphone"), h("span", { class: "tels" }, (c.telephones || []).map(telephone))) : null,
-          (c.emails || []).length ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, "E-mail"), h("span", null, (c.emails || []).map((e, i) => [i ? ", " : "", h("a", { href: `mailto:${e}` }, e)]))) : null,
-          ligne("Line", c.line),
-          c.web ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, "Site"), h("a", { href: /^https?:/.test(c.web) ? c.web : `https://${c.web}`, target: "_blank", rel: "noopener" }, c.web)) : null,
-          ligne("Adresse", c.adresse),
-          ligne("Embarcadère", c.embarcadere),
-          ligne("Licence", c.licence),
+          N_("Contact"),
+          ligne(N_("Personne"), c.personne),
+          (c.telephones || []).length ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, tr("Téléphone")), h("span", { class: "tels" }, (c.telephones || []).map(telephone))) : null,
+          (c.emails || []).length ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, tr("E-mail")), h("span", null, (c.emails || []).map((e, i) => [i ? ", " : "", h("a", { href: `mailto:${e}` }, e)]))) : null,
+          ligne(N_("Line"), c.line),
+          c.web ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, tr("Site")), h("a", { href: /^https?:/.test(c.web) ? c.web : `https://${c.web}`, target: "_blank", rel: "noopener" }, c.web)) : null,
+          ligne(N_("Adresse"), c.adresse),
+          ligne(N_("Embarcadère"), c.embarcadere),
+          ligne(N_("Licence"), c.licence),
           (c.guichets || []).length
-            ? h("div", { class: "guichets" }, h("h3", null, "Guichets et bureaux"), (c.guichets || []).map((g) => h("div", { class: "guichet" }, h("strong", null, g.lieu), g.adresse ? h("span", null, g.adresse) : null, (g.telephones || []).length ? h("span", { class: "tels" }, (g.telephones || []).map((n) => telephone({ numero: n }))) : null, g.line ? h("span", null, `Line : ${g.line}`) : null, g.email ? h("a", { href: `mailto:${g.email}` }, g.email) : null)))
+            ? h("div", { class: "guichets" }, h("h3", null, tr("Guichets et bureaux")), (c.guichets || []).map((g) => h("div", { class: "guichet" }, h("strong", null, g.lieu), g.adresse ? h("span", null, g.adresse) : null, (g.telephones || []).length ? h("span", { class: "tels" }, (g.telephones || []).map((n) => telephone({ numero: n }))) : null, g.line ? h("span", null, tr("Line : {line}", { line: g.line })) : null, g.email ? h("a", { href: `mailto:${g.email}` }, g.email) : null)))
             : null
         ),
         bloc(
-          "Contrat",
-          ligne("Statut", ct.statut),
-          ligne("Saison", ct.saison),
-          ligne("Validité", ct.validite),
-          ligne("Fin", ct.fin ? formatDate(ct.fin) : ""),
-          (ct.documents || []).length ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, "Documents"), h("span", null, (ct.documents || []).join(", "))) : null,
+          N_("Contrat"),
+          ligne(N_("Statut"), ct.statut),
+          ligne(N_("Saison"), ct.saison),
+          ligne(N_("Validité"), ct.validite),
+          ligne(N_("Fin"), ct.fin ? formatDate(ct.fin) : ""),
+          (ct.documents || []).length ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, tr("Documents")), h("span", null, (ct.documents || []).join(", "))) : null,
           (ct.evenements || []).length ? h("ul", { class: "liste-regles" }, (ct.evenements || []).map((e) => h("li", null, h("strong", null, e.date), ` ${e.libelle}`))) : null
         ),
         prive || (ecrit && voitNets())
           ? bloc(
-              "Paiement et coordonnées bancaires",
-              h("p", { class: "aide" }, "Visible seulement avec le droit « prix nets ». Ne figure jamais sur un document client."),
+              N_("Paiement et coordonnées bancaires"),
+              h("p", { class: "aide" }, tr("Visible seulement avec le droit « prix nets ». Ne figure jamais sur un document client.")),
               prive && prive.paiement ? paragraphes(prive.paiement) : null,
               prive && prive.banque && Object.keys(prive.banque).length ? h("div", { class: "banque" }, Object.entries(prive.banque).map(([k, v]) => ligne(k.charAt(0).toUpperCase() + k.slice(1), typeof v === "string" ? v : JSON.stringify(v)))) : null,
-              ecrit && voitNets() ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal("Paiement et banque", formulairePrive(p, prive, () => (fermer(), rafraichir()))); } }, prive ? "Modifier" : "Renseigner")) : null
+              ecrit && voitNets() ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Paiement et banque"), formulairePrive(p, prive, () => (fermer(), rafraichir()))); } }, prive ? tr("Modifier") : tr("Renseigner"))) : null
             )
           : null
       ),
@@ -206,32 +207,32 @@ export function fichePartenaire(id) {
         "div",
         null,
         bloc(
-          "Règles",
-          r.annulation ? h("div", null, h("h3", null, "Annulation"), paragraphes(r.annulation)) : null,
-          r.paiement ? h("div", null, h("h3", null, "Paiement"), paragraphes(r.paiement)) : null,
-          r.enfants && r.enfants.length ? h("div", null, h("h3", null, "Enfants"), liste(r.enfants)) : null,
-          r.commissions && r.commissions.length ? h("div", null, h("h3", null, "Commission et marge"), liste(r.commissions)) : null,
-          r.checkin && r.checkin.length ? h("div", null, h("h3", null, "Check-in"), liste(r.checkin)) : null,
-          r.points_embarquement && r.points_embarquement.length ? h("div", null, h("h3", null, "Points d'embarquement"), h("ul", { class: "liste-regles" }, r.points_embarquement.map((x) => h("li", null, h("strong", null, x.lieu), ` ${x.ou}`)))) : null
+          N_("Règles"),
+          r.annulation ? h("div", null, h("h3", null, tr("Annulation")), paragraphes(r.annulation)) : null,
+          r.paiement ? h("div", null, h("h3", null, tr("Paiement")), paragraphes(r.paiement)) : null,
+          r.enfants && r.enfants.length ? h("div", null, h("h3", null, tr("Enfants")), liste(r.enfants)) : null,
+          r.commissions && r.commissions.length ? h("div", null, h("h3", null, tr("Commission et marge")), liste(r.commissions)) : null,
+          r.checkin && r.checkin.length ? h("div", null, h("h3", null, tr("Check-in")), liste(r.checkin)) : null,
+          r.points_embarquement && r.points_embarquement.length ? h("div", null, h("h3", null, tr("Points d'embarquement")), h("ul", { class: "liste-regles" }, r.points_embarquement.map((x) => h("li", null, h("strong", null, x.lieu), ` ${x.ou}`)))) : null
         ),
-        (r.pickups || []).length ? bloc("Prise en charge à l'hôtel", (r.pickups || []).map(tableauPickup)) : null,
-        p.notes ? bloc("Notes", paragraphes(p.notes)) : null,
-        trajets.length ? bloc("Trajets", h("p", null, `${trajets.length} trajets avec horaires, prix et périodes. `, h("a", { href: `#/trajets?partenaire=${p.id}` }, "Voir les trajets"))) : null
+        (r.pickups || []).length ? bloc(N_("Prise en charge à l'hôtel"), (r.pickups || []).map(tableauPickup)) : null,
+        p.notes ? bloc(N_("Notes"), paragraphes(p.notes)) : null,
+        trajets.length ? bloc(N_("Trajets"), h("p", null, tr("{n} trajets avec horaires, prix et périodes. ", { n: trajets.length }), h("a", { href: `#/trajets?partenaire=${p.id}` }, tr("Voir les trajets")))) : null
       )
     ),
     h(
       "section",
       null,
-      h("div", { class: "entete petit-entete" }, h("h2", null, "Tarifs"), ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal("Nouvelle prestation", formulairePrestation({ partenaire_id: p.id }, () => (fermer(), rafraichir()))); } }, "Nouvelle prestation") : null),
-      prestations.length ? tarifs : h("p", { class: "vide-court" }, "Aucun tarif enregistré pour ce partenaire.")
+      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Tarifs")), ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle prestation"), formulairePrestation({ partenaire_id: p.id }, () => (fermer(), rafraichir()))); } }, tr("Nouvelle prestation")) : null),
+      prestations.length ? tarifs : h("p", { class: "vide-court" }, tr("Aucun tarif enregistré pour ce partenaire."))
     ),
     h(
       "section",
       null,
-      h("div", { class: "entete petit-entete" }, h("h2", null, "À régler avec ce partenaire"), peut("taches.ecrire") ? h("button", { class: "secondaire petit", type: "button", onclick: () => nouvelleTache(p, rafraichir) }, "Nouvelle tâche") : null),
-      taches.length ? listeTaches(taches, { avecDossier: false }) : h("p", { class: "vide-court" }, "Rien en attente. Les points à clarifier avec le partenaire s'ajoutent ici comme des tâches.")
+      h("div", { class: "entete petit-entete" }, h("h2", null, tr("À régler avec ce partenaire")), peut("taches.ecrire") ? h("button", { class: "secondaire petit", type: "button", onclick: () => nouvelleTache(p, rafraichir) }, tr("Nouvelle tâche")) : null),
+      taches.length ? listeTaches(taches, { avecDossier: false }) : h("p", { class: "vide-court" }, tr("Rien en attente. Les points à clarifier avec le partenaire s'ajoutent ici comme des tâches."))
     ),
-    ecrit ? h("div", { class: "zone-danger" }, h("button", { class: "lien danger-texte", type: "button", onclick: async () => { if (await confirmer(`Supprimer « ${p.nom} » et tous ses tarifs et trajets ? Les devis déjà créés ne changent pas.`, "Supprimer", true)) { await supprimer("partenaires", p.id); toast("Partenaire supprimé."); naviguer("#/partenaires"); } } }, "Supprimer ce partenaire")) : null
+    ecrit ? h("div", { class: "zone-danger" }, h("button", { class: "lien danger-texte", type: "button", onclick: async () => { if (await confirmer(tr("Supprimer « {nom} » et tous ses tarifs et trajets ? Les devis déjà créés ne changent pas.", { nom: p.nom }), tr("Supprimer"), true)) { await supprimer("partenaires", p.id); toast(tr("Partenaire supprimé.")); naviguer("#/partenaires"); } } }, tr("Supprimer ce partenaire"))) : null
   );
 }
 
@@ -240,15 +241,15 @@ function tableauPickup(t) {
     "div",
     { class: "pickup" },
     h("h3", null, t.titre),
-    h("div", { class: "defilant" }, h("table", { class: "tableau simple compact" }, h("thead", null, h("tr", null, h("th", { scope: "col" }, "Zone"), (t.colonnes || []).map((c) => h("th", { scope: "col", class: "num" }, c)))), h("tbody", null, (t.lignes || []).map((l) => h("tr", null, h("td", null, h("strong", null, l[0])), l.slice(1).map((v) => h("td", { class: "num" }, v)))))))
+    h("div", { class: "defilant" }, h("table", { class: "tableau simple compact" }, h("thead", null, h("tr", null, h("th", { scope: "col" }, tr("Zone")), (t.colonnes || []).map((c) => h("th", { scope: "col", class: "num" }, c)))), h("tbody", null, (t.lignes || []).map((l) => h("tr", null, h("td", null, h("strong", null, l[0])), l.slice(1).map((v) => h("td", { class: "num" }, v)))))))
   );
 }
 
 async function nouvelleTache(p, apres) {
-  const titre = h("input", { id: "t-titre", required: true, placeholder: "Faire confirmer le net haute saison" });
+  const titre = h("input", { id: "t-titre", required: true, placeholder: tr("Faire confirmer le net haute saison") });
   const echeance = h("input", { id: "t-ech", type: "date" });
   const fermer = modal(
-    "Nouvelle tâche",
+    tr("Nouvelle tâche"),
     h(
       "form",
       {
@@ -256,14 +257,14 @@ async function nouvelleTache(p, apres) {
         onsubmit: async (e) => {
           e.preventDefault();
           await inserer("taches", { partenaire_id: p.id, dossier_id: null, titre: titre.value.trim(), description: "", echeance: echeance.value || null, assignee_id: etat.session.id, fait: false, fait_le: null, fait_par: null });
-          toast("Tâche ajoutée.");
+          toast(tr("Tâche ajoutée."));
           fermer();
           apres();
         },
       },
-      champ("Titre", titre),
-      champ("Échéance (facultatif)", echeance),
-      h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, "Ajouter"))
+      champ(tr("Titre"), titre),
+      champ(tr("Échéance (facultatif)"), echeance),
+      h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Ajouter")))
     )
   );
 }
@@ -275,22 +276,22 @@ export function tableauPrestations(lignes, { avecPartenaire = true, apres = () =
   const ecrit = peut("partenaires.ecrire");
   const detail = (x) => {
     const d = x.details || {};
-    const items = [["Horaires", d.horaires], ["Durée", d.duree], ["Capacité", d.capacite], ["Bateau", d.bateau], ["Pour qui", d.qui], ["Inclus", d.inclus], ["Frais de parc", d.parc], ["Conditions", d.conditions], ["Remarque", d.note], ["Moteur", d.moteur], ["Montant en thaï", d.montant_thai], ["Prix affiché", d.vente_texte]].filter(([, v]) => v !== undefined && v !== null && v !== "");
-    if (d.enfant !== undefined) items.push(["Enfant", `${prix(d.enfant)}${d.thai_adulte ? ` (tarif thaï ${prix(d.thai_adulte)} adulte, ${prix(d.thai_enfant)} enfant)` : ""}`]);
-    if (d.partenaires) items.push(["Concerne", d.partenaires]);
+    const items = [[N_("Horaires"), d.horaires], [N_("Durée"), d.duree], [N_("Capacité"), d.capacite], [N_("Bateau"), d.bateau], [N_("Pour qui"), d.qui], [N_("Inclus"), d.inclus], [N_("Frais de parc"), d.parc], [N_("Conditions"), d.conditions], [N_("Remarque"), d.note], [N_("Moteur"), d.moteur], [N_("Montant en thaï"), d.montant_thai], [N_("Prix affiché"), d.vente_texte]].filter(([, v]) => v !== undefined && v !== null && v !== "");
+    if (d.enfant !== undefined) items.push([N_("Enfant"), prix(d.enfant) + (d.thai_adulte ? tr(" (tarif thaï {adulte} adulte, {enfant} enfant)", { adulte: prix(d.thai_adulte), enfant: prix(d.thai_enfant) }) : "")]);
+    if (d.partenaires) items.push([N_("Concerne"), d.partenaires]);
     if (!items.length) return null;
-    return h("details", { class: "detail-prestation" }, h("summary", null, "Détail"), items.map(([k, v]) => h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, k), h("span", null, paragraphes(String(v))))));
+    return h("details", { class: "detail-prestation" }, h("summary", null, tr("Détail")), items.map(([k, v]) => h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, tr(k)), h("span", null, paragraphes(String(v))))));
   };
-  const modif = (x) => (ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal("Modifier la prestation", formulairePrestation(x, () => (fermer(), apres()))); } }, "Modifier") : null);
-  const sousTexte = (x) => [x.details && x.details.horaires, x.details && x.details.capacite, x.details && x.details.duree, libelleUnite(x.unite), x.sur_place ? "à payer sur place" : ""].filter(Boolean).join(" · ");
+  const modif = (x) => (ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Modifier la prestation"), formulairePrestation(x, () => (fermer(), apres()))); } }, tr("Modifier")) : null);
+  const sousTexte = (x) => [x.details && x.details.horaires, x.details && x.details.capacite, x.details && x.details.duree, libelleUnite(x.unite), x.sur_place ? tr("à payer sur place") : ""].filter(Boolean).join(" · ");
   return [
     cartes(lignes, (x) => {
       const n = nets ? netPrestation(x) : null;
       return h(
         "div",
         { class: "carte-lien statique" },
-        h("span", { class: "carte-titre" }, x.libelle, x.actif === false ? h("span", { class: "tag" }, "masqué") : null),
-        h("span", { class: "carte-droite" }, h("strong", null, prix(x.prix_vente)), nets ? h("span", { class: "net" }, n && n.net != null ? `net ${prix(n.net)}` : "net n/d") : null),
+        h("span", { class: "carte-titre" }, x.libelle, x.actif === false ? h("span", { class: "tag" }, tr("masqué")) : null),
+        h("span", { class: "carte-droite" }, h("strong", null, prix(x.prix_vente)), nets ? h("span", { class: "net" }, n && n.net != null ? tr("net {prix}", { prix: prix(n.net) }) : tr("net n/d")) : null),
         h("span", { class: "carte-sous" }, [avecPartenaire ? nomPartenaire(x.partenaire_id) : "", sousTexte(x)].filter(Boolean).join(" · ")),
         h("span", { class: "carte-pied" }, nets ? margeNoeud(x.prix_vente, n && n.net) : h("span"), modif(x)),
         detail(x)
@@ -299,7 +300,7 @@ export function tableauPrestations(lignes, { avecPartenaire = true, apres = () =
     h(
       "table",
       { class: "tableau seulement-bureau tarifs" },
-      h("thead", null, h("tr", null, [avecPartenaire ? "Partenaire" : null, "Prestation", "Unité", "Vente", nets ? "Net" : null, nets ? "Marge" : null, ""].filter((x) => x !== null).map((t, i) => h("th", { scope: "col", class: ["Vente", "Net", "Marge"].includes(t) ? "num" : null }, t)))),
+      h("thead", null, h("tr", null, [avecPartenaire ? N_("Partenaire") : null, N_("Prestation"), N_("Unité"), N_("Vente"), nets ? N_("Net") : null, nets ? N_("Marge") : null, ""].filter((x) => x !== null).map((t, i) => h("th", { scope: "col", class: ["Vente", "Net", "Marge"].includes(t) ? "num" : null }, t ? tr(t) : t)))),
       h(
         "tbody",
         null,
@@ -309,7 +310,7 @@ export function tableauPrestations(lignes, { avecPartenaire = true, apres = () =
             "tr",
             { class: x.actif === false ? "inactif" : null },
             avecPartenaire ? h("td", null, h("a", { href: `#/partenaire/${x.partenaire_id}` }, nomPartenaire(x.partenaire_id)) || "—") : null,
-            h("td", null, h("strong", null, x.libelle), x.actif === false ? h("span", { class: "tag" }, "masqué") : null, h("span", { class: "sous-ligne" }, sousTexte(x)), detail(x)),
+            h("td", null, h("strong", null, x.libelle), x.actif === false ? h("span", { class: "tag" }, tr("masqué")) : null, h("span", { class: "sous-ligne" }, sousTexte(x)), detail(x)),
             h("td", null, libelleUnite(x.unite)),
             h("td", { class: "num" }, prix(x.prix_vente)),
             nets ? h("td", { class: "num net" }, n && n.net != null ? prix(n.net) : "n/d") : null,
@@ -331,13 +332,13 @@ export function formulairePartenaire(p, apres) {
   const ct = p.contrat || {};
   const nom = h("input", { id: "p-nom", value: p.nom || "", required: true });
   const nomThai = h("input", { id: "p-thai", value: p.nom_thai || "", lang: "th" });
-  const categorie = h("input", { id: "p-cat", value: p.categorie || "", list: "p-cats", placeholder: "Excursions bateaux, Ferries et speedboats…" });
+  const categorie = h("input", { id: "p-cat", value: p.categorie || "", list: "p-cats", placeholder: tr("Excursions bateaux, Ferries et speedboats…") });
   const cats = h("datalist", { id: "p-cats" }, [...new Set(etat.db.partenaires.map((x) => x.categorie).filter(Boolean))].map((x) => h("option", { value: x })));
-  const groupe = h("select", { id: "p-groupe" }, GROUPES.map(([v, l]) => h("option", { value: v }, l)));
+  const groupe = h("select", { id: "p-groupe" }, GROUPES.map(([v, l]) => h("option", { value: v }, tr(l))));
   groupe.value = GROUPES.some(([v]) => v === p.groupe) ? p.groupe : "autre";
-  const role = h("input", { id: "p-role", value: p.role || "", placeholder: "Ce que fait ce partenaire, en une ligne" });
+  const role = h("input", { id: "p-role", value: p.role || "", placeholder: tr("Ce que fait ce partenaire, en une ligne") });
   const personne = h("input", { id: "p-personne", value: c.personne || "" });
-  const tels = h("textarea", { id: "p-tels", rows: 3, placeholder: "081-000-0000 | Réservations | whatsapp" });
+  const tels = h("textarea", { id: "p-tels", rows: 3, placeholder: tr("081-000-0000 | Réservations | whatsapp") });
   tels.value = (c.telephones || []).map((t) => [t.numero, t.libelle || "", t.whatsapp ? "whatsapp" : ""].join(" | ").replace(/( \| )+$/, "")).join("\n");
   const emails = h("input", { id: "p-emails", value: (c.emails || []).join(", ") });
   const line = h("input", { id: "p-line", value: c.line || "" });
@@ -356,7 +357,7 @@ export function formulairePartenaire(p, apres) {
   commissions.value = (r.commissions || []).join("\n");
   const checkin = h("textarea", { id: "p-checkin", rows: 2 });
   checkin.value = (r.checkin || []).join("\n");
-  const statut = h("input", { id: "p-statut", value: ct.statut || "", placeholder: "Tarifs nets confirmés, contrat à signer…" });
+  const statut = h("input", { id: "p-statut", value: ct.statut || "", placeholder: tr("Tarifs nets confirmés, contrat à signer…") });
   const saison = h("input", { id: "p-saison", value: ct.saison || "" });
   const fin = h("input", { id: "p-fin", type: "date", value: ct.fin || "" });
   const documents = h("input", { id: "p-docs", value: (ct.documents || []).join(", ") });
@@ -383,26 +384,26 @@ export function formulairePartenaire(p, apres) {
         };
         try {
           const res = p.id ? await modifier("partenaires", p.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("partenaires", { ...valeurs, ordre: Math.max(0, ...etat.db.partenaires.map((x) => x.ordre || 0)) + 1 });
-          toast("Partenaire enregistré.");
+          toast(tr("Partenaire enregistré."));
           apres(res);
         } catch (err) {
-          toast(`Enregistrement impossible : ${err.message}`, true);
+          toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
         }
       },
     },
-    h("div", { class: "grille-form" }, champ("Nom", nom), champ("Nom en thaï", nomThai), champ("Catégorie", [categorie, cats]), champ("Groupe", groupe)),
-    champ("Rôle", role),
-    h("h3", null, "Contact"),
-    h("div", { class: "grille-form" }, champ("Personne", personne), champ("E-mails, séparés par des virgules", emails), champ("Line", line), champ("Site", web)),
-    champ("Téléphones, un par ligne", tels, "Numéro, puis libellé, puis « whatsapp », séparés par des barres verticales."),
-    h("div", { class: "grille-form" }, champ("Adresse", adresse), champ("Embarcadère ou point de départ", embarcadere), champ("Licence", licence)),
-    h("h3", null, "Règles"),
-    h("div", { class: "grille-form" }, champ("Annulation", annulation), champ("Paiement du partenaire", paiement), champ("Enfants, une règle par ligne", enfants), champ("Commission et marge, une règle par ligne", commissions), champ("Check-in, une règle par ligne", checkin)),
-    h("h3", null, "Contrat"),
-    h("div", { class: "grille-form" }, champ("Statut", statut), champ("Saison", saison), champ("Fin du contrat", fin, "Un rappel apparaît dans Aujourd'hui trente jours avant."), champ("Documents, séparés par des virgules", documents)),
-    champ("Notes", notes),
-    h("label", { class: "case", for: "p-actif" }, actif, "Partenaire actif"),
-    h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, "Enregistrer"))
+    h("div", { class: "grille-form" }, champ(tr("Nom"), nom), champ(tr("Nom en thaï"), nomThai), champ(tr("Catégorie"), [categorie, cats]), champ(tr("Groupe"), groupe)),
+    champ(tr("Rôle"), role),
+    h("h3", null, tr("Contact")),
+    h("div", { class: "grille-form" }, champ(tr("Personne"), personne), champ(tr("E-mails, séparés par des virgules"), emails), champ(tr("Line"), line), champ(tr("Site"), web)),
+    champ(tr("Téléphones, un par ligne"), tels, tr("Numéro, puis libellé, puis « whatsapp », séparés par des barres verticales.")),
+    h("div", { class: "grille-form" }, champ(tr("Adresse"), adresse), champ(tr("Embarcadère ou point de départ"), embarcadere), champ(tr("Licence"), licence)),
+    h("h3", null, tr("Règles")),
+    h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Paiement du partenaire"), paiement), champ(tr("Enfants, une règle par ligne"), enfants), champ(tr("Commission et marge, une règle par ligne"), commissions), champ(tr("Check-in, une règle par ligne"), checkin)),
+    h("h3", null, tr("Contrat")),
+    h("div", { class: "grille-form" }, champ(tr("Statut"), statut), champ(tr("Saison"), saison), champ(tr("Fin du contrat"), fin, tr("Un rappel apparaît dans Aujourd'hui trente jours avant.")), champ(tr("Documents, séparés par des virgules"), documents)),
+    champ(tr("Notes"), notes),
+    h("label", { class: "case", for: "p-actif" }, actif, tr("Partenaire actif")),
+    h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );
 }
 
@@ -410,16 +411,16 @@ export function formulairePrestation(x, apres) {
   const d = x.details || {};
   const nets = voitNets();
   const n = x.id && nets ? netPrestation(x) : null;
-  const partenaire = h("select", { id: "x-part" }, h("option", { value: "" }, "Sans partenaire (frais de parc, divers)"), etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
+  const partenaire = h("select", { id: "x-part" }, h("option", { value: "" }, tr("Sans partenaire (frais de parc, divers)")), etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
   partenaire.value = x.partenaire_id || "";
-  const famille = h("select", { id: "x-famille" }, FAMILLES.map(([v, l]) => h("option", { value: v }, l)));
+  const famille = h("select", { id: "x-famille" }, FAMILLES.map(([v, l]) => h("option", { value: v }, tr(l))));
   famille.value = x.famille || "excursion";
-  const groupe = h("input", { id: "x-groupe", value: x.groupe || "", list: "x-groupes", placeholder: "Excursions en groupe, Minivan privé…" });
+  const groupe = h("input", { id: "x-groupe", value: x.groupe || "", list: "x-groupes", placeholder: tr("Excursions en groupe, Minivan privé…") });
   const groupes = h("datalist", { id: "x-groupes" }, [...new Set(etat.db.prestations.map((p) => p.groupe).filter(Boolean))].map((g) => h("option", { value: g })));
   const libelle = h("input", { id: "x-lib", value: x.libelle || "", required: true });
-  const libelleEn = h("input", { id: "x-lib-en", value: x.libelle_en || "", placeholder: "Pour les devis en anglais" });
+  const libelleEn = h("input", { id: "x-lib-en", value: x.libelle_en || "", placeholder: tr("Pour les devis en anglais") });
   const prixVente = h("input", { id: "x-prix", type: "number", step: "1", min: "0", value: x.prix_vente ?? "", inputmode: "numeric" });
-  const unite = h("select", { id: "x-unite" }, Object.keys(UNITES).map((k) => h("option", { value: k }, k ? libelleUnite(k) : "sans unité")));
+  const unite = h("select", { id: "x-unite" }, Object.keys(UNITES).map((k) => h("option", { value: k }, k ? libelleUnite(k) : tr("sans unité"))));
   unite.value = x.unite || "pp";
   const net = h("input", { id: "x-net", type: "number", step: "1", min: "0", value: n && n.net != null ? n.net : "", inputmode: "numeric" });
   const netEnfant = h("input", { id: "x-net-enf", type: "number", step: "1", min: "0", value: n && n.net_enfant != null ? n.net_enfant : "", inputmode: "numeric" });
@@ -443,24 +444,24 @@ export function formulairePrestation(x, apres) {
         try {
           const res = x.id ? await modifier("prestations", x.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("prestations", { ...valeurs, ordre: Math.max(0, ...etat.db.prestations.map((p) => p.ordre || 0)) + 1 });
           if (nets && peut("partenaires.ecrire") && (net.value !== "" || netEnfant.value !== "" || n)) await enregistrerLie("prestations_nets", "prestation_id", res.id, { net: num(net.value), net_enfant: num(netEnfant.value), note: n ? n.note || "" : "" });
-          toast("Prestation enregistrée.");
+          toast(tr("Prestation enregistrée."));
           apres(res);
         } catch (err) {
-          toast(`Enregistrement impossible : ${err.message}`, true);
+          toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
         }
       },
     },
-    h("div", { class: "grille-form" }, champ("Partenaire", partenaire), champ("Famille", famille), champ("Groupe", [groupe, groupes])),
-    champ("Libellé", libelle),
-    champ("Libellé en anglais", libelleEn),
-    h("div", { class: "grille-form compacte" }, champ("Prix de vente", prixVente, "Laissez vide quand le prix se négocie à chaque client."), champ("Unité", unite), nets ? champ("Prix net", net, "Ce que le partenaire facture.") : null, nets ? champ("Net enfant", netEnfant) : null),
-    h("div", { class: "grille-form" }, champ("Horaires", horaires), champ("Capacité ou pour qui", capacite)),
-    champ("Inclus", inclus),
-    champ("Conditions", conditions),
-    champ("Remarque interne", note),
-    h("label", { class: "case", for: "x-place" }, surPlace, "À payer sur place par le client (frais de parc), hors total du devis"),
-    h("label", { class: "case", for: "x-actif" }, actif, "Proposé dans les devis et les listes"),
-    h("div", { class: "actions" }, x.id && peut("partenaires.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(`Supprimer « ${x.libelle} » ? Les devis déjà créés ne changent pas.`, "Supprimer", true)) { await supprimer("prestations", x.id); toast("Prestation supprimée."); apres(null); } } }, "Supprimer") : null, h("button", { class: "principal", type: "submit" }, "Enregistrer"))
+    h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champ(tr("Famille"), famille), champ(tr("Groupe"), [groupe, groupes])),
+    champ(tr("Libellé"), libelle),
+    champ(tr("Libellé en anglais"), libelleEn),
+    h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente"), prixVente, tr("Laissez vide quand le prix se négocie à chaque client.")), champ(tr("Unité"), unite), nets ? champ(tr("Prix net"), net, tr("Ce que le partenaire facture.")) : null, nets ? champ(tr("Net enfant"), netEnfant) : null),
+    h("div", { class: "grille-form" }, champ(tr("Horaires"), horaires), champ(tr("Capacité ou pour qui"), capacite)),
+    champ(tr("Inclus"), inclus),
+    champ(tr("Conditions"), conditions),
+    champ(tr("Remarque interne"), note),
+    h("label", { class: "case", for: "x-place" }, surPlace, tr("À payer sur place par le client (frais de parc), hors total du devis")),
+    h("label", { class: "case", for: "x-actif" }, actif, tr("Proposé dans les devis et les listes")),
+    h("div", { class: "actions" }, x.id && peut("partenaires.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(tr("Supprimer « {libelle} » ? Les devis déjà créés ne changent pas.", { libelle: x.libelle }), tr("Supprimer"), true)) { await supprimer("prestations", x.id); toast(tr("Prestation supprimée.")); apres(null); } } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );
 }
 
@@ -481,16 +482,16 @@ function formulairePrive(p, prive, apres) {
         e.preventDefault();
         try {
           await enregistrerLie("partenaires_prives", "partenaire_id", p.id, { banque: { banque: banque.value.trim(), compte: compte.value.trim(), titulaire: titulaire.value.trim(), autre: autre.value.trim() }, paiement: paiement.value.trim() });
-          toast("Enregistré.");
+          toast(tr("Enregistré."));
           apres();
         } catch (err) {
-          toast(`Enregistrement impossible : ${err.message}`, true);
+          toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
         }
       },
     },
-    h("div", { class: "grille-form" }, champ("Banque", banque), champ("Numéro de compte", compte), champ("Titulaire", titulaire)),
-    champ("Autres indications bancaires", autre),
-    champ("Comment on paie ce partenaire", paiement),
-    h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, "Enregistrer"))
+    h("div", { class: "grille-form" }, champ(tr("Banque"), banque), champ(tr("Numéro de compte"), compte), champ(tr("Titulaire"), titulaire)),
+    champ(tr("Autres indications bancaires"), autre),
+    champ(tr("Comment on paie ce partenaire"), paiement),
+    h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );
 }

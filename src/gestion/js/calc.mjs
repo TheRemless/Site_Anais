@@ -1,14 +1,18 @@
 // Logique pure de Gestion Zwald : montants, références, statuts, échéances.
 // Aucune dépendance au navigateur pour pouvoir la tester avec node --test.
 
+import { moisLong, tr, N_ } from "./i18n.mjs";
+
 export const STATUTS = {
-  brouillon: "Brouillon",
-  devis_envoye: "Devis envoyé",
-  accepte: "Accepté, paiement attendu",
-  acompte: "Acompte reçu",
-  solde: "Soldé",
-  annule: "Annulé",
+  brouillon: N_("Brouillon"),
+  devis_envoye: N_("Devis envoyé"),
+  accepte: N_("Accepté, paiement attendu"),
+  acompte: N_("Acompte reçu"),
+  solde: N_("Soldé"),
+  annule: N_("Annulé"),
 };
+// Les clés restent en français dans STATUTS (exports, tests) ; l'écran affiche cette version traduite.
+export const libelleStatut = (code) => tr(STATUTS[code]);
 
 const ACCENTS = /[̀-ͯ]/g;
 const sansAccents = (s) => (s || "").normalize("NFD").replace(ACCENTS, "").trim();
@@ -139,8 +143,9 @@ export function periodeTexte(debut, fin) {
   return `DU ${j1} ${MOIS[m1 - 1]} ${a1} AU ${j2} ${MOIS[m2 - 1]} ${a2}`.toUpperCase();
 }
 
+// Mois dans la langue de l'interface (les bandeaux de documents gardent le français, voir periodeTexte).
 export function nomMois(iso) {
-  return MOIS[Number(iso.slice(5, 7)) - 1];
+  return moisLong(iso);
 }
 
 export function initiales(prenom, nom) {

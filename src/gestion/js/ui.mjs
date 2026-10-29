@@ -1,4 +1,6 @@
+
 // Petits outils d'interface partagés par les écrans.
+import { tr } from "./i18n.mjs";
 
 export function h(tag, attrs, ...enfants) {
   const el = document.createElement(tag);
@@ -65,7 +67,7 @@ export function modal(titre, contenu, { large = false, feuille = false } = {}) {
     h(
       "div",
       { class: ["modal", large && "large", feuille && "feuille"].filter(Boolean).join(" "), role: "dialog", "aria-modal": "true", "aria-label": titre },
-      h("div", { class: "modal-tete" }, h("h2", null, titre), h("button", { class: "bouton-icone lien", type: "button", onclick: fermer, "aria-label": "Fermer", title: "Fermer" }, icone("fermer", 20))),
+      h("div", { class: "modal-tete" }, h("h2", null, titre), h("button", { class: "bouton-icone lien", type: "button", onclick: fermer, "aria-label": tr("Fermer"), title: tr("Fermer") }, icone("fermer", 20))),
       contenu
     )
   );
@@ -76,7 +78,7 @@ export function modal(titre, contenu, { large = false, feuille = false } = {}) {
   return fermer;
 }
 
-export function confirmer(message, libelle = "Confirmer", danger = false) {
+export function confirmer(message, libelle = tr("Confirmer"), danger = false) {
   return new Promise((resolve) => {
     let ferme;
     const fin = (v) => {
@@ -84,7 +86,7 @@ export function confirmer(message, libelle = "Confirmer", danger = false) {
       resolve(v);
     };
     ferme = modal(
-      "Confirmation",
+      tr("Confirmation"),
       h(
         "div",
         { class: "modal-corps" },
@@ -92,7 +94,7 @@ export function confirmer(message, libelle = "Confirmer", danger = false) {
         h(
           "div",
           { class: "actions" },
-          h("button", { type: "button", class: "secondaire", onclick: () => fin(false) }, "Annuler"),
+          h("button", { type: "button", class: "secondaire", onclick: () => fin(false) }, tr("Annuler")),
           h("button", { type: "button", class: danger ? "danger" : "principal", onclick: () => fin(true) }, libelle)
         )
       )
@@ -140,15 +142,15 @@ export const num = (v) => (v === "" || v === null || v === undefined || Number.i
 // Charge une image choisie par l'utilisateur, la réduit et la renvoie en adresse de données (stockée dans les réglages).
 export function chargerImage(fichier, maxPx = 800) {
   return new Promise((resolve, reject) => {
-    if (!fichier || !fichier.type.startsWith("image/")) return reject(new Error("Ce fichier n'est pas une image."));
-    if (fichier.size > 5 * 1024 * 1024) return reject(new Error("Image trop lourde (5 Mo maximum)."));
+    if (!fichier || !fichier.type.startsWith("image/")) return reject(new Error(tr("Ce fichier n'est pas une image.")));
+    if (fichier.size > 5 * 1024 * 1024) return reject(new Error(tr("Image trop lourde (5 Mo maximum).")));
     const lecteur = new FileReader();
-    lecteur.onerror = () => reject(new Error("Lecture de l'image impossible."));
+    lecteur.onerror = () => reject(new Error(tr("Lecture de l'image impossible.")));
     lecteur.onload = () => {
       // Un SVG reste tel quel, il ne pèse presque rien et reste net à l'impression.
       if (fichier.type === "image/svg+xml") return resolve(lecteur.result);
       const img = new Image();
-      img.onerror = () => reject(new Error("Image illisible."));
+      img.onerror = () => reject(new Error(tr("Image illisible.")));
       img.onload = () => {
         const echelle = Math.min(1, maxPx / Math.max(img.width, img.height));
         const canvas = document.createElement("canvas");

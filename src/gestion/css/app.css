@@ -82,6 +82,15 @@ img { max-width: 100%; }
 .compte-texte strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compte-texte span { color: var(--texte-2); }
 .menu-outils { display: flex; gap: 6px; }
+/* Choix de la langue : deux boutons côte à côte, celui de la langue active est teinté. */
+.langues { display: flex; width: 100%; padding: 3px; background: var(--fond); border: 1px solid var(--bord); border-radius: 999px; }
+.langues .langue { flex: 1; min-height: 36px; padding: 0 12px; background: transparent; border: 0; border-radius: 999px; color: var(--texte-2); font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background var(--duree) var(--courbe), color var(--duree) var(--courbe); }
+.langues .langue:hover { background: var(--surface-2); color: var(--texte); }
+.langues .langue[aria-pressed="true"] { background: var(--surface); color: var(--teal-700); font-weight: 700; box-shadow: var(--ombre); }
+.langues .langue:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.connexion > .langues { width: auto; margin: 0 0 24px auto; max-width: 240px; }
+.feuille-pied { flex-wrap: wrap; }
+.feuille-pied .langues { flex: 1 0 100%; }
 .feuille-menu .menu-section-titre { padding-left: 4px; }
 .feuille-menu .lien-ecran { padding: 0 8px; }
 .feuille-pied { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--bord); }
@@ -98,7 +107,8 @@ img { max-width: 100%; }
   .recherche-bouton:hover { background: #fff; border-color: var(--bord-fort); }
   .recherche-bouton kbd { margin-left: auto; }
   .lien-ecran { min-height: 40px; }
-  .menu-bas { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--bord); }
+  .menu-bas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--bord); }
+  .menu-bas .langues { flex: 1 0 100%; margin-bottom: 4px; }
   .menu-bas .compte { flex: 1; }
   .contenu { padding: 32px 40px 48px; }
 }
