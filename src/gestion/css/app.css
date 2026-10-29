@@ -327,6 +327,67 @@ input.couleur { width: 72px; padding: 2px; }
 .carte-droite span { font-size: 0.82rem; color: var(--texte-2); }
 .carte-pied { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin-top: 8px; font-size: 0.85rem; }
 
+/* Partenaires, tarifs, trajets, règles */
+.cartes.grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.cartes.grille .carte { align-items: stretch; }
+.carte-lien.statique { cursor: default; }
+.carte-lien.statique:active { background: inherit; }
+.carte-lien.statique .carte-pied { align-items: center; }
+.carte-lien > details { grid-column: 1 / -1; }
+.tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.75rem; font-weight: 600; vertical-align: 1px; white-space: nowrap; }
+.tag.meilleur { background: #e3f3e8; color: #25653d; }
+.tag.cie { margin-left: 0; background: var(--teal-100); color: var(--teal-700); }
+.net { color: var(--texte-2); }
+.marge { font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
+.marge-basse { color: #8a5200; }
+.marge-nulle { color: var(--danger); }
+.sec { color: var(--texte-2); }
+.inactif td { color: var(--texte-2); }
+.etat-ok { color: #25653d; }
+.etat-attention { color: #8a5200; }
+.etat-fini { color: var(--danger); }
+.fiche.deux-colonnes { gap: 0 24px; align-items: start; }
+.bloc { margin-bottom: 20px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; box-shadow: var(--ombre); }
+.bloc h2 { margin-bottom: 10px; }
+.bloc h3 { margin: 14px 0 6px; font-size: 0.92rem; }
+.bloc p { margin: 0 0 6px; }
+.ligne-info { display: grid; grid-template-columns: minmax(96px, 9rem) minmax(0, 1fr); gap: 2px 12px; padding: 6px 0; border-bottom: 1px solid var(--bord); }
+.ligne-info:last-child { border-bottom: 0; }
+.ligne-libelle { font-size: 0.85rem; font-weight: 600; color: var(--texte-2); }
+.ligne-info p { margin: 0; }
+.liste-regles { margin: 0; padding-left: 18px; }
+.liste-regles li { margin-bottom: 4px; }
+.tels { display: flex; flex-direction: column; gap: 4px; }
+.tel { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.tel .bouton-icone { width: 2rem; height: 2rem; color: var(--texte-2); }
+.guichets { margin-top: 12px; }
+.guichet { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--bord); font-size: 0.92rem; }
+.guichet:last-child { border-bottom: 0; }
+.groupe-tarifs { margin-bottom: 18px; }
+.groupe-tarifs h3 { margin: 0 0 8px; }
+.bloc-tarifs { margin-bottom: 28px; }
+.tableau.tarifs td:nth-child(2), .tableau.trajets td:nth-child(2) { min-width: 220px; }
+.detail-prestation { margin-top: 4px; font-size: 0.88rem; }
+.detail-prestation summary { margin: 2px 0; font-size: 0.85rem; }
+.detail-prestation .ligne-info { padding: 4px 0; }
+.defilant { overflow-x: auto; }
+.tableau.compact th, .tableau.compact td { padding: 6px 10px; font-size: 0.88rem; white-space: nowrap; }
+.pickup { margin-bottom: 14px; }
+.pickup h3 { margin: 0 0 6px; }
+.resume-cies { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.resume-cies .chiffre { border: 1px solid var(--bord); border-radius: 12px; background: var(--surface); }
+.resume-cies .chiffre-valeur { font-size: 1.3rem; }
+.chercheur { align-items: flex-end; justify-content: flex-start; }
+.chercheur .champ { min-width: 160px; flex: 1; }
+.chercheur .champ.inverser { flex: 0 0 auto; min-width: 0; }
+.chercheur .champ.recherche { flex: 2; }
+.grille-regles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.carte-regle { padding: 14px 16px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; }
+.carte-regle h3 { margin: 0 0 6px; font-size: 0.95rem; }
+.carte-regle p { margin: 0 0 6px; font-size: 0.92rem; }
+.regles-trajets { margin-top: 28px; }
+.banque .ligne-info { padding: 4px 0; }
+
 /* Recherche globale */
 .palette-fond { align-items: flex-start; padding: 8vh 16px; }
 .palette { width: 100%; max-width: 640px; background: var(--surface); border-radius: 14px; box-shadow: var(--ombre-forte); overflow: hidden; animation: surgir 0.2s var(--courbe); }

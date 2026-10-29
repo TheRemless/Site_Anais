@@ -4,6 +4,7 @@ import { h } from "../ui.mjs";
 import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois } from "../calc.mjs";
 import { pastille, cartes, voyageTexte } from "./commun.mjs";
 import { mesTaches, listeTaches } from "./taches.mjs";
+import { contratsAEcheance } from "../partenaires-calc.mjs";
 
 const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
 
@@ -32,6 +33,7 @@ export async function tableauDeBord() {
   const deviseDe = Object.fromEntries(rs.map((r) => [r.dossier.id, r.devise]));
   const ceMois = await paiementsPeriode(`${ajd.slice(0, 7)}-01`, `${ajd.slice(0, 7)}-31`);
   const taches = aFaire(rs, ajd, reglages());
+  const contrats = peut("partenaires.lire") ? contratsAEcheance(etat.db.partenaires, ajd) : [];
   const departs = rs
     .filter((r) => r.dossier.date_depart && r.statut !== "annule" && r.dossier.date_depart >= ajd && joursEntre(ajd, r.dossier.date_depart) <= 60)
     .sort((a, b) => (a.dossier.date_depart > b.dossier.date_depart ? 1 : -1));
@@ -70,6 +72,14 @@ export async function tableauDeBord() {
           )
         )
       : h("p", { class: "vide-court" }, "Rien en attente. Les acomptes en retard, devis à relancer et soldes avant départ s'afficheront ici.")),
+    contrats.length
+      ? h(
+          "section",
+          null,
+          h("h2", null, "Contrats de partenaires à renouveler"),
+          h("ul", { class: "taches" }, contrats.map((c) => h("li", null, h("div", null, h("a", { class: "tache-nom", href: `#/partenaire/${c.partenaire.id}` }, c.partenaire.nom)), h("p", null, c.passe ? `Contrat terminé le ${formatDate(c.fin)}` : `Contrat jusqu'au ${formatDate(c.fin)}, à renouveler`), h("a", { class: "bouton secondaire", href: `#/partenaire/${c.partenaire.id}` }, "Ouvrir la fiche"))))
+        )
+      : null,
     h(
       "section",
       null,

@@ -5,7 +5,7 @@ import { resume, setDevise, setMasquerMontants } from "./calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
 
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches"];
+const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets"];
 const CLE_ENTITE = "gestion-zwald-entite";
 
 export const etat = { store: null, brut: null, db: null, session: null, moi: null, entiteId: null };
@@ -255,4 +255,19 @@ export function imprimer(feuille, nomFichier) {
   };
   window.addEventListener("afterprint", fin);
   window.print();
+}
+
+// ---- Partenaires ----------------------------------------------------------------------------------------------
+// Les nets et les coordonnées bancaires sont dans des tables à part : la base ne les envoie qu'avec le droit
+// « partenaires.nets », donc ces listes sont simplement vides pour les autres.
+export const partenaireDe = (id) => (id && etat.db.partenaires.find((p) => p.id === id)) || null;
+export const nomPartenaire = (id) => (partenaireDe(id) || {}).nom || "";
+export const netPrestation = (p) => etat.db.prestations_nets.find((n) => n.prestation_id === p.id) || null;
+export const netTrajet = (t) => etat.db.trajets_nets.find((n) => n.trajet_id === t.id) || null;
+export const privePartenaire = (p) => etat.db.partenaires_prives.find((n) => n.partenaire_id === p.id) || null;
+
+// Enregistre ou crée la ligne liée d'un élément (net d'une prestation, net d'un trajet, données privées d'un partenaire).
+export async function enregistrerLie(table, cle, parentId, valeurs) {
+  const existante = etat.db[table].find((r) => r[cle] === parentId);
+  return existante ? modifier(table, existante.id, valeurs) : inserer(table, { [cle]: parentId, ...valeurs });
 }

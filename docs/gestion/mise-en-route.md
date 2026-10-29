@@ -38,6 +38,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 5. Tâches et pièces jointes : `migration-6-collaboration.sql` (deux tables, un espace de stockage privé `pieces`, le droit « Gérer les tâches » ajouté aux rôles Administrateur et Éditeur). Supabase Storage doit être disponible, ce qui est le cas par défaut.
 6. Facture locale : `migration-7-facture-locale.sql` (autorise le type de document « facture_locale », ne modifie aucune donnée).
 7. Impayés comptés depuis la date de la facture : `migration-8-impayes.sql` (remplace seulement la fonction du tableau analytique, ne modifie aucune donnée).
+8. Base partenaires : `migration-9-partenaires.sql` (six tables, trois droits donnés aux rôles de départ, ne modifie aucune donnée existante).
 
 ## Ajouter une personne (l'assistante par exemple)
 
@@ -88,6 +89,16 @@ Dans un dossier qui a une facture, le bouton **Créer la facture locale** (secti
 Chaque devis ou facture a un champ **Langue du document** dans son en-tête. En anglais, les titres et textes fixes (INVOICE, TOTAL, Billed to…) viennent de **Réglages, Textes des documents** en choisissant « Textes des documents en anglais » dans la liste de langue. Les conditions de paiement ont une version anglaise facultative dans chaque variante (sinon le texte habituel est repris), de même que la mention de TVA. Lors de la création d'une facture locale, l'anglais est proposé par défaut.
 
 Les textes saisis dans le document lui-même (intitulés des lignes, descriptions, titre dans la bande de couleur) ne sont pas traduits automatiquement : ils sont copiés tels quels et se modifient dans l'éditeur.
+
+## Partenaires, tarifs et trajets
+
+Le menu **Partenaires** (droit « Voir les partenaires ») réunit ce que l'agence sait de ses prestataires : fiche de contact avec les numéros cliquables (appel, WhatsApp, copie), règles (annulation, enfants, commissions, check-in, points d'embarquement, heures de pickup), contrat avec sa date de fin, tarifs et trajets. Les écrans **Tarifs** (par famille : excursions, activités, locations, transferts, frais de parc), **Trajets** (départ, arrivée, date du voyage, compagnie, avec les fenêtres saisonnières) et **Règles** (tout ce qu'il faut relire avant un devis) lisent les mêmes données. La recherche globale les trouve aussi.
+
+- **Prix nets, marges et coordonnées bancaires** des partenaires demandent le droit « Voir les prix nets ». Ils sont dans des tables à part (`prestations_nets`, `trajets_nets`, `partenaires_prives`) que la base ne renvoie pas aux autres rôles, et qui ne passent jamais par le journal d'activité. Par défaut, seul le rôle Administrateur l'a.
+- **Modifier** (droit « Modifier les partenaires ») : la fiche, les prestations et les trajets se changent depuis l'outil. Les heures de pickup, les guichets et les points d'embarquement importés ne se modifient pas encore depuis l'écran.
+- Les **tâches** peuvent être liées à un partenaire (section « À régler avec ce partenaire » de sa fiche). Les contrats qui se terminent dans les trente jours apparaissent dans Aujourd'hui.
+- **Reprise de la base partenaires de Secret Travel & Tour** : `node docs/gestion/import-partenaires.mjs <data.json> <entite_id> > partenaires-import.json` produit un fichier à importer dans l'entreprise Secret par Réglages, Sauvegarde, Restaurer ou importer. Le fichier contient les nets et les banques des partenaires : il ne se publie pas et ne se garde pas dans le dépôt. L'identifiant de l'entreprise Secret est `00000000-0000-4000-8000-000000000002` sur une installation faite avec `schema.sql`.
+- La sauvegarde complète d'une entreprise comprend désormais ses partenaires (nets compris si la personne a le droit de les lire).
 
 ## Impayés par ancienneté
 

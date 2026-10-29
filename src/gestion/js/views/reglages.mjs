@@ -6,7 +6,8 @@ import { LIBELLES_FR, LIBELLES_EN, CONTENU_DEFAUT, nouvelleLigne } from "../defa
 import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4 } from "./commun.mjs";
 
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue"];
+// Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
+const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "taches"];
 
 // ---- Exports et sauvegardes (limités à l'entreprise active) -------------------------------------------------
 function csv(lignes) {

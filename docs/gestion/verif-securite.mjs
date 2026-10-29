@@ -147,6 +147,29 @@ let anonRefus = false; try { await db.query("select * from roles"); } catch { an
 await db.exec("reset role;");
 ok(anonRefus, "la clé publique n'a aucun accès aux tables, même celles créées par les migrations");
 
+console.log("Partenaires, tarifs et nets");
+const pSecret = (await essaie(db, u.assistante, `insert into partenaires (entite_id, nom) values ('${E.secret}', 'Longtail') returning id`)).rows[0].id;
+ok(!!pSecret, "un éditeur crée un partenaire chez Secret");
+ok((await essaie(db, u.assistante, `insert into partenaires (entite_id, nom) values ('${E.ztp}', 'intrus')`)).ok === false, "mais pas chez Zwald");
+await db.exec(`insert into partenaires (entite_id, nom) values ('${E.ztp}', 'Partenaire Zwald');`);
+const prest = (await essaie(db, u.assistante, `insert into prestations (entite_id, partenaire_id, famille, libelle, prix_vente) values ('${E.secret}', '${pSecret}', 'excursion', '4 îles', 1000) returning id`)).rows[0].id;
+ok(!!prest, "un éditeur crée une prestation");
+ok((await compte(db, u.assistante, "select 1 from partenaires")) === 1, "il voit les partenaires de Secret, pas ceux de Zwald");
+ok((await essaie(db, u.assistante, `insert into prestations_nets (entite_id, prestation_id, net) values ('${E.secret}', '${prest}', 600)`)).ok === false, "sans le droit « nets », il n'enregistre pas de prix net");
+ok((await essaie(db, u.admin, `insert into prestations_nets (entite_id, prestation_id, net) values ('${E.secret}', '${prest}', 600)`)).ok, "l'administratrice enregistre le net");
+await db.exec(`insert into partenaires_prives (entite_id, partenaire_id, banque) values ('${E.secret}', '${pSecret}', '{"compte":"123"}');`);
+ok((await compte(db, u.assistante, "select 1 from prestations_nets")) === 0 && (await compte(db, u.assistante, "select 1 from partenaires_prives")) === 0, "il ne lit ni les nets ni les coordonnées bancaires");
+ok((await compte(db, u.admin, "select 1 from prestations_nets")) === 1, "l'administratrice lit le net");
+ok((await compte(db, u.comptable, "select 1 from partenaires")) === 0, "un rôle sans le droit « partenaires » ne voit aucun partenaire");
+ok((await compte(db, u.chauffeur, "select 1 from partenaires")) === 0, "un lecteur de Taxi ne voit pas les partenaires de Secret");
+ok((await essaie(db, u.chauffeur, `insert into partenaires (entite_id, nom) values ('${E.taxi}', 'x')`)).ok === false, "un lecteur ne crée pas de partenaire");
+const tr = (await essaie(db, u.assistante, `insert into trajets (entite_id, partenaire_id, de, vers, prix_adulte) values ('${E.secret}', '${pSecret}', 'Koh Lanta', 'Koh Lipe', 1900) returning id`)).rows[0];
+ok(!!tr, "un éditeur crée un trajet");
+ok((await essaie(db, u.assistante, `insert into trajets_nets (entite_id, trajet_id, net_adulte) values ('${E.secret}', '${tr.id}', 1500)`)).ok === false, "mais pas son net");
+ok((await essaie(db, u.assistante, `insert into taches (entite_id, partenaire_id, titre) values ('${E.secret}', '${pSecret}', 'Faire signer le contrat')`)).ok, "une tâche peut être liée à un partenaire");
+const jp = await essaie(db, u.admin, "select table_name from journal where table_name in ('partenaires', 'prestations', 'trajets', 'prestations_nets', 'partenaires_prives')");
+ok(jp.rows.some((r) => r.table_name === "prestations") && !jp.rows.some((r) => r.table_name === "prestations_nets" || r.table_name === "partenaires_prives"), "le journal note les prestations mais jamais les nets ni la banque");
+
 console.log("Administratrice");
 ok((await compte(db, u.admin, "select 1 from clients")) >= 5, "voit les clients de toutes les entreprises");
 ok((await essaie(db, u.admin, `insert into roles (entite_id, nom, permissions) values ('${E.taxi}', 'Dispatch', array['dossiers.lire'])`)).ok, "crée un rôle");
@@ -160,7 +183,7 @@ let refuse = false; try { await db.query("select * from clients"); } catch { ref
 await db.exec("reset role;");
 ok(refuse, "le visiteur anonyme est refusé");
 
-console.log("\n== Chaîne de migrations v1 → v2 → v3 → v4 → v5 → v6 ==");
+console.log("\n== Chaîne de migrations v1 → v2 → v3 → v4 → v5 → v6 → v7 → v8 → v9 ==");
 const v = await base([W + "schema-v1-reference.sql"]);
 const vcompte = (await v.query("insert into auth.users (email) values ('anais@test') returning id")).rows[0].id;
 const vass = (await v.query("insert into auth.users (email) values ('assistante@test') returning id")).rows[0].id;
@@ -178,6 +201,7 @@ await v.exec(lire(W + "migration-5-echelle.sql"));
 await v.exec(lire(W + "migration-6-collaboration.sql"));
 await v.exec(lire(W + "migration-7-facture-locale.sql"));
 await v.exec(lire(W + "migration-8-impayes.sql"));
+await v.exec(lire(W + "migration-9-partenaires.sql"));
 await v.exec("update dossiers set accepte_le = '2026-10-02' where id in (select id from dossiers limit 1)");
 const avant = (await v.query("select total from dossiers_resume order by dossier_id limit 1")).rows[0];
 await v.exec("insert into documents (entite_id, dossier_id, type, date_emission, contenu) select entite_id, id, 'facture_locale', '2026-10-03', '{\"lignes\":[{\"kind\":\"formule\",\"montant\":9999}]}' from dossiers limit 1");
@@ -186,6 +210,8 @@ ok(JSON.stringify(avant) === JSON.stringify(apres), "une facture locale ne chang
 await accorder(v);
 const editeurMig = (await v.query("select permissions from roles where nom = 'Éditeur' limit 1")).rows[0].permissions;
 ok(editeurMig.includes("taches.ecrire"), "après migration, le rôle Éditeur reçoit le droit sur les tâches");
+ok(editeurMig.includes("partenaires.ecrire") && !editeurMig.includes("partenaires.nets"), "après migration, l'Éditeur modifie les partenaires sans voir les nets");
+ok((await v.query("select permissions from roles where nom = 'Lecteur' limit 1")).rows[0].permissions.includes("partenaires.lire"), "le Lecteur voit les partenaires");
 const rolesMig = (await v.query("select e.slug, r.nom from membres m join roles r on r.id = m.role_id join entites e on e.id = m.entite_id where m.user_id = $1 order by e.slug", [vass])).rows;
 ok(rolesMig.map((x) => `${x.slug}:${x.nom}`).join() === "secret:Éditeur,ztp:Administrateur", "les anciens rôles admin et éditeur deviennent des rôles équivalents");
 ok((await v.query("select count(*)::int n from roles")).rows[0].n === 9, "trois rôles de départ par entreprise après migration");

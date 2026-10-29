@@ -1,6 +1,6 @@
-import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer } from "./etat.mjs";
+import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire } from "./etat.mjs";
 import { h, vider, toast, modal, icone } from "./ui.mjs";
-import { STATUTS } from "./calc.mjs";
+import { STATUTS, formatMontant } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { listeDossiers, nouveauDossier } from "./views/dossiers.mjs";
@@ -13,8 +13,17 @@ import { vueAdmin } from "./views/admin.mjs";
 import { vueJournal } from "./views/journal.mjs";
 import { vueAnalyses } from "./views/analyses.mjs";
 import { vueTaches, mesTaches } from "./views/taches.mjs";
+import { listePartenaires, fichePartenaire } from "./views/partenaires.mjs";
+import { vueTarifs } from "./views/tarifs.mjs";
+import { vueTrajets } from "./views/trajets.mjs";
+import { vueRegles } from "./views/regles.mjs";
 
 const ROUTES = [
+  [/^#\/partenaires$/, "partenaires", listePartenaires],
+  [/^#\/partenaire\/([\w-]+)$/, "partenaires", fichePartenaire],
+  [/^#\/tarifs(?:\?.*)?$/, "tarifs", vueTarifs],
+  [/^#\/trajets(?:\?.*)?$/, "trajets", vueTrajets],
+  [/^#\/regles$/, "regles", vueRegles],
   [/^#?\/?$/, "tableau", tableauDeBord],
   [/^#\/dossiers$/, "dossiers", listeDossiers],
   [/^#\/dossiers\/nouveau(?:\?.*)?$/, "dossiers", nouveauDossier],
@@ -126,6 +135,17 @@ function ecrans() {
     { titre: "Opérations", items: [{ href: "#/", libelle: "Aujourd'hui", cle: "tableau", icone: "soleil" }, { href: "#/taches", libelle: "Tâches", cle: "taches", icone: "taches", badge: enRetard }] },
     { titre: "Ventes", items: [{ href: "#/dossiers", libelle: "Dossiers", cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: "Clients", cle: "clients", icone: "clients" }, { href: "#/catalogue", libelle: "Catalogue", cle: "catalogue", icone: "catalogue" }] },
     {
+      titre: "Partenaires",
+      items: si(peut("partenaires.lire"), null).length
+        ? [
+            { href: "#/partenaires", libelle: "Partenaires", cle: "partenaires", icone: "partenaires" },
+            { href: "#/tarifs", libelle: "Tarifs", cle: "tarifs", icone: "tarifs" },
+            { href: "#/trajets", libelle: "Trajets", cle: "trajets", icone: "bateau" },
+            { href: "#/regles", libelle: "Règles", cle: "regles", icone: "regles" },
+          ]
+        : [],
+    },
+    {
       titre: "Administration",
       items: [
         ...si(peut("analytics.voir") && peut("finances.voir"), { href: "#/analyses", libelle: "Analyses", cle: "analyses", icone: "analyses" }),
@@ -136,8 +156,9 @@ function ecrans() {
     },
   ].filter((s) => s.items.length);
 }
-// Les trois écrans qui ont leur onglet sur téléphone, le reste passe par « Plus ».
-const ONGLETS_MOBILES = ["tableau", "dossiers", "clients"];
+// Les trois écrans qui ont leur onglet sur téléphone, le reste passe par « Plus ». Partenaires prend la place de
+// Clients dès que la personne a le droit de les voir.
+const ongletsMobiles = () => ["tableau", "dossiers", peut("partenaires.lire") ? "partenaires" : "clients"];
 const tousEcrans = () => ecrans().flatMap((s) => s.items);
 
 const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": `${e.badge} en retard` }, e.badge) : null);
@@ -184,14 +205,15 @@ function barreHaut() {
 function barreOnglets() {
   const tous = tousEcrans();
   const onglet = (e, contenu) => h("span", { class: "onglet-icone" }, icone(e.icone, 22), contenu);
-  const badgePlus = tous.filter((e) => !ONGLETS_MOBILES.includes(e.cle)).reduce((n, e) => n + (e.badge || 0), 0);
+  const onglets = ongletsMobiles();
+  const badgePlus = tous.filter((e) => !onglets.includes(e.cle)).reduce((n, e) => n + (e.badge || 0), 0);
   return h(
     "nav",
     { class: "barre-onglets", "aria-label": "Navigation principale" },
     h(
       "ul",
       null,
-      ONGLETS_MOBILES.map((cle) => tous.find((e) => e.cle === cle)).filter(Boolean).map((e) => h("li", null, h("a", { href: e.href, "data-cle": e.cle, class: "onglet" }, onglet(e, e.badge ? h("span", { class: "badge" }, e.badge) : null), h("span", null, e.libelle)))),
+      onglets.map((cle) => tous.find((e) => e.cle === cle)).filter(Boolean).map((e) => h("li", null, h("a", { href: e.href, "data-cle": e.cle, class: "onglet" }, onglet(e, e.badge ? h("span", { class: "badge" }, e.badge) : null), h("span", null, e.libelle)))),
       h("li", null, h("button", { type: "button", class: "onglet", "data-cle": "plus", onclick: ouvrirPlus }, onglet({ icone: "plus" }, badgePlus ? h("span", { class: "badge" }, badgePlus) : null), h("span", null, "Plus")))
     )
   );
@@ -199,7 +221,8 @@ function barreOnglets() {
 
 // Feuille « Plus » : les écrans sans onglet, le compte et la déconnexion.
 function ouvrirPlus() {
-  const restants = ecrans().map((s) => ({ ...s, items: s.items.filter((e) => !ONGLETS_MOBILES.includes(e.cle)) })).filter((s) => s.items.length);
+  const onglets = ongletsMobiles();
+  const restants = ecrans().map((s) => ({ ...s, items: s.items.filter((e) => !onglets.includes(e.cle)) })).filter((s) => s.items.length);
   let fermer;
   const apres = () => fermer();
   fermer = modal("Plus", h("div", { class: "feuille-menu" }, sections(restants, apres), h("div", { class: "feuille-pied" }, blocCompte(), h("div", { class: "menu-outils" }, outilsCompte(apres)))), { feuille: true });
@@ -230,6 +253,22 @@ function chercher(q) {
     .filter((c) => correspond(sansAccents(`${nomClient(c)} ${c.telephone} ${c.email} ${c.adresse}`)))
     .slice(0, 6)
     .forEach((c) => out.push({ groupe: "Clients", icone: "clients", titre: nomClient(c), detail: [c.telephone, (c.adresse || "").split("\n").filter(Boolean).pop()].filter(Boolean).join(" · "), href: `#/client/${c.id}` }));
+  if (peut("partenaires.lire")) {
+    etat.db.partenaires
+      .filter((p) => p.actif !== false && correspond(sansAccents(`${p.nom} ${p.nom_thai} ${p.categorie} ${p.role}`)))
+      .slice(0, 5)
+      .forEach((p) => out.push({ groupe: "Partenaires", icone: "partenaires", titre: p.nom, detail: p.role || p.categorie, href: `#/partenaire/${p.id}` }));
+    etat.db.prestations
+      .filter((x) => x.actif !== false && correspond(sansAccents(`${x.libelle} ${x.groupe} ${nomPartenaire(x.partenaire_id)}`)))
+      .slice(0, 6)
+      .forEach((x) => out.push({ groupe: "Tarifs", icone: "tarifs", titre: x.libelle, detail: [nomPartenaire(x.partenaire_id), x.groupe].filter(Boolean).join(" · "), droite: x.prix_vente != null ? formatMontant(x.prix_vente) : "", href: `#/tarifs?famille=${x.famille}&q=${encodeURIComponent(x.libelle)}` }));
+    const paires = new Map();
+    for (const t of etat.db.trajets) if (correspond(sansAccents(`${t.de} ${t.vers} ${nomPartenaire(t.partenaire_id)}`))) paires.set(`${t.de}|${t.vers}`, (paires.get(`${t.de}|${t.vers}`) || 0) + 1);
+    [...paires].slice(0, 5).forEach(([k, n]) => {
+      const [de, vers] = k.split("|");
+      out.push({ groupe: "Trajets", icone: "bateau", titre: `${de} → ${vers}`, detail: `${n} départ${n > 1 ? "s" : ""}`, href: `#/trajets?de=${encodeURIComponent(de)}&vers=${encodeURIComponent(vers)}` });
+    });
+  }
   tousEcrans().filter((e) => correspond(sansAccents(e.libelle))).forEach((e) => out.push(resultatEcran(e)));
   return out;
 }
@@ -368,7 +407,7 @@ async function afficher() {
   // Les pages à deux volets prennent exactement la hauteur restante de la fenêtre, bandeaux éventuels compris.
   document.documentElement.style.setProperty("--decalage", `${Math.round(principal.getBoundingClientRect().top + window.scrollY + 48)}px`);
   // L'onglet « Plus » est marqué quand l'écran ouvert n'a pas d'onglet à lui.
-  for (const a of document.querySelectorAll("nav [data-cle]")) a.toggleAttribute("aria-current", a.dataset.cle === cleRoute || (a.dataset.cle === "plus" && !ONGLETS_MOBILES.includes(cleRoute)));
+  for (const a of document.querySelectorAll("nav [data-cle]")) a.toggleAttribute("aria-current", a.dataset.cle === cleRoute || (a.dataset.cle === "plus" && !ongletsMobiles().includes(cleRoute)));
   if (hash !== derniereVue) window.scrollTo(0, 0);
   derniereVue = hash;
 }

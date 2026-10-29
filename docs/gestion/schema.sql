@@ -203,7 +203,7 @@ create index on journal (entite_id, created_at desc);
 
 -- Qui peut faire quoi, calculé à partir de la connexion en cours (auth.uid()) et de son rôle dans l'entreprise.
 create or replace function toutes_permissions() returns text[] language sql immutable as $$
-  select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]
+  select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir', 'partenaires.lire', 'partenaires.ecrire', 'partenaires.nets']::text[]
 $$;
 
 create or replace function est_super_admin() returns boolean language sql stable security definer set search_path = public as $$
@@ -310,6 +310,9 @@ begin
     when 'roles' then ligne->>'nom'
     when 'taches' then ligne->>'titre'
     when 'pieces_jointes' then ligne->>'nom'
+    when 'partenaires' then ligne->>'nom'
+    when 'prestations' then ligne->>'libelle'
+    when 'trajets' then (ligne->>'de') || ' → ' || (ligne->>'vers')
     when 'membres' then coalesce((select email from profils where user_id = (ligne->>'user_id')::uuid), '')
     else ''
   end;
@@ -503,6 +506,132 @@ create policy "lire les pièces jointes" on pieces_jointes for select to authent
 create policy "ajouter des pièces jointes" on pieces_jointes for insert to authenticated with check (a_permission(entite_id, 'dossiers.ecrire') and exists (select 1 from dossiers d where d.id = pieces_jointes.dossier_id));
 create policy "supprimer des pièces jointes" on pieces_jointes for delete to authenticated using (a_permission(entite_id, 'dossiers.ecrire') and exists (select 1 from dossiers d where d.id = pieces_jointes.dossier_id));
 
+-- Partenaires de l'entreprise (prestataires), leurs prestations tarifées et les trajets des compagnies de bateaux.
+-- Les prix nets et les coordonnées bancaires sont dans des tables à part, lisibles seulement avec le droit « partenaires.nets ».
+create table partenaires (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  nom text not null,
+  nom_thai text not null default '',
+  categorie text not null default '',
+  groupe text not null default '',
+  role text not null default '',
+  contact jsonb not null default '{}',
+  regles jsonb not null default '{}',
+  contrat jsonb not null default '{}',
+  notes text not null default '',
+  ordre integer not null default 0,
+  actif boolean not null default true,
+  cree_par uuid default auth.uid(),
+  modifie_par uuid,
+  unique (id, entite_id)
+);
+create table partenaires_prives (
+  id uuid primary key default gen_random_uuid(),
+  entite_id uuid not null,
+  partenaire_id uuid not null unique,
+  banque jsonb not null default '{}',
+  paiement text not null default '',
+  foreign key (partenaire_id, entite_id) references partenaires (id, entite_id) on delete cascade
+);
+create table prestations (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  partenaire_id uuid,
+  famille text not null check (famille in ('excursion', 'activite', 'location', 'transfert', 'frais', 'autre')),
+  groupe text not null default '',
+  libelle text not null,
+  libelle_en text not null default '',
+  details jsonb not null default '{}',
+  prix_vente numeric(12, 2),
+  unite text not null default '',
+  sur_place boolean not null default false,
+  ordre integer not null default 0,
+  actif boolean not null default true,
+  cree_par uuid default auth.uid(),
+  modifie_par uuid,
+  unique (id, entite_id),
+  foreign key (partenaire_id, entite_id) references partenaires (id, entite_id) on delete cascade
+);
+create table prestations_nets (
+  id uuid primary key default gen_random_uuid(),
+  entite_id uuid not null,
+  prestation_id uuid not null unique,
+  net numeric(12, 2),
+  net_enfant numeric(12, 2),
+  note text not null default '',
+  foreign key (prestation_id, entite_id) references prestations (id, entite_id) on delete cascade
+);
+create table trajets (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  partenaire_id uuid,
+  numero integer,
+  de text not null,
+  vers text not null,
+  mode text not null default '',
+  depart text not null default '',
+  arrivee text not null default '',
+  duree text not null default '',
+  prix_adulte numeric(12, 2),
+  prix_enfant numeric(12, 2),
+  bebe text not null default '',
+  periode text not null default '',
+  fenetres jsonb not null default '[]',
+  actif boolean not null default true,
+  unique (id, entite_id),
+  foreign key (partenaire_id, entite_id) references partenaires (id, entite_id) on delete cascade
+);
+create table trajets_nets (
+  id uuid primary key default gen_random_uuid(),
+  entite_id uuid not null,
+  trajet_id uuid not null unique,
+  net_adulte numeric(12, 2),
+  net_enfant numeric(12, 2),
+  foreign key (trajet_id, entite_id) references trajets (id, entite_id) on delete cascade
+);
+-- Une tâche peut être liée à un partenaire (point à régler avec lui) plutôt qu'à un dossier.
+alter table taches add column partenaire_id uuid references partenaires (id) on delete set null;
+create index on partenaires (entite_id);
+create index on prestations (entite_id);
+create index on prestations (partenaire_id);
+create index on trajets (entite_id);
+create index on trajets (de, vers);
+create index on taches (partenaire_id);
+
+create trigger noter_modification before update on partenaires for each row execute function noter_modification();
+create trigger noter_modification before update on prestations for each row execute function noter_modification();
+-- Les tables de nets ne passent pas par le journal : il recopierait les prix nets, lisibles alors sans le droit.
+create trigger journaliser after insert or update or delete on partenaires for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on prestations for each row execute function journaliser();
+create trigger journaliser after insert or update or delete on trajets for each row execute function journaliser();
+
+alter table partenaires enable row level security;
+alter table partenaires_prives enable row level security;
+alter table prestations enable row level security;
+alter table prestations_nets enable row level security;
+alter table trajets enable row level security;
+alter table trajets_nets enable row level security;
+revoke all on partenaires, partenaires_prives, prestations, prestations_nets, trajets, trajets_nets from anon;
+
+create policy "lire les partenaires" on partenaires for select to authenticated using (a_permission(entite_id, 'partenaires.lire'));
+create policy "modifier les partenaires" on partenaires for all to authenticated using (a_permission(entite_id, 'partenaires.ecrire')) with check (a_permission(entite_id, 'partenaires.ecrire'));
+create policy "lire les prestations" on prestations for select to authenticated using (a_permission(entite_id, 'partenaires.lire'));
+create policy "modifier les prestations" on prestations for all to authenticated using (a_permission(entite_id, 'partenaires.ecrire')) with check (a_permission(entite_id, 'partenaires.ecrire'));
+create policy "lire les trajets" on trajets for select to authenticated using (a_permission(entite_id, 'partenaires.lire'));
+create policy "modifier les trajets" on trajets for all to authenticated using (a_permission(entite_id, 'partenaires.ecrire')) with check (a_permission(entite_id, 'partenaires.ecrire'));
+create policy "lire les nets des prestations" on prestations_nets for select to authenticated using (a_permission(entite_id, 'partenaires.nets'));
+create policy "modifier les nets des prestations" on prestations_nets for all to authenticated using (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'partenaires.ecrire')) with check (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'partenaires.ecrire'));
+create policy "lire les nets des trajets" on trajets_nets for select to authenticated using (a_permission(entite_id, 'partenaires.nets'));
+create policy "modifier les nets des trajets" on trajets_nets for all to authenticated using (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'partenaires.ecrire')) with check (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'partenaires.ecrire'));
+create policy "lire les données privées des partenaires" on partenaires_prives for select to authenticated using (a_permission(entite_id, 'partenaires.nets'));
+create policy "modifier les données privées des partenaires" on partenaires_prives for all to authenticated using (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'partenaires.ecrire')) with check (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'partenaires.ecrire'));
+
 -- Stockage privé des fichiers. Le premier dossier du chemin est l'identifiant de l'entreprise.
 insert into storage.buckets (id, name, public) values ('pieces', 'pieces', false) on conflict (id) do nothing;
 create policy "lire les fichiers" on storage.objects for select to authenticated using (bucket_id = 'pieces' and exists (select 1 from pieces_jointes p where p.chemin = storage.objects.name));
@@ -519,9 +648,9 @@ insert into roles (entite_id, nom, description, portee, permissions, systeme)
 select e.id, v.nom, v.description, v.portee, v.permissions, true
 from entites e
 cross join (values
-  ('Administrateur', 'Tous les droits dans l''entreprise.', 'toute', array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir']::text[]),
-  ('Éditeur', 'Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.', 'toute', array['clients.lire', 'clients.ecrire', 'dossiers.lire', 'dossiers.ecrire', 'documents.ecrire', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire']::text[]),
-  ('Lecteur', 'Consultation seulement, montants visibles.', 'toute', array['clients.lire', 'dossiers.lire', 'finances.voir', 'analytics.voir']::text[])
+  ('Administrateur', 'Tous les droits dans l''entreprise.', 'toute', array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir', 'partenaires.lire', 'partenaires.ecrire', 'partenaires.nets']::text[]),
+  ('Éditeur', 'Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression.', 'toute', array['clients.lire', 'clients.ecrire', 'dossiers.lire', 'dossiers.ecrire', 'documents.ecrire', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'partenaires.lire', 'partenaires.ecrire']::text[]),
+  ('Lecteur', 'Consultation seulement, montants visibles.', 'toute', array['clients.lire', 'dossiers.lire', 'finances.voir', 'analytics.voir', 'partenaires.lire']::text[])
 ) as v (nom, description, portee, permissions);
 
 insert into reglages (entite_id, valeur) values
