@@ -1,6 +1,38 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt } from "../src/gestion/js/operations-calc.mjs";
+import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService } from "../src/gestion/js/operations-calc.mjs";
+
+test("vouchers : modèle d'après la prestation, numéro, statut de paiement", () => {
+  assert.equal(typeVoucher({ trajet_id: "t" }, null), "transfert");
+  assert.equal(typeVoucher({}, { famille: "excursion", groupe: "Excursions en groupe" }), "bateau");
+  assert.equal(typeVoucher({}, { famille: "activite" }), "activite");
+  assert.equal(typeVoucher({}, { famille: "transfert" }), "transfert");
+  assert.equal(typeVoucher({}, { famille: "frais" }), null);
+  assert.equal(typeVoucher({ libelle: "Koh Lanta → Krabi" }, null), "transfert");
+  assert.equal(numeroVoucher("INV-2026-001", 2), "INV-2026-001-2");
+  assert.equal(statutPaiementVoucher({ total: 2400, recu: 2400 }), "paye");
+  assert.equal(statutPaiementVoucher({ total: 2400, recu: 1000 }), "acompte");
+  assert.equal(statutPaiementVoucher({ total: 2400, recu: 0 }), "sur_place");
+});
+
+test("vouchers : privé ou join, frais de parc, type de transfert, hôtel et chambre", () => {
+  assert.equal(estPrive({ groupe: "Privatisation", libelle: "Koh Rok" }, {}), true);
+  assert.equal(estPrive({ groupe: "Excursions en groupe", libelle: "4 îles" }, {}), false);
+  assert.deepEqual(fraisDeParc({ details: { parc: "Frais de parc 200 ฿ par adulte, à payer sur place." } }), { inclus: false, texte: "Frais de parc 200 ฿ par adulte, à payer sur place." });
+  assert.equal(fraisDeParc({ details: { parc: "Park fees included" } }).inclus, true);
+  assert.equal(fraisDeParc(null).inclus, null);
+  assert.equal(typeTransfert({ groupe: "Navette partagée Hatyai" }, {}), "partage");
+  assert.equal(typeTransfert({ groupe: "Taxis de Saladan" }, {}), "taxi");
+  assert.equal(typeTransfert({ groupe: "Minivan privé" }, {}), "minivan");
+  assert.deepEqual(hotelEtChambre({ adresse: "Hotel Sunset, Room 12\nKoh Lanta" }, {}), { hotel: "Hotel Sunset", chambre: "12" });
+  assert.deepEqual(hotelEtChambre({ adresse: "Hotel Palm" }, { lieu_pickup: "Aéroport de Krabi" }), { hotel: "Aéroport de Krabi", chambre: "" });
+});
+
+test("description d'une ligne de facture en mode excursions", () => {
+  assert.equal(descriptionService({ libelle: "Speedboat transfer: Koh Lanta → Koh Lipe", qte: 2, date_service: "2026-11-15" }, "en"), "Speedboat transfer: Koh Lanta → Koh Lipe, 2 passengers, 15 November 2026");
+  assert.equal(descriptionService({ libelle: "4 îles", intro: "(par enfant)", qte: 1, date_service: "2026-12-10" }, "fr"), "4 îles, 1 enfant, 10 décembre 2026");
+  assert.equal(descriptionService({ libelle: "Note", qte: null }), "Note");
+});
 import { MESSAGES_DEFAUT } from "../src/gestion/js/defauts.mjs";
 
 test("réservations depuis un document : une par ligne de partenaire, ligne enfant distinguée, net à part", () => {

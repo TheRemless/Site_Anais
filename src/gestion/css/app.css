@@ -399,6 +399,27 @@ input.couleur { width: 72px; padding: 2px; }
 .message-apercu textarea { min-height: 240px; line-height: 1.5; }
 .message-texte { grid-column: 1 / -1; margin: 6px 0 0; padding: 10px 12px; white-space: pre-wrap; font: inherit; font-size: 0.9rem; line-height: 1.5; background: var(--fond); border-radius: var(--rayon); }
 
+/* Vouchers (mode excursions) : page A4 en anglais, d'après les modèles de Secret Travel & Tour */
+.voucher { width: 210mm; min-height: 297mm; box-sizing: border-box; padding: 12mm 14mm 16mm; background: #fff; color: #111; font-family: "Raleway", system-ui, sans-serif; font-size: 11.5pt; line-height: 1.45; page-break-after: always; }
+.voucher:last-child { page-break-after: auto; }
+.v-tete { display: flex; justify-content: space-between; margin-bottom: 10mm; font-size: 11pt; }
+.v-entete { display: flex; align-items: center; gap: 8mm; margin-bottom: 10mm; }
+.v-logo { width: 48mm; height: 48mm; object-fit: contain; flex: none; }
+.v-societe p { margin: 0; font-size: 12pt; }
+.v-nom { font-size: 17pt; font-weight: 700; }
+.v-par { color: #555; }
+.v-titre { margin: 0 0 6mm; text-align: center; font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 19pt; }
+.voucher section { margin: 0 0 6mm; }
+.voucher h2 { margin: 0 0 1mm; font-size: 13pt; font-weight: 700; letter-spacing: 0.02em; }
+.v-ligne { margin: 0; font-size: 12.5pt; line-height: 1.55; }
+.v-cle { font-weight: 400; }
+.v-espace { display: inline-block; width: 12mm; }
+.v-case { white-space: nowrap; }
+.v-carre { font-size: 13pt; }
+.v-note { margin: 10mm 0 0; font-size: 12.5pt; }
+.v-merci { margin: 10mm 0 0; font-style: italic; font-size: 12.5pt; }
+#zone-impression .voucher { margin: 0 auto; }
+
 /* Sélecteur de prestation dans l'éditeur */
 .choix-liste { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--bord); border-radius: 8px; }
 .choix-groupe { padding: 10px 12px 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texte-2); background: #fafcfc; }

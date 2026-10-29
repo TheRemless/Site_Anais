@@ -156,6 +156,11 @@ export const REGLAGES_NEUTRE = {
   // Écrans propres à l'entreprise : null = automatique (Partenaires dès qu'il y a un partenaire, Réservations et Messages
   // avec Partenaires, Catalogue toujours), true = affiché, false = masqué.
   modules: { partenaires: null, reservations: null, messages: null, catalogue: null },
+  // « sur_mesure » : voyages sur mesure avec devis, acompte et facture (Zwald). « excursions » : excursions et transferts
+  // facturés directement, puis vouchers pour le client et le prestataire (Secret Travel & Tour).
+  fonctionnement: "sur_mesure",
+  // Vouchers (mode excursions) : en-tête et textes fixes, en anglais.
+  voucher: { licence: "", email: "", merci: "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", note_transfert: "Your driver will be waiting for you at the meeting point.\nIf your plan changes, please let us know as soon as possible." },
   emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", contact: "" },
   paiement: { texte: "", nom: "", autres: [] },
   devise: "",
@@ -256,6 +261,8 @@ const REGLAGES_DEMO_TOURS = completerReglages({
   devise: "THB",
   conditions: { acompte_pct: 0, delai_jours: 5, relance_jours: 7, tva_mention: "", cgv_url: "" },
   numerotation: { mode: "sequence", prefixe: "EX" },
+  fonctionnement: "excursions",
+  voucher: { licence: "11/00000", email: "contact@exemple.com" },
   dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Service" },
   listes: { pays: ["Excursion", "Transfert"] },
   libelles: LIBELLES_EN,

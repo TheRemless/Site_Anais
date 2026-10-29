@@ -56,7 +56,10 @@ export function pdf(doc) {
 // « VOYAGE EN THAÏLANDE - DÉCEMBRE 2026 » devient « Thaïlande - décembre 2026 ».
 export function voyageTexte(bandeau, pays) {
   if (!bandeau) return pays || "";
-  const t = bandeau.replace(/^VOYAGE (EN|AU)\s+/i, "").toLowerCase();
+  // Un titre tout en capitales (« VOYAGE EN THAÏLANDE - DÉCEMBRE 2026 ») est remis en minuscules ; un titre déjà
+  // écrit normalement (liste de services en mode excursions) reste tel quel.
+  const sans = bandeau.replace(/^VOYAGE (EN|AU)\s+/i, "");
+  const t = sans === sans.toUpperCase() ? sans.toLowerCase() : sans;
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 

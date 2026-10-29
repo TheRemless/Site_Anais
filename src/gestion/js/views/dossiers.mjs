@@ -1,4 +1,5 @@
-import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe } from "../etat.mjs";
+import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe, modeExcursions } from "../etat.mjs";
+import { nouveauDossierExcursions } from "./nouveau-excursions.mjs";
 import { h, champ, vider, toast } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, nouvelleRef, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
@@ -146,6 +147,7 @@ export function listeDossiers() {
 
 export function nouveauDossier() {
   if (!peut("dossiers.ecrire")) return vide("Accès réservé", "Votre rôle ne permet pas de créer un dossier.", h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Retour aux dossiers"));
+  if (modeExcursions()) return nouveauDossierExcursions();
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const regl = reglages();
   const listePays = [...regl.listes.pays, "Autre"];

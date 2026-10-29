@@ -385,6 +385,29 @@ export function vueReglages() {
           })
         ),
         h("p", { class: "aide" }, "Le menu se met à jour après l'enregistrement. Les droits des rôles s'appliquent toujours en plus.")
+      ),
+      h(
+        "fieldset",
+        null,
+        h("legend", null, "Fonctionnement"),
+        champ(
+          "Façon de travailler",
+          (() => {
+            const sel = h("select", { id: "fonctionnement", onchange: (e) => ((r.fonctionnement = e.target.value), marque()) }, h("option", { value: "sur_mesure" }, "Voyages sur mesure : devis, acompte, facture"), h("option", { value: "excursions" }, "Excursions et transferts : facture directe, puis vouchers"));
+            sel.value = r.fonctionnement === "excursions" ? "excursions" : "sur_mesure";
+            return sel;
+          })(),
+          "En mode excursions, un nouveau dossier crée la facture et les réservations d'un coup, sans devis ni acompte, et chaque réservation a son voucher pour le client et le prestataire."
+        )
+      ),
+      h(
+        "fieldset",
+        null,
+        h("legend", null, "Vouchers (mode excursions)"),
+        h("p", { class: "aide" }, "L'en-tête reprend le nom, le sous-titre, l'adresse et le téléphone de l'onglet Entreprise, ainsi que le logo. Les vouchers sont en anglais."),
+        h("div", { class: "grille-form" }, texte("Numéro de licence TAT", "voucher.licence"), texte("E-mail affiché", "voucher.email", { type: "email" })),
+        texte("Texte de fin", "voucher.merci", { multi: true, rows: 2, aide: "{entreprise} est remplacé par le nom de l'entreprise." }),
+        texte("Note des vouchers de transfert", "voucher.note_transfert", { multi: true, rows: 2 })
       )
     ),
     donnees: h(
