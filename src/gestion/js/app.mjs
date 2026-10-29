@@ -469,8 +469,34 @@ document.addEventListener("keydown", (e) => {
 
 window.addEventListener("hashchange", afficher);
 
+// L'outil reste ouvert des journées entières dans un onglet : quand une nouvelle version est publiée, un bandeau
+// propose de recharger, sinon l'ancien code tourne jusqu'au prochain rechargement complet.
+async function empreinteVersion() {
+  try {
+    const r = await fetch("js/app.mjs", { method: "HEAD", cache: "no-store" });
+    return r.ok ? r.headers.get("etag") || r.headers.get("last-modified") || "" : "";
+  } catch {
+    return "";
+  }
+}
+async function surveillerVersion() {
+  const initiale = await empreinteVersion();
+  if (!initiale) return;
+  let signale = false;
+  const verifier = async () => {
+    if (signale || document.visibilityState !== "visible") return;
+    const actuelle = await empreinteVersion();
+    if (!actuelle || actuelle === initiale) return;
+    signale = true;
+    document.body.append(h("div", { class: "bandeau-version", role: "status" }, h("span", null, "Une nouvelle version de l'outil est disponible."), h("button", { class: "principal petit", type: "button", onclick: () => location.reload() }, "Recharger")));
+  };
+  document.addEventListener("visibilitychange", verifier);
+  setInterval(verifier, 10 * 60 * 1000);
+}
+
 init()
   .then(afficher)
+  .then(surveillerVersion)
   .catch((err) => {
     console.error(err);
     vider(racine).append(h("div", { class: "vide" }, h("h1", null, "Connexion à la base impossible"), h("p", null, err.message), h("button", { class: "principal", onclick: () => location.reload() }, "Réessayer")));
