@@ -115,6 +115,59 @@ export function contratsAEcheance(partenaires, ajd, jours = 30) {
     .sort((a, b) => a.fin.localeCompare(b.fin));
 }
 
+// ---- Lignes de devis depuis une prestation ou un trajet ------------------------------------------------------
+// La ligne garde la prestation, le partenaire, le net et la date du service : le document reste lisible seul
+// (le net n'est visible que par qui lit le document, donc qui a déjà le droit « montants »).
+const nouvelId = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+const texteMontant = (n, devise) => `${Number(n).toLocaleString("fr-CH").replace(/ | |,/g, "'")} ${devise}`;
+
+export function noteSurPlace(x, langue = "", devise = "THB") {
+  const d = x.details || {};
+  const en = langue === "en";
+  const lib = en ? x.libelle_en || x.libelle : x.libelle;
+  const enfant = d.enfant !== undefined && d.enfant !== null && d.enfant !== "";
+  if (en) return `To be paid on site in cash: ${lib}, ${texteMontant(x.prix_vente, devise)} per adult${enfant ? ` and ${texteMontant(d.enfant, devise)} per child` : ""}. Never included by the operators.`;
+  return `À régler sur place, en espèces : ${lib}, ${texteMontant(x.prix_vente, devise)} par adulte${enfant ? ` et ${texteMontant(d.enfant, devise)} par enfant` : ""}. Jamais inclus par les prestataires.`;
+}
+
+export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1, devise = "THB", uid = nouvelId } = {}) {
+  const en = langue === "en";
+  const base = { id: uid(), intro: "", puces: [], unite: null, qte: null, montant: null, pct: null, prestation_id: x.id, partenaire_id: x.partenaire_id || null, date_service: date || null };
+  if (x.sur_place) return { ...base, kind: "texte", libelle: noteSurPlace(x, langue, devise), sur_place: true };
+  return { ...base, kind: "ligne", libelle: en ? x.libelle_en || x.libelle : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: Number(qte) || 1, net: net && net.net !== null && net.net !== undefined ? Number(net.net) : null };
+}
+
+// Un trajet donne une ligne par adulte et, s'il y a des enfants et un prix enfant, une ligne enfant.
+export function lignesDepuisTrajet(t, net, { langue = "", date = "", adultes = 1, enfants = 0, compagnie = "", uid = nouvelId } = {}) {
+  const en = langue === "en";
+  const titre = `${t.mode || (en ? "Boat" : "Bateau")} ${t.de} → ${t.vers}, ${en ? "departure" : "départ"} ${t.depart}${compagnie ? ` ${en ? "with" : "avec"} ${compagnie}` : ""}`;
+  const base = { intro: "", puces: [], montant: null, pct: null, trajet_id: t.id, partenaire_id: t.partenaire_id || null, date_service: date || null };
+  const out = [];
+  if (Number(adultes) > 0) out.push({ ...base, id: uid(), kind: "ligne", libelle: titre, intro: `(${en ? "per adult" : "par adulte"})`, unite: t.prix_adulte, qte: Number(adultes), net: net && net.net_adulte !== null && net.net_adulte !== undefined ? Number(net.net_adulte) : null });
+  if (Number(enfants) > 0 && t.prix_enfant !== null && t.prix_enfant !== undefined) out.push({ ...base, id: uid(), kind: "ligne", libelle: `${titre}, ${en ? "child" : "enfant"}`, intro: `(${en ? "per child" : "par enfant"})`, unite: t.prix_enfant, qte: Number(enfants), net: net && net.net_enfant !== null && net.net_enfant !== undefined ? Number(net.net_enfant) : null });
+  return out;
+}
+
+// Marge d'un document : son total moins les nets connus des lignes de partenaires.
+// `sansNet` compte les lignes à montant dont le net n'est pas connu : la marge affichée est alors un plafond.
+export function margeDocument(contenu, totalDocument) {
+  const lignes = (contenu && contenu.lignes) || [];
+  const brut = (l) => (l.unite !== null && l.unite !== undefined && l.qte !== null && l.qte !== undefined && l.unite !== "" && l.qte !== "" ? Number(l.unite) * Number(l.qte) : l.montant !== null && l.montant !== undefined && l.montant !== "" ? Number(l.montant) : 0);
+  let nets = 0;
+  let sansNet = 0;
+  let avecNet = 0;
+  for (const l of lignes) {
+    if (l.kind === "texte" || l.kind === "remise") continue;
+    if (l.net !== null && l.net !== undefined && (l.prestation_id || l.trajet_id)) {
+      nets += Number(l.net) * (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
+      avecNet++;
+    } else if (brut(l) > 0) sansNet++;
+  }
+  const vente = totalDocument !== undefined ? Number(totalDocument) : lignes.filter((l) => l.kind !== "texte" && l.kind !== "remise").reduce((s, l) => s + brut(l), 0);
+  const marge = Math.round((vente - nets) * 100) / 100;
+  return { vente, nets: Math.round(nets * 100) / 100, marge, pct: vente ? Math.round((marge / vente) * 100) : 0, avecNet, sansNet };
+}
+
 function ajouter(iso, n) {
   const d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) + n * 86400000);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;

@@ -1,6 +1,48 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { marge, trajetDisponible, filtrerTrajets, meilleursNets, resumeParCompagnie, uniteDepuisTexte, contratsAEcheance, correspond } from "../src/gestion/js/partenaires-calc.mjs";
+import { marge, trajetDisponible, filtrerTrajets, meilleursNets, resumeParCompagnie, uniteDepuisTexte, contratsAEcheance, correspond, ligneDepuisPrestation, lignesDepuisTrajet, noteSurPlace, margeDocument } from "../src/gestion/js/partenaires-calc.mjs";
+import { totaux } from "../src/gestion/js/calc.mjs";
+
+test("ligne de devis depuis une prestation : libellé selon la langue, unité, net et date gardés", () => {
+  const x = { id: "x1", partenaire_id: "p1", libelle: "4 îles en longtail, journée", libelle_en: "4 islands by longtail, full day", prix_vente: 1200, unite: "pp", sur_place: false };
+  const fr = ligneDepuisPrestation(x, { net: 800 }, { date: "2026-12-10", qte: 2, uid: () => "L1" });
+  assert.deepEqual(fr, { id: "L1", kind: "ligne", libelle: "4 îles en longtail, journée", intro: "(par personne)", puces: [], unite: 1200, qte: 2, montant: null, pct: null, prestation_id: "x1", partenaire_id: "p1", date_service: "2026-12-10", net: 800 });
+  const en = ligneDepuisPrestation(x, null, { langue: "en", uid: () => "L2" });
+  assert.equal(en.libelle, "4 islands by longtail, full day");
+  assert.equal(en.intro, "(per person)");
+  assert.equal(en.net, null);
+  assert.equal(en.qte, 1);
+  assert.equal(totaux({ lignes: [fr] }).net, 2400);
+});
+
+test("frais de parc : une note hors total, en français ou en anglais", () => {
+  const f = { id: "f1", partenaire_id: null, libelle: "Koh Rok et Koh Ha", prix_vente: 400, unite: "ad", sur_place: true, details: { enfant: 200 } };
+  const l = ligneDepuisPrestation(f, null, { uid: () => "N1" });
+  assert.equal(l.kind, "texte");
+  assert.equal(l.libelle, "À régler sur place, en espèces : Koh Rok et Koh Ha, 400 THB par adulte et 200 THB par enfant. Jamais inclus par les prestataires.");
+  assert.equal(totaux({ lignes: [l] }).net, 0);
+  assert.equal(noteSurPlace(f, "en", "THB"), "To be paid on site in cash: Koh Rok et Koh Ha, 400 THB per adult and 200 THB per child. Never included by the operators.");
+});
+
+test("lignes de devis depuis un trajet : adultes puis enfants, nets séparés", () => {
+  const t = { id: "t1", partenaire_id: "B", de: "Koh Lanta", vers: "Koh Lipe", mode: "Speedboat", depart: "10:30", prix_adulte: 1900, prix_enfant: 1500 };
+  let n = 0;
+  const l = lignesDepuisTrajet(t, { net_adulte: 1500, net_enfant: 1200 }, { date: "2027-01-05", adultes: 2, enfants: 1, compagnie: "Bundhaya", uid: () => `T${++n}` });
+  assert.equal(l.length, 2);
+  assert.equal(l[0].libelle, "Speedboat Koh Lanta → Koh Lipe, départ 10:30 avec Bundhaya");
+  assert.deepEqual([l[0].unite, l[0].qte, l[0].net, l[0].trajet_id, l[0].date_service], [1900, 2, 1500, "t1", "2027-01-05"]);
+  assert.equal(l[1].libelle, "Speedboat Koh Lanta → Koh Lipe, départ 10:30 avec Bundhaya, enfant");
+  assert.deepEqual([l[1].unite, l[1].qte, l[1].net], [1500, 1, 1200]);
+  assert.equal(lignesDepuisTrajet(t, null, { adultes: 0, enfants: 0 }).length, 0);
+  assert.equal(lignesDepuisTrajet(t, null, { langue: "en", adultes: 1 })[0].libelle, "Speedboat Koh Lanta → Koh Lipe, departure 10:30");
+});
+
+test("marge d'un document : total moins les nets connus, lignes sans net comptées", () => {
+  const c = { lignes: [{ kind: "ligne", unite: 1200, qte: 2, net: 800, prestation_id: "x" }, { kind: "ligne", unite: 1900, qte: 1, net: 1500, trajet_id: "t" }, { kind: "ligne", montant: 500 }, { kind: "texte", libelle: "note" }, { kind: "remise", montant: 100 }] };
+  const m = margeDocument(c, totaux(c).net);
+  assert.deepEqual(m, { vente: 4700, nets: 3100, marge: 1600, pct: 34, avecNet: 2, sansNet: 1 });
+  assert.equal(margeDocument({ lignes: [] }).avecNet, 0);
+});
 import { convertir, dateIso } from "../docs/gestion/import-partenaires.mjs";
 
 test("marge : montant et pourcentage, null quand il manque un prix", () => {

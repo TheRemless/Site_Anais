@@ -100,6 +100,10 @@ Le menu **Partenaires** (droit « Voir les partenaires ») réunit ce que l'agen
 - **Reprise de la base partenaires de Secret Travel & Tour** : `node docs/gestion/import-partenaires.mjs <data.json> <entite_id> > partenaires-import.json` produit un fichier à importer dans l'entreprise Secret par Réglages, Sauvegarde, Restaurer ou importer. Le fichier contient les nets et les banques des partenaires : il ne se publie pas et ne se garde pas dans le dépôt. L'identifiant de l'entreprise Secret est `00000000-0000-4000-8000-000000000002` sur une installation faite avec `schema.sql`.
 - La sauvegarde complète d'une entreprise comprend désormais ses partenaires (nets compris si la personne a le droit de les lire).
 
+### Devis et factures reliés aux partenaires
+
+Dans l'éditeur d'un devis ou d'une facture, le bouton **Prestation d'un partenaire** ouvre la base : un onglet Tarifs (par famille, avec quantité) et un onglet Trajets (avec la date du voyage, les adultes et les enfants). La ligne créée reprend le libellé (en anglais si le document l'est et si la prestation a un libellé anglais), le prix de vente comme prix unitaire et l'unité entre parenthèses. Les frais de parc payés sur place deviennent une note sous le tableau, hors total. Chaque ligne garde la prestation ou le trajet, le partenaire, le net et la **date du service** (modifiable sur la ligne) : c'est ce qui servira aux réservations. Sur la fiche du dossier, les rôles qui voient les nets lisent la **marge** (total du document qui fait foi moins les nets connus), avec le nombre de lignes dont le net n'est pas connu.
+
 ## Impayés par ancienneté
 
 Le tableau des analyses ne compte que les dossiers qui ont une facture, et l'ancienneté part toujours de la date d'émission de la facture. Un devis, même accepté, n'entre pas dans les impayés tant qu'il n'est pas facturé.

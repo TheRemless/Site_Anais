@@ -388,6 +388,25 @@ input.couleur { width: 72px; padding: 2px; }
 .regles-trajets { margin-top: 28px; }
 .banque .ligne-info { padding: 4px 0; }
 
+/* Sélecteur de prestation dans l'éditeur */
+.choix-liste { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--bord); border-radius: 8px; }
+.choix-groupe { padding: 10px 12px 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texte-2); background: #fafcfc; }
+.choix { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--bord); }
+.choix:last-child { border-bottom: 0; }
+.choix-texte { display: flex; flex-direction: column; min-width: 0; }
+.choix-texte span { font-size: 0.85rem; color: var(--texte-2); }
+.choix-prix { display: flex; flex-direction: column; align-items: flex-end; text-align: right; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
+.choix-prix span { font-size: 0.82rem; color: var(--texte-2); }
+.choix-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: flex-end; gap: 8px 12px; }
+.choix-qte { display: flex; flex-direction: column; gap: 2px; font-size: 0.78rem; font-weight: 600; color: var(--texte-2); }
+.choix-qte input { width: 76px; min-height: 40px; }
+.choix-vide { padding: 20px 12px; color: var(--texte-2); }
+@media (min-width: 720px) { .choix { grid-template-columns: minmax(0, 1fr) auto auto; } .choix-actions { grid-column: auto; } }
+.ligne-partenaire { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 16px; }
+.ligne-partenaire .champ { max-width: 220px; }
+.ligne-partenaire .aide { margin: 0 0 14px; }
+.modal.large .choix-prestation .grille-form { grid-template-columns: minmax(170px, 220px) minmax(0, 1fr); }
+
 /* Recherche globale */
 .palette-fond { align-items: flex-start; padding: 8vh 16px; }
 .palette { width: 100%; max-width: 640px; background: var(--surface); border-radius: 14px; box-shadow: var(--ombre-forte); overflow: hidden; animation: surgir 0.2s var(--courbe); }
