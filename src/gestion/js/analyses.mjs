@@ -50,8 +50,8 @@ export function analyserLocal({ dossiers, documents, paiements, clients, profils
 
   const tranche = (age) => (age <= 30 ? [1, "0-30"] : age <= 60 ? [2, "31-60"] : age <= 90 ? [3, "61-90"] : [4, "90+"]);
   const impayes = groupe(
-    tot.filter((t) => !t.d.annule && (t.d.accepte_le || t.f) && arrondi(t.total - t.recu) > 0),
-    (t) => [tranche(joursEntre((t.f && t.f.date_emission) || t.d.accepte_le, jour)).join("|"), t.devise],
+    tot.filter((t) => !t.d.annule && t.f && arrondi(t.total - t.recu) > 0),
+    (t) => [tranche(joursEntre(t.f.date_emission, jour)).join("|"), t.devise],
     (t) => t.total - t.recu
   )
     .map((g) => {

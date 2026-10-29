@@ -37,6 +37,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 4. Passage à l'échelle : `migration-5-echelle.sql` (résumé de chaque dossier tenu à jour par la base, recalculé pour les dossiers existants). À exécuter avant de publier la version correspondante de l'outil.
 5. Tâches et pièces jointes : `migration-6-collaboration.sql` (deux tables, un espace de stockage privé `pieces`, le droit « Gérer les tâches » ajouté aux rôles Administrateur et Éditeur). Supabase Storage doit être disponible, ce qui est le cas par défaut.
 6. Facture locale : `migration-7-facture-locale.sql` (autorise le type de document « facture_locale », ne modifie aucune donnée).
+7. Impayés comptés depuis la date de la facture : `migration-8-impayes.sql` (remplace seulement la fonction du tableau analytique, ne modifie aucune donnée).
 
 ## Ajouter une personne (l'assistante par exemple)
 
@@ -81,6 +82,16 @@ Dans un dossier qui a une facture, le bouton **Créer la facture locale** (secti
 - Les informations de paiement se gèrent dans **Réglages, Paiement** : les informations principales, puis « Autres informations de paiement » (nom, texte, QR code facultatif). Chaque devis ou facture choisit les siennes dans son en-tête.
 - Le texte des conditions de paiement se choisit par document (liste « Conditions de paiement » des réglages). Prévoir une variante adaptée à la facture locale.
 - Le titre « Facture locale » est un libellé réglable (Réglages, Textes des documents). S'il est vide, le titre est celui de la facture.
+
+## Documents en anglais
+
+Chaque devis ou facture a un champ **Langue du document** dans son en-tête. En anglais, les titres et textes fixes (INVOICE, TOTAL, Billed to…) viennent de **Réglages, Textes des documents** en choisissant « Textes des documents en anglais » dans la liste de langue. Les conditions de paiement ont une version anglaise facultative dans chaque variante (sinon le texte habituel est repris), de même que la mention de TVA. Lors de la création d'une facture locale, l'anglais est proposé par défaut.
+
+Les textes saisis dans le document lui-même (intitulés des lignes, descriptions, titre dans la bande de couleur) ne sont pas traduits automatiquement : ils sont copiés tels quels et se modifient dans l'éditeur.
+
+## Impayés par ancienneté
+
+Le tableau des analyses ne compte que les dossiers qui ont une facture, et l'ancienneté part toujours de la date d'émission de la facture. Un devis, même accepté, n'entre pas dans les impayés tant qu'il n'est pas facturé.
 
 ## Volumes et performances
 

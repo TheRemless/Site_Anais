@@ -65,7 +65,7 @@ begin
         select case when age <= 30 then 1 when age <= 60 then 2 when age <= 90 then 3 else 4 end as ordre,
                case when age <= 30 then '0-30' when age <= 60 then '31-60' when age <= 90 then '61-90' else '90+' end as tranche,
                devise, round(sum(reste), 2) as montant, count(*)::int as nombre
-        from (select devise, total - recu as reste, jour - coalesce(f_date, accepte_le) as age from tot where not annule and (accepte_le is not null or fc is not null) and total - recu > 0) q
+        from (select devise, total - recu as reste, jour - f_date as age from tot where not annule and fc is not null and total - recu > 0) q
         group by 1, 2, 3) x), '[]'::jsonb),
     'top_clients', coalesce((select jsonb_agg(x) from (
         select trim(coalesce(c.prenom, '') || ' ' || coalesce(c.nom, '')) as client, r.devise, round(sum(r.total), 2) as montant, count(*)::int as nombre

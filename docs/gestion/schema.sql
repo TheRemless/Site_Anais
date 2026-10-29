@@ -389,7 +389,7 @@ begin
         select case when age <= 30 then 1 when age <= 60 then 2 when age <= 90 then 3 else 4 end as ordre,
                case when age <= 30 then '0-30' when age <= 60 then '31-60' when age <= 90 then '61-90' else '90+' end as tranche,
                devise, round(sum(reste), 2) as montant, count(*)::int as nombre
-        from (select devise, total - recu as reste, jour - coalesce(f_date, accepte_le) as age from tot where not annule and (accepte_le is not null or fc is not null) and total - recu > 0) q
+        from (select devise, total - recu as reste, jour - f_date as age from tot where not annule and fc is not null and total - recu > 0) q
         group by 1, 2, 3) x), '[]'::jsonb),
     'top_clients', coalesce((select jsonb_agg(x) from (
         select trim(coalesce(c.prenom, '') || ' ' || coalesce(c.nom, '')) as client, r.devise, round(sum(r.total), 2) as montant, count(*)::int as nombre
@@ -534,7 +534,9 @@ insert into reglages (entite_id, valeur) values
     "contact": "Anaïs Zwald\n+66 95 868 38 46 (WhatsApp)\nzwaldtravelplanner@gmail.com"
   },
   "paiement": {
-    "texte": "Banque: PostFinance (Suisse)\nIBAN: CH89 0900 0000 1249 3929 7\nSwift: POFICHBEXXX\nAnaïs Zwald\n1233 Bernex"
+    "texte": "Banque: PostFinance (Suisse)\nIBAN: CH89 0900 0000 1249 3929 7\nSwift: POFICHBEXXX\nAnaïs Zwald\n1233 Bernex",
+    "nom": "",
+    "autres": []
   },
   "devise": "CHF",
   "conditions": {
@@ -618,6 +620,7 @@ insert into reglages (entite_id, valeur) values
   "libelles": {
     "devis": "DEVIS",
     "facture": "FACTURE",
+    "facture_locale": "",
     "ref_devis": "Devis: réf.",
     "ref_facture": "Facture: réf.",
     "date_emission": "Date d'émission:",
@@ -669,7 +672,9 @@ insert into reglages (entite_id, valeur) values
     "contact": ""
   },
   "paiement": {
-    "texte": ""
+    "texte": "",
+    "nom": "",
+    "autres": []
   },
   "devise": "",
   "conditions": {
@@ -746,6 +751,7 @@ insert into reglages (entite_id, valeur) values
   "libelles": {
     "devis": "DEVIS",
     "facture": "FACTURE",
+    "facture_locale": "",
     "ref_devis": "Devis: réf.",
     "ref_facture": "Facture: réf.",
     "date_emission": "Date d'émission:",
@@ -791,7 +797,9 @@ insert into reglages (entite_id, valeur) values
     "contact": ""
   },
   "paiement": {
-    "texte": ""
+    "texte": "",
+    "nom": "",
+    "autres": []
   },
   "devise": "",
   "conditions": {
@@ -868,6 +876,7 @@ insert into reglages (entite_id, valeur) values
   "libelles": {
     "devis": "DEVIS",
     "facture": "FACTURE",
+    "facture_locale": "",
     "ref_devis": "Devis: réf.",
     "ref_facture": "Facture: réf.",
     "date_emission": "Date d'émission:",

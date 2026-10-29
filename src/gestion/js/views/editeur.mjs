@@ -1,5 +1,5 @@
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument } from "../etat.mjs";
-import { h, champ, toast, num, vider } from "../ui.mjs";
+import { h, champ, toast, num, vider, icone } from "../ui.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
 import { nouvelleLigne, modesPaiement } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
@@ -29,6 +29,14 @@ function editeurVue(id) {
   const nomDoc = locale ? "Facture locale" : estFacture ? "Facture" : "Devis";
   const regl = reglages();
   const devDoc = () => c.devise || regl.devise;
+  // Mise au format actuel des équivalents : à faire avant le premier instantané de l'historique, sinon « Annuler » serait actif dès l'ouverture.
+  const eq = c.equivalents || (c.equivalents = { actif: false });
+  if (!Array.isArray(eq.lignes)) {
+    const ancien = eq.eur !== undefined || eq.thb !== undefined;
+    eq.lignes = ancien ? [{ code: "EUR", taux: eq.eur ?? regl.taux.eur }, { code: "THB", taux: eq.thb ?? regl.taux.thb }] : [];
+    delete eq.eur;
+    delete eq.thb;
+  }
 
   const statut = h("span", { class: "etat-enregistrement", role: "status" }, "Enregistré");
   const cadre = h("div", { class: "apercu-cadre" });
@@ -72,12 +80,13 @@ function editeurVue(id) {
     hist = { pile: [instantanePris()], i: 0 };
     historiques.set(id, hist);
   }
-  const btnAnnuler = h("button", { class: "secondaire petit", type: "button", title: "Annuler (Ctrl+Z)", onclick: () => annuler() }, "Annuler");
-  const btnRetablir = h("button", { class: "secondaire petit", type: "button", title: "Rétablir (Ctrl+Maj+Z ou Ctrl+Y)", onclick: () => retablir() }, "Rétablir");
+  const btnAnnuler = h("button", { class: "secondaire petit bouton-icone", type: "button", title: "Annuler (Ctrl+Z)", "aria-label": "Annuler la dernière modification", onclick: () => annuler() }, icone("annuler"));
+  const btnRetablir = h("button", { class: "secondaire petit bouton-icone", type: "button", title: "Rétablir (Ctrl+Maj+Z ou Ctrl+Y)", "aria-label": "Rétablir la modification annulée", onclick: () => retablir() }, icone("retablir"));
   const majBoutonsHistorique = () => {
     btnAnnuler.disabled = hist.i === 0 && instantanePris() === hist.pile[0];
     btnRetablir.disabled = hist.i >= hist.pile.length - 1;
   };
+  majBoutonsHistorique();
   // Plusieurs frappes d'affilée forment une seule étape.
   let minuteurHistorique = null;
   const instantane = () => {
@@ -155,6 +164,8 @@ function editeurVue(id) {
 
   // ---- Champs généraux --------------------------------------------------------------------------------
   const date = h("input", { id: "d-date", type: "date", value: doc.date_emission, oninput: (e) => ((doc.date_emission = e.target.value), change()) });
+  const selLangue = h("select", { id: "d-langue", onchange: (e) => ((c.langue = e.target.value), change()) }, h("option", { value: "" }, "Langue principale"), h("option", { value: "en" }, "English"));
+  selLangue.value = c.langue === "en" ? "en" : "";
   const modes = modesPaiement(regl);
   const selPaiement = h("select", { id: "d-paiement", onchange: (e) => ((c.paiement = e.target.value), change()) }, modes.map((m) => h("option", { value: m.id }, m.nom)));
   selPaiement.value = modes.some((m) => m.id === (c.paiement || "")) ? c.paiement || "" : "";
@@ -230,13 +241,6 @@ function editeurVue(id) {
   if (!c.tva) tva.checked = false;
 
   // Équivalents indicatifs : une ou plusieurs devises, chacune avec son taux
-  const eq = c.equivalents || (c.equivalents = { actif: false });
-  if (!Array.isArray(eq.lignes)) {
-    const ancien = eq.eur !== undefined || eq.thb !== undefined;
-    eq.lignes = ancien ? [{ code: "EUR", taux: eq.eur ?? regl.taux.eur }, { code: "THB", taux: eq.thb ?? regl.taux.thb }] : [];
-    delete eq.eur;
-    delete eq.thb;
-  }
   const tauxParDefaut = (code) => (devDoc() === regl.devise && regl.taux[code.toLowerCase()] ? regl.taux[code.toLowerCase()] : "");
   const eqLignes = h("div", { class: "eq-lignes" });
   const eqBloc = h("div", { class: "eq-bloc" }, eqLignes);
@@ -506,7 +510,7 @@ function editeurVue(id) {
   const formulaire = h(
     "div",
     { class: "editeur-form" },
-    h("fieldset", null, h("legend", null, "En-tête"), h("div", { class: "grille-form" }, champ("Date d'émission", date), champ("Colonnes", colonnes), champ("Devise du document", deviseSel)), champ("Titre dans la bande de couleur", bandeau), champ("Prestataire du service (facultatif)", prestataire), h("div", { class: "grille-form" }, modes.length > 1 ? champ("Informations de paiement", selPaiement) : null, champ("Numéro affiché (facultatif)", numeroDoc, "Remplace la référence du dossier sur ce document."))),
+    h("fieldset", null, h("legend", null, "En-tête"), h("div", { class: "grille-form" }, champ("Date d'émission", date), champ("Colonnes", colonnes), champ("Devise du document", deviseSel)), champ("Titre dans la bande de couleur", bandeau), champ("Prestataire du service (facultatif)", prestataire), h("div", { class: "grille-form" }, champ("Langue du document", selLangue), modes.length > 1 ? champ("Informations de paiement", selPaiement) : null, champ("Numéro affiché (facultatif)", numeroDoc, "Remplace la référence du dossier sur ce document."))),
     h("fieldset", null, h("legend", null, "Contenu"), listeLignes, h("div", { class: "ajouts" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("bloc", { intro: "comprenant:" })) }, "Ajouter un bloc de formule"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("ligne")) }, "Ajouter une ligne"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("remise")) }, "Ajouter une remise"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("texte")) }, "Ajouter une note")), champ("Catalogue", depuisCatalogue), totalTexte),
     blocRecu,
     h(
