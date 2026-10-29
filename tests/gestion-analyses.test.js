@@ -28,4 +28,6 @@ test("analyserLocal : facturé, encaissé, impayés et conversion sur une pério
   assert.equal(r.top_clients[0].client, "Alice Martin");
   assert.equal(r.top_clients[0].montant, 360);
   assert.ok(!JSON.stringify(r.top_clients).includes("999"), "le dossier annulé n'est pas compté");
+  assert.deepEqual(r.pipeline, [{ devise: "CHF", montant: 500, nombre: 1 }]);
+  assert.deepEqual(r.activite, { dossiers: 1, clients: 1 });
 });

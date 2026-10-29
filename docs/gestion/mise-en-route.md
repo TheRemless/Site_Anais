@@ -38,7 +38,8 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 5. Tâches et pièces jointes : `migration-6-collaboration.sql` (deux tables, un espace de stockage privé `pieces`, le droit « Gérer les tâches » ajouté aux rôles Administrateur et Éditeur). Supabase Storage doit être disponible, ce qui est le cas par défaut.
 6. Facture locale : `migration-7-facture-locale.sql` (autorise le type de document « facture_locale », ne modifie aucune donnée).
 7. Impayés comptés depuis la date de la facture : `migration-8-impayes.sql` (remplace seulement la fonction du tableau analytique, ne modifie aucune donnée).
-8. Base partenaires : `migration-9-partenaires.sql` (six tables, trois droits donnés aux rôles de départ, ne modifie aucune donnée existante).
+8. Vue d'ensemble des sociétés : `migration-9-groupe.sql` (ajoute les devis en attente et l'activité au tableau analytique, ne modifie aucune donnée).
+9. Base partenaires : `migration-10-partenaires.sql` (six tables, trois droits donnés aux rôles de départ, ne modifie aucune donnée existante).
 
 ## Ajouter une personne (l'assistante par exemple)
 
@@ -90,6 +91,13 @@ Chaque devis ou facture a un champ **Langue du document** dans son en-tête. En 
 
 Les textes saisis dans le document lui-même (intitulés des lignes, descriptions, titre dans la bande de couleur) ne sont pas traduits automatiquement : ils sont copiés tels quels et se modifient dans l'éditeur.
 
+## Vue d'ensemble des sociétés
+
+Menu **Vue d'ensemble** (raccourci `g` puis `v`), visible dès qu'une personne a les droits « analyses » et « montants » dans au moins deux sociétés. L'administratrice générale y voit toutes les sociétés, l'assistante seulement les siennes : chaque société est calculée par la base avec les droits de la personne connectée.
+
+- Une période au choix et une devise de consolidation (« Tout ramener en »). Les montants de chaque société sont convertis à titre indicatif avec les taux des réglages ; ils se corrigent en bas de page (le taux saisi reste dans le navigateur). Une devise sans taux est signalée et n'entre pas dans les totaux, rien n'est deviné.
+- Chiffres du groupe : facturé et encaissé avec l'évolution par rapport à la période précédente de même longueur, impayés en cours, devis en attente (envoyés, ni acceptés ni annulés ni facturés : le chiffre d'affaires possible), taux d'acceptation des devis, facture moyenne, dossiers et clients.
+- Tableau par société avec la part de chacune dans le facturé, graphique par mois empilé par société (facturé ou encaissé), meilleurs clients et destinations toutes sociétés confondues, export Excel.
 ## Partenaires, tarifs et trajets
 
 Le menu **Partenaires** (droit « Voir les partenaires ») réunit ce que l'agence sait de ses prestataires : fiche de contact avec les numéros cliquables (appel, WhatsApp, copie), règles (annulation, enfants, commissions, check-in, points d'embarquement, heures de pickup), contrat avec sa date de fin, tarifs et trajets. Les écrans **Tarifs** (par famille : excursions, activités, locations, transferts, frais de parc), **Trajets** (départ, arrivée, date du voyage, compagnie, avec les fenêtres saisonnières) et **Règles** (tout ce qu'il faut relire avant un devis) lisent les mêmes données. La recherche globale les trouve aussi.

@@ -6,14 +6,14 @@ import { aujourdhui, ajouterJours, formatNombre, formatMontant, nomMois } from "
 import { vide, telecharger } from "./commun.mjs";
 
 const NS = "http://www.w3.org/2000/svg";
-const s = (tag, attrs = {}, ...enfants) => {
+export const s = (tag, attrs = {}, ...enfants) => {
   const el = document.createElementNS(NS, tag);
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
   el.append(...enfants.flat().filter((x) => x !== null && x !== undefined));
   return el;
 };
 
-const periodes = {
+export const periodes = {
   mois: ["Ce mois-ci", (j) => [`${j.slice(0, 7)}-01`, j]],
   trois: ["3 derniers mois", (j) => [debutMois(j, -2), j]],
   douze: ["12 derniers mois", (j) => [debutMois(j, -11), j]],
@@ -22,13 +22,13 @@ const periodes = {
   perso: ["Dates au choix", null],
 };
 
-function debutMois(jour, decalage) {
+export function debutMois(jour, decalage) {
   const d = new Date(`${jour.slice(0, 7)}-01T12:00:00Z`);
   d.setUTCMonth(d.getUTCMonth() + decalage);
   return d.toISOString().slice(0, 10);
 }
 
-function listeMois(du, au) {
+export function listeMois(du, au) {
   const m = [];
   const d = new Date(`${du.slice(0, 7)}-01T12:00:00Z`);
   while (d.toISOString().slice(0, 7) <= au.slice(0, 7)) {
@@ -38,7 +38,12 @@ function listeMois(du, au) {
   return m;
 }
 
-const libelleMois = (m) => `${nomMois(`${m}-01`).slice(0, 4)}. ${m.slice(2, 4)}`.replace("mars.", "mars").replace("mai.", "mai").replace("juin.", "juin");
+// « janv. 26 », « mars 26 », « juil. 26 » : abréviation courante du mois, les mois courts restent entiers.
+export const libelleMois = (m) => {
+  const nom = nomMois(`${m}-01`);
+  const court = nom.length <= 4 ? nom : `${nom.slice(0, nom.startsWith("juil") ? 4 : 3)}.`;
+  return `${court} ${m.slice(2, 4)}`;
+};
 
 // Graphique en barres groupées : facturé et encaissé par mois.
 function graphiqueMensuel(mois, facture, encaisse, devise) {
@@ -69,7 +74,7 @@ function graphiqueMensuel(mois, facture, encaisse, devise) {
   );
 }
 
-function barresHorizontales(lignes, devise) {
+export function barresHorizontales(lignes, devise) {
   const max = Math.max(1, ...lignes.map((l) => l.montant));
   return h(
     "table",

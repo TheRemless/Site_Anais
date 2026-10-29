@@ -1,5 +1,5 @@
--- Gestion : migration 9, base partenaires (partenaires, prestations, trajets, prix nets à part).
--- À exécuter une seule fois sur une base déjà migrée avec migration-8-impayes.sql, AVANT de publier la nouvelle version de l'outil.
+-- Gestion : migration 10, base partenaires (partenaires, prestations, trajets, prix nets à part).
+-- À exécuter une seule fois sur une base déjà migrée avec migration-9-groupe.sql, AVANT de publier la nouvelle version de l'outil.
 -- Ne modifie aucune donnée existante : ajoute des tables, trois droits et les donne aux rôles de départ.
 
 begin;

@@ -83,5 +83,14 @@ export function analyserLocal({ dossiers, documents, paiements, clients, profils
       classer(groupe(retenus, (t) => [nomPersonne(profils.find((p) => p.user_id === t.d.responsable_id)) || "Sans responsable", t.devise], (t) => t.total)),
       "responsable"
     ),
+    // Devis en attente au jour donné : émis, ni acceptés, ni annulés, ni facturés.
+    pipeline: groupe(
+      tot.filter((t) => !t.d.annule && !t.d.accepte_le && !t.f && t.v && t.v.date_emission <= jour),
+      (t) => [t.devise],
+      (t) => t.total
+    )
+      .sort((a, b) => a.cle[0].localeCompare(b.cle[0]))
+      .map((g) => ({ devise: g.cle[0], montant: arrondi(g.montant), nombre: g.nombre })),
+    activite: { dossiers: retenus.length, clients: new Set(retenus.map((t) => t.d.client_id)).size },
   };
 }
