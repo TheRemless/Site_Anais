@@ -100,7 +100,7 @@ export function formulaireReservation(r, apres) {
   const details = () => ({ ...dt, chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim() });
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
   const prestation = r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null;
-  const type = typeVoucher(r, prestation);
+  const type = typeVoucher(r, prestation, partenaireDe(r.partenaire_id));
   const CHAMPS = {
     chambre: () => champ("Chambre", chambre, "Sinon celle de l'adresse du client."),
     drop_off: () => champ("Drop-off", dropOff),
