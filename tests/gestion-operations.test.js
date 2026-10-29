@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin } from "../src/gestion/js/operations-calc.mjs";
+import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage } from "../src/gestion/js/operations-calc.mjs";
 
 test("vouchers : modèle d'après la prestation, numéro, statut de paiement", () => {
   assert.equal(typeVoucher({ trajet_id: "t" }, null), "billet", "un trajet de compagnie est un billet de bateau");
@@ -166,4 +166,16 @@ test("voucher : une réservation à la main chez une compagnie de bateaux est un
   assert.equal(typeVoucher({ libelle: "Koh Lanta → Koh Lipe" }, null, { nom: "Bundhaya Speed Boat", regles: { points_embarquement: [{ lieu: "Koh Lanta", ou: "Saladan Pier" }] } }), "billet");
   assert.equal(typeVoucher({ libelle: "Koh Lanta → Koh Lipe" }, null, { nom: "Satun Pakbara Speed Boat Club", regles: {} }), "billet");
   assert.equal(typeVoucher({ libelle: "Krabi Airport → Koh Lanta" }, null, { nom: "VIP Taxi Lanta", regles: {} }), "transfert");
+});
+
+test("messages : le destinataire est enregistré ou déduit de l'usage, et chaque message de départ en a un", () => {
+  assert.equal(destinataireMessage({ cle: "partenaire" }), "partenaire");
+  assert.equal(destinataireMessage({ cle: "confirmation" }), "client");
+  assert.equal(destinataireMessage({ pour: "partenaire", cle: "confirmation" }), "partenaire");
+  for (const m of MESSAGES_DEFAUT) {
+    assert.ok(["client", "partenaire"].includes(m.pour), `${m.id} a un destinataire`);
+    assert.ok(m.pour === "client" ? ["fr", "en"].includes(m.langue) : ["en", "th"].includes(m.langue), `${m.id} : langue selon le destinataire`);
+    assert.ok(!/\{client\}/.test(m.corps) || m.pour === "partenaire", `${m.id} : {client} ne sert qu'au partenaire`);
+  }
+  assert.equal(MESSAGES_DEFAUT.filter((m) => m.pour === "partenaire" && m.langue === "en").length, 4);
 });

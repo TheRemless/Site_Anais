@@ -2,7 +2,7 @@
 import { reglages, estAdmin, enregistrerReglages } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone } from "../ui.mjs";
 import { uid, MESSAGES_DEFAUT } from "../defauts.mjs";
-import { remplirGabarit } from "../operations-calc.mjs";
+import { remplirGabarit, destinataireMessage } from "../operations-calc.mjs";
 import { chiffres } from "./partenaires.mjs";
 
 export const LANGUES = [
@@ -11,6 +11,10 @@ export const LANGUES = [
   ["th", "ไทย"],
 ];
 export const messagesTypes = () => (reglages().messages || []).filter((m) => m && m.corps);
+export const DESTINATAIRES = [
+  ["client", "Au client"],
+  ["partenaire", "Au partenaire"],
+];
 const nomLangue = (code) => (LANGUES.find(([c]) => c === code) || [code, code])[1];
 
 async function copier(texte) {
@@ -22,10 +26,11 @@ async function copier(texte) {
   }
 }
 
-// `vars` : valeurs des variables ; `cle` : gabarit proposé d'abord ; `telephone` : destinataire WhatsApp.
-export function ouvrirMessage({ titre = "Copier un message", vars = {}, cle = "", langue = "fr", telephone = "" }) {
-  const tous = messagesTypes();
-  if (!tous.length) return toast("Aucun message type. Créez-en dans l'écran Messages.", true);
+// `vars` : valeurs des variables ; `cle` : gabarit proposé d'abord ; `telephone` : destinataire WhatsApp ;
+// `pour` : « client » ou « partenaire », seuls les messages de ce destinataire sont proposés.
+export function ouvrirMessage({ titre = "Copier un message", vars = {}, cle = "", langue = "fr", telephone = "", pour = "client" }) {
+  const tous = messagesTypes().filter((m) => destinataireMessage(m) === pour);
+  if (!tous.length) return toast(`Aucun message type ${pour === "partenaire" ? "pour les partenaires" : "pour les clients"}. Créez-en dans l'écran Messages.`, true);
   const texte = h("textarea", { id: "msg-texte", rows: 11 });
   const selLangue = h("select", { id: "msg-langue", onchange: () => remplirGabarits() }, LANGUES.filter(([c]) => tous.some((m) => m.langue === c)).map(([c, l]) => h("option", { value: c }, l)));
   selLangue.value = tous.some((m) => m.langue === langue) ? langue : selLangue.firstChild.value;
@@ -64,7 +69,9 @@ export function ouvrirMessage({ titre = "Copier un message", vars = {}, cle = ""
 // ---- Écran de gestion des messages types -----------------------------------------------------------------
 function formulaireMessage(m, apres) {
   const titre = h("input", { id: "m-titre", value: m.titre || "", required: true });
-  const cle = h("input", { id: "m-cle", value: m.cle || "", list: "m-cles", placeholder: "confirmation, rappel, avis, meteo, partenaire" });
+  const pour = h("select", { id: "m-pour" }, DESTINATAIRES.map(([c, l]) => h("option", { value: c }, l)));
+  pour.value = destinataireMessage(m);
+  const cle = h("input", { id: "m-cle", value: m.cle || "", list: "m-cles", placeholder: "confirmation, rappel, avis, meteo, partenaire, relance, modification, annulation" });
   const cles = h("datalist", { id: "m-cles" }, [...new Set(messagesTypes().map((x) => x.cle).filter(Boolean))].map((c) => h("option", { value: c })));
   const langue = h("select", { id: "m-langue" }, LANGUES.map(([c, l]) => h("option", { value: c }, l)));
   langue.value = m.langue || "fr";
@@ -77,7 +84,7 @@ function formulaireMessage(m, apres) {
       onsubmit: async (e) => {
         e.preventDefault();
         const liste = messagesTypes().map((x) => ({ ...x }));
-        const valeurs = { id: m.id || uid(), titre: titre.value.trim(), cle: cle.value.trim(), langue: langue.value, corps: corps.value.trim() };
+        const valeurs = { id: m.id || uid(), pour: pour.value, titre: titre.value.trim(), cle: cle.value.trim(), langue: langue.value, corps: corps.value.trim() };
         const i = liste.findIndex((x) => x.id === valeurs.id);
         if (i >= 0) liste[i] = valeurs;
         else liste.push(valeurs);
@@ -90,7 +97,7 @@ function formulaireMessage(m, apres) {
         }
       },
     },
-    h("div", { class: "grille-form" }, champ("Titre", titre), champ("Usage", [cle, cles], "Le même usage dans plusieurs langues : le bon est proposé selon la langue."), champ("Langue", langue)),
+    h("div", { class: "grille-form" }, champ("Destinataire", pour, "Proposé depuis le bouton Client ou le bouton Partenaire d'une réservation."), champ("Titre", titre), champ("Usage", [cle, cles], "Le même usage dans plusieurs langues : le bon est proposé selon la langue."), champ("Langue", langue)),
     champ("Texte", corps, "Variables : {client} {prenom} {date} {hotel} {heure} {a_heure} {personnes} {prestation} {partenaire} {reference} {entreprise} {telephone}"),
     h("div", { class: "actions" }, m.id ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(`Supprimer « ${m.titre} » ?`, "Supprimer", true)) { await enregistrerReglages({ ...reglages(), messages: messagesTypes().filter((x) => x.id !== m.id) }); apres(); } } }, "Supprimer") : null, h("button", { class: "principal", type: "submit" }, "Enregistrer"))
   );
@@ -104,18 +111,18 @@ export function vueMessages() {
   return h(
     "div",
     { "data-titre": "Messages" },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, "Messages types"), h("p", { class: "sous" }, "Confirmation, rappel de la veille, demande d'avis, météo, demande au partenaire. À copier depuis une réservation ou un dossier.")), admin ? h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: async () => { if (await confirmer("Remettre les messages de départ ? Vos modifications seront perdues.", "Remettre")) { await enregistrerReglages({ ...reglages(), messages: structuredClone(MESSAGES_DEFAUT) }); rafraichir(); } } }, "Remettre ceux de départ"), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, "Nouveau message")) : null),
-    LANGUES.map(([code, nom]) => {
-      const du = tous.filter((m) => m.langue === code);
+    h("div", { class: "entete" }, h("div", null, h("h1", null, "Messages types"), h("p", { class: "sous" }, "Au client : confirmation, rappel de la veille, avis, météo. Au partenaire : demande, relance, modification, annulation. À copier depuis une réservation.")), admin ? h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: async () => { if (await confirmer("Remettre les messages de départ ? Vos modifications seront perdues.", "Remettre")) { await enregistrerReglages({ ...reglages(), messages: structuredClone(MESSAGES_DEFAUT) }); rafraichir(); } } }, "Remettre ceux de départ"), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, "Nouveau message")) : null),
+    DESTINATAIRES.flatMap(([pour, nomPour]) => LANGUES.map(([code, nom]) => {
+      const du = tous.filter((m) => destinataireMessage(m) === pour && m.langue === code);
       if (!du.length) return null;
       return h(
         "section",
         null,
-        h("h2", null, nom),
+        h("h2", null, `${nomPour}, ${{ fr: "en français", en: "en anglais", th: "en thaï" }[code] || nom}`),
         code === "th" ? h("p", { class: "aide" }, "Propositions à faire relire par une personne qui lit le thaï avant usage réel.") : null,
         h("ul", { class: "cartes" }, du.map((m) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, m.titre, h("span", { class: "tag" }, m.cle)), h("pre", { class: "message-texte" }, m.corps), h("span", { class: "carte-pied" }, h("span"), h("span", { class: "carte-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => copier(m.corps) }, "Copier"), admin ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrir(m) }, "Modifier") : null))))))
       );
-    }),
+    })),
     !tous.length ? h("p", { class: "vide-court" }, "Aucun message type.") : null,
     h("p", { class: "aide" }, `Langue${tous.length > 1 ? "s" : ""} : ${[...new Set(tous.map((m) => nomLangue(m.langue)))].join(", ")}. ${admin ? "" : "Seuls les administrateurs modifient les messages."}`)
   );

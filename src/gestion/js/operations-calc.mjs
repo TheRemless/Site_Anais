@@ -68,13 +68,17 @@ export function remplirGabarit(texte, vars = {}) {
 }
 
 // Les variables d'un message à partir d'une réservation ou d'un dossier.
+// Destinataire d'un message type : enregistré, sinon déduit de l'usage (les anciens messages n'avaient pas le champ).
+export const destinataireMessage = (m) => (m && m.pour) || (m && /partenaire|relance|modification|annulation|partner/i.test(m.cle || "") ? "partenaire" : "client");
+
 export function variablesMessage({ reservation = {}, client = {}, dossier = {}, partenaire = {}, entreprise = {}, langue = "fr" } = {}) {
   const nomClient = [client.prenom, client.nom].filter(Boolean).join(" ");
   return {
     client: nomClient,
     prenom: client.prenom || nomClient,
     date: dateTexte(reservation.date_service || dossier.date_depart, langue),
-    hotel: reservation.lieu_pickup || (client.adresse || "").split("\n")[0] || "",
+    // Le nom de l'hôtel sans le numéro de chambre : le partenaire n'en a pas besoin, le client le connaît.
+    hotel: hotelEtChambre(client, reservation).hotel,
     heure: reservation.heure_pickup || "",
     a_heure: reservation.heure_pickup ? `${langue === "en" ? " at " : langue === "th" ? " เวลา " : " à "}${reservation.heure_pickup}` : "",
     personnes: personnesTexte(reservation.personnes, langue),
