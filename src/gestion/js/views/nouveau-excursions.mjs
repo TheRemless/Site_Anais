@@ -31,13 +31,20 @@ export function nouveauDossierExcursions() {
   function dessiner() {
     vider(liste);
     if (!lignes.length) liste.append(h("p", { class: "vide-court" }, "Aucun service pour l'instant. Ajoutez une excursion, un transfert ou une activité de la base partenaires."));
+    // La description sur la facture se recalcule (prestation, personnes, date) tant qu'elle n'a pas été corrigée à la main.
+    const description = (l) => (l.description_fixe ? l.description : descriptionService({ ...l, libelle: l.titre || l.libelle }, langue));
     lignes.forEach((l, i) =>
       liste.append(
         h(
           "div",
           { class: "carte-ligne" },
-          h("div", { class: "carte-ligne-tete" }, h("strong", null, l.kind === "texte" ? "Note" : descriptionService(l, langue)), h("span", { class: "calc" }, l.kind === "texte" ? "" : formatMontant((Number(l.unite) || 0) * (Number(l.qte) || 0))), h("span", { class: "outils" }, h("button", { class: "lien danger-texte", type: "button", onclick: () => (lignes.splice(i, 1), dessiner()) }, "Retirer"))),
-          l.kind === "texte" ? h("p", { class: "aide" }, l.libelle) : h("div", { class: "grille-form compacte" }, champ("Date du service", h("input", { id: `s${i}-d`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), dessiner()) })), champ("Quantité", h("input", { id: `s${i}-q`, type: "number", min: "1", step: "1", value: l.qte, onchange: (e) => ((l.qte = Number(e.target.value) || 1), dessiner()) })), champ(`Prix (${regl.devise})`, h("input", { id: `s${i}-p`, type: "number", min: "0", step: "1", value: l.unite ?? "", onchange: (e) => ((l.unite = e.target.value === "" ? null : Number(e.target.value)), dessiner()) })), l.partenaire_id ? h("p", { class: "aide" }, nomPartenaire(l.partenaire_id)) : null)
+          h("div", { class: "carte-ligne-tete" }, h("strong", null, l.kind === "texte" ? "Note" : l.titre || l.libelle), h("span", { class: "calc" }, l.kind === "texte" ? "" : formatMontant((Number(l.unite) || 0) * (Number(l.qte) || 0))), h("span", { class: "outils" }, h("button", { class: "lien danger-texte", type: "button", onclick: () => (lignes.splice(i, 1), dessiner()) }, "Retirer"))),
+          l.kind === "texte"
+            ? h("p", { class: "aide" }, l.libelle)
+            : [
+                h("div", { class: "grille-form compacte" }, champ("Date du service", h("input", { id: `s${i}-d`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), dessiner()) })), champ("Quantité", h("input", { id: `s${i}-q`, type: "number", min: "1", step: "1", value: l.qte, onchange: (e) => ((l.qte = Number(e.target.value) || 1), dessiner()) })), champ(`Prix (${regl.devise})`, h("input", { id: `s${i}-p`, type: "number", min: "0", step: "1", value: l.unite ?? "", onchange: (e) => ((l.unite = e.target.value === "" ? null : Number(e.target.value)), dessiner()) }))),
+                champ("Description sur la facture", h("input", { id: `s${i}-desc`, value: description(l), oninput: (e) => ((l.description = e.target.value), (l.description_fixe = true)) }), [l.partenaire_id ? nomPartenaire(l.partenaire_id) : "", "Texte vu par le client, en anglais. Modifiable."].filter(Boolean).join(" · ")),
+              ]
         )
       )
     );
@@ -72,7 +79,7 @@ export function nouveauDossierExcursions() {
       const services = lignes.filter((l) => l.kind !== "texte");
       const partenaires = [...new Set(services.map((l) => nomPartenaire(l.partenaire_id)).filter(Boolean))];
       const d = await inserer("dossiers", { ref: ref.value.trim(), client_id: clientId, pays: "", bandeau: services.map((l) => l.libelle).join(" · ").slice(0, 120), date_depart: dates[0] || null, date_retour: dates.length > 1 ? dates[dates.length - 1] : null, accepte_le: aujourdhui(), annule: false, notes: notes.value.trim() });
-      const contenu = { ...CONTENU_DEFAUT(), bandeau: "", colonnes: "total", langue, prestataire: partenaires.join(", "), variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: lignes.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, libelle: l.kind === "texte" ? l.libelle : descriptionService(l, langue), intro: "" })) };
+      const contenu = { ...CONTENU_DEFAUT(), bandeau: "", colonnes: "total", langue, prestataire: partenaires.join(", "), variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: lignes.map(({ description, description_fixe, ...l }) => ({ ...l, titre: l.kind === "texte" ? undefined : l.titre, libelle: l.kind === "texte" ? l.libelle : (description_fixe && description.trim()) || descriptionService({ ...l, libelle: l.titre }, langue), intro: "" })) };
       const doc = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: aujourdhui(), envoye_le: null, updated_at: new Date().toISOString(), contenu });
       await creerReservations(doc);
       naviguer(`#/dossier/${d.id}`);
@@ -92,7 +99,7 @@ export function nouveauDossierExcursions() {
       "form",
       { class: "formulaire", onsubmit: creer },
       h("fieldset", null, h("legend", null, "Client"), selClient.noeud, blocNouveau),
-      h("fieldset", null, h("legend", null, "Services"), liste, h("div", { class: "ajouts" }, h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue, devise: regl.devise, onAjout: (nouvelles) => { nouvelles.forEach((l) => lignes.push(l)); dessiner(); } }) }, "Ajouter un service")), total),
+      h("fieldset", null, h("legend", null, "Services"), liste, h("div", { class: "ajouts" }, h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue, devise: regl.devise, sansCompagnie: true, onAjout: (nouvelles) => { nouvelles.forEach((l) => lignes.push({ ...l, titre: l.kind === "texte" ? undefined : l.libelle })); dessiner(); } }) }, "Ajouter un service")), total),
       h("fieldset", null, h("legend", null, "Facture"), h("div", { class: "grille-form" }, champ("Numéro", ref, "Numéro suivant de l'année pour cette entreprise, modifiable."), champ("Notes internes", notes))),
       erreur,
       h("div", { class: "actions" }, h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Annuler"), bouton)

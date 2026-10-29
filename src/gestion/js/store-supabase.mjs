@@ -155,6 +155,12 @@ export function creer(config) {
     async retirerAcces(userId, entiteId) {
       verifie(await sb.from("membres").delete().eq("user_id", userId).eq("entite_id", entiteId).select());
     },
+    // Remplacement de la base partenaires : les tâches liées à un partenaire, puis les partenaires (la base supprime
+    // en cascade prestations, trajets, nets et données privées ; les réservations gardent leur libellé).
+    async supprimerPartenaires(entiteId) {
+      verifie(await sb.from("taches").delete().eq("entite_id", entiteId).not("partenaire_id", "is", null).select("id"));
+      verifie(await sb.from("partenaires").delete().eq("entite_id", entiteId).select("id"));
+    },
     async importer(tables) {
       // Ordre imposé par les clés étrangères.
       for (const t of TABLES) {

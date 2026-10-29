@@ -17,7 +17,7 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     const enfant = /enfant|child/i.test(l.intro || "");
     out.push({
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
-      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: l.titre || l.libelle, date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: enfant ? { adultes: 0, enfants: qte, bebes: 0 } : { adultes: qte, enfants: 0, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: brut(l), notes: "" },
+      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: l.titre || l.libelle, date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: enfant ? { adultes: 0, enfants: qte, bebes: 0 } : { adultes: qte, enfants: 0, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: brut(l), notes: "", details: {} },
       net: l.net !== null && l.net !== undefined ? Math.round(Number(l.net) * qte * 100) / 100 : null,
     });
   }

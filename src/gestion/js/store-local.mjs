@@ -5,7 +5,7 @@ import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal } from "./analyses.mjs";
 
-const CLE = "gestion-zwald-demo-v7";
+const CLE = "gestion-zwald-demo-v8";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
 const PARTENAIRES_PUBLIC = ["partenaires", "prestations", "trajets"];
@@ -237,6 +237,24 @@ export function creer() {
           .slice(0, limite)
           .map((l) => ({ ...l, auteur: nomDe(l.user_id) }))
       );
+    },
+    async supprimerPartenaires(entiteId) {
+      const ids = new Set(data.partenaires.filter((p) => p.entite_id === entiteId).map((p) => p.id));
+      data.taches = data.taches.filter((t) => !(t.entite_id === entiteId && t.partenaire_id));
+      data.partenaires = data.partenaires.filter((p) => !ids.has(p.id));
+      data.partenaires_prives = data.partenaires_prives.filter((x) => !ids.has(x.partenaire_id));
+      const prest = new Set(data.prestations.filter((x) => ids.has(x.partenaire_id) || (x.entite_id === entiteId && !x.partenaire_id)).map((x) => x.id));
+      data.prestations = data.prestations.filter((x) => !prest.has(x.id));
+      data.prestations_nets = data.prestations_nets.filter((x) => !prest.has(x.prestation_id));
+      const traj = new Set(data.trajets.filter((x) => ids.has(x.partenaire_id)).map((x) => x.id));
+      data.trajets = data.trajets.filter((x) => !traj.has(x.id));
+      data.trajets_nets = data.trajets_nets.filter((x) => !traj.has(x.trajet_id));
+      for (const r of data.reservations) {
+        if (prest.has(r.prestation_id)) r.prestation_id = null;
+        if (traj.has(r.trajet_id)) r.trajet_id = null;
+        if (ids.has(r.partenaire_id)) r.partenaire_id = null;
+      }
+      sauve();
     },
     async importer(tables) {
       for (const t of TABLES) {

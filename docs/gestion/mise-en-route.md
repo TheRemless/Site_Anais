@@ -41,6 +41,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 8. Vue d'ensemble des sociétés : `migration-9-groupe.sql` (ajoute les devis en attente et l'activité au tableau analytique, ne modifie aucune donnée).
 9. Base partenaires : `migration-10-partenaires.sql` (six tables, trois droits donnés aux rôles de départ, ne modifie aucune donnée existante).
 10. Réservations : `migration-11-reservations.sql` (deux tables, ne modifie aucune donnée existante).
+11. Vouchers : `migration-12-vouchers.sql` (une colonne de détails sur les réservations, ne modifie aucune donnée).
 
 ## Ajouter une personne (l'assistante par exemple)
 
@@ -109,6 +110,7 @@ Le menu **Partenaires** (droit « Voir les partenaires ») réunit ce que l'agen
 - Les **tâches** peuvent être liées à un partenaire (section « À régler avec ce partenaire » de sa fiche). Les contrats qui se terminent dans les trente jours apparaissent dans Aujourd'hui.
 - **Reprise de la base partenaires de Secret Travel & Tour** : `node docs/gestion/import-partenaires.mjs <data.json> <entite_id> > partenaires-import.json` produit un fichier à importer dans l'entreprise Secret par Réglages, Sauvegarde, Restaurer ou importer. Le fichier contient les nets et les banques des partenaires : il ne se publie pas et ne se garde pas dans le dépôt. L'identifiant de l'entreprise Secret est `00000000-0000-4000-8000-000000000002` sur une installation faite avec `schema.sql`.
 - La sauvegarde complète d'une entreprise comprend désormais ses partenaires (nets compris si la personne a le droit de les lire).
+- Réimporter la base partenaires : la case « remplacer la base partenaires » (cochée par défaut) supprime d'abord les partenaires, tarifs, trajets et tâches de partenaires de l'entreprise, puis importe. Les identifiants du fichier sont stables d'une génération à l'autre.
 
 ### Devis et factures reliés aux partenaires
 
@@ -120,7 +122,7 @@ Réglages, Écrans, « Façon de travailler » choisit le fonctionnement de l'en
 
 - **Voyages sur mesure** (Zwald) : devis, acceptation, acompte, carnet, facture, comme depuis le début.
 - **Excursions et transferts** (Secret Travel & Tour) : pas de devis. « Nouveau dossier » demande le client (nom, WhatsApp, hôtel, chambre) et ses services pris dans la base partenaires (date, nombre de personnes), puis crée la facture (numéro suivant de l'année, par exemple INV-2026-012, description « prestation, 2 passengers, 15 November 2026 », prestataire rempli) et une réservation par service. L'avancement devient Facture, Payée, Vouchers envoyés, Confirmé par les partenaires, Service fait. Le catalogue disparaît du menu, les Tarifs le remplacent. Dupliquer et la facture locale n'ont plus lieu d'être.
-- **Vouchers** : une page A4 en anglais par réservation, numérotée avec la facture (INV-2026-012-1, -2…), dans un des trois modèles de Secret : Boat Tour (join ou private, frais de parc inclus ou non, Paid, Deposit Paid, Pay at Pier), Transfer (pickup, drop-off, vol, bagages, taxi, minivan ou navette, Pay Driver Directly) ou Activity & Tour (prix par personne, Pay on Arrival). Les cases de paiement suivent ce qui est encaissé sur la facture. Le même voucher se donne au client et au prestataire. Boutons « Voucher PDF » et « Tous les vouchers en PDF » dans la fiche du dossier. L'en-tête reprend l'onglet Entreprise et le logo ; le numéro TAT, l'e-mail et les textes de fin se règlent dans Réglages, Écrans.
+- **Vouchers** : une page A4 en anglais par réservation, numérotée avec la facture (INV-2026-012-1, -2…), dans un des trois modèles de Secret : Boat Tour (join ou private, frais de parc inclus ou non, Paid, Deposit Paid, Pay at Pier), Transfer (pickup, drop-off, vol, bagages, taxi, minivan ou navette, Pay Driver Directly) ou Activity & Tour (prix par personne, Pay on Arrival). Les cases de paiement suivent ce qui est encaissé sur la facture. Le même voucher se donne au client et au prestataire. Boutons « Aperçu », « Modifier » (la réservation avec les champs du voucher : chambre, drop-off, vol, bagages, type de tour ou de transfert, frais de parc, remarques), « Voucher PDF » et « Tous les vouchers en PDF » dans la fiche du dossier. Les libellés des services viennent du libellé anglais de la prestation (généré à l'import, modifiable dans Tarifs), et la description sur la facture se corrige à la création du dossier. L'en-tête reprend l'onglet Entreprise et le logo ; le numéro TAT, l'e-mail et les textes de fin se règlent dans Réglages, Écrans.
 
 ## Opérations : réservations, Aujourd'hui, messages, dû aux partenaires
 
