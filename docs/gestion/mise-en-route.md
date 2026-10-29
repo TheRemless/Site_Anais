@@ -39,7 +39,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 6. Facture locale : `migration-7-facture-locale.sql` (autorise le type de document « facture_locale », ne modifie aucune donnée).
 7. Impayés comptés depuis la date de la facture : `migration-8-impayes.sql` (remplace seulement la fonction du tableau analytique, ne modifie aucune donnée).
 8. Base partenaires : `migration-9-partenaires.sql` (six tables, trois droits donnés aux rôles de départ, ne modifie aucune donnée existante).
-9. Réservations : `migration-10-reservations.sql` (deux tables, ne modifie aucune donnée existante).
+10. Réservations : `migration-11-reservations.sql` (deux tables, ne modifie aucune donnée existante).
 
 ## Ajouter une personne (l'assistante par exemple)
 

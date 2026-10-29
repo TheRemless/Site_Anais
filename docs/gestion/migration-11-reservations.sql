@@ -1,5 +1,5 @@
--- Gestion : migration 10, réservations auprès des partenaires.
--- À exécuter une seule fois sur une base déjà migrée avec migration-9-partenaires.sql, AVANT de publier la nouvelle version de l'outil.
+-- Gestion : migration 11, réservations auprès des partenaires.
+-- À exécuter une seule fois sur une base déjà migrée avec migration-10-partenaires.sql, AVANT de publier la nouvelle version de l'outil.
 -- Ne modifie aucune donnée existante : ajoute deux tables. Les messages types vivent dans les réglages, sans changement de structure.
 
 begin;
