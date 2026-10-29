@@ -1,4 +1,4 @@
-import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer } from "./etat.mjs";
+import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, entitesAnalysables } from "./etat.mjs";
 import { h, vider, toast, modal, icone } from "./ui.mjs";
 import { STATUTS } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
@@ -12,6 +12,7 @@ import { vueReglages } from "./views/reglages.mjs";
 import { vueAdmin } from "./views/admin.mjs";
 import { vueJournal } from "./views/journal.mjs";
 import { vueAnalyses } from "./views/analyses.mjs";
+import { vueGroupe } from "./views/groupe.mjs";
 import { vueTaches, mesTaches } from "./views/taches.mjs";
 
 const ROUTES = [
@@ -27,6 +28,7 @@ const ROUTES = [
   [/^#\/admin$/, "admin", vueAdmin],
   [/^#\/journal$/, "journal", vueJournal],
   [/^#\/analyses$/, "analyses", vueAnalyses],
+  [/^#\/groupe$/, "groupe", vueGroupe],
   [/^#\/taches$/, "taches", vueTaches],
 ];
 
@@ -129,6 +131,7 @@ function ecrans() {
       titre: "Administration",
       items: [
         ...si(peut("analytics.voir") && peut("finances.voir"), { href: "#/analyses", libelle: "Analyses", cle: "analyses", icone: "analyses" }),
+        ...si(entitesAnalysables().length > 1, { href: "#/groupe", libelle: "Vue d'ensemble", cle: "groupe", icone: "groupe" }),
         ...si(peut("journal.voir"), { href: "#/journal", libelle: "Journal", cle: "journal", icone: "journal" }),
         ...si(estAdmin(), { href: "#/reglages", libelle: "Réglages", cle: "reglages", icone: "reglages" }),
         ...si(estSuperAdmin(), { href: "#/admin", libelle: "Administration", cle: "admin", icone: "admin" }),
@@ -384,7 +387,7 @@ function ouvrirAide() {
       "div",
       { class: "modal-corps" },
       h("h3", null, "Partout, hors d'un champ de saisie"),
-      tableau([ligne(["?"], "Afficher cette aide"), ligne(["n"], "Nouveau dossier"), ligne(["/"], "Rechercher un client, un dossier ou un écran"), ligne([`${mod}+K`], "Rechercher (aussi dans un champ)"), ligne(["g", "t"], "Aujourd'hui"), ligne(["g", "d"], "Dossiers"), ligne(["g", "c"], "Clients"), ligne(["g", "k"], "Catalogue"), ligne(["g", "f"], "Tâches"), ligne(["g", "r"], "Réglages (administrateurs)"), ligne(["g", "a"], "Analyses"), ligne(["g", "j"], "Journal d'activité"), ligne(["g", "m"], "Administration (administratrice générale)"), ligne(["Échap"], "Fermer une fenêtre")]),
+      tableau([ligne(["?"], "Afficher cette aide"), ligne(["n"], "Nouveau dossier"), ligne(["/"], "Rechercher un client, un dossier ou un écran"), ligne([`${mod}+K`], "Rechercher (aussi dans un champ)"), ligne(["g", "t"], "Aujourd'hui"), ligne(["g", "d"], "Dossiers"), ligne(["g", "c"], "Clients"), ligne(["g", "k"], "Catalogue"), ligne(["g", "f"], "Tâches"), ligne(["g", "v"], "Vue d'ensemble des sociétés"), ligne(["g", "r"], "Réglages (administrateurs)"), ligne(["g", "a"], "Analyses"), ligne(["g", "j"], "Journal d'activité"), ligne(["g", "m"], "Administration (administratrice générale)"), ligne(["Échap"], "Fermer une fenêtre")]),
       h("h3", null, "Dans un devis ou une facture"),
       tableau([ligne([`${mod}+Z`], "Annuler la dernière modification"), ligne([`${mod}+Maj+Z`, `${mac ? "" : "Ctrl+Y"}`].filter(Boolean).slice(0, 1), `Rétablir${mac ? "" : " (ou Ctrl+Y)"}`), ligne([`${mod}+S`], "Enregistrer tout de suite"), ligne([`${mod}+P`], "Télécharger le PDF")]),
       h("p", { class: "aide" }, "Les raccourcis propres au navigateur, comme Ctrl+T, Ctrl+W ou Ctrl+N, ne peuvent pas être pris en charge par un site. Les autres sont désactivés pendant la saisie dans un champ pour ne pas gêner l'écriture.")
@@ -403,7 +406,7 @@ document.addEventListener("keydown", (e) => {
   if (e.target.matches("input, textarea, select, [contenteditable]") || document.querySelector(".modal-fond")) return;
   if (sequence === "g") {
     sequence = null;
-    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", f: "#/taches", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(peut("analytics.voir") && peut("finances.voir") ? { a: "#/analyses" } : {}), ...(estSuperAdmin() ? { m: "#/admin" } : {}) };
+    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", f: "#/taches", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(peut("analytics.voir") && peut("finances.voir") ? { a: "#/analyses" } : {}), ...(entitesAnalysables().length > 1 ? { v: "#/groupe" } : {}), ...(estSuperAdmin() ? { m: "#/admin" } : {}) };
     if (cibles[k]) (e.preventDefault(), (location.hash = cibles[k]));
     return;
   }
