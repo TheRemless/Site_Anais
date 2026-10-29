@@ -160,7 +160,7 @@ export const REGLAGES_NEUTRE = {
   // facturés directement, puis vouchers pour le client et le prestataire (Secret Travel & Tour).
   fonctionnement: "sur_mesure",
   // Vouchers (mode excursions) : en-tête et textes fixes, en anglais.
-  voucher: { licence: "", email: "", merci: "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", note_transfert: "Your driver will be waiting for you at the meeting point.\nIf your plan changes, please let us know as soon as possible." },
+  voucher: { nom: "", sous_titre: "", adresse: "", whatsapp: "", email: "", licence: "", merci: "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", merci_transfert: "Thank you for booking with {entreprise}!\nWe wish you a wonderful journey.", note_transfert: "Your driver will be waiting for you at the meeting point.\nIf your plan changes, please let us know as soon as possible." },
   emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", contact: "" },
   paiement: { texte: "", nom: "", autres: [] },
   devise: "",

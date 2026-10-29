@@ -5,6 +5,7 @@ import { h, modal } from "../ui.mjs";
 import { apercuA4 } from "./commun.mjs";
 import { formatDate, formatNombre } from "../calc.mjs";
 import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER } from "../operations-calc.mjs";
+import { libelleClient } from "../partenaires-calc.mjs";
 
 const TITRES = TITRES_VOUCHER;
 const case_ = (coche, libelle) => h("span", { class: `v-case${coche ? " cochee" : ""}` }, h("span", { class: "v-carre", "aria-hidden": "true" }, coche ? "☒" : "☐"), ` ${libelle}`);
@@ -22,13 +23,21 @@ export function vouchersDuDossier(dossierId) {
     .map((x, i) => ({ ...x, index: i + 1 }));
 }
 
-export function renderVoucher({ reservation: r, prestation: p, type, index }) {
-  const regl = reglages();
-  const d = etat.db.dossiers.find((x) => x.id === r.dossier_id) || {};
-  const client = etat.db.clients.find((c) => c.id === d.client_id) || {};
-  const res = d.id ? resumeDossier(d.id) : null;
+// `contexte` (facultatif) : réglages, dossier, client et résumé à utiliser à la place de la base, pour l'aperçu des réglages.
+export function renderVoucher({ reservation: r, prestation: p, type, index }, contexte = {}) {
+  const regl = contexte.reglages || reglages();
+  const d = contexte.dossier || etat.db.dossiers.find((x) => x.id === r.dossier_id) || {};
+  const client = contexte.client || etat.db.clients.find((c) => c.id === d.client_id) || {};
+  const res = contexte.resume !== undefined ? contexte.resume : d.id ? resumeDossier(d.id) : null;
   const e = regl.emetteur;
   const v = regl.voucher || {};
+  // En-tête : les champs du bloc Vouchers des réglages, sinon ceux de l'entreprise.
+  const nomSociete = v.nom || e.nom || entiteActive().nom;
+  const sousTitre = v.sous_titre || e.sous_titre || "";
+  const adresse = (v.adresse || e.adresse || "").split("\n").map((l) => l.trim()).filter(Boolean).join(", ");
+  const whatsapp = v.whatsapp || e.telephone || "";
+  const email = v.email || ((e.contact || "").match(/[\w.+-]+@[\w.-]+\.\w+/) || [""])[0];
+  const titrePrestation = libelleClient(r.libelle);
   const devise = (res && res.devise) || regl.devise || "THB";
   const nomClient = [client.prenom, client.nom].filter(Boolean).join(" ");
   // Les détails saisis sur la réservation passent avant ce que l'on déduit de la prestation.
@@ -55,12 +64,12 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }) {
 
   const booking =
     type === "bateau"
-      ? [ligne("Tour Name", r.libelle), ligne("Date", dateTexte(r.date_service, "en")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), a || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), en_ || ""), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Tour Type: "), case_(!prive, "Join Tour"), " ", case_(prive, "Private Tour")), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
+      ? [ligne("Tour Name", titrePrestation), ligne("Date", dateTexte(r.date_service, "en")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), a || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), en_ || ""), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Tour Type: "), case_(!prive, "Join Tour"), " ", case_(prive, "Private Tour")), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
       : type === "transfert"
         ? [ligne("Date", dateTexte(r.date_service, "en")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Drop-off Location", dropOff), ligne("Flight Number (if applicable)", vol ? vol[0] : ""), ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), a || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), en_ || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Luggage: "), bagages), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Transfer Type: "), ...[["taxi", "Private Taxi"], ["minivan", "Private Minivan"], ["partage", "Shared Minivan"]].flatMap(([k, l]) => [case_(transfert === k, l), " "])), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
         : type === "location"
-          ? [ligne("Vehicle", r.libelle), ligne("Pickup Date & Time", [dateTexte(r.date_service, "en"), r.heure_pickup].filter(Boolean).join(", ")), ligne("Return Date & Time", [dateTexte(dt.retour_date, "en"), dt.retour_heure].filter(Boolean).join(", ")), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Driver's Name", nomClient), ligne("Driving Licence", dt.permis || ""), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
-          : [ligne("Activity / Tour", r.libelle), ligne("Date & Time", [dateTexte(r.date_service, "en"), dt.heure_service || (p && p.details && p.details.horaires) || ""].filter(Boolean).join(", ")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Guests", "", h("span", { class: "v-cle" }, "Adults "), a || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children "), en_ || ""), ligne("Company / Operator", operateur), ligne("Remarks", remarques)];
+          ? [ligne("Vehicle", titrePrestation), ligne("Pickup Date & Time", [dateTexte(r.date_service, "en"), r.heure_pickup].filter(Boolean).join(", ")), ligne("Return Date & Time", [dateTexte(dt.retour_date, "en"), dt.retour_heure].filter(Boolean).join(", ")), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Driver's Name", nomClient), ligne("Driving Licence", dt.permis || ""), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
+          : [ligne("Activity / Tour", titrePrestation), ligne("Date & Time", [dateTexte(r.date_service, "en"), dt.heure_service || (p && p.details && p.details.horaires) || ""].filter(Boolean).join(", ")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Guests", "", h("span", { class: "v-cle" }, "Adults "), a || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children "), en_ || ""), ligne("Company / Operator", operateur), ligne("Remarks", remarques)];
 
   const paiement =
     type === "bateau"
@@ -71,7 +80,7 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }) {
           ? [ligne("Total Price", prix(r.montant_vente, devise)), ligne("Security Deposit", dt.caution || ""), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Payment Status: "), case_(statut === "paye", "Paid"), " ", case_(statut === "acompte", "Deposit Paid"), " ", case_(statut === "sur_place", "Pay on Pickup")), ligne("Remarks", remarquesPaiement)]
           : [ligne("Price per Person", prix(prixPersonne, devise)), ligne("Total Amount", prix(r.montant_vente, devise)), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Payment Status: "), case_(statut === "paye", "Paid in Full"), " ", case_(statut === "acompte", "Deposit Paid"), " ", case_(statut === "sur_place", "Pay on Arrival")), ligne("Remarks", remarquesPaiement)];
 
-  const merci = remplirGabarit(v.merci || "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", { entreprise: e.nom || entiteActive().nom });
+  const merci = remplirGabarit((type === "transfert" && v.merci_transfert) || v.merci || "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", { entreprise: nomSociete });
   return h(
     "div",
     { class: "voucher" },
@@ -80,7 +89,7 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }) {
       "div",
       { class: "v-entete" },
       regl.apparence.logo ? h("img", { class: "v-logo", src: regl.apparence.logo, alt: "" }) : null,
-      h("div", { class: "v-societe" }, h("p", { class: "v-nom" }, e.nom || entiteActive().nom), e.sous_titre ? h("p", { class: "v-par" }, e.sous_titre) : null, h("p", null, (e.adresse || "").split("\n").filter(Boolean).join(", ")), h("p", null, `TAT licence: ${v.licence || ""}`), h("p", null, `Whatsapp: ${e.telephone || ""}`), v.email ? h("p", null, `E-mail: ${v.email}`) : null)
+      h("div", { class: "v-societe" }, h("p", { class: "v-nom" }, nomSociete), sousTitre ? h("p", { class: "v-par" }, sousTitre) : null, h("p", null, adresse), h("p", null, `TAT licence: ${v.licence || ""}`), h("p", null, `Whatsapp: ${whatsapp}`), h("p", null, `E-mail: ${email}`))
     ),
     h("h1", { class: "v-titre" }, TITRES[type]),
     h("section", null, h("h2", null, "CUSTOMER DETAILS"), ligne("Guest Name", nomClient), ligne("WhatsApp / Phone", client.telephone), type === "transfert" ? null : ligne("Hotel / Accommodation", hotel, h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Room No: "), chambre)),
@@ -108,4 +117,10 @@ export function imprimerTousLesVouchers(dossierId) {
 export function apercuVoucher(x) {
   const { zone } = apercuA4(() => renderVoucher(x));
   modal(`Voucher ${numeroVoucher((etat.db.dossiers.find((d) => d.id === x.reservation.dossier_id) || {}).ref || "", x.index)}`, h("div", { class: "modal-corps apercu-voucher" }, zone, h("div", { class: "actions" }, h("button", { class: "principal", type: "button", onclick: () => imprimerVoucher(x) }, "Voucher PDF"))), { large: true });
+}
+
+// Voucher d'exemple pour l'aperçu des réglages : il suit les champs en cours de modification.
+export function voucherExemple(reglagesEnCours, type = "bateau") {
+  const r = { libelle: type === "transfert" ? "Speedboat transfer: Koh Lanta → Koh Phi Phi" : type === "location" ? "Honda Click 125" : type === "activite" ? "Thai cooking class, market visit and lunch" : "4 Islands by longtail, full day", date_service: "2026-12-10", heure_pickup: "08:00", lieu_pickup: "Hotel Example, Klong Dao", personnes: { adultes: 2, enfants: 1, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: 3600, notes: "", details: type === "transfert" ? { drop_off: "Tonsai Pier, Koh Phi Phi", vol: "", bagages: "3 suitcases" } : {} };
+  return renderVoucher({ reservation: r, prestation: type === "bateau" ? { famille: "excursion", groupe: "Join tour", details: { parc: "400 THB per adult, 200 THB per child, cash on the island" } } : null, type, index: 1 }, { reglages: reglagesEnCours, dossier: { ref: "INV-2026-001" }, client: { prenom: "Jane", nom: "Example", telephone: "+44 7000 000000", adresse: "Hotel Example, Room 12" }, resume: { total: 3600, recu: 3600 } });
 }
