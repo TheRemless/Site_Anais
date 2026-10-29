@@ -113,7 +113,7 @@ create table documents (
   updated_at timestamptz not null default now(),
   entite_id uuid not null references entites (id) on delete restrict,
   dossier_id uuid not null,
-  type text not null check (type in ('devis', 'facture')),
+  type text not null check (type in ('devis', 'facture', 'facture_locale')),
   date_emission date not null,
   envoye_le date,
   contenu jsonb not null,
@@ -528,6 +528,7 @@ insert into reglages (entite_id, valeur) values
   ('00000000-0000-4000-8000-000000000001', $json${
   "emetteur": {
     "nom": "Zwald Travel Planner Co., Ltd.",
+    "sous_titre": "",
     "adresse": "292 Moo 2\n81150, Koh Lanta, Krabi",
     "telephone": "+ 66 95 868 38 46",
     "contact": "Anaïs Zwald\n+66 95 868 38 46 (WhatsApp)\nzwaldtravelplanner@gmail.com"
@@ -549,7 +550,8 @@ insert into reglages (entite_id, valeur) values
   },
   "numerotation": {
     "mode": "initiales",
-    "prefixe": ""
+    "prefixe": "",
+    "chiffres": 4
   },
   "dossier": {
     "modele_bandeau": "VOYAGE EN {PAYS} - {PERIODE}",
@@ -602,6 +604,7 @@ insert into reglages (entite_id, valeur) values
   "apparence": {
     "couleur": "#0b9999",
     "couleur_clair": "#53b7b7",
+    "entete": "classique",
     "logo": "assets/logo.png",
     "titre_image": "assets/title.png",
     "type_images": {
@@ -621,6 +624,8 @@ insert into reglages (entite_id, valeur) values
     "unite": "UNITÉ",
     "qte": "QTÉ",
     "total": "TOTAL",
+    "colonne_montant": "",
+    "total_final": "",
     "sous_total": "SOUS-TOTAL",
     "remise": "Remise",
     "montant_recu": "Montant reçu",
@@ -632,6 +637,10 @@ insert into reglages (entite_id, valeur) values
     "infos_paiement": "INFORMATIONS DE PAIEMENT",
     "pied_court": "voir les instructions de paiement transmises par e-mail.",
     "qr_titre": "WISE - virements internationaux",
+    "facture_a": "",
+    "prestataire": "Prestataire :",
+    "note_devise": "",
+    "pied_note": "",
     "cgv": "Le client reconnaît avoir pris connaissance des [Conditions Générales de Vente]({cgv_url}) de {entreprise} et les accepter sans réserve. La signature du présent devis vaut acceptation des CGV et engagement contractuel."
   },
   "textes": {
@@ -654,6 +663,7 @@ insert into reglages (entite_id, valeur) values
   ('00000000-0000-4000-8000-000000000002', $json${
   "emetteur": {
     "nom": "Secret Travel & Tour",
+    "sous_titre": "",
     "adresse": "292, Moo 2, Sala Dan\nKoh Lanta Yai, Krabi 81150",
     "telephone": "+66 95 868 3846",
     "contact": ""
@@ -675,7 +685,8 @@ insert into reglages (entite_id, valeur) values
   },
   "numerotation": {
     "mode": "sequence",
-    "prefixe": ""
+    "prefixe": "",
+    "chiffres": 4
   },
   "dossier": {
     "modele_bandeau": "{PAYS} - {PERIODE}",
@@ -724,6 +735,7 @@ insert into reglages (entite_id, valeur) values
   "apparence": {
     "couleur": "#0b9999",
     "couleur_clair": "#53b7b7",
+    "entete": "classique",
     "logo": "",
     "titre_image": "",
     "type_images": null,
@@ -740,6 +752,8 @@ insert into reglages (entite_id, valeur) values
     "unite": "UNITÉ",
     "qte": "QTÉ",
     "total": "TOTAL",
+    "colonne_montant": "",
+    "total_final": "",
     "sous_total": "SOUS-TOTAL",
     "remise": "Remise",
     "montant_recu": "Montant reçu",
@@ -751,6 +765,10 @@ insert into reglages (entite_id, valeur) values
     "infos_paiement": "INFORMATIONS DE PAIEMENT",
     "pied_court": "voir les instructions de paiement transmises par e-mail.",
     "qr_titre": "",
+    "facture_a": "",
+    "prestataire": "Prestataire :",
+    "note_devise": "",
+    "pied_note": "",
     "cgv": "Le client reconnaît avoir pris connaissance des [Conditions Générales de Vente]({cgv_url}) de {entreprise} et les accepter sans réserve. La signature du présent devis vaut acceptation des CGV et engagement contractuel."
   },
   "textes": {
@@ -767,6 +785,7 @@ insert into reglages (entite_id, valeur) values
   ('00000000-0000-4000-8000-000000000003', $json${
   "emetteur": {
     "nom": "VIP Taxi Lanta",
+    "sous_titre": "",
     "adresse": "",
     "telephone": "",
     "contact": ""
@@ -788,7 +807,8 @@ insert into reglages (entite_id, valeur) values
   },
   "numerotation": {
     "mode": "sequence",
-    "prefixe": ""
+    "prefixe": "",
+    "chiffres": 4
   },
   "dossier": {
     "modele_bandeau": "{PAYS} - {PERIODE}",
@@ -837,6 +857,7 @@ insert into reglages (entite_id, valeur) values
   "apparence": {
     "couleur": "#0b9999",
     "couleur_clair": "#53b7b7",
+    "entete": "classique",
     "logo": "",
     "titre_image": "",
     "type_images": null,
@@ -853,6 +874,8 @@ insert into reglages (entite_id, valeur) values
     "unite": "UNITÉ",
     "qte": "QTÉ",
     "total": "TOTAL",
+    "colonne_montant": "",
+    "total_final": "",
     "sous_total": "SOUS-TOTAL",
     "remise": "Remise",
     "montant_recu": "Montant reçu",
@@ -864,6 +887,10 @@ insert into reglages (entite_id, valeur) values
     "infos_paiement": "INFORMATIONS DE PAIEMENT",
     "pied_court": "voir les instructions de paiement transmises par e-mail.",
     "qr_titre": "",
+    "facture_a": "",
+    "prestataire": "Prestataire :",
+    "note_devise": "",
+    "pied_note": "",
     "cgv": "Le client reconnaît avoir pris connaissance des [Conditions Générales de Vente]({cgv_url}) de {entreprise} et les accepter sans réserve. La signature du présent devis vaut acceptation des CGV et engagement contractuel."
   },
   "textes": {

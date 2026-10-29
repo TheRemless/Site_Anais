@@ -2,6 +2,7 @@
 // Tout ce qui est propre à une entreprise (textes, logo, couleurs, coordonnées) vient de ses réglages.
 import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, lignesEquivalents, formatNombre, acompteDu } from "./calc.mjs";
 import { h, markup, inline } from "./ui.mjs";
+import { modePaiement } from "./defauts.mjs";
 
 const lignes = (texte) => (texte || "").split("\n").filter((l) => l.trim() !== "");
 
@@ -12,7 +13,11 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const lb = reglages.libelles;
   const ap = reglages.apparence;
   const detail = c.colonnes === "detail";
-  const estFacture = type === "facture";
+  const locale = type === "facture_locale";
+  const estFacture = type === "facture" || locale;
+  const mode = modePaiement(reglages, c.paiement);
+  const numero = (c.numero || "").trim() || dossier.ref;
+  const titreType = locale ? lb.facture_locale || lb.facture : estFacture ? lb.facture : lb.devis;
   const variantes = reglages.textes.variantes;
   const variante = c.variante === "perso" ? { corps: c.conditions_corps || "", cloture: c.conditions_cloture || "" } : variantes.find((v) => v.id === c.variante) || variantes[0] || { corps: "", cloture: "" };
 
@@ -76,18 +81,18 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const tvaTexte = c.tva ? reglages.conditions.tva_mention : "";
 
   // Pied de page : coordonnées, informations de paiement et QR code, selon ce qui est renseigné.
-  const paiementLignes = lignes(reglages.paiement.texte);
+  const paiementLignes = lignes(mode.texte);
   const complet = c.pied === "qr";
-  const avecQr = complet && !!ap.qr_image;
+  const avecQr = complet && !!mode.qr_image;
   const colonnes = [];
   if (lignes(e.contact).length) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.coordonnees), lignes(e.contact).map((l) => h("p", null, l))));
   if (complet ? paiementLignes.length : lb.pied_court) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.infos_paiement), complet ? paiementLignes.map((l) => h("p", null, inline(l))) : h("p", { class: "italique" }, lb.pied_court)));
-  if (avecQr) colonnes.push(h("div", { class: "pied-col wise" }, lb.qr_titre ? h("h4", null, lb.qr_titre) : null, h("div", { class: "qr-ligne" }, h("img", { src: ap.qr_image, alt: "QR code" }), ap.qr_pseudo ? h("span", { class: "pseudo" }, ap.qr_pseudo) : null)));
+  if (avecQr) colonnes.push(h("div", { class: "pied-col wise" }, lb.qr_titre ? h("h4", null, lb.qr_titre) : null, h("div", { class: "qr-ligne" }, h("img", { src: mode.qr_image, alt: "QR code" }), mode.qr_pseudo ? h("span", { class: "pseudo" }, mode.qr_pseudo) : null)));
 
   const cgvTexte = c.cgv === false || !lb.cgv ? null : h("div", { class: "cgv" }, markup(lb.cgv, vars));
 
   const centre = ap.entete === "centre";
-  const refTexte = `${estFacture ? lb.ref_facture : lb.ref_devis} ${dossier.ref}`;
+  const refTexte = `${estFacture ? lb.ref_facture : lb.ref_devis} ${numero}`;
   const dateTexte = `${lb.date_emission} ${formatDate(doc.date_emission)}`;
   const nomClient = client ? [client.civilite, [client.prenom, client.nom].filter(Boolean).join(" "), ...lignes(client.adresse)].filter(Boolean) : [];
 
@@ -100,7 +105,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
       centre ? null : h("p", { class: "sheet-ref" }, refTexte),
       ap.logo ? h("img", { class: "sheet-logo", src: ap.logo, alt: e.nom }) : null,
       centre ? null : ap.titre_image ? h("img", { class: "sheet-titre", src: ap.titre_image, alt: e.nom }) : h("p", { class: "sheet-titre-texte" }, ap.titre_texte || e.nom),
-      ap.type_images && ap.type_images[type] ? h("img", { class: "sheet-type", src: ap.type_images[type], alt: estFacture ? lb.facture : lb.devis }) : h("p", { class: "sheet-type-texte" }, estFacture ? lb.facture : lb.devis),
+      ap.type_images && ap.type_images[estFacture ? "facture" : "devis"] && !(locale && lb.facture_locale) ? h("img", { class: "sheet-type", src: ap.type_images[estFacture ? "facture" : "devis"], alt: titreType }) : h("p", { class: "sheet-type-texte" }, titreType),
       h(
         "div",
         { class: "sheet-emetteur" },

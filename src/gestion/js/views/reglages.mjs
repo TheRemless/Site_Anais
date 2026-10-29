@@ -79,6 +79,7 @@ async function importer(fichier) {
 const LIBELLES = [
   ["devis", "Titre du devis"],
   ["facture", "Titre de la facture"],
+  ["facture_locale", "Titre de la facture locale (vide : comme la facture)"],
   ["ref_devis", "Début de la référence (devis)"],
   ["ref_facture", "Début de la référence (facture)"],
   ["date_emission", "Libellé de la date"],
@@ -104,7 +105,7 @@ const LIBELLES = [
   ["pied_note", "Note en bas de page, sous les coordonnées"],
 ];
 // Textes que « Remplir en français / en anglais » ne doit pas écraser : ils sont propres à l'entreprise.
-const LIBELLES_PROPRES = ["qr_titre", "facture_a", "note_devise", "pied_note"];
+const LIBELLES_PROPRES = ["qr_titre", "facture_locale", "facture_a", "note_devise", "pied_note"];
 const garder = (libelles) => Object.fromEntries(LIBELLES_PROPRES.map((k) => [k, libelles[k]]));
 
 const lire = (o, chemin) => chemin.split(".").reduce((a, k) => (a ? a[k] : undefined), o);
@@ -239,6 +240,26 @@ export function vueReglages() {
   };
   dessinerVariantes();
 
+  // Autres informations de paiement (par exemple la banque thaïlandaise pour une facture en bahts). Chaque document choisit les siennes.
+  const blocAutres = h("div");
+  const dessinerAutres = () => {
+    blocAutres.replaceChildren(
+      ...r.paiement.autres.map((m, i) =>
+        h(
+          "div",
+          { class: "carte-ligne" },
+          h("div", { class: "carte-ligne-tete" }, h("strong", null, m.nom || `Informations ${i + 2}`), h("span", { class: "outils" }, h("button", { class: "lien danger-texte", type: "button", onclick: () => (r.paiement.autres.splice(i, 1), dessinerAutres(), marque()) }, "Supprimer"))),
+          texte("Nom (visible dans la liste du document)", `paiement.autres.${i}.nom`, { placeholder: "Par exemple : Banque thaïlandaise (THB)" }),
+          texte("Informations de paiement du pied de page", `paiement.autres.${i}.texte`, { multi: true, rows: 5, aide: "Une ligne par information. **gras** possible." }),
+          image("QR code (facultatif)", `paiement.autres.${i}.qr_image`, { maxPx: 700 }),
+          texte("Texte à côté du QR code", `paiement.autres.${i}.qr_pseudo`)
+        )
+      ),
+      h("button", { class: "secondaire petit", type: "button", onclick: () => (r.paiement.autres.push({ id: `p-${Date.now().toString(36)}`, nom: "", texte: "", qr_image: "", qr_pseudo: "" }), dessinerAutres(), marque()) }, "Ajouter d'autres informations de paiement")
+    );
+  };
+  dessinerAutres();
+
   const entete = h("select", { id: uid(), onchange: (e) => ((r.apparence.entete = e.target.value), marque()) }, h("option", { value: "classique" }, "Classique : logo à droite, titre en grand"), h("option", { value: "centre" }, "Centrée : logo et titre du document au centre"));
   entete.value = r.apparence.entete;
 
@@ -282,7 +303,8 @@ export function vueReglages() {
     paiement: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, "Devise et paiement"), texte("Devise des montants", "devise", { aide: "Code court affiché devant les montants, par exemple CHF, THB ou EUR. Changer la devise ne convertit pas les montants déjà saisis." }), texte("Informations de paiement du pied de page", "paiement.texte", { multi: true, rows: 5, aide: "Une ligne par information : banque, IBAN, titulaire… Ce texte s'affiche tel quel sur les documents." })),
+      h("fieldset", null, h("legend", null, "Devise et paiement"), texte("Devise des montants", "devise", { aide: "Code court affiché devant les montants, par exemple CHF, THB ou EUR. Changer la devise ne convertit pas les montants déjà saisis." }), texte("Informations de paiement du pied de page", "paiement.texte", { multi: true, rows: 5, aide: "Une ligne par information : banque, IBAN, titulaire… Ce texte s'affiche tel quel sur les documents." }), texte("Nom de ces informations (liste du document)", "paiement.nom", { placeholder: "Principal" })),
+      h("fieldset", null, h("legend", null, "Autres informations de paiement"), h("p", { class: "aide" }, "Utile quand certains documents se paient ailleurs, par exemple une facture locale en bahts avec une banque thaïlandaise. Chaque devis ou facture choisit les informations à afficher."), blocAutres),
       h("fieldset", null, h("legend", null, "QR code de paiement"), image("Image du QR code", "apparence.qr_image", { maxPx: 700 }), texte("Texte à côté du QR code", "apparence.qr_pseudo", { aide: "Par exemple un pseudo Wise. Vide pour ne rien afficher." })),
       h("fieldset", null, h("legend", null, "Équivalents indicatifs"), h("p", { class: "aide" }, "Utilisés seulement quand vous affichez l'équivalent en euros et en bahts sur un devis. À mettre à jour de temps en temps."), h("div", { class: "grille-form" }, texte("1 unité de la devise en euros", "taux.eur", { type: "number", step: "0.001" }), texte("1 unité de la devise en bahts", "taux.thb", { type: "number", step: "0.01" })))
     ),

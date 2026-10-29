@@ -36,6 +36,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 3. Tableau analytique : `migration-4-analyses.sql` (ajoute seulement des fonctions, ne modifie aucune donnée).
 4. Passage à l'échelle : `migration-5-echelle.sql` (résumé de chaque dossier tenu à jour par la base, recalculé pour les dossiers existants). À exécuter avant de publier la version correspondante de l'outil.
 5. Tâches et pièces jointes : `migration-6-collaboration.sql` (deux tables, un espace de stockage privé `pieces`, le droit « Gérer les tâches » ajouté aux rôles Administrateur et Éditeur). Supabase Storage doit être disponible, ce qui est le cas par défaut.
+6. Facture locale : `migration-7-facture-locale.sql` (autorise le type de document « facture_locale », ne modifie aucune donnée).
 
 ## Ajouter une personne (l'assistante par exemple)
 
@@ -71,6 +72,15 @@ Chaque devis ou facture choisit sa devise (liste modifiable dans Réglages) et p
 - **Tâches** : menu *Tâches*, ou section *Tâches* d'un dossier. Une tâche a un titre, une échéance facultative et une personne en charge. Elle peut être liée à un dossier ou non. Chacun voit les tâches qui lui sont confiées (la case suffit pour les terminer, même sans le droit « Gérer les tâches »). Les tâches de l'équipe et la création sont réservées aux rôles qui ont ce droit. Les tâches du jour et en retard apparaissent sur le tableau de bord.
 - **Pièces jointes** : dans la fiche d'un dossier (10 Mo par fichier). Les fichiers sont privés, les liens de téléchargement expirent après 5 minutes. Ils suivent les droits du dossier : qui ne voit pas le dossier ne voit pas ses fichiers. Supprimer un dossier laisse ses fichiers dans le stockage (ils ne sont plus accessibles depuis l'outil) : on peut les retirer depuis le tableau de bord Supabase, rubrique Storage.
 - **Attribution en lot** : dans la liste des dossiers, cocher plusieurs lignes puis choisir le nouveau responsable. Chaque changement est inscrit au journal.
+
+## Facture locale (bahts) en plus de la facture client
+
+Dans un dossier qui a une facture, le bouton **Créer la facture locale** (section Documents) copie la facture dans une autre devise, par exemple en bahts pour la comptabilité thaïlandaise. On choisit la devise, le taux (pré-rempli d'après Réglages, modifiable), les informations de paiement à afficher en pied de page et le numéro affiché. Tout reste modifiable ensuite, ligne par ligne.
+
+- La facture locale ne compte ni dans le total du dossier, ni dans les paiements, ni dans les statistiques : les paiements se saisissent sur la facture du client.
+- Les informations de paiement se gèrent dans **Réglages, Paiement** : les informations principales, puis « Autres informations de paiement » (nom, texte, QR code facultatif). Chaque devis ou facture choisit les siennes dans son en-tête.
+- Le texte des conditions de paiement se choisit par document (liste « Conditions de paiement » des réglages). Prévoir une variante adaptée à la facture locale.
+- Le titre « Facture locale » est un libellé réglable (Réglages, Textes des documents). S'il est vide, le titre est celui de la facture.
 
 ## Volumes et performances
 

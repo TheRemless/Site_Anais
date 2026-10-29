@@ -49,6 +49,7 @@ export const ROLES_SYSTEME = [
 export const LIBELLES_FR = {
   devis: "DEVIS",
   facture: "FACTURE",
+  facture_locale: "",
   ref_devis: "Devis: réf.",
   ref_facture: "Facture: réf.",
   date_emission: "Date d'émission:",
@@ -78,6 +79,7 @@ export const LIBELLES_FR = {
 export const LIBELLES_EN = {
   devis: "QUOTE",
   facture: "INVOICE",
+  facture_locale: "",
   ref_devis: "Quote: ref.",
   ref_facture: "Invoice: ref.",
   date_emission: "Date of issue:",
@@ -129,7 +131,7 @@ _Les coordonnées de paiement Wise sont indiquées dans l'e-mail accompagnant le
 // Réglages d'une entreprise nouvellement créée : aucun fait propre à une entreprise réelle.
 export const REGLAGES_NEUTRE = {
   emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", contact: "" },
-  paiement: { texte: "" },
+  paiement: { texte: "", nom: "", autres: [] },
   devise: "",
   conditions: { acompte_pct: 0, delai_jours: 10, relance_jours: 7, tva_mention: "", cgv_url: "" },
   taux: { eur: 1.058, thb: 40.54 },
@@ -140,6 +142,14 @@ export const REGLAGES_NEUTRE = {
   libelles: LIBELLES_FR,
   textes: { variantes: [{ id: "standard", nom: "Standard", corps: "", cloture: "" }] },
 };
+
+// Informations de paiement proposées pour un document : celles de l'entreprise (avec le QR code des réglages), puis les autres.
+export function modesPaiement(r) {
+  const principal = { id: "", nom: r.paiement.nom || "Principal", texte: r.paiement.texte, qr_image: r.apparence.qr_image, qr_pseudo: r.apparence.qr_pseudo };
+  const autres = (r.paiement.autres || []).map((m) => ({ id: m.id, nom: m.nom || "Sans nom", texte: m.texte || "", qr_image: m.qr_image || "", qr_pseudo: m.qr_pseudo || "" }));
+  return [principal, ...autres];
+}
+export const modePaiement = (r, id) => modesPaiement(r).find((m) => m.id === (id || "")) || modesPaiement(r)[0];
 
 const estObjet = (v) => v && typeof v === "object" && !Array.isArray(v);
 function fusion(base, extra) {

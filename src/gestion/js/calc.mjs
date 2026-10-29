@@ -172,7 +172,7 @@ export function nouvelleRef({ numerotation, prenom, nom, dateIso, pays, refsExis
 
 export function nomFichier(type, doc, dossier, client) {
   const nom = sansAccents(client && client.nom).split(/\s+/)[0] || "client";
-  const t = type === "facture" ? "Facture" : "Devis";
+  const t = type === "facture_locale" ? "Facture locale" : type === "facture" ? "Facture" : "Devis";
   return `${t} ${dossier.ref} - ${nom}`;
 }
 
@@ -264,4 +264,27 @@ export function aFaire(resumes, today, reglages) {
   }
   const ordre = { acompte_retard: 0, solde_proche: 1, devis_relance: 2 };
   return items.sort((a, b) => ordre[a.type] - ordre[b.type] || b.jours - a.jours);
+}
+
+// Taux pour passer d'une devise à une autre d'après les taux des réglages (exprimés par rapport à la devise de l'entreprise).
+// Renvoie null si l'une des deux devises n'a pas de taux : la personne le saisit alors à la main.
+export function tauxVers(reglages, de, vers) {
+  const base = reglages.devise;
+  const taux = (code) => (code === base ? 1 : Number(reglages.taux[String(code).toLowerCase()]) || null);
+  const a = taux(de);
+  const b = taux(vers);
+  return a && b ? Math.round((b / a) * 10000) / 10000 : null;
+}
+
+// Copie d'un document convertie dans une autre devise : tous les montants sont multipliés par le taux.
+// En bahts les montants sont arrondis à l'unité, comme sur les factures locales.
+export function convertirContenu(contenu, taux, devise) {
+  const conv = (v) => (v == null ? v : devise === "THB" ? Math.round(Number(v) * taux) : arrondi(Number(v) * taux));
+  const c = structuredClone(contenu);
+  c.lignes = c.lignes.map((l) => ({ ...l, montant: conv(l.montant), unite: conv(l.unite) }));
+  c.devise = devise;
+  c.montant_recu = null;
+  delete c.libelle_recu;
+  c.equivalents = { ...(c.equivalents || {}), actif: false };
+  return c;
 }

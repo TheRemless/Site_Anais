@@ -1,7 +1,7 @@
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument } from "../etat.mjs";
 import { h, champ, toast, num, vider } from "../ui.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
-import { nouvelleLigne } from "../defauts.mjs";
+import { nouvelleLigne, modesPaiement } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
 
 const LARGEUR_FEUILLE = 794; // 210 mm à 96 dpi
@@ -25,6 +25,8 @@ function editeurVue(id) {
   const paiements = etat.db.paiements.filter((p) => p.dossier_id === dossier.id);
   const c = doc.contenu;
   const estFacture = doc.type === "facture";
+  const locale = doc.type === "facture_locale";
+  const nomDoc = locale ? "Facture locale" : estFacture ? "Facture" : "Devis";
   const regl = reglages();
   const devDoc = () => c.devise || regl.devise;
 
@@ -153,6 +155,10 @@ function editeurVue(id) {
 
   // ---- Champs généraux --------------------------------------------------------------------------------
   const date = h("input", { id: "d-date", type: "date", value: doc.date_emission, oninput: (e) => ((doc.date_emission = e.target.value), change()) });
+  const modes = modesPaiement(regl);
+  const selPaiement = h("select", { id: "d-paiement", onchange: (e) => ((c.paiement = e.target.value), change()) }, modes.map((m) => h("option", { value: m.id }, m.nom)));
+  selPaiement.value = modes.some((m) => m.id === (c.paiement || "")) ? c.paiement || "" : "";
+  const numeroDoc = h("input", { id: "d-numero", value: c.numero || "", placeholder: dossier.ref, oninput: (e) => ((c.numero = e.target.value), change()) });
   const prestataire = h("input", { id: "d-prestataire", value: c.prestataire || "", placeholder: "Qui réalise le service, si ce n'est pas vous", oninput: (e) => ((c.prestataire = e.target.value), change()) });
   const bandeau = h("input", { id: "d-bandeau", value: c.bandeau, oninput: (e) => ((c.bandeau = e.target.value), change()) });
   const colonnes = h(
@@ -312,7 +318,7 @@ function editeurVue(id) {
   function majMontants() {
     const t = totaux(c, recuActuel());
     const d = devDoc();
-    totalTexte.textContent = estFacture ? `Total de la facture : ${formatMontant(t.net, d)}, reste à payer ${formatMontant(t.reste, d)}` : `Total du devis : ${formatMontant(t.net, d)}`;
+    totalTexte.textContent = locale ? `Total de la facture locale : ${formatMontant(t.net, d)}` : estFacture ? `Total de la facture : ${formatMontant(t.net, d)}, reste à payer ${formatMontant(t.reste, d)}` : `Total du devis : ${formatMontant(t.net, d)}`;
     c.lignes.forEach((l, i) => {
       const el = listeLignes.querySelector(`[data-calc="${l.id}"]`);
       if (el) el.textContent = formatMontant(t.montants[i], d);
@@ -473,7 +479,7 @@ function editeurVue(id) {
   // ---- Actions ------------------------------------------------------------------------------------------
   const boutonEnvoi = h("button", { class: "secondaire", type: "button" });
   function majBoutonEnvoi() {
-    boutonEnvoi.textContent = doc.envoye_le ? `${estFacture ? "Envoyée" : "Envoyé"} le ${formatDate(doc.envoye_le)}` : `Marquer comme ${estFacture ? "envoyée" : "envoyé"}`;
+    boutonEnvoi.textContent = doc.envoye_le ? `${estFacture || locale ? "Envoyée" : "Envoyé"} le ${formatDate(doc.envoye_le)}` : `Marquer comme ${estFacture || locale ? "envoyée" : "envoyé"}`;
     boutonEnvoi.title = doc.envoye_le ? "Cliquer pour retirer la date d'envoi" : "";
   }
   boutonEnvoi.addEventListener("click", () => {
@@ -500,7 +506,7 @@ function editeurVue(id) {
   const formulaire = h(
     "div",
     { class: "editeur-form" },
-    h("fieldset", null, h("legend", null, "En-tête"), h("div", { class: "grille-form" }, champ("Date d'émission", date), champ("Colonnes", colonnes), champ("Devise du document", deviseSel)), champ("Titre dans la bande de couleur", bandeau), champ("Prestataire du service (facultatif)", prestataire)),
+    h("fieldset", null, h("legend", null, "En-tête"), h("div", { class: "grille-form" }, champ("Date d'émission", date), champ("Colonnes", colonnes), champ("Devise du document", deviseSel)), champ("Titre dans la bande de couleur", bandeau), champ("Prestataire du service (facultatif)", prestataire), h("div", { class: "grille-form" }, modes.length > 1 ? champ("Informations de paiement", selPaiement) : null, champ("Numéro affiché (facultatif)", numeroDoc, "Remplace la référence du dossier sur ce document."))),
     h("fieldset", null, h("legend", null, "Contenu"), listeLignes, h("div", { class: "ajouts" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("bloc", { intro: "comprenant:" })) }, "Ajouter un bloc de formule"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("ligne")) }, "Ajouter une ligne"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("remise")) }, "Ajouter une remise"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("texte")) }, "Ajouter une note")), champ("Catalogue", depuisCatalogue), totalTexte),
     blocRecu,
     h(
@@ -520,15 +526,15 @@ function editeurVue(id) {
   const lectureSeule = !peut("documents.ecrire");
   const racine = h(
     "div",
-    { "data-titre": `${estFacture ? "Facture" : "Devis"} ${dossier.ref}`, "data-large": "1", "data-plein": "1" },
+    { "data-titre": `${nomDoc} ${dossier.ref}`, "data-large": "1", "data-plein": "1" },
     h("a", { class: "retour", href: `#/dossier/${dossier.id}` }, nomClient(client)),
     h(
       "div",
       { class: "entete editeur-entete" },
-      h("div", null, h("h1", null, estFacture ? "Facture" : "Devis"), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
+      h("div", null, h("h1", null, nomDoc), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
       h("div", { class: "entete-actions" }, statut, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: "Télécharger le PDF (Ctrl+P)", onclick: () => pdf({ ...doc }) }, "Télécharger le PDF"))
     ),
-    h("p", { class: "aide-pdf" }, `Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « ${estFacture ? "Facture" : "Devis"} ${dossier.ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.`),
+    h("p", { class: "aide-pdf" }, `Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « ${nomDoc} ${dossier.ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.`),
     lectureSeule ? h("p", { class: "bandeau-info" }, "Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.") : null,
     h("div", { class: "editeur" }, formulaire, zoneApercu)
   );
