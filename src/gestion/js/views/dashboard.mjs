@@ -2,10 +2,16 @@ import { etat, resumes, nomClient, reglages, estAdmin, entiteActive, peut, paiem
 import { reglagesIncomplets } from "../defauts.mjs";
 import { h } from "../ui.mjs";
 import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois } from "../calc.mjs";
-import { pastille } from "./commun.mjs";
+import { pastille, cartes, voyageTexte } from "./commun.mjs";
 import { mesTaches, listeTaches } from "./taches.mjs";
 
 const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
+
+// « Mercredi 29 octobre », pour le sous-titre de l'écran Aujourd'hui.
+function dateLongue(d = new Date()) {
+  const t = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 
 function phrase(item) {
   const r = item.resume;
@@ -34,11 +40,11 @@ export async function tableauDeBord() {
 
   return h(
     "div",
-    { "data-titre": "Tableau de bord" },
+    { "data-titre": "Aujourd'hui" },
     manque.length
       ? h("div", { class: "bandeau-info", role: "status" }, `Les réglages de ${entiteActive().nom} ne sont pas terminés : il manque ${manque.join(", ")}. `, estAdmin() ? h("a", { href: "#/reglages" }, "Les compléter") : "Prévenez l'administratrice.")
       : null,
-    h("div", { class: "entete" }, h("h1", null, "Tableau de bord"), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier") : null),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, "Aujourd'hui"), h("p", { class: "sous" }, dateLongue())), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier") : null),
     peut("finances.voir") ? h(
       "div",
       { class: "chiffres" },
@@ -69,9 +75,21 @@ export async function tableauDeBord() {
       null,
       h("h2", null, "Départs dans les 60 prochains jours"),
       departs.length
+        ? cartes(departs, (r) =>
+            h(
+              "a",
+              { class: "carte-lien", href: `#/dossier/${r.dossier.id}` },
+              h("span", { class: "carte-titre" }, nomClient(r.client)),
+              h("span", { class: "carte-droite" }, h("strong", null, formatDate(r.dossier.date_depart)), r.reste > 0 ? h("span", null, `reste ${formatMontant(r.reste, r.devise)}`) : null),
+              h("span", { class: "carte-sous" }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
+              h("span", { class: "carte-pied" }, pastille(r.statut))
+            )
+          )
+        : null,
+      departs.length
         ? h(
             "table",
-            { class: "tableau simple" },
+            { class: "tableau simple seulement-bureau" },
             h("thead", null, h("tr", null, ["Départ", "Client", "Voyage", "Statut", "Reste à payer"].map((t) => h("th", { scope: "col" }, t)))),
             h(
               "tbody",

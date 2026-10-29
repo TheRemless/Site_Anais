@@ -1,8 +1,8 @@
 import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe } from "../etat.mjs";
 import { h, champ, vider, toast } from "../ui.mjs";
-import { formatMontant, aujourdhui, nouvelleRef, periodeTexte, STATUTS } from "../calc.mjs";
+import { formatMontant, formatDate, aujourdhui, nouvelleRef, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
-import { pastille, vide, voyageTexte } from "./commun.mjs";
+import { pastille, vide, voyageTexte, cartes, sousTitreDossier } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 
 const ONGLETS = [
@@ -72,10 +72,22 @@ export function listeDossiers() {
       );
       return;
     }
+    const cocher = (r) => h("input", { type: "checkbox", "aria-label": `Sélectionner ${nomClient(r.client)}`, checked: selection.has(r.dossier.id), onchange: (e) => { if (e.target.checked) selection.add(r.dossier.id); else selection.delete(r.dossier.id); majBarre(); } });
     corps.append(
+      cartes(lignes.slice(0, limite), (r) => [
+        groupee ? cocher(r) : null,
+        h(
+          "a",
+          { class: "carte-lien", href: `#/dossier/${r.dossier.id}` },
+          h("span", { class: "carte-titre" }, nomClient(r.client)),
+          h("span", { class: "carte-droite" }, h("strong", null, r.total ? formatMontant(r.total, r.devise) : "—"), r.total && r.reste > 0 && r.statut !== "annule" ? h("span", null, `reste ${formatMontant(r.reste, r.devise)}`) : null),
+          h("span", { class: "carte-sous" }, sousTitreDossier(r.dossier)),
+          h("span", { class: "carte-pied" }, pastille(r.statut), r.dossier.date_depart ? h("span", { class: "ref" }, `Départ ${formatDate(r.dossier.date_depart)}`) : null)
+        ),
+      ]),
       h(
         "table",
-        { class: "tableau" },
+        { class: "tableau seulement-bureau" },
         h("thead", null, h("tr", null, groupee ? h("th", { class: "case-cellule", scope: "col" }, h("input", { type: "checkbox", "aria-label": "Sélectionner les dossiers affichés", checked: lignes.slice(0, limite).every((r) => selection.has(r.dossier.id)), onchange: (e) => { lignes.slice(0, limite).forEach((r) => (e.target.checked ? selection.add(r.dossier.id) : selection.delete(r.dossier.id))); majBarre(); dessiner(); } })) : null, ["Client", "Référence", "Intitulé", "Statut", "Total", "Reste"].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : null }, t)))),
         h(
           "tbody",
@@ -84,7 +96,7 @@ export function listeDossiers() {
             h(
               "tr",
               null,
-              groupee ? h("td", { class: "case-cellule" }, h("input", { type: "checkbox", "aria-label": `Sélectionner ${nomClient(r.client)}`, checked: selection.has(r.dossier.id), onchange: (e) => { if (e.target.checked) selection.add(r.dossier.id); else selection.delete(r.dossier.id); majBarre(); } })) : null,
+              groupee ? h("td", { class: "case-cellule" }, cocher(r)) : null,
               h("td", { "data-label": "Client" }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client))),
               h("td", { "data-label": "Référence", class: "ref" }, r.dossier.ref),
               h("td", { "data-label": "Intitulé" }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),

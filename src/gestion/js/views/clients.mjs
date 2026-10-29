@@ -1,7 +1,7 @@
 import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier, reglages, peut } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, vider } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
-import { pastille, vide } from "./commun.mjs";
+import { pastille, vide, cartes } from "./commun.mjs";
 
 const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -49,10 +49,21 @@ export function listeClients() {
       corps.append(vide(etat.db.clients.length ? "Aucun client ne correspond" : "Aucun client", etat.db.clients.length ? "Essayez une autre recherche." : "Les clients se créent avec leur premier dossier, ou avec le bouton ci-dessus."));
       return;
     }
+    const nbDossiers = (c) => etat.db.dossiers.filter((d) => d.client_id === c.id).length;
     corps.append(
+      cartes(clients.slice(0, limite), (c) => {
+        const n = nbDossiers(c);
+        return h(
+          "a",
+          { class: "carte-lien", href: `#/client/${c.id}` },
+          h("span", { class: "carte-titre" }, nomClient(c)),
+          h("span", { class: "carte-droite" }, h("strong", null, n), h("span", null, n > 1 ? "dossiers" : "dossier")),
+          h("span", { class: "carte-sous" }, [c.telephone, (c.adresse || "").split("\n").filter(Boolean).pop()].filter(Boolean).join(" · ") || "Sans coordonnées")
+        );
+      }),
       h(
         "table",
-        { class: "tableau" },
+        { class: "tableau seulement-bureau" },
         h("thead", null, h("tr", null, ["Client", "Téléphone", "Adresse", "Dossiers"].map((x, i) => h("th", { scope: "col", class: i === 3 ? "num" : null }, x)))),
         h(
           "tbody",
@@ -64,7 +75,7 @@ export function listeClients() {
               h("td", { "data-label": "Client" }, h("a", { href: `#/client/${c.id}` }, nomClient(c))),
               h("td", { "data-label": "Téléphone" }, c.telephone || "-"),
               h("td", { "data-label": "Adresse" }, (c.adresse || "-").split("\n").join(", ")),
-              h("td", { class: "num", "data-label": "Dossiers" }, etat.db.dossiers.filter((d) => d.client_id === c.id).length)
+              h("td", { class: "num", "data-label": "Dossiers" }, nbDossiers(c))
             )
           )
         )
