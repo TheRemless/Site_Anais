@@ -18,12 +18,13 @@ const telWhatsApp = (p) => { const t = ((p && p.contact && p.contact.telephones)
 export function messagePartenaire(r) {
   const p = partenaireDe(r.partenaire_id);
   const langue = "en";
-  ouvrirMessage({ titre: p ? `Message à ${p.nom}` : "Message au partenaire", cle: "partenaire", langue, telephone: telWhatsApp(p), vars: variablesMessage({ reservation: r, client: clientDe(r) || {}, dossier: dossierDe(r) || {}, partenaire: p || {}, entreprise: entreprise(), langue }) });
+  ouvrirMessage({ titre: p ? `Message à ${p.nom}` : "Message au partenaire", pour: "partenaire", cle: "partenaire", langue, telephone: telWhatsApp(p), vars: variablesMessage({ reservation: r, client: clientDe(r) || {}, dossier: dossierDe(r) || {}, partenaire: p || {}, entreprise: entreprise(), langue }) });
 }
 export function messageClient(r, cle = "confirmation") {
   const c = clientDe(r) || {};
-  const langue = reglages().libelles === undefined ? "fr" : "fr";
-  ouvrirMessage({ titre: `Message à ${nomClient(c)}`, cle, langue, telephone: c.telephone || "", vars: variablesMessage({ reservation: r, client: c, dossier: dossierDe(r) || {}, partenaire: partenaireDe(r.partenaire_id) || {}, entreprise: entreprise(), langue }) });
+  // Les clients de Secret reçoivent leurs documents en anglais : le message est proposé en anglais aussi.
+  const langue = /invoice/i.test((reglages().libelles && reglages().libelles.facture) || "") ? "en" : "fr";
+  ouvrirMessage({ titre: `Message à ${nomClient(c)}`, pour: "client", cle, langue, telephone: c.telephone || "", vars: variablesMessage({ reservation: r, client: c, dossier: dossierDe(r) || {}, partenaire: partenaireDe(r.partenaire_id) || {}, entreprise: entreprise(), langue }) });
 }
 
 export function carteReservation(r, { avecDossier = true, apres = () => {} } = {}) {
