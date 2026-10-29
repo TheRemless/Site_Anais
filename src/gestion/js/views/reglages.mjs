@@ -1,5 +1,6 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
 import { etat, enregistrerReglages, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments } from "../etat.mjs";
+import { voucherExemple } from "./voucher.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
@@ -215,10 +216,14 @@ export function vueReglages() {
     return renderDocument({ type: "devis", doc, dossier: { ref: "EXEMPLE-0001" }, client: { civilite: r.listes.civilites[0] || "", prenom: "Prénom", nom: "Nom", adresse: "1 rue de l'Exemple\n00000 Ville", telephone: "+00 00 000 00 00" }, reglages: r, recu: 0 });
   };
   const { zone: zoneApercu, redessiner } = apercuA4(exemple);
+  let typeApercuVoucher = "bateau";
+  const choixApercuVoucher = h("select", { id: "apercu-voucher-type", onchange: (e) => ((typeApercuVoucher = e.target.value), redessinerVoucher()) }, [["bateau", "Boat Tour"], ["transfert", "Transfer"], ["activite", "Activity & Tour"], ["location", "Rental"]].map(([v, l]) => h("option", { value: v }, l)));
+  const { zone: zoneVoucher, redessiner: redessinerVoucher } = apercuA4(() => voucherExemple(r, typeApercuVoucher));
+  zoneVoucher.hidden = true;
   let minuteur = null;
   const redessinerApercu = () => {
     clearTimeout(minuteur);
-    minuteur = setTimeout(redessiner, 200);
+    minuteur = setTimeout(() => (zoneVoucher.hidden ? redessiner() : redessinerVoucher()), 200);
   };
 
   // Variantes de conditions de paiement
@@ -406,9 +411,12 @@ export function vueReglages() {
         "fieldset",
         null,
         h("legend", null, "Vouchers (mode excursions)"),
-        h("p", { class: "aide" }, "L'en-tête reprend le nom, le sous-titre, l'adresse et le téléphone de l'onglet Entreprise, ainsi que le logo. Les vouchers sont en anglais."),
-        h("div", { class: "grille-form" }, texte("Numéro de licence TAT", "voucher.licence"), texte("E-mail affiché", "voucher.email", { type: "email" })),
-        texte("Texte de fin", "voucher.merci", { multi: true, rows: 2, aide: "{entreprise} est remplacé par le nom de l'entreprise." }),
+        h("p", { class: "aide" }, "Les vouchers sont en anglais. Un champ vide reprend la valeur de l'onglet Entreprise (nom, sous-titre, adresse, téléphone) ; le logo est celui de l'onglet Apparence. L'aperçu à droite suit vos modifications."),
+        h("div", { class: "grille-form" }, texte("Nom affiché", "voucher.nom", { placeholder: r.emetteur.nom }), texte("Sous-titre", "voucher.sous_titre", { placeholder: r.emetteur.sous_titre || "by Zwald Travel Planner CO., LTD." }), texte("Numéro de licence TAT", "voucher.licence"), texte("WhatsApp affiché", "voucher.whatsapp", { placeholder: r.emetteur.telephone }), texte("E-mail affiché", "voucher.email", { type: "email" })),
+        texte("Adresse sur une ligne", "voucher.adresse", { placeholder: (r.emetteur.adresse || "").split("\n").join(", ") }),
+        champ("Modèle de l'aperçu", choixApercuVoucher),
+        texte("Texte de fin", "voucher.merci", { multi: true, rows: 2, aide: "{entreprise} est remplacé par le nom affiché." }),
+        texte("Texte de fin des vouchers de transfert", "voucher.merci_transfert", { multi: true, rows: 2 }),
         texte("Note des vouchers de transfert", "voucher.note_transfert", { multi: true, rows: 2 })
       )
     ),
@@ -441,6 +449,8 @@ export function vueReglages() {
     for (const [k, el] of Object.entries(sections)) el.hidden = k !== cle;
     for (const b of barre.children) b.setAttribute("aria-pressed", b.dataset.cle === cle ? "true" : "false");
     zoneApercu.hidden = cle === "donnees" || cle === "ecrans";
+    zoneVoucher.hidden = cle !== "ecrans";
+    if (cle === "ecrans") redessinerVoucher();
     boutonEnregistrer.hidden = cle === "donnees";
     if (cle !== "donnees") redessiner();
   };
@@ -469,7 +479,7 @@ export function vueReglages() {
     { "data-titre": "Réglages", "data-large": "1", "data-plein": "1" },
     h("div", { class: "entete" }, h("div", null, h("h1", null, "Réglages"), h("p", { class: "sous" }, entiteActive().nom)), estSuperAdmin() ? h("a", { class: "bouton secondaire", href: "#/admin" }, "Administration : entreprises et accès") : null),
     barre,
-    h("form", { class: "reglages-grille", onsubmit: enregistrer }, h("div", { class: "reglages-colonne" }, ...Object.values(sections), h("div", { class: "actions barre-fixe" }, indicateur, boutonEnregistrer)), zoneApercu)
+    h("form", { class: "reglages-grille", onsubmit: enregistrer }, h("div", { class: "reglages-colonne" }, ...Object.values(sections), h("div", { class: "actions barre-fixe" }, indicateur, boutonEnregistrer)), zoneApercu, zoneVoucher)
   );
   montrer("entreprise");
   return racine;
