@@ -139,8 +139,26 @@ export function pointEmbarquement(partenaire, lieu) {
   const points = (partenaire && partenaire.regles && partenaire.regles.points_embarquement) || [];
   const cible = sansAccentsMin(lieu);
   const p = points.find((x) => sansAccentsMin(x.lieu) === cible) || points.find((x) => cible && (sansAccentsMin(x.lieu).includes(cible) || cible.includes(sansAccentsMin(x.lieu))));
-  return p ? p.ou : "";
+  return p ? pointEmbarquementEn(p.ou) : "";
 }
+
+// Les points d'embarquement de la base sont en français (« Bureau Bundhaya au Pakbara Pier ») : en anglais pour le voucher.
+const POINTS_EN = [
+  [/^Bureau (.+?) (?:à|au) (.+)$/i, "$1 office at $2"],
+  [/^Bureau ([^,]+)(,.*)?$/i, "$1 office$2"],
+  [/^Siège (.+)$/i, "$1 head office"],
+  [/^Pickup à l'hôtel de (.+)$/i, "Hotel pickup on $1"],
+  [/^Pickup à l'hôtel, zone (.+)$/i, "Hotel pickup, $1 area"],
+  [/^Plage devant le parc national$/i, "Beach in front of the national park"],
+  [/^Plage devant (.+)$/i, "Beach in front of $1"],
+  [/comptoir n°\s*(\d+)/i, "counter no. $1"],
+  [/derrière le 7-11/i, "behind the 7-Eleven"],
+  [/pont d'accostage/i, "landing jetty"],
+  [/ponton flottant/i, "floating pontoon"],
+  [/niveau (\d+)/i, "level $1"],
+];
+export const pointEmbarquementEn = (texte) => POINTS_EN.reduce((s, [re, en]) => s.replace(re, en), String(texte || "")).replace(/undefined/g, "");
+export const estPickupHotel = (embarquement) => /hotel pickup|pickup at (your|the) hotel/i.test(embarquement || "");
 
 // Consigne de check-in en anglais, d'après la compagnie et la ligne (Langkawi demande les passeports).
 export function consigneCheckin(nomCompagnie, trajet = {}) {
@@ -160,8 +178,10 @@ export function datesDepuisReservations(reservations) {
   return { date_depart: dates[0], date_retour: dates.length > 1 && dates[dates.length - 1] !== dates[0] ? dates[dates.length - 1] : null };
 }
 
-export function typeVoucher(reservation, prestation) {
+// `partenaire` (facultatif) : pour une réservation à la main chez une compagnie de bateaux (Bundhaya, Satun), un billet.
+export function typeVoucher(reservation, prestation, partenaire = null) {
   if (reservation.trajet_id) return "billet";
+  if (!prestation && partenaire && ((partenaire.regles && partenaire.regles.points_embarquement && partenaire.regles.points_embarquement.length) || /speed ?boat|ferry/i.test(partenaire.nom || ""))) return "billet";
   const f = prestation ? prestation.famille : "";
   const g = `${(prestation && prestation.groupe) || ""} ${(prestation && prestation.libelle) || ""}`;
   if (f === "frais") return null;

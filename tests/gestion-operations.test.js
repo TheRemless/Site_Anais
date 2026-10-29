@@ -151,13 +151,19 @@ test("dates du dossier déduites des réservations : première et dernière date
 });
 
 test("billet de bateau : embarcadère de la compagnie et consigne de check-in en anglais", () => {
-  const bund = { regles: { points_embarquement: [{ lieu: "Koh Lanta", ou: "Saladan Pier" }, { lieu: "Phuket", ou: "Rassada Pier, comptoir n°11" }] } };
+  const bund = { regles: { points_embarquement: [{ lieu: "Koh Lanta", ou: "Saladan Pier" }, { lieu: "Phuket", ou: "Rassada Pier, counter no. 11" }] } };
   assert.equal(pointEmbarquement(bund, "Koh Lanta"), "Saladan Pier");
-  assert.equal(pointEmbarquement(bund, "Phuket"), "Rassada Pier, comptoir n°11");
+  assert.equal(pointEmbarquement(bund, "Phuket"), "Rassada Pier, counter no. 11");
   assert.equal(pointEmbarquement(bund, "Koh Lipe"), "");
   assert.equal(pointEmbarquement(null, "Koh Lanta"), "");
   assert.match(consigneCheckin("Bundhaya Speed Boat", { de: "Koh Lanta", vers: "Koh Lipe" }), /45 minutes before departure/);
   assert.match(consigneCheckin("Bundhaya Speed Boat", { de: "Koh Lipe", vers: "Langkawi" }), /90 minutes.*passport/i);
   assert.match(consigneCheckin("Satun Pakbara Speed Boat Club", { de: "Koh Lanta", vers: "Koh Ngai" }), /30 minutes before departure/);
   assert.match(consigneCheckin("Ferry démo", {}), /30 minutes before departure/);
+});
+
+test("voucher : une réservation à la main chez une compagnie de bateaux est un billet", () => {
+  assert.equal(typeVoucher({ libelle: "Koh Lanta → Koh Lipe" }, null, { nom: "Bundhaya Speed Boat", regles: { points_embarquement: [{ lieu: "Koh Lanta", ou: "Saladan Pier" }] } }), "billet");
+  assert.equal(typeVoucher({ libelle: "Koh Lanta → Koh Lipe" }, null, { nom: "Satun Pakbara Speed Boat Club", regles: {} }), "billet");
+  assert.equal(typeVoucher({ libelle: "Krabi Airport → Koh Lanta" }, null, { nom: "VIP Taxi Lanta", regles: {} }), "transfert");
 });
