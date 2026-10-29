@@ -4,9 +4,9 @@ import { etat, reglages, entiteActive, imprimer, nomPartenaire, resumeDossier } 
 import { h, modal } from "../ui.mjs";
 import { apercuA4 } from "./commun.mjs";
 import { formatDate, formatNombre } from "../calc.mjs";
-import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit } from "../operations-calc.mjs";
+import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER } from "../operations-calc.mjs";
 
-const TITRES = { bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher" };
+const TITRES = TITRES_VOUCHER;
 const case_ = (coche, libelle) => h("span", { class: `v-case${coche ? " cochee" : ""}` }, h("span", { class: "v-carre", "aria-hidden": "true" }, coche ? "☒" : "☐"), ` ${libelle}`);
 const ligne = (libelle, valeur, ...suite) => h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, `${libelle}: `), valeur === null || valeur === undefined ? "" : String(valeur), ...suite);
 const prix = (n, devise) => (n === null || n === undefined || n === "" ? "" : `${devise} ${formatNombre(n)}`);
@@ -58,14 +58,18 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }) {
       ? [ligne("Tour Name", r.libelle), ligne("Date", dateTexte(r.date_service, "en")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), a || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), en_ || ""), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Tour Type: "), case_(!prive, "Join Tour"), " ", case_(prive, "Private Tour")), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
       : type === "transfert"
         ? [ligne("Date", dateTexte(r.date_service, "en")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Drop-off Location", dropOff), ligne("Flight Number (if applicable)", vol ? vol[0] : ""), ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), a || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), en_ || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Luggage: "), bagages), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Transfer Type: "), ...[["taxi", "Private Taxi"], ["minivan", "Private Minivan"], ["partage", "Shared Minivan"]].flatMap(([k, l]) => [case_(transfert === k, l), " "])), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
-        : [ligne("Activity / Tour", r.libelle), ligne("Date & Time", [dateTexte(r.date_service, "en"), (p && p.details && p.details.horaires) || ""].filter(Boolean).join(", ")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Guests", "", h("span", { class: "v-cle" }, "Adults "), a || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children "), en_ || ""), ligne("Company / Operator", operateur), ligne("Remarks", remarques)];
+        : type === "location"
+          ? [ligne("Vehicle", r.libelle), ligne("Pickup Date & Time", [dateTexte(r.date_service, "en"), r.heure_pickup].filter(Boolean).join(", ")), ligne("Return Date & Time", [dateTexte(dt.retour_date, "en"), dt.retour_heure].filter(Boolean).join(", ")), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Driver's Name", nomClient), ligne("Driving Licence", dt.permis || ""), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
+          : [ligne("Activity / Tour", r.libelle), ligne("Date & Time", [dateTexte(r.date_service, "en"), dt.heure_service || (p && p.details && p.details.horaires) || ""].filter(Boolean).join(", ")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Guests", "", h("span", { class: "v-cle" }, "Adults "), a || "", h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children "), en_ || ""), ligne("Company / Operator", operateur), ligne("Remarks", remarques)];
 
   const paiement =
     type === "bateau"
       ? [ligne("Total Price", prix(r.montant_vente, devise)), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "National Park Fee: "), case_(parc.inclus === true, "Included"), " ", case_(parc.inclus === false, "Not Included"), parc.inclus === false ? `: ${parc.texte}` : ""), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Payment Status: "), case_(statut === "paye", "Paid"), " ", case_(statut === "acompte", "Deposit Paid"), " ", case_(statut === "sur_place", "Pay at Pier / Provider")), ligne("Remarks", remarquesPaiement)]
       : type === "transfert"
         ? [ligne("Total Price", prix(r.montant_vente, devise)), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Payment Status: "), case_(statut === "paye", "Paid"), " ", case_(statut === "acompte", "Deposit Paid"), " ", case_(statut === "sur_place", "Pay Driver Directly")), ligne("Remarks", remarquesPaiement)]
-        : [ligne("Price per Person", prix(prixPersonne, devise)), ligne("Total Amount", prix(r.montant_vente, devise)), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Payment Status: "), case_(statut === "paye", "Paid in Full"), " ", case_(statut === "acompte", "Deposit Paid"), " ", case_(statut === "sur_place", "Pay on Arrival")), ligne("Remarks", remarquesPaiement)];
+        : type === "location"
+          ? [ligne("Total Price", prix(r.montant_vente, devise)), ligne("Security Deposit", dt.caution || ""), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Payment Status: "), case_(statut === "paye", "Paid"), " ", case_(statut === "acompte", "Deposit Paid"), " ", case_(statut === "sur_place", "Pay on Pickup")), ligne("Remarks", remarquesPaiement)]
+          : [ligne("Price per Person", prix(prixPersonne, devise)), ligne("Total Amount", prix(r.montant_vente, devise)), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Payment Status: "), case_(statut === "paye", "Paid in Full"), " ", case_(statut === "acompte", "Deposit Paid"), " ", case_(statut === "sur_place", "Pay on Arrival")), ligne("Remarks", remarquesPaiement)];
 
   const merci = remplirGabarit(v.merci || "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", { entreprise: e.nom || entiteActive().nom });
   return h(
