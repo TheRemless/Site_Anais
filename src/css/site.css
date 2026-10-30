@@ -10,9 +10,8 @@
   --teal-deep:   #0A5C52;
   --teal-light:  #24B5A5;
 
-  --navy:        #0F2A28;
-  --navy-soft:   #163A37;
-  --craie:       #F3F5F3;
+  --navy:        #16202E;
+  --navy-soft:   #1F2D3F;
 
   /* warm sunset accent — used sparingly */
   --sand:        #E0A36B;
@@ -148,7 +147,6 @@ section { position: relative; }
 .bg-mint  { background: var(--bg-mint); }
 .bg-navy  { background: var(--navy); color: var(--on-dark); }
 .bg-teal  { background: var(--teal); color: #fff; }
-.bg-craie { background: var(--craie); }
 .bg-navy h1,.bg-navy h2,.bg-navy h3,.bg-teal h1,.bg-teal h2,.bg-teal h3 { color: #fff; }
 
 .section-head { max-width: 640px; margin-bottom: 56px; }
@@ -165,7 +163,7 @@ section { position: relative; }
   background: var(--bg); color: var(--fg);
   font-family: var(--sans); font-weight: 600; font-size: 0.95rem;
   letter-spacing: 0.01em;
-  border: 1px solid var(--bg); border-radius: 10px;
+  border: 1px solid var(--bg); border-radius: 14px;
   cursor: pointer; position: relative; overflow: hidden; white-space: nowrap;
   transition: transform 0.5s var(--ease), box-shadow 0.5s var(--ease), background 0.3s, color 0.3s, border-color 0.3s;
   will-change: transform;
