@@ -1,5 +1,5 @@
 {
-  "_source": "Pages /taxi/<route>/. Faits : taxi.json (validé par Jérémy le 28.10.2026). Aucun prix, aucune durée tant que VIP Taxi Lanta ne les a pas confirmés (champ drive à null).",
+  "_source": "Pages /taxi/<route>/. Faits : taxi.json (validé par Jérémy le 28.10.2026). Aucun prix. Durées approximatives demandées par Jérémy le 30.10.2026, relevées sur 12go, goasia, geckoroutes et amazinglanta (voir le registre de faits), à affiner avec VIP Taxi Lanta.",
   "routes": [
     {
       "id": "krabi-airport-koh-lanta",
@@ -14,7 +14,7 @@
         "Give us your flight number and landing time, your hotel on Koh Lanta and the number of people. The team confirms the price on WhatsApp and the driver waits for you at the airport.",
         "For the way back, enter your hotel as the pickup and Krabi Airport as the destination, with the time you want to leave."
       ],
-      "drive": null,
+      "drive": "about 2 to 3 hours",
       "faq": [
         {
           "q": "Where does the driver meet me at Krabi Airport?",
@@ -39,7 +39,7 @@
         "You travel in one vehicle from Phuket Airport to your hotel door on Koh Lanta, with stops when you want them. Send your flight time, your hotel and the number of people, and the team replies with the price.",
         "The same transfer runs from Koh Lanta to Phuket Airport for your departure."
       ],
-      "drive": null,
+      "drive": "about 4 to 5 hours",
       "faq": [
         {
           "q": "Is it one vehicle all the way from Phuket Airport?",
@@ -63,7 +63,7 @@
       "body": [
         "We pick you up at Surat Thani Airport, at the bus terminal or at Donsak Pier, and drive you to your hotel on Koh Lanta. Tell us which one and at what time."
       ],
-      "drive": null,
+      "drive": "about 4 to 5 hours",
       "faq": [
         {
           "q": "Do you pick up at Donsak Pier?",
@@ -87,7 +87,7 @@
       "body": [
         "Tell us where in Krabi Town you are going, hotel or bus terminal, and the team replies with the price."
       ],
-      "drive": null,
+      "drive": "about 3 hours",
       "faq": [
         {
           "q": "Can you drop me at Krabi bus terminal?",
@@ -107,7 +107,7 @@
       "body": [
         "We drop you at your hotel in Ao Nang or at the pier you tell us."
       ],
-      "drive": null,
+      "drive": "about 3 hours",
       "faq": [
         {
           "q": "Can you drop us at the Ao Nang pier for Railay?",
@@ -127,7 +127,7 @@
       "body": [
         "We drive to Khao Sok village and to Cheow Lan Pier, where the boats to the lake leave. Tell us which one and your boat time if you have one."
       ],
-      "drive": null,
+      "drive": "about 4 to 5 hours",
       "faq": [
         {
           "q": "Do you drive to Cheow Lan Pier?",
@@ -147,7 +147,7 @@
       "body": [
         "Tell us where in Trang you need to be and at what time, and the team replies with the price."
       ],
-      "drive": null,
+      "drive": "about 3 hours",
       "faq": [
         {
           "q": "Can you drop me at Trang train station or airport?",
@@ -167,7 +167,7 @@
       "body": [
         "One vehicle from your hotel on Koh Lanta to your hotel in Khao Lak, with stops when you want them."
       ],
-      "drive": null,
+      "drive": "about 4 to 5 hours",
       "faq": [
         {
           "q": "Is the Khao Lak transfer private?",
@@ -187,7 +187,7 @@
       "body": [
         "Give us your ferry time and the team confirms the pickup time on WhatsApp."
       ],
-      "drive": null,
+      "drive": "about 5 hours",
       "faq": [
         {
           "q": "Will we make the ferry?",
