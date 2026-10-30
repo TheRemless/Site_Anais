@@ -50,5 +50,7 @@ module.exports = function () {
     route.jsonLd = jsonLd(route, url);
     return route;
   });
-  return { routes, common: data.common, byId: Object.fromEntries(routes.map((r) => [r.id, r])) };
+  const byId = Object.fromEntries(routes.map((r) => [r.id, r]));
+  const regions = (data.regions || []).map((g) => ({ ...g, routes: g.routes.map((id) => byId[id]).filter(Boolean) }));
+  return { routes, common: data.common, byId, regions, further: data.further };
 };

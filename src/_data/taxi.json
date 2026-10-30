@@ -14,7 +14,8 @@
       "Surat Thani",
       "Trang",
       "Khao Lak",
-      "Khao Sok"
+      "Khao Sok",
+      "Hat Yai"
     ],
     "sameAs": [
       "https://maps.app.goo.gl/hnm3donEq7uR56Dr6",
@@ -23,7 +24,7 @@
   },
   "hero": {
     "title": "Private taxi & minivan in Southern Thailand",
-    "lead": "Reliable private taxi and minivan service across Southern Thailand: airports, piers, cities and provinces. Based in Koh Lanta.",
+    "lead": "Private taxi and minivan across Southern Thailand: airports, piers, national parks and towns, from Phuket and Khao Lak to Trang and Hat Yai. Based in Koh Lanta.",
     "note": "Private transfers, no sharing, no hidden fees.",
     "photo": {
       "src": "/images/taxi/hero-ceiling-1800.webp",
@@ -89,7 +90,7 @@
     {
       "id": "long-distance",
       "title": "Long-distance private transfers",
-      "text": "Between Koh Lanta and Krabi Town, Ao Nang, Phuket, Surat Thani, Trang, Khao Lak, Khao Sok, Donsak Pier, Cheow Lan Pier or any other place in Southern Thailand.",
+      "text": "Between any two places in Southern Thailand: Krabi Town, Ao Nang, Phuket, Khao Lak, Khao Sok, Surat Thani, Trang, Hat Yai, Donsak Pier, Cheow Lan Pier, with or without Koh Lanta on the way.",
       "photo": null,
       "link": null,
       "confirmed": true,
@@ -233,6 +234,7 @@
     "Khao Sok",
     "Trang",
     "Donsak Pier",
-    "Cheow Lan Pier"
+    "Cheow Lan Pier",
+    "Hat Yai"
   ]
 }

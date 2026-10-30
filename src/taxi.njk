@@ -84,24 +84,34 @@ eleventyExcludeFromCollections: true
   <div class="hero-in">
     <h1>{{ taxi.hero.title }}</h1>
     <p class="lead">{{ taxi.hero.lead }} {{ taxi.hero.note }}</p>
-    <a class="btn" href="#request">Request a transfer</a>
+    <div class="hero-actions">
+      <a class="btn" href="#request">Request a transfer</a>
+      <a class="hero-more" href="#h-services">Where we drive</a>
+    </div>
   </div>
 </section>
 
 <main id="main">
-  <section class="sec" aria-labelledby="h-services">
-    <h2 id="h-services">Private transfers and taxi across Southern Thailand</h2>
-    <div class="svc">
-      {% for s in taxi.services %}
-      <div>
-        <h3>{{ s.title }}</h3>
-        <p>{{ s.text }}</p>
-        {%- if s.routes %}
-        <ul class="svc-routes">{% for id in s.routes %}<li><a href="/taxi/{{ id }}/">{{ taxiRoutesView.byId[id].label }}</a></li>{% endfor %}</ul>
-        {%- endif %}
-        {% if s.link %}<a href="{{ s.link.href }}">{{ s.link.label }}</a>{% endif %}
+  <section class="sec network" aria-labelledby="h-services">
+    <div class="network-head">
+      <h2 id="h-services">Everywhere in Southern Thailand</h2>
+      <p>{{ taxi.services[1].text }} {{ taxi.services[0].text }}</p>
+    </div>
+    <div class="board">
+      {%- for g in taxiRoutesView.regions %}
+      <div class="board-row">
+        <div class="board-region">
+          <h3>{{ g.name }}</h3>
+          <p>{{ g.intro }}</p>
+        </div>
+        <ul class="board-list">
+          {%- for r in g.routes %}
+          <li><a href="/taxi/{{ r.id }}/"><span>{{ r.label }}</span>{% if r.drive %}<small>{{ r.drive }}</small>{% endif %}</a></li>
+          {%- endfor %}
+        </ul>
       </div>
-      {% endfor %}
+      {%- endfor %}
+      <p class="board-foot">{{ taxiRoutesView.further }} <a href="#request">Send us the pickup and the destination</a>. On Koh Lanta itself: {{ taxi.services[2].text | lower }}</p>
     </div>
   </section>
 
@@ -120,7 +130,9 @@ eleventyExcludeFromCollections: true
     </div>
   </section>
 
-  <section class="sec" aria-labelledby="h-why">
+  <section class="sec why-sec" aria-labelledby="h-why">
+    <img eleventy:ignore class="why-photo" src="{{ taxi.gallery.photos[1].src }}" width="{{ taxi.gallery.photos[1].width }}" height="{{ taxi.gallery.photos[1].height }}" alt="{{ taxi.gallery.photos[1].alt }}" loading="lazy">
+    <div class="why-body">
     <h2 id="h-why">Why VIP Taxi Lanta</h2>
     <div class="why">
       {% for w in taxi.why %}
@@ -128,6 +140,7 @@ eleventyExcludeFromCollections: true
       {% endfor %}
     </div>
     <p class="rating"><a href="{{ taxi.business.reviewsUrl }}" rel="noopener">{{ taxi.rating.text }}</a></p>
+    </div>
   </section>
 
   <section class="sec" aria-labelledby="h-how">
@@ -205,6 +218,7 @@ eleventyExcludeFromCollections: true
   <div class="plate"><img eleventy:ignore src="/images/taxi/logo.webp" width="640" height="640" alt="" loading="lazy"></div>
   <p>VIP Taxi Lanta by {{ taxi.business.owner }}</p>
   <p>{{ taxi.business.place }}</p>
+  <p><a href="#h-services">Where we drive</a> · <a href="/secret/">Secret Travel &amp; Tour</a></p>
 </footer>
 
 <script src="/js/taxi-form.js?v={{ build.v }}" defer></script>
