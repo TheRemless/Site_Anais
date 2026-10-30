@@ -335,27 +335,46 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
   .legal-toc { display: none; }
 }
 
-/* ---------- WhatsApp FAB ---------- */
+/* ---------- WhatsApp FAB (pastille avec la photo d'Anaïs, reprise de la PR #26) ---------- */
 .wa-fab {
   position: fixed; bottom: 28px; right: 28px; z-index: 200;
-  display: flex; align-items: center; gap: 10px;
-  background: #25D366; color: #fff;
-  padding: 14px 20px 14px 16px;
+  display: inline-flex; align-items: center; gap: 11px;
+  background: #fff;
+  color: var(--ink);
+  padding: 7px 16px 7px 7px;
   border-radius: 50px;
-  box-shadow: 0 6px 24px rgba(37,211,102,0.38);
-  font-family: var(--sans); font-size: 0.9rem; font-weight: 600;
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 26px -6px rgba(13,31,28,0.14), 0 2px 8px rgba(13,31,28,0.04);
+  font-family: var(--sans);
   text-decoration: none;
   opacity: 0; transform: translateY(16px);
-  transition: opacity 0.5s var(--ease), transform 0.5s var(--ease), box-shadow 0.4s var(--ease), padding 0.4s var(--ease);
+  transition: opacity 0.5s var(--ease), transform 0.5s var(--ease), border-color 0.25s var(--ease);
   will-change: transform;
 }
 .wa-fab.visible { opacity: 1; transform: translateY(0); }
-.wa-fab:hover { box-shadow: 0 10px 32px rgba(37,211,102,0.52); }
-.wa-fab-label { white-space: nowrap; }
+/* Survol réservé aux pointeurs : sur mobile, :hover resterait collé après le tap. */
+@media (hover: hover) {
+  .wa-fab:hover { border-color: rgba(37,211,102,0.55); }
+}
+.wa-fab-avatar { position: relative; width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; }
+.wa-fab-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; box-shadow: 0 2px 6px rgba(13,31,28,0.12); }
+.wa-fab-status {
+  position: absolute; bottom: 1px; right: 1px; width: 10px; height: 10px;
+  background: #25D366; border: 2px solid #FFFFFF; border-radius: 50%;
+}
+.wa-fab-content { display: flex; flex-direction: column; line-height: 1.22; }
+.wa-fab-header { display: inline-flex; align-items: center; gap: 5px; }
+.wa-fab-name { font-size: 0.88rem; font-weight: 700; letter-spacing: -0.01em; }
+.wa-fab-wa-icon { color: #25D366; flex-shrink: 0; }
+.wa-fab-phone { font-size: 0.74rem; font-weight: 600; color: var(--teal-dark); letter-spacing: 0.02em; }
 
 @media (max-width: 560px) {
-  .wa-fab { padding: 14px; border-radius: 50%; bottom: 20px; right: 20px; }
-  .wa-fab-label { display: none; }
+  .wa-fab { bottom: 20px; right: 20px; padding: 6px 12px 6px 6px; gap: 8px; }
+  .wa-fab-avatar { width: 36px; height: 36px; }
+  .wa-fab-phone { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wa-fab { transition: opacity 0.3s; transform: none; }
 }
 
 /* ---------- Girls Trips mosaic ---------- */
