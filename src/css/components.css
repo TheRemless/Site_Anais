@@ -674,3 +674,12 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 }
 
 .hv-small { margin-top: 10px; font-size: 0.9rem; font-weight: 600; color: var(--teal-dark); }
+
+/* Titres de section alignés à gauche partout, surtitres moins espacés */
+.section-head.center { margin-inline: 0; text-align: left; }
+.eyebrow.center { justify-content: flex-start; }
+.eyebrow.center::before { display: inline-block; }
+.eyebrow { letter-spacing: 0.16em; font-size: 0.72rem; }
+.cta-band .section-head.center, .cta-band .eyebrow.center { text-align: center; justify-content: center; margin-inline: auto; }
+.cta-band .eyebrow.center::before { display: none; }
+.text-center .eyebrow.center { justify-content: center; }
