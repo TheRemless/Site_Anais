@@ -241,8 +241,37 @@ footer p { margin: 0; color: var(--mute); }
   .route .routes-cols { grid-template-columns: 1fr 1fr; column-gap: 3rem; }
 }
 
-/* /taxi/ : les trajets détaillés, une ligne par trajet sous chaque service */
-.svc-routes { margin: .9rem 0 0; }
-.svc-routes li { border-top: 1px solid var(--line); }
-.svc-routes a { display: block; padding: .6rem 0; font-weight: 500; text-decoration: none; }
-.svc-routes a:hover { text-decoration: underline; }
+/* /taxi/ : héros, tableau de desserte et section « pourquoi » (refonte du 30.10.2026) */
+.hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; }
+.hero-more { display: inline-flex; align-items: center; min-height: 52px; color: var(--text); font-weight: 700; text-decoration: none; border-bottom: 2px solid var(--amber); }
+.hero-more:hover { color: var(--amber); }
+.network-head { max-width: 40rem; }
+.network-head h2 { margin-bottom: 1rem; }
+.network-head p { margin: 0 0 2rem; color: var(--mute); }
+/* Le tableau : une planche de desserte, région à gauche, trajets à droite, durée en petit. */
+.board { border-top: 1px solid var(--line); }
+.board-row { padding: 1.5rem 0; border-bottom: 1px solid var(--line); }
+.board-region h3 { margin-bottom: .3rem; font-size: 1.35rem; }
+.board-region p { margin: 0 0 1rem; color: var(--mute); font-size: .95rem; }
+.board-list { display: grid; }
+.board-list a { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; min-height: 44px; padding: .55rem 0; color: var(--text); text-decoration: none; font-weight: 500; border-top: 1px solid rgba(240, 177, 58, .14); }
+.board-list li:first-child a { border-top: 0; }
+.board-list a:hover span { color: var(--amber); }
+.board-list small { flex: none; font-size: .85rem; color: var(--mute); font-variant-numeric: tabular-nums; }
+.board-foot { margin: 1.5rem 0 0; max-width: 40rem; color: var(--mute); }
+.why-sec { display: grid; gap: 2rem; }
+.why-photo { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 24px; }
+.why-body h2 { margin-bottom: 1.5rem; }
+@media (min-width: 48rem) {
+  .board-row { display: grid; grid-template-columns: 16rem 1fr; gap: 3rem; }
+  .board-region p { margin-bottom: 0; }
+  .board-list a { padding: .7rem 0; }
+  .why-sec { grid-template-columns: .9fr 1.1fr; align-items: center; gap: 3rem; }
+  .why-photo { aspect-ratio: 3 / 4; max-height: 34rem; }
+  .why-body .why { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 64rem) {
+  .board-list { grid-template-columns: 1fr 1fr; column-gap: 3rem; }
+  .board-list li:nth-child(2) a { border-top: 0; }
+}
+
