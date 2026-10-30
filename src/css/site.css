@@ -20,7 +20,7 @@
   --sand-ink:    #9A5B2E;
 
   /* Backgrounds */
-  --bg:          #F6FCFB;
+  --bg:          #FFFFFF;
   --bg-cream:    #EAF6F4;
   --bg-mint:     #DEF1EE;
   --surface:     #FFFFFF;
@@ -121,7 +121,7 @@ p { text-wrap: pretty; }
 .eyebrow.center { justify-content: center; }
 .eyebrow.center::before { display: none; }
 /* signature italic accent inside headings */
-h2 em { font-style: italic; font-weight: 500; color: var(--teal-dark); }
+h2 em { font-style: normal; font-weight: inherit; color: inherit; }
 .bg-navy h2 em, .bg-teal h2 em, .cta-band h2 em, .page-hero h1 em, .page-hero h2 em { color: var(--sand-soft); }
 .eyebrow.on-dark { color: var(--sand-soft); }
 
@@ -163,7 +163,7 @@ section { position: relative; }
   background: var(--bg); color: var(--fg);
   font-family: var(--sans); font-weight: 600; font-size: 0.95rem;
   letter-spacing: 0.01em;
-  border: 1px solid var(--bg); border-radius: 50px;
+  border: 1px solid var(--bg); border-radius: 14px;
   cursor: pointer; position: relative; overflow: hidden; white-space: nowrap;
   transition: transform 0.5s var(--ease), box-shadow 0.5s var(--ease), background 0.3s, color 0.3s, border-color 0.3s;
   will-change: transform;

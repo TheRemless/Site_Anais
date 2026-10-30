@@ -23,9 +23,9 @@
 <meta name="theme-color" content="#1A9B8C">
 <link rel="preload" as="font" type="font/woff2" href="/css/fonts/manrope-400-normal-latin.woff2" crossorigin>
 <link rel="preload" as="font" type="font/woff2" href="/css/fonts/cormorant-garamond-600-normal-latin.woff2" crossorigin>
-<link rel="stylesheet" href="/css/fonts.css">
-<link rel="stylesheet" href="/css/site.css">
-<link rel="stylesheet" href="/css/components.css">
+<link rel="stylesheet" href="/css/fonts.css?v={{ build.v }}">
+<link rel="stylesheet" href="/css/site.css?v={{ build.v }}">
+<link rel="stylesheet" href="/css/components.css?v={{ build.v }}">
 {% block head %}{% endblock %}
 {% include "schema-breadcrumb.njk" %}
 </head>
@@ -43,9 +43,9 @@
   <span class="wa-fab-label">WhatsApp</span>
 </a>
 {% endif %}
-<script src="/js/site.js"></script>
-<script src="/js/currency.js"></script>
-<script src="/js/consent.js"></script>
+<script src="/js/site.js?v={{ build.v }}"></script>
+<script src="/js/currency.js?v={{ build.v }}"></script>
+<script src="/js/consent.js?v={{ build.v }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

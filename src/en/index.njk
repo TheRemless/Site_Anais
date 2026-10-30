@@ -1,6 +1,6 @@
 ---
 active: "/en/"
-navLight: true
+navLight: false
 langAlt: "/"
 ---
 {% extends "base.njk" %}
@@ -34,91 +34,57 @@ langAlt: "/"
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
-<!-- ============ HERO ============ -->
-<section class="hero pre" data-screen-label="Hero">
-  <div class="hero-bg"><img fetchpriority="high" sizes="100vw" src="/images/IMG_6424.jpg" alt="View over Ang Thong marine national park, Thailand"></div>
-  <div class="hero-overlay"></div>
-  <div class="hero-inner">
-    <p class="eyebrow">Travel Planner · Thailand &amp; Southeast Asia</p>
-    <h1>
-      <span class="ln"><span>Tailor-made trips to Thailand,</span></span>
-      <span class="ln"><span>designed <em>for you</em></span></span>
-    </h1>
-    <p class="hero-sub">I'll help you build your ideal itinerary — based on what you love, your pace and your budget — drawing on my local experience. You save precious time, without paying more.</p>
-    <div class="hero-btns">
-      <a class="btn btn-teal btn-lg" href="/en/contact/" data-magnetic><span>Get my free quote <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
-      <a class="btn btn-white btn-lg" href="/en/services/"><span>Discover my services</span></a>
+<section class="hv-hero" data-screen-label="Hero">
+  <div class="container hv-hero-grid">
+    <div>
+      <p class="eyebrow">Travel Planner · Thailand &amp; Southeast Asia</p>
+      <h1>Tailor-made trips to Thailand, designed for you</h1>
+      <p class="hv-sub">I&#x27;ll help you build your ideal itinerary, based on what you love, your pace and your budget, drawing on my local experience. You save precious time, without paying more.</p>
+      <div class="hero-btns">
+        <a class="btn btn-teal btn-lg" href="/en/contact/" data-magnetic><span>Get my free quote <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+        <a class="btn btn-ghost btn-lg" href="/en/services/"><span>Discover my services</span></a>
+      </div>
+      <p class="hv-trust">3+ years on the ground · <a href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener">Google reviews 5/5</a> · No commission, full transparency · Daily WhatsApp support</p>
+    </div>
+    <div class="hv-hero-art" aria-hidden="true">
+      <div class="hv-art-main" data-parallax="0.06"><img fetchpriority="high" sizes="(min-width: 900px) 40vw, 90vw" src="/images/IMG_1369.jpg" alt=""></div>
+      <div class="hv-art-side" data-parallax="-0.08"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 24vw, 50vw" src="/images/IMG_6424.jpg" alt=""></div>
+      <div class="hv-art-dot" data-parallax="0.12"><img loading="lazy" decoding="async" sizes="160px" src="/images/IMG_2016.jpg" alt=""></div>
     </div>
   </div>
 </section>
 
-<!-- ============ TRUST BAR ============ -->
-<section class="trust-bar">
-  <div class="container">
-    <span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h0M15 9h0M9 13h0M15 13h0"/></svg> 3+ years on the ground</span>
-    <span class="sep"></span>
-    <a class="ti" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener" aria-label="Google reviews 5/5 — view listing on Google Maps"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg> Google reviews 5/5</a>
-    <span class="sep"></span>
-    <span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> No commission, full transparency</span>
-    <span class="sep"></span>
-    <span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 01-1.2 4.4A8.5 8.5 0 0112.5 20a8.4 8.4 0 01-4.4-1.2L3 20l1.3-5a8.4 8.4 0 01-1.3-4.5A8.5 8.5 0 017.6 3.2 8.4 8.4 0 0112 2a8.5 8.5 0 019 9.5z"/></svg> Daily WhatsApp support</span>
-  </div>
-</section>
-
-<!-- ============ INTRO ============ -->
 <section class="section-pad">
-  <div class="container">
-    <div class="split">
-      <div class="split-media intro-media" data-reveal="left">
-        <img loading="lazy" decoding="async" class="photo-main img-reveal-target" src="/images/IMG_5300.jpg" alt="Anaïs meeting an elephant in Thailand">
-        <div class="photo-badge">
-          <div class="n">100%</div>
-          <div class="t">tailor-made</div>
-        </div>
-      </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow">Welcome!</p>
-        <h2>I'm Anaïs, your travel planner in Thailand</h2>
-        <hr class="divider">
-        <p class="lead">I've been living in Thailand for over three years, helping travelers plan their trip with ease and peace of mind.</p>
-        <p><strong>In practice, I am an independent travel planner.</strong> I design your tailor-made itinerary for Thailand or Southeast Asia, charged from <span class="price-chf" data-chf="29">29 CHF</span> per day of travel planned, with no commission. You book everything yourself at the direct price, you receive a digital travel journal and I stay reachable on WhatsApp seven days a week.</p>
-        <p>Choosing regions, seasons, transport, accommodation, activities… planning a trip to Southeast Asia can quickly become a headache. My role: turn your project into a clear itinerary, tailored to your style, your budget and what you love.</p>
-        <a class="text-link mt-s" href="/en/a-propos/">Learn more about my story <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-      </div>
+  <div class="container hv-split">
+    <div class="hv-arch" data-reveal="left"><img loading="lazy" decoding="async" src="/images/IMG_5300.jpg" alt="Anaïs meeting an elephant in Thailand"></div>
+    <div class="hv-text" data-reveal="right">
+      <p class="eyebrow">Welcome!</p>
+      <h2>I&#x27;m Anaïs, your travel planner in Thailand</h2>
+      <p class="lead">I&#x27;ve been living in Thailand for over three years, helping travelers plan their trip with ease and peace of mind.</p>
+      <p>Choosing regions, seasons, transport, accommodation, activities… planning a trip to Southeast Asia can quickly become a headache. My role: turn your project into a clear itinerary, tailored to your style, your budget and what you love.</p>
+      <a class="text-link mt-s" href="/en/a-propos/">Learn more about my story <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
     </div>
   </div>
 </section>
 
-<!-- ============ STATS ============ -->
-<section class="bg-navy section-pad">
-  <div class="container">
-    <div class="stats">
-      <div class="stat" data-reveal data-reveal-delay="1"><div class="num"><span data-count="50" data-suffix="+">0</span></div><div class="lbl">Travelers guided</div></div>
-      <div class="stat" data-reveal data-reveal-delay="2"><div class="num"><span data-count="3" data-suffix="+">0</span></div><div class="lbl">Years on the ground</div></div>
-      <div class="stat" data-reveal data-reveal-delay="3"><div class="num"><span data-count="5">0</span>/5</div><div class="lbl"><a href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener">Google reviews</a></div></div>
-      <div class="stat" data-reveal data-reveal-delay="4"><div class="num"><span data-count="100" data-suffix="%">0</span></div><div class="lbl">Unique itineraries</div></div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ AUDIENCE ============ -->
-<section class="section-pad bg-cream">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Who is this for?</p>
+<section class="section-pad hv-audience">
+  <div class="container hv-aud-grid">
+    <div class="hv-aud-photo" data-reveal="left"><img loading="lazy" decoding="async" src="/images/IMG_5519.jpg" alt="Kayaking in the mangroves, southern Thailand"></div>
+    <div class="hv-aud-panel" data-reveal="right">
+      <p class="eyebrow">Who is this for?</p>
       <h2>My service is right for you if…</h2>
-    </div>
-    <div class="audience-grid">
-      <div class="aud-card" data-reveal data-reveal-delay="1"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg></span><p>You want to plan a trip to Thailand but don't know where to start.</p></div>
-      <div class="aud-card" data-reveal data-reveal-delay="2"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg></span><p>You want to avoid common mistakes and tourist traps.</p></div>
-      <div class="aud-card" data-reveal data-reveal-delay="3"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1-6.3-4.6L5.7 21 8 14 2 9.4h7.6z"/></svg></span><p>You want authentic spots and local tips, off the beaten path.</p></div>
-      <div class="aud-card" data-reveal data-reveal-delay="4"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></span><p>You want a well-organized trip while keeping the freedom to choose.</p></div>
+      <ul class="hv-aud-list">
+        <li>You want to plan a trip to Thailand but don&#x27;t know where to start.</li>
+        <li>You want to avoid common mistakes and tourist traps.</li>
+        <li>You want authentic spots and local tips, off the beaten path.</li>
+        <li>You want a well-organized trip while keeping the freedom to choose.</li>
+      </ul>
+      <a class="btn btn-teal mt-l" href="/en/contact/"><span>Get my free quote</span></a>
     </div>
   </div>
 </section>
 
-<!-- ============ PHOTO MARQUEE ============ -->
-<section class="marquee" aria-label="Photo gallery">
+<section class="marquee hv-marquee" aria-label="Photo gallery">
   <div class="marquee-track">
     <div class="marquee-item" data-lightbox data-src="/images/IMG_1369.jpg" data-caption="Coconut break facing the Andaman Sea, Krabi"><picture><source type="image/webp" srcset="/images/thumbs/IMG_1369-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_1369.jpg" alt="Coconut break facing the Andaman Sea, Krabi"></picture><span class="cap">Krabi · Andaman Sea</span></div>
     <div class="marquee-item" data-lightbox data-src="/images/IMG_5519.jpg" data-caption="Kayaking in the mangrove, southern Thailand"><picture><source type="image/webp" srcset="/images/thumbs/IMG_5519-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_5519.jpg" alt="Kayaking in the mangrove, southern Thailand"></picture><span class="cap">Kayaking in the mangrove</span></div>
@@ -143,28 +109,27 @@ langAlt: "/"
   </a>
 </div>
 
-<!-- ============ WHY ME ============ -->
+
 <section class="section-pad">
   <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">The Zwald approach</p>
+    <div class="hv-head">
+      <p class="eyebrow">The Zwald approach</p>
       <h2>Why work with a travel planner?</h2>
       <p>Not a travel agency, not a standardized tour. Personal support, from your first message to your return home.</p>
     </div>
-    <div class="grid cols-4">
-      <div class="card" data-reveal data-reveal-delay="1"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2 5 5 .5-3.8 3.3L16 17l-4-2.6L8 17l.8-5.2L5 8.5 10 8z"/></svg></span><h3>100% tailor-made trip</h3><p>No pre-packaged tours. Your itinerary is built just for you, whether you're traveling as a couple, a family or solo.</p></div>
-      <div class="card" data-reveal data-reveal-delay="2"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 012-2h9l5 5v11a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg></span><h3>Personal travel journal</h3><p>A clear digital journal: itinerary, booking links, activities, practical and cultural tips.</p></div>
-      <div class="card" data-reveal data-reveal-delay="3"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 01-9 8.5 8.4 8.4 0 01-4.4-1.2L3 20l1.3-5A8.4 8.4 0 0112 3a8.5 8.5 0 019 8.5z"/></svg></span><h3>Ongoing support</h3><p>Available from your first message to the end of your trip. WhatsApp support 7 days a week while you travel.</p></div>
-      <div class="card" data-reveal data-reveal-delay="4"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span><h3>Full transparency</h3><p>You're free to make your own bookings, with no hidden fees or commission. You know exactly what you're paying, and why.</p></div>
+    <div class="hv-cols">
+      <div data-reveal><h3>100% tailor-made trip</h3><p>No pre-packaged tours. Your itinerary is built just for you, whether you&#x27;re traveling as a couple, a family or solo.</p></div>
+      <div data-reveal data-reveal-delay=1><h3>Personal travel journal</h3><p>A clear digital journal: itinerary, booking links, activities, practical and cultural tips.</p></div>
+      <div data-reveal data-reveal-delay=2><h3>Ongoing support</h3><p>Available from your first message to the end of your trip. WhatsApp support 7 days a week while you travel.</p></div>
+      <div data-reveal data-reveal-delay=3><h3>Full transparency</h3><p>You&#x27;re free to make your own bookings, with no hidden fees or commission. You know exactly what you&#x27;re paying, and why.</p></div>
     </div>
   </div>
 </section>
 
-<!-- ============ FORMULES ============ -->
-<section class="section-pad bg-cream">
+<section class="section-pad hv-formules hv-band">
   <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Pricing</p>
+    <div class="hv-head">
+      <p class="eyebrow">Pricing</p>
       <h2>My <em>travel</em> packages</h2>
       <p>Every trip is unique. Choose the package that suits you — and let's adapt it together.</p>
     </div>
@@ -172,12 +137,13 @@ langAlt: "/"
       <div class="formule" data-reveal data-reveal-delay="1">
         <h3>Light</h3>
         <p class="aud">Independent travelers</p>
-        <div class="price"><span class="price-chf" data-chf="29">29 CHF</span> <small>/ day</small></div>
+        <div class="price"><span class="price-chf" data-chf="35">35 CHF</span> <small>/ day</small></div>
         <p class="price-note">per day of organized travel</p>
         <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Tailor-made itinerary for up to 3 cities</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Tailor-made itinerary</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Selection of local activities &amp; experiences</li>
-          <li class="no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6L6 18M6 6l12 12"/></svg> No transport &amp; accommodation selection</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Transport selection for each stop</li>
+          <li class="no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6L6 18M6 6l12 12"/></svg> No accommodation selection</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Personalized advice &amp; local tips</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Complete digital travel journal</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Pre-trip support &amp; WhatsApp assistance 7 days a week</li>
@@ -214,21 +180,34 @@ langAlt: "/"
         <a class="btn btn-ghost" href="/en/contact/"><span>Get a quote</span></a>
       </div>
     </div>
-    <p class="text-center mt-l" data-reveal style="color:var(--ink-mute);font-size:0.95rem">💡 Real example: 2 weeks as a couple = <span class="price-chf" data-chf="560">560 CHF</span> total, or about ~<span class="price-chf" data-chf="20">20 CHF</span> per person per day — often offset by the savings you make on the ground. Is your itinerary more than 3 cities? No problem, we'll adapt the quote together.</p>
+    <div class="formule-region" data-reveal>
+      <div>
+        <p class="aud">Per-region package</p>
+        <h3>Recommended for trips of two weeks or more</h3>
+        <p>The same information as the per-day packages, accommodation, activities and good addresses, sorted by region rather than day by day. No fixed programme in the journal, you organise your days as you like. One price per region visited.</p>
+      </div>
+      <div class="formule-region-price">
+        <div class="price">from <span class="price-chf" data-chf="120">120 CHF</span> <small>/ region</small></div>
+        <a class="btn btn-white" href="/en/contact/"><span>Request a quote</span></a>
+      </div>
+    </div>
+    <p class="text-center mt-l" data-reveal style="color:var(--ink-mute);font-size:0.95rem">Real example: 2 weeks as a couple = <span class="price-chf" data-chf="560">560 CHF</span> total, or about ~<span class="price-chf" data-chf="20">20 CHF</span> per person per day — often offset by the savings you make on the ground. Is your itinerary more than 3 cities? No problem, we'll adapt the quote together.</p>
     <span class="currency-note" hidden>Indicative rate, updated daily — CHF remains the reference currency.</span>
     <p class="text-center mt-l" data-reveal style="color:var(--ink-mute)">Group trip, honeymoon, anniversary, surprise getaway? <a class="text-link" href="/en/contact/">Contact me for a free quote</a></p>
   </div>
 </section>
 
-<!-- ============ PROCESS ============ -->
-<section class="section-pad">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">The method</p>
-      <h2>How it works</h2>
-      <p>Six simple steps, from our first exchange to your return home.</p>
-    </div>
-    <div class="steps" data-reveal>
+
+<section class="section-pad hv-process">
+  <div class="container hv-proc-grid">
+    <div class="hv-proc-photo" data-reveal="left"><img loading="lazy" decoding="async" src="/images/IMG_6422.jpg" alt="Bird's eye view over Ang Thong bay"></div>
+    <div>
+      <div class="hv-head">
+        <p class="eyebrow">The method</p>
+        <h2>How it works</h2>
+        <p>Six simple steps, from our first exchange to your return home.</p>
+      </div>
+      <div class="steps" data-reveal>
       <div class="step"><div class="step-num">01</div><h3>Get in touch</h3><p>Tell me about your trip idea by email, form or social media.</p></div>
       <div class="step"><div class="step-num">02</div><h3>Discovery call</h3><p>Free and no obligation. We talk about what you want, your budget and your dates.</p></div>
       <div class="step"><div class="step-num">03</div><h3>Tailor-made itinerary</h3><p>I put together one or two proposals tailored to your project, with a clear quote.</p></div>
@@ -239,11 +218,10 @@ langAlt: "/"
   </div>
 </section>
 
-<!-- ============ TESTIMONIALS ============ -->
-<section class="section-pad bg-mint">
+<section class="section-pad hv-testi bg-navy">
   <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">They trusted me</p>
+    <div class="hv-head">
+      <p class="eyebrow">They trusted me</p>
       <h2>What my travelers say</h2>
     </div>
     <div class="carousel" data-carousel data-reveal>
@@ -262,34 +240,20 @@ langAlt: "/"
       <div class="carousel-dots"></div>
     </div>
     <div class="text-center" data-reveal style="margin-top:42px">
-      <a class="btn btn-ghost" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener"><span>⭐ Read my reviews on Google <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      <a class="btn btn-ghost on-dark" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener"><span>Read my reviews on Google <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     </div>
   </div>
 </section>
 
-<!-- ============ OTHER SERVICES ============ -->
-<section class="section-pad">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Beyond itineraries</p>
-      <h2>My other services</h2>
-    </div>
-    <div class="grid cols-2">
-      <div class="card" data-reveal data-reveal-delay="1"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M7.5 8a2.5 2.5 0 010-5C10 3 12 8 12 8M16.5 8a2.5 2.5 0 000-5C14 3 12 8 12 8"/></svg></span><h3>Travel gift cards</h3><p>Birthday, wedding, Christmas… give the gift of a complete travel experience with a 100% customizable card.</p><p style="color:var(--teal-dark);font-weight:700;margin-top:14px">Any amount you like</p><a class="text-link mt-s" href="/en/cartes-cadeaux/">Order now <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
-      <div class="card" data-reveal data-reveal-delay="2"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4a2 2 0 012-2h9l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><path d="M14 2v5h5M8 12h8M8 16h6"/></svg></span><h3>PDF guides</h3><p>Where to go, what to do, what to try and which addresses to note down. A local guide in your pocket, ready to use.</p><p style="color:var(--teal-dark);font-weight:700;margin-top:14px">Pay what you want</p><a class="text-link mt-s" href="/en/guides/">Discover <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
-    </div>
-  </div>
-</section>
 
-<!-- ============ GIRLS TRIPS ============ -->
-<section class="section-pad bg-cream">
+<section class="section-pad hv-girls hv-band">
   <div class="container">
     <div class="split">
       <div class="girls-mosaic" data-reveal="left">
         <div class="girls-mosaic-inner">
-          <img loading="lazy" decoding="async" src="/images/girls/sunset-koh-lanta.jpeg" alt="Sunset in Koh Lanta during a girls trip" class="gm-main">
-          <img loading="lazy" decoding="async" src="/images/girls/snorkeling.jpeg" alt="Group snorkeling during a girls trip in Thailand" class="gm-s1">
-          <img loading="lazy" decoding="async" src="/images/girls/cooking-class.jpeg" alt="Thai cooking class with friends" class="gm-s2">
+          <img loading="lazy" decoding="async" src="/images/girls/4-islands.jpeg" alt="Sunset in Koh Lanta during a girls trip" class="gm-main">
+          <img loading="lazy" decoding="async" src="/images/girls/massage-plage.jpeg" alt="Group snorkeling during a girls trip in Thailand" class="gm-s1">
+          <img loading="lazy" decoding="async" src="/images/girls/elephants.jpeg" alt="Thai cooking class with friends" class="gm-s2">
         </div>
       </div>
       <div class="split-text" data-reveal="right">
@@ -298,10 +262,7 @@ langAlt: "/"
         <hr class="divider">
         <p class="lead">Small-group trips of 5 to 8 women, designed to experience Thailand differently — with authenticity, sisterhood and freedom.</p>
         <ul class="feature-list mt-m">
-          <li><span class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6L9 17l-5-5"/></svg></span>Koh Lanta &amp; Krabi — sea, beaches and jungle</li>
-          <li><span class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6L9 17l-5-5"/></svg></span>Local experiences: cooking, massage, snorkeling</li>
-          <li><span class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6L9 17l-5-5"/></svg></span>Anaïs is with you on the ground</li>
-          <li><span class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6L9 17l-5-5"/></svg></span>Departures from December 2026 — pre-registration open</li>
+          <li><span class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6L9 17l-5-5"/></svg></span>All year round, dates are chosen with the group</li>
         </ul>
         <a class="btn btn-teal mt-l" href="/en/girls-trips/"><span>Discover the Girls Trips <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
       </div>
@@ -309,7 +270,17 @@ langAlt: "/"
   </div>
 </section>
 
-<!-- ============ FINAL CTA ============ -->
+
+<section class="section-pad hv-other">
+  <div class="container hv-other-grid">
+    <div class="hv-head"><p class="eyebrow">Beyond itineraries</p><h2>My other services</h2></div>
+    <div data-reveal><h3><a href="/en/cartes-cadeaux/">Travel gift cards</a></h3><p>Birthday, wedding, Christmas… give the gift of a complete travel experience with a 100% customizable card.</p><p class="hv-small">Any amount</p></div>
+    <div data-reveal data-reveal-delay="1"><h3><a href="/en/guides/">Koh Lanta guide, PDF</a></h3><p>Where to go, what to do, what to try and which addresses to note down. A local guide in your pocket, ready to use.</p><p class="hv-small">Pay what you want</p></div>
+  </div>
+</section>
+
+{% endraw %}{% include "newsletter.njk" %}{% raw %}
+
 <section class="cta-band section-pad">
   <div class="ph-bg" data-parallax="0.12"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Sunset on a beach in Thailand"></div>
   <div class="ph-overlay"></div>
@@ -323,10 +294,11 @@ langAlt: "/"
     </div>
   </div>
 </section>
+
 {% endraw %}{% endblock %}
 
 {% block scripts %}{% raw %}
-<script>ZWALD.init({ page: "home", lightNav: true });</script>
+<script>ZWALD.init({ page: "home" });</script>
 <script>
   window.REQUIRED_CODE_ERROR_MESSAGE = 'Please choose a country code';
   window.LOCALE = 'en';
