@@ -136,6 +136,7 @@ const TRADUCTIONS = [
   [/\bfrontière malaisienne\b/gi, "Malaysian border"],
   [/\bAssociation des taxis de Saladan\b/gi, "Saladan Taxi Association"],
   [/\bdécouverte de\b/gi, "discovery of"],
+  [/\bvan partagé/gi, "shared van"],
   [/\bAéroport de Hat ?yai\b/gi, "Hat Yai Airport"],
   [/\bAéroport de Krabi\b/gi, "Krabi Airport"],
   [/\bAéroport de Trang\b/gi, "Trang Airport"],
@@ -227,9 +228,11 @@ export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1,
 
 // Un trajet donne une ligne par adulte et, s'il y a des enfants et un prix enfant, une ligne enfant.
 // `compagnie` vide : le prestataire n'est pas répété dans le libellé (il figure déjà sur la facture de Secret).
+// « Van partagé + speedboat » → « Shared van + speedboat », avec une majuscule au début.
+export const modeEn = (mode) => { const m = libelleClient(mode || "Boat"); return m.charAt(0).toUpperCase() + m.slice(1); };
 export function lignesDepuisTrajet(t, net, { langue = "", date = "", adultes = 1, enfants = 0, compagnie = "", uid = nouvelId } = {}) {
   const en = langue === "en";
-  const titre = en ? `${t.mode || "Boat"} transfer: ${t.de} → ${t.vers}, departure ${t.depart}${compagnie ? ` with ${compagnie}` : ""}` : `${t.mode || "Bateau"} ${t.de} → ${t.vers}, départ ${t.depart}${compagnie ? ` avec ${compagnie}` : ""}`;
+  const titre = en ? `${modeEn(t.mode)} transfer: ${t.de} → ${t.vers}, departure ${t.depart}${compagnie ? ` with ${compagnie}` : ""}` : `${t.mode || "Bateau"} ${t.de} → ${t.vers}, départ ${t.depart}${compagnie ? ` avec ${compagnie}` : ""}`;
   const base = { intro: "", puces: [], montant: null, pct: null, trajet_id: t.id, partenaire_id: t.partenaire_id || null, date_service: date || null };
   const out = [];
   if (Number(adultes) > 0) out.push({ ...base, id: uid(), kind: "ligne", libelle: titre, intro: `(${en ? "per adult" : "par adulte"})`, unite: t.prix_adulte, qte: Number(adultes), net: net && net.net_adulte !== null && net.net_adulte !== undefined ? Number(net.net_adulte) : null });

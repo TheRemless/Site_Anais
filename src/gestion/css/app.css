@@ -280,6 +280,8 @@ legend { padding: 0 6px; font-weight: 700; }
 @media (min-width: 900px) { #toasts { bottom: 24px; left: 276px; } }
 .toast { max-width: 460px; padding: 12px 16px; border-radius: var(--rayon); background: #1f2a2a; color: #fff; font-size: 0.92rem; font-weight: 500; pointer-events: auto; }
 .toast.erreur { background: var(--danger); }
+.bandeau-version { position: fixed; z-index: 201; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-radius: var(--rayon); background: #1f2a2a; color: #fff; font-size: 0.92rem; font-weight: 500; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); }
+@media (min-width: 900px) { .bandeau-version { left: auto; right: 24px; bottom: 24px; max-width: 460px; } }
 
 /* Connexion */
 .connexion { max-width: 380px; margin: 10vh auto 0; padding: 0 20px; }

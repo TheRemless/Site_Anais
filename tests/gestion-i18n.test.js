@@ -81,7 +81,7 @@ test("une traduction garde les mêmes {variables} que le texte français et n'es
 test("une traduction ne laisse pas de mots français évidents", async () => {
   const { EN } = await loadEn();
   // Les noms propres et les exemples de saisie restent tels quels ; tout le reste doit être traduit.
-  const AUTORISES = new Set(["Gestion", "Wise", "PayPal", "TWINT", "WhatsApp", "Ctrl", "Cmd", "Code", "Date", "Type", "Notes", "Note", "Contact", "Description", "Service", "Net", "Message", "Messages", "Total", "Document", "Documents", "Transfer", "Transfer Voucher", "Rental", "Line", "Wise"]);
+  const AUTORISES = new Set(["Gestion", "Wise", "PayPal", "TWINT", "WhatsApp", "Ctrl", "Cmd", "Code", "Date", "Type", "Notes", "Note", "Contact", "Description", "Service", "Net", "Message", "Messages", "Total", "Document", "Documents", "Transfer", "Transfer Voucher", "Rental", "Line", "Wise", "{pour}, {langue}"]);
   const suspects = Object.entries(EN).filter(([fr, en]) => fr === en && !AUTORISES.has(fr) && /[àâçéèêëîïôùûüÿœ]|\b(le|la|les|des|du|et|pour|avec|sans|une|dans|sur|est|pas)\b/i.test(fr));
   assert.deepEqual(suspects, []);
 });

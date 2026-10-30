@@ -19,12 +19,13 @@ const telWhatsApp = (p) => { const t = ((p && p.contact && p.contact.telephones)
 export function messagePartenaire(r) {
   const p = partenaireDe(r.partenaire_id);
   const langue = "en";
-  ouvrirMessage({ titre: p ? tr("Message à {nom}", { nom: p.nom }) : tr("Message au partenaire"), cle: "partenaire", langue, telephone: telWhatsApp(p), vars: variablesMessage({ reservation: r, client: clientDe(r) || {}, dossier: dossierDe(r) || {}, partenaire: p || {}, entreprise: entreprise(), langue }) });
+  ouvrirMessage({ titre: p ? tr("Message à {nom}", { nom: p.nom }) : tr("Message au partenaire"), pour: "partenaire", cle: "partenaire", langue, telephone: telWhatsApp(p), vars: variablesMessage({ reservation: r, client: clientDe(r) || {}, dossier: dossierDe(r) || {}, partenaire: p || {}, entreprise: entreprise(), langue }) });
 }
 export function messageClient(r, cle = "confirmation") {
   const c = clientDe(r) || {};
-  const langue = reglages().libelles === undefined ? "fr" : "fr";
-  ouvrirMessage({ titre: tr("Message à {nomClient}", { nomClient: nomClient(c) }), cle, langue, telephone: c.telephone || "", vars: variablesMessage({ reservation: r, client: c, dossier: dossierDe(r) || {}, partenaire: partenaireDe(r.partenaire_id) || {}, entreprise: entreprise(), langue }) });
+  // Les clients de Secret reçoivent leurs documents en anglais : le message est proposé en anglais aussi.
+  const langue = /invoice/i.test((reglages().libelles && reglages().libelles.facture) || "") ? "en" : "fr";
+  ouvrirMessage({ titre: tr("Message à {nomClient}", { nomClient: nomClient(c) }), pour: "client", cle, langue, telephone: c.telephone || "", vars: variablesMessage({ reservation: r, client: c, dossier: dossierDe(r) || {}, partenaire: partenaireDe(r.partenaire_id) || {}, entreprise: entreprise(), langue }) });
 }
 
 export function carteReservation(r, { avecDossier = true, apres = () => {} } = {}) {
@@ -101,7 +102,7 @@ export function formulaireReservation(r, apres) {
   const details = () => ({ ...dt, chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim() });
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
   const prestation = r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null;
-  const type = typeVoucher(r, prestation);
+  const type = typeVoucher(r, prestation, partenaireDe(r.partenaire_id));
   const CHAMPS = {
     chambre: () => champ(tr("Chambre"), chambre, tr("Sinon celle de l'adresse du client.")),
     drop_off: () => champ(tr("Drop-off"), dropOff),

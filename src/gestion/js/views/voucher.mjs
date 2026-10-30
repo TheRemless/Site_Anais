@@ -4,8 +4,8 @@ import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, re
 import { h, modal } from "../ui.mjs";
 import { apercuA4 } from "./commun.mjs";
 import { formatDate, formatNombre } from "../calc.mjs";
-import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER, pointEmbarquement, consigneCheckin, capaciteBateau, bateauEtQuai, horairesTexte, dureeTexte, venduParPersonne, concerneUnVol } from "../operations-calc.mjs";
-import { libelleClient } from "../partenaires-calc.mjs";
+import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER, pointEmbarquement, consigneCheckin, estPickupHotel, capaciteBateau, bateauEtQuai, horairesTexte, dureeTexte, venduParPersonne, concerneUnVol } from "../operations-calc.mjs";
+import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 
 const TITRES = TITRES_VOUCHER;
 const case_ = (coche, libelle) => h("span", { class: `v-case${coche ? " cochee" : ""}` }, h("span", { class: "v-carre", "aria-hidden": "true" }, coche ? "☒" : "☐"), ` ${libelle}`);
@@ -18,7 +18,7 @@ export function vouchersDuDossier(dossierId) {
     .filter((r) => r.dossier_id === dossierId && r.statut !== "annule")
     .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || "") || a.libelle.localeCompare(b.libelle))
     .map((r) => ({ reservation: r, prestation: r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null }))
-    .map((x) => ({ ...x, type: typeVoucher(x.reservation, x.prestation) }))
+    .map((x) => ({ ...x, type: typeVoucher(x.reservation, x.prestation, partenaireDe(x.reservation.partenaire_id)) }))
     .filter((x) => x.type)
     .map((x, i) => ({ ...x, index: i + 1 }));
 }
@@ -42,9 +42,10 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
   const trajet = contexte.trajet || (r.trajet_id ? etat.db.trajets.find((x) => x.id === r.trajet_id) : null);
   const titrePrestation = libelleClient(r.libelle);
   const compagnie = partenaireDe(r.partenaire_id);
-  const dBillet = { de: (trajet && trajet.de) || "", vers: (trajet && trajet.vers) || dropOffDepuisLibelle(r, p), depart: (trajet && trajet.depart) || r.heure_pickup || "", arrivee: (trajet && trajet.arrivee) || "", mode: (trajet && trajet.mode) || "" };
+  const dBillet = { de: (trajet && trajet.de) || "", vers: (trajet && trajet.vers) || dropOffDepuisLibelle(r, p), depart: (trajet && trajet.depart) || r.heure_pickup || "", arrivee: (trajet && trajet.arrivee) || "", mode: trajet && trajet.mode ? modeEn(trajet.mode) : "" };
   const embarquement = dt.embarquement || pointEmbarquement(compagnie, dBillet.de) || r.lieu_pickup || "";
-  const checkin = dt.checkin || consigneCheckin(nomPartenaire(r.partenaire_id), dBillet);
+  // Quand la compagnie vient chercher le client à l'hôtel, pas de comptoir : il doit être prêt dans le hall.
+  const checkin = dt.checkin || (estPickupHotel(embarquement) ? "Please be ready in your hotel lobby 15 minutes before the pickup time, with this voucher and your passport or ID." : consigneCheckin(nomPartenaire(r.partenaire_id), dBillet));
   const pickupInclus = !!(r.heure_pickup || r.lieu_pickup) && !!trajet;
   const bq = bateauEtQuai(p);
   const bateauTexte = dt.bateau || bq.bateau;
