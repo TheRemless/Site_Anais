@@ -468,3 +468,14 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 
 /* FAQ : titre de thème au-dessus de chaque accordéon */
 .faq-group-title{font-size:clamp(1.4rem,2.6vw,1.9rem);margin-bottom:18px}
+
+/* Tableaux dans les articles */
+.prose table{width:100%;border-collapse:collapse;margin:1.8em 0;font-size:0.95rem;line-height:1.45}
+.prose th,.prose td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid rgba(20,40,36,0.12)}
+.prose th{font-family:var(--sans);font-weight:700;color:var(--teal-deep);background:var(--bg-mint)}
+.prose td:first-child{font-weight:600;white-space:nowrap}
+.prose .season-table td{font-size:0.9rem}
+.prose .s-good{background:rgba(26,155,140,0.14)}
+.prose .s-ok{background:rgba(240,180,60,0.16)}
+.prose .s-bad{background:rgba(200,70,60,0.12)}
+@media (max-width:720px){.prose table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}.prose td:first-child{white-space:normal}}
