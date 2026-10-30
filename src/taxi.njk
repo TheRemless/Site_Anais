@@ -76,9 +76,9 @@ eleventyExcludeFromCollections: true
 {% endif %}
 
 <section class="hero">
-  <img class="hero-photo" src="{{ taxi.hero.photo.src }}" srcset="{{ taxi.hero.photo.srcset }}" sizes="100vw" width="{{ taxi.hero.photo.width }}" height="{{ taxi.hero.photo.height }}" alt="{{ taxi.hero.photo.alt }}" fetchpriority="high">
+  <img eleventy:ignore class="hero-photo" src="{{ taxi.hero.photo.src }}" srcset="{{ taxi.hero.photo.srcset }}" sizes="100vw" width="{{ taxi.hero.photo.width }}" height="{{ taxi.hero.photo.height }}" alt="{{ taxi.hero.photo.alt }}" fetchpriority="high">
   <header class="bar">
-    <div class="plate"><img src="/images/taxi/logo.webp" width="640" height="640" alt="VIP Taxi Lanta, Mr. Brown"></div>
+    <div class="plate"><img eleventy:ignore src="/images/taxi/logo.webp" width="640" height="640" alt="VIP Taxi Lanta, Mr. Brown"></div>
     <div class="word">VIP TAXI LANTA<small>{{ taxi.business.tagline }}, {{ taxi.business.owner }}</small></div>
   </header>
   <div class="hero-in">
@@ -104,12 +104,12 @@ eleventyExcludeFromCollections: true
 
   <div class="strip" role="group" aria-label="{{ taxi.gallery.title }}">
     {% for p in taxi.gallery.photos %}
-    <img src="{{ p.src }}" width="{{ p.width }}" height="{{ p.height }}" alt="{{ p.alt }}" loading="lazy">
+    <img eleventy:ignore src="{{ p.src }}" width="{{ p.width }}" height="{{ p.height }}" alt="{{ p.alt }}" loading="lazy">
     {% endfor %}
   </div>
 
   <section class="tours" aria-labelledby="h-tours">
-    <img src="{{ taxi.tours.photo.src }}" width="{{ taxi.tours.photo.width }}" height="{{ taxi.tours.photo.height }}" alt="{{ taxi.tours.photo.alt }}" loading="lazy">
+    <img eleventy:ignore src="{{ taxi.tours.photo.src }}" width="{{ taxi.tours.photo.width }}" height="{{ taxi.tours.photo.height }}" alt="{{ taxi.tours.photo.alt }}" loading="lazy">
     <div class="tours-body">
       <h2 id="h-tours">{{ taxi.tours.title }}</h2>
       <p>{{ taxi.tours.text }}</p>
@@ -199,7 +199,7 @@ eleventyExcludeFromCollections: true
 </main>
 
 <footer>
-  <div class="plate"><img src="/images/taxi/logo.webp" width="640" height="640" alt="" loading="lazy"></div>
+  <div class="plate"><img eleventy:ignore src="/images/taxi/logo.webp" width="640" height="640" alt="" loading="lazy"></div>
   <p>VIP Taxi Lanta by {{ taxi.business.owner }}</p>
   <p>{{ taxi.business.place }}</p>
 </footer>

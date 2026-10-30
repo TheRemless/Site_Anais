@@ -28,36 +28,12 @@ langAlt: "/cartes-cadeaux/"
 <meta name="twitter:title" content="Travel Gift Cards — Zwald Travel Planner">
 <meta name="twitter:description" content="Give the gift of a tailor-made trip to Thailand: a 100% customizable gift card for a birthday, a wedding, Christmas or a group gift. Choose your own amount.">
 <meta name="twitter:image" content="https://zwaldtravelplanner.com/images/og-home-en.jpg">
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "TravelAgency",
-  "@id": "https://zwaldtravelplanner.com/#business",
-  "name": "Zwald Travel Planner",
-  "alternateName": "Zwald Travel Planner — Your Tailor-Made Trips from A to Z",
-  "description": "Travel planner based in Thailand for over 3 years. Tailor-made itineraries, personalized travel journals and 7-day support for Thailand and Southeast Asia.",
-  "url": "https://zwaldtravelplanner.com/",
-  "image": "https://zwaldtravelplanner.com/images/IMG_6424.jpg",
-  "logo": "https://zwaldtravelplanner.com/images/logo.png",
-  "telephone": "+66958683846",
-  "priceRange": "$",
-  "founder": { "@type": "Person", "name": "Anaïs" },
-  "areaServed": [
-    { "@type": "Country", "name": "Thailand" },
-    { "@type": "Place", "name": "Southeast Asia" }
-  ],
-  "knowsLanguage": ["fr", "en"],
-  "sameAs": [
-    "https://www.instagram.com/zwaldtravelplanner/",
-    "https://www.facebook.com/people/Zwald-Travel-Planner/61568573411432/"
-  ]
-}
-</script>
+{% endraw %}{% include "schema-business.njk" %}{% raw %}
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
 <section class="page-hero has-img" data-screen-label="Cartes cadeaux — hero">
-  <div class="ph-bg" data-parallax="0.1"><img fetchpriority="high" src="/images/IMG_2016.jpg" alt="Sunset over a beach in Thailand"></div>
+  <div class="ph-bg" data-parallax="0.1"><img fetchpriority="high" sizes="100vw" src="/images/IMG_2016.jpg" alt="Sunset over a beach in Thailand"></div>
   <div class="ph-overlay"></div>
   <div class="container">
     <p class="eyebrow">Travel Gift Cards</p>

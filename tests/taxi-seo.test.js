@@ -50,7 +50,8 @@ test("/taxi/ : le service couvre tout le sud de la Thaïlande, Koh Lanta est la 
 });
 
 test("/taxi/ : le sitemap la liste une seule fois", () => {
-  const sitemap = read("src/sitemap.xml");
+  // Le sitemap est généré par Eleventy (src/sitemap.njk) : lancer `npm run build` avant les tests.
+  const sitemap = read("_site/sitemap.xml");
   const hits = sitemap.match(/<loc>https:\/\/zwaldtravelplanner\.com\/taxi\/<\/loc>/g) || [];
   assert.equal(hits.length, 1);
 });

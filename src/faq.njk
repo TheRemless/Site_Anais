@@ -28,43 +28,7 @@ langAlt: "/en/faq/"
 <meta name="twitter:title" content="Questions fréquentes — Zwald Travel Planner">
 <meta name="twitter:description" content="Tout savoir sur l'accompagnement d'une travel planner : différence avec une agence, réservations, délais, tarifs et plus encore.">
 <meta name="twitter:image" content="https://zwaldtravelplanner.com/images/og-home.jpg?v=2">
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "TravelAgency",
-  "@id": "https://zwaldtravelplanner.com/#business",
-  "name": "Zwald Travel Planner",
-  "alternateName": "Zwald Travel Planner — Vos voyages sur mesure de A à Z",
-  "description": "Travel planner installée en Thaïlande depuis plus de 3 ans. Itinéraires sur mesure, carnet de voyage personnalisé et accompagnement 7j/7 pour la Thaïlande et l'Asie du Sud-Est.",
-  "url": "https://zwaldtravelplanner.com/",
-  "image": "https://zwaldtravelplanner.com/images/IMG_6424.jpg",
-  "logo": "https://zwaldtravelplanner.com/images/logo.png",
-  "telephone": "+66958683846",
-  "priceRange": "$",
-  "founder": {
-    "@type": "Person",
-    "name": "Anaïs"
-  },
-  "areaServed": [
-    {
-      "@type": "Country",
-      "name": "Thaïlande"
-    },
-    {
-      "@type": "Place",
-      "name": "Asie du Sud-Est"
-    }
-  ],
-  "knowsLanguage": [
-    "fr",
-    "en"
-  ],
-  "sameAs": [
-    "https://www.instagram.com/zwaldtravelplanner/",
-    "https://www.facebook.com/people/Zwald-Travel-Planner/61568573411432/"
-  ]
-}
-</script>
+{% endraw %}{% include "schema-business.njk" %}{% raw %}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -141,7 +105,7 @@ langAlt: "/en/faq/"
 
 {% block content %}{% raw %}
 <section class="page-hero has-img" data-screen-label="FAQ — hero">
-  <div class="ph-bg" data-parallax="0.1"><img fetchpriority="high" src="/images/IMG_5519.jpg" alt="Kayak dans la mangrove en Thaïlande"></div>
+  <div class="ph-bg" data-parallax="0.1"><img fetchpriority="high" sizes="100vw" src="/images/IMG_5519.jpg" alt="Kayak dans la mangrove en Thaïlande"></div>
   <div class="ph-overlay"></div>
   <div class="container">
     <p class="eyebrow">Questions fréquentes</p>
