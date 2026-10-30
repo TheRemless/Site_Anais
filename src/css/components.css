@@ -672,3 +672,5 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
   .formule.featured { padding: 28px 22px; margin: 8px 0; }
   .cta-band { border-radius: 24px 24px 0 0; }
 }
+
+.hv-small { margin-top: 10px; font-size: 0.9rem; font-weight: 600; color: var(--teal-dark); }

@@ -121,7 +121,7 @@ p { text-wrap: pretty; }
 .eyebrow.center { justify-content: center; }
 .eyebrow.center::before { display: none; }
 /* signature italic accent inside headings */
-h2 em { font-style: italic; font-weight: 500; color: var(--teal-dark); }
+h2 em { font-style: normal; font-weight: inherit; color: inherit; }
 .bg-navy h2 em, .bg-teal h2 em, .cta-band h2 em, .page-hero h1 em, .page-hero h2 em { color: var(--sand-soft); }
 .eyebrow.on-dark { color: var(--sand-soft); }
 
