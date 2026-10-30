@@ -1,0 +1,67 @@
+---
+active: "/en/blog/"
+navLight: true
+langAlt: "/blog/"
+---
+{% extends "base.njk" %}
+
+{% block head %}{% raw %}
+<title>Thailand Travel Blog, Tips and Itineraries | Zwald</title>
+<meta name="description" content="Field-tested advice for your trip to Thailand: the 2-week itinerary, when to go, how to plan without an agency, mistakes to avoid, temple etiquette.">
+
+<link rel="canonical" href="https://zwaldtravelplanner.com/en/blog/">
+<link rel="alternate" hreflang="fr" href="https://zwaldtravelplanner.com/blog/">
+<link rel="alternate" hreflang="en" href="https://zwaldtravelplanner.com/en/blog/">
+<link rel="alternate" hreflang="x-default" href="https://zwaldtravelplanner.com/blog/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="author" content="Zwald Travel Planner">
+<meta name="apple-mobile-web-app-title" content="Zwald Travel Planner">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Zwald Travel Planner">
+<meta property="og:locale" content="en_GB">
+<meta property="og:title" content="Thailand Travel Blog, Tips and Itineraries | Zwald">
+<meta property="og:description" content="Field-tested advice for your trip to Thailand: the 2-week itinerary, when to go, how to plan without an agency, mistakes to avoid, temple etiquette.">
+<meta property="og:url" content="https://zwaldtravelplanner.com/en/blog/">
+<meta property="og:image" content="https://zwaldtravelplanner.com/images/itineraire-thailande.jpg">
+<meta property="og:image:alt" content="Carte itinéraire Thaïlande — Zwald Travel Planner">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Thailand Travel Blog, Tips and Itineraries | Zwald">
+<meta name="twitter:description" content="Field-tested advice for your trip to Thailand: the 2-week itinerary, when to go, how to plan without an agency, mistakes to avoid, temple etiquette.">
+<meta name="twitter:image" content="https://zwaldtravelplanner.com/images/itineraire-thailande.jpg">
+{% endraw %}{% include "schema-business.njk" %}{% raw %}
+{% endraw %}{% endblock %}
+
+{% block content %}{% raw %}
+<section class="page-hero has-img" data-screen-label="Blog — hero">
+  <div class="ph-bg" data-parallax="0.1"><img fetchpriority="high" sizes="100vw" src="/images/FullSizeRender.jpg" alt="A viewpoint over the Koh Samui jungle"></div>
+  <div class="ph-overlay"></div>
+  <div class="container">
+    <p class="eyebrow">The blog</p>
+    <h1>Advice and itineraries for your trip to Thailand</h1>
+    <p>My tips from the ground to help you prepare your trip to Thailand with peace of mind.</p>
+  </div>
+</section>
+
+<section class="section-pad">
+  <div class="container">
+{% endraw %}{% include "blog-list.njk" %}{% raw %}
+</div>
+</section>
+
+{% endraw %}{% include "newsletter.njk" %}{% raw %}
+{% endraw %}{% endblock %}
+
+{% block scripts %}{% raw %}
+<script>ZWALD.init({ page: "blog" });</script>
+<script>
+  window.REQUIRED_CODE_ERROR_MESSAGE = 'Please choose a country code';
+  window.LOCALE = 'en';
+  window.EMAIL_INVALID_MESSAGE = window.SMS_INVALID_MESSAGE = "Les informations fournies ne sont pas valides. Vérifiez le format du champ et réessayez.";
+  window.REQUIRED_ERROR_MESSAGE = "Merci de ne pas laisser ce champ vide.";
+  window.GENERIC_INVALID_MESSAGE = "Les informations fournies ne sont pas valides. Vérifiez le format du champ et réessayez.";
+  window.INVALID_NUMBER = "Numéro invalide.";
+  window.INVALID_DATE = "Date invalide.";
+  window.REQUIRED_MULTISELECT_MESSAGE = 'Veuillez sélectionner au moins une option.';
+  var AUTOHIDE = Boolean(0);
+</script>
+{% endraw %}{% endblock %}
