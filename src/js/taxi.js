@@ -223,6 +223,15 @@
 
   ["from", "to"].forEach(function (key) { setupCombo(el(key)); });
 
+  /* Arrivée depuis une page de trajet (/taxi/<route>/?from=…&to=…) : préremplit les deux lieux. */
+  (function presetFromUrl() {
+    var params = new URLSearchParams(window.location.search);
+    ["from", "to"].forEach(function (key) {
+      var value = params.get(key);
+      if (value) el(key).value = value;
+    });
+  })();
+
   syncDate();
   syncSeats();
 })();

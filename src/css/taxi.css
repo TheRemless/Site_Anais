@@ -206,3 +206,43 @@ footer p { margin: 0; color: var(--mute); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* Pages de trajet /taxi/<route>/ : la cabine de nuit, et le trajet posé comme une carte d'embarquement. */
+.route .route-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem var(--edge); }
+.route .bar-link { display: flex; align-items: center; gap: .8rem; color: inherit; text-decoration: none; }
+.route .all { color: var(--amber); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.route .ticket { margin: 1rem var(--edge) 0; overflow: hidden; border-radius: 24px; background: var(--paper); color: var(--ink); }
+.route .ticket-in { padding: 1.75rem 1.5rem 1.5rem; }
+.route .ticket-kind { margin: 0 0 .75rem; font-weight: 500; color: var(--mute-ink); }
+.route h1 { display: grid; gap: .1em; margin: 0 0 1rem; font-size: clamp(2.1rem, 8vw, 3.4rem); line-height: 1.02; }
+.route h1 .to { color: #6B4A24; }
+.route .ticket-lead { margin: 0 0 1.5rem; max-width: 30rem; color: var(--mute-ink); }
+.route .ticket-facts { display: grid; gap: .75rem; margin: 0 0 1.75rem; padding-top: 1.25rem; border-top: 1px dashed rgba(32, 19, 10, .35); }
+.route .ticket-facts div { display: grid; grid-template-columns: 6rem 1fr; gap: .5rem; }
+.route .ticket-facts dt { margin: 0; font-weight: 700; }
+.route .ticket-facts dd { margin: 0; color: var(--mute-ink); }
+.route .ticket .btn { width: 100%; background: var(--ink); color: var(--paper); }
+.route .ticket .btn:hover { background: #3A2412; }
+.route .ticket-photo { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.route .route-body p { max-width: 38rem; margin: 0 0 1rem; }
+.route .pay { max-width: 38rem; }
+.route .routes-cols { display: grid; gap: 2rem; }
+.route .routes-cols h3 { margin-bottom: .5rem; font-size: 1.1rem; color: var(--mute); }
+.route .routes-cols li { border-top: 1px solid var(--line); }
+.route .routes-cols a { display: block; padding: .8rem 0; color: var(--text); text-decoration: none; font-weight: 500; }
+.route .routes-cols a:hover { color: var(--amber); }
+.route .routes-more > p { margin: 1.75rem 0 0; color: var(--mute); }
+.route footer a { color: var(--mute); }
+@media (min-width: 48rem) {
+  .route .ticket { display: grid; grid-template-columns: 1.15fr .85fr; }
+  .route .ticket-in { padding: 2.5rem 2.25rem; }
+  .route .ticket .btn { width: auto; }
+  .route .ticket-photo { height: 100%; aspect-ratio: auto; }
+  .route .routes-cols { grid-template-columns: 1fr 1fr; column-gap: 3rem; }
+}
+
+/* /taxi/ : les trajets détaillés, une ligne par trajet sous chaque service */
+.svc-routes { margin: .9rem 0 0; }
+.svc-routes li { border-top: 1px solid var(--line); }
+.svc-routes a { display: block; padding: .6rem 0; font-weight: 500; text-decoration: none; }
+.svc-routes a:hover { text-decoration: underline; }
