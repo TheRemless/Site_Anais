@@ -601,7 +601,9 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .hv-testi.bg-navy h2, .hv-testi.bg-navy .tcard p, .hv-testi.bg-navy .who strong { color: #fff; }
 .hv-testi.bg-navy .who span { color: var(--on-dark-mute); }
 .hv-testi.bg-navy .stars svg { color: var(--sand-soft); }
-.hv-testi.bg-navy .carousel-btn { color: #fff; border-color: rgba(255,255,255,0.3); }
+.hv-testi.bg-navy .carousel-btn { color: #fff; border-color: rgba(255,255,255,0.3); background: transparent; }
+.hv-testi.bg-navy .carousel-dots .dot { background: rgba(255,255,255,0.3); }
+.hv-testi.bg-navy .carousel-dots .dot.active, .hv-testi.bg-navy .carousel-dots .dot.on { background: #fff; }
 .hv-testi.bg-navy .carousel-dots button { background: rgba(255,255,255,0.3); }
 .hv-testi.bg-navy .carousel-dots button.active { background: #fff; }
 
