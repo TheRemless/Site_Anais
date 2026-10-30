@@ -1,0 +1,13 @@
+{#- Encart inséré au milieu de chaque article : l'article renseigne, l'encart propose l'accompagnement. -#}
+<aside class="article-cta" aria-label="{{ 'My service' if lang == 'en' else 'Mon accompagnement' }}">
+{%- if lang == "en" %}
+  <p class="article-cta-title">Would you rather I build it for you?</p>
+  <p>I plan your itinerary day by day, with the links to book everything yourself at the direct price, from <span class="price-chf" data-chf="35">35 CHF</span> per day of travel. You keep control, I do the research.</p>
+  <p class="article-cta-links"><a class="btn btn-teal" href="/en/services/"><span>See the packages</span></a> <a class="text-link" href="/en/contact/">Tell me about your trip</a></p>
+{%- else %}
+  <p class="article-cta-title">Tu préfères que je m'en occupe ?</p>
+  <p>Je construis ton itinéraire jour par jour, avec les liens pour réserver toi-même au prix direct, dès <span class="price-chf" data-chf="35">35 CHF</span> par jour de voyage. Tu gardes la main, je fais les recherches.</p>
+  <p class="article-cta-links"><a class="btn btn-teal" href="/services/"><span>Voir les formules</span></a> <a class="text-link" href="/contact/">Me décrire ton projet</a></p>
+{%- endif %}
+  <span class="currency-note" hidden>{{ "Indicative rate, updated daily. CHF remains the reference currency." if lang == "en" else "Taux indicatif, actualisé quotidiennement. Le CHF reste la devise de référence." }}</span>
+</aside>
