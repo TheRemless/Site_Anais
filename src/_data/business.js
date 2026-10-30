@@ -10,6 +10,7 @@ const business = {
   name: "Zwald Travel Planner",
   legalName: "Zwald Travel Planner Co., Ltd.",
   telephone: "+66958683846",
+  telephoneDisplay: "+66 95 868 38 46",
   email: null,
   address: {
     streetAddress: "292 Moo 2",
