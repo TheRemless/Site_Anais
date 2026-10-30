@@ -1,6 +1,6 @@
 ---
 active: "/"
-navLight: true
+navLight: false
 langAlt: "/en/"
 ---
 {% extends "base.njk" %}
@@ -34,301 +34,184 @@ langAlt: "/en/"
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
-<!-- ============ HERO ============ -->
-<section class="hero pre" data-screen-label="Hero">
-  <div class="hero-bg"><img fetchpriority="high" sizes="100vw" src="/images/IMG_6424.jpg" alt="Vue sur le parc national marin d'Ang Thong, Thaïlande"></div>
-  <div class="hero-overlay"></div>
-  <div class="hero-inner">
-    <p class="eyebrow">Travel Planner · Thaïlande &amp; Asie du Sud-Est</p>
-    <h1>
-      <span class="ln"><span>Voyages sur mesure en Thaïlande,</span></span>
-      <span class="ln"><span>pensés <em>pour toi</em></span></span>
-    </h1>
-    <p class="hero-sub">Je t'aide à composer ton itinéraire idéal — selon tes envies, ton rythme et ton budget — grâce à mon expérience locale. Tu gagnes un temps précieux, sans payer plus cher.</p>
-    <div class="hero-btns">
-      <a class="btn btn-teal btn-lg" href="/contact/" data-magnetic><span>Recevoir mon devis gratuit <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
-      <a class="btn btn-white btn-lg" href="/services/"><span>Découvrir mes services</span></a>
-    </div>
-  </div>
-</section>
-
-<!-- ============ TRUST BAR ============ -->
-<section class="trust-bar">
-  <div class="container">
-    <span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h0M15 9h0M9 13h0M15 13h0"/></svg> Plus de 3 ans sur place</span>
-    <span class="sep"></span>
-    <a class="ti" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener" aria-label="Avis Google 5/5 — voir la fiche sur Google Maps"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg> Avis Google 5/5</a>
-    <span class="sep"></span>
-    <span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Aucune commission, transparence totale</span>
-    <span class="sep"></span>
-    <span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 01-1.2 4.4A8.5 8.5 0 0112.5 20a8.4 8.4 0 01-4.4-1.2L3 20l1.3-5a8.4 8.4 0 01-1.3-4.5A8.5 8.5 0 017.6 3.2 8.4 8.4 0 0112 2a8.5 8.5 0 019 9.5z"/></svg> Assistance WhatsApp 7j/7</span>
-  </div>
-</section>
-
-<!-- ============ INTRO ============ -->
-<section class="section-pad">
-  <div class="container">
-    <div class="split">
-      <div class="split-media intro-media" data-reveal="left">
-        <img loading="lazy" decoding="async" class="photo-main img-reveal-target" src="/images/IMG_5300.jpg" alt="Anaïs à la rencontre d'un éléphant en Thaïlande">
-        <div class="photo-badge">
-          <div class="n">100%</div>
-          <div class="t">sur mesure</div>
-        </div>
+<section class="h26-hero" data-screen-label="Hero">
+  <div class="container h26-hero-grid">
+    <div class="h26-hero-text">
+      <h1>Voyages sur mesure en Thaïlande et en Asie du Sud-Est</h1>
+      <p class="h26-lead">Zwald Travel Planner conçoit votre itinéraire jour par jour, depuis la Thaïlande, sans commission. Vous réservez vous-même au prix direct et vous partez avec un carnet de voyage complet.</p>
+      <div class="h26-actions">
+        <a class="btn btn-teal btn-lg" href="/contact/"><span>Demander un devis gratuit</span></a>
+        <a class="btn btn-ghost btn-lg" href="/services/"><span>Voir les formules</span></a>
       </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow">Bienvenue !</p>
-        <h2>Moi c'est Anaïs, ton organisatrice de voyage en Thaïlande</h2>
-        <hr class="divider">
-        <p class="lead">Je vis en Thaïlande depuis plus de trois ans et j'accompagne les voyageurs pour organiser leur séjour en toute simplicité et sérénité.</p>
-        <p><strong>Concrètement, je suis travel planner indépendante.</strong> Je conçois ton itinéraire sur mesure pour la Thaïlande ou l'Asie du Sud-Est, facturé dès <span class="price-chf" data-chf="29">29 CHF</span> par jour de voyage organisé, sans commission. Tu réserves toi-même au prix direct, tu reçois un carnet de voyage digital et je reste joignable sur WhatsApp sept jours sur sept.</p>
-        <p>Choix des régions, saisons, transports, hébergements, activités… organiser un voyage en Asie du Sud-Est devient vite un casse-tête. Mon rôle : transformer ton projet en un itinéraire clair, adapté à ton style, ton budget et tes envies.</p>
-        <a class="text-link mt-s" href="/a-propos/">En savoir plus sur mon parcours <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-      </div>
+      <ul class="h26-facts" aria-label="Repères">
+        <li><a href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener">5/5 sur Google, 18 avis</a></li>
+        <li>Dès <span class="price-chf" data-chf="29">29 CHF</span> par jour de voyage</li>
+        <li>WhatsApp sept jours sur sept</li>
+      </ul>
+    </div>
+    <div class="h26-hero-visual">
+      <img fetchpriority="high" sizes="(min-width: 900px) 50vw, 100vw" src="/images/IMG_6424.jpg" alt="Vue sur le parc national marin d'Ang Thong, Thaïlande">
+      <aside class="h26-carnet" aria-label="Extrait d'un carnet de voyage">
+        <p class="h26-carnet-title">Extrait d'un carnet, deux semaines en couple</p>
+        <ol>
+          <li><span>Jours 1 à 3</span>Bangkok</li>
+          <li><span>Jours 4 à 7</span>Chiang Mai et le Nord</li>
+          <li><span>Jours 8 à 13</span>Koh Lanta</li>
+          <li><span>Jour 14</span>Retour par Bangkok</li>
+        </ol>
+        <p class="h26-carnet-foot">Accompagnement complet, <span class="price-chf" data-chf="560">560 CHF</span> pour deux</p>
+      </aside>
     </div>
   </div>
 </section>
 
-<!-- ============ STATS ============ -->
-<section class="bg-navy section-pad">
+<section class="section-pad h26-what" data-screen-label="Ce que nous faisons">
+  <div class="container h26-two">
+    <div>
+      <h2>Ni une agence, ni un circuit. Un itinéraire construit pour vous.</h2>
+    </div>
+    <div class="h26-copy">
+      <p>Une agence vend des prestations et prend une marge sur chacune. Un circuit vous fait suivre le programme de quelqu'un d'autre. Zwald Travel Planner fait autre chose. Nous écoutons votre projet, nous composons l'itinéraire, nous sélectionnons pour chaque étape deux à quatre options d'hébergement et de transport, puis vous réservez vous-même, au prix direct. Le service est facturé par jour de voyage organisé, le montant est connu avant de commencer.</p>
+      <p>Anaïs Zwald, fondatrice, vit à Koh Lanta depuis 2023. Les adresses, les chauffeurs et les conseils viennent du terrain, pas d'un catalogue.</p>
+      <a class="text-link" href="/services/">Le détail du service et des formules <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+    </div>
+  </div>
+</section>
+
+<section class="h26-photos" aria-label="Photos de voyages">
+  <div class="h26-photo-row">
+    <a href="/galerie/"><img loading="lazy" decoding="async" src="/images/IMG_5227.jpg" alt="Temple doré de Doi Suthep, Chiang Mai"></a>
+    <a href="/galerie/"><img loading="lazy" decoding="async" src="/images/IMG_1369.jpg" alt="Pause noix de coco face à la mer d'Andaman, Krabi"></a>
+    <a href="/galerie/"><img loading="lazy" decoding="async" src="/images/IMG_9507.jpg" alt="Cascade d'Erawan, Kanchanaburi"></a>
+    <a href="/galerie/"><img loading="lazy" decoding="async" src="/images/IMG_5519.jpg" alt="Kayak dans la mangrove, sud de la Thaïlande"></a>
+    <a href="/galerie/"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Coucher de soleil sur la plage de Koh Lanta"></a>
+  </div>
+</section>
+
+<section class="section-pad h26-steps" data-screen-label="Comment ça marche">
   <div class="container">
-    <div class="stats">
-      <div class="stat" data-reveal data-reveal-delay="1"><div class="num"><span data-count="50" data-suffix="+">0</span></div><div class="lbl">Voyageurs accompagnés</div></div>
-      <div class="stat" data-reveal data-reveal-delay="2"><div class="num"><span data-count="3" data-suffix="+">0</span></div><div class="lbl">Années sur place</div></div>
-      <div class="stat" data-reveal data-reveal-delay="3"><div class="num"><span data-count="5">0</span>/5</div><div class="lbl"><a href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener">Avis Google</a></div></div>
-      <div class="stat" data-reveal data-reveal-delay="4"><div class="num"><span data-count="100" data-suffix="%">0</span></div><div class="lbl">Itinéraires uniques</div></div>
+    <div class="h26-two h26-two-head">
+      <h2>Comment ça se passe</h2>
+      <p class="h26-copy">Du premier message au retour, en quatre étapes. Le premier échange et le devis sont gratuits.</p>
     </div>
+    <ol class="h26-steplist">
+      <li><strong>Vous nous écrivez.</strong> Dates, envies, budget, participants, en quelques lignes par le formulaire. Réponse sous un à deux jours.</li>
+      <li><strong>Appel découverte.</strong> Un échange de vive voix, gratuit et sans engagement, puis une première version de l'itinéraire avec le devis.</li>
+      <li><strong>Conception et sélection.</strong> Pour chaque étape, hébergements, transports et activités, avec les liens pour réserver vous-même.</li>
+      <li><strong>Carnet et voyage.</strong> Votre carnet de voyage réunit tout, jour par jour. Pendant le séjour, une question se règle sur WhatsApp.</li>
+    </ol>
   </div>
 </section>
 
-<!-- ============ AUDIENCE ============ -->
-<section class="section-pad bg-cream">
+<section class="section-pad h26-formules bg-craie" data-screen-label="Formules">
   <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Pour qui ?</p>
-      <h2>Mon service est fait pour toi si…</h2>
+    <div class="h26-two h26-two-head">
+      <h2>Trois formules, un prix par jour de voyage</h2>
+      <p class="h26-copy">Le prix couvre la conception, la sélection et l'accompagnement. Les hôtels, les transports et les activités se paient directement aux prestataires, sans marge.</p>
     </div>
-    <div class="audience-grid">
-      <div class="aud-card" data-reveal data-reveal-delay="1"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg></span><p>Tu veux organiser un voyage en Thaïlande mais tu ne sais pas par où commencer.</p></div>
-      <div class="aud-card" data-reveal data-reveal-delay="2"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg></span><p>Tu veux éviter les erreurs et les pièges à touristes les plus fréquents.</p></div>
-      <div class="aud-card" data-reveal data-reveal-delay="3"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1-6.3-4.6L5.7 21 8 14 2 9.4h7.6z"/></svg></span><p>Tu veux des adresses authentiques et des bons plans locaux, loin des sentiers battus.</p></div>
-      <div class="aud-card" data-reveal data-reveal-delay="4"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></span><p>Tu veux un voyage bien organisé tout en gardant la liberté de tes choix.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ PHOTO MARQUEE ============ -->
-<section class="marquee" aria-label="Galerie photo">
-  <div class="marquee-track">
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_1369.jpg" data-caption="Pause noix de coco face à la mer d'Andaman, Krabi"><picture><source type="image/webp" srcset="/images/thumbs/IMG_1369-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_1369.jpg" alt="Pause noix de coco face à la mer d'Andaman, Krabi"></picture><span class="cap">Krabi · mer d'Andaman</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_5519.jpg" data-caption="Kayak dans la mangrove, sud de la Thaïlande"><picture><source type="image/webp" srcset="/images/thumbs/IMG_5519-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_5519.jpg" alt="Kayak dans la mangrove, sud de la Thaïlande"></picture><span class="cap">Kayak dans la mangrove</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_5227.jpg" data-caption="Temple doré de Doi Suthep, Chiang Mai"><picture><source type="image/webp" srcset="/images/thumbs/IMG_5227-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_5227.jpg" alt="Temple doré de Doi Suthep, Chiang Mai"></picture><span class="cap">Doi Suthep · Chiang Mai</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_9507.jpg" data-caption="Cascade d'Erawan, Kanchanaburi"><picture><source type="image/webp" srcset="/images/thumbs/IMG_9507-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_9507.jpg" alt="Cascade d'Erawan, Kanchanaburi"></picture><span class="cap">Cascade d'Erawan</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_4231.jpg" data-caption="Eaux turquoise de Koh Tao"><picture><source type="image/webp" srcset="/images/thumbs/IMG_4231-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_4231.jpg" alt="Eaux turquoise de Koh Tao"></picture><span class="cap">Koh Tao</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_2016.jpg" data-caption="Coucher de soleil sur la plage de Koh Lanta"><picture><source type="image/webp" srcset="/images/thumbs/IMG_2016-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Coucher de soleil sur la plage de Koh Lanta"></picture><span class="cap">Coucher de soleil · Koh Lanta</span></div>
-    <!-- duplicate for seamless loop -->
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_1369.jpg" data-caption="Pause noix de coco face à la mer d'Andaman, Krabi" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_1369-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_1369.jpg" alt=""></picture><span class="cap">Krabi · mer d'Andaman</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_5519.jpg" data-caption="Kayak dans la mangrove, sud de la Thaïlande" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_5519-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_5519.jpg" alt=""></picture><span class="cap">Kayak dans la mangrove</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_5227.jpg" data-caption="Temple doré de Doi Suthep, Chiang Mai" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_5227-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_5227.jpg" alt=""></picture><span class="cap">Doi Suthep · Chiang Mai</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_9507.jpg" data-caption="Cascade d'Erawan, Kanchanaburi" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_9507-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_9507.jpg" alt=""></picture><span class="cap">Cascade d'Erawan</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_4231.jpg" data-caption="Eaux turquoise de Koh Tao" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_4231-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_4231.jpg" alt=""></picture><span class="cap">Koh Tao</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_2016.jpg" data-caption="Coucher de soleil sur la plage de Koh Lanta" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_2016-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt=""></picture><span class="cap">Coucher de soleil · Koh Lanta</span></div>
-  </div>
-</section>
-
-<div style="background:var(--navy);text-align:center;padding:16px 0 28px">
-  <a class="text-link" href="/galerie/" style="color:var(--on-dark-mute);font-size:0.9rem">
-    Voir toute la galerie
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-  </a>
-</div>
-
-<!-- ============ WHY ME ============ -->
-<section class="section-pad">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">L'accompagnement Zwald</p>
-      <h2>Pourquoi faire appel à une travel planner ?</h2>
-      <p>Pas une agence, pas de circuit standardisé. Un accompagnement humain, du premier message au retour de voyage.</p>
-    </div>
-    <div class="grid cols-4">
-      <div class="card" data-reveal data-reveal-delay="1"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2 5 5 .5-3.8 3.3L16 17l-4-2.6L8 17l.8-5.2L5 8.5 10 8z"/></svg></span><h3>Voyage 100% sur mesure</h3><p>Aucun circuit tout fait. Ton itinéraire est construit pour toi, que tu voyages en couple, en famille ou en solo.</p></div>
-      <div class="card" data-reveal data-reveal-delay="2"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 012-2h9l5 5v11a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg></span><h3>Carnet de voyage perso</h3><p>Un carnet digital clair : itinéraire, liens de réservation, activités, conseils pratiques et culturels.</p></div>
-      <div class="card" data-reveal data-reveal-delay="3"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 01-9 8.5 8.4 8.4 0 01-4.4-1.2L3 20l1.3-5A8.4 8.4 0 0112 3a8.5 8.5 0 019 8.5z"/></svg></span><h3>Accompagnement continu</h3><p>Disponible du premier message à la fin de ton séjour. Assistance WhatsApp 7j/7 pendant le voyage.</p></div>
-      <div class="card" data-reveal data-reveal-delay="4"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span><h3>Transparence totale</h3><p>Tu es libre d'effectuer tes propres réservations, sans frais cachés ni commission. Tu sais exactement ce que tu paies, et pourquoi.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ FORMULES ============ -->
-<section class="section-pad bg-cream">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Tarifs</p>
-      <h2>Mes formules de <em>voyage</em></h2>
-      <p>Chaque voyage est unique. Choisis la formule qui te correspond — et adapte-la avec moi.</p>
-    </div>
-    <div class="formules">
-      <div class="formule" data-reveal data-reveal-delay="1">
+    <div class="h26-plans">
+      <article class="h26-plan">
         <h3>Light</h3>
-        <p class="aud">Voyageurs autonomes</p>
-        <div class="price"><span class="price-chf" data-chf="29">29 CHF</span> <small>/ jour</small></div>
-        <p class="price-note">par jour de voyage organisé</p>
+        <p class="h26-plan-for">Pour les voyageurs autonomes qui gèrent eux-mêmes hôtels et transports</p>
+        <p class="h26-plan-price"><span class="price-chf" data-chf="29">29 CHF</span><small>par jour de voyage</small></p>
         <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire sur mesure jusqu'à 3 villes</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection d'activités &amp; expériences locales</li>
-          <li class="no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6L6 18M6 6l12 12"/></svg> Sans sélection de transports &amp; hébergements</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Conseils personnalisés &amp; astuces locales</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Carnet de voyage digital complet</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Support avant &amp; assistance WhatsApp 7j/7</li>
+          <li>Itinéraire sur mesure, jusqu'à trois villes</li>
+          <li>Activités et expériences locales</li>
+          <li>Carnet de voyage digital</li>
+          <li>Conseils avant le départ et WhatsApp pendant</li>
         </ul>
-        <a class="btn btn-ghost" href="/contact/"><span>Recevoir un devis</span></a>
-      </div>
-      <div class="formule featured" data-reveal data-reveal-delay="2">
-        <span class="badge">Le plus choisi</span>
-        <h3>Solo / Duo</h3>
-        <p class="aud">Jusqu'à 2 personnes</p>
-        <div class="price"><span class="price-chf" data-chf="40">40 CHF</span> <small>/ jour</small></div>
-        <p class="price-note">par jour de voyage organisé</p>
+        <a class="btn btn-ghost" href="/contact/"><span>Demander un devis</span></a>
+      </article>
+      <article class="h26-plan h26-plan-main">
+        <p class="h26-plan-tag">La plus choisie</p>
+        <h3>Solo ou Duo</h3>
+        <p class="h26-plan-for">Pour une ou deux personnes, accompagnement complet</p>
+        <p class="h26-plan-price"><span class="price-chf" data-chf="40">40 CHF</span><small>par jour de voyage</small></p>
         <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire sur mesure jusqu'à 3 villes</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection d'activités &amp; expériences locales</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection de transports &amp; hébergements (2-4 options par étape)</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Conseils personnalisés &amp; astuces locales</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Carnet de voyage digital complet</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Support avant &amp; assistance WhatsApp 7j/7</li>
+          <li>Tout ce que contient Light</li>
+          <li>Sélection d'hébergements et de transports, deux à quatre options par étape</li>
+          <li>Deux semaines en couple, <span class="price-chf" data-chf="560">560 CHF</span> au total</li>
         </ul>
-        <a class="btn btn-white" href="/contact/"><span>Recevoir un devis</span></a>
-      </div>
-      <div class="formule" data-reveal data-reveal-delay="3">
+        <a class="btn btn-teal" href="/contact/"><span>Demander un devis</span></a>
+      </article>
+      <article class="h26-plan">
         <h3>Famille</h3>
-        <p class="aud">Jusqu'à 4 personnes</p>
-        <div class="price"><span class="price-chf" data-chf="43">43 CHF</span> <small>/ jour</small></div>
-        <p class="price-note">par jour de voyage organisé</p>
+        <p class="h26-plan-for">Jusqu'à quatre personnes, supplément au-delà</p>
+        <p class="h26-plan-price"><span class="price-chf" data-chf="43">43 CHF</span><small>par jour de voyage</small></p>
         <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Tout ce qui est inclus dans Solo / Duo</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Activités adaptées aux enfants de tout âge</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire pensé pour voyager en famille</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Jusqu'à 4 personnes (supplément au-delà)</li>
+          <li>Tout ce que contient Solo ou Duo</li>
+          <li>Activités adaptées à l'âge des enfants</li>
+          <li>Rythme pensé pour voyager en famille</li>
         </ul>
-        <a class="btn btn-ghost" href="/contact/"><span>Recevoir un devis</span></a>
-      </div>
+        <a class="btn btn-ghost" href="/contact/"><span>Demander un devis</span></a>
+      </article>
     </div>
-    <p class="text-center mt-l" data-reveal style="color:var(--ink-mute);font-size:0.95rem">💡 Exemple concret : 2 semaines en couple = <span class="price-chf" data-chf="560">560 CHF</span> au total, soit ~<span class="price-chf" data-chf="20">20 CHF</span> par personne et par jour — souvent amorti par les économies réalisées sur place. Ton itinéraire dépasse 3 villes ? Pas de souci, on adapte le devis ensemble.</p>
-    <span class="currency-note" hidden>Taux indicatif, actualisé quotidiennement — le CHF reste la devise de référence.</span>
-    <p class="text-center mt-l" data-reveal style="color:var(--ink-mute)">Voyage de groupe, lune de miel, anniversaire, voyage surprise ? <a class="text-link" href="/contact/">Contacte-moi pour un devis gratuit</a></p>
+    <p class="h26-note">Appel conseil d'une heure à <span class="price-chf" data-chf="70">70 CHF</span>, déductible de l'accompagnement complet, si vous préférez organiser vous-même avec un avis de terrain. <span class="currency-note" hidden>Taux indicatif, actualisé quotidiennement, le CHF reste la devise de référence.</span></p>
   </div>
 </section>
 
-<!-- ============ PROCESS ============ -->
-<section class="section-pad">
+<section class="section-pad h26-quotes" data-screen-label="Avis">
   <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">La méthode</p>
-      <h2>Comment ça marche</h2>
-      <p>Six étapes simples, du premier échange jusqu'à ton retour de voyage.</p>
+    <div class="h26-two h26-two-head">
+      <h2>Ce qu'en disent les voyageurs</h2>
+      <p class="h26-copy"><a class="text-link" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener">Dix-huit avis sur Google, tous à cinq étoiles <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></p>
     </div>
-    <div class="steps" data-reveal>
-      <div class="step"><div class="step-num">01</div><h3>Prise de contact</h3><p>Tu me racontes ton projet de voyage par email, formulaire ou réseaux sociaux.</p></div>
-      <div class="step"><div class="step-num">02</div><h3>Appel découverte</h3><p>Gratuit et sans engagement. On échange sur tes envies, ton budget et tes dates.</p></div>
-      <div class="step"><div class="step-num">03</div><h3>Itinéraire sur mesure</h3><p>Je prépare une ou deux propositions adaptées à ton projet, avec un devis clair.</p></div>
-      <div class="step"><div class="step-num">04</div><h3>Conception du voyage</h3><p>Sélection des transports, hébergements et activités adaptés à ton style.</p></div>
-      <div class="step"><div class="step-num">05</div><h3>Carnet de voyage</h3><p>Tu reçois ton guide complet avec toutes les infos pour réserver sereinement.</p></div>
-      <div class="step"><div class="step-num">06</div><h3>Bon voyage !</h3><p>Je reste disponible 7j/7 pendant ton séjour. Toi, tu n'as plus qu'à profiter.</p></div>
+    <div class="h26-quote-grid">
+      <blockquote><p>Un immense merci à Anaïs ! Elle connaît tous les meilleurs plans : restaurants locaux, excursions au top, activités à prix imbattables. Des vacances exceptionnelles tout en faisant de belles économies !</p><footer>Sophie, voyage solo à Koh Lanta</footer></blockquote>
+      <blockquote><p>Anaïs nous a concocté un voyage sur mesure en Indonésie inoubliable ! Elle a su écouter nos attentes pour Bali, Lombok et les îles alentours. On a voyagé sans aucune prise de tête.</p><footer>Timothé, en couple à Bali et Lombok</footer></blockquote>
+      <blockquote><p>Grâce aux précieux conseils d'Anaïs nous avons découvert Koh Lanta et Bangkok. Faire appel à une travel planner a été incroyable : gain de temps, d'argent, et zéro souci !</p><footer>Patrick, en couple à Koh Lanta et Bangkok</footer></blockquote>
+      <blockquote><p>Anaïs nous a permis de passer un voyage de rêve qui correspondait parfaitement à nos attentes. Avec elle tout fonctionne, vous pouvez lui faire pleinement confiance !</p><footer>Céline, en famille en Thaïlande</footer></blockquote>
     </div>
   </div>
 </section>
 
-<!-- ============ TESTIMONIALS ============ -->
-<section class="section-pad bg-mint">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Ils m'ont fait confiance</p>
-      <h2>Ce que disent mes voyageurs</h2>
+<section class="section-pad h26-girls bg-craie" data-screen-label="Girls Trips">
+  <div class="container h26-two">
+    <div class="h26-girls-photos">
+      <img loading="lazy" decoding="async" src="/images/girls/sunset-koh-lanta.jpeg" alt="Coucher de soleil à Koh Lanta lors d'un Girls Trip">
+      <img loading="lazy" decoding="async" src="/images/girls/cooking-class.jpeg" alt="Cours de cuisine thaïlandaise entre participantes">
     </div>
-    <div class="carousel" data-carousel data-reveal>
-      <div class="carousel-viewport">
-        <div class="carousel-track">
-          <div class="carousel-slide"><div class="tcard"><div class="quote">"</div><div class="stars"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg></div><p>Un immense merci à Anaïs ! Elle connaît tous les meilleurs plans : restaurants locaux, excursions au top, activités à prix imbattables. Des vacances exceptionnelles tout en faisant de belles économies !</p><div class="who"><strong>Sophie</strong><span>Voyage solo · Koh Lanta</span></div></div></div>
-          <div class="carousel-slide"><div class="tcard"><div class="quote">"</div><div class="stars"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg></div><p>Anaïs nous a concocté un voyage sur mesure en Indonésie inoubliable ! Elle a su écouter nos attentes pour Bali, Lombok et les îles alentours. On a voyagé sans aucune prise de tête.</p><div class="who"><strong>Timothé</strong><span>Voyage en couple · Bali &amp; Lombok</span></div></div></div>
-          <div class="carousel-slide"><div class="tcard"><div class="quote">"</div><div class="stars"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg></div><p>Grâce aux précieux conseils d'Anaïs nous avons découvert Koh Lanta et Bangkok. Faire appel à une travel planner a été incroyable : gain de temps, d'argent, et zéro souci !</p><div class="who"><strong>Patrick</strong><span>Voyage en couple · Koh Lanta &amp; Bangkok</span></div></div></div>
-          <div class="carousel-slide"><div class="tcard"><div class="quote">"</div><div class="stars"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg></div><p>Anaïs nous a permis de passer un voyage de rêve qui correspondait parfaitement à nos attentes. Avec elle tout fonctionne, vous pouvez lui faire pleinement confiance !</p><div class="who"><strong>Céline</strong><span>Voyage en famille · Thaïlande</span></div></div></div>
-        </div>
-      </div>
-      <div class="carousel-arrows">
-        <button class="carousel-btn" data-prev aria-label="Précédent">‹</button>
-        <button class="carousel-btn" data-next aria-label="Suivant">›</button>
-      </div>
-      <div class="carousel-dots"></div>
-    </div>
-    <div class="text-center" data-reveal style="margin-top:42px">
-      <a class="btn btn-ghost" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener"><span>⭐ Lire mes avis sur Google <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    <div class="h26-copy">
+      <h2>Girls Trips, voyager entre femmes à Koh Lanta et Krabi</h2>
+      <p>Des séjours en petit groupe de cinq à huit femmes, accompagnés sur place. Pas de calendrier fixe, dès qu'un groupe se forme les participantes choisissent la semaine ensemble. Dès <span class="price-chf" data-chf="790">790 CHF</span> le séjour de sept jours.</p>
+      <a class="btn btn-teal" href="/girls-trips/"><span>Découvrir les Girls Trips</span></a>
     </div>
   </div>
 </section>
 
-<!-- ============ OTHER SERVICES ============ -->
-<section class="section-pad">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Au-delà des itinéraires</p>
-      <h2>Mes autres services</h2>
+<section class="section-pad h26-more" data-screen-label="Autres services">
+  <div class="container h26-more-grid">
+    <div>
+      <h3><a href="/cartes-cadeaux/">Carte cadeau</a></h3>
+      <p>Offrir un voyage sur mesure, montant au choix dès <span class="price-chf" data-chf="50">50 CHF</span>, carte personnalisée envoyée par email.</p>
     </div>
-    <div class="grid cols-2">
-      <div class="card" data-reveal data-reveal-delay="1"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M7.5 8a2.5 2.5 0 010-5C10 3 12 8 12 8M16.5 8a2.5 2.5 0 000-5C14 3 12 8 12 8"/></svg></span><h3>Cartes cadeaux voyage</h3><p>Anniversaire, mariage, Noël… Offre un accompagnement voyage complet avec une carte 100% personnalisable.</p><p style="color:var(--teal-dark);font-weight:700;margin-top:14px">Montant au choix</p><a class="text-link mt-s" href="/cartes-cadeaux/">Commander <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
-      <div class="card" data-reveal data-reveal-delay="2"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4a2 2 0 012-2h9l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><path d="M14 2v5h5M8 12h8M8 16h6"/></svg></span><h3>Guides PDF</h3><p>Où aller, quoi faire, quoi goûter et quelles adresses noter. Un guide local dans ta poche, prêt à l'emploi.</p><p style="color:var(--teal-dark);font-weight:700;margin-top:14px">Montant libre</p><a class="text-link mt-s" href="/guides/">Découvrir <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
+    <div>
+      <h3><a href="/guides/">Guide Koh Lanta en PDF</a></h3>
+      <p>Plages, transports, adresses testées, écrit depuis l'île. Prix libre, <span class="price-chf" data-chf="15">15 CHF</span> conseillés.</p>
     </div>
-  </div>
-</section>
-
-<!-- ============ GIRLS TRIPS ============ -->
-<section class="section-pad bg-cream">
-  <div class="container">
-    <div class="split">
-      <div class="girls-mosaic" data-reveal="left">
-        <div class="girls-mosaic-inner">
-          <img loading="lazy" decoding="async" src="/images/girls/sunset-koh-lanta.jpeg" alt="Coucher de soleil à Koh Lanta lors d'un girls trip" class="gm-main">
-          <img loading="lazy" decoding="async" src="/images/girls/snorkeling.jpeg" alt="Snorkeling en groupe lors d'un girls trip Thaïlande" class="gm-s1">
-          <img loading="lazy" decoding="async" src="/images/girls/cooking-class.jpeg" alt="Cours de cuisine thaïlandaise entre amies" class="gm-s2">
-        </div>
-      </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow">Voyage entre femmes</p>
-        <h2>Les Girls Trips, une spécialité Zwald</h2>
-        <hr class="divider">
-        <p class="lead">Des voyages en petits groupes de 5 à 8 femmes, conçus pour vivre la Thaïlande autrement — entre authenticité, sœurité et liberté.</p>
-        <ul class="feature-list mt-m">
-          <li><span class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6L9 17l-5-5"/></svg></span>Koh Lanta &amp; Krabi — mer, plages et jungle</li>
-          <li><span class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6L9 17l-5-5"/></svg></span>Expériences locales : cuisine, massage, snorkeling</li>
-          <li><span class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6L9 17l-5-5"/></svg></span>Anaïs t'accompagne sur place</li>
-          <li><span class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6L9 17l-5-5"/></svg></span>Départs dès décembre 2026 — pré-inscriptions ouvertes</li>
-        </ul>
-        <a class="btn btn-teal mt-l" href="/girls-trips/"><span>Découvrir les Girls Trips <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
-      </div>
+    <div>
+      <h3><a href="/blog/">Conseils et itinéraires</a></h3>
+      <p>Quand partir, combien prévoir, deux semaines jour par jour. Des articles écrits depuis la Thaïlande, mis à jour.</p>
     </div>
   </div>
 </section>
 
 {% endraw %}{% include "newsletter.njk" %}{% raw %}
 
-<!-- ============ FINAL CTA ============ -->
-<section class="cta-band section-pad">
-  <div class="ph-bg" data-parallax="0.12"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Coucher de soleil sur une plage de Thaïlande"></div>
-  <div class="ph-overlay"></div>
+<section class="h26-final" data-screen-label="Contact">
   <div class="container">
-    <p class="eyebrow center on-dark" data-reveal style="justify-content:center;margin-bottom:20px">Ton aventure commence ici</p>
-    <h2 data-reveal>Prêt(e) à organiser <em>ton voyage</em> ?</h2>
-    <p data-reveal data-reveal-delay="1">Tu rêves d'un voyage en Thaïlande sans stress et parfaitement organisé ? Je t'aide à créer un séjour qui te ressemble, sans faire exploser ton budget.</p>
-    <div class="btns" data-reveal data-reveal-delay="2">
-      <a class="btn btn-white btn-lg" href="/contact/" data-magnetic><span>Recevoir mon devis gratuit <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
-      <a class="btn btn-ghost on-dark btn-lg" href="/services/"><span>Voir mes services</span></a>
+    <h2>Racontez-nous votre voyage</h2>
+    <p>Dates approximatives, envies, budget. Le premier échange est gratuit et sans engagement, la réponse arrive sous un à deux jours.</p>
+    <div class="h26-actions">
+      <a class="btn btn-white btn-lg" href="/contact/"><span>Demander un devis gratuit</span></a>
+      <a class="btn btn-ghost on-dark btn-lg" href="/faq/"><span>Lire les questions fréquentes</span></a>
     </div>
   </div>
 </section>
 {% endraw %}{% endblock %}
 
 {% block scripts %}{% raw %}
-<script>ZWALD.init({ page: "home", lightNav: true });</script>
+<script>ZWALD.init({ page: "home" });</script>
 <script>
   window.REQUIRED_CODE_ERROR_MESSAGE = 'Veuillez choisir un indicatif';
   window.LOCALE = 'fr';
