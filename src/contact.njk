@@ -28,43 +28,7 @@ langAlt: "/en/contact/"
 <meta name="twitter:title" content="Contact — Zwald Travel Planner">
 <meta name="twitter:description" content="Contacte Anaïs pour ton voyage sur mesure en Thaïlande. Devis gratuit et sans engagement, réponse sous 24-48h. WhatsApp 7j/7.">
 <meta name="twitter:image" content="https://zwaldtravelplanner.com/images/IMG_4231.jpg">
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "TravelAgency",
-  "@id": "https://zwaldtravelplanner.com/#business",
-  "name": "Zwald Travel Planner",
-  "alternateName": "Zwald Travel Planner — Vos voyages sur mesure de A à Z",
-  "description": "Travel planner installée en Thaïlande depuis plus de 3 ans. Itinéraires sur mesure, carnet de voyage personnalisé et accompagnement 7j/7 pour la Thaïlande et l'Asie du Sud-Est.",
-  "url": "https://zwaldtravelplanner.com/",
-  "image": "https://zwaldtravelplanner.com/images/IMG_6424.jpg",
-  "logo": "https://zwaldtravelplanner.com/images/logo.png",
-  "telephone": "+66958683846",
-  "priceRange": "$",
-  "founder": {
-    "@type": "Person",
-    "name": "Anaïs"
-  },
-  "areaServed": [
-    {
-      "@type": "Country",
-      "name": "Thaïlande"
-    },
-    {
-      "@type": "Place",
-      "name": "Asie du Sud-Est"
-    }
-  ],
-  "knowsLanguage": [
-    "fr",
-    "en"
-  ],
-  "sameAs": [
-    "https://www.instagram.com/zwaldtravelplanner/",
-    "https://www.facebook.com/people/Zwald-Travel-Planner/61568573411432/"
-  ]
-}
-</script>
+{% endraw %}{% include "schema-business.njk" %}{% raw %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@23.1.0/build/css/intlTelInput.css">
 <style>
 /* intl-tel-input — reskin Zwald */
@@ -97,7 +61,7 @@ langAlt: "/en/contact/"
 
 {% block content %}{% raw %}
 <section class="page-hero has-img" data-screen-label="Contact — hero">
-  <div class="ph-bg" data-parallax="0.1"><img fetchpriority="high" src="/images/IMG_4231.jpg" alt="Eaux turquoise de Thaïlande" width="1200" height="1600"></div>
+  <div class="ph-bg" data-parallax="0.1"><img fetchpriority="high" sizes="100vw" src="/images/IMG_4231.jpg" alt="Eaux turquoise de Thaïlande"></div>
   <div class="ph-overlay"></div>
   <div class="container">
     <p class="eyebrow">Contact</p>

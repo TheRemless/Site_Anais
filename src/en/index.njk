@@ -30,49 +30,13 @@ langAlt: "/"
 <meta name="twitter:title" content="Zwald Travel Planner — Tailor-Made Trips to Thailand &amp; Southeast Asia">
 <meta name="twitter:description" content="Anaïs, a travel planner based in Thailand. Tailor-made itineraries across Thailand and Southeast Asia, a personalized travel journal and 7-day support. Free quote.">
 <meta name="twitter:image" content="https://zwaldtravelplanner.com/images/og-home-en.jpg">
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "TravelAgency",
-  "@id": "https://zwaldtravelplanner.com/#business",
-  "name": "Zwald Travel Planner",
-  "alternateName": "Zwald Travel Planner — Your Tailor-Made Trips from A to Z",
-  "description": "Travel planner based in Thailand for over 3 years. Tailor-made itineraries, personalized travel journals and 7-day support for Thailand and Southeast Asia.",
-  "url": "https://zwaldtravelplanner.com/",
-  "image": "https://zwaldtravelplanner.com/images/IMG_6424.jpg",
-  "logo": "https://zwaldtravelplanner.com/images/logo.png",
-  "telephone": "+66958683846",
-  "priceRange": "$",
-  "founder": {
-    "@type": "Person",
-    "name": "Anaïs"
-  },
-  "areaServed": [
-    {
-      "@type": "Country",
-      "name": "Thailand"
-    },
-    {
-      "@type": "Place",
-      "name": "Southeast Asia"
-    }
-  ],
-  "knowsLanguage": [
-    "fr",
-    "en"
-  ],
-  "sameAs": [
-    "https://www.instagram.com/zwaldtravelplanner/",
-    "https://www.facebook.com/people/Zwald-Travel-Planner/61568573411432/"
-  ]
-}
-</script>
+{% endraw %}{% include "schema-business.njk" %}{% raw %}
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
 <!-- ============ HERO ============ -->
 <section class="hero pre" data-screen-label="Hero">
-  <div class="hero-bg"><img fetchpriority="high" src="/images/IMG_6424.jpg" alt="View over Ang Thong marine national park, Thailand" width="1920" height="1280"></div>
+  <div class="hero-bg"><img fetchpriority="high" sizes="100vw" src="/images/IMG_6424.jpg" alt="View over Ang Thong marine national park, Thailand"></div>
   <div class="hero-overlay"></div>
   <div class="hero-inner">
     <p class="eyebrow">Travel Planner · Thailand &amp; Southeast Asia</p>
@@ -106,7 +70,7 @@ langAlt: "/"
   <div class="container">
     <div class="split">
       <div class="split-media intro-media" data-reveal="left">
-        <img loading="lazy" decoding="async" class="photo-main img-reveal-target" src="/images/IMG_5300.jpg" alt="Anaïs meeting an elephant in Thailand" width="1200" height="1600">
+        <img loading="lazy" decoding="async" class="photo-main img-reveal-target" src="/images/IMG_5300.jpg" alt="Anaïs meeting an elephant in Thailand">
         <div class="photo-badge">
           <div class="n">100%</div>
           <div class="t">tailor-made</div>
@@ -346,7 +310,7 @@ langAlt: "/"
 
 <!-- ============ FINAL CTA ============ -->
 <section class="cta-band section-pad">
-  <div class="ph-bg" data-parallax="0.12"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Sunset on a beach in Thailand" width="1920" height="1280"></div>
+  <div class="ph-bg" data-parallax="0.12"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Sunset on a beach in Thailand"></div>
   <div class="ph-overlay"></div>
   <div class="container">
     <p class="eyebrow center on-dark" data-reveal style="justify-content:center;margin-bottom:20px">Your adventure starts here</p>

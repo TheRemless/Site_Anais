@@ -9,7 +9,8 @@
     "test": "node --test"
   },
   "devDependencies": {
-    "@11ty/eleventy": "^3.0.0"
+    "@11ty/eleventy": "^3.0.0",
+    "@11ty/eleventy-img": "^7.1.1"
   },
   "dependencies": {
     "nodemailer": "^9.0.3"

@@ -30,49 +30,13 @@ langAlt: "/en/"
 <meta name="twitter:title" content="Zwald Travel Planner — Voyages sur mesure en Thaïlande et Asie du Sud-Est">
 <meta name="twitter:description" content="Anaïs, travel planner installée en Thaïlande. Itinéraires sur mesure en Thaïlande et en Asie du Sud-Est, carnet de voyage personnalisé et accompagnement 7j/7. Devis gratuit.">
 <meta name="twitter:image" content="https://zwaldtravelplanner.com/images/og-home.jpg?v=2">
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "TravelAgency",
-  "@id": "https://zwaldtravelplanner.com/#business",
-  "name": "Zwald Travel Planner",
-  "alternateName": "Zwald Travel Planner — Vos voyages sur mesure de A à Z",
-  "description": "Travel planner installée en Thaïlande depuis plus de 3 ans. Itinéraires sur mesure, carnet de voyage personnalisé et accompagnement 7j/7 pour la Thaïlande et l'Asie du Sud-Est.",
-  "url": "https://zwaldtravelplanner.com/",
-  "image": "https://zwaldtravelplanner.com/images/IMG_6424.jpg",
-  "logo": "https://zwaldtravelplanner.com/images/logo.png",
-  "telephone": "+66958683846",
-  "priceRange": "$",
-  "founder": {
-    "@type": "Person",
-    "name": "Anaïs"
-  },
-  "areaServed": [
-    {
-      "@type": "Country",
-      "name": "Thaïlande"
-    },
-    {
-      "@type": "Place",
-      "name": "Asie du Sud-Est"
-    }
-  ],
-  "knowsLanguage": [
-    "fr",
-    "en"
-  ],
-  "sameAs": [
-    "https://www.instagram.com/zwaldtravelplanner/",
-    "https://www.facebook.com/people/Zwald-Travel-Planner/61568573411432/"
-  ]
-}
-</script>
+{% endraw %}{% include "schema-business.njk" %}{% raw %}
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
 <!-- ============ HERO ============ -->
 <section class="hero pre" data-screen-label="Hero">
-  <div class="hero-bg"><img fetchpriority="high" src="/images/IMG_6424.jpg" alt="Vue sur le parc national marin d'Ang Thong, Thaïlande" width="1920" height="1280"></div>
+  <div class="hero-bg"><img fetchpriority="high" sizes="100vw" src="/images/IMG_6424.jpg" alt="Vue sur le parc national marin d'Ang Thong, Thaïlande"></div>
   <div class="hero-overlay"></div>
   <div class="hero-inner">
     <p class="eyebrow">Travel Planner · Thaïlande &amp; Asie du Sud-Est</p>
@@ -106,7 +70,7 @@ langAlt: "/en/"
   <div class="container">
     <div class="split">
       <div class="split-media intro-media" data-reveal="left">
-        <img loading="lazy" decoding="async" class="photo-main img-reveal-target" src="/images/IMG_5300.jpg" alt="Anaïs à la rencontre d'un éléphant en Thaïlande" width="1200" height="1600">
+        <img loading="lazy" decoding="async" class="photo-main img-reveal-target" src="/images/IMG_5300.jpg" alt="Anaïs à la rencontre d'un éléphant en Thaïlande">
         <div class="photo-badge">
           <div class="n">100%</div>
           <div class="t">sur mesure</div>
@@ -348,7 +312,7 @@ langAlt: "/en/"
 
 <!-- ============ FINAL CTA ============ -->
 <section class="cta-band section-pad">
-  <div class="ph-bg" data-parallax="0.12"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Coucher de soleil sur une plage de Thaïlande" width="1920" height="1280"></div>
+  <div class="ph-bg" data-parallax="0.12"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Coucher de soleil sur une plage de Thaïlande"></div>
   <div class="ph-overlay"></div>
   <div class="container">
     <p class="eyebrow center on-dark" data-reveal style="justify-content:center;margin-bottom:20px">Ton aventure commence ici</p>

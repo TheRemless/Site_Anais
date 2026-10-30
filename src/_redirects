@@ -1,7 +1,7 @@
 # Legacy flat ".html" URLs -> clean directory-style URLs (site migrated from
 # flat pages to Eleventy directory permalinks). 404.html is intentionally
 # excluded — it must stay flat for Netlify's default error-page convention.
-/index.html                                     /                                          301
+/index.html                                     /                                          301!
 /services.html                                  /services/                                 301
 /girls-trips.html                               /girls-trips/                              301
 /a-propos.html                                  /a-propos/                                 301

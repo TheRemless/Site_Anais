@@ -1,7 +1,7 @@
 <header class="nav{% if navLight %} nav-light{% endif %}">
     <div class="nav-inner">
       <a class="brand" href="{{ '/en/' if lang == 'en' else '/' }}" aria-label="{{ 'brand.ariaLabel' | t(lang) }}">
-        <img width="42" height="42" decoding="async" src="/images/logo.png" alt="">
+        <img decoding="async" src="/images/logo.png" alt="">
         <span class="brand-text"><span class="brand-name">Zwald</span> <span class="brand-sub">Travel Planner</span></span>
       </a>
       <nav aria-label="{{ 'nav.ariaMain' | t(lang) }}"><ul class="nav-links">

@@ -19,4 +19,7 @@ jobs:
 
       - run: npm ci
 
+      # Le sitemap est généré par Eleventy et un test le lit dans _site/.
+      - run: npm run build
+
       - run: npm test

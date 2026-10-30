@@ -1,6 +1,6 @@
 const i18n = require("./src/_data/i18n.json");
 
-module.exports = function (eleventyConfig) {
+module.exports = async function (eleventyConfig) {
   // Traduction des libellés partagés (header, footer, bannière cookies).
   eleventyConfig.addFilter("t", function (key, lang) {
     const dict = i18n[lang];
@@ -8,6 +8,25 @@ module.exports = function (eleventyConfig) {
       throw new Error('i18n : clé manquante "' + key + '" pour la langue "' + lang + '"');
     }
     return dict[key];
+  });
+
+  // Images responsives : chaque <img src="/images/..."> du HTML généré est
+  // converti en WebP à plusieurs largeurs, avec srcset, width et height.
+  // Les fichiers sortent dans /img/ avec un nom haché (cache long côté Netlify).
+  // sizes="auto" laisse le navigateur choisir selon la largeur réelle (images lazy) ;
+  // les visuels de tête de page portent sizes="100vw" dans les gabarits.
+  // Pour exclure une image : <img eleventy:ignore ...>.
+  const { eleventyImageTransformPlugin } = await import("@11ty/eleventy-img");
+  eleventyConfig.addPlugin(eleventyImageTransformPlugin, {
+    formats: ["webp"],
+    widths: [480, 800, 1100, 1600],
+    urlPath: "/img/",
+    outputDir: "_site/img/",
+    htmlOptions: {
+      imgAttributes: { decoding: "async", sizes: "auto" },
+    },
+    sharpWebpOptions: { quality: 72, effort: 5 },
+    failOnError: true,
   });
 
   // Static assets are copied through untouched, keeping the same public URLs.
@@ -19,7 +38,6 @@ module.exports = function (eleventyConfig) {
     "src/gestion": "gestion",
     "src/favicon.ico": "favicon.ico",
     "src/robots.txt": "robots.txt",
-    "src/sitemap.xml": "sitemap.xml",
     "src/site.webmanifest": "site.webmanifest",
     "src/_redirects": "_redirects"
   });

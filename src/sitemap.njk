@@ -1,0 +1,38 @@
+---
+permalink: /sitemap.xml
+eleventyExcludeFromCollections: true
+---
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+{%- for p in collections.all %}
+{%- if p.url and p.data.sitemap !== false and p.url != "/404.html" %}
+{%- set loc = "https://zwaldtravelplanner.com" + p.url %}
+{%- set alt = p.data.langAlt %}
+  <url>
+    <loc>{{ loc }}</loc>
+{%- if p.data.updated %}
+    <lastmod>{{ p.data.updated }}</lastmod>
+{%- endif %}
+{%- if alt and alt != p.url %}
+{%- set altLoc = "https://zwaldtravelplanner.com" + alt %}
+{%- if p.data.lang == "en" %}
+    <xhtml:link rel="alternate" hreflang="en" href="{{ loc }}"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="{{ altLoc }}"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="{{ altLoc }}"/>
+{%- else %}
+    <xhtml:link rel="alternate" hreflang="fr" href="{{ loc }}"/>
+    <xhtml:link rel="alternate" hreflang="en" href="{{ altLoc }}"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="{{ loc }}"/>
+{%- endif %}
+{%- endif %}
+  </url>
+{%- endif %}
+{%- endfor %}
+{#- /secret/ et /taxi/ sont hors collections (eleventyExcludeFromCollections) : listés ici. #}
+  <url>
+    <loc>https://zwaldtravelplanner.com/secret/</loc>
+  </url>
+  <url>
+    <loc>https://zwaldtravelplanner.com/taxi/</loc>
+  </url>
+</urlset>
