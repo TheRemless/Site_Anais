@@ -363,9 +363,37 @@
     initMarquee();
     initLightbox();
     initTracking();
+    initEvents();
     // Footer year
     var y = document.getElementById("footer-year");
     if (y) y.textContent = new Date().getFullYear();
+  }
+
+
+  // Événements GA4 : clics WhatsApp, formulaires, liens vers Secret et Taxi, pré-inscription Girls Trips.
+  // gtag() existe toujours (consent mode) ; sans consentement, les événements restent sans cookie.
+  function initEvents() {
+    if (typeof window.gtag !== "function") return;
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[href]");
+      if (!a) return;
+      var href = a.getAttribute("href") || "";
+      if (href.indexOf("wa.me") !== -1) {
+        window.gtag("event", "whatsapp_click", { page_path: location.pathname, link_text: (a.textContent || "").trim().slice(0, 60) });
+      } else if (href.indexOf("/secret/") === 0 || href.indexOf("/taxi/") === 0) {
+        window.gtag("event", "cross_brand_click", { page_path: location.pathname, destination: href });
+      } else if (href.indexOf("tally.so") !== -1) {
+        window.gtag("event", "girls_trips_preregister", { page_path: location.pathname });
+      } else if (href.indexOf("maps.app.goo.gl") !== -1) {
+        window.gtag("event", "google_reviews_click", { page_path: location.pathname });
+      }
+    });
+    document.addEventListener("submit", function (e) {
+      var f = e.target;
+      if (f && f.tagName === "FORM") {
+        window.gtag("event", "form_submit", { page_path: location.pathname, form_name: f.getAttribute("name") || f.id || "form" });
+      }
+    });
   }
 
   // Backwards-compatible: pages call ZWALD.init(); options are now ignored. Idempotent.

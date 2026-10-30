@@ -1,6 +1,15 @@
 ---
 active: ""
 navLight: false
+title: "Les erreurs à éviter absolument en Thaïlande"
+description: "Réserver trop tôt ses îles, mal choisir sa saison, se faire avoir par les tuk-tuks. Les erreurs les plus fréquentes des voyageurs, et comment les éviter."
+category: "Conseils"
+date: "2025-03-03"
+cover: "/images/IMG_2016.jpg"
+coverAlt: "Coucher de soleil sur une plage de Thaïlande"
+readingTime: 6
+tags: ["post"]
+lang: fr
 updated: "2025-03-03"
 ---
 {% extends "base.njk" %}
@@ -56,7 +65,7 @@ updated: "2025-03-03"
 <article>
 <header class="article-hero" data-screen-label="Article — Les erreurs à éviter absolument en Thaïlande">
   <div class="container">
-    <a class="text-link" href="/blog/" style="margin-bottom:20px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="transform:rotate(180deg)"><path d="M5 12h14M13 6l6 6-6 6"/></svg> Tous les articles</a>
+    {% endraw %}{% include "breadcrumb-article.njk" %}{% raw %}
     <div class="article-meta-top">
       <span class="b-cat">Conseils</span>
       <span class="m">3 mars 2025</span>
@@ -126,37 +135,7 @@ updated: "2025-03-03"
   </div>
 </section>
 
-<section class="section-pad bg-cream">
-  <div class="container">
-    <div class="section-head center" data-reveal><p class="eyebrow center">À lire aussi</p><h2>D'autres conseils pour ton voyage</h2></div>
-    <div class="blog-grid">
-      <article class="blog-card" data-reveal>
-        <div class="b-img"><img loading="lazy" decoding="async" src="/images/IMG_6424.jpg" alt="Îles de la mer d'Andaman"></div>
-        <div class="b-body">
-          <div class="b-meta"><span class="b-cat">Itinéraire</span></div>
-          <h3>2 semaines en Thaïlande : l'itinéraire parfait</h3>
-          <a class="text-link b-link" href="/itineraire-2-semaines-thailande/">Lire l'article <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-        </div>
-      </article>
-      <article class="blog-card" data-reveal>
-        <div class="b-img"><img loading="lazy" decoding="async" src="/images/IMG_5519.jpg" alt="Kayak dans la mangrove"></div>
-        <div class="b-body">
-          <div class="b-meta"><span class="b-cat">Guide</span></div>
-          <h3>Organiser son voyage sans agence</h3>
-          <a class="text-link b-link" href="/organiser-voyage-thailande-sans-agence/">Lire l'article <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-        </div>
-      </article>
-      <article class="blog-card" data-reveal>
-        <div class="b-img"><img loading="lazy" decoding="async" src="/images/IMG_5227.jpg" alt="Temple de Doi Suthep"></div>
-        <div class="b-body">
-          <div class="b-meta"><span class="b-cat">Culture</span></div>
-          <h3>Temples & coutumes : le guide du respect</h3>
-          <a class="text-link b-link" href="/temples-coutumes-thailande/">Lire l'article <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-        </div>
-      </article>
-    </div>
-  </div>
-</section>
+{% endraw %}{% include "related-posts.njk" %}{% raw %}
 {% endraw %}{% endblock %}
 
 {% block scripts %}{% raw %}

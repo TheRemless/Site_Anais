@@ -173,7 +173,7 @@ section { position: relative; }
 .btn:hover .arrow { transform: translateX(4px); }
 .btn:hover { box-shadow: 0 16px 34px -14px rgba(16,36,42,0.5); }
 
-.btn-teal  { --bg: var(--teal); --fg: #fff; }
+.btn-teal  { --bg: var(--teal-dark); --fg: #fff; }
 .btn-teal:hover { box-shadow: 0 16px 34px -12px rgba(26,155,140,0.55); }
 .btn-white { --bg: #fff; --fg: var(--teal-dark); }
 .btn-ghost {

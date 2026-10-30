@@ -1,0 +1,7 @@
+<nav class="crumbs" aria-label="{{ 'Breadcrumb' if lang == 'en' else 'Fil d\'Ariane' }}">
+  <a href="{{ '/en/' if lang == 'en' else '/' }}">{{ 'Home' if lang == 'en' else 'Accueil' }}</a>
+  <span aria-hidden="true">›</span>
+  <a href="{{ '/en/blog/' if lang == 'en' else '/blog/' }}">Blog</a>
+  <span aria-hidden="true">›</span>
+  <span aria-current="page">{{ category }}</span>
+</nav>

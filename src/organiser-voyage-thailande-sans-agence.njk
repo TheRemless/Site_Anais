@@ -1,6 +1,15 @@
 ---
 active: ""
 navLight: false
+title: "Organiser son voyage en Thaïlande sans agence"
+description: "Seul, avec une agence ou avec une travel planner ? Le comparatif honnête, qui fait quoi, ce que ça coûte et dans quel cas chaque option est la bonne."
+category: "Guide"
+date: "2025-03-20"
+cover: "/images/IMG_5519.jpg"
+coverAlt: "Kayak dans la mangrove en Thaïlande"
+readingTime: 10
+tags: ["post"]
+lang: fr
 updated: "2026-10-30"
 ---
 {% extends "base.njk" %}
@@ -56,7 +65,7 @@ updated: "2026-10-30"
 <article>
 <header class="article-hero" data-screen-label="Article — Organiser son voyage en Thaïlande sans agence">
   <div class="container">
-    <a class="text-link" href="/blog/" style="margin-bottom:20px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="transform:rotate(180deg)"><path d="M5 12h14M13 6l6 6-6 6"/></svg> Tous les articles</a>
+    {% endraw %}{% include "breadcrumb-article.njk" %}{% raw %}
     <div class="article-meta-top">
       <span class="b-cat">Guide</span>
       <span class="m">20 mars 2025</span>
@@ -193,37 +202,7 @@ updated: "2026-10-30"
   </div>
 </section>
 
-<section class="section-pad bg-cream">
-  <div class="container">
-    <div class="section-head center" data-reveal><p class="eyebrow center">À lire aussi</p><h2>D'autres conseils pour ton voyage</h2></div>
-    <div class="blog-grid">
-      <article class="blog-card" data-reveal>
-        <div class="b-img"><img loading="lazy" decoding="async" src="/images/IMG_6424.jpg" alt="Îles de la mer d'Andaman"></div>
-        <div class="b-body">
-          <div class="b-meta"><span class="b-cat">Itinéraire</span></div>
-          <h3>2 semaines en Thaïlande : l'itinéraire parfait</h3>
-          <a class="text-link b-link" href="/itineraire-2-semaines-thailande/">Lire l'article <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-        </div>
-      </article>
-      <article class="blog-card" data-reveal>
-        <div class="b-img"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Plage au coucher du soleil"></div>
-        <div class="b-body">
-          <div class="b-meta"><span class="b-cat">Conseils</span></div>
-          <h3>Les erreurs à éviter absolument</h3>
-          <a class="text-link b-link" href="/erreurs-a-eviter-voyage-thailande/">Lire l'article <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-        </div>
-      </article>
-      <article class="blog-card" data-reveal>
-        <div class="b-img"><img loading="lazy" decoding="async" src="/images/IMG_5227.jpg" alt="Temple de Doi Suthep"></div>
-        <div class="b-body">
-          <div class="b-meta"><span class="b-cat">Culture</span></div>
-          <h3>Temples & coutumes : le guide du respect</h3>
-          <a class="text-link b-link" href="/temples-coutumes-thailande/">Lire l'article <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-        </div>
-      </article>
-    </div>
-  </div>
-</section>
+{% endraw %}{% include "related-posts.njk" %}{% raw %}
 {% endraw %}{% endblock %}
 
 {% block scripts %}{% raw %}

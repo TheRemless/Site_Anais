@@ -1,0 +1,22 @@
+name: IndexNow
+
+# À chaque publication sur master, prévient Bing (et les moteurs IndexNow) des URL du sitemap.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Attendre la mise en ligne Netlify
+        run: sleep 120
+      - name: Envoyer les URL du sitemap à IndexNow
+        run: |
+          urls=$(curl -sf https://zwaldtravelplanner.com/sitemap.xml | grep -oE '<loc>[^<]+' | sed 's/<loc>//' | jq -R . | jq -s .)
+          payload=$(jq -n --argjson u "$urls" '{host:"zwaldtravelplanner.com", key:"9ff6a41c8598a41b84b47818cb78915e", keyLocation:"https://zwaldtravelplanner.com/9ff6a41c8598a41b84b47818cb78915e.txt", urlList:$u}')
+          curl -sS -X POST "https://api.indexnow.org/IndexNow" -H "Content-Type: application/json; charset=utf-8" -d "$payload" -w "\nHTTP %{http_code}\n"

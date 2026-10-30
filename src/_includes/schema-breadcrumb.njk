@@ -1,0 +1,13 @@
+{#- BreadcrumbList : Accueil > (Blog >) Page. Rien sur la home. -#}
+{%- set home = "/en/" if lang == "en" else "/" %}
+{%- if page.url != home %}
+{%- set items = [{ "@type": "ListItem", "position": 1, "name": crumbs[lang][home], "item": "https://zwaldtravelplanner.com" + home }] %}
+{%- if tags and "post" in tags %}
+{%- set blogUrl = "/en/blog/" if lang == "en" else "/blog/" %}
+{%- set items = (items.push({ "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://zwaldtravelplanner.com" + blogUrl }), items) %}
+{%- set items = (items.push({ "@type": "ListItem", "position": 3, "name": title }), items) %}
+{%- else %}
+{%- set items = (items.push({ "@type": "ListItem", "position": 2, "name": crumbs[lang][page.url] or page.url }), items) %}
+{%- endif %}
+<script type="application/ld+json">{{ { "@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": items } | dump | safe }}</script>
+{%- endif %}
