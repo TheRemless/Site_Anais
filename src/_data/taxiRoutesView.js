@@ -23,7 +23,7 @@ function jsonLd(route, url) {
       sameAs: b.sameAs
     },
     // Aucun tarif validé : l'offre renvoie au formulaire.
-    offers: { "@type": "Offer", url: `${SITE}/taxi/#request`, availability: "https://schema.org/InStock", priceCurrency: "THB" }
+    offers: { "@type": "Offer", url: `${SITE}/taxi/#request`, availability: "https://schema.org/InStock" }
   };
   const faq = {
     "@context": "https://schema.org",

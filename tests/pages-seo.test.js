@@ -49,11 +49,18 @@ test("pages taxi : ni prix, ni téléphone, ni e-mail affichés", () => {
   }
 });
 
-test("pages secret : jamais « depuis Koh Lanta » comme limite sur les trajets, lien vers le formulaire prérempli", () => {
+test("pages secret : lien vers le formulaire prérempli et JSON-LD", () => {
   for (const p of secretPages.pages) {
     const doc = html(`secret/${p.id}`);
     assert.match(doc, /\/secret\/\?(tour|activity)=/, `${p.id} : lien formulaire`);
     assert.match(doc, /application\/ld\+json/, `${p.id} : JSON-LD`);
+  }
+});
+
+test("pages taxi : le service n'est jamais présenté comme limité au départ de Koh Lanta", () => {
+  for (const r of taxiRoutes.routes) {
+    const doc = html(`taxi/${r.id}`);
+    assert.doesNotMatch(doc, /only (drive|from) Koh Lanta|from Koh Lanta only/i, r.id);
   }
 });
 

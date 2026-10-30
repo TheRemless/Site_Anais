@@ -37,7 +37,7 @@ function jsonLd(item, page, url) {
       : undefined,
     location: page.schemaType !== "TouristTrip" ? { "@type": "Place", name: "Koh Lanta", address: { "@type": "PostalAddress", addressLocality: "Koh Lanta", addressRegion: "Krabi", addressCountry: "TH" } } : undefined,
     // Aucun prix : le tarif est donné sur WhatsApp.
-    offers: { "@type": "Offer", url: `${SITE}/secret/#tell-us`, availability: "https://schema.org/InStock", priceCurrency: "THB" }
+    offers: { "@type": "Offer", url: `${SITE}/secret/#tell-us`, availability: "https://schema.org/InStock" }
   };
   Object.keys(main).forEach((k) => main[k] === undefined && delete main[k]);
   const faq = {

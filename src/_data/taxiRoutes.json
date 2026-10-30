@@ -11,7 +11,7 @@
       "h1": "Krabi Airport to Koh Lanta, private taxi and minivan",
       "lead": "Door to door between Krabi Airport (KBV) and your hotel on Koh Lanta, in either direction. Your group only, no sharing.",
       "body": [
-        "Krabi is the closest airport to Koh Lanta. Give us your flight number and landing time, your hotel on Koh Lanta and the number of people. The team confirms the price on WhatsApp and the driver waits for you at the airport.",
+        "Give us your flight number and landing time, your hotel on Koh Lanta and the number of people. The team confirms the price on WhatsApp and the driver waits for you at the airport.",
         "For the way back, enter your hotel as the pickup and Krabi Airport as the destination, with the time you want to leave."
       ],
       "drive": null,
@@ -61,7 +61,7 @@
       "h1": "Surat Thani to Koh Lanta, private transfer",
       "lead": "From Surat Thani Airport (URT), the bus terminal or Donsak Pier to your hotel on Koh Lanta, and back. Private vehicle, your group only.",
       "body": [
-        "Surat Thani is on the gulf side of the peninsula. We pick you up at the airport, at the bus terminal or at Donsak Pier, and drive across to Koh Lanta on the Andaman side. Tell us which one and at what time."
+        "We pick you up at Surat Thani Airport, at the bus terminal or at Donsak Pier, and drive you to your hotel on Koh Lanta. Tell us which one and at what time."
       ],
       "drive": null,
       "faq": [
@@ -85,7 +85,7 @@
       "h1": "Koh Lanta to Krabi Town, private taxi",
       "lead": "Between your hotel on Koh Lanta and Krabi Town, or the other way, in a private taxi or minivan.",
       "body": [
-        "Krabi Town is the provincial capital, with its bus terminal. Tell us where in town you are going and the team replies with the price."
+        "Tell us where in Krabi Town you are going, hotel or bus terminal, and the team replies with the price."
       ],
       "drive": null,
       "faq": [
@@ -105,7 +105,7 @@
       "h1": "Koh Lanta to Ao Nang, private transfer",
       "lead": "Hotel to hotel between Koh Lanta and Ao Nang, in either direction, in a private taxi or minivan.",
       "body": [
-        "Ao Nang is the beach resort of Krabi province. We drop you at your hotel or at the pier you tell us."
+        "We drop you at your hotel in Ao Nang or at the pier you tell us."
       ],
       "drive": null,
       "faq": [
@@ -125,7 +125,7 @@
       "h1": "Koh Lanta to Khao Sok, private transfer",
       "lead": "From your hotel on Koh Lanta to Khao Sok village or Cheow Lan Pier, and back, in a private minivan or taxi.",
       "body": [
-        "Khao Sok is the national park north of Surat Thani, with the Cheow Lan lake. We drive to the village and to Cheow Lan Pier, where the boats to the lake leave. Tell us which one and your boat time if you have one."
+        "We drive to Khao Sok village and to Cheow Lan Pier, where the boats to the lake leave. Tell us which one and your boat time if you have one."
       ],
       "drive": null,
       "faq": [
@@ -145,7 +145,7 @@
       "h1": "Koh Lanta to Trang, private taxi",
       "lead": "Between Koh Lanta and Trang, in either direction, in a private taxi or minivan.",
       "body": [
-        "Trang is the province south of Krabi. Tell us where in Trang you need to be and at what time, and the team replies with the price."
+        "Tell us where in Trang you need to be and at what time, and the team replies with the price."
       ],
       "drive": null,
       "faq": [
@@ -165,7 +165,7 @@
       "h1": "Koh Lanta to Khao Lak, private transfer",
       "lead": "Hotel to hotel between Koh Lanta and Khao Lak, in either direction, in a private minivan or taxi.",
       "body": [
-        "Khao Lak is north of Phuket, on the mainland coast. One vehicle from your hotel on Koh Lanta to your hotel in Khao Lak, with stops when you want them."
+        "One vehicle from your hotel on Koh Lanta to your hotel in Khao Lak, with stops when you want them."
       ],
       "drive": null,
       "faq": [
@@ -185,7 +185,7 @@
       "h1": "Koh Lanta to Donsak Pier, private transfer",
       "lead": "From your hotel on Koh Lanta to Donsak Pier, timed with your ferry, and back. Private vehicle, your group only.",
       "body": [
-        "Donsak Pier is in Surat Thani province, on the gulf side. Give us your ferry time and the team confirms the pickup time on WhatsApp."
+        "Give us your ferry time and the team confirms the pickup time on WhatsApp."
       ],
       "drive": null,
       "faq": [
