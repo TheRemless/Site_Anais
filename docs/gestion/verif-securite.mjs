@@ -47,6 +47,17 @@ const roleId = async (ent, nom) => (await db.query("select id from roles where e
 const u = {};
 for (const k of ["admin", "assistante", "comptable", "stagiaire", "chauffeur"]) u[k] = (await db.query("insert into auth.users (email) values ($1) returning id", [k + "@test"])).rows[0].id;
 ok((await db.query("select count(*)::int n from roles")).rows[0].n === 9, "trois rôles de départ par entreprise");
+// Langue de l'interface : chacun règle la sienne, sans pouvoir toucher au reste du profil ni à celui des autres.
+await essaie(db, u.assistante, "select definir_ma_langue('en')");
+const langueDe = async (k) => (await db.query("select langue from profils where user_id = $1", [u[k]])).rows[0].langue;
+ok((await langueDe("assistante")) === "en", "une personne enregistre sa propre langue");
+await essaie(db, u.assistante, "select definir_ma_langue('th')");
+ok((await langueDe("assistante")) === "en", "une langue inconnue est ignorée");
+ok((await langueDe("comptable")) === null && (await langueDe("admin")) === null, "la langue des autres n'est pas touchée");
+const modif = await essaie(db, u.assistante, `update profils set langue = 'fr' where user_id = '${u.assistante}'`);
+ok(!modif.ok || modif.n === 0, "la table des profils reste fermée à la modification directe");
+ok(!(await essaie(db, u.assistante, "select definir_ma_langue('fr')")).err && (await langueDe("assistante")) === "fr", "la fonction change la langue sans passer par la table");
+
 // rôles personnalisés
 await db.exec(`insert into roles (entite_id, nom, portee, permissions) values
   ('${E.secret}', 'Sans chiffres', 'toute', array['clients.lire','dossiers.lire']),
@@ -218,6 +229,7 @@ await v.exec(lire(W + "migration-9-groupe.sql"));
 await v.exec(lire(W + "migration-10-partenaires.sql"));
 await v.exec(lire(W + "migration-11-reservations.sql"));
 await v.exec(lire(W + "migration-12-vouchers.sql"));
+await v.exec(lire(W + "migration-13-langue.sql"));
 await v.exec("update dossiers set accepte_le = '2026-10-02' where id in (select id from dossiers limit 1)");
 const avant = (await v.query("select total from dossiers_resume order by dossier_id limit 1")).rows[0];
 await v.exec("insert into documents (entite_id, dossier_id, type, date_emission, contenu) select entite_id, id, 'facture_locale', '2026-10-03', '{\"lignes\":[{\"kind\":\"formule\",\"montant\":9999}]}' from dossiers limit 1");

@@ -9,9 +9,10 @@ import { vide } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { creerReservations } from "./reservations.mjs";
+import { tr } from "../i18n.mjs";
 
 export function nouveauDossierExcursions() {
-  if (!peut("dossiers.ecrire")) return vide("Accès réservé", "Votre rôle ne permet pas de créer un dossier.", h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Retour aux dossiers"));
+  if (!peut("dossiers.ecrire")) return vide(tr("Accès réservé"), tr("Votre rôle ne permet pas de créer un dossier."), h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Retour aux dossiers")));
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const regl = reglages();
   // Les factures de Secret sont en anglais : les libellés anglais des prestations sont pris quand ils existent.
@@ -20,9 +21,9 @@ export function nouveauDossierExcursions() {
   const nvPrenom = h("input", { id: "prenom", autocomplete: "off" });
   const nvNom = h("input", { id: "nom", autocomplete: "off" });
   const nvTel = h("input", { id: "tel", type: "tel", autocomplete: "off", placeholder: "+33 6 00 00 00 00" });
-  const nvHotel = h("input", { id: "hotel", autocomplete: "off", placeholder: "Hotel Sunset, Klong Dao" });
+  const nvHotel = h("input", { id: "hotel", autocomplete: "off", placeholder: tr("Hotel Sunset, Klong Dao") });
   const nvChambre = h("input", { id: "chambre", autocomplete: "off" });
-  const blocNouveau = h("div", { class: "grille-form" }, champ("Prénom", nvPrenom), champ("Nom", nvNom), champ("WhatsApp", nvTel), champ("Hôtel", nvHotel), champ("Chambre", nvChambre));
+  const blocNouveau = h("div", { class: "grille-form" }, champ(tr("Prénom"), nvPrenom), champ(tr("Nom"), nvNom), champ(tr("WhatsApp"), nvTel), champ(tr("Hôtel"), nvHotel), champ(tr("Chambre"), nvChambre));
   const majClient = () => (blocNouveau.hidden = !selClient.nouveau);
 
   const lignes = [];
@@ -30,7 +31,7 @@ export function nouveauDossierExcursions() {
   const total = h("p", { class: "total-edition" });
   function dessiner() {
     vider(liste);
-    if (!lignes.length) liste.append(h("p", { class: "vide-court" }, "Aucun service pour l'instant. Ajoutez une excursion, un transfert ou une activité de la base partenaires."));
+    if (!lignes.length) liste.append(h("p", { class: "vide-court" }, tr("Aucun service pour l'instant. Ajoutez une excursion, un transfert ou une activité de la base partenaires.")));
     // La description sur la facture se recalcule (prestation, personnes, date) tant qu'elle n'a pas été corrigée à la main.
     const description = (l) => (l.description_fixe ? l.description : descriptionService({ ...l, libelle: l.titre || l.libelle }, langue));
     lignes.forEach((l, i) =>
@@ -38,36 +39,36 @@ export function nouveauDossierExcursions() {
         h(
           "div",
           { class: "carte-ligne" },
-          h("div", { class: "carte-ligne-tete" }, h("strong", null, l.kind === "texte" ? "Note" : l.titre || l.libelle), h("span", { class: "calc" }, l.kind === "texte" ? "" : formatMontant((Number(l.unite) || 0) * (Number(l.qte) || 0))), h("span", { class: "outils" }, h("button", { class: "lien danger-texte", type: "button", onclick: () => (lignes.splice(i, 1), dessiner()) }, "Retirer"))),
+          h("div", { class: "carte-ligne-tete" }, h("strong", null, l.kind === "texte" ? tr("Note") : l.titre || l.libelle), h("span", { class: "calc" }, l.kind === "texte" ? "" : formatMontant((Number(l.unite) || 0) * (Number(l.qte) || 0))), h("span", { class: "outils" }, h("button", { class: "lien danger-texte", type: "button", onclick: () => (lignes.splice(i, 1), dessiner()) }, tr("Retirer")))),
           l.kind === "texte"
             ? h("p", { class: "aide" }, l.libelle)
             : [
-                h("div", { class: "grille-form compacte" }, champ("Date du service", h("input", { id: `s${i}-d`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), dessiner()) })), champ("Quantité", h("input", { id: `s${i}-q`, type: "number", min: "1", step: "1", value: l.qte, onchange: (e) => ((l.qte = Number(e.target.value) || 1), dessiner()) })), champ(`Prix (${regl.devise})`, h("input", { id: `s${i}-p`, type: "number", min: "0", step: "1", value: l.unite ?? "", onchange: (e) => ((l.unite = e.target.value === "" ? null : Number(e.target.value)), dessiner()) }))),
-                champ("Description sur la facture", h("input", { id: `s${i}-desc`, value: description(l), oninput: (e) => ((l.description = e.target.value), (l.description_fixe = true)) }), [l.partenaire_id ? nomPartenaire(l.partenaire_id) : "", "Texte vu par le client, en anglais. Modifiable."].filter(Boolean).join(" · ")),
+                h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), h("input", { id: `s${i}-d`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), dessiner()) })), champ(tr("Quantité"), h("input", { id: `s${i}-q`, type: "number", min: "1", step: "1", value: l.qte, onchange: (e) => ((l.qte = Number(e.target.value) || 1), dessiner()) })), champ(tr("Prix ({devise})", { devise: regl.devise }), h("input", { id: `s${i}-p`, type: "number", min: "0", step: "1", value: l.unite ?? "", onchange: (e) => ((l.unite = e.target.value === "" ? null : Number(e.target.value)), dessiner()) }))),
+                champ(tr("Description sur la facture"), h("input", { id: `s${i}-desc`, value: description(l), oninput: (e) => ((l.description = e.target.value), (l.description_fixe = true)) }), [l.partenaire_id ? nomPartenaire(l.partenaire_id) : "", "Texte vu par le client, en anglais. Modifiable."].filter(Boolean).join(" · ")),
               ]
         )
       )
     );
     const somme = lignes.filter((l) => l.kind !== "texte").reduce((s, l) => s + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
-    total.textContent = lignes.length ? `Total de la facture : ${formatMontant(somme)}` : "";
+    total.textContent = lignes.length ? tr("Total de la facture : {montant}", { montant: formatMontant(somme) }) : "";
   }
   dessiner();
 
   const ref = h("input", { id: "ref", value: nouvelleRef({ numerotation: regl.numerotation, prenom: "", nom: "", dateIso: aujourdhui(), pays: "", refsExistantes: etat.db.dossiers.map((d) => d.ref) }) || "" });
-  const notes = h("textarea", { id: "notes", rows: 2, placeholder: "Vol, allergies, demande particulière" });
+  const notes = h("textarea", { id: "notes", rows: 2, placeholder: tr("Vol, allergies, demande particulière") });
   const erreur = h("p", { class: "erreur-form", role: "alert" });
-  const bouton = h("button", { class: "principal", type: "submit" }, "Créer la facture");
+  const bouton = h("button", { class: "principal", type: "submit" }, tr("Créer la facture"));
 
   async function creer(e) {
     e.preventDefault();
     erreur.textContent = "";
-    if (!selClient.valeur && !selClient.nouveau) return (erreur.textContent = "Choisissez un client, ou créez-en un."), document.getElementById("client").focus();
-    if (selClient.nouveau && !nvNom.value.trim()) return (erreur.textContent = "Indiquez le nom du client."), nvNom.focus();
-    if (!lignes.some((l) => l.kind !== "texte")) return (erreur.textContent = "Ajoutez au moins un service.");
-    if (!ref.value.trim()) return (erreur.textContent = "Indiquez le numéro de facture.");
-    if (etat.db.dossiers.some((d) => d.ref === ref.value.trim())) return (erreur.textContent = "Ce numéro existe déjà. Modifiez-le."), ref.focus();
+    if (!selClient.valeur && !selClient.nouveau) return (erreur.textContent = tr("Choisissez un client, ou créez-en un.")), document.getElementById("client").focus();
+    if (selClient.nouveau && !nvNom.value.trim()) return (erreur.textContent = tr("Indiquez le nom du client.")), nvNom.focus();
+    if (!lignes.some((l) => l.kind !== "texte")) return (erreur.textContent = tr("Ajoutez au moins un service."));
+    if (!ref.value.trim()) return (erreur.textContent = tr("Indiquez le numéro de facture."));
+    if (etat.db.dossiers.some((d) => d.ref === ref.value.trim())) return (erreur.textContent = tr("Ce numéro existe déjà. Modifiez-le.")), ref.focus();
     bouton.disabled = true;
-    bouton.textContent = "Création…";
+    bouton.textContent = tr("Création…");
     try {
       let clientId = selClient.valeur;
       if (!clientId) {
@@ -86,23 +87,23 @@ export function nouveauDossierExcursions() {
     } catch (err) {
       erreur.textContent = err.message;
       bouton.disabled = false;
-      bouton.textContent = "Créer la facture";
+      bouton.textContent = tr("Créer la facture");
     }
   }
   majClient();
 
   return h(
     "div",
-    { "data-titre": "Nouveau dossier" },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, "Nouveau dossier"), h("p", { class: "sous" }, "Le client, ses services, et la facture est prête. Les réservations auprès des partenaires se créent en même temps."))),
+    { "data-titre": tr("Nouveau dossier") },
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Nouveau dossier")), h("p", { class: "sous" }, tr("Le client, ses services, et la facture est prête. Les réservations auprès des partenaires se créent en même temps.")))),
     h(
       "form",
       { class: "formulaire", onsubmit: creer },
-      h("fieldset", null, h("legend", null, "Client"), selClient.noeud, blocNouveau),
-      h("fieldset", null, h("legend", null, "Services"), liste, h("div", { class: "ajouts" }, h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue, devise: regl.devise, sansCompagnie: true, onAjout: (nouvelles) => { nouvelles.forEach((l) => lignes.push({ ...l, titre: l.kind === "texte" ? undefined : l.libelle })); dessiner(); } }) }, "Ajouter un service")), total),
-      h("fieldset", null, h("legend", null, "Facture"), h("div", { class: "grille-form" }, champ("Numéro", ref, "Numéro suivant de l'année pour cette entreprise, modifiable."), champ("Notes internes", notes))),
+      h("fieldset", null, h("legend", null, tr("Client")), selClient.noeud, blocNouveau),
+      h("fieldset", null, h("legend", null, tr("Services")), liste, h("div", { class: "ajouts" }, h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue, devise: regl.devise, sansCompagnie: true, onAjout: (nouvelles) => { nouvelles.forEach((l) => lignes.push({ ...l, titre: l.kind === "texte" ? undefined : l.libelle })); dessiner(); } }) }, tr("Ajouter un service"))), total),
+      h("fieldset", null, h("legend", null, tr("Facture")), h("div", { class: "grille-form" }, champ(tr("Numéro"), ref, tr("Numéro suivant de l'année pour cette entreprise, modifiable.")), champ(tr("Notes internes"), notes))),
       erreur,
-      h("div", { class: "actions" }, h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Annuler"), bouton)
+      h("div", { class: "actions" }, h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Annuler")), bouton)
     )
   );
 }

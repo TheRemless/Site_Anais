@@ -1,15 +1,19 @@
 // Logique pure du module Partenaires : familles, unités, marges, recherche de trajets.
 // Aucune dépendance au navigateur pour pouvoir la tester avec node --test.
+import { N_, tr, langueActive } from "./i18n.mjs";
 
 export const FAMILLES = [
-  ["excursion", "Excursions"],
-  ["activite", "Activités"],
-  ["location", "Locations"],
-  ["transfert", "Transferts"],
-  ["frais", "Frais de parc"],
-  ["autre", "Autres"],
+  ["excursion", N_("Excursions")],
+  ["activite", N_("Activités")],
+  ["location", N_("Locations")],
+  ["transfert", N_("Transferts")],
+  ["frais", N_("Frais de parc")],
+  ["autre", N_("Autres")],
 ];
-export const nomFamille = (code) => (FAMILLES.find(([c]) => c === code) || ["", code])[1];
+export const nomFamille = (code) => {
+  const f = FAMILLES.find(([c]) => c === code);
+  return f ? tr(f[1]) : code;
+};
 
 // Unité d'un prix : code court en base, libellé en français et en anglais pour les documents.
 export const UNITES = {
@@ -23,7 +27,7 @@ export const UNITES = {
   grp: ["par groupe", "per group"],
   "": ["", ""],
 };
-export const libelleUnite = (code, en = false) => (UNITES[code] || UNITES[""])[en ? 1 : 0];
+export const libelleUnite = (code, en = langueActive() === "en") => (UNITES[code] || UNITES[""])[en ? 1 : 0];
 
 // Devine l'unité d'après un texte de brochure (« Par personne », « Par bateau », « 4 à 6 personnes »).
 export function uniteDepuisTexte(texte) {

@@ -1,6 +1,6 @@
-import { init, etat, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif } from "./etat.mjs";
 import { h, vider, toast, modal, icone } from "./ui.mjs";
-import { STATUTS, formatMontant } from "./calc.mjs";
+import { libelleStatut, formatMontant } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { listeDossiers, nouveauDossier } from "./views/dossiers.mjs";
@@ -22,6 +22,7 @@ import { vueReservations } from "./views/reservations.mjs";
 import { vueMessages } from "./views/messages.mjs";
 import { vueDu } from "./views/du.mjs";
 import { agenda } from "./operations-calc.mjs";
+import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 
 const ROUTES = [
   [/^#\/reservations(?:\?.*)?$/, "reservations", vueReservations],
@@ -51,9 +52,35 @@ const ROUTES = [
 const racine = document.getElementById("app");
 let derniereVue = null;
 
+// Choix de la langue de l'interface : français ou anglais, retenu pour le compte (voir choisirLangue).
+function selecteurLangue(apres) {
+  return h(
+    "div",
+    { class: "langues", role: "group", "aria-label": "Langue / Language" },
+    LANGUES.map((l) =>
+      h(
+        "button",
+        {
+          type: "button",
+          lang: l.code,
+          class: "langue",
+          "aria-pressed": l.code === langueActive() ? "true" : "false",
+          onclick: async () => {
+            if (l.code === langueActive()) return;
+            if (apres) apres();
+            await choisirLangue(l.code);
+            afficher();
+          },
+        },
+        l.nom
+      )
+    )
+  );
+}
+
 function vueConnexion() {
   const erreur = h("p", { class: "erreur-form", role: "alert" });
-  const bouton = h("button", { class: "principal", type: "submit" }, "Se connecter");
+  const bouton = h("button", { class: "principal", type: "submit" }, tr("Se connecter"));
   const email = h("input", { id: "email", type: "email", required: true, autocomplete: "username" });
   const mdp = h("input", { id: "mdp", type: "password", required: true, autocomplete: "current-password" });
   const form = h(
@@ -64,7 +91,7 @@ function vueConnexion() {
         e.preventDefault();
         erreur.textContent = "";
         bouton.disabled = true;
-        bouton.textContent = "Connexion…";
+        bouton.textContent = tr("Connexion…");
         try {
           await etat.store.connecter(email.value.trim(), mdp.value);
           etat.session = await etat.store.session();
@@ -73,22 +100,22 @@ function vueConnexion() {
         } catch (err) {
           erreur.textContent = err.message;
           bouton.disabled = false;
-          bouton.textContent = "Se connecter";
+          bouton.textContent = tr("Se connecter");
         }
       },
     },
-    h("div", { class: "champ" }, h("label", { for: "email" }, "Adresse e-mail"), email),
-    h("div", { class: "champ" }, h("label", { for: "mdp" }, "Mot de passe"), mdp),
+    h("div", { class: "champ" }, h("label", { for: "email" }, tr("Adresse e-mail")), email),
+    h("div", { class: "champ" }, h("label", { for: "mdp" }, tr("Mot de passe")), mdp),
     erreur,
     bouton
   );
-  return h("div", { class: "connexion" }, h("h1", null, "Gestion"), h("p", { class: "sous" }, "Devis, factures et suivi des paiements."), form);
+  return h("div", { class: "connexion" }, selecteurLangue(), h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Devis, factures et suivi des paiements.")), form);
 }
 
 function selecteurEntite() {
   const liste = entitesAccessibles();
   if (liste.length < 2) return liste.length ? h("p", { class: "entite-nom" }, liste[0].nom) : null;
-  const sel = h("select", { id: "entite", "aria-label": "Entreprise", onchange: (e) => changerEntite(e.target.value) }, liste.map((e) => h("option", { value: e.id }, e.nom)));
+  const sel = h("select", { id: "entite", "aria-label": tr("Entreprise"), onchange: (e) => changerEntite(e.target.value) }, liste.map((e) => h("option", { value: e.id }, e.nom)));
   sel.value = etat.entiteId;
   return h("div", { class: "entite-choix" }, sel);
 }
@@ -99,7 +126,7 @@ function bandeauDemo() {
     "select",
     {
       id: "demo-utilisateur",
-      "aria-label": "Se connecter en tant que",
+      "aria-label": tr("Se connecter en tant que"),
       onchange: async (e) => {
         s.changerUtilisateurDemo(e.target.value);
         etat.session = await s.session();
@@ -108,14 +135,14 @@ function bandeauDemo() {
         afficher();
       },
     },
-    s.utilisateursDemo().map((u) => h("option", { value: u.id }, `${u.nom}${u.super_admin ? " (voit tout)" : ""}`))
+    s.utilisateursDemo().map((u) => h("option", { value: u.id }, u.super_admin ? tr("{nom} (voit tout)", { nom: u.nom }) : u.nom))
   );
   sel.value = s.utilisateurDemo();
   return h(
     "div",
     { class: "bandeau-demo" },
-    h("span", null, "Mode démonstration : clients fictifs, données dans ce navigateur."),
-    h("label", { class: "demo-choix" }, "Utilisateur : ", sel),
+    h("span", null, tr("Mode démonstration : clients fictifs, données dans ce navigateur.")),
+    h("label", { class: "demo-choix" }, tr("Utilisateur : "), sel),
     h(
       "button",
       {
@@ -127,10 +154,10 @@ function bandeauDemo() {
           await recharger();
           location.hash = "#/";
           afficher();
-          toast("Démo réinitialisée.");
+          toast(tr("Démo réinitialisée."));
         },
       },
-      "Repartir de zéro"
+      tr("Repartir de zéro")
     )
   );
 }
@@ -143,28 +170,28 @@ function ecrans() {
   const ag = agenda(etat.db.reservations, ajd);
   const aConfirmer = ag.enRetard.length + ag.aConfirmer.length;
   return [
-    { titre: "Opérations", items: [{ href: "#/", libelle: "Aujourd'hui", cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: "Réservations", cle: "reservations", icone: "reservations", badge: aConfirmer }), { href: "#/taches", libelle: "Tâches", cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: "Messages", cle: "messages", icone: "messages" })] },
-    { titre: "Ventes", items: [{ href: "#/dossiers", libelle: "Dossiers", cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: "Clients", cle: "clients", icone: "clients" }, ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: "Catalogue", cle: "catalogue", icone: "catalogue" })] },
+    { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations", badge: aConfirmer }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
+    { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
-      titre: "Partenaires",
+      titre: tr("Partenaires"),
       items: si(peut("partenaires.lire") && moduleActif("partenaires"), null).length
         ? [
-            { href: "#/partenaires", libelle: "Partenaires", cle: "partenaires", icone: "partenaires" },
-            { href: "#/tarifs", libelle: "Tarifs", cle: "tarifs", icone: "tarifs" },
-            { href: "#/trajets", libelle: "Trajets", cle: "trajets", icone: "bateau" },
-            { href: "#/regles", libelle: "Règles", cle: "regles", icone: "regles" },
-            ...si(peut("partenaires.nets"), { href: "#/du", libelle: "Dû aux partenaires", cle: "du", icone: "du" }),
+            { href: "#/partenaires", libelle: tr("Partenaires"), cle: "partenaires", icone: "partenaires" },
+            { href: "#/tarifs", libelle: tr("Tarifs"), cle: "tarifs", icone: "tarifs" },
+            { href: "#/trajets", libelle: tr("Trajets"), cle: "trajets", icone: "bateau" },
+            { href: "#/regles", libelle: tr("Règles"), cle: "regles", icone: "regles" },
+            ...si(peut("partenaires.nets"), { href: "#/du", libelle: tr("Dû aux partenaires"), cle: "du", icone: "du" }),
           ]
         : [],
     },
     {
-      titre: "Administration",
+      titre: tr("Administration"),
       items: [
-        ...si(peut("analytics.voir") && peut("finances.voir"), { href: "#/analyses", libelle: "Analyses", cle: "analyses", icone: "analyses" }),
-        ...si(entitesAnalysables().length > 1, { href: "#/groupe", libelle: "Vue d'ensemble", cle: "groupe", icone: "groupe" }),
-        ...si(peut("journal.voir"), { href: "#/journal", libelle: "Journal", cle: "journal", icone: "journal" }),
-        ...si(estAdmin(), { href: "#/reglages", libelle: "Réglages", cle: "reglages", icone: "reglages" }),
-        ...si(estSuperAdmin(), { href: "#/admin", libelle: "Administration", cle: "admin", icone: "admin" }),
+        ...si(peut("analytics.voir") && peut("finances.voir"), { href: "#/analyses", libelle: tr("Analyses"), cle: "analyses", icone: "analyses" }),
+        ...si(entitesAnalysables().length > 1, { href: "#/groupe", libelle: tr("Vue d'ensemble"), cle: "groupe", icone: "groupe" }),
+        ...si(peut("journal.voir"), { href: "#/journal", libelle: tr("Journal"), cle: "journal", icone: "journal" }),
+        ...si(estAdmin(), { href: "#/reglages", libelle: tr("Réglages"), cle: "reglages", icone: "reglages" }),
+        ...si(estSuperAdmin(), { href: "#/admin", libelle: tr("Administration"), cle: "admin", icone: "admin" }),
       ],
     },
   ].filter((s) => s.items.length);
@@ -174,7 +201,7 @@ function ecrans() {
 const ongletsMobiles = () => ["tableau", "dossiers", peut("partenaires.lire") && moduleActif("partenaires") ? "partenaires" : "clients"];
 const tousEcrans = () => ecrans().flatMap((s) => s.items);
 
-const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": `${e.badge} en retard` }, e.badge) : null);
+const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": tr("{badge} en retard", { badge: e.badge }) }, e.badge) : null);
 const sections = (liste, apres) => liste.map((s) => h("div", { class: "menu-section" }, h("p", { class: "menu-section-titre" }, s.titre), h("ul", null, s.items.map((e) => h("li", null, lienEcran(e, apres))))));
 
 async function deconnecter() {
@@ -191,8 +218,8 @@ function blocCompte() {
   return h("div", { class: "compte" }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
 }
 const outilsCompte = (apres) => [
-  h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirAide()), "aria-label": "Raccourcis clavier", title: "Raccourcis clavier (?)" }, icone("clavier")),
-  etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: deconnecter, "aria-label": "Se déconnecter", title: "Se déconnecter" }, icone("deconnexion")) : null,
+  h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirAide()), "aria-label": tr("Raccourcis clavier"), title: tr("Raccourcis clavier (?)") }, icone("clavier")),
+  etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: deconnecter, "aria-label": tr("Se déconnecter"), title: tr("Se déconnecter") }, icone("deconnexion")) : null,
 ];
 
 // Ordinateur : barre latérale avec les écrans par section, la recherche et le compte.
@@ -200,19 +227,19 @@ function menu() {
   const logo = etat.db.reglages.apparence.logo;
   return h(
     "nav",
-    { class: "menu", "aria-label": "Navigation principale" },
-    h("a", { class: "marque", href: "#/" }, logo ? h("img", { src: logo, alt: "" }) : null, h("span", null, "Gestion")),
+    { class: "menu", "aria-label": tr("Navigation principale") },
+    h("a", { class: "marque", href: "#/" }, logo ? h("img", { src: logo, alt: "" }) : null, h("span", null, tr("Gestion"))),
     selecteurEntite(),
-    h("button", { class: "recherche-bouton", type: "button", onclick: ouvrirRecherche }, icone("recherche", 18), h("span", null, "Rechercher"), h("kbd", null, "/")),
+    h("button", { class: "recherche-bouton", type: "button", onclick: ouvrirRecherche }, icone("recherche", 18), h("span", null, tr("Rechercher")), h("kbd", null, "/")),
     sections(ecrans()),
-    h("div", { class: "menu-bas" }, blocCompte(), h("div", { class: "menu-outils" }, outilsCompte()))
+    h("div", { class: "menu-bas" }, selecteurLangue(), blocCompte(), h("div", { class: "menu-outils" }, outilsCompte()))
   );
 }
 
 // Téléphone : l'entreprise et la recherche en haut, quatre onglets en bas.
 function barreHaut() {
   const logo = etat.db.reglages.apparence.logo;
-  return h("header", { class: "barre-haut" }, logo ? h("img", { class: "barre-logo", src: logo, alt: "" }) : null, selecteurEntite(), h("button", { class: "bouton-icone lien", type: "button", onclick: ouvrirRecherche, "aria-label": "Rechercher" }, icone("recherche", 22)));
+  return h("header", { class: "barre-haut" }, logo ? h("img", { class: "barre-logo", src: logo, alt: "" }) : null, selecteurEntite(), h("button", { class: "bouton-icone lien", type: "button", onclick: ouvrirRecherche, "aria-label": tr("Rechercher") }, icone("recherche", 22)));
 }
 
 function barreOnglets() {
@@ -222,12 +249,12 @@ function barreOnglets() {
   const badgePlus = tous.filter((e) => !onglets.includes(e.cle)).reduce((n, e) => n + (e.badge || 0), 0);
   return h(
     "nav",
-    { class: "barre-onglets", "aria-label": "Navigation principale" },
+    { class: "barre-onglets", "aria-label": tr("Navigation principale") },
     h(
       "ul",
       null,
       onglets.map((cle) => tous.find((e) => e.cle === cle)).filter(Boolean).map((e) => h("li", null, h("a", { href: e.href, "data-cle": e.cle, class: "onglet" }, onglet(e, e.badge ? h("span", { class: "badge" }, e.badge) : null), h("span", null, e.libelle)))),
-      h("li", null, h("button", { type: "button", class: "onglet", "data-cle": "plus", onclick: ouvrirPlus }, onglet({ icone: "plus" }, badgePlus ? h("span", { class: "badge" }, badgePlus) : null), h("span", null, "Plus")))
+      h("li", null, h("button", { type: "button", class: "onglet", "data-cle": "plus", onclick: ouvrirPlus }, onglet({ icone: "plus" }, badgePlus ? h("span", { class: "badge" }, badgePlus) : null), h("span", null, tr("Plus"))))
     )
   );
 }
@@ -238,7 +265,7 @@ function ouvrirPlus() {
   const restants = ecrans().map((s) => ({ ...s, items: s.items.filter((e) => !onglets.includes(e.cle)) })).filter((s) => s.items.length);
   let fermer;
   const apres = () => fermer();
-  fermer = modal("Plus", h("div", { class: "feuille-menu" }, sections(restants, apres), h("div", { class: "feuille-pied" }, blocCompte(), h("div", { class: "menu-outils" }, outilsCompte(apres)))), { feuille: true });
+  fermer = modal(tr("Plus"), h("div", { class: "feuille-menu" }, sections(restants, apres), h("div", { class: "feuille-pied" }, selecteurLangue(apres), blocCompte(), h("div", { class: "menu-outils" }, outilsCompte(apres)))), { feuille: true });
 }
 
 function coque() {
@@ -247,8 +274,8 @@ function coque() {
 
 // ---- Recherche globale ----------------------------------------------------------------------------------------
 const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-const resultatDossier = (r) => ({ groupe: "Dossiers", icone: "dossiers", titre: nomClient(r.client), detail: sousTitreDossier(r.dossier), droite: STATUTS[r.statut], href: `#/dossier/${r.dossier.id}` });
-const resultatEcran = (e) => ({ groupe: "Écrans", icone: e.icone, titre: e.libelle, href: e.href });
+const resultatDossier = (r) => ({ groupe: tr("Dossiers"), icone: "dossiers", titre: nomClient(r.client), detail: sousTitreDossier(r.dossier), droite: libelleStatut(r.statut), href: `#/dossier/${r.dossier.id}` });
+const resultatEcran = (e) => ({ groupe: tr("Écrans"), icone: e.icone, titre: e.libelle, href: e.href });
 
 // Tous les mots saisis doivent apparaître. Sans saisie : les derniers dossiers et la liste des écrans.
 function chercher(q) {
@@ -256,7 +283,7 @@ function chercher(q) {
   const correspond = (texte) => mots.every((m) => texte.includes(m));
   if (!mots.length) return [...resumes().sort((a, b) => b.dossier.created_at.localeCompare(a.dossier.created_at)).slice(0, 5).map(resultatDossier), ...tousEcrans().map(resultatEcran)];
   const out = [];
-  if (peut("dossiers.ecrire") && mots.every((m) => "nouveau dossier".includes(m))) out.push({ groupe: "Actions", icone: "ajouter", titre: "Nouveau dossier", href: "#/dossiers/nouveau" });
+  if (peut("dossiers.ecrire") && mots.every((m) => sansAccents(tr("Nouveau dossier")).includes(m))) out.push({ groupe: tr("Actions"), icone: "ajouter", titre: tr("Nouveau dossier"), href: "#/dossiers/nouveau" });
   resumes()
     .filter((r) => correspond(sansAccents(`${nomClient(r.client)} ${r.dossier.ref} ${r.dossier.pays} ${r.dossier.bandeau}`)))
     .sort((a, b) => b.dossier.created_at.localeCompare(a.dossier.created_at))
@@ -265,21 +292,21 @@ function chercher(q) {
   etat.db.clients
     .filter((c) => correspond(sansAccents(`${nomClient(c)} ${c.telephone} ${c.email} ${c.adresse}`)))
     .slice(0, 6)
-    .forEach((c) => out.push({ groupe: "Clients", icone: "clients", titre: nomClient(c), detail: [c.telephone, (c.adresse || "").split("\n").filter(Boolean).pop()].filter(Boolean).join(" · "), href: `#/client/${c.id}` }));
+    .forEach((c) => out.push({ groupe: tr("Clients"), icone: "clients", titre: nomClient(c), detail: [c.telephone, (c.adresse || "").split("\n").filter(Boolean).pop()].filter(Boolean).join(" · "), href: `#/client/${c.id}` }));
   if (peut("partenaires.lire") && moduleActif("partenaires")) {
     etat.db.partenaires
       .filter((p) => p.actif !== false && correspond(sansAccents(`${p.nom} ${p.nom_thai} ${p.categorie} ${p.role}`)))
       .slice(0, 5)
-      .forEach((p) => out.push({ groupe: "Partenaires", icone: "partenaires", titre: p.nom, detail: p.role || p.categorie, href: `#/partenaire/${p.id}` }));
+      .forEach((p) => out.push({ groupe: tr("Partenaires"), icone: "partenaires", titre: p.nom, detail: p.role || p.categorie, href: `#/partenaire/${p.id}` }));
     etat.db.prestations
       .filter((x) => x.actif !== false && correspond(sansAccents(`${x.libelle} ${x.groupe} ${nomPartenaire(x.partenaire_id)}`)))
       .slice(0, 6)
-      .forEach((x) => out.push({ groupe: "Tarifs", icone: "tarifs", titre: x.libelle, detail: [nomPartenaire(x.partenaire_id), x.groupe].filter(Boolean).join(" · "), droite: x.prix_vente != null ? formatMontant(x.prix_vente) : "", href: `#/tarifs?famille=${x.famille}&q=${encodeURIComponent(x.libelle)}` }));
+      .forEach((x) => out.push({ groupe: tr("Tarifs"), icone: "tarifs", titre: x.libelle, detail: [nomPartenaire(x.partenaire_id), x.groupe].filter(Boolean).join(" · "), droite: x.prix_vente != null ? formatMontant(x.prix_vente) : "", href: `#/tarifs?famille=${x.famille}&q=${encodeURIComponent(x.libelle)}` }));
     const paires = new Map();
     for (const t of etat.db.trajets) if (correspond(sansAccents(`${t.de} ${t.vers} ${nomPartenaire(t.partenaire_id)}`))) paires.set(`${t.de}|${t.vers}`, (paires.get(`${t.de}|${t.vers}`) || 0) + 1);
     [...paires].slice(0, 5).forEach(([k, n]) => {
       const [de, vers] = k.split("|");
-      out.push({ groupe: "Trajets", icone: "bateau", titre: `${de} → ${vers}`, detail: `${n} départ${n > 1 ? "s" : ""}`, href: `#/trajets?de=${encodeURIComponent(de)}&vers=${encodeURIComponent(vers)}` });
+      out.push({ groupe: tr("Trajets"), icone: "bateau", titre: `${de} → ${vers}`, detail: pluriel(n, N_("départ"), N_("départs")), href: `#/trajets?de=${encodeURIComponent(de)}&vers=${encodeURIComponent(vers)}` });
     });
   }
   tousEcrans().filter((e) => correspond(sansAccents(e.libelle))).forEach((e) => out.push(resultatEcran(e)));
@@ -289,7 +316,7 @@ function chercher(q) {
 function ouvrirRecherche() {
   if (document.querySelector(".palette-fond")) return;
   const precedent = document.activeElement;
-  const champ = h("input", { id: "palette-champ", type: "search", placeholder: "Client, référence, écran…", autocomplete: "off", "aria-label": "Rechercher", role: "combobox", "aria-expanded": "true", "aria-controls": "palette-liste", "aria-autocomplete": "list" });
+  const champ = h("input", { id: "palette-champ", type: "search", placeholder: tr("Client, référence, écran…"), autocomplete: "off", "aria-label": tr("Rechercher"), role: "combobox", "aria-expanded": "true", "aria-controls": "palette-liste", "aria-autocomplete": "list" });
   const liste = h("ul", { id: "palette-liste", class: "palette-liste", role: "listbox" });
   let resultats = [];
   let actif = 0;
@@ -320,7 +347,7 @@ function ouvrirRecherche() {
     actif = 0;
     vider(liste);
     if (!resultats.length) {
-      liste.append(h("li", { class: "palette-vide" }, `Rien pour « ${champ.value.trim()} ». Essayez un nom, une référence de dossier ou le nom d'un écran.`));
+      liste.append(h("li", { class: "palette-vide" }, tr("Rien pour « {trim} ». Essayez un nom, une référence de dossier ou le nom d'un écran.", { trim: champ.value.trim() })));
       return;
     }
     let groupe = null;
@@ -355,10 +382,10 @@ function ouvrirRecherche() {
     { class: "modal-fond palette-fond", onmousedown: (e) => e.target === fond && fermer() },
     h(
       "div",
-      { class: "palette", role: "dialog", "aria-modal": "true", "aria-label": "Recherche" },
-      h("div", { class: "palette-champ" }, icone("recherche", 20), champ, h("button", { class: "bouton-icone lien", type: "button", onclick: fermer, "aria-label": "Fermer" }, icone("fermer", 20))),
+      { class: "palette", role: "dialog", "aria-modal": "true", "aria-label": tr("Recherche") },
+      h("div", { class: "palette-champ" }, icone("recherche", 20), champ, h("button", { class: "bouton-icone lien", type: "button", onclick: fermer, "aria-label": tr("Fermer") }, icone("fermer", 20))),
       liste,
-      h("p", { class: "palette-aide" }, h("span", null, h("kbd", null, "↑"), h("kbd", null, "↓"), " choisir"), h("span", null, h("kbd", null, "Entrée"), " ouvrir"), h("span", null, h("kbd", null, "Échap"), " fermer"))
+      h("p", { class: "palette-aide" }, h("span", null, h("kbd", null, "↑"), h("kbd", null, "↓"), " choisir"), h("span", null, h("kbd", null, tr("Entrée")), " ouvrir"), h("span", null, h("kbd", null, tr("Échap")), " fermer"))
     )
   );
   document.body.append(fond);
@@ -371,7 +398,7 @@ let rendu = 0;
 async function afficher() {
   if (!etat.session) {
     vider(racine).append(vueConnexion());
-    document.title = "Connexion - Gestion";
+    document.title = tr("Connexion - Gestion");
     return;
   }
   if (!entiteActive()) {
@@ -379,17 +406,18 @@ async function afficher() {
       h(
         "div",
         { class: "connexion" },
-        h("h1", null, "Aucun accès pour l'instant"),
-        h("p", { class: "sous" }, `Votre compte (${etat.session.email}) n'a pas encore accès à une entreprise. Demandez à l'administratrice de vous en donner un.`),
+        selecteurLangue(),
+        h("h1", null, tr("Aucun accès pour l'instant")),
+        h("p", { class: "sous" }, tr("Votre compte ({email}) n'a pas encore accès à une entreprise. Demandez à l'administratrice de vous en donner un.", { email: etat.session.email })),
         etat.store.mode === "demo" ? bandeauDemo() : null,
-        etat.store.mode === "supabase" ? h("button", { class: "secondaire", type: "button", onclick: async () => (await etat.store.deconnecter(), (etat.session = null), afficher()) }, "Se déconnecter") : null
+        etat.store.mode === "supabase" ? h("button", { class: "secondaire", type: "button", onclick: async () => (await etat.store.deconnecter(), (etat.session = null), afficher()) }, tr("Se déconnecter")) : null
       )
     );
-    document.title = "Aucun accès - Gestion";
+    document.title = tr("Aucun accès - Gestion");
     return;
   }
   // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change.
-  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}`;
+  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}`;
   const existante = racine.querySelector(".coque");
   if (!existante || existante.dataset.cle !== cle) {
     vider(racine).append(coque());
@@ -412,11 +440,11 @@ async function afficher() {
   } catch (err) {
     if (moi !== rendu) return;
     console.error(err);
-    noeud = h("div", { class: "vide" }, h("h1", null, "Cet écran n'a pas pu s'afficher"), h("p", null, err.message), h("a", { href: "#/" }, "Retour à l'accueil"));
+    noeud = h("div", { class: "vide" }, h("h1", null, tr("Cet écran n'a pas pu s'afficher")), h("p", null, err.message), h("a", { href: "#/" }, tr("Retour à l'accueil")));
   }
   principal.replaceChildren(noeud);
   principal.className = [noeud.dataset && noeud.dataset.large ? "large" : "", noeud.dataset && noeud.dataset.plein ? "plein" : ""].filter(Boolean).join(" ");
-  document.title = `${(noeud.dataset && noeud.dataset.titre) || "Gestion"} - ${entiteActive().nom}`;
+  document.title = `${(noeud.dataset && noeud.dataset.titre) || tr("Gestion")} - ${entiteActive().nom}`;
   // Les pages à deux volets prennent exactement la hauteur restante de la fenêtre, bandeaux éventuels compris.
   document.documentElement.style.setProperty("--decalage", `${Math.round(principal.getBoundingClientRect().top + window.scrollY + 48)}px`);
   // L'onglet « Plus » est marqué quand l'écran ouvert n'a pas d'onglet à lui.
@@ -426,20 +454,20 @@ async function afficher() {
 }
 
 function ouvrirAide() {
-  const ligne = (touches, texte) => h("tr", null, h("td", null, ...touches.flatMap((t, i) => (i ? [" puis ", h("kbd", null, t)] : [h("kbd", null, t)]))), h("td", null, texte));
+  const ligne = (touches, texte) => h("tr", null, h("td", null, ...touches.flatMap((t, i) => (i ? [tr(" puis "), h("kbd", null, t)] : [h("kbd", null, t)]))), h("td", null, tr(texte)));
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
-  const mod = mac ? "Cmd" : "Ctrl";
+  const mod = mac ? tr("Cmd") : tr("Ctrl");
   const tableau = (lignes) => h("table", { class: "tableau simple raccourcis" }, h("tbody", null, lignes));
   modal(
-    "Raccourcis clavier",
+    tr("Raccourcis clavier"),
     h(
       "div",
       { class: "modal-corps" },
-      h("h3", null, "Partout, hors d'un champ de saisie"),
-      tableau([ligne(["?"], "Afficher cette aide"), ligne(["n"], "Nouveau dossier"), ligne(["/"], "Rechercher un client, un dossier ou un écran"), ligne([`${mod}+K`], "Rechercher (aussi dans un champ)"), ligne(["g", "t"], "Aujourd'hui"), ligne(["g", "d"], "Dossiers"), ligne(["g", "c"], "Clients"), ligne(["g", "k"], "Catalogue"), ligne(["g", "f"], "Tâches"), ligne(["g", "v"], "Vue d'ensemble des sociétés"), ligne(["g", "r"], "Réglages (administrateurs)"), ligne(["g", "a"], "Analyses"), ligne(["g", "j"], "Journal d'activité"), ligne(["g", "m"], "Administration (administratrice générale)"), ligne(["Échap"], "Fermer une fenêtre")]),
-      h("h3", null, "Dans un devis ou une facture"),
-      tableau([ligne([`${mod}+Z`], "Annuler la dernière modification"), ligne([`${mod}+Maj+Z`, `${mac ? "" : "Ctrl+Y"}`].filter(Boolean).slice(0, 1), `Rétablir${mac ? "" : " (ou Ctrl+Y)"}`), ligne([`${mod}+S`], "Enregistrer tout de suite"), ligne([`${mod}+P`], "Télécharger le PDF")]),
-      h("p", { class: "aide" }, "Les raccourcis propres au navigateur, comme Ctrl+T, Ctrl+W ou Ctrl+N, ne peuvent pas être pris en charge par un site. Les autres sont désactivés pendant la saisie dans un champ pour ne pas gêner l'écriture.")
+      h("h3", null, tr("Partout, hors d'un champ de saisie")),
+      tableau([ligne(["?"], N_("Afficher cette aide")), ligne(["n"], N_("Nouveau dossier")), ligne(["/"], N_("Rechercher un client, un dossier ou un écran")), ligne([`${mod}+K`], N_("Rechercher (aussi dans un champ)")), ligne(["g", "t"], N_("Aujourd'hui")), ligne(["g", "d"], N_("Dossiers")), ligne(["g", "c"], N_("Clients")), ligne(["g", "k"], N_("Catalogue")), ligne(["g", "f"], N_("Tâches")), ligne(["g", "v"], N_("Vue d'ensemble des sociétés")), ligne(["g", "r"], N_("Réglages (administrateurs)")), ligne(["g", "a"], N_("Analyses")), ligne(["g", "j"], N_("Journal d'activité")), ligne(["g", "m"], N_("Administration (administratrice générale)")), ligne([tr("Échap")], N_("Fermer une fenêtre"))]),
+      h("h3", null, tr("Dans un devis ou une facture")),
+      tableau([ligne([`${mod}+Z`], N_("Annuler la dernière modification")), ligne([`${mod}+${tr("Maj")}+Z`], mac ? N_("Rétablir") : N_("Rétablir (ou Ctrl+Y)")), ligne([`${mod}+S`], N_("Enregistrer tout de suite")), ligne([`${mod}+P`], N_("Télécharger le PDF"))]),
+      h("p", { class: "aide" }, tr("Les raccourcis propres au navigateur, comme Ctrl+T, Ctrl+W ou Ctrl+N, ne peuvent pas être pris en charge par un site. Les autres sont désactivés pendant la saisie dans un champ pour ne pas gêner l'écriture."))
     )
   );
 }
@@ -488,7 +516,7 @@ async function surveillerVersion() {
     const actuelle = await empreinteVersion();
     if (!actuelle || actuelle === initiale) return;
     signale = true;
-    document.body.append(h("div", { class: "bandeau-version", role: "status" }, h("span", null, "Une nouvelle version de l'outil est disponible."), h("button", { class: "principal petit", type: "button", onclick: () => location.reload() }, "Recharger")));
+    document.body.append(h("div", { class: "bandeau-version", role: "status" }, h("span", null, tr("Une nouvelle version de l'outil est disponible.")), h("button", { class: "principal petit", type: "button", onclick: () => location.reload() }, tr("Recharger"))));
   };
   document.addEventListener("visibilitychange", verifier);
   setInterval(verifier, 10 * 60 * 1000);
@@ -499,5 +527,5 @@ init()
   .then(surveillerVersion)
   .catch((err) => {
     console.error(err);
-    vider(racine).append(h("div", { class: "vide" }, h("h1", null, "Connexion à la base impossible"), h("p", null, err.message), h("button", { class: "principal", onclick: () => location.reload() }, "Réessayer")));
+    vider(racine).append(h("div", { class: "vide" }, h("h1", null, tr("Connexion à la base impossible")), h("p", null, err.message), h("button", { class: "principal", onclick: () => location.reload() }, tr("Réessayer"))));
   });

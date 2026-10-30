@@ -1,6 +1,7 @@
 // Stockage réel : Supabase (Postgres) avec connexion e-mail et mot de passe.
 // Les droits sont appliqués par la base (règles RLS), pas par ce fichier.
 import { createClient } from "../vendor/supabase.mjs";
+import { tr } from "./i18n.mjs";
 
 // Ordre d'import imposé par les clés étrangères.
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
@@ -40,7 +41,7 @@ export function creer(config) {
     },
     async connecter(email, mdp) {
       const { error } = await sb.auth.signInWithPassword({ email, password: mdp });
-      if (error) throw new Error(error.message === "Invalid login credentials" ? "E-mail ou mot de passe incorrect." : error.message);
+      if (error) throw new Error(error.message === "Invalid login credentials" ? tr("E-mail ou mot de passe incorrect.") : error.message);
     },
     async deconnecter() {
       await sb.auth.signOut();
@@ -69,6 +70,10 @@ export function creer(config) {
     },
     async enregistrerReglages(entiteId, valeur) {
       verifie(await sb.from("reglages").upsert({ entite_id: entiteId, valeur }).select());
+    },
+    // Langue de l'interface de la personne connectée (migration 13). Sans la migration l'appel échoue : l'outil garde alors la langue dans ce navigateur.
+    async definirMaLangue(code) {
+      verifie(await sb.rpc("definir_ma_langue", { l: code }));
     },
     async modifierProfil(userId, patch) {
       verifie(await sb.from("profils").update(patch).eq("user_id", userId).select());
@@ -117,7 +122,7 @@ export function creer(config) {
       return verifie(await sb.from("pieces_jointes").select("*").eq("dossier_id", dossierId).order("created_at", { ascending: false }));
     },
     async ajouterPiece({ entiteId, dossierId, fichier }) {
-      if (fichier.size > LIMITE_FICHIER) throw new Error("Fichier trop lourd (10 Mo maximum).");
+      if (fichier.size > LIMITE_FICHIER) throw new Error(tr("Fichier trop lourd (10 Mo maximum)."));
       const sain = fichier.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9._-]+/g, "_");
       const chemin = `${entiteId}/${dossierId}/${crypto.randomUUID()}-${sain}`;
       const { error } = await sb.storage.from("pieces").upload(chemin, fichier, { contentType: fichier.type || "application/octet-stream" });

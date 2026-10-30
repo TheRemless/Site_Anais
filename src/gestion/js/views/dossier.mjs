@@ -10,6 +10,7 @@ import { margeDocument } from "../partenaires-calc.mjs";
 import { sectionReservationsDossier, formulaireReservation } from "./reservations.mjs";
 import { vouchersDuDossier, imprimerVoucher, imprimerTousLesVouchers, apercuVoucher } from "./voucher.mjs";
 import { numeroVoucher, TITRES_VOUCHER } from "../operations-calc.mjs";
+import { tr, N_, pluriel } from "../i18n.mjs";
 
 const rafraichir = () => naviguer(location.hash);
 const dernier = (docs, type) => docs.filter((d) => d.type === type).sort((a, b) => (a.created_at > b.created_at ? 1 : -1)).pop();
@@ -22,7 +23,7 @@ export async function ficheDossier(id) {
 
 function ficheDossierVue(id) {
   const r = resumeDossier(id);
-  if (!r) return vide("Dossier introuvable", "Il a peut-être été supprimé.", h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Retour aux dossiers"));
+  if (!r) return vide(tr("Dossier introuvable"), tr("Il a peut-être été supprimé."), h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Retour aux dossiers")));
   const { dossier: d, client, paiements } = r;
   const fm = (n, code) => formatMontant(n, code || r.devise);
   // Ce que le rôle de la personne permet de faire sur ce dossier.
@@ -30,10 +31,10 @@ function ficheDossierVue(id) {
   const responsable = h("span", null);
   equipe().then((gens) => {
     const p = gens.find((x) => x.user_id === d.responsable_id);
-    responsable.textContent = p ? ` · Responsable : ${p.nom || p.email}` : "";
+    responsable.textContent = p ? tr(" · Responsable : {x}", { x: p.nom || p.email }) : "";
   });
   const regl = reglages();
-  const MOYENS = regl.listes.moyens.map((m) => [m.id, m.label]);
+  const MOYENS = regl.listes.moyens.map((m) => [m.id, tr(m.label)]);
   const devis = dernier(r.documents, "devis");
   const facture = dernier(r.documents, "facture");
   const locale = dernier(r.documents, "facture_locale");
@@ -46,22 +47,22 @@ function ficheDossierVue(id) {
   // Marge du dossier : total du document qui fait foi moins les nets des lignes de partenaires, pour qui voit les nets.
   const docMarge = facture || devis;
   const marge = droit.finances && peut("partenaires.nets") && docMarge ? margeDocument(docMarge.contenu, totaux(docMarge.contenu).net) : null;
-  const ligneMarge = marge && marge.avecNet ? [["Marge", fm(marge.marge), `${marge.pct} %${marge.sansNet ? `, ${marge.sansNet} ligne${marge.sansNet > 1 ? "s" : ""} sans net connu` : ""}`]] : [];
+  const ligneMarge = marge && marge.avecNet ? [[tr("Marge"), fm(marge.marge), `${marge.pct} %${marge.sansNet ? ", " + pluriel(marge.sansNet, N_("ligne sans net connu"), N_("lignes sans net connu")) : ""}`]] : [];
   const reservations = etat.db.reservations.filter((x) => x.dossier_id === d.id && x.statut !== "annule");
   const vouchers = excursions ? vouchersDuDossier(d.id) : [];
 
   // Étapes du dossier : le statut en découle, ces boutons ne font qu'enregistrer des faits.
-  const etape = (fait, titre, detail, action) => h("li", { class: fait ? "etape fait" : "etape" }, h("span", { class: "etape-etat" }, fait ? "Fait" : "À faire"), h("div", { class: "etape-texte" }, h("strong", null, titre), detail ? h("span", null, detail) : null), action || null);
+  const etape = (fait, titre, detail, action) => h("li", { class: fait ? "etape fait" : "etape" }, h("span", { class: "etape-etat" }, fait ? tr("Fait") : tr("À faire")), h("div", { class: "etape-texte" }, h("strong", null, tr(titre)), detail ? h("span", null, detail) : null), action || null);
 
   const marquerEnvoye = async () => {
     await modifier("documents", devis.id, { envoye_le: ajd });
-    toast("Devis marqué comme envoyé.");
+    toast(tr("Devis marqué comme envoyé."));
     rafraichir();
   };
   const accepter = () => {
     const date = h("input", { id: "date-accept", type: "date", value: ajd });
     const fermer = modal(
-      "Le client a accepté le devis",
+      tr("Le client a accepté le devis"),
       h(
         "form",
         {
@@ -70,12 +71,12 @@ function ficheDossierVue(id) {
             e.preventDefault();
             await modifier("dossiers", d.id, { accepte_le: date.value });
             fermer();
-            toast("Acceptation enregistrée.");
+            toast(tr("Acceptation enregistrée."));
             rafraichir();
           },
         },
-        champ("Date d'acceptation", date, `L'acompte est attendu ${regl.conditions.delai_jours} jours plus tard.`),
-        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), h("button", { type: "submit", class: "principal" }, "Enregistrer"))
+        champ(tr("Date d'acceptation"), date, tr("L'acompte est attendu {delai_jours} jours plus tard.", { delai_jours: regl.conditions.delai_jours })),
+        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Enregistrer")))
       )
     );
   };
@@ -99,10 +100,10 @@ function ficheDossierVue(id) {
     majTaux();
     const mode = h("select", { id: "loc-mode" }, modes.map((m) => h("option", { value: m.id }, m.nom)));
     mode.value = modes[modes.length - 1].id;
-    const langue = h("select", { id: "loc-langue" }, h("option", { value: "en" }, "English"), h("option", { value: "" }, "Langue principale"));
+    const langue = h("select", { id: "loc-langue" }, h("option", { value: "en" }, tr("English")), h("option", { value: "" }, tr("Langue principale")));
     const numero = h("input", { id: "loc-numero", value: `${d.ref}-L` });
     const fermer = modal(
-      "Créer la facture locale",
+      tr("Créer la facture locale"),
       h(
         "form",
         {
@@ -110,7 +111,7 @@ function ficheDossierVue(id) {
           onsubmit: async (e) => {
             e.preventDefault();
             const t = num(taux.value);
-            if (!t || t <= 0) return toast("Indiquez le taux de conversion.", true);
+            if (!t || t <= 0) return toast(tr("Indiquez le taux de conversion."), true);
             const contenu = convertirContenu(facture.contenu, t, cible.value);
             contenu.lignes = contenu.lignes.map((l) => ({ ...l, id: uid() }));
             contenu.paiement = mode.value;
@@ -121,12 +122,12 @@ function ficheDossierVue(id) {
             naviguer(`#/doc/${f.id}`);
           },
         },
-        h("p", { class: "aide" }, `Copie de la facture avec les montants convertis. Vous pouvez ensuite tout corriger ligne par ligne. Les paiements restent sur la facture du client (${devSource}).`),
-        h("div", { class: "grille-form" }, champ("Devise de la facture locale", cible), champ(`Taux (1 ${devSource} = … )`, taux, "Pré-rempli d'après les réglages, modifiable.")),
-        modes.length > 1 ? champ("Informations de paiement", mode) : null,
-        champ("Langue de la facture", langue, "Les titres, libellés et conditions de paiement passent en anglais. Les textes des lignes (intitulés, descriptions) sont copiés tels quels : à traduire dans l'éditeur."),
-        champ("Numéro affiché", numero, "Remplace la référence du dossier sur cette facture."),
-        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), h("button", { type: "submit", class: "principal" }, "Créer la facture locale"))
+        h("p", { class: "aide" }, tr("Copie de la facture avec les montants convertis. Vous pouvez ensuite tout corriger ligne par ligne. Les paiements restent sur la facture du client ({devSource}).", { devSource })),
+        h("div", { class: "grille-form" }, champ(tr("Devise de la facture locale"), cible), champ(tr("Taux (1 {devSource} = … )", { devSource }), taux, tr("Pré-rempli d'après les réglages, modifiable."))),
+        modes.length > 1 ? champ(tr("Informations de paiement"), mode) : null,
+        champ(tr("Langue de la facture"), langue, tr("Les titres, libellés et conditions de paiement passent en anglais. Les textes des lignes (intitulés, descriptions) sont copiés tels quels : à traduire dans l'éditeur.")),
+        champ(tr("Numéro affiché"), numero, tr("Remplace la référence du dossier sur cette facture.")),
+        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Créer la facture locale")))
       )
     );
   };
@@ -134,10 +135,10 @@ function ficheDossierVue(id) {
   // Une copie du devis pour un nouveau dossier, comme dupliquer une page dans l'ancien fichier.
   const dupliquer = () => {
     const modele = devis || facture;
-    if (!modele) return toast("Ce dossier n'a pas encore de document à copier.", true);
-    const sel = selecteurClient({ id: "dup-client", libelle: "Pour quel client ?", valeur: d.client_id });
+    if (!modele) return toast(tr("Ce dossier n'a pas encore de document à copier."), true);
+    const sel = selecteurClient({ id: "dup-client", libelle: tr("Pour quel client ?"), valeur: d.client_id });
     const fermer = modal(
-      "Dupliquer ce dossier",
+      tr("Dupliquer ce dossier"),
       h(
         "form",
         {
@@ -154,16 +155,16 @@ function ficheDossierVue(id) {
               delete contenu.libelle_recu;
               const nouveau = await inserer("documents", { dossier_id: nd.id, type: "devis", date_emission: ajd, envoye_le: null, updated_at: new Date().toISOString(), contenu });
               fermer();
-              toast("Dossier dupliqué. Adaptez maintenant le devis.");
+              toast(tr("Dossier dupliqué. Adaptez maintenant le devis."));
               naviguer(`#/doc/${nouveau.id}`);
             } catch (err) {
-              toast(`Duplication impossible : ${err.message}`, true);
+              toast(tr("Duplication impossible : {message}", { message: err.message }), true);
             }
           },
         },
         sel.noeud,
-        h("p", { class: "aide" }, "Le document est copié avec toutes ses lignes, sans paiement ni date d'envoi. Créez d'abord le client s'il n'existe pas encore."),
-        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), h("button", { type: "submit", class: "principal" }, "Créer la copie"))
+        h("p", { class: "aide" }, tr("Le document est copié avec toutes ses lignes, sans paiement ni date d'envoi. Créez d'abord le client s'il n'existe pas encore.")),
+        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Créer la copie")))
       )
     );
   };
@@ -174,14 +175,14 @@ function ficheDossierVue(id) {
     const depart = h("input", { id: "m-depart", type: "date", value: d.date_depart || "" });
     const retour = h("input", { id: "m-retour", type: "date", value: d.date_retour || "" });
     const accepte = h("input", { id: "m-accepte", type: "date", value: d.accepte_le || "" });
-    const respSel = h("select", { id: "m-resp" }, h("option", { value: d.responsable_id || "" }, "Chargement…"));
+    const respSel = h("select", { id: "m-resp" }, h("option", { value: d.responsable_id || "" }, tr("Chargement…")));
     equipe().then((gens) => {
-      respSel.replaceChildren(h("option", { value: "" }, "Personne"), ...gens.map((p) => h("option", { value: p.user_id }, p.nom || p.email)));
+      respSel.replaceChildren(h("option", { value: "" }, tr("Personne")), ...gens.map((p) => h("option", { value: p.user_id }, p.nom || p.email)));
       respSel.value = d.responsable_id || "";
     });
     const ref = h("input", { id: "m-ref", value: d.ref });
     const fermer = modal(
-      "Modifier le dossier",
+      tr("Modifier le dossier"),
       h(
         "form",
         {
@@ -189,18 +190,18 @@ function ficheDossierVue(id) {
           onsubmit: async (e) => {
             e.preventDefault();
             if (etat.db.dossiers.some((x) => x.id !== d.id && x.ref === ref.value.trim())) {
-              toast("Cette référence existe déjà.", true);
+              toast(tr("Cette référence existe déjà."), true);
               return;
             }
             await modifier("dossiers", d.id, excursions ? { client_id: selClient.valeur || d.client_id, ref: ref.value.trim(), responsable_id: respSel.value || null } : { client_id: selClient.valeur || d.client_id, pays: pays.value.trim(), date_depart: depart.value || null, date_retour: retour.value || null, accepte_le: accepte.value || null, ref: ref.value.trim(), responsable_id: respSel.value || null });
             fermer();
-            toast("Dossier modifié.");
+            toast(tr("Dossier modifié."));
             rafraichir();
           },
         },
         selClient.noeud,
-        excursions ? h("div", { class: "grille-form" }, champ("Numéro de facture", ref), champ("Responsable", respSel), h("p", { class: "aide pleine-largeur" }, "Les dates du dossier sont celles de ses réservations, elles se mettent à jour toutes seules.")) : h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || "Pays", pays), champ("Référence", ref), champ("Début", depart), champ("Fin", retour), champ("Date d'acceptation du devis", accepte, "Laissez vide si le client n'a pas encore accepté."), champ("Responsable du dossier", respSel, "Avec un rôle limité à « ses dossiers », la personne ne voit que ceux dont elle est responsable.")),
-        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, "Annuler"), h("button", { type: "submit", class: "principal" }, "Enregistrer"))
+        excursions ? h("div", { class: "grille-form" }, champ(tr("Numéro de facture"), ref), champ(tr("Responsable"), respSel), h("p", { class: "aide pleine-largeur" }, tr("Les dates du dossier sont celles de ses réservations, elles se mettent à jour toutes seules."))) : h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || tr("Pays"), pays), champ(tr("Référence"), ref), champ(tr("Début"), depart), champ(tr("Fin"), retour), champ(tr("Date d'acceptation du devis"), accepte, tr("Laissez vide si le client n'a pas encore accepté.")), champ(tr("Responsable du dossier"), respSel, tr("Avec un rôle limité à « ses dossiers », la personne ne voit que ceux dont elle est responsable."))),
+        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Enregistrer")))
       )
     );
   };
@@ -212,7 +213,7 @@ function ficheDossierVue(id) {
   if (manque > 0) montantP.value = manque;
   const moyenP = h("select", { id: "p-moyen" }, MOYENS.map(([v, l]) => h("option", { value: v }, l)));
   const origineM = h("input", { id: "p-orig-m", type: "number", step: "0.01", min: "0", inputmode: "decimal" });
-  const origineD = h("select", { id: "p-orig-d" }, ["", "EUR", "THB", "USD"].map((v) => h("option", { value: v }, v || "Aucune")));
+  const origineD = h("select", { id: "p-orig-d" }, ["", "EUR", "THB", "USD"].map((v) => h("option", { value: v }, v || tr("Aucune"))));
   const noteP = h("input", { id: "p-note" });
   const formPaiement = h(
     "form",
@@ -223,7 +224,7 @@ function ficheDossierVue(id) {
         e.preventDefault();
         const montant = num(montantP.value);
         if (!montant || montant <= 0) {
-          toast("Indiquez un montant supérieur à zéro.", true);
+          toast(tr("Indiquez un montant supérieur à zéro."), true);
           return;
         }
         await inserer("paiements", {
@@ -236,12 +237,12 @@ function ficheDossierVue(id) {
           origine_devise: origineD.value,
           note: noteP.value.trim(),
         });
-        toast("Paiement enregistré.");
+        toast(tr("Paiement enregistré."));
         rafraichir();
       },
     },
-    h("div", { class: "grille-form" }, champ("Date de réception", dateP), champ(`Montant reçu (${r.devise || regl.devise})`, montantP), champ("Moyen de paiement", moyenP), champ("Note", noteP), champ("Montant d'origine, si payé en devise", origineM), champ("Devise d'origine", origineD)),
-    h("div", { class: "actions" }, h("button", { type: "submit", class: "principal" }, "Enregistrer le paiement"))
+    h("div", { class: "grille-form" }, champ(tr("Date de réception"), dateP), champ(tr("Montant reçu ({x})", { x: r.devise || regl.devise }), montantP), champ(tr("Moyen de paiement"), moyenP), champ(tr("Note"), noteP), champ(tr("Montant d'origine, si payé en devise"), origineM), champ(tr("Devise d'origine"), origineD)),
+    h("div", { class: "actions" }, h("button", { type: "submit", class: "principal" }, tr("Enregistrer le paiement")))
   );
 
   const nomMoyen = (v) => (MOYENS.find(([k]) => k === v) || [0, v])[1];
@@ -249,7 +250,7 @@ function ficheDossierVue(id) {
     ? h(
         "table",
         { class: "tableau simple" },
-        h("thead", null, h("tr", null, ["Date", "Type", "Moyen", "Note", "Montant", ""].map((t, i) => h("th", { scope: "col", class: i === 4 ? "num" : null }, t)))),
+        h("thead", null, h("tr", null, [tr("Date"), tr("Type"), tr("Moyen"), tr("Note"), tr("Montant"), ""].map((t, i) => h("th", { scope: "col", class: i === 4 ? "num" : null }, t)))),
         h(
           "tbody",
           null,
@@ -259,11 +260,11 @@ function ficheDossierVue(id) {
               h(
                 "tr",
                 null,
-                h("td", { "data-label": "Date" }, formatDate(p.date)),
-                h("td", { "data-label": "Type" }, p.type === "acompte" ? "Acompte" : p.type === "solde" ? "Solde" : "Autre"),
-                h("td", { "data-label": "Moyen" }, nomMoyen(p.moyen)),
-                h("td", { "data-label": "Note" }, [p.note, p.origine_montant ? `${p.origine_montant} ${p.origine_devise}` : ""].filter(Boolean).join(", ")),
-                h("td", { class: "num", "data-label": "Montant" }, fm(p.montant)),
+                h("td", { "data-label": tr("Date") }, formatDate(p.date)),
+                h("td", { "data-label": tr("Type") }, p.type === "acompte" ? tr("Acompte") : p.type === "solde" ? tr("Solde") : tr("Autre")),
+                h("td", { "data-label": tr("Moyen") }, nomMoyen(p.moyen)),
+                h("td", { "data-label": tr("Note") }, [p.note, p.origine_montant ? `${p.origine_montant} ${p.origine_devise}` : ""].filter(Boolean).join(", ")),
+                h("td", { class: "num", "data-label": tr("Montant") }, fm(p.montant)),
                 h(
                   "td",
                   { class: "action-cellule" },
@@ -272,33 +273,33 @@ function ficheDossierVue(id) {
                     {
                       class: "lien danger-texte",
                       type: "button",
-                      "aria-label": `Supprimer le paiement du ${formatDate(p.date)}`,
+                      "aria-label": tr("Supprimer le paiement du {date}", { date: formatDate(p.date) }),
                       onclick: async () => {
-                        if (await confirmer(`Supprimer le paiement de ${fm(p.montant)} du ${formatDate(p.date)} ?`, "Supprimer", true)) {
+                        if (await confirmer(tr("Supprimer le paiement de {fm} du {date} ?", { fm: fm(p.montant), date: formatDate(p.date) }), tr("Supprimer"), true)) {
                           await supprimer("paiements", p.id);
                           rafraichir();
                         }
                       },
                     },
-                    "Supprimer"
+                    tr("Supprimer")
                   )
                 )
               )
             )
         )
       )
-    : h("p", { class: "vide-court" }, "Aucun paiement enregistré.");
+    : h("p", { class: "vide-court" }, tr("Aucun paiement enregistré."));
 
   const ligneDoc = (doc, libelle) => {
     const t = totaux(doc.contenu, doc.type === "facture" && doc.contenu.montant_recu != null ? doc.contenu.montant_recu : 0);
     return h(
       "tr",
       null,
-      h("td", { "data-label": "Document" }, h("a", { href: `#/doc/${doc.id}` }, libelle)),
-      h("td", { "data-label": "Émis le" }, formatDate(doc.date_emission)),
-      h("td", { "data-label": "Envoyé le" }, doc.envoye_le ? formatDate(doc.envoye_le) : "Pas encore"),
-      h("td", { class: "num", "data-label": "Total" }, fm(t.net, doc.contenu.devise)),
-      h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: `#/doc/${doc.id}` }, "Ouvrir"), h("button", { class: "secondaire petit", type: "button", onclick: () => pdf(doc) }, "PDF"))
+      h("td", { "data-label": tr("Document") }, h("a", { href: `#/doc/${doc.id}` }, tr(libelle))),
+      h("td", { "data-label": tr("Émis le") }, formatDate(doc.date_emission)),
+      h("td", { "data-label": tr("Envoyé le") }, doc.envoye_le ? formatDate(doc.envoye_le) : tr("Pas encore")),
+      h("td", { class: "num", "data-label": tr("Total") }, fm(t.net, doc.contenu.devise)),
+      h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: `#/doc/${doc.id}` }, tr("Ouvrir")), h("button", { class: "secondaire petit", type: "button", onclick: () => pdf(doc) }, "PDF"))
     );
   };
 
@@ -310,7 +311,7 @@ function ficheDossierVue(id) {
     onblur: async (e) => {
       if (e.target.value !== (d.notes || "")) {
         await modifier("dossiers", d.id, { notes: e.target.value });
-        toast("Notes enregistrées.");
+        toast(tr("Notes enregistrées."));
       }
     },
   });
@@ -319,77 +320,77 @@ function ficheDossierVue(id) {
   return h(
     "div",
     { "data-titre": nomClient(client) },
-    h("a", { class: "retour", href: "#/dossiers" }, "Dossiers"),
+    h("a", { class: "retour", href: "#/dossiers" }, tr("Dossiers")),
     h(
       "div",
       { class: "entete" },
       h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, sousTitreDossier(d), responsable)),
-      h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, "Dupliquer") : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, "Modifier le dossier") : null)
+      h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, tr("Dupliquer")) : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, tr("Modifier le dossier")) : null)
     ),
     !droit.finances ? null : h(
       "div",
       { class: "chiffres compacts" },
-      ...[["Total", fm(r.total)], ...(acompte > 0 ? [[`Acompte (${regl.conditions.acompte_pct}%)`, fm(acompte)]] : []), ["Reçu", fm(r.recu)], ["Reste à payer", fm(r.reste)], ...ligneMarge].map(([l, v, det]) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, l), h("p", { class: "chiffre-valeur" }, v), det ? h("p", { class: "chiffre-detail" }, det) : null))
+      ...[[tr("Total"), fm(r.total)], ...(acompte > 0 ? [[tr("Acompte ({acompte_pct}%)", { acompte_pct: regl.conditions.acompte_pct }), fm(acompte)]] : []), [tr("Reçu"), fm(r.recu)], [tr("Reste à payer"), fm(r.reste)], ...ligneMarge].map(([l, v, det]) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, l), h("p", { class: "chiffre-valeur" }, v), det ? h("p", { class: "chiffre-detail" }, det) : null))
     ),
     h(
       "section",
       null,
-      h("h2", null, "Avancement"),
+      h("h2", null, tr("Avancement")),
       excursions
         ? h(
             "ol",
             { class: "etapes" },
-            etape(!!facture, "Facture", facture ? `Émise le ${formatDate(facture.date_emission)}${facture.envoye_le ? `, envoyée le ${formatDate(facture.envoye_le)}` : ", pas encore marquée envoyée"}` : "À créer.", facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, "Ouvrir la facture") : droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, "Créer la facture") : null),
-            etape(r.statut === "solde", "Payée", r.statut === "solde" ? `${fm(r.recu)} reçus` : r.recu > 0 ? `Acompte de ${fm(r.recu)} reçu, reste ${fm(r.reste)}` : "En attente du paiement (virement, Wise ou espèces).", r.statut !== "solde" && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); document.getElementById("p-montant").focus(); } }, "Enregistrer un paiement") : null),
-            etape(vouchers.length > 0 && r.statut === "solde", "Vouchers envoyés", vouchers.length ? `${vouchers.length} voucher${vouchers.length > 1 ? "s" : ""} pour le client et les prestataires, à envoyer une fois payé.` : "Les vouchers se préparent depuis les réservations du dossier.", vouchers.length ? h("a", { class: "bouton secondaire petit", href: "#vouchers", onclick: (e) => { e.preventDefault(); document.getElementById("vouchers").scrollIntoView({ behavior: "smooth" }); } }, "Voir les vouchers") : null),
-            etape(reservations.length > 0 && reservations.every((x) => x.statut === "confirme"), "Confirmé par les partenaires", reservations.length ? `${reservations.filter((x) => x.statut === "confirme").length} sur ${reservations.length} confirmée${reservations.length > 1 ? "s" : ""}` : "Aucune réservation.", null),
-            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), "Service fait", d.date_depart ? `Service${d.date_retour && d.date_retour !== d.date_depart ? "s" : ""} le ${formatDate(d.date_depart)}${d.date_retour && d.date_retour !== d.date_depart ? ` au ${formatDate(d.date_retour)}` : ""}` : "", null)
+            etape(!!facture, N_("Facture"), facture ? tr("Émise le {date}", { date: formatDate(facture.date_emission) }) + (facture.envoye_le ? tr(", envoyée le {date}", { date: formatDate(facture.envoye_le) }) : tr(", pas encore marquée envoyée")) : tr("À créer."), facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, tr("Ouvrir la facture")) : droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, tr("Créer la facture")) : null),
+            etape(r.statut === "solde", N_("Payée"), r.statut === "solde" ? tr("{montant} reçus", { montant: fm(r.recu) }) : r.recu > 0 ? tr("Acompte de {recu} reçu, reste {reste}", { recu: fm(r.recu), reste: fm(r.reste) }) : tr("En attente du paiement (virement, Wise ou espèces)."), r.statut !== "solde" && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); document.getElementById("p-montant").focus(); } }, tr("Enregistrer un paiement")) : null),
+            etape(vouchers.length > 0 && r.statut === "solde", N_("Vouchers envoyés"), vouchers.length ? pluriel(vouchers.length, N_("{n} voucher pour le client et les prestataires, à envoyer une fois payé."), N_("{n} vouchers pour le client et les prestataires, à envoyer une fois payé.")) : tr("Les vouchers se préparent depuis les réservations du dossier."), vouchers.length ? h("a", { class: "bouton secondaire petit", href: "#vouchers", onclick: (e) => { e.preventDefault(); document.getElementById("vouchers").scrollIntoView({ behavior: "smooth" }); } }, tr("Voir les vouchers")) : null),
+            etape(reservations.length > 0 && reservations.every((x) => x.statut === "confirme"), N_("Confirmé par les partenaires"), reservations.length ? pluriel(reservations.length, N_("{confirmees} sur {n} confirmée"), N_("{confirmees} sur {n} confirmées"), { confirmees: reservations.filter((x) => x.statut === "confirme").length }) : tr("Aucune réservation."), null),
+            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Service fait"), d.date_depart ? (d.date_retour && d.date_retour !== d.date_depart ? tr("Services du {debut} au {fin}", { debut: formatDate(d.date_depart), fin: formatDate(d.date_retour) }) : tr("Service le {date}", { date: formatDate(d.date_depart) })) : "", null)
           )
         : h(
         "ol",
         { class: "etapes" },
-        ...(avecDevis ? [etape(!!devis, "Devis créé", devis ? `Émis le ${formatDate(devis.date_emission)}` : "", devis ? h("a", { class: "bouton secondaire petit", href: `#/doc/${devis.id}` }, "Ouvrir le devis") : null)] : []),
-        ...(avecDevis ? [etape(!!(devis && devis.envoye_le), "Devis envoyé au client", devis && devis.envoye_le ? `Le ${formatDate(devis.envoye_le)}` : "Une fois le PDF expédié, notez-le ici pour suivre les relances.", devis && !devis.envoye_le && droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: marquerEnvoye }, "Marquer comme envoyé") : null)] : []),
-        ...(avecDevis ? [etape(!!d.accepte_le, "Devis accepté", d.accepte_le ? `Le ${formatDate(d.accepte_le)}${echeance && r.recu < acompte ? `, acompte attendu avant le ${formatDate(echeance)}` : ""}` : "", !d.accepte_le && droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: accepter }, "Le client a accepté") : null)] : []),
-        ...(acompte > 0 && droit.finances ? [etape(r.recu >= acompte, "Acompte reçu", r.recu >= acompte && acompte > 0 ? `${fm(r.recu)} reçus` : acompte ? `${fm(acompte)} attendus` : "Le total du devis est à zéro.", r.recu < acompte && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); document.getElementById("p-montant").focus(); } }, "Enregistrer un paiement") : null)] : []),
-        etape(!!facture, "Facture", facture ? `Émise le ${formatDate(facture.date_emission)}${facture.envoye_le ? `, envoyée le ${formatDate(facture.envoye_le)}` : ""}` : "À créer quand la prestation est prête, ou dès l'acompte reçu.", facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, "Ouvrir la facture") : droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, "Créer la facture") : null),
-        etape(r.statut === "solde", "Dossier soldé", r.statut === "solde" ? "Tout est encaissé." : r.total ? `Reste ${fm(r.reste)} à encaisser.` : "")
+        ...(avecDevis ? [etape(!!devis, N_("Devis créé"), devis ? tr("Émis le {date}", { date: formatDate(devis.date_emission) }) : "", devis ? h("a", { class: "bouton secondaire petit", href: `#/doc/${devis.id}` }, tr("Ouvrir le devis")) : null)] : []),
+        ...(avecDevis ? [etape(!!(devis && devis.envoye_le), N_("Devis envoyé au client"), devis && devis.envoye_le ? tr("Le {date}", { date: formatDate(devis.envoye_le) }) : tr("Une fois le PDF expédié, notez-le ici pour suivre les relances."), devis && !devis.envoye_le && droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: marquerEnvoye }, tr("Marquer comme envoyé")) : null)] : []),
+        ...(avecDevis ? [etape(!!d.accepte_le, N_("Devis accepté"), d.accepte_le ? tr("Le {date}", { date: formatDate(d.accepte_le) }) + (echeance && r.recu < acompte ? tr(", acompte attendu avant le {date}", { date: formatDate(echeance) }) : "") : "", !d.accepte_le && droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: accepter }, tr("Le client a accepté")) : null)] : []),
+        ...(acompte > 0 && droit.finances ? [etape(r.recu >= acompte, N_("Acompte reçu"), r.recu >= acompte && acompte > 0 ? tr("{montant} reçus", { montant: fm(r.recu) }) : acompte ? tr("{montant} attendus", { montant: fm(acompte) }) : tr("Le total du devis est à zéro."), r.recu < acompte && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); document.getElementById("p-montant").focus(); } }, tr("Enregistrer un paiement")) : null)] : []),
+        etape(!!facture, N_("Facture"), facture ? tr("Émise le {date}", { date: formatDate(facture.date_emission) }) + (facture.envoye_le ? tr(", envoyée le {date}", { date: formatDate(facture.envoye_le) }) : "") : tr("À créer quand la prestation est prête, ou dès l'acompte reçu."), facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, tr("Ouvrir la facture")) : droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, tr("Créer la facture")) : null),
+        etape(r.statut === "solde", N_("Dossier soldé"), r.statut === "solde" ? tr("Tout est encaissé.") : r.total ? tr("Reste {montant} à encaisser.", { montant: fm(r.reste) }) : "")
       )
     ),
     excursions && droit.finances
       ? h(
           "section",
           { id: "vouchers" },
-          h("div", { class: "entete petit-entete" }, h("h2", null, "Vouchers"), vouchers.length > 1 ? h("button", { class: "secondaire petit", type: "button", onclick: () => imprimerTousLesVouchers(d.id) }, "Tous les vouchers en PDF") : null),
+          h("div", { class: "entete petit-entete" }, h("h2", null, tr("Vouchers")), vouchers.length > 1 ? h("button", { class: "secondaire petit", type: "button", onclick: () => imprimerTousLesVouchers(d.id) }, tr("Tous les vouchers en PDF")) : null),
           vouchers.length
-            ? h("ul", { class: "cartes" }, vouchers.map((x) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, x.reservation.libelle), h("span", { class: "carte-droite" }, h("strong", null, numeroVoucher(d.ref, x.index))), h("span", { class: "carte-sous" }, `${TITRES_VOUCHER[x.type] || "Voucher"} · ${x.reservation.date_service ? formatDate(x.reservation.date_service) : "date à fixer"}${x.reservation.heure_pickup ? ` · pickup ${x.reservation.heure_pickup}` : ""}`), h("span", { class: "carte-pied" }, h("span", null, r.statut === "solde" ? "Payé" : r.recu > 0 ? "Acompte" : "À payer sur place ou en attente"), h("span", { class: "carte-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => apercuVoucher(x) }, "Aperçu"), droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal("Réservation et voucher", formulaireReservation(x.reservation, () => (fermer(), rafraichir()))); } }, "Modifier") : null, h("button", { class: "principal petit", type: "button", onclick: () => imprimerVoucher(x) }, "Voucher PDF")))))))
-            : h("p", { class: "vide-court" }, "Un voucher par réservation (les frais de parc n'en ont pas). Créez d'abord les réservations ci-dessous."),
-          h("p", { class: "aide" }, "Le même voucher se donne au client et au prestataire. Les cases Paid, Deposit ou Pay on site suivent les paiements enregistrés sur la facture. « Modifier » ouvre la réservation avec les champs du voucher : chambre, drop-off, vol, bagages, type de tour ou de transfert, frais de parc, remarques.")
+            ? h("ul", { class: "cartes" }, vouchers.map((x) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, x.reservation.libelle), h("span", { class: "carte-droite" }, h("strong", null, numeroVoucher(d.ref, x.index))), h("span", { class: "carte-sous" }, `${TITRES_VOUCHER[x.type] || "Voucher"} · ${x.reservation.date_service ? formatDate(x.reservation.date_service) : tr("date à fixer")}${x.reservation.heure_pickup ? ` · pickup ${x.reservation.heure_pickup}` : ""}`), h("span", { class: "carte-pied" }, h("span", null, r.statut === "solde" ? tr("Payé") : r.recu > 0 ? tr("Acompte") : tr("À payer sur place ou en attente")), h("span", { class: "carte-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => apercuVoucher(x) }, tr("Aperçu")), droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation et voucher"), formulaireReservation(x.reservation, () => (fermer(), rafraichir()))); } }, tr("Modifier")) : null, h("button", { class: "principal petit", type: "button", onclick: () => imprimerVoucher(x) }, tr("Voucher PDF"))))))))
+            : h("p", { class: "vide-court" }, tr("Un voucher par réservation (les frais de parc n'en ont pas). Créez d'abord les réservations ci-dessous.")),
+          h("p", { class: "aide" }, tr("Le même voucher se donne au client et au prestataire. Les cases Paid, Deposit ou Pay on site suivent les paiements enregistrés sur la facture. « Modifier » ouvre la réservation avec les champs du voucher : chambre, drop-off, vol, bagages, type de tour ou de transfert, frais de parc, remarques."))
         )
       : null,
     !droit.finances ? null : h(
       "section",
       null,
-      h("h2", null, "Documents"),
+      h("h2", null, tr("Documents")),
       r.documents.length
         ? h(
             "table",
             { class: "tableau simple" },
-            h("thead", null, h("tr", null, ["Document", "Émis le", "Envoyé le", "Total", ""].map((t, i) => h("th", { scope: "col", class: i === 3 ? "num" : null }, t)))),
-            h("tbody", null, r.documents.filter((x) => x.type === "devis").map((x) => ligneDoc(x, "Devis")), r.documents.filter((x) => x.type === "facture").map((x) => ligneDoc(x, "Facture")), r.documents.filter((x) => x.type === "facture_locale").map((x) => ligneDoc(x, "Facture locale")))
+            h("thead", null, h("tr", null, [tr("Document"), tr("Émis le"), tr("Envoyé le"), tr("Total"), ""].map((t, i) => h("th", { scope: "col", class: i === 3 ? "num" : null }, t)))),
+            h("tbody", null, r.documents.filter((x) => x.type === "devis").map((x) => ligneDoc(x, N_("Devis"))), r.documents.filter((x) => x.type === "facture").map((x) => ligneDoc(x, N_("Facture"))), r.documents.filter((x) => x.type === "facture_locale").map((x) => ligneDoc(x, N_("Facture locale"))))
           )
-        : h("p", { class: "vide-court" }, "Aucun document."),
-      facture && !locale && droit.docs && !excursions ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, "Créer la facture locale")) : null
+        : h("p", { class: "vide-court" }, tr("Aucun document.")),
+      facture && !locale && droit.docs && !excursions ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, tr("Créer la facture locale"))) : null
     ),
-    droit.finances ? h("section", null, h("h2", null, "Paiements reçus"), tableauPaiements, droit.paiements ? [h("h3", null, "Enregistrer un paiement"), formPaiement] : null) : null,
+    droit.finances ? h("section", null, h("h2", null, tr("Paiements reçus")), tableauPaiements, droit.paiements ? [h("h3", null, tr("Enregistrer un paiement")), formPaiement] : null) : null,
     moduleActif("reservations") ? sectionReservationsDossier(d, facture || devis || null) : null,
     sectionTachesDossier(d.id),
     sectionPieces(d),
-    h("section", null, h("h2", null, "Notes internes"), champ("Visibles seulement ici, jamais sur les documents", notes)),
+    h("section", null, h("h2", null, tr("Notes internes")), champ(tr("Visibles seulement ici, jamais sur les documents"), notes)),
     !(droit.dossiers || droit.supprimer) ? null : h(
       "section",
       { class: "zone-danger" },
-      h("h2", null, d.annule ? "Dossier annulé" : "Annuler ou supprimer"),
+      h("h2", null, d.annule ? tr("Dossier annulé") : tr("Annuler ou supprimer")),
       h(
         "div",
         { class: "actions gauche" },
@@ -399,13 +400,13 @@ function ficheDossierVue(id) {
             class: "secondaire",
             type: "button",
             onclick: async () => {
-              if (d.annule || (await confirmer("Marquer ce dossier comme annulé ? Il sortira des totaux à encaisser mais restera consultable.", "Marquer comme annulé"))) {
+              if (d.annule || (await confirmer(tr("Marquer ce dossier comme annulé ? Il sortira des totaux à encaisser mais restera consultable."), tr("Marquer comme annulé")))) {
                 await modifier("dossiers", d.id, { annule: !d.annule });
                 rafraichir();
               }
             },
           },
-          d.annule ? "Réactiver le dossier" : "Marquer comme annulé"
+          d.annule ? tr("Réactiver le dossier") : tr("Marquer comme annulé")
         ),
         !droit.supprimer ? null : h(
           "button",
@@ -413,14 +414,14 @@ function ficheDossierVue(id) {
             class: "danger",
             type: "button",
             onclick: async () => {
-              if (await confirmer("Supprimer définitivement ce dossier avec ses documents et ses paiements ? Cette action est irréversible.", "Supprimer définitivement", true)) {
+              if (await confirmer(tr("Supprimer définitivement ce dossier avec ses documents et ses paiements ? Cette action est irréversible."), tr("Supprimer définitivement"), true)) {
                 await supprimer("dossiers", d.id);
                 naviguer("#/dossiers");
-                toast("Dossier supprimé.");
+                toast(tr("Dossier supprimé."));
               }
             },
           },
-          "Supprimer le dossier"
+          tr("Supprimer le dossier")
         )
       )
     )

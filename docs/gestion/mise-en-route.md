@@ -42,6 +42,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 9. Base partenaires : `migration-10-partenaires.sql` (six tables, trois droits donnés aux rôles de départ, ne modifie aucune donnée existante).
 10. Réservations : `migration-11-reservations.sql` (deux tables, ne modifie aucune donnée existante).
 11. Vouchers : `migration-12-vouchers.sql` (une colonne de détails sur les réservations, ne modifie aucune donnée).
+12. Langue de l'interface : `migration-13-langue.sql` (une colonne et une fonction, ne modifie aucune donnée). À exécuter avant de publier la version qui propose le choix français ou anglais.
 
 ## Ajouter une personne (l'assistante par exemple)
 
@@ -61,6 +62,14 @@ L'écran **Réglages** (administrateurs) couvre tout ce qui apparaît sur les do
 - **Sauvegarde** : sauvegarde complète, exports pour Excel, import. Ces fichiers concernent seulement l'entreprise active.
 
 Une entreprise nouvellement créée démarre avec des réglages vides. Le tableau de bord indique ce qu'il manque tant que ce n'est pas rempli.
+
+## Langue de l'interface (français ou anglais)
+
+Chaque personne choisit sa langue avec le sélecteur **Français | English** : en bas du menu sur ordinateur, dans « Plus » sur téléphone, et sur l'écran de connexion. Le choix est enregistré dans son compte (colonne `langue` de la table `profils`, migration 13) : il la suit sur son téléphone, son ordinateur et à chaque connexion. Une personne qui n'a rien choisi garde le français. Si la migration 13 n'est pas encore appliquée, la langue reste mémorisée dans le navigateur seulement.
+
+- Tout l'outil est traduit : menus, boutons, messages, aides, noms des droits et des rôles de départ, statuts, mois et jours.
+- Les documents destinés aux clients (devis, factures, vouchers) gardent leur propre langue, réglée dans chaque document. Les données saisies (noms de clients, de partenaires, textes des messages types) ne sont jamais traduites.
+- Pour ajouter un texte à l'outil : l'écrire dans le code avec `tr("Texte français")`, puis ajouter sa traduction dans `src/gestion/js/i18n-en.mjs`. Le test `tests/gestion-i18n.test.js` échoue tant qu'une traduction manque.
 
 ## Raccourcis clavier
 

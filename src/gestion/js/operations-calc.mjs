@@ -1,7 +1,9 @@
 // Logique pure des opérations : réservations auprès des partenaires, messages types, dû aux partenaires.
 // Aucune dépendance au navigateur pour pouvoir la tester avec node --test.
 
-export const STATUTS_RESERVATION = { a_demander: "À demander", demande: "Demandée", confirme: "Confirmée", annule: "Annulée" };
+import { langueActive, N_ } from "./i18n.mjs";
+
+export const STATUTS_RESERVATION = { a_demander: N_("À demander"), demande: N_("Demandée"), confirme: N_("Confirmée"), annule: N_("Annulée") };
 
 const nouvelId = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 const brut = (l) => (l.unite !== null && l.unite !== undefined && l.unite !== "" && l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.unite) * Number(l.qte) : l.montant !== null && l.montant !== undefined && l.montant !== "" ? Number(l.montant) : null);
@@ -52,7 +54,7 @@ export function personnesTexte(p = {}, langue = "fr") {
 
 const MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const MOIS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-export function dateTexte(iso, langue = "fr") {
+export function dateTexte(iso, langue = langueActive()) {
   if (!iso) return "";
   const [a, m, j] = iso.slice(0, 10).split("-").map(Number);
   if (langue === "th") return `${j}/${m}/${a}`;
@@ -306,7 +308,7 @@ export function ajouterJours(iso, n) {
   const d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) + n * 86400000);
   return d.toISOString().slice(0, 10);
 }
-export function nomMoisCourt(iso, langue = "fr") {
+export function nomMoisCourt(iso, langue = langueActive()) {
   if (!iso || iso === "sans-date") return langue === "en" ? "No date" : "Sans date";
   const [a, m] = iso.split("-").map(Number);
   const mois = langue === "en" ? MOIS_EN[m - 1] : MOIS_FR[m - 1];

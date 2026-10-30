@@ -5,13 +5,17 @@ import { formatMontant, formatDate, aujourdhui, nouvelleRef, periodeTexte, STATU
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte, cartes, sousTitreDossier } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
+import { tr, N_, pluriel } from "../i18n.mjs";
 
 const ONGLETS = [
-  ["cours", "En cours", ["brouillon", "devis_envoye", "accepte", "acompte"]],
-  ["soldes", "Soldés", ["solde"]],
-  ["annules", "Annulés", ["annule"]],
-  ["tous", "Tous", Object.keys(STATUTS)],
+  ["cours", N_("En cours"), ["brouillon", "devis_envoye", "accepte", "acompte"]],
+  ["soldes", N_("Soldés"), ["solde"]],
+  ["annules", N_("Annulés"), ["annule"]],
+  ["tous", N_("Tous"), Object.keys(STATUTS)],
 ];
+
+// Valeurs enregistrées en français dans les réglages (civilités, nom du champ « pays ») : on traduit seulement l'affichage.
+const _AFFICHAGE = [N_("Madame"), N_("Monsieur"), N_("Mademoiselle"), N_("Pays"), N_("Service"), N_("Trajet")];
 
 const filtre = { onglet: "cours", q: "" };
 const PAGE = 50;
@@ -27,28 +31,28 @@ export function listeDossiers() {
   const majBarre = () => {
     barre.hidden = selection.size === 0;
     if (barre.hidden) return;
-    const sel = h("select", { id: "attrib-resp", "aria-label": "Nouveau responsable" }, h("option", { value: "" }, "Choisir un responsable…"));
+    const sel = h("select", { id: "attrib-resp", "aria-label": tr("Nouveau responsable") }, h("option", { value: "" }, tr("Choisir un responsable…")));
     equipe().then((gens) => gens.forEach((p) => sel.append(h("option", { value: p.user_id }, p.nom || p.email))));
     barre.replaceChildren(
-      h("strong", null, `${selection.size} dossier${selection.size > 1 ? "s" : ""} sélectionné${selection.size > 1 ? "s" : ""}`),
+      h("strong", null, pluriel(selection.size, N_("{n} dossier sélectionné"), N_("{n} dossiers sélectionnés"))),
       sel,
       h("button", { class: "principal petit", type: "button", onclick: async () => {
-        if (!sel.value) return toast("Choisissez d'abord un responsable.", true);
+        if (!sel.value) return toast(tr("Choisissez d'abord un responsable."), true);
         let n = 0;
-        for (const id of [...selection]) { try { await modifier("dossiers", id, { responsable_id: sel.value }); n++; } catch (err) { toast(`Un dossier n'a pas pu être modifié : ${err.message}`, true); } }
+        for (const id of [...selection]) { try { await modifier("dossiers", id, { responsable_id: sel.value }); n++; } catch (err) { toast(tr("Un dossier n'a pas pu être modifié : {message}", { message: err.message }), true); } }
         selection.clear();
-        toast(`Responsable changé pour ${n} dossier${n > 1 ? "s" : ""}.`);
+        toast(tr("Responsable changé pour {dossiers}.", { dossiers: pluriel(n, N_("dossier"), N_("dossiers")) }));
         majBarre();
         dessiner();
-      } }, "Attribuer"),
-      h("button", { class: "lien", type: "button", onclick: () => (selection.clear(), majBarre(), dessiner()) }, "Tout désélectionner")
+      } }, tr("Attribuer")),
+      h("button", { class: "lien", type: "button", onclick: () => (selection.clear(), majBarre(), dessiner()) }, tr("Tout désélectionner"))
     );
   };
   const recherche = h("input", {
     id: "recherche",
     type: "search",
     value: filtre.q,
-    placeholder: "Nom du client, référence, pays",
+    placeholder: tr("Nom du client, référence, pays"),
     oninput: (e) => {
       filtre.q = e.target.value;
       limite = PAGE;
@@ -68,12 +72,12 @@ export function listeDossiers() {
     if (!lignes.length) {
       corps.append(
         etat.db.dossiers.length
-          ? vide("Aucun dossier ne correspond", "Essayez un autre onglet ou effacez la recherche.")
-          : vide("Aucun dossier pour l'instant", "Un dossier regroupe le client, le voyage, le devis, la facture et les paiements.", peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Créer le premier dossier") : null)
+          ? vide(tr("Aucun dossier ne correspond"), tr("Essayez un autre onglet ou effacez la recherche."))
+          : vide(tr("Aucun dossier pour l'instant"), tr("Un dossier regroupe le client, le voyage, le devis, la facture et les paiements."), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Créer le premier dossier")) : null)
       );
       return;
     }
-    const cocher = (r) => h("input", { type: "checkbox", "aria-label": `Sélectionner ${nomClient(r.client)}`, checked: selection.has(r.dossier.id), onchange: (e) => { if (e.target.checked) selection.add(r.dossier.id); else selection.delete(r.dossier.id); majBarre(); } });
+    const cocher = (r) => h("input", { type: "checkbox", "aria-label": tr("Sélectionner {nomClient}", { nomClient: nomClient(r.client) }), checked: selection.has(r.dossier.id), onchange: (e) => { if (e.target.checked) selection.add(r.dossier.id); else selection.delete(r.dossier.id); majBarre(); } });
     corps.append(
       cartes(lignes.slice(0, limite), (r) => [
         groupee ? cocher(r) : null,
@@ -81,15 +85,15 @@ export function listeDossiers() {
           "a",
           { class: "carte-lien", href: `#/dossier/${r.dossier.id}` },
           h("span", { class: "carte-titre" }, nomClient(r.client)),
-          h("span", { class: "carte-droite" }, h("strong", null, r.total ? formatMontant(r.total, r.devise) : "—"), r.total && r.reste > 0 && r.statut !== "annule" ? h("span", null, `reste ${formatMontant(r.reste, r.devise)}`) : null),
+          h("span", { class: "carte-droite" }, h("strong", null, r.total ? formatMontant(r.total, r.devise) : "—"), r.total && r.reste > 0 && r.statut !== "annule" ? h("span", null, tr("reste {montant}", { montant: formatMontant(r.reste, r.devise) })) : null),
           h("span", { class: "carte-sous" }, sousTitreDossier(r.dossier)),
-          h("span", { class: "carte-pied" }, pastille(r.statut), r.dossier.date_depart ? h("span", { class: "ref" }, `Départ ${formatDate(r.dossier.date_depart)}`) : null)
+          h("span", { class: "carte-pied" }, pastille(r.statut), r.dossier.date_depart ? h("span", { class: "ref" }, tr("Départ {date}", { date: formatDate(r.dossier.date_depart) })) : null)
         ),
       ]),
       h(
         "table",
         { class: "tableau seulement-bureau" },
-        h("thead", null, h("tr", null, groupee ? h("th", { class: "case-cellule", scope: "col" }, h("input", { type: "checkbox", "aria-label": "Sélectionner les dossiers affichés", checked: lignes.slice(0, limite).every((r) => selection.has(r.dossier.id)), onchange: (e) => { lignes.slice(0, limite).forEach((r) => (e.target.checked ? selection.add(r.dossier.id) : selection.delete(r.dossier.id))); majBarre(); dessiner(); } })) : null, ["Client", "Référence", "Intitulé", "Statut", "Total", "Reste"].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : null }, t)))),
+        h("thead", null, h("tr", null, groupee ? h("th", { class: "case-cellule", scope: "col" }, h("input", { type: "checkbox", "aria-label": tr("Sélectionner les dossiers affichés"), checked: lignes.slice(0, limite).every((r) => selection.has(r.dossier.id)), onchange: (e) => { lignes.slice(0, limite).forEach((r) => (e.target.checked ? selection.add(r.dossier.id) : selection.delete(r.dossier.id))); majBarre(); dessiner(); } })) : null, [tr("Client"), tr("Référence"), tr("Intitulé"), tr("Statut"), tr("Total"), tr("Reste")].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : null }, t)))),
         h(
           "tbody",
           null,
@@ -98,19 +102,19 @@ export function listeDossiers() {
               "tr",
               null,
               groupee ? h("td", { class: "case-cellule" }, cocher(r)) : null,
-              h("td", { "data-label": "Client" }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client))),
-              h("td", { "data-label": "Référence", class: "ref" }, r.dossier.ref),
-              h("td", { "data-label": "Intitulé" }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
-              h("td", { "data-label": "Statut" }, pastille(r.statut)),
-              h("td", { "data-label": "Total", class: "num" }, r.total ? formatMontant(r.total, r.devise) : "-"),
-              h("td", { "data-label": "Reste", class: "num" }, r.total ? formatMontant(r.reste, r.devise) : "-")
+              h("td", { "data-label": tr("Client") }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client))),
+              h("td", { "data-label": tr("Référence"), class: "ref" }, r.dossier.ref),
+              h("td", { "data-label": tr("Intitulé") }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
+              h("td", { "data-label": tr("Statut") }, pastille(r.statut)),
+              h("td", { "data-label": tr("Total"), class: "num" }, r.total ? formatMontant(r.total, r.devise) : "-"),
+              h("td", { "data-label": tr("Reste"), class: "num" }, r.total ? formatMontant(r.reste, r.devise) : "-")
             )
           )
         )
       )
     );
-    if (lignes.length > limite) corps.append(h("p", { class: "plus" }, h("button", { class: "secondaire", type: "button", onclick: () => ((limite += PAGE), dessiner()) }, `Afficher plus (${lignes.length - limite} restants)`)));
-    else if (lignes.length > PAGE) corps.append(h("p", { class: "aide plus" }, `${lignes.length} dossiers affichés.`));
+    if (lignes.length > limite) corps.append(h("p", { class: "plus" }, h("button", { class: "secondaire", type: "button", onclick: () => ((limite += PAGE), dessiner()) }, tr("Afficher plus ({x} restants)", { x: lignes.length - limite }))));
+    else if (lignes.length > PAGE) corps.append(h("p", { class: "aide plus" }, tr("{n} dossiers affichés.", { n: lignes.length })));
   }
 
   const onglets = h(
@@ -129,7 +133,7 @@ export function listeDossiers() {
             dessiner();
           },
         },
-        libelle
+        tr(libelle)
       )
     )
   );
@@ -137,33 +141,33 @@ export function listeDossiers() {
   majBarre();
   return h(
     "div",
-    { "data-titre": "Dossiers" },
-    h("div", { class: "entete" }, h("h1", null, "Dossiers"), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, "Nouveau dossier") : null),
-    h("div", { class: "barre-outils" }, onglets, h("div", { class: "champ recherche" }, h("label", { for: "recherche" }, "Rechercher"), recherche)),
+    { "data-titre": tr("Dossiers") },
+    h("div", { class: "entete" }, h("h1", null, tr("Dossiers")), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Nouveau dossier")) : null),
+    h("div", { class: "barre-outils" }, onglets, h("div", { class: "champ recherche" }, h("label", { for: "recherche" }, tr("Rechercher")), recherche)),
     barre,
     corps
   );
 }
 
 export function nouveauDossier() {
-  if (!peut("dossiers.ecrire")) return vide("Accès réservé", "Votre rôle ne permet pas de créer un dossier.", h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Retour aux dossiers"));
+  if (!peut("dossiers.ecrire")) return vide(tr("Accès réservé"), tr("Votre rôle ne permet pas de créer un dossier."), h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Retour aux dossiers")));
   if (modeExcursions()) return nouveauDossierExcursions();
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const regl = reglages();
-  const listePays = [...regl.listes.pays, "Autre"];
-  const libellePays = regl.dossier.libelle_pays || "Pays";
+  const listePays = [...regl.listes.pays, tr("Autre")];
+  const libellePays = tr(regl.dossier.libelle_pays || "Pays");
   const selClient = selecteurClient({ valeur: params.get("client") || "", avecNouveau: peut("clients.ecrire"), surChangement: () => majClient() });
-  const nvCivilite = h("select", { id: "civ" }, regl.listes.civilites.map((c) => h("option", { value: c }, c)));
+  const nvCivilite = h("select", { id: "civ" }, regl.listes.civilites.map((c) => h("option", { value: c }, tr(c))));
   const nvPrenom = h("input", { id: "prenom", autocomplete: "off", oninput: majRef });
   const nvNom = h("input", { id: "nom", autocomplete: "off", oninput: majRef });
-  const nvAdresse = h("textarea", { id: "adr", rows: 3, placeholder: "Rue et numéro\nCode postal, ville, pays" });
+  const nvAdresse = h("textarea", { id: "adr", rows: 3, placeholder: tr("Rue et numéro\nCode postal, ville, pays") });
   const nvTel = h("input", { id: "tel", type: "tel", autocomplete: "off" });
-  const blocNouveau = h("div", { class: "grille-form" }, champ("Civilité", nvCivilite), champ("Prénom", nvPrenom), champ("Nom", nvNom), champ("Téléphone", nvTel), champ("Adresse", nvAdresse));
+  const blocNouveau = h("div", { class: "grille-form" }, champ(tr("Civilité"), nvCivilite), champ(tr("Prénom"), nvPrenom), champ(tr("Nom"), nvNom), champ(tr("Téléphone"), nvTel), champ(tr("Adresse"), nvAdresse));
 
-  const pays = h("select", { id: "pays", onchange: majBandeau }, listePays.map((p) => h("option", { value: p }, p)));
+  const pays = h("select", { id: "pays", onchange: majBandeau }, listePays.map((p) => h("option", { value: p }, p === "Autre" ? tr("Autre") : p)));
   const paysLibre = h("input", { id: "pays-libre", oninput: majBandeau });
-  const champPaysLibre = champ(`${libellePays} (autre)`, paysLibre);
-  const typeDoc = h("select", { id: "type-doc" }, h("option", { value: "devis" }, "Un devis"), h("option", { value: "facture" }, "Directement une facture"));
+  const champPaysLibre = champ(tr("{libellePays} (autre)", { libellePays }), paysLibre);
+  const typeDoc = h("select", { id: "type-doc" }, h("option", { value: "devis" }, tr("Un devis")), h("option", { value: "facture" }, tr("Directement une facture")));
   const depart = h("input", { id: "depart", type: "date", onchange: majBandeau });
   const retour = h("input", { id: "retour", type: "date", onchange: majBandeau });
   const bandeau = h("input", { id: "bandeau" });
@@ -196,32 +200,32 @@ export function nouveauDossier() {
   }
 
   const erreur = h("p", { class: "erreur-form", role: "alert" });
-  const bouton = h("button", { class: "principal", type: "submit" }, "Créer le dossier");
+  const bouton = h("button", { class: "principal", type: "submit" }, tr("Créer le dossier"));
 
   async function creer(e) {
     e.preventDefault();
     erreur.textContent = "";
     if (!selClient.valeur && !selClient.nouveau) {
-      erreur.textContent = "Choisissez un client dans la recherche, ou créez-en un.";
+      erreur.textContent = tr("Choisissez un client dans la recherche, ou créez-en un.");
       document.getElementById("client").focus();
       return;
     }
     if (selClient.nouveau && !nvNom.value.trim()) {
-      erreur.textContent = "Indiquez le nom du client.";
+      erreur.textContent = tr("Indiquez le nom du client.");
       nvNom.focus();
       return;
     }
     if (!ref.value.trim()) {
-      erreur.textContent = `Indiquez la référence${regl.numerotation.mode === "sequence" ? "" : ` et le champ « ${libellePays} »`}.`;
+      erreur.textContent = regl.numerotation.mode === "sequence" ? tr("Indiquez la référence.") : tr("Indiquez la référence et le champ « {champ} ».", { champ: libellePays });
       return;
     }
     if (etat.db.dossiers.some((d) => d.ref === ref.value.trim())) {
-      erreur.textContent = "Cette référence existe déjà. Modifiez-la.";
+      erreur.textContent = tr("Cette référence existe déjà. Modifiez-la.");
       ref.focus();
       return;
     }
     bouton.disabled = true;
-    bouton.textContent = "Création…";
+    bouton.textContent = tr("Création…");
     try {
       let clientId = selClient.valeur;
       if (!clientId) {
@@ -251,7 +255,7 @@ export function nouveauDossier() {
     } catch (err) {
       erreur.textContent = err.message;
       bouton.disabled = false;
-      bouton.textContent = "Créer le dossier";
+      bouton.textContent = tr("Créer le dossier");
     }
   }
 
@@ -260,23 +264,23 @@ export function nouveauDossier() {
 
   return h(
     "div",
-    { "data-titre": "Nouveau dossier" },
-    h("div", { class: "entete" }, h("h1", null, "Nouveau dossier")),
+    { "data-titre": tr("Nouveau dossier") },
+    h("div", { class: "entete" }, h("h1", null, tr("Nouveau dossier"))),
     h(
       "form",
       { class: "formulaire", onsubmit: creer },
-      h("fieldset", null, h("legend", null, "Client"), selClient.noeud, blocNouveau),
+      h("fieldset", null, h("legend", null, tr("Client")), selClient.noeud, blocNouveau),
       h(
         "fieldset",
         null,
-        h("legend", null, "Dossier"),
-        h("div", { class: "grille-form" }, champ(libellePays, pays), champPaysLibre, champ("Début", depart), champ("Fin", retour)),
-        champ("Titre affiché sur le document", bandeau, "Se remplit avec le modèle de l'entreprise, le pays et les dates. Modifiable à la main."),
-        champ("Référence", ref, regl.numerotation.mode === "sequence" ? "Numéro suivant de l'année pour cette entreprise." : "Initiales, date du jour et pays."),
-        champ("Premier document", typeDoc)
+        h("legend", null, tr("Dossier")),
+        h("div", { class: "grille-form" }, champ(libellePays, pays), champPaysLibre, champ(tr("Début"), depart), champ(tr("Fin"), retour)),
+        champ(tr("Titre affiché sur le document"), bandeau, tr("Se remplit avec le modèle de l'entreprise, le pays et les dates. Modifiable à la main.")),
+        champ(tr("Référence"), ref, regl.numerotation.mode === "sequence" ? tr("Numéro suivant de l'année pour cette entreprise.") : tr("Initiales, date du jour et pays.")),
+        champ(tr("Premier document"), typeDoc)
       ),
       erreur,
-      h("div", { class: "actions" }, h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Annuler"), bouton)
+      h("div", { class: "actions" }, h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Annuler")), bouton)
     )
   );
 }

@@ -4,6 +4,7 @@ import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaieme
 import { nouvelleLigne, modesPaiement } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
+import { tr, localeActive } from "../i18n.mjs";
 
 const LARGEUR_FEUILLE = 794; // 210 mm à 96 dpi
 const MAX_HISTORIQUE = 100;
@@ -19,7 +20,7 @@ export async function editeur(id) {
 
 function editeurVue(id) {
   const source = etat.db.documents.find((d) => d.id === id);
-  if (!source) return vide("Document introuvable", "Il a peut-être été supprimé.", h("a", { class: "bouton secondaire", href: "#/dossiers" }, "Retour aux dossiers"));
+  if (!source) return vide(tr("Document introuvable"), tr("Il a peut-être été supprimé."), h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Retour aux dossiers")));
   const doc = structuredClone(source);
   const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id);
   const client = etat.db.clients.find((c) => c.id === dossier.client_id);
@@ -27,7 +28,7 @@ function editeurVue(id) {
   const c = doc.contenu;
   const estFacture = doc.type === "facture";
   const locale = doc.type === "facture_locale";
-  const nomDoc = locale ? "Facture locale" : estFacture ? "Facture" : "Devis";
+  const nomDoc = locale ? tr("Facture locale") : estFacture ? tr("Facture") : tr("Devis");
   const regl = reglages();
   const devDoc = () => c.devise || regl.devise;
   // Mise au format actuel des équivalents : à faire avant le premier instantané de l'historique, sinon « Annuler » serait actif dès l'ouverture.
@@ -39,7 +40,7 @@ function editeurVue(id) {
     delete eq.thb;
   }
 
-  const statut = h("span", { class: "etat-enregistrement", role: "status" }, "Enregistré");
+  const statut = h("span", { class: "etat-enregistrement", role: "status" }, tr("Enregistré"));
   const cadre = h("div", { class: "apercu-cadre" });
   const echelle = h("div", { class: "apercu-echelle" });
   cadre.append(echelle);
@@ -51,10 +52,10 @@ function editeurVue(id) {
     minuteur = null;
     try {
       await modifier("documents", id, { contenu: doc.contenu, date_emission: doc.date_emission, envoye_le: doc.envoye_le, updated_at: new Date().toISOString() });
-      statut.textContent = `Enregistré à ${new Date().toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" })}`;
+      statut.textContent = tr("Enregistré à {heure}", { heure: new Date().toLocaleTimeString(localeActive(), { hour: "2-digit", minute: "2-digit" }) });
     } catch (err) {
-      statut.textContent = "Échec de l'enregistrement";
-      toast(`Enregistrement impossible : ${err.message}`, true);
+      statut.textContent = tr("Échec de l'enregistrement");
+      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
     }
   };
   const sauver = () => {
@@ -81,8 +82,8 @@ function editeurVue(id) {
     hist = { pile: [instantanePris()], i: 0 };
     historiques.set(id, hist);
   }
-  const btnAnnuler = h("button", { class: "secondaire petit bouton-icone", type: "button", title: "Annuler (Ctrl+Z)", "aria-label": "Annuler la dernière modification", onclick: () => annuler() }, icone("annuler"));
-  const btnRetablir = h("button", { class: "secondaire petit bouton-icone", type: "button", title: "Rétablir (Ctrl+Maj+Z ou Ctrl+Y)", "aria-label": "Rétablir la modification annulée", onclick: () => retablir() }, icone("retablir"));
+  const btnAnnuler = h("button", { class: "secondaire petit bouton-icone", type: "button", title: tr("Annuler (Ctrl+Z)"), "aria-label": tr("Annuler la dernière modification"), onclick: () => annuler() }, icone("annuler"));
+  const btnRetablir = h("button", { class: "secondaire petit bouton-icone", type: "button", title: tr("Rétablir (Ctrl+Maj+Z ou Ctrl+Y)"), "aria-label": tr("Rétablir la modification annulée"), onclick: () => retablir() }, icone("retablir"));
   const majBoutonsHistorique = () => {
     btnAnnuler.disabled = hist.i === 0 && instantanePris() === hist.pile[0];
     btnRetablir.disabled = hist.i >= hist.pile.length - 1;
@@ -116,15 +117,15 @@ function editeurVue(id) {
   }
   async function annuler() {
     instantane();
-    if (hist.i === 0) return toast("Rien à annuler.");
+    if (hist.i === 0) return toast(tr("Rien à annuler."));
     hist.i--;
-    await appliquerHistorique("Modification annulée.");
+    await appliquerHistorique(tr("Modification annulée."));
   }
   async function retablir() {
     instantane();
-    if (hist.i >= hist.pile.length - 1) return toast("Rien à rétablir.");
+    if (hist.i >= hist.pile.length - 1) return toast(tr("Rien à rétablir."));
     hist.i++;
-    await appliquerHistorique("Modification rétablie.");
+    await appliquerHistorique(tr("Modification rétablie."));
   }
 
   // ---- Raccourcis clavier de l'éditeur ----------------------------------------------------------------
@@ -133,7 +134,7 @@ function editeurVue(id) {
     const k = e.key.toLowerCase();
     if (k === "z" && !e.shiftKey) (e.preventDefault(), annuler());
     else if ((k === "z" && e.shiftKey) || k === "y") (e.preventDefault(), retablir());
-    else if (k === "s") (e.preventDefault(), sauverMaintenant().then(() => toast("Enregistré.")));
+    else if (k === "s") (e.preventDefault(), sauverMaintenant().then(() => toast(tr("Enregistré."))));
     else if (k === "p") (e.preventDefault(), pdf({ ...doc }));
   };
   document.addEventListener("keydown", touche);
@@ -156,7 +157,7 @@ function editeurVue(id) {
   }
 
   const change = () => {
-    statut.textContent = "Enregistrement…";
+    statut.textContent = tr("Enregistrement…");
     sauver();
     planifierInstantane();
     dessinerApercu();
@@ -165,13 +166,13 @@ function editeurVue(id) {
 
   // ---- Champs généraux --------------------------------------------------------------------------------
   const date = h("input", { id: "d-date", type: "date", value: doc.date_emission, oninput: (e) => ((doc.date_emission = e.target.value), change()) });
-  const selLangue = h("select", { id: "d-langue", onchange: (e) => ((c.langue = e.target.value), change()) }, h("option", { value: "" }, "Langue principale"), h("option", { value: "en" }, "English"));
+  const selLangue = h("select", { id: "d-langue", onchange: (e) => ((c.langue = e.target.value), change()) }, h("option", { value: "" }, tr("Langue principale")), h("option", { value: "en" }, tr("English")));
   selLangue.value = c.langue === "en" ? "en" : "";
   const modes = modesPaiement(regl);
   const selPaiement = h("select", { id: "d-paiement", onchange: (e) => ((c.paiement = e.target.value), change()) }, modes.map((m) => h("option", { value: m.id }, m.nom)));
   selPaiement.value = modes.some((m) => m.id === (c.paiement || "")) ? c.paiement || "" : "";
   const numeroDoc = h("input", { id: "d-numero", value: c.numero || "", placeholder: dossier.ref, oninput: (e) => ((c.numero = e.target.value), change()) });
-  const prestataire = h("input", { id: "d-prestataire", value: c.prestataire || "", placeholder: "Qui réalise le service, si ce n'est pas vous", oninput: (e) => ((c.prestataire = e.target.value), change()) });
+  const prestataire = h("input", { id: "d-prestataire", value: c.prestataire || "", placeholder: tr("Qui réalise le service, si ce n'est pas vous"), oninput: (e) => ((c.prestataire = e.target.value), change()) });
   const bandeau = h("input", { id: "d-bandeau", value: c.bandeau, oninput: (e) => ((c.bandeau = e.target.value), change()) });
   const colonnes = h(
     "select",
@@ -184,8 +185,8 @@ function editeurVue(id) {
         change();
       },
     },
-    h("option", { value: "total" }, "Montant seulement"),
-    h("option", { value: "detail" }, "Unité, quantité et total")
+    h("option", { value: "total" }, tr("Montant seulement")),
+    h("option", { value: "detail" }, tr("Unité, quantité et total"))
   );
 
   // Devise du document, avec les devises proposées dans les réglages
@@ -208,13 +209,13 @@ function editeurVue(id) {
     devisesProposees.map((d) => h("option", { value: d }, d))
   );
 
-  const pied = h("select", { id: "d-pied", value: c.pied, onchange: (e) => ((c.pied = e.target.value), change()) }, h("option", { value: "qr" }, "Coordonnées et informations de paiement"), h("option", { value: "email" }, "Renvoi vers le message de paiement"));
+  const pied = h("select", { id: "d-pied", value: c.pied, onchange: (e) => ((c.pied = e.target.value), change()) }, h("option", { value: "qr" }, tr("Coordonnées et informations de paiement")), h("option", { value: "email" }, tr("Renvoi vers le message de paiement")));
   const textePerso = h("div");
   const corpsPerso = h("textarea", { id: "d-perso-corps", rows: 9, oninput: (e) => ((c.conditions_corps = e.target.value), change()) });
   const cloturePerso = h("textarea", { id: "d-perso-cloture", rows: 3, oninput: (e) => ((c.conditions_cloture = e.target.value), change()) });
   corpsPerso.value = c.conditions_corps || "";
   cloturePerso.value = c.conditions_cloture || "";
-  textePerso.append(champ("Conditions de paiement de ce document", corpsPerso, "Une ligne commençant par « - » devient une puce. **gras**, _italique_."), champ("Fin de texte", cloturePerso));
+  textePerso.append(champ(tr("Conditions de paiement de ce document"), corpsPerso, tr("Une ligne commençant par « - » devient une puce. **gras**, _italique_.")), champ(tr("Fin de texte"), cloturePerso));
   textePerso.hidden = c.variante !== "perso";
   const variante = h(
     "select",
@@ -235,7 +236,7 @@ function editeurVue(id) {
       },
     },
     regl.textes.variantes.map((v) => h("option", { value: v.id }, v.nom)),
-    h("option", { value: "perso" }, "Texte propre à ce document")
+    h("option", { value: "perso" }, tr("Texte propre à ce document"))
   );
   const cgv = h("input", { id: "d-cgv", type: "checkbox", checked: c.cgv !== false, onchange: (e) => ((c.cgv = e.target.checked), change()) });
   const tva = h("input", { id: "d-tva", type: "checkbox", checked: c.tva, onchange: (e) => ((c.tva = e.target.checked), change()) });
@@ -253,12 +254,12 @@ function editeurVue(id) {
           "div",
           { class: "eq-ligne" },
           h("span", { class: "eq-egal" }, `1 ${devDoc()} =`),
-          h("input", { type: "number", step: "0.0001", min: "0", value: l.taux ?? "", "aria-label": `Taux vers ${l.code}`, oninput: (e) => ((l.taux = num(e.target.value) ?? ""), change()) }),
-          h("select", { "aria-label": "Devise équivalente", onchange: (e) => ((l.code = e.target.value), (l.taux = tauxParDefaut(l.code)), dessinerEquivalents(), change()) }, [...new Set([...libres(), l.code])].map((d) => h("option", { value: d, selected: d === l.code }, d))),
-          h("button", { class: "lien danger-texte", type: "button", onclick: () => (eq.lignes.splice(i, 1), dessinerEquivalents(), change()) }, "Retirer")
+          h("input", { type: "number", step: "0.0001", min: "0", value: l.taux ?? "", "aria-label": tr("Taux vers {code}", { code: l.code }), oninput: (e) => ((l.taux = num(e.target.value) ?? ""), change()) }),
+          h("select", { "aria-label": tr("Devise équivalente"), onchange: (e) => ((l.code = e.target.value), (l.taux = tauxParDefaut(l.code)), dessinerEquivalents(), change()) }, [...new Set([...libres(), l.code])].map((d) => h("option", { value: d, selected: d === l.code }, d))),
+          h("button", { class: "lien danger-texte", type: "button", onclick: () => (eq.lignes.splice(i, 1), dessinerEquivalents(), change()) }, tr("Retirer"))
         )
       ),
-      libres().length ? h("button", { class: "secondaire petit", type: "button", onclick: () => ajouterEquivalent() }, "Ajouter une devise") : null
+      libres().length ? h("button", { class: "secondaire petit", type: "button", onclick: () => ajouterEquivalent() }, tr("Ajouter une devise")) : null
     );
   };
   const ajouterEquivalent = () => {
@@ -293,7 +294,7 @@ function editeurVue(id) {
     if (c.montant_recu != null) valeur.disabled = false;
     else valeur.disabled = true;
     const info = h("p", { class: "aide" });
-    const majInfo = () => (info.textContent = c.montant_recu == null ? `Calculé d'après les paiements enregistrés : ${formatMontant(sommePaiements(paiements), devDoc())}.` : "Valeur saisie à la main.");
+    const majInfo = () => (info.textContent = c.montant_recu == null ? tr("Calculé d'après les paiements enregistrés : {montant}.", { montant: formatMontant(sommePaiements(paiements), devDoc()) }) : tr("Valeur saisie à la main."));
     manuel.addEventListener("change", () => {
       if (manuel.checked) {
         c.montant_recu = sommePaiements(paiements);
@@ -312,8 +313,8 @@ function editeurVue(id) {
       change();
     });
     majInfo();
-    const libelleRecu = h("input", { id: "d-recu-lib", value: c.libelle_recu || "", placeholder: "Montant reçu", oninput: (e) => ((c.libelle_recu = e.target.value.trim() || null), change()) });
-    blocRecu = h("fieldset", null, h("legend", null, "Montant reçu"), info, h("label", { class: "case", for: "d-recu-manuel" }, manuel, "Saisir le montant à la main"), champ(`Montant reçu (${devDoc()})`, valeur), champ("Intitulé affiché sur la facture", libelleRecu, "Par exemple « Acompte reçu »."));
+    const libelleRecu = h("input", { id: "d-recu-lib", value: c.libelle_recu || "", placeholder: tr("Montant reçu"), oninput: (e) => ((c.libelle_recu = e.target.value.trim() || null), change()) });
+    blocRecu = h("fieldset", null, h("legend", null, tr("Montant reçu")), info, h("label", { class: "case", for: "d-recu-manuel" }, manuel, tr("Saisir le montant à la main")), champ(tr("Montant reçu ({devDoc})", { devDoc: devDoc() }), valeur), champ(tr("Intitulé affiché sur la facture"), libelleRecu, tr("Par exemple « Acompte reçu ».")));
   }
 
   // ---- Lignes ------------------------------------------------------------------------------------------
@@ -323,7 +324,7 @@ function editeurVue(id) {
   function majMontants() {
     const t = totaux(c, recuActuel());
     const d = devDoc();
-    totalTexte.textContent = locale ? `Total de la facture locale : ${formatMontant(t.net, d)}` : estFacture ? `Total de la facture : ${formatMontant(t.net, d)}, reste à payer ${formatMontant(t.reste, d)}` : `Total du devis : ${formatMontant(t.net, d)}`;
+    totalTexte.textContent = locale ? tr("Total de la facture locale : {montant}", { montant: formatMontant(t.net, d) }) : estFacture ? tr("Total de la facture : {montant}, reste à payer {montant2}", { montant: formatMontant(t.net, d), montant2: formatMontant(t.reste, d) }) : tr("Total du devis : {montant}", { montant: formatMontant(t.net, d) });
     c.lignes.forEach((l, i) => {
       const el = listeLignes.querySelector(`[data-calc="${l.id}"]`);
       if (el) el.textContent = formatMontant(t.montants[i], d);
@@ -342,24 +343,24 @@ function editeurVue(id) {
     const detail = c.colonnes === "detail";
     const maj = (champNom, conv = (v) => v) => (e) => ((l[champNom] = conv(e.target.value)), change());
     const libelle = h("input", { id: `l${l.id}-lib`, value: l.libelle, oninput: maj("libelle") });
-    const kindTexte = { bloc: "Bloc de formule", ligne: "Ligne", remise: "Remise", texte: "Note sous le tableau" }[l.kind];
-    const champs = [champ(l.kind === "remise" ? "Intitulé de la remise" : l.kind === "texte" ? "Texte de la note" : "Libellé", libelle)];
+    const kindTexte = { bloc: tr("Bloc de formule"), ligne: tr("Ligne"), remise: tr("Remise"), texte: tr("Note sous le tableau") }[l.kind];
+    const champs = [champ(l.kind === "remise" ? tr("Intitulé de la remise") : l.kind === "texte" ? tr("Texte de la note") : tr("Libellé"), libelle)];
     // Ligne venue d'un partenaire : la date du service se garde avec la ligne, le net s'affiche pour qui a le droit.
     if ((l.prestation_id || l.trajet_id) && l.kind !== "texte") {
       champs.push(
         h(
           "div",
           { class: "ligne-partenaire" },
-          champ("Date du service", h("input", { id: `l${l.id}-ds`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), change()) })),
-          peut("partenaires.nets") && l.net != null ? h("p", { class: "aide" }, `Net partenaire : ${formatMontant(l.net, devDoc())}${l.qte ? ` × ${l.qte}` : ""}`) : null
+          champ(tr("Date du service"), h("input", { id: `l${l.id}-ds`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), change()) })),
+          peut("partenaires.nets") && l.net != null ? h("p", { class: "aide" }, tr("Net partenaire : {net}", { net: formatMontant(l.net, devDoc()) + (l.qte ? ` × ${l.qte}` : "") })) : null
         )
       );
     }
     if (l.kind === "bloc") {
-      champs.push(champ("Complément après le libellé", h("input", { id: `l${l.id}-intro`, value: l.intro, placeholder: "comprenant:", oninput: maj("intro") })));
+      champs.push(champ(tr("Complément après le libellé"), h("input", { id: `l${l.id}-intro`, value: l.intro, placeholder: "comprenant:", oninput: maj("intro") })));
       const puces = h("textarea", { id: `l${l.id}-puces`, rows: 4, oninput: (e) => ((l.puces = e.target.value.split("\n").map((x) => x.trim()).filter(Boolean)), change()) });
       puces.value = (l.puces || []).join("\n");
-      champs.push(champ("Détail, une ligne par puce", puces));
+      champs.push(champ(tr("Détail, une ligne par puce"), puces));
     }
     const montants = [];
     if (l.kind === "remise") {
@@ -380,20 +381,20 @@ function editeurVue(id) {
             change();
           },
         },
-        h("option", { value: "montant" }, `En ${devDoc()}`),
-        h("option", { value: "pct" }, "En pourcentage")
+        h("option", { value: "montant" }, tr("En {devDoc}", { devDoc: devDoc() })),
+        h("option", { value: "pct" }, tr("En pourcentage"))
       );
       mode.value = l.pct != null ? "pct" : "montant";
-      montants.push(champ("Type de remise", mode));
-      if (l.pct != null) montants.push(champ("Pourcentage", h("input", { id: `l${l.id}-pct`, type: "number", step: "0.1", min: "0", value: l.pct, oninput: maj("pct", num) })));
+      montants.push(champ(tr("Type de remise"), mode));
+      if (l.pct != null) montants.push(champ(tr("Pourcentage"), h("input", { id: `l${l.id}-pct`, type: "number", step: "0.1", min: "0", value: l.pct, oninput: maj("pct", num) })));
     }
     if (l.kind !== "texte" && l.pct == null) {
       if (detail) {
-        montants.push(champ(`Prix unitaire (${devDoc()})`, h("input", { id: `l${l.id}-u`, type: "number", step: "0.01", value: l.unite ?? "", oninput: maj("unite", num) })));
-        montants.push(champ("Quantité", h("input", { id: `l${l.id}-q`, type: "number", step: "1", value: l.qte ?? "", oninput: maj("qte", num) })));
+        montants.push(champ(tr("Prix unitaire ({devDoc})", { devDoc: devDoc() }), h("input", { id: `l${l.id}-u`, type: "number", step: "0.01", value: l.unite ?? "", oninput: maj("unite", num) })));
+        montants.push(champ(tr("Quantité"), h("input", { id: `l${l.id}-q`, type: "number", step: "1", value: l.qte ?? "", oninput: maj("qte", num) })));
       }
-      montants.push(champ(detail ? "Total fixe (si pas de quantité)" : l.kind === "bloc" ? "Montant (vide si le prix est sur les lignes suivantes)" : `Montant (${devDoc()})`, h("input", { id: `l${l.id}-m`, type: "number", step: "0.01", value: l.montant ?? "", oninput: maj("montant", num) })));
-      montants.push(champ("Texte à la place du montant", h("input", { id: `l${l.id}-t`, value: l.texte_montant ?? "", placeholder: "inclus, offert", oninput: (e) => ((l.texte_montant = e.target.value.trim() || null), change()) })));
+      montants.push(champ(detail ? tr("Total fixe (si pas de quantité)") : l.kind === "bloc" ? tr("Montant (vide si le prix est sur les lignes suivantes)") : tr("Montant ({devDoc})", { devDoc: devDoc() }), h("input", { id: `l${l.id}-m`, type: "number", step: "0.01", value: l.montant ?? "", oninput: maj("montant", num) })));
+      montants.push(champ(tr("Texte à la place du montant"), h("input", { id: `l${l.id}-t`, value: l.texte_montant ?? "", placeholder: tr("inclus, offert"), oninput: (e) => ((l.texte_montant = e.target.value.trim() || null), change()) })));
     }
     const presetRemise =
       l.kind === "remise" && detail
@@ -405,7 +406,7 @@ function editeurVue(id) {
               onclick: () => {
                 const ref = c.lignes.find((x) => x.kind !== "remise" && x.unite != null && x.qte != null);
                 if (!ref) {
-                  toast("Ajoutez d'abord une ligne avec prix unitaire et quantité.", true);
+                  toast(tr("Ajoutez d'abord une ligne avec prix unitaire et quantité."), true);
                   return;
                 }
                 l.libelle = "1 jour tous les 14 jours de voyage";
@@ -416,7 +417,7 @@ function editeurVue(id) {
                 change();
               },
             },
-            "Remplir : 1 jour tous les 14 jours"
+            tr("Remplir : 1 jour tous les 14 jours")
           )
         : null;
     return h(
@@ -430,21 +431,21 @@ function editeurVue(id) {
         h(
           "span",
           { class: "outils" },
-          h("button", { class: "lien", type: "button", "aria-label": `Monter la ligne ${i + 1}`, onclick: () => deplacer(i, -1) }, "Monter"),
-          h("button", { class: "lien", type: "button", "aria-label": `Descendre la ligne ${i + 1}`, onclick: () => deplacer(i, 1) }, "Descendre"),
+          h("button", { class: "lien", type: "button", "aria-label": tr("Monter la ligne {x}", { x: i + 1 }), onclick: () => deplacer(i, -1) }, tr("Monter")),
+          h("button", { class: "lien", type: "button", "aria-label": tr("Descendre la ligne {x}", { x: i + 1 }), onclick: () => deplacer(i, 1) }, tr("Descendre")),
           h(
             "button",
             {
               class: "lien danger-texte",
               type: "button",
-              "aria-label": `Supprimer la ligne ${i + 1}`,
+              "aria-label": tr("Supprimer la ligne {x}", { x: i + 1 }),
               onclick: () => {
                 c.lignes.splice(i, 1);
                 dessinerLignes();
                 change();
               },
             },
-            "Supprimer"
+            tr("Supprimer")
           )
         )
       ),
@@ -456,7 +457,7 @@ function editeurVue(id) {
 
   function dessinerLignes() {
     vider(listeLignes);
-    if (!c.lignes.length) listeLignes.append(h("p", { class: "vide-court" }, "Aucune ligne. Ajoutez un bloc de formule ou une ligne depuis le catalogue ci-dessous."));
+    if (!c.lignes.length) listeLignes.append(h("p", { class: "vide-court" }, tr("Aucune ligne. Ajoutez un bloc de formule ou une ligne depuis le catalogue ci-dessous.")));
     c.lignes.forEach((l, i) => listeLignes.append(editeurLigne(l, i)));
     majMontants();
   }
@@ -486,17 +487,17 @@ function editeurVue(id) {
         }
       },
     },
-    h("option", { value: "" }, "Ajouter depuis le catalogue…"),
+    h("option", { value: "" }, tr("Ajouter depuis le catalogue…")),
     ["formule", "region", "supplement"].map((k) =>
-      h("optgroup", { label: { formule: "Formules", region: "Régions et villes", supplement: "Suppléments" }[k] }, catalogueActif.filter((x) => x.kind === k).map((x) => h("option", { value: x.id }, x.prix != null ? `${x.libelle} (${regl.devise} ${x.prix})` : x.libelle)))
+      h("optgroup", { label: { formule: tr("Formules"), region: tr("Régions et villes"), supplement: tr("Suppléments") }[k] }, catalogueActif.filter((x) => x.kind === k).map((x) => h("option", { value: x.id }, x.prix != null ? `${x.libelle} (${regl.devise} ${x.prix})` : x.libelle)))
     )
   );
 
   // ---- Actions ------------------------------------------------------------------------------------------
   const boutonEnvoi = h("button", { class: "secondaire", type: "button" });
   function majBoutonEnvoi() {
-    boutonEnvoi.textContent = doc.envoye_le ? `${estFacture || locale ? "Envoyée" : "Envoyé"} le ${formatDate(doc.envoye_le)}` : `Marquer comme ${estFacture || locale ? "envoyée" : "envoyé"}`;
-    boutonEnvoi.title = doc.envoye_le ? "Cliquer pour retirer la date d'envoi" : "";
+    boutonEnvoi.textContent = doc.envoye_le ? (estFacture || locale ? tr("Envoyée le {date}", { date: formatDate(doc.envoye_le) }) : tr("Envoyé le {date}", { date: formatDate(doc.envoye_le) })) : estFacture || locale ? tr("Marquer comme envoyée") : tr("Marquer comme envoyé");
+    boutonEnvoi.title = doc.envoye_le ? tr("Cliquer pour retirer la date d'envoi") : "";
   }
   boutonEnvoi.addEventListener("click", () => {
     if (doc.envoye_le) {
@@ -508,7 +509,7 @@ function editeurVue(id) {
     }
     majBoutonEnvoi();
     change();
-    if (blocRecu) toast(doc.envoye_le ? "Facture envoyée : le montant reçu est figé." : "Date d'envoi retirée.");
+    if (blocRecu) toast(doc.envoye_le ? tr("Facture envoyée : le montant reçu est figé.") : tr("Date d'envoi retirée."));
   });
   majBoutonEnvoi();
 
@@ -522,19 +523,19 @@ function editeurVue(id) {
   const formulaire = h(
     "div",
     { class: "editeur-form" },
-    h("fieldset", null, h("legend", null, "En-tête"), h("div", { class: "grille-form" }, champ("Date d'émission", date), champ("Colonnes", colonnes), champ("Devise du document", deviseSel)), champ("Titre dans la bande de couleur", bandeau), champ("Prestataire du service (facultatif)", prestataire), h("div", { class: "grille-form" }, champ("Langue du document", selLangue), modes.length > 1 ? champ("Informations de paiement", selPaiement) : null, champ("Numéro affiché (facultatif)", numeroDoc, "Remplace la référence du dossier sur ce document."))),
-    h("fieldset", null, h("legend", null, "Contenu"), listeLignes, h("div", { class: "ajouts" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("bloc", { intro: "comprenant:" })) }, "Ajouter un bloc de formule"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("ligne")) }, "Ajouter une ligne"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("remise")) }, "Ajouter une remise"), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("texte")) }, "Ajouter une note"), peut("partenaires.lire") && moduleActif("partenaires") && (etat.db.prestations.length || etat.db.trajets.length) ? h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue: c.langue, devise: devDoc(), onAjout: (lignes) => { lignes.forEach((l) => c.lignes.push(l)); dessinerLignes(); change(); } }) }, "Prestation d'un partenaire") : null), champ("Catalogue", depuisCatalogue), totalTexte),
+    h("fieldset", null, h("legend", null, tr("En-tête")), h("div", { class: "grille-form" }, champ(tr("Date d'émission"), date), champ(tr("Colonnes"), colonnes), champ(tr("Devise du document"), deviseSel)), champ(tr("Titre dans la bande de couleur"), bandeau), champ(tr("Prestataire du service (facultatif)"), prestataire), h("div", { class: "grille-form" }, champ(tr("Langue du document"), selLangue), modes.length > 1 ? champ(tr("Informations de paiement"), selPaiement) : null, champ(tr("Numéro affiché (facultatif)"), numeroDoc, tr("Remplace la référence du dossier sur ce document.")))),
+    h("fieldset", null, h("legend", null, tr("Contenu")), listeLignes, h("div", { class: "ajouts" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("bloc", { intro: "comprenant:" })) }, tr("Ajouter un bloc de formule")), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("ligne")) }, tr("Ajouter une ligne")), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("remise")) }, tr("Ajouter une remise")), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("texte")) }, tr("Ajouter une note")), peut("partenaires.lire") && moduleActif("partenaires") && (etat.db.prestations.length || etat.db.trajets.length) ? h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue: c.langue, devise: devDoc(), onAjout: (lignes) => { lignes.forEach((l) => c.lignes.push(l)); dessinerLignes(); change(); } }) }, tr("Prestation d'un partenaire")) : null), champ(tr("Catalogue"), depuisCatalogue), totalTexte),
     blocRecu,
     h(
       "fieldset",
       null,
-      h("legend", null, "Bas de page et mentions"),
-      champ("Conditions de paiement", variante),
+      h("legend", null, tr("Bas de page et mentions")),
+      champ(tr("Conditions de paiement"), variante),
       textePerso,
-      champ("Pied de page", pied),
-      h("label", { class: "case", for: "d-cgv" }, cgv, "Afficher la phrase sur les Conditions Générales de Vente"),
-      h("label", { class: "case", for: "d-tva" }, tva, `Afficher « ${regl.conditions.tva_mention} »`),
-      h("label", { class: "case", for: "d-eq" }, eqActif, "Afficher l'équivalent dans une ou plusieurs autres devises, à titre indicatif"),
+      champ(tr("Pied de page"), pied),
+      h("label", { class: "case", for: "d-cgv" }, cgv, tr("Afficher la phrase sur les Conditions Générales de Vente")),
+      h("label", { class: "case", for: "d-tva" }, tva, tr("Afficher « {tva_mention} »", { tva_mention: regl.conditions.tva_mention })),
+      h("label", { class: "case", for: "d-eq" }, eqActif, tr("Afficher l'équivalent dans une ou plusieurs autres devises, à titre indicatif")),
       eqBloc
     )
   );
@@ -548,10 +549,10 @@ function editeurVue(id) {
       "div",
       { class: "entete editeur-entete" },
       h("div", null, h("h1", null, nomDoc), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
-      h("div", { class: "entete-actions" }, statut, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: "Télécharger le PDF (Ctrl+P)", onclick: () => pdf({ ...doc }) }, "Télécharger le PDF"))
+      h("div", { class: "entete-actions" }, statut, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: tr("Télécharger le PDF (Ctrl+P)"), onclick: () => pdf({ ...doc }) }, tr("Télécharger le PDF")))
     ),
-    h("p", { class: "aide-pdf" }, `Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « ${nomDoc} ${dossier.ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.`),
-    lectureSeule ? h("p", { class: "bandeau-info" }, "Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.") : null,
+    h("p", { class: "aide-pdf" }, tr("Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « {nomDoc} {ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: dossier.ref })),
+    lectureSeule ? h("p", { class: "bandeau-info" }, tr("Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.")) : null,
     h("div", { class: "editeur" }, formulaire, zoneApercu)
   );
   if (lectureSeule) {

@@ -4,6 +4,7 @@ import { creerStore } from "./store.mjs";
 import { resume, setDevise, setMasquerMontants } from "./calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
+import { tr, definirLangue, langueStockee, estLangue } from "./i18n.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
 const CLE_ENTITE = "gestion-zwald-entite";
@@ -11,6 +12,9 @@ const CLE_ENTITE = "gestion-zwald-entite";
 export const etat = { store: null, brut: null, db: null, session: null, moi: null, entiteId: null };
 
 export async function init() {
+  // La langue de ce navigateur sert dès l'écran de connexion ; celle du compte la remplace après la connexion.
+  const stockee = langueStockee();
+  if (stockee) definirLangue(stockee);
   etat.store = await creerStore();
   etat.session = await etat.store.session();
   if (!etat.session) return;
@@ -27,6 +31,7 @@ export async function init() {
 export async function recharger() {
   etat.brut = await etat.store.charger();
   etat.moi = etat.brut.profils.find((p) => p.user_id === etat.session.id) || { user_id: etat.session.id, email: etat.session.email, super_admin: false, actif: true };
+  adopterLangue();
   let choisi = null;
   try {
     choisi = localStorage.getItem(CLE_ENTITE);
@@ -36,6 +41,33 @@ export async function recharger() {
   const ids = entitesAccessibles().map((e) => e.id);
   etat.entiteId = ids.includes(choisi) ? choisi : ids[0] || null;
   rebatir();
+}
+
+// Langue de l'interface : celle du compte (elle suit la personne d'un appareil à l'autre). Un compte qui n'en a pas encore
+// reprend celle de ce navigateur, y compris un choix fait sur l'écran de connexion, et l'enregistre.
+export const connexion = { langueChoisie: false };
+function adopterLangue() {
+  const compte = etat.moi.langue;
+  const locale = langueStockee();
+  if (estLangue(compte) && !connexion.langueChoisie) return void definirLangue(compte);
+  connexion.langueChoisie = false;
+  if (locale) {
+    definirLangue(locale);
+    if (locale !== compte) enregistrerLangue(locale);
+  }
+}
+async function enregistrerLangue(code) {
+  etat.moi.langue = code;
+  try {
+    await etat.store.definirMaLangue(code);
+  } catch {
+    // migration 13 pas encore appliquée ou hors ligne : la langue reste mémorisée dans ce navigateur
+  }
+}
+export async function choisirLangue(code) {
+  if (!definirLangue(code)) return;
+  if (etat.session && etat.moi) await enregistrerLangue(code);
+  else connexion.langueChoisie = true;
 }
 
 export const entitesAccessibles = () => [...etat.brut.entites].filter((e) => e.actif).sort((a, b) => a.ordre - b.ordre || a.nom.localeCompare(b.nom));
@@ -79,12 +111,16 @@ export const entitesAnalysables = () =>
     return p.includes("analytics.voir") && p.includes("finances.voir");
   });
 export function roleActif() {
-  if (estSuperAdmin()) return "Administratrice générale";
+  if (estSuperAdmin()) return tr("Administratrice générale");
   const r = roleDans(contexte(), etat.entiteId);
-  return r ? r.nom : null;
+  return r ? nomRole(r) : null;
 }
 // Compatibilité : « administrateur » veut dire pouvoir modifier les réglages.
 export const estAdmin = () => peut("reglages.ecrire");
+
+// Les trois rôles créés avec chaque entreprise ont un nom français en base : on les traduit, les rôles de l'utilisatrice restent tels quels.
+export const nomRole = (r) => (r.systeme ? tr(r.nom) : r.nom);
+export const descriptionRole = (r) => (r.systeme ? tr(r.description) : r.description);
 
 export const reglages = () => etat.db.reglages;
 
@@ -253,7 +289,7 @@ export async function chercherClients(q, limite = 8) {
     .map((x) => x.c);
 }
 
-export const nomClient = (c) => (c ? [c.prenom, c.nom].filter(Boolean).join(" ") : "Client inconnu");
+export const nomClient = (c) => (c ? [c.prenom, c.nom].filter(Boolean).join(" ") : tr("Client inconnu"));
 
 export function naviguer(hash) {
   if (location.hash === hash) window.dispatchEvent(new HashChangeEvent("hashchange"));
