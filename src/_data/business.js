@@ -20,8 +20,11 @@ const business = {
   },
   googleMaps: "https://maps.app.goo.gl/F81WUgeET6vPxjNs8",
   googleRating: 5,
-  googleReviewCount: null,
+  googleReviewCount: 18,
   instagram: "https://www.instagram.com/zwaldtravelplanner/",
+  tiktok: "https://www.tiktok.com/@zwaldtravelplanner",
+  linkedin: "https://www.linkedin.com/in/anaiszwald/",
+  foundingDate: "2023-02",
   facebook: "https://www.facebook.com/people/Zwald-Travel-Planner/61568573411432/",
   founder: {
     name: "Anaïs Zwald",
@@ -48,7 +51,7 @@ const business = {
 function jsonLd(lang) {
   const l = lang === "en" ? "en" : "fr";
   const b = business;
-  const sameAs = [b.instagram, b.facebook, b.googleMaps].filter(Boolean);
+  const sameAs = [b.instagram, b.tiktok, b.facebook, b.googleMaps].filter(Boolean);
   const founder = {
     "@type": "Person",
     "@id": site + "/#anais",
@@ -60,7 +63,8 @@ function jsonLd(lang) {
     alumniOf: { "@type": "EducationalOrganization", name: b.founder.alumniOf },
     nationality: { "@type": "Country", name: b.founder.nationality },
     knowsLanguage: ["fr", "en"],
-    sameAs: [b.instagram]
+    knowsAbout: l === "en" ? ["Thailand", "Southeast Asia", "Tailor-made travel planning", "Koh Lanta"] : ["Thaïlande", "Asie du Sud-Est", "Organisation de voyages sur mesure", "Koh Lanta"],
+    sameAs: [b.instagram, b.tiktok, b.linkedin]
   };
   const data = {
     "@context": "https://schema.org",
@@ -68,6 +72,7 @@ function jsonLd(lang) {
     "@id": site + "/#business",
     name: b.name,
     legalName: b.legalName,
+    foundingDate: b.foundingDate,
     slogan: b.slogan[l],
     description: b.description[l],
     url: l === "en" ? site + "/en/" : site + "/",

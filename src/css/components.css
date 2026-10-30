@@ -479,3 +479,9 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .prose .s-ok{background:rgba(240,180,60,0.16)}
 .prose .s-bad{background:rgba(200,70,60,0.12)}
 @media (max-width:720px){.prose table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}.prose td:first-child{white-space:normal}}
+
+/* Fil d'Ariane des articles */
+.crumbs{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-family:var(--sans);font-size:0.85rem;color:var(--ink-mute);margin-bottom:20px}
+.crumbs a{color:var(--teal-dark);text-decoration:none}
+.crumbs a:hover{text-decoration:underline}
+.crumbs [aria-current]{color:var(--ink-mute)}

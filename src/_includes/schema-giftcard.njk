@@ -1,0 +1,9 @@
+<script type="application/ld+json">{{ {
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": ("Tailor-made trip gift card" if lang == "en" else "Carte cadeau voyage sur mesure"),
+  "description": ("A gift card for a tailor-made trip to Thailand or Southeast Asia planned by Anaïs Zwald. Any amount from 50 CHF, personalised card sent by email." if lang == "en" else "Une carte cadeau pour un voyage sur mesure en Thaïlande ou en Asie du Sud-Est organisé par Anaïs Zwald. Montant libre dès 50 CHF, carte personnalisée envoyée par email."),
+  "image": "https://zwaldtravelplanner.com/images/IMG_6424.jpg",
+  "brand": { "@id": "https://zwaldtravelplanner.com/#business" },
+  "offers": { "@type": "AggregateOffer", "lowPrice": "50", "priceCurrency": "CHF", "availability": "https://schema.org/InStock", "url": ("https://zwaldtravelplanner.com/en/cartes-cadeaux/" if lang == "en" else "https://zwaldtravelplanner.com/cartes-cadeaux/"), "seller": { "@id": "https://zwaldtravelplanner.com/#business" } }
+} | dump | safe }}</script>

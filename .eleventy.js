@@ -38,6 +38,8 @@ module.exports = async function (eleventyConfig) {
     "src/gestion": "gestion",
     "src/favicon.ico": "favicon.ico",
     "src/robots.txt": "robots.txt",
+    "src/llms.txt": "llms.txt",
+    "src/9ff6a41c8598a41b84b47818cb78915e.txt": "9ff6a41c8598a41b84b47818cb78915e.txt",
     "src/site.webmanifest": "site.webmanifest",
     "src/_redirects": "_redirects"
   });

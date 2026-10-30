@@ -1,0 +1,20 @@
+{#- Trois autres articles de la même langue, les plus récents d'abord. -#}
+{%- set others = [] %}
+{%- for p in collections.post | reverse %}{% if p.url != page.url and p.data.lang == lang and others.length < 3 %}{% set others = (others.push(p), others) %}{% endif %}{% endfor %}
+<section class="section-pad bg-cream">
+  <div class="container">
+    <div class="section-head center" data-reveal><p class="eyebrow center">{{ "Read next" if lang == "en" else "À lire aussi" }}</p><h2>{{ "More tips for your trip" if lang == "en" else "D'autres conseils pour ton voyage" }}</h2></div>
+    <div class="blog-grid">
+{%- for p in others %}
+      <article class="blog-card" data-reveal>
+        <div class="b-img"><a href="{{ p.url }}"><img loading="lazy" decoding="async" src="{{ p.data.cover }}" alt="{{ p.data.coverAlt }}"></a></div>
+        <div class="b-body">
+          <div class="b-meta"><span class="b-cat">{{ p.data.category }}</span></div>
+          <h3><a href="{{ p.url }}">{{ p.data.title }}</a></h3>
+          <a class="text-link b-link" href="{{ p.url }}">{{ "Read the article" if lang == "en" else "Lire l'article" }} <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+      </article>
+{%- endfor %}
+    </div>
+  </div>
+</section>

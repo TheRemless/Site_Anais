@@ -60,40 +60,17 @@ test("i18n : aucun lien de corps de page en français dans src/en/", () => {
 
 // --- Garde-fous sur les 3 duplications les plus fragiles (voir docs/superpowers/specs/2026-09-17-selecteur-langue-design.md, section "Maintenance") ---
 
-function extractDcBodyDates(content) {
-  const re = /<div class="dc-body"><strong>([^<]+)<\/strong>/g;
-  const dates = [];
-  let m;
-  while ((m = re.exec(content))) dates.push(m[1]);
-  return dates;
-}
-
-function extractGtDepartOptions(content) {
-  const selectMatch = content.match(/<select id="gt_depart"[^>]*>([\s\S]*?)<\/select>/);
-  assert.ok(selectMatch, "select #gt_depart introuvable");
-  const optionRe = /<option[^>]*>([^<]*)<\/option>/g;
-  const options = [];
-  let m;
-  while ((m = optionRe.exec(selectMatch[1]))) options.push(m[1]);
-  return options;
-}
-
-test("i18n : dates de départ Girls Trips cohérentes entre girls-trips.njk et le select gt_depart", () => {
-  const frGirlsTrips = fs.readFileSync(path.join(__dirname, "..", "src", "girls-trips.njk"), "utf8");
-  const enGirlsTrips = fs.readFileSync(path.join(__dirname, "..", "src", "en", "girls-trips.njk"), "utf8");
-  const enContact = fs.readFileSync(path.join(__dirname, "..", "src", "en", "contact.njk"), "utf8");
-
-  const frDates = extractDcBodyDates(frGirlsTrips);
-  const enDates = extractDcBodyDates(enGirlsTrips);
-  const enSelectDates = extractGtDepartOptions(enContact).slice(0, 4);
-
-  assert.equal(frDates.length, 4, "src/girls-trips.njk doit avoir 4 dates de départ (.date-card)");
-  assert.equal(enDates.length, 4, "src/en/girls-trips.njk doit avoir 4 dates de départ (.date-card)");
-  assert.deepEqual(
-    enSelectDates,
-    enDates,
-    "les 4 premières options du select gt_depart de src/en/contact.njk doivent correspondre, dans l'ordre, aux 4 dates de src/en/girls-trips.njk"
-  );
+test("i18n : Girls Trips sans dates fixes, champ libre de période dans les deux formulaires", () => {
+  // Décision du 30.10.2026 : les Girls Trips se font toute l'année, les dates se choisissent avec le groupe.
+  for (const file of ["src/girls-trips.njk", "src/en/girls-trips.njk"]) {
+    const content = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
+    assert.doesNotMatch(content, /date-card|dates-grid/, file + " ne doit plus afficher de grille de dates");
+  }
+  for (const file of ["src/contact.njk", "src/en/contact.njk"]) {
+    const content = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
+    assert.match(content, /<input type="text" id="gt_depart" name="gt_depart"/, file + " doit avoir un champ libre gt_depart");
+    assert.doesNotMatch(content, /<select id="gt_depart"/, file + " ne doit plus avoir de select de dates");
+  }
 });
 
 test('i18n : la chaîne "Girls Trips ✨" est identique partout où elle sert à la détection', () => {
