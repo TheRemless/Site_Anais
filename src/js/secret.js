@@ -219,10 +219,22 @@
     firstDate.focus({ preventScroll: true });
   });
 
+  /* Arrivée depuis une page d'excursion (/secret/<id>/?tour=… ou ?activity=…) :
+     présélectionne le service comme un clic sur « Get a price ». */
+  function presetFromUrl() {
+    var params = new URLSearchParams(window.location.search);
+    var type = params.has("tour") ? "boat" : params.has("activity") ? "activity" : "";
+    if (!type) return false;
+    setRadio("type", type);
+    preselect(type, params.get(type === "boat" ? "tour" : "activity"));
+    return true;
+  }
+
   /* Restauration du brouillon gardé sur le téléphone. */
   var restored = F.restoreDraft(read("localStorage", DRAFT_KEY), new Date());
   if (restored) {
     try { setState(restored); } catch (e) { store("localStorage", DRAFT_KEY, null); }
   }
+  if (presetFromUrl()) { save(); clearErrors(); }
   refresh();
 })();

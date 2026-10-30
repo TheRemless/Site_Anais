@@ -206,3 +206,24 @@ footer p { margin: 0; color: var(--mute); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* Pages de trajet /taxi/<route>/ : même cabine de nuit, hero moins haut, texte de lecture. */
+.route .route-hero { min-height: 72svh; }
+.route .bar-link { display: flex; align-items: center; gap: .8rem; color: inherit; text-decoration: none; }
+.route .crumb { margin: 0 0 .75rem; font-size: .9rem; color: var(--mute); }
+.route .crumb a { color: var(--mute); }
+.route h1 { font-size: clamp(1.9rem, 6vw, 3rem); line-height: 1.1; margin-bottom: 1rem; }
+.route .route-body p { max-width: 38rem; margin: 0 0 1rem; color: var(--text); }
+.route .route-body .both { color: var(--mute); }
+.route .route-cta { margin: 2rem 0 0; }
+.route .routes-more ul { display: grid; gap: 0; }
+.route .routes-more li { border-top: 1px solid var(--line); }
+.route .routes-more a { display: block; padding: .9rem 0; color: var(--text); text-decoration: none; font-weight: 500; }
+.route .routes-more a:hover { color: var(--amber); }
+.route .routes-more p { margin: 1.5rem 0 0; color: var(--mute); }
+.route footer a { color: var(--mute); }
+@media (min-width: 48rem) {
+  .route .routes-more ul { grid-template-columns: 1fr 1fr; column-gap: 3rem; }
+}
+.svc-routes { margin-top: .5rem !important; font-size: .95rem; }
+.svc-routes a { font-weight: 500; }

@@ -1,0 +1,233 @@
+{
+  "_source": "Pages /taxi/<route>/. Faits : taxi.json (validé par Jérémy le 28.10.2026). Aucun prix, aucune durée tant que VIP Taxi Lanta ne les a pas confirmés (champ drive à null).",
+  "routes": [
+    {
+      "id": "krabi-airport-koh-lanta",
+      "from": "Krabi Airport",
+      "to": "Koh Lanta",
+      "code": "KBV",
+      "title": "Krabi Airport to Koh Lanta Private Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private taxi or minivan between Krabi Airport (KBV) and Koh Lanta, both directions, door to door. Cash to the driver, no prepayment. Price on WhatsApp.",
+      "h1": "Krabi Airport to Koh Lanta, private taxi and minivan",
+      "lead": "Door to door between Krabi Airport (KBV) and your hotel on Koh Lanta, in either direction. Your group only, no sharing.",
+      "body": [
+        "Krabi is the closest airport to Koh Lanta. Give us your flight number and landing time, your hotel on Koh Lanta and the number of people. The team confirms the price on WhatsApp and the driver waits for you at the airport.",
+        "For the way back, enter your hotel as the pickup and Krabi Airport as the destination, with the time you want to leave."
+      ],
+      "drive": null,
+      "faq": [
+        {
+          "q": "Where does the driver meet me at Krabi Airport?",
+          "a": "At the time you give us, at the airport. Send your flight number and the team confirms the meeting point on WhatsApp."
+        },
+        {
+          "q": "Can I book the transfer back to Krabi Airport?",
+          "a": "Yes. Enter your hotel as the pickup and Krabi Airport as the destination, with your date and pickup time."
+        }
+      ]
+    },
+    {
+      "id": "phuket-airport-koh-lanta",
+      "from": "Phuket Airport",
+      "to": "Koh Lanta",
+      "code": "HKT",
+      "title": "Phuket Airport to Koh Lanta Private Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan or taxi between Phuket Airport (HKT) and Koh Lanta, both directions, hotel to hotel, one vehicle. Cash to the driver. Price on WhatsApp.",
+      "h1": "Phuket Airport to Koh Lanta, private transfer",
+      "lead": "A private minivan or taxi between Phuket Airport (HKT) and your hotel on Koh Lanta, in either direction, with no change of vehicle.",
+      "body": [
+        "You travel in one vehicle from Phuket Airport to your hotel door on Koh Lanta, with stops when you want them. Send your flight time, your hotel and the number of people, and the team replies with the price.",
+        "The same transfer runs from Koh Lanta to Phuket Airport for your departure."
+      ],
+      "drive": null,
+      "faq": [
+        {
+          "q": "Is it one vehicle all the way from Phuket Airport?",
+          "a": "Yes. Private taxi or minivan from the airport to your hotel on Koh Lanta, no change of vehicle."
+        },
+        {
+          "q": "Can we stop on the way?",
+          "a": "Tell the driver. It is your vehicle for the trip."
+        }
+      ]
+    },
+    {
+      "id": "surat-thani-koh-lanta",
+      "from": "Surat Thani Airport",
+      "to": "Koh Lanta",
+      "code": "URT",
+      "title": "Surat Thani to Koh Lanta Private Transfer | VIP Taxi Lanta",
+      "metaDescription": "Private minivan or taxi between Surat Thani (airport, bus terminal or Donsak Pier) and Koh Lanta, both directions. Cash to the driver. Price on WhatsApp.",
+      "h1": "Surat Thani to Koh Lanta, private transfer",
+      "lead": "From Surat Thani Airport (URT), the bus terminal or Donsak Pier to your hotel on Koh Lanta, and back. Private vehicle, your group only.",
+      "body": [
+        "Surat Thani is on the gulf side of the peninsula. We pick you up at the airport, at the bus terminal or at Donsak Pier, and drive across to Koh Lanta on the Andaman side. Tell us which one and at what time."
+      ],
+      "drive": null,
+      "faq": [
+        {
+          "q": "Do you pick up at Donsak Pier?",
+          "a": "Yes. Donsak Pier is one of the places we drive to and from. Enter it as the pickup or the destination."
+        },
+        {
+          "q": "Can you pick up at Surat Thani bus terminal?",
+          "a": "Yes. Give us the arrival time of your bus."
+        }
+      ]
+    },
+    {
+      "id": "koh-lanta-krabi-town",
+      "from": "Koh Lanta",
+      "to": "Krabi Town",
+      "code": null,
+      "title": "Koh Lanta to Krabi Town Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private taxi or minivan between Koh Lanta and Krabi Town, both directions, hotel to hotel or to the bus terminal. Cash to the driver. Price on WhatsApp.",
+      "h1": "Koh Lanta to Krabi Town, private taxi",
+      "lead": "Between your hotel on Koh Lanta and Krabi Town, or the other way, in a private taxi or minivan.",
+      "body": [
+        "Krabi Town is the provincial capital, with its bus terminal. Tell us where in town you are going and the team replies with the price."
+      ],
+      "drive": null,
+      "faq": [
+        {
+          "q": "Can you drop me at Krabi bus terminal?",
+          "a": "Yes. Enter the bus terminal as your destination, with the time of your bus."
+        }
+      ]
+    },
+    {
+      "id": "koh-lanta-ao-nang",
+      "from": "Koh Lanta",
+      "to": "Ao Nang",
+      "code": null,
+      "title": "Koh Lanta to Ao Nang Private Transfer | VIP Taxi Lanta",
+      "metaDescription": "Private taxi or minivan between Koh Lanta and Ao Nang, both directions, hotel to hotel or to the pier. Cash to the driver, no prepayment. Price on WhatsApp.",
+      "h1": "Koh Lanta to Ao Nang, private transfer",
+      "lead": "Hotel to hotel between Koh Lanta and Ao Nang, in either direction, in a private taxi or minivan.",
+      "body": [
+        "Ao Nang is the beach resort of Krabi province. We drop you at your hotel or at the pier you tell us."
+      ],
+      "drive": null,
+      "faq": [
+        {
+          "q": "Can you drop us at the Ao Nang pier for Railay?",
+          "a": "Yes. Tell us which pier and at what time in the request form."
+        }
+      ]
+    },
+    {
+      "id": "koh-lanta-khao-sok",
+      "from": "Koh Lanta",
+      "to": "Khao Sok",
+      "code": null,
+      "title": "Koh Lanta to Khao Sok Private Transfer | VIP Taxi Lanta",
+      "metaDescription": "Private minivan or taxi between Koh Lanta and Khao Sok or Cheow Lan Pier, both directions, door to door. Cash to the driver. Price on WhatsApp.",
+      "h1": "Koh Lanta to Khao Sok, private transfer",
+      "lead": "From your hotel on Koh Lanta to Khao Sok village or Cheow Lan Pier, and back, in a private minivan or taxi.",
+      "body": [
+        "Khao Sok is the national park north of Surat Thani, with the Cheow Lan lake. We drive to the village and to Cheow Lan Pier, where the boats to the lake leave. Tell us which one and your boat time if you have one."
+      ],
+      "drive": null,
+      "faq": [
+        {
+          "q": "Do you drive to Cheow Lan Pier?",
+          "a": "Yes. Cheow Lan Pier is among the places we drive to. Enter it as your destination with the time of your boat."
+        }
+      ]
+    },
+    {
+      "id": "koh-lanta-trang",
+      "from": "Koh Lanta",
+      "to": "Trang",
+      "code": null,
+      "title": "Koh Lanta to Trang Private Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private taxi or minivan between Koh Lanta and Trang, both directions, to the town, the station or the airport. Cash to the driver. Price on WhatsApp.",
+      "h1": "Koh Lanta to Trang, private taxi",
+      "lead": "Between Koh Lanta and Trang, in either direction, in a private taxi or minivan.",
+      "body": [
+        "Trang is the province south of Krabi. Tell us where in Trang you need to be and at what time, and the team replies with the price."
+      ],
+      "drive": null,
+      "faq": [
+        {
+          "q": "Can you drop me at Trang train station or airport?",
+          "a": "Yes. Enter the station or the airport as your destination with the time of your train or flight."
+        }
+      ]
+    },
+    {
+      "id": "koh-lanta-khao-lak",
+      "from": "Koh Lanta",
+      "to": "Khao Lak",
+      "code": null,
+      "title": "Koh Lanta to Khao Lak Private Transfer | VIP Taxi Lanta",
+      "metaDescription": "Private minivan or taxi between Koh Lanta and Khao Lak, both directions, hotel to hotel in one vehicle. Cash to the driver, no prepayment. Price on WhatsApp.",
+      "h1": "Koh Lanta to Khao Lak, private transfer",
+      "lead": "Hotel to hotel between Koh Lanta and Khao Lak, in either direction, in a private minivan or taxi.",
+      "body": [
+        "Khao Lak is north of Phuket, on the mainland coast. One vehicle from your hotel on Koh Lanta to your hotel in Khao Lak, with stops when you want them."
+      ],
+      "drive": null,
+      "faq": [
+        {
+          "q": "Is the Khao Lak transfer private?",
+          "a": "Yes. Every transfer is private, your group only."
+        }
+      ]
+    },
+    {
+      "id": "koh-lanta-donsak-pier",
+      "from": "Koh Lanta",
+      "to": "Donsak Pier",
+      "code": null,
+      "title": "Koh Lanta to Donsak Pier Private Transfer | VIP Taxi Lanta",
+      "metaDescription": "Private minivan or taxi between Koh Lanta and Donsak Pier, both directions, timed with your ferry. Cash to the driver, no prepayment. Price on WhatsApp.",
+      "h1": "Koh Lanta to Donsak Pier, private transfer",
+      "lead": "From your hotel on Koh Lanta to Donsak Pier, timed with your ferry, and back. Private vehicle, your group only.",
+      "body": [
+        "Donsak Pier is in Surat Thani province, on the gulf side. Give us your ferry time and the team confirms the pickup time on WhatsApp."
+      ],
+      "drive": null,
+      "faq": [
+        {
+          "q": "Will we make the ferry?",
+          "a": "Give us the ferry time when you book. The team confirms a pickup time that leaves margin for the road."
+        }
+      ]
+    }
+  ],
+  "common": {
+    "how": [
+      {
+        "title": "Private only",
+        "text": "Taxi or minivan for your group only. No sharing, no waiting for other passengers."
+      },
+      {
+        "title": "Confirmed on WhatsApp",
+        "text": "You send the request from this page. The team replies with the price and the details."
+      },
+      {
+        "title": "Cash to the driver",
+        "text": "You pay in cash on the day. No prepayment, no hidden fees."
+      },
+      {
+        "title": "Children and babies",
+        "text": "Add them in the form and ask for a child seat or a baby seat."
+      }
+    ],
+    "faq": [
+      {
+        "q": "Is the transfer private?",
+        "a": "Yes. Every transfer is private, with no sharing, so you travel only with your group."
+      },
+      {
+        "q": "How do I pay?",
+        "a": "In cash to the driver on the day of the transfer. There is no prepayment and no hidden fees."
+      },
+      {
+        "q": "Can I travel with children or babies?",
+        "a": "Yes. The request form lets you add children and babies and ask for a child seat or a baby seat."
+      }
+    ]
+  }
+}

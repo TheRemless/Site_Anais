@@ -79,7 +79,12 @@
       "text": "Private transfers between Koh Lanta and Krabi Airport (KBV), Phuket Airport (HKT) or Surat Thani Airport (URT), in both directions.",
       "photo": null,
       "link": null,
-      "confirmed": true
+      "confirmed": true,
+      "routes": [
+        "krabi-airport-koh-lanta",
+        "phuket-airport-koh-lanta",
+        "surat-thani-koh-lanta"
+      ]
     },
     {
       "id": "long-distance",
@@ -87,7 +92,15 @@
       "text": "Between Koh Lanta and Krabi Town, Ao Nang, Phuket, Surat Thani, Trang, Khao Lak, Khao Sok, Donsak Pier, Cheow Lan Pier or any other place in Southern Thailand.",
       "photo": null,
       "link": null,
-      "confirmed": true
+      "confirmed": true,
+      "routes": [
+        "koh-lanta-krabi-town",
+        "koh-lanta-ao-nang",
+        "koh-lanta-khao-sok",
+        "koh-lanta-trang",
+        "koh-lanta-khao-lak",
+        "koh-lanta-donsak-pier"
+      ]
     },
     {
       "id": "local",

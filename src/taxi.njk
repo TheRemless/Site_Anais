@@ -96,6 +96,9 @@ eleventyExcludeFromCollections: true
       <div>
         <h3>{{ s.title }}</h3>
         <p>{{ s.text }}</p>
+        {%- if s.routes %}
+        <p class="svc-routes">Details: {% for id in s.routes %}<a href="/taxi/{{ id }}/">{{ taxiRoutesView.byId[id].label }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+        {%- endif %}
         {% if s.link %}<a href="{{ s.link.href }}">{{ s.link.label }}</a>{% endif %}
       </div>
       {% endfor %}

@@ -1,0 +1,114 @@
+---
+pagination:
+  data: taxiRoutesView.routes
+  size: 1
+  alias: r
+permalink: "/taxi/{{ r.id }}/"
+eleventyExcludeFromCollections: true
+---
+{#- Une page par trajet de VIP Taxi Lanta (option A du chantier SEO, 30.10.2026).
+    Même direction « Night cabin » que /taxi/, hors base.njk. Pas de prix, de note, d'avis, de téléphone
+    ni d'e-mail (décisions de Jérémy). Le bouton renvoie au formulaire de /taxi/ avec From et To préremplis.
+    Pas de bloc de liens ni de pastilles : les autres trajets sont une simple liste en bas de page. -#}
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ r.title }}</title>
+<meta name="description" content="{{ r.metaDescription }}">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="canonical" href="{{ r.url }}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ r.url }}">
+<meta property="og:title" content="{{ r.title }}">
+<meta property="og:description" content="{{ r.metaDescription }}">
+<meta property="og:image" content="https://zwaldtravelplanner.com/images/taxi/og-taxi.jpg">
+<meta property="og:image:alt" content="VIP Taxi Lanta, Mr. Brown, private taxis and minivans">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/taxi/icon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/images/taxi/apple-touch-icon.png">
+<meta name="theme-color" content="#140D09">
+<link rel="preload" as="font" type="font/woff2" href="/css/fonts/marcellus-400-normal-latin.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="/css/fonts/figtree-400-normal-latin.woff2" crossorigin>
+<link rel="stylesheet" href="/css/taxi.css">
+<script>document.documentElement.className = "js";</script>
+{%- for block in r.jsonLd %}
+<script type="application/ld+json">{{ block | dump | safe }}</script>
+{%- endfor %}
+</head>
+<body class="route">
+<a class="skip" href="#main">Skip to content</a>
+
+<section class="hero route-hero">
+  <img eleventy:ignore class="hero-photo" src="{{ taxi.hero.photo.src }}" srcset="{{ taxi.hero.photo.srcset }}" sizes="100vw" width="{{ taxi.hero.photo.width }}" height="{{ taxi.hero.photo.height }}" alt="{{ taxi.hero.photo.alt }}" fetchpriority="high">
+  <header class="bar">
+    <a class="bar-link" href="/taxi/">
+      <div class="plate"><img eleventy:ignore src="/images/taxi/logo.webp" width="640" height="640" alt="VIP Taxi Lanta, Mr. Brown"></div>
+      <div class="word">VIP TAXI LANTA<small>{{ taxi.business.tagline }}, {{ taxi.business.owner }}</small></div>
+    </a>
+  </header>
+  <div class="hero-in">
+    <p class="crumb"><a href="/taxi/">Private transfers</a> · {{ r.from }} to {{ r.to }}</p>
+    <h1>{{ r.h1 }}</h1>
+    <p class="lead">{{ r.lead }}</p>
+    <a class="btn" href="{{ r.formHref }}">Request this transfer</a>
+  </div>
+</section>
+
+<main id="main">
+  <section class="sec route-body" aria-label="About this transfer">
+    {%- for para in r.body %}
+    <p>{{ para }}</p>
+    {%- endfor %}
+    {%- if r.drive %}<p class="drive">{{ r.drive }}</p>{% endif %}
+    <p class="both">Both directions: {{ r.from }} to {{ r.to }}, and {{ r.to }} to {{ r.from }}.</p>
+  </section>
+
+  <section class="sec" aria-labelledby="h-how">
+    <h2 id="h-how">How it works</h2>
+    <div class="why">
+      {%- for w in taxiRoutesView.common.how %}
+      <div><h3>{{ w.title }}</h3><p>{{ w.text }}</p></div>
+      {%- endfor %}
+    </div>
+    <p class="route-cta"><a class="btn" href="{{ r.formHref }}">Request this transfer</a></p>
+  </section>
+
+  <section class="sec" aria-labelledby="h-faq">
+    <h2 id="h-faq">Questions about this transfer</h2>
+    <div class="faq">
+      {%- for f in r.faqAll %}
+      <div><h3>{{ f.q }}</h3><p>{{ f.a }}</p></div>
+      {%- endfor %}
+    </div>
+  </section>
+
+  <section class="sec routes-more" aria-labelledby="h-more">
+    <h2 id="h-more">Other private transfers</h2>
+    <ul>
+      {%- for o in taxiRoutesView.routes %}{% if o.id != r.id %}
+      <li><a href="/taxi/{{ o.id }}/">{{ o.label }}</a></li>
+      {%- endif %}{% endfor %}
+    </ul>
+    <p>Anywhere else in Southern Thailand: <a href="/taxi/#request">send us the pickup and the destination</a>.</p>
+  </section>
+
+  <section class="tours" aria-labelledby="h-tours">
+    <img eleventy:ignore src="{{ taxi.tours.photo.src }}" width="{{ taxi.tours.photo.width }}" height="{{ taxi.tours.photo.height }}" alt="{{ taxi.tours.photo.alt }}" loading="lazy">
+    <div class="tours-body">
+      <h2 id="h-tours">{{ taxi.tours.title }}</h2>
+      <p>{{ taxi.tours.text }}</p>
+      <a class="btn" href="{{ taxi.tours.link.href }}">{{ taxi.tours.link.label }}</a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="plate"><img eleventy:ignore src="/images/taxi/logo.webp" width="640" height="640" alt="" loading="lazy"></div>
+  <p>VIP Taxi Lanta by {{ taxi.business.owner }}</p>
+  <p>{{ taxi.business.place }}</p>
+  <p><a href="/taxi/">All transfers and the request form</a></p>
+</footer>
+</body>
+</html>
