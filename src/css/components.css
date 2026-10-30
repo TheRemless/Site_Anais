@@ -701,3 +701,26 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .formule-region .price { font-family: var(--serif); font-size: 2.4rem; font-weight: 600; line-height: 1; color: #fff; }
 .formule-region .price small { font-family: var(--sans); font-size: 0.95rem; font-weight: 500; color: var(--on-dark-mute); }
 @media (max-width: 900px) { .formule-region { grid-template-columns: 1fr; padding: 28px 24px; } .formule-region-price { text-align: left; justify-items: start; } }
+
+/* ---------- Girls Trips, rythme de page ---------- */
+.page-girls .section-pad { padding: clamp(56px, 7.5vw, 100px) 0; }
+.page-girls .page-hero { padding-top: 148px; }
+.gt-intro .split-media img { aspect-ratio: 4/5; border-radius: 220px 220px 24px 24px; }
+.gt-intro .lead { font-size: clamp(1.15rem, 1.6vw, 1.35rem); }
+.gt-who { background: var(--navy); color: var(--on-dark); border-radius: 40px; margin: 0 clamp(8px, 1.5vw, 24px); }
+.gt-who h2 { color: #fff; }
+.gt-who .eyebrow { color: var(--sand-soft); }
+.gt-who .eyebrow::before { background: var(--sand-soft); }
+.gt-who .split-media img { aspect-ratio: 4/5; border-radius: 24px; }
+.gt-who .who-item { padding: 22px 0; border-top: 1px solid rgba(255,255,255,0.16); }
+.gt-who .who-item:last-child { padding-bottom: 0; }
+.gt-who .who-item h3 { color: #fff; font-size: clamp(1.3rem, 1.9vw, 1.65rem); margin-bottom: 6px; }
+.gt-who .who-item p { color: var(--on-dark-mute); margin: 0; }
+.gt-who .text-link { color: var(--sand-soft); }
+.gt-tarif .tarif-panel { background: var(--surface); border-radius: 28px; padding: clamp(26px, 4vw, 48px); }
+.gt-tarif .split { gap: clamp(28px, 5vw, 72px); }
+.gt-brochure .offer-panel { margin-top: 0; }
+@media (max-width: 860px) {
+  .gt-who { border-radius: 24px; }
+  .gt-intro .split-media img { border-radius: 160px 160px 20px 20px; }
+}
