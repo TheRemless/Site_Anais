@@ -424,31 +424,20 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .nl-gate p { color: var(--ink-mute); margin-bottom: 14px; }
 
 /* ---------- Experience photo tiles (Girls Trips programme) ---------- */
-.xp-tile { position: relative; aspect-ratio: 4/3; border-radius: 16px; overflow: hidden; isolation: isolate; }
-.xp-tile img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.7s var(--ease); }
-.xp-tile:hover img { transform: scale(1.06); }
-.xp-tile::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 42%, rgba(11,28,38,0.78)); }
-.xp-tile .xt-body { position: absolute; left: 18px; right: 18px; bottom: 16px; z-index: 1; }
-.xp-tile h3 { color: #fff; font-size: 1.3rem; margin-bottom: 4px; }
-.xp-tile p { font-size: 0.87rem; color: rgba(255,255,255,0.88); line-height: 1.45; }
+.xp-tile { display: flex; flex-direction: column; }
+.xp-tile img { width: 100%; height: auto; aspect-ratio: 4/3; object-fit: cover; border-radius: 16px; display: block; transition: transform 0.7s var(--ease); }
+.xp-tile:hover img { transform: translateY(-4px); }
+.xp-tile .xt-body { padding: 16px 4px 0; }
+.xp-tile h3 { font-size: 1.3rem; margin-bottom: 6px; }
+.xp-tile p { font-size: 0.95rem; color: var(--ink-mute); line-height: 1.55; }
 
 /* "not included" tick variant (was inline styles) */
 .tick--no { background: var(--sand-tint) !important; color: var(--sand-ink) !important; }
 
-/* ---------- Girls Trips warm sub-theme ---------- */
-.page-girls .bg-cream { background: linear-gradient(180deg, #FBF3EA, #F6ECF0); }
-.page-girls .eyebrow { color: var(--sand-ink); }
-.page-girls .eyebrow::before { background: var(--sand-ink); }
-/* keep the light sand tone on dark backgrounds (hero, CTA band) for contrast */
+/* ---------- Girls Trips, nuance sable limitée aux fonds sombres ---------- */
 .page-girls .page-hero .eyebrow, .page-girls .cta-band .eyebrow, .page-girls .eyebrow.on-dark { color: var(--sand-soft); }
 .page-girls .page-hero .eyebrow::before, .page-girls .cta-band .eyebrow::before, .page-girls .eyebrow.on-dark::before { background: var(--sand-soft); }
-.page-girls .divider { background: var(--sand); }
-.page-girls h2 em { color: var(--sand-ink); }
-.page-girls .bg-teal h2 em, .page-girls .cta-band h2 em, .page-girls .page-hero h1 em { color: var(--sand-soft); }
-.page-girls .date-card .dc-month { background: var(--sand-tint); color: var(--sand-ink); }
-.page-girls .step .step-num { background: var(--sand-ink); }
 .page-girls .cta-band .ph-overlay { background: linear-gradient(120deg, rgba(43,22,8,0.72), rgba(154,91,46,0.55)); }
-.page-girls .acc-item.open .acc-icon { background: var(--sand-ink); }
 
 /* ---------- Encart offre (extension Krabi, appel conseil) ---------- */
 .offer-panel { background: var(--sand-tint); border-radius: var(--radius-lg); padding: clamp(28px, 5vw, 56px); margin-top: 48px; }
@@ -731,3 +720,26 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .formule-region .price { font-family: var(--serif); font-size: 2.4rem; font-weight: 600; line-height: 1; color: #fff; }
 .formule-region .price small { font-family: var(--sans); font-size: 0.95rem; font-weight: 500; color: var(--on-dark-mute); }
 @media (max-width: 900px) { .formule-region { grid-template-columns: 1fr; padding: 28px 24px; } .formule-region-price { text-align: left; justify-items: start; } }
+
+/* ---------- Girls Trips, rythme de page ---------- */
+.page-girls .section-pad { padding: clamp(56px, 7.5vw, 100px) 0; }
+.page-girls .page-hero { padding-top: 148px; }
+.gt-intro .split-media img { aspect-ratio: 4/5; border-radius: 220px 220px 24px 24px; }
+.gt-intro .lead { font-size: clamp(1.15rem, 1.6vw, 1.35rem); }
+.gt-who { background: var(--navy); color: var(--on-dark); border-radius: 40px; margin: 0 clamp(8px, 1.5vw, 24px); }
+.gt-who h2 { color: #fff; }
+.gt-who .eyebrow { color: var(--sand-soft); }
+.gt-who .eyebrow::before { background: var(--sand-soft); }
+.gt-who .split-media img { aspect-ratio: 4/5; border-radius: 24px; }
+.gt-who .who-item { padding: 22px 0; border-top: 1px solid rgba(255,255,255,0.16); }
+.gt-who .who-item:last-child { padding-bottom: 0; }
+.gt-who .who-item h3 { color: #fff; font-size: clamp(1.3rem, 1.9vw, 1.65rem); margin-bottom: 6px; }
+.gt-who .who-item p { color: var(--on-dark-mute); margin: 0; }
+.gt-who .text-link { color: var(--sand-soft); }
+.gt-tarif .tarif-panel { background: var(--surface); border-radius: 28px; padding: clamp(26px, 4vw, 48px); }
+.gt-tarif .split { gap: clamp(28px, 5vw, 72px); }
+.gt-brochure .offer-panel { margin-top: 0; }
+@media (max-width: 860px) {
+  .gt-who { border-radius: 24px; }
+  .gt-intro .split-media img { border-radius: 160px 160px 20px 20px; }
+}

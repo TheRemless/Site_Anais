@@ -1,6 +1,6 @@
 # Zwald Travel Planner
 
-> Travel planner suisse indépendante installée à Koh Lanta, Thaïlande, depuis février 2023. Itinéraires 100 % sur mesure pour la Thaïlande et l'Asie du Sud-Est, sans commission. Site en français (racine) et en anglais (/en/).
+> Travel planner suisse indépendante installée à Koh Lanta, Thaïlande, depuis février 2023. Itinéraires 100 % sur mesure pour la Thaïlande, ainsi que la Malaisie, l'Indonésie et le Vietnam, sans commission. Site en français (racine) et en anglais (/en/).
 
 ## Faits clés
 - Fondatrice : Anaïs Zwald, diplômée de l'École Hôtelière de Genève.
