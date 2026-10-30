@@ -1,0 +1,152 @@
+---
+permalink: /maquettes/b/
+eleventyExcludeFromCollections: true
+sitemap: false
+---
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Maquette B, éditorial</title>
+<link rel="stylesheet" href="/css/fonts.css">
+<style>
+:root{--ink:#14201E;--ink2:#46605B;--mute:#7A918C;--line:#DDE5E2;--lagon:#1A9B8C;--lagon-d:#0E7A6D;--mist:#F1F5F4}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Manrope',system-ui,sans-serif;color:var(--ink);background:#fff;line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2,h3,.serif{font-family:'Cormorant Garamond',Georgia,serif;font-weight:600;line-height:1.02}
+a{color:inherit}
+.wrap{width:min(1240px,100% - 48px);margin-inline:auto}
+.nav{position:absolute;inset:0 0 auto;z-index:5;color:#fff}
+.nav .wrap{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none}
+.brand img{width:40px;height:40px;border-radius:50%}
+.brand b{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:1.3rem}
+.nav ul{display:flex;gap:26px;list-style:none;font-size:.95rem}
+.nav ul a{text-decoration:none;color:rgba(255,255,255,.9)}
+.btn{display:inline-block;padding:14px 22px;border-radius:4px;background:var(--ink);color:#fff;text-decoration:none;font-weight:600;font-size:.95rem}
+.btn.white{background:#fff;color:var(--ink)}
+.btn.outline{background:transparent;border:1px solid var(--ink);color:var(--ink)}
+/* hero plein cadre, panneau de titre */
+.hero{position:relative;min-height:92vh;display:flex;align-items:flex-end}
+.hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,32,30,.35),rgba(20,32,30,0) 40%)}
+.panel{position:relative;z-index:2;background:#fff;padding:44px 48px 40px;max-width:720px;margin-bottom:-1px;border-radius:0 18px 0 0}
+.panel h1{font-size:clamp(2.6rem,5.6vw,4.8rem);max-width:13ch}
+.panel p{margin-top:18px;font-size:1.1rem;color:var(--ink2);max-width:52ch}
+.panel .cta{display:flex;gap:12px;margin-top:26px;flex-wrap:wrap}
+.panel .meta{margin-top:26px;padding-top:18px;border-top:1px solid var(--line);font-size:.9rem;color:var(--mute)}
+/* ligne de titre type magazine */
+.rule{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:24px;border-bottom:1px solid var(--ink);padding-bottom:14px;margin-bottom:40px}
+.rule h2{font-size:clamp(2rem,3.8vw,3.4rem)}
+.rule span{font-size:.9rem;color:var(--mute)}
+section{padding:96px 0}
+.intro{display:grid;grid-template-columns:1.2fr 1fr;gap:64px;align-items:center}
+.intro p{font-size:1.25rem;line-height:1.55;color:var(--ink2)}
+.intro p+p{margin-top:18px;font-size:1.05rem}
+.intro img{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:4px}
+/* équipe : deux colonnes texte avec filet */
+.who{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.who>div{padding:32px 36px}
+.who>div+div{border-left:1px solid var(--line)}
+.who h3{font-size:2rem;margin-bottom:12px}
+.who p{color:var(--ink2)}
+.who ul{list-style:none;margin-top:18px;display:grid;gap:10px}
+.who li{padding-left:16px;border-left:2px solid var(--lagon);color:var(--ink2)}
+/* grille photos 3 colonnes */
+.strip{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;height:460px}
+.strip img{width:100%;height:100%;object-fit:cover;border-radius:4px}
+/* formules en liste de menu */
+.menu{border-top:1px solid var(--ink)}
+.menu .row{display:grid;grid-template-columns:1.2fr 2fr auto;gap:32px;padding:30px 0;border-bottom:1px solid var(--line);align-items:baseline}
+.menu h3{font-size:2rem}
+.menu .row p{color:var(--ink2)}
+.menu .price{font-family:'Cormorant Garamond',serif;font-size:2.2rem;font-weight:600;white-space:nowrap}
+.menu .price small{font-family:'Manrope';font-size:.85rem;color:var(--mute);display:block;font-weight:500}
+.menu .row.main h3::after{content:" , la plus choisie";font-family:'Manrope';font-size:.8rem;font-weight:600;color:var(--lagon-d);vertical-align:middle}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:40px}
+.steps h3{font-size:1.5rem;margin-bottom:8px}
+.steps p{color:var(--ink2);font-size:.98rem}
+.pull{background:var(--mist);padding:80px 0}
+.pull blockquote{font-family:'Cormorant Garamond',serif;font-size:clamp(1.6rem,3vw,2.6rem);font-weight:500;line-height:1.25;max-width:26ch;margin:0 auto;text-align:center}
+.pull footer{margin-top:22px;text-align:center;font-size:.9rem;color:var(--mute)}
+.final{background:var(--ink);color:#fff;padding:96px 0}
+.final h2{font-size:clamp(2.2rem,4.4vw,3.8rem);max-width:14ch}
+.final p{margin-top:16px;color:rgba(255,255,255,.75);max-width:52ch;font-size:1.08rem}
+footer.site{padding:28px 0;font-size:.85rem;color:var(--mute);border-top:1px solid var(--line)}
+@media(max-width:860px){.nav ul{display:none}.hero{min-height:78vh}.panel{padding:28px 24px;border-radius:0 14px 0 0}.intro,.who,.steps{grid-template-columns:1fr}.who>div+div{border-left:0;border-top:1px solid var(--line)}.strip{grid-template-columns:1fr 1fr;height:auto}.strip img{aspect-ratio:1}.strip img:first-child{grid-column:1/-1;aspect-ratio:16/10}.menu .row{grid-template-columns:1fr;gap:10px}section{padding:64px 0}}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="#"><img src="/images/logo.png" alt=""><b>Zwald Travel Planner</b></a>
+  <ul><li><a href="#">Services</a></li><li><a href="#">Girls Trips</a></li><li><a href="#">Blog</a></li><li><a href="#">FAQ</a></li><li><a href="#">EN</a></li></ul>
+  <a class="btn white" href="#">Demander un devis</a>
+</div></nav>
+
+<header class="hero">
+  <img src="/images/IMG_6424.jpg" alt="Vue sur le parc national marin d'Ang Thong, Thaïlande">
+  <div class="wrap">
+    <div class="panel">
+      <h1>Voyages sur mesure en Thaïlande et en Asie du Sud-Est</h1>
+      <p>Un itinéraire composé pour vous par des gens qui vivent sur place. Vous réservez vous-même, au prix direct, sans commission.</p>
+      <div class="cta"><a class="btn" href="#">Demander un devis gratuit</a><a class="btn outline" href="#">Voir les formules</a></div>
+      <p class="meta">Dès 29 CHF par jour de voyage organisé. Cinq étoiles sur Google, dix-huit avis.</p>
+    </div>
+  </div>
+</header>
+
+<section><div class="wrap intro">
+  <div>
+    <p>Chez Zwald Travel Planner, Anaïs est votre interlocutrice du premier message au retour. Elle écoute votre projet, compose l'itinéraire jour par jour et vous répond sur WhatsApp pendant le voyage.</p>
+    <p>Sur place, à Koh Lanta, une équipe locale déniche les partenaires, teste les activités et vérifie les prix. Le service se paie à la journée de voyage organisé. Le reste, hôtels, transports, excursions, se réserve au prix direct.</p>
+  </div>
+  <img src="/images/IMG_1369.jpg" alt="Pause noix de coco face à la mer d'Andaman, Krabi">
+</div></section>
+
+<section style="padding-top:0"><div class="wrap">
+  <div class="rule"><h2>Qui fait quoi</h2><span>Une interlocutrice, une équipe sur le terrain</span></div>
+  <div class="who">
+    <div><h3>Anaïs</h3><p>Votre contact, en français.</p><ul><li>Écoute votre projet, dates, budget, envies</li><li>Compose l'itinéraire et le carnet de voyage</li><li>Répond sur WhatsApp sept jours sur sept</li></ul></div>
+    <div><h3>L'équipe locale</h3><p>À Koh Lanta, en Thaïlande.</p><ul><li>Repère et teste hébergements et activités</li><li>Négocie avec chauffeurs, bateaux et guides</li><li>Vérifie les prix et les saisons</li></ul></div>
+  </div>
+</div></section>
+
+<div class="wrap strip">
+  <img src="/images/girls/plage-koh-lanta.jpeg" alt="Plage de sable de Koh Lanta">
+  <img src="/images/IMG_5227.jpg" alt="Temple doré de Doi Suthep, Chiang Mai">
+  <img src="/images/IMG_9507.jpg" alt="Cascade d'Erawan, Kanchanaburi">
+</div>
+
+<section><div class="wrap">
+  <div class="rule"><h2>Les formules</h2><span>Un prix par jour de voyage organisé</span></div>
+  <div class="menu">
+    <div class="row"><h3>Light</h3><p>Itinéraire sur mesure jusqu'à trois villes, activités et expériences locales, carnet de voyage digital, WhatsApp pendant le voyage. Vous gérez hôtels et transports vous-même.</p><div class="price">29 CHF<small>par jour</small></div></div>
+    <div class="row main"><h3>Solo ou Duo</h3><p>Tout Light, plus la sélection d'hébergements et de transports, deux à quatre options par étape. Deux semaines en couple, 560 CHF au total.</p><div class="price">40 CHF<small>par jour</small></div></div>
+    <div class="row"><h3>Famille</h3><p>Tout Solo ou Duo, activités adaptées à l'âge des enfants, rythme pensé pour la famille, jusqu'à quatre personnes.</p><div class="price">43 CHF<small>par jour</small></div></div>
+    <div class="row"><h3>Appel conseil</h3><p>Une heure en visio pour relire votre plan et répondre à vos questions, si vous organisez vous-même. Déductible de l'accompagnement complet.</p><div class="price">70 CHF<small>l'heure</small></div></div>
+  </div>
+</div></section>
+
+<section style="padding-top:0"><div class="wrap">
+  <div class="rule"><h2>Comment ça se passe</h2><span>Quatre étapes</span></div>
+  <div class="steps">
+    <div><h3>Vous écrivez</h3><p>Dates, envies, budget, participants. Réponse sous un à deux jours.</p></div>
+    <div><h3>Appel découverte</h3><p>Gratuit et sans engagement, puis une première version de l'itinéraire avec le devis.</p></div>
+    <div><h3>Sélection</h3><p>Deux à quatre options par étape, avec les liens pour réserver vous-même.</p></div>
+    <div><h3>Carnet et voyage</h3><p>Tout réuni jour par jour. Une question pendant le séjour se règle sur WhatsApp.</p></div>
+  </div>
+</div></section>
+
+<div class="pull"><div class="wrap">
+  <blockquote>« Grâce aux précieux conseils d'Anaïs nous avons découvert Koh Lanta et Bangkok. Gain de temps, d'argent, et zéro souci ! »</blockquote>
+  <footer>Patrick, en couple. Dix-huit avis sur Google, tous à cinq étoiles.</footer>
+</div></div>
+
+<section class="final"><div class="wrap">
+  <h2>Racontez-nous votre voyage</h2>
+  <p>Dates approximatives, envies, budget. Le premier échange est gratuit et sans engagement.</p>
+  <p style="margin-top:28px"><a class="btn white" href="#">Demander un devis gratuit</a></p>
+</div></section>
+<div class="wrap"><footer class="site">Maquette B, éditorial. Zwald Travel Planner Co., Ltd.</footer></div>
+</body></html>
