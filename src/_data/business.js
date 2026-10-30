@@ -42,9 +42,10 @@ const business = {
   slogan: { fr: "Vos voyages sur mesure de A à Z", en: "Your tailor-made trips from A to Z" },
   // Formules, prix par jour de voyage organisé (CHF).
   offers: [
-    { id: "light", name: { fr: "Formule Light", en: "Light package" }, price: 29, desc: { fr: "Itinéraire sur mesure, par jour de voyage organisé.", en: "Tailor-made itinerary, per day of travel planned." } },
+    { id: "light", name: { fr: "Formule Light", en: "Light package" }, price: 35, desc: { fr: "Itinéraire sur mesure et sélection des transports, par jour de voyage organisé.", en: "Tailor-made itinerary and transport selection, per day of travel planned." } },
     { id: "solo-duo", name: { fr: "Formule Solo / Duo", en: "Solo / Duo package" }, price: 40, desc: { fr: "Itinéraire sur mesure et carnet de voyage digital, par jour de voyage organisé.", en: "Tailor-made itinerary and digital travel journal, per day of travel planned." } },
-    { id: "famille", name: { fr: "Formule Famille", en: "Family package" }, price: 43, desc: { fr: "Itinéraire sur mesure pour les familles, par jour de voyage organisé.", en: "Tailor-made itinerary for families, per day of travel planned." } }
+    { id: "famille", name: { fr: "Formule Famille", en: "Family package" }, price: 43, desc: { fr: "Itinéraire sur mesure pour les familles, par jour de voyage organisé.", en: "Tailor-made itinerary for families, per day of travel planned." } },
+    { id: "region", name: { fr: "Formule par région", en: "Per-region package" }, price: 120, unit: { fr: "par région visitée", en: "per region visited" }, desc: { fr: "Création de l'itinéraire, sélection d'hébergements par région et carnet de voyage personnalisé, dès 120 CHF par région.", en: "Itinerary, accommodation selection for each region and personalised travel journal, from 120 CHF per region." } }
   ]
 };
 
@@ -79,7 +80,7 @@ function jsonLd(lang) {
     image: site + "/images/IMG_6424.jpg",
     logo: site + "/images/logo.png",
     telephone: b.telephone,
-    priceRange: "29-43 CHF",
+    priceRange: "35-120 CHF",
     currenciesAccepted: "CHF, EUR",
     address: { "@type": "PostalAddress", ...b.address },
     areaServed: [
@@ -103,7 +104,7 @@ function jsonLd(lang) {
           "@type": "UnitPriceSpecification",
           price: String(o.price),
           priceCurrency: "CHF",
-          unitText: l === "en" ? "per day of travel planned" : "par jour de voyage organisé"
+          unitText: o.unit ? o.unit[l] : (l === "en" ? "per day of travel planned" : "par jour de voyage organisé")
         }
       }))
     },
