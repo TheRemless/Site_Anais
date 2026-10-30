@@ -40,23 +40,30 @@ eleventyExcludeFromCollections: true
 <body class="route">
 <a class="skip" href="#main">Skip to content</a>
 
-<section class="hero route-hero">
-  <img eleventy:ignore class="hero-photo" src="{{ taxi.hero.photo.src }}" srcset="{{ taxi.hero.photo.srcset }}" sizes="100vw" width="{{ taxi.hero.photo.width }}" height="{{ taxi.hero.photo.height }}" alt="{{ taxi.hero.photo.alt }}" fetchpriority="high">
-  <header class="bar">
-    <a class="bar-link" href="/taxi/">
-      <div class="plate"><img eleventy:ignore src="/images/taxi/logo.webp" width="640" height="640" alt="VIP Taxi Lanta, Mr. Brown"></div>
-      <div class="word">VIP TAXI LANTA<small>{{ taxi.business.tagline }}, {{ taxi.business.owner }}</small></div>
-    </a>
-  </header>
-  <div class="hero-in">
-    <p class="crumb"><a href="/taxi/">Private transfers</a> · {{ r.from }} to {{ r.to }}</p>
-    <h1>{{ r.h1 }}</h1>
-    <p class="lead">{{ r.lead }}</p>
-    <a class="btn" href="{{ r.formHref }}">Request this transfer</a>
-  </div>
-</section>
+<header class="route-top">
+  <a class="bar-link" href="/taxi/">
+    <span class="plate"><img eleventy:ignore src="/images/taxi/logo.webp" width="640" height="640" alt="VIP Taxi Lanta, Mr. Brown"></span>
+    <span class="word">VIP TAXI LANTA<small>{{ taxi.business.tagline }}, {{ taxi.business.owner }}</small></span>
+  </a>
+  <a class="all" href="/taxi/">All transfers</a>
+</header>
 
 <main id="main">
+  <section class="ticket" aria-labelledby="h-route">
+    <div class="ticket-in">
+      <p class="ticket-kind">Private taxi or minivan</p>
+      <h1 id="h-route"><span class="from">{{ r.from }}</span><span class="to">to {{ r.to }}</span></h1>
+      <p class="ticket-lead">{{ r.lead }}</p>
+      <dl class="ticket-facts">
+        <div><dt>Vehicle</dt><dd>Taxi or minivan, your group only</dd></div>
+        <div><dt>Payment</dt><dd>Cash to the driver, no prepayment</dd></div>
+        <div><dt>Return</dt><dd>{{ r.to }} to {{ r.from }} on request</dd></div>
+      </dl>
+      <a class="btn" href="{{ r.formHref }}">Request this transfer</a>
+    </div>
+    <img eleventy:ignore class="ticket-photo" src="/images/taxi/van-seats.webp" width="900" height="675" alt="Minivan interior with diamond-stitched tan leather seats and a lit ceiling" fetchpriority="high">
+  </section>
+
   <section class="sec route-body" aria-label="About this transfer">
     {%- for para in r.body %}
     <p>{{ para }}</p>
@@ -66,12 +73,12 @@ eleventyExcludeFromCollections: true
 
   <section class="sec" aria-labelledby="h-how">
     <h2 id="h-how">How it works</h2>
-    <div class="why">
-      {%- for w in taxiRoutesView.common.how %}
-      <div><h3>{{ w.title }}</h3><p>{{ w.text }}</p></div>
+    <ol class="steps">
+      {%- for st in taxi.steps %}
+      <li><div><h3>{{ st.title }}</h3><p>{{ st.text }}</p></div></li>
       {%- endfor %}
-    </div>
-    <p class="route-cta"><a class="btn" href="{{ r.formHref }}">Request this transfer</a></p>
+    </ol>
+    <p class="pay">{{ taxi.payment.text }} Children and babies: add them in the form and ask for a child seat or a baby seat.</p>
   </section>
 
   <section class="sec" aria-labelledby="h-faq">
@@ -85,11 +92,24 @@ eleventyExcludeFromCollections: true
 
   <section class="sec routes-more" aria-labelledby="h-more">
     <h2 id="h-more">Other private transfers</h2>
-    <ul>
-      {%- for o in taxiRoutesView.routes %}{% if o.id != r.id %}
-      <li><a href="/taxi/{{ o.id }}/">{{ o.label }}</a></li>
-      {%- endif %}{% endfor %}
-    </ul>
+    <div class="routes-cols">
+      <div>
+        <h3>Airports</h3>
+        <ul>
+          {%- for o in taxiRoutesView.routes %}{% if o.code and o.id != r.id %}
+          <li><a href="/taxi/{{ o.id }}/">{{ o.label }}</a></li>
+          {%- endif %}{% endfor %}
+        </ul>
+      </div>
+      <div>
+        <h3>Towns, parks and piers</h3>
+        <ul>
+          {%- for o in taxiRoutesView.routes %}{% if not o.code and o.id != r.id %}
+          <li><a href="/taxi/{{ o.id }}/">{{ o.label }}</a></li>
+          {%- endif %}{% endfor %}
+        </ul>
+      </div>
+    </div>
     <p>Anywhere else in Southern Thailand: <a href="/taxi/#request">send us the pickup and the destination</a>.</p>
   </section>
 
