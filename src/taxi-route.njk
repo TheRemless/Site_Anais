@@ -57,6 +57,7 @@ eleventyExcludeFromCollections: true
       <dl class="ticket-facts">
         <div><dt>Vehicle</dt><dd>Taxi or minivan, your group only</dd></div>
         <div><dt>Payment</dt><dd>Cash to the driver, no prepayment</dd></div>
+        {%- if r.drive %}<div><dt>Drive</dt><dd>{{ r.drive | capitalize }}, depending on traffic</dd></div>{% endif %}
         <div><dt>Return</dt><dd>{{ r.to }} to {{ r.from }} on request</dd></div>
       </dl>
       <a class="btn" href="{{ r.formHref }}">Request this transfer</a>
@@ -68,7 +69,6 @@ eleventyExcludeFromCollections: true
     {%- for para in r.body %}
     <p>{{ para }}</p>
     {%- endfor %}
-    {%- if r.drive %}<p class="drive">{{ r.drive }}</p>{% endif %}
   </section>
 
   <section class="sec" aria-labelledby="h-how">
