@@ -31,7 +31,7 @@ eleventyExcludeFromCollections: true
 <meta name="theme-color" content="#140D09">
 <link rel="preload" as="font" type="font/woff2" href="/css/fonts/marcellus-400-normal-latin.woff2" crossorigin>
 <link rel="preload" as="font" type="font/woff2" href="/css/fonts/figtree-400-normal-latin.woff2" crossorigin>
-<link rel="stylesheet" href="/css/taxi.css">
+<link rel="stylesheet" href="/css/taxi.css?v={{ build.v }}">
 <script>document.documentElement.className = "js";</script>
 {%- for block in r.jsonLd %}
 <script type="application/ld+json">{{ block | dump | safe }}</script>
