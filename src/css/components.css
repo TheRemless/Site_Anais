@@ -406,7 +406,7 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 
 /* ---------- Experience photo tiles (Girls Trips programme) ---------- */
 .xp-tile { display: flex; flex-direction: column; }
-.xp-tile img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 16px; display: block; transition: transform 0.7s var(--ease); }
+.xp-tile img { width: 100%; height: auto; aspect-ratio: 4/3; object-fit: cover; border-radius: 16px; display: block; transition: transform 0.7s var(--ease); }
 .xp-tile:hover img { transform: translateY(-4px); }
 .xp-tile .xt-body { padding: 16px 4px 0; }
 .xp-tile h3 { font-size: 1.3rem; margin-bottom: 6px; }
