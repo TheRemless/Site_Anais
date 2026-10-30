@@ -616,3 +616,59 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
   .hv-process .steps { grid-template-columns: 1fr; }
   .hv-band { border-radius: 24px; margin: 0; }
 }
+
+/* ---------- Passe de style 2026, pages intérieures ---------- */
+/* Têtes de page photo : bords arrondis en bas, hauteur contenue */
+.page-hero { min-height: 58vh; border-radius: 0 0 40px 40px; }
+.page-hero h1 { font-weight: 600; }
+/* Bandes colorées arrondies, comme sur l'accueil */
+.section-pad.bg-cream, .section-pad.bg-mint { background: var(--bg-mint); border-radius: 40px; margin: 0 clamp(8px, 1.5vw, 24px); }
+.bg-cream .card, .bg-mint .card { background: transparent; }
+/* Cartes à icône : plus de boîte ni d'icône, un trait et du texte */
+.card { background: transparent; border: 0; border-top: 2px solid var(--teal); border-radius: 0; padding: 22px 0 0; box-shadow: none; }
+.card:hover { transform: none; box-shadow: none; border-color: var(--teal); }
+.card .ic { display: none; }
+.card h3 { font-size: 1.35rem; }
+.aud-card { background: transparent; border: 0; border-top: 1px solid var(--line-soft); border-radius: 0; padding: 18px 0; box-shadow: none; }
+.aud-card:hover { transform: none; box-shadow: none; }
+.aud-card .ic { display: none; }
+.aud-card p { font-family: var(--serif); font-size: 1.3rem; font-weight: 500; color: var(--ink); padding-top: 0; }
+.info-card { background: transparent; border: 0; border-top: 1px solid var(--line-soft); border-radius: 0; padding: 18px 0 0; }
+/* Étapes : grand numéro en serif, pas de pastille */
+.steps { background: transparent; gap: 40px 32px; border-radius: 0; overflow: visible; }
+.step { background: transparent; padding: 0; }
+.step:hover { background: transparent; }
+.step .step-num { background: transparent; color: var(--teal-dark); width: auto; height: auto; border-radius: 0; font-family: var(--serif); font-size: 2.2rem; font-weight: 600; margin-bottom: 10px; display: block; }
+.step:hover .step-num { transform: none; }
+/* Formules : colonnes et filets, la formule mise en avant sur fond doux */
+.formules { gap: 0; border-top: 1px solid rgba(10,92,82,0.15); }
+.formule { border: 0; border-radius: 0; background: transparent; padding: 36px 32px 36px 0; box-shadow: none; }
+.formule + .formule { padding-left: 32px; border-left: 1px solid rgba(10,92,82,0.15); }
+.formule:hover { transform: none; box-shadow: none; }
+.formule.featured { background: var(--surface); color: var(--ink); border-radius: 22px; transform: none; padding: 36px 32px; border-left: 0; margin: -1px 0; }
+.formule.featured:hover { transform: none; }
+.formule.featured h3, .formule.featured ul li { color: var(--ink); }
+.formule.featured .aud, .formule.featured .price small, .formule.featured .price-note { color: var(--teal-dark); }
+.formule.featured ul li svg { color: var(--teal-dark); }
+.formule.featured ul li.no, .formule.featured ul li.no svg { color: var(--ink-faint); }
+.formule.featured .badge { position: static; transform: none; display: inline-block; margin-bottom: 12px; background: var(--teal-dark); color: #fff; }
+.formule.featured .btn-white { background: var(--teal-dark); color: #fff; border-color: var(--teal-dark); }
+.formule .price { font-size: 3rem; }
+.section-pad:not(.bg-cream):not(.bg-mint) .formule.featured { background: var(--bg-mint); }
+/* Blog : cartes photo sans ombre */
+.blog-card { border: 0; border-radius: 18px; background: transparent; }
+.blog-card:hover { transform: none; box-shadow: none; }
+.blog-card .b-img { border-radius: 18px; }
+.blog-card .b-body { padding-left: 0; padding-right: 0; }
+/* Photos en arche sur les pages intérieures */
+.split-media.tall img { border-radius: 220px 220px 24px 24px; }
+/* Fin de page : arrondi en haut du bandeau photo */
+.cta-band { border-radius: 40px 40px 0 0; }
+@media (max-width: 900px) {
+  .page-hero { border-radius: 0 0 24px 24px; }
+  .section-pad.bg-cream, .section-pad.bg-mint { border-radius: 24px; margin: 0; }
+  .formule { padding: 28px 0; }
+  .formule + .formule { padding-left: 0; border-left: 0; border-top: 1px solid rgba(10,92,82,0.15); }
+  .formule.featured { padding: 28px 22px; margin: 8px 0; }
+  .cta-band { border-radius: 24px 24px 0 0; }
+}
