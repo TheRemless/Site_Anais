@@ -7,6 +7,7 @@ const TODAY = "2026-11-14"; // un samedi
 function values(overrides) {
   return Object.assign(
     {
+      name: "Jane Doe",
       from: "Lanta Sand Resort",
       to: "Krabi Airport",
       date_choice: "tomorrow",
@@ -53,6 +54,7 @@ test("buildMessage : un transfert complet, une info par ligne", () => {
     [
       "Hi VIP Taxi Lanta!",
       "I'd like a price for a transfer.",
+      "Name: Jane Doe",
       "From: Lanta Sand Resort",
       "To: Krabi Airport",
       "Date: Tomorrow (Sun 15 Nov)",
@@ -103,6 +105,7 @@ test("validate : une demande complète est valide", () => {
 test("validate : départ, arrivée, date et un adulte sont obligatoires, l'heure ne l'est pas", () => {
   const errors = F.validate(values({ from: " ", to: "", date_choice: "", adults: 0, time: "" }), TODAY);
   assert.deepEqual(Object.keys(errors).sort(), ["adults", "date", "from", "to"]);
+  assert.equal(errors.name, undefined);
 });
 
 test("validate : Other date doit être une vraie date, d'aujourd'hui ou plus tard", () => {
@@ -134,4 +137,16 @@ test("filterPlaces : un lieu déjà choisi remontre toute la liste", () => {
   assert.deepEqual(F.filterPlaces(PLACES, "Krabi Airport", { showAllOnExact: true }), PLACES);
   assert.deepEqual(F.filterPlaces(PLACES, "krabi airport", { showAllOnExact: true }), PLACES);
   assert.deepEqual(F.filterPlaces(PLACES, "Krabi", { showAllOnExact: true }), ["Krabi Airport", "Krabi Town"]);
+});
+
+test("buildMessage : le nom vient juste après la demande, ligne omise si vide", () => {
+  assert.equal(F.buildMessage(values(), TODAY).split("\n")[2], "Name: Jane Doe");
+  assert.doesNotMatch(F.buildMessage(values({ name: "   " }), TODAY), /Name:/);
+  assert.match(F.buildMessage(values({ name: "  Zoë  Martin " }), TODAY), /^Name: Zoë {2}Martin$/m);
+});
+
+test("validate : le nom est obligatoire, au moins deux caractères", () => {
+  assert.match(F.validate(values({ name: "" }), TODAY).name, /name/i);
+  assert.match(F.validate(values({ name: " J " }), TODAY).name, /name/i);
+  assert.equal(F.validate(values({ name: "Jo" }), TODAY).name, undefined);
 });

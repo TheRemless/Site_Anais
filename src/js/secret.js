@@ -47,6 +47,7 @@
       type: radio("type") || "transfer",
       dateChoice: radio("dateChoice"),
       dateOther: el("dateOther").value,
+      name: el("name").value,
       hotel: el("hotel").value,
       transfer: {
         from: el("t-from").value,
@@ -75,6 +76,7 @@
     setRadio("type", s.type);
     setRadio("dateChoice", s.dateChoice);
     el("dateOther").value = s.dateOther || "";
+    el("name").value = s.name || "";
     el("hotel").value = s.hotel || "";
     el("t-from").value = s.transfer.from || "";
     el("t-to").value = s.transfer.to || "";
@@ -122,7 +124,7 @@
   }
 
   /* Erreurs affichées sous chaque champ, focus sur le premier champ fautif. */
-  var ERROR_FIELDS = { from: "t-from", to: "t-to", tour: "b-tour", activity: "a-activity", date: "dateChoice" };
+  var ERROR_FIELDS = { from: "t-from", to: "t-to", tour: "b-tour", activity: "a-activity", date: "dateChoice", name: "name" };
   function errorTarget(key) {
     if (key !== "adults") return { id: "err-" + key, field: ERROR_FIELDS[key] };
     return radio("type") === "boat" ? { id: "err-adults-boat", field: "b-adults" } : { id: "err-adults", field: "t-adults" };

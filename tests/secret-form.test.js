@@ -11,6 +11,7 @@ function baseState(overrides) {
       type: "transfer",
       dateChoice: "tomorrow",
       dateOther: "",
+      name: "Jane Doe",
       hotel: "Lanta Sand Resort",
       transfer: { from: "Lanta Sand Resort", to: "Krabi Airport", time: "10:30", adults: 2, children: 1, babies: 0, childSeat: true, babySeat: false, mode: "private" },
       boat: { tour: "4 Islands", adults: 2, children: 1, babies: 0, mode: "join-in" },
@@ -51,6 +52,7 @@ test("buildMessage : transfert complet, une info par ligne, sans hôtel", () => 
     [
       "Hi Secret Travel & Tour!",
       "I'd like a price for a transfer.",
+      "Name: Jane Doe",
       "From: Lanta Sand Resort",
       "To: Krabi Airport",
       "Date: Tomorrow (Sun 15 Nov)",
@@ -71,6 +73,7 @@ test("buildMessage : transfert avec bébé et siège bébé, champs vides omis",
     [
       "Hi Secret Travel & Tour!",
       "I'd like a price for a transfer.",
+      "Name: Jane Doe",
       "From: Ao Nang",
       "To: Koh Lanta",
       "Date: Tomorrow (Sun 15 Nov)",
@@ -90,6 +93,7 @@ test("buildMessage : transfert en speedboat, sans ligne de siège", () => {
     [
       "Hi Secret Travel & Tour!",
       "I'd like a price for a transfer.",
+      "Name: Jane Doe",
       "From: Koh Lanta",
       "To: Koh Phi Phi",
       "Date: Tomorrow (Sun 15 Nov)",
@@ -114,6 +118,7 @@ test("buildMessage : excursion en bateau, enfants à 0 omis", () => {
     [
       "Hi Secret Travel & Tour!",
       "I'd like a price for a boat tour: Koh Rok & Koh Haa.",
+      "Name: Jane Doe",
       "Date: Tue 24 Nov 2026",
       "Adults: 2",
       "Private boat",
@@ -135,6 +140,7 @@ test("buildMessage : activité", () => {
     [
       "Hi Secret Travel & Tour!",
       "I'd like a price for an activity: Thai cooking class.",
+      "Name: Jane Doe",
       "Date: Today (Sat 14 Nov)",
       "People: 2",
       "Hotel or accommodation: Long Beach"
@@ -222,4 +228,23 @@ test("restoreDraft : « tomorrow » gardé si on revient le même jour", () => {
   const saved = new Date("2026-11-14T03:00:00Z");
   const sameDay = new Date("2026-11-14T09:00:00Z");
   assert.equal(F.restoreDraft(F.makeDraft(baseState({ dateChoice: "tomorrow" }), saved), sameDay).dateChoice, "tomorrow");
+});
+
+test("buildMessage : le nom vient juste après la demande, pour les trois types", () => {
+  for (const type of ["transfer", "boat", "activity"]) {
+    const lines = F.buildMessage(baseState({ type, dateChoice: "today" }), TODAY).split("\n");
+    assert.equal(lines[2], "Name: Jane Doe", type);
+  }
+});
+
+test("buildMessage : espaces autour du nom retirés, ligne omise si le nom est vide", () => {
+  assert.match(F.buildMessage(baseState({ name: "  Jane   Doe " }), TODAY), /^Name: Jane {3}Doe$/m);
+  assert.doesNotMatch(F.buildMessage(baseState({ name: "  " }), TODAY), /Name:/);
+});
+
+test("validate : le nom est obligatoire, au moins deux caractères", () => {
+  assert.match(F.validate(baseState({ name: "" }), TODAY).name, /name/i);
+  assert.match(F.validate(baseState({ name: " J " }), TODAY).name, /name/i);
+  assert.equal(F.validate(baseState({ name: "Jo" }), TODAY).name, undefined);
+  assert.equal(F.validate(baseState({ name: undefined }), TODAY).name !== undefined, true, "ancien brouillon sans nom");
 });
