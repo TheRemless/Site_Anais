@@ -101,6 +101,9 @@
       if (a.people > 0) lines.push("People: " + a.people);
     }
 
+    // Le nom suit la demande (ligne 2 du message) pour que l'équipe sache tout de suite à qui répondre.
+    if (clean(state.name)) lines.splice(2, 0, "Name: " + clean(state.name));
+
     // Pour un transfert, le lieu de prise en charge est déjà dans « From ».
     if (state.type !== "transfer" && clean(state.hotel)) lines.push("Hotel or accommodation: " + clean(state.hotel));
     return lines.join("\n");
@@ -126,6 +129,7 @@
     var date = resolveDate(state.dateChoice, state.dateOther, today);
     if (!date) errors.date = "Choose a date.";
     else if (date < today) errors.date = "This date has already passed.";
+    if (clean(state.name).length < 2) errors.name = "Tell us your full name.";
     return errors;
   }
 

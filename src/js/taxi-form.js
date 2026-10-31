@@ -79,6 +79,7 @@
   // Âges utilisés par l'équipe : bébé jusqu'à 2 ans, enfant de 3 à 11 ans, adulte dès 12 ans.
   function buildMessage(v, today) {
     var lines = ["Hi VIP Taxi Lanta!", "I'd like a price for a transfer."];
+    if (clean(v.name)) lines.push("Name: " + clean(v.name));
     var date = resolveDate(v.date_choice, v.date_other, today);
     var adults = num(v.adults);
     var children = num(v.children);
@@ -111,6 +112,7 @@
     var date = resolveDate(v.date_choice, v.date_other, today);
     if (!date || !isRealDate(date)) errors.date = "Choose a date.";
     else if (date < today) errors.date = "This date has already passed.";
+    if (clean(v.name).length < 2) errors.name = "Tell us your full name.";
     return errors;
   }
 
