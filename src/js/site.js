@@ -239,6 +239,7 @@
       var next = root.querySelector("[data-next]");
       var dotsWrap = root.querySelector(".carousel-dots");
       var i = 0, n = slides.length, timer;
+      var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
       var dots = slides.map(function (_, idx) {
         var d = el('<button class="carousel-dot" aria-label="Avis ' + (idx + 1) + '"></button>');
@@ -249,10 +250,10 @@
 
       function go(idx) {
         i = (idx + n) % n;
-        viewport.scrollTo({ left: i * viewport.clientWidth, behavior: "smooth" });
+        viewport.scrollTo({ left: i * viewport.clientWidth, behavior: still ? "auto" : "smooth" });
         dots.forEach(function (d, k) { d.classList.toggle("active", k === i); });
       }
-      function rest() { clearInterval(timer); timer = setInterval(function () { go(i + 1); }, 6500); }
+      function rest() { clearInterval(timer); if (!still) timer = setInterval(function () { go(i + 1); }, 6500); }
 
       /* Sync dots when user swipes natively */
       viewport.addEventListener("scroll", function () {

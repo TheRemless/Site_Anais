@@ -30,13 +30,13 @@ langAlt: "/en/"
 <meta name="twitter:title" content="Travel planner Thaïlande, voyages sur mesure | Zwald">
 <meta name="twitter:description" content="Anaïs, travel planner installée en Thaïlande. Itinéraires sur mesure en Thaïlande et en Asie du Sud-Est, carnet de voyage personnalisé et accompagnement 7j/7. Devis gratuit.">
 <meta name="twitter:image" content="https://zwaldtravelplanner.com/images/og-home.jpg?v=2">
-{% endraw %}{% include "schema-business.njk" %}{% raw %}
+{% endraw %}{% include "schema-business.njk" %}<link rel="stylesheet" href="/css/home.css?v={{ build.v }}">{% raw %}
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
 <section class="hv-hero" data-screen-label="Hero">
   <div class="container hv-hero-grid">
-    <div>
+    <div class="hv-hero-copy">
       <p class="eyebrow">Travel Planner · Thaïlande &amp; Asie du Sud-Est</p>
       <h1>Voyages sur mesure en Thaïlande, pensés pour toi</h1>
       <p class="hv-sub">Je t'aide à composer ton itinéraire idéal selon tes envies, ton rythme et ton budget, grâce à mon expérience locale. Tu gagnes des heures de recherches et ton voyage te coûte moins cher qu'en agence.</p>
@@ -47,17 +47,16 @@ langAlt: "/en/"
       <p class="hv-trust">Plus de 3 ans sur place · <a href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener">Avis Google 5/5</a> · WhatsApp 7j/7</p>
     </div>
     <div class="hv-hero-art" aria-hidden="true">
-      <div class="hv-art-main" data-parallax="0.06"><img fetchpriority="high" sizes="(min-width: 900px) 40vw, 90vw" src="/images/IMG_1369.jpg" alt=""></div>
-      <div class="hv-art-side" data-parallax="-0.08"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 24vw, 50vw" src="/images/IMG_6424.jpg" alt=""></div>
-      <div class="hv-art-dot" data-parallax="0.12"><img loading="lazy" decoding="async" sizes="160px" src="/images/IMG_2016.jpg" alt=""></div>
+      <div class="hv-art-main"><img fetchpriority="high" sizes="(min-width: 900px) 50vw, 100vw" src="/images/IMG_1369.jpg" alt=""></div>
+      <div class="hv-art-side"><img loading="lazy" decoding="async" sizes="280px" src="/images/IMG_6424.jpg" alt=""></div>
     </div>
   </div>
 </section>
 
 <section class="section-pad">
   <div class="container hv-split">
-    <div class="hv-arch" data-reveal="left"><img loading="lazy" decoding="async" src="/images/anais-smoothies.jpg" alt="Anaïs, un smoothie à la mangue dans chaque main, sur un marché"></div>
-    <div class="hv-text" data-reveal="right">
+    <div class="hv-arch"><img loading="lazy" decoding="async" src="/images/anais-smoothies.jpg" alt="Anaïs, un smoothie à la mangue dans chaque main, sur un marché"></div>
+    <div class="hv-text">
       <p class="eyebrow">Bienvenue !</p>
       <h2>Moi c'est Anaïs, ton organisatrice de voyage en Thaïlande</h2>
       <p class="lead">Je vis en Thaïlande depuis plus de trois ans et j'accompagne les voyageurs pour organiser leur séjour en toute simplicité et sérénité.</p>
@@ -69,8 +68,8 @@ langAlt: "/en/"
 
 <section class="section-pad hv-audience">
   <div class="container hv-aud-grid">
-    <div class="hv-aud-photo" data-reveal="left"><img loading="lazy" decoding="async" src="/images/IMG_5519.jpg" alt="Kayak dans la mangrove, sud de la Thaïlande"></div>
-    <div class="hv-aud-panel" data-reveal="right">
+    <div class="hv-aud-photo"><img loading="lazy" decoding="async" src="/images/galerie/phang-nga.jpg" alt="Point de vue sur une baie et ses pitons"></div>
+    <div class="hv-aud-panel">
       <p class="eyebrow">Pour qui ?</p>
       <h2>Mon service est fait pour toi si…</h2>
       <ul class="hv-aud-list">
@@ -87,14 +86,14 @@ langAlt: "/en/"
 <section class="marquee hv-marquee" aria-label="Galerie photo">
   <div class="marquee-track">
     <div class="marquee-item" data-lightbox data-src="/images/IMG_1369.jpg" data-caption="Pause noix de coco face à la mer d'Andaman, Krabi"><picture><source type="image/webp" srcset="/images/thumbs/IMG_1369-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_1369.jpg" alt="Pause noix de coco face à la mer d'Andaman, Krabi"></picture><span class="cap">Krabi · mer d'Andaman</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_5519.jpg" data-caption="Kayak dans la mangrove, sud de la Thaïlande"><picture><source type="image/webp" srcset="/images/thumbs/IMG_5519-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_5519.jpg" alt="Kayak dans la mangrove, sud de la Thaïlande"></picture><span class="cap">Kayak dans la mangrove</span></div>
+    <div class="marquee-item" data-lightbox data-src="/images/galerie/phang-nga.jpg" data-caption="Point de vue sur une baie et ses pitons"><picture><source type="image/webp" srcset="/images/thumbs/phang-nga-700.webp"><img loading="lazy" decoding="async" src="/images/galerie/phang-nga.jpg" alt="Point de vue sur une baie et ses pitons"></picture><span class="cap">Point de vue sur la baie</span></div>
     <div class="marquee-item" data-lightbox data-src="/images/IMG_5227.jpg" data-caption="Temple doré de Doi Suthep, Chiang Mai"><picture><source type="image/webp" srcset="/images/thumbs/IMG_5227-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_5227.jpg" alt="Temple doré de Doi Suthep, Chiang Mai"></picture><span class="cap">Doi Suthep · Chiang Mai</span></div>
     <div class="marquee-item" data-lightbox data-src="/images/IMG_9507.jpg" data-caption="Cascade d'Erawan, Kanchanaburi"><picture><source type="image/webp" srcset="/images/thumbs/IMG_9507-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_9507.jpg" alt="Cascade d'Erawan, Kanchanaburi"></picture><span class="cap">Cascade d'Erawan</span></div>
     <div class="marquee-item" data-lightbox data-src="/images/IMG_4231.jpg" data-caption="Eaux turquoise de Koh Tao"><picture><source type="image/webp" srcset="/images/thumbs/IMG_4231-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_4231.jpg" alt="Eaux turquoise de Koh Tao"></picture><span class="cap">Koh Tao</span></div>
     <div class="marquee-item" data-lightbox data-src="/images/IMG_2016.jpg" data-caption="Coucher de soleil sur la plage de Koh Lanta"><picture><source type="image/webp" srcset="/images/thumbs/IMG_2016-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Coucher de soleil sur la plage de Koh Lanta"></picture><span class="cap">Coucher de soleil · Koh Lanta</span></div>
     <!-- duplicate for seamless loop -->
     <div class="marquee-item" data-lightbox data-src="/images/IMG_1369.jpg" data-caption="Pause noix de coco face à la mer d'Andaman, Krabi" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_1369-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_1369.jpg" alt=""></picture><span class="cap">Krabi · mer d'Andaman</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/IMG_5519.jpg" data-caption="Kayak dans la mangrove, sud de la Thaïlande" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_5519-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_5519.jpg" alt=""></picture><span class="cap">Kayak dans la mangrove</span></div>
+    <div class="marquee-item" data-lightbox data-src="/images/galerie/phang-nga.jpg" data-caption="Point de vue sur une baie et ses pitons" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/phang-nga-700.webp"><img loading="lazy" decoding="async" src="/images/galerie/phang-nga.jpg" alt=""></picture><span class="cap">Point de vue sur la baie</span></div>
     <div class="marquee-item" data-lightbox data-src="/images/IMG_5227.jpg" data-caption="Temple doré de Doi Suthep, Chiang Mai" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_5227-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_5227.jpg" alt=""></picture><span class="cap">Doi Suthep · Chiang Mai</span></div>
     <div class="marquee-item" data-lightbox data-src="/images/IMG_9507.jpg" data-caption="Cascade d'Erawan, Kanchanaburi" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_9507-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_9507.jpg" alt=""></picture><span class="cap">Cascade d'Erawan</span></div>
     <div class="marquee-item" data-lightbox data-src="/images/IMG_4231.jpg" data-caption="Eaux turquoise de Koh Tao" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/IMG_4231-700.webp"><img loading="lazy" decoding="async" src="/images/IMG_4231.jpg" alt=""></picture><span class="cap">Koh Tao</span></div>
@@ -102,15 +101,17 @@ langAlt: "/en/"
   </div>
 </section>
 
-<div style="background:var(--navy);text-align:center;padding:16px 0 28px">
-  <a class="text-link" href="/galerie/" style="color:var(--on-dark-mute);font-size:0.9rem">
+<div class="hv-gal-link">
+  <a class="text-link" href="/galerie/">
     Voir toute la galerie
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
   </a>
 </div>
 
-<section class="section-pad">
-  <div class="container">
+<section class="section-pad hv-why">
+  <div class="container hv-why-grid">
+    <div class="hv-why-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 45vw, 100vw" src="/images/anais-bureau.jpg" alt="Anaïs au téléphone, à son bureau, carnet ouvert"></div>
+    <div class="hv-why-text">
     <div class="hv-head">
       <p class="eyebrow">L'accompagnement Zwald</p>
       <h2>Pourquoi faire appel à une travel planner ?</h2>
@@ -121,6 +122,7 @@ langAlt: "/en/"
       <div data-reveal data-reveal-delay="1"><h3>Les meilleurs prix, dénichés pour toi</h3><p>Vols, hôtels, activités, transports, jusqu'aux adresses où manger. Je compare tout, puis tu réserves au prix direct, sans marge d'agence.</p></div>
       <div data-reveal data-reveal-delay="2"><h3>On en parle vraiment</h3><p>Des appels pour construire le voyage ensemble, étape par étape, aussi longtemps qu'il faut. Puis je reste sur WhatsApp pendant tout le séjour.</p></div>
       <div data-reveal data-reveal-delay="3"><h3>Quelqu'un qui vit sur place</h3><p>À Koh Lanta depuis février 2023. Les saisons, les trajets et les bonnes adresses, je les connais de l'intérieur.</p></div>
+    </div>
     </div>
   </div>
 </section>
@@ -133,7 +135,7 @@ langAlt: "/en/"
       <p>Chaque voyage est unique. Choisis la formule qui te correspond, puis adapte-la avec moi.</p>
     </div>
     <div class="formules">
-      <div class="formule" data-reveal data-reveal-delay="1">
+      <div class="formule">
         <h3>Light</h3>
         <p class="aud">Voyageurs autonomes</p>
         <ul>
@@ -147,7 +149,7 @@ langAlt: "/en/"
         </ul>
         <a class="btn btn-ghost" href="/contact/"><span>Recevoir un devis</span></a>
       </div>
-      <div class="formule featured" data-reveal data-reveal-delay="2">
+      <div class="formule featured">
         <span class="badge">Le plus choisi</span>
         <h3>Solo / Duo</h3>
         <p class="aud">Jusqu'à 2 personnes</p>
@@ -161,7 +163,7 @@ langAlt: "/en/"
         </ul>
         <a class="btn btn-white" href="/contact/"><span>Recevoir un devis</span></a>
       </div>
-      <div class="formule" data-reveal data-reveal-delay="3">
+      <div class="formule">
         <h3>Famille</h3>
         <p class="aud">Jusqu'à 4 personnes</p>
         <ul>
@@ -173,7 +175,7 @@ langAlt: "/en/"
         <a class="btn btn-ghost" href="/contact/"><span>Recevoir un devis</span></a>
       </div>
     </div>
-    <div class="formule-region" data-reveal>
+    <div class="formule-region">
       <div>
         <p class="aud">Formule par région</p>
         <h3>Conseillée dès deux semaines de voyage</h3>
@@ -183,20 +185,20 @@ langAlt: "/en/"
         <a class="btn btn-white" href="/contact/"><span>Recevoir un devis</span></a>
       </div>
     </div>
-    <p class="text-center mt-l" data-reveal style="color:var(--ink-mute)"><a class="text-link" href="/services/#formules">Le détail des formules et les tarifs</a> · Voyage de groupe, lune de miel, voyage surprise ? <a class="text-link" href="/contact/">Écris-moi</a></p>
+    <p class="text-center mt-l" style="color:var(--ink-mute)"><a class="text-link" href="/services/#formules">Le détail des formules et les tarifs</a> · Voyage de groupe, lune de miel, voyage surprise ? <a class="text-link" href="/contact/">Écris-moi</a></p>
   </div>
 </section>
 
 <section class="section-pad hv-process">
   <div class="container hv-proc-grid">
-    <div class="hv-proc-photo" data-reveal="left"><img loading="lazy" decoding="async" src="/images/IMG_6422.jpg" alt="Vue plongeante sur la baie d'Ang Thong"></div>
+    <div class="hv-proc-photo"><img loading="lazy" decoding="async" src="/images/IMG_6422.jpg" alt="Vue plongeante sur la baie d'Ang Thong"></div>
     <div>
       <div class="hv-head">
         <p class="eyebrow">La méthode</p>
         <h2>Comment ça marche</h2>
         <p>Six étapes simples, du premier échange jusqu'à ton retour de voyage.</p>
       </div>
-      <div class="steps" data-reveal>
+      <div class="steps">
       <div class="step"><div class="step-num">01</div><h3>Prise de contact</h3><p>Tu me racontes ton projet de voyage par email, formulaire ou réseaux sociaux.</p></div>
       <div class="step"><div class="step-num">02</div><h3>Appel découverte</h3><p>Gratuit et sans engagement. On échange sur tes envies, ton budget et tes dates.</p></div>
       <div class="step"><div class="step-num">03</div><h3>Itinéraire sur mesure</h3><p>Je prépare une ou deux propositions adaptées à ton projet, avec un devis clair.</p></div>
@@ -213,7 +215,7 @@ langAlt: "/en/"
       <p class="eyebrow">Ils m'ont fait confiance</p>
       <h2>Ce que disent mes voyageurs</h2>
     </div>
-    <div class="carousel" data-carousel data-reveal>
+    <div class="carousel" data-carousel>
       <div class="carousel-viewport">
         <div class="carousel-track">
           <div class="carousel-slide"><div class="tcard"><div class="quote">"</div><div class="stars"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg></div><p>Un immense merci à Anaïs ! Elle connaît tous les meilleurs plans : restaurants locaux, excursions au top, activités à prix imbattables. Des vacances exceptionnelles tout en faisant de belles économies !</p><div class="who"><strong>Sophie</strong><span>Voyage solo · Koh Lanta</span></div></div></div>
@@ -228,7 +230,7 @@ langAlt: "/en/"
       </div>
       <div class="carousel-dots"></div>
     </div>
-    <div class="text-center" data-reveal style="margin-top:42px">
+    <div class="hv-testi-more">
       <a class="btn btn-ghost on-dark" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener"><span>Lire mes avis sur Google <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     </div>
   </div>
@@ -238,12 +240,12 @@ langAlt: "/en/"
 <section class="section-pad hv-girls hv-band">
   <div class="container">
     <div class="split">
-      <div class="girls-mosaic" data-reveal="left">
+      <div class="girls-mosaic">
         <div class="girls-mosaic-inner">
           <img loading="lazy" decoding="async" src="/images/girls/groupe-ao-nang.jpg" alt="Trois participantes d'un Girls Trip face aux falaises de Krabi" class="gm-main">
         </div>
       </div>
-      <div class="split-text" data-reveal="right">
+      <div class="split-text">
         <p class="eyebrow">Voyage entre femmes</p>
         <h2>Les Girls Trips, une spécialité Zwald</h2>
         <hr class="divider">
@@ -263,21 +265,21 @@ langAlt: "/en/"
 <section class="section-pad hv-other">
   <div class="container hv-other-grid">
     <div class="hv-head"><p class="eyebrow">Au-delà des itinéraires</p><h2>Mes autres services</h2></div>
-    <div data-reveal><h3><a href="/cartes-cadeaux/">Cartes cadeaux voyage</a></h3><p>Anniversaire, mariage, Noël… Offre un accompagnement voyage complet avec une carte 100% personnalisable.</p><p class="hv-small">Montant au choix</p></div>
-    <div data-reveal data-reveal-delay="1"><h3><a href="/guides/">Guide Koh Lanta en PDF</a></h3><p>Où aller, quoi faire, quoi goûter et quelles adresses noter. Un guide local dans ta poche, prêt à l'emploi.</p><p class="hv-small">Prix libre</p></div>
+    <div class="hv-tile" data-reveal><div class="hv-tile-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 100vw" src="/images/girls/longtail-plage.jpeg" alt=""></div><h3><a href="/cartes-cadeaux/">Cartes cadeaux voyage</a></h3><p>Anniversaire, mariage, Noël… Offre un accompagnement voyage complet avec une carte 100% personnalisable.</p><p class="hv-small">Montant au choix</p></div>
+    <div class="hv-tile" data-reveal data-reveal-delay="1"><div class="hv-tile-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 100vw" src="/images/girls/plage-koh-lanta.jpeg" alt=""></div><h3><a href="/guides/">Guide Koh Lanta en PDF</a></h3><p>Où aller, quoi faire, quoi goûter et quelles adresses noter. Un guide local dans ta poche, prêt à l'emploi.</p><p class="hv-small">Prix libre</p></div>
   </div>
 </section>
 
 {% endraw %}{% include "newsletter.njk" %}{% raw %}
 
-<section class="cta-band section-pad">
-  <div class="ph-bg" data-parallax="0.12"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Coucher de soleil sur une plage de Thaïlande"></div>
+<section class="cta-band section-pad hv-cta">
+  <div class="ph-bg"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Coucher de soleil sur une plage de Thaïlande"></div>
   <div class="ph-overlay"></div>
   <div class="container">
-    <p class="eyebrow center on-dark" data-reveal style="justify-content:center;margin-bottom:20px">Ton aventure commence ici</p>
-    <h2 data-reveal>Prêt(e) à organiser <em>ton voyage</em> ?</h2>
-    <p data-reveal data-reveal-delay="1">Tu rêves d'un voyage en Thaïlande sans stress et parfaitement organisé ? Je t'aide à créer un séjour qui te ressemble, sans faire exploser ton budget.</p>
-    <div class="btns" data-reveal data-reveal-delay="2">
+    <p class="eyebrow center on-dark" style="justify-content:center;margin-bottom:20px">Ton aventure commence ici</p>
+    <h2>Prêt(e) à organiser <em>ton voyage</em> ?</h2>
+    <p>Tu rêves d'un voyage en Thaïlande sans stress et parfaitement organisé ? Je t'aide à créer un séjour qui te ressemble, sans faire exploser ton budget.</p>
+    <div class="btns">
       <a class="btn btn-white btn-lg" href="/contact/" data-magnetic><span>Recevoir mon devis gratuit <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
       <a class="btn btn-ghost on-dark btn-lg" href="/services/"><span>Voir mes services</span></a>
     </div>
