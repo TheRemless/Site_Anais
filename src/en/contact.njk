@@ -1,6 +1,6 @@
 ---
 active: "/en/contact/"
-navLight: true
+navLight: false
 langAlt: "/contact/"
 ---
 {% extends "base.njk" %}
@@ -60,20 +60,19 @@ langAlt: "/contact/"
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
-<section class="page-hero has-img" data-screen-label="Contact — hero">
-  <div class="ph-bg" data-parallax="0.1"><img fetchpriority="high" sizes="100vw" src="/images/IMG_4231.jpg" alt="Turquoise waters in Thailand"></div>
+<section class="page-hero has-img ct-hero" data-screen-label="Contact — hero">
+  <div class="ph-bg"><img fetchpriority="high" sizes="(min-width: 900px) 40vw, 100vw" src="/images/anais-plage.jpg" alt="Anaïs on a beach lined with palm trees"></div>
   <div class="ph-overlay"></div>
   <div class="container">
-    <p class="eyebrow">Contact</p>
     <h1>Let's talk about your next trip</h1>
     <p>Just starting to think about it, or already have a clear idea? I'd love to help you plan it.</p>
   </div>
 </section>
 
-<section class="section-pad">
+<section class="section-pad ct-main">
   <div class="container">
     <div class="contact-layout">
-      <div data-reveal="left">
+      <div>
         <div class="contact-form">
           <form id="contactForm" name="contact" method="POST" data-netlify="true" netlify-honeypot="bot-field">
             <input type="hidden" name="form-name" value="contact">
@@ -156,7 +155,7 @@ langAlt: "/contact/"
         </div>
       </div>
 
-      <div class="contact-side" data-reveal="right">
+      <div class="contact-side">
         <div class="contact-testi">
           <div class="stars" aria-label="5 out of 5 stars">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg>

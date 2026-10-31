@@ -1,6 +1,6 @@
 ---
 active: "/services/"
-navLight: true
+navLight: false
 langAlt: "/en/services/"
 ---
 {% extends "base.njk" %}
@@ -33,10 +33,9 @@ langAlt: "/en/services/"
 
 {% block content %}{% raw %}
 <section class="page-hero has-img" data-screen-label="Services — hero">
-  <div class="ph-bg" data-parallax="0.1"><img fetchpriority="high" sizes="100vw" src="/images/IMG_6422.jpg" alt="Paysage marin de Thaïlande"></div>
+  <div class="ph-bg"><img fetchpriority="high" sizes="100vw" src="/images/IMG_6422.jpg" alt="Paysage marin de Thaïlande"></div>
   <div class="ph-overlay"></div>
   <div class="container">
-    <p class="eyebrow">Mes services</p>
     <h1>Un voyage sur mesure en Thaïlande, de A à Z</h1>
     <p>Organisation complète de voyages personnalisés en Thaïlande et en Asie du Sud-Est, avec toi aux commandes.</p>
   </div>
@@ -44,20 +43,16 @@ langAlt: "/en/services/"
 
 <section class="section-pad sv-intro">
   <div class="container sv-intro-grid">
-    <div class="sv-intro-text" data-reveal="left">
+    <div class="sv-intro-text">
       <p class="lead">Organiser un voyage en Asie du Sud-Est demande du temps, des recherches fiables et une vraie compréhension du terrain. Mon rôle de travel planner : t'accompagner et te guider grâce à un carnet de voyage personnalisé, clair et structuré, tout en te laissant totalement libre de tes réservations.</p>
     </div>
-    <div class="sv-intro-art" aria-hidden="true">
-      <div class="sv-art-main" data-parallax="0.05"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 34vw, 80vw" src="/images/IMG_3258.jpg" alt=""></div>
-      <div class="sv-art-side" data-parallax="-0.07"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 22vw, 50vw" src="/images/girls/longtail-plage.jpeg" alt=""></div>
-    </div>
+    <div class="sv-intro-art frame frame-45" aria-hidden="true"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 40vw, 100vw" src="/images/IMG_6793.jpg" alt=""></div>
   </div>
 </section>
 
 <section class="section-pad bg-cream sv-compare">
   <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">La différence</p>
+    <div class="section-head" data-reveal>
       <h2>Ce qui change avec moi</h2>
       <p>Une travel planner n'est pas une agence. Voici ce que ça change pour ton voyage, concrètement.</p>
     </div>
@@ -76,16 +71,14 @@ langAlt: "/en/services/"
   </div>
 </section>
 
-<section class="section-pad">
+<section class="section-pad sv-carnet">
   <div class="container">
-    <div class="split">
-      <div class="split-media tall img-reveal" data-reveal="left">
+    <div class="split reverse">
+      <div class="split-media tall">
         <img loading="lazy" decoding="async" src="/images/IMG_3258.jpg" alt="Anaïs sous les cocotiers en Thaïlande">
       </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow">L'outil clé</p>
+      <div class="split-text">
         <h2>Le carnet de voyage</h2>
-        <hr class="divider">
         <p>Chaque voyage est unique. Je crée pour toi un carnet de voyage digital complet et personnalisé, qui devient ton guide avant et pendant ton séjour.</p>
         <ul class="feature-list mt-m">
           <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Un itinéraire jour par jour avec des propositions d'activités</li>
@@ -98,11 +91,10 @@ langAlt: "/en/services/"
   </div>
 </section>
 
-<section class="section-pad bg-cream">
+<section class="section-pad sv-scope">
   <div class="container">
     <div class="split">
       <div data-reveal="left">
-        <p class="eyebrow">Inclus</p>
         <h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">Ce qui est compris</h2>
         <ul class="feature-list mt-m">
           <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Échange initial + appel découverte gratuit</li>
@@ -114,7 +106,6 @@ langAlt: "/en/services/"
         </ul>
       </div>
       <div data-reveal="right">
-        <p class="eyebrow">Non inclus</p>
         <h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">Ce qui reste libre</h2>
         <ul class="feature-list mt-m">
           <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> Les réservations (vols, hôtels, activités)</li>
@@ -127,15 +118,14 @@ langAlt: "/en/services/"
   </div>
 </section>
 
-<section class="section-pad">
+<section class="section-pad pricing sv-pricing">
   <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Tarifs</p>
+    <div class="section-head" data-reveal>
       <h2 id="formules">Mes formules de <em>voyage</em></h2>
       <p>Trois formules, modulables selon ton projet. Tu ne trouves pas ton bonheur ? On l'adapte ensemble.</p>
     </div>
     <div class="formules">
-      <div class="formule" data-reveal data-reveal-delay="1">
+      <div class="formule">
         <h3>Light</h3>
         <p class="aud">Voyageurs autonomes</p>
         <div class="price"><span class="price-chf" data-chf="35">35 CHF</span> <small>/ jour</small></div>
@@ -151,7 +141,7 @@ langAlt: "/en/services/"
         </ul>
         <a class="btn btn-ghost" href="/contact/"><span>Recevoir un devis</span></a>
       </div>
-      <div class="formule featured" data-reveal data-reveal-delay="2">
+      <div class="formule featured">
         <span class="badge">Le plus choisi</span>
         <h3>Solo / Duo</h3>
         <p class="aud">Jusqu'à 2 personnes</p>
@@ -167,7 +157,7 @@ langAlt: "/en/services/"
         </ul>
         <a class="btn btn-white" href="/contact/"><span>Recevoir un devis</span></a>
       </div>
-      <div class="formule" data-reveal data-reveal-delay="3">
+      <div class="formule">
         <h3>Famille</h3>
         <p class="aud">Jusqu'à 4 personnes</p>
         <div class="price"><span class="price-chf" data-chf="43">43 CHF</span> <small>/ jour</small></div>
@@ -194,15 +184,13 @@ langAlt: "/en/services/"
     </div>
     <p class="text-center mt-l" data-reveal style="color:var(--ink-mute);font-size:0.95rem">Exemple concret : 2 semaines en couple = <span class="price-chf" data-chf="560">560 CHF</span> au total, soit ~<span class="price-chf" data-chf="20">20 CHF</span> par personne et par jour, souvent amorti par les économies réalisées sur place. Ton itinéraire dépasse 3 villes ? Pas de souci, on adapte le devis ensemble.</p>
     <span class="currency-note" hidden>Taux indicatif, actualisé quotidiennement. Le CHF reste la devise de référence.</span>
-    <div class="offer-panel" id="appel-conseil" data-reveal>
+    <div class="offer-panel" id="appel-conseil">
       <div class="split">
-      <div class="split-media tall img-reveal" data-reveal="left">
+      <div class="split-media arch">
         <img loading="lazy" decoding="async" src="/images/appel-conseil.jpg" alt="Anaïs au téléphone, carnet ouvert, pendant un appel conseil">
       </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow">Tu préfères organiser toi-même ?</p>
+      <div class="split-text">
         <h2>Appel conseil, <span class="script">1 heure</span></h2>
-        <hr class="divider">
         <p>Tu aimes préparer ton voyage par toi-même, mais tu aimerais bénéficier des conseils d'une personne qui vit sur place, afin d'être sûr(e) de faire les bons choix ?</p>
         <p class="mt-s">Réserve une heure de visio avec moi, pour faire le point sur ton projet, optimiser ton itinéraire et répondre à toutes tes questions. On peut voir ensemble :</p>
         <ul class="feature-list mt-s">
@@ -229,46 +217,43 @@ langAlt: "/en/services/"
   </div>
 </section>
 
-<section class="section-pad bg-cream">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Étape par étape</p>
+<section class="section-pad sv-steps">
+  <div class="container sv-steps-grid">
+    <div class="section-head">
       <h2>Comment se déroule l'accompagnement</h2>
     </div>
     <div class="timeline">
-      <div class="tl-item" data-reveal><div class="tl-dot">1</div><h3>Prise de contact</h3><p>Tu me parles de ton envie de voyage par email, formulaire ou réseaux. Tu me poses toutes tes questions.</p></div>
-      <div class="tl-item" data-reveal><div class="tl-dot">2</div><h3>Questionnaire de voyage</h3><p>Un court questionnaire pour cerner ton projet : dates, destinations, activités, budget, participants, préférences.</p></div>
-      <div class="tl-item" data-reveal><div class="tl-dot">3</div><h3>Appel découverte</h3><p>Gratuit et sans engagement. On discute de vive voix de tes besoins. Je t'explique mes services et mes formules.</p></div>
-      <div class="tl-item" data-reveal><div class="tl-dot">4</div><h3>Itinéraire &amp; devis</h3><p>J'élabore une première version de ton itinéraire sur mesure, en tenant compte de tes demandes et de ton budget.</p></div>
-      <div class="tl-item" data-reveal><div class="tl-dot">5</div><h3>Conception du voyage</h3><p>Une fois le devis validé, je recherche, compare et te prépare une sélection des meilleurs hébergements et transports pour chaque étape.</p></div>
-      <div class="tl-item" data-reveal><div class="tl-dot">6</div><h3>Réservations</h3><p>C'est le moment de réserver : à partir de ma sélection d'hébergements et de transports, tu effectues toi-même tes réservations, via les liens directs que je te fournis. Tu gardes la main et la liberté sur tous tes choix.</p></div>
-      <div class="tl-item" data-reveal><div class="tl-dot">7</div><h3>Carnet de voyage</h3><p>Tu reçois ton carnet de voyage complet : toutes tes réservations réunies, les suggestions d'activités jour par jour ainsi que toutes les infos et conseils locaux pour profiter sereinement.</p></div>
-      <div class="tl-item" data-reveal><div class="tl-dot">8</div><h3>C'est parti !</h3><p>Profite sans stress. Une question pendant le voyage ? Je reste joignable sur WhatsApp 7j/7.</p></div>
+      <div class="tl-item"><div class="tl-dot">1</div><h3>Prise de contact</h3><p>Tu me parles de ton envie de voyage par email, formulaire ou réseaux. Tu me poses toutes tes questions.</p></div>
+      <div class="tl-item"><div class="tl-dot">2</div><h3>Questionnaire de voyage</h3><p>Un court questionnaire pour cerner ton projet : dates, destinations, activités, budget, participants, préférences.</p></div>
+      <div class="tl-item"><div class="tl-dot">3</div><h3>Appel découverte</h3><p>Gratuit et sans engagement. On discute de vive voix de tes besoins. Je t'explique mes services et mes formules.</p></div>
+      <div class="tl-item"><div class="tl-dot">4</div><h3>Itinéraire &amp; devis</h3><p>J'élabore une première version de ton itinéraire sur mesure, en tenant compte de tes demandes et de ton budget.</p></div>
+      <div class="tl-item"><div class="tl-dot">5</div><h3>Conception du voyage</h3><p>Une fois le devis validé, je recherche, compare et te prépare une sélection des meilleurs hébergements et transports pour chaque étape.</p></div>
+      <div class="tl-item"><div class="tl-dot">6</div><h3>Réservations</h3><p>C'est le moment de réserver : à partir de ma sélection d'hébergements et de transports, tu effectues toi-même tes réservations, via les liens directs que je te fournis. Tu gardes la main et la liberté sur tous tes choix.</p></div>
+      <div class="tl-item"><div class="tl-dot">7</div><h3>Carnet de voyage</h3><p>Tu reçois ton carnet de voyage complet : toutes tes réservations réunies, les suggestions d'activités jour par jour ainsi que toutes les infos et conseils locaux pour profiter sereinement.</p></div>
+      <div class="tl-item"><div class="tl-dot">8</div><h3>C'est parti !</h3><p>Profite sans stress. Une question pendant le voyage ? Je reste joignable sur WhatsApp 7j/7.</p></div>
     </div>
   </div>
 </section>
 
-<section class="section-pad">
+<section class="section-pad sv-other">
   <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Au-delà des itinéraires</p>
+    <div class="section-head">
       <h2>Mes autres services</h2>
     </div>
-    <div class="grid cols-2">
-      <div class="card" data-reveal data-reveal-delay="1"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4a2 2 0 012-2h9l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><path d="M14 2v5h5M8 12h8M8 16h6"/></svg></span><h3>Guides PDF</h3><p>Inspiration et infos utiles : où aller, quoi faire, quoi goûter, quelles adresses noter. Montant libre.</p><a class="text-link mt-s" href="/guides/">Découvrir <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
-      <div class="card" data-reveal data-reveal-delay="2"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M7.5 8a2.5 2.5 0 010-5C10 3 12 8 12 8M16.5 8a2.5 2.5 0 000-5C14 3 12 8 12 8"/></svg></span><h3>Cartes cadeaux</h3><p>100% personnalisables. Un accompagnement voyage complet à offrir pour toutes les occasions.</p><a class="text-link mt-s" href="/cartes-cadeaux/">Commander <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
+    <div class="sv-tiles">
+      <div class="tile"><div class="tile-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 100vw" src="/images/girls/plage-koh-lanta.jpeg" alt=""></div><h3>Guides PDF</h3><p>Inspiration et infos utiles : où aller, quoi faire, quoi goûter, quelles adresses noter. Montant libre.</p><a class="text-link mt-s" href="/guides/">Découvrir <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
+      <div class="tile"><div class="tile-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 100vw" src="/images/girls/longtail-plage.jpeg" alt=""></div><h3>Cartes cadeaux</h3><p>100% personnalisables. Un accompagnement voyage complet à offrir pour toutes les occasions.</p><a class="text-link mt-s" href="/cartes-cadeaux/">Commander <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
     </div>
   </div>
 </section>
 
 <section class="cta-band section-pad">
-  <div class="ph-bg" data-parallax="0.12"><img loading="lazy" decoding="async" src="/images/IMG_4231.jpg" alt="Eaux turquoise de Thaïlande"></div>
+  <div class="ph-bg"><img loading="lazy" decoding="async" src="/images/IMG_4231.jpg" alt="Eaux turquoise de Thaïlande"></div>
   <div class="ph-overlay"></div>
   <div class="container">
-    <p class="eyebrow center on-dark" data-reveal style="justify-content:center;margin-bottom:20px">Alors, on y va ?</p>
-    <h2 data-reveal>Réserve ton appel découverte gratuit</h2>
-    <p data-reveal data-reveal-delay="1">100% gratuit et sans engagement. On discute de ton projet et je te montre comment je peux t'accompagner.</p>
-    <div class="btns" data-reveal data-reveal-delay="2">
+    <h2>Réserve ton appel découverte gratuit</h2>
+    <p>100% gratuit et sans engagement. On discute de ton projet et je te montre comment je peux t'accompagner.</p>
+    <div class="btns">
       <a class="btn btn-white btn-lg" href="/contact/" data-magnetic><span>Réserver mon appel <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     </div>
   </div>

@@ -1,0 +1,278 @@
+/* Système « Carnet de lagune » (validé sur l'accueil le 31.10.2026).
+   Chargé par base.njk sur toutes les pages Zwald, après components.css.
+   Les pages /secret/ et /taxi/ ne l'utilisent pas (autres marques).
+
+   Règles qui viennent des retours de Jérémy, à ne jamais réintroduire :
+   - pas de texte posé sur une photo, pas de voile sombre sur une photo ;
+   - pas de mini-titre (eyebrow) au-dessus des titres, sauf libellé utile ;
+   - pas de pastilles, pas de légende sur les vignettes, pas de cartes à icône ;
+   - l'arche est réservée au portrait d'Anaïs ;
+   - un seul rayon (12 px), une seule ombre, réservée aux photos chevauchées. */
+
+/* ---------- Jetons ---------- */
+:root {
+  --lagoon: #0B3B36;
+  --lagoon-soft: #134A44;
+  --navy: var(--lagoon);          /* le bleu nuit d'avant devient lagune partout */
+  --navy-soft: var(--lagoon-soft);
+  --mint: #EAF6F4;                /* une seule bande menthe par page */
+  --ink-mute: #4A6761;            /* gris de lecture, AA sur blanc et sur menthe */
+  --r: 12px;
+  --gutter: 32px;
+  --photo-shadow: 0 28px 60px -32px rgba(11, 59, 54, 0.55);
+  --section-y: clamp(64px, 9vw, 128px);
+}
+@media (max-width: 560px) {
+  :root { --gutter: 22px; }
+  body { font-size: 17px; }
+}
+
+/* ---------- Typo ----------
+   Quatre fichiers de police seulement : Manrope 400 et 600, Cormorant 600
+   et 500 italique. Chaque graisse de plus retarde l'affichage sur mobile. */
+h2 { letter-spacing: -0.015em; }
+strong, b, .nav-tag, .wa-fab-name, .footer h2, .footer h3, .footer h4,
+.sib-form h2, .tcard .who strong, .step .step-num, .tl-dot { font-weight: 600; }
+.zwc-title { font-weight: 600 !important; }
+.lead { color: var(--ink-soft); }
+
+/* Libellé restant (rare) : petit italique, sans capitales ni filet */
+.eyebrow {
+  font-family: var(--serif); font-style: italic; font-weight: 500;
+  font-size: 1.15rem; letter-spacing: 0; text-transform: none;
+  color: var(--teal-deep); gap: 0;
+}
+.eyebrow::before, .eyebrow.center::before { display: none !important; }
+.divider { display: none; }
+
+/* ---------- Sections ---------- */
+.section-pad { padding: var(--section-y) 0; }
+.section-pad.bg-cream, .section-pad.bg-mint { background: var(--mint); border-radius: 0; margin: 0; }
+.band-white { background: var(--surface); }
+.section-head { margin-bottom: clamp(32px, 5vw, 56px); }
+.section-head h2 { margin-top: 0; }
+.section-head p { color: var(--ink-mute); }
+
+/* ---------- Boutons et liens ---------- */
+.btn { border-radius: var(--r); min-height: 48px; justify-content: center; }
+.btn-ghost { border-color: rgba(10, 92, 82, 0.32); }
+.btn:focus-visible, .text-link:focus-visible, a:focus-visible, button:focus-visible,
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--teal-dark);
+  outline-offset: 3px;
+}
+.bg-navy a:focus-visible, .bg-navy button:focus-visible, .footer a:focus-visible { outline-color: var(--sand-soft); }
+@media (max-width: 560px) {
+  .btns .btn, .hero-btns .btn { width: 100%; }
+}
+
+/* ---------- Photos ---------- */
+.frame { border-radius: var(--r); overflow: hidden; }
+.frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.frame-45 { aspect-ratio: 4 / 5; }
+.frame-43 { aspect-ratio: 4 / 3; }
+.arch { border-radius: 280px 280px var(--r) var(--r); overflow: hidden; }
+.arch img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.split-media img { border-radius: var(--r); }
+.split-media.tall img { border-radius: var(--r); }
+@media (hover: hover) and (pointer: fine) {
+  .frame-zoom img { transition: transform 0.6s var(--ease); }
+  .frame-zoom:hover img { transform: scale(1.04); }
+}
+
+/* ---------- En-tête des pages intérieures ----------
+   Texte sur fond blanc, photo nette à côté (bureau) ou au-dessus (mobile).
+   Plus de voile ni de texte sur l'image. */
+.page-hero, .page-hero.has-img {
+  display: flex; flex-direction: column; align-items: stretch;
+  min-height: 0; border-radius: 0;
+  padding: var(--nav-h) 0 clamp(48px, 7vw, 88px);
+  background: var(--surface); color: var(--ink);
+  isolation: auto; overflow: hidden;
+}
+.page-hero .ph-overlay { display: none; }
+.page-hero .ph-bg {
+  position: relative; inset: auto; z-index: 0;
+  order: -1; height: min(46svh, 380px);
+  transform: none !important;
+}
+.page-hero .ph-bg img { object-position: 50% 50%; }
+.page-hero > .container { padding-top: 30px; }
+.page-hero .eyebrow, .page-girls .page-hero .eyebrow { color: var(--teal-deep); margin-bottom: 0; }
+.page-hero h1 {
+  color: var(--ink); max-width: 16ch;
+  font-size: clamp(2.6rem, 10vw, 5rem); line-height: 1; letter-spacing: -0.025em;
+}
+.page-hero p { color: var(--ink-soft); margin-top: 18px; font-size: 1.08rem; max-width: 50ch; }
+.page-hero .btns, .page-hero .hero-btns { margin-top: 26px; }
+
+@media (min-width: 900px) {
+  .page-hero, .page-hero.has-img {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, calc(var(--container) / 2)) minmax(0, calc(var(--container) / 2)) 1fr;
+    align-items: center;
+    padding: calc(var(--nav-h) + 20px) 0 clamp(56px, 6vw, 88px);
+  }
+  .page-hero > .container {
+    grid-column: 2; grid-row: 1;
+    width: auto; max-width: none; margin: 0;
+    padding: 0 clamp(32px, 4vw, 64px) 0 var(--gutter);
+  }
+  .page-hero .ph-bg {
+    grid-column: 3 / 5; grid-row: 1;
+    height: clamp(420px, calc(100svh - var(--nav-h) - 120px), 620px);
+    border-radius: var(--r) 0 0 var(--r); overflow: hidden;
+  }
+  .page-hero h1 { font-size: clamp(3rem, 4.8vw, 4.8rem); }
+  .page-hero p { font-size: 1.15rem; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .page-hero .ph-bg img { animation: sys-settle 1.4s var(--ease) both; }
+  .page-hero > .container > * { animation: sys-rise 0.8s var(--ease) both; }
+  .page-hero > .container > :nth-child(2) { animation-delay: 0.1s; }
+  .page-hero > .container > :nth-child(3) { animation-delay: 0.2s; }
+  .page-hero > .container > :nth-child(4) { animation-delay: 0.3s; }
+}
+@keyframes sys-settle { from { transform: scale(1.06); } to { transform: none; } }
+@keyframes sys-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Frise verticale (étapes) ---------- */
+.steps.steps-line, .timeline { display: block; position: relative; max-width: 720px; margin: 0; background: none; }
+.steps.steps-line::before, .timeline::before {
+  content: ""; position: absolute; left: 15px; top: 14px; bottom: 14px;
+  width: 1px; background: var(--line);
+}
+.steps.steps-line .step, .tl-item { position: relative; padding: 0 0 32px 56px; background: none; }
+.steps.steps-line .step:last-child, .tl-item:last-child { padding-bottom: 0; }
+.steps.steps-line .step .step-num, .tl-dot {
+  position: absolute; left: 0; top: 0;
+  width: 31px; height: 31px; display: grid; place-items: center;
+  border: 1px solid var(--teal); border-radius: 50%; background: var(--surface);
+  font-family: var(--sans); font-size: 0.74rem; color: var(--teal-deep);
+  margin: 0; font-variant-numeric: tabular-nums; transform: none;
+}
+.steps.steps-line .step h3, .tl-item h3 { font-size: 1.4rem; margin-bottom: 4px; line-height: 1.15; padding-top: 2px; }
+.steps.steps-line .step p, .tl-item p { font-size: 1rem; color: var(--ink-mute); max-width: 52ch; }
+
+/* ---------- Vignettes photo (autres services, liens) ---------- */
+.tile { position: relative; }
+.tile-photo { aspect-ratio: 16 / 10; border-radius: var(--r); overflow: hidden; }
+.tile-photo img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s var(--ease); }
+.tile h3 { font-size: 1.6rem; margin: 16px 0 8px; }
+.tile h3 a { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 5px; text-decoration-thickness: 1px; border: 0; }
+.tile h3 a::after { content: ""; position: absolute; inset: 0; }
+.tile p { color: var(--ink-mute); }
+@media (hover: hover) and (pointer: fine) {
+  .tile:hover .tile-photo img { transform: scale(1.04); }
+  .tile:hover h3 a { text-decoration-color: var(--teal); }
+}
+@media (min-width: 900px) { .tile-photo { aspect-ratio: 4 / 5; } }
+
+/* ---------- Bande photo défilante ---------- */
+.marquee { background: var(--surface); }
+.marquee .marquee-track { gap: 14px; padding: 0 14px; animation-duration: 60s; }
+.marquee .marquee-item,
+.marquee .marquee-item:nth-child(odd) { margin-top: 0; width: 220px; height: 275px; border-radius: var(--r); }
+.marquee .marquee-item::after, .marquee .marquee-item .cap { display: none; }
+.marquee .marquee-item:hover img { transform: none; }
+@media (hover: hover) and (pointer: fine) { .marquee .marquee-item:hover img { transform: scale(1.04); } }
+@media (min-width: 900px) { .marquee .marquee-item, .marquee .marquee-item:nth-child(odd) { width: 288px; height: 360px; } }
+@media (prefers-reduced-motion: reduce) {
+  .marquee { overflow-x: auto; }
+  .marquee .marquee-track { animation: none; }
+}
+
+/* ---------- Fond lagune (avis, encarts sombres) ---------- */
+.bg-navy { background: var(--lagoon); }
+.bg-navy .eyebrow, .eyebrow.on-dark { color: var(--sand-soft); }
+
+/* ---------- Newsletter : bande compacte en deux colonnes ---------- */
+.nl-band.section-pad.bg-cream { margin: 0; border-radius: 0; background: var(--surface); border-top: 1px solid var(--line-soft); padding-block: clamp(56px, 7vw, 88px); }
+.nl-band [data-reveal] { opacity: 1; transform: none; }
+.nl-band .container.narrow { text-align: left; }
+.nl-band .container > p.mt-s { margin-inline: 0 !important; }
+.nl-band .nl-gate .btn-ghost { color: var(--teal-deep); border-color: rgba(10, 92, 82, 0.4); }
+.nl-band h2 { font-size: clamp(2rem, 3.4vw, 2.8rem); font-weight: 600; }
+@media (min-width: 900px) {
+  .nl-band .container.narrow {
+    max-width: var(--container);
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: clamp(48px, 6vw, 96px); align-items: start;
+  }
+  .nl-band .container > :not(.nl-compact) { grid-column: 1; }
+  .nl-band .nl-compact { grid-column: 2; grid-row: 1 / 4; margin-top: 0; align-self: center; }
+}
+
+/* ---------- Appel final : photo nette, texte dans un panneau sable ---------- */
+.cta-band, .page-girls .cta-band { display: grid; padding: 0; background: var(--sand); border-radius: 0; }
+.cta-band .ph-bg { position: relative; inset: auto; z-index: 0; aspect-ratio: 4 / 3; transform: none !important; }
+.cta-band .ph-bg img { object-position: 50% 60%; }
+.cta-band .ph-overlay { display: none; }
+.cta-band .container { text-align: left; padding-block: 44px 52px; }
+.cta-band .eyebrow, .cta-band .eyebrow.on-dark { color: var(--ink); justify-content: flex-start !important; margin-bottom: 10px !important; }
+.cta-band h2 { color: var(--ink); margin: 0 0 16px; max-width: 16ch; font-size: clamp(2.3rem, 4vw, 3.6rem); }
+.cta-band h2 em { color: inherit; }
+.cta-band p { color: var(--ink); margin: 0 0 28px; max-width: 46ch; }
+.cta-band .btns { justify-content: flex-start; display: grid; gap: 12px; }
+.cta-band .btns .btn { width: 100%; padding-inline: 1.6rem; }
+.cta-band .btn-white { --bg: var(--lagoon); --fg: #fff; border-color: var(--lagoon); }
+.cta-band .btn-ghost.on-dark { color: var(--ink); border-color: rgba(22, 36, 42, 0.45); }
+.cta-band .btn-ghost.on-dark:hover { background: rgba(255, 255, 255, 0.25); border-color: var(--ink); }
+.cta-band .btn:focus-visible, .cta-band a:focus-visible { outline-color: var(--ink); }
+@media (min-width: 561px) { .cta-band .btns { display: flex; } .cta-band .btns .btn { width: auto; } }
+@media (min-width: 900px) {
+  .cta-band { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 560px; }
+  .cta-band .ph-bg { aspect-ratio: auto; height: 100%; }
+  .cta-band .container {
+    max-width: 680px; margin: 0;
+    padding: clamp(56px, 7vw, 104px) clamp(40px, 4.5vw, 72px);
+    align-self: center;
+  }
+}
+
+/* ---------- Formules et tarifs (.pricing) : rail horizontal sur mobile, formule phare en avant ---------- */
+.pricing .formules {
+  display: flex; gap: 14px;
+  overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none;
+  margin: 0 calc(-1 * var(--gutter)); padding: 4px var(--gutter) 6px;
+  scroll-padding-inline: var(--gutter);
+  border-top: 0;
+}
+.pricing .formules::-webkit-scrollbar { display: none; }
+.pricing .formule,
+.pricing .formule + .formule,
+.pricing .formule.featured {
+  flex: 0 0 84%; scroll-snap-align: start;
+  display: flex; flex-direction: column;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r);
+  padding: 28px 24px; margin: 0;
+}
+.section-pad.pricing .formules .formule.featured, .pricing .formules .formule.featured { order: -1; border: 2px solid var(--teal-dark); background: var(--surface); }
+.pricing .formule ul { align-content: start; }
+.pricing .formule .btn { margin-top: auto; }
+.pricing .formule ul li { font-size: 1rem; color: var(--ink-soft); }
+.pricing .formule ul li.no { color: var(--ink-mute); }
+.pricing .formule h3 { font-size: 1.9rem; }
+.pricing .formule .badge {
+  position: static; transform: none; align-self: flex-start; margin-bottom: 10px;
+  background: transparent; color: var(--teal-deep); padding: 0; border-radius: 0;
+  font-family: var(--serif); font-style: italic; font-size: 1.1rem; font-weight: 500;
+  letter-spacing: 0; text-transform: none;
+}
+.pricing .formule.featured .btn-white { background: var(--teal-dark); color: #fff; border-color: var(--teal-dark); }
+.pricing .formule-region { background: var(--lagoon); border-radius: var(--r); }
+.pricing .formule-region .aud { font-family: var(--serif); font-style: italic; font-size: 1.1rem; font-weight: 500; letter-spacing: 0; }
+
+@media (min-width: 900px) {
+  .pricing .formules {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px; overflow: visible; margin: 0; padding: 32px 0 0; align-items: stretch;
+  }
+  .pricing .formule,
+  .pricing .formule + .formule,
+  .pricing .formule.featured { padding: 34px 30px; }
+  .section-pad.pricing .formules .formule.featured, .pricing .formules .formule.featured { order: 0; margin-top: -32px; padding-top: 40px; padding-bottom: 40px; }
+}
+
+.pricing .formule .price-note { color: var(--ink-mute); }
