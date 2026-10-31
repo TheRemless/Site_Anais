@@ -755,4 +755,6 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .article-cta p { margin: 0 0 12px; }
 .article-cta-links { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; margin: 16px 0 0 !important; }
 .article-fig { margin: 32px 0; }
-.article-fig img { width: 100%; border-radius: 20px; aspect-ratio: 16/10; object-fit: cover; }
+.article-fig img { width: 100%; height: clamp(260px, 38vw, 440px) !important; border-radius: 20px; object-fit: cover; object-position: 50% 65%; display: block; }
+.article-cta .btn, .article-cta .btn span { color: #fff !important; text-decoration: none !important; }
+.article-cta .btn { border-bottom: 0 !important; }
