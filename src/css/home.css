@@ -57,9 +57,10 @@ h2 { letter-spacing: -0.015em; }
 .hv-art-main img { object-position: 62% 55%; }
 .hv-art-side { display: none; }
 
-.hv-hero .eyebrow { font-size: 1.15rem; }
+.hv-byline { display: flex; align-items: center; gap: 12px; font-size: 0.98rem; color: var(--ink-soft); }
+.hv-byline img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: none; }
 .hv-hero h1 {
-  margin-top: 10px;
+  margin-top: 16px;
   font-size: clamp(2.75rem, 11vw, 5.6rem);
   line-height: 0.98;
   letter-spacing: -0.025em;
@@ -101,7 +102,7 @@ h2 { letter-spacing: -0.015em; }
     box-shadow: var(--photo-shadow);
     overflow: hidden;
     }
-  .hv-hero h1 { margin-top: 14px; font-size: clamp(3.4rem, 5.6vw, 5.6rem); }
+  .hv-hero h1 { margin-top: 22px; font-size: clamp(3.4rem, 5.6vw, 5.6rem); }
   .hv-sub { font-size: 1.15rem; max-width: 46ch; }
   .hv-hero .hero-btns { display: flex; flex-wrap: wrap; margin-top: 34px; }
   .hv-hero .hero-btns .btn { width: auto; padding-inline: 1.6rem; }
@@ -461,3 +462,4 @@ h2 { letter-spacing: -0.015em; }
 
 .hv-head h2, .hv-text h2, .hv-aud-panel h2, .hv-girls .split-text h2 { margin-top: 0; }
 .zwc-title { font-weight: 600 !important; }
+.hv-formules.hv-band .formule .price-note { color: var(--ink-mute); }
