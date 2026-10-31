@@ -92,8 +92,8 @@ h3 { font-size: 1.4rem; line-height: 1.25; }
 .strip::-webkit-scrollbar { display: none; }
 .strip img { flex: 0 0 82%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 18px; scroll-snap-align: center; }
 
-/* Tours et sorties en bateau : confiés à Secret Travel & Tour, un bloc à part avec une photo. */
-/* Encart du partenaire : une autre entreprise, donc une autre identité (vert, jaune, polices de /secret/). */
+/* Tours et sorties en bateau : confiés à Secret Travel & Tour, une autre entreprise. D'où un encart à l'identité de
+   /secret/ (vert, jaune, mêmes polices) pour qu'on ne le prenne pas pour une section de VIP Taxi Lanta. */
 .partner { position: relative; display: grid; gap: 1.75rem; margin: 4.5rem var(--edge) 0; padding: 2.5rem 1.5rem 1.75rem;
   border-radius: 6px; background: var(--sec-green); color: var(--sec-text); }
 .partner-tag { position: absolute; top: -.85rem; left: 1.5rem; margin: 0; padding: .4rem .8rem; background: var(--sec-yellow);
