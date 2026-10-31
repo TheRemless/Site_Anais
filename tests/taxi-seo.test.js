@@ -162,10 +162,13 @@ test("mise en page : la FAQ vient après le formulaire", () => {
 });
 
 test("bloc Secret : encart publicitaire à part, avec son logo et sa couleur, pas une section du site", () => {
-  assert.match(njk, /<aside class="partner" aria-labelledby="h-tours">/);
-  assert.match(njk, /class="partner-tag">\{\{ taxi\.tours\.tag \}\}/);
-  assert.match(njk, /class="partner-logo"[^>]*src="\/images\/secret\/emblem\.webp"/);
-  assert.doesNotMatch(njk, /<section class="tours"/);
+  const partner = fs.readFileSync(path.join(__dirname, "../src/_includes/taxi-partner.njk"), "utf8");
+  const route = fs.readFileSync(path.join(__dirname, "../src/taxi-route.njk"), "utf8");
+  for (const page of [njk, route]) assert.match(page, /include "taxi-partner\.njk"/);
+  assert.match(partner, /<aside class="partner" aria-labelledby="h-tours">/);
+  assert.match(partner, /class="partner-tag">\{\{ taxi\.tours\.tag \}\}/);
+  assert.match(partner, /class="partner-logo"[^>]*src="\/images\/secret\/emblem\.webp"/);
+  assert.doesNotMatch(njk + route, /<section class="tours"/);
   const css = fs.readFileSync(path.join(__dirname, "../src/css/taxi.css"), "utf8");
   assert.match(css, /--sec-green:\s*#0A4C44/i);
   assert.match(css, /font-family:\s*'Concert One'/);
