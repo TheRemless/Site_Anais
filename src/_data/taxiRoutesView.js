@@ -13,7 +13,7 @@ function jsonLd(route, url) {
     name: `${route.from} to ${route.to} private transfer`,
     description: route.metaDescription,
     url,
-    serviceType: "Private taxi and minivan transfer",
+    serviceType: "Private minivan transfer",
     areaServed: [route.from, route.to].map((name) => ({ "@type": "Place", name })),
     provider: {
       "@type": "Organization",
