@@ -79,3 +79,36 @@ test("taxiView : bandeau visible hors production, masqué en production", () => 
     if (saved === undefined) delete process.env.CONTEXT; else process.env.CONTEXT = saved;
   }
 });
+
+test("bloc Secret : encart du partenaire, sans insister sur le fait que c'est une autre entreprise", () => {
+  assert.equal(taxi.tours.tag, "Our partner");
+  assert.match(taxi.tours.title, /\?$/);
+  assert.match(taxi.tours.text, /Secret Travel & Tour/);
+  assert.doesNotMatch(JSON.stringify(taxi.tours), /different company|separate company|฿|\bTHB\b|€|\$/i);
+});
+
+test("véhicules : minivan partout, taxi seulement sur Koh Lanta", () => {
+  const routes = require("../src/_data/taxiRoutes.json");
+  const all = JSON.stringify(taxi) + JSON.stringify(routes);
+  // Plus aucune formule qui laisse croire à un choix taxi ou minivan hors de l'île.
+  assert.doesNotMatch(all, /taxis? (or|and|&) minivans?|minivans? (or|and|&) taxis?/i);
+  const q = taxi.faq.find((f) => /taxi or a minivan/i.test(f.q));
+  assert.ok(q, "question taxi ou minivan");
+  assert.match(q.a, /minivan/i);
+  assert.match(q.a, /Koh Lanta/);
+  assert.match(taxi.hero.title, /minivan/i);
+  assert.match(taxi.hero.title, /taxi/i);
+  assert.match(taxi.services.find((s) => s.id === "local").text, /taxi/i);
+});
+
+test("lieux proposés : pas centrés sur Koh Lanta, les aéroports d'abord, Hat Yai inclus", () => {
+  assert.notEqual(taxi.places[0], "Koh Lanta");
+  assert.deepEqual(taxi.places.slice(0, 3), ["Krabi Airport", "Phuket Airport", "Surat Thani Airport"]);
+  assert.ok(taxi.places.includes("Hat Yai"));
+});
+
+test("FAQ : un trajet qui ne passe pas par Koh Lanta", () => {
+  const q = taxi.faq.find((f) => /Phuket Airport to Khao Lak/.test(f.q));
+  assert.ok(q, "question Phuket Airport vers Khao Lak");
+  assert.doesNotMatch(q.q + q.a, /Koh Lanta/);
+});

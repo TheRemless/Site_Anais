@@ -35,7 +35,10 @@ const PAIRS = [
   ["ink", "paper"],
   ["mute-ink", "paper"],
   ["err", "paper"],
-  ["paper", "ink"]
+  ["paper", "ink"],
+  ["sec-text", "sec-green"],
+  ["sec-yellow", "sec-green"],
+  ["sec-ink", "sec-yellow"]
 ];
 
 for (const [fg, bg] of PAIRS) {

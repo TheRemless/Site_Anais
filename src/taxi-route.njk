@@ -113,14 +113,7 @@ eleventyExcludeFromCollections: true
     <p>Anywhere else in Southern Thailand: <a href="/taxi/#request">send us the pickup and the destination</a>.</p>
   </section>
 
-  <section class="tours" aria-labelledby="h-tours">
-    <img eleventy:ignore src="{{ taxi.tours.photo.src }}" width="{{ taxi.tours.photo.width }}" height="{{ taxi.tours.photo.height }}" alt="{{ taxi.tours.photo.alt }}" loading="lazy">
-    <div class="tours-body">
-      <h2 id="h-tours">{{ taxi.tours.title }}</h2>
-      <p>{{ taxi.tours.text }}</p>
-      <a class="btn" href="{{ taxi.tours.link.href }}">{{ taxi.tours.link.label }}</a>
-    </div>
-  </section>
+  {% include "taxi-partner.njk" %}
 </main>
 
 <footer>

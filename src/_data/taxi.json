@@ -2,7 +2,7 @@
   "business": {
     "name": "VIP Taxi Lanta",
     "owner": "Mr. Brown",
-    "tagline": "Private taxis & minivans",
+    "tagline": "Private minivans and Koh Lanta taxis",
     "place": "Koh Lanta, Krabi, Thailand",
     "reviewsUrl": "https://maps.app.goo.gl/hnm3donEq7uR56Dr6",
     "areaServed": [
@@ -23,8 +23,8 @@
     ]
   },
   "hero": {
-    "title": "Private taxi & minivan in Southern Thailand",
-    "lead": "Private taxi and minivan across Southern Thailand: airports, piers, national parks and towns, from Phuket and Khao Lak to Trang and Hat Yai. Based in Koh Lanta.",
+    "title": "Private minivans across Southern Thailand, taxis on Koh Lanta",
+    "lead": "Airports, piers, national parks and towns across Southern Thailand, from Phuket and Khao Lak to Trang and Hat Yai, by private minivan. Taxi rides on Koh Lanta, where we are based.",
     "note": "Private transfers, no sharing, no hidden fees.",
     "photo": {
       "src": "/images/taxi/hero-ceiling-1800.webp",
@@ -59,11 +59,13 @@
     ]
   },
   "tours": {
-    "title": "Day tours and boat trips",
-    "text": "Private day tours around Koh Lanta and longtail or speedboat excursions are handled by Secret Travel & Tour. Choose your trip on their page and get a price on WhatsApp.",
+    "tag": "Our partner",
+    "title": "Ready to explore?",
+    "kicker": "Day tours and boat trips",
+    "text": "Secret Travel & Tour runs private day tours around Koh Lanta, plus longtail and speedboat trips. Choose one on their page and ask for a price on WhatsApp.",
     "link": {
       "href": "/secret/",
-      "label": "See Secret Travel & Tour"
+      "label": "Visit Secret Travel & Tour"
     },
     "photo": {
       "src": "/images/secret/koh-phi-phi.webp",
@@ -77,7 +79,7 @@
     {
       "id": "airport",
       "title": "Airport transfers",
-      "text": "Private transfers between Koh Lanta and Krabi Airport (KBV), Phuket Airport (HKT) or Surat Thani Airport (URT), in both directions.",
+      "text": "Private minivan to and from Krabi Airport (KBV), Phuket Airport (HKT) and Surat Thani Airport (URT), in both directions, for Koh Lanta or any other place in the south.",
       "photo": null,
       "link": null,
       "confirmed": true,
@@ -106,7 +108,7 @@
     {
       "id": "local",
       "title": "Local taxi on Koh Lanta",
-      "text": "Private rides around the island.",
+      "text": "Private taxi rides around the island, for your group only.",
       "photo": null,
       "link": null,
       "confirmed": true
@@ -125,7 +127,7 @@
     },
     {
       "title": "Clean and comfortable vehicles",
-      "text": "Taxi and minivan for your transfer.",
+      "text": "Private minivans for your transfer, and taxis on Koh Lanta.",
       "confirmed": true
     },
     {
@@ -171,7 +173,12 @@
       "confirmed": true
     },
     {
-      "q": "How do I pay for my taxi or minivan?",
+      "q": "Is it a taxi or a minivan?",
+      "a": "Outside Koh Lanta we always drive a private minivan. On the island itself you can also book a taxi.",
+      "confirmed": true
+    },
+    {
+      "q": "How do I pay?",
       "a": "You pay in cash to the driver on the day of the transfer. There is no prepayment and no hidden fees.",
       "confirmed": true
     },
@@ -182,22 +189,27 @@
     },
     {
       "q": "Do you only drive from Koh Lanta?",
-      "a": "No. Koh Lanta (also written Ko Lanta) is our base, but we drive across Southern Thailand. Tell us where we pick you up and where you are going in the request form.",
+      "a": "No. Koh Lanta (also written Ko Lanta) is our base, but we drive across Southern Thailand, including trips that never touch the island, such as Krabi Airport to Ao Nang or Phuket Airport to Khao Lak. Tell us where we pick you up and where you are going in the request form.",
       "confirmed": true
     },
     {
-      "q": "Do you offer airport transfers to and from Koh Lanta?",
-      "a": "Yes. We drive private transfers between Krabi, Phuket and Surat Thani airports and Koh Lanta, in both directions.",
+      "q": "Do you offer airport transfers?",
+      "a": "Yes. We drive private minivan transfers between Krabi, Phuket and Surat Thani airports and Koh Lanta, Ao Nang, Khao Lak or any other place in Southern Thailand, in both directions.",
       "confirmed": true
     },
     {
       "q": "How do I get from Krabi Airport to Koh Lanta?",
-      "a": "Book a private taxi or minivan from Krabi Airport (KBV) to Koh Lanta. Enter Krabi Airport as the pickup and Koh Lanta as the destination in the request form, and the team replies with the price and the details.",
+      "a": "Book a private minivan from Krabi Airport (KBV) to Koh Lanta. Enter Krabi Airport as the pickup and Koh Lanta as the destination in the request form, and the team replies with the price and the details.",
+      "confirmed": true
+    },
+    {
+      "q": "How do I get from Phuket Airport to Khao Lak?",
+      "a": "Book a private minivan from Phuket Airport (HKT) to Khao Lak. Enter Phuket Airport as the pickup and Khao Lak as the destination in the request form, and the team replies with the price.",
       "confirmed": true
     },
     {
       "q": "Can you pick me up at Phuket Airport and take me to Koh Lanta?",
-      "a": "Yes. We drive private transfers from Phuket Airport (HKT) to Koh Lanta and back. Send your date and time in the request form and the team replies with the price.",
+      "a": "Yes. We drive private minivan transfers from Phuket Airport (HKT) to Koh Lanta and back. Send your date and time in the request form and the team replies with the price.",
       "confirmed": true
     },
     {
@@ -222,19 +234,19 @@
     }
   ],
   "places": [
-    "Koh Lanta",
     "Krabi Airport",
+    "Phuket Airport",
+    "Surat Thani Airport",
+    "Koh Lanta",
     "Krabi Town",
     "Ao Nang",
-    "Phuket Airport",
-    "Phuket Bus Terminal",
-    "Surat Thani Airport",
-    "Surat Thani Bus Terminal",
     "Khao Lak",
     "Khao Sok",
     "Trang",
+    "Hat Yai",
+    "Phuket Bus Terminal",
+    "Surat Thani Bus Terminal",
     "Donsak Pier",
-    "Cheow Lan Pier",
-    "Hat Yai"
+    "Cheow Lan Pier"
   ]
 }
