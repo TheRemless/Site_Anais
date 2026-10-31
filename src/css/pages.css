@@ -181,10 +181,29 @@
 .cmp-me h3 { color: #fff; }
 .cmp-me dt { color: var(--sand-soft); border-color: rgba(255, 255, 255, 0.16); }
 @media (min-width: 900px) {
-  .cmp-two { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); align-items: stretch; }
-  .cmp-me { transform: translateY(-16px); }
+  /* Les deux colonnes partagent les mêmes rangées : chaque sujet est aligné */
+  .cmp-two { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); grid-template-rows: auto repeat(10, auto); column-gap: 14px; row-gap: 0; }
+  .cmp-col { display: grid; grid-row: 1 / span 11; grid-template-rows: subgrid; row-gap: 0; }
+  .cmp-col dl { display: contents; }
 }
 @media (max-width: 899px) {
   .sv-offer .sv-offer-photo { aspect-ratio: 4 / 3; }
   .sv-offer .sv-offer-photo img { object-position: 50% 18%; }
 }
+
+/* Carnet de voyage : une tablette et deux téléphones avec de vraies pages */
+.carnet-mock { position: relative; aspect-ratio: 1 / 1.02; max-width: 560px; margin-inline: auto; width: 100%; }
+.carnet-mock img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top center; border-radius: inherit; }
+.cm-tablet, .cm-phone { position: absolute; background: #1C2526; box-shadow: var(--photo-shadow); }
+.cm-tablet { left: 0; top: 0; width: 70%; aspect-ratio: 3 / 4; padding: 2.2%; border-radius: 22px; }
+.cm-tablet img { border-radius: 10px; }
+.cm-phone { width: 33%; aspect-ratio: 9 / 19; padding: 1.6%; border-radius: 22px; }
+.cm-phone img { border-radius: 16px; }
+.cm-phone-a { right: 0; bottom: 0; }
+.split-media.carnet-mock img { aspect-ratio: auto; border-radius: inherit; }
+/* Sur téléphone, la page s'affiche à la largeur de l'écran, comme un PDF qu'on fait défiler */
+.cm-phone { overflow: hidden; }
+.carnet-mock .cm-phone img { height: auto; object-fit: initial; border-radius: 16px 16px 0 0; }
+.cm-scroll { height: 100%; overflow: hidden; border-radius: 16px; background: #fff; }
+.carnet-mock .cm-scroll img { border-radius: 0; }
+.carnet-mock .cm-scroll img + img { margin-top: 4px; }
