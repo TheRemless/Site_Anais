@@ -758,3 +758,23 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .article-fig img { width: 100%; height: clamp(260px, 38vw, 440px) !important; border-radius: 20px; object-fit: cover; object-position: 50% 65%; display: block; }
 .article-cta .btn, .article-cta .btn span { color: #fff !important; text-decoration: none !important; }
 .article-cta .btn { border-bottom: 0 !important; }
+
+/* Services : tableau agence / avec moi */
+.compare-wrap { max-width: 980px; margin: 0 auto; overflow-x: auto; }
+.compare { width: 100%; border-collapse: collapse; font-size: 1rem; }
+.compare th, .compare td { text-align: left; vertical-align: top; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.compare thead th { font-family: var(--serif, inherit); font-size: 1.25rem; font-weight: 500; color: var(--ink-mute); }
+.compare thead th.me { color: var(--teal-dark); }
+.compare tbody th { font-weight: 700; color: var(--ink); width: 20%; }
+.compare tbody td { color: var(--ink-mute); width: 40%; }
+.compare tbody td:last-child { color: var(--ink); background: rgba(255,255,255,0.7); }
+@media (max-width: 700px) {
+  .compare thead { display: none; }
+  .compare tr { display: block; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .compare th, .compare td { display: block; width: auto !important; border: 0; padding: 4px 0; }
+  .compare tbody td:first-of-type::before { content: "Agence : "; font-weight: 600; }
+  .compare tbody td:last-child { background: none; }
+  .compare tbody td:last-child::before { content: "Avec moi : "; font-weight: 600; color: var(--teal-dark); }
+  html[lang="en"] .compare tbody td:first-of-type::before { content: "Agency: "; }
+  html[lang="en"] .compare tbody td:last-child::before { content: "With me: "; }
+}

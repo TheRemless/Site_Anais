@@ -1,13 +1,13 @@
-{#- Encart inséré au milieu de chaque article : l'article renseigne, l'encart propose l'accompagnement. -#}
+{#- Encart inséré au milieu de chaque article : l'article renseigne, l'encart donne envie d'être accompagné.
+    Pas de prix ici (décision de Jérémy, 31.10.2026) : on convainc d'abord, les tarifs sont sur /services/. -#}
 <aside class="article-cta" aria-label="{{ 'My service' if lang == 'en' else 'Mon accompagnement' }}">
 {%- if lang == "en" %}
-  <p class="article-cta-title">Would you rather I build it for you?</p>
-  <p>I plan your itinerary day by day, with the links to book everything yourself at the direct price, from <span class="price-chf" data-chf="35">35 CHF</span> per day of travel. You keep control, I do the research.</p>
-  <p class="article-cta-links"><a class="btn btn-teal" href="/en/services/"><span>See the packages</span></a> <a class="text-link" href="/en/contact/">Tell me about your trip</a></p>
+  <p class="article-cta-title">Would you rather plan it with me?</p>
+  <p>We talk it through on the phone, step by step, until the trip looks like you. I hunt down the best prices for flights, hotels, activities and transport, and you book at the direct price, with no agency margin.</p>
+  <p class="article-cta-links"><a class="btn btn-teal" href="/en/services/"><span>How I work</span></a> <a class="text-link" href="/en/contact/">Tell me about your trip</a></p>
 {%- else %}
-  <p class="article-cta-title">Tu préfères que je m'en occupe ?</p>
-  <p>Je construis ton itinéraire jour par jour, avec les liens pour réserver toi-même au prix direct, dès <span class="price-chf" data-chf="35">35 CHF</span> par jour de voyage. Tu gardes la main, je fais les recherches.</p>
-  <p class="article-cta-links"><a class="btn btn-teal" href="/services/"><span>Voir les formules</span></a> <a class="text-link" href="/contact/">Me décrire ton projet</a></p>
+  <p class="article-cta-title">Tu préfères le construire avec moi ?</p>
+  <p>On en parle au téléphone, étape par étape, jusqu'à ce que le voyage te ressemble. Je déniche les meilleurs prix pour les vols, les hôtels, les activités et les transports. Tu réserves ensuite au prix direct, sans marge d'agence.</p>
+  <p class="article-cta-links"><a class="btn btn-teal" href="/services/"><span>Comment je travaille</span></a> <a class="text-link" href="/contact/">Me décrire ton projet</a></p>
 {%- endif %}
-  <span class="currency-note" hidden>{{ "Indicative rate, updated daily. CHF remains the reference currency." if lang == "en" else "Taux indicatif, actualisé quotidiennement. Le CHF reste la devise de référence." }}</span>
 </aside>
