@@ -276,3 +276,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 
 .pricing .formule .price-note { color: var(--ink-mute); }
+
+/* Sélecteur de langue : contraste AA sur l'en-tête clair */
+.lang-switch a { opacity: 1; color: var(--ink-mute); }
+.lang-switch .lang-current { color: var(--ink); }
