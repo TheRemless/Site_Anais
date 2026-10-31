@@ -160,3 +160,14 @@ test("mise en page : la FAQ vient après le formulaire", () => {
   assert.ok(njk.indexOf('id="h-faq"') > njk.indexOf('id="request"'), "FAQ sous le formulaire");
   assert.ok(njk.indexOf('id="h-faq"') < njk.indexOf("</main>"), "FAQ dans <main>");
 });
+
+test("bloc Secret : encart publicitaire à part, avec son logo et sa couleur, pas une section du site", () => {
+  assert.match(njk, /<aside class="partner" aria-labelledby="h-tours">/);
+  assert.match(njk, /class="partner-tag">\{\{ taxi\.tours\.tag \}\}/);
+  assert.match(njk, /class="partner-logo"[^>]*src="\/images\/secret\/emblem\.webp"/);
+  assert.doesNotMatch(njk, /<section class="tours"/);
+  const css = fs.readFileSync(path.join(__dirname, "../src/css/taxi.css"), "utf8");
+  assert.match(css, /--sec-green:\s*#0A4C44/i);
+  assert.match(css, /font-family:\s*'Concert One'/);
+  assert.match(css, /\.partner\s*\{/);
+});

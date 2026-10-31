@@ -121,14 +121,17 @@ eleventyExcludeFromCollections: true
     {% endfor %}
   </div>
 
-  <section class="tours" aria-labelledby="h-tours">
-    <img eleventy:ignore src="{{ taxi.tours.photo.src }}" width="{{ taxi.tours.photo.width }}" height="{{ taxi.tours.photo.height }}" alt="{{ taxi.tours.photo.alt }}" loading="lazy">
-    <div class="tours-body">
+  <aside class="partner" aria-labelledby="h-tours">
+    <p class="partner-tag">{{ taxi.tours.tag }}</p>
+    <img eleventy:ignore class="partner-photo" src="{{ taxi.tours.photo.src }}" width="{{ taxi.tours.photo.width }}" height="{{ taxi.tours.photo.height }}" alt="{{ taxi.tours.photo.alt }}" loading="lazy">
+    <div class="partner-body">
+      <img eleventy:ignore class="partner-logo" src="/images/secret/emblem.webp" width="240" height="198" alt="Secret Travel &amp; Tour logo" loading="lazy">
       <h2 id="h-tours">{{ taxi.tours.title }}</h2>
-      <p>{{ taxi.tours.text }}</p>
-      <a class="btn" href="{{ taxi.tours.link.href }}">{{ taxi.tours.link.label }}</a>
+      <p class="partner-kicker">{{ taxi.tours.kicker }}</p>
+      <p class="partner-text">{{ taxi.tours.text }}</p>
+      <a class="partner-btn" href="{{ taxi.tours.link.href }}">{{ taxi.tours.link.label }}</a>
     </div>
-  </section>
+  </aside>
 
   <section class="sec why-sec" aria-labelledby="h-why">
     <img eleventy:ignore class="why-photo" src="{{ taxi.gallery.photos[1].src }}" width="{{ taxi.gallery.photos[1].width }}" height="{{ taxi.gallery.photos[1].height }}" alt="{{ taxi.gallery.photos[1].alt }}" loading="lazy">

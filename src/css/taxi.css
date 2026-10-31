@@ -10,6 +10,11 @@
 @font-face { font-family: 'Figtree'; font-style: normal; font-weight: 700; font-display: swap;
   src: url('/css/fonts/figtree-700-normal-latin.woff2') format('woff2'); }
 
+@font-face { font-family: 'Concert One'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/css/fonts/concert-one-400-normal-latin.woff2') format('woff2'); }
+@font-face { font-family: 'Kaushan Script'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/css/fonts/kaushan-script-400-normal-latin.woff2') format('woff2'); }
+
 :root {
   --bg: #140D09;
   --bg-2: #1F140E;
@@ -22,6 +27,10 @@
   --mute-ink: #5A4A3A;
   --err: #9B1C1C;
   --line: rgba(240, 177, 58, .32);
+  --sec-green: #0A4C44;
+  --sec-yellow: #F2C230;
+  --sec-ink: #0B2F2A;
+  --sec-text: #FFFFFF;
   --edge: max(1.25rem, calc((100% - 64rem) / 2));
   --serif: 'Marcellus', Georgia, serif;
   --sans: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -84,11 +93,24 @@ h3 { font-size: 1.4rem; line-height: 1.25; }
 .strip img { flex: 0 0 82%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 18px; scroll-snap-align: center; }
 
 /* Tours et sorties en bateau : confiés à Secret Travel & Tour, un bloc à part avec une photo. */
-.tours { display: grid; margin: 4rem var(--edge) 0; overflow: hidden; border: 1px solid var(--line); border-radius: 24px; background: var(--bg-2); }
-.tours img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
-.tours-body { display: grid; gap: 1rem; align-content: center; justify-items: start; padding: 1.5rem; }
-.tours-body h2 { margin: 0; }
-.tours-body p { margin: 0; color: var(--mute); }
+/* Encart du partenaire : une autre entreprise, donc une autre identité (vert, jaune, polices de /secret/). */
+.partner { position: relative; display: grid; gap: 1.75rem; margin: 4.5rem var(--edge) 0; padding: 2.5rem 1.5rem 1.75rem;
+  border-radius: 6px; background: var(--sec-green); color: var(--sec-text); }
+.partner-tag { position: absolute; top: -.85rem; left: 1.5rem; margin: 0; padding: .4rem .8rem; background: var(--sec-yellow);
+  color: var(--sec-ink); font: 700 .85rem/1.2 var(--sans); }
+.partner-photo { width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; border: 8px solid #fff; border-bottom-width: 26px;
+  box-shadow: 0 10px 22px rgb(0 0 0 / .35); transform: rotate(-1.5deg); }
+.partner-body { display: grid; gap: .75rem; align-content: center; justify-items: start; }
+.partner-logo { width: 4.5rem; height: auto; }
+.partner h2 { margin: 0; font: 400 clamp(1.9rem, 5vw, 2.6rem)/1.05 'Concert One', var(--sans); letter-spacing: .01em; }
+.partner-kicker { margin: 0; color: var(--sec-yellow); font: 400 1.5rem/1.2 'Kaushan Script', cursive; }
+.partner-text { margin: 0; max-width: 34rem; line-height: 1.55; }
+.partner-btn { display: inline-flex; align-items: center; min-height: 48px; margin-top: .5rem; padding: 0 1.5rem; border-radius: 10px;
+  background: var(--sec-yellow); color: var(--sec-ink); font: 400 1.15rem/1 'Concert One', var(--sans); text-decoration: none;
+  transition: background-color .2s; }
+.partner-btn:hover { background: #FFD24D; }
+.partner :focus-visible { outline: 3px solid var(--sec-yellow); outline-offset: 3px; }
+.partner-btn:focus-visible { outline-color: #fff; }
 
 /* Itinéraires : un titre par trajet, pour que chaque formulation de recherche trouve sa réponse. */
 
@@ -186,9 +208,8 @@ footer p { margin: 0; color: var(--mute); }
   .strip { overflow: visible; }
   .strip img { flex: 1 1 0; min-width: 0; }
   .why { grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
-  .tours { grid-template-columns: 1fr 1fr; }
-  .tours img { height: 100%; aspect-ratio: auto; min-height: 22rem; }
-  .tours-body { padding: 3rem; }
+  .partner { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: center; gap: 3rem; padding: 3rem; }
+  .partner-tag { left: 3rem; }
   .faq { display: grid; grid-template-columns: 1fr 1fr; column-gap: 3rem; }
   .faq div:nth-last-child(2):nth-child(odd) { border-bottom: 1px solid var(--line); }
   .steps { grid-template-columns: repeat(3, 1fr); }

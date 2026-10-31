@@ -79,3 +79,11 @@ test("taxiView : bandeau visible hors production, masqué en production", () => 
     if (saved === undefined) delete process.env.CONTEXT; else process.env.CONTEXT = saved;
   }
 });
+
+test("bloc Secret : se présente comme une autre entreprise, avec une question qui ouvre sur plus qu'un taxi", () => {
+  assert.match(taxi.tours.tag, /different company/i);
+  assert.match(taxi.tours.title, /more than a taxi\?$/i);
+  assert.match(taxi.tours.text, /separate company/i);
+  assert.match(taxi.tours.text, /Secret Travel & Tour/);
+  assert.doesNotMatch(JSON.stringify(taxi.tours), /฿|\bTHB\b|€|\$/);
+});
