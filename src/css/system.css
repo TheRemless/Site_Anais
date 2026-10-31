@@ -42,7 +42,7 @@
    et 500 italique. Chaque graisse de plus retarde l'affichage sur mobile. */
 h2 { letter-spacing: -0.015em; }
 /* Chiffres alignés partout (Cormorant dessine des chiffres elzéviriens par défaut) */
-h1, h2, h3, .price, .price-chf, .tl-dot, .step-num, .formule-region .price, .option-flag, .stat, .lead { font-variant-numeric: lining-nums; }
+body, h1, h2, h3, .price, .price-chf, .tl-dot, .step-num, .formule-region .price, .option-flag, .stat, .lead { font-variant-numeric: lining-nums; }
 strong, b, .nav-tag, .wa-fab-name, .footer h2, .footer h3, .footer h4,
 .sib-form h2, .tcard .who strong, .step .step-num, .tl-dot { font-weight: 600; }
 .zwc-title { font-weight: 600 !important; }

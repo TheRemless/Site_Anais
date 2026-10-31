@@ -166,3 +166,4 @@
   .sv-offer .split-text { order: 1; }
   .sv-offer .sv-offer-photo { order: 2; aspect-ratio: auto; height: 100%; }
 }
+.sv-tiles .tile:first-child .tile-photo img { object-position: 50% 72%; }
