@@ -282,3 +282,146 @@
 @media (min-width: 900px) {
   .hv-other-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr); gap: 40px; }
 }
+
+/* =====================================================================
+   Retours du 31.10 (2) : accueil plus court et plus varié
+   ===================================================================== */
+
+/* Hero mobile : titre et boutons dans le premier écran, la photo ensuite */
+@media (max-width: 899px) {
+  .hv-hero { padding-top: calc(var(--nav-h) + 18px); }
+  .hv-hero-art { order: 2; height: min(70svh, 480px); margin-top: 6px; }
+  .hv-hero h1 { font-size: clamp(2.5rem, 10.4vw, 3.4rem); }
+  .hv-sub { margin-top: 14px; font-size: 1.04rem; }
+  .hv-hero .hero-btns { margin-top: 22px; gap: 10px; }
+  .hv-hero .hero-btns .btn { min-height: 52px; }
+}
+
+/* Carte de la Thaïlande : photos épinglées par lieu (bureau), carte nommée + rail de photos (mobile) */
+.hv-map { padding: clamp(56px, 8vw, 104px) 0 clamp(24px, 4vw, 48px); }
+.tmap { position: relative; margin: 0 auto; }
+.tmap-land { display: block; width: min(64%, 240px); height: auto; margin: 0 auto; overflow: visible; }
+.tmap-land path { fill: var(--mint); stroke: var(--teal); stroke-width: 1.2; stroke-linejoin: round; }
+.tmap-land circle { fill: var(--teal); stroke: #fff; stroke-width: 2; }
+.tmap-labels text { font-family: var(--sans); font-size: 15px; font-weight: 600; fill: var(--ink); }
+.tmap-pins {
+  list-style: none; margin: 26px calc(-1 * var(--gutter)) 0; padding: 0 var(--gutter) 6px;
+  display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: var(--gutter); scrollbar-width: none;
+}
+.tmap-pins::-webkit-scrollbar { display: none; }
+.tmap-pin { flex: 0 0 42%; scroll-snap-align: start; }
+.tmap-card { display: grid; gap: 8px; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; text-align: left; font: inherit; color: inherit; }
+.tmap-card img { width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--r); }
+.tmap-name { font-family: var(--serif); font-size: 1.2rem; font-weight: 600; line-height: 1.1; color: var(--ink); }
+@media (min-width: 900px) {
+  .tmap { width: 460px; aspect-ratio: 330 / 600; left: 36px; }
+  .tmap-land { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; }
+  .tmap-labels { display: none; }
+  .tmap-pins { display: block; margin: 0; padding: 0; overflow: visible; }
+  .tmap-pin { position: absolute; left: var(--x); top: var(--y); width: 0; height: 0; }
+  .tmap-card { position: absolute; top: 0; width: 176px; }
+  .tmap-card img { border: 4px solid #fff; box-shadow: var(--photo-shadow); }
+  .tmap-r .tmap-card { left: 64px; transform: translateY(-30%); }
+  .tmap-l .tmap-card { right: 64px; transform: translateY(-30%); text-align: right; }
+  .tmap-l .tmap-card .tmap-name { justify-self: end; }
+  .tmap-card::before { content: ""; position: absolute; top: 30%; width: 58px; height: 1px; background: var(--teal); }
+  .tmap-r .tmap-card::before { left: -60px; }
+  .tmap-l .tmap-card::before { right: -60px; }
+  .tmap-pin:nth-child(4) .tmap-card { transform: translateY(-70%); }
+  .tmap-pin:nth-child(4) .tmap-card::before { top: 70%; }
+  .tmap-pin:nth-child(5) .tmap-card { transform: translateY(-10%); }
+  .tmap-pin:nth-child(5) .tmap-card::before { top: 10%; }
+  .hv-map { padding-bottom: 120px; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .tmap-card img { transition: transform 0.4s var(--ease); }
+  .tmap-card:hover img { transform: scale(1.04); }
+}
+
+/* Pourquoi : grille, la photo occupe une colonne sur deux rangées */
+.hv-why-v2.hv-why-grid { display: grid; gap: 28px; }
+.hv-why-v2 .hv-why-text { display: contents; }
+.hv-why-v2 .hv-head { order: 1; margin-bottom: 0; max-width: 680px; }
+.hv-why-v2 .hv-why-photo { order: 2; position: static; aspect-ratio: 4 / 3; max-height: none; }
+.hv-why-v2 .hv-why-photo img { object-position: 50% 30%; }
+.hv-why-v2 .hv-cols { order: 3; display: grid; gap: 0; }
+@media (min-width: 900px) {
+  .hv-why-v2.hv-why-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.95fr); column-gap: 36px; row-gap: 40px; }
+  .hv-why-v2 .hv-head { grid-column: 1 / 3; grid-row: 1; }
+  .hv-why-v2 .hv-cols { grid-column: 1 / 3; grid-row: 2; grid-template-columns: 1fr 1fr; gap: 0 36px; align-content: start; }
+  .hv-why-v2 .hv-why-photo { grid-column: 3; grid-row: 1 / 3; aspect-ratio: auto; height: 100%; min-height: 520px; }
+  .hv-why-v2 .hv-cols > div:nth-last-child(-n+2) { border-bottom: 1px solid var(--line-soft); }
+}
+
+/* Formules compactes : trois tuiles, le détail est sur Services */
+.pricing-compact .formule h3 { font-size: 1.7rem; }
+.pricing-compact .formule .price { margin-bottom: 2px; }
+.hv-example { margin: 28px auto 0; max-width: 62ch; text-align: center; font-size: 1.02rem; color: var(--ink); }
+.hv-example .price-chf { font-weight: 600; }
+@media (max-width: 899px) {
+  .pricing-compact .formules { flex-direction: column; overflow: visible; margin: 0; padding: 0; }
+  .pricing-compact .formule, .pricing-compact .formule + .formule, .pricing-compact .formule.featured { flex: none; width: 100%; }
+}
+
+/* Comment ça marche : frise horizontale de quatre étapes */
+.hv-process .hv-head { margin-bottom: 36px; }
+.hsteps { list-style: none; margin: 0; padding: 0; display: grid; gap: 26px; counter-reset: none; position: relative; }
+.hstep { position: relative; padding-left: 56px; }
+.hstep-num {
+  position: absolute; left: 0; top: 0; width: 34px; height: 34px; display: grid; place-items: center;
+  border: 1px solid var(--teal); border-radius: 50%; background: var(--surface);
+  font-size: 0.78rem; font-weight: 600; color: var(--teal-deep); font-variant-numeric: lining-nums tabular-nums;
+}
+.hstep h3 { font-size: 1.4rem; margin-bottom: 4px; }
+.hstep p { color: var(--ink-mute); font-size: 1rem; }
+.hsteps::before { content: ""; position: absolute; left: 17px; top: 18px; bottom: 18px; width: 1px; background: var(--line); }
+@media (min-width: 900px) {
+  .hsteps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px; }
+  .hsteps::before { left: 17px; right: 17px; top: 17px; bottom: auto; width: auto; height: 1px; }
+  .hstep { padding: 56px 0 0; }
+}
+
+/* Avis : cartes, trois visibles sur bureau, défilement aimanté sur mobile */
+.hv-testi .hv-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; margin-bottom: 32px; }
+.g-badge {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.35); border-radius: var(--r);
+  color: #fff; font-weight: 600; font-variant-numeric: lining-nums;
+}
+.g-badge:hover { border-color: #fff; }
+.reviews {
+  list-style: none; margin: 0 calc(-1 * var(--gutter)); padding: 4px var(--gutter) 8px;
+  display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: var(--gutter); scrollbar-width: none;
+}
+.reviews::-webkit-scrollbar { display: none; }
+.reviews > li { flex: 0 0 86%; scroll-snap-align: start; display: flex; }
+.hv-testi .reviews .tcard {
+  flex: 1; display: flex; flex-direction: column; text-align: left;
+  background: var(--lagoon-soft); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--r); padding: 26px 24px;
+}
+.hv-testi .reviews .tcard p { font-size: clamp(1.25rem, 1.6vw, 1.45rem); line-height: 1.35; max-width: none; flex: 1; }
+.hv-testi .reviews .tcard .who { margin-top: 18px; }
+.reviews:focus-visible { outline: 2px solid var(--sand-soft); outline-offset: 4px; }
+@media (min-width: 900px) {
+  .hv-testi > .container { display: block; }
+  .reviews { margin: 0; padding: 0 0 8px; scroll-padding-inline: 0; gap: 20px; }
+  .reviews > li { flex: 0 0 calc((100% - 40px) / 3.25); }
+  .reviews { scrollbar-width: thin; }
+}
+.hv-testi-more { margin-top: 28px; }
+
+/* Girls Trips : la sous-marque prend l'orange (sable) */
+.girls-sand.hv-band { background: #F7EBDD; }
+.girls-sand .split-text { background: #fff; }
+.girls-sand .feature-list li .tick { background: var(--sand); color: var(--ink); }
+.girls-sand .split-text .btn-teal { --bg: var(--sand); --fg: var(--ink); border-color: var(--sand); }
+.girls-sand .split-text .btn-teal:hover { --bg: #D4924F; box-shadow: none; }
+@media (max-width: 899px) { .girls-sand .split-text { background: #F7EBDD; } }
+
+/* Autres services : titre au-dessus, deux tuiles */
+.hv-other-v2.hv-other-grid { display: grid; grid-template-columns: 1fr; }
+@media (min-width: 700px) {
+  .hv-other-v2.hv-other-grid { grid-template-columns: 1fr 1fr; gap: 40px; }
+  .hv-other-v2 .hv-head { grid-column: 1 / -1; }
+}
+@media (min-width: 900px) { .hv-other-v2 .tile-photo { aspect-ratio: 16 / 11; } }
