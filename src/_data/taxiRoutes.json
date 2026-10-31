@@ -1,14 +1,14 @@
 {
-  "_source": "Pages /taxi/<route>/. Faits : taxi.json (validé par Jérémy le 28.10.2026). Aucun prix. Durées approximatives demandées par Jérémy le 30.10.2026, relevées sur 12go, goasia, geckoroutes et amazinglanta (voir le registre de faits), à affiner avec VIP Taxi Lanta.",
+  "_source": "Pages /taxi/<route>/. Faits : taxi.json (validé par Jérémy le 28.10.2026). Aucun prix. Durées approximatives demandées par Jérémy le 30.10.2026, relevées sur 12go, goasia, geckoroutes et amazinglanta (voir le registre de faits), à affiner avec VIP Taxi Lanta. Véhicules (Jérémy, 31.10.2026) : VIP Taxi Lanta n'a que des minivans, des taxis seulement sur Koh Lanta même. Hors de l'île, toujours minivan, d'où « minivan taxi » dans les titres.",
   "routes": [
     {
       "id": "krabi-airport-koh-lanta",
       "from": "Krabi Airport",
       "to": "Koh Lanta",
       "code": "KBV",
-      "title": "Krabi Airport to Koh Lanta Private Taxi | VIP Taxi Lanta",
-      "metaDescription": "Private taxi or minivan between Krabi Airport (KBV) and Koh Lanta, both directions, door to door. Cash to the driver, no prepayment. Price on WhatsApp.",
-      "h1": "Krabi Airport to Koh Lanta, private taxi and minivan",
+      "title": "Krabi Airport to Koh Lanta Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Krabi Airport (KBV) and Koh Lanta, both directions, door to door. Cash to the driver, no prepayment. Price on WhatsApp.",
+      "h1": "Krabi Airport to Koh Lanta, private minivan taxi",
       "lead": "Door to door between Krabi Airport (KBV) and your hotel on Koh Lanta, in either direction. Your group only, no sharing.",
       "body": [
         "Give us your flight number and landing time, your hotel on Koh Lanta and the number of people. The team confirms the price on WhatsApp and the driver waits for you at the airport.",
@@ -31,10 +31,10 @@
       "from": "Phuket Airport",
       "to": "Koh Lanta",
       "code": "HKT",
-      "title": "Phuket Airport to Koh Lanta Private Taxi | VIP Taxi Lanta",
-      "metaDescription": "Private minivan or taxi between Phuket Airport (HKT) and Koh Lanta, both directions, hotel to hotel, one vehicle. Cash to the driver. Price on WhatsApp.",
+      "title": "Phuket Airport to Koh Lanta Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Phuket Airport (HKT) and Koh Lanta, both directions, hotel to hotel, one vehicle. Cash to the driver. Price on WhatsApp.",
       "h1": "Phuket Airport to Koh Lanta, private transfer",
-      "lead": "A private minivan or taxi between Phuket Airport (HKT) and your hotel on Koh Lanta, in either direction, with no change of vehicle.",
+      "lead": "A private minivan between Phuket Airport (HKT) and your hotel on Koh Lanta, in either direction, with no change of vehicle.",
       "body": [
         "You travel in one vehicle from Phuket Airport to your hotel door on Koh Lanta, with stops when you want them. Send your flight time, your hotel and the number of people, and the team replies with the price.",
         "The same transfer runs from Koh Lanta to Phuket Airport for your departure."
@@ -43,7 +43,7 @@
       "faq": [
         {
           "q": "Is it one vehicle all the way from Phuket Airport?",
-          "a": "Yes. Private taxi or minivan from the airport to your hotel on Koh Lanta, no change of vehicle."
+          "a": "Yes. A private minivan from the airport to your hotel on Koh Lanta, no change of vehicle."
         },
         {
           "q": "Can we stop on the way?",
@@ -56,8 +56,8 @@
       "from": "Surat Thani Airport",
       "to": "Koh Lanta",
       "code": "URT",
-      "title": "Surat Thani to Koh Lanta Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private minivan or taxi between Surat Thani (airport, bus terminal or Donsak Pier) and Koh Lanta, both directions. Cash to the driver. Price on WhatsApp.",
+      "title": "Surat Thani to Koh Lanta Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Surat Thani (airport, bus terminal or Donsak Pier) and Koh Lanta, both directions. Cash to the driver. Price on WhatsApp.",
       "h1": "Surat Thani to Koh Lanta, private transfer",
       "lead": "From Surat Thani Airport (URT), the bus terminal or Donsak Pier to your hotel on Koh Lanta, and back. Private vehicle, your group only.",
       "body": [
@@ -80,10 +80,10 @@
       "from": "Koh Lanta",
       "to": "Krabi Town",
       "code": null,
-      "title": "Koh Lanta to Krabi Town Taxi | VIP Taxi Lanta",
-      "metaDescription": "Private taxi or minivan between Koh Lanta and Krabi Town, both directions, hotel to hotel or to the bus terminal. Cash to the driver. Price on WhatsApp.",
-      "h1": "Koh Lanta to Krabi Town, private taxi",
-      "lead": "Between your hotel on Koh Lanta and Krabi Town, or the other way, in a private taxi or minivan.",
+      "title": "Koh Lanta to Krabi Town Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Koh Lanta and Krabi Town, both directions, hotel to hotel or to the bus terminal. Cash to the driver. Price on WhatsApp.",
+      "h1": "Koh Lanta to Krabi Town, private minivan taxi",
+      "lead": "Between your hotel on Koh Lanta and Krabi Town, or the other way, in a private minivan.",
       "body": [
         "Tell us where in Krabi Town you are going, hotel or bus terminal, and the team replies with the price."
       ],
@@ -100,10 +100,10 @@
       "from": "Koh Lanta",
       "to": "Ao Nang",
       "code": null,
-      "title": "Koh Lanta to Ao Nang Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private taxi or minivan between Koh Lanta and Ao Nang, both directions, hotel to hotel or to the pier. Cash to the driver, no prepayment. Price on WhatsApp.",
+      "title": "Koh Lanta to Ao Nang Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Koh Lanta and Ao Nang, both directions, hotel to hotel or to the pier. Cash to the driver, no prepayment. Price on WhatsApp.",
       "h1": "Koh Lanta to Ao Nang, private transfer",
-      "lead": "Hotel to hotel between Koh Lanta and Ao Nang, in either direction, in a private taxi or minivan.",
+      "lead": "Hotel to hotel between Koh Lanta and Ao Nang, in either direction, in a private minivan.",
       "body": [
         "We drop you at your hotel in Ao Nang or at the pier you tell us."
       ],
@@ -120,10 +120,10 @@
       "from": "Koh Lanta",
       "to": "Khao Sok",
       "code": null,
-      "title": "Koh Lanta to Khao Sok Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private minivan or taxi between Koh Lanta and Khao Sok or Cheow Lan Pier, both directions, door to door. Cash to the driver. Price on WhatsApp.",
+      "title": "Koh Lanta to Khao Sok Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Koh Lanta and Khao Sok or Cheow Lan Pier, both directions, door to door. Cash to the driver. Price on WhatsApp.",
       "h1": "Koh Lanta to Khao Sok, private transfer",
-      "lead": "From your hotel on Koh Lanta to Khao Sok village or Cheow Lan Pier, and back, in a private minivan or taxi.",
+      "lead": "From your hotel on Koh Lanta to Khao Sok village or Cheow Lan Pier, and back, in a private minivan.",
       "body": [
         "We drive to Khao Sok village and to Cheow Lan Pier, where the boats to the lake leave. Tell us which one and your boat time if you have one."
       ],
@@ -140,10 +140,10 @@
       "from": "Koh Lanta",
       "to": "Trang",
       "code": null,
-      "title": "Koh Lanta to Trang Private Taxi | VIP Taxi Lanta",
-      "metaDescription": "Private taxi or minivan between Koh Lanta and Trang, both directions, to the town, the station or the airport. Cash to the driver. Price on WhatsApp.",
-      "h1": "Koh Lanta to Trang, private taxi",
-      "lead": "Between Koh Lanta and Trang, in either direction, in a private taxi or minivan.",
+      "title": "Koh Lanta to Trang Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Koh Lanta and Trang, both directions, to the town, the station or the airport. Cash to the driver. Price on WhatsApp.",
+      "h1": "Koh Lanta to Trang, private minivan taxi",
+      "lead": "Between Koh Lanta and Trang, in either direction, in a private minivan.",
       "body": [
         "Tell us where in Trang you need to be and at what time, and the team replies with the price."
       ],
@@ -160,10 +160,10 @@
       "from": "Koh Lanta",
       "to": "Khao Lak",
       "code": null,
-      "title": "Koh Lanta to Khao Lak Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private minivan or taxi between Koh Lanta and Khao Lak, both directions, hotel to hotel in one vehicle. Cash to the driver, no prepayment. Price on WhatsApp.",
+      "title": "Koh Lanta to Khao Lak Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Koh Lanta and Khao Lak, both directions, hotel to hotel in one vehicle. Cash to the driver, no prepayment. Price on WhatsApp.",
       "h1": "Koh Lanta to Khao Lak, private transfer",
-      "lead": "Hotel to hotel between Koh Lanta and Khao Lak, in either direction, in a private minivan or taxi.",
+      "lead": "Hotel to hotel between Koh Lanta and Khao Lak, in either direction, in a private minivan.",
       "body": [
         "One vehicle from your hotel on Koh Lanta to your hotel in Khao Lak, with stops when you want them."
       ],
@@ -180,8 +180,8 @@
       "from": "Koh Lanta",
       "to": "Donsak Pier",
       "code": null,
-      "title": "Koh Lanta to Donsak Pier Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private minivan or taxi between Koh Lanta and Donsak Pier, both directions, timed with your ferry. Cash to the driver, no prepayment. Price on WhatsApp.",
+      "title": "Koh Lanta to Donsak Pier Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Koh Lanta and Donsak Pier, both directions, timed with your ferry. Cash to the driver, no prepayment. Price on WhatsApp.",
       "h1": "Koh Lanta to Donsak Pier, private transfer",
       "lead": "From your hotel on Koh Lanta to Donsak Pier, timed with your ferry, and back. Private vehicle, your group only.",
       "body": [
@@ -200,10 +200,10 @@
       "from": "Krabi Airport",
       "to": "Ao Nang",
       "code": "KBV",
-      "title": "Krabi Airport to Ao Nang Private Taxi | VIP Taxi Lanta",
-      "metaDescription": "Private taxi or minivan between Krabi Airport (KBV) and Ao Nang, both directions, straight to your hotel. Cash to the driver, no prepayment. Price on WhatsApp.",
-      "h1": "Krabi Airport to Ao Nang, private taxi",
-      "lead": "From the arrivals at Krabi Airport (KBV) to your hotel in Ao Nang, or the other way, in a private taxi or minivan.",
+      "title": "Krabi Airport to Ao Nang Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Krabi Airport (KBV) and Ao Nang, both directions, straight to your hotel. Cash to the driver, no prepayment. Price on WhatsApp.",
+      "h1": "Krabi Airport to Ao Nang, private minivan taxi",
+      "lead": "From the arrivals at Krabi Airport (KBV) to your hotel in Ao Nang, or the other way, in a private minivan.",
       "body": [
         "Send your flight number and landing time, your hotel in Ao Nang and the number of people. The team confirms the price on WhatsApp and the driver waits for you at the airport."
       ],
@@ -220,10 +220,10 @@
       "from": "Phuket Airport",
       "to": "Khao Lak",
       "code": "HKT",
-      "title": "Phuket Airport to Khao Lak Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private taxi or minivan between Phuket Airport (HKT) and Khao Lak, both directions, straight to your hotel. Cash to the driver. Price on WhatsApp.",
+      "title": "Phuket Airport to Khao Lak Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Phuket Airport (HKT) and Khao Lak, both directions, straight to your hotel. Cash to the driver. Price on WhatsApp.",
       "h1": "Phuket Airport to Khao Lak, private transfer",
-      "lead": "From Phuket Airport (HKT) to your hotel in Khao Lak, or back to the airport for your flight, in a private taxi or minivan.",
+      "lead": "From Phuket Airport (HKT) to your hotel in Khao Lak, or back to the airport for your flight, in a private minivan.",
       "body": [
         "Give us your flight time, your hotel in Khao Lak and the number of people. The team confirms the price on WhatsApp and the driver waits for you at the airport."
       ],
@@ -240,10 +240,10 @@
       "from": "Krabi",
       "to": "Khao Sok",
       "code": null,
-      "title": "Krabi to Khao Sok Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private minivan or taxi between Krabi, Ao Nang or Krabi Airport and Khao Sok or Cheow Lan Pier, both directions. Cash to the driver. Price on WhatsApp.",
+      "title": "Krabi to Khao Sok Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Krabi, Ao Nang or Krabi Airport and Khao Sok or Cheow Lan Pier, both directions. Cash to the driver. Price on WhatsApp.",
       "h1": "Krabi to Khao Sok, private transfer",
-      "lead": "From Krabi Town, Ao Nang or Krabi Airport to Khao Sok village or Cheow Lan Pier, and back, in a private minivan or taxi.",
+      "lead": "From Krabi Town, Ao Nang or Krabi Airport to Khao Sok village or Cheow Lan Pier, and back, in a private minivan.",
       "body": [
         "Tell us where we pick you up in Krabi and whether you are going to the village or to Cheow Lan Pier, with your boat time if you have one. The team confirms the price on WhatsApp."
       ],
@@ -260,10 +260,10 @@
       "from": "Phuket",
       "to": "Khao Sok",
       "code": null,
-      "title": "Phuket to Khao Sok Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private minivan or taxi between Phuket or Phuket Airport and Khao Sok or Cheow Lan Pier, both directions, door to door. Cash to the driver. Price on WhatsApp.",
+      "title": "Phuket to Khao Sok Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Phuket or Phuket Airport and Khao Sok or Cheow Lan Pier, both directions, door to door. Cash to the driver. Price on WhatsApp.",
       "h1": "Phuket to Khao Sok, private transfer",
-      "lead": "From your hotel in Phuket or from Phuket Airport to Khao Sok village or Cheow Lan Pier, and back, in a private minivan or taxi.",
+      "lead": "From your hotel in Phuket or from Phuket Airport to Khao Sok village or Cheow Lan Pier, and back, in a private minivan.",
       "body": [
         "Tell us where we pick you up in Phuket and whether you are going to the village or to Cheow Lan Pier. The team confirms the price on WhatsApp."
       ],
@@ -280,8 +280,8 @@
       "from": "Surat Thani",
       "to": "Khao Sok",
       "code": null,
-      "title": "Surat Thani to Khao Sok Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private minivan or taxi between Surat Thani (airport, bus terminal or Donsak Pier) and Khao Sok or Cheow Lan Pier, both directions. Price on WhatsApp.",
+      "title": "Surat Thani to Khao Sok Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Surat Thani (airport, bus terminal or Donsak Pier) and Khao Sok or Cheow Lan Pier, both directions. Price on WhatsApp.",
       "h1": "Surat Thani to Khao Sok, private transfer",
       "lead": "From Surat Thani Airport, the bus terminal or Donsak Pier to Khao Sok village or Cheow Lan Pier, and back, in a private vehicle.",
       "body": [
@@ -300,10 +300,10 @@
       "from": "Hat Yai",
       "to": "Koh Lanta",
       "code": null,
-      "title": "Hat Yai to Koh Lanta Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private minivan or taxi between Hat Yai (airport, train station or town) and Koh Lanta, both directions, door to door. Cash to the driver. Price on WhatsApp.",
+      "title": "Hat Yai to Koh Lanta Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Hat Yai (airport, train station or town) and Koh Lanta, both directions, door to door. Cash to the driver. Price on WhatsApp.",
       "h1": "Hat Yai to Koh Lanta, private transfer",
-      "lead": "From Hat Yai Airport, the train station or your hotel in town to Koh Lanta, and back, in a private minivan or taxi.",
+      "lead": "From Hat Yai Airport, the train station or your hotel in town to Koh Lanta, and back, in a private minivan.",
       "body": [
         "Tell us where we pick you up in Hat Yai and at what time. The team confirms the price on WhatsApp."
       ],
@@ -320,10 +320,10 @@
       "from": "Phuket Airport",
       "to": "Ao Nang",
       "code": "HKT",
-      "title": "Phuket Airport to Ao Nang Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private taxi or minivan between Phuket Airport (HKT) and Ao Nang or Krabi, both directions, straight to your hotel. Cash to the driver. Price on WhatsApp.",
+      "title": "Phuket Airport to Ao Nang Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Phuket Airport (HKT) and Ao Nang or Krabi, both directions, straight to your hotel. Cash to the driver. Price on WhatsApp.",
       "h1": "Phuket Airport to Ao Nang, private transfer",
-      "lead": "From Phuket Airport (HKT) to your hotel in Ao Nang or Krabi Town, or back to the airport, in a private taxi or minivan.",
+      "lead": "From Phuket Airport (HKT) to your hotel in Ao Nang or Krabi Town, or back to the airport, in a private minivan.",
       "body": [
         "Give us your flight time, your hotel and the number of people. The team confirms the price on WhatsApp and the driver waits for you at the airport."
       ],
@@ -340,10 +340,10 @@
       "from": "Krabi Airport",
       "to": "Khao Lak",
       "code": "KBV",
-      "title": "Krabi Airport to Khao Lak Private Transfer | VIP Taxi Lanta",
-      "metaDescription": "Private taxi or minivan between Krabi Airport (KBV) and Khao Lak, both directions, straight to your hotel. Cash to the driver, no prepayment. Price on WhatsApp.",
+      "title": "Krabi Airport to Khao Lak Minivan Taxi | VIP Taxi Lanta",
+      "metaDescription": "Private minivan taxi between Krabi Airport (KBV) and Khao Lak, both directions, straight to your hotel. Cash to the driver, no prepayment. Price on WhatsApp.",
       "h1": "Krabi Airport to Khao Lak, private transfer",
-      "lead": "From Krabi Airport (KBV) to your hotel in Khao Lak, or back to the airport, in a private taxi or minivan.",
+      "lead": "From Krabi Airport (KBV) to your hotel in Khao Lak, or back to the airport, in a private minivan.",
       "body": [
         "Give us your flight time, your hotel in Khao Lak and the number of people. The team confirms the price on WhatsApp and the driver waits for you at the airport."
       ],
@@ -360,7 +360,7 @@
     "how": [
       {
         "title": "Private only",
-        "text": "Taxi or minivan for your group only. No sharing, no waiting for other passengers."
+        "text": "A private minivan for your group only. No sharing, no waiting for other passengers."
       },
       {
         "title": "Confirmed on WhatsApp",

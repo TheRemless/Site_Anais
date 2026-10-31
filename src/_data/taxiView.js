@@ -28,7 +28,7 @@ function jsonLd() {
     image: "https://zwaldtravelplanner.com/images/taxi/og-taxi.jpg",
     logo: "https://zwaldtravelplanner.com/images/taxi/logo.webp",
     description: taxi.hero.lead,
-    serviceType: "Private taxi and minivan transfers",
+    serviceType: "Private minivan transfers and taxi rides on Koh Lanta",
     areaServed: b.areaServed.map((name) => ({ "@type": "Place", name })),
     provider: {
       "@type": "Organization",
@@ -43,7 +43,7 @@ function jsonLd() {
     // Catalogue des services, sans prix : aucun tarif n'a été validé.
     hasOfferCatalog: {
       "@type": "OfferCatalog",
-      name: "Private taxi and minivan transfers",
+      name: "Private minivan transfers and taxi rides on Koh Lanta",
       itemListElement: taxi.services.map((s) => ({
         "@type": "Offer",
         itemOffered: { "@type": "Service", name: s.title, description: s.text }

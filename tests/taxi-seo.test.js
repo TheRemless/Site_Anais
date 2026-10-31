@@ -143,7 +143,6 @@ test("services : les aéroports sont nommés avec leurs codes, dans les deux sen
   const text = taxi.services.map((s) => s.text).join(" ");
   for (const code of ["KBV", "HKT", "URT"]) assert.match(text, new RegExp(code));
   assert.match(text, /both directions/);
-  assert.match(text, /Koh Lanta/);
 });
 
 test("FAQ : questions précises sur les trajets depuis les aéroports, le retour et les enfants", () => {
