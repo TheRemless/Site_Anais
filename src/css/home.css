@@ -370,11 +370,11 @@ h2 { letter-spacing: -0.015em; }
     grid-template-columns: repeat(12, minmax(0, 1fr));
     align-items: center;
   }
-  .hv-girls .girls-mosaic { grid-column: 1 / 6; grid-row: 1; margin: 0; }
-  .hv-girls .girls-mosaic-inner { aspect-ratio: 4 / 5; max-height: 600px; border-radius: var(--r); }
+  .hv-girls .girls-mosaic { grid-column: 1 / 7; grid-row: 1; margin: 0; }
+  .hv-girls .girls-mosaic-inner { aspect-ratio: 4 / 5; max-height: 680px; border-radius: var(--r); }
   .hv-girls .gm-main { object-position: 50% 62%; }
   .hv-girls .split-text {
-    grid-column: 5 / -1; grid-row: 1;
+    grid-column: 6 / -1; grid-row: 1;
     align-self: center;
     margin: 0;
     padding: clamp(36px, 4vw, 56px);
