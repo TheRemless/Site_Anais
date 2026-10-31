@@ -59,11 +59,13 @@
     ]
   },
   "tours": {
-    "title": "Day tours and boat trips",
-    "text": "Private day tours around Koh Lanta and longtail or speedboat excursions are handled by Secret Travel & Tour. Choose your trip on their page and get a price on WhatsApp.",
+    "tag": "Our partner, a different company",
+    "title": "Need more than a taxi?",
+    "kicker": "Day tours and boat trips",
+    "text": "Secret Travel & Tour is a separate company. It runs private day tours around Koh Lanta and longtail or speedboat trips. Choose a trip on their page and ask for a price on WhatsApp.",
     "link": {
       "href": "/secret/",
-      "label": "See Secret Travel & Tour"
+      "label": "Visit Secret Travel & Tour"
     },
     "photo": {
       "src": "/images/secret/koh-phi-phi.webp",
