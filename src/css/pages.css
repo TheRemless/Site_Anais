@@ -167,3 +167,20 @@
   .sv-offer .sv-offer-photo { order: 2; aspect-ratio: auto; height: 100%; }
 }
 .sv-tiles .tile:first-child .tile-photo img { object-position: 50% 72%; }
+
+/* Comparatif : deux colonnes face à face, « Avec moi » sur fond lagune */
+.cmp-two { display: grid; gap: 14px; }
+.cmp-col { border-radius: var(--r); padding: clamp(22px, 3vw, 36px); }
+.cmp-col h3 { font-size: 1.7rem; margin-bottom: 12px; }
+.cmp-col dl { margin: 0; }
+.cmp-col dt { font-size: 0.86rem; font-weight: 600; padding-top: 14px; border-top: 1px solid rgba(8, 60, 66, 0.1); }
+.cmp-col dd { margin: 4px 0 14px; font-size: 1.04rem; line-height: 1.5; }
+.cmp-ag { background: var(--surface); color: var(--ink-mute); }
+.cmp-ag h3 { color: var(--ink-mute); }
+.cmp-me { background: var(--lagoon); color: #fff; }
+.cmp-me h3 { color: #fff; }
+.cmp-me dt { color: var(--sand-soft); border-color: rgba(255, 255, 255, 0.16); }
+@media (min-width: 900px) {
+  .cmp-two { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); align-items: stretch; }
+  .cmp-me { transform: translateY(-16px); }
+}

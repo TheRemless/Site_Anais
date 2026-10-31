@@ -343,7 +343,7 @@
 .hv-why-v2 .hv-why-text { display: contents; }
 .hv-why-v2 .hv-head { order: 1; margin-bottom: 0; max-width: 680px; }
 .hv-why-v2 .hv-why-photo { order: 2; position: static; aspect-ratio: 4 / 3; max-height: none; }
-.hv-why-v2 .hv-why-photo img { object-position: 50% 30%; }
+.hv-why-v2 .hv-why-photo img { object-position: 40% 45%; }
 .hv-why-v2 .hv-cols { order: 3; display: grid; gap: 0; }
 @media (min-width: 900px) {
   .hv-why-v2.hv-why-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.95fr); column-gap: 36px; row-gap: 40px; }
