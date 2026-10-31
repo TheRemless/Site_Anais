@@ -190,7 +190,6 @@ h2 { letter-spacing: -0.015em; }
 .hv-marquee .marquee-track { gap: 14px; padding: 0 14px; animation-duration: 60s; }
 .hv-marquee .marquee-item,
 .hv-marquee .marquee-item:nth-child(odd) { margin-top: 0; width: 220px; height: 275px; border-radius: var(--r); }
-.hv-marquee .marquee-item:nth-child(3n+2) { margin-top: 36px; }
 .hv-marquee .marquee-item::after, .hv-marquee .marquee-item .cap { display: none; }
 .hv-marquee .marquee-item:hover img { transform: none; }
 @media (hover: hover) and (pointer: fine) {
@@ -198,7 +197,6 @@ h2 { letter-spacing: -0.015em; }
 }
 @media (min-width: 900px) {
   .hv-marquee .marquee-item, .hv-marquee .marquee-item:nth-child(odd) { width: 288px; height: 360px; }
-  .hv-marquee .marquee-item:nth-child(3n+2) { margin-top: 48px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hv-marquee { overflow-x: auto; }
@@ -372,17 +370,14 @@ h2 { letter-spacing: -0.015em; }
     grid-template-columns: repeat(12, minmax(0, 1fr));
     align-items: center;
   }
-  .hv-girls .girls-mosaic {
-    grid-column: 1 / 8; grid-row: 1;
-    margin: 0 0 0 calc(-1 * ((100vw - min(100vw, var(--container))) / 2 + var(--gutter)));
-  }
-  .hv-girls .girls-mosaic-inner { aspect-ratio: auto; height: clamp(560px, 52vw, 760px); border-radius: 0 var(--r) var(--r) 0; }
+  .hv-girls .girls-mosaic { grid-column: 1 / 6; grid-row: 1; margin: 0; }
+  .hv-girls .girls-mosaic-inner { aspect-ratio: 4 / 5; max-height: 600px; border-radius: var(--r); }
   .hv-girls .gm-main { object-position: 50% 62%; }
   .hv-girls .split-text {
-    grid-column: 7 / -1; grid-row: 1;
-    align-self: end;
-    margin: 0 0 -56px;
-    padding: clamp(36px, 4vw, 52px);
+    grid-column: 5 / -1; grid-row: 1;
+    align-self: center;
+    margin: 0;
+    padding: clamp(36px, 4vw, 56px);
     border-radius: var(--r);
     box-shadow: var(--photo-shadow);
   }
@@ -454,3 +449,15 @@ h2 { letter-spacing: -0.015em; }
     align-self: center;
   }
 }
+.footer a:focus-visible { outline-color: var(--sand-soft); }
+
+/* ---------- Polices : quatre fichiers seulement sur l'accueil ----------
+   Manrope 400 et 600, Cormorant 600 et 500 italique. Chaque graisse de plus
+   est un fichier de 25 à 40 Ko qui retarde la photo du hero sur mobile. */
+.nav-tag, .step .step-num, .hv-process .step .step-num, .tcard .who strong,
+.wa-fab-name, .zwc-title, strong, b { font-weight: 600; }
+.hv-aud-list li, .hv-testi .tcard p { font-weight: 600; }
+.nl-band h2, .sib-form h2, .footer h2, .footer h3, .footer h4 { font-weight: 600; }
+
+.hv-head h2, .hv-text h2, .hv-aud-panel h2, .hv-girls .split-text h2 { margin-top: 0; }
+.zwc-title { font-weight: 600 !important; }
