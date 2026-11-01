@@ -207,3 +207,4 @@
 .cm-scroll { height: 100%; overflow: hidden; border-radius: 16px; background: #fff; }
 .carnet-mock .cm-scroll img { border-radius: 0; }
 .carnet-mock .cm-scroll img + img { margin-top: 4px; }
+.sv-carnet-format { margin-top: 18px; color: var(--ink-mute); font-size: 0.98rem; max-width: 52ch; }

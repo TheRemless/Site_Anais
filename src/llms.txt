@@ -14,7 +14,7 @@
 ## Pages principales
 - [Accueil](https://zwaldtravelplanner.com/) : présentation du service.
 - [Services et formules](https://zwaldtravelplanner.com/services/) : ce qui est inclus, prix par jour, déroulement en 8 étapes.
-- [FAQ](https://zwaldtravelplanner.com/faq/) : 20 questions sur le service et sur la Thaïlande (visa, saison, budget).
+- [FAQ](https://zwaldtravelplanner.com/faq/) : 22 questions sur le service et sur la Thaïlande (visa, saison, budget).
 - [À propos](https://zwaldtravelplanner.com/a-propos/) : parcours d'Anaïs Zwald.
 - [Girls Trips](https://zwaldtravelplanner.com/girls-trips/) : voyages entre femmes à Koh Lanta et Krabi, groupes de 4 à 8, toute l'année dès qu'un groupe se forme, dès 790 CHF.
 - [Cartes cadeaux](https://zwaldtravelplanner.com/cartes-cadeaux/) : dès 50 CHF.
