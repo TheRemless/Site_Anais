@@ -24,6 +24,8 @@
 .sv-compare .compare-wrap { max-width: none; }
 
 /* Carnet : photo cadrée à droite, texte à gauche */
+.sv-carnet { padding-top: 0; }
+.sv-carnet > .container { padding-top: clamp(40px, 6vw, 72px); border-top: 1px solid var(--line-soft); }
 .sv-carnet .split-media img { aspect-ratio: 4 / 5; }
 .sv-carnet .split-text h2 { margin-bottom: 16px; }
 .sv-carnet .split-text > p { color: var(--ink-soft); font-size: 1.08rem; }
@@ -40,25 +42,26 @@
 .sv-scope .feature-list li .tick--no { background: transparent !important; color: var(--ink-mute) !important; }
 .sv-scope .split > div:last-child > p { margin-top: 18px !important; }
 
-/* Formules : composant .pricing, puis la formule par région et l'appel conseil */
+/* Formules : composant .pricing, puis la formule par région */
 .sv-pricing .formule-region + p { max-width: 70ch; margin-inline: auto; }
-.sv-pricing .offer-panel {
-  background: transparent; border-radius: 0; padding: 0;
-  margin-top: clamp(56px, 8vw, 104px); padding-top: clamp(40px, 6vw, 72px);
-  border-top: 1px solid var(--line-soft);
+
+/* Appel conseil : section à part, placée après le carnet (une seule respiration, celle de la section précédente) */
+.sv-conseil { padding-top: 0; }
+.sv-conseil .offer-panel {
+  background: transparent; border-radius: 0; padding: 0; margin-top: 0;
 }
-.sv-pricing .offer-panel .split { align-items: center; }
-.sv-pricing .offer-panel .split-media.arch { max-width: 440px; aspect-ratio: 4 / 5; }
-.sv-pricing .offer-panel .split-media.arch img { aspect-ratio: auto; height: 100%; border-radius: 0; }
-.sv-pricing .offer-panel h2 { margin-bottom: 14px; }
-.sv-pricing .offer-panel .feature-list li .tick { background: var(--mint); }
-.sv-pricing .option-flag {
+.sv-conseil .offer-panel .split { align-items: center; }
+.sv-conseil .offer-panel .split-media.arch { max-width: 440px; aspect-ratio: 4 / 5; }
+.sv-conseil .offer-panel .split-media.arch img { aspect-ratio: auto; height: 100%; border-radius: 0; }
+.sv-conseil .offer-panel h2 { margin-bottom: 14px; }
+.sv-conseil .offer-panel .feature-list li .tick { background: var(--mint); }
+.sv-conseil .option-flag {
   display: inline; background: transparent !important; padding: 0; border-radius: 0;
   color: var(--ink); font-size: 1rem; font-weight: 400;
 }
-.sv-pricing .option-flag .price-chf { font-family: var(--serif); font-size: 1.6rem; font-weight: 600; color: var(--ink); }
+.sv-conseil .option-flag .price-chf { font-family: var(--serif); font-size: 1.6rem; font-weight: 600; color: var(--ink); }
 @media (max-width: 860px) {
-  .sv-pricing .offer-panel .split-media.arch { width: 86%; }
+  .sv-conseil .offer-panel .split-media.arch { width: 86%; }
 }
 
 /* Étapes : titre à gauche, frise à droite */
@@ -149,7 +152,7 @@
 }
 
 /* Appel conseil : une offre à part, photo en tête de carte */
-.sv-pricing .offer-panel.sv-offer {
+.sv-conseil .offer-panel.sv-offer {
   border: 1px solid var(--line); border-top: 1px solid var(--line); border-radius: var(--r);
   background: var(--cream); padding: 0; overflow: hidden;
 }
