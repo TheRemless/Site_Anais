@@ -316,9 +316,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .nl-fields .btn { width: 100%; justify-content: center; }
 .nl-msg { margin: 14px 0 0; font-size: 0.98rem; }
 .nl-error { color: #7a2e2e; }
-/* Le message de succès s'affiche par JavaScript (classe) ou, sans JavaScript, par l'ancre #newsletter-merci (:target) */
+/* Le message de succès s'affiche par JavaScript (classe) ; sans JavaScript, Netlify renvoie sur la page de remerciement */
 .nl-success { display: none; color: var(--teal-deep); font-weight: 600; }
-.nl-success:target, .nl-success.is-shown { display: block; }
+.nl-success.is-shown { display: block; }
 @media (min-width: 561px) {
   .nl-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
   .nl-fields .btn { width: auto; justify-self: start; }

@@ -3,8 +3,12 @@
     <h2>{{ 'newsletter.title' | t(lang) }}</h2>
     <p class="mt-s" style="color:var(--ink-mute);max-width:52ch;margin-inline:auto">{{ 'newsletter.intro' | t(lang) }}</p>
     <div class="mt-l nl-compact">
-      <form class="nl-form" name="newsletter" method="POST" action="{{ page.url }}#newsletter-merci" data-netlify="true" netlify-honeypot="bot-field" data-sending="{{ 'newsletter.sending' | t(lang) }}">
-        <input type="hidden" name="form-name" value="newsletter">
+      {#- Un formulaire Netlify par langue (name distinct), sinon Netlify ne garde qu'une seule action pour les six pages.
+          Sans JavaScript, Netlify renvoie sur la page de remerciement de la langue ; avec, newsletter.js envoie en fetch. -#}
+      {%- set nlName = "newsletter-en" if lang == "en" else "newsletter-fr" -%}
+      {%- set nlThanks = "/en/newsletter-thanks/" if lang == "en" else "/newsletter-merci/" -%}
+      <form class="nl-form" name="{{ nlName }}" method="POST" action="{{ nlThanks }}" data-netlify="true" netlify-honeypot="bot-field" data-sending="{{ 'newsletter.sending' | t(lang) }}">
+        <input type="hidden" name="form-name" value="{{ nlName }}">
         <input type="hidden" name="lang" value="{{ lang }}">
         <p class="nl-hp" aria-hidden="true"><label>{{ 'newsletter.honeypot' | t(lang) }} <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
         <div class="nl-fields">
@@ -14,7 +18,7 @@
         </div>
         <p class="nl-msg nl-error" role="alert" hidden>{{ 'newsletter.error' | t(lang) }}</p>
       </form>
-      <p class="nl-msg nl-success" id="newsletter-merci" role="status" tabindex="-1">{{ 'newsletter.success' | t(lang) }}</p>
+      <p class="nl-msg nl-success" role="status" tabindex="-1">{{ 'newsletter.success' | t(lang) }}</p>
     </div>
   </div>
 </section>

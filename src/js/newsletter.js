@@ -1,11 +1,11 @@
-/* Newsletter : envoi vers Netlify Forms sans rechargement.
-   Sans JavaScript, le formulaire part normalement et Netlify renvoie sur
-   la même page avec #newsletter-merci (message affiché par :target). */
+/* Newsletter : envoi vers Netlify Forms sans rechargement (form-name newsletter-fr ou newsletter-en,
+   lu dans le champ caché). Sans JavaScript, le formulaire part normalement et Netlify renvoie sur
+   la page de remerciement de la langue (/newsletter-merci/ ou /en/newsletter-thanks/). */
 (function () {
   "use strict";
   var form = document.querySelector("form.nl-form");
   if (!form || !window.fetch) return;
-  var success = document.getElementById("newsletter-merci");
+  var success = form.parentNode.querySelector(".nl-success");
   var error = form.querySelector(".nl-error");
   var button = form.querySelector("button[type='submit']");
   var label = button ? button.querySelector("span") : null;
@@ -16,8 +16,6 @@
     form.hidden = true;
     if (success) { success.classList.add("is-shown"); success.focus(); }
   }
-  if (location.hash === "#newsletter-merci") done();
-
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     if (error) error.hidden = true;

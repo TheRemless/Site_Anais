@@ -98,7 +98,7 @@ module.exports.buildBodies = buildBodies;
 
 // L'auto-réponse est celle de Zwald : elle ne doit partir que pour le formulaire de contact
 // (FR et EN s'appellent tous deux "contact"). Les autres formulaires du site, comme la
-// demande de taxi ou l'inscription à la newsletter (formulaire "newsletter"), n'en reçoivent pas.
+// demande de taxi ou l'inscription à la newsletter (formulaires "newsletter-fr" et "newsletter-en"), n'en reçoivent pas.
 function isContactSubmission(payload) {
   return Boolean(payload) && payload.form_name === "contact";
 }
