@@ -204,7 +204,7 @@
     else field.value = value;
   }
   document.addEventListener("click", function (event) {
-    var link = event.target.closest("a.get[data-type], a[data-open-form]");
+    var link = event.target.closest("a.get[data-type], a.card-link[data-type], a[data-open-form]");
     if (!link) return;
     event.preventDefault();
     var type = link.getAttribute("data-type");
