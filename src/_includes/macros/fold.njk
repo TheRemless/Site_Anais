@@ -1,0 +1,10 @@
+{#- Replis mobile (.fold, voir system.css et initAccordion dans site.js).
+    head(id, title) : titre h3 cliquable des déroulés (accueil, Services), title peut contenir des entités HTML.
+    toggle(id, lang) : bouton « Voir le détail » des formules et du bloc compris / libre.
+    id = id du .fold-body que le bouton commande. Import : {% import "macros/fold.njk" as fold %}. -#}
+{%- macro head(id, title) -%}
+<h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="{{ id }}">{{ title | safe }}<span class="acc-icon" aria-hidden="true"></span></button></h3>
+{%- endmacro -%}
+{%- macro toggle(id, lang) -%}
+<button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="{{ id }}"><span class="fold-show">{{ 'fold.show' | t(lang) }}</span><span class="fold-hide">{{ 'fold.hide' | t(lang) }}</span><span class="acc-icon" aria-hidden="true"></span></button>
+{%- endmacro -%}

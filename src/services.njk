@@ -4,6 +4,7 @@ navLight: false
 langAlt: "/en/services/"
 ---
 {% extends "base.njk" %}
+{% import "macros/fold.njk" as fold %}
 
 {% block head %}{% raw %}
 <title>Voyage sur mesure en Thaïlande, formules dès 35 CHF par jour</title>
@@ -79,7 +80,7 @@ langAlt: "/en/services/"
         <p class="aud">Voyageurs autonomes</p>
         <div class="price"><span class="price-chf" data-chf="35">35 CHF</span> <small>/ jour</small></div>
         <p class="price-note">par jour de voyage organisé</p>
-        <button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="formule-light-detail"><span class="fold-show">{% endraw %}{{ 'fold.show' | t(lang) }}{% raw %}</span><span class="fold-hide">{% endraw %}{{ 'fold.hide' | t(lang) }}{% raw %}</span><span class="acc-icon" aria-hidden="true"></span></button>
+        {% endraw %}{{ fold.toggle("formule-light-detail", lang) }}{% raw %}
         <div class="fold-body" id="formule-light-detail">
         <ul>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire sur mesure</li>
@@ -99,7 +100,7 @@ langAlt: "/en/services/"
         <p class="aud">Jusqu'à 2 personnes</p>
         <div class="price"><span class="price-chf" data-chf="40">40 CHF</span> <small>/ jour</small></div>
         <p class="price-note">par jour de voyage organisé</p>
-        <button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="formule-duo-detail"><span class="fold-show">{% endraw %}{{ 'fold.show' | t(lang) }}{% raw %}</span><span class="fold-hide">{% endraw %}{{ 'fold.hide' | t(lang) }}{% raw %}</span><span class="acc-icon" aria-hidden="true"></span></button>
+        {% endraw %}{{ fold.toggle("formule-duo-detail", lang) }}{% raw %}
         <div class="fold-body" id="formule-duo-detail">
         <ul>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire sur mesure jusqu'à 3 villes</li>
@@ -117,7 +118,7 @@ langAlt: "/en/services/"
         <p class="aud">Jusqu'à 4 personnes</p>
         <div class="price"><span class="price-chf" data-chf="43">43 CHF</span> <small>/ jour</small></div>
         <p class="price-note">par jour de voyage organisé</p>
-        <button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="formule-famille-detail"><span class="fold-show">{% endraw %}{{ 'fold.show' | t(lang) }}{% raw %}</span><span class="fold-hide">{% endraw %}{{ 'fold.hide' | t(lang) }}{% raw %}</span><span class="acc-icon" aria-hidden="true"></span></button>
+        {% endraw %}{{ fold.toggle("formule-famille-detail", lang) }}{% raw %}
         <div class="fold-body" id="formule-famille-detail">
         <ul>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Tout ce qui est inclus dans Solo / Duo</li>
@@ -150,7 +151,7 @@ langAlt: "/en/services/"
     <div class="split sv-scope-card" data-accordion data-accordion-multi data-accordion-mobile>
       <div data-reveal="left" class="fold">
         <h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">Ce qui est compris</h2>
-        <button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="scope-inclus"><span class="fold-show">{% endraw %}{{ 'fold.show' | t(lang) }}{% raw %}</span><span class="fold-hide">{% endraw %}{{ 'fold.hide' | t(lang) }}{% raw %}</span><span class="acc-icon" aria-hidden="true"></span></button>
+        {% endraw %}{{ fold.toggle("scope-inclus", lang) }}{% raw %}
         <div class="fold-body" id="scope-inclus">
         <ul class="feature-list mt-m">
           <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Échange initial + appel découverte gratuit</li>
@@ -164,7 +165,7 @@ langAlt: "/en/services/"
       </div>
       <div data-reveal="right" class="fold">
         <h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">Ce qui reste libre</h2>
-        <button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="scope-libre"><span class="fold-show">{% endraw %}{{ 'fold.show' | t(lang) }}{% raw %}</span><span class="fold-hide">{% endraw %}{{ 'fold.hide' | t(lang) }}{% raw %}</span><span class="acc-icon" aria-hidden="true"></span></button>
+        {% endraw %}{{ fold.toggle("scope-libre", lang) }}{% raw %}
         <div class="fold-body" id="scope-libre">
         <ul class="feature-list mt-m">
           <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> Les réservations (vols, hôtels, activités)</li>
@@ -245,14 +246,14 @@ langAlt: "/en/services/"
       <h2>Comment se déroule l'accompagnement</h2>
     </div>
     <div class="timeline" data-accordion data-accordion-multi data-accordion-mobile>
-      <div class="tl-item fold"><div class="tl-dot">1</div><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="tl-1">Prise de contact<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="tl-1"><p>Tu me parles de ton envie de voyage par email, formulaire ou réseaux. Tu me poses toutes tes questions.</p></div></div>
-      <div class="tl-item fold"><div class="tl-dot">2</div><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="tl-2">Questionnaire de voyage<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="tl-2"><p>Un court questionnaire pour cerner ton projet : dates, destinations, activités, budget, participants, préférences.</p></div></div>
-      <div class="tl-item fold"><div class="tl-dot">3</div><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="tl-3">Appel découverte<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="tl-3"><p>Gratuit et sans engagement. On discute de vive voix de tes besoins. Je t'explique mes services et mes formules.</p></div></div>
-      <div class="tl-item fold"><div class="tl-dot">4</div><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="tl-4">Itinéraire &amp; devis<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="tl-4"><p>J'élabore une première version de ton itinéraire sur mesure, en tenant compte de tes demandes et de ton budget.</p></div></div>
-      <div class="tl-item fold"><div class="tl-dot">5</div><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="tl-5">Conception du voyage<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="tl-5"><p>Une fois le devis validé, je recherche, compare et te prépare une sélection des meilleurs hébergements et transports pour chaque étape.</p></div></div>
-      <div class="tl-item fold"><div class="tl-dot">6</div><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="tl-6">Réservations<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="tl-6"><p>C'est le moment de réserver : à partir de ma sélection d'hébergements et de transports, tu effectues toi-même tes réservations, via les liens directs que je te fournis. Tu gardes la main et la liberté sur tous tes choix.</p></div></div>
-      <div class="tl-item fold"><div class="tl-dot">7</div><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="tl-7">Carnet de voyage<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="tl-7"><p>Tu reçois ton carnet de voyage complet : toutes tes réservations réunies, les suggestions d'activités jour par jour ainsi que toutes les infos et conseils locaux pour profiter sereinement.</p></div></div>
-      <div class="tl-item fold"><div class="tl-dot">8</div><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="tl-8">C'est parti !<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="tl-8"><p>Profite sans stress. Une question pendant le voyage ? Je reste joignable sur WhatsApp 7j/7.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">1</div>{% endraw %}{{ fold.head("tl-1", "Prise de contact") }}{% raw %}<div class="fold-body" id="tl-1"><p>Tu me parles de ton envie de voyage par email, formulaire ou réseaux. Tu me poses toutes tes questions.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">2</div>{% endraw %}{{ fold.head("tl-2", "Questionnaire de voyage") }}{% raw %}<div class="fold-body" id="tl-2"><p>Un court questionnaire pour cerner ton projet : dates, destinations, activités, budget, participants, préférences.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">3</div>{% endraw %}{{ fold.head("tl-3", "Appel découverte") }}{% raw %}<div class="fold-body" id="tl-3"><p>Gratuit et sans engagement. On discute de vive voix de tes besoins. Je t'explique mes services et mes formules.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">4</div>{% endraw %}{{ fold.head("tl-4", "Itinéraire &amp; devis") }}{% raw %}<div class="fold-body" id="tl-4"><p>J'élabore une première version de ton itinéraire sur mesure, en tenant compte de tes demandes et de ton budget.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">5</div>{% endraw %}{{ fold.head("tl-5", "Conception du voyage") }}{% raw %}<div class="fold-body" id="tl-5"><p>Une fois le devis validé, je recherche, compare et te prépare une sélection des meilleurs hébergements et transports pour chaque étape.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">6</div>{% endraw %}{{ fold.head("tl-6", "Réservations") }}{% raw %}<div class="fold-body" id="tl-6"><p>C'est le moment de réserver : à partir de ma sélection d'hébergements et de transports, tu effectues toi-même tes réservations, via les liens directs que je te fournis. Tu gardes la main et la liberté sur tous tes choix.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">7</div>{% endraw %}{{ fold.head("tl-7", "Carnet de voyage") }}{% raw %}<div class="fold-body" id="tl-7"><p>Tu reçois ton carnet de voyage complet : toutes tes réservations réunies, les suggestions d'activités jour par jour ainsi que toutes les infos et conseils locaux pour profiter sereinement.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">8</div>{% endraw %}{{ fold.head("tl-8", "C'est parti !") }}{% raw %}<div class="fold-body" id="tl-8"><p>Profite sans stress. Une question pendant le voyage ? Je reste joignable sur WhatsApp 7j/7.</p></div></div>
     </div>
   </div>
 </section>

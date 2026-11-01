@@ -4,6 +4,7 @@ navLight: false
 langAlt: "/"
 ---
 {% extends "base.njk" %}
+{% import "macros/fold.njk" as fold %}
 
 {% block head %}{% raw %}
 <title>Thailand Travel Planner, Tailor-Made Trips | Zwald</title>
@@ -151,10 +152,10 @@ langAlt: "/"
       <p>Four steps, from our first exchange to your return home.</p>
     </div>
     <ol class="hsteps" data-reveal data-accordion data-accordion-multi data-accordion-mobile>
-      <li class="hstep fold"><span class="hstep-num">01</span><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="hstep-1">Discovery call<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="hstep-1"><p>Free and no obligation. We talk about what you want, your budget and your dates.</p></div></li>
-      <li class="hstep fold"><span class="hstep-num">02</span><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="hstep-2">Tailor-made itinerary<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="hstep-2"><p>I put together one or two proposals tailored to your project, with a clear quote.</p></div></li>
-      <li class="hstep fold"><span class="hstep-num">03</span><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="hstep-3">Travel journal<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="hstep-3"><p>You receive your complete guide with everything you need to book with confidence.</p></div></li>
-      <li class="hstep fold"><span class="hstep-num">04</span><h3 class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="hstep-4">Enjoy your trip!<span class="acc-icon" aria-hidden="true"></span></button></h3><div class="fold-body" id="hstep-4"><p>I stay available 7 days a week during your stay. All you have to do is enjoy.</p></div></li>
+      <li class="hstep fold"><span class="hstep-num">01</span>{% endraw %}{{ fold.head("hstep-1", "Discovery call") }}{% raw %}<div class="fold-body" id="hstep-1"><p>Free and no obligation. We talk about what you want, your budget and your dates.</p></div></li>
+      <li class="hstep fold"><span class="hstep-num">02</span>{% endraw %}{{ fold.head("hstep-2", "Tailor-made itinerary") }}{% raw %}<div class="fold-body" id="hstep-2"><p>I put together one or two proposals tailored to your project, with a clear quote.</p></div></li>
+      <li class="hstep fold"><span class="hstep-num">03</span>{% endraw %}{{ fold.head("hstep-3", "Travel journal") }}{% raw %}<div class="fold-body" id="hstep-3"><p>You receive your complete guide with everything you need to book with confidence.</p></div></li>
+      <li class="hstep fold"><span class="hstep-num">04</span>{% endraw %}{{ fold.head("hstep-4", "Enjoy your trip!") }}{% raw %}<div class="fold-body" id="hstep-4"><p>I stay available 7 days a week during your stay. All you have to do is enjoy.</p></div></li>
     </ol>
   </div>
 </section>
