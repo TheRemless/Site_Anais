@@ -303,15 +303,19 @@
     var triggers = [].slice.call(document.querySelectorAll("[data-lightbox]"));
     if (!triggers.length) return;
     var items = triggers.map(function (t) {
-      return { src: t.getAttribute("data-src") || t.querySelector("img").src, cap: t.getAttribute("data-caption") || "" };
+      var im = t.querySelector("img");
+      return { src: t.getAttribute("data-src") || im.src, cap: t.getAttribute("data-caption") || "", alt: im ? im.alt : "" };
     });
+    var en = /^en/i.test(document.documentElement.lang || "");
+    var L = en ? { close: "Close", prev: "Previous", next: "Next", open: "Enlarge: " } : { close: "Fermer", prev: "Précédent", next: "Suivant", open: "Agrandir : " };
+    var opener = null;
     var cur = 0;
     var box = el(
       '<div class="lightbox" role="dialog" aria-modal="true">' +
-        '<button class="lb-close" aria-label="Fermer">✕</button>' +
-        '<button class="lb-nav lb-prev" aria-label="Précédent">‹</button>' +
+        '<button class="lb-close" aria-label="' + L.close + '">✕</button>' +
+        '<button class="lb-nav lb-prev" aria-label="' + L.prev + '">‹</button>' +
         '<figure class="lb-figure"><img alt=""><figcaption></figcaption></figure>' +
-        '<button class="lb-nav lb-next" aria-label="Suivant">›</button>' +
+        '<button class="lb-nav lb-next" aria-label="' + L.next + '">›</button>' +
       '</div>'
     );
     document.body.appendChild(box);
@@ -320,12 +324,20 @@
       cur = (k + items.length) % items.length;
       img.classList.remove("loaded");
       img.src = items[cur].src;
+      img.alt = items[cur].alt;
       img.onload = function () { img.classList.add("loaded"); };
       cap.textContent = items[cur].cap;
     }
-    function open(k) { show(k); box.classList.add("open"); document.body.style.overflow = "hidden"; }
-    function close() { box.classList.remove("open"); document.body.style.overflow = ""; }
-    triggers.forEach(function (t, k) { t.addEventListener("click", function () { open(k); }); });
+    function open(k) { opener = document.activeElement; show(k); box.classList.add("open"); document.body.style.overflow = "hidden"; box.querySelector(".lb-close").focus(); }
+    function close() { box.classList.remove("open"); document.body.style.overflow = ""; if (opener && opener.focus) opener.focus(); }
+    triggers.forEach(function (t, k) {
+      t.addEventListener("click", function () { open(k); });
+      if (t.tagName !== "A" && t.tagName !== "BUTTON") {
+        t.setAttribute("role", "button"); t.setAttribute("tabindex", "0");
+        if (items[k].alt) t.setAttribute("aria-label", L.open + items[k].alt);
+        t.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(k); } });
+      }
+    });
     box.querySelector(".lb-close").addEventListener("click", close);
     box.querySelector(".lb-prev").addEventListener("click", function () { show(cur - 1); });
     box.querySelector(".lb-next").addEventListener("click", function () { show(cur + 1); });

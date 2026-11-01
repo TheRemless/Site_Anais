@@ -312,3 +312,32 @@
   .faq-main .faq-group { display: grid; grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.6fr); gap: clamp(40px, 6vw, 96px); align-items: start; }
   .faq-main .faq-group-title { position: sticky; top: 110px; margin: 0; }
 }
+
+/* ---------- Galerie ----------
+   Titre seul, la mosaïque sert de visuel d'entrée. Grille alignée sur trois
+   colonnes : une grande photo (deux colonnes, deux rangées) puis deux petites,
+   la grande change de côté à chaque groupe. Mobile : grande pleine largeur. */
+.page-hero.gl-hero { padding-bottom: clamp(28px, 4vw, 48px); }
+@media (min-width: 900px) {
+  .page-hero.gl-hero { display: block; padding-top: calc(var(--nav-h) + clamp(40px, 5vw, 72px)); }
+  .page-hero.gl-hero > .container {
+    display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    align-items: end; gap: clamp(32px, 5vw, 80px);
+    width: 100%; max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter);
+  }
+  .page-hero.gl-hero h1 { max-width: 12ch; }
+  .page-hero.gl-hero p { margin: 0 0 0.4em; }
+}
+.gl-main { padding-top: 0; }
+.gl-main .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; grid-auto-flow: dense; }
+.gl-main .g-item { border-radius: var(--r); background: var(--bg-mint); }
+.gl-main .g-item img { height: auto; aspect-ratio: 4 / 5; }
+.gl-main .g-item:nth-child(3n+1) { grid-column: 1 / -1; }
+.gl-main .g-item:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+@media (min-width: 700px) {
+  .gl-main .gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(12px, 1.4vw, 18px); }
+  .gl-main .g-item:nth-child(6n+1) { grid-column: 1 / 3; grid-row: span 2; }
+  .gl-main .g-item:nth-child(6n+4) { grid-column: 2 / 4; grid-row: span 2; }
+  .gl-main .g-item:nth-child(3n+1) img { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .gl-main .g-item:hover img { transform: none; } }
