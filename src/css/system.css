@@ -356,7 +356,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 /* ---------- Replis mobile (.fold) : déroulés (accueil, Services), listes de détail des formules et du bloc
    compris / libre. Sous 900 px le détail est replié sous un bouton aria-expanded ; dès 900 px tout est déplié
    par CSS et le bouton de titre redevient un simple titre. Même mécanique JavaScript que la FAQ
-   (data-accordion, classe .open, voir site.js). Le contenu est toujours dans le HTML. ---------- */
+   (data-accordion, classe .open, voir site.js). Le contenu est toujours dans le HTML. Replié, le corps porte
+   l'attribut hidden (posé par site.js) ; la règle .fold:not(.open) ci-dessous donne le même état avant
+   l'exécution du script, donc sans saut de mise en page. ---------- */
 .fold-btn {
   display: block; width: 100%; margin: 0; padding: 0; border: 0; background: none; border-radius: 0;
   font: inherit; color: inherit; letter-spacing: inherit; word-spacing: inherit; line-height: inherit;
@@ -378,8 +380,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .fold.open .fold-toggle .fold-hide { display: inline; }
   .fold.open .acc-icon { background: var(--teal); color: #fff; }
   .fold.open .acc-icon::after { transform: rotate(90deg) scaleX(0); }
-  .fold-body { max-height: 0; overflow: hidden; transition: max-height 0.45s var(--ease); }
-  .fold.open .fold-body { max-height: 1400px; }
+  .fold:not(.open) .fold-body { display: none; }
+  .fold.open .fold-body { animation: fold-in 0.3s var(--ease) both; }
   .fold-body > .feature-list.mt-m { margin-top: 18px; }
   .fold > h2 + .fold-toggle { margin-top: 14px; }
   .pricing .formule .fold-toggle { margin-top: -10px; margin-bottom: 18px; }
@@ -388,7 +390,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .tl-item { padding-bottom: 24px; }
   .tl-item:last-child { padding-bottom: 0; }
 }
-@media (prefers-reduced-motion: reduce) { .fold-body { transition: none; } }
+@keyframes fold-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .fold.open .fold-body { animation: none; } }
 
 /* L'attribut hidden doit toujours l'emporter (bandeau newsletter, messages) */
 [hidden] { display: none !important; }

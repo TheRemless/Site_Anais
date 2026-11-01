@@ -137,13 +137,17 @@
   }
 
   /* ---------- Accordéons (event delegation) : FAQ (.acc-item) et replis mobile (.fold, voir system.css).
-     data-accordion-mobile : replié seulement sous 900 px ; au-delà le CSS déplie tout et aria-expanded reste à true. ---------- */
+     data-accordion-mobile : replié seulement sous 900 px. Sous 900 px le bouton porte aria-expanded et
+     aria-controls et le contenu replié est hidden ; au-delà le bouton sort de la tabulation (tabindex -1,
+     sans aria-expanded) et le contenu est toujours visible. ---------- */
   function initAccordion() {
     var desktop = window.matchMedia("(min-width: 900px)");
     function setOpen(item, open) {
       item.classList.toggle("open", open);
       var btn = item.querySelector("[aria-expanded]");
       if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+      var body = item.querySelector(".fold-body");
+      if (body) body.hidden = !open;
     }
     document.querySelectorAll("[data-accordion]").forEach(function (root) {
       var mobileOnly = root.hasAttribute("data-accordion-mobile");
@@ -160,9 +164,22 @@
       });
       if (mobileOnly) {
         var reflect = function () {
-          root.querySelectorAll(".fold [aria-expanded]").forEach(function (btn) {
-            var item = btn.closest(".fold");
-            btn.setAttribute("aria-expanded", desktop.matches || item.classList.contains("open") ? "true" : "false");
+          root.querySelectorAll(".fold").forEach(function (item) {
+            var btn = item.querySelector(".fold-btn, .fold-toggle");
+            var body = item.querySelector(".fold-body");
+            if (!btn || !body) return;
+            if (desktop.matches) {
+              btn.setAttribute("tabindex", "-1");
+              btn.removeAttribute("aria-expanded");
+              btn.removeAttribute("aria-controls");
+              body.hidden = false;
+            } else {
+              var open = item.classList.contains("open");
+              btn.removeAttribute("tabindex");
+              btn.setAttribute("aria-expanded", open ? "true" : "false");
+              btn.setAttribute("aria-controls", body.id);
+              body.hidden = !open;
+            }
           });
         };
         reflect();
