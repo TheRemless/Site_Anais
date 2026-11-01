@@ -56,6 +56,9 @@
 .sheet .desc ul { margin: 0.6mm 0 0 3.2mm; padding: 0; list-style: disc; font-style: italic; font-size: 8.4pt; line-height: 3.5mm; letter-spacing: 0.17em; }
 .sheet .desc li { margin: 0; padding-left: 0.5mm; }
 .sheet .ligne.bloc { margin-bottom: 1.4mm; }
+/* « bloc » est aussi la classe des cartes de l'outil (app.css) : sans ce rappel, une ligne de type bloc s'imprime dans deux cadres arrondis. */
+.sheet .ligne.bloc, .sheet .desc.bloc { background: none; border: 0; border-radius: 0; box-shadow: none; }
+.sheet .desc.bloc { margin: 0; padding: 0 2mm 0 7.4mm; }
 .sheet .remise strong { font-size: 8.5pt; }
 .sheet .ligne.recu .desc strong { letter-spacing: 0.1em; }
 
