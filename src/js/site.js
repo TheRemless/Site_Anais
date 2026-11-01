@@ -139,16 +139,21 @@
   /* ---------- FAQ accordion (event delegation) ---------- */
   function initAccordion() {
     document.querySelectorAll("[data-accordion]").forEach(function (root) {
-      /* Les en-têtes se comportent comme des boutons : clavier et lecteurs d'écran */
+      /* Chaque question devient un vrai bouton dans son h3 : clavier, lecteurs d'écran, titres conservés */
       function sync() {
         root.querySelectorAll(".acc-item").forEach(function (i) {
-          var h = i.querySelector(".acc-head");
-          if (h) h.setAttribute("aria-expanded", i.classList.contains("open") ? "true" : "false");
+          var b = i.querySelector(".acc-btn");
+          if (b) b.setAttribute("aria-expanded", i.classList.contains("open") ? "true" : "false");
         });
       }
-      root.querySelectorAll(".acc-head").forEach(function (h) {
-        h.setAttribute("role", "button");
-        h.setAttribute("tabindex", "0");
+      root.querySelectorAll(".acc-head").forEach(function (h, n) {
+        var t = h.querySelector("h3"), body = h.parentNode.querySelector(".acc-body");
+        if (!t || t.querySelector(".acc-btn")) return;
+        var b = document.createElement("button");
+        b.type = "button"; b.className = "acc-btn";
+        while (t.firstChild) b.appendChild(t.firstChild);
+        t.appendChild(b);
+        if (body) { body.id = body.id || "acc-" + Math.random().toString(36).slice(2, 8) + n; b.setAttribute("aria-controls", body.id); }
       });
       sync();
       root.addEventListener("click", function (e) {
@@ -161,12 +166,6 @@
         }
         item.classList.toggle("open", !open);
         sync();
-      });
-      root.addEventListener("keydown", function (e) {
-        var head = e.target.closest(".acc-head");
-        if (!head || (e.key !== "Enter" && e.key !== " ")) return;
-        e.preventDefault();
-        head.click();
       });
     });
   }
@@ -304,7 +303,7 @@
     if (!triggers.length) return;
     var items = triggers.map(function (t) {
       var im = t.querySelector("img");
-      return { src: t.getAttribute("data-src") || im.src, cap: t.getAttribute("data-caption") || "", alt: im ? im.alt : "" };
+      return { src: t.getAttribute("data-src") || (im ? im.src : ""), cap: t.getAttribute("data-caption") || "", alt: im ? im.alt : "" };
     });
     var en = /^en/i.test(document.documentElement.lang || "");
     var L = en ? { close: "Close", prev: "Previous", next: "Next", open: "Enlarge: " } : { close: "Fermer", prev: "Précédent", next: "Suivant", open: "Agrandir : " };
@@ -345,6 +344,13 @@
     addSwipe(box.querySelector(".lb-figure") || box, function () { show(cur + 1); }, function () { show(cur - 1); });
     document.addEventListener("keydown", function (e) {
       if (!box.classList.contains("open")) return;
+      if (e.key === "Tab") {
+        /* Le focus reste dans la visionneuse tant qu'elle est ouverte */
+        var f = [].slice.call(box.querySelectorAll("button")), i = f.indexOf(document.activeElement);
+        e.preventDefault();
+        f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+        return;
+      }
       if (e.key === "Escape") close();
       if (e.key === "ArrowLeft") show(cur - 1);
       if (e.key === "ArrowRight") show(cur + 1);

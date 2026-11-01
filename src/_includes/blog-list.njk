@@ -4,7 +4,7 @@
 {%- set first = posts[0] %}
 {%- set months = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"] if lang != "en" else ["January","February","March","April","May","June","July","August","September","October","November","December"] %}
 {%- macro fdate(d) %}{{ d.getDate() }} {{ months[d.getMonth()] }} {{ d.getFullYear() }}{% endmacro %}
-{%- macro fupd(u) %}{% set d = u.split("-") %}{{ d[2] | int }} {{ months[(d[1] | int) - 1] }} {{ d[0] }}{% endmacro %}
+{%- macro fupd(u) %}{% if u.getFullYear %}{{ fdate(u) }}{% else %}{% set d = (u | string).split("-") %}{{ d[2] | int }} {{ months[(d[1] | int) - 1] }} {{ d[0] }}{% endif %}{% endmacro %}
     <article class="bl-feature">
       <a class="bl-feature-img" href="{{ first.url }}" tabindex="-1" aria-hidden="true"><img loading="eager" decoding="async" sizes="(min-width: 900px) 55vw, 100vw" src="{{ first.data.cover }}" alt="{{ first.data.coverAlt }}"></a>
       <div class="bl-feature-body">

@@ -394,7 +394,7 @@
   .cta-band.cta-plain p { margin-bottom: 24px; }
 }
 /* À lire aussi : vignettes sans cadre */
-.bl-related .blog-card { border: 0; background: transparent; box-shadow: none; border-radius: 0; }
+.bl-related .blog-card { box-shadow: none; border-radius: 0; }
 .bl-related .blog-card:hover { transform: none; box-shadow: none; }
 .bl-related .blog-card .b-img { border-radius: var(--r); aspect-ratio: 3 / 2; }
 .bl-related .blog-card .b-body { padding: 18px 0 0; }
@@ -460,3 +460,7 @@
 .legal-content h2 { font-weight: 600; font-size: clamp(1.5rem, 2.2vw, 1.9rem); }
 .legal-content h3 { font-weight: 600; }
 @media (max-width: 559px) { .legal-content.prose { font-size: 1.04rem; line-height: 1.7; } }
+
+/* Questions de l'accordéon : bouton plein largeur dans le h3 */
+.acc-btn { all: unset; display: block; width: 100%; cursor: pointer; font: inherit; color: inherit; line-height: inherit; }
+.acc-btn:focus-visible { outline: 3px solid var(--teal); outline-offset: 4px; border-radius: 4px; }
