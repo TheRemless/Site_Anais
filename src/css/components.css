@@ -399,26 +399,6 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .contact-testi blockquote { font-family: var(--serif); font-size: 1.08rem; font-style: italic; color: var(--ink); line-height: 1.55; margin: 0 0 12px; }
 .contact-testi cite { font-size: 0.84rem; font-weight: 600; color: var(--teal-dark); font-style: normal; }
 
-/* ---------- Brevo newsletter form — reskin global ---------- */
-.sib-form { background: transparent !important; }
-#sib-container { background: transparent !important; border: none !important; max-width: 480px !important; margin: 0 auto !important; }
-#sib-container input.input { font-family: var(--sans) !important; font-size: 1rem !important; padding: 14px 20px !important; border-radius: 50px !important; border: 1px solid var(--line) !important; background: #fff !important; color: var(--ink) !important; width: 100% !important; box-sizing: border-box !important; }
-#sib-container input.input::placeholder { color: var(--ink-faint) !important; font-family: var(--sans) !important; }
-#sib-container input.input:focus { outline: 2px solid var(--teal) !important; border-color: var(--teal) !important; }
-.sib-form-block__button { font-family: var(--sans) !important; font-size: 0.95rem !important; font-weight: 600 !important; background: var(--teal) !important; color: #fff !important; padding: 14px 28px !important; border-radius: 50px !important; border: none !important; cursor: pointer !important; width: 100% !important; transition: box-shadow 0.4s !important; }
-.sib-form-block__button:hover { box-shadow: 0 16px 34px -12px rgba(26,155,140,0.55) !important; }
-.sib-form-block { text-align: center !important; }
-.sib-form__declaration { display: none !important; }
-#error-message { border-radius: 10px !important; max-width: 480px !important; margin: 0 auto !important; }
-#success-message { border-radius: 10px !important; max-width: 480px !important; margin: 0 auto !important; font-family: var(--sans) !important; }
-/* Compact horizontal layout (homepage & à propos) */
-.nl-compact #sib-container { max-width: 540px !important; }
-.nl-compact .sib-form-block__button { width: auto !important; white-space: nowrap !important; }
-
-/* Consent-gated newsletter placeholder, shown until cookies are accepted (reuses .callout's box) */
-.nl-gate { text-align: center; }
-.nl-gate p { color: var(--ink-mute); margin-bottom: 14px; }
-
 /* ---------- Experience photo tiles (Girls Trips programme) ---------- */
 .xp-tile { display: flex; flex-direction: column; }
 .xp-tile img { width: 100%; height: auto; aspect-ratio: 4/3; object-fit: cover; border-radius: 16px; display: block; transition: transform 0.7s var(--ease); }

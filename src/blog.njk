@@ -53,15 +53,4 @@ langAlt: "/en/blog/"
 
 {% block scripts %}{% raw %}
 <script>ZWALD.init({ page: "blog" });</script>
-<script>
-  window.REQUIRED_CODE_ERROR_MESSAGE = 'Veuillez choisir un indicatif';
-  window.LOCALE = 'fr';
-  window.EMAIL_INVALID_MESSAGE = window.SMS_INVALID_MESSAGE = "Les informations fournies ne sont pas valides. Vérifiez le format du champ et réessayez.";
-  window.REQUIRED_ERROR_MESSAGE = "Merci de ne pas laisser ce champ vide.";
-  window.GENERIC_INVALID_MESSAGE = "Les informations fournies ne sont pas valides. Vérifiez le format du champ et réessayez.";
-  window.INVALID_NUMBER = "Numéro invalide.";
-  window.INVALID_DATE = "Date invalide.";
-  window.REQUIRED_MULTISELECT_MESSAGE = 'Veuillez sélectionner au moins une option.';
-  var AUTOHIDE = Boolean(0);
-</script>
 {% endraw %}{% endblock %}

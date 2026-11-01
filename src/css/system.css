@@ -44,7 +44,7 @@ h2 { letter-spacing: -0.015em; }
 /* Chiffres alignés partout (Cormorant dessine des chiffres elzéviriens par défaut) */
 body, h1, h2, h3, .price, .price-chf, .tl-dot, .step-num, .formule-region .price, .option-flag, .stat, .lead { font-variant-numeric: lining-nums; }
 strong, b, .nav-tag, .wa-fab-name, .footer h2, .footer h3, .footer h4,
-.sib-form h2, .tcard .who strong, .step .step-num, .tl-dot { font-weight: 600; }
+.tcard .who strong, .step .step-num, .tl-dot { font-weight: 600; }
 .zwc-title { font-weight: 600 !important; }
 .lead { color: var(--ink-soft); }
 
@@ -203,7 +203,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .nl-band [data-reveal] { opacity: 1; transform: none; }
 .nl-band .container.narrow { text-align: left; }
 .nl-band .container > p.mt-s { margin-inline: 0 !important; }
-.nl-band .nl-gate .btn-ghost { color: var(--teal-deep); border-color: rgba(7, 106, 115, 0.4); }
 .nl-band h2 { font-size: clamp(2rem, 3.4vw, 2.8rem); font-weight: 600; }
 @media (min-width: 900px) {
   .nl-band .container.narrow {
@@ -293,11 +292,21 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .lang-switch a { opacity: 1; color: var(--ink-mute); }
 .lang-switch .lang-current { color: var(--ink); }
 
-/* ---------- Newsletter sans cookies : une ligne d'explication et un bouton, pas de boîte ---------- */
-.nl-band .nl-gate { background: transparent; padding: 0; margin: 0; border-radius: 0; text-align: left; display: grid; gap: 14px; justify-items: start; }
-.nl-band .nl-gate p { color: var(--ink-mute); margin: 0; font-size: 0.98rem; max-width: 38ch; }
-.nl-band .nl-gate .btn-ghost { background: var(--teal); color: #fff; border-color: var(--teal); }
-.nl-band .nl-gate .btn-ghost:hover { background: var(--teal-dark); border-color: var(--teal-dark); color: #fff; }
+/* ---------- Newsletter : formulaire Netlify Forms, prénom facultatif, e-mail, bouton ---------- */
+.nl-form .nl-hp { display: none; }
+.nl-fields { display: grid; gap: 14px; align-items: end; }
+.nl-fields .field { margin: 0; }
+.nl-fields .field label { font-size: 0.92rem; font-weight: 600; letter-spacing: 0; color: var(--ink); }
+.nl-fields .btn { width: 100%; justify-content: center; }
+.nl-msg { margin: 14px 0 0; font-size: 0.98rem; }
+.nl-error { color: #7a2e2e; }
+/* Le message de succès s'affiche par JavaScript (classe) ou, sans JavaScript, par l'ancre #newsletter-merci (:target) */
+.nl-success { display: none; color: var(--teal-deep); font-weight: 600; }
+.nl-success:target, .nl-success.is-shown { display: block; }
+@media (min-width: 561px) {
+  .nl-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+  .nl-fields .btn { width: auto; justify-self: start; }
+}
 
 /* ---------- Badge de formule phare : même rendu partout ---------- */
 .pricing .formule .badge, .formule .badge {
