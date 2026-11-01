@@ -323,3 +323,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .cta-band.cta-full { grid-template-columns: 1fr; }
   .cta-full .container { padding: 0 var(--gutter) clamp(64px, 8vw, 112px); align-self: end; }
 }
+
+/* L'attribut hidden doit toujours l'emporter (bandeau newsletter, messages) */
+[hidden] { display: none !important; }

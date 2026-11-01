@@ -280,7 +280,7 @@ body.nav-open .nav.nav-light:not(.scrolled) .nav-toggle span { background: var(-
 .mobile-menu a.active { color: var(--teal-dark); }
 
 /* ---------- Footer ---------- */
-.footer { background: #0B3B36; color: var(--on-dark); padding: 84px 0 32px; }
+.footer { background: var(--lagoon, #083C42); color: var(--on-dark); padding: 84px 0 32px; }
 .footer-grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1.2fr; gap: 48px; }
 .footer-brand .brand-name { color: #fff; }
 .footer-brand .brand-sub { color: var(--sand-soft); }
