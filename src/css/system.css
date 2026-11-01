@@ -360,3 +360,7 @@ html:not(.js) .img-reveal::after { display: none; }
 .nl-ok { color: var(--teal-deep); }
 .nl-err { color: #8a1f1f; }
 @media (max-width: 480px) { .nl-row .btn { flex: 1 1 100%; } }
+
+/* « clip » coupe le débordement horizontal comme « hidden », sans créer de zone de
+   défilement : les éléments collants (sommaire des articles, titres de la FAQ) fonctionnent. */
+html, body { overflow-x: clip; }

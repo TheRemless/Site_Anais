@@ -380,6 +380,24 @@
     if (end) new IntersectionObserver(function (e) { endIn = e[0].isIntersecting; upd(); }).observe(end);
   }
 
+  /* ---------- Sommaire des articles : section en cours mise en avant ---------- */
+  function initArticleToc() {
+    var links = [].slice.call(document.querySelectorAll(".art-toc a"));
+    if (!links.length) return;
+    var heads = links.map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); });
+    var ticking = false, current = -1;
+    function update() {
+      ticking = false;
+      var line = window.innerHeight * 0.3, k = -1;
+      heads.forEach(function (h, i) { if (h && h.getBoundingClientRect().top <= line) k = i; });
+      if (k === current) return;
+      current = k;
+      links.forEach(function (a, i) { a.classList.toggle("is-current", i === k); if (i === k) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current"); });
+    }
+    window.addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+    update();
+  }
+
   /* ---------- Newsletter (Netlify Forms, envoi en arrière-plan) ---------- */
   function initNewsletter() {
     document.querySelectorAll("form.nl-form").forEach(function (form) {
@@ -441,6 +459,7 @@
     initTracking();
     initNewsletter();
     initStickyBar();
+    initArticleToc();
     initEvents();
     // Footer year
     var y = document.getElementById("footer-year");
