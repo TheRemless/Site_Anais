@@ -79,6 +79,12 @@ export function joursEntre(debutIso, finIso) {
   return Math.round((enMs(finIso) - enMs(debutIso)) / 86400000);
 }
 
+// Dernier jour du mois de la date donnée (« 2026-11-01 » donne « 2026-11-30 »).
+export function finDuMois(iso) {
+  const d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7), 0));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
 export function ajouterJours(iso, n) {
   const d = new Date(enMs(iso) + n * 86400000);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;

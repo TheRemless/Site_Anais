@@ -259,3 +259,13 @@ test("modes de paiement : le principal puis les autres", async () => {
   assert.equal(modePaiement(r, "inconnu").texte, "IBAN CH", "un mode supprimé retombe sur le principal");
   assert.equal(modePaiement(r, "").qr_image, "qr.png");
 });
+
+test("finDuMois : le dernier jour réel de chaque mois, bissextile compris", async () => {
+  const { finDuMois } = await load();
+  assert.equal(finDuMois("2026-11-01"), "2026-11-30");
+  assert.equal(finDuMois("2026-11-30"), "2026-11-30");
+  assert.equal(finDuMois("2026-10-15"), "2026-10-31");
+  assert.equal(finDuMois("2026-02-10"), "2026-02-28");
+  assert.equal(finDuMois("2028-02-10"), "2028-02-29");
+  assert.equal(finDuMois("2026-12-31"), "2026-12-31");
+});
