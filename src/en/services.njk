@@ -73,12 +73,14 @@ langAlt: "/services/"
       <h2 id="formules">My <em>travel</em> packages</h2>
       <p>Three packages, flexible to fit your project. Can't find quite what you're looking for? We'll adapt it together.</p>
     </div>
-    <div class="formules">
-      <div class="formule">
+    <div class="formules" data-accordion data-accordion-multi data-accordion-mobile>
+      <div class="formule fold">
         <h3>Light</h3>
         <p class="aud">Independent travelers</p>
         <div class="price"><span class="price-chf" data-chf="35">35 CHF</span> <small>/ day</small></div>
         <p class="price-note">per day of organized travel</p>
+        <button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="formule-light-detail"><span class="fold-show">{% endraw %}{{ 'fold.show' | t(lang) }}{% raw %}</span><span class="fold-hide">{% endraw %}{{ 'fold.hide' | t(lang) }}{% raw %}</span><span class="acc-icon" aria-hidden="true"></span></button>
+        <div class="fold-body" id="formule-light-detail">
         <ul>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Tailor-made itinerary</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Selection of local activities &amp; experiences</li>
@@ -88,14 +90,17 @@ langAlt: "/services/"
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Complete digital travel journal</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Pre-trip support &amp; WhatsApp assistance 7 days a week</li>
         </ul>
+        </div>
         <a class="btn btn-ghost" href="/en/contact/"><span>Get a quote</span></a>
       </div>
-      <div class="formule featured">
+      <div class="formule featured fold">
         <span class="badge">Most popular</span>
         <h3>Solo / Duo</h3>
         <p class="aud">Up to 2 people</p>
         <div class="price"><span class="price-chf" data-chf="40">40 CHF</span> <small>/ day</small></div>
         <p class="price-note">per day of organized travel</p>
+        <button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="formule-duo-detail"><span class="fold-show">{% endraw %}{{ 'fold.show' | t(lang) }}{% raw %}</span><span class="fold-hide">{% endraw %}{{ 'fold.hide' | t(lang) }}{% raw %}</span><span class="acc-icon" aria-hidden="true"></span></button>
+        <div class="fold-body" id="formule-duo-detail">
         <ul>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Tailor-made itinerary for up to 3 cities</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Selection of local activities &amp; experiences</li>
@@ -104,19 +109,23 @@ langAlt: "/services/"
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Complete digital travel journal</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Pre-trip support &amp; WhatsApp assistance 7 days a week</li>
         </ul>
+        </div>
         <a class="btn btn-white" href="/en/contact/"><span>Get a quote</span></a>
       </div>
-      <div class="formule">
+      <div class="formule fold">
         <h3>Family</h3>
         <p class="aud">Up to 4 people</p>
         <div class="price"><span class="price-chf" data-chf="43">43 CHF</span> <small>/ day</small></div>
         <p class="price-note">per day of organized travel</p>
+        <button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="formule-famille-detail"><span class="fold-show">{% endraw %}{{ 'fold.show' | t(lang) }}{% raw %}</span><span class="fold-hide">{% endraw %}{{ 'fold.hide' | t(lang) }}{% raw %}</span><span class="acc-icon" aria-hidden="true"></span></button>
+        <div class="fold-body" id="formule-famille-detail">
         <ul>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Everything included in Solo / Duo</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Activities suited to children of all ages</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinerary designed for family travel</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Up to 4 people (extra fee beyond that)</li>
         </ul>
+        </div>
         <a class="btn btn-ghost" href="/en/contact/"><span>Get a quote</span></a>
       </div>
     </div>
@@ -138,9 +147,11 @@ langAlt: "/services/"
 
 <section class="section-pad sv-scope">
   <div class="container">
-    <div class="split sv-scope-card">
-      <div data-reveal="left">
+    <div class="split sv-scope-card" data-accordion data-accordion-multi data-accordion-mobile>
+      <div data-reveal="left" class="fold">
         <h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">What's included</h2>
+        <button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="scope-inclus"><span class="fold-show">{% endraw %}{{ 'fold.show' | t(lang) }}{% raw %}</span><span class="fold-hide">{% endraw %}{{ 'fold.hide' | t(lang) }}{% raw %}</span><span class="acc-icon" aria-hidden="true"></span></button>
+        <div class="fold-body" id="scope-inclus">
         <ul class="feature-list mt-m">
           <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Initial contact + free discovery call</li>
           <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Itinerary proposals based on your budget and pace</li>
@@ -149,14 +160,18 @@ langAlt: "/services/"
           <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Complete digital travel journal + all booking links</li>
           <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Pre-trip support and WhatsApp assistance 7 days a week during your trip</li>
         </ul>
+        </div>
       </div>
-      <div data-reveal="right">
+      <div data-reveal="right" class="fold">
         <h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">What's left up to you</h2>
+        <button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="scope-libre"><span class="fold-show">{% endraw %}{{ 'fold.show' | t(lang) }}{% raw %}</span><span class="fold-hide">{% endraw %}{{ 'fold.hide' | t(lang) }}{% raw %}</span><span class="acc-icon" aria-hidden="true"></span></button>
+        <div class="fold-body" id="scope-libre">
         <ul class="feature-list mt-m">
           <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> Bookings (flights, hotels, activities)</li>
           <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> Insurance and visas</li>
           <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> On-the-ground services (guides, drivers)</li>
         </ul>
+        </div>
         <p class="mt-m" style="color:var(--ink-mute);font-size:0.96rem">This guarantees you total freedom over your choices — and no hidden fees.</p>
       </div>
     </div>
