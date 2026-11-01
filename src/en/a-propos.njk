@@ -32,39 +32,51 @@ langAlt: "/a-propos/"
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
-<section class="page-hero has-img" data-screen-label="About — hero">
-  <div class="ph-bg"><img fetchpriority="high" sizes="100vw" src="/images/anais-rocher.jpg" alt="Anaïs standing on a rock above the sea">
-  </div>
-  <div class="ph-overlay"></div>
+<section class="page-hero ab-hero" data-screen-label="About — hero">
   <div class="container">
-    <h1>Anaïs Zwald, Swiss travel planner in Thailand</h1>
-    <p>Trained at the Geneva Hotel School, based in Thailand for over three years, specialising in tailor-made trips to Thailand, Malaysia, Indonesia, Vietnam and Laos.</p>
+    <div class="ab-hero-text">
+      <h1>Anaïs Zwald, Swiss travel planner in Thailand</h1>
+      <p>Trained at the Geneva Hotel School, based in Thailand for over three years, specialising in tailor-made trips to Thailand, Malaysia, Indonesia, Vietnam and Laos.</p>
+    </div>
+    <div class="ab-hero-photo arch"><img fetchpriority="high" sizes="(min-width: 900px) 42vw, 92vw" src="/images/anais-temple-portrait.jpg" alt="Anaïs in traditional Thai dress in front of a temple decorated with ceramics"></div>
   </div>
 </section>
-
 <section class="section-pad ab-story">
   <div class="container">
-    <div class="split">
-      <div class="split-media arch ab-portrait">
-        <img loading="lazy" decoding="async" src="/images/anais-plage.jpg" alt="Anaïs on a beach lined with palm trees">
-      </div>
-      <div class="split-text" data-reveal="right">
-        <h2>From Geneva to southern Thailand</h2>
-        <p><strong>Anaïs Zwald is a Swiss travel planner, a graduate of the Geneva Hotel School, based in Koh Lanta in southern Thailand since February 2023.</strong> She designs tailor-made itineraries for Thailand and Southeast Asia. That is the official introduction. The rest, I will tell you in the first person.</p>
-<p>My name is Anaïs, a Swiss native trained at the Geneva Hotel School, for whom travel became more than a passion: a way of living and discovering the world.</p>
-        <p>At 21, diploma in hand, I set off with all my savings for 6 months across Southeast Asia. The flavours of Vietnam, the islands of Indonesia, the jungle of Malaysia, the temples of Laos. And Thailand, which I have travelled from north to south, several times since.</p>
-        <p>But it was in Thailand, in the south of the country, that my heart found its anchor — won over by the kindness of the locals, the beauty of the landscapes and the richness of the local culture. When my friends and family started asking me for advice on their own trips, the idea for <strong>Zwald Travel Planner</strong> was born.</p>
-      </div>
+    <div class="ab-story-head">
+      <h2>From Geneva to southern Thailand</h2>
+      <p><strong>Anaïs Zwald is a Swiss travel planner, a graduate of the Geneva Hotel School, based in Koh Lanta in southern Thailand since February 2023.</strong> She designs tailor-made itineraries for Thailand and Southeast Asia. That is the official introduction. The rest, I will tell you in the first person.</p>
     </div>
+    <ol class="ab-timeline">
+      <li class="ab-step no-photo">
+        <div class="ab-step-body">
+          <h3>Geneva, the Hotel School</h3>
+          <p>My name is Anaïs, a Swiss native trained at the Geneva Hotel School, for whom travel became more than a passion: a way of living and discovering the world.</p>
+        </div>
+      </li>
+      <li class="ab-step">
+        <div class="ab-step-body">
+          <h3>6 months in Southeast Asia</h3>
+          <p>At 21, diploma in hand, I set off with all my savings for 6 months across Southeast Asia. The flavours of Vietnam, the islands of Indonesia, the jungle of Malaysia, the temples of Laos. And Thailand, which I have travelled from north to south, several times since.</p>
+        </div>
+        <figure class="ab-step-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 80vw" src="/images/temple-blanc.jpg" alt="White temple with finely carved details"></figure>
+      </li>
+      <li class="ab-step">
+        <div class="ab-step-body">
+          <h3>February 2023, Koh Lanta</h3>
+          <p>But it was in Thailand, in the south of the country, that my heart found its anchor — won over by the kindness of the locals, the beauty of the landscapes and the richness of the local culture. When my friends and family started asking me for advice on their own trips, the idea for <strong>Zwald Travel Planner</strong> was born.</p>
+          <p>After 6 months traveling across Southeast Asia, this is where I settled down, in February 2023. I've been living here for over 3 years now, and I discover new sides of this incredible country every day.</p>
+        </div>
+        <figure class="ab-step-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 80vw" src="/images/anais-plage.jpg" alt="Anaïs on a beach lined with palm trees"></figure>
+      </li>
+    </ol>
   </div>
 </section>
-
 <section class="section-pad ab-home">
   <div class="container">
     <div class="ab-home-text">
-        <h2>Thailand, day to day</h2>
-        <p>After 6 months traveling across Southeast Asia, this is where I settled down, in February 2023. I've been living here for over 3 years now, and I discover new sides of this incredible country every day.</p>
-        <p>Encounters with elephants, golden temples, local markets, hidden beaches… These are the authentic experiences I want to share with you, through itineraries that go off the beaten path.</p>
+      <h2>Thailand, day to day</h2>
+      <p>Encounters with elephants, golden temples, local markets, hidden beaches… These are the authentic experiences I want to share with you, through itineraries that go off the beaten path.</p>
     </div>
     <div class="ab-duo">
       <div class="frame"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 40vw, 50vw" src="/images/galerie/bangkok-chinatown.jpg" alt="Bangkok at night, Chinatown signs"></div>
@@ -72,27 +84,38 @@ langAlt: "/a-propos/"
     </div>
   </div>
 </section>
-
+<section class="section-pad ab-review" aria-label="A traveller's review">
+  <div class="container">
+    <figure class="ab-quote">
+      <div class="stars" role="img" aria-label="5 out of 5 stars"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg></div>
+      <blockquote><p>Anaïs gave us a dream trip that matched our expectations perfectly. Everything just works with her — you can trust her completely!</p></blockquote>
+      <figcaption><strong>Céline</strong><span>Family trip · Thailand</span></figcaption>
+    </figure>
+    <div class="ab-quote-links">
+      <a class="g-badge" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener"><span>5/5 on Google</span></a>
+      <a class="text-link" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener">Read my reviews on Google</a>
+    </div>
+  </div>
+</section>
 <section class="section-pad">
   <div class="container">
-    <div class="section-head center" data-reveal>
+    <div class="section-head center">
       <h2>Three convictions</h2>
     </div>
-    <div class="grid cols-3 ab-beliefs">
+    <div class="ab-beliefs">
       <div class="ab-belief"><h3>Every traveler is unique</h3><p class="mt-s">There's no standard profile. Your trip starts with listening to who you are and what you're looking for.</p></div>
       <div class="ab-belief"><h3>Every trip deserves to be tailor-made</h3><p class="mt-s">No standardized tours, no off-the-shelf solutions. An itinerary designed for you, grounded in the reality on the ground.</p></div>
       <div class="ab-belief"><h3>A good trip is a well-prepared trip</h3><p class="mt-s">The adventure begins well before departure. Good preparation means peace of mind once you're there.</p></div>
     </div>
   </div>
 </section>
-
 <section class="section-pad bg-navy trust-sec">
   <div class="container">
     <div class="split reverse">
-      <div class="split-media tall img-reveal" data-reveal="left">
-        <img loading="lazy" decoding="async" src="/images/anais-bureau.jpg" alt="Anaïs on the phone at her desk, notebook open">
+      <div class="split-media tall">
+        <img loading="lazy" decoding="async" sizes="(min-width: 900px) 40vw, 100vw" src="/images/IMG_5300.jpg" alt="Anaïs stroking an elephant">
       </div>
-      <div class="split-text" data-reveal="right">
+      <div class="split-text">
         <h2>What you get when you work with me</h2>
         <div class="trust-list mt-m">
           <div class="trust-item"><h3>Someone who lives there</h3><p>In Koh Lanta since February 2023. Boat schedules, seasons, good addresses: I check them on the ground.</p></div>
@@ -106,7 +129,7 @@ langAlt: "/a-propos/"
 </section>
 
 <section class="cta-band section-pad cta-full">
-  <div class="ph-bg"><img sizes="(max-width: 899px) 150vw, 100vw" loading="lazy" decoding="async" src="/images/anais-plage.jpg" alt="Anaïs on a beach lined with palm trees"></div>
+  <div class="ph-bg"><img sizes="(max-width: 899px) 150vw, 100vw" loading="lazy" decoding="async" src="/images/IMG_9507.jpg" alt="Waterfall in the forest"></div>
   <div class="ph-overlay"></div>
   <div class="container">
     <h2>Ready to leave with peace of mind?</h2>

@@ -565,3 +565,66 @@
 body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); border-color: var(--sand); }
 .nav-cta .btn { white-space: nowrap; }
 @media (max-width: 420px) { .nav-cta .btn { padding-inline: 0.9rem; font-size: 0.88rem; } }
+
+/* =====================================================================
+   À propos v2 : portrait en arche, frise chronologique, un avis, convictions alignées
+   ===================================================================== */
+/* En-tête : grand portrait d'Anaïs (visage visible), texte à côté. Mobile : texte puis portrait. */
+.page-hero.ab-hero { display: block; padding: calc(var(--nav-h) + 16px) 0 clamp(32px, 5vw, 56px); overflow: visible; }
+.page-hero.ab-hero > .container { width: 100%; max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter); display: grid; gap: 28px; }
+.ab-hero-photo { width: 100%; max-width: 480px; aspect-ratio: 4 / 5; justify-self: center; }
+.ab-hero-photo img { object-position: 50% 45%; }
+@media (min-width: 900px) {
+  .page-hero.ab-hero > .container { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); column-gap: clamp(48px, 6vw, 96px); align-items: end; }
+  .ab-hero-photo { order: -1; max-width: none; justify-self: stretch; aspect-ratio: auto; height: min(80svh, 740px); }
+  .ab-hero-text { padding-bottom: clamp(16px, 3vw, 48px); }
+  .ab-hero-text h1 { max-width: 13ch; }
+}
+.ab-hero + .ab-story { padding-top: clamp(32px, 5vw, 72px); }
+
+/* Frise : Genève, l'Asie du Sud-Est, Koh Lanta */
+.ab-story-head { max-width: 720px; }
+.ab-story-head h2 { margin-bottom: 16px; }
+.ab-timeline { list-style: none; margin: clamp(36px, 5vw, 64px) 0 0; padding: 0; position: relative; }
+.ab-timeline::before { content: ""; position: absolute; left: 7px; top: 10px; bottom: 10px; width: 2px; background: var(--line); }
+.ab-step { position: relative; display: grid; gap: 20px; padding: 0 0 clamp(36px, 5vw, 64px) 44px; }
+.ab-step:last-child { padding-bottom: 0; }
+.ab-step::before { content: ""; position: absolute; left: 0; top: 10px; width: 16px; height: 16px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 5px var(--surface, #fff); }
+.ab-step h3 { font-family: var(--serif); font-weight: 600; font-size: clamp(1.5rem, 2.4vw, 2rem); line-height: 1.15; margin: 0 0 12px; color: var(--teal-deep); }
+.ab-step-body p + p { margin-top: 12px; }
+.ab-step-photo { margin: 0; border-radius: var(--r); overflow: hidden; aspect-ratio: 4 / 5; max-width: 360px; }
+.ab-step-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (min-width: 900px) {
+  .ab-step { grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); column-gap: clamp(40px, 6vw, 96px); align-items: start; }
+  .ab-step-body { max-width: 62ch; }
+  .ab-step-photo { justify-self: end; width: 100%; }
+}
+
+/* La Thaïlande au quotidien : texte et deux photos alignées, sans colonne vide */
+.ab-home .container { display: grid; gap: clamp(28px, 4vw, 48px); }
+.ab-home-text { max-width: 60ch; }
+.ab-duo { margin-top: 0; max-width: none; }
+.ab-duo .frame:last-child { margin-top: 0; }
+@media (min-width: 900px) { .ab-home .container { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-items: center; } }
+
+/* Un avis, en grand */
+.ab-review { background: var(--lagoon); color: #fff; }
+.ab-quote { margin: 0; max-width: 30em; }
+.ab-quote .stars { display: flex; gap: 4px; color: var(--sand-soft); margin-bottom: 18px; }
+.ab-quote .stars svg { width: 20px; height: 20px; }
+.ab-quote blockquote { margin: 0; padding: 0; border: 0; }
+.ab-quote blockquote p { font-family: var(--serif); font-weight: 600; font-size: clamp(1.7rem, 3.4vw, 2.7rem); line-height: 1.2; color: #fff; margin: 0; }
+.ab-quote figcaption { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 4px 12px; color: rgba(255, 255, 255, 0.85); }
+.ab-quote figcaption strong { color: #fff; }
+.ab-quote-links { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; margin-top: 28px; }
+.ab-review .text-link { color: var(--sand-soft); }
+
+/* Trois convictions : colonnes alignées (titres et textes sur les mêmes lignes) */
+.ab-beliefs { display: grid; gap: 0; }
+@media (min-width: 861px) {
+  .ab-beliefs { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto; column-gap: 36px; }
+  .ab-belief { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 8px; align-content: start; }
+  .ab-belief h3 { margin: 0; align-self: end; }
+}
+.ab-review .g-badge { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: var(--r); color: #fff; font-weight: 600; }
+.ab-review .g-badge:hover { border-color: #fff; }
