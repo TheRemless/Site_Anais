@@ -33,16 +33,15 @@ langAlt: "/en/blog/"
 
 {% block content %}{% raw %}
 <section class="page-hero has-img" data-screen-label="Blog — hero">
-  <div class="ph-bg"><img fetchpriority="high" sizes="100vw" src="/images/FullSizeRender.jpg" alt="Point de vue sur la jungle de Koh Samui"></div>
+  <div class="ph-bg"><img fetchpriority="high" sizes="(min-width: 900px) 50vw, 100vw" src="/images/FullSizeRender.jpg" alt="Point de vue sur la jungle de Koh Samui"></div>
   <div class="ph-overlay"></div>
   <div class="container">
-    <p class="eyebrow">Le blog</p>
     <h1>Conseils et itinéraires pour ton voyage en Thaïlande</h1>
     <p>Mes astuces de terrain pour préparer ton voyage en Thaïlande sereinement.</p>
   </div>
 </section>
 
-<section class="section-pad">
+<section class="section-pad bl-main">
   <div class="container">
 {% endraw %}{% include "blog-list.njk" %}{% raw %}
 </div>

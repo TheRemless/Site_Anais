@@ -4,31 +4,26 @@
 {%- set first = posts[0] %}
 {%- set months = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"] if lang != "en" else ["January","February","March","April","May","June","July","August","September","October","November","December"] %}
 {%- macro fdate(d) %}{{ d.getDate() }} {{ months[d.getMonth()] }} {{ d.getFullYear() }}{% endmacro %}
-    <article class="card" data-reveal style="padding:0;overflow:hidden;margin-bottom:48px">
-      <div class="split" style="gap:0;align-items:stretch">
-        <div class="img-reveal" style="min-height:340px">
-          <a href="{{ first.url }}" style="position:absolute;inset:0"><img loading="lazy" decoding="async" src="{{ first.data.cover }}" alt="{{ first.data.coverAlt }}" style="width:100%;height:100%;object-fit:cover"></a>
-        </div>
-        <div style="padding:clamp(32px,4vw,56px);display:flex;flex-direction:column;justify-content:center">
-          <div class="b-meta" style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
-            <span style="font-size:0.82rem;color:var(--ink-faint)">{{ fdate(first.date) }}{% if first.data.updated %} · {{ "updated" if lang == "en" else "mis à jour le" }} {{ first.data.updated }}{% endif %}</span>
-          </div>
-          <h2 style="font-size:clamp(1.8rem,3vw,2.6rem)"><a href="{{ first.url }}">{{ first.data.title }}</a></h2>
-          <p class="mt-s" style="color:var(--ink-mute)">{{ first.data.description }}</p>
-          <a class="btn btn-teal mt-m" href="{{ first.url }}" style="align-self:flex-start"><span>{{ "Read the article" if lang == "en" else "Lire l'article" }}</span></a>
-        </div>
+{%- macro fupd(u) %}{% set d = u.split("-") %}{{ d[2] | int }} {{ months[(d[1] | int) - 1] }} {{ d[0] }}{% endmacro %}
+    <article class="bl-feature">
+      <a class="bl-feature-img" href="{{ first.url }}" tabindex="-1" aria-hidden="true"><img loading="eager" decoding="async" sizes="(min-width: 900px) 55vw, 100vw" src="{{ first.data.cover }}" alt="{{ first.data.coverAlt }}"></a>
+      <div class="bl-feature-body">
+        <p class="bl-date">{{ fdate(first.date) }}{% if first.data.updated %} · {{ "updated" if lang == "en" else "mis à jour le" }} {{ fupd(first.data.updated) }}{% endif %}</p>
+        <h2><a href="{{ first.url }}">{{ first.data.title }}</a></h2>
+        <p class="bl-desc">{{ first.data.description }}</p>
+        <a class="btn btn-teal" href="{{ first.url }}"><span>{{ "Read the article" if lang == "en" else "Lire l'article" }}</span></a>
       </div>
     </article>
 
-    <div class="blog-grid">
+    <div class="bl-list">
 {%- for p in posts %}{% if not loop.first %}
-      <article class="blog-card" data-reveal>
-        <div class="b-img"><a href="{{ p.url }}"><img loading="lazy" decoding="async" src="{{ p.data.cover }}" alt="{{ p.data.coverAlt }}"></a></div>
-        <div class="b-body">
-          <div class="b-meta"><span class="b-date">{{ fdate(p.date) }}</span></div>
+      <article class="bl-row">
+        <a class="bl-row-img" href="{{ p.url }}" tabindex="-1" aria-hidden="true"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 280px, 120px" src="{{ p.data.cover }}" alt="{{ p.data.coverAlt }}"></a>
+        <div class="bl-row-body">
+          <p class="bl-date">{{ fdate(p.date) }}</p>
           <h3><a href="{{ p.url }}">{{ p.data.title }}</a></h3>
-          <p>{{ p.data.description }}</p>
-          <a class="text-link b-link" href="{{ p.url }}">{{ "Read the article" if lang == "en" else "Lire l'article" }} <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+          <p class="bl-desc">{{ p.data.description }}</p>
+          <a class="text-link bl-link" href="{{ p.url }}">{{ "Read the article" if lang == "en" else "Lire l'article" }} <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
         </div>
       </article>
 {%- endif %}{% endfor %}
