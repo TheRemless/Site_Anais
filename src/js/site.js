@@ -136,19 +136,38 @@
     nodes.forEach(function (n) { io.observe(n); });
   }
 
-  /* ---------- FAQ accordion (event delegation) ---------- */
+  /* ---------- Accordéons (event delegation) : FAQ (.acc-item) et replis mobile (.fold, voir system.css).
+     data-accordion-mobile : replié seulement sous 900 px ; au-delà le CSS déplie tout et aria-expanded reste à true. ---------- */
   function initAccordion() {
+    var desktop = window.matchMedia("(min-width: 900px)");
+    function setOpen(item, open) {
+      item.classList.toggle("open", open);
+      var btn = item.querySelector("[aria-expanded]");
+      if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
     document.querySelectorAll("[data-accordion]").forEach(function (root) {
+      var mobileOnly = root.hasAttribute("data-accordion-mobile");
       root.addEventListener("click", function (e) {
-        var head = e.target.closest(".acc-head");
-        if (!head) return;
-        var item = head.parentElement;
+        var head = e.target.closest(".acc-head, .fold-head");
+        if (!head || (mobileOnly && desktop.matches)) return;
+        var item = head.closest(".acc-item, .fold");
+        if (!item) return;
         var open = item.classList.contains("open");
         if (!root.hasAttribute("data-accordion-multi")) {
-          root.querySelectorAll(".acc-item.open").forEach(function (i) { if (i !== item) i.classList.remove("open"); });
+          root.querySelectorAll(".acc-item.open, .fold.open").forEach(function (i) { if (i !== item) setOpen(i, false); });
         }
-        item.classList.toggle("open", !open);
+        setOpen(item, !open);
       });
+      if (mobileOnly) {
+        var reflect = function () {
+          root.querySelectorAll(".fold [aria-expanded]").forEach(function (btn) {
+            var item = btn.closest(".fold");
+            btn.setAttribute("aria-expanded", desktop.matches || item.classList.contains("open") ? "true" : "false");
+          });
+        };
+        reflect();
+        if (desktop.addEventListener) desktop.addEventListener("change", reflect);
+      }
     });
   }
 

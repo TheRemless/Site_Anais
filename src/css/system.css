@@ -353,5 +353,42 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .cta-full .container { padding: 0 var(--gutter) clamp(64px, 8vw, 112px); align-self: end; }
 }
 
+/* ---------- Replis mobile (.fold) : déroulés (accueil, Services), listes de détail des formules et du bloc
+   compris / libre. Sous 900 px le détail est replié sous un bouton aria-expanded ; dès 900 px tout est déplié
+   par CSS et le bouton de titre redevient un simple titre. Même mécanique JavaScript que la FAQ
+   (data-accordion, classe .open, voir site.js). Le contenu est toujours dans le HTML. ---------- */
+.fold-btn {
+  display: block; width: 100%; margin: 0; padding: 0; border: 0; background: none; border-radius: 0;
+  font: inherit; color: inherit; letter-spacing: inherit; word-spacing: inherit; line-height: inherit;
+  text-align: inherit; text-transform: inherit; text-shadow: inherit; text-rendering: inherit; cursor: default;
+}
+.fold-btn .acc-icon, .fold-toggle { display: none; }
+@media (max-width: 899px) {
+  .fold-btn { display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; }
+  .fold-btn .acc-icon { display: flex; }
+  .fold-toggle {
+    display: inline-flex; align-self: flex-start; align-items: center; gap: 10px;
+    margin: 0; padding: 0; border: 0; background: none; border-radius: 0;
+    font: inherit; font-size: 0.95rem; font-weight: 600; color: var(--teal-dark); cursor: pointer;
+  }
+  .fold-toggle .acc-icon { width: 24px; height: 24px; }
+  .fold-toggle .acc-icon::before { width: 10px; }
+  .fold-toggle .acc-icon::after { height: 10px; }
+  .fold-toggle .fold-hide, .fold.open .fold-toggle .fold-show { display: none; }
+  .fold.open .fold-toggle .fold-hide { display: inline; }
+  .fold.open .acc-icon { background: var(--teal); color: #fff; }
+  .fold.open .acc-icon::after { transform: rotate(90deg) scaleX(0); }
+  .fold-body { max-height: 0; overflow: hidden; transition: max-height 0.45s var(--ease); }
+  .fold.open .fold-body { max-height: 1400px; }
+  .fold-body > .feature-list.mt-m { margin-top: 18px; }
+  .fold > h2 + .fold-toggle { margin-top: 14px; }
+  .pricing .formule .fold-toggle { margin-top: -10px; margin-bottom: 18px; }
+  .pricing .formule .fold-body > ul { margin-bottom: 10px; }
+  .hstep .fold-btn, .tl-item .fold-btn { min-height: 34px; }
+  .tl-item { padding-bottom: 24px; }
+  .tl-item:last-child { padding-bottom: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .fold-body { transition: none; } }
+
 /* L'attribut hidden doit toujours l'emporter (bandeau newsletter, messages) */
 [hidden] { display: none !important; }
