@@ -314,9 +314,7 @@
 }
 
 /* ---------- Galerie ----------
-   Titre seul, la mosaïque sert de visuel d'entrée. Grille alignée sur trois
-   colonnes : une grande photo (deux colonnes, deux rangées) puis deux petites,
-   la grande change de côté à chaque groupe. Mobile : grande pleine largeur. */
+   Titre seul, les chapitres de photos servent de visuel d'entrée (voir Galerie v2). */
 .page-hero.gl-hero { padding-bottom: clamp(28px, 4vw, 48px); }
 @media (min-width: 900px) {
   .page-hero.gl-hero { display: block; padding-top: calc(var(--nav-h) + clamp(40px, 5vw, 72px)); }
@@ -329,17 +327,6 @@
   .page-hero.gl-hero p { margin: 0 0 0.4em; }
 }
 .gl-main { padding-top: 0; }
-.gl-main .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; grid-auto-flow: dense; }
-.gl-main .g-item { border-radius: var(--r); background: var(--bg-mint); }
-.gl-main .g-item img { height: auto; aspect-ratio: 4 / 5; }
-.gl-main .g-item:nth-child(3n+1) { grid-column: 1 / -1; }
-.gl-main .g-item:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
-@media (min-width: 700px) {
-  .gl-main .gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(12px, 1.4vw, 18px); }
-  .gl-main .g-item:nth-child(6n+1) { grid-column: 1 / 3; grid-row: span 2; }
-  .gl-main .g-item:nth-child(6n+4) { grid-column: 2 / 4; grid-row: span 2; }
-  .gl-main .g-item:nth-child(3n+1) img { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; }
-}
 @media (prefers-reduced-motion: reduce) { .gl-main .g-item:hover img { transform: none; } }
 
 /* ---------- Blog : liste en sommaire ----------
@@ -628,3 +615,23 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 }
 .ab-review .g-badge { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: var(--r); color: #fff; font-weight: 600; }
 .ab-review .g-badge:hover { border-color: #fff; }
+
+/* =====================================================================
+   Galerie v2 : quatre chapitres (Nord, Bangkok, Andaman, Golfe), formats mêlés,
+   aucune légende. Mobile : une colonne pleine largeur.
+   ===================================================================== */
+.gl-chapter + .gl-chapter { margin-top: clamp(56px, 8vw, 112px); }
+.gl-chapter h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(2rem, 3.6vw, 3rem); line-height: 1.05; margin: 0 0 clamp(18px, 2.5vw, 28px); }
+.gl-grid { display: grid; gap: 12px; }
+.gl-grid .g-item { position: relative; border-radius: var(--r); overflow: hidden; cursor: pointer; background: var(--bg-mint); }
+.gl-grid .g-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.6s var(--ease); }
+.gl-grid .g-item:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+.gl-t, .gl-h { aspect-ratio: 4 / 5; }
+.gl-w, .gl-f { aspect-ratio: 4 / 3; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) { .gl-grid .g-item:hover img { transform: scale(1.03); } }
+@media (min-width: 700px) {
+  .gl-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: clamp(110px, 15vw, 230px); gap: clamp(12px, 1.4vw, 18px); grid-auto-flow: dense; }
+  .gl-grid .g-item { aspect-ratio: auto; grid-row: span 2; }
+  .gl-t { grid-column: span 2; } .gl-w { grid-column: span 4; } .gl-h { grid-column: span 3; } .gl-f { grid-column: span 6; }
+}
+.gl-grid .g-item picture { display: block; width: 100%; height: 100%; }
