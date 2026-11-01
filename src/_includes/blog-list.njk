@@ -6,7 +6,7 @@
 {%- macro fdate(d) %}{{ d.getDate() }} {{ months[d.getMonth()] }} {{ d.getFullYear() }}{% endmacro %}
 {%- macro fupd(u) %}{% if u.getFullYear %}{{ fdate(u) }}{% else %}{% set d = (u | string).split("-") %}{{ d[2] | int }} {{ months[(d[1] | int) - 1] }} {{ d[0] }}{% endif %}{% endmacro %}
     <article class="bl-feature">
-      <a class="bl-feature-img" href="{{ first.url }}" tabindex="-1" aria-hidden="true"><img loading="eager" decoding="async" sizes="(min-width: 900px) 55vw, 100vw" src="{{ first.data.cover }}" alt="{{ first.data.coverAlt }}"></a>
+      <a class="bl-feature-img" href="{{ first.url }}" tabindex="-1" aria-hidden="true"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 55vw, 100vw" src="{{ first.data.cover }}" alt="{{ first.data.coverAlt }}"></a>
       <div class="bl-feature-body">
         <p class="bl-date">{{ fdate(first.date) }}{% if first.data.updated %} · {{ "updated" if lang == "en" else "mis à jour le" }} {{ fupd(first.data.updated) }}{% endif %}</p>
         <h2><a href="{{ first.url }}">{{ first.data.title }}</a></h2>
