@@ -320,6 +320,38 @@
     });
   }
 
+  /* ---------- Carte de l'accueil : conseil par épingle (bouton seulement si un texte existe) ---------- */
+  function initMapTips() {
+    var pins = [].slice.call(document.querySelectorAll(".tmap-pin[aria-controls]"));
+    if (!pins.length) return;
+    var sticky = null;
+    function set(pin, open) {
+      var tip = document.getElementById(pin.getAttribute("aria-controls"));
+      if (!tip) return;
+      tip.hidden = !open;
+      pin.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    function closeAll() { pins.forEach(function (p) { set(p, false); }); sticky = null; }
+    pins.forEach(function (pin) {
+      pin.addEventListener("click", function () {
+        var open = sticky !== pin;
+        closeAll();
+        if (open) {
+          sticky = pin;
+          set(pin, true);
+          var tip = document.getElementById(pin.getAttribute("aria-controls"));
+          var item = tip && tip.closest(".tmap-item");
+          if (item && item.scrollIntoView) item.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+        }
+      });
+      pin.addEventListener("mouseenter", function () { if (!sticky) set(pin, true); });
+      pin.addEventListener("mouseleave", function () { if (!sticky) set(pin, false); });
+      pin.addEventListener("focus", function () { if (!sticky) set(pin, true); });
+      pin.addEventListener("blur", function () { if (!sticky) set(pin, false); });
+    });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && sticky) closeAll(); });
+  }
+
   /* ---------- Conversion tracking (GA4 events, consent-aware) ---------- */
   function track(name, params) {
     if (typeof window.gtag === "function") window.gtag("event", name, params || {});
@@ -363,6 +395,7 @@
     initCarousel();
     initMarquee();
     initLightbox();
+    initMapTips();
     initTracking();
     initEvents();
     // Footer year
