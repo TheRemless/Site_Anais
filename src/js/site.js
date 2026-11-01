@@ -306,19 +306,22 @@
       return { src: t.getAttribute("data-src") || (im ? im.src : ""), cap: t.getAttribute("data-caption") || "", alt: im ? im.alt : "" };
     });
     var en = /^en/i.test(document.documentElement.lang || "");
-    var L = en ? { close: "Close", prev: "Previous", next: "Next", open: "Enlarge: " } : { close: "Fermer", prev: "Précédent", next: "Suivant", open: "Agrandir : " };
+    var L = en ? { close: "Close", prev: "Previous photo", next: "Next photo", open: "Enlarge: ", dialog: "Photo viewer" } : { close: "Fermer", prev: "Photo précédente", next: "Photo suivante", open: "Agrandir : ", dialog: "Visionneuse photo" };
     var opener = null;
     var cur = 0;
     var box = el(
-      '<div class="lightbox" role="dialog" aria-modal="true">' +
+      '<div class="lightbox" role="dialog" aria-modal="true" aria-label="' + L.dialog + '">' +
         '<button class="lb-close" aria-label="' + L.close + '">✕</button>' +
-        '<button class="lb-nav lb-prev" aria-label="' + L.prev + '">‹</button>' +
-        '<figure class="lb-figure"><img alt=""><figcaption></figcaption></figure>' +
-        '<button class="lb-nav lb-next" aria-label="' + L.next + '">›</button>' +
+        '<div class="lb-stage">' +
+          '<button class="lb-nav lb-prev" aria-label="' + L.prev + '">‹</button>' +
+          '<figure class="lb-figure"><img alt=""><figcaption></figcaption></figure>' +
+          '<p class="lb-count" aria-live="polite"></p>' +
+          '<button class="lb-nav lb-next" aria-label="' + L.next + '">›</button>' +
+        '</div>' +
       '</div>'
     );
     document.body.appendChild(box);
-    var img = box.querySelector("img"), cap = box.querySelector("figcaption");
+    var img = box.querySelector("img"), cap = box.querySelector("figcaption"), count = box.querySelector(".lb-count");
     function show(k) {
       cur = (k + items.length) % items.length;
       img.classList.remove("loaded");
@@ -326,6 +329,7 @@
       img.alt = items[cur].alt;
       img.onload = function () { img.classList.add("loaded"); };
       cap.textContent = items[cur].cap;
+      count.textContent = (cur + 1) + " / " + items.length;
     }
     function open(k) { opener = document.activeElement; show(k); box.classList.add("open"); document.body.style.overflow = "hidden"; box.querySelector(".lb-close").focus(); }
     function close() { box.classList.remove("open"); document.body.style.overflow = ""; if (opener && opener.focus) opener.focus(); }
@@ -340,8 +344,14 @@
     box.querySelector(".lb-close").addEventListener("click", close);
     box.querySelector(".lb-prev").addEventListener("click", function () { show(cur - 1); });
     box.querySelector(".lb-next").addEventListener("click", function () { show(cur + 1); });
-    box.addEventListener("click", function (e) { if (e.target === box) close(); });
-    addSwipe(box.querySelector(".lb-figure") || box, function () { show(cur + 1); }, function () { show(cur - 1); });
+    /* Un clic sur le fond ferme, mais pas la fin d'un glissement */
+    var downX = 0, downY = 0;
+    box.addEventListener("pointerdown", function (e) { downX = e.clientX; downY = e.clientY; });
+    box.addEventListener("click", function (e) {
+      if (Math.abs(e.clientX - downX) > 10 || Math.abs(e.clientY - downY) > 10) return;
+      if (e.target === box || e.target.classList.contains("lb-stage")) close();
+    });
+    addSwipe(box.querySelector(".lb-stage") || box, function () { show(cur + 1); }, function () { show(cur - 1); });
     document.addEventListener("keydown", function (e) {
       if (!box.classList.contains("open")) return;
       if (e.key === "Tab") {
