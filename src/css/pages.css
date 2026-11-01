@@ -208,3 +208,58 @@
 .carnet-mock .cm-scroll img { border-radius: 0; }
 .carnet-mock .cm-scroll img + img { margin-top: 4px; }
 .sv-carnet-format { margin-top: 18px; color: var(--ink-mute); font-size: 0.98rem; max-width: 52ch; }
+
+/* =====================================================================
+   Girls Trips : la sous-marque prend l'orange (sable)
+   ===================================================================== */
+.page-girls { --sand-tint: #F7EBDD; --sand-ink: #8A4B1C; }
+.page-girls .page-hero { padding-top: var(--nav-h); }
+@media (min-width: 900px) { .page-girls .page-hero { padding-top: calc(var(--nav-h) + 20px); } }
+.page-girls .page-hero .hero-btns { display: flex; flex-wrap: wrap; gap: 12px; }
+.page-girls .btn-teal { --bg: var(--sand); --fg: var(--ink); border-color: var(--sand); }
+.page-girls .btn-teal:hover { --bg: #D4924F; border-color: #D4924F; box-shadow: none; }
+.page-girls .page-hero .btn-white { --bg: transparent; --fg: var(--ink); border-color: rgba(22, 36, 42, 0.3); }
+.page-girls .text-link { color: var(--sand-ink); }
+.page-girls .feature-list li .tick { background: var(--sand-tint); color: var(--sand-ink); }
+.page-girls .feature-list li .tick--no { background: transparent !important; color: var(--ink-mute) !important; }
+.page-girls .section-pad { padding: var(--section-y) 0; }
+
+.gt-intro .split-media img { aspect-ratio: 4 / 5; border-radius: var(--r); }
+.gt-why .split-media img { aspect-ratio: 4 / 5; border-radius: var(--r); }
+@media (min-width: 861px) { .gt-why .split.reverse .split-media { order: 2; } }
+
+/* Expériences : grille sur bureau, rail aimanté sur mobile */
+.xp-rail .xp-tile img { border-radius: var(--r); }
+.xp-rail .xp-tile:hover img { transform: none; }
+@media (max-width: 760px) {
+  .xp-rail.grid {
+    display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none;
+    margin: 0 calc(-1 * var(--gutter)); padding: 4px var(--gutter) 6px; scroll-padding-inline: var(--gutter);
+  }
+  .xp-rail.grid::-webkit-scrollbar { display: none; }
+  .xp-rail .xp-tile { flex: 0 0 78%; scroll-snap-align: start; }
+}
+.page-girls .offer-panel { border-radius: var(--r); background: var(--sand-tint); }
+.page-girls .offer-panel .split-media img { border-radius: var(--r); }
+.page-girls .option-flag { background: #fff; color: var(--sand-ink); border-radius: var(--r); }
+
+/* Ton hôte : l'arche reste réservée au portrait d'Anaïs */
+.gt-host .gt-host-photo { max-width: 460px; aspect-ratio: 4 / 5; }
+.gt-host .gt-host-photo img { aspect-ratio: auto; height: 100%; border-radius: 0; }
+.gt-host blockquote { font-family: var(--serif); font-weight: 600; font-size: clamp(1.3rem, 2vw, 1.6rem); line-height: 1.3; color: var(--ink); margin: 22px 0 6px; padding: 0; border: 0; }
+@media (max-width: 860px) { .gt-host .gt-host-photo { width: 86%; } }
+
+/* Pour qui : fond lagune pleine largeur */
+.gt-who { border-radius: 0; margin: 0; background: var(--lagoon); }
+.gt-who .split-media img { border-radius: var(--r); }
+
+/* Dates : la bande sable de la page */
+.gt-dates { background: var(--sand-tint); }
+
+/* Tarif : compris et non compris dans une seule carte */
+.gt-tarif .tarif-panel { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: clamp(24px, 4vw, 48px); box-shadow: none; }
+.gt-tarif .tarif-panel .split > div + div { border-top: 1px solid var(--line-soft); padding-top: 24px; }
+@media (min-width: 861px) { .gt-tarif .tarif-panel .split > div + div { border-top: 0; padding-top: 0; border-left: 1px solid var(--line-soft); padding-left: clamp(32px, 5vw, 64px); } }
+.gt-tarif .feature-list { gap: 0; }
+.gt-tarif .feature-list li { padding: 12px 0; border-top: 1px solid var(--line-soft); }
+.gt-brochure .offer-panel { padding: clamp(32px, 5vw, 56px); }
