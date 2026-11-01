@@ -432,6 +432,7 @@
     initMarquee();
     initLightbox();
     initMapTips();
+    initReviewsRail();
     initTracking();
     initEvents();
     // Footer year
@@ -439,6 +440,19 @@
     if (y) y.textContent = new Date().getFullYear();
   }
 
+
+  /* ---------- Avis de l'accueil : la liste n'est focalisable au clavier que lorsqu'elle défile vraiment
+     (rail horizontal sous 900 px) ; en grille sur bureau elle n'a pas besoin de tabindex. ---------- */
+  function initReviewsRail() {
+    var rail = document.querySelector(".reviews");
+    if (!rail) return;
+    function update() {
+      if (rail.scrollWidth > rail.clientWidth) rail.setAttribute("tabindex", "0");
+      else rail.removeAttribute("tabindex");
+    }
+    update();
+    window.addEventListener("resize", update);
+  }
 
   // Événements GA4 : clics WhatsApp, formulaires, liens vers Secret et Taxi, pré-inscription Girls Trips.
   // gtag() existe toujours (consent mode) ; sans consentement, les événements restent sans cookie.
