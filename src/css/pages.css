@@ -293,3 +293,22 @@
 .trust-sec.bg-navy { background: var(--lagoon); }
 .trust-sec .split-media img { border-radius: var(--r); aspect-ratio: 4 / 5; }
 @media (min-width: 861px) { .trust-sec .split.reverse .split-media { order: 2; } }
+
+/* =====================================================================
+   FAQ : un thème par rangée, titre fixe à gauche, questions à filets
+   ===================================================================== */
+.faq-main .faq-group + .faq-group { margin-top: clamp(48px, 7vw, 88px); }
+.faq-main .faq-group-title { margin-bottom: 18px; }
+.faq-main .acc { max-width: none; gap: 0; border-top: 1px solid var(--line); }
+.faq-main .acc-item, .faq-main .acc-item.open { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; }
+.faq-main .acc-head { padding: 20px 0; min-height: 56px; }
+.faq-main .acc-head h3 { font-family: var(--serif); font-weight: 600; font-size: clamp(1.25rem, 1.8vw, 1.45rem); line-height: 1.25; }
+.faq-main .acc-icon { width: 32px; height: 32px; background: transparent; border: 1px solid var(--line); color: var(--teal-dark); }
+.faq-main .acc-item.open .acc-icon { background: var(--teal); border-color: var(--teal); color: #fff; }
+.faq-main .acc-body-inner { padding: 0 0 22px; font-size: 1.02rem; color: var(--ink-soft); max-width: 70ch; }
+.faq-main .acc-item.open .acc-body { max-height: 1200px; }
+.faq-main .acc-head:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+@media (min-width: 900px) {
+  .faq-main .faq-group { display: grid; grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.6fr); gap: clamp(40px, 6vw, 96px); align-items: start; }
+  .faq-main .faq-group-title { position: sticky; top: 110px; margin: 0; }
+}

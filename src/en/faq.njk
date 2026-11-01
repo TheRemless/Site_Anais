@@ -34,30 +34,28 @@ langAlt: "/faq/"
 
 {% block content %}{% raw %}
 <section class="page-hero has-img" data-screen-label="FAQ — hero">
-  <div class="ph-bg"><img fetchpriority="high" sizes="100vw" src="/images/IMG_5519.jpg" alt="Kayaking in the mangrove in Thailand"></div>
+  <div class="ph-bg"><img fetchpriority="high" sizes="(min-width: 900px) 50vw, 100vw" src="/images/IMG_6793.jpg" alt="Swimming among the rocks"></div>
   <div class="ph-overlay"></div>
   <div class="container">
-    <p class="eyebrow">Frequently Asked Questions</p>
     <h1>Everything you need to know before your trip to Thailand</h1>
     <p>Straight answers about my travel planner service, pricing and bookings, and about Thailand itself, visa, seasons, budget and itineraries.</p>
   </div>
 </section>
 
-<section class="section-pad">
+<section class="section-pad faq-main">
   <div class="container">
 {% endraw %}{% include "faq-list.njk" %}
 {% raw %}    <span class="currency-note" hidden>Indicative rate, updated daily — CHF remains the reference currency.</span>
   </div>
 </section>
 
-<section class="cta-band section-pad">
+<section class="cta-band section-pad cta-full">
   <div class="ph-bg"><img loading="lazy" decoding="async" src="/images/IMG_3258.jpg" alt="Row of coconut trees in Thailand"></div>
   <div class="ph-overlay"></div>
   <div class="container">
-    <p class="eyebrow center on-dark" data-reveal style="justify-content:center;margin-bottom:20px">Another question?</p>
-    <h2 data-reveal>Can't find your answer?</h2>
-    <p data-reveal data-reveal-delay="1">Send me a message: let's talk about how I can help or about your trip, free of charge.</p>
-    <div class="btns" data-reveal data-reveal-delay="2">
+    <h2>Can't find your answer?</h2>
+    <p>Send me a message: let's talk about how I can help or about your trip, free of charge.</p>
+    <div class="btns">
       <a class="btn btn-white btn-lg" href="/en/contact/" data-magnetic><span>Contact me <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     </div>
   </div>

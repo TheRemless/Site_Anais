@@ -139,6 +139,18 @@
   /* ---------- FAQ accordion (event delegation) ---------- */
   function initAccordion() {
     document.querySelectorAll("[data-accordion]").forEach(function (root) {
+      /* Les en-têtes se comportent comme des boutons : clavier et lecteurs d'écran */
+      function sync() {
+        root.querySelectorAll(".acc-item").forEach(function (i) {
+          var h = i.querySelector(".acc-head");
+          if (h) h.setAttribute("aria-expanded", i.classList.contains("open") ? "true" : "false");
+        });
+      }
+      root.querySelectorAll(".acc-head").forEach(function (h) {
+        h.setAttribute("role", "button");
+        h.setAttribute("tabindex", "0");
+      });
+      sync();
       root.addEventListener("click", function (e) {
         var head = e.target.closest(".acc-head");
         if (!head) return;
@@ -148,6 +160,13 @@
           root.querySelectorAll(".acc-item.open").forEach(function (i) { if (i !== item) i.classList.remove("open"); });
         }
         item.classList.toggle("open", !open);
+        sync();
+      });
+      root.addEventListener("keydown", function (e) {
+        var head = e.target.closest(".acc-head");
+        if (!head || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        head.click();
       });
     });
   }
