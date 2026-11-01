@@ -193,7 +193,7 @@
 }
 
 /* ---------- Avis : fond lagune, une grande citation à la fois ---------- */
-.hv-testi.bg-navy { background: var(--lagoon); padding-block: clamp(72px, 10vw, 136px); }
+.hv-testi.bg-navy { background: var(--lagoon); padding-block: clamp(44px, 10vw, 136px); }
 .hv-testi.bg-navy .eyebrow { color: var(--sand-soft); }
 .hv-testi .hv-head { margin-bottom: 28px; }
 .hv-testi .carousel { max-width: none; margin: 0; }
@@ -282,7 +282,7 @@
 
 /* Hero mobile : titre et boutons dans le premier écran, la photo ensuite */
 @media (max-width: 899px) {
-  .hv-hero { padding-top: calc(var(--nav-h) + 18px); }
+  .hv-hero { padding-top: calc(var(--nav-h) + 18px); padding-bottom: min(56px, var(--section-y)); }
   .hv-hero-art { order: 2; height: min(70svh, 480px); margin-top: 6px; }
   .hv-hero h1 { font-size: clamp(2.5rem, 10.4vw, 3.4rem); }
   .hv-sub { margin-top: 14px; font-size: 1.04rem; }
@@ -293,7 +293,7 @@
 /* Carte de la Thaïlande : silhouette Natural Earth, pastilles numérotées 1 à 5 (même langage que la carte du carnet).
    Mobile : carte seule, numéros dessus, photos numérotées en rail dessous. Bureau : scène 5/4, carte au centre,
    photos réparties à gauche et à droite, reliées à leur numéro par un trait. */
-.hv-map { padding: clamp(56px, 8vw, 104px) 0 clamp(24px, 4vw, 48px); }
+.hv-map { padding: clamp(44px, 8vw, 104px) 0 clamp(24px, 4vw, 48px); }
 .hv-map .hv-head { margin-bottom: clamp(28px, 4vw, 44px); }
 .tmap { position: relative; }
 .tmap-lines { display: none; }

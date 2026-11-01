@@ -30,7 +30,9 @@
   --r: 12px;
   --gutter: 32px;
   --photo-shadow: 0 28px 60px -32px rgba(8, 60, 66, 0.55);
-  --section-y: clamp(64px, 9vw, 128px);
+  /* Respiration verticale des sections : 44 px sur téléphone (88 px entre deux sections),
+     inchangée dès 711 px de large (9vw dépasse alors l'ancien plancher de 64 px). */
+  --section-y: clamp(44px, 9vw, 128px);
 }
 @media (max-width: 560px) {
   :root { --gutter: 22px; }
@@ -61,7 +63,7 @@ strong, b, .nav-tag, .wa-fab-name, .footer h2, .footer h3, .footer h4,
 .section-pad { padding: var(--section-y) 0; }
 .section-pad.bg-cream, .section-pad.bg-mint { background: var(--mint); border-radius: 0; margin: 0; }
 .band-white { background: var(--surface); }
-.section-head { margin-bottom: clamp(32px, 5vw, 56px); }
+.section-head { margin-bottom: clamp(24px, 5vw, 56px); }
 .section-head h2 { margin-top: 0; }
 .section-head p { color: var(--ink-mute); }
 
@@ -213,7 +215,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .bg-navy .eyebrow, .eyebrow.on-dark { color: var(--sand-soft); }
 
 /* ---------- Newsletter : bande compacte en deux colonnes ---------- */
-.nl-band.section-pad.bg-cream { margin: 0; border-radius: 0; background: var(--surface); border-top: 1px solid var(--line-soft); padding-block: clamp(56px, 7vw, 88px); }
+.nl-band.section-pad.bg-cream { margin: 0; border-radius: 0; background: var(--surface); border-top: 1px solid var(--line-soft); padding-block: clamp(44px, 7vw, 88px); }
 .nl-band [data-reveal] { opacity: 1; transform: none; }
 .nl-band .container.narrow { text-align: left; }
 .nl-band .container > p.mt-s { margin-inline: 0 !important; }
@@ -342,6 +344,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .cta-full .btn-ghost.on-dark { color: #fff; border-color: rgba(255, 255, 255, 0.6); }
 .cta-full .btn-ghost.on-dark:hover { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
 .cta-full .btn:focus-visible, .cta-full a:focus-visible { outline-color: #fff; }
+/* Téléphone : l'appel final garde la photo et le texte, sans occuper tout l'écran */
+@media (max-width: 899px) {
+  .cta-band.cta-full { min-height: min(66svh, 560px); }
+}
 @media (min-width: 900px) {
   .cta-band.cta-full { grid-template-columns: 1fr; }
   .cta-full .container { padding: 0 var(--gutter) clamp(64px, 8vw, 112px); align-self: end; }

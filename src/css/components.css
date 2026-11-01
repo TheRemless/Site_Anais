@@ -504,7 +504,7 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .hv-marquee .marquee-item { border-radius: 18px; }
 .hv-marquee .marquee-item:nth-child(odd) { margin-top: 28px; }
 
-.hv-head { max-width: 640px; margin-bottom: clamp(32px, 5vw, 56px); }
+.hv-head { max-width: 640px; margin-bottom: clamp(24px, 5vw, 56px); }
 .hv-head h2 { margin-top: 16px; }
 .hv-head p:not(.eyebrow) { color: var(--ink-mute); margin-top: 16px; font-size: 1.08rem; }
 .hv-cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; }
