@@ -534,17 +534,11 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .hv-testi .tcard p { font-family: var(--serif); font-size: clamp(1.35rem, 2.2vw, 1.9rem); line-height: 1.35; font-weight: 500; color: var(--ink); }
 .hv-testi .tcard .quote { display: none; }
 
-.hv-other-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; align-items: start; }
-.hv-other-grid .hv-head { margin-bottom: 0; }
-.hv-other-grid h3 { font-size: 1.5rem; margin-bottom: 10px; }
-.hv-other-grid h3 a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--line); }
-.hv-other-grid h3 a:hover { border-color: var(--teal); }
-.hv-other-grid p { color: var(--ink-mute); }
 
 .hv-girls { background: var(--bg-mint); border-radius: 40px 40px 0 0; }
 
 @media (max-width: 900px) {
-  .hv-hero-grid, .hv-split, .hv-other-grid { grid-template-columns: 1fr; }
+  .hv-hero-grid, .hv-split { grid-template-columns: 1fr; }
   .hv-hero-art { min-height: 0; height: auto; display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; align-items: end; margin-top: 8px; }
   .hv-art-main, .hv-art-side, .hv-art-dot { position: static; width: auto; }
   .hv-art-main { aspect-ratio: 3 / 4; border-radius: 160px 160px 18px 18px; }
@@ -657,7 +651,6 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
   .cta-band { border-radius: 24px 24px 0 0; }
 }
 
-.hv-small { margin-top: 10px; font-size: 0.9rem; font-weight: 600; color: var(--teal-dark); }
 
 /* Titres de section alignés à gauche partout, surtitres moins espacés */
 .section-head.center { margin-inline: 0; text-align: left; }
