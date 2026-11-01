@@ -2,7 +2,7 @@
     Ordre fixe : cartes cadeaux, puis guide Koh Lanta en PDF. Styles : system.css, bloc « Autres services ».
     otherServicesFlush (posé par {% set %} avant l'include, Services) : la section se colle au déroulé qui précède (pages.css). -#}
 {%- set en = (lang == "en") -%}
-<section class="section-pad other-services">
+<section class="section-pad other-services{% if otherServicesFlush %} other-services-flush{% endif %}">
   <div class="container">
     <div class="section-head"><h2>{{ "other.title" | t(lang) }}</h2></div>
     <div class="os-grid">

@@ -73,9 +73,10 @@
   .sv-steps .section-head { position: sticky; top: 110px; }
 }
 
-/* Autres services (include partagé) : après le déroulé, même filet et même respiration que les autres sections */
-.sv-steps + .other-services { padding-top: 0; }
-.sv-steps + .other-services > .container { padding-top: clamp(40px, 6vw, 72px); border-top: 1px solid var(--line-soft); }
+/* Autres services (include partagé) sur Services : classe other-services-flush posée par le gabarit
+   ({% set otherServicesFlush = true %} avant l'include), même filet et même respiration que les autres sections */
+.other-services-flush { padding-top: 0; }
+.other-services-flush > .container { padding-top: clamp(40px, 6vw, 72px); border-top: 1px solid var(--line-soft); }
 
 /* =====================================================================
    Contact : le formulaire d'abord, une personne réelle à côté
