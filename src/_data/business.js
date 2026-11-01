@@ -89,6 +89,7 @@ function jsonLd(lang) {
       { "@type": "Country", name: l === "en" ? "Malaysia" : "Malaisie" },
       { "@type": "Country", name: l === "en" ? "Indonesia" : "Indonésie" },
       { "@type": "Country", name: l === "en" ? "Vietnam" : "Vietnam" },
+      { "@type": "Country", name: "Laos" },
       { "@type": "Place", name: l === "en" ? "Southeast Asia" : "Asie du Sud-Est" }
     ],
     knowsLanguage: ["fr", "en"],

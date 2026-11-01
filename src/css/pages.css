@@ -1,0 +1,209 @@
+/* Mises en page propres à chaque page intérieure (système « Carnet de lagune »).
+   Chargé par base.njk après system.css. Chaque bloc est préfixé par la page. */
+
+/* =====================================================================
+   Services
+   ===================================================================== */
+/* Intro : grande phrase, une photo verticale à côté */
+.sv-intro-grid { display: grid; gap: 30px; }
+.sv-intro-text .lead {
+  font-family: var(--serif); font-weight: 600; color: var(--ink);
+  font-size: clamp(1.5rem, 2.6vw, 2.2rem); line-height: 1.3; letter-spacing: -0.01em; max-width: 30ch;
+}
+.sv-intro-art.frame { position: relative; display: block; min-height: 0; aspect-ratio: 4 / 3; }
+.sv-intro-art img { object-position: 50% 30%; }
+@media (min-width: 900px) {
+  .sv-intro-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: clamp(48px, 7vw, 120px); align-items: center; }
+  .sv-intro-art.frame { aspect-ratio: 4 / 5; }
+}
+
+/* Comparatif : la bande menthe de la page */
+.sv-compare .compare tbody td:last-child { background: var(--surface); }
+.sv-compare .compare thead th { font-size: 1.35rem; font-weight: 600; }
+.sv-compare .compare tbody th { font-weight: 600; }
+.sv-compare .compare-wrap { max-width: none; }
+
+/* Carnet : photo cadrée à droite, texte à gauche */
+.sv-carnet .split-media img { aspect-ratio: 4 / 5; }
+.sv-carnet .split-text h2 { margin-bottom: 16px; }
+.sv-carnet .split-text > p { color: var(--ink-soft); font-size: 1.08rem; }
+@media (min-width: 861px) { .sv-carnet .split.reverse .split-media { order: 2; } }
+
+/* Inclus / non inclus : deux listes à filets, sans pastilles */
+.sv-scope { padding-top: 0; }
+.sv-scope > .container { padding-top: clamp(40px, 6vw, 72px); border-top: 1px solid var(--line-soft); }
+.sv-scope .split { align-items: start; gap: clamp(32px, 6vw, 96px); }
+.sv-scope h2 { font-size: clamp(1.8rem, 3vw, 2.5rem) !important; }
+.sv-scope .feature-list { gap: 0; }
+.sv-scope .feature-list li { padding: 14px 0; border-top: 1px solid var(--line-soft); color: var(--ink-soft); }
+.sv-scope .feature-list li .tick { background: transparent; color: var(--teal-dark); width: 18px; height: 22px; }
+.sv-scope .feature-list li .tick--no { background: transparent !important; color: var(--ink-mute) !important; }
+.sv-scope .split > div:last-child > p { margin-top: 18px !important; }
+
+/* Formules : composant .pricing, puis la formule par région et l'appel conseil */
+.sv-pricing .formule-region + p { max-width: 70ch; margin-inline: auto; }
+.sv-pricing .offer-panel {
+  background: transparent; border-radius: 0; padding: 0;
+  margin-top: clamp(56px, 8vw, 104px); padding-top: clamp(40px, 6vw, 72px);
+  border-top: 1px solid var(--line-soft);
+}
+.sv-pricing .offer-panel .split { align-items: center; }
+.sv-pricing .offer-panel .split-media.arch { max-width: 440px; aspect-ratio: 4 / 5; }
+.sv-pricing .offer-panel .split-media.arch img { aspect-ratio: auto; height: 100%; border-radius: 0; }
+.sv-pricing .offer-panel h2 { margin-bottom: 14px; }
+.sv-pricing .offer-panel .feature-list li .tick { background: var(--mint); }
+.sv-pricing .option-flag {
+  display: inline; background: transparent !important; padding: 0; border-radius: 0;
+  color: var(--ink); font-size: 1rem; font-weight: 400;
+}
+.sv-pricing .option-flag .price-chf { font-family: var(--serif); font-size: 1.6rem; font-weight: 600; color: var(--ink); }
+@media (max-width: 860px) {
+  .sv-pricing .offer-panel .split-media.arch { width: 86%; }
+}
+
+/* Étapes : titre à gauche, frise à droite */
+.sv-steps { padding-top: 0; }
+.sv-steps-grid { display: grid; gap: 28px; padding-top: clamp(40px, 6vw, 72px); border-top: 1px solid var(--line-soft); }
+.sv-steps .section-head { margin-bottom: 0; }
+@media (min-width: 900px) {
+  .sv-steps-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: clamp(48px, 7vw, 120px); align-items: start; }
+  .sv-steps .section-head { position: sticky; top: 110px; }
+}
+
+/* Autres services : deux tuiles photo */
+.sv-other { padding-top: 0; }
+.sv-other > .container { padding-top: clamp(40px, 6vw, 72px); border-top: 1px solid var(--line-soft); }
+.sv-tiles { display: grid; gap: 34px; }
+.sv-tiles .tile p { margin-bottom: 10px; }
+@media (min-width: 700px) { .sv-tiles { grid-template-columns: 1fr 1fr; gap: 40px; } }
+@media (min-width: 900px) { .sv-tiles .tile-photo { aspect-ratio: 16 / 11; } }
+
+/* =====================================================================
+   Contact : le formulaire d'abord, une personne réelle à côté
+   ===================================================================== */
+.ct-hero .ph-bg { height: auto; aspect-ratio: 16 / 9; order: 2; margin: 24px var(--gutter) 0; border-radius: var(--r); overflow: hidden; }
+.ct-hero .ph-bg img { object-position: 50% 42%; }
+.ct-hero > .container { padding-top: 34px; }
+.ct-hero h1 { max-width: 13ch; }
+@media (min-width: 900px) {
+  .ct-hero .ph-bg { grid-column: 3; margin: 0 var(--gutter) 0 0; aspect-ratio: 4 / 5; height: auto; max-height: 560px; border-radius: var(--r); }
+}
+
+.ct-main { padding-top: clamp(24px, 4vw, 56px); }
+.ct-main .contact-layout { gap: clamp(36px, 6vw, 96px); }
+.ct-main .contact-form {
+  border: 1px solid var(--line); border-radius: var(--r); box-shadow: none;
+  padding: clamp(24px, 4vw, 44px);
+}
+.ct-main .field label { font-size: 0.92rem; font-weight: 600; letter-spacing: 0; color: var(--ink); }
+.ct-main .field input, .ct-main .field select, .ct-main .field textarea {
+  min-height: 52px; font-size: 1rem; border-radius: 10px; border-color: var(--line); background: var(--surface);
+}
+.ct-main .field textarea { min-height: 150px; }
+.ct-main .field input:focus, .ct-main .field select:focus, .ct-main .field textarea:focus {
+  outline: 2px solid var(--teal-dark); outline-offset: 1px; box-shadow: none;
+}
+.ct-main .field input::placeholder, .ct-main .field textarea::placeholder { color: #6E8A84; }
+.ct-main form > p[style] { color: var(--ink-mute) !important; font-size: 0.92rem !important; }
+.ct-main form > button.btn { min-height: 56px; }
+
+/* Colonne de côté : un avis, puis les autres moyens de me joindre, en liste simple */
+.ct-main .contact-side { gap: 0; }
+.ct-main .contact-testi { background: transparent; border: 0; border-radius: 0; padding: 0 0 28px; }
+.ct-main .contact-testi blockquote {
+  font-style: normal; font-weight: 600; font-size: clamp(1.4rem, 2.2vw, 1.75rem); line-height: 1.3; color: var(--ink);
+}
+.ct-main .contact-testi cite { color: var(--ink-mute); font-weight: 600; }
+.ct-main .contact-card, .ct-main .contact-card[style] {
+  background: transparent !important; border: 0 !important; border-top: 1px solid var(--line-soft) !important;
+  border-radius: 0; padding: 18px 0; transform: none !important;
+}
+.ct-main .contact-card .ic { display: none; }
+.ct-main .contact-card strong { font-family: var(--serif); font-size: 1.35rem; font-weight: 600; margin-bottom: 4px; }
+.ct-main .contact-card a { color: var(--teal-dark); font-weight: 600; font-size: 1rem; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
+.ct-main .contact-card p, .ct-main .contact-card p[style] { color: var(--ink-mute) !important; font-size: 0.98rem !important; }
+@media (min-width: 861px) {
+  .ct-main .contact-layout { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
+  .ct-main .contact-side { position: sticky; top: 100px; }
+}
+
+/* ---------- Services, retours du 31.10 (2) ---------- */
+.page-hero .hero-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; }
+.page-hero .hero-btns .hero-price { margin: 0; font-size: 1.05rem; color: var(--ink); max-width: none; }
+.page-hero .hero-btns .hero-price .price-chf { font-family: var(--serif); font-size: 1.6rem; font-weight: 600; font-variant-numeric: lining-nums; }
+@media (max-width: 560px) { .page-hero .hero-btns { flex-direction: column; align-items: stretch; } .page-hero .hero-btns .hero-price { text-align: center; } }
+
+/* Intro : une phrase en grand, centrée, sans photo */
+.sv-intro { padding-block: clamp(48px, 7vw, 96px); }
+.sv-quote {
+  max-width: 24ch; margin: 0 auto; text-align: center; text-wrap: balance;
+  font-family: var(--serif); font-weight: 600; color: var(--ink);
+  font-size: clamp(1.8rem, 4.4vw, 3.2rem); line-height: 1.15; letter-spacing: -0.015em;
+}
+
+/* Compris / libre : une seule carte en deux colonnes */
+.sv-scope > .container { border-top: 0; padding-top: 0; }
+.sv-scope-card.split {
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface);
+  padding: clamp(24px, 4vw, 48px); gap: 0 clamp(32px, 5vw, 72px);
+}
+.sv-scope-card > div:last-child { border-top: 1px solid var(--line-soft); margin-top: 28px; padding-top: 28px; }
+@media (min-width: 861px) {
+  .sv-scope-card > div:last-child { border-top: 0; margin-top: 0; padding-top: 0; border-left: 1px solid var(--line-soft); padding-left: clamp(32px, 5vw, 72px); }
+}
+
+/* Appel conseil : une offre à part, photo en tête de carte */
+.sv-pricing .offer-panel.sv-offer {
+  border: 1px solid var(--line); border-top: 1px solid var(--line); border-radius: var(--r);
+  background: var(--cream); padding: 0; overflow: hidden;
+}
+.sv-offer .split { display: grid; grid-template-columns: 1fr; gap: 0; align-items: stretch; }
+.sv-offer .sv-offer-photo { aspect-ratio: 16 / 9; max-width: none; }
+.sv-offer .sv-offer-photo img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; border-radius: 0; aspect-ratio: auto; }
+.sv-offer .split-text { padding: clamp(24px, 4vw, 52px); }
+@media (min-width: 900px) {
+  .sv-offer .split { grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); }
+  .sv-offer .split-text { order: 1; }
+  .sv-offer .sv-offer-photo { order: 2; aspect-ratio: auto; height: 100%; }
+}
+.sv-tiles .tile:first-child .tile-photo img { object-position: 50% 72%; }
+
+/* Comparatif : deux colonnes face à face, « Avec moi » sur fond lagune */
+.cmp-two { display: grid; gap: 14px; }
+.cmp-col { border-radius: var(--r); padding: clamp(22px, 3vw, 36px); }
+.cmp-col h3 { font-size: 1.7rem; margin-bottom: 12px; }
+.cmp-col dl { margin: 0; }
+.cmp-col dt { font-size: 0.86rem; font-weight: 600; padding-top: 14px; border-top: 1px solid rgba(8, 60, 66, 0.1); }
+.cmp-col dd { margin: 4px 0 14px; font-size: 1.04rem; line-height: 1.5; }
+.cmp-ag { background: var(--surface); color: var(--ink-mute); }
+.cmp-ag h3 { color: var(--ink-mute); }
+.cmp-me { background: var(--lagoon); color: #fff; }
+.cmp-me h3 { color: #fff; }
+.cmp-me dt { color: var(--sand-soft); border-color: rgba(255, 255, 255, 0.16); }
+@media (min-width: 900px) {
+  /* Les deux colonnes partagent les mêmes rangées : chaque sujet est aligné */
+  .cmp-two { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); grid-template-rows: auto repeat(10, auto); column-gap: 14px; row-gap: 0; }
+  .cmp-col { display: grid; grid-row: 1 / span 11; grid-template-rows: subgrid; row-gap: 0; }
+  .cmp-col dl { display: contents; }
+}
+@media (max-width: 899px) {
+  .sv-offer .sv-offer-photo { aspect-ratio: 4 / 3; }
+  .sv-offer .sv-offer-photo img { object-position: 50% 18%; }
+}
+
+/* Carnet de voyage : une tablette et deux téléphones avec de vraies pages */
+.carnet-mock { position: relative; aspect-ratio: 1 / 1.02; max-width: 560px; margin-inline: auto; width: 100%; }
+.carnet-mock img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top center; border-radius: inherit; }
+.cm-tablet, .cm-phone { position: absolute; background: #1C2526; box-shadow: var(--photo-shadow); }
+.cm-tablet { left: 0; top: 0; width: 70%; aspect-ratio: 3 / 4; padding: 2.2%; border-radius: 22px; }
+.cm-tablet img { border-radius: 10px; }
+.cm-phone { width: 33%; aspect-ratio: 9 / 19; padding: 1.6%; border-radius: 22px; }
+.cm-phone img { border-radius: 16px; }
+.cm-phone-a { right: 0; bottom: 0; }
+.split-media.carnet-mock img { aspect-ratio: auto; border-radius: inherit; }
+/* Sur téléphone, la page s'affiche à la largeur de l'écran, comme un PDF qu'on fait défiler */
+.cm-phone { overflow: hidden; }
+.carnet-mock .cm-phone img { height: auto; object-fit: initial; border-radius: 16px 16px 0 0; }
+.cm-scroll { height: 100%; overflow: hidden; border-radius: 16px; background: #fff; }
+.carnet-mock .cm-scroll img { border-radius: 0; }
+.carnet-mock .cm-scroll img + img { margin-top: 4px; }

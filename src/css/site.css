@@ -280,7 +280,7 @@ body.nav-open .nav.nav-light:not(.scrolled) .nav-toggle span { background: var(-
 .mobile-menu a.active { color: var(--teal-dark); }
 
 /* ---------- Footer ---------- */
-.footer { background: var(--navy); color: var(--on-dark); padding: 84px 0 32px; }
+.footer { background: var(--lagoon, #083C42); color: var(--on-dark); padding: 84px 0 32px; }
 .footer-grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1.2fr; gap: 48px; }
 .footer-brand .brand-name { color: #fff; }
 .footer-brand .brand-sub { color: var(--sand-soft); }
@@ -374,12 +374,6 @@ body.nav-open .nav.nav-light:not(.scrolled) .nav-toggle span { background: var(-
 .split-media { position: relative; }
 .split-media img { width: 100%; height: auto; border-radius: var(--radius-lg); aspect-ratio: 4/5; object-fit: cover; }
 .split-media.tall img { aspect-ratio: 3/4; }
-.media-tag {
-  position: absolute; bottom: 18px; left: 18px; background: rgba(255,255,255,0.92); backdrop-filter: blur(6px);
-  padding: 8px 16px; border-radius: 40px; font-size: 0.78rem; font-weight: 600; color: var(--teal-dark);
-  display: flex; align-items: center; gap: 7px;
-}
-.media-tag .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sand); }
 .split-text h2 { margin-bottom: 10px; }
 .split-text .eyebrow { margin-bottom: 18px; }
 .split-text p { color: var(--ink-mute); margin-top: 16px; font-size: 1.04rem; }
