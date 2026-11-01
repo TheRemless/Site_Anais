@@ -1,16 +1,12 @@
 {# Carte de la Thaïlande de l'accueil : silhouette Natural Earth (mapThailand.js), cinq lieux (mapPins.js).
-   Rendu FR et EN depuis `lang`. Le conseil par épingle ne s'affiche que si mapPins[n].tip[lang] n'est pas vide. #}
+   Rendu FR et EN depuis `lang`, textes dans i18n.json (clés map.*). Le conseil par épingle ne s'affiche que si mapPins[n].tip[lang] n'est pas vide. #}
 <section class="hv-map" aria-labelledby="tmap-title">
   <div class="container">
     <div class="hv-head">
-      {# TEXTE PROVISOIRE, à remplacer par le choix de Jérémy (deux options dans le rapport du 1.11.2026) #}
-      {% if lang == "en" %}
-      <h2 id="tmap-title">Thailand, from the north down to Koh Lanta</h2>
-      <p>Chiang Mai, Kanchanaburi, Bangkok, Railay and Koh Lanta, where I live. Five of the places I can build into your itinerary. Tap a photo to see it larger.</p>
-      {% else %}
-      <h2 id="tmap-title">La Thaïlande, du nord à Koh Lanta</h2>
-      <p>Chiang Mai, Kanchanaburi, Bangkok, Railay et Koh Lanta, où je vis. Cinq endroits parmi ceux que je peux mettre dans ton itinéraire. Clique sur une photo pour l'agrandir.</p>
-      {% endif %}
+      {# TEXTES PROVISOIRES : map.title et map.intro (FR et EN) dans i18n.json sont à remplacer par le choix de Jérémy
+         (deux options dans le rapport du 1.11.2026). JSON sans commentaire possible, d'où la note ici. #}
+      <h2 id="tmap-title">{{ "map.title" | t(lang) }}</h2>
+      <p>{{ "map.intro" | t(lang) }}</p>
     </div>
     <div class="tmap" style="--map-left:{{ mapPins.mapBox.left }};--map-top:{{ mapPins.mapBox.top }};--map-width:{{ mapPins.mapBox.width }};--card-w:{{ mapPins.cardWidth }}">
       <svg class="tmap-lines" viewBox="0 0 {{ mapPins.stage.w }} {{ mapPins.stage.h }}" aria-hidden="true" focusable="false">
