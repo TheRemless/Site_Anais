@@ -59,6 +59,8 @@
 
   /* ---------- Scroll reveal ---------- */
   function initReveal() {
+    /* site.js est bien chargé : les apparitions peuvent masquer le contenu (sinon base.njk le réaffiche après 3 s) */
+    document.documentElement.classList.add("reveal-ready");
     var items = document.querySelectorAll("[data-reveal], .img-reveal");
     if (!("IntersectionObserver" in window)) {
       items.forEach(function (i) { i.classList.add("in"); });
@@ -377,7 +379,8 @@
     var heroOut = false, endIn = false;
     function upd() { var show = heroOut && !endIn; bar.hidden = !show; document.body.classList.toggle("has-sticky", show); }
     new IntersectionObserver(function (e) { heroOut = !e[0].isIntersecting; upd(); }).observe(hero);
-    if (end) new IntersectionObserver(function (e) { endIn = e[0].isIntersecting; upd(); }).observe(end);
+    /* masquée sur l'appel final et au-delà (pied de page) */
+    if (end) new IntersectionObserver(function (e) { endIn = e[0].isIntersecting || e[0].boundingClientRect.top < 0; upd(); }).observe(end);
   }
 
   /* ---------- Sommaire des articles : section en cours mise en avant ---------- */

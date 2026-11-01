@@ -333,7 +333,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 
 
 /* ---------- Apparitions au défilement ----------
-   Sans JavaScript, tout est visible (rien n'est masqué tant que <html> n'a pas la classe js).
+   Sans JavaScript, tout est visible (rien n'est masqué tant que <html> n'a pas la classe js,
+   retirée après 3 s si site.js ne s'est pas chargé).
    Sur mobile : fondu léger uniquement, ni glissement ni rideau sur les images. */
 html:not(.js) [data-reveal][data-reveal] { opacity: 1; transform: none; }
 html:not(.js) .img-reveal img { transform: none; }
