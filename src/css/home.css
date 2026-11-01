@@ -330,6 +330,7 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
 .tmap-card img { width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--r); }
 .tmap-name { display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 1.15rem; font-weight: 600; line-height: 1.1; color: var(--ink); }
 .tmap-num { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: var(--teal-dark); color: #fff; font: 600 11px/22px var(--sans); text-align: center; }
+.tmap-cap { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .tmap-tip { margin: 8px 0 0; font-size: 0.92rem; line-height: 1.5; color: var(--ink-soft); }
 .tmap-tip[hidden] { display: none; }
 @media (min-width: 900px) {

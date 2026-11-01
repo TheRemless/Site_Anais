@@ -31,7 +31,7 @@
         {%- for p in mapPins.pins %}
         {%- set tip = p.tip[lang] %}
         <li class="tmap-item tmap-{{ p.side }}" style="{{ p.cardStyle }}">
-          <button type="button" class="tmap-card" aria-label="{{ p.caption[lang] }}" data-lightbox data-src="{{ p.img }}" data-caption="{{ p.caption[lang] }}"><img loading="lazy" decoding="async" sizes="(min-width: 1200px) 170px, (min-width: 900px) 15vw, 42vw" src="{{ p.img }}" alt=""><span class="tmap-name"><span class="tmap-num" aria-hidden="true">{{ p.n }}</span>{{ p.name }}</span></button>
+          <button type="button" class="tmap-card" data-lightbox data-src="{{ p.img }}" data-caption="{{ p.caption[lang] }}"><img loading="lazy" decoding="async" sizes="(min-width: 1200px) 170px, (min-width: 900px) 15vw, 42vw" src="{{ p.img }}" alt=""><span class="tmap-name"><span class="tmap-num">{{ p.n }}</span> {{ p.name }}</span><span class="tmap-cap">, {{ p.caption[lang] }}</span></button>
           {%- if tip %}
           <p class="tmap-tip" id="tmap-tip-{{ p.n }}" hidden>{{ tip }}</p>
           {%- endif %}
