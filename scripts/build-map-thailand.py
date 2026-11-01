@@ -8,6 +8,9 @@ domaine public. Projection Web Mercator, simplification Douglas-Peucker du conti
 îles conservées telles quelles (Phuket, Koh Samui, Koh Phangan, Koh Lanta, Koh Chang, Tarutao…).
 """
 import json, math, sys
+from pathlib import Path
+
+OUT = Path(__file__).resolve().parent.parent / "src/_data/mapThailand.js"
 
 HEIGHT = 600.0          # hauteur du viewBox en unités SVG
 MARGIN = 0.02           # marge autour du tracé (fraction de la hauteur)
@@ -33,10 +36,20 @@ def dp(points, tol):
         return dp(points[:idx + 1], tol)[:-1] + dp(points[idx:], tol)
     return [points[0], points[-1]]
 
+if len(sys.argv) != 2 or not Path(sys.argv[1]).is_file():
+    sys.exit(f"Usage : python3 -I {Path(__file__).name} <ne_50m_admin_0_countries.geojson>\nÉcrit {OUT}")
 src = sys.argv[1]
 data = json.load(open(src))
 feat = next(f for f in data["features"] if f["properties"].get("ADMIN") == "Thailand")
-rings = [p[0] for p in feat["geometry"]["coordinates"]]
+geom = feat["geometry"]
+if geom["type"] == "Polygon":
+    polygons = [geom["coordinates"]]
+elif geom["type"] == "MultiPolygon":
+    polygons = geom["coordinates"]
+else:
+    sys.exit(f"Géométrie {geom['type']} non gérée (Polygon ou MultiPolygon attendu).")
+# Seul l'anneau extérieur de chaque polygone est tracé ; les anneaux intérieurs (lacs, enclaves) sont ignorés.
+rings = [polygon[0] for polygon in polygons]
 rings.sort(key=len, reverse=True)
 
 lons = [c[0] for r in rings for c in r]
@@ -89,5 +102,5 @@ module.exports = {{
   project
 }};
 """
-open("src/_data/mapThailand.js", "w").write(out)
-print(f"viewBox 0 0 {width:.2f} {HEIGHT:.2f}, {len(rings)} anneaux, path {len(path)} octets, continent {paths[0].count('L')+1} points")
+OUT.write_text(out)
+print(f"{OUT} : viewBox 0 0 {width:.2f} {HEIGHT:.2f}, {len(rings)} anneaux, path {len(path)} octets, continent {paths[0].count('L')+1} points")
