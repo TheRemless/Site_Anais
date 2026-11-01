@@ -263,3 +263,33 @@
 .gt-tarif .feature-list { gap: 0; }
 .gt-tarif .feature-list li { padding: 12px 0; border-top: 1px solid var(--line-soft); }
 .gt-brochure .offer-panel { padding: clamp(32px, 5vw, 56px); }
+
+/* =====================================================================
+   À propos
+   ===================================================================== */
+.ab-portrait { max-width: 460px; aspect-ratio: 4 / 5; }
+.ab-portrait img { aspect-ratio: auto; height: 100%; border-radius: 0; }
+@media (max-width: 860px) { .ab-portrait { width: 86%; } }
+.ab-story .split { align-items: center; }
+
+/* Ma maison : texte étroit, puis deux photos côte à côte */
+.ab-home { background: var(--mint); }
+.ab-home-text { max-width: 640px; }
+.ab-home-text h2 { margin-bottom: 14px; }
+.ab-home-text p + p { margin-top: 12px; }
+.ab-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: clamp(28px, 4vw, 48px); }
+.ab-duo .frame { aspect-ratio: 4 / 5; }
+.ab-duo .frame:last-child { margin-top: clamp(24px, 6vw, 72px); }
+@media (min-width: 900px) { .ab-duo { gap: 24px; max-width: 900px; } }
+
+/* Convictions : trois phrases fortes à filets, sans cartes */
+.ab-beliefs.grid { gap: 0; }
+.ab-belief { padding: 22px 0; border-top: 1px solid var(--line); }
+.ab-belief h3 { font-size: clamp(1.5rem, 2.2vw, 1.9rem); margin-bottom: 8px; }
+.ab-belief p { color: var(--ink-mute); margin-top: 0 !important; }
+@media (min-width: 861px) { .ab-beliefs.grid { gap: 0 36px; } }
+
+/* Concrètement : fond lagune, photo à droite */
+.trust-sec.bg-navy { background: var(--lagoon); }
+.trust-sec .split-media img { border-radius: var(--r); aspect-ratio: 4 / 5; }
+@media (min-width: 861px) { .trust-sec .split.reverse .split-media { order: 2; } }
