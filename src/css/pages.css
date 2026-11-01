@@ -711,3 +711,9 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
   .prose td:first-child { font-family: var(--serif); font-weight: 600; font-size: 1.15rem; display: block; }
   .prose td:first-child::before { content: none; }
 }
+
+/* FAQ v2 : liens vers les cinq thèmes sous le titre */
+.faq-themes { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 22px; }
+.faq-themes a { color: var(--teal-deep); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; padding: 4px 0; }
+.faq-themes a:hover { color: var(--teal-dark); text-decoration-thickness: 2px; }
+.faq-main .faq-group { scroll-margin-top: 100px; }

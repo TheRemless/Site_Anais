@@ -123,6 +123,23 @@ const en = [
   },
 ];
 
+// Regroupement en cinq thèmes (revue du 01.11.2026) : mêmes questions, mêmes réponses,
+// rangées par sujet. Les indices renvoient aux deux listes d'origine ci-dessus.
+const THEMES = [
+  { id: "prix", fr: "Prix", en: "Prices", pick: [[0, 1], [0, 2], [0, 0], [0, 13]] },
+  { id: "deroule", fr: "Déroulé", en: "How it works", pick: [[0, 6], [0, 3], [0, 7], [0, 9], [0, 10], [0, 11], [0, 12], [0, 8]] },
+  { id: "carnet", fr: "Carnet de voyage", en: "Travel journal", pick: [[0, 4], [0, 5]] },
+  { id: "saison-budget", fr: "Saison et budget", en: "Season and budget", pick: [[1, 0], [1, 1], [1, 2], [1, 3]] },
+  { id: "visa-securite", fr: "Visa et sécurité", en: "Visa and safety", pick: [[1, 4], [1, 6], [1, 5], [1, 7]] },
+];
+function regroup(groups, lang) {
+  const out = THEMES.map((t) => ({ id: t.id, title: t[lang], items: t.pick.map(([g, i]) => groups[g].items[i]) }));
+  const total = groups.reduce((n, g) => n + g.items.length, 0);
+  const used = out.reduce((n, g) => n + g.items.length, 0);
+  if (used !== total || out.some((g) => g.items.some((i) => !i))) throw new Error("FAQ : regroupement incomplet (" + lang + ")");
+  return out;
+}
+
 function jsonLd(groups) {
   return {
     "@context": "https://schema.org",
@@ -135,4 +152,5 @@ function jsonLd(groups) {
   };
 }
 
-module.exports = { fr, en, jsonLd: { fr: jsonLd(fr), en: jsonLd(en) } };
+const frThemes = regroup(fr, "fr"), enThemes = regroup(en, "en");
+module.exports = { fr: frThemes, en: enThemes, jsonLd: { fr: jsonLd(frThemes), en: jsonLd(enThemes) } };
