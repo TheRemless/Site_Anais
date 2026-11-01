@@ -1,7 +1,7 @@
 import { etat, resumes, nomClient, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif } from "../etat.mjs";
 import { reglagesIncomplets } from "../defauts.mjs";
 import { h } from "../ui.mjs";
-import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois } from "../calc.mjs";
+import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois, finDuMois } from "../calc.mjs";
 import { pastille, cartes, voyageTexte } from "./commun.mjs";
 import { mesTaches, listeTaches } from "./taches.mjs";
 import { contratsAEcheance } from "../partenaires-calc.mjs";
@@ -27,7 +27,7 @@ export async function tableauDeBord() {
   const encaisser = rs.filter((r) => r.statut === "accepte" || r.statut === "acompte");
   const attente = rs.filter((r) => r.statut === "devis_envoye");
   const deviseDe = Object.fromEntries(rs.map((r) => [r.dossier.id, r.devise]));
-  const ceMois = await paiementsPeriode(`${ajd.slice(0, 7)}-01`, `${ajd.slice(0, 7)}-31`);
+  const ceMois = await paiementsPeriode(`${ajd.slice(0, 7)}-01`, finDuMois(ajd));
   const taches = aFaire(rs, ajd, reglages());
   const contrats = peut("partenaires.lire") && moduleActif("partenaires") ? contratsAEcheance(etat.db.partenaires, ajd) : [];
   const ag = agenda(etat.db.reservations, ajd);
