@@ -374,13 +374,19 @@
   /* ---------- Barre collante mobile (Girls Trips) : visible après l'en-tête, masquée sur l'appel final ---------- */
   function initStickyBar() {
     var bar = document.querySelector("[data-sticky-bar]"), hero = document.querySelector(".page-hero");
-    if (!bar || !hero || !("IntersectionObserver" in window)) return;
+    if (!bar || !hero) return;
     var end = document.querySelector(".cta-full") || document.querySelector("footer");
-    var heroOut = false, endIn = false;
-    function upd() { var show = heroOut && !endIn; bar.hidden = !show; document.body.classList.toggle("has-sticky", show); }
-    new IntersectionObserver(function (e) { heroOut = !e[0].isIntersecting; upd(); }).observe(hero);
-    /* masquée sur l'appel final et au-delà (pied de page) */
-    if (end) new IntersectionObserver(function (e) { endIn = e[0].isIntersecting || e[0].boundingClientRect.top < 0; upd(); }).observe(end);
+    var ticking = false;
+    function upd() {
+      ticking = false;
+      /* visible une fois l'en-tête passé, masquée dès que l'appel final arrive à l'écran et au-delà */
+      var show = hero.getBoundingClientRect().bottom < 0 && (!end || end.getBoundingClientRect().top > window.innerHeight);
+      if (bar.hidden === !show) return;
+      bar.hidden = !show; document.body.classList.toggle("has-sticky", show);
+    }
+    window.addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(upd); } }, { passive: true });
+    window.addEventListener("resize", upd);
+    upd();
   }
 
   /* ---------- Sommaire des articles : section en cours mise en avant ---------- */
