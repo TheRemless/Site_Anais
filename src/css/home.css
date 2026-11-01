@@ -297,41 +297,55 @@
   .hv-hero .hero-btns .btn { min-height: 52px; }
 }
 
-/* Carte de la Thaïlande : photos épinglées par lieu (bureau), carte nommée + rail de photos (mobile) */
+/* Carte de la Thaïlande : silhouette Natural Earth, pastilles numérotées 1 à 5 (même langage que la carte du carnet).
+   Mobile : carte seule, numéros dessus, photos numérotées en rail dessous. Bureau : scène 5/4, carte au centre,
+   photos réparties à gauche et à droite, reliées à leur numéro par un trait. */
 .hv-map { padding: clamp(56px, 8vw, 104px) 0 clamp(24px, 4vw, 48px); }
-.tmap { position: relative; margin: 0 auto; }
-.tmap-land { display: block; width: min(64%, 240px); height: auto; margin: 0 auto; overflow: visible; }
-.tmap-land path { fill: var(--mint); stroke: var(--teal); stroke-width: 1.2; stroke-linejoin: round; }
-.tmap-land circle { fill: var(--teal); stroke: #fff; stroke-width: 2; }
-.tmap-labels text { font-family: var(--sans); font-size: 15px; font-weight: 600; fill: var(--ink); }
-.tmap-pins {
+.hv-map .hv-head { margin-bottom: clamp(28px, 4vw, 44px); }
+.tmap { position: relative; }
+.tmap-lines { display: none; }
+.tmap-map { position: relative; width: min(68%, 250px); margin: 0 auto; }
+.tmap-land { display: block; width: 100%; height: auto; overflow: visible; }
+.tmap-land path { fill: var(--bg-mint); fill: color-mix(in srgb, var(--teal) 36%, #fff); stroke: color-mix(in srgb, var(--teal) 36%, #fff); stroke-width: 0.8; stroke-linejoin: round; }
+.tmap-land circle { fill: var(--teal-dark); }
+.tmap-pin {
+  position: absolute; left: var(--x); top: var(--y); isolation: isolate;
+  width: 26px; height: 26px; margin: -13px 0 0 -13px; padding: 0; border: 2px solid #fff; border-radius: 50%;
+  background: var(--teal-dark); color: #fff; font: 600 12px/22px var(--sans); text-align: center; cursor: default;
+}
+button.tmap-pin { cursor: pointer; }
+button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.tmap-pin[data-offset]::before { content: ""; position: absolute; top: 50%; width: 24px; height: 1px; background: var(--teal-dark); z-index: -1; }
+.tmap-pin[data-offset="w"] { transform: translateX(-24px); }
+.tmap-pin[data-offset="w"]::before { left: 50%; }
+.tmap-pin[data-offset="e"] { transform: translateX(24px); }
+.tmap-pin[data-offset="e"]::before { right: 50%; }
+.tmap-cards {
   list-style: none; margin: 26px calc(-1 * var(--gutter)) 0; padding: 0 var(--gutter) 6px;
   display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: var(--gutter); scrollbar-width: none;
 }
-.tmap-pins::-webkit-scrollbar { display: none; }
-.tmap-pin { flex: 0 0 42%; scroll-snap-align: start; }
+.tmap-cards::-webkit-scrollbar { display: none; }
+.tmap-item { flex: 0 0 42%; scroll-snap-align: start; }
 .tmap-card { display: grid; gap: 8px; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; text-align: left; font: inherit; color: inherit; }
 .tmap-card img { width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--r); }
-.tmap-name { font-family: var(--serif); font-size: 1.2rem; font-weight: 600; line-height: 1.1; color: var(--ink); }
+.tmap-name { display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 1.15rem; font-weight: 600; line-height: 1.1; color: var(--ink); }
+.tmap-num { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: var(--teal-dark); color: #fff; font: 600 11px/22px var(--sans); text-align: center; }
+.tmap-tip { margin: 8px 0 0; font-size: 0.92rem; line-height: 1.5; color: var(--ink-soft); }
+.tmap-tip[hidden] { display: none; }
 @media (min-width: 900px) {
-  .tmap { width: 460px; aspect-ratio: 330 / 600; left: 36px; }
-  .tmap-land { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; }
-  .tmap-labels { display: none; }
-  .tmap-pins { display: block; margin: 0; padding: 0; overflow: visible; }
-  .tmap-pin { position: absolute; left: var(--x); top: var(--y); width: 0; height: 0; }
-  .tmap-card { position: absolute; top: 0; width: 176px; }
+  .tmap { aspect-ratio: 5 / 4; }
+  .tmap-lines { display: block; position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .tmap-lines line { stroke: var(--teal-dark); stroke-width: 1; }
+  .tmap-map { position: absolute; left: var(--map-left); top: var(--map-top); width: var(--map-width); margin: 0; }
+  .tmap-pin { width: 28px; height: 28px; margin: -14px 0 0 -14px; font-size: 13px; line-height: 24px; }
+  .tmap-cards { display: block; margin: 0; padding: 0; overflow: visible; }
+  .tmap-item { position: absolute; left: var(--cx); top: var(--cy); width: var(--card-w); }
   .tmap-card img { border: 4px solid #fff; box-shadow: var(--photo-shadow); }
-  .tmap-r .tmap-card { left: 64px; transform: translateY(-30%); }
-  .tmap-l .tmap-card { right: 64px; transform: translateY(-30%); text-align: right; }
-  .tmap-l .tmap-card .tmap-name { justify-self: end; }
-  .tmap-card::before { content: ""; position: absolute; top: 30%; width: 58px; height: 1px; background: var(--teal); }
-  .tmap-r .tmap-card::before { left: -60px; }
-  .tmap-l .tmap-card::before { right: -60px; }
-  .tmap-pin:nth-child(4) .tmap-card { transform: translateY(-70%); }
-  .tmap-pin:nth-child(4) .tmap-card::before { top: 70%; }
-  .tmap-pin:nth-child(5) .tmap-card { transform: translateY(-10%); }
-  .tmap-pin:nth-child(5) .tmap-card::before { top: 10%; }
-  .hv-map { padding-bottom: 120px; }
+  .tmap-r .tmap-name { justify-content: flex-start; }
+  .tmap-l .tmap-card { text-align: right; }
+  .tmap-l .tmap-name { flex-direction: row-reverse; justify-content: flex-start; }
+  .tmap-l .tmap-tip { text-align: right; }
+  .hv-map { padding-bottom: 96px; }
 }
 @media (hover: hover) and (pointer: fine) {
   .tmap-card img { transition: transform 0.4s var(--ease); }

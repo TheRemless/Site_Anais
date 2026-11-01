@@ -1,0 +1,43 @@
+{# Carte de la Thaïlande de l'accueil : silhouette Natural Earth (mapThailand.js), cinq lieux (mapPins.js).
+   Rendu FR et EN depuis `lang`. Le conseil par épingle ne s'affiche que si mapPins[n].tip[lang] n'est pas vide. #}
+<section class="hv-map" aria-labelledby="tmap-title">
+  <div class="container">
+    <div class="hv-head">
+      {# TEXTE PROVISOIRE, à remplacer par le choix de Jérémy (deux options dans le rapport du 1.11.2026) #}
+      {% if lang == "en" %}
+      <h2 id="tmap-title">Thailand, from the north down to Koh Lanta</h2>
+      <p>Chiang Mai, Kanchanaburi, Bangkok, Railay and Koh Lanta, where I live. Five of the places I can build into your itinerary. Tap a photo to see it larger.</p>
+      {% else %}
+      <h2 id="tmap-title">La Thaïlande, du nord à Koh Lanta</h2>
+      <p>Chiang Mai, Kanchanaburi, Bangkok, Railay et Koh Lanta, où je vis. Cinq endroits parmi ceux que je peux mettre dans ton itinéraire. Clique sur une photo pour l'agrandir.</p>
+      {% endif %}
+    </div>
+    <div class="tmap" style="--map-left:{{ mapPins.mapBox.left }};--map-top:{{ mapPins.mapBox.top }};--map-width:{{ mapPins.mapBox.width }};--card-w:{{ mapPins.cardWidth }}">
+      <svg class="tmap-lines" viewBox="0 0 {{ mapPins.stage.w }} {{ mapPins.stage.h }}" aria-hidden="true" focusable="false">
+        {%- for p in mapPins.pins %}<line x1="{{ p.line.x1 }}" y1="{{ p.line.y1 }}" x2="{{ p.line.x2 }}" y2="{{ p.line.y2 }}"/>{% endfor -%}
+      </svg>
+      <div class="tmap-map">
+        <svg class="tmap-land" viewBox="{{ mapThailand.viewBox }}" aria-hidden="true" focusable="false"><path d="{{ mapThailand.path }}"/>{% for p in mapPins.pins %}<circle cx="{{ p.dot.x }}" cy="{{ p.dot.y }}" r="2.2"/>{% endfor %}</svg>
+        {%- for p in mapPins.pins %}
+        {%- set tip = p.tip[lang] %}
+        {%- if tip %}
+        <button type="button" class="tmap-pin" style="{{ p.pinStyle }}"{% if p.offset %} data-offset="{{ p.offset }}"{% endif %} aria-expanded="false" aria-controls="tmap-tip-{{ p.n }}" aria-label="{{ 'map.tipFor' | t(lang) }} {{ p.name }}">{{ p.n }}</button>
+        {%- else %}
+        <span class="tmap-pin" style="{{ p.pinStyle }}"{% if p.offset %} data-offset="{{ p.offset }}"{% endif %} aria-hidden="true">{{ p.n }}</span>
+        {%- endif %}
+        {%- endfor %}
+      </div>
+      <ol class="tmap-cards">
+        {%- for p in mapPins.pins %}
+        {%- set tip = p.tip[lang] %}
+        <li class="tmap-item tmap-{{ p.side }}" style="{{ p.cardStyle }}">
+          <button type="button" class="tmap-card" aria-label="{{ p.caption[lang] }}" data-lightbox data-src="{{ p.img }}" data-caption="{{ p.caption[lang] }}"><img loading="lazy" decoding="async" sizes="(min-width: 1200px) 170px, (min-width: 900px) 15vw, 42vw" src="{{ p.img }}" alt=""><span class="tmap-name"><span class="tmap-num" aria-hidden="true">{{ p.n }}</span>{{ p.name }}</span></button>
+          {%- if tip %}
+          <p class="tmap-tip" id="tmap-tip-{{ p.n }}" hidden>{{ tip }}</p>
+          {%- endif %}
+        </li>
+        {%- endfor %}
+      </ol>
+    </div>
+  </div>
+</section>
