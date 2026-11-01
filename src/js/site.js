@@ -369,6 +369,21 @@
     });
   }
 
+  /* ---------- Newsletter (Netlify Forms, envoi en arrière-plan) ---------- */
+  function initNewsletter() {
+    document.querySelectorAll("form.nl-form").forEach(function (form) {
+      var ok = form.querySelector(".nl-ok"), err = form.querySelector(".nl-err"), btn = form.querySelector("button[type=submit]");
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        ok.hidden = true; err.hidden = true; btn.disabled = true;
+        fetch("/", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(new FormData(form)).toString() })
+          .then(function (r) { if (!r.ok) throw new Error(r.status); form.reset(); ok.hidden = false; })
+          .catch(function () { err.hidden = false; })
+          .then(function () { btn.disabled = false; });
+      });
+    });
+  }
+
   /* ---------- Conversion tracking (GA4 events, consent-aware) ---------- */
   function track(name, params) {
     if (typeof window.gtag === "function") window.gtag("event", name, params || {});
@@ -383,7 +398,7 @@
       else if (/tally\.so/i.test(href)) track("preinscription_girls_trips", { link_url: href });
       else if (/contact\.html/i.test(href) && a.classList.contains("btn")) track("cta_devis_click", { link_text: (a.textContent || "").trim().slice(0, 60) });
     });
-    var contactForm = document.querySelector("form[name='contact'], form[data-netlify]");
+    var contactForm = document.querySelector("form[name='contact']");
     if (contactForm) contactForm.addEventListener("submit", function () { track("generate_lead", { form: "contact" }); });
     var nlForm = document.querySelector("form.nl-form, form[data-newsletter]");
     if (nlForm) nlForm.addEventListener("submit", function () { track("newsletter_signup", {}); });
@@ -413,6 +428,7 @@
     initMarquee();
     initLightbox();
     initTracking();
+    initNewsletter();
     initEvents();
     // Footer year
     var y = document.getElementById("footer-year");

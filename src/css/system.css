@@ -350,3 +350,17 @@ html:not(.js) .img-reveal::after { display: none; }
    L'image masquée n'est pas téléchargée (chargement différé). */
 .ph-bg .v-port { display: none; }
 @media (max-width: 899px) { .ph-bg .v-land { display: none; } .ph-bg .v-port { display: block; } }
+
+/* ---------- Newsletter : un champ e-mail (Netlify Forms) ---------- */
+.nl-form { display: grid; gap: 10px; max-width: 520px; }
+.nl-label { font-weight: 600; color: var(--ink); font-size: 0.95rem; }
+.nl-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.nl-input { flex: 1 1 220px; min-width: 0; min-height: 52px; padding: 0 16px; border: 1px solid var(--line); border-radius: var(--r); background: #fff; font: inherit; color: var(--ink); }
+.nl-input:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; border-color: var(--teal); }
+.nl-row .btn { flex: 0 0 auto; min-height: 52px; }
+.nl-note { margin: 0; font-size: 0.88rem; color: var(--ink-mute); }
+.nl-note a { color: var(--teal-deep); text-decoration: underline; text-underline-offset: 3px; }
+.nl-msg { margin: 4px 0 0; font-weight: 600; }
+.nl-ok { color: var(--teal-deep); }
+.nl-err { color: #8a1f1f; }
+@media (max-width: 480px) { .nl-row .btn { flex: 1 1 100%; } }

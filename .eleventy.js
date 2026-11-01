@@ -31,6 +31,17 @@ module.exports = async function (eleventyConfig) {
     failOnError: true,
   });
 
+  // Typographie française (espaces fines insécables) sur le texte visible des pages FR.
+  // /secret/, /taxi/ et /gestion/ ne sont pas concernées.
+  const typoFr = require("./lib/typo-fr.js");
+  eleventyConfig.addTransform("typo-fr", function (content) {
+    const out = this.page.outputPath || "";
+    if (!out.endsWith(".html")) return content;
+    if (/^\/(secret|taxi|gestion)\//.test(this.page.url || "")) return content;
+    if (!/<html[^>]*\slang="fr"/i.test(content)) return content;
+    return typoFr(content);
+  });
+
   // Static assets are copied through untouched, keeping the same public URLs.
   eleventyConfig.addPassthroughCopy({
     "src/css": "css",
