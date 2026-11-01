@@ -22,6 +22,6 @@
 - [Blog](https://zwaldtravelplanner.com/blog/) : itinéraire 2 semaines, quand partir, organiser sans agence, erreurs à éviter, temples et coutumes.
 - [English version](https://zwaldtravelplanner.com/en/)
 
-## Autres marques du même domaine
-- [Secret Travel & Tour](https://zwaldtravelplanner.com/secret/) : agence locale à Koh Lanta, transferts, excursions en bateau, activités (anglais).
-- [VIP Taxi Lanta](https://zwaldtravelplanner.com/taxi/) : transferts privés entre Koh Lanta et les aéroports de Krabi, Phuket et Surat Thani (anglais).
+## Autres marques (site séparé : secrettravelandtour.com)
+- [Secret Travel & Tour](https://secrettravelandtour.com/) : agence locale à Koh Lanta, transferts, excursions en bateau, activités (anglais).
+- [VIP Taxi Lanta](https://secrettravelandtour.com/taxi/) : transferts privés en minivan dans tout le sud de la Thaïlande, taxis sur Koh Lanta (anglais).
