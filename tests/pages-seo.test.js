@@ -64,12 +64,13 @@ test("pages taxi : le service n'est jamais présenté comme limité au départ d
   }
 });
 
-test("sitemap : chaque page listée une seule fois", () => {
+test("sitemap : /secret/ et /taxi/ ne sont plus listés, ils redirigent vers secrettravelandtour.com", () => {
   const sitemap = read("_site/sitemap.xml");
-  for (const p of all) {
-    const hits = sitemap.match(new RegExp(`<loc>https://zwaldtravelplanner\\.com/${p.url}/</loc>`, "g")) || [];
-    assert.equal(hits.length, 1, p.url);
-  }
+  assert.doesNotMatch(sitemap, /zwaldtravelplanner\.com\/(secret|taxi)\//);
+  const redirects = read("src/_redirects");
+  assert.match(redirects, /^\/secret\/\*\s+https:\/\/secrettravelandtour\.com\/tours\/:splat\s+301!/m);
+  assert.match(redirects, /^\/secret\/\s+https:\/\/secrettravelandtour\.com\/\s+301!/m);
+  assert.match(redirects, /^\/taxi\/\*\s+https:\/\/secrettravelandtour\.com\/taxi\/:splat\s+301!/m);
 });
 
 test("liens croisés : /secret/ mène aux pages d'excursion, /taxi/ aux pages de trajet", () => {
