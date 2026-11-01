@@ -303,7 +303,7 @@
     if (!triggers.length) return;
     var items = triggers.map(function (t) {
       var im = t.querySelector("img");
-      return { src: t.getAttribute("data-src") || (im ? im.src : ""), cap: t.getAttribute("data-caption") || "", alt: im ? im.alt : "" };
+      return { src: t.getAttribute("data-src") || (im ? im.src : ""), srcset: im ? im.getAttribute("srcset") || "" : "", cap: t.getAttribute("data-caption") || "", alt: im ? im.alt : "" };
     });
     var en = /^en/i.test(document.documentElement.lang || "");
     var L = en ? { close: "Close", prev: "Previous photo", next: "Next photo", open: "Enlarge: ", dialog: "Photo viewer" } : { close: "Fermer", prev: "Photo précédente", next: "Photo suivante", open: "Agrandir : ", dialog: "Visionneuse photo" };
@@ -325,6 +325,8 @@
     function show(k) {
       cur = (k + items.length) % items.length;
       img.classList.remove("loaded");
+      /* Les versions WebP optimisées de la vignette, pas le JPEG d'origine */
+      if (items[cur].srcset) { img.sizes = "(max-width: 699px) 100vw, 80vw"; img.srcset = items[cur].srcset; } else { img.removeAttribute("srcset"); }
       img.src = items[cur].src;
       img.alt = items[cur].alt;
       img.onload = function () { img.classList.add("loaded"); };

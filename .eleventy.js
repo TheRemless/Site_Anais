@@ -19,7 +19,9 @@ module.exports = async function (eleventyConfig) {
   const { eleventyImageTransformPlugin } = await import("@11ty/eleventy-img");
   eleventyConfig.addPlugin(eleventyImageTransformPlugin, {
     formats: ["webp"],
-    widths: [480, 800, 1100, 1600],
+    // Jusqu'à 2880 px pour les écrans Retina en pleine largeur ; "auto" ajoute la largeur
+    // d'origine quand la source est plus petite (pas d'agrandissement, pas de perte).
+    widths: [480, 800, 1100, 1600, 2200, 2880, "auto"],
     urlPath: "/img/",
     outputDir: "_site/img/",
     htmlOptions: {

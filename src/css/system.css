@@ -345,3 +345,8 @@ html:not(.js) .img-reveal::after { display: none; }
   .js .img-reveal:not(.in) { opacity: 0; }
   .img-reveal { transition: opacity 0.5s ease; }
 }
+
+/* Variante portrait d'une photo paysage pour les blocs plus hauts que larges (mobile).
+   L'image masquée n'est pas téléchargée (chargement différé). */
+.ph-bg .v-port { display: none; }
+@media (max-width: 899px) { .ph-bg .v-land { display: none; } .ph-bg .v-port { display: block; } }
