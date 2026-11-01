@@ -369,6 +369,17 @@
     });
   }
 
+  /* ---------- Barre collante mobile (Girls Trips) : visible après l'en-tête, masquée sur l'appel final ---------- */
+  function initStickyBar() {
+    var bar = document.querySelector("[data-sticky-bar]"), hero = document.querySelector(".page-hero");
+    if (!bar || !hero || !("IntersectionObserver" in window)) return;
+    var end = document.querySelector(".cta-full") || document.querySelector("footer");
+    var heroOut = false, endIn = false;
+    function upd() { var show = heroOut && !endIn; bar.hidden = !show; document.body.classList.toggle("has-sticky", show); }
+    new IntersectionObserver(function (e) { heroOut = !e[0].isIntersecting; upd(); }).observe(hero);
+    if (end) new IntersectionObserver(function (e) { endIn = e[0].isIntersecting; upd(); }).observe(end);
+  }
+
   /* ---------- Newsletter (Netlify Forms, envoi en arrière-plan) ---------- */
   function initNewsletter() {
     document.querySelectorAll("form.nl-form").forEach(function (form) {
@@ -429,6 +440,7 @@
     initLightbox();
     initTracking();
     initNewsletter();
+    initStickyBar();
     initEvents();
     // Footer year
     var y = document.getElementById("footer-year");

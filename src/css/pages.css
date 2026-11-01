@@ -484,3 +484,84 @@
   .lb-stage .lb-figure img { max-height: calc(100svh - 190px); }
   .lb-stage .lb-nav { width: 48px; height: 48px; }
 }
+
+/* =====================================================================
+   Girls Trips v2 : page carnet de voyage
+   Fond beige sur toute la page, filets et numéros orange, photos décalées.
+   ===================================================================== */
+.page-girls { --gt-paper: #FBF3E8; --gt-rule: var(--sand); background: var(--gt-paper); }
+.page-girls .section-pad.bg-cream, .page-girls .section-pad:not(.gt-who):not(.cta-band):not(.gt-dates) { background: transparent; }
+
+/* En-tête : titre et accroche sur deux colonnes, puis trois photos décalées (aucun texte dessus) */
+.page-hero.gt-hero { display: block; background: transparent; padding: calc(var(--nav-h) + 24px) 0 0; overflow: visible; }
+.page-hero.gt-hero > .container { width: 100%; max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter); }
+.gt-hero h1 { max-width: 15ch; }
+.gt-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 32px !important; }
+.gt-strip figure { margin: 0; border-radius: var(--r); overflow: hidden; }
+.gt-strip img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gt-strip-2 { grid-column: 1 / -1; aspect-ratio: 4 / 3; order: -1; }
+.gt-strip-1 { aspect-ratio: 3 / 4; }
+.gt-strip-3 { aspect-ratio: 3 / 4; margin-top: 36px !important; }
+.gt-strip-1 img { object-position: 50% 35%; }
+@media (min-width: 900px) {
+  .page-hero.gt-hero > .container:first-child { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); grid-template-areas: "t p" "t b"; column-gap: clamp(40px, 6vw, 96px); align-items: end; }
+  .gt-hero > .container:first-child h1 { grid-area: t; }
+  .gt-hero > .container:first-child > p { grid-area: p; margin: 0; }
+  .gt-hero > .container:first-child .hero-btns { grid-area: b; }
+  .gt-strip { grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) minmax(0, 1fr); gap: clamp(16px, 2vw, 28px); align-items: start; margin-top: clamp(48px, 6vw, 80px) !important; }
+  .gt-strip-2 { grid-column: auto; order: 0; margin-top: 72px !important; }
+  .gt-strip-1 { margin-top: 0; }
+  .gt-strip-3 { margin-top: 140px !important; }
+}
+
+/* Fiche séjour : une ligne sobre entre deux filets orange */
+.gt-fiche { margin-top: clamp(40px, 6vw, 72px); }
+.gt-fiche .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 40px; border-block: 1px solid var(--gt-rule); padding-block: 22px; }
+.gt-fiche-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; margin: 0; flex: 1 1 520px; }
+.gt-fiche-list dt { font-family: var(--serif); font-style: italic; font-size: 1.05rem; color: var(--sand-ink); }
+.gt-fiche-list dd { margin: 2px 0 0; font-weight: 600; color: var(--ink); }
+.gt-fiche .btn { flex: 0 0 auto; }
+@media (min-width: 900px) { .gt-fiche-list { grid-template-columns: repeat(4, auto); justify-content: start; column-gap: clamp(28px, 4vw, 56px); } }
+@media (max-width: 560px) { .gt-fiche .btn { width: 100%; } }
+
+/* Décalages type carnet */
+@media (min-width: 900px) {
+  .gt-intro .split-media { margin-top: 72px; }
+  .gt-host .gt-host-photo { margin-top: -40px; }
+}
+
+/* Tarif : appel juste sous le prix */
+.gt-tarif-cta { display: grid; justify-items: center; gap: 8px; margin: 4px 0 clamp(28px, 4vw, 44px); }
+.gt-free { color: var(--ink-mute) !important; font-size: 0.9rem; margin: 0; }
+.page-girls .gt-tarif .tarif-panel { border-color: var(--gt-rule); }
+.page-girls .gt-tarif .tarif-panel .split > div + div { border-color: var(--gt-rule); }
+
+/* Filets et numéros orange */
+.page-girls .steps-line .step-num { color: var(--sand-ink); }
+.page-girls .steps-line::before, .page-girls .steps-line .step::before { background: var(--gt-rule); border-color: var(--gt-rule); }
+.page-girls .acc, .page-girls .acc-item { border-color: var(--gt-rule) !important; }
+.page-girls .gt-dates { background: #F4E2CC; }
+
+/* Expériences : photos en portrait, visages entiers */
+.page-girls .xp-tile img { aspect-ratio: 4 / 5; object-position: 50% 30%; }
+
+/* Contrastes */
+.page-girls .gt-who .text-link { color: var(--sand-soft); border-color: rgba(240, 201, 155, 0.5); }
+.page-girls .gt-brochure .btn-ghost { color: var(--sand-ink); border-color: rgba(154, 91, 46, 0.55); background: transparent; }
+.page-girls .gt-brochure .btn-ghost:hover { background: rgba(224, 163, 107, 0.15); }
+
+/* Appel final : voile teal neutre, bouton orange */
+.page-girls .cta-full .ph-overlay { background: linear-gradient(180deg, rgba(8, 60, 66, 0.25) 0%, rgba(8, 60, 66, 0.55) 45%, rgba(6, 40, 44, 0.9) 100%); }
+
+/* Barre collante mobile : prix et pré-inscription */
+.gt-sticky { position: fixed; left: 0; right: 0; bottom: 0; z-index: 150; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: #fff; border-top: 1px solid var(--gt-rule); box-shadow: 0 -8px 24px rgba(13, 31, 28, 0.08); }
+.gt-sticky-price { margin: 0; font-weight: 600; color: var(--ink); }
+.gt-sticky .btn { min-height: 44px; padding-inline: 1.2rem; }
+@media (min-width: 900px) { .gt-sticky { display: none !important; } }
+@media (max-width: 899px) { body.has-sticky .wa-fab { bottom: 84px; } body.has-sticky .site-footer, body.has-sticky footer { padding-bottom: 72px; } }
+.gt-tarif-cta { justify-items: start; }
+.gt-why .split.no-media { border-left: 2px solid var(--gt-rule); padding-left: clamp(20px, 3vw, 40px); }
+/* Bouton de l'en-tête aux couleurs de la sous-marque, sur une ligne */
+body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); border-color: var(--sand); }
+.nav-cta .btn { white-space: nowrap; }
+@media (max-width: 420px) { .nav-cta .btn { padding-inline: 0.9rem; font-size: 0.88rem; } }
