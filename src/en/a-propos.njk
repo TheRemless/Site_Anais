@@ -129,12 +129,4 @@ langAlt: "/a-propos/"
 
 {% block scripts %}{% raw %}
 <script>ZWALD.init({ page: "about" });</script>
-<script>
-  window.REQUIRED_CODE_ERROR_MESSAGE = 'Please choose a country code';
-  window.LOCALE = 'en';
-  window.EMAIL_INVALID_MESSAGE = window.SMS_INVALID_MESSAGE = "The information provided is not valid. Please check the field format and try again.";
-  window.REQUIRED_ERROR_MESSAGE = "Please don't leave this field empty.";
-  window.GENERIC_INVALID_MESSAGE = "The information provided is not valid. Please check the field format and try again.";
-  var AUTOHIDE = Boolean(0);
-</script>
 {% endraw %}{% endblock %}

@@ -29,7 +29,18 @@
     "footer.privacy": "Confidentialité",
     "footer.cookies": "Cookies",
     "footer.frOnly": " (FR)",
-    "map.tipFor": "Conseil pour"
+    "map.tipFor": "Conseil pour",
+    "reviews.onGoogle": "sur Google",
+    "reviews.count": "avis",
+    "newsletter.title": "Prépare ton voyage avec confiance",
+    "newsletter.intro": "Conseils, adresses locales et astuces de voyage directement dans ta boîte mail. Aucun spam, promis.",
+    "newsletter.firstName": "Ton prénom (facultatif)",
+    "newsletter.email": "Ton email",
+    "newsletter.submit": "Je m'inscris",
+    "newsletter.sending": "Envoi en cours…",
+    "newsletter.success": "Merci pour ton inscription ! À très vite dans ta boîte mail.",
+    "newsletter.error": "L'inscription n'a pas pu être enregistrée. Réessaie dans un instant.",
+    "newsletter.honeypot": "Ne pas remplir :"
   },
   "en": {
     "nav.home": "Home",
@@ -61,6 +72,17 @@
     "footer.privacy": "Privacy",
     "footer.cookies": "Cookies",
     "footer.frOnly": " (FR)",
-    "map.tipFor": "Tip for"
+    "map.tipFor": "Tip for",
+    "reviews.onGoogle": "on Google",
+    "reviews.count": "reviews",
+    "newsletter.title": "Plan your trip with confidence",
+    "newsletter.intro": "Tips, local addresses and travel advice straight to your inbox. No spam, promise.",
+    "newsletter.firstName": "Your first name (optional)",
+    "newsletter.email": "Your email",
+    "newsletter.submit": "Sign me up",
+    "newsletter.sending": "Sending…",
+    "newsletter.success": "Thanks for signing up! See you soon in your inbox.",
+    "newsletter.error": "Your sign-up could not be saved. Please try again in a moment.",
+    "newsletter.honeypot": "Do not fill in:"
   }
 }
