@@ -180,6 +180,20 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 @media (min-width: 900px) { .tile-photo { aspect-ratio: 4 / 5; } }
 
+/* ---------- Autres services (include other-services.njk, accueil et Services) ----------
+   Deux vignettes : le produit est montré dans un cadre d'appareil, comme le carnet sur Services. */
+.os-grid { display: grid; gap: 34px; }
+.os-stage { display: flex; align-items: flex-start; aspect-ratio: 16 / 10; padding: 0 0 5% 2%; }
+.os-tablet, .os-phone { height: 100%; background: #1C2526; box-shadow: var(--photo-shadow); border-radius: 22px; overflow: hidden; }
+.os-tablet { aspect-ratio: 3 / 4; padding: 2.2%; }
+.os-phone { aspect-ratio: 9 / 19; padding: 1.6%; }
+.os-tablet img, .os-phone img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.os-tablet img { border-radius: 10px; }
+.os-phone img { border-radius: 16px; }
+.os-tile h3 { margin-top: 20px; }
+.os-price { margin-top: 10px; font-size: 0.95rem; font-weight: 600; color: var(--teal-deep); }
+@media (min-width: 700px) { .os-grid { grid-template-columns: 1fr 1fr; gap: 40px; } }
+
 /* ---------- Bande photo défilante ---------- */
 .marquee { background: var(--surface); }
 .marquee .marquee-track { gap: 14px; padding: 0 14px; animation-duration: 60s; }

@@ -70,13 +70,9 @@
   .sv-steps .section-head { position: sticky; top: 110px; }
 }
 
-/* Autres services : deux tuiles photo */
-.sv-other { padding-top: 0; }
-.sv-other > .container { padding-top: clamp(40px, 6vw, 72px); border-top: 1px solid var(--line-soft); }
-.sv-tiles { display: grid; gap: 34px; }
-.sv-tiles .tile p { margin-bottom: 10px; }
-@media (min-width: 700px) { .sv-tiles { grid-template-columns: 1fr 1fr; gap: 40px; } }
-@media (min-width: 900px) { .sv-tiles .tile-photo { aspect-ratio: 16 / 11; } }
+/* Autres services (include partagé) : après le déroulé, même filet et même respiration que les autres sections */
+.sv-steps + .other-services { padding-top: 0; }
+.sv-steps + .other-services > .container { padding-top: clamp(40px, 6vw, 72px); border-top: 1px solid var(--line-soft); }
 
 /* =====================================================================
    Contact : le formulaire d'abord, une personne réelle à côté
@@ -166,7 +162,6 @@
   .sv-offer .split-text { order: 1; }
   .sv-offer .sv-offer-photo { order: 2; aspect-ratio: auto; height: 100%; }
 }
-.sv-tiles .tile:first-child .tile-photo img { object-position: 50% 72%; }
 
 /* Comparatif : deux colonnes face à face, « Avec moi » sur fond lagune */
 .cmp-two { display: grid; gap: 14px; }

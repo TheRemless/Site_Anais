@@ -1,0 +1,28 @@
+{#- « Mes autres services » : même composant sur l'accueil et sur Services (FR et EN).
+    Ordre fixe : cartes cadeaux, puis guide Koh Lanta en PDF. Styles : system.css, bloc « Autres services ». -#}
+{%- set en = (lang == "en") -%}
+<section class="section-pad other-services">
+  <div class="container">
+    <div class="section-head"><h2>{{ "My other services" if en else "Mes autres services" }}</h2></div>
+    <div class="os-grid">
+      <div class="tile os-tile" data-reveal>
+        <div class="os-stage">
+          {# VISUEL PROVISOIRE : demander à Jérémy le visuel de la carte cadeau (la photo est celle du JSON-LD de /cartes-cadeaux/) #}
+          <div class="os-phone"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 14vw, 36vw" src="/images/IMG_6424.jpg" alt=""></div>
+        </div>
+        <h3><a href="{{ '/en/cartes-cadeaux/' if en else '/cartes-cadeaux/' }}">{{ "Travel gift cards" if en else "Cartes cadeaux voyage" }}</a></h3>
+        <p>{{ "Birthday, wedding, Christmas… give the gift of a complete travel experience with a 100% customizable card." if en else "Anniversaire, mariage, Noël… Offre un accompagnement voyage complet avec une carte 100% personnalisable." }}</p>
+        <p class="os-price">{{ "Any amount" if en else "Montant au choix" }}</p>
+      </div>
+      <div class="tile os-tile" data-reveal data-reveal-delay="1">
+        <div class="os-stage">
+          {# VISUEL PROVISOIRE : demander à Jérémy la couverture du guide Koh Lanta (la photo est celle du JSON-LD de /guides/) #}
+          <div class="os-tablet"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 20vw, 50vw" src="/images/IMG_2016.jpg" alt=""></div>
+        </div>
+        <h3><a href="{{ '/en/guides/' if en else '/guides/' }}">{{ "Koh Lanta guide, PDF" if en else "Guide Koh Lanta en PDF" }}</a></h3>
+        <p>{{ "Where to go, what to do, what to try and which addresses to note down. A local guide in your pocket, ready to use." if en else "Où aller, quoi faire, quoi goûter et quelles adresses noter. Un guide local dans ta poche, prêt à l'emploi." }}</p>
+        <p class="os-price">{{ "Pay what you want" if en else "Prix libre" }}</p>
+      </div>
+    </div>
+  </div>
+</section>

@@ -276,13 +276,6 @@
 
 .hv-head h2, .hv-text h2, .hv-aud-panel h2, .hv-girls .split-text h2 { margin-top: 0; }
 
-/* ---------- Autres services : grille des tuiles ---------- */
-.hv-other-grid { gap: 34px; }
-.tile .hv-small { margin-top: 8px; font-size: 0.95rem; font-weight: 600; color: var(--teal-deep); }
-@media (min-width: 900px) {
-  .hv-other-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr); gap: 40px; }
-}
-
 /* =====================================================================
    Retours du 31.10 (2) : accueil plus court et plus varié
    ===================================================================== */
@@ -418,10 +411,3 @@
 .girls-sand .split-text .btn-teal:hover { --bg: #D4924F; box-shadow: none; }
 @media (max-width: 899px) { .girls-sand .split-text { background: #F7EBDD; } }
 
-/* Autres services : titre au-dessus, deux tuiles */
-.hv-other-v2.hv-other-grid { display: grid; grid-template-columns: 1fr; }
-@media (min-width: 700px) {
-  .hv-other-v2.hv-other-grid { grid-template-columns: 1fr 1fr; gap: 40px; }
-  .hv-other-v2 .hv-head { grid-column: 1 / -1; }
-}
-@media (min-width: 900px) { .hv-other-v2 .tile-photo { aspect-ratio: 16 / 11; } }
