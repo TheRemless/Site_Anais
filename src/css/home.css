@@ -450,12 +450,13 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
 
 
 /* Téléphone (retours du 2.11) : photos de section plus basses pour raccourcir l'accueil.
-   Le portrait d'Anaïs garde son arche, en plus petit ; « Pour qui » et Girls Trips en 4/3, « Pourquoi » en 2/1. */
+   Le portrait d'Anaïs garde son arche, en plus petit ; « Pour qui » et Girls Trips en 4/3, « Pourquoi » en 2/1 sous la liste. */
 @media (max-width: 899px) {
   .hv-arch { width: 56%; }
   .hv-aud-photo { aspect-ratio: 4 / 3; }
   .hv-aud-photo img { object-position: 50% 45%; }
-  .hv-why-v2 .hv-why-photo { aspect-ratio: 2 / 1; }
+  .hv-why-v2 .hv-why-photo { aspect-ratio: 2 / 1; order: 4; } /* après les quatre arguments : le titre enchaîne directement sur la liste */
+  .hv-why-v2 .hv-why-photo img { object-position: 50% 68%; } /* Anaïs et l'éléphant dans le bandeau */
   .hv-girls .girls-mosaic-inner { display: block; aspect-ratio: 4 / 3; }
   .hv-girls .gm-main { object-position: 50% 46%; }
 }
