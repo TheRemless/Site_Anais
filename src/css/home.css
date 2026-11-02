@@ -438,3 +438,14 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
 .girls-sand .split-text .btn-teal:hover { --bg: #D4924F; box-shadow: none; }
 @media (max-width: 899px) { .girls-sand .split-text { background: #F7EBDD; } }
 
+
+/* Téléphone (retours du 2.11) : photos de section plus basses pour raccourcir l'accueil.
+   Le portrait d'Anaïs garde son arche, en plus petit ; les trois autres passent en 4/3 ou plus bas. */
+@media (max-width: 899px) {
+  .hv-arch { width: 62%; }
+  .hv-aud-photo { aspect-ratio: 4 / 3; }
+  .hv-aud-photo img { object-position: 50% 45%; }
+  .hv-why-v2 .hv-why-photo { aspect-ratio: 16 / 9; }
+  .hv-girls .girls-mosaic-inner { display: block; aspect-ratio: 4 / 3; }
+  .hv-girls .gm-main { object-position: 50% 46%; }
+}
