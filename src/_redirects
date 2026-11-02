@@ -1,3 +1,11 @@
+# Secret Travel & Tour et VIP Taxi Lanta ont leur propre site (01.11.2026) : redirections permanentes.
+# Le QR code de l'affiche pointe sur /secret/ : ces règles doivent rester en place.
+/secret                 https://secrettravelandtour.com/              301!
+/secret/                https://secrettravelandtour.com/              301!
+/secret/*               https://secrettravelandtour.com/tours/:splat  301!
+/taxi                   https://secrettravelandtour.com/taxi/         301!
+/taxi/*                 https://secrettravelandtour.com/taxi/:splat   301!
+
 # Legacy flat ".html" URLs -> clean directory-style URLs (site migrated from
 # flat pages to Eleventy directory permalinks). 404.html is intentionally
 # excluded — it must stay flat for Netlify's default error-page convention.

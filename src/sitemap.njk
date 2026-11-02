@@ -28,21 +28,4 @@ eleventyExcludeFromCollections: true
   </url>
 {%- endif %}
 {%- endfor %}
-{#- /secret/ et /taxi/ sont hors collections (eleventyExcludeFromCollections) : listés ici. #}
-  <url>
-    <loc>https://zwaldtravelplanner.com/secret/</loc>
-  </url>
-  <url>
-    <loc>https://zwaldtravelplanner.com/taxi/</loc>
-  </url>
-{%- for p in secretPages.pages %}
-  <url>
-    <loc>{{ p.url }}</loc>
-  </url>
-{%- endfor %}
-{%- for r in taxiRoutesView.routes %}
-  <url>
-    <loc>{{ r.url }}</loc>
-  </url>
-{%- endfor %}
 </urlset>

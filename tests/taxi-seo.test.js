@@ -49,13 +49,6 @@ test("/taxi/ : le service couvre tout le sud de la Thaïlande, Koh Lanta est la 
   assert.match(where.a, /Phuket/);
 });
 
-test("/taxi/ : le sitemap la liste une seule fois", () => {
-  // Le sitemap est généré par Eleventy (src/sitemap.njk) : lancer `npm run build` avant les tests.
-  const sitemap = read("_site/sitemap.xml");
-  const hits = sitemap.match(/<loc>https:\/\/zwaldtravelplanner\.com\/taxi\/<\/loc>/g) || [];
-  assert.equal(hits.length, 1);
-});
-
 test("liens internes : /secret/ pointe vers /taxi/ et /taxi/ vers /secret/", () => {
   assert.match(read("src/secret.njk"), /href="\/taxi\/"/);
   assert.equal(taxi.tours.link.href, "/secret/");
