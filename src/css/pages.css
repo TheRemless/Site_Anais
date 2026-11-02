@@ -788,7 +788,6 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 .ab-step-photo.ab-photo-portrait img { object-position: 50% 40%; }
 @media (min-width: 900px) {
   .ab-step { grid-template-columns: minmax(0, 1fr) clamp(220px, 22vw, 300px); column-gap: clamp(32px, 4vw, 56px); }
-  .ab-step.no-photo .ab-step-body { grid-column: 1 / -1; }
   .ab-step-body { max-width: 64ch; }
 }
 /* Avis : fond clair (plus trois aplats verts d'affilée), citation et auteur sur deux colonnes */
