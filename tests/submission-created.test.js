@@ -75,13 +75,68 @@ test("handler : une demande du formulaire taxi n'envoie aucun e-mail, même avec
   });
 });
 
+// Remplace fetch le temps d'un test : enregistre les appels et répond comme Brevo.
+async function withFakeFetch(fn, response = { ok: true, status: 200 }) {
+  const real = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), opts });
+    if (response instanceof Error) throw response;
+    return response;
+  };
+  try { await fn(calls); } finally { globalThis.fetch = real; }
+}
+
 test("handler : une inscription newsletter n'envoie aucun e-mail, même avec une adresse valide", async () => {
-  await withFakeSmtp(async (calls) => {
-    const res = await handler(eventFor("newsletter-fr", { prenom: "Claire", email: "claire@example.com", lang: "fr" }));
-    assert.equal(res.statusCode, 200);
-    assert.equal(calls.created, 0);
-    assert.equal(calls.sent, 0);
+  await withFakeFetch(async () => {
+    await withFakeSmtp(async (calls) => {
+      const res = await handler(eventFor("newsletter-fr", { prenom: "Claire", email: "claire@example.com", lang: "fr" }));
+      assert.equal(res.statusCode, 200);
+      assert.equal(calls.created, 0);
+      assert.equal(calls.sent, 0);
+    });
   });
+});
+
+test("handler : une inscription newsletter est transmise au formulaire Brevo, même sans SMTP", async () => {
+  const saved = { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS };
+  delete process.env.SMTP_USER; delete process.env.SMTP_PASS;
+  try {
+    await withFakeFetch(async (calls) => {
+      const res = await handler(eventFor("newsletter-en", { prenom: " Claire ", email: "claire@example.com", lang: "en" }));
+      assert.equal(res.statusCode, 200);
+      assert.equal(calls.length, 1);
+      assert.match(calls[0].url, /^https:\/\/[a-z0-9]+\.sibforms\.com\/serve\//);
+      assert.equal(calls[0].opts.method, "POST");
+      const body = new URLSearchParams(calls[0].opts.body);
+      assert.equal(body.get("EMAIL"), "claire@example.com");
+      assert.equal(body.get("FIRSTNAME"), "Claire");
+      assert.equal(body.get("locale"), "en");
+      assert.equal(body.get("email_address_check"), "");
+    });
+  } finally {
+    if (saved.user !== undefined) process.env.SMTP_USER = saved.user;
+    if (saved.pass !== undefined) process.env.SMTP_PASS = saved.pass;
+  }
+});
+
+test("handler : newsletter sans e-mail valide ou avec le champ anti-robot rempli, rien n'est transmis", async () => {
+  await withFakeFetch(async (calls) => {
+    await handler(eventFor("newsletter-fr", { email: "pas-un-email" }));
+    await handler(eventFor("newsletter-fr", { email: "robot@example.com", "bot-field": "x" }));
+    assert.equal(calls.length, 0);
+  });
+});
+
+test("handler : une erreur Brevo ne fait jamais échouer la soumission", async () => {
+  await withFakeFetch(async () => {
+    const res = await handler(eventFor("newsletter-fr", { email: "claire@example.com" }));
+    assert.equal(res.statusCode, 200);
+  }, new Error("réseau coupé"));
+  await withFakeFetch(async () => {
+    const res = await handler(eventFor("newsletter-fr", { email: "claire@example.com" }));
+    assert.equal(res.statusCode, 200);
+  }, { ok: false, status: 500 });
 });
 
 test("handler : le formulaire contact envoie toujours l'auto-réponse", async () => {

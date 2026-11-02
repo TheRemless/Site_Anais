@@ -1,9 +1,15 @@
-// Auto-réponse envoyée au prospect après chaque soumission du formulaire de contact.
-// Déclenchée automatiquement par Netlify (fonction nommée "submission-created").
-// L'échec d'envoi ne doit jamais impacter la soumission : on retourne toujours 200.
+// Déclenchée automatiquement par Netlify après chaque soumission (fonction nommée "submission-created").
+// Formulaire de contact : auto-réponse envoyée au prospect.
+// Newsletter (newsletter-fr et newsletter-en) : l'inscription est transmise au formulaire Brevo d'Anaïs,
+// le même qu'utilisait l'ancien widget, depuis le serveur (aucun cookie Brevo chez le visiteur).
+// Un échec ne doit jamais impacter la soumission : on retourne toujours 200.
 const nodemailer = require("nodemailer");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Formulaire d'inscription Brevo (liste newsletter d'Anaïs). Adresse publique, c'était l'action de l'ancien widget.
+const BREVO_FORM_URL = process.env.BREVO_FORM_URL ||
+  "https://771f2f29.sibforms.com/serve/MUIFAH8sqsoFIHIP47ui9d8SyFkd3IQMB4Tdrqk0fK_Ps1YGTHeFdTPDiOPhM1wtRrKYSNT1e4fEf9fCcKa2HZ_v1IDf_mtAN0EhWfsIb1OO9WjCearQPn5wIwkNcEQC1vpJk9UulT9rzADHq9nMfUaAtOjHCADLJNPNgArdS1HFySKH-v1WoxVNajNZGIY6l_--eekrhK_ewIRg";
 
 function firstName(name) {
   return (name || "").trim().split(/\s+/)[0] || "";
@@ -104,21 +110,72 @@ function isContactSubmission(payload) {
 }
 module.exports.isContactSubmission = isContactSubmission;
 
+function isNewsletterSubmission(payload) {
+  return Boolean(payload) && (payload.form_name === "newsletter-fr" || payload.form_name === "newsletter-en");
+}
+module.exports.isNewsletterSubmission = isNewsletterSubmission;
+
+// Champs attendus par le formulaire Brevo (mêmes noms que l'ancien widget).
+function brevoFields(data, formName) {
+  const lang = formName === "newsletter-en" || data.lang === "en" ? "en" : "fr";
+  return new URLSearchParams({
+    EMAIL: (data.email || "").trim(),
+    FIRSTNAME: (data.prenom || "").trim().slice(0, 200),
+    email_address_check: "",
+    locale: lang,
+  });
+}
+module.exports.brevoFields = brevoFields;
+
+async function forwardToBrevo(payload) {
+  const data = payload.data || {};
+  if (!EMAIL_RE.test((data.email || "").trim())) {
+    console.log("Newsletter : e-mail absent ou invalide, rien transmis à Brevo.");
+    return false;
+  }
+  if (data["bot-field"]) {
+    console.log("Newsletter : champ anti-robot rempli, rien transmis à Brevo.");
+    return false;
+  }
+  try {
+    const res = await fetch(BREVO_FORM_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: brevoFields(data, payload.form_name).toString(),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) {
+      console.error("Newsletter : Brevo a répondu HTTP " + res.status + ".");
+      return false;
+    }
+    console.log("Newsletter : inscription (" + payload.form_name + ") transmise à Brevo.");
+    return true;
+  } catch (e) {
+    console.error("Newsletter : échec de l'envoi à Brevo :", e.message);
+    return false;
+  }
+}
+module.exports.forwardToBrevo = forwardToBrevo;
+
 exports.handler = async function (event) {
   const ok = { statusCode: 200, body: "" };
-
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  if (!user || !pass) {
-    console.log("Auto-réponse ignorée : SMTP_USER/SMTP_PASS non configurés.");
-    return ok;
-  }
 
   let payload;
   try {
     payload = JSON.parse(event.body).payload;
   } catch (e) {
-    console.log("Auto-réponse ignorée : payload illisible.", e.message);
+    console.log("Soumission ignorée : payload illisible.", e.message);
+    return ok;
+  }
+  if (isNewsletterSubmission(payload)) {
+    await forwardToBrevo(payload);
+    return ok;
+  }
+
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!user || !pass) {
+    console.log("Auto-réponse ignorée : SMTP_USER/SMTP_PASS non configurés.");
     return ok;
   }
   if (!isContactSubmission(payload)) {
