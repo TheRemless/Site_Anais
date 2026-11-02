@@ -622,7 +622,7 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 
 /* =====================================================================
    Galerie v2 : quatre chapitres (Nord, Bangkok, Andaman, Golfe), formats mêlés,
-   aucune légende. Mobile : une colonne pleine largeur.
+   aucune légende. Mobile : deux colonnes (voir Galerie v4).
    ===================================================================== */
 .gl-chapter + .gl-chapter { margin-top: clamp(56px, 8vw, 112px); }
 .gl-chapter h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(2rem, 3.6vw, 3rem); line-height: 1.05; margin: 0 0 clamp(18px, 2.5vw, 28px); }
@@ -784,6 +784,8 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 /* Frise : texte et photo paysage compacte côte à côte, sans grand blanc */
 .ab-step-photo { aspect-ratio: 4 / 3; max-width: 420px; }
 .ab-step-photo img { object-position: 50% 60%; }
+.ab-step-photo.ab-photo-portrait { aspect-ratio: 1 / 1; max-width: 360px; }
+.ab-step-photo.ab-photo-portrait img { object-position: 50% 40%; }
 @media (min-width: 900px) {
   .ab-step { grid-template-columns: minmax(0, 1fr) clamp(220px, 22vw, 300px); column-gap: clamp(32px, 4vw, 56px); }
   .ab-step.no-photo .ab-step-body { grid-column: 1 / -1; }
@@ -810,6 +812,16 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 /* Bangkok : une grande photo (4 colonnes, 4 rangées) et deux petites empilées */
 .gl-big { aspect-ratio: 4 / 5; }
 @media (min-width: 700px) { .gl-grid .gl-big { grid-column: span 4; grid-row: span 4; } }
+
+/* ---------- Galerie v4 (photos d'Anaïs du 02.11.2026) ----------
+   Téléphone : deux colonnes, les portraits (.gl-t) côte à côte, les grands formats et .gl-m2 sur toute la largeur.
+   .gl-m2 sert à éviter un trou quand un chapitre compte un nombre impair de petits portraits. */
+@media (max-width: 699px) {
+  .gl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; grid-auto-flow: dense; }
+  .gl-grid .gl-big, .gl-grid .gl-w, .gl-grid .gl-h, .gl-grid .gl-f, .gl-grid .gl-m2 { grid-column: span 2; }
+  .gl-grid .gl-w, .gl-grid .gl-h, .gl-grid .gl-f, .gl-grid .gl-m2 { aspect-ratio: 4 / 3; }
+}
+.gl-grid .gl-low img { object-position: 50% 85%; }
 /* Visionneuse : compteur plus lisible */
 /* (réglage limité à la galerie : la visionneuse est partagée avec l'accueil) */
 body:has(.gl-main) .lb-count { font-size: 1rem; font-weight: 600; color: #fff; letter-spacing: 0.06em; }

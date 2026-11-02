@@ -1,10 +1,10 @@
 {#- « Mes autres services » : même composant sur l'accueil et sur Services (FR et EN), textes dans i18n.json (clés other.*).
     Ordre fixe : cartes cadeaux, puis guide Koh Lanta en PDF. Styles : system.css, bloc « Autres services ».
     otherServicesFlush (posé par {% set %} avant l'include, Services) : la section se colle au déroulé qui précède (pages.css).
-    Photos provisoires, une seule ligne à changer quand Jérémy enverra le visuel de la carte cadeau et la couverture du guide.
+    Guide : couverture du vrai PDF (02.11.2026). Carte cadeau : photo provisoire, à remplacer par le bon cadeau exporté sans filigrane.
     Chacune doit rester absente du reste de l'accueil et de Services (une photo une seule fois par page). -#}
 {%- set osGiftImg = "/images/IMG_6793.jpg" -%}
-{%- set osGuideImg = "/images/girls/longtail-plage.jpeg" -%}
+{%- set osGuideImg = "/images/guides/guide-koh-lanta-vignette.jpg" -%}
 {%- set en = (lang == "en") -%}
 <section class="section-pad other-services{% if otherServicesFlush %} other-services-flush{% endif %}">
   <div class="container">
