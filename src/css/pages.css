@@ -64,13 +64,17 @@
   .sv-conseil .offer-panel .split-media.arch { width: 86%; }
 }
 
-/* Étapes : titre à gauche, frise à droite */
+/* Étapes : titre au-dessus, frise sur deux colonnes en bureau (1 à 4, puis 5 à 8), sans colonne vide */
 .sv-steps { padding-top: 0; }
-.sv-steps-grid { display: grid; gap: 28px; padding-top: clamp(40px, 6vw, 72px); border-top: 1px solid var(--line-soft); }
+.sv-steps-grid { display: grid; gap: 28px; padding-top: var(--section-y); border-top: 1px solid var(--line-soft); }
 .sv-steps .section-head { margin-bottom: 0; }
 @media (min-width: 900px) {
-  .sv-steps-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: clamp(48px, 7vw, 120px); align-items: start; }
-  .sv-steps .section-head { position: sticky; top: 110px; }
+  .sv-steps .timeline { display: grid; max-width: none; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(4, auto); grid-auto-flow: column; column-gap: clamp(48px, 6vw, 96px); }
+  .sv-steps .timeline::before { display: none; }
+  /* Filet entre deux pastilles d'une même colonne (la frise continue ne traverse plus les deux colonnes) */
+  .sv-steps .tl-item::before { content: ""; position: absolute; left: 15px; top: 31px; bottom: 0; width: 1px; background: var(--line); }
+  .sv-steps .tl-item:nth-child(4), .sv-steps .tl-item:last-child { padding-bottom: 0; }
+  .sv-steps .tl-item:nth-child(4)::before, .sv-steps .tl-item:last-child::before { display: none; }
 }
 
 /* Autres services (include partagé) sur Services : classe other-services-flush posée par le gabarit
