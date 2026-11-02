@@ -516,24 +516,36 @@ html, body { overflow-x: clip; }
   .sig-route-end { left: auto; right: 0; top: 4px; bottom: auto; width: 30px; height: 30px; transform: rotate(-8deg); }
 }
 
+/* Signature sur les autres pages (retour du 02.11.2026, une ou deux occurrences par page) :
+   Girls Trips  titre « ensemble » + déroulé .sig-route en orange (variables ci-dessous)
+   À propos     titre « au sud de la Thaïlande » + frise en pointillés (.sig-timeline)
+   Galerie, Blog, FAQ, Contact  fin du h1 en manuscrit (.sig-title-h1) ; Contact : cartes séparées par des pointillés (.sig-side)
+   Articles et Blog  encart .article-cta : trajet en pointillés qui finit sur l'avion (.article-cta-way) */
+.page-girls { --sig-ink: var(--sand-ink); --sig-disc: var(--sand-ink); }
+.sig-title-h1 .sig-script { font-size: 1.12em; line-height: 1; margin: 0.1em 0 0 0.9em; }
+.ab-timeline.sig-timeline::before { left: 7px; width: var(--sig-dot); background: var(--sig-dots-y); }
+.sig-timeline .ab-step::before { background: var(--sig-disc); }
+.ct-main .sig-side .contact-card, .ct-main .sig-side .contact-card[style] { border-top: 0 !important; background: var(--sig-dots-x) !important; }
+.article-cta-way { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; color: var(--sand-soft); --sig-ink: var(--sand-soft); }
+.article-cta-way .sig-dots { flex: 1; }
+.article-cta-way .sig-plane { width: 22px; height: 22px; flex: none; }
+
 /* ---------- Fins de page : trois variantes du CTA final ----------
    .cta-band            (existant) photo nette + panneau sable, empilés sur téléphone
-   .cta-band.cta-lagoon aplat lagune sans photo, titre à gauche, texte et boutons à droite (accueil)
+   .cta-band.cta-sand   aplat sable sans photo, titre à gauche, texte et boutons à droite (accueil). Pas de lagune :
+                        c'est la couleur du pied de page, la fin de page ne se voyait plus (retour du 02.11.2026)
    .cta-trail           fond blanc, le trajet en pointillés arrive sur un repère à côté du titre (Services)
    .cta-band.cta-full   photo plein cadre et voile (plus utilisée sur l'accueil ni Services, reste disponible)
    Même contenu dans les trois : h2, p, .btns. Sur la page, garder une seule fin de page et au plus deux occurrences de signature. */
-.cta-band.cta-lagoon { display: block; min-height: 0; background: var(--lagoon); padding: var(--section-y) 0; }
-.cta-band.cta-lagoon .container { padding: 0 var(--gutter); max-width: var(--container); margin: 0 auto; }
-.cta-lagoon h2, .cta-lagoon p { color: #fff; }
-.cta-lagoon p { color: rgba(255, 255, 255, 0.9); }
-.cta-lagoon .btn-white { --bg: #fff; --fg: var(--teal-deep); border-color: #fff; }
-.cta-lagoon .btn-ghost.on-dark { color: #fff; border-color: rgba(255, 255, 255, 0.6); }
-.cta-lagoon .btn-ghost.on-dark:hover { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
-.cta-lagoon .btn:focus-visible, .cta-lagoon a:focus-visible { outline-color: #fff; }
-.cta-band.cta-lagoon .btns { justify-content: stretch; } /* téléphone : boutons pleine largeur (la grille de .cta-band les laissait à leur largeur) */
+.cta-band.cta-sand { display: block; min-height: 0; background: var(--sand-tint); padding: var(--section-y) 0; border-top: 1px solid rgba(154, 91, 46, 0.14); }
+.cta-band.cta-sand .container { padding: 0 var(--gutter); max-width: var(--container); margin: 0 auto; }
+.cta-sand h2 { color: var(--ink); }
+.cta-sand h2 em { color: var(--sand-ink); }
+.cta-sand p { color: var(--ink-soft); }
+.cta-band.cta-sand .btns { justify-content: stretch; } /* téléphone : boutons pleine largeur (la grille de .cta-band les laissait à leur largeur) */
 @media (min-width: 900px) {
-  .cta-lagoon .container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(40px, 6vw, 96px); align-items: center; }
-  .cta-lagoon h2 { margin: 0; }
+  .cta-sand .container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(40px, 6vw, 96px); align-items: center; }
+  .cta-sand h2 { margin: 0; }
 }
 
 .cta-trail { padding: var(--section-y) 0; background: var(--surface); border-top: 1px solid var(--line-soft); overflow: hidden; }

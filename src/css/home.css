@@ -166,6 +166,12 @@
 .hv-why .hv-cols > div:last-child { border-bottom: 1px solid var(--line-soft); }
 .hv-why .hv-cols h3 { font-size: 1.45rem; margin-bottom: 6px; }
 .hv-why .hv-cols p { color: var(--ink-mute); font-size: 1rem; }
+/* Téléphone : pas d'accordéon, chaque titre suivi d'une seule ligne (.hv-why-short). Le texte complet (.hv-why-long) dès 900 px. */
+.hv-why .hv-cols .hv-why-long { display: none; }
+@media (min-width: 900px) {
+  .hv-why .hv-cols .hv-why-short { display: none; }
+  .hv-why .hv-cols .hv-why-long { display: block; }
+}
 
 @media (min-width: 900px) {
   .hv-why-grid {
