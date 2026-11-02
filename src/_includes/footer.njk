@@ -32,7 +32,7 @@
       </div>
       <div class="footer-bottom">
         <span>© <span id="footer-year">2026</span> Zwald Travel Planner — {{ "footer.rights" | t(lang) }}</span>
-        <span class="footer-legal"><a href="/mentions-legales/">{{ "footer.legalNotice" | t(lang) }}{% if lang == "en" %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a> · <a href="/cgv/">{{ "footer.cgv" | t(lang) }}{% if lang == "en" %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a> · <a href="/politique-confidentialite/">{{ "footer.privacy" | t(lang) }}{% if lang == "en" %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a> · <a href="#" onclick="if(window.ZW_openConsent){ZW_openConsent();}return false;">{{ "footer.cookies" | t(lang) }}</a></span>
+        <span class="footer-legal"><a href="/mentions-legales/">{{ "footer.legalNotice" | t(lang) }}{% if lang == "en" %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a> · <a href="{% if lang == "en" %}/en/cgv/{% else %}/cgv/{% endif %}">{{ "footer.cgv" | t(lang) }}</a> · <a href="/politique-confidentialite/">{{ "footer.privacy" | t(lang) }}{% if lang == "en" %}{{ "footer.frOnly" | t(lang) }}{% endif %}</a> · <a href="#" onclick="if(window.ZW_openConsent){ZW_openConsent();}return false;">{{ "footer.cookies" | t(lang) }}</a></span>
       </div>
     </div>
   </footer>

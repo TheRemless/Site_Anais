@@ -1,6 +1,6 @@
 /* =========================================================
    ZWALD TRAVEL PLANNER — legal pages table of contents
-   Auto-builds a sticky "Sommaire" from the <h2> sections and
+   Auto-builds a sticky "Sommaire" ("Contents" on English pages) from the <h2> sections and
    highlights the current section while scrolling. No per-page list to maintain.
    ========================================================= */
 (function () {
@@ -20,13 +20,14 @@
     return s ? "sec-" + s.slice(0, 40) : "sec-" + (i + 1);
   }
 
+  var label = /^en\b/i.test(document.documentElement.lang || "") ? "Contents" : "Sommaire";
   var nav = document.createElement("nav");
   nav.className = "legal-toc-inner";
-  nav.setAttribute("aria-label", "Sommaire");
+  nav.setAttribute("aria-label", label);
 
   var title = document.createElement("p");
   title.className = "legal-toc-title";
-  title.textContent = "Sommaire";
+  title.textContent = label;
   nav.appendChild(title);
 
   var ul = document.createElement("ul");
