@@ -1,24 +1,54 @@
 /* =========================================================
-   ZWALD — Cookie consent + Google Consent Mode v2
-   GA (analytics_storage) stays denied until the visitor accepts.
+   ZWALD — Cookie consent + Google Consent Mode v2, mode de base
+   gtag.js n'est chargé qu'après « Accepter » : avant le choix ou après un refus, rien ne part vers Google.
+   window.ZW_analyticsOn dit à site.js s'il peut envoyer ses événements. Un refus efface les cookies _ga.
+   La publicité reste toujours refusée.
    Choice stored in localStorage("zw-consent") = "granted" | "denied".
    ========================================================= */
 (function () {
   "use strict";
   var KEY = "zw-consent";
+  var GA_ID = (document.currentScript && document.currentScript.getAttribute("data-ga-id")) || "";
+  var gaLoaded = false;
   function gtagSafe() {
     window.dataLayer = window.dataLayer || [];
     if (typeof window.gtag !== "function") { window.gtag = function () { window.dataLayer.push(arguments); }; }
     return window.gtag;
   }
+  var DENIED = { analytics_storage: "denied", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" };
+  var GRANTED = { analytics_storage: "granted", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" };
+  function loadGA() {
+    if (gaLoaded || !GA_ID) return;
+    gaLoaded = true;
+    var g = gtagSafe();
+    g("consent", "default", GRANTED);
+    g("js", new Date());
+    g("config", GA_ID);
+    var s = document.createElement("script");
+    s.async = true;
+    s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
+    document.head.appendChild(s);
+  }
+  // Retrait du consentement : on efface _ga et _ga_<id> sur le domaine et ses parents (GA les pose sur le domaine principal).
+  function clearGaCookies() {
+    var names = document.cookie.split(";").map(function (c) { return c.split("=")[0].trim(); }).filter(function (n) { return /^_ga(_|$)/.test(n); });
+    if (!names.length) return;
+    var parts = location.hostname.split("."), domains = [""];
+    for (var i = 0; i < parts.length - 1; i++) domains.push("; domain=." + parts.slice(i).join("."));
+    names.forEach(function (n) {
+      domains.forEach(function (d) { document.cookie = n + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/" + d; });
+    });
+  }
   function apply(state) {
     var granted = state === "granted";
-    gtagSafe()("consent", "update", {
-      analytics_storage: granted ? "granted" : "denied",
-      ad_storage: "denied",
-      ad_user_data: "denied",
-      ad_personalization: "denied"
-    });
+    window.ZW_analyticsOn = granted;
+    if (granted) {
+      if (gaLoaded) gtagSafe()("consent", "update", GRANTED); // nouvelle acceptation après un refus sur la même page
+      else loadGA();
+    } else {
+      if (gaLoaded) gtagSafe()("consent", "update", DENIED);
+      clearGaCookies();
+    }
     // Let other scripts (e.g. the newsletter widget) react to the visitor's choice
     // instead of loading their own third-party cookies unconditionally.
     window.dispatchEvent(new CustomEvent("zw-consent", { detail: { granted: granted } }));
@@ -103,7 +133,7 @@
     try { saved = localStorage.getItem(KEY); } catch (e) {}
     if (saved === "granted") { apply("granted"); }
     else if (saved === "denied") { apply("denied"); }
-    else { show(); } // no choice yet → ask (GA already defaulted to denied)
+    else { show(); } // pas encore de choix : on demande, Analytics n'est pas chargé
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
