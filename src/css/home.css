@@ -366,6 +366,7 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
 /* Pourquoi, téléphone : les quatre arguments repliés sous leur titre (.fold, data-accordion-mobile) */
 @media (max-width: 899px) {
   .hv-why .hv-cols > .fold { padding: 0; }
+  .hv-why-v2 .hv-cols { column-gap: 32px; } /* tablette : deux colonnes (components.css), séparées */
   .hv-why .hv-cols h3.fold-head { margin-bottom: 0; }
   .hv-why .hv-cols .fold-btn { min-height: 52px; }
   .hv-why .hv-cols .fold-body { padding-bottom: 16px; }
