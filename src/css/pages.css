@@ -765,3 +765,37 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 .gt-why-text p + p { margin-top: 12px; }
 .page-girls .cta-full .btns { display: grid; gap: 8px; justify-items: start; }
 .page-girls .cta-full .btns .btn { width: auto; }
+
+/* ---------- À propos v3 ---------- */
+/* En-tête en trois colonnes : titre en haut à gauche, portrait au centre, présentation en bas à droite */
+@media (min-width: 900px) {
+  .page-hero.ab-hero > .container { grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.8fr); grid-template-areas: "t photo ." ". photo p"; column-gap: clamp(28px, 3.5vw, 56px); align-items: stretch; }
+  .ab-hero-text { display: contents; }
+  .ab-hero-text h1 { grid-area: t; align-self: start; margin-top: clamp(16px, 4vw, 64px); max-width: 11ch; }
+  .ab-hero-text > p { grid-area: p; align-self: end; margin: 0 0 8px; }
+  .ab-hero-photo { grid-area: photo; order: 0; height: min(76svh, 700px); }
+}
+/* Frise : texte et photo paysage compacte côte à côte, sans grand blanc */
+.ab-step-photo { aspect-ratio: 4 / 3; max-width: 420px; }
+.ab-step-photo img { object-position: 50% 60%; }
+@media (min-width: 900px) {
+  .ab-step { grid-template-columns: minmax(0, 1fr) clamp(220px, 22vw, 300px); column-gap: clamp(32px, 4vw, 56px); }
+  .ab-step.no-photo .ab-step-body { grid-column: 1 / -1; }
+  .ab-step-body { max-width: 64ch; }
+}
+/* Avis : fond clair (plus trois aplats verts d'affilée), citation et auteur sur deux colonnes */
+.ab-review { background: var(--surface, #fff); color: var(--ink); border-top: 1px solid var(--line-soft); }
+.ab-quote { max-width: none; display: grid; gap: 24px; }
+.ab-quote blockquote { border-left: 3px solid var(--teal); padding-left: clamp(18px, 2.5vw, 32px); }
+.ab-quote blockquote p { color: var(--ink); }
+.ab-quote .stars { color: var(--sand); margin-bottom: 12px; }
+.ab-quote figcaption { color: var(--ink-mute); margin-top: 0; }
+.ab-quote figcaption strong { color: var(--ink); }
+.ab-quote-side .ab-quote-links { margin-top: 18px; }
+.ab-review .g-badge { color: var(--ink); border-color: var(--line); }
+.ab-review .g-badge:hover { border-color: var(--teal); }
+.ab-review .text-link { color: var(--teal-deep); }
+@media (min-width: 900px) { .ab-quote { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); column-gap: clamp(40px, 6vw, 96px); align-items: end; } }
+.ab-quote-main { margin: 0; }
+.ab-quote-main figcaption { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.ab-quote-side .stars { display: flex; gap: 4px; }
