@@ -541,13 +541,11 @@
 .page-girls .cta-full .ph-overlay { background: linear-gradient(180deg, rgba(8, 60, 66, 0.25) 0%, rgba(8, 60, 66, 0.55) 45%, rgba(6, 40, 44, 0.9) 100%); }
 
 /* Barre collante mobile : prix et pré-inscription */
-.gt-sticky { position: fixed; left: 0; right: 0; bottom: 0; z-index: 150; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: #fff; border-top: 1px solid var(--gt-rule); box-shadow: 0 -8px 24px rgba(13, 31, 28, 0.08); }
-.gt-sticky-price { margin: 0; font-weight: 600; color: var(--ink); }
+.gt-sticky { position: fixed; left: 0; right: 0; bottom: 0; z-index: 150; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--lagoon); box-shadow: 0 -8px 24px rgba(13, 31, 28, 0.18); }
+.gt-sticky-price { margin: 0; font-weight: 600; color: #fff; font-variant-numeric: lining-nums; }
 .gt-sticky .btn { min-height: 44px; padding-inline: 1.2rem; }
 @media (min-width: 900px) { .gt-sticky { display: none !important; } }
-@media (max-width: 899px) { body.has-sticky .wa-fab { bottom: 84px; } body.has-sticky .site-footer, body.has-sticky footer { padding-bottom: 72px; } }
 .gt-tarif-cta { justify-items: start; }
-.gt-why .split.no-media { border-left: 2px solid var(--gt-rule); padding-left: clamp(20px, 3vw, 40px); }
 /* Bouton de l'en-tête aux couleurs de la sous-marque, sur une ligne */
 body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); border-color: var(--sand); }
 .nav-cta .btn { white-space: nowrap; }
@@ -717,3 +715,53 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 .faq-themes a { color: var(--teal-deep); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; padding: 4px 0; }
 .faq-themes a:hover { color: var(--teal-dark); text-decoration-thickness: 2px; }
 .faq-main .faq-group { scroll-margin-top: 100px; }
+
+/* ---------- Girls Trips v3 ---------- */
+/* Boutons : libellé court, flèche collée, mention en petit dessous */
+.page-girls .btn span { flex-wrap: nowrap; white-space: nowrap; }
+.page-girls .hero-btns:has(> .gt-free) { flex-direction: column; align-items: center; gap: 8px; }
+.page-girls .gt-free { font-size: 0.88rem; }
+.page-girls .cta-full .gt-free { color: rgba(255, 255, 255, 0.88) !important; margin: 0; }
+.page-girls .cta-full .btns { justify-items: start; }
+/* Mobile : un seul « Je me pré-inscris » à la fois, et pas de pastille WhatsApp sur le texte */
+@media (max-width: 899px) {
+  body.has-sticky .nav-cta { visibility: hidden; }
+  body.has-sticky .wa-fab { display: none; }
+  body.has-sticky footer { padding-bottom: 72px; }
+}
+/* Fiche séjour : le prix ressort */
+.gt-fiche-list > div:nth-child(3) dd { font-family: var(--serif); font-weight: 600; font-size: clamp(1.6rem, 2.2vw, 2rem); line-height: 1; font-variant-numeric: lining-nums; color: var(--ink); }
+/* En-tête plus compact sur bureau pour que la fiche entre dans le premier écran */
+@media (min-width: 900px) {
+  .page-hero.gt-hero { padding-top: calc(var(--nav-h) + 8px); }
+  .gt-hero h1 { font-size: clamp(2.8rem, 4.2vw, 4.2rem); }
+  .gt-strip { margin-top: clamp(28px, 3vw, 44px) !important; }
+  .gt-strip figure { aspect-ratio: auto; height: clamp(200px, 22vw, 300px); }
+  .gt-strip-1 { margin-top: 0 !important; }
+  .gt-strip-2 { margin-top: 28px !important; }
+  .gt-strip-3 { margin-top: 56px !important; }
+  .gt-fiche { margin-top: clamp(20px, 2.5vw, 36px); }
+}
+/* Numéros et filets orange */
+.page-girls .steps.steps-line::before { background: var(--gt-rule); }
+.page-girls .steps.steps-line .step .step-num { border-color: var(--sand); color: var(--sand-ink); background: var(--gt-paper); }
+/* FAQ de la page : cartes sur fond beige, icônes orange */
+.page-girls .acc-item { background: #F7EBDD; border-color: rgba(224, 163, 107, 0.45); }
+.page-girls .acc-icon { background: #FBF3E8; color: var(--sand-ink); }
+.page-girls .acc-item.open .acc-icon { background: var(--sand); color: var(--ink); }
+/* « Dès 790 CHF » : titre et appel côte à côte, sans demi-colonne vide */
+.gt-tarif-top { display: grid; gap: 20px; margin-bottom: clamp(28px, 4vw, 44px); }
+.gt-tarif-top .section-head { margin: 0; }
+.gt-tarif-top .gt-tarif-cta { margin: 0; }
+@media (min-width: 900px) {
+  .gt-tarif-top { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: end; column-gap: clamp(40px, 6vw, 96px); }
+  .gt-tarif-top .gt-tarif-cta { justify-items: end; text-align: right; }
+}
+/* « Voyager autrement » : texte à gauche, liste à droite */
+.gt-why-cols { display: grid; gap: 24px; border-left: 2px solid var(--gt-rule); padding-left: clamp(20px, 3vw, 40px); }
+.gt-why-cols .feature-list { margin: 0; }
+@media (min-width: 900px) { .gt-why-cols { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); column-gap: clamp(40px, 6vw, 96px); align-items: center; } }
+.gt-why-text h2 { margin-bottom: 16px; }
+.gt-why-text p + p { margin-top: 12px; }
+.page-girls .cta-full .btns { display: grid; gap: 8px; justify-items: start; }
+.page-girls .cta-full .btns .btn { width: auto; }
