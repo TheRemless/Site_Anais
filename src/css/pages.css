@@ -799,3 +799,11 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 .ab-quote-main { margin: 0; }
 .ab-quote-main figcaption { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .ab-quote-side .stars { display: flex; gap: 4px; }
+
+/* ---------- Galerie v3 ---------- */
+/* Bangkok : une grande photo (4 colonnes, 4 rangées) et deux petites empilées */
+.gl-big { aspect-ratio: 4 / 5; }
+@media (min-width: 700px) { .gl-grid .gl-big { grid-column: span 4; grid-row: span 4; } }
+/* Visionneuse : compteur plus lisible */
+.lb-count { font-size: 1rem; font-weight: 600; color: #fff; letter-spacing: 0.06em; }
+@media (min-width: 700px) { .lb-count { font-size: 1.15rem; padding: 6px 14px; border-radius: var(--r); background: rgba(255, 255, 255, 0.12); } }
