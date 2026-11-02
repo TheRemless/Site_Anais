@@ -60,6 +60,8 @@ async function withFakeSmtp(run) {
 test("isContactSubmission : seul le formulaire contact déclenche l'auto-réponse", () => {
   assert.equal(isContactSubmission({ form_name: "contact" }), true);
   assert.equal(isContactSubmission({ form_name: "taxi" }), false);
+  assert.equal(isContactSubmission({ form_name: "newsletter-fr" }), false);
+  assert.equal(isContactSubmission({ form_name: "newsletter-en" }), false);
   assert.equal(isContactSubmission({}), false);
   assert.equal(isContactSubmission(undefined), false);
 });
@@ -67,6 +69,15 @@ test("isContactSubmission : seul le formulaire contact déclenche l'auto-répons
 test("handler : une demande du formulaire taxi n'envoie aucun e-mail, même avec une adresse valide", async () => {
   await withFakeSmtp(async (calls) => {
     const res = await handler(eventFor("taxi", { name: "Marc", email: "marc@example.com" }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.created, 0);
+    assert.equal(calls.sent, 0);
+  });
+});
+
+test("handler : une inscription newsletter n'envoie aucun e-mail, même avec une adresse valide", async () => {
+  await withFakeSmtp(async (calls) => {
+    const res = await handler(eventFor("newsletter-fr", { prenom: "Claire", email: "claire@example.com", lang: "fr" }));
     assert.equal(res.statusCode, 200);
     assert.equal(calls.created, 0);
     assert.equal(calls.sent, 0);
