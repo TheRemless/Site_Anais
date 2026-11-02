@@ -426,22 +426,25 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
                          <h2 class="sig-title">Mes formules <span class="sig-script">de voyage</span></h2>
    .sig-script           texte manuscrit (police --font-script), utilisable seul
    .sig-route            étapes reliées par le trajet en pointillés (horizontal dès 900 px, vertical en dessous) :
-                         <div class="sig-route">{{ sig.routeLine() }}<ol class="sig-route-list">…</ol>{{ sig.plane("sig-route-end") }}</div>
-                         chaque <li> commence par <span class="sig-num">1</span> ; --sig-n = nombre d'étapes (4 par défaut)
+                         <div class="sig-route" style="--sig-n: 4">{{ sig.routeLine(4) }}<ol class="sig-route-list">…</ol>{{ sig.plane("sig-route-end") }}</div>
+                         chaque <li> commence par <span class="sig-num">1</span> ; --sig-n et routeLine(n) = nombre d'étapes (4 par défaut)
    .sig-num              disque teal numéroté, chiffre en serif (comme la carte du carnet)
    .sig-dots             filet en pointillés seul (séparateur d'une fin de page, voir .cta-trail)
    En place : accueil (titre des formules, « Comment ça marche »), Services (disques du déroulé, fin de page .cta-trail).
-   Variables : --sig-ink (traits et manuscrit), --sig-disc (disques), --sig-dot et --sig-gap (taille et pas des points) */
+   Variables : --sig-ink (traits et manuscrit), --sig-disc (disques), --sig-dot et --sig-gap (taille et pas des points),
+   --sig-dots-x et --sig-dots-y (fond pointillé horizontal ou vertical, à poser en background) */
 :root {
   --font-script: "Monsieur La Doulaise", "Snell Roundhand", "Segoe Script", cursive;
   --sig-ink: var(--teal-deep);
   --sig-disc: var(--teal-dark);
   --sig-dot: 2.4px;
   --sig-gap: 10px;
+  --sig-dots-x: radial-gradient(circle, var(--sig-ink) calc(var(--sig-dot) / 2), transparent calc(var(--sig-dot) / 2 + 0.6px)) 0 0 / var(--sig-gap) var(--sig-dot) repeat-x;
+  --sig-dots-y: radial-gradient(circle, var(--sig-ink) calc(var(--sig-dot) / 2), transparent calc(var(--sig-dot) / 2 + 0.6px)) 0 0 / var(--sig-dot) var(--sig-gap) repeat-y;
 }
 .sig-script { font-family: var(--font-script); font-weight: 400; font-style: normal; letter-spacing: 0; color: var(--sig-ink); }
 .sig-title .sig-script { display: block; font-size: 1.45em; line-height: 0.95; margin: -0.14em 0 0.12em 1.1em; }
-.bg-navy .sig-script, .on-dark .sig-script, .sig-dark .sig-script { color: var(--sand-soft); }
+.bg-navy .sig-script, .on-dark .sig-script { color: var(--sand-soft); }
 
 .sig-num {
   display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
@@ -450,7 +453,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 .sig-dots {
   display: block; height: var(--sig-dot);
-  background: radial-gradient(circle, var(--sig-ink) calc(var(--sig-dot) / 2), transparent calc(var(--sig-dot) / 2 + 0.6px)) 0 0 / var(--sig-gap) var(--sig-dot) repeat-x;
+  background: var(--sig-dots-x);
 }
 
 .sig-route { position: relative; padding-bottom: 40px; }
@@ -461,7 +464,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .sig-route-list p { color: var(--ink-mute); font-size: 1rem; }
 .sig-route-list::before {
   content: ""; position: absolute; left: 17px; top: 20px; bottom: -14px; width: var(--sig-dot);
-  background: radial-gradient(circle, var(--sig-ink) calc(var(--sig-dot) / 2), transparent calc(var(--sig-dot) / 2 + 0.6px)) 0 0 / var(--sig-dot) var(--sig-gap) repeat-y;
+  background: var(--sig-dots-y);
 }
 .sig-route-line { display: none; }
 .sig-route-line path { fill: none; stroke: var(--sig-ink); stroke-width: var(--sig-dot); stroke-linecap: round; stroke-dasharray: 0 var(--sig-gap); vector-effect: non-scaling-stroke; }
@@ -471,7 +474,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .sig-route-list { grid-template-columns: repeat(var(--sig-n, 4), minmax(0, 1fr)); gap: 32px; }
   .sig-route-list > li { padding: 62px 0 0; }
   .sig-route-list::before { display: none; }
-  .sig-route-line { display: block; position: absolute; left: 18px; top: -2px; width: calc(100% - 18px - 30px); height: 40px; overflow: visible; }
+  .sig-route-line { display: grid; position: absolute; left: 0; right: 56px; top: -2px; height: 40px; grid-template-columns: repeat(var(--sig-n, 4), minmax(0, 1fr)); column-gap: 32px; }
+  .sig-route-line svg { display: block; margin-left: 18px; width: calc(100% + 32px); height: 40px; overflow: visible; }
+  .sig-route-line svg:last-child { width: calc(100% + 8px); }
   .sig-route-end { left: auto; right: 0; top: 4px; bottom: auto; width: 30px; height: 30px; transform: rotate(-8deg); }
 }
 
@@ -479,17 +484,17 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
    .cta-band            (existant) photo nette + panneau sable, empilés sur téléphone
    .cta-band.cta-lagoon aplat lagune sans photo, titre à gauche, texte et boutons à droite (accueil)
    .cta-trail           fond blanc, le trajet en pointillés arrive sur un repère à côté du titre (Services)
+   .cta-band.cta-full   photo plein cadre et voile (plus utilisée sur l'accueil ni Services, reste disponible)
    Même contenu dans les trois : h2, p, .btns. Sur la page, garder une seule fin de page et au plus deux occurrences de signature. */
 .cta-band.cta-lagoon { display: block; min-height: 0; background: var(--lagoon); padding: var(--section-y) 0; }
 .cta-band.cta-lagoon .container { padding: 0 var(--gutter); max-width: var(--container); margin: 0 auto; }
 .cta-lagoon h2, .cta-lagoon p { color: #fff; }
 .cta-lagoon p { color: rgba(255, 255, 255, 0.9); }
-.cta-lagoon .sig-script { color: var(--sand-soft); }
 .cta-lagoon .btn-white { --bg: #fff; --fg: var(--teal-deep); border-color: #fff; }
 .cta-lagoon .btn-ghost.on-dark { color: #fff; border-color: rgba(255, 255, 255, 0.6); }
 .cta-lagoon .btn-ghost.on-dark:hover { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
 .cta-lagoon .btn:focus-visible, .cta-lagoon a:focus-visible { outline-color: #fff; }
-.cta-band.cta-lagoon .btns { justify-content: stretch; }
+.cta-band.cta-lagoon .btns { justify-content: stretch; } /* téléphone : boutons pleine largeur (la grille de .cta-band les laissait à leur largeur) */
 @media (min-width: 900px) {
   .cta-lagoon .container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(40px, 6vw, 96px); align-items: center; }
   .cta-lagoon h2 { margin: 0; }

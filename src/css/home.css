@@ -406,22 +406,8 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
    la suivante dépasse à droite. Chaque carte est un lien, donc atteignable au clavier. */
 @media (max-width: 899px) { .pricing-compact .formules { align-items: stretch; } }
 
-/* Comment ça marche : frise horizontale de quatre étapes */
+/* Comment ça marche : quatre étapes sur le trajet .sig-route (system.css) */
 .hv-process .hv-head { margin-bottom: 36px; }
-.hsteps { list-style: none; margin: 0; padding: 0; display: grid; gap: 26px; counter-reset: none; position: relative; }
-.hstep { position: relative; padding-left: 56px; }
-.hstep-num {
-  position: absolute; left: 0; top: 0; width: 34px; height: 34px; display: grid; place-items: center;
-  border: 1px solid var(--teal); border-radius: 50%; background: var(--surface);
-  font-size: 0.78rem; font-weight: 600; color: var(--teal-deep); font-variant-numeric: lining-nums tabular-nums;
-}
-.hstep h3 { font-size: 1.4rem; margin-bottom: 4px; }
-.hstep p { color: var(--ink-mute); font-size: 1rem; }
-.hsteps::before { content: ""; position: absolute; left: 17px; top: 18px; bottom: 18px; width: 1px; background: var(--line); }
-@media (min-width: 900px) {
-  .hsteps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px; }
-  .hsteps::before { left: 17px; right: 17px; top: 17px; bottom: auto; width: auto; height: 1px; }
-  .hstep { padding: 56px 0 0; }
 }
 
 /* Avis : rail aimanté sur mobile (dernière carte entière en fin de rail), grille 2 × 2 sur bureau */
@@ -495,15 +481,4 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
   .hv-girls .feature-list.mt-m { margin-top: 20px; }
   .hv-girls .split-text .btn.mt-l { margin-top: 28px; }
   .nl-band .nl-compact.mt-l { margin-top: 24px; }
-}
-
-/* Comment ça marche avec la signature : la frise .hsteps cède la place au trajet .sig-route (system.css) */
-.hsteps.sig-route-list::before {
-  left: 17px; right: auto; top: 20px; bottom: -14px; width: var(--sig-dot); height: auto;
-  background: radial-gradient(circle, var(--sig-ink) calc(var(--sig-dot) / 2), transparent calc(var(--sig-dot) / 2 + 0.6px)) 0 0 / var(--sig-dot) var(--sig-gap) repeat-y;
-}
-.hsteps.sig-route-list .hstep { padding-left: 58px; }
-@media (min-width: 900px) {
-  .hsteps.sig-route-list::before { display: none; }
-  .hsteps.sig-route-list .hstep { padding: 62px 0 0; }
 }

@@ -201,7 +201,7 @@
 }
 
 /* Monsieur La Doulaise 400 — latin. Accent manuscrit de la signature « carnet » (system.css, .sig-script).
-   Pas de preload : une ou deux lignes par page au plus, le texte s'affiche d'abord en italique de secours. */
+   Pas de preload : une ou deux lignes par page au plus, le texte s'affiche d'abord dans l'écriture cursive du système. */
 @font-face {
   font-family: 'Monsieur La Doulaise';
   font-style: normal;
