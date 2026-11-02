@@ -534,9 +534,6 @@
 .page-girls .gt-tarif .tarif-panel { border-color: var(--gt-rule); }
 .page-girls .gt-tarif .tarif-panel .split > div + div { border-color: var(--gt-rule); }
 
-/* Filets et numéros orange */
-.page-girls .steps-line .step-num { color: var(--sand-ink); }
-.page-girls .steps-line::before, .page-girls .steps-line .step::before { background: var(--gt-rule); border-color: var(--gt-rule); }
 .page-girls .acc, .page-girls .acc-item { border-color: var(--gt-rule) !important; }
 .page-girls .gt-dates { background: #F4E2CC; }
 
@@ -753,9 +750,6 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
   .gt-strip-3 { margin-top: 56px !important; }
   .gt-fiche { margin-top: clamp(20px, 2.5vw, 36px); }
 }
-/* Numéros et filets orange */
-.page-girls .steps.steps-line::before { background: var(--gt-rule); }
-.page-girls .steps.steps-line .step .step-num { border-color: var(--sand); color: var(--sand-ink); background: var(--gt-paper); }
 /* FAQ de la page : cartes sur fond beige, icônes orange */
 .page-girls .acc-item { background: #F7EBDD; border-color: rgba(224, 163, 107, 0.45); }
 .page-girls .acc-icon { background: #FBF3E8; color: var(--sand-ink); }
@@ -778,13 +772,14 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 .page-girls .cta-full .btns .btn { width: auto; }
 
 /* ---------- À propos v3 ---------- */
-/* En-tête en trois colonnes : titre en haut à gauche, portrait au centre, présentation en bas à droite */
+/* En-tête en deux colonnes : titre et présentation l'un sous l'autre à gauche, portrait à droite.
+   (Avant : trois colonnes, la présentation tout en bas à droite laissait un grand vide en haut à droite, retour du 02.11.2026.) */
 @media (min-width: 900px) {
-  .page-hero.ab-hero > .container { grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.8fr); grid-template-areas: "t photo ." ". photo p"; column-gap: clamp(28px, 3.5vw, 56px); align-items: stretch; }
-  .ab-hero-text { display: contents; }
-  .ab-hero-text h1 { grid-area: t; align-self: start; margin-top: clamp(16px, 4vw, 64px); max-width: 11ch; }
-  .ab-hero-text > p { grid-area: p; align-self: end; margin: 0 0 8px; }
-  .ab-hero-photo { grid-area: photo; order: 0; height: min(76svh, 700px); }
+  .page-hero.ab-hero > .container { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); column-gap: clamp(40px, 6vw, 96px); align-items: center; }
+  .ab-hero-text { padding-bottom: 0; }
+  .ab-hero-text h1 { max-width: 12ch; margin: 0; }
+  .ab-hero-text > p { margin: clamp(20px, 2vw, 28px) 0 0; max-width: 44ch; font-size: 1.12rem; }
+  .ab-hero-photo { order: 0; height: min(76svh, 700px); }
 }
 /* Frise : texte et photo paysage compacte côte à côte, sans grand blanc */
 .ab-step-photo { aspect-ratio: 4 / 3; max-width: 420px; }

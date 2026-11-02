@@ -12,7 +12,7 @@ const IMG_H = CARD_W * 5 / 4;     // photo en 4/5
 const places = [
   {
     id: "chiang-mai", name: "Chiang Mai", lat: 18.79, lon: 98.98,
-    img: "/images/IMG_5227.jpg",
+    img: "/images/galerie/doi-suthep.jpg",
     caption: { fr: "Temple doré de Doi Suthep, Chiang Mai", en: "Golden temple of Doi Suthep, Chiang Mai" },
     tip: { fr: "", en: "" },
     side: "l", card: { x: 110, y: 0 }, offset: null
@@ -40,7 +40,7 @@ const places = [
   },
   {
     id: "koh-lanta", name: "Koh Lanta", lat: 7.60, lon: 99.05,
-    img: "/images/IMG_2016.jpg",
+    img: "/images/girls/sunset-koh-lanta.jpeg",
     caption: { fr: "Coucher de soleil sur la plage de Koh Lanta", en: "Sunset on Koh Lanta beach" },
     tip: { fr: "", en: "" },
     side: "r", card: { x: 830, y: 576 }, offset: "e"

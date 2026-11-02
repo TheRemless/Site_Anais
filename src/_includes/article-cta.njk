@@ -1,7 +1,10 @@
 {#- ctaVariant = "budget" : deuxième encart, placé après la section budget (texte différent du premier).
     Encart inséré au milieu de chaque article : l'article renseigne, l'encart donne envie d'être accompagné.
-    Pas de prix ici (décision de Jérémy, 31.10.2026) : on convainc d'abord, les tarifs sont sur /services/. -#}
+    Pas de prix ici (décision de Jérémy, 31.10.2026) : on convainc d'abord, les tarifs sont sur /services/.
+    Signature : trajet en pointillés qui finit sur l'avion, au-dessus du titre (.article-cta-way, system.css). -#}
+{%- import "macros/sig.njk" as sigm -%}
 <aside class="article-cta" aria-label="{{ 'My service' if lang == 'en' else 'Mon accompagnement' }}">
+  <span class="article-cta-way" aria-hidden="true"><span class="sig-dots"></span>{{ sigm.plane() }}</span>
 {%- if ctaVariant == "budget" and lang == "en" %}
   <p class="article-cta-title">Your budget, stop by stop</p>
   <p>I prepare 2 to 4 options per stop for accommodation and transport. In your travel journal every stop is costed, so you always know where you stand.</p>
