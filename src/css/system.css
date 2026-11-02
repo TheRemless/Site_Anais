@@ -389,5 +389,22 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 @keyframes fold-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .fold.open .fold-body { animation: none; } }
 
+/* ---------- Pied de page replié sous 900 px : Explorer, Services et Contact en accordéon (footer.njk, même mécanique
+   .fold), logo, réseaux et mentions toujours visibles. Bureau inchangé. ---------- */
+.footer-col .footer-social { margin-top: 18px; }
+@media (max-width: 899px) {
+  .footer { padding-top: 56px; }
+  .footer-grid { row-gap: 0; }
+  .footer-brand { padding-bottom: 28px; }
+  .footer-col { border-top: 1px solid rgba(255, 255, 255, 0.12); }
+  .footer .footer-col h2.fold-head { margin: 0; }
+  .footer-col .fold-btn { min-height: 54px; }
+  .footer-col .fold-body { padding-bottom: 22px; }
+  .footer-col .footer-social { margin: 0 0 22px; }
+  .footer .acc-icon { width: 28px; height: 28px; background: rgba(255, 255, 255, 0.08); color: var(--sand-soft); }
+  .footer .fold.open .acc-icon { background: var(--sand-soft); color: var(--lagoon); }
+  .footer-bottom { margin-top: 28px; }
+}
+
 /* L'attribut hidden doit toujours l'emporter (bandeau newsletter, messages) */
 [hidden] { display: none !important; }
