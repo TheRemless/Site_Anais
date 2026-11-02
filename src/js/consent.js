@@ -1,24 +1,39 @@
 /* =========================================================
-   ZWALD — Cookie consent + Google Consent Mode v2
-   GA (analytics_storage) stays denied until the visitor accepts.
+   ZWALD — Cookie consent + Google Consent Mode v2, mode de base
+   gtag.js n'est chargé qu'après « Accepter » : avant le choix ou après un refus, rien ne part vers Google.
+   Les événements mis en attente avant l'acceptation sont jetés, la publicité reste toujours refusée.
    Choice stored in localStorage("zw-consent") = "granted" | "denied".
    ========================================================= */
 (function () {
   "use strict";
   var KEY = "zw-consent";
+  var GA_ID = "G-LPTG5LLGPT";
+  var gaLoaded = false;
   function gtagSafe() {
     window.dataLayer = window.dataLayer || [];
     if (typeof window.gtag !== "function") { window.gtag = function () { window.dataLayer.push(arguments); }; }
     return window.gtag;
   }
+  function loadGA() {
+    if (gaLoaded) return;
+    gaLoaded = true;
+    var g = gtagSafe();
+    window.dataLayer.length = 0; // rien de ce qui précède l'acceptation n'est envoyé
+    g("consent", "default", { analytics_storage: "granted", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
+    g("js", new Date());
+    g("config", GA_ID);
+    var s = document.createElement("script");
+    s.async = true;
+    s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
+    document.head.appendChild(s);
+  }
   function apply(state) {
     var granted = state === "granted";
-    gtagSafe()("consent", "update", {
-      analytics_storage: granted ? "granted" : "denied",
-      ad_storage: "denied",
-      ad_user_data: "denied",
-      ad_personalization: "denied"
-    });
+    if (granted) loadGA();
+    else if (gaLoaded) {
+      // Refus après une acceptation sur la même page : plus de cookie Analytics jusqu'au rechargement
+      gtagSafe()("consent", "update", { analytics_storage: "denied", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
+    }
     // Let other scripts (e.g. the newsletter widget) react to the visitor's choice
     // instead of loading their own third-party cookies unconditionally.
     window.dispatchEvent(new CustomEvent("zw-consent", { detail: { granted: granted } }));
@@ -103,7 +118,7 @@
     try { saved = localStorage.getItem(KEY); } catch (e) {}
     if (saved === "granted") { apply("granted"); }
     else if (saved === "denied") { apply("denied"); }
-    else { show(); } // no choice yet → ask (GA already defaulted to denied)
+    else { show(); } // pas encore de choix : on demande, Analytics n'est pas chargé
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

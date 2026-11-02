@@ -559,7 +559,7 @@
   }
 
   // Événements GA4 : clics WhatsApp, formulaires, liens vers Secret et Taxi, pré-inscription Girls Trips.
-  // gtag() existe toujours (consent mode) ; sans consentement, les événements restent sans cookie.
+  // gtag() existe toujours ; sans consentement, gtag.js n'est pas chargé et les événements ne partent pas (consent.js).
   function initEvents() {
     if (typeof window.gtag !== "function") return;
     document.addEventListener("click", function (e) {
