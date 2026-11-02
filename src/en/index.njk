@@ -5,6 +5,7 @@ langAlt: "/"
 ---
 {% extends "base.njk" %}
 {% import "macros/fold.njk" as fold %}
+{% import "macros/sig.njk" as sig %}
 
 {% block head %}{% raw %}
 <title>Thailand Travel Planner, Tailor-Made Trips | Zwald</title>
@@ -111,7 +112,7 @@ langAlt: "/"
 <section class="section-pad hv-formules hv-band pricing pricing-compact">
   <div class="container">
     <div class="hv-head">
-      <h2>My <em>travel</em> packages</h2>
+      <h2 class="sig-title">My travel <span class="sig-script">packages</span></h2>
       <p>Every trip is unique. Choose the package that suits you — and let's adapt it together.</p>
     </div>
     <div class="formules">
@@ -151,12 +152,12 @@ langAlt: "/"
       <h2>How it works</h2>
       <p>Four steps, from our first exchange to your return home.</p>
     </div>
-    <ol class="hsteps" data-reveal data-accordion data-accordion-multi data-accordion-mobile>
-      <li class="hstep fold"><span class="hstep-num">01</span>{% endraw %}{{ fold.head("hstep-1", "Discovery call") }}{% raw %}<div class="fold-body" id="hstep-1"><p>Free and no obligation. We talk about what you want, your budget and your dates.</p></div></li>
-      <li class="hstep fold"><span class="hstep-num">02</span>{% endraw %}{{ fold.head("hstep-2", "Tailor-made itinerary") }}{% raw %}<div class="fold-body" id="hstep-2"><p>I put together one or two proposals tailored to your project, with a clear quote.</p></div></li>
-      <li class="hstep fold"><span class="hstep-num">03</span>{% endraw %}{{ fold.head("hstep-3", "Travel journal") }}{% raw %}<div class="fold-body" id="hstep-3"><p>You receive your complete guide with everything you need to book with confidence.</p></div></li>
-      <li class="hstep fold"><span class="hstep-num">04</span>{% endraw %}{{ fold.head("hstep-4", "Enjoy your trip!") }}{% raw %}<div class="fold-body" id="hstep-4"><p>I stay available 7 days a week during your stay. All you have to do is enjoy.</p></div></li>
-    </ol>
+    <div class="sig-route" data-reveal>{% endraw %}{{ sig.routeLine() }}{% raw %}<ol class="hsteps sig-route-list" data-accordion data-accordion-multi data-accordion-mobile>
+      <li class="hstep fold"><span class="sig-num">1</span>{% endraw %}{{ fold.head("hstep-1", "Discovery call") }}{% raw %}<div class="fold-body" id="hstep-1"><p>Free and no obligation. We talk about what you want, your budget and your dates.</p></div></li>
+      <li class="hstep fold"><span class="sig-num">2</span>{% endraw %}{{ fold.head("hstep-2", "Tailor-made itinerary") }}{% raw %}<div class="fold-body" id="hstep-2"><p>I put together one or two proposals tailored to your project, with a clear quote.</p></div></li>
+      <li class="hstep fold"><span class="sig-num">3</span>{% endraw %}{{ fold.head("hstep-3", "Travel journal") }}{% raw %}<div class="fold-body" id="hstep-3"><p>You receive your complete guide with everything you need to book with confidence.</p></div></li>
+      <li class="hstep fold"><span class="sig-num">4</span>{% endraw %}{{ fold.head("hstep-4", "Enjoy your trip!") }}{% raw %}<div class="fold-body" id="hstep-4"><p>I stay available 7 days a week during your stay. All you have to do is enjoy.</p></div></li>
+    </ol>{% endraw %}{{ sig.plane("sig-route-end") }}{% raw %}</div>
   </div>
 </section>
 
@@ -206,15 +207,15 @@ langAlt: "/"
 
 {% endraw %}{% include "newsletter.njk" %}{% raw %}
 
-<section class="cta-band section-pad hv-cta cta-full">
-  <div class="ph-bg"><img loading="lazy" decoding="async" sizes="100vw" src="/images/girls/sunset-koh-lanta.jpeg" alt="Sunset over Koh Lanta beach"></div>
-  <div class="ph-overlay"></div>
+<section class="cta-band cta-lagoon hv-cta">
   <div class="container">
     <h2>Ready to plan <em>your trip</em>?</h2>
+    <div>
     <p>Dreaming of a stress-free, perfectly organized trip to Thailand? I'll help you create a trip that feels like you, without blowing your budget.</p>
     <div class="btns">
       <a class="btn btn-white btn-lg" href="/en/contact/" data-magnetic><span>Get my free quote <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
       <a class="btn btn-ghost on-dark btn-lg" href="/en/services/"><span>See my services</span></a>
+    </div>
     </div>
   </div>
 </section>

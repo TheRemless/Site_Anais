@@ -5,6 +5,7 @@ langAlt: "/en/"
 ---
 {% extends "base.njk" %}
 {% import "macros/fold.njk" as fold %}
+{% import "macros/sig.njk" as sig %}
 
 {% block head %}{% raw %}
 <title>Travel planner Thaïlande, voyages sur mesure | Zwald</title>
@@ -110,7 +111,7 @@ langAlt: "/en/"
 <section class="section-pad hv-formules hv-band pricing pricing-compact">
   <div class="container">
     <div class="hv-head">
-      <h2>Mes formules de <em>voyage</em></h2>
+      <h2 class="sig-title">Mes formules <span class="sig-script">de voyage</span></h2>
       <p>Chaque voyage est unique. Choisis la formule qui te correspond, puis adapte-la avec moi.</p>
     </div>
     <div class="formules">
@@ -149,12 +150,12 @@ langAlt: "/en/"
       <h2>Comment ça marche</h2>
       <p>Quatre étapes, du premier échange jusqu'à ton retour de voyage.</p>
     </div>
-    <ol class="hsteps" data-reveal data-accordion data-accordion-multi data-accordion-mobile>
-      <li class="hstep fold"><span class="hstep-num">01</span>{% endraw %}{{ fold.head("hstep-1", "Appel découverte") }}{% raw %}<div class="fold-body" id="hstep-1"><p>Gratuit et sans engagement. On échange sur tes envies, ton budget et tes dates.</p></div></li>
-      <li class="hstep fold"><span class="hstep-num">02</span>{% endraw %}{{ fold.head("hstep-2", "Itinéraire sur mesure") }}{% raw %}<div class="fold-body" id="hstep-2"><p>Je prépare une ou deux propositions adaptées à ton projet, avec un devis clair.</p></div></li>
-      <li class="hstep fold"><span class="hstep-num">03</span>{% endraw %}{{ fold.head("hstep-3", "Carnet de voyage") }}{% raw %}<div class="fold-body" id="hstep-3"><p>Tu reçois ton guide complet avec toutes les infos pour réserver sereinement.</p></div></li>
-      <li class="hstep fold"><span class="hstep-num">04</span>{% endraw %}{{ fold.head("hstep-4", "Bon voyage !") }}{% raw %}<div class="fold-body" id="hstep-4"><p>Je reste disponible 7j/7 pendant ton séjour. Toi, tu n'as plus qu'à profiter.</p></div></li>
-    </ol>
+    <div class="sig-route" data-reveal>{% endraw %}{{ sig.routeLine() }}{% raw %}<ol class="hsteps sig-route-list" data-accordion data-accordion-multi data-accordion-mobile>
+      <li class="hstep fold"><span class="sig-num">1</span>{% endraw %}{{ fold.head("hstep-1", "Appel découverte") }}{% raw %}<div class="fold-body" id="hstep-1"><p>Gratuit et sans engagement. On échange sur tes envies, ton budget et tes dates.</p></div></li>
+      <li class="hstep fold"><span class="sig-num">2</span>{% endraw %}{{ fold.head("hstep-2", "Itinéraire sur mesure") }}{% raw %}<div class="fold-body" id="hstep-2"><p>Je prépare une ou deux propositions adaptées à ton projet, avec un devis clair.</p></div></li>
+      <li class="hstep fold"><span class="sig-num">3</span>{% endraw %}{{ fold.head("hstep-3", "Carnet de voyage") }}{% raw %}<div class="fold-body" id="hstep-3"><p>Tu reçois ton guide complet avec toutes les infos pour réserver sereinement.</p></div></li>
+      <li class="hstep fold"><span class="sig-num">4</span>{% endraw %}{{ fold.head("hstep-4", "Bon voyage !") }}{% raw %}<div class="fold-body" id="hstep-4"><p>Je reste disponible 7j/7 pendant ton séjour. Toi, tu n'as plus qu'à profiter.</p></div></li>
+    </ol>{% endraw %}{{ sig.plane("sig-route-end") }}{% raw %}</div>
   </div>
 </section>
 
@@ -205,15 +206,15 @@ langAlt: "/en/"
 
 {% endraw %}{% include "newsletter.njk" %}{% raw %}
 
-<section class="cta-band section-pad hv-cta cta-full">
-  <div class="ph-bg"><img loading="lazy" decoding="async" sizes="100vw" src="/images/girls/sunset-koh-lanta.jpeg" alt="Coucher de soleil sur la plage de Koh Lanta"></div>
-  <div class="ph-overlay"></div>
+<section class="cta-band cta-lagoon hv-cta">
   <div class="container">
     <h2>Prêt(e) à organiser <em>ton voyage</em> ?</h2>
+    <div>
     <p>Tu rêves d'un voyage en Thaïlande sans stress et parfaitement organisé ? Je t'aide à créer un séjour qui te ressemble, sans faire exploser ton budget.</p>
     <div class="btns">
       <a class="btn btn-white btn-lg" href="/contact/" data-magnetic><span>Recevoir mon devis gratuit <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
       <a class="btn btn-ghost on-dark btn-lg" href="/services/"><span>Voir mes services</span></a>
+    </div>
     </div>
   </div>
 </section>

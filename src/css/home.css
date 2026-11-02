@@ -496,3 +496,14 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
   .hv-girls .split-text .btn.mt-l { margin-top: 28px; }
   .nl-band .nl-compact.mt-l { margin-top: 24px; }
 }
+
+/* Comment ça marche avec la signature : la frise .hsteps cède la place au trajet .sig-route (system.css) */
+.hsteps.sig-route-list::before {
+  left: 17px; right: auto; top: 20px; bottom: -14px; width: var(--sig-dot); height: auto;
+  background: radial-gradient(circle, var(--sig-ink) calc(var(--sig-dot) / 2), transparent calc(var(--sig-dot) / 2 + 0.6px)) 0 0 / var(--sig-dot) var(--sig-gap) repeat-y;
+}
+.hsteps.sig-route-list .hstep { padding-left: 58px; }
+@media (min-width: 900px) {
+  .hsteps.sig-route-list::before { display: none; }
+  .hsteps.sig-route-list .hstep { padding: 62px 0 0; }
+}

@@ -416,3 +416,94 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 
 /* L'attribut hidden doit toujours l'emporter (bandeau newsletter, messages) */
 [hidden] { display: none !important; }
+
+/* ---------- Signature « carnet de voyage » ----------
+   Tirée du carnet PDF d'Anaïs (mockup « Le carnet de voyage » sur Services) : titre avec une fin manuscrite,
+   trajet en pointillés qui finit sur un avion, étapes dans des disques teal numérotés.
+   Une ou deux occurrences par page au plus, jamais en décoration seule. Dessins : _includes/macros/sig.njk.
+
+   .sig-title            h2 dont la fin passe en manuscrit, décalée sous la ligne serif
+                         <h2 class="sig-title">Mes formules <span class="sig-script">de voyage</span></h2>
+   .sig-script           texte manuscrit (police --font-script), utilisable seul
+   .sig-route            étapes reliées par le trajet en pointillés (horizontal dès 900 px, vertical en dessous) :
+                         <div class="sig-route">{{ sig.routeLine() }}<ol class="sig-route-list">…</ol>{{ sig.plane("sig-route-end") }}</div>
+                         chaque <li> commence par <span class="sig-num">1</span> ; --sig-n = nombre d'étapes (4 par défaut)
+   .sig-num              disque teal numéroté, chiffre en serif (comme la carte du carnet)
+   .sig-dots             filet en pointillés seul (séparateur d'une fin de page, voir .cta-trail)
+   En place : accueil (titre des formules, « Comment ça marche »), Services (disques du déroulé, fin de page .cta-trail).
+   Variables : --sig-ink (traits et manuscrit), --sig-disc (disques), --sig-dot et --sig-gap (taille et pas des points) */
+:root {
+  --font-script: "Monsieur La Doulaise", "Snell Roundhand", "Segoe Script", cursive;
+  --sig-ink: var(--teal-deep);
+  --sig-disc: var(--teal-dark);
+  --sig-dot: 2.4px;
+  --sig-gap: 10px;
+}
+.sig-script { font-family: var(--font-script); font-weight: 400; font-style: normal; letter-spacing: 0; color: var(--sig-ink); }
+.sig-title .sig-script { display: block; font-size: 1.45em; line-height: 0.95; margin: -0.14em 0 0.12em 1.1em; }
+.bg-navy .sig-script, .on-dark .sig-script, .sig-dark .sig-script { color: var(--sand-soft); }
+
+.sig-num {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+  background: var(--sig-disc); color: #fff; border: 0;
+  font-family: var(--serif); font-weight: 600; font-size: 1.25rem; line-height: 1; font-variant-numeric: lining-nums;
+}
+.sig-dots {
+  display: block; height: var(--sig-dot);
+  background: radial-gradient(circle, var(--sig-ink) calc(var(--sig-dot) / 2), transparent calc(var(--sig-dot) / 2 + 0.6px)) 0 0 / var(--sig-gap) var(--sig-dot) repeat-x;
+}
+
+.sig-route { position: relative; padding-bottom: 40px; }
+.sig-route-list { list-style: none; margin: 0; padding: 0; position: relative; display: grid; gap: 28px; }
+.sig-route-list > li { position: relative; padding-left: 58px; }
+.sig-route .sig-num { position: absolute; left: 0; top: 0; z-index: 1; }
+.sig-route-list h3 { font-size: 1.4rem; margin-bottom: 4px; }
+.sig-route-list p { color: var(--ink-mute); font-size: 1rem; }
+.sig-route-list::before {
+  content: ""; position: absolute; left: 17px; top: 20px; bottom: -14px; width: var(--sig-dot);
+  background: radial-gradient(circle, var(--sig-ink) calc(var(--sig-dot) / 2), transparent calc(var(--sig-dot) / 2 + 0.6px)) 0 0 / var(--sig-dot) var(--sig-gap) repeat-y;
+}
+.sig-route-line { display: none; }
+.sig-route-line path { fill: none; stroke: var(--sig-ink); stroke-width: var(--sig-dot); stroke-linecap: round; stroke-dasharray: 0 var(--sig-gap); vector-effect: non-scaling-stroke; }
+.sig-route-end { position: absolute; left: 4px; bottom: 0; width: 28px; height: 28px; color: var(--sig-ink); transform: rotate(90deg); }
+@media (min-width: 900px) {
+  .sig-route { padding: 0 56px 0 0; }
+  .sig-route-list { grid-template-columns: repeat(var(--sig-n, 4), minmax(0, 1fr)); gap: 32px; }
+  .sig-route-list > li { padding: 62px 0 0; }
+  .sig-route-list::before { display: none; }
+  .sig-route-line { display: block; position: absolute; left: 18px; top: -2px; width: calc(100% - 18px - 30px); height: 40px; overflow: visible; }
+  .sig-route-end { left: auto; right: 0; top: 4px; bottom: auto; width: 30px; height: 30px; transform: rotate(-8deg); }
+}
+
+/* ---------- Fins de page : trois variantes du CTA final ----------
+   .cta-band            (existant) photo nette + panneau sable, empilés sur téléphone
+   .cta-band.cta-lagoon aplat lagune sans photo, titre à gauche, texte et boutons à droite (accueil)
+   .cta-trail           fond blanc, le trajet en pointillés arrive sur un repère à côté du titre (Services)
+   Même contenu dans les trois : h2, p, .btns. Sur la page, garder une seule fin de page et au plus deux occurrences de signature. */
+.cta-band.cta-lagoon { display: block; min-height: 0; background: var(--lagoon); padding: var(--section-y) 0; }
+.cta-band.cta-lagoon .container { padding: 0 var(--gutter); max-width: var(--container); margin: 0 auto; }
+.cta-lagoon h2, .cta-lagoon p { color: #fff; }
+.cta-lagoon p { color: rgba(255, 255, 255, 0.9); }
+.cta-lagoon .sig-script { color: var(--sand-soft); }
+.cta-lagoon .btn-white { --bg: #fff; --fg: var(--teal-deep); border-color: #fff; }
+.cta-lagoon .btn-ghost.on-dark { color: #fff; border-color: rgba(255, 255, 255, 0.6); }
+.cta-lagoon .btn-ghost.on-dark:hover { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
+.cta-lagoon .btn:focus-visible, .cta-lagoon a:focus-visible { outline-color: #fff; }
+.cta-band.cta-lagoon .btns { justify-content: stretch; }
+@media (min-width: 900px) {
+  .cta-lagoon .container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(40px, 6vw, 96px); align-items: center; }
+  .cta-lagoon h2 { margin: 0; }
+}
+
+.cta-trail { padding: var(--section-y) 0; background: var(--surface); border-top: 1px solid var(--line-soft); overflow: hidden; }
+.cta-trail .container { display: grid; gap: 22px; }
+.cta-trail-way { display: flex; align-items: flex-end; gap: 6px; margin-left: calc(-1 * var(--gutter)); color: var(--sig-ink); }
+.cta-trail-way .sig-dots { flex: 1; margin-bottom: 6px; }
+.cta-trail-way .sig-pin { width: 34px; height: 34px; flex: none; }
+.cta-trail h2 { margin: 0 0 14px; font-size: clamp(2.3rem, 4vw, 3.6rem); max-width: 16ch; }
+.cta-trail p { color: var(--ink-mute); max-width: 46ch; margin: 0 0 26px; }
+.cta-trail .btns { display: flex; flex-wrap: wrap; gap: 12px; }
+@media (min-width: 900px) {
+  .cta-trail .container { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; gap: 0 28px; }
+  .cta-trail-way { margin-left: calc(-50vw + 50%); padding-top: 24px; }
+}

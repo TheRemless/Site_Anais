@@ -5,6 +5,7 @@ langAlt: "/services/"
 ---
 {% extends "base.njk" %}
 {% import "macros/fold.njk" as fold %}
+{% import "macros/sig.njk" as sig %}
 
 {% block head %}{% raw %}
 <title>Custom Thailand Itinerary, No Commission, From 35 CHF a Day</title>
@@ -260,14 +261,15 @@ langAlt: "/services/"
 
 {% endraw %}{% set otherServicesFlush = true %}{% include "other-services.njk" %}{% raw %}
 
-<section class="cta-band section-pad cta-full">
-  <div class="ph-bg"><img loading="lazy" decoding="async" src="/images/IMG_4231.jpg" alt="Turquoise waters of Thailand"></div>
-  <div class="ph-overlay"></div>
+<section class="cta-trail">
   <div class="container">
+    <div class="cta-trail-way"><span class="sig-dots"></span>{% endraw %}{{ sig.pin() }}{% raw %}</div>
+    <div>
     <h2>Book your free discovery call</h2>
     <p>100% free, no obligation. We'll talk about your project and I'll show you how I can help.</p>
     <div class="btns">
-      <a class="btn btn-white btn-lg" href="/en/contact/" data-magnetic><span>Book my call <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      <a class="btn btn-teal btn-lg" href="/en/contact/" data-magnetic><span>Book my call <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </div>
     </div>
   </div>
 </section>
