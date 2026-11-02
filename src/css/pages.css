@@ -730,7 +730,7 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
   body.has-sticky footer { padding-bottom: 72px; }
 }
 /* Fiche séjour : le prix ressort */
-.gt-fiche-list > div:nth-child(3) dd { font-family: var(--serif); font-weight: 600; font-size: clamp(1.6rem, 2.2vw, 2rem); line-height: 1; font-variant-numeric: lining-nums; color: var(--ink); }
+.gt-fiche-list .gt-fiche-price dd { font-family: var(--serif); font-weight: 600; font-size: clamp(1.6rem, 2.2vw, 2rem); line-height: 1; font-variant-numeric: lining-nums; color: var(--ink); }
 /* En-tête plus compact sur bureau pour que la fiche entre dans le premier écran */
 @media (min-width: 900px) {
   .page-hero.gt-hero { padding-top: calc(var(--nav-h) + 8px); }
@@ -805,8 +805,9 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 .gl-big { aspect-ratio: 4 / 5; }
 @media (min-width: 700px) { .gl-grid .gl-big { grid-column: span 4; grid-row: span 4; } }
 /* Visionneuse : compteur plus lisible */
-.lb-count { font-size: 1rem; font-weight: 600; color: #fff; letter-spacing: 0.06em; }
-@media (min-width: 700px) { .lb-count { font-size: 1.15rem; padding: 6px 14px; border-radius: var(--r); background: rgba(255, 255, 255, 0.12); } }
+/* (réglage limité à la galerie : la visionneuse est partagée avec l'accueil) */
+body:has(.gl-main) .lb-count { font-size: 1rem; font-weight: 600; color: #fff; letter-spacing: 0.06em; }
+@media (min-width: 700px) { body:has(.gl-main) .lb-count { font-size: 1.15rem; padding: 6px 14px; border-radius: var(--r); background: rgba(255, 255, 255, 0.12); } }
 
 /* ---------- Blog v3 ---------- */
 .page-hero.bl-hero { padding-top: calc(var(--nav-h) + clamp(48px, 6vw, 88px)); }
