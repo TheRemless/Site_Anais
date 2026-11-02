@@ -98,11 +98,11 @@ langAlt: "/"
       <h2>Why work with a travel planner?</h2>
       <p>Not a travel agency, not a standardized tour. Personal support, from your first message to your return home.</p>
     </div>
-    <div class="hv-cols">
-      <div data-reveal><h3>Not a packaged trip</h3><p>An agency sells the same tour to everyone. Your itinerary starts from you: your pace, what you love, what you'd rather avoid.</p></div>
-      <div data-reveal data-reveal-delay="1"><h3>The best prices, found for you</h3><p>Flights, hotels, activities, transport, even where to eat. I compare everything and you book at the direct price, with no agency margin.</p></div>
-      <div data-reveal data-reveal-delay="2"><h3>We actually talk</h3><p>Calls to build the trip together, step by step, for as long as it takes. Then I stay on WhatsApp for the whole trip.</p></div>
-      <div data-reveal data-reveal-delay="3"><h3>Someone who lives there</h3><p>In Koh Lanta since February 2023. Seasons, routes and good addresses, I know them from the inside.</p></div>
+    <div class="hv-cols" data-accordion data-accordion-multi data-accordion-mobile>
+      <div class="fold" data-reveal>{% endraw %}{{ fold.head("why-1", "Not a packaged trip") }}{% raw %}<div class="fold-body" id="why-1"><p>An agency sells the same tour to everyone. Your itinerary starts from you: your pace, what you love, what you'd rather avoid.</p></div></div>
+      <div class="fold" data-reveal data-reveal-delay="1">{% endraw %}{{ fold.head("why-2", "The best prices, found for you") }}{% raw %}<div class="fold-body" id="why-2"><p>Flights, hotels, activities, transport, even where to eat. I compare everything and you book at the direct price, with no agency margin.</p></div></div>
+      <div class="fold" data-reveal data-reveal-delay="2">{% endraw %}{{ fold.head("why-3", "We actually talk") }}{% raw %}<div class="fold-body" id="why-3"><p>Calls to build the trip together, step by step, for as long as it takes. Then I stay on WhatsApp for the whole trip.</p></div></div>
+      <div class="fold" data-reveal data-reveal-delay="3">{% endraw %}{{ fold.head("why-4", "Someone who lives there") }}{% raw %}<div class="fold-body" id="why-4"><p>In Koh Lanta since February 2023. Seasons, routes and good addresses, I know them from the inside.</p></div></div>
     </div>
     </div>
   </div>

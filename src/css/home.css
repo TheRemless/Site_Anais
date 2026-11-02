@@ -361,6 +361,14 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
   .hv-why-v2 .hv-cols > div:nth-last-child(-n+2) { border-bottom: 1px solid var(--line-soft); }
 }
 
+/* Pourquoi, téléphone : les quatre arguments repliés sous leur titre (.fold, data-accordion-mobile) */
+@media (max-width: 899px) {
+  .hv-why .hv-cols > .fold { padding: 4px 0; }
+  .hv-why .hv-cols h3.fold-head { margin-bottom: 0; }
+  .hv-why .hv-cols .fold-btn { min-height: 52px; }
+  .hv-why .hv-cols .fold-body { padding-bottom: 16px; }
+}
+
 /* Formules compactes : trois tuiles cliquables vers Services, une ligne de différence par formule */
 .pricing-compact .formule h3 { font-size: 1.7rem; }
 .pricing-compact .formule .price { margin-bottom: 2px; }

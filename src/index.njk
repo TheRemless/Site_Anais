@@ -97,11 +97,11 @@ langAlt: "/en/"
       <h2>Pourquoi faire appel à une travel planner ?</h2>
       <p>Pas une agence, pas de circuit standardisé. Un accompagnement humain, du premier message au retour de voyage.</p>
     </div>
-    <div class="hv-cols">
-      <div data-reveal><h3>Pas un voyage en kit</h3><p>Une agence vend le même circuit à tout le monde. Ton itinéraire part de toi : ton rythme, ce que tu aimes, ce que tu veux éviter.</p></div>
-      <div data-reveal data-reveal-delay="1"><h3>Les meilleurs prix, dénichés pour toi</h3><p>Vols, hôtels, activités, transports, jusqu'aux adresses où manger. Je compare tout, puis tu réserves au prix direct, sans marge d'agence.</p></div>
-      <div data-reveal data-reveal-delay="2"><h3>On en parle vraiment</h3><p>Des appels pour construire le voyage ensemble, étape par étape, aussi longtemps qu'il faut. Puis je reste sur WhatsApp pendant tout le séjour.</p></div>
-      <div data-reveal data-reveal-delay="3"><h3>Quelqu'un qui vit sur place</h3><p>À Koh Lanta depuis février 2023. Les saisons, les trajets et les bonnes adresses, je les connais de l'intérieur.</p></div>
+    <div class="hv-cols" data-accordion data-accordion-multi data-accordion-mobile>
+      <div class="fold" data-reveal>{% endraw %}{{ fold.head("why-1", "Pas un voyage en kit") }}{% raw %}<div class="fold-body" id="why-1"><p>Une agence vend le même circuit à tout le monde. Ton itinéraire part de toi : ton rythme, ce que tu aimes, ce que tu veux éviter.</p></div></div>
+      <div class="fold" data-reveal data-reveal-delay="1">{% endraw %}{{ fold.head("why-2", "Les meilleurs prix, dénichés pour toi") }}{% raw %}<div class="fold-body" id="why-2"><p>Vols, hôtels, activités, transports, jusqu'aux adresses où manger. Je compare tout, puis tu réserves au prix direct, sans marge d'agence.</p></div></div>
+      <div class="fold" data-reveal data-reveal-delay="2">{% endraw %}{{ fold.head("why-3", "On en parle vraiment") }}{% raw %}<div class="fold-body" id="why-3"><p>Des appels pour construire le voyage ensemble, étape par étape, aussi longtemps qu'il faut. Puis je reste sur WhatsApp pendant tout le séjour.</p></div></div>
+      <div class="fold" data-reveal data-reveal-delay="3">{% endraw %}{{ fold.head("why-4", "Quelqu'un qui vit sur place") }}{% raw %}<div class="fold-body" id="why-4"><p>À Koh Lanta depuis février 2023. Les saisons, les trajets et les bonnes adresses, je les connais de l'intérieur.</p></div></div>
     </div>
     </div>
   </div>
