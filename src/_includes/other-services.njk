@@ -1,25 +1,23 @@
 {#- « Mes autres services » : même composant sur l'accueil et sur Services (FR et EN), textes dans i18n.json (clés other.*).
     Ordre fixe : cartes cadeaux, puis guide Koh Lanta en PDF. Styles : system.css, bloc « Autres services ».
-    otherServicesFlush (posé par {% set %} avant l'include, Services) : la section se colle au déroulé qui précède (pages.css). -#}
+    otherServicesFlush (posé par {% set %} avant l'include, Services) : la section se colle au déroulé qui précède (pages.css).
+    Photos provisoires, une seule ligne à changer quand Jérémy enverra le visuel de la carte cadeau et la couverture du guide.
+    Chacune doit rester absente du reste de l'accueil et de Services (une photo une seule fois par page). -#}
+{%- set osGiftImg = "/images/IMG_6424.jpg" -%}
+{%- set osGuideImg = "/images/IMG_2016.jpg" -%}
 {%- set en = (lang == "en") -%}
 <section class="section-pad other-services{% if otherServicesFlush %} other-services-flush{% endif %}">
   <div class="container">
     <div class="section-head"><h2>{{ "other.title" | t(lang) }}</h2></div>
     <div class="os-grid">
       <div class="tile os-tile" data-reveal>
-        <div class="os-stage">
-          {# VISUEL PROVISOIRE : demander à Jérémy le visuel de la carte cadeau (la photo est celle du JSON-LD de /cartes-cadeaux/) #}
-          <div class="os-phone"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 14vw, 36vw" src="/images/IMG_6424.jpg" alt=""></div>
-        </div>
+        <div class="tile-photo"><img loading="lazy" decoding="async" sizes="(min-width: 1300px) 580px, 46vw" src="{{ osGiftImg }}" alt=""></div>
         <h3><a href="{{ '/en/cartes-cadeaux/' if en else '/cartes-cadeaux/' }}">{{ "other.giftcards.title" | t(lang) }}</a></h3>
         <p>{{ "other.giftcards.text" | t(lang) }}</p>
         <p class="os-price">{{ "other.giftcards.price" | t(lang) }}</p>
       </div>
       <div class="tile os-tile" data-reveal data-reveal-delay="1">
-        <div class="os-stage">
-          {# VISUEL PROVISOIRE : demander à Jérémy la couverture du guide Koh Lanta (la photo est celle du JSON-LD de /guides/) #}
-          <div class="os-tablet"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 20vw, 50vw" src="/images/IMG_2016.jpg" alt=""></div>
-        </div>
+        <div class="tile-photo"><img loading="lazy" decoding="async" sizes="(min-width: 1300px) 580px, 46vw" src="{{ osGuideImg }}" alt=""></div>
         <h3><a href="{{ '/en/guides/' if en else '/guides/' }}">{{ "other.guide.title" | t(lang) }}</a></h3>
         <p>{{ "other.guide.text" | t(lang) }}</p>
         <p class="os-price">{{ "other.guide.price" | t(lang) }}</p>
