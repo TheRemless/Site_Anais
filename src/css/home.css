@@ -280,10 +280,11 @@
    Retours du 31.10 (2) : accueil plus court et plus varié
    ===================================================================== */
 
-/* Hero mobile : titre et boutons dans le premier écran, la photo ensuite */
+/* Hero mobile : titre et boutons dans le premier écran, la photo ensuite, en bandeau 16/9 (le hero tient dans un écran) */
 @media (max-width: 899px) {
   .hv-hero { padding-top: calc(var(--nav-h) + 18px); padding-bottom: min(56px, var(--section-y)); }
-  .hv-hero-art { order: 2; height: min(70svh, 480px); margin-top: 6px; }
+  .hv-hero-art { order: 2; height: auto; aspect-ratio: 16 / 9; margin-top: 6px; }
+  .hv-art-main img { object-position: 62% 35%; }
   .hv-hero h1 { font-size: clamp(2.5rem, 10.4vw, 3.4rem); }
   .hv-sub { margin-top: 14px; font-size: 1.04rem; }
   .hv-hero .hero-btns { margin-top: 22px; gap: 10px; }
