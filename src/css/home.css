@@ -293,13 +293,14 @@
 }
 
 /* Carte de la Thaïlande : silhouette Natural Earth, pastilles numérotées 1 à 5 (même langage que la carte du carnet).
-   Mobile : carte seule, numéros dessus, photos numérotées en rail dessous. Bureau : scène 5/4, carte au centre,
+   Mobile : carte seule, numéros dessus, photos numérotées en rail dessous (numéro posé sur la photo, la pastille
+   de la photo principale est mise en évidence, piste de défilement sous le rail : initMapRail dans site.js). Bureau : scène 5/4, carte au centre,
    photos réparties à gauche et à droite, reliées à leur numéro par un trait. */
 .hv-map { padding: clamp(44px, 8vw, 104px) 0 clamp(24px, 4vw, 48px); }
 .hv-map .hv-head { margin-bottom: clamp(28px, 4vw, 44px); }
 .tmap { position: relative; }
 .tmap-lines { display: none; }
-.tmap-map { position: relative; width: min(68%, 250px); margin: 0 auto; }
+.tmap-map { position: relative; width: min(62%, 250px); margin: 0 auto; }
 .tmap-land { display: block; width: 100%; height: auto; overflow: visible; }
 .tmap-land path { fill: var(--bg-mint); fill: color-mix(in srgb, var(--teal) 36%, #fff); stroke: color-mix(in srgb, var(--teal) 36%, #fff); stroke-width: 0.8; stroke-linejoin: round; }
 .tmap-land circle { fill: var(--teal-dark); }
@@ -316,11 +317,11 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
 .tmap-pin[data-offset="e"] { transform: translateX(24px); }
 .tmap-pin[data-offset="e"]::before { right: 50%; }
 .tmap-cards {
-  list-style: none; margin: 26px calc(-1 * var(--gutter)) 0; padding: 0 var(--gutter) 6px;
+  list-style: none; margin: 18px calc(-1 * var(--gutter)) 0; padding: 0 var(--gutter) 6px;
   display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: var(--gutter); scrollbar-width: none;
 }
 .tmap-cards::-webkit-scrollbar { display: none; }
-.tmap-item { flex: 0 0 42%; scroll-snap-align: start; }
+.tmap-item { flex: 0 0 40%; scroll-snap-align: center; }
 .tmap-card { display: grid; gap: 8px; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; text-align: left; font: inherit; color: inherit; }
 .tmap-card img { width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--r); }
 .tmap-name { display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 1.15rem; font-weight: 600; line-height: 1.1; color: var(--ink); }
@@ -328,6 +329,23 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
 .tmap-cap { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .tmap-tip { margin: 8px 0 0; font-size: 0.92rem; line-height: 1.5; color: var(--ink-soft); }
 .tmap-tip[hidden] { display: none; }
+.tmap-progress { position: relative; height: 2px; margin-top: 10px; overflow: hidden; border-radius: 1px; background: var(--line); visibility: hidden; }
+.tmap-progress span { position: absolute; top: 0; left: 0; bottom: 0; width: var(--tmap-vis, 40%); border-radius: 1px; background: var(--teal-dark); transform: translateX(var(--tmap-shift, 0)); }
+.tmap.is-live .tmap-progress { visibility: visible; }
+@media (max-width: 899px) {
+  /* Numéro posé dans le coin de la photo, même dessin que la pastille de la carte */
+  .tmap-card { position: relative; }
+  .tmap-num { position: absolute; top: 8px; left: 8px; width: 26px; height: 26px; border: 2px solid #fff; font: 600 12px/22px var(--sans); }
+  /* Pastilles de la carte cliquables (rôle bouton ajouté par le JS) : zone de toucher 44 × 44 invisible */
+  .tmap.is-live .tmap-pin { cursor: pointer; }
+  .tmap.is-live .tmap-pin::after { content: ""; position: absolute; inset: -9px; border-radius: 50%; }
+  .tmap.is-live .tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+  /* Pastille de la photo principale : anneau épais autour du liseré blanc (taille et contour, pas seulement la couleur) */
+  .tmap-pin.is-active { z-index: 1; box-shadow: 0 0 0 3px var(--teal-dark), 0 0 0 4px #fff; }
+}
+@media (max-width: 899px) and (prefers-reduced-motion: no-preference) {
+  .tmap-pin { transition: box-shadow 0.2s var(--ease); }
+}
 @media (min-width: 900px) {
   .tmap { aspect-ratio: 5 / 4; }
   .tmap-lines { display: block; position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
@@ -342,6 +360,7 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
   .tmap-l .tmap-name { flex-direction: row-reverse; justify-content: flex-start; }
   .tmap-l .tmap-tip { text-align: right; }
   .hv-map { padding-bottom: 96px; }
+  .tmap-progress { display: none; }
 }
 @media (hover: hover) and (pointer: fine) {
   .tmap-card img { transition: transform 0.4s var(--ease); }

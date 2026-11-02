@@ -388,6 +388,106 @@
     document.addEventListener("keydown", function (e) { if (e.key === "Escape" && sticky) closeAll(); });
   }
 
+  /* ---------- Carte de l'accueil sur téléphone : rail de photos relié aux pastilles ----------
+     Actif seulement sous 900 px et si le rail défile vraiment. Chaque photo a une position de repos
+     (centrée si possible, bornée aux deux bouts, d'où scroll-snap-align: center) ; la photo dont la position
+     est la plus proche du défilement courant est la principale, sa pastille est mise en évidence.
+     Toucher une pastille fait défiler le rail jusqu'à sa photo. Défilement lu au plus une fois par image (rAF). */
+  function initMapRail() {
+    var tmap = document.querySelector(".tmap");
+    var rail = tmap && tmap.querySelector(".tmap-cards");
+    if (!rail || !window.matchMedia) return;
+    var mq = window.matchMedia("(max-width: 899px)");
+    var reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    var items = [].slice.call(rail.querySelectorAll(".tmap-item"));
+    var pins = [].slice.call(tmap.querySelectorAll(".tmap-pin"));
+    var bar = tmap.querySelector(".tmap-progress");
+    var live = false, ticking = false, active = -1, stops = [];
+
+    function measure() {
+      var r = rail.getBoundingClientRect(), max = rail.scrollWidth - rail.clientWidth;
+      stops = items.map(function (it) {
+        var b = it.getBoundingClientRect();
+        var x = b.left - r.left + rail.scrollLeft + b.width / 2 - rail.clientWidth / 2;
+        return Math.max(0, Math.min(max, Math.round(x)));
+      });
+      if (bar) bar.style.setProperty("--tmap-vis", (rail.clientWidth / rail.scrollWidth * 100).toFixed(2) + "%");
+    }
+    function setActive(k) {
+      if (k === active) return;
+      active = k;
+      pins.forEach(function (p, i) { p.classList.toggle("is-active", i === k); });
+    }
+    function update() {
+      ticking = false;
+      var x = rail.scrollLeft, best = 0, max = rail.scrollWidth - rail.clientWidth;
+      for (var i = 1; i < stops.length; i++) if (Math.abs(stops[i] - x) < Math.abs(stops[best] - x)) best = i;
+      setActive(best);
+      if (bar) {
+        var track = bar.clientWidth, seg = track * rail.clientWidth / rail.scrollWidth;
+        bar.style.setProperty("--tmap-shift", (max > 0 ? x / max * (track - seg) : 0).toFixed(1) + "px");
+      }
+    }
+    function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(update); } }
+    function go(i) {
+      if (i < 0 || i >= stops.length) return;
+      rail.scrollTo({ left: stops[i], behavior: reduce.matches ? "auto" : "smooth" });
+    }
+    function onPin(e) {
+      var i = pins.indexOf(e.currentTarget);
+      if (e.type === "keydown") {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+      }
+      go(i);
+    }
+    function enable() {
+      live = true;
+      tmap.classList.add("is-live");
+      rail.setAttribute("tabindex", "0");
+      pins.forEach(function (p) {
+        // Les pastilles avec conseil sont déjà des <button> (initMapTips, qui fait aussi défiler jusqu'à la photo).
+        if (p.tagName === "BUTTON") return;
+        p.setAttribute("role", "button");
+        p.setAttribute("tabindex", "0");
+        p.setAttribute("aria-label", p.textContent.trim() + " " + (p.getAttribute("data-name") || ""));
+        p.removeAttribute("aria-hidden");
+        p.addEventListener("click", onPin);
+        p.addEventListener("keydown", onPin);
+      });
+      rail.addEventListener("scroll", onScroll, { passive: true });
+      measure();
+      update();
+    }
+    function disable() {
+      live = false;
+      active = -1;
+      tmap.classList.remove("is-live");
+      rail.removeAttribute("tabindex");
+      rail.removeEventListener("scroll", onScroll);
+      pins.forEach(function (p) {
+        p.classList.remove("is-active");
+        if (p.tagName === "BUTTON") return;
+        p.removeAttribute("role");
+        p.removeAttribute("tabindex");
+        p.removeAttribute("aria-label");
+        p.setAttribute("aria-hidden", "true");
+        p.removeEventListener("click", onPin);
+        p.removeEventListener("keydown", onPin);
+      });
+    }
+    function check() {
+      var want = mq.matches && rail.scrollWidth > rail.clientWidth + 1;
+      if (want && !live) enable();
+      else if (!want && live) disable();
+      else if (live) { measure(); update(); }
+    }
+    check();
+    if (mq.addEventListener) mq.addEventListener("change", check); else if (mq.addListener) mq.addListener(check);
+    var rt;
+    window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(check, 150); });
+  }
+
   /* ---------- Conversion tracking (GA4 events, consent-aware) ---------- */
   function track(name, params) {
     if (typeof window.gtag === "function") window.gtag("event", name, params || {});
@@ -432,6 +532,7 @@
     initMarquee();
     initLightbox();
     initMapTips();
+    initMapRail();
     initReviewsRail();
     initTracking();
     initEvents();
