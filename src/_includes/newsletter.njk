@@ -1,63 +1,25 @@
-<section class="section-pad bg-cream nl-band">
+<section class="section-pad bg-cream nl-band" id="newsletter">
   <div class="container narrow text-center" data-reveal>
-    <h2>Prépare ton voyage avec confiance</h2>
-    <p class="mt-s" style="color:var(--ink-mute);max-width:52ch;margin-inline:auto">Conseils, adresses locales et astuces de voyage directement dans ta boîte mail. Aucun spam, promis.</p>
+    <h2>{{ 'newsletter.title' | t(lang) }}</h2>
+    <p class="mt-s" style="color:var(--ink-mute);max-width:52ch;margin-inline:auto">{{ 'newsletter.intro' | t(lang) }}</p>
     <div class="mt-l nl-compact">
-      <div id="nl-consent-gate" class="callout nl-gate">
-        <p>Active les cookies pour afficher le formulaire d'inscription.</p>
-        <button type="button" class="btn btn-ghost" onclick="if(window.ZW_openConsent){ZW_openConsent();}">Gérer mes cookies</button>
-      </div>
-      <div id="sib-form-container" class="sib-form-container" hidden>
-        <div id="error-message" class="sib-form-message-panel" style="font-size:15px;text-align:center;color:#661d1d;background-color:#ffeded;border-color:#ff4949;">
-          <div class="sib-form-message-panel__text sib-form-message-panel__text--center">
-            <span class="sib-form-message-panel__inner-text">L'inscription n'a pas pu être enregistrée. Veuillez réessayer.</span>
-          </div>
+      {#- Un formulaire Netlify par langue (name distinct), sinon Netlify ne garde qu'une seule action pour les six pages.
+          Sans JavaScript, Netlify renvoie sur la page de remerciement de la langue ; avec, newsletter.js envoie en fetch. -#}
+      {%- set nlName = "newsletter-en" if lang == "en" else "newsletter-fr" -%}
+      {%- set nlThanks = "/en/newsletter-thanks/" if lang == "en" else "/newsletter-merci/" -%}
+      <form class="nl-form" name="{{ nlName }}" method="POST" action="{{ nlThanks }}" data-netlify="true" netlify-honeypot="bot-field" data-sending="{{ 'newsletter.sending' | t(lang) }}">
+        <input type="hidden" name="form-name" value="{{ nlName }}">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <p class="nl-hp" aria-hidden="true"><label>{{ 'newsletter.honeypot' | t(lang) }} <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+        <div class="nl-fields">
+          <div class="field"><label for="nl-prenom">{{ 'newsletter.firstName' | t(lang) }}</label><input type="text" id="nl-prenom" name="prenom" autocomplete="given-name" maxlength="80"></div>
+          <div class="field"><label for="nl-email">{{ 'newsletter.email' | t(lang) }}</label><input type="email" id="nl-email" name="email" autocomplete="email" required></div>
+          <button class="btn btn-teal" type="submit"><span>{{ 'newsletter.submit' | t(lang) }}</span></button>
         </div>
-        <div id="success-message" class="sib-form-message-panel" style="font-size:15px;text-align:center;color:#085229;background-color:#e7faf0;border-color:#13ce66;">
-          <div class="sib-form-message-panel__text sib-form-message-panel__text--center">
-            <span class="sib-form-message-panel__inner-text">Merci pour ton inscription ! À très vite dans ta boîte mail. 🌴</span>
-          </div>
-        </div>
-        <div id="sib-container" class="sib-container--large sib-container--vertical">
-          <form id="sib-form" method="POST" action="https://771f2f29.sibforms.com/serve/MUIFAH8sqsoFIHIP47ui9d8SyFkd3IQMB4Tdrqk0fK_Ps1YGTHeFdTPDiOPhM1wtRrKYSNT1e4fEf9fCcKa2HZ_v1IDf_mtAN0EhWfsIb1OO9WjCearQPn5wIwkNcEQC1vpJk9UulT9rzADHq9nMfUaAtOjHCADLJNPNgArdS1HFySKH-v1WoxVNajNZGIY6l_--eekrhK_ewIRg" data-type="subscription">
-            <div style="padding:8px 0">
-              <div class="sib-input sib-form-block">
-                <div class="form__entry entry_block">
-                  <div class="form__label-row">
-                    <div class="entry__field">
-                      <input class="input" maxlength="200" type="text" id="FIRSTNAME" name="FIRSTNAME" autocomplete="given-name" placeholder="ton prénom" data-required="true" required />
-                    </div>
-                  </div>
-                  <label class="entry__error entry__error--primary" style="font-size:14px;color:#661d1d;background:#ffeded;border-color:#ff4949;border-radius:8px;"></label>
-                </div>
-              </div>
-            </div>
-            <div style="padding:8px 0">
-              <div class="sib-input sib-form-block">
-                <div class="form__entry entry_block">
-                  <div class="form__label-row">
-                    <div class="entry__field">
-                      <input class="input" type="email" id="EMAIL" name="EMAIL" autocomplete="email" placeholder="ton@email.com" data-required="true" required />
-                    </div>
-                  </div>
-                  <label class="entry__error entry__error--primary" style="font-size:14px;color:#661d1d;background:#ffeded;border-color:#ff4949;border-radius:8px;"></label>
-                </div>
-              </div>
-            </div>
-            <div style="padding:8px 0">
-              <div class="sib-form-block">
-                <button class="sib-form-block__button sib-form-block__button-with-loader" form="sib-form" type="submit">
-                  <svg class="icon clickable__icon progress-indicator__icon sib-hide-loader-icon" viewBox="0 0 512 512"><path d="M460.116 373.846l-20.823-12.022c-5.541-3.199-7.54-10.159-4.663-15.874 30.137-59.886 28.343-131.652-5.386-189.946-33.641-58.394-94.896-95.833-161.827-99.676C261.028 55.961 256 50.751 256 44.352V20.309c0-6.904 5.808-12.337 12.703-11.982 83.556 4.306 160.163 50.864 202.11 123.677 42.063 72.696 44.079 162.316 6.031 236.832-3.14 6.148-10.75 8.461-16.728 5.01z"/></svg>
-                  Je m'inscris
-                </button>
-              </div>
-            </div>
-            <input type="text" name="email_address_check" value="" class="input--hidden">
-            <input type="hidden" name="locale" value="fr">
-          </form>
-        </div>
-      </div>
+        <p class="nl-msg nl-error" role="alert" hidden>{{ 'newsletter.error' | t(lang) }}</p>
+      </form>
+      <p class="nl-msg nl-success" role="status" tabindex="-1">{{ 'newsletter.success' | t(lang) }}</p>
     </div>
   </div>
 </section>
-<script src="/js/newsletter-consent.js"></script>
+<script src="/js/newsletter.js?v={{ build.v }}"></script>

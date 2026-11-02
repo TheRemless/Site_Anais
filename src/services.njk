@@ -4,6 +4,8 @@ navLight: false
 langAlt: "/en/services/"
 ---
 {% extends "base.njk" %}
+{% import "macros/fold.njk" as fold %}
+{% import "macros/sig.njk" as sig %}
 
 {% block head %}{% raw %}
 <title>Voyage sur mesure en Thaïlande, formules dès 35 CHF par jour</title>
@@ -67,6 +69,117 @@ langAlt: "/en/services/"
   </div>
 </section>
 
+<section class="section-pad pricing sv-pricing">
+  <div class="container">
+    <div class="section-head" data-reveal>
+      <h2 id="formules">Mes formules de <em>voyage</em></h2>
+      <p>Trois formules, modulables selon ton projet. Tu ne trouves pas ton bonheur ? On l'adapte ensemble.</p>
+    </div>
+    <div class="formules" data-accordion data-accordion-multi data-accordion-mobile>
+      <div class="formule fold">
+        <h3>Light</h3>
+        <p class="aud">Voyageurs autonomes</p>
+        <div class="price"><span class="price-chf" data-chf="35">35 CHF</span> <small>/ jour</small></div>
+        <p class="price-note">par jour de voyage organisé</p>
+        {% endraw %}{{ fold.toggle("formule-light-detail", lang) }}{% raw %}
+        <div class="fold-body" id="formule-light-detail">
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire sur mesure</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection d'activités &amp; expériences locales</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection des transports pour chaque étape</li>
+          <li class="no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6L6 18M6 6l12 12"/></svg> Sans sélection d'hébergements</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Conseils personnalisés &amp; astuces locales</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Carnet de voyage digital complet</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Support avant &amp; assistance WhatsApp 7j/7</li>
+        </ul>
+        </div>
+        <a class="btn btn-ghost" href="/contact/"><span>Recevoir un devis</span></a>
+      </div>
+      <div class="formule featured fold">
+        <span class="badge">Le plus choisi</span>
+        <h3>Solo / Duo</h3>
+        <p class="aud">Jusqu'à 2 personnes</p>
+        <div class="price"><span class="price-chf" data-chf="40">40 CHF</span> <small>/ jour</small></div>
+        <p class="price-note">par jour de voyage organisé</p>
+        {% endraw %}{{ fold.toggle("formule-duo-detail", lang) }}{% raw %}
+        <div class="fold-body" id="formule-duo-detail">
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire sur mesure jusqu'à 3 villes</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection d'activités &amp; expériences locales</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection de transports &amp; hébergements (2-4 options par étape)</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Conseils personnalisés &amp; astuces locales</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Carnet de voyage digital complet</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Support avant &amp; assistance WhatsApp 7j/7</li>
+        </ul>
+        </div>
+        <a class="btn btn-white" href="/contact/"><span>Recevoir un devis</span></a>
+      </div>
+      <div class="formule fold">
+        <h3>Famille</h3>
+        <p class="aud">Jusqu'à 4 personnes</p>
+        <div class="price"><span class="price-chf" data-chf="43">43 CHF</span> <small>/ jour</small></div>
+        <p class="price-note">par jour de voyage organisé</p>
+        {% endraw %}{{ fold.toggle("formule-famille-detail", lang) }}{% raw %}
+        <div class="fold-body" id="formule-famille-detail">
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Tout ce qui est inclus dans Solo / Duo</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Activités adaptées aux enfants de tout âge</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire pensé pour voyager en famille</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Jusqu'à 4 personnes (supplément au-delà)</li>
+        </ul>
+        </div>
+        <a class="btn btn-ghost" href="/contact/"><span>Recevoir un devis</span></a>
+      </div>
+    </div>
+    <div class="formule-region" data-reveal>
+      <div>
+        <p class="aud">Formule par région</p>
+        <h3>Conseillée dès deux semaines de voyage</h3>
+        <p>Les mêmes infos que les formules par jour, hébergements, activités et bonnes adresses, mais classées par région plutôt que jour par jour. Pas de programme figé dans le carnet, tu organises tes journées comme tu veux. Un prix par région visitée.</p>
+      </div>
+      <div class="formule-region-price">
+        <div class="price">dès <span class="price-chf" data-chf="120">120 CHF</span> <small>/ région</small></div>
+        <a class="btn btn-white" href="/contact/"><span>Recevoir un devis</span></a>
+      </div>
+    </div>
+    <p class="text-center mt-l" data-reveal style="color:var(--ink-mute);font-size:0.95rem">Exemple concret : 2 semaines en couple = <span class="price-chf" data-chf="560">560 CHF</span> au total, soit ~<span class="price-chf" data-chf="20">20 CHF</span> par personne et par jour, souvent amorti par les économies réalisées sur place. Ton itinéraire dépasse 3 villes ? Pas de souci, on adapte le devis ensemble.</p>
+    <span class="currency-note" hidden>Taux indicatif, actualisé quotidiennement. Le CHF reste la devise de référence.</span>
+  </div>
+</section>
+
+<section class="section-pad sv-scope">
+  <div class="container">
+    <div class="split sv-scope-card" data-accordion data-accordion-multi data-accordion-mobile>
+      <div data-reveal="left" class="fold">
+        <h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">Ce qui est compris</h2>
+        {% endraw %}{{ fold.toggle("scope-inclus", lang) }}{% raw %}
+        <div class="fold-body" id="scope-inclus">
+        <ul class="feature-list mt-m">
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Échange initial + appel découverte gratuit</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Propositions d'itinéraires selon ton budget et ton rythme</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Sélection d'hébergements et transports adaptés</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Suggestions d'activités et d'expériences locales</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Carnet de voyage digital complet + tous les liens</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Support avant et assistance WhatsApp 7j/7 pendant ton voyage</li>
+        </ul>
+        </div>
+      </div>
+      <div data-reveal="right" class="fold">
+        <h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">Ce qui reste libre</h2>
+        {% endraw %}{{ fold.toggle("scope-libre", lang) }}{% raw %}
+        <div class="fold-body" id="scope-libre">
+        <ul class="feature-list mt-m">
+          <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> Les réservations (vols, hôtels, activités)</li>
+          <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> Les assurances et visas</li>
+          <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> Les prestations sur place (guides, chauffeurs)</li>
+        </ul>
+        </div>
+        <p class="mt-m" style="color:var(--ink-mute);font-size:0.96rem">Ce qui te garantit une liberté totale sur tes choix, sans aucun frais caché.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="section-pad sv-carnet">
   <div class="container">
     <div class="split reverse">
@@ -93,99 +206,8 @@ langAlt: "/en/services/"
   </div>
 </section>
 
-<section class="section-pad sv-scope">
+<section class="section-pad sv-conseil">
   <div class="container">
-    <div class="split sv-scope-card">
-      <div data-reveal="left">
-        <h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">Ce qui est compris</h2>
-        <ul class="feature-list mt-m">
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Échange initial + appel découverte gratuit</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Propositions d'itinéraires selon ton budget et ton rythme</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Sélection d'hébergements et transports adaptés</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Suggestions d'activités et d'expériences locales</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Carnet de voyage digital complet + tous les liens</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Support avant et assistance WhatsApp 7j/7 pendant ton voyage</li>
-        </ul>
-      </div>
-      <div data-reveal="right">
-        <h2 style="font-size:clamp(1.7rem,3vw,2.4rem)">Ce qui reste libre</h2>
-        <ul class="feature-list mt-m">
-          <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> Les réservations (vols, hôtels, activités)</li>
-          <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> Les assurances et visas</li>
-          <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> Les prestations sur place (guides, chauffeurs)</li>
-        </ul>
-        <p class="mt-m" style="color:var(--ink-mute);font-size:0.96rem">Ce qui te garantit une liberté totale sur tes choix, sans aucun frais caché.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section-pad pricing sv-pricing">
-  <div class="container">
-    <div class="section-head" data-reveal>
-      <h2 id="formules">Mes formules de <em>voyage</em></h2>
-      <p>Trois formules, modulables selon ton projet. Tu ne trouves pas ton bonheur ? On l'adapte ensemble.</p>
-    </div>
-    <div class="formules">
-      <div class="formule">
-        <h3>Light</h3>
-        <p class="aud">Voyageurs autonomes</p>
-        <div class="price"><span class="price-chf" data-chf="35">35 CHF</span> <small>/ jour</small></div>
-        <p class="price-note">par jour de voyage organisé</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire sur mesure</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection d'activités &amp; expériences locales</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection des transports pour chaque étape</li>
-          <li class="no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6L6 18M6 6l12 12"/></svg> Sans sélection d'hébergements</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Conseils personnalisés &amp; astuces locales</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Carnet de voyage digital complet</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Support avant &amp; assistance WhatsApp 7j/7</li>
-        </ul>
-        <a class="btn btn-ghost" href="/contact/"><span>Recevoir un devis</span></a>
-      </div>
-      <div class="formule featured">
-        <span class="badge">Le plus choisi</span>
-        <h3>Solo / Duo</h3>
-        <p class="aud">Jusqu'à 2 personnes</p>
-        <div class="price"><span class="price-chf" data-chf="40">40 CHF</span> <small>/ jour</small></div>
-        <p class="price-note">par jour de voyage organisé</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire sur mesure jusqu'à 3 villes</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection d'activités &amp; expériences locales</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Sélection de transports &amp; hébergements (2-4 options par étape)</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Conseils personnalisés &amp; astuces locales</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Carnet de voyage digital complet</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Support avant &amp; assistance WhatsApp 7j/7</li>
-        </ul>
-        <a class="btn btn-white" href="/contact/"><span>Recevoir un devis</span></a>
-      </div>
-      <div class="formule">
-        <h3>Famille</h3>
-        <p class="aud">Jusqu'à 4 personnes</p>
-        <div class="price"><span class="price-chf" data-chf="43">43 CHF</span> <small>/ jour</small></div>
-        <p class="price-note">par jour de voyage organisé</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Tout ce qui est inclus dans Solo / Duo</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Activités adaptées aux enfants de tout âge</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Itinéraire pensé pour voyager en famille</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg> Jusqu'à 4 personnes (supplément au-delà)</li>
-        </ul>
-        <a class="btn btn-ghost" href="/contact/"><span>Recevoir un devis</span></a>
-      </div>
-    </div>
-    <div class="formule-region" data-reveal>
-      <div>
-        <p class="aud">Formule par région</p>
-        <h3>Conseillée dès deux semaines de voyage</h3>
-        <p>Les mêmes infos que les formules par jour, hébergements, activités et bonnes adresses, mais classées par région plutôt que jour par jour. Pas de programme figé dans le carnet, tu organises tes journées comme tu veux. Un prix par région visitée.</p>
-      </div>
-      <div class="formule-region-price">
-        <div class="price">dès <span class="price-chf" data-chf="120">120 CHF</span> <small>/ région</small></div>
-        <a class="btn btn-white" href="/contact/"><span>Recevoir un devis</span></a>
-      </div>
-    </div>
-    <p class="text-center mt-l" data-reveal style="color:var(--ink-mute);font-size:0.95rem">Exemple concret : 2 semaines en couple = <span class="price-chf" data-chf="560">560 CHF</span> au total, soit ~<span class="price-chf" data-chf="20">20 CHF</span> par personne et par jour, souvent amorti par les économies réalisées sur place. Ton itinéraire dépasse 3 villes ? Pas de souci, on adapte le devis ensemble.</p>
-    <span class="currency-note" hidden>Taux indicatif, actualisé quotidiennement. Le CHF reste la devise de référence.</span>
     <div class="offer-panel sv-offer" id="appel-conseil">
       <div class="split">
       <div class="split-media sv-offer-photo">
@@ -224,39 +246,30 @@ langAlt: "/en/services/"
     <div class="section-head">
       <h2>Comment se déroule l'accompagnement</h2>
     </div>
-    <div class="timeline">
-      <div class="tl-item"><div class="tl-dot">1</div><h3>Prise de contact</h3><p>Tu me parles de ton envie de voyage par email, formulaire ou réseaux. Tu me poses toutes tes questions.</p></div>
-      <div class="tl-item"><div class="tl-dot">2</div><h3>Questionnaire de voyage</h3><p>Un court questionnaire pour cerner ton projet : dates, destinations, activités, budget, participants, préférences.</p></div>
-      <div class="tl-item"><div class="tl-dot">3</div><h3>Appel découverte</h3><p>Gratuit et sans engagement. On discute de vive voix de tes besoins. Je t'explique mes services et mes formules.</p></div>
-      <div class="tl-item"><div class="tl-dot">4</div><h3>Itinéraire &amp; devis</h3><p>J'élabore une première version de ton itinéraire sur mesure, en tenant compte de tes demandes et de ton budget.</p></div>
-      <div class="tl-item"><div class="tl-dot">5</div><h3>Conception du voyage</h3><p>Une fois le devis validé, je recherche, compare et te prépare une sélection des meilleurs hébergements et transports pour chaque étape.</p></div>
-      <div class="tl-item"><div class="tl-dot">6</div><h3>Réservations</h3><p>C'est le moment de réserver : à partir de ma sélection d'hébergements et de transports, tu effectues toi-même tes réservations, via les liens directs que je te fournis. Tu gardes la main et la liberté sur tous tes choix.</p></div>
-      <div class="tl-item"><div class="tl-dot">7</div><h3>Carnet de voyage</h3><p>Tu reçois ton carnet de voyage complet : toutes tes réservations réunies, les suggestions d'activités jour par jour ainsi que toutes les infos et conseils locaux pour profiter sereinement.</p></div>
-      <div class="tl-item"><div class="tl-dot">8</div><h3>C'est parti !</h3><p>Profite sans stress. Une question pendant le voyage ? Je reste joignable sur WhatsApp 7j/7.</p></div>
+    <div class="timeline" data-accordion data-accordion-multi data-accordion-mobile>
+      <div class="tl-item fold"><div class="tl-dot">1</div>{% endraw %}{{ fold.head("tl-1", "Prise de contact") }}{% raw %}<div class="fold-body" id="tl-1"><p>Tu me parles de ton envie de voyage par email, formulaire ou réseaux. Tu me poses toutes tes questions.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">2</div>{% endraw %}{{ fold.head("tl-2", "Questionnaire de voyage") }}{% raw %}<div class="fold-body" id="tl-2"><p>Un court questionnaire pour cerner ton projet : dates, destinations, activités, budget, participants, préférences.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">3</div>{% endraw %}{{ fold.head("tl-3", "Appel découverte") }}{% raw %}<div class="fold-body" id="tl-3"><p>Gratuit et sans engagement. On discute de vive voix de tes besoins. Je t'explique mes services et mes formules.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">4</div>{% endraw %}{{ fold.head("tl-4", "Itinéraire &amp; devis") }}{% raw %}<div class="fold-body" id="tl-4"><p>J'élabore une première version de ton itinéraire sur mesure, en tenant compte de tes demandes et de ton budget.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">5</div>{% endraw %}{{ fold.head("tl-5", "Conception du voyage") }}{% raw %}<div class="fold-body" id="tl-5"><p>Une fois le devis validé, je recherche, compare et te prépare une sélection des meilleurs hébergements et transports pour chaque étape.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">6</div>{% endraw %}{{ fold.head("tl-6", "Réservations") }}{% raw %}<div class="fold-body" id="tl-6"><p>C'est le moment de réserver : à partir de ma sélection d'hébergements et de transports, tu effectues toi-même tes réservations, via les liens directs que je te fournis. Tu gardes la main et la liberté sur tous tes choix.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">7</div>{% endraw %}{{ fold.head("tl-7", "Carnet de voyage") }}{% raw %}<div class="fold-body" id="tl-7"><p>Tu reçois ton carnet de voyage complet : toutes tes réservations réunies, les suggestions d'activités jour par jour ainsi que toutes les infos et conseils locaux pour profiter sereinement.</p></div></div>
+      <div class="tl-item fold"><div class="tl-dot">8</div>{% endraw %}{{ fold.head("tl-8", "C'est parti !") }}{% raw %}<div class="fold-body" id="tl-8"><p>Profite sans stress. Une question pendant le voyage ? Je reste joignable sur WhatsApp 7j/7.</p></div></div>
     </div>
   </div>
 </section>
 
-<section class="section-pad sv-other">
-  <div class="container">
-    <div class="section-head">
-      <h2>Mes autres services</h2>
-    </div>
-    <div class="sv-tiles">
-      <div class="tile"><div class="tile-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 100vw" src="/images/girls/piscine-koh-lanta.jpg" alt=""></div><h3>Guides PDF</h3><p>Inspiration et infos utiles : où aller, quoi faire, quoi goûter, quelles adresses noter. Montant libre.</p><a class="text-link mt-s" href="/guides/">Découvrir <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
-      <div class="tile"><div class="tile-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 100vw" src="/images/galerie/bangkok-rooftop.jpg" alt=""></div><h3>Cartes cadeaux</h3><p>100% personnalisables. Un accompagnement voyage complet à offrir pour toutes les occasions.</p><a class="text-link mt-s" href="/cartes-cadeaux/">Commander <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
-    </div>
-  </div>
-</section>
+{% endraw %}{% set otherServicesFlush = true %}{% include "other-services.njk" %}{% raw %}
 
-<section class="cta-band section-pad cta-full">
-  <div class="ph-bg"><img loading="lazy" decoding="async" src="/images/IMG_4231.jpg" alt="Eaux turquoise de Thaïlande"></div>
-  <div class="ph-overlay"></div>
+<section class="cta-trail">
   <div class="container">
+    <div class="cta-trail-way"><span class="sig-dots"></span>{% endraw %}{{ sig.pin() }}{% raw %}</div>
+    <div>
     <h2>Réserve ton appel découverte gratuit</h2>
     <p>100% gratuit et sans engagement. On discute de ton projet et je te montre comment je peux t'accompagner.</p>
     <div class="btns">
-      <a class="btn btn-white btn-lg" href="/contact/" data-magnetic><span>Réserver mon appel <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      <a class="btn btn-teal btn-lg" href="/contact/" data-magnetic><span>Réserver mon appel <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+    </div>
     </div>
   </div>
 </section>

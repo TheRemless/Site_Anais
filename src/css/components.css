@@ -399,26 +399,6 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .contact-testi blockquote { font-family: var(--serif); font-size: 1.08rem; font-style: italic; color: var(--ink); line-height: 1.55; margin: 0 0 12px; }
 .contact-testi cite { font-size: 0.84rem; font-weight: 600; color: var(--teal-dark); font-style: normal; }
 
-/* ---------- Brevo newsletter form — reskin global ---------- */
-.sib-form { background: transparent !important; }
-#sib-container { background: transparent !important; border: none !important; max-width: 480px !important; margin: 0 auto !important; }
-#sib-container input.input { font-family: var(--sans) !important; font-size: 1rem !important; padding: 14px 20px !important; border-radius: 50px !important; border: 1px solid var(--line) !important; background: #fff !important; color: var(--ink) !important; width: 100% !important; box-sizing: border-box !important; }
-#sib-container input.input::placeholder { color: var(--ink-faint) !important; font-family: var(--sans) !important; }
-#sib-container input.input:focus { outline: 2px solid var(--teal) !important; border-color: var(--teal) !important; }
-.sib-form-block__button { font-family: var(--sans) !important; font-size: 0.95rem !important; font-weight: 600 !important; background: var(--teal) !important; color: #fff !important; padding: 14px 28px !important; border-radius: 50px !important; border: none !important; cursor: pointer !important; width: 100% !important; transition: box-shadow 0.4s !important; }
-.sib-form-block__button:hover { box-shadow: 0 16px 34px -12px rgba(26,155,140,0.55) !important; }
-.sib-form-block { text-align: center !important; }
-.sib-form__declaration { display: none !important; }
-#error-message { border-radius: 10px !important; max-width: 480px !important; margin: 0 auto !important; }
-#success-message { border-radius: 10px !important; max-width: 480px !important; margin: 0 auto !important; font-family: var(--sans) !important; }
-/* Compact horizontal layout (homepage & à propos) */
-.nl-compact #sib-container { max-width: 540px !important; }
-.nl-compact .sib-form-block__button { width: auto !important; white-space: nowrap !important; }
-
-/* Consent-gated newsletter placeholder, shown until cookies are accepted (reuses .callout's box) */
-.nl-gate { text-align: center; }
-.nl-gate p { color: var(--ink-mute); margin-bottom: 14px; }
-
 /* ---------- Experience photo tiles (Girls Trips programme) ---------- */
 .xp-tile { display: flex; flex-direction: column; }
 .xp-tile img { width: 100%; height: auto; aspect-ratio: 4/3; object-fit: cover; border-radius: 16px; display: block; transition: transform 0.7s var(--ease); }
@@ -524,7 +504,7 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .hv-marquee .marquee-item { border-radius: 18px; }
 .hv-marquee .marquee-item:nth-child(odd) { margin-top: 28px; }
 
-.hv-head { max-width: 640px; margin-bottom: clamp(32px, 5vw, 56px); }
+.hv-head { max-width: 640px; margin-bottom: clamp(24px, 5vw, 56px); }
 .hv-head h2 { margin-top: 16px; }
 .hv-head p:not(.eyebrow) { color: var(--ink-mute); margin-top: 16px; font-size: 1.08rem; }
 .hv-cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; }
@@ -554,17 +534,11 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
 .hv-testi .tcard p { font-family: var(--serif); font-size: clamp(1.35rem, 2.2vw, 1.9rem); line-height: 1.35; font-weight: 500; color: var(--ink); }
 .hv-testi .tcard .quote { display: none; }
 
-.hv-other-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; align-items: start; }
-.hv-other-grid .hv-head { margin-bottom: 0; }
-.hv-other-grid h3 { font-size: 1.5rem; margin-bottom: 10px; }
-.hv-other-grid h3 a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--line); }
-.hv-other-grid h3 a:hover { border-color: var(--teal); }
-.hv-other-grid p { color: var(--ink-mute); }
 
 .hv-girls { background: var(--bg-mint); border-radius: 40px 40px 0 0; }
 
 @media (max-width: 900px) {
-  .hv-hero-grid, .hv-split, .hv-other-grid { grid-template-columns: 1fr; }
+  .hv-hero-grid, .hv-split { grid-template-columns: 1fr; }
   .hv-hero-art { min-height: 0; height: auto; display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; align-items: end; margin-top: 8px; }
   .hv-art-main, .hv-art-side, .hv-art-dot { position: static; width: auto; }
   .hv-art-main { aspect-ratio: 3 / 4; border-radius: 160px 160px 18px 18px; }
@@ -677,7 +651,6 @@ a.ti:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px
   .cta-band { border-radius: 24px 24px 0 0; }
 }
 
-.hv-small { margin-top: 10px; font-size: 0.9rem; font-weight: 600; color: var(--teal-dark); }
 
 /* Titres de section alignés à gauche partout, surtitres moins espacés */
 .section-head.center { margin-inline: 0; text-align: left; }

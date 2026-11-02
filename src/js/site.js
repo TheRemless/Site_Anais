@@ -136,19 +136,56 @@
     nodes.forEach(function (n) { io.observe(n); });
   }
 
-  /* ---------- FAQ accordion (event delegation) ---------- */
+  /* ---------- Accordéons (event delegation) : FAQ (.acc-item) et replis mobile (.fold, voir system.css).
+     data-accordion-mobile : replié seulement sous 900 px. Sous 900 px le bouton porte aria-expanded et
+     aria-controls et le contenu replié est hidden ; au-delà le bouton sort de la tabulation (tabindex -1,
+     sans aria-expanded) et le contenu est toujours visible. ---------- */
   function initAccordion() {
+    var mobile = window.matchMedia("(max-width: 899px)");
+    var desktop = { get matches() { return !mobile.matches; } };
+    function setOpen(item, open) {
+      item.classList.toggle("open", open);
+      var btn = item.querySelector("[aria-expanded]");
+      if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+      var body = item.querySelector(".fold-body");
+      if (body) body.hidden = !open;
+    }
     document.querySelectorAll("[data-accordion]").forEach(function (root) {
+      var mobileOnly = root.hasAttribute("data-accordion-mobile");
       root.addEventListener("click", function (e) {
-        var head = e.target.closest(".acc-head");
-        if (!head) return;
-        var item = head.parentElement;
+        var head = e.target.closest(".acc-head, .fold-head");
+        if (!head || (mobileOnly && desktop.matches)) return;
+        var item = head.closest(".acc-item, .fold");
+        if (!item) return;
         var open = item.classList.contains("open");
         if (!root.hasAttribute("data-accordion-multi")) {
-          root.querySelectorAll(".acc-item.open").forEach(function (i) { if (i !== item) i.classList.remove("open"); });
+          root.querySelectorAll(".acc-item.open, .fold.open").forEach(function (i) { if (i !== item) setOpen(i, false); });
         }
-        item.classList.toggle("open", !open);
+        setOpen(item, !open);
       });
+      if (mobileOnly) {
+        var reflect = function () {
+          root.querySelectorAll(".fold").forEach(function (item) {
+            var btn = item.querySelector(".fold-btn, .fold-toggle");
+            var body = item.querySelector(".fold-body");
+            if (!btn || !body) return;
+            if (desktop.matches) {
+              btn.setAttribute("tabindex", "-1");
+              btn.removeAttribute("aria-expanded");
+              btn.removeAttribute("aria-controls");
+              body.hidden = false;
+            } else {
+              var open = item.classList.contains("open");
+              btn.removeAttribute("tabindex");
+              btn.setAttribute("aria-expanded", open ? "true" : "false");
+              btn.setAttribute("aria-controls", body.id);
+              body.hidden = !open;
+            }
+          });
+        };
+        reflect();
+        if (mobile.addEventListener) mobile.addEventListener("change", reflect); else if (mobile.addListener) mobile.addListener(reflect);
+      }
     });
   }
 
@@ -320,6 +357,140 @@
     });
   }
 
+  /* ---------- Carte de l'accueil : conseil par épingle (bouton seulement si un texte existe) ---------- */
+  function initMapTips() {
+    var pins = [].slice.call(document.querySelectorAll(".tmap-pin[aria-controls]"));
+    if (!pins.length) return;
+    var sticky = null;
+    function set(pin, open) {
+      var tip = document.getElementById(pin.getAttribute("aria-controls"));
+      if (!tip) return;
+      tip.hidden = !open;
+      pin.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    function closeAll() { pins.forEach(function (p) { set(p, false); }); sticky = null; }
+    pins.forEach(function (pin) {
+      pin.addEventListener("click", function () {
+        var open = sticky !== pin;
+        closeAll();
+        if (open) {
+          sticky = pin;
+          set(pin, true);
+          var tip = document.getElementById(pin.getAttribute("aria-controls"));
+          var item = tip && tip.closest(".tmap-item");
+          if (item && item.scrollIntoView) item.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+        }
+      });
+      pin.addEventListener("mouseenter", function () { if (!sticky) set(pin, true); });
+      pin.addEventListener("mouseleave", function () { if (!sticky) set(pin, false); });
+      pin.addEventListener("focus", function () { if (!sticky) set(pin, true); });
+      pin.addEventListener("blur", function () { if (!sticky) set(pin, false); });
+    });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && sticky) closeAll(); });
+  }
+
+  /* ---------- Carte de l'accueil sur téléphone : rail de photos relié aux pastilles ----------
+     Actif seulement sous 900 px et si le rail défile vraiment. Chaque photo a une position de repos
+     (centrée si possible, bornée aux deux bouts, d'où scroll-snap-align: center) ; la photo dont la position
+     est la plus proche du défilement courant est la principale, sa pastille est mise en évidence.
+     Toucher une pastille fait défiler le rail jusqu'à sa photo. Défilement lu au plus une fois par image (rAF). */
+  function initMapRail() {
+    var tmap = document.querySelector(".tmap");
+    var rail = tmap && tmap.querySelector(".tmap-cards");
+    if (!rail || !window.matchMedia) return;
+    var mq = window.matchMedia("(max-width: 899px)");
+    var reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    var items = [].slice.call(rail.querySelectorAll(".tmap-item"));
+    var pins = [].slice.call(tmap.querySelectorAll(".tmap-pin"));
+    var bar = tmap.querySelector(".tmap-progress");
+    var live = false, ticking = false, active = -1, stops = [];
+
+    function measure() {
+      var r = rail.getBoundingClientRect(), max = rail.scrollWidth - rail.clientWidth;
+      stops = items.map(function (it) {
+        var b = it.getBoundingClientRect();
+        var x = b.left - r.left + rail.scrollLeft + b.width / 2 - rail.clientWidth / 2;
+        return Math.max(0, Math.min(max, Math.round(x)));
+      });
+      if (bar) bar.style.setProperty("--tmap-vis", (rail.clientWidth / rail.scrollWidth * 100).toFixed(2) + "%");
+    }
+    function setActive(k) {
+      if (k === active) return;
+      active = k;
+      pins.forEach(function (p, i) { p.classList.toggle("is-active", i === k); });
+    }
+    function update() {
+      ticking = false;
+      var x = rail.scrollLeft, best = 0, max = rail.scrollWidth - rail.clientWidth;
+      for (var i = 1; i < stops.length; i++) if (Math.abs(stops[i] - x) < Math.abs(stops[best] - x)) best = i;
+      setActive(best);
+      if (bar) {
+        var track = bar.clientWidth, seg = track * rail.clientWidth / rail.scrollWidth;
+        bar.style.setProperty("--tmap-shift", (max > 0 ? x / max * (track - seg) : 0).toFixed(1) + "px");
+      }
+    }
+    function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(update); } }
+    function go(i) {
+      if (i < 0 || i >= stops.length) return;
+      rail.scrollTo({ left: stops[i], behavior: reduce.matches ? "auto" : "smooth" });
+    }
+    function onPin(e) {
+      var i = pins.indexOf(e.currentTarget);
+      if (e.type === "keydown") {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+      }
+      go(i);
+    }
+    function enable() {
+      live = true;
+      tmap.classList.add("is-live");
+      rail.setAttribute("tabindex", "0");
+      rail.setAttribute("aria-labelledby", "tmap-title");
+      pins.forEach(function (p) {
+        // Les pastilles avec conseil sont déjà des <button> (initMapTips, qui fait aussi défiler jusqu'à la photo).
+        if (p.tagName === "BUTTON") return;
+        p.setAttribute("role", "button");
+        p.setAttribute("tabindex", "0");
+        p.setAttribute("aria-label", (tmap.getAttribute("data-pin-label") || "") + " " + p.textContent.trim() + " " + (p.getAttribute("data-name") || ""));
+        p.removeAttribute("aria-hidden");
+        p.addEventListener("click", onPin);
+        p.addEventListener("keydown", onPin);
+      });
+      rail.addEventListener("scroll", onScroll, { passive: true });
+      measure();
+      update();
+    }
+    function disable() {
+      live = false;
+      active = -1;
+      tmap.classList.remove("is-live");
+      rail.removeAttribute("tabindex");
+      rail.removeAttribute("aria-labelledby");
+      rail.removeEventListener("scroll", onScroll);
+      pins.forEach(function (p) {
+        p.classList.remove("is-active");
+        if (p.tagName === "BUTTON") return;
+        p.removeAttribute("role");
+        p.removeAttribute("tabindex");
+        p.removeAttribute("aria-label");
+        p.setAttribute("aria-hidden", "true");
+        p.removeEventListener("click", onPin);
+        p.removeEventListener("keydown", onPin);
+      });
+    }
+    function check() {
+      var want = mq.matches && rail.scrollWidth > rail.clientWidth + 1;
+      if (want && !live) enable();
+      else if (!want && live) disable();
+      else if (live) { measure(); update(); }
+    }
+    check();
+    if (mq.addEventListener) mq.addEventListener("change", check); else if (mq.addListener) mq.addListener(check);
+    var rt;
+    window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(check, 150); });
+  }
+
   /* ---------- Conversion tracking (GA4 events, consent-aware) ---------- */
   function track(name, params) {
     if (typeof window.gtag === "function") window.gtag("event", name, params || {});
@@ -334,10 +505,9 @@
       else if (/tally\.so/i.test(href)) track("preinscription_girls_trips", { link_url: href });
       else if (/contact\.html/i.test(href) && a.classList.contains("btn")) track("cta_devis_click", { link_text: (a.textContent || "").trim().slice(0, 60) });
     });
-    var contactForm = document.querySelector("form[name='contact'], form[data-netlify]");
+    var contactForm = document.querySelector("form[name='contact'], form[data-netlify]:not(.nl-form)");
     if (contactForm) contactForm.addEventListener("submit", function () { track("generate_lead", { form: "contact" }); });
-    var nlForm = document.querySelector("form.nl-form, form[data-newsletter]");
-    if (nlForm) nlForm.addEventListener("submit", function () { track("newsletter_signup", {}); });
+    // newsletter_signup est envoyé par newsletter.js une fois l'inscription acceptée par Netlify.
   }
   window.ZWALD_track = track;
 
@@ -363,6 +533,9 @@
     initCarousel();
     initMarquee();
     initLightbox();
+    initMapTips();
+    initMapRail();
+    initReviewsRail();
     initTracking();
     initEvents();
     // Footer year
@@ -370,6 +543,20 @@
     if (y) y.textContent = new Date().getFullYear();
   }
 
+
+  /* ---------- Avis de l'accueil : la liste n'est focalisable au clavier que lorsqu'elle défile vraiment
+     (rail horizontal sous 900 px) ; en grille sur bureau elle n'a pas besoin de tabindex. ---------- */
+  function initReviewsRail() {
+    var rail = document.querySelector(".reviews");
+    if (!rail) return;
+    function update() {
+      if (rail.scrollWidth > rail.clientWidth) rail.setAttribute("tabindex", "0");
+      else rail.removeAttribute("tabindex");
+    }
+    update();
+    var rt;
+    window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(update, 150); });
+  }
 
   // Événements GA4 : clics WhatsApp, formulaires, liens vers Secret et Taxi, pré-inscription Girls Trips.
   // gtag() existe toujours (consent mode) ; sans consentement, les événements restent sans cookie.
