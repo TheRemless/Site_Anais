@@ -10,7 +10,7 @@
       <h2 id="tmap-title">{{ "map.title" | t(lang) }}</h2>
       <p>{{ "map.intro" | t(lang) }}</p>
     </div>
-    <div class="tmap" style="--map-left:{{ mapPins.mapBox.left }};--map-top:{{ mapPins.mapBox.top }};--map-width:{{ mapPins.mapBox.width }};--card-w:{{ mapPins.cardWidth }}">
+    <div class="tmap" data-pin-label="{{ "map.showPhoto" | t(lang) }}" style="--map-left:{{ mapPins.mapBox.left }};--map-top:{{ mapPins.mapBox.top }};--map-width:{{ mapPins.mapBox.width }};--card-w:{{ mapPins.cardWidth }}">
       <svg class="tmap-lines" viewBox="0 0 {{ mapPins.stage.w }} {{ mapPins.stage.h }}" aria-hidden="true" focusable="false">
         {%- for p in mapPins.pins %}<line x1="{{ p.line.x1 }}" y1="{{ p.line.y1 }}" x2="{{ p.line.x2 }}" y2="{{ p.line.y2 }}"/>{% endfor -%}
       </svg>

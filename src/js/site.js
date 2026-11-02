@@ -141,7 +141,8 @@
      aria-controls et le contenu replié est hidden ; au-delà le bouton sort de la tabulation (tabindex -1,
      sans aria-expanded) et le contenu est toujours visible. ---------- */
   function initAccordion() {
-    var desktop = window.matchMedia("(min-width: 900px)");
+    var mobile = window.matchMedia("(max-width: 899px)");
+    var desktop = { get matches() { return !mobile.matches; } };
     function setOpen(item, open) {
       item.classList.toggle("open", open);
       var btn = item.querySelector("[aria-expanded]");
@@ -183,7 +184,7 @@
           });
         };
         reflect();
-        if (desktop.addEventListener) desktop.addEventListener("change", reflect);
+        if (mobile.addEventListener) mobile.addEventListener("change", reflect); else if (mobile.addListener) mobile.addListener(reflect);
       }
     });
   }
@@ -445,12 +446,13 @@
       live = true;
       tmap.classList.add("is-live");
       rail.setAttribute("tabindex", "0");
+      rail.setAttribute("aria-labelledby", "tmap-title");
       pins.forEach(function (p) {
         // Les pastilles avec conseil sont déjà des <button> (initMapTips, qui fait aussi défiler jusqu'à la photo).
         if (p.tagName === "BUTTON") return;
         p.setAttribute("role", "button");
         p.setAttribute("tabindex", "0");
-        p.setAttribute("aria-label", p.textContent.trim() + " " + (p.getAttribute("data-name") || ""));
+        p.setAttribute("aria-label", (tmap.getAttribute("data-pin-label") || "") + " " + p.textContent.trim() + " " + (p.getAttribute("data-name") || ""));
         p.removeAttribute("aria-hidden");
         p.addEventListener("click", onPin);
         p.addEventListener("keydown", onPin);
@@ -464,6 +466,7 @@
       active = -1;
       tmap.classList.remove("is-live");
       rail.removeAttribute("tabindex");
+      rail.removeAttribute("aria-labelledby");
       rail.removeEventListener("scroll", onScroll);
       pins.forEach(function (p) {
         p.classList.remove("is-active");
@@ -502,10 +505,9 @@
       else if (/tally\.so/i.test(href)) track("preinscription_girls_trips", { link_url: href });
       else if (/contact\.html/i.test(href) && a.classList.contains("btn")) track("cta_devis_click", { link_text: (a.textContent || "").trim().slice(0, 60) });
     });
-    var contactForm = document.querySelector("form[name='contact'], form[data-netlify]");
+    var contactForm = document.querySelector("form[name='contact'], form[data-netlify]:not(.nl-form)");
     if (contactForm) contactForm.addEventListener("submit", function () { track("generate_lead", { form: "contact" }); });
-    var nlForm = document.querySelector("form.nl-form, form[data-newsletter]");
-    if (nlForm) nlForm.addEventListener("submit", function () { track("newsletter_signup", {}); });
+    // newsletter_signup est envoyé par newsletter.js une fois l'inscription acceptée par Netlify.
   }
   window.ZWALD_track = track;
 
@@ -552,7 +554,8 @@
       else rail.removeAttribute("tabindex");
     }
     update();
-    window.addEventListener("resize", update);
+    var rt;
+    window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(update, 150); });
   }
 
   // Événements GA4 : clics WhatsApp, formulaires, liens vers Secret et Taxi, pré-inscription Girls Trips.

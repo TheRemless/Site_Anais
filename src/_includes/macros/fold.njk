@@ -2,10 +2,10 @@
     head(id, title, tag) : titre cliquable des déroulés (accueil, Services, pied de page), h3 par défaut (tag = "h2" dans le pied de page),
     title peut contenir des entités HTML.
     toggle(id, lang) : bouton « Voir le détail » des formules et du bloc compris / libre.
-    id = id du .fold-body que le bouton commande. Import : {% import "macros/fold.njk" as fold %}. -#}
+    id = id du .fold-body que le bouton commande (aria-expanded et aria-controls posés par site.js sous 900 px). Import : {% import "macros/fold.njk" as fold %}. -#}
 {%- macro head(id, title, tag="h3") -%}
-<{{ tag }} class="fold-head"><button type="button" class="fold-btn" aria-expanded="false" aria-controls="{{ id }}">{{ title | safe }}<span class="acc-icon" aria-hidden="true"></span></button></{{ tag }}>
+<{{ tag }} class="fold-head"><button type="button" class="fold-btn" data-controls="{{ id }}">{{ title | safe }}<span class="acc-icon" aria-hidden="true"></span></button></{{ tag }}>
 {%- endmacro -%}
 {%- macro toggle(id, lang) -%}
-<button type="button" class="fold-head fold-toggle" aria-expanded="false" aria-controls="{{ id }}"><span class="fold-show">{{ 'fold.show' | t(lang) }}</span><span class="fold-hide">{{ 'fold.hide' | t(lang) }}</span><span class="acc-icon" aria-hidden="true"></span></button>
+<button type="button" class="fold-head fold-toggle" data-controls="{{ id }}"><span class="fold-show">{{ 'fold.show' | t(lang) }}</span><span class="fold-hide">{{ 'fold.hide' | t(lang) }}</span><span class="acc-icon" aria-hidden="true"></span></button>
 {%- endmacro -%}

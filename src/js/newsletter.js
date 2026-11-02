@@ -13,6 +13,7 @@
   var sending = form.getAttribute("data-sending") || idle;
 
   function done() {
+    if (window.ZWALD_track) window.ZWALD_track("newsletter_signup", {});
     form.hidden = true;
     if (success) { success.classList.add("is-shown"); success.focus(); }
   }

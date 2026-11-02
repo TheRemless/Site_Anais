@@ -384,7 +384,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .fold.open .fold-toggle .fold-hide { display: inline; }
   .fold.open .acc-icon { background: var(--teal); color: #fff; }
   .fold.open .acc-icon::after { transform: rotate(90deg) scaleX(0); }
-  .fold:not(.open) .fold-body { display: none; }
+  .js .fold:not(.open) .fold-body { display: none; }
   .fold.open .fold-body { animation: fold-in 0.3s var(--ease) both; }
   .fold-body > .feature-list.mt-m { margin-top: 18px; }
   .fold > h2 + .fold-toggle { margin-top: 14px; }
@@ -413,6 +413,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .footer .fold.open .acc-icon { background: var(--sand-soft); color: var(--lagoon); }
   .footer-bottom { margin-top: 28px; }
 }
+
+/* Texte lu par les lecteurs d'écran seulement */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* L'attribut hidden doit toujours l'emporter (bandeau newsletter, messages) */
 [hidden] { display: none !important; }
