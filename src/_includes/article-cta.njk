@@ -1,7 +1,16 @@
-{#- Encart inséré au milieu de chaque article : l'article renseigne, l'encart donne envie d'être accompagné.
+{#- ctaVariant = "budget" : deuxième encart, placé après la section budget (texte différent du premier).
+    Encart inséré au milieu de chaque article : l'article renseigne, l'encart donne envie d'être accompagné.
     Pas de prix ici (décision de Jérémy, 31.10.2026) : on convainc d'abord, les tarifs sont sur /services/. -#}
 <aside class="article-cta" aria-label="{{ 'My service' if lang == 'en' else 'Mon accompagnement' }}">
-{%- if lang == "en" %}
+{%- if ctaVariant == "budget" and lang == "en" %}
+  <p class="article-cta-title">Your budget, stop by stop</p>
+  <p>I prepare 2 to 4 options per stop for accommodation and transport. In your travel journal every stop is costed, so you always know where you stand.</p>
+  <p class="article-cta-links"><a class="btn btn-white" href="/en/contact/"><span>Get my free quote</span></a> <a class="text-link" href="/en/services/#formules">See the packages</a></p>
+{%- elif ctaVariant == "budget" %}
+  <p class="article-cta-title">Ton budget, étape par étape</p>
+  <p>Je te prépare 2 à 4 options par étape pour les hébergements et les transports. Dans ton carnet de voyage, chaque étape est chiffrée pour que tu saches toujours où tu en es.</p>
+  <p class="article-cta-links"><a class="btn btn-white" href="/contact/"><span>Recevoir mon devis gratuit</span></a> <a class="text-link" href="/services/#formules">Voir les formules</a></p>
+{%- elif lang == "en" %}
   <p class="article-cta-title">Would you rather plan it with me?</p>
   <p>We talk it through on the phone, step by step, until the trip looks like you. I hunt down the best prices for flights, hotels, activities and transport, and you book at the direct price, with no agency margin.</p>
   <p class="article-cta-links"><a class="btn btn-white" href="/en/contact/"><span>Get my free quote</span></a> <a class="text-link" href="/en/services/">How I work</a></p>

@@ -5,12 +5,14 @@
 {%- set months = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"] if lang != "en" else ["January","February","March","April","May","June","July","August","September","October","November","December"] %}
 {%- macro fdate(d) %}{{ d.getDate() }} {{ months[d.getMonth()] }} {{ d.getFullYear() }}{% endmacro %}
 {%- macro fupd(u) %}{% if u.getFullYear %}{{ fdate(u) }}{% else %}{% set d = (u | string).split("-") %}{{ d[2] | int }} {{ months[(d[1] | int) - 1] }} {{ d[0] }}{% endif %}{% endmacro %}
-{%- macro meta(p) %}{{ fdate(p.date) }}{% if p.data.updated and (p.data.updated | string) != p.date.toISOString().slice(0, 10) %} · {{ "updated" if lang == "en" else "mis à jour le" }} {{ fupd(p.data.updated) }}{% endif %}{% if p.data.readingTime %} · {{ p.data.readingTime }} {{ "min read" if lang == "en" else "min de lecture" }}{% endif %}{% endmacro %}
+{#- titre : un petit mot ne reste jamais seul en fin de ligne (« Le guide ») -#}
+{%- macro nobr(t) %}{{ t | replace(r/ (le|la|les|un|une|de|du|des|à|au|en|et|ou|the|a|an|of|to|in) /gi, " $1 ") }}{% endmacro %}
+{%- macro meta(p) %}{{ fdate(p.date) }}{% if p.data.updated and (p.data.updated | string) != p.date.toISOString().slice(0, 10) %} · {{ "updated" if lang == "en" else "mis à jour le" }} {{ fupd(p.data.updated) }}{% endif %}{% if p.data.readingTime %} · {{ p.data.readingTime }} min<span class="bl-rt-long">{{ " read" if lang == "en" else " de lecture" }}</span>{% endif %}{% endmacro %}
     <article class="bl-feature">
       <a class="bl-feature-img" href="{{ first.url }}" tabindex="-1" aria-hidden="true"><img fetchpriority="high" sizes="(min-width: 1200px) 1140px, 100vw" src="{{ first.data.cover }}" alt="{{ first.data.coverAlt }}"></a>
       <div class="bl-feature-body">
         <p class="bl-date">{{ meta(first) }}</p>
-        <h2><a href="{{ first.url }}">{{ first.data.title }}</a></h2>
+        <h2><a href="{{ first.url }}">{{ nobr(first.data.title) }}</a></h2>
         <p class="bl-desc">{{ first.data.description }}</p>
         <a class="btn btn-teal" href="{{ first.url }}"><span>{{ "Read the article" if lang == "en" else "Lire l'article" }}</span></a>
       </div>
@@ -21,7 +23,7 @@
       <article class="bl-card">
         <a class="bl-card-img" href="{{ p.url }}" tabindex="-1" aria-hidden="true"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 50vw, 100vw" src="{{ p.data.cover }}" alt="{{ p.data.coverAlt }}"></a>
         <p class="bl-date">{{ meta(p) }}</p>
-        <h3><a href="{{ p.url }}">{{ p.data.title }}</a></h3>
+        <h3><a href="{{ p.url }}">{{ nobr(p.data.title) }}</a></h3>
         <p class="bl-desc">{{ p.data.description }}</p>
         <a class="text-link bl-link" href="{{ p.url }}">{{ "Read the article" if lang == "en" else "Lire l'article" }} <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       </article>

@@ -39,12 +39,12 @@ langAlt: "/en/faq/"
   <div class="container">
     <h1>Tout ce que tu dois savoir avant ton voyage en Thaïlande</h1>
     <p>Des réponses directes sur mon accompagnement de travel planner, les prix, les réservations et la Thaïlande elle-même, visa, saison, budget et itinéraires.</p>
-    {% endraw %}{% include "faq-themes.njk" %}{% raw %}
   </div>
 </section>
 
 <section class="section-pad faq-main">
   <div class="container">
+{% endraw %}{% include "faq-themes.njk" %}{% raw %}
 {% endraw %}{% include "faq-list.njk" %}
 {% raw %}    <span class="currency-note" hidden>Taux indicatif, actualisé quotidiennement — le CHF reste la devise de référence.</span>
   </div>
@@ -55,7 +55,7 @@ langAlt: "/en/faq/"
   <div class="ph-overlay"></div>
   <div class="container">
     <h2>Tu ne trouves pas ta réponse ?</h2>
-    <p>Envoie-moi un message : discutons ensemble de mon accompagnement ou de ton projet de voyage, gratuitement.</p>
+    <p>Décris-moi ton projet et je te réponds avec un devis gratuit, sans engagement.</p>
     <div class="btns">
       <a class="btn btn-white btn-lg" href="/contact/" data-magnetic><span>Recevoir mon devis gratuit <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     </div>

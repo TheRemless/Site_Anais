@@ -807,3 +807,26 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
 /* Visionneuse : compteur plus lisible */
 .lb-count { font-size: 1rem; font-weight: 600; color: #fff; letter-spacing: 0.06em; }
 @media (min-width: 700px) { .lb-count { font-size: 1.15rem; padding: 6px 14px; border-radius: var(--r); background: rgba(255, 255, 255, 0.12); } }
+
+/* ---------- Blog v3 ---------- */
+.page-hero.bl-hero { padding-top: calc(var(--nav-h) + clamp(48px, 6vw, 88px)); }
+@media (max-width: 699px) {
+  .bl-rt-long { display: none; }
+  .bl-feature-img { aspect-ratio: 4 / 3; }
+}
+/* Article : titre, chapeau et texte sur la même largeur de colonne */
+.art-body .prose { max-width: 41.5rem; }
+.article-hero h1, .article-hero .standfirst { max-width: 41.5rem; }
+@media (min-width: 1100px) {
+  .art-layout { grid-template-columns: 220px minmax(0, 41.5rem); }
+  .art-layout .article-share { grid-column: 2; max-width: 41.5rem; margin-left: 0; margin-right: 0; flex-wrap: nowrap; }
+}
+
+/* ---------- FAQ v3 : une seule colonne, barre de thèmes collante ---------- */
+.faq-main .faq-themes { position: sticky; top: var(--nav-h); z-index: 5; display: flex; flex-wrap: nowrap; gap: 8px 28px; margin: 0 0 clamp(28px, 4vw, 48px); padding: 14px 0; background: var(--surface, #fff); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.faq-main .faq-themes::-webkit-scrollbar { display: none; }
+.faq-main .faq-themes a { white-space: nowrap; flex: 0 0 auto; }
+.faq-main .faq-group, .faq-main .faq-group + .faq-group { display: block; max-width: 52rem; scroll-margin-top: calc(var(--nav-h) + 72px); }
+.faq-main .faq-group + .faq-group { margin-top: clamp(40px, 6vw, 72px); }
+.faq-main .faq-group-title { position: static; margin: 0 0 12px; }
+@media (min-width: 900px) { .faq-main .faq-group { display: block; } .faq-main .faq-group-title { position: static; } }
