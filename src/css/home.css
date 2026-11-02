@@ -372,10 +372,9 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
 @media (min-width: 900px) { .pricing-compact .formules { align-items: start; } }
 .hv-example { margin: 28px auto 0; max-width: 62ch; text-align: center; font-size: 1.02rem; color: var(--ink); }
 .hv-example .price-chf { font-weight: 600; }
-@media (max-width: 899px) {
-  .pricing-compact .formules { flex-direction: column; overflow: visible; margin: 0; padding: 0; }
-  .pricing-compact .formule, .pricing-compact .formule + .formule, .pricing-compact .formule.featured { flex: none; width: 100%; }
-}
+/* Téléphone : même rail horizontal que sur Services (.pricing dans system.css), la formule phare en premier,
+   la suivante dépasse à droite. Chaque carte est un lien, donc atteignable au clavier. */
+@media (max-width: 899px) { .pricing-compact .formules { align-items: stretch; } }
 
 /* Comment ça marche : frise horizontale de quatre étapes */
 .hv-process .hv-head { margin-bottom: 36px; }
