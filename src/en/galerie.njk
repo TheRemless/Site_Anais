@@ -32,43 +32,106 @@ langAlt: "/galerie/"
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
-<section class="page-hero has-img" data-screen-label="Gallery — hero">
-  <div class="ph-bg"><img fetchpriority="high" sizes="100vw" src="/images/IMG_6424.jpg" alt="Islands seen from a viewpoint"></div>
-  <div class="ph-overlay"></div>
+<section class="page-hero gl-hero" data-screen-label="Gallery — hero">
   <div class="container">
-    <p class="eyebrow">Gallery</p>
     <h1>Thailand in pictures</h1>
     <p>Temples, islands, markets and viewpoints, photographed on the way. A taste of what awaits you.</p>
   </div>
 </section>
 
-<section class="section-pad">
+<section class="section-pad gl-main">
   <div class="container">
-    <div class="gallery" data-reveal="fade">
-      <div class="g-item" data-lightbox data-src="/images/galerie/railay-eau-claire.jpg"><img loading="lazy" decoding="async" src="/images/galerie/railay-eau-claire.jpg" alt="Clear water at the foot of a cliff"></div>
-      <div class="g-item" data-lightbox data-src="/images/IMG_6422.jpg"><img loading="lazy" decoding="async" src="/images/IMG_6422.jpg" alt="Islands and lagoons seen from above"></div>
-      <div class="g-item" data-lightbox data-src="/images/galerie/phang-nga.jpg"><img loading="lazy" decoding="async" src="/images/galerie/phang-nga.jpg" alt="Viewpoint over a bay and its limestone peaks"></div>
-      <div class="g-item" data-lightbox data-src="/images/IMG_5227.jpg"><img loading="lazy" decoding="async" src="/images/IMG_5227.jpg" alt="Anaïs in front of a golden chedi"></div>
-      <div class="g-item" data-lightbox data-src="/images/galerie/bangkok-rooftop.jpg"><img loading="lazy" decoding="async" src="/images/galerie/bangkok-rooftop.jpg" alt="Bangkok and the river from a rooftop"></div>
-      <div class="g-item" data-lightbox data-src="/images/IMG_5519.jpg"><img loading="lazy" decoding="async" src="/images/IMG_5519.jpg" alt="Kayaking through the mangrove"></div>
-      <div class="g-item" data-lightbox data-src="/images/galerie/elephants-cafe.jpg"><img loading="lazy" decoding="async" src="/images/galerie/elephants-cafe.jpg" alt="Elephants seen from a terrace"></div>
-      <div class="g-item" data-lightbox data-src="/images/IMG_9507.jpg"><img loading="lazy" decoding="async" src="/images/IMG_9507.jpg" alt="Waterfall in the forest"></div>
-      <div class="g-item" data-lightbox data-src="/images/galerie/bangkok-chinatown.jpg"><img loading="lazy" decoding="async" src="/images/galerie/bangkok-chinatown.jpg" alt="Bangkok at night, Chinatown signs"></div>
-      <div class="g-item" data-lightbox data-src="/images/IMG_6793.jpg"><img loading="lazy" decoding="async" src="/images/IMG_6793.jpg" alt="Swimming among the rocks"></div>
-      <div class="g-item" data-lightbox data-src="/images/IMG_3258.jpg"><img loading="lazy" decoding="async" src="/images/IMG_3258.jpg" alt="Palm tree alley"></div>
-      <div class="g-item" data-lightbox data-src="/images/IMG_2016.jpg"><img loading="lazy" decoding="async" src="/images/IMG_2016.jpg" alt="Sunset on the beach"></div>
-    </div>
+    <section class="gl-chapter" aria-labelledby="gl-nord">
+      <h2 id="gl-nord">The North</h2>
+      <div class="gl-grid">
+        <div class="g-item gl-big" data-lightbox data-src="/images/IMG_5227.jpg"><img fetchpriority="high" sizes="(min-width: 700px) 66vw, 100vw" src="/images/IMG_5227.jpg" alt="Anaïs in front of the golden chedi of Wat Doi Suthep, Chiang Mai"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/temple-blanc.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/temple-blanc.jpg" alt="The White Temple, Chiang Rai"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/statue-blanche.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/statue-blanche.jpg" alt="Large white statue at Wat Huay Pla Kang, Chiang Rai"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/temple-bleu.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/temple-bleu.jpg" alt="Blue and gold guardian at the Blue Temple, Chiang Rai"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/guide-karen-mae-wang.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/guide-karen-mae-wang.jpg" alt="A Karen guide preparing lunch on banana leaves, Mae Wang"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/IMG_3258.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/IMG_3258.jpg" alt="Anaïs on a path lined with coconut trees, Chiang Mai"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/bebe-elephant.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/bebe-elephant.jpg" alt="Baby elephant grabbing a piece of bamboo, Chiang Mai"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/temple-blanc-pont.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/temple-blanc-pont.jpg" alt="The entrance bridge of the White Temple, Chiang Rai"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/doi-suthep.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/doi-suthep.jpg" alt="Visitors around the golden chedi of Wat Doi Suthep, Chiang Mai"></div>
+      </div>
+    </section>
+    <section class="gl-chapter" aria-labelledby="gl-centre">
+      <h2 id="gl-centre">Ayutthaya and Kanchanaburi</h2>
+      <div class="gl-grid">
+        <div class="g-item gl-big" data-lightbox data-src="/images/galerie/wat-yai-chai-mongkhon.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 66vw, 100vw" src="/images/galerie/wat-yai-chai-mongkhon.jpg" alt="The steps of the chedi at Wat Yai Chai Mongkhon, Ayutthaya"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/wat-phanan-choeng.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/wat-phanan-choeng.jpg" alt="The large golden Buddha of Wat Phanan Choeng, Ayutthaya"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/IMG_9507.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/IMG_9507.jpg" alt="Erawan Falls, Kanchanaburi"></div>
+      </div>
+    </section>
+    <section class="gl-chapter" aria-labelledby="gl-bangkok">
+      <h2 id="gl-bangkok">Bangkok</h2>
+      <div class="gl-grid">
+        <div class="g-item gl-big" data-lightbox data-src="/images/galerie/canal-bouddha.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 66vw, 100vw" src="/images/galerie/canal-bouddha.jpg" alt="White stupa and large golden Buddha along a Bangkok khlong"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/chinatown-nuit.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/chinatown-nuit.jpg" alt="Chinatown's neon signs at night, Bangkok"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/bangkok-rooftop.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/bangkok-rooftop.jpg" alt="Bangkok and the river from a rooftop"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/khlongs-bangkok.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/khlongs-bangkok.jpg" alt="Flower-decked long-tail bow on a Bangkok khlong"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/artist-house.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/artist-house.jpg" alt="Walkway along a Bangkok khlong"></div>
+        <div class="g-item gl-t gl-m2" data-lightbox data-src="/images/galerie/vue-wat-arun.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 100vw" src="/images/galerie/vue-wat-arun.jpg" alt="Thai dinner at sunset, facing Wat Arun"></div>
+      </div>
+    </section>
+    <section class="gl-chapter" aria-labelledby="gl-table">
+      <h2 id="gl-table">At the table</h2>
+      <div class="gl-grid">
+        <div class="g-item gl-h gl-low" data-lightbox data-src="/images/galerie/pad-krapao.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 50vw, 100vw" src="/images/galerie/pad-krapao.jpg" alt="Pad krapao with a fried egg and a fresh coconut"></div>
+        <div class="g-item gl-h" data-lightbox data-src="/images/galerie/plats-thai.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 50vw, 100vw" src="/images/galerie/plats-thai.jpg" alt="Thai dishes shared on a wooden table"></div>
+      </div>
+    </section>
+    <section class="gl-chapter" aria-labelledby="gl-krabi">
+      <h2 id="gl-krabi">Krabi and Phang Nga Bay</h2>
+      <div class="gl-grid">
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/hong-island-kayak.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/hong-island-kayak.jpg" alt="Kayaking below the cliffs of Hong Island"></div>
+        <div class="g-item gl-big" data-lightbox data-src="/images/galerie/railay-beach.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 66vw, 100vw" src="/images/galerie/railay-beach.jpg" alt="Limestone karst above Railay Beach"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/singe-baie.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/singe-baie.jpg" alt="Macaque on a rock along the Ao Nang Monkey Trail"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/IMG_5519.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/IMG_5519.jpg" alt="Kayaking on the Transparent Lake, Krabi"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/koh-panyee.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/koh-panyee.jpg" alt="Long-tail with yellow cushions facing Koh Panyee"></div>
+        <div class="g-item gl-t gl-m2" data-lightbox data-src="/images/galerie/longtail-railay.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 100vw" src="/images/galerie/longtail-railay.jpg" alt="By long-tail to Railay Beach"></div>
+        <div class="g-item gl-h" data-lightbox data-src="/images/galerie/phang-nga.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 50vw, 100vw" src="/images/galerie/phang-nga.jpg" alt="Viewpoint over Phang Nga Bay and its limestone peaks"></div>
+        <div class="g-item gl-h" data-lightbox data-src="/images/galerie/railay-eau-claire.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 50vw, 100vw" src="/images/galerie/railay-eau-claire.jpg" alt="Clear water at the foot of a cliff, Railay"></div>
+      </div>
+    </section>
+    <section class="gl-chapter" aria-labelledby="gl-andaman">
+      <h2 id="gl-andaman">Koh&nbsp;Lanta, Phi&nbsp;Phi and Phuket</h2>
+      <div class="gl-grid">
+        <div class="g-item gl-big" data-lightbox data-src="/images/IMG_2016.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 66vw, 100vw" src="/images/IMG_2016.jpg" alt="Sunset on a Koh Lanta beach"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/girls/old-town.jpeg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/girls/old-town.jpeg" alt="Koh Lanta Old Town street and its carved posts"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/girls/parc-national.jpeg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/girls/parc-national.jpeg" alt="Langur monkey in the canopy of Koh Lanta National Park"></div>
+        <div class="g-item gl-t gl-m2" data-lightbox data-src="/images/galerie/wat-chalong.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 100vw" src="/images/galerie/wat-chalong.jpg" alt="Wat Chalong, Phuket"></div>
+        <div class="g-item gl-w" data-lightbox data-src="/images/galerie/ferry-phi-phi.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 66vw, 100vw" src="/images/galerie/ferry-phi-phi.jpg" alt="Thai flag at the stern of the ferry to Koh Phi Phi"></div>
+      </div>
+    </section>
+    <section class="gl-chapter" aria-labelledby="gl-golfe">
+      <h2 id="gl-golfe">The Gulf of Thailand</h2>
+      <div class="gl-grid">
+        <div class="g-item gl-w" data-lightbox data-src="/images/IMG_6424.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 66vw, 100vw" src="/images/IMG_6424.jpg" alt="Ang Thong islands"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/FullSizeRender.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/FullSizeRender.jpg" alt="Viewpoint over the Koh Samui jungle"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/IMG_6793.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/IMG_6793.jpg" alt="Swimming among the rocks of Koh Nang Yuan, near Koh Tao"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/koh-tao-vue.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/koh-tao-vue.jpg" alt="Infinity pool facing the sea, Koh Tao"></div>
+        <div class="g-item gl-t" data-lightbox data-src="/images/galerie/koh-phangan.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 50vw" src="/images/galerie/koh-phangan.jpg" alt="Beach lined with coconut palms, Koh Phangan"></div>
+        <div class="g-item gl-t gl-m2" data-lightbox data-src="/images/galerie/elephants-cafe.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 33vw, 100vw" src="/images/galerie/elephants-cafe.jpg" alt="Elephants seen from a terrace, Koh Samui"></div>
+        <div class="g-item gl-w" data-lightbox data-src="/images/galerie/wat-phra-yai.jpg"><img loading="lazy" decoding="async" sizes="(min-width: 700px) 66vw, 100vw" src="/images/galerie/wat-phra-yai.jpg" alt="The Big Buddha of Wat Phra Yai, Koh Samui"></div>
+      </div>
+    </section>
+    <section class="gl-chapter" aria-labelledby="gl-loin">
+      <h2 id="gl-loin">Further afield, Malaysia</h2>
+      <div class="gl-grid">
+        <div class="g-item gl-f" data-lightbox data-src="/images/galerie/kuala-lumpur-mosquee.jpg"><img loading="lazy" decoding="async" sizes="100vw" src="/images/galerie/kuala-lumpur-mosquee.jpg" alt="A mosque in Kuala Lumpur, Malaysia"></div>
+      </div>
+    </section>
   </div>
 </section>
 
-<section class="cta-band section-pad">
-  <div class="ph-bg"><img loading="lazy" decoding="async" src="/images/IMG_6424.jpg" alt="The Ang Thong islands"></div>
+<section class="cta-band section-pad cta-full">
+  <div class="ph-bg"><img sizes="(max-width: 899px) 150vw, 100vw" loading="lazy" decoding="async" src="/images/lac-longtail.jpg" alt="Cheow Lan Lake, Khao Sok, seen from a long-tail boat"></div>
   <div class="ph-overlay"></div>
   <div class="container">
-    <p class="eyebrow center on-dark" data-reveal style="justify-content:center;margin-bottom:20px">Your turn</p>
-    <h2 data-reveal>What if the next photo were yours?</h2>
-    <p data-reveal data-reveal-delay="1">Tell me about your plans, and I'll put together the itinerary that takes you to these landscapes, and plenty more.</p>
-    <div class="btns" data-reveal data-reveal-delay="2">
+    <h2>What if the next photo were yours?</h2>
+    <p>Tell me about your plans, and I'll put together the itinerary that takes you to these landscapes, and plenty more.</p>
+    <div class="btns">
       <a class="btn btn-white btn-lg" href="/en/contact/" data-magnetic><span>Get my free quote <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     </div>
   </div>

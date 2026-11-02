@@ -32,19 +32,17 @@ langAlt: "/blog/"
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
-<section class="page-hero has-img" data-screen-label="Blog — hero">
-  <div class="ph-bg"><img fetchpriority="high" sizes="100vw" src="/images/FullSizeRender.jpg" alt="A viewpoint over the Koh Samui jungle"></div>
-  <div class="ph-overlay"></div>
+<section class="page-hero bl-hero" data-screen-label="Blog — hero">
   <div class="container">
-    <p class="eyebrow">The blog</p>
     <h1>Advice and itineraries for your trip to Thailand</h1>
     <p>My tips from the ground to help you prepare your trip to Thailand with peace of mind.</p>
   </div>
 </section>
 
-<section class="section-pad">
+<section class="section-pad bl-main">
   <div class="container">
 {% endraw %}{% include "blog-list.njk" %}{% raw %}
+    <div class="bl-cta">{% endraw %}{% include "article-cta.njk" %}{% raw %}</div>
 </div>
 </section>
 

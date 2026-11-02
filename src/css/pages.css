@@ -214,3 +214,637 @@
 .carnet-mock .cm-scroll img { border-radius: 0; }
 .carnet-mock .cm-scroll img + img { margin-top: 4px; }
 .sv-carnet-format { margin-top: 18px; color: var(--ink-mute); font-size: 0.98rem; max-width: 52ch; }
+
+/* =====================================================================
+   Girls Trips : la sous-marque prend l'orange (sable)
+   ===================================================================== */
+.page-girls { --sand-tint: #F7EBDD; --sand-ink: #8A4B1C; }
+.page-girls .page-hero { padding-top: var(--nav-h); }
+@media (min-width: 900px) { .page-girls .page-hero { padding-top: calc(var(--nav-h) + 20px); } }
+.page-girls .page-hero .hero-btns { display: flex; flex-wrap: wrap; gap: 12px; }
+.page-girls .btn-teal { --bg: var(--sand); --fg: var(--ink); border-color: var(--sand); }
+.page-girls .btn-teal:hover { --bg: #D4924F; border-color: #D4924F; box-shadow: none; }
+.page-girls .page-hero .btn-white { --bg: transparent; --fg: var(--ink); border-color: rgba(22, 36, 42, 0.3); }
+.page-girls .text-link { color: var(--sand-ink); }
+.page-girls .feature-list li .tick { background: var(--sand-tint); color: var(--sand-ink); }
+.page-girls .feature-list li .tick--no { background: transparent !important; color: var(--ink-mute) !important; }
+.page-girls .section-pad { padding: var(--section-y) 0; }
+
+.gt-intro .split-media img { aspect-ratio: 4 / 5; border-radius: var(--r); }
+.gt-why .split-media img { aspect-ratio: 4 / 5; border-radius: var(--r); }
+@media (min-width: 861px) { .gt-why .split.reverse .split-media { order: 2; } }
+
+/* Expériences : grille sur bureau, rail aimanté sur mobile */
+.xp-rail .xp-tile img { border-radius: var(--r); }
+.xp-rail .xp-tile:hover img { transform: none; }
+@media (max-width: 760px) {
+  .xp-rail.grid {
+    display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none;
+    margin: 0 calc(-1 * var(--gutter)); padding: 4px var(--gutter) 6px; scroll-padding-inline: var(--gutter);
+  }
+  .xp-rail.grid::-webkit-scrollbar { display: none; }
+  .xp-rail .xp-tile { flex: 0 0 78%; scroll-snap-align: start; }
+}
+.page-girls .offer-panel { border-radius: var(--r); background: var(--sand-tint); }
+.page-girls .offer-panel .split-media img { border-radius: var(--r); }
+.page-girls .option-flag { background: #fff; color: var(--sand-ink); border-radius: var(--r); }
+
+/* Ton hôte : l'arche reste réservée au portrait d'Anaïs */
+.gt-host .gt-host-photo { max-width: 460px; aspect-ratio: 4 / 5; }
+.gt-host .gt-host-photo img { aspect-ratio: auto; height: 100%; border-radius: 0; }
+.gt-host blockquote { font-family: var(--serif); font-weight: 600; font-size: clamp(1.3rem, 2vw, 1.6rem); line-height: 1.3; color: var(--ink); margin: 22px 0 6px; padding: 0; border: 0; }
+@media (max-width: 860px) { .gt-host .gt-host-photo { width: 86%; } }
+
+/* Pour qui : fond lagune pleine largeur */
+.gt-who { border-radius: 0; margin: 0; background: var(--lagoon); }
+.gt-who .split-media img { border-radius: var(--r); }
+
+/* Dates : la bande sable de la page */
+.gt-dates { background: var(--sand-tint); }
+
+/* Tarif : compris et non compris dans une seule carte */
+.gt-tarif .tarif-panel { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: clamp(24px, 4vw, 48px); box-shadow: none; }
+.gt-tarif .tarif-panel .split > div + div { border-top: 1px solid var(--line-soft); padding-top: 24px; }
+@media (min-width: 861px) { .gt-tarif .tarif-panel .split > div + div { border-top: 0; padding-top: 0; border-left: 1px solid var(--line-soft); padding-left: clamp(32px, 5vw, 64px); } }
+.gt-tarif .feature-list { gap: 0; }
+.gt-tarif .feature-list li { padding: 12px 0; border-top: 1px solid var(--line-soft); }
+.gt-brochure .offer-panel { padding: clamp(32px, 5vw, 56px); }
+
+/* =====================================================================
+   À propos
+   ===================================================================== */
+.ab-portrait { max-width: 460px; aspect-ratio: 4 / 5; }
+.ab-portrait img { aspect-ratio: auto; height: 100%; border-radius: 0; }
+@media (max-width: 860px) { .ab-portrait { width: 86%; } }
+.ab-story .split { align-items: center; }
+
+/* Ma maison : texte étroit, puis deux photos côte à côte */
+.ab-home { background: var(--mint); }
+.ab-home-text { max-width: 640px; }
+.ab-home-text h2 { margin-bottom: 14px; }
+.ab-home-text p + p { margin-top: 12px; }
+.ab-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: clamp(28px, 4vw, 48px); }
+.ab-duo .frame { aspect-ratio: 4 / 5; }
+.ab-duo .frame:last-child { margin-top: clamp(24px, 6vw, 72px); }
+@media (min-width: 900px) { .ab-duo { gap: 24px; max-width: 900px; } }
+
+/* Convictions : trois phrases fortes à filets, sans cartes */
+.ab-beliefs.grid { gap: 0; }
+.ab-belief { padding: 22px 0; border-top: 1px solid var(--line); }
+.ab-belief h3 { font-size: clamp(1.5rem, 2.2vw, 1.9rem); margin-bottom: 8px; }
+.ab-belief p { color: var(--ink-mute); margin-top: 0 !important; }
+@media (min-width: 861px) { .ab-beliefs.grid { gap: 0 36px; } }
+
+/* Concrètement : fond lagune, photo à droite */
+.trust-sec.bg-navy { background: var(--lagoon); }
+.trust-sec .split-media img { border-radius: var(--r); aspect-ratio: 4 / 5; }
+@media (min-width: 861px) { .trust-sec .split.reverse .split-media { order: 2; } }
+
+/* =====================================================================
+   FAQ : un thème par rangée, titre fixe à gauche, questions à filets
+   ===================================================================== */
+.faq-main .faq-group + .faq-group { margin-top: clamp(48px, 7vw, 88px); }
+.faq-main .faq-group-title { margin-bottom: 18px; }
+.faq-main .acc { max-width: none; gap: 0; border-top: 1px solid var(--line); }
+.faq-main .acc-item, .faq-main .acc-item.open { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; }
+.faq-main .acc-head { padding: 20px 0; min-height: 56px; }
+.faq-main .acc-head h3 { font-family: var(--serif); font-weight: 600; font-size: clamp(1.25rem, 1.8vw, 1.45rem); line-height: 1.25; }
+.faq-main .acc-icon { width: 32px; height: 32px; background: transparent; border: 1px solid var(--line); color: var(--teal-dark); }
+.faq-main .acc-item.open .acc-icon { background: var(--teal); border-color: var(--teal); color: #fff; }
+.faq-main .acc-body-inner { padding: 0 0 22px; font-size: 1.02rem; color: var(--ink-soft); max-width: 70ch; }
+.faq-main .acc-item.open .acc-body { max-height: 1200px; }
+.faq-main .acc-head:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+@media (min-width: 900px) {
+  .faq-main .faq-group { display: grid; grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.6fr); gap: clamp(40px, 6vw, 96px); align-items: start; }
+  .faq-main .faq-group-title { position: sticky; top: 110px; margin: 0; }
+}
+
+/* ---------- Galerie ----------
+   Titre seul, les chapitres de photos servent de visuel d'entrée (voir Galerie v2). */
+.page-hero.gl-hero { padding-bottom: clamp(28px, 4vw, 48px); }
+@media (min-width: 900px) {
+  .page-hero.gl-hero { display: block; padding-top: calc(var(--nav-h) + clamp(40px, 5vw, 72px)); }
+  .page-hero.gl-hero > .container {
+    display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    align-items: end; gap: clamp(32px, 5vw, 80px);
+    width: 100%; max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter);
+  }
+  .page-hero.gl-hero h1 { max-width: 12ch; }
+  .page-hero.gl-hero p { margin: 0 0 0.4em; }
+}
+.gl-main { padding-top: 0; }
+@media (prefers-reduced-motion: reduce) { .gl-main .g-item:hover img { transform: none; } }
+
+/* ---------- Blog : liste en sommaire ----------
+   Un article à la une (photo large, texte à côté), puis les autres en rangées
+   séparées par un filet : vignette, date, titre, résumé. Pas de cartes. */
+.bl-main { padding-top: 0; }
+.bl-date { font-size: 0.85rem; color: var(--ink-mute); margin: 0 0 10px; }
+.bl-feature { display: grid; gap: 24px; padding-bottom: clamp(40px, 6vw, 72px); }
+.bl-feature-img { display: block; border-radius: var(--r); overflow: hidden; aspect-ratio: 4 / 3; }
+.bl-feature-img img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.8s var(--ease); }
+.bl-feature-img:hover img, .bl-row-img:hover img { transform: scale(1.03); }
+.bl-feature h2 { font-size: clamp(2rem, 3.4vw, 3rem); line-height: 1.05; margin: 0; max-width: 18ch; }
+.bl-feature h2 a, .bl-row h3 a { color: var(--ink); text-decoration: none; }
+.bl-feature h2 a:hover, .bl-row h3 a:hover { color: var(--teal-dark); }
+.bl-desc { color: var(--ink-soft); margin: 14px 0 0; max-width: 54ch; }
+.bl-feature .btn { margin-top: 24px; }
+.bl-list { border-top: 1px solid var(--line); }
+.bl-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 18px; padding: 24px 0; border-bottom: 1px solid var(--line); align-items: start; }
+.bl-row-img { display: block; border-radius: var(--r); overflow: hidden; aspect-ratio: 1; }
+.bl-row-img img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.8s var(--ease); }
+.bl-row h3 { font-size: clamp(1.3rem, 2.2vw, 1.75rem); line-height: 1.15; margin: 0; }
+.bl-row .bl-desc { font-size: 0.98rem; }
+.bl-link { display: inline-flex; margin-top: 12px; }
+@media (max-width: 559px) { .bl-row .bl-desc { grid-column: 1 / -1; } .bl-row-body { display: contents; } .bl-row .bl-date, .bl-row h3 { grid-column: 2; } .bl-row .bl-link { grid-column: 1 / -1; margin-top: 0; } .bl-row { row-gap: 10px; } .bl-row-img { grid-row: 1 / span 2; } }
+@media (min-width: 900px) {
+  .bl-feature { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: clamp(40px, 5vw, 80px); align-items: center; }
+  .bl-row { grid-template-columns: 280px minmax(0, 1fr); gap: clamp(32px, 4vw, 56px); padding: 32px 0; align-items: center; }
+  .bl-row-img { aspect-ratio: 3 / 2; }
+}
+@media (prefers-reduced-motion: reduce) { .bl-feature-img img, .bl-row-img img { transition: none; transform: none !important; } }
+
+/* ---------- Article ----------
+   Colonne de lecture inchangée (720 px), intertitres plus lisibles sur mobile,
+   encarts au rayon commun, appel final sans photo (sable, deux colonnes). */
+.article-hero h1 { max-width: 22ch; }
+.prose h3 { font-size: clamp(1.4rem, 2vw, 1.6rem); font-weight: 600; line-height: 1.2; }
+.prose h2 { font-weight: 600; }
+.callout, .article-cta { border-radius: var(--r); }
+.article-cover { border-radius: var(--r); }
+@media (max-width: 559px) {
+  .article-meta-top { gap: 2px 10px; margin-bottom: 16px; }
+  .article-meta-top .m { font-size: 0.85rem; }
+  .article-meta-top .m:nth-child(even) { display: none; }
+  .article-meta-top { flex-direction: column; align-items: flex-start; }
+}
+.cta-band.cta-plain { display: block; }
+.cta-band.cta-plain .container { max-width: var(--container); margin: 0 auto; padding: clamp(56px, 8vw, 104px) var(--gutter); }
+@media (min-width: 900px) {
+  .cta-band.cta-plain { min-height: 0; }
+  .cta-band.cta-plain .container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: clamp(40px, 6vw, 96px); align-items: end; }
+  .cta-band.cta-plain h2 { grid-row: 1 / span 2; margin: 0; align-self: center; }
+  .cta-band.cta-plain p { margin-bottom: 24px; }
+}
+/* À lire aussi : vignettes sans cadre */
+.bl-related .blog-card { box-shadow: none; border-radius: 0; }
+.bl-related .blog-card:hover { transform: none; box-shadow: none; }
+.bl-related .blog-card .b-img { border-radius: var(--r); aspect-ratio: 3 / 2; }
+.bl-related .blog-card .b-body { padding: 18px 0 0; }
+.bl-related .blog-card h3 { font-weight: 600; }
+.bl-related .blog-card h3 { font-size: clamp(1.3rem, 1.8vw, 1.5rem); line-height: 1.2; }
+@media (max-width: 860px) {
+  .bl-related .blog-grid { gap: 0; border-top: 1px solid var(--line); }
+  .bl-related .blog-card { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 18px; align-items: center; padding: 20px 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+  .bl-related .blog-card .b-img { aspect-ratio: 1; }
+  .bl-related .blog-card .b-body { padding: 0; }
+  .bl-related .blog-card .b-link { margin-top: 8px; }
+}
+
+/* ---------- Cartes cadeaux et Guides ----------
+   Intro sur bande menthe : titre et chapeau à gauche, liste à filets à droite.
+   Fiche pratique : photo d'un côté, définitions de l'autre (côté inversé sur Guides).
+   Cartes cadeaux : « pourquoi l'offrir » sur bande lagune. Appel final plein écran. */
+.pg-intro .container { display: grid; gap: clamp(32px, 5vw, 64px); }
+.pg-intro-head h2 { margin: 0; }
+.pg-intro-head > p:not(.lead) { color: var(--ink-soft); margin-top: 12px; }
+.pg-intro-head .lead { margin-top: 24px; font-size: clamp(1.1rem, 1.5vw, 1.25rem); line-height: 1.6; color: var(--ink); max-width: 46ch; text-align: left; }
+.pg-list { display: grid; border-top: 1px solid var(--line); }
+.pg-item { padding: 20px 0; border-bottom: 1px solid var(--line); }
+.pg-item h3 { font-family: var(--serif); font-weight: 600; font-size: clamp(1.3rem, 1.8vw, 1.5rem); margin: 0 0 6px; }
+.pg-item p { margin: 0; color: var(--ink-soft); }
+@media (min-width: 700px) { .pg-list.pg-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; } .pg-list.pg-list:has(> :nth-child(3):last-child) { grid-template-columns: 1fr; } }
+@media (min-width: 1000px) {
+  .pg-intro .container { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr); align-items: start; }
+  .pg-intro-head { position: sticky; top: 110px; }
+}
+.pg-spec .container { display: grid; gap: clamp(28px, 5vw, 72px); align-items: center; }
+.pg-spec-photo { border-radius: var(--r); overflow: hidden; aspect-ratio: 4 / 3; box-shadow: var(--photo-shadow); }
+.pg-spec-photo img { width: 100%; height: 100%; object-fit: cover; }
+.pg-spec .section-head { margin-bottom: 24px; text-align: left; }
+.pg-spec .section-head h2 { margin: 0; }
+.pg-spec .info-grid { display: grid; grid-template-columns: 1fr; gap: 0; border-top: 1px solid var(--line); }
+.pg-spec .info-card { background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; padding: 14px 0; display: grid; gap: 4px; }
+.pg-spec .info-card .k { font-family: var(--serif); font-style: italic; font-size: 1.05rem; letter-spacing: 0; text-transform: none; color: var(--teal-deep); font-weight: 500; }
+.pg-spec .info-card .v { color: var(--ink); }
+@media (min-width: 560px) { .pg-spec .info-card { grid-template-columns: 9.5em minmax(0, 1fr); gap: 16px; align-items: baseline; } }
+@media (min-width: 900px) {
+  .pg-spec .container { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); }
+  .pg-spec-photo { aspect-ratio: 4 / 5; }
+  .pg-spec-rev .pg-spec-photo { order: 2; }
+}
+.cc-why { background: var(--lagoon); color: #fff; }
+.cc-why .section-head { text-align: left; margin-bottom: clamp(28px, 4vw, 48px); }
+.cc-why h2 { color: #fff; margin: 0; }
+.cc-why-list { display: grid; gap: 0; border-top: 1px solid rgba(255, 255, 255, 0.22); }
+.cc-why .pg-item { border-bottom: 1px solid rgba(255, 255, 255, 0.22); }
+.cc-why .pg-item h3 { color: #fff; font-size: clamp(1.6rem, 2.6vw, 2.2rem); }
+.cc-why .pg-item p { color: rgba(255, 255, 255, 0.82); }
+@media (min-width: 800px) {
+  .cc-why-list { grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 0; column-gap: clamp(24px, 4vw, 56px); }
+  .cc-why .pg-item { border-bottom: 0; border-top: 1px solid rgba(255, 255, 255, 0.35); padding-top: 24px; }
+}
+
+/* ---------- Pages légales ----------
+   Lecture seule : en-tête menthe qui respire, sommaire sans capitales,
+   texte un peu plus serré sur mobile, intertitres en graisse 600. */
+.article-hero:not(:has(.article-cover)) { padding-bottom: clamp(40px, 6vw, 72px); }
+.legal-toc-title { font-family: var(--serif); font-style: italic; font-size: 1.1rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink); }
+.legal-content h2 { font-weight: 600; font-size: clamp(1.5rem, 2.2vw, 1.9rem); }
+.legal-content h3 { font-weight: 600; }
+@media (max-width: 559px) { .legal-content.prose { font-size: 1.04rem; line-height: 1.7; } }
+
+/* Questions de l'accordéon : bouton plein largeur dans le h3 */
+.acc-btn { all: unset; display: block; width: 100%; cursor: pointer; font: inherit; color: inherit; line-height: inherit; }
+.acc-btn:focus-visible { outline: 3px solid var(--teal); outline-offset: 4px; border-radius: 4px; }
+
+/* Section sans photo (photo retirée en attendant l'originale) */
+.split.no-media { display: block; max-width: 760px; }
+
+/* ---------- Visionneuse photo ----------
+   Au-dessus de tout (bandeau cookies compris), flèches hors de l'image, compteur. */
+.lightbox { z-index: 2147483000; padding: 64px 16px 24px; }
+.lb-stage { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "prev fig next" ". count ."; align-items: center; column-gap: clamp(12px, 3vw, 32px); row-gap: 14px; width: 100%; max-width: 1200px; height: 100%; touch-action: pan-y; }
+.lb-stage .lb-figure { grid-area: fig; max-width: none; max-height: none; justify-self: center; min-height: 0; }
+.lb-stage .lb-figure img { max-width: 100%; max-height: calc(100svh - 150px); pointer-events: none; -webkit-user-drag: none; user-select: none; }
+.lb-stage .lb-figure figcaption:empty { display: none; }
+.lb-stage .lb-nav { position: static; transform: none; }
+.lb-stage .lb-prev { grid-area: prev; } .lb-stage .lb-next { grid-area: next; }
+.lb-count { grid-area: count; justify-self: center; margin: 0; color: rgba(255, 255, 255, 0.85); font-size: 0.95rem; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+.lb-close { z-index: 1; top: 14px; right: 14px; }
+@media (max-width: 699px) {
+  .lb-stage { grid-template-columns: auto 1fr auto; grid-template-areas: "fig fig fig" "prev count next"; align-content: center; }
+  .lb-stage .lb-figure img { max-height: calc(100svh - 190px); }
+  .lb-stage .lb-nav { width: 48px; height: 48px; }
+}
+
+/* =====================================================================
+   Girls Trips v2 : page carnet de voyage
+   Fond beige sur toute la page, filets et numéros orange, photos décalées.
+   ===================================================================== */
+.page-girls { --gt-paper: #FBF3E8; --gt-rule: var(--sand); background: var(--gt-paper); }
+.page-girls .section-pad.bg-cream, .page-girls .section-pad:not(.gt-who):not(.cta-band):not(.gt-dates) { background: transparent; }
+
+/* En-tête : titre et accroche sur deux colonnes, puis trois photos décalées (aucun texte dessus) */
+.page-hero.gt-hero { display: block; background: transparent; padding: calc(var(--nav-h) + 24px) 0 0; overflow: visible; }
+.page-hero.gt-hero > .container { width: 100%; max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter); }
+.gt-hero h1 { max-width: 15ch; }
+.gt-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 32px !important; }
+.gt-strip figure { margin: 0; border-radius: var(--r); overflow: hidden; }
+.gt-strip img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gt-strip-2 { grid-column: 1 / -1; aspect-ratio: 4 / 3; order: -1; }
+.gt-strip-1 { aspect-ratio: 3 / 4; }
+.gt-strip-3 { aspect-ratio: 3 / 4; margin-top: 36px !important; }
+.gt-strip-1 img { object-position: 50% 35%; }
+@media (min-width: 900px) {
+  .page-hero.gt-hero > .container:first-child { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); grid-template-areas: "t p" "t b"; column-gap: clamp(40px, 6vw, 96px); align-items: end; }
+  .gt-hero > .container:first-child h1 { grid-area: t; }
+  .gt-hero > .container:first-child > p { grid-area: p; margin: 0; }
+  .gt-hero > .container:first-child .hero-btns { grid-area: b; }
+  .gt-strip { grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr) minmax(0, 1fr); gap: clamp(16px, 2vw, 28px); align-items: start; margin-top: clamp(48px, 6vw, 80px) !important; }
+  .gt-strip-2 { grid-column: auto; order: 0; margin-top: 72px !important; }
+  .gt-strip-1 { margin-top: 0; }
+  .gt-strip-3 { margin-top: 140px !important; }
+}
+
+/* Fiche séjour : une ligne sobre entre deux filets orange */
+.gt-fiche { margin-top: clamp(40px, 6vw, 72px); }
+.gt-fiche .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 40px; border-block: 1px solid var(--gt-rule); padding-block: 22px; }
+.gt-fiche-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; margin: 0; flex: 1 1 520px; }
+.gt-fiche-list dt { font-family: var(--serif); font-style: italic; font-size: 1.05rem; color: var(--sand-ink); }
+.gt-fiche-list dd { margin: 2px 0 0; font-weight: 600; color: var(--ink); }
+.gt-fiche .btn { flex: 0 0 auto; }
+@media (min-width: 900px) { .gt-fiche-list { grid-template-columns: repeat(4, auto); justify-content: start; column-gap: clamp(28px, 4vw, 56px); } }
+@media (max-width: 560px) { .gt-fiche .btn { width: 100%; } }
+
+/* Décalages type carnet */
+@media (min-width: 900px) {
+  .gt-intro .split-media { margin-top: 72px; }
+  .gt-host .gt-host-photo { margin-top: -40px; }
+}
+
+/* Tarif : appel juste sous le prix */
+.gt-tarif-cta { display: grid; justify-items: center; gap: 8px; margin: 4px 0 clamp(28px, 4vw, 44px); }
+.gt-free { color: var(--ink-mute) !important; font-size: 0.9rem; margin: 0; }
+.page-girls .gt-tarif .tarif-panel { border-color: var(--gt-rule); }
+.page-girls .gt-tarif .tarif-panel .split > div + div { border-color: var(--gt-rule); }
+
+/* Filets et numéros orange */
+.page-girls .steps-line .step-num { color: var(--sand-ink); }
+.page-girls .steps-line::before, .page-girls .steps-line .step::before { background: var(--gt-rule); border-color: var(--gt-rule); }
+.page-girls .acc, .page-girls .acc-item { border-color: var(--gt-rule) !important; }
+.page-girls .gt-dates { background: #F4E2CC; }
+
+/* Expériences : photos en portrait, visages entiers */
+.page-girls .xp-tile img { aspect-ratio: 4 / 5; object-position: 50% 30%; }
+
+/* Contrastes */
+.page-girls .gt-who .text-link { color: var(--sand-soft); border-color: rgba(240, 201, 155, 0.5); }
+.page-girls .gt-brochure .btn-ghost { color: var(--sand-ink); border-color: rgba(154, 91, 46, 0.55); background: transparent; }
+.page-girls .gt-brochure .btn-ghost:hover { background: rgba(224, 163, 107, 0.15); }
+
+/* Appel final : voile teal neutre, bouton orange */
+.page-girls .cta-full .ph-overlay { background: linear-gradient(180deg, rgba(8, 60, 66, 0.25) 0%, rgba(8, 60, 66, 0.55) 45%, rgba(6, 40, 44, 0.9) 100%); }
+
+/* Barre collante mobile : prix et pré-inscription */
+.gt-sticky { position: fixed; left: 0; right: 0; bottom: 0; z-index: 150; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--lagoon); box-shadow: 0 -8px 24px rgba(13, 31, 28, 0.18); }
+.gt-sticky-price { margin: 0; font-weight: 600; color: #fff; font-variant-numeric: lining-nums; }
+.gt-sticky .btn { min-height: 44px; padding-inline: 1.2rem; }
+@media (min-width: 900px) { .gt-sticky { display: none !important; } }
+.gt-tarif-cta { justify-items: start; }
+/* Bouton de l'en-tête aux couleurs de la sous-marque, sur une ligne */
+body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); border-color: var(--sand); }
+.nav-cta .btn { white-space: nowrap; }
+@media (max-width: 420px) { .nav-cta .btn { padding-inline: 0.9rem; font-size: 0.88rem; } }
+
+/* =====================================================================
+   À propos v2 : portrait en arche, frise chronologique, un avis, convictions alignées
+   ===================================================================== */
+/* En-tête : grand portrait d'Anaïs (visage visible), texte à côté. Mobile : texte puis portrait. */
+.page-hero.ab-hero { display: block; padding: calc(var(--nav-h) + 16px) 0 clamp(32px, 5vw, 56px); overflow: visible; }
+.page-hero.ab-hero > .container { width: 100%; max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter); display: grid; gap: 28px; }
+.ab-hero-photo { width: 100%; max-width: 480px; aspect-ratio: 4 / 5; justify-self: center; }
+.ab-hero-photo img { object-position: 50% 45%; }
+@media (min-width: 900px) {
+  .page-hero.ab-hero > .container { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); column-gap: clamp(48px, 6vw, 96px); align-items: end; }
+  .ab-hero-photo { order: -1; max-width: none; justify-self: stretch; aspect-ratio: auto; height: min(80svh, 740px); }
+  .ab-hero-text { padding-bottom: clamp(16px, 3vw, 48px); }
+  .ab-hero-text h1 { max-width: 13ch; }
+}
+.ab-hero + .ab-story { padding-top: clamp(32px, 5vw, 72px); }
+
+/* Frise : Genève, l'Asie du Sud-Est, Koh Lanta */
+.ab-story-head { max-width: 720px; }
+.ab-story-head h2 { margin-bottom: 16px; }
+.ab-timeline { list-style: none; margin: clamp(36px, 5vw, 64px) 0 0; padding: 0; position: relative; }
+.ab-timeline::before { content: ""; position: absolute; left: 7px; top: 10px; bottom: 10px; width: 2px; background: var(--line); }
+.ab-step { position: relative; display: grid; gap: 20px; padding: 0 0 clamp(36px, 5vw, 64px) 44px; }
+.ab-step:last-child { padding-bottom: 0; }
+.ab-step::before { content: ""; position: absolute; left: 0; top: 10px; width: 16px; height: 16px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 5px var(--surface, #fff); }
+.ab-step h3 { font-family: var(--serif); font-weight: 600; font-size: clamp(1.5rem, 2.4vw, 2rem); line-height: 1.15; margin: 0 0 12px; color: var(--teal-deep); }
+.ab-step-body p + p { margin-top: 12px; }
+.ab-step-photo { margin: 0; border-radius: var(--r); overflow: hidden; aspect-ratio: 4 / 5; max-width: 360px; }
+.ab-step-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (min-width: 900px) {
+  .ab-step { grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); column-gap: clamp(40px, 6vw, 96px); align-items: start; }
+  .ab-step-body { max-width: 62ch; }
+  .ab-step-photo { justify-self: end; width: 100%; }
+}
+
+/* La Thaïlande au quotidien : texte et deux photos alignées, sans colonne vide */
+.ab-home .container { display: grid; gap: clamp(28px, 4vw, 48px); }
+.ab-home-text { max-width: 60ch; }
+.ab-duo { margin-top: 0; max-width: none; }
+.ab-duo .frame:last-child { margin-top: 0; }
+@media (min-width: 900px) { .ab-home .container { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-items: center; } }
+
+/* Un avis, en grand */
+.ab-review { background: var(--lagoon); color: #fff; }
+.ab-quote { margin: 0; max-width: 30em; }
+.ab-quote .stars { display: flex; gap: 4px; color: var(--sand-soft); margin-bottom: 18px; }
+.ab-quote .stars svg { width: 20px; height: 20px; }
+.ab-quote blockquote { margin: 0; padding: 0; border: 0; }
+.ab-quote blockquote p { font-family: var(--serif); font-weight: 600; font-size: clamp(1.7rem, 3.4vw, 2.7rem); line-height: 1.2; color: #fff; margin: 0; }
+.ab-quote figcaption { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 4px 12px; color: rgba(255, 255, 255, 0.85); }
+.ab-quote figcaption strong { color: #fff; }
+.ab-quote-links { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; margin-top: 28px; }
+.ab-review .text-link { color: var(--sand-soft); }
+
+/* Trois convictions : colonnes alignées (titres et textes sur les mêmes lignes) */
+.ab-beliefs { display: grid; gap: 0; }
+@media (min-width: 861px) {
+  .ab-beliefs { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto; column-gap: 36px; }
+  .ab-belief { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 8px; align-content: start; }
+  .ab-belief h3 { margin: 0; align-self: end; }
+}
+.ab-review .g-badge { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: var(--r); color: #fff; font-weight: 600; }
+.ab-review .g-badge:hover { border-color: #fff; }
+
+/* =====================================================================
+   Galerie v2 : quatre chapitres (Nord, Bangkok, Andaman, Golfe), formats mêlés,
+   aucune légende. Mobile : deux colonnes (voir Galerie v4).
+   ===================================================================== */
+.gl-chapter + .gl-chapter { margin-top: clamp(56px, 8vw, 112px); }
+.gl-chapter h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(2rem, 3.6vw, 3rem); line-height: 1.05; margin: 0 0 clamp(18px, 2.5vw, 28px); }
+.gl-grid { display: grid; gap: 12px; }
+.gl-grid .g-item { position: relative; border-radius: var(--r); overflow: hidden; cursor: pointer; background: var(--bg-mint); }
+.gl-grid .g-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.6s var(--ease); }
+.gl-grid .g-item:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+.gl-t, .gl-h { aspect-ratio: 4 / 5; }
+.gl-w, .gl-f { aspect-ratio: 4 / 3; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) { .gl-grid .g-item:hover img { transform: scale(1.03); } }
+@media (min-width: 700px) {
+  .gl-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: clamp(110px, 15vw, 230px); gap: clamp(12px, 1.4vw, 18px); grid-auto-flow: dense; }
+  .gl-grid .g-item { aspect-ratio: auto; grid-row: span 2; }
+  .gl-t { grid-column: span 2; } .gl-w { grid-column: span 4; } .gl-h { grid-column: span 3; } .gl-f { grid-column: span 6; }
+}
+.gl-grid .g-item picture { display: block; width: 100%; height: 100%; }
+
+/* =====================================================================
+   Blog v2
+   ===================================================================== */
+/* Liste : en-tête compact, article à la une en grand, les autres sur deux colonnes */
+.page-hero.bl-hero { display: block; padding: calc(var(--nav-h) + 24px) 0 clamp(24px, 4vw, 40px); }
+.page-hero.bl-hero > .container { width: 100%; max-width: var(--container); margin: 0 auto; padding: 0 var(--gutter); }
+.page-hero.bl-hero h1 { max-width: 20ch; font-size: clamp(2.4rem, 5vw, 3.8rem); }
+.bl-feature { display: block; padding-bottom: clamp(48px, 7vw, 88px); }
+.bl-feature-img { aspect-ratio: 16 / 9; }
+.bl-feature-body { max-width: 64ch; margin-top: 24px; }
+.bl-feature h2 { max-width: 22ch; font-size: clamp(2.1rem, 4vw, 3.2rem); }
+.bl-grid { display: grid; gap: clamp(40px, 5vw, 56px) clamp(24px, 3vw, 40px); }
+@media (min-width: 760px) { .bl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.bl-card-img { display: block; border-radius: var(--r); overflow: hidden; aspect-ratio: 3 / 2; margin-bottom: 18px; }
+.bl-card-img img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.8s var(--ease); }
+.bl-card h3 { font-family: var(--serif); font-weight: 600; font-size: clamp(1.5rem, 2.4vw, 1.9rem); line-height: 1.15; margin: 0; }
+.bl-card h3 a { color: var(--ink); text-decoration: none; }
+.bl-card h3 a:hover { color: var(--teal-dark); }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) { .bl-card-img:hover img { transform: scale(1.03); } }
+.bl-cta { margin-top: clamp(56px, 8vw, 96px); }
+.bl-cta .article-cta { margin: 0; }
+
+/* Encadré devis : fond vert profond plein */
+.article-cta { background: var(--lagoon); color: rgba(255, 255, 255, 0.9); padding: clamp(24px, 4vw, 40px); border-radius: var(--r); }
+.article-cta .article-cta-title { color: #fff; font-weight: 600; }
+.article-cta p { color: rgba(255, 255, 255, 0.88); }
+.article-cta .btn-white { --bg: #fff; --fg: var(--teal-deep); border-color: #fff; }
+.article-cta .btn-white, .article-cta .btn-white span { color: var(--teal-deep) !important; }
+.article-cta .text-link { color: var(--sand-soft); }
+
+/* Article : colonne de lecture de 64 caractères, titre et chapeau alignés dessus */
+.art-layout { display: block; }
+.prose { max-width: 64ch; margin: 0; }
+.article-hero h1, .article-hero .standfirst { max-width: 64ch; }
+.article-hero .standfirst { max-width: 60ch; }
+.art-toc { display: none; }
+.art-toc-wrap { margin-top: 20px; }
+.art-toc-m { border-block: 1px solid var(--line); padding: 4px 0; max-width: 64ch; }
+.art-toc-m summary { cursor: pointer; padding: 12px 0; font-weight: 600; color: var(--teal-deep); list-style-position: inside; }
+.art-toc-m ol, .art-toc ol { margin: 0; padding: 0 0 12px 1.2em; display: grid; gap: 8px; }
+.art-toc-m a, .art-toc a { color: var(--ink); text-decoration: none; }
+.art-toc-m a:hover, .art-toc a:hover { color: var(--teal-dark); text-decoration: underline; }
+.prose h2[id] { scroll-margin-top: 100px; }
+@media (min-width: 1100px) {
+  .art-toc-wrap { display: none; }
+  .art-layout { display: grid; grid-template-columns: 220px minmax(0, 64ch); column-gap: clamp(40px, 5vw, 72px); align-items: start; justify-content: start; }
+  .art-toc { display: block; position: sticky; top: 110px; font-size: 0.92rem; line-height: 1.4; }
+  .art-toc-title { font-family: var(--serif); font-style: italic; font-size: 1.1rem; margin: 0 0 12px; color: var(--ink); }
+  .art-toc ol { padding-left: 1.1em; gap: 10px; }
+  .art-toc a { color: var(--ink-mute); }
+  .art-toc a.is-current { color: var(--teal-deep); font-weight: 600; }
+  /* l'en-tête s'aligne sur la colonne de texte */
+  .article-hero > .container:first-child { padding-left: calc(var(--gutter) + 220px + clamp(40px, 5vw, 72px)); }
+}
+/* Couverture : moins de ciel, recadrée vers le bas */
+.article-cover img { object-position: 50% 72%; }
+@media (max-width: 699px) { .article-cover { aspect-ratio: 4 / 3; } }
+
+/* Encadrés conseils : filet vertical et titre en Cormorant italique, sans icône */
+.callout { background: transparent; border-left: 3px solid var(--teal); border-radius: 0; padding: 4px 0 4px 22px; }
+.callout .ct { font-family: var(--serif); font-style: italic; font-weight: 600; font-size: 1.2rem; color: var(--teal-deep); letter-spacing: 0; text-transform: none; margin-bottom: 6px; }
+.callout .ct svg { display: none; }
+
+/* Tableaux sur mobile : chaque ligne devient une petite fiche */
+@media (max-width: 640px) {
+  .prose table, .prose thead, .prose tbody, .prose tr, .prose td { display: block; width: 100%; }
+  .prose table { overflow: visible; border: 0; }
+  .prose thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .prose tr { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 14px; margin-bottom: 12px; background: #fff; }
+  .prose td { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 10px; padding: 8px 0; border: 0; border-bottom: 1px solid var(--line-soft); white-space: normal !important; }
+  .prose td:last-child { border-bottom: 0; }
+  .prose td::before { content: attr(data-label); font-weight: 600; color: var(--ink); }
+  .prose td:first-child { font-family: var(--serif); font-weight: 600; font-size: 1.15rem; display: block; }
+  .prose td:first-child::before { content: none; }
+}
+
+/* FAQ v2 : liens vers les cinq thèmes sous le titre */
+.faq-themes { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 22px; }
+.faq-themes a { color: var(--teal-deep); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; padding: 4px 0; }
+.faq-themes a:hover { color: var(--teal-dark); text-decoration-thickness: 2px; }
+.faq-main .faq-group { scroll-margin-top: 100px; }
+
+/* ---------- Girls Trips v3 ---------- */
+/* Boutons : libellé court, flèche collée, mention en petit dessous */
+.page-girls .btn span { flex-wrap: nowrap; white-space: nowrap; }
+.page-girls .hero-btns:has(> .gt-free) { flex-direction: column; align-items: center; gap: 8px; }
+.page-girls .gt-free { font-size: 0.88rem; }
+.page-girls .cta-full .gt-free { color: rgba(255, 255, 255, 0.88) !important; margin: 0; }
+.page-girls .cta-full .btns { justify-items: start; }
+/* Mobile : un seul « Je me pré-inscris » à la fois, et pas de pastille WhatsApp sur le texte */
+@media (max-width: 899px) {
+  body.has-sticky .nav-cta { visibility: hidden; }
+  body.has-sticky .wa-fab { display: none; }
+  body.has-sticky footer { padding-bottom: 72px; }
+}
+/* Fiche séjour : le prix ressort */
+.gt-fiche-list .gt-fiche-price dd { font-family: var(--serif); font-weight: 600; font-size: clamp(1.6rem, 2.2vw, 2rem); line-height: 1; font-variant-numeric: lining-nums; color: var(--ink); }
+/* En-tête plus compact sur bureau pour que la fiche entre dans le premier écran */
+@media (min-width: 900px) {
+  .page-hero.gt-hero { padding-top: calc(var(--nav-h) + 8px); }
+  .gt-hero h1 { font-size: clamp(2.8rem, 4.2vw, 4.2rem); }
+  .gt-strip { margin-top: clamp(28px, 3vw, 44px) !important; }
+  .gt-strip figure { aspect-ratio: auto; height: clamp(200px, 22vw, 300px); }
+  .gt-strip-1 { margin-top: 0 !important; }
+  .gt-strip-2 { margin-top: 28px !important; }
+  .gt-strip-3 { margin-top: 56px !important; }
+  .gt-fiche { margin-top: clamp(20px, 2.5vw, 36px); }
+}
+/* Numéros et filets orange */
+.page-girls .steps.steps-line::before { background: var(--gt-rule); }
+.page-girls .steps.steps-line .step .step-num { border-color: var(--sand); color: var(--sand-ink); background: var(--gt-paper); }
+/* FAQ de la page : cartes sur fond beige, icônes orange */
+.page-girls .acc-item { background: #F7EBDD; border-color: rgba(224, 163, 107, 0.45); }
+.page-girls .acc-icon { background: #FBF3E8; color: var(--sand-ink); }
+.page-girls .acc-item.open .acc-icon { background: var(--sand); color: var(--ink); }
+/* « Dès 790 CHF » : titre et appel côte à côte, sans demi-colonne vide */
+.gt-tarif-top { display: grid; gap: 20px; margin-bottom: clamp(28px, 4vw, 44px); }
+.gt-tarif-top .section-head { margin: 0; }
+.gt-tarif-top .gt-tarif-cta { margin: 0; }
+@media (min-width: 900px) {
+  .gt-tarif-top { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: end; column-gap: clamp(40px, 6vw, 96px); }
+  .gt-tarif-top .gt-tarif-cta { justify-items: end; text-align: right; }
+}
+/* « Voyager autrement » : texte à gauche, liste à droite */
+.gt-why-cols { display: grid; gap: 24px; border-left: 2px solid var(--gt-rule); padding-left: clamp(20px, 3vw, 40px); }
+.gt-why-cols .feature-list { margin: 0; }
+@media (min-width: 900px) { .gt-why-cols { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); column-gap: clamp(40px, 6vw, 96px); align-items: center; } }
+.gt-why-text h2 { margin-bottom: 16px; }
+.gt-why-text p + p { margin-top: 12px; }
+.page-girls .cta-full .btns { display: grid; gap: 8px; justify-items: start; }
+.page-girls .cta-full .btns .btn { width: auto; }
+
+/* ---------- À propos v3 ---------- */
+/* En-tête en trois colonnes : titre en haut à gauche, portrait au centre, présentation en bas à droite */
+@media (min-width: 900px) {
+  .page-hero.ab-hero > .container { grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.8fr); grid-template-areas: "t photo ." ". photo p"; column-gap: clamp(28px, 3.5vw, 56px); align-items: stretch; }
+  .ab-hero-text { display: contents; }
+  .ab-hero-text h1 { grid-area: t; align-self: start; margin-top: clamp(16px, 4vw, 64px); max-width: 11ch; }
+  .ab-hero-text > p { grid-area: p; align-self: end; margin: 0 0 8px; }
+  .ab-hero-photo { grid-area: photo; order: 0; height: min(76svh, 700px); }
+}
+/* Frise : texte et photo paysage compacte côte à côte, sans grand blanc */
+.ab-step-photo { aspect-ratio: 4 / 3; max-width: 420px; }
+.ab-step-photo img { object-position: 50% 60%; }
+.ab-step-photo.ab-photo-portrait { aspect-ratio: 1 / 1; max-width: 360px; }
+.ab-step-photo.ab-photo-portrait img { object-position: 50% 40%; }
+@media (min-width: 900px) {
+  .ab-step { grid-template-columns: minmax(0, 1fr) clamp(220px, 22vw, 300px); column-gap: clamp(32px, 4vw, 56px); }
+  .ab-step-body { max-width: 64ch; }
+}
+/* Avis : fond clair (plus trois aplats verts d'affilée), citation et auteur sur deux colonnes */
+.ab-review { background: var(--surface, #fff); color: var(--ink); border-top: 1px solid var(--line-soft); }
+.ab-quote { max-width: none; display: grid; gap: 24px; }
+.ab-quote blockquote { border-left: 3px solid var(--teal); padding-left: clamp(18px, 2.5vw, 32px); }
+.ab-quote blockquote p { color: var(--ink); }
+.ab-quote .stars { color: var(--sand); margin-bottom: 12px; }
+.ab-quote figcaption { color: var(--ink-mute); margin-top: 0; }
+.ab-quote figcaption strong { color: var(--ink); }
+.ab-quote-side .ab-quote-links { margin-top: 18px; }
+.ab-review .g-badge { color: var(--ink); border-color: var(--line); }
+.ab-review .g-badge:hover { border-color: var(--teal); }
+.ab-review .text-link { color: var(--teal-deep); }
+@media (min-width: 900px) { .ab-quote { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); column-gap: clamp(40px, 6vw, 96px); align-items: end; } }
+.ab-quote-main { margin: 0; }
+.ab-quote-main figcaption { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.ab-quote-side .stars { display: flex; gap: 4px; }
+
+/* ---------- Galerie v3 ---------- */
+/* Bangkok : une grande photo (4 colonnes, 4 rangées) et deux petites empilées */
+.gl-big { aspect-ratio: 4 / 5; }
+@media (min-width: 700px) { .gl-grid .gl-big { grid-column: span 4; grid-row: span 4; } }
+
+/* ---------- Galerie v4 (photos d'Anaïs du 02.11.2026) ----------
+   Téléphone : deux colonnes, les portraits (.gl-t) côte à côte, les grands formats et .gl-m2 sur toute la largeur.
+   .gl-m2 sert à éviter un trou quand un chapitre compte un nombre impair de petits portraits. */
+@media (max-width: 699px) {
+  .gl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; grid-auto-flow: dense; }
+  .gl-grid .gl-big, .gl-grid .gl-w, .gl-grid .gl-h, .gl-grid .gl-f, .gl-grid .gl-m2 { grid-column: span 2; }
+  .gl-grid .gl-w, .gl-grid .gl-h, .gl-grid .gl-f, .gl-grid .gl-m2 { aspect-ratio: 4 / 3; }
+}
+.gl-grid .gl-low img { object-position: 50% 85%; }
+/* Visionneuse : compteur plus lisible */
+/* (réglage limité à la galerie : la visionneuse est partagée avec l'accueil) */
+body:has(.gl-main) .lb-count { font-size: 1rem; font-weight: 600; color: #fff; letter-spacing: 0.06em; }
+@media (min-width: 700px) { body:has(.gl-main) .lb-count { font-size: 1.15rem; padding: 6px 14px; border-radius: var(--r); background: rgba(255, 255, 255, 0.12); } }
+
+/* ---------- Blog v3 ---------- */
+.page-hero.bl-hero { padding-top: calc(var(--nav-h) + clamp(48px, 6vw, 88px)); }
+@media (max-width: 699px) {
+  .bl-rt-long { display: none; }
+  .bl-feature-img { aspect-ratio: 4 / 3; }
+}
+/* Article : titre, chapeau et texte sur la même largeur de colonne */
+.art-body .prose { max-width: 41.5rem; }
+.article-hero h1, .article-hero .standfirst { max-width: 41.5rem; }
+@media (min-width: 1100px) {
+  .art-layout { grid-template-columns: 220px minmax(0, 41.5rem); }
+  .art-layout .article-share { grid-column: 2; max-width: 41.5rem; margin-left: 0; margin-right: 0; flex-wrap: nowrap; }
+}
+
+/* ---------- FAQ v3 : une seule colonne, barre de thèmes collante ---------- */
+.faq-main .faq-themes { position: sticky; top: var(--nav-h); z-index: 5; display: flex; flex-wrap: nowrap; gap: 8px 28px; margin: 0 0 clamp(28px, 4vw, 48px); padding: 14px 0; background: var(--surface, #fff); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.faq-main .faq-themes::-webkit-scrollbar { display: none; }
+.faq-main .faq-themes a { white-space: nowrap; flex: 0 0 auto; }
+.faq-main .faq-group, .faq-main .faq-group + .faq-group { display: block; max-width: 52rem; scroll-margin-top: calc(var(--nav-h) + 72px); }
+.faq-main .faq-group + .faq-group { margin-top: clamp(40px, 6vw, 72px); }
+.faq-main .faq-group-title { position: static; margin: 0 0 12px; }
+@media (min-width: 900px) { .faq-main .faq-group { display: block; } .faq-main .faq-group-title { position: static; } }

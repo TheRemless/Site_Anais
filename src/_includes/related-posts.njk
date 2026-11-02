@@ -1,12 +1,12 @@
 {#- Trois autres articles de la même langue, les plus récents d'abord. -#}
 {%- set others = [] %}
 {%- for p in collections.post | reverse %}{% if p.url != page.url and p.data.lang == lang and others.length < 3 %}{% set others = (others.push(p), others) %}{% endif %}{% endfor %}
-<section class="section-pad bg-cream">
+<section class="section-pad bg-cream bl-related">
   <div class="container">
-    <div class="section-head center" data-reveal><p class="eyebrow center">{{ "Read next" if lang == "en" else "À lire aussi" }}</p><h2>{{ "More tips for your trip" if lang == "en" else "D'autres conseils pour ton voyage" }}</h2></div>
+    <div class="section-head"><h2>{{ "More tips for your trip" if lang == "en" else "D'autres conseils pour ton voyage" }}</h2></div>
     <div class="blog-grid">
 {%- for p in others %}
-      <article class="blog-card" data-reveal>
+      <article class="blog-card">
         <div class="b-img"><a href="{{ p.url }}"><img loading="lazy" decoding="async" src="{{ p.data.cover }}" alt="{{ p.data.coverAlt }}"></a></div>
         <div class="b-body">
           

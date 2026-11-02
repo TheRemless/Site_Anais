@@ -2,6 +2,10 @@
 active: "/en/girls-trips/"
 navLight: false
 mainClass: "page-girls"
+headerCta:
+  label: "Pre-register"
+  href: "https://tally.so/r/rj2MM5"
+  external: true
 langAlt: "/girls-trips/"
 ---
 {% extends "base.njk" %}
@@ -22,14 +26,14 @@ langAlt: "/girls-trips/"
 <meta property="og:title" content="Girls Trips in Thailand — Koh Lanta &amp; Krabi">
 <meta property="og:description" content="Women-only trips in Thailand. Small groups, authentic experiences, a warm and welcoming vibe. Pre-registration open.">
 <meta property="og:url" content="https://zwaldtravelplanner.com/en/girls-trips/">
-<meta property="og:image" content="https://zwaldtravelplanner.com/images/og-girls-trips.jpg">
+<meta property="og:image" content="https://zwaldtravelplanner.com/images/og-girls-trips.jpg?v=2">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Three travelers walking beside two elephants in Thailand — Zwald Travel Planner Girls Trip">
+<meta property="og:image:alt" content="Bow of a long-tail boat facing the cliffs of Krabi">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Girls Trips in Thailand — Koh Lanta &amp; Krabi">
 <meta name="twitter:description" content="Women-only trips in Thailand. Small groups, authentic experiences, a warm and welcoming vibe.">
-<meta name="twitter:image" content="https://zwaldtravelplanner.com/images/og-girls-trips.jpg">
+<meta name="twitter:image" content="https://zwaldtravelplanner.com/images/og-girls-trips.jpg?v=2">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -56,26 +60,39 @@ langAlt: "/girls-trips/"
 
 {% block content %}{% raw %}
 <!-- ============ HERO ============ -->
-<section class="page-hero has-img" data-screen-label="Girls Trips — hero">
-  <div class="ph-bg"><img fetchpriority="high" sizes="100vw" src="/images/girls/railey-beach.jpeg" alt="Railey Beach and its limestone cliffs, Krabi"></div>
-  <div class="ph-overlay"></div>
+<section class="page-hero gt-hero" data-screen-label="Girls Trips — hero">
   <div class="container">
-    <p class="eyebrow">New · Trips for women</p>
     <h1>Girls Trips, women-only trips to Koh Lanta and Krabi</h1>
     <p>Women-only trips in southern Thailand, designed for those who dream of getting away… without wanting to travel alone.</p>
-    <div class="hero-btns" style="margin-top:30px;animation:none;opacity:1">
+    <div class="hero-btns">
       <a class="btn btn-teal btn-lg" href="https://tally.so/r/rj2MM5" target="_blank" rel="noopener" data-magnetic><span>Pre-register now <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
       <a class="btn btn-white btn-lg" href="#programme"><span>See the program</span></a>
     </div>
   </div>
+  <div class="gt-strip container">
+    <figure class="gt-strip-1"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 34vw, 46vw" src="/images/girls/4-islands.jpeg" alt="Traveller with arms raised in shallow water"></figure>
+    <figure class="gt-strip-2"><img fetchpriority="high" sizes="(min-width: 900px) 40vw, 92vw" src="/images/girls/railey-beach.jpeg" alt="Railey Beach and its limestone cliffs, Krabi"></figure>
+    <figure class="gt-strip-3"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 34vw, 46vw" src="/images/girls/snorkeling.jpeg" alt="Swimming in turquoise water below the cliffs"></figure>
+  </div>
 </section>
 
+<!-- ============ FICHE SÉJOUR ============ -->
+<section class="gt-fiche" aria-label="The trip at a glance">
+  <div class="container">
+    <dl class="gt-fiche-list">
+      <div><dt>Length</dt><dd>7 days, 6 nights</dd></div>
+      <div><dt>Group</dt><dd>4 to 8 women</dd></div>
+      <div class="gt-fiche-price"><dt>Price</dt><dd>from <span class="price-chf" data-chf="790">790 CHF</span></dd></div>
+      <div><dt>When</dt><dd>all year round, ideally from November to April</dd></div>
+    </dl>
+    <a class="btn btn-teal" href="https://tally.so/r/rj2MM5" target="_blank" rel="noopener"><span>Pre-register</span></a>
+  </div>
+</section>
 <!-- ============ INTRO ============ -->
 <section class="section-pad gt-intro">
   <div class="container">
     <div class="split">
       <div class="split-text" data-reveal="left">
-        <p class="eyebrow">The idea</p>
         <h2>Travel to Thailand, <em>together</em></h2>
         <p class="lead mt-m">A week in a small group of women, under the palm trees, discovering the gems of the Krabi and Koh Lanta region. Trips that are <strong>genuine, authentic and accessible</strong>, in a warm, safe and welcoming atmosphere — without having to worry about the organization.</p>
       </div>
@@ -86,188 +103,19 @@ langAlt: "/girls-trips/"
   </div>
 </section>
 
-<!-- ============ POURQUOI ============ -->
-<section class="section-pad bg-cream">
-  <div class="container">
-    <div class="split">
-      <div class="split-media tall img-reveal" data-reveal="left">
-        <img loading="lazy" decoding="async" src="/images/girls/longtail-fleurs.jpg" alt="Two participants with arms raised at the bow of a longtail boat">
-      </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow">Why Girls Trips?</p>
-        <h2>Traveling differently, <em>among women</em></h2>
-        <hr class="divider">
-        <p>After several years living in Koh Lanta and guiding my clients, I noticed that <strong>many women were afraid to travel alone</strong>: safety, a lack of confidence, or simply no one to travel with.</p>
-        <p>So I decided to create trips for them. The idea isn't just to travel, it's also to:</p>
-        <ul class="feature-list mt-s">
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Meet new people</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Step out of your comfort zone in complete safety</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Experience authentic, local moments</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Slow down &amp; reconnect with yourself</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Create incredible memories — without handling the organization</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ EXPÉRIENCES ============ -->
-<section class="section-pad" id="programme">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">The program</p>
-      <h2>What's on offer</h2>
-      <p>A balance of adventure, discovery, connection and relaxation — at Thailand's own pace.</p>
-    </div>
-    <div class="grid cols-3">
-      <div class="xp-tile" data-reveal data-reveal-delay="1"><img loading="lazy" decoding="async" src="/images/thumbs/girls-snorkeling-poissons-700.webp" alt="Snorkeling among the fish"><div class="xt-body"><h3>Snorkeling &amp; diving</h3><p>Explore the turquoise depths and reefs of the Andaman Sea.</p></div></div>
-      <div class="xp-tile" data-reveal data-reveal-delay="2"><img loading="lazy" decoding="async" src="/images/thumbs/girls-sunset-koh-lanta-700.webp" alt="Sunset over Koh Lanta beach"><div class="xt-body"><h3>Sunset evenings</h3><p>The finest sunsets on Koh Lanta, with a photo souvenir at the island's iconic totem.</p></div></div>
-      <div class="xp-tile" data-reveal data-reveal-delay="3"><img loading="lazy" decoding="async" src="/images/thumbs/girls-plats-thais-700.webp" alt="Local Thai dishes — pad kra pao, coconut soup"><div class="xt-body"><h3>Local restaurants</h3><p>Real Thai cuisine, from small beachside eateries to tables on stilts.</p></div></div>
-      <div class="xp-tile" data-reveal data-reveal-delay="1"><img loading="lazy" decoding="async" src="/images/thumbs/girls-massage-plage-700.webp" alt="Traditional massage on the beach"><div class="xt-body"><h3>Thai massage</h3><p>A wellness break, at the spa or right on the beach.</p></div></div>
-      <div class="xp-tile" data-reveal data-reveal-delay="2"><img loading="lazy" decoding="async" src="/images/thumbs/girls-longtail-plage-700.webp" alt="Traditional long-tail boat moored on the beach"><div class="xt-body"><h3>Traditional boat</h3><p>A day on a long-tail boat to the islands and hidden coves.</p></div></div>
-      <div class="xp-tile" data-reveal data-reveal-delay="3"><img loading="lazy" decoding="async" src="/images/thumbs/girls-parc-national-700.webp" alt="Langur monkey in the canopy of Koh Lanta National Park"><div class="xt-body"><h3>National park</h3><p>A walk through Koh Lanta National Park, spotting monkeys amid the jungle.</p></div></div>
-      <div class="xp-tile" data-reveal data-reveal-delay="1"><img loading="lazy" decoding="async" src="/images/thumbs/girls-elephants-700.webp" alt="Feeding elephants at an ethical sanctuary"><div class="xt-body"><h3>Elephants or cooking</h3><p>An ethical elephant sanctuary, or a local Thai cooking class.</p></div></div>
-      <div class="xp-tile" data-reveal data-reveal-delay="2"><img loading="lazy" decoding="async" src="/images/thumbs/girls-temple-tigre-700.webp" alt="Tiger Temple in Krabi"><div class="xt-body"><h3>Day trip to Krabi</h3><p>Discover Krabi, the Tiger Temple and hot springs.</p></div></div>
-      <div class="xp-tile" data-reveal data-reveal-delay="3"><img loading="lazy" decoding="async" src="/images/thumbs/girls-old-town-700.webp" alt="Street in Koh Lanta Old Town with its carved wooden posts"><div class="xt-body"><h3>Koh Lanta Old Town</h3><p>The charming fishing village and its stilt houses.</p></div></div>
-    </div>
-    <div class="offer-panel" id="extension-krabi" data-reveal>
-      <div class="split">
-      <div class="split-media img-reveal" data-reveal="left">
-        <img loading="lazy" decoding="async" src="/images/girls/balcon-krabi.jpg" alt="Three participants arm in arm facing the Krabi hills">
-      </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow">Optional</p>
-        <h2>Want to extend your trip? <span class="script">+3 days in Krabi</span></h2>
-        <hr class="divider">
-        <p>After your 7 days in Koh Lanta, extend the adventure to explore the Krabi region:</p>
-        <ul class="feature-list mt-s">
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Kayaking on the transparent lake</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Railey Beach and its cliffs</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Panoramic viewpoints</li>
-          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Night market</li>
-        </ul>
-        <p class="mt-m"><span class="option-flag">+<span class="price-chf" data-chf="190">190 CHF</span> · limited offer</span></p>
-      </div>
-      </div>
-    </div>
-    <div class="text-center mt-l" data-reveal>
-      <a class="btn btn-teal btn-lg" href="https://tally.so/r/rj2MM5" target="_blank" rel="noopener" data-magnetic><span>Pre-register now <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
-      <p class="mt-s" style="color:var(--ink-faint);font-size:0.85rem">Free &amp; no commitment</p>
-    </div>
-  </div>
-</section>
-
-<!-- ============ TON HÔTE ============ -->
-<section class="section-pad bg-cream">
-  <div class="container">
-    <div class="split">
-      <div class="split-media tall img-reveal" data-reveal="left">
-        <img loading="lazy" decoding="async" src="/images/IMG_3258.jpg" alt="Anaïs under the coconut trees in Thailand">
-      </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow">Your host on the ground</p>
-        <h2>You travel with Anaïs, not with an agency</h2>
-        <hr class="divider">
-        <p>I've lived in Koh Lanta for over 3 years and I know the region inside out. During the trip, I'm there in person with my trusted local partners — and even before departure, I stay reachable on WhatsApp or Instagram to answer all your questions.</p>
-        <p>My job: so you don't have to think about a thing, except enjoying yourself.</p>
-        <blockquote>"A huge thank you to Anaïs! She knows all the best spots: local restaurants, top excursions, unbeatable prices on activities. An exceptional vacation while saving real money!"</blockquote>
-        <p style="color:var(--ink-mute);font-size:0.92rem">— Sophie, solo trip to Koh Lanta</p>
-        <a class="text-link mt-s" href="https://www.instagram.com/zwaldtravelplanner/" target="_blank" rel="noopener">Follow the adventures on Instagram <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ PHOTO STRIP ============ -->
-<section class="marquee" aria-label="Girls Trips gallery">
-  <div class="marquee-track">
-    <div class="marquee-item" data-lightbox data-src="/images/girls/piscine-koh-lanta.jpg" data-caption="Pool break overlooking the bay"><picture><source type="image/webp" srcset="/images/thumbs/girls-piscine-koh-lanta-700.webp"><img loading="lazy" decoding="async" src="/images/girls/piscine-koh-lanta.jpg" alt="Two participants by an infinity pool overlooking the bay"></picture><span class="cap">Pool</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/groupe-ao-nang.jpg" data-caption="Friends facing the Krabi cliffs"><picture><source type="image/webp" srcset="/images/thumbs/girls-groupe-ao-nang-700.webp"><img loading="lazy" decoding="async" src="/images/girls/groupe-ao-nang.jpg" alt="Three participants facing the Krabi cliffs"></picture><span class="cap">Krabi</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/snorkeling-poissons.jpg" data-caption="Snorkeling among the fish"><picture><source type="image/webp" srcset="/images/thumbs/girls-snorkeling-poissons-700.webp"><img loading="lazy" decoding="async" src="/images/girls/snorkeling-falaises.jpeg" alt="Snorkelling below the limestone cliffs, Krabi"></picture><span class="cap">Snorkeling</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/longtail-plage.jpeg" data-caption="A day on a private traditional boat"><picture><source type="image/webp" srcset="/images/thumbs/girls-longtail-plage-700.webp"><img loading="lazy" decoding="async" src="/images/girls/longtail-plage.jpeg" alt="Longtail boat on a Koh Lanta beach"></picture><span class="cap">Traditional boat</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/massage-plage.jpeg" data-caption="Sunset massage, toes in the sand"><picture><source type="image/webp" srcset="/images/thumbs/girls-massage-plage-700.webp"><img loading="lazy" decoding="async" src="/images/girls/massage-plage.jpeg" alt="Thai massage by the sea"></picture><span class="cap">Beach massage</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/temple-tigre.jpeg" data-caption="Tiger Temple and its panorama, Krabi"><picture><source type="image/webp" srcset="/images/thumbs/girls-temple-tigre-700.webp"><img loading="lazy" decoding="async" src="/images/girls/temple-tigre.jpeg" alt="Tiger Cave Temple, Krabi"></picture><span class="cap">Tiger Temple</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/parc-national.jpeg" data-caption="Langur at Koh Lanta National Park"><picture><source type="image/webp" srcset="/images/thumbs/girls-parc-national-700.webp"><img loading="lazy" decoding="async" src="/images/girls/parc-national.jpeg" alt="Mu Ko Lanta National Park"></picture><span class="cap">National park</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/cooking-class.jpeg" data-caption="Local Thai cooking class"><picture><source type="image/webp" srcset="/images/thumbs/girls-cooking-class-700.webp"><img loading="lazy" decoding="async" src="/images/girls/cooking-class.jpeg" alt="Thai cooking class with the group"></picture><span class="cap">Cooking class</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/elephants.jpeg" data-caption="Meeting the elephants, ethical sanctuary"><picture><source type="image/webp" srcset="/images/thumbs/girls-elephants-700.webp"><img loading="lazy" decoding="async" src="/images/girls/elephants.jpeg" alt="Meeting elephants at an ethical sanctuary"></picture><span class="cap">Elephant sanctuary</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/old-town.jpeg" data-caption="Koh Lanta Old Town and its carved wooden posts"><picture><source type="image/webp" srcset="/images/thumbs/girls-old-town-700.webp"><img loading="lazy" decoding="async" src="/images/girls/old-town.jpeg" alt="Lanta Old Town, houses on stilts"></picture><span class="cap">Old Town</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/plage-koh-lanta.jpeg" data-caption="Coconut trees of Koh Lanta"><picture><source type="image/webp" srcset="/images/thumbs/girls-plage-koh-lanta-700.webp"><img loading="lazy" decoding="async" src="/images/girls/plage-koh-lanta.jpeg" alt="Sandy beach on Koh Lanta"></picture><span class="cap">Koh Lanta</span></div>
-    <!-- duplicate for seamless loop -->
-    <div class="marquee-item" data-lightbox data-src="/images/girls/piscine-koh-lanta.jpg" data-caption="Pool break overlooking the bay" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-piscine-koh-lanta-700.webp"><img loading="lazy" decoding="async" src="/images/girls/piscine-koh-lanta.jpg" alt="Two participants by an infinity pool overlooking the bay"></picture><span class="cap">Pool</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/groupe-ao-nang.jpg" data-caption="Friends facing the Krabi cliffs" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-groupe-ao-nang-700.webp"><img loading="lazy" decoding="async" src="/images/girls/groupe-ao-nang.jpg" alt="Three participants facing the Krabi cliffs"></picture><span class="cap">Krabi</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/snorkeling-falaises.jpeg" data-caption="Snorkeling at the foot of limestone cliffs" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-snorkeling-falaises-700.webp"><img loading="lazy" decoding="async" src="/images/girls/snorkeling-falaises.jpeg" alt="Snorkelling below the limestone cliffs, Krabi"></picture><span class="cap">Snorkeling</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/longtail-plage.jpeg" data-caption="A day on a private traditional boat" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-longtail-plage-700.webp"><img loading="lazy" decoding="async" src="/images/girls/longtail-plage.jpeg" alt="Longtail boat on a Koh Lanta beach"></picture><span class="cap">Traditional boat</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/massage-plage.jpeg" data-caption="Sunset massage, toes in the sand" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-massage-plage-700.webp"><img loading="lazy" decoding="async" src="/images/girls/massage-plage.jpeg" alt="Thai massage by the sea"></picture><span class="cap">Beach massage</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/temple-tigre.jpeg" data-caption="Tiger Temple and its panorama, Krabi" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-temple-tigre-700.webp"><img loading="lazy" decoding="async" src="/images/girls/temple-tigre.jpeg" alt="Tiger Cave Temple, Krabi"></picture><span class="cap">Tiger Temple</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/parc-national.jpeg" data-caption="Langur at Koh Lanta National Park" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-parc-national-700.webp"><img loading="lazy" decoding="async" src="/images/girls/parc-national.jpeg" alt="Mu Ko Lanta National Park"></picture><span class="cap">National park</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/cooking-class.jpeg" data-caption="Local Thai cooking class" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-cooking-class-700.webp"><img loading="lazy" decoding="async" src="/images/girls/cooking-class.jpeg" alt="Thai cooking class with the group"></picture><span class="cap">Cooking class</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/elephants.jpeg" data-caption="Meeting the elephants, ethical sanctuary" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-elephants-700.webp"><img loading="lazy" decoding="async" src="/images/girls/elephants.jpeg" alt="Meeting elephants at an ethical sanctuary"></picture><span class="cap">Elephant sanctuary</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/old-town.jpeg" data-caption="Koh Lanta Old Town and its carved wooden posts" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-old-town-700.webp"><img loading="lazy" decoding="async" src="/images/girls/old-town.jpeg" alt="Lanta Old Town, houses on stilts"></picture><span class="cap">Old Town</span></div>
-    <div class="marquee-item" data-lightbox data-src="/images/girls/plage-koh-lanta.jpeg" data-caption="Coconut trees of Koh Lanta" aria-hidden="true"><picture><source type="image/webp" srcset="/images/thumbs/girls-plage-koh-lanta-700.webp"><img loading="lazy" decoding="async" src="/images/girls/plage-koh-lanta.jpeg" alt="Sandy beach on Koh Lanta"></picture><span class="cap">Koh Lanta</span></div>
-  </div>
-</section>
-
-<!-- ============ TU PEUX VENIR ============ -->
-<section class="section-pad gt-who">
-  <div class="container">
-    <div class="split">
-      <div class="split-media img-reveal" data-reveal="left">
-        <img loading="lazy" decoding="async" src="/images/girls/groupe-4.jpg" alt="Two participants with arms raised in turquoise water">
-      </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow">Who's it for?</p>
-        <h2>You can come…</h2>
-        <div class="who-list mt-m">
-      <div class="who-item"><h3>Solo</h3><p>To meet new people and live a unique experience, in a small, welcoming group.</p></div>
-      <div class="who-item"><h3>With a friend, your sister, your mom…</h3><p>To share the adventure and create memories together.</p></div>
-      <div class="who-item"><h3>As an existing group</h3><p>We also organize private, tailor-made trips for 3 to 10 people in Koh Lanta and/or Krabi.</p><a class="text-link mt-s" href="/en/contact/">Request a private trip <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ WHEN ============ -->
-<section class="section-pad bg-cream">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">All year round</p>
-      <h2>We choose the dates together</h2>
-      <p>Girls Trips have no fixed calendar. As soon as a group of 4 to 8 travellers forms, you pick together the week that suits everyone. I recommend November to April for Koh Lanta and Krabi, but every season has its charm.</p>
-    </div>
-    <div class="hero-btns" data-reveal data-reveal-delay="1" style="justify-content:center">
-      <a class="btn btn-teal btn-lg" href="https://tally.so/r/rj2MM5" target="_blank" rel="noopener" data-magnetic><span>Pre-register, no obligation <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
-    </div>
-  </div>
-</section>
-
-<!-- ============ COMMENT ÇA SE PASSE ============ -->
-<section class="section-pad">
-  <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">How it works</p>
-      <h2>From pre-registration to departure</h2>
-    </div>
-    <div class="steps" data-reveal>
-      <div class="step"><div class="step-num">01</div><h3>You pre-register</h3><p>2 minutes, free and with no commitment. You pay nothing at this stage.</p></div>
-      <div class="step"><div class="step-num">02</div><h3>We get to know each other</h3><p>I get back to you with the detailed program, exact pricing and answers to all your questions.</p></div>
-      <div class="step"><div class="step-num">03</div><h3>You confirm your spot</h3><p>As soon as 4 travelers have joined, the departure is confirmed and you secure your spot. Next stop: Thailand!</p></div>
-    </div>
-  </div>
-</section>
-
 <!-- ============ PRIX & INCLUS ============ -->
-<section class="section-pad bg-cream gt-tarif">
+<section class="section-pad gt-tarif">
   <div class="container">
+    <div class="gt-tarif-top">
     <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Pricing</p>
       <h2>From <span class="price-chf" data-chf="790">790 CHF</span> for the trip</h2>
       <p>7 days / 6 nights in Koh Lanta &amp; Krabi. +3-day option (10 days) available — full details sent after your pre-registration.</p>
+    </div>
+    <div class="gt-tarif-cta"><a class="btn btn-teal btn-lg" href="https://tally.so/r/rj2MM5" target="_blank" rel="noopener"><span>Pre-register</span></a><p class="gt-free">Free &amp; no commitment</p></div>
     </div>
     <span class="currency-note" hidden>Indicative rate, updated daily — CHF remains the reference currency.</span>
     <div class="tarif-panel" data-reveal><div class="split" style="align-items:start">
       <div data-reveal="left">
-        <p class="eyebrow">Included</p>
         <h3 style="margin:10px 0 18px">What's included</h3>
         <ul class="feature-list">
           <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Round-trip airport transfer from Krabi International</li>
@@ -279,7 +127,6 @@ langAlt: "/girls-trips/"
         </ul>
       </div>
       <div data-reveal="right">
-        <p class="eyebrow">Not included</p>
         <h3 style="margin:10px 0 18px">To plan for separately</h3>
         <ul class="feature-list">
           <li><span class="tick tick--no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></span> International flights</li>
@@ -293,17 +140,146 @@ langAlt: "/girls-trips/"
   </div>
 </section>
 
+<!-- ============ POURQUOI ============ -->
+<section class="section-pad gt-why">
+  <div class="container">
+    <div class="gt-why-cols">
+      <div class="gt-why-text">
+        <h2>Traveling differently, <em>among women</em></h2>
+        <p>After several years living in Koh Lanta and guiding my clients, I noticed that <strong>many women were afraid to travel alone</strong>: safety, a lack of confidence, or simply no one to travel with.</p>
+        <p>So I decided to create trips for them. The idea isn't just to travel, it's also to:</p>
+      </div>
+      <ul class="feature-list mt-s">
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Meet new people</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Step out of your comfort zone in complete safety</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Experience authentic, local moments</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Slow down &amp; reconnect with yourself</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Create incredible memories — without handling the organization</li>
+        </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ EXPÉRIENCES ============ -->
+<section class="section-pad" id="programme">
+  <div class="container">
+    <div class="section-head center" data-reveal>
+      <h2>What's on offer</h2>
+      <p>A balance of adventure, discovery, connection and relaxation — at Thailand's own pace.</p>
+    </div>
+    <div class="grid cols-3 xp-rail">
+      <div class="xp-tile" data-reveal data-reveal-delay="1"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 78vw" src="/images/girls/snorkeling-poissons.jpg" alt="Snorkeling among the fish"><div class="xt-body"><h3>Snorkeling &amp; diving</h3><p>Explore the turquoise depths and reefs of the Andaman Sea.</p></div></div>
+      <div class="xp-tile" data-reveal data-reveal-delay="2"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 78vw" src="/images/girls/sunset-koh-lanta.jpeg" alt="Sunset over Koh Lanta beach"><div class="xt-body"><h3>Sunset evenings</h3><p>The finest sunsets on Koh Lanta, with a photo souvenir at the island's iconic totem.</p></div></div>
+      <div class="xp-tile" data-reveal data-reveal-delay="3"><img loading="lazy" decoding="async" src="/images/thumbs/girls-plats-thais-700.webp" alt="Local Thai dishes — pad kra pao, coconut soup"><div class="xt-body"><h3>Local restaurants</h3><p>Real Thai cuisine, from small beachside eateries to tables on stilts.</p></div></div>
+      <div class="xp-tile" data-reveal data-reveal-delay="1"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 78vw" src="/images/girls/massage-plage.jpeg" alt="Traditional massage on the beach"><div class="xt-body"><h3>Thai massage</h3><p>A wellness break, at the spa or right on the beach.</p></div></div>
+      <div class="xp-tile" data-reveal data-reveal-delay="2"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 78vw" src="/images/girls/longtail-plage.jpeg" alt="Traditional long-tail boat moored on the beach"><div class="xt-body"><h3>Traditional boat</h3><p>A day on a long-tail boat to the islands and hidden coves.</p></div></div>
+      <div class="xp-tile" data-reveal data-reveal-delay="3"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 78vw" src="/images/girls/parc-national.jpeg" alt="Langur monkey in the canopy of Koh Lanta National Park"><div class="xt-body"><h3>National park</h3><p>A walk through Koh Lanta National Park, spotting monkeys amid the jungle.</p></div></div>
+      <div class="xp-tile" data-reveal data-reveal-delay="1"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 78vw" src="/images/girls/elephants.jpeg" alt="Feeding elephants at an ethical sanctuary"><div class="xt-body"><h3>Elephants or cooking</h3><p>An ethical elephant sanctuary, or a local Thai cooking class.</p></div></div>
+      <div class="xp-tile" data-reveal data-reveal-delay="2"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 78vw" src="/images/girls/temple-tigre.jpeg" alt="Tiger Temple in Krabi"><div class="xt-body"><h3>Day trip to Krabi</h3><p>Discover Krabi and the Tiger Temple.</p></div></div>
+      <div class="xp-tile" data-reveal data-reveal-delay="3"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 78vw" src="/images/girls/old-town.jpeg" alt="Street in Koh Lanta Old Town with its carved wooden posts"><div class="xt-body"><h3>Koh Lanta Old Town</h3><p>The charming fishing village and its stilt houses.</p></div></div>
+    </div>
+    <div class="offer-panel" id="extension-krabi" data-reveal>
+      <div class="split">
+      <div class="split-media img-reveal" data-reveal="left">
+        <img loading="lazy" decoding="async" src="/images/girls/balcon-krabi.jpg" alt="Three participants arm in arm facing the Krabi hills">
+      </div>
+      <div class="split-text" data-reveal="right">
+        <h2>Want to extend your trip? <span class="script">+3 days in Krabi</span></h2>
+        <p>After your 7 days in Koh Lanta, extend the adventure to explore the Krabi region:</p>
+        <ul class="feature-list mt-s">
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Kayaking on the transparent lake</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Railey Beach and its cliffs</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Panoramic viewpoints</li>
+          <li><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span> Night market</li>
+        </ul>
+        <p class="mt-m"><span class="option-flag">+<span class="price-chf" data-chf="190">190 CHF</span> · limited offer</span></p>
+      </div>
+      </div>
+    </div>
+    <div class="text-center mt-l" data-reveal>
+      <a class="btn btn-teal btn-lg" href="https://tally.so/r/rj2MM5" target="_blank" rel="noopener" data-magnetic><span>Pre-register now <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      <p class="mt-s gt-free">Free &amp; no commitment</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TON HÔTE ============ -->
+<section class="section-pad gt-host">
+  <div class="container">
+    <div class="split">
+      <div class="split-media arch gt-host-photo">
+        <img loading="lazy" decoding="async" src="/images/IMG_3258.jpg" alt="Anaïs under the coconut trees, Chiang Mai">
+      </div>
+      <div class="split-text" data-reveal="right">
+        <h2>You travel with Anaïs, not with an agency</h2>
+        <p>I've lived in Koh Lanta for over 3 years and I know the region inside out. During the trip, I'm there in person with my trusted local partners — and even before departure, I stay reachable on WhatsApp or Instagram to answer all your questions.</p>
+        <p>My job: so you don't have to think about a thing, except enjoying yourself.</p>
+        <blockquote>"A huge thank you to Anaïs! She knows all the best spots: local restaurants, top excursions, unbeatable prices on activities. An exceptional vacation while saving real money!"</blockquote>
+        <p style="color:var(--ink-mute);font-size:0.92rem">— Sophie, solo trip to Koh Lanta</p>
+        <a class="text-link mt-s" href="https://www.instagram.com/zwaldtravelplanner/" target="_blank" rel="noopener">Follow the adventures on Instagram <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ TU PEUX VENIR ============ -->
+<section class="section-pad gt-who">
+  <div class="container">
+    <div class="split">
+      <div class="split-media img-reveal" data-reveal="left">
+        <img loading="lazy" decoding="async" src="/images/girls/groupe-4.jpg" alt="Two participants with arms raised in turquoise water">
+      </div>
+      <div class="split-text" data-reveal="right">
+        <h2>You can come…</h2>
+        <div class="who-list mt-m">
+      <div class="who-item"><h3>Solo</h3><p>To meet new people and live a unique experience, in a small, welcoming group.</p></div>
+      <div class="who-item"><h3>With a friend, your sister, your mom…</h3><p>To share the adventure and create memories together.</p></div>
+      <div class="who-item"><h3>As an existing group</h3><p>We also organize private, tailor-made trips for 3 to 10 people in Koh Lanta and/or Krabi.</p><a class="text-link mt-s" href="/en/contact/">Request a private trip <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHEN ============ -->
+<section class="section-pad gt-dates">
+  <div class="container">
+    <div class="section-head center" data-reveal>
+      <h2>We choose the dates together</h2>
+      <p>Girls Trips have no fixed calendar. As soon as a group of 4 to 8 travellers forms, you pick together the week that suits everyone. I recommend November to April for Koh Lanta and Krabi, but every season has its charm.</p>
+    </div>
+    <div class="hero-btns" data-reveal data-reveal-delay="1" style="justify-content:center">
+      <a class="btn btn-teal btn-lg" href="https://tally.so/r/rj2MM5" target="_blank" rel="noopener" data-magnetic><span>Pre-register <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      <p class="gt-free">Free &amp; no commitment</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMMENT ÇA SE PASSE ============ -->
+<section class="section-pad">
+  <div class="container">
+    <div class="section-head center" data-reveal>
+      <h2>From pre-registration to departure</h2>
+    </div>
+    <div class="steps steps-line" data-reveal>
+      <div class="step"><div class="step-num">01</div><h3>You pre-register</h3><p>2 minutes, free and with no commitment. You pay nothing at this stage.</p></div>
+      <div class="step"><div class="step-num">02</div><h3>We get to know each other</h3><p>I get back to you with the detailed program, exact pricing and answers to all your questions.</p></div>
+      <div class="step"><div class="step-num">03</div><h3>You confirm your spot</h3><p>As soon as 4 travelers have joined, the departure is confirmed and you secure your spot. Next stop: Thailand!</p></div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ BROCHURE ============ -->
 <section class="section-pad gt-brochure">
   <div class="container narrow"><div class="offer-panel text-center" data-reveal>
-    <p class="eyebrow center" style="justify-content:center;margin-bottom:18px">To decide together</p>
     <h2>The whole adventure in a brochure</h2>
     <p class="mt-s" style="color:var(--ink-mute);max-width:52ch;margin-inline:auto">Full program, photos and practical info: download the brochure and share it with your friends to decide together.</p>
     <div class="hero-btns mt-l" style="justify-content:center;animation:none;opacity:1">
-      <a class="btn btn-teal btn-lg" href="/files/girls-trips-brochure.pdf" download data-magnetic><span>Download the brochure <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v13m0 0l-4.5-4.5M12 16l4.5-4.5"/><path d="M4 19.5h16"/></svg></span></a>
+      <a class="btn btn-ghost btn-lg" href="/files/girls-trips-brochure.pdf" download data-magnetic><span>Download the brochure <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v13m0 0l-4.5-4.5M12 16l4.5-4.5"/><path d="M4 19.5h16"/></svg></span></a>
       <button type="button" class="btn btn-ghost btn-lg" id="brochure-share"><span>Share <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="5" r="2.4"/><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="19" r="2.4"/><path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6"/></svg></span></button>
     </div>
-    <p class="mt-s" style="color:var(--ink-faint);font-size:0.85rem">PDF · about 13 MB</p>
+    <p class="mt-s gt-free">PDF · about 13 MB</p>
   </div></div>
 </section>
 
@@ -311,7 +287,6 @@ langAlt: "/girls-trips/"
 <section class="section-pad">
   <div class="container narrow">
     <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Your questions</p>
       <h2>Answering your doubts</h2>
     </div>
     <div class="acc" data-accordion>
@@ -344,19 +319,23 @@ langAlt: "/girls-trips/"
 </section>
 
 <!-- ============ CTA ============ -->
-<section class="cta-band section-pad">
-  <div class="ph-bg"><img loading="lazy" decoding="async" src="/images/girls/sunset-koh-lanta.jpeg" alt="Sunset over Koh Lanta beach"></div>
+<section class="cta-band section-pad cta-full">
+  <div class="ph-bg"><img loading="lazy" decoding="async" sizes="(max-width: 899px) 150vw, 100vw" src="/images/galerie/longtail-railay.jpg" alt="By long-tail to Railay Beach"></div>
   <div class="ph-overlay"></div>
   <div class="container">
-    <p class="eyebrow center on-dark" data-reveal style="justify-content:center;margin-bottom:20px">Pre-registration open</p>
     <h2 data-reveal>Ready for <em>the adventure</em>?</h2>
     <p data-reveal data-reveal-delay="1">Pre-register with no commitment and nothing to pay at this stage. You'll receive the dates, pricing, detailed programs and available spots.</p>
     <div class="btns" data-reveal data-reveal-delay="2">
-      <a class="btn btn-white btn-lg" href="https://tally.so/r/rj2MM5" target="_blank" rel="noopener" data-magnetic><span>Pre-register — free &amp; no commitment <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      <a class="btn btn-teal btn-lg" href="https://tally.so/r/rj2MM5" target="_blank" rel="noopener" data-magnetic><span>Pre-register <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+      <p class="gt-free">Free &amp; no commitment</p>
     </div>
     <p data-reveal style="margin-top:18px;font-size:0.92rem"><a class="text-link" style="color:#fff" href="https://771f2f29.sibforms.com/serve/MUIFALa0CoF51AaW-PyLkorGh48rq6NPuzx-Pf9qsKR12vztl_QYF7Cflc6U8yEIH79eV2EpEmaFEBQl9jiqbfLebrAiCvDMJByDujilQ-RoJF-6qvKsMD7u9ru6A5_AYVyBvRhqJNmp6PlgvJE1NmgWfS1NdC30dKKWJKqgTZhSYmQK_Hk29kqaeClCstKXS0sqnTTC0cB01cVW" target="_blank" rel="noopener">No date works for you? Join the waitlist to be notified of upcoming departures</a></p>
   </div>
 </section>
+<div class="gt-sticky" data-sticky-bar hidden>
+  <p class="gt-sticky-price">From <span class="price-chf" data-chf="790">790 CHF</span></p>
+  <a class="btn btn-teal" href="https://tally.so/r/rj2MM5" target="_blank" rel="noopener"><span>Pre-register</span></a>
+</div>
 {% endraw %}{% endblock %}
 
 {% block scripts %}{% raw %}

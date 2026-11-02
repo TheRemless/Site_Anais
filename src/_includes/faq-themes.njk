@@ -1,0 +1,6 @@
+{#- Liens vers chaque thème de la FAQ, sous le titre de la page. -#}
+<nav class="faq-themes" aria-label="{{ 'Topics' if lang == 'en' else 'Thèmes' }}">
+{%- for group in faq[lang] %}
+  <a href="#{{ group.id }}">{{ group.title }}</a>
+{%- endfor %}
+</nav>

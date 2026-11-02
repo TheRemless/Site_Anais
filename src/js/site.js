@@ -59,6 +59,8 @@
 
   /* ---------- Scroll reveal ---------- */
   function initReveal() {
+    /* site.js est bien chargé : les apparitions peuvent masquer le contenu (sinon base.njk le réaffiche après 3 s) */
+    document.documentElement.classList.add("reveal-ready");
     var items = document.querySelectorAll("[data-reveal], .img-reveal");
     if (!("IntersectionObserver" in window)) {
       items.forEach(function (i) { i.classList.add("in"); });
@@ -152,6 +154,17 @@
     }
     document.querySelectorAll("[data-accordion]").forEach(function (root) {
       var mobileOnly = root.hasAttribute("data-accordion-mobile");
+      /* Chaque question de FAQ devient un vrai bouton dans son h3 : clavier, lecteurs d'écran, titres conservés */
+      root.querySelectorAll(".acc-head").forEach(function (h, n) {
+        var t = h.querySelector("h3"), body = h.parentNode.querySelector(".acc-body");
+        if (!t || t.querySelector(".acc-btn")) return;
+        var b = document.createElement("button");
+        b.type = "button"; b.className = "acc-btn";
+        b.setAttribute("aria-expanded", h.parentNode.classList.contains("open") ? "true" : "false");
+        while (t.firstChild) b.appendChild(t.firstChild);
+        t.appendChild(b);
+        if (body) { body.id = body.id || "acc-" + Math.random().toString(36).slice(2, 8) + n; b.setAttribute("aria-controls", body.id); }
+      });
       root.addEventListener("click", function (e) {
         var head = e.target.closest(".acc-head, .fold-head");
         if (!head || (mobileOnly && desktop.matches)) return;
@@ -321,40 +334,107 @@
     var triggers = [].slice.call(document.querySelectorAll("[data-lightbox]"));
     if (!triggers.length) return;
     var items = triggers.map(function (t) {
-      return { src: t.getAttribute("data-src") || t.querySelector("img").src, cap: t.getAttribute("data-caption") || "" };
+      var im = t.querySelector("img");
+      return { src: t.getAttribute("data-src") || (im ? im.src : ""), srcset: im ? im.getAttribute("srcset") || "" : "", cap: t.getAttribute("data-caption") || "", alt: im ? im.alt : "" };
     });
+    var en = /^en/i.test(document.documentElement.lang || "");
+    var L = en ? { close: "Close", prev: "Previous photo", next: "Next photo", open: "Enlarge: ", dialog: "Photo viewer" } : { close: "Fermer", prev: "Photo précédente", next: "Photo suivante", open: "Agrandir : ", dialog: "Visionneuse photo" };
+    var opener = null;
     var cur = 0;
     var box = el(
-      '<div class="lightbox" role="dialog" aria-modal="true">' +
-        '<button class="lb-close" aria-label="Fermer">✕</button>' +
-        '<button class="lb-nav lb-prev" aria-label="Précédent">‹</button>' +
-        '<figure class="lb-figure"><img alt=""><figcaption></figcaption></figure>' +
-        '<button class="lb-nav lb-next" aria-label="Suivant">›</button>' +
+      '<div class="lightbox" role="dialog" aria-modal="true" aria-label="' + L.dialog + '">' +
+        '<button class="lb-close" aria-label="' + L.close + '">✕</button>' +
+        '<div class="lb-stage">' +
+          '<button class="lb-nav lb-prev" aria-label="' + L.prev + '">‹</button>' +
+          '<figure class="lb-figure"><img alt=""><figcaption></figcaption></figure>' +
+          '<p class="lb-count" aria-live="polite"></p>' +
+          '<button class="lb-nav lb-next" aria-label="' + L.next + '">›</button>' +
+        '</div>' +
       '</div>'
     );
     document.body.appendChild(box);
-    var img = box.querySelector("img"), cap = box.querySelector("figcaption");
+    var img = box.querySelector("img"), cap = box.querySelector("figcaption"), count = box.querySelector(".lb-count");
     function show(k) {
       cur = (k + items.length) % items.length;
       img.classList.remove("loaded");
+      /* Les versions WebP optimisées de la vignette, pas le JPEG d'origine */
+      if (items[cur].srcset) { img.sizes = "(max-width: 699px) 100vw, 80vw"; img.srcset = items[cur].srcset; } else { img.removeAttribute("srcset"); }
       img.src = items[cur].src;
+      img.alt = items[cur].alt;
       img.onload = function () { img.classList.add("loaded"); };
       cap.textContent = items[cur].cap;
+      count.textContent = (cur + 1) + " / " + items.length;
     }
-    function open(k) { show(k); box.classList.add("open"); document.body.style.overflow = "hidden"; }
-    function close() { box.classList.remove("open"); document.body.style.overflow = ""; }
-    triggers.forEach(function (t, k) { t.addEventListener("click", function () { open(k); }); });
+    function open(k) { opener = document.activeElement; show(k); box.classList.add("open"); document.body.style.overflow = "hidden"; box.querySelector(".lb-close").focus(); }
+    function close() { box.classList.remove("open"); document.body.style.overflow = ""; if (opener && opener.focus) opener.focus(); }
+    triggers.forEach(function (t, k) {
+      t.addEventListener("click", function () { open(k); });
+      if (t.tagName !== "A" && t.tagName !== "BUTTON") {
+        t.setAttribute("role", "button"); t.setAttribute("tabindex", "0");
+        if (items[k].alt) t.setAttribute("aria-label", L.open + items[k].alt);
+        t.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(k); } });
+      }
+    });
     box.querySelector(".lb-close").addEventListener("click", close);
     box.querySelector(".lb-prev").addEventListener("click", function () { show(cur - 1); });
     box.querySelector(".lb-next").addEventListener("click", function () { show(cur + 1); });
-    box.addEventListener("click", function (e) { if (e.target === box) close(); });
-    addSwipe(box.querySelector(".lb-figure") || box, function () { show(cur + 1); }, function () { show(cur - 1); });
+    /* Un clic sur le fond ferme, mais pas la fin d'un glissement */
+    var downX = 0, downY = 0;
+    box.addEventListener("pointerdown", function (e) { downX = e.clientX; downY = e.clientY; });
+    box.addEventListener("click", function (e) {
+      if (Math.abs(e.clientX - downX) > 10 || Math.abs(e.clientY - downY) > 10) return;
+      if (e.target === box || e.target.classList.contains("lb-stage")) close();
+    });
+    addSwipe(box.querySelector(".lb-stage") || box, function () { show(cur + 1); }, function () { show(cur - 1); });
     document.addEventListener("keydown", function (e) {
       if (!box.classList.contains("open")) return;
+      if (e.key === "Tab") {
+        /* Le focus reste dans la visionneuse tant qu'elle est ouverte */
+        var f = [].slice.call(box.querySelectorAll("button")), i = f.indexOf(document.activeElement);
+        e.preventDefault();
+        f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+        return;
+      }
       if (e.key === "Escape") close();
       if (e.key === "ArrowLeft") show(cur - 1);
       if (e.key === "ArrowRight") show(cur + 1);
     });
+  }
+
+  /* ---------- Barre collante mobile (Girls Trips) : visible après l'en-tête, masquée sur l'appel final ---------- */
+  function initStickyBar() {
+    var bar = document.querySelector("[data-sticky-bar]"), hero = document.querySelector(".page-hero");
+    if (!bar || !hero) return;
+    var end = document.querySelector(".cta-full") || document.querySelector("footer");
+    var ticking = false;
+    function upd() {
+      ticking = false;
+      /* visible une fois l'en-tête passé, masquée dès que l'appel final arrive à l'écran et au-delà */
+      var show = hero.getBoundingClientRect().bottom < 0 && (!end || end.getBoundingClientRect().top > window.innerHeight);
+      if (bar.hidden === !show) return;
+      bar.hidden = !show; document.body.classList.toggle("has-sticky", show);
+    }
+    window.addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(upd); } }, { passive: true });
+    window.addEventListener("resize", upd);
+    upd();
+  }
+
+  /* ---------- Sommaire des articles : section en cours mise en avant ---------- */
+  function initArticleToc() {
+    var links = [].slice.call(document.querySelectorAll(".art-toc a"));
+    if (!links.length) return;
+    var heads = links.map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); });
+    var ticking = false, current = -1;
+    function update() {
+      ticking = false;
+      var line = window.innerHeight * 0.3, k = -1;
+      heads.forEach(function (h, i) { if (h && h.getBoundingClientRect().top <= line) k = i; });
+      if (k === current) return;
+      current = k;
+      links.forEach(function (a, i) { a.classList.toggle("is-current", i === k); if (i === k) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current"); });
+    }
+    window.addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+    update();
   }
 
   /* ---------- Carte de l'accueil : conseil par épingle (bouton seulement si un texte existe) ---------- */
@@ -537,6 +617,8 @@
     initMapRail();
     initReviewsRail();
     initTracking();
+    initStickyBar();
+    initArticleToc();
     initEvents();
     // Footer year
     var y = document.getElementById("footer-year");

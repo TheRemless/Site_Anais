@@ -21,7 +21,7 @@ function buildBodies(name, subject, lang) {
     const thanks = prenom ? "Thank you " + prenom + "!" : "Thank you!";
     const thanksHtml = prenom ? "Thank you " + escapeHtml(prenom) + "!" : "Thank you!";
     const girlsReminder =
-      "Just a quick reminder: spots are limited and the departure is confirmed from 5 sign-ups — I'll be back in touch soon with all the details.";
+      "Just a quick reminder: spots are limited and the departure is confirmed from 4 sign-ups — I'll be back in touch soon with all the details.";
     const lines = [
       thanks,
       "",
@@ -59,7 +59,7 @@ function buildBodies(name, subject, lang) {
   const merci = prenom ? "Merci " + prenom + " !" : "Merci !";
   const merciHtml = prenom ? "Merci " + escapeHtml(prenom) + " !" : "Merci !";
   const rappelGirls =
-    "Petit rappel : les places sont limitées et le départ est confirmé dès 5 inscrites — je reviens vite vers toi avec tous les détails.";
+    "Petit rappel : les places sont limitées et le départ est confirmé dès 4 inscrites — je reviens vite vers toi avec tous les détails.";
   const lines = [
     merci,
     "",

@@ -1,7 +1,8 @@
 {#- Liste des questions fréquentes depuis _data/faq.js, un accordéon par thème. -#}
 {%- for group in faq[lang] %}
-    <h2 class="faq-group-title{% if not loop.first %} mt-l{% endif %}">{{ group.title }}</h2>
-    <div class="acc" data-accordion>
+  <div class="faq-group" id="{{ group.id }}">
+    <h2 class="faq-group-title">{{ group.title }}</h2>
+    <div class="acc" data-accordion data-accordion-multi>
 {%- for item in group.items %}
       <div class="acc-item{% if loop.first and group.title == faq[lang][0].title %} open{% endif %}">
         <div class="acc-head"><h3>{{ item.q }}</h3><span class="acc-icon"></span></div>
@@ -9,4 +10,5 @@
       </div>
 {%- endfor %}
     </div>
+  </div>
 {%- endfor %}

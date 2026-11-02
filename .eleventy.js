@@ -19,7 +19,9 @@ module.exports = async function (eleventyConfig) {
   const { eleventyImageTransformPlugin } = await import("@11ty/eleventy-img");
   eleventyConfig.addPlugin(eleventyImageTransformPlugin, {
     formats: ["webp"],
-    widths: [480, 800, 1100, 1600],
+    // Jusqu'à 2880 px pour les écrans Retina en pleine largeur ; "auto" ajoute la largeur
+    // d'origine quand la source est plus petite (pas d'agrandissement, pas de perte).
+    widths: [480, 800, 1100, 1600, 2200, 2880, "auto"],
     urlPath: "/img/",
     outputDir: "_site/img/",
     htmlOptions: {
@@ -27,6 +29,26 @@ module.exports = async function (eleventyConfig) {
     },
     sharpWebpOptions: { quality: 72, effort: 5 },
     failOnError: true,
+  });
+
+  // Articles du blog : ancres des intertitres, sommaire, tableaux empilables sur mobile.
+  const articleEnhance = require("./lib/article-enhance.js");
+  eleventyConfig.addTransform("article-enhance", function (content) {
+    const out = this.page.outputPath || "";
+    if (!out.endsWith(".html") || content.indexOf('<div class="prose">') < 0) return content;
+    const lang = (content.match(/<html[^>]*\slang="([a-z]+)"/i) || [])[1] || "fr";
+    return articleEnhance(content, lang);
+  });
+
+  // Typographie française (espaces fines insécables) sur le texte visible des pages FR.
+  // /secret/, /taxi/ et /gestion/ ne sont pas concernées.
+  const typoFr = require("./lib/typo-fr.js");
+  eleventyConfig.addTransform("typo-fr", function (content) {
+    const out = this.page.outputPath || "";
+    if (!out.endsWith(".html")) return content;
+    if (/^\/(secret|taxi|gestion)\//.test(this.page.url || "")) return content;
+    if (!/<html[^>]*\slang="fr"/i.test(content)) return content;
+    return typoFr(content);
   });
 
   // Static assets are copied through untouched, keeping the same public URLs.

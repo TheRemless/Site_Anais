@@ -32,75 +32,95 @@ langAlt: "/en/a-propos/"
 {% endraw %}{% endblock %}
 
 {% block content %}{% raw %}
-<section class="page-hero has-img" data-screen-label="À propos — hero">
-  <div class="ph-bg"><img fetchpriority="high" sizes="100vw" src="/images/anais-rocher.jpg" alt="Anaïs debout sur un rocher au-dessus de la mer">
-  </div>
-  <div class="ph-overlay"></div>
+<section class="page-hero ab-hero" data-screen-label="À propos — hero">
   <div class="container">
-    <p class="eyebrow">Le voyage est devenu ma façon de vivre</p>
-    <h1>Anaïs Zwald, travel planner suisse en Thaïlande</h1>
-    <p>Formée à l'École Hôtelière de Genève, installée en Thaïlande depuis plus de trois ans, spécialisée dans les voyages sur mesure en Thaïlande, en Malaisie, en Indonésie, au Vietnam et au Laos.</p>
+    <div class="ab-hero-text">
+      <h1>Anaïs Zwald, travel planner suisse en Thaïlande</h1>
+      <p>Formée à l'École Hôtelière de Genève, installée en Thaïlande depuis plus de trois ans, spécialisée dans les voyages sur mesure en Thaïlande, en Malaisie, en Indonésie, au Vietnam et au Laos.</p>
+    </div>
+    <div class="ab-hero-photo arch"><img fetchpriority="high" sizes="(min-width: 900px) 42vw, 92vw" src="/images/anais-temple-portrait.jpg" alt="Anaïs en tenue thaïe devant un temple orné de céramiques"></div>
   </div>
 </section>
-
-<section class="section-pad">
+<section class="section-pad ab-story">
   <div class="container">
-    <div class="split">
-      <div class="split-media tall img-reveal" data-reveal="left">
-        <img loading="lazy" decoding="async" src="/images/anais-plage.jpg" alt="Anaïs sur une plage bordée de cocotiers">
-      </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow">Mon parcours</p>
-        <h2>De Genève au sud de la Thaïlande</h2>
-        <hr class="divider">
-        <p><strong>Anaïs Zwald est une travel planner suisse, diplômée de l'École Hôtelière de Genève, installée à Koh Lanta, dans le sud de la Thaïlande, depuis février 2023.</strong> Elle conçoit des itinéraires sur mesure pour la Thaïlande et l'Asie du Sud-Est. Voilà pour la présentation officielle. Le reste, je te le raconte à la première personne.</p>
-<p>Je m'appelle Anaïs, une Suissesse formée à l'École Hôtelière de Genève, pour qui le voyage est devenu plus qu'une passion, une façon de vivre et de découvrir le monde.</p>
-        <p>À 21 ans, diplôme en poche, je suis partie avec toutes mes économies pour 6 mois à travers l'Asie du Sud-Est. Les saveurs du Vietnam, les îles d'Indonésie, la jungle de Malaisie, les temples du Laos. Et la Thaïlande, que j'ai parcourue du nord au sud, à plusieurs reprises depuis.</p>
-        <p>Mais c'est en Thaïlande, dans le sud du pays, que mon cœur s'est ancré, séduit par la gentillesse des habitants, la beauté des paysages et la richesse de la culture locale. Quand mes proches ont commencé à me demander conseil pour leurs propres voyages, l'idée de <strong>Zwald Travel Planner</strong> est née.</p>
+    <div class="ab-story-head">
+      <h2>De Genève au sud de la Thaïlande</h2>
+      <p><strong>Anaïs Zwald est une travel planner suisse, diplômée de l'École Hôtelière de Genève, installée à Koh Lanta, dans le sud de la Thaïlande, depuis février 2023.</strong> Elle conçoit des itinéraires sur mesure pour la Thaïlande et l'Asie du Sud-Est. Voilà pour la présentation officielle. Le reste, je te le raconte à la première personne.</p>
+    </div>
+    <ol class="ab-timeline">
+      <li class="ab-step">
+        <div class="ab-step-body">
+          <h3>Genève, l'École Hôtelière</h3>
+          <p>Je m'appelle Anaïs, une Suissesse formée à l'École Hôtelière de Genève, pour qui le voyage est devenu plus qu'une passion, une façon de vivre et de découvrir le monde.</p>
+        </div>
+        <figure class="ab-step-photo ab-photo-portrait"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 22vw, 80vw" src="/images/apropos/geneve-ehg.jpg" alt="Anaïs au pupitre de la cérémonie des diplômes de l'École Hôtelière de Genève"></figure>
+      </li>
+      <li class="ab-step">
+        <div class="ab-step-body">
+          <h3>6 mois en Asie du Sud-Est</h3>
+          <p>À 21 ans, diplôme en poche, je suis partie avec toutes mes économies pour 6 mois à travers l'Asie du Sud-Est. Les saveurs du Vietnam, les îles d'Indonésie, la jungle de Malaisie, les temples du Laos. Et la Thaïlande, que j'ai parcourue du nord au sud, à plusieurs reprises depuis.</p>
+        </div>
+        <figure class="ab-step-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 80vw" src="/images/temple-blanc.jpg" alt="Le Temple blanc, à Chiang Rai"></figure>
+      </li>
+      <li class="ab-step">
+        <div class="ab-step-body">
+          <h3>Février 2023, Koh Lanta</h3>
+          <p>Mais c'est en Thaïlande, dans le sud du pays, que mon cœur s'est ancré, séduit par la gentillesse des habitants, la beauté des paysages et la richesse de la culture locale. Quand mes proches ont commencé à me demander conseil pour leurs propres voyages, l'idée de <strong>Zwald Travel Planner</strong> est née.</p>
+          <p>Après 6 mois à parcourir l'Asie du Sud-Est, c'est ici que j'ai posé mes valises, en février 2023. J'y vis depuis plus de 3 ans et je découvre chaque jour de nouvelles facettes de ce pays.</p>
+        </div>
+        <figure class="ab-step-photo"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 30vw, 80vw" src="/images/anais-plage.jpg" alt="Anaïs sur une plage bordée de cocotiers"></figure>
+      </li>
+    </ol>
+  </div>
+</section>
+<section class="section-pad ab-home">
+  <div class="container">
+    <div class="ab-home-text">
+      <h2>La Thaïlande, au quotidien</h2>
+      <p>Les rencontres avec les éléphants, les temples dorés, les marchés locaux, les plages secrètes… Ce sont ces expériences que je veux partager avec toi, à travers des itinéraires qui sortent des sentiers battus.</p>
+    </div>
+    <div class="ab-duo">
+      <div class="frame"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 40vw, 50vw" src="/images/galerie/bangkok-chinatown.jpg" alt="Bangkok la nuit, enseignes de Chinatown"></div>
+      <div class="frame"><img loading="lazy" decoding="async" sizes="(min-width: 900px) 40vw, 50vw" src="/images/galerie/elephants-cafe.jpg" alt="Éléphants vus depuis une terrasse, à Koh Samui"></div>
+    </div>
+  </div>
+</section>
+<section class="section-pad ab-review" aria-label="Avis d'une voyageuse">
+  <div class="container">
+    <div class="ab-quote">
+      <figure class="ab-quote-main">
+        <blockquote><p>Anaïs nous a permis de passer un voyage de rêve qui correspondait parfaitement à nos attentes. Avec elle tout fonctionne, vous pouvez lui faire pleinement confiance !</p></blockquote>
+        <figcaption><strong>Céline</strong><span>Voyage en famille · Thaïlande</span></figcaption>
+      </figure>
+      <div class="ab-quote-side">
+        <div class="stars" role="img" aria-label="5 étoiles sur 5"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.8l1.2-6.6L2.5 9l6.6-.9z"/></svg></div>
+        <div class="ab-quote-links">
+      <a class="g-badge" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener"><span>5/5 sur Google</span></a>
+      <a class="text-link" href="https://maps.app.goo.gl/F81WUgeET6vPxjNs8" target="_blank" rel="noopener">Lire mes avis sur Google</a>
+    </div>
       </div>
     </div>
   </div>
 </section>
-
-<section class="section-pad bg-cream">
-  <div class="container">
-    <div class="split reverse">
-      <div class="split-media tall img-reveal" data-reveal="right">
-        <img loading="lazy" decoding="async" src="/images/IMG_5227.jpg" alt="Anaïs au temple doré de Doi Suthep, Chiang Mai">
-      </div>
-      <div class="split-text" data-reveal="left">
-        <p class="eyebrow">Ma maison</p>
-        <h2>La Thaïlande, au quotidien</h2>
-        <hr class="divider">
-        <p>Après 6 mois à parcourir l'Asie du Sud-Est, c'est ici que j'ai posé mes valises, en février 2023. J'y vis depuis plus de 3 ans et je découvre chaque jour de nouvelles facettes de ce pays.</p>
-        <p>Les rencontres avec les éléphants, les temples dorés, les marchés locaux, les plages secrètes… Ce sont ces expériences que je veux partager avec toi, à travers des itinéraires qui sortent des sentiers battus.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section class="section-pad">
   <div class="container">
-    <div class="section-head center" data-reveal>
-      <p class="eyebrow center">Ma vision</p>
+    <div class="section-head center">
       <h2>Trois convictions</h2>
     </div>
-    <div class="grid cols-3">
-      <div class="card text-center" data-reveal data-reveal-delay="1"><h3 class="script" style="color:var(--teal-dark)">Chaque voyageur est unique</h3><p class="mt-s">Pas de profil type. Ton voyage commence par l'écoute de qui tu es et de ce que tu cherches.</p></div>
-      <div class="card text-center" data-reveal data-reveal-delay="2"><h3 class="script" style="color:var(--teal-dark)">Chaque voyage mérite du sur-mesure</h3><p class="mt-s">Pas de circuit standardisé ni de solution toute faite. Un itinéraire pensé pour toi, ancré dans la réalité du terrain.</p></div>
-      <div class="card text-center" data-reveal data-reveal-delay="3"><h3 class="script" style="color:var(--teal-dark)">Un bon voyage se prépare</h3><p class="mt-s">L'aventure commence bien avant le départ. Une bonne préparation, c'est la sérénité une fois sur place.</p></div>
+    <div class="ab-beliefs">
+      <div class="ab-belief"><h3>Chaque voyageur est unique</h3><p class="mt-s">Pas de profil type. Ton voyage commence par l'écoute de qui tu es et de ce que tu cherches.</p></div>
+      <div class="ab-belief"><h3>Chaque voyage mérite du sur-mesure</h3><p class="mt-s">Pas de circuit standardisé ni de solution toute faite. Un itinéraire pensé pour toi, ancré dans la réalité du terrain.</p></div>
+      <div class="ab-belief"><h3>Un bon voyage se prépare</h3><p class="mt-s">L'aventure commence bien avant le départ. Une bonne préparation, c'est la sérénité une fois sur place.</p></div>
     </div>
   </div>
 </section>
-
 <section class="section-pad bg-navy trust-sec">
   <div class="container">
-    <div class="split">
-      <div class="split-media tall img-reveal" data-reveal="left">
-        <img loading="lazy" decoding="async" src="/images/anais-bureau.jpg" alt="Anaïs au téléphone, à son bureau, carnet ouvert">
+    <div class="split reverse">
+      <div class="split-media tall">
+        <img loading="lazy" decoding="async" sizes="(min-width: 900px) 40vw, 100vw" src="/images/IMG_5300.jpg" alt="Anaïs caresse un éléphant">
       </div>
-      <div class="split-text" data-reveal="right">
-        <p class="eyebrow on-dark">Concrètement</p>
+      <div class="split-text">
         <h2>Ce que tu as en travaillant avec moi</h2>
         <div class="trust-list mt-m">
           <div class="trust-item"><h3>Quelqu'un qui vit sur place</h3><p>À Koh Lanta depuis février 2023. Les horaires de bateaux, les saisons, les bonnes adresses, je les vérifie sur le terrain.</p></div>
@@ -115,14 +135,13 @@ langAlt: "/en/a-propos/"
 
 {% endraw %}{% include "newsletter.njk" %}{% raw %}
 
-<section class="cta-band section-pad">
-  <div class="ph-bg"><img loading="lazy" decoding="async" src="/images/IMG_1369.jpg" alt="Vue sur la mer d'Andaman"></div>
+<section class="cta-band section-pad cta-full">
+  <div class="ph-bg"><img sizes="(max-width: 899px) 150vw, 100vw" loading="lazy" decoding="async" src="/images/IMG_9507.jpg" alt="Les chutes d'Erawan, à Kanchanaburi"></div>
   <div class="ph-overlay"></div>
   <div class="container">
-    <p class="eyebrow center on-dark" data-reveal style="justify-content:center;margin-bottom:20px">Partons ensemble</p>
-    <h2 data-reveal>Envie de partir l'esprit tranquille ?</h2>
-    <p data-reveal data-reveal-delay="1">Un itinéraire construit pour toi, qui respecte ton budget, avec une personne de confiance à tes côtés. Je serais ravie de t'accompagner.</p>
-    <div class="btns" data-reveal data-reveal-delay="2">
+    <h2>Envie de partir l'esprit tranquille ?</h2>
+    <p>Un itinéraire construit pour toi, qui respecte ton budget, avec une personne de confiance à tes côtés. Je serais ravie de t'accompagner.</p>
+    <div class="btns">
       <a class="btn btn-white btn-lg" href="/contact/" data-magnetic><span>Me contacter <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     </div>
   </div>
