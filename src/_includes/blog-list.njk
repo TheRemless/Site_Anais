@@ -6,7 +6,7 @@
 {%- macro fdate(d) %}{{ d.getDate() }} {{ months[d.getMonth()] }} {{ d.getFullYear() }}{% endmacro %}
 {%- macro fupd(u) %}{% if u.getFullYear %}{{ fdate(u) }}{% else %}{% set d = (u | string).split("-") %}{{ d[2] | int }} {{ months[(d[1] | int) - 1] }} {{ d[0] }}{% endif %}{% endmacro %}
 {#- titre : un petit mot ne reste jamais seul en fin de ligne (« Le guide ») ; deux passes pour les mots qui se suivent (« de la ») -#}
-{%- macro nobr(t) %}{{ t | replace(r/ (le|la|les|un|une|de|du|des|à|au|en|et|ou|the|a|an|of|to|in) /gi, " $1 ") | replace(r/ (le|la|les|un|une|de|du|des|à|au|en|et|ou|the|a|an|of|to|in) /gi, " $1 ") }}{% endmacro %}
+{%- macro nobr(t) %}{{ t | replace(r/(\s)(le|la|les|un|une|de|du|des|à|au|en|et|ou|the|a|an|of|to|in) /gi, "$1$2 ") | replace(r/(\s)(le|la|les|un|une|de|du|des|à|au|en|et|ou|the|a|an|of|to|in) /gi, "$1$2 ") }}{% endmacro %}
 {%- macro meta(p) %}{{ fdate(p.date) }}{% if p.data.updated and (p.data.updated | string) != p.date.toISOString().slice(0, 10) %} · {{ "updated" if lang == "en" else "mis à jour le" }} {{ fupd(p.data.updated) }}{% endif %}{% if p.data.readingTime %} · {{ p.data.readingTime }} min<span class="bl-rt-long">{{ " read" if lang == "en" else " de lecture" }}</span>{% endif %}{% endmacro %}
     <article class="bl-feature">
       <a class="bl-feature-img" href="{{ first.url }}" tabindex="-1" aria-hidden="true"><img fetchpriority="high" sizes="(min-width: 1200px) 1140px, 100vw" src="{{ first.data.cover }}" alt="{{ first.data.coverAlt }}"></a>
