@@ -190,6 +190,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .os-tile .tile-photo { aspect-ratio: 16 / 10; }
 .os-tile h3 { margin-top: 20px; }
 .os-price { margin-top: 10px; font-size: 0.95rem; font-weight: 600; color: var(--teal-deep); }
+/* Téléphone : les deux vignettes côte à côte, photo carrée, texte resserré */
+@media (max-width: 699px) {
+  .os-grid { grid-template-columns: 1fr 1fr; gap: 16px; }
+  .os-tile .tile-photo { aspect-ratio: 1 / 1; }
+  .os-tile h3 { margin: 12px 0 6px; font-size: 1.22rem; line-height: 1.15; }
+  .os-tile p { font-size: 0.92rem; line-height: 1.5; }
+  .os-price { margin-top: 8px; font-size: 0.88rem; }
+}
 @media (min-width: 700px) { .os-grid { grid-template-columns: 1fr 1fr; gap: 40px; } }
 
 /* ---------- Bande photo défilante ---------- */
