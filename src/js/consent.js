@@ -1,25 +1,27 @@
 /* =========================================================
    ZWALD — Cookie consent + Google Consent Mode v2, mode de base
    gtag.js n'est chargé qu'après « Accepter » : avant le choix ou après un refus, rien ne part vers Google.
-   Les événements mis en attente avant l'acceptation sont jetés, la publicité reste toujours refusée.
+   window.ZW_analyticsOn dit à site.js s'il peut envoyer ses événements. Un refus efface les cookies _ga.
+   La publicité reste toujours refusée.
    Choice stored in localStorage("zw-consent") = "granted" | "denied".
    ========================================================= */
 (function () {
   "use strict";
   var KEY = "zw-consent";
-  var GA_ID = "G-LPTG5LLGPT";
+  var GA_ID = (document.currentScript && document.currentScript.getAttribute("data-ga-id")) || "";
   var gaLoaded = false;
   function gtagSafe() {
     window.dataLayer = window.dataLayer || [];
     if (typeof window.gtag !== "function") { window.gtag = function () { window.dataLayer.push(arguments); }; }
     return window.gtag;
   }
+  var DENIED = { analytics_storage: "denied", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" };
+  var GRANTED = { analytics_storage: "granted", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" };
   function loadGA() {
-    if (gaLoaded) return;
+    if (gaLoaded || !GA_ID) return;
     gaLoaded = true;
     var g = gtagSafe();
-    window.dataLayer.length = 0; // rien de ce qui précède l'acceptation n'est envoyé
-    g("consent", "default", { analytics_storage: "granted", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
+    g("consent", "default", GRANTED);
     g("js", new Date());
     g("config", GA_ID);
     var s = document.createElement("script");
@@ -27,12 +29,25 @@
     s.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
     document.head.appendChild(s);
   }
+  // Retrait du consentement : on efface _ga et _ga_<id> sur le domaine et ses parents (GA les pose sur le domaine principal).
+  function clearGaCookies() {
+    var names = document.cookie.split(";").map(function (c) { return c.split("=")[0].trim(); }).filter(function (n) { return /^_ga(_|$)/.test(n); });
+    if (!names.length) return;
+    var parts = location.hostname.split("."), domains = [""];
+    for (var i = 0; i < parts.length - 1; i++) domains.push("; domain=." + parts.slice(i).join("."));
+    names.forEach(function (n) {
+      domains.forEach(function (d) { document.cookie = n + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/" + d; });
+    });
+  }
   function apply(state) {
     var granted = state === "granted";
-    if (granted) loadGA();
-    else if (gaLoaded) {
-      // Refus après une acceptation sur la même page : plus de cookie Analytics jusqu'au rechargement
-      gtagSafe()("consent", "update", { analytics_storage: "denied", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
+    window.ZW_analyticsOn = granted;
+    if (granted) {
+      if (gaLoaded) gtagSafe()("consent", "update", GRANTED); // nouvelle acceptation après un refus sur la même page
+      else loadGA();
+    } else {
+      if (gaLoaded) gtagSafe()("consent", "update", DENIED);
+      clearGaCookies();
     }
     // Let other scripts (e.g. the newsletter widget) react to the visitor's choice
     // instead of loading their own third-party cookies unconditionally.

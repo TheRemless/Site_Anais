@@ -493,6 +493,7 @@
 
   /* ---------- Conversion tracking (GA4 events, consent-aware) ---------- */
   function track(name, params) {
+    if (!window.ZW_analyticsOn) return; // pas de consentement : rien n'est envoyé ni mis en attente (consent.js)
     if (typeof window.gtag === "function") window.gtag("event", name, params || {});
     else { window.dataLayer = window.dataLayer || []; window.dataLayer.push(Object.assign({ event: name }, params || {})); }
   }
@@ -501,8 +502,7 @@
       var a = e.target.closest("a");
       if (!a) return;
       var href = a.getAttribute("href") || "";
-      if (/wa\.me|whatsapp/i.test(href)) track("whatsapp_click", { link_url: href });
-      else if (/tally\.so/i.test(href)) track("preinscription_girls_trips", { link_url: href });
+      if (/tally\.so/i.test(href)) track("preinscription_girls_trips", { link_url: href });
       else if (/contact\.html/i.test(href) && a.classList.contains("btn")) track("cta_devis_click", { link_text: (a.textContent || "").trim().slice(0, 60) });
     });
     var contactForm = document.querySelector("form[name='contact'], form[data-netlify]:not(.nl-form)");
@@ -559,27 +559,26 @@
   }
 
   // Événements GA4 : clics WhatsApp, formulaires, liens vers Secret et Taxi, pré-inscription Girls Trips.
-  // gtag() existe toujours ; sans consentement, gtag.js n'est pas chargé et les événements ne partent pas (consent.js).
+  // Envoyés par track(), donc seulement après consentement (consent.js). whatsapp_click n'est envoyé qu'ici.
   function initEvents() {
-    if (typeof window.gtag !== "function") return;
     document.addEventListener("click", function (e) {
       var a = e.target.closest("a[href]");
       if (!a) return;
       var href = a.getAttribute("href") || "";
       if (href.indexOf("wa.me") !== -1) {
-        window.gtag("event", "whatsapp_click", { page_path: location.pathname, link_text: (a.textContent || "").trim().slice(0, 60) });
+        track("whatsapp_click", { page_path: location.pathname, link_text: (a.textContent || "").trim().slice(0, 60) });
       } else if (href.indexOf("/secret/") === 0 || href.indexOf("/taxi/") === 0) {
-        window.gtag("event", "cross_brand_click", { page_path: location.pathname, destination: href });
+        track("cross_brand_click", { page_path: location.pathname, destination: href });
       } else if (href.indexOf("tally.so") !== -1) {
-        window.gtag("event", "girls_trips_preregister", { page_path: location.pathname });
+        track("girls_trips_preregister", { page_path: location.pathname });
       } else if (href.indexOf("maps.app.goo.gl") !== -1) {
-        window.gtag("event", "google_reviews_click", { page_path: location.pathname });
+        track("google_reviews_click", { page_path: location.pathname });
       }
     });
     document.addEventListener("submit", function (e) {
       var f = e.target;
       if (f && f.tagName === "FORM") {
-        window.gtag("event", "form_submit", { page_path: location.pathname, form_name: f.getAttribute("name") || f.id || "form" });
+        track("form_submit", { page_path: location.pathname, form_name: f.getAttribute("name") || f.id || "form" });
       }
     });
   }

@@ -2,8 +2,8 @@
 <html lang="{{ lang }}">
 <head>
 <script>document.documentElement.classList.add("js")</script>
-<!-- Google Analytics, Consent Mode de base : gtag.js n'est chargé qu'après « Accepter » (consent.js).
-     Avant le choix ou après un refus, rien n'est envoyé à Google ; gtag() met seulement les événements en attente. -->
+<!-- Google Analytics, Consent Mode de base : gtag.js n'est chargé qu'après « Accepter » (consent.js, identifiant dans data-ga-id).
+     Avant le choix ou après un refus, rien n'est envoyé à Google et site.js ne met aucun événement en attente. -->
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
@@ -51,7 +51,7 @@
 {% endif %}
 <script src="/js/site.js?v={{ build.v }}"></script>
 <script src="/js/currency.js?v={{ build.v }}"></script>
-<script src="/js/consent.js?v={{ build.v }}"></script>
+<script src="/js/consent.js?v={{ build.v }}" data-ga-id="G-LPTG5LLGPT"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
