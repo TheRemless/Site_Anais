@@ -282,10 +282,11 @@
 
 /* Hero mobile : titre et boutons dans le premier écran, la photo ensuite, en bandeau 16/9 (le hero tient dans un écran) */
 @media (max-width: 899px) {
-  .hv-hero { padding-top: calc(var(--nav-h) + 18px); padding-bottom: min(56px, var(--section-y)); }
+  .hv-hero { padding-top: calc(var(--nav-h) + 18px); padding-bottom: 34px; }
+  .hv-hero-grid { gap: 22px; }
   .hv-hero-art { order: 2; height: auto; aspect-ratio: 16 / 9; margin-top: 6px; }
   .hv-art-main img { object-position: 62% 35%; }
-  .hv-hero h1 { font-size: clamp(2.5rem, 10.4vw, 3.4rem); }
+  .hv-hero h1 { font-size: clamp(2.5rem, 10.4vw, 3.4rem); max-width: none; }
   .hv-sub { margin-top: 14px; font-size: 1.04rem; }
   .hv-hero .hero-btns { margin-top: 22px; gap: 10px; }
   .hv-hero .hero-btns .btn { min-height: 52px; }
@@ -364,7 +365,7 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
 
 /* Pourquoi, téléphone : les quatre arguments repliés sous leur titre (.fold, data-accordion-mobile) */
 @media (max-width: 899px) {
-  .hv-why .hv-cols > .fold { padding: 4px 0; }
+  .hv-why .hv-cols > .fold { padding: 0; }
   .hv-why .hv-cols h3.fold-head { margin-bottom: 0; }
   .hv-why .hv-cols .fold-btn { min-height: 52px; }
   .hv-why .hv-cols .fold-body { padding-bottom: 16px; }
@@ -441,12 +442,37 @@ button.tmap-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2
 
 
 /* Téléphone (retours du 2.11) : photos de section plus basses pour raccourcir l'accueil.
-   Le portrait d'Anaïs garde son arche, en plus petit ; les trois autres passent en 4/3 ou plus bas. */
+   Le portrait d'Anaïs garde son arche, en plus petit ; « Pour qui » et Girls Trips en 4/3, « Pourquoi » en 2/1. */
 @media (max-width: 899px) {
-  .hv-arch { width: 62%; }
+  .hv-arch { width: 56%; }
   .hv-aud-photo { aspect-ratio: 4 / 3; }
   .hv-aud-photo img { object-position: 50% 45%; }
-  .hv-why-v2 .hv-why-photo { aspect-ratio: 16 / 9; }
+  .hv-why-v2 .hv-why-photo { aspect-ratio: 2 / 1; }
   .hv-girls .girls-mosaic-inner { display: block; aspect-ratio: 4 / 3; }
   .hv-girls .gm-main { object-position: 50% 46%; }
+}
+
+/* Téléphone (retours du 2.11) : espacements et corps de texte resserrés pour tenir l'accueil sous 11 écrans.
+   Aucun texte retiré ; les cibles tactiles gardent au moins 48 px. */
+@media (max-width: 899px) {
+  .hv-text h2 { max-width: none; }
+  .hv-split { gap: 24px; }
+  .hv-text .lead { margin-top: 18px; }
+  .hv-aud-panel { padding: 26px 22px 28px; }
+  .hv-aud-list { margin-top: 16px; }
+  .hv-aud-list li { padding: 11px 0; font-size: 1.18rem; line-height: 1.3; }
+  .hv-aud-panel .btn { margin-top: 20px; }
+  .pricing-compact .formule, .pricing-compact .formule + .formule, .pricing-compact .formule.featured { padding: 24px 22px; }
+  .hv-example { margin-top: 20px; }
+  .hv-formules p.mt-l { margin-top: 20px; }
+  .hv-process .hv-head { margin-bottom: 22px; }
+  .hsteps { gap: 12px; }
+  .hv-testi .hv-head { margin-bottom: 22px; }
+  .hv-testi .reviews .tcard { padding: 22px 20px; }
+  .hv-testi .reviews .tcard p { font-size: 1.12rem; }
+  .hv-testi-more { margin-top: 20px; }
+  .hv-girls .split-text { padding-top: 26px; }
+  .hv-girls .feature-list.mt-m { margin-top: 20px; }
+  .hv-girls .split-text .btn.mt-l { margin-top: 28px; }
+  .nl-band .nl-compact.mt-l { margin-top: 24px; }
 }
