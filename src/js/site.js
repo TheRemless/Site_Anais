@@ -407,21 +407,6 @@
     update();
   }
 
-  /* ---------- Newsletter (Netlify Forms, envoi en arrière-plan) ---------- */
-  function initNewsletter() {
-    document.querySelectorAll("form.nl-form").forEach(function (form) {
-      var ok = form.querySelector(".nl-ok"), err = form.querySelector(".nl-err"), btn = form.querySelector("button[type=submit]");
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        ok.hidden = true; err.hidden = true; btn.disabled = true;
-        fetch("/", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(new FormData(form)).toString() })
-          .then(function (r) { if (!r.ok) throw new Error(r.status); form.reset(); ok.hidden = false; })
-          .catch(function () { err.hidden = false; })
-          .then(function () { btn.disabled = false; });
-      });
-    });
-  }
-
   /* ---------- Conversion tracking (GA4 events, consent-aware) ---------- */
   function track(name, params) {
     if (typeof window.gtag === "function") window.gtag("event", name, params || {});
@@ -466,7 +451,6 @@
     initMarquee();
     initLightbox();
     initTracking();
-    initNewsletter();
     initStickyBar();
     initArticleToc();
     initEvents();
