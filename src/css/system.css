@@ -522,6 +522,11 @@ html, body { overflow-x: clip; }
    Galerie, Blog, FAQ, Contact  fin du h1 en manuscrit (.sig-title-h1) ; Contact : cartes séparées par des pointillés (.sig-side)
    Articles et Blog  encart .article-cta : trajet en pointillés qui finit sur l'avion (.article-cta-way) */
 .page-girls { --sig-ink: var(--sand-ink); --sig-disc: var(--sand-ink); }
+/* --sig-dots-x/y sont résolus là où ils sont déclarés : à redéclarer quand --sig-ink change (Girls Trips, encart des articles). */
+.page-girls, .article-cta-way {
+  --sig-dots-x: radial-gradient(circle, var(--sig-ink) calc(var(--sig-dot) / 2), transparent calc(var(--sig-dot) / 2 + 0.6px)) 0 0 / var(--sig-gap) var(--sig-dot) repeat-x;
+  --sig-dots-y: radial-gradient(circle, var(--sig-ink) calc(var(--sig-dot) / 2), transparent calc(var(--sig-dot) / 2 + 0.6px)) 0 0 / var(--sig-dot) var(--sig-gap) repeat-y;
+}
 .sig-title-h1 .sig-script { font-size: 1.12em; line-height: 1; margin: 0.1em 0 0 0.9em; }
 .ab-timeline.sig-timeline::before { left: 7px; width: var(--sig-dot); background: var(--sig-dots-y); }
 .sig-timeline .ab-step::before { background: var(--sig-disc); }

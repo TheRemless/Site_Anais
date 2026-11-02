@@ -534,9 +534,6 @@
 .page-girls .gt-tarif .tarif-panel { border-color: var(--gt-rule); }
 .page-girls .gt-tarif .tarif-panel .split > div + div { border-color: var(--gt-rule); }
 
-/* Filets et numéros orange */
-.page-girls .steps-line .step-num { color: var(--sand-ink); }
-.page-girls .steps-line::before, .page-girls .steps-line .step::before { background: var(--gt-rule); border-color: var(--gt-rule); }
 .page-girls .acc, .page-girls .acc-item { border-color: var(--gt-rule) !important; }
 .page-girls .gt-dates { background: #F4E2CC; }
 
@@ -753,9 +750,6 @@ body:has(main.page-girls) .nav-cta .btn { --bg: var(--sand); --fg: var(--ink); b
   .gt-strip-3 { margin-top: 56px !important; }
   .gt-fiche { margin-top: clamp(20px, 2.5vw, 36px); }
 }
-/* Numéros et filets orange */
-.page-girls .steps.steps-line::before { background: var(--gt-rule); }
-.page-girls .steps.steps-line .step .step-num { border-color: var(--sand); color: var(--sand-ink); background: var(--gt-paper); }
 /* FAQ de la page : cartes sur fond beige, icônes orange */
 .page-girls .acc-item { background: #F7EBDD; border-color: rgba(224, 163, 107, 0.45); }
 .page-girls .acc-icon { background: #FBF3E8; color: var(--sand-ink); }
