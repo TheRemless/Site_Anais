@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const nodemailer = require("nodemailer");
-const { buildBodies, handler, isContactSubmission } = require("../netlify/functions/submission-created.js");
+const { buildBodies, handler, isContactSubmission, forwardToBrevo } = require("../netlify/functions/submission-created.js");
 
 test("buildBodies : gabarit français par défaut", () => {
   const { text } = buildBodies("Claire", "Girls Trips ✨", "fr");
@@ -76,7 +76,7 @@ test("handler : une demande du formulaire taxi n'envoie aucun e-mail, même avec
 });
 
 // Remplace fetch le temps d'un test : enregistre les appels et répond comme Brevo.
-async function withFakeFetch(fn, response = { ok: true, status: 200 }) {
+async function withFakeFetch(fn, response = { ok: true, status: 200, json: async () => ({ success: true }) }) {
   const real = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, opts) => {
@@ -88,13 +88,15 @@ async function withFakeFetch(fn, response = { ok: true, status: 200 }) {
 }
 
 test("handler : une inscription newsletter n'envoie aucun e-mail, même avec une adresse valide", async () => {
-  await withFakeFetch(async () => {
+  await withFakeFetch(async (fetchCalls) => {
     await withFakeSmtp(async (calls) => {
       const res = await handler(eventFor("newsletter-fr", { prenom: "Claire", email: "claire@example.com", lang: "fr" }));
       assert.equal(res.statusCode, 200);
       assert.equal(calls.created, 0);
       assert.equal(calls.sent, 0);
     });
+    assert.equal(fetchCalls.length, 1);
+    assert.equal(new URLSearchParams(fetchCalls[0].opts.body).get("locale"), "fr");
   });
 });
 
@@ -111,7 +113,7 @@ test("handler : une inscription newsletter est transmise au formulaire Brevo, m�
       const body = new URLSearchParams(calls[0].opts.body);
       assert.equal(body.get("EMAIL"), "claire@example.com");
       assert.equal(body.get("FIRSTNAME"), "Claire");
-      assert.equal(body.get("locale"), "en");
+      assert.equal(body.get("locale"), "fr");
       assert.equal(body.get("email_address_check"), "");
     });
   } finally {
@@ -120,23 +122,37 @@ test("handler : une inscription newsletter est transmise au formulaire Brevo, m�
   }
 });
 
-test("handler : newsletter sans e-mail valide ou avec le champ anti-robot rempli, rien n'est transmis", async () => {
+test("handler : newsletter sans e-mail valide, rien n'est transmis", async () => {
   await withFakeFetch(async (calls) => {
     await handler(eventFor("newsletter-fr", { email: "pas-un-email" }));
-    await handler(eventFor("newsletter-fr", { email: "robot@example.com", "bot-field": "x" }));
+    await handler(eventFor("newsletter-en", { prenom: "Claire" }));
     assert.equal(calls.length, 0);
   });
 });
 
+test("forwardToBrevo : un refus Brevo en HTTP 200 (success false) compte comme un échec", async () => {
+  await withFakeFetch(async (calls) => {
+    const sent = await forwardToBrevo({ form_name: "newsletter-fr", data: { email: "claire@example.com" } });
+    assert.equal(sent, false);
+    assert.equal(calls.length, 1);
+  }, { ok: true, status: 200, json: async () => ({ success: false, errors: { EMAIL: "x" } }) });
+  await withFakeFetch(async () => {
+    const sent = await forwardToBrevo({ form_name: "newsletter-fr", data: { email: "claire@example.com" } });
+    assert.equal(sent, true);
+  });
+});
+
 test("handler : une erreur Brevo ne fait jamais échouer la soumission", async () => {
-  await withFakeFetch(async () => {
+  await withFakeFetch(async (calls) => {
     const res = await handler(eventFor("newsletter-fr", { email: "claire@example.com" }));
     assert.equal(res.statusCode, 200);
+    assert.equal(calls.length, 1);
   }, new Error("réseau coupé"));
-  await withFakeFetch(async () => {
+  await withFakeFetch(async (calls) => {
     const res = await handler(eventFor("newsletter-fr", { email: "claire@example.com" }));
     assert.equal(res.statusCode, 200);
-  }, { ok: false, status: 500 });
+    assert.equal(calls.length, 1);
+  }, { ok: false, status: 500, json: async () => { throw new Error("pas du JSON"); } });
 });
 
 test("handler : le formulaire contact envoie toujours l'auto-réponse", async () => {

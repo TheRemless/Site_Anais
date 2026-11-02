@@ -115,37 +115,37 @@ function isNewsletterSubmission(payload) {
 }
 module.exports.isNewsletterSubmission = isNewsletterSubmission;
 
-// Champs attendus par le formulaire Brevo (mêmes noms que l'ancien widget).
-function brevoFields(data, formName) {
-  const lang = formName === "newsletter-en" || data.lang === "en" ? "en" : "fr";
+// Champs attendus par le formulaire Brevo (mêmes noms que l'ancien widget). Locale « fr » comme l'ancien
+// widget, affiché aussi sur les pages anglaises : le formulaire Brevo n'a été configuré qu'en français.
+function brevoFields(email, data) {
   return new URLSearchParams({
-    EMAIL: (data.email || "").trim(),
+    EMAIL: email,
     FIRSTNAME: (data.prenom || "").trim().slice(0, 200),
     email_address_check: "",
-    locale: lang,
+    locale: "fr",
   });
 }
 module.exports.brevoFields = brevoFields;
 
+// Le spam (champ anti-robot rempli) est filtré par Netlify avant cette fonction.
 async function forwardToBrevo(payload) {
   const data = payload.data || {};
-  if (!EMAIL_RE.test((data.email || "").trim())) {
+  const email = (data.email || "").trim();
+  if (!EMAIL_RE.test(email)) {
     console.log("Newsletter : e-mail absent ou invalide, rien transmis à Brevo.");
-    return false;
-  }
-  if (data["bot-field"]) {
-    console.log("Newsletter : champ anti-robot rempli, rien transmis à Brevo.");
     return false;
   }
   try {
     const res = await fetch(BREVO_FORM_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: brevoFields(data, payload.form_name).toString(),
+      body: brevoFields(email, data).toString(),
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) {
-      console.error("Newsletter : Brevo a répondu HTTP " + res.status + ".");
+    let answer = null;
+    try { answer = await res.json(); } catch (e) { /* réponse non JSON : on s'en tient au statut */ }
+    if (!res.ok || (answer && answer.success === false)) {
+      console.error("Newsletter : Brevo a refusé l'inscription (HTTP " + res.status + ") " + JSON.stringify(answer && answer.errors || answer || ""));
       return false;
     }
     console.log("Newsletter : inscription (" + payload.form_name + ") transmise à Brevo.");
