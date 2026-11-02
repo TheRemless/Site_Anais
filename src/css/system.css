@@ -204,6 +204,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 @media (min-width: 700px) { .os-grid { grid-template-columns: 1fr 1fr; gap: 40px; } }
 
+/* Vignette « objet » : un document net (bon cadeau, couverture du guide) posé sur un fond uni, sans photo floutée autour.
+   Utilisée par other-services.njk et la page Guides (.pg-spec-photo). */
+.tile-photo.is-object,
+.pg-spec-photo.is-object { display: flex; align-items: center; justify-content: center; padding: 6% 9%; background: var(--sand-tint); }
+.pg-spec-photo.is-object { box-shadow: none; }
+.tile-photo.is-object img,
+.pg-spec-photo.is-object img { width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; box-shadow: 0 14px 34px -14px rgba(16,36,42,0.38); }
+
 /* ---------- Bande photo défilante ---------- */
 .marquee { background: var(--surface); }
 .marquee .marquee-track { gap: 14px; padding: 0 14px; animation-duration: 60s; }
