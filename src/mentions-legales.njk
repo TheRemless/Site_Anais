@@ -46,7 +46,6 @@ navLight: false
 </div></div></div></div>
 {% endraw %}{% endblock %}
 
-{% block scripts %}{% raw %}
-<script src="/js/legal.js?v={{ build.v }}"></script>
+{% block scripts %}<script src="/js/legal.js?v={{ build.v }}"></script>{% raw %}
 <script>ZWALD.init();</script>
 {% endraw %}{% endblock %}

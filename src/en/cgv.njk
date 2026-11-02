@@ -163,7 +163,7 @@ langAlt: "/cgv/"
 
 <h2>18. Acceptance of the terms</h2>
 <p>The client confirms having read these terms and conditions before confirming their order, whatever the service.</p>
-<p>Signing the quote, confirming a confirmed pre-registration, or paying an amount due means fully accepting these terms.</p>
+<p>Signing the quote, accepting a confirmed pre-registration or paying an amount due means fully accepting these terms.</p>
 
 <h2>19. Other provisions</h2>
 <p>The company may change these terms at any time. The terms that apply are those in force on the date of the order.</p>
@@ -174,7 +174,6 @@ langAlt: "/cgv/"
 </div></div></div></div>
 {% endraw %}{% endblock %}
 
-{% block scripts %}{% raw %}
-<script src="/js/legal.js"></script>
+{% block scripts %}<script src="/js/legal.js?v={{ build.v }}"></script>{% raw %}
 <script>ZWALD.init();</script>
 {% endraw %}{% endblock %}

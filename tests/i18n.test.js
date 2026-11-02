@@ -114,3 +114,14 @@ test("i18n : SUBJECT_GROUPS de src/en/contact.njk correspond aux <option> et dat
     );
   }
 });
+
+test("CGV : version anglaise présente, liée depuis le pied de page anglais", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const root = path.join(__dirname, "..");
+  assert.ok(fs.existsSync(path.join(root, "src", "en", "cgv.njk")), "src/en/cgv.njk manque");
+  const footer = fs.readFileSync(path.join(root, "src", "_includes", "footer.njk"), "utf8");
+  assert.match(footer, /\{% if lang == "en" %\}\/en\/cgv\/\{% else %\}\/cgv\/\{% endif %\}/);
+  const en = fs.readFileSync(path.join(root, "_site", "en", "cgv", "index.html"), "utf8");
+  assert.match(en, /hreflang="fr" href="https:\/\/zwaldtravelplanner\.com\/cgv\/"/);
+});
