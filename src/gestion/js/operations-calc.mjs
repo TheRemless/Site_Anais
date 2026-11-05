@@ -18,7 +18,7 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
   const deja = new Set(existantes.flatMap((r) => [r.ligne_id, ...((r.details && r.details.lignes_ids) || [])]));
   const groupes = new Map();
   for (const l of (doc.contenu && doc.contenu.lignes) || []) {
-    if (l.kind === "texte" || l.kind === "remise" || !(l.prestation_id || l.trajet_id) || deja.has(l.id)) continue;
+    if (l.kind === "texte" || l.kind === "remise" || !(l.prestation_id || l.trajet_id || l.libre) || deja.has(l.id)) continue;
     const cle = `${l.trajet_id || ""}|${l.partenaire_id || ""}|${l.date_service || ""}|${sansAccentsMin(nomSansEnfant(l))}`;
     const qte = l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1;
     const enfant = estLigneEnfant(l);

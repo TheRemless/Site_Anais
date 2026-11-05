@@ -226,6 +226,11 @@ export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1,
   return { ...base, kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: Number(qte) || 1, net: net && net.net !== null && net.net !== undefined ? Number(net.net) : null };
 }
 
+// Prestation hors base : une ligne saisie à la main qui a pourtant sa réservation (donc son voucher), repérée par `libre`.
+export function ligneLibre({ libelle, prix, qte = 1, partenaire_id = null, date = "" }, { uid = nouvelId } = {}) {
+  return { id: uid(), kind: "ligne", libre: true, libelle: String(libelle).trim(), intro: "", puces: [], unite: Number(prix), qte: Number(qte) || 1, montant: null, pct: null, prestation_id: null, trajet_id: null, partenaire_id: partenaire_id || null, date_service: date || null, net: null };
+}
+
 // Un trajet donne une ligne par adulte et, s'il y a des enfants et un prix enfant, une ligne enfant.
 // `compagnie` vide : le prestataire n'est pas répété dans le libellé (il figure déjà sur la facture de Secret).
 // « Van partagé + speedboat » → « Shared van + speedboat », avec une majuscule au début.

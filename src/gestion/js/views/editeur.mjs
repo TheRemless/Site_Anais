@@ -346,7 +346,7 @@ function editeurVue(id) {
     const kindTexte = { bloc: tr("Bloc de formule"), ligne: tr("Ligne"), remise: tr("Remise"), texte: tr("Note sous le tableau") }[l.kind];
     const champs = [champ(l.kind === "remise" ? tr("Intitulé de la remise") : l.kind === "texte" ? tr("Texte de la note") : tr("Libellé"), libelle)];
     // Ligne venue d'un partenaire : la date du service se garde avec la ligne, le net s'affiche pour qui a le droit.
-    if ((l.prestation_id || l.trajet_id) && l.kind !== "texte") {
+    if ((l.prestation_id || l.trajet_id || l.libre) && l.kind !== "texte") {
       champs.push(
         h(
           "div",
