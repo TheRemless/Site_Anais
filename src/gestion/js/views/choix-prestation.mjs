@@ -1,9 +1,9 @@
 // Sélecteur de prestations et de trajets de partenaires pour l'éditeur de devis.
 // La fenêtre reste ouverte pour enchaîner plusieurs ajouts ; chaque ajout renvoie des lignes prêtes pour le document.
 import { etat, nomPartenaire, netPrestation, netTrajet } from "../etat.mjs";
-import { h, modal, toast } from "../ui.mjs";
+import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
-import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet } from "../partenaires-calc.mjs";
+import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre } from "../partenaires-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
 // `sansCompagnie` : le nom de la compagnie n'est pas répété dans le libellé des trajets (facture de Secret).
@@ -13,16 +13,54 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   const q = h("input", { id: "cp-q", type: "search", placeholder: tr("Île, excursion, transfert, compagnie…"), autocomplete: "off", oninput: () => dessiner() });
   const liste = h("ul", { class: "choix-liste" });
   const compte = h("p", { class: "aide" });
-  const onglets = h("div", { class: "onglets sous-onglets" }, [["tarifs", tr("Tarifs")], ["trajets", tr("Trajets")]].map(([code, libelle]) => h("button", { type: "button", "aria-pressed": code === onglet ? "true" : "false", onclick: (e) => { onglet = code; for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false"); dessiner(); } }, libelle)));
+  const onglets = h("div", { class: "onglets sous-onglets" }, [["tarifs", tr("Tarifs")], ["trajets", tr("Trajets")], ["libre", tr("Autre prestation")]].map(([code, libelle]) => h("button", { type: "button", "aria-pressed": code === onglet ? "true" : "false", onclick: (e) => { onglet = code; for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false"); dessiner(); } }, libelle)));
   const prix = (n) => (n === null || n === undefined ? tr("prix à définir") : formatMontant(n, devise));
   const ajoute = (lignes, nom) => {
     onAjout(lignes);
     toast(tr("{nom} ajouté au document.", { nom }));
   };
+  const champRecherche = h("div", { class: "champ" }, h("label", { for: "cp-q" }, tr("Rechercher")), q);
+  const noteBas = h("p", { class: "aide" }, langue === "en" ? tr("Document en anglais : le libellé anglais de la prestation est utilisé quand il existe.") : tr("Le libellé, le prix de vente et l'unité viennent de la base partenaires. Le net reste attaché à la ligne pour calculer la marge."));
+
+  // Onglet « Autre prestation » : un service qui n'est pas dans la base, saisi à la main mais avec sa réservation et son voucher.
+  const libelleLibre = h("input", { id: "cp-l-nom", autocomplete: "off" });
+  const prixLibre = h("input", { id: "cp-l-prix", type: "number", min: "0", step: "any", inputmode: "decimal" });
+  const qteLibre = h("input", { id: "cp-l-qte", type: "number", min: "1", step: "1", value: 1, inputmode: "numeric" });
+  const partenaireLibre = h("select", { id: "cp-l-part" }, h("option", { value: "" }, tr("Aucun partenaire")), [...etat.db.partenaires].sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
+  const erreurLibre = h("p", { class: "erreur-form", role: "alert" });
+  const formulaireLibre = h(
+    "form",
+    {
+      class: "choix-libre",
+      novalidate: true,
+      onsubmit: (e) => {
+        e.preventDefault();
+        erreurLibre.textContent = "";
+        if (!libelleLibre.value.trim()) return (erreurLibre.textContent = tr("Indiquez le nom de la prestation.")), libelleLibre.focus();
+        if (prixLibre.value === "" || !(Number(prixLibre.value) >= 0)) return (erreurLibre.textContent = tr("Indiquez le prix de vente, 0 si la prestation est offerte.")), prixLibre.focus();
+        const l = ligneLibre({ libelle: libelleLibre.value, prix: prixLibre.value, qte: qteLibre.value, partenaire_id: partenaireLibre.value, date: date.value });
+        ajoute([l], l.libelle);
+        libelleLibre.value = "";
+        prixLibre.value = "";
+        qteLibre.value = 1;
+        libelleLibre.focus();
+      },
+    },
+    h("p", { class: "aide" }, tr("Pour une prestation qui n'est pas dans la base. Elle va sur la facture avec sa réservation et son voucher. Pour la retrouver à chaque fois, créez-la plutôt dans la fiche du partenaire.")),
+    champ(tr("Prestation"), libelleLibre, tr("Le nom tel que le client le lira sur la facture.")),
+    h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente ({devise})", { devise }), prixLibre, tr("Par unité.")), champ(tr("Quantité"), qteLibre)),
+    champ(tr("Partenaire (facultatif)"), partenaireLibre, tr("Celui qui réalise la prestation, s'il y en a un.")),
+    erreurLibre,
+    h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Ajouter")))
+  );
   const qte = (id, valeur, libelle) => h("label", { class: "choix-qte" }, h("span", null, libelle), h("input", { id, type: "number", min: "0", step: "1", value: valeur, inputmode: "numeric" }));
 
   function dessiner() {
     liste.replaceChildren();
+    const libre = onglet === "libre";
+    formulaireLibre.hidden = !libre;
+    for (const x of [liste, compte, champRecherche, noteBas]) x.hidden = libre;
+    if (libre) return;
     if (onglet === "tarifs") {
       const lignes = etat.db.prestations
         .filter((x) => x.actif !== false && correspond(`${x.libelle} ${x.libelle_en} ${x.groupe} ${nomFamille(x.famille)} ${nomPartenaire(x.partenaire_id)}`, q.value))
@@ -71,11 +109,12 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
     h(
       "div",
       { class: "modal-corps choix-prestation" },
-      h("div", { class: "grille-form" }, h("div", { class: "champ" }, h("label", { for: "cp-date" }, tr("Date du service (facultatif)")), date), h("div", { class: "champ" }, h("label", { for: "cp-q" }, tr("Rechercher")), q)),
+      h("div", { class: "grille-form" }, h("div", { class: "champ" }, h("label", { for: "cp-date" }, tr("Date du service (facultatif)")), date), champRecherche),
       onglets,
+      formulaireLibre,
       compte,
       liste,
-      h("p", { class: "aide" }, langue === "en" ? tr("Document en anglais : le libellé anglais de la prestation est utilisé quand il existe.") : tr("Le libellé, le prix de vente et l'unité viennent de la base partenaires. Le net reste attaché à la ligne pour calculer la marge."))
+      noteBas
     ),
     { large: true }
   );

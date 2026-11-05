@@ -452,6 +452,9 @@ input.couleur { width: 72px; padding: 2px; }
 .ligne-partenaire .champ { max-width: 220px; }
 .ligne-partenaire .aide { margin: 0 0 14px; }
 .modal.large .choix-prestation .grille-form { grid-template-columns: minmax(170px, 220px) minmax(0, 1fr); }
+.choix-libre { max-width: 560px; }
+.choix-libre > .aide { margin: 0 0 14px; }
+.modal.large .choix-prestation .choix-libre .grille-form { grid-template-columns: repeat(2, minmax(0, 220px)); }
 
 /* Recherche globale */
 .palette-fond { align-items: flex-start; padding: 8vh 16px; }

@@ -179,3 +179,25 @@ test("messages : le destinataire est enregistré ou déduit de l'usage, et chaqu
   }
   assert.equal(MESSAGES_DEFAUT.filter((m) => m.pour === "partenaire" && m.langue === "en").length, 4);
 });
+
+test("prestation hors base : la ligne libre a sa réservation, sans prestation ni partenaire imposés", async () => {
+  const { ligneLibre } = await import("../src/gestion/js/partenaires-calc.mjs");
+  let n = 0;
+  const uid = () => `u${++n}`;
+  const l = ligneLibre({ libelle: "  Cooking class  ", prix: "1200", qte: "2", partenaire_id: "", date: "2026-12-05" }, { uid });
+  assert.deepEqual(l, { id: "u1", kind: "ligne", libre: true, libelle: "Cooking class", intro: "", puces: [], unite: 1200, qte: 2, montant: null, pct: null, prestation_id: null, trajet_id: null, partenaire_id: null, date_service: "2026-12-05", net: null });
+  const r = reservationsDepuisDocument({ dossier_id: "D1", contenu: { lignes: [l, { id: "x", kind: "ligne", libelle: "Ligne écrite à la main", unite: 100, qte: 1 }] } }, { uid });
+  assert.equal(r.length, 1, "seule la ligne libre devient une réservation, pas une ligne écrite dans l'éditeur");
+  assert.equal(r[0].reservation.libelle, "Cooking class");
+  assert.equal(r[0].reservation.ligne_id, "u1");
+  assert.equal(r[0].reservation.prestation_id, null);
+  assert.equal(r[0].reservation.partenaire_id, null);
+  assert.deepEqual(r[0].reservation.personnes, { adultes: 2, enfants: 0, bebes: 0 });
+  assert.equal(r[0].reservation.date_service, "2026-12-05");
+  assert.equal(typeVoucher(r[0].reservation, null), "activite", "un voucher d'activité par défaut");
+  assert.equal(typeVoucher({ libelle: "Private taxi to Krabi" }, null), "transfert");
+  assert.equal(reservationsDepuisDocument({ dossier_id: "D1", contenu: { lignes: [l] } }, { existantes: [{ ligne_id: "u1" }] }).length, 0, "elle ne se réserve qu'une fois");
+  const avecPartenaire = ligneLibre({ libelle: "Massage", prix: 0, partenaire_id: "p9" }, { uid });
+  assert.equal(avecPartenaire.unite, 0, "une prestation offerte garde son prix à 0");
+  assert.equal(reservationsDepuisDocument({ dossier_id: "D1", contenu: { lignes: [avecPartenaire] } }, { uid })[0].reservation.partenaire_id, "p9");
+});
