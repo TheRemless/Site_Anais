@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage } from "../src/gestion/js/operations-calc.mjs";
+import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient } from "../src/gestion/js/operations-calc.mjs";
 
 test("vouchers : modèle d'après la prestation, numéro, statut de paiement", () => {
   assert.equal(typeVoucher({ trajet_id: "t" }, null), "billet", "un trajet de compagnie est un billet de bateau");
@@ -200,4 +200,38 @@ test("prestation hors base : la ligne libre a sa réservation, sans prestation n
   const avecPartenaire = ligneLibre({ libelle: "Massage", prix: 0, partenaire_id: "p9" }, { uid });
   assert.equal(avecPartenaire.unite, 0, "une prestation offerte garde son prix à 0");
   assert.equal(reservationsDepuisDocument({ dossier_id: "D1", contenu: { lignes: [avecPartenaire] } }, { uid })[0].reservation.partenaire_id, "p9");
+});
+
+test("hôtel et chambre : « Beach Resort » n'est pas une chambre, « Room 12 » ou « Ch. 5 » en fin de ligne en est une", () => {
+  const h = (adresse, pickup = "") => hotelEtChambre({ adresse }, { lieu_pickup: pickup });
+  assert.deepEqual(h("Klong Dao Beach Resort"), { hotel: "Klong Dao Beach Resort", chambre: "" });
+  assert.deepEqual(h("Time Beach Bungalow"), { hotel: "Time Beach Bungalow", chambre: "" });
+  assert.deepEqual(h("Mama Beach Hut 3"), { hotel: "Mama Beach Hut 3", chambre: "" });
+  assert.deepEqual(h("Hotel Sunset, Room 12"), { hotel: "Hotel Sunset", chambre: "12" });
+  assert.deepEqual(h("Lanta Castaway Beach Resort, Ch. 5"), { hotel: "Lanta Castaway Beach Resort", chambre: "5" });
+  assert.deepEqual(h("Sunset Hotel, Room A12"), { hotel: "Sunset Hotel", chambre: "A12" });
+  assert.deepEqual(h("Sunset Hotel chambre 7B"), { hotel: "Sunset Hotel", chambre: "7B" });
+  assert.deepEqual(h("Rue du Lac 12", "Hotel Sunset, Room 4"), { hotel: "Hotel Sunset", chambre: "4" }, "le pickup prime sur l'adresse du client");
+});
+
+test("message au client : rappel la veille, avis après le service, confirmation sinon", () => {
+  assert.equal(cleMessageClient("2026-11-07", "2026-11-06"), "rappel");
+  assert.equal(cleMessageClient("2026-11-06", "2026-11-06"), "confirmation", "le jour même, le rappel de la veille n'a plus de sens");
+  assert.equal(cleMessageClient("2026-11-20", "2026-11-06"), "confirmation");
+  assert.equal(cleMessageClient("2026-11-05", "2026-11-06"), "avis");
+  assert.equal(cleMessageClient("2026-12-01", "2026-11-30"), "rappel", "la veille d'un changement de mois");
+  assert.equal(cleMessageClient(null, "2026-11-06"), "confirmation");
+});
+
+test("phrase des CGV : propre à la facture, sans crochets bruts quand le lien manque, absente si les réglages la vident", async () => {
+  const { phraseCgv, CGV_FACTURE } = await import("../src/gestion/js/defauts.mjs");
+  const fr = { facture: "Facture", cgv: "Le client accepte les [CGV]({cgv_url}). La signature du présent devis vaut acceptation." };
+  assert.equal(phraseCgv(fr, { cgvUrl: "https://x.ch/cgv" }), fr.cgv, "sur un devis : la phrase des réglages");
+  assert.equal(phraseCgv(fr, { estFacture: true, cgvUrl: "https://x.ch/cgv" }), CGV_FACTURE.fr, "sur une facture : plus de signature du devis");
+  assert.ok(!/devis/.test(CGV_FACTURE.fr) && !/quote/i.test(CGV_FACTURE.en));
+  assert.equal(phraseCgv(fr, { cgvUrl: "" }), "Le client accepte les CGV. La signature du présent devis vaut acceptation.", "sans lien : texte simple");
+  assert.equal(phraseCgv({ facture: "Invoice", cgv: "x" }, { estFacture: true, cgvUrl: "u" }), CGV_FACTURE.en, "libellés anglais (Secret)");
+  assert.equal(phraseCgv({ facture: "Facture", cgv: "x" }, { estFacture: true, en: true, cgvUrl: "u" }), CGV_FACTURE.en, "document en anglais");
+  assert.equal(phraseCgv({ ...fr, cgv_facture: "Sur mesure [ici]({cgv_url})." }, { estFacture: true, cgvUrl: "u" }), "Sur mesure [ici]({cgv_url}).", "phrase de facture personnalisée");
+  assert.equal(phraseCgv({ facture: "Facture", cgv: "" }, { estFacture: true, cgvUrl: "u" }), "", "phrase vidée dans les réglages : rien sur le document");
 });

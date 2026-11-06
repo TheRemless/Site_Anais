@@ -3,7 +3,7 @@ import { etat, enregistrerReglages, recharger, resumes, resumeDossier, nomClient
 import { voucherExemple } from "./voucher.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
-import { LIBELLES_FR, LIBELLES_EN, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
+import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
 import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4 } from "./commun.mjs";
 import { tr, N_ } from "../i18n.mjs";
@@ -311,6 +311,9 @@ export function vueReglages() {
     const cgv = h("textarea", { id: "lb-cgv", rows: 4, oninput: (e) => ((cible.cgv = e.target.value), marque()) });
     cgv.value = cible.cgv ?? "";
     libellesGrille.append(h("div", { class: "pleine-largeur" }, champ(tr("Phrase sur les conditions générales"), cgv, tr("Laissez vide pour ne pas l'afficher. [texte](lien) crée un lien. {cgv_url} et {entreprise} se remplissent seuls."))));
+    const cgvFacture = h("textarea", { id: "lb-cgv-facture", rows: 2, placeholder: CGV_FACTURE[langueTextes === "en" ? "en" : "fr"], oninput: (e) => ((cible.cgv_facture = e.target.value), marque()) });
+    cgvFacture.value = cible.cgv_facture ?? "";
+    libellesGrille.append(h("div", { class: "pleine-largeur" }, champ(tr("Phrase sur les conditions générales, facture"), cgvFacture, tr("Laissez vide pour la phrase par défaut de la facture. Même syntaxe que ci-dessus."))));
   };
   const remplirTextes = (base) => {
     const cle = langueTextes === "en" ? "libelles_en" : "libelles";

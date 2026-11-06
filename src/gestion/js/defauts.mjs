@@ -110,7 +110,7 @@ export const LIBELLES_EN = {
   prestataire: "Service provider:",
   note_devise: "",
   pied_note: "",
-  cgv: "The client acknowledges having read the [Terms and Conditions]({cgv_url}) of {entreprise} and accepts them without reservation. Signing this quote constitutes acceptance of the Terms and Conditions and a binding commitment.",
+  cgv: "The client acknowledges having read the [Terms and Conditions]({cgv_url}) of {entreprise} and accepts them in full. Signing this quote constitutes acceptance of the Terms and Conditions and a binding commitment.",
 };
 
 export const MOYENS_DEFAUT = [
@@ -200,6 +200,20 @@ function fusion(base, extra) {
 }
 
 // Complète des réglages enregistrés avec les valeurs neutres et reprend l'ancien format (coordonnées en champs séparés).
+// Phrase sur les conditions générales. Sur un devis, celle des réglages. Sur une facture, une phrase propre à la facture : « la
+// signature du devis » n'a rien à faire sur une facture, et Secret n'a pas de devis. Sans lien dans les réglages, le texte entre
+// crochets reste du texte simple (pas de « [texte]() » brut sur le document).
+export const CGV_FACTURE = {
+  fr: "Cette facture est établie selon les [Conditions Générales de Vente]({cgv_url}) de {entreprise}.",
+  en: "This invoice is issued under the [Terms and Conditions]({cgv_url}) of {entreprise}.",
+};
+export function phraseCgv(lb, { estFacture = false, en = false, cgvUrl = "" } = {}) {
+  if (!lb.cgv) return "";
+  const anglais = en || /invoice/i.test(lb.facture || "");
+  const phrase = estFacture ? lb.cgv_facture || CGV_FACTURE[anglais ? "en" : "fr"] : lb.cgv;
+  return cgvUrl ? phrase : phrase.replace(/\[([^\]]+)\]\(\{cgv_url\}\)/g, "$1");
+}
+
 export function completerReglages(brut) {
   const r = structuredClone(brut || {});
   const p = r.paiement || {};
