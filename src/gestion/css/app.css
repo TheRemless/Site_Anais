@@ -300,6 +300,11 @@ legend { padding: 0 6px; font-weight: 700; }
 
 .bandeau-info { margin: 0 0 20px; padding: 10px 14px; background: #fff4d6; border: 1px solid #e8d49a; border-radius: var(--rayon); color: #5a4300; font-size: 0.92rem; }
 .bandeau-info a { color: #5a4300; font-weight: 600; }
+.bandeau-alerte { margin: 0 0 20px; padding: 12px 14px; background: #fdecec; border: 1px solid #e3a3a3; border-radius: var(--rayon); color: #7a1f1f; font-size: 0.92rem; }
+.bandeau-alerte p { margin: 0 0 10px; }
+.bandeau-alerte .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.etat-synchro { position: fixed; z-index: 150; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); padding: 10px 14px; border-radius: var(--rayon); background: #fff4d6; border: 1px solid #e8d49a; color: #5a4300; font-size: 0.88rem; font-weight: 500; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); }
+@media (min-width: 900px) { .etat-synchro { right: auto; left: 24px; bottom: 24px; max-width: 420px; } }
 
 /* Entreprises, utilisateurs, réglages */
 .entite-choix, .entite-nom { margin: 0 0 14px; padding: 0 8px; }

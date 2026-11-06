@@ -1,5 +1,5 @@
-import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif } from "../etat.mjs";
-import { h, champ, toast, num, vider, icone } from "../ui.mjs";
+import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument } from "../etat.mjs";
+import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
 import { nouvelleLigne, modesPaiement } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
@@ -22,6 +22,9 @@ function editeurVue(id) {
   const source = etat.db.documents.find((d) => d.id === id);
   if (!source) return vide(tr("Document introuvable"), tr("Il a peut-être été supprimé."), h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Retour aux dossiers")));
   const doc = structuredClone(source);
+  // La synchronisation avec les autres personnes ne doit pas retirer ce document de la mémoire pendant qu'on l'édite.
+  etat.documentsOuverts.add(id);
+  window.addEventListener("hashchange", () => etat.documentsOuverts.delete(id), { once: true });
   const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id);
   const client = etat.db.clients.find((c) => c.id === dossier.client_id);
   const paiements = etat.db.paiements.filter((p) => p.dossier_id === dossier.id);
@@ -47,21 +50,61 @@ function editeurVue(id) {
   const zoneApercu = h("div", { class: "apercu" }, cadre);
 
   // ---- Enregistrement ------------------------------------------------------------------------------------
+  // Un seul enregistrement à la fois : si une écriture est en cours, la suivante attend sa fin et la dernière version gagne. Après un échec
+  // (réseau instable), nouvel essai automatique. Tant que tout n'est pas enregistré, fermer l'onglet est signalé. Si quelqu'un d'autre a
+  // enregistré ce document entre-temps, on s'arrête et on demande, au lieu d'écraser son travail sans rien dire.
   let minuteur = null;
+  let enVol = false;
+  let aRecommencer = false;
+  let nonEnregistre = false;
+  let enConflit = false;
+  const bandeauConflit = h(
+    "div",
+    { class: "bandeau-alerte", role: "alert", hidden: true },
+    h("p", null, tr("Quelqu'un d'autre a enregistré ce document pendant que vous le modifiiez. Vos dernières modifications ne sont pas enregistrées.")),
+    h(
+      "div",
+      { class: "actions" },
+      h("button", { class: "secondaire", type: "button", onclick: async () => (await chargerDocument(id), (nonEnregistre = false), naviguer(location.hash)) }, tr("Voir sa version et abandonner les miennes")),
+      h("button", { class: "principal", type: "button", onclick: async () => (await chargerDocument(id), (enConflit = false), (bandeauConflit.hidden = true), ecrire()) }, tr("Garder la mienne et remplacer la sienne"))
+    )
+  );
+  const heureEnregistrement = () => new Date().toLocaleTimeString(localeActive(), { hour: "2-digit", minute: "2-digit" });
   const ecrire = async () => {
     minuteur = null;
+    if (enConflit) return;
+    if (enVol) {
+      aRecommencer = true;
+      return;
+    }
+    enVol = true;
     try {
-      await modifier("documents", id, { contenu: doc.contenu, date_emission: doc.date_emission, envoye_le: doc.envoye_le, updated_at: new Date().toISOString() });
-      statut.textContent = tr("Enregistré à {heure}", { heure: new Date().toLocaleTimeString(localeActive(), { hour: "2-digit", minute: "2-digit" }) });
+      await modifier("documents", id, { contenu: doc.contenu, date_emission: doc.date_emission, envoye_le: doc.envoye_le, updated_at: new Date().toISOString() }, { verrou: true });
+      if (!minuteur && !aRecommencer) nonEnregistre = false;
+      statut.textContent = tr("Enregistré à {heure}", { heure: heureEnregistrement() });
     } catch (err) {
-      statut.textContent = tr("Échec de l'enregistrement");
-      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+      if (err.conflit) {
+        enConflit = true;
+        bandeauConflit.hidden = false;
+        statut.textContent = tr("Non enregistré : document modifié par une autre personne");
+      } else {
+        statut.textContent = tr("Échec de l'enregistrement, nouvel essai dans quelques secondes");
+        toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+        minuteur = setTimeout(ecrire, 5000);
+      }
+    } finally {
+      enVol = false;
+      if (aRecommencer && !enConflit) {
+        aRecommencer = false;
+        ecrire();
+      }
     }
   };
   const sauver = () => {
     // Les autres écrans lisent la copie en mémoire : on la met à jour tout de suite.
     const courant = etat.db.documents.find((d) => d.id === id);
-    Object.assign(courant, { contenu: structuredClone(doc.contenu), date_emission: doc.date_emission, envoye_le: doc.envoye_le });
+    if (courant) Object.assign(courant, { contenu: structuredClone(doc.contenu), date_emission: doc.date_emission, envoye_le: doc.envoye_le });
+    nonEnregistre = true;
     clearTimeout(minuteur);
     minuteur = setTimeout(ecrire, 600);
   };
@@ -72,8 +115,51 @@ function editeurVue(id) {
   };
   window.addEventListener("hashchange", () => minuteur && (clearTimeout(minuteur), ecrire()), { once: true });
   window.addEventListener("beforeunload", (e) => {
-    if (minuteur) e.preventDefault();
+    if (minuteur || enVol || nonEnregistre) e.preventDefault();
   });
+
+  // ---- Versions précédentes du document ------------------------------------------------------------------
+  const dateHeure = (iso) => new Date(iso).toLocaleString(localeActive(), { dateStyle: "medium", timeStyle: "short" });
+  async function restaurerVersion(v, fermer) {
+    if (!(await confirmer(tr("Remplacer le contenu actuel par la version du {date} ?", { date: dateHeure(v.archive_le) }), tr("Restaurer")))) return;
+    fermer();
+    try {
+      // Ce qui est en attente d'enregistrement part d'abord, puis la version choisie le remplace (sans verrou : c'est voulu).
+      if (minuteur) (clearTimeout(minuteur), await ecrire());
+      await modifier("documents", id, { contenu: v.ligne.contenu, date_emission: v.ligne.date_emission, updated_at: new Date().toISOString() });
+      historiques.delete(id);
+      nonEnregistre = false;
+      toast(tr("Version restaurée."));
+      naviguer(location.hash);
+    } catch (err) {
+      toast(tr("Restauration impossible : {message}", { message: err.message }), true);
+    }
+  }
+  async function ouvrirVersions() {
+    let versions;
+    try {
+      versions = await versionsDocument(id);
+    } catch (err) {
+      toast(tr("Historique indisponible : {message}", { message: err.message }), true);
+      return;
+    }
+    const lignes = versions.length
+      ? versions.map((v) => {
+          const t = totaux(v.ligne.contenu);
+          return h(
+            "li",
+            { class: "choix" },
+            h("div", { class: "choix-texte" }, h("strong", null, dateHeure(v.archive_le)), h("span", null, formatMontant(t.net, v.ligne.contenu.devise || regl.devise))),
+            h("div", { class: "choix-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => restaurerVersion(v, fermer) }, tr("Restaurer")))
+          );
+        })
+      : [h("li", { class: "choix-vide" }, tr("Aucune version gardée pour l'instant. Une version est gardée avant chaque série de modifications."))];
+    const fermer = modal(
+      tr("Versions de ce document"),
+      h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("Une version est gardée avant chaque série de modifications, au plus toutes les cinq minutes, et les trente dernières sont conservées.")), h("ul", { class: "choix-liste" }, lignes))
+    );
+  }
+  const btnVersions = h("button", { class: "secondaire petit", type: "button", onclick: ouvrirVersions }, tr("Versions"));
 
   // ---- Historique : annuler et rétablir -----------------------------------------------------------------
   const instantanePris = () => JSON.stringify({ contenu: doc.contenu, date_emission: doc.date_emission });
@@ -549,9 +635,10 @@ function editeurVue(id) {
       "div",
       { class: "entete editeur-entete" },
       h("div", null, h("h1", null, nomDoc), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
-      h("div", { class: "entete-actions" }, statut, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: tr("Télécharger le PDF (Ctrl+P)"), onclick: () => pdf({ ...doc }) }, tr("Télécharger le PDF")))
+      h("div", { class: "entete-actions" }, statut, lectureSeule ? null : btnVersions, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: tr("Télécharger le PDF (Ctrl+P)"), onclick: () => pdf({ ...doc }) }, tr("Télécharger le PDF")))
     ),
     h("p", { class: "aide-pdf" }, tr("Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « {nomDoc} {ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: dossier.ref })),
+    bandeauConflit,
     lectureSeule ? h("p", { class: "bandeau-info" }, tr("Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.")) : null,
     h("div", { class: "editeur" }, formulaire, zoneApercu)
   );

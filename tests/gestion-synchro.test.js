@@ -110,3 +110,64 @@ test("numeroSuivant : le numéro vient de la base, sinon le calcul local prend l
   m.etat.store.prochainNumeroRef = async () => 3;
   assert.equal(await m.numeroSuivant(2026, 10), 11, "un numéro incohérent est ignoré");
 });
+
+test("modifier avec verrou : la version lue part avec l'écriture, un conflit remonte à l'appelant", async () => {
+  const lu = base();
+  lu.clients = [{ ...client("1", "Anna"), updated_at: "2026-11-06T10:00:00.000001+00:00" }];
+  const m = await demarrer(async () => structuredClone(lu));
+  const recus = [];
+  m.etat.store.modifier = async (table, id, patch, avant) => {
+    recus.push(avant);
+    if (avant && avant !== "2026-11-06T10:00:00.000001+00:00") { const e = new Error("conflit"); e.conflit = true; throw e; }
+    return { ...client("1", patch.nom || "Anna"), updated_at: "2026-11-06T10:05:00.000002+00:00" };
+  };
+  await m.modifier("clients", "1", { nom: "Anne" }, { verrou: true });
+  assert.deepEqual(recus, ["2026-11-06T10:00:00.000001+00:00"], "la version lue sert de référence");
+  assert.equal(m.etat.db.clients[0].updated_at, "2026-11-06T10:05:00.000002+00:00", "la nouvelle version devient la référence");
+  await m.modifier("clients", "1", { nom: "Anna" });
+  assert.equal(recus[1], undefined, "sans verrou, rien n'est vérifié");
+  // quelqu'un d'autre enregistre entre-temps : la version qu'on croit connaître est périmée
+  m.etat.brut.clients[0].updated_at = "2026-11-06T09:00:00+00:00";
+  await assert.rejects(m.modifier("clients", "1", { nom: "Zoé" }, { verrou: true }), (e) => e.conflit === true);
+  assert.equal(m.etat.db.clients[0].nom, "Anna", "un enregistrement refusé ne change pas la copie en mémoire");
+});
+
+test("modifier : une ligne retirée de la mémoire pendant l'attente est remise, sans propriété parasite", async () => {
+  const lu = base();
+  lu.clients = [client("1", "Anna")];
+  const m = await demarrer(async () => structuredClone(lu));
+  m.etat.store.modifier = async () => {
+    m.etat.brut.clients = []; // une relecture a vidé la liste pendant l'écriture
+    return client("1", "Anne");
+  };
+  await m.modifier("clients", "1", { nom: "Anne" });
+  assert.deepEqual(m.etat.brut.clients.map((c) => c.nom), ["Anne"]);
+  assert.equal(Object.keys(m.etat.brut.clients).length, 1, "aucune clé « -1 »");
+});
+
+test("synchroniser : le document en cours d'édition garde sa copie même si le résumé du dossier change", async () => {
+  const lu = base();
+  lu.dossiers = [{ id: "A", entite_id: "e1", client_id: "1", total: 1000, recu: 0, devise: "CHF", created_at: "1" }];
+  const m = await demarrer(async () => structuredClone(lu));
+  m.etat.brut.documents.push({ id: "dEdite", dossier_id: "A" }, { id: "dAutre", dossier_id: "A" });
+  m.etat.documentsOuverts.add("dEdite");
+  lu.dossiers[0] = { ...lu.dossiers[0], recu: 400 };
+  assert.equal(await m.synchroniser(), "modifie");
+  assert.deepEqual(m.etat.brut.documents.map((d) => d.id), ["dEdite"], "l'éditeur garde son document, les autres sont relus à l'ouverture");
+  m.etat.documentsOuverts.delete("dEdite");
+});
+
+test("enregistrerReglages : la version lue à l'ouverture de l'écran sert de référence", async () => {
+  const lu = base();
+  lu.reglages = { e1: { devise: "CHF" } };
+  lu.reglages_maj = { e1: "v1" };
+  const m = await demarrer(async () => structuredClone(lu));
+  const recus = [];
+  m.etat.store.enregistrerReglages = async (entite, valeur, avant) => (recus.push(avant), "v3");
+  m.etat.brut.reglages_maj.e1 = "v2"; // la synchronisation a apporté la version d'une autre personne
+  await m.enregistrerReglages({ devise: "EUR" }, "v1");
+  assert.deepEqual(recus, ["v1"], "c'est la version que la personne a vue, pas la plus récente en mémoire");
+  assert.equal(m.etat.brut.reglages_maj.e1, "v3");
+  await m.enregistrerReglages({ devise: "USD" });
+  assert.equal(recus[1], "v3", "sans version lue, la version courante sert de référence");
+});

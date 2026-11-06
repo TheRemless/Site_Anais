@@ -26,7 +26,9 @@ function formulaireClient(client, apres) {
       onsubmit: async (e) => {
         e.preventDefault();
         const valeurs = { civilite: civ.value, prenom: prenom.value.trim(), nom: nom.value.trim(), telephone: tel.value.trim(), email: email.value.trim(), adresse: adresse.value.trim(), notes: notes.value.trim() };
-        const c = client.id ? await modifier("clients", client.id, valeurs) : await inserer("clients", valeurs);
+        // Seuls les champs changés partent : un autre champ modifié entre-temps par quelqu'un d'autre n'est pas écrasé.
+        const changes = client.id ? Object.fromEntries(Object.entries(valeurs).filter(([k, v]) => (client[k] || "") !== v)) : valeurs;
+        const c = client.id ? (Object.keys(changes).length ? await modifier("clients", client.id, changes) : client) : await inserer("clients", valeurs);
         toast(tr("Client enregistré."));
         apres(c);
       },

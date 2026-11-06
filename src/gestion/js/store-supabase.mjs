@@ -14,6 +14,13 @@ const PAGE = 1000;
 // Colonne de tri de chaque table (toutes n'ont pas de created_at).
 const TRI = { membres: "entite_id", reglages: "entite_id", dossiers_resume: "dossier_id", partenaires_prives: "partenaire_id", prestations_nets: "prestation_id", trajets_nets: "trajet_id", reservations_nets: "reservation_id" };
 
+// Modification refusée : la ligne a été modifiée par quelqu'un d'autre depuis qu'on l'a lue (son `updated_at` a changé).
+function conflit() {
+  const e = new Error(tr("Cette fiche a été modifiée par quelqu'un d'autre depuis que vous l'avez ouverte."));
+  e.conflit = true;
+  return e;
+}
+
 function verifie({ data, error }) {
   if (error) throw new Error(error.message);
   return data;
@@ -56,24 +63,48 @@ export function creer(config) {
       // Les tâches à faire, et celles terminées depuis un mois.
       const depuis = new Date(Date.now() - 30 * 86400000).toISOString();
       out.taches = verifie(await sb.from("taches").select("*").or(`fait.eq.false,fait_le.gte.${depuis}`).order("echeance", { nullsFirst: false }).limit(2000));
-      out.reglages = Object.fromEntries((await toutes("reglages")).map((r) => [r.entite_id, r.valeur]));
+      const lignesReglages = await toutes("reglages");
+      out.reglages = Object.fromEntries(lignesReglages.map((r) => [r.entite_id, r.valeur]));
+      // Version de chaque réglage (migration 15) : sert à refuser d'écraser l'enregistrement d'une autre personne.
+      out.reglages_maj = Object.fromEntries(lignesReglages.map((r) => [r.entite_id, r.updated_at]));
       return out;
     },
     async inserer(table, row) {
       return verifie(await sb.from(table).insert(row).select().single());
     },
-    async modifier(table, id, patch) {
-      return verifie(await sb.from(table).update(patch).eq("id", id).select().single());
+    // `avant` : la version (`updated_at`) de la ligne telle que l'outil l'a lue. Si la ligne a changé depuis, rien n'est écrit et l'erreur porte `conflit`.
+    async modifier(table, id, patch, avant) {
+      let q = sb.from(table).update(patch).eq("id", id);
+      if (avant) q = q.eq("updated_at", avant);
+      const lignes = verifie(await q.select());
+      if (!lignes.length) throw avant ? conflit() : new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      return lignes[0];
     },
     async supprimer(table, id) {
       verifie(await sb.from(table).delete().eq("id", id).select());
     },
-    async enregistrerReglages(entiteId, valeur) {
-      verifie(await sb.from("reglages").upsert({ entite_id: entiteId, valeur }).select());
+    async enregistrerReglages(entiteId, valeur, avant) {
+      if (avant) {
+        const lignes = verifie(await sb.from("reglages").update({ valeur }).eq("entite_id", entiteId).eq("updated_at", avant).select("updated_at"));
+        if (!lignes.length) throw conflit();
+        return lignes[0].updated_at;
+      }
+      const lignes = verifie(await sb.from("reglages").upsert({ entite_id: entiteId, valeur }).select());
+      return lignes[0] && lignes[0].updated_at;
     },
     // Langue de l'interface de la personne connectée (migration 13). Sans la migration l'appel échoue : l'outil garde alors la langue dans ce navigateur.
     async definirMaLangue(code) {
       verifie(await sb.rpc("definir_ma_langue", { l: code }));
+    },
+    // Versions précédentes d'un devis ou d'une facture, et dossiers supprimés des 90 derniers jours (migration 15).
+    async versionsDocument(docId) {
+      return verifie(await sb.from("documents_historique").select("id, archive_le, ligne").eq("document_id", docId).eq("action", "update").order("archive_le", { ascending: false }).limit(30));
+    },
+    async corbeille(entiteId) {
+      return verifie(await sb.from("corbeille").select("id, ligne, liees, supprime_par, supprime_le").eq("entite_id", entiteId).eq("table_name", "dossiers").order("supprime_le", { ascending: false }));
+    },
+    async restaurerDossier(id) {
+      return verifie(await sb.rpc("restaurer_dossier", { p_id: id }));
     },
     // Numéro suivant de la séquence annuelle (migration 14). Échoue tant que la migration n'est pas appliquée : l'appelant garde alors son calcul.
     async prochainNumeroRef(entiteId, annee, minimum) {
