@@ -2,7 +2,7 @@
 import { etat, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, netReservation, enregistrerLie, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide } from "./commun.mjs";
@@ -44,7 +44,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {} } = {
       "span",
       { class: "carte-pied" },
       h("span", null, pastilleReservation(r.statut), r.reference_partenaire ? h("span", { class: "tag" }, r.reference_partenaire) : null, n && n.net_prevu != null ? h("span", { class: "tag" }, n.net_paye != null ? tr("net {prix}, payé", { prix: prix(n.net_prevu) }) : tr("net {prix}", { prix: prix(n.net_prevu) })) : null, avecDossier && d ? h("a", { class: "tag", href: `#/dossier/${d.id}` }, d.ref) : null),
-      h("span", { class: "carte-actions" }, r.partenaire_id ? h("button", { class: "secondaire petit", type: "button", onclick: () => messagePartenaire(r) }, tr("Partenaire")) : null, c ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, r.date_service === aujourdhui() ? "rappel" : "confirmation") }, tr("Client")) : null, ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation"), formulaireReservation(r, () => (fermer(), apres()))); } }, tr("Modifier")) : null)
+      h("span", { class: "carte-actions" }, r.partenaire_id ? h("button", { class: "secondaire petit", type: "button", onclick: () => messagePartenaire(r) }, tr("Partenaire")) : null, c ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageClient(r.date_service, aujourdhui())) }, tr("Client")) : null, ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation"), formulaireReservation(r, () => (fermer(), apres()))); } }, tr("Modifier")) : null)
     )
   );
 }
@@ -197,7 +197,7 @@ export function ajouterServices(d, doc, apres) {
       const lignes = nouvelles.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, libelle: l.kind === "texte" ? l.libelle : descriptionService(l, langue), intro: "" }));
       let cible = cibleId ? etat.db.documents.find((x) => x.id === cibleId) : null;
       if (!cible) {
-        cible = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: new Date().toISOString().slice(0, 10), envoye_le: null, updated_at: new Date().toISOString(), contenu: { ...CONTENU_DEFAUT(), colonnes: "total", langue, variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: [] } });
+        cible = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: aujourdhui(), envoye_le: null, updated_at: new Date().toISOString(), contenu: { ...CONTENU_DEFAUT(), colonnes: "total", langue, variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: [] } });
         cibleId = cible.id;
       }
       const contenu = structuredClone(cible.contenu);

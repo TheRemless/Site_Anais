@@ -287,11 +287,19 @@ export function typeTransfert(prestation, reservation) {
   return "minivan";
 }
 
+// Message type proposé au client d'après la date du service : le rappel la veille, la demande d'avis après, la confirmation sinon.
+export function cleMessageClient(dateService, ajd) {
+  if (!dateService) return "confirmation";
+  if (dateService === ajouterJours(ajd, 1)) return "rappel";
+  return dateService < ajd ? "avis" : "confirmation";
+}
+
 // Hôtel et numéro de chambre d'après l'adresse du client (« Hotel Sunset, Room 12 ») ou le lieu de pickup.
 export function hotelEtChambre(client = {}, reservation = {}) {
   const source = reservation.lieu_pickup || (client.adresse || "").split("\n")[0] || "";
-  const m = source.match(/(?:room|chambre|ch\.?)\s*(?:no\.?\s*)?([A-Za-z0-9-]+)/i);
-  return { hotel: source.replace(/[,\s]*(?:room|chambre|ch\.?)\s*(?:no\.?\s*)?[A-Za-z0-9-]+\s*$/i, "").trim(), chambre: m ? m[1] : "" };
+  // « Room 12 », « Ch. 5 », « Chambre A12 » en fin de ligne : le mot est entier et suivi d'un numéro (« Beach Resort » n'est pas une chambre).
+  const m = source.match(/(?:^|[,\s])(?:room|chambre|ch\.?)\s*(?:no\.?\s*)?(\d+[A-Za-z]?|[A-Za-z]\d+)\s*$/i);
+  return { hotel: m ? source.slice(0, m.index).replace(/[,\s]+$/, "").trim() : source.trim(), chambre: m ? m[1] : "" };
 }
 
 // Libellé d'une ligne de facture en mode excursions : prestation, personnes et date.

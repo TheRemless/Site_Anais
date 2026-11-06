@@ -115,7 +115,7 @@ export async function tableauDeBord() {
                   null,
                   h("td", { "data-label": tr("Départ") }, formatDate(r.dossier.date_depart)),
                   h("td", { "data-label": tr("Client") }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client))),
-                  h("td", { "data-label": tr("Voyage") }, r.dossier.pays),
+                  h("td", { "data-label": tr("Voyage") }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
                   h("td", { "data-label": tr("Statut") }, pastille(r.statut)),
                   h("td", { class: "num", "data-label": tr("Reste à payer") }, formatMontant(r.reste, r.devise))
                 )

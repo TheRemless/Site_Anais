@@ -95,7 +95,7 @@ export function nouveauDossierExcursions() {
   return h(
     "div",
     { "data-titre": tr("Nouveau dossier") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Nouveau dossier")), h("p", { class: "sous" }, tr("Le client, ses services, et la facture est prête. Les réservations auprès des partenaires se créent en même temps.")))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Nouveau dossier")), h("p", { class: "sous" }, tr("Indiquez le client et ses services. La facture et les réservations auprès des partenaires se créent en même temps.")))),
     h(
       "form",
       { class: "formulaire", onsubmit: creer },

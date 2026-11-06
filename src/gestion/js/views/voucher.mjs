@@ -3,7 +3,7 @@
 import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, resumeDossier } from "../etat.mjs";
 import { h, modal } from "../ui.mjs";
 import { apercuA4 } from "./commun.mjs";
-import { formatDate, formatNombre } from "../calc.mjs";
+import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
 import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER, pointEmbarquement, consigneCheckin, estPickupHotel, capaciteBateau, bateauEtQuai, horairesTexte, dureeTexte, venduParPersonne, concerneUnVol } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 
@@ -74,7 +74,7 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
   // Les tarifs par zone des taxis de Saladan n'ont pas de départ fixe : Anaïs remplit le pickup et le drop-off.
   const tarifZone = !!p && /saladan/i.test(p.groupe || "") && !(p.libelle || "").includes("→");
   const pickupTransfert = r.lieu_pickup || libelleClient(pickupDepuisLibelle(r, p, trajet)) || (tarifZone ? "" : hotel);
-  const vol = dt.vol ? [dt.vol] : (r.notes || "").match(/\b[A-Z0-9]{2}\s?\d{2,4}\b/);
+  const vol = dt.vol ? [dt.vol] : null; // jamais déduit des notes internes : « Payé 1200 THB » n'est pas un vol
   const avecVol = !!dt.vol || concerneUnVol(r.libelle, dropOff, pickupTransfert, r.notes);
   const bagages = dt.bagages || "";
   const remarquesPaiement = dt.remarques_paiement || "";
@@ -107,7 +107,7 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
   return h(
     "div",
     { class: "voucher" },
-    h("div", { class: "v-tete" }, h("span", null, `Voucher No.: ${numeroVoucher(d.ref || "", index)}`), h("span", null, `Date: ${formatDate(new Date().toISOString())}`)),
+    h("div", { class: "v-tete" }, h("span", null, `Voucher No.: ${numeroVoucher(d.ref || "", index)}`), h("span", null, `Date: ${formatDate(aujourdhui())}`)),
     h(
       "div",
       { class: "v-entete" },

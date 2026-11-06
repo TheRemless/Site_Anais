@@ -1,6 +1,6 @@
 import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif } from "./etat.mjs";
 import { h, vider, toast, modal, icone } from "./ui.mjs";
-import { libelleStatut, formatMontant } from "./calc.mjs";
+import { libelleStatut, formatMontant, aujourdhui } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { listeDossiers, nouveauDossier } from "./views/dossiers.mjs";
@@ -164,7 +164,7 @@ function bandeauDemo() {
 
 // Écrans ouverts à la personne connectée, groupés comme dans la barre latérale.
 function ecrans() {
-  const ajd = new Date().toISOString().slice(0, 10);
+  const ajd = aujourdhui();
   const enRetard = mesTaches().filter((t) => t.echeance && t.echeance <= ajd).length;
   const si = (ok, item) => (ok ? [item] : []);
   const ag = agenda(etat.db.reservations, ajd);

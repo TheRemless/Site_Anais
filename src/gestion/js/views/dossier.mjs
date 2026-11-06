@@ -213,7 +213,7 @@ function ficheDossierVue(id) {
   if (manque > 0) montantP.value = manque;
   const moyenP = h("select", { id: "p-moyen" }, MOYENS.map(([v, l]) => h("option", { value: v }, l)));
   const origineM = h("input", { id: "p-orig-m", type: "number", step: "0.01", min: "0", inputmode: "decimal" });
-  const origineD = h("select", { id: "p-orig-d" }, ["", "EUR", "THB", "USD"].map((v) => h("option", { value: v }, v || tr("Aucune"))));
+  const origineD = h("select", { id: "p-orig-d" }, ["", ...(reglages().listes.devises || ["CHF", "EUR", "THB", "USD"])].map((v) => h("option", { value: v }, v || tr("Aucune"))));
   const noteP = h("input", { id: "p-note" });
   const formPaiement = h(
     "form",
