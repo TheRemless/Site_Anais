@@ -44,7 +44,8 @@ export function analyserLocal({ dossiers, documents, paiements, clients, profils
       .sort(trier)
       .map((g) => ({ mois: g.cle[0], devise: g.cle[1], montant: arrondi(g.montant), nombre: g.nombre }));
 
-  const facturesPeriode = documents.filter((x) => x.type === "facture" && dans(x.date_emission, du, au));
+  // Une facture par dossier (la dernière) et pas de dossier annulé : « Facturé » moins « Encaissé » retombe alors sur les impayés.
+  const facturesPeriode = dos.filter((x) => x.f && !x.d.annule && dans(x.f.date_emission, du, au)).map((x) => x.f);
   const devisPeriode = dos.filter((x) => x.v && dans(x.v.date_emission, du, au));
   const delais = devisPeriode.filter((x) => x.d.accepte_le && x.d.accepte_le >= x.v.date_emission).map((x) => joursEntre(x.v.date_emission, x.d.accepte_le));
 

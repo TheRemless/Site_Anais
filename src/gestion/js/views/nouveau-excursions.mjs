@@ -1,8 +1,8 @@
 // Nouveau dossier en mode excursions (Secret Travel & Tour) : le client, ses services pris dans la base partenaires,
 // et la facture créée dans la foulée avec une réservation par service. Pas de devis, pas d'acompte.
-import { etat, inserer, naviguer, reglages, peut, nomPartenaire } from "../etat.mjs";
+import { etat, inserer, naviguer, reglages, peut, nomPartenaire, numeroSuivant } from "../etat.mjs";
 import { h, champ, toast, vider } from "../ui.mjs";
-import { formatMontant, formatDate, aujourdhui, nouvelleRef } from "../calc.mjs";
+import { formatMontant, formatDate, aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { descriptionService, personnesTexte } from "../operations-calc.mjs";
 import { vide } from "./commun.mjs";
@@ -55,6 +55,7 @@ export function nouveauDossierExcursions() {
   dessiner();
 
   const ref = h("input", { id: "ref", value: nouvelleRef({ numerotation: regl.numerotation, prenom: "", nom: "", dateIso: aujourdhui(), pays: "", refsExistantes: etat.db.dossiers.map((d) => d.ref) }) || "" });
+  const refProposee = ref.value;
   const notes = h("textarea", { id: "notes", rows: 2, placeholder: tr("Vol, allergies, demande particulière") });
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   const bouton = h("button", { class: "principal", type: "submit" }, tr("Créer la facture"));
@@ -70,6 +71,11 @@ export function nouveauDossierExcursions() {
     bouton.disabled = true;
     bouton.textContent = tr("Création…");
     try {
+      // Numéro de facture non modifié à la main : le numéro définitif vient de la base, qui ne le redonne jamais.
+      if (ref.value === refProposee && regl.numerotation.mode === "sequence") {
+        const s = sequenceRef({ numerotation: regl.numerotation, dateIso: aujourdhui(), refsExistantes: etat.db.dossiers.map((x) => x.ref) });
+        ref.value = refDepuisNumero(regl.numerotation, s.debut, await numeroSuivant(s.annee, s.dernier));
+      }
       let clientId = selClient.valeur;
       if (!clientId) {
         const adresse = [nvHotel.value.trim(), nvChambre.value.trim() ? `Room ${nvChambre.value.trim()}` : ""].filter(Boolean).join(", ");
@@ -85,7 +91,7 @@ export function nouveauDossierExcursions() {
       await creerReservations(doc);
       naviguer(`#/dossier/${d.id}`);
     } catch (err) {
-      erreur.textContent = err.message;
+      erreur.textContent = /duplicate|unique|23505/i.test(err.message) ? tr("Ce numéro existe déjà. Modifiez-le.") : err.message;
       bouton.disabled = false;
       bouton.textContent = tr("Créer la facture");
     }

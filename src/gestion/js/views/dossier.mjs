@@ -211,10 +211,19 @@ function ficheDossierVue(id) {
   const montantP = h("input", { id: "p-montant", type: "number", step: "0.01", min: "0", required: true, inputmode: "decimal" });
   const manque = r.recu < acompte ? arrondi(acompte - r.recu) : Math.max(0, r.reste);
   if (manque > 0) montantP.value = manque;
+  // Un remboursement au client s'enregistre comme un paiement négatif : l'encaissé, le reste et les analyses le comptent tout seuls.
+  const sensP = h("select", { id: "p-sens", onchange: () => majSens() }, h("option", { value: "recu" }, tr("Paiement reçu")), h("option", { value: "rembourse" }, tr("Remboursement au client")));
+  const majSens = () => {
+    const rembourse = sensP.value === "rembourse";
+    montantP.previousElementSibling.textContent = rembourse ? tr("Montant remboursé ({x})", { x: r.devise || regl.devise }) : tr("Montant reçu ({x})", { x: r.devise || regl.devise });
+    montantP.value = rembourse ? (r.recu > 0 ? r.recu : "") : manque > 0 ? manque : "";
+    boutonPaiement.textContent = rembourse ? tr("Enregistrer le remboursement") : tr("Enregistrer le paiement");
+  };
   const moyenP = h("select", { id: "p-moyen" }, MOYENS.map(([v, l]) => h("option", { value: v }, l)));
   const origineM = h("input", { id: "p-orig-m", type: "number", step: "0.01", min: "0", inputmode: "decimal" });
   const origineD = h("select", { id: "p-orig-d" }, ["", ...(reglages().listes.devises || ["CHF", "EUR", "THB", "USD"])].map((v) => h("option", { value: v }, v || tr("Aucune"))));
   const noteP = h("input", { id: "p-note" });
+  const boutonPaiement = h("button", { type: "submit", class: "principal" }, tr("Enregistrer le paiement"));
   const formPaiement = h(
     "form",
     {
@@ -223,26 +232,40 @@ function ficheDossierVue(id) {
       onsubmit: async (e) => {
         e.preventDefault();
         const montant = num(montantP.value);
+        const rembourse = sensP.value === "rembourse";
         if (!montant || montant <= 0) {
           toast(tr("Indiquez un montant supérieur à zéro."), true);
           return;
         }
-        await inserer("paiements", {
-          dossier_id: d.id,
-          date: dateP.value,
-          montant,
-          type: r.recu < acompte ? "acompte" : "solde",
-          moyen: moyenP.value,
-          origine_montant: num(origineM.value),
-          origine_devise: origineD.value,
-          note: noteP.value.trim(),
-        });
-        toast(tr("Paiement enregistré."));
-        rafraichir();
+        if (rembourse && montant > r.recu) {
+          toast(tr("Le remboursement dépasse ce qui a été encaissé ({recu}).", { recu: fm(r.recu) }), true);
+          return;
+        }
+        // Un montant au-delà du reste à payer est le plus souvent une faute de frappe : on demande avant d'enregistrer.
+        if (!rembourse && r.total > 0 && arrondi(montant - Math.max(0, r.reste)) > 0 && !(await confirmer(tr("Ce montant dépasse le reste à payer ({reste}). L'enregistrer quand même ?", { reste: fm(Math.max(0, r.reste)) }), tr("Enregistrer")))) return;
+        boutonPaiement.disabled = true;
+        try {
+          await inserer("paiements", {
+            dossier_id: d.id,
+            date: dateP.value,
+            montant: rembourse ? -montant : montant,
+            type: rembourse ? "remboursement" : r.recu < acompte ? "acompte" : "solde",
+            moyen: moyenP.value,
+            origine_montant: rembourse ? null : num(origineM.value),
+            origine_devise: rembourse ? "" : origineD.value,
+            note: noteP.value.trim(),
+          });
+          toast(rembourse ? tr("Remboursement enregistré.") : tr("Paiement enregistré."));
+          rafraichir();
+        } catch (err) {
+          boutonPaiement.disabled = false;
+          // Sans la migration 14, la base refuse un montant négatif.
+          toast(rembourse && /check|montant/i.test(err.message) ? tr("La base refuse encore les remboursements : exécutez la migration 14.") : tr("Enregistrement impossible : {message}", { message: err.message }), true);
+        }
       },
     },
-    h("div", { class: "grille-form" }, champ(tr("Date de réception"), dateP), champ(tr("Montant reçu ({x})", { x: r.devise || regl.devise }), montantP), champ(tr("Moyen de paiement"), moyenP), champ(tr("Note"), noteP), champ(tr("Montant d'origine, si payé en devise"), origineM), champ(tr("Devise d'origine"), origineD)),
-    h("div", { class: "actions" }, h("button", { type: "submit", class: "principal" }, tr("Enregistrer le paiement")))
+    h("div", { class: "grille-form" }, champ(tr("Sens du paiement"), sensP), champ(tr("Date de réception"), dateP), champ(tr("Montant reçu ({x})", { x: r.devise || regl.devise }), montantP), champ(tr("Moyen de paiement"), moyenP), champ(tr("Note"), noteP), champ(tr("Montant d'origine, si payé en devise"), origineM), champ(tr("Devise d'origine"), origineD)),
+    h("div", { class: "actions" }, boutonPaiement)
   );
 
   const nomMoyen = (v) => (MOYENS.find(([k]) => k === v) || [0, v])[1];
@@ -261,7 +284,7 @@ function ficheDossierVue(id) {
                 "tr",
                 null,
                 h("td", { "data-label": tr("Date") }, formatDate(p.date)),
-                h("td", { "data-label": tr("Type") }, p.type === "acompte" ? tr("Acompte") : p.type === "solde" ? tr("Solde") : tr("Autre")),
+                h("td", { "data-label": tr("Type") }, p.type === "acompte" ? tr("Acompte") : p.type === "solde" ? tr("Solde") : p.type === "remboursement" ? tr("Remboursement") : tr("Autre")),
                 h("td", { "data-label": tr("Moyen") }, nomMoyen(p.moyen)),
                 h("td", { "data-label": tr("Note") }, [p.note, p.origine_montant ? `${p.origine_montant} ${p.origine_devise}` : ""].filter(Boolean).join(", ")),
                 h("td", { class: "num", "data-label": tr("Montant") }, fm(p.montant)),
@@ -391,6 +414,7 @@ function ficheDossierVue(id) {
       "section",
       { class: "zone-danger" },
       h("h2", null, d.annule ? tr("Dossier annulé") : tr("Annuler ou supprimer")),
+      d.annule && r.recu > 0 ? h("p", { class: "aide" }, tr("{montant} encaissés sur ce dossier. Si vous les rendez, enregistrez un remboursement dans les paiements.", { montant: fm(r.recu) })) : null,
       h(
         "div",
         { class: "actions gauche" },
@@ -400,7 +424,7 @@ function ficheDossierVue(id) {
             class: "secondaire",
             type: "button",
             onclick: async () => {
-              if (d.annule || (await confirmer(tr("Marquer ce dossier comme annulé ? Il sortira des totaux à encaisser mais restera consultable."), tr("Marquer comme annulé")))) {
+              if (d.annule || (await confirmer(r.recu > 0 ? tr("Marquer ce dossier comme annulé ? Il sortira des totaux à encaisser mais restera consultable. {montant} ont déjà été encaissés. Si vous les rendez, enregistrez un remboursement dans les paiements.", { montant: fm(r.recu) }) : tr("Marquer ce dossier comme annulé ? Il sortira des totaux à encaisser mais restera consultable."), tr("Marquer comme annulé")))) {
                 await modifier("dossiers", d.id, { annule: !d.annule });
                 rafraichir();
               }

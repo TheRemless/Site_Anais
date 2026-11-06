@@ -18,8 +18,35 @@ const ACCENTS = /[̀-ͯ]/g;
 const sansAccents = (s) => (s || "").normalize("NFD").replace(ACCENTS, "").trim();
 const estNombre = (v) => v !== null && v !== undefined && v !== "" && !Number.isNaN(Number(v));
 
+// Écriture décimale exacte d'un nombre : « 7.5 » devient { v: 75n, e: 1 } (75 × 10^-1).
+function decimal(x) {
+  const s = String(Number(x));
+  if (!Number.isFinite(Number(x)) || /e/i.test(s)) return null;
+  const neg = s.startsWith("-");
+  const [entier, frac = ""] = s.replace("-", "").split(".");
+  return { v: BigInt(entier + frac) * (neg ? -1n : 1n), e: frac.length };
+}
+
+// a × b ÷ diviseur arrondi au centime, demi supérieur, sans l'erreur des flottants : 8,2 × 7,5 ÷ 100 = 0,615 donne 0,62
+// (a * b en flottant donne 61,49999… et arrondit à 0,61, alors que la base, en numeric exact, donne 0,62).
+export function produitArrondi(a, b, diviseur = 1) {
+  const A = decimal(a);
+  const B = decimal(b);
+  if (!A || !B) return arrondi((Number(a) * Number(b)) / diviseur);
+  const num = A.v * B.v * 100n;
+  const den = 10n ** BigInt(A.e + B.e) * BigInt(diviseur);
+  const absolu = num < 0n ? -num : num;
+  const q = (2n * absolu + den) / (2n * den);
+  return Number(num < 0n ? -q : q) / 100;
+}
+
+// Arrondi au centime, demi supérieur, comme `round(numeric, 2)` de la base : 8,325 donne 8,33 et 1,005 donne 1,01.
+// On passe par l'écriture décimale (« 8.325e2 ») plutôt que par x * 100, qui donne 832,4999… et arrondit à 8,32.
 export function arrondi(n) {
-  return Math.round((Number(n) || 0) * 100) / 100;
+  const x = Number(n) || 0;
+  const s = String(Math.abs(x));
+  const centimes = s.includes("e") ? Math.round(Math.abs(x) * 100) : Math.round(Number(`${s}e2`));
+  return (Math.sign(x) * centimes) / 100;
 }
 
 export function formatNombre(n) {
@@ -93,7 +120,7 @@ export function ajouterJours(iso, n) {
 // Montant d'une ligne hors remise en pourcentage.
 export function montantBrut(l) {
   if (!l || l.kind === "texte") return 0;
-  if (estNombre(l.unite) && estNombre(l.qte)) return arrondi(Number(l.unite) * Number(l.qte));
+  if (estNombre(l.unite) && estNombre(l.qte)) return produitArrondi(l.unite, l.qte);
   return estNombre(l.montant) ? arrondi(l.montant) : 0;
 }
 
@@ -103,7 +130,7 @@ export function totaux(contenu, recu = 0) {
   const sousTotal = arrondi(lignes.filter((l) => l.kind !== "remise").reduce((s, l) => s + montantBrut(l), 0));
   const montants = lignes.map((l) => {
     if (l.kind !== "remise") return montantBrut(l);
-    if (estNombre(l.pct)) return -arrondi((sousTotal * Number(l.pct)) / 100);
+    if (estNombre(l.pct)) return -produitArrondi(sousTotal, l.pct, 100);
     return -montantBrut(l);
   });
   const remises = arrondi(lignes.reduce((s, l, i) => (l.kind === "remise" ? s + montants[i] : s), 0));
@@ -164,15 +191,23 @@ export function genererRef(prenom, nom, dateIso, pays) {
   return `${initiales(prenom, nom)}${dateIso.replaceAll("-", "")} ${pays}`.trim();
 }
 
+// Séquence annuelle d'après les références que la personne voit : début commun (« ST-2026- ») et plus grand numéro déjà pris.
+export function sequenceRef({ numerotation, dateIso, refsExistantes }) {
+  const prefixe = ((numerotation && numerotation.prefixe) || "").trim();
+  const annee = Number(dateIso.slice(0, 4));
+  const debut = `${prefixe ? prefixe + "-" : ""}${annee}-`;
+  const pris = refsExistantes.filter((r) => r.startsWith(debut)).map((r) => parseInt(r.slice(debut.length), 10)).filter(Number.isFinite);
+  return { debut, annee, dernier: pris.length ? Math.max(...pris) : 0 };
+}
+export const refDepuisNumero = (numerotation, debut, n) => `${debut}${String(n).padStart(Number(numerotation && numerotation.chiffres) || 4, "0")}`;
+
 // Référence d'un nouveau dossier : initiales, date et pays, ou séquence annuelle (ST-2026-0001).
+// En séquence, ce numéro n'est qu'une proposition : à la création, la base attribue le numéro définitif (voir numeroSuivant).
 export function nouvelleRef({ numerotation, prenom, nom, dateIso, pays, refsExistantes }) {
   const existe = (r) => refsExistantes.includes(r);
   if (numerotation && numerotation.mode === "sequence") {
-    const prefixe = (numerotation.prefixe || "").trim();
-    const annee = dateIso.slice(0, 4);
-    const debut = `${prefixe ? prefixe + "-" : ""}${annee}-`;
-    const dernier = refsExistantes.filter((r) => r.startsWith(debut)).map((r) => parseInt(r.slice(debut.length), 10)).filter(Number.isFinite);
-    return `${debut}${String((dernier.length ? Math.max(...dernier) : 0) + 1).padStart(Number(numerotation.chiffres) || 4, "0")}`;
+    const s = sequenceRef({ numerotation, dateIso, refsExistantes });
+    return refDepuisNumero(numerotation, s.debut, s.dernier + 1);
   }
   const base = genererRef(prenom, nom, dateIso, pays);
   if (!existe(base)) return base;
@@ -260,6 +295,9 @@ export function aFaire(resumes, today, reglages) {
   const items = [];
   for (const r of resumes) {
     const d = r.dossier;
+    // Argent à rendre : un dossier payé au-delà de son total. (Un dossier annulé avec un acompte conservé reste hors de la liste : on ne
+    // peut pas distinguer l'acompte gardé d'un remboursement oublié, la fiche du dossier le rappelle.)
+    if (r.statut !== "annule" && r.total > 0 && arrondi(r.recu - r.total) > 0) items.push({ type: "trop_percu", resume: r, jours: 0 });
     if (r.statut === "accepte" && acompteDu(r.total, reglages.conditions.acompte_pct) > 0) {
       const ech = echeanceAcompte(d, reglages);
       if (ech && ech < today) items.push({ type: "acompte_retard", resume: r, jours: joursEntre(ech, today) });
@@ -273,7 +311,7 @@ export function aFaire(resumes, today, reglages) {
       if (avant >= 0 && avant <= 30 && r.reste > 0) items.push({ type: "solde_proche", resume: r, jours: avant });
     }
   }
-  const ordre = { acompte_retard: 0, solde_proche: 1, devis_relance: 2 };
+  const ordre = { trop_percu: 0, acompte_retard: 1, solde_proche: 2, devis_relance: 3 };
   return items.sort((a, b) => ordre[a.type] - ordre[b.type] || b.jours - a.jours);
 }
 
@@ -284,13 +322,13 @@ export function tauxVers(reglages, de, vers) {
   const taux = (code) => (code === base ? 1 : Number(reglages.taux[String(code).toLowerCase()]) || null);
   const a = taux(de);
   const b = taux(vers);
-  return a && b ? Math.round((b / a) * 10000) / 10000 : null;
+  return a && b ? Math.round((b / a) * 1000000) / 1000000 : null;
 }
 
 // Copie d'un document convertie dans une autre devise : tous les montants sont multipliés par le taux.
 // En bahts les montants sont arrondis à l'unité, comme sur les factures locales.
 export function convertirContenu(contenu, taux, devise) {
-  const conv = (v) => (v == null ? v : devise === "THB" ? Math.round(Number(v) * taux) : arrondi(Number(v) * taux));
+  const conv = (v) => (v == null ? v : devise === "THB" ? Math.round(Number(v) * taux) : produitArrondi(v, taux));
   const c = structuredClone(contenu);
   c.lignes = c.lignes.map((l) => ({ ...l, montant: conv(l.montant), unite: conv(l.unite) }));
   c.devise = devise;

@@ -223,8 +223,8 @@ test("facture locale : taux entre devises et conversion du contenu", async () =>
   const { tauxVers, convertirContenu, totaux, resume } = await load();
   const regl = { devise: "CHF", taux: { eur: 1.058, thb: 40.54 }, conditions: { acompte_pct: 0 } };
   assert.equal(tauxVers(regl, "CHF", "THB"), 40.54);
-  assert.equal(tauxVers(regl, "THB", "CHF"), Math.round((1 / 40.54) * 10000) / 10000);
-  assert.equal(tauxVers(regl, "EUR", "THB"), Math.round((40.54 / 1.058) * 10000) / 10000);
+  assert.equal(tauxVers(regl, "THB", "CHF"), Math.round((1 / 40.54) * 1000000) / 1000000);
+  assert.equal(tauxVers(regl, "EUR", "THB"), Math.round((40.54 / 1.058) * 1000000) / 1000000);
   assert.equal(tauxVers(regl, "CHF", "USD"), null);
 
   const source = { devise: "CHF", colonnes: "detail", montant_recu: 100, libelle_recu: "Acompte", equivalents: { actif: true, eur: 1.05 }, lignes: [{ id: "a", kind: "formule", libelle: "Bateau", unite: 10, qte: 2, montant: 20 }, { id: "b", kind: "texte", libelle: "Note", montant: null, unite: null }] };
@@ -268,4 +268,47 @@ test("finDuMois : le dernier jour réel de chaque mois, bissextile compris", asy
   assert.equal(finDuMois("2026-02-10"), "2026-02-28");
   assert.equal(finDuMois("2028-02-10"), "2028-02-29");
   assert.equal(finDuMois("2026-12-31"), "2026-12-31");
+});
+
+test("arrondi : demi supérieur exact, comme le numeric de la base (remises, unité × quantité)", async () => {
+  const { arrondi, produitArrondi, totaux } = await load();
+  assert.equal(arrondi(8.325), 8.33);
+  assert.equal(arrondi(1.005), 1.01);
+  assert.equal(arrondi(-8.325), -8.33, "demi supérieur en valeur absolue, comme round() de Postgres");
+  assert.equal(arrondi(0.1 + 0.2), 0.3);
+  assert.equal(produitArrondi(8.2, 7.5, 100), 0.62, "8,2 × 7,5 % = 0,615 donne 0,62, pas 0,61");
+  // cas relevés par l'audit : JavaScript et SQL divergeaient d'un centime
+  assert.equal(totaux({ lignes: [{ kind: "ligne", montant: 111 }, { kind: "remise", pct: 7.5 }] }).net, 102.67);
+  assert.equal(totaux({ lignes: [{ kind: "ligne", montant: 100.3 }, { kind: "remise", pct: 5 }] }).remises, -5.02);
+  assert.equal(totaux({ lignes: [{ kind: "ligne", unite: 1.005, qte: 1 }] }).net, 1.01);
+  // grille : chaque remise correspond au calcul entier exact (centimes, demi supérieur)
+  let ecarts = 0;
+  for (let s = 1; s <= 20000; s += 7)
+    for (const p of [2.5, 7.5, 12.5, 15, 3.3, 8.75, 33.33]) {
+      const attendu = Math.floor((s * Math.round(p * 100) + 5000) / 10000);
+      const r = totaux({ lignes: [{ kind: "ligne", montant: s / 100 }, { kind: "remise", pct: p }] });
+      if (Math.round(-r.remises * 100) !== attendu) ecarts++;
+    }
+  assert.equal(ecarts, 0);
+});
+
+test("numérotation : séquence annuelle, numéro proposé et numéro formaté", async () => {
+  const { sequenceRef, refDepuisNumero, nouvelleRef } = await load();
+  const num = { mode: "sequence", prefixe: "ST", chiffres: 4 };
+  const refs = ["ST-2026-0001", "ST-2026-0007", "ST-2025-0099", "autre"];
+  const s = sequenceRef({ numerotation: num, dateIso: "2026-11-06", refsExistantes: refs });
+  assert.deepEqual(s, { debut: "ST-2026-", annee: 2026, dernier: 7 });
+  assert.equal(refDepuisNumero(num, s.debut, 8), "ST-2026-0008");
+  assert.equal(nouvelleRef({ numerotation: num, dateIso: "2026-11-06", refsExistantes: refs }), "ST-2026-0008");
+  assert.equal(nouvelleRef({ numerotation: { mode: "sequence", prefixe: "", chiffres: 3 }, dateIso: "2027-01-02", refsExistantes: [] }), "2027-001");
+  assert.equal(sequenceRef({ numerotation: num, dateIso: "2026-11-06", refsExistantes: [] }).dernier, 0);
+});
+
+test("À faire : un trop-perçu apparaît, un dossier annulé ou juste soldé n'y est pas", async () => {
+  const { aFaire } = await load();
+  const regl = { conditions: { acompte_pct: 0, relance_jours: 7, delai_jours: 10 } };
+  const r = (statut, total, recu) => ({ dossier: { id: statut + total + recu }, statut, total, recu, reste: total - recu });
+  const items = aFaire([r("solde", 1000, 1200), r("solde", 1000, 1000), r("annule", 1000, 1000), r("acompte", 1000, 400)], "2026-11-06", regl);
+  assert.deepEqual(items.map((i) => i.type), ["trop_percu"]);
+  assert.equal(items[0].resume.recu - items[0].resume.total, 200);
 });

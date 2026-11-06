@@ -1,7 +1,7 @@
-import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe, modeExcursions } from "../etat.mjs";
+import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe, modeExcursions, numeroSuivant } from "../etat.mjs";
 import { nouveauDossierExcursions } from "./nouveau-excursions.mjs";
 import { h, champ, vider, toast } from "../ui.mjs";
-import { formatMontant, formatDate, aujourdhui, nouvelleRef, periodeTexte, STATUTS } from "../calc.mjs";
+import { formatMontant, formatDate, aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte, cartes, sousTitreDossier } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
@@ -227,6 +227,11 @@ export function nouveauDossier() {
     bouton.disabled = true;
     bouton.textContent = tr("Création…");
     try {
+      // Référence en séquence non modifiée à la main : le numéro définitif vient de la base, qui ne le redonne jamais.
+      if (!refManuelle && regl.numerotation.mode === "sequence") {
+        const s = sequenceRef({ numerotation: regl.numerotation, dateIso: aujourdhui(), refsExistantes: etat.db.dossiers.map((x) => x.ref) });
+        ref.value = refDepuisNumero(regl.numerotation, s.debut, await numeroSuivant(s.annee, s.dernier));
+      }
       let clientId = selClient.valeur;
       if (!clientId) {
         const c = await inserer("clients", { civilite: nvCivilite.value, prenom: nvPrenom.value.trim(), nom: nvNom.value.trim(), adresse: nvAdresse.value.trim(), telephone: nvTel.value.trim(), email: "", notes: "" });
@@ -253,7 +258,7 @@ export function nouveauDossier() {
       });
       naviguer(`#/doc/${doc.id}`);
     } catch (err) {
-      erreur.textContent = err.message;
+      erreur.textContent = /duplicate|unique|23505/i.test(err.message) ? tr("Cette référence existe déjà. Modifiez-la.") : err.message;
       bouton.disabled = false;
       bouton.textContent = tr("Créer le dossier");
     }

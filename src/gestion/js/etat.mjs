@@ -233,6 +233,18 @@ async function actualiserResume(dossierId) {
   }
 }
 
+// Prochain numéro de la séquence annuelle des références, attribué par la base (migration 14) : il ne redescend jamais, donc un dossier
+// supprimé ne rend pas son numéro, et il tient compte des dossiers que cette personne ne voit pas. `minimum` est le plus grand numéro que
+// cette personne voit. Sans la migration, ou hors ligne, on retombe sur le calcul local (minimum + 1).
+export async function numeroSuivant(annee, minimum) {
+  try {
+    const n = await etat.store.prochainNumeroRef(etat.entiteId, annee, minimum);
+    return Number.isInteger(n) && n > minimum ? n : minimum + 1;
+  } catch {
+    return minimum + 1;
+  }
+}
+
 export const paiementsPeriode = (du, au) => (peut("finances.voir") ? etat.store.paiementsPeriode({ entiteId: etat.entiteId, du, au }) : Promise.resolve([]));
 export const piecesDossier = (id) => etat.store.piecesDossier(id);
 export const lienPiece = (p) => etat.store.lienPiece(p);

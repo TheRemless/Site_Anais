@@ -97,3 +97,16 @@ test("synchroniser : un dossier dont le résumé a changé ailleurs perd ses cop
   assert.deepEqual(m.etat.brut.paiements, []);
   assert.equal(m.etat.brut.dossiers.find((d) => d.id === "A").recu, 500);
 });
+
+test("numeroSuivant : le numéro vient de la base, sinon le calcul local prend le relais", async () => {
+  const m = await demarrer(async () => base());
+  m.etat.store.prochainNumeroRef = async (entite, annee, minimum) => {
+    assert.equal(entite, "e1");
+    return minimum + 5;
+  };
+  assert.equal(await m.numeroSuivant(2026, 10), 15, "la base peut avoir donné des numéros que la personne ne voit pas");
+  m.etat.store.prochainNumeroRef = async () => { throw new Error("function prochain_numero_ref does not exist"); };
+  assert.equal(await m.numeroSuivant(2026, 10), 11, "sans la migration 14, on garde le calcul local");
+  m.etat.store.prochainNumeroRef = async () => 3;
+  assert.equal(await m.numeroSuivant(2026, 10), 11, "un numéro incohérent est ignoré");
+});
