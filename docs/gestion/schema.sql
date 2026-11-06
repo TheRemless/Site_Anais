@@ -129,7 +129,7 @@ create table paiements (
   entite_id uuid not null references entites (id) on delete restrict,
   dossier_id uuid not null,
   date date not null,
-  montant numeric(12, 2) not null check (montant > 0),
+  montant numeric(12, 2) not null constraint paiements_montant_non_nul check (montant <> 0),
   type text,
   moyen text,
   origine_montant numeric(12, 2),
@@ -243,6 +243,32 @@ create or replace function definir_ma_langue(l text) returns void language sql s
 $$;
 revoke all on function definir_ma_langue(text) from public, anon;
 grant execute on function definir_ma_langue(text) to authenticated;
+
+-- Compteur des numéros de la séquence annuelle des références : il ne redescend jamais (un dossier supprimé ne rend pas son numéro).
+create table compteurs_ref (
+  entite_id uuid not null references entites (id) on delete cascade,
+  annee int not null,
+  derniere int not null default 0,
+  constraint compteurs_ref_pkey primary key (entite_id, annee)
+);
+alter table compteurs_ref enable row level security;
+revoke all on compteurs_ref from anon, authenticated;
+
+create or replace function prochain_numero_ref(p_entite uuid, p_annee int, p_minimum int default 0) returns int language plpgsql security definer set search_path = public as $$
+declare
+  n int;
+begin
+  if not a_permission(p_entite, 'dossiers.ecrire') then
+    raise exception 'Droit insuffisant pour créer un dossier' using errcode = '42501';
+  end if;
+  insert into compteurs_ref (entite_id, annee, derniere) values (p_entite, p_annee, greatest(coalesce(p_minimum, 0), 0) + 1)
+  on conflict on constraint compteurs_ref_pkey do update set derniere = greatest(compteurs_ref.derniere, coalesce(p_minimum, 0)) + 1
+  returning derniere into n;
+  return n;
+end
+$$;
+revoke all on function prochain_numero_ref(uuid, int, int) from public, anon;
+grant execute on function prochain_numero_ref(uuid, int, int) to authenticated;
 
 -- Recalcule le résumé d'un dossier (total du dernier document, devise, encaissé, devis envoyé) après toute
 -- modification de ses documents ou de ses paiements.
@@ -386,9 +412,10 @@ begin
     select * from tot where not annule and (accepte_le is not null or fc is not null) and date_ref between du and au
   )
   select jsonb_build_object(
+    -- Une facture par dossier (la dernière) et pas de dossier annulé : « Facturé » moins « Encaissé » retombe alors sur les impayés.
     'facture_par_mois', coalesce((select jsonb_agg(x order by x.mois, x.devise) from (
-        select to_char(xd.date_emission, 'YYYY-MM') as mois, coalesce(xd.contenu->>'devise', dev) as devise, round(sum(total_document(xd.contenu)), 2) as montant, count(*)::int as nombre
-        from documents xd where xd.entite_id = e and xd.type = 'facture' and xd.date_emission between du and au group by 1, 2) x), '[]'::jsonb),
+        select to_char(f_date, 'YYYY-MM') as mois, coalesce(fc->>'devise', dev) as devise, round(sum(total_document(fc)), 2) as montant, count(*)::int as nombre
+        from dos where fc is not null and not annule and f_date between du and au group by 1, 2) x), '[]'::jsonb),
     'encaisse_par_mois', coalesce((select jsonb_agg(x order by x.mois, x.devise) from (
         select to_char(p.date, 'YYYY-MM') as mois, coalesce(t.devise, dev) as devise, round(sum(p.montant), 2) as montant, count(*)::int as nombre
         from paiements p left join tot t on t.id = p.dossier_id where p.entite_id = e and p.date between du and au group by 1, 2) x), '[]'::jsonb),

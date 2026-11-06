@@ -75,6 +75,10 @@ export function creer(config) {
     async definirMaLangue(code) {
       verifie(await sb.rpc("definir_ma_langue", { l: code }));
     },
+    // Numéro suivant de la séquence annuelle (migration 14). Échoue tant que la migration n'est pas appliquée : l'appelant garde alors son calcul.
+    async prochainNumeroRef(entiteId, annee, minimum) {
+      return verifie(await sb.rpc("prochain_numero_ref", { p_entite: entiteId, p_annee: annee, p_minimum: minimum }));
+    },
     async modifierProfil(userId, patch) {
       verifie(await sb.from("profils").update(patch).eq("user_id", userId).select());
     },

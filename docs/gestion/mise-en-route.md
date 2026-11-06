@@ -43,6 +43,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 10. Réservations : `migration-11-reservations.sql` (deux tables, ne modifie aucune donnée existante).
 11. Vouchers : `migration-12-vouchers.sql` (une colonne de détails sur les réservations, ne modifie aucune donnée).
 12. Langue de l'interface : `migration-13-langue.sql` (une colonne et une fonction, ne modifie aucune donnée). À exécuter avant de publier la version qui propose le choix français ou anglais.
+13. Argent : `migration-14-argent.sql` (un compteur de numéros de facture qui ne redescend jamais, les remboursements comme paiements négatifs, et le « Facturé » des analyses sans dossiers annulés ni factures en double). Ne modifie aucun dossier, document ni paiement. À exécuter avant de publier la version qui propose le remboursement. Sans elle, l'outil garde le calcul local des numéros et la base refuse les remboursements avec un message clair.
 
 ## Ajouter une personne (l'assistante par exemple)
 

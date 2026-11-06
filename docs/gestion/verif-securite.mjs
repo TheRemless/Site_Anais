@@ -207,7 +207,48 @@ let refuse = false; try { await db.query("select * from clients"); } catch { ref
 await db.exec("reset role;");
 ok(refuse, "le visiteur anonyme est refusé");
 
-console.log("\n== Chaîne de migrations v1 → v2 → … → v9 → v10 → v11 → v12 ==");
+console.log("Argent : numéros, remboursements, facturé");
+// Base neuve à part : les contrôles ci-dessus changent les rôles et comptent des lignes, on ne les mélange pas avec ceux-ci.
+const dbA = await base([W + "schema.sql"]);
+await accorder(dbA);
+const EA = Object.fromEntries((await dbA.query("select slug, id from entites")).rows.map((r) => [r.slug, r.id]));
+const uA = {};
+for (const k of ["admin", "editeur", "sans_droit", "externe"]) uA[k] = (await dbA.query("insert into auth.users (email) values ($1) returning id", [k + "@test"])).rows[0].id;
+await dbA.exec(`insert into roles (entite_id, nom, portee, permissions) values ('${EA.secret}', 'Lecture seule', 'toute', array['clients.lire','dossiers.lire']);`);
+const membreA = (user, ent, role) => dbA.exec(`insert into membres values ('${uA[user]}', '${EA[ent]}', (select id from roles where entite_id = '${EA[ent]}' and nom = '${role}'))`);
+await membreA("editeur", "secret", "Éditeur"); await membreA("editeur", "taxi", "Éditeur"); await membreA("sans_droit", "secret", "Lecture seule");
+const numero = (k, ent, annee, min) => essaie(dbA, uA[k], `select prochain_numero_ref('${EA[ent]}', ${annee}, ${min}) n`);
+ok((await numero("editeur", "secret", 2026, 0)).rows[0].n === 1, "le premier numéro de l'année est 1");
+ok((await numero("editeur", "secret", 2026, 0)).rows[0].n === 2, "le numéro suivant est 2, jamais le même");
+ok((await numero("editeur", "secret", 2026, 10)).rows[0].n === 11, "le compteur rattrape le plus grand numéro que la personne voit");
+ok((await numero("editeur", "secret", 2026, 3)).rows[0].n === 12, "il ne redescend jamais, même si la personne voit moins de dossiers");
+ok((await numero("editeur", "secret", 2027, 0)).rows[0].n === 1, "chaque année repart de 1");
+ok((await numero("editeur", "taxi", 2026, 0)).rows[0].n === 1, "chaque entreprise a son compteur");
+ok(!(await numero("sans_droit", "secret", 2026, 0)).ok, "sans le droit de créer un dossier, pas de numéro");
+ok(!(await numero("externe", "secret", 2026, 0)).ok, "une personne sans accès à l'entreprise n'obtient pas de numéro");
+await dbA.exec("set role anon;");
+let numeroAnon = true; try { await dbA.query(`select prochain_numero_ref('${EA.secret}', 2026, 0)`); } catch { numeroAnon = false; }
+await dbA.exec("reset role;");
+ok(!numeroAnon, "le visiteur anonyme n'obtient pas de numéro");
+ok((await compte(dbA, uA.editeur, "select 1 from compteurs_ref")) <= 0, "le compteur n'est pas lisible directement");
+// Remboursement : un paiement négatif fait baisser l'encaissé du dossier, un montant nul est refusé
+await dbA.exec(`insert into clients (id, entite_id, nom) values (gen_random_uuid(), '${EA.secret}', 'Client');`);
+const dosS = (await dbA.query(`insert into dossiers (entite_id, ref, client_id) select '${EA.secret}', 'R-1', id from clients limit 1 returning id`)).rows[0].id;
+await dbA.exec(`insert into paiements (entite_id, dossier_id, date, montant) values ('${EA.secret}', '${dosS}', '2026-10-02', 100)`);
+const recuDe = async () => Number((await dbA.query("select recu from dossiers_resume where dossier_id = $1", [dosS])).rows[0].recu);
+const remb = await essaie(dbA, uA.editeur, `insert into paiements (entite_id, dossier_id, date, montant, type) values ('${EA.secret}', '${dosS}', '2026-10-20', -30, 'remboursement')`);
+ok(remb.ok && (await recuDe()) === 70, "un remboursement négatif est accepté et baisse l'encaissé du dossier (100 devient 70)");
+ok(!(await essaie(dbA, uA.editeur, `insert into paiements (entite_id, dossier_id, date, montant) values ('${EA.secret}', '${dosS}', '2026-10-21', 0)`)).ok, "un paiement de montant nul est refusé");
+// Facturé des analyses : dernière facture de chaque dossier, sans les dossiers annulés
+const dosA = (await dbA.query(`insert into dossiers (entite_id, ref, client_id) select '${EA.secret}', 'R-fact-a', id from clients limit 1 returning id`)).rows[0].id;
+const dosB = (await dbA.query(`insert into dossiers (entite_id, ref, client_id, annule) select '${EA.secret}', 'R-fact-b', id, true from clients limit 1 returning id`)).rows[0].id;
+const facture = (d, date, m) => dbA.exec(`insert into documents (entite_id, dossier_id, type, date_emission, contenu) values ('${EA.secret}', '${d}', 'facture', '${date}', '{"devise":"THB","lignes":[{"kind":"ligne","montant":${m}}]}')`);
+await facture(dosA, "2026-10-05", 100); await facture(dosA, "2026-10-06", 150); await facture(dosB, "2026-10-07", 500);
+const an = await essaie(dbA, uA.admin, `select tableau_analytique('${EA.secret}', '2026-10-01', '2026-10-31') r`);
+const factureMois = ((an.rows && an.rows[0].r.facture_par_mois) || []).filter((x) => x.devise === "THB");
+ok(an.ok && factureMois.length === 1 && Number(factureMois[0].montant) === 150 && factureMois[0].nombre === 1, "le facturé compte la dernière facture du dossier (150) et ignore le dossier annulé et la facture en double");
+
+console.log("\n== Chaîne de migrations v1 → v2 → … → v9 → … → v14 ==");
 const v = await base([W + "schema-v1-reference.sql"]);
 const vcompte = (await v.query("insert into auth.users (email) values ('anais@test') returning id")).rows[0].id;
 const vass = (await v.query("insert into auth.users (email) values ('assistante@test') returning id")).rows[0].id;
@@ -230,6 +271,10 @@ await v.exec(lire(W + "migration-10-partenaires.sql"));
 await v.exec(lire(W + "migration-11-reservations.sql"));
 await v.exec(lire(W + "migration-12-vouchers.sql"));
 await v.exec(lire(W + "migration-13-langue.sql"));
+await v.exec("insert into dossiers (entite_id, ref, client_id) select entite_id, r, client_id from dossiers, (values ('ZZ-2026-0007'), ('ZZ-2026-0012'), ('2025-0003'), ('LD20261009 Thailand')) t(r) where ref = 'OLD1 Thaïlande'");
+await v.exec(lire(W + "migration-14-argent.sql"));
+const compteurs = (await v.query("select annee, derniere from compteurs_ref order by annee")).rows.map((x) => `${x.annee}:${x.derniere}`).join();
+ok(compteurs === "2025:3,2026:12", "la migration 14 reprend les numéros déjà donnés (2026 jusqu'à 12, 2025 jusqu'à 3) et ignore les références en initiales");
 await v.exec("update dossiers set accepte_le = '2026-10-02' where id in (select id from dossiers limit 1)");
 const avant = (await v.query("select total from dossiers_resume order by dossier_id limit 1")).rows[0];
 await v.exec("insert into documents (entite_id, dossier_id, type, date_emission, contenu) select entite_id, id, 'facture_locale', '2026-10-03', '{\"lignes\":[{\"kind\":\"formule\",\"montant\":9999}]}' from dossiers limit 1");

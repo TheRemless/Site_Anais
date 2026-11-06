@@ -146,6 +146,10 @@ export function creer() {
       journaliser("reglages", "update", { entite_id: entiteId, id: entiteId });
       sauve();
     },
+    // Démo : une seule personne, pas de compteur partagé.
+    async prochainNumeroRef(entiteId, annee, minimum) {
+      return minimum + 1;
+    },
     async definirMaLangue(code) {
       utilisateur.langue = code;
       sauve();
