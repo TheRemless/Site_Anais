@@ -41,6 +41,65 @@ export async function recharger() {
   const ids = entitesAccessibles().map((e) => e.id);
   etat.entiteId = ids.includes(choisi) ? choisi : ids[0] || null;
   rebatir();
+  signature = signer(etat.brut);
+  modificationsVues = modifications;
+}
+
+// ---- Synchronisation avec les autres personnes qui travaillent dans l'outil ------------------------------------
+// Les données se lisent une fois à la connexion. `synchroniser` les relit en silence et dit si quelqu'un d'autre a changé
+// quelque chose, pour que l'écran se mette à jour sans rechargement complet.
+let modifications = 0; // nos propres écritures, pour ne pas annoncer comme venant d'ailleurs ce que nous venons de faire
+let modificationsVues = 0;
+let ecritures = 0;
+// Toute écriture passe par là : tant qu'une est en cours, ou si une s'est terminée pendant une lecture, la lecture est écartée.
+async function ecrire(fn) {
+  modifications++;
+  ecritures++;
+  try {
+    return await fn();
+  } finally {
+    ecritures--;
+    modifications++;
+  }
+}
+let signature = "";
+let enCours = false;
+// Documents et paiements se chargent à l'ouverture d'un dossier et ne font pas partie de la comparaison. L'ordre des lignes
+// ne compte pas (deux lignes à égalité de tri peuvent permuter d'une lecture à l'autre).
+const signer = (brut) =>
+  JSON.stringify(
+    Object.keys(brut)
+      .filter((k) => k !== "documents" && k !== "paiements")
+      .sort()
+      .map((k) => [k, Array.isArray(brut[k]) ? brut[k].map((r) => JSON.stringify(r)).sort() : JSON.stringify(brut[k])])
+  );
+
+// Renvoie « inchange », « propre » (seules nos écritures ont changé la base), « modifie » (quelqu'un d'autre a écrit)
+// ou « ignore » (démo, lecture déjà en cours, ou écriture de notre part pendant la lecture : on réessaiera).
+export async function synchroniser() {
+  if (!etat.session || !etat.brut || etat.store.mode !== "supabase" || enCours || ecritures) return "ignore";
+  enCours = true;
+  try {
+    const avant = modifications;
+    const neuf = await etat.store.charger();
+    if (avant !== modifications || ecritures) return "ignore";
+    const nouvelle = signer(neuf);
+    if (nouvelle === signature) return "inchange";
+    const miennes = modificationsVues !== modifications;
+    signature = nouvelle;
+    modificationsVues = modifications;
+    // Les dossiers déjà ouverts gardent leurs documents et paiements : l'écran qui les montre les relit.
+    neuf.documents = etat.brut.documents;
+    neuf.paiements = etat.brut.paiements;
+    etat.brut = neuf;
+    etat.moi = neuf.profils.find((p) => p.user_id === etat.session.id) || etat.moi;
+    const ids = entitesAccessibles().map((e) => e.id);
+    if (!ids.includes(etat.entiteId)) etat.entiteId = ids[0] || null;
+    rebatir();
+    return miennes ? "propre" : "modifie";
+  } finally {
+    enCours = false;
+  }
 }
 
 // Langue de l'interface : celle du compte (elle suit la personne d'un appareil à l'autre). Un compte qui n'en a pas encore
@@ -181,7 +240,7 @@ export const supprimerPiece = (p) => etat.store.supprimerPiece(p);
 export const tousPaiements = () => etat.store.tousPaiements(etat.entiteId);
 export const tousDocuments = () => etat.store.tousDocuments(etat.entiteId);
 
-export async function inserer(table, row) {
+async function insererBrut(table, row) {
   const ligne = TABLES.includes(table) ? { entite_id: etat.entiteId, ...row } : row;
   const r = await etat.store.inserer(table, ligne);
   etat.brut[table].push(r);
@@ -189,8 +248,9 @@ export async function inserer(table, row) {
   if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
   return r;
 }
+export const inserer = (...a) => ecrire(() => insererBrut(...a));
 
-export async function modifier(table, id, patch) {
+async function modifierBrut(table, id, patch) {
   const r = await etat.store.modifier(table, id, patch);
   const i = etat.brut[table].findIndex((x) => x.id === id);
   // Le résumé d'un dossier (total, encaissé) ne fait pas partie de la ligne renvoyée par la modification : on le garde.
@@ -199,8 +259,9 @@ export async function modifier(table, id, patch) {
   if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
   return r;
 }
+export const modifier = (...a) => ecrire(() => modifierBrut(...a));
 
-export async function supprimer(table, id) {
+async function supprimerBrut(table, id) {
   const avant = etat.brut[table].find((x) => x.id === id);
   await etat.store.supprimer(table, id);
   etat.brut[table] = etat.brut[table].filter((x) => x.id !== id);
@@ -211,12 +272,14 @@ export async function supprimer(table, id) {
   }
   rebatir();
 }
+export const supprimer = (...a) => ecrire(() => supprimerBrut(...a));
 
-export async function enregistrerReglages(valeur) {
+async function enregistrerReglagesBrut(valeur) {
   await etat.store.enregistrerReglages(etat.entiteId, valeur);
   etat.brut.reglages[etat.entiteId] = valeur;
   rebatir();
 }
+export const enregistrerReglages = (...a) => ecrire(() => enregistrerReglagesBrut(...a));
 
 // Administration (administrateur général seulement, la base le refuse aux autres)
 export async function creerEntite(nom, slug) {
@@ -231,12 +294,13 @@ export async function creerEntite(nom, slug) {
   return e;
 }
 
-export async function modifierEntite(id, patch) {
+async function modifierEntiteBrut(id, patch) {
   const r = await etat.store.modifier("entites", id, patch);
   const i = etat.brut.entites.findIndex((x) => x.id === id);
   etat.brut.entites[i] = r;
   rebatir();
 }
+export const modifierEntite = (...a) => ecrire(() => modifierEntiteBrut(...a));
 
 export async function definirAcces(userId, entiteId, roleId) {
   if (roleId) {
@@ -250,11 +314,12 @@ export async function definirAcces(userId, entiteId, roleId) {
   }
 }
 
-export async function modifierProfil(userId, patch) {
+async function modifierProfilBrut(userId, patch) {
   await etat.store.modifierProfil(userId, patch);
   Object.assign(etat.brut.profils.find((p) => p.user_id === userId), patch);
   if (etat.moi && etat.moi.user_id === userId) Object.assign(etat.moi, patch);
 }
+export const modifierProfil = (...a) => ecrire(() => modifierProfilBrut(...a));
 
 export const equipe = () => etat.store.equipe(etat.entiteId);
 
