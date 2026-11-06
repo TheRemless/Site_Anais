@@ -9,7 +9,8 @@ import { tr, definirLangue, langueStockee, estLangue } from "./i18n.mjs";
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
 const CLE_ENTITE = "gestion-zwald-entite";
 
-export const etat = { store: null, brut: null, db: null, session: null, moi: null, entiteId: null };
+// `documentsOuverts` : documents en cours d'édition. La synchronisation ne leur retire pas leur copie en mémoire, l'éditeur en a besoin.
+export const etat = { store: null, brut: null, db: null, session: null, moi: null, entiteId: null, documentsOuverts: new Set() };
 
 export async function init() {
   // La langue de ce navigateur sert dès l'écran de connexion ; celle du compte la remplace après la connexion.
@@ -93,7 +94,7 @@ export async function synchroniser() {
     // montre le dossier les relit à son ouverture.
     const anciens = new Map(etat.brut.dossiers.map((d) => [d.id, JSON.stringify(d)]));
     const changes = new Set(neuf.dossiers.filter((d) => anciens.get(d.id) !== JSON.stringify(d)).map((d) => d.id));
-    neuf.documents = etat.brut.documents.filter((d) => !changes.has(d.dossier_id));
+    neuf.documents = etat.brut.documents.filter((d) => !changes.has(d.dossier_id) || etat.documentsOuverts.has(d.id));
     neuf.paiements = etat.brut.paiements.filter((p) => !changes.has(p.dossier_id));
     etat.brut = neuf;
     etat.moi = neuf.profils.find((p) => p.user_id === etat.session.id) || etat.moi;
@@ -245,6 +246,15 @@ export async function numeroSuivant(annee, minimum) {
   }
 }
 
+// Versions précédentes d'un devis ou d'une facture, corbeille des dossiers supprimés (migration 15).
+export const versionsDocument = (docId) => etat.store.versionsDocument(docId);
+export const corbeilleDossiers = () => etat.store.corbeille(etat.entiteId);
+export async function restaurerDossier(id) {
+  const dossierId = await etat.store.restaurerDossier(id);
+  await recharger();
+  return dossierId;
+}
+
 export const paiementsPeriode = (du, au) => (peut("finances.voir") ? etat.store.paiementsPeriode({ entiteId: etat.entiteId, du, au }) : Promise.resolve([]));
 export const piecesDossier = (id) => etat.store.piecesDossier(id);
 export const lienPiece = (p) => etat.store.lienPiece(p);
@@ -266,11 +276,16 @@ async function insererBrut(table, row) {
 }
 export const inserer = (...a) => ecrire(() => insererBrut(...a));
 
-async function modifierBrut(table, id, patch) {
-  const r = await etat.store.modifier(table, id, patch);
+// `verrou` : refuse d'écraser ce qu'une autre personne a enregistré depuis la lecture de la ligne (erreur avec `conflit`). À réserver aux
+// enregistrements qui réécrivent une fiche entière (devis, fiche client) ; sans la migration 15, `updated_at` manque et rien n'est vérifié.
+async function modifierBrut(table, id, patch, { verrou = false } = {}) {
+  const avant = verrou ? (etat.brut[table].find((x) => x.id === id) || {}).updated_at : undefined;
+  const r = await etat.store.modifier(table, id, patch, avant);
+  // La liste a pu être relue pendant l'attente : on retrouve la ligne après coup.
   const i = etat.brut[table].findIndex((x) => x.id === id);
   // Le résumé d'un dossier (total, encaissé) ne fait pas partie de la ligne renvoyée par la modification : on le garde.
-  etat.brut[table][i] = table === "dossiers" ? { ...etat.brut[table][i], ...r } : r;
+  if (i >= 0) etat.brut[table][i] = table === "dossiers" ? { ...etat.brut[table][i], ...r } : r;
+  else etat.brut[table].push(r);
   rebatir();
   if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
   return r;
@@ -290,9 +305,13 @@ async function supprimerBrut(table, id) {
 }
 export const supprimer = (...a) => ecrire(() => supprimerBrut(...a));
 
-async function enregistrerReglagesBrut(valeur) {
-  await etat.store.enregistrerReglages(etat.entiteId, valeur);
+// `versionLue` : la version des réglages au moment où l'écran s'est ouvert. La synchronisation a pu apporter une version plus récente
+// entre-temps : c'est bien celle que la personne a vue qui sert de référence, sinon son enregistrement écraserait l'autre sans le dire.
+async function enregistrerReglagesBrut(valeur, versionLue) {
+  const avant = versionLue ?? (etat.brut.reglages_maj || {})[etat.entiteId];
+  const maj = await etat.store.enregistrerReglages(etat.entiteId, valeur, avant);
   etat.brut.reglages[etat.entiteId] = valeur;
+  if (maj) (etat.brut.reglages_maj ||= {})[etat.entiteId] = maj;
   rebatir();
 }
 export const enregistrerReglages = (...a) => ecrire(() => enregistrerReglagesBrut(...a));

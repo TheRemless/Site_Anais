@@ -522,6 +522,19 @@ async function surveillerVersion() {
   setInterval(verifier, 10 * 60 * 1000);
 }
 
+// Une erreur que personne n'a rattrapée (une action sans message d'erreur prévu) ne passe plus sous silence : un message apparaît, au lieu
+// d'un bouton qui ne fait rien. Les alertes sans importance des navigateurs sont ignorées.
+let derniereErreur = { message: "", quand: 0 };
+function signalerErreur(message) {
+  if (!message || /ResizeObserver|^Script error\.?$|AbortError/i.test(message)) return;
+  if (message === derniereErreur.message && Date.now() - derniereErreur.quand < 5000) return;
+  derniereErreur = { message, quand: Date.now() };
+  console.error(message);
+  toast(tr("Une erreur est survenue : {message}", { message }), true);
+}
+window.addEventListener("unhandledrejection", (e) => signalerErreur((e.reason && e.reason.message) || String(e.reason || "")));
+window.addEventListener("error", (e) => signalerErreur(e.message));
+
 // Ce que fait une autre personne (un dossier créé, un paiement noté) apparaît sans recharger : l'outil relit la base en silence
 // au retour sur l'onglet puis chaque minute. L'écran n'est redessiné que s'il n'y a rien à perdre : pas de fenêtre ouverte,
 // pas de champ en cours de saisie, pas d'éditeur de document. Dans les autres cas les données sont déjà à jour pour l'écran suivant.
@@ -536,18 +549,30 @@ function ecranLibre() {
 }
 function surveillerDonnees() {
   let derniere = 0;
+  let derniereReussite = Date.now();
+  let echecs = 0;
   let aRedessiner = false;
   let annoncer = false;
+  // Pastille visible quand la relecture échoue deux fois de suite (réseau coupé, session expirée) : sans elle, l'écran vieillit sans rien dire.
+  const pastille = h("div", { class: "etat-synchro", role: "status", hidden: true });
+  document.body.append(pastille);
+  const majPastille = () => {
+    pastille.hidden = echecs < 2;
+    if (echecs >= 2) pastille.textContent = tr("Connexion perdue : les données affichées datent de {duree}. Elles se mettent à jour dès que le réseau revient.", { duree: pluriel(Math.max(1, Math.round((Date.now() - derniereReussite) / 60000)), N_("minute"), N_("minutes")) });
+  };
   const actualiser = async () => {
     if (document.visibilityState !== "visible" || Date.now() - derniere < 10000) return;
     derniere = Date.now();
     try {
       const r = await synchroniser();
+      if (r !== "ignore") (echecs = 0), (derniereReussite = Date.now());
       if (r === "modifie" || r === "propre") aRedessiner = true;
       if (r === "modifie") annoncer = true;
     } catch (err) {
       console.warn(err);
+      echecs++;
     }
+    majPastille();
     if (aRedessiner && etat.session && ecranLibre()) {
       aRedessiner = false;
       window.dispatchEvent(new HashChangeEvent("hashchange"));

@@ -1,5 +1,5 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
-import { etat, enregistrerReglages, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments } from "../etat.mjs";
+import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
@@ -7,6 +7,7 @@ import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne } 
 import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4 } from "./commun.mjs";
 import { tr, N_ } from "../i18n.mjs";
+import { VERSION_SAUVEGARDE, pourSauvegarde } from "../sauvegarde.mjs";
 
 // Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
@@ -43,13 +44,15 @@ async function exporterPaiements() {
 }
 
 async function exporterTout() {
-  const sauvegarde = { version: 2, entreprise: entiteActive().slug, exporte_le: new Date().toISOString() };
-  for (const t of TABLES) sauvegarde[t] = etat.db[t];
+  const sauvegarde = { version: VERSION_SAUVEGARDE, entreprise: entiteActive().slug, exporte_le: new Date().toISOString() };
+  for (const t of TABLES) sauvegarde[t] = pourSauvegarde(t, etat.db[t]);
+  // Les réglages de l'entreprise (textes des documents, coordonnées de paiement, numérotation) font partie de la sauvegarde.
+  if (peut("reglages.ecrire")) sauvegarde.reglages = reglages();
   // Documents et paiements ne sont pas en mémoire : on les lit dans la base.
   sauvegarde.documents = await tousDocuments();
   sauvegarde.paiements = await tousPaiements();
   telecharger(nomFichierEntite("sauvegarde", "json"), JSON.stringify(sauvegarde, null, 2), "application/json");
-  toast(tr("Sauvegarde téléchargée. Gardez ce fichier en lieu sûr : il contient les données clients."));
+  toast(tr("Sauvegarde téléchargée. Gardez ce fichier en lieu sûr : il contient les données clients. Les fichiers joints n'y sont pas."));
 }
 
 async function importer(fichier) {
@@ -72,14 +75,80 @@ async function importer(fichier) {
     const rows = {};
     // Les tables de nets n'ont pas de date de création : une sauvegarde ou un import plus ancien peut en porter une.
     const SANS_DATE = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
-    for (const t of TABLES) rows[t] = (data[t] || []).map(({ created_at, ...r }) => ({ ...r, ...(SANS_DATE.includes(t) ? {} : { created_at }), entite_id: etat.entiteId }));
+    for (const t of TABLES) rows[t] = pourSauvegarde(t, data[t]).map(({ created_at, ...r }) => ({ ...r, ...(SANS_DATE.includes(t) ? {} : { created_at }), entite_id: etat.entiteId }));
     await etat.store.importer(rows);
+    const caseReglages = document.getElementById("import-reglages");
+    if (data.reglages && caseReglages && caseReglages.checked) await enregistrerReglages(data.reglages);
     await recharger();
     toast(tr("Import terminé."));
     naviguer("#/dossiers");
   } catch (err) {
     toast(tr("Import impossible : {message}", { message: err.message }), true);
   }
+}
+
+// ---- Corbeille des dossiers supprimés ------------------------------------------------------------------------
+// Un dossier supprimé reste récupérable 90 jours (migration 15) avec ses documents, paiements, réservations et tâches.
+function sectionCorbeille() {
+  const liste = h("div", null, h("p", { class: "aide" }, tr("Chargement…")));
+  const dessiner = async () => {
+    let lignes;
+    try {
+      lignes = await corbeilleDossiers();
+    } catch (err) {
+      liste.replaceChildren(h("p", { class: "aide" }, tr("Corbeille indisponible : {message}", { message: err.message })));
+      return;
+    }
+    if (!lignes.length) return liste.replaceChildren(h("p", { class: "vide-court" }, tr("Aucun dossier supprimé ces 90 derniers jours.")));
+    liste.replaceChildren(
+      h(
+        "ul",
+        { class: "cartes" },
+        lignes.map((x) => {
+          const client = etat.db.clients.find((c) => c.id === x.ligne.client_id);
+          return h(
+            "li",
+            { class: "carte" },
+            h(
+              "div",
+              { class: "carte-lien statique" },
+              h("span", { class: "carte-titre" }, x.ligne.ref),
+              h("span", { class: "carte-sous" }, [client ? nomClient(client) : "", x.ligne.pays || x.ligne.bandeau || ""].filter(Boolean).join(" · ")),
+              h(
+                "span",
+                { class: "carte-pied" },
+                h("span", null, tr("Supprimé le {date}", { date: formatDate(x.supprime_le) })),
+                h(
+                  "span",
+                  { class: "carte-actions" },
+                  h(
+                    "button",
+                    {
+                      class: "secondaire petit",
+                      type: "button",
+                      onclick: async () => {
+                        if (!(await confirmer(tr("Restaurer le dossier « {ref} » avec ses documents, paiements et réservations ?", { ref: x.ligne.ref }), tr("Restaurer")))) return;
+                        try {
+                          const id = await restaurerDossier(x.id);
+                          toast(tr("Dossier restauré."));
+                          naviguer(`#/dossier/${id}`);
+                        } catch (err) {
+                          toast(tr("Restauration impossible : {message}", { message: err.message }), true);
+                        }
+                      },
+                    },
+                    tr("Restaurer")
+                  )
+                )
+              )
+            )
+          );
+        })
+      )
+    );
+  };
+  dessiner();
+  return h("section", null, h("h2", null, tr("Dossiers supprimés")), h("p", { class: "aide" }, tr("Un dossier supprimé reste récupérable pendant 90 jours, avec ses documents, ses paiements, ses réservations et ses tâches. Les fichiers joints ne sont pas conservés.")), liste);
 }
 
 // ---- Page de réglages ---------------------------------------------------------------------------------------
@@ -125,6 +194,7 @@ function ecrire(o, chemin, v) {
 export function vueReglages() {
   if (!estAdmin()) return vide(tr("Accès réservé"), tr("Les réglages d'une entreprise sont réservés à ses administrateurs."), h("a", { class: "bouton secondaire", href: "#/" }, tr("Retour au tableau de bord")));
   const r = structuredClone(reglages());
+  let versionLue = (etat.brut.reglages_maj || {})[etat.entiteId];
   let modifie = false;
   const indicateur = h("span", { class: "etat-enregistrement", role: "status" }, "");
   const marque = () => {
@@ -434,8 +504,10 @@ export function vueReglages() {
         h("p", { class: "aide" }, tr("Ces fichiers concernent seulement l'entreprise « {nom} ». Une sauvegarde contient les données clients : gardez-la en lieu sûr.", { nom: entiteActive().nom })),
         h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: exporterTout }, tr("Télécharger une sauvegarde complète")), h("button", { class: "secondaire", type: "button", onclick: exporterDossiers }, tr("Exporter les dossiers (Excel)")), h("button", { class: "secondaire", type: "button", onclick: exporterPaiements }, tr("Exporter les paiements (Excel)"))),
         peut("partenaires.ecrire") ? h("label", { class: "case", for: "import-remplacer" }, h("input", { id: "import-remplacer", type: "checkbox", checked: true }), tr("Si le fichier contient des partenaires, remplacer la base partenaires (supprime d'abord les partenaires, tarifs, trajets et tâches de partenaires actuels)")) : null,
+        peut("reglages.ecrire") ? h("label", { class: "case", for: "import-reglages" }, h("input", { id: "import-reglages", type: "checkbox" }), tr("Si le fichier contient les réglages, les restaurer aussi (remplace les textes des documents, les coordonnées de paiement et la numérotation actuels)")) : null,
         champ(tr("Restaurer ou importer une sauvegarde"), h("input", { id: "import-fichier", type: "file", accept: "application/json,.json", onchange: (e) => e.target.files[0] && importer(e.target.files[0]) }), tr("Elle sera importée dans « {nom} ». Les éléments déjà présents avec le même identifiant sont remplacés.", { nom: entiteActive().nom }))
-      )
+      ),
+      !peut("dossiers.supprimer") ? null : sectionCorbeille()
     ),
   };
 
@@ -467,12 +539,15 @@ export function vueReglages() {
     r.devise = (r.devise || "").trim().toUpperCase();
     boutonEnregistrer.disabled = true;
     try {
-      await enregistrerReglages(r);
+      await enregistrerReglages(r, versionLue);
       modifie = false;
       indicateur.textContent = tr("Enregistré");
       toast(tr("Réglages enregistrés."));
+      // La version enregistrée devient la nouvelle référence : on peut continuer à modifier sans conflit avec soi-même.
+      versionLue = (etat.brut.reglages_maj || {})[etat.entiteId];
     } catch (err) {
-      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+      if (err.conflit) toast(tr("Quelqu'un d'autre a enregistré les réglages pendant que vous les modifiiez. Rechargez la page pour voir sa version, puis refaites vos changements."), true);
+      else toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
     } finally {
       boutonEnregistrer.disabled = false;
     }

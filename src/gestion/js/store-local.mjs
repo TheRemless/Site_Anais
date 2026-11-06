@@ -146,6 +146,16 @@ export function creer() {
       journaliser("reglages", "update", { entite_id: entiteId, id: entiteId });
       sauve();
     },
+    // Démo : une seule personne, ni historique ni corbeille.
+    async versionsDocument() {
+      return [];
+    },
+    async corbeille() {
+      return [];
+    },
+    async restaurerDossier() {
+      throw new Error("Indisponible en mode démonstration.");
+    },
     // Démo : une seule personne, pas de compteur partagé.
     async prochainNumeroRef(entiteId, annee, minimum) {
       return minimum + 1;
