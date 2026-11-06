@@ -83,3 +83,17 @@ test("synchroniser : la démo n'a personne avec qui se synchroniser", async () =
   m.etat.store.mode = "demo";
   assert.equal(await m.synchroniser(), "ignore");
 });
+
+test("synchroniser : un dossier dont le résumé a changé ailleurs perd ses copies locales, les autres les gardent", async () => {
+  const lu = base();
+  lu.dossiers = [{ id: "A", entite_id: "e1", client_id: "1", total: 1000, recu: 0, devise: "CHF", created_at: "1" }, { id: "B", entite_id: "e1", client_id: "1", total: 500, recu: 0, devise: "CHF", created_at: "2" }];
+  const m = await demarrer(async () => structuredClone(lu));
+  m.etat.brut.documents.push({ id: "dA", dossier_id: "A" }, { id: "dB", dossier_id: "B" });
+  m.etat.brut.paiements.push({ id: "pA", dossier_id: "A" });
+  // une autre personne enregistre un acompte sur A : le résumé de A change, celui de B non
+  lu.dossiers[0] = { ...lu.dossiers[0], recu: 500 };
+  assert.equal(await m.synchroniser(), "modifie");
+  assert.deepEqual(m.etat.brut.documents.map((d) => d.id), ["dB"], "A est relu à son ouverture, B garde sa copie");
+  assert.deepEqual(m.etat.brut.paiements, []);
+  assert.equal(m.etat.brut.dossiers.find((d) => d.id === "A").recu, 500);
+});
