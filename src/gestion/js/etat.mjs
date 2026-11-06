@@ -88,9 +88,13 @@ export async function synchroniser() {
     const miennes = modificationsVues !== modifications;
     signature = nouvelle;
     modificationsVues = modifications;
-    // Les dossiers déjà ouverts gardent leurs documents et paiements : l'écran qui les montre les relit.
-    neuf.documents = etat.brut.documents;
-    neuf.paiements = etat.brut.paiements;
+    // Les dossiers déjà ouverts gardent leurs documents et paiements. Ceux dont le résumé a changé ailleurs les perdent :
+    // les calculs préfèrent les copies locales au résumé de la base, elles donneraient des totaux périmés. L'écran qui
+    // montre le dossier les relit à son ouverture.
+    const anciens = new Map(etat.brut.dossiers.map((d) => [d.id, JSON.stringify(d)]));
+    const changes = new Set(neuf.dossiers.filter((d) => anciens.get(d.id) !== JSON.stringify(d)).map((d) => d.id));
+    neuf.documents = etat.brut.documents.filter((d) => !changes.has(d.dossier_id));
+    neuf.paiements = etat.brut.paiements.filter((p) => !changes.has(p.dossier_id));
     etat.brut = neuf;
     etat.moi = neuf.profils.find((p) => p.user_id === etat.session.id) || etat.moi;
     const ids = entitesAccessibles().map((e) => e.id);

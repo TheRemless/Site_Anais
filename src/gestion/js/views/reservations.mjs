@@ -189,29 +189,29 @@ export async function synchroniserDatesDossier(dossierId) {
 export function ajouterServices(d, doc, apres) {
   const regl = reglages();
   const langue = /invoice/i.test((regl.libelles && regl.libelles.facture) || "") ? "en" : "";
-  choisirPrestation({
-    langue,
-    devise: regl.devise,
-    sansCompagnie: true,
-    onAjout: async (nouvelles) => {
-      try {
-        const lignes = nouvelles.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, libelle: l.kind === "texte" ? l.libelle : descriptionService(l, langue), intro: "" }));
-        let cible = doc;
-        if (!cible) {
-          cible = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: new Date().toISOString().slice(0, 10), envoye_le: null, updated_at: new Date().toISOString(), contenu: { ...CONTENU_DEFAUT(), colonnes: "total", langue, variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: [] } });
-        }
-        const contenu = structuredClone(cible.contenu);
-        contenu.lignes = [...(contenu.lignes || []), ...lignes];
-        const partenaires = [...new Set(contenu.lignes.map((l) => nomPartenaire(l.partenaire_id)).filter(Boolean))];
-        if (partenaires.length) contenu.prestataire = partenaires.join(", ");
-        const maj = await modifier("documents", cible.id, { contenu, updated_at: new Date().toISOString() });
-        await creerReservations(maj);
-        apres();
-      } catch (err) {
-        toast(tr("Ajout impossible : {message}", { message: err.message }), true);
+  let cibleId = doc ? doc.id : null;
+  // La fenêtre reste ouverte pour enchaîner les ajouts : un à la fois, chacun sur la version courante de la facture.
+  let file = Promise.resolve();
+  async function ajouter(nouvelles) {
+    try {
+      const lignes = nouvelles.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, libelle: l.kind === "texte" ? l.libelle : descriptionService(l, langue), intro: "" }));
+      let cible = cibleId ? etat.db.documents.find((x) => x.id === cibleId) : null;
+      if (!cible) {
+        cible = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: new Date().toISOString().slice(0, 10), envoye_le: null, updated_at: new Date().toISOString(), contenu: { ...CONTENU_DEFAUT(), colonnes: "total", langue, variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: [] } });
+        cibleId = cible.id;
       }
-    },
-  });
+      const contenu = structuredClone(cible.contenu);
+      contenu.lignes = [...(contenu.lignes || []), ...lignes];
+      const partenaires = [...new Set(contenu.lignes.map((l) => nomPartenaire(l.partenaire_id)).filter(Boolean))];
+      if (partenaires.length) contenu.prestataire = partenaires.join(", ");
+      const maj = await modifier("documents", cible.id, { contenu, updated_at: new Date().toISOString() });
+      await creerReservations(maj);
+      apres();
+    } catch (err) {
+      toast(tr("Ajout impossible : {message}", { message: err.message }), true);
+    }
+  }
+  choisirPrestation({ langue, devise: regl.devise, sansCompagnie: true, onAjout: (nouvelles) => (file = file.then(() => ajouter(nouvelles))) });
 }
 
 export function sectionReservationsDossier(d, doc) {
