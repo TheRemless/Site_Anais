@@ -1,4 +1,4 @@
-import { init, etat, choisirLangue, recharger, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif } from "./etat.mjs";
 import { h, vider, toast, modal, icone } from "./ui.mjs";
 import { libelleStatut, formatMontant } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
@@ -522,9 +522,48 @@ async function surveillerVersion() {
   setInterval(verifier, 10 * 60 * 1000);
 }
 
+// Ce que fait une autre personne (un dossier créé, un paiement noté) apparaît sans recharger : l'outil relit la base en silence
+// au retour sur l'onglet puis chaque minute. L'écran n'est redessiné que s'il n'y a rien à perdre : pas de fenêtre ouverte,
+// pas de champ en cours de saisie, pas d'éditeur de document. Dans les autres cas les données sont déjà à jour pour l'écran suivant.
+const ECRANS_DE_LECTURE = /^#?\/?$|^#\/(dossiers|clients|taches|reservations|du|partenaires|trajets|tarifs|catalogue|analyses|groupe|journal)(\?.*)?$|^#\/(dossier|client|partenaire)\/[\w-]+$/;
+function ecranLibre() {
+  if (!ECRANS_DE_LECTURE.test(location.hash || "#/")) return false;
+  if (document.querySelector(".modal-fond")) return false;
+  const actif = document.activeElement;
+  if (actif && actif.matches("input, textarea, select, [contenteditable]")) return false;
+  const principal = document.getElementById("principal");
+  return ![...principal.querySelectorAll("input, textarea")].some((c) => !["checkbox", "radio", "button", "submit"].includes(c.type) && c.value !== c.defaultValue);
+}
+function surveillerDonnees() {
+  let derniere = 0;
+  let aRedessiner = false;
+  let annoncer = false;
+  const actualiser = async () => {
+    if (document.visibilityState !== "visible" || Date.now() - derniere < 10000) return;
+    derniere = Date.now();
+    try {
+      const r = await synchroniser();
+      if (r === "modifie" || r === "propre") aRedessiner = true;
+      if (r === "modifie") annoncer = true;
+    } catch (err) {
+      console.warn(err);
+    }
+    if (aRedessiner && etat.session && ecranLibre()) {
+      aRedessiner = false;
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+      if (annoncer) toast(tr("Données mises à jour."));
+      annoncer = false;
+    }
+  };
+  document.addEventListener("visibilitychange", actualiser);
+  window.addEventListener("online", actualiser);
+  setInterval(actualiser, 60 * 1000);
+}
+
 init()
   .then(afficher)
   .then(surveillerVersion)
+  .then(surveillerDonnees)
   .catch((err) => {
     console.error(err);
     vider(racine).append(h("div", { class: "vide" }, h("h1", null, tr("Connexion à la base impossible")), h("p", null, err.message), h("button", { class: "principal", onclick: () => location.reload() }, tr("Réessayer"))));

@@ -1362,4 +1362,5 @@ export const EN = {
   "Aucun partenaire": "No partner",
   "Partenaire (facultatif)": "Partner (optional)",
   "Celui qui réalise la prestation, s'il y en a un.": "The one who provides the service, if any.",
+  "Données mises à jour.": "Data updated.",
 };
