@@ -11,15 +11,17 @@ const case_ = (coche, libelle) => h("span", { class: `v-case${coche ? " cochee" 
 const ligne = (libelle, valeur, ...suite) => h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, `${libelle}: `), valeur === null || valeur === undefined ? "" : String(valeur), ...suite);
 const prix = (n, devise) => (n === null || n === undefined || n === "" ? "" : `${devise} ${formatNombre(n)}`);
 
-// Les réservations qui ont un voucher, dans l'ordre de création, numérotées 1, 2, 3 après la référence du dossier.
+// Les réservations qui ont un voucher, dans l'ordre de création, numérotées 1, 2, 3 après la référence du dossier (les annulées gardent leur numéro mais n'ont plus de voucher).
 export function vouchersDuDossier(dossierId) {
   return etat.db.reservations
-    .filter((r) => r.dossier_id === dossierId && r.statut !== "annule")
+    .filter((r) => r.dossier_id === dossierId)
     .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || "") || a.libelle.localeCompare(b.libelle))
     .map((r) => ({ reservation: r, prestation: r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null }))
     .map((x) => ({ ...x, type: typeVoucher(x.reservation, x.prestation, partenaireDe(x.reservation.partenaire_id)) }))
     .filter((x) => x.type)
-    .map((x, i) => ({ ...x, index: i + 1 }));
+    // Le numéro se calcule avant d'écarter les annulées : annuler la première ne renumérote pas les vouchers déjà envoyés.
+    .map((x, i) => ({ ...x, index: i + 1 }))
+    .filter((x) => x.reservation.statut !== "annule");
 }
 
 // `contexte` (facultatif) : réglages, dossier, client et résumé à utiliser à la place de la base, pour l'aperçu des réglages.

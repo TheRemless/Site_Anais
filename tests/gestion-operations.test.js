@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient } from "../src/gestion/js/operations-calc.mjs";
+import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient, ecartReservation, controlesVoucher, feuilleDuJour, texteFeuille } from "../src/gestion/js/operations-calc.mjs";
 
 test("vouchers : modèle d'après la prestation, numéro, statut de paiement", () => {
   assert.equal(typeVoucher({ trajet_id: "t" }, null), "billet", "un trajet de compagnie est un billet de bateau");
@@ -138,7 +138,7 @@ test("dû aux partenaires par mois : net prévu, payé, reste, marge, lignes san
   const nets = { 1: { net_prevu: 1600 }, 2: null, 3: { net_prevu: 4050, net_paye: 4050 } };
   const d = duParPartenaire(R, (r) => nets[r.id] || null);
   assert.equal(d.length, 2);
-  assert.deepEqual(d[0], { partenaire_id: "p1", mois: "2026-12", nb: 2, vente: 3600, net_prevu: 1600, net_paye: 0, sansNet: 1, reservations: [R[0], R[1]], reste: 1600, marge: 2000 });
+  assert.deepEqual(d[0], { partenaire_id: "p1", mois: "2026-12", nb: 2, vente: 3600, venteAvecNet: 2400, net_prevu: 1600, net_paye: 0, sansNet: 1, reservations: [R[0], R[1]], reste: 1600, marge: 800 }, "la marge ne compte que la vente dont le net est connu (2400 moins 1600), pas la vente sans net");
   assert.equal(d[1].reste, 0);
   assert.equal(nomMoisCourt("2026-12"), "Décembre 2026");
   assert.equal(dateTexte("2026-12-10", "th"), "10/12/2026");
@@ -255,4 +255,71 @@ test("envoi d'un voucher par WhatsApp : nom du fichier, message, lien avec ou sa
   assert.equal(telWhatsApp({ contact: { telephones: [{ numero: "02 000", whatsapp: false }, { numero: "081 111 2222", whatsapp: true }] } }), "081 111 2222", "le numéro marqué WhatsApp prime");
   assert.equal(telWhatsApp({ contact: { telephones: [{ numero: "02 000" }] } }), "02 000");
   assert.equal(telWhatsApp(null), "");
+});
+
+test("dossier annulé : ses réservations sortent de l'agenda et du dû aux partenaires, sans changer leur statut", () => {
+  const R = [
+    { id: 1, dossier_id: "A", partenaire_id: "p1", date_service: "2026-11-06", statut: "confirme", libelle: "Tour A", montant_vente: 100 },
+    { id: 2, dossier_id: "B", partenaire_id: "p1", date_service: "2026-11-06", statut: "confirme", libelle: "Tour B", montant_vente: 200 },
+    { id: 3, dossier_id: "B", partenaire_id: "p1", date_service: "2026-11-07", statut: "a_demander", libelle: "Tour C", montant_vente: 300 },
+  ];
+  const sans = agenda(R, "2026-11-06");
+  assert.equal(sans.aujourdhui.length, 2);
+  const avec = agenda(R, "2026-11-06", new Set(["B"]));
+  assert.deepEqual(avec.aujourdhui.map((r) => r.id), [1], "le tour du dossier annulé n'est plus au programme du jour");
+  assert.deepEqual(avec.demain, []);
+  assert.deepEqual(avec.aConfirmer, [], "ni à confirmer auprès des partenaires");
+  const nets = { 1: { net_prevu: 60 }, 2: { net_prevu: 150 }, 3: { net_prevu: 220 } };
+  const du = duParPartenaire(R, (r) => nets[r.id] || null, new Set(["B"]));
+  assert.equal(du.length, 1);
+  assert.equal(du[0].nb, 1);
+  assert.equal(du[0].net_prevu, 60, "le dû ne compte plus les réservations du dossier annulé");
+});
+
+test("écart entre réservation et facture : date, personnes, montant, ligne retirée", () => {
+  const ligne = (id, extra = {}) => ({ id, kind: "ligne", libelle: "Tour des îles", unite: 1200, qte: 2, prestation_id: "x", partenaire_id: "p1", date_service: "2026-12-10", ...extra });
+  const doc = { dossier_id: "D", contenu: { lignes: [ligne("l1"), ligne("l2", { libelle: "Tour des îles, enfant", intro: "(par enfant)", unite: 900, qte: 1 })] } };
+  const [{ reservation }] = reservationsDepuisDocument(doc, { uid: () => "R1" });
+  assert.equal(ecartReservation(reservation, doc), null, "une réservation fraîchement créée n'a aucun écart");
+  // la facture change : une personne en plus, une autre date
+  const doc2 = { dossier_id: "D", contenu: { lignes: [ligne("l1", { qte: 3, date_service: "2026-12-11" }), doc.contenu.lignes[1]] } };
+  const e = ecartReservation(reservation, doc2);
+  assert.deepEqual(e.champs.map((c) => c.cle), ["date_service", "personnes", "montant_vente"]);
+  assert.deepEqual(e.attendu.personnes, { adultes: 3, enfants: 1 });
+  assert.equal(e.champs.find((c) => c.cle === "montant_vente").document, 4500);
+  // la réservation change seule : on le voit aussi
+  assert.deepEqual(ecartReservation({ ...reservation, personnes: { adultes: 4, enfants: 1 } }, doc).champs.map((c) => c.cle), ["personnes"]);
+  // la ligne a disparu du document
+  assert.deepEqual(ecartReservation(reservation, { dossier_id: "D", contenu: { lignes: [] } }), { retiree: true, champs: [] });
+  // réservation faite à la main, sans ligne : rien à comparer
+  assert.equal(ecartReservation({ ...reservation, ligne_id: "", details: {} }, doc), null);
+});
+
+test("contrôles avant d'envoyer un voucher : ce qui manque, sans rien interdire", () => {
+  const ok = { statut: "confirme", date_service: "2026-12-10", heure_pickup: "08:00", lieu_pickup: "Hotel Sunset" };
+  assert.deepEqual(controlesVoucher(ok, { adresse: "x" }, "bateau"), []);
+  assert.deepEqual(controlesVoucher({ ...ok, statut: "demande" }, {}, "bateau"), ["non_confirmee"]);
+  assert.deepEqual(controlesVoucher({ ...ok, date_service: null, heure_pickup: "  " }, {}, "bateau"), ["sans_date", "sans_heure"]);
+  assert.deepEqual(controlesVoucher({ ...ok, lieu_pickup: "" }, { adresse: "Rue du Lac 12" }, "transfert"), ["lieu_adresse_client"], "le lieu retombe sur l'adresse du client : à vérifier");
+  assert.deepEqual(controlesVoucher({ ...ok, lieu_pickup: "" }, {}, "activite"), ["sans_lieu"]);
+  assert.deepEqual(controlesVoucher({ statut: "confirme", date_service: "2026-12-10" }, {}, "location"), [], "une location n'a pas de pickup");
+});
+
+test("feuille du jour : par partenaire, triée par heure, sans les annulées, avec un texte pour WhatsApp", () => {
+  const clients = { A: { prenom: "Anna", nom: "Keller", telephone: "+49 160 123", adresse: "Hotel Sunset, Room 12" }, B: { prenom: "Ben", nom: "Walker", telephone: "+44 7000", adresse: "Lanta Sand Resort" } };
+  const contexte = { client: (r) => clients[r.dossier_id], partenaire: (id) => ({ p1: "Longtail démo", p2: "Speedboat démo" })[id] };
+  const R = [
+    { id: 1, dossier_id: "B", partenaire_id: "p1", date_service: "2026-12-10", heure_pickup: "08:30", lieu_pickup: "", statut: "confirme", libelle: "4 îles", personnes: { adultes: 2, enfants: 0 } },
+    { id: 2, dossier_id: "A", partenaire_id: "p1", date_service: "2026-12-10", heure_pickup: "08:00", lieu_pickup: "", statut: "demande", libelle: "4 îles", personnes: { adultes: 2, enfants: 1 } },
+    { id: 3, dossier_id: "A", partenaire_id: "p2", date_service: "2026-12-10", heure_pickup: "10:00", lieu_pickup: "", statut: "confirme", libelle: "Speedboat", personnes: { adultes: 1, enfants: 0 } },
+    { id: 4, dossier_id: "A", partenaire_id: "p1", date_service: "2026-12-10", heure_pickup: "07:00", statut: "annule", libelle: "Annulé", personnes: { adultes: 9, enfants: 0 } },
+    { id: 5, dossier_id: "A", partenaire_id: "p1", date_service: "2026-12-11", heure_pickup: "08:00", statut: "confirme", libelle: "Autre jour", personnes: { adultes: 1, enfants: 0 } },
+  ];
+  const f = feuilleDuJour(R, "2026-12-10", contexte);
+  assert.deepEqual(f.map((g) => [g.nom, g.lignes.length, g.adultes, g.enfants]), [["Longtail démo", 2, 4, 1], ["Speedboat démo", 1, 1, 0]]);
+  assert.deepEqual(f[0].lignes.map((l) => l.heure), ["08:00", "08:30"], "triées par heure de pickup");
+  assert.equal(f[0].lignes[0].hotel, "Hotel Sunset");
+  assert.equal(f[0].lignes[0].chambre, "12");
+  assert.deepEqual(feuilleDuJour(R, "2026-12-10", contexte, new Set(["B"]))[0].lignes.map((l) => l.client), ["Anna Keller"], "un dossier annulé n'est plus sur la feuille");
+  assert.equal(texteFeuille(f[0], "2026-12-10"), "Longtail démo: 10 December 2026, 4 adults, 1 child\n08:00 · 4 îles · Anna Keller · +49 160 123 · Hotel Sunset, room 12 · 2 adults, 1 child\n08:30 · 4 îles · Ben Walker · +44 7000 · Lanta Sand Resort · 2 adults");
 });

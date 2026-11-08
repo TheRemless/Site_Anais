@@ -94,9 +94,10 @@ export function variablesMessage({ reservation = {}, client = {}, dossier = {}, 
 }
 
 // Agenda : aujourd'hui, demain, et ce qui reste à confirmer, hors annulées. Trié par heure de pickup puis libellé.
-export function agenda(reservations, ajd) {
+// `ecartees` : identifiants des dossiers annulés, dont les réservations ne comptent plus (annuler un dossier ne change pas leur statut).
+export function agenda(reservations, ajd, ecartees = new Set()) {
   const demain = ajouterJours(ajd, 1);
-  const actives = reservations.filter((r) => r.statut !== "annule");
+  const actives = reservations.filter((r) => r.statut !== "annule" && !ecartees.has(r.dossier_id));
   const tri = (a, b) => (a.date_service || "").localeCompare(b.date_service || "") || (a.heure_pickup || "99").localeCompare(b.heure_pickup || "99") || a.libelle.localeCompare(b.libelle);
   return {
     aujourdhui: actives.filter((r) => r.date_service === ajd).sort(tri),
@@ -107,24 +108,27 @@ export function agenda(reservations, ajd) {
 }
 
 // Dû aux partenaires : par partenaire et par mois du service, hors annulées. `netDe(r)` renvoie la ligne de nets ou null.
-export function duParPartenaire(reservations, netDe) {
+// La marge n'est calculée que sur les réservations dont le net est connu : une vente sans net ne doit pas gonfler la marge.
+export function duParPartenaire(reservations, netDe, ecartees = new Set()) {
   const groupes = new Map();
   for (const r of reservations) {
-    if (r.statut === "annule") continue;
+    if (r.statut === "annule" || ecartees.has(r.dossier_id)) continue;
     const mois = (r.date_service || "").slice(0, 7) || "sans-date";
     const cle = `${r.partenaire_id || ""}|${mois}`;
-    const g = groupes.get(cle) || { partenaire_id: r.partenaire_id || null, mois, nb: 0, vente: 0, net_prevu: 0, net_paye: 0, sansNet: 0, reservations: [] };
+    const g = groupes.get(cle) || { partenaire_id: r.partenaire_id || null, mois, nb: 0, vente: 0, venteAvecNet: 0, net_prevu: 0, net_paye: 0, sansNet: 0, reservations: [] };
     const n = netDe(r);
     g.nb++;
     g.vente += Number(r.montant_vente) || 0;
-    if (n && n.net_prevu !== null && n.net_prevu !== undefined) g.net_prevu += Number(n.net_prevu);
-    else g.sansNet++;
+    if (n && n.net_prevu !== null && n.net_prevu !== undefined) {
+      g.net_prevu += Number(n.net_prevu);
+      g.venteAvecNet += Number(r.montant_vente) || 0;
+    } else g.sansNet++;
     if (n && n.net_paye !== null && n.net_paye !== undefined) g.net_paye += Number(n.net_paye);
     g.reservations.push(r);
     groupes.set(cle, g);
   }
   return [...groupes.values()]
-    .map((g) => ({ ...g, vente: arr(g.vente), net_prevu: arr(g.net_prevu), net_paye: arr(g.net_paye), reste: arr(g.net_prevu - g.net_paye), marge: arr(g.vente - g.net_prevu) }))
+    .map((g) => ({ ...g, vente: arr(g.vente), net_prevu: arr(g.net_prevu), net_paye: arr(g.net_paye), reste: arr(g.net_prevu - g.net_paye), marge: arr(g.venteAvecNet - g.net_prevu) }))
     .sort((a, b) => b.mois.localeCompare(a.mois) || (b.reste - a.reste));
 }
 
@@ -346,4 +350,72 @@ export function messageVoucher({ pour = "client", prenom = "", montant = null, d
 export function lienWhatsApp(telephone, message) {
   const numero = chiffres(telephone).replace("+", "");
   return `https://wa.me/${numero}?text=${encodeURIComponent(message)}`;
+}
+
+// ---- Écart entre une réservation et sa facture ------------------------------------------------------------------
+// La réservation est créée d'après les lignes de la facture, puis modifiée à part : une quantité, une date ou un montant changé d'un côté
+// laisse l'autre en retard. Renvoie null (rien à signaler), { retiree: true } (la ligne n'est plus dans le document) ou { champs: [...] }.
+export function ecartReservation(r, doc) {
+  const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
+  if (!ids.size || !doc || !doc.contenu) return null;
+  const lignes = (doc.contenu.lignes || []).filter((l) => ids.has(l.id));
+  if (!lignes.length) return { retiree: true, champs: [] };
+  // Mêmes règles qu'à la création : adultes et enfants réunis, vente = somme des lignes, date de la première ligne adulte. (On ne regroupe pas
+  // par date : une ligne dont la date a changé doit apparaître comme un écart, pas comme une deuxième réservation.)
+  const utiles = lignes.filter((l) => l.kind !== "texte" && l.kind !== "remise");
+  if (!utiles.length) return { retiree: true, champs: [] };
+  const premiere = utiles.find((l) => !estLigneEnfant(l)) || utiles[0];
+  const qte = (l) => (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
+  const a = {
+    date_service: premiere.date_service || null,
+    personnes: { adultes: utiles.filter((l) => !estLigneEnfant(l)).reduce((s, l) => s + qte(l), 0), enfants: utiles.filter(estLigneEnfant).reduce((s, l) => s + qte(l), 0) },
+    montant_vente: utiles.some((l) => brut(l) !== null) ? arr(utiles.reduce((s, l) => s + (brut(l) || 0), 0)) : null,
+  };
+  const champs = [];
+  if ((r.date_service || null) !== (a.date_service || null)) champs.push({ cle: "date_service", reservation: r.date_service || null, document: a.date_service || null });
+  const pr = r.personnes || {};
+  if ((Number(pr.adultes) || 0) !== a.personnes.adultes || (Number(pr.enfants) || 0) !== a.personnes.enfants) champs.push({ cle: "personnes", reservation: { adultes: Number(pr.adultes) || 0, enfants: Number(pr.enfants) || 0 }, document: { adultes: a.personnes.adultes, enfants: a.personnes.enfants } });
+  if (arr(Number(r.montant_vente) || 0) !== arr(Number(a.montant_vente) || 0)) champs.push({ cle: "montant_vente", reservation: Number(r.montant_vente) || 0, document: Number(a.montant_vente) || 0 });
+  return champs.length ? { retiree: false, champs, attendu: a } : null;
+}
+
+// ---- Contrôles avant d'envoyer un voucher ------------------------------------------------------------------------
+// Ce qui manque ou reste à vérifier sur la réservation. Renvoie des codes ; l'écran les traduit. Un voucher peut être envoyé quand même.
+export function controlesVoucher(r, client = {}, type = "") {
+  const codes = [];
+  if (r.statut !== "confirme") codes.push("non_confirmee");
+  if (!r.date_service) codes.push("sans_date");
+  if (type !== "location") {
+    if (!String(r.heure_pickup || "").trim()) codes.push("sans_heure");
+    if (!String(r.lieu_pickup || "").trim()) codes.push((client.adresse || "").trim() ? "lieu_adresse_client" : "sans_lieu");
+  }
+  return codes;
+}
+
+// ---- Feuille du jour ---------------------------------------------------------------------------------------------
+// Les réservations d'une date, par partenaire, pour le chauffeur ou le capitaine : heure, client, téléphone, hôtel, personnes, prestation.
+// `contexte.client(r)` renvoie le client d'une réservation, `contexte.partenaire(id)` son nom.
+export function feuilleDuJour(reservations, date, contexte, ecartees = new Set()) {
+  const groupes = new Map();
+  for (const r of reservations) {
+    if (r.date_service !== date || r.statut === "annule" || ecartees.has(r.dossier_id)) continue;
+    const cle = r.partenaire_id || "";
+    const g = groupes.get(cle) || { partenaire_id: r.partenaire_id || null, nom: (r.partenaire_id && contexte.partenaire(r.partenaire_id)) || "", lignes: [], adultes: 0, enfants: 0 };
+    const c = contexte.client(r) || {};
+    const lieu = hotelEtChambre(c, r);
+    g.lignes.push({ id: r.id, heure: r.heure_pickup || "", client: [c.prenom, c.nom].filter(Boolean).join(" "), telephone: c.telephone || "", hotel: lieu.hotel, chambre: lieu.chambre, personnes: r.personnes || {}, libelle: r.libelle, reference: r.reference_partenaire || "", statut: r.statut });
+    g.adultes += Number(r.personnes && r.personnes.adultes) || 0;
+    g.enfants += Number(r.personnes && r.personnes.enfants) || 0;
+    groupes.set(cle, g);
+  }
+  return [...groupes.values()]
+    .map((g) => ({ ...g, lignes: g.lignes.sort((a, b) => (a.heure || "99").localeCompare(b.heure || "99") || a.client.localeCompare(b.client)) }))
+    .sort((a, b) => (a.nom || "~").localeCompare(b.nom || "~"));
+}
+
+// Texte à coller dans WhatsApp, en anglais comme les messages aux partenaires.
+export function texteFeuille(groupe, date) {
+  const tete = `${groupe.nom ? `${groupe.nom}: ` : ""}${dateTexte(date, "en")}, ${personnesTexte({ adultes: groupe.adultes, enfants: groupe.enfants }, "en") || "0 passengers"}`;
+  const lignes = groupe.lignes.map((l) => [l.heure, l.libelle, l.client, l.telephone, [l.hotel, l.chambre ? `room ${l.chambre}` : ""].filter(Boolean).join(", "), personnesTexte(l.personnes, "en")].filter(Boolean).join(" · "));
+  return [tete, ...lignes].join("\n");
 }

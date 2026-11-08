@@ -1,4 +1,4 @@
-import { etat, resumes, nomClient, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif } from "../etat.mjs";
+import { etat, resumes, nomClient, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif, dossiersAnnules } from "../etat.mjs";
 import { reglagesIncomplets } from "../defauts.mjs";
 import { h } from "../ui.mjs";
 import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois, finDuMois } from "../calc.mjs";
@@ -31,7 +31,7 @@ export async function tableauDeBord() {
   const ceMois = await paiementsPeriode(`${ajd.slice(0, 7)}-01`, finDuMois(ajd));
   const taches = aFaire(rs, ajd, reglages());
   const contrats = peut("partenaires.lire") && moduleActif("partenaires") ? contratsAEcheance(etat.db.partenaires, ajd) : [];
-  const ag = agenda(etat.db.reservations, ajd);
+  const ag = agenda(etat.db.reservations, ajd, dossiersAnnules());
   const aConfirmer = [...ag.enRetard, ...ag.aConfirmer];
   const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
   const sectionAgenda = (titre, rs, videTexte) => h("section", null, h("h2", null, titre, h("span", { class: "tag" }, rs.length)), rs.length ? listeReservations(rs, { apres: rafraichir }) : h("p", { class: "vide-court" }, videTexte));
