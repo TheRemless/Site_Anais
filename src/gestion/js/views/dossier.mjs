@@ -269,6 +269,49 @@ function ficheDossierVue(id) {
     h("div", { class: "actions" }, boutonPaiement)
   );
 
+  // Corriger un paiement mal saisi (date, montant, moyen, note) sans le supprimer et le ressaisir. Le sens (reçu ou remboursé) ne change pas.
+  const corrigerPaiement = (p) => {
+    const rembourse = Number(p.montant) < 0;
+    const f = {
+      date: h("input", { id: "pc-date", type: "date", value: p.date, required: true }),
+      montant: h("input", { id: "pc-montant", type: "number", step: "0.01", min: "0", required: true, inputmode: "decimal", value: Math.abs(Number(p.montant)) }),
+      moyen: h("select", { id: "pc-moyen" }, MOYENS.map(([v, l]) => h("option", { value: v }, l))),
+      note: h("input", { id: "pc-note", value: p.note || "" }),
+    };
+    f.moyen.value = p.moyen || "";
+    const enregistrer = h("button", { type: "submit", class: "principal" }, tr("Enregistrer"));
+    const fermer = modal(
+      rembourse ? tr("Corriger le remboursement") : tr("Corriger le paiement"),
+      h(
+        "form",
+        {
+          class: "formulaire",
+          onsubmit: async (e) => {
+            e.preventDefault();
+            const montant = num(f.montant.value);
+            if (!montant || montant <= 0) return toast(tr("Indiquez un montant supérieur à zéro."), true);
+            // Même garde-fous que pour un nouveau paiement, en retirant l'ancien montant du calcul.
+            const autres = arrondi(r.recu - Number(p.montant));
+            if (rembourse && montant > autres) return toast(tr("Le remboursement dépasse ce qui a été encaissé ({recu}).", { recu: fm(autres) }), true);
+            if (!rembourse && r.total > 0 && arrondi(autres + montant - r.total) > 0 && !(await confirmer(tr("Avec ce montant, le dossier serait payé au-delà de son total. L'enregistrer quand même ?"), tr("Enregistrer")))) return;
+            enregistrer.disabled = true;
+            try {
+              await modifier("paiements", p.id, { date: f.date.value, montant: rembourse ? -montant : montant, moyen: f.moyen.value, note: f.note.value.trim() });
+              fermer();
+              toast(tr("Paiement corrigé."));
+              rafraichir();
+            } catch (err) {
+              enregistrer.disabled = false;
+              toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+            }
+          },
+        },
+        h("div", { class: "grille-form" }, champ(tr("Date de réception"), f.date), champ(rembourse ? tr("Montant remboursé ({x})", { x: r.devise || regl.devise }) : tr("Montant reçu ({x})", { x: r.devise || regl.devise }), f.montant), champ(tr("Moyen de paiement"), f.moyen), champ(tr("Note"), f.note)),
+        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), enregistrer)
+      )
+    );
+  };
+
   const nomMoyen = (v) => (MOYENS.find(([k]) => k === v) || [0, v])[1];
   const tableauPaiements = paiements.length
     ? h(
@@ -292,6 +335,7 @@ function ficheDossierVue(id) {
                 h(
                   "td",
                   { class: "action-cellule" },
+                  !droit.paiements ? null : h("button", { class: "lien", type: "button", "aria-label": tr("Corriger le paiement du {date}", { date: formatDate(p.date) }), onclick: () => corrigerPaiement(p) }, tr("Corriger")),
                   !droit.paiements ? null : h(
                     "button",
                     {

@@ -222,7 +222,7 @@ function editeurVue(id) {
     if (k === "z" && !e.shiftKey) (e.preventDefault(), annuler());
     else if ((k === "z" && e.shiftKey) || k === "y") (e.preventDefault(), retablir());
     else if (k === "s") (e.preventDefault(), sauverMaintenant().then(() => toast(tr("Enregistré."))));
-    else if (k === "p") (e.preventDefault(), pdf({ ...doc }));
+    else if (k === "p") (e.preventDefault(), telechargerPdf());
   };
   document.addEventListener("keydown", touche);
   window.addEventListener("hashchange", () => document.removeEventListener("keydown", touche), { once: true });
@@ -583,6 +583,11 @@ function editeurVue(id) {
   );
 
   // ---- Actions ------------------------------------------------------------------------------------------
+  // Un devis téléchargé part presque toujours chez le client : sans date d'envoi il n'est jamais relancé, donc on propose de la poser.
+  async function telechargerPdf() {
+    pdf({ ...doc });
+    if (doc.type === "devis" && !doc.envoye_le && peut("documents.ecrire") && (await confirmer(tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance."), tr("Marquer comme envoyé")))) boutonEnvoi.click();
+  }
   const boutonEnvoi = h("button", { class: "secondaire", type: "button" });
   function majBoutonEnvoi() {
     boutonEnvoi.textContent = doc.envoye_le ? (estFacture || locale ? tr("Envoyée le {date}", { date: formatDate(doc.envoye_le) }) : tr("Envoyé le {date}", { date: formatDate(doc.envoye_le) })) : estFacture || locale ? tr("Marquer comme envoyée") : tr("Marquer comme envoyé");
@@ -638,7 +643,7 @@ function editeurVue(id) {
       "div",
       { class: "entete editeur-entete" },
       h("div", null, h("h1", null, nomDoc), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
-      h("div", { class: "entete-actions" }, statut, lectureSeule ? null : btnVersions, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: tr("Télécharger le PDF (Ctrl+P)"), onclick: () => pdf({ ...doc }) }, tr("Télécharger le PDF")))
+      h("div", { class: "entete-actions" }, statut, lectureSeule ? null : btnVersions, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: tr("Télécharger le PDF (Ctrl+P)"), onclick: telechargerPdf }, tr("Télécharger le PDF")))
     ),
     h("p", { class: "aide-pdf" }, tr("Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « {nomDoc} {ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: dossier.ref })),
     bandeauConflit,

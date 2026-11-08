@@ -34,7 +34,7 @@ const ROUTES = [
   [/^#\/trajets(?:\?.*)?$/, "trajets", vueTrajets],
   [/^#\/regles$/, "regles", vueRegles],
   [/^#?\/?$/, "tableau", tableauDeBord],
-  [/^#\/dossiers$/, "dossiers", listeDossiers],
+  [/^#\/dossiers(?:\?.*)?$/, "dossiers", listeDossiers],
   [/^#\/dossiers\/nouveau(?:\?.*)?$/, "dossiers", nouveauDossier],
   [/^#\/dossier\/([\w-]+)$/, "dossiers", ficheDossier],
   [/^#\/doc\/([\w-]+)$/, "dossiers", editeur],

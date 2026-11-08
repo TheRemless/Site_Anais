@@ -11,13 +11,29 @@ const ONGLETS = [
   ["cours", N_("En cours"), ["brouillon", "devis_envoye", "accepte", "acompte"]],
   ["soldes", N_("Soldés"), ["solde"]],
   ["annules", N_("Annulés"), ["annule"]],
+  ["encaisser", N_("À encaisser"), ["accepte", "acompte"]],
+  ["attente", N_("Devis en attente"), ["devis_envoye"]],
   ["tous", N_("Tous"), Object.keys(STATUTS)],
 ];
+
+const TRIS = [
+  ["recents", N_("Plus récents")],
+  ["depart", N_("Départ le plus proche")],
+  ["reste", N_("Reste à encaisser")],
+  ["client", N_("Client (A à Z)")],
+];
+// Ordre des dossiers : sans date de départ ou sans reste, ils passent après les autres.
+const COMPARE = {
+  recents: (a, b) => (a.dossier.created_at < b.dossier.created_at ? 1 : -1),
+  depart: (a, b) => (a.dossier.date_depart || "9999").localeCompare(b.dossier.date_depart || "9999") || COMPARE.recents(a, b),
+  reste: (a, b) => (b.reste > 0 ? b.reste : 0) - (a.reste > 0 ? a.reste : 0) || COMPARE.recents(a, b),
+  client: (a, b) => nomClient(a.client).localeCompare(nomClient(b.client)) || COMPARE.recents(a, b),
+};
 
 // Valeurs enregistrées en français dans les réglages (civilités, nom du champ « pays ») : on traduit seulement l'affichage.
 const _AFFICHAGE = [N_("Madame"), N_("Monsieur"), N_("Mademoiselle"), N_("Pays"), N_("Service"), N_("Trajet")];
 
-const filtre = { onglet: "cours", q: "" };
+const filtre = { onglet: "cours", q: "", tri: "recents" };
 const PAGE = 50;
 // Dossiers cochés pour une action groupée (changer de responsable).
 const selection = new Set();
@@ -25,6 +41,10 @@ const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").to
 
 export function listeDossiers() {
   selection.clear();
+  // Un lien du tableau de bord ouvre directement le bon onglet (#/dossiers?onglet=encaisser).
+  const params = new URLSearchParams(location.hash.split("?")[1] || "");
+  if (ONGLETS.some(([k]) => k === params.get("onglet"))) { filtre.onglet = params.get("onglet"); filtre.q = ""; }
+  if (COMPARE[params.get("tri")]) filtre.tri = params.get("tri");
   const corps = h("div");
   const groupee = peut("dossiers.ecrire");
   const barre = h("div", { class: "barre-selection", hidden: true });
@@ -62,13 +82,15 @@ export function listeDossiers() {
 
   let limite = PAGE;
   function dessiner() {
+    // Une recherche porte sur tous les dossiers : un dossier soldé ou annulé ne doit pas devenir introuvable parce qu'un autre onglet est ouvert.
     const statuts = ONGLETS.find(([k]) => k === filtre.onglet)[2];
     const q = sansAccents(filtre.q);
     const lignes = resumes()
-      .filter((r) => statuts.includes(r.statut))
+      .filter((r) => (q ? true : statuts.includes(r.statut)))
       .filter((r) => !q || sansAccents(`${nomClient(r.client)} ${r.dossier.ref} ${r.dossier.pays}`).includes(q))
-      .sort((a, b) => (a.dossier.created_at < b.dossier.created_at ? 1 : -1));
+      .sort(COMPARE[filtre.tri]);
     vider(corps);
+    corps.append(...(q && filtre.onglet !== "tous" ? [h("p", { class: "aide", role: "status" }, tr("La recherche porte sur tous les dossiers, quel que soit l'onglet."))] : []));
     if (!lignes.length) {
       corps.append(
         etat.db.dossiers.length
@@ -77,7 +99,7 @@ export function listeDossiers() {
       );
       return;
     }
-    const cocher = (r) => h("input", { type: "checkbox", "aria-label": tr("Sélectionner {nomClient}", { nomClient: nomClient(r.client) }), checked: selection.has(r.dossier.id), onchange: (e) => { if (e.target.checked) selection.add(r.dossier.id); else selection.delete(r.dossier.id); majBarre(); } });
+    const cocher = (r) => h("label", { class: "case-zone" }, h("input", { type: "checkbox", "aria-label": tr("Sélectionner {nomClient}", { nomClient: nomClient(r.client) }), checked: selection.has(r.dossier.id), onchange: (e) => { if (e.target.checked) selection.add(r.dossier.id); else selection.delete(r.dossier.id); majBarre(); } }));
     corps.append(
       cartes(lignes.slice(0, limite), (r) => [
         groupee ? cocher(r) : null,
@@ -92,8 +114,8 @@ export function listeDossiers() {
       ]),
       h(
         "table",
-        { class: "tableau seulement-bureau" },
-        h("thead", null, h("tr", null, groupee ? h("th", { class: "case-cellule", scope: "col" }, h("input", { type: "checkbox", "aria-label": tr("Sélectionner les dossiers affichés"), checked: lignes.slice(0, limite).every((r) => selection.has(r.dossier.id)), onchange: (e) => { lignes.slice(0, limite).forEach((r) => (e.target.checked ? selection.add(r.dossier.id) : selection.delete(r.dossier.id))); majBarre(); dessiner(); } })) : null, [tr("Client"), tr("Référence"), tr("Intitulé"), tr("Statut"), tr("Total"), tr("Reste")].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : null }, t)))),
+        { class: "tableau tableau-dossiers seulement-bureau" },
+        h("thead", null, h("tr", null, groupee ? h("th", { class: "case-cellule", scope: "col" }, h("label", { class: "case-zone" }, h("input", { type: "checkbox", "aria-label": tr("Sélectionner les dossiers affichés"), checked: lignes.slice(0, limite).every((r) => selection.has(r.dossier.id)), onchange: (e) => { lignes.slice(0, limite).forEach((r) => (e.target.checked ? selection.add(r.dossier.id) : selection.delete(r.dossier.id))); majBarre(); dessiner(); } }))) : null, [tr("Client"), tr("Intitulé"), tr("Départ"), tr("Statut"), tr("Total"), tr("Reste")].map((t, i) => h("th", { scope: "col", class: i >= 4 ? "num" : null }, t)))),
         h(
           "tbody",
           null,
@@ -102,9 +124,9 @@ export function listeDossiers() {
               "tr",
               null,
               groupee ? h("td", { class: "case-cellule" }, cocher(r)) : null,
-              h("td", { "data-label": tr("Client") }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client))),
-              h("td", { "data-label": tr("Référence"), class: "ref" }, r.dossier.ref),
+              h("td", { "data-label": tr("Client") }, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client)), h("span", { class: "ref ref-sous" }, r.dossier.ref)),
               h("td", { "data-label": tr("Intitulé") }, voyageTexte(r.dossier.bandeau, r.dossier.pays)),
+              h("td", { "data-label": tr("Départ") }, r.dossier.date_depart ? formatDate(r.dossier.date_depart) : "-"),
               h("td", { "data-label": tr("Statut") }, pastille(r.statut)),
               h("td", { "data-label": tr("Total"), class: "num" }, r.total ? formatMontant(r.total, r.devise) : "-"),
               h("td", { "data-label": tr("Reste"), class: "num" }, r.total ? formatMontant(r.reste, r.devise) : "-")
@@ -128,6 +150,7 @@ export function listeDossiers() {
           "aria-pressed": cle === filtre.onglet ? "true" : "false",
           onclick: (e) => {
             filtre.onglet = cle;
+            majUrl();
             limite = PAGE;
             for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false");
             dessiner();
@@ -137,13 +160,17 @@ export function listeDossiers() {
       )
     )
   );
+  // L'adresse suit l'onglet et le tri : un rechargement ou un favori retrouve la même liste.
+  const majUrl = () => history.replaceState(null, "", `#/dossiers?onglet=${filtre.onglet}&tri=${filtre.tri}`);
+  const tri = h("select", { id: "tri-dossiers", onchange: (e) => { filtre.tri = e.target.value; majUrl(); limite = PAGE; dessiner(); } }, TRIS.map(([k, l]) => h("option", { value: k }, tr(l))));
+  tri.value = filtre.tri;
   dessiner();
   majBarre();
   return h(
     "div",
     { "data-titre": tr("Dossiers") },
     h("div", { class: "entete" }, h("h1", null, tr("Dossiers")), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Nouveau dossier")) : null),
-    h("div", { class: "barre-outils" }, onglets, h("div", { class: "champ recherche" }, h("label", { for: "recherche" }, tr("Rechercher")), recherche)),
+    h("div", { class: "barre-outils" }, onglets, h("div", { class: "barre-champs" }, h("div", { class: "champ" }, h("label", { for: "tri-dossiers" }, tr("Trier par")), tri), h("div", { class: "champ recherche" }, h("label", { for: "recherche" }, tr("Rechercher")), recherche))),
     barre,
     corps
   );
