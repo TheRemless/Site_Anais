@@ -3,6 +3,7 @@ import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs"
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
 import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
+import { envoyerDocument, sansImpression } from "./document-envoi.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { tr, localeActive } from "../i18n.mjs";
 
@@ -585,6 +586,8 @@ function editeurVue(id) {
   // ---- Actions ------------------------------------------------------------------------------------------
   // Un devis téléchargé part presque toujours chez le client : sans date d'envoi il n'est jamais relancé, donc on propose de la poser.
   async function telechargerPdf() {
+    // Téléphone : « Imprimer » n'enregistre pas de PDF, on fabrique le fichier dans la page.
+    if (sansImpression()) return envoyerDocument({ ...doc }, { marquerEnvoye: () => boutonEnvoi.click() });
     pdf({ ...doc });
     if (doc.type === "devis" && !doc.envoye_le && peut("documents.ecrire") && (await confirmer(tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance."), tr("Marquer comme envoyé")))) boutonEnvoi.click();
   }
@@ -643,7 +646,7 @@ function editeurVue(id) {
       "div",
       { class: "entete editeur-entete" },
       h("div", null, h("h1", null, nomDoc), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
-      h("div", { class: "entete-actions" }, statut, lectureSeule ? null : btnVersions, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: tr("Télécharger le PDF (Ctrl+P)"), onclick: telechargerPdf }, tr("Télécharger le PDF")))
+      h("div", { class: "entete-actions" }, statut, lectureSeule ? null : btnVersions, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: tr("Télécharger le PDF (Ctrl+P)"), onclick: telechargerPdf }, sansImpression() ? tr("PDF et envoi") : tr("Télécharger le PDF")))
     ),
     h("p", { class: "aide-pdf" }, tr("Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « {nomDoc} {ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: dossier.ref })),
     bandeauConflit,

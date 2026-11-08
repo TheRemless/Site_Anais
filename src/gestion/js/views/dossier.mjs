@@ -10,6 +10,7 @@ import { margeDocument } from "../partenaires-calc.mjs";
 import { sectionReservationsDossier, formulaireReservation } from "./reservations.mjs";
 import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
+import { envoyerDocument, sansImpression } from "./document-envoi.mjs";
 import { numeroVoucher, TITRES_VOUCHER } from "../operations-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
@@ -367,7 +368,7 @@ function ficheDossierVue(id) {
       h("td", { "data-label": tr("Émis le") }, formatDate(doc.date_emission)),
       h("td", { "data-label": tr("Envoyé le") }, doc.envoye_le ? formatDate(doc.envoye_le) : tr("Pas encore")),
       h("td", { class: "num", "data-label": tr("Total") }, fm(t.net, doc.contenu.devise)),
-      h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: `#/doc/${doc.id}` }, tr("Ouvrir")), h("button", { class: "secondaire petit", type: "button", onclick: () => pdf(doc) }, "PDF"))
+      h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: `#/doc/${doc.id}` }, tr("Ouvrir")), h("button", { class: "secondaire petit", type: "button", onclick: () => (sansImpression() ? envoyerDocument(doc, { marquerEnvoye: async () => { await modifier("documents", doc.id, { envoye_le: aujourdhui() }); rafraichir(); } }) : pdf(doc)) }, "PDF"))
     );
   };
 
