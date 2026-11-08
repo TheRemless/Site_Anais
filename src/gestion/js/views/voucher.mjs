@@ -113,7 +113,7 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
       "div",
       { class: "v-entete" },
       regl.apparence.logo ? h("img", { class: "v-logo", src: regl.apparence.logo, alt: "" }) : null,
-      h("div", { class: "v-societe" }, h("p", { class: "v-nom" }, nomSociete), sousTitre ? h("p", { class: "v-par" }, sousTitre) : null, h("p", null, adresse), h("p", null, `TAT licence: ${v.licence || ""}`), h("p", null, `Whatsapp: ${whatsapp}`), h("p", null, `E-mail: ${email}`))
+      h("div", { class: "v-societe" }, h("p", { class: "v-nom" }, nomSociete), sousTitre ? h("p", { class: "v-par" }, sousTitre) : null, h("p", null, adresse), (v.licence || e.licence) ? h("p", null, `TAT licence: ${v.licence || e.licence}`) : null, h("p", null, `Whatsapp: ${whatsapp}`), h("p", null, `E-mail: ${email}`))
     ),
     h("h1", { class: "v-titre" }, TITRES[type]),
     h("section", null, h("h2", null, "CUSTOMER DETAILS"), ligne("Guest Name", nomClient), ligne("WhatsApp / Phone", client.telephone), type === "transfert" || type === "billet" ? null : ligne("Hotel / Accommodation", hotel, h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Room No: "), chambre)),

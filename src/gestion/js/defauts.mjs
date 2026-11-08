@@ -218,7 +218,7 @@ export const REGLAGES_NEUTRE = {
   fonctionnement: "sur_mesure",
   // Vouchers (mode excursions) : en-tête et textes fixes, en anglais.
   voucher: { nom: "", sous_titre: "", adresse: "", whatsapp: "", email: "", licence: "", merci: "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", merci_transfert: "Thank you for booking with {entreprise}!\nWe wish you a wonderful journey.", note_transfert: "Your driver will be waiting for you at the meeting point.\nIf your plan changes, please let us know as soon as possible." },
-  emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", contact: "" },
+  emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", licence: "", contact: "" },
   paiement: { texte: "", nom: "", autres: [] },
   devise: "",
   conditions: { acompte_pct: 0, delai_jours: 10, relance_jours: 7, tva_mention: "", tva_mention_en: "", cgv_url: "" },
@@ -309,7 +309,7 @@ export function nouvelleLigne(kind, props = {}) {
 // Démonstration : trois entreprises fictives, deux utilisateurs, des dossiers à tous les statuts.
 // ---------------------------------------------------------------------------------------------
 const REGLAGES_DEMO_AGENCE = completerReglages({
-  emetteur: { nom: "Agence démo", adresse: "1 rue de l'Exemple\n00000 Ville", telephone: "+00 00 000 00 00", contact: "Prénom Nom\n+00 00 000 00 00 (WhatsApp)\ncontact@exemple.com" },
+  emetteur: { nom: "Agence démo", adresse: "1 rue de l'Exemple\n00000 Ville", telephone: "+00 00 000 00 00", licence: "00/00000", contact: "Prénom Nom\n+00 00 000 00 00 (WhatsApp)\ncontact@exemple.com" },
   paiement: { texte: "Banque: Banque démo\nIBAN: CH00 0000 0000 0000 0000 0\nSwift: XXXXXXXXXXX\nPrénom Nom\n0000 Ville", },
   devise: "CHF",
   conditions: { acompte_pct: 50, delai_jours: 10, relance_jours: 7, tva_mention: "TVA non applicable", cgv_url: "" },
@@ -327,7 +327,7 @@ const REGLAGES_DEMO_AGENCE = completerReglages({
 });
 
 const REGLAGES_DEMO_TOURS = completerReglages({
-  emetteur: { nom: "Excursions démo", adresse: "2 chemin de la Plage\n00000 Ville", telephone: "+00 00 000 00 01", contact: "Équipe démo\ncontact@exemple.com" },
+  emetteur: { nom: "Excursions démo", adresse: "2 chemin de la Plage\n00000 Ville", telephone: "+00 00 000 00 01", licence: "00/00001", contact: "Équipe démo\ncontact@exemple.com" },
   paiement: { texte: "Banque: Banque démo\nNuméro de compte: 000-0-00000-0\nTitulaire: Excursions démo" },
   devise: "THB",
   conditions: { acompte_pct: 0, delai_jours: 5, relance_jours: 7, tva_mention: "", cgv_url: "" },

@@ -117,7 +117,8 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
         h("strong", null, e.nom.toUpperCase()),
         e.sous_titre ? h("span", { class: "sous-titre" }, e.sous_titre.toUpperCase()) : null,
         lignes(e.adresse).map((l) => h("p", null, l)),
-        e.telephone ? h("p", null, e.telephone) : null
+        e.telephone ? h("p", null, e.telephone) : null,
+        e.licence ? h("p", { class: "sheet-licence" }, `${en ? "TAT licence" : "Licence TAT"}: ${e.licence}`) : null
       ),
       h(
         "div",

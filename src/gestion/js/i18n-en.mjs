@@ -1472,4 +1472,5 @@ export const EN = {
   "PDF téléchargé : joignez-le dans la conversation WhatsApp.": "PDF downloaded: attach it in the WhatsApp conversation.",
   "WhatsApp s'ouvre avec le PDF : choisissez le contact dans sa liste.": "WhatsApp opens with the PDF: pick the contact from its list.",
   "WhatsApp ne reçoit pas de fichier par un lien : le PDF est téléchargé, joignez-le dans la conversation qui s'ouvre.": "WhatsApp cannot receive a file through a link: the PDF is downloaded, attach it in the conversation that opens.",
+  "Affiché sous l'adresse sur les devis et factures, et sur les vouchers (sauf si le bloc Vouchers a le sien).": "Shown under the address on quotes and invoices, and on vouchers (unless the Vouchers block has its own).",
 };
