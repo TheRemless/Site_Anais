@@ -1,8 +1,7 @@
 // Vouchers de Secret Travel & Tour : une page A4 par réservation, remise au client et au prestataire une fois payé.
 // Trois modèles d'après les documents d'Anaïs : Boat Tour, Transfer, Activity & Tour. Toujours en anglais.
 import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, resumeDossier } from "../etat.mjs";
-import { h, modal } from "../ui.mjs";
-import { apercuA4 } from "./commun.mjs";
+import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
 import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER, pointEmbarquement, consigneCheckin, estPickupHotel, capaciteBateau, bateauEtQuai, horairesTexte, dureeTexte, venduParPersonne, concerneUnVol } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
@@ -138,12 +137,6 @@ export function imprimerTousLesVouchers(dossierId) {
   const d = etat.db.dossiers.find((y) => y.id === dossierId) || {};
   if (!liste.length) return;
   imprimer(h("div", { class: "vouchers" }, liste.map(renderVoucher)), `Vouchers ${d.ref || ""}`);
-}
-
-// Aperçu à l'écran, à l'échelle de la fenêtre, avant d'imprimer.
-export function apercuVoucher(x) {
-  const { zone } = apercuA4(() => renderVoucher(x));
-  modal(`Voucher ${numeroVoucher((etat.db.dossiers.find((d) => d.id === x.reservation.dossier_id) || {}).ref || "", x.index)}`, h("div", { class: "modal-corps apercu-voucher" }, zone, h("div", { class: "actions" }, h("button", { class: "principal", type: "button", onclick: () => imprimerVoucher(x) }, "Voucher PDF"))), { large: true });
 }
 
 // Voucher d'exemple pour l'aperçu des réglages : il suit les champs en cours de modification.

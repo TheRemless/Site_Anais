@@ -438,6 +438,14 @@ input.couleur { width: 72px; padding: 2px; }
 #zone-impression .voucher { margin: 0 auto; }
 .apercu-voucher .apercu-cadre { margin-bottom: 12px; }
 .apercu-voucher .voucher { min-height: 0; }
+/* Hôte de l'image du voucher : hors de l'écran, à la largeur d'une page A4, sans la hauteur minimale d'une page entière. */
+.hote-image { position: fixed; left: -10000px; top: 0; width: 794px; background: #fff; pointer-events: none; }
+.hote-image .voucher { min-height: 0; }
+.envoi-voucher .envoi-apercu { margin: 0 0 14px; text-align: center; }
+.envoi-voucher .envoi-apercu img { display: block; margin: 0 auto; max-width: 100%; max-height: 52vh; border: 1px solid var(--bord); border-radius: 8px; box-shadow: var(--ombre); }
+.envoi-voucher .envoi-actions { flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
+@media (max-width: 719px) { .envoi-voucher .envoi-actions { flex-direction: column; align-items: stretch; } .envoi-voucher .envoi-actions button { width: 100%; } }
+.envoi-voucher .aide { margin: 12px 0 0; }
 
 /* Sélecteur de prestation dans l'éditeur */
 .choix-liste { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--bord); border-radius: 8px; }

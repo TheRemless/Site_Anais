@@ -235,3 +235,21 @@ test("phrase des CGV : propre à la facture, sans crochets bruts quand le lien m
   assert.equal(phraseCgv({ ...fr, cgv_facture: "Sur mesure [ici]({cgv_url})." }, { estFacture: true, cgvUrl: "u" }), "Sur mesure [ici]({cgv_url}).", "phrase de facture personnalisée");
   assert.equal(phraseCgv({ facture: "Facture", cgv: "" }, { estFacture: true, cgvUrl: "u" }), "", "phrase vidée dans les réglages : rien sur le document");
 });
+
+test("envoi d'un voucher par WhatsApp : nom du fichier, message, lien avec ou sans numéro", async () => {
+  const { nomFichierVoucher, messageVoucher, lienWhatsApp } = await import("../src/gestion/js/operations-calc.mjs");
+  const { chiffres, telWhatsApp } = await import("../src/gestion/js/partenaires-calc.mjs");
+  assert.equal(nomFichierVoucher("EX-2026-0003-1", "Anna Keller"), "Voucher EX-2026-0003-1 - Anna.png");
+  assert.equal(nomFichierVoucher("EX-2026-0003-1", ""), "Voucher EX-2026-0003-1 - client.png");
+  assert.equal(nomFichierVoucher("A/B:1", 'Jo*"x'), "Voucher AB1 - Jox.png", "aucun caractère interdit dans un nom de fichier");
+  assert.equal(messageVoucher({ pour: "client", prenom: "Anna", numero: "EX-1-1", service: "Cooking class", dateIso: "2026-12-05" }), "Hello Anna, here is your voucher EX-1-1 for Cooking class on 5 December 2026.");
+  assert.equal(messageVoucher({ pour: "client", numero: "EX-1-1", service: "Massage" }), "Hello, here is your voucher EX-1-1 for Massage.");
+  assert.equal(messageVoucher({ pour: "partenaire", client: "Anna Keller", numero: "EX-1-1", service: "Cooking class", dateIso: "2026-12-05" }), "Voucher EX-1-1: Cooking class on 5 December 2026, guest Anna Keller.");
+  assert.equal(lienWhatsApp("+49 160 123456", "Hi & bye"), "https://wa.me/49160123456?text=Hi%20%26%20bye");
+  assert.equal(lienWhatsApp("081-9789025", "x"), "https://wa.me/66819789025?text=x", "un numéro thaïlandais en 0 prend l'indicatif +66");
+  assert.equal(lienWhatsApp("", "Hello"), "https://wa.me/?text=Hello", "sans numéro, WhatsApp laisse choisir le contact");
+  assert.equal(chiffres("pas de numéro"), "");
+  assert.equal(telWhatsApp({ contact: { telephones: [{ numero: "02 000", whatsapp: false }, { numero: "081 111 2222", whatsapp: true }] } }), "081 111 2222", "le numéro marqué WhatsApp prime");
+  assert.equal(telWhatsApp({ contact: { telephones: [{ numero: "02 000" }] } }), "02 000");
+  assert.equal(telWhatsApp(null), "");
+});
