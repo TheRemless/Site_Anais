@@ -9,7 +9,7 @@ import { vide } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { creerReservations } from "./reservations.mjs";
-import { prendreBrouillon } from "./demande.mjs";
+import { lireBrouillon, viderBrouillon } from "./demande.mjs";
 import { tr } from "../i18n.mjs";
 
 export function nouveauDossierExcursions() {
@@ -28,7 +28,7 @@ export function nouveauDossierExcursions() {
   const majClient = () => (blocNouveau.hidden = !selClient.nouveau);
 
   // Demande collée : le client, l'hôtel et les services sont déjà remplis, il reste à vérifier et à créer.
-  const demande = prendreBrouillon();
+  const demande = params.get("demande") ? lireBrouillon() : null;
   if (demande) {
     selClient.nouveauClient();
     nvPrenom.value = demande.prenom;
@@ -99,6 +99,7 @@ export function nouveauDossierExcursions() {
       const contenu = { ...CONTENU_DEFAUT(), bandeau: "", colonnes: "total", langue, prestataire: partenaires.join(", "), variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: lignes.map(({ description, description_fixe, ...l }) => ({ ...l, titre: l.kind === "texte" ? undefined : l.titre, libelle: l.kind === "texte" ? l.libelle : (description_fixe && description.trim()) || descriptionService({ ...l, libelle: l.titre }, langue), intro: "" })) };
       const doc = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: aujourdhui(), envoye_le: null, updated_at: new Date().toISOString(), contenu });
       await creerReservations(doc);
+      viderBrouillon();
       naviguer(`#/dossier/${d.id}`);
     } catch (err) {
       erreur.textContent = /duplicate|unique|23505/i.test(err.message) ? tr("Ce numéro existe déjà. Modifiez-le.") : err.message;

@@ -10,10 +10,10 @@ import { tr, N_ } from "../i18n.mjs";
 
 // Brouillon passé à l'écran « Nouveau dossier » : lu une seule fois.
 let brouillon = null;
-export const prendreBrouillon = () => {
-  const b = brouillon;
+// Il reste en mémoire tant que le dossier n'est pas créé : l'écran peut se redessiner (synchronisation) sans perdre la demande.
+export const lireBrouillon = () => brouillon;
+export const viderBrouillon = () => {
   brouillon = null;
-  return b;
 };
 
 const AVERTISSEMENTS = {
@@ -55,7 +55,7 @@ export function ouvrirDemande() {
       lignes: offre ? lignesDe(offre, d, langue, devise) : [],
     };
     fermer();
-    naviguer("#/dossiers/nouveau");
+    naviguer("#/dossiers/nouveau?demande=1");
   }
 
   function lire() {
