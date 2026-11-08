@@ -3,7 +3,7 @@
 // Sur téléphone, le partage de fichier ouvre la liste de WhatsApp : on y choisit le contact. Un lien WhatsApp ne peut pas joindre d'image, donc
 // on ne peut pas écrire directement dans la conversation d'un numéro. Sur ordinateur, la conversation du numéro s'ouvre et l'image est copiée
 // pour être collée (sinon téléchargée).
-import { etat, nomClient, partenaireDe } from "../etat.mjs";
+import { etat, nomClient, partenaireDe, resumeDossier, reglages } from "../etat.mjs";
 import { h, modal, toast } from "../ui.mjs";
 import { renderVoucher, imprimerVoucher } from "./voucher.mjs";
 import { telecharger } from "./commun.mjs";
@@ -37,9 +37,10 @@ export function envoyerVoucher(x) {
   const nomFichier = nomFichierVoucher(numero, nomClient(client));
   const telClient = chiffres(client.telephone);
   const telPartenaire = chiffres(telWhatsApp(partenaire));
+  const devise = ((resumeDossier(dossier.id) || {}).devise) || reglages().devise || "THB";
   const message = {
-    client: messageVoucher({ pour: "client", prenom: client.prenom || "", numero, service: r.libelle, dateIso: r.date_service || "" }),
-    partenaire: messageVoucher({ pour: "partenaire", client: nomClient(client), numero, service: r.libelle, dateIso: r.date_service || "" }),
+    client: messageVoucher({ pour: "client", prenom: client.prenom || "" }),
+    partenaire: messageVoucher({ pour: "partenaire", montant: r.montant_vente, devise }),
   };
 
   const apercu = h("div", { class: "envoi-apercu", "aria-live": "polite" }, h("p", { class: "aide" }, tr("Préparation de l'image…")));
