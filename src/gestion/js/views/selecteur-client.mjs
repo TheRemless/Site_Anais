@@ -131,5 +131,7 @@ export function selecteurClient({ id = "client", libelle = tr("Client"), valeur 
     get nouveau() {
       return nouveau;
     },
+    // Demande de créer un client, comme un clic sur « Nouveau client » (brouillon issu d'une demande collée).
+    nouveauClient: () => creerNouveau(),
   };
 }

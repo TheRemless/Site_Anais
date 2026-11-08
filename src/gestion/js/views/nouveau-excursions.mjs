@@ -9,6 +9,7 @@ import { vide } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { creerReservations } from "./reservations.mjs";
+import { lireBrouillon, viderBrouillon } from "./demande.mjs";
 import { tr } from "../i18n.mjs";
 
 export function nouveauDossierExcursions() {
@@ -26,7 +27,15 @@ export function nouveauDossierExcursions() {
   const blocNouveau = h("div", { class: "grille-form" }, champ(tr("Prénom"), nvPrenom), champ(tr("Nom"), nvNom), champ(tr("WhatsApp"), nvTel), champ(tr("Hôtel"), nvHotel), champ(tr("Chambre"), nvChambre));
   const majClient = () => (blocNouveau.hidden = !selClient.nouveau);
 
-  const lignes = [];
+  // Demande collée : le client, l'hôtel et les services sont déjà remplis, il reste à vérifier et à créer.
+  const demande = params.get("demande") ? lireBrouillon() : null;
+  if (demande) {
+    selClient.nouveauClient();
+    nvPrenom.value = demande.prenom;
+    nvNom.value = demande.nom;
+    nvHotel.value = demande.hotel;
+  }
+  const lignes = demande ? [...demande.lignes] : [];
   const liste = h("div");
   const total = h("p", { class: "total-edition" });
   function dessiner() {
@@ -57,6 +66,7 @@ export function nouveauDossierExcursions() {
   const ref = h("input", { id: "ref", value: nouvelleRef({ numerotation: regl.numerotation, prenom: "", nom: "", dateIso: aujourdhui(), pays: "", refsExistantes: etat.db.dossiers.map((d) => d.ref) }) || "" });
   const refProposee = ref.value;
   const notes = h("textarea", { id: "notes", rows: 2, placeholder: tr("Vol, allergies, demande particulière") });
+  if (demande) notes.value = demande.notes;
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   const bouton = h("button", { class: "principal", type: "submit" }, tr("Créer la facture"));
 
@@ -89,6 +99,7 @@ export function nouveauDossierExcursions() {
       const contenu = { ...CONTENU_DEFAUT(), bandeau: "", colonnes: "total", langue, prestataire: partenaires.join(", "), variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: lignes.map(({ description, description_fixe, ...l }) => ({ ...l, titre: l.kind === "texte" ? undefined : l.titre, libelle: l.kind === "texte" ? l.libelle : (description_fixe && description.trim()) || descriptionService({ ...l, libelle: l.titre }, langue), intro: "" })) };
       const doc = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: aujourdhui(), envoye_le: null, updated_at: new Date().toISOString(), contenu });
       await creerReservations(doc);
+      viderBrouillon();
       naviguer(`#/dossier/${d.id}`);
     } catch (err) {
       erreur.textContent = /duplicate|unique|23505/i.test(err.message) ? tr("Ce numéro existe déjà. Modifiez-le.") : err.message;
