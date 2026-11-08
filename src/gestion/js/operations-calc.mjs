@@ -379,6 +379,28 @@ export function ecartReservation(r, doc) {
   return champs.length ? { retiree: false, champs, attendu: a } : null;
 }
 
+// ---- Service supprimé : ce que la facture doit perdre ------------------------------------------------------------
+// Une réservation est créée d'après des lignes de la facture (`ligne_id`, et `details.lignes_ids` quand adulte et enfant sont réunis).
+// Quand on la supprime, ces lignes partent de la facture, ainsi que la note « à payer sur place » de la même prestation si plus aucune ligne
+// de cette prestation, à la même date, ne la justifie, et le nom du prestataire s'il ne sert plus. Rien n'est modifié sur place : la fonction
+// renvoie un nouveau contenu (ou null quand la facture ne porte aucune ligne de ce service).
+export function contenuSansReservation(contenu, r, { nomPartenaire = () => "" } = {}) {
+  const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
+  const lignes = (contenu && contenu.lignes) || [];
+  if (!ids.size || !lignes.some((l) => ids.has(l.id))) return null;
+  const retirees = lignes.filter((l) => ids.has(l.id));
+  const memeService = (a, b) => (a.prestation_id || null) === (b.prestation_id || null) && (a.trajet_id || null) === (b.trajet_id || null) && (a.date_service || null) === (b.date_service || null);
+  const reste = lignes.filter((l) => !ids.has(l.id));
+  // Les notes sur place portent la prestation et la date du service : elles partent avec lui, sauf si une autre ligne du même service reste.
+  const notes = reste.filter((l) => l.kind === "texte" && l.sur_place && retirees.some((x) => memeService(x, l)) && !reste.some((x) => x.kind !== "texte" && memeService(x, l)));
+  const restantes = reste.filter((l) => !notes.includes(l));
+  const prestataires = (liste) => [...new Set(liste.map((l) => nomPartenaire(l.partenaire_id)).filter(Boolean))].join(", ");
+  const suite = { ...contenu, lignes: restantes };
+  // Le prestataire affiché est posé à l'ajout des services : on le suit seulement s'il n'a pas été réécrit à la main.
+  if (contenu.prestataire && contenu.prestataire === prestataires(lignes)) suite.prestataire = prestataires(restantes);
+  return { contenu: suite, retirees: [...retirees, ...notes] };
+}
+
 // ---- Contrôles avant d'envoyer un voucher ------------------------------------------------------------------------
 // Ce qui manque ou reste à vérifier sur la réservation. Renvoie des codes ; l'écran les traduit. Un voucher peut être envoyé quand même.
 export function controlesVoucher(r, client = {}, type = "") {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient, ecartReservation, controlesVoucher, feuilleDuJour, texteFeuille } from "../src/gestion/js/operations-calc.mjs";
+import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient, ecartReservation, contenuSansReservation, controlesVoucher, feuilleDuJour, texteFeuille } from "../src/gestion/js/operations-calc.mjs";
 
 test("vouchers : modèle d'après la prestation, numéro, statut de paiement", () => {
   assert.equal(typeVoucher({ trajet_id: "t" }, null), "billet", "un trajet de compagnie est un billet de bateau");
@@ -293,6 +293,30 @@ test("écart entre réservation et facture : date, personnes, montant, ligne ret
   assert.deepEqual(ecartReservation(reservation, { dossier_id: "D", contenu: { lignes: [] } }), { retiree: true, champs: [] });
   // réservation faite à la main, sans ligne : rien à comparer
   assert.equal(ecartReservation({ ...reservation, ligne_id: "", details: {} }, doc), null);
+});
+
+test("service supprimé : ses lignes, sa note sur place et son prestataire quittent la facture, le reste demeure", () => {
+  const ligne = (id, extra = {}) => ({ id, kind: "ligne", libelle: "Tour des îles", unite: 1200, qte: 2, prestation_id: "x", partenaire_id: "p1", date_service: "2026-12-10", ...extra });
+  const note = (id, extra = {}) => ({ id, kind: "texte", sur_place: true, libelle: "Park fee on site", prestation_id: "x", partenaire_id: "p1", date_service: "2026-12-10", ...extra });
+  const autre = ligne("a1", { prestation_id: "y", partenaire_id: "p2", libelle: "Cooking class", date_service: "2026-12-12" });
+  const remise = { id: "r1", kind: "remise", libelle: "Remise", montant: 100 };
+  const nom = (id) => ({ p1: "Alpha", p2: "Beta" })[id] || "";
+  const contenu = { prestataire: "Alpha, Beta", devise: "THB", lignes: [ligne("l1"), ligne("l2", { libelle: "Tour des îles, enfant", unite: 900, qte: 1 }), note("n1"), autre, remise] };
+  const [{ reservation }] = reservationsDepuisDocument({ dossier_id: "D", contenu: { lignes: [contenu.lignes[0], contenu.lignes[1], autre] } }, { uid: () => "R1" });
+  const r = contenuSansReservation(contenu, reservation, { nomPartenaire: nom });
+  assert.deepEqual(r.contenu.lignes.map((l) => l.id), ["a1", "r1"], "adulte, enfant et note sur place partent, l'autre service et la remise restent");
+  assert.deepEqual(r.retirees.map((l) => l.id), ["l1", "l2", "n1"]);
+  assert.equal(r.contenu.prestataire, "Beta", "le prestataire qui ne sert plus disparaît");
+  assert.equal(contenu.lignes.length, 5, "le contenu d'origine n'est pas modifié");
+  // prestataire réécrit à la main : on n'y touche pas
+  assert.equal(contenuSansReservation({ ...contenu, prestataire: "Alpha Co." }, reservation, { nomPartenaire: nom }).contenu.prestataire, "Alpha Co.");
+  // même prestation, même date, deuxième groupe de personnes : la note sur place reste
+  const deux = { ...contenu, lignes: [ligne("l1"), ligne("l3"), note("n1")] };
+  const garde = contenuSansReservation(deux, { ligne_id: "l1", details: {} }, { nomPartenaire: nom });
+  assert.deepEqual(garde.contenu.lignes.map((l) => l.id), ["l3", "n1"]);
+  // réservation à la main, ou ligne déjà retirée : rien à faire
+  assert.equal(contenuSansReservation(contenu, { ligne_id: "", details: {} }), null);
+  assert.equal(contenuSansReservation({ lignes: [] }, reservation), null);
 });
 
 test("contrôles avant d'envoyer un voucher : ce qui manque, sans rien interdire", () => {

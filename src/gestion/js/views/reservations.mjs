@@ -1,8 +1,8 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
 import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, netReservation, enregistrerLie, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
-import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation } from "../operations-calc.mjs";
+import { formatMontant, formatDate, aujourdhui, totaux } from "../calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide } from "./commun.mjs";
@@ -92,6 +92,31 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
 }
 
 export const listeReservations = (rs, opts) => h("ul", { class: "cartes" }, rs.map((r) => h("li", { class: "carte" }, carteReservation(r, opts))));
+
+// Supprime une réservation. En mode excursions la facture est la source du dossier : les lignes du service en sortent aussi, sinon elles
+// resteraient facturées et affichées (date, prestataire, note sur place) pour un service qui n'existe plus. Renvoie true si c'est fait.
+async function supprimerReservation(r) {
+  const factures = modeExcursions() ? etat.db.documents.filter((x) => x.dossier_id === r.dossier_id && (x.type === "facture" || x.type === "facture_locale")) : [];
+  const changements = factures.map((doc) => ({ doc, suite: contenuSansReservation(doc.contenu, r, { nomPartenaire }) })).filter((x) => x.suite);
+  const principale = changements.find((x) => x.doc.type === "facture");
+  const phrases = [tr("Supprimer la réservation « {libelle} » ?", { libelle: r.libelle })];
+  if (principale) {
+    const devise = principale.doc.contenu.devise || reglages().devise;
+    phrases.push(tr("Ses lignes sont aussi retirées de la facture, dont le total passe de {avant} à {apres}.", { avant: formatMontant(totaux(principale.doc.contenu).net, devise), apres: formatMontant(totaux(principale.suite.contenu).net, devise) }));
+    if (principale.doc.envoye_le) phrases.push(tr("La facture a été envoyée au client le {date} : il faudra lui renvoyer la nouvelle version.", { date: formatDate(principale.doc.envoye_le) }));
+  }
+  if (changements.some((x) => x.doc.type === "facture_locale")) phrases.push(tr("La facture locale est mise à jour aussi."));
+  if (!(await confirmer(phrases.join(" "), tr("Supprimer"), true))) return false;
+  try {
+    for (const { doc, suite } of changements) await modifier("documents", doc.id, { contenu: suite.contenu, updated_at: new Date().toISOString() });
+    await supprimer("reservations", r.id);
+    await synchroniserDatesDossier(r.dossier_id);
+    return true;
+  } catch (err) {
+    toast(tr("Suppression impossible : {message}", { message: err.message }), true);
+    return false;
+  }
+}
 
 export function formulaireReservation(r, apres) {
   const nets = voitNets() && peut("dossiers.ecrire");
@@ -194,7 +219,7 @@ export function formulaireReservation(r, apres) {
     nets ? h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe)) : null,
     champ(tr("Notes internes"), notes, tr("Jamais sur le voucher.")),
     blocVoucher,
-    h("div", { class: "actions" }, r.id && peut("dossiers.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(tr("Supprimer la réservation « {libelle} » ?", { libelle: r.libelle }), tr("Supprimer"), true)) { await supprimer("reservations", r.id); await synchroniserDatesDossier(r.dossier_id); apres(null); } } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
+    h("div", { class: "actions" }, r.id && peut("dossiers.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await supprimerReservation(r)) apres(null); } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );
 }
 

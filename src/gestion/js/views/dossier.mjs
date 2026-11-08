@@ -7,6 +7,7 @@ import { sectionTachesDossier } from "./taches.mjs";
 import { sectionPieces } from "./pieces.mjs";
 import { pastille, vide, pdf, sousTitreDossier } from "./commun.mjs";
 import { margeDocument } from "../partenaires-calc.mjs";
+import { supprimerDocument } from "./document-suppression.mjs";
 import { sectionReservationsDossier, formulaireReservation } from "./reservations.mjs";
 import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
@@ -368,7 +369,7 @@ function ficheDossierVue(id) {
       h("td", { "data-label": tr("Émis le") }, formatDate(doc.date_emission)),
       h("td", { "data-label": tr("Envoyé le") }, doc.envoye_le ? formatDate(doc.envoye_le) : tr("Pas encore")),
       h("td", { class: "num", "data-label": tr("Total") }, fm(t.net, doc.contenu.devise)),
-      h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: `#/doc/${doc.id}` }, tr("Ouvrir")), h("button", { class: "secondaire petit", type: "button", onclick: () => (sansImpression() ? envoyerDocument(doc, { marquerEnvoye: async () => { await modifier("documents", doc.id, { envoye_le: aujourdhui() }); rafraichir(); } }) : pdf(doc)) }, "PDF"))
+      h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: `#/doc/${doc.id}` }, tr("Ouvrir")), h("button", { class: "secondaire petit", type: "button", onclick: () => (sansImpression() ? envoyerDocument(doc, { marquerEnvoye: async () => { await modifier("documents", doc.id, { envoye_le: aujourdhui() }); rafraichir(); } }) : pdf(doc)) }, "PDF"), peut("documents.supprimer") ? h("button", { class: "secondaire petit danger-texte", type: "button", onclick: () => supprimerDocument(doc, rafraichir) }, tr("Supprimer")) : null)
     );
   };
 
