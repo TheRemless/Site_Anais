@@ -99,6 +99,8 @@ async function supprimerReservation(r) {
   const factures = modeExcursions() ? etat.db.documents.filter((x) => x.dossier_id === r.dossier_id && (x.type === "facture" || x.type === "facture_locale")) : [];
   const changements = factures.map((doc) => ({ doc, suite: contenuSansReservation(doc.contenu, r, { nomPartenaire }) })).filter((x) => x.suite);
   const principale = changements.find((x) => x.doc.type === "facture");
+  // Sans le droit de modifier les factures, on ne supprime pas à moitié : la facture garderait le service.
+  if (changements.length && !peut("documents.ecrire")) return toast(tr("Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : la réservation n'est pas supprimée."), true), false;
   const phrases = [tr("Supprimer la réservation « {libelle} » ?", { libelle: r.libelle })];
   if (principale) {
     const devise = principale.doc.contenu.devise || reglages().devise;

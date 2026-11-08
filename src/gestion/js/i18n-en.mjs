@@ -1533,4 +1533,5 @@ export const EN = {
   "Ses lignes sont aussi retirées de la facture, dont le total passe de {avant} à {apres}.": "Its lines are also removed from the invoice, whose total goes from {avant} to {apres}.",
   "La facture a été envoyée au client le {date} : il faudra lui renvoyer la nouvelle version.": "The invoice was sent to the client on {date}: the new version will have to be sent again.",
   "La facture locale est mise à jour aussi.": "The local invoice is updated too.",
+  "Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : la réservation n'est pas supprimée.": "This service is on the invoice, and your role cannot edit invoices: the reservation was not deleted.",
 };
