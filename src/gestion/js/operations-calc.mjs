@@ -331,11 +331,15 @@ export function nomFichierVoucher(numero, nomClient) {
   return `Voucher ${numero} - ${prenomOuNom}`.replace(/[\\/:*?"<>|]/g, "").trim() + ".png";
 }
 
-// Message qui accompagne l'image, en anglais comme le voucher.
-export function messageVoucher({ pour = "client", prenom = "", client = "", numero, service, dateIso = "" }) {
-  const quand = dateIso ? ` on ${dateTexte(dateIso, "en")}` : "";
-  if (pour === "partenaire") return `Voucher ${numero}: ${service}${quand}, guest ${client}.`;
-  return `Hello${prenom ? ` ${prenom}` : ""}, here is your voucher ${numero} for ${service}${quand}.`;
+// Message qui accompagne l'image, en anglais comme le voucher. Au client : la confirmation de sa réservation. Au prestataire : seulement
+// le prix que le client paiera (sans numéro de voucher, le voucher est déjà dans l'image).
+export function messageVoucher({ pour = "client", prenom = "", montant = null, devise = "" }) {
+  if (pour === "partenaire") {
+    if (montant === null || montant === undefined || montant === "") return "";
+    const nombre = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(Number(montant));
+    return `Price the guest pays: ${devise ? `${devise} ` : ""}${nombre}`;
+  }
+  return `Hello${prenom ? ` ${prenom}` : ""}, here is your booking confirmation for your program. We wish you an excellent day!`;
 }
 
 // Lien WhatsApp : la conversation du numéro, ou le choix du contact quand on n'a pas de numéro. Un lien ne peut pas joindre d'image.
