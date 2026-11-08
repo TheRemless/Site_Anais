@@ -3,6 +3,7 @@ import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs"
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
 import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
+import { ouvrirVersions as ouvrirVersionsDocument } from "./versions.mjs";
 import { envoyerDocument, sansImpression } from "./document-envoi.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { tr, localeActive } from "../i18n.mjs";
@@ -145,21 +146,13 @@ function editeurVue(id) {
       toast(tr("Historique indisponible : {message}", { message: err.message }), true);
       return;
     }
-    const lignes = versions.length
-      ? versions.map((v) => {
-          const t = totaux(v.ligne.contenu);
-          return h(
-            "li",
-            { class: "choix" },
-            h("div", { class: "choix-texte" }, h("strong", null, dateHeure(v.archive_le)), h("span", null, formatMontant(t.net, v.ligne.contenu.devise || regl.devise))),
-            h("div", { class: "choix-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => restaurerVersion(v, fermer) }, tr("Restaurer")))
-          );
-        })
-      : [h("li", { class: "choix-vide" }, tr("Aucune version gardée pour l'instant. Une version est gardée avant chaque série de modifications."))];
-    const fermer = modal(
-      tr("Versions de ce document"),
-      h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("Une version est gardée avant chaque série de modifications, au plus toutes les cinq minutes, et les trente dernières sont conservées.")), h("ul", { class: "choix-liste" }, lignes))
-    );
+    ouvrirVersionsDocument({
+      versions,
+      actuel: { contenu: doc.contenu, date_emission: doc.date_emission },
+      devise: doc.contenu.devise || regl.devise,
+      rendre: (v) => feuille({ ...doc, contenu: v.ligne.contenu, date_emission: v.ligne.date_emission }).noeud,
+      restaurer: restaurerVersion,
+    });
   }
   const btnVersions = h("button", { class: "secondaire petit", type: "button", onclick: ouvrirVersions }, tr("Versions"));
 
