@@ -300,6 +300,13 @@ legend { padding: 0 6px; font-weight: 700; }
 
 .bandeau-info { margin: 0 0 20px; padding: 10px 14px; background: #fff4d6; border: 1px solid #e8d49a; border-radius: var(--rayon); color: #5a4300; font-size: 0.92rem; }
 .bandeau-info a { color: #5a4300; font-weight: 600; }
+.feuille-groupe { margin: 0 0 18px; }
+.feuille-groupe h3 { margin: 12px 0 8px; }
+.feuille-texte { margin: 0 0 10px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--bord); border-radius: var(--rayon); font: inherit; font-size: 0.9rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+ul.avertissements-voucher { list-style: none; margin: 0 0 14px; padding: 10px 14px; display: grid; gap: 4px; font-size: 0.9rem; }
+.ecart-facture { grid-column: 1 / -1; margin-top: 6px; padding: 8px 10px; background: #fff4d6; border: 1px solid #e8d49a; border-radius: var(--rayon); color: #5a4300; font-size: 0.88rem; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; justify-content: space-between; }
+.ecart-facture ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.ecart-facture .petit { min-height: 44px; }
 .bandeau-alerte { margin: 0 0 20px; padding: 12px 14px; background: #fdecec; border: 1px solid #e3a3a3; border-radius: var(--rayon); color: #7a1f1f; font-size: 0.92rem; }
 .bandeau-alerte p { margin: 0 0 10px; }
 .bandeau-alerte .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }

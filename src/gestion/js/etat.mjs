@@ -415,6 +415,8 @@ export function imprimer(feuille, nomFichier) {
 // ---- Partenaires ----------------------------------------------------------------------------------------------
 // Les nets et les coordonnées bancaires sont dans des tables à part : la base ne les envoie qu'avec le droit
 // « partenaires.nets », donc ces listes sont simplement vides pour les autres.
+// Identifiants des dossiers annulés : leurs réservations ne comptent plus dans l'agenda, le dû aux partenaires et la feuille du jour.
+export const dossiersAnnules = () => new Set(etat.db.dossiers.filter((d) => d.annule).map((d) => d.id));
 export const partenaireDe = (id) => (id && etat.db.partenaires.find((p) => p.id === id)) || null;
 export const nomPartenaire = (id) => (partenaireDe(id) || {}).nom || "";
 export const netPrestation = (p) => etat.db.prestations_nets.find((n) => n.prestation_id === p.id) || null;

@@ -1,8 +1,8 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
-import { etat, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, netReservation, enregistrerLie, reglages, entiteActive, modeExcursions } from "../etat.mjs";
+import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, netReservation, enregistrerLie, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide } from "./commun.mjs";
@@ -10,6 +10,7 @@ import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { telWhatsApp } from "../partenaires-calc.mjs";
+import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
 const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || null;
@@ -28,11 +29,32 @@ export function messageClient(r, cle = "confirmation") {
   ouvrirMessage({ titre: tr("Message à {nomClient}", { nomClient: nomClient(c) }), pour: "client", cle, langue, telephone: c.telephone || "", vars: variablesMessage({ reservation: r, client: c, dossier: dossierDe(r) || {}, partenaire: partenaireDe(r.partenaire_id) || {}, entreprise: entreprise(), langue }) });
 }
 
-export function carteReservation(r, { avecDossier = true, apres = () => {} } = {}) {
+// Texte d'un écart entre la réservation et la facture : « Date : 12 déc. sur la réservation, 14 déc. sur la facture ».
+function texteEcart(c, devise) {
+  const v = (x) => (c.cle === "date_service" ? (x ? formatDate(x) : tr("à fixer")) : c.cle === "personnes" ? personnesTexte(x) || "0" : formatMontant(x, devise));
+  const nom = c.cle === "date_service" ? tr("Date") : c.cle === "personnes" ? tr("Personnes") : tr("Montant vendu");
+  return tr("{nom} : {reservation} sur la réservation, {document} sur la facture", { nom, reservation: v(c.reservation), document: v(c.document) });
+}
+
+// Remet la réservation d'après les lignes de la facture : date, adultes et enfants (les bébés restent), montant vendu.
+async function aligner(r, ecart, apres) {
+  const a = ecart.attendu;
+  try {
+    await modifier("reservations", r.id, { date_service: a.date_service, personnes: { ...(r.personnes || {}), adultes: a.personnes.adultes, enfants: a.personnes.enfants }, ...(a.montant_vente === null ? {} : { montant_vente: a.montant_vente }) });
+    await synchroniserDatesDossier(r.dossier_id);
+    toast(tr("Réservation alignée sur la facture."));
+    apres();
+  } catch (err) {
+    toast(tr("Alignement impossible : {message}", { message: err.message }), true);
+  }
+}
+
+export function carteReservation(r, { avecDossier = true, apres = () => {}, ecart = null } = {}) {
   const c = clientDe(r);
   const d = dossierDe(r);
   const n = voitNets() ? netReservation(r) : null;
   const ecrit = peut("dossiers.ecrire");
+  const e = ecart && r.statut !== "annule" ? ecart(r) : null;
   return h(
     "div",
     { class: "carte-lien statique" },
@@ -40,6 +62,11 @@ export function carteReservation(r, { avecDossier = true, apres = () => {} } = {
     h("span", { class: "carte-droite" }, h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("pickup {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
     h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes), r.lieu_pickup].filter(Boolean).join(" · ")),
     r.notes ? h("span", { class: "carte-sous" }, r.notes) : null,
+    !e
+      ? null
+      : e.retiree
+        ? h("div", { class: "ecart-facture", role: "status" }, tr("La ligne de cette réservation a été retirée du document."))
+        : h("div", { class: "ecart-facture", role: "status" }, h("ul", null, e.champs.map((c) => h("li", null, texteEcart(c, ((etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type === "facture") || {}).contenu || {}).devise || reglages().devise || "")))), ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => aligner(r, e, apres) }, tr("Aligner sur la facture")) : null),
     h(
       "span",
       { class: "carte-pied" },
@@ -230,7 +257,7 @@ export function sectionReservationsDossier(d, doc) {
         ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc), rafraichir()) }, (doc.type === "devis" ? pluriel(manquantes, N_("Créer {n} réservation depuis le devis"), N_("Créer {n} réservations depuis le devis")) : pluriel(manquantes, N_("Créer {n} réservation depuis la facture"), N_("Créer {n} réservations depuis la facture")))) : null, modeExcursions() ? h("button", { class: "principal petit", type: "button", onclick: () => ajouterServices(d, doc, rafraichir) }, tr("Ajouter un service")) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle réservation"), formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir()))); } }, modeExcursions() ? tr("Réservation à la main") : tr("Nouvelle réservation")))
         : null
     ),
-    rs.length ? listeReservations(rs, { avecDossier: false, apres: rafraichir }) : h("p", { class: "vide-court" }, doc && manquantes ? tr("Les lignes de partenaires du document peuvent devenir des réservations en un clic.") : modeExcursions() ? tr("Aucune réservation. « Ajouter un service » met la prestation sur la facture et crée sa réservation.") : tr("Aucune réservation. Elles se créent depuis les lignes de partenaires du devis, ou à la main."))
+    rs.length ? listeReservations(rs, { avecDossier: false, apres: rafraichir, ecart: doc ? (r) => ecartReservation(r, doc) : null }) : h("p", { class: "vide-court" }, doc && manquantes ? tr("Les lignes de partenaires du document peuvent devenir des réservations en un clic.") : modeExcursions() ? tr("Aucune réservation. « Ajouter un service » met la prestation sur la facture et crée sa réservation.") : tr("Aucune réservation. Elles se créent depuis les lignes de partenaires du devis, ou à la main."))
   );
 }
 
@@ -253,7 +280,10 @@ export function vueReservations() {
     for (const [k, v] of [["periode", periode.value], ["statut", statut.value], ["partenaire", partenaire.value]]) if (v && !(k === "periode" && v === "avenir")) p.set(k, v);
     history.replaceState(null, "", `#/reservations${p.toString() ? `?${p}` : ""}`);
     const mots = sans(q.value).split(/\s+/).filter(Boolean);
+    // Une réservation d'un dossier annulé s'affiche comme annulée, même si on ne l'a pas encore marquée.
+    const annules = dossiersAnnules();
     const rs = etat.db.reservations
+      .map((r) => (annules.has(r.dossier_id) && r.statut !== "annule" ? { ...r, statut: "annule" } : r))
       .filter((r) => (periode.value === "toutes" ? true : periode.value === "passees" ? r.date_service && r.date_service < ajd : !r.date_service || r.date_service >= ajd))
       .filter((r) => (!statut.value ? true : statut.value === "ouvertes" ? r.statut === "a_demander" || r.statut === "demande" : r.statut === statut.value))
       .filter((r) => !partenaire.value || r.partenaire_id === partenaire.value)
@@ -272,7 +302,7 @@ export function vueReservations() {
   return h(
     "div",
     { "data-titre": tr("Réservations") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réservations")), h("p", { class: "sous" }, tr("Ce qui est à demander, demandé ou confirmé auprès des partenaires, jour par jour."))), h("div", { class: "entete-actions" }, h("a", { class: "bouton secondaire", href: "#/messages" }, tr("Messages types")))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réservations")), h("p", { class: "sous" }, tr("Ce qui est à demander, demandé ou confirmé auprès des partenaires, jour par jour."))), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: ouvrirFeuilleDuJour }, tr("Feuille du jour")), h("a", { class: "bouton secondaire", href: "#/messages" }, tr("Messages types")))),
     h("div", { class: "barre-outils chercheur" }, h("div", { class: "champ" }, h("label", { for: "f-periode" }, tr("Période")), periode), h("div", { class: "champ" }, h("label", { for: "f-statut" }, tr("Statut")), statut), h("div", { class: "champ" }, h("label", { for: "f-part" }, tr("Partenaire")), partenaire), h("div", { class: "champ recherche" }, h("label", { for: "f-q" }, tr("Rechercher")), q)),
     corps
   );

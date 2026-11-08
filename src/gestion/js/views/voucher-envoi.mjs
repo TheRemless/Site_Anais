@@ -7,9 +7,17 @@ import { etat, nomClient, partenaireDe, resumeDossier, reglages } from "../etat.
 import { h, modal, toast } from "../ui.mjs";
 import { renderVoucher, imprimerVoucher } from "./voucher.mjs";
 import { telecharger } from "./commun.mjs";
-import { numeroVoucher, nomFichierVoucher, messageVoucher, lienWhatsApp } from "../operations-calc.mjs";
+import { numeroVoucher, nomFichierVoucher, messageVoucher, lienWhatsApp, controlesVoucher } from "../operations-calc.mjs";
 import { chiffres, telWhatsApp } from "../partenaires-calc.mjs";
-import { tr } from "../i18n.mjs";
+import { tr, N_ } from "../i18n.mjs";
+
+const AVERTISSEMENTS = {
+  non_confirmee: N_("La réservation n'est pas confirmée par le partenaire."),
+  sans_date: N_("La date du service n'est pas renseignée."),
+  sans_heure: N_("L'heure de pickup n'est pas renseignée."),
+  sans_lieu: N_("Le lieu de pickup n'est pas renseigné."),
+  lieu_adresse_client: N_("Le lieu de pickup n'est pas renseigné : le voucher affichera l'adresse du client."),
+};
 
 // Image PNG d'un voucher, à deux fois la taille de l'écran pour rester nette. Sans la hauteur minimale d'une page A4 : l'image s'arrête au contenu.
 export async function imageVoucher(x) {
@@ -43,6 +51,7 @@ export function envoyerVoucher(x) {
     partenaire: messageVoucher({ pour: "partenaire", montant: r.montant_vente, devise }),
   };
 
+  const avertissements = controlesVoucher(r, client, x.type || "");
   const apercu = h("div", { class: "envoi-apercu", "aria-live": "polite" }, h("p", { class: "aide" }, tr("Préparation de l'image…")));
   const actions = h("div", { class: "actions envoi-actions" });
   const aide = h("p", { class: "aide" });
@@ -93,6 +102,7 @@ export function envoyerVoucher(x) {
     h(
       "div",
       { class: "modal-corps envoi-voucher" },
+      avertissements.length ? h("ul", { class: "bandeau-info avertissements-voucher", role: "status" }, avertissements.map((c) => h("li", null, tr(AVERTISSEMENTS[c])))) : null,
       h("p", { class: "aide" }, [client.telephone ? `${nomClient(client)} ${client.telephone}` : nomClient(client), partenaire ? `${partenaire.nom}${telPartenaire ? ` ${telPartenaire}` : ""}` : ""].filter(Boolean).join(" · ")),
       apercu,
       actions,

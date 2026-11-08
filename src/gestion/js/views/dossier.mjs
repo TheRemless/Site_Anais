@@ -425,8 +425,17 @@ function ficheDossierVue(id) {
             class: "secondaire",
             type: "button",
             onclick: async () => {
-              if (d.annule || (await confirmer(r.recu > 0 ? tr("Marquer ce dossier comme annulé ? Il sortira des totaux à encaisser mais restera consultable. {montant} ont déjà été encaissés. Si vous les rendez, enregistrez un remboursement dans les paiements.", { montant: fm(r.recu) }) : tr("Marquer ce dossier comme annulé ? Il sortira des totaux à encaisser mais restera consultable."), tr("Marquer comme annulé")))) {
+              if (d.annule || (await confirmer(r.recu > 0 ? tr("Marquer ce dossier comme annulé ? Il sortira des totaux à encaisser mais restera consultable. {montant} ont déjà été encaissés. Si vous les rendez, enregistrez un remboursement dans les paiements.", { montant: fm(r.recu) }) : tr("Marquer ce dossier comme annulé ? Il sortira des totaux à encaisser mais restera consultable."), tr("Marquer comme annulé"), true))) {
+                const aAnnuler = d.annule ? [] : etat.db.reservations.filter((x) => x.dossier_id === d.id && x.statut !== "annule");
                 await modifier("dossiers", d.id, { annule: !d.annule });
+                // Les réservations d'un dossier annulé ne comptent déjà plus dans l'agenda ni dans le dû ; on propose de les marquer aussi, pour que la liste et les vouchers soient justes.
+                if (aAnnuler.length && (await confirmer(pluriel(aAnnuler.length, N_("Ce dossier a {n} réservation active. La marquer aussi comme annulée ? Le prestataire n'est pas prévenu par l'outil."), N_("Ce dossier a {n} réservations actives. Les marquer aussi comme annulées ? Les prestataires ne sont pas prévenus par l'outil.")), tr("Marquer les réservations annulées"), true))) {
+                  try {
+                    for (const x of aAnnuler) await modifier("reservations", x.id, { statut: "annule" });
+                  } catch (err) {
+                    toast(tr("Une réservation n'a pas pu être annulée : {message}", { message: err.message }), true);
+                  }
+                }
                 rafraichir();
               }
             },
