@@ -8,7 +8,8 @@ import { sectionPieces } from "./pieces.mjs";
 import { pastille, vide, pdf, sousTitreDossier } from "./commun.mjs";
 import { margeDocument } from "../partenaires-calc.mjs";
 import { sectionReservationsDossier, formulaireReservation } from "./reservations.mjs";
-import { vouchersDuDossier, imprimerVoucher, imprimerTousLesVouchers, apercuVoucher } from "./voucher.mjs";
+import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
+import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { numeroVoucher, TITRES_VOUCHER } from "../operations-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
@@ -384,9 +385,9 @@ function ficheDossierVue(id) {
       ? h(
           "section",
           { id: "vouchers" },
-          h("div", { class: "entete petit-entete" }, h("h2", null, tr("Vouchers")), vouchers.length > 1 ? h("button", { class: "secondaire petit", type: "button", onclick: () => imprimerTousLesVouchers(d.id) }, tr("Tous les vouchers en PDF")) : null),
+          h("div", { class: "entete petit-entete" }, h("h2", null, tr("Vouchers")), vouchers.length > 1 && window.matchMedia("(hover: hover)").matches ? h("button", { class: "secondaire petit", type: "button", onclick: () => imprimerTousLesVouchers(d.id) }, tr("Tous les vouchers en PDF")) : null),
           vouchers.length
-            ? h("ul", { class: "cartes" }, vouchers.map((x) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, x.reservation.libelle), h("span", { class: "carte-droite" }, h("strong", null, numeroVoucher(d.ref, x.index))), h("span", { class: "carte-sous" }, `${TITRES_VOUCHER[x.type] || "Voucher"} · ${x.reservation.date_service ? formatDate(x.reservation.date_service) : tr("date à fixer")}${x.reservation.heure_pickup ? ` · pickup ${x.reservation.heure_pickup}` : ""}`), h("span", { class: "carte-pied" }, h("span", null, r.statut === "solde" ? tr("Payé") : r.recu > 0 ? tr("Acompte") : tr("À payer sur place ou en attente")), h("span", { class: "carte-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => apercuVoucher(x) }, tr("Aperçu")), droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation et voucher"), formulaireReservation(x.reservation, () => (fermer(), rafraichir()))); } }, tr("Modifier")) : null, h("button", { class: "principal petit", type: "button", onclick: () => imprimerVoucher(x) }, tr("Voucher PDF"))))))))
+            ? h("ul", { class: "cartes" }, vouchers.map((x) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, x.reservation.libelle), h("span", { class: "carte-droite" }, h("strong", null, numeroVoucher(d.ref, x.index))), h("span", { class: "carte-sous" }, `${TITRES_VOUCHER[x.type] || "Voucher"} · ${x.reservation.date_service ? formatDate(x.reservation.date_service) : tr("date à fixer")}${x.reservation.heure_pickup ? ` · pickup ${x.reservation.heure_pickup}` : ""}`), h("span", { class: "carte-pied" }, h("span", null, r.statut === "solde" ? tr("Payé") : r.recu > 0 ? tr("Acompte") : tr("À payer sur place ou en attente")), h("span", { class: "carte-actions" }, droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation et voucher"), formulaireReservation(x.reservation, () => (fermer(), rafraichir()))); } }, tr("Modifier")) : null, h("button", { class: "principal petit", type: "button", onclick: () => envoyerVoucher(x) }, tr("Envoyer le voucher"))))))))
             : h("p", { class: "vide-court" }, tr("Un voucher par réservation (les frais de parc n'en ont pas). Créez d'abord les réservations ci-dessous.")),
           h("p", { class: "aide" }, tr("Le même voucher se donne au client et au prestataire. Les cases Paid, Deposit ou Pay on site suivent les paiements enregistrés sur la facture. « Modifier » ouvre la réservation avec les champs du voucher : chambre, drop-off, vol, bagages, type de tour ou de transfert, frais de parc, remarques."))
         )

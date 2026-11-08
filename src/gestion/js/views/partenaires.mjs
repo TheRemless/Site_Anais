@@ -2,7 +2,7 @@
 import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
-import { FAMILLES, nomFamille, libelleUnite, marge, correspond, UNITES } from "../partenaires-calc.mjs";
+import { FAMILLES, nomFamille, libelleUnite, marge, correspond, UNITES, chiffres } from "../partenaires-calc.mjs";
 import { vide, cartes } from "./commun.mjs";
 import { listeTaches } from "./taches.mjs";
 import { tr, N_ } from "../i18n.mjs";
@@ -25,14 +25,8 @@ export function margeNoeud(vente, net) {
   return h("span", { class: `marge ${m.montant <= 0 ? "marge-nulle" : m.pct < 12 ? "marge-basse" : ""}` }, prix(m.montant), " ", h("span", { class: "tag" }, `${m.pct} %`));
 }
 
-// Numéros thaïlandais : « 081-9789025 » devient +66819789025 pour les liens d'appel et WhatsApp.
-export function chiffres(numero) {
-  const m = String(numero || "").match(/\+?\d[\d\s\-()]{6,}\d/);
-  if (!m) return "";
-  let d = m[0].replace(/[^\d+]/g, "");
-  if (d[0] !== "+" && d[0] === "0") d = `+66${d.slice(1)}`;
-  return d;
-}
+// `chiffres` (numéro en format international) est dans partenaires-calc ; ré-exporté pour les écrans qui l'importent d'ici.
+export { chiffres };
 
 async function copier(texte) {
   try {

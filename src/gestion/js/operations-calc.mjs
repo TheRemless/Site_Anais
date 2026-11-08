@@ -2,6 +2,7 @@
 // Aucune dépendance au navigateur pour pouvoir la tester avec node --test.
 
 import { langueActive, N_ } from "./i18n.mjs";
+import { chiffres } from "./partenaires-calc.mjs";
 
 export const STATUTS_RESERVATION = { a_demander: N_("À demander"), demande: N_("Demandée"), confirme: N_("Confirmée"), annule: N_("Annulée") };
 
@@ -321,4 +322,24 @@ export function nomMoisCourt(iso, langue = langueActive()) {
   const [a, m] = iso.split("-").map(Number);
   const mois = langue === "en" ? MOIS_EN[m - 1] : MOIS_FR[m - 1];
   return `${mois.charAt(0).toUpperCase() + mois.slice(1)} ${a}`;
+}
+
+// ---- Envoi d'un voucher par WhatsApp --------------------------------------------------------------------------
+// Nom du fichier image : « Voucher EX-2026-0003-1 - Keller.png » (sans caractère interdit dans un nom de fichier).
+export function nomFichierVoucher(numero, nomClient) {
+  const prenomOuNom = String(nomClient || "").trim().split(/\s+/)[0] || "client";
+  return `Voucher ${numero} - ${prenomOuNom}`.replace(/[\\/:*?"<>|]/g, "").trim() + ".png";
+}
+
+// Message qui accompagne l'image, en anglais comme le voucher.
+export function messageVoucher({ pour = "client", prenom = "", client = "", numero, service, dateIso = "" }) {
+  const quand = dateIso ? ` on ${dateTexte(dateIso, "en")}` : "";
+  if (pour === "partenaire") return `Voucher ${numero}: ${service}${quand}, guest ${client}.`;
+  return `Hello${prenom ? ` ${prenom}` : ""}, here is your voucher ${numero} for ${service}${quand}.`;
+}
+
+// Lien WhatsApp : la conversation du numéro, ou le choix du contact quand on n'a pas de numéro. Un lien ne peut pas joindre d'image.
+export function lienWhatsApp(telephone, message) {
+  const numero = chiffres(telephone).replace("+", "");
+  return `https://wa.me/${numero}?text=${encodeURIComponent(message)}`;
 }

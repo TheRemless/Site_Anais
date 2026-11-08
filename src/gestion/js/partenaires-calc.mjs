@@ -269,3 +269,19 @@ function ajouter(iso, n) {
   const d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) + n * 86400000);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
+
+// Numéros thaïlandais : « 081-9789025 » devient +66819789025 pour les liens d'appel et WhatsApp.
+export function chiffres(numero) {
+  const m = String(numero || "").match(/\+?\d[\d\s\-()]{6,}\d/);
+  if (!m) return "";
+  let d = m[0].replace(/[^\d+]/g, "");
+  if (d[0] !== "+" && d[0] === "0") d = `+66${d.slice(1)}`;
+  return d;
+}
+
+// Numéro WhatsApp d'un partenaire : le premier marqué WhatsApp, sinon le premier numéro.
+export function telWhatsApp(p) {
+  const t = (p && p.contact && p.contact.telephones) || [];
+  const w = t.find((x) => x.whatsapp) || t[0];
+  return w ? w.numero : "";
+}

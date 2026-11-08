@@ -9,12 +9,12 @@ import { vide } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { telWhatsApp } from "../partenaires-calc.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
 const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || null;
 const clientDe = (r) => { const d = dossierDe(r); return d ? etat.db.clients.find((c) => c.id === d.client_id) || null : null; };
 const entreprise = () => ({ nom: reglages().emetteur.nom || entiteActive().nom, telephone: reglages().emetteur.telephone || "" });
-const telWhatsApp = (p) => { const t = ((p && p.contact && p.contact.telephones) || []); const w = t.find((x) => x.whatsapp) || t[0]; return w ? w.numero : ""; };
 
 export function messagePartenaire(r) {
   const p = partenaireDe(r.partenaire_id);
