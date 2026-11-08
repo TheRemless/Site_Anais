@@ -1,5 +1,6 @@
 import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe, modeExcursions, numeroSuivant } from "../etat.mjs";
 import { nouveauDossierExcursions } from "./nouveau-excursions.mjs";
+import { ouvrirDemande } from "./demande.mjs";
 import { h, champ, vider, toast } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
@@ -169,7 +170,7 @@ export function listeDossiers() {
   return h(
     "div",
     { "data-titre": tr("Dossiers") },
-    h("div", { class: "entete" }, h("h1", null, tr("Dossiers")), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Nouveau dossier")) : null),
+    h("div", { class: "entete" }, h("h1", null, tr("Dossiers")), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, modeExcursions() ? h("button", { class: "secondaire", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
     h("div", { class: "barre-outils" }, onglets, h("div", { class: "barre-champs" }, h("div", { class: "champ" }, h("label", { for: "tri-dossiers" }, tr("Trier par")), tri), h("div", { class: "champ recherche" }, h("label", { for: "recherche" }, tr("Rechercher")), recherche))),
     barre,
     corps
