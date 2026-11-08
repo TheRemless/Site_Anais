@@ -39,7 +39,7 @@ export async function tableauDeBord() {
     .filter((r) => r.dossier.date_depart && r.statut !== "annule" && r.dossier.date_depart >= ajd && joursEntre(ajd, r.dossier.date_depart) <= 60)
     .sort((a, b) => (a.dossier.date_depart > b.dossier.date_depart ? 1 : -1));
 
-  const chiffre = (valeur, libelle, detail) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, libelle), h("p", { class: "chiffre-valeur" }, valeur), h("p", { class: "chiffre-detail" }, detail));
+  const chiffre = (valeur, libelle, detail, lien = null) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, lien ? h("a", { class: "chiffre-lien", href: lien }, libelle) : libelle), h("p", { class: "chiffre-valeur" }, valeur), h("p", { class: "chiffre-detail" }, detail));
 
   return h(
     "div",
@@ -51,9 +51,9 @@ export async function tableauDeBord() {
     peut("finances.voir") ? h(
       "div",
       { class: "chiffres" },
-      chiffre(formatSommes(encaisser.map((r) => ({ montant: r.reste, devise: r.devise })), reglages().devise), tr("Reste à encaisser"), pluriel(encaisser.length, N_("dossier accepté"), N_("dossiers acceptés"))),
+      chiffre(formatSommes(encaisser.map((r) => ({ montant: r.reste, devise: r.devise })), reglages().devise), tr("Reste à encaisser"), pluriel(encaisser.length, N_("dossier accepté"), N_("dossiers acceptés")), "#/dossiers?onglet=encaisser&tri=reste"),
       chiffre(formatSommes(ceMois.map((p) => ({ montant: p.montant, devise: deviseDe[p.dossier_id] })), reglages().devise), tr("Encaissé en {mois}", { mois: nomMois(ajd) }), pluriel(ceMois.length, N_("paiement"), N_("paiements"))),
-      chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), tr("Devis en attente de réponse"), pluriel(attente.length, N_("devis envoyé"), N_("devis envoyés")))
+      chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), tr("Devis en attente de réponse"), pluriel(attente.length, N_("devis envoyé"), N_("devis envoyés")), "#/dossiers?onglet=attente")
     ) : null,
     moduleActif("reservations") ? sectionAgenda(tr("Départs et pickups aujourd'hui"), ag.aujourdhui, tr("Aucun service aujourd'hui.")) : null,
     moduleActif("reservations") && ag.demain.length ? sectionAgenda(tr("Demain"), ag.demain, "") : null,
