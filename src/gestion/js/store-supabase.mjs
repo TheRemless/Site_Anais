@@ -2,6 +2,7 @@
 // Les droits sont appliqués par la base (règles RLS), pas par ce fichier.
 import { createClient } from "../vendor/supabase.mjs";
 import { tr } from "./i18n.mjs";
+import { separerNets, fusionnerNets } from "./nets-documents.mjs";
 
 // Ordre d'import imposé par les clés étrangères.
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
@@ -28,8 +29,35 @@ function verifie({ data, error }) {
 
 const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise: r.devise, recu: Number(r.recu) } : dossier);
 
-export function creer(config) {
-  const sb = createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
+export function creer(config, { client } = {}) {
+  const sb = client || createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
+
+  // Migration 16 : les nets des documents sont dans documents_nets. Tant qu'elle n'est pas appliquée, on garde l'ancien fonctionnement
+  // (nets dans le contenu) plutôt que de les perdre. La table existe pour tout le monde, mais ne renvoie rien sans le droit « nets ».
+  let netsSepares = null;
+  const separation = () => (netsSepares ||= Promise.resolve(sb.from("documents_nets").select("document_id").limit(1)).then(({ error }) => !error));
+  // Nets de documents, par identifiant de document. Sans le droit « nets », la base ne renvoie rien : les lignes restent sans net.
+  async function netsDes(ids) {
+    const par = {};
+    if (!ids.length || !(await separation())) return par;
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await sb.from("documents_nets").select("document_id, nets").in("document_id", ids.slice(i, i + 100));
+      for (const n of data || []) par[n.document_id] = n.nets;
+    }
+    return par;
+  }
+  const avecNets = async (documents) => {
+    const par = await netsDes(documents.map((d) => d.id));
+    return documents.map((d) => (par[d.id] ? { ...d, contenu: fusionnerNets(d.contenu, par[d.id]) } : d));
+  };
+  // Écrit un document sans ses nets, puis les nets à part (seulement s'il y en a : qui n'en voit pas n'en écrit pas).
+  async function ecrireDocument(ecriture, contenuComplet) {
+    if (!contenuComplet || !(await separation())) return verifie(await ecriture(contenuComplet));
+    const { contenu, nets } = separerNets(contenuComplet);
+    const ligne = verifie(await ecriture(contenu));
+    if (Object.keys(nets).length) verifie(await sb.from("documents_nets").upsert({ document_id: ligne.id, entite_id: ligne.entite_id, nets }).select());
+    return { ...ligne, contenu: fusionnerNets(ligne.contenu, nets) };
+  }
 
   async function toutes(table) {
     const lignes = [];
@@ -70,15 +98,22 @@ export function creer(config) {
       return out;
     },
     async inserer(table, row) {
+      if (table === "documents") return ecrireDocument((contenu) => sb.from(table).insert({ ...row, contenu }).select().single(), row.contenu);
       return verifie(await sb.from(table).insert(row).select().single());
     },
     // `avant` : la version (`updated_at`) de la ligne telle que l'outil l'a lue. Si la ligne a changé depuis, rien n'est écrit et l'erreur porte `conflit`.
     async modifier(table, id, patch, avant) {
-      let q = sb.from(table).update(patch).eq("id", id);
-      if (avant) q = q.eq("updated_at", avant);
-      const lignes = verifie(await q.select());
-      if (!lignes.length) throw avant ? conflit() : new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
-      return lignes[0];
+      const ecriture = async (contenu) => {
+        let q = sb.from(table).update(table === "documents" && contenu !== undefined ? { ...patch, contenu } : patch).eq("id", id);
+        if (avant) q = q.eq("updated_at", avant);
+        const lignes = verifie(await q.select());
+        if (!lignes.length) throw avant ? conflit() : new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+        return { data: lignes[0], error: null };
+      };
+      if (table === "documents" && patch.contenu) return ecrireDocument(ecriture, patch.contenu);
+      const ligne = (await ecriture()).data;
+      // Un document modifié sans son contenu (date d'envoi, par exemple) revient sans nets : on les remet pour qui peut les lire.
+      return table === "documents" ? (await avecNets([ligne]))[0] : ligne;
     },
     async supprimer(table, id) {
       verifie(await sb.from(table).delete().eq("id", id).select());
@@ -127,7 +162,7 @@ export function creer(config) {
     },
     async dossierComplet(id) {
       const [dossier, documents, paiements] = await Promise.all([this.resumeDossier(id), sb.from("documents").select("*").eq("dossier_id", id).order("created_at"), sb.from("paiements").select("*").eq("dossier_id", id).order("date")]);
-      return { dossier, documents: verifie(documents), paiements: verifie(paiements) };
+      return { dossier, documents: await avecNets(verifie(documents)), paiements: verifie(paiements) };
     },
     async documentComplet(docId) {
       const doc = verifie(await sb.from("documents").select("dossier_id").eq("id", docId).maybeSingle());
@@ -140,7 +175,7 @@ export function creer(config) {
       const lignes = [];
       for (let debut = 0; ; debut += PAGE) {
         const page = verifie(await sb.from("documents").select("*").eq("entite_id", entiteId).order("created_at").range(debut, debut + PAGE - 1));
-        lignes.push(...page);
+        lignes.push(...(await avecNets(page)));
         if (page.length < PAGE) return lignes;
       }
     },
@@ -175,8 +210,11 @@ export function creer(config) {
       return data.signedUrl;
     },
     async supprimerPiece(piece) {
+      // Le fichier d'abord : la règle de suppression du stockage exige que la ligne de la pièce existe encore. Dans l'autre ordre, le
+      // fichier restait dans le stockage sans que personne ne puisse plus le retrouver.
+      const { error } = await sb.storage.from("pieces").remove([piece.chemin]);
+      if (error) throw new Error(error.message);
       verifie(await sb.from("pieces_jointes").delete().eq("id", piece.id).select());
-      await sb.storage.from("pieces").remove([piece.chemin]);
     },
     // Tableau analytique : tous les chiffres sont calculés par la base.
     async analyses({ entiteId, du, au, jour }) {
@@ -204,8 +242,18 @@ export function creer(config) {
     async importer(tables) {
       // Ordre imposé par les clés étrangères.
       for (const t of TABLES) {
-        const rows = tables[t] || [];
+        let rows = tables[t] || [];
+        // Une sauvegarde porte les nets dans le contenu des documents : à l'import ils vont dans documents_nets, pas dans le contenu.
+        const nets = [];
+        if (t === "documents" && (await separation())) {
+          rows = rows.map((d) => {
+            const s = separerNets(d.contenu);
+            if (Object.keys(s.nets).length) nets.push({ document_id: d.id, entite_id: d.entite_id, nets: s.nets });
+            return { ...d, contenu: s.contenu };
+          });
+        }
         for (let i = 0; i < rows.length; i += 200) verifie(await sb.from(t).upsert(rows.slice(i, i + 200)).select("id"));
+        for (let i = 0; i < nets.length; i += 200) verifie(await sb.from("documents_nets").upsert(nets.slice(i, i + 200)).select("document_id"));
       }
     },
   };

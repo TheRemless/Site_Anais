@@ -910,7 +910,6 @@ export const EN = {
   "paiement": "payment",
   "Paiement": "Payment",
   "Paiement des partenaires": "Payment to partners",
-  "Paiement du partenaire": "Partner payment",
   "Paiement enregistré.": "Payment recorded.",
   "Paiement et banque": "Payment and bank",
   "Paiement et coordonnées bancaires": "Payment and bank details",
@@ -1419,4 +1418,7 @@ export const EN = {
   "WhatsApp ne reçoit pas d'image par un lien : l'image est copiée, collez-la dans la conversation qui s'ouvre. Sans numéro, WhatsApp propose de choisir le contact.": "WhatsApp cannot receive an image through a link: the image is copied, paste it into the conversation that opens. Without a number, WhatsApp lets you pick the contact.",
   "Voucher {numero}": "Voucher {numero}",
   "L'image n'a pas pu être fabriquée : {message}": "The image could not be created: {message}",
+  "Réservé aux personnes qui voient les prix nets.": "Reserved for people who can see the net prices.",
+  "Ce document est en anglais, mais les conditions de paiement n'ont pas de version anglaise : elles s'impriment en français. Ajoutez-la dans Réglages, onglet Textes.": "This document is in English, but the payment terms have no English version: they print in French. Add it in Settings, Texts tab.",
+  "Les commissions n'ont pas été enregistrées : la migration 16 n'est pas encore appliquée.": "The commissions were not saved: migration 16 has not been applied yet.",
 };

@@ -2,7 +2,7 @@
 // Tout ce qui est propre à une entreprise (textes, logo, couleurs, coordonnées) vient de ses réglages.
 import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, lignesEquivalents, formatNombre, acompteDu } from "./calc.mjs";
 import { h, markup, inline } from "./ui.mjs";
-import { modePaiement, LIBELLES_EN, phraseCgv } from "./defauts.mjs";
+import { modePaiement, LIBELLES_EN, phraseCgv, conditionsDocument, mentionTva } from "./defauts.mjs";
 
 const lignes = (texte) => (texte || "").split("\n").filter((l) => l.trim() !== "");
 
@@ -20,14 +20,15 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const mode = modePaiement(reglages, c.paiement);
   const numero = (c.numero || "").trim() || dossier.ref;
   const titreType = locale ? lb.facture_locale || lb.facture : estFacture ? lb.facture : lb.devis;
-  const variantes = reglages.textes.variantes;
-  const choisie = c.variante === "perso" ? { corps: c.conditions_corps || "", cloture: c.conditions_cloture || "" } : variantes.find((v) => v.id === c.variante) || variantes[0] || { corps: "", cloture: "" };
-  const variante = en && c.variante !== "perso" ? { corps: choisie.corps_en || choisie.corps, cloture: choisie.cloture_en || choisie.cloture } : choisie;
+  const variante = conditionsDocument(reglages, c, en);
 
   const pct = Number(reglages.conditions.acompte_pct) || 0;
   // Devise propre au document, sinon celle de l'entreprise.
   const dev = c.devise || reglages.devise;
-  const eq = c.equivalents && c.equivalents.actif ? equivalents(t.net, lignesEquivalents(c.equivalents, reglages.taux)) : [];
+  // Deux équivalents : celui des conditions (« Le montant total s'élève à… ») sur le total, celui sous la barre finale sur le montant de cette barre, le reste à payer.
+  const lignesEq = c.equivalents && c.equivalents.actif ? lignesEquivalents(c.equivalents, reglages.taux) : null;
+  const eq = lignesEq ? equivalents(t.net, lignesEq) : [];
+  const eqBarre = lignesEq ? equivalents(t.reste, lignesEq) : [];
   const SYMBOLES = { EUR: "€", USD: "$" };
   const texteEq = (x) => `${formatNombre(x.montant)} ${SYMBOLES[x.code] || x.code}`;
   const NOMS_DEVISES = { CHF: "Swiss Franc", EUR: "Euro", THB: "Thai Baht", USD: "US Dollar", GBP: "Pound Sterling" };
@@ -81,7 +82,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   const sousTotal = afficherSousTotal(c, recu);
 
   const barre = (libelle, valeur, classe) => h("div", { class: `barre ${classe}` }, h("span", { class: "barre-libelle" }, libelle), h("span", { class: "barre-valeur" }, valeur));
-  const tvaTexte = c.tva ? (en && reglages.conditions.tva_mention_en) || reglages.conditions.tva_mention : "";
+  const tvaTexte = c.tva ? mentionTva(reglages.conditions, en) : "";
 
   // Pied de page : coordonnées, informations de paiement et QR code, selon ce qui est renseigné.
   const paiementLignes = lignes(mode.texte);
@@ -145,7 +146,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
           )
         : null,
       barre(lb.total_final || lb.total, formatMontant(t.reste, dev), "fonce"),
-      eq.length ? h("p", { class: "equivalent" }, `${lb.equivalent} ${eq.map(texteEq).join(" · ")}`) : null,
+      eqBarre.length ? h("p", { class: "equivalent" }, `${lb.equivalent} ${eqBarre.map(texteEq).join(" · ")}`) : null,
       tvaTexte ? h("p", { class: "tva" }, tvaTexte) : null,
       lb.note_devise ? h("div", { class: "tva devise" }, markup(lb.note_devise, vars)) : null,
       notes,

@@ -312,3 +312,23 @@ test("À faire : un trop-perçu apparaît, un dossier annulé ou juste soldé n'
   assert.deepEqual(items.map((i) => i.type), ["trop_percu"]);
   assert.equal(items[0].resume.recu - items[0].resume.total, 200);
 });
+
+test("conditions d'un document en anglais : version anglaise de la variante, sinon celle de départ si le texte n'a pas été modifié, sinon signalé", async () => {
+  const { conditionsDocument, mentionTva, COND_QR, COND_EMAIL, COND_QR_EN, COND_EMAIL_EN, CLOTURE_EN } = await import("../src/gestion/js/defauts.mjs");
+  const cloture = "Merci pour votre confiance !\nJe reste à votre disposition pour toute question ou demande supplémentaire.\nCordialement,";
+  const regl = { textes: { variantes: [{ id: "qr", corps: COND_QR, cloture }, { id: "email", corps: COND_EMAIL, cloture }, { id: "modifiee", corps: "Texte modifié par Anaïs", cloture: "Merci" }, { id: "traduite", corps: "FR", corps_en: "EN", cloture: "Merci", cloture_en: "Thanks" }] } };
+  assert.deepEqual(conditionsDocument(regl, { variante: "qr" }, false), { corps: COND_QR, cloture, manqueEn: false }, "en français rien ne change");
+  assert.deepEqual(conditionsDocument(regl, { variante: "qr" }, true), { corps: COND_QR_EN, cloture: CLOTURE_EN, manqueEn: false });
+  assert.equal(conditionsDocument(regl, { variante: "email" }, true).corps, COND_EMAIL_EN);
+  const modifiee = conditionsDocument(regl, { variante: "modifiee" }, true);
+  assert.deepEqual(modifiee, { corps: "Texte modifié par Anaïs", cloture: "Merci", manqueEn: true }, "un texte modifié n'est jamais remplacé par un texte que la personne n'a pas écrit : il est signalé");
+  assert.deepEqual(conditionsDocument(regl, { variante: "traduite" }, true), { corps: "EN", cloture: "Thanks", manqueEn: false }, "la version anglaise des réglages prime");
+  assert.deepEqual(conditionsDocument(regl, { variante: "perso", conditions_corps: "Sur mesure", conditions_cloture: "" }, true), { corps: "Sur mesure", cloture: "", manqueEn: false }, "un texte propre au document est tel quel");
+  // les textes de départ ne contiennent ni taux de change écrit en dur ni de prénom à la première personne
+  assert.ok(!/1,10|1\.10/.test(COND_QR + COND_QR_EN), "aucun taux de change en dur dans les conditions");
+  assert.ok(/\{indicatif\}/.test(COND_QR) && /\{indicatif\}/.test(COND_QR_EN), "le montant indicatif vient du taux du document");
+  assert.equal(mentionTva({ tva_mention: "TVA non applicable", tva_mention_en: "" }, false), "TVA non applicable");
+  assert.equal(mentionTva({ tva_mention: "TVA non applicable", tva_mention_en: "" }, true), "VAT not applicable");
+  assert.equal(mentionTva({ tva_mention: "TVA non applicable", tva_mention_en: "Not subject to VAT" }, true), "Not subject to VAT");
+  assert.equal(mentionTva({ tva_mention: "Exonéré art. 21", tva_mention_en: "" }, true), "Exonéré art. 21", "une mention particulière n'est pas devinée");
+});

@@ -214,3 +214,34 @@ test("conversion de la base partenaires : nets et banque à part, trajets, alert
   assert.ok(r.taches[1].description.includes("À faire : Écrire sur le devis"));
   assert.ok(r.partenaires.concat(r.prestations, r.trajets).every((x) => x.entite_id === "E1"));
 });
+
+test("import : commissions, mode de paiement, texte des nets et commission d'une prestation vont dans les tables privées, jamais dans les colonnes publiques", () => {
+  const D = {
+    partners: [{ id: "P01", name: "Longtail", phones: [], email: [], payment: "Espèces", cancel: "24 h" }],
+    commissions: [{ p: "Longtail", rule: "10 % de marge", note: "net fixe" }],
+    excursions: [{ partner: "Longtail", section: "X, Excursions", prog: "4 îles", sale: 1200, net: 800, pax: "1", netTxt: "net 800 par personne" }],
+    rentals: [{ cat: "Scooters", name: "Honda Click", price: 300, net: 200, old: 350, comm: "20 %" }],
+  };
+  const out = convertir(D, "ent-1");
+  const lt = out.partenaires.find((p) => p.nom === "Longtail");
+  assert.ok(!("commissions" in lt.regles) && !("paiement" in lt.regles), "règles publiques sans commission ni paiement");
+  const prive = out.partenaires_prives.find((x) => x.partenaire_id === lt.id);
+  assert.deepEqual(prive.commissions, ["10 % de marge net fixe"]);
+  assert.equal(prive.paiement, "Espèces");
+  for (const prest of out.prestations) for (const cle of ["net_texte", "commission", "ancien_prix"]) assert.ok(!(cle in prest.details), `${cle} ne reste pas dans les détails publics`);
+  const nets = out.prestations_nets.flatMap((n) => Object.keys(n.details || {}));
+  assert.ok(nets.includes("net_texte") && nets.includes("commission") && nets.includes("ancien_prix"), "ils sont dans prestations_nets.details");
+});
+
+test("commissions et paiement d'un partenaire : données privées, lues des règles publiques tant que la migration 16 n'est pas appliquée", async () => {
+  const { commissionsPartenaire, paiementPartenaire } = await import("../src/gestion/js/partenaires-calc.mjs");
+  const ancien = { regles: { commissions: ["Marge 10 %"], paiement: "Espèces" } };
+  const nouveau = { regles: {} };
+  const prive = { commissions: ["Net fixe"], paiement: "Virement" };
+  assert.deepEqual(commissionsPartenaire(nouveau, prive), ["Net fixe"], "après la migration : données privées");
+  assert.equal(paiementPartenaire(nouveau, prive), "Virement");
+  assert.deepEqual(commissionsPartenaire(ancien, { paiement: "x" }, true), ["Marge 10 %"], "avant la migration : on lit encore les règles, rien ne disparaît");
+  assert.equal(paiementPartenaire(ancien, null, true), "Espèces", "même sans ligne privée, pour qui voit les nets");
+  assert.deepEqual(commissionsPartenaire(ancien, null), [], "sans le droit de voir les nets, rien n'est rendu");
+  assert.equal(paiementPartenaire(ancien, prive, false), "");
+});

@@ -13,7 +13,7 @@ create schema auth;
 create table auth.users (id uuid primary key default gen_random_uuid(), email text, created_at timestamptz default now());
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 create schema storage;
-create table storage.buckets (id text primary key, name text, public boolean);
+create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint);
 create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner uuid);
 alter table storage.objects enable row level security;
 create function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name, '/') $$;
@@ -309,7 +309,33 @@ ok(apresRest.docs === 1 && apresRest.pai === 1 && apresRest.res === 1 && apresRe
 ok(apresRest.recu === 300 && apresRest.total === 700, "le résumé du dossierA restauré est juste (700 facturés, 300 reçus)");
 ok(apresRest.corb === 0, "la corbeille est vidée de ce dossierA");
 
-console.log("\n== Chaîne de migrations v1 → v2 → … → v9 → … → v14 ==");
+console.log("Confidentialité : nets des documents, fonctions, fichiers");
+const dossNets = (await dbA.query(`insert into dossiers (entite_id, ref, client_id) select '${EA.secret}', 'R-nets', id from clients limit 1 returning id`)).rows[0].id;
+const docNets = (await dbA.query(`insert into documents (entite_id, dossier_id, type, date_emission, contenu) values ('${EA.secret}', '${dossNets}', 'devis', '2026-10-01', '{"lignes":[{"id":"a","kind":"ligne","montant":100}]}') returning id`)).rows[0].id;
+await dbA.exec(`insert into documents_nets (document_id, entite_id, nets) values ('${docNets}', '${EA.secret}', '{"a":60}')`);
+ok((await compte(dbA, uA.editeur, `select 1 from documents_nets`)) === 0, "un éditeur sans le droit « nets » ne lit pas les nets des documents");
+ok(!(await essaie(dbA, uA.editeur, `insert into documents_nets (document_id, entite_id, nets) values ('${docNets}', '${EA.secret}', '{"a":1}') on conflict (document_id) do update set nets = excluded.nets`)).ok, "ni ne les écrit");
+ok((await compte(dbA, uA.admin, `select 1 from documents_nets`)) === 1, "l'administratrice les lit");
+ok((await essaie(dbA, uA.admin, `insert into documents_nets (document_id, entite_id, nets) values ('${docNets}', '${EA.secret}', '{"a":65}') on conflict (document_id) do update set nets = excluded.nets`)).ok, "et les met à jour");
+ok(!(await essaie(dbA, uA.admin, `insert into documents_nets (document_id, entite_id, nets) values ('${docNets}', '${EA.taxi}', '{}') on conflict (document_id) do update set entite_id = excluded.entite_id`)).ok, "mais pas au nom d'une autre entreprise");
+await dbA.exec("set role anon;");
+let anonNets = true; try { await dbA.query("select * from documents_nets"); } catch { anonNets = false; }
+await dbA.exec("reset role;");
+ok(!anonNets, "le visiteur anonyme ne lit pas les nets des documents");
+await dbA.exec("set role anon;");
+let anonFonction = true; try { await dbA.query(`select recalculer_dossier('${dossNets}')`); } catch { anonFonction = false; }
+await dbA.exec("reset role;");
+ok(!anonFonction, "la clé publique n'appelle plus les fonctions de la base (recalculer_dossier)");
+ok((await compte(dbA, uA.editeur, "select 1 from dossiers")) >= 1 && (await essaie(dbA, uA.editeur, `select a_permission('${EA.secret}', 'dossiers.lire') r`)).rows[0].r === true, "les règles de sécurité continuent de fonctionner pour une personne connectée");
+ok((await dbA.query("select file_size_limit::int l from storage.buckets where id = 'pieces'")).rows[0].l === 10485760, "les fichiers joints sont limités à 10 Mo côté base");
+// La corbeille restaure aussi les nets des documents
+const supN = await essaie(dbA, uA.admin, `delete from dossiers where id = '${dossNets}'`);
+const cbN = (await dbA.query("select id, liees from corbeille where ligne->>'id' = $1", [dossNets])).rows[0];
+ok(supN.ok && cbN && cbN.liees.documents_nets.length === 1, "la corbeille garde les nets des documents du dossier supprimé");
+ok((await essaie(dbA, uA.admin, `select restaurer_dossier('${cbN.id}')`)).ok, "la restauration réussit");
+ok((await dbA.query("select nets from documents_nets where document_id = $1", [docNets])).rows[0].nets.a === 65, "elle remet les nets du document");
+
+console.log("\n== Chaîne de migrations v1 → v2 → … → v9 → … → v16 ==");
 const v = await base([W + "schema-v1-reference.sql"]);
 const vcompte = (await v.query("insert into auth.users (email) values ('anais@test') returning id")).rows[0].id;
 const vass = (await v.query("insert into auth.users (email) values ('assistante@test') returning id")).rows[0].id;
@@ -335,8 +361,28 @@ await v.exec(lire(W + "migration-13-langue.sql"));
 await v.exec("insert into dossiers (entite_id, ref, client_id) select entite_id, r, client_id from dossiers, (values ('ZZ-2026-0007'), ('ZZ-2026-0012'), ('2025-0003'), ('LD20261009 Thailand')) t(r) where ref = 'OLD1 Thaïlande'");
 await v.exec(lire(W + "migration-14-argent.sql"));
 await v.exec(lire(W + "migration-15-travail-protege.sql"));
+// Données telles qu'elles étaient avant la migration 16 : nets dans le contenu d'un devis, commissions et paiement dans les règles d'un partenaire.
+const vEnt = (await v.query("select id from entites where slug = 'secret'")).rows[0].id;
+await v.exec(`insert into dossiers (entite_id, ref, client_id) select entite_id, 'LEG-1', client_id from dossiers where ref = 'OLD1 Thaïlande'`);
+await v.exec(`insert into documents (id, entite_id, dossier_id, type, date_emission, contenu) select '22222222-2222-4222-8222-222222222222', entite_id, id, 'devis', '2026-10-05', '{"devise":"CHF","lignes":[{"id":"l1","kind":"ligne","libelle":"Bateau","unite":100,"qte":2,"net":70,"prestation_id":"x"},{"id":"l2","kind":"ligne","libelle":"Libre","montant":50},{"id":"l3","kind":"texte","libelle":"note"}]}' from dossiers where ref = 'LEG-1'`);
+await v.exec(`update documents set contenu = jsonb_set(contenu, '{lignes,1,montant}', '60') where id = '22222222-2222-4222-8222-222222222222'`);
+await v.exec(`insert into partenaires (id, entite_id, nom, regles) values ('33333333-3333-4333-8333-333333333333', '${vEnt}', 'Longtail legacy', '{"annulation":"24 h","commissions":["Net fixe, 10 % de marge"],"paiement":"Espèces à la fin du mois"}')`);
+await v.exec(`insert into prestations (id, entite_id, partenaire_id, famille, libelle, details) values ('44444444-4444-4444-8444-444444444444', '${vEnt}', '33333333-3333-4333-8333-333333333333', 'excursion', 'Tour legacy', '{"horaires":"08:00","net_texte":"net 1200","commission":"15 %","ancien_prix":900}')`);
 const compteurs = (await v.query("select annee, derniere from compteurs_ref order by annee")).rows.map((x) => `${x.annee}:${x.derniere}`).join();
 ok(compteurs === "2025:3,2026:12", "la migration 14 reprend les numéros déjà donnés (2026 jusqu'à 12, 2025 jusqu'à 3) et ignore les références en initiales");
+await v.exec(lire(W + "migration-16-confidentialite.sql"));
+const contenuLeg = (await v.query("select contenu from documents where id = '22222222-2222-4222-8222-222222222222'")).rows[0].contenu;
+ok(contenuLeg.lignes.length === 3 && contenuLeg.lignes.every((l) => !("net" in l)) && contenuLeg.lignes[0].prestation_id === "x" && contenuLeg.lignes[0].unite === 100, "la migration 16 retire les nets du contenu des documents sans toucher au reste");
+const netsLeg = (await v.query("select nets from documents_nets where document_id = '22222222-2222-4222-8222-222222222222'")).rows[0];
+ok(netsLeg && JSON.stringify(netsLeg.nets) === '{"l1":70}', "les nets retirés sont rangés dans documents_nets, par ligne");
+const histoLeg = (await v.query("select ligne from documents_historique where document_id = '22222222-2222-4222-8222-222222222222'")).rows;
+ok(histoLeg.length >= 1 && histoLeg.every((h) => h.ligne.contenu.lignes.every((l) => !("net" in l))), "les versions archivées avant la migration n'ont plus de nets non plus");
+ok((await v.query("select total::float t from dossiers_resume where dossier_id = (select dossier_id from documents where id = '22222222-2222-4222-8222-222222222222')")).rows[0].t === 260, "le total du dossier est inchangé (200 + 60)");
+const parLeg = (await v.query("select regles, (select commissions from partenaires_prives where partenaire_id = p.id) c, (select paiement from partenaires_prives where partenaire_id = p.id) pa from partenaires p where id = '33333333-3333-4333-8333-333333333333'")).rows[0];
+ok(!("commissions" in parLeg.regles) && !("paiement" in parLeg.regles) && parLeg.regles.annulation === "24 h", "les commissions et le paiement quittent les règles publiques du partenaire");
+ok(JSON.stringify(parLeg.c) === '["Net fixe, 10 % de marge"]' && parLeg.pa === "Espèces à la fin du mois", "ils sont repris dans partenaires_prives");
+const prestLeg = (await v.query("select details, (select details from prestations_nets where prestation_id = p.id) n from prestations p where id = '44444444-4444-4444-8444-444444444444'")).rows[0];
+ok(JSON.stringify(prestLeg.details) === '{"horaires":"08:00"}' && JSON.stringify(prestLeg.n) === '{"net_texte":"net 1200","commission":"15 %","ancien_prix":900}', "le texte des nets, la commission et l'ancien prix quittent la prestation pour prestations_nets");
 await v.exec("update dossiers set accepte_le = '2026-10-02' where id in (select id from dossiers limit 1)");
 const avant = (await v.query("select total from dossiers_resume order by dossier_id limit 1")).rows[0];
 await v.exec("insert into documents (entite_id, dossier_id, type, date_emission, contenu) select entite_id, id, 'facture_locale', '2026-10-03', '{\"lignes\":[{\"kind\":\"formule\",\"montant\":9999}]}' from dossiers limit 1");

@@ -69,7 +69,7 @@ export function convertir(D, entiteId, uid = null, maintenant = new Date().toISO
         licence: texte(p.licence),
         guichets: [],
       },
-      regles: { annulation: texte(p.cancel), paiement: texte(p.payment) },
+      regles: { annulation: texte(p.cancel) },
       contrat: { statut: texte(p.status), etat: p.statusKind === "ok" ? "ok" : "attention", saison: texte(p.season), validite: texte(p.validity), fin: null, documents: p.docs || [], evenements: [] },
       notes: (p.notes || []).join("\n"),
       ordre: ++ordre,
@@ -117,10 +117,18 @@ export function convertir(D, entiteId, uid = null, maintenant = new Date().toISO
   }
 
   // ---- Prestations ----
-  const prestation = (p, famille, groupe, libelle, prix, unite, details, net, extra = {}) => {
+  // Le texte des nets, la commission et l'ancien prix ne vont pas dans les détails publics de la prestation mais dans prestations_nets.details
+  // (réservé au droit « nets »).
+  const SENSIBLES = ["net_texte", "commission", "ancien_prix"];
+  const prestation = (p, famille, groupe, libelle, prix, unite, detailsComplets, net, extra = {}) => {
+    const details = {};
+    const prives = {};
+    for (const [k, v] of Object.entries(detailsComplets || {})) (SENSIBLES.includes(k) ? prives : details)[k] = v;
     const row = { ...base(), partenaire_id: p ? p.id : null, famille, groupe: texte(groupe), libelle: texte(libelle), libelle_en: libelleClient(texte(libelle)), details, prix_vente: nombre(prix), unite, sur_place: false, ordre: out.prestations.length + 1, actif: true, ...extra };
     out.prestations.push(row);
-    if (net !== null && net !== undefined && net !== "") out.prestations_nets.push({ ...lie(), prestation_id: row.id, net: nombre(net), net_enfant: null, note: "" });
+    const aNet = net !== null && net !== undefined && net !== "";
+    const aPrives = Object.values(prives).some((v) => v !== undefined && v !== null && v !== "");
+    if (aNet || aPrives) out.prestations_nets.push({ ...lie(), prestation_id: row.id, net: aNet ? nombre(net) : null, net_enfant: null, note: "", details: aPrives ? prives : {} });
     return row;
   };
   for (const x of D.excursions || []) {
@@ -167,6 +175,18 @@ export function convertir(D, entiteId, uid = null, maintenant = new Date().toISO
   for (const a of D.alerts || []) {
     const p = parId[(a.pids || [])[0]];
     out.taches.push({ ...base(), partenaire_id: p ? p.id : null, dossier_id: null, titre: `${NIVEAU[a.level] ? `[${NIVEAU[a.level]}] ` : ""}${a.title}`, description: [a.text, a.action ? `À faire : ${a.action}` : "", a.src ? `Source : ${a.src}` : ""].filter(Boolean).join("\n\n"), echeance: null, assignee_id: null, fait: false, fait_le: null, fait_par: null });
+  }
+  // Commissions des partenaires : réservées au droit « nets », donc dans partenaires_prives et non dans les règles publiques.
+  for (const p of out.partenaires) {
+    const commissions = p.regles.commissions;
+    delete p.regles.commissions;
+    if (!commissions || !commissions.length) continue;
+    let prive = out.partenaires_prives.find((x) => x.partenaire_id === p.id);
+    if (!prive) {
+      prive = { ...lie(), partenaire_id: p.id, banque: {}, paiement: "" };
+      out.partenaires_prives.push(prive);
+    }
+    prive.commissions = commissions;
   }
   return out;
 }

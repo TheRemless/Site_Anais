@@ -1,7 +1,7 @@
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument } from "../etat.mjs";
 import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
-import { nouvelleLigne, modesPaiement } from "../defauts.mjs";
+import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { tr, localeActive } from "../i18n.mjs";
@@ -44,6 +44,7 @@ function editeurVue(id) {
   }
 
   const statut = h("span", { class: "etat-enregistrement", role: "status" }, tr("Enregistré"));
+  const avertissementAnglais = h("p", { class: "bandeau-info", role: "status", hidden: true }, tr("Ce document est en anglais, mais les conditions de paiement n'ont pas de version anglaise : elles s'impriment en français. Ajoutez-la dans Réglages, onglet Textes."));
   const cadre = h("div", { class: "apercu-cadre" });
   const echelle = h("div", { class: "apercu-echelle" });
   cadre.append(echelle);
@@ -240,6 +241,8 @@ function editeurVue(id) {
   function dessinerApercu() {
     vider(echelle).append(feuille(doc).noeud);
     ajusterEchelle();
+    // Un document en anglais dont les conditions de paiement n'ont pas de version anglaise les imprimerait en français.
+    avertissementAnglais.hidden = !(c.langue === "en" && conditionsDocument(regl, c, true).manqueEn);
   }
 
   const change = () => {
@@ -639,6 +642,7 @@ function editeurVue(id) {
     ),
     h("p", { class: "aide-pdf" }, tr("Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « {nomDoc} {ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: dossier.ref })),
     bandeauConflit,
+    avertissementAnglais,
     lectureSeule ? h("p", { class: "bandeau-info" }, tr("Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.")) : null,
     h("div", { class: "editeur" }, formulaire, zoneApercu)
   );

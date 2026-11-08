@@ -285,3 +285,9 @@ export function telWhatsApp(p) {
   const w = t.find((x) => x.whatsapp) || t[0];
   return w ? w.numero : "";
 }
+
+// Commissions et mode de paiement d'un partenaire : données privées (migration 16), réservées à qui voit les nets (`prive` est alors renseigné).
+// Avant la migration, elles sont encore dans les règles publiques : on les lit de là pour ne rien faire disparaître.
+// `autorise` : la personne a le droit de voir les nets (sans lui, rien n'est rendu). Par défaut, `prive` renseigné.
+export const commissionsPartenaire = (p, prive, autorise = !!prive) => (!autorise ? [] : prive && Array.isArray(prive.commissions) && prive.commissions.length ? prive.commissions : (p.regles && p.regles.commissions) || []);
+export const paiementPartenaire = (p, prive, autorise = !!prive) => (!autorise ? "" : (prive && prive.paiement) || (p.regles && p.regles.paiement) || "");
