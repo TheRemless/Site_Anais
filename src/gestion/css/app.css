@@ -631,3 +631,21 @@ details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-w
   .tableau-groupe .total-ligne td { border-top: 0; }
   .tableau-groupe .total-ligne { border-top: 2px solid var(--bord-fort); }
 }
+
+/* Versions précédentes d'un document : liste à gauche, différences et aperçu à droite (l'un sous l'autre sur téléphone). */
+.versions-grille { display: grid; gap: 16px; }
+@media (min-width: 720px) { .versions-grille { grid-template-columns: minmax(200px, 250px) 1fr; align-items: start; } }
+.versions-grille > * { min-width: 0; }
+.versions-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 38vh; overflow-y: auto; }
+@media (min-width: 720px) { .versions-liste { max-height: 60vh; } }
+.version-choix { width: 100%; min-height: 44px; display: grid; gap: 1px; justify-items: start; justify-content: start; align-items: center; padding: 8px 12px; text-align: left; font-weight: 400; background: var(--surface); border: 1px solid var(--bord-champ); border-radius: var(--rayon); }
+.version-choix strong { font-weight: 700; }
+.version-choix span { font-size: 0.85rem; color: var(--texte-2); }
+.version-choix .version-nb { color: var(--teal-700); font-weight: 600; }
+.version-choix[aria-pressed="true"] { background: var(--teal-100); border-color: var(--teal-600); box-shadow: inset 3px 0 0 var(--teal-600); }
+.version-detail h3 { margin: 0 0 8px; }
+.version-diff { margin: 0 0 14px; padding: 0 0 0 18px; display: grid; gap: 6px; }
+.version-diff .diff-ligne_retiree { color: var(--danger); }
+.version-diff .diff-ligne_retrouvee { color: #25653d; }
+.version-apercu { margin-top: 12px; overflow: hidden; border: 1px solid var(--bord); border-radius: 8px; background: #fff; }
+.version-feuille { width: 794px; transform-origin: top left; }
