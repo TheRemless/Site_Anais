@@ -122,11 +122,18 @@ export const MOYENS_DEFAUT = [
   { id: "autre", label: N_("Autre") },
 ];
 
-export const COND_QR = `Un acompte de {acompte}% de la facture (non-remboursable) est demandé à la signature du devis, payable à {delai} jours, le reste du montant est à verser à la réception du carnet de voyage.
+// Texte de départ jusqu'au 8 novembre 2026 (taux de change écrit en dur, « de la facture » sur un devis) : reconnu pour proposer la version anglaise.
+const ANCIEN_COND_QR = `Un acompte de {acompte}% de la facture (non-remboursable) est demandé à la signature du devis, payable à {delai} jours, le reste du montant est à verser à la réception du carnet de voyage.
 Modes de paiement :
 - Virement bancaire en CHF.
 - Paiement en EUR (1 CHF = 1,10€) possible sur demande (via PayPal ou virement bancaire)
 - **Paiement facile avec un compte Wise** : scannez le QR code et réglez dans votre devise habituelle (CHF ou Euro). Je pourrai alors le changer en THB pour moi, sans frais supplémentaires pour vous.`;
+
+export const COND_QR = `Un acompte de {acompte} % du montant total ({acompte_chf}) est demandé à la signature du devis. Il n'est pas remboursable et doit être réglé dans un délai de {delai} jours. Le solde est à verser à la réception du carnet de voyage.
+Modes de paiement :
+- Virement bancaire en CHF.
+- Paiement en EUR possible sur demande{indicatif}, par PayPal ou par virement bancaire.
+- **Paiement par Wise** : scannez le QR code et réglez en CHF ou en EUR.`;
 
 export const COND_EMAIL = `Un acompte de {acompte} % du montant total est demandé à la signature du devis. Cet acompte est **non remboursable** et doit être réglé dans un délai de {delai} jours suivant l'acceptation du devis.
 Le solde de {solde} % est à régler à la réception du carnet de voyage final.
@@ -134,6 +141,47 @@ Le solde de {solde} % est à régler à la réception du carnet de voyage final.
 Le montant total de la prestation s'élève à **{total}**{indicatif}.
 Afin d'éviter les frais liés aux virements internationaux, le paiement peut être effectué facilement via **Wise**, en CHF ou en EUR, selon votre préférence.
 _Les coordonnées de paiement Wise sont indiquées dans l'e-mail accompagnant le devis._`;
+
+// Versions anglaises des deux conditions de départ. Un document en anglais les prend quand la variante n'a pas de version anglaise à elle
+// ET que son texte français est resté celui de départ : sinon elle retomberait en français sur un document anglais.
+export const COND_QR_EN = `A deposit of {acompte}% of the total amount ({acompte_chf}) is required when the quote is signed. It is non-refundable and must be paid within {delai} days. The balance is due when the travel booklet is delivered.
+Payment methods:
+- Bank transfer in CHF.
+- Payment in EUR on request{indicatif}, by PayPal or bank transfer.
+- **Pay with Wise**: scan the QR code and pay in CHF or EUR.`;
+export const COND_EMAIL_EN = `A deposit of {acompte} % of the total amount is required when the quote is signed. This deposit is **non-refundable** and must be paid within {delai} days of acceptance.
+The remaining {solde} % is due when the final travel booklet is delivered.
+
+The total price of the services is **{total}**{indicatif}.
+To avoid international transfer fees, you can pay through **Wise**, in CHF or EUR, as you prefer.
+_The Wise payment details are in the e-mail that came with the quote._`;
+export const CLOTURE_EN = "Thank you for choosing us!\nPlease contact us with any question or additional request.\nKind regards,";
+const CLOTURES_FR_DEFAUT = ["Merci pour votre confiance !\nJe reste à votre disposition pour toute question ou demande supplémentaire.\nCordialement,", "Merci pour votre confiance !\nNous restons à votre disposition pour toute question ou demande supplémentaire.\nCordialement,"];
+const DEFAUTS_CONDITIONS = {
+  qr: { fr: [COND_QR, ANCIEN_COND_QR], en: COND_QR_EN },
+  email: { fr: [COND_EMAIL], en: COND_EMAIL_EN },
+};
+
+// Conditions de paiement d'un document : le texte et la clôture à imprimer, et `manqueEn` quand le document est en anglais mais que les
+// réglages n'ont pas de version anglaise (le texte français s'imprimerait alors tel quel : l'éditeur le signale).
+export function conditionsDocument(reglages, contenu, en) {
+  const variantes = (reglages.textes && reglages.textes.variantes) || [];
+  const perso = contenu.variante === "perso";
+  const choisie = perso ? { corps: contenu.conditions_corps || "", cloture: contenu.conditions_cloture || "" } : variantes.find((v) => v.id === contenu.variante) || variantes[0] || { corps: "", cloture: "" };
+  if (!en || perso) return { corps: choisie.corps, cloture: choisie.cloture, manqueEn: false };
+  const defaut = DEFAUTS_CONDITIONS[choisie.id];
+  const corpsDefaut = defaut && defaut.fr.includes(choisie.corps) ? defaut.en : "";
+  const clotureDefaut = CLOTURES_FR_DEFAUT.includes(choisie.cloture) ? CLOTURE_EN : "";
+  const corps = choisie.corps_en || corpsDefaut;
+  const cloture = choisie.cloture_en || clotureDefaut;
+  return { corps: corps || choisie.corps, cloture: cloture || choisie.cloture, manqueEn: !corps || (!cloture && !!choisie.cloture) };
+}
+
+// Mention de TVA : celle des réglages en anglais, sinon « VAT not applicable » si la mention française est restée « TVA non applicable ».
+export function mentionTva(conditions, en) {
+  if (!en) return conditions.tva_mention;
+  return conditions.tva_mention_en || (conditions.tva_mention === "TVA non applicable" ? "VAT not applicable" : conditions.tva_mention);
+}
 
 // Messages types proposés au départ, modifiables dans l'écran Messages. Variables : {client}, {prenom}, {date}, {hotel},
 // {heure}, {a_heure} (« à 08:00 », vide sans heure), {personnes}, {prestation}, {partenaire}, {reference}, {entreprise}, {telephone}.
@@ -412,18 +460,19 @@ export function donneesDemo(ajd, ajouterJours) {
   };
   const longtail = partenaire("Longtail démo", "Excursions bateaux", "mer", "Excursions en longtail, 4 îles et Koh Rok (groupe et privé)", {
     contact: { personne: "M. Démo", telephones: [{ numero: "081-000-0001", libelle: "Réservations", whatsapp: true }], emails: ["longtail@demo.local"], adresse: "66 Moo 2, Koh Lanta", embarcadere: "Old Town Pier", guichets: [] },
-    regles: { annulation: "Plus de 24 h avant le départ, sans frais. Ensuite 100 %.", enfants: ["3 à 9 ans, tarif enfant. Moins de 3 ans gratuit."], commissions: ["Net fixe par personne, frais de parc jamais inclus."] },
+    regles: { annulation: "Plus de 24 h avant le départ, sans frais. Ensuite 100 %.", enfants: ["3 à 9 ans, tarif enfant. Moins de 3 ans gratuit."] },
     contrat: { statut: "Tarifs nets confirmés", etat: "ok", saison: "Octobre 2026 à mai 2027", validite: "Oct 2026 – Mai 2027", fin: j(45), documents: ["Contrat Longtail démo.pdf"], evenements: [] },
     notes: "Petit-déjeuner léger offert sur les tours en groupe.",
   });
-  partenaires_prives.push({ id: uid(), entite_id: e2.id, partenaire_id: longtail.id, banque: { banque: "Banque démo", compte: "000-0-00000-0", titulaire: "Longtail démo" }, paiement: "Virement local après chaque tour." });
+  partenaires_prives.push({ id: uid(), entite_id: e2.id, partenaire_id: longtail.id, banque: { banque: "Banque démo", compte: "000-0-00000-0", titulaire: "Longtail démo" }, paiement: "Virement local après chaque tour.", commissions: ["Net fixe par personne, frais de parc jamais inclus."] });
   const speed = partenaire("Speedboat démo", "Ferries et speedboats", "mer", "Liaisons en speedboat entre Lanta, Phi Phi, Lipe et Phuket", {
     contact: { personne: "Équipe réservations", telephones: [{ numero: "088-000-0002", libelle: "", whatsapp: true }], emails: ["info@speedboat.demo"], guichets: [{ lieu: "Saladan Pier", adresse: "Koh Lanta", telephones: ["075-000-000"], line: "", email: "" }] },
     regles: { annulation: "Plus de 24 h avant, sans frais. No show 100 %.", enfants: ["3 à 9 ans, tarif enfant. Moins de 3 ans gratuit sur les genoux."], checkin: ["Ouverture 45 min avant le départ, fermeture 15 min avant."], points_embarquement: [{ lieu: "Koh Lanta", ou: "Saladan Pier" }, { lieu: "Koh Phi Phi", ou: "Tonsai Bay, derrière le 7-11" }], pickups: [{ titre: "Pickup à Lanta", colonnes: ["Bateau 10h30", "Bateau 13h00"], lignes: [["Klong Dao", "09:40", "12:10"], ["Long Beach", "09:30", "12:00"], ["Old Town", "09:00", "11:30"]] }] },
     contrat: { statut: "Tarifs agents reçus", etat: "ok", saison: "Haute saison 2026-2027", validite: "15 oct 2026 – 20 mai 2027", fin: "2027-05-20", documents: [], evenements: [{ date: "15 oct 2026", libelle: "Début de la haute saison", genre: "debut" }] },
   });
   const ferry = partenaire("Ferry démo", "Ferries et speedboats", "mer", "Ferry lent entre Lanta et Phi Phi", { contact: { telephones: [{ numero: "089-000-0003", libelle: "", whatsapp: false }] }, contrat: { statut: "Sans contrat, tarifs publics", etat: "attention", fin: null } });
-  const taxi = partenaire("Transferts démo", "Transferts terrestres et taxis", "transport", "Minivans privés depuis et vers les aéroports", { contact: { telephones: [{ numero: "083-000-0004", libelle: "", whatsapp: true }] }, regles: { commissions: ["Marge de 10 % en attendant un accord."] }, contrat: { statut: "Accord oral", etat: "attention", fin: j(-5) } });
+  const taxi = partenaire("Transferts démo", "Transferts terrestres et taxis", "transport", "Minivans privés depuis et vers les aéroports", { contact: { telephones: [{ numero: "083-000-0004", libelle: "", whatsapp: true }] }, contrat: { statut: "Accord oral", etat: "attention", fin: j(-5) } });
+  partenaires_prives.push({ id: uid(), entite_id: e2.id, partenaire_id: taxi.id, banque: {}, paiement: "", commissions: ["Marge de 10 % en attendant un accord."] });
   prestation(longtail, "excursion", "Excursions en groupe", "4 îles en longtail, journée", 1200, "pp", 800, { horaires: "08h00 - 15h30 (départ 09h00)", inclus: "Pickup à l'hôtel, déjeuner, masque et tuba, fruits.", parc: "Frais de parc 200 ฿ par adulte, à payer sur place.", conditions: "Selon la météo." });
   prestation(longtail, "excursion", "Excursions en groupe", "4 îles en longtail, enfant 3 à 9 ans", 900, "ch", 600, {});
   prestation(longtail, "excursion", "Privatisation", "Koh Rok en longtail privé, 1 à 6 personnes", 6500, "boat", 5000, { capacite: "1 à 6 personnes", inclus: "Bateau, skipper, déjeuner, matériel de snorkeling." });

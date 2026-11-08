@@ -577,6 +577,7 @@ create table partenaires_prives (
   partenaire_id uuid not null unique,
   banque jsonb not null default '{}',
   paiement text not null default '',
+  commissions jsonb not null default '[]',
   foreign key (partenaire_id, entite_id) references partenaires (id, entite_id) on delete cascade
 );
 create table prestations (
@@ -607,6 +608,7 @@ create table prestations_nets (
   net numeric(12, 2),
   net_enfant numeric(12, 2),
   note text not null default '',
+  details jsonb not null default '{}',
   foreign key (prestation_id, entite_id) references prestations (id, entite_id) on delete cascade
 );
 create table trajets (
@@ -762,7 +764,7 @@ insert into reglages (entite_id, valeur) values
     "contact": "Anaïs Zwald\n+66 95 868 38 46 (WhatsApp)\nzwaldtravelplanner@gmail.com"
   },
   "paiement": {
-    "texte": "Banque: PostFinance (Suisse)\nIBAN: CH89 0900 0000 1249 3929 7\nSwift: POFICHBEXXX\nAnaïs Zwald\n1233 Bernex",
+    "texte": "Banque: à compléter\nIBAN: à compléter\nSwift: à compléter\nTitulaire du compte\nVille",
     "nom": "",
     "autres": []
   },
@@ -1339,6 +1341,7 @@ begin
     'paiements', coalesce((select jsonb_agg(to_jsonb(p)) from paiements p where p.dossier_id = old.id), '[]'::jsonb),
     'reservations', coalesce((select jsonb_agg(to_jsonb(r)) from reservations r where r.dossier_id = old.id), '[]'::jsonb),
     'reservations_nets', coalesce((select jsonb_agg(to_jsonb(n)) from reservations_nets n join reservations r on r.id = n.reservation_id where r.dossier_id = old.id), '[]'::jsonb),
+    'documents_nets', coalesce((select jsonb_agg(to_jsonb(n)) from documents_nets n join documents d on d.id = n.document_id where d.dossier_id = old.id), '[]'::jsonb),
     'taches', coalesce((select jsonb_agg(to_jsonb(t)) from taches t where t.dossier_id = old.id), '[]'::jsonb)), auth.uid());
   delete from corbeille where supprime_le < now() - interval '90 days';
   return old;
@@ -1346,7 +1349,7 @@ end
 $$;
 create trigger archiver_dossier before delete on dossiers for each row execute function archiver_dossier();
 
--- Remet un dossier supprimé avec ses documents, paiements, réservations, nets et tâches. Échoue si son client ou sa référence ont disparu entre-temps.
+-- Remet un dossier supprimé avec ses documents, nets, paiements, réservations et tâches. Échoue si son client ou sa référence ont disparu entre-temps.
 create or replace function restaurer_dossier(p_id uuid) returns uuid language plpgsql security definer set search_path = public as $$
 declare
   c corbeille;
@@ -1365,6 +1368,8 @@ begin
     from (select distinct on (document_id) ligne from documents_historique
           where dossier_id = did and action = 'delete' and archive_le >= c.supprime_le and archive_le < c.supprime_le + interval '1 minute'
           order by document_id, archive_le desc) h;
+  insert into documents_nets select (jsonb_populate_record(null::documents_nets, e)).* from jsonb_array_elements(coalesce(c.liees->'documents_nets', '[]'::jsonb)) e
+    where exists (select 1 from documents d where d.id = (e->>'document_id')::uuid);
   insert into paiements select (jsonb_populate_record(null::paiements, e)).* from jsonb_array_elements(c.liees->'paiements') e;
   insert into reservations select (jsonb_populate_record(null::reservations, e)).* from jsonb_array_elements(c.liees->'reservations') e;
   insert into reservations_nets select (jsonb_populate_record(null::reservations_nets, e)).* from jsonb_array_elements(c.liees->'reservations_nets') e;
@@ -1373,8 +1378,34 @@ begin
   return did;
 end
 $$;
-revoke all on function restaurer_dossier(uuid) from public, anon;
 grant execute on function restaurer_dossier(uuid) to authenticated;
+
+-- 1. Les prix nets ne sont plus recopiés dans le contenu des devis et factures. Ils étaient lisibles avec le seul droit « finances » (par l'API),
+-- alors que l'outil ne les montre qu'avec le droit « nets ». Ils vont dans une table à part, liée au document, lisible avec « nets » seulement.
+create table documents_nets (
+  document_id uuid primary key references documents (id) on delete cascade,
+  entite_id uuid not null,
+  nets jsonb not null default '{}'
+);
+alter table documents_nets enable row level security;
+revoke all on documents_nets from anon, authenticated;
+grant select, insert, update, delete on documents_nets to authenticated;
+create policy "lire les nets des documents" on documents_nets for select to authenticated
+  using (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'finances.voir'));
+create policy "modifier les nets des documents" on documents_nets for all to authenticated
+  using (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'documents.ecrire'))
+  with check (a_permission(entite_id, 'partenaires.nets') and a_permission(entite_id, 'documents.ecrire')
+    and exists (select 1 from documents d where d.id = documents_nets.document_id and d.entite_id = documents_nets.entite_id));
+
+
+-- 3. Les fonctions de la base ne sont plus appelables avec la clé publique (sans connexion).
+revoke execute on all functions in schema public from public, anon;
+grant execute on all functions in schema public to authenticated;
+
+-- 4. Fichiers joints : 10 Mo au plus, côté base aussi (la limite n'existait que dans le navigateur).
+update storage.buckets set file_size_limit = 10485760 where id = 'pieces';
+
+-- La corbeille garde aussi les nets des documents d'un dossier supprimé, et la restauration les remet.
 
 -- Les comptes déjà créés avant ce script reçoivent un profil, le plus ancien devient administrateur général.
 insert into profils (user_id, email, super_admin)

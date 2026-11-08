@@ -1,5 +1,6 @@
 // Règles : tout ce qu'il faut savoir avant de vendre, rassemblé depuis les fiches des partenaires.
-import { etat, nomPartenaire } from "../etat.mjs";
+import { etat, nomPartenaire, privePartenaire, peut } from "../etat.mjs";
+import { commissionsPartenaire, paiementPartenaire } from "../partenaires-calc.mjs";
 import { h } from "../ui.mjs";
 import { vide } from "./commun.mjs";
 import { prix } from "./partenaires.mjs";
@@ -8,6 +9,8 @@ import { tr, N_ } from "../i18n.mjs";
 export function vueRegles() {
   const partenaires = etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom));
   const frais = etat.db.prestations.filter((x) => x.famille === "frais" && x.actif !== false);
+  // Commissions et mode de paiement : données privées, vides pour qui n'a pas le droit « nets » (les sections disparaissent alors).
+  const avecPrive = (cle) => (peut("partenaires.nets") ? partenaires.filter((p) => (cle === "commissions" ? commissionsPartenaire(p, privePartenaire(p), true).length : !!paiementPartenaire(p, privePartenaire(p), true))) : []);
   const avec = (cle) => partenaires.filter((p) => p.regles && p.regles[cle] && (Array.isArray(p.regles[cle]) ? p.regles[cle].length : p.regles[cle]));
   const section = (titre, intro, items, rendu) =>
     items.length
@@ -30,10 +33,10 @@ export function vueRegles() {
       : null,
     section(N_("Enfants et bébés"), N_("Tranches d'âge et gratuités selon le partenaire."), avec("enfants"), (p) => texte(p.regles.enfants)),
     section(N_("Annulation"), null, avec("annulation"), (p) => texte(p.regles.annulation)),
-    section(N_("Commission et marge"), null, avec("commissions"), (p) => texte(p.regles.commissions)),
+    section(N_("Commission et marge"), null, avecPrive("commissions"), (p) => texte(commissionsPartenaire(p, privePartenaire(p), true))),
     section(N_("Check-in"), null, avec("checkin"), (p) => texte(p.regles.checkin)),
     section(N_("Points d'embarquement"), null, avec("points_embarquement"), (p) => h("ul", { class: "liste-regles" }, p.regles.points_embarquement.map((x) => h("li", null, h("strong", null, x.lieu), ` ${x.ou}`)))),
-    section(N_("Paiement des partenaires"), N_("Comment chaque partenaire veut être payé."), avec("paiement"), (p) => texte(p.regles.paiement)),
+    section(N_("Paiement des partenaires"), N_("Comment chaque partenaire veut être payé."), avecPrive("paiement"), (p) => texte(paiementPartenaire(p, privePartenaire(p), true))),
     avec("pickups").length ? h("section", null, h("h2", null, tr("Prise en charge à l'hôtel")), h("p", { class: "sous" }, tr("Les heures de pickup sont sur la fiche de chaque compagnie : "), avec("pickups").map((p, i) => [i ? ", " : "", h("a", { href: `#/partenaire/${p.id}` }, nomPartenaire(p.id))]), ".")) : null
   );
 }

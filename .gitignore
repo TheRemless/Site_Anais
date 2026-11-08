@@ -36,3 +36,7 @@ _site/
 /.superpowers/
 /docs/superpowers/
 /graphify-out/
+
+# Exports de l'outil Gestion : ils contiennent des données clients, des nets ou des coordonnées bancaires
+partenaires-import.json
+sauvegarde-*.json

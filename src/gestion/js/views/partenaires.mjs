@@ -2,7 +2,7 @@
 import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
-import { FAMILLES, nomFamille, libelleUnite, marge, correspond, UNITES, chiffres } from "../partenaires-calc.mjs";
+import { FAMILLES, nomFamille, libelleUnite, marge, correspond, UNITES, chiffres, commissionsPartenaire, paiementPartenaire } from "../partenaires-calc.mjs";
 import { vide, cartes } from "./commun.mjs";
 import { listeTaches } from "./taches.mjs";
 import { tr, N_ } from "../i18n.mjs";
@@ -203,9 +203,9 @@ export function fichePartenaire(id) {
         bloc(
           N_("Règles"),
           r.annulation ? h("div", null, h("h3", null, tr("Annulation")), paragraphes(r.annulation)) : null,
-          r.paiement ? h("div", null, h("h3", null, tr("Paiement")), paragraphes(r.paiement)) : null,
+          paiementPartenaire(p, prive, voitNets()) ? h("div", null, h("h3", null, tr("Paiement")), paragraphes(paiementPartenaire(p, prive, voitNets()))) : null,
           r.enfants && r.enfants.length ? h("div", null, h("h3", null, tr("Enfants")), liste(r.enfants)) : null,
-          r.commissions && r.commissions.length ? h("div", null, h("h3", null, tr("Commission et marge")), liste(r.commissions)) : null,
+          commissionsPartenaire(p, prive, voitNets()).length ? h("div", null, h("h3", null, tr("Commission et marge")), liste(commissionsPartenaire(p, prive, voitNets()))) : null,
           r.checkin && r.checkin.length ? h("div", null, h("h3", null, tr("Check-in")), liste(r.checkin)) : null,
           r.points_embarquement && r.points_embarquement.length ? h("div", null, h("h3", null, tr("Points d'embarquement")), h("ul", { class: "liste-regles" }, r.points_embarquement.map((x) => h("li", null, h("strong", null, x.lieu), ` ${x.ou}`)))) : null
         ),
@@ -343,12 +343,8 @@ export function formulairePartenaire(p, apres) {
   const licence = h("input", { id: "p-licence", value: c.licence || "" });
   const annulation = h("textarea", { id: "p-annul", rows: 2 });
   annulation.value = r.annulation || "";
-  const paiement = h("textarea", { id: "p-paiement", rows: 2 });
-  paiement.value = r.paiement || "";
   const enfants = h("textarea", { id: "p-enfants", rows: 2 });
   enfants.value = (r.enfants || []).join("\n");
-  const commissions = h("textarea", { id: "p-comm", rows: 2 });
-  commissions.value = (r.commissions || []).join("\n");
   const checkin = h("textarea", { id: "p-checkin", rows: 2 });
   checkin.value = (r.checkin || []).join("\n");
   const statut = h("input", { id: "p-statut", value: ct.statut || "", placeholder: tr("Tarifs nets confirmés, contrat à signer…") });
@@ -371,7 +367,7 @@ export function formulairePartenaire(p, apres) {
           groupe: groupe.value,
           role: role.value.trim(),
           contact: { ...c, personne: personne.value.trim(), telephones: lignesVers(tels.value).map((l) => { const [numero, libelle, wa] = l.split("|").map((x) => x.trim()); return { numero, libelle: libelle || "", whatsapp: /whatsapp|wa/i.test(wa || "") }; }), emails: emails.value.split(",").map((x) => x.trim()).filter(Boolean), line: line.value.trim(), web: web.value.trim(), adresse: adresse.value.trim(), embarcadere: embarcadere.value.trim(), licence: licence.value.trim() },
-          regles: { ...r, annulation: annulation.value.trim(), paiement: paiement.value.trim(), enfants: lignesVers(enfants.value), commissions: lignesVers(commissions.value), checkin: lignesVers(checkin.value) },
+          regles: { ...r, annulation: annulation.value.trim(), enfants: lignesVers(enfants.value), checkin: lignesVers(checkin.value) },
           contrat: { ...ct, statut: statut.value.trim(), saison: saison.value.trim(), fin: fin.value || null, documents: documents.value.split(",").map((x) => x.trim()).filter(Boolean) },
           notes: notes.value.trim(),
           actif: actif.checked,
@@ -392,7 +388,7 @@ export function formulairePartenaire(p, apres) {
     champ(tr("Téléphones, un par ligne"), tels, tr("Numéro, puis libellé, puis « whatsapp », séparés par des barres verticales.")),
     h("div", { class: "grille-form" }, champ(tr("Adresse"), adresse), champ(tr("Embarcadère ou point de départ"), embarcadere), champ(tr("Licence"), licence)),
     h("h3", null, tr("Règles")),
-    h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Paiement du partenaire"), paiement), champ(tr("Enfants, une règle par ligne"), enfants), champ(tr("Commission et marge, une règle par ligne"), commissions), champ(tr("Check-in, une règle par ligne"), checkin)),
+    h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Enfants, une règle par ligne"), enfants), champ(tr("Check-in, une règle par ligne"), checkin)),
     h("h3", null, tr("Contrat")),
     h("div", { class: "grille-form" }, champ(tr("Statut"), statut), champ(tr("Saison"), saison), champ(tr("Fin du contrat"), fin, tr("Un rappel apparaît dans Aujourd'hui trente jours avant.")), champ(tr("Documents, séparés par des virgules"), documents)),
     champ(tr("Notes"), notes),
@@ -467,7 +463,9 @@ function formulairePrive(p, prive, apres) {
   const autre = h("textarea", { id: "b-autre", rows: 2 });
   autre.value = b.autre || "";
   const paiement = h("textarea", { id: "b-paiement", rows: 3 });
-  paiement.value = (prive && prive.paiement) || "";
+  paiement.value = paiementPartenaire(p, prive, true);
+  const commissions = h("textarea", { id: "b-commissions", rows: 3 });
+  commissions.value = commissionsPartenaire(p, prive, true).join("\n");
   return h(
     "form",
     {
@@ -475,7 +473,15 @@ function formulairePrive(p, prive, apres) {
       onsubmit: async (e) => {
         e.preventDefault();
         try {
-          await enregistrerLie("partenaires_prives", "partenaire_id", p.id, { banque: { banque: banque.value.trim(), compte: compte.value.trim(), titulaire: titulaire.value.trim(), autre: autre.value.trim() }, paiement: paiement.value.trim() });
+          const valeurs = { banque: { banque: banque.value.trim(), compte: compte.value.trim(), titulaire: titulaire.value.trim(), autre: autre.value.trim() }, paiement: paiement.value.trim() };
+          try {
+            await enregistrerLie("partenaires_prives", "partenaire_id", p.id, { ...valeurs, commissions: lignesVers(commissions.value) });
+          } catch (err) {
+            // Sans la migration 16, la base ne connaît pas encore la colonne des commissions : le reste s'enregistre quand même.
+            if (!/commissions/i.test(err.message)) throw err;
+            await enregistrerLie("partenaires_prives", "partenaire_id", p.id, valeurs);
+            toast(tr("Les commissions n'ont pas été enregistrées : la migration 16 n'est pas encore appliquée."), true);
+          }
           toast(tr("Enregistré."));
           apres();
         } catch (err) {
@@ -486,6 +492,7 @@ function formulairePrive(p, prive, apres) {
     h("div", { class: "grille-form" }, champ(tr("Banque"), banque), champ(tr("Numéro de compte"), compte), champ(tr("Titulaire"), titulaire)),
     champ(tr("Autres indications bancaires"), autre),
     champ(tr("Comment on paie ce partenaire"), paiement),
+    champ(tr("Commission et marge, une règle par ligne"), commissions, tr("Réservé aux personnes qui voient les prix nets.")),
     h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );
 }
