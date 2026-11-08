@@ -4,6 +4,7 @@ import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaieme
 import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
 import { ouvrirVersions as ouvrirVersionsDocument } from "./versions.mjs";
+import { supprimerDocument } from "./document-suppression.mjs";
 import { envoyerDocument, sansImpression } from "./document-envoi.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { tr, localeActive } from "../i18n.mjs";
@@ -61,6 +62,7 @@ function editeurVue(id) {
   let aRecommencer = false;
   let nonEnregistre = false;
   let enConflit = false;
+  let supprime = false;
   const bandeauConflit = h(
     "div",
     { class: "bandeau-alerte", role: "alert", hidden: true },
@@ -75,7 +77,7 @@ function editeurVue(id) {
   const heureEnregistrement = () => new Date().toLocaleTimeString(localeActive(), { hour: "2-digit", minute: "2-digit" });
   const ecrire = async () => {
     minuteur = null;
-    if (enConflit) return;
+    if (enConflit || supprime) return;
     if (enVol) {
       aRecommencer = true;
       return;
@@ -627,7 +629,8 @@ function editeurVue(id) {
       h("label", { class: "case", for: "d-tva" }, tva, tr("Afficher « {tva_mention} »", { tva_mention: regl.conditions.tva_mention })),
       h("label", { class: "case", for: "d-eq" }, eqActif, tr("Afficher l'équivalent dans une ou plusieurs autres devises, à titre indicatif")),
       eqBloc
-    )
+    ),
+    peut("documents.supprimer") ? h("div", { class: "zone-danger" }, h("button", { class: "secondaire danger-texte", type: "button", onclick: async () => { await supprimerDocument(doc, () => { supprime = true; nonEnregistre = false; clearTimeout(minuteur); minuteur = null; naviguer(`#/dossier/${dossier.id}`); }); } }, doc.type === "devis" ? tr("Supprimer ce devis") : tr("Supprimer cette facture"))) : null
   );
 
   const lectureSeule = !peut("documents.ecrire");
