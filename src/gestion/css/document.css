@@ -123,3 +123,7 @@
 @media print {
   .sheet { min-height: 296mm; }
 }
+
+/* Ligne payée directement au prestataire : sur le document, hors du total */
+.sheet .ligne.place .montant { font-style: italic; }
+.sheet .desc .sur-place { font-style: italic; }

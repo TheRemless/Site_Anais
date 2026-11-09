@@ -1,6 +1,6 @@
 // Rendu du devis ou de la facture au format A4. Le même rendu sert à l'aperçu et au PDF.
 // Tout ce qui est propre à une entreprise (textes, logo, couleurs, coordonnées) vient de ses réglages.
-import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, lignesEquivalents, formatNombre, acompteDu } from "./calc.mjs";
+import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, lignesEquivalents, formatNombre, acompteDu, montantLigne, montantSurPlace } from "./calc.mjs";
 import { h, markup, inline } from "./ui.mjs";
 import { modePaiement, LIBELLES_EN, phraseCgv, conditionsDocument, mentionTva } from "./defauts.mjs";
 
@@ -45,8 +45,11 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
     cgv_url: reglages.conditions.cgv_url || "",
   };
 
+  // Textes propres aux lignes payées directement au prestataire (pas dans les réglages : ils s'appliquent aux documents déjà enregistrés).
+  const TXT_PLACE = en ? { court: "paid on site", total: "Amount paid directly to the providers on site, not included in the total above:" } : { court: "payé sur place", total: "Montant payé directement aux prestataires sur place, non compris dans le total ci-dessus :" };
   const ligneDoc = (l, i) => {
-    const montant = t.montants[i];
+    const surPlace = !!l.paye_sur_place && l.kind !== "remise" && l.kind !== "texte";
+    const montant = surPlace ? montantLigne(l) : t.montants[i];
     const aMontant = l.kind === "remise" || montant !== 0 || l.unite != null || l.montant != null || !!l.texte_montant;
     const aDetail = detail && l.unite != null && l.qte != null;
     const description =
@@ -57,13 +60,14 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
             { class: l.kind === "bloc" ? "desc bloc" : "desc" },
             h("strong", null, l.libelle),
             l.intro ? ` ${l.intro}` : null,
+            surPlace ? h("em", { class: "sur-place" }, ` (${TXT_PLACE.court})`) : null,
             l.puces && l.puces.length ? h("ul", null, l.puces.map((x) => h("li", null, x))) : null
           );
     const unite = aDetail ? (l.kind === "remise" && l.pct != null ? `-${l.pct}%` : formatMontant(l.unite, dev)) : l.kind === "remise" && l.pct != null ? `-${l.pct}%` : "";
     const qte = aDetail ? String(l.qte) : l.kind === "remise" && l.pct != null && detail ? "1" : "";
     return h(
       "div",
-      { class: `ligne ${l.kind}` },
+      { class: `ligne ${l.kind}${surPlace ? " place" : ""}` },
       description,
       detail ? h("div", { class: "unite" }, unite) : null,
       detail ? h("div", { class: "qte" }, qte) : null,
@@ -79,6 +83,8 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
     if (l.kind === "texte") notes.push(h("p", { class: "note" }, l.libelle));
     else (l.kind === "remise" ? remises : normales).push(ligneDoc(l, i));
   });
+  const surPlaceTotal = montantSurPlace(c);
+  if (surPlaceTotal > 0) notes.unshift(h("p", { class: "note" }, `${TXT_PLACE.total} ${formatMontant(surPlaceTotal, dev)}.`));
   const sousTotal = afficherSousTotal(c, recu);
 
   const barre = (libelle, valeur, classe) => h("div", { class: `barre ${classe}` }, h("span", { class: "barre-libelle" }, libelle), h("span", { class: "barre-valeur" }, valeur));

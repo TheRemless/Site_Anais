@@ -655,3 +655,6 @@ details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-w
 .rappels .liste-aide li { margin-bottom: 8px; }
 .rappels .liste-aide strong { display: block; }
 .rappels-etat { margin: 12px 0 16px; font-weight: 600; }
+
+/* Écran Dû : la section des commissions se détache de la liste du dû */
+.commissions-recevoir { margin-top: 40px; }

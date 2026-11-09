@@ -1,6 +1,6 @@
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument } from "../etat.mjs";
 import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs";
-import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements } from "../calc.mjs";
+import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne } from "../calc.mjs";
 import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
 import { ouvrirVersions as ouvrirVersionsDocument } from "./versions.mjs";
@@ -412,7 +412,7 @@ function editeurVue(id) {
     totalTexte.textContent = locale ? tr("Total de la facture locale : {montant}", { montant: formatMontant(t.net, d) }) : estFacture ? tr("Total de la facture : {montant}, reste à payer {montant2}", { montant: formatMontant(t.net, d), montant2: formatMontant(t.reste, d) }) : tr("Total du devis : {montant}", { montant: formatMontant(t.net, d) });
     c.lignes.forEach((l, i) => {
       const el = listeLignes.querySelector(`[data-calc="${l.id}"]`);
-      if (el) el.textContent = formatMontant(t.montants[i], d);
+      if (el) el.textContent = l.paye_sur_place ? tr("{montant}, payé sur place", { montant: formatMontant(montantLigne(l), d) }) : formatMontant(t.montants[i], d);
     });
   }
 
@@ -440,6 +440,10 @@ function editeurVue(id) {
           peut("partenaires.nets") && l.net != null ? h("p", { class: "aide" }, tr("Net partenaire : {net}", { net: formatMontant(l.net, devDoc()) + (l.qte ? ` × ${l.qte}` : "") })) : null
         )
       );
+    }
+    // Le client règle cette ligne directement au prestataire : elle reste sur le document, mais pas dans le total à régler.
+    if (l.kind === "ligne" && (l.prestation_id || l.trajet_id || l.libre)) {
+      champs.push(h("label", { class: "case", for: `l${l.id}-place` }, h("input", { id: `l${l.id}-place`, type: "checkbox", checked: !!l.paye_sur_place, onchange: (e) => ((l.paye_sur_place = e.target.checked || undefined), change()) }), tr("Payé sur place au prestataire, hors total à régler")));
     }
     if (l.kind === "bloc") {
       champs.push(champ(tr("Complément après le libellé"), h("input", { id: `l${l.id}-intro`, value: l.intro, placeholder: "comprenant:", oninput: maj("intro") })));
