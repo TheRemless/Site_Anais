@@ -1,6 +1,6 @@
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument } from "../etat.mjs";
 import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs";
-import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne } from "../calc.mjs";
+import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace } from "../calc.mjs";
 import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
 import { ouvrirVersions as ouvrirVersionsDocument } from "./versions.mjs";
@@ -409,7 +409,9 @@ function editeurVue(id) {
   function majMontants() {
     const t = totaux(c, recuActuel());
     const d = devDoc();
-    totalTexte.textContent = locale ? tr("Total de la facture locale : {montant}", { montant: formatMontant(t.net, d) }) : estFacture ? tr("Total de la facture : {montant}, reste à payer {montant2}", { montant: formatMontant(t.net, d), montant2: formatMontant(t.reste, d) }) : tr("Total du devis : {montant}", { montant: formatMontant(t.net, d) });
+    const total = locale ? tr("Total de la facture locale : {montant}", { montant: formatMontant(t.net, d) }) : estFacture ? tr("Total de la facture : {montant}, reste à payer {montant2}", { montant: formatMontant(t.net, d), montant2: formatMontant(t.reste, d) }) : tr("Total du devis : {montant}", { montant: formatMontant(t.net, d) });
+    const place = montantSurPlace(c);
+    totalTexte.textContent = place > 0 && estFacture ? tr("{texte}, à payer sur place {montant}", { texte: total, montant: formatMontant(place, d) }) : total;
     c.lignes.forEach((l, i) => {
       const el = listeLignes.querySelector(`[data-calc="${l.id}"]`);
       if (el) el.textContent = l.paye_sur_place ? tr("{montant}, payé sur place", { montant: formatMontant(montantLigne(l), d) }) : formatMontant(t.montants[i], d);

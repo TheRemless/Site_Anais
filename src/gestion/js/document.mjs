@@ -28,7 +28,10 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   // Deux équivalents : celui des conditions (« Le montant total s'élève à… ») sur le total, celui sous la barre finale sur le montant de cette barre, le reste à payer.
   const lignesEq = c.equivalents && c.equivalents.actif ? lignesEquivalents(c.equivalents, reglages.taux) : null;
   const eq = lignesEq ? equivalents(t.net, lignesEq) : [];
-  const eqBarre = lignesEq ? equivalents(t.reste, lignesEq) : [];
+  // Tout est payé sur place : la barre finale annonce ce montant à la place d'un total à zéro.
+  const surPlaceTotal = montantSurPlace(c);
+  const toutSurPlace = surPlaceTotal > 0 && t.sousTotal === 0;
+  const eqBarre = lignesEq ? equivalents(toutSurPlace ? surPlaceTotal : t.reste, lignesEq) : [];
   const SYMBOLES = { EUR: "€", USD: "$" };
   const texteEq = (x) => `${formatNombre(x.montant)} ${SYMBOLES[x.code] || x.code}`;
   const NOMS_DEVISES = { CHF: "Swiss Franc", EUR: "Euro", THB: "Thai Baht", USD: "US Dollar", GBP: "Pound Sterling" };
@@ -46,7 +49,9 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   };
 
   // Textes propres aux lignes payées directement au prestataire (pas dans les réglages : ils s'appliquent aux documents déjà enregistrés).
-  const TXT_PLACE = en ? { court: "paid on site", total: "Amount paid directly to the providers on site, not included in the total above:" } : { court: "payé sur place", total: "Montant payé directement aux prestataires sur place, non compris dans le total ci-dessus :" };
+  const TXT_PLACE = en
+    ? { court: "paid on site", barre: "DUE ON SITE", note_mixte: "The amount due on site is paid directly to the providers and is not included in the total above.", note_tout: "Paid directly to the providers on site." }
+    : { court: "payé sur place", barre: "À PAYER SUR PLACE", note_mixte: "Le montant à payer sur place est réglé directement aux prestataires et n'est pas compris dans le total ci-dessus.", note_tout: "Réglé directement aux prestataires sur place." };
   const ligneDoc = (l, i) => {
     const surPlace = !!l.paye_sur_place && l.kind !== "remise" && l.kind !== "texte";
     const montant = surPlace ? montantLigne(l) : t.montants[i];
@@ -83,8 +88,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
     if (l.kind === "texte") notes.push(h("p", { class: "note" }, l.libelle));
     else (l.kind === "remise" ? remises : normales).push(ligneDoc(l, i));
   });
-  const surPlaceTotal = montantSurPlace(c);
-  if (surPlaceTotal > 0) notes.unshift(h("p", { class: "note" }, `${TXT_PLACE.total} ${formatMontant(surPlaceTotal, dev)}.`));
+  if (surPlaceTotal > 0) notes.unshift(h("p", { class: "note" }, toutSurPlace ? TXT_PLACE.note_tout : TXT_PLACE.note_mixte));
   const sousTotal = afficherSousTotal(c, recu);
 
   const barre = (libelle, valeur, classe) => h("div", { class: `barre ${classe}` }, h("span", { class: "barre-libelle" }, libelle), h("span", { class: "barre-valeur" }, valeur));
@@ -152,7 +156,8 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
               : null
           )
         : null,
-      barre(lb.total_final || lb.total, formatMontant(t.reste, dev), "fonce"),
+      toutSurPlace ? barre(TXT_PLACE.barre, formatMontant(surPlaceTotal, dev), "fonce") : barre(lb.total_final || lb.total, formatMontant(t.reste, dev), "fonce"),
+      surPlaceTotal > 0 && !toutSurPlace ? barre(TXT_PLACE.barre, formatMontant(surPlaceTotal, dev), "clair") : null,
       eqBarre.length ? h("p", { class: "equivalent" }, `${lb.equivalent} ${eqBarre.map(texteEq).join(" · ")}`) : null,
       tvaTexte ? h("p", { class: "tva" }, tvaTexte) : null,
       lb.note_devise ? h("div", { class: "tva devise" }, markup(lb.note_devise, vars)) : null,
