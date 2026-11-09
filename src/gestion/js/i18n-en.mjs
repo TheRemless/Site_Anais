@@ -1583,4 +1583,5 @@ export const EN = {
   "Les lignes de ce service passent sur la facture {sens}, dont le total passe de {avant} à {apres}.": "The lines of this service are set {sens} on the invoice, whose total goes from {avant} to {apres}.",
   "« payé sur place »": "“paid on site”",
   "« payé à nous »": "“paid to us”",
+  "{texte}, à payer sur place {montant}": "{texte}, due on site {montant}",
 };
