@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { totaux, montantLigne, montantBrut, montantSurPlace } from "../src/gestion/js/calc.mjs";
-import { reservationsDepuisDocument, ecartReservation, duParPartenaire, commissionsARecevoir, statutPaiementVoucher } from "../src/gestion/js/operations-calc.mjs";
+import { reservationsDepuisDocument, ecartReservation, duParPartenaire, commissionsARecevoir, statutPaiementVoucher, contenuAvecSurPlace } from "../src/gestion/js/operations-calc.mjs";
 import { margeDocument } from "../src/gestion/js/partenaires-calc.mjs";
 
 const lignes = [
@@ -92,4 +92,19 @@ test("voucher : un service payé sur place annonce le paiement au prestataire, m
   assert.equal(statutPaiementVoucher({ total: 2000, recu: 2000 }), "paye");
   assert.equal(statutPaiementVoucher({ total: 2000, recu: 2000, surPlace: true }), "sur_place");
   assert.equal(statutPaiementVoucher({ total: 0, recu: 0 }), "sur_place");
+});
+
+test("réservation cochée « payé sur place » : ses lignes passent sur le document, le total baisse, et on peut revenir en arrière", () => {
+  const contenu = { lignes: [{ id: "a", kind: "ligne", unite: 1000, qte: 2 }, { id: "b", kind: "ligne", unite: 700, qte: 1 }, { id: "c", kind: "ligne", unite: 300, qte: 1 }, { id: "n", kind: "texte", libelle: "note" }] };
+  const r = { ligne_id: "a", details: { lignes_ids: ["a", "c"] } };
+  const suite = contenuAvecSurPlace(contenu, r, true);
+  assert.equal(totaux(contenu).net, 3000);
+  assert.equal(totaux(suite).net, 700);
+  assert.deepEqual(suite.lignes.map((l) => !!l.paye_sur_place), [true, false, true, false]);
+  assert.equal(contenuAvecSurPlace(suite, r, true), null);
+  const retour = contenuAvecSurPlace(suite, r, false);
+  assert.equal(totaux(retour).net, 3000);
+  assert.ok(!("paye_sur_place" in retour.lignes[0]));
+  assert.equal(contenuAvecSurPlace(contenu, { ligne_id: "zz" }, true), null);
+  assert.equal(contenuAvecSurPlace(contenu, { ligne_id: "" }, true), null);
 });

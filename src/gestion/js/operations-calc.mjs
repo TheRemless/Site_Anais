@@ -408,6 +408,22 @@ export function ecartReservation(r, doc) {
   return champs.length ? { retiree: false, champs, attendu: a } : null;
 }
 
+// ---- Paiement sur place changé depuis la réservation --------------------------------------------------------------
+// Les lignes d'un document qui correspondent à la réservation passent « payé sur place » (ou n'y sont plus). Renvoie le nouveau contenu,
+// ou null quand le document ne porte aucune ligne de ce service ou qu'il est déjà réglé ainsi. Rien n'est modifié sur place.
+export function contenuAvecSurPlace(contenu, r, valeur) {
+  const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
+  const lignes = (contenu && contenu.lignes) || [];
+  const cibles = lignes.filter((l) => ids.has(l.id) && l.kind !== "texte" && l.kind !== "remise");
+  if (!cibles.length || cibles.every((l) => !!l.paye_sur_place === !!valeur)) return null;
+  const change = (l) => {
+    if (valeur) return { ...l, paye_sur_place: true };
+    const { paye_sur_place, ...reste } = l;
+    return reste;
+  };
+  return { ...contenu, lignes: lignes.map((l) => (cibles.includes(l) ? change(l) : l)) };
+}
+
 // ---- Service supprimé : ce que la facture doit perdre ------------------------------------------------------------
 // Une réservation est créée d'après des lignes de la facture (`ligne_id`, et `details.lignes_ids` quand adulte et enfant sont réunis).
 // Quand on la supprime, ces lignes partent de la facture, ainsi que la note « à payer sur place » de la même prestation si plus aucune ligne
