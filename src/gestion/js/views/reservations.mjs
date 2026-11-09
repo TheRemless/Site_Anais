@@ -1,8 +1,8 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
-import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, reglages, entiteActive, modeExcursions } from "../etat.mjs";
+import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide } from "./commun.mjs";
@@ -141,9 +141,9 @@ export function formulaireReservation(r, apres) {
   const netPaye = h("input", { id: "r-paye", type: "number", min: "0", step: "1", value: n && n.net_paye != null ? n.net_paye : "", inputmode: "numeric" });
   const payeLe = h("input", { id: "r-paye-le", type: "date", value: (n && n.paye_le) || "" });
   // Service payé directement au prestataire : pas de net à lui verser, c'est lui qui reverse une commission. Quand la réservation vient d'une ligne
-  // de facture, c'est la ligne qui décide (case de l'éditeur) : ici la case est en lecture seule.
+  // de facture, la case change aussi les lignes du document (avec confirmation du nouveau total).
   const lieeFacture = !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
-  const surPlace = h("input", { id: "r-place", type: "checkbox", checked: !!r.paye_sur_place, disabled: lieeFacture });
+  const surPlace = h("input", { id: "r-place", type: "checkbox", checked: !!r.paye_sur_place });
   const commissionPrevue = h("input", { id: "r-com", type: "number", min: "0", step: "1", value: n && n.commission_prevue != null ? n.commission_prevue : "", inputmode: "numeric" });
   const commissionRecue = h("input", { id: "r-com-recue", type: "number", min: "0", step: "1", value: n && n.commission_recue != null ? n.commission_recue : "", inputmode: "numeric" });
   const commissionLe = h("input", { id: "r-com-le", type: "date", value: (n && n.commission_recue_le) || "" });
@@ -220,8 +220,26 @@ export function formulaireReservation(r, apres) {
       class: "modal-corps",
       onsubmit: async (e) => {
         e.preventDefault();
-        const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0, bebes: num(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: num(vente.value), paye_sur_place: lieeFacture ? !!r.paye_sur_place : surPlace.checked, notes: notes.value.trim(), details: details() };
+        const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0, bebes: num(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: num(vente.value), paye_sur_place: surPlace.checked, notes: notes.value.trim(), details: details() };
         try {
+          // Le paiement sur place change le total de la facture : on montre le nouveau total avant d'enregistrer.
+          const changements = [];
+          if (lieeFacture && r.id && surPlace.checked !== !!r.paye_sur_place) {
+            await chargerDossier(r.dossier_id);
+            for (const doc of etat.db.documents.filter((x) => x.dossier_id === r.dossier_id)) {
+              const suite = contenuAvecSurPlace(doc.contenu, r, surPlace.checked);
+              if (suite) changements.push({ doc, suite });
+            }
+            if (changements.length && !peut("documents.ecrire")) return toast(tr("Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : le réglage n'est pas changé."), true);
+            const principale = changements.find((x) => x.doc.type !== "devis") || changements[0];
+            if (principale) {
+              const devise = principale.doc.contenu.devise || reglages().devise;
+              const phrases = [tr("Les lignes de ce service passent sur la facture {sens}, dont le total passe de {avant} à {apres}.", { sens: surPlace.checked ? tr("« payé sur place »") : tr("« payé à nous »"), avant: formatMontant(totaux(principale.doc.contenu).net, devise), apres: formatMontant(totaux(principale.suite).net, devise) })];
+              if (principale.doc.envoye_le) phrases.push(tr("La facture a été envoyée au client le {date} : il faudra lui renvoyer la nouvelle version.", { date: formatDate(principale.doc.envoye_le) }));
+              if (!(await confirmer(phrases.join(" "), tr("Enregistrer")))) return;
+            }
+          }
+          for (const { doc, suite } of changements) await modifier("documents", doc.id, { contenu: suite, updated_at: new Date().toISOString() });
           const res = r.id ? await modifier("reservations", r.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
           if (res && res.id && res.details === undefined) res.details = valeurs.details;
           if (nets && (netPrevu.value !== "" || netPaye.value !== "" || payeLe.value || commissionPrevue.value !== "" || commissionRecue.value !== "" || commissionLe.value || n)) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: num(netPrevu.value), net_paye: num(netPaye.value), paye_le: payeLe.value || null, commission_prevue: num(commissionPrevue.value), commission_recue: num(commissionRecue.value), commission_recue_le: commissionLe.value || null });
@@ -237,7 +255,6 @@ export function formulaireReservation(r, apres) {
     h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), date), champ(tr("Heure de pickup"), heure), champ(tr("Lieu de pickup"), lieu)),
     h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), adultes), champ(tr("Enfants"), enfants), champ(tr("Bébés"), bebes), peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
     h("label", { class: "case", for: "r-place" }, surPlace, tr("Payé sur place au prestataire")),
-    lieeFacture ? h("p", { class: "aide" }, tr("Ce réglage vient de la facture : il se change avec la case de la ligne.")) : null,
     nets ? h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera. Sans objet pour un service payé sur place.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe)) : null,
     nets ? blocCommission : null,
     champ(tr("Notes internes"), notes, tr("Jamais sur le voucher.")),
