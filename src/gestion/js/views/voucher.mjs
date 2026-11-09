@@ -60,7 +60,7 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
   const auto = hotelEtChambre(client, r);
   const hotel = auto.hotel;
   const chambre = dt.chambre || auto.chambre;
-  const statut = statutPaiementVoucher(res || {});
+  const statut = statutPaiementVoucher({ ...(res || {}), surPlace: !!r.paye_sur_place });
   const parcAuto = fraisDeParc(p);
   const parc = dt.parc === "aucun" ? { inclus: null, texte: "" } : dt.parc === "inclus" ? { inclus: true, texte: dt.parc_texte || "" } : dt.parc === "non" ? { inclus: false, texte: dt.parc_texte || parcAuto.texte } : { ...parcAuto, texte: dt.parc_texte || parcAuto.texte };
   const prive = dt.type_tour ? dt.type_tour === "prive" : estPrive(p, r);

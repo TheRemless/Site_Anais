@@ -36,7 +36,7 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     const l = g.premiere;
     return {
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
-      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", details: g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {} },
+      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {} },
       net: g.net,
     };
   });
@@ -114,7 +114,8 @@ export function agenda(reservations, ajd, ecartees = new Set()) {
 export function duParPartenaire(reservations, netDe, ecartees = new Set()) {
   const groupes = new Map();
   for (const r of reservations) {
-    if (r.statut === "annule" || ecartees.has(r.dossier_id)) continue;
+    // Un service payé sur place au prestataire ne lui est rien dû : c'est lui qui nous reverse une commission (voir commissionsARecevoir).
+    if (r.statut === "annule" || ecartees.has(r.dossier_id) || r.paye_sur_place) continue;
     const mois = (r.date_service || "").slice(0, 7) || "sans-date";
     const cle = `${r.partenaire_id || ""}|${mois}`;
     const g = groupes.get(cle) || { partenaire_id: r.partenaire_id || null, mois, nb: 0, vente: 0, venteAvecNet: 0, net_prevu: 0, net_paye: 0, sansNet: 0, reservations: [] };
@@ -132,6 +133,29 @@ export function duParPartenaire(reservations, netDe, ecartees = new Set()) {
   return [...groupes.values()]
     .map((g) => ({ ...g, vente: arr(g.vente), net_prevu: arr(g.net_prevu), net_paye: arr(g.net_paye), reste: arr(g.net_prevu - g.net_paye), marge: arr(g.venteAvecNet - g.net_prevu) }))
     .sort((a, b) => b.mois.localeCompare(a.mois) || (b.reste - a.reste));
+}
+
+// Commissions à recevoir : les services payés sur place au prestataire, par partenaire et par mois du service, hors annulées.
+// `netDe(r)` renvoie la ligne privée de la réservation (commission prévue, reçue, date de réception) ou null.
+export function commissionsARecevoir(reservations, netDe, ecartees = new Set()) {
+  const groupes = new Map();
+  for (const r of reservations) {
+    if (!r.paye_sur_place || r.statut === "annule" || ecartees.has(r.dossier_id)) continue;
+    const mois = (r.date_service || "").slice(0, 7) || "sans-date";
+    const cle = `${r.partenaire_id || ""}|${mois}`;
+    const g = groupes.get(cle) || { partenaire_id: r.partenaire_id || null, mois, nb: 0, vente: 0, commission_prevue: 0, commission_recue: 0, sansCommission: 0, reservations: [] };
+    const n = netDe(r);
+    g.nb++;
+    g.vente += Number(r.montant_vente) || 0;
+    if (n && n.commission_prevue !== null && n.commission_prevue !== undefined) g.commission_prevue += Number(n.commission_prevue);
+    else g.sansCommission++;
+    if (n && n.commission_recue !== null && n.commission_recue !== undefined) g.commission_recue += Number(n.commission_recue);
+    g.reservations.push(r);
+    groupes.set(cle, g);
+  }
+  return [...groupes.values()]
+    .map((g) => ({ ...g, vente: arr(g.vente), commission_prevue: arr(g.commission_prevue), commission_recue: arr(g.commission_recue), reste: arr(g.commission_prevue - g.commission_recue) }))
+    .sort((a, b) => b.mois.localeCompare(a.mois) || b.reste - a.reste);
 }
 
 // ---- Vouchers (mode excursions) ------------------------------------------------------------------------------
@@ -212,7 +236,8 @@ export function typeVoucher(reservation, prestation, partenaire = null) {
 export const numeroVoucher = (ref, index) => `${ref}-${index}`;
 
 // Statut de paiement imprimé sur le voucher, d'après ce que le dossier a encaissé.
-export function statutPaiementVoucher({ total = 0, recu = 0 } = {}) {
+export function statutPaiementVoucher({ total = 0, recu = 0, surPlace = false } = {}) {
+  if (surPlace) return "sur_place";
   if (total > 0 && recu >= total) return "paye";
   if (recu > 0) return "acompte";
   return "sur_place";
@@ -372,12 +397,14 @@ export function ecartReservation(r, doc) {
     date_service: premiere.date_service || null,
     personnes: { adultes: utiles.filter((l) => !estLigneEnfant(l)).reduce((s, l) => s + qte(l), 0), enfants: utiles.filter(estLigneEnfant).reduce((s, l) => s + qte(l), 0) },
     montant_vente: utiles.some((l) => brut(l) !== null) ? arr(utiles.reduce((s, l) => s + (brut(l) || 0), 0)) : null,
+    paye_sur_place: utiles.some((l) => !!l.paye_sur_place),
   };
   const champs = [];
   if ((r.date_service || null) !== (a.date_service || null)) champs.push({ cle: "date_service", reservation: r.date_service || null, document: a.date_service || null });
   const pr = r.personnes || {};
   if ((Number(pr.adultes) || 0) !== a.personnes.adultes || (Number(pr.enfants) || 0) !== a.personnes.enfants) champs.push({ cle: "personnes", reservation: { adultes: Number(pr.adultes) || 0, enfants: Number(pr.enfants) || 0 }, document: { adultes: a.personnes.adultes, enfants: a.personnes.enfants } });
   if (arr(Number(r.montant_vente) || 0) !== arr(Number(a.montant_vente) || 0)) champs.push({ cle: "montant_vente", reservation: Number(r.montant_vente) || 0, document: Number(a.montant_vente) || 0 });
+  if (!!r.paye_sur_place !== a.paye_sur_place) champs.push({ cle: "paye_sur_place", reservation: !!r.paye_sur_place, document: a.paye_sur_place });
   return champs.length ? { retiree: false, champs, attendu: a } : null;
 }
 

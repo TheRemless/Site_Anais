@@ -118,10 +118,21 @@ export function ajouterJours(iso, n) {
 }
 
 // Montant d'une ligne hors remise en pourcentage.
-export function montantBrut(l) {
+// Prix d'une ligne tel qu'il est écrit, qu'il soit encaissé par nous ou payé au prestataire.
+export function montantLigne(l) {
   if (!l || l.kind === "texte") return 0;
   if (estNombre(l.unite) && estNombre(l.qte)) return produitArrondi(l.unite, l.qte);
   return estNombre(l.montant) ? arrondi(l.montant) : 0;
+}
+
+// Ce que la ligne ajoute au total à régler : rien quand le client la paie directement au prestataire (`paye_sur_place`).
+export function montantBrut(l) {
+  return l && l.paye_sur_place ? 0 : montantLigne(l);
+}
+
+// Somme des prix payés directement aux prestataires, hors du total à régler.
+export function montantSurPlace(contenu) {
+  return arrondi(((contenu && contenu.lignes) || []).filter((l) => l.paye_sur_place && l.kind !== "remise" && l.kind !== "texte").reduce((s, l) => s + montantLigne(l), 0));
 }
 
 // Les remises sont saisies en positif et comptées en négatif.

@@ -1,5 +1,5 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
-import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, netReservation, enregistrerLie, reglages, entiteActive, modeExcursions } from "../etat.mjs";
+import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux } from "../calc.mjs";
 import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation } from "../operations-calc.mjs";
@@ -9,7 +9,7 @@ import { vide } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { telWhatsApp } from "../partenaires-calc.mjs";
+import { telWhatsApp, commissionsPartenaire } from "../partenaires-calc.mjs";
 import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
@@ -46,8 +46,8 @@ function selecteurStatut(r, apres) {
 
 // Texte d'un écart entre la réservation et la facture : « Date : 12 déc. sur la réservation, 14 déc. sur la facture ».
 function texteEcart(c, devise) {
-  const v = (x) => (c.cle === "date_service" ? (x ? formatDate(x) : tr("à fixer")) : c.cle === "personnes" ? personnesTexte(x) || "0" : formatMontant(x, devise));
-  const nom = c.cle === "date_service" ? tr("Date") : c.cle === "personnes" ? tr("Personnes") : tr("Montant vendu");
+  const v = (x) => (c.cle === "date_service" ? (x ? formatDate(x) : tr("à fixer")) : c.cle === "personnes" ? personnesTexte(x) || "0" : c.cle === "paye_sur_place" ? (x ? tr("payé sur place") : tr("payé à nous")) : formatMontant(x, devise));
+  const nom = c.cle === "date_service" ? tr("Date") : c.cle === "personnes" ? tr("Personnes") : c.cle === "paye_sur_place" ? tr("Paiement") : tr("Montant vendu");
   return tr("{nom} : {reservation} sur la réservation, {document} sur la facture", { nom, reservation: v(c.reservation), document: v(c.document) });
 }
 
@@ -55,7 +55,7 @@ function texteEcart(c, devise) {
 async function aligner(r, ecart, apres) {
   const a = ecart.attendu;
   try {
-    await modifier("reservations", r.id, { date_service: a.date_service, personnes: { ...(r.personnes || {}), adultes: a.personnes.adultes, enfants: a.personnes.enfants }, ...(a.montant_vente === null ? {} : { montant_vente: a.montant_vente }) });
+    await modifier("reservations", r.id, { date_service: a.date_service, personnes: { ...(r.personnes || {}), adultes: a.personnes.adultes, enfants: a.personnes.enfants }, ...(a.montant_vente === null ? {} : { montant_vente: a.montant_vente }), paye_sur_place: a.paye_sur_place });
     await synchroniserDatesDossier(r.dossier_id);
     toast(tr("Réservation alignée sur la facture."));
     apres();
@@ -140,6 +140,24 @@ export function formulaireReservation(r, apres) {
   const netPrevu = h("input", { id: "r-net", type: "number", min: "0", step: "1", value: n && n.net_prevu != null ? n.net_prevu : "", inputmode: "numeric" });
   const netPaye = h("input", { id: "r-paye", type: "number", min: "0", step: "1", value: n && n.net_paye != null ? n.net_paye : "", inputmode: "numeric" });
   const payeLe = h("input", { id: "r-paye-le", type: "date", value: (n && n.paye_le) || "" });
+  // Service payé directement au prestataire : pas de net à lui verser, c'est lui qui reverse une commission. Quand la réservation vient d'une ligne
+  // de facture, c'est la ligne qui décide (case de l'éditeur) : ici la case est en lecture seule.
+  const lieeFacture = !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
+  const surPlace = h("input", { id: "r-place", type: "checkbox", checked: !!r.paye_sur_place, disabled: lieeFacture });
+  const commissionPrevue = h("input", { id: "r-com", type: "number", min: "0", step: "1", value: n && n.commission_prevue != null ? n.commission_prevue : "", inputmode: "numeric" });
+  const commissionRecue = h("input", { id: "r-com-recue", type: "number", min: "0", step: "1", value: n && n.commission_recue != null ? n.commission_recue : "", inputmode: "numeric" });
+  const commissionLe = h("input", { id: "r-com-le", type: "date", value: (n && n.commission_recue_le) || "" });
+  const regleCommission = h("span", null);
+  const majCommission = () => {
+    const p = partenaireDe(partenaire.value);
+    const regle = p && nets ? commissionsPartenaire(p, privePartenaire(p), true).join(" ") : "";
+    regleCommission.textContent = regle ? tr("Règle de la fiche partenaire : {regle}", { regle }) : tr("Ce que le prestataire reversera après la prestation.");
+    blocCommission.style.display = surPlace.checked ? "" : "none";
+  };
+  const blocCommission = h("div", { class: "grille-form compacte" }, champ(tr("Commission prévue"), commissionPrevue, regleCommission), champ(tr("Commission reçue"), commissionRecue), champ(tr("Reçue le"), commissionLe));
+  surPlace.addEventListener("change", majCommission);
+  partenaire.addEventListener("change", majCommission);
+  majCommission();
   const notes = h("textarea", { id: "r-notes", rows: 2 });
   notes.value = r.notes || "";
   // Ce qui figure sur le voucher et que la réservation seule ne dit pas.
@@ -202,11 +220,11 @@ export function formulaireReservation(r, apres) {
       class: "modal-corps",
       onsubmit: async (e) => {
         e.preventDefault();
-        const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0, bebes: num(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: num(vente.value), notes: notes.value.trim(), details: details() };
+        const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0, bebes: num(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: num(vente.value), paye_sur_place: lieeFacture ? !!r.paye_sur_place : surPlace.checked, notes: notes.value.trim(), details: details() };
         try {
           const res = r.id ? await modifier("reservations", r.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
           if (res && res.id && res.details === undefined) res.details = valeurs.details;
-          if (nets && (netPrevu.value !== "" || netPaye.value !== "" || payeLe.value || n)) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: num(netPrevu.value), net_paye: num(netPaye.value), paye_le: payeLe.value || null });
+          if (nets && (netPrevu.value !== "" || netPaye.value !== "" || payeLe.value || commissionPrevue.value !== "" || commissionRecue.value !== "" || commissionLe.value || n)) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: num(netPrevu.value), net_paye: num(netPaye.value), paye_le: payeLe.value || null, commission_prevue: num(commissionPrevue.value), commission_recue: num(commissionRecue.value), commission_recue_le: commissionLe.value || null });
           toast(tr("Réservation enregistrée."));
           apres(res);
         } catch (err) {
@@ -218,7 +236,10 @@ export function formulaireReservation(r, apres) {
     h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champ(tr("Statut"), statut), champ(tr("Référence du partenaire"), reference)),
     h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), date), champ(tr("Heure de pickup"), heure), champ(tr("Lieu de pickup"), lieu)),
     h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), adultes), champ(tr("Enfants"), enfants), champ(tr("Bébés"), bebes), peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
-    nets ? h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe)) : null,
+    h("label", { class: "case", for: "r-place" }, surPlace, tr("Payé sur place au prestataire")),
+    lieeFacture ? h("p", { class: "aide" }, tr("Ce réglage vient de la facture : il se change avec la case de la ligne.")) : null,
+    nets ? h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera. Sans objet pour un service payé sur place.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe)) : null,
+    nets ? blocCommission : null,
     champ(tr("Notes internes"), notes, tr("Jamais sur le voucher.")),
     blocVoucher,
     h("div", { class: "actions" }, r.id && peut("dossiers.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await supprimerReservation(r)) apres(null); } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))

@@ -254,13 +254,14 @@ export function margeDocument(contenu, totalDocument) {
   let sansNet = 0;
   let avecNet = 0;
   for (const l of lignes) {
-    if (l.kind === "texte" || l.kind === "remise") continue;
+    // Une ligne payée sur place au prestataire n'a ni vente ni net chez nous : sa commission se suit dans « Commissions à recevoir ».
+    if (l.kind === "texte" || l.kind === "remise" || l.paye_sur_place) continue;
     if (l.net !== null && l.net !== undefined && (l.prestation_id || l.trajet_id)) {
       nets += Number(l.net) * (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
       avecNet++;
     } else if (brut(l) > 0) sansNet++;
   }
-  const vente = totalDocument !== undefined ? Number(totalDocument) : lignes.filter((l) => l.kind !== "texte" && l.kind !== "remise").reduce((s, l) => s + brut(l), 0);
+  const vente = totalDocument !== undefined ? Number(totalDocument) : lignes.filter((l) => l.kind !== "texte" && l.kind !== "remise" && !l.paye_sur_place).reduce((s, l) => s + brut(l), 0);
   const marge = Math.round((vente - nets) * 100) / 100;
   return { vente, nets: Math.round(nets * 100) / 100, marge, pct: vente ? Math.round((marge / vente) * 100) : 0, avecNet, sansNet };
 }
