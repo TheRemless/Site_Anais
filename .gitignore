@@ -40,3 +40,6 @@ _site/
 # Exports de l'outil Gestion : ils contiennent des données clients, des nets ou des coordonnées bancaires
 partenaires-import.json
 sauvegarde-*.json
+
+# CLI Supabase : état local de la liaison au projet
+supabase/.temp

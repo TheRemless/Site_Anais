@@ -649,3 +649,9 @@ details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-w
 .version-diff .diff-ligne_retrouvee { color: #25653d; }
 .version-apercu { margin-top: 12px; overflow: hidden; border: 1px solid var(--bord); border-radius: 8px; background: #fff; }
 .version-feuille { width: 794px; transform-origin: top left; }
+
+/* Fenêtre des rappels sur téléphone */
+.rappels .liste-aide { padding-left: 1.1rem; margin: 0 0 12px; }
+.rappels .liste-aide li { margin-bottom: 8px; }
+.rappels .liste-aide strong { display: block; }
+.rappels-etat { margin: 12px 0 16px; font-weight: 600; }

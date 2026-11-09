@@ -22,6 +22,8 @@ import { vueReservations } from "./views/reservations.mjs";
 import { vueMessages } from "./views/messages.mjs";
 import { vueDu } from "./views/du.mjs";
 import { agenda } from "./operations-calc.mjs";
+import { ouvrirRappels } from "./views/rappels.mjs";
+import { retirerALaDeconnexion } from "./rappels.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 
 const ROUTES = [
@@ -205,6 +207,7 @@ const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class:
 const sections = (liste, apres) => liste.map((s) => h("div", { class: "menu-section" }, h("p", { class: "menu-section-titre" }, s.titre), h("ul", null, s.items.map((e) => h("li", null, lienEcran(e, apres))))));
 
 async function deconnecter() {
+  await retirerALaDeconnexion(etat.store);
   await etat.store.deconnecter();
   etat.session = null;
   etat.brut = null;
@@ -218,6 +221,7 @@ function blocCompte() {
   return h("div", { class: "compte" }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
 }
 const outilsCompte = (apres) => [
+  etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirRappels()), "aria-label": tr("Rappels sur ce téléphone"), title: tr("Rappels sur ce téléphone") }, icone("cloche")) : null,
   h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirAide()), "aria-label": tr("Raccourcis clavier"), title: tr("Raccourcis clavier (?)") }, icone("clavier")),
   etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: deconnecter, "aria-label": tr("Se déconnecter"), title: tr("Se déconnecter") }, icone("deconnexion")) : null,
 ];

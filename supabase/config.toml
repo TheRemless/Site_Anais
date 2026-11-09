@@ -1,0 +1,6 @@
+# Configuration minimale pour déployer les fonctions de Gestion avec la CLI Supabase.
+project_id = "lkxqcmzeidlyssoqmqkh"
+
+# La fonction est appelée par pg_cron, pas par un utilisateur connecté : elle vérifie elle-même son secret (RAPPELS_SECRET).
+[functions.rappels]
+verify_jwt = false

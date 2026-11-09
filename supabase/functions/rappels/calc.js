@@ -1,0 +1,64 @@
+// Rappels de Gestion : la logique pure (dates à Bangkok, quelles entreprises voit une personne, texte des deux notifications).
+// Aucune dépendance : le même fichier sert à la fonction Supabase et aux tests. Pas de nom de client dans les textes,
+// car une notification passe par les serveurs d'Apple et de Google.
+
+const DECALAGE_BANGKOK = 7 * 3600 * 1000;
+
+export const dateBangkok = (d = new Date()) => new Date(d.getTime() + DECALAGE_BANGKOK).toISOString().slice(0, 10);
+export const decaler = (iso, n) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) + n * 86400000).toISOString().slice(0, 10);
+
+const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
+
+// Entreprises dont une personne reçoit les rappels : toutes pour un super administrateur, sinon celles où son rôle lit tous les dossiers.
+export function entitesLisibles({ profil, membres, roles }) {
+  if (!profil || !profil.actif) return [];
+  if (profil.super_admin) return null;
+  const roleDe = new Map(roles.map((r) => [r.id, r]));
+  return membres
+    .filter((m) => m.user_id === profil.user_id)
+    .filter((m) => {
+      const r = roleDe.get(m.role_id);
+      return r && r.portee === "toute" && (r.permissions || []).includes("dossiers.lire");
+    })
+    .map((m) => m.entite_id);
+}
+
+function servicesDuJour(reservations, date, { entiteIds, ecartes }) {
+  return reservations.filter((r) => r.date_service === date && r.statut !== "annule" && !ecartes.has(r.dossier_id) && (entiteIds === null || entiteIds.includes(r.entite_id)));
+}
+
+function ventilation(liste, nomEntite, compter = (rs) => rs.length) {
+  const ids = [...new Set(liste.map((r) => r.entite_id))];
+  if (ids.length < 2) return "";
+  return ids.map((id) => `${nomEntite(id)} ${compter(liste.filter((r) => r.entite_id === id))}`).join(", ") + ".";
+}
+
+// 18h : les services du lendemain et ce qui manque pour qu'ils partent bien.
+export function rappelVeille(reservations, demain, { entiteIds, ecartes = new Set(), nomEntite = () => "" }) {
+  const liste = servicesDuJour(reservations, demain, { entiteIds, ecartes });
+  if (!liste.length) return null;
+  const sansHeure = liste.filter((r) => !(r.heure_pickup || "").trim()).length;
+  const nonConfirmes = liste.filter((r) => r.statut !== "confirme").length;
+  const manque = [];
+  if (sansHeure) manque.push(`${sansHeure} sans heure de pickup`);
+  if (nonConfirmes) manque.push(`${nonConfirmes} ${nonConfirmes > 1 ? "pas encore confirmés" : "pas encore confirmé"}`);
+  const etat = manque.length ? `${manque.join(", ")}.` : "Tout est confirmé et chaque pickup a une heure.";
+  return { titre: `${pluriel(liste.length, "service", "services")} demain`, corps: [ventilation(liste, nomEntite), etat].filter(Boolean).join(" "), tag: "veille" };
+}
+
+// 9h : les clients dont un service a eu lieu la veille, à qui écrire pour savoir comment c'était.
+export function rappelLendemain(reservations, hier, { entiteIds, ecartes = new Set(), nomEntite = () => "" }) {
+  const liste = servicesDuJour(reservations, hier, { entiteIds, ecartes });
+  if (!liste.length) return null;
+  const dossiers = (rs) => new Set(rs.map((r) => r.dossier_id)).size;
+  return { titre: `${pluriel(dossiers(liste), "client", "clients")} à recontacter`, corps: [ventilation(liste, nomEntite, dossiers), "Services d'hier : demandez-leur comment c'était."].filter(Boolean).join(" "), tag: "lendemain" };
+}
+
+export function rappelDuType(type, reservations, aujourdhui, options) {
+  if (type === "veille") return rappelVeille(reservations, decaler(aujourdhui, 1), options);
+  if (type === "lendemain") return rappelLendemain(reservations, decaler(aujourdhui, -1), options);
+  return null;
+}
+
+// Dates de services à charger pour un type de rappel.
+export const dateCible = (type, aujourdhui) => (type === "veille" ? decaler(aujourdhui, 1) : type === "lendemain" ? decaler(aujourdhui, -1) : null);
