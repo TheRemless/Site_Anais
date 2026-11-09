@@ -58,6 +58,7 @@ export async function tableauDeBord() {
     ) : null,
     moduleActif("reservations") ? sectionAgenda(tr("Départs et pickups aujourd'hui"), ag.aujourdhui, tr("Aucun service aujourd'hui.")) : null,
     moduleActif("reservations") && ag.demain.length ? sectionAgenda(tr("Demain"), ag.demain, "") : null,
+    moduleActif("reservations") && ag.hier.length ? sectionAgenda(tr("Hier : à recontacter pour avoir leur avis"), ag.hier, "") : null,
     moduleActif("reservations") && aConfirmer.length
       ? h("section", null, h("h2", null, tr("À confirmer auprès des partenaires"), h("span", { class: "tag" }, aConfirmer.length)), listeReservations(aConfirmer.slice(0, 6), { apres: rafraichir }), aConfirmer.length > 6 ? h("p", { class: "plus" }, h("a", { href: "#/reservations?statut=ouvertes" }, tr("Voir les {n} réservations à confirmer", { n: aConfirmer.length }))) : null)
       : null,

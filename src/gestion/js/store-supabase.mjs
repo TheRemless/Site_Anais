@@ -78,6 +78,17 @@ export function creer(config, { client } = {}) {
       const { error } = await sb.auth.signInWithPassword({ email, password: mdp });
       if (error) throw new Error(error.message === "Invalid login credentials" ? tr("E-mail ou mot de passe incorrect.") : error.message);
     },
+    // Rappels sur téléphone : l'appareil est lié à la personne connectée (voir migration 17).
+    async abonnerRappels({ endpoint, p256dh, auth }) {
+      verifie(await sb.rpc("abonner_rappels", { p_endpoint: endpoint, p_p256dh: p256dh, p_auth: auth }));
+    },
+    async retirerRappels(endpoint) {
+      verifie(await sb.from("abonnements_push").delete().eq("endpoint", endpoint).select());
+    },
+    async rappelsEnregistres(endpoint) {
+      const { data } = await sb.from("abonnements_push").select("id").eq("endpoint", endpoint).limit(1);
+      return !!(data && data.length);
+    },
     async deconnecter() {
       await sb.auth.signOut();
     },

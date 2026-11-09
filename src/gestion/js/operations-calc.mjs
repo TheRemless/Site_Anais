@@ -97,11 +97,13 @@ export function variablesMessage({ reservation = {}, client = {}, dossier = {}, 
 // `ecartees` : identifiants des dossiers annulés, dont les réservations ne comptent plus (annuler un dossier ne change pas leur statut).
 export function agenda(reservations, ajd, ecartees = new Set()) {
   const demain = ajouterJours(ajd, 1);
+  const hier = ajouterJours(ajd, -1);
   const actives = reservations.filter((r) => r.statut !== "annule" && !ecartees.has(r.dossier_id));
   const tri = (a, b) => (a.date_service || "").localeCompare(b.date_service || "") || (a.heure_pickup || "99").localeCompare(b.heure_pickup || "99") || a.libelle.localeCompare(b.libelle);
   return {
     aujourdhui: actives.filter((r) => r.date_service === ajd).sort(tri),
     demain: actives.filter((r) => r.date_service === demain).sort(tri),
+    hier: actives.filter((r) => r.date_service === hier).sort(tri),
     aConfirmer: actives.filter((r) => r.statut !== "confirme" && (!r.date_service || r.date_service >= ajd)).sort(tri),
     enRetard: actives.filter((r) => r.statut !== "confirme" && r.date_service && r.date_service < ajd).sort(tri),
   };
