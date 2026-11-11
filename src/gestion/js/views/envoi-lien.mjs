@@ -72,8 +72,8 @@ export function envoiParLien({ zone, genre, kind, droit, dossierId, langue, pren
       etapes: [
         tr("Le message contient le lien : le client l'ouvre pour voir et enregistrer son document."),
         ...(etat.store.mode === "demo" ? [tr("Démonstration : ce lien est factice, rien n'a été envoyé.")] : []),
-        texte,
       ],
+      contenu: texte,
       boutons: [
         h("a", { class: "bouton principal", href: lienWhatsApp(telephone, message), target: "_blank", rel: "noopener", onclick: () => surEnvoi && surEnvoi() }, tr("Ouvrir WhatsApp avec le lien")),
         h("button", { class: "secondaire", type: "button", onclick: () => (copierTexte(message), surEnvoi && surEnvoi()) }, tr("Copier le message avec le lien")),

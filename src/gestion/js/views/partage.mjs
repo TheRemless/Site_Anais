@@ -63,9 +63,9 @@ export function zoneEnvoi({ fichiers }) {
       }
     },
     // Ce qui a marché et ce qu'il reste à faire, à l'écran jusqu'à ce que la personne passe à autre chose : un toast de 3 secondes disparaît pendant qu'elle change de fenêtre.
-    succes({ titre, etapes = [], boutons = [] }) {
+    succes({ titre, etapes = [], contenu = null, boutons = [] }) {
       majTechnique();
-      message.replaceChildren(...[h("p", null, h("strong", null, titre)), etapes.length ? h("ol", { class: "partage-etapes" }, etapes.map((e) => h("li", null, e))) : null, boutons.length ? h("div", { class: "actions gauche" }, boutons) : null].filter(Boolean));
+      message.replaceChildren(...[h("p", null, h("strong", null, titre)), etapes.length ? h("ol", { class: "partage-etapes" }, etapes.map((e) => h("li", null, e))) : null, contenu, boutons.length ? h("div", { class: "actions gauche" }, boutons) : null].filter(Boolean));
       message.classList.add("ok");
       message.hidden = false;
       message.scrollIntoView({ block: "nearest" });
