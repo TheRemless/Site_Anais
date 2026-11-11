@@ -2,7 +2,7 @@
 // Aucune dépendance au navigateur pour pouvoir la tester avec node --test.
 
 import { langueActive, N_ } from "./i18n.mjs";
-import { chiffres, estLigneSupplement, prefixeProgramme } from "./partenaires-calc.mjs";
+import { chiffres, estLigneSupplement, prefixeProgramme, libelleClient } from "./partenaires-calc.mjs";
 import { SUR_PLACE, CHEZ_NOUS, modeReglement } from "./calc.mjs";
 
 export { SUR_PLACE, CHEZ_NOUS, modeReglement };
@@ -32,23 +32,33 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     const cle = `${base(l)}|${prog && programmes.has(`${base(l)}|${prog}`) ? prog : sansAccentsMin(nomSansEnfant(l))}`;
     const qte = l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1;
     const enfant = estLigneEnfant(l);
-    const g = groupes.get(cle) || { lignes: [], adultes: 0, enfants: 0, vente: 0, net: null, premiere: null };
+    const g = groupes.get(cle) || { lignes: [], adultes: 0, enfants: 0, jours: 0, vente: 0, net: null, premiere: null };
     if (!g.premiere || (!enfant && estLigneEnfant(g.premiere))) g.premiere = l;
     g.lignes.push(l);
-    if (enfant) g.enfants += qte;
-    else g.adultes += qte;
+    g.qtes = g.qtes || [];
+    g.qtes.push({ l, qte, enfant });
     if (estLigneSupplement(l)) g.supplement = true;
     g.vente += brut(l) || 0;
     if (l.net !== null && l.net !== undefined) g.net = (g.net || 0) + Math.round(Number(l.net) * qte * 100) / 100;
     groupes.set(cle, g);
   }
   return [...groupes.values()].map((g) => {
+    // Ce que compte la quantité de chaque ligne : seules les unités de personnes donnent des adultes et des enfants. La base d'un groupe qui a des
+    // suppléments compte pour une personne de plus (ajoutée plus bas), comme avant.
+    for (const { l: x, qte: q, enfant: e } of g.qtes || []) {
+      const compte = compteDe(x) === "aucun" && g.supplement ? "personnes" : compteDe(x);
+      if (compte === "jours") g.jours += q;
+      else if (compte === "personnes") {
+        if (e) g.enfants += q;
+        else g.adultes += q;
+      }
+    }
     // Une base pour 1 ou 2 personnes plus des suppléments : la base compte pour deux personnes (elle est comptée une fois par sa quantité).
     if (g.supplement) g.adultes += 1;
     const l = g.premiere;
     return {
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
-      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {} },
+      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: { ...(g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {}), ...(g.jours ? { jours: g.jours } : {}) } },
       net: g.net,
       // Service payé sur place : la commission attendue se calcule d'après la règle du partenaire (`regleDe(partenaire_id)`), seulement quand elle est connue.
       ...commissionDuGroupe(g, l, regleDe),
@@ -107,7 +117,8 @@ export function variablesMessage({ reservation = {}, client = {}, dossier = {}, 
     heure: reservation.heure_pickup || "",
     a_heure: reservation.heure_pickup ? `${langue === "en" ? " at " : langue === "th" ? " เวลา " : " à "}${reservation.heure_pickup}` : "",
     personnes: personnesTexte(reservation.personnes, langue),
-    prestation: reservation.libelle || "",
+    // Message en anglais ou en thaï : le nom du service passe par la traduction, un libellé d'origine en français n'y part pas tel quel.
+    prestation: langue === "fr" ? reservation.libelle || "" : libelleClient(reservation.libelle || ""),
     partenaire: partenaire.nom || "",
     reference: reservation.reference_partenaire || dossier.ref || "",
     entreprise: entreprise.nom || "",
@@ -282,6 +293,46 @@ export function repartirReception(reservations, netDe, montant) {
   return { repartition, ecart: Math.round((m - attendu) * 100) / 100, attendu };
 }
 
+// ---- Locations (voiture, moto, scooter) ----------------------------------------------------------------------
+// Une ligne louée « par jour » a pour quantité un nombre de jours, pas de personnes.
+export const estLigneJours = (l) => !!l && (l.par === "day" || /par jour|per day/i.test(l.intro || ""));
+
+// Ce que compte la quantité d'une ligne de service : des « personnes » (par personne, adulte, enfant, personne supplémentaire, ou une ligne
+// saisie à la main sans unité), des « jours » (location par jour), ou « aucun » (par bateau, véhicule, session, groupe, kart, ou forfait sans
+// unité) : seules les personnes alimentent le nombre de personnes d'une réservation, une quantité de véhicules ou de jours n'en est pas un.
+export function compteDe(l) {
+  if (!l) return "personnes";
+  const intro = l.intro || "";
+  if (estLigneJours(l)) return "jours";
+  if (["boat", "veh", "ses", "grp"].includes(l.par) || /par (bateau|v[ée]hicule|session|groupe|kart)|per (boat|vehicle|session|group|kart)/i.test(intro)) return "aucun";
+  if (["pp", "ad", "ch", "sup"].includes(l.par) || /par (personne|adulte|enfant)|per (person|adult|child|extra person)/i.test(intro)) return "personnes";
+  // Sans unité reconnue (ligne libre, ancien document), la quantité garde la lecture d'avant : des personnes.
+  return "personnes";
+}
+
+// Nombre de jours entre la prise et le retour (dates AAAA-MM-JJ), au moins 1 ; null quand une date manque ou que le retour précède la prise.
+export function nbJoursLocation(debut, fin) {
+  if (!debut || !fin) return null;
+  const ms = (iso) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10));
+  const n = Math.round((ms(fin) - ms(debut)) / 86400000);
+  return n < 0 ? null : Math.max(1, n);
+}
+
+// Catégorie du véhicule, d'après le groupe de la prestation (« Scooters », « Grosses motos », « Voitures et SUV »). Vide si inconnue.
+export function categorieVehicule(prestation) {
+  const g = `${(prestation && prestation.groupe) || ""} ${(prestation && prestation.libelle) || ""}`;
+  if (/scooter/i.test(g)) return "Scooter";
+  if (/moto|bike/i.test(g)) return "Motorbike";
+  if (/voiture|suv|pick-?up|\bcar\b/i.test(g)) return "Car / SUV";
+  return "";
+}
+
+// Cylindrée telle que la base la donne (« 125 cc », « 1200 cc auto »), « auto » devient « automatic ».
+export function moteurTexte(prestation) {
+  const m = String((prestation && prestation.details && prestation.details.moteur) || "").trim();
+  return m ? m.replace(/\s*\bauto\b/i, ", automatic") : "";
+}
+
 // ---- Vouchers (mode excursions) ------------------------------------------------------------------------------
 // Trois modèles : bateau (excursions en mer), transfert, activité. Les frais de parc n'ont pas de voucher.
 // Quatre modèles : bateau, transfert, activité, location. Chacun a ses champs propres sur la réservation.
@@ -291,7 +342,7 @@ export const CHAMPS_VOUCHER = {
   bateau: ["chambre", "type_tour", "bateau", "parc", "parc_texte", "remarques", "remarques_paiement"],
   transfert: ["drop_off", "vol", "bagages", "type_transfert", "remarques", "remarques_paiement"],
   activite: ["chambre", "programme", "heure_service", "remarques", "remarques_paiement"],
-  location: ["chambre", "retour_date", "retour_heure", "permis", "caution", "remarques", "remarques_paiement"],
+  location: ["chambre", "retour_date", "retour_heure", "retour_lieu", "permis", "equipement", "caution", "conditions", "remarques", "remarques_paiement"],
 };
 export const TITRES_VOUCHER = { billet: "Boat Ticket Voucher", bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher", location: "Rental Voucher" };
 
@@ -463,8 +514,11 @@ export function descriptionService(ligne, langue = "en") {
   const en = langue === "en";
   const qte = ligne.qte !== null && ligne.qte !== undefined && ligne.qte !== "" ? Number(ligne.qte) : 0;
   const enfant = /enfant|child/i.test(ligne.intro || "");
-  const pax = qte ? `${qte} ${enfant ? (en ? (qte > 1 ? "children" : "child") : qte > 1 ? "enfants" : "enfant") : en ? (qte > 1 ? "passengers" : "passenger") : qte > 1 ? "personnes" : "personne"}` : "";
-  return [ligne.libelle, pax, ligne.date_service ? dateTexte(ligne.date_service, langue) : ""].filter(Boolean).join(", ");
+  // La quantité n'est un nombre de personnes que pour une unité de personnes : 4 jours de location ne sont pas « 4 passengers », un véhicule ou un forfait non plus.
+  const compte = compteDe(ligne);
+  const jours = compte === "jours" && qte ? `${qte} ${en ? (qte > 1 ? "days" : "day") : qte > 1 ? "jours" : "jour"}` : "";
+  const pax = compte === "personnes" && qte ? `${qte} ${enfant ? (en ? (qte > 1 ? "children" : "child") : qte > 1 ? "enfants" : "enfant") : en ? (qte > 1 ? "passengers" : "passenger") : qte > 1 ? "personnes" : "personne"}` : "";
+  return [ligne.libelle, pax, jours, ligne.date_service ? dateTexte(ligne.date_service, langue) : ""].filter(Boolean).join(", ");
 }
 
 const arr = (n) => Math.round(n * 100) / 100;
@@ -521,8 +575,11 @@ export function attenduDepuisFacture(r, doc) {
   const qte = (l) => (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
   return {
     date_service: premiere.date_service || null,
+    // Une location « par jour » : la quantité est un nombre de jours, la facture ne dit rien des personnes.
+    sansPersonnes: !utiles.some((l) => compteDe(l) === "personnes") && !utiles.some(estLigneSupplement),
+    jours: utiles.filter(estLigneJours).reduce((s, l) => s + qte(l), 0) || null,
     // Base pour 1 ou 2 personnes + suppléments : la base compte pour deux personnes, comme à la création de la réservation.
-    personnes: { adultes: utiles.filter((l) => !estLigneEnfant(l)).reduce((s, l) => s + qte(l), 0) + (utiles.some(estLigneSupplement) ? 1 : 0), enfants: utiles.filter(estLigneEnfant).reduce((s, l) => s + qte(l), 0) },
+    personnes: { adultes: utiles.filter((l) => !estLigneEnfant(l) && (compteDe(l) === "personnes" || (compteDe(l) === "aucun" && utiles.some(estLigneSupplement)))).reduce((s, l) => s + qte(l), 0) + (utiles.some(estLigneSupplement) ? 1 : 0), enfants: utiles.filter((l) => compteDe(l) === "personnes" && estLigneEnfant(l)).reduce((s, l) => s + qte(l), 0) },
     montant_vente: utiles.some((l) => brut(l) !== null) ? arr(utiles.reduce((s, l) => s + (brut(l) || 0), 0)) : null,
     paye_sur_place: utiles.some((l) => !!l.paye_sur_place),
   };
@@ -535,7 +592,11 @@ export function ecartReservation(r, doc) {
   const champs = [];
   if ((r.date_service || null) !== (a.date_service || null)) champs.push({ cle: "date_service", reservation: r.date_service || null, document: a.date_service || null });
   const pr = r.personnes || {};
-  if ((Number(pr.adultes) || 0) !== a.personnes.adultes || (Number(pr.enfants) || 0) !== a.personnes.enfants) champs.push({ cle: "personnes", reservation: { adultes: Number(pr.adultes) || 0, enfants: Number(pr.enfants) || 0 }, document: { adultes: a.personnes.adultes, enfants: a.personnes.enfants } });
+  // Une facture sans personnes (location, véhicule, forfait) : on ne compare pas, sauf quand la réservation porte une quantité prise à tort pour des personnes
+  // (4 jours devenus « 4 passagers »). Elle se corrige alors, en gardant ce qui a été saisi à la main (autre nombre que la quantité facturée).
+  const quantiteFacturee = (doc && doc.contenu ? doc.contenu.lignes : []).filter((l) => (new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean))).has(l.id) && l.kind !== "texte" && l.kind !== "remise" && compteDe(l) !== "personnes").reduce((s, l) => s + (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1), 0);
+  const fausse = a.sansPersonnes && (Number(pr.adultes) || 0) > 0 && (Number(pr.adultes) || 0) === quantiteFacturee && !(Number(pr.enfants) || 0);
+  if (fausse || (!a.sansPersonnes && ((Number(pr.adultes) || 0) !== a.personnes.adultes || (Number(pr.enfants) || 0) !== a.personnes.enfants))) champs.push({ cle: "personnes", reservation: { adultes: Number(pr.adultes) || 0, enfants: Number(pr.enfants) || 0 }, document: { adultes: a.personnes.adultes, enfants: a.personnes.enfants } });
   if (arr(Number(r.montant_vente) || 0) !== arr(Number(a.montant_vente) || 0)) champs.push({ cle: "montant_vente", reservation: Number(r.montant_vente) || 0, document: Number(a.montant_vente) || 0 });
   if (!!r.paye_sur_place !== a.paye_sur_place) champs.push({ cle: "paye_sur_place", reservation: !!r.paye_sur_place, document: a.paye_sur_place });
   return champs.length ? { retiree: false, champs, attendu: a } : null;
@@ -682,6 +743,6 @@ export function feuilleDuJour(reservations, date, contexte, ecartees = new Set()
 // Texte à coller dans WhatsApp, en anglais comme les messages aux partenaires.
 export function texteFeuille(groupe, date) {
   const tete = `${groupe.nom ? `${groupe.nom}: ` : ""}${dateTexte(date, "en")}, ${personnesTexte({ adultes: groupe.adultes, enfants: groupe.enfants }, "en") || "0 passengers"}`;
-  const lignes = groupe.lignes.map((l) => [l.heure, l.libelle, l.client, l.telephone, [l.hotel, l.chambre ? `room ${l.chambre}` : ""].filter(Boolean).join(", "), personnesTexte(l.personnes, "en")].filter(Boolean).join(" · "));
+  const lignes = groupe.lignes.map((l) => [l.heure, libelleClient(l.libelle), l.client, l.telephone, [l.hotel, l.chambre ? `room ${l.chambre}` : ""].filter(Boolean).join(", "), personnesTexte(l.personnes, "en")].filter(Boolean).join(" · "));
   return [tete, ...lignes].join("\n");
 }

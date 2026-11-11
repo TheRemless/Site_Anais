@@ -217,6 +217,43 @@ const TRADUCTIONS = [
   [/\bBerline privée\b/gi, "Private car"],
   [/\bNavette partagée\b/gi, "Shared minivan"],
   [/\bjournée\b/g, "full day"],
+  // Trajets : horaires de départ, gares, ferries. Ces textes s'impriment sur les vouchers, qui sont toujours en anglais.
+  [/\bMinivan partagé, dépose à l'hôtel comprise\b/gi, "Shared minivan, hotel drop-off included"],
+  [/\bdépose à l'hôtel comprise\b/gi, "hotel drop-off included"],
+  [/\bMinivan partagé(?![\p{L}])/giu, "Shared minivan"],
+  [/\(le bus de (\d+) (?:places|seats) part de la gare routière de ([^()]+?) à ([^()]+)\)/gi, "(the $1-seat bus leaves $2 bus station at $3)"],
+  [/\(départ de la gare routière de ([^()]+?) à ([^()]+)\)/gi, "(departs from $1 bus station at $2)"],
+  [/\(départ (?:de |d')([^()]+?) à ([^()]+)\)/gi, "(departs from $1 at $2)"],
+  [/\bgare routière\b/gi, "bus station"],
+  [/\bgare\b/gi, "station"],
+  [/\bville\b/gi, "city"],
+  [/\baéroport\b/gi, "airport"],
+  [/\bpar (ferry|Lomprayah|Seatran)\b/gi, "by $1"],
+  [/,?\s*par person(?:ne)?\b/gi, ", per person"],
+  [/\s+ou\s+/g, " or "],
+  // Plongée, locations et programmes.
+  [/\b1 plongée\b/gi, "1 dive"],
+  [/\b(\d+) plongées\b/gi, "$1 dives"],
+  [/\bPlongée supplémentaire\b/gi, "Extra dive"],
+  [/\bsur le bateau de plongée(?![\p{L}])/giu, "on the dive boat"],
+  [/\bplongées?\b/gi, "dive"],
+  [/\bdès (\d+) ans\b/gi, "from age $1"],
+  [/\bde moins de (\d+) ans\b/gi, "under $1 years old"],
+  [/\bgros bateau\b/gi, "big boat"],
+  [/\bajouté à un trip local\b/gi, "added to a local trip"],
+  [/\ben plus des (\d+) premières people\b/gi, "beyond the first $1 people"],
+  [/\ben plus d'une sortie spéciale\b/gi, "on top of a special trip"],
+  [/\bNanny à bord pour vos enfants\b/gi, "Nanny on board for your children"],
+  [/\bLocation d'un ordinateur de plongée\b/gi, "Dive computer rental"],
+  [/\bLocation d'un bloc nitrox (\d+) L\b/gi, "Nitrox tank rental, $1 L"],
+  [/\bLocation d'une GoPro Hero et accessoires\b/gi, "GoPro Hero rental with accessories"],
+  [/\(ordinateur requis\)/gi, "(dive computer required)"],
+  [/\bSpécialité (\w+)/gi, "$1 specialty"],
+  [/\bthéorie seulement\b/gi, "theory only"],
+  [/\b1 jour\b/gi, "1 day"],
+  [/\b(\d+) jours\b/gi, "$1 days"],
+  [/\bpêche\b/gi, "fishing"],
+  [/\(retour (\d+h\d+)\)/gi, "(back at $1)"],
   [/\s*[,;]\s*$/g, ""],
   [/\s{2,}/g, " "],
   // En dernier, pour ne pas casser les règles qui contiennent « et ».
@@ -263,7 +300,10 @@ export function ligneLibre({ libelle, prix, qte = 1, partenaire_id = null, date 
 export const modeEn = (mode) => { const m = libelleClient(mode || "Boat"); return m.charAt(0).toUpperCase() + m.slice(1); };
 export function lignesDepuisTrajet(t, net, { langue = "", date = "", adultes = 1, enfants = 0, compagnie = "", uid = nouvelId } = {}) {
   const en = langue === "en";
-  const titre = en ? `${modeEn(t.mode)} transfer: ${t.de} → ${t.vers}, departure ${t.depart}${compagnie ? ` with ${compagnie}` : ""}` : `${t.mode || "Bateau"} ${t.de} → ${t.vers}, départ ${t.depart}${compagnie ? ` avec ${compagnie}` : ""}`;
+  // Document en anglais : les lieux passent aussi par la traduction (« Hatyai (aéroport) » devient « Hatyai (airport) »).
+  const de = en ? libelleClient(t.de) : t.de;
+  const vers = en ? libelleClient(t.vers) : t.vers;
+  const titre = en ? `${modeEn(t.mode)} transfer: ${de} → ${vers}, departure ${t.depart}${compagnie ? ` with ${compagnie}` : ""}` : `${t.mode || "Bateau"} ${t.de} → ${t.vers}, départ ${t.depart}${compagnie ? ` avec ${compagnie}` : ""}`;
   const base = { intro: "", puces: [], montant: null, pct: null, trajet_id: t.id, partenaire_id: t.partenaire_id || null, date_service: date || null };
   const out = [];
   if (Number(adultes) > 0) out.push({ ...base, id: uid(), kind: "ligne", libelle: titre, intro: `(${en ? "per adult" : "par adulte"})`, unite: t.prix_adulte, qte: Number(adultes), net: net && net.net_adulte !== null && net.net_adulte !== undefined ? Number(net.net_adulte) : null });

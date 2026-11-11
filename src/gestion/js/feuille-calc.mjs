@@ -1,5 +1,6 @@
 // Feuille du jour : ce qui manque avant d'envoyer, et le texte à envoyer quand une information manque encore. Testé avec node --test.
 import { dateTexte, personnesTexte } from "./operations-calc.mjs";
+import { libelleClient } from "./partenaires-calc.mjs";
 
 // Les pickups d'une feuille (groupes de `feuilleDuJour`) sans heure ou sans hôtel : le chauffeur ne peut pas les faire.
 // Renvoie [{ id, libelle, client, manque: ["heure", "hotel"] }], dans l'ordre de la feuille.
@@ -23,7 +24,7 @@ export function texteFeuillePartage(groupe, date) {
   const lignes = groupe.lignes.map((l) =>
     [
       l.heure || "time TBC",
-      l.libelle,
+      libelleClient(l.libelle),
       l.client,
       l.telephone,
       [l.hotel, l.chambre ? `room ${l.chambre}` : ""].filter(Boolean).join(", ") || "pickup TBC",

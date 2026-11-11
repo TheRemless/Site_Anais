@@ -103,7 +103,7 @@ test("gabarits : variables remplies, inconnues gardées, vides effacées", () =>
 
 test("variables d'un message depuis une réservation", () => {
   const v = variablesMessage({ reservation: { libelle: "4 îles", date_service: "2026-12-10", heure_pickup: "08:00", lieu_pickup: "Hotel Sunset", personnes: { adultes: 2 }, reference_partenaire: "LT-1" }, client: { prenom: "Ben", nom: "Walker" }, dossier: { ref: "EX-1" }, partenaire: { nom: "Longtail" }, entreprise: { nom: "Secret", telephone: "+66" }, langue: "en" });
-  assert.deepEqual(v, { client: "Ben Walker", prenom: "Ben", date: "10 December 2026", hotel: "Hotel Sunset", heure: "08:00", a_heure: " at 08:00", personnes: "2 adults", prestation: "4 îles", partenaire: "Longtail", reference: "LT-1", entreprise: "Secret", telephone: "+66" });
+  assert.deepEqual(v, { client: "Ben Walker", prenom: "Ben", date: "10 December 2026", hotel: "Hotel Sunset", heure: "08:00", a_heure: " at 08:00", personnes: "2 adults", prestation: "4 Islands", partenaire: "Longtail", reference: "LT-1", entreprise: "Secret", telephone: "+66" });
   const fr = variablesMessage({ reservation: {}, client: { prenom: "Ben", nom: "Walker", adresse: "Hotel Palm\nKoh Lanta" }, dossier: { ref: "EX-2", date_depart: "2027-01-05" } });
   assert.equal(fr.date, "5 janvier 2027");
   assert.equal(fr.hotel, "Hotel Palm");
@@ -345,5 +345,5 @@ test("feuille du jour : par partenaire, triée par heure, sans les annulées, av
   assert.equal(f[0].lignes[0].hotel, "Hotel Sunset");
   assert.equal(f[0].lignes[0].chambre, "12");
   assert.deepEqual(feuilleDuJour(R, "2026-12-10", contexte, new Set(["B"]))[0].lignes.map((l) => l.client), ["Anna Keller"], "un dossier annulé n'est plus sur la feuille");
-  assert.equal(texteFeuille(f[0], "2026-12-10"), "Longtail démo: 10 December 2026, 4 adults, 1 child\n08:00 · 4 îles · Anna Keller · +49 160 123 · Hotel Sunset, room 12 · 2 adults, 1 child\n08:30 · 4 îles · Ben Walker · +44 7000 · Lanta Sand Resort · 2 adults");
+  assert.equal(texteFeuille(f[0], "2026-12-10"), "Longtail démo: 10 December 2026, 4 adults, 1 child\n08:00 · 4 Islands · Anna Keller · +49 160 123 · Hotel Sunset, room 12 · 2 adults, 1 child\n08:30 · 4 Islands · Ben Walker · +44 7000 · Lanta Sand Resort · 2 adults");
 });
