@@ -98,3 +98,24 @@ test("recalcul des commissions : seulement les services sur place, non annulés,
   assert.deepEqual(recalculerCommissions(R, ctx, { seulementVides: true }).changements.map((c) => c.reservation.id), ["1"]);
   assert.deepEqual(recalculerCommissions(R, ctx, { partenaireId: "P" }).changements.map((c) => c.reservation.id), ["2"]);
 });
+
+import { contenuAvecServiceDuplique } from "../src/gestion/js/operations-calc.mjs";
+
+test("dupliquer un service : les lignes du service sont copiées avec de nouveaux identifiants, sans la note sur place ni les autres lignes", () => {
+  let n = 0;
+  const r = { ligne_id: "a", details: { lignes_ids: ["a", "e"] } };
+  const copie = contenuAvecServiceDuplique(contenu, r, () => `n${++n}`);
+  assert.deepEqual(copie.ids, ["n1", "n2"]);
+  assert.equal(copie.contenu.lignes.length, contenu.lignes.length + 2);
+  const [a2, e2] = copie.contenu.lignes.slice(-2);
+  assert.equal(a2.qte, 2); assert.equal(a2.unite, 800); assert.equal(e2.unite, 500); assert.equal(a2.date_service, "2026-12-10");
+  assert.equal(contenu.lignes.length, 4, "le document d'origine n'est pas modifié");
+  assert.equal(totaux(copie.contenu).net, totaux(contenu).net + 2 * 800 + 500);
+  assert.equal(contenuAvecServiceDuplique(contenu, { ligne_id: "zz", details: {} }), null);
+  assert.equal(contenuAvecServiceDuplique(contenu, { ligne_id: "n", details: {} }), null, "une note n'est pas un service");
+  // Le double devient une réservation à part, avec les mêmes quantités.
+  const doc = { dossier_id: "D", contenu: copie.contenu };
+  const existantes = [{ ligne_id: "a", details: { lignes_ids: ["a", "e"] } }];
+  const nouvelles = reservationsDepuisDocument({ ...doc, contenu: { lignes: copie.contenu.lignes.map((l) => ({ ...l, prestation_id: l.prestation_id || null, libre: true })) } }, { existantes, uid: () => "R2" });
+  assert.equal(nouvelles.filter((x) => x.reservation.ligne_id === "n1").length, 1);
+});

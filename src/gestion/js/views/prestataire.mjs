@@ -37,7 +37,38 @@ const enregistrer = async (r, champs, apres, message) => {
   }
 };
 
-const demander = (r, apres) => messageAuPrestataire(r, "partenaire", () => enregistrer(r, (c) => ({ statut: "demande", details: detailsDemande(c, aujourdhui()) }), apres, tr("Marquée comme demandée.")));
+// Au retour de WhatsApp (l'appli repasse au premier plan après avoir été cachée), on demande si le message est vraiment parti : la réservation est
+// marquée « Demandée » dès le tap, avant l'envoi réel. Fermer la fenêtre sans répondre ne change rien.
+function questionAuRetour(r, apres) {
+  let parti = false;
+  let minuteur = null;
+  const ecoute = () => {
+    if (document.visibilityState === "hidden") return void (parti = true);
+    if (!parti) return;
+    document.removeEventListener("visibilitychange", ecoute);
+    clearTimeout(minuteur);
+    if (courante(r).statut !== "demande") return;
+    const p = partenaireDe(r.partenaire_id);
+    const fermer = modal(
+      tr("Le message est-il parti ?"),
+      h(
+        "div",
+        { class: "modal-corps" },
+        h("p", null, tr("La réservation « {libelle} » est notée « Demandée »{nom}. Si WhatsApp s'est fermé sans envoyer, remettez-la à demander.", { libelle: r.libelle, nom: p ? tr(" chez {nom}", { nom: p.nom }) : "" })),
+        h("div", { class: "actions" }, h("button", { class: "secondaire", type: "button", onclick: () => (fermer(), pasEnvoyee(r, apres)) }, tr("Pas envoyée")), h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Oui, il est parti")))
+      ),
+      { protege: false }
+    );
+  };
+  document.addEventListener("visibilitychange", ecoute);
+  minuteur = setTimeout(() => document.removeEventListener("visibilitychange", ecoute), 10 * 60 * 1000);
+}
+
+const demander = (r, apres) =>
+  messageAuPrestataire(r, "partenaire", async () => {
+    const fait = await enregistrer(r, (c) => ({ statut: "demande", details: detailsDemande(c, aujourdhui()) }), apres, tr("Marquée comme demandée."));
+    if (fait) questionAuRetour(r, apres);
+  });
 const relancer = (r, apres) => messageAuPrestataire(r, "relance", () => enregistrer(r, (c) => ({ details: detailsRelance(c, aujourdhui()) }), apres, tr("Relance notée.")));
 const confirmee = (r, apres) => enregistrer(r, { statut: "confirme" }, apres, tr("Confirmée par le prestataire."));
 const pasEnvoyee = (r, apres) => enregistrer(r, (c) => ({ statut: "a_demander", details: { ...(c.details || {}), demande_le: null, relance_le: null, relances: 0 } }), apres);
@@ -127,7 +158,9 @@ export function actionsPrestataire(r, { apres }) {
   return h(
     "div",
     { class: "prestataire-actions" },
-    h("p", { class: `prestataire-etat${a && a.relancer ? " long" : ""}` }, texte, a && a.relances ? ` · ${pluriel(a.relances, N_("{n} relance"), N_("{n} relances"))}` : "", a && a.jours === 0 ? [" · ", h("button", { class: "lien", type: "button", onclick: () => pasEnvoyee(r, apres) }, tr("Pas envoyée"))] : null),
+    h("p", { class: `prestataire-etat${a && a.relancer ? " long" : ""}` }, texte, a && a.relances ? ` · ${pluriel(a.relances, N_("{n} relance"), N_("{n} relances"))}` : "", ),
+    // Le jour même, un vrai bouton (et non un lien) : le message a pu ne pas partir de WhatsApp.
+    a && a.jours === 0 ? h("button", { class: "secondaire petit pas-envoyee", type: "button", onclick: () => pasEnvoyee(r, apres) }, tr("Le message n'est pas parti ? Remettre à demander")) : null,
     h("button", { class: "principal petit", type: "button", onclick: () => confirmee(r, apres) }, tr("Confirmée")),
     h("button", { class: "secondaire petit", type: "button", onclick: () => autreReponse(r, apres) }, tr("Autre réponse")),
     h("button", { class: a && a.relancer ? "principal petit" : "secondaire petit", type: "button", onclick: () => relancer(r, apres) }, tr("Relancer")),

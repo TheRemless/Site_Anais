@@ -1,9 +1,11 @@
 import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier, reglages, peut } from "../etat.mjs";
-import { h, champ, modal, confirmer, toast } from "../ui.mjs";
-import { formatMontant } from "../calc.mjs";
+import { h, champ, modal, confirmer, toast, icone } from "../ui.mjs";
+import { formatMontant, formatDate } from "../calc.mjs";
 import { pastille, vide, listeAdaptative, barreFiltres } from "./commun.mjs";
 import { correspond } from "../mobile-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { chiffres as numeroDe } from "../partenaires-calc.mjs";
+import { clientsProches } from "../demande-calc.mjs";
 
 function formulaireClient(client, apres) {
   const civilites = [...reglages().listes.civilites];
@@ -85,28 +87,35 @@ export function listeClients() {
 export function ficheClient(id) {
   const client = etat.db.clients.find((c) => c.id === id);
   if (!client) return vide(tr("Client introuvable"), tr("Il a peut-être été supprimé."), h("a", { class: "bouton secondaire", href: "#/clients" }, tr("Retour aux clients")));
-  const dossiers = etat.db.dossiers.filter((d) => d.client_id === id).map((d) => resumeDossier(d.id));
+  const dossiers = etat.db.dossiers.filter((d) => d.client_id === id).map((d) => resumeDossier(d.id)).sort((a, b) => (b.dossier.date_depart || b.dossier.created_at || "").localeCompare(a.dossier.date_depart || a.dossier.created_at || ""));
+  const tel = numeroDe(client.telephone);
+  // Un autre client avec le même numéro ou le même nom : probablement la même personne saisie deux fois.
+  const doublons = clientsProches({ telephone: client.telephone, nom: `${client.prenom || ""} ${client.nom || ""}` }, etat.db.clients.filter((c) => c.id !== id));
   return h(
     "div",
     { "data-titre": nomClient(client) },
     h("a", { class: "retour", href: "#/clients" }, tr("Clients")),
     h("div", { class: "entete" }, h("h1", null, nomClient(client)), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: `#/dossiers/nouveau?client=${id}` }, tr("Nouveau dossier pour ce client")) : null),
+    // Joindre le client en un tap : appel et WhatsApp (le numéro est nettoyé comme sur l'accueil).
+    tel ? h("div", { class: "actions gauche client-joindre" }, h("a", { class: "bouton secondaire", href: `tel:${tel}`, "aria-label": tr("Appeler {nom}", { nom: nomClient(client) }) }, icone("telephone", 18), tr("Appeler")), h("a", { class: "bouton secondaire", href: `https://wa.me/${tel.replace(/\D/g, "")}`, target: "_blank", rel: "noopener", "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(client) }) }, icone("whatsapp", 18), tr("WhatsApp"))) : null,
+    doublons.length ? h("div", { class: "ecart-facture doublons-client", role: "status" }, h("p", null, h("strong", null, pluriel(doublons.length, N_("Doublon possible"), N_("Doublons possibles")))), h("ul", null, doublons.map(({ client: c, raison }) => h("li", null, h("a", { href: `#/client/${c.id}` }, nomClient(c)), ` · ${raison === "telephone" ? tr("même numéro de téléphone") : tr("même nom")}`))), h("p", { class: "aide" }, tr("Rien n'est fusionné tout seul : ouvrez l'autre fiche pour comparer, puis déplacez ou supprimez ce qui est en trop."))) : null,
     h("section", null, h("h2", null, tr("Coordonnées")), formulaireClient(client, () => naviguer(location.hash))),
     h(
       "section",
       null,
       h("h2", null, tr("Dossiers")),
       dossiers.length
-        ? h(
-            "table",
-            { class: "tableau simple" },
-            h("thead", null, h("tr", null, [tr("Référence"), tr("Statut"), tr("Total"), tr("Reste")].map((x, i) => h("th", { scope: "col", class: i > 1 ? "num" : null }, x)))),
-            h(
-              "tbody",
-              null,
-              dossiers.map((r) => h("tr", null, h("td", { "data-label": tr("Référence") }, h("a", { href: `#/dossier/${r.dossier.id}` }, r.dossier.ref)), h("td", { "data-label": tr("Statut") }, pastille(r.statut)), h("td", { class: "num", "data-label": tr("Total") }, formatMontant(r.total, r.devise)), h("td", { class: "num", "data-label": tr("Reste") }, formatMontant(r.reste, r.devise))))
-            )
-          )
+        ? listeAdaptative({
+            items: dossiers,
+            colonnes: [
+              { cle: "ref", titre: tr("Référence"), rendu: (r) => r.dossier.ref, tri: (r) => r.dossier.ref, mobile: "titre" },
+              { cle: "depart", titre: tr("Départ"), rendu: (r) => (r.dossier.date_depart ? formatDate(r.dossier.date_depart) : "—"), rendu_mobile: (r) => (r.dossier.date_depart ? tr("départ le {date}", { date: formatDate(r.dossier.date_depart) }) : null), tri: (r) => r.dossier.date_depart || "", mobile: "sous" },
+              { cle: "statut", titre: tr("Statut"), rendu: (r) => pastille(r.statut), mobile: "pied" },
+              { cle: "total", titre: tr("Total"), num: true, rendu: (r) => formatMontant(r.total, r.devise), tri: (r) => r.total, mobile: "droite" },
+              { cle: "reste", titre: tr("Reste"), num: true, rendu: (r) => formatMontant(r.reste, r.devise), tri: (r) => r.reste, mobile: false },
+            ],
+            lien: (r) => `#/dossier/${r.dossier.id}`,
+          }).noeud
         : h("p", { class: "vide-court" }, tr("Aucun dossier pour ce client."))
     ),
     !peut("clients.supprimer") ? null : h(

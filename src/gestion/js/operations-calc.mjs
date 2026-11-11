@@ -588,6 +588,19 @@ export function contenuAvecReservation(contenu, r, avant, apres) {
   return { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? { ...l, ...miseAJour.get(l) } : l)) }, reste };
 }
 
+// ---- Service dupliqué : de nouvelles lignes pour un deuxième exemplaire -------------------------------------------
+// Copie les lignes du document qui correspondent à la réservation (même prestation, partenaire, date, quantités, prix), avec de nouveaux identifiants,
+// à la suite des autres : la réservation du double se crée ensuite comme pour tout service ajouté. Les notes « à payer sur place » ne sont pas copiées
+// (une note par prestation et par date suffit). Renvoie { contenu, ids } ou null quand le document ne porte aucune ligne de ce service.
+export function contenuAvecServiceDuplique(contenu, r, uid = nouvelId) {
+  const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
+  const lignes = (contenu && contenu.lignes) || [];
+  const sources = lignes.filter((l) => ids.has(l.id) && l.kind !== "texte" && l.kind !== "remise");
+  if (!sources.length) return null;
+  const doubles = sources.map((l) => ({ ...structuredClone(l), id: uid() }));
+  return { contenu: { ...contenu, lignes: [...lignes, ...doubles] }, ids: doubles.map((l) => l.id) };
+}
+
 // ---- Service supprimé : ce que la facture doit perdre ------------------------------------------------------------
 // Une réservation est créée d'après des lignes de la facture (`ligne_id`, et `details.lignes_ids` quand adulte et enfant sont réunis).
 // Quand on la supprime, ces lignes partent de la facture, ainsi que la note « à payer sur place » de la même prestation si plus aucune ligne
