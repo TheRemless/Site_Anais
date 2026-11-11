@@ -2,7 +2,7 @@
 import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_ } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_ } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide, barreFiltres } from "./commun.mjs";
@@ -91,9 +91,67 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
       "span",
       { class: "carte-pied" },
       h("span", null, ecrit ? selecteurStatut(r, apres) : pastilleReservation(r.statut), r.reference_partenaire ? h("span", { class: "tag" }, r.reference_partenaire) : null, r.paye_sur_place ? h("span", { class: "tag" }, tr("Sur place")) : null, !r.paye_sur_place && n && n.net_prevu != null ? h("span", { class: "tag" }, n.net_paye != null ? tr("net {prix}, payé", { prix: prix(n.net_prevu) }) : tr("net {prix}", { prix: prix(n.net_prevu) })) : null, avecDossier && d ? h("a", { class: "tag", href: `#/dossier/${d.id}` }, d.ref) : null),
-      h("span", { class: "carte-actions" }, r.partenaire_id ? h("button", { class: "secondaire petit", type: "button", onclick: () => messagePartenaire(r) }, tr("Message partenaire")) : null, c ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageClient(r.date_service, aujourdhui())) }, tr("Message client")) : null, ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation"), formulaireReservation(r, () => (fermer(), apres())), { brouillon: `reservation:${r.id}` }); } }, tr("Modifier")) : null)
+      h("span", { class: "carte-actions" }, r.partenaire_id ? h("button", { class: "secondaire petit", type: "button", onclick: () => messagePartenaire(r) }, tr("Message partenaire")) : null, c ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageClient(r.date_service, aujourdhui())) }, tr("Message client")) : null, ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation"), formulaireReservation(r, () => (fermer(), apres())), { brouillon: `reservation:${r.id}` }); } }, tr("Modifier")) : null, ecrit && modeExcursions() && lieeFacture(r) ? h("button", { class: "secondaire petit", type: "button", onclick: () => dupliquerService(r, apres) }, tr("Dupliquer")) : null)
     ),
     ecrit ? actionsPrestataire(r, { apres }) : null
+  );
+}
+
+const lieeFacture = (r) => !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
+
+// Dupliquer un service : une fenêtre demande le jour du double, puis ses lignes sont copiées sur la facture (ou le devis qui les porte) avec ce jour, et sa
+// réservation est une copie de l'originale (même prestataire, pickup, net et commission prévus), à redemander, avec les personnes et le prix que portent
+// les lignes copiées : la facture et la réservation du double sont d'accord dès le départ.
+export async function dupliquerService(r, apres) {
+  await chargerDossier(r.dossier_id);
+  const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
+  const doc = [...etat.db.documents.filter((x) => x.dossier_id === r.dossier_id)].sort((a, b) => (a.type === "facture" ? 0 : 1) - (b.type === "facture" ? 0 : 1)).find((x) => (x.contenu.lignes || []).some((l) => ids.has(l.id)));
+  if (!doc) return toast(tr("Ce service ne figure sur aucun document : utilisez « Réservation à la main »."), true);
+  if (!peut("documents.ecrire")) return toast(tr("Ce service figure sur la facture, et votre rôle ne permet pas de la modifier."), true);
+  const jour = h("input", { id: "dup-jour", type: "date", value: r.date_service || "" });
+  const faire = async () => {
+    const copie = contenuAvecServiceDuplique(doc.contenu, r);
+    if (!copie) return toast(tr("Ce service ne figure sur aucun document : utilisez « Réservation à la main »."), true);
+    const nouvellesLignes = copie.contenu.lignes.map((l) => (copie.ids.includes(l.id) ? { ...l, date_service: jour.value || null } : l));
+    copie.contenu = { ...copie.contenu, lignes: nouvellesLignes };
+    const attendu = attenduDepuisFacture({ ligne_id: copie.ids[0], details: copie.ids.length > 1 ? { lignes_ids: copie.ids } : {} }, { contenu: copie.contenu });
+    if (doc.envoye_le && !(await confirmer(tr("Dupliquer « {libelle} » ajoute des lignes à un document déjà envoyé le {date} : il faudra renvoyer la nouvelle version au client.", { libelle: r.libelle, date: formatDate(doc.envoye_le) }), tr("Dupliquer")))) return;
+    let nouvelle = null;
+    try {
+      // La réservation d'abord : si le document ne suit pas, on la retire et rien ne reste facturé sans réservation.
+      nouvelle = await inserer("reservations", {
+        dossier_id: r.dossier_id, ligne_id: copie.ids[0], prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, partenaire_id: r.partenaire_id || null,
+        libelle: r.libelle, date_service: jour.value || null, heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "",
+        personnes: { ...(r.personnes || {}), adultes: attendu.personnes.adultes, enfants: attendu.personnes.enfants },
+        statut: "a_demander", reference_partenaire: "", montant_vente: attendu.montant_vente ?? r.montant_vente ?? null, notes: "", paye_sur_place: !!r.paye_sur_place,
+        details: copie.ids.length > 1 ? { lignes_ids: copie.ids } : {},
+      });
+      try {
+        await modifier("documents", doc.id, { contenu: copie.contenu, updated_at: new Date().toISOString() });
+      } catch (err) {
+        await supprimer("reservations", nouvelle.id).catch(() => {});
+        throw err;
+      }
+      const n = voitNets() && peut("dossiers.ecrire") ? netReservation(r) : null;
+      if (n && (n.net_prevu != null || n.commission_prevue != null)) await enregistrerLie("reservations_nets", "reservation_id", nouvelle.id, { net_prevu: n.net_prevu ?? null, net_paye: null, paye_le: null, commission_prevue: n.commission_prevue ?? null, commission_recue: null, commission_recue_le: null });
+      await synchroniserDatesDossier(r.dossier_id);
+      toast(tr("Service dupliqué."));
+      apres();
+    } catch (err) {
+      toast(tr("Duplication impossible : {message}", { message: err.message }), true);
+    }
+  };
+  const fermer = modal(
+    tr("Dupliquer le service"),
+    h(
+      "div",
+      { class: "modal-corps" },
+      h("p", { class: "aide" }, r.libelle),
+      champ(tr("Jour du double"), jour),
+      h("p", { class: "aide" }, tr("Les lignes du service sont copiées sur le document, et sa réservation est à redemander au prestataire.")),
+      h("div", { class: "actions" }, h("button", { class: "secondaire", type: "button", onclick: () => fermer() }, tr("Annuler")), h("button", { class: "principal", type: "button", onclick: () => (fermer(), faire()) }, tr("Dupliquer")))
+    ),
+    { protege: false }
   );
 }
 
