@@ -14,8 +14,8 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(rappel.titre || "Gestion", {
       body: rappel.corps || "",
       tag: rappel.tag || "gestion",
-      icon: "/gestion/assets/icone-192.png",
-      badge: "/gestion/assets/icone-192.png",
+      icon: "/gestion/assets/zwald-192.png",
+      badge: "/gestion/assets/zwald-192.png",
       data: { url: rappel.url || "/gestion/" },
     })
   );

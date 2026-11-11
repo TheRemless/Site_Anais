@@ -28,9 +28,11 @@ test("manifeste : chaque icône existe à la taille annoncée, avec une icône m
 
 test("page : le manifeste et l'icône iPhone sont liés, l'outil reste non indexé", () => {
   assert.match(index, /<link rel="manifest" href="manifest\.webmanifest">/);
-  const m = /<link rel="apple-touch-icon" href="([^"]+)">/.exec(index);
-  assert.ok(m, "icône iPhone liée");
+  const m = /<link rel="apple-touch-icon" sizes="180x180" href="\/gestion\/(assets\/[^"]+)">/.exec(index);
+  assert.ok(m, "icône iPhone liée par un chemin absolu, avec sa taille");
   assert.equal(tailleDe(path.join(dossier, m[1])), "180x180");
+  // iOS retient l'icône d'une adresse : un fichier déjà vu sans succès ne se recharge pas, d'où des noms neufs (zwald-*) plutôt que icone-*.
+  assert.match(m[1], /zwald-180\.png$/);
   assert.match(index, /apple-mobile-web-app-capable/);
   assert.match(index, /noindex/);
 });
