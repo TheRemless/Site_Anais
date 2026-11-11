@@ -2,7 +2,7 @@ import { h, vider, ajouter, modal, icone, saisie, puces as fabriquePuces } from 
 import { trier, tranche, compterFiltres } from "../mobile-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 import { libelleStatut, sommePaiements, nomFichier } from "../calc.mjs";
-import { etat, imprimer } from "../etat.mjs";
+import { etat, imprimer, nomPartenaire } from "../etat.mjs";
 import { renderDocument } from "../document.mjs";
 
 // Le statut est toujours écrit en toutes lettres, le point de couleur ne fait que l'accompagner.
@@ -236,7 +236,7 @@ export function feuille(doc) {
   const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id);
   const client = etat.db.clients.find((c) => c.id === dossier.client_id);
   const paiements = etat.db.paiements.filter((p) => p.dossier_id === dossier.id);
-  return { noeud: renderDocument({ type: doc.type, doc, dossier, client, reglages: etat.db.reglages, recu: montantRecu(doc, paiements) }), dossier, client };
+  return { noeud: renderDocument({ type: doc.type, doc, dossier, client, reglages: etat.db.reglages, recu: montantRecu(doc, paiements), nomPartenaire }), dossier, client };
 }
 
 export function pdf(doc) {

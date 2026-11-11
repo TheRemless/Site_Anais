@@ -1,9 +1,10 @@
 // Sélecteur de prestations et de trajets de partenaires pour l'éditeur de devis.
 // La fenêtre reste ouverte pour enchaîner plusieurs ajouts ; chaque ajout renvoie des lignes prêtes pour le document.
-import { etat, nomPartenaire, netPrestation, netTrajet } from "../etat.mjs";
+import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet } from "../etat.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
 import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre } from "../partenaires-calc.mjs";
+import { appliquerModeParDefaut } from "../operations-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
 // `sansCompagnie` : le nom de la compagnie n'est pas répété dans le libellé des trajets (facture de Secret).
@@ -27,7 +28,8 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   const prix = (n) => (n === null || n === undefined ? tr("prix à définir") : formatMontant(n, devise));
   const termine = h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Terminé"));
   const ajoute = (lignes, nom) => {
-    onAjout(lignes);
+    // Chaque service prend le mode de règlement habituel de son partenaire (chez nous ou sur place).
+    onAjout(appliquerModeParDefaut(lignes, partenaireDe));
     ajoutes++;
     termine.textContent = pluriel(ajoutes, N_("Terminé · {n} ajouté"), N_("Terminé · {n} ajoutés"));
     toast(tr("{nom} ajouté au document.", { nom }));

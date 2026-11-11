@@ -1,8 +1,8 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
 import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
-import { formatMontant, formatDate, aujourdhui, totaux } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace } from "../operations-calc.mjs";
+import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, modeParDefaut, commissionPrevue as commissionPrevue_ } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide } from "./commun.mjs";
@@ -10,6 +10,7 @@ import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { telWhatsApp, commissionsPartenaire } from "../partenaires-calc.mjs";
+import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
@@ -46,7 +47,7 @@ function selecteurStatut(r, apres) {
 
 // Texte d'un écart entre la réservation et la facture : « Date : 12 déc. sur la réservation, 14 déc. sur la facture ».
 function texteEcart(c, devise) {
-  const v = (x) => (c.cle === "date_service" ? (x ? formatDate(x) : tr("à fixer")) : c.cle === "personnes" ? personnesTexte(x) || "0" : c.cle === "paye_sur_place" ? (x ? tr("payé sur place") : tr("payé à nous")) : formatMontant(x, devise));
+  const v = (x) => (c.cle === "date_service" ? (x ? formatDate(x) : tr("à fixer")) : c.cle === "personnes" ? personnesTexte(x) || "0" : c.cle === "paye_sur_place" ? (x ? tr("sur place") : tr("chez nous")) : formatMontant(x, devise));
   const nom = c.cle === "date_service" ? tr("Date") : c.cle === "personnes" ? tr("Personnes") : c.cle === "paye_sur_place" ? tr("Paiement") : tr("Montant vendu");
   return tr("{nom} : {reservation} sur la réservation, {document} sur la facture", { nom, reservation: v(c.reservation), document: v(c.document) });
 }
@@ -85,7 +86,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     h(
       "span",
       { class: "carte-pied" },
-      h("span", null, ecrit ? selecteurStatut(r, apres) : pastilleReservation(r.statut), r.reference_partenaire ? h("span", { class: "tag" }, r.reference_partenaire) : null, n && n.net_prevu != null ? h("span", { class: "tag" }, n.net_paye != null ? tr("net {prix}, payé", { prix: prix(n.net_prevu) }) : tr("net {prix}", { prix: prix(n.net_prevu) })) : null, avecDossier && d ? h("a", { class: "tag", href: `#/dossier/${d.id}` }, d.ref) : null),
+      h("span", null, ecrit ? selecteurStatut(r, apres) : pastilleReservation(r.statut), r.reference_partenaire ? h("span", { class: "tag" }, r.reference_partenaire) : null, r.paye_sur_place ? h("span", { class: "tag" }, tr("Sur place")) : null, !r.paye_sur_place && n && n.net_prevu != null ? h("span", { class: "tag" }, n.net_paye != null ? tr("net {prix}, payé", { prix: prix(n.net_prevu) }) : tr("net {prix}", { prix: prix(n.net_prevu) })) : null, avecDossier && d ? h("a", { class: "tag", href: `#/dossier/${d.id}` }, d.ref) : null),
       h("span", { class: "carte-actions" }, r.partenaire_id ? h("button", { class: "secondaire petit", type: "button", onclick: () => messagePartenaire(r) }, tr("Message partenaire")) : null, c ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageClient(r.date_service, aujourdhui())) }, tr("Message client")) : null, ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation"), formulaireReservation(r, () => (fermer(), apres()))); } }, tr("Modifier")) : null)
     )
   );
@@ -143,21 +144,40 @@ export function formulaireReservation(r, apres) {
   // Service payé directement au prestataire : pas de net à lui verser, c'est lui qui reverse une commission. Quand la réservation vient d'une ligne
   // de facture, la case change aussi les lignes du document (avec confirmation du nouveau total).
   const lieeFacture = !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
-  const surPlace = h("input", { id: "r-place", type: "checkbox", checked: !!r.paye_sur_place });
-  const commissionPrevue = h("input", { id: "r-com", type: "number", min: "0", step: "1", value: n && n.commission_prevue != null ? n.commission_prevue : "", inputmode: "numeric" });
-  const commissionRecue = h("input", { id: "r-com-recue", type: "number", min: "0", step: "1", value: n && n.commission_recue != null ? n.commission_recue : "", inputmode: "numeric" });
+  const surPlace = puceMode({ id: "r-place", valeur: modeReglement(r), onchange: () => (majCommission(), proposerCommission()) });
+  const estSurPlace = () => surPlace.valeur() === SUR_PLACE;
+  const commissionPrevue = h("input", { id: "r-com", type: "number", min: "0", step: "any", value: n && n.commission_prevue != null ? n.commission_prevue : "", inputmode: "decimal" });
+  const commissionRecue = h("input", { id: "r-com-recue", type: "number", min: "0", step: "any", value: n && n.commission_recue != null ? n.commission_recue : "", inputmode: "decimal" });
   const commissionLe = h("input", { id: "r-com-le", type: "date", value: (n && n.commission_recue_le) || "" });
   const regleCommission = h("span", null);
+  // La commission attendue se calcule d'après la règle chiffrée du partenaire tant qu'on ne l'a pas saisie soi-même.
+  let commissionSaisie = commissionPrevue.value !== "";
+  commissionPrevue.addEventListener("input", () => (commissionSaisie = commissionPrevue.value !== ""));
+  const proposerCommission = () => {
+    if (!nets || !estSurPlace() || commissionSaisie) return;
+    const c = commissionPrevue_(regleCommissionDe(partenaire.value || null), { vente: num(vente.value), net: num(netPrevu.value), adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0 });
+    if (c !== null) commissionPrevue.value = String(c);
+  };
   const majCommission = () => {
     const p = partenaireDe(partenaire.value);
     const regle = p && nets ? commissionsPartenaire(p, privePartenaire(p), true).join(" ") : "";
-    regleCommission.textContent = regle ? tr("Règle de la fiche partenaire : {regle}", { regle }) : tr("Ce que le prestataire reversera après la prestation.");
-    blocCommission.style.display = surPlace.checked ? "" : "none";
+    const chiffree = nets && regleCommissionDe(partenaire.value || null);
+    regleCommission.textContent = chiffree ? tr("Calculée d'après la règle de ce partenaire. Vous pouvez la corriger.") : regle ? tr("Règle de la fiche partenaire : {regle}", { regle }) : tr("Ce que le prestataire reversera après la prestation.");
+    blocCommission.style.display = estSurPlace() ? "" : "none";
+    blocNets.style.display = estSurPlace() ? "none" : "";
   };
+  // Un service payé sur place ne doit rien au prestataire : le net n'a pas lieu d'être saisi.
+  const blocNets = h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera à l'agence.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe));
   const blocCommission = h("div", { class: "grille-form compacte" }, champ(tr("Commission prévue"), commissionPrevue, regleCommission), champ(tr("Commission reçue"), commissionRecue), champ(tr("Reçue le"), commissionLe));
-  surPlace.addEventListener("change", majCommission);
-  partenaire.addEventListener("change", majCommission);
+  partenaire.addEventListener("change", () => {
+    // Une nouvelle réservation prend le mode habituel de son partenaire.
+    if (!r.id) surPlace.definir(modeParDefaut(partenaireDe(partenaire.value || null)));
+    majCommission();
+    proposerCommission();
+  });
+  for (const x of [vente, adultes, enfants, netPrevu]) x.addEventListener("input", proposerCommission);
   majCommission();
+  proposerCommission();
   const notes = h("textarea", { id: "r-notes", rows: 2 });
   notes.value = r.notes || "";
   // Ce qui figure sur le voucher et que la réservation seule ne dit pas.
@@ -220,23 +240,25 @@ export function formulaireReservation(r, apres) {
       class: "modal-corps",
       onsubmit: async (e) => {
         e.preventDefault();
-        const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0, bebes: num(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: num(vente.value), paye_sur_place: surPlace.checked, notes: notes.value.trim(), details: details() };
+        const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: num(adultes.value) || 0, enfants: num(enfants.value) || 0, bebes: num(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: num(vente.value), paye_sur_place: estSurPlace(), notes: notes.value.trim(), details: details() };
         try {
           // Le paiement sur place change le total de la facture : on montre le nouveau total avant d'enregistrer.
           const changements = [];
-          if (lieeFacture && r.id && surPlace.checked !== !!r.paye_sur_place) {
+          if (lieeFacture && r.id && estSurPlace() !== !!r.paye_sur_place) {
             await chargerDossier(r.dossier_id);
             for (const doc of etat.db.documents.filter((x) => x.dossier_id === r.dossier_id)) {
-              const suite = contenuAvecSurPlace(doc.contenu, r, surPlace.checked);
+              const suite = contenuAvecSurPlace(doc.contenu, r, estSurPlace());
               if (suite) changements.push({ doc, suite });
             }
             if (changements.length && !peut("documents.ecrire")) return toast(tr("Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : le réglage n'est pas changé."), true);
             const principale = changements.find((x) => x.doc.type !== "devis") || changements[0];
             if (principale) {
               const devise = principale.doc.contenu.devise || reglages().devise;
-              const phrases = [tr("Les lignes de ce service passent sur la facture {sens}, dont le total passe de {avant} à {apres}.", { sens: surPlace.checked ? tr("« payé sur place »") : tr("« payé à nous »"), avant: formatMontant(totaux(principale.doc.contenu).net, devise), apres: formatMontant(totaux(principale.suite).net, devise) })];
-              if (principale.doc.envoye_le) phrases.push(tr("La facture a été envoyée au client le {date} : il faudra lui renvoyer la nouvelle version.", { date: formatDate(principale.doc.envoye_le) }));
-              if (!(await confirmer(phrases.join(" "), tr("Enregistrer")))) return;
+              const phrase = tr("Les lignes de ce service passent sur la facture {sens}, dont le total passe de {avant} à {apres}.", { sens: estSurPlace() ? tr("« sur place »") : tr("« chez nous »"), avant: formatMontant(totaux(principale.doc.contenu).net, devise), apres: formatMontant(totaux(principale.suite).net, devise) });
+              // Une facture qui n'est pas encore partie se met à jour sans question. Une facture déjà envoyée demande confirmation : le client doit recevoir la nouvelle version.
+              if (principale.doc.envoye_le) {
+                if (!(await confirmer(`${phrase} ${tr("La facture a été envoyée au client le {date} : il faudra lui renvoyer la nouvelle version.", { date: formatDate(principale.doc.envoye_le) })}`, tr("Enregistrer")))) return;
+              } else toast(phrase);
             }
           }
           for (const { doc, suite } of changements) await modifier("documents", doc.id, { contenu: suite, updated_at: new Date().toISOString() });
@@ -254,8 +276,8 @@ export function formulaireReservation(r, apres) {
     h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champ(tr("Statut"), statut), champ(tr("Référence du partenaire"), reference)),
     h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), date), champ(tr("Heure de pickup"), heure), champ(tr("Lieu de pickup"), lieu)),
     h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), adultes), champ(tr("Enfants"), enfants), champ(tr("Bébés"), bebes), peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
-    h("label", { class: "case", for: "r-place" }, surPlace, tr("Payé sur place au prestataire")),
-    nets ? h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera. Sans objet pour un service payé sur place.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe)) : null,
+    h("div", { class: "champ champ-mode" }, h("span", { class: "etiquette" }, tr("Règlement")), surPlace, h("p", { class: "aide" }, tr("« Sur place » : le client paie le prestataire, qui reverse une commission. Rien à verser au prestataire ni à encaisser."))),
+    nets ? blocNets : null,
     nets ? blocCommission : null,
     champ(tr("Notes internes"), notes, tr("Jamais sur le voucher.")),
     blocVoucher,
@@ -266,14 +288,14 @@ export function formulaireReservation(r, apres) {
 // Crée une réservation par ligne de partenaire du document qui n'en a pas encore.
 export async function creerReservations(doc) {
   const existantes = etat.db.reservations.filter((r) => r.dossier_id === doc.dossier_id);
-  const nouvelles = reservationsDepuisDocument(doc, { existantes });
+  const nouvelles = reservationsDepuisDocument(doc, { existantes, regleDe: regleCommissionDe });
   if (!nouvelles.length) return toast(tr("Toutes les lignes de partenaires ont déjà leur réservation."));
   let n = 0;
-  for (const { reservation, net } of nouvelles) {
+  for (const { reservation, net, commission_prevue } of nouvelles) {
     try {
       const { id, ...sansId } = reservation;
       const res = await inserer("reservations", sansId);
-      if (net !== null && voitNets() && peut("dossiers.ecrire")) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: net, net_paye: null, paye_le: null });
+      if ((net !== null || commission_prevue !== undefined) && voitNets() && peut("dossiers.ecrire")) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: net, net_paye: null, paye_le: null, ...(commission_prevue !== undefined ? { commission_prevue } : {}) });
       n++;
     } catch (err) {
       toast(tr("Une réservation n'a pas pu être créée : {message}", { message: err.message }), true);

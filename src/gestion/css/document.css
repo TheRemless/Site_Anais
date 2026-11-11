@@ -127,3 +127,7 @@
 /* Ligne payée directement au prestataire : sur le document, hors du total */
 .sheet .ligne.place .montant { font-style: italic; }
 .sheet .desc .sur-place { font-style: italic; }
+/* Détail du « à payer sur place » par prestataire, sous la barre */
+.sheet .place-detail { list-style: none; margin: 1.6mm 0 0; padding: 0 6.5mm 0 0; font-size: 8.4pt; color: #3a4a4c; }
+.sheet .place-detail li { display: flex; justify-content: flex-end; gap: 6mm; line-height: 4.6mm; }
+.sheet .place-detail li span:last-child { min-width: 28mm; text-align: right; font-variant-numeric: tabular-nums; }

@@ -1,6 +1,6 @@
 // Stockage de démonstration : tout reste dans le navigateur (localStorage), rien n'est envoyé.
 // Il reproduit les droits de la vraie base : l'utilisateur de démo ne reçoit que ce que son rôle lui montre.
-import { aujourdhui, ajouterJours, totalDossier, sommePaiements } from "./calc.mjs";
+import { aujourdhui, ajouterJours, totalDossier, sommePaiements, montantSurPlace } from "./calc.mjs";
 import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal } from "./analyses.mjs";
@@ -49,7 +49,7 @@ export function creer() {
     const base = { ...d, devis_envoye_le: (devis && devis.envoye_le) || null, a_facture: docs.some((x) => x.type === "facture") };
     if (!finances) return base;
     const doc = docs.filter((x) => x.type === "facture").pop() || devis;
-    return { ...base, total: totalDossier(docs), devise: (doc && doc.contenu.devise) || null, recu: sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id)) };
+    return { ...base, total: totalDossier(docs), devise: (doc && doc.contenu.devise) || null, recu: sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id)), sur_place: doc ? montantSurPlace(doc.contenu) : 0 };
   };
   const dossiersVisibles = () => {
     const ctx = contexte();

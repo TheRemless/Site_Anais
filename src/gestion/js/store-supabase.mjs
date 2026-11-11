@@ -27,7 +27,7 @@ function verifie({ data, error }) {
   return data;
 }
 
-const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise: r.devise, recu: Number(r.recu) } : dossier);
+const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise: r.devise, recu: Number(r.recu), sur_place: Number(r.sur_place) || 0 } : dossier);
 
 export function creer(config, { client } = {}) {
   const sb = client || createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);

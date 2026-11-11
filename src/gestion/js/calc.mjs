@@ -9,6 +9,7 @@ export const STATUTS = {
   accepte: N_("Accepté, paiement attendu"),
   acompte: N_("Acompte reçu"),
   solde: N_("Soldé"),
+  sur_place: N_("Tout sur place"),
   annule: N_("Annulé"),
 };
 // Les clés restent en français dans STATUTS (exports, tests) ; l'écran affiche cette version traduite.
@@ -135,6 +136,12 @@ export function montantSurPlace(contenu) {
   return arrondi(((contenu && contenu.lignes) || []).filter((l) => l.paye_sur_place && l.kind !== "remise" && l.kind !== "texte").reduce((s, l) => s + montantLigne(l), 0));
 }
 
+// Mode de règlement d'un service : « sur_place » quand le client paie le prestataire (qui reverse ensuite une commission), sinon « nous ».
+// Une réservation et une ligne de document portent le même drapeau `paye_sur_place` : facture, voucher, écran À encaisser disent la même chose.
+export const SUR_PLACE = "sur_place";
+export const CHEZ_NOUS = "nous";
+export const modeReglement = (x) => (x && x.paye_sur_place ? SUR_PLACE : CHEZ_NOUS);
+
 // Les remises sont saisies en positif et comptées en négatif.
 export function totaux(contenu, recu = 0) {
   const lignes = (contenu && contenu.lignes) || [];
@@ -259,9 +266,11 @@ export function echeanceAcompte(dossier, reglages) {
 }
 
 // Statut à partir de faits déjà connus : c'est ce qui permet de l'afficher sans charger les documents du dossier.
-export function statutDepuis({ annule, total, recu, accepteLe, devisEnvoyeLe, pct }) {
+export function statutDepuis({ annule, total, recu, accepteLe, devisEnvoyeLe, pct, surPlace = 0 }) {
   if (annule) return "annule";
   if (total > 0 && recu >= total) return "solde";
+  // Tous les services sont payés au prestataire : une fois le devis accepté, il n'y a rien à encaisser (jamais « paiement attendu »).
+  if (!(total > 0) && surPlace > 0 && accepteLe) return "sur_place";
   const acompte = acompteDu(total, pct);
   if (acompte > 0 && recu >= acompte) return "acompte";
   if (accepteLe) return "accepte";
@@ -271,7 +280,8 @@ export function statutDepuis({ annule, total, recu, accepteLe, devisEnvoyeLe, pc
 
 export function statutDossier({ dossier, documents, paiements, reglages }) {
   const devis = dernier(documents, "devis");
-  return statutDepuis({ annule: dossier.annule, total: totalDossier(documents), recu: sommePaiements(paiements), accepteLe: dossier.accepte_le, devisEnvoyeLe: devis && devis.envoye_le, pct: reglages.conditions.acompte_pct });
+  const doc = dernier(documents, "facture") || devis;
+  return statutDepuis({ annule: dossier.annule, total: totalDossier(documents), recu: sommePaiements(paiements), accepteLe: dossier.accepte_le, devisEnvoyeLe: devis && devis.envoye_le, pct: reglages.conditions.acompte_pct, surPlace: doc ? montantSurPlace(doc.contenu) : 0 });
 }
 
 // Résumé d'un dossier pour les listes et le tableau de bord. Quand ses documents et paiements ne sont pas chargés
@@ -284,6 +294,8 @@ export function resume(dossier, db, reglages) {
   const doc = dernier(documents, "facture") || devis;
   const total = charge ? totalDossier(documents) : Number(dossier.total) || 0;
   const recu = charge ? sommePaiements(paiements) : Number(dossier.recu) || 0;
+  // Prix des services payés directement aux prestataires (hors total) : sans documents chargés, la base le tient à jour (migration 19).
+  const surPlace = charge ? (doc ? montantSurPlace(doc.contenu) : 0) : Number(dossier.sur_place) || 0;
   const devisEnvoyeLe = charge ? (devis && devis.envoye_le) || null : dossier.devis_envoye_le || null;
   return {
     dossier,
@@ -295,8 +307,9 @@ export function resume(dossier, db, reglages) {
     total,
     recu,
     reste: arrondi(total - recu),
+    surPlace,
     devisEnvoyeLe,
-    statut: statutDepuis({ annule: dossier.annule, total, recu, accepteLe: dossier.accepte_le, devisEnvoyeLe, pct: reglages.conditions.acompte_pct }),
+    statut: statutDepuis({ annule: dossier.annule, total, recu, accepteLe: dossier.accepte_le, devisEnvoyeLe, pct: reglages.conditions.acompte_pct, surPlace }),
   };
 }
 

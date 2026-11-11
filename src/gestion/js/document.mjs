@@ -6,7 +6,7 @@ import { modePaiement, LIBELLES_EN, phraseCgv, conditionsDocument, mentionTva } 
 
 const lignes = (texte) => (texte || "").split("\n").filter((l) => l.trim() !== "");
 
-export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
+export function renderDocument({ type, doc, dossier, client, reglages, recu, nomPartenaire = () => "" }) {
   const c = doc.contenu;
   const t = totaux(c, recu);
   const e = reglages.emetteur;
@@ -49,9 +49,22 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   };
 
   // Textes propres aux lignes payées directement au prestataire (pas dans les réglages : ils s'appliquent aux documents déjà enregistrés).
+  // Mêmes mots que le voucher (« Pay on arrival ») : la facture et le voucher d'un service disent la même chose.
   const TXT_PLACE = en
-    ? { court: "paid on site", barre: "DUE ON SITE", note_mixte: "The amount due on site is paid directly to the providers and is not included in the total above.", note_tout: "Paid directly to the providers on site." }
-    : { court: "payé sur place", barre: "À PAYER SUR PLACE", note_mixte: "Le montant à payer sur place est réglé directement aux prestataires et n'est pas compris dans le total ci-dessus.", note_tout: "Réglé directement aux prestataires sur place." };
+    ? { court: "pay on arrival", barre: "DUE ON SITE", note_mixte: "The amount due on site is paid directly to the providers and is not included in the total above.", note_tout: "Paid directly to the providers on site.", autres: "Other services" }
+    : { court: "à payer sur place", barre: "À PAYER SUR PLACE", note_mixte: "Le montant à payer sur place est réglé directement aux prestataires et n'est pas compris dans le total ci-dessus.", note_tout: "Réglé directement aux prestataires sur place.", autres: "Autres services" };
+  // Le détail par prestataire : à qui le client paie quoi, une fois sur place.
+  const parPrestataire = (() => {
+    const m = new Map();
+    for (const l of c.lignes) {
+      if (!l.paye_sur_place || l.kind === "remise" || l.kind === "texte") continue;
+      const nom = (l.partenaire_id && nomPartenaire(l.partenaire_id)) || "";
+      m.set(nom, (m.get(nom) || 0) + montantLigne(l));
+    }
+    const nommes = [...m.entries()].filter(([nom]) => nom);
+    if (!nommes.length) return [];
+    return [...nommes, ...(m.has("") ? [[TXT_PLACE.autres, m.get("")]] : [])];
+  })();
   const ligneDoc = (l, i) => {
     const surPlace = !!l.paye_sur_place && l.kind !== "remise" && l.kind !== "texte";
     const montant = surPlace ? montantLigne(l) : t.montants[i];
@@ -97,10 +110,10 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
   // Pied de page : coordonnées, informations de paiement et QR code, selon ce qui est renseigné.
   const paiementLignes = lignes(mode.texte);
   const complet = c.pied === "qr";
-  const avecQr = complet && !!mode.qr_image;
+  const avecQr = complet && !!mode.qr_image && !toutSurPlace;
   const colonnes = [];
   if (lignes(e.contact).length) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.coordonnees), lignes(e.contact).map((l) => h("p", null, l))));
-  if (complet ? paiementLignes.length : lb.pied_court) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.infos_paiement), complet ? paiementLignes.map((l) => h("p", null, inline(l))) : h("p", { class: "italique" }, lb.pied_court)));
+  if (!toutSurPlace && (complet ? paiementLignes.length : lb.pied_court)) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.infos_paiement), complet ? paiementLignes.map((l) => h("p", null, inline(l))) : h("p", { class: "italique" }, lb.pied_court)));
   if (avecQr) colonnes.push(h("div", { class: "pied-col wise" }, lb.qr_titre ? h("h4", null, lb.qr_titre) : null, h("div", { class: "qr-ligne" }, h("img", { src: mode.qr_image, alt: "QR code" }), mode.qr_pseudo ? h("span", { class: "pseudo" }, mode.qr_pseudo) : null)));
 
   const phraseDesCgv = phraseCgv(lb, { estFacture, en, cgvUrl: reglages.conditions.cgv_url });
@@ -158,6 +171,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
         : null,
       toutSurPlace ? barre(TXT_PLACE.barre, formatMontant(surPlaceTotal, dev), "fonce") : barre(lb.total_final || lb.total, formatMontant(t.reste, dev), "fonce"),
       surPlaceTotal > 0 && !toutSurPlace ? barre(TXT_PLACE.barre, formatMontant(surPlaceTotal, dev), "clair") : null,
+      parPrestataire.length ? h("ul", { class: "place-detail" }, parPrestataire.map(([nom, montant]) => h("li", null, h("span", null, nom), h("span", null, formatMontant(montant, dev))))) : null,
       eqBarre.length ? h("p", { class: "equivalent" }, `${lb.equivalent} ${eqBarre.map(texteEq).join(" · ")}`) : null,
       tvaTexte ? h("p", { class: "tva" }, tvaTexte) : null,
       lb.note_devise ? h("div", { class: "tva devise" }, markup(lb.note_devise, vars)) : null,
@@ -165,9 +179,10 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu }) {
       h(
         "section",
         { class: "conditions" },
-        variante.corps || variante.cloture ? h("h3", null, lb.conditions) : null,
-        variante.corps ? h("div", { class: "texte" }, markup(variante.corps, vars)) : null,
-        variante.cloture ? h("div", { class: "texte cloture" }, markup(variante.cloture, vars)) : null,
+        // Tout est payé sur place : ni jour de règlement ni coordonnées de virement à annoncer.
+        !toutSurPlace && (variante.corps || variante.cloture) ? h("h3", null, lb.conditions) : null,
+        !toutSurPlace && variante.corps ? h("div", { class: "texte" }, markup(variante.corps, vars)) : null,
+        !toutSurPlace && variante.cloture ? h("div", { class: "texte cloture" }, markup(variante.cloture, vars)) : null,
         cgvTexte,
         estFacture || !lb.signature_1 ? null : h("p", { class: "signature" }, h("strong", null, lb.signature_1), h("br"), h("strong", null, h("em", null, lb.signature_2)))
       )

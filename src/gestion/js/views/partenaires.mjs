@@ -2,6 +2,7 @@
 import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
+import { TYPES_COMMISSION, SUR_PLACE, CHEZ_NOUS, modeParDefaut } from "../operations-calc.mjs";
 import { FAMILLES, nomFamille, libelleUnite, marge, correspond, UNITES, chiffres, commissionsPartenaire, paiementPartenaire } from "../partenaires-calc.mjs";
 import { vide, cartes } from "./commun.mjs";
 import { listeTaches } from "./taches.mjs";
@@ -203,8 +204,10 @@ export function fichePartenaire(id) {
         bloc(
           N_("Règles"),
           r.annulation ? h("div", null, h("h3", null, tr("Annulation")), paragraphes(r.annulation)) : null,
+          h("div", null, h("h3", null, tr("Règlement par les clients")), h("p", null, modeParDefaut(p) === SUR_PLACE ? tr("Sur place : le client paie le prestataire, qui reverse une commission.") : tr("Chez nous : le client règle l'agence, qui paie le prestataire."))),
           paiementPartenaire(p, prive, voitNets()) ? h("div", null, h("h3", null, tr("Paiement")), paragraphes(paiementPartenaire(p, prive, voitNets()))) : null,
           r.enfants && r.enfants.length ? h("div", null, h("h3", null, tr("Enfants")), liste(r.enfants)) : null,
+          voitNets() && prive && prive.commission_regle && TYPES_COMMISSION[prive.commission_regle.type] ? h("div", null, h("h3", null, tr("Commission calculée")), h("p", null, `${tr(TYPES_COMMISSION[prive.commission_regle.type])} : ${prive.commission_regle.valeur}`)) : null,
           commissionsPartenaire(p, prive, voitNets()).length ? h("div", null, h("h3", null, tr("Commission et marge")), liste(commissionsPartenaire(p, prive, voitNets()))) : null,
           r.checkin && r.checkin.length ? h("div", null, h("h3", null, tr("Check-in")), liste(r.checkin)) : null,
           r.points_embarquement && r.points_embarquement.length ? h("div", null, h("h3", null, tr("Points d'embarquement")), h("ul", { class: "liste-regles" }, r.points_embarquement.map((x) => h("li", null, h("strong", null, x.lieu), ` ${x.ou}`)))) : null
@@ -345,6 +348,8 @@ export function formulairePartenaire(p, apres) {
   annulation.value = r.annulation || "";
   const enfants = h("textarea", { id: "p-enfants", rows: 2 });
   enfants.value = (r.enfants || []).join("\n");
+  const mode = h("select", { id: "p-mode" }, h("option", { value: CHEZ_NOUS }, tr("Chez nous : le client règle l'agence")), h("option", { value: SUR_PLACE }, tr("Sur place : le client paie le prestataire")));
+  mode.value = modeParDefaut(p);
   const checkin = h("textarea", { id: "p-checkin", rows: 2 });
   checkin.value = (r.checkin || []).join("\n");
   const statut = h("input", { id: "p-statut", value: ct.statut || "", placeholder: tr("Tarifs nets confirmés, contrat à signer…") });
@@ -367,7 +372,7 @@ export function formulairePartenaire(p, apres) {
           groupe: groupe.value,
           role: role.value.trim(),
           contact: { ...c, personne: personne.value.trim(), telephones: lignesVers(tels.value).map((l) => { const [numero, libelle, wa] = l.split("|").map((x) => x.trim()); return { numero, libelle: libelle || "", whatsapp: /whatsapp|wa/i.test(wa || "") }; }), emails: emails.value.split(",").map((x) => x.trim()).filter(Boolean), line: line.value.trim(), web: web.value.trim(), adresse: adresse.value.trim(), embarcadere: embarcadere.value.trim(), licence: licence.value.trim() },
-          regles: { ...r, annulation: annulation.value.trim(), enfants: lignesVers(enfants.value), checkin: lignesVers(checkin.value) },
+          regles: { ...r, mode_reglement: mode.value === SUR_PLACE ? SUR_PLACE : undefined, annulation: annulation.value.trim(), enfants: lignesVers(enfants.value), checkin: lignesVers(checkin.value) },
           contrat: { ...ct, statut: statut.value.trim(), saison: saison.value.trim(), fin: fin.value || null, documents: documents.value.split(",").map((x) => x.trim()).filter(Boolean) },
           notes: notes.value.trim(),
           actif: actif.checked,
@@ -388,6 +393,7 @@ export function formulairePartenaire(p, apres) {
     champ(tr("Téléphones, un par ligne"), tels, tr("Numéro, puis libellé, puis « whatsapp », séparés par des barres verticales.")),
     h("div", { class: "grille-form" }, champ(tr("Adresse"), adresse), champ(tr("Embarcadère ou point de départ"), embarcadere), champ(tr("Licence"), licence)),
     h("h3", null, tr("Règles")),
+    champ(tr("Règlement par les clients"), mode, tr("Les nouveaux services de ce partenaire prennent ce mode. Chaque service peut ensuite être changé d'un tap.")),
     h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Enfants, une règle par ligne"), enfants), champ(tr("Check-in, une règle par ligne"), checkin)),
     h("h3", null, tr("Contrat")),
     h("div", { class: "grille-form" }, champ(tr("Statut"), statut), champ(tr("Saison"), saison), champ(tr("Fin du contrat"), fin, tr("Un rappel apparaît dans Aujourd'hui trente jours avant.")), champ(tr("Documents, séparés par des virgules"), documents)),
@@ -466,6 +472,10 @@ function formulairePrive(p, prive, apres) {
   paiement.value = paiementPartenaire(p, prive, true);
   const commissions = h("textarea", { id: "b-commissions", rows: 3 });
   commissions.value = commissionsPartenaire(p, prive, true).join("\n");
+  const regle = (prive && prive.commission_regle) || {};
+  const typeCommission = h("select", { id: "b-com-type" }, h("option", { value: "" }, tr("Pas de règle chiffrée")), Object.entries(TYPES_COMMISSION).map(([v, l]) => h("option", { value: v }, tr(l))));
+  typeCommission.value = TYPES_COMMISSION[regle.type] ? regle.type : "";
+  const valeurCommission = h("input", { id: "b-com-valeur", type: "number", min: "0", step: "any", inputmode: "decimal", value: regle.valeur ?? "" });
   return h(
     "form",
     {
@@ -475,12 +485,13 @@ function formulairePrive(p, prive, apres) {
         try {
           const valeurs = { banque: { banque: banque.value.trim(), compte: compte.value.trim(), titulaire: titulaire.value.trim(), autre: autre.value.trim() }, paiement: paiement.value.trim() };
           try {
-            await enregistrerLie("partenaires_prives", "partenaire_id", p.id, { ...valeurs, commissions: lignesVers(commissions.value) });
+            const commission_regle = typeCommission.value && valeurCommission.value !== "" ? { type: typeCommission.value, valeur: Number(valeurCommission.value) } : null;
+            await enregistrerLie("partenaires_prives", "partenaire_id", p.id, { ...valeurs, commissions: lignesVers(commissions.value), commission_regle });
           } catch (err) {
-            // Sans la migration 16, la base ne connaît pas encore la colonne des commissions : le reste s'enregistre quand même.
-            if (!/commissions/i.test(err.message)) throw err;
+            // Sans les migrations 16 et 19, la base ne connaît pas encore les colonnes des commissions : le reste s'enregistre quand même.
+            if (!/commission/i.test(err.message)) throw err;
             await enregistrerLie("partenaires_prives", "partenaire_id", p.id, valeurs);
-            toast(tr("Les commissions n'ont pas été enregistrées : la migration 16 n'est pas encore appliquée."), true);
+            toast(tr("Les commissions n'ont pas été enregistrées : les migrations 16 et 19 ne sont pas encore appliquées."), true);
           }
           toast(tr("Enregistré."));
           apres();
@@ -493,6 +504,7 @@ function formulairePrive(p, prive, apres) {
     champ(tr("Autres indications bancaires"), autre),
     champ(tr("Comment on paie ce partenaire"), paiement),
     champ(tr("Commission et marge, une règle par ligne"), commissions, tr("Réservé aux personnes qui voient les prix nets.")),
+    h("div", { class: "grille-form" }, champ(tr("Commission calculée"), typeCommission, tr("Sert à préremplir la commission des services payés sur place. Laisser vide si la règle n'est pas chiffrée.")), champ(tr("Valeur"), valeurCommission)),
     h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );
 }

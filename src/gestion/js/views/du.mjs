@@ -2,7 +2,7 @@
 import { etat, peut, naviguer, nomPartenaire, netReservation, enregistrerLie, dossiersAnnules } from "../etat.mjs";
 import { h, confirmer, toast } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
-import { duParPartenaire, commissionsARecevoir, nomMoisCourt } from "../operations-calc.mjs";
+import { duParPartenaire, nomMoisCourt } from "../operations-calc.mjs";
 import { vide, cartes } from "./commun.mjs";
 import { prix, margeNoeud, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
@@ -24,20 +24,6 @@ export function vueDu() {
     toast(tr("Paiement noté."));
     rafraichir();
   };
-  // Services payés sur place au prestataire : il nous reverse une commission après la prestation.
-  const commissions = commissionsARecevoir(etat.db.reservations, netReservation, dossiersAnnules());
-  const totalCom = commissions.reduce((s, g) => ({ prevue: s.prevue + g.commission_prevue, recue: s.recue + g.commission_recue, reste: s.reste + g.reste }), { prevue: 0, recue: 0, reste: 0 });
-  const recevoir = async (g) => {
-    const a = g.reservations.filter((r) => { const n = netReservation(r); return n && n.commission_prevue != null && (n.commission_recue == null || Number(n.commission_recue) < Number(n.commission_prevue)); });
-    if (!a.length) return toast(tr("Rien à marquer : tout est déjà reçu ou sans commission."));
-    if (!(await confirmer(tr("Marquer reçu {montant} de {partenaire} pour {mois} ({reservations}) ?", { montant: prix(g.reste), partenaire: nomPartenaire(g.partenaire_id) || tr("ce partenaire"), mois: nomMoisCourt(g.mois), reservations: pluriel(a.length, N_("réservation"), N_("réservations")) }), tr("Marquer reçu")))) return;
-    for (const r of a) {
-      const n = netReservation(r);
-      await enregistrerLie("reservations_nets", "reservation_id", r.id, { commission_recue: n.commission_prevue, commission_recue_le: aujourdhui() });
-    }
-    toast(tr("Commission notée."));
-    rafraichir();
-  };
   const lien = (g) => `#/reservations?periode=toutes&partenaire=${g.partenaire_id || ""}`;
   return h(
     "div",
@@ -49,9 +35,7 @@ export function vueDu() {
       [[tr("Net prévu"), prix(total.net_prevu)], [tr("Déjà payé"), prix(total.net_paye)], [tr("Reste à payer"), prix(total.reste)], [tr("Marge sur les ventes"), prix(total.venteAvecNet - total.net_prevu)]].map(([l, v]) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, l), h("p", { class: "chiffre-valeur" }, v)))
     ),
     !lignes.length
-      ? commissions.length
-        ? null
-        : vide(tr("Aucune réservation"), tr("Le dû se calcule d'après les réservations et leur net prévu."))
+      ? vide(tr("Aucune réservation"), tr("Le dû se calcule d'après les réservations et leur net prévu. Les services payés sur place n'y figurent pas : leurs commissions sont dans « À encaisser »."))
       : [
           cartes(lignes, (g) =>
             h(
@@ -88,47 +72,5 @@ export function vueDu() {
             )
           ),
         ],
-    commissions.length
-      ? h(
-          "section",
-          { class: "commissions-recevoir" },
-          h("h2", null, tr("Commissions à recevoir")),
-          h("p", { class: "aide" }, tr("Services payés sur place au prestataire : il reverse une commission après la prestation.")),
-          h("div", { class: "chiffres compacts" }, [[tr("Commission prévue"), prix(totalCom.prevue)], [tr("Déjà reçue"), prix(totalCom.recue)], [tr("Reste à recevoir"), prix(totalCom.reste)]].map(([l, v]) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, l), h("p", { class: "chiffre-valeur" }, v)))),
-          cartes(commissions, (g) =>
-            h(
-              "div",
-              { class: "carte-lien statique" },
-              h("span", { class: "carte-titre" }, nomPartenaire(g.partenaire_id) || tr("Sans partenaire")),
-              h("span", { class: "carte-droite" }, h("strong", null, prix(g.reste)), h("span", null, tr("reste à recevoir"))),
-              h("span", { class: "carte-sous" }, tr("{mois} · {reservations} · commission {prevue}, reçue {recue}", { mois: nomMoisCourt(g.mois), reservations: pluriel(g.nb, N_("réservation"), N_("réservations")), prevue: prix(g.commission_prevue), recue: prix(g.commission_recue) }) + (g.sansCommission ? tr(", {n} sans commission", { n: g.sansCommission }) : "")),
-              h("span", { class: "carte-pied" }, h("span", { class: "carte-actions" }, h("a", { class: "bouton secondaire petit", href: lien(g) }, tr("Voir")), ecrit && g.reste > 0 ? h("button", { class: "principal petit", type: "button", onclick: () => recevoir(g) }, tr("Marquer reçu")) : null))
-            )
-          ),
-          h(
-            "table",
-            { class: "tableau seulement-bureau" },
-            h("thead", null, h("tr", null, [tr("Mois"), tr("Partenaire"), tr("Réservations"), tr("Payé sur place"), tr("Commission prévue"), tr("Reçue"), tr("Reste"), ""].map((t, i) => h("th", { scope: "col", class: i >= 2 && i <= 6 ? "num" : null }, t)))),
-            h(
-              "tbody",
-              null,
-              commissions.map((g) =>
-                h(
-                  "tr",
-                  null,
-                  h("td", null, nomMoisCourt(g.mois)),
-                  h("td", null, g.partenaire_id ? h("a", { href: `#/partenaire/${g.partenaire_id}` }, nomPartenaire(g.partenaire_id)) : tr("Sans partenaire")),
-                  h("td", { class: "num" }, g.nb, g.sansCommission ? h("span", { class: "tag" }, tr("{n} sans commission", { n: g.sansCommission })) : null),
-                  h("td", { class: "num" }, prix(g.vente)),
-                  h("td", { class: "num" }, prix(g.commission_prevue)),
-                  h("td", { class: "num" }, prix(g.commission_recue)),
-                  h("td", { class: "num" }, h("strong", null, prix(g.reste))),
-                  h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: lien(g) }, tr("Voir")), ecrit && g.reste > 0 ? h("button", { class: "principal petit", type: "button", onclick: () => recevoir(g) }, tr("Marquer reçu")) : null)
-                )
-              )
-            )
-          )
-        )
-      : null
   );
 }
