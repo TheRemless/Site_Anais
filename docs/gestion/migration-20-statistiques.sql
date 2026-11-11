@@ -1,25 +1,12 @@
 -- Gestion : migration 20, statistiques détaillées.
--- À exécuter une seule fois, APRÈS migration-18-sur-place.sql et AVANT de publier la nouvelle version de l'outil.
--- Ne modifie aucune donnée ni aucune fonction existante : elle ajoute deux fonctions (montant_sur_place et analyse_faits).
+-- À exécuter une seule fois, APRÈS migration-19-paiements.sql (elle fournit montant_sur_place) et AVANT de publier la nouvelle version de l'outil.
+-- Ne modifie aucune donnée ni aucune fonction existante : elle ajoute une fonction, analyse_faits.
 -- Idempotente : on peut la relancer sans effet de bord.
 
 begin;
 
--- Prix des lignes d'un document que le client paie directement au prestataire (`paye_sur_place`), hors remises et notes.
--- Même calcul que total_document (migration 18), mais pour les seules lignes sur place. « Volume vendu » = total_document + montant_sur_place.
-create or replace function montant_sur_place(c jsonb) returns numeric language sql immutable as $$
-  select coalesce(sum(
-    case
-      when e->>'unite' ~ '^-?[0-9]+(\.[0-9]+)?$' and e->>'qte' ~ '^-?[0-9]+(\.[0-9]+)?$' then round((e->>'unite')::numeric * (e->>'qte')::numeric, 2)
-      when e->>'montant' ~ '^-?[0-9]+(\.[0-9]+)?$' then round((e->>'montant')::numeric, 2)
-      else 0
-    end), 0)
-  from jsonb_array_elements(coalesce(c->'lignes', '[]'::jsonb)) e
-  where e->>'paye_sur_place' = 'true' and coalesce(e->>'kind', 'ligne') not in ('remise', 'texte')
-$$;
-
 -- Faits pour l'écran Statistiques : un enregistrement par dossier, par paiement et par réservation, avec les montants déjà calculés.
--- Les indicateurs (volume vendu, encaissé, commissions, marge, etc.) sont tirés de ces faits par le navigateur ; les mêmes faits
+-- « Volume vendu » = total_document + montant_sur_place (migration 19). Les indicateurs (volume vendu, encaissé, commissions, marge, etc.) sont tirés de ces faits par le navigateur ; les mêmes faits
 -- sont produits en démonstration par `faitsLocal` (src/gestion/js/analyses.mjs), et docs/gestion/verif-analyses.mjs vérifie qu'ils sont identiques.
 --   debut, fin : fenêtre de dates utile (la période affichée et sa période de comparaison) ; jour : aujourd'hui.
 --   parties    : quelles collections renvoyer (dossiers, paiements, reservations) ; null pour toutes. Un appel par section de l'écran.
@@ -104,7 +91,7 @@ begin
       ) x
       where x.date_service is null or x.date_service between debut and fin or x.date_service >= jour
         or (nets and (x.commission_recue_le between debut and fin or x.paye_le between debut and fin))
-        or (nets and x.statut <> 'annule' and not x.annule and x.paye_sur_place and (x.commission_prevue is null or round(x.commission_prevue - coalesce(x.commission_recue, 0), 2) > 0))
+        or (nets and x.statut <> 'annule' and not x.annule and x.paye_sur_place and x.commission_recue_le is null and (x.commission_prevue is null or round(x.commission_prevue - coalesce(x.commission_recue, 0), 2) > 0))
         or (nets and x.statut <> 'annule' and not x.annule and not x.paye_sur_place and x.net_prevu is not null and round(x.net_prevu - coalesce(x.net_paye, 0), 2) > 0)
       ), '[]'::jsonb) else '[]'::jsonb end
   ) into res;
@@ -112,8 +99,6 @@ begin
 end
 $$;
 
-revoke all on function montant_sur_place(jsonb) from public, anon;
-grant execute on function montant_sur_place(jsonb) to authenticated;
 revoke all on function analyse_faits(uuid, date, date, date, text[]) from public, anon;
 grant execute on function analyse_faits(uuid, date, date, date, text[]) to authenticated;
 

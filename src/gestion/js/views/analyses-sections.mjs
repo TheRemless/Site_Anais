@@ -252,6 +252,7 @@ export function commissions(X) {
   const echues = ar.filter((l) => l.src.date_service && l.src.date_service < X.jour);
   const inconnue = S.valeur("marge_inconnue", f, X.c);
   const sansCom = S.valeur("commission_a_renseigner", f, X.c);
+  const ecart = S.valeur("commission_ecart", f, X.c);
   const revenu = [["encaisse", 1], ["net_paye", -1], ["commission_recue", 1]].map(([id, k]) => [id, S.valeur(id, f, X.c).montant * k]);
   return [
     tuiles(
@@ -263,10 +264,10 @@ export function commissions(X) {
       T(X, "net_a_payer")
     ),
     bloc(titre(N_("Revenu de la période")), h("p", { class: "aide" }, tr("L'argent qui a vraiment bougé : encaissé chez nous, moins les nets payés aux partenaires, plus les commissions reçues.")), h("ul", { class: "st-equation" }, h("li", null, h("span", null, tr("Encaissé chez nous")), h("a", { href: X.href("encaisse") }, m$(X, revenu[0][1]))), h("li", null, h("span", null, tr("moins nets payés aux partenaires")), h("a", { href: X.href("net_paye") }, m$(X, revenu[1][1]))), h("li", null, h("span", null, tr("plus commissions reçues")), h("a", { href: X.href("commission_recue") }, m$(X, revenu[2][1]))), h("li", { class: "total" }, h("span", null, tr("Revenu")), h("a", { href: X.href("revenu") }, m$(X, revenu.reduce((t, x) => t + x[1], 0)))))),
-    inconnue.nombre || sansCom.nombre ? bloc(titre(N_("Données à compléter")), h("ul", { class: "st-traiter" }, inconnue.nombre ? h("li", null, h("a", { href: X.href("marge_inconnue") }, h("span", null, pluriel(inconnue.nombre, N_("service de la période sans net ni commission notés : marge non comptée"), N_("services de la période sans net ni commission notés : marge non comptée"))))) : null, sansCom.nombre ? h("li", null, h("a", { href: X.href("commission_a_renseigner") }, h("span", null, pluriel(sansCom.nombre, N_("service payé sur place sans commission notée"), N_("services payés sur place sans commission notée"))))) : null)) : null,
+    inconnue.nombre || sansCom.nombre || ecart.nombre ? bloc(titre(N_("Données à compléter")), h("ul", { class: "st-traiter" }, ecart.nombre ? h("li", null, h("a", { href: X.href("commission_ecart") }, h("span", null, pluriel(ecart.nombre, N_("commission reçue différente du montant prévu"), N_("commissions reçues différentes du montant prévu"))), h("strong", null, m$(X, ecart.montant)))) : null, inconnue.nombre ? h("li", null, h("a", { href: X.href("marge_inconnue") }, h("span", null, pluriel(inconnue.nombre, N_("service de la période sans net ni commission notés : marge non comptée"), N_("services de la période sans net ni commission notés : marge non comptée"))))) : null, sansCom.nombre ? h("li", null, h("a", { href: X.href("commission_a_renseigner") }, h("span", null, pluriel(sansCom.nombre, N_("service payé sur place sans commission notée"), N_("services payés sur place sans commission notée"))))) : null)) : null,
     graphe(X, [{ id: "commission_prevue", nom: N_("Commissions prévues"), classe: "s1" }, { id: "commission_recue", nom: N_("Commissions reçues"), classe: "s2" }], N_("Commissions prévues et reçues")),
     bloc(titre(N_("Par partenaire")), tableauPartenaires(X)),
-    blocDefinitions(["commission_prevue", "commission_recue", "commission_a_recevoir", "marge", "revenu", "net_paye", "net_a_payer"], S.DEFINITIONS),
+    blocDefinitions(["commission_prevue", "commission_recue", "commission_a_recevoir", "commission_ecart", "marge", "revenu", "net_paye", "net_a_payer"], S.DEFINITIONS),
   ];
 }
 

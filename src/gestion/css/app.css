@@ -961,8 +961,16 @@ button, summary, .onglet, .lien-ecran, .puce, .bouton, .bouton-plus, .modal-poig
   .st .entete { margin-bottom: 4px; }
   .st .sous, .st-actions-haut { display: none; }
   .st-actions-bas { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
-  .st-reglages { width: 100%; }
-  .st-reglages .champ { display: flex; flex: 1 1 100%; align-items: center; gap: 10px; }
+  .st-reglages { width: 100%; flex-wrap: nowrap; }
+  .st-reglages:has(#st-du) { flex-wrap: wrap; }
+  .st-reglages .champ { display: flex; flex: 1 1 0; min-width: 0; align-items: center; gap: 10px; }
+  .st-reglages:has(#st-du) .champ { flex: 1 1 100%; }
+  .st-reglages .st-devise { flex: 0 0 96px; }
+  .st-reglages .st-devise label, .st-reglages .st-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+.st-court { display: none; }
+@media (max-width: 719px) {
+  .st-court { display: inline; font-weight: 700; color: var(--texte-2); }
   .st-reglages .champ label { margin: 0; white-space: nowrap; }
   .st-reglages select, .st-reglages input { flex: 1; min-width: 0; }
   .st-periode { margin-bottom: 12px; font-size: 0.8rem; }

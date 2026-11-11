@@ -24,8 +24,8 @@ alter default privileges in schema public grant execute on functions to anon, au
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
-// schema.sql s'arrête avant les migrations suivantes : on les applique dans l'ordre (18 : sur place, 20 : statistiques).
-for (const f of ["migration-18-sur-place.sql", "migration-20-statistiques.sql"]) await db.exec(fs.readFileSync(W + f, "utf8"));
+// schema.sql s'arrête avant les migrations suivantes : on les applique dans l'ordre (18 : sur place, 19 : paiements, 20 : statistiques).
+for (const f of ["migration-18-sur-place.sql", "migration-19-paiements.sql", "migration-20-statistiques.sql"]) await db.exec(fs.readFileSync(W + f, "utf8"));
 await db.exec("grant all on all tables in schema public to authenticated;");
 
 const E = (await db.query("select id from entites where slug = 'ztp'")).rows[0].id;
@@ -183,6 +183,7 @@ const reservations = [
   { id: rid(5), dossier_id: ids2[2], prestation_id: prest[0].id, trajet_id: null, partenaire_id: part[0].id, libelle: "Dossier annulé", date_service: "2026-10-15", statut: "confirme", montant_vente: 700, paye_sur_place: false, personnes: { adultes: 1 } },
   { id: rid(6), dossier_id: ids2[3], prestation_id: prest[1].id, trajet_id: null, partenaire_id: part[1].id, libelle: "Kayak ancien", date_service: "2025-06-01", statut: "confirme", montant_vente: 900, paye_sur_place: true, personnes: { adultes: 1, enfants: 1 } },
   { id: rid(7), dossier_id: ids2[3], prestation_id: prest[0].id, trajet_id: null, partenaire_id: part[0].id, libelle: "4 îles ancien", date_service: "2025-06-02", statut: "confirme", montant_vente: 1200, paye_sur_place: false, personnes: { adultes: 1 } },
+  { id: rid(9), dossier_id: ids2[3], prestation_id: prest[1].id, trajet_id: null, partenaire_id: part[1].id, libelle: "Kayak à recevoir", date_service: "2025-06-05", statut: "confirme", montant_vente: 1000, paye_sur_place: true, personnes: { adultes: 2 } },
   { id: rid(8), dossier_id: ids2[3], prestation_id: prest[0].id, trajet_id: null, partenaire_id: part[0].id, libelle: "4 îles soldé ancien", date_service: "2025-06-03", statut: "confirme", montant_vente: 1200, paye_sur_place: false, personnes: { adultes: 1 } },
 ];
 for (const r of reservations) await db.query("insert into reservations (id, entite_id, dossier_id, prestation_id, trajet_id, partenaire_id, libelle, date_service, statut, montant_vente, paye_sur_place, personnes) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)", [r.id, E, r.dossier_id, r.prestation_id, r.trajet_id, r.partenaire_id, r.libelle, r.date_service, r.statut, r.montant_vente, r.paye_sur_place, JSON.stringify(r.personnes)]);
@@ -192,6 +193,7 @@ const nets2 = [
   { reservation_id: rid(3), net_prevu: 1500, net_paye: null, paye_le: null, commission_prevue: null, commission_recue: null, commission_recue_le: null },
   { reservation_id: rid(6), net_prevu: null, net_paye: null, paye_le: null, commission_prevue: 135, commission_recue: 135, commission_recue_le: "2025-06-20" },
   { reservation_id: rid(7), net_prevu: 900, net_paye: 400, paye_le: "2025-06-10", commission_prevue: null, commission_recue: null, commission_recue_le: null },
+  { reservation_id: rid(9), net_prevu: null, net_paye: null, paye_le: null, commission_prevue: 200, commission_recue: 50, commission_recue_le: null },
   { reservation_id: rid(8), net_prevu: 900, net_paye: 900, paye_le: "2025-06-10", commission_prevue: null, commission_recue: null, commission_recue_le: null },
 ];
 for (const n of nets2) await db.query("insert into reservations_nets (entite_id, reservation_id, net_prevu, net_paye, paye_le, commission_prevue, commission_recue, commission_recue_le) values ($1,$2,$3,$4,$5,$6,$7,$8)", [E, n.reservation_id, n.net_prevu, n.net_paye, n.paye_le, n.commission_prevue, n.commission_recue, n.commission_recue_le]);

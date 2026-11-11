@@ -156,15 +156,21 @@ export const MESURES = {
     garde: (R, c) => R.commission_recue !== null && dans(R.commission_recue_le, c.du, c.au),
     montant: (R) => nb(R.commission_recue), date: (R) => R.commission_recue_le,
   },
+  // Une réservation dont la réception est datée est réglée : ce que le partenaire a versé en plus ou en moins est un écart, pas un reste à recevoir.
   commission_a_recevoir: {
     nets: true, source: "reservations", flux: false,
-    garde: (R) => actifR(R) && R.paye_sur_place && R.commission_prevue !== null && arrondi(nb(R.commission_prevue) - nb(R.commission_recue)) > 0,
+    garde: (R) => actifR(R) && R.paye_sur_place && !R.commission_recue_le && R.commission_prevue !== null && arrondi(nb(R.commission_prevue) - nb(R.commission_recue)) > 0,
     montant: (R) => arrondi(nb(R.commission_prevue) - nb(R.commission_recue)), date: (R) => R.date_service,
   },
   commission_a_renseigner: {
     nets: true, source: "reservations", flux: false,
-    garde: (R) => actifR(R) && R.paye_sur_place && R.commission_prevue === null,
+    garde: (R) => actifR(R) && R.paye_sur_place && !R.commission_recue_le && R.commission_prevue === null,
     montant: (R) => nb(R.montant_vente), date: (R) => R.date_service,
+  },
+  commission_ecart: {
+    nets: true, source: "reservations", flux: true,
+    garde: (R, c) => actifR(R) && R.paye_sur_place && !!R.commission_recue_le && dans(R.commission_recue_le, c.du, c.au) && arrondi(nb(R.commission_recue) - nb(R.commission_prevue)) !== 0,
+    montant: (R) => arrondi(nb(R.commission_recue) - nb(R.commission_prevue)), date: (R) => R.commission_recue_le,
   },
   net_paye: {
     nets: true, source: "reservations", flux: true,
@@ -381,8 +387,9 @@ export const DEFINITIONS = {
   sans_date: [N_("Services sans date"), N_("Réservations non annulées dont la date de service n'est pas encore fixée.")],
   commission_prevue: [N_("Commissions prévues"), N_("Commissions attendues sur les services payés sur place dont la date de service tombe dans la période. Montant saisi sur chaque réservation.")],
   commission_recue: [N_("Commissions reçues"), N_("Commissions encaissées, datées par leur jour de réception.")],
-  commission_a_recevoir: [N_("Commissions à recevoir"), N_("Commission prévue moins commission reçue, sur tous les services payés sur place non annulés, à ce jour.")],
-  commission_a_renseigner: [N_("Commission non saisie"), N_("Services payés sur place dont la commission prévue n'est pas encore notée sur la réservation.")],
+  commission_a_recevoir: [N_("Commissions à recevoir"), N_("Commission prévue moins commission reçue, sur les services payés sur place non annulés dont la réception n'est pas encore datée, à ce jour.")],
+  commission_ecart: [N_("Écarts de commission"), N_("Commissions réglées dont le montant reçu diffère du montant prévu, sur la période. Positif : le partenaire a versé plus que prévu.")],
+  commission_a_renseigner: [N_("Commission non saisie"), N_("Services payés sur place, pas encore réglés, dont la commission prévue n'est pas notée sur la réservation.")],
   net_paye: [N_("Nets payés aux partenaires"), N_("Nets réglés aux partenaires, datés par leur jour de paiement.")],
   net_a_payer: [N_("Nets à payer"), N_("Net prévu moins net payé sur les services payés chez nous, à ce jour.")],
   marge: [N_("Marge prévue"), N_("Services de la période : prix de vente moins net quand le client paie chez nous, commission prévue quand il paie sur place. Les services sans net ni commission saisis sont comptés à part.")],

@@ -219,7 +219,7 @@ export function faitsLocal(source, { debut, fin, jour, nets }) {
       return (
         !r.date_service || dans(r.date_service, debut, fin) || r.date_service >= jour ||
         (nets && (dans(r.commission_recue_le, debut, fin) || dans(r.paye_le, debut, fin))) ||
-        (nets && actif && r.paye_sur_place && (r.commission_prevue === null || arrondi(r.commission_prevue - (r.commission_recue || 0)) > 0)) ||
+        (nets && actif && r.paye_sur_place && !r.commission_recue_le && (r.commission_prevue === null || arrondi(r.commission_prevue - (r.commission_recue || 0)) > 0)) ||
         (nets && actif && !r.paye_sur_place && r.net_prevu !== null && arrondi(r.net_prevu - (r.net_paye || 0)) > 0)
       );
     });
