@@ -143,7 +143,12 @@ export function vueAnalyses(sectionArg) {
   const periodeTexte = def.futur ? null : h("p", { class: "aide st-periode" }, du === au ? formatDate(du) : tr("du {du} au {au}", { du: formatDate(du), au: formatDate(au) }), cmp ? ` ${tr("comparé à la période du {du} au {au}", { du: formatDate(cmp[0]), au: formatDate(cmp[1]) })}` : null);
 
   const exporter = () => {
-    const cellule = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
+    // Un texte qui commencerait par = + - @ serait lu comme une formule par Excel : on le fait précéder d'une apostrophe (les montants restent des nombres).
+    const cellule = (v) => {
+      const t = String(v ?? "");
+      const sur = typeof v === "string" && /^[=+\-@\t\r]/.test(t) ? `'${t}` : t;
+      return `"${sur.replaceAll('"', '""')}"`;
+    };
     const lignes = [[tr("Sujet"), tr("Libellé"), tr("Devise"), tr("Montant"), tr("Nombre")], ...sortie];
     telecharger(`${nomExport}-${entiteActive().slug}-${du}-${au}.csv`, "﻿" + lignes.map((l) => l.map(cellule).join(";")).join("\r\n"), "text/csv;charset=utf-8");
   };
