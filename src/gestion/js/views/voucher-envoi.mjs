@@ -1,14 +1,14 @@
 // Envoi d'un voucher en image : on le fabrique dans la page (l'impression ne fonctionne pas sur la plupart des téléphones), on l'aperçoit,
-// puis on le télécharge ou on l'envoie sur WhatsApp.
+// puis on le partage (liste de partage du téléphone) ou on l'envoie sur WhatsApp depuis l'ordinateur.
 // Sur téléphone, le partage de fichier ouvre la liste de WhatsApp : on y choisit le contact. Un lien WhatsApp ne peut pas joindre d'image, donc
 // on ne peut pas écrire directement dans la conversation d'un numéro. Sur ordinateur, la conversation du numéro s'ouvre et l'image est copiée
 // pour être collée (sinon téléchargée).
 import { etat, nomClient, partenaireDe, resumeDossier, reglages } from "../etat.mjs";
 import { h, modal, toast } from "../ui.mjs";
 import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
-import { telecharger } from "./commun.mjs";
 import { numeroVoucher, nomFichierVoucher, messageVoucher, lienWhatsApp, controlesVoucher } from "../operations-calc.mjs";
 import { chiffres, telWhatsApp } from "../partenaires-calc.mjs";
+import { moyen, partager, enregistrer, copierTexte, zoneEnvoi } from "./partage.mjs";
 import { tr, N_ } from "../i18n.mjs";
 
 const AVERTISSEMENTS = {
@@ -56,28 +56,38 @@ export function envoyerVoucher(x) {
   const actions = h("div", { class: "actions envoi-actions" });
   const aide = h("p", { class: "aide" });
   let fichier = null;
-  const peutPartager = () => !!(fichier && navigator.canShare && navigator.canShare({ files: [fichier] }));
+  const zone = zoneEnvoi({ fichiers: () => (fichier ? [fichier] : []) });
 
-  const telechargerImage = () => telecharger(nomFichier, fichier, "image/png");
-  async function envoyer(pour) {
+  const enregistrerImage = () => enregistrer([fichier]);
+  // Ce qui reste possible quand l'image ne peut pas partir toute seule : l'enregistrer, copier le message, et seulement si on le dit
+  // clairement, ouvrir WhatsApp avec le message seul.
+  // Destinataires qui ont un message à envoyer : le client, et le prestataire quand son message existe (il porte le prix payé par le client).
+  const messages = () => [["client", tr("client"), telClient], ...(partenaire && message.partenaire ? [["partenaire", tr("prestataire"), telPartenaire]] : [])];
+  const boutonsCopie = () => messages().map(([pour, nom]) => h("button", { class: "lien", type: "button", onclick: () => copierTexte(message[pour]) }, messages().length > 1 ? tr("Copier le message : {nom}", { nom }) : tr("Copier le message")));
+  const boutonsRepli = () => [
+    h("button", { class: "principal", type: "button", onclick: enregistrerImage }, tr("Enregistrer l'image")),
+    ...boutonsCopie(),
+    ...messages().map(([pour, nom, tel]) => h("a", { class: "bouton secondaire", href: lienWhatsApp(tel, message[pour]), target: "_blank", rel: "noopener" }, messages().length > 1 ? tr("Ouvrir WhatsApp ({nom}) avec le message seul, sans l'image", { nom }) : tr("Ouvrir WhatsApp avec le message seul, sans l'image"))),
+  ];
+
+  // Partage natif : appelé directement par le tap, l'image est déjà prête (sinon le navigateur refuse, NotAllowedError).
+  async function partagerImage() {
+    zone.effacer();
+    const res = await partager([fichier]);
+    if (res === "ok" || res === "annule") return;
+    zone.echec({ titre: tr("Le partage a échoué : l'image n'est pas partie."), erreur: res.erreur, boutons: boutonsRepli() });
+  }
+
+  // Ordinateur : l'image est copiée pour être collée dans la conversation, que le lien ouvre. Il ne peut pas la joindre lui-même.
+  async function envoyerOrdinateur(pour) {
+    zone.effacer();
     const tel = pour === "partenaire" ? telPartenaire : telClient;
-    if (peutPartager()) {
-      try {
-        await navigator.share({ files: [fichier], text: message[pour] });
-      } catch (err) {
-        if (err.name === "AbortError") return;
-        telechargerImage();
-        toast(tr("Le partage a échoué : l'image est téléchargée, joignez-la dans WhatsApp."), true);
-      }
-      return;
-    }
-    // Ordinateur : l'image est copiée pour être collée dans la conversation (sinon téléchargée), puis la conversation s'ouvre.
     let copiee = false;
     try {
       await navigator.clipboard.write([new ClipboardItem({ "image/png": fichier })]);
       copiee = true;
     } catch {
-      telechargerImage();
+      enregistrerImage();
     }
     window.open(lienWhatsApp(tel, message[pour]), "_blank", "noopener");
     toast(copiee ? tr("Image copiée : collez-la dans la conversation WhatsApp (Ctrl+V).") : tr("Image téléchargée : joignez-la dans la conversation WhatsApp."));
@@ -99,45 +109,48 @@ export function envoyerVoucher(x) {
     }
     fichiersTous = fichiers;
     boutonTous.disabled = false;
-    boutonTous.textContent = tr("Envoyer les {n} vouchers du dossier", { n: freres.length });
+    boutonTous.textContent = moyen(fichiers) === "natif" ? tr("Partager les {n} vouchers du dossier", { n: freres.length }) : tr("Enregistrer les {n} images du dossier", { n: freres.length });
   }
   boutonTous.addEventListener("click", async () => {
     if (!fichiersTous) return;
-    if (navigator.canShare && navigator.canShare({ files: fichiersTous })) {
-      try {
-        await navigator.share({ files: fichiersTous, text: message.client });
-      } catch (err) {
-        if (err.name === "AbortError") return;
-        for (const f of fichiersTous) telecharger(f.name, f, "image/png");
-        toast(tr("Le partage a échoué : les images sont téléchargées, joignez-les dans WhatsApp."), true);
-      }
-      return;
-    }
-    for (const f of fichiersTous) telecharger(f.name, f, "image/png");
-    toast(tr("Images téléchargées : joignez-les dans la conversation WhatsApp."));
+    zone.effacer();
+    if (moyen(fichiersTous) !== "natif") return enregistrer(fichiersTous);
+    const res = await partager(fichiersTous);
+    if (res === "ok" || res === "annule") return;
+    zone.echec({ titre: tr("Le partage a échoué : les images ne sont pas parties."), erreur: res.erreur, boutons: [h("button", { class: "principal", type: "button", onclick: () => enregistrer(fichiersTous) }, tr("Enregistrer les images")), ...boutonsCopie()] });
   });
-  const copierMessage = async () => {
-    try {
-      await navigator.clipboard.writeText(message.client);
-      toast(tr("Message copié."));
-    } catch {
-      toast(tr("Copie impossible dans ce navigateur : sélectionnez le texte à la main."), true);
-    }
-  };
+
   const etiquette = (pour) => (pour === "client" ? tr("WhatsApp : client") : tr("WhatsApp : prestataire"));
   function afficherActions() {
-    const destinataires = [["client", telClient]];
-    if (partenaire) destinataires.push(["partenaire", telPartenaire]);
-    actions.replaceChildren(
-      ...destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => envoyer(pour) }, destinataires.length === 1 ? tr("Envoyer sur WhatsApp") : etiquette(pour))),
-      boutonTous,
-      h("button", { class: "secondaire", type: "button", onclick: telechargerImage }, tr("Télécharger l'image")),
-      h("button", { class: "lien", type: "button", onclick: copierMessage }, tr("Copier le message")),
-      ...(window.matchMedia("(hover: hover)").matches ? [h("button", { class: "lien", type: "button", onclick: () => imprimerVoucher(x) }, tr("PDF"))] : [])
-    );
-    aide.textContent = peutPartager()
-      ? tr("WhatsApp s'ouvre avec l'image : choisissez le contact dans sa liste.")
-      : tr("WhatsApp ne reçoit pas d'image par un lien : l'image est copiée, collez-la dans la conversation qui s'ouvre. Sans numéro, WhatsApp propose de choisir le contact.");
+    const chemin = moyen([fichier]);
+    const destinataires = [["client"]];
+    if (partenaire) destinataires.push(["partenaire"]);
+    const imprimer = window.matchMedia("(hover: hover)").matches ? [h("button", { class: "lien", type: "button", onclick: () => imprimerVoucher(x) }, tr("PDF"))] : [];
+    if (chemin === "natif") {
+      // Un seul bouton évident : la liste de partage du téléphone choisit l'application et le contact, l'image y est jointe.
+      actions.replaceChildren(
+        h("button", { class: "principal", type: "button", onclick: partagerImage }, tr("Partager l'image du voucher")),
+        boutonTous,
+        h("button", { class: "secondaire", type: "button", onclick: enregistrerImage }, tr("Enregistrer l'image")),
+        ...boutonsCopie(),
+        ...imprimer
+      );
+      aide.textContent = tr("La liste de partage s'ouvre avec l'image : choisissez WhatsApp, puis le contact. Le message se copie à part, à coller sous l'image si vous le voulez.");
+    } else if (chemin === "ordinateur") {
+      actions.replaceChildren(
+        ...destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour) }, destinataires.length === 1 ? tr("Envoyer sur WhatsApp") : etiquette(pour))),
+        boutonTous,
+        h("button", { class: "secondaire", type: "button", onclick: enregistrerImage }, tr("Enregistrer l'image")),
+        ...boutonsCopie(),
+        ...imprimer
+      );
+      aide.textContent = tr("WhatsApp ne reçoit pas d'image par un lien : l'image est copiée, collez-la dans la conversation qui s'ouvre. Sans numéro, WhatsApp propose de choisir le contact.");
+    } else {
+      // Téléphone dont le navigateur ne partage pas de fichier : on le dit tout de suite, sans ouvrir WhatsApp avec un texte seul.
+      actions.replaceChildren(boutonTous, ...imprimer);
+      aide.textContent = tr("Appuyez longuement sur l'image pour l'enregistrer dans Photos, puis joignez-la dans WhatsApp.");
+      zone.echec({ titre: tr("Ce navigateur ne peut pas joindre l'image à WhatsApp. Ouvrez Gestion dans Safari ou depuis l'icône de l'écran d'accueil pour la partager d'un tap."), boutons: boutonsRepli() });
+    }
   }
 
   modal(
@@ -149,7 +162,8 @@ export function envoyerVoucher(x) {
       h("p", { class: "aide" }, [client.telephone ? `${nomClient(client)} ${client.telephone}` : nomClient(client), partenaire ? `${partenaire.nom}${telPartenaire ? ` ${telPartenaire}` : ""}` : ""].filter(Boolean).join(" · ")),
       apercu,
       actions,
-      aide
+      aide,
+      zone.noeud
     ),
     { large: true, protege: false, ferme: () => (ferme = true) }
   );
@@ -161,10 +175,12 @@ export function envoyerVoucher(x) {
       adresseApercu = URL.createObjectURL(blob);
       apercu.replaceChildren(h("img", { src: adresseApercu, alt: tr("Voucher {numero}", { numero }) }));
       afficherActions();
-      if (freres.length > 1) preparerTous().catch((err) => (boutonTous.textContent = tr("Les autres vouchers n'ont pas pu être préparés : {message}", { message: err.message })));
+      zone.maj();
+      if (freres.length > 1) preparerTous().catch((err) => zone.echec({ titre: tr("Les autres vouchers n'ont pas pu être préparés."), erreur: err }));
     })
     .catch((err) => {
       apercu.replaceChildren(h("p", { class: "erreur-form", role: "alert" }, tr("L'image n'a pas pu être fabriquée : {message}", { message: err.message })));
+      zone.echec({ titre: tr("L'image n'a pas pu être fabriquée."), erreur: err });
       actions.replaceChildren(...(window.matchMedia("(hover: hover)").matches ? [h("button", { class: "secondaire", type: "button", onclick: () => imprimerVoucher(x) }, tr("PDF"))] : []));
     });
 }
