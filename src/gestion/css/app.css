@@ -726,3 +726,24 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .squelette-carte span + span, .squelette-ligne span + span { width: calc(var(--l, 70%) * 0.6); height: 11px; }
 .squelette-carte::after, .squelette-ligne::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.75) 50%, transparent 70%); transform: translateX(-100%); animation: balayage 1.4s ease-in-out infinite; }
 @keyframes balayage { to { transform: translateX(100%); } }
+
+/* ===== Session D : saisie rapide et parcours terrain ===== */
+/* Coller une demande : champs reconnus, service proposé, barre d'action toujours à portée du pouce. */
+.demande-champs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; margin-top: 4px; }
+.demande-champs .champ:first-child, .demande-champs .champ:nth-child(2), .demande-champs .champ:last-child { grid-column: 1 / -1; }
+@media (min-width: 720px) { .demande-champs { grid-template-columns: repeat(4, minmax(0, 1fr)); } .demande-champs .champ:first-child, .demande-champs .champ:nth-child(2) { grid-column: span 2; } .demande-champs .champ:last-child { grid-column: 1 / -1; } }
+.demande-client { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface-2); }
+.demande-client.connu { background: var(--teal-100); border-color: var(--teal-600); }
+.demande-offres { max-height: none; margin-bottom: 12px; }
+.demande-offres li { border-bottom: 1px solid var(--bord); }
+.demande-offres li:last-child { border-bottom: 0; }
+.demande-offre { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; width: 100%; min-height: 56px; padding: 10px 12px 10px 14px; text-align: left; font-weight: 400; background: var(--surface); border: 0; border-radius: 0; color: var(--texte); }
+.demande-offre[aria-checked="true"] { background: var(--teal-100); box-shadow: inset 0 0 0 2px var(--teal-600); }
+.demande-offre:not([aria-checked="true"]):active { background: var(--surface-2); }
+.barre-modal { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; margin: 12px -20px -20px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--bord); }
+@media (max-width: 719px) { .barre-modal { margin-bottom: calc(-20px - env(safe-area-inset-bottom)); } .barre-modal .principal { flex: 1 1 100%; } .barre-modal .secondaire { flex: 1 1 auto; } }
+/* Une fois le message lu, il se replie pour laisser la place aux champs et au prix. */
+.demande.lu .demande-aide { display: none; }
+.demande.lu textarea { min-height: 0; height: 3.4em; font-size: 0.88rem; line-height: 1.35; }
+.demande.lu .actions { margin: 4px 0 8px; }
+/* ===== Fin session D ===== */
