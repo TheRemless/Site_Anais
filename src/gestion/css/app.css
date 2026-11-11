@@ -784,6 +784,18 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 }
 @media (max-width: 899px) { .editeur-barre { top: calc(56px + env(safe-area-inset-top)); } }
 @media (min-width: 1180px) { .editeur-barre { display: none; } }
+/* Feuille du jour, tâches reportables, rappels rapides. */
+.feuille-jours { margin-bottom: 8px; }
+.feuille-jours button { flex: 1; }
+.feuille-manque { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.feuille-manque li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.feuille-groupe { margin-bottom: 20px; }
+.feuille-groupe h3 { margin: 0 0 6px; }
+.reporter { display: grid; gap: 8px; }
+.reporter button { justify-content: space-between; }
+.reporter .aide { margin: 0; }
+.rappels-rapides { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.rappels-rapides .aide { margin: 0 4px 0 0; font-weight: 600; }
 /* ===== Fin session D ===== */
 /* ---- Paiements (session A) : puce « Chez nous / Sur place », écran À encaisser ---- */
 .mode-reglement { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--bord-fort, var(--bord)); border-radius: 999px; background: var(--surface); }
