@@ -457,6 +457,9 @@ function restaurerDefilement(hash) {
 let defilementAvant = 0;
 window.addEventListener("hashchange", () => (defilementAvant = window.scrollY));
 
+// Rotation d'une tablette ou fenêtre élargie : dès 720 px les titres des blocs repliables ne se cliquent plus, tout doit donc s'ouvrir.
+window.matchMedia("(min-width: 720px)").addEventListener("change", (e) => e.matches && document.querySelectorAll("details.repli, details.filtres-plus").forEach((d) => (d.open = true)));
+
 let rendu = 0;
 async function afficher() {
   if (!etat.session) {
