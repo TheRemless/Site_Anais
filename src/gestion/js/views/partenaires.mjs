@@ -207,7 +207,7 @@ export function fichePartenaire(id) {
           h("div", null, h("h3", null, tr("Règlement par les clients")), h("p", null, modeParDefaut(p) === SUR_PLACE ? tr("Sur place : le client paie le prestataire, qui reverse une commission.") : tr("Chez nous : le client règle l'agence, qui paie le prestataire."))),
           paiementPartenaire(p, prive, voitNets()) ? h("div", null, h("h3", null, tr("Paiement")), paragraphes(paiementPartenaire(p, prive, voitNets()))) : null,
           r.enfants && r.enfants.length ? h("div", null, h("h3", null, tr("Enfants")), liste(r.enfants)) : null,
-          voitNets() && prive && prive.commission_regle && TYPES_COMMISSION[prive.commission_regle.type] ? h("div", null, h("h3", null, tr("Commission calculée")), h("p", null, `${tr(TYPES_COMMISSION[prive.commission_regle.type])} : ${prive.commission_regle.valeur}`)) : null,
+          voitNets() && prive && prive.commission_regle && TYPES_COMMISSION[prive.commission_regle.type] ? h("div", null, h("h3", null, tr("Commission calculée")), h("p", null, prive.commission_regle.type === "vente_moins_net" ? tr(TYPES_COMMISSION.vente_moins_net) : `${tr(TYPES_COMMISSION[prive.commission_regle.type])} : ${prive.commission_regle.valeur}`)) : null,
           commissionsPartenaire(p, prive, voitNets()).length ? h("div", null, h("h3", null, tr("Commission et marge")), liste(commissionsPartenaire(p, prive, voitNets()))) : null,
           r.checkin && r.checkin.length ? h("div", null, h("h3", null, tr("Check-in")), liste(r.checkin)) : null,
           r.points_embarquement && r.points_embarquement.length ? h("div", null, h("h3", null, tr("Points d'embarquement")), h("ul", { class: "liste-regles" }, r.points_embarquement.map((x) => h("li", null, h("strong", null, x.lieu), ` ${x.ou}`)))) : null
@@ -476,6 +476,11 @@ function formulairePrive(p, prive, apres) {
   const typeCommission = h("select", { id: "b-com-type" }, h("option", { value: "" }, tr("Pas de règle chiffrée")), Object.entries(TYPES_COMMISSION).map(([v, l]) => h("option", { value: v }, tr(l))));
   typeCommission.value = TYPES_COMMISSION[regle.type] ? regle.type : "";
   const valeurCommission = h("input", { id: "b-com-valeur", type: "number", min: "0", step: "any", inputmode: "decimal", value: regle.valeur ?? "" });
+  // « Prix de vente moins net » se calcule seul : le champ valeur n'a pas lieu d'être.
+  const champValeur = champ(tr("Valeur"), valeurCommission);
+  const majValeur = () => (champValeur.style.display = typeCommission.value === "vente_moins_net" ? "none" : "");
+  typeCommission.addEventListener("change", majValeur);
+  majValeur();
   return h(
     "form",
     {
@@ -485,7 +490,8 @@ function formulairePrive(p, prive, apres) {
         try {
           const valeurs = { banque: { banque: banque.value.trim(), compte: compte.value.trim(), titulaire: titulaire.value.trim(), autre: autre.value.trim() }, paiement: paiement.value.trim() };
           try {
-            const commission_regle = typeCommission.value && valeurCommission.value !== "" ? { type: typeCommission.value, valeur: Number(valeurCommission.value) } : null;
+            const sansValeur = typeCommission.value === "vente_moins_net";
+            const commission_regle = typeCommission.value && (sansValeur || valeurCommission.value !== "") ? (sansValeur ? { type: typeCommission.value } : { type: typeCommission.value, valeur: Number(valeurCommission.value.replace(",", ".")) }) : null;
             await enregistrerLie("partenaires_prives", "partenaire_id", p.id, { ...valeurs, commissions: lignesVers(commissions.value), commission_regle });
           } catch (err) {
             // Sans les migrations 16 et 19, la base ne connaît pas encore les colonnes des commissions : le reste s'enregistre quand même.
@@ -504,7 +510,7 @@ function formulairePrive(p, prive, apres) {
     champ(tr("Autres indications bancaires"), autre),
     champ(tr("Comment on paie ce partenaire"), paiement),
     champ(tr("Commission et marge, une règle par ligne"), commissions, tr("Réservé aux personnes qui voient les prix nets.")),
-    h("div", { class: "grille-form" }, champ(tr("Commission calculée"), typeCommission, tr("Sert à préremplir la commission des services payés sur place. Laisser vide si la règle n'est pas chiffrée.")), champ(tr("Valeur"), valeurCommission)),
+    h("div", { class: "grille-form" }, champ(tr("Commission calculée"), typeCommission, tr("Sert à préremplir la commission des services payés sur place. Laisser vide si la règle n'est pas chiffrée.")), champValeur),
     h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );
 }

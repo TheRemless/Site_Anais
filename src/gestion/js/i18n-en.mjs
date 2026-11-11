@@ -1969,4 +1969,5 @@ export const EN = {
   "Saisissez un nombre.": "Enter a number.",
   "Le nombre ne peut pas être négatif.": "The number cannot be negative.",
   "Payé sur place": "Paid on site",
+  "Prix de vente moins net": "Sale price minus net price",
 };

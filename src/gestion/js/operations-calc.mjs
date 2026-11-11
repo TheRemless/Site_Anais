@@ -49,7 +49,9 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
 
 function commissionDuGroupe(g, l, regleDe) {
   if (!regleDe || !g.lignes.some((x) => x.paye_sur_place)) return {};
-  const c = commissionPrevue(regleDe(l.partenaire_id || null), { vente: g.vente, net: g.net, adultes: g.adultes, enfants: g.enfants });
+  // Le net ne compte que s'il est connu pour toutes les lignes qui ont un prix : un net partiel gonflerait la commission.
+  const netComplet = g.lignes.every((x) => !(brut(x) > 0) || (x.net !== null && x.net !== undefined));
+  const c = commissionPrevue(regleDe(l.partenaire_id || null), { vente: g.vente, net: netComplet ? g.net : null, adultes: g.adultes, enfants: g.enfants });
   return c === null ? {} : { commission_prevue: c };
 }
 
@@ -194,14 +196,20 @@ export function appliquerModeParDefaut(lignes, partenaireDe) {
 
 // Règle de commission structurée (données privées du partenaire, droit nets) :
 //   { type: "pourcent_vente" | "pourcent_net" | "fixe_personne" | "fixe_reservation", valeur: nombre }
-export const TYPES_COMMISSION = { pourcent_vente: N_("% du prix de vente"), pourcent_net: N_("% du net"), fixe_personne: N_("Montant par personne"), fixe_reservation: N_("Montant par réservation") };
+export const TYPES_COMMISSION = { pourcent_vente: N_("% du prix de vente"), pourcent_net: N_("% du net"), fixe_personne: N_("Montant par personne"), fixe_reservation: N_("Montant par réservation"), vente_moins_net: N_("Prix de vente moins net") };
 
 // Commission attendue pour une réservation, ou null quand la règle ou une donnée manque : on ne devine jamais.
 export function commissionPrevue(regle, { vente = null, net = null, adultes = 0, enfants = 0 } = {}) {
   if (!regle || !TYPES_COMMISSION[regle.type]) return null;
+  const arrondi = (x) => Math.round(x * 100) / 100;
+  // Prix de vente moins net : la marge du service, sans valeur à saisir. Il faut les deux prix, et jamais de commission négative.
+  if (regle.type === "vente_moins_net") {
+    if (vente === null || vente === undefined || net === null || net === undefined) return null;
+    const c = arrondi(Number(vente) - Number(net));
+    return c >= 0 ? c : null;
+  }
   const v = Number(regle.valeur);
   if (regle.valeur === "" || regle.valeur === null || regle.valeur === undefined || !(v >= 0)) return null;
-  const arrondi = (x) => Math.round(x * 100) / 100;
   if (regle.type === "pourcent_vente") return vente === null || vente === undefined ? null : arrondi((Number(vente) * v) / 100);
   if (regle.type === "pourcent_net") return net === null || net === undefined ? null : arrondi((Number(net) * v) / 100);
   if (regle.type === "fixe_personne") {

@@ -148,3 +148,26 @@ test("commissions à recevoir : une réservation réglée sans commission prévu
   assert.equal(g.sansCommission, 1, "seule la réservation encore à régler reste sans commission");
   assert.equal(g.ecart, 75);
 });
+
+test("commission « prix de vente moins net » : la marge du service, sans valeur à saisir", () => {
+  const regle = { type: "vente_moins_net" };
+  assert.equal(commissionPrevue(regle, { vente: 1500, net: 1100 }), 400);
+  assert.equal(commissionPrevue(regle, { vente: 1999.5, net: 1500.25 }), 499.25);
+  assert.equal(commissionPrevue(regle, { vente: 800, net: 800 }), 0);
+  assert.equal(commissionPrevue(regle, { vente: 1500, net: null }), null, "sans net, rien à deviner");
+  assert.equal(commissionPrevue(regle, { vente: null, net: 1000 }), null, "sans prix de vente, rien à deviner");
+  assert.equal(commissionPrevue(regle, { vente: 900, net: 1000 }), null, "jamais de commission négative");
+  assert.equal(regleDeCommissionComplete(regle), true, "aucune valeur n'est demandée pour ce type");
+});
+
+test("réservation créée d'après la facture : la marge utilise le net de toutes les lignes, jamais un net partiel", () => {
+  const regleDe = () => ({ type: "vente_moins_net" });
+  const adulte = lignePartenaire("a", { paye_sur_place: true, unite: 1200, qte: 2, net: 800 });
+  const enfant = lignePartenaire("b", { paye_sur_place: true, libelle: "4 Islands, child", intro: "(per child)", unite: 900, qte: 1, net: 600 });
+  const complet = reservationsDepuisDocument({ dossier_id: "d1", contenu: { lignes: [adulte, enfant] } }, { regleDe, uid: () => "x" });
+  assert.equal(complet.length, 1, "adulte et enfant donnent une seule réservation");
+  assert.equal(complet[0].net, 2200);
+  assert.equal(complet[0].commission_prevue, 1100, "(2400 + 900) − (1600 + 600)");
+  const partiel = reservationsDepuisDocument({ dossier_id: "d1", contenu: { lignes: [adulte, { ...enfant, net: null }] } }, { regleDe, uid: () => "x" });
+  assert.equal("commission_prevue" in partiel[0], false, "le net de l'enfant manque : pas de commission devinée");
+});
