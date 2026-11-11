@@ -1,6 +1,15 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
+  // Session C (mobile) : navigation et accueil
+  "Nouveau": "New",
+  "Un client, un voyage, un devis": "A client, a trip, a quote",
+  "Un message WhatsApp du client devient un dossier": "A client's WhatsApp message becomes a file",
+  "Récents": "Recent",
+  "pickup": "pickup",
+  "Appeler {nom}": "Call {nom}",
+  "Appeler": "Call",
+  "WhatsApp à {nom}": "WhatsApp {nom}",
   // Session C (mobile) : composants réutilisables
   "Vous avez commencé à remplir cette fenêtre. Fermer sans enregistrer ?": "You have started filling in this window. Close without saving?",
   "Fermer sans enregistrer": "Close without saving",

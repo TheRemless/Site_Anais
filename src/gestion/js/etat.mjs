@@ -4,7 +4,7 @@ import { creerStore } from "./store.mjs";
 import { resume, setDevise, setMasquerMontants } from "./calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
-import { tr, definirLangue, langueStockee, estLangue } from "./i18n.mjs";
+import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
 const CLE_ENTITE = "gestion-zwald-entite";
@@ -18,7 +18,7 @@ export async function init() {
   if (stockee) definirLangue(stockee);
   etat.store = await creerStore();
   etat.session = await etat.store.session();
-  if (!etat.session) return;
+  if (!etat.session) return void (await pretLangue());
   try {
     await recharger();
   } catch (err) {
@@ -33,6 +33,7 @@ export async function recharger() {
   etat.brut = await etat.store.charger();
   etat.moi = etat.brut.profils.find((p) => p.user_id === etat.session.id) || { user_id: etat.session.id, email: etat.session.email, super_admin: false, actif: true };
   adopterLangue();
+  await pretLangue();
   let choisi = null;
   try {
     choisi = localStorage.getItem(CLE_ENTITE);
@@ -130,6 +131,7 @@ async function enregistrerLangue(code) {
 }
 export async function choisirLangue(code) {
   if (!definirLangue(code)) return;
+  await pretLangue();
   if (etat.session && etat.moi) await enregistrerLangue(code);
   else connexion.langueChoisie = true;
 }
