@@ -5,7 +5,8 @@
 import { etat, nomClient, peut } from "../etat.mjs";
 import { h, modal, toast, confirmer } from "../ui.mjs";
 import { aujourdhui, nomFichier } from "../calc.mjs";
-import { feuille, telecharger, pdf } from "./commun.mjs";
+import { feuille, pdf } from "./commun.mjs";
+import { moyen, partager, enregistrer, copierTexte, zoneEnvoi } from "./partage.mjs";
 import { lienWhatsApp } from "../operations-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
 import { construirePdf, decouperPages, hauteurPage } from "../pdf-simple.mjs";
@@ -67,22 +68,27 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
   const aide = h("p", { class: "aide" });
   let fichier = null;
   let adresse = null;
-  const peutPartager = () => !!(fichier && navigator.canShare && navigator.canShare({ files: [fichier] }));
+  const zone = zoneEnvoi({ fichiers: () => (fichier ? [fichier] : []), texte: () => message });
 
   // Un devis qui part sans date d'envoi n'est jamais relancé : on propose de la poser.
   async function apres() {
     if (marquerEnvoye && doc.type === "devis" && !doc.envoye_le && peut("documents.ecrire") && (await confirmer(tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance."), tr("Marquer comme envoyé")))) await marquerEnvoye();
   }
-  const telechargerPdf = () => telecharger(fichier.name, fichier, "application/pdf");
+  const telechargerPdf = () => enregistrer([fichier]);
+  // Ce qui reste possible quand le PDF ne peut pas partir tout seul : l'enregistrer, copier le message, et seulement avec une mention claire,
+  // ouvrir WhatsApp avec le message seul.
+  const boutonsRepli = () => [
+    h("button", { class: "principal", type: "button", onclick: async () => (telechargerPdf(), await apres()) }, tr("Enregistrer le PDF")),
+    h("button", { class: "secondaire", type: "button", onclick: () => copierTexte(message) }, tr("Copier le message")),
+    h("a", { class: "bouton secondaire", href: lienWhatsApp(tel, message), target: "_blank", rel: "noopener" }, tr("Ouvrir WhatsApp avec le message seul, sans le PDF")),
+  ];
+  // Partage natif : appelé directement par le tap, sans texte joint (le message se copie à part). Ordinateur : PDF téléchargé et conversation ouverte.
   async function whatsapp() {
-    if (peutPartager()) {
-      try {
-        await navigator.share({ files: [fichier], text: message });
-      } catch (err) {
-        if (err.name === "AbortError") return;
-        telechargerPdf();
-        toast(tr("Le partage a échoué : le PDF est téléchargé, joignez-le dans WhatsApp."), true);
-      }
+    zone.effacer();
+    if (moyen([fichier]) === "natif") {
+      const res = await partager([fichier]);
+      if (res !== "ok" && res !== "annule") return zone.echec({ titre: tr("Le partage a échoué : le PDF n'est pas parti."), erreur: res.erreur, boutons: boutonsRepli() });
+      if (res === "annule") return;
     } else {
       telechargerPdf();
       window.open(lienWhatsApp(tel, message), "_blank", "noopener");
@@ -99,29 +105,30 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
     toast(tr("PDF téléchargé : joignez-le au courrier qui s'ouvre."));
     await apres();
   }
-  const copierMessage = async () => {
-    try {
-      await navigator.clipboard.writeText(message);
-      toast(tr("Message copié."));
-    } catch {
-      toast(tr("Copie impossible dans ce navigateur : sélectionnez le texte à la main."), true);
-    }
-  };
-
   function afficherActions() {
+    const chemin = moyen([fichier]);
+    const imprimer = sansImpression() ? [] : [h("button", { class: "lien", type: "button", onclick: () => pdf({ ...doc }) }, tr("Imprimer"))];
+    const courrielBtn = client.email && chemin !== "natif" ? [h("button", { class: "secondaire", type: "button", onclick: courriel }, tr("Envoyer par e-mail"))] : [];
+    if (chemin === "telephone_sans_partage") {
+      // Téléphone dont le navigateur ne partage pas de fichier : on le dit tout de suite, sans ouvrir WhatsApp avec un texte seul.
+      actions.replaceChildren(...courrielBtn, ...imprimer);
+      aide.textContent = "";
+      zone.echec({ titre: tr("Ce navigateur ne peut pas joindre le PDF à WhatsApp. Ouvrez Gestion dans Safari ou depuis l'icône de l'écran d'accueil pour le partager d'un tap."), boutons: boutonsRepli() });
+      return;
+    }
     actions.replaceChildren(
       // Avec le partage du téléphone, la liste propose WhatsApp, Mail, Messages : le libellé ne promet pas une seule application.
-      h("button", { class: "principal", type: "button", onclick: whatsapp }, peutPartager() ? tr("Envoyer le PDF") : tr("Envoyer sur WhatsApp")),
-      ...(!peutPartager() && client.email ? [h("button", { class: "secondaire", type: "button", onclick: courriel }, tr("Envoyer par e-mail"))] : []),
+      h("button", { class: "principal", type: "button", onclick: whatsapp }, chemin === "natif" ? tr("Partager le PDF") : tr("Envoyer sur WhatsApp")),
+      ...courrielBtn,
       h("button", { class: "secondaire", type: "button", onclick: async () => (telechargerPdf(), await apres()) }, tr("Télécharger le PDF")),
-      h("button", { class: "lien", type: "button", onclick: copierMessage }, tr("Copier le message")),
-      ...(sansImpression() ? [] : [h("button", { class: "lien", type: "button", onclick: () => pdf({ ...doc }) }, tr("Imprimer"))])
+      h("button", { class: "lien", type: "button", onclick: () => copierTexte(message) }, tr("Copier le message")),
+      ...imprimer
     );
-    aide.textContent = peutPartager() ? tr("La liste de partage s'ouvre avec le PDF : choisissez WhatsApp, Mail ou Messages, puis le contact.") : tr("WhatsApp ne reçoit pas de fichier par un lien : le PDF est téléchargé, joignez-le dans la conversation qui s'ouvre.");
+    aide.textContent = chemin === "natif" ? tr("La liste de partage s'ouvre avec le PDF : choisissez WhatsApp, Mail ou Messages, puis le contact. Le message se copie à part.") : tr("WhatsApp ne reçoit pas de fichier par un lien : le PDF est téléchargé, joignez-le dans la conversation qui s'ouvre.");
   }
 
   const titre = doc.type === "devis" ? tr("Envoyer le devis") : tr("Envoyer la facture");
-  modal(titre, h("div", { class: "modal-corps envoi-voucher" }, h("p", { class: "envoi-resume" }, h("strong", null, `${doc.type === "devis" ? tr("Devis") : tr("Facture")} ${dossier.ref || ""}`.trim()), h("span", null, [nomClient(client), client.telephone || client.email].filter(Boolean).join(" · "))), apercu, actions, h("p", { class: "envoi-message" }, message), aide), { large: true, protege: false });
+  modal(titre, h("div", { class: "modal-corps envoi-voucher" }, h("p", { class: "envoi-resume" }, h("strong", null, `${doc.type === "devis" ? tr("Devis") : tr("Facture")} ${dossier.ref || ""}`.trim()), h("span", null, [nomClient(client), client.telephone || client.email].filter(Boolean).join(" · "))), apercu, actions, h("p", { class: "envoi-message" }, message), aide, zone.noeud), { large: true, protege: false });
 
   fabriquerPdf(doc)
     .then(({ nom, blob, apercu: page }) => {
@@ -131,9 +138,11 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
       adresse = URL.createObjectURL(new Blob([page.jpeg], { type: "image/jpeg" }));
       apercu.replaceChildren(h("img", { src: adresse, alt: nom }));
       afficherActions();
+      zone.maj();
     })
     .catch((err) => {
       apercu.replaceChildren(h("p", { class: "erreur-form", role: "alert" }, tr("Le PDF n'a pas pu être fabriqué : {message}", { message: err.message })));
+      zone.echec({ titre: tr("Le PDF n'a pas pu être fabriqué."), erreur: err });
       actions.replaceChildren(...(sansImpression() ? [] : [h("button", { class: "secondaire", type: "button", onclick: () => pdf({ ...doc }) }, tr("Imprimer"))]));
     });
 }
