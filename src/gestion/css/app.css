@@ -21,10 +21,12 @@
   --duree: 0.18s;
   --courbe: cubic-bezier(0.2, 0, 0, 1);
   --barre-basse: calc(64px + env(safe-area-inset-bottom));
+  --haut-barre: calc(56px + env(safe-area-inset-top));
+  --clavier: 0px;
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; scrollbar-gutter: stable; }
 body {
   margin: 0;
   background: var(--fond);
@@ -270,21 +272,28 @@ legend { padding: 0 6px; font-weight: 700; }
 .ajouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
 .total-edition { margin: 8px 0 12px; font-weight: 700; }
 
-/* Fenêtres et messages */
-.modal-fond { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 5vh 16px; background: rgba(20, 30, 30, 0.5); overflow-y: auto; animation: apparaitre var(--duree) var(--courbe); }
-.modal { width: 100%; max-width: 560px; background: var(--surface); border-radius: 12px; padding: 20px; box-shadow: var(--ombre-forte); animation: surgir 0.22s var(--courbe); }
+/* Fenêtres et messages. Sous 720 px : feuille ancrée en bas (poignée, croix de 44 px, un seul défilement, zone sûre). */
+.modal-fond { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 5vh 16px; background: rgba(20, 30, 30, 0.5); overflow-y: auto; overscroll-behavior: contain; animation: apparaitre var(--duree) var(--courbe); }
+.modal { display: flex; flex-direction: column; width: 100%; max-width: 560px; max-height: 90dvh; background: var(--surface); border-radius: 12px; padding: 20px 20px 0; box-shadow: var(--ombre-forte); animation: surgir 0.22s var(--courbe); outline: none; }
 .modal.large { max-width: 760px; }
-.modal-tete { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.modal-tete { display: flex; flex: none; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
 .modal-tete h2 { margin: 0; }
-.modal-tete .bouton-icone { color: var(--texte-2); }
+.modal-tete .bouton-icone { width: 44px; height: 44px; margin-right: -10px; color: var(--texte-2); }
+.modal-defile { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -20px; padding: 0 20px 20px; }
+.modal-poignee { display: none; }
+.brouillon-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; margin: 0 0 12px; padding: 8px 12px; background: var(--teal-100); border-radius: var(--rayon); font-size: 0.9rem; }
 @keyframes apparaitre { from { opacity: 0; } }
 @keyframes surgir { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
 @keyframes monter { from { transform: translateY(100%); } }
-/* Sur téléphone, les fenêtres montent depuis le bas et défilent à l'intérieur. */
+html.modal-ouverte, html.modal-ouverte body { overflow: hidden; }
 @media (max-width: 719px) {
-  .modal-fond { align-items: flex-end; padding: 0; }
-  .modal { max-width: none; max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain; border-radius: 18px 18px 0 0; padding: 10px 20px calc(20px + env(safe-area-inset-bottom)); animation: monter 0.26s var(--courbe); }
-  .modal::before { content: ""; display: block; width: 40px; height: 4px; margin: 0 auto 12px; border-radius: 2px; background: var(--bord-fort); }
+  .modal-fond { align-items: flex-end; padding: 0; bottom: var(--clavier, 0px); }
+  .modal { max-width: none; max-height: min(92dvh, calc(var(--vv, 100dvh) - 8px)); border-radius: 18px 18px 0 0; padding: 0 20px 0; animation: monter 0.26s var(--courbe); touch-action: pan-y; }
+  .modal-poignee { display: flex; align-items: center; justify-content: center; flex: none; height: 28px; margin: 0 -20px; touch-action: none; cursor: grab; }
+  .modal-poignee span { width: 40px; height: 4px; border-radius: 2px; background: var(--bord-fort); }
+  .modal-defile { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+  /* Un seul défilement : les listes internes des fenêtres suivent celui de la feuille. */
+  .modal .choix-liste { max-height: none; overflow: visible; }
 }
 #toasts { position: fixed; z-index: 200; left: 16px; right: 16px; bottom: calc(var(--barre-basse) + 12px); display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
 @media (min-width: 900px) { #toasts { bottom: 24px; left: 276px; } }
@@ -658,3 +667,62 @@ details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-w
 
 /* Écran Dû : la section des commissions se détache de la liste du dû */
 .commissions-recevoir { margin-top: 40px; }
+
+/* ==== Session C (mobile) : composants réutilisables ============================================================ */
+.visuellement-cache { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.erreur-champ { margin: 4px 0 0; font-size: 0.88rem; font-weight: 600; color: var(--danger); }
+input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--danger); box-shadow: inset 3px 0 0 var(--danger); }
+
+/* Barre d'action collante : Enregistrer, Annuler. Fixée au-dessus des onglets, au-dessus du clavier quand il est ouvert. */
+.barre-action-espace { height: 76px; }
+.barre-action { position: fixed; z-index: 29; left: 0; right: 0; bottom: var(--barre-basse); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; padding: 10px 16px; background: rgba(255, 255, 255, 0.96); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-top: 1px solid var(--bord); }
+.barre-action > .principal, .barre-action > .secondaire { flex: 1 1 auto; }
+html.clavier .barre-action { bottom: var(--clavier); padding-bottom: 10px; }
+html.clavier .barre-onglets { display: none; }
+html.clavier { --barre-basse: 0px; }
+@media (min-width: 900px) {
+  .barre-action-espace { display: none; }
+  .barre-action { position: sticky; left: auto; right: auto; bottom: 0; z-index: 5; margin: 0 -8px; padding: 12px 8px; background: var(--fond); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .barre-action > .principal, .barre-action > .secondaire { flex: 0 0 auto; }
+}
+html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-action .etat-synchro { bottom: calc(var(--barre-basse) + 12px + 68px + var(--clavier, 0px)); }
+@media (min-width: 900px) { html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-action .etat-synchro { bottom: 24px; } }
+
+/* Puces de filtre défilantes */
+.puces { display: flex; gap: 8px; margin: 0 -16px; padding: 2px 16px 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding: 0 16px; -webkit-overflow-scrolling: touch; }
+.puces::-webkit-scrollbar { display: none; }
+.puce { flex: none; min-height: 44px; padding: 0 16px; background: var(--surface); border: 1px solid var(--bord-champ); border-radius: 999px; color: var(--texte); font-weight: 600; font-size: 0.92rem; scroll-snap-align: start; }
+.puce[aria-pressed="true"] { background: var(--teal-100); border-color: var(--teal-600); color: var(--teal-700); box-shadow: inset 0 0 0 1px var(--teal-600); }
+.puce-nombre { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.78rem; font-weight: 700; }
+.puce[aria-pressed="true"] .puce-nombre, .bouton-filtrer .puce-nombre { background: var(--teal-600); color: #fff; }
+@media (min-width: 720px) { .puces { margin: 0; padding: 0 0 6px; flex-wrap: wrap; overflow: visible; } }
+
+/* Recherche et filtres collants en haut d'une liste */
+.barre-filtres { position: sticky; top: var(--haut-barre); z-index: 12; margin: 0 -16px 12px; padding: 8px 16px 4px; background: var(--fond); border-bottom: 1px solid transparent; }
+.barre-filtres-haut { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.barre-filtres .champ.recherche { flex: 1; min-width: 0; margin: 0; }
+.bouton-filtrer { flex: none; gap: 6px; }
+.filtres-ligne { display: flex; flex-wrap: wrap; gap: 0 16px; margin-top: 8px; }
+.filtres-ligne .champ { min-width: 180px; flex: 1; margin-bottom: 10px; }
+.feuille-filtres .actions { justify-content: stretch; }
+.feuille-filtres .actions button { flex: 1; }
+@media (min-width: 900px) { .barre-filtres { top: 0; margin: 0 0 12px; padding: 8px 0 4px; } }
+
+/* Liste adaptative : tri, actions de carte, suite de la liste */
+.tri-mobile { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.tri-mobile label { flex: none; font-size: 0.88rem; font-weight: 600; color: var(--texte-2); }
+.tri-mobile select { flex: 1; }
+.tri-entete { min-height: 44px; padding: 0; background: none; border: 0; color: inherit; font: inherit; font-weight: 600; gap: 4px; }
+.tri-sens { display: inline-block; min-width: 1ch; }
+.carte { flex-wrap: wrap; }
+.carte-actions-fin { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 12px; }
+.liste-suite { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 12px 0 4px; }
+
+/* Squelette de chargement : pas de saut de mise en page, un balayage doux, immobile si le mouvement est réduit */
+.squelette { display: flex; flex-direction: column; gap: 10px; }
+.squelette-carte, .squelette-ligne { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; overflow: hidden; }
+.squelette-ligne { border-radius: var(--rayon); padding: 12px 14px; }
+.squelette-carte span, .squelette-ligne span { display: block; height: 14px; width: var(--l, 70%); border-radius: 4px; background: var(--surface-2); }
+.squelette-carte span + span, .squelette-ligne span + span { width: calc(var(--l, 70%) * 0.6); height: 11px; }
+.squelette-carte::after, .squelette-ligne::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.75) 50%, transparent 70%); transform: translateX(-100%); animation: balayage 1.4s ease-in-out infinite; }
+@keyframes balayage { to { transform: translateX(100%); } }

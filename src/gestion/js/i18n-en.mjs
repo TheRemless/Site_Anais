@@ -1,6 +1,22 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
+  // Session C (mobile) : composants réutilisables
+  "Vous avez commencé à remplir cette fenêtre. Fermer sans enregistrer ?": "You have started filling in this window. Close without saving?",
+  "Fermer sans enregistrer": "Close without saving",
+  "Continuer la saisie": "Keep editing",
+  "Votre saisie précédente a été reprise.": "Your previous entry has been restored.",
+  "Filtrer": "Filter",
+  "Rien à afficher.": "Nothing to show.",
+  "Ordre d'origine": "Original order",
+  "{colonne}, croissant": "{colonne}, ascending",
+  "{colonne}, décroissant": "{colonne}, descending",
+  "{n} affichés sur {total}": "{n} shown of {total}",
+  "Afficher {n} de plus": "Show {n} more",
+  "filtre actif": "active filter",
+  "filtres actifs": "active filters",
+  "Réinitialiser": "Reset",
+  "Appliquer": "Apply",
   " · net {prix}": " · net {prix}",
   " · Responsable : {x}": " · Person in charge: {x}",
   " (hors {liste})": " (excl. {liste})",
