@@ -746,6 +746,14 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .demande.lu .demande-aide { display: none; }
 .demande.lu textarea { min-height: 0; height: 3.4em; font-size: 0.88rem; line-height: 1.35; }
 .demande.lu .actions { margin: 4px 0 8px; }
+/* Demander au prestataire : état de l'attente et geste suivant, sous la carte de la réservation. */
+.prestataire-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--bord); }
+.prestataire-etat { flex: 1 1 100%; margin: 0; font-weight: 600; color: #2b5d8f; }
+.prestataire-etat.long { color: #8a5200; }
+.prestataire-etat.refus { color: var(--danger); }
+.reponse-prestataire { display: grid; gap: 10px; }
+.reponse-prestataire .aide { margin: 0; }
+@media (max-width: 719px) { .prestataire-actions .principal, .prestataire-actions .secondaire { flex: 1 1 auto; } }
 /* ===== Fin session D ===== */
 /* ---- Paiements (session A) : puce « Chez nous / Sur place », écran À encaisser ---- */
 .mode-reglement { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--bord-fort, var(--bord)); border-radius: 999px; background: var(--surface); }

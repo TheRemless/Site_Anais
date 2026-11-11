@@ -7,7 +7,7 @@ import { SUR_PLACE, CHEZ_NOUS, modeReglement } from "./calc.mjs";
 
 export { SUR_PLACE, CHEZ_NOUS, modeReglement };
 
-export const STATUTS_RESERVATION = { a_demander: N_("À demander"), demande: N_("Demandée"), confirme: N_("Confirmée"), annule: N_("Annulée") };
+export const STATUTS_RESERVATION = { a_demander: N_("À demander"), demande: N_("Demandée, en attente"), confirme: N_("Confirmée"), annule: N_("Annulée") };
 
 const nouvelId = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 const brut = (l) => (l.unite !== null && l.unite !== undefined && l.unite !== "" && l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.unite) * Number(l.qte) : l.montant !== null && l.montant !== undefined && l.montant !== "" ? Number(l.montant) : null);
