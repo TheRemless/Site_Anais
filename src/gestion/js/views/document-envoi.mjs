@@ -6,7 +6,7 @@ import { etat, nomClient, peut } from "../etat.mjs";
 import { h, modal, toast, confirmer } from "../ui.mjs";
 import { aujourdhui, nomFichier } from "../calc.mjs";
 import { feuille, pdf } from "./commun.mjs";
-import { moyen, partager, enregistrer, copierTexte, zoneEnvoi } from "./partage.mjs";
+import { moyen, partageFichiers, partager, enregistrer, copierTexte, zoneEnvoi } from "./partage.mjs";
 import { lienWhatsApp } from "../operations-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
 import { construirePdf, decouperPages, hauteurPage } from "../pdf-simple.mjs";
@@ -90,11 +90,39 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
       if (res !== "ok" && res !== "annule") return zone.echec({ titre: tr("Le partage a échoué : le PDF n'est pas parti."), erreur: res.erreur, boutons: boutonsRepli() });
       if (res === "annule") return;
     } else {
-      telechargerPdf();
-      window.open(lienWhatsApp(tel, message), "_blank", "noopener");
-      toast(tr("PDF téléchargé : joignez-le dans la conversation WhatsApp."));
+      await ouvrirConversation();
     }
     await apres();
+  }
+
+  // Alternative sur ordinateur : la feuille de partage du système (macOS, Windows), quand le navigateur la propose.
+  async function partagerSysteme() {
+    zone.effacer();
+    const res = await partager([fichier]);
+    if (res !== "ok" && res !== "annule") return zone.echec({ titre: tr("Le partage a échoué : le PDF n'est pas parti."), erreur: res.erreur, boutons: boutonsRepli() });
+    if (res === "ok") await apres();
+  }
+
+  // Ordinateur : le PDF ne peut pas se coller (le presse-papiers du navigateur ne prend pas les PDF) : il est enregistré, la conversation s'ouvre,
+  // et l'état reste à l'écran avec le nom du fichier à joindre.
+  async function ouvrirConversation() {
+    telechargerPdf();
+    const lien = lienWhatsApp(tel, message);
+    const fenetre = window.open(lien, "_blank");
+    if (fenetre) fenetre.opener = null;
+    zone.succes({
+      titre: tr("PDF enregistré : {nom}. Joignez-le dans WhatsApp.", { nom: fichier.name }),
+      etapes: [
+        tr("La conversation s'ouvre dans un nouvel onglet. Sinon, utilisez le bouton « Ouvrir WhatsApp »."),
+        tr("Glissez le fichier dans la conversation, ou cliquez sur le trombone puis « Document » et choisissez-le dans vos téléchargements."),
+        tr("Le message est déjà écrit dans la conversation : envoyez-le avec le fichier."),
+      ],
+      boutons: [
+        h("a", { class: "bouton principal", href: lien, target: "_blank", rel: "noopener" }, tr("Ouvrir WhatsApp")),
+        h("button", { class: "secondaire", type: "button", onclick: telechargerPdf }, tr("Enregistrer de nouveau")),
+        h("button", { class: "secondaire", type: "button", onclick: () => copierTexte(message) }, tr("Copier le message")),
+      ],
+    });
   }
 
   // Sur ordinateur, le PDF est téléchargé puis le courrier s'ouvre : un lien mailto ne peut pas joindre de fichier.
@@ -119,6 +147,7 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
     actions.replaceChildren(
       // Avec le partage du téléphone, la liste propose WhatsApp, Mail, Messages : le libellé ne promet pas une seule application.
       h("button", { class: "principal", type: "button", onclick: whatsapp }, chemin === "natif" ? tr("Partager le PDF") : tr("Envoyer sur WhatsApp")),
+      ...(chemin === "ordinateur" && partageFichiers([fichier]) ? [h("button", { class: "secondaire", type: "button", onclick: partagerSysteme }, tr("Partager avec le système"))] : []),
       ...courrielBtn,
       h("button", { class: "secondaire", type: "button", onclick: async () => (telechargerPdf(), await apres()) }, tr("Télécharger le PDF")),
       h("button", { class: "lien", type: "button", onclick: () => copierTexte(message) }, tr("Copier le message")),

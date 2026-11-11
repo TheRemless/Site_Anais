@@ -4,11 +4,11 @@
 // on ne peut pas écrire directement dans la conversation d'un numéro. Sur ordinateur, la conversation du numéro s'ouvre et l'image est copiée
 // pour être collée (sinon téléchargée).
 import { etat, nomClient, partenaireDe, resumeDossier, reglages } from "../etat.mjs";
-import { h, modal, toast } from "../ui.mjs";
+import { h, modal } from "../ui.mjs";
 import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
 import { numeroVoucher, nomFichierVoucher, messageVoucher, lienWhatsApp, controlesVoucher } from "../operations-calc.mjs";
 import { chiffres, telWhatsApp } from "../partenaires-calc.mjs";
-import { moyen, partager, enregistrer, copierTexte, zoneEnvoi } from "./partage.mjs";
+import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
 import { tr, N_ } from "../i18n.mjs";
 
 const AVERTISSEMENTS = {
@@ -78,19 +78,51 @@ export function envoyerVoucher(x) {
     zone.echec({ titre: tr("Le partage a échoué : l'image n'est pas partie."), erreur: res.erreur, boutons: boutonsRepli() });
   }
 
-  // Ordinateur : l'image est copiée pour être collée dans la conversation, que le lien ouvre. Il ne peut pas la joindre lui-même.
+  // Ordinateur : l'image est copiée dans le presse-papiers (et on le vérifie), puis la conversation du numéro s'ouvre ; la personne colle l'image
+  // avec Cmd+V ou Ctrl+V. Le message est déjà écrit dans la conversation. Si la copie échoue, on le dit avec la raison et rien ne s'ouvre tout seul.
   async function envoyerOrdinateur(pour) {
     zone.effacer();
+    const res = await copierImage(fichier);
     const tel = pour === "partenaire" ? telPartenaire : telClient;
-    let copiee = false;
-    try {
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": fichier })]);
-      copiee = true;
-    } catch {
-      enregistrerImage();
+    const lien = lienWhatsApp(tel, message[pour]);
+    const nom = pour === "partenaire" ? tr("le prestataire") : tr("le client");
+    if (!res.ok) {
+      zone.echec({
+        titre: tr("L'image n'a pas pu être copiée : {raison}.", { raison: res.raison }),
+        erreur: res.erreur,
+        boutons: [
+          h("button", { class: "principal", type: "button", onclick: enregistrerImage }, tr("Enregistrer l'image")),
+          h("button", { class: "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour) }, tr("Réessayer la copie")),
+          h("a", { class: "bouton secondaire", href: lien, target: "_blank", rel: "noopener" }, tr("Ouvrir WhatsApp avec le message seul, sans l'image")),
+        ],
+      });
+      return;
     }
-    window.open(lienWhatsApp(tel, message[pour]), "_blank", "noopener");
-    toast(copiee ? tr("Image copiée : collez-la dans la conversation WhatsApp (Ctrl+V).") : tr("Image téléchargée : joignez-la dans la conversation WhatsApp."));
+    const fenetre = window.open(lien, "_blank");
+    if (fenetre) fenetre.opener = null;
+    zone.succes({
+      titre: tr("Image copiée. Dans WhatsApp, collez-la avec {raccourci}.", { raccourci: raccourci() }),
+      etapes: [
+        tr("La conversation avec {nom} s'ouvre dans un nouvel onglet. Sinon, utilisez le bouton « Ouvrir WhatsApp ».", { nom }),
+        tr("Cliquez dans la zone de message, collez l'image avec {raccourci}, puis envoyez-la.", { raccourci: raccourci() }),
+        tr("Le message est déjà écrit dans la conversation : envoyez-le ensuite."),
+      ],
+      boutons: [
+        h("a", { class: "bouton principal", href: lien, target: "_blank", rel: "noopener" }, tr("Ouvrir WhatsApp")),
+        h("button", { class: "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour) }, tr("Copier l'image de nouveau")),
+        h("button", { class: "secondaire", type: "button", onclick: () => copierTexte(message[pour]) }, tr("Copier le message")),
+        h("button", { class: "secondaire", type: "button", onclick: enregistrerImage }, tr("Enregistrer l'image")),
+      ],
+    });
+  }
+
+  // Plusieurs images ne tiennent pas dans le presse-papiers : on les copie une à une, chaque image à son tour, avec l'état à l'écran.
+  async function copierUne(f) {
+    const res = await copierImage(f);
+    const boutons = fichiersTous.map((g) => h("button", { class: g === f && res.ok ? "principal" : "secondaire", type: "button", onclick: () => copierUne(g) }, tr("Copier : {nom}", { nom: g.name })));
+    const tousEnregistrer = h("button", { class: "secondaire", type: "button", onclick: () => enregistrer(fichiersTous) }, tr("Enregistrer toutes les images"));
+    if (!res.ok) return zone.echec({ titre: tr("L'image n'a pas pu être copiée : {raison}.", { raison: res.raison }), erreur: res.erreur, boutons: [h("button", { class: "principal", type: "button", onclick: () => enregistrer(fichiersTous) }, tr("Enregistrer toutes les images"))] });
+    zone.succes({ titre: tr("Image copiée : {nom}. Collez-la avec {raccourci}.", { nom: f.name, raccourci: raccourci() }), etapes: [tr("Collez l'image dans la conversation WhatsApp et envoyez-la."), tr("Revenez ici et copiez l'image suivante.")], boutons: [...boutons, tousEnregistrer] });
   }
 
   // Tous les vouchers du dossier dans une seule conversation : les images se préparent en arrière-plan, puis un seul tap les envoie.
@@ -109,12 +141,18 @@ export function envoyerVoucher(x) {
     }
     fichiersTous = fichiers;
     boutonTous.disabled = false;
-    boutonTous.textContent = moyen(fichiers) === "natif" ? tr("Partager les {n} vouchers du dossier", { n: freres.length }) : tr("Enregistrer les {n} images du dossier", { n: freres.length });
+    const chemin = moyen(fichiers);
+    boutonTous.textContent = chemin === "natif" ? tr("Partager les {n} vouchers du dossier", { n: freres.length }) : chemin === "ordinateur" ? tr("Copier les {n} images une à une", { n: freres.length }) : tr("Enregistrer les {n} images du dossier", { n: freres.length });
   }
   boutonTous.addEventListener("click", async () => {
     if (!fichiersTous) return;
     zone.effacer();
-    if (moyen(fichiersTous) !== "natif") return enregistrer(fichiersTous);
+    const chemin = moyen(fichiersTous);
+    if (chemin === "ordinateur") {
+      zone.succes({ titre: tr("Choisissez l'image à copier, puis collez-la dans la conversation."), boutons: [...fichiersTous.map((g) => h("button", { class: "secondaire", type: "button", onclick: () => copierUne(g) }, tr("Copier : {nom}", { nom: g.name }))), h("button", { class: "secondaire", type: "button", onclick: () => enregistrer(fichiersTous) }, tr("Enregistrer toutes les images"))] });
+      return;
+    }
+    if (chemin !== "natif") return enregistrer(fichiersTous);
     const res = await partager(fichiersTous);
     if (res === "ok" || res === "annule") return;
     zone.echec({ titre: tr("Le partage a échoué : les images ne sont pas parties."), erreur: res.erreur, boutons: [h("button", { class: "principal", type: "button", onclick: () => enregistrer(fichiersTous) }, tr("Enregistrer les images")), ...boutonsCopie()] });
@@ -139,12 +177,13 @@ export function envoyerVoucher(x) {
     } else if (chemin === "ordinateur") {
       actions.replaceChildren(
         ...destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour) }, destinataires.length === 1 ? tr("Envoyer sur WhatsApp") : etiquette(pour))),
+        ...(partageFichiers([fichier]) ? [h("button", { class: "secondaire", type: "button", onclick: partagerImage }, tr("Partager avec le système"))] : []),
         boutonTous,
         h("button", { class: "secondaire", type: "button", onclick: enregistrerImage }, tr("Enregistrer l'image")),
         ...boutonsCopie(),
         ...imprimer
       );
-      aide.textContent = tr("WhatsApp ne reçoit pas d'image par un lien : l'image est copiée, collez-la dans la conversation qui s'ouvre. Sans numéro, WhatsApp propose de choisir le contact.");
+      aide.textContent = tr("Un lien WhatsApp ne peut pas joindre d'image : l'image est copiée, puis la conversation s'ouvre et vous la collez avec {raccourci}. Sans numéro, WhatsApp propose de choisir le contact.", { raccourci: raccourci() });
     } else {
       // Téléphone dont le navigateur ne partage pas de fichier : on le dit tout de suite, sans ouvrir WhatsApp avec un texte seul.
       actions.replaceChildren(boutonTous, ...imprimer);
