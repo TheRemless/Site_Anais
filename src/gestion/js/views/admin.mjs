@@ -205,7 +205,7 @@ export function vueAdmin() {
     h(
       "section",
       null,
-      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Entreprises")), h("button", { class: "secondaire", type: "button", onclick: () => nouvelleEntiteModal(rafraichir) }, tr("Nouvelle entreprise"))),
+      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Entreprises")), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: () => nouvelleEntiteModal(rafraichir) }, tr("Nouvelle entreprise")))),
       h("p", { class: "aide" }, tr("Chaque entreprise a ses propres clients, dossiers, paiements, catalogue, réglages, logo et devise. Personne ne voit une entreprise sans y avoir accès.")),
       h(
         "table",

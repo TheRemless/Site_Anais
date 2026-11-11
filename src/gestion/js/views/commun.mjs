@@ -245,12 +245,13 @@ export function plierSections(racine, { cle, ouverts = new Set() }) {
       const vu = tout || ouvert;
       corps.hidden = !vu;
       // Au-dessus de 720 px tout reste ouvert et le titre n'est plus un bouton : seulement un titre.
-      bouton.disabled = tout;
+      bouton.setAttribute("aria-disabled", String(tout));
+      bouton.tabIndex = tout ? -1 : 0;
       if (tout) bouton.removeAttribute("aria-expanded");
       else bouton.setAttribute("aria-expanded", String(ouvert));
     };
     const ouvrir = (v) => { ouvert = v; etatsRepli.set(`${cle}|${nom}`, ouvert); maj(); };
-    bouton.addEventListener("click", () => ouvrir(!ouvert));
+    bouton.addEventListener("click", () => !large.matches && ouvrir(!ouvert));
     section.className = [section.className, "repli-section"].filter(Boolean).join(" ");
     section.append(h("h2", { class: "repli-h" }, bouton), corps);
     section._repli = { ouvrir, estOuvert: () => ouvert };
@@ -258,7 +259,8 @@ export function plierSections(racine, { cle, ouverts = new Set() }) {
     maj();
   }
   // Rotation d'une tablette ou fenêtre élargie : au-dessus de 720 px les titres ne se cliquent plus, tout s'ouvre.
-  large.addEventListener("change", () => reperes.forEach((maj) => maj()));
+  const surChangement = () => (racine.isConnected ? reperes.forEach((maj) => maj()) : large.removeEventListener("change", surChangement));
+  large.addEventListener("change", surChangement);
   racine.addEventListener(
     "click",
     (e) => {
@@ -274,7 +276,7 @@ export function plierSections(racine, { cle, ouverts = new Set() }) {
 
 // Groupes repliables d'un formulaire (les `fieldset` de Réglages) : la légende reste la légende du groupe et contient un bouton avec aria-expanded.
 // Au-dessus de 720 px tout reste ouvert. `filtrer(q)` ne laisse que les groupes qui contiennent le texte cherché (et les ouvre) ; renvoie leur nombre.
-export function plierGroupes(racine, { ouverts = (nom, i) => i === 0 } = {}) {
+export function plierGroupes(racine, { ouverts = (nom, i, fs) => fs.parentElement.querySelector("fieldset") === fs } = {}) {
   const large = window.matchMedia("(min-width: 720px)");
   const groupes = [];
   let forcer = false;
@@ -288,13 +290,14 @@ export function plierGroupes(racine, { ouverts = (nom, i) => i === 0 } = {}) {
     legende.replaceChildren(bouton);
     fs.append(corps);
     fs.classList.add("repli-groupe-fs");
-    let ouvert = ouverts(nom, i);
-    const g = { fs, texte: "", maj() { const vu = large.matches || forcer || ouvert; corps.hidden = !vu; bouton.disabled = large.matches; if (large.matches) bouton.removeAttribute("aria-expanded"); else bouton.setAttribute("aria-expanded", String(vu)); } };
-    bouton.addEventListener("click", () => { ouvert = !(large.matches || forcer || ouvert); g.maj(); });
+    let ouvert = ouverts(nom, i, fs);
+    const g = { fs, texte: "", maj() { const vu = large.matches || forcer || ouvert; corps.hidden = !vu; bouton.setAttribute("aria-disabled", String(large.matches)); bouton.tabIndex = large.matches ? -1 : 0; if (large.matches) bouton.removeAttribute("aria-expanded"); else bouton.setAttribute("aria-expanded", String(vu)); } };
+    bouton.addEventListener("click", () => { if (large.matches) return; ouvert = !(forcer || ouvert); g.maj(); });
     groupes.push(g);
     g.maj();
   });
-  large.addEventListener("change", () => groupes.forEach((g) => g.maj()));
+  const surChangement = () => (racine.isConnected ? groupes.forEach((g) => g.maj()) : large.removeEventListener("change", surChangement));
+  large.addEventListener("change", surChangement);
   const norm = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return {
     filtrer(q) {

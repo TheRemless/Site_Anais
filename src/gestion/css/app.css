@@ -891,7 +891,7 @@ html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte 
 .repli-section { margin-bottom: 0; }
 @media (min-width: 720px) {
   .repli-titre { min-height: 0; padding: 0; border-top: 0; cursor: default; pointer-events: none; margin-bottom: 12px; color: var(--texte); }
-  .repli-titre:disabled { color: var(--texte); opacity: 1; }
+  .repli-titre[aria-disabled="true"] { color: var(--texte); }
   .repli-titre svg { display: none; }
   .repli-corps { padding: 0; }
   .repli-section { margin-bottom: 36px; }
@@ -1144,10 +1144,9 @@ th[aria-sort="ascending"] .st-tri, th[aria-sort="descending"] .st-tri { color: v
 
 /* ==== Session F : cibles tactiles de 44 px (restes de l'audit mobile) ========================================== */
 /* Pastilles de référence cliquables : la zone tactile dépasse la pastille sans changer la mise en page. */
-a.tag { position: relative; }
-a.tag::after { content: ""; position: absolute; inset: -12px -6px; }
+@media (pointer: coarse) { a.tag { padding-block: 11px; } }
 .service-titre { display: flex; align-items: center; min-height: 44px; }
-details > summary { display: flex; align-items: center; min-height: 44px; }
+details > summary { padding-block: 11px; margin: 0; }
 .bloc-tarifs h2 a, .carte-regle h3 a, .regles-trajets .aide a, .st-lien-groupe a { display: inline-flex; align-items: center; min-height: 44px; }
 @media (pointer: coarse), (max-width: 719px) { .bouton-icone { width: 44px; height: 44px; } }
 /* Réglages : groupes repliables (légende = bouton) et recherche */
