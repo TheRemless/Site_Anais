@@ -88,9 +88,11 @@ export function envoyerVoucher(x) {
   const freres = vouchersDuDossier(dossier.id);
   const boutonTous = h("button", { class: "secondaire", type: "button", disabled: true, hidden: freres.length < 2 });
   let fichiersTous = null;
+  let ferme = false; // fenêtre fermée : on arrête de fabriquer des images dont personne ne se servira
   async function preparerTous() {
     const fichiers = [];
     for (const [i, y] of freres.entries()) {
+      if (ferme) return;
       boutonTous.textContent = tr("Préparation des vouchers {i} sur {n}…", { i: i + 1, n: freres.length });
       const blob = y.reservation.id === r.id && fichier ? fichier : await imageVoucher(y);
       fichiers.push(new File([blob], nomFichierVoucher(numeroVoucher(dossier.ref || "", y.index), nomClient(client)), { type: "image/png" }));
@@ -149,7 +151,7 @@ export function envoyerVoucher(x) {
       actions,
       aide
     ),
-    { large: true }
+    { large: true, protege: false, ferme: () => (ferme = true) }
   );
 
   imageVoucher(x)

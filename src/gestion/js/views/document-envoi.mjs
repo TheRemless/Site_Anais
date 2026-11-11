@@ -95,7 +95,7 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
   async function courriel() {
     telechargerPdf();
     const objet = doc.type === "devis" ? (doc.contenu.langue === "en" ? "Your quote" : "Votre devis") : doc.contenu.langue === "en" ? "Your invoice" : "Votre facture";
-    window.location.href = `mailto:${encodeURIComponent(client.email)}?subject=${encodeURIComponent(`${objet} ${dossier.ref || ""}`.trim())}&body=${encodeURIComponent(message)}`;
+    window.location.href = `mailto:${client.email}?subject=${encodeURIComponent(`${objet} ${dossier.ref || ""}`.trim())}&body=${encodeURIComponent(message)}`;
     toast(tr("PDF téléchargé : joignez-le au courrier qui s'ouvre."));
     await apres();
   }
