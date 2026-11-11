@@ -49,7 +49,7 @@ export async function desactiver(store) {
 export async function essai() {
   const reg = await enregistrement();
   if (!reg) return;
-  await reg.showNotification(tr("Rappels activés"), { body: tr("Vous recevrez ici les services de demain et les clients à recontacter."), icon: "/gestion/assets/icone-192.png", tag: "essai" });
+  await reg.showNotification(tr("Rappels activés"), { body: tr("Vous recevrez ici les services de demain et les clients à recontacter."), icon: "/gestion/assets/zwald-192.png", tag: "essai" });
 }
 
 // Retire l'appareil à la déconnexion : un téléphone déconnecté ne doit plus recevoir les chiffres du compte.
