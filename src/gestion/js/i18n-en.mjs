@@ -2047,7 +2047,6 @@ export const EN = {
   "prestataire": "provider",
   "Copier le message : {nom}": "Copy the message: {nom}",
   "Ouvrir WhatsApp ({nom}) avec le message seul, sans l'image": "Open WhatsApp ({nom}) with the message only, without the image",
-  "PDF enregistré : {nom}. Joignez-le dans WhatsApp.": "PDF saved: {nom}. Attach it in WhatsApp.",
   "La conversation s'ouvre dans un nouvel onglet. Sinon, utilisez le bouton « Ouvrir WhatsApp ».": "The conversation opens in a new tab. Otherwise use the \"Open WhatsApp\" button.",
   "Glissez le fichier dans la conversation, ou cliquez sur le trombone puis « Document » et choisissez-le dans vos téléchargements.": "Drag the file into the conversation, or click the paperclip then \"Document\" and pick it from your downloads.",
   "Le message est déjà écrit dans la conversation : envoyez-le avec le fichier.": "The message is already written in the conversation: send it with the file.",
@@ -2070,4 +2069,9 @@ export const EN = {
   "Copier les {n} images une à une": "Copy the {n} images one by one",
   "Choisissez l'image à copier, puis collez-la dans la conversation.": "Pick the image to copy, then paste it into the conversation.",
   "Un lien WhatsApp ne peut pas joindre d'image : l'image est copiée, puis la conversation s'ouvre et vous la collez avec {raccourci}. Sans numéro, WhatsApp propose de choisir le contact.": "A WhatsApp link cannot attach an image: the image is copied, then the conversation opens and you paste it with {raccourci}. Without a number, WhatsApp lets you pick the contact.",
+  "Fichier à joindre : {nom}. Il est envoyé dans vos téléchargements.": "File to attach: {nom}. It is sent to your downloads.",
+  "Le navigateur a bloqué l'ouverture de l'onglet : cliquez sur « Ouvrir WhatsApp ».": "The browser blocked the new tab: click \"Open WhatsApp\".",
+  "Si le fichier n'apparaît pas dans vos téléchargements, cliquez sur « Enregistrer de nouveau ».": "If the file does not appear in your downloads, click \"Save again\".",
+  "Ouvrez la conversation avec {nom} avec le bouton « Ouvrir WhatsApp ».": "Open the conversation with {nom} with the \"Open WhatsApp\" button.",
+  "Le navigateur a bloqué l'ouverture de l'onglet : cliquez sur « Ouvrir WhatsApp » pour ouvrir la conversation avec {nom}.": "The browser blocked the new tab: click \"Open WhatsApp\" to open the conversation with {nom}.",
 };

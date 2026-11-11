@@ -111,9 +111,10 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
     const fenetre = window.open(lien, "_blank");
     if (fenetre) fenetre.opener = null;
     zone.succes({
-      titre: tr("PDF enregistré : {nom}. Joignez-le dans WhatsApp.", { nom: fichier.name }),
+      titre: tr("Fichier à joindre : {nom}. Il est envoyé dans vos téléchargements.", { nom: fichier.name }),
       etapes: [
-        tr("La conversation s'ouvre dans un nouvel onglet. Sinon, utilisez le bouton « Ouvrir WhatsApp »."),
+        fenetre ? tr("La conversation s'ouvre dans un nouvel onglet. Sinon, utilisez le bouton « Ouvrir WhatsApp ».") : tr("Le navigateur a bloqué l'ouverture de l'onglet : cliquez sur « Ouvrir WhatsApp »."),
+        tr("Si le fichier n'apparaît pas dans vos téléchargements, cliquez sur « Enregistrer de nouveau »."),
         tr("Glissez le fichier dans la conversation, ou cliquez sur le trombone puis « Document » et choisissez-le dans vos téléchargements."),
         tr("Le message est déjà écrit dans la conversation : envoyez-le avec le fichier."),
       ],

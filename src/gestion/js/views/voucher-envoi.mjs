@@ -80,7 +80,7 @@ export function envoyerVoucher(x) {
 
   // Ordinateur : l'image est copiée dans le presse-papiers (et on le vérifie), puis la conversation du numéro s'ouvre ; la personne colle l'image
   // avec Cmd+V ou Ctrl+V. Le message est déjà écrit dans la conversation. Si la copie échoue, on le dit avec la raison et rien ne s'ouvre tout seul.
-  async function envoyerOrdinateur(pour) {
+  async function envoyerOrdinateur(pour, { ouvrir = true } = {}) {
     zone.effacer();
     const res = await copierImage(fichier);
     const tel = pour === "partenaire" ? telPartenaire : telClient;
@@ -98,18 +98,19 @@ export function envoyerVoucher(x) {
       });
       return;
     }
-    const fenetre = window.open(lien, "_blank");
-    if (fenetre) fenetre.opener = null;
+    // window.open renvoie null quand le navigateur bloque l'onglet (fréquent après une attente) : on le dit au lieu d'annoncer une ouverture qui n'a pas eu lieu.
+    const fenetre = ouvrir ? window.open(lien, "_blank") : {};
+    if (fenetre && ouvrir) fenetre.opener = null;
     zone.succes({
       titre: tr("Image copiée. Dans WhatsApp, collez-la avec {raccourci}.", { raccourci: raccourci() }),
       etapes: [
-        tr("La conversation avec {nom} s'ouvre dans un nouvel onglet. Sinon, utilisez le bouton « Ouvrir WhatsApp ».", { nom }),
+        !ouvrir ? tr("Ouvrez la conversation avec {nom} avec le bouton « Ouvrir WhatsApp ».", { nom }) : fenetre ? tr("La conversation avec {nom} s'ouvre dans un nouvel onglet. Sinon, utilisez le bouton « Ouvrir WhatsApp ».", { nom }) : tr("Le navigateur a bloqué l'ouverture de l'onglet : cliquez sur « Ouvrir WhatsApp » pour ouvrir la conversation avec {nom}.", { nom }),
         tr("Cliquez dans la zone de message, collez l'image avec {raccourci}, puis envoyez-la.", { raccourci: raccourci() }),
         tr("Le message est déjà écrit dans la conversation : envoyez-le ensuite."),
       ],
       boutons: [
         h("a", { class: "bouton principal", href: lien, target: "_blank", rel: "noopener" }, tr("Ouvrir WhatsApp")),
-        h("button", { class: "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour) }, tr("Copier l'image de nouveau")),
+        h("button", { class: "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour, { ouvrir: false }) }, tr("Copier l'image de nouveau")),
         h("button", { class: "secondaire", type: "button", onclick: () => copierTexte(message[pour]) }, tr("Copier le message")),
         h("button", { class: "secondaire", type: "button", onclick: enregistrerImage }, tr("Enregistrer l'image")),
       ],
