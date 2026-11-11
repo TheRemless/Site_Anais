@@ -40,7 +40,8 @@ const enregistrer = async (r, champs, apres, message) => {
 // Au retour de WhatsApp (l'appli repasse au premier plan après avoir été cachée), on demande si le message est vraiment parti : la réservation est
 // marquée « Demandée » dès le tap, avant l'envoi réel. Fermer la fenêtre sans répondre ne change rien.
 function questionAuRetour(r, apres) {
-  let parti = false;
+  // Armé avant l'enregistrement : sur iPhone, WhatsApp peut déjà être passé au premier plan pendant qu'on enregistre.
+  let parti = document.visibilityState === "hidden";
   let minuteur = null;
   const ecoute = () => {
     if (document.visibilityState === "hidden") return void (parti = true);
@@ -55,7 +56,7 @@ function questionAuRetour(r, apres) {
         "div",
         { class: "modal-corps" },
         h("p", null, tr("La réservation « {libelle} » est notée « Demandée »{nom}. Si WhatsApp s'est fermé sans envoyer, remettez-la à demander.", { libelle: r.libelle, nom: p ? tr(" chez {nom}", { nom: p.nom }) : "" })),
-        h("div", { class: "actions" }, h("button", { class: "secondaire", type: "button", onclick: () => (fermer(), pasEnvoyee(r, apres)) }, tr("Pas envoyée")), h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Oui, il est parti")))
+        h("div", { class: "actions" }, h("button", { class: "secondaire", type: "button", onclick: () => (fermer(), courante(r).statut === "demande" && pasEnvoyee(r, apres)) }, tr("Pas envoyée")), h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Oui, il est parti")))
       ),
       { protege: false }
     );
@@ -66,8 +67,8 @@ function questionAuRetour(r, apres) {
 
 const demander = (r, apres) =>
   messageAuPrestataire(r, "partenaire", async () => {
-    const fait = await enregistrer(r, (c) => ({ statut: "demande", details: detailsDemande(c, aujourdhui()) }), apres, tr("Marquée comme demandée."));
-    if (fait) questionAuRetour(r, apres);
+    questionAuRetour(r, apres);
+    await enregistrer(r, (c) => ({ statut: "demande", details: detailsDemande(c, aujourdhui()) }), apres, tr("Marquée comme demandée."));
   });
 const relancer = (r, apres) => messageAuPrestataire(r, "relance", () => enregistrer(r, (c) => ({ details: detailsRelance(c, aujourdhui()) }), apres, tr("Relance notée.")));
 const confirmee = (r, apres) => enregistrer(r, { statut: "confirme" }, apres, tr("Confirmée par le prestataire."));

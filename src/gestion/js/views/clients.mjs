@@ -4,7 +4,6 @@ import { formatMontant, formatDate } from "../calc.mjs";
 import { pastille, vide, listeAdaptative, barreFiltres } from "./commun.mjs";
 import { correspond } from "../mobile-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { chiffres as numeroDe } from "../partenaires-calc.mjs";
 import { clientsProches } from "../demande-calc.mjs";
 
 function formulaireClient(client, apres) {
@@ -88,7 +87,11 @@ export function ficheClient(id) {
   const client = etat.db.clients.find((c) => c.id === id);
   if (!client) return vide(tr("Client introuvable"), tr("Il a peut-être été supprimé."), h("a", { class: "bouton secondaire", href: "#/clients" }, tr("Retour aux clients")));
   const dossiers = etat.db.dossiers.filter((d) => d.client_id === id).map((d) => resumeDossier(d.id)).sort((a, b) => (b.dossier.date_depart || b.dossier.created_at || "").localeCompare(a.dossier.date_depart || a.dossier.created_at || ""));
-  const tel = numeroDe(client.telephone);
+  // Numéro d'un client : l'indicatif du pays n'est pas deviné (un 079… suisse ne devient pas un +66). L'appel marche avec le numéro tel quel ; WhatsApp
+  // exige le format international (+ ou 00).
+  const brut = String(client.telephone || "").replace(/[^\d+]/g, "").replace(/^00/, "+");
+  const tel = brut.replace(/\D/g, "").length >= 6 ? brut : "";
+  const waNumero = tel.startsWith("+") ? tel.slice(1) : "";
   // Un autre client avec le même numéro ou le même nom : probablement la même personne saisie deux fois.
   const doublons = clientsProches({ telephone: client.telephone, nom: `${client.prenom || ""} ${client.nom || ""}` }, etat.db.clients.filter((c) => c.id !== id));
   return h(
@@ -97,7 +100,7 @@ export function ficheClient(id) {
     h("a", { class: "retour", href: "#/clients" }, tr("Clients")),
     h("div", { class: "entete" }, h("h1", null, nomClient(client)), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: `#/dossiers/nouveau?client=${id}` }, tr("Nouveau dossier pour ce client")) : null),
     // Joindre le client en un tap : appel et WhatsApp (le numéro est nettoyé comme sur l'accueil).
-    tel ? h("div", { class: "actions gauche client-joindre" }, h("a", { class: "bouton secondaire", href: `tel:${tel}`, "aria-label": tr("Appeler {nom}", { nom: nomClient(client) }) }, icone("telephone", 18), tr("Appeler")), h("a", { class: "bouton secondaire", href: `https://wa.me/${tel.replace(/\D/g, "")}`, target: "_blank", rel: "noopener", "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(client) }) }, icone("whatsapp", 18), tr("WhatsApp"))) : null,
+    tel ? h("div", { class: "actions gauche client-joindre" }, h("a", { class: "bouton secondaire", href: `tel:${tel}`, "aria-label": tr("Appeler {nom}", { nom: nomClient(client) }) }, icone("telephone", 18), tr("Appeler")), waNumero ? h("a", { class: "bouton secondaire", href: `https://wa.me/${waNumero}`, target: "_blank", rel: "noopener", "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(client) }) }, icone("whatsapp", 18), tr("WhatsApp")) : null) : null,
     doublons.length ? h("div", { class: "ecart-facture doublons-client", role: "status" }, h("p", null, h("strong", null, pluriel(doublons.length, N_("Doublon possible"), N_("Doublons possibles")))), h("ul", null, doublons.map(({ client: c, raison }) => h("li", null, h("a", { href: `#/client/${c.id}` }, nomClient(c)), ` · ${raison === "telephone" ? tr("même numéro de téléphone") : tr("même nom")}`))), h("p", { class: "aide" }, tr("Rien n'est fusionné tout seul : ouvrez l'autre fiche pour comparer, puis déplacez ou supprimez ce qui est en trop."))) : null,
     h("section", null, h("h2", null, tr("Coordonnées")), formulaireClient(client, () => naviguer(location.hash))),
     h(
