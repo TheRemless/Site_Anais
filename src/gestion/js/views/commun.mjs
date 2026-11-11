@@ -240,6 +240,10 @@ export function plierSections(racine, { cle, ouverts = new Set() }) {
     if (section.id) details.id = section.id;
     section.append(details);
   }
+  // Rotation d'une tablette ou fenêtre élargie : au-dessus de 720 px les titres ne se cliquent plus, tout doit donc s'ouvrir.
+  const large = window.matchMedia("(min-width: 720px)");
+  const toutOuvrir = (e) => e.matches && racine.querySelectorAll("details.repli").forEach((d) => (d.open = true));
+  large.addEventListener("change", toutOuvrir);
   racine.addEventListener(
     "click",
     (e) => {
