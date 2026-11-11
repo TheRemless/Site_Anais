@@ -7,10 +7,19 @@ import { dateBangkok, dateCible, entitesLisibles, rappelDuType } from "./calc.js
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
 
+// Comparaison en temps constant : on compare les empreintes pour que la durée ne révèle pas combien de caractères du secret sont justes.
+async function memeSecret(a: string, b: string) {
+  const empreinte = async (x: string) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(x)));
+  const [ha, hb] = await Promise.all([empreinte(a), empreinte(b)]);
+  let ecart = 0;
+  for (let i = 0; i < ha.length; i++) ecart |= ha[i] ^ hb[i];
+  return ecart === 0;
+}
+
 Deno.serve(async (req) => {
   const secret = Deno.env.get("RAPPELS_SECRET");
   const fourni = (req.headers.get("authorization") || "").replace(/^Bearer /, "");
-  if (!secret || fourni !== secret) return json({ erreur: "non autorisé" }, 401);
+  if (!secret || !(await memeSecret(fourni, secret))) return json({ erreur: "non autorisé" }, 401);
 
   const demande = await req.json().catch(() => ({}));
   const type = demande.type;
