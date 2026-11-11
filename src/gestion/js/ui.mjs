@@ -229,7 +229,7 @@ export function confirmer(message, libelle = tr("Confirmer"), danger = false, an
           h("button", { type: "button", class: danger ? "danger" : "principal", onclick: () => fin(true) }, libelle)
         )
       ),
-      { protege: false }
+      { protege: false, ferme: () => resolve(false) }
     );
   });
 }
