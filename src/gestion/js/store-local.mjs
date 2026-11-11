@@ -6,7 +6,7 @@ import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 
-const CLE = "gestion-zwald-demo-v8";
+const CLE = "gestion-zwald-demo-v9";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
 const PARTENAIRES_PUBLIC = ["partenaires", "prestations", "trajets"];

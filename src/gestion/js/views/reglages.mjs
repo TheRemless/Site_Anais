@@ -5,7 +5,7 @@ import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
 import { renderDocument } from "../document.mjs";
-import { telecharger, vide, apercuA4 } from "./commun.mjs";
+import { telecharger, vide, apercuA4, plierGroupes } from "./commun.mjs";
 import { tr, N_ } from "../i18n.mjs";
 import { VERSION_SAUVEGARDE, pourSauvegarde } from "../sauvegarde.mjs";
 
@@ -522,7 +522,25 @@ export function vueReglages() {
     ...(peut("exports.faire") ? [["donnees", tr("Sauvegarde")]] : []),
   ];
   const barre = h("div", { class: "onglets sous-onglets" });
+  // Groupes repliables sur téléphone, et recherche d'un réglage dans tous les onglets.
+  const groupes = plierGroupes(h("div", null, ...Object.values(sections)));
+  const aucun = h("p", { class: "vide-court", hidden: true, role: "status" }, tr("Aucun réglage ne correspond."));
+  const recherche = h("input", { type: "search", class: "recherche-reglages", placeholder: tr("Rechercher un réglage"), "aria-label": tr("Rechercher un réglage"), autocomplete: "off", enterkeyhint: "search" });
+  recherche.addEventListener("input", () => {
+    const q = recherche.value.trim();
+    if (!q) return montrer(ongletCourant);
+    const n = groupes.filtrer(q);
+    for (const el of Object.values(sections)) el.hidden = !el.querySelector("fieldset:not([hidden])");
+    zoneApercu.hidden = true;
+    zoneVoucher.hidden = true;
+    aucun.hidden = n > 0;
+  });
+  let ongletCourant = "entreprise";
   const montrer = (cle) => {
+    ongletCourant = cle;
+    recherche.value = "";
+    groupes.filtrer("");
+    aucun.hidden = true;
     for (const [k, el] of Object.entries(sections)) el.hidden = k !== cle;
     for (const b of barre.children) b.setAttribute("aria-pressed", b.dataset.cle === cle ? "true" : "false");
     zoneApercu.hidden = cle === "donnees" || cle === "ecrans";
@@ -559,7 +577,8 @@ export function vueReglages() {
     { "data-titre": tr("Réglages"), "data-large": "1", "data-plein": "1" },
     h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réglages")), h("p", { class: "sous" }, entiteActive().nom)), estSuperAdmin() ? h("a", { class: "bouton secondaire", href: "#/admin" }, tr("Administration : entreprises et accès")) : null),
     barre,
-    h("form", { class: "reglages-grille", onsubmit: enregistrer }, h("div", { class: "reglages-colonne" }, ...Object.values(sections), h("div", { class: "actions barre-fixe" }, indicateur, boutonEnregistrer)), zoneApercu, zoneVoucher)
+    recherche,
+    h("form", { class: "reglages-grille", onsubmit: enregistrer }, h("div", { class: "reglages-colonne" }, aucun, ...Object.values(sections), h("div", { class: "actions barre-fixe" }, indicateur, boutonEnregistrer)), zoneApercu, zoneVoucher)
   );
   montrer("entreprise");
   return racine;

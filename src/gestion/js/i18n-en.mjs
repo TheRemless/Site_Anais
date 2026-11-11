@@ -32,6 +32,8 @@ export const EN = {
   "filtre actif": "active filter",
   "filtres actifs": "active filters",
   "Réinitialiser": "Reset",
+  "Aucun réglage ne correspond.": "No setting matches.",
+  "Rechercher un réglage": "Search a setting",
   "Appliquer": "Apply",
   " · net {prix}": " · net {prix}",
   " · Responsable : {x}": " · Person in charge: {x}",

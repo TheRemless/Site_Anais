@@ -197,5 +197,23 @@ export function enrichirDemoStats(d, { ajd, ajouterJours, uid, contenu, nouvelle
       }
     }
   }
+  // ---- Journal d'activité : une trentaine de lignes fictives pour voir l'écran rempli (filtres par sujet et par personne) ----
+  const jr = (jours, heure, entite, personne, table, action, libelle, details = {}) =>
+    d.journal.push({ id: d.journal.length + 1, created_at: `${j(jours)}T${heure}:00.000Z`, entite_id: entite.id, user_id: personne.user_id, table_name: table, action, cible: "", libelle, details });
+  const recents = d.dossiers.filter((x) => x.entite_id === e2.id).slice(-6);
+  recents.forEach((x, k) => {
+    const qui = [admin, assistante, stagiaire][k % 3];
+    jr(-12 + k, "03:10", e2, qui, "dossiers", "insert", x.ref || "");
+    jr(-12 + k, "03:25", e2, qui, "documents", "insert", `devis ${x.ref || ""}`);
+    jr(-10 + k, "08:40", e2, assistante, "dossiers", "update", x.ref || "", { accepte_le: { avant: null, apres: j(-10 + k) } });
+    jr(-9 + k, "09:05", e2, admin, "paiements", "insert", `1'200 ${x.ref || ""}`);
+  });
+  jr(-5, "04:00", e2, admin, "catalogue", "update", "Kayak mangroves, demi-journée", { prix_vente: { avant: 800, apres: 900 } });
+  jr(-4, "05:30", e2, admin, "roles", "update", "Éditeur", { permissions: "modifié" });
+  jr(-3, "02:15", e2, admin, "membres", "insert", "stagiaire@demo.test");
+  jr(-2, "07:00", e2, admin, "reglages", "update", "");
+  jr(-1, "06:20", e2, stagiaire, "taches", "insert", "Rappeler le client avant le départ");
+  jr(-1, "08:00", e2, assistante, "clients", "update", "Emma Schmid", { telephone: { avant: "+00 000 000 01", apres: "+00 000 000 11" } });
+  d.journal.sort((a, b) => b.created_at.localeCompare(a.created_at));
   return d;
 }

@@ -879,18 +879,19 @@ html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte 
 
 /* ==== Session C (mobile) : listes et fiche dossier ============================================================= */
 /* Sections repliables : le titre est la zone tactile (44 px), le chevron tourne à l'ouverture. */
-.repli { margin: 0; }
-.repli-titre { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; margin: 0; padding: 0 2px; list-style: none; cursor: pointer; color: var(--texte); font-size: 1.15rem; font-weight: 700; border-top: 1px solid var(--bord); -webkit-tap-highlight-color: transparent; }
-.repli-titre::-webkit-details-marker { display: none; }
+.repli-h { margin: 0; font-size: inherit; }
+.repli-titre { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 52px; margin: 0; padding: 0 2px; background: none; border: 0; border-radius: 0; text-align: left; font: inherit; cursor: pointer; color: var(--texte); font-size: 1.15rem; font-weight: 700; border-top: 1px solid var(--bord); -webkit-tap-highlight-color: transparent; }
 .repli-titre svg { flex: none; color: var(--texte-2); transition: transform var(--duree) var(--courbe); }
-.repli[open] > .repli-titre svg { transform: rotate(180deg); }
+.repli-titre[aria-expanded="true"] svg { transform: rotate(180deg); }
 .repli-corps { padding: 4px 0 8px; }
+.repli-corps[hidden] { display: none; }
 .repli-corps > h2, .repli-corps > .petit-entete > h2 { display: none; }
 .repli-corps > .petit-entete { margin-bottom: 8px; }
 .repli-corps > .petit-entete:not(:has(.entete-actions)) { display: none; }
 .repli-section { margin-bottom: 0; }
 @media (min-width: 720px) {
-  .repli-titre { min-height: 0; padding: 0; border-top: 0; cursor: default; pointer-events: none; margin-bottom: 12px; }
+  .repli-titre { min-height: 0; padding: 0; border-top: 0; cursor: default; pointer-events: none; margin-bottom: 12px; color: var(--texte); }
+  .repli-titre:disabled { color: var(--texte); opacity: 1; }
   .repli-titre svg { display: none; }
   .repli-corps { padding: 0; }
   .repli-section { margin-bottom: 36px; }
@@ -1140,3 +1141,26 @@ th[aria-sort="ascending"] .st-tri, th[aria-sort="descending"] .st-tri { color: v
 .recalcul-commission { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: space-between; padding: 8px 10px; margin: 6px 0; border-radius: var(--rayon); background: var(--surface-2); font-size: 14px; }
 .recalcul-commission span { flex: 1 1 200px; }
 .liste-recalcul { max-height: 40vh; overflow: auto; }
+
+/* ==== Session F : cibles tactiles de 44 px (restes de l'audit mobile) ========================================== */
+/* Pastilles de référence cliquables : la zone tactile dépasse la pastille sans changer la mise en page. */
+a.tag { position: relative; }
+a.tag::after { content: ""; position: absolute; inset: -12px -6px; }
+.service-titre { display: flex; align-items: center; min-height: 44px; }
+details > summary { display: flex; align-items: center; min-height: 44px; }
+.bloc-tarifs h2 a, .carte-regle h3 a, .regles-trajets .aide a, .st-lien-groupe a { display: inline-flex; align-items: center; min-height: 44px; }
+@media (pointer: coarse), (max-width: 719px) { .bouton-icone { width: 44px; height: 44px; } }
+/* Réglages : groupes repliables (légende = bouton) et recherche */
+.recherche-reglages { width: 100%; max-width: 520px; min-height: 48px; margin: 4px 0 12px; }
+.repli-groupe-fs > legend { float: none; width: 100%; padding: 0; }
+.repli-groupe-fs > legend .repli-groupe { border-top: 0; font-size: 1rem; min-height: 48px; padding: 0 4px; }
+.repli-groupe-fs > .repli-corps { padding-top: 0; }
+@media (min-width: 720px) {
+  .repli-groupe-fs > legend { width: auto; padding: 0 6px; }
+  .repli-groupe-fs > legend .repli-groupe { min-height: 0; padding: 0; margin: 0; font-size: inherit; }
+}
+/* Journal, tarifs : filtres pleine largeur sur téléphone, un peu d'air sous le texte d'aide */
+@media (max-width: 719px) {
+  .aide + .barre-outils { margin-top: 12px; }
+  .barre-outils .grille-form.filtres .champ select, .barre-outils .grille-form.filtres .champ input { width: 100%; max-width: none; }
+}

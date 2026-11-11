@@ -226,37 +226,91 @@ export function barreFiltres({ recherche = null, puces = null, filtres = [], onc
 // est gardé par fiche tant que la page n'est pas rechargée. Une ancre vers un champ caché (#form-paiement) ouvre sa section avant d'y aller.
 const etatsRepli = new Map();
 export function plierSections(racine, { cle, ouverts = new Set() }) {
-  const grand = window.matchMedia("(min-width: 720px)").matches;
+  const large = window.matchMedia("(min-width: 720px)");
+  const reperes = [];
+  let n = 0;
   for (const section of [...racine.children].filter((e) => e.tagName === "SECTION")) {
     const titre = section.querySelector(":scope > h2, :scope > .petit-entete > h2");
     if (!titre) continue;
     const nom = titre.textContent;
     const memo = etatsRepli.get(`${cle}|${nom}`);
-    const details = h("details", { class: "repli" }, h("summary", { class: "repli-titre" }, h("span", null, nom), icone("chevron", 18)));
-    if (grand || (memo ?? ouverts.has(nom))) details.open = true;
-    details.addEventListener("toggle", () => etatsRepli.set(`${cle}|${nom}`, details.open));
-    const corps = h("div", { class: "repli-corps" });
+    // Le titre reste un titre pour un lecteur d'écran (navigation par titres) : un h2 qui contient le bouton de repli.
+    const idCorps = `repli-${cle}-${n++}`.replace(/[^A-Za-z0-9_-]/g, "-");
+    const bouton = h("button", { type: "button", class: "repli-titre", "aria-controls": idCorps }, h("span", null, nom), icone("chevron", 18));
+    const corps = h("div", { class: "repli-corps", id: idCorps });
     while (section.firstChild) corps.append(section.firstChild);
-    details.append(corps);
+    let ouvert = memo ?? ouverts.has(nom);
+    const maj = () => {
+      const tout = large.matches;
+      const vu = tout || ouvert;
+      corps.hidden = !vu;
+      // Au-dessus de 720 px tout reste ouvert et le titre n'est plus un bouton : seulement un titre.
+      bouton.disabled = tout;
+      if (tout) bouton.removeAttribute("aria-expanded");
+      else bouton.setAttribute("aria-expanded", String(ouvert));
+    };
+    const ouvrir = (v) => { ouvert = v; etatsRepli.set(`${cle}|${nom}`, ouvert); maj(); };
+    bouton.addEventListener("click", () => ouvrir(!ouvert));
     section.className = [section.className, "repli-section"].filter(Boolean).join(" ");
-    if (section.id) details.id = section.id;
-    section.append(details);
+    section.append(h("h2", { class: "repli-h" }, bouton), corps);
+    section._repli = { ouvrir, estOuvert: () => ouvert };
+    reperes.push(maj);
+    maj();
   }
-  // Rotation d'une tablette ou fenêtre élargie : au-dessus de 720 px les titres ne se cliquent plus, tout doit donc s'ouvrir.
-  const large = window.matchMedia("(min-width: 720px)");
-  const toutOuvrir = (e) => e.matches && racine.querySelectorAll("details.repli").forEach((d) => (d.open = true));
-  large.addEventListener("change", toutOuvrir);
+  // Rotation d'une tablette ou fenêtre élargie : au-dessus de 720 px les titres ne se cliquent plus, tout s'ouvre.
+  large.addEventListener("change", () => reperes.forEach((maj) => maj()));
   racine.addEventListener(
     "click",
     (e) => {
       const lien = e.target.closest && e.target.closest('a[href^="#"]');
       const cible = lien && lien.getAttribute("href").length > 1 ? racine.querySelector(`[id="${lien.getAttribute("href").slice(1)}"]`) : null;
-      const parent = cible && cible.closest("details");
-      if (parent && !parent.open) parent.open = true;
+      const parent = cible && cible.closest(".repli-section");
+      if (parent && parent._repli && !parent._repli.estOuvert()) parent._repli.ouvrir(true);
     },
     true
   );
   return racine;
+}
+
+// Groupes repliables d'un formulaire (les `fieldset` de Réglages) : la légende reste la légende du groupe et contient un bouton avec aria-expanded.
+// Au-dessus de 720 px tout reste ouvert. `filtrer(q)` ne laisse que les groupes qui contiennent le texte cherché (et les ouvre) ; renvoie leur nombre.
+export function plierGroupes(racine, { ouverts = (nom, i) => i === 0 } = {}) {
+  const large = window.matchMedia("(min-width: 720px)");
+  const groupes = [];
+  let forcer = false;
+  racine.querySelectorAll("fieldset").forEach((fs, i) => {
+    const legende = fs.querySelector(":scope > legend");
+    if (!legende) return;
+    const nom = legende.textContent;
+    const corps = h("div", { class: "repli-corps" });
+    [...fs.childNodes].filter((n) => n !== legende).forEach((n) => corps.append(n));
+    const bouton = h("button", { type: "button", class: "repli-titre repli-groupe" }, h("span", null, nom), icone("chevron", 18));
+    legende.replaceChildren(bouton);
+    fs.append(corps);
+    fs.classList.add("repli-groupe-fs");
+    let ouvert = ouverts(nom, i);
+    const g = { fs, texte: "", maj() { const vu = large.matches || forcer || ouvert; corps.hidden = !vu; bouton.disabled = large.matches; if (large.matches) bouton.removeAttribute("aria-expanded"); else bouton.setAttribute("aria-expanded", String(vu)); } };
+    bouton.addEventListener("click", () => { ouvert = !(large.matches || forcer || ouvert); g.maj(); });
+    groupes.push(g);
+    g.maj();
+  });
+  large.addEventListener("change", () => groupes.forEach((g) => g.maj()));
+  const norm = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return {
+    filtrer(q) {
+      const mots = norm(q).split(/\s+/).filter(Boolean);
+      forcer = mots.length > 0;
+      let n = 0;
+      for (const g of groupes) {
+        const t = norm(g.fs.textContent);
+        const ok = mots.every((m) => t.includes(m));
+        g.fs.hidden = !ok;
+        if (ok) n++;
+        g.maj();
+      }
+      return n;
+    },
+  };
 }
 
 // Une liste d'étapes (« Fait » / « À faire ») : sur téléphone, les étapes faites se replient derrière un bouton pour laisser la place à la suite.
