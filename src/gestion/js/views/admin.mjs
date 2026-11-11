@@ -2,7 +2,7 @@
 import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer } from "../etat.mjs";
 import { PERMISSIONS, DEPENDANCES } from "../defauts.mjs";
 import { h, champ, modal, toast, slug, confirmer } from "../ui.mjs";
-import { vide } from "./commun.mjs";
+import { vide, plierSections } from "./commun.mjs";
 import { tr, N_ } from "../i18n.mjs";
 
 const PORTEES = [
@@ -198,14 +198,14 @@ export function vueAdmin() {
     return l.length ? l.join(", ") : tr("Aucun accès");
   };
 
-  return h(
+  const racine = h(
     "div",
     { "data-titre": tr("Administration") },
     h("div", { class: "entete" }, h("h1", null, tr("Administration"))),
     h(
       "section",
       null,
-      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Entreprises")), h("button", { class: "secondaire", type: "button", onclick: () => nouvelleEntiteModal(rafraichir) }, tr("Nouvelle entreprise"))),
+      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Entreprises")), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: () => nouvelleEntiteModal(rafraichir) }, tr("Nouvelle entreprise")))),
       h("p", { class: "aide" }, tr("Chaque entreprise a ses propres clients, dossiers, paiements, catalogue, réglages, logo et devise. Personne ne voit une entreprise sans y avoir accès.")),
       h(
         "table",
@@ -281,4 +281,6 @@ export function vueAdmin() {
       )
     )
   );
+  // Trois sections longues : repliées sur téléphone, avec le titre comme bouton.
+  return plierSections(racine, { cle: "admin", ouverts: new Set([tr("Entreprises")]) });
 }
