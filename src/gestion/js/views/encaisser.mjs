@@ -6,6 +6,7 @@ import { aujourdhui, formatMontant, formatSommes, formatDate } from "../calc.mjs
 import { commissionsARecevoir, repartirReception, nomMoisCourt } from "../operations-calc.mjs";
 import { vide, listeAdaptative } from "./commun.mjs";
 import { voitNets, prix } from "./partenaires.mjs";
+import { ouvrirRecalculCommissions } from "./recalcul-commission.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
 const signe = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + prix(Math.abs(n));
@@ -153,7 +154,7 @@ export function vueEncaisser() {
     rienADire ? vide(tr("Rien à encaisser"), tr("Les clients ont tout payé et aucune commission n'est en attente.")) : null,
     dus.length ? h("section", null, h("h2", null, tr("Les clients doivent")), listeClients()) : null,
     aRecevoir.length
-      ? h("section", { class: "commissions-recevoir" }, h("h2", null, tr("Commissions des prestataires")), h("p", { class: "aide" }, tr("Services payés sur place : le prestataire reverse une commission après la prestation. Un virement reçu se saisit une fois pour le partenaire et le mois.")), listeCommissions(aRecevoir, false))
+      ? h("section", { class: "commissions-recevoir" }, h("h2", null, tr("Commissions des prestataires")), h("p", { class: "aide" }, tr("Services payés sur place : le prestataire reverse une commission après la prestation. Un virement reçu se saisit une fois pour le partenaire et le mois.")), ecrit ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirRecalculCommissions(null, rafraichir) }, tr("Recalculer les commissions"))) : null, listeCommissions(aRecevoir, false))
       : null,
     recues.length ? h("details", { class: "commissions-recues" }, h("summary", null, tr("Déjà reçues ({n})", { n: recues.length })), listeCommissions(recues, true)) : null
   );
