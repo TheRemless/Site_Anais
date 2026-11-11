@@ -5,7 +5,7 @@
 // pour être collée (sinon téléchargée).
 import { etat, nomClient, partenaireDe, resumeDossier, reglages } from "../etat.mjs";
 import { h, modal, toast } from "../ui.mjs";
-import { renderVoucher, imprimerVoucher } from "./voucher.mjs";
+import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
 import { telecharger } from "./commun.mjs";
 import { numeroVoucher, nomFichierVoucher, messageVoucher, lienWhatsApp, controlesVoucher } from "../operations-calc.mjs";
 import { chiffres, telWhatsApp } from "../partenaires-calc.mjs";
@@ -83,13 +83,56 @@ export function envoyerVoucher(x) {
     toast(copiee ? tr("Image copiée : collez-la dans la conversation WhatsApp (Ctrl+V).") : tr("Image téléchargée : joignez-la dans la conversation WhatsApp."));
   }
 
+  // Tous les vouchers du dossier dans une seule conversation : les images se préparent en arrière-plan, puis un seul tap les envoie.
+  // Le partage doit partir d'un tap, pas après plusieurs secondes de calcul : d'où le bouton qui n'apparaît actif qu'une fois tout prêt.
+  const freres = vouchersDuDossier(dossier.id);
+  const boutonTous = h("button", { class: "secondaire", type: "button", disabled: true, hidden: freres.length < 2 });
+  let fichiersTous = null;
+  let ferme = false; // fenêtre fermée : on arrête de fabriquer des images dont personne ne se servira
+  async function preparerTous() {
+    const fichiers = [];
+    for (const [i, y] of freres.entries()) {
+      if (ferme) return;
+      boutonTous.textContent = tr("Préparation des vouchers {i} sur {n}…", { i: i + 1, n: freres.length });
+      const blob = y.reservation.id === r.id && fichier ? fichier : await imageVoucher(y);
+      fichiers.push(new File([blob], nomFichierVoucher(numeroVoucher(dossier.ref || "", y.index), nomClient(client)), { type: "image/png" }));
+    }
+    fichiersTous = fichiers;
+    boutonTous.disabled = false;
+    boutonTous.textContent = tr("Envoyer les {n} vouchers du dossier", { n: freres.length });
+  }
+  boutonTous.addEventListener("click", async () => {
+    if (!fichiersTous) return;
+    if (navigator.canShare && navigator.canShare({ files: fichiersTous })) {
+      try {
+        await navigator.share({ files: fichiersTous, text: message.client });
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        for (const f of fichiersTous) telecharger(f.name, f, "image/png");
+        toast(tr("Le partage a échoué : les images sont téléchargées, joignez-les dans WhatsApp."), true);
+      }
+      return;
+    }
+    for (const f of fichiersTous) telecharger(f.name, f, "image/png");
+    toast(tr("Images téléchargées : joignez-les dans la conversation WhatsApp."));
+  });
+  const copierMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(message.client);
+      toast(tr("Message copié."));
+    } catch {
+      toast(tr("Copie impossible dans ce navigateur : sélectionnez le texte à la main."), true);
+    }
+  };
   const etiquette = (pour) => (pour === "client" ? tr("WhatsApp : client") : tr("WhatsApp : prestataire"));
   function afficherActions() {
     const destinataires = [["client", telClient]];
     if (partenaire) destinataires.push(["partenaire", telPartenaire]);
     actions.replaceChildren(
       ...destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => envoyer(pour) }, destinataires.length === 1 ? tr("Envoyer sur WhatsApp") : etiquette(pour))),
+      boutonTous,
       h("button", { class: "secondaire", type: "button", onclick: telechargerImage }, tr("Télécharger l'image")),
+      h("button", { class: "lien", type: "button", onclick: copierMessage }, tr("Copier le message")),
       ...(window.matchMedia("(hover: hover)").matches ? [h("button", { class: "lien", type: "button", onclick: () => imprimerVoucher(x) }, tr("PDF"))] : [])
     );
     aide.textContent = peutPartager()
@@ -108,7 +151,7 @@ export function envoyerVoucher(x) {
       actions,
       aide
     ),
-    { large: true }
+    { large: true, protege: false, ferme: () => (ferme = true) }
   );
 
   imageVoucher(x)
@@ -118,6 +161,7 @@ export function envoyerVoucher(x) {
       adresseApercu = URL.createObjectURL(blob);
       apercu.replaceChildren(h("img", { src: adresseApercu, alt: tr("Voucher {numero}", { numero }) }));
       afficherActions();
+      if (freres.length > 1) preparerTous().catch((err) => (boutonTous.textContent = tr("Les autres vouchers n'ont pas pu être préparés : {message}", { message: err.message })));
     })
     .catch((err) => {
       apercu.replaceChildren(h("p", { class: "erreur-form", role: "alert" }, tr("L'image n'a pas pu être fabriquée : {message}", { message: err.message })));

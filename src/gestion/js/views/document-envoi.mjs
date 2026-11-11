@@ -48,10 +48,12 @@ export async function fabriquerPdf(doc) {
   }
 }
 
-const messageDocument = (doc, prenom) => {
+// Message qui accompagne le document, dans la langue du document, avec son numéro.
+const messageDocument = (doc, prenom, ref = "") => {
   const en = doc.contenu.langue === "en";
   const nom = doc.type === "devis" ? (en ? "quote" : "devis") : en ? "invoice" : "facture";
-  return en ? `Hello${prenom ? ` ${prenom}` : ""}, here is your ${nom}.` : `Bonjour${prenom ? ` ${prenom}` : ""}, voici votre ${nom}.`;
+  const numero = ref ? ` ${ref}` : "";
+  return en ? `Hello${prenom ? ` ${prenom}` : ""}, here is your ${nom}${numero}.` : `Bonjour${prenom ? ` ${prenom}` : ""}, voici votre ${nom}${numero}.`;
 };
 
 // `marquerEnvoye` (facultatif) : appelé si la personne confirme que le document est parti ; il pose la date d'envoi d'un devis.
@@ -59,7 +61,7 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
   const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === dossier.client_id) || {};
   const tel = chiffres(client.telephone);
-  const message = messageDocument(doc, client.prenom || "");
+  const message = messageDocument(doc, client.prenom || "", dossier.ref || "");
   const apercu = h("div", { class: "envoi-apercu", "aria-live": "polite" }, h("p", { class: "aide" }, tr("Préparation du PDF…")));
   const actions = h("div", { class: "actions envoi-actions" });
   const aide = h("p", { class: "aide" });
@@ -89,17 +91,37 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
     await apres();
   }
 
+  // Sur ordinateur, le PDF est téléchargé puis le courrier s'ouvre : un lien mailto ne peut pas joindre de fichier.
+  async function courriel() {
+    telechargerPdf();
+    const objet = doc.type === "devis" ? (doc.contenu.langue === "en" ? "Your quote" : "Votre devis") : doc.contenu.langue === "en" ? "Your invoice" : "Votre facture";
+    window.location.href = `mailto:${client.email}?subject=${encodeURIComponent(`${objet} ${dossier.ref || ""}`.trim())}&body=${encodeURIComponent(message)}`;
+    toast(tr("PDF téléchargé : joignez-le au courrier qui s'ouvre."));
+    await apres();
+  }
+  const copierMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(message);
+      toast(tr("Message copié."));
+    } catch {
+      toast(tr("Copie impossible dans ce navigateur : sélectionnez le texte à la main."), true);
+    }
+  };
+
   function afficherActions() {
     actions.replaceChildren(
-      h("button", { class: "principal", type: "button", onclick: whatsapp }, tr("Envoyer sur WhatsApp")),
+      // Avec le partage du téléphone, la liste propose WhatsApp, Mail, Messages : le libellé ne promet pas une seule application.
+      h("button", { class: "principal", type: "button", onclick: whatsapp }, peutPartager() ? tr("Envoyer le PDF") : tr("Envoyer sur WhatsApp")),
+      ...(!peutPartager() && client.email ? [h("button", { class: "secondaire", type: "button", onclick: courriel }, tr("Envoyer par e-mail"))] : []),
       h("button", { class: "secondaire", type: "button", onclick: async () => (telechargerPdf(), await apres()) }, tr("Télécharger le PDF")),
+      h("button", { class: "lien", type: "button", onclick: copierMessage }, tr("Copier le message")),
       ...(sansImpression() ? [] : [h("button", { class: "lien", type: "button", onclick: () => pdf({ ...doc }) }, tr("Imprimer"))])
     );
-    aide.textContent = peutPartager() ? tr("WhatsApp s'ouvre avec le PDF : choisissez le contact dans sa liste.") : tr("WhatsApp ne reçoit pas de fichier par un lien : le PDF est téléchargé, joignez-le dans la conversation qui s'ouvre.");
+    aide.textContent = peutPartager() ? tr("La liste de partage s'ouvre avec le PDF : choisissez WhatsApp, Mail ou Messages, puis le contact.") : tr("WhatsApp ne reçoit pas de fichier par un lien : le PDF est téléchargé, joignez-le dans la conversation qui s'ouvre.");
   }
 
   const titre = doc.type === "devis" ? tr("Envoyer le devis") : tr("Envoyer la facture");
-  modal(titre, h("div", { class: "modal-corps envoi-voucher" }, h("p", { class: "aide" }, [nomClient(client), client.telephone].filter(Boolean).join(" ")), apercu, actions, aide), { large: true });
+  modal(titre, h("div", { class: "modal-corps envoi-voucher" }, h("p", { class: "envoi-resume" }, h("strong", null, `${doc.type === "devis" ? tr("Devis") : tr("Facture")} ${dossier.ref || ""}`.trim()), h("span", null, [nomClient(client), client.telephone || client.email].filter(Boolean).join(" · "))), apercu, actions, h("p", { class: "envoi-message" }, message), aide), { large: true, protege: false });
 
   fabriquerPdf(doc)
     .then(({ nom, blob, apercu: page }) => {

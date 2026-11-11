@@ -8,6 +8,7 @@ import { ouvrirVersions as ouvrirVersionsDocument } from "./versions.mjs";
 import { supprimerDocument } from "./document-suppression.mjs";
 import { envoyerDocument, sansImpression } from "./document-envoi.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
+import { apercuMobile } from "./apercu-mobile.mjs";
 import { tr, localeActive } from "../i18n.mjs";
 
 const LARGEUR_FEUILLE = 794; // 210 mm à 96 dpi
@@ -229,7 +230,7 @@ function editeurVue(id) {
   function ajusterEchelle() {
     const largeur = zoneApercu.clientWidth;
     if (!largeur) return;
-    const s = Math.min(1, (largeur - 2) / LARGEUR_FEUILLE);
+    const s = Math.min(1, (largeur - 2) / LARGEUR_FEUILLE) * (zoneApercu.zoom || 1);
     echelle.style.transform = `scale(${s})`;
     cadre.style.height = `${echelle.firstChild ? echelle.firstChild.offsetHeight * s : 0}px`;
     cadre.style.width = `${LARGEUR_FEUILLE * s}px`;
@@ -642,6 +643,8 @@ function editeurVue(id) {
   );
 
   const lectureSeule = !peut("documents.ecrire");
+  const corpsEditeur = h("div", { class: "editeur" }, formulaire, zoneApercu);
+  const barreEditeur = apercuMobile({ racine: corpsEditeur, zoneApercu, ajuster: ajusterEchelle });
   const racine = h(
     "div",
     { "data-titre": `${nomDoc} ${dossier.ref}`, "data-large": "1", "data-plein": "1" },
@@ -656,7 +659,8 @@ function editeurVue(id) {
     bandeauConflit,
     avertissementAnglais,
     lectureSeule ? h("p", { class: "bandeau-info" }, tr("Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.")) : null,
-    h("div", { class: "editeur" }, formulaire, zoneApercu)
+    barreEditeur,
+    corpsEditeur
   );
   if (lectureSeule) {
     for (const el of formulaire.querySelectorAll("input, select, textarea, button")) el.disabled = true;

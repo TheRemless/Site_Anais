@@ -754,6 +754,26 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .reponse-prestataire { display: grid; gap: 10px; }
 .reponse-prestataire .aide { margin: 0; }
 @media (max-width: 719px) { .prestataire-actions .principal, .prestataire-actions .secondaire { flex: 1 1 auto; } }
+/* Envoi d'un document : ce qui part, à qui, avec quel texte. */
+.envoi-resume { display: flex; flex-direction: column; gap: 2px; margin: 0 0 12px; }
+.envoi-resume span { color: var(--texte-2); }
+.envoi-message { margin: 12px 0 0; padding: 8px 12px; border-left: 3px solid var(--bord-fort); background: var(--surface-2); font-size: 0.9rem; white-space: pre-wrap; }
+/* Éditeur sur téléphone et tablette : onglets Éditer et Aperçu, zoom de l'aperçu. Sur grand écran le formulaire et l'aperçu restent côte à côte. */
+.editeur-barre { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 -16px 12px; padding: 4px 16px; background: var(--fond); border-bottom: 1px solid var(--bord); }
+.editeur-barre .onglets { flex: 1 1 auto; margin: 0; }
+.editeur-barre .onglets button { flex: 1; }
+.apercu-zoom { display: flex; align-items: center; gap: 8px; }
+.apercu-zoom[hidden] { display: none; }
+.apercu-zoom .petit { min-width: 44px; padding: 0 12px; font-size: 1.2rem; }
+.apercu-zoom .aide { margin: 0; }
+@media (max-width: 1179px) {
+  .editeur[data-vue="editer"] .apercu { display: none; }
+  .editeur[data-vue="apercu"] .editeur-form { display: none; }
+  .apercu { overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y; }
+  .apercu.zoome .apercu-cadre { margin: 0; }
+}
+@media (max-width: 899px) { .editeur-barre { top: calc(56px + env(safe-area-inset-top)); } }
+@media (min-width: 1180px) { .editeur-barre { display: none; } }
 /* ===== Fin session D ===== */
 /* ---- Paiements (session A) : puce « Chez nous / Sur place », écran À encaisser ---- */
 .mode-reglement { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--bord-fort, var(--bord)); border-radius: 999px; background: var(--surface); }
