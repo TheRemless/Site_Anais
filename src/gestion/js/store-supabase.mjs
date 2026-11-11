@@ -147,7 +147,7 @@ export function creer(config, { client } = {}) {
       return verifie(await sb.from("documents_historique").select("id, archive_le, ligne").eq("document_id", docId).eq("action", "update").order("archive_le", { ascending: false }).limit(30));
     },
     async corbeille(entiteId) {
-      return verifie(await sb.from("corbeille").select("id, ligne, liees, supprime_par, supprime_le").eq("entite_id", entiteId).eq("table_name", "dossiers").order("supprime_le", { ascending: false }));
+      return verifie(await sb.from("corbeille").select("id, ligne, supprime_par, supprime_le").eq("entite_id", entiteId).eq("table_name", "dossiers").order("supprime_le", { ascending: false }));
     },
     async restaurerDossier(id) {
       return verifie(await sb.rpc("restaurer_dossier", { p_id: id }));

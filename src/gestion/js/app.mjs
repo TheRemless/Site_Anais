@@ -1,5 +1,5 @@
 import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules, modeExcursions } from "./etat.mjs";
-import { h, vider, toast, modal, icone, saisie, squelette } from "./ui.mjs";
+import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
 import { libelleStatut, formatMontant, aujourdhui } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
@@ -192,6 +192,7 @@ const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class:
 const sections = (liste, apres) => liste.map((s) => h("div", { class: "menu-section" }, h("p", { class: "menu-section-titre" }, s.titre), h("ul", null, s.items.map((e) => h("li", null, lienEcran(e, apres))))));
 
 async function deconnecter() {
+  purgerBrouillons();
   await retirerALaDeconnexion(etat.store);
   await etat.store.deconnecter();
   etat.session = null;
