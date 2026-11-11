@@ -755,3 +755,14 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .champ-mode .etiquette { display: block; margin-bottom: 6px; font-size: 0.88rem; font-weight: 600; }
 .champ-mode .aide { margin-top: 8px; }
 .s-sur_place { color: #25653d; }
+.ecart-reception { min-height: 1.4em; margin: 0 0 8px; font-weight: 600; }
+.modal-corps > .aide { margin: 0 0 14px; }
+.detail-services { margin: 6px 0 0; }
+.detail-services summary { display: flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--teal-700); cursor: pointer; }
+.detail-services ul { list-style: none; margin: 0 0 6px; padding: 0; }
+.detail-services li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--bord); font-size: 0.92rem; }
+.commissions-recues > summary { display: flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--teal-700); cursor: pointer; }
+.commissions-recevoir .carte-actions, .commissions-recues .carte-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 719px) {
+  .commissions-recevoir .carte-actions .principal, .commissions-recues .carte-actions .principal { order: -1; flex: 1 1 100%; }
+}
