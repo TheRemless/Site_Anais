@@ -4,6 +4,8 @@ import { h, champ, modal, confirmer, toast, icone } from "../ui.mjs";
 import { uid, MESSAGES_DEFAUT } from "../defauts.mjs";
 import { remplirGabarit, destinataireMessage } from "../operations-calc.mjs";
 import { chiffres } from "./partenaires.mjs";
+import { sansAccents } from "../partenaires-calc.mjs";
+import { barreFiltres, plierSections } from "./commun.mjs";
 import { tr, N_ } from "../i18n.mjs";
 
 export const LANGUES = [
@@ -123,12 +125,13 @@ export function vueMessages() {
   const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
   const ouvrir = (m) => { const fermer = modal(m.id ? tr("Modifier le message") : tr("Nouveau message type"), formulaireMessage(m, () => (fermer(), rafraichir())), { large: true }); };
   const tous = messagesTypes();
-  return h(
-    "div",
-    { "data-titre": tr("Messages") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Messages types")), h("p", { class: "sous" }, tr("Au client : confirmation, rappel de la veille, avis, météo. Au partenaire : demande, relance, modification, annulation. À copier depuis une réservation."))), admin ? h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: async () => { if (await confirmer(tr("Remettre les messages de départ ? Vos modifications seront perdues."), tr("Remettre"))) { await enregistrerReglages({ ...reglages(), messages: structuredClone(MESSAGES_DEFAUT) }); rafraichir(); } } }, tr("Remettre ceux de départ")), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, tr("Nouveau message"))) : null),
-    DESTINATAIRES.flatMap(([pour, nomPour]) => LANGUES.map(([code, nom]) => {
-      const du = tous.filter((m) => destinataireMessage(m) === pour && m.langue === code);
+  // Trente modèles ne se lisent pas d'une traite sur téléphone : une recherche, des puces (client, partenaire) et des sections repliées.
+  const filtre = { recherche: "", pour: "tous" };
+  const zone = h("div", { class: "messages-zone" });
+  const correspond = (m) => !filtre.recherche.trim() || sansAccents(`${m.titre} ${m.cle} ${m.corps}`).includes(sansAccents(filtre.recherche.trim()));
+  const sections = () =>
+    DESTINATAIRES.filter(([pour]) => filtre.pour === "tous" || filtre.pour === pour).flatMap(([pour, nomPour]) => LANGUES.map(([code, nom]) => {
+      const du = tous.filter((m) => destinataireMessage(m) === pour && m.langue === code && correspond(m));
       if (!du.length) return null;
       return h(
         "section",
@@ -137,7 +140,23 @@ export function vueMessages() {
         code === "th" ? h("p", { class: "aide" }, tr("Propositions à faire relire par une personne qui lit le thaï avant usage réel.")) : null,
         h("ul", { class: "cartes" }, du.map((m) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, m.titre, h("span", { class: "tag" }, m.cle)), h("pre", { class: "message-texte" }, m.corps), h("span", { class: "carte-pied" }, h("span"), h("span", { class: "carte-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => copier(m.corps) }, tr("Copier")), admin ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrir(m) }, tr("Modifier")) : null))))))
       );
-    })),
+    }));
+
+  function dessiner() {
+    const contenu = sections().filter(Boolean);
+    zone.replaceChildren(...contenu, ...(contenu.length ? [] : [h("p", { class: "vide-court" }, tr("Aucun message ne correspond."))]));
+    // Pendant une recherche tout s'ouvre : un résultat caché derrière un titre replié ne sert à rien.
+    const cherche = filtre.recherche.trim();
+    plierSections(zone, { cle: cherche ? `messages|${cherche}` : "messages", ouverts: cherche ? new Set([...zone.querySelectorAll(":scope > section > h2")].map((t) => t.textContent)) : new Set() });
+  }
+  const barre = barreFiltres({ recherche: { placeholder: tr("Titre, usage ou texte"), libelle: tr("Chercher un message") }, puces: { libelle: tr("Destinataire"), valeur: "tous", options: [{ valeur: "tous", libelle: tr("Tous") }, ...DESTINATAIRES.map(([valeur, libelle]) => ({ valeur, libelle: tr(libelle) }))] }, onchange: (v) => { filtre.recherche = v.recherche; filtre.pour = v.puces; dessiner(); } });
+  dessiner();
+  return h(
+    "div",
+    { "data-titre": tr("Messages") },
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Messages types")), h("p", { class: "sous" }, tr("Au client : confirmation, rappel de la veille, avis, météo. Au partenaire : demande, relance, modification, annulation. À copier depuis une réservation."))), admin ? h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: async () => { if (await confirmer(tr("Remettre les messages de départ ? Vos modifications seront perdues."), tr("Remettre"))) { await enregistrerReglages({ ...reglages(), messages: structuredClone(MESSAGES_DEFAUT) }); rafraichir(); } } }, tr("Remettre ceux de départ")), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, tr("Nouveau message"))) : null),
+    tous.length > 4 ? barre.noeud : null,
+    zone,
     !tous.length ? h("p", { class: "vide-court" }, tr("Aucun message type.")) : null,
     h("p", { class: "aide" }, `${tous.length > 1 ? tr("Langues :") : tr("Langue :")} ${[...new Set(tous.map((m) => nomLangue(m.langue)))].join(", ")}. ${admin ? "" : tr("Seuls les administrateurs modifient les messages.")}`)
   );
