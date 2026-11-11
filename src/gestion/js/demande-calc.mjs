@@ -344,8 +344,10 @@ export function completerEnfant(offre, pax, prestations) {
 // Supplément « par personne supplémentaire » d'une excursion : la prestation du même partenaire, du même groupe et du même nom avant la virgule
 // (« Programme B : Private Fishing & Seafood, Base 1-2 pers » et « …, Personne supplémentaire »).
 export function prestationSupplement(p, prestations = []) {
-  if (p.unite === "sup" || p.unite === "ch") return null;
-  return prestations.find((q) => q.id !== p.id && q.actif !== false && q.unite === "sup" && q.partenaire_id === p.partenaire_id && q.famille === p.famille && (q.groupe || "") === (p.groupe || "") && (nomCourt(q.libelle) === nomCourt(p.libelle) || (prefixeProgramme(q.libelle) && prefixeProgramme(q.libelle) === prefixeProgramme(p.libelle)))) || null;
+  if (p.unite !== "grp") return null;
+  const memes = prestations.filter((q) => q.id !== p.id && q.actif !== false && q.unite === "sup" && q.partenaire_id === p.partenaire_id && q.famille === p.famille && (q.groupe || "") === (p.groupe || ""));
+  // Le même nom avant la virgule d'abord, le nom du programme (« Programme B ») seulement à défaut.
+  return memes.find((q) => nomCourt(q.libelle) === nomCourt(p.libelle)) || memes.find((q) => prefixeProgramme(q.libelle) && prefixeProgramme(q.libelle) === prefixeProgramme(p.libelle)) || null;
 }
 
 // Prix de base pour 1 ou 2 personnes, puis le supplément pour chaque personne en plus : le total de l'offre les additionne, `supplement` garde la

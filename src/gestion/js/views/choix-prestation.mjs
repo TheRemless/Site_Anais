@@ -98,7 +98,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
             { class: "choix" },
             h("div", { class: "choix-texte" }, h("strong", null, x.libelle), h("span", null, [nomPartenaire(x.partenaire_id), x.groupe, d.horaires || d.capacite || d.duree].filter(Boolean).join(" · "))),
             h("div", { class: "choix-prix" }, h("strong", null, prix(x.prix_vente)), h("span", null, x.sur_place ? tr("à payer sur place") : libelleUnite(x.unite))),
-            h("div", { class: "choix-actions" }, champQte, h("button", { class: "principal petit", type: "button", onclick: () => (x.unite === "sup" && !(Number(champQte.querySelector("input").value) > 0) ? toast(tr("Aucune personne supplémentaire : rien à ajouter. Indiquez combien de personnes dépassent les deux premières."), true) : ajoute([ligneDepuisPrestation(x, netPrestation(x), { langue, date: date.value, qte: champQte ? Number(champQte.querySelector("input").value) : 1, devise })], x.sur_place ? tr("Note sur les frais de parc") : x.libelle)) }, x.sur_place ? tr("Ajouter la note") : tr("Ajouter")))
+            h("div", { class: "choix-actions" }, champQte, h("button", { class: "principal petit", type: "button", onclick: () => (x.unite === "sup" && champQte && !(Number(champQte.querySelector("input").value) > 0) ? toast(tr("Aucune personne supplémentaire : rien à ajouter. Indiquez combien de personnes dépassent les deux premières."), true) : ajoute([ligneDepuisPrestation(x, netPrestation(x), { langue, date: date.value, qte: champQte ? Number(champQte.querySelector("input").value) : 1, devise })], x.sur_place ? tr("Note sur les frais de parc") : x.libelle)) }, x.sur_place ? tr("Ajouter la note") : tr("Ajouter")))
           )
         );
       }

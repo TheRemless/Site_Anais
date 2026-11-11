@@ -122,3 +122,26 @@ test("dans une facture réelle l'intro est vidée et le libellé décrit le serv
   const x = contenuAvecReservation({ lignes }, { ligne_id: "d1", details: { lignes_ids: ["d1", "d2"] } }, { personnes: { adultes: 4, enfants: 0 } }, { personnes: { adultes: 5, enfants: 0 } });
   assert.deepEqual(x.contenu.lignes.map((l) => l.qte), [1, 3]);
 });
+
+test("revue : un prix de groupe ne se met pas à l'échelle, le supplément ne va qu'à une base de groupe, le préfixe ne vaut que pour « Programme X »", () => {
+  // Base seule (intro vidée dans la facture) : passer de 2 à 3 personnes ne triple pas le prix, l'écart est signalé.
+  const baseSeule = [{ ...ligneDepuisPrestation(base, null, { qte: 1, date: "2026-12-05" }), id: "d1", intro: "", titre: base.libelle }];
+  assert.equal(baseSeule[0].par, "grp");
+  const x = contenuAvecReservation({ lignes: baseSeule }, { ligne_id: "d1", details: {} }, { personnes: { adultes: 1, enfants: 0 } }, { personnes: { adultes: 3, enfants: 0 } });
+  assert.equal(x.contenu, null);
+  assert.equal(x.reste[0].cle, "adultes");
+  // Les unités par personne gardent leur forme de ligne (pas de drapeau en plus).
+  assert.equal("par" in ligneDepuisPrestation({ ...base, unite: "pp" }, null, { qte: 2 }), false);
+  // Un tarif par personne du même programme ne reçoit pas le supplément.
+  const join = { ...base, id: "j", unite: "pp", libelle: "Programme B : Join group, par personne", prix_vente: 1000 };
+  const o = proposerOffres({ prestation: "Programme B Join group", adultes: 4, enfants: 0 }, { prestations: [join, sup] });
+  assert.equal(o[0].total, 4000);
+  assert.equal(o[0].supplement, undefined);
+  // « Speedboat transfer: A → B » n'est pas un programme : l'aller et le retour restent deux réservations.
+  const trans = (id, titre) => ({ ...ligneDepuisPrestation({ ...base, unite: "grp", libelle: titre, id }, null, { qte: 1, date: "2026-12-05" }), id, partenaire_id: "L", prestation_id: id });
+  const lignes = [trans("t1", "Speedboat transfer: Koh Lanta → Koh Lipe"), trans("t2", "Speedboat transfer: Koh Lipe → Koh Lanta"), { ...ligneDepuisPrestation(sup, null, { qte: 1, date: "2026-12-05" }), id: "t3", partenaire_id: "L" }];
+  assert.equal(reservationsDepuisDocument({ dossier_id: "D", contenu: { lignes } }, { uid: () => "R" }).length >= 2, true);
+  // Deux bases différentes d'un même partenaire le même jour restent séparées.
+  const quad = (id, t) => ({ ...ligneDepuisPrestation({ ...base, libelle: t, id }, null, { qte: 1, date: "2026-12-05" }), id, partenaire_id: "L", prestation_id: id });
+  assert.equal(reservationsDepuisDocument({ dossier_id: "D", contenu: { lignes: [quad("q1", "Quad tour, Base 1-2 pers"), quad("q2", "Quad tour, Base 3-4 pers")] } }, { uid: () => "R" }).length, 2);
+});

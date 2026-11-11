@@ -43,7 +43,10 @@ export const quantiteParDefaut = (unite, p = {}) => {
 export const prefixeProgramme = (libelle) => {
   const t = String(libelle || "");
   const i = t.indexOf(":");
-  return i > 0 && i < 40 ? sansAccents(t.slice(0, i)).trim() : "";
+  if (i <= 0 || i >= 40) return "";
+  // Seulement la convention « Programme A », « Program B » : un autre « xxx : » (« Speedboat transfer: Lanta → Lipe ») ne désigne pas un programme.
+  const p = sansAccents(t.slice(0, i)).trim();
+  return /^(programme|program)\s+[a-z0-9]{1,3}$/.test(p) ? p : "";
 };
 // Une ligne de supplément (« par personne supplémentaire ») se reconnaît à son drapeau `supplement`, ou à son unité écrite dans l'intro (l'intro est vidée quand la ligne
 // entre dans une facture : le drapeau seul survit).
@@ -245,7 +248,8 @@ export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1,
   const base = { id: uid(), intro: "", puces: [], unite: null, qte: null, montant: null, pct: null, prestation_id: x.id, partenaire_id: x.partenaire_id || null, date_service: date || null };
   if (x.sur_place) return { ...base, kind: "texte", libelle: noteSurPlace(x, langue, devise), sur_place: true };
   // En anglais : le libellé anglais de la prestation, sinon le libellé nettoyé et traduit pour le client.
-  return { ...base, ...(x.unite === "sup" ? { supplement: true } : {}), kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: x.unite === "sup" ? Math.max(0, Number(qte) || 0) : Number(qte) || 1, net: net && net.net !== null && net.net !== undefined ? Number(net.net) : null };
+  // `par` garde l'unité du tarif (grp, boat, sup…) : l'intro est vidée dans la facture, et un prix de groupe ne se met pas à l'échelle des personnes.
+  return { ...base, ...(x.unite === "sup" ? { supplement: true } : {}), ...(["boat", "veh", "day", "ses", "grp"].includes(x.unite) ? { par: x.unite } : {}), kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: x.unite === "sup" ? Math.max(0, Number(qte) || 0) : Number(qte) || 1, net: net && net.net !== null && net.net !== undefined ? Number(net.net) : null };
 }
 
 // Prestation hors base : une ligne saisie à la main qui a pourtant sa réservation (donc son voucher), repérée par `libre`.

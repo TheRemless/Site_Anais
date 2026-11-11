@@ -18,7 +18,7 @@ const brut = (l) => (l.unite !== null && l.unite !== undefined && l.unite !== ""
 // sans le suffixe enfant) donnent une seule réservation, avec les adultes et les enfants réunis.
 const estLigneEnfant = (l) => /enfant|child/i.test(l.intro || "") || /,\s*(child|enfant)\b/i.test(l.titre || l.libelle || "");
 // Le nom du service sans ses variantes : « , enfant », « , Personne supplémentaire », « , Base 1-2 pers » : le prix de base, le supplément et les enfants font une seule réservation.
-const nomSansEnfant = (l) => String(l.titre || l.libelle || "").replace(/,\s*(?:child|enfant|personne suppl[ée]mentaire|extra person|base)\b.*$/i, "").trim();
+const nomSansEnfant = (l) => String(l.titre || l.libelle || "").replace(/,\s*(?:child|enfant|personne suppl[ée]mentaire|extra person|additional person|base\s*1\s*[-–]\s*2)\b.*$/i, "").trim();
 export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelId, regleDe = null } = {}) {
   const deja = new Set(existantes.flatMap((r) => [r.ligne_id, ...((r.details && r.details.lignes_ids) || [])]));
   const groupes = new Map();
@@ -572,7 +572,7 @@ export function contenuAvecReservation(contenu, r, avant, apres) {
   const nb = (x) => Number(x) || 0;
   const qte = (l) => (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
   // Un prix « par bateau », « par véhicule », « par jour », « par session » ou « par groupe » ne dépend pas du nombre de personnes.
-  const parPersonne = (l) => !/bateau|v[ée]hicule|jour|session|groupe|boat|vehicle|day|group/i.test(l.intro || "");
+  const parPersonne = (l) => !["boat", "veh", "day", "ses", "grp"].includes(l.par) && !/bateau|v[ée]hicule|jour|session|groupe|boat|vehicle|day|group/i.test(l.intro || "");
   const miseAJour = new Map();
   const modif = (l, champs) => miseAJour.set(l, { ...(miseAJour.get(l) || {}), ...champs });
   // Date : toutes les lignes du service, et la note « à payer sur place » de la même prestation à la même date.
