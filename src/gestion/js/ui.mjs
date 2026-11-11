@@ -1,6 +1,7 @@
 
 // Petits outils d'interface partagés par les écrans.
 import { tr } from "./i18n.mjs";
+import { confirmation } from "./confirmation.mjs";
 import { hauteurClavier, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
 
 export function h(tag, attrs, ...enfants) {
@@ -216,15 +217,8 @@ export function modal(titre, contenu, { large = false, feuille = false, protege 
 
 // `annuler` : texte du bouton qui garde la fenêtre ouverte (« Annuler » par défaut).
 export function confirmer(message, libelle = tr("Confirmer"), danger = false, annuler = tr("Annuler")) {
-  return new Promise((resolve) => {
-    let ferme;
-    // La réponse part AVANT la fermeture : fermer la fenêtre appelle `ferme`, qui résout à « non » (croix, Échap, fond). Dans l'autre ordre,
-    // « non » gagnait toujours et plus aucune confirmation ne s'exécutait.
-    const fin = (v) => {
-      resolve(v);
-      ferme();
-    };
-    ferme = modal(
+  return confirmation(({ fin, annuler: non }) =>
+    modal(
       tr("Confirmation"),
       h(
         "div",
@@ -237,9 +231,9 @@ export function confirmer(message, libelle = tr("Confirmer"), danger = false, an
           h("button", { type: "button", class: danger ? "danger" : "principal", onclick: () => fin(true) }, libelle)
         )
       ),
-      { protege: false, ferme: () => resolve(false) }
-    );
-  });
+      { protege: false, ferme: non }
+    )
+  );
 }
 
 // ---- Champs adaptés au téléphone ----------------------------------------------------------------------------------
