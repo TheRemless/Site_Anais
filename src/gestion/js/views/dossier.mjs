@@ -1,4 +1,4 @@
-import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions } from "../etat.mjs";
+import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions, netReservation } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num, icone, barreAction } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, convertirContenu } from "../calc.mjs";
 import { uid, modesPaiement } from "../defauts.mjs";
@@ -8,7 +8,8 @@ import { sectionPieces } from "./pieces.mjs";
 import { pastille, vide, pdf, sousTitreDossier, plierSections, resumerEtapes } from "./commun.mjs";
 import { margeDocument, chiffres as numeroDe } from "../partenaires-calc.mjs";
 import { supprimerDocument } from "./document-suppression.mjs";
-import { sectionReservationsDossier, formulaireReservation, ajouterServices } from "./reservations.mjs";
+import { sectionReservationsDossier, formulaireReservation, ajouterServices, messagePartenaire } from "./reservations.mjs";
+import { etatsServices, personnesDossier, commissionDossier, actionSuivante } from "../dossier-resume-calc.mjs";
 import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { envoyerDocument, sansImpression } from "./document-envoi.mjs";
@@ -387,6 +388,83 @@ function ficheDossierVue(id) {
   });
   notes.value = d.notes || "";
 
+  // ---- Résumé : l'essentiel du dossier d'un coup d'œil ------------------------------------------------------------
+  // Chaque chiffre vient de resumeDossier (total, reçu, reste, sur place) ou de commissionsARecevoir (commissions) : rien n'est recalculé ici.
+  const rsDossier = etat.db.reservations.filter((x) => x.dossier_id === d.id);
+  const nets = droit.finances && peut("partenaires.nets");
+  const aEnvoyer = droit.docs ? [devis, facture].find((x) => x && !x.envoye_le) : null;
+  const envoyerDoc = (doc) => (sansImpression() ? envoyerDocument(doc, { marquerEnvoye: async () => { await modifier("documents", doc.id, { envoye_le: aujourdhui() }); rafraichir(); } }) : pdf(doc));
+  const tel = numeroDe(client.telephone);
+  const aller = (id, apres) => (e) => {
+    e.preventDefault();
+    const cible = document.getElementById(id);
+    if (!cible) return;
+    if (cible.tagName === "DETAILS") cible.open = true;
+    cible.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    if (apres) apres();
+  };
+  const bloc = (classe, libelle, ...contenu) => h("div", { class: `resume-bloc ${classe}` }, h("p", { class: "resume-libelle" }, libelle), ...contenu);
+  const ligne = (libelle, valeur, classe) => h("div", { class: ["resume-ligne", classe].filter(Boolean).join(" ") }, h("dt", null, libelle), h("dd", null, valeur));
+  const etats = etatsServices(rsDossier);
+  const effectif = personnesDossier(rsDossier);
+  const commission = nets ? commissionDossier(rsDossier, netReservation) : null;
+  const dates = d.date_depart ? (d.date_retour && d.date_retour !== d.date_depart ? tr("Du {debut} au {fin}", { debut: formatDate(d.date_depart), fin: formatDate(d.date_retour) }) : tr("Le {date}", { date: formatDate(d.date_depart) })) : tr("Dates à fixer");
+  const effectifTexte = effectif ? (effectif.min === effectif.max ? pluriel(effectif.max, N_("{n} personne"), N_("{n} personnes")) : tr("de {min} à {max} personnes", effectif)) : null;
+  const puceEtat = (n, un, plusieurs, code) => (n ? h("span", { class: `resume-etat r-${code}` }, pluriel(n, un, plusieurs)) : null);
+  const suivante = actionSuivante({ annule: !!d.annule, statut: r.statut, aEnvoyer, avecDevis, devisEnvoye: !!(devis && devis.envoye_le), accepte: !!d.accepte_le, facture: !!facture, reservations: rsDossier, reste: r.reste, droit });
+  const boutonSuivant = !suivante
+    ? null
+    : h(
+        "div",
+        // Sur téléphone, « envoyer » est déjà dans la barre du bas : on ne le répète pas.
+        { class: `resume-action${suivante.cle === "envoyer" ? " seulement-bureau" : ""}` },
+        h("p", { class: "resume-libelle" }, tr("Prochaine étape")),
+        suivante.cle === "envoyer"
+          ? h("button", { class: "principal", type: "button", onclick: () => envoyerDoc(aEnvoyer) }, suivante.type === "devis" ? tr("Envoyer le devis") : tr("Envoyer la facture"))
+          : suivante.cle === "accepter"
+            ? h("button", { class: "principal", type: "button", onclick: () => accepter() }, tr("Le client a accepté"))
+            : suivante.cle === "demander"
+              ? h("button", { class: "principal", type: "button", onclick: () => messagePartenaire(suivante.reservation) }, tr("Demander : {libelle}", { libelle: suivante.reservation.libelle }))
+              : h("button", { class: "principal", type: "button", onclick: aller("form-paiement", () => document.getElementById("p-montant") && document.getElementById("p-montant").focus({ preventScroll: true })) }, tr("Enregistrer un paiement"))
+      );
+  const blocs = [
+    bloc("resume-client", tr("Client"), h("a", { class: "resume-titre", href: `#/client/${client.id}` }, nomClient(client)), tel ? h("a", { class: "resume-contact", href: `tel:${tel}` }, icone("telephone", 16), client.telephone) : null, client.email ? h("a", { class: "resume-contact", href: `mailto:${client.email}` }, client.email) : null),
+    bloc("resume-sejour", tr("Séjour"), h("p", { class: "resume-valeur" }, dates), effectifTexte ? h("p", { class: "resume-detail" }, effectifTexte) : null),
+    moduleActif("reservations")
+      ? bloc("resume-services", tr("Services"), h("a", { class: "resume-lien", href: "#services", onclick: aller("services") }, etats.total ? h("strong", null, pluriel(etats.total, N_("{n} service"), N_("{n} services"))) : h("strong", null, tr("Aucun service")), etats.total ? h("span", { class: "resume-etats" }, puceEtat(etats.a_demander, N_("{n} à demander"), N_("{n} à demander"), "a_demander"), puceEtat(etats.demande, N_("{n} demandée"), N_("{n} demandées"), "demande"), puceEtat(etats.confirme, N_("{n} confirmée"), N_("{n} confirmées"), "confirme")) : null))
+      : null,
+    !droit.finances
+      ? null
+      : bloc(
+          "resume-argent",
+          tr("À régler"),
+          h(
+            "dl",
+            null,
+            ligne(tr("Total"), fm(r.total)),
+            acompte > 0 && r.statut !== "sur_place" ? ligne(tr("Acompte ({acompte_pct}%)", { acompte_pct: regl.conditions.acompte_pct }), fm(acompte)) : null,
+            ligne(tr("Reçu"), fm(r.recu)),
+            // « Tout sur place » : rien à encaisser chez nous, ni reste ni couleur d'alerte.
+            r.statut === "sur_place" ? ligne(tr("Reste à payer"), tr("Rien chez nous"), "resume-ok") : ligne(tr("Reste à payer"), fm(r.reste), r.reste > 0 ? "resume-reste" : null),
+            r.surPlace > 0 ? ligne(tr("À payer sur place"), fm(r.surPlace)) : null,
+            ...ligneMarge.map(([l, v, det]) => ligne(l, det ? `${v} · ${det}` : v))
+          )
+        ),
+    !nets
+      ? null
+      : commission
+        ? h(
+            "div",
+            { class: "resume-bloc resume-commission" },
+            h("p", { class: "resume-libelle" }, tr("Commission")),
+            h("dl", null, ligne(tr("Prévue"), fm(commission.prevue)), ligne(tr("Reçue"), fm(commission.recue)), ligne(tr("À recevoir"), fm(commission.reste), commission.reste > 0 ? "resume-reste" : "resume-ok"), commission.ecart ? ligne(tr("Écart sur les commissions réglées"), fm(commission.ecart)) : null),
+            commission.sansCommission > 0 ? h("p", { class: "resume-detail" }, pluriel(commission.sansCommission, N_("{n} service payé sur place sans commission renseignée"), N_("{n} services payés sur place sans commission renseignée"))) : null,
+            h("a", { class: "resume-lien-bas", href: "#services", onclick: aller("services") }, tr("Voir dans les services"), icone("fleche", 14))
+          )
+        : bloc("resume-commission", tr("Commission"), h("p", { class: "resume-detail" }, tr("Aucun service payé sur place : pas de commission à recevoir."))),
+  ].filter(Boolean);
+  const resume = h("div", { class: "resume-dossier", role: "region", "aria-label": tr("Résumé du dossier") }, h("div", { class: "resume-grille" }, blocs), boutonSuivant);
+
   const racine = h(
     "div",
     { "data-titre": nomClient(client) },
@@ -397,11 +475,7 @@ function ficheDossierVue(id) {
       h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, sousTitreDossier(d), responsable)),
       h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, tr("Dupliquer")) : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, tr("Modifier le dossier")) : null)
     ),
-    !droit.finances ? null : h(
-      "div",
-      { class: "chiffres compacts" },
-      ...[[tr("Total"), fm(r.total)], ...(acompte > 0 ? [[tr("Acompte ({acompte_pct}%)", { acompte_pct: regl.conditions.acompte_pct }), fm(acompte)]] : []), [tr("Reçu"), fm(r.recu)], [tr("Reste à payer"), fm(r.reste)], ...(r.surPlace > 0 ? [[tr("À payer sur place"), fm(r.surPlace)]] : []), ...ligneMarge].map(([l, v, det]) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, l), h("p", { class: "chiffre-valeur" }, v), det ? h("p", { class: "chiffre-detail" }, det) : null))
-    ),
+    resume,
     h(
       "section",
       null,
@@ -512,16 +586,15 @@ function ficheDossierVue(id) {
   const sectionDe = (nom) => [...racine.children].find((e) => e.tagName === "SECTION" && ((e.querySelector(":scope > h2, :scope > .petit-entete > h2") || {}).textContent === nom));
   const avancement = sectionDe(tr("Avancement"));
   const services = sectionDe(TITRE_SERVICES);
+  if (services) services.id = "services";
   const apresAvancement = sectionDe(tr("Vouchers")) || avancement;
   if (services && apresAvancement) apresAvancement.after(services);
   const etapes = racine.querySelector(".etapes");
   if (etapes) resumerEtapes(etapes);
   plierSections(racine, { cle: d.id, ouverts: new Set([tr("Avancement"), TITRE_SERVICES, tr("Vouchers"), tr("Documents"), tr("Paiements reçus")]) });
 
-  const aEnvoyer = droit.docs ? [devis, facture].find((x) => x && !x.envoye_le) : null;
-  const tel = numeroDe(client.telephone);
   const gestes = [
-    aEnvoyer ? h("button", { class: "principal", type: "button", onclick: () => (sansImpression() ? envoyerDocument(aEnvoyer, { marquerEnvoye: async () => { await modifier("documents", aEnvoyer.id, { envoye_le: aujourdhui() }); rafraichir(); } }) : pdf(aEnvoyer)) }, aEnvoyer.type === "devis" ? tr("Envoyer le devis") : tr("Envoyer la facture")) : null,
+    aEnvoyer ? h("button", { class: "principal", type: "button", onclick: () => envoyerDoc(aEnvoyer) }, aEnvoyer.type === "devis" ? tr("Envoyer le devis") : tr("Envoyer la facture")) : null,
     tel ? h("a", { class: "bouton secondaire", href: `https://wa.me/${tel.replace(/\D/g, "")}`, target: "_blank", rel: "noopener" }, icone("whatsapp", 18), tr("WhatsApp")) : null,
     droit.dossiers && moduleActif("reservations") ? h("button", { class: "secondaire", type: "button", onclick: () => ajouterServices(d, facture || devis || null, rafraichir) }, icone("ajouter", 18), tr("Service")) : null,
   ].filter(Boolean);

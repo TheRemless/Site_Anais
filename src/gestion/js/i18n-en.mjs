@@ -1,6 +1,31 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
+  // Session C (mobile) : titres cliquables et résumé de la fiche dossier
+  "Ouvrir le dossier de {nom}": "Open {nom}'s file",
+  "Du {debut} au {fin}": "From {debut} to {fin}",
+  "Dates à fixer": "Dates to be set",
+  "{n} personne": "{n} person",
+  "{n} personnes": "{n} people",
+  "de {min} à {max} personnes": "{min} to {max} people",
+  "Prochaine étape": "Next step",
+  "Demander : {libelle}": "Request: {libelle}",
+  "Séjour": "Stay",
+  "Aucun service": "No services",
+  "{n} à demander": "{n} to request",
+  "{n} demandée": "{n} requested",
+  "{n} demandées": "{n} requested",
+  "{n} confirmée": "{n} confirmed",
+  "{n} confirmées": "{n} confirmed",
+  "À régler": "To pay",
+  "Rien chez nous": "Nothing with us",
+  "Commission": "Commission",
+  "{n} service payé sur place sans commission renseignée": "{n} on-site service without a commission entered",
+  "{n} services payés sur place sans commission renseignée": "{n} on-site services without a commission entered",
+  "Voir dans les services": "See in services",
+  "Aucun service payé sur place : pas de commission à recevoir.": "No on-site service: no commission to receive.",
+  "Résumé du dossier": "File summary",
+  "Écart sur les commissions réglées": "Difference on settled commissions",
   // Session C (mobile) : application installée
   "Hors connexion : l'écran montre les données telles qu'elles étaient, et rien ne s'enregistre tant que le réseau n'est pas revenu.": "Offline: the screen shows the data as it was, and nothing is saved until the network is back.",
   // Session C (mobile) : listes et fiche dossier

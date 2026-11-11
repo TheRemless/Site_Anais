@@ -2,7 +2,7 @@
 import { etat, peut, equipe, modifier, inserer, supprimer, entiteActive, nomClient } from "../etat.mjs";
 import { h, champ, modal, toast, confirmer, vider } from "../ui.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
-import { vide } from "./commun.mjs";
+import { vide, lienDossier } from "./commun.mjs";
 import { reportsProposes } from "../feuille-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
@@ -74,7 +74,7 @@ export function listeTaches(taches, { avecDossier = true } = {}) {
         h(
           "div",
           { class: "tache-texte" },
-          h("strong", null, t.titre),
+          avecDossier && dossier ? lienDossier(h("strong", null, t.titre), dossier.id) : h("strong", null, t.titre),
           h("span", { class: "tache-meta" }, t.echeance ? tr("Pour le {date}", { date: formatDate(t.echeance) }) : tr("Sans échéance"), qui, avecDossier && dossier ? [" · ", h("a", { href: `#/dossier/${dossier.id}` }, dossier.ref)] : null)
         ),
         !t.fait && modifiable ? h("button", { class: "secondaire petit", type: "button", "aria-label": tr("Reporter la tâche « {titre} »", { titre: t.titre }), onclick: () => reporter(t) }, tr("Reporter")) : null,

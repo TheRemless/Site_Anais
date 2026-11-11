@@ -901,7 +901,8 @@ html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte 
 .etapes-voir { display: inline-flex; align-items: center; min-height: 44px; margin: 0 0 4px; }
 .barre-dossier .barre-action { justify-content: stretch; }
 .barre-dossier .barre-action > * { flex: 1 1 0; min-width: 0; padding: 0 8px; white-space: nowrap; }
-.barre-dossier .barre-action > .principal { flex: 2 1 0; }
+.barre-dossier .barre-action > .principal { flex: 1.5 1 0; }
+.barre-dossier .barre-action svg { display: none; }
 
 /* Filtres secondaires repliés derrière une ligne (Trajets) : départ et arrivée restent toujours visibles */
 .filtres-plus { flex: 1 1 100%; }
@@ -1165,3 +1166,47 @@ details > summary { padding-block: 11px; margin: 0; }
 }
 .doublons-client { margin: 12px 0 16px; }
 .client-joindre { margin: 4px 0 12px; }
+
+/* ==== Session C (mobile) : titres cliquables et résumé de la fiche dossier ==================================== */
+/* Un titre qui mène au dossier : zone de 44 px sans changer la mise en page, souligné discrètement pour se reconnaître comme lien. */
+.titre-lien { display: block; margin: -10px 0; padding: 10px 0; color: inherit; font-weight: inherit; text-decoration: underline; text-decoration-color: var(--bord-fort); text-decoration-thickness: 1px; text-underline-offset: 4px; -webkit-tap-highlight-color: transparent; }
+.titre-lien:hover { color: var(--teal-700); text-decoration-color: var(--teal-600); }
+.titre-lien:active { background: var(--surface-2); }
+.service-titre { font-weight: 700; margin: 0; }
+.tache-texte .titre-lien { margin: -8px 0 -2px; }
+.repli { scroll-margin-top: calc(var(--haut-barre) + 8px); }
+
+/* Résumé en tête de fiche : une carte sur téléphone, deux colonnes sur ordinateur */
+.resume-dossier { margin: 0 0 28px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; box-shadow: var(--ombre); overflow: hidden; }
+.resume-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Téléphone : client et séjour côte à côte, le reste sur toute la largeur */
+.resume-bloc { grid-column: 1 / -1; }
+.resume-client, .resume-sejour { grid-column: auto; border-bottom: 1px solid var(--bord); }
+.resume-client { border-right: 1px solid var(--bord); }
+.resume-bloc { padding: 14px 16px; border-bottom: 1px solid var(--bord); min-width: 0; }
+.resume-bloc:last-child { border-bottom: 0; }
+.resume-libelle { margin: 0 0 4px; font-size: 0.82rem; font-weight: 600; color: var(--texte-2); }
+.resume-titre { display: block; margin: -8px 0 0; padding: 8px 0; color: var(--texte); font-size: 1.05rem; font-weight: 700; text-decoration: none; }
+.resume-contact { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: -4px 0; color: var(--teal-700); font-weight: 500; overflow-wrap: anywhere; }
+.resume-valeur { margin: 0; font-weight: 700; }
+.resume-detail { margin: 2px 0 0; font-size: 0.9rem; color: var(--texte-2); }
+.resume-lien { display: flex; flex-direction: column; gap: 6px; min-height: 44px; margin: -6px 0; padding: 6px 0; color: var(--texte); text-decoration: none; }
+.resume-etats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.9rem; font-weight: 600; }
+.resume-etat { display: inline-flex; align-items: center; gap: 6px; }
+.resume-etat::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.resume-bloc dl { margin: 0; }
+.resume-ligne { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 3px 0; font-variant-numeric: lining-nums tabular-nums; }
+.resume-ligne dt { color: var(--texte-2); font-size: 0.92rem; }
+.resume-ligne dd { margin: 0; font-weight: 700; text-align: right; }
+.resume-reste dd { color: #8a5200; }
+.resume-ok dd { color: #25653d; }
+.resume-lien-bas { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-bottom: -10px; font-weight: 600; }
+.resume-action { padding: 14px 16px; background: var(--teal-100); border-top: 1px solid var(--bord); }
+.resume-action .principal { width: 100%; }
+@media (min-width: 720px) {
+  .resume-bloc, .resume-client, .resume-sejour { grid-column: auto; border-right: 1px solid var(--bord); }
+  .resume-bloc:nth-child(2n) { border-right: 0; }
+  .resume-action { display: flex; align-items: center; gap: 16px; }
+  .resume-action .resume-libelle { margin: 0; }
+  .resume-action .principal { width: auto; }
+}

@@ -3,7 +3,7 @@ import { reglagesIncomplets } from "../defauts.mjs";
 import { ouvrirDemande } from "./demande.mjs";
 import { h, icone } from "../ui.mjs";
 import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois, finDuMois } from "../calc.mjs";
-import { pastille, cartes, voyageTexte } from "./commun.mjs";
+import { pastille, cartes, voyageTexte, lienDossier } from "./commun.mjs";
 import { mesTaches, listeTaches } from "./taches.mjs";
 import { contratsAEcheance, chiffres as numeroDe } from "../partenaires-calc.mjs";
 import { agenda, personnesTexte } from "../operations-calc.mjs";
@@ -37,7 +37,7 @@ function carteService(r) {
     h(
       "div",
       { class: "service-corps" },
-      h("a", { class: "service-titre", href: d ? `#/dossier/${d.id}` : "#/reservations" }, r.libelle),
+      h("div", { class: "service-titre" }, lienDossier(r.libelle, d && d.id)),
       detail ? h("p", { class: "service-detail" }, detail) : null,
       r.lieu_pickup ? h("p", { class: "service-detail" }, r.lieu_pickup) : null,
       h(
