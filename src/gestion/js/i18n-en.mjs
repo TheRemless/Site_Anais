@@ -1,6 +1,11 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
+  // Session C (mobile) : listes et fiche dossier
+  "Compagnie, date, recherche": "Company, date, search",
+  "Voir {n} étape faite": "Show {n} completed step",
+  "Voir les {n} étapes faites": "Show the {n} completed steps",
+  "Masquer les étapes faites": "Hide completed steps",
   // Session C (mobile) : navigation et accueil
   "Nouveau": "New",
   "Un client, un voyage, un devis": "A client, a trip, a quote",
@@ -1121,7 +1126,6 @@ export const EN = {
   "Sans ce droit, la personne voit les clients et les dossiers mais aucun chiffre.": "Without this right, the person sees the clients and the files but no figures.",
   "Sans ce droit, la personne voit les prix de vente mais ni les nets ni les marges.": "Without this right, the person sees the sale prices but neither the net prices nor the margins.",
   "Sans compagnie": "No boat company",
-  "Sans coordonnées": "No contact details",
   "Sans date": "No date",
   "Sans date de fin": "No end date",
   "Sans échéance": "No due date",

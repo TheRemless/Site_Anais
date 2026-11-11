@@ -1,14 +1,14 @@
 import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions } from "../etat.mjs";
-import { h, champ, modal, confirmer, toast, num } from "../ui.mjs";
+import { h, champ, modal, confirmer, toast, num, icone, barreAction } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, convertirContenu } from "../calc.mjs";
 import { uid, modesPaiement } from "../defauts.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { sectionTachesDossier } from "./taches.mjs";
 import { sectionPieces } from "./pieces.mjs";
-import { pastille, vide, pdf, sousTitreDossier } from "./commun.mjs";
-import { margeDocument } from "../partenaires-calc.mjs";
+import { pastille, vide, pdf, sousTitreDossier, plierSections, resumerEtapes } from "./commun.mjs";
+import { margeDocument, chiffres as numeroDe } from "../partenaires-calc.mjs";
 import { supprimerDocument } from "./document-suppression.mjs";
-import { sectionReservationsDossier, formulaireReservation } from "./reservations.mjs";
+import { sectionReservationsDossier, formulaireReservation, ajouterServices } from "./reservations.mjs";
 import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { envoyerDocument, sansImpression } from "./document-envoi.mjs";
@@ -387,7 +387,7 @@ function ficheDossierVue(id) {
   });
   notes.value = d.notes || "";
 
-  return h(
+  const racine = h(
     "div",
     { "data-titre": nomClient(client) },
     h("a", { class: "retour", href: "#/dossiers" }, tr("Dossiers")),
@@ -506,4 +506,29 @@ function ficheDossierVue(id) {
       )
     )
   );
+  // Hiérarchie de la fiche : l'état et la prochaine étape d'abord, puis les services, les documents et les paiements ouverts,
+  // le reste replié. Au téléphone, une barre collante porte les gestes principaux (envoyer, écrire au client, ajouter un service).
+  const TITRE_SERVICES = tr("Réservations auprès des partenaires");
+  const sectionDe = (nom) => [...racine.children].find((e) => e.tagName === "SECTION" && ((e.querySelector(":scope > h2, :scope > .petit-entete > h2") || {}).textContent === nom));
+  const avancement = sectionDe(tr("Avancement"));
+  const services = sectionDe(TITRE_SERVICES);
+  const apresAvancement = sectionDe(tr("Vouchers")) || avancement;
+  if (services && apresAvancement) apresAvancement.after(services);
+  const etapes = racine.querySelector(".etapes");
+  if (etapes) resumerEtapes(etapes);
+  plierSections(racine, { cle: d.id, ouverts: new Set([tr("Avancement"), TITRE_SERVICES, tr("Vouchers"), tr("Documents"), tr("Paiements reçus")]) });
+
+  const aEnvoyer = droit.docs ? [devis, facture].find((x) => x && !x.envoye_le) : null;
+  const tel = numeroDe(client.telephone);
+  const gestes = [
+    aEnvoyer ? h("button", { class: "principal", type: "button", onclick: () => (sansImpression() ? envoyerDocument(aEnvoyer, { marquerEnvoye: async () => { await modifier("documents", aEnvoyer.id, { envoye_le: aujourdhui() }); rafraichir(); } }) : pdf(aEnvoyer)) }, aEnvoyer.type === "devis" ? tr("Envoyer le devis") : tr("Envoyer la facture")) : null,
+    tel ? h("a", { class: "bouton secondaire", href: `https://wa.me/${tel.replace(/\D/g, "")}`, target: "_blank", rel: "noopener" }, icone("whatsapp", 18), tr("WhatsApp")) : null,
+    droit.dossiers && moduleActif("reservations") ? h("button", { class: "secondaire", type: "button", onclick: () => ajouterServices(d, facture || devis || null, rafraichir) }, icone("ajouter", 18), tr("Service")) : null,
+  ].filter(Boolean);
+  if (gestes.length) {
+    const barre = barreAction(...gestes);
+    barre.classList.add("seulement-mobile", "barre-dossier");
+    racine.append(barre);
+  }
+  return racine;
 }

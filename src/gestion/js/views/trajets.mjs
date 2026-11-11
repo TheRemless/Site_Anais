@@ -98,7 +98,13 @@ export function vueTrajets() {
     "div",
     { "data-titre": tr("Trajets"), "data-large": true },
     h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Trajets en bateau")), h("p", { class: "sous" }, tr("{n} départs. Choisissez un départ et une arrivée pour comparer les compagnies.", { n: etat.db.trajets.length }))), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => { const fermer = modal(tr("Nouveau trajet"), formulaireTrajet({}, () => (fermer(), rafraichir()))); } }, tr("Nouveau trajet")) : null),
-    h("div", { class: "barre-outils chercheur" }, h("div", { class: "champ" }, h("label", { for: "t-de" }, tr("Départ")), de), h("div", { class: "champ inverser" }, inverser), h("div", { class: "champ" }, h("label", { for: "t-vers" }, tr("Arrivée")), vers), h("div", { class: "champ" }, h("label", { for: "t-cie" }, tr("Compagnie")), cie), h("div", { class: "champ" }, h("label", { for: "t-date" }, tr("Date du voyage")), date), h("div", { class: "champ recherche" }, h("label", { for: "t-q" }, tr("Recherche")), q)),
+    h("div", { class: "barre-outils chercheur" }, h("div", { class: "champ" }, h("label", { for: "t-de" }, tr("Départ")), de), h("div", { class: "champ inverser" }, inverser), h("div", { class: "champ" }, h("label", { for: "t-vers" }, tr("Arrivée")), vers), h(
+      "details",
+      { class: "filtres-plus", open: window.matchMedia("(min-width: 720px)").matches || !!(params.get("partenaire") || params.get("date") || params.get("q")) },
+      h("summary", null, tr("Compagnie, date, recherche"), icone("chevron", 18)),
+      h("div", { class: "chercheur-plus" }, h("div", { class: "champ" }, h("label", { for: "t-cie" }, tr("Compagnie")), cie), h("div", { class: "champ" }, h("label", { for: "t-date" }, tr("Date du voyage")), date), h("div", { class: "champ recherche" }, h("label", { for: "t-q" }, tr("Recherche")), q))
+    )
+  ),
     resume,
     corps,
     regles.length

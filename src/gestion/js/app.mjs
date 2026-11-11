@@ -258,7 +258,8 @@ function ouvrirPlus() {
 }
 
 // Bouton « + » flottant sur les écrans de liste : un geste pour créer. La création elle-même vit dans les écrans de saisie.
-const ECRANS_AVEC_PLUS = new Set(["tableau", "dossiers", "clients", "reservations"]);
+// Seulement sur les listes et l'accueil, pas sur une fiche ni un éditeur : adresses exactes.
+const ECRANS_AVEC_PLUS = /^#?\/?$|^#\/(dossiers|clients|reservations)(\?.*)?$/;
 function boutonPlus() {
   if (!peut("dossiers.ecrire")) return null;
   return h("button", { class: "bouton-plus", type: "button", "aria-label": tr("Nouveau"), title: tr("Nouveau"), onclick: ouvrirNouveau }, icone("ajouter", 26));
@@ -516,7 +517,7 @@ async function afficher() {
   document.documentElement.style.setProperty("--decalage", `${Math.round(principal.getBoundingClientRect().top + window.scrollY + 48)}px`);
   // L'onglet « Plus » est marqué quand l'écran ouvert n'a pas d'onglet à lui.
   for (const a of document.querySelectorAll("nav [data-cle]")) a.toggleAttribute("aria-current", a.dataset.cle === cleRoute || (a.dataset.cle === "plus" && !ongletsMobiles().includes(cleRoute)));
-  document.querySelector(".coque").classList.toggle("avec-plus", ECRANS_AVEC_PLUS.has(cleRoute) && !!document.querySelector(".bouton-plus"));
+  document.querySelector(".coque").classList.toggle("avec-plus", ECRANS_AVEC_PLUS.test(hash) && !!document.querySelector(".bouton-plus"));
   restaurerDefilement(hash);
   derniereVue = hash;
 }
