@@ -1,6 +1,7 @@
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument } from "../etat.mjs";
 import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs";
-import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace } from "../calc.mjs";
+import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace, modeReglement, SUR_PLACE } from "../calc.mjs";
+import { puceMode } from "./mode-reglement.mjs";
 import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
 import { ouvrirVersions as ouvrirVersionsDocument } from "./versions.mjs";
@@ -414,7 +415,7 @@ function editeurVue(id) {
     totalTexte.textContent = place > 0 && estFacture ? tr("{texte}, à payer sur place {montant}", { texte: total, montant: formatMontant(place, d) }) : total;
     c.lignes.forEach((l, i) => {
       const el = listeLignes.querySelector(`[data-calc="${l.id}"]`);
-      if (el) el.textContent = l.paye_sur_place ? tr("{montant}, payé sur place", { montant: formatMontant(montantLigne(l), d) }) : formatMontant(t.montants[i], d);
+      if (el) el.textContent = l.paye_sur_place ? tr("{montant}, à payer sur place", { montant: formatMontant(montantLigne(l), d) }) : formatMontant(t.montants[i], d);
     });
   }
 
@@ -445,7 +446,8 @@ function editeurVue(id) {
     }
     // Le client règle cette ligne directement au prestataire : elle reste sur le document, mais pas dans le total à régler.
     if (l.kind === "ligne" && (l.prestation_id || l.trajet_id || l.libre)) {
-      champs.push(h("label", { class: "case", for: `l${l.id}-place` }, h("input", { id: `l${l.id}-place`, type: "checkbox", checked: !!l.paye_sur_place, onchange: (e) => ((l.paye_sur_place = e.target.checked || undefined), change()) }), tr("Payé sur place au prestataire, hors total à régler")));
+      const puce = puceMode({ id: `l${l.id}-mode`, valeur: modeReglement(l), onchange: (v) => ((l.paye_sur_place = v === SUR_PLACE ? true : undefined), change()) });
+      champs.push(h("div", { class: "champ champ-mode" }, h("span", { class: "etiquette", id: `l${l.id}-mode-lib` }, tr("Règlement")), puce, h("p", { class: "aide" }, tr("« Sur place » : le prix reste affiché mais n'entre pas dans le total à régler. Le prestataire reverse une commission."))));
     }
     if (l.kind === "bloc") {
       champs.push(champ(tr("Complément après le libellé"), h("input", { id: `l${l.id}-intro`, value: l.intro, placeholder: "comprenant:", oninput: maj("intro") })));

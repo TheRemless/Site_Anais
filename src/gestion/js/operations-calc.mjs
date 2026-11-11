@@ -3,6 +3,9 @@
 
 import { langueActive, N_ } from "./i18n.mjs";
 import { chiffres } from "./partenaires-calc.mjs";
+import { SUR_PLACE, CHEZ_NOUS, modeReglement } from "./calc.mjs";
+
+export { SUR_PLACE, CHEZ_NOUS, modeReglement };
 
 export const STATUTS_RESERVATION = { a_demander: N_("À demander"), demande: N_("Demandée"), confirme: N_("Confirmée"), annule: N_("Annulée") };
 
@@ -15,7 +18,7 @@ const brut = (l) => (l.unite !== null && l.unite !== undefined && l.unite !== ""
 // sans le suffixe enfant) donnent une seule réservation, avec les adultes et les enfants réunis.
 const estLigneEnfant = (l) => /enfant|child/i.test(l.intro || "") || /,\s*(child|enfant)\b/i.test(l.titre || l.libelle || "");
 const nomSansEnfant = (l) => String(l.titre || l.libelle || "").replace(/,\s*(child|enfant)\b.*$/i, "").trim();
-export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelId } = {}) {
+export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelId, regleDe = null } = {}) {
   const deja = new Set(existantes.flatMap((r) => [r.ligne_id, ...((r.details && r.details.lignes_ids) || [])]));
   const groupes = new Map();
   for (const l of (doc.contenu && doc.contenu.lignes) || []) {
@@ -38,8 +41,16 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
       reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {} },
       net: g.net,
+      // Service payé sur place : la commission attendue se calcule d'après la règle du partenaire (`regleDe(partenaire_id)`), seulement quand elle est connue.
+      ...commissionDuGroupe(g, l, regleDe),
     };
   });
+}
+
+function commissionDuGroupe(g, l, regleDe) {
+  if (!regleDe || !g.lignes.some((x) => x.paye_sur_place)) return {};
+  const c = commissionPrevue(regleDe(l.partenaire_id || null), { vente: g.vente, net: g.net, adultes: g.adultes, enfants: g.enfants });
+  return c === null ? {} : { commission_prevue: c };
 }
 
 // « 2 adultes, 1 enfant », « 2 adults, 1 child », « ผู้ใหญ่ 2 คน เด็ก 1 คน ».
@@ -143,19 +154,89 @@ export function commissionsARecevoir(reservations, netDe, ecartees = new Set()) 
     if (!r.paye_sur_place || r.statut === "annule" || ecartees.has(r.dossier_id)) continue;
     const mois = (r.date_service || "").slice(0, 7) || "sans-date";
     const cle = `${r.partenaire_id || ""}|${mois}`;
-    const g = groupes.get(cle) || { partenaire_id: r.partenaire_id || null, mois, nb: 0, vente: 0, commission_prevue: 0, commission_recue: 0, sansCommission: 0, reservations: [] };
+    const g = groupes.get(cle) || { partenaire_id: r.partenaire_id || null, mois, nb: 0, vente: 0, commission_prevue: 0, commission_recue: 0, reste: 0, ecart: 0, sansCommission: 0, nbARecevoir: 0, reservations: [] };
     const n = netDe(r);
+    const prevue = n && n.commission_prevue !== null && n.commission_prevue !== undefined ? Number(n.commission_prevue) : null;
+    const recue = n && n.commission_recue !== null && n.commission_recue !== undefined ? Number(n.commission_recue) : 0;
+    // Une réservation dont la réception est datée est réglée : ce que le partenaire a versé en plus ou en moins reste en écart, pas en reste à recevoir.
+    const reglee = !!(n && n.commission_recue_le);
     g.nb++;
     g.vente += Number(r.montant_vente) || 0;
-    if (n && n.commission_prevue !== null && n.commission_prevue !== undefined) g.commission_prevue += Number(n.commission_prevue);
-    else g.sansCommission++;
-    if (n && n.commission_recue !== null && n.commission_recue !== undefined) g.commission_recue += Number(n.commission_recue);
+    if (prevue === null) g.sansCommission++;
+    g.commission_prevue += prevue || 0;
+    g.commission_recue += recue;
+    if (reglee) g.ecart += recue - (prevue || 0);
+    else {
+      g.reste += (prevue || 0) - recue;
+      g.nbARecevoir++;
+    }
     g.reservations.push(r);
     groupes.set(cle, g);
   }
   return [...groupes.values()]
-    .map((g) => ({ ...g, vente: arr(g.vente), commission_prevue: arr(g.commission_prevue), commission_recue: arr(g.commission_recue), reste: arr(g.commission_prevue - g.commission_recue) }))
+    .map((g) => ({ ...g, vente: arr(g.vente), commission_prevue: arr(g.commission_prevue), commission_recue: arr(g.commission_recue), reste: arr(g.reste), ecart: arr(g.ecart) }))
     .sort((a, b) => b.mois.localeCompare(a.mois) || b.reste - a.reste);
+}
+
+// ---- Mode de règlement par partenaire et commission calculée ---------------------------------------------------
+// Le mode par défaut d'un partenaire vit dans ses règles publiques (`regles.mode_reglement`) : « sur_place » quand ses clients le paient directement.
+export const modeParDefaut = (partenaire) => (partenaire && partenaire.regles && partenaire.regles.mode_reglement === SUR_PLACE ? SUR_PLACE : CHEZ_NOUS);
+
+// Les lignes de services d'un document prennent le mode de leur partenaire, sauf celles où quelqu'un a déjà choisi.
+// `partenaireDe(id)` renvoie le partenaire. Renvoie les lignes (modifiées sur copie).
+export function appliquerModeParDefaut(lignes, partenaireDe) {
+  return (lignes || []).map((l) => {
+    if (l.kind !== "ligne" || !l.partenaire_id || !(l.prestation_id || l.trajet_id || l.libre) || l.paye_sur_place !== undefined) return l;
+    return modeParDefaut(partenaireDe(l.partenaire_id)) === SUR_PLACE ? { ...l, paye_sur_place: true } : l;
+  });
+}
+
+// Règle de commission structurée (données privées du partenaire, droit nets) :
+//   { type: "pourcent_vente" | "pourcent_net" | "fixe_personne" | "fixe_reservation", valeur: nombre }
+export const TYPES_COMMISSION = { pourcent_vente: N_("% du prix de vente"), pourcent_net: N_("% du net"), fixe_personne: N_("Montant par personne"), fixe_reservation: N_("Montant par réservation") };
+
+// Commission attendue pour une réservation, ou null quand la règle ou une donnée manque : on ne devine jamais.
+export function commissionPrevue(regle, { vente = null, net = null, adultes = 0, enfants = 0 } = {}) {
+  if (!regle || !TYPES_COMMISSION[regle.type]) return null;
+  const v = Number(regle.valeur);
+  if (regle.valeur === "" || regle.valeur === null || regle.valeur === undefined || !(v >= 0)) return null;
+  const arrondi = (x) => Math.round(x * 100) / 100;
+  if (regle.type === "pourcent_vente") return vente === null || vente === undefined ? null : arrondi((Number(vente) * v) / 100);
+  if (regle.type === "pourcent_net") return net === null || net === undefined ? null : arrondi((Number(net) * v) / 100);
+  if (regle.type === "fixe_personne") {
+    const n = (Number(adultes) || 0) + (Number(enfants) || 0);
+    return n > 0 ? arrondi(v * n) : null;
+  }
+  return arrondi(v);
+}
+
+// Un partenaire a-t-il un mode et une règle de commission renseignés ? Sert à signaler ce qui reste à compléter.
+export const regleDeCommissionComplete = (regle) => commissionPrevue(regle, { vente: 1, net: 1, adultes: 1 }) !== null;
+
+// Le partenaire a versé `montant` pour ce groupe (partenaire et mois) : on le répartit sur ses réservations, proportionnellement à la commission
+// prévue (à parts égales quand rien n'est prévu), et on date la réception. Le dernier prend l'arrondi. Renvoie
+// [{ reservation_id, commission_recue }] et l'écart avec ce qui était attendu (positif : le partenaire a versé plus).
+export function repartirReception(reservations, netDe, montant) {
+  const m = Math.round(Number(montant) * 100) / 100;
+  const cibles = reservations.filter((r) => {
+    const n = netDe(r);
+    return !(n && n.commission_recue_le);
+  });
+  const prevue = (r) => {
+    const n = netDe(r);
+    return n && n.commission_prevue !== null && n.commission_prevue !== undefined ? Number(n.commission_prevue) : 0;
+  };
+  const attendu = Math.round(cibles.reduce((s, r) => s + prevue(r), 0) * 100) / 100;
+  if (!cibles.length || !(m >= 0)) return { repartition: [], ecart: 0, attendu };
+  const poids = attendu > 0 ? cibles.map(prevue) : cibles.map(() => 1);
+  const somme = poids.reduce((s, x) => s + x, 0);
+  let reste = m;
+  const repartition = cibles.map((r, i) => {
+    const part = i === cibles.length - 1 ? reste : Math.round(((m * poids[i]) / somme) * 100) / 100;
+    reste = Math.round((reste - part) * 100) / 100;
+    return { reservation_id: r.id, commission_recue: part };
+  });
+  return { repartition, ecart: Math.round((m - attendu) * 100) / 100, attendu };
 }
 
 // ---- Vouchers (mode excursions) ------------------------------------------------------------------------------

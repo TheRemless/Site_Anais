@@ -1,12 +1,12 @@
 // « Coller une demande » : le client écrit à Anaïs sur WhatsApp, le message arrive à sa façon ou depuis le formulaire du site. On le colle ici :
 // l'outil reconnaît la date, les personnes, l'hôtel, le client et le service cité, cherche le prix dans la base partenaires, et crée le dossier
 // d'un tap. Tout ce qui a été reconnu se corrige sur place, et le prix suit.
-import { etat, entiteActive, reglages, nomPartenaire, netPrestation, netTrajet, peut, naviguer, nomClient } from "../etat.mjs";
+import { etat, entiteActive, reglages, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { lireMessage, offresPour, reponsePrix, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres } from "../partenaires-calc.mjs";
-import { lienWhatsApp } from "../operations-calc.mjs";
+import { lienWhatsApp, appliquerModeParDefaut } from "../operations-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_ } from "../i18n.mjs";
 
@@ -51,7 +51,12 @@ const garde = {
 // Quantité d'une prestation selon son unité (les bébés ne comptent pas).
 const quantite = (p, d) => (p.unite === "pp" ? d.adultes + d.enfants : p.unite === "ad" ? d.adultes : p.unite === "ch" ? d.enfants : 1) || 1;
 
+// Chaque service prend le mode de règlement habituel de son partenaire (chez nous ou sur place).
 function lignesDe(offre, d, langue, devise) {
+  return appliquerModeParDefaut(lignesBrutes(offre, d, langue, devise), partenaireDe);
+}
+
+function lignesBrutes(offre, d, langue, devise) {
   if (offre.genre === "trajet") return lignesDepuisTrajet(offre.source, netTrajet(offre.source), { langue, date: d.date, adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants, compagnie: "" });
   const adulte = ligneDepuisPrestation(offre.source, netPrestation(offre.source), { langue, date: d.date, qte: offre.enfant ? d.adultes || 1 : quantite(offre.source, d), devise });
   if (!offre.enfant) return [adulte];

@@ -747,3 +747,11 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .demande.lu textarea { min-height: 0; height: 3.4em; font-size: 0.88rem; line-height: 1.35; }
 .demande.lu .actions { margin: 4px 0 8px; }
 /* ===== Fin session D ===== */
+/* ---- Paiements (session A) : puce « Chez nous / Sur place », écran À encaisser ---- */
+.mode-reglement { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--bord-fort, var(--bord)); border-radius: 999px; background: var(--surface); }
+.mode-bouton { min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: transparent; color: var(--texte-2); font: inherit; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+.mode-bouton.actif { background: var(--teal-700); color: #fff; }
+.mode-bouton:focus-visible { outline: 3px solid var(--teal-700); outline-offset: 2px; }
+.champ-mode .etiquette { display: block; margin-bottom: 6px; font-size: 0.88rem; font-weight: 600; }
+.champ-mode .aide { margin-top: 8px; }
+.s-sur_place { color: #25653d; }
