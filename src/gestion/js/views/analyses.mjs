@@ -1,18 +1,18 @@
-// Tableau analytique : les chiffres viennent de la base (fonction tableau_analytique), jamais calculés ici
-// sauf en démonstration. Réservé aux rôles qui ont les droits « analyses » et « montants ».
-import { etat, peut, entiteActive, reglages } from "../etat.mjs";
-import { h, vider } from "../ui.mjs";
-import { aujourdhui, ajouterJours, formatNombre, formatMontant, nomMois } from "../calc.mjs";
+// Statistiques : une page par section (vue d'ensemble, ventes, encaissements, commissions et marge, clients, services,
+// réservations à venir, devis), la période et la comparaison dans l'adresse, une liste derrière chaque chiffre.
+// Les faits viennent de la base (fonction analyse_faits), un appel par section ; les indicateurs sont dans stats-calc.mjs.
+// Réservé aux rôles qui ont les droits « analyses » et « montants » ; commissions, nets et marge demandent aussi « nets ».
+import { etat, peut, entiteActive, reglages, entitesAnalysables } from "../etat.mjs";
+import { h, vider, modal, toast } from "../ui.mjs";
+import { aujourdhui, formatDate, formatMontant } from "../calc.mjs";
 import { vide, telecharger } from "./commun.mjs";
 import { tr, moisCourt, N_, pluriel } from "../i18n.mjs";
+import * as S from "../stats-calc.mjs";
+import { resumeMois } from "../analyses-resume.mjs";
+import { SECTIONS, liste } from "./analyses-sections.mjs";
+import { squelette, s } from "./analyses-widgets.mjs";
 
-const NS = "http://www.w3.org/2000/svg";
-export const s = (tag, attrs = {}, ...enfants) => {
-  const el = document.createElementNS(NS, tag);
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-  el.append(...enfants.flat().filter((x) => x !== null && x !== undefined));
-  return el;
-};
+export { s };
 
 export const periodes = {
   mois: [N_("Ce mois-ci"), (j) => [`${j.slice(0, 7)}-01`, j]],
@@ -48,34 +48,6 @@ export const libelleMois = (m) => {
   return `${moisCourt(`${m}-01`)} ${m.slice(2, 4)}`;
 };
 
-// Graphique en barres groupées : facturé et encaissé par mois.
-function graphiqueMensuel(mois, facture, encaisse, devise) {
-  const L = 760, H = 280, g = 52, b = 34, h0 = H - b - 16;
-  const max = Math.max(1, ...mois.map((m) => Math.max(facture.get(m) || 0, encaisse.get(m) || 0)));
-  const pas = 10 ** Math.floor(Math.log10(max));
-  const plafond = Math.ceil(max / pas) * pas;
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => Math.round(plafond * t));
-  const largeur = (L - g) / mois.length;
-  const bw = Math.max(6, Math.min(28, largeur / 2.6));
-  const y = (v) => 16 + h0 - (v / plafond) * h0;
-  return s(
-    "svg",
-    { viewBox: `0 0 ${L} ${H}`, class: "graphique", role: "img", "aria-label": tr("Facturé et encaissé par mois, en {devise}. Les chiffres sont dans le tableau en dessous.", { devise }) },
-    ticks.map((t) => s("g", {}, s("line", { x1: g, x2: L, y1: y(t), y2: y(t), class: "grille" }), s("text", { x: g - 8, y: y(t) + 4, class: "axe", "text-anchor": "end" }, formatNombre(t)))),
-    mois.map((m, i) => {
-      const x = g + i * largeur + largeur / 2;
-      const f = facture.get(m) || 0;
-      const e = encaisse.get(m) || 0;
-      return s(
-        "g",
-        {},
-        s("rect", { x: x - bw - 1, y: y(f), width: bw, height: Math.max(0, 16 + h0 - y(f)), class: "barre-facture" }, s("title", {}, tr("{mois} : facturé {montant} {devise}", { mois: libelleMois(m), montant: formatNombre(f), devise }))),
-        s("rect", { x: x + 1, y: y(e), width: bw, height: Math.max(0, 16 + h0 - y(e)), class: "barre-encaisse" }, s("title", {}, tr("{mois} : encaissé {montant} {devise}", { mois: libelleMois(m), montant: formatNombre(e), devise }))),
-        s("text", { x, y: H - 14, class: "axe", "text-anchor": "middle" }, libelleMois(m))
-      );
-    })
-  );
-}
 
 export function barresHorizontales(lignes, devise) {
   const max = Math.max(1, ...lignes.map((l) => l.montant));
@@ -86,81 +58,195 @@ export function barresHorizontales(lignes, devise) {
   );
 }
 
-export function vueAnalyses() {
+
+// ---- Données : un appel par section, gardés quelques secondes pour que le retour depuis une liste soit instantané ----------
+const CACHE = new Map();
+const DUREE_CACHE = 45000;
+const PARTIES = ["dossiers", "paiements", "reservations"];
+async function obtenir(entiteId, debut, fin, jour, parties) {
+  const besoin = parties || PARTIES;
+  const cle = `${etat.session ? etat.session.id : ""}|${entiteId}|${debut}|${fin}|${jour}`;
+  let e = CACHE.get(cle);
+  if (e && Date.now() - e.at > DUREE_CACHE) e = null;
+  const manque = e ? besoin.filter((x) => !e.parts.has(x)) : besoin;
+  if (e && !manque.length) return e.faits;
+  const r = await etat.store.analyseFaits({ entiteId, debut, fin, jour, parties: manque });
+  if (!e) e = { at: Date.now(), parts: new Set(), faits: { nets: !!r.nets, devise_defaut: r.devise_defaut || "", dossiers: [], paiements: [], reservations: [] } };
+  for (const k of manque) {
+    e.faits[k] = r[k] || [];
+    e.parts.add(k);
+  }
+  CACHE.set(cle, e);
+  return e.faits;
+}
+
+// Position de défilement de chaque adresse quittée, pour que « retour » retrouve l'endroit où l'on était.
+const DEFILEMENTS = new Map();
+window.addEventListener("hashchange", (e) => {
+  try {
+    const ancien = new URL(e.oldURL).hash;
+    if (ancien.startsWith("#/analyses")) DEFILEMENTS.set(ancien, window.scrollY);
+  } catch {
+    // adresse illisible : sans importance
+  }
+});
+
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+const BASE = "#/analyses";
+
+// Adresse d'une page : section, période, comparaison, devise, et (pour une liste) la mesure et son filtre.
+function adresse(section, p) {
+  const q = new URLSearchParams();
+  for (const k of ["p", "du", "au", "cmp", "dev", "g", "liste", "filtre", "tri", "sens", "q"]) if (p[k] !== undefined && p[k] !== null && p[k] !== "") q.set(k, p[k]);
+  const suite = q.toString();
+  return `${BASE}${section === "apercu" ? "" : `/${section}`}${suite ? `?${suite}` : ""}`;
+}
+
+export function vueAnalyses(sectionArg) {
   if (!(peut("analytics.voir") && peut("finances.voir"))) return vide(tr("Accès réservé"), tr("Le tableau analytique est réservé aux rôles qui ont les droits « analyses » et « montants »."), h("a", { class: "bouton secondaire", href: "#/" }, tr("Retour au tableau de bord")));
   const jour = aujourdhui();
-  const etatVue = { periode: "douze", du: periodes.douze[1](jour)[0], au: jour, devise: reglages().devise };
-  const corps = h("div", { "aria-live": "polite" });
+  const q = new URLSearchParams(location.hash.includes("?") ? location.hash.slice(location.hash.indexOf("?") + 1) : "");
+  const section = SECTIONS[sectionArg] ? sectionArg : "apercu";
+  const def = SECTIONS[section];
+  let cle = S.PERIODES.some(([k]) => k === q.get("p")) ? q.get("p") : "mois";
+  let du, au;
+  if (cle === "perso") [du, au] = [q.get("du"), q.get("au")];
+  else [du, au] = S.periodeRapide(cle, jour);
+  if (!ISO.test(du || "") || !ISO.test(au || "") || du > au) ((cle = "mois"), ([du, au] = S.periodeRapide("mois", jour)));
+  const cmpMode = ["aucune", "prec", "an"].includes(q.get("cmp")) ? q.get("cmp") : "prec";
+  const cmp = def.futur ? null : S.periodeComparee(du, au, cmpMode);
+  const gran = ["jour", "semaine", "mois"].includes(q.get("g")) ? q.get("g") : S.granularite(du, au);
+  const mesure = q.get("liste") && (S.MESURES[q.get("liste")] || q.get("liste") === "revenu") ? q.get("liste") : null;
+  const filtre = q.get("filtre") || null;
+  const base = { p: cle, du: cle === "perso" ? du : null, au: cle === "perso" ? au : null, cmp: cmpMode === "prec" ? null : cmpMode, dev: q.get("dev"), g: q.get("g") };
+  const lien = (nom, extra = {}) => adresse(nom, { ...base, g: null, ...extra });
+  const nets = peut("partenaires.nets");
+  const sections = Object.entries(SECTIONS).filter(([, v]) => !v.nets || nets);
+  const entiteId = etat.entiteId;
+  const corps = h("div", { class: "st-corps", "aria-live": "polite" });
+  const outilsDroite = h("div", { class: "entete-actions st-actions-haut" });
+  const outilsBas = h("div", { class: "st-actions-bas" });
+  const choixDevise = h("div", { class: "st-devise champ" });
+  let sortie = [];
+  let nomExport = "analyses";
 
-  const selPeriode = h("select", { id: "an-periode", onchange: (e) => { etatVue.periode = e.target.value; perso.hidden = e.target.value !== "perso"; if (e.target.value !== "perso") { [etatVue.du, etatVue.au] = periodes[e.target.value][1](jour); charger(); } } }, Object.entries(periodes).map(([k, [l]]) => h("option", { value: k }, tr(l))));
-  selPeriode.value = etatVue.periode;
-  const du = h("input", { id: "an-du", type: "date", value: etatVue.du, onchange: (e) => ((etatVue.du = e.target.value), charger()) });
-  const au = h("input", { id: "an-au", type: "date", value: etatVue.au, onchange: (e) => ((etatVue.au = e.target.value), charger()) });
-  const perso = h("div", { class: "grille-form filtres", hidden: true }, h("div", { class: "champ" }, h("label", { for: "an-du" }, tr("Du")), du), h("div", { class: "champ" }, h("label", { for: "an-au" }, tr("Au")), au));
-  const choixDevise = h("div", { class: "champ" });
+  // ---- En-tête, sections, période --------------------------------------------------------------------------------------------------
+  const nav = h("nav", { class: "st-nav", "aria-label": tr("Sections des statistiques") }, h("ul", null, sections.map(([k, v]) => h("li", null, h("a", { href: lien(k), class: "st-onglet", "aria-current": k === section ? "page" : null }, tr(v.titre))))));
+  // « Dates au choix » garde les dates en cours : sans elles, l'adresse retomberait sur « Ce mois ».
+  const puce = (k, libelle) => h("a", { class: "st-puce", href: adresse(section, { ...base, p: k, du: k === "perso" ? du : null, au: k === "perso" ? au : null, g: null }), "aria-current": cle === k ? "true" : null }, tr(libelle));
+  const dateDu = h("input", { id: "st-du", type: "date", value: du, max: au, onchange: (e) => (location.hash = adresse(section, { ...base, p: "perso", du: e.target.value, au })) });
+  const dateAu = h("input", { id: "st-au", type: "date", value: au, min: du, onchange: (e) => (location.hash = adresse(section, { ...base, p: "perso", du, au: e.target.value })) });
+  const selCmp = h("select", { id: "st-cmp", onchange: (e) => (location.hash = adresse(section, { ...base, cmp: e.target.value === "prec" ? null : e.target.value })) }, S.COMPARAISONS.map(([k, l]) => h("option", { value: k, selected: k === cmpMode }, tr(l))));
+  const barre = def.futur
+    ? h("p", { class: "aide st-barre-futur" }, tr("Cette section regarde devant, la période choisie ailleurs ne s'applique pas."))
+    : h("div", { class: "st-barre" }, h("div", { class: "st-puces", role: "group", "aria-label": tr("Période") }, S.PERIODES.map(([k, l]) => puce(k, l))), h("div", { class: "st-reglages" }, cle === "perso" ? [h("div", { class: "champ" }, h("label", { for: "st-du" }, tr("Du")), dateDu), h("div", { class: "champ" }, h("label", { for: "st-au" }, tr("Au")), dateAu)] : null, h("div", { class: "champ" }, h("label", { for: "st-cmp" }, h("span", { class: "st-long" }, tr("Comparer à")), h("span", { class: "st-court", "aria-hidden": "true" }, "vs")), selCmp), choixDevise));
+  const periodeTexte = def.futur ? null : h("p", { class: "aide st-periode" }, du === au ? formatDate(du) : tr("du {du} au {au}", { du: formatDate(du), au: formatDate(au) }), cmp ? ` ${tr("comparé à la période du {du} au {au}", { du: formatDate(cmp[0]), au: formatDate(cmp[1]) })}` : null);
 
-  let donnees = null;
-  async function charger() {
-    if (!etatVue.du || !etatVue.au || etatVue.du > etatVue.au) return;
-    vider(corps).append(h("p", { class: "aide" }, tr("Calcul en cours…")));
+  const exporter = () => {
+    // Un texte qui commencerait par = + - @ serait lu comme une formule par Excel : on le fait précéder d'une apostrophe (les montants restent des nombres).
+    const cellule = (v) => {
+      const t = String(v ?? "");
+      const sur = typeof v === "string" && /^[=+\-@\t\r]/.test(t) ? `'${t}` : t;
+      return `"${sur.replaceAll('"', '""')}"`;
+    };
+    const lignes = [[tr("Sujet"), tr("Libellé"), tr("Devise"), tr("Montant"), tr("Nombre")], ...sortie];
+    telecharger(`${nomExport}-${entiteActive().slug}-${du}-${au}.csv`, "﻿" + lignes.map((l) => l.map(cellule).join(";")).join("\r\n"), "text/csv;charset=utf-8");
+  };
+
+  async function copierResume() {
     try {
-      donnees = await etat.store.analyses({ entiteId: etat.entiteId, du: etatVue.du, au: etatVue.au, jour });
-      dessiner();
+      const [du0] = S.periodeRapide("mois", jour);
+      const c0 = S.periodeComparee(du0, jour, "prec");
+      const faits = await obtenir(entiteId, c0[0] < du0 ? c0[0] : du0, jour, jour, null);
+      const devs = S.devises(faits, faits.devise_defaut || reglages().devise);
+      const dev = devs.includes(q.get("dev")) ? q.get("dev") : devs.includes(reglages().devise) ? reglages().devise : devs[0] || reglages().devise;
+      const texte = resumeMois({ faits, jour, devise: dev, entite: entiteActive().nom });
+      const zone = h("textarea", { class: "st-resume", readonly: true, rows: 12, "aria-label": tr("Résumé du mois") }, texte);
+      const copier = async () => {
+        try {
+          await navigator.clipboard.writeText(texte);
+        } catch {
+          zone.select();
+          document.execCommand("copy");
+        }
+        toast(tr("Résumé copié. Collez-le dans WhatsApp."));
+      };
+      modal(tr("Résumé du mois"), h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("Relisez avant d'envoyer, les chiffres viennent de l'outil à l'instant.")), zone, h("div", { class: "actions" }, h("button", { class: "principal", type: "button", onclick: copier }, tr("Copier le texte")), navigator.share ? h("button", { class: "secondaire", type: "button", onclick: () => navigator.share({ text: texte }).catch(() => {}) }, tr("Partager")) : null)), { feuille: true });
+      zone.focus();
     } catch (err) {
-      vider(corps).append(h("p", { class: "erreur-form", role: "alert" }, tr("Impossible de calculer les analyses : {message}", { message: err.message })));
+      toast(tr("Impossible de préparer le résumé : {message}", { message: err.message }), true);
     }
   }
 
-  function dessiner() {
-    const d = donnees;
-    const devises = [...new Set([...d.facture_par_mois, ...d.encaisse_par_mois, ...d.impayes, ...d.top_clients, ...d.par_pays].map((x) => x.devise))];
-    if (!devises.length) devises.push(reglages().devise);
-    if (!devises.includes(etatVue.devise)) etatVue.devise = devises[0];
-    const dev = etatVue.devise;
-    vider(choixDevise);
-    if (devises.length > 1) choixDevise.append(h("label", { for: "an-devise" }, tr("Devise")), h("select", { id: "an-devise", onchange: (e) => ((etatVue.devise = e.target.value), dessiner()) }, devises.map((x) => h("option", { value: x, selected: x === dev }, x))));
-    const somme = (lignes) => lignes.filter((x) => x.devise === dev).reduce((t, x) => t + Number(x.montant), 0);
-    const facture = new Map(d.facture_par_mois.filter((x) => x.devise === dev).map((x) => [x.mois, Number(x.montant)]));
-    const encaisse = new Map(d.encaisse_par_mois.filter((x) => x.devise === dev).map((x) => [x.mois, Number(x.montant)]));
-    const mois = listeMois(etatVue.du, etatVue.au);
-    const impayes = d.impayes.filter((x) => x.devise === dev);
-    const totalImpayes = impayes.reduce((t, x) => t + Number(x.montant), 0);
-    const conv = d.devis.emis ? Math.round((d.devis.acceptes / d.devis.emis) * 100) : null;
-    const chiffre = (libelle, valeur, detail) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, libelle), h("p", { class: "chiffre-valeur" }, valeur), h("p", { class: "chiffre-detail" }, detail || " "));
-    const classement = (liste, cle) => liste.filter((x) => x.devise === dev).map((x) => ({ libelle: libelleSpecial(x[cle]) || "—", montant: Number(x.montant), nombre: x.nombre }));
+  const surEtat = (e) => history.replaceState(null, "", adresse(section, { ...base, liste: mesure, filtre, tri: e.tri, sens: e.tri ? e.sens : null, q: e.q }));
 
-    vider(corps).append(
-      h("div", { class: "chiffres" }, chiffre(tr("Facturé"), formatMontant(somme(d.facture_par_mois), dev), pluriel(d.facture_par_mois.filter((x) => x.devise === dev).reduce((t, x) => t + x.nombre, 0), N_("facture émise"), N_("factures émises"))), chiffre(tr("Encaissé"), formatMontant(somme(d.encaisse_par_mois), dev), pluriel(d.encaisse_par_mois.filter((x) => x.devise === dev).reduce((t, x) => t + x.nombre, 0), N_("paiement"), N_("paiements"))), chiffre(tr("Reste à encaisser"), formatMontant(totalImpayes, dev), tr("tous dossiers acceptés ou facturés"))),
-      h("div", { class: "chiffres" }, chiffre(tr("Devis émis"), String(d.devis.emis), tr("sur la période")), chiffre(tr("Devis acceptés"), conv === null ? "—" : `${d.devis.acceptes} (${conv} %)`, tr("part des devis émis")), chiffre(tr("Délai moyen d'acceptation"), d.devis.delai_moyen_jours === null ? "—" : tr("{n} jours", { n: String(d.devis.delai_moyen_jours).replace(".", tr(",")) }), tr("entre l'envoi et l'acceptation"))),
-      h("section", null, h("h2", null, tr("Facturé et encaissé par mois")), h("div", { class: "legende" }, h("span", null, h("i", { class: "pastille-facture" }), tr(" Facturé")), h("span", null, h("i", { class: "pastille-encaisse" }), tr(" Encaissé"))), graphiqueMensuel(mois, facture, encaisse, dev),
-        h("details", null, h("summary", null, tr("Voir les chiffres")), h("table", { class: "tableau simple" }, h("thead", null, h("tr", null, h("th", { scope: "col" }, tr("Mois")), h("th", { scope: "col", class: "num" }, tr("Facturé")), h("th", { scope: "col", class: "num" }, tr("Encaissé")))), h("tbody", null, mois.map((m) => h("tr", null, h("td", { "data-label": tr("Mois") }, libelleMois(m)), h("td", { class: "num", "data-label": tr("Facturé") }, formatMontant(facture.get(m) || 0, dev)), h("td", { class: "num", "data-label": tr("Encaissé") }, formatMontant(encaisse.get(m) || 0, dev)))))))),
-      h("section", null, h("h2", null, tr("Impayés par ancienneté")), impayes.length ? barresHorizontales(impayes.map((x) => ({ libelle: tr("{tranche} jours", { tranche: x.tranche }), montant: Number(x.montant), nombre: x.nombre })), dev) : h("p", { class: "vide-court" }, tr("Aucun impayé.")), h("p", { class: "aide" }, tr("Seules comptent les factures émises et pas encore soldées, sans les dossiers annulés. L'ancienneté se compte depuis la date de la facture."))),
-      h("div", { class: "deux-colonnes" },
-        h("section", null, h("h2", null, tr("Meilleurs clients")), classement(d.top_clients, "client").length ? barresHorizontales(classement(d.top_clients, "client"), dev) : h("p", { class: "vide-court" }, tr("Aucune donnée sur la période."))),
-        h("section", null, h("h2", null, tr("Par destination ou service")), classement(d.par_pays, "pays").length ? barresHorizontales(classement(d.par_pays, "pays"), dev) : h("p", { class: "vide-court" }, tr("Aucune donnée sur la période.")))),
-      h("section", null, h("h2", null, tr("Par responsable")), classement(d.par_responsable, "responsable").length ? barresHorizontales(classement(d.par_responsable, "responsable"), dev) : h("p", { class: "vide-court" }, tr("Aucune donnée sur la période.")), h("p", { class: "aide" }, tr("Dossiers acceptés ou facturés sur la période, hors dossiers annulés."))),
-      peut("exports.faire") ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: () => exporter() }, tr("Exporter ces chiffres (Excel)"))) : null
-    );
+  // ---- Chargement et dessin -----------------------------------------------------------------------------------------------------
+  async function charger() {
+    vider(corps).append(squelette({ tuiles: mesure ? 2 : 8, graphique: !mesure }));
+    const t0 = performance.now();
+    try {
+      let debut = cmp && cmp[0] < du ? cmp[0] : du;
+      let fin = au;
+      if (def.douze) debut = S.debutMois(jour, -11) < debut ? S.debutMois(jour, -11) : debut;
+      if (def.futur) ((debut = jour), (fin = S.finDeMois(jour) > jour ? S.finDeMois(jour) : jour));
+      let parties = def.parties;
+      if (mesure) {
+        const src = mesure === "revenu" ? "revenu" : S.MESURES[mesure].source;
+        parties = src === "revenu" ? ["paiements", "reservations"] : [src];
+        if (!def.futur && src === "reservations" && parties.length === 1) parties = ["reservations"];
+      }
+      const faits = await obtenir(entiteId, debut, fin, jour, parties);
+      const devs = S.devises(faits, faits.devise_defaut || reglages().devise);
+      const devise = devs.includes(q.get("dev")) ? q.get("dev") : devs.includes(reglages().devise) ? reglages().devise : devs[0] || reglages().devise;
+      vider(choixDevise);
+      if (devs.length > 1) choixDevise.append(h("label", { for: "st-dev" }, tr("Devise")), h("select", { id: "st-dev", onchange: (e) => (location.hash = adresse(section, { ...base, dev: e.target.value, liste: mesure, filtre })) }, devs.map((x) => h("option", { value: x, selected: x === devise }, x))));
+      const X = {
+        faits, du, au, jour, devise, cmp, gran, nets: !!faits.nets, section, entite: entiteActive().nom,
+        c: { du, au, jour, devise }, tri: q.get("tri"), sens: q.get("sens"), q: q.get("q") || "", surEtat, sortie: [],
+        peutGroupe: entitesAnalysables().length > 1,
+        param: (extra) => adresse(section, { ...base, ...extra, liste: mesure, filtre }),
+        href: (id, f, extra = {}) => adresse(section, { ...base, liste: id, filtre: f || null, ...extra }),
+        lien: (nom, extra) => lien(nom, { ...extra, dev: q.get("dev") }),
+      };
+      vider(corps);
+      if (mesure) {
+        const L = liste(X, mesure, filtre);
+        sortie = L.rows.map((l) => [L.titre, l.titre, l.devise, l.montant, 1]);
+        nomExport = `liste-${mesure}`;
+        const retour = h("a", { class: "retour", href: adresse(section, { ...base }) }, tr("Retour à {section}", { section: tr(def.titre) }));
+        corps.append(retour, h("div", { class: "st-liste-tete" }, h("h2", { class: "st-titre" }, L.titre, L.filtre ? h("span", { class: "st-filtre" }, L.filtre) : null), h("p", { class: "st-liste-somme" }, h("strong", null, formatMontant(L.total.montant, devise)), h("span", null, ` · ${L.total.nombre === 1 ? tr("1 ligne") : tr("{n} lignes", { n: L.total.nombre })}`)), S.estFlux(mesure) && !def.futur ? h("p", { class: "aide" }, du === au ? formatDate(du) : tr("du {du} au {au}", { du: formatDate(du), au: formatDate(au) })) : h("p", { class: "aide" }, tr("à ce jour")), h("details", { class: "st-defs" }, h("summary", null, tr("Comment c'est calculé")), h("p", null, tr(S.DEFINITIONS[mesure][1])))), L.noeud);
+      } else {
+        const aucun = !faits.dossiers.length && !faits.paiements.length && !faits.reservations.length;
+        if (aucun && section !== "commissions") {
+          corps.append(h("div", { class: "vide" }, h("h2", null, tr("Rien à compter pour l'instant")), h("p", null, tr("Aucun dossier, paiement ni réservation ne tombe dans cette période. Essayez une période plus large.")), h("div", { class: "actions" }, h("a", { class: "bouton secondaire", href: adresse(section, { ...base, p: "annee", du: null, au: null }) }, tr("Voir l'année")), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Nouveau dossier")) : null)));
+        } else {
+          corps.append(...def.rendre(X).filter(Boolean));
+          sortie = X.sortie;
+          nomExport = `statistiques-${section}`;
+        }
+      }
+      corps.dataset.ms = String(Math.round(performance.now() - t0));
+      const y = DEFILEMENTS.get(location.hash);
+      if (y) requestAnimationFrame(() => window.scrollTo(0, y));
+      const actif = nav.querySelector("[aria-current]");
+      if (actif && actif.scrollIntoView) nav.scrollLeft = Math.max(0, actif.offsetLeft - 16);
+    } catch (err) {
+      // La base n'a pas encore reçu la migration 20 : message clair plutôt que l'erreur brute.
+      const manque = /analyse_faits|schema cache|could not find the function/i.test(err.message || "");
+      vider(corps).append(h("p", { class: "erreur-form", role: "alert" }, manque ? tr("Les statistiques demandent une mise à jour de la base de données (migration 20). Demandez à la personne qui administre l'outil de l'appliquer.") : tr("Impossible de calculer les analyses : {message}", { message: err.message })), h("button", { class: "secondaire", type: "button", onclick: () => ((CACHE.clear()), charger()) }, tr("Réessayer")));
+    }
   }
 
-  function exporter() {
-    const lignes = [[tr("Sujet"), tr("Libellé"), tr("Devise"), tr("Montant"), tr("Nombre")]];
-    for (const x of donnees.facture_par_mois) lignes.push(["Facturé par mois", x.mois, x.devise, x.montant, x.nombre]);
-    for (const x of donnees.encaisse_par_mois) lignes.push(["Encaissé par mois", x.mois, x.devise, x.montant, x.nombre]);
-    for (const x of donnees.impayes) lignes.push(["Impayés", `${x.tranche} jours`, x.devise, x.montant, x.nombre]);
-    for (const x of donnees.top_clients) lignes.push(["Meilleurs clients", x.client, x.devise, x.montant, x.nombre]);
-    for (const x of donnees.par_pays) lignes.push([tr("Par destination"), libelleSpecial(x.pays), x.devise, x.montant, x.nombre]);
-    for (const x of donnees.par_responsable) lignes.push([tr("Par responsable"), libelleSpecial(x.responsable), x.devise, x.montant, x.nombre]);
-    const cellule = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
-    telecharger(`analyses-${entiteActive().slug}-${etatVue.du}-${etatVue.au}.csv`, "﻿" + lignes.map((l) => l.map(cellule).join(";")).join("\r\n"), "text/csv;charset=utf-8");
-  }
-
+  // Deux fois les mêmes boutons : en haut sur ordinateur, en bas sur téléphone où ils ne doivent pas repousser les chiffres.
+  const boutons = () => [h("button", { class: "secondaire petit", type: "button", onclick: copierResume }, tr("Copier le résumé du mois")), peut("exports.faire") ? h("button", { class: "secondaire petit", type: "button", onclick: exporter }, tr("Exporter (Excel)")) : null];
+  outilsDroite.append(...boutons());
+  outilsBas.append(...boutons());
   charger();
-  return h(
-    "div",
-    { "data-titre": tr("Analyses") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Analyses")), h("p", { class: "sous" }, entiteActive().nom))),
-    h("div", { class: "barre-outils" }, h("div", { class: "grille-form filtres" }, h("div", { class: "champ" }, h("label", { for: "an-periode" }, tr("Période")), selPeriode), choixDevise), perso),
-    corps
-  );
+  // La barre de sections colle sous la barre du haut du téléphone, dont la hauteur dépend de l'appareil (encoche comprise).
+  requestAnimationFrame(() => {
+    const barreHaut = document.querySelector(".barre-haut");
+    const racine = document.querySelector(".st");
+    if (racine) racine.style.setProperty("--st-haut", `${barreHaut ? Math.round(barreHaut.getBoundingClientRect().height) : 0}px`);
+  });
+  return h("div", { class: `st${mesure ? " st-en-liste" : ""}`, "data-titre": tr("Statistiques"), "data-large": "1" }, h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Statistiques")), h("p", { class: "sous" }, `${entiteActive().nom} · ${tr(def.complet || def.titre)}`)), outilsDroite), nav, barre, periodeTexte, corps, outilsBas);
 }

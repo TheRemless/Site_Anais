@@ -1,6 +1,6 @@
 // Tableau analytique calculé dans le navigateur. Sert à la démonstration et de référence pour la fonction SQL
 // `analyse` : les deux doivent donner exactement les mêmes chiffres (voir tests/gestion-analyses.test.js).
-import { totaux, arrondi, joursEntre } from "./calc.mjs";
+import { totaux, arrondi, joursEntre, montantSurPlace } from "./calc.mjs";
 
 const mois = (iso) => iso.slice(0, 7);
 const dans = (iso, du, au) => !!iso && iso >= du && iso <= au;
@@ -94,4 +94,135 @@ export function analyserLocal({ dossiers, documents, paiements, clients, profils
       .map((g) => ({ devise: g.cle[0], montant: arrondi(g.montant), nombre: g.nombre })),
     activite: { dossiers: retenus.length, clients: new Set(retenus.map((t) => t.d.client_id)).size },
   };
+}
+
+// ---- Faits pour les statistiques détaillées -----------------------------------------------------------------------
+// Miroir de la fonction SQL `analyse_faits` (migration 20) : un enregistrement par dossier, paiement et réservation, avec les
+// montants déjà calculés. Les indicateurs sont tirés de ces faits par stats-calc.mjs. Les deux versions doivent donner
+// exactement les mêmes faits (voir tests/gestion-stats.test.js et docs/gestion/verif-analyses.mjs).
+//   debut, fin : fenêtre de dates à couvrir ; jour : aujourd'hui ; nets : la personne a le droit « nets des partenaires ».
+const nombreOuNull = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
+const entier = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+export function faitsLocal(source, { debut, fin, jour, nets }) {
+  const { dossiers, documents, paiements, clients, profils, reglages } = source;
+  const reservations = source.reservations || [];
+  const reservationsNets = source.reservations_nets || [];
+  const partenaires = source.partenaires || [];
+  const prestations = source.prestations || [];
+  const devDefaut = reglages.devise || "";
+  const plusRecent = (id, type) =>
+    documents
+      .filter((d) => d.dossier_id === id && d.type === type)
+      .sort((a, b) => (a.date_emission === b.date_emission ? (a.created_at < b.created_at ? 1 : -1) : a.date_emission < b.date_emission ? 1 : -1))[0];
+  const clientNom = (id) => {
+    const c = clients.find((x) => x.id === id);
+    return [c && c.prenom, c && c.nom].filter(Boolean).join(" ").trim();
+  };
+  const dans = (iso, du, au) => !!iso && iso >= du && iso <= au;
+
+  const tous = dossiers.map((d) => {
+    const f = plusRecent(d.id, "facture");
+    const v = plusRecent(d.id, "devis");
+    const doc = f || v;
+    const total = doc ? totaux(doc.contenu).net : 0;
+    const surPlace = doc ? montantSurPlace(doc.contenu) : 0;
+    const recu = arrondi(paiements.filter((p) => p.dossier_id === d.id).reduce((s, p) => s + Number(p.montant), 0));
+    const p = profils.find((x) => x.user_id === d.responsable_id);
+    return {
+      id: d.id,
+      ref: d.ref || "",
+      client_id: d.client_id,
+      client: clientNom(d.client_id),
+      pays: d.pays || null,
+      responsable: ((p && (p.nom || "").trim()) || (p && (p.email || "").trim()) || null) || null,
+      accepte_le: d.accepte_le || null,
+      annule: !!d.annule,
+      date_depart: d.date_depart || null,
+      date_retour: d.date_retour || null,
+      f_date: f ? f.date_emission : null,
+      v_date: v ? v.date_emission : null,
+      devise: (doc && doc.contenu.devise) || devDefaut,
+      total,
+      sur_place: surPlace,
+      recu,
+      client_depuis: null,
+      _doc: !!doc,
+    };
+  });
+  const parId = new Map(tous.map((x) => [x.id, x]));
+  const avecDoc = tous.filter((x) => x._doc);
+  const depuis = new Map();
+  for (const x of avecDoc) {
+    if (x.annule || !(x.accepte_le || x.f_date)) continue;
+    const r = x.f_date || x.accepte_le || x.v_date;
+    if (!depuis.has(x.client_id) || r < depuis.get(x.client_id)) depuis.set(x.client_id, r);
+  }
+  for (const x of avecDoc) x.client_depuis = depuis.get(x.client_id) || null;
+
+  const pertinent = (x) => {
+    const r = x.f_date || x.accepte_le || x.v_date;
+    const reste = arrondi(x.total - x.recu);
+    return (
+      dans(r, debut, fin) || dans(x.v_date, debut, fin) || dans(x.accepte_le, debut, fin) || dans(x.f_date, debut, fin) ||
+      (!x.annule && !!x.f_date && reste > 0) ||
+      (!x.annule && !x.accepte_le && !x.f_date && !!x.v_date && x.v_date <= jour) ||
+      (!!x.date_depart && x.date_depart >= jour)
+    );
+  };
+  const dossiersFaits = avecDoc.filter(pertinent).map(({ _doc, ...x }) => x);
+
+  const paiementsFaits = paiements
+    .filter((p) => dans(p.date, debut, fin) && parId.has(p.dossier_id))
+    .map((p) => {
+      const x = parId.get(p.dossier_id);
+      return { id: p.id, dossier_id: p.dossier_id, ref: x.ref, client: x.client, date: p.date, montant: Number(p.montant), moyen: p.moyen || null, type: p.type || null, devise: x.devise };
+    });
+
+  const netsDe = new Map(reservationsNets.map((n) => [n.reservation_id, n]));
+  const reservationsFaits = reservations
+    .filter((r) => parId.has(r.dossier_id))
+    .map((r) => {
+      const x = parId.get(r.dossier_id);
+      const n = nets ? netsDe.get(r.id) || {} : {};
+      const pr = prestations.find((p) => p.id === r.prestation_id);
+      const pa = partenaires.find((p) => p.id === r.partenaire_id);
+      const pers = r.personnes || {};
+      return {
+        id: r.id,
+        dossier_id: r.dossier_id,
+        ref: x.ref,
+        client: x.client,
+        devise: x.devise,
+        dossier_annule: x.annule,
+        libelle: r.libelle || "",
+        partenaire_id: r.partenaire_id || null,
+        partenaire: pa ? pa.nom : null,
+        famille: (pr && pr.famille) || (r.trajet_id ? "billet" : "autre"),
+        date_service: r.date_service || null,
+        statut: r.statut,
+        montant_vente: nombreOuNull(r.montant_vente),
+        paye_sur_place: !!r.paye_sur_place,
+        adultes: entier(pers.adultes),
+        enfants: entier(pers.enfants),
+        bebes: entier(pers.bebes),
+        net_prevu: nombreOuNull(n.net_prevu),
+        net_paye: nombreOuNull(n.net_paye),
+        paye_le: n.paye_le || null,
+        commission_prevue: nombreOuNull(n.commission_prevue),
+        commission_recue: nombreOuNull(n.commission_recue),
+        commission_recue_le: n.commission_recue_le || null,
+      };
+    })
+    .filter((r) => {
+      const actif = r.statut !== "annule" && !r.dossier_annule;
+      return (
+        !r.date_service || dans(r.date_service, debut, fin) || r.date_service >= jour ||
+        (nets && (dans(r.commission_recue_le, debut, fin) || dans(r.paye_le, debut, fin))) ||
+        (nets && actif && r.paye_sur_place && !r.commission_recue_le && (r.commission_prevue === null || arrondi(r.commission_prevue - (r.commission_recue || 0)) > 0)) ||
+        (nets && actif && !r.paye_sur_place && r.net_prevu !== null && arrondi(r.net_prevu - (r.net_paye || 0)) > 0)
+      );
+    });
+
+  return { nets: !!nets, devise_defaut: devDefaut, dossiers: dossiersFaits, paiements: paiementsFaits, reservations: reservationsFaits };
 }

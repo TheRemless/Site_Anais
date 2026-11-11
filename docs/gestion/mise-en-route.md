@@ -49,6 +49,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 16. Rappels sur téléphone : `migration-17-rappels.sql` (une table `abonnements_push` et une fonction d'abonnement, ne modifie aucune donnée). Les envois à 18h et 9h passent par la fonction Supabase `rappels` et deux tâches pg_cron, posées avec la CLI Supabase.
 17. Services payés sur place : `migration-18-sur-place.sql` (une colonne sur les réservations, trois colonnes de commission sur les nets de réservation, et le calcul du total qui ignore les lignes payées directement au prestataire). Ne modifie aucune donnée. À exécuter avant de publier la version correspondante.
 18. Paiements simples : `migration-19-paiements.sql` (une colonne pour la règle de commission chiffrée d'un partenaire, une colonne `sur_place` dans le résumé de dossier avec la fonction qui la calcule, et le recalcul des dossiers dont un document porte déjà une ligne payée sur place). Ne modifie aucun montant, total ni paiement. À exécuter avant de publier la version qui ajoute l'écran « À encaisser ».
+19. Statistiques détaillées : `migration-20-statistiques.sql` (une fonction `analyse_faits` qui renvoie, pour l'écran Statistiques, les dossiers, paiements et réservations avec leurs montants déjà calculés). À exécuter après la migration 19 et avant de publier la version qui remplace l'écran Analyses. Ne modifie aucune donnée ni aucune fonction existante ; sans elle, l'écran Statistiques affiche un message qui demande de l'appliquer.
 
 ## Ajouter une personne (l'assistante par exemple)
 

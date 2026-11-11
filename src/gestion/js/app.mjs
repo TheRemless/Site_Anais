@@ -31,7 +31,7 @@ const ROUTES = [
   [/^#\/reglages$/, "reglages", vers(() => import("./views/reglages.mjs"), "vueReglages")],
   [/^#\/admin$/, "admin", vers(() => import("./views/admin.mjs"), "vueAdmin")],
   [/^#\/journal$/, "journal", vers(() => import("./views/journal.mjs"), "vueJournal")],
-  [/^#\/analyses$/, "analyses", vers(() => import("./views/analyses.mjs"), "vueAnalyses")],
+  [/^#\/analyses(?:\/([a-z]+))?(?:\?.*)?$/, "analyses", vers(() => import("./views/analyses.mjs"), "vueAnalyses")],
   [/^#\/groupe$/, "groupe", vers(() => import("./views/groupe.mjs"), "vueGroupe")],
   [/^#\/taches$/, "taches", vers(() => import("./views/taches.mjs"), "vueTaches")],
   [/^#\/composants$/, "composants", vers(() => import("./views/composants.mjs"), "vueComposants")],
@@ -175,7 +175,7 @@ function ecrans() {
     {
       titre: tr("Administration"),
       items: [
-        ...si(peut("analytics.voir") && peut("finances.voir"), { href: "#/analyses", libelle: tr("Analyses"), cle: "analyses", icone: "analyses" }),
+        ...si(peut("analytics.voir") && peut("finances.voir"), { href: "#/analyses", libelle: tr("Statistiques"), cle: "analyses", icone: "analyses" }),
         ...si(entitesAnalysables().length > 1, { href: "#/groupe", libelle: tr("Vue d'ensemble"), cle: "groupe", icone: "groupe" }),
         ...si(peut("journal.voir"), { href: "#/journal", libelle: tr("Journal"), cle: "journal", icone: "journal" }),
         ...si(estAdmin(), { href: "#/reglages", libelle: tr("Réglages"), cle: "reglages", icone: "reglages" }),
@@ -610,7 +610,7 @@ window.addEventListener("error", (e) => signalerErreur(e.message));
 // Ce que fait une autre personne (un dossier créé, un paiement noté) apparaît sans recharger : l'outil relit la base en silence
 // au retour sur l'onglet puis chaque minute. L'écran n'est redessiné que s'il n'y a rien à perdre : pas de fenêtre ouverte,
 // pas de champ en cours de saisie, pas d'éditeur de document. Dans les autres cas les données sont déjà à jour pour l'écran suivant.
-const ECRANS_DE_LECTURE = /^#?\/?$|^#\/(dossiers|clients|taches|reservations|du|partenaires|trajets|tarifs|catalogue|analyses|groupe|journal)(\?.*)?$|^#\/(dossier|client|partenaire)\/[\w-]+$/;
+const ECRANS_DE_LECTURE = /^#?\/?$|^#\/(dossiers|clients|taches|reservations|du|partenaires|trajets|tarifs|catalogue|analyses|groupe|journal)(\?.*)?$|^#\/analyses(\/[a-z]+)?(\?.*)?$|^#\/(dossier|client|partenaire)\/[\w-]+$/;
 function ecranLibre() {
   if (!ECRANS_DE_LECTURE.test(location.hash || "#/")) return false;
   if (document.querySelector(".modal-fond")) return false;
