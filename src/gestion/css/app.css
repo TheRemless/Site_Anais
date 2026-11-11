@@ -1121,3 +1121,17 @@ th[aria-sort="ascending"] .st-tri, th[aria-sort="descending"] .st-tri { color: v
 @media (prefers-reduced-motion: reduce) { .st-sq { animation: none; } }
 .st-en-liste .st-barre, .st-en-liste .st-periode, .st-en-liste .st-barre-futur { display: none; }
 .st-liste-tete .st-defs { margin: 6px 0 0; }
+
+/* ---- Paiements (session A), listes adaptatives et formulaire de réservation ---- */
+.droite-pile { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+.droite-pile span { font-size: 0.85rem; color: var(--texte-2); }
+.carte-actions-fin .carte-actions { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.carte-actions-fin button, .carte-actions-fin .bouton { min-height: 44px; }
+@media (max-width: 719px) {
+  .carte-actions-fin .principal { order: -1; flex: 1 1 100%; }
+}
+.formulaire-reservation .actions { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom, 0px)); z-index: 1; margin: 12px -20px 0; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--bord); }
+.formulaire-reservation .actions:not(.gauche) { flex-wrap: nowrap; }
+.formulaire-reservation .actions:not(.gauche) button { flex: 1 1 0; }
+@media (min-width: 720px) { .formulaire-reservation .actions:not(.gauche) button { flex: 0 0 auto; min-width: 120px; } }
+.carte .detail-services { margin: 0; }
