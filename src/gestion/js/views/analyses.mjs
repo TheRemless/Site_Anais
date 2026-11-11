@@ -65,7 +65,7 @@ const DUREE_CACHE = 45000;
 const PARTIES = ["dossiers", "paiements", "reservations"];
 async function obtenir(entiteId, debut, fin, jour, parties) {
   const besoin = parties || PARTIES;
-  const cle = `${entiteId}|${debut}|${fin}|${jour}`;
+  const cle = `${etat.session ? etat.session.id : ""}|${entiteId}|${debut}|${fin}|${jour}`;
   let e = CACHE.get(cle);
   if (e && Date.now() - e.at > DUREE_CACHE) e = null;
   const manque = e ? besoin.filter((x) => !e.parts.has(x)) : besoin;
@@ -132,14 +132,15 @@ export function vueAnalyses(sectionArg) {
 
   // ---- En-tête, sections, période --------------------------------------------------------------------------------------------------
   const nav = h("nav", { class: "st-nav", "aria-label": tr("Sections des statistiques") }, h("ul", null, sections.map(([k, v]) => h("li", null, h("a", { href: lien(k), class: "st-onglet", "aria-current": k === section ? "page" : null }, tr(v.titre))))));
-  const puce = (k, libelle) => h("a", { class: "st-puce", href: adresse(section, { ...base, p: k, du: null, au: null, g: null }), "aria-current": cle === k ? "true" : null }, tr(libelle));
+  // « Dates au choix » garde les dates en cours : sans elles, l'adresse retomberait sur « Ce mois ».
+  const puce = (k, libelle) => h("a", { class: "st-puce", href: adresse(section, { ...base, p: k, du: k === "perso" ? du : null, au: k === "perso" ? au : null, g: null }), "aria-current": cle === k ? "true" : null }, tr(libelle));
   const dateDu = h("input", { id: "st-du", type: "date", value: du, max: au, onchange: (e) => (location.hash = adresse(section, { ...base, p: "perso", du: e.target.value, au })) });
   const dateAu = h("input", { id: "st-au", type: "date", value: au, min: du, onchange: (e) => (location.hash = adresse(section, { ...base, p: "perso", du, au: e.target.value })) });
   const selCmp = h("select", { id: "st-cmp", onchange: (e) => (location.hash = adresse(section, { ...base, cmp: e.target.value === "prec" ? null : e.target.value })) }, S.COMPARAISONS.map(([k, l]) => h("option", { value: k, selected: k === cmpMode }, tr(l))));
   const barre = def.futur
-    ? h("p", { class: "aide st-barre-futur" }, tr("Cette section regarde devant : la période choisie ailleurs ne s'applique pas."))
+    ? h("p", { class: "aide st-barre-futur" }, tr("Cette section regarde devant, la période choisie ailleurs ne s'applique pas."))
     : h("div", { class: "st-barre" }, h("div", { class: "st-puces", role: "group", "aria-label": tr("Période") }, S.PERIODES.map(([k, l]) => puce(k, l))), h("div", { class: "st-reglages" }, cle === "perso" ? [h("div", { class: "champ" }, h("label", { for: "st-du" }, tr("Du")), dateDu), h("div", { class: "champ" }, h("label", { for: "st-au" }, tr("Au")), dateAu)] : null, h("div", { class: "champ" }, h("label", { for: "st-cmp" }, h("span", { class: "st-long" }, tr("Comparer à")), h("span", { class: "st-court", "aria-hidden": "true" }, "vs")), selCmp), choixDevise));
-  const periodeTexte = def.futur ? null : h("p", { class: "aide st-periode" }, du === au ? formatDate(du) : `${formatDate(du)} – ${formatDate(au)}`, cmp ? ` · ${tr("comparé à {du} – {au}", { du: formatDate(cmp[0]), au: formatDate(cmp[1]) })}` : null);
+  const periodeTexte = def.futur ? null : h("p", { class: "aide st-periode" }, du === au ? formatDate(du) : tr("du {du} au {au}", { du: formatDate(du), au: formatDate(au) }), cmp ? ` ${tr("comparé à la période du {du} au {au}", { du: formatDate(cmp[0]), au: formatDate(cmp[1]) })}` : null);
 
   const exporter = () => {
     const cellule = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
@@ -165,7 +166,7 @@ export function vueAnalyses(sectionArg) {
         }
         toast(tr("Résumé copié. Collez-le dans WhatsApp."));
       };
-      modal(tr("Résumé du mois"), h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("Relisez avant d'envoyer : les chiffres viennent de l'outil à l'instant.")), zone, h("div", { class: "actions" }, h("button", { class: "principal", type: "button", onclick: copier }, tr("Copier le texte")), navigator.share ? h("button", { class: "secondaire", type: "button", onclick: () => navigator.share({ text: texte }).catch(() => {}) }, tr("Partager")) : null)), { feuille: true });
+      modal(tr("Résumé du mois"), h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("Relisez avant d'envoyer, les chiffres viennent de l'outil à l'instant.")), zone, h("div", { class: "actions" }, h("button", { class: "principal", type: "button", onclick: copier }, tr("Copier le texte")), navigator.share ? h("button", { class: "secondaire", type: "button", onclick: () => navigator.share({ text: texte }).catch(() => {}) }, tr("Partager")) : null)), { feuille: true });
       zone.focus();
     } catch (err) {
       toast(tr("Impossible de préparer le résumé : {message}", { message: err.message }), true);
@@ -208,7 +209,7 @@ export function vueAnalyses(sectionArg) {
         sortie = L.rows.map((l) => [L.titre, l.titre, l.devise, l.montant, 1]);
         nomExport = `liste-${mesure}`;
         const retour = h("a", { class: "retour", href: adresse(section, { ...base }) }, tr("Retour à {section}", { section: tr(def.titre) }));
-        corps.append(retour, h("div", { class: "st-liste-tete" }, h("h2", { class: "st-titre" }, L.titre, L.filtre ? h("span", { class: "st-filtre" }, L.filtre) : null), h("p", { class: "st-liste-somme" }, h("strong", null, formatMontant(L.total.montant, devise)), h("span", null, ` · ${L.total.nombre === 1 ? tr("1 ligne") : tr("{n} lignes", { n: L.total.nombre })}`)), S.estFlux(mesure) && !def.futur ? h("p", { class: "aide" }, du === au ? formatDate(du) : `${formatDate(du)} – ${formatDate(au)}`) : h("p", { class: "aide" }, tr("à ce jour")), h("details", { class: "st-defs" }, h("summary", null, tr("Comment c'est calculé")), h("p", null, tr(S.DEFINITIONS[mesure][1])))), L.noeud);
+        corps.append(retour, h("div", { class: "st-liste-tete" }, h("h2", { class: "st-titre" }, L.titre, L.filtre ? h("span", { class: "st-filtre" }, L.filtre) : null), h("p", { class: "st-liste-somme" }, h("strong", null, formatMontant(L.total.montant, devise)), h("span", null, ` · ${L.total.nombre === 1 ? tr("1 ligne") : tr("{n} lignes", { n: L.total.nombre })}`)), S.estFlux(mesure) && !def.futur ? h("p", { class: "aide" }, du === au ? formatDate(du) : tr("du {du} au {au}", { du: formatDate(du), au: formatDate(au) })) : h("p", { class: "aide" }, tr("à ce jour")), h("details", { class: "st-defs" }, h("summary", null, tr("Comment c'est calculé")), h("p", null, tr(S.DEFINITIONS[mesure][1])))), L.noeud);
       } else {
         const aucun = !faits.dossiers.length && !faits.paiements.length && !faits.reservations.length;
         if (aucun && section !== "commissions") {

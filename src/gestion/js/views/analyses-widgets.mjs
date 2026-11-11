@@ -43,7 +43,7 @@ export function ecartTexte(ecart, precedent, devise, { monnaie = true, unite = "
   const classe = bon === null ? "neutre" : bon ? "plus" : "moins";
   const arrondi1 = Math.round(ecart.delta * 10) / 10;
   const texte = unite ? (arrondi1 === 0 ? tr("stable") : `${arrondi1 > 0 ? "+" : ""}${String(arrondi1).replace(".", tr(","))} ${tr(unite)}`) : ecart.pct === null ? (ecart.sens === "nouveau" ? tr("nouveau") : tr("stable")) : `${ecart.pct > 0 ? "+" : ""}${ecart.pct} %`;
-  const avant = precedent !== null && precedent !== undefined ? tr("avant : {valeur}", { valeur: monnaie ? formatMontant(precedent, devise) : String(precedent) }) : "";
+  const avant = precedent !== null && precedent !== undefined ? tr("avant {valeur}", { valeur: monnaie ? formatMontant(precedent, devise) : String(precedent) }) : "";
   return h("span", { class: `st-ecart ${classe}` }, picto(nom, 14), h("span", null, texte), avant ? h("span", { class: "st-ecart-avant" }, avant) : null);
 }
 
@@ -226,10 +226,18 @@ export function classement({ lignes, max = 7, total, vide }) {
 export function tableauTrie({ colonnes, lignes, etatInitial = {}, onEtat, recherche, pied, ligneHref, vide, classe = "" }) {
   const et = { tri: etatInitial.tri && colonnes.some((c) => c.cle === etatInitial.tri) ? etatInitial.tri : null, sens: etatInitial.sens === "asc" ? "asc" : "desc", q: etatInitial.q || "" };
   const racine = h("div", { class: "st-tableau" });
+  const zone = h("div", { class: "st-tableau-zone" });
   const sansAccents = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const signale = () => onEtat && onEtat({ ...et });
 
-  const rendre = () => {
-    vider(racine);
+  // Le champ de recherche et le menu de tri sont créés une fois : seule la zone du tableau est redessinée à chaque frappe ou changement de tri.
+  const selTri = h("select", { onchange: (e) => { const [cle, sens] = e.target.value.split(":"); et.tri = cle || null; if (sens) et.sens = sens; signale(); rendre(); } }, h("option", { value: "" }, tr("Ordre d'origine")), colonnes.flatMap((c) => [h("option", { value: `${c.cle}:desc` }, `${tr(c.titre)} ↓`), h("option", { value: `${c.cle}:asc` }, `${tr(c.titre)} ↑`)]));
+  const barre = h("div", { class: "st-tableau-outils" }, recherche ? h("input", { type: "search", class: "st-recherche", placeholder: tr("Rechercher dans la liste"), "aria-label": tr("Rechercher dans la liste"), value: et.q, oninput: (e) => { et.q = e.target.value; signale(); rendre(); } }) : null, h("label", { class: "st-tri-mobile seulement-mobile" }, h("span", null, tr("Trier par")), selTri));
+  racine.append(barre, zone);
+
+  function rendre() {
+    vider(zone);
+    selTri.value = et.tri ? `${et.tri}:${et.sens}` : "";
     const q = sansAccents(et.q).trim();
     let vues = lignes;
     if (q && recherche) vues = lignes.filter((l) => sansAccents(recherche(l)).includes(q));
@@ -242,19 +250,13 @@ export function tableauTrie({ colonnes, lignes, etatInitial = {}, onEtat, recher
         return (typeof x === "number" && typeof y === "number" ? x - y : String(x ?? "").localeCompare(String(y ?? ""))) * dir;
       });
     }
+    if (!vues.length) return zone.append(h("p", { class: "vide-court" }, vide || tr("Aucune ligne.")));
     const changer = (cle) => {
       if (et.tri === cle) et.sens = et.sens === "desc" ? "asc" : "desc";
       else ((et.tri = cle), (et.sens = colonnes.find((c) => c.cle === cle).num ? "desc" : "asc"));
-      onEtat && onEtat({ ...et });
+      signale();
       rendre();
     };
-    const barre = h("div", { class: "st-tableau-outils" });
-    if (recherche) barre.append(h("input", { type: "search", class: "st-recherche", placeholder: tr("Rechercher dans la liste"), "aria-label": tr("Rechercher dans la liste"), value: et.q, oninput: (e) => { et.q = e.target.value; onEtat && onEtat({ ...et }); const pos = e.target.selectionStart; rendre(); const nouveau = racine.querySelector(".st-recherche"); if (nouveau) (nouveau.focus(), nouveau.setSelectionRange(pos, pos)); } }));
-    barre.append(
-      h("label", { class: "st-tri-mobile seulement-mobile" }, h("span", null, tr("Trier par")), h("select", { onchange: (e) => { const [cle, sens] = e.target.value.split(":"); et.tri = cle; et.sens = sens; onEtat && onEtat({ ...et }); rendre(); } }, h("option", { value: "", selected: !et.tri }, tr("Ordre d'origine")), colonnes.flatMap((c) => [h("option", { value: `${c.cle}:desc`, selected: et.tri === c.cle && et.sens === "desc" }, `${tr(c.titre)} ↓`), h("option", { value: `${c.cle}:asc`, selected: et.tri === c.cle && et.sens === "asc" }, `${tr(c.titre)} ↑`)])))
-    );
-    racine.append(barre);
-    if (!vues.length) return racine.append(h("p", { class: "vide-court" }, vide || tr("Aucune ligne.")));
     const entete = h("tr", null, colonnes.map((c) => h("th", { scope: "col", class: c.num ? "num" : "", "aria-sort": et.tri === c.cle ? (et.sens === "asc" ? "ascending" : "descending") : "none" }, h("button", { class: "st-tri lien", type: "button", onclick: () => changer(c.cle) }, tr(c.titre), picto("tri", 12)))));
     const corps = vues.map((l) => {
       const href = ligneHref && ligneHref(l);
@@ -266,8 +268,8 @@ export function tableauTrie({ colonnes, lignes, etatInitial = {}, onEtat, recher
       }));
     });
     const bas = pied ? h("tfoot", null, h("tr", { class: "st-pied" }, colonnes.map((c, i) => h("td", { class: c.num ? "num" : "", "data-label": tr(c.titre) }, i === 0 ? tr("Total ({n})", { n: vues.length }) : c.somme ? c.somme(vues) : "")))) : null;
-    racine.append(h("div", { class: "tableau-defilant" }, h("table", { class: `tableau simple st-table ${classe}` }, h("thead", null, entete), h("tbody", null, corps), bas)));
-  };
+    zone.append(h("div", { class: "tableau-defilant" }, h("table", { class: `tableau simple st-table ${classe}` }, h("thead", null, entete), h("tbody", null, corps), bas)));
+  }
   rendre();
   return racine;
 }

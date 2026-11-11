@@ -214,7 +214,7 @@ test("définitions : chaque mesure a un titre et une explication", async () => {
 
 test("résumé du mois : texte prêt pour WhatsApp, avec la comparaison, sans commissions quand le droit manque", async () => {
   const { resumeMois } = await import("../src/gestion/js/analyses-resume.mjs");
-  const { forcerLangue } = await import("../src/gestion/js/i18n.mjs");
+  const { forcerLangue, pretLangue } = await import("../src/gestion/js/i18n.mjs");
   const S = await calc();
   const avec = await demoFaits(true);
   const texte = resumeMois({ faits: avec, jour: JOUR, devise: "THB", entite: "Excursions démo" });
@@ -224,10 +224,11 @@ test("résumé du mois : texte prêt pour WhatsApp, avec la comparaison, sans co
   assert.match(texte, /Commissions reçues : THB/);
   assert.match(texte, /Commissions à recevoir : THB/);
   assert.match(texte, /Reste à encaisser : THB .* \(\d+ dossiers?\)/);
-  assert.match(texte, /avant : THB/);
+  assert.match(texte, /avant THB/);
   const sans = resumeMois({ faits: await demoFaits(false), jour: JOUR, devise: "THB", entite: "X" });
   assert.ok(!sans.includes("Commissions"), "sans le droit « nets », aucune ligne de commission");
   forcerLangue("en");
+  await pretLangue();
   try {
     const en = resumeMois({ faits: avec, jour: JOUR, devise: "THB", entite: "X" });
     assert.match(en, /Summary for November 2026/);

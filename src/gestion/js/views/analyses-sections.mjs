@@ -35,7 +35,8 @@ const TITRE_DIM = { mois: N_("Mois"), semaine: N_("Semaine"), jour: N_("Jour"), 
 
 const titreMesure = (id) => tr(S.DEFINITIONS[id][0]);
 const compte = (n, id) => {
-  const src = id === "revenu" ? "paiements" : S.MESURES[id].source;
+  if (id === "revenu") return pluriel(n, N_("mouvement d'argent"), N_("mouvements d'argent"));
+  const src = S.MESURES[id].source;
   return src === "dossiers" ? pluriel(n, N_("dossier"), N_("dossiers")) : src === "paiements" ? pluriel(n, N_("paiement"), N_("paiements")) : pluriel(n, N_("service"), N_("services"));
 };
 const m$ = (X, v) => formatMontant(v, X.devise);
@@ -74,8 +75,9 @@ function casesDe(X) {
 // Graphique d'une ou deux mesures par période. Avec une comparaison et une seule mesure, la période de comparaison se superpose en gris.
 function graphe(X, defs, nom) {
   const cases = casesDe(X);
-  const series = defs.map((d) => ({ nom: d.nom, classe: d.classe, id: d.id, valeurs: S.serie(d.id, X.faits, X.c, X.gran).map((x) => x.montant) }));
-  const nombres = defs.map((d) => S.serie(d.id, X.faits, X.c, X.gran).map((x) => x.nombre));
+  const brutes = defs.map((d) => S.serie(d.id, X.faits, X.c, X.gran));
+  const series = defs.map((d, k) => ({ nom: d.nom, classe: d.classe, id: d.id, valeurs: brutes[k].map((x) => x.montant) }));
+  const nombres = brutes.map((b) => b.map((x) => x.nombre));
   let avant = null;
   if (X.cmp && defs.length === 1) {
     const cc = { ...X.c, du: X.cmp[0], au: X.cmp[1] };
@@ -116,7 +118,7 @@ function aTraiter(X) {
   items.push(q("a_confirmer", N_("service à venir pas encore confirmé"), N_("services à venir pas encore confirmés")), q("sans_date", N_("service sans date de prestation"), N_("services sans date de prestation")));
   if (X.nets) items.push(q("commission_a_renseigner", N_("service payé sur place sans commission notée"), N_("services payés sur place sans commission notée"), false));
   const lignes = items.filter(Boolean);
-  return bloc(titre(N_("À traiter")), lignes.length ? h("ul", { class: "st-traiter" }, lignes.map((l) => h("li", null, h("a", { href: l.href }, h("span", null, l.texte), l.montant !== null ? h("strong", null, m$(X, l.montant)) : null)))) : h("p", { class: "vide-court" }, tr("Rien en attente : tout est à jour.")));
+  return bloc(titre(N_("À traiter")), lignes.length ? h("ul", { class: "st-traiter" }, lignes.map((l) => h("li", null, h("a", { href: l.href }, h("span", null, l.texte), l.montant !== null ? h("strong", null, m$(X, l.montant)) : null)))) : h("p", { class: "vide-court" }, tr("Rien en attente, tout est à jour.")));
 }
 
 function tauxAcceptation(X) {
@@ -139,10 +141,10 @@ export function apercu(X) {
     tuiles(
       T(X, "vendu", { grande: true }),
       T(X, "encaisse"),
-      X.nets ? T(X, "commission_recue", { detail: tr("à recevoir : {montant}", { montant: m$(X, cr.montant) }), href: X.lien("commissions") }) : panier,
+      X.nets ? T(X, "commission_recue", { detail: tr("{montant} à recevoir", { montant: m$(X, cr.montant) }), href: X.lien("commissions") }) : panier,
       T(X, "a_encaisser", { href: X.lien("encaissements", { liste: "a_encaisser" }) }),
-      T(X, "a_venir_7", { valeur: String(a7.nombre), detail: a7.montant ? tr("vendus : {montant}", { montant: m$(X, a7.montant) }) : tr("services"), href: X.lien("avenir") }),
-      T(X, "devis_attente", { valeur: String(dv.nombre), detail: tr("valeur : {montant}", { montant: m$(X, dv.montant) }), href: X.lien("devis") }),
+      T(X, "a_venir_7", { valeur: String(a7.nombre), detail: a7.montant ? tr("{montant} vendus", { montant: m$(X, a7.montant) }) : tr("services"), href: X.lien("avenir") }),
+      T(X, "devis_attente", { valeur: String(dv.nombre), detail: tr("valeur {montant}", { montant: m$(X, dv.montant) }), href: X.lien("devis") }),
       tauxAcceptation(X),
       X.nets ? T(X, "revenu", { grande: true, href: X.lien("commissions") }) : null,
       X.nets ? panier : null,
@@ -196,7 +198,7 @@ export function encaissements(X) {
   const gros = S.lignes("a_encaisser", f, X.c).sort((a, b) => b.montant - a.montant).slice(0, 5);
   return [
     tuiles(T(X, "encaisse", { grande: true }), T(X, "facture"), T(X, "a_encaisser")),
-    h("p", { class: "aide st-note" }, tr("Les services payés sur place au prestataire ne passent pas par nous : ils ne sont ni facturés, ni à encaisser. Ils figurent dans le volume vendu.")),
+    h("p", { class: "aide st-note" }, tr("Les services payés sur place au prestataire ne passent pas par nous, ils ne sont ni facturés ni à encaisser. Ils figurent dans le volume vendu.")),
     graphe(X, [{ id: "facture", nom: N_("Facturé"), classe: "s1" }, { id: "encaisse", nom: N_("Encaissé chez nous"), classe: "s2" }], N_("Facturé et encaissé")),
     bloc(titre(N_("Reste à encaisser, par ancienneté")), rang(X, "a_encaisser", "tranche", { tri: "cle" }), h("p", { class: "aide" }, tr("L'ancienneté se compte depuis la date de la facture."))),
     bloc(titre(N_("Plus gros restes à encaisser")), gros.length ? classement({ lignes: gros.map((l) => ({ libelle: l.titre, valeur: l.montant, texte: m$(X, l.montant), detail: tr("facture de {n} jours", { n: l.age }), href: `#/dossier/${l.dossier_id}` })), max: 5 }) : h("p", { class: "vide-court" }, tr("Aucun reste à encaisser."))),
@@ -258,13 +260,13 @@ export function commissions(X) {
     tuiles(
       T(X, "commission_recue", { grande: true }),
       T(X, "commission_prevue"),
-      T(X, "commission_a_recevoir", { detail: echues.length ? tr("dont {n} déjà échues : {montant}", { n: echues.length, montant: m$(X, S.somme(echues).montant) }) : compte(ar.length, "commission_a_recevoir") }),
+      T(X, "commission_a_recevoir", { detail: echues.length ? tr("dont {n} déjà échues pour {montant}", { n: echues.length, montant: m$(X, S.somme(echues).montant) }) : compte(ar.length, "commission_a_recevoir") }),
       T(X, "marge"),
       T(X, "revenu"),
       T(X, "net_a_payer")
     ),
-    bloc(titre(N_("Revenu de la période")), h("p", { class: "aide" }, tr("L'argent qui a vraiment bougé : encaissé chez nous, moins les nets payés aux partenaires, plus les commissions reçues.")), h("ul", { class: "st-equation" }, h("li", null, h("span", null, tr("Encaissé chez nous")), h("a", { href: X.href("encaisse") }, m$(X, revenu[0][1]))), h("li", null, h("span", null, tr("moins nets payés aux partenaires")), h("a", { href: X.href("net_paye") }, m$(X, revenu[1][1]))), h("li", null, h("span", null, tr("plus commissions reçues")), h("a", { href: X.href("commission_recue") }, m$(X, revenu[2][1]))), h("li", { class: "total" }, h("span", null, tr("Revenu")), h("a", { href: X.href("revenu") }, m$(X, revenu.reduce((t, x) => t + x[1], 0)))))),
-    inconnue.nombre || sansCom.nombre || ecart.nombre ? bloc(titre(N_("Données à compléter")), h("ul", { class: "st-traiter" }, ecart.nombre ? h("li", null, h("a", { href: X.href("commission_ecart") }, h("span", null, pluriel(ecart.nombre, N_("commission reçue différente du montant prévu"), N_("commissions reçues différentes du montant prévu"))), h("strong", null, m$(X, ecart.montant)))) : null, inconnue.nombre ? h("li", null, h("a", { href: X.href("marge_inconnue") }, h("span", null, pluriel(inconnue.nombre, N_("service de la période sans net ni commission notés : marge non comptée"), N_("services de la période sans net ni commission notés : marge non comptée"))))) : null, sansCom.nombre ? h("li", null, h("a", { href: X.href("commission_a_renseigner") }, h("span", null, pluriel(sansCom.nombre, N_("service payé sur place sans commission notée"), N_("services payés sur place sans commission notée"))))) : null)) : null,
+    bloc(titre(N_("Revenu de la période")), h("p", { class: "aide" }, tr("L'argent qui a vraiment bougé, soit l'encaissé chez nous, moins les nets payés aux partenaires, plus les commissions reçues.")), h("ul", { class: "st-equation" }, h("li", null, h("span", null, tr("Encaissé chez nous")), h("a", { href: X.href("encaisse") }, m$(X, revenu[0][1]))), h("li", null, h("span", null, tr("moins nets payés aux partenaires")), h("a", { href: X.href("net_paye") }, m$(X, revenu[1][1]))), h("li", null, h("span", null, tr("plus commissions reçues")), h("a", { href: X.href("commission_recue") }, m$(X, revenu[2][1]))), h("li", { class: "total" }, h("span", null, tr("Revenu")), h("a", { href: X.href("revenu") }, m$(X, revenu.reduce((t, x) => t + x[1], 0)))))),
+    inconnue.nombre || sansCom.nombre || ecart.nombre ? bloc(titre(N_("Données à compléter")), h("ul", { class: "st-traiter" }, ecart.nombre ? h("li", null, h("a", { href: X.href("commission_ecart") }, h("span", null, pluriel(ecart.nombre, N_("commission reçue différente du montant prévu"), N_("commissions reçues différentes du montant prévu"))), h("strong", null, m$(X, ecart.montant)))) : null, inconnue.nombre ? h("li", null, h("a", { href: X.href("marge_inconnue") }, h("span", null, pluriel(inconnue.nombre, N_("service de la période sans net ni commission notés, marge non comptée"), N_("services de la période sans net ni commission notés, marge non comptée"))))) : null, sansCom.nombre ? h("li", null, h("a", { href: X.href("commission_a_renseigner") }, h("span", null, pluriel(sansCom.nombre, N_("service payé sur place sans commission notée"), N_("services payés sur place sans commission notée"))))) : null)) : null,
     graphe(X, [{ id: "commission_prevue", nom: N_("Commissions prévues"), classe: "s1" }, { id: "commission_recue", nom: N_("Commissions reçues"), classe: "s2" }], N_("Commissions prévues et reçues")),
     bloc(titre(N_("Par partenaire")), tableauPartenaires(X)),
     blocDefinitions(["commission_prevue", "commission_recue", "commission_a_recevoir", "commission_ecart", "marge", "revenu", "net_paye", "net_a_payer"], S.DEFINITIONS),
@@ -366,7 +368,7 @@ export function avenir(X) {
       dep.nombre ? T(X, "departs", { mini: false }) : null
     ),
     bloc(titre(nom), graphiqueColonnes({ cases: cases.map((k) => ({ cle: k, court: jourCourt(k), libelle: libelleGroupe("semaine", { cle: k }) })), series: [{ nom: N_("Valeur des services"), classe: "s1", valeurs: serie.map((x) => x.montant) }], devise: X.devise, titre: tr(nom), lecture: (i) => h("div", { class: "st-lecture-corps" }, h("strong", { class: "st-lecture-titre" }, libelleGroupe("semaine", { cle: cases[i] })), h("p", null, h("span", { class: "st-lecture-valeur" }, m$(X, serie[i].montant)), " ", h("span", { class: "st-lecture-nom" }, compte(nombres[i], "services")))), lien: (i) => X.href("a_venir", `semaine:${cases[i]}`) })),
-    bloc(titre(N_("Jour par jour, deux semaines")), prochains.length ? classement({ lignes: prochains.map((g) => ({ libelle: formatDate(g.cle), valeur: g.nombre, texte: compte(g.nombre, "services"), detail: tr("vendus : {montant}", { montant: m$(X, g.montant) }), href: X.href("a_venir", `jour:${g.cle}`) })), max: 14 }) : h("p", { class: "vide-court" }, tr("Aucun service prévu dans les deux semaines."))),
+    bloc(titre(N_("Jour par jour, deux semaines")), prochains.length ? classement({ lignes: prochains.map((g) => ({ libelle: formatDate(g.cle), valeur: g.nombre, texte: compte(g.nombre, "services"), detail: tr("{montant} vendus", { montant: m$(X, g.montant) }), href: X.href("a_venir", `jour:${g.cle}`) })), max: 14 }) : h("p", { class: "vide-court" }, tr("Aucun service prévu dans les deux semaines."))),
     bloc(titre(N_("Par statut")), rang(X, "a_venir", "statut", { tri: "cle" })),
     bloc(titre(N_("Par partenaire")), rang(X, "a_venir", "partenaire")),
     h("p", { class: "aide" }, tr("{n} services à venir au total.", { n: toutes.nombre })),
@@ -387,7 +389,7 @@ export function devis(X) {
       T(X, "devis_emis", { grande: true }),
       tauxAcceptation(X),
       tuile({ libelle: tr("Délai moyen d'acceptation"), valeur: a.delaiMoyen === null ? "—" : tr("{n} jours", { n: String(a.delaiMoyen).replace(".", tr(",")) }), detail: a.delaiN ? tr("sur {n} devis acceptés", { n: a.delaiN }) : tr("aucun devis accepté"), ecart: delaiEcart, ecartUnite: N_("j"), ecartInverse: true, precedent: b && b.delaiMoyen !== null ? tr("{n} jours", { n: String(b.delaiMoyen).replace(".", tr(",")) }) : null, monnaie: false, href: X.href("devis_acceptes"), aide: [N_("Délai moyen d'acceptation"), N_("Jours entre la date du devis et l'acceptation, sur les devis émis dans la période et acceptés.")] }),
-      T(X, "devis_attente", { valeur: String(attente.nombre), detail: tr("valeur : {montant}", { montant: m$(X, attente.montant) }) })
+      T(X, "devis_attente", { valeur: String(attente.nombre), detail: tr("valeur {montant}", { montant: m$(X, attente.montant) }) })
     ),
     graphe(X, [{ id: "devis_emis", nom: N_("Devis émis"), classe: "s1" }, { id: "devis_acceptes", nom: N_("Devis acceptés"), classe: "s2" }], N_("Devis émis et acceptés")),
     bloc(titre(N_("Devis en attente, par ancienneté")), rang(X, "devis_attente", "tranche", { tri: "cle" }), h("p", { class: "aide" }, tr("Au-delà de deux semaines sans réponse, une relance se justifie."))),

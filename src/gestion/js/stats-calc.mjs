@@ -369,8 +369,8 @@ export function indicateursClients(faits, ctx) {
 // ---- Définitions affichées à l'écran (« Comment c'est calculé ») ------------------------------------------------------
 export const DEFINITIONS = {
   vendu: [N_("Volume vendu"), N_("Valeur des services vendus sur la période, y compris ceux que le client paie directement au prestataire. Dossiers acceptés ou facturés, hors dossiers annulés. La date retenue est celle de la facture, sinon celle de l'acceptation, sinon celle du devis.")],
-  facture: [N_("Facturé"), N_("Total à régler chez nous des factures émises sur la période, hors dossiers annulés. Les services payés sur place n'y sont pas : le client ne nous les paie pas.")],
-  encaisse: [N_("Encaissé chez nous"), N_("Argent passé par nous : les paiements des clients datés de la période, remboursements déduits.")],
+  facture: [N_("Facturé"), N_("Total à régler chez nous des factures émises sur la période, hors dossiers annulés. Les services payés sur place n'y sont pas, car le client ne nous les paie pas.")],
+  encaisse: [N_("Encaissé chez nous"), N_("Argent passé par nous, c'est-à-dire les paiements des clients datés de la période, remboursements déduits.")],
   a_encaisser: [N_("Reste à encaisser"), N_("Ce que les clients nous doivent encore sur les factures émises, à ce jour. Les services payés sur place n'entrent pas dans ce chiffre.")],
   devis_emis: [N_("Devis émis"), N_("Devis datés de la période, quel que soit leur sort.")],
   devis_acceptes: [N_("Devis acceptés"), N_("Parmi les devis émis sur la période, ceux dont le dossier est accepté. Le taux est la part des devis émis.")],
@@ -388,11 +388,11 @@ export const DEFINITIONS = {
   commission_prevue: [N_("Commissions prévues"), N_("Commissions attendues sur les services payés sur place dont la date de service tombe dans la période. Montant saisi sur chaque réservation.")],
   commission_recue: [N_("Commissions reçues"), N_("Commissions encaissées, datées par leur jour de réception.")],
   commission_a_recevoir: [N_("Commissions à recevoir"), N_("Commission prévue moins commission reçue, sur les services payés sur place non annulés dont la réception n'est pas encore datée, à ce jour.")],
-  commission_ecart: [N_("Écarts de commission"), N_("Commissions réglées dont le montant reçu diffère du montant prévu, sur la période. Positif : le partenaire a versé plus que prévu.")],
+  commission_ecart: [N_("Écarts de commission"), N_("Commissions réglées dont le montant reçu diffère du montant prévu, sur la période. Un écart positif signifie que le partenaire a versé plus que prévu.")],
   commission_a_renseigner: [N_("Commission non saisie"), N_("Services payés sur place, pas encore réglés, dont la commission prévue n'est pas notée sur la réservation.")],
   net_paye: [N_("Nets payés aux partenaires"), N_("Nets réglés aux partenaires, datés par leur jour de paiement.")],
   net_a_payer: [N_("Nets à payer"), N_("Net prévu moins net payé sur les services payés chez nous, à ce jour.")],
-  marge: [N_("Marge prévue"), N_("Services de la période : prix de vente moins net quand le client paie chez nous, commission prévue quand il paie sur place. Les services sans net ni commission saisis sont comptés à part.")],
+  marge: [N_("Marge prévue"), N_("Services de la période, avec le prix de vente moins le net quand le client paie chez nous et la commission prévue quand il paie sur place. Les services sans net ni commission saisis sont comptés à part.")],
   marge_inconnue: [N_("Marge inconnue"), N_("Services de la période dont le net ou la commission n'est pas saisi. Leur marge n'est pas devinée.")],
-  revenu: [N_("Revenu"), N_("Encaissé chez nous, moins les nets payés aux partenaires, plus les commissions reçues. Chaque élément est daté par le jour où l'argent a bougé.")],
+  revenu: [N_("Revenu"), N_("Encaissé chez nous, moins les nets payés aux partenaires, plus les commissions reçues. Chaque élément porte la date du jour où l'argent a bougé.")],
 };

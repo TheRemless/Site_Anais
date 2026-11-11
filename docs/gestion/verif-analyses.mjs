@@ -120,7 +120,7 @@ await db.exec(`insert into roles (entite_id, nom, permissions) values ('${E}', '
 await db.exec(`insert into membres values ('${U.bob}', '${E}', (select id from roles where nom = 'Sans chiffres' and entite_id = '${E}'))`);
 const lectureResume = async (user) => { await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${user}', false);`); try { return (await db.query("select 1 from dossiers_resume")).rows.length; } finally { await db.exec("reset role;"); } };
 ok((await lectureResume(U.bob)) === 0, "un rôle sans le droit « montants » ne lit pas les résumés financiers");
-ok((await lectureResume(U.lecteur)) === 0 || true, "contrôle de lecture du résumé par un éditeur");
+ok((await lectureResume(U.lecteur)) >= 0, "un éditeur lit le résumé sans erreur");
 ok((await lectureResume(U.admin)) === 4 || (await lectureResume(U.admin)) === 5, "l'administratrice lit tous les résumés");
 await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${U.admin}', false);`);
 let ecriture = true; try { await db.query("update dossiers_resume set total = 1"); ecriture = (await db.query("select 1 from dossiers_resume where total = 1")).rows.length > 0; } catch { ecriture = false; }
@@ -232,14 +232,14 @@ for (const [debut, fin, j2] of cas) {
   }
 }
 const g = await faits(U.admin, "2026-10-01", "2026-11-11", "2026-11-11");
-ok(g.v.dossiers.some((d) => d.id === ids2[0] && Number(d.total) === 3240 + 0 - 0 || d.id === ids2[0]), "le dossier à lignes sur place est présent");
+ok(g.v.dossiers.some((d) => d.id === ids2[0]), "le dossier à lignes sur place est présent");
 const d0 = g.v.dossiers.find((d) => d.id === ids2[0]);
 ok(Number(d0.sur_place) === 2050 && Number(d0.total) === 3240, `volume : total chez nous 3240 (3600 moins 10 %), sur place 2050 (900×2 + 250) : ${d0.total} / ${d0.sur_place}`);
 ok(g.v.dossiers.find((d) => d.id === ids2[1]).devise === "EUR", "la devise du document est reprise");
 ok(g.v.reservations.find((r) => r.id === rid(3)).famille === "billet" && g.v.reservations.find((r) => r.id === rid(4)).famille === "autre" && g.v.reservations.find((r) => r.id === rid(2)).famille === "activite", "famille : billet, autre, activité");
 const sn = await faits(U.sansnets, "2026-10-01", "2026-11-11", "2026-11-11");
 ok(sn.v.reservations.every((r) => r.net_prevu === null && r.net_paye === null && r.commission_prevue === null && r.commission_recue === null && r.paye_le === null && r.commission_recue_le === null), "sans le droit « nets », aucun net ni commission ne sort");
-ok(!JSON.stringify(sn.v).includes("2400") || true, "contrôle du contenu sans nets");
+ok(!JSON.stringify(sn.v).includes("\"net_prevu\":2400") && !JSON.stringify(sn.v).includes("\"commission_prevue\":270"), "sans le droit « nets », les montants de nets et de commissions n'apparaissent nulle part dans la réponse");
 const une = await faits(U.admin, "2026-10-01", "2026-11-11", "2026-11-11", ["paiements"]);
 ok(une.v.dossiers.length === 0 && une.v.reservations.length === 0 && une.v.paiements.length > 0, "un appel par section : seules les collections demandées sortent");
 ok((await faits(U.lecteur, "2026-10-01", "2026-11-11", "2026-11-11")).ok === false, "un rôle sans droit « analyses » est refusé");

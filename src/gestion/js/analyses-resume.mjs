@@ -13,7 +13,7 @@ export function resumeMois({ faits, jour, devise, entite }) {
   const m = (v) => formatMontant(v, devise);
   const ligne = (libelle, id) => {
     const r = comparer(id, faits, c, cmp);
-    const compare = r.ecart ? ` (${signe(r.ecart)}, ${tr("avant : {valeur}", { valeur: m(r.precedent.montant) })})` : "";
+    const compare = r.ecart ? ` (${signe(r.ecart)}, ${tr("avant {valeur}", { valeur: m(r.precedent.montant) })})` : "";
     return `${tr(libelle)} : ${m(r.actuel.montant)}${compare}`;
   };
   const lignes = [`*${tr("Résumé de {mois}", { mois: `${moisLong(du)} ${du.slice(0, 4)}` })}* · ${entite}`, tr("Du {du} au {au}", { du: Number(du.slice(8)), au: Number(au.slice(8)) }), ""];
