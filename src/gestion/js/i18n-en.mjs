@@ -51,6 +51,8 @@ export const EN = {
   "Jour du double": "Day of the copy",
   "Les lignes du service sont copiées sur le document, et sa réservation est à redemander au prestataire.": "The service lines are copied onto the document, and its reservation is to be requested again from the provider.",
   "Service dupliqué.": "Service duplicated.",
+  "Aucune personne supplémentaire : rien à ajouter. Indiquez combien de personnes dépassent les deux premières.": "No extra person: nothing to add. Enter how many people go beyond the first two.",
+  "Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base.": "Extra person price to set in the database: the price only counts the base.",
   "Appliquer": "Apply",
   " · net {prix}": " · net {prix}",
   " · Responsable : {x}": " · Person in charge: {x}",

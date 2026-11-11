@@ -5,7 +5,7 @@ import { etat, entiteActive, reglages, nomPartenaire, partenaireDe, netPrestatio
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { lireMessage, offresPour, reponsePrix, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
-import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres } from "../partenaires-calc.mjs";
+import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { lienWhatsApp, appliquerModeParDefaut } from "../operations-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_ } from "../i18n.mjs";
@@ -23,6 +23,7 @@ const AVERTISSEMENTS = {
   prix_a_definir: N_("Prix à définir dans la base."),
   sur_place: N_("À payer sur place."),
   enfant_plein_tarif: N_("Pas de tarif enfant : les enfants sont comptés au tarif adulte."),
+  supplement_a_definir: N_("Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base."),
 };
 
 // Le message collé est gardé sur l'appareil jusqu'à la création du dossier : un appel ou un changement d'écran ne le perd pas.
@@ -49,7 +50,7 @@ const garde = {
 };
 
 // Quantité d'une prestation selon son unité (les bébés ne comptent pas).
-const quantite = (p, d) => (p.unite === "pp" ? d.adultes + d.enfants : p.unite === "ad" ? d.adultes : p.unite === "ch" ? d.enfants : 1) || 1;
+const quantite = (p, d) => quantiteParDefaut(p.unite, d);
 
 // Chaque service prend le mode de règlement habituel de son partenaire (chez nous ou sur place).
 function lignesDe(offre, d, langue, devise) {
@@ -59,11 +60,13 @@ function lignesDe(offre, d, langue, devise) {
 function lignesBrutes(offre, d, langue, devise) {
   if (offre.genre === "trajet") return lignesDepuisTrajet(offre.source, netTrajet(offre.source), { langue, date: d.date, adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants, compagnie: "" });
   const adulte = ligneDepuisPrestation(offre.source, netPrestation(offre.source), { langue, date: d.date, qte: offre.enfant ? d.adultes || 1 : quantite(offre.source, d), devise });
-  if (!offre.enfant) return [adulte];
+  // Prix de base pour 1 ou 2 personnes, puis une ligne de supplément par personne en plus (aucune ligne à une ou deux personnes).
+  const supplement = offre.supplement ? [ligneDepuisPrestation(offre.supplement.source, netPrestation(offre.supplement.source), { langue, date: d.date, qte: offre.supplement.qte, devise })] : [];
+  if (!offre.enfant) return [adulte, ...supplement];
   // Une ligne par adulte et une ligne enfant au même nom : elles donnent une seule réservation, comme pour un trajet.
   const en = langue === "en";
   const e = ligneDepuisPrestation(offre.enfant, netPrestation(offre.enfant), { langue, date: d.date, qte: d.enfants, devise });
-  return [adulte, { ...e, libelle: `${adulte.libelle}, ${en ? "child" : "enfant"}`, intro: `(${en ? "per child" : "par enfant"})` }];
+  return [adulte, { ...e, libelle: `${adulte.libelle}, ${en ? "child" : "enfant"}`, intro: `(${en ? "per child" : "par enfant"})` }, ...supplement];
 }
 
 // L'hôtel du client connu : la première ligne de son adresse (« Hotel Sunset, Room 12 » → « Hotel Sunset »).

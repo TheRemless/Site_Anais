@@ -3,7 +3,7 @@
 import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet } from "../etat.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
-import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre } from "../partenaires-calc.mjs";
+import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut } from "../operations-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
@@ -15,7 +15,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   const dernier = dossierId ? etat.db.reservations.filter((r) => r.dossier_id === dossierId).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0] : null;
   const ctx = { date: defauts.date || (dernier && dernier.date_service) || "", adultes: defauts.adultes ?? (dernier && dernier.personnes ? dernier.personnes.adultes : 0) ?? 0, enfants: defauts.enfants ?? (dernier && dernier.personnes ? dernier.personnes.enfants : 0) ?? 0 };
   // Quantité proposée selon l'unité du tarif : par personne, par adulte, par enfant, sinon une seule.
-  const qteDefaut = (x) => ((x.unite === "pp" ? ctx.adultes + ctx.enfants : x.unite === "ad" ? ctx.adultes : x.unite === "ch" ? ctx.enfants : 1) || 1);
+  const qteDefaut = (x) => quantiteParDefaut(x.unite, ctx);
   // Les services les plus récemment demandés se retrouvent en tête de liste tant qu'on ne cherche rien.
   const cache = {};
   const recents = (cle) => (cache[cle] ||= [...new Set(etat.db.reservations.filter((r) => r[cle]).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "")).map((r) => r[cle]))].slice(0, 5));
@@ -98,7 +98,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
             { class: "choix" },
             h("div", { class: "choix-texte" }, h("strong", null, x.libelle), h("span", null, [nomPartenaire(x.partenaire_id), x.groupe, d.horaires || d.capacite || d.duree].filter(Boolean).join(" · "))),
             h("div", { class: "choix-prix" }, h("strong", null, prix(x.prix_vente)), h("span", null, x.sur_place ? tr("à payer sur place") : libelleUnite(x.unite))),
-            h("div", { class: "choix-actions" }, champQte, h("button", { class: "principal petit", type: "button", onclick: () => ajoute([ligneDepuisPrestation(x, netPrestation(x), { langue, date: date.value, qte: champQte ? Number(champQte.querySelector("input").value) || 1 : 1, devise })], x.sur_place ? tr("Note sur les frais de parc") : x.libelle) }, x.sur_place ? tr("Ajouter la note") : tr("Ajouter")))
+            h("div", { class: "choix-actions" }, champQte, h("button", { class: "principal petit", type: "button", onclick: () => (x.unite === "sup" && champQte && !(Number(champQte.querySelector("input").value) > 0) ? toast(tr("Aucune personne supplémentaire : rien à ajouter. Indiquez combien de personnes dépassent les deux premières."), true) : ajoute([ligneDepuisPrestation(x, netPrestation(x), { langue, date: date.value, qte: champQte ? Number(champQte.querySelector("input").value) : 1, devise })], x.sur_place ? tr("Note sur les frais de parc") : x.libelle)) }, x.sur_place ? tr("Ajouter la note") : tr("Ajouter")))
           )
         );
       }

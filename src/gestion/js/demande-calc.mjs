@@ -1,7 +1,7 @@
 // Demande d'un client reçue par WhatsApp : lecture du message que rédigent les formulaires des sites Secret et Taxi, propositions de prix
 // d'après la base partenaires, et réponse prête à envoyer. Logique pure, testée avec node --test.
 // Rien n'est inventé : un prix vient d'une ligne de la base, et sans correspondance on propose seulement de chercher à la main.
-import { sansAccents, trajetDisponible, libelleUnite, libelleClient } from "./partenaires-calc.mjs";
+import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSupplementaires, prefixeProgramme } from "./partenaires-calc.mjs";
 import { dateTexte, personnesTexte } from "./operations-calc.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -244,7 +244,7 @@ export function proposerOffresLibres(d, texte, { prestations = [], trajets = [],
   }
   for (const p of prestations) {
     // Les frais de parc (à payer sur place) et les tarifs enfant se rattachent à une excursion, ils ne se proposent pas seuls.
-    if (p.actif === false || p.famille === "option" || p.famille === "frais" || p.sur_place || p.unite === "ch") continue;
+    if (p.actif === false || p.famille === "option" || p.famille === "frais" || p.sur_place || p.unite === "ch" || p.unite === "sup") continue;
     const groupe = sansAccents(p.groupe || p.libelle);
     let score = 0;
     let motsCommuns = 0;
@@ -262,7 +262,7 @@ export function proposerOffresLibres(d, texte, { prestations = [], trajets = [],
     if (d.mode === "private") score += /priv/.test(groupe) ? 0.2 : -0.1;
     offres.push({ genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score });
   }
-  return offres.map((o) => completerEnfant(o, pax, prestations)).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
+  return offres.map((o) => completerSupplement(completerEnfant(o, pax, prestations), pax, prestations)).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
 }
 
 // Les offres d'une lecture, quelle que soit son origine : formulaire du site ou message libre.
@@ -310,6 +310,7 @@ export function prixPrestation(p, { adultes, enfants }) {
     case "pp": return prix * (adultes + enfants);
     case "ad": return prix * adultes;
     case "ch": return prix * enfants;
+    case "sup": return prix * personnesSupplementaires({ adultes, enfants });
     default: return prix; // par bateau, véhicule, groupe, session, jour : un seul prix
   }
 }
@@ -340,6 +341,27 @@ export function completerEnfant(offre, pax, prestations) {
   return offre;
 }
 
+// Supplément « par personne supplémentaire » d'une excursion : la prestation du même partenaire, du même groupe et du même nom avant la virgule
+// (« Programme B : Private Fishing & Seafood, Base 1-2 pers » et « …, Personne supplémentaire »).
+export function prestationSupplement(p, prestations = []) {
+  if (p.unite !== "grp") return null;
+  const memes = prestations.filter((q) => q.id !== p.id && q.actif !== false && q.unite === "sup" && q.partenaire_id === p.partenaire_id && q.famille === p.famille && (q.groupe || "") === (p.groupe || ""));
+  // Le même nom avant la virgule d'abord, le nom du programme (« Programme B ») seulement à défaut.
+  return memes.find((q) => nomCourt(q.libelle) === nomCourt(p.libelle)) || memes.find((q) => prefixeProgramme(q.libelle) && prefixeProgramme(q.libelle) === prefixeProgramme(p.libelle)) || null;
+}
+
+// Prix de base pour 1 ou 2 personnes, puis le supplément pour chaque personne en plus : le total de l'offre les additionne, `supplement` garde la
+// prestation et la quantité pour fabriquer la ligne de facture. Sans prix de supplément, l'offre est signalée plutôt que sous-estimée.
+export function completerSupplement(offre, pax, prestations) {
+  const p = offre.source;
+  if (offre.genre !== "prestation" || p.sur_place) return offre;
+  const s = prestationSupplement(p, prestations);
+  const qte = personnesSupplementaires(pax);
+  if (!s || !qte) return offre;
+  if (s.prix_vente === null || s.prix_vente === undefined || offre.total === null) return { ...offre, avertissement: offre.avertissement || "supplement_a_definir" };
+  return { ...offre, supplement: { source: s, qte }, total: offre.total + Number(s.prix_vente) * qte };
+}
+
 // Offres de la base qui correspondent à la demande, la plus proche en premier. Au plus six.
 // `nomPartenaire(id)` renvoie le nom du partenaire.
 export function proposerOffres(d, { prestations = [], trajets = [], nomPartenaire = () => "" } = {}) {
@@ -364,7 +386,7 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
       offres.push({ genre: "trajet", id: t.id, source: t, titre: `${t.de} → ${t.vers}${t.depart ? `, ${t.depart}` : ""}`, detail: [t.mode, nomPartenaire(t.partenaire_id)].filter(Boolean).join(" · "), total, avertissement, score });
     }
     for (const p of prestations) {
-      if (p.actif === false || p.famille !== "transfert") continue;
+      if (p.actif === false || p.famille !== "transfert" || p.unite === "sup") continue;
       const texte = `${p.libelle} ${p.libelle_en || ""} ${p.groupe || ""}`;
       const score = Math.min(recouvrement(d.de, texte), recouvrement(d.vers, texte));
       if (score < 0.5) continue;
@@ -372,7 +394,7 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
     }
   } else if (d.prestation) {
     for (const p of prestations) {
-      if (p.actif === false) continue;
+      if (p.actif === false || p.unite === "sup") continue;
       const texte = `${p.libelle} ${p.libelle_en || ""} ${p.groupe || ""}`;
       let score = recouvrement(d.prestation, texte);
       if (score < 0.5) continue;
@@ -382,7 +404,7 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
       offres.push({ genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score });
     }
   }
-  return offres.map((o) => completerEnfant(o, pax, prestations)).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
+  return offres.map((o) => completerSupplement(completerEnfant(o, pax, prestations), pax, prestations)).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
 }
 
 // ---- Réponse au client ---------------------------------------------------------------------------------------------
