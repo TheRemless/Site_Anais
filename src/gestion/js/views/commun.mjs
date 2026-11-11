@@ -2,8 +2,18 @@ import { h, vider, ajouter, modal, icone, saisie, puces as fabriquePuces } from 
 import { trier, tranche, compterFiltres } from "../mobile-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 import { libelleStatut, sommePaiements, nomFichier } from "../calc.mjs";
-import { etat, imprimer, nomPartenaire } from "../etat.mjs";
+import { etat, imprimer, nomPartenaire, nomClient } from "../etat.mjs";
 import { renderDocument } from "../document.mjs";
+
+// Titre d'un service, d'une tâche ou d'un dossier qui mène au dossier : zone tactile de 44 px (voir .titre-lien), focus visible,
+// et un complément lu seulement par les lecteurs d'écran (« Ouvrir le dossier de … ») sans changer le texte visible.
+// Sans dossier connu, le contenu reste tel quel.
+export function lienDossier(contenu, dossierId, { classe = "" } = {}) {
+  const d = dossierId ? etat.db.dossiers.find((x) => x.id === dossierId) : null;
+  if (!d) return contenu;
+  const client = etat.db.clients.find((x) => x.id === d.client_id);
+  return h("a", { class: ["titre-lien", classe].filter(Boolean).join(" "), href: `#/dossier/${d.id}` }, contenu, h("span", { class: "visuellement-cache" }, ` (${tr("Ouvrir le dossier de {nom}", { nom: client ? nomClient(client) : d.ref })})`));
+}
 
 // Le statut est toujours écrit en toutes lettres, le point de couleur ne fait que l'accompagner.
 export function pastille(code) {
