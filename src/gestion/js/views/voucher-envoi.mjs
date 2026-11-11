@@ -8,6 +8,7 @@ import { h, modal } from "../ui.mjs";
 import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
 import { numeroVoucher, nomFichierVoucher, messageVoucher, lienWhatsApp, controlesVoucher } from "../operations-calc.mjs";
 import { chiffres, telWhatsApp } from "../partenaires-calc.mjs";
+import { envoiParLien } from "./envoi-lien.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
 import { tr, N_ } from "../i18n.mjs";
 
@@ -57,6 +58,10 @@ export function envoyerVoucher(x) {
   const aide = h("p", { class: "aide" });
   let fichier = null;
   const zone = zoneEnvoi({ fichiers: () => (fichier ? [fichier] : []) });
+  // Le lien est le chemin qui marche partout (téléphone, ordinateur, n'importe quel navigateur) : c'est le bouton évident. Le partage natif et la
+  // copie dans le presse-papiers restent des raccourcis quand le navigateur sait les faire.
+  const base = { zone, genre: "voucher", kind: "voucher", droit: "dossiers.ecrire", dossierId: dossier.id, langue: "en", prenom: client.prenom || "", telephone: client.telephone || "" };
+  const lien = envoiParLien({ ...base, elements: () => (fichier ? [{ fichier, objetId: r.id }] : null), ids: () => [r.id], libelle: tr("Envoyer par lien") });
 
   const enregistrerImage = () => enregistrer([fichier]);
   // Ce qui reste possible quand l'image ne peut pas partir toute seule : l'enregistrer, copier le message, et seulement si on le dit
@@ -131,6 +136,8 @@ export function envoyerVoucher(x) {
   const freres = vouchersDuDossier(dossier.id);
   const boutonTous = h("button", { class: "secondaire", type: "button", disabled: true, hidden: freres.length < 2 });
   let fichiersTous = null;
+  const lienTous = freres.length > 1 ? envoiParLien({ ...base, elements: () => (fichiersTous ? fichiersTous.map((f, i) => ({ fichier: f, objetId: freres[i].reservation.id })) : null), ids: () => freres.map((y) => y.reservation.id), libelle: tr("Envoyer les {n} vouchers par lien", { n: freres.length }), principal: false }) : null;
+  if (lienTous) lienTous.bouton.disabled = true;
   let ferme = false; // fenêtre fermée : on arrête de fabriquer des images dont personne ne se servira
   async function preparerTous() {
     const fichiers = [];
@@ -142,6 +149,7 @@ export function envoyerVoucher(x) {
     }
     fichiersTous = fichiers;
     boutonTous.disabled = false;
+    if (lienTous) lienTous.bouton.disabled = false;
     const chemin = moyen(fichiers);
     boutonTous.textContent = chemin === "natif" ? tr("Partager les {n} vouchers du dossier", { n: freres.length }) : chemin === "ordinateur" ? tr("Copier les {n} images une à une", { n: freres.length }) : tr("Enregistrer les {n} images du dossier", { n: freres.length });
   }
@@ -168,7 +176,9 @@ export function envoyerVoucher(x) {
     if (chemin === "natif") {
       // Un seul bouton évident : la liste de partage du téléphone choisit l'application et le contact, l'image y est jointe.
       actions.replaceChildren(
-        h("button", { class: "principal", type: "button", onclick: partagerImage }, tr("Partager l'image du voucher")),
+        ...(lien ? [lien.bouton] : []),
+        h("button", { class: lien ? "secondaire" : "principal", type: "button", onclick: partagerImage }, tr("Partager l'image du voucher")),
+        ...(lienTous ? [lienTous.bouton] : []),
         boutonTous,
         h("button", { class: "secondaire", type: "button", onclick: enregistrerImage }, tr("Enregistrer l'image")),
         ...boutonsCopie(),
@@ -177,8 +187,10 @@ export function envoyerVoucher(x) {
       aide.textContent = tr("La liste de partage s'ouvre avec l'image : choisissez WhatsApp, puis le contact. Le message se copie à part, à coller sous l'image si vous le voulez.");
     } else if (chemin === "ordinateur") {
       actions.replaceChildren(
-        ...destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour) }, destinataires.length === 1 ? tr("Envoyer sur WhatsApp") : etiquette(pour))),
+        ...(lien ? [lien.bouton] : []),
+        ...destinataires.map(([pour], i) => h("button", { class: i === 0 && !lien ? "principal" : "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour) }, destinataires.length === 1 ? tr("Envoyer sur WhatsApp") : etiquette(pour))),
         ...(partageFichiers([fichier]) ? [h("button", { class: "secondaire", type: "button", onclick: partagerImage }, tr("Partager avec le système"))] : []),
+        ...(lienTous ? [lienTous.bouton] : []),
         boutonTous,
         h("button", { class: "secondaire", type: "button", onclick: enregistrerImage }, tr("Enregistrer l'image")),
         ...boutonsCopie(),
@@ -187,9 +199,9 @@ export function envoyerVoucher(x) {
       aide.textContent = tr("Un lien WhatsApp ne peut pas joindre d'image : l'image est copiée, puis la conversation s'ouvre et vous la collez avec {raccourci}. Sans numéro, WhatsApp propose de choisir le contact.", { raccourci: raccourci() });
     } else {
       // Téléphone dont le navigateur ne partage pas de fichier : on le dit tout de suite, sans ouvrir WhatsApp avec un texte seul.
-      actions.replaceChildren(boutonTous, ...imprimer);
+      actions.replaceChildren(...(lien ? [lien.bouton] : []), ...(lienTous ? [lienTous.bouton] : []), boutonTous, ...imprimer);
       aide.textContent = tr("Appuyez longuement sur l'image pour l'enregistrer dans Photos, puis joignez-la dans WhatsApp.");
-      zone.echec({ titre: tr("Ce navigateur ne peut pas joindre l'image à WhatsApp. Ouvrez Gestion dans Safari ou depuis l'icône de l'écran d'accueil pour la partager d'un tap."), boutons: boutonsRepli() });
+      zone.echec({ titre: lien ? tr("Ce navigateur ne peut pas joindre l'image à WhatsApp. Utilisez « Envoyer par lien » : il marche dans tous les navigateurs.") : tr("Ce navigateur ne peut pas joindre l'image à WhatsApp. Ouvrez Gestion dans Safari ou depuis l'icône de l'écran d'accueil pour la partager d'un tap."), boutons: boutonsRepli() });
     }
   }
 
@@ -203,7 +215,9 @@ export function envoyerVoucher(x) {
       apercu,
       actions,
       aide,
-      zone.noeud
+      zone.noeud,
+      lien ? lien.liste : null,
+      lienTous ? lienTous.liste : null
     ),
     { large: true, protege: false, ferme: () => (ferme = true) }
   );

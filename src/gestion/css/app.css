@@ -812,6 +812,13 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .partage-etat.ok { border-color: var(--teal-600); background: var(--teal-100); color: var(--texte); }
 .partage-etapes { margin: 0 0 8px; padding-left: 1.3rem; }
 .partage-etapes li { margin-bottom: 4px; }
+/* Envoi par lien : message en lecture seule et liens déjà envoyés. */
+.lien-message { width: 100%; min-height: 6.5em; margin: 4px 0 0; font-size: 0.9rem; line-height: 1.45; background: var(--surface); resize: vertical; }
+.liens-existants { margin-top: 12px; }
+.liens-existants summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--texte-2); font-size: 0.88rem; }
+.liens-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.liens-liste li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); }
+.liens-liste .actions { margin: 0; }
 /* ===== Fin session D ===== */
 /* ---- Paiements (session A) : puce « Chez nous / Sur place », écran À encaisser ---- */
 .mode-reglement { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--bord-fort, var(--bord)); border-radius: 999px; background: var(--surface); }

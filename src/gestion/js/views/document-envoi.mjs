@@ -6,6 +6,7 @@ import { etat, nomClient, peut } from "../etat.mjs";
 import { h, modal, toast, confirmer } from "../ui.mjs";
 import { aujourdhui, nomFichier } from "../calc.mjs";
 import { feuille, pdf } from "./commun.mjs";
+import { envoiParLien } from "./envoi-lien.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, zoneEnvoi } from "./partage.mjs";
 import { lienWhatsApp } from "../operations-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
@@ -69,6 +70,8 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
   let fichier = null;
   let adresse = null;
   const zone = zoneEnvoi({ fichiers: () => (fichier ? [fichier] : []) });
+  // Le lien est le chemin qui marche partout : c'est le bouton évident, le partage natif et le presse-papiers restent des raccourcis.
+  const lien = envoiParLien({ zone, genre: doc.type === "devis" ? "devis" : "facture", kind: "document", droit: "documents.ecrire", dossierId: dossier.id, langue: doc.contenu.langue === "en" ? "en" : "fr", prenom: client.prenom || "", telephone: client.telephone || "", elements: () => (fichier ? [{ fichier, objetId: doc.id }] : null), ids: () => [doc.id], libelle: tr("Envoyer par lien"), surEnvoi: () => apres() });
 
   // Un devis qui part sans date d'envoi n'est jamais relancé : on propose de la poser.
   async function apres() {
@@ -140,14 +143,15 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
     const courrielBtn = client.email && chemin !== "natif" ? [h("button", { class: "secondaire", type: "button", onclick: courriel }, tr("Envoyer par e-mail"))] : [];
     if (chemin === "telephone_sans_partage") {
       // Téléphone dont le navigateur ne partage pas de fichier : on le dit tout de suite, sans ouvrir WhatsApp avec un texte seul.
-      actions.replaceChildren(...courrielBtn, ...imprimer);
+      actions.replaceChildren(...(lien ? [lien.bouton] : []), ...courrielBtn, ...imprimer);
       aide.textContent = "";
-      zone.echec({ titre: tr("Ce navigateur ne peut pas joindre le PDF à WhatsApp. Ouvrez Gestion dans Safari ou depuis l'icône de l'écran d'accueil pour le partager d'un tap."), boutons: boutonsRepli() });
+      zone.echec({ titre: lien ? tr("Ce navigateur ne peut pas joindre le PDF à WhatsApp. Utilisez « Envoyer par lien » : il marche dans tous les navigateurs.") : tr("Ce navigateur ne peut pas joindre le PDF à WhatsApp. Ouvrez Gestion dans Safari ou depuis l'icône de l'écran d'accueil pour le partager d'un tap."), boutons: boutonsRepli() });
       return;
     }
     actions.replaceChildren(
       // Avec le partage du téléphone, la liste propose WhatsApp, Mail, Messages : le libellé ne promet pas une seule application.
-      h("button", { class: "principal", type: "button", onclick: whatsapp }, chemin === "natif" ? tr("Partager le PDF") : tr("Envoyer sur WhatsApp")),
+      ...(lien ? [lien.bouton] : []),
+      h("button", { class: lien ? "secondaire" : "principal", type: "button", onclick: whatsapp }, chemin === "natif" ? tr("Partager le PDF") : tr("Envoyer sur WhatsApp")),
       ...(chemin === "ordinateur" && partageFichiers([fichier]) ? [h("button", { class: "secondaire", type: "button", onclick: partagerSysteme }, tr("Partager avec le système"))] : []),
       ...courrielBtn,
       h("button", { class: "secondaire", type: "button", onclick: async () => (telechargerPdf(), await apres()) }, tr("Télécharger le PDF")),
@@ -158,7 +162,7 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
   }
 
   const titre = doc.type === "devis" ? tr("Envoyer le devis") : tr("Envoyer la facture");
-  modal(titre, h("div", { class: "modal-corps envoi-voucher" }, h("p", { class: "envoi-resume" }, h("strong", null, `${doc.type === "devis" ? tr("Devis") : tr("Facture")} ${dossier.ref || ""}`.trim()), h("span", null, [nomClient(client), client.telephone || client.email].filter(Boolean).join(" · "))), apercu, actions, h("p", { class: "envoi-message" }, message), aide, zone.noeud), { large: true, protege: false });
+  modal(titre, h("div", { class: "modal-corps envoi-voucher" }, h("p", { class: "envoi-resume" }, h("strong", null, `${doc.type === "devis" ? tr("Devis") : tr("Facture")} ${dossier.ref || ""}`.trim()), h("span", null, [nomClient(client), client.telephone || client.email].filter(Boolean).join(" · "))), apercu, actions, h("p", { class: "envoi-message" }, message), aide, zone.noeud, lien ? lien.liste : null), { large: true, protege: false });
 
   fabriquerPdf(doc)
     .then(({ nom, blob, apercu: page }) => {

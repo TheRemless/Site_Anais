@@ -5,6 +5,7 @@ import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
+import { expiration, lienActif } from "./liens-calc.mjs";
 
 const CLE = "gestion-zwald-demo-v10";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
@@ -214,6 +215,27 @@ export function creer() {
       delete (data.fichiers || {})[piece.chemin];
       journaliser("pieces_jointes", "delete", piece);
       sauve();
+    },
+    // Envoi par lien de démonstration : la ligne est gardée dans le navigateur, l'adresse est fausse (rien n'est envoyé nulle part).
+    async creerLienEnvoi({ entiteId, dossierId, genre, objetId = "", fichier, jours }) {
+      const ligne = { id: uid(), created_at: new Date().toISOString(), entite_id: entiteId, dossier_id: dossierId, genre, objet_id: objetId, nom: fichier.name, type: fichier.type, taille: fichier.size, chemin: `${entiteId}/${uid()}`, expire_le: expiration(Date.now(), jours), revoque_le: null, nettoye_le: null, cree_par: utilisateur.user_id };
+      (data.liens_envoi = data.liens_envoi || []).push(ligne);
+      sauve();
+      return { ...structuredClone(ligne), url: `${location.origin}/gestion/lien-de-demonstration/${ligne.id}` };
+    },
+    async liensEnvoi({ dossierId, genre }) {
+      return structuredClone((data.liens_envoi || []).filter((l) => l.dossier_id === dossierId && l.genre === genre && lienActif(l)));
+    },
+    async lienSigneEnvoi(lien) {
+      return `${location.origin}/gestion/lien-de-demonstration/${lien.id}`;
+    },
+    async revoquerLienEnvoi(lien) {
+      const l = (data.liens_envoi || []).find((x) => x.id === lien.id);
+      if (l) l.revoque_le = new Date().toISOString();
+      sauve();
+    },
+    async nettoyerLiensEnvoi() {
+      return 0;
     },
     async resumeDossier(id) {
       const d = dossiersVisibles().find((x) => x.id === id);

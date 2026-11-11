@@ -3,6 +3,7 @@
 import { createClient } from "../vendor/supabase.mjs";
 import { tr } from "./i18n.mjs";
 import { separerNets, fusionnerNets } from "./nets-documents.mjs";
+import { cheminLien, expiration, secondesRestantes, lienActif } from "./liens-calc.mjs";
 
 // Ordre d'import imposé par les clés étrangères.
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
@@ -31,6 +32,15 @@ const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise
 
 export function creer(config, { client } = {}) {
   const sb = client || createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
+
+  // Adresse signée d'un lien, valable jusqu'à son échéance (jamais au-delà : le jeton expire avec la ligne).
+  async function signerLien(lien) {
+    const secondes = secondesRestantes(lien);
+    if (secondes < 60) throw new Error(tr("Ce lien a expiré."));
+    const { data, error } = await sb.storage.from("envois").createSignedUrl(lien.chemin, secondes);
+    if (error) throw new Error(error.message);
+    return data.signedUrl;
+  }
 
   // Migration 16 : les nets des documents sont dans documents_nets. Tant qu'elle n'est pas appliquée, on garde l'ancien fonctionnement
   // (nets dans le contenu) plutôt que de les perdre. La table existe pour tout le monde, mais ne renvoie rien sans le droit « nets ».
@@ -226,6 +236,42 @@ export function creer(config, { client } = {}) {
       const { error } = await sb.storage.from("pieces").remove([piece.chemin]);
       if (error) throw new Error(error.message);
       verifie(await sb.from("pieces_jointes").delete().eq("id", piece.id).select());
+    },
+    // Envoi par lien (migration 22) : le fichier va dans le stockage privé « envois » sous un chemin aléatoire, une ligne garde qui l'a créé et
+    // jusqu'à quand, et l'adresse signée expire à la même échéance. Révoquer supprime le fichier : l'adresse ne mène plus à rien.
+    async creerLienEnvoi({ entiteId, dossierId, genre, objetId = "", fichier, jours }) {
+      if (fichier.size > LIMITE_FICHIER) throw new Error(tr("Fichier trop lourd (10 Mo maximum)."));
+      const chemin = cheminLien(entiteId, crypto.randomUUID(), fichier.type);
+      // La ligne d'abord : la règle du stockage vérifie qu'elle existe et que la personne a le droit.
+      const ligne = verifie(await sb.from("liens_envoi").insert({ entite_id: entiteId, dossier_id: dossierId, genre, objet_id: objetId, nom: fichier.name, type: fichier.type, taille: fichier.size, chemin, expire_le: expiration(Date.now(), jours) }).select().single());
+      try {
+        const { error } = await sb.storage.from("envois").upload(chemin, fichier, { contentType: fichier.type || "application/octet-stream" });
+        if (error) throw new Error(error.message);
+        return { ...ligne, url: await signerLien(ligne) };
+      } catch (err) {
+        await sb.from("liens_envoi").delete().eq("id", ligne.id);
+        throw err;
+      }
+    },
+    async liensEnvoi({ dossierId, genre }) {
+      const lignes = verifie(await sb.from("liens_envoi").select("*").eq("dossier_id", dossierId).eq("genre", genre).is("revoque_le", null).is("nettoye_le", null).order("created_at", { ascending: false }));
+      return lignes.filter((l) => lienActif(l));
+    },
+    lienSigneEnvoi: (lien) => signerLien(lien),
+    async revoquerLienEnvoi(lien) {
+      // Le fichier d'abord, puis la ligne : si la seconde étape échoue, le lien est déjà mort et la ligne se révoquera à la prochaine tentative.
+      const { error } = await sb.storage.from("envois").remove([lien.chemin]);
+      if (error) throw new Error(error.message);
+      verifie(await sb.from("liens_envoi").update({ revoque_le: new Date().toISOString() }).eq("id", lien.id).select());
+    },
+    // Retire du stockage les fichiers des liens expirés (25 à la fois) : l'adresse signée est déjà morte, le fichier n'a plus de raison de rester.
+    async nettoyerLiensEnvoi(entiteId) {
+      const lignes = verifie(await sb.from("liens_envoi").select("id, chemin").eq("entite_id", entiteId).is("nettoye_le", null).lt("expire_le", new Date().toISOString()).limit(25));
+      if (!lignes.length) return 0;
+      const { error } = await sb.storage.from("envois").remove(lignes.map((l) => l.chemin));
+      if (error) throw new Error(error.message);
+      verifie(await sb.from("liens_envoi").update({ nettoye_le: new Date().toISOString() }).in("id", lignes.map((l) => l.id)).select());
+      return lignes.length;
     },
     // Tableau analytique : tous les chiffres sont calculés par la base.
     async analyses({ entiteId, du, au, jour }) {
