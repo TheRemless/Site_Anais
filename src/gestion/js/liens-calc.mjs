@@ -28,5 +28,5 @@ export function messageLien({ genre, langue = "en", prenom = "", liens, expire }
   const intro = en ? `here ${plusieurs ? "are" : "is"} your ${nom}:` : `voici ${plusieurs ? "vos" : "votre"} ${nom} :`;
   const corps = plusieurs ? liens.map((l, i) => `${i + 1}. ${l.url}`).join("\n") : liens[0].url;
   const validite = jusque ? (en ? `The link is valid until ${jusque}.` : `Le lien est valable jusqu'au ${jusque}.`) : "";
-  return [tete, "", intro, corps, validite && "", validite].filter((x, i, a) => !(x === "" && (i === a.length - 1))).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return [`${tete}\n\n${intro}\n${corps}`, validite].filter(Boolean).join("\n\n");
 }

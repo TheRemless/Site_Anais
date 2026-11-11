@@ -249,7 +249,9 @@ export function creer(config, { client } = {}) {
         if (error) throw new Error(error.message);
         return { ...ligne, url: await signerLien(ligne) };
       } catch (err) {
-        await sb.from("liens_envoi").delete().eq("id", ligne.id);
+        // Sans fichier, la ligne ne doit plus apparaître active : on la supprime, et si même cela échoue on la marque révoquée.
+        const { error } = await sb.from("liens_envoi").delete().eq("id", ligne.id);
+        if (error) await sb.from("liens_envoi").update({ revoque_le: new Date().toISOString() }).eq("id", ligne.id);
         throw err;
       }
     },
