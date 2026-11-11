@@ -16,6 +16,8 @@ export const DESTINATAIRES = [
   ["client", N_("Au client")],
   ["partenaire", N_("Au partenaire")],
 ];
+// Noms lisibles des variables, pour dire ce qui manque.
+const NOMS_VARIABLES = { client: N_("nom du client"), prenom: N_("prénom"), date: N_("date"), hotel: N_("hôtel"), heure: N_("heure de pickup"), personnes: N_("personnes"), prestation: N_("service"), partenaire: N_("partenaire"), reference: N_("référence"), entreprise: N_("entreprise") };
 const nomLangue = (code) => (LANGUES.find(([c]) => c === code) || [code, code])[1];
 
 async function copier(texte) {
@@ -29,7 +31,8 @@ async function copier(texte) {
 
 // `vars` : valeurs des variables ; `cle` : gabarit proposé d'abord ; `telephone` : destinataire WhatsApp ;
 // `pour` : « client » ou « partenaire », seuls les messages de ce destinataire sont proposés.
-export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle = "", langue = "fr", telephone = "", pour = "client" }) {
+// `surEnvoi` : appelée quand le message part (WhatsApp ouvert) ou est copié, par exemple pour passer une réservation à « Demandée ».
+export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle = "", langue = "fr", telephone = "", pour = "client", surEnvoi = null }) {
   const tous = messagesTypes().filter((m) => destinataireMessage(m) === pour);
   if (!tous.length) return toast(pour === "partenaire" ? tr("Aucun message type pour les partenaires. Créez-en dans l'écran Messages.") : tr("Aucun message type pour les clients. Créez-en dans l'écran Messages."), true);
   const texte = h("textarea", { id: "msg-texte", rows: 11 });
@@ -42,9 +45,14 @@ export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle 
     if (prefere) selGabarit.value = prefere.id;
     remplir();
   }
+  // Ce que le gabarit réclame et que la réservation ne donne pas (heure, hôtel…) : dit avant l'envoi plutôt que découvert par le client.
+  const manque = h("p", { class: "bandeau-info", role: "status", hidden: true });
   function remplir() {
     const m = tous.find((x) => x.id === selGabarit.value);
     texte.value = m ? remplirGabarit(m.corps, vars) : "";
+    const vides = m ? [...new Set([...m.corps.matchAll(/\{(\w+)\}/g)].map((x) => x[1]))].filter((k) => k in vars && !String(vars[k] ?? "").trim() && !["a_heure", "telephone"].includes(k)) : [];
+    manque.hidden = !vides.length;
+    manque.textContent = vides.length ? tr("À compléter dans le texte : {liste}.", { liste: vides.map((k) => NOMS_VARIABLES[k] ? tr(NOMS_VARIABLES[k]) : k).join(", ") }) : "";
   }
   remplirGabarits();
   const numero = chiffres(telephone);
@@ -54,12 +62,13 @@ export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle 
       "div",
       { class: "modal-corps message-apercu" },
       h("div", { class: "grille-form" }, champ(tr("Langue"), selLangue), champ(tr("Message type"), selGabarit)),
-      champ(tr("Texte, modifiable avant la copie"), texte),
+      manque,
+      champ(tr("Texte, modifiable avant l'envoi"), texte),
       h(
         "div",
         { class: "actions" },
-        numero ? h("a", { class: "bouton secondaire", href: "#", onclick: (e) => { e.preventDefault(); window.open(`https://wa.me/${numero.replace("+", "")}?text=${encodeURIComponent(texte.value)}`, "_blank", "noopener"); } }, icone("whatsapp"), tr("Ouvrir dans WhatsApp")) : null,
-        h("button", { class: "principal", type: "button", onclick: () => copier(texte.value) }, icone("copier"), tr("Copier"))
+        numero ? h("a", { class: "bouton principal", href: "#", onclick: (e) => { e.preventDefault(); window.open(`https://wa.me/${numero.replace("+", "")}?text=${encodeURIComponent(texte.value)}`, "_blank", "noopener"); if (surEnvoi) surEnvoi(); } }, icone("whatsapp"), tr("Ouvrir dans WhatsApp")) : null,
+        h("button", { class: numero ? "secondaire" : "principal", type: "button", onclick: () => (copier(texte.value), surEnvoi && surEnvoi()) }, icone("copier"), tr("Copier"))
       ),
       h("p", { class: "aide" }, tr("Les variables entre accolades sont remplies d'après la réservation ou le dossier. Les textes thaïs sont des propositions à faire relire avant usage."))
     )
