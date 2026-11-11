@@ -231,6 +231,10 @@ export function creer(config, { client } = {}) {
     async analyses({ entiteId, du, au, jour }) {
       return verifie(await sb.rpc("tableau_analytique", { e: entiteId, du, au, jour }));
     },
+    // Faits des statistiques détaillées (migration 20) : un appel par section, `parties` limite les collections renvoyées.
+    async analyseFaits({ entiteId, debut, fin, jour, parties }) {
+      return verifie(await sb.rpc("analyse_faits", { e: entiteId, debut, fin, jour, parties: parties || null }));
+    },
     // Journal d'activité : les plus récentes d'abord, par pages (le journal peut devenir très long).
     async journal({ entiteId, table, userId, avant, limite = 50 }) {
       let q = sb.from("journal").select("*").eq("entite_id", entiteId).order("created_at", { ascending: false }).limit(limite);

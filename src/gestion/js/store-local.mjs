@@ -3,7 +3,7 @@
 import { aujourdhui, ajouterJours, totalDossier, sommePaiements, montantSurPlace } from "./calc.mjs";
 import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
-import { analyserLocal } from "./analyses.mjs";
+import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 
 const CLE = "gestion-zwald-demo-v8";
@@ -247,6 +247,12 @@ export function creer() {
       if (!(p.includes("analytics.voir") && p.includes("finances.voir"))) throw new Error(tr("Droit insuffisant pour voir les analyses"));
       const de = (t) => data[t].filter((r) => r.entite_id === entiteId);
       return analyserLocal({ dossiers: de("dossiers"), documents: de("documents"), paiements: de("paiements"), clients: de("clients"), profils: data.profils, reglages: data.reglages[entiteId] }, du, au, jour);
+    },
+    async analyseFaits({ entiteId, debut, fin, jour }) {
+      const p = permissionsDans(contexte(), entiteId);
+      if (!(p.includes("analytics.voir") && p.includes("finances.voir"))) throw new Error(tr("Droit insuffisant pour voir les analyses"));
+      const de = (t) => (data[t] || []).filter((r) => r.entite_id === entiteId);
+      return faitsLocal({ dossiers: de("dossiers"), documents: de("documents"), paiements: de("paiements"), clients: de("clients"), profils: data.profils, reglages: data.reglages[entiteId], reservations: de("reservations"), reservations_nets: de("reservations_nets"), partenaires: de("partenaires"), prestations: de("prestations") }, { debut, fin, jour, nets: p.includes("partenaires.nets") });
     },
     async journal({ entiteId, table, userId, avant, limite = 50 }) {
       if (!permissionsDans(contexte(), entiteId).includes("journal.voir")) return [];

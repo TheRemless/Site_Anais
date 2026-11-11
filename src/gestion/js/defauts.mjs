@@ -2,6 +2,7 @@
 // Les vraies coordonnées (téléphone, e-mail, banque) ne sont pas dans ce fichier car il est servi publiquement :
 // elles viennent de la table « reglages » (voir docs/gestion/schema.sql).
 
+import { enrichirDemoStats } from "./demo-stats.mjs";
 import { N_ } from "./i18n.mjs";
 
 export const uid = () => crypto.randomUUID();
@@ -515,5 +516,6 @@ export function donneesDemo(ajd, ajouterJours) {
     tache(e2, "[À vérifier] Obtenir le contrat signé de Longtail démo", null, null, null, { partenaire_id: longtail.id, description: "Le contrat du dossier n'est pas contresigné." }),
     tache(e3, "Vérifier le planning de la semaine", 2, assistante, null),
   ];
-  return { entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, taches, partenaires, partenaires_prives, prestations, prestations_nets, trajets, trajets_nets, reservations, reservations_nets, pieces: [], fichiers: {}, journal: [] };
+  // Treize mois d'activité fictive pour les statistiques (demo-stats.mjs).
+  return enrichirDemoStats({ entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, taches, partenaires, partenaires_prives, prestations, prestations_nets, trajets, trajets_nets, reservations, reservations_nets, pieces: [], fichiers: {}, journal: [] }, { ajd, ajouterJours, uid, contenu, nouvelleLigne });
 }
