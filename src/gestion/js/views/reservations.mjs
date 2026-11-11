@@ -1,8 +1,8 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
 import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
-import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_ } from "../operations-calc.mjs";
+import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE, ajouterJours } from "../calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, nbJoursLocation } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide, barreFiltres, lienDossier } from "./commun.mjs";
@@ -58,7 +58,7 @@ function texteEcart(c, devise) {
 async function aligner(r, ecart, apres) {
   const a = ecart.attendu;
   try {
-    await modifier("reservations", r.id, { date_service: a.date_service, personnes: { ...(r.personnes || {}), adultes: a.personnes.adultes, enfants: a.personnes.enfants }, ...(a.montant_vente === null ? {} : { montant_vente: a.montant_vente }), paye_sur_place: a.paye_sur_place });
+    await modifier("reservations", r.id, { date_service: a.date_service, personnes: { ...(r.personnes || {}), adultes: a.personnes.adultes, enfants: a.personnes.enfants }, ...(a.montant_vente === null ? {} : { montant_vente: a.montant_vente }), paye_sur_place: a.paye_sur_place, ...(a.jours ? { details: { ...(r.details || {}), jours: a.jours } } : {}) });
     await synchroniserDatesDossier(r.dossier_id);
     toast(tr("Réservation alignée sur la facture."));
     apres();
@@ -266,8 +266,13 @@ export function formulaireReservation(r, apres) {
   remarques.value = dt.remarques || "";
   const remarquesPaiement = h("input", { id: "v-rem-paiement", value: dt.remarques_paiement || "", placeholder: tr("Deposit 1,000 THB received, balance at the pier") });
   const heureService = h("input", { id: "v-heure-service", value: dt.heure_service || "", placeholder: "10:00 - 12:00" });
-  const retourDate = h("input", { id: "v-retour-date", type: "date", value: dt.retour_date || "" });
+  // Sans date de retour saisie, celle que dit la facture : la date de départ plus les jours loués.
+  const retourDate = h("input", { id: "v-retour-date", type: "date", value: dt.retour_date || (r.date_service && Number(dt.jours) > 0 ? ajouterJours(r.date_service, Number(dt.jours)) : "") });
   const retourHeure = h("input", { id: "v-retour-heure", type: "time", value: dt.retour_heure || "" });
+  const retourLieu = h("input", { id: "v-retour-lieu", value: dt.retour_lieu || "", placeholder: tr("Hôtel, aéroport, agence") });
+  const equipement = h("input", { id: "v-equipement", value: dt.equipement || "", placeholder: tr("2 casques, siège enfant") });
+  const conditions = h("textarea", { id: "v-conditions", rows: 2, placeholder: tr("Assurance, carburant, conditions du loueur, en anglais") });
+  conditions.value = dt.conditions || "";
   const permis = h("input", { id: "v-permis", value: dt.permis || "", placeholder: tr("International driving licence shown") });
   const caution = h("input", { id: "v-caution", value: dt.caution || "", placeholder: tr("3,000 THB, returned at drop-off") });
   const embarquement = h("input", { id: "v-embarquement", value: dt.embarquement || "", placeholder: tr("Saladan Pier") });
@@ -275,10 +280,18 @@ export function formulaireReservation(r, apres) {
   checkin.value = dt.checkin || "";
   const bateau = h("input", { id: "v-bateau", value: dt.bateau || "", placeholder: tr("Longtail, speedboat") });
   const programme = h("input", { id: "v-programme", value: dt.programme || "", placeholder: tr("Program A, 10 min session") });
-  const details = () => ({ ...dt, chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim() });
+  const details = () => ({ ...dt, chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, retour_lieu: retourLieu.value.trim(), equipement: equipement.value.trim(), conditions: conditions.value.trim(), permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim() });
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
   const prestation = r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null;
   const type = typeVoucher(r, prestation, partenaireDe(r.partenaire_id));
+  // Nombre de jours de location, calculé d'après la date de départ et celle de retour.
+  const joursLocation = h("p", { class: "aide", "aria-live": "polite" });
+  const majJours = () => {
+    const n = nbJoursLocation(date.value, retourDate.value);
+    joursLocation.textContent = n ? pluriel(n, N_("jour de location"), N_("jours de location")) : tr("Les jours se calculent d'après les deux dates.");
+  };
+  for (const x of [date, retourDate]) x.addEventListener("change", majJours);
+  majJours();
   const CHAMPS = {
     chambre: () => champ(tr("Chambre"), chambre, tr("Sinon celle de l'adresse du client.")),
     drop_off: () => champ(tr("Drop-off"), dropOff),
@@ -289,8 +302,15 @@ export function formulaireReservation(r, apres) {
     parc: () => champ(tr("Frais de parc"), parc),
     parc_texte: () => champ(tr("Texte des frais de parc"), parcTexte),
     heure_service: () => champ(tr("Horaire de l'activité"), heureService, tr("Imprimé après la date.")),
-    retour_date: () => champ(tr("Date de retour"), retourDate),
+    retour_date: () => {
+      const c = champ(tr("Date de retour"), retourDate);
+      c.append(joursLocation);
+      return c;
+    },
     retour_heure: () => champ(tr("Heure de retour"), retourHeure),
+    retour_lieu: () => champ(tr("Lieu de retour"), retourLieu, tr("Sinon le lieu de départ.")),
+    equipement: () => champ(tr("Équipement fourni"), equipement),
+    conditions: () => champ(tr("Conditions du loueur"), conditions, tr("Imprimées sous le voucher, seulement si renseignées.")),
     permis: () => champ(tr("Permis de conduire"), permis),
     caution: () => champ(tr("Caution"), caution),
     embarquement: () => champ(tr("Embarcadère ou point de check-in"), embarquement, tr("Sinon celui de la compagnie pour le lieu de départ.")),
@@ -300,8 +320,11 @@ export function formulaireReservation(r, apres) {
     remarques: () => champ(tr("Remarques sur le voucher"), remarques),
     remarques_paiement: () => champ(tr("Remarque de paiement"), remarquesPaiement),
   };
+  // Une location : la prise et le retour se lisent côte à côte, juste sous la date de départ.
+  const RETOUR = ["retour_date", "retour_heure", "retour_lieu"];
+  const blocRetour = type === "location" ? h("div", { class: "grille-form compacte" }, RETOUR.map((c) => CHAMPS[c]())) : null;
   const blocVoucher = type
-    ? h("fieldset", null, h("legend", null, TITRES_VOUCHER[type]), h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, (CHAMPS_VOUCHER[type] || []).filter((c) => !["remarques", "remarques_paiement", "checkin"].includes(c)).map((c) => CHAMPS[c]())), (CHAMPS_VOUCHER[type] || []).filter((c) => ["checkin", "remarques", "remarques_paiement"].includes(c)).map((c) => CHAMPS[c]()))
+    ? h("fieldset", null, h("legend", null, TITRES_VOUCHER[type]), h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, (CHAMPS_VOUCHER[type] || []).filter((c) => !["remarques", "remarques_paiement", "checkin"].includes(c) && !(type === "location" && RETOUR.includes(c))).map((c) => CHAMPS[c]())), (CHAMPS_VOUCHER[type] || []).filter((c) => ["checkin", "remarques", "remarques_paiement"].includes(c)).map((c) => CHAMPS[c]()))
     : null;
   return h(
     "form",
@@ -385,8 +408,10 @@ export function formulaireReservation(r, apres) {
     },
     champ(tr("Prestation"), libelle),
     h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champ(tr("Statut"), statut), champ(tr("Référence du partenaire"), reference)),
-    h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), date), champ(tr("Heure de pickup"), heure), champ(tr("Lieu de pickup"), lieu)),
-    h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), adultes), champ(tr("Enfants"), enfants), champ(tr("Bébés"), bebes), peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
+    h("div", { class: "grille-form compacte" }, champ(type === "location" ? tr("Date de départ") : tr("Date du service"), date), champ(type === "location" ? tr("Heure de départ") : tr("Heure de pickup"), heure), champ(type === "location" ? tr("Lieu de départ ou de livraison") : tr("Lieu de pickup"), lieu)),
+    blocRetour,
+    // Une location se compte en jours : ni adultes ni enfants à demander (les nombres déjà saisis sont conservés). Les bébés ne figurent que sur les billets de bateau.
+    h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), type === null || type === "billet" ? champ(tr("Bébés"), bebes) : null, peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
     h("div", { class: "champ champ-mode" }, h("span", { class: "etiquette" }, tr("Règlement")), surPlace, h("p", { class: "aide" }, tr("« Sur place » : le client paie le prestataire, qui reverse une commission. Rien à verser au prestataire ni à encaisser."))),
     nets ? blocNets : null,
     nets ? blocCommission : null,
