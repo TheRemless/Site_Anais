@@ -1135,3 +1135,8 @@ th[aria-sort="ascending"] .st-tri, th[aria-sort="descending"] .st-tri { color: v
 .formulaire-reservation .actions:not(.gauche) button { flex: 1 1 0; }
 @media (min-width: 720px) { .formulaire-reservation .actions:not(.gauche) button { flex: 0 0 auto; min-width: 120px; } }
 .carte .detail-services { margin: 0; }
+
+/* ---- Session F : recalcul des commissions ---- */
+.recalcul-commission { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: space-between; padding: 8px 10px; margin: 6px 0; border-radius: var(--rayon); background: var(--surface-2); font-size: 14px; }
+.recalcul-commission span { flex: 1 1 200px; }
+.liste-recalcul { max-height: 40vh; overflow: auto; }

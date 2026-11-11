@@ -219,6 +219,31 @@ export function commissionPrevue(regle, { vente = null, net = null, adultes = 0,
   return arrondi(v);
 }
 
+// Recalcule la commission prévue de réservations existantes d'après la règle chiffrée du partenaire (les règles posées après coup ne s'appliquent
+// sinon qu'aux nouvelles réservations). Ne touche qu'aux services payés sur place, pas annulés, dont la commission n'est pas encore reçue.
+// `contexte` : regleDe(partenaire_id), netDe(reservation) (net prévu ou null), ecartees (dossiers annulés). Renvoie
+//   { changements: [{ reservation, avant, apres }], inchanges, impossibles }
+// `impossibles` : la règle ou une donnée manque (jamais de commission devinée). `seulementVides` : ne remplit que les commissions encore absentes.
+export function recalculerCommissions(reservations, { regleDe, netDe = () => null, ecartees = new Set() }, { partenaireId = null, seulementVides = false } = {}) {
+  const changements = [];
+  let inchanges = 0;
+  let impossibles = 0;
+  for (const r of reservations) {
+    if (!r.paye_sur_place || r.statut === "annule" || ecartees.has(r.dossier_id)) continue;
+    if (partenaireId && r.partenaire_id !== partenaireId) continue;
+    const n = netDe(r) || {};
+    if (n.commission_recue_le) continue;
+    const avant = n.commission_prevue === undefined ? null : n.commission_prevue;
+    if (seulementVides && avant !== null) continue;
+    const p = r.personnes || {};
+    const apres = commissionPrevue(regleDe(r.partenaire_id || null), { vente: r.montant_vente ?? null, net: n.net_prevu ?? null, adultes: Number(p.adultes) || 0, enfants: Number(p.enfants) || 0 });
+    if (apres === null) { impossibles++; continue; }
+    if (avant !== null && Math.round(Number(avant) * 100) === Math.round(apres * 100)) { inchanges++; continue; }
+    changements.push({ reservation: r, avant, apres });
+  }
+  return { changements, inchanges, impossibles };
+}
+
 // Un partenaire a-t-il un mode et une règle de commission renseignés ? Sert à signaler ce qui reste à compléter.
 export const regleDeCommissionComplete = (regle) => commissionPrevue(regle, { vente: 1, net: 1, adultes: 1 }) !== null;
 
@@ -472,23 +497,31 @@ export function lienWhatsApp(telephone, message) {
 // ---- Écart entre une réservation et sa facture ------------------------------------------------------------------
 // La réservation est créée d'après les lignes de la facture, puis modifiée à part : une quantité, une date ou un montant changé d'un côté
 // laisse l'autre en retard. Renvoie null (rien à signaler), { retiree: true } (la ligne n'est plus dans le document) ou { champs: [...] }.
-export function ecartReservation(r, doc) {
+// Ce que la facture dit d'une réservation : date, personnes, montant vendu, paiement. null quand la réservation n'est pas liée à une ligne,
+// { retiree: true } quand sa ligne n'y est plus.
+export function attenduDepuisFacture(r, doc) {
   const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
   if (!ids.size || !doc || !doc.contenu) return null;
   const lignes = (doc.contenu.lignes || []).filter((l) => ids.has(l.id));
-  if (!lignes.length) return { retiree: true, champs: [] };
+  if (!lignes.length) return { retiree: true };
   // Mêmes règles qu'à la création : adultes et enfants réunis, vente = somme des lignes, date de la première ligne adulte. (On ne regroupe pas
   // par date : une ligne dont la date a changé doit apparaître comme un écart, pas comme une deuxième réservation.)
   const utiles = lignes.filter((l) => l.kind !== "texte" && l.kind !== "remise");
-  if (!utiles.length) return { retiree: true, champs: [] };
+  if (!utiles.length) return { retiree: true };
   const premiere = utiles.find((l) => !estLigneEnfant(l)) || utiles[0];
   const qte = (l) => (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
-  const a = {
+  return {
     date_service: premiere.date_service || null,
     personnes: { adultes: utiles.filter((l) => !estLigneEnfant(l)).reduce((s, l) => s + qte(l), 0), enfants: utiles.filter(estLigneEnfant).reduce((s, l) => s + qte(l), 0) },
     montant_vente: utiles.some((l) => brut(l) !== null) ? arr(utiles.reduce((s, l) => s + (brut(l) || 0), 0)) : null,
     paye_sur_place: utiles.some((l) => !!l.paye_sur_place),
   };
+}
+
+export function ecartReservation(r, doc) {
+  const a = attenduDepuisFacture(r, doc);
+  if (!a) return null;
+  if (a.retiree) return { retiree: true, champs: [] };
   const champs = [];
   if ((r.date_service || null) !== (a.date_service || null)) champs.push({ cle: "date_service", reservation: r.date_service || null, document: a.date_service || null });
   const pr = r.personnes || {};
@@ -512,6 +545,47 @@ export function contenuAvecSurPlace(contenu, r, valeur) {
     return reste;
   };
   return { ...contenu, lignes: lignes.map((l) => (cibles.includes(l) ? change(l) : l)) };
+}
+
+// ---- Date ou personnes changées depuis la réservation -------------------------------------------------------------
+// Les lignes du document qui correspondent à la réservation prennent sa nouvelle date et ses nouveaux nombres d'adultes et d'enfants.
+// `avant` et `apres` : { date_service, personnes: { adultes, enfants } }. Une ligne n'est mise à l'échelle que si sa quantité était bien le nombre de
+// personnes d'avant (prix par personne) : un prix de groupe, un montant fixe ou une quantité réglée à la main ne bougent pas, et sont signalés.
+// Renvoie { contenu, reste } : `contenu` vaut null quand rien ne change sur le document ; `reste` liste ce que la facture garde en l'état
+// ({ cle: "date_service" | "adultes" | "enfants", ... }). Rien n'est modifié sur place. L'heure du pickup ne figure pas sur la facture.
+export function contenuAvecReservation(contenu, r, avant, apres) {
+  const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
+  const lignes = (contenu && contenu.lignes) || [];
+  const cibles = lignes.filter((l) => ids.has(l.id) && l.kind !== "texte" && l.kind !== "remise");
+  const reste = [];
+  if (!cibles.length) return { contenu: null, reste };
+  const nb = (x) => Number(x) || 0;
+  const qte = (l) => (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
+  // Un prix « par bateau », « par véhicule », « par jour », « par session » ou « par groupe » ne dépend pas du nombre de personnes.
+  const parPersonne = (l) => !/bateau|v[ée]hicule|jour|session|groupe|boat|vehicle|day|group/i.test(l.intro || "");
+  const miseAJour = new Map();
+  const modif = (l, champs) => miseAJour.set(l, { ...(miseAJour.get(l) || {}), ...champs });
+  // Date : toutes les lignes du service, et la note « à payer sur place » de la même prestation à la même date.
+  const dateAvant = avant.date_service || null;
+  const dateApres = apres.date_service || null;
+  if (dateAvant !== dateApres) {
+    for (const l of cibles) if ((l.date_service || null) !== dateApres) modif(l, { date_service: dateApres });
+    for (const l of lignes) {
+      if (l.kind === "texte" && l.sur_place && (l.date_service || null) === dateAvant && cibles.some((x) => (x.prestation_id || null) === (l.prestation_id || null) && (x.trajet_id || null) === (l.trajet_id || null))) modif(l, { date_service: dateApres });
+    }
+  }
+  // Personnes : une ligne adulte et une ligne enfant au plus.
+  const parGroupe = [["adultes", cibles.filter((l) => !estLigneEnfant(l))], ["enfants", cibles.filter(estLigneEnfant)]];
+  for (const [cle, groupe] of parGroupe) {
+    const anciens = nb(avant.personnes && avant.personnes[cle]);
+    const nouveaux = nb(apres.personnes && apres.personnes[cle]);
+    if (anciens === nouveaux) continue;
+    const proportionnelles = groupe.filter((l) => l.unite !== null && l.unite !== undefined && l.unite !== "" && parPersonne(l) && qte(l) === anciens);
+    if (groupe.length === 1 && proportionnelles.length === 1 && nouveaux > 0) modif(proportionnelles[0], { qte: nouveaux });
+    else reste.push({ cle, reservation: nouveaux, facture: groupe.reduce((somme, l) => somme + (qte(l) || 0), 0) });
+  }
+  if (!miseAJour.size) return { contenu: null, reste };
+  return { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? { ...l, ...miseAJour.get(l) } : l)) }, reste };
 }
 
 // ---- Service supprimé : ce que la facture doit perdre ------------------------------------------------------------

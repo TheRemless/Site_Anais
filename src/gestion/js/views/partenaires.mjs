@@ -7,6 +7,7 @@ import { FAMILLES, nomFamille, libelleUnite, marge, correspond, UNITES, chiffres
 import { vide, cartes } from "./commun.mjs";
 import { listeTaches } from "./taches.mjs";
 import { tr, N_ } from "../i18n.mjs";
+import { ouvrirRecalculCommissions } from "./recalcul-commission.mjs";
 
 export const GROUPES = [
   ["mer", N_("Bateaux et excursions en mer")],
@@ -207,7 +208,7 @@ export function fichePartenaire(id) {
           h("div", null, h("h3", null, tr("Règlement par les clients")), h("p", null, modeParDefaut(p) === SUR_PLACE ? tr("Sur place : le client paie le prestataire, qui reverse une commission.") : tr("Chez nous : le client règle l'agence, qui paie le prestataire."))),
           paiementPartenaire(p, prive, voitNets()) ? h("div", null, h("h3", null, tr("Paiement")), paragraphes(paiementPartenaire(p, prive, voitNets()))) : null,
           r.enfants && r.enfants.length ? h("div", null, h("h3", null, tr("Enfants")), liste(r.enfants)) : null,
-          voitNets() && prive && prive.commission_regle && TYPES_COMMISSION[prive.commission_regle.type] ? h("div", null, h("h3", null, tr("Commission calculée")), h("p", null, prive.commission_regle.type === "vente_moins_net" ? tr(TYPES_COMMISSION.vente_moins_net) : `${tr(TYPES_COMMISSION[prive.commission_regle.type])} : ${prive.commission_regle.valeur}`)) : null,
+          voitNets() && prive && prive.commission_regle && TYPES_COMMISSION[prive.commission_regle.type] ? h("div", null, h("h3", null, tr("Commission calculée")), h("p", null, prive.commission_regle.type === "vente_moins_net" ? tr(TYPES_COMMISSION.vente_moins_net) : `${tr(TYPES_COMMISSION[prive.commission_regle.type])} : ${prive.commission_regle.valeur}`), peut("dossiers.ecrire") ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirRecalculCommissions(p.id, () => naviguer(location.hash)) }, tr("Recalculer sur les réservations existantes")) : null) : null,
           commissionsPartenaire(p, prive, voitNets()).length ? h("div", null, h("h3", null, tr("Commission et marge")), liste(commissionsPartenaire(p, prive, voitNets()))) : null,
           r.checkin && r.checkin.length ? h("div", null, h("h3", null, tr("Check-in")), liste(r.checkin)) : null,
           r.points_embarquement && r.points_embarquement.length ? h("div", null, h("h3", null, tr("Points d'embarquement")), h("ul", { class: "liste-regles" }, r.points_embarquement.map((x) => h("li", null, h("strong", null, x.lieu), ` ${x.ou}`)))) : null
