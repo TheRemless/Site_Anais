@@ -78,6 +78,12 @@ suivreClavier();
 // (rendue à la réouverture dans la même session), `ferme` appelée une fois la fenêtre fermée.
 let ouvertes = 0;
 const clesBrouillon = (cle) => `gestion-brouillon:${cle}`;
+// À la déconnexion : un brouillon peut porter des montants confidentiels, il ne reste pas pour la personne suivante sur cet appareil.
+export function purgerBrouillons() {
+  try {
+    for (const k of Object.keys(sessionStorage)) if (k.startsWith("gestion-brouillon:")) sessionStorage.removeItem(k);
+  } catch {}
+}
 const valeurDe = (c) => (c.type === "checkbox" || c.type === "radio" ? (c.checked ? "1" : "0") : c.value);
 const CHAMPS = "input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=file]):not([type=search]), textarea, select";
 export function modal(titre, contenu, { large = false, feuille = false, protege = true, brouillon = null, ferme: apres = null } = {}) {
