@@ -226,7 +226,7 @@ export function ouvrirDemande() {
         !sansQte && choisie ? h("p", { class: "aide" }, tr("Date ou nombre de personnes manquants : le prix et la facture se complètent dans le dossier.")) : null,
         h(
           "div",
-          { class: "barre-action" },
+          { class: "barre-modal" },
           ...[
             ecrit ? bouton : null,
             choisie
@@ -282,7 +282,7 @@ export function ouvrirDemande() {
     h("div", { class: "actions gauche" }, coller, effacer),
     reconnu
   );
-  const fermer = modal(tr("Coller une demande"), corps, { large: true });
+  const fermer = modal(tr("Coller une demande"), corps, { large: true, protege: false });
 
   // Message gardé d'un passage précédent : repris tel quel.
   const reprise = garde.lire();

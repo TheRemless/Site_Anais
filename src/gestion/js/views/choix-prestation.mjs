@@ -134,9 +134,9 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
       compte,
       liste,
       noteBas,
-      h("div", { class: "barre-action" }, termine)
+      h("div", { class: "barre-modal" }, termine)
     ),
-    { large: true }
+    { large: true, protege: false }
   );
   setTimeout(() => q.focus(), 50);
   return fermer;

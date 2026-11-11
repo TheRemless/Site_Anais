@@ -740,8 +740,8 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .demande-offre { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; width: 100%; min-height: 56px; padding: 10px 12px 10px 14px; text-align: left; font-weight: 400; background: var(--surface); border: 0; border-radius: 0; color: var(--texte); }
 .demande-offre[aria-checked="true"] { background: var(--teal-100); box-shadow: inset 0 0 0 2px var(--teal-600); }
 .demande-offre:not([aria-checked="true"]):active { background: var(--surface-2); }
-.barre-action { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; margin: 12px -20px -20px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--bord); }
-@media (max-width: 719px) { .barre-action { margin-bottom: calc(-20px - env(safe-area-inset-bottom)); } .barre-action .principal { flex: 1 1 100%; } .barre-action .secondaire { flex: 1 1 auto; } }
+.barre-modal { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; margin: 12px -20px -20px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--bord); }
+@media (max-width: 719px) { .barre-modal { margin-bottom: calc(-20px - env(safe-area-inset-bottom)); } .barre-modal .principal { flex: 1 1 100%; } .barre-modal .secondaire { flex: 1 1 auto; } }
 /* Une fois le message lu, il se replie pour laisser la place aux champs et au prix. */
 .demande.lu .demande-aide { display: none; }
 .demande.lu textarea { min-height: 0; height: 3.4em; font-size: 0.88rem; line-height: 1.35; }
