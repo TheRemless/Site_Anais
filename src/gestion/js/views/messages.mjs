@@ -36,8 +36,12 @@ export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle 
   const tous = messagesTypes().filter((m) => destinataireMessage(m) === pour);
   if (!tous.length) return toast(pour === "partenaire" ? tr("Aucun message type pour les partenaires. Créez-en dans l'écran Messages.") : tr("Aucun message type pour les clients. Créez-en dans l'écran Messages."), true);
   const texte = h("textarea", { id: "msg-texte", rows: 11 });
-  const selLangue = h("select", { id: "msg-langue", onchange: () => remplirGabarits() }, LANGUES.filter(([c]) => tous.some((m) => m.langue === c)).map(([c, l]) => h("option", { value: c }, l)));
-  selLangue.value = tous.some((m) => m.langue === langue) ? langue : selLangue.firstChild.value;
+  // La langue choisie la dernière fois pour ce numéro est reprise : Anaïs ne la rechoisit pas à chaque message au même client.
+  const cleLangue = chiffres(telephone) ? `gestion-langue-msg:${chiffres(telephone)}` : "";
+  const memoire = { lire: () => { try { return cleLangue ? localStorage.getItem(cleLangue) || "" : ""; } catch { return ""; } }, ecrire: (v) => { try { if (cleLangue) localStorage.setItem(cleLangue, v); } catch { /* stockage refusé : tant pis */ } } };
+  const selLangue = h("select", { id: "msg-langue", onchange: () => (memoire.ecrire(selLangue.value), remplirGabarits()) }, LANGUES.filter(([c]) => tous.some((m) => m.langue === c)).map(([c, l]) => h("option", { value: c }, l)));
+  const souvenir = memoire.lire();
+  selLangue.value = tous.some((m) => m.langue === souvenir) ? souvenir : tous.some((m) => m.langue === langue) ? langue : selLangue.firstChild.value;
   const selGabarit = h("select", { id: "msg-gabarit", onchange: () => remplir() });
   function remplirGabarits() {
     selGabarit.replaceChildren(...tous.filter((m) => m.langue === selLangue.value).map((m) => h("option", { value: m.id }, m.titre)));
