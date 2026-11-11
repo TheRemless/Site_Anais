@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { alertesFeuille, texteFeuillePartage, joursProposes } from "../src/gestion/js/feuille-calc.mjs";
+import { alertesFeuille, texteFeuillePartage, joursProposes, reportsProposes } from "../src/gestion/js/feuille-calc.mjs";
 
 const groupe = {
   nom: "Van démo",
@@ -27,4 +27,12 @@ test("texte : un pickup incomplet le dit, un pickup complet est inchangé", () =
 
 test("jours proposés : aujourd'hui, demain, après-demain, fin de mois comprise", () => {
   assert.deepEqual(joursProposes("2026-11-30"), ["2026-11-30", "2026-12-01", "2026-12-02"]);
+});
+
+test("reports : le lundi est toujours le prochain, un dimanche comme un lundi", () => {
+  assert.equal(reportsProposes("2026-11-11").lundi, "2026-11-16"); // mercredi
+  assert.equal(reportsProposes("2026-11-15").lundi, "2026-11-16"); // dimanche
+  assert.equal(reportsProposes("2026-11-16").lundi, "2026-11-23"); // lundi
+  assert.equal(reportsProposes("2026-11-30").demain, "2026-12-01");
+  assert.equal(reportsProposes("2026-11-11").semaine, "2026-11-18");
 });

@@ -786,7 +786,6 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .reporter .aide { margin: 0; }
 .rappels-rapides { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
 .rappels-rapides .aide { margin: 0 4px 0 0; font-weight: 600; }
-.tache { flex-wrap: wrap; }
 /* ===== Fin session D ===== */
 /* ---- Paiements (session A) : puce « Chez nous / Sur place », écran À encaisser ---- */
 .mode-reglement { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--bord-fort, var(--bord)); border-radius: 999px; background: var(--surface); }

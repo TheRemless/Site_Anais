@@ -3,6 +3,7 @@ import { etat, peut, equipe, modifier, inserer, supprimer, entiteActive, nomClie
 import { h, champ, modal, toast, confirmer, vider } from "../ui.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
 import { vide } from "./commun.mjs";
+import { reportsProposes } from "../feuille-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
 const par = (a, b) => (a.echeance || "9999").localeCompare(b.echeance || "9999") || a.created_at.localeCompare(b.created_at);
@@ -16,10 +17,8 @@ const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"))
 
 // Reporter une tâche : demain, dans 2 jours, lundi, dans une semaine. Un choix, c'est fait.
 function reporter(t) {
-  const ajd = aujourdhui();
-  const jourSemaine = new Date(`${ajd}T00:00:00Z`).getUTCDay();
-  const lundi = ajouterJours(ajd, ((8 - jourSemaine) % 7) || 7);
-  const choix = [[tr("Demain"), ajouterJours(ajd, 1)], [tr("Dans 2 jours"), ajouterJours(ajd, 2)], [tr("Lundi"), lundi], [tr("Dans une semaine"), ajouterJours(ajd, 7)]];
+  const r = reportsProposes(aujourdhui());
+  const choix = [[tr("Demain"), r.demain], [tr("Dans 2 jours"), r.deuxJours], [tr("Lundi"), r.lundi], [tr("Dans une semaine"), r.semaine]];
   const fermer = modal(
     tr("Reporter « {titre} »", { titre: t.titre }),
     h("div", { class: "modal-corps reporter" }, choix.map(([libelle, jour]) => h("button", { class: "secondaire", type: "button", onclick: async () => {
@@ -137,7 +136,10 @@ function rappelsRapides(dossierId) {
   const d = etat.db.dossiers.find((x) => x.id === dossierId);
   const c = d ? etat.db.clients.find((x) => x.id === d.client_id) : null;
   const titre = tr("Relancer {nom}", { nom: c ? nomClient(c) : d ? d.ref : "" });
+  let encours = false; // un second tap pendant l'enregistrement ne crée pas une seconde tâche
   const creer = async (jours) => {
+    if (encours) return;
+    encours = true;
     try {
       const jour = ajouterJours(aujourdhui(), jours);
       await inserer("taches", { dossier_id: dossierId, titre, description: "", echeance: jour, assignee_id: etat.session.id, fait: false });
@@ -145,6 +147,7 @@ function rappelsRapides(dossierId) {
       rafraichir();
     } catch (err) {
       toast(tr("Ajout impossible : {message}", { message: err.message }), true);
+      encours = false;
     }
   };
   return h("div", { class: "rappels-rapides" }, h("span", { class: "aide" }, tr("Me le rappeler")), [[tr("Demain"), 1], [tr("Dans 2 jours"), 2], [tr("Dans une semaine"), 7]].map(([libelle, n]) => h("button", { class: "secondaire petit", type: "button", onclick: () => creer(n) }, libelle)));

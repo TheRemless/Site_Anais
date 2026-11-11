@@ -72,7 +72,7 @@ export function ouvrirFeuilleDuJour() {
           h("ul", { class: "feuille-manque" }, aCompleter.map((a) =>
             h("li", null,
               h("span", null, `${a.client || a.libelle} : ${a.manque.map((m) => tr(NOMS_MANQUE[m])).join(", ")}`),
-              peut("dossiers.ecrire") ? h("button", { class: "secondaire petit", type: "button", onclick: () => changerReservation(etat.db.reservations.find((r) => r.id === a.id), dessiner) }, tr("Compléter")) : null
+              peut("dossiers.ecrire") ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const r = etat.db.reservations.find((x) => x.id === a.id); if (r) changerReservation(r, dessiner); else dessiner(); } }, tr("Compléter")) : null
             )
           ))
         )

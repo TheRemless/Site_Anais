@@ -37,3 +37,10 @@ export function texteFeuillePartage(groupe, date) {
 
 // Les trois jours proposés en un tap : aujourd'hui, demain, après-demain.
 export const joursProposes = (ajd) => [0, 1, 2].map((n) => new Date(Date.UTC(+ajd.slice(0, 4), +ajd.slice(5, 7) - 1, +ajd.slice(8, 10)) + n * 86400000).toISOString().slice(0, 10));
+
+const plus = (iso, n) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) + n * 86400000).toISOString().slice(0, 10);
+// Dates proposées pour reporter une tâche : demain, dans 2 jours, le prochain lundi (jamais aujourd'hui), dans une semaine.
+export function reportsProposes(ajd) {
+  const jourSemaine = new Date(`${ajd}T00:00:00Z`).getUTCDay();
+  return { demain: plus(ajd, 1), deuxJours: plus(ajd, 2), lundi: plus(ajd, (8 - jourSemaine) % 7 || 7), semaine: plus(ajd, 7) };
+}
