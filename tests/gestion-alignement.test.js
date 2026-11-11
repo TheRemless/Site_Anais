@@ -44,6 +44,13 @@ test("réservation vers facture : ce qui ne peut pas suivre est signalé, jamais
   assert.equal(zero.contenu, null, "pas de ligne à zéro : on laisse la personne décider");
 });
 
+test("réservation vers facture : un prix par bateau, véhicule, jour ou groupe ne suit pas le nombre de personnes", () => {
+  const bateau = { lignes: [{ ...adulte, qte: 2, intro: "(par bateau)" }] };
+  const x = contenuAvecReservation(bateau, { ligne_id: "a", details: {} }, { personnes: { adultes: 2 } }, { personnes: { adultes: 3 } });
+  assert.equal(x.contenu, null);
+  assert.equal(x.reste[0].cle, "adultes");
+});
+
 test("réservation vers facture : une partie suit, l'autre reste en écart signalé", () => {
   const { contenu: suite, reste } = contenuAvecReservation(contenu, r, avant, { date_service: "2026-12-11", personnes: { adultes: 3, enfants: 1 } });
   assert.equal(suite.lignes[0].qte, 3);

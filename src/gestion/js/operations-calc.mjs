@@ -560,7 +560,9 @@ export function contenuAvecReservation(contenu, r, avant, apres) {
   const reste = [];
   if (!cibles.length) return { contenu: null, reste };
   const nb = (x) => Number(x) || 0;
-  const qte = (l) => (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : null);
+  const qte = (l) => (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
+  // Un prix « par bateau », « par véhicule », « par jour », « par session » ou « par groupe » ne dépend pas du nombre de personnes.
+  const parPersonne = (l) => !/bateau|v[ée]hicule|jour|session|groupe|boat|vehicle|day|group/i.test(l.intro || "");
   const miseAJour = new Map();
   const modif = (l, champs) => miseAJour.set(l, { ...(miseAJour.get(l) || {}), ...champs });
   // Date : toutes les lignes du service, et la note « à payer sur place » de la même prestation à la même date.
@@ -578,7 +580,7 @@ export function contenuAvecReservation(contenu, r, avant, apres) {
     const anciens = nb(avant.personnes && avant.personnes[cle]);
     const nouveaux = nb(apres.personnes && apres.personnes[cle]);
     if (anciens === nouveaux) continue;
-    const proportionnelles = groupe.filter((l) => l.unite !== null && l.unite !== undefined && l.unite !== "" && qte(l) !== null && qte(l) === anciens);
+    const proportionnelles = groupe.filter((l) => l.unite !== null && l.unite !== undefined && l.unite !== "" && parPersonne(l) && qte(l) === anciens);
     if (groupe.length === 1 && proportionnelles.length === 1 && nouveaux > 0) modif(proportionnelles[0], { qte: nouveaux });
     else reste.push({ cle, reservation: nouveaux, facture: groupe.reduce((somme, l) => somme + (qte(l) || 0), 0) });
   }

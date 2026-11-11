@@ -1571,6 +1571,7 @@ export const EN = {
   "Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : la modification n'est pas enregistrée.": "This service is on the invoice, and your role cannot edit invoices: the change was not saved.",
   "La facture suit cette modification, et son total passe de {avant} à {apres}.": "The invoice follows this change, and its total goes from {avant} to {apres}.",
   "La facture suit cette modification.": "The invoice follows this change.",
+  "La facture n'a pas suivi : votre rôle ne permet pas de la modifier.": "The invoice did not follow: your role cannot edit it.",
   "Commission impossible à calculer : la règle du partenaire ou le net manque.": "Commission cannot be calculated: the partner's rule or the net is missing.",
   "La commission est déjà à jour.": "The commission is already up to date.",
   "Commission recalculée : {montant}.": "Commission recalculated: {montant}.",

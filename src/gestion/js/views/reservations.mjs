@@ -280,7 +280,13 @@ export function formulaireReservation(r, apres) {
               if (dateChangee || personnesChangees) suite = contenuAvecReservation(suite, r, { date_service: r.date_service, personnes: pr }, { date_service: valeurs.date_service, personnes: valeurs.personnes }).contenu || suite;
               if (suite !== doc.contenu) changements.push({ doc, suite });
             }
-            if (changements.length && !peut("documents.ecrire")) return toast(tr("Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : la modification n'est pas enregistrée."), true);
+            // Sans le droit de modifier les factures : le mode de règlement ne change pas à moitié, mais la date et les personnes s'enregistrent et l'écart reste signalé.
+            let factureNonSuivie = false;
+            if (changements.length && !peut("documents.ecrire")) {
+              if (modeChange) return toast(tr("Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : la modification n'est pas enregistrée."), true);
+              changements.length = 0;
+              factureNonSuivie = true;
+            }
             const principale = changements.find((x) => x.doc.type !== "devis") || changements[0];
             if (principale) {
               const devise = principale.doc.contenu.devise || reglages().devise;
@@ -294,15 +300,18 @@ export function formulaireReservation(r, apres) {
               const phrase = phrases.join(" ");
               // Le montant vendu suit la facture tant qu'on ne l'a pas saisi soi-même.
               const attendu = attenduDepuisFacture({ ...r, ...valeurs }, { contenu: principale.suite });
-              if (attendu && !attendu.retiree && vente.value === venteInitiale && attendu.montant_vente !== null) valeurs.montant_vente = attendu.montant_vente;
-              // Ce que la facture garde en l'état (prix de groupe, montant fixe, enfants sans ligne enfant) reste un écart visible sur la réservation.
-              const ecart = ecartReservation({ ...r, ...valeurs }, { contenu: principale.suite });
-              ecartRestant = ecart && ecart.champs.length ? ecart.champs.filter((c) => c.cle === "date_service" || c.cle === "personnes").map((c) => texteEcart(c, devise)) : null;
+              if ((dateChangee || personnesChangees) && attendu && !attendu.retiree && vente.value === venteInitiale && attendu.montant_vente !== null) valeurs.montant_vente = attendu.montant_vente;
               // Une facture qui n'est pas encore partie se met à jour sans question. Une facture déjà envoyée demande confirmation : le client doit recevoir la nouvelle version.
               if (principale.doc.envoye_le) {
                 if (!(await confirmer(`${phrase} ${tr("La facture a été envoyée au client le {date} : il faudra lui renvoyer la nouvelle version.", { date: formatDate(principale.doc.envoye_le) })}`, tr("Enregistrer")))) return;
               } else toast(phrase);
             }
+            // Ce que la facture garde en l'état (prix de groupe, montant fixe, enfants sans ligne enfant, rôle sans droit) reste signalé, et visible sur la carte.
+            const refDoc = principale ? { contenu: principale.suite } : etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type !== "devis");
+            const ecart = refDoc ? ecartReservation({ ...r, ...valeurs }, refDoc) : null;
+            const deviseEcart = (refDoc && refDoc.contenu.devise) || reglages().devise;
+            ecartRestant = ecart && ecart.champs.length ? ecart.champs.filter((c) => c.cle === "date_service" || c.cle === "personnes").map((c) => texteEcart(c, deviseEcart)) : null;
+            if (factureNonSuivie) toast(tr("La facture n'a pas suivi : votre rôle ne permet pas de la modifier."), true);
           }
           for (const { doc, suite } of changements) await modifier("documents", doc.id, { contenu: suite, updated_at: new Date().toISOString() });
           const res = r.id ? await modifier("reservations", r.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
