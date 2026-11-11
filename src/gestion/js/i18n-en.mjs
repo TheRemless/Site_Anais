@@ -1963,4 +1963,7 @@ export const EN = {
   "comparé à la période du {du} au {au}": "compared with the period from {du} to {au}",
   "mouvement d'argent": "money movement",
   "mouvements d'argent": "money movements",
+  "Aucun message ne correspond.": "No message matches.",
+  "Titre, usage ou texte": "Title, use or text",
+  "Chercher un message": "Search a message",
 };

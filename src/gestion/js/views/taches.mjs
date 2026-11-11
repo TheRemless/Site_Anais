@@ -54,21 +54,23 @@ export function listeTaches(taches, { avecDossier = true } = {}) {
       h(
         "li",
         { class: `tache ${t.fait ? "faite" : ""} ${classe(t, ajd)}` },
-        h("input", {
-          type: "checkbox",
-          checked: t.fait,
-          disabled: !modifiable,
-          "aria-label": t.fait ? tr("Marquer « {titre} » comme à faire", { titre: t.titre }) : tr("Marquer « {titre} » comme faite", { titre: t.titre }),
-          onchange: async (e) => {
-            try {
-              await modifier("taches", t.id, { fait: e.target.checked, fait_le: e.target.checked ? new Date().toISOString() : null, fait_par: e.target.checked ? etat.session.id : null });
-              window.dispatchEvent(new HashChangeEvent("hashchange"));
-            } catch (err) {
-              toast(tr("Modification impossible : {message}", { message: err.message }), true);
-              e.target.checked = t.fait;
-            }
-          },
-        }),
+        h("label", { class: "case-tache" },
+          h("input", {
+            type: "checkbox",
+            checked: t.fait,
+            disabled: !modifiable,
+            "aria-label": t.fait ? tr("Marquer « {titre} » comme à faire", { titre: t.titre }) : tr("Marquer « {titre} » comme faite", { titre: t.titre }),
+            onchange: async (e) => {
+              try {
+                await modifier("taches", t.id, { fait: e.target.checked, fait_le: e.target.checked ? new Date().toISOString() : null, fait_par: e.target.checked ? etat.session.id : null });
+                window.dispatchEvent(new HashChangeEvent("hashchange"));
+              } catch (err) {
+                toast(tr("Modification impossible : {message}", { message: err.message }), true);
+                e.target.checked = t.fait;
+              }
+            },
+          })
+        ),
         h(
           "div",
           { class: "tache-texte" },
