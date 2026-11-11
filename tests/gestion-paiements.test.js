@@ -140,3 +140,11 @@ test("résumé de dossier : documents chargés ou résumé de la base donnent le
   const ancien = resume(dossier({ total: 1000, recu: 0, devise: "THB" }), { documents: [], paiements: [], clients: [] }, reglages);
   assert.equal(ancien.surPlace, 0, "une base sans la migration 19 ne casse rien");
 });
+
+test("commissions à recevoir : une réservation réglée sans commission prévue n'est plus signalée comme manquante", () => {
+  const rs = [resa("a"), resa("b")];
+  const nets = netsParId({ a: { commission_recue: 75, commission_recue_le: "2026-12-20" } });
+  const [g] = commissionsARecevoir(rs, nets);
+  assert.equal(g.sansCommission, 1, "seule la réservation encore à régler reste sans commission");
+  assert.equal(g.ecart, 75);
+});

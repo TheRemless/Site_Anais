@@ -162,7 +162,8 @@ export function commissionsARecevoir(reservations, netDe, ecartees = new Set()) 
     const reglee = !!(n && n.commission_recue_le);
     g.nb++;
     g.vente += Number(r.montant_vente) || 0;
-    if (prevue === null) g.sansCommission++;
+    // Une réservation réglée n'a plus à être signalée « sans commission » : le partenaire a versé ce qu'il devait.
+    if (prevue === null && !reglee) g.sansCommission++;
     g.commission_prevue += prevue || 0;
     g.commission_recue += recue;
     if (reglee) g.ecart += recue - (prevue || 0);
