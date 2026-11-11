@@ -1,6 +1,7 @@
 
 // Petits outils d'interface partagés par les écrans.
 import { tr } from "./i18n.mjs";
+import { hauteurClavier, aChange, lireBrouillon, ecrireBrouillon, SAISIES } from "./mobile-calc.mjs";
 
 export function h(tag, attrs, ...enfants) {
   const el = document.createElement(tag);
@@ -49,36 +50,166 @@ export function toast(message, erreur = false) {
   setTimeout(() => t.remove(), erreur ? 6000 : 3000);
 }
 
-// Fenêtre modale. Renvoie une fonction de fermeture.
-// `feuille` : sur téléphone la fenêtre monte depuis le bas, comme une feuille de menu.
-export function modal(titre, contenu, { large = false, feuille = false } = {}) {
+// ---- Clavier et viewport visuel ----------------------------------------------------------------------------------
+// Sur iPhone le clavier ne redimensionne pas la page : il recouvre le bas. On mesure ce qu'il prend (--clavier) et la
+// hauteur réellement visible (--vv) pour que les feuilles et les barres d'action restent au-dessus de lui.
+function suivreClavier() {
+  const vv = typeof window !== "undefined" ? window.visualViewport : null;
+  if (!vv) return;
+  const racine = document.documentElement;
+  const maj = () => {
+    const clavier = hauteurClavier(window.innerHeight, vv);
+    racine.style.setProperty("--clavier", `${clavier}px`);
+    racine.style.setProperty("--vv", `${Math.round(vv.height)}px`);
+    racine.classList.toggle("clavier", clavier > 0);
+  };
+  vv.addEventListener("resize", maj);
+  vv.addEventListener("scroll", maj);
+  maj();
+}
+suivreClavier();
+
+// ---- Fenêtres ---------------------------------------------------------------------------------------------------
+// Fenêtre modale. Renvoie une fonction de fermeture, qui ferme toujours tout de suite (après un enregistrement par exemple).
+// Fermer par la croix, Échap, le fond ou un glissement vers le bas demande confirmation quand la saisie a été modifiée.
+// Sur téléphone la fenêtre est une feuille ancrée en bas : poignée, croix de 44 px, un seul défilement, zone sûre.
+// Options : `large` (fenêtre plus large sur ordinateur), `feuille` (conservé : toutes les fenêtres sont des feuilles sous 720 px),
+// `protege: false` pour fermer sans confirmation, `brouillon: "clé"` pour garder la saisie d'une fenêtre fermée par erreur
+// (rendue à la réouverture dans la même session), `ferme` appelée une fois la fenêtre fermée.
+let ouvertes = 0;
+const clesBrouillon = (cle) => `gestion-brouillon:${cle}`;
+const valeurDe = (c) => (c.type === "checkbox" || c.type === "radio" ? (c.checked ? "1" : "0") : c.value);
+const CHAMPS = "input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=file]):not([type=search]), textarea, select";
+export function modal(titre, contenu, { large = false, feuille = false, protege = true, brouillon = null, ferme: apres = null } = {}) {
   const precedent = document.activeElement;
-  const fermer = () => {
+  let close = false;
+  let touche = false;
+  let confirmation = false;
+  const champs = () => [...corps.querySelectorAll(CHAMPS)];
+  let depart = [];
+  const fermer = (garder = false) => {
+    if (close) return;
+    close = true;
+    if (brouillon && !garder) effacer();
     fond.remove();
-    document.removeEventListener("keydown", touche);
-    if (precedent && precedent.focus) precedent.focus();
+    document.removeEventListener("keydown", surTouche);
+    ouvertes = Math.max(0, ouvertes - 1);
+    if (!ouvertes) document.documentElement.classList.remove("modal-ouverte");
+    if (precedent && precedent.focus && document.contains(precedent)) precedent.focus();
+    if (apres) apres();
   };
-  const touche = (e) => {
-    if (e.key === "Escape") fermer();
+  const modifie = () => protege && touche && aChange(depart, champs().map(valeurDe));
+  const effacer = () => {
+    try {
+      sessionStorage.removeItem(clesBrouillon(brouillon));
+    } catch {
+      // stockage refusé : pas de brouillon, rien d'autre à faire
+    }
   };
-  const fond = h(
+  const garderBrouillon = () => {
+    if (!brouillon) return;
+    try {
+      sessionStorage.setItem(clesBrouillon(brouillon), ecrireBrouillon(champs().map(valeurDe)));
+    } catch {
+      // idem
+    }
+  };
+  // Fermeture voulue par la personne : on vérifie qu'il n'y a pas de saisie à perdre.
+  const demanderFermeture = async () => {
+    if (close || confirmation) return;
+    if (!modifie()) return fermer();
+    confirmation = true;
+    const ok = await confirmer(tr("Vous avez commencé à remplir cette fenêtre. Fermer sans enregistrer ?"), tr("Fermer sans enregistrer"), true, tr("Continuer la saisie"));
+    confirmation = false;
+    if (!ok) return;
+    garderBrouillon();
+    fermer(true);
+  };
+  const surTouche = (e) => {
+    if (e.key !== "Escape") return;
+    const fonds = document.querySelectorAll(".modal-fond");
+    if (fonds[fonds.length - 1] !== fond) return;
+    e.preventDefault();
+    demanderFermeture();
+  };
+  // Glissement de la poignée vers le bas : la feuille suit le doigt, elle se ferme au-delà de 90 px.
+  const poignee = h("div", { class: "modal-poignee", "aria-hidden": "true" }, h("span"));
+  let y0 = null;
+  let dy = 0;
+  poignee.addEventListener("pointerdown", (e) => {
+    y0 = e.clientY;
+    dy = 0;
+    poignee.setPointerCapture(e.pointerId);
+    boite.style.transition = "none";
+    boite.style.animation = "none";
+  });
+  poignee.addEventListener("pointermove", (e) => {
+    if (y0 === null) return;
+    dy = Math.max(0, e.clientY - y0);
+    boite.style.transform = `translateY(${dy}px)`;
+  });
+  const lacher = () => {
+    if (y0 === null) return;
+    y0 = null;
+    boite.style.transition = "";
+    boite.style.transform = "";
+    if (dy > 90) demanderFermeture();
+  };
+  poignee.addEventListener("pointerup", lacher);
+  poignee.addEventListener("pointercancel", lacher);
+  const corps = h("div", { class: "modal-defile" }, contenu);
+  const boite = h(
     "div",
-    { class: "modal-fond", onmousedown: (e) => e.target === fond && fermer() },
-    h(
-      "div",
-      { class: ["modal", large && "large", feuille && "feuille"].filter(Boolean).join(" "), role: "dialog", "aria-modal": "true", "aria-label": titre },
-      h("div", { class: "modal-tete" }, h("h2", null, titre), h("button", { class: "bouton-icone lien", type: "button", onclick: fermer, "aria-label": tr("Fermer"), title: tr("Fermer") }, icone("fermer", 20))),
-      contenu
-    )
+    { class: ["modal", large && "large", feuille && "feuille"].filter(Boolean).join(" "), role: "dialog", "aria-modal": "true", "aria-label": titre },
+    poignee,
+    h("div", { class: "modal-tete" }, h("h2", null, titre), h("button", { class: "bouton-icone lien", type: "button", onclick: demanderFermeture, "aria-label": tr("Fermer"), title: tr("Fermer") }, icone("fermer", 20))),
+    corps
   );
+  const fond = h("div", { class: "modal-fond", onmousedown: (e) => e.target === fond && demanderFermeture() }, boite);
   document.body.append(fond);
-  document.addEventListener("keydown", touche);
-  const premier = fond.querySelector("input, select, textarea, button.principal");
+  document.documentElement.classList.add("modal-ouverte");
+  ouvertes++;
+  document.addEventListener("keydown", surTouche);
+  // Ce que la personne a modifié elle-même : un champ rempli par le code à l'ouverture n'est pas une saisie à protéger.
+  depart = champs().map(valeurDe);
+  const marquer = (e) => {
+    if (e.isTrusted && e.target.matches && e.target.matches(CHAMPS)) touche = true;
+  };
+  boite.addEventListener("input", marquer);
+  boite.addEventListener("change", marquer);
+  if (brouillon) {
+    let brut = null;
+    try {
+      brut = sessionStorage.getItem(clesBrouillon(brouillon));
+    } catch {
+      // pas de brouillon
+    }
+    const valeurs = brut ? lireBrouillon(brut, depart.length) : null;
+    if (valeurs) {
+      champs().forEach((c, i) => {
+        if (c.type === "checkbox" || c.type === "radio") c.checked = valeurs[i] === "1";
+        else c.value = valeurs[i];
+      });
+      touche = true;
+      const note = h(
+        "p",
+        { class: "brouillon-note", role: "status" },
+        tr("Votre saisie précédente a été reprise."),
+        h("button", { class: "lien", type: "button", onclick: () => (champs().forEach((c, i) => (c.type === "checkbox" || c.type === "radio" ? (c.checked = depart[i] === "1") : (c.value = depart[i]))), effacer(), (touche = false), note.remove()) }, tr("Repartir de zéro"))
+      );
+      corps.prepend(note);
+    }
+  }
+  // Au doigt, ouvrir le clavier tout de suite cacherait la feuille : on ne met le focus que sur un bouton, sauf champ marqué data-autofocus.
+  const tactile = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  const premier = tactile ? boite.querySelector("[data-autofocus], button.principal") : boite.querySelector("[data-autofocus], input:not([type=hidden]), select, textarea, button.principal");
   if (premier) premier.focus();
+  else (boite.setAttribute("tabindex", "-1"), boite.focus({ preventScroll: true }));
   return fermer;
 }
 
-export function confirmer(message, libelle = tr("Confirmer"), danger = false) {
+// `annuler` : texte du bouton qui garde la fenêtre ouverte (« Annuler » par défaut).
+export function confirmer(message, libelle = tr("Confirmer"), danger = false, annuler = tr("Annuler")) {
   return new Promise((resolve) => {
     let ferme;
     const fin = (v) => {
@@ -94,12 +225,92 @@ export function confirmer(message, libelle = tr("Confirmer"), danger = false) {
         h(
           "div",
           { class: "actions" },
-          h("button", { type: "button", class: "secondaire", onclick: () => fin(false) }, tr("Annuler")),
+          h("button", { type: "button", class: "secondaire", onclick: () => fin(false) }, annuler),
           h("button", { type: "button", class: danger ? "danger" : "principal", onclick: () => fin(true) }, libelle)
         )
-      )
+      ),
+      { protege: false }
     );
   });
+}
+
+// ---- Champs adaptés au téléphone ----------------------------------------------------------------------------------
+// Pose le bon clavier et la bonne saisie automatique : saisie(h("input", …), "tel" | "email" | "montant" | "entier" | "date" | "recherche" | "nom" | "adresse").
+// Le texte fait au moins 16 px (règle globale), sinon iOS zoomerait au focus.
+export function saisie(controle, sens = "texte") {
+  const r = SAISIES[sens] || SAISIES.texte;
+  for (const [k, v] of Object.entries(r)) if (!controle.hasAttribute(k)) controle.setAttribute(k, v);
+  return controle;
+}
+
+// Erreur sous un champ : message lié au champ (aria-describedby), champ marqué invalide, annoncée aux lecteurs d'écran.
+// `erreurChamp(champEl, null)` efface. Renvoie le champ, pour enchaîner.
+export function erreurChamp(controle, message) {
+  const id = `${controle.id || (controle.id = `c${Math.random().toString(36).slice(2, 8)}`)}-erreur`;
+  const ancien = document.getElementById(id);
+  if (ancien) ancien.remove();
+  if (!message) {
+    controle.removeAttribute("aria-invalid");
+    controle.removeAttribute("aria-describedby");
+    return controle;
+  }
+  controle.setAttribute("aria-invalid", "true");
+  controle.setAttribute("aria-describedby", id);
+  const p = h("p", { id, class: "erreur-champ", role: "alert" }, message);
+  const zone = controle.closest(".champ") || controle.parentElement;
+  zone.append(p);
+  return controle;
+}
+
+// Met le focus sur le premier champ invalide d'un formulaire et le fait défiler à l'écran. Renvoie ce champ (ou null).
+export function focusPremiereErreur(racine) {
+  const c = racine.querySelector('[aria-invalid="true"]');
+  if (!c) return null;
+  c.focus({ preventScroll: true });
+  c.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  return c;
+}
+
+// ---- Barre d'action collante ------------------------------------------------------------------------------------
+// Enregistrer, Annuler : toujours visible en bas d'un écran de saisie. Au téléphone elle est fixée au-dessus de la barre d'onglets,
+// et quand le clavier s'ouvre elle monte juste au-dessus de lui (la barre d'onglets se cache). Un espace est réservé à la fin
+// du contenu pour que le dernier champ ne passe jamais dessous. Sur ordinateur elle colle en bas de la zone de contenu.
+export function barreAction(...enfants) {
+  document.documentElement.classList.add("a-barre-action");
+  return h("div", { class: "barre-action-groupe" }, h("div", { class: "barre-action", role: "group", "aria-label": tr("Actions") }, enfants), h("div", { class: "barre-action-espace", "aria-hidden": "true" }));
+}
+
+// ---- Squelette de chargement ------------------------------------------------------------------------------------
+// Des lignes grises à la place du contenu : pas de saut de mise en page à l'arrivée des données, et rien qui tourne.
+export function squelette(lignes = 4, { cartes = true } = {}) {
+  const ligne = (i) => h("div", { class: cartes ? "squelette-carte" : "squelette-ligne", style: `--l: ${[78, 62, 88, 70][i % 4]}%` }, h("span"), h("span"));
+  return h("div", { class: "squelette", role: "status", "aria-label": tr("Chargement…"), "aria-busy": "true" }, Array.from({ length: lignes }, (_, i) => ligne(i)));
+}
+
+// ---- Puces de filtre ----------------------------------------------------------------------------------------------
+// Rangée défilante de choix exclusifs (comme « En cours / Soldés / Annulés »). `options` : [{ valeur, libelle, nombre? }].
+// Renvoie { noeud, definir(valeur) }. Chaque puce a une zone de 44 px de haut ; la puce choisie reste visible dans la rangée.
+export function puces({ options, valeur, onchange, libelle }) {
+  let courant = valeur;
+  const boutons = new Map();
+  const liste = h("div", { class: "puces", role: "group", "aria-label": libelle || tr("Filtrer") });
+  const dessiner = () => {
+    for (const [v, b] of boutons) b.setAttribute("aria-pressed", v === courant ? "true" : "false");
+  };
+  for (const o of options) {
+    const b = h("button", { type: "button", class: "puce", "aria-pressed": "false", onclick: () => definir(o.valeur, true) }, o.libelle, o.nombre !== undefined && o.nombre !== null ? h("span", { class: "puce-nombre" }, o.nombre) : null);
+    boutons.set(o.valeur, b);
+    liste.append(b);
+  }
+  function definir(v, notifier = false) {
+    courant = v;
+    dessiner();
+    const b = boutons.get(v);
+    if (b && b.scrollIntoView) b.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
+    if (notifier && onchange) onchange(v);
+  }
+  dessiner();
+  return { noeud: liste, definir: (v) => definir(v), valeur: () => courant };
 }
 
 // Mini-langage des textes de conditions : lignes « - » en liste, **gras**, _italique_, [texte](lien), {variables}.
@@ -202,6 +413,9 @@ const ICONES = {
   du: ["M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1", "M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"],
   regles: ["M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z", "M14 2v4a2 2 0 0 0 2 2h4", "M10 9H8", "M16 13H8", "M16 17H8"],
   copier: ["M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z", "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"],
+  filtrer: ["M3 6h18", "M7 12h10", "M10 18h4"],
+  telephone: ["M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"],
+  chevron: ["m6 9 6 6 6-6"],
   inverser: ["M8 3 4 7l4 4", "M4 7h16", "m16 21 4-4-4-4", "M20 17H4"],
 };
 export function icone(nom, taille = 18) {

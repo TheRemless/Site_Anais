@@ -49,6 +49,7 @@ const ROUTES = [
   [/^#\/analyses$/, "analyses", vueAnalyses],
   [/^#\/groupe$/, "groupe", vueGroupe],
   [/^#\/taches$/, "taches", vueTaches],
+  [/^#\/composants$/, "composants", async () => (await import("./views/composants.mjs")).vueComposants()],
 ];
 
 const racine = document.getElementById("app");
@@ -435,6 +436,7 @@ async function afficher() {
   }
   const [re, cleRoute, vue] = trouvee;
   const principal = document.getElementById("principal");
+  document.documentElement.classList.remove("a-barre-action");
   const moi = ++rendu;
   let noeud;
   try {
