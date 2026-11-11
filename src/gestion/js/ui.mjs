@@ -218,9 +218,11 @@ export function modal(titre, contenu, { large = false, feuille = false, protege 
 export function confirmer(message, libelle = tr("Confirmer"), danger = false, annuler = tr("Annuler")) {
   return new Promise((resolve) => {
     let ferme;
+    // La réponse part AVANT la fermeture : fermer la fenêtre appelle `ferme`, qui résout à « non » (croix, Échap, fond). Dans l'autre ordre,
+    // « non » gagnait toujours et plus aucune confirmation ne s'exécutait.
     const fin = (v) => {
-      ferme();
       resolve(v);
+      ferme();
     };
     ferme = modal(
       tr("Confirmation"),
