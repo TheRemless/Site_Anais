@@ -1,14 +1,31 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { moyenPartage, erreurLisible, navigateurLisible, resumeEnvironnement } from "../src/gestion/js/partage-calc.mjs";
+import { moyenPartage, erreurLisible, navigateurLisible, resumeEnvironnement, raccourciColler, raisonCopieRefusee } from "../src/gestion/js/partage-calc.mjs";
 
-test("moyen : partage natif dès que le navigateur sait joindre des fichiers, sur téléphone comme sur ordinateur", () => {
+test("moyen : sur téléphone, partage natif dès que le navigateur sait joindre des fichiers", () => {
   assert.equal(moyenPartage({ partageFichiers: true, tactile: true }), "natif");
-  assert.equal(moyenPartage({ partageFichiers: true, tactile: false }), "natif");
 });
 
-test("moyen : sans partage de fichiers, l'ordinateur copie l'image et ouvre la conversation", () => {
+test("moyen : sur ordinateur, toujours le chemin presse-papiers, même si le partage de fichiers existe (il devient une alternative)", () => {
   assert.equal(moyenPartage({ partageFichiers: false, tactile: false }), "ordinateur");
+  assert.equal(moyenPartage({ partageFichiers: true, tactile: false }), "ordinateur");
+});
+
+test("raccourci : Cmd+V sur Mac et iPad, Ctrl+V sous Windows et Linux", () => {
+  assert.equal(raccourciColler("MacIntel"), "Cmd+V");
+  assert.equal(raccourciColler("iPhone"), "Cmd+V");
+  assert.equal(raccourciColler("Win32"), "Ctrl+V");
+  assert.equal(raccourciColler("Linux x86_64"), "Ctrl+V");
+  assert.equal(raccourciColler(), "Ctrl+V");
+});
+
+test("copie refusée : une raison lisible, jamais « undefined »", () => {
+  assert.match(raisonCopieRefusee(null), /ne sait pas copier une image/);
+  assert.match(raisonCopieRefusee({ name: "NotAllowedError" }), /refusé l'accès au presse-papiers/);
+  assert.match(raisonCopieRefusee({ name: "SecurityError" }), /bloque le presse-papiers/);
+  assert.match(raisonCopieRefusee({ name: "TypeError", message: "x" }), /PNG/);
+  assert.equal(raisonCopieRefusee({ name: "Autre", message: "panne" }), "panne");
+  assert.equal(raisonCopieRefusee({ name: "Autre" }), "raison inconnue");
 });
 
 test("moyen : sans partage de fichiers sur téléphone, jamais de lien WhatsApp à texte seul d'office (cas du voucher sans image)", () => {
