@@ -7,8 +7,14 @@
   "start_url": "/gestion/",
   "scope": "/gestion/",
   "display": "standalone",
+  "orientation": "any",
+  "categories": ["business", "productivity"],
   "background_color": "#f5f8f8",
   "theme_color": "#ffffff",
+  "shortcuts": [
+    { "name": "Aujourd'hui", "url": "/gestion/#/", "icons": [{ "src": "assets/icone-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Nouveau dossier", "url": "/gestion/#/dossiers/nouveau", "icons": [{ "src": "assets/icone-192.png", "sizes": "192x192", "type": "image/png" }] }
+  ],
   "icons": [
     { "src": "assets/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "assets/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

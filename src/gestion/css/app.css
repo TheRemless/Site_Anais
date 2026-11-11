@@ -37,7 +37,7 @@ body {
   background: var(--fond);
   color: var(--texte);
   font-family: "Raleway", system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.55;
   font-variant-numeric: lining-nums;
 }
@@ -904,3 +904,29 @@ html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte 
 .filtres-plus[open] > summary svg { transform: rotate(180deg); }
 .chercheur-plus { display: flex; flex-direction: column; gap: 0; }
 @media (min-width: 720px) { .filtres-plus > summary { display: none; } .chercheur-plus { flex-direction: row; flex-wrap: wrap; gap: 12px; } .chercheur-plus .champ { flex: 1; min-width: 160px; } }
+
+/* ==== Session C (mobile) : application installée sur l'iPhone ==================================================== */
+html { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+/* Dans l'application installée : pas de rebond de la page derrière les barres fixes ni d'actualisation involontaire. */
+@media (display-mode: standalone) { html, body { overscroll-behavior-y: none; } }
+/* Les éléments de commande ne se sélectionnent pas et n'ouvrent pas le menu d'appui long ; le texte des fiches, lui, reste sélectionnable (numéros, références). */
+button, summary, .onglet, .lien-ecran, .puce, .bouton, .bouton-plus, .modal-poignee { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Encoche et coins arrondis en mode paysage */
+.contenu { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+.barre-haut { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
+.barre-onglets ul { padding-left: max(4px, env(safe-area-inset-left)); padding-right: max(4px, env(safe-area-inset-right)); }
+@media (min-width: 900px) { .contenu { padding: 32px 40px 48px; } }
+/* Paysage sur téléphone : barres plus basses pour laisser de la place au contenu */
+@media (max-height: 480px) and (orientation: landscape) and (max-width: 899px) {
+  :root { --barre-basse: calc(48px + env(safe-area-inset-bottom)); --haut-barre: calc(48px + env(safe-area-inset-top)); }
+  .barre-haut { min-height: 48px; }
+  .onglet { flex-direction: row; gap: 8px; min-height: 48px; padding: 4px 6px; font-size: 0.8rem; }
+  .onglet-icone { width: 40px; height: 28px; }
+  .modal { max-height: 96dvh; }
+}
+/* Lecture à contraste élevé : bordures et textes secondaires renforcés */
+@media (prefers-contrast: more) {
+  :root { --bord: #5d7373; --bord-fort: #3f5252; --texte-2: #2a3535; --teal-600: #086b6b; }
+  .carte, .bloc, .service, .chiffre { border-color: var(--bord-fort); }
+}
+@media (forced-colors: active) { .onglet[aria-current], .puce[aria-pressed="true"], .langues .langue[aria-pressed="true"] { outline: 2px solid Highlight; } }

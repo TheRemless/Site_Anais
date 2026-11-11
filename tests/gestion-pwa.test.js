@@ -34,3 +34,30 @@ test("page : le manifeste et l'icône iPhone sont liés, l'outil reste non index
   assert.match(index, /apple-mobile-web-app-capable/);
   assert.match(index, /noindex/);
 });
+
+test("page : plein écran sous l'encoche, zoom permis, thème clair, pas de service externe qui bloque l'affichage", () => {
+  assert.match(index, /viewport-fit=cover/);
+  assert.doesNotMatch(index, /user-scalable=no|maximum-scale/, "le zoom reste permis");
+  assert.match(index, /<meta name="color-scheme" content="light">/);
+  assert.doesNotMatch(index, /fonts\.googleapis\.com|fonts\.gstatic\.com/, "la police est auto-hébergée");
+  const css = fs.readFileSync(path.join(dossier, "css/app.css"), "utf8");
+  assert.match(css, /@font-face\s*\{\s*font-family:\s*"Raleway"/);
+  for (const m of css.matchAll(/url\("\.\.\/(assets\/fonts\/[^"]+)"\)/g)) assert.ok(fs.existsSync(path.join(dossier, m[1])), m[1]);
+});
+
+test("manifeste : les raccourcis restent dans le périmètre de l'outil et ont leur icône", () => {
+  for (const r of manifeste.shortcuts || []) {
+    assert.ok(r.url.startsWith(manifeste.scope), r.url);
+    for (const i of r.icons) assert.ok(fs.existsSync(path.join(dossier, i.src)), i.src);
+  }
+});
+
+test("service worker : ni cache ni interception des requêtes (l'outil se charge toujours depuis le réseau)", () => {
+  const sw = fs.readFileSync(path.join(dossier, "sw.js"), "utf8").replace(/\/\/.*$/gm, "");
+  assert.doesNotMatch(sw, /\bcaches\b/);
+  assert.doesNotMatch(sw, /addEventListener\(\s*["']fetch["']/);
+});
+
+test("modulepreload : chaque module annoncé existe", () => {
+  for (const m of index.matchAll(/<link rel="modulepreload" href="([^"]+)">/g)) assert.ok(fs.existsSync(path.join(dossier, m[1])), m[1]);
+});

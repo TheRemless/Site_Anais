@@ -1,6 +1,8 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
+  // Session C (mobile) : application installée
+  "Hors connexion : l'écran montre les données telles qu'elles étaient, et rien ne s'enregistre tant que le réseau n'est pas revenu.": "Offline: the screen shows the data as it was, and nothing is saved until the network is back.",
   // Session C (mobile) : listes et fiche dossier
   "Compagnie, date, recherche": "Company, date, search",
   "Voir {n} étape faite": "Show {n} completed step",

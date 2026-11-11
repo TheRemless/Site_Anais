@@ -628,9 +628,13 @@ function surveillerDonnees() {
   // Pastille visible quand la relecture échoue deux fois de suite (réseau coupé, session expirée) : sans elle, l'écran vieillit sans rien dire.
   const pastille = h("div", { class: "etat-synchro", role: "status", hidden: true });
   document.body.append(pastille);
+  // Hors connexion : annoncé tout de suite par le navigateur (avion, tunnel), sans attendre deux relectures ratées.
+  // L'outil n'enregistre rien sans réseau : on le dit, pour qu'une saisie ne soit pas crue sauvée.
+  let hors = typeof navigator !== "undefined" && navigator.onLine === false;
   const majPastille = () => {
-    pastille.hidden = echecs < 2;
-    if (echecs >= 2) pastille.textContent = tr("Connexion perdue : les données affichées datent de {duree}. Elles se mettent à jour dès que le réseau revient.", { duree: pluriel(Math.max(1, Math.round((Date.now() - derniereReussite) / 60000)), N_("minute"), N_("minutes")) });
+    pastille.hidden = !hors && echecs < 2;
+    if (hors) pastille.textContent = tr("Hors connexion : l'écran montre les données telles qu'elles étaient, et rien ne s'enregistre tant que le réseau n'est pas revenu.");
+    else if (echecs >= 2) pastille.textContent = tr("Connexion perdue : les données affichées datent de {duree}. Elles se mettent à jour dès que le réseau revient.", { duree: pluriel(Math.max(1, Math.round((Date.now() - derniereReussite) / 60000)), N_("minute"), N_("minutes")) });
   };
   const actualiser = async () => {
     if (document.visibilityState !== "visible" || Date.now() - derniere < 10000) return;
@@ -653,7 +657,9 @@ function surveillerDonnees() {
     }
   };
   document.addEventListener("visibilitychange", actualiser);
-  window.addEventListener("online", actualiser);
+  window.addEventListener("online", () => ((hors = false), majPastille(), actualiser()));
+  window.addEventListener("offline", () => ((hors = true), majPastille()));
+  majPastille();
   setInterval(actualiser, 60 * 1000);
 }
 
