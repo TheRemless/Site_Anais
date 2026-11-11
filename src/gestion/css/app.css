@@ -823,7 +823,7 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .bouton-plus:active { background: var(--teal-700); transform: scale(0.96); }
 .coque.avec-plus .bouton-plus { display: inline-flex; }
 .coque.avec-plus .contenu { padding-bottom: calc(var(--barre-basse) + 96px); }
-html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte .bouton-plus { display: none; }
+html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte .bouton-plus { display: none !important; }
 @media (min-width: 900px) { .bouton-plus, .coque.avec-plus .bouton-plus { display: none; } .coque.avec-plus .contenu { padding-bottom: 48px; } }
 .choix-nouveau { display: flex; align-items: center; justify-content: flex-start; gap: 14px; width: 100%; min-height: 64px; margin: 0 0 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--bord-champ); border-radius: 12px; text-align: left; font-weight: 400; color: var(--texte); }
 .choix-nouveau svg { flex: none; color: var(--teal-700); }
@@ -871,3 +871,36 @@ html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte 
 .retour { min-width: 44px; }
 .onglet { line-height: 1.2; }
 @media (min-width: 720px) { .service-pied .statut { flex: 1 1 auto; } .service-pied .bouton { flex: 0 0 auto; padding: 0 14px; } .services { max-width: 760px; } }
+
+/* ==== Session C (mobile) : listes et fiche dossier ============================================================= */
+/* Sections repliables : le titre est la zone tactile (44 px), le chevron tourne à l'ouverture. */
+.repli { margin: 0; }
+.repli-titre { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; margin: 0; padding: 0 2px; list-style: none; cursor: pointer; color: var(--texte); font-size: 1.15rem; font-weight: 700; border-top: 1px solid var(--bord); -webkit-tap-highlight-color: transparent; }
+.repli-titre::-webkit-details-marker { display: none; }
+.repli-titre svg { flex: none; color: var(--texte-2); transition: transform var(--duree) var(--courbe); }
+.repli[open] > .repli-titre svg { transform: rotate(180deg); }
+.repli-corps { padding: 4px 0 8px; }
+.repli-corps > h2, .repli-corps > .petit-entete > h2 { display: none; }
+.repli-corps > .petit-entete { margin-bottom: 8px; }
+.repli-corps > .petit-entete:not(:has(.entete-actions)) { display: none; }
+.repli-section { margin-bottom: 0; }
+@media (min-width: 720px) {
+  .repli-titre { min-height: 0; padding: 0; border-top: 0; cursor: default; pointer-events: none; margin-bottom: 12px; }
+  .repli-titre svg { display: none; }
+  .repli-corps { padding: 0; }
+  .repli-section { margin-bottom: 36px; }
+}
+/* Étapes faites : une ligne « Voir n étapes faites » au lieu de la liste entière */
+.etapes-resumees > .etape.fait { display: none; }
+.etapes-voir { display: inline-flex; align-items: center; min-height: 44px; margin: 0 0 4px; }
+.barre-dossier .barre-action { justify-content: stretch; }
+.barre-dossier .barre-action > * { flex: 1 1 0; min-width: 0; padding: 0 8px; white-space: nowrap; }
+.barre-dossier .barre-action > .principal { flex: 2 1 0; }
+
+/* Filtres secondaires repliés derrière une ligne (Trajets) : départ et arrivée restent toujours visibles */
+.filtres-plus { flex: 1 1 100%; }
+.filtres-plus > summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin: 0; padding: 0 2px; list-style: none; cursor: pointer; }
+.filtres-plus > summary::-webkit-details-marker { display: none; }
+.filtres-plus[open] > summary svg { transform: rotate(180deg); }
+.chercheur-plus { display: flex; flex-direction: column; gap: 0; }
+@media (min-width: 720px) { .filtres-plus > summary { display: none; } .chercheur-plus { flex-direction: row; flex-wrap: wrap; gap: 12px; } .chercheur-plus .champ { flex: 1; min-width: 160px; } }

@@ -4,7 +4,7 @@ import { ouvrirDemande } from "./demande.mjs";
 import { h, champ, vider, toast } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
-import { pastille, vide, voyageTexte, cartes, sousTitreDossier } from "./commun.mjs";
+import { pastille, vide, voyageTexte, cartes, sousTitreDossier, barreFiltres } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
@@ -69,18 +69,6 @@ export function listeDossiers() {
       h("button", { class: "lien", type: "button", onclick: () => (selection.clear(), majBarre(), dessiner()) }, tr("Tout désélectionner"))
     );
   };
-  const recherche = h("input", {
-    id: "recherche",
-    type: "search",
-    value: filtre.q,
-    placeholder: tr("Nom du client, référence, pays"),
-    oninput: (e) => {
-      filtre.q = e.target.value;
-      limite = PAGE;
-      dessiner();
-    },
-  });
-
   let limite = PAGE;
   function dessiner() {
     // Une recherche porte sur tous les dossiers : un dossier soldé ou annulé ne doit pas devenir introuvable parce qu'un autre onglet est ouvert.
@@ -140,38 +128,29 @@ export function listeDossiers() {
     else if (lignes.length > PAGE) corps.append(h("p", { class: "aide plus" }, tr("{n} dossiers affichés.", { n: lignes.length })));
   }
 
-  const onglets = h(
-    "div",
-    { class: "onglets" },
-    ONGLETS.map(([cle, libelle]) =>
-      h(
-        "button",
-        {
-          type: "button",
-          "aria-pressed": cle === filtre.onglet ? "true" : "false",
-          onclick: (e) => {
-            filtre.onglet = cle;
-            majUrl();
-            limite = PAGE;
-            for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false");
-            dessiner();
-          },
-        },
-        tr(libelle)
-      )
-    )
-  );
   // L'adresse suit l'onglet et le tri : un rechargement ou un favori retrouve la même liste.
   const majUrl = () => history.replaceState(null, "", `#/dossiers?onglet=${filtre.onglet}&tri=${filtre.tri}`);
-  const tri = h("select", { id: "tri-dossiers", onchange: (e) => { filtre.tri = e.target.value; majUrl(); limite = PAGE; dessiner(); } }, TRIS.map(([k, l]) => h("option", { value: k }, tr(l))));
-  tri.value = filtre.tri;
+  // Recherche collante, onglets en puces défilantes, tri dans la feuille « Filtrer » (à plat sur ordinateur).
+  const filtres = barreFiltres({
+    recherche: { valeur: filtre.q, placeholder: tr("Nom du client, référence, pays"), libelle: tr("Rechercher") },
+    puces: { options: ONGLETS.map(([cle, libelle]) => ({ valeur: cle, libelle: tr(libelle) })), valeur: filtre.onglet, libelle: tr("Dossiers") },
+    filtres: [{ cle: "tri", libelle: tr("Trier par"), type: "select", neutre: "recents", valeur: filtre.tri, options: TRIS.map(([k, l]) => ({ valeur: k, libelle: tr(l) })) }],
+    onchange: (v) => {
+      filtre.onglet = v.puces;
+      filtre.q = v.recherche;
+      filtre.tri = v.tri;
+      majUrl();
+      limite = PAGE;
+      dessiner();
+    },
+  });
   dessiner();
   majBarre();
   return h(
     "div",
     { "data-titre": tr("Dossiers") },
-    h("div", { class: "entete" }, h("h1", null, tr("Dossiers")), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, modeExcursions() ? h("button", { class: "secondaire", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
-    h("div", { class: "barre-outils" }, onglets, h("div", { class: "barre-champs" }, h("div", { class: "champ" }, h("label", { for: "tri-dossiers" }, tr("Trier par")), tri), h("div", { class: "champ recherche" }, h("label", { for: "recherche" }, tr("Rechercher")), recherche))),
+    h("div", { class: "entete" }, h("h1", null, tr("Dossiers")), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, modeExcursions() ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, h("a", { class: "bouton principal seulement-bureau", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
+    filtres.noeud,
     barre,
     corps
   );

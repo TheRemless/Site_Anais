@@ -1,10 +1,9 @@
 import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier, reglages, peut } from "../etat.mjs";
-import { h, champ, modal, confirmer, toast, vider } from "../ui.mjs";
+import { h, champ, modal, confirmer, toast } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
-import { pastille, vide, cartes } from "./commun.mjs";
-import { tr } from "../i18n.mjs";
-
-const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+import { pastille, vide, listeAdaptative, barreFiltres } from "./commun.mjs";
+import { correspond } from "../mobile-calc.mjs";
+import { tr, N_, pluriel } from "../i18n.mjs";
 
 function formulaireClient(client, apres) {
   const civilites = [...reglages().listes.civilites];
@@ -41,52 +40,24 @@ function formulaireClient(client, apres) {
 }
 
 export function listeClients() {
-  const corps = h("div");
-  const q = h("input", { id: "rech-clients", type: "search", placeholder: tr("Nom, téléphone, ville"), oninput: () => ((limite = 50), dessiner()) });
-  let limite = 50;
-  function dessiner() {
-    const t = sansAccents(q.value);
-    const clients = etat.db.clients.filter((c) => !t || sansAccents(`${nomClient(c)} ${c.telephone} ${c.adresse}`).includes(t)).sort((a, b) => nomClient(a).localeCompare(nomClient(b)));
-    vider(corps);
-    if (!clients.length) {
-      corps.append(vide(etat.db.clients.length ? tr("Aucun client ne correspond") : tr("Aucun client"), etat.db.clients.length ? tr("Essayez une autre recherche.") : tr("Les clients se créent avec leur premier dossier, ou avec le bouton ci-dessus.")));
-      return;
-    }
-    const nbDossiers = (c) => etat.db.dossiers.filter((d) => d.client_id === c.id).length;
-    corps.append(
-      cartes(clients.slice(0, limite), (c) => {
-        const n = nbDossiers(c);
-        return h(
-          "a",
-          { class: "carte-lien", href: `#/client/${c.id}` },
-          h("span", { class: "carte-titre" }, nomClient(c)),
-          h("span", { class: "carte-droite" }, h("strong", null, n), h("span", null, n > 1 ? "dossiers" : "dossier")),
-          h("span", { class: "carte-sous" }, [c.telephone, (c.adresse || "").split("\n").filter(Boolean).pop()].filter(Boolean).join(" · ") || tr("Sans coordonnées"))
-        );
-      }),
-      h(
-        "table",
-        { class: "tableau seulement-bureau" },
-        h("thead", null, h("tr", null, [tr("Client"), tr("Téléphone"), tr("Adresse"), tr("Dossiers")].map((x, i) => h("th", { scope: "col", class: i === 3 ? "num" : null }, x)))),
-        h(
-          "tbody",
-          null,
-          clients.slice(0, limite).map((c) =>
-            h(
-              "tr",
-              null,
-              h("td", { "data-label": tr("Client") }, h("a", { href: `#/client/${c.id}` }, nomClient(c))),
-              h("td", { "data-label": tr("Téléphone") }, c.telephone || "-"),
-              h("td", { "data-label": tr("Adresse") }, (c.adresse || "-").split("\n").join(", ")),
-              h("td", { class: "num", "data-label": tr("Dossiers") }, nbDossiers(c))
-            )
-          )
-        )
-      )
-    );
-    if (clients.length > limite) corps.append(h("p", { class: "plus" }, h("button", { class: "secondaire", type: "button", onclick: () => ((limite += 50), dessiner()) }, tr("Afficher plus ({x} restants)", { x: clients.length - limite }))));
-  }
-  dessiner();
+  const nbDossiers = (c) => etat.db.dossiers.filter((d) => d.client_id === c.id).length;
+  const ligne = (c) => ({ c, nom: nomClient(c), n: nbDossiers(c), ville: (c.adresse || "").split("\n").filter(Boolean).pop() || "" });
+  const lignes = () => etat.db.clients.map(ligne).sort((a, b) => a.nom.localeCompare(b.nom));
+  const filtrer = (tout, requete) => tout.filter((x) => correspond(`${x.nom} ${x.c.telephone} ${x.c.adresse}`, requete));
+  const liste = listeAdaptative({
+    items: lignes(),
+    colonnes: [
+      { cle: "nom", titre: tr("Client"), tri: (x) => x.nom, mobile: "titre" },
+      { cle: "tel", titre: tr("Téléphone"), rendu: (x) => x.c.telephone || null, mobile: "sous" },
+      { cle: "adresse", titre: tr("Adresse"), rendu: (x) => (x.c.adresse || "").split("\n").join(", ") || null, rendu_mobile: (x) => x.ville || null, mobile: "sous" },
+      { cle: "n", titre: tr("Dossiers"), num: true, tri: (x) => x.n, mobile: "droite", rendu: (x) => pluriel(x.n, N_("dossier"), N_("dossiers")) },
+    ],
+    lien: (x) => `#/client/${x.c.id}`,
+    tri: { cle: "nom" },
+    vide: vide(etat.db.clients.length ? tr("Aucun client ne correspond") : tr("Aucun client"), etat.db.clients.length ? tr("Essayez une autre recherche.") : tr("Les clients se créent avec leur premier dossier, ou avec le bouton ci-dessus.")),
+  });
+  const filtres = barreFiltres({ recherche: { placeholder: tr("Nom, téléphone, ville"), libelle: tr("Rechercher") }, onchange: (v) => liste.mettre(filtrer(lignes(), v.recherche)) });
+  const corps = liste.noeud;
   return h(
     "div",
     { "data-titre": tr("Clients") },
@@ -106,7 +77,7 @@ export function listeClients() {
         tr("Nouveau client")
       )
     ),
-    h("div", { class: "barre-outils" }, h("div", { class: "champ recherche" }, h("label", { for: "rech-clients" }, tr("Rechercher")), q)),
+    filtres.noeud,
     corps
   );
 }

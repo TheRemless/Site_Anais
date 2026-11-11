@@ -39,6 +39,7 @@ export function cartes(items, carte) {
 //     vide: Node,                  // affiché sans ligne
 //     pas: 50,
 //   })  →  { noeud, mettre(items) }
+// `rendu_mobile: (x) => …` donne un contenu plus court pour la carte (une ville au lieu de l'adresse entière).
 // Rôle mobile : « titre » (une colonne, la première par défaut), « droite » (montant ou date), « sous » (détails sur une ligne,
 // séparés par · ), « pied » (statuts, étiquettes), `false` (colonne réservée au tableau).
 export function listeAdaptative({ items, colonnes, lien = null, actions = null, tri = null, vide = null, pas = 50 }) {
@@ -53,7 +54,7 @@ export function listeAdaptative({ items, colonnes, lien = null, actions = null, 
   };
   const roleMobile = (c, i) => (c.mobile !== undefined ? c.mobile : i === 0 ? "titre" : "sous");
   const carte = (x) => {
-    const parRole = (r) => colonnes.filter((c, i) => roleMobile(c, i) === r).map((c) => contenu(c, x)).filter((v) => v !== null);
+    const parRole = (r) => colonnes.filter((c, i) => roleMobile(c, i) === r).map((c) => (c.rendu_mobile ? c.rendu_mobile(x) ?? null : contenu(c, x))).filter((v) => v !== null);
     const titre = parRole("titre");
     const droite = parRole("droite");
     const sous = parRole("sous");
@@ -215,6 +216,55 @@ export function barreFiltres({ recherche = null, puces = null, filtres = [], onc
   miseAJourBouton();
   const noeud = h("div", { class: "barre-filtres" }, h("div", { class: "barre-filtres-haut" }, champRecherche, bouton), rangeePuces ? rangeePuces.noeud : null, enLigne);
   return { noeud, valeurs: () => ({ ...v }), definir };
+}
+
+// Sections repliables d'une fiche : chaque `section` enfant de `racine` qui a un titre h2 devient un bloc <details> (titre en tête, chevron).
+// `ouverts` : titres des sections ouvertes d'emblée sur téléphone ; sur grand écran tout reste ouvert comme avant.
+// Le titre d'origine est masqué dans le corps (il passe dans le résumé), les boutons voisins du titre restent. Le choix de la personne
+// est gardé par fiche tant que la page n'est pas rechargée. Une ancre vers un champ caché (#form-paiement) ouvre sa section avant d'y aller.
+const etatsRepli = new Map();
+export function plierSections(racine, { cle, ouverts = new Set() }) {
+  const grand = window.matchMedia("(min-width: 720px)").matches;
+  for (const section of [...racine.children].filter((e) => e.tagName === "SECTION")) {
+    const titre = section.querySelector(":scope > h2, :scope > .petit-entete > h2");
+    if (!titre) continue;
+    const nom = titre.textContent;
+    const memo = etatsRepli.get(`${cle}|${nom}`);
+    const details = h("details", { class: "repli" }, h("summary", { class: "repli-titre" }, h("span", null, nom), icone("chevron", 18)));
+    if (grand || (memo ?? ouverts.has(nom))) details.open = true;
+    details.addEventListener("toggle", () => etatsRepli.set(`${cle}|${nom}`, details.open));
+    const corps = h("div", { class: "repli-corps" });
+    while (section.firstChild) corps.append(section.firstChild);
+    details.append(corps);
+    section.className = [section.className, "repli-section"].filter(Boolean).join(" ");
+    if (section.id) details.id = section.id;
+    section.append(details);
+  }
+  // Rotation d'une tablette ou fenêtre élargie : au-dessus de 720 px les titres ne se cliquent plus, tout doit donc s'ouvrir.
+  const large = window.matchMedia("(min-width: 720px)");
+  const toutOuvrir = (e) => e.matches && racine.querySelectorAll("details.repli").forEach((d) => (d.open = true));
+  large.addEventListener("change", toutOuvrir);
+  racine.addEventListener(
+    "click",
+    (e) => {
+      const lien = e.target.closest && e.target.closest('a[href^="#"]');
+      const cible = lien && lien.getAttribute("href").length > 1 ? racine.querySelector(`[id="${lien.getAttribute("href").slice(1)}"]`) : null;
+      const parent = cible && cible.closest("details");
+      if (parent && !parent.open) parent.open = true;
+    },
+    true
+  );
+  return racine;
+}
+
+// Une liste d'étapes (« Fait » / « À faire ») : sur téléphone, les étapes faites se replient derrière un bouton pour laisser la place à la suite.
+export function resumerEtapes(liste) {
+  if (window.matchMedia("(min-width: 720px)").matches) return;
+  const faites = [...liste.querySelectorAll(":scope > .etape.fait")];
+  if (faites.length < 2) return;
+  liste.classList.add("etapes-resumees");
+  const bouton = h("button", { type: "button", class: "lien etapes-voir", "aria-expanded": "false", onclick: () => ((liste.classList.toggle("etapes-resumees")), bouton.setAttribute("aria-expanded", liste.classList.contains("etapes-resumees") ? "false" : "true"), (bouton.textContent = liste.classList.contains("etapes-resumees") ? pluriel(faites.length, N_("Voir {n} étape faite"), N_("Voir les {n} étapes faites")) : tr("Masquer les étapes faites"))) }, pluriel(faites.length, N_("Voir {n} étape faite"), N_("Voir les {n} étapes faites")));
+  liste.before(bouton);
 }
 
 export function telecharger(nom, contenu, type) {
