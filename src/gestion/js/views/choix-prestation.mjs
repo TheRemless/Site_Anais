@@ -7,16 +7,29 @@ import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDe
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
 // `sansCompagnie` : le nom de la compagnie n'est pas répété dans le libellé des trajets (facture de Secret).
-export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCompagnie = false }) {
+// `dossierId` : le dossier auquel on ajoute ; la date et les personnes de son dernier service sont reprises, et le choix des personnes suit.
+// `defauts` : { date, adultes, enfants } donnés par l'appelant (une demande collée), qui l'emportent sur le dossier.
+export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCompagnie = false, dossierId = null, defauts = {} }) {
   let onglet = etat.db.prestations.some((x) => x.actif !== false) ? "tarifs" : "trajets";
-  const date = h("input", { id: "cp-date", type: "date", onchange: () => dessiner() });
+  const dernier = dossierId ? etat.db.reservations.filter((r) => r.dossier_id === dossierId).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0] : null;
+  const ctx = { date: defauts.date || (dernier && dernier.date_service) || "", adultes: defauts.adultes ?? (dernier && dernier.personnes ? dernier.personnes.adultes : 0) ?? 0, enfants: defauts.enfants ?? (dernier && dernier.personnes ? dernier.personnes.enfants : 0) ?? 0 };
+  // Quantité proposée selon l'unité du tarif : par personne, par adulte, par enfant, sinon une seule.
+  const qteDefaut = (x) => ((x.unite === "pp" ? ctx.adultes + ctx.enfants : x.unite === "ad" ? ctx.adultes : x.unite === "ch" ? ctx.enfants : 1) || 1);
+  // Les services les plus récemment demandés se retrouvent en tête de liste tant qu'on ne cherche rien.
+  const cache = {};
+  const recents = (cle) => (cache[cle] ||= [...new Set(etat.db.reservations.filter((r) => r[cle]).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "")).map((r) => r[cle]))].slice(0, 5));
+  let ajoutes = 0;
+  const date = h("input", { id: "cp-date", type: "date", value: ctx.date, onchange: () => dessiner() });
   const q = h("input", { id: "cp-q", type: "search", placeholder: tr("Île, excursion, transfert, compagnie…"), autocomplete: "off", oninput: () => dessiner() });
   const liste = h("ul", { class: "choix-liste" });
   const compte = h("p", { class: "aide" });
   const onglets = h("div", { class: "onglets sous-onglets" }, [["tarifs", tr("Tarifs")], ["trajets", tr("Trajets")], ["libre", tr("Autre prestation")]].map(([code, libelle]) => h("button", { type: "button", "aria-pressed": code === onglet ? "true" : "false", onclick: (e) => { onglet = code; for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false"); dessiner(); } }, libelle)));
   const prix = (n) => (n === null || n === undefined ? tr("prix à définir") : formatMontant(n, devise));
+  const termine = h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Terminé"));
   const ajoute = (lignes, nom) => {
     onAjout(lignes);
+    ajoutes++;
+    termine.textContent = pluriel(ajoutes, N_("Terminé · {n} ajouté"), N_("Terminé · {n} ajoutés"));
     toast(tr("{nom} ajouté au document.", { nom }));
   };
   const champRecherche = h("div", { class: "champ" }, h("label", { for: "cp-q" }, tr("Rechercher")), q);
@@ -66,14 +79,17 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
         .filter((x) => x.actif !== false && correspond(`${x.libelle} ${x.libelle_en} ${x.groupe} ${nomFamille(x.famille)} ${nomPartenaire(x.partenaire_id)}`, q.value))
         .sort((a, b) => FAMILLES.findIndex(([c]) => c === a.famille) - FAMILLES.findIndex(([c]) => c === b.famille) || nomPartenaire(a.partenaire_id).localeCompare(nomPartenaire(b.partenaire_id)) || (a.ordre || 0) - (b.ordre || 0));
       compte.textContent = pluriel(lignes.length, N_("{n} tarif."), N_("{n} tarifs."));
+      const frequents = q.value.trim() ? [] : recents("prestation_id").map((id) => lignes.find((x) => x.id === id)).filter(Boolean);
+      const ordre = frequents.length ? [...frequents, ...lignes.filter((x) => !frequents.includes(x))] : lignes;
       let famille = null;
-      for (const x of lignes) {
-        if (x.famille !== famille) {
-          famille = x.famille;
-          liste.append(h("li", { class: "choix-groupe" }, nomFamille(famille)));
+      for (const x of ordre) {
+        const groupe = frequents.includes(x) ? "recent" : x.famille;
+        if (groupe !== famille) {
+          famille = groupe;
+          liste.append(h("li", { class: "choix-groupe" }, groupe === "recent" ? tr("Récemment demandés") : nomFamille(groupe)));
         }
         const d = x.details || {};
-        const champQte = x.sur_place ? null : qte(`cp-q-${x.id}`, 1, tr("Quantité"));
+        const champQte = x.sur_place ? null : qte(`cp-q-${x.id}`, qteDefaut(x), tr("Quantité"));
         liste.append(
           h(
             "li",
@@ -87,9 +103,12 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
     } else {
       const lignes = filtrerTrajets(etat.db.trajets, { date: date.value, q: q.value, nomPartenaire });
       compte.textContent = date.value ? pluriel(lignes.length, N_("{n} départ à cette date."), N_("{n} départs à cette date.")) : pluriel(lignes.length, N_("{n} départ."), N_("{n} départs."));
-      for (const t of lignes) {
-        const ad = qte(`cp-a-${t.id}`, 1, tr("Adultes"));
-        const ch = qte(`cp-c-${t.id}`, 0, tr("Enfants"));
+      const frequentsT = q.value.trim() ? [] : recents("trajet_id").map((id) => lignes.find((t) => t.id === id)).filter(Boolean);
+      const ordreT = frequentsT.length ? [...frequentsT, ...lignes.filter((t) => !frequentsT.includes(t))] : lignes;
+      if (frequentsT.length) liste.append(h("li", { class: "choix-groupe" }, tr("Récemment demandés")));
+      for (const t of ordreT) {
+        const ad = qte(`cp-a-${t.id}`, ctx.adultes || 1, tr("Adultes"));
+        const ch = qte(`cp-c-${t.id}`, ctx.enfants, tr("Enfants"));
         liste.append(
           h(
             "li",
@@ -114,7 +133,8 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
       formulaireLibre,
       compte,
       liste,
-      noteBas
+      noteBas,
+      h("div", { class: "barre-action" }, termine)
     ),
     { large: true }
   );

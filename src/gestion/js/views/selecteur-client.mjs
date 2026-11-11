@@ -133,5 +133,10 @@ export function selecteurClient({ id = "client", libelle = tr("Client"), valeur 
     },
     // Demande de créer un client, comme un clic sur « Nouveau client » (brouillon issu d'une demande collée).
     nouveauClient: () => creerNouveau(),
+    // Choisit un client connu d'après son identifiant (doublon repéré pendant la saisie d'un nouveau client).
+    choisirId: (id) => {
+      const c = etat.db.clients.find((x) => x.id === id);
+      if (c) choisir(c);
+    },
   };
 }

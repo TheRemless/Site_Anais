@@ -318,7 +318,7 @@ export function ajouterServices(d, doc, apres) {
       toast(tr("Ajout impossible : {message}", { message: err.message }), true);
     }
   }
-  choisirPrestation({ langue, devise: regl.devise, sansCompagnie: true, onAjout: (nouvelles) => (file = file.then(() => ajouter(nouvelles))) });
+  choisirPrestation({ langue, devise: regl.devise, sansCompagnie: true, dossierId: d.id, onAjout: (nouvelles) => (file = file.then(() => ajouter(nouvelles))) });
 }
 
 export function sectionReservationsDossier(d, doc) {

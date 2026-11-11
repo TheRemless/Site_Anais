@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lireDate, lireDemande, prixPrestation, prixTrajet, proposerOffres, reponsePrix, notesDemande, separerNom } from "../src/gestion/js/demande-calc.mjs";
+import { lireDate, lireDemande, lireMessage, lireDateLibre, proposerOffresLibres, offresPour, clientsProches, prestationEnfant, prixPrestation, prixTrajet, proposerOffres, reponsePrix, notesDemande, separerNom } from "../src/gestion/js/demande-calc.mjs";
 
 const AJD = "2026-11-08";
 
@@ -133,4 +133,132 @@ test("notes du dossier et séparation du nom", () => {
 test("offres : un minivan demandé n'est jamais proposé en speedboat", () => {
   const d = lireDemande("From: Koh Lanta\nTo: Koh Lipe\nPrivate minivan\nAdults: 1", AJD);
   assert.deepEqual(proposerOffres(d, { trajets: TRAJETS, prestations: [], nomPartenaire: nom }), []);
+});
+
+// ---- Message libre (WhatsApp, sans formulaire) ----------------------------------------------------------------------
+test("date libre : jour et mois dans les deux ordres, français, demain, jj/mm", () => {
+  assert.equal(lireDateLibre("on 12 December", AJD), "2026-12-12");
+  assert.equal(lireDateLibre("December 12th please", AJD), "2026-12-12");
+  assert.equal(lireDateLibre("le 3 janvier", AJD), "2027-01-03");
+  assert.equal(lireDateLibre("le 15 août 2027", AJD), "2027-08-15");
+  assert.equal(lireDateLibre("demain", AJD), "2026-11-09");
+  assert.equal(lireDateLibre("tomorrow morning", AJD), "2026-11-09");
+  assert.equal(lireDateLibre("après-demain", AJD), "2026-11-10");
+  assert.equal(lireDateLibre("le 20/12", AJD), "2026-12-20");
+  assert.equal(lireDateLibre("20/12/2026", AJD), "2026-12-20");
+  assert.equal(lireDateLibre("31/02", AJD), "");
+  assert.equal(lireDateLibre("2 adults 1 child", AJD), "");
+  assert.equal(lireDateLibre("room 12 may be fine", AJD), "");
+});
+
+const LIBRE = "Hello! My name is Sophie Martin, we would like to do the 4 islands tour on 12 December. We are 2 adults and 1 child, staying at Hotel Sunset, Klong Dao. My number is +33 6 12 34 56 78";
+
+test("message libre : nom, date, personnes, hôtel et téléphone", () => {
+  const d = lireMessage(LIBRE, AJD);
+  assert.equal(d.libre, true);
+  assert.equal(d.nom, "Sophie Martin");
+  assert.equal(d.date, "2026-12-12");
+  assert.equal(d.adultes, 2);
+  assert.equal(d.enfants, 1);
+  assert.equal(d.hotel, "Hotel Sunset, Klong Dao");
+  assert.equal(d.telephone, "+33 6 12 34 56 78");
+});
+
+test("message libre en français", () => {
+  const d = lireMessage("Bonjour, nous sommes 4 personnes dont 2 enfants, on loge à l'hôtel Bamboo et on voudrait le tour des 4 îles demain. Marc Dupont", AJD);
+  assert.equal(d.adultes, 2, "4 personnes dont 2 enfants : deux adultes");
+  assert.equal(d.enfants, 2);
+  assert.equal(d.date, "2026-11-09");
+  assert.equal(d.hotel, "hôtel Bamboo");
+});
+
+test("message libre : « for 3 » et « 3 pax » donnent des adultes, un message sans rien est refusé", () => {
+  assert.equal(lireMessage("price for 3 for kayaking tomorrow", AJD).adultes, 3);
+  assert.equal(lireMessage("kayak 3 pax", AJD).adultes, 3);
+  assert.equal(lireMessage("", AJD), null);
+  assert.equal(lireMessage("ok merci", AJD), null);
+});
+
+test("message structuré : lireMessage renvoie la lecture du formulaire", () => {
+  const d = lireMessage(TRANSFERT, AJD);
+  assert.equal(d.libre, undefined);
+  assert.equal(d.type, "transfer");
+});
+
+test("offres libres : l'excursion citée dans la phrase est trouvée, avec son prix", () => {
+  const d = lireMessage(LIBRE, AJD);
+  const o = offresPour(d, LIBRE, { prestations: PRESTATIONS, trajets: TRAJETS, nomPartenaire: nom });
+  assert.equal(o[0].id, "x1");
+  assert.equal(o[0].total, 3600);
+});
+
+test("offres libres : un trajet cité dans la phrase, dans le bon sens", () => {
+  const t = "Hi, we need a taxi from Krabi airport to Koh Lanta on 12 December, 2 people";
+  const d = lireMessage(t, AJD);
+  assert.equal(d.adultes, 2);
+  const o = offresPour(d, t, { prestations: [], trajets: TRAJETS, nomPartenaire: nom });
+  assert.equal(o[0].id, "t1");
+  assert.equal(o[0].total, 1000);
+});
+
+test("offres libres : rien de reconnu dans la base, rien d'inventé", () => {
+  assert.deepEqual(proposerOffresLibres({ adultes: 2, enfants: 0 }, "we want to go paragliding", { prestations: PRESTATIONS, trajets: TRAJETS, nomPartenaire: nom }), []);
+});
+
+test("offres libres : un seul mot commun comme « tour » ne suffit pas", () => {
+  assert.deepEqual(proposerOffresLibres({ adultes: 1, enfants: 0 }, "do you have a tour tomorrow?", { prestations: PRESTATIONS, trajets: [], nomPartenaire: nom }), []);
+});
+
+const CLIENTS = [
+  { id: "c1", prenom: "Sophie", nom: "Martin", telephone: "+33 6 12 34 56 78" },
+  { id: "c2", prenom: "Anna", nom: "Keller", telephone: "+49 160 0000000" },
+  { id: "c3", prenom: "Sophie", nom: "Marti", telephone: "" },
+];
+
+test("clients proches : même téléphone d'abord, puis même nom", () => {
+  assert.deepEqual(clientsProches({ nom: "Autre Nom", telephone: "0033612345678" }, CLIENTS).map((x) => x.client.id), ["c1"]);
+  assert.deepEqual(clientsProches({ nom: "sophie martin", telephone: "" }, CLIENTS).map((x) => [x.client.id, x.raison]), [["c1", "nom"]]);
+  assert.deepEqual(clientsProches({ nom: "Zoe Zed", telephone: "" }, CLIENTS), []);
+  assert.deepEqual(clientsProches({ nom: "", telephone: "" }, CLIENTS), []);
+});
+
+test("offres libres : le lieu de l'hôtel ne fait pas trouver un trajet, les frais de parc et tarifs enfant ne sont jamais proposés seuls", () => {
+  const prestations = [
+    { id: "a", actif: true, famille: "excursion", libelle: "4 îles en longtail, journée", libelle_en: "", groupe: "Excursions en groupe", prix_vente: 1200, unite: "pp" },
+    { id: "b", actif: true, famille: "excursion", libelle: "4 îles en longtail, enfant 3 à 9 ans", libelle_en: "", groupe: "Excursions en groupe", prix_vente: 900, unite: "ch" },
+    { id: "c", actif: true, famille: "frais", libelle: "4 îles", libelle_en: "", groupe: "Frais de parc national", prix_vente: 200, unite: "ad", sur_place: true },
+    { id: "d", actif: true, famille: "transfert", libelle: "Saladan → Klong Dao", libelle_en: "", groupe: "Taxi local", prix_vente: 80, unite: "pp" },
+  ];
+  const texte = "My name is Sophie Martin, 4 islands tour on 12 December, 2 adults, staying at Hotel Sunset, Klong Dao";
+  const d = lireMessage(texte, AJD);
+  assert.deepEqual(offresPour(d, texte, { prestations, trajets: [], nomPartenaire: nom }).map((o) => o.id), ["a"]);
+});
+
+test("prix avec enfants : tarif enfant de la base, sinon tarif adulte avec avertissement", () => {
+  const prestations = [
+    { id: "a", actif: true, famille: "excursion", libelle: "4 îles en longtail, journée", libelle_en: "", groupe: "Excursions en groupe", prix_vente: 1200, unite: "pp", partenaire_id: "p1" },
+    { id: "b", actif: true, famille: "excursion", libelle: "4 îles en longtail, enfant 3 à 9 ans", libelle_en: "", groupe: "Excursions en groupe", prix_vente: 900, unite: "ch", partenaire_id: "p1" },
+    { id: "k", actif: true, famille: "activite", libelle: "Kayak", libelle_en: "Kayaking", groupe: "", prix_vente: 600, unite: "pp", partenaire_id: "p2" },
+  ];
+  assert.equal(prestationEnfant(prestations[0], prestations).id, "b");
+  const texte = "4 islands tour, 2 adults and 1 child";
+  const o = offresPour(lireMessage(texte, AJD), texte, { prestations, trajets: [], nomPartenaire: nom });
+  assert.equal(o[0].total, 3300);
+  assert.equal(o[0].enfant.id, "b");
+  const k = offresPour(lireMessage("kayaking, 2 adults 1 child", AJD), "kayaking, 2 adults 1 child", { prestations, trajets: [], nomPartenaire: nom });
+  assert.equal(k[0].total, 1800);
+  assert.equal(k[0].avertissement, "enfant_plein_tarif");
+});
+
+test("message libre : signature après une formule de politesse, pas un lieu en fin de message", () => {
+  assert.equal(lireMessage("On voudrait le tour des 4 îles demain. Merci, Marc Dupont +41 79 123 45 67", AJD).nom, "Marc Dupont");
+  assert.equal(lireMessage("Hi, we need kayaking tomorrow for 2, staying at Hotel Sunset, Klong Dao", AJD).nom, "");
+  assert.equal(lireMessage("Hi, we need kayaking tomorrow for 2.\nAnna Keller", AJD).nom, "Anna Keller");
+});
+
+test("offres libres : un nom court n'abîme pas les autres mots du message", () => {
+  const prestations = [{ id: "a", actif: true, famille: "excursion", libelle: "Tomorrow Special tour kayak", libelle_en: "", groupe: "", prix_vente: 100, unite: "pp" }];
+  const texte = "I'm Tom, kayak tomorrow special";
+  const d = { ...lireMessage(texte, AJD), nom: "Tom" };
+  assert.equal(offresPour(d, texte, { prestations, trajets: [], nomPartenaire: nom }).length, 1);
 });
