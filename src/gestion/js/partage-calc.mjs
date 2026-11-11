@@ -19,7 +19,7 @@ export const raccourciColler = (plateforme = "") => (/Mac|iPhone|iPad|iPod/i.tes
 export function raisonCopieRefusee(erreur) {
   if (!erreur) return "ce navigateur ne sait pas copier une image";
   const nom = erreur.name || "";
-  if (nom === "NotAllowedError") return "le navigateur a refusé l'accès au presse-papiers (page non active, ou autorisation retirée dans les réglages du site)";
+  if (nom === "NotAllowedError") return "le navigateur a refusé l'accès au presse-papiers, page non active ou autorisation retirée";
   if (nom === "SecurityError") return "le navigateur bloque le presse-papiers sur cette page";
   if (nom === "TypeError" || nom === "DataError" || nom === "NotSupportedError") return "ce navigateur ne sait pas copier une image PNG";
   return erreur.message || "raison inconnue";
