@@ -1574,7 +1574,7 @@ export const EN = {
   "Ce que le prestataire reversera après la prestation.": "What the provider will pay us after the service.",
   "Commission reçue": "Commission received",
   "Reçue le": "Received on",
-  "Ce que le partenaire facturera. Sans objet pour un service payé sur place.": "What the partner will bill. Not applicable to a service paid on site.",
+  "Ce que le partenaire facturera à l'agence.": "What the partner will bill the agency.",
   "Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : le réglage n'est pas changé.": "This service is on the invoice, and your role cannot edit invoices: the setting was not changed.",
   "Les lignes de ce service passent sur la facture {sens}, dont le total passe de {avant} à {apres}.": "The lines of this service are set {sens} on the invoice, whose total goes from {avant} to {apres}.",
   "{texte}, à payer sur place {montant}": "{texte}, due on site {montant}",

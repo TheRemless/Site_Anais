@@ -164,7 +164,10 @@ export function formulaireReservation(r, apres) {
     const chiffree = nets && regleCommissionDe(partenaire.value || null);
     regleCommission.textContent = chiffree ? tr("Calculée d'après la règle de ce partenaire. Vous pouvez la corriger.") : regle ? tr("Règle de la fiche partenaire : {regle}", { regle }) : tr("Ce que le prestataire reversera après la prestation.");
     blocCommission.style.display = estSurPlace() ? "" : "none";
+    blocNets.style.display = estSurPlace() ? "none" : "";
   };
+  // Un service payé sur place ne doit rien au prestataire : le net n'a pas lieu d'être saisi.
+  const blocNets = h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera à l'agence.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe));
   const blocCommission = h("div", { class: "grille-form compacte" }, champ(tr("Commission prévue"), commissionPrevue, regleCommission), champ(tr("Commission reçue"), commissionRecue), champ(tr("Reçue le"), commissionLe));
   partenaire.addEventListener("change", () => {
     // Une nouvelle réservation prend le mode habituel de son partenaire.
@@ -274,7 +277,7 @@ export function formulaireReservation(r, apres) {
     h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), date), champ(tr("Heure de pickup"), heure), champ(tr("Lieu de pickup"), lieu)),
     h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), adultes), champ(tr("Enfants"), enfants), champ(tr("Bébés"), bebes), peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),
     h("div", { class: "champ champ-mode" }, h("span", { class: "etiquette" }, tr("Règlement")), surPlace, h("p", { class: "aide" }, tr("« Sur place » : le client paie le prestataire, qui reverse une commission. Rien à verser au prestataire ni à encaisser."))),
-    nets ? h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera. Sans objet pour un service payé sur place.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe)) : null,
+    nets ? blocNets : null,
     nets ? blocCommission : null,
     champ(tr("Notes internes"), notes, tr("Jamais sur le voucher.")),
     blocVoucher,
