@@ -41,12 +41,14 @@ export function cartes(items, carte) {
 //   })  →  { noeud, mettre(items) }
 // `rendu_mobile: (x) => …` donne un contenu plus court pour la carte (une ville au lieu de l'adresse entière).
 // Rôle mobile : « titre » (une colonne, la première par défaut), « droite » (montant ou date), « sous » (détails sur une ligne,
-// séparés par · ), « pied » (statuts, étiquettes), `false` (colonne réservée au tableau).
+// séparés par · ), « pied » (statuts, étiquettes), `false` (colonne réservée au tableau). `tableau: false` : colonne réservée à la carte.
 export function listeAdaptative({ items, colonnes, lien = null, actions = null, tri = null, vide = null, pas = 50 }) {
   let lignes = items;
   let pages = 1;
   let ordre = tri ? { cle: tri.cle, decroissant: !!tri.decroissant } : { cle: null, decroissant: false };
   const triables = colonnes.filter((c) => c.tri);
+  // `tableau: false` : colonne réservée à la carte du téléphone (un bloc dépliable, par exemple), absente du tableau.
+  const colonnesTableau = colonnes.filter((c) => c.tableau !== false);
   const racine = h("div", { class: "liste-adaptative" });
   const contenu = (c, x) => {
     const v = c.rendu ? c.rendu(x) : x[c.cle];
@@ -103,7 +105,7 @@ export function listeAdaptative({ items, colonnes, lien = null, actions = null, 
           h(
             "tr",
             null,
-            colonnes.map((c) =>
+            colonnesTableau.map((c) =>
               h(
                 "th",
                 { scope: "col", class: c.num ? "num" : null, "aria-sort": ordre.cle === c.cle ? (ordre.decroissant ? "descending" : "ascending") : c.tri ? "none" : null },
@@ -122,7 +124,7 @@ export function listeAdaptative({ items, colonnes, lien = null, actions = null, 
             h(
               "tr",
               null,
-              colonnes.map((c, i) => {
+              colonnesTableau.map((c, i) => {
                 const v = contenu(c, x);
                 const href = lien && i === 0 && v !== null && !(v instanceof Node && v.querySelector && v.querySelector("a")) ? lien(x) : null;
                 return h("td", { class: c.num ? "num" : null, "data-label": c.titre }, href ? h("a", { href }, v) : v);

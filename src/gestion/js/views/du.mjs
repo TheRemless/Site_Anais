@@ -3,7 +3,7 @@ import { etat, peut, naviguer, nomPartenaire, netReservation, enregistrerLie, do
 import { h, confirmer, toast } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { duParPartenaire, nomMoisCourt } from "../operations-calc.mjs";
-import { vide, cartes } from "./commun.mjs";
+import { vide, listeAdaptative } from "./commun.mjs";
 import { prix, margeNoeud, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
@@ -24,6 +24,7 @@ export function vueDu() {
     toast(tr("Paiement noté."));
     rafraichir();
   };
+  const nom = (g) => nomPartenaire(g.partenaire_id) || tr("Sans partenaire");
   const lien = (g) => `#/reservations?periode=toutes&partenaire=${g.partenaire_id || ""}`;
   return h(
     "div",
@@ -36,41 +37,26 @@ export function vueDu() {
     ),
     !lignes.length
       ? vide(tr("Aucune réservation"), tr("Le dû se calcule d'après les réservations et leur net prévu. Les services payés sur place n'y figurent pas : leurs commissions sont dans « À encaisser »."))
-      : [
-          cartes(lignes, (g) =>
+      : listeAdaptative({
+          items: lignes,
+          colonnes: [
+            { cle: "mois", titre: tr("Mois"), rendu: (g) => nomMoisCourt(g.mois), tri: (g) => g.mois, mobile: "sous" },
+            { cle: "partenaire", titre: tr("Partenaire"), rendu: (g) => (g.partenaire_id ? h("a", { href: `#/partenaire/${g.partenaire_id}` }, nom(g)) : nom(g)), rendu_mobile: (g) => nom(g), tri: (g) => nom(g).toLowerCase(), mobile: "titre" },
+            { cle: "nb", titre: tr("Réservations"), num: true, tri: (g) => g.nb, rendu: (g) => [String(g.nb), g.sansNet ? h("span", { class: "tag" }, tr("{sansNet} sans net", { sansNet: g.sansNet })) : null], rendu_mobile: (g) => tr("{reservations} · net {prevu}, payé {paye}", { reservations: pluriel(g.nb, N_("réservation"), N_("réservations")), prevu: prix(g.net_prevu), paye: prix(g.net_paye) }) + (g.sansNet ? tr(", {n} sans net", { n: g.sansNet }) : ""), mobile: "sous" },
+            { cle: "vente", titre: tr("Vendu"), num: true, rendu: (g) => prix(g.vente), mobile: false },
+            { cle: "net_prevu", titre: tr("Net prévu"), num: true, rendu: (g) => prix(g.net_prevu), mobile: false },
+            { cle: "net_paye", titre: tr("Payé"), num: true, rendu: (g) => prix(g.net_paye), mobile: false },
+            { cle: "reste", titre: tr("Reste"), num: true, tri: (g) => g.reste, rendu: (g) => h("strong", null, prix(g.reste)), rendu_mobile: (g) => h("span", { class: "droite-pile" }, h("strong", null, prix(g.reste)), h("span", null, tr("reste à payer"))), mobile: "droite" },
+            { cle: "marge", titre: tr("Marge"), num: true, rendu: (g) => margeNoeud(g.venteAvecNet, g.net_prevu), mobile: "pied" },
+          ],
+          actions: (g) =>
             h(
-              "div",
-              { class: "carte-lien statique" },
-              h("span", { class: "carte-titre" }, nomPartenaire(g.partenaire_id) || tr("Sans partenaire")),
-              h("span", { class: "carte-droite" }, h("strong", null, prix(g.reste)), h("span", null, tr("reste à payer"))),
-              h("span", { class: "carte-sous" }, tr("{mois} · {reservations} · net {prevu}, payé {paye}", { mois: nomMoisCourt(g.mois), reservations: pluriel(g.nb, N_("réservation"), N_("réservations")), prevu: prix(g.net_prevu), paye: prix(g.net_paye) }) + (g.sansNet ? tr(", {n} sans net", { n: g.sansNet }) : "")),
-              h("span", { class: "carte-pied" }, margeNoeud(g.venteAvecNet, g.net_prevu), h("span", { class: "carte-actions" }, h("a", { class: "bouton secondaire petit", href: lien(g) }, tr("Voir")), ecrit && g.reste > 0 ? h("button", { class: "principal petit", type: "button", onclick: () => payer(g) }, tr("Marquer payé")) : null))
-            )
-          ),
-          h(
-            "table",
-            { class: "tableau seulement-bureau" },
-            h("thead", null, h("tr", null, [tr("Mois"), tr("Partenaire"), tr("Réservations"), tr("Vendu"), tr("Net prévu"), tr("Payé"), tr("Reste"), tr("Marge"), ""].map((t, i) => h("th", { scope: "col", class: i >= 2 && i <= 7 ? "num" : null }, t)))),
-            h(
-              "tbody",
-              null,
-              lignes.map((g) =>
-                h(
-                  "tr",
-                  null,
-                  h("td", null, nomMoisCourt(g.mois)),
-                  h("td", null, g.partenaire_id ? h("a", { href: `#/partenaire/${g.partenaire_id}` }, nomPartenaire(g.partenaire_id)) : tr("Sans partenaire")),
-                  h("td", { class: "num" }, g.nb, g.sansNet ? h("span", { class: "tag" }, tr("{sansNet} sans net", { sansNet: g.sansNet })) : null),
-                  h("td", { class: "num" }, prix(g.vente)),
-                  h("td", { class: "num" }, prix(g.net_prevu)),
-                  h("td", { class: "num" }, prix(g.net_paye)),
-                  h("td", { class: "num" }, h("strong", null, prix(g.reste))),
-                  h("td", { class: "num" }, margeNoeud(g.venteAvecNet, g.net_prevu)),
-                  h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: lien(g) }, tr("Voir")), ecrit && g.reste > 0 ? h("button", { class: "principal petit", type: "button", onclick: () => payer(g) }, tr("Marquer payé")) : null)
-                )
-              )
-            )
-          ),
-        ],
+              "span",
+              { class: "carte-actions" },
+              h("a", { class: "bouton secondaire petit", href: lien(g) }, tr("Voir")),
+              ecrit && g.reste > 0 ? h("button", { class: "principal petit", type: "button", onclick: () => payer(g) }, tr("Marquer payé")) : null
+            ),
+          tri: { cle: "mois", decroissant: true },
+        }).noeud
   );
 }

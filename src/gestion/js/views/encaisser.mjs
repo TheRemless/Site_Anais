@@ -4,7 +4,7 @@ import { etat, peut, naviguer, nomPartenaire, nomClient, netReservation, enregis
 import { h, modal, confirmer, toast, num } from "../ui.mjs";
 import { aujourdhui, formatMontant, formatSommes, formatDate } from "../calc.mjs";
 import { commissionsARecevoir, repartirReception, nomMoisCourt } from "../operations-calc.mjs";
-import { vide, cartes } from "./commun.mjs";
+import { vide, listeAdaptative } from "./commun.mjs";
 import { voitNets, prix } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
@@ -108,41 +108,34 @@ export function vueEncaisser() {
       )
     );
 
-  const carteCommission = (g) =>
-    h(
-      "div",
-      { class: "carte-lien statique" },
-      h("span", { class: "carte-titre" }, nomPartenaire(g.partenaire_id) || tr("Sans partenaire")),
-      h("span", { class: "carte-droite" }, g.nbARecevoir ? [h("strong", null, prix(g.reste)), h("span", null, tr("à recevoir"))] : [h("strong", null, prix(g.commission_recue)), h("span", null, g.ecart ? tr("reçu, écart {ecart}", { ecart: signe(g.ecart) }) : tr("reçu"))]),
-      h("span", { class: "carte-sous" }, `${nomMoisCourt(g.mois)} · ${tr("services payés sur place {vente}", { vente: prix(g.vente) })}${g.sansCommission ? `, ${tr("{n} sans commission", { n: g.sansCommission })}` : ""}`),
-      detailServices(g),
-      h("span", { class: "carte-pied" }, actionsGroupe(g))
-    );
+  const nom = (g) => nomPartenaire(g.partenaire_id) || tr("Sans partenaire");
+  // Deux lignes pour le montant d'une carte : la valeur, puis ce qu'elle représente.
+  const pile = (valeur, legende) => h("span", { class: "droite-pile" }, h("strong", null, valeur), h("span", null, legende));
+  const colonnesCommissions = (recues) => [
+    { cle: "mois", titre: tr("Mois"), rendu: (g) => nomMoisCourt(g.mois), tri: (g) => g.mois, mobile: "sous" },
+    { cle: "partenaire", titre: tr("Partenaire"), rendu: (g) => (g.partenaire_id ? h("a", { href: `#/partenaire/${g.partenaire_id}` }, nom(g)) : nom(g)), rendu_mobile: (g) => nom(g), tri: (g) => nom(g).toLowerCase(), mobile: "titre" },
+    { cle: "nb", titre: tr("Services"), num: true, tri: (g) => g.nb, rendu: (g) => [String(g.nb), g.sansCommission ? h("span", { class: "tag" }, tr("{n} sans commission", { n: g.sansCommission })) : null], rendu_mobile: (g) => `${tr("services payés sur place {vente}", { vente: prix(g.vente) })}${g.sansCommission ? `, ${tr("{n} sans commission", { n: g.sansCommission })}` : ""}`, mobile: "sous" },
+    { cle: "prevue", titre: tr("Prévue"), num: true, rendu: (g) => prix(g.commission_prevue), mobile: false },
+    { cle: "recue", titre: tr("Reçue"), num: true, rendu: (g) => [prix(g.commission_recue), g.ecart ? h("span", { class: "tag" }, tr("écart {ecart}", { ecart: signe(g.ecart) })) : null], mobile: false },
+    { cle: "reste", titre: tr("Reste"), num: true, tri: (g) => g.reste, rendu: (g) => h("strong", null, prix(g.reste)), rendu_mobile: (g) => (recues ? pile(prix(g.commission_recue), g.ecart ? tr("reçu, écart {ecart}", { ecart: signe(g.ecart) }) : tr("reçu")) : pile(prix(g.reste), tr("à recevoir"))), mobile: "droite" },
+    { cle: "detail", titre: tr("Services"), tableau: false, rendu: () => null, rendu_mobile: (g) => detailServices(g), mobile: "pied" },
+  ];
+  const listeCommissions = (items, recues) => listeAdaptative({ items, colonnes: colonnesCommissions(recues), actions: actionsGroupe, tri: { cle: "mois", decroissant: true } }).noeud;
 
-  const tableCommissions = (liste) =>
-    h(
-      "table",
-      { class: "tableau seulement-bureau" },
-      h("thead", null, h("tr", null, [tr("Mois"), tr("Partenaire"), tr("Services"), tr("Payé sur place"), tr("Prévue"), tr("Reçue"), tr("Reste"), ""].map((t, i) => h("th", { scope: "col", class: i >= 2 && i <= 6 ? "num" : null }, t)))),
-      h(
-        "tbody",
-        null,
-        liste.map((g) =>
-          h(
-            "tr",
-            null,
-            h("td", null, nomMoisCourt(g.mois)),
-            h("td", null, g.partenaire_id ? h("a", { href: `#/partenaire/${g.partenaire_id}` }, nomPartenaire(g.partenaire_id)) : tr("Sans partenaire")),
-            h("td", { class: "num" }, g.nb, g.sansCommission ? h("span", { class: "tag" }, tr("{n} sans commission", { n: g.sansCommission })) : null),
-            h("td", { class: "num" }, prix(g.vente)),
-            h("td", { class: "num" }, prix(g.commission_prevue)),
-            h("td", { class: "num" }, prix(g.commission_recue), g.ecart ? h("span", { class: "tag" }, tr("écart {ecart}", { ecart: signe(g.ecart) })) : null),
-            h("td", { class: "num" }, h("strong", null, prix(g.reste))),
-            h("td", { class: "action-cellule" }, actionsGroupe(g))
-          )
-        )
-      )
-    );
+  const listeClients = () =>
+    listeAdaptative({
+      items: dus,
+      colonnes: [
+        { cle: "client", titre: tr("Client"), rendu: (r) => nomClient(r.client), tri: (r) => nomClient(r.client).toLowerCase(), mobile: "titre" },
+        { cle: "ref", titre: tr("Référence"), rendu: (r) => r.dossier.ref, tri: (r) => r.dossier.ref, mobile: "sous" },
+        { cle: "depart", titre: tr("Départ"), rendu: (r) => (r.dossier.date_depart ? formatDate(r.dossier.date_depart) : "—"), rendu_mobile: (r) => (r.dossier.date_depart ? tr("départ le {date}", { date: formatDate(r.dossier.date_depart) }) : null), tri: (r) => r.dossier.date_depart || "9999", mobile: "sous" },
+        { cle: "total", titre: tr("Total"), num: true, rendu: (r) => formatMontant(r.total, r.devise), mobile: false },
+        { cle: "recu", titre: tr("Reçu"), num: true, rendu: (r) => formatMontant(r.recu, r.devise), mobile: false },
+        { cle: "reste", titre: tr("Reste"), num: true, tri: (r) => r.reste, rendu: (r) => h("strong", null, formatMontant(r.reste, r.devise)), rendu_mobile: (r) => pile(formatMontant(r.reste, r.devise), tr("à régler")), mobile: "droite" },
+      ],
+      lien: (r) => `#/dossier/${r.dossier.id}`,
+      tri: { cle: "depart" },
+    }).noeud;
 
   const chiffre = (libelle, valeur, detail) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, libelle), h("p", { class: "chiffre-valeur" }, valeur), h("p", { class: "chiffre-detail" }, detail || " "));
   const rienADire = !dus.length && !groupes.length;
@@ -158,31 +151,10 @@ export function vueEncaisser() {
       voitCommissions ? chiffre(tr("Commissions"), prix(totalCom), pluriel(aRecevoir.length, N_("partenaire à rapprocher"), N_("partenaires à rapprocher"))) : null
     ),
     rienADire ? vide(tr("Rien à encaisser"), tr("Les clients ont tout payé et aucune commission n'est en attente.")) : null,
-    dus.length
-      ? h(
-          "section",
-          null,
-          h("h2", null, tr("Les clients doivent")),
-          cartes(dus, (r) =>
-            h(
-              "a",
-              { class: "carte-lien", href: `#/dossier/${r.dossier.id}` },
-              h("span", { class: "carte-titre" }, nomClient(r.client)),
-              h("span", { class: "carte-droite" }, h("strong", null, formatMontant(r.reste, r.devise)), h("span", null, tr("à régler"))),
-              h("span", { class: "carte-sous" }, [r.dossier.ref, r.dossier.date_depart ? tr("départ le {date}", { date: formatDate(r.dossier.date_depart) }) : ""].filter(Boolean).join(" · "))
-            )
-          ),
-          h(
-            "table",
-            { class: "tableau seulement-bureau" },
-            h("thead", null, h("tr", null, [tr("Client"), tr("Référence"), tr("Départ"), tr("Total"), tr("Reçu"), tr("Reste")].map((t, i) => h("th", { scope: "col", class: i >= 3 ? "num" : null }, t)))),
-            h("tbody", null, dus.map((r) => h("tr", null, h("td", null, h("a", { href: `#/dossier/${r.dossier.id}` }, nomClient(r.client))), h("td", null, r.dossier.ref), h("td", null, r.dossier.date_depart ? formatDate(r.dossier.date_depart) : "—"), h("td", { class: "num" }, formatMontant(r.total, r.devise)), h("td", { class: "num" }, formatMontant(r.recu, r.devise)), h("td", { class: "num" }, h("strong", null, formatMontant(r.reste, r.devise))))))
-          )
-        )
-      : null,
+    dus.length ? h("section", null, h("h2", null, tr("Les clients doivent")), listeClients()) : null,
     aRecevoir.length
-      ? h("section", { class: "commissions-recevoir" }, h("h2", null, tr("Commissions des prestataires")), h("p", { class: "aide" }, tr("Services payés sur place : le prestataire reverse une commission après la prestation. Un virement reçu se saisit une fois pour le partenaire et le mois.")), cartes(aRecevoir, carteCommission), tableCommissions(aRecevoir))
+      ? h("section", { class: "commissions-recevoir" }, h("h2", null, tr("Commissions des prestataires")), h("p", { class: "aide" }, tr("Services payés sur place : le prestataire reverse une commission après la prestation. Un virement reçu se saisit une fois pour le partenaire et le mois.")), listeCommissions(aRecevoir, false))
       : null,
-    recues.length ? h("details", { class: "commissions-recues" }, h("summary", null, tr("Déjà reçues ({n})", { n: recues.length })), cartes(recues, carteCommission), tableCommissions(recues)) : null
+    recues.length ? h("details", { class: "commissions-recues" }, h("summary", null, tr("Déjà reçues ({n})", { n: recues.length })), listeCommissions(recues, true)) : null
   );
 }
