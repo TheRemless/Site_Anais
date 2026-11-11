@@ -399,7 +399,9 @@ function ficheDossierVue(id) {
     e.preventDefault();
     const cible = document.getElementById(id);
     if (!cible) return;
-    if (cible.tagName === "DETAILS") cible.open = true;
+    // Le champ visé peut se trouver dans une section que la personne a repliée : on ouvre la section avant d'y aller.
+    const section = cible.tagName === "DETAILS" ? cible : cible.closest("details");
+    if (section) section.open = true;
     cible.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     if (apres) apres();
   };
