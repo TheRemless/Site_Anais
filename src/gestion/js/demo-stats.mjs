@@ -53,6 +53,11 @@ export function enrichirDemoStats(d, { ajd, ajouterJours, uid, contenu, nouvelle
   };
   const pKayak = prest(kayak, "activite", "Kayak mangroves, demi-journée", 900, "pp");
   const pPlongee = prest(plongee, "activite", "Baptême de plongée", 2800, "pp");
+  // Tarif « prix de base pour 1 ou 2 personnes, puis un supplément par personne en plus » (fictif) : base au groupe, supplément à la personne.
+  const radeaux = partenaire("Radeaux démo", "Excursions", "Radeaux en bois, programmes privés");
+  const pRadeauxBase = prest(radeaux, "excursion", "Programme B : Pêche privée démo, Base 1-2 pers", 3500, "grp");
+  const pRadeauxSup = prest(radeaux, "excursion", "Programme B : Pêche privée démo, Personne supplémentaire", 1500, "sup");
+  pRadeauxBase.groupe = pRadeauxSup.groupe = "Radeaux privés démo";
 
   // Catalogue de services : [prestation, prix unitaire, net unitaire, unité, taux de commission si payé sur place, durée avant le service]
   const byLib = (l) => d.prestations.find((p) => p.libelle.startsWith(l));

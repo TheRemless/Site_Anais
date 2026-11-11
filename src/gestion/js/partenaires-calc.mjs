@@ -25,13 +25,35 @@ export const UNITES = {
   day: ["par jour", "per day"],
   ses: ["par session", "per session"],
   grp: ["par groupe", "per group"],
+  sup: ["par personne supplémentaire", "per extra person"],
   "": ["", ""],
 };
+// Personnes au-delà des deux premières, pour un tarif « prix de base pour 1 ou 2 personnes, puis un supplément par personne en plus ». Les bébés ne comptent pas.
+export const PERSONNES_DE_BASE = 2;
+export const personnesSupplementaires = ({ adultes = 0, enfants = 0 } = {}) => Math.max(0, (Number(adultes) || 0) + (Number(enfants) || 0) - PERSONNES_DE_BASE);
+// Quantité proposée pour un tarif selon son unité : par personne, par adulte, par enfant, par personne supplémentaire (0 possible), sinon une seule.
+export const quantiteParDefaut = (unite, p = {}) => {
+  const a = Number(p.adultes) || 0;
+  const e = Number(p.enfants) || 0;
+  if (unite === "sup") return personnesSupplementaires(p);
+  return (unite === "pp" ? a + e : unite === "ad" ? a : unite === "ch" ? e : 1) || 1;
+};
+// « Programme B : Private Fishing & Seafood, Base 1-2 pers » → « programme b » : le nom d'un programme est ce qui précède les deux-points. Les libellés d'un même
+// programme n'ont pas toujours la même suite (la base dit « Fresh Seafood Lunch (4 heures) », le supplément seulement « Seafood »).
+export const prefixeProgramme = (libelle) => {
+  const t = String(libelle || "");
+  const i = t.indexOf(":");
+  return i > 0 && i < 40 ? sansAccents(t.slice(0, i)).trim() : "";
+};
+// Une ligne de supplément (« par personne supplémentaire ») se reconnaît à son drapeau `supplement`, ou à son unité écrite dans l'intro (l'intro est vidée quand la ligne
+// entre dans une facture : le drapeau seul survit).
+export const estLigneSupplement = (l) => !!l && (l.supplement === true || /suppl[ée]mentaire|extra person/i.test(l.intro || ""));
 export const libelleUnite = (code, en = langueActive() === "en") => (UNITES[code] || UNITES[""])[en ? 1 : 0];
 
 // Devine l'unité d'après un texte de brochure (« Par personne », « Par bateau », « 4 à 6 personnes »).
 export function uniteDepuisTexte(texte) {
   const t = sansAccents(texte);
+  if (/supplementaire|extra person|additional person/.test(t)) return "sup";
   if (/bateau|boat|privatif/.test(t)) return "boat";
   if (/vehicule|voiture|van|car\b/.test(t)) return "veh";
   if (/jour|day/.test(t)) return "day";
@@ -223,7 +245,7 @@ export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1,
   const base = { id: uid(), intro: "", puces: [], unite: null, qte: null, montant: null, pct: null, prestation_id: x.id, partenaire_id: x.partenaire_id || null, date_service: date || null };
   if (x.sur_place) return { ...base, kind: "texte", libelle: noteSurPlace(x, langue, devise), sur_place: true };
   // En anglais : le libellé anglais de la prestation, sinon le libellé nettoyé et traduit pour le client.
-  return { ...base, kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: Number(qte) || 1, net: net && net.net !== null && net.net !== undefined ? Number(net.net) : null };
+  return { ...base, ...(x.unite === "sup" ? { supplement: true } : {}), kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: x.unite === "sup" ? Math.max(0, Number(qte) || 0) : Number(qte) || 1, net: net && net.net !== null && net.net !== undefined ? Number(net.net) : null };
 }
 
 // Prestation hors base : une ligne saisie à la main qui a pourtant sa réservation (donc son voucher), repérée par `libre`.

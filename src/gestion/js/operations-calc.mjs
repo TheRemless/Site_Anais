@@ -2,7 +2,7 @@
 // Aucune dépendance au navigateur pour pouvoir la tester avec node --test.
 
 import { langueActive, N_ } from "./i18n.mjs";
-import { chiffres } from "./partenaires-calc.mjs";
+import { chiffres, estLigneSupplement, prefixeProgramme } from "./partenaires-calc.mjs";
 import { SUR_PLACE, CHEZ_NOUS, modeReglement } from "./calc.mjs";
 
 export { SUR_PLACE, CHEZ_NOUS, modeReglement };
@@ -17,13 +17,19 @@ const brut = (l) => (l.unite !== null && l.unite !== undefined && l.unite !== ""
 // Les lignes adulte et enfant d'un même bateau ou d'une même excursion (même partenaire, même date, même nom
 // sans le suffixe enfant) donnent une seule réservation, avec les adultes et les enfants réunis.
 const estLigneEnfant = (l) => /enfant|child/i.test(l.intro || "") || /,\s*(child|enfant)\b/i.test(l.titre || l.libelle || "");
-const nomSansEnfant = (l) => String(l.titre || l.libelle || "").replace(/,\s*(child|enfant)\b.*$/i, "").trim();
+// Le nom du service sans ses variantes : « , enfant », « , Personne supplémentaire », « , Base 1-2 pers » : le prix de base, le supplément et les enfants font une seule réservation.
+const nomSansEnfant = (l) => String(l.titre || l.libelle || "").replace(/,\s*(?:child|enfant|personne suppl[ée]mentaire|extra person|base)\b.*$/i, "").trim();
 export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelId, regleDe = null } = {}) {
   const deja = new Set(existantes.flatMap((r) => [r.ligne_id, ...((r.details && r.details.lignes_ids) || [])]));
   const groupes = new Map();
-  for (const l of (doc.contenu && doc.contenu.lignes) || []) {
+  const lignesDoc = (doc.contenu && doc.contenu.lignes) || [];
+  // Un programme qui a une ligne de supplément se regroupe sous le nom du programme (« Programme B ») : base, supplément et enfants font une réservation.
+  const base = (l) => `${l.trajet_id || ""}|${l.partenaire_id || ""}|${l.date_service || ""}`;
+  const programmes = new Set(lignesDoc.filter((x) => estLigneSupplement(x) && prefixeProgramme(nomSansEnfant(x))).map((x) => `${base(x)}|${prefixeProgramme(nomSansEnfant(x))}`));
+  for (const l of lignesDoc) {
     if (l.kind === "texte" || l.kind === "remise" || !(l.prestation_id || l.trajet_id || l.libre) || deja.has(l.id)) continue;
-    const cle = `${l.trajet_id || ""}|${l.partenaire_id || ""}|${l.date_service || ""}|${sansAccentsMin(nomSansEnfant(l))}`;
+    const prog = prefixeProgramme(nomSansEnfant(l));
+    const cle = `${base(l)}|${prog && programmes.has(`${base(l)}|${prog}`) ? prog : sansAccentsMin(nomSansEnfant(l))}`;
     const qte = l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1;
     const enfant = estLigneEnfant(l);
     const g = groupes.get(cle) || { lignes: [], adultes: 0, enfants: 0, vente: 0, net: null, premiere: null };
@@ -31,11 +37,14 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     g.lignes.push(l);
     if (enfant) g.enfants += qte;
     else g.adultes += qte;
+    if (estLigneSupplement(l)) g.supplement = true;
     g.vente += brut(l) || 0;
     if (l.net !== null && l.net !== undefined) g.net = (g.net || 0) + Math.round(Number(l.net) * qte * 100) / 100;
     groupes.set(cle, g);
   }
   return [...groupes.values()].map((g) => {
+    // Une base pour 1 ou 2 personnes plus des suppléments : la base compte pour deux personnes (elle est comptée une fois par sa quantité).
+    if (g.supplement) g.adultes += 1;
     const l = g.premiere;
     return {
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
@@ -512,7 +521,8 @@ export function attenduDepuisFacture(r, doc) {
   const qte = (l) => (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
   return {
     date_service: premiere.date_service || null,
-    personnes: { adultes: utiles.filter((l) => !estLigneEnfant(l)).reduce((s, l) => s + qte(l), 0), enfants: utiles.filter(estLigneEnfant).reduce((s, l) => s + qte(l), 0) },
+    // Base pour 1 ou 2 personnes + suppléments : la base compte pour deux personnes, comme à la création de la réservation.
+    personnes: { adultes: utiles.filter((l) => !estLigneEnfant(l)).reduce((s, l) => s + qte(l), 0) + (utiles.some(estLigneSupplement) ? 1 : 0), enfants: utiles.filter(estLigneEnfant).reduce((s, l) => s + qte(l), 0) },
     montant_vente: utiles.some((l) => brut(l) !== null) ? arr(utiles.reduce((s, l) => s + (brut(l) || 0), 0)) : null,
     paye_sur_place: utiles.some((l) => !!l.paye_sur_place),
   };
@@ -573,6 +583,18 @@ export function contenuAvecReservation(contenu, r, avant, apres) {
     for (const l of lignes) {
       if (l.kind === "texte" && l.sur_place && (l.date_service || null) === dateAvant && cibles.some((x) => (x.prestation_id || null) === (l.prestation_id || null) && (x.trajet_id || null) === (l.trajet_id || null))) modif(l, { date_service: dateApres });
     }
+  }
+  // Base pour 1 ou 2 personnes + suppléments : le nombre total de personnes règle la quantité du supplément (au-delà de deux), la base ne bouge pas.
+  const supplement = cibles.find(estLigneSupplement);
+  if (supplement) {
+    const total = (p) => nb(p && p.adultes) + nb(p && p.enfants);
+    const avantTotal = total(avant.personnes);
+    const apresTotal = total(apres.personnes);
+    if (avantTotal !== apresTotal) {
+      if (qte(supplement) === Math.max(0, avantTotal - 2)) modif(supplement, { qte: Math.max(0, apresTotal - 2) });
+      else reste.push({ cle: "adultes", reservation: nb(apres.personnes && apres.personnes.adultes), facture: qte(supplement) + 2 });
+    }
+    return miseAJour.size ? { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? { ...l, ...miseAJour.get(l) } : l)) }, reste } : { contenu: null, reste };
   }
   // Personnes : une ligne adulte et une ligne enfant au plus.
   const parGroupe = [["adultes", cibles.filter((l) => !estLigneEnfant(l))], ["enfants", cibles.filter(estLigneEnfant)]];
