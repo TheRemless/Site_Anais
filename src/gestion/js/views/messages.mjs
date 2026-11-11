@@ -143,13 +143,17 @@ export function vueMessages() {
     }));
 
   function dessiner() {
+    // Conteneur neuf à chaque fois : les écouteurs posés par plierSections partent avec lui au lieu de s'empiler sur la même zone.
+    const frais = h("div");
     const contenu = sections().filter(Boolean);
-    zone.replaceChildren(...contenu, ...(contenu.length ? [] : [h("p", { class: "vide-court" }, tr("Aucun message ne correspond."))]));
+    frais.append(...contenu, ...(contenu.length || !tous.length ? [] : [h("p", { class: "vide-court" }, tr("Aucun message ne correspond."))]));
     // Pendant une recherche tout s'ouvre : un résultat caché derrière un titre replié ne sert à rien.
     const cherche = filtre.recherche.trim();
-    plierSections(zone, { cle: cherche ? `messages|${cherche}` : "messages", ouverts: cherche ? new Set([...zone.querySelectorAll(":scope > section > h2")].map((t) => t.textContent)) : new Set() });
+    plierSections(frais, { cle: cherche ? `messages|${cherche}` : "messages", ouverts: cherche ? new Set([...frais.querySelectorAll(":scope > section > h2")].map((t) => t.textContent)) : new Set() });
+    zone.replaceChildren(frais);
   }
-  const barre = barreFiltres({ recherche: { placeholder: tr("Titre, usage ou texte"), libelle: tr("Chercher un message") }, puces: { libelle: tr("Destinataire"), valeur: "tous", options: [{ valeur: "tous", libelle: tr("Tous") }, ...DESTINATAIRES.map(([valeur, libelle]) => ({ valeur, libelle: tr(libelle) }))] }, onchange: (v) => { filtre.recherche = v.recherche; filtre.pour = v.puces; dessiner(); } });
+  let minuteur = null;
+  const barre = barreFiltres({ recherche: { placeholder: tr("Titre, usage ou texte"), libelle: tr("Chercher un message") }, puces: { libelle: tr("Destinataire"), valeur: "tous", options: [{ valeur: "tous", libelle: tr("Tous") }, ...DESTINATAIRES.map(([valeur, libelle]) => ({ valeur, libelle: tr(libelle) }))] }, onchange: (v) => { filtre.recherche = v.recherche; filtre.pour = v.puces; clearTimeout(minuteur); minuteur = setTimeout(dessiner, 200); } });
   dessiner();
   return h(
     "div",
