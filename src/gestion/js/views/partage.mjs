@@ -21,8 +21,8 @@ export async function copierTexte(texte) {
 }
 
 // Zone d'état d'un écran d'envoi : ce qui s'est passé, l'erreur exacte du navigateur, le détail technique à lire sur un téléphone.
-// `fichiers()` : les fichiers prêts (vide tant qu'ils se préparent) ; `texte()` : le message à copier.
-export function zoneEnvoi({ fichiers, texte }) {
+// `fichiers()` : les fichiers prêts (vide tant qu'ils se préparent).
+export function zoneEnvoi({ fichiers }) {
   const message = h("div", { class: "partage-etat", role: "alert", hidden: true });
   const technique = h("p", { class: "partage-technique" });
   const journal = h("p", { class: "partage-technique", hidden: true });

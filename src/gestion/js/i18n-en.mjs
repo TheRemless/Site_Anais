@@ -2048,4 +2048,7 @@ export const EN = {
   "Appuyez longuement sur l'image pour l'enregistrer dans Photos, puis joignez-la dans WhatsApp.": "Press and hold the image to save it to Photos, then attach it in WhatsApp.",
   "Ce navigateur ne peut pas joindre l'image à WhatsApp. Ouvrez Gestion dans Safari ou depuis l'icône de l'écran d'accueil pour la partager d'un tap.": "This browser cannot attach the image to WhatsApp. Open Gestion in Safari or from the home screen icon to share it in one tap.",
   "Les autres vouchers n'ont pas pu être préparés.": "The other vouchers could not be prepared.",
+  "prestataire": "provider",
+  "Copier le message : {nom}": "Copy the message: {nom}",
+  "Ouvrir WhatsApp ({nom}) avec le message seul, sans l'image": "Open WhatsApp ({nom}) with the message only, without the image",
 };

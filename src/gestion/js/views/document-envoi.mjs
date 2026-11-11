@@ -68,7 +68,7 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
   const aide = h("p", { class: "aide" });
   let fichier = null;
   let adresse = null;
-  const zone = zoneEnvoi({ fichiers: () => (fichier ? [fichier] : []), texte: () => message });
+  const zone = zoneEnvoi({ fichiers: () => (fichier ? [fichier] : []) });
 
   // Un devis qui part sans date d'envoi n'est jamais relancé : on propose de la poser.
   async function apres() {
