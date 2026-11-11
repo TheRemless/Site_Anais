@@ -7,7 +7,7 @@ const AJD = "2026-11-11";
 test("jours depuis la demande : le jour même, deux jours, repli sur la dernière modification", () => {
   assert.equal(joursDepuisDemande({ statut: "demande", details: { demande_le: "2026-11-11" } }, AJD), 0);
   assert.equal(joursDepuisDemande({ statut: "demande", details: { demande_le: "2026-11-09" } }, AJD), 2);
-  assert.equal(joursDepuisDemande({ statut: "demande", details: {}, updated_at: "2026-11-08T03:00:00Z" }, AJD), 3);
+  assert.equal(joursDepuisDemande({ statut: "demande", details: {}, updated_at: "2026-11-08T12:00:00" }, AJD), 3);
   assert.equal(joursDepuisDemande({ statut: "a_demander", details: {} }, AJD), null);
 });
 

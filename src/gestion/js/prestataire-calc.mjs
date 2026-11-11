@@ -4,9 +4,16 @@
 const jourMs = 86400000;
 const enJours = (iso) => Math.floor(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / jourMs);
 
+// Jour local (AAAA-MM-JJ) d'un horodatage : l'heure de Bangkok ne doit pas tomber la veille parce que la base écrit en UTC.
+const jourLocal = (horodatage) => {
+  const t = new Date(horodatage || "");
+  if (Number.isNaN(t.getTime())) return "";
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+};
+
 // Jours écoulés depuis la demande (0 le jour même). Sans date de demande, la date de dernière modification de la réservation sert de repli.
 export function joursDepuisDemande(r, aujourdhui) {
-  const d = (r.details && r.details.demande_le) || (r.statut === "demande" ? String(r.updated_at || r.created_at || "").slice(0, 10) : "");
+  const d = (r.details && r.details.demande_le) || (r.statut === "demande" ? jourLocal(r.updated_at || r.created_at) : "");
   return d ? Math.max(0, enJours(aujourdhui) - enJours(d)) : null;
 }
 

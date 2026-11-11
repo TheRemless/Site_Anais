@@ -23,20 +23,24 @@ function messageAuPrestataire(r, cle, surEnvoi) {
   ouvrirMessage({ titre: p ? tr("Message à {nom}", { nom: p.nom }) : tr("Message au partenaire"), pour: "partenaire", cle, langue, telephone: telWhatsApp(p), surEnvoi, vars: variablesMessage({ reservation: r, client: clientDe(r) || {}, dossier: dossierDe(r) || {}, partenaire: p || {}, entreprise: { nom: emetteur.nom || entiteActive().nom, telephone: emetteur.telephone || "" }, langue }) });
 }
 
+// Renvoie true si c'est enregistré. La réservation relue ici est la version courante : une synchronisation peut avoir changé la carte affichée.
+const courante = (r) => etat.db.reservations.find((x) => x.id === r.id) || r;
 const enregistrer = async (r, champs, apres, message) => {
   try {
-    await modifier("reservations", r.id, champs);
+    await modifier("reservations", r.id, typeof champs === "function" ? champs(courante(r)) : champs);
     if (message) toast(message);
     apres();
+    return true;
   } catch (err) {
     toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+    return false;
   }
 };
 
-const demander = (r, apres) => messageAuPrestataire(r, "partenaire", () => enregistrer(r, { statut: "demande", details: detailsDemande(r, aujourdhui()) }, apres, tr("Marquée comme demandée.")));
-const relancer = (r, apres) => messageAuPrestataire(r, "relance", () => enregistrer(r, { details: detailsRelance(r, aujourdhui()) }, apres, tr("Relance notée.")));
+const demander = (r, apres) => messageAuPrestataire(r, "partenaire", () => enregistrer(r, (c) => ({ statut: "demande", details: detailsDemande(c, aujourdhui()) }), apres, tr("Marquée comme demandée.")));
+const relancer = (r, apres) => messageAuPrestataire(r, "relance", () => enregistrer(r, (c) => ({ details: detailsRelance(c, aujourdhui()) }), apres, tr("Relance notée.")));
 const confirmee = (r, apres) => enregistrer(r, { statut: "confirme" }, apres, tr("Confirmée par le prestataire."));
-const pasEnvoyee = (r, apres) => enregistrer(r, { statut: "a_demander", details: { ...(r.details || {}), demande_le: null, relance_le: null, relances: 0 } }, apres);
+const pasEnvoyee = (r, apres) => enregistrer(r, (c) => ({ statut: "a_demander", details: { ...(c.details || {}), demande_le: null, relance_le: null, relances: 0 } }), apres);
 
 // Autre réponse : le prestataire refuse, ou propose une autre heure.
 function autreReponse(r, apres) {
@@ -55,7 +59,7 @@ function autreReponse(r, apres) {
       } }, tr("Enregistrer l'heure et confirmer")),
       h("button", { class: "secondaire danger-texte", type: "button", onclick: () => {
         fermer();
-        enregistrer(r, { statut: "a_demander", details: detailsRefus(r, aujourdhui()) }, apres, tr("Refus noté : la réservation est à redemander."));
+        enregistrer(r, (c) => ({ statut: "a_demander", details: detailsRefus(c, aujourdhui()) }), apres, tr("Refus noté : la réservation est à redemander."));
       } }, tr("Il refuse"))
     ),
     { protege: false }
@@ -89,8 +93,8 @@ export function changerReservation(r, apres) {
         prevenir ? h("button", { class: "principal", type: "button", onclick: async () => {
           fermer();
           const nouveau = { ...r, ...champs() };
-          await enregistrer(r, { ...champs(), statut: "demande", details: detailsDemande(r, aujourdhui()) }, apres);
-          messageAuPrestataire(nouveau, "modification");
+          const fait = await enregistrer(r, (c) => ({ ...champs(), statut: "demande", details: detailsDemande(c, aujourdhui()) }), apres);
+          if (fait) messageAuPrestataire(nouveau, "modification");
         } }, tr("Enregistrer et prévenir le prestataire")) : null
       )
     ),
