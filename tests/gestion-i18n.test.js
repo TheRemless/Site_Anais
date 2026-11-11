@@ -87,11 +87,12 @@ test("une traduction ne laisse pas de mots français évidents", async () => {
 });
 
 test("tr : le français rend le texte tel quel, l'anglais sa traduction, avec les variables", async () => {
-  const { tr, forcerLangue, manquants } = await load();
+  const { tr, forcerLangue, manquants, pretLangue } = await load();
   forcerLangue("fr");
   assert.equal(tr("Nouveau dossier"), "Nouveau dossier");
   assert.equal(tr("{nom} (copie)", { nom: "Admin" }), "Admin (copie)");
   forcerLangue("en");
+  await pretLangue();
   assert.equal(tr("Nouveau dossier"), "New file");
   assert.equal(tr("{nom} (copie)", { nom: "Admin" }), "Admin (copy)");
   // un texte sans traduction reste lisible (français) et se retrouve dans manquants()
@@ -101,13 +102,14 @@ test("tr : le français rend le texte tel quel, l'anglais sa traduction, avec le
 });
 
 test("pluriel : zéro est singulier en français et pluriel en anglais", async () => {
-  const { pluriel, forcerLangue } = await load();
+  const { pluriel, forcerLangue, pretLangue } = await load();
   forcerLangue("fr");
   assert.equal(pluriel(0, "jour", "jours"), "0 jour");
   assert.equal(pluriel(1, "jour", "jours"), "1 jour");
   assert.equal(pluriel(2, "jour", "jours"), "2 jours");
   assert.equal(pluriel(3, "{n} dossier sélectionné", "{n} dossiers sélectionnés"), "3 dossiers sélectionnés");
   forcerLangue("en");
+  await pretLangue();
   assert.equal(pluriel(0, "jour", "jours"), "0 days");
   assert.equal(pluriel(1, "jour", "jours"), "1 day");
   assert.equal(pluriel(2, "jour", "jours"), "2 days");
@@ -117,7 +119,7 @@ test("pluriel : zéro est singulier en français et pluriel en anglais", async (
 });
 
 test("mois et dates dans la langue de l'interface, documents inchangés", async () => {
-  const { moisLong, moisCourt, dateComplete, forcerLangue } = await load();
+  const { moisLong, moisCourt, dateComplete, forcerLangue, pretLangue } = await load();
   const { nomMois, periodeTexte, libelleStatut } = await import("../src/gestion/js/calc.mjs");
   forcerLangue("fr");
   assert.equal(moisLong("2026-10-15"), "octobre");
@@ -126,6 +128,7 @@ test("mois et dates dans la langue de l'interface, documents inchangés", async 
   assert.equal(dateComplete("2026-10-29"), "29 octobre 2026");
   assert.equal(libelleStatut("solde"), "Soldé");
   forcerLangue("en");
+  await pretLangue();
   assert.equal(moisLong("2026-10-15"), "October");
   assert.equal(moisCourt("2026-01-01"), "Jan");
   assert.equal(nomMois("2026-03-02"), "March");
@@ -137,7 +140,7 @@ test("mois et dates dans la langue de l'interface, documents inchangés", async 
 });
 
 test("les statuts, les familles et les rôles de départ se traduisent à l'affichage sans changer leurs valeurs", async () => {
-  const { forcerLangue } = await load();
+  const { forcerLangue, pretLangue } = await load();
   const { STATUTS } = await import("../src/gestion/js/calc.mjs");
   const { FAMILLES, nomFamille, libelleUnite } = await import("../src/gestion/js/partenaires-calc.mjs");
   const { ROLES_SYSTEME } = await import("../src/gestion/js/defauts.mjs");
@@ -147,6 +150,7 @@ test("les statuts, les familles et les rôles de départ se traduisent à l'affi
   assert.equal(nomFamille("excursion"), "Excursions");
   assert.equal(libelleUnite("pp"), "par personne");
   forcerLangue("en");
+  await pretLangue();
   assert.equal(STATUTS.acompte, "Acompte reçu", "la valeur de base reste française (exports, base de données)");
   assert.equal(nomFamille("excursion"), "Excursions");
   assert.equal(nomFamille("transfert"), "Transfers");

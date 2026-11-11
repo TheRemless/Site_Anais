@@ -1,3 +1,8 @@
+/* Raleway auto-hébergée (OFL) : pas de service externe, pas de feuille de style qui bloque l'affichage. */
+@font-face { font-family: "Raleway"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("../assets/fonts/raleway-normal-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Raleway"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("../assets/fonts/raleway-normal-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Raleway"; font-style: italic; font-weight: 400; font-display: swap; src: url("../assets/fonts/raleway-italic-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
 :root {
   --fond: #f5f8f8;
   --surface: #ffffff;
@@ -45,7 +50,12 @@ a { color: var(--teal-700); text-underline-offset: 2px; }
 a:hover { color: var(--teal-600); }
 :focus-visible { outline: 3px solid var(--teal-600); outline-offset: 2px; border-radius: 3px; }
 img { max-width: 100%; }
-.chargement { padding: 40px 20px; color: var(--texte-2); }
+.chargement { min-height: 100dvh; }
+.chargement-barre { height: calc(56px + env(safe-area-inset-top)); background: var(--surface); border-bottom: 1px solid var(--bord); }
+.chargement-corps { padding: 20px 16px; max-width: 1040px; }
+.titre-attente { padding: 0; background: transparent; border: 0; }
+.titre-attente span { height: 28px !important; }
+@media (min-width: 900px) { .chargement-barre { display: none; } .chargement-corps { padding: 32px 40px 32px 292px; } }
 
 /* Coque : sur téléphone une barre en haut (entreprise, recherche) et quatre onglets en bas ;
    sur ordinateur une barre latérale par sections. Les deux existent dans la page, le CSS n'en montre qu'une. */
@@ -58,7 +68,7 @@ img { max-width: 100%; }
 .barre-haut .entite-choix select { min-height: 44px; padding-left: 0; border: 0; background: transparent; font-weight: 700; font-size: 1.02rem; }
 .barre-haut .bouton-icone { width: 44px; height: 44px; color: var(--texte); }
 .barre-onglets { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; background: rgba(255, 255, 255, 0.94); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-top: 1px solid var(--bord); padding-bottom: env(safe-area-inset-bottom); }
-.barre-onglets ul { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; padding: 0 4px; list-style: none; }
+.barre-onglets ul { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; padding: 0 4px; list-style: none; }
 .onglet { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-height: 64px; padding: 8px 2px; background: none; border: 0; border-radius: 0; font-size: 0.72rem; font-weight: 600; color: var(--texte-2); text-decoration: none; -webkit-tap-highlight-color: transparent; transition: color var(--duree); }
 .onglet-icone { position: relative; display: flex; align-items: center; justify-content: center; width: 60px; height: 32px; border-radius: 999px; transition: background-color var(--duree) var(--courbe); }
 .onglet:active .onglet-icone { background: var(--surface-2); }
@@ -794,3 +804,58 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 @media (max-width: 719px) {
   .commissions-recevoir .carte-actions .principal, .commissions-recues .carte-actions .principal { order: -1; flex: 1 1 100%; }
 }
+
+/* ==== Session C (mobile) : navigation et accueil ============================================================== */
+/* Bouton « + » : un geste pour créer, au-dessus de la barre d'onglets, jamais par-dessus une barre d'action ni le clavier. */
+.bouton-plus { display: none; position: fixed; z-index: 28; right: 16px; bottom: calc(var(--barre-basse) + 16px); width: 56px; height: 56px; min-height: 0; padding: 0; border-radius: 50%; background: var(--teal-600); color: #fff; box-shadow: 0 4px 14px rgba(8, 107, 107, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2); }
+.bouton-plus:active { background: var(--teal-700); transform: scale(0.96); }
+.coque.avec-plus .bouton-plus { display: inline-flex; }
+.coque.avec-plus .contenu { padding-bottom: calc(var(--barre-basse) + 96px); }
+html.a-barre-action .bouton-plus, html.clavier .bouton-plus, html.modal-ouverte .bouton-plus { display: none; }
+@media (min-width: 900px) { .bouton-plus, .coque.avec-plus .bouton-plus { display: none; } .coque.avec-plus .contenu { padding-bottom: 48px; } }
+.choix-nouveau { display: flex; align-items: center; justify-content: flex-start; gap: 14px; width: 100%; min-height: 64px; margin: 0 0 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--bord-champ); border-radius: 12px; text-align: left; font-weight: 400; color: var(--texte); }
+.choix-nouveau svg { flex: none; color: var(--teal-700); }
+.choix-nouveau span { display: flex; flex-direction: column; gap: 2px; font-size: 0.88rem; color: var(--texte-2); }
+.choix-nouveau strong { font-size: 1rem; color: var(--texte); }
+
+/* Services du jour : l'heure de pickup à gauche, le détail, puis appeler et écrire d'un geste */
+.services { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.service { display: grid; grid-template-columns: 4.2rem minmax(0, 1fr); gap: 0 12px; padding: 14px 16px 14px 12px; background: var(--surface); border: 1px solid var(--bord); border-left: 4px solid var(--teal-600); border-radius: 12px; box-shadow: var(--ombre); }
+.service-heure { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; font-variant-numeric: lining-nums tabular-nums; }
+.service-heure strong { font-size: 1.35rem; font-weight: 700; }
+.service-heure span { font-size: 0.78rem; color: var(--texte-2); }
+.service-corps { min-width: 0; }
+.service-titre { display: block; min-height: 24px; font-weight: 700; color: var(--texte); text-decoration: none; }
+.service-detail { margin: 2px 0 0; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
+.service-pied { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; }
+.service-pied .statut { flex: 1 0 100%; }
+.service-pied .bouton { flex: 1 1 0; min-height: 44px; padding: 0 8px; white-space: nowrap; }
+.section-jour h2 .tag { vertical-align: 2px; }
+
+/* Chiffres : sur téléphone des cartes à deux colonnes (quatre chiffres tiennent dans un écran) ; sur l'accueil une rangée qui défile. */
+@media (max-width: 699px) {
+  .chiffres { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; background: transparent; border: 0; border-radius: 0; }
+  .chiffres > .chiffre { padding: 12px 14px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; box-shadow: var(--ombre); }
+  .chiffres > .chiffre:last-child { border-bottom: 1px solid var(--bord); }
+  .chiffres .chiffre-valeur { font-size: 1.3rem; overflow-wrap: anywhere; }
+  .chiffres .chiffre-libelle, .chiffres .chiffre-detail { font-size: 0.82rem; }
+  .chiffres:has(> .chiffre:nth-child(3):last-child) > .chiffre:nth-child(3) { grid-column: 1 / -1; }
+  .chiffres.rail { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 78%); grid-template-columns: none; margin: 0 -16px 28px; padding: 0 16px 4px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding: 0 16px; scrollbar-width: none; }
+  .chiffres.rail::-webkit-scrollbar { display: none; }
+  .chiffres.rail > .chiffre { scroll-snap-align: start; }
+  .chiffres.rail .chiffre-valeur { font-size: 1.5rem; }
+}
+
+/* Feuille « Plus » : deux colonnes, la liste tient presque dans un écran */
+.feuille-menu .menu-section ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 8px; }
+.feuille-menu .lien-ecran { gap: 10px; min-height: 48px; padding: 4px 8px; line-height: 1.2; }
+.feuille-menu .lien-ecran span:not(.badge) { min-width: 0; overflow-wrap: anywhere; }
+
+/* Zones tactiles de 44 px pour les liens isolés de l'accueil et des listes */
+.chiffre-lien { display: inline-flex; align-items: center; min-height: 44px; padding: 0; }
+.chiffre-libelle:has(.chiffre-lien) { margin-top: -6px; }
+.taches .tache-nom { display: inline-block; padding: 12px 0; margin: -6px 8px -6px 0; }
+.plus a { display: inline-flex; align-items: center; min-height: 44px; }
+.retour { min-width: 44px; }
+.onglet { line-height: 1.2; }
+@media (min-width: 720px) { .service-pied .statut { flex: 1 1 auto; } .service-pied .bouton { flex: 0 0 auto; padding: 0 14px; } .services { max-width: 760px; } }

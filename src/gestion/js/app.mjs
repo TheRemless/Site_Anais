@@ -1,57 +1,40 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules } from "./etat.mjs";
-import { h, vider, toast, modal, icone } from "./ui.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules, modeExcursions } from "./etat.mjs";
+import { h, vider, toast, modal, icone, saisie, squelette } from "./ui.mjs";
 import { libelleStatut, formatMontant, aujourdhui } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
-import { listeDossiers, nouveauDossier } from "./views/dossiers.mjs";
-import { ficheDossier } from "./views/dossier.mjs";
-import { editeur } from "./views/editeur.mjs";
-import { listeClients, ficheClient } from "./views/clients.mjs";
-import { catalogue } from "./views/catalogue.mjs";
-import { vueReglages } from "./views/reglages.mjs";
-import { vueAdmin } from "./views/admin.mjs";
-import { vueJournal } from "./views/journal.mjs";
-import { vueAnalyses } from "./views/analyses.mjs";
-import { vueGroupe } from "./views/groupe.mjs";
-import { vueTaches, mesTaches } from "./views/taches.mjs";
-import { listePartenaires, fichePartenaire } from "./views/partenaires.mjs";
-import { vueTarifs } from "./views/tarifs.mjs";
-import { vueTrajets } from "./views/trajets.mjs";
-import { vueRegles } from "./views/regles.mjs";
-import { vueReservations } from "./views/reservations.mjs";
-import { vueMessages } from "./views/messages.mjs";
-import { vueDu } from "./views/du.mjs";
-import { vueEncaisser } from "./views/encaisser.mjs";
+import { mesTaches } from "./views/taches.mjs";
 import { agenda } from "./operations-calc.mjs";
-import { ouvrirRappels } from "./views/rappels.mjs";
 import { retirerALaDeconnexion } from "./rappels.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 
+// Chaque écran se charge à sa première visite : le premier affichage n'attend que l'accueil.
+const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
 const ROUTES = [
-  [/^#\/reservations(?:\?.*)?$/, "reservations", vueReservations],
-  [/^#\/messages$/, "messages", vueMessages],
-  [/^#\/du$/, "du", vueDu],
-  [/^#\/encaisser$/, "encaisser", vueEncaisser],
-  [/^#\/partenaires$/, "partenaires", listePartenaires],
-  [/^#\/partenaire\/([\w-]+)$/, "partenaires", fichePartenaire],
-  [/^#\/tarifs(?:\?.*)?$/, "tarifs", vueTarifs],
-  [/^#\/trajets(?:\?.*)?$/, "trajets", vueTrajets],
-  [/^#\/regles$/, "regles", vueRegles],
+  [/^#\/reservations(?:\?.*)?$/, "reservations", vers(() => import("./views/reservations.mjs"), "vueReservations")],
+  [/^#\/messages$/, "messages", vers(() => import("./views/messages.mjs"), "vueMessages")],
+  [/^#\/du$/, "du", vers(() => import("./views/du.mjs"), "vueDu")],
+  [/^#\/encaisser$/, "encaisser", vers(() => import("./views/encaisser.mjs"), "vueEncaisser")],
+  [/^#\/partenaires$/, "partenaires", vers(() => import("./views/partenaires.mjs"), "listePartenaires")],
+  [/^#\/partenaire\/([\w-]+)$/, "partenaires", vers(() => import("./views/partenaires.mjs"), "fichePartenaire")],
+  [/^#\/tarifs(?:\?.*)?$/, "tarifs", vers(() => import("./views/tarifs.mjs"), "vueTarifs")],
+  [/^#\/trajets(?:\?.*)?$/, "trajets", vers(() => import("./views/trajets.mjs"), "vueTrajets")],
+  [/^#\/regles$/, "regles", vers(() => import("./views/regles.mjs"), "vueRegles")],
   [/^#?\/?$/, "tableau", tableauDeBord],
-  [/^#\/dossiers(?:\?.*)?$/, "dossiers", listeDossiers],
-  [/^#\/dossiers\/nouveau(?:\?.*)?$/, "dossiers", nouveauDossier],
-  [/^#\/dossier\/([\w-]+)$/, "dossiers", ficheDossier],
-  [/^#\/doc\/([\w-]+)$/, "dossiers", editeur],
-  [/^#\/clients$/, "clients", listeClients],
-  [/^#\/client\/([\w-]+)$/, "clients", ficheClient],
-  [/^#\/catalogue$/, "catalogue", catalogue],
-  [/^#\/reglages$/, "reglages", vueReglages],
-  [/^#\/admin$/, "admin", vueAdmin],
-  [/^#\/journal$/, "journal", vueJournal],
-  [/^#\/analyses$/, "analyses", vueAnalyses],
-  [/^#\/groupe$/, "groupe", vueGroupe],
-  [/^#\/taches$/, "taches", vueTaches],
-  [/^#\/composants$/, "composants", async () => (await import("./views/composants.mjs")).vueComposants()],
+  [/^#\/dossiers(?:\?.*)?$/, "dossiers", vers(() => import("./views/dossiers.mjs"), "listeDossiers")],
+  [/^#\/dossiers\/nouveau(?:\?.*)?$/, "dossiers", vers(() => import("./views/dossiers.mjs"), "nouveauDossier")],
+  [/^#\/dossier\/([\w-]+)$/, "dossiers", vers(() => import("./views/dossier.mjs"), "ficheDossier")],
+  [/^#\/doc\/([\w-]+)$/, "dossiers", vers(() => import("./views/editeur.mjs"), "editeur")],
+  [/^#\/clients$/, "clients", vers(() => import("./views/clients.mjs"), "listeClients")],
+  [/^#\/client\/([\w-]+)$/, "clients", vers(() => import("./views/clients.mjs"), "ficheClient")],
+  [/^#\/catalogue$/, "catalogue", vers(() => import("./views/catalogue.mjs"), "catalogue")],
+  [/^#\/reglages$/, "reglages", vers(() => import("./views/reglages.mjs"), "vueReglages")],
+  [/^#\/admin$/, "admin", vers(() => import("./views/admin.mjs"), "vueAdmin")],
+  [/^#\/journal$/, "journal", vers(() => import("./views/journal.mjs"), "vueJournal")],
+  [/^#\/analyses$/, "analyses", vers(() => import("./views/analyses.mjs"), "vueAnalyses")],
+  [/^#\/groupe$/, "groupe", vers(() => import("./views/groupe.mjs"), "vueGroupe")],
+  [/^#\/taches$/, "taches", vers(() => import("./views/taches.mjs"), "vueTaches")],
+  [/^#\/composants$/, "composants", vers(() => import("./views/composants.mjs"), "vueComposants")],
 ];
 
 const racine = document.getElementById("app");
@@ -201,9 +184,8 @@ function ecrans() {
     },
   ].filter((s) => s.items.length);
 }
-// Les trois écrans qui ont leur onglet sur téléphone, le reste passe par « Plus ». Partenaires prend la place de
-// Clients dès que la personne a le droit de les voir.
-const ongletsMobiles = () => ["tableau", "dossiers", peut("partenaires.lire") && moduleActif("partenaires") ? "partenaires" : "clients"];
+// Les écrans qui ont leur onglet sur téléphone (cinq au plus, « Plus » compris) : ce qu'Anaïs ouvre chaque jour. Le reste passe par « Plus ».
+const ongletsMobiles = () => ["tableau", "dossiers", moduleActif("reservations") ? "reservations" : null, "clients"].filter(Boolean);
 const tousEcrans = () => ecrans().flatMap((s) => s.items);
 
 const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": tr("{badge} en retard", { badge: e.badge }) }, e.badge) : null);
@@ -224,7 +206,7 @@ function blocCompte() {
   return h("div", { class: "compte" }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
 }
 const outilsCompte = (apres) => [
-  etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirRappels()), "aria-label": tr("Rappels sur ce téléphone"), title: tr("Rappels sur ce téléphone") }, icone("cloche")) : null,
+  etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels()), "aria-label": tr("Rappels sur ce téléphone"), title: tr("Rappels sur ce téléphone") }, icone("cloche")) : null,
   h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirAide()), "aria-label": tr("Raccourcis clavier"), title: tr("Raccourcis clavier (?)") }, icone("clavier")),
   etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: deconnecter, "aria-label": tr("Se déconnecter"), title: tr("Se déconnecter") }, icone("deconnexion")) : null,
 ];
@@ -275,8 +257,30 @@ function ouvrirPlus() {
   fermer = modal(tr("Plus"), h("div", { class: "feuille-menu" }, sections(restants, apres), h("div", { class: "feuille-pied" }, selecteurLangue(apres), blocCompte(), h("div", { class: "menu-outils" }, outilsCompte(apres)))), { feuille: true });
 }
 
+// Bouton « + » flottant sur les écrans de liste : un geste pour créer. La création elle-même vit dans les écrans de saisie.
+const ECRANS_AVEC_PLUS = new Set(["tableau", "dossiers", "clients", "reservations"]);
+function boutonPlus() {
+  if (!peut("dossiers.ecrire")) return null;
+  return h("button", { class: "bouton-plus", type: "button", "aria-label": tr("Nouveau"), title: tr("Nouveau"), onclick: ouvrirNouveau }, icone("ajouter", 26));
+}
+function ouvrirNouveau() {
+  let fermer;
+  const va = (hash) => () => (fermer(), naviguer(hash));
+  const choix = (ic, titre, detail, onclick) => h("button", { type: "button", class: "choix-nouveau", onclick }, icone(ic, 22), h("span", null, h("strong", null, titre), h("span", null, detail)));
+  fermer = modal(
+    tr("Nouveau"),
+    h(
+      "div",
+      { class: "modal-corps" },
+      choix("dossiers", tr("Nouveau dossier"), tr("Un client, un voyage, un devis"), va("#/dossiers/nouveau")),
+      modeExcursions() ? choix("messages", tr("Coller une demande"), tr("Un message WhatsApp du client devient un dossier"), async () => (fermer(), (await import("./views/demande.mjs")).ouvrirDemande())) : null
+    ),
+    { protege: false }
+  );
+}
+
 function coque() {
-  return h("div", { class: "coque" }, menu(), h("div", { class: "contenu-coque" }, barreHaut(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, h("main", { id: "principal", tabindex: "-1" }))), barreOnglets());
+  return h("div", { class: "coque" }, menu(), h("div", { class: "contenu-coque" }, barreHaut(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, h("main", { id: "principal", tabindex: "-1" }))), barreOnglets(), boutonPlus());
 }
 
 // ---- Recherche globale ----------------------------------------------------------------------------------------
@@ -284,11 +288,36 @@ const sansAccents = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").to
 const resultatDossier = (r) => ({ groupe: tr("Dossiers"), icone: "dossiers", titre: nomClient(r.client), detail: sousTitreDossier(r.dossier), droite: libelleStatut(r.statut), href: `#/dossier/${r.dossier.id}` });
 const resultatEcran = (e) => ({ groupe: tr("Écrans"), icone: e.icone, titre: e.libelle, href: e.href });
 
-// Tous les mots saisis doivent apparaître. Sans saisie : les derniers dossiers et la liste des écrans.
+// Les cinq derniers résultats ouverts, gardés dans ce navigateur : au téléphone, rouvrir le dossier de la veille se fait sans taper.
+const CLE_RECENTS = "gestion-recherches-recentes";
+function lireRecents() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CLE_RECENTS) || "[]");
+    return Array.isArray(v) ? v.filter((r) => r && typeof r.href === "string" && typeof r.titre === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function noterRecent(r) {
+  if (!r.href.startsWith("#/dossier/") && !r.href.startsWith("#/client/") && !r.href.startsWith("#/partenaire/")) return;
+  const garde = { groupe: r.groupe, icone: r.icone, titre: r.titre, detail: r.detail || "", href: r.href };
+  try {
+    localStorage.setItem(CLE_RECENTS, JSON.stringify([garde, ...lireRecents().filter((x) => x.href !== r.href)].slice(0, 5)));
+  } catch {
+    // stockage refusé : pas de récents
+  }
+}
+// Tous les mots saisis doivent apparaître. Sans saisie : les récents, les derniers dossiers et la liste des écrans.
 function chercher(q) {
   const mots = sansAccents(q).split(/\s+/).filter(Boolean);
   const correspond = (texte) => mots.every((m) => texte.includes(m));
-  if (!mots.length) return [...resumes().sort((a, b) => b.dossier.created_at.localeCompare(a.dossier.created_at)).slice(0, 5).map(resultatDossier), ...tousEcrans().map(resultatEcran)];
+  if (!mots.length) {
+    const recents = lireRecents().map((r) => ({ ...r, groupe: tr("Récents") }));
+    const dejaVus = new Set(recents.map((r) => r.href));
+    const derniers = resumes().sort((a, b) => b.dossier.created_at.localeCompare(a.dossier.created_at)).slice(0, 5).map(resultatDossier).filter((r) => !dejaVus.has(r.href));
+    const action = peut("dossiers.ecrire") ? [{ groupe: tr("Actions"), icone: "ajouter", titre: tr("Nouveau dossier"), href: "#/dossiers/nouveau" }] : [];
+    return [...recents, ...action, ...derniers, ...tousEcrans().map(resultatEcran)];
+  }
   const out = [];
   if (peut("dossiers.ecrire") && mots.every((m) => sansAccents(tr("Nouveau dossier")).includes(m))) out.push({ groupe: tr("Actions"), icone: "ajouter", titre: tr("Nouveau dossier"), href: "#/dossiers/nouveau" });
   resumes()
@@ -323,7 +352,7 @@ function chercher(q) {
 function ouvrirRecherche() {
   if (document.querySelector(".palette-fond")) return;
   const precedent = document.activeElement;
-  const champ = h("input", { id: "palette-champ", type: "search", placeholder: tr("Client, référence, écran…"), autocomplete: "off", "aria-label": tr("Rechercher"), role: "combobox", "aria-expanded": "true", "aria-controls": "palette-liste", "aria-autocomplete": "list" });
+  const champ = saisie(h("input", { id: "palette-champ", type: "search", placeholder: tr("Client, référence, écran…"), "aria-label": tr("Rechercher"), role: "combobox", "aria-expanded": "true", "aria-controls": "palette-liste", "aria-autocomplete": "list" }), "recherche");
   const liste = h("ul", { id: "palette-liste", class: "palette-liste", role: "listbox" });
   let resultats = [];
   let actif = 0;
@@ -334,6 +363,7 @@ function ouvrirRecherche() {
   };
   const ouvrir = (r) => {
     if (!r) return;
+    noterRecent(r);
     fermer();
     naviguer(r.href);
   };
@@ -401,6 +431,31 @@ function ouvrirRecherche() {
   champ.focus();
 }
 
+// Défilement : un retour (bouton Retour, geste du bord) retrouve la page là où on l'avait laissée, un lien neuf commence en haut.
+// Chaque entrée de l'historique porte un numéro dans history.state : sans numéro c'est une navigation neuve, avec un numéro c'est un retour ou un avance.
+const positions = new Map();
+let compteurHistorique = 0;
+const rs = history.replaceState.bind(history);
+// Les écrans de liste réécrivent l'adresse avec replaceState(null, …) pour garder leurs filtres : on conserve le numéro d'entrée.
+history.replaceState = (etatNeuf, titre, url) => rs(etatNeuf ?? history.state, titre, url);
+function restaurerDefilement(hash) {
+  const changeDePage = hash !== derniereVue;
+  const numero = history.state && history.state.gestionEntree;
+  if (derniereVue !== null && changeDePage) positions.set(derniereVue, defilementAvant);
+  if (!changeDePage) return;
+  if (numero) {
+    const y = positions.get(hash) ?? 0;
+    // Le contenu des écrans est déjà là : un seul passage au prochain affichage suffit, deux pour les mises en page tardives.
+    requestAnimationFrame(() => (window.scrollTo(0, y), requestAnimationFrame(() => window.scrollTo(0, y))));
+  } else {
+    rs({ ...(history.state || {}), gestionEntree: ++compteurHistorique }, "");
+    window.scrollTo(0, 0);
+  }
+}
+// La position se lit au moment où l'adresse change, avant que l'écran suivant ne remplace le contenu (ce qui ferait glisser la page).
+let defilementAvant = 0;
+window.addEventListener("hashchange", () => (defilementAvant = window.scrollY));
+
 let rendu = 0;
 async function afficher() {
   if (!etat.session) {
@@ -441,6 +496,8 @@ async function afficher() {
   document.documentElement.classList.remove("a-barre-action");
   const moi = ++rendu;
   let noeud;
+  // Une première visite d'un écran télécharge son code : au-delà de 150 ms, un squelette tient la place plutôt qu'un écran figé.
+  const attente = hash !== derniereVue ? setTimeout(() => moi === rendu && principal.replaceChildren(squelette(4)), 150) : null;
   try {
     noeud = await vue(...hash.match(re).slice(1));
     // Une navigation plus récente a pris le relais pendant le chargement : on abandonne celle-ci.
@@ -449,6 +506,8 @@ async function afficher() {
     if (moi !== rendu) return;
     console.error(err);
     noeud = h("div", { class: "vide" }, h("h1", null, tr("Cet écran n'a pas pu s'afficher")), h("p", null, err.message), h("a", { href: "#/" }, tr("Retour à l'accueil")));
+  } finally {
+    clearTimeout(attente);
   }
   principal.replaceChildren(noeud);
   principal.className = [noeud.dataset && noeud.dataset.large ? "large" : "", noeud.dataset && noeud.dataset.plein ? "plein" : ""].filter(Boolean).join(" ");
@@ -457,7 +516,8 @@ async function afficher() {
   document.documentElement.style.setProperty("--decalage", `${Math.round(principal.getBoundingClientRect().top + window.scrollY + 48)}px`);
   // L'onglet « Plus » est marqué quand l'écran ouvert n'a pas d'onglet à lui.
   for (const a of document.querySelectorAll("nav [data-cle]")) a.toggleAttribute("aria-current", a.dataset.cle === cleRoute || (a.dataset.cle === "plus" && !ongletsMobiles().includes(cleRoute)));
-  if (hash !== derniereVue) window.scrollTo(0, 0);
+  document.querySelector(".coque").classList.toggle("avec-plus", ECRANS_AVEC_PLUS.has(cleRoute) && !!document.querySelector(".bouton-plus"));
+  restaurerDefilement(hash);
   derniereVue = hash;
 }
 

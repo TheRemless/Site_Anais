@@ -2,13 +2,22 @@
 // Les textes du code sont écrits en français et servent de clé : tr("Nouveau dossier") rend le texte français tel quel
 // ou sa traduction (i18n-en.mjs). Une clé sans traduction s'affiche en français et se retrouve dans manquants().
 // Le fichier ne dépend pas du navigateur, pour que la logique pure et les tests puissent l'utiliser.
-import { EN } from "./i18n-en.mjs";
 
 export const LANGUES = [
   { code: "fr", nom: "Français", locale: "fr-CH" },
   { code: "en", nom: "English", locale: "en-GB" },
 ];
 const CLE_STOCKAGE = "gestion-langue";
+
+// Le dictionnaire anglais (110 Ko) ne se charge que si la langue est l'anglais : en français il ne coûte rien au premier écran.
+// definirLangue et forcerLangue lancent le chargement, pretLangue() le rend attendable avant d'afficher.
+let EN = {};
+let chargement = null;
+function chargerAnglais() {
+  if (!chargement) chargement = import("./i18n-en.mjs").then((m) => void (EN = m.EN));
+  return chargement;
+}
+export const pretLangue = () => (langue === "en" ? chargerAnglais() : Promise.resolve());
 
 let langue = "fr";
 const absents = new Set();
@@ -30,6 +39,7 @@ export function langueStockee() {
 export function definirLangue(code) {
   if (!estLangue(code)) return false;
   langue = code;
+  if (code === "en") chargerAnglais();
   try {
     localStorage.setItem(CLE_STOCKAGE, code);
   } catch {
@@ -41,7 +51,9 @@ export function definirLangue(code) {
 
 // Pour les tests et la première ouverture : change la langue sans toucher au stockage.
 export function forcerLangue(code) {
-  if (estLangue(code)) langue = code;
+  if (!estLangue(code)) return;
+  langue = code;
+  if (code === "en") chargerAnglais();
 }
 
 const remplacer = (texte, vars) => (vars ? texte.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m)) : texte);

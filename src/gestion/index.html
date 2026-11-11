@@ -13,14 +13,44 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Gestion">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,400;0,500;0,700;1,400&display=swap">
+<link rel="preload" href="assets/fonts/raleway-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/app.css">
-<link rel="stylesheet" href="css/document.css">
+<link rel="stylesheet" href="css/document.css" media="print" onload="this.media='all'">
+<!-- Les modules du premier écran sont annoncés d'avance : le navigateur les télécharge en parallèle au lieu de les découvrir un par un. -->
+<link rel="modulepreload" href="js/etat.mjs">
+<link rel="modulepreload" href="js/store.mjs">
+<link rel="modulepreload" href="js/config.mjs">
+<link rel="modulepreload" href="js/calc.mjs">
+<link rel="modulepreload" href="js/i18n.mjs">
+<link rel="modulepreload" href="js/defauts.mjs">
+<link rel="modulepreload" href="js/droits.mjs">
+<link rel="modulepreload" href="js/ui.mjs">
+<link rel="modulepreload" href="js/mobile-calc.mjs">
+<link rel="modulepreload" href="js/views/commun.mjs">
+<link rel="modulepreload" href="js/document.mjs">
+<link rel="modulepreload" href="js/views/dashboard.mjs">
+<link rel="modulepreload" href="js/views/demande.mjs">
+<link rel="modulepreload" href="js/demande-calc.mjs">
+<link rel="modulepreload" href="js/partenaires-calc.mjs">
+<link rel="modulepreload" href="js/operations-calc.mjs">
+<link rel="modulepreload" href="js/views/taches.mjs">
+<link rel="modulepreload" href="js/views/reservations.mjs">
+<link rel="modulepreload" href="js/views/choix-prestation.mjs">
+<link rel="modulepreload" href="js/views/messages.mjs">
+<link rel="modulepreload" href="js/views/partenaires.mjs">
+<link rel="modulepreload" href="js/views/feuille-jour.mjs">
+<link rel="modulepreload" href="js/rappels.mjs">
 </head>
 <body>
-<div id="app"><p class="chargement">Chargement… Loading…</p></div>
+<div id="app"><div class="chargement" role="status" aria-label="Chargement… Loading…">
+<div class="chargement-barre"></div>
+<div class="squelette chargement-corps" aria-hidden="true">
+<div class="squelette-ligne titre-attente" style="--l: 46%"><span></span></div>
+<div class="squelette-carte" style="--l: 78%"><span></span><span></span></div>
+<div class="squelette-carte" style="--l: 62%"><span></span><span></span></div>
+<div class="squelette-carte" style="--l: 88%"><span></span><span></span></div>
+</div>
+</div></div>
 <noscript>Cet outil a besoin de JavaScript. This tool needs JavaScript.</noscript>
 <script type="module" src="js/app.mjs"></script>
 </body>
