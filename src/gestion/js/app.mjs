@@ -15,6 +15,7 @@ const ROUTES = [
   [/^#\/messages$/, "messages", vers(() => import("./views/messages.mjs"), "vueMessages")],
   [/^#\/du$/, "du", vers(() => import("./views/du.mjs"), "vueDu")],
   [/^#\/encaisser$/, "encaisser", vers(() => import("./views/encaisser.mjs"), "vueEncaisser")],
+  [/^#\/a-verifier$/, "a-verifier", vers(() => import("./views/a-verifier.mjs"), "vueAVerifier")],
   [/^#\/partenaires$/, "partenaires", vers(() => import("./views/partenaires.mjs"), "listePartenaires")],
   [/^#\/partenaire\/([\w-]+)$/, "partenaires", vers(() => import("./views/partenaires.mjs"), "fichePartenaire")],
   [/^#\/tarifs(?:\?.*)?$/, "tarifs", vers(() => import("./views/tarifs.mjs"), "vueTarifs")],
@@ -177,6 +178,7 @@ function ecrans() {
       items: [
         ...si(peut("analytics.voir") && peut("finances.voir"), { href: "#/analyses", libelle: tr("Statistiques"), cle: "analyses", icone: "analyses" }),
         ...si(entitesAnalysables().length > 1, { href: "#/groupe", libelle: tr("Vue d'ensemble"), cle: "groupe", icone: "groupe" }),
+        ...si(peut("partenaires.ecrire") || peut("dossiers.ecrire") || peut("clients.ecrire"), { href: "#/a-verifier", libelle: tr("À vérifier"), cle: "a-verifier", icone: "regles" }),
         ...si(peut("journal.voir"), { href: "#/journal", libelle: tr("Journal"), cle: "journal", icone: "journal" }),
         ...si(estAdmin(), { href: "#/reglages", libelle: tr("Réglages"), cle: "reglages", icone: "reglages" }),
         ...si(estSuperAdmin(), { href: "#/admin", libelle: tr("Administration"), cle: "admin", icone: "admin" }),

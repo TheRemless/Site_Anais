@@ -86,7 +86,7 @@ export async function synchroniser() {
   enCours = true;
   try {
     const avant = modifications;
-    const neuf = await etat.store.charger();
+    const neuf = await etat.store.charger({ ancien: etat.brut });
     if (avant !== modifications || ecritures) return "ignore";
     const nouvelle = signer(neuf);
     if (nouvelle === signature) return "inchange";
