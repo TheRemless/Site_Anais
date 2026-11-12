@@ -4,7 +4,7 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE, ajouterJours } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, nbJoursLocation, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, nbJoursLocation, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { demanderArbitrage } from "./conflit.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
@@ -39,8 +39,8 @@ export function messageClient(r, cle = "confirmation", { surEnvoi = null } = {})
   const c = clientDe(r) || {};
   // Taxi n'a pas de rappel de la veille ni de message météo : le message d'envoi de la confirmation est proposé à la place.
   if (modeTaxi() && cle !== "avis" && !(reglages().messages || []).some((m) => m.cle === cle)) cle = "confirmation";
-  // Les clients de Secret reçoivent leurs documents en anglais : le message est proposé en anglais aussi.
-  const langue = modeTaxi() || /invoice/i.test((reglages().libelles && reglages().libelles.facture) || "") ? "en" : "fr";
+  // Les clients de Secret et de Taxi reçoivent tout en anglais (d'après le mode de l'entreprise) : le message est proposé en anglais aussi.
+  const langue = langueClient(reglages());
   // Trajet vers ou depuis Langkawi : la confirmation et le rappel portent la note du passeport et du check-in (en anglais, comme les vouchers).
   const trajet = r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) : null;
   const suite = langue === "en" && (cle === "confirmation" || cle === "rappel") ? notePasseport({ de: trajet && trajet.de, vers: trajet && trajet.vers, libelle: r.libelle, compagnie: nomPartenaire(r.partenaire_id) }) : "";
@@ -169,7 +169,8 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   const avantVeille = alerteAvantVeille(r, { partenaire: nomPartenaire(r.partenaire_id), trajet: trajetBateau, paye: !!(n && n.net_prevu !== null && n.net_prevu !== undefined && Number(n.net_paye || 0) >= Number(n.net_prevu)) });
   // Un seul geste principal par carte (l'étape suivante) ; le reste est dans le menu « … ».
   const gestes = ecrit ? gestesPrestataire(r, { apres }) : { etat: null, faire: {}, relancer: false, jourDeDemande: false };
-  const vx = r.statut === "confirme" ? vouchersDuDossier(r.dossier_id).find((x) => x.reservation.id === r.id) || null : null;
+  // Le geste « Envoyer le voucher » n'existe qu'en excursions et en taxi : ZTP n'a pas de voucher.
+  const vx = modeExcursions() && r.statut === "confirme" ? vouchersDuDossier(r.dossier_id).find((x) => x.reservation.id === r.id) || null : null;
   const voucherEnvoye = !!(vx && r.details && r.details.envois && r.details.envois.client);
   const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, passee: !!(r.date_service && dateFinService(r) < aujourdhui()), relancer: gestes.relancer, jourDeDemande: gestes.jourDeDemande, voucher: vx ? { envoye: voucherEnvoye } : null, liee: modeExcursions() && lieeFacture(r) };
   const GESTES = {
@@ -475,8 +476,13 @@ export function formulaireReservation(r, apres) {
   };
   // Une location : la prise et le retour se lisent côte à côte, juste sous la date de départ.
   const RETOUR = ["retour_date", "retour_heure", "retour_lieu"];
-  const blocRetour = type === "location" ? h("div", { class: "grille-form compacte" }, RETOUR.map((c) => CHAMPS[c]())) : null;
-  const blocVoucher = type
+  // Le bloc voucher n'existe qu'en excursions (Secret) ; Taxi n'a que ce qui s'imprime sur sa Booking confirmation (dépose et bagages,
+  // voir renderBookingConfirmation) ; ZTP n'en a aucun.
+  const avecVoucher = modeExcursions() && !modeTaxi();
+  const blocRetour = avecVoucher && type === "location" ? h("div", { class: "grille-form compacte" }, RETOUR.map((c) => CHAMPS[c]())) : null;
+  const blocVoucher = modeTaxi()
+    ? h("fieldset", null, h("legend", null, "Booking confirmation"), h("p", { class: "aide" }, tr("Ce qui s'imprime sur la Booking confirmation en plus de la course.")), h("div", { class: "grille-form" }, CHAMPS.drop_off(), CHAMPS.bagages()))
+    : avecVoucher && type
     ? h("fieldset", null, h("legend", null, TITRES_VOUCHER[type]), h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, (CHAMPS_VOUCHER[type] || []).filter((c) => !["remarques", "remarques_paiement", "checkin"].includes(c) && !(type === "location" && RETOUR.includes(c))).map((c) => CHAMPS[c]())), (CHAMPS_VOUCHER[type] || []).filter((c) => ["checkin", "remarques", "remarques_paiement"].includes(c)).map((c) => CHAMPS[c]()))
     : null;
   return h(
@@ -574,7 +580,7 @@ export async function creerReservations(doc, { silencieux = false } = {}) {
 // Ajouter des services à un dossier existant : les lignes vont dans la facture (créée si besoin), puis chacune a sa réservation.
 export function ajouterServices(d, doc, apres) {
   const regl = reglages();
-  const langue = /invoice/i.test((regl.libelles && regl.libelles.facture) || "") ? "en" : "";
+  const langue = langueClient(regl) === "en" ? "en" : "";
   let cibleId = doc ? doc.id : null;
   // La fenêtre reste ouverte pour enchaîner les ajouts : un à la fois, chacun sur la version courante de la facture.
   let file = Promise.resolve();

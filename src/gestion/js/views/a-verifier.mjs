@@ -1,5 +1,5 @@
 // « À vérifier » : les cas qui se règlent mieux au calme que devant un client, chacun avec un lien vers la fiche à corriger. Lecture seule : rien n'est corrigé ici.
-import { etat, peut, entiteActive } from "../etat.mjs";
+import { etat, peut, entiteActive, modeTaxi } from "../etat.mjs";
 import { h } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { aVerifier } from "../a-verifier-calc.mjs";
@@ -20,7 +20,8 @@ const TITRES = {
   dossiers_sans_responsable: [N_("Dossiers sans responsable"), N_("Personne n'est désignée pour suivre ces dossiers.")],
 };
 
-export const droitsVerification = () => ({ partenaires: peut("partenaires.ecrire"), dossiers: peut("dossiers.ecrire"), clients: peut("clients.ecrire"), nets: peut("partenaires.nets") });
+// Taxi : les tarifs des courses n'ont jamais de net (Mr. Brown n'est pas payé par l'agence), le contrôle des nets n'y a pas de sens.
+export const droitsVerification = () => ({ partenaires: peut("partenaires.ecrire"), dossiers: peut("dossiers.ecrire"), clients: peut("clients.ecrire"), nets: peut("partenaires.nets") && !modeTaxi() });
 export const peutVerifier = () => Object.entries(droitsVerification()).some(([k, v]) => k !== "nets" && v);
 
 export function vueAVerifier() {

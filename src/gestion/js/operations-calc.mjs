@@ -4,6 +4,7 @@
 import { langueActive, N_ } from "./i18n.mjs";
 import { chiffres, estLigneSupplement, prefixeProgramme, libelleClient } from "./partenaires-calc.mjs";
 import { SUR_PLACE, CHEZ_NOUS, modeReglement } from "./calc.mjs";
+import { estTaxi } from "./taxi-calc.mjs";
 
 export { SUR_PLACE, CHEZ_NOUS, modeReglement };
 
@@ -94,6 +95,10 @@ export function dateTexte(iso, langue = langueActive()) {
   return langue === "en" ? `${j} ${MOIS_EN[m - 1]} ${a}` : `${j} ${MOIS_FR[m - 1]} ${a}`;
 }
 
+// Langue de ce que voit le client : l'anglais en excursions (Secret) et en taxi, toujours ; le français en voyages sur mesure (ZTP).
+// Déduite du mode de l'entreprise, jamais du libellé de la facture.
+export const langueClient = (regl) => (regl && (regl.fonctionnement === "excursions" || estTaxi(regl)) ? "en" : "fr");
+
 // Remplit les {variables} d'un gabarit ; une variable inconnue reste telle quelle, une variable vide disparaît.
 export function remplirGabarit(texte, vars = {}) {
   return String(texte || "")
@@ -134,6 +139,24 @@ export function champsConfirmation(r, { heure = "", reference = "" } = {}) {
 export function gabaritsManquants(stockes, defauts) {
   const base = (stockes || []).filter((m) => m && m.corps);
   return (defauts || []).filter((d) => !base.some((m) => memeUsage(m, d))).map((d) => ({ ...d }));
+}
+
+// « Remettre ceux de départ » sans rien perdre : un modèle qui vient des modèles par défaut (même identifiant) reprend son texte d'origine,
+// un modèle créé par l'entreprise reste tel quel, et les modèles par défaut absents (même destinataire, usage et langue) sont ajoutés.
+// Renvoie { liste, remis, ajoutes, gardes } pour le dire avant d'enregistrer.
+export function gabaritsRemis(stockes, defauts) {
+  const base = (stockes || []).filter((m) => m && m.corps);
+  const parId = new Map((defauts || []).map((d) => [d.id, d]));
+  let remis = 0;
+  let gardes = 0;
+  const liste = base.map((m) => {
+    const d = parId.get(m.id);
+    if (!d) return (gardes++, { ...m });
+    remis++;
+    return { ...d };
+  });
+  const ajouts = (defauts || []).filter((d) => !liste.some((m) => m.id === d.id || memeUsage(m, d))).map((d) => ({ ...d }));
+  return { liste: [...liste, ...ajouts], remis, ajoutes: ajouts.length, gardes };
 }
 
 export function variablesMessage({ reservation = {}, client = {}, dossier = {}, partenaire = {}, entreprise = {}, langue = "fr" } = {}) {
@@ -663,20 +686,31 @@ export function nomMoisCourt(iso, langue = langueActive()) {
 
 // ---- Envoi d'un voucher par WhatsApp --------------------------------------------------------------------------
 // Nom du fichier image : « Voucher EX-2026-0003-1 - Keller.png » (sans caractère interdit dans un nom de fichier).
-export function nomFichierVoucher(numero, nomClient) {
+// En taxi (`taxi` vrai) le document s'appelle « Booking confirmation », comme ce qui s'imprime dessus.
+export function nomFichierVoucher(numero, nomClient, { taxi = false } = {}) {
   const prenomOuNom = String(nomClient || "").trim().split(/\s+/)[0] || "client";
-  return `Voucher ${numero} - ${prenomOuNom}`.replace(/[\\/:*?"<>|]/g, "").trim() + ".png";
+  return `${taxi ? "Booking confirmation" : "Voucher"} ${numero} - ${prenomOuNom}`.replace(/[\\/:*?"<>|]/g, "").trim() + ".png";
 }
 
 // Message qui accompagne l'image, en anglais comme le voucher. Au client : la confirmation de sa réservation. Au prestataire : seulement
 // le prix que le client paiera (sans numéro de voucher, le voucher est déjà dans l'image).
-export function messageVoucher({ pour = "client", prenom = "", montant = null, devise = "" }) {
+// `gabarit` : le modèle « confirmation » en anglais de l'entreprise (ses messages types), rempli avec `vars` ; le texte écrit ici n'est qu'un secours.
+export function messageVoucher({ pour = "client", prenom = "", montant = null, devise = "", gabarit = "", vars = {} }) {
   if (pour === "partenaire") {
     if (montant === null || montant === undefined || montant === "") return "";
     const nombre = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(Number(montant));
     return `Price the guest pays: ${devise ? `${devise} ` : ""}${nombre}`;
   }
+  const rempli = gabarit ? remplirGabarit(gabarit, { prenom, ...vars }) : "";
+  if (rempli) return rempli;
   return `Hello${prenom ? ` ${prenom}` : ""}, here is your booking confirmation for your program. We wish you an excellent day!`;
+}
+
+// Le modèle du message client joint au voucher : la « confirmation » en anglais de l'entreprise (ses messages, sinon son modèle par défaut).
+// Chaîne vide quand il n'y en a pas : messageVoucher prend alors son texte de secours.
+export function gabaritConfirmationVoucher(stockes, defauts) {
+  const choisi = gabaritsPropose(stockes, defauts, { pour: "client", langue: "en", cle: "confirmation" }).choisi;
+  return (choisi && choisi.corps) || "";
 }
 
 // Lien WhatsApp : la conversation du numéro, ou le choix du contact quand on n'a pas de numéro. Un lien ne peut pas joindre d'image.

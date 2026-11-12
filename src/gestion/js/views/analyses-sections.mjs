@@ -105,7 +105,8 @@ function graphe(X, defs, nom) {
 function aTraiter(X) {
   const c = X.c;
   const n = (id) => S.lignes(id, X.faits, c);
-  const vieux = n("devis_attente").filter((l) => l.age > 14);
+  // Secret et Taxi n'ont pas de devis : rien à relancer.
+  const vieux = X.excursions ? [] : n("devis_attente").filter((l) => l.age > 14);
   const impayes = n("a_encaisser").filter((l) => l.age > 30);
   const items = [
     vieux.length ? { texte: pluriel(vieux.length, N_("devis attend une réponse depuis plus de 14 jours"), N_("devis attendent une réponse depuis plus de 14 jours")), montant: S.somme(vieux).montant, href: X.href("devis_attente", null, { tri: "age", sens: "desc" }) } : null,
@@ -116,7 +117,8 @@ function aTraiter(X) {
     return r.nombre ? { texte: pluriel(r.nombre, un, plus), montant: montant ? r.montant : null, href: X.href(id) } : null;
   };
   items.push(q("a_confirmer", N_("service à venir pas encore confirmé"), N_("services à venir pas encore confirmés")), q("sans_date", N_("service sans date de prestation"), N_("services sans date de prestation")));
-  if (X.nets) items.push(q("commission_a_renseigner", N_("service payé sur place sans commission notée"), N_("services payés sur place sans commission notée"), false));
+  // Taxi : aucune commission par défaut, elle se note au cas par cas. Un service sans commission n'est pas un oubli.
+  if (X.nets && !X.taxi) items.push(q("commission_a_renseigner", N_("service payé sur place sans commission notée"), N_("services payés sur place sans commission notée"), false));
   const lignes = items.filter(Boolean);
   return bloc(titre(N_("À traiter")), lignes.length ? h("ul", { class: "st-traiter" }, lignes.map((l) => h("li", null, h("a", { href: l.href }, h("span", null, l.texte), l.montant !== null ? h("strong", null, m$(X, l.montant)) : null)))) : h("p", { class: "vide-court" }, tr("Rien en attente, tout est à jour.")));
 }
@@ -144,9 +146,10 @@ export function apercu(X) {
       X.nets ? T(X, "commission_recue", { detail: tr("{montant} à recevoir", { montant: m$(X, cr.montant) }), href: X.lien("commissions") }) : panier,
       // Taxi : rien ne s'encaisse chez nous et il n'y a jamais de devis.
       X.taxi ? null : T(X, "a_encaisser", { href: X.lien("encaissements", { liste: "a_encaisser" }) }),
-      T(X, "a_venir_7", { valeur: String(a7.nombre), detail: a7.montant ? tr("{montant} vendus", { montant: m$(X, a7.montant) }) : tr("services"), href: X.lien("avenir") }),
-      X.taxi ? null : T(X, "devis_attente", { valeur: String(dv.nombre), detail: tr("valeur {montant}", { montant: m$(X, dv.montant) }), href: X.lien("devis") }),
-      X.taxi ? null : tauxAcceptation(X),
+      X.reservations ? T(X, "a_venir_7", { valeur: String(a7.nombre), detail: a7.montant ? tr("{montant} vendus", { montant: m$(X, a7.montant) }) : tr("services"), href: X.lien("avenir") }) : null,
+      // Secret et Taxi facturent directement ou pas du tout : jamais de devis.
+      X.excursions ? null : T(X, "devis_attente", { valeur: String(dv.nombre), detail: tr("valeur {montant}", { montant: m$(X, dv.montant) }), href: X.lien("devis") }),
+      X.excursions ? null : tauxAcceptation(X),
       X.nets ? T(X, "revenu", { grande: true, href: X.lien("commissions") }) : null,
       X.nets ? panier : null,
       X.nets ? dossiers : null
@@ -154,7 +157,7 @@ export function apercu(X) {
     aTraiter(X),
     X.taxi ? graphe(X, [{ id: "vendu", nom: N_("Volume vendu"), classe: "s1" }], N_("Volume vendu")) : graphe(X, [{ id: "vendu", nom: N_("Volume vendu"), classe: "s1" }, { id: "encaisse", nom: N_("Encaissé chez nous"), classe: "s2" }], N_("Volume vendu et encaissé")),
     X.peutGroupe ? h("p", { class: "st-lien-groupe" }, h("a", { href: "#/groupe" }, tr("Comparer les entreprises"))) : null,
-    blocDefinitions(["vendu", "encaisse", "a_encaisser", "commission_recue", "commission_a_recevoir", "revenu", "a_venir_7", "devis_attente"].filter((i) => S.disponible(i, f) && !(X.taxi && ["encaisse", "a_encaisser", "devis_attente"].includes(i))), S.DEFINITIONS),
+    blocDefinitions(["vendu", "encaisse", "a_encaisser", "commission_recue", "commission_a_recevoir", "revenu", "a_venir_7", "devis_attente"].filter((i) => S.disponible(i, f) && !(X.taxi && ["encaisse", "a_encaisser"].includes(i)) && !(X.excursions && i === "devis_attente") && !(!X.reservations && i === "a_venir_7")), S.DEFINITIONS),
   ];
 }
 
@@ -181,15 +184,17 @@ export function ventes(X) {
       tuile({ libelle: tr("Panier moyen"), valeur: ind.panierMoyen === null ? "—" : m$(X, ind.panierMoyen), detail: tr("volume vendu par dossier"), ecart: panierEcart, precedent: prec ? prec.panierMoyen : null, devise: X.devise, href: X.href("vendu", null, { tri: "montant", sens: "desc" }), aide: [N_("Panier moyen"), N_("Volume vendu divisé par le nombre de dossiers vendus sur la période.")] }),
       tuile({ libelle: tr("Dossiers vendus"), valeur: String(ind.dossiers), detail: pluriel(ind.clients, N_("client"), N_("clients")), ecart: prec ? S.variation(ind.dossiers, prec.dossiers) : null, precedent: prec ? prec.dossiers : null, monnaie: false, href: X.href("vendu"), aide: S.DEFINITIONS.vendu }),
       tuile({ libelle: tr("Taux d'annulation"), valeur: ind.tauxAnnulation === null ? "—" : `${ind.tauxAnnulation} %`, detail: tr("{n} annulés sur {total} ouverts", { n: ind.annules, total: ind.ouverts }), href: X.href("annules"), aide: S.DEFINITIONS.annules }),
-      ind.sejourMoyen !== null ? tuile({ libelle: tr("Durée de séjour moyenne"), valeur: tr("{n} jours", { n: String(ind.sejourMoyen).replace(".", tr(",")) }), detail: tr("sur {n} dossiers avec dates", { n: ind.sejourN }), href: null, aide: [N_("Durée de séjour moyenne"), N_("Du jour du départ au jour du retour, sur les dossiers vendus dont les deux dates sont notées.")] }) : null
+      !X.excursions && ind.sejourMoyen !== null ? tuile({ libelle: tr("Durée de séjour moyenne"), valeur: tr("{n} jours", { n: String(ind.sejourMoyen).replace(".", tr(",")) }), detail: tr("sur {n} dossiers avec dates", { n: ind.sejourN }), href: null, aide: [N_("Durée de séjour moyenne"), N_("Du jour du départ au jour du retour, sur les dossiers vendus dont les deux dates sont notées.")] }) : null
     ),
-    bloc(titre(N_("Où va l'argent")), h("div", { class: "st-segment", role: "img", "aria-label": tr("{part} % du volume vendu est payé sur place", { part }) }, h("span", { class: "st-seg nous", style: `flex:${Math.max(nous, 0.0001)}` }), h("span", { class: "st-seg place", style: `flex:${Math.max(place, 0.0001)}` })), h("ul", { class: "st-legende" }, h("li", null, h("i", { class: "st-echantillon s1", "aria-hidden": "true" }), tr("Payé chez nous"), " ", h("strong", null, m$(X, nous))), h("li", null, h("i", { class: "st-echantillon place", "aria-hidden": "true" }), tr("Payé sur place"), " ", h("strong", null, m$(X, place)), ` (${part} %)`))),
+    // Payé chez nous ou sur place : n'existe qu'en Secret (ZTP encaisse tout, Taxi rien).
+    X.excursions && !X.taxi ? bloc(titre(N_("Où va l'argent")), h("div", { class: "st-segment", role: "img", "aria-label": tr("{part} % du volume vendu est payé sur place", { part }) }, h("span", { class: "st-seg nous", style: `flex:${Math.max(nous, 0.0001)}` }), h("span", { class: "st-seg place", style: `flex:${Math.max(place, 0.0001)}` })), h("ul", { class: "st-legende" }, h("li", null, h("i", { class: "st-echantillon s1", "aria-hidden": "true" }), tr("Payé chez nous"), " ", h("strong", null, m$(X, nous))), h("li", null, h("i", { class: "st-echantillon place", "aria-hidden": "true" }), tr("Payé sur place"), " ", h("strong", null, m$(X, place)), ` (${part} %)`))) : null,
     graphe(X, [{ id: "vendu", nom: N_("Volume vendu"), classe: "s1" }], N_("Volume vendu")),
-    bloc(titre(N_("Par destination ou service")), rang(X, "vendu", "pays")),
+    // Les dossiers d'excursions n'ont pas de destination : on classe les services par type, à leur date de service.
+    !X.excursions ? bloc(titre(N_("Par destination ou service")), rang(X, "vendu", "pays")) : X.reservations ? bloc(titre(N_("Par type de service")), h("p", { class: "aide" }, tr("Valeur des services dont la date de service tombe dans la période.")), rang(X, "services", "famille")) : null,
     bloc(titre(N_("Par responsable")), rang(X, "vendu", "responsable")),
     bloc(titre(nomSaison), h("p", { class: "aide" }, tr("Pour voir quels mois vendent le plus. Ne dépend pas de la période choisie.")), graphiqueColonnes({ cases: casesSaison.map((k) => ({ cle: k, court: libelleMoisCourt(k), libelle: libelleGroupe("mois", { cle: k }) })), series: [{ nom: N_("Volume vendu"), classe: "s1", valeurs: valSaison }], devise: X.devise, titre: tr(nomSaison), lecture: (i) => h("div", { class: "st-lecture-corps" }, h("strong", { class: "st-lecture-titre" }, libelleGroupe("mois", { cle: casesSaison[i] })), h("p", null, h("span", { class: "st-lecture-valeur" }, m$(X, valSaison[i])))), lien: (i) => X.href("vendu", `mois:${casesSaison[i]}`, { du: `${casesSaison[i]}-01`, au: S.finDeMois(`${casesSaison[i]}-01`), p: "perso" }) })),
     bloc(h("a", { class: "bouton secondaire", href: X.href("vendu") }, tr("Voir les {n} dossiers vendus", { n: rows.length }))),
-    blocDefinitions(["vendu", "facture", "ouverts", "annules"], S.DEFINITIONS),
+    blocDefinitions(["vendu", "facture", "ouverts", "annules"].filter((i) => !(X.taxi && i === "facture")), S.DEFINITIONS),
   ];
 }
 
@@ -199,7 +204,7 @@ export function encaissements(X) {
   const gros = S.lignes("a_encaisser", f, X.c).sort((a, b) => b.montant - a.montant).slice(0, 5);
   return [
     tuiles(T(X, "encaisse", { grande: true }), T(X, "facture"), T(X, "a_encaisser")),
-    h("p", { class: "aide st-note" }, tr("Les services payés sur place au prestataire ne passent pas par nous, ils ne sont ni facturés ni à encaisser. Ils figurent dans le volume vendu.")),
+    X.excursions ? h("p", { class: "aide st-note" }, tr("Les services payés sur place au prestataire ne passent pas par nous, ils ne sont ni facturés ni à encaisser. Ils figurent dans le volume vendu.")) : null,
     graphe(X, [{ id: "facture", nom: N_("Facturé"), classe: "s1" }, { id: "encaisse", nom: N_("Encaissé chez nous"), classe: "s2" }], N_("Facturé et encaissé")),
     bloc(titre(N_("Reste à encaisser, par ancienneté")), rang(X, "a_encaisser", "tranche", { tri: "cle" }), h("p", { class: "aide" }, tr("L'ancienneté se compte depuis la date de la facture."))),
     bloc(titre(N_("Plus gros restes à encaisser")), gros.length ? classement({ lignes: gros.map((l) => ({ libelle: l.titre, valeur: l.montant, texte: m$(X, l.montant), detail: tr("facture de {n} jours", { n: l.age }), href: `#/dossier/${l.dossier_id}` })), max: 5 }) : h("p", { class: "vide-court" }, tr("Aucun reste à encaisser."))),
@@ -262,15 +267,17 @@ export function commissions(X) {
       T(X, "commission_recue", { grande: true }),
       T(X, "commission_prevue"),
       T(X, "commission_a_recevoir", { detail: echues.length ? tr("dont {n} déjà échues pour {montant}", { n: echues.length, montant: m$(X, S.somme(echues).montant) }) : compte(ar.length, "commission_a_recevoir") }),
-      T(X, "marge"),
+      // Taxi : le client paie le chauffeur, il n'y a ni net à payer ni marge, seulement des commissions.
+      X.taxi ? null : T(X, "marge"),
       T(X, "revenu"),
-      T(X, "net_a_payer")
+      X.taxi ? null : T(X, "net_a_payer")
     ),
-    bloc(titre(N_("Revenu de la période")), h("p", { class: "aide" }, tr("L'argent qui a vraiment bougé, soit l'encaissé chez nous, moins les nets payés aux partenaires, plus les commissions reçues.")), h("ul", { class: "st-equation" }, h("li", null, h("span", null, tr("Encaissé chez nous")), h("a", { href: X.href("encaisse") }, m$(X, revenu[0][1]))), h("li", null, h("span", null, tr("moins nets payés aux partenaires")), h("a", { href: X.href("net_paye") }, m$(X, revenu[1][1]))), h("li", null, h("span", null, tr("plus commissions reçues")), h("a", { href: X.href("commission_recue") }, m$(X, revenu[2][1]))), h("li", { class: "total" }, h("span", null, tr("Revenu")), h("a", { href: X.href("revenu") }, m$(X, revenu.reduce((t, x) => t + x[1], 0)))))),
-    inconnue.nombre || sansCom.nombre || ecart.nombre ? bloc(titre(N_("Données à compléter")), h("ul", { class: "st-traiter" }, ecart.nombre ? h("li", null, h("a", { href: X.href("commission_ecart") }, h("span", null, pluriel(ecart.nombre, N_("commission reçue différente du montant prévu"), N_("commissions reçues différentes du montant prévu"))), h("strong", null, m$(X, ecart.montant)))) : null, inconnue.nombre ? h("li", null, h("a", { href: X.href("marge_inconnue") }, h("span", null, pluriel(inconnue.nombre, N_("service de la période sans net ni commission notés, marge non comptée"), N_("services de la période sans net ni commission notés, marge non comptée"))))) : null, sansCom.nombre ? h("li", null, h("a", { href: X.href("commission_a_renseigner") }, h("span", null, pluriel(sansCom.nombre, N_("service payé sur place sans commission notée"), N_("services payés sur place sans commission notée"))))) : null)) : null,
+    bloc(titre(N_("Revenu de la période")), h("p", { class: "aide" }, X.taxi ? tr("Le client paie le chauffeur, le revenu vient donc des commissions reçues.") : tr("L'argent qui a vraiment bougé, soit l'encaissé chez nous, moins les nets payés aux partenaires, plus les commissions reçues.")), h("ul", { class: "st-equation" }, X.taxi ? null : h("li", null, h("span", null, tr("Encaissé chez nous")), h("a", { href: X.href("encaisse") }, m$(X, revenu[0][1]))), X.taxi ? null : h("li", null, h("span", null, tr("moins nets payés aux partenaires")), h("a", { href: X.href("net_paye") }, m$(X, revenu[1][1]))), h("li", null, h("span", null, tr("plus commissions reçues")), h("a", { href: X.href("commission_recue") }, m$(X, revenu[2][1]))), h("li", { class: "total" }, h("span", null, tr("Revenu")), h("a", { href: X.href("revenu") }, m$(X, X.taxi ? revenu[2][1] : revenu.reduce((t, x) => t + x[1], 0)))))),
+    ecart.nombre || (!X.taxi && (inconnue.nombre || sansCom.nombre)) ? bloc(titre(N_("Données à compléter")), h("ul", { class: "st-traiter" }, ecart.nombre ? h("li", null, h("a", { href: X.href("commission_ecart") }, h("span", null, pluriel(ecart.nombre, N_("commission reçue différente du montant prévu"), N_("commissions reçues différentes du montant prévu"))), h("strong", null, m$(X, ecart.montant)))) : null, !X.taxi && inconnue.nombre ? h("li", null, h("a", { href: X.href("marge_inconnue") }, h("span", null, pluriel(inconnue.nombre, N_("service de la période sans net ni commission notés, marge non comptée"), N_("services de la période sans net ni commission notés, marge non comptée"))))) : null, !X.taxi && sansCom.nombre ? h("li", null, h("a", { href: X.href("commission_a_renseigner") }, h("span", null, pluriel(sansCom.nombre, N_("service payé sur place sans commission notée"), N_("services payés sur place sans commission notée"))))) : null)) : null,
     graphe(X, [{ id: "commission_prevue", nom: N_("Commissions prévues"), classe: "s1" }, { id: "commission_recue", nom: N_("Commissions reçues"), classe: "s2" }], N_("Commissions prévues et reçues")),
-    bloc(titre(N_("Par partenaire")), tableauPartenaires(X)),
-    blocDefinitions(["commission_prevue", "commission_recue", "commission_a_recevoir", "commission_ecart", "marge", "revenu", "net_paye", "net_a_payer"], S.DEFINITIONS),
+    // Taxi n'a qu'un prestataire : un classement par partenaire n'apprend rien.
+    X.taxi ? null : bloc(titre(N_("Par partenaire")), tableauPartenaires(X)),
+    blocDefinitions(["commission_prevue", "commission_recue", "commission_a_recevoir", "commission_ecart", "marge", "revenu", "net_paye", "net_a_payer"].filter((i) => !(X.taxi && ["marge", "net_paye", "net_a_payer"].includes(i))), S.DEFINITIONS),
   ];
 }
 
@@ -309,7 +316,7 @@ export function clients(X) {
 export function services(X) {
   const f = X.faits;
   const rows = S.lignesFiltrees("services", f, X.c);
-  if (!f.reservations.length) return [h("div", { class: "vide" }, h("h2", null, tr("Pas de réservations")), h("p", null, tr("Cette section se remplit avec les réservations auprès des partenaires. Elles se créent depuis un devis ou une facture, ou à la main.")), h("a", { class: "bouton secondaire", href: "#/reservations" }, tr("Ouvrir les réservations")))];
+  if (!f.reservations.length) return [h("div", { class: "vide" }, h("h2", null, tr("Pas de réservations")), h("p", null, X.taxi ? tr("Cette section se remplit avec les réservations auprès des partenaires. Elles se créent depuis une réservation, ou à la main.") : X.excursions ? tr("Cette section se remplit avec les réservations auprès des partenaires. Elles se créent depuis une facture, ou à la main.") : tr("Cette section se remplit avec les réservations auprès des partenaires. Elles se créent depuis un devis ou une facture, ou à la main.")), h("a", { class: "bouton secondaire", href: "#/reservations" }, tr("Ouvrir les réservations")))];
   const pers = rows.reduce((t, l) => t + (l.personnes || 0), 0);
   const place = S.valeur("services_place", f, X.c);
   const tot = S.valeur("services", f, X.c);
@@ -321,12 +328,13 @@ export function services(X) {
     tuiles(
       T(X, "services", { grande: true, detail: tot.nombre ? tr("{n} personnes", { n: pers }) : "" }),
       tuile({ libelle: tr("Personnes"), valeur: String(pers), detail: tr("places réservées, adultes et enfants"), href: X.href("services", null, { tri: "personnes", sens: "desc" }), aide: [N_("Personnes"), N_("Adultes et enfants des réservations dont la date de service tombe dans la période. Les bébés ne sont pas comptés.")] }),
-      T(X, "services_place", { detail: tot.nombre ? tr("{part} % des services", { part: Math.round((place.nombre / tot.nombre) * 100) }) : "" }),
-      tuile({ libelle: tr("Partenaires utilisés"), valeur: String(partenaires), detail: tr("sur la période"), href: X.href("services", null, { tri: "partenaire" }), aide: [N_("Partenaires utilisés"), N_("Partenaires qui ont au moins un service dans la période.")] })
+      // Payé sur place : propre à Secret (en Taxi tout est payé au chauffeur, en ZTP rien).
+      X.excursions && !X.taxi ? T(X, "services_place", { detail: tot.nombre ? tr("{part} % des services", { part: Math.round((place.nombre / tot.nombre) * 100) }) : "" }) : null,
+      X.taxi ? null : tuile({ libelle: tr("Partenaires utilisés"), valeur: String(partenaires), detail: tr("sur la période"), href: X.href("services", null, { tri: "partenaire" }), aide: [N_("Partenaires utilisés"), N_("Partenaires qui ont au moins un service dans la période.")] })
     ),
     graphe(X, [{ id: "services", nom: N_("Services"), classe: "s1" }], N_("Valeur des services par date de service")),
     bloc(titre(N_("Par type de service")), rang(X, "services", "famille")),
-    bloc(titre(N_("Par partenaire")), rang(X, "services", "partenaire")),
+    X.taxi ? null : bloc(titre(N_("Par partenaire")), rang(X, "services", "partenaire")),
     bloc(titre(N_("Par prestation")), tableauTrie({
       colonnes: [
         { cle: "nom", titre: N_("Prestation"), valeur: (l) => l.nom, rendu: (l) => l.nom, lien: (l) => X.href("services", `prestation:${l.cle}`) },
@@ -338,13 +346,19 @@ export function services(X) {
       ],
       lignes, etatInitial: { tri: X.tri || "montant", sens: X.sens, q: X.q }, onEtat: X.surEtat, recherche: (l) => `${l.nom} ${l.partenaire}`, pied: true, vide: tr("Aucun service sur la période."),
     })),
-    blocDefinitions(["services", "services_nous", "services_place"], S.DEFINITIONS),
+    blocDefinitions(["services", "services_nous", "services_place"].filter((i) => i === "services" || (X.excursions && !X.taxi)), S.DEFINITIONS),
   ];
 }
 
 // ---- Réservations à venir ------------------------------------------------------------------------------------------------------------
 export function avenir(X) {
   const f = X.faits;
+  // ZTP sans réservations : seuls comptent les départs à venir.
+  if (!X.reservations) {
+    const dep = S.valeur("departs", f, X.c);
+    X.sortie.push([titreMesure("departs"), titreMesure("departs"), X.devise, dep.montant, dep.nombre]);
+    return [tuiles(T(X, "departs", { grande: true, mini: false })), blocDefinitions(["departs"], S.DEFINITIONS)];
+  }
   // Cette section regarde devant : huit semaines à partir de cette semaine, quelle que soit la période choisie ailleurs.
   const debut = S.cleDe(X.jour, "semaine");
   const fin = ajouterJours(debut, 8 * 7 - 1);
@@ -366,14 +380,14 @@ export function avenir(X) {
       T(X, "a_venir", { mini: false }),
       T(X, "a_confirmer", { mini: false }),
       sd.nombre ? T(X, "sans_date", { mini: false }) : null,
-      dep.nombre ? T(X, "departs", { mini: false }) : null
+      !X.excursions && dep.nombre ? T(X, "departs", { mini: false }) : null
     ),
     bloc(titre(nom), graphiqueColonnes({ cases: cases.map((k) => ({ cle: k, court: jourCourt(k), libelle: libelleGroupe("semaine", { cle: k }) })), series: [{ nom: N_("Valeur des services"), classe: "s1", valeurs: serie.map((x) => x.montant) }], devise: X.devise, titre: tr(nom), lecture: (i) => h("div", { class: "st-lecture-corps" }, h("strong", { class: "st-lecture-titre" }, libelleGroupe("semaine", { cle: cases[i] })), h("p", null, h("span", { class: "st-lecture-valeur" }, m$(X, serie[i].montant)), " ", h("span", { class: "st-lecture-nom" }, compte(nombres[i], "services")))), lien: (i) => X.href("a_venir", `semaine:${cases[i]}`) })),
     bloc(titre(N_("Jour par jour, deux semaines")), prochains.length ? classement({ lignes: prochains.map((g) => ({ libelle: formatDate(g.cle), valeur: g.nombre, texte: compte(g.nombre, "services"), detail: tr("{montant} vendus", { montant: m$(X, g.montant) }), href: X.href("a_venir", `jour:${g.cle}`) })), max: 14 }) : h("p", { class: "vide-court" }, tr("Aucun service prévu dans les deux semaines."))),
     bloc(titre(N_("Par statut")), rang(X, "a_venir", "statut", { tri: "cle" })),
-    bloc(titre(N_("Par partenaire")), rang(X, "a_venir", "partenaire")),
+    X.taxi ? null : bloc(titre(N_("Par partenaire")), rang(X, "a_venir", "partenaire")),
     h("p", { class: "aide" }, tr("{n} services à venir au total.", { n: toutes.nombre })),
-    blocDefinitions(["a_venir", "a_venir_7", "a_confirmer", "sans_date", "departs"], S.DEFINITIONS),
+    blocDefinitions(["a_venir", "a_venir_7", "a_confirmer", "sans_date", "departs"].filter((i) => !(X.excursions && i === "departs")), S.DEFINITIONS),
   ];
 }
 
@@ -403,12 +417,23 @@ export const SECTIONS = {
   apercu: { titre: N_("Vue d'ensemble"), rendre: apercu, parties: null },
   ventes: { titre: N_("Ventes"), rendre: ventes, parties: ["dossiers"], douze: true },
   encaissements: { titre: N_("Encaissements"), rendre: encaissements, parties: ["dossiers", "paiements"], sansTaxi: true },
-  commissions: { titre: N_("Commissions et marge"), rendre: commissions, parties: ["paiements", "reservations"], nets: true },
+  commissions: { titre: N_("Commissions et marge"), titreTaxi: N_("Commissions"), rendre: commissions, parties: ["paiements", "reservations"], nets: true },
   clients: { titre: N_("Clients"), rendre: clients, parties: ["dossiers"] },
-  services: { titre: N_("Services"), complet: N_("Services et partenaires"), rendre: services, parties: ["reservations"] },
-  avenir: { titre: N_("À venir"), complet: N_("Réservations à venir"), rendre: avenir, parties: ["reservations", "dossiers"], futur: true },
-  devis: { titre: N_("Devis"), rendre: devis, parties: ["dossiers"], sansTaxi: true },
+  services: { titre: N_("Services"), complet: N_("Services et partenaires"), rendre: services, parties: ["reservations"], reservations: true },
+  avenir: { titre: N_("À venir"), complet: N_("Réservations à venir"), rendre: avenir, parties: ["reservations", "dossiers"], futur: true, departs: true },
+  devis: { titre: N_("Devis"), rendre: devis, parties: ["dossiers"], sansTaxi: true, sansExcursions: true },
 };
+
+// Une section a-t-elle un sens pour l'entreprise ouverte ? m : { taxi, excursions, reservations }.
+// « À venir » reste en ZTP sans réservations pour les départs ; Services demande le module Réservations ; Devis n'existe qu'en ZTP.
+export function sectionVisible(v, m) {
+  if (!v) return false;
+  if (m.taxi && v.sansTaxi) return false;
+  if (m.excursions && v.sansExcursions) return false;
+  if (v.reservations && !m.reservations) return false;
+  if (v.departs && !m.reservations && m.excursions) return false;
+  return true;
+}
 
 // ---- Liste derrière un chiffre ------------------------------------------------------------------------------------------------------------
 export function liste(X, id, filtre) {
@@ -422,7 +447,7 @@ export function liste(X, id, filtre) {
   const colDate = { cle: "date", titre: cles.date, valeur: (l) => l.date || "", rendu: (l) => (l.date ? formatDate(l.date) : "—") };
   let colonnes;
   if (source === "dossiers") {
-    colonnes = [colDossier, colDate, ...(id === "a_encaisser" || id === "devis_attente" ? [{ cle: "age", titre: N_("Ancienneté"), num: true, valeur: (l) => l.age, rendu: (l) => tr("{n} jours", { n: l.age }) }] : []), { cle: "pays", titre: N_("Destination"), valeur: (l) => l.src.pays || "", rendu: (l) => l.src.pays || "—" }, colMontant];
+    colonnes = [colDossier, colDate, ...(id === "a_encaisser" || id === "devis_attente" ? [{ cle: "age", titre: N_("Ancienneté"), num: true, valeur: (l) => l.age, rendu: (l) => tr("{n} jours", { n: l.age }) }] : []), ...(X.excursions ? [] : [{ cle: "pays", titre: N_("Destination"), valeur: (l) => l.src.pays || "", rendu: (l) => l.src.pays || "—" }]), colMontant];
   } else if (source === "paiements") {
     colonnes = [colDate, colDossier, { cle: "moyen", titre: N_("Moyen de paiement"), valeur: (l) => l.moyen || "", rendu: (l) => libelleGroupe("moyen", { cle: l.moyen || tr("Non précisé") }) }, colMontant];
   } else if (source === "revenu") {

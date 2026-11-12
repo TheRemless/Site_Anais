@@ -1,5 +1,5 @@
 // Tarifs : toutes les prestations des partenaires par famille, avec recherche, prix de vente, net et marge.
-import { etat, peut, naviguer, nomPartenaire } from "../etat.mjs";
+import { etat, peut, naviguer, nomPartenaire, modeTaxi } from "../etat.mjs";
 import { h, champ, modal } from "../ui.mjs";
 import { FAMILLES, nomFamille, correspond } from "../partenaires-calc.mjs";
 import { vide } from "./commun.mjs";
@@ -43,13 +43,13 @@ export function vueTarifs() {
         )
       );
     }
-    corps.append(h("p", { class: "aide" }, pluriel(lignes.length, N_("{n} tarif."), N_("{n} tarifs.")), voitNets() ? "" : tr(" Les prix nets et les marges demandent le droit « prix nets ».")));
+    corps.append(h("p", { class: "aide" }, pluriel(lignes.length, N_("{n} tarif."), N_("{n} tarifs.")), voitNets() || modeTaxi() ? "" : tr(" Les prix nets et les marges demandent le droit « prix nets ».")));
   }
   dessiner();
   return h(
     "div",
     { "data-titre": tr("Tarifs"), "data-large": true },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Tarifs des partenaires")), h("p", { class: "sous" }, tr("Prix de vente, nets et marges de toutes les prestations, famille par famille."))), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle prestation"), formulairePrestation({ famille }, () => (fermer(), rafraichir()))); } }, tr("Nouvelle prestation")) : null),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Tarifs des partenaires")), h("p", { class: "sous" }, modeTaxi() ? tr("Prix de vente de toutes les courses, famille par famille.") : tr("Prix de vente, nets et marges de toutes les prestations, famille par famille."))), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle prestation"), formulairePrestation({ famille }, () => (fermer(), rafraichir()))); } }, tr("Nouvelle prestation")) : null),
     onglets,
     h("div", { class: "barre-outils" }, h("div", { class: "champ recherche" }, h("label", { for: "rech-tarifs" }, tr("Rechercher")), q), h("div", { class: "champ" }, h("label", { for: "filtre-part" }, tr("Partenaire")), partenaire)),
     corps

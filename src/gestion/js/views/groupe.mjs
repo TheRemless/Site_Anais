@@ -4,7 +4,7 @@ import { etat, entitesAnalysables, peut } from "../etat.mjs";
 import { completerReglages } from "../defauts.mjs";
 import { h, vider, toast } from "../ui.mjs";
 import { aujourdhui, formatNombre, nomMois } from "../calc.mjs";
-import { tauxDepuisReglages, periodePrecedente, syntheseEntite, consolider, seriesMensuelles, classementGroupe } from "../groupe.mjs";
+import { tauxDepuisReglages, periodePrecedente, syntheseEntite, consolider, seriesMensuelles, classementGroupe, avecDevis } from "../groupe.mjs";
 import { s, periodes, listeMois, libelleMois, libelleSpecial, barresHorizontales } from "./analyses.mjs";
 import { vide, telecharger } from "./commun.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
@@ -70,6 +70,8 @@ export function vueGroupe() {
   const jour = aujourdhui();
   const reglagesDe = (e) => completerReglages(etat.brut.reglages[e.id]);
   const entreprises = entites.map((e) => ({ entite: e, nom: e.nom, reglages: reglagesDe(e), devise: reglagesDe(e).devise, taux: reglagesDe(e).taux }));
+  // Fonctionnement de chaque entreprise : « sur_mesure » (devis puis facture), « excursions » (facture directe), « taxi » (aucune facture client).
+  const modeDe = (e) => reglagesDe(e).fonctionnement || "sur_mesure";
   const devisesConnues = [...new Set(entreprises.map((x) => x.devise).filter(Boolean))];
   const etatVue = { periode: "douze", du: periodes.douze[1](jour)[0], au: jour, cible: devisesConnues[0] || "CHF", serie: "facture_par_mois" };
   const corps = h("div", { "aria-live": "polite" });
@@ -106,7 +108,7 @@ export function vueGroupe() {
       brut = await Promise.all(
         entites.map(async (entite) => {
           const [donnees, precedent] = await Promise.all([etat.store.analyses({ entiteId: entite.id, du: etatVue.du, au: etatVue.au, jour }), etat.store.analyses({ entiteId: entite.id, du: duPrec, au: auPrec, jour })]);
-          return { entite, donnees, precedent };
+          return { entite, donnees, precedent, mode: modeDe(entite) };
         })
       );
       dessiner();
@@ -127,7 +129,7 @@ export function vueGroupe() {
     const devisesVues = [...new Set([...devisesConnues, ...brut.flatMap(({ donnees }) => [...donnees.facture_par_mois, ...donnees.encaisse_par_mois, ...donnees.impayes, ...(donnees.pipeline || [])].map((x) => x.devise))])].filter(Boolean);
     vider(choixDevise).append(h("label", { for: "gr-devise" }, tr("Tout ramener en")), h("select", { id: "gr-devise", onchange: (e) => ((etatVue.cible = e.target.value), dessiner()) }, devisesVues.map((x) => h("option", { value: x, selected: x === cible }, x))));
     const { taux, source } = tauxActuels();
-    const syntheses = brut.map(({ entite, donnees, precedent }) => syntheseEntite({ entite, donnees, precedent, cible, taux }));
+    const syntheses = brut.map(({ entite, donnees, precedent, mode }) => syntheseEntite({ entite, donnees, precedent, cible, taux, mode }));
     const groupe = consolider(syntheses);
     const mois = listeMois(etatVue.du, etatVue.au);
     const series = seriesMensuelles(brut, etatVue.serie, cible, taux);
@@ -136,21 +138,23 @@ export function vueGroupe() {
     const chiffre = (libelle, valeur, detail) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, libelle), h("p", { class: "chiffre-valeur" }, valeur), h("p", { class: "chiffre-detail" }, detail || " "));
     const pastille = (k) => h("i", { class: `pastille serie-${k % 5}`, "aria-hidden": "true" });
     const num = (v, extra) => h("td", { class: "num", ...extra }, v);
+    // Un chiffre qui ne concerne pas l'entreprise (devis hors ZTP, facture en Taxi) : on le dit, plutôt qu'un « — » qui ferait croire à un manque.
+    const sansObjet = () => h("span", { class: "sec" }, tr("sans objet"));
 
     const ligneSociete = (sy, k) =>
       h(
         "tr",
         null,
         h("td", { "data-label": tr("Société") }, pastille(k), " ", h("strong", null, sy.entite.nom), sy.manquantes.length ? h("span", { class: "aide-inline" }, tr(" (hors {liste})", { liste: sy.manquantes.join(", ") })) : null),
-        num(montant(sy.facture, cible), { "data-label": tr("Facturé") }),
-        num(evol(sy.evolFacture), { "data-label": tr("Évolution") }),
-        h("td", { class: "num part-cellule", "data-label": tr("Part") }, groupe.parts[k].part === null ? "—" : [h("span", { class: `barre-h serie-${k % 5}`, style: `width:${Math.max(2, groupe.parts[k].part)}%`, "aria-hidden": "true" }), `${groupe.parts[k].part} %`]),
+        num(sy.avecFactures ? montant(sy.facture, cible) : sansObjet(), { "data-label": tr("Facturé") }),
+        num(sy.avecFactures ? evol(sy.evolFacture) : sansObjet(), { "data-label": tr("Évolution") }),
+        h("td", { class: "num part-cellule", "data-label": tr("Part") }, !sy.avecFactures ? sansObjet() : groupe.parts[k].part === null ? "—" : [h("span", { class: `barre-h serie-${k % 5}`, style: `width:${Math.max(2, groupe.parts[k].part)}%`, "aria-hidden": "true" }), `${groupe.parts[k].part} %`]),
         num(montant(sy.encaisse, cible), { "data-label": tr("Encaissé") }),
-        num(sy.nbImpayes ? montant(sy.impayes, cible) : "—", { "data-label": tr("Impayés") }),
-        num(sy.nbPipeline ? `${montant(sy.pipeline, cible)} (${sy.nbPipeline})` : "—", { "data-label": tr("Devis en attente") }),
-        num(sy.devisEmis ? `${sy.devisAcceptes} / ${sy.devisEmis}${sy.tauxAcceptation !== null ? ` (${sy.tauxAcceptation} %)` : ""}` : "—", { "data-label": tr("Devis acceptés / émis") }),
+        num(!sy.avecFactures ? sansObjet() : sy.nbImpayes ? montant(sy.impayes, cible) : "—", { "data-label": tr("Impayés") }),
+        num(!sy.avecDevis ? sansObjet() : sy.nbPipeline ? `${montant(sy.pipeline, cible)} (${sy.nbPipeline})` : "—", { "data-label": tr("Devis en attente") }),
+        num(!sy.avecDevis ? sansObjet() : sy.devisEmis ? `${sy.devisAcceptes} / ${sy.devisEmis}${sy.tauxAcceptation !== null ? ` (${sy.tauxAcceptation} %)` : ""}` : "—", { "data-label": tr("Devis acceptés / émis") }),
         num(`${sy.dossiers} · ${sy.clients}`, { "data-label": tr("Dossiers · clients") }),
-        num(sy.panierMoyen === null ? "—" : montant(sy.panierMoyen, cible), { "data-label": tr("Facture moyenne") })
+        num(!sy.avecFactures ? sansObjet() : sy.panierMoyen === null ? "—" : montant(sy.panierMoyen, cible), { "data-label": tr("Facture moyenne") })
       );
     const ligneTotal = h(
       "tr",
@@ -161,8 +165,8 @@ export function vueGroupe() {
       num("100 %", { "data-label": tr("Part") }),
       num(h("strong", null, montant(groupe.encaisse, cible)), { "data-label": tr("Encaissé") }),
       num(groupe.nbImpayes ? montant(groupe.impayes, cible) : "—", { "data-label": tr("Impayés") }),
-      num(groupe.nbPipeline ? `${montant(groupe.pipeline, cible)} (${groupe.nbPipeline})` : "—", { "data-label": tr("Devis en attente") }),
-      num(groupe.devisEmis ? `${groupe.devisAcceptes} / ${groupe.devisEmis}${groupe.tauxAcceptation !== null ? ` (${groupe.tauxAcceptation} %)` : ""}` : "—", { "data-label": tr("Devis acceptés / émis") }),
+      num(!groupe.avecDevis ? sansObjet() : groupe.nbPipeline ? `${montant(groupe.pipeline, cible)} (${groupe.nbPipeline})` : "—", { "data-label": tr("Devis en attente") }),
+      num(!groupe.avecDevis ? sansObjet() : groupe.devisEmis ? `${groupe.devisAcceptes} / ${groupe.devisEmis}${groupe.tauxAcceptation !== null ? ` (${groupe.tauxAcceptation} %)` : ""}` : "—", { "data-label": tr("Devis acceptés / émis") }),
       num(`${groupe.dossiers} · ${groupe.clients}`, { "data-label": tr("Dossiers · clients") }),
       num(groupe.panierMoyen === null ? "—" : montant(groupe.panierMoyen, cible), { "data-label": tr("Facture moyenne") })
     );
@@ -196,8 +200,15 @@ export function vueGroupe() {
     );
 
     const topClients = classementGroupe(brut, "top_clients", "client", cible, taux).map((x) => ({ libelle: `${libelleSpecial(x.libelle)} · ${x.entite}`, montant: x.montant, nombre: x.nombre }));
-    const parService = classementGroupe(brut, "par_pays", "pays", cible, taux, 10).map((x) => ({ libelle: `${libelleSpecial(x.libelle)} · ${x.entite}`, montant: x.montant, nombre: x.nombre }));
+    // Les destinations n'existent que pour le voyage sur mesure : Secret et Taxi n'ont pas de pays sur leurs dossiers.
+    const surMesure = brut.filter((x) => avecDevis(x.mode));
+    const parService = classementGroupe(surMesure, "par_pays", "pays", cible, taux, 10).map((x) => ({ libelle: `${libelleSpecial(x.libelle)} · ${x.entite}`, montant: x.montant, nombre: x.nombre }));
     const meilleureSociete = [...syntheses].sort((a, b) => b.facture - a.facture)[0];
+    // Facturé et Part ne comptent que ce qui passe par une facture client : à dire sous le tableau quand une société vend sur place.
+    const noms = (f) => syntheses.filter(f).map((sy) => sy.entite.nom).join(", ");
+    const surPlace = noms((sy) => sy.mode === "excursions");
+    const sansFacture = noms((sy) => !sy.avecFactures);
+    const noteFacture = [surPlace ? tr("Pour {liste}, le facturé et la part ne comptent pas les services payés sur place au prestataire.", { liste: surPlace }) : null, sansFacture ? tr("Pour {liste}, il n'y a pas de facture client (le client paie le chauffeur), donc ni facturé, ni impayés, ni facture moyenne.", { liste: sansFacture }) : null].filter(Boolean).join(" ");
     const meilleurMois = mois.map((m) => [m, series.reduce((t, x) => t + (x.valeurs[m] || 0), 0)]).sort((a, b) => b[1] - a[1])[0];
 
     vider(corps).append(
@@ -213,8 +224,9 @@ export function vueGroupe() {
       h(
         "div",
         { class: "chiffres" },
-        chiffre(tr("Devis en attente"), groupe.nbPipeline ? montant(groupe.pipeline, cible) : "—", groupe.nbPipeline ? pluriel(groupe.nbPipeline, N_("{n} devis envoyé sans réponse, chiffre d'affaires possible"), N_("{n} devis envoyés sans réponse, chiffre d'affaires possible")) : tr("Aucun devis en attente")),
-        chiffre(tr("Devis acceptés"), groupe.devisEmis ? tr("{acceptes} sur {emis}", { acceptes: groupe.devisAcceptes, emis: groupe.devisEmis }) : "—", groupe.tauxAcceptation !== null ? tr("{taux} % des devis émis sur la période", { taux: groupe.tauxAcceptation }) : tr("Aucun devis émis sur la période")),
+        // Les devis n'existent qu'en sur mesure : sans société de ce type, ces deux chiffres n'ont pas lieu d'être.
+        !groupe.avecDevis ? null : chiffre(tr("Devis en attente"), groupe.nbPipeline ? montant(groupe.pipeline, cible) : "—", groupe.nbPipeline ? pluriel(groupe.nbPipeline, N_("{n} devis envoyé sans réponse, chiffre d'affaires possible"), N_("{n} devis envoyés sans réponse, chiffre d'affaires possible")) : tr("Aucun devis en attente")),
+        !groupe.avecDevis ? null : chiffre(tr("Devis acceptés"), groupe.devisEmis ? tr("{acceptes} sur {emis}", { acceptes: groupe.devisAcceptes, emis: groupe.devisEmis }) : "—", groupe.tauxAcceptation !== null ? tr("{taux} % des devis émis sur la période", { taux: groupe.tauxAcceptation }) : tr("Aucun devis émis sur la période")),
         chiffre(tr("Facture moyenne"), groupe.panierMoyen === null ? "—" : montant(groupe.panierMoyen, cible), tr("{dossiers} pour {clients}", { dossiers: pluriel(groupe.dossiers, N_("dossier"), N_("dossiers")), clients: pluriel(groupe.clients, N_("client"), N_("clients")) }))
       ),
       h(
@@ -222,7 +234,8 @@ export function vueGroupe() {
         null,
         h("h2", null, tr("Par société")),
         meilleureSociete && meilleureSociete.facture > 0 ? h("p", { class: "aide" }, tr("{nom} représente {part} % du facturé du groupe sur la période.", { nom: meilleureSociete.entite.nom, part: groupe.parts.find((p) => p.entite.id === meilleureSociete.entite.id).part })) : null,
-        h("div", { class: "tableau-defilant" }, h("table", { class: "tableau tableau-groupe" }, h("thead", null, h("tr", null, [tr("Société"), tr("Facturé"), tr("Évolution"), tr("Part"), tr("Encaissé"), tr("Impayés"), tr("Devis en attente"), tr("Devis acceptés / émis"), tr("Dossiers · clients"), tr("Facture moyenne")].map((t, i) => h("th", { scope: "col", class: i ? "num" : null }, t)))), h("tbody", null, syntheses.map(ligneSociete), ligneTotal)))
+        h("div", { class: "tableau-defilant" }, h("table", { class: "tableau tableau-groupe" }, h("thead", null, h("tr", null, [tr("Société"), tr("Facturé"), tr("Évolution"), tr("Part"), tr("Encaissé"), tr("Impayés"), tr("Devis en attente"), tr("Devis acceptés / émis"), tr("Dossiers · clients"), tr("Facture moyenne")].map((t, i) => h("th", { scope: "col", class: i ? "num" : null }, t)))), h("tbody", null, syntheses.map(ligneSociete), ligneTotal))),
+        noteFacture ? h("p", { class: "aide" }, noteFacture) : null
       ),
       h(
         "section",
@@ -237,7 +250,7 @@ export function vueGroupe() {
         "div",
         { class: "deux-colonnes" },
         h("section", null, h("h2", null, tr("Meilleurs clients, toutes sociétés")), topClients.length ? barresHorizontales(topClients, cible) : h("p", { class: "vide-court" }, tr("Aucune donnée sur la période."))),
-        h("section", null, h("h2", null, tr("Destinations et services")), parService.length ? barresHorizontales(parService, cible) : h("p", { class: "vide-court" }, tr("Aucune donnée sur la période.")))
+        surMesure.length ? h("section", null, h("h2", null, tr("Destinations et services")), parService.length ? barresHorizontales(parService, cible) : h("p", { class: "vide-court" }, tr("Aucune donnée sur la période."))) : null
       ),
       h(
         "section",
@@ -255,8 +268,10 @@ export function vueGroupe() {
   function exporter(syntheses, groupe, series, mois, cible) {
     const cellule = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
     const lignes = [[tr("Société"), tr("Facturé ({cible})", { cible }), tr("Évolution %"), tr("Part %"), tr("Encaissé ({cible})", { cible }), tr("Impayés ({cible})", { cible }), tr("Devis en attente ({cible})", { cible }), tr("Devis émis"), tr("Devis acceptés"), tr("Dossiers"), tr("Clients"), tr("Facture moyenne ({cible})", { cible })]];
-    syntheses.forEach((sy, k) => lignes.push([sy.entite.nom, sy.facture, sy.evolFacture ?? "", groupe.parts[k].part ?? "", sy.encaisse, sy.impayes, sy.pipeline, sy.devisEmis, sy.devisAcceptes, sy.dossiers, sy.clients, sy.panierMoyen ?? ""]));
-    lignes.push([tr("Toutes les sociétés"), groupe.facture, groupe.evolFacture ?? "", 100, groupe.encaisse, groupe.impayes, groupe.pipeline, groupe.devisEmis, groupe.devisAcceptes, groupe.dossiers, groupe.clients, groupe.panierMoyen ?? ""]);
+    // Un chiffre sans objet pour la société (devis hors sur mesure, facture en taxi) reste une case vide, pas un zéro.
+    const si = (oui, v) => (oui ? v : "");
+    syntheses.forEach((sy, k) => lignes.push([sy.entite.nom, si(sy.avecFactures, sy.facture), sy.evolFacture ?? "", groupe.parts[k].part ?? "", sy.encaisse, si(sy.avecFactures, sy.impayes), si(sy.avecDevis, sy.pipeline), si(sy.avecDevis, sy.devisEmis), si(sy.avecDevis, sy.devisAcceptes), sy.dossiers, sy.clients, sy.panierMoyen ?? ""]));
+    lignes.push([tr("Toutes les sociétés"), groupe.facture, groupe.evolFacture ?? "", 100, groupe.encaisse, groupe.impayes, si(groupe.avecDevis, groupe.pipeline), si(groupe.avecDevis, groupe.devisEmis), si(groupe.avecDevis, groupe.devisAcceptes), groupe.dossiers, groupe.clients, groupe.panierMoyen ?? ""]);
     lignes.push([]);
     lignes.push([tr("Mois"), ...series.map((x) => `${x.entite.nom} (${cible})`), tr("Total ({cible})", { cible })]);
     for (const m of mois) lignes.push([m, ...series.map((x) => x.valeurs[m] || 0), series.reduce((t, x) => t + (x.valeurs[m] || 0), 0)]);

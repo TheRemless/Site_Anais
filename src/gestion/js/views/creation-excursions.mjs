@@ -4,11 +4,11 @@ import { etat, inserer, modifier, reglages, nomPartenaire, numeroSuivant } from 
 import { estTaxi, lignesSurPlace } from "../taxi-calc.mjs";
 import { aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
-import { descriptionService } from "../operations-calc.mjs";
+import { descriptionService, langueClient } from "../operations-calc.mjs";
 import { creerReservations } from "./reservations.mjs";
 
-// Les documents de Secret sont en anglais : les libellés anglais des prestations sont pris quand ils existent.
-export const langueDocuments = (regl = reglages()) => (estTaxi(regl) || /invoice/i.test((regl.libelles && regl.libelles.facture) || "") ? "en" : "");
+// Les documents de Secret et de Taxi sont en anglais (d'après le mode de l'entreprise) : les libellés anglais des prestations sont pris quand ils existent.
+export const langueDocuments = (regl = reglages()) => (langueClient(regl) === "en" ? "en" : "");
 
 // Numéro de facture proposé pour le prochain dossier de l'entreprise.
 export const refProposee = (regl = reglages()) => nouvelleRef({ numerotation: regl.numerotation, prenom: "", nom: "", dateIso: aujourdhui(), pays: "", refsExistantes: etat.db.dossiers.map((d) => d.ref) }) || "";

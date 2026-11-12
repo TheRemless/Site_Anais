@@ -1,4 +1,4 @@
-import { etat, inserer, modifier, modifierProtege, supprimer, nomClient, naviguer, resumeDossier, reglages, peut, corbeilleDossiers } from "../etat.mjs";
+import { etat, inserer, modifier, modifierProtege, supprimer, nomClient, naviguer, resumeDossier, reglages, peut, corbeilleDossiers, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, erreurChamp } from "../ui.mjs";
 import { formatMontant, formatDate } from "../calc.mjs";
 import { pastille, vide, listeAdaptative, barreFiltres } from "./commun.mjs";
@@ -9,10 +9,13 @@ import { clientsProches } from "../demande-calc.mjs";
 import { verifierTelephoneClient, numerosClient } from "../client-calc.mjs";
 
 function formulaireClient(client, apres) {
+  // Secret et Taxi n'ont pas de civilité : le champ n'apparaît pas et la valeur déjà enregistrée reste telle quelle (rien n'est imposé).
+  // En voyages sur mesure (ZTP), la civilité garde sa liste et sa première valeur par défaut.
+  const sansCivilite = modeExcursions();
   const civilites = [...reglages().listes.civilites];
   if (client.civilite && !civilites.includes(client.civilite)) civilites.push(client.civilite);
-  const civ = h("select", { id: "c-civ" }, civilites.map((x) => h("option", { value: x }, tr(x))));
-  civ.value = client.civilite || civilites[0] || "";
+  const civ = h("select", { id: "c-civ" }, sansCivilite ? [h("option", { value: client.civilite || "" }, client.civilite || "")] : civilites.map((x) => h("option", { value: x }, tr(x))));
+  civ.value = sansCivilite ? client.civilite || "" : client.civilite || civilites[0] || "";
   const prenom = h("input", { id: "c-prenom", value: client.prenom || "" });
   const nom = h("input", { id: "c-nom", value: client.nom || "", required: true });
   const tel = h("input", { id: "c-tel", type: "tel", value: client.telephone || "" });
@@ -48,7 +51,7 @@ function formulaireClient(client, apres) {
         apres(c);
       },
     },
-    h("div", { class: "grille-form" }, champ(tr("Civilité"), civ), champ(tr("Prénom"), prenom), champ(tr("Nom"), nom), champ(tr("Téléphone"), tel), champ("E-mail", email, tr("Pour votre usage, il n'apparaît pas sur les documents."))),
+    h("div", { class: "grille-form" }, sansCivilite ? null : champ(tr("Civilité"), civ), champ(tr("Prénom"), prenom), champ(tr("Nom"), nom), champ(tr("Téléphone"), tel), champ("E-mail", email, tr("Pour votre usage, il n'apparaît pas sur les documents."))),
     champ(tr("Adresse, telle qu'elle doit apparaître sur le devis"), adresse),
     champ(tr("Notes"), notes),
     peut("clients.ecrire") ? h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer le client"))) : h("p", { class: "aide" }, tr("Lecture seule : votre rôle ne permet pas de modifier les clients."))

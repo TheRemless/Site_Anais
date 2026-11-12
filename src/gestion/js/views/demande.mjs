@@ -1,11 +1,11 @@
 // « Coller une demande » : le client écrit à Anaïs sur WhatsApp, le message arrive à sa façon ou depuis le formulaire du site. On le colle ici :
 // l'outil reconnaît la date, les personnes, l'hôtel, le client et le service cité, cherche le prix dans la base partenaires, et crée le dossier
 // d'un tap. Tout ce qui a été reconnu se corrige sur place, et le prix suit.
-import { etat, entiteActive, reglages, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite } from "../etat.mjs";
+import { etat, entiteActive, reglages, modeExcursions, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite } from "../etat.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireMessage, offresDuService, decouperServices, varsReponse, langueDuMessage, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireMessage, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { appliquerModeParDefaut } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -107,7 +107,7 @@ export function ouvrirDemande() {
   let services = []; // un par service cité dans le message : { id, coche, phrase, date, heure, adultes, enfants, offreId, lignesCustom, copie, noeuds }
   let compteur = 0;
 
-  const zone = h("textarea", { id: "demande-texte", rows: 4, placeholder: "Hi Secret Travel & Tour!\nI'd like a price for a transfer.\nName: …", oninput: () => lire(zone.value) });
+  const zone = h("textarea", { id: "demande-texte", rows: 4, placeholder: `Hi ${(entiteActive() || {}).nom || "there"}!\nI'd like a price for a transfer.\nName: …`, oninput: () => lire(zone.value) });
   const reconnu = h("div", { class: "demande-reconnu", "aria-live": "polite" });
   // Les champs corrigeables sont posés une fois par message : les redessiner à chaque correction ferait perdre le doigt au champ suivant.
   const champs = h("div", { class: "demande-champs" });
@@ -310,9 +310,10 @@ export function ouvrirDemande() {
       titre: tr("Réponse à {nom}", { nom: d.nom || tr("la personne") }),
       pour: "client",
       cle: "reponse",
-      langue: langueDuMessage(texte),
+      // Secret et Taxi répondent toujours en anglais, avec les libellés anglais des services.
+      langue: langueReponse(texte, modeExcursions()),
       telephone: d.telephone || "",
-      vars: (l) => varsReponse({ d, services: coches().map((sv) => ({ ...sv, offre: etatDe(sv).offre, bebes: d.bebes })), devise, langue: l === "fr" ? "fr" : "en", entreprise, nomPartenaire }),
+      vars: (l) => varsReponse({ d, services: coches().map((sv) => ({ ...sv, offre: etatDe(sv).offre, bebes: d.bebes })), devise, langue: l === "fr" && !modeExcursions() ? "fr" : "en", entreprise, nomPartenaire }),
     });
   }
 

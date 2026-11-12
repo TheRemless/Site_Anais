@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
       .filter((m: { pour?: string; langue?: string }) => m.pour === "client" && m.langue === langue)
       .slice(0, 3)
       .map((m: { corps?: string }) => m.corps || "");
-    prompt = promptRedaction({ faits: verif.faits, langue, exemples, messageClient: typeof demande.texte === "string" ? demande.texte : "", consigne: typeof demande.consigne === "string" ? demande.consigne : "" });
+    prompt = promptRedaction({ faits: verif.faits, langue, exemples, taxi: !!reglages && reglages.fonctionnement === "taxi", messageClient: typeof demande.texte === "string" ? demande.texte : "", consigne: typeof demande.consigne === "string" ? demande.consigne : "" });
     schema = SCHEMA_REDACTION;
     valider = (v) => ({ ...validerRedaction(v, verif.faits), langue });
   }

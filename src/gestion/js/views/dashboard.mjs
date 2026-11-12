@@ -114,7 +114,7 @@ export async function tableauDeBord() {
     peut("finances.voir") && !modeTaxi() ? h(
       "div",
       { class: "chiffres rail" },
-      chiffre(formatSommes(encaisser.map((r) => ({ montant: r.reste, devise: r.devise })), reglages().devise), tr("Reste à encaisser"), pluriel(encaisser.length, N_("dossier accepté"), N_("dossiers acceptés")), "#/dossiers?onglet=encaisser&tri=reste"),
+      chiffre(formatSommes(encaisser.map((r) => ({ montant: r.reste, devise: r.devise })), reglages().devise), tr("Reste à encaisser"), modeExcursions() ? pluriel(encaisser.length, N_("dossier à régler"), N_("dossiers à régler")) : pluriel(encaisser.length, N_("dossier accepté"), N_("dossiers acceptés")), "#/dossiers?onglet=encaisser&tri=reste"),
       chiffre(formatSommes(ceMois.map((p) => ({ montant: p.montant, devise: deviseDe[p.dossier_id] })), reglages().devise), tr("Encaissé en {mois}", { mois: nomMois(ajd) }), pluriel(ceMois.length, N_("paiement"), N_("paiements"))),
       modeExcursions() ? null : chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), tr("Devis en attente de réponse"), pluriel(attente.length, N_("devis envoyé"), N_("devis envoyés")), "#/dossiers?onglet=attente")
     ) : null,
@@ -127,7 +127,8 @@ export async function tableauDeBord() {
     mesTaches().length
       ? h("section", null, h("h2", null, tr("Mes tâches")), listeTaches(mesTaches().slice(0, 6)), mesTaches().length > 6 ? h("p", { class: "plus" }, h("a", { href: "#/taches" }, tr("Voir les {n} tâches", { n: mesTaches().length }))) : h("p", { class: "plus" }, h("a", { href: "#/taches" }, tr("Toutes les tâches"))))
       : null,
-    h("section", null, h("h2", null, tr("À faire")), taches.length
+    // Secret et Taxi n'ont ni acompte, ni devis à relancer, ni solde avant départ : la section n'apparaît que si elle a des tâches.
+    taches.length || !modeExcursions() ? h("section", null, h("h2", null, tr("À faire")), taches.length
       ? h(
           "ul",
           { class: "taches" },
@@ -147,7 +148,7 @@ export async function tableauDeBord() {
             )
           )
         )
-      : h("p", { class: "vide-court" }, tr("Rien en attente. Les acomptes en retard, devis à relancer et soldes avant départ s'afficheront ici."))),
+      : h("p", { class: "vide-court" }, tr("Rien en attente. Les acomptes en retard, devis à relancer et soldes avant départ s'afficheront ici."))) : null,
     contrats.length
       ? h(
           "section",
@@ -156,7 +157,8 @@ export async function tableauDeBord() {
           h("ul", { class: "taches" }, contrats.map((c) => h("li", null, h("div", null, h("a", { class: "tache-nom", href: `#/partenaire/${c.partenaire.id}` }, c.partenaire.nom)), h("p", null, c.passe ? tr("Contrat terminé le {date}", { date: formatDate(c.fin) }) : tr("Contrat jusqu'au {date}, à renouveler", { date: formatDate(c.fin) })), h("a", { class: "bouton secondaire", href: `#/partenaire/${c.partenaire.id}` }, tr("Ouvrir la fiche")))))
         )
       : null,
-    h(
+    // Les départs de voyage (date de départ, voyage, reste à payer) n'existent que pour les voyages sur mesure.
+    modeExcursions() ? null : h(
       "section",
       null,
       h("h2", null, tr("Départs dans les 60 prochains jours")),

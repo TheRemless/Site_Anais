@@ -301,8 +301,9 @@ export function verifierFaits(f) {
   };
 }
 
-// La langue de la réponse : Secret Travel & Tour écrit en anglais seulement (documents « INVOICE »), sinon la langue du client.
-export const langueReponse = (reglages, langueClient) => (/invoice/i.test((reglages && reglages.libelles && reglages.libelles.facture) || "") ? "en" : langueClient === "en" ? "en" : "fr");
+// La langue de la réponse : en excursions (Secret) et en taxi, toujours l'anglais, d'après le mode de l'entreprise ; en voyages sur mesure (ZTP),
+// la langue du client.
+export const langueReponse = (reglages, langueClient) => (reglages && reglages.fonctionnement && reglages.fonctionnement !== "sur_mesure" ? "en" : langueClient === "en" ? "en" : "fr");
 
 const VOIX = {
   fr: `Tu écris comme Anaïs, qui vit à Koh Lanta et répond elle-même à chaque client sur WhatsApp. Elle vouvoie toujours, même chaleureuse.
@@ -326,10 +327,22 @@ Règles absolues :
 - « prix_cites » liste chaque montant écrit dans le message, en nombre. « manques » liste en français ce qu'il faut encore demander au client (vide si rien).
 - Le message est prêt à coller : pas de titre, pas de note pour Anaïs, pas de crochets à remplir.`;
 
-export function promptRedaction({ faits, langue, exemples = [], messageClient = "", consigne = "" }) {
+// Voix de Taxi : la réponse part au nom de l'entreprise (« VIP TAXI LANTA »), jamais signée Anaïs.
+const voixTaxi = (langue, signature) =>
+  (VOIX[langue] || VOIX.fr)
+    .replace("You write as Anaïs, who lives on Koh Lanta and answers each guest herself on WhatsApp", `You write for ${signature}, a private taxi service on Koh Lanta, answering each guest on WhatsApp`)
+    .replace("Tu écris comme Anaïs, qui vit à Koh Lanta et répond elle-même à chaque client sur WhatsApp", `Tu écris pour ${signature}, un service de taxi privé à Koh Lanta, qui répond à chaque client sur WhatsApp`)
+    .replace('"Have a lovely day, Anaïs"', `"Have a nice day, ${signature}"`)
+    .replace("« Belle journée, Anaïs »", `« Belle journée, ${signature} »`)
+    .replace(/beaucoup de « je » \([^)]*\)/, "« nous » plutôt que « je »");
+
+// `taxi` : réponse de VIP Taxi Lanta, signée du nom de l'entreprise des faits (sinon « VIP TAXI LANTA »). Sans valeur, déduit du nom de l'entreprise des faits.
+export function promptRedaction({ faits, langue, exemples = [], messageClient = "", consigne = "", taxi = undefined }) {
+  const estTaxi = taxi === undefined ? /taxi/i.test((faits && faits.entreprise) || "") : !!taxi;
+  const voix = estTaxi ? voixTaxi(langue, (faits && faits.entreprise) || "VIP TAXI LANTA") : VOIX[langue] || VOIX.fr;
   const ex = exemples.length ? `\n\nMessages types de l'entreprise, pour le ton (les accolades sont des champs à remplir, ne les recopie pas) :\n${exemples.map((e) => `---\n${String(e).slice(0, 800)}`).join("\n")}` : "";
   return {
-    system: [{ type: "text", text: `${CONSIGNES_REDACTION}\n\nVoix :\n${VOIX[langue] || VOIX.fr}${ex}`, cache_control: { type: "ephemeral" } }],
+    system: [{ type: "text", text: `${CONSIGNES_REDACTION}\n\nVoix :\n${voix}${ex}`, cache_control: { type: "ephemeral" } }],
     messages: [
       {
         role: "user",
