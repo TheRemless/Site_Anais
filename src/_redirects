@@ -1,3 +1,12 @@
+# Gestion vit sur sa propre adresse depuis le 12.11.2026 : gestion.zwaldtravelplanner.com (session séparée du site vitrine).
+# Sur le sous-domaine, seul l'outil est servi ; l'ancienne adresse renvoie vers la nouvelle. Ces règles passent avant toutes les autres.
+https://gestion.zwaldtravelplanner.com/gestion/*   /gestion/:splat                                         200!
+https://gestion.zwaldtravelplanner.com/*           https://gestion.zwaldtravelplanner.com/gestion/          301!
+https://zwaldtravelplanner.com/gestion/*           https://gestion.zwaldtravelplanner.com/gestion/:splat   301!
+https://www.zwaldtravelplanner.com/gestion/*       https://gestion.zwaldtravelplanner.com/gestion/:splat   301!
+https://zwaldtravelplanner.com/gestion             https://gestion.zwaldtravelplanner.com/gestion/          301!
+https://www.zwaldtravelplanner.com/gestion         https://gestion.zwaldtravelplanner.com/gestion/          301!
+
 # Secret Travel & Tour et VIP Taxi Lanta ont leur propre site (01.11.2026) : redirections permanentes.
 # Le QR code de l'affiche pointe sur /secret/ : ces règles doivent rester en place.
 /secret                 https://secrettravelandtour.com/              301!
