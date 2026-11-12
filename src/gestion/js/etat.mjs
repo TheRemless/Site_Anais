@@ -24,7 +24,8 @@ export async function init() {
   } catch (err) {
     // Jeton expiré ou refusé : on repart de la page de connexion.
     if (!/jwt|token|auth|permission|401/i.test(err.message)) throw err;
-    await etat.store.deconnecter();
+    // Jeton refusé : la déconnexion ne doit pas empêcher d'afficher la page de connexion si le réseau échoue aussi.
+    await etat.store.deconnecter().catch(() => {});
     etat.session = null;
   }
 }

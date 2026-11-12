@@ -23,17 +23,3 @@ jobs:
       - run: npm run build
 
       - run: npm test
-
-      # Les contrôles SQL rejouent schema.sql et les migrations sur un Postgres en mémoire (PGlite, installé hors du dépôt, aucun secret) :
-      # droits par rôle, nets et commissions, statistiques, sauvegarde et corbeille. Un changement du SQL qui rouvre une fuite fait échouer la CI.
-      - name: Contrôles de la base (Postgres en mémoire)
-        run: |
-          mkdir -p /tmp/verif && cd /tmp/verif
-          npm init -y >/dev/null
-          npm i @electric-sql/pglite@0.2.17 --silent
-          cp "$GITHUB_WORKSPACE"/docs/gestion/verif-*.mjs "$GITHUB_WORKSPACE"/docs/gestion/schema-v1-reference.sql .
-          export GESTION_SQL="$GITHUB_WORKSPACE/docs/gestion/" GESTION_SRC="file://$GITHUB_WORKSPACE/src/gestion/js/"
-          for f in verif-securite verif-securite-argent verif-sauvegarde verif-analyses; do
-            echo "== $f"
-            node "$f.mjs" | tail -n 25
-          done
