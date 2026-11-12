@@ -11,6 +11,7 @@ const resume = (c) => [(c.adresse || "").split("\n").pop(), c.telephone].filter(
 export function selecteurClient({ id = "client", libelle = tr("Client"), valeur = "", avecNouveau = false, surChangement = () => {} } = {}) {
   let choisi = valeur ? etat.db.clients.find((c) => c.id === valeur) || null : null;
   let nouveau = false;
+  let texteNouveau = ""; // ce qui était tapé quand « Créer un nouveau client » a été choisi
   let resultats = [];
   let actif = -1;
   let sequence = 0;
@@ -82,6 +83,7 @@ export function selecteurClient({ id = "client", libelle = tr("Client"), valeur 
     surChangement();
   }
   function creerNouveau() {
+    texteNouveau = saisie.value.trim();
     choisi = null;
     nouveau = true;
     fermer();
@@ -130,6 +132,10 @@ export function selecteurClient({ id = "client", libelle = tr("Client"), valeur 
     },
     get nouveau() {
       return nouveau;
+    },
+    // Le nom tapé avant de choisir « Créer un nouveau client » : le formulaire de création le reprend au lieu de repartir de zéro.
+    get texteSaisi() {
+      return texteNouveau;
     },
     // Demande de créer un client, comme un clic sur « Nouveau client » (brouillon issu d'une demande collée).
     nouveauClient: () => creerNouveau(),
