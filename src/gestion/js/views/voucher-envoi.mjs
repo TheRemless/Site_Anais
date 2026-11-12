@@ -20,13 +20,16 @@ const AVERTISSEMENTS = {
 };
 
 // Image PNG d'un voucher, à deux fois la taille de l'écran pour rester nette. Sans la hauteur minimale d'une page A4 : l'image s'arrête au contenu.
-export async function imageVoucher(x) {
+// `contexte` (facultatif) : client et dossier pas encore en base, pour l'aperçu de l'écran « Nouveau voucher » (voir renderVoucher).
+export async function imageVoucher(x, contexte = undefined) {
   const { default: html2canvas } = await import("../../vendor/html2canvas.mjs");
-  const hote = h("div", { class: "hote-image", "aria-hidden": "true" }, renderVoucher(x));
+  const hote = h("div", { class: "hote-image", "aria-hidden": "true" }, renderVoucher(x, contexte));
   document.body.append(hote);
   try {
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
-    await Promise.all([...hote.querySelectorAll("img")].map((i) => (i.decode ? i.decode().catch(() => {}) : null)));
+    // decode() ne se résout jamais dans une page passée en arrière-plan (téléphone qui change d'application) : trois secondes au plus.
+    const delai = () => new Promise((ok) => setTimeout(ok, 3000));
+    await Promise.all([...hote.querySelectorAll("img")].map((i) => (i.decode ? Promise.race([i.decode().catch(() => {}), delai()]) : null)));
     const canvas = await html2canvas(hote.firstChild, { scale: 2, backgroundColor: "#ffffff", useCORS: true, logging: false });
     return await new Promise((ok, ko) => canvas.toBlob((b) => (b ? ok(b) : ko(new Error(tr("L'image n'a pas pu être fabriquée.")))), "image/png"));
   } finally {

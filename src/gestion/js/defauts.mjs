@@ -29,8 +29,10 @@ export const PERMISSIONS = [
   { code: "exports.faire", groupe: N_("Administration"), libelle: N_("Exporter et sauvegarder les données") },
   { code: "analytics.voir", groupe: N_("Administration"), libelle: N_("Voir le tableau analytique") },
   { code: "journal.voir", groupe: N_("Administration"), libelle: N_("Voir le journal d'activité") },
+  // Droit d'interface, pas un droit sur les données : il réduit l'outil à un écran. Il n'entre donc jamais dans « tous les droits ».
+  { code: "vouchers.seul", groupe: N_("Interface"), libelle: N_("Ne voir que l'écran « Nouveau voucher », en thaï (entreprise en mode taxi)"), aide: N_("Pour l'assistante : un formulaire, l'aperçu du voucher et l'envoi de l'image à Anaïs. Ni menu, ni autres écrans."), interface: true },
 ];
-export const TOUTES_PERMISSIONS = PERMISSIONS.map((p) => p.code);
+export const TOUTES_PERMISSIONS = PERMISSIONS.filter((p) => !p.interface).map((p) => p.code);
 
 // Un droit en suppose d'autres : on ne peut pas modifier ce qu'on ne peut pas voir.
 export const DEPENDANCES = {
@@ -45,6 +47,8 @@ export const DEPENDANCES = {
   "taches.ecrire": ["dossiers.lire"],
   "partenaires.ecrire": ["partenaires.lire"],
   "partenaires.nets": ["partenaires.lire"],
+  // Créer un voucher crée le client, le dossier, le prix interne de la course et sa réservation avec le partenaire.
+  "vouchers.seul": ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "partenaires.lire"],
 };
 
 // Rôles créés avec chaque entreprise. Ils se modifient ensuite librement dans l'écran Administration.
@@ -244,7 +248,7 @@ export const REGLAGES_NEUTRE = {
   // Assistant IA (Claude) dans « Coller une demande » : éteint tant que l'entreprise ne l'allume pas dans Réglages > Écrans.
   assistant_ia: false,
   // Vouchers (mode excursions) : en-tête et textes fixes, en anglais.
-  voucher: { nom: "", sous_titre: "", adresse: "", whatsapp: "", email: "", licence: "", merci: "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", merci_transfert: "Thank you for booking with {entreprise}!\nWe wish you a wonderful journey.", note_transfert: "Your driver will be waiting for you at the meeting point.\nIf your plan changes, please let us know as soon as possible." },
+  voucher: { nom: "", sous_titre: "", adresse: "", whatsapp: "", email: "", licence: "", merci: "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", merci_transfert: "Thank you for booking with {entreprise}!\nWe wish you a wonderful journey.", note_transfert: "Your driver will be waiting for you at the meeting point.\nIf your plan changes, please let us know as soon as possible.", whatsapp_anais: "" },
   emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", licence: "", contact: "" },
   paiement: { texte: "", nom: "", autres: [] },
   devise: "",
@@ -393,6 +397,7 @@ export function donneesDemo(ajd, ajouterJours) {
   const assistante = { user_id: uid(), email: "assistante@demo.local", nom: "Assistante démo", super_admin: false, actif: true };
   const stagiaire = { user_id: uid(), email: "stagiaire@demo.local", nom: "Stagiaire démo", super_admin: false, actif: true };
   const comptable = { user_id: uid(), email: "comptable@demo.local", nom: "Comptable démo", super_admin: false, actif: true };
+  const voucheuse = { user_id: uid(), email: "vouchers@demo.local", nom: "Assistante taxi démo (vouchers seulement)", super_admin: false, actif: true };
   const roles = [];
   const roleDe = {};
   for (const e of [e1, e2, e3]) {
@@ -404,12 +409,15 @@ export function donneesDemo(ajd, ajouterJours) {
   }
   const rSans = { id: uid(), created_at: j(-30), entite_id: e3.id, nom: "Sans chiffres", description: "Voit les clients et les dossiers, jamais les montants.", portee: "toute", permissions: ["clients.lire", "dossiers.lire"], systeme: false };
   const rSes = { id: uid(), created_at: j(-30), entite_id: e2.id, nom: "Ses dossiers", description: "Travaille uniquement sur les dossiers dont elle est responsable.", portee: "mes_dossiers", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire"], systeme: false };
-  roles.push(rSans, rSes);
+  const rVouchers = { id: uid(), created_at: j(-1), entite_id: e3.id, nom: "Vouchers seulement", description: "L'écran « Nouveau voucher » en thaï, rien d'autre. Ne voit que les dossiers qu'elle a créés.", portee: "mes_dossiers", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "partenaires.lire", "vouchers.seul"], systeme: false };
+  roles.push(rSans, rSes, rVouchers);
   const membres = [
     { user_id: assistante.user_id, entite_id: e2.id, role_id: roleDe[`${e2.id}:Éditeur`] },
     { user_id: assistante.user_id, entite_id: e3.id, role_id: roleDe[`${e3.id}:Éditeur`] },
     { user_id: stagiaire.user_id, entite_id: e2.id, role_id: rSes.id },
     { user_id: comptable.user_id, entite_id: e3.id, role_id: rSans.id },
+    { user_id: voucheuse.user_id, entite_id: e2.id, role_id: roleDe[`${e2.id}:Éditeur`] },
+    { user_id: voucheuse.user_id, entite_id: e3.id, role_id: rVouchers.id },
   ];
   const reglages = { [e1.id]: REGLAGES_DEMO_AGENCE, [e2.id]: REGLAGES_DEMO_TOURS, [e3.id]: REGLAGES_DEMO_TAXI };
 
@@ -559,5 +567,5 @@ export function donneesDemo(ajd, ajouterJours) {
     tache(e3, "Vérifier le planning de la semaine", 2, assistante, null),
   ];
   // Treize mois d'activité fictive pour les statistiques (demo-stats.mjs).
-  return enrichirDemoStats({ entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, taches, partenaires, partenaires_prives, prestations, prestations_nets, trajets, trajets_nets, reservations, reservations_nets, pieces: [], fichiers: {}, journal: [] }, { ajd, ajouterJours, uid, contenu, nouvelleLigne });
+  return enrichirDemoStats({ entites: [e1, e2, e3], profils: [admin, assistante, stagiaire, comptable, voucheuse], roles, membres, reglages, clients, dossiers, documents, paiements, catalogue, taches, partenaires, partenaires_prives, prestations, prestations_nets, trajets, trajets_nets, reservations, reservations_nets, pieces: [], fichiers: {}, journal: [] }, { ajd, ajouterJours, uid, contenu, nouvelleLigne });
 }

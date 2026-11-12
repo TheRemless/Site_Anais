@@ -1371,3 +1371,61 @@ details > summary { padding-block: 11px; margin: 0; }
 /* Plus précis que « .demande.lu textarea », qui réduit la zone du message collé une fois lu. */
 .assistant-brouillon textarea, .demande.lu .assistant-brouillon textarea { width: 100%; min-height: 12em; height: auto; font-size: 1rem; line-height: 1.5; }
 .assistant-brouillon .actions { margin-top: 8px; }
+
+/* ---- Écran « Nouveau voucher » de Taxi (assistante, en thaï) ---------------------------------------------------------------------
+   Un seul écran au téléphone : grands champs, une action principale en bas, l'image du voucher comme pièce maîtresse.
+   Écriture thaïe : police système qui la dessine (Thonburi sur iPhone), interligne plus grand pour les voyelles et tons empilés. */
+.coque-simple { min-height: 100dvh; max-width: 560px; margin: 0 auto; background: var(--surface); }
+@media (min-width: 600px) { .coque-simple { border-inline: 1px solid var(--bord); } }
+.barre-simple { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) 16px 8px; background: var(--surface); border-bottom: 1px solid var(--bord); }
+.barre-simple .barre-logo { width: 40px; height: 40px; object-fit: contain; }
+.barre-simple .entite-choix, .barre-simple .entite-nom { flex: 1; min-width: 0; margin: 0; }
+.barre-simple .entite-choix select { width: 100%; min-height: 44px; }
+.barre-simple button { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.contenu-simple { padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
+.contenu-simple .bandeau-demo { margin-bottom: 16px; }
+
+.vr { font-family: system-ui, -apple-system, "Thonburi", "Noto Sans Thai", "Leelawadee UI", "Raleway", sans-serif; line-height: 1.65; }
+.vr h1 { font-size: 1.5rem; margin: 4px 0 16px; overflow-wrap: anywhere; }
+.vr h2 { font-size: 1.15rem; margin: 0 0 8px; }
+.vr-form { display: grid; gap: 14px; }
+.vr-champ { display: grid; gap: 4px; min-width: 0; }
+.vr-champ label { font-weight: 600; font-size: 1.05rem; color: var(--texte); }
+.vr-champ input { width: 100%; min-height: 52px; padding: 0 14px; font: inherit; font-size: 1.125rem; color: var(--texte); background: var(--surface); border: 1.5px solid var(--bord-champ); border-radius: 10px; -webkit-appearance: none; appearance: none; }
+.vr-champ input[type="date"], .vr-champ input[type="time"] { display: block; text-align: start; }
+.vr-champ input:focus-visible { outline: 3px solid var(--teal); outline-offset: 1px; border-color: var(--teal-700); }
+.vr-champ input[aria-invalid] { border-color: var(--danger); background: var(--danger-fond); }
+.vr-aide { margin: 0; font-size: 0.95rem; color: var(--texte-2); }
+.vr-erreur { margin: 0; font-size: 1rem; font-weight: 600; color: var(--danger); }
+.vr-erreur::before { content: "! "; }
+.vr-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.vr-trio .vr-champ input { text-align: center; padding: 0 6px; }
+.vr-prix input { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.vr-barre { position: sticky; bottom: 0; z-index: 10; display: flex; gap: 10px; margin: 8px -16px 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--bord); }
+.vr-barre > * { flex: 1; min-height: 52px; font-size: 1.1rem; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-align: center; }
+.vr-barre-envoi { position: static; flex-direction: column; border-top: 0; margin: 4px 0 16px; padding: 0; }
+.vr-barre-envoi > * { flex: none; width: 100%; }
+
+.vr-retour { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 1.05rem; padding: 0; }
+.vr-resume { margin: -10px 0 14px; color: var(--texte-2); font-size: 1rem; overflow-wrap: anywhere; }
+.vr-image { margin: 0 0 12px; }
+.vr-image img { display: block; width: 100%; height: auto; border: 1px solid var(--bord); border-radius: 8px; box-shadow: var(--ombre); }
+.vr-attente { margin: 0; padding: 48px 16px; text-align: center; color: var(--texte-2); background: var(--surface-2); border-radius: 8px; }
+.vr-etat:empty { display: none; }
+.vr-etat p { margin: 0 0 12px; }
+.vr-ok { color: var(--teal-700); font-weight: 600; }
+.vr-succes { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 10px 12px; font-weight: 700; color: var(--teal-700); background: var(--teal-100); border-radius: 8px; }
+
+.vr-liste { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--bord); }
+.vr-liste ul { list-style: none; margin: 0; padding: 0; }
+.vr-liste li { display: grid; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--bord); }
+.vr-liste li.annule .vr-ligne-texte { color: var(--texte-2); }
+.vr-ligne-texte { display: grid; gap: 0; min-width: 0; }
+.vr-ligne-texte strong { font-size: 1.05rem; overflow-wrap: anywhere; }
+.vr-trajet { color: var(--texte-2); overflow-wrap: anywhere; }
+.vr-ligne-texte .tag { justify-self: start; margin-top: 4px; }
+.vr-ligne-actions { display: flex; gap: 8px; }
+.vr-ligne-actions button { flex: 1; min-height: 44px; font-size: 1rem; }
+.contenu-simple .bandeau-demo .demo-choix { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.contenu-simple .bandeau-demo .demo-choix select { flex: 1; min-width: 0; max-width: 100%; }

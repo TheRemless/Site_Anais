@@ -1,4 +1,4 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, netReservation, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules, modeExcursions, modeTaxi } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, netReservation, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules, modeExcursions, modeTaxi, ecranVoucherSeul } from "./etat.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
 import { libelleStatut, formatMontant, aujourdhui } from "./calc.mjs";
@@ -285,6 +285,40 @@ function ouvrirNouveau() {
   );
 }
 
+// Assistante de Taxi (droit « vouchers.seul ») : un bandeau avec le logo, le choix d'entreprise (elle garde Secret tel quel) et la
+// déconnexion, puis l'écran « Nouveau voucher ». Ni menu, ni onglets, ni recherche, ni bouton « + ».
+function coqueSimple() {
+  const logo = etat.db.reglages.apparence.logo;
+  return h(
+    "div",
+    { class: "coque-simple" },
+    h(
+      "header",
+      { class: "barre-simple" },
+      logo ? h("img", { class: "barre-logo", src: logo, alt: "" }) : null,
+      selecteurEntite(),
+      etat.store.mode === "supabase" ? h("button", { class: "secondaire petit", type: "button", lang: "th", onclick: deconnecter }, icone("deconnexion", 18), "ออกจากระบบ") : null
+    ),
+    h("div", { class: "contenu-simple" }, etat.store.mode === "demo" ? bandeauDemo() : null, h("main", { id: "principal", tabindex: "-1" }))
+  );
+}
+
+async function afficherVoucherSeul() {
+  const cle = `simple|${etat.entiteId}|${etat.session.id}`;
+  const existante = racine.querySelector(".coque-simple");
+  if (!existante || existante.dataset.cle !== cle) {
+    vider(racine).append(coqueSimple());
+    racine.querySelector(".coque-simple").dataset.cle = cle;
+  }
+  // Une adresse d'un autre écran (lien, favori) ramène ici sans rien ouvrir d'autre.
+  if (location.hash && location.hash !== "#/") history.replaceState(null, "", "#/");
+  const { vueVoucherRapide } = await import("./views/voucher-rapide.mjs");
+  const noeud = vueVoucherRapide();
+  document.getElementById("principal").replaceChildren(noeud);
+  document.title = `${noeud.dataset.titre} - ${entiteActive().nom}`;
+  derniereVue = "#/";
+}
+
 function coque() {
   return h("div", { class: "coque" }, menu(), h("div", { class: "contenu-coque" }, barreHaut(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, h("main", { id: "principal", tabindex: "-1" }))), barreOnglets(), boutonPlus());
 }
@@ -487,6 +521,7 @@ async function afficher() {
     document.title = tr("Aucun accès - Gestion");
     return;
   }
+  if (ecranVoucherSeul()) return afficherVoucherSeul();
   // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change.
   const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}`;
   const existante = racine.querySelector(".coque");
@@ -552,7 +587,7 @@ function ouvrirAide() {
 // Raccourcis simples, actifs seulement quand on n'écrit pas dans un champ et qu'aucune fenêtre n'est ouverte.
 let sequence = null;
 document.addEventListener("keydown", (e) => {
-  if (!etat.session || !etat.db) return;
+  if (!etat.session || !etat.db || ecranVoucherSeul()) return;
   const k = e.key.toLowerCase();
   // Ctrl+K (Cmd+K sur Mac) ouvre la recherche partout, même pendant une saisie.
   if ((e.ctrlKey || e.metaKey) && !e.altKey && k === "k" && !document.querySelector(".modal-fond")) return e.preventDefault(), ouvrirRecherche();
@@ -626,6 +661,8 @@ const ECRANS_DE_LECTURE = /^#?\/?$|^#\/(dossiers|clients|taches|reservations|du|
 // Une fenêtre ouverte, un champ en cours de saisie ou une saisie pas encore enregistrée : rien ne doit être redessiné ni déclenché par-dessus.
 function saisieEnCours() {
   if (document.querySelector(".modal-fond")) return true;
+  // Écran « Nouveau voucher » : aperçu, envoi ou correction en cours (attribut posé par l'écran lui-même).
+  if (document.querySelector("#principal [data-occupe]")) return true;
   const actif = document.activeElement;
   if (actif && actif.matches("input, textarea, select, [contenteditable]")) return true;
   const principal = document.getElementById("principal");
