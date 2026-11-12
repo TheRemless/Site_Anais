@@ -28,6 +28,8 @@ jobs:
       # droits par rôle, nets et commissions, statistiques, sauvegarde et corbeille. Un changement du SQL qui rouvre une fuite fait échouer la CI.
       - name: Contrôles de la base (Postgres en mémoire)
         run: |
+          # pipefail : sans lui, « node … | tail » rend le code de tail et un contrôle en échec laissait la CI au vert.
+          set -o pipefail
           mkdir -p /tmp/verif && cd /tmp/verif
           npm init -y >/dev/null
           npm i @electric-sql/pglite@0.2.17 --silent

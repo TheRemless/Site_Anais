@@ -383,10 +383,16 @@ ok(!("commissions" in parLeg.regles) && !("paiement" in parLeg.regles) && parLeg
 ok(JSON.stringify(parLeg.c) === '["Net fixe, 10 % de marge"]' && parLeg.pa === "Espèces à la fin du mois", "ils sont repris dans partenaires_prives");
 const prestLeg = (await v.query("select details, (select details from prestations_nets where prestation_id = p.id) n from prestations p where id = '44444444-4444-4444-8444-444444444444'")).rows[0];
 ok(JSON.stringify(prestLeg.details) === '{"horaires":"08:00"}' && JSON.stringify(prestLeg.n) === '{"net_texte":"net 1200","commission":"15 %","ancien_prix":900}', "le texte des nets, la commission et l'ancien prix quittent la prestation pour prestations_nets");
-await v.exec("update dossiers set accepte_le = '2026-10-02' where id in (select id from dossiers limit 1)");
-const avant = (await v.query("select total from dossiers_resume order by dossier_id limit 1")).rows[0];
-await v.exec("insert into documents (entite_id, dossier_id, type, date_emission, contenu) select entite_id, id, 'facture_locale', '2026-10-03', '{\"lignes\":[{\"kind\":\"formule\",\"montant\":9999}]}' from dossiers limit 1");
-const apres = (await v.query("select total from dossiers_resume order by dossier_id limit 1")).rows[0];
+// Un seul dossier, choisi de façon stable (un dossier qui a un devis ou une facture) et recalculé d'abord : les dossiers anciens du jeu de test
+// gardent un résumé repris tel quel par la migration 14, que n'importe quel nouveau document recalcule. Sans cela, le contrôle comparait
+// parfois deux dossiers différents (« limit 1 » sans ordre après un update) et échouait une fois sur deux sans rapport avec la facture locale.
+const cibleFl = (await v.query("select dossier_id from documents where type in ('devis', 'facture') order by dossier_id limit 1")).rows[0].dossier_id;
+await v.query("update dossiers set accepte_le = '2026-10-02' where id = $1", [cibleFl]);
+await v.query("select recalculer_dossier($1)", [cibleFl]);
+const resumeFl = async () => (await v.query("select total, devise, recu from dossiers_resume where dossier_id = $1", [cibleFl])).rows[0];
+const avant = await resumeFl();
+await v.query("insert into documents (entite_id, dossier_id, type, date_emission, contenu) select entite_id, id, 'facture_locale', '2026-10-03', '{\"lignes\":[{\"kind\":\"formule\",\"montant\":9999}]}' from dossiers where id = $1", [cibleFl]);
+const apres = await resumeFl();
 ok(JSON.stringify(avant) === JSON.stringify(apres), "une facture locale ne change ni le total ni le résumé du dossier");
 await accorder(v);
 const editeurMig = (await v.query("select permissions from roles where nom = 'Éditeur' limit 1")).rows[0].permissions;

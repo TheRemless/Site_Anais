@@ -8,6 +8,8 @@
 -- Périmètre : comme pour les dossiers, un rôle « mes dossiers » ne voit que les services de ses dossiers (créés par la personne ou dont elle est responsable).
 -- Limite connue : le montant d'une facture « chez nous » est la marge ; avec le prix de vente de la réservation, qu'un rôle qui voit les dossiers lit déjà,
 -- on peut en déduire le net payé au prestataire. Pour l'éviter, ne donner « fiduciaire.preparer » qu'à des rôles qui voient déjà les nets, ou réserver ces factures à « gérer ».
+-- Décisions de Jérémy (12.11.2026) : Mook voit aussi les factures « chez nous » (limite acceptée) ; aucune date de départ,
+-- la clé fiduciaire.depuis reste vide et tous les services comptent, quelle que soit leur date.
 --
 -- 1. Administrateur de Secret et de Taxi : les deux droits (les administrateurs généraux les ont déjà avec la migration).
 -- 2. Mook (assistante d'Anaïs, profil 15c43035…) : dans Secret, un rôle « Éditeur + factures fiduciaire » = exactement les droits de l'Éditeur plus
