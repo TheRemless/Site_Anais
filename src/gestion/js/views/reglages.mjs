@@ -296,6 +296,7 @@ export function vueReglages() {
       date_emission: aujourdhui(),
       contenu: {
         ...CONTENU_DEFAUT(),
+        langue: ztp ? "" : "en",
         bandeau: modele || "Titre du document",
         colonnes: "detail",
         variante: (r.textes.variantes[0] || {}).id || "",
@@ -386,7 +387,8 @@ export function vueReglages() {
 
   const libellesGrille = h("div", { class: "grille-form" });
   // Les mêmes textes existent en deux versions : ceux de la langue principale et ceux des documents en anglais.
-  let langueTextes = "principale";
+  // Secret et Taxi écrivent leurs documents en anglais (contenu.langue = "en") : leurs textes à modifier sont les textes anglais.
+  let langueTextes = ztp ? "principale" : "en";
   const cibleTextes = () => (langueTextes === "en" ? r.libelles_en : r.libelles);
   const dessinerLibelles = () => {
     const cible = cibleTextes();

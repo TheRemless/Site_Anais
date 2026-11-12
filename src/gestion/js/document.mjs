@@ -118,7 +118,8 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu, nom
 
   // Une facture sans lien vers des CGV (Secret, Taxi) n'imprime pas de phrase qui renvoie à des conditions absentes. ZTP a son lien : rien ne change.
   const cgvUrl = (reglages.conditions.cgv_url || "").trim();
-  const phraseDesCgv = estFacture && !cgvUrl ? "" : phraseCgv(lb, { estFacture, en, cgvUrl });
+  // Une phrase de facture écrite par l'entreprise (par exemple sa politique d'annulation) reste imprimée, sans lien.
+  const phraseDesCgv = estFacture && !cgvUrl && !(lb.cgv_facture || "").trim() ? "" : phraseCgv(lb, { estFacture, en, cgvUrl });
   const cgvTexte = c.cgv === false || !phraseDesCgv ? null : h("div", { class: "cgv" }, markup(phraseDesCgv, vars));
 
   const centre = ap.entete === "centre";

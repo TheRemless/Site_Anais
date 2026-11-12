@@ -635,7 +635,7 @@ function editeurVue(id) {
       textePerso,
       champ(tr("Pied de page"), pied),
       // Une facture sans lien vers des CGV n'a pas de phrase à afficher (voir document.mjs) : la case n'apparaît pas.
-      doc.type !== "devis" && !(regl.conditions.cgv_url || "").trim() ? null : h("label", { class: "case", for: "d-cgv" }, cgv, tr("Afficher la phrase sur les Conditions Générales de Vente")),
+      doc.type !== "devis" && !(regl.conditions.cgv_url || "").trim() && !((regl.libelles || {}).cgv_facture || (regl.libelles_en || {}).cgv_facture || "").trim() ? null : h("label", { class: "case", for: "d-cgv" }, cgv, tr("Afficher la phrase sur les Conditions Générales de Vente")),
       h("label", { class: "case", for: "d-tva" }, tva, tr("Afficher « {tva_mention} »", { tva_mention: regl.conditions.tva_mention })),
       h("label", { class: "case", for: "d-eq" }, eqActif, tr("Afficher l'équivalent dans une ou plusieurs autres devises, à titre indicatif")),
       eqBloc
