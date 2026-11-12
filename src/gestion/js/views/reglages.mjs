@@ -430,6 +430,7 @@ export function vueReglages() {
       "div",
       null,
       h("fieldset", null, h("legend", null, tr("Identité sur les documents")), texte(N_("Nom de l'entreprise"), "emetteur.nom"), texte(N_("Sous-titre sous le nom (facultatif)"), "emetteur.sous_titre", { aide: tr("Par exemple « by Nom de la société mère ».") }), texte(N_("Adresse"), "emetteur.adresse", { multi: true, rows: 3 }), texte(N_("Téléphone affiché sous l'adresse"), "emetteur.telephone"), texte(N_("Numéro de licence TAT"), "emetteur.licence", { aide: tr("Affiché sous l'adresse sur les devis et factures, et sur les vouchers (sauf si le bloc Vouchers a le sien).") })),
+      h("fieldset", null, h("legend", null, tr("Avis des clients")), texte(N_("Lien d'avis Google"), "emetteur.lien_avis", { placeholder: "https://g.page/r/…/review", aide: tr("Le message « avis » le met dans le texte (variable {lien_avis}). Les cartes « Hier » de l'accueil proposent de le demander une fois par client.") })),
       h("fieldset", null, h("legend", null, tr("Bloc de contact du pied de page")), texte(N_("Une ligne par information"), "emetteur.contact", { multi: true, rows: 4, aide: tr("Nom de la personne, WhatsApp, e-mail, site… Ce que vous voulez voir en bas de chaque document.") }))
     ),
     paiement: h(

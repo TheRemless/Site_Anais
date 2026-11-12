@@ -153,7 +153,25 @@ export function variablesMessage({ reservation = {}, client = {}, dossier = {}, 
     reference: reservation.reference_partenaire || dossier.ref || "",
     entreprise: entreprise.nom || "",
     telephone: entreprise.telephone || "",
+    // Lien d'avis Google de l'entreprise (réglages) : jamais inventé, vide s'il n'est pas renseigné.
+    lien_avis: entreprise.lien_avis || "",
   };
+}
+
+// Demandes d'avis : une par client, même avec plusieurs services ou plusieurs dossiers. `clientDe(r)` donne l'identifiant du client. Renvoie
+// [{ clientId, reservations, premiere, demandeLe }] ; `demandeLe` : la date où l'avis a déjà été demandé (`details.avis_demande_le`), sinon null.
+export function avisParClient(reservations, clientDe) {
+  const groupes = new Map();
+  for (const r of reservations) {
+    if (r.statut === "annule") continue;
+    const clientId = clientDe(r);
+    if (!clientId) continue;
+    const g = groupes.get(clientId) || { clientId, reservations: [], premiere: r, demandeLe: null };
+    g.reservations.push(r);
+    if (!g.demandeLe && r.details && r.details.avis_demande_le) g.demandeLe = r.details.avis_demande_le;
+    groupes.set(clientId, g);
+  }
+  return [...groupes.values()];
 }
 
 // Agenda : aujourd'hui, demain, et ce qui reste à confirmer, hors annulées. Trié par heure de pickup puis libellé.
@@ -443,6 +461,14 @@ export function consigneCheckin(nomCompagnie, trajet = {}) {
   if (c.includes("bundhaya")) return "Check-in at the pier 45 minutes before departure, counter closes 15 minutes before. Please bring this voucher and your passport or ID.";
   if (c.includes("satun")) return "Please present this voucher at the counter 30 minutes before departure, counter closes 20 minutes before. Passport or ID required.";
   return "Please arrive at the pier 30 minutes before departure with this voucher and your passport or ID.";
+}
+// Trajet vers ou depuis la Malaisie (Langkawi) : la note à lire par le client avant de partir. Le passeport valable au moins six mois vient de la consigne de
+// Jérémy ; le check-in plus tôt est le texte de la compagnie (consigneCheckin), repris tel quel. Vide pour tout autre trajet.
+export function notePasseport({ de = "", vers = "", libelle = "", compagnie = "" } = {}) {
+  const lieux = `${de} ${vers} ${libelle}`;
+  if (!/langkawi|malaysia|malaisie/i.test(lieux)) return "";
+  const trajet = /langkawi/i.test(`${de} ${vers}`) ? { de, vers } : { de: "Langkawi", vers: "" };
+  return `Travelling to or from Langkawi (Malaysia): please bring your passport, valid for at least six months. ${consigneCheckin(compagnie, trajet)}`;
 }
 const sansAccentsMin = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 

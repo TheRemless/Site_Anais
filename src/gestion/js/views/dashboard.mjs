@@ -1,4 +1,4 @@
-import { etat, resumes, netReservation, nomClient, nomPartenaire, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif, dossiersAnnules, modeExcursions } from "../etat.mjs";
+import { etat, modifier, resumes, netReservation, nomClient, nomPartenaire, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif, dossiersAnnules, modeExcursions } from "../etat.mjs";
 import { reglagesIncomplets } from "../defauts.mjs";
 import { ouvrirDemande } from "./demande.mjs";
 import { h, icone } from "../ui.mjs";
@@ -6,7 +6,7 @@ import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu,
 import { pastille, cartes, voyageTexte, lienDossier } from "./commun.mjs";
 import { mesTaches, listeTaches } from "./taches.mjs";
 import { contratsAEcheance, chiffres as numeroDe } from "../partenaires-calc.mjs";
-import { agenda, personnesTexte, cleMessageClient } from "../operations-calc.mjs";
+import { agenda, personnesTexte, cleMessageClient, avisParClient } from "../operations-calc.mjs";
 import { listeReservations, pastilleReservation, messageClient } from "./reservations.mjs";
 import { tr, N_, pluriel, dateLongue } from "../i18n.mjs";
 
@@ -66,6 +66,28 @@ export async function tableauDeBord() {
   const ag = agenda(etat.db.reservations, ajd, dossiersAnnules(), { netDe: netReservation });
   const aConfirmer = [...ag.enRetard, ...ag.aConfirmer];
   const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
+  // Hier : une demande d'avis par client, même avec plusieurs services. « Demander l'avis » ouvre le message prêt et, une fois parti, note la date sur ses services.
+  const clientIdDe = (r) => (etat.db.dossiers.find((x) => x.id === r.dossier_id) || {}).client_id || null;
+  const marquerAvis = async (g) => {
+    for (const x of g.reservations) await modifier("reservations", x.id, { details: { ...(x.details || {}), avis_demande_le: ajd } });
+    rafraichir();
+  };
+  const sectionAvis = (titre, rs) => {
+    const demandes = avisParClient(rs, clientIdDe);
+    return h(
+      "section",
+      null,
+      h("h2", null, titre, h("span", { class: "tag" }, demandes.length)),
+      h("ul", { class: "cartes" }, demandes.map((g) => {
+        const client = etat.db.clients.find((c) => c.id === g.clientId);
+        return h("li", { class: "carte" }, h("div", { class: "carte-lien statique" },
+          h("span", { class: "carte-titre" }, lienDossier(client ? nomClient(client) : tr("Client inconnu"), g.premiere.dossier_id)),
+          h("span", { class: "carte-sous" }, g.reservations.map((x) => x.libelle).join(" · ")),
+          h("span", { class: "carte-pied" }, g.demandeLe ? h("span", { class: "tag" }, tr("Avis demandé le {date}", { date: formatDate(g.demandeLe) })) : h("button", { class: "principal petit", type: "button", onclick: () => messageClient(g.premiere, "avis", { surEnvoi: () => marquerAvis(g) }) }, icone("whatsapp", 16), tr("Demander l'avis")))
+        ));
+      }))
+    );
+  };
   const sectionAgenda = (titre, rs, videTexte) => h("section", null, h("h2", null, titre, h("span", { class: "tag" }, rs.length)), rs.length ? listeReservations(rs, { apres: rafraichir }) : h("p", { class: "vide-court" }, videTexte));
   const departs = rs
     .filter((r) => r.dossier.date_depart && r.statut !== "annule" && r.dossier.date_depart >= ajd && joursEntre(ajd, r.dossier.date_depart) <= 60)
@@ -89,7 +111,7 @@ export async function tableauDeBord() {
       chiffre(formatSommes(ceMois.map((p) => ({ montant: p.montant, devise: deviseDe[p.dossier_id] })), reglages().devise), tr("Encaissé en {mois}", { mois: nomMois(ajd) }), pluriel(ceMois.length, N_("paiement"), N_("paiements"))),
       modeExcursions() ? null : chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), tr("Devis en attente de réponse"), pluriel(attente.length, N_("devis envoyé"), N_("devis envoyés")), "#/dossiers?onglet=attente")
     ) : null,
-    moduleActif("reservations") && ag.hier.length ? sectionAgenda(tr("Hier : à recontacter pour avoir leur avis"), ag.hier, "") : null,
+    moduleActif("reservations") && ag.hier.length ? sectionAvis(tr("Hier : à recontacter pour avoir leur avis"), ag.hier) : null,
     moduleActif("reservations") && aConfirmer.length
       ? h("section", null, h("h2", null, tr("À confirmer auprès des partenaires"), h("span", { class: "tag" }, aConfirmer.length)), listeReservations(aConfirmer.slice(0, 6), { apres: rafraichir }), aConfirmer.length > 6 ? h("p", { class: "plus" }, h("a", { href: "#/reservations?statut=ouvertes" }, tr("Voir les {n} réservations à confirmer", { n: aConfirmer.length }))) : null)
       : null,

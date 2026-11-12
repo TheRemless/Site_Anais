@@ -2,7 +2,7 @@
 // d'après la base partenaires, et réponse prête à envoyer. Logique pure, testée avec node --test.
 // Rien n'est inventé : un prix vient d'une ligne de la base, et sans correspondance on propose seulement de chercher à la main.
 import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSupplementaires, prefixeProgramme } from "./partenaires-calc.mjs";
-import { dateTexte, personnesTexte } from "./operations-calc.mjs";
+import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -548,7 +548,7 @@ const prenomDe = (nom) => (nom || "").trim().split(/\s+/)[0] || "";
 const nombre = (n) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
 
 // Texte anglais à envoyer au client : ce qui a été demandé, le prix de la base, et la question de la réservation. Rien d'autre.
-export function reponsePrix(d, offre, { devise = "THB" } = {}) {
+export function reponsePrix(d, offre, { devise = "THB", compagnie = "" } = {}) {
   const prenom = prenomDe(d.nom);
   const lignes = [`Hello${prenom ? ` ${prenom}` : ""},`, ""];
   lignes.push(offre.titre);
@@ -557,6 +557,9 @@ export function reponsePrix(d, offre, { devise = "THB" } = {}) {
   const gens = personnesTexte({ adultes: d.adultes, enfants: d.enfants, bebes: d.bebes }, "en");
   if (gens) lignes.push(`People: ${gens}`);
   if (offre.total !== null && offre.total !== undefined) lignes.push(`Price: ${devise} ${nombre(offre.total)}`);
+  // Trajet vers ou depuis Langkawi : passeport et check-in à lire avant de réserver.
+  const passeport = notePasseport({ de: offre.source && offre.source.de, vers: offre.source && offre.source.vers, libelle: offre.titre, compagnie });
+  if (passeport) lignes.push("", passeport);
   lignes.push("", "Would you like me to book it?");
   return lignes.join("\n");
 }
