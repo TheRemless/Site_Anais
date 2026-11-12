@@ -5,6 +5,7 @@ import { resume, setDevise, setMasquerMontants } from "./calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
 import { entreprisesVisibles } from "./groupe.mjs";
+import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
@@ -283,8 +284,9 @@ export const inserer = (...a) => ecrire(() => insererBrut(...a));
 
 // `verrou` : refuse d'écraser ce qu'une autre personne a enregistré depuis la lecture de la ligne (erreur avec `conflit`). À réserver aux
 // enregistrements qui réécrivent une fiche entière (devis, fiche client) ; sans la migration 15, `updated_at` manque et rien n'est vérifié.
-async function modifierBrut(table, id, patch, { verrou = false } = {}) {
-  const avant = verrou ? (etat.brut[table].find((x) => x.id === id) || {}).updated_at : undefined;
+// `version` : la version que la personne a vue en ouvrant la fiche (la synchronisation a pu en apporter une plus récente dans l'état).
+async function modifierBrut(table, id, patch, { verrou = false, version = undefined } = {}) {
+  const avant = verrou ? (version ?? (etat.brut[table].find((x) => x.id === id) || {}).updated_at) : undefined;
   const r = await etat.store.modifier(table, id, patch, avant);
   // La liste a pu être relue pendant l'attente : on retrouve la ligne après coup.
   const i = etat.brut[table].findIndex((x) => x.id === id);
@@ -296,6 +298,46 @@ async function modifierBrut(table, id, patch, { verrou = false } = {}) {
   return r;
 }
 export const modifier = (...a) => ecrire(() => modifierBrut(...a));
+
+// Nom de la personne qui a modifié une ligne en dernier (colonne `modifie_par`), vide si inconnue.
+export function nomModificateur(ligne) {
+  const p = ligne && ligne.modifie_par ? etat.brut.profils.find((x) => x.user_id === ligne.modifie_par) : null;
+  return p ? p.nom || p.email || "" : "";
+}
+
+// Enregistre une fiche sans écraser le travail d'une autre personne. `base` : la ligne telle que la personne l'a ouverte ; `valeurs` : ce que son
+// formulaire écrit. Si la ligne a changé entre-temps, les deux saisies sont comparées champ par champ (conflit-calc.mjs) : ce que l'autre seul a changé
+// reste, ce que la personne seule a changé s'écrit, et seul un champ changé des deux côtés est soumis à `arbitrer({ conflits, courante, par })`, qui
+// renvoie « sien », « miens » ou null (renoncer : l'erreur porte `annule`). Sans colonne de version (avant la migration 24), rien n'est vérifié.
+export async function modifierProtege(table, id, valeurs, { base, arbitrer }) {
+  let patch = valeurs;
+  let version = base && base.updated_at;
+  let reference = base || {};
+  for (let essai = 0; ; essai++) {
+    try {
+      return await modifier(table, id, patch, { verrou: true, version });
+    } catch (err) {
+      if (!err.conflit || essai >= 3) throw err;
+      const neuf = await etat.store.charger();
+      const courante = (neuf[table] || []).find((x) => x.id === id);
+      if (!courante) throw err;
+      const i = etat.brut[table].findIndex((x) => x.id === id);
+      if (i >= 0) etat.brut[table][i] = table === "dossiers" ? { ...etat.brut[table][i], ...courante } : courante;
+      rebatir();
+      const f = fusionner(reference, patch, courante);
+      let ecrire = f.patch;
+      if (f.conflits.length) {
+        const choix = await arbitrer({ conflits: f.conflits, courante, par: nomModificateur(courante) });
+        if (!choix) throw Object.assign(new Error(tr("Enregistrement annulé : la fiche a été modifiée par quelqu'un d'autre.")), { annule: true });
+        ecrire = appliquerChoix(f, choix, courante);
+      }
+      if (!Object.keys(ecrire).length) return courante;
+      patch = ecrire;
+      version = courante.updated_at;
+      reference = courante;
+    }
+  }
+}
 
 async function supprimerBrut(table, id) {
   const avant = etat.brut[table].find((x) => x.id === id);

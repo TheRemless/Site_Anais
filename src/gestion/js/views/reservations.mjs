@@ -1,9 +1,10 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
-import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions } from "../etat.mjs";
+import { etat, dossiersAnnules, peut, inserer, modifier, modifierProtege, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE, ajouterJours } from "../calc.mjs";
 import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, nbJoursLocation, lieuParDefaut, notePasseport, alerteAvantVeille } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
+import { demanderArbitrage } from "./conflit.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide, barreFiltres, lienDossier } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -246,6 +247,15 @@ async function supprimerReservation(r) {
 // Nombre saisi au clavier du téléphone : la virgule décimale est acceptée.
 const nb = (v) => num(String(v ?? "").trim().replace(",", "."));
 
+// Deux personnes sur la même réservation : les champs changés d'un seul côté se gardent, un champ changé des deux côtés est soumis au choix.
+const ETIQUETTES_RESERVATION = { libelle: N_("Prestation"), partenaire_id: N_("Partenaire"), statut: N_("Statut"), reference_partenaire: N_("Référence du partenaire"), date_service: N_("Date du service"), heure_pickup: N_("Heure de pickup"), lieu_pickup: N_("Lieu de pickup"), personnes: N_("Personnes"), notes: N_("Notes"), montant_vente: N_("Montant vendu"), paye_sur_place: N_("Paiement") };
+const arbitrerReservation = (r) => ({ conflits, courante, par }) =>
+  demanderArbitrage({
+    conflits, par, titreFiche: tr("La réservation « {libelle} »", { libelle: r.libelle || "" }),
+    etiquettes: Object.fromEntries(Object.entries(ETIQUETTES_RESERVATION).map(([k, v]) => [k, tr(v)])),
+    format: (cle, v) => (cle === "partenaire_id" ? (v ? nomPartenaire(v) : tr("Sans partenaire")) : cle === "statut" ? (STATUTS_RESERVATION[v] ? tr(STATUTS_RESERVATION[v]) : v) : cle === "date_service" ? (v ? formatDate(v) : tr("Date à fixer")) : cle === "paye_sur_place" ? (v ? tr("sur place") : tr("chez nous")) : cle.startsWith("personnes.") ? (v === null || v === undefined ? "0" : String(v)) : null),
+  });
+
 export function formulaireReservation(r, apres) {
   const nets = voitNets() && peut("dossiers.ecrire");
   const n = r.id && nets ? netReservation(r) : null;
@@ -421,7 +431,7 @@ export function formulaireReservation(r, apres) {
           const { changements, ecartRestant } = suivi;
           if (suivi.montantVente !== null) valeurs.montant_vente = suivi.montantVente;
           await appliquerChangements(changements);
-          const res = r.id ? await modifier("reservations", r.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
+          const res = r.id ? await modifierProtege("reservations", r.id, valeurs, { base: r, arbitrer: arbitrerReservation(r) }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
           if (res && res.id && res.details === undefined) res.details = valeurs.details;
           if (nets && (netPrevu.value !== "" || netPaye.value !== "" || payeLe.value || commissionPrevue.value !== "" || commissionRecue.value !== "" || commissionLe.value || n)) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: nb(netPrevu.value), net_paye: nb(netPaye.value), paye_le: payeLe.value || null, commission_prevue: nb(commissionPrevue.value), commission_recue: nb(commissionRecue.value), commission_recue_le: commissionLe.value || null });
           if (r.id && (dateChangee || annulee)) await synchroniserDatesDossier(r.dossier_id);

@@ -1,7 +1,8 @@
-import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier, reglages, peut, corbeilleDossiers } from "../etat.mjs";
+import { etat, inserer, modifier, modifierProtege, supprimer, nomClient, naviguer, resumeDossier, reglages, peut, corbeilleDossiers } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, erreurChamp } from "../ui.mjs";
 import { formatMontant, formatDate } from "../calc.mjs";
 import { pastille, vide, listeAdaptative, barreFiltres } from "./commun.mjs";
+import { demanderArbitrage } from "./conflit.mjs";
 import { correspond } from "../mobile-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { clientsProches } from "../demande-calc.mjs";
@@ -36,7 +37,13 @@ function formulaireClient(client, apres) {
         const valeurs = { civilite: civ.value, prenom: prenom.value.trim(), nom: nom.value.trim(), telephone: verif.valeur, email: email.value.trim(), adresse: adresse.value.trim(), notes: notes.value.trim() };
         // Seuls les champs changés partent : un autre champ modifié entre-temps par quelqu'un d'autre n'est pas écrasé.
         const changes = client.id ? Object.fromEntries(Object.entries(valeurs).filter(([k, v]) => (client[k] || "") !== v)) : valeurs;
-        const c = client.id ? (Object.keys(changes).length ? await modifier("clients", client.id, changes) : client) : await inserer("clients", valeurs);
+        let c;
+        try {
+          c = client.id ? (Object.keys(changes).length ? await modifierProtege("clients", client.id, changes, { base: client, arbitrer: arbitrerClient(client) }) : client) : await inserer("clients", valeurs);
+        } catch (err) {
+          if (err.annule) return toast(err.message, true);
+          throw err;
+        }
         toast(tr("Client enregistré."));
         apres(c);
       },
@@ -47,6 +54,10 @@ function formulaireClient(client, apres) {
     peut("clients.ecrire") ? h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer le client"))) : h("p", { class: "aide" }, tr("Lecture seule : votre rôle ne permet pas de modifier les clients."))
   );
 }
+
+// Deux personnes sur la même fiche client : un champ changé des deux côtés est soumis au choix, le reste se garde.
+const ETIQUETTES_CLIENT = { civilite: N_("Civilité"), prenom: N_("Prénom"), nom: N_("Nom"), telephone: N_("Téléphone"), email: N_("E-mail"), adresse: N_("Adresse"), notes: N_("Notes") };
+const arbitrerClient = (client) => ({ conflits, par }) => demanderArbitrage({ conflits, par, titreFiche: tr("La fiche de {nom}", { nom: nomClient(client) }), etiquettes: Object.fromEntries(Object.entries(ETIQUETTES_CLIENT).map(([k, v]) => [k, tr(v)])) });
 
 export function listeClients() {
   const nbDossiers = (c) => etat.db.dossiers.filter((d) => d.client_id === c.id).length;
