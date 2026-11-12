@@ -2,7 +2,7 @@
 // réservations à venir, devis), la période et la comparaison dans l'adresse, une liste derrière chaque chiffre.
 // Les faits viennent de la base (fonction analyse_faits), un appel par section ; les indicateurs sont dans stats-calc.mjs.
 // Réservé aux rôles qui ont les droits « analyses » et « montants » ; commissions, nets et marge demandent aussi « nets ».
-import { etat, peut, entiteActive, reglages, entitesAnalysables } from "../etat.mjs";
+import { etat, peut, entiteActive, reglages, entitesAnalysables, modeExcursions } from "../etat.mjs";
 import { h, vider, modal, toast } from "../ui.mjs";
 import { aujourdhui, formatDate, formatMontant } from "../calc.mjs";
 import { vide, telecharger } from "./commun.mjs";
@@ -120,7 +120,8 @@ export function vueAnalyses(sectionArg) {
   const filtre = q.get("filtre") || null;
   const base = { p: cle, du: cle === "perso" ? du : null, au: cle === "perso" ? au : null, cmp: cmpMode === "prec" ? null : cmpMode, dev: q.get("dev"), g: q.get("g") };
   const lien = (nom, extra = {}) => adresse(nom, { ...base, g: null, ...extra });
-  const nets = peut("partenaires.nets");
+  // Une agence sans partenaires payants (ZTP) n'a ni net ni marge : pas de section Commissions, pas de tuile Revenu, le revenu est l'encaissé.
+  const nets = peut("partenaires.nets") && modeExcursions();
   const sections = Object.entries(SECTIONS).filter(([, v]) => !v.nets || nets);
   const entiteId = etat.entiteId;
   const corps = h("div", { class: "st-corps", "aria-live": "polite" });
@@ -157,7 +158,8 @@ export function vueAnalyses(sectionArg) {
     try {
       const [du0] = S.periodeRapide("mois", jour);
       const c0 = S.periodeComparee(du0, jour, "prec");
-      const faits = await obtenir(entiteId, c0[0] < du0 ? c0[0] : du0, jour, jour, null);
+      const faitsBruts = await obtenir(entiteId, c0[0] < du0 ? c0[0] : du0, jour, jour, null);
+      const faits = modeExcursions() ? faitsBruts : { ...faitsBruts, nets: false };
       const devs = S.devises(faits, faits.devise_defaut || reglages().devise);
       const dev = devs.includes(q.get("dev")) ? q.get("dev") : devs.includes(reglages().devise) ? reglages().devise : devs[0] || reglages().devise;
       const texte = resumeMois({ faits, jour, devise: dev, entite: entiteActive().nom });
@@ -195,7 +197,8 @@ export function vueAnalyses(sectionArg) {
         parties = src === "revenu" ? ["paiements", "reservations"] : [src];
         if (!def.futur && src === "reservations" && parties.length === 1) parties = ["reservations"];
       }
-      const faits = await obtenir(entiteId, debut, fin, jour, parties);
+      const faitsBruts = await obtenir(entiteId, debut, fin, jour, parties);
+      const faits = modeExcursions() ? faitsBruts : { ...faitsBruts, nets: false };
       const devs = S.devises(faits, faits.devise_defaut || reglages().devise);
       const devise = devs.includes(q.get("dev")) ? q.get("dev") : devs.includes(reglages().devise) ? reglages().devise : devs[0] || reglages().devise;
       vider(choixDevise);

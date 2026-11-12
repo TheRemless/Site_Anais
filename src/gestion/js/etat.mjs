@@ -4,6 +4,7 @@ import { creerStore } from "./store.mjs";
 import { resume, setDevise, setMasquerMontants } from "./calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
+import { entreprisesVisibles } from "./groupe.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
@@ -137,7 +138,7 @@ export async function choisirLangue(code) {
   else connexion.langueChoisie = true;
 }
 
-export const entitesAccessibles = () => [...etat.brut.entites].filter((e) => e.actif).sort((a, b) => a.ordre - b.ordre || a.nom.localeCompare(b.nom));
+export const entitesAccessibles = () => entreprisesVisibles([...etat.brut.entites].filter((e) => e.actif).sort((a, b) => a.ordre - b.ordre || a.nom.localeCompare(b.nom)), etat.brut.dossiers);
 export const entiteActive = () => etat.brut.entites.find((e) => e.id === etat.entiteId) || null;
 
 // Une copie de travail limitée à l'entreprise active : les écrans lisent etat.db sans se soucier des autres.
