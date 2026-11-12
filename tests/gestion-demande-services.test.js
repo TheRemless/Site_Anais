@@ -37,6 +37,11 @@ test("hôtel : « Hotel: X », « hotel X » en minuscules, avec majuscules, san
   assert.equal(lire("kayak demain pour 2, hôtel : Bamboo Lodge").hotel, "Bamboo Lodge");
 });
 
+test("hôtel : « hotel pickup » ou « hotel near » ne sont pas un nom d'hôtel", () => {
+  assert.equal(lire("Please arrange hotel pickup at 9am for kayaking tomorrow, for 2").hotel || "", "");
+  assert.equal(lire("kayaking tomorrow for 2, hotel near the pier").hotel || "", "");
+});
+
 const TROIS = "Hello, we are 2 adults and 2 children, hotel: Sunset Resort. We'd like the 4 islands tour on 20 november, kayaking on 22 november and a taxi to Phuket airport on 24 november at 9am.";
 
 test("trois services, chacun à sa date, l'heure du taxi seulement sur le taxi", () => {

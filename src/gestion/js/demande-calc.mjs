@@ -367,7 +367,7 @@ export function lireLibre(texte, aujourdhui) {
   }
   // « hotel sunset » écrit en minuscules : le mot-clé et au plus quatre mots, jusqu'à un mot de liaison, un chiffre ou une ponctuation.
   if (!hote) {
-    const STOP = new Set(["on", "for", "from", "and", "the", "with", "at", "to", "please", "tomorrow", "demain", "le", "la", "les", "pour", "du", "de", "et", "avec", "dans", "since", "until", "till", "we", "i", "nous", "je", "is", "est"]);
+    const STOP = new Set(["on", "for", "from", "and", "the", "with", "at", "to", "please", "tomorrow", "demain", "le", "la", "les", "pour", "du", "de", "et", "avec", "dans", "since", "until", "till", "we", "i", "nous", "je", "is", "est", "are", "pickup", "pick", "pick-up", "transfer", "transfers", "near", "nearby", "close", "proche", "navette", "ramassage", "tour", "trip", "booking", "reservation", "address", "adresse", "room", "chambre"]);
     const k = new RegExp(`\\b(?:${MOT_HEBERGEMENT})[ \\t]+((?:[\\p{L}'’-]+[ \\t]*){1,5})`, "iu").exec(brut);
     if (k) {
       const mots4 = [];
@@ -522,8 +522,9 @@ export function decouperServices(texte, d, contexte, aujourdhui) {
       else libres.push({ f, i });
     });
     for (const { f, i } of libres) {
-      const avant = [...dansPhrase].reverse().find((g) => g.i < i);
-      const apres = dansPhrase.find((g) => g.i > i);
+      // Le plus proche avant et le plus proche après : `dansPhrase` n'est pas trié tant que les services inconnus s'y ajoutent.
+      const avant = dansPhrase.filter((g) => g.i < i).sort((a, b) => b.i - a.i)[0];
+      const apres = dansPhrase.filter((g) => g.i > i).sort((a, b) => a.i - b.i)[0];
       const dateF = dateDe(f);
       if (avant) {
         // Un nouveau service que la base ne connaît pas : une ligne à préciser. Sinon la même chose à une autre date (« et encore le 25 ») : une copie.
