@@ -136,6 +136,15 @@ export function montantSurPlace(contenu) {
   return arrondi(((contenu && contenu.lignes) || []).filter((l) => l.paye_sur_place && l.kind !== "remise" && l.kind !== "texte").reduce((s, l) => s + montantLigne(l), 0));
 }
 
+// Un document qui part chez le client sans date d'envoi : le devis n'est jamais relancé, la facture reste « pas encore marquée envoyée ».
+export const aMarquerEnvoye = (doc) => !!doc && ["devis", "facture", "facture_locale"].includes(doc.type) && !doc.envoye_le;
+
+// Un paiement reçu sur un dossier jamais accepté l'accepte : sans cela un dossier soldé comptait encore en « devis en attente ». Renvoie la date à poser, ou null.
+export const acceptationAuPaiement = (dossier, datePaiement, rembourse) => (!rembourse && datePaiement && dossier && !dossier.accepte_le && !dossier.annule ? datePaiement : null);
+
+// De l'argent est reçu mais aucune facture n'existe : à signaler sur la fiche du dossier.
+export const payeSansFacture = (r) => !!r && !r.annule && Number(r.recu) > 0 && !(r.documents || []).some((d) => d.type === "facture" || d.type === "facture_locale");
+
 // Mode de règlement d'un service : « sur_place » quand le client paie le prestataire (qui reverse ensuite une commission), sinon « nous ».
 // Une réservation et une ligne de document portent le même drapeau `paye_sur_place` : facture, voucher, écran À encaisser disent la même chose.
 export const SUR_PLACE = "sur_place";

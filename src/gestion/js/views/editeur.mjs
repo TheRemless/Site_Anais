@@ -1,6 +1,6 @@
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument } from "../etat.mjs";
 import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs";
-import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace, modeReglement, SUR_PLACE } from "../calc.mjs";
+import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace, modeReglement, SUR_PLACE, aMarquerEnvoye } from "../calc.mjs";
 import { puceMode } from "./mode-reglement.mjs";
 import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs";
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
@@ -593,7 +593,7 @@ function editeurVue(id) {
     // Téléphone : « Imprimer » n'enregistre pas de PDF, on fabrique le fichier dans la page.
     if (sansImpression()) return envoyerDocument({ ...doc }, { marquerEnvoye: () => boutonEnvoi.click() });
     pdf({ ...doc });
-    if (doc.type === "devis" && !doc.envoye_le && peut("documents.ecrire") && (await confirmer(tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance."), tr("Marquer comme envoyé")))) boutonEnvoi.click();
+    if (aMarquerEnvoye(doc) && peut("documents.ecrire") && (await confirmer(doc.type === "devis" ? tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance.") : tr("Cette facture est-elle partie chez le client ? Marquée comme envoyée, elle n'apparaît plus comme « pas encore envoyée »."), doc.type === "devis" ? tr("Marquer comme envoyé") : tr("Marquer comme envoyée")))) boutonEnvoi.click();
   }
   const boutonEnvoi = h("button", { class: "secondaire", type: "button" });
   function majBoutonEnvoi() {
