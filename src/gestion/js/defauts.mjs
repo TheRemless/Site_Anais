@@ -241,6 +241,8 @@ export const REGLAGES_NEUTRE = {
   // « sur_mesure » : voyages sur mesure avec devis, acompte et facture (Zwald). « excursions » : excursions et transferts
   // facturés directement, puis vouchers pour le client et le prestataire (Secret Travel & Tour).
   fonctionnement: "sur_mesure",
+  // Assistant IA (Claude) dans « Coller une demande » : éteint tant que l'entreprise ne l'allume pas dans Réglages > Écrans.
+  assistant_ia: false,
   // Vouchers (mode excursions) : en-tête et textes fixes, en anglais.
   voucher: { nom: "", sous_titre: "", adresse: "", whatsapp: "", email: "", licence: "", merci: "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", merci_transfert: "Thank you for booking with {entreprise}!\nWe wish you a wonderful journey.", note_transfert: "Your driver will be waiting for you at the meeting point.\nIf your plan changes, please let us know as soon as possible." },
   emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", licence: "", contact: "" },

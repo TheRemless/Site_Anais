@@ -508,6 +508,14 @@ export function vueReglages() {
           tr("En mode excursions, un nouveau dossier crée la facture et les réservations d'un coup, sans devis ni acompte, et chaque réservation a son voucher pour le client et le prestataire. En mode taxi, pas de facture : chaque course a sa « Booking confirmation » et se paie au chauffeur.")
         )
       ),
+      // Assistant IA : éteint par défaut, allumé par entreprise. Il ne fonctionne qu'une fois la fonction « assistant » déployée avec sa clé.
+      h(
+        "fieldset",
+        null,
+        h("legend", null, tr("Assistant IA")),
+        h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre et rédiger la réponse")),
+        h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous."))
+      ),
       h(
         "fieldset",
         null,

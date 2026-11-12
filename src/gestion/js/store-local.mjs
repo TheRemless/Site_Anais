@@ -85,6 +85,20 @@ export function creer() {
     async suiviRappels() {
       return null;
     },
+    // Démonstration : rien ne part chez Anthropic, la réponse est simulée à partir de la lecture par règles (assistant-calc.mjs).
+    async assistant(corps) {
+      await new Promise((r) => setTimeout(r, 700));
+      const { simulerLecture, simulerRedaction } = await import("./assistant-calc.mjs");
+      const e = corps.entite_id;
+      if (!(data.reglages[e] || {}).assistant_ia) return { erreur: "assistant_eteint" };
+      // Mêmes droits que la fonction : la base de prix, et créer un dossier pour « lire » ou le voir pour « rediger ».
+      const perms = permissionsDans(contexte(), e);
+      const requis = corps.usage === "lire" ? ["partenaires.lire", "dossiers.ecrire"] : ["partenaires.lire", "dossiers.lire"];
+      if (requis.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };
+      if (corps.usage === "lire") return simulerLecture(corps.texte || "", { prestations: data.prestations.filter((p) => p.entite_id === e), trajets: data.trajets.filter((t) => t.entite_id === e), nomPartenaire: (id) => (data.partenaires.find((p) => p.id === id) || {}).nom || "" }, aujourdhui());
+      if (corps.usage === "rediger") return simulerRedaction(corps.faits, /invoice/i.test(((data.reglages[e] || {}).libelles || {}).facture || "") ? "en" : corps.langue);
+      return { erreur: "usage_inconnu" };
+    },
     async charger() {
       const ids = new Set(accessibles());
       const ctx = contexte();

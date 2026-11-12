@@ -149,6 +149,19 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { data, error } = await sb.from("rappels_suivi").select("id, cree_le, type, cible, abonnements, envoyes, retires, echecs, erreur, duree_ms").order("cree_le", { ascending: false }).limit(20);
       return error ? null : data;
     },
+    // Assistant IA (fonction « assistant ») : appelé avec la session de la personne, qui vérifie ses droits côté serveur.
+    // Renvoie toujours un objet : la réponse, ou { erreur } avec le code rendu par la fonction (droit, limite, indisponible).
+    async assistant(corps) {
+      const { data, error } = await sb.functions.invoke("assistant", { body: corps });
+      if (!error) return data;
+      try {
+        const detail = error.context && typeof error.context.json === "function" ? await error.context.json() : null;
+        if (detail && detail.erreur) return detail;
+      } catch {
+        /* réponse sans JSON : traitée comme une indisponibilité */
+      }
+      return { erreur: "indisponible" };
+    },
     // Se déconnecter ferme cet appareil seulement (par défaut la bibliothèque ferme TOUTES les sessions : se déconnecter sur l'ordinateur coupait aussi l'iPhone).
     // La synchronisation a écarté le résultat de la dernière lecture (une écriture a eu lieu pendant la lecture) : le catalogue lu n'est pas installé, on le relira.
     // Vrai de la déconnexion à la prochaine connexion : etat.mjs n'écrit alors plus de copie hors ligne.
