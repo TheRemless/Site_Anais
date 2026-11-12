@@ -18,6 +18,12 @@ export function commissionARecalculer(r) {
   return recalculerCommissions([r], contexte()).changements[0] || null;
 }
 
+// Une commission déjà reçue dont la valeur prévue s'écarte de la règle du partenaire : signalée sur la carte, jamais modifiée.
+export function ecartCommissionRecue(r) {
+  if (!peutRecalculer()) return null;
+  return recalculerCommissions([r], contexte()).ecartsRecus[0] || null;
+}
+
 // Un tap : applique la valeur calculée. Renvoie true si une commission a été enregistrée.
 export async function recalculerUneCommission(r, apres = () => {}) {
   const t = recalculerCommissions([r], contexte());

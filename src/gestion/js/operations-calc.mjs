@@ -276,13 +276,19 @@ export function commissionPrevue(regle, { vente = null, net = null, adultes = 0,
 // `impossibles` : la règle ou une donnée manque (jamais de commission devinée). `seulementVides` : ne remplit que les commissions encore absentes.
 export function recalculerCommissions(reservations, { regleDe, netDe = () => null, ecartees = new Set() }, { partenaireId = null, seulementVides = false } = {}) {
   const changements = [];
+  // Commissions déjà reçues dont la valeur prévue s'écarte de la règle : signalées à l'écran, jamais modifiées.
+  const ecartsRecus = [];
   let inchanges = 0;
   let impossibles = 0;
   for (const r of reservations) {
     if (!r.paye_sur_place || r.statut === "annule" || ecartees.has(r.dossier_id)) continue;
     if (partenaireId && r.partenaire_id !== partenaireId) continue;
     const n = netDe(r) || {};
-    if (n.commission_recue_le) continue;
+    if (n.commission_recue_le) {
+      const attendue = commissionPrevue(regleDe(r.partenaire_id || null), { vente: r.montant_vente ?? null, net: n.net_prevu ?? null, adultes: Number((r.personnes || {}).adultes) || 0, enfants: Number((r.personnes || {}).enfants) || 0 });
+      if (attendue !== null && n.commission_prevue !== null && n.commission_prevue !== undefined && Math.round(Number(n.commission_prevue) * 100) !== Math.round(attendue * 100)) ecartsRecus.push({ reservation: r, prevue: Number(n.commission_prevue), attendue, recue: n.commission_recue === null || n.commission_recue === undefined ? null : Number(n.commission_recue) });
+      continue;
+    }
     const avant = n.commission_prevue === undefined ? null : n.commission_prevue;
     if (seulementVides && avant !== null) continue;
     const p = r.personnes || {};
@@ -291,7 +297,14 @@ export function recalculerCommissions(reservations, { regleDe, netDe = () => nul
     if (avant !== null && Math.round(Number(avant) * 100) === Math.round(apres * 100)) { inchanges++; continue; }
     changements.push({ reservation: r, avant, apres });
   }
-  return { changements, inchanges, impossibles };
+  return { changements, inchanges, impossibles, ecartsRecus };
+}
+
+// Lieu de pickup d'un service ajouté à un dossier : le dernier lieu saisi sur ses autres réservations, sinon la première ligne de l'adresse du client.
+export function lieuParDefaut(reservationsDuDossier, client = {}) {
+  const avecLieu = (reservationsDuDossier || []).filter((r) => String(r.lieu_pickup || "").trim()).sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+  if (avecLieu.length) return String(avecLieu[0].lieu_pickup).trim();
+  return String((client && client.adresse) || "").split("\n")[0].trim();
 }
 
 // Un partenaire a-t-il un mode et une règle de commission renseignés ? Sert à signaler ce qui reste à compléter.

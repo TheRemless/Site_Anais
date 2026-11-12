@@ -2,7 +2,7 @@
 import { etat, dossiersAnnules, peut, inserer, modifier, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE, ajouterJours } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, nbJoursLocation } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, nbJoursLocation, lieuParDefaut } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide, barreFiltres, lienDossier } from "./commun.mjs";
@@ -11,9 +11,11 @@ import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { telWhatsApp, commissionsPartenaire } from "../partenaires-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
+import { lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, proposerDePrevenir, synchroniserDatesDossier } from "./suivi-facture.mjs";
+export { synchroniserDatesDossier };
 import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
-import { actionsPrestataire } from "./prestataire.mjs";
-import { commissionARecalculer, recalculerUneCommission } from "./recalcul-commission.mjs";
+import { actionsPrestataire, messageAuPrestataire as prevenirPrestataire } from "./prestataire.mjs";
+import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } from "./recalcul-commission.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
 const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || null;
@@ -33,8 +35,38 @@ export function messageClient(r, cle = "confirmation") {
 }
 
 // Changer le statut d'une réservation d'un geste, sans ouvrir le formulaire complet.
+// Annuler un service d'un geste : la facture est mise à jour (ou laissée telle quelle, au choix) et le prestataire peut être prévenu. Renvoie true si c'est fait.
+async function annulerService(r, apres) {
+  try {
+    let retirer = false;
+    if (lieeFacture(r)) {
+      await chargerDossier(r.dossier_id);
+      const choix = await questionAnnulation(r, etat.db.documents.filter((x) => x.dossier_id === r.dossier_id));
+      if (choix === null) return false;
+      retirer = choix === "retirer";
+    }
+    if (retirer) {
+      const suivi = await suivreFacture(r, { statut: "annule" }, { avant: {}, apres: {}, retirer: true, dejaConfirme: true });
+      if (!suivi) return false;
+      await appliquerChangements(suivi.changements);
+    }
+    await modifier("reservations", r.id, { statut: "annule" });
+    await synchroniserDatesDossier(r.dossier_id);
+    apres();
+    proposerDePrevenir(r, "annulation", prevenirPrestataire);
+    return true;
+  } catch (err) {
+    toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+    return false;
+  }
+}
+
 function selecteurStatut(r, apres) {
   const s = h("select", { class: `statut-choix r-${r.statut}`, "aria-label": tr("Statut de la réservation « {libelle} »", { libelle: r.libelle }), onchange: async () => {
+    if (s.value === "annule" && r.statut !== "annule") {
+      if (!(await annulerService(r, apres))) s.value = r.statut;
+      return;
+    }
     try {
       await modifier("reservations", r.id, { statut: s.value });
       apres();
@@ -47,11 +79,18 @@ function selecteurStatut(r, apres) {
   return s;
 }
 
-// Texte d'un écart entre la réservation et la facture : « Date : 12 déc. sur la réservation, 14 déc. sur la facture ».
-function texteEcart(c, devise) {
-  const v = (x) => (c.cle === "date_service" ? (x ? formatDate(x) : tr("à fixer")) : c.cle === "personnes" ? personnesTexte(x) || "0" : c.cle === "paye_sur_place" ? (x ? tr("sur place") : tr("chez nous")) : formatMontant(x, devise));
-  const nom = c.cle === "date_service" ? tr("Date") : c.cle === "personnes" ? tr("Personnes") : c.cle === "paye_sur_place" ? tr("Paiement") : tr("Montant vendu");
-  return tr("{nom} : {reservation} sur la réservation, {document} sur la facture", { nom, reservation: v(c.reservation), document: v(c.document) });
+// L'autre sens : la facture reprend la date, les personnes et le mode de règlement de la réservation (le montant, lui, reste celui de la facture).
+async function alignerFacture(r, ecart, apres) {
+  const a = ecart.attendu;
+  try {
+    const suivi = await suivreFacture(r, {}, { avant: { date_service: a.date_service, personnes: a.personnes }, apres: { date_service: r.date_service, personnes: r.personnes }, mode: !!r.paye_sur_place !== a.paye_sur_place ? { surPlace: !!r.paye_sur_place } : null });
+    if (!suivi) return;
+    await appliquerChangements(suivi.changements);
+    toast(tr("Facture alignée sur la réservation."));
+    apres();
+  } catch (err) {
+    toast(tr("Alignement impossible : {message}", { message: err.message }), true);
+  }
 }
 
 // Remet la réservation d'après les lignes de la facture : date, adultes et enfants (les bébés restent), montant vendu.
@@ -74,6 +113,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   const ecrit = peut("dossiers.ecrire");
   const e = ecart && r.statut !== "annule" ? ecart(r) : null;
   const cc = r.statut !== "annule" && r.paye_sur_place ? commissionARecalculer(r) : null;
+  const er = r.statut !== "annule" && r.paye_sur_place ? ecartCommissionRecue(r) : null;
   return h(
     "div",
     { class: "carte-lien statique" },
@@ -85,7 +125,8 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
       ? null
       : e.retiree
         ? h("div", { class: "ecart-facture", role: "status" }, tr("La ligne de cette réservation a été retirée du document."))
-        : h("div", { class: "ecart-facture", role: "status" }, h("ul", null, e.champs.map((c) => h("li", null, texteEcart(c, ((etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type === "facture") || {}).contenu || {}).devise || reglages().devise || "")))), ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => aligner(r, e, apres) }, tr("Aligner sur la facture")) : null),
+        : h("div", { class: "ecart-facture", role: "status" }, h("ul", null, e.champs.map((c) => h("li", null, texteEcart(c, ((etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type === "facture") || {}).contenu || {}).devise || reglages().devise || "")))), ecrit ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => aligner(r, e, apres) }, tr("Aligner sur la facture")), peut("documents.ecrire") && e.champs.some((c) => ["date_service", "personnes", "paye_sur_place"].includes(c.cle)) ? h("button", { class: "secondaire petit", type: "button", onclick: () => alignerFacture(r, e, apres) }, tr("Mettre la facture comme la réservation")) : null) : null),
+    er ? h("div", { class: "ecart-facture", role: "status" }, tr("Commission reçue {recue} (prévue {prevue}), mais la règle du partenaire donne {attendue}. Les montants reçus ne sont pas modifiés : vérifiez le net du tarif ou la règle.", { recue: prix(er.recue === null ? er.prevue : er.recue), prevue: prix(er.prevue), attendue: prix(er.attendue) })) : null,
     cc ? h("div", { class: "recalcul-commission", role: "status" }, h("span", null, cc.avant === null ? tr("Commission prévue : aucune. La règle du partenaire donne {apres}.", { apres: prix(cc.apres) }) : tr("Commission prévue : {avant}. La règle du partenaire donne {apres}.", { avant: prix(cc.avant), apres: prix(cc.apres) })), h("button", { class: "secondaire petit", type: "button", onclick: () => recalculerUneCommission(r, apres) }, tr("Recalculer la commission"))) : null,
     h(
       "span",
@@ -97,7 +138,6 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   );
 }
 
-const lieeFacture = (r) => !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
 
 // Dupliquer un service : une fenêtre demande le jour du double, puis ses lignes sont copiées sur la facture (ou le devis qui les porte) avec ce jour, et sa
 // réservation est une copie de l'originale (même prestataire, pickup, net et commission prévus), à redemander, avec les personnes et le prix que portent
@@ -346,61 +386,29 @@ export function formulaireReservation(r, apres) {
         if (focusPremiereErreur(e.target)) return;
         const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: nb(vente.value), paye_sur_place: estSurPlace(), notes: notes.value.trim(), details: details() };
         try {
-          // La facture suit la réservation : paiement sur place, date et nombre de personnes. On montre le nouveau total avant d'enregistrer.
-          const changements = [];
-          let ecartRestant = null;
+          // La facture suit la réservation (mode de règlement, date, personnes, annulation) par le chemin commun : total montré, confirmation si elle est partie.
           const modeChange = estSurPlace() !== !!r.paye_sur_place;
           const dateChangee = (valeurs.date_service || null) !== (r.date_service || null);
-          const pr = r.personnes || {};
-          const personnesChangees = valeurs.personnes.adultes !== (Number(pr.adultes) || 0) || valeurs.personnes.enfants !== (Number(pr.enfants) || 0);
-          if (lieeFacture && r.id && (modeChange || dateChangee || personnesChangees)) {
+          const annulee = !!r.id && valeurs.statut === "annule" && r.statut !== "annule";
+          let retirer = false;
+          if (annulee && lieeFacture(r)) {
             await chargerDossier(r.dossier_id);
-            for (const doc of etat.db.documents.filter((x) => x.dossier_id === r.dossier_id)) {
-              let suite = doc.contenu;
-              if (modeChange) suite = contenuAvecSurPlace(suite, r, estSurPlace()) || suite;
-              if (dateChangee || personnesChangees) suite = contenuAvecReservation(suite, r, { date_service: r.date_service, personnes: pr }, { date_service: valeurs.date_service, personnes: valeurs.personnes }).contenu || suite;
-              if (suite !== doc.contenu) changements.push({ doc, suite });
-            }
-            // Sans le droit de modifier les factures : le mode de règlement ne change pas à moitié, mais la date et les personnes s'enregistrent et l'écart reste signalé.
-            let factureNonSuivie = false;
-            if (changements.length && !peut("documents.ecrire")) {
-              if (modeChange) return toast(tr("Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : la modification n'est pas enregistrée."), true);
-              changements.length = 0;
-              factureNonSuivie = true;
-            }
-            const principale = changements.find((x) => x.doc.type !== "devis") || changements[0];
-            if (principale) {
-              const devise = principale.doc.contenu.devise || reglages().devise;
-              const avant = formatMontant(totaux(principale.doc.contenu).net, devise);
-              const apres = formatMontant(totaux(principale.suite).net, devise);
-              const phrases = [];
-              if (modeChange) phrases.push(tr("Les lignes de ce service passent sur la facture {sens}, dont le total passe de {avant} à {apres}.", { sens: estSurPlace() ? tr("« sur place »") : tr("« chez nous »"), avant, apres }));
-              else if (avant !== apres) phrases.push(tr("La facture suit cette modification, et son total passe de {avant} à {apres}.", { avant, apres }));
-              else phrases.push(tr("La facture suit cette modification."));
-              if (modeChange && (dateChangee || personnesChangees)) phrases.push(tr("La date et les personnes de ce service y sont aussi mises à jour."));
-              const phrase = phrases.join(" ");
-              // Le montant vendu suit la facture tant qu'on ne l'a pas saisi soi-même.
-              const attendu = attenduDepuisFacture({ ...r, ...valeurs }, { contenu: principale.suite });
-              if ((dateChangee || personnesChangees) && attendu && !attendu.retiree && vente.value === venteInitiale && attendu.montant_vente !== null) valeurs.montant_vente = attendu.montant_vente;
-              // Une facture qui n'est pas encore partie se met à jour sans question. Une facture déjà envoyée demande confirmation : le client doit recevoir la nouvelle version.
-              if (principale.doc.envoye_le) {
-                if (!(await confirmer(`${phrase} ${tr("La facture a été envoyée au client le {date} : il faudra lui renvoyer la nouvelle version.", { date: formatDate(principale.doc.envoye_le) })}`, tr("Enregistrer")))) return;
-              } else toast(phrase);
-            }
-            // Ce que la facture garde en l'état (prix de groupe, montant fixe, enfants sans ligne enfant, rôle sans droit) reste signalé, et visible sur la carte.
-            const refDoc = principale ? { contenu: principale.suite } : etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type !== "devis");
-            const ecart = refDoc ? ecartReservation({ ...r, ...valeurs }, refDoc) : null;
-            const deviseEcart = (refDoc && refDoc.contenu.devise) || reglages().devise;
-            ecartRestant = ecart && ecart.champs.length ? ecart.champs.filter((c) => c.cle === "date_service" || c.cle === "personnes").map((c) => texteEcart(c, deviseEcart)) : null;
-            if (factureNonSuivie) toast(tr("La facture n'a pas suivi : votre rôle ne permet pas de la modifier."), true);
+            const choix = await questionAnnulation(r, etat.db.documents.filter((x) => x.dossier_id === r.dossier_id));
+            if (choix === null) return;
+            retirer = choix === "retirer";
           }
-          for (const { doc, suite } of changements) await modifier("documents", doc.id, { contenu: suite, updated_at: new Date().toISOString() });
+          const suivi = await suivreFacture(r, valeurs, { avant: { date_service: r.date_service, personnes: r.personnes }, apres: { date_service: valeurs.date_service, personnes: valeurs.personnes }, mode: modeChange ? { surPlace: estSurPlace() } : null, retirer, dejaConfirme: retirer, montantSuit: vente.value === venteInitiale });
+          if (!suivi) return;
+          const { changements, ecartRestant } = suivi;
+          if (suivi.montantVente !== null) valeurs.montant_vente = suivi.montantVente;
+          await appliquerChangements(changements);
           const res = r.id ? await modifier("reservations", r.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
           if (res && res.id && res.details === undefined) res.details = valeurs.details;
           if (nets && (netPrevu.value !== "" || netPaye.value !== "" || payeLe.value || commissionPrevue.value !== "" || commissionRecue.value !== "" || commissionLe.value || n)) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: nb(netPrevu.value), net_paye: nb(netPaye.value), paye_le: payeLe.value || null, commission_prevue: nb(commissionPrevue.value), commission_recue: nb(commissionRecue.value), commission_recue_le: commissionLe.value || null });
-          if (r.id && dateChangee) await synchroniserDatesDossier(r.dossier_id);
+          if (r.id && (dateChangee || annulee)) await synchroniserDatesDossier(r.dossier_id);
           toast(ecartRestant && ecartRestant.length ? `${tr("Réservation enregistrée.")} ${tr("La facture garde l'ancienne valeur, à corriger dans la facture :")} ${ecartRestant.join(" ; ")}` : tr("Réservation enregistrée."));
           apres(res);
+          if (annulee) proposerDePrevenir(r, "annulation", prevenirPrestataire);
         } catch (err) {
           toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
         }
@@ -427,11 +435,15 @@ export function formulaireReservation(r, apres) {
 export async function creerReservations(doc) {
   const existantes = etat.db.reservations.filter((r) => r.dossier_id === doc.dossier_id);
   const nouvelles = reservationsDepuisDocument(doc, { existantes, regleDe: regleCommissionDe });
+  const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id);
+  const clientDuDossier = (dossier && etat.db.clients.find((c) => c.id === dossier.client_id)) || {};
   if (!nouvelles.length) return toast(tr("Toutes les lignes de partenaires ont déjà leur réservation."));
   let n = 0;
   for (const { reservation, net, commission_prevue } of nouvelles) {
     try {
       const { id, ...sansId } = reservation;
+      // Le lieu de pickup du dossier est repris (dernier service, sinon adresse du client) : un service ajouté ne part pas sans lieu.
+      sansId.lieu_pickup = sansId.lieu_pickup || lieuParDefaut([...existantes, ...etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id && !existantes.includes(x))], clientDuDossier);
       const res = await inserer("reservations", sansId);
       if ((net !== null || commission_prevue !== undefined) && voitNets() && peut("dossiers.ecrire")) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: net, net_paye: null, paye_le: null, ...(commission_prevue !== undefined ? { commission_prevue } : {}) });
       n++;
@@ -443,14 +455,6 @@ export async function creerReservations(doc) {
   toast(pluriel(n, N_("{n} réservation créée, à demander aux partenaires."), N_("{n} réservations créées, à demander aux partenaires.")));
 }
 
-// En mode excursions, les dates du dossier sont celles de ses réservations : première et dernière date de service.
-export async function synchroniserDatesDossier(dossierId) {
-  if (!modeExcursions()) return;
-  const d = etat.db.dossiers.find((x) => x.id === dossierId);
-  if (!d) return;
-  const dates = datesDepuisReservations(etat.db.reservations.filter((r) => r.dossier_id === dossierId));
-  if (dates.date_depart !== (d.date_depart || null) || dates.date_retour !== (d.date_retour || null)) await modifier("dossiers", dossierId, dates);
-}
 
 // Ajouter des services à un dossier existant : les lignes vont dans la facture (créée si besoin), puis chacune a sa réservation.
 export function ajouterServices(d, doc, apres) {

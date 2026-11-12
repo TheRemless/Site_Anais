@@ -4,6 +4,7 @@ import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet } from "../
 import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
 import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut } from "../partenaires-calc.mjs";
+import { prestationEnfant } from "../demande-calc.mjs";
 import { appliquerModeParDefaut } from "../operations-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
@@ -27,6 +28,16 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   const onglets = h("div", { class: "onglets sous-onglets" }, [["tarifs", tr("Tarifs")], ["trajets", tr("Trajets")], ["libre", tr("Autre prestation")]].map(([code, libelle]) => h("button", { type: "button", "aria-pressed": code === onglet ? "true" : "false", onclick: (e) => { onglet = code; for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false"); dessiner(); } }, libelle)));
   const prix = (n) => (n === null || n === undefined ? tr("prix à définir") : formatMontant(n, devise));
   const termine = h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Terminé"));
+  // Un tarif par personne avec des enfants au dossier : les adultes au tarif adulte, les enfants au tarif enfant de la base (une ligne chacun, comme
+  // « Coller une demande »). Quantité changée à la main : une seule ligne, comme saisie. Sans tarif enfant, les enfants restent au tarif adulte.
+  const lignesPrestation = (x, quantite) => {
+    const adulte = ligneDepuisPrestation(x, netPrestation(x), { langue, date: date.value, qte: quantite, devise });
+    const e = ["pp", "ad"].includes(x.unite) && ctx.enfants > 0 && quantite === qteDefaut(x) ? prestationEnfant(x, etat.db.prestations) : null;
+    if (!e || e.prix_vente === null || e.prix_vente === undefined) return [adulte];
+    const adultes = ligneDepuisPrestation(x, netPrestation(x), { langue, date: date.value, qte: Math.max(1, ctx.adultes), devise });
+    const enfant = ligneDepuisPrestation(e, netPrestation(e), { langue, date: date.value, qte: ctx.enfants, devise });
+    return [adultes, { ...enfant, libelle: `${adultes.libelle}, ${langue === "en" ? "child" : "enfant"}`, intro: `(${langue === "en" ? "per child" : "par enfant"})` }];
+  };
   const ajoute = (lignes, nom) => {
     // Chaque service prend le mode de règlement habituel de son partenaire (chez nous ou sur place).
     onAjout(appliquerModeParDefaut(lignes, partenaireDe));
@@ -98,7 +109,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
             { class: "choix" },
             h("div", { class: "choix-texte" }, h("strong", null, x.libelle), h("span", null, [nomPartenaire(x.partenaire_id), x.groupe, d.horaires || d.capacite || d.duree].filter(Boolean).join(" · "))),
             h("div", { class: "choix-prix" }, h("strong", null, prix(x.prix_vente)), h("span", null, x.sur_place ? tr("à payer sur place") : libelleUnite(x.unite))),
-            h("div", { class: "choix-actions" }, champQte, h("button", { class: "principal petit", type: "button", onclick: () => (x.unite === "sup" && champQte && !(Number(champQte.querySelector("input").value) > 0) ? toast(tr("Aucune personne supplémentaire : rien à ajouter. Indiquez combien de personnes dépassent les deux premières."), true) : ajoute([ligneDepuisPrestation(x, netPrestation(x), { langue, date: date.value, qte: champQte ? Number(champQte.querySelector("input").value) : 1, devise })], x.sur_place ? tr("Note sur les frais de parc") : x.libelle)) }, x.sur_place ? tr("Ajouter la note") : tr("Ajouter")))
+            h("div", { class: "choix-actions" }, champQte, h("button", { class: "principal petit", type: "button", onclick: () => (x.unite === "sup" && champQte && !(Number(champQte.querySelector("input").value) > 0) ? toast(tr("Aucune personne supplémentaire : rien à ajouter. Indiquez combien de personnes dépassent les deux premières."), true) : ajoute(lignesPrestation(x, champQte ? Number(champQte.querySelector("input").value) : 1), x.sur_place ? tr("Note sur les frais de parc") : x.libelle)) }, x.sur_place ? tr("Ajouter la note") : tr("Ajouter")))
           )
         );
       }

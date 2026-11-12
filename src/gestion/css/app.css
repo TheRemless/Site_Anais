@@ -1224,3 +1224,7 @@ details > summary { padding-block: 11px; margin: 0; }
   .resume-action .resume-libelle { margin: 0; }
   .resume-action .principal { width: auto; }
 }
+
+/* ---- Lot G1 : choix en colonne (annuler un service) ---- */
+.actions.colonne { flex-direction: column; align-items: stretch; justify-content: flex-start; }
+.actions.colonne button { width: 100%; min-height: 44px; }

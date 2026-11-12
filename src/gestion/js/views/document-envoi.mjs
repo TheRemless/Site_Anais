@@ -4,7 +4,7 @@
 // conversation du numéro s'ouvre : un lien WhatsApp ne peut pas joindre de fichier.
 import { etat, nomClient, peut } from "../etat.mjs";
 import { h, modal, toast, confirmer } from "../ui.mjs";
-import { aujourdhui, nomFichier } from "../calc.mjs";
+import { aujourdhui, nomFichier, aMarquerEnvoye } from "../calc.mjs";
 import { feuille, pdf } from "./commun.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, zoneEnvoi } from "./partage.mjs";
 import { lienWhatsApp } from "../operations-calc.mjs";
@@ -72,7 +72,7 @@ export function envoyerDocument(doc, { marquerEnvoye = null } = {}) {
 
   // Un devis qui part sans date d'envoi n'est jamais relancé : on propose de la poser.
   async function apres() {
-    if (marquerEnvoye && doc.type === "devis" && !doc.envoye_le && peut("documents.ecrire") && (await confirmer(tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance."), tr("Marquer comme envoyé")))) await marquerEnvoye();
+    if (marquerEnvoye && aMarquerEnvoye(doc) && peut("documents.ecrire") && (await confirmer(doc.type === "devis" ? tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance.") : tr("Cette facture est-elle partie chez le client ? Marquée comme envoyée, elle n'apparaît plus comme « pas encore envoyée »."), doc.type === "devis" ? tr("Marquer comme envoyé") : tr("Marquer comme envoyée")))) await marquerEnvoye();
   }
   const telechargerPdf = () => enregistrer([fichier]);
   // Toujours à l'écran, dans tous les cas (même pendant la préparation et même quand tout le reste échoue) : enregistrer le PDF et copier le message.

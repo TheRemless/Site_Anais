@@ -1,6 +1,6 @@
 import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions, netReservation } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num, icone, barreAction } from "../ui.mjs";
-import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, convertirContenu } from "../calc.mjs";
+import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, convertirContenu, sommePaiements, acceptationAuPaiement, payeSansFacture } from "../calc.mjs";
 import { uid, modesPaiement } from "../defauts.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { sectionTachesDossier } from "./taches.mjs";
@@ -259,6 +259,9 @@ function ficheDossierVue(id) {
             origine_devise: rembourse ? "" : origineD.value,
             note: noteP.value.trim(),
           });
+          // Un premier paiement vaut acceptation (sans quoi le dossier soldé reste « devis en attente »).
+          const acceptation = acceptationAuPaiement(d, dateP.value, rembourse);
+          if (acceptation) await modifier("dossiers", d.id, { accepte_le: acceptation });
           toast(rembourse ? tr("Remboursement enregistré.") : tr("Paiement enregistré."));
           rafraichir();
         } catch (err) {
@@ -370,7 +373,7 @@ function ficheDossierVue(id) {
       h("td", { "data-label": tr("Émis le") }, formatDate(doc.date_emission)),
       h("td", { "data-label": tr("Envoyé le") }, doc.envoye_le ? formatDate(doc.envoye_le) : tr("Pas encore")),
       h("td", { class: "num", "data-label": tr("Total") }, fm(t.net, doc.contenu.devise)),
-      h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: `#/doc/${doc.id}` }, tr("Ouvrir")), h("button", { class: "secondaire petit", type: "button", onclick: () => (sansImpression() ? envoyerDocument(doc, { marquerEnvoye: async () => { await modifier("documents", doc.id, { envoye_le: aujourdhui() }); rafraichir(); } }) : pdf(doc)) }, "PDF"), peut("documents.supprimer") ? h("button", { class: "secondaire petit danger-texte", type: "button", onclick: () => supprimerDocument(doc, rafraichir) }, tr("Supprimer")) : null)
+      h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: `#/doc/${doc.id}` }, tr("Ouvrir")), h("button", { class: "secondaire petit", type: "button", onclick: () => (sansImpression() ? envoyerDocument(doc, { marquerEnvoye: async () => { await modifier("documents", doc.id, { envoye_le: aujourdhui(), ...(doc.type === "facture" && doc.contenu.montant_recu == null ? { contenu: { ...doc.contenu, montant_recu: sommePaiements(etat.db.paiements.filter((p) => p.dossier_id === doc.dossier_id)) } } : {}) }); rafraichir(); } }) : pdf(doc)) }, "PDF"), peut("documents.supprimer") ? h("button", { class: "secondaire petit danger-texte", type: "button", onclick: () => supprimerDocument(doc, rafraichir) }, tr("Supprimer")) : null)
     );
   };
 
@@ -450,7 +453,9 @@ function ficheDossierVue(id) {
             r.statut === "sur_place" ? ligne(tr("Reste à payer"), tr("Rien chez nous"), "resume-ok") : ligne(tr("Reste à payer"), fm(r.reste), r.reste > 0 ? "resume-reste" : null),
             r.surPlace > 0 ? ligne(tr("À payer sur place"), fm(r.surPlace)) : null,
             ...ligneMarge.map(([l, v, det]) => ligne(l, det ? `${v} · ${det}` : v))
-          )
+          ),
+          // De l'argent reçu sans facture : à régulariser, sinon rien ne le rattache à un document.
+          payeSansFacture({ recu: r.recu, documents: r.documents, annule: !!d.annule }) ? h("p", { class: "resume-detail" }, tr("Payé sans facture : créez la facture de ce dossier.")) : null
         ),
     !nets
       ? null
