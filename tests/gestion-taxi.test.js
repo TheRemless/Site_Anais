@@ -97,3 +97,10 @@ test("course saisie à la main : une ligne payée au chauffeur au prix de la cou
   assert.deepEqual([l.id, l.kind, l.unite, l.qte, l.date_service, l.paye_sur_place], ["x", "ligne", 3000, 1, "2026-11-20", true]);
   assert.equal(ligneCourse({ libelle: "A" }, "y").unite, 0, "sans prix : zéro, à compléter");
 });
+
+test("réglages de Taxi complets sans informations de paiement ni conditions", async () => {
+  const { reglagesIncomplets } = await import("../src/gestion/js/defauts.mjs");
+  const r = completerReglages({ fonctionnement: "taxi", devise: "THB", emetteur: { nom: "VIP Taxi Lanta", adresse: "Koh Lanta, Krabi, Thailand", contact: "+66 95 868 38 46" } });
+  assert.deepEqual(reglagesIncomplets(r), []);
+  assert.ok(reglagesIncomplets({ ...r, fonctionnement: "excursions" }).length > 0);
+});

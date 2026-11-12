@@ -307,6 +307,8 @@ export function reglagesIncomplets(r) {
   if (!r.emetteur.adresse.trim()) manque.push("l'adresse");
   if (!r.devise.trim()) manque.push("la devise");
   if (!r.emetteur.contact.trim()) manque.push("les coordonnées du pied de page");
+  // Taxi n'émet aucune facture : ni informations de paiement ni conditions à fournir (le client paie le chauffeur).
+  if (r.fonctionnement === "taxi") return manque;
   if (!r.paiement.texte.trim() && !r.apparence.qr_image) manque.push("les informations de paiement");
   if (!r.textes.variantes.some((v) => v.corps.trim())) manque.push("les conditions de paiement");
   return manque;
