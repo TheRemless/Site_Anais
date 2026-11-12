@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { varsReponse } from "../src/gestion/js/demande-calc.mjs";
 import assert from "node:assert/strict";
 import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient, ecartReservation, contenuSansReservation, controlesVoucher, feuilleDuJour, texteFeuille } from "../src/gestion/js/operations-calc.mjs";
 
@@ -109,7 +110,9 @@ test("variables d'un message depuis une réservation", () => {
   assert.equal(fr.hotel, "Hotel Palm");
   assert.equal(fr.reference, "EX-2");
   assert.equal(fr.a_heure, "");
-  for (const m of MESSAGES_DEFAUT) for (const k of m.corps.match(/\{(\w+)\}/g) || []) assert.ok(k.slice(1, -1) in v, `${m.id} utilise une variable connue : ${k}`);
+  // Le modèle « réponse au client » a ses propres variables (services, total, formule d'appel) : celles de varsReponse.
+  const connues = { ...v, ...varsReponse({ d: { nom: "A" }, services: [], entreprise: {} }) };
+  for (const m of MESSAGES_DEFAUT) for (const k of m.corps.match(/\{(\w+)\}/g) || []) assert.ok(k.slice(1, -1) in connues, `${m.id} utilise une variable connue : ${k}`);
 });
 
 test("agenda : aujourd'hui, demain, à confirmer et en retard, annulées exclues", () => {

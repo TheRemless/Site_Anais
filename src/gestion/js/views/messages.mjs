@@ -19,7 +19,7 @@ export const DESTINATAIRES = [
   ["partenaire", N_("Au partenaire")],
 ];
 // Noms lisibles des variables, pour dire ce qui manque.
-const NOMS_VARIABLES = { client: N_("nom du client"), prenom: N_("prénom"), date: N_("date"), hotel: N_("hôtel"), heure: N_("heure de pickup"), personnes: N_("personnes"), prestation: N_("service"), partenaire: N_("partenaire"), reference: N_("référence"), lien_avis: N_("lien d'avis Google"), entreprise: N_("entreprise") };
+const NOMS_VARIABLES = { client: N_("nom du client"), prenom: N_("prénom"), date: N_("date"), hotel: N_("hôtel"), heure: N_("heure de pickup"), personnes: N_("personnes"), prestation: N_("service"), partenaire: N_("partenaire"), reference: N_("référence"), lien_avis: N_("lien d'avis Google"), entreprise: N_("entreprise"), services: N_("services"), total: N_("total"), bonjour: N_("formule d'appel") };
 const nomLangue = (code) => (LANGUES.find(([c]) => c === code) || [code, code])[1];
 
 async function copier(texte) {
@@ -31,10 +31,11 @@ async function copier(texte) {
   }
 }
 
-// `vars` : valeurs des variables ; `cle` : gabarit proposé d'abord ; `telephone` : destinataire WhatsApp ;
+// `vars` : valeurs des variables, ou une fonction de la langue choisie (un message qui change de langue refait ses variables, sans mot de l'autre langue) ; `cle` : gabarit proposé d'abord ; `telephone` : destinataire WhatsApp ;
 // `pour` : « client » ou « partenaire », seuls les messages de ce destinataire sont proposés.
 // `suite` : paragraphe ajouté en fin de texte. `surEnvoi` : appelée quand le message part (WhatsApp ouvert) ou est copié, par exemple pour passer une réservation à « Demandée ».
 export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle = "", langue = "fr", telephone = "", pour = "client", surEnvoi = null, suite = "" }) {
+  const varsDe = (l) => (typeof vars === "function" ? vars(l) : vars);
   // Les modèles de la base ; l'usage demandé (« relance »…) y manque-t-il, son modèle par défaut est proposé, jamais le premier modèle venu.
   const tous = gabaritsPropose(messagesTypes(), MESSAGES_DEFAUT, { pour, langue, cle }).liste;
   if (!tous.length) return toast(pour === "partenaire" ? tr("Aucun message type pour les partenaires. Créez-en dans l'écran Messages.") : tr("Aucun message type pour les clients. Créez-en dans l'écran Messages."), true);
@@ -62,6 +63,7 @@ export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle 
   function remplir() {
     const m = tous.find((x) => x.id === selGabarit.value);
     // `suite` : un paragraphe ajouté après le modèle, quel que soit le modèle choisi (la note du passeport pour Langkawi, par exemple).
+    const vars = varsDe(selLangue.value);
     texte.value = m ? `${remplirGabarit(m.corps, vars)}${suite ? `\n\n${suite}` : ""}` : "";
     aucun.hidden = !!m || !cle;
     const vides = m ? [...new Set([...m.corps.matchAll(/\{(\w+)\}/g)].map((x) => x[1]))].filter((k) => k in vars && !String(vars[k] ?? "").trim() && !["a_heure", "telephone"].includes(k)) : [];

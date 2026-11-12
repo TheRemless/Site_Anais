@@ -211,7 +211,7 @@ const avecAnnee = (jour, mois, anneeTxt, aujourdhui) => {
 };
 
 // Date citée dans une phrase : « 12 December », « December 12th », « le 3 janvier », « demain », « 20/12 ». Vide si rien de sûr.
-export function lireDateLibre(texte, aujourdhui) {
+export function lireDateLibre(texte, aujourdhui, reference = "") {
   const t = sansAcc(texte).replace(TELEPHONE, " ");
   if (/\bapres[- ]?demain\b|day after tomorrow/.test(t)) return jourPlus(aujourdhui, 2);
   if (/\bdemain\b|\btomorrow\b/.test(t)) return jourPlus(aujourdhui, 1);
@@ -234,6 +234,11 @@ export function lireDateLibre(texte, aujourdhui) {
     const r = avecAnnee(Number(m[1]), Number(m[2]), m[3], aujourdhui);
     if (r) return r;
   }
+  // « the 22nd », « le 1er » : le jour seul prend le mois de la date citée avant (`reference`), jamais un mois deviné.
+  if (reference) {
+    const o = /\b(?:the\s+|le\s+)?(\d{1,2})(?:st|nd|rd|th|er)\b/.exec(t);
+    if (o && dateValide(Number(reference.slice(0, 4)), Number(reference.slice(5, 7)), Number(o[1]))) return iso(Number(reference.slice(0, 4)), Number(reference.slice(5, 7)), Number(o[1]));
+  }
   return "";
 }
 
@@ -244,6 +249,56 @@ const chiffresPourMots = (t) => t.replace(new RegExp(`\\b(${Object.keys(NOMBRES)
 const MAJ = "A-ZÀ-ÖØ-Ý";
 const MOT_NOM = `[${MAJ}][\\p{L}'’-]+`;
 const NON_NOMS = /^(merci|thanks?|thank|hello|hi|hey|bonjour|bonsoir|salut|cordialement|regards|best|cheers|hotel|hôtel|resort|villa|bungalow|koh|phuket|krabi|lanta)\b/i;
+
+// Heure citée dans une phrase : « 9am », « 9 am », « 9.30am », « 9:30 pm », « 21h », « 21h30 », « 14:45 ». Un nombre sans marqueur (« at 9 », « 22.11 »,
+// « 10 adults », une date) n'est jamais une heure.
+export function lireHeureLibre(texte) {
+  const t = sansAcc(texte).replace(TELEPHONE, " ").replace(/\b20\d\d-\d{2}-\d{2}\b/g, " ");
+  const deux = (n) => String(n).padStart(2, "0");
+  let m = /(?<![\d.:/])(\d{1,2})(?:[:.h]([0-5]\d))?\s*(am|pm|a\.m\.|p\.m\.)(?![a-z])/.exec(t);
+  if (m) {
+    let h = Number(m[1]);
+    if (h < 1 || h > 12) return "";
+    const pm = m[3].startsWith("p");
+    h = pm ? (h === 12 ? 12 : h + 12) : h === 12 ? 0 : h;
+    return `${deux(h)}:${m[2] || "00"}`;
+  }
+  m = /(?<![\d.:/])([01]?\d|2[0-3])\s*h\s*([0-5]\d)?(?![a-z\d])/.exec(t);
+  // « 2h » seul est plus souvent une durée qu'une heure : sans minutes, à partir de 5 h.
+  if (m && (m[2] || Number(m[1]) >= 5)) return `${deux(m[1])}:${m[2] || "00"}`;
+  m = /(?<![\d.:/])([01]?\d|2[0-3]):([0-5]\d)(?!\d)/.exec(t);
+  return m ? `${deux(m[1])}:${m[2]}` : "";
+}
+
+// Adultes, enfants et bébés d'une phrase : « 2 adults », « 1 child », « 4 personnes dont 2 enfants », « for 3 ». Zéro quand la phrase n'en dit rien.
+export function lirePersonnes(brut) {
+  const t = chiffresPourMots(sansAcc(brut));
+  const nb = (re) => { const x = re.exec(t); return x ? Number(x[1]) : 0; };
+  const enfants = nb(/(\d{1,2})\s*(?:children|child|kids?|enfants?)\b/);
+  const bebes = nb(/(\d{1,2})\s*(?:babies|baby|bebes?|infants?)\b/);
+  let adultes = nb(/(\d{1,2})\s*(?:adults?|adultes?)\b/);
+  const total = nb(/(\d{1,2})\s*(?:people|persons?|personnes?|pax|ppl|guests?|voyageurs?)\b/);
+  const apresMois = `(?!\\d|\\s*(?:st|nd|rd|th|er)?\\s*(?:${MOIS_TXT})\\b|\\s*[/:h]\\d?)`;
+  const pour = nb(new RegExp(`(?:\\bfor|\\bpour|we are|we're|nous sommes|on est|party of|group of|groupe de)\\s+(\\d{1,2})\\b${apresMois}`));
+  const nousSommes = nb(/(\d{1,2})\s+of us\b/);
+  if (!adultes) {
+    const base = total || pour || nousSommes;
+    const dont = /(?:dont|including|of whom|of which|whom)\s+\d/.test(t);
+    adultes = base ? (dont && enfants < base ? base - enfants : base) : 0;
+  }
+  return { adultes, enfants, bebes };
+}
+
+// Mode et véhicule cités dans une phrase (« private », « join-in », « taxi », « speedboat »).
+function modeEtVehicule(brut) {
+  const t = sansAcc(brut);
+  const out = { vehicule: "", mode: "" };
+  if (/speed ?boat/.test(t)) out.vehicule = "speedboat";
+  else if (/minivan|mini van|minibus|\bvan\b|\btaxi\b/.test(t)) out.vehicule = "minivan";
+  if (/\bprivate\b|\bprive\b|\bprivatif/.test(t)) out.mode = "private";
+  else if (/join[- ]?in|collectif|shared|partage|group tour/.test(t)) out.mode = "join";
+  return out;
+}
 
 export function lireLibre(texte, aujourdhui) {
   const brut = String(texte || "").trim();
@@ -261,32 +316,12 @@ export function lireLibre(texte, aujourdhui) {
   }
 
   // Personnes : « 2 adults », « 1 child », « 4 personnes dont 2 enfants », « for 3 ».
-  const nb = (re) => { const x = re.exec(t); return x ? Number(x[1]) : 0; };
-  const enfants = nb(/(\d{1,2})\s*(?:children|child|kids?|enfants?)\b/);
-  const bebes = nb(/(\d{1,2})\s*(?:babies|baby|bebes?|infants?)\b/);
-  let adultes = nb(/(\d{1,2})\s*(?:adults?|adultes?)\b/);
-  const total = nb(/(\d{1,2})\s*(?:people|persons?|personnes?|pax|ppl|guests?|voyageurs?)\b/);
-  const apresMois = `(?!\\d|\\s*(?:st|nd|rd|th|er)?\\s*(?:${MOIS_TXT})\\b|\\s*[/:h]\\d?)`;
-  const pour = nb(new RegExp(`(?:\\bfor|\\bpour|we are|we're|nous sommes|on est|party of|group of|groupe de)\\s+(\\d{1,2})\\b${apresMois}`));
-  const nousSommes = nb(/(\d{1,2})\s+of us\b/);
-  if (!adultes) {
-    const base = total || pour || nousSommes;
-    const dont = /(?:dont|including|of whom|of which|whom)\s+\d/.test(t);
-    adultes = base ? (dont && enfants < base ? base - enfants : base) : 0;
-  }
-  d.adultes = adultes;
-  d.enfants = enfants;
-  d.bebes = bebes;
+  Object.assign(d, lirePersonnes(brut));
   d.siegeEnfant = /child seat|siege enfant|rehausseur|booster/.test(t);
   d.siegeBebe = /baby seat|siege bebe/.test(t);
 
-  const h = /\b([01]?\d|2[0-3])\s*[:h]\s*([0-5]\d)\b/.exec(t);
-  if (h) d.heure = `${h[1].padStart(2, "0")}:${h[2]}`;
-
-  if (/speed ?boat/.test(t)) d.vehicule = "speedboat";
-  else if (/minivan|mini van|minibus|\bvan\b|\btaxi\b/.test(t)) d.vehicule = "minivan";
-  if (/\bprivate\b|\bprive\b|\bprivatif/.test(t)) d.mode = "private";
-  else if (/join[- ]?in|collectif|shared|partage|group tour/.test(t)) d.mode = "join";
+  d.heure = lireHeureLibre(brut);
+  Object.assign(d, modeEtVehicule(brut));
 
   // Hôtel : un mot-clé d'hébergement suivi d'un nom propre, ou « staying at » suivi d'un nom propre.
   // Espaces et tabulations seulement : un nom ou un hôtel s'arrête à la fin de sa ligne (`\\s` avalait le retour à la ligne et le mot de la ligne suivante).
@@ -325,6 +360,24 @@ export function lireLibre(texte, aujourdhui) {
       hote = x ? x[0].trim() : "";
     }
   }
+  // « Hotel: Sunset Resort, Klong Dao » : tout le reste de la ligne (jusqu'à un point suivi d'une phrase).
+  if (!hote) {
+    const c = /\bh[oô]tel[ \t]*:[ \t]*([^\n]+?)(?=\.[ \t]+\S|\.[ \t]*$|\n|$)/iu.exec(brut);
+    if (c) hote = c[1].trim().replace(/\.$/, "");
+  }
+  // « hotel sunset » écrit en minuscules : le mot-clé et au plus quatre mots, jusqu'à un mot de liaison, un chiffre ou une ponctuation.
+  if (!hote) {
+    const STOP = new Set(["on", "for", "from", "and", "the", "with", "at", "to", "please", "tomorrow", "demain", "le", "la", "les", "pour", "du", "de", "et", "avec", "dans", "since", "until", "till", "we", "i", "nous", "je", "is", "est"]);
+    const k = new RegExp(`\\b(?:${MOT_HEBERGEMENT})[ \\t]+((?:[\\p{L}'’-]+[ \\t]*){1,5})`, "iu").exec(brut);
+    if (k) {
+      const mots4 = [];
+      for (const w of k[1].trim().split(/[ \t]+/)) {
+        if (STOP.has(w.toLowerCase()) || mots4.length >= 4) break;
+        mots4.push(w);
+      }
+      if (mots4.length) hote = `${/^\S+/.exec(k[0])[0]} ${mots4.join(" ")}`;
+    }
+  }
   d.hotel = hote;
 
   // Nom : « my name is Sophie Martin », « je suis Marc », sinon une signature en fin de message.
@@ -349,8 +402,18 @@ export function lireMessage(texte, aujourdhui) {
   return lireDemande(texte, aujourdhui) || lireLibre(texte, aujourdhui);
 }
 
+// Koh Lanta est le point de départ implicite d'un transfert (« un taxi vers l'aéroport de Phuket ») : ces mots ne sont pas exigés dans la phrase.
+const MAISON = new Set(["koh", "lanta", "ko"]);
+const estMaison = (lieu) => mots(lieu).length > 0 && mots(lieu).every((w) => MAISON.has(w));
+const recouvrementSansMaison = (lib, texte) => {
+  const utiles = mots(lib).filter((w) => !MAISON.has(w));
+  if (!utiles.length || utiles.length === mots(lib).length) return 0;
+  return recouvrement(utiles.join(" "), texte);
+};
+
 // Offres de la base citées dans un message libre : tous les mots distinctifs d'un tarif (ou les deux bouts d'un trajet) doivent apparaître.
-export function proposerOffresLibres(d, texte, { prestations = [], trajets = [], nomPartenaire = () => "" } = {}) {
+// `contexte` : le reste du message, qui complète une phrase où un seul bout du trajet est cité (« un taxi vers l'aéroport de Phuket » : l'autre bout est l'hôtel).
+export function proposerOffresLibres(d, texte, { prestations = [], trajets = [], nomPartenaire = () => "", contexte = "" } = {}) {
   const pax = { adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants };
   const offres = [];
   // L'hôtel et le nom du client ne désignent pas le service : « Klong Dao » dans l'adresse ne doit pas faire trouver un trajet.
@@ -361,8 +424,14 @@ export function proposerOffresLibres(d, texte, { prestations = [], trajets = [],
     if (t.actif === false || (d.date && !trajetDisponible(t, d.date))) continue;
     const de = mots(t.de);
     const vers = mots(t.vers);
-    const rDe = recouvrement(t.de, texte);
-    const rVers = recouvrement(t.vers, texte);
+    let rDe = recouvrement(t.de, texte);
+    let rVers = recouvrement(t.vers, texte);
+    // Un bout cité dans la phrase, l'autre dans le reste du message : le trajet compte, jamais sur le seul contexte.
+    if (contexte && Math.max(rDe, rVers) >= 0.5 && Math.min(rDe, rVers) < 0.5) {
+      const ensemble = `${texte} ${contexte}`;
+      if (rDe < 0.5) rDe = Math.max(recouvrement(t.de, ensemble), estMaison(t.de) ? 0.5 : 0);
+      else rVers = Math.max(recouvrement(t.vers, ensemble), estMaison(t.vers) ? 0.5 : 0);
+    }
     if (!de.length || !vers.length || Math.min(rDe, rVers) < 0.5) continue;
     let score = Math.min(rDe, rVers);
     const iDe = Math.min(...de.map(rang).filter((i) => i >= 0), 1e9);
@@ -385,7 +454,9 @@ export function proposerOffresLibres(d, texte, { prestations = [], trajets = [],
     let motsCommuns = 0;
     for (const lib of [p.libelle_en, p.libelle]) {
       if (!lib) continue;
-      const r = recouvrement(lib, texte);
+      let r = recouvrement(lib, texte);
+      // Une prestation de transfert dont un seul bout est dans la phrase : le reste du message complète l'autre.
+      if (contexte && p.famille === "transfert" && r < 0.5) r = Math.max(r, r > 0 ? recouvrement(lib, `${texte} ${contexte}`) : 0, recouvrementSansMaison(lib, texte) >= 1 ? 0.6 : 0);
       if (r > score) {
         score = r;
         motsCommuns = Math.round(r * mots(lib).length);
@@ -398,6 +469,138 @@ export function proposerOffresLibres(d, texte, { prestations = [], trajets = [],
     offres.push({ genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score });
   }
   return offres.map((o) => completerSupplement(completerEnfant(o, pax, prestations), pax, prestations)).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
+}
+
+// ---- Plusieurs services dans un même message ------------------------------------------------------------------------------------
+// « le tour des 4 îles le 20 novembre, du kayak le 22 et un taxi vers l'aéroport de Phuket le 24 à 9h » : trois services, chacun avec sa date, son
+// heure et ses personnes, rattachés par la phrase où le service est cité. Rien n'est deviné : une date, une heure ou un service que la phrase ne
+// donne pas reste vide, et un service que la base ne connaît pas devient une ligne « à préciser ».
+const VERBES_DEMANDE = /\b(?:want|wants|would like|we'd like|i'd like|need|book|reserve|looking for|interested|price|quote|how much|souhait\w*|voudr\w*|aimer\w*|besoin|r[ée]serv\w*|cherch\w*|int[ée]ress\w*|prix|tarif|devis|combien)/i;
+const COUPURES = /\s*(?:[,;]|\b(?:and|et|then|puis|plus|also|aussi)\b)\s*/i;
+
+// Le texte sans ce qui n'est pas un service : l'hôtel, le nom et le téléphone (« Sunset » ne doit pas faire trouver un coucher de soleil).
+function sansIdentite(texte, d) {
+  let t = texte;
+  for (const x of [d.hotel, d.nom, d.telephone]) if (x) t = t.replace(new RegExp(`(?<![\\p{L}\\d])${x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\d])`, "gu"), " ");
+  return t.replace(/\bh[oô]tel[ \t]*:?/giu, " ");
+}
+
+// « and again on 25 november », « et encore le 25 » : un fragment sans autre mot que sa date et un « encore » demande le même service à une autre date.
+// Un fragment daté qui nomme autre chose (« paragliding on 21 november ») est un service que la base ne connaît pas.
+const MARQUES_REPETITION = /\b(?:again|also|same|once more|encore|aussi|de nouveau|idem|pareil|egalement)\b/i;
+function estRepetition(fragment) {
+  if (MARQUES_REPETITION.test(sansAcc(fragment))) return true;
+  const reste = sansAcc(fragment).replace(new RegExp(`\\b(?:${MOIS_TXT})\\b`, "g"), " ").replace(/\b\d+(?:st|nd|rd|th|er)?\b/g, " ");
+  return !mots(reste).some((m) => m.length >= 4);
+}
+
+// Offres d'un service du message, recalculées à chaque correction de sa date ou de ses personnes (les prix en dépendent, les départs aussi).
+// `service` : { phrase, date, adultes, enfants }. Le message du formulaire du site se lit par ses lignes, le message libre par la phrase du service.
+export function offresDuService(d, texte, service, contexte) {
+  if (!d.libre) return offresPour({ ...d, date: service.date, adultes: service.adultes, enfants: service.enfants }, texte, contexte).slice(0, 4);
+  const base = { adultes: service.adultes, enfants: service.enfants, bebes: d.bebes, date: service.date || "", hotel: "", nom: "", telephone: "" };
+  return proposerOffresLibres({ ...base, ...modeEtVehicule(service.phrase) }, service.phrase, { ...contexte, contexte: sansIdentite(texte, d) }).slice(0, 4);
+}
+
+export function decouperServices(texte, d, contexte, aujourdhui) {
+  if (!d) return [];
+  const offresDe = (phrase, sur = {}) => offresDuService(d, texte, { phrase, adultes: d.adultes, enfants: d.enfants, date: "", ...sur }, contexte);
+  // Message du formulaire du site (ou de l'ancien) : une seule demande, lue par ses lignes.
+  if (!d.libre) return [{ phrase: texte, date: d.date || "", heure: d.heure || "", adultes: d.adultes, enfants: d.enfants, offres: offresDuService(d, texte, { phrase: texte, date: d.date || "", adultes: d.adultes, enfants: d.enfants }, contexte), copie: false }];
+
+  const sans = sansIdentite(texte, d);
+  const phrases = sans.split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
+  const dateDe = (t, ref = "") => lireDateLibre(t, aujourdhui, ref);
+  const groupes = []; // dans l'ordre du message
+  for (const phrase of phrases) {
+    const frags = phrase.split(COUPURES).map((x) => x.trim()).filter(Boolean);
+    const dansPhrase = [];
+    const libres = [];
+    frags.forEach((f, i) => {
+      const offres = offresDe(f);
+      if (offres.length) dansPhrase.push({ texte: f, i, copie: false });
+      else libres.push({ f, i });
+    });
+    for (const { f, i } of libres) {
+      const avant = [...dansPhrase].reverse().find((g) => g.i < i);
+      const apres = dansPhrase.find((g) => g.i > i);
+      const dateF = dateDe(f);
+      if (avant) {
+        // Un nouveau service que la base ne connaît pas : une ligne à préciser. Sinon la même chose à une autre date (« et encore le 25 ») : une copie.
+        if (VERBES_DEMANDE.test(f) || (dateF && !estRepetition(f))) dansPhrase.push({ texte: f, i, inconnu: true });
+        else if (dateF && (avant.dateFixe || dateDe(avant.texte)) && (avant.dateFixe || dateDe(avant.texte)) !== dateF) dansPhrase.push({ texte: `${avant.base || avant.texte} ${f}`, base: avant.base || avant.texte, i, copie: true, dateFixe: dateF, heureFixe: lireHeureLibre(f) });
+        else avant.texte += ` ${f}`;
+      } else if (apres) apres.texte += ` ${f}`;
+      else if (VERBES_DEMANDE.test(f)) dansPhrase.push({ texte: f, i, inconnu: true });
+    }
+    dansPhrase.sort((a, b) => a.i - b.i);
+    // Une seule date dans la phrase : tous ses services la prennent.
+    const datesPhrase = [...new Set(dansPhrase.map((g) => g.dateFixe || dateDe(g.texte)).filter(Boolean))];
+    for (const g of dansPhrase) {
+      g.dateSurPhrase = datesPhrase.length === 1 ? datesPhrase[0] : "";
+      groupes.push(g);
+    }
+  }
+  if (!groupes.length) return [];
+  // Une seule date dans tout le message : les services sans date la prennent.
+  const toutesDates = [...new Set(groupes.map((g) => g.dateFixe || dateDe(g.texte) || g.dateSurPhrase).filter(Boolean))];
+  let derniere = "";
+  return groupes.map((g) => {
+    const propre = g.dateFixe || dateDe(g.texte, derniere) || g.dateSurPhrase;
+    const date = propre || (toutesDates.length === 1 ? toutesDates[0] : "");
+    if (date) derniere = date;
+    const gens = lirePersonnes(g.texte);
+    const adultes = gens.adultes || d.adultes;
+    const enfants = gens.adultes || gens.enfants ? gens.enfants : d.enfants;
+    // Une heure ne se partage pas entre services : elle vaut pour celui dont la phrase la donne.
+    const heure = g.heureFixe || lireHeureLibre(g.texte) || (groupes.length === 1 ? d.heure : "");
+    return { phrase: g.texte.trim(), date, heure, adultes, enfants, offres: g.inconnu ? [] : offresDe(g.texte, { date, adultes, enfants }), copie: !!g.copie };
+  });
+}
+
+// Langue du client d'après son message : le français quand il l'emporte, l'anglais sinon (les documents de Secret sont en anglais).
+export function langueDuMessage(texte) {
+  const t = ` ${sansAcc(texte)} `;
+  const compte = (re) => (t.match(re) || []).length;
+  const fr = compte(/\b(?:bonjour|bonsoir|nous|voudrions|voulons|aimerions|souhaitons|merci|pour|avec|adultes?|enfants?|demain|le|la|les|des|une?|svp|sommes|logeons|serait|aussi|encore)\b/g);
+  const en = compte(/\b(?:hello|hi|we|would|like|want|please|thanks?|thank|adults?|children|the|for|with|tomorrow|are|and|tour|trip|also|again)\b/g);
+  return fr > en ? "fr" : "en";
+}
+
+const nombreLangue = (n, langue) => (langue === "fr" ? new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(n).replace(/[  ]/g, " ") : nombre(n));
+const NOTE_LANGKAWI_FR = "Trajet vers ou depuis Langkawi (Malaisie) : prévoyez votre passeport, valable au moins six mois.";
+
+// Variables du modèle « réponse au client » : un seul message qui reprend chaque service avec SA date, son prix, et le total. Tout est dans la langue
+// demandée, un prix ou une date inconnus sont dits en toutes lettres, jamais laissés vides. `services` : [{ offre, phrase, date, adultes, enfants, bebes }].
+export function varsReponse({ d, services, devise = "THB", langue = "en", entreprise = {}, nomPartenaire = () => "" }) {
+  const fr = langue === "fr";
+  const prenom = prenomDe(d.nom);
+  let total = 0;
+  let complet = services.length > 0;
+  const blocs = services.map((s) => {
+    const o = s.offre;
+    const titre = o ? (fr && o.genre === "prestation" && o.source && o.source.libelle ? o.source.libelle : o.titre) : `${fr ? "Service à préciser : " : "Service to be specified: "}« ${(s.phrase || "").trim()} »`;
+    const date = s.date ? dateTexte(s.date, langue) : fr ? "date à confirmer" : "date to be confirmed";
+    const gens = personnesTexte({ adultes: s.adultes, enfants: s.enfants, bebes: s.bebes }, langue) || (fr ? "personnes à confirmer" : "people to be confirmed");
+    const prixConnu = o && o.total !== null && o.total !== undefined;
+    if (prixConnu) total += o.total;
+    else complet = false;
+    const prix = prixConnu ? `${devise} ${nombreLangue(o.total, langue)}` : fr ? "prix à confirmer" : "price to be confirmed";
+    let bloc = `• ${titre}\n  ${date} · ${gens} · ${prix}`;
+    // Trajet vers ou depuis Langkawi : passeport et check-in à lire avant de réserver.
+    const note = o ? notePasseport({ de: o.source && o.source.de, vers: o.source && o.source.vers, libelle: o.titre, compagnie: o.source ? nomPartenaire(o.source.partenaire_id) : "" }) : "";
+    if (note) bloc += `\n  ${fr ? `${NOTE_LANGKAWI_FR} ${note.split(/months\.\s*/)[1] || ""}`.trim() : note}`;
+    return bloc;
+  });
+  return {
+    bonjour: `${fr ? "Bonjour" : "Hello"}${prenom ? ` ${prenom}` : ""},`,
+    prenom: prenom || "",
+    client: d.nom || "",
+    services: blocs.join("\n"),
+    total: complet ? `${devise} ${nombreLangue(total, langue)}` : fr ? "à confirmer" : "to be confirmed",
+    entreprise: entreprise.nom || "",
+    telephone: entreprise.telephone || "",
+  };
 }
 
 // Les offres d'une lecture, quelle que soit son origine : formulaire du site ou message libre.
@@ -421,7 +624,7 @@ export function clientsProches(d, clients) {
 }
 
 // ---- Propositions de prix --------------------------------------------------------------------------------------------
-const MOTS_VIDES = new Set(["the", "a", "an", "and", "to", "from", "of", "with", "in", "at", "by", "for", "on", "per", "or", "into", "par", "pour", "sur", "de", "du", "la", "le", "les", "et", "en", "tour", "trip", "airport", "pier"]);
+const MOTS_VIDES = new Set(["the", "a", "an", "and", "to", "from", "of", "with", "in", "at", "by", "for", "on", "per", "or", "into", "par", "pour", "sur", "aeroport", "aeroports", "de", "du", "la", "le", "les", "et", "en", "tour", "trip", "airport", "pier"]);
 // Passage de l'anglais du formulaire au français de la base, pour les mots qui reviennent le plus.
 const SYNONYMES = { islands: "iles", island: "ile", boat: "bateau", sunset: "coucher", mangroves: "mangrove", diving: "plongee", scuba: "plongee", cooking: "cuisine", elephant: "elephant", rental: "location", scooter: "scooter" };
 const mots = (texte) =>

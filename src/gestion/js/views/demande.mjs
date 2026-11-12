@@ -4,11 +4,13 @@
 import { etat, entiteActive, reglages, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
-import { lireMessage, offresPour, reponsePrix, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
+import { lireMessage, offresDuService, decouperServices, varsReponse, langueDuMessage, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
-import { lienWhatsApp, appliquerModeParDefaut } from "../operations-calc.mjs";
+import { appliquerModeParDefaut } from "../operations-calc.mjs";
+import { ouvrirMessage } from "./messages.mjs";
+import { choisirPrestation } from "./choix-prestation.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
-import { tr, N_ } from "../i18n.mjs";
+import { tr, N_, pluriel } from "../i18n.mjs";
 
 // Brouillon passé à l'écran « Nouveau dossier » : lu une seule fois.
 let brouillon = null;
@@ -91,32 +93,139 @@ export function ouvrirDemande() {
   const regl = reglages();
   const devise = regl.devise || "THB";
   const langue = langueDocuments(regl);
+  const contexte = () => ({ prestations: etat.db.prestations, trajets: etat.db.trajets, nomPartenaire });
   let d = null;
   let texte = "";
-  let offreId = null;
   let clientId = ""; // client existant retenu ; vide pour un nouveau client
   let refuse = new Set(); // clients proposés que la personne a écartés
   let creation = false;
+  let services = []; // un par service cité dans le message : { id, coche, phrase, date, heure, adultes, enfants, offreId, lignesCustom, copie, noeuds }
+  let compteur = 0;
 
   const zone = h("textarea", { id: "demande-texte", rows: 4, placeholder: "Hi Secret Travel & Tour!\nI'd like a price for a transfer.\nName: …", oninput: () => lire(zone.value) });
   const reconnu = h("div", { class: "demande-reconnu", "aria-live": "polite" });
   // Les champs corrigeables sont posés une fois par message : les redessiner à chaque correction ferait perdre le doigt au champ suivant.
   const champs = h("div", { class: "demande-champs" });
+  const clientBloc = h("div", { class: "demande-client-bloc" });
+  const listeBloc = h("ul", { class: "services-liste", "aria-label": tr("Services trouvés") });
+  const totalBloc = h("p", { class: "services-total", "aria-live": "polite" });
   const dynamique = h("div", { class: "demande-dynamique" });
   const saisies = {};
   const erreur = h("p", { class: "erreur-form", role: "alert" });
 
-  const copier = (t) =>
-    navigator.clipboard.writeText(t).then(
-      () => toast(tr("Réponse copiée : collez-la dans WhatsApp.")),
-      () => toast(tr("La copie a échoué : sélectionnez le texte et copiez-le."), true)
-    );
-
-  const offres = () => (d ? offresPour(d, texte, { prestations: etat.db.prestations, trajets: etat.db.trajets, nomPartenaire }) : []);
-  const offreChoisie = (liste) => liste.find((o) => `${o.genre}:${o.id}` === offreId) || liste[0] || null;
+  const clefOffre = (o) => `${o.genre}:${o.id}`;
+  const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
   const clientsConnus = () => (d ? clientsProches(d, etat.db.clients).filter((x) => !refuse.has(x.client.id)) : []);
 
-  // Un client connu par son téléphone est retenu tout de suite ; par son nom seulement, on le propose.
+  // ---- Les services --------------------------------------------------------------------------------------------------------------
+  const offresDe = (sv) => (sv.lignesCustom ? [] : offresDuService(d, texte, sv, contexte()));
+  const choisie = (sv, offres) => offres.find((o) => clefOffre(o) === sv.offreId) || offres[0] || null;
+  const sommeCustom = (sv) => sv.lignesCustom.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
+  // Ce que le service donne : son offre choisie, ou les lignes prises à la main dans la base.
+  function etatDe(sv) {
+    if (sv.lignesCustom) return { offre: { genre: "prestation", id: sv.id, titre: sv.lignesCustom.filter((l) => l.kind !== "texte").map((l) => l.libelle).join(" + ") || tr("Service choisi"), total: sommeCustom(sv), source: { libelle: sv.lignesCustom.map((l) => l.libelle).join(" + ") } }, offres: [] };
+    const offres = offresDe(sv);
+    return { offre: choisie(sv, offres), offres };
+  }
+  const lignesDuService = (sv, offre) => (sv.lignesCustom ? sv.lignesCustom.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle })) : offre ? lignesDe(offre, { date: sv.date, adultes: sv.adultes, enfants: sv.enfants }, langue, devise) : []);
+  const estTransfert = (offre) => d.type === "transfer" || (offre && (offre.genre === "trajet" || (offre.source && offre.source.famille === "transfert")));
+
+  // Réservation de ce service : heure, lieu de prise en charge, dépose, vol, bagages. Un trajet du site donne ses deux bouts.
+  function reservationDe(sv, offre) {
+    const c = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
+    const siteTransfert = d.type === "transfer";
+    const lieu = siteTransfert ? d.pickup || "" : offre && !estTransfert(offre) && d.hotel && d.hotel !== hotelDuClient(c) ? d.hotel : "";
+    return { heure: sv.heure || "", lieu, bebes: d.bebes || 0, personnes: { adultes: sv.adultes, enfants: sv.enfants }, dropoff: siteTransfert ? d.dropoff || "" : "", vol: siteTransfert ? d.vol || "" : "", bagages: siteTransfert ? d.bagages || 0 : 0 };
+  }
+
+  const coches = () => services.filter((sv) => sv.coche);
+  function totalGeneral() {
+    let total = 0;
+    let complet = true;
+    for (const sv of coches()) {
+      const { offre } = etatDe(sv);
+      if (offre && offre.total !== null && offre.total !== undefined) total += offre.total;
+      else complet = false;
+    }
+    return { total, complet };
+  }
+
+  function majService(sv) {
+    const { offre, offres } = etatDe(sv);
+    const n = sv.noeuds;
+    n.titre.replaceChildren();
+    if (sv.lignesCustom) n.titre.append(h("strong", null, offre.titre), h("button", { class: "lien", type: "button", onclick: () => choisirDansBase(sv) }, tr("Ajouter une ligne")));
+    else if (!offres.length) n.titre.append(h("strong", { class: "a-preciser" }, tr("À préciser")), h("span", { class: "dsv-phrase" }, `« ${sv.phrase.length > 90 ? `${sv.phrase.slice(0, 90)}…` : sv.phrase} »`), h("button", { class: "secondaire petit", type: "button", onclick: () => choisirDansBase(sv) }, tr("Choisir dans la base")));
+    else if (offres.length === 1) n.titre.append(h("strong", null, offres[0].titre), h("span", { class: "dsv-detail" }, offres[0].detail));
+    else {
+      const sel = h("select", { "aria-label": tr("Service proposé"), onchange: (e) => ((sv.offreId = e.target.value), majService(sv), majTotal()) }, offres.map((o) => h("option", { value: clefOffre(o) }, `${o.titre} · ${o.total === null ? "-" : formatMontant(o.total, devise)}`)));
+      sel.value = offre ? clefOffre(offre) : "";
+      n.titre.append(sel, offre ? h("span", { class: "dsv-detail" }, offre.detail) : null);
+    }
+    n.prix.textContent = offre && offre.total !== null && offre.total !== undefined ? formatMontant(offre.total, devise) : "-";
+    const alertes = [];
+    if (!sv.date) alertes.push(tr("Date à préciser."));
+    else if (sv.date < aujourdhui()) alertes.push(tr("La date du service est passée."));
+    if (sv.adultes + sv.enfants === 0) alertes.push(tr("Nombre de personnes à préciser."));
+    if (offre && offre.avertissement && AVERTISSEMENTS[offre.avertissement]) alertes.push(tr(AVERTISSEMENTS[offre.avertissement]));
+    if (sv.copie) alertes.push(tr("Même service, autre date."));
+    n.alertes.replaceChildren(...alertes.map((a) => h("span", { class: "demande-attention" }, a)));
+    n.alertes.hidden = !alertes.length;
+    n.li.classList.toggle("decoche", !sv.coche);
+  }
+
+  function construireService(sv) {
+    const noeuds = { titre: h("div", { class: "dsv-titre" }), prix: h("strong", { class: "dsv-prix" }), alertes: h("p", { class: "dsv-alertes" }) };
+    sv.noeuds = noeuds;
+    const champ4 = (cle, libelle, valeur, opts = {}) => {
+      const input = h("input", { id: `svc${sv.id}-${cle}`, value: valeur, autocomplete: "off", ...opts, onchange: (e) => ((sv[cle] = opts.type === "number" ? entier(e.target.value) : e.target.value), majService(sv), majTotal()) });
+      return champ(libelle, input);
+    };
+    const coche = h("input", { type: "checkbox", checked: sv.coche, "aria-label": tr("Créer ce service"), onchange: (e) => ((sv.coche = e.target.checked), majService(sv), majTotal()) });
+    noeuds.li = h(
+      "li",
+      { class: "dsv" },
+      h("div", { class: "dsv-tete" }, h("label", { class: "case-tache" }, coche), noeuds.titre, noeuds.prix),
+      noeuds.alertes,
+      h("div", { class: "dsv-champs" }, champ4("date", tr("Date du service"), sv.date || "", { type: "date" }), champ4("heure", tr("Heure de pickup"), sv.heure || "", { type: "time" }), champ4("adultes", tr("Adultes"), String(sv.adultes), { type: "number", min: "0", step: "1", inputmode: "numeric" }), champ4("enfants", tr("Enfants"), String(sv.enfants), { type: "number", min: "0", step: "1", inputmode: "numeric" }))
+    );
+    majService(sv);
+    return noeuds.li;
+  }
+
+  function nouveauService(base) {
+    const sv = { id: ++compteur, coche: true, phrase: "", date: "", heure: "", adultes: d ? d.adultes : 0, enfants: d ? d.enfants : 0, offreId: null, lignesCustom: null, copie: false, noeuds: null, ...base };
+    services.push(sv);
+    listeBloc.append(construireService(sv));
+    return sv;
+  }
+
+  // Service que la base ne propose pas tel quel : la fenêtre des tarifs reprend sa date et ses personnes, chaque ajout devient une ligne du service.
+  function choisirDansBase(sv) {
+    choisirPrestation({ langue, devise, sansCompagnie: true, dossierId: null, defauts: { date: sv.date, adultes: sv.adultes, enfants: sv.enfants }, onAjout: (lignes) => {
+      sv.lignesCustom = [...(sv.lignesCustom || []), ...lignes];
+      const premiere = lignes.find((l) => l.date_service);
+      if (!sv.date && premiere) {
+        sv.date = premiere.date_service;
+        const input = document.getElementById(`svc${sv.id}-date`);
+        if (input) input.value = sv.date;
+      }
+      majService(sv);
+      majTotal();
+    } });
+  }
+
+  function majTotal() {
+    const { total, complet } = totalGeneral();
+    const n = coches().length;
+    totalBloc.textContent = n ? (complet ? tr("Total : {montant}", { montant: formatMontant(total, devise) }) : tr("Total : prix à confirmer pour au moins un service")) : tr("Aucun service coché.");
+    if (bouton) {
+      bouton.textContent = n ? (complet ? tr("Créer le dossier · {n} · {montant}", { n: pluriel(n, N_("{n} service"), N_("{n} services")), montant: formatMontant(total, devise) }) : tr("Créer le dossier · {n}", { n: pluriel(n, N_("{n} service"), N_("{n} services")) })) : tr("Créer le dossier sans service");
+      reponse.disabled = !n;
+    }
+  }
+
+  // ---- Client, champs et message de réponse --------------------------------------------------------------------------------------
   function retenirClient() {
     const proches = clientsConnus();
     if (clientId && !proches.some((x) => x.client.id === clientId)) clientId = "";
@@ -125,30 +234,73 @@ export function ouvrirDemande() {
     if (c && !d.hotel && !d.hotelSaisi) d.hotel = hotelDuClient(c);
   }
 
-  function brouillonDossier(offre) {
-    const nom = separerNom(d.nom);
-    const c = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
-    // Un trajet du site donne ses deux bouts : la prise en charge va sur la réservation, la dépose dans les champs du voucher.
-    const transfert = d.type === "transfer";
-    const lieu = transfert ? d.pickup || "" : offre && offre.genre === "prestation" && d.hotel && d.hotel !== hotelDuClient(c) ? d.hotel : "";
-    return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: notesDemande(d), lignes: offre ? lignesDe(offre, d, langue, devise) : [], reservation: { heure: d.heure || "", lieu, bebes: d.bebes || 0, dropoff: transfert ? d.dropoff || "" : "", personnes: { adultes: d.adultes, enfants: d.enfants, bebes: d.bebes || 0 }, vol: d.vol || "", bagages: d.bagages || 0 } };
+  function dessinerClient() {
+    clientBloc.replaceChildren();
+    if (!d) return;
+    retenirClient();
+    if (saisies.hotel && saisies.hotel.value !== (d.hotel || "")) saisies.hotel.value = d.hotel || "";
+    const proches = clientsConnus();
+    const connu = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
+    const propose = !connu ? proches.find((x) => x.raison === "nom") : null;
+    clientBloc.append(
+      ...[
+        connu
+          ? h("p", { class: "demande-client connu", role: "status" }, h("span", null, tr("Client déjà connu : {nom}", { nom: nomClient(connu) }), connu.telephone ? ` · ${connu.telephone}` : ""), h("button", { class: "lien", type: "button", onclick: () => (refuse.add(connu.id), (clientId = ""), !d.hotelSaisi && d.hotel === hotelDuClient(connu) && (d.hotel = ""), dessinerClient()) }, tr("Nouveau client")))
+          : propose
+            ? h("p", { class: "demande-client", role: "status" }, h("span", null, tr("Un client porte le même nom : {nom}", { nom: nomClient(propose.client) }), propose.client.telephone ? ` · ${propose.client.telephone}` : ""), h("button", { class: "secondaire petit", type: "button", onclick: () => ((clientId = propose.client.id), dessinerClient()) }, tr("C'est lui")))
+            : d.nom
+              ? h("p", { class: "aide" }, tr("Nouveau client : il sera créé avec le dossier."))
+              : null,
+      ].filter(Boolean)
+    );
   }
 
-  // Création directe : client, dossier, facture et réservations, sans passer par l'écran « Nouveau dossier ».
-  async function creerMaintenant(offre, bouton) {
+  // Un seul message de réponse, avec chaque service, SA date, son prix et le total, dans la langue du client. Aperçu et corrections avant l'envoi.
+  function repondre() {
+    const emetteur = regl.emetteur || {};
+    const entreprise = { nom: emetteur.nom || entiteActive().nom, telephone: emetteur.telephone || "" };
+    ouvrirMessage({
+      titre: tr("Réponse à {nom}", { nom: d.nom || tr("la personne") }),
+      pour: "client",
+      cle: "reponse",
+      langue: langueDuMessage(texte),
+      telephone: d.telephone || "",
+      vars: (l) => varsReponse({ d, services: coches().map((sv) => ({ ...sv, offre: etatDe(sv).offre, bebes: d.bebes })), devise, langue: l === "fr" ? "fr" : "en", entreprise, nomPartenaire }),
+    });
+  }
+
+  // ---- Création --------------------------------------------------------------------------------------------------------------------
+  function preparer() {
+    const nom = separerNom(d.nom);
+    const lignes = [];
+    const parService = [];
+    for (const sv of coches()) {
+      const { offre } = etatDe(sv);
+      const ls = lignesDuService(sv, offre);
+      if (!ls.length) return { manque: sv };
+      lignes.push(...ls);
+      parService.push({ ligneIds: ls.map((l) => l.id), ...reservationDe(sv, offre) });
+    }
+    const plusieurs = parService.length > 1;
+    return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: notesDemande(plusieurs ? { ...d, heure: "" } : d), lignes, parService, reservation: parService[0] || {} };
+  }
+
+  // Création directe : client, dossier, facture et une réservation par service, sans passer par l'écran « Nouveau dossier ».
+  async function creerMaintenant(btn) {
     erreur.textContent = "";
     const nouveauClient = !clientId;
     if (nouveauClient && !d.nom.trim()) return (erreur.textContent = tr("Indiquez le nom du client.")), document.getElementById("dem-nom").focus();
     if (nouveauClient && !peut("clients.ecrire")) return (erreur.textContent = tr("Votre rôle ne permet pas de créer un client : choisissez un client existant."));
-    const b = brouillonDossier(offre);
+    const b = preparer();
+    if (b.manque) return (erreur.textContent = tr("Choisissez le service de « {phrase} » ou décochez cette ligne.", { phrase: b.manque.phrase.slice(0, 60) }));
     const ref = refProposee(regl);
     if (!ref.trim() || refExiste(ref)) return (erreur.textContent = tr("Le numéro de facture n'a pas pu être proposé : créez le dossier depuis « Nouveau dossier »."));
     creation = true;
-    bouton.disabled = true;
-    bouton.textContent = tr("Création…");
+    btn.disabled = true;
+    btn.textContent = tr("Création…");
     try {
       const numero = await refDefinitive(ref, ref, regl);
-      const dossier = await creerDossierExcursions({ client: clientId ? { id: clientId } : { prenom: b.prenom, nom: b.nom, telephone: b.telephone, hotel: b.hotel, chambre: "" }, lignes: b.lignes, notes: b.notes, ref: numero, reservation: b.reservation });
+      const dossier = await creerDossierExcursions({ client: clientId ? { id: clientId } : { prenom: b.prenom, nom: b.nom, telephone: b.telephone, hotel: b.hotel, chambre: "" }, lignes: b.lignes, notes: b.notes, ref: numero, reservation: b.reservation, parService: b.parService });
       garde.ecrire("");
       fermer();
       toast(tr("Dossier {ref} créé.", { ref: dossier.ref }));
@@ -156,14 +308,16 @@ export function ouvrirDemande() {
     } catch (err) {
       erreur.textContent = /duplicate|unique|23505/i.test(err.message) ? tr("Ce numéro existe déjà. Réessayez.") : err.message;
       creation = false;
-      bouton.disabled = false;
-      dessiner();
+      btn.disabled = false;
+      majTotal();
     }
   }
 
   // Ouvre l'écran « Nouveau dossier » déjà rempli, pour vérifier ou compléter avant de créer.
-  function verifierAvant(offre) {
-    brouillon = brouillonDossier(offre);
+  function verifierAvant() {
+    const b = preparer();
+    if (b.manque) return (erreur.textContent = tr("Choisissez le service de « {phrase} » ou décochez cette ligne.", { phrase: b.manque.phrase.slice(0, 60) }));
+    brouillon = b;
     fermer();
     naviguer("#/dossiers/nouveau?demande=1");
   }
@@ -171,11 +325,10 @@ export function ouvrirDemande() {
   const modifier = (cle, valeur) => {
     d[cle] = valeur;
     if (cle === "hotel") d.hotelSaisi = true;
-    maj();
+    dessinerClient();
   };
-  const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
 
-  // Champs : posés une fois par message lu.
+  // Champs du client : posés une fois par message lu. La date, l'heure et les personnes sont dans chaque service.
   function construire() {
     const saisie = (cle, libelle, valeur, surChangement, opts = {}) => {
       const input = h("input", { id: `dem-${cle}`, value: valeur, autocomplete: "off", ...opts, onchange: (e) => surChangement(e.target.value) });
@@ -185,85 +338,31 @@ export function ouvrirDemande() {
     champs.replaceChildren(
       saisie("nom", tr("Nom du client"), d.nom, (v) => modifier("nom", v.trim())),
       saisie("tel", tr("WhatsApp"), d.telephone || "", (v) => modifier("telephone", v.trim()), { type: "tel", inputmode: "tel", placeholder: "+33 6 00 00 00 00" }),
-      saisie("date", tr("Date du service"), d.date || "", (v) => modifier("date", v), { type: "date" }),
-      saisie("heure", tr("Heure de pickup"), d.heure || "", (v) => modifier("heure", v), { type: "time" }),
-      saisie("ad", tr("Adultes"), String(d.adultes), (v) => modifier("adultes", entier(v)), { type: "number", min: "0", step: "1", inputmode: "numeric" }),
-      saisie("enf", tr("Enfants"), String(d.enfants), (v) => modifier("enfants", entier(v)), { type: "number", min: "0", step: "1", inputmode: "numeric" }),
       saisie("hotel", tr("Hôtel"), d.hotel || "", (v) => modifier("hotel", v.trim()), { placeholder: tr("Hotel Sunset, Klong Dao") })
     );
   }
 
-  // Ce qui dépend des champs : client reconnu, offres et prix, boutons.
-  function dessiner() {
-    dynamique.replaceChildren();
-    if (!d) return;
-    retenirClient();
-    if (saisies.hotel && saisies.hotel.value !== (d.hotel || "")) saisies.hotel.value = d.hotel || "";
-    const liste = offres();
-    const choisie = offreChoisie(liste);
+  let bouton = null;
+  const reponse = h("button", { class: "secondaire", type: "button", onclick: () => repondre() }, tr("Répondre au client"));
+
+  function poserLesBoutons() {
+    const ecrit = peut("dossiers.ecrire");
+    bouton = h("button", { class: "principal", type: "button", onclick: (e) => creerMaintenant(e.currentTarget) });
     const marque = (d.marque || "").toLowerCase();
     const mauvaise = marque && !entiteActive().nom.toLowerCase().includes(marque.split(" ")[0]);
     const sitesLignes = lignesSite(d);
-    const proches = clientsConnus();
-    const connu = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
-    const propose = !connu ? proches.find((x) => x.raison === "nom") : null;
-    const sansQte = d.date && d.adultes + d.enfants > 0;
-
-    dynamique.append(
+    dynamique.replaceChildren(
       ...[
         mauvaise ? h("p", { class: "bandeau-info", role: "status" }, tr("Cette demande est adressée à {marque}. Changez d'entreprise en haut de l'écran pour utiliser sa base de prix.", { marque: d.marque })) : null,
         d.siegeEnfant || d.siegeBebe || d.bebes ? h("p", { class: "aide" }, [d.bebes ? tr("{n} bébé : noté dans le dossier.", { n: d.bebes }) : "", d.siegeEnfant ? tr("Siège enfant demandé.") : "", d.siegeBebe ? tr("Siège bébé demandé.") : ""].filter(Boolean).join(" ")) : null,
         sitesLignes.length ? h("ul", { class: "demande-site" }, sitesLignes.map((l) => h("li", null, l))) : null,
-        connu
-          ? h("p", { class: "demande-client connu", role: "status" }, h("span", null, tr("Client déjà connu : {nom}", { nom: nomClient(connu) }), connu.telephone ? ` · ${connu.telephone}` : ""), h("button", { class: "lien", type: "button", onclick: () => (refuse.add(connu.id), (clientId = ""), !d.hotelSaisi && d.hotel === hotelDuClient(connu) && (d.hotel = ""), maj()) }, tr("Nouveau client")))
-          : propose
-            ? h("p", { class: "demande-client", role: "status" }, h("span", null, tr("Un client porte le même nom : {nom}", { nom: nomClient(propose.client) }), propose.client.telephone ? ` · ${propose.client.telephone}` : ""), h("button", { class: "secondaire petit", type: "button", onclick: () => ((clientId = propose.client.id), maj()) }, tr("C'est lui")))
-            : d.nom
-              ? h("p", { class: "aide" }, tr("Nouveau client : il sera créé avec le dossier."))
-              : null,
-        liste.length
-          ? h(
-              "ul",
-              { class: "choix-liste demande-offres", role: "radiogroup", "aria-label": tr("Service proposé") },
-              liste.map((o) =>
-                h(
-                  "li",
-                  null,
-                  h(
-                    "button",
-                    { class: "demande-offre", type: "button", role: "radio", "aria-checked": o === choisie ? "true" : "false", onclick: () => ((offreId = `${o.genre}:${o.id}`), dessiner()) },
-                    h("span", { class: "choix-texte" }, h("strong", null, o.titre), h("span", null, o.detail), o.avertissement && AVERTISSEMENTS[o.avertissement] ? h("span", { class: "demande-attention" }, tr(AVERTISSEMENTS[o.avertissement])) : null),
-                    h("span", { class: "choix-prix" }, h("strong", null, o.total === null ? "-" : formatMontant(o.total, devise)))
-                  )
-                )
-              )
-            )
-          : h("p", { class: "vide-court" }, tr("Rien ne correspond dans la base de prix : le dossier se crée sans service, à compléter ensuite."))
-      ].filter(Boolean)
-    );
-
-    const ecrit = peut("dossiers.ecrire");
-    const tel = chiffres(d.telephone);
-    const reponse = choisie ? reponsePrix(d, choisie, { devise, compagnie: choisie.source ? nomPartenaire(choisie.source.partenaire_id) : "" }) : "";
-    const bouton = h("button", { class: "principal", type: "button", onclick: (e) => creerMaintenant(choisie, e.currentTarget) }, choisie && choisie.total !== null ? tr("Créer le dossier · {montant}", { montant: formatMontant(choisie.total, devise) }) : tr("Créer le dossier"));
-    dynamique.append(
-      ...[
+        clientBloc,
+        h("h3", { class: "services-titre" }, tr("Services trouvés")),
+        listeBloc,
+        h("button", { class: "secondaire petit", type: "button", onclick: () => { const sv = nouveauService({ phrase: tr("Service ajouté") }); choisirDansBase(sv); } }, tr("Ajouter un service")),
+        totalBloc,
         erreur,
-        d.date && d.date < aujourdhui() ? h("p", { class: "erreur-form" }, tr("La date du service est passée.")) : null,
-        !sansQte && choisie ? h("p", { class: "aide" }, tr("Date ou nombre de personnes manquants : le prix et la facture se complètent dans le dossier.")) : null,
-        h(
-          "div",
-          { class: "barre-modal" },
-          ...[
-            ecrit ? bouton : null,
-            choisie
-              ? tel
-                ? h("a", { class: "bouton secondaire", href: lienWhatsApp(tel, reponse), target: "_blank", rel: "noopener" }, tr("Répondre au client"))
-                : h("button", { class: "secondaire", type: "button", onclick: () => copier(reponse) }, tr("Copier la réponse"))
-              : null,
-            ecrit ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant(choisie) }, tr("Vérifier avant de créer")) : null,
-          ].filter(Boolean)
-        ),
+        h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, reponse, ecrit ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
       ].filter(Boolean)
     );
   }
@@ -274,22 +373,24 @@ export function ouvrirDemande() {
     garde.ecrire(valeur.trim());
     erreur.textContent = "";
     d = texte.trim() ? lireMessage(texte, aujourdhui()) : null;
-    offreId = null;
     clientId = "";
     refuse = new Set();
+    services = [];
+    listeBloc.replaceChildren();
     reconnu.replaceChildren();
     corps.classList.toggle("lu", !!d);
     if (!texte.trim()) return;
     if (!d) return reconnu.append(h("p", { class: "erreur-form", role: "alert" }, tr("Rien de reconnu dans ce texte. Collez le message du client tel qu'il est arrivé sur WhatsApp.")));
     d.hotelSaisi = false;
     construire();
+    poserLesBoutons();
     reconnu.append(champs, dynamique);
-    dessiner();
-  }
-  // Une correction du formulaire recalcule le prix, sans toucher au texte collé.
-  function maj() {
-    if (creation) return;
-    dessiner();
+    const trouves = decouperServices(texte, d, contexte(), aujourdhui());
+    // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
+    if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, copie: t.copie });
+    dessinerClient();
+    majTotal();
   }
 
   const coller = h("button", { class: "secondaire", type: "button", onclick: async () => {
@@ -304,7 +405,7 @@ export function ouvrirDemande() {
 
   const corps = h("div", { class: "modal-corps demande" });
   corps.append(
-    h("p", { class: "aide demande-aide" }, tr("Collez le message du client, tel qu'il est arrivé sur WhatsApp. La date, les personnes, l'hôtel et le service sont reconnus, et le prix vient de la base.")),
+    h("p", { class: "aide demande-aide" }, tr("Collez le message du client, tel qu'il est arrivé sur WhatsApp. Chaque service cité est reconnu avec sa date, ses personnes et son prix, et le prix vient de la base.")),
     h("div", { class: "champ demande-message" }, h("label", { for: "demande-texte" }, tr("Message du client")), zone),
     h("div", { class: "actions gauche" }, coller, effacer),
     reconnu
@@ -318,4 +419,3 @@ export function ouvrirDemande() {
     lire(reprise);
   }
 }
-
