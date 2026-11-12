@@ -33,10 +33,20 @@ const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise
 export function creer(config, { client } = {}) {
   const sb = client || createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
 
-  // Migration 16 : les nets des documents sont dans documents_nets. Tant qu'elle n'est pas appliquée, on garde l'ancien fonctionnement
-  // (nets dans le contenu) plutôt que de les perdre. La table existe pour tout le monde, mais ne renvoie rien sans le droit « nets ».
+  // Migration 16 : les nets des documents sont dans documents_nets (la table existe pour tout le monde, mais ne renvoie rien sans le droit « nets »).
+  // La détection ne garde en mémoire que ce qui est sûr : « la table est là » (vrai) ou « la table n'existe pas » (faux, migration 16 pas appliquée).
+  // Une coupure ou une erreur passagère n'est PAS gardée : elle remonte, et la détection est refaite à l'appel suivant. Avant, un échec de la première
+  // requête valait « pas de table » pour toute la session, et les nets d'un devis étaient alors écrits dans son contenu, lisible avec le seul droit finances.
   let netsSepares = null;
-  const separation = () => (netsSepares ||= Promise.resolve(sb.from("documents_nets").select("document_id").limit(1)).then(({ error }) => !error));
+  const tableAbsente = (e) => e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|Could not find the table/i.test(e.message || ""));
+  const separation = () => {
+    if (netsSepares !== null) return Promise.resolve(netsSepares);
+    return Promise.resolve(sb.from("documents_nets").select("document_id").limit(1)).then(({ error }) => {
+      if (!error) return (netsSepares = true);
+      if (tableAbsente(error)) return (netsSepares = false);
+      throw new Error(error.message);
+    });
+  };
   // Nets de documents, par identifiant de document. Sans le droit « nets », la base ne renvoie rien : les lignes restent sans net.
   async function netsDes(ids) {
     const par = {};
@@ -53,8 +63,13 @@ export function creer(config, { client } = {}) {
   };
   // Écrit un document sans ses nets, puis les nets à part (seulement s'il y en a : qui n'en voit pas n'en écrit pas).
   async function ecrireDocument(ecriture, contenuComplet) {
-    if (!contenuComplet || !(await separation())) return verifie(await ecriture(contenuComplet));
+    if (!contenuComplet) return verifie(await ecriture(contenuComplet));
     const { contenu, nets } = separerNets(contenuComplet);
+    // Les nets ne vont JAMAIS dans le contenu : sans la table, un document qui en porte est refusé (un document sans net s'enregistre normalement).
+    if (!(await separation())) {
+      if (Object.keys(nets).length) throw new Error(tr("Les prix nets ne peuvent pas être enregistrés : la migration 16 de la base n'est pas appliquée."));
+      return verifie(await ecriture(contenu));
+    }
     const ligne = verifie(await ecriture(contenu));
     if (Object.keys(nets).length) verifie(await sb.from("documents_nets").upsert({ document_id: ligne.id, entite_id: ligne.entite_id, nets }).select());
     return { ...ligne, contenu: fusionnerNets(ligne.contenu, nets) };
@@ -90,8 +105,18 @@ export function creer(config, { client } = {}) {
       const { data } = await sb.from("abonnements_push").select("id").eq("endpoint", endpoint).limit(1);
       return !!(data && data.length);
     },
+    // Dernières exécutions des rappels (migration 23). Renvoie null si la table n'existe pas encore ou n'est pas lisible par cette personne.
+    async suiviRappels() {
+      const { data, error } = await sb.from("rappels_suivi").select("id, cree_le, type, cible, abonnements, envoyes, retires, echecs, erreur, duree_ms").order("cree_le", { ascending: false }).limit(20);
+      return error ? null : data;
+    },
+    // Se déconnecter ferme cet appareil seulement (par défaut la bibliothèque ferme TOUTES les sessions : se déconnecter sur l'ordinateur coupait aussi l'iPhone).
     async deconnecter() {
-      await sb.auth.signOut();
+      await sb.auth.signOut({ scope: "local" });
+    },
+    // « Déconnecter tous mes appareils » : un geste à part, pour un téléphone perdu ou un compte utilisé sur un appareil prêté.
+    async deconnecterPartout() {
+      await sb.auth.signOut({ scope: "global" });
     },
     async charger() {
       const out = {};
@@ -279,10 +304,15 @@ export function creer(config, { client } = {}) {
         let rows = tables[t] || [];
         // Une sauvegarde porte les nets dans le contenu des documents : à l'import ils vont dans documents_nets, pas dans le contenu.
         const nets = [];
-        if (t === "documents" && (await separation())) {
+        if (t === "documents") {
+          const separe = await separation();
           rows = rows.map((d) => {
             const s = separerNets(d.contenu);
-            if (Object.keys(s.nets).length) nets.push({ document_id: d.id, entite_id: d.entite_id, nets: s.nets });
+            if (Object.keys(s.nets).length) {
+              // Jamais dans le contenu : sans la table des nets, on refuse l'import plutôt que de les rendre lisibles avec le seul droit finances.
+              if (!separe) throw new Error(tr("Les prix nets ne peuvent pas être enregistrés : la migration 16 de la base n'est pas appliquée."));
+              nets.push({ document_id: d.id, entite_id: d.entite_id, nets: s.nets });
+            }
             return { ...d, contenu: s.contenu };
           });
         }

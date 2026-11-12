@@ -6,7 +6,8 @@ import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
 import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4, plierGroupes } from "./commun.mjs";
-import { tr, N_ } from "../i18n.mjs";
+import { tr, N_, localeActive } from "../i18n.mjs";
+import { etatRappels } from "../rappels-etat.mjs";
 import { VERSION_SAUVEGARDE, pourSauvegarde, verifierSauvegarde, absentsDeLaSauvegarde, reservationsPerdantLeurPrestataire } from "../sauvegarde.mjs";
 
 // Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
@@ -409,6 +410,21 @@ export function vueReglages() {
   );
   dessinerLibelles();
 
+  // État des rappels sur téléphone (migration 23) : dernière exécution et alerte s'il n'y a eu aucun rappel réussi depuis 24 h.
+  const sectionRappels = h("div", { class: "etat-rappels" });
+  if (etat.store.suiviRappels) {
+    etat.store.suiviRappels().then((lignes) => {
+      if (!lignes) return;
+      const e = etatRappels(lignes);
+      const quand = (l) => new Date(l.cree_le).toLocaleString(localeActive(), { dateStyle: "short", timeStyle: "short" });
+      const texte = e.message === "aucune_execution" ? tr("Aucun rappel n'a encore été envoyé depuis la mise en place du suivi.")
+        : e.statut === "ok" ? tr("Dernier rappel le {date} : {envoyes} envoyé(s), {echecs} échec(s).", { date: quand(e.derniere), envoyes: e.derniere.envoyes, echecs: e.derniere.echecs })
+        : e.message === "derniere_en_echec" ? tr("Le dernier rappel (le {date}) a échoué : {erreur}", { date: quand(e.derniere), erreur: e.derniere.erreur || tr("{n} échec(s) d'envoi", { n: e.derniere.echecs }) })
+        : tr("Aucun rappel n'a réussi depuis plus de 24 h. Dernière exécution : le {date}.", { date: quand(e.derniere) });
+      sectionRappels.replaceChildren(h("h3", null, tr("Rappels sur téléphone")), h("p", { class: e.statut === "alerte" ? "ecart-facture alerte-rappels" : "aide", role: "status" }, texte));
+    });
+  }
+
   const sections = {
     entreprise: h(
       "div",
@@ -504,6 +520,33 @@ export function vueReglages() {
         texte(N_("Note des vouchers de transfert"), "voucher.note_transfert", { multi: true, rows: 2 })
       )
     ),
+    // Sécurité du compte : « Se déconnecter » ne ferme que cet appareil ; ici, tous les appareils d'un coup (téléphone perdu, appareil prêté).
+    compte: h(
+      "div",
+      null,
+      h(
+        "section",
+        null,
+        h("h2", null, tr("Sécurité du compte")),
+        h("p", { class: "aide" }, tr("« Se déconnecter » ne ferme que l'appareil que vous utilisez : l'iPhone reste connecté quand vous quittez l'ordinateur. Pour fermer vos sessions partout, utilisez le bouton ci-dessous.")),
+        h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: async () => {
+          if (!(await confirmer(tr("Tous vos appareils seront déconnectés, celui-ci compris. Il faudra se reconnecter avec l'e-mail et le mot de passe."), tr("Déconnecter partout"), true))) return;
+          try {
+            await etat.store.deconnecterPartout();
+            location.reload();
+          } catch (err) {
+            toast(tr("Déconnexion impossible : {message}", { message: err.message }), true);
+          }
+        } }, tr("Déconnecter tous mes appareils"))),
+        sectionRappels,
+        h("h3", null, tr("Téléphone perdu ou volé")),
+        h("ol", { class: "aide" },
+          h("li", null, tr("Sur un autre appareil, ouvrez Réglages, Compte, puis « Déconnecter tous mes appareils ». Les sessions sont fermées, mais un appareil déjà ouvert peut encore servir jusqu'à une heure.")),
+          h("li", null, tr("Pour couper l'accès tout de suite, l'administratrice générale décoche « Compte actif » pour cette personne dans Administration.")),
+          h("li", null, tr("Changez ensuite le mot de passe, puis réactivez le compte."))
+        )
+      )
+    ),
     donnees: h(
       "div",
       null,
@@ -530,6 +573,7 @@ export function vueReglages() {
     ["apparence", tr("Apparence")],
     ["ecrans", tr("Écrans")],
     ...(peut("exports.faire") ? [["donnees", tr("Sauvegarde")]] : []),
+    ...(etat.store.mode === "supabase" ? [["compte", tr("Compte")]] : []),
   ];
   const barre = h("div", { class: "onglets sous-onglets" });
   // Groupes repliables sur téléphone, et recherche d'un réglage dans tous les onglets.
@@ -553,11 +597,11 @@ export function vueReglages() {
     aucun.hidden = true;
     for (const [k, el] of Object.entries(sections)) el.hidden = k !== cle;
     for (const b of barre.children) b.setAttribute("aria-pressed", b.dataset.cle === cle ? "true" : "false");
-    zoneApercu.hidden = cle === "donnees" || cle === "ecrans";
+    zoneApercu.hidden = cle === "donnees" || cle === "ecrans" || cle === "compte";
     zoneVoucher.hidden = cle !== "ecrans";
     if (cle === "ecrans") redessinerVoucher();
-    boutonEnregistrer.hidden = cle === "donnees";
-    if (cle !== "donnees") redessiner();
+    boutonEnregistrer.hidden = cle === "donnees" || cle === "compte";
+    if (cle !== "donnees" && cle !== "compte") redessiner();
   };
   ONGLETS.forEach(([cle, libelle]) => barre.append(h("button", { type: "button", "data-cle": cle, "aria-pressed": "false", onclick: () => montrer(cle) }, libelle)));
 

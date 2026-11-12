@@ -34,7 +34,7 @@ test("fusionnerNets : remet les nets connus, ne touche pas aux autres lignes", (
 });
 
 // Base factice : assez de PostgREST pour les appels du magasin sur documents et documents_nets.
-function faux({ droitNets = true, tableNets = true } = {}) {
+function faux({ droitNets = true, tableNets = true, coupures = 0 } = {}) {
   const tables = { documents: [], documents_nets: [], dossiers: [], paiements: [], dossiers_resume: [] };
   let n = 0;
   const erreurRls = { message: "new row violates row-level security policy" };
@@ -54,6 +54,8 @@ function faux({ droitNets = true, tableNets = true } = {}) {
     };
     function executer() {
       if (nom === "documents_nets") {
+        // Coupure réseau sur les premiers appels : l'erreur ne dit pas que la table manque.
+        if (coupures > 0) { coupures--; return { data: null, error: { message: "TypeError: Failed to fetch" } }; }
         if (!tableNets) return { data: null, error: { code: "42P01", message: 'relation "documents_nets" does not exist' } };
         if (!droitNets) return e.op === "select" ? { data: [], error: null } : { data: null, error: erreurRls };
       }
@@ -122,9 +124,33 @@ test("magasin : une sauvegarde importée range les nets à part", async () => {
   assert.deepEqual(sb.tables.documents_nets[0], { document_id: "dx", entite_id: "e1", nets: { l1: 70 } });
 });
 
-test("magasin : sans la migration 16, les nets restent dans le contenu plutôt que d'être perdus", async () => {
+test("magasin : sans la migration 16, les nets ne sont JAMAIS écrits dans le contenu : l'enregistrement est refusé avec un message", async () => {
   const sb = faux({ tableNets: false });
   const store = creer({}, { client: sb });
+  await assert.rejects(store.inserer("documents", { dossier_id: "D", type: "devis", date_emission: "2026-11-01", contenu: contenu() }), /migration 16/);
+  assert.equal(sb.tables.documents.length, 0, "rien n'est écrit, donc aucun net lisible avec le seul droit finances");
+  // Un document sans net s'enregistre normalement.
+  await store.inserer("documents", { dossier_id: "D", type: "devis", date_emission: "2026-11-01", contenu: { lignes: [{ id: "l1", unite: 100, qte: 1 }] } });
+  assert.equal(sb.tables.documents.length, 1);
+});
+
+test("magasin : une coupure au moment de détecter la table des nets ne fait plus écrire les nets dans le devis, et la détection est retentée", async () => {
+  const sb = faux({ coupures: 1 });
+  const store = creer({}, { client: sb });
+  // Première tentative : la détection échoue (réseau). Rien n'est écrit, l'erreur remonte.
+  await assert.rejects(store.inserer("documents", { dossier_id: "D", type: "devis", date_emission: "2026-11-01", contenu: contenu() }), /Failed to fetch/);
+  assert.equal(sb.tables.documents.length, 0, "aucun net n'a été écrit dans le contenu pendant la coupure");
+  // Deuxième tentative : la détection est refaite (l'échec n'est pas gardé toute la session) et les nets vont à part.
   await store.inserer("documents", { dossier_id: "D", type: "devis", date_emission: "2026-11-01", contenu: contenu() });
-  assert.equal(sb.tables.documents[0].contenu.lignes[0].net, 70, "ancien fonctionnement conservé");
+  assert.ok(sb.tables.documents[0].contenu.lignes.every((l) => !("net" in l)));
+  assert.deepEqual(sb.tables.documents_nets[0].nets, { l1: 70 });
+});
+
+test("déconnexion : se déconnecter ne ferme que cet appareil, « tous les appareils » est un geste à part", async () => {
+  const appels = [];
+  const sb = { ...faux(), auth: { signOut: async (o) => { appels.push(o); return { error: null }; } } };
+  const store = creer({}, { client: sb });
+  await store.deconnecter();
+  await store.deconnecterPartout();
+  assert.deepEqual(appels, [{ scope: "local" }, { scope: "global" }]);
 });

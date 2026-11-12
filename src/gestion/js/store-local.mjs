@@ -79,6 +79,10 @@ export function creer() {
     },
     async connecter() {},
     async deconnecter() {},
+    async deconnecterPartout() {},
+    async suiviRappels() {
+      return null;
+    },
     async charger() {
       const ids = new Set(accessibles());
       const ctx = contexte();
