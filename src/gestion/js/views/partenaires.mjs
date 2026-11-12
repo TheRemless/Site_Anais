@@ -1,5 +1,5 @@
 // Partenaires : la liste, la fiche d'un partenaire (contact, tarifs, règles, contrat, banque, tâches) et les formulaires.
-import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie } from "../etat.mjs";
+import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie, modeTaxi } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
 import { TYPES_COMMISSION, SUR_PLACE, CHEZ_NOUS, modeParDefaut } from "../operations-calc.mjs";
@@ -121,7 +121,7 @@ export function listePartenaires() {
   return h(
     "div",
     { "data-titre": tr("Partenaires") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Partenaires")), h("p", { class: "sous" }, tr("{n} partenaires, {n2} tarifs, {n3} trajets", { n: etat.db.partenaires.filter((p) => p.actif !== false).length, n2: etat.db.prestations.filter((p) => p.actif !== false).length, n3: etat.db.trajets.length }))), h("div", { class: "entete-actions" }, h("a", { class: "bouton secondaire", href: "#/tarifs" }, tr("Tarifs")), h("a", { class: "bouton secondaire", href: "#/trajets" }, tr("Trajets")), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, tr("Nouveau partenaire")) : null)),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Partenaires")), h("p", { class: "sous" }, (modeTaxi() ? tr("{n} partenaires, {n2} tarifs", { n: etat.db.partenaires.filter((p) => p.actif !== false).length, n2: etat.db.prestations.filter((p) => p.actif !== false).length }) : tr("{n} partenaires, {n2} tarifs, {n3} trajets", { n: etat.db.partenaires.filter((p) => p.actif !== false).length, n2: etat.db.prestations.filter((p) => p.actif !== false).length, n3: etat.db.trajets.length })))), h("div", { class: "entete-actions" }, h("a", { class: "bouton secondaire", href: "#/tarifs" }, tr("Tarifs")), h("a", { class: "bouton secondaire", href: "#/trajets" }, tr("Trajets")), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, tr("Nouveau partenaire")) : null)),
     h("div", { class: "barre-outils" }, h("div", { class: "champ recherche" }, h("label", { for: "rech-partenaires" }, tr("Rechercher")), q)),
     corps
   );

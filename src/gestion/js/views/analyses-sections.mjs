@@ -140,20 +140,21 @@ export function apercu(X) {
   return [
     tuiles(
       T(X, "vendu", { grande: true }),
-      T(X, "encaisse"),
+      X.taxi ? null : T(X, "encaisse"),
       X.nets ? T(X, "commission_recue", { detail: tr("{montant} à recevoir", { montant: m$(X, cr.montant) }), href: X.lien("commissions") }) : panier,
-      T(X, "a_encaisser", { href: X.lien("encaissements", { liste: "a_encaisser" }) }),
+      // Taxi : rien ne s'encaisse chez nous et il n'y a jamais de devis.
+      X.taxi ? null : T(X, "a_encaisser", { href: X.lien("encaissements", { liste: "a_encaisser" }) }),
       T(X, "a_venir_7", { valeur: String(a7.nombre), detail: a7.montant ? tr("{montant} vendus", { montant: m$(X, a7.montant) }) : tr("services"), href: X.lien("avenir") }),
-      T(X, "devis_attente", { valeur: String(dv.nombre), detail: tr("valeur {montant}", { montant: m$(X, dv.montant) }), href: X.lien("devis") }),
-      tauxAcceptation(X),
+      X.taxi ? null : T(X, "devis_attente", { valeur: String(dv.nombre), detail: tr("valeur {montant}", { montant: m$(X, dv.montant) }), href: X.lien("devis") }),
+      X.taxi ? null : tauxAcceptation(X),
       X.nets ? T(X, "revenu", { grande: true, href: X.lien("commissions") }) : null,
       X.nets ? panier : null,
       X.nets ? dossiers : null
     ),
     aTraiter(X),
-    graphe(X, [{ id: "vendu", nom: N_("Volume vendu"), classe: "s1" }, { id: "encaisse", nom: N_("Encaissé chez nous"), classe: "s2" }], N_("Volume vendu et encaissé")),
+    X.taxi ? graphe(X, [{ id: "vendu", nom: N_("Volume vendu"), classe: "s1" }], N_("Volume vendu")) : graphe(X, [{ id: "vendu", nom: N_("Volume vendu"), classe: "s1" }, { id: "encaisse", nom: N_("Encaissé chez nous"), classe: "s2" }], N_("Volume vendu et encaissé")),
     X.peutGroupe ? h("p", { class: "st-lien-groupe" }, h("a", { href: "#/groupe" }, tr("Comparer les entreprises"))) : null,
-    blocDefinitions(["vendu", "encaisse", "a_encaisser", "commission_recue", "commission_a_recevoir", "revenu", "a_venir_7", "devis_attente"].filter((i) => S.disponible(i, f)), S.DEFINITIONS),
+    blocDefinitions(["vendu", "encaisse", "a_encaisser", "commission_recue", "commission_a_recevoir", "revenu", "a_venir_7", "devis_attente"].filter((i) => S.disponible(i, f) && !(X.taxi && ["encaisse", "a_encaisser", "devis_attente"].includes(i))), S.DEFINITIONS),
   ];
 }
 
@@ -401,12 +402,12 @@ export function devis(X) {
 export const SECTIONS = {
   apercu: { titre: N_("Vue d'ensemble"), rendre: apercu, parties: null },
   ventes: { titre: N_("Ventes"), rendre: ventes, parties: ["dossiers"], douze: true },
-  encaissements: { titre: N_("Encaissements"), rendre: encaissements, parties: ["dossiers", "paiements"] },
+  encaissements: { titre: N_("Encaissements"), rendre: encaissements, parties: ["dossiers", "paiements"], sansTaxi: true },
   commissions: { titre: N_("Commissions et marge"), rendre: commissions, parties: ["paiements", "reservations"], nets: true },
   clients: { titre: N_("Clients"), rendre: clients, parties: ["dossiers"] },
   services: { titre: N_("Services"), complet: N_("Services et partenaires"), rendre: services, parties: ["reservations"] },
   avenir: { titre: N_("À venir"), complet: N_("Réservations à venir"), rendre: avenir, parties: ["reservations", "dossiers"], futur: true },
-  devis: { titre: N_("Devis"), rendre: devis, parties: ["dossiers"] },
+  devis: { titre: N_("Devis"), rendre: devis, parties: ["dossiers"], sansTaxi: true },
 };
 
 // ---- Liste derrière un chiffre ------------------------------------------------------------------------------------------------------------

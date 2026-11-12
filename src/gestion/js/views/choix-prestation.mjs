@@ -13,7 +13,9 @@ import { tr, pluriel, N_ } from "../i18n.mjs";
 // `dossierId` : le dossier auquel on ajoute ; la date et les personnes de son dernier service sont reprises, et le choix des personnes suit.
 // `defauts` : { date, adultes, enfants } donnés par l'appelant (une demande collée), qui l'emportent sur le dossier.
 export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCompagnie = false, dossierId = null, defauts = {} }) {
-  let onglet = etat.db.prestations.some((x) => x.actif !== false) ? "tarifs" : "trajets";
+  // Taxi : pas d'horaires de bateaux, l'onglet Trajets n'a rien à montrer.
+  const ongletsDispo = [["tarifs", tr("Tarifs")], ...(modeTaxi() ? [] : [["trajets", tr("Trajets")]]), ["libre", tr("Autre prestation")]];
+  let onglet = etat.db.prestations.some((x) => x.actif !== false) || modeTaxi() ? "tarifs" : "trajets";
   const dernier = dossierId ? etat.db.reservations.filter((r) => r.dossier_id === dossierId).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0] : null;
   const ctx = { date: defauts.date || (dernier && dernier.date_service) || "", adultes: defauts.adultes ?? (dernier && dernier.personnes ? dernier.personnes.adultes : 0) ?? 0, enfants: defauts.enfants ?? (dernier && dernier.personnes ? dernier.personnes.enfants : 0) ?? 0 };
   // Quantité proposée selon l'unité du tarif : par personne, par adulte, par enfant, sinon une seule.
@@ -26,7 +28,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   const q = h("input", { id: "cp-q", type: "search", placeholder: tr("Île, excursion, transfert, compagnie…"), autocomplete: "off", oninput: () => dessiner() });
   const liste = h("ul", { class: "choix-liste" });
   const compte = h("p", { class: "aide" });
-  const onglets = h("div", { class: "onglets sous-onglets" }, [["tarifs", tr("Tarifs")], ["trajets", tr("Trajets")], ["libre", tr("Autre prestation")]].map(([code, libelle]) => h("button", { type: "button", "aria-pressed": code === onglet ? "true" : "false", onclick: (e) => { onglet = code; for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false"); dessiner(); } }, libelle)));
+  const onglets = h("div", { class: "onglets sous-onglets" }, ongletsDispo.map(([code, libelle]) => h("button", { type: "button", "aria-pressed": code === onglet ? "true" : "false", onclick: (e) => { onglet = code; for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false"); dessiner(); } }, libelle)));
   const prix = (n) => (n === null || n === undefined ? tr("prix à définir") : formatMontant(n, devise));
   const termine = h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Terminé"));
   // Un tarif par personne avec des enfants au dossier : les adultes au tarif adulte, les enfants au tarif enfant de la base (une ligne chacun, comme

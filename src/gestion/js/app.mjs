@@ -1,4 +1,4 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, netReservation, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules, modeExcursions } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, netReservation, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules, modeExcursions, modeTaxi } from "./etat.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
 import { libelleStatut, formatMontant, aujourdhui } from "./calc.mjs";
@@ -168,9 +168,10 @@ function ecrans() {
         ? [
             { href: "#/partenaires", libelle: tr("Partenaires"), cle: "partenaires", icone: "partenaires" },
             { href: "#/tarifs", libelle: tr("Tarifs"), cle: "tarifs", icone: "tarifs" },
-            { href: "#/trajets", libelle: tr("Trajets"), cle: "trajets", icone: "bateau" },
+            // Taxi n'a que des prestations (pas d'horaires de bateaux) et tout se paie au chauffeur : ni Trajets ni Dû aux partenaires.
+            ...si(!modeTaxi(), { href: "#/trajets", libelle: tr("Trajets"), cle: "trajets", icone: "bateau" }),
             { href: "#/regles", libelle: tr("Règles"), cle: "regles", icone: "regles" },
-            ...si(peut("partenaires.nets"), { href: "#/du", libelle: tr("Dû aux partenaires"), cle: "du", icone: "du" }),
+            ...si(peut("partenaires.nets") && !modeTaxi(), { href: "#/du", libelle: tr("Dû aux partenaires"), cle: "du", icone: "du" }),
           ]
         : [],
     },
