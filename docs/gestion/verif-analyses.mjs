@@ -24,8 +24,8 @@ alter default privileges in schema public grant execute on functions to anon, au
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
-// schema.sql s'arrête avant les migrations suivantes : on les applique dans l'ordre (18 : sur place, 19 : paiements, 20 : statistiques).
-for (const f of ["migration-18-sur-place.sql", "migration-19-paiements.sql", "migration-20-statistiques.sql"]) await db.exec(fs.readFileSync(W + f, "utf8"));
+// schema.sql s'arrête avant les migrations suivantes : on les applique dans l'ordre (18 : sur place, 19 : paiements, 20 : statistiques, 21 : portée, 29 : date_fin).
+for (const f of ["migration-18-sur-place.sql", "migration-19-paiements.sql", "migration-20-statistiques.sql", "migration-21-analyses-portee.sql", "migration-29-analyses-date-fin.sql"]) await db.exec(fs.readFileSync(W + f, "utf8"));
 await db.exec("grant all on all tables in schema public to authenticated;");
 
 const E = (await db.query("select id from entites where slug = 'ztp'")).rows[0].id;
@@ -184,9 +184,12 @@ const reservations = [
   { id: rid(6), dossier_id: ids2[3], prestation_id: prest[1].id, trajet_id: null, partenaire_id: part[1].id, libelle: "Kayak ancien", date_service: "2025-06-01", statut: "confirme", montant_vente: 900, paye_sur_place: true, personnes: { adultes: 1, enfants: 1 } },
   { id: rid(7), dossier_id: ids2[3], prestation_id: prest[0].id, trajet_id: null, partenaire_id: part[0].id, libelle: "4 îles ancien", date_service: "2025-06-02", statut: "confirme", montant_vente: 1200, paye_sur_place: false, personnes: { adultes: 1 } },
   { id: rid(9), dossier_id: ids2[3], prestation_id: prest[1].id, trajet_id: null, partenaire_id: part[1].id, libelle: "Kayak à recevoir", date_service: "2025-06-05", statut: "confirme", montant_vente: 1000, paye_sur_place: true, personnes: { adultes: 2 } },
-  { id: rid(8), dossier_id: ids2[3], prestation_id: prest[0].id, trajet_id: null, partenaire_id: part[0].id, libelle: "4 îles soldé ancien", date_service: "2025-06-03", statut: "confirme", montant_vente: 1200, paye_sur_place: false, personnes: { adultes: 1 } },
+  { id: rid(8), dossier_id: ids2[3], prestation_id: prest[0].id, trajet_id: null, partenaire_id: part[0].id, libelle: "4 îles soldé ancien", date_service: "2025-06-03", statut: "confirme", montant_vente: 1200, paye_sur_place: false, personnes: { adultes: 1 } },  // Locations : date_fin = retour s'il est une date postérieure à la prise, sinon le jour du service (même règle que dateFinService).
+  { id: rid(10), dossier_id: ids2[0], prestation_id: null, trajet_id: null, partenaire_id: part[1].id, libelle: "Scooter", date_service: "2026-10-20", statut: "confirme", montant_vente: 1400, paye_sur_place: true, personnes: { adultes: 1 }, details: { retour_date: "2026-10-27" } },
+  { id: rid(11), dossier_id: ids2[0], prestation_id: null, trajet_id: null, partenaire_id: part[1].id, libelle: "Scooter retour avant prise", date_service: "2026-10-21", statut: "confirme", montant_vente: 400, paye_sur_place: true, personnes: { adultes: 1 }, details: { retour_date: "2026-10-19" } },
+  { id: rid(12), dossier_id: ids2[0], prestation_id: null, trajet_id: null, partenaire_id: part[1].id, libelle: "Scooter retour illisible", date_service: "2026-10-22", statut: "confirme", montant_vente: 400, paye_sur_place: true, personnes: { adultes: 1 }, details: { retour_date: "27/10/2026" } },
 ];
-for (const r of reservations) await db.query("insert into reservations (id, entite_id, dossier_id, prestation_id, trajet_id, partenaire_id, libelle, date_service, statut, montant_vente, paye_sur_place, personnes) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)", [r.id, E, r.dossier_id, r.prestation_id, r.trajet_id, r.partenaire_id, r.libelle, r.date_service, r.statut, r.montant_vente, r.paye_sur_place, JSON.stringify(r.personnes)]);
+for (const r of reservations) await db.query("insert into reservations (id, entite_id, dossier_id, prestation_id, trajet_id, partenaire_id, libelle, date_service, statut, montant_vente, paye_sur_place, personnes, details) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)", [r.id, E, r.dossier_id, r.prestation_id, r.trajet_id, r.partenaire_id, r.libelle, r.date_service, r.statut, r.montant_vente, r.paye_sur_place, JSON.stringify(r.personnes), JSON.stringify(r.details || {})]);
 const nets2 = [
   { reservation_id: rid(1), net_prevu: 2400, net_paye: 2400, paye_le: "2026-10-14", commission_prevue: null, commission_recue: null, commission_recue_le: null },
   { reservation_id: rid(2), net_prevu: null, net_paye: null, paye_le: null, commission_prevue: 270, commission_recue: 100, commission_recue_le: "2026-11-05" },
@@ -206,7 +209,7 @@ await db.exec(`insert into membres values ('${U.sansnets}', '${E}', (select id f
 const tousDossiers = (await db.query("select id, ref, client_id, pays, responsable_id, accepte_le::text as accepte_le, annule, date_depart::text as date_depart, date_retour::text as date_retour from dossiers")).rows;
 const tousDocs = (await db.query("select dossier_id, type, date_emission::text as date_emission, created_at::text as created_at, contenu from documents")).rows;
 const tousPaiements = (await db.query("select id, dossier_id, date::text as date, montant::float8 as montant, moyen, type from paiements")).rows;
-const touteReservations = (await db.query("select id, dossier_id, prestation_id, trajet_id, partenaire_id, libelle, date_service::text as date_service, statut, montant_vente::float8 as montant_vente, paye_sur_place, personnes from reservations")).rows;
+const touteReservations = (await db.query("select id, dossier_id, prestation_id, trajet_id, partenaire_id, libelle, date_service::text as date_service, statut, montant_vente::float8 as montant_vente, paye_sur_place, personnes, details from reservations")).rows;
 const tousNets = (await db.query("select reservation_id, net_prevu::float8 as net_prevu, net_paye::float8 as net_paye, paye_le::text as paye_le, commission_prevue::float8 as commission_prevue, commission_recue::float8 as commission_recue, commission_recue_le::text as commission_recue_le from reservations_nets")).rows;
 const source = { dossiers: tousDossiers, documents: tousDocs, paiements: tousPaiements, clients, profils, reglages: { devise: "CHF" }, reservations: touteReservations, reservations_nets: tousNets, partenaires: part, prestations: prest };
 const norm = (v) => JSON.parse(JSON.stringify(v));

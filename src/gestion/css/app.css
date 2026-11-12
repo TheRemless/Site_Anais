@@ -132,7 +132,7 @@ img { max-width: 100%; }
 .bandeau-demo .lien { color: #5a4300; }
 @media (max-width: 719px) {
   .bandeau-demo { gap: 2px 12px; padding: 8px 12px; font-size: 0.82rem; }
-  .bandeau-demo .demo-choix { flex: 1; white-space: nowrap; }
+  .bandeau-demo .demo-choix { flex: 1; white-space: nowrap; min-width: 0; max-width: 100%; }
   .bandeau-demo .demo-choix select { flex: 1; min-width: 0; }
 }
 
@@ -1436,3 +1436,43 @@ details > summary { padding-block: 11px; margin: 0; }
 .vr-ligne-actions button { flex: 1; min-height: 44px; font-size: 1rem; }
 .contenu-simple .bandeau-demo .demo-choix { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .contenu-simple .bandeau-demo .demo-choix select { flex: 1; min-width: 0; max-width: 100%; }
+
+/* Factures pour la fiduciaire */
+.sr-seulement { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.fiduciaire .fid-bloc { margin-bottom: 36px; }
+.fid-bloc-tete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 14px; }
+.fid-bloc-tete h2 { margin: 0; }
+.badge-compte { margin-left: 8px; padding: 1px 9px; border-radius: 999px; background: var(--teal-100); color: var(--teal-700); font-size: 0.85rem; font-weight: 700; vertical-align: middle; }
+.fid-liste { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+.fid-carte, .fid-facture { background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; box-shadow: var(--ombre); padding: 14px 16px; }
+.fid-carte.avoir, .fid-facture.avoir { border-color: #d8b36a; }
+.fid-carte.a-revoir { border-color: var(--danger); background: var(--danger-fond); }
+.fid-carte-haut { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+.fid-carte h3 { margin: 0 0 6px; font-size: 1rem; line-height: 1.35; }
+.fid-carte p, .fid-facture p { margin: 2px 0; font-size: 0.92rem; }
+.fid-carte .etiquette, .fid-facture .etiquette { color: var(--texte-2); }
+.fid-montant { flex: none; text-align: right; font-size: 1.15rem; font-variant-numeric: lining-nums tabular-nums; }
+.fid-carte .actions { margin-top: 12px; }
+.fid-carte .avertissement { color: var(--danger); font-weight: 600; }
+.fid-facture { display: flex; gap: 6px; align-items: flex-start; padding: 6px 16px 12px 6px; }
+.fid-coche { display: flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; cursor: pointer; }
+.fid-coche input { width: 22px; height: 22px; }
+.fid-corps { flex: 1 1 auto; min-width: 0; padding-top: 6px; }
+.fid-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.fid-ligne .fid-numero { font-weight: 700; padding: 0; min-height: 0; }
+.fid-ligne .fid-montant { margin-left: auto; }
+.fid-meta { color: var(--texte-2); }
+.fid-envoi { font-weight: 600; color: var(--texte-2); }
+.fid-envoi.fait { color: #25653d; }
+.fid-filtres { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 12px; }
+.fid-filtre { display: grid; gap: 4px; font-size: 0.88rem; font-weight: 600; }
+.fid-filtre select { min-height: 44px; }
+.fid-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 10px; }
+.calcul-fiduciaire { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; margin: 12px 0; }
+.calcul-fiduciaire dt { color: var(--texte-2); }
+.calcul-fiduciaire dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: lining-nums tabular-nums; }
+.fiduciaire[lang="th"] { font-size: 1.06rem; line-height: 1.6; }
+.fiduciaire[lang="th"] .fid-carte h3 { font-size: 1.08rem; }
+.fiduciaire[lang="th"] .fid-montant { font-size: 1.3rem; }
+.fiduciaire .barre-action > button { white-space: normal; line-height: 1.3; min-width: 0; }
+.fid-plus { margin: 14px 0 0; text-align: center; }

@@ -35,13 +35,13 @@ export function enrichirDemoStats(d, { ajd, ajouterJours, uid, contenu, nouvelle
   };
 
   // ---- Excursions démo : partenaires de plus, payés sur place avec commission ----
-  const partenaire = (nom, categorie, role) => {
-    const p = { id: uid(), created_at: j(-90), updated_at: j(-90), entite_id: e2.id, nom, nom_thai: "", categorie, groupe: "mer", role, contact: {}, regles: {}, contrat: { statut: "Accord de commission", etat: "ok", fin: j(200) }, notes: "", ordre: d.partenaires.length + 1, actif: true };
+  const partenaire = (nom, categorie, role, adresse = `${10 + d.partenaires.length} Moo 3, Koh Lanta, Krabi 81150`) => {
+    const p = { id: uid(), created_at: j(-90), updated_at: j(-90), entite_id: e2.id, nom, nom_thai: "", categorie, groupe: "mer", role, contact: adresse ? { adresse } : {}, regles: {}, contrat: { statut: "Accord de commission", etat: "ok", fin: j(200) }, notes: "", ordre: d.partenaires.length + 1, actif: true };
     d.partenaires.push(p);
     return p;
   };
   const kayak = partenaire("Kayak mangroves démo", "Activités", "Kayak dans les mangroves, demi-journée");
-  const plongee = partenaire("Plongée démo", "Activités", "Baptême et sorties de plongée");
+  const plongee = partenaire("Plongée démo", "Activités", "Baptême et sorties de plongée", "");
   const nomme = (n) => d.partenaires.find((p) => p.nom === n);
   const longtail = nomme("Longtail démo");
   const speed = nomme("Speedboat démo");
