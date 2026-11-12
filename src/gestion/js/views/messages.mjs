@@ -2,7 +2,7 @@
 import { reglages, estAdmin, enregistrerReglages } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone } from "../ui.mjs";
 import { uid, MESSAGES_DEFAUT } from "../defauts.mjs";
-import { remplirGabarit, destinataireMessage } from "../operations-calc.mjs";
+import { remplirGabarit, destinataireMessage, gabaritsPropose, gabaritsManquants } from "../operations-calc.mjs";
 import { chiffres } from "./partenaires.mjs";
 import { sansAccents } from "../partenaires-calc.mjs";
 import { barreFiltres, plierSections } from "./commun.mjs";
@@ -35,7 +35,8 @@ async function copier(texte) {
 // `pour` : « client » ou « partenaire », seuls les messages de ce destinataire sont proposés.
 // `surEnvoi` : appelée quand le message part (WhatsApp ouvert) ou est copié, par exemple pour passer une réservation à « Demandée ».
 export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle = "", langue = "fr", telephone = "", pour = "client", surEnvoi = null }) {
-  const tous = messagesTypes().filter((m) => destinataireMessage(m) === pour);
+  // Les modèles de la base ; l'usage demandé (« relance »…) y manque-t-il, son modèle par défaut est proposé, jamais le premier modèle venu.
+  const tous = gabaritsPropose(messagesTypes(), MESSAGES_DEFAUT, { pour, langue, cle }).liste;
   if (!tous.length) return toast(pour === "partenaire" ? tr("Aucun message type pour les partenaires. Créez-en dans l'écran Messages.") : tr("Aucun message type pour les clients. Créez-en dans l'écran Messages."), true);
   const texte = h("textarea", { id: "msg-texte", rows: 11 });
   // La langue choisie la dernière fois pour ce numéro est reprise : Anaïs ne la rechoisit pas à chaque message au même client.
@@ -47,16 +48,19 @@ export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle 
   selLangue.value = tous.some((m) => m.langue === souvenir) ? souvenir : tous.some((m) => m.langue === langue) ? langue : selLangue.firstChild.value;
   const selGabarit = h("select", { id: "msg-gabarit", onchange: () => remplir() });
   function remplirGabarits() {
-    selGabarit.replaceChildren(...tous.filter((m) => m.langue === selLangue.value).map((m) => h("option", { value: m.id }, m.titre)));
     const prefere = tous.find((m) => m.langue === selLangue.value && m.cle === cle);
-    if (prefere) selGabarit.value = prefere.id;
+    // Aucun modèle pour cet usage dans cette langue : le choix reste vide, le texte aussi, plutôt que de proposer un message qui n'a rien à voir.
+    selGabarit.replaceChildren(...(cle && !prefere ? [h("option", { value: "" }, tr("Choisir un message"))] : []), ...tous.filter((m) => m.langue === selLangue.value).map((m) => h("option", { value: m.id }, m.defaut ? tr("{titre} (modèle par défaut)", { titre: m.titre }) : m.titre)));
+    selGabarit.value = prefere ? prefere.id : cle ? "" : selGabarit.value;
     remplir();
   }
   // Ce que le gabarit réclame et que la réservation ne donne pas (heure, hôtel…) : dit avant l'envoi plutôt que découvert par le client.
   const manque = h("p", { class: "bandeau-info", role: "status", hidden: true });
+  const aucun = h("p", { class: "bandeau-info", role: "status", hidden: true }, tr("Aucun message « {usage} » dans cette langue : choisissez-en un, ou créez-le dans l'écran Messages.", { usage: cle }));
   function remplir() {
     const m = tous.find((x) => x.id === selGabarit.value);
     texte.value = m ? remplirGabarit(m.corps, vars) : "";
+    aucun.hidden = !!m || !cle;
     const vides = m ? [...new Set([...m.corps.matchAll(/\{(\w+)\}/g)].map((x) => x[1]))].filter((k) => k in vars && !String(vars[k] ?? "").trim() && !["a_heure", "telephone"].includes(k)) : [];
     manque.hidden = !vides.length;
     manque.textContent = vides.length ? tr("À compléter dans le texte : {liste}.", { liste: vides.map((k) => NOMS_VARIABLES[k] ? tr(NOMS_VARIABLES[k]) : k).join(", ") }) : "";
@@ -69,6 +73,7 @@ export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle 
       "div",
       { class: "modal-corps message-apercu" },
       h("div", { class: "grille-form" }, champ(tr("Langue"), selLangue), champ(tr("Message type"), selGabarit)),
+      aucun,
       manque,
       champ(tr("Texte, modifiable avant l'envoi"), texte),
       h(
@@ -125,6 +130,19 @@ export function vueMessages() {
   const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
   const ouvrir = (m) => { const fermer = modal(m.id ? tr("Modifier le message") : tr("Nouveau message type"), formulaireMessage(m, () => (fermer(), rafraichir())), { large: true }); };
   const tous = messagesTypes();
+  // Les modèles par défaut dont l'usage manque (une relance, une annulation…). Une entreprise dont les documents sont en anglais n'y gagne pas de français.
+  const enAnglais = /invoice/i.test((reglages().libelles && reglages().libelles.facture) || "");
+  const manquants = admin ? gabaritsManquants(tous, MESSAGES_DEFAUT).filter((m) => !enAnglais || m.langue !== "fr") : [];
+  const ajouterManquants = async () => {
+    if (!(await confirmer(tr("Ajouter {n} modèles qui manquent ? Les modèles que vous avez modifiés ne sont pas touchés.", { n: manquants.length }), tr("Ajouter")))) return;
+    try {
+      await enregistrerReglages({ ...reglages(), messages: [...messagesTypes(), ...manquants.map((m) => ({ ...m, id: uid() }))] });
+      toast(tr("Modèles ajoutés."));
+      rafraichir();
+    } catch (err) {
+      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+    }
+  };
   // Trente modèles ne se lisent pas d'une traite sur téléphone : une recherche, des puces (client, partenaire) et des sections repliées.
   const filtre = { recherche: "", pour: "tous" };
   const zone = h("div", { class: "messages-zone" });
@@ -158,7 +176,7 @@ export function vueMessages() {
   return h(
     "div",
     { "data-titre": tr("Messages") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Messages types")), h("p", { class: "sous" }, tr("Au client : confirmation, rappel de la veille, avis, météo. Au partenaire : demande, relance, modification, annulation. À copier depuis une réservation."))), admin ? h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: async () => { if (await confirmer(tr("Remettre les messages de départ ? Vos modifications seront perdues."), tr("Remettre"))) { await enregistrerReglages({ ...reglages(), messages: structuredClone(MESSAGES_DEFAUT) }); rafraichir(); } } }, tr("Remettre ceux de départ")), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, tr("Nouveau message"))) : null),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Messages types")), h("p", { class: "sous" }, tr("Au client : confirmation, rappel de la veille, avis, météo. Au partenaire : demande, relance, modification, annulation. À copier depuis une réservation."))), admin ? h("div", { class: "entete-actions" }, manquants.length ? h("button", { class: "secondaire", type: "button", onclick: ajouterManquants }, tr("Ajouter les modèles manquants")) : null, h("button", { class: "secondaire", type: "button", onclick: async () => { if (await confirmer(tr("Remettre les messages de départ ? Vos modifications seront perdues."), tr("Remettre"))) { await enregistrerReglages({ ...reglages(), messages: structuredClone(MESSAGES_DEFAUT) }); rafraichir(); } } }, tr("Remettre ceux de départ")), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, tr("Nouveau message"))) : null),
     tous.length > 4 ? barre.noeud : null,
     zone,
     !tous.length ? h("p", { class: "vide-court" }, tr("Aucun message type.")) : null,
