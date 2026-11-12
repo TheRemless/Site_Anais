@@ -1350,3 +1350,22 @@ details > summary { padding-block: 11px; margin: 0; }
 .taxi-commission-champ input { width: 8.5em; min-height: 44px; font-size: 16px; }
 .taxi-commission-form .case { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
 .taxi-commission-form button { min-height: 44px; }
+/* ===== Session assistant IA : lecture d'un message et brouillon de réponse (Coller une demande) ===== */
+.assistant-lire, .assistant-rediger { margin: 12px 0 0; }
+.assistant-bouton { min-height: 44px; }
+.assistant-etat { margin-top: 8px; font-size: 0.92rem; color: var(--texte-2); }
+.assistant-etat:empty { display: none; }
+.assistant-etat p { margin: 0 0 4px; }
+.assistant-etat.erreur { color: var(--danger); }
+.assistant-remarque { padding: 8px 12px; background: var(--surface-2); border-radius: var(--rayon); color: var(--texte); }
+.assistant-avertissements { margin: 6px 0 0; padding: 8px 12px 8px 28px; background: #fff4d6; border: 1px solid #e8d49a; border-radius: var(--rayon); color: #5a4300; font-size: 0.9rem; }
+.assistant-avertissements li + li { margin-top: 2px; }
+/* Confiance : le mot porte le sens, la couleur ne fait que l'appuyer. */
+.assistant-confiance { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid; font-size: 0.82rem; font-weight: 600; line-height: 1.5; vertical-align: 1px; }
+.assistant-confiance.haute { color: var(--teal-700); border-color: var(--teal); background: var(--teal-100); }
+.assistant-confiance.moyenne { color: #6b4a00; border-color: #d9b45a; background: #fff4d6; }
+.assistant-confiance.basse { color: var(--danger); border-color: #d9a3a3; background: var(--danger-fond); }
+.assistant-brouillon:not(:empty) { margin-top: 10px; padding: 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface); }
+/* Plus précis que « .demande.lu textarea », qui réduit la zone du message collé une fois lu. */
+.assistant-brouillon textarea, .demande.lu .assistant-brouillon textarea { width: 100%; min-height: 12em; height: auto; font-size: 1rem; line-height: 1.5; }
+.assistant-brouillon .actions { margin-top: 8px; }

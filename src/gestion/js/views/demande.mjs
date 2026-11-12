@@ -14,6 +14,8 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { boutonLireIA, boutonRedigerIA, badgeConfiance } from "./assistant-demande.mjs";
+import { offresRecalculees } from "../assistant-calc.mjs";
 
 // Brouillon passé à l'écran « Nouveau dossier » : lu une seule fois.
 let brouillon = null;
@@ -121,7 +123,8 @@ export function ouvrirDemande() {
   const clientsConnus = () => (d ? clientsProches(d, etat.db.clients).filter((x) => !refuse.has(x.client.id)) : []);
 
   // ---- Les services --------------------------------------------------------------------------------------------------------------
-  const offresDe = (sv) => (sv.lignesCustom ? [] : offresDuService(d, texte, sv, contexte()));
+  // Un service lu par l'assistant garde les lignes de la base qu'il a choisies, recalculées pour ses personnes.
+  const offresDe = (sv) => (sv.lignesCustom ? [] : sv.offresIA ? offresRecalculees(sv.offresIA, sv, contexte()) : offresDuService(d, texte, sv, contexte()));
   const choisie = (sv, offres) => offres.find((o) => clefOffre(o) === sv.offreId) || offres[0] || null;
   const sommeCustom = (sv) => sv.lignesCustom.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
   // Ce que le service donne : son offre choisie, ou les lignes prises à la main dans la base.
@@ -171,6 +174,7 @@ export function ouvrirDemande() {
       sel.value = offre ? clefOffre(offre) : "";
       n.titre.append(sel, offre ? h("span", { class: "dsv-detail" }, offre.detail) : null);
     }
+    if (sv.confiance) n.titre.append(badgeConfiance(sv.confiance));
     n.prix.textContent = offre && offre.total !== null && offre.total !== undefined ? formatMontant(offre.total, devise) : "-";
     const alertes = [];
     if (!sv.date) alertes.push(tr("Date à préciser."));
@@ -325,7 +329,7 @@ export function ouvrirDemande() {
       parService.push({ ligneIds: ls.map((l) => l.id), ...reservationDe(sv, offre) });
     }
     const plusieurs = parService.length > 1;
-    return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: notesDemande(plusieurs ? { ...d, heure: "" } : d), lignes, parService, reservation: parService[0] || {} };
+    return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: [notesDemande(plusieurs ? { ...d, heure: "" } : d), d.remarquesIA].filter(Boolean).join("\n"), lignes, parService, reservation: parService[0] || {} };
   }
 
   // Création directe : client, dossier, facture et une réservation par service, sans passer par l'écran « Nouveau dossier ».
@@ -404,6 +408,7 @@ export function ouvrirDemande() {
         listeBloc,
         h("button", { class: "secondaire petit", type: "button", onclick: () => { const sv = nouveauService({ phrase: tr("Service ajouté") }); choisirDansBase(sv); } }, tr("Ajouter un service")),
         totalBloc,
+        redigerIA,
         erreur,
         h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, reponse, ecrit ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
       ].filter(Boolean)
@@ -419,6 +424,7 @@ export function ouvrirDemande() {
     clientId = "";
     refuse = new Set();
     services = [];
+    if (redigerIA) redigerIA.vider();
     listeBloc.replaceChildren();
     reconnu.replaceChildren();
     corps.classList.toggle("lu", !!d);
@@ -439,6 +445,29 @@ export function ouvrirDemande() {
     majTotal();
   }
 
+  // Lecture par l'assistant IA (si l'entreprise l'a allumé) : ses services remplacent ceux des règles, tout reste corrigeable avant de créer.
+  function appliquerIA(lu) {
+    erreur.textContent = "";
+    d = { ...lu.d, hotelSaisi: false };
+    clientId = "";
+    refuse = new Set();
+    services = [];
+    if (redigerIA) redigerIA.vider();
+    listeBloc.replaceChildren();
+    reconnu.replaceChildren();
+    corps.classList.add("lu");
+    construire();
+    poserLesBoutons();
+    reconnu.append(champs, dynamique);
+    if (!lu.services.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140) });
+    for (const t of lu.services) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, offresIA: t.offres.map((o) => ({ genre: o.genre, id: o.id })), confiance: t.confiance });
+    dessinerClient();
+    majTotal();
+  }
+  const lireIA = boutonLireIA({ texte: () => zone.value, surResultat: appliquerIA });
+  // Brouillon de réponse : un seul bloc par fenêtre, replacé à chaque lecture, pour qu'une correction de champ ne le perde pas.
+  const redigerIA = boutonRedigerIA({ contexte: () => ({ d, services: coches().map((sv) => ({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, choisie: etatDe(sv).offre })), texte }) });
+
   const coller = h("button", { class: "secondaire", type: "button", onclick: async () => {
     try {
       zone.value = await navigator.clipboard.readText();
@@ -454,6 +483,7 @@ export function ouvrirDemande() {
     h("p", { class: "aide demande-aide" }, tr("Collez le message du client, tel qu'il est arrivé sur WhatsApp. Chaque service cité est reconnu avec sa date, ses personnes et son prix, et le prix vient de la base.")),
     h("div", { class: "champ demande-message" }, h("label", { for: "demande-texte" }, tr("Message du client")), zone),
     h("div", { class: "actions gauche" }, coller, effacer),
+    ...(lireIA ? [lireIA] : []),
     reconnu
   );
   const fermer = modal(tr("Coller une demande"), corps, { large: true, protege: false });
