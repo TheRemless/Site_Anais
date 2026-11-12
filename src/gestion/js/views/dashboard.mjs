@@ -20,6 +20,7 @@ function phrase(item) {
     return tr("Acompte attendu depuis {jours} ({montant})", { jours: pluriel(item.jours, N_("jour"), N_("jours")), montant: formatMontant(manque, r.devise) });
   }
   if (item.type === "trop_percu") return tr("Trop-perçu de {montant} à rembourser", { montant: formatMontant(r.recu - r.total, r.devise) });
+  if (item.type === "solde_du") return tr("Carnet envoyé le {date}, solde de {montant} à encaisser", { date: formatDate(r.dossier.carnet_envoye_le), montant: formatMontant(r.reste, r.devise) });
   if (item.type === "solde_proche") return tr("Départ dans {jours}, reste {montant} à encaisser", { jours: pluriel(item.jours, N_("jour"), N_("jours")), montant: formatMontant(r.reste, r.devise) });
   return tr("Devis envoyé il y a {jours}, sans réponse", { jours: pluriel(item.jours, N_("jour"), N_("jours")) });
 }
