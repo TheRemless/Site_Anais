@@ -1,7 +1,7 @@
 // VIP Taxi Lanta dans Gestion (12.11.2026) : mode taxi, Booking confirmation, commission du lendemain, messages types.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { estTaxi, lignesSurPlace, dateBookingTexte, dateBooking, heureBooking, passagersBooking, prixBooking, champsBooking, commissionsADemander, valeursCommission, PIED_BOOKING } from "../src/gestion/js/taxi-calc.mjs";
+import { estTaxi, lignesSurPlace, dateBookingTexte, dateBooking, heureBooking, passagersBooking, prixBooking, champsBooking, commissionsADemander, valeursCommission, PIED_BOOKING, lignesEnPlus } from "../src/gestion/js/taxi-calc.mjs";
 import { MESSAGES_TAXI, MESSAGES_DEFAUT, messagesDefautPour, completerReglages } from "../src/gestion/js/defauts.mjs";
 
 test("mode taxi : réglé par l'entreprise, toutes les lignes payées au chauffeur", () => {
@@ -120,4 +120,10 @@ test("demande collée : « Transfer request: » du site va à Taxi, pas le miniv
   assert.equal(entrepriseTaxi(E, (id) => R[id], "s").id, "t");
   assert.equal(entrepriseTaxi(E, (id) => R[id], "t"), null, "déjà dans Taxi");
   assert.equal(entrepriseTaxi([E[0]], (id) => R[id], "s"), null, "Taxi inaccessible");
+});
+
+test("Booking confirmation : une valeur trop longue compte ses lignes en plus, pour resserrer la page pleine", () => {
+  assert.equal(lignesEnPlus(["Emma Wilson", "Krabi Airport", ""]), 0);
+  assert.equal(lignesEnPlus(["Pimalai Resort & Spa, Kantiang Bay, Koh Lanta Yai"]), 1);
+  assert.equal(lignesEnPlus(["x".repeat(80), "y".repeat(40)]), 3);
 });
