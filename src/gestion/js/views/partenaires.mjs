@@ -40,7 +40,7 @@ async function copier(texte) {
 }
 
 export function telephone(t) {
-  const d = chiffres(t.numero);
+  const d = chiffres(t.numero, { thaiLocal: true });
   return h(
     "span",
     { class: "tel" },

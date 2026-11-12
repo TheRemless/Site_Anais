@@ -249,7 +249,7 @@ test("envoi d'un voucher par WhatsApp : nom du fichier, message, lien avec ou sa
   assert.equal(messageVoucher({ pour: "partenaire", montant: null, devise: "THB" }), "", "sans prix, pas de message");
   assert.ok(!/EX-|voucher \d|\d{4}-\d{4}/i.test(messageVoucher({ pour: "client", prenom: "Anna" }) + messageVoucher({ pour: "partenaire", montant: 100, devise: "THB" })), "jamais de numéro de voucher dans le message");
   assert.equal(lienWhatsApp("+49 160 123456", "Hi & bye"), "https://wa.me/49160123456?text=Hi%20%26%20bye");
-  assert.equal(lienWhatsApp("081-9789025", "x"), "https://wa.me/66819789025?text=x", "un numéro thaïlandais en 0 prend l'indicatif +66");
+  assert.equal(lienWhatsApp("081-9789025", "x", { thaiLocal: true }), "https://wa.me/66819789025?text=x", "un numéro de partenaire thaïlandais en 0 prend l'indicatif +66");
   assert.equal(lienWhatsApp("", "Hello"), "https://wa.me/?text=Hello", "sans numéro, WhatsApp laisse choisir le contact");
   assert.equal(chiffres("pas de numéro"), "");
   assert.equal(telWhatsApp({ contact: { telephones: [{ numero: "02 000", whatsapp: false }, { numero: "081 111 2222", whatsapp: true }] } }), "081 111 2222", "le numéro marqué WhatsApp prime");

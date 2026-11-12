@@ -34,6 +34,17 @@ export function messageClient(r, cle = "confirmation") {
   ouvrirMessage({ titre: tr("Message à {nomClient}", { nomClient: nomClient(c) }), pour: "client", cle, langue, telephone: c.telephone || "", vars: variablesMessage({ reservation: r, client: c, dossier: dossierDe(r) || {}, partenaire: partenaireDe(r.partenaire_id) || {}, entreprise: entreprise(), langue }) });
 }
 
+// Le service a eu lieu : il sort des retards et des à confirmer (confirmée, avec la date de ce constat).
+async function serviceFait(r, apres) {
+  try {
+    await modifier("reservations", r.id, { statut: "confirme", details: { ...(r.details || {}), fait_le: aujourdhui() } });
+    toast(tr("Noté : le service s'est bien passé."));
+    apres();
+  } catch (err) {
+    toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+  }
+}
+
 // Changer le statut d'une réservation d'un geste, sans ouvrir le formulaire complet.
 // Annuler un service d'un geste : la facture est mise à jour (ou laissée telle quelle, au choix) et le prestataire peut être prévenu. Renvoie true si c'est fait.
 async function annulerService(r, apres) {
@@ -132,7 +143,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
       "span",
       { class: "carte-pied" },
       h("span", null, ecrit ? selecteurStatut(r, apres) : pastilleReservation(r.statut), r.reference_partenaire ? h("span", { class: "tag" }, r.reference_partenaire) : null, r.paye_sur_place ? h("span", { class: "tag" }, tr("Sur place")) : null, !r.paye_sur_place && n && n.net_prevu != null ? h("span", { class: "tag" }, n.net_paye != null ? tr("net {prix}, payé", { prix: prix(n.net_prevu) }) : tr("net {prix}", { prix: prix(n.net_prevu) })) : null, avecDossier && d ? h("a", { class: "tag", href: `#/dossier/${d.id}` }, d.ref) : null),
-      h("span", { class: "carte-actions" }, r.partenaire_id ? h("button", { class: "secondaire petit", type: "button", onclick: () => messagePartenaire(r) }, tr("Message partenaire")) : null, c ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageClient(r.date_service, aujourdhui())) }, tr("Message client")) : null, ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation"), formulaireReservation(r, () => (fermer(), apres())), { brouillon: `reservation:${r.id}` }); } }, tr("Modifier")) : null, ecrit && modeExcursions() && lieeFacture(r) ? h("button", { class: "secondaire petit", type: "button", onclick: () => dupliquerService(r, apres) }, tr("Dupliquer")) : null)
+      h("span", { class: "carte-actions" }, ecrit && r.date_service && r.date_service < aujourdhui() && (r.statut === "a_demander" || r.statut === "demande") ? h("button", { class: "principal petit", type: "button", onclick: () => serviceFait(r, apres) }, tr("S'est bien passé")) : null, r.partenaire_id ? h("button", { class: "secondaire petit", type: "button", onclick: () => messagePartenaire(r) }, tr("Message partenaire")) : null, c ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageClient(r.date_service, aujourdhui())) }, tr("Message client")) : null, ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation"), formulaireReservation(r, () => (fermer(), apres())), { brouillon: `reservation:${r.id}` }); } }, tr("Modifier")) : null, ecrit && modeExcursions() && lieeFacture(r) ? h("button", { class: "secondaire petit", type: "button", onclick: () => dupliquerService(r, apres) }, tr("Dupliquer")) : null)
     ),
     ecrit ? actionsPrestataire(r, { apres }) : null
   );

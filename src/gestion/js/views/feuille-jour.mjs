@@ -82,7 +82,7 @@ export function ouvrirFeuilleDuJour() {
     for (const g of groupes) {
       const texte = texteFeuillePartage(g, jour);
       const p = g.partenaire_id ? partenaireDe(g.partenaire_id) : null;
-      const tel = p ? chiffres(telWhatsApp(p)) : "";
+      const tel = p ? chiffres(telWhatsApp(p), { thaiLocal: true }) : "";
       corps.append(
         h(
           "section",

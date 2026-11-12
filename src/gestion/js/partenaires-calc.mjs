@@ -216,6 +216,7 @@ const TRADUCTIONS = [
   [/\bMinivan privé\b/gi, "Private minivan"],
   [/\bBerline privée\b/gi, "Private car"],
   [/\bNavette partagée\b/gi, "Shared minivan"],
+  [/\bdemi-journée(?![\p{L}])/giu, "half day"],
   [/\bjournée\b/g, "full day"],
   // Trajets : horaires de départ, gares, ferries. Ces textes s'impriment sur les vouchers, qui sont toujours en anglais.
   [/\bMinivan partagé, dépose à l'hôtel comprise\b/gi, "Shared minivan, hotel drop-off included"],
@@ -337,14 +338,23 @@ function ajouter(iso, n) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
-// Numéros thaïlandais : « 081-9789025 » devient +66819789025 pour les liens d'appel et WhatsApp.
-export function chiffres(numero) {
-  const m = String(numero || "").match(/\+?\d[\d\s\-()]{6,}\d/);
-  if (!m) return "";
-  let d = m[0].replace(/[^\d+]/g, "");
-  if (d[0] !== "+" && d[0] === "0") d = `+66${d.slice(1)}`;
-  return d;
+// Une seule normalisation des numéros, pour les liens d'appel et WhatsApp. Renvoie { numero: "+41791234567" | "", raison: "" | "vide" | "trop_court" | "sans_indicatif" }.
+// Un numéro commençant par 0 n'a pas d'indicatif : il n'est jamais deviné pour un client (« sans_indicatif »). Seuls les numéros de partenaires thaïs au
+// format local (« 081-9789025 » devient +66819789025) passent avec `{ thaiLocal: true }`.
+export function normaliserTelephone(brut, { thaiLocal = false } = {}) {
+  const texte = String(brut || "");
+  const m = texte.match(/\+?\d[\d\s\-()]{6,}\d/);
+  if (!m) return { numero: "", raison: /\d/.test(texte) ? "trop_court" : "vide" };
+  const d = m[0].replace(/[^\d+]/g, "");
+  if (d[0] === "+") return { numero: d, raison: "" };
+  if (d.startsWith("00")) return { numero: `+${d.slice(2)}`, raison: "" };
+  if (d[0] === "0") return thaiLocal ? { numero: `+66${d.slice(1)}`, raison: "" } : { numero: "", raison: "sans_indicatif" };
+  // Indicatif écrit sans le plus (« 41 79 123 45 67 », « 66819789025 ») : le numéro est déjà international.
+  return { numero: `+${d}`, raison: "" };
 }
+
+// Le numéro seulement, sous la forme « +41791234567 » (vide quand il manque l'indicatif ou que le numéro est illisible). `thaiLocal` : numéros de partenaires thaïs.
+export const chiffres = (numero, options) => normaliserTelephone(numero, options).numero;
 
 // Numéro WhatsApp d'un partenaire : le premier marqué WhatsApp, sinon le premier numéro.
 export function telWhatsApp(p) {

@@ -13,7 +13,8 @@ import { etatsServices, personnesDossier, commissionDossier, actionSuivante } fr
 import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { envoyerDocument, sansImpression } from "./document-envoi.mjs";
-import { numeroVoucher, TITRES_VOUCHER } from "../operations-calc.mjs";
+import { numeroVoucher, TITRES_VOUCHER, etatEnvoisVouchers } from "../operations-calc.mjs";
+import { ouvrirEnvois } from "./envois-vouchers.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
 const rafraichir = () => naviguer(location.hash);
@@ -54,6 +55,8 @@ function ficheDossierVue(id) {
   const ligneMarge = marge && marge.avecNet ? [[tr("Marge"), fm(marge.marge), `${marge.pct} %${marge.sansNet ? ", " + pluriel(marge.sansNet, N_("ligne sans net connu"), N_("lignes sans net connu")) : ""}`]] : [];
   const reservations = etat.db.reservations.filter((x) => x.dossier_id === d.id && x.statut !== "annule");
   const vouchers = excursions ? vouchersDuDossier(d.id) : [];
+  // Une vraie trace d'envoi par voucher (client, prestataire), pas une supposition tirée du paiement.
+  const envoisVouchers = etatEnvoisVouchers(vouchers.map((x) => x.reservation));
 
   // Étapes du dossier : le statut en découle, ces boutons ne font qu'enregistrer des faits.
   const etape = (fait, titre, detail, action) => h("li", { class: fait ? "etape fait" : "etape" }, h("span", { class: "etape-etat" }, fait ? tr("Fait") : tr("À faire")), h("div", { class: "etape-texte" }, h("strong", null, tr(titre)), detail ? h("span", null, detail) : null), action || null);
@@ -433,7 +436,7 @@ function ficheDossierVue(id) {
               : h("button", { class: "principal", type: "button", onclick: aller("form-paiement", () => document.getElementById("p-montant") && document.getElementById("p-montant").focus({ preventScroll: true })) }, tr("Enregistrer un paiement"))
       );
   const blocs = [
-    bloc("resume-client", tr("Client"), h("a", { class: "resume-titre", href: `#/client/${client.id}` }, nomClient(client)), tel ? h("a", { class: "resume-contact", href: `tel:${tel}` }, icone("telephone", 16), client.telephone) : null, client.email ? h("a", { class: "resume-contact", href: `mailto:${client.email}` }, client.email) : null),
+    bloc("resume-client", tr("Client"), h("a", { class: "resume-titre", href: `#/client/${client.id}` }, nomClient(client)), tel ? h("a", { class: "resume-contact", href: `tel:${tel}` }, icone("telephone", 16), client.telephone) : client.telephone ? h("p", { class: "resume-detail" }, tr("{numero} : numéro sans indicatif, appel et WhatsApp indisponibles. Ajoutez +41, +33, +66…", { numero: client.telephone })) : null, client.email ? h("a", { class: "resume-contact", href: `mailto:${client.email}` }, client.email) : null),
     bloc("resume-sejour", tr("Séjour"), h("p", { class: "resume-valeur" }, dates), effectifTexte ? h("p", { class: "resume-detail" }, effectifTexte) : null),
     moduleActif("reservations")
       ? bloc("resume-services", tr("Services"), h("a", { class: "resume-lien", href: "#services", onclick: aller("services") }, etats.total ? h("strong", null, pluriel(etats.total, N_("{n} service"), N_("{n} services"))) : h("strong", null, tr("Aucun service")), etats.total ? h("span", { class: "resume-etats" }, puceEtat(etats.a_demander, N_("{n} à demander"), N_("{n} à demander"), "a_demander"), puceEtat(etats.demande, N_("{n} demandée"), N_("{n} demandées"), "demande"), puceEtat(etats.confirme, N_("{n} confirmée"), N_("{n} confirmées"), "confirme")) : null))
@@ -468,7 +471,7 @@ function ficheDossierVue(id) {
             commission.sansCommission > 0 ? h("p", { class: "resume-detail" }, pluriel(commission.sansCommission, N_("{n} service payé sur place sans commission renseignée"), N_("{n} services payés sur place sans commission renseignée"))) : null,
             h("a", { class: "resume-lien-bas", href: "#services", onclick: aller("services") }, tr("Voir dans les services"), icone("fleche", 14))
           )
-        : bloc("resume-commission", tr("Commission"), h("p", { class: "resume-detail" }, tr("Aucun service payé sur place : pas de commission à recevoir."))),
+        : rsDossier.length ? bloc("resume-commission", tr("Commission"), h("p", { class: "resume-detail" }, tr("Aucun service payé sur place : pas de commission à recevoir."))) : null,
   ].filter(Boolean);
   const resume = h("div", { class: "resume-dossier", role: "region", "aria-label": tr("Résumé du dossier") }, h("div", { class: "resume-grille" }, blocs), boutonSuivant);
 
@@ -479,7 +482,7 @@ function ficheDossierVue(id) {
     h(
       "div",
       { class: "entete" },
-      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, sousTitreDossier(d), responsable)),
+      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, excursions && rsDossier.length > 1 ? [d.ref, pluriel(rsDossier.filter((x) => x.statut !== "annule").length, N_("{n} service"), N_("{n} services"))].join(" · ") : sousTitreDossier(d), responsable)),
       h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, tr("Dupliquer")) : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, tr("Modifier le dossier")) : null)
     ),
     resume,
@@ -493,7 +496,7 @@ function ficheDossierVue(id) {
             { class: "etapes" },
             etape(!!facture, N_("Facture"), facture ? tr("Émise le {date}", { date: formatDate(facture.date_emission) }) + (facture.envoye_le ? tr(", envoyée le {date}", { date: formatDate(facture.envoye_le) }) : tr(", pas encore marquée envoyée")) : tr("À créer."), facture ? h("a", { class: "bouton secondaire petit", href: `#/doc/${facture.id}` }, tr("Ouvrir la facture")) : droit.docs ? h("button", { class: "secondaire petit", type: "button", onclick: creerFacture }, tr("Créer la facture")) : null),
             etape(r.statut === "solde" || r.statut === "sur_place", N_("Payée"), r.statut === "sur_place" ? tr("Rien à encaisser : le client paie les prestataires sur place.") : r.statut === "solde" ? tr("{montant} reçus", { montant: fm(r.recu) }) : r.recu > 0 ? tr("Acompte de {recu} reçu, reste {reste}", { recu: fm(r.recu), reste: fm(r.reste) }) : tr("En attente du paiement (virement, Wise ou espèces)."), r.statut !== "solde" && r.statut !== "sur_place" && droit.paiements ? h("a", { class: "bouton secondaire petit", href: "#form-paiement", onclick: (e) => { e.preventDefault(); document.getElementById("p-montant").focus(); } }, tr("Enregistrer un paiement")) : null),
-            etape(vouchers.length > 0 && (r.statut === "solde" || r.statut === "sur_place"), N_("Vouchers envoyés"), vouchers.length ? pluriel(vouchers.length, N_("{n} voucher pour le client et les prestataires, à envoyer une fois payé."), N_("{n} vouchers pour le client et les prestataires, à envoyer une fois payé.")) : tr("Les vouchers se préparent depuis les réservations du dossier."), vouchers.length ? h("a", { class: "bouton secondaire petit", href: "#vouchers", onclick: (e) => { e.preventDefault(); document.getElementById("vouchers").scrollIntoView({ behavior: "smooth" }); } }, tr("Voir les vouchers")) : null),
+            etape(envoisVouchers.complet, N_("Vouchers envoyés"), !vouchers.length ? tr("Les vouchers se préparent depuis les réservations du dossier.") : envoisVouchers.client || envoisVouchers.prestataires ? tr("Client : {c} sur {n} · Prestataires : {p} sur {m}", { c: envoisVouchers.client, n: envoisVouchers.total, p: envoisVouchers.prestataires, m: envoisVouchers.totalPrestataires }) : pluriel(vouchers.length, N_("{n} voucher à envoyer au client et au prestataire, rien n'est encore noté comme envoyé."), N_("{n} vouchers à envoyer au client et aux prestataires, rien n'est encore noté comme envoyé.")), vouchers.length ? h("span", { class: "carte-actions" }, h("a", { class: "bouton secondaire petit", href: "#vouchers", onclick: (e) => { e.preventDefault(); document.getElementById("vouchers").scrollIntoView({ behavior: "smooth" }); } }, tr("Voir les vouchers")), droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirEnvois(vouchers, rafraichir) }, tr("Noter les envois")) : null) : null),
             etape(reservations.length > 0 && reservations.every((x) => x.statut === "confirme"), N_("Confirmé par les partenaires"), reservations.length ? pluriel(reservations.length, N_("{confirmees} sur {n} confirmée"), N_("{confirmees} sur {n} confirmées"), { confirmees: reservations.filter((x) => x.statut === "confirme").length }) : tr("Aucune réservation."), null),
             etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Service fait"), d.date_depart ? (d.date_retour && d.date_retour !== d.date_depart ? tr("Services du {debut} au {fin}", { debut: formatDate(d.date_depart), fin: formatDate(d.date_retour) }) : tr("Service le {date}", { date: formatDate(d.date_depart) })) : "", null)
           )

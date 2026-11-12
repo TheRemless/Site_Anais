@@ -1,4 +1,4 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules, modeExcursions } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, netReservation, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules, modeExcursions } from "./etat.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
 import { libelleStatut, formatMontant, aujourdhui } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
@@ -155,7 +155,7 @@ function ecrans() {
   const ajd = aujourdhui();
   const enRetard = mesTaches().filter((t) => t.echeance && t.echeance <= ajd).length;
   const si = (ok, item) => (ok ? [item] : []);
-  const ag = agenda(etat.db.reservations, ajd, dossiersAnnules());
+  const ag = agenda(etat.db.reservations, ajd, dossiersAnnules(), { netDe: netReservation });
   const aConfirmer = ag.enRetard.length + ag.aConfirmer.length;
   return [
     { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations", badge: aConfirmer }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
@@ -274,7 +274,7 @@ function ouvrirNouveau() {
     h(
       "div",
       { class: "modal-corps" },
-      choix("dossiers", tr("Nouveau dossier"), tr("Un client, un voyage, un devis"), va("#/dossiers/nouveau")),
+      choix("dossiers", tr("Nouveau dossier"), modeExcursions() ? tr("Un client, un ou plusieurs services") : tr("Un client, un voyage, un devis"), va("#/dossiers/nouveau")),
       modeExcursions() ? choix("messages", tr("Coller une demande"), tr("Un message WhatsApp du client devient un dossier"), async () => (fermer(), (await import("./views/demande.mjs")).ouvrirDemande())) : null
     ),
     { protege: false }

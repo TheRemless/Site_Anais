@@ -655,7 +655,7 @@ function editeurVue(id) {
       h("div", null, h("h1", null, nomDoc), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
       h("div", { class: "entete-actions" }, statut, lectureSeule ? null : btnVersions, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: tr("Télécharger le PDF (Ctrl+P)"), onclick: telechargerPdf }, sansImpression() ? tr("PDF et envoi") : tr("Télécharger le PDF")))
     ),
-    h("p", { class: "aide-pdf" }, tr("Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « {nomDoc} {ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: dossier.ref })),
+    h("p", { class: "aide-pdf seulement-bureau" }, tr("Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « {nomDoc} {ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: dossier.ref })),
     bandeauConflit,
     avertissementAnglais,
     lectureSeule ? h("p", { class: "bandeau-info" }, tr("Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.")) : null,

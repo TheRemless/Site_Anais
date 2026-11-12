@@ -44,7 +44,7 @@ export function envoyerVoucher(x) {
   const numero = numeroVoucher(dossier.ref || "", x.index);
   const nomFichier = nomFichierVoucher(numero, nomClient(client));
   const telClient = chiffres(client.telephone);
-  const telPartenaire = chiffres(telWhatsApp(partenaire));
+  const telPartenaire = chiffres(telWhatsApp(partenaire), { thaiLocal: true });
   const devise = ((resumeDossier(dossier.id) || {}).devise) || reglages().devise || "THB";
   const message = {
     client: messageVoucher({ pour: "client", prenom: client.prenom || "" }),

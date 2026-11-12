@@ -41,7 +41,9 @@ export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle 
   const texte = h("textarea", { id: "msg-texte", rows: 11 });
   // La langue choisie la dernière fois pour ce numéro est reprise : Anaïs ne la rechoisit pas à chaque message au même client.
   const empreinte = (t) => [...t].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7).toString(36); // le numéro lui-même ne s'écrit pas dans le stockage
-  const cleLangue = chiffres(telephone) ? `gestion-langue-msg:${empreinte(chiffres(telephone))}` : "";
+  // Numéro d'un partenaire thaï : le format local (081…) prend +66 ; celui d'un client, jamais deviné.
+  const normalise = (t) => chiffres(t, { thaiLocal: pour === "partenaire" });
+  const cleLangue = normalise(telephone) ? `gestion-langue-msg:${empreinte(normalise(telephone))}` : "";
   const memoire = { lire: () => { try { return cleLangue ? localStorage.getItem(cleLangue) || "" : ""; } catch { return ""; } }, ecrire: (v) => { try { if (cleLangue) localStorage.setItem(cleLangue, v); } catch { /* stockage refusé : tant pis */ } } };
   const selLangue = h("select", { id: "msg-langue", onchange: () => (memoire.ecrire(selLangue.value), remplirGabarits()) }, LANGUES.filter(([c]) => tous.some((m) => m.langue === c)).map(([c, l]) => h("option", { value: c }, l)));
   const souvenir = memoire.lire();
@@ -66,7 +68,7 @@ export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle 
     manque.textContent = vides.length ? tr("À compléter dans le texte : {liste}.", { liste: vides.map((k) => NOMS_VARIABLES[k] ? tr(NOMS_VARIABLES[k]) : k).join(", ") }) : "";
   }
   remplirGabarits();
-  const numero = chiffres(telephone);
+  const numero = normalise(telephone);
   const fermer = modal(
     titre,
     h(
