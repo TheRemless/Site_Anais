@@ -178,6 +178,9 @@ test("validation : rien d'inventé ne passe", () => {
   assert.equal(p.services[0].date, "", "30 février refusé");
   assert.equal(p.services[0].heure, "");
   for (const a of ["nom_non_cite", "telephone_non_cite", "hotel_non_cite", "reference_inconnue", "date_illisible", "date_passee"]) assert.ok(v.avertissements.includes(a), a);
+  // Claude ajoute l'indicatif à un numéro écrit à la française : c'est bien le numéro du message.
+  const indicatif = lireSimule({ ...CLAUDE_LECTURE, telephone: "+33 6 12 34 56 78" }, "Bonjour, kayak demain pour 2. Sophie Martin 06 12 34 56 78");
+  assert.equal(indicatif.proposition.client.telephone, "+33 6 12 34 56 78");
   assert.equal(validerLecture({ nom: "x" }, { refs: new Map(), message: "", aujourdhui: AJD }).ok, false, "forme inattendue : invalide");
 });
 
@@ -257,7 +260,8 @@ test("contrôle du brouillon : un montant ou une heure hors base est signalé", 
 
 test("montants d'un texte", () => {
   assert.deepEqual(montantsDuTexte("1,200 THB, 1 200 ฿, ฿900, 4500 baht"), [1200, 1200, 900, 4500]);
-  assert.deepEqual(montantsDuTexte("on 2026-11-20 at 9:30, 2 adults, room 12, +66 81 234 5678, 20 November 2026"), []);
+  assert.deepEqual(montantsDuTexte("on 2026-11-20 at 9:30, 2 adults, room 12, +66 81 234 5678, 20 November 2026, le 3 déc. 2026, 20/11/2026"), []);
+  assert.deepEqual(montantsDuTexte("special price 2030 THB"), [2030], "un montant entre 2020 et 2039 reste un montant");
 });
 
 // ---- Coût et journal -------------------------------------------------------------------------------------------------------------------

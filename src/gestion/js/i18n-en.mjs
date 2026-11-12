@@ -2351,6 +2351,7 @@ export const EN = {
   "Heure absente du dossier : {valeur}. Vérifiez-la avant d'envoyer.": "Time not in the file: {valeur}. Check it before sending.",
   "Lire avec l'assistant": "Read with the assistant",
   "Collez d'abord le message du client.": "Paste the client's message first.",
+  "Le message a changé pendant la lecture : relancez l'assistant.": "The message changed during the reading: run the assistant again.",
   "Lecture…": "Reading…",
   "La lecture habituelle reste affichée.": "The usual reading stays on screen.",
   "Lu par l'assistant : vérifiez chaque champ avant de créer.": "Read by the assistant: check every field before creating.",

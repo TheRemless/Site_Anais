@@ -49,6 +49,8 @@ Deno.serve(async (req) => {
   const demande = await req.json().catch(() => null);
   if (!demande || typeof demande !== "object") return json({ erreur: "demande_invalide" }, 400);
   const { usage, entite_id: entiteId } = demande;
+  if (usage !== "lire" && usage !== "rediger") return json({ erreur: "usage_inconnu" }, 400);
+  if (typeof entiteId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entiteId)) return json({ erreur: "entreprise_invalide" }, 400);
 
   const URL_SB = Deno.env.get("SUPABASE_URL")!;
   // Client « au nom de la personne » : toutes ses lectures passent par les règles RLS, exactement comme dans l'outil.
@@ -65,7 +67,7 @@ Deno.serve(async (req) => {
     sb.rpc("permissions_dans", { e: entiteId }),
     admin.from("assistant_journal").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("cree_le", debutJourBangkok()),
   ]);
-  if (perms.error || appels.error) return json({ erreur: "base" }, 500);
+  if (regl.error || perms.error || appels.error) return json({ erreur: "base" }, 500);
   const reglages = regl.data ? regl.data.valeur : null;
   const limite = Number(Deno.env.get("ASSISTANT_LIMITE_JOUR")) || LIMITE_JOUR_DEFAUT;
   const acces = controlerAcces({ usage, entiteId, permissions: perms.data || [], reglages, appelsDuJour: appels.count || 0, limite });
@@ -83,16 +85,16 @@ Deno.serve(async (req) => {
     const message = typeof demande.texte === "string" ? demande.texte.trim() : "";
     if (!message || message.length > LONGUEUR_MAX_MESSAGE) return json({ erreur: "message_invalide" }, 400);
     // Prix de vente et libellés seulement : les tables de nets ne sont jamais lues, même pour une personne qui a le droit « nets ».
-    const [ps, ts, pa] = await Promise.all([
+    const [ps, ts, pa, en] = await Promise.all([
       sb.from("prestations").select("id, famille, groupe, libelle, libelle_en, unite, sur_place, actif, partenaire_id").eq("entite_id", entiteId),
       sb.from("trajets").select("id, de, vers, mode, depart, periode, actif, partenaire_id").eq("entite_id", entiteId),
       sb.from("partenaires").select("id, nom").eq("entite_id", entiteId),
+      sb.from("entites").select("nom").eq("id", entiteId).maybeSingle(),
     ]);
     if (ps.error || ts.error || pa.error) return json({ erreur: "base" }, 500);
-    const { data: entite } = await sb.from("entites").select("nom").eq("id", entiteId).maybeSingle();
     const catalogue = construireCatalogue({ prestations: ps.data || [], trajets: ts.data || [], partenaires: pa.data || [] });
     const aujourdhui = dateBangkok();
-    prompt = promptLecture({ entreprise: entite?.nom || "", catalogue: catalogue.texte, aujourdhui, message });
+    prompt = promptLecture({ entreprise: en.data?.nom || "", catalogue: catalogue.texte, aujourdhui, message });
     schema = SCHEMA_LECTURE;
     valider = (v) => validerLecture(v, { refs: catalogue.refs, message, aujourdhui });
   } else {

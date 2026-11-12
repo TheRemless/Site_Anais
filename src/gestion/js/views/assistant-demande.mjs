@@ -64,6 +64,8 @@ export function boutonLireIA({ texte, surResultat }) {
     ligne.textContent = "";
     try {
       const r = await etat.store.assistant({ usage: "lire", entite_id: etat.entiteId, texte: t });
+      // Le message a changé pendant la lecture (un autre client collé) : cette réponse ne le concerne plus.
+      if (String(texte() || "").trim() !== t) return (ligne.textContent = tr("Le message a changé pendant la lecture : relancez l'assistant."));
       if (!r || r.erreur || !r.proposition) {
         ligne.classList.add("erreur");
         ligne.textContent = `${messageErreur(r && r.erreur)} ${tr("La lecture habituelle reste affichée.")}`;
@@ -91,8 +93,10 @@ export function boutonRedigerIA({ contexte, surTexte }) {
   const regl = reglages();
   const zone = h("div", { class: "assistant-brouillon", "aria-live": "polite" });
   const bouton = h("button", { class: "secondaire assistant-bouton", type: "button", onclick: () => lancer() }, tr("Rédiger la réponse"));
+  let tour = 0;
   async function lancer() {
     const { d, services, texte } = contexte();
+    const ce = ++tour;
     const faits = faitsPourReponse({ d, services, entreprise: (entiteActive() || {}).nom || "", devise: regl.devise || "THB", telephone: (regl.emetteur && regl.emetteur.telephone) || "" });
     if (!faits.services.length) return toast(tr("Choisissez d'abord un service de la base."), true);
     bouton.disabled = true;
@@ -100,6 +104,7 @@ export function boutonRedigerIA({ contexte, surTexte }) {
     bouton.textContent = tr("Rédaction…");
     try {
       const r = await etat.store.assistant({ usage: "rediger", entite_id: etat.entiteId, faits, langue: d.langue || "", texte: texte || "" });
+      if (ce !== tour) return;
       if (!r || r.erreur || !r.message) return zone.replaceChildren(h("p", { class: "erreur-form", role: "alert" }, `${messageErreur(r && r.erreur)} ${tr("Écrivez la réponse vous-même ou utilisez la réponse type.")}`));
       afficher(r, d);
       if (surTexte) surTexte(r.message, r);
@@ -127,5 +132,12 @@ export function boutonRedigerIA({ contexte, surTexte }) {
       ].filter(Boolean)
     );
   }
-  return h("div", { class: "assistant-rediger" }, bouton, zone);
+  const bloc = h("div", { class: "assistant-rediger" }, bouton, zone);
+  // Un autre message collé : l'ancien brouillon ne vaut plus, et une réponse encore attendue est ignorée.
+  bloc.vider = () => {
+    tour++;
+    zone.replaceChildren();
+    bouton.textContent = tr("Rédiger la réponse");
+  };
+  return bloc;
 }
