@@ -10,7 +10,7 @@ Préparé le 12.11.2026. Inactif tant que la case « Assistant IA » n'est pas c
 | 2. Rédiger la réponse au client | Prêt, éteint | Bouton « Rédiger la réponse » sous le service retenu |
 | 3. Questions d'Anaïs sur ses données | Conception seulement (plus bas) | Rien dans le code |
 
-Fichiers : `supabase/functions/assistant/index.ts` (fonction), `supabase/functions/assistant/calc.js` (logique pure, testée), `src/gestion/js/assistant-calc.mjs` et `views/assistant-demande.mjs` (outil), `docs/gestion/migration-24-assistant.sql` (journal), `tests/gestion-assistant.test.js`.
+Fichiers : `supabase/functions/assistant/index.ts` (fonction), `supabase/functions/assistant/calc.js` (logique pure, testée), `src/gestion/js/assistant-calc.mjs` et `views/assistant-demande.mjs` (outil), `docs/gestion/migration-26-assistant.sql` (journal), `tests/gestion-assistant.test.js`.
 
 ## Comment ça marche
 
@@ -63,7 +63,7 @@ Pour 10 messages lus et 10 réponses rédigées par jour : environ 1 $ par jour,
 1. Jérémy crée une clé sur console.anthropic.com (Settings > API Keys), avec une limite de dépense mensuelle (Settings > Limits), par exemple 50 $.
 2. Jérémy la donne à Supabase lui-même, sans la coller dans le chat :
    `supabase secrets set ANTHROPIC_API_KEY=… --project-ref lkxqcmzeidlyssoqmqkh`
-3. Claude vérifie la migration 24 en lecture puis l'applique après l'accord de Jérémy.
+3. Claude vérifie la migration 26 en lecture puis l'applique après l'accord de Jérémy.
 4. Claude déploie la fonction après l'accord de Jérémy : `supabase functions deploy assistant --project-ref lkxqcmzeidlyssoqmqkh`.
 5. Jérémy coche « Assistant IA » dans Réglages > Écrans de Secret (et de Zwald s'il le veut).
 6. Premier essai réel sur un vrai message, lecture de la ligne du journal et du coût.

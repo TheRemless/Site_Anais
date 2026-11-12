@@ -1361,6 +1361,7 @@ details > summary { padding-block: 11px; margin: 0; }
 .assistant-avertissements { margin: 6px 0 0; padding: 8px 12px 8px 28px; background: #fff4d6; border: 1px solid #e8d49a; border-radius: var(--rayon); color: #5a4300; font-size: 0.9rem; }
 .assistant-avertissements li + li { margin-top: 2px; }
 /* Confiance : le mot porte le sens, la couleur ne fait que l'appuyer. */
+.dsv-titre .assistant-confiance { align-self: flex-start; }
 .assistant-confiance { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid; font-size: 0.82rem; font-weight: 600; line-height: 1.5; vertical-align: 1px; }
 .assistant-confiance.haute { color: var(--teal-700); border-color: var(--teal); background: var(--teal-100); }
 .assistant-confiance.moyenne { color: #6b4a00; border-color: #d9b45a; background: #fff4d6; }

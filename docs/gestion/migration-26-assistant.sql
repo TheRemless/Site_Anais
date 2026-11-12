@@ -1,4 +1,4 @@
--- Gestion : migration 24, journal de l'assistant IA.
+-- Gestion : migration 26, journal de l'assistant IA.
 -- Une ligne par appel de la fonction « assistant » qui est allé jusqu'à Claude : date, personne, entreprise, usage (lire ou rediger), statut,
 -- modèle qui a servi, jetons et coût estimé. Jamais le message du client ni la réponse. Sert aussi à la limite d'appels par personne et par jour.
 -- Table protégée : seule la fonction (clé de service) écrit. Chacun lit ses propres lignes ; les rôles qui ont le droit « journal » lisent celles
