@@ -10,6 +10,7 @@ export const decaler = (iso, n) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slic
 const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
 
 // Entreprises dont une personne reçoit les rappels : toutes pour un super administrateur, sinon celles où son rôle lit tous les dossiers.
+// Un rôle « vouchers.seul » (l'assistante thaïe de Taxi, écran voucher seul) n'en reçoit pas : la notification est en français et ouvre un écran qu'elle n'a pas.
 export function entitesLisibles({ profil, membres, roles }) {
   if (!profil || !profil.actif) return [];
   if (profil.super_admin) return null;
@@ -18,7 +19,7 @@ export function entitesLisibles({ profil, membres, roles }) {
     .filter((m) => m.user_id === profil.user_id)
     .filter((m) => {
       const r = roleDe.get(m.role_id);
-      return r && r.portee === "toute" && (r.permissions || []).includes("dossiers.lire");
+      return r && r.portee === "toute" && (r.permissions || []).includes("dossiers.lire") && !(r.permissions || []).includes("vouchers.seul");
     })
     .map((m) => m.entite_id);
 }

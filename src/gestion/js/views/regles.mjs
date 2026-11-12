@@ -1,5 +1,5 @@
 // Règles : tout ce qu'il faut savoir avant de vendre, rassemblé depuis les fiches des partenaires.
-import { etat, nomPartenaire, privePartenaire, peut } from "../etat.mjs";
+import { etat, nomPartenaire, privePartenaire, peut, modeExcursions, modeTaxi } from "../etat.mjs";
 import { commissionsPartenaire, paiementPartenaire } from "../partenaires-calc.mjs";
 import { h } from "../ui.mjs";
 import { vide } from "./commun.mjs";
@@ -21,13 +21,13 @@ export function vueRegles() {
   return h(
     "div",
     { "data-titre": tr("Règles"), "data-large": true },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Règles des partenaires")), h("p", { class: "sous" }, tr("Frais de parc, enfants, annulation, commissions et check-in, à relire avant d'envoyer un devis.")))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Règles des partenaires")), h("p", { class: "sous" }, modeExcursions() ? tr("Frais de parc, enfants, annulation, commissions et check-in, à relire avant de réserver.") : tr("Frais de parc, enfants, annulation, commissions et check-in, à relire avant d'envoyer un devis.")))),
     frais.length
       ? h(
           "section",
           null,
           h("h2", null, tr("Frais de parc national")),
-          h("p", { class: "sous" }, tr("Jamais inclus par les prestataires. À écrire sur chaque devis et voucher : à payer en espèces sur place.")),
+          h("p", { class: "sous" }, modeTaxi() ? tr("Jamais inclus par les prestataires. À écrire sur chaque voucher : à payer en espèces sur place.") : modeExcursions() ? tr("Jamais inclus par les prestataires. À écrire sur chaque facture et voucher : à payer en espèces sur place.") : tr("Jamais inclus par les prestataires. À écrire sur chaque devis et voucher : à payer en espèces sur place.")),
           h("div", { class: "grille-regles" }, frais.map((f) => { const d = f.details || {}; return h("div", { class: "carte-regle" }, h("h3", null, f.libelle), h("p", null, h("strong", null, prix(f.prix_vente)), tr(" par adulte"), d.enfant !== undefined ? [", ", h("strong", null, prix(d.enfant)), tr(" par enfant")] : null), d.thai_adulte ? h("p", { class: "aide" }, tr("Tarif thaï {prix} et {prix2}.", { prix: prix(d.thai_adulte), prix2: prix(d.thai_enfant) })) : null, d.partenaires ? h("p", { class: "aide" }, tr("Concerne : {partenaires}", { partenaires: d.partenaires })) : null, d.note ? h("p", { class: "aide" }, d.note) : null); }))
         )
       : null,

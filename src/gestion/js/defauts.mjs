@@ -237,7 +237,8 @@ export const MESSAGES_TAXI = [
 ];
 // Messages de départ d'une entreprise selon sa façon de travailler : ceux de Taxi en mode taxi, sinon les messages généraux.
 // Taxi garde aussi la « réponse à une demande » en anglais (bouton « Répondre au client » de la demande collée).
-export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? [...MESSAGES_TAXI, ...MESSAGES_DEFAUT.filter((m) => m.id === "reponse-en")] : MESSAGES_DEFAUT);
+// Secret écrit à ses clients en anglais seulement (Jérémy) : aucun modèle français ne lui est proposé.
+export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? [...MESSAGES_TAXI, ...MESSAGES_DEFAUT.filter((m) => m.id === "reponse-en")] : reglages && reglages.fonctionnement === "excursions" ? MESSAGES_DEFAUT.filter((m) => m.langue !== "fr") : MESSAGES_DEFAUT);
 
 // Réglages d'une entreprise nouvellement créée : aucun fait propre à une entreprise réelle.
 export const REGLAGES_NEUTRE = {
@@ -371,14 +372,15 @@ const REGLAGES_DEMO_TOURS = completerReglages({
   fonctionnement: "excursions",
   voucher: { licence: "11/00000", email: "contact@exemple.com" },
   dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Service" },
-  listes: { pays: ["Excursion", "Transfert"] },
+  listes: { pays: ["Excursion", "Transfer"] },
   libelles: LIBELLES_EN,
   textes: { variantes: [{ id: "standard", nom: "Standard", corps: "Payment is due on the day of the service.\nBank transfer or cash accepted.", cloture: "Thank you for your trust!" }] },
 });
 
 const REGLAGES_DEMO_TAXI = completerReglages({
   emetteur: { nom: "Taxi démo", adresse: "3 route de l'Aéroport\n00000 Ville", telephone: "+00 00 000 00 02", contact: "Taxi démo\ncontact@exemple.com" },
-  paiement: { texte: "Paiement en espèces ou par virement." },
+  // Taxi n'émet aucune facture : ni texte de paiement ni liste de pays (le client paie le chauffeur).
+  paiement: { texte: "" },
   devise: "THB",
   conditions: { acompte_pct: 0, delai_jours: 5, relance_jours: 7, tva_mention: "", cgv_url: "" },
   numerotation: { mode: "sequence", prefixe: "TX" },
@@ -386,7 +388,7 @@ const REGLAGES_DEMO_TAXI = completerReglages({
   messages: MESSAGES_TAXI,
   voucher: { whatsapp: "+00 00 000 00 02", email: "contact@exemple.com" },
   dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Trajet" },
-  listes: { pays: ["Aéroport", "Hôtel", "Excursion"] },
+  listes: { pays: [] },
   libelles: LIBELLES_EN,
   textes: { variantes: [{ id: "standard", nom: "Standard", corps: "Payment on arrival.", cloture: "Thank you!" }] },
 });
@@ -468,12 +470,11 @@ export function donneesDemo(ajd, ajouterJours) {
     catalogue.push({ id: uid(), created_at: j(-90), entite_id: e1.id, kind, libelle, intro: kind === "formule" ? "comprenant:" : "", puces: kind === "formule" ? ["création de l'itinéraire personnalisé", "carnet de voyage personnalisé"] : [], prix, ordre: i + 1, actif: true });
   });
 
-  // Entreprise 2 : excursions, facturation directe en bahts
+  // Entreprise 2 : excursions, facturation directe en bahts, sans devis ni catalogue. Comme chez Secret, tout ce que voit le client est en anglais.
   const c5 = client(e2, "Monsieur", "Ben", "Walker", "Hotel Sunset, Room 12\nKoh Lanta", "+44 7000 000000");
   const c6 = client(e2, "Madame", "Anna", "Keller", "Hotel Palm, Bungalow 3\nKoh Lanta", "+49 160 0000000");
-  ajoute(e2, c5, j(-6), "Excursion", "Excursion - 4 îles", { accepte_le: j(-6), responsable_id: assistante.user_id }, null, { envoye_le: j(-6), contenu: contenu("Excursion - 4 îles", [nouvelleLigne("ligne", { libelle: "Tour des 4 îles, par personne", unite: 1200, qte: 2 })], "detail") });
-  ajoute(e2, c6, j(-2), "Transfert", "Transfert aéroport", { accepte_le: j(-2), responsable_id: stagiaire.user_id }, null, { contenu: contenu("Transfert aéroport", [ligne("Transfert Krabi aéroport, Koh Lanta", 1500)], "total") }, [{ date: j(-1), montant: 1500, type: "solde", moyen: "especes" }]);
-  [["region", "Tour des 4 îles", 1200], ["region", "Transfert aéroport", 1500]].forEach(([kind, libelle, prix], i) => catalogue.push({ id: uid(), created_at: j(-90), entite_id: e2.id, kind, libelle, intro: "", puces: [], prix, ordre: i + 1, actif: true }));
+  ajoute(e2, c5, j(-6), "Excursion", "Excursion - 4 Islands", { accepte_le: j(-6), responsable_id: assistante.user_id }, null, { created_at: j(-6), date_emission: j(-6), envoye_le: j(-6), contenu: contenu("Excursion - 4 Islands", [nouvelleLigne("ligne", { libelle: "4 Islands by longtail, full day", unite: 1200, qte: 2 })], "detail") });
+  ajoute(e2, c6, j(-2), "Transfer", "Airport transfer", { accepte_le: j(-2), responsable_id: stagiaire.user_id }, null, { created_at: j(-2), date_emission: j(-2), contenu: contenu("Airport transfer", [ligne("Krabi Airport → Koh Lanta, private minivan", 1500)], "total") }, [{ date: j(-1), montant: 1500, type: "solde", moyen: "especes" }]);
 
   // Entreprise 3 : taxi (mode taxi : pas de facture montrée, tout payé au chauffeur). Les réservations sont ajoutées plus bas.
   const c7 = client(e3, "Madame", "Lea", "Moreau", "Hotel Sea, Koh Lanta", "+33 6 00 00 00 07");
@@ -502,8 +503,8 @@ export function donneesDemo(ajd, ajouterJours) {
     if (net != null) prestations_nets.push({ id: uid(), entite_id: e2.id, prestation_id: x.id, net, net_enfant: null, note: "" });
     return x;
   };
-  const trajet = (p, de, vers, mode, depart, arrivee, duree, ad, adn, ch, chn, fenetres = [], periode = "Toute la période du contrat") => {
-    const t = { id: uid(), created_at: j(-90), entite_id: e2.id, partenaire_id: p.id, numero: trajets.length + 1, de, vers, mode, depart, arrivee, duree, prix_adulte: ad, prix_enfant: ch, bebe: "Gratuit", periode, fenetres, actif: true };
+  const trajet = (p, de, vers, mode, depart, arrivee, duree, ad, adn, ch, chn, fenetres = [], periode = "Whole contract period") => {
+    const t = { id: uid(), created_at: j(-90), entite_id: e2.id, partenaire_id: p.id, numero: trajets.length + 1, de, vers, mode, depart, arrivee, duree, prix_adulte: ad, prix_enfant: ch, bebe: "Free", periode, fenetres, actif: true };
     trajets.push(t);
     trajets_nets.push({ id: uid(), entite_id: e2.id, trajet_id: t.id, net_adulte: adn, net_enfant: chn });
     return t;
@@ -517,25 +518,25 @@ export function donneesDemo(ajd, ajouterJours) {
   partenaires_prives.push({ id: uid(), entite_id: e2.id, partenaire_id: longtail.id, banque: { banque: "Banque démo", compte: "000-0-00000-0", titulaire: "Longtail démo" }, paiement: "Virement local après chaque tour.", commissions: ["Net fixe par personne, frais de parc jamais inclus."] });
   const speed = partenaire("Speedboat démo", "Ferries et speedboats", "mer", "Liaisons en speedboat entre Lanta, Phi Phi, Lipe et Phuket", {
     contact: { personne: "Équipe réservations", telephones: [{ numero: "088-000-0002", libelle: "", whatsapp: true }], emails: ["info@speedboat.demo"], guichets: [{ lieu: "Saladan Pier", adresse: "Koh Lanta", telephones: ["075-000-000"], line: "", email: "" }] },
-    regles: { annulation: "Plus de 24 h avant, sans frais. No show 100 %.", enfants: ["3 à 9 ans, tarif enfant. Moins de 3 ans gratuit sur les genoux."], checkin: ["Ouverture 45 min avant le départ, fermeture 15 min avant."], points_embarquement: [{ lieu: "Koh Lanta", ou: "Saladan Pier" }, { lieu: "Koh Phi Phi", ou: "Tonsai Bay, derrière le 7-11" }], pickups: [{ titre: "Pickup à Lanta", colonnes: ["Bateau 10h30", "Bateau 13h00"], lignes: [["Klong Dao", "09:40", "12:10"], ["Long Beach", "09:30", "12:00"], ["Old Town", "09:00", "11:30"]] }] },
+    regles: { annulation: "Plus de 24 h avant, sans frais. No show 100 %.", enfants: ["3 à 9 ans, tarif enfant. Moins de 3 ans gratuit sur les genoux."], checkin: ["Ouverture 45 min avant le départ, fermeture 15 min avant."], points_embarquement: [{ lieu: "Koh Lanta", ou: "Saladan Pier" }, { lieu: "Koh Phi Phi", ou: "Tonsai Bay, behind the 7-Eleven" }], pickups: [{ titre: "Pickup à Lanta", colonnes: ["Bateau 10h30", "Bateau 13h00"], lignes: [["Klong Dao", "09:40", "12:10"], ["Long Beach", "09:30", "12:00"], ["Old Town", "09:00", "11:30"]] }] },
     contrat: { statut: "Tarifs agents reçus", etat: "ok", saison: "Haute saison 2026-2027", validite: "15 oct 2026 – 20 mai 2027", fin: "2027-05-20", documents: [], evenements: [{ date: "15 oct 2026", libelle: "Début de la haute saison", genre: "debut" }] },
   });
-  const ferry = partenaire("Ferry démo", "Ferries et speedboats", "mer", "Ferry lent entre Lanta et Phi Phi", { contact: { telephones: [{ numero: "089-000-0003", libelle: "", whatsapp: false }] }, contrat: { statut: "Sans contrat, tarifs publics", etat: "attention", fin: null } });
-  const taxi = partenaire("Transferts démo", "Transferts terrestres et taxis", "transport", "Minivans privés depuis et vers les aéroports", { contact: { telephones: [{ numero: "083-000-0004", libelle: "", whatsapp: true }] }, contrat: { statut: "Accord oral", etat: "attention", fin: j(-5) } });
+  const ferry = partenaire("Ferry démo", "Ferries et speedboats", "mer", "Ferry lent entre Lanta et Phi Phi", { contact: { telephones: [{ numero: "089-000-0003", libelle: "", whatsapp: false }], adresse: "Saladan Pier, Koh Lanta, Krabi 81150" }, contrat: { statut: "Sans contrat, tarifs publics", etat: "attention", fin: null } });
+  const taxi = partenaire("Transferts démo", "Transferts terrestres et taxis", "transport", "Minivans privés depuis et vers les aéroports", { contact: { telephones: [{ numero: "083-000-0004", libelle: "", whatsapp: true }], adresse: "12 Moo 1, Saladan, Koh Lanta, Krabi 81150" }, contrat: { statut: "Accord oral", etat: "attention", fin: j(-5) } });
   partenaires_prives.push({ id: uid(), entite_id: e2.id, partenaire_id: taxi.id, banque: {}, paiement: "", commissions: ["Marge de 10 % en attendant un accord."] });
-  prestation(longtail, "excursion", "Excursions en groupe", "4 îles en longtail, journée", 1200, "pp", 800, { horaires: "08h00 - 15h30 (départ 09h00)", inclus: "Pickup à l'hôtel, déjeuner, masque et tuba, fruits.", parc: "Frais de parc 200 ฿ par adulte, à payer sur place.", conditions: "Selon la météo." });
-  prestation(longtail, "excursion", "Excursions en groupe", "4 îles en longtail, enfant 3 à 9 ans", 900, "ch", 600, {});
-  prestation(longtail, "excursion", "Privatisation", "Koh Rok en longtail privé, 1 à 6 personnes", 6500, "boat", 5000, { capacite: "1 à 6 personnes", inclus: "Bateau, skipper, déjeuner, matériel de snorkeling." });
-  prestation(null, "frais", "Frais de parc national", "Koh Rok et Koh Ha", 400, "ad", null, { enfant: 200, thai_adulte: 40, thai_enfant: 20, note: "À payer en espèces au garde sur l'île." }, { sur_place: true });
-  prestation(null, "frais", "Frais de parc national", "4 îles", 200, "ad", null, { enfant: 100, note: "À payer en espèces sur place." }, { sur_place: true });
-  prestation(taxi, "transfert", "Minivan privé", "Aéroport de Krabi → Koh Lanta", 2500, "veh", 2250, { note: "Jusqu'à 9 personnes, bagages compris." });
-  prestation(taxi, "transfert", "Minivan privé", "Koh Lanta → Aéroport de Phuket", 4500, "veh", 4050, {});
-  prestation(taxi, "transfert", "Taxi local", "Saladan → Klong Dao", 80, "pp", null, { note: "Grille de l'association des taxis." });
-  prestation(longtail, "activite", "Sortie coucher de soleil", "Coucher de soleil en longtail, 2 h", 700, "pp", 500, { duree: "17h00 - 19h00" });
+  prestation(longtail, "excursion", "Group tours", "4 Islands by longtail, full day", 1200, "pp", 800, { horaires: "08:00 - 15:30 (departure 09:00)", inclus: "Hotel pickup, lunch, mask and snorkel, fruit.", parc: "Park fee 200 ฿ per adult, paid on site.", conditions: "Weather permitting." });
+  prestation(longtail, "excursion", "Group tours", "4 Islands by longtail, child 3 to 9 years", 900, "ch", 600, {});
+  prestation(longtail, "excursion", "Private charter", "Koh Rok by private longtail, 1 to 6 people", 6500, "boat", 5000, { capacite: "1 to 6 people", inclus: "Boat, skipper, lunch, snorkelling gear." });
+  prestation(null, "frais", "National park fees", "Koh Rok and Koh Ha", 400, "ad", null, { enfant: 200, thai_adulte: 40, thai_enfant: 20, note: "Paid in cash to the ranger on the island." }, { sur_place: true });
+  prestation(null, "frais", "National park fees", "4 Islands", 200, "ad", null, { enfant: 100, note: "Paid in cash on site." }, { sur_place: true });
+  prestation(taxi, "transfert", "Private minivan", "Krabi Airport → Koh Lanta", 2500, "veh", 2250, { note: "Up to 9 people, luggage included." });
+  prestation(taxi, "transfert", "Private minivan", "Koh Lanta → Phuket Airport", 4500, "veh", 4050, {});
+  prestation(taxi, "transfert", "Local taxi", "Saladan → Klong Dao", 80, "pp", null, { note: "Taxi association rates." });
+  prestation(longtail, "activite", "Sunset trip", "Sunset by longtail, 2 hours", 700, "pp", 500, { duree: "17:00 - 19:00" });
   trajet(speed, "Koh Lanta", "Koh Phi Phi", "Speedboat", "10:30", "11:30", "1 h", 900, 700, 700, 500);
   trajet(speed, "Koh Lanta", "Koh Phi Phi", "Speedboat", "13:00", "14:00", "1 h", 900, 700, 700, 500);
   trajet(speed, "Koh Phi Phi", "Koh Lanta", "Speedboat", "15:00", "16:00", "1 h", 900, 700, 700, 500);
-  trajet(speed, "Koh Lanta", "Koh Lipe", "Speedboat", "10:30", "13:30", "3 h", 1900, 1500, 1500, 1200, [[j(10), j(190)]], "Haute saison seulement");
+  trajet(speed, "Koh Lanta", "Koh Lipe", "Speedboat", "10:30", "13:30", "3 h", 1900, 1500, 1500, 1200, [[j(10), j(190)]], "High season only");
   trajet(speed, "Koh Lanta", "Phuket", "Speedboat", "10:30", "13:00", "2 h 30", 1700, 1300, 1300, 1000);
   trajet(ferry, "Koh Lanta", "Koh Phi Phi", "Ferry", "11:00", "12:30", "1 h 30", 800, 650, 600, 500);
   trajet(ferry, "Koh Phi Phi", "Koh Lanta", "Ferry", "14:30", "16:00", "1 h 30", 800, 650, 600, 500);
@@ -549,10 +550,10 @@ export function donneesDemo(ajd, ajouterJours) {
     if (nets) reservations_nets.push({ id: uid(), entite_id: e2.id, reservation_id: r.id, net_prevu: null, net_paye: null, paye_le: null, ...nets });
     return r;
   };
-  reservation(dossiers[5], prestations[0], "4 îles en longtail, journée", j(1), { heure_pickup: "08:00", lieu_pickup: "Hotel Sunset, Klong Dao", statut: "confirme", reference_partenaire: "LT-2211", montant_vente: 2400 }, { net_prevu: 1600 });
-  reservation(dossiers[5], prestations[3], "Koh Rok et Koh Ha, frais de parc", j(1), { statut: "confirme", personnes: { adultes: 2, enfants: 0, bebes: 0 }, notes: "À payer en espèces sur l'île." }, null);
-  reservation(dossiers[6], prestations[5], "Aéroport de Krabi → Koh Lanta", j(0), { heure_pickup: "14:30", lieu_pickup: "Aéroport de Krabi, vol FD3217", statut: "demande", montant_vente: 2500, personnes: { adultes: 1, enfants: 1, bebes: 0 } }, { net_prevu: 2250 });
-  reservation(dossiers[5], prestations[8], "Coucher de soleil en longtail, 2 h", j(3), { montant_vente: 1400 }, { net_prevu: 1000 });
+  reservation(dossiers[5], prestations[0], "4 Islands by longtail, full day", j(1), { heure_pickup: "08:00", lieu_pickup: "Hotel Sunset, Klong Dao", statut: "confirme", reference_partenaire: "LT-2211", montant_vente: 2400 }, { net_prevu: 1600 });
+  reservation(dossiers[5], prestations[3], "Koh Rok and Koh Ha, park fees", j(1), { statut: "confirme", personnes: { adultes: 2, enfants: 0, bebes: 0 }, notes: "Paid in cash on the island." }, null);
+  reservation(dossiers[6], prestations[5], "Krabi Airport → Koh Lanta", j(0), { heure_pickup: "14:30", lieu_pickup: "Krabi Airport, flight FD3217", statut: "demande", montant_vente: 2500, personnes: { adultes: 1, enfants: 1, bebes: 0 } }, { net_prevu: 2250 });
+  reservation(dossiers[5], prestations[8], "Sunset by longtail, 2 hours", j(3), { montant_vente: 1400 }, { net_prevu: 1000 });
   // Taxi : une course hier (la carte « Hier » propose l'avis et la commission) et une demain.
   const dossiersTaxi = dossiers.filter((d) => d.entite_id === e3.id);
   const chauffeurs = { id: uid(), created_at: j(-90), updated_at: j(-90), entite_id: e3.id, nom: "Chauffeurs démo", nom_thai: "", categorie: "Transferts terrestres et taxis", groupe: "transport", role: "Minivans privés", contact: { personne: "M. Démo", telephones: [{ numero: "083-000-0009", libelle: "", whatsapp: true }] }, regles: { mode_reglement: "sur_place" }, contrat: {}, notes: "", ordre: 1, actif: true };
@@ -560,7 +561,7 @@ export function donneesDemo(ajd, ajouterJours) {
   const courseTaxi = (dossier, ligneC, date, extra) => reservations.push({ id: uid(), created_at: j(-2), updated_at: j(-2), entite_id: e3.id, dossier_id: dossier.id, ligne_id: ligneC.id, prestation_id: null, trajet_id: null, partenaire_id: chauffeurs.id, libelle: ligneC.libelle, date_service: date, heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: ligneC.unite, paye_sur_place: true, notes: "", details: {}, ...extra });
   courseTaxi(dossiersTaxi[0], lc7, j(-1), { heure_pickup: "11:00", lieu_pickup: "Krabi Airport, arrivals hall", personnes: { adultes: 4, enfants: 0, bebes: 0 }, details: { drop_off: "Hotel Sea, Koh Lanta", bagages: "oui" } });
   courseTaxi(dossiersTaxi[1], lc8, j(1), { heure_pickup: "06:30", lieu_pickup: "Villa Demo, Klong Nin", personnes: { adultes: 2, enfants: 1, bebes: 1 }, statut: "demande", details: { drop_off: "Phuket Airport", bagages: "3" } });
-  reservation(dossiers[6], prestations[6], "Koh Lanta → Aéroport de Phuket", j(-20), { statut: "confirme", heure_pickup: "06:00", lieu_pickup: "Hotel Palm", montant_vente: 4500 }, { net_prevu: 4050, net_paye: 4050, paye_le: j(-15) });
+  reservation(dossiers[6], prestations[6], "Koh Lanta → Phuket Airport", j(-20), { statut: "confirme", heure_pickup: "06:00", lieu_pickup: "Hotel Palm", montant_vente: 4500 }, { net_prevu: 4050, net_paye: 4050, paye_le: j(-15) });
 
   const tache = (e, titre, jours, assignee, dossier, extra = {}) => ({ id: uid(), created_at: j(-3), entite_id: e.id, dossier_id: dossier ? dossier.id : null, partenaire_id: null, titre, description: "", echeance: jours === null ? null : j(jours), assignee_id: assignee ? assignee.user_id : null, fait: false, fait_le: null, fait_par: null, cree_par: admin.user_id, ...extra });
   const taches = [

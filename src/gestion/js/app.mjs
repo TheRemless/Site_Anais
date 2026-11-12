@@ -100,7 +100,7 @@ function vueConnexion() {
     erreur,
     bouton
   );
-  return h("div", { class: "connexion" }, selecteurLangue(), h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Devis, factures et suivi des paiements.")), form);
+  return h("div", { class: "connexion" }, selecteurLangue(), h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Dossiers, réservations et paiements.")), form);
 }
 
 function selecteurEntite() {
@@ -162,7 +162,7 @@ function ecrans() {
   const aConfirmer = ag.enRetard.length + ag.aConfirmer.length;
   return [
     { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations", badge: aConfirmer }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
-    { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si(peut("finances.voir") || peut("partenaires.nets"), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(peut("fiduciaire.preparer") && modeExcursions(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
+    { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si(peut("finances.voir") || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(peut("fiduciaire.preparer") && modeExcursions(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
       titre: tr("Partenaires"),
       items: si(peut("partenaires.lire") && moduleActif("partenaires"), null).length
@@ -171,7 +171,8 @@ function ecrans() {
             { href: "#/tarifs", libelle: tr("Tarifs"), cle: "tarifs", icone: "tarifs" },
             // Taxi n'a que des prestations (pas d'horaires de bateaux) et tout se paie au chauffeur : ni Trajets ni Dû aux partenaires.
             ...si(!modeTaxi(), { href: "#/trajets", libelle: tr("Trajets"), cle: "trajets", icone: "bateau" }),
-            { href: "#/regles", libelle: tr("Règles"), cle: "regles", icone: "regles" },
+            // Règles compare les conditions de plusieurs partenaires (parc national, enfants, annulation) : Taxi n'a qu'un prestataire.
+            ...si(!modeTaxi(), { href: "#/regles", libelle: tr("Règles"), cle: "regles", icone: "regles" }),
             ...si(peut("partenaires.nets") && !modeTaxi(), { href: "#/du", libelle: tr("Dû aux partenaires"), cle: "du", icone: "du" }),
           ]
         : [],
@@ -308,6 +309,16 @@ function coqueSimple() {
   );
 }
 
+// Écrans propres à un type d'entreprise : ZTP (voyages sur mesure), Secret (excursions), Taxi.
+function ecranDeLEntreprise(cle) {
+  if (["partenaires", "tarifs"].includes(cle)) return moduleActif("partenaires");
+  if (["trajets", "regles", "du"].includes(cle)) return moduleActif("partenaires") && !modeTaxi();
+  if (cle === "reservations" || cle === "messages") return moduleActif(cle);
+  if (cle === "catalogue") return moduleActif("catalogue");
+  if (cle === "fiduciaire") return modeExcursions();
+  return true;
+}
+
 async function afficherVoucherSeul() {
   const cle = `simple|${etat.entiteId}|${etat.session.id}`;
   const existante = racine.querySelector(".coque-simple");
@@ -388,7 +399,7 @@ function chercher(q) {
       .slice(0, 6)
       .forEach((x) => out.push({ groupe: tr("Tarifs"), icone: "tarifs", titre: x.libelle, detail: [nomPartenaire(x.partenaire_id), x.groupe].filter(Boolean).join(" · "), droite: x.prix_vente != null ? formatMontant(x.prix_vente) : "", href: `#/tarifs?famille=${x.famille}&q=${encodeURIComponent(x.libelle)}` }));
     const paires = new Map();
-    for (const t of etat.db.trajets) if (correspond(sansAccents(`${t.de} ${t.vers} ${nomPartenaire(t.partenaire_id)}`))) paires.set(`${t.de}|${t.vers}`, (paires.get(`${t.de}|${t.vers}`) || 0) + 1);
+    if (!modeTaxi()) for (const t of etat.db.trajets) if (correspond(sansAccents(`${t.de} ${t.vers} ${nomPartenaire(t.partenaire_id)}`))) paires.set(`${t.de}|${t.vers}`, (paires.get(`${t.de}|${t.vers}`) || 0) + 1);
     [...paires].slice(0, 5).forEach(([k, n]) => {
       const [de, vers] = k.split("|");
       out.push({ groupe: tr("Trajets"), icone: "bateau", titre: `${de} → ${vers}`, detail: pluriel(n, N_("départ"), N_("départs")), href: `#/trajets?de=${encodeURIComponent(de)}&vers=${encodeURIComponent(vers)}` });
@@ -545,6 +556,11 @@ async function afficher() {
     return;
   }
   const [re, cleRoute, vue] = trouvee;
+  // Une adresse tapée, un favori ou un raccourci n'ouvrent pas un écran que l'entreprise active n'a pas (Jérémy, 12.11.2026).
+  if (!ecranDeLEntreprise(cleRoute)) {
+    location.replace("#/");
+    return;
+  }
   const principal = document.getElementById("principal");
   document.documentElement.classList.remove("a-barre-action");
   const moi = ++rendu;
@@ -585,9 +601,10 @@ function ouvrirAide() {
       "div",
       { class: "modal-corps" },
       h("h3", null, tr("Partout, hors d'un champ de saisie")),
-      tableau([ligne(["?"], N_("Afficher cette aide")), ligne(["n"], N_("Nouveau dossier")), ligne(["/"], N_("Rechercher un client, un dossier ou un écran")), ligne([`${mod}+K`], N_("Rechercher (aussi dans un champ)")), ligne(["g", "t"], N_("Aujourd'hui")), ligne(["g", "d"], N_("Dossiers")), ligne(["g", "c"], N_("Clients")), ligne(["g", "k"], N_("Catalogue")), ligne(["g", "f"], N_("Tâches")), ligne(["g", "v"], N_("Vue d'ensemble des sociétés")), ligne(["g", "r"], N_("Réglages (administrateurs)")), ligne(["g", "a"], N_("Analyses")), ligne(["g", "j"], N_("Journal d'activité")), ligne(["g", "m"], N_("Administration (administratrice générale)")), ligne([tr("Échap")], N_("Fermer une fenêtre"))]),
-      h("h3", null, tr("Dans un devis ou une facture")),
-      tableau([ligne([`${mod}+Z`], N_("Annuler la dernière modification")), ligne([`${mod}+${tr("Maj")}+Z`], mac ? N_("Rétablir") : N_("Rétablir (ou Ctrl+Y)")), ligne([`${mod}+S`], N_("Enregistrer tout de suite")), ligne([`${mod}+P`], N_("Télécharger le PDF"))]),
+      tableau([ligne(["?"], N_("Afficher cette aide")), ligne(["n"], N_("Nouveau dossier")), ligne(["/"], N_("Rechercher un client, un dossier ou un écran")), ligne([`${mod}+K`], N_("Rechercher (aussi dans un champ)")), ligne(["g", "t"], N_("Aujourd'hui")), ligne(["g", "d"], N_("Dossiers")), ligne(["g", "c"], N_("Clients")), moduleActif("catalogue") ? ligne(["g", "k"], N_("Catalogue")) : null, ligne(["g", "f"], N_("Tâches")), ligne(["g", "v"], N_("Vue d'ensemble des sociétés")), ligne(["g", "r"], N_("Réglages (administrateurs)")), ligne(["g", "a"], N_("Analyses")), ligne(["g", "j"], N_("Journal d'activité")), ligne(["g", "m"], N_("Administration (administratrice générale)")), ligne([tr("Échap")], N_("Fermer une fenêtre"))]),
+      // Taxi n'ouvre aucun document à modifier ; Secret n'a que des factures.
+      modeTaxi() ? null : h("h3", null, modeExcursions() ? tr("Dans une facture") : tr("Dans un devis ou une facture")),
+      modeTaxi() ? null : tableau([ligne([`${mod}+Z`], N_("Annuler la dernière modification")), ligne([`${mod}+${tr("Maj")}+Z`], mac ? N_("Rétablir") : N_("Rétablir (ou Ctrl+Y)")), ligne([`${mod}+S`], N_("Enregistrer tout de suite")), ligne([`${mod}+P`], N_("Télécharger le PDF"))]),
       h("p", { class: "aide" }, tr("Les raccourcis propres au navigateur, comme Ctrl+T, Ctrl+W ou Ctrl+N, ne peuvent pas être pris en charge par un site. Les autres sont désactivés pendant la saisie dans un champ pour ne pas gêner l'écriture."))
     )
   );
@@ -604,7 +621,7 @@ document.addEventListener("keydown", (e) => {
   if ((e.target && e.target.matches && e.target.matches("input, textarea, select, [contenteditable]")) || document.querySelector(".modal-fond")) return;
   if (sequence === "g") {
     sequence = null;
-    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", k: "#/catalogue", f: "#/taches", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(peut("analytics.voir") && peut("finances.voir") ? { a: "#/analyses" } : {}), ...(entitesAnalysables().length > 1 ? { v: "#/groupe" } : {}), ...(estSuperAdmin() ? { m: "#/admin" } : {}) };
+    const cibles = { t: "#/", d: "#/dossiers", c: "#/clients", ...(moduleActif("catalogue") ? { k: "#/catalogue" } : {}), f: "#/taches", ...(estAdmin() ? { r: "#/reglages" } : {}), ...(peut("journal.voir") ? { j: "#/journal" } : {}), ...(peut("analytics.voir") && peut("finances.voir") ? { a: "#/analyses" } : {}), ...(entitesAnalysables().length > 1 ? { v: "#/groupe" } : {}), ...(estSuperAdmin() ? { m: "#/admin" } : {}) };
     if (cibles[k]) (e.preventDefault(), (location.hash = cibles[k]));
     return;
   }

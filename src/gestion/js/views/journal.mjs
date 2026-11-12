@@ -1,5 +1,5 @@
 // Journal d'activité : qui a fait quoi et quand dans l'entreprise active.
-import { etat, peut, equipe, entiteActive } from "../etat.mjs";
+import { etat, peut, equipe, entiteActive, moduleActif, modeExcursions, modeTaxi } from "../etat.mjs";
 import { h, vider } from "../ui.mjs";
 import { vide } from "./commun.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
@@ -24,6 +24,12 @@ function detail(l) {
 }
 
 const TABLES = [["", N_("Tout")], ["dossiers", N_("Dossiers")], ["clients", N_("Clients")], ["documents", N_("Devis et factures")], ["paiements", N_("Paiements")], ["catalogue", N_("Catalogue")], ["reglages", N_("Réglages")], ["roles", N_("Rôles")], ["membres", N_("Accès")], ["taches", N_("Tâches")], ["pieces_jointes", N_("Pièces jointes")]];
+
+// Les sujets de l'entreprise ouverte : Secret n'a que des factures, Taxi aucun document client (le prix de la course reste interne),
+// le catalogue de devis seulement là où il est actif.
+function tablesProposees() {
+  return TABLES.filter(([v]) => (v === "catalogue" ? moduleActif("catalogue") : v === "documents" ? !modeTaxi() : true)).map(([v, l]) => [v, v === "documents" && modeExcursions() ? N_("Factures") : l]);
+}
 
 export function vueJournal() {
   if (!peut("journal.voir")) return vide(tr("Accès réservé"), tr("Le journal d'activité est réservé aux personnes qui en ont le droit."), h("a", { class: "bouton secondaire", href: "#/" }, tr("Retour au tableau de bord")));
@@ -54,7 +60,7 @@ export function vueJournal() {
     if (lignes.length === 50) plus.append(h("button", { class: "secondaire", type: "button", onclick: () => charger(false) }, tr("Afficher plus")));
   };
 
-  const selTable = h("select", { id: "jr-table", onchange: (e) => ((filtres.table = e.target.value), charger(true)) }, TABLES.map(([v, l]) => h("option", { value: v }, tr(l))));
+  const selTable = h("select", { id: "jr-table", onchange: (e) => ((filtres.table = e.target.value), charger(true)) }, tablesProposees().map(([v, l]) => h("option", { value: v }, tr(l))));
   const selPersonne = h("select", { id: "jr-user", onchange: (e) => ((filtres.userId = e.target.value), charger(true)) }, h("option", { value: "" }, tr("Tout le monde")));
   equipe()
     .then((gens) =>

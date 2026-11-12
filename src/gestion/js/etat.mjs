@@ -226,6 +226,10 @@ export const reglages = () => etat.db.reglages;
 // Chaque entreprise choisit ses écrans (Réglages, Écrans). En automatique, Partenaires apparaît dès qu'il y a un partenaire,
 // Réservations et Messages suivent Partenaires, Catalogue est toujours là. Zwald et Secret n'ont donc pas le même menu.
 export function moduleActif(nom) {
+  // Chaque entreprise n'a que ses écrans (Jérémy, 12.11.2026) : partenaires, réservations et messages n'existent qu'en excursions et en taxi,
+  // le catalogue de formules de devis qu'en voyages sur mesure (ZTP). Le réglage « Écrans » ne peut pas les rouvrir ailleurs.
+  if (["partenaires", "reservations", "messages"].includes(nom) && !modeExcursions()) return false;
+  if (nom === "catalogue" && modeExcursions()) return false;
   const v = ((etat.db && etat.db.reglages.modules) || {})[nom];
   if (v === true || v === false) return v;
   if (nom === "partenaires") return etat.db.partenaires.length > 0 || modeExcursions();

@@ -559,6 +559,10 @@ export function decouperServices(texte, d, contexte, aujourdhui) {
   });
 }
 
+// Langue de la réponse à une demande collée : en excursions (Secret et Taxi) toujours l'anglais, comme tout ce que voit le client ;
+// ailleurs, celle du message du client.
+export const langueReponse = (texte, excursions = false) => (excursions ? "en" : langueDuMessage(texte));
+
 // Langue du client d'après son message : le français quand il l'emporte, l'anglais sinon (les documents de Secret sont en anglais).
 export function langueDuMessage(texte) {
   const t = ` ${sansAcc(texte)} `;

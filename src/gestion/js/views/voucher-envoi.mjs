@@ -3,10 +3,12 @@
 // Sur téléphone, le partage de fichier ouvre la liste de WhatsApp : on y choisit le contact. Un lien WhatsApp ne peut pas joindre d'image, donc
 // on ne peut pas écrire directement dans la conversation d'un numéro. Sur ordinateur, la conversation du numéro s'ouvre et l'image est copiée
 // pour être collée (sinon téléchargée).
-import { etat, nomClient, partenaireDe, resumeDossier, reglages } from "../etat.mjs";
+import { etat, nomClient, partenaireDe, resumeDossier, reglages, entiteActive } from "../etat.mjs";
+import { estTaxi } from "../taxi-calc.mjs";
+import { messagesDefautPour } from "../defauts.mjs";
 import { h, modal } from "../ui.mjs";
 import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
-import { numeroVoucher, nomFichierVoucher, messageVoucher, lienWhatsApp, controlesVoucher } from "../operations-calc.mjs";
+import { numeroVoucher, nomFichierVoucher, messageVoucher, gabaritConfirmationVoucher, variablesMessage, lienWhatsApp, controlesVoucher } from "../operations-calc.mjs";
 import { chiffres, telWhatsApp } from "../partenaires-calc.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
 import { tr, N_ } from "../i18n.mjs";
@@ -45,12 +47,19 @@ export function envoyerVoucher(x) {
   const client = etat.db.clients.find((c) => c.id === dossier.client_id) || {};
   const partenaire = partenaireDe(r.partenaire_id);
   const numero = numeroVoucher(dossier.ref || "", x.index);
-  const nomFichier = nomFichierVoucher(numero, nomClient(client));
+  const taxi = estTaxi(reglages());
+  const nomFichier = nomFichierVoucher(numero, nomClient(client), { taxi });
   const telClient = chiffres(client.telephone);
   const telPartenaire = chiffres(telWhatsApp(partenaire), { thaiLocal: true });
   const devise = ((resumeDossier(dossier.id) || {}).devise) || reglages().devise || "THB";
   const message = {
-    client: messageVoucher({ pour: "client", prenom: client.prenom || "" }),
+    // Le message de confirmation en anglais de l'entreprise ouverte (« taxi-confirmation-en » pour Taxi), rempli comme les autres messages types.
+    client: messageVoucher({
+      pour: "client",
+      prenom: client.prenom || "",
+      gabarit: gabaritConfirmationVoucher((reglages().messages || []).filter((m) => m && m.corps), messagesDefautPour(reglages())),
+      vars: variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: (reglages().emetteur || {}).nom || (entiteActive() || {}).nom || "", telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }),
+    }),
     partenaire: messageVoucher({ pour: "partenaire", montant: r.montant_vente, devise }),
   };
 
@@ -142,7 +151,7 @@ export function envoyerVoucher(x) {
       if (ferme) return;
       boutonTous.textContent = tr("Préparation des vouchers {i} sur {n}…", { i: i + 1, n: freres.length });
       const blob = y.reservation.id === r.id && fichier ? fichier : await imageVoucher(y);
-      fichiers.push(new File([blob], nomFichierVoucher(numeroVoucher(dossier.ref || "", y.index), nomClient(client)), { type: "image/png" }));
+      fichiers.push(new File([blob], nomFichierVoucher(numeroVoucher(dossier.ref || "", y.index), nomClient(client), { taxi }), { type: "image/png" }));
     }
     fichiersTous = fichiers;
     boutonTous.disabled = false;

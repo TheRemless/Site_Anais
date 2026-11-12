@@ -87,3 +87,37 @@ test("seriesMensuelles et classementGroupe : converties, les devises sans taux s
   assert.equal(top[0].entite, "ZTP");
   assert.equal(top[1].montant, 100);
 });
+
+test("chaque entreprise ses chiffres : devis seulement en sur mesure, pas de facture client en taxi", async () => {
+  const { syntheseEntite, consolider, seriesMensuelles } = await load();
+  const taux = { CHF: 1, THB: 0.025 };
+  const donnees = (devise, montant) => ({ facture_par_mois: [{ mois: "2026-10", devise, montant, nombre: 2 }], encaisse_par_mois: [{ mois: "2026-10", devise, montant, nombre: 2 }], impayes: [{ tranche: "0-30", devise, montant: 100, nombre: 1 }], pipeline: [{ devise, montant: 500, nombre: 1 }], devis: { emis: 2, acceptes: 1, delai_moyen_jours: 2 }, activite: { dossiers: 2, clients: 2 } });
+  const ztp = syntheseEntite({ entite: { id: "1", nom: "ZTP" }, donnees: donnees("CHF", 600), precedent: null, cible: "CHF", taux, mode: "sur_mesure" });
+  const secret = syntheseEntite({ entite: { id: "2", nom: "Secret" }, donnees: donnees("THB", 8000), precedent: null, cible: "CHF", taux, mode: "excursions" });
+  const taxi = syntheseEntite({ entite: { id: "3", nom: "Taxi" }, donnees: donnees("THB", 4000), precedent: { facture_par_mois: [{ mois: "2026-09", devise: "THB", montant: 4000, nombre: 2 }], encaisse_par_mois: [] }, cible: "CHF", taux, mode: "taxi" });
+  assert.equal(ztp.avecDevis, true);
+  assert.equal(ztp.devisEmis, 2);
+  assert.equal(secret.avecDevis, false);
+  assert.equal(secret.devisEmis, 0, "Secret n'a pas de devis");
+  assert.equal(secret.nbPipeline, 0);
+  assert.equal(secret.facture, 200, "Secret facture directement");
+  assert.equal(taxi.avecFactures, false);
+  assert.equal(taxi.facture, 0, "les documents internes de Taxi ne sont pas des factures");
+  assert.equal(taxi.nbFactures, 0);
+  assert.equal(taxi.nbImpayes, 0);
+  assert.equal(taxi.panierMoyen, null);
+  assert.equal(taxi.evolFacture, null);
+  assert.equal(taxi.encaisse, 100, "l'encaissé reste compté");
+  const g = consolider([ztp, secret, taxi]);
+  assert.equal(g.facture, 800);
+  assert.equal(g.nbFactures, 4);
+  assert.equal(g.panierMoyen, 200);
+  assert.equal(g.devisEmis, 2);
+  assert.equal(g.avecDevis, true);
+  assert.deepEqual(g.parts.map((p) => p.part), [75, 25, null]);
+  assert.equal(consolider([secret, taxi]).avecDevis, false, "sans société sur mesure, les devis sont sans objet");
+  const series = seriesMensuelles([{ entite: { nom: "Secret" }, donnees: donnees("THB", 8000), mode: "excursions" }, { entite: { nom: "Taxi" }, donnees: donnees("THB", 4000), mode: "taxi" }], "facture_par_mois", "CHF", taux);
+  assert.deepEqual(series[0].valeurs, { "2026-10": 200 });
+  assert.deepEqual(series[1].valeurs, {}, "pas de facturé pour Taxi");
+  assert.deepEqual(seriesMensuelles([{ entite: { nom: "Taxi" }, donnees: donnees("THB", 4000), mode: "taxi" }], "encaisse_par_mois", "CHF", taux)[0].valeurs, { "2026-10": 100 });
+});

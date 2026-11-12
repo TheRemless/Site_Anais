@@ -79,6 +79,20 @@ test("entreprises lisibles : super admin voit tout, un rôle limité ou inactif 
   assert.deepEqual(entitesLisibles({ profil: null, membres, roles }), []);
 });
 
+test("entreprises lisibles : le rôle « vouchers.seul » (assistante de Taxi) ne reçoit aucun rappel", () => {
+  const roles = [
+    { id: "admin", portee: "toute", permissions: ["dossiers.lire", "dossiers.ecrire"] },
+    { id: "mook", portee: "toute", permissions: ["clients.lire", "dossiers.lire", "dossiers.ecrire", "vouchers.seul", "fiduciaire.preparer"] },
+  ];
+  const membres = [
+    { user_id: "mook", entite_id: "T", role_id: "mook" },
+    { user_id: "anais", entite_id: "T", role_id: "admin" },
+    { user_id: "anais", entite_id: "S", role_id: "admin" },
+  ];
+  assert.deepEqual(entitesLisibles({ profil: { user_id: "mook", actif: true, super_admin: false }, membres, roles }), []);
+  assert.deepEqual(entitesLisibles({ profil: { user_id: "anais", actif: true, super_admin: false }, membres, roles }), ["T", "S"], "les autres rôles ne changent pas");
+});
+
 test("clé VAPID : la clé publique en base64url devient 65 octets, point non compressé", () => {
   const cle = cleVapid("BO9VT10PvJTFqIFkhxArLQ1qbiuwaZHrYeKdCMhakxaxd7OUDkmAMePSqRHhcKykR2-1Gv_4W4BKGcXFWGxEVS8");
   assert.equal(cle.length, 65);

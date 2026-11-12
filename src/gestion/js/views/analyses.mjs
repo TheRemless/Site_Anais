@@ -2,15 +2,18 @@
 // réservations à venir, devis), la période et la comparaison dans l'adresse, une liste derrière chaque chiffre.
 // Les faits viennent de la base (fonction analyse_faits), un appel par section ; les indicateurs sont dans stats-calc.mjs.
 // Réservé aux rôles qui ont les droits « analyses » et « montants » ; commissions, nets et marge demandent aussi « nets ».
-import { etat, peut, entiteActive, reglages, entitesAnalysables, modeExcursions, modeTaxi } from "../etat.mjs";
+import { etat, peut, entiteActive, reglages, entitesAnalysables, modeExcursions, modeTaxi, moduleActif } from "../etat.mjs";
 import { h, vider, modal, toast } from "../ui.mjs";
 import { aujourdhui, formatDate, formatMontant } from "../calc.mjs";
 import { vide, telecharger } from "./commun.mjs";
 import { tr, moisCourt, N_, pluriel } from "../i18n.mjs";
 import * as S from "../stats-calc.mjs";
 import { resumeMois } from "../analyses-resume.mjs";
-import { SECTIONS, liste } from "./analyses-sections.mjs";
+import { SECTIONS, liste, sectionVisible } from "./analyses-sections.mjs";
 import { squelette, s } from "./analyses-widgets.mjs";
+
+// Taxi n'a pas de marge (le client paie le chauffeur) : certaines sections y portent un titre plus court.
+const titreSection = (v) => (modeTaxi() && v.titreTaxi ? v.titreTaxi : v.titre);
 
 export { s };
 
@@ -106,7 +109,9 @@ export function vueAnalyses(sectionArg) {
   if (!(peut("analytics.voir") && peut("finances.voir"))) return vide(tr("Accès réservé"), tr("Le tableau analytique est réservé aux rôles qui ont les droits « analyses » et « montants »."), h("a", { class: "bouton secondaire", href: "#/" }, tr("Retour au tableau de bord")));
   const jour = aujourdhui();
   const q = new URLSearchParams(location.hash.includes("?") ? location.hash.slice(location.hash.indexOf("?") + 1) : "");
-  const section = SECTIONS[sectionArg] && !(modeTaxi() && SECTIONS[sectionArg].sansTaxi) ? sectionArg : "apercu";
+  // Chaque entreprise ses sections : pas de devis en Secret ni en Taxi, pas de services sans le module Réservations.
+  const mode = { taxi: modeTaxi(), excursions: modeExcursions(), reservations: moduleActif("reservations") };
+  const section = sectionVisible(SECTIONS[sectionArg], mode) ? sectionArg : "apercu";
   const def = SECTIONS[section];
   let cle = S.PERIODES.some(([k]) => k === q.get("p")) ? q.get("p") : "mois";
   let du, au;
@@ -124,7 +129,7 @@ export function vueAnalyses(sectionArg) {
   const nets = peut("partenaires.nets") && modeExcursions();
   // Taxi : ni devis ni encaissement chez nous (le client paie le chauffeur), ces sections resteraient vides.
   const taxi = modeTaxi();
-  const sections = Object.entries(SECTIONS).filter(([, v]) => (!v.nets || nets) && !(taxi && v.sansTaxi));
+  const sections = Object.entries(SECTIONS).filter(([, v]) => (!v.nets || nets) && sectionVisible(v, mode));
   const entiteId = etat.entiteId;
   const corps = h("div", { class: "st-corps", "aria-live": "polite" });
   const outilsDroite = h("div", { class: "entete-actions st-actions-haut" });
@@ -134,7 +139,7 @@ export function vueAnalyses(sectionArg) {
   let nomExport = "analyses";
 
   // ---- En-tête, sections, période --------------------------------------------------------------------------------------------------
-  const nav = h("nav", { class: "st-nav", "aria-label": tr("Sections des statistiques") }, h("ul", null, sections.map(([k, v]) => h("li", null, h("a", { href: lien(k), class: "st-onglet", "aria-current": k === section ? "page" : null }, tr(v.titre))))));
+  const nav = h("nav", { class: "st-nav", "aria-label": tr("Sections des statistiques") }, h("ul", null, sections.map(([k, v]) => h("li", null, h("a", { href: lien(k), class: "st-onglet", "aria-current": k === section ? "page" : null }, tr(titreSection(v)))))));
   // « Dates au choix » garde les dates en cours : sans elles, l'adresse retomberait sur « Ce mois ».
   const puce = (k, libelle) => h("a", { class: "st-puce", href: adresse(section, { ...base, p: k, du: k === "perso" ? du : null, au: k === "perso" ? au : null, g: null }), "aria-current": cle === k ? "true" : null }, tr(libelle));
   const dateDu = h("input", { id: "st-du", type: "date", value: du, max: au, onchange: (e) => (location.hash = adresse(section, { ...base, p: "perso", du: e.target.value, au })) });
@@ -164,7 +169,7 @@ export function vueAnalyses(sectionArg) {
       const faits = modeExcursions() ? faitsBruts : { ...faitsBruts, nets: false };
       const devs = S.devises(faits, faits.devise_defaut || reglages().devise);
       const dev = devs.includes(q.get("dev")) ? q.get("dev") : devs.includes(reglages().devise) ? reglages().devise : devs[0] || reglages().devise;
-      const texte = resumeMois({ faits, jour, devise: dev, entite: entiteActive().nom });
+      const texte = resumeMois({ faits, jour, devise: dev, entite: entiteActive().nom, excursions: mode.excursions, taxi: mode.taxi });
       const zone = h("textarea", { class: "st-resume", readonly: true, rows: 12, "aria-label": tr("Résumé du mois") }, texte);
       const copier = async () => {
         try {
@@ -194,6 +199,8 @@ export function vueAnalyses(sectionArg) {
       if (def.douze) debut = S.debutMois(jour, -11) < debut ? S.debutMois(jour, -11) : debut;
       if (def.futur) ((debut = jour), (fin = S.finDeMois(jour) > jour ? S.finDeMois(jour) : jour));
       let parties = def.parties;
+      // Ventes d'excursions : le classement par type de service lit les réservations.
+      if (section === "ventes" && mode.excursions && mode.reservations) parties = [...parties, "reservations"];
       if (mesure) {
         const src = mesure === "revenu" ? "revenu" : S.MESURES[mesure].source;
         parties = src === "revenu" ? ["paiements", "reservations"] : [src];
@@ -206,7 +213,7 @@ export function vueAnalyses(sectionArg) {
       vider(choixDevise);
       if (devs.length > 1) choixDevise.append(h("label", { for: "st-dev" }, tr("Devise")), h("select", { id: "st-dev", onchange: (e) => (location.hash = adresse(section, { ...base, dev: e.target.value, liste: mesure, filtre })) }, devs.map((x) => h("option", { value: x, selected: x === devise }, x))));
       const X = {
-        faits, du, au, jour, devise, cmp, gran, nets: !!faits.nets, taxi, section, entite: entiteActive().nom,
+        faits, du, au, jour, devise, cmp, gran, nets: !!faits.nets, taxi, excursions: mode.excursions, reservations: mode.reservations, section, entite: entiteActive().nom,
         c: { du, au, jour, devise }, tri: q.get("tri"), sens: q.get("sens"), q: q.get("q") || "", surEtat, sortie: [],
         peutGroupe: entitesAnalysables().length > 1,
         param: (extra) => adresse(section, { ...base, ...extra, liste: mesure, filtre }),
@@ -218,7 +225,7 @@ export function vueAnalyses(sectionArg) {
         const L = liste(X, mesure, filtre);
         sortie = L.rows.map((l) => [L.titre, l.titre, l.devise, l.montant, 1]);
         nomExport = `liste-${mesure}`;
-        const retour = h("a", { class: "retour", href: adresse(section, { ...base }) }, tr("Retour à {section}", { section: tr(def.titre) }));
+        const retour = h("a", { class: "retour", href: adresse(section, { ...base }) }, tr("Retour à {section}", { section: tr(titreSection(def)) }));
         corps.append(retour, h("div", { class: "st-liste-tete" }, h("h2", { class: "st-titre" }, L.titre, L.filtre ? h("span", { class: "st-filtre" }, L.filtre) : null), h("p", { class: "st-liste-somme" }, h("strong", null, formatMontant(L.total.montant, devise)), h("span", null, ` · ${L.total.nombre === 1 ? tr("1 ligne") : tr("{n} lignes", { n: L.total.nombre })}`)), S.estFlux(mesure) && !def.futur ? h("p", { class: "aide" }, du === au ? formatDate(du) : tr("du {du} au {au}", { du: formatDate(du), au: formatDate(au) })) : h("p", { class: "aide" }, tr("à ce jour")), h("details", { class: "st-defs" }, h("summary", null, tr("Comment c'est calculé")), h("p", null, tr(S.DEFINITIONS[mesure][1])))), L.noeud);
       } else {
         const aucun = !faits.dossiers.length && !faits.paiements.length && !faits.reservations.length;
@@ -253,5 +260,5 @@ export function vueAnalyses(sectionArg) {
     const racine = document.querySelector(".st");
     if (racine) racine.style.setProperty("--st-haut", `${barreHaut ? Math.round(barreHaut.getBoundingClientRect().height) : 0}px`);
   });
-  return h("div", { class: `st${mesure ? " st-en-liste" : ""}`, "data-titre": tr("Statistiques"), "data-large": "1" }, h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Statistiques")), h("p", { class: "sous" }, `${entiteActive().nom} · ${tr(def.complet || def.titre)}`)), outilsDroite), nav, barre, periodeTexte, corps, outilsBas);
+  return h("div", { class: `st${mesure ? " st-en-liste" : ""}`, "data-titre": tr("Statistiques"), "data-large": "1" }, h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Statistiques")), h("p", { class: "sous" }, `${entiteActive().nom} · ${tr(def.complet || titreSection(def))}`)), outilsDroite), nav, barre, periodeTexte, corps, outilsBas);
 }

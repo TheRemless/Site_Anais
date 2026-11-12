@@ -5,7 +5,7 @@
 
 const PRENOMS = ["Emma", "Lucas", "Mia", "Noah", "Zoé", "Liam", "Inès", "Hugo", "Lina", "Tom", "Alba", "Finn", "Nora", "Max", "Elsa", "Jonas", "Clara", "Paul", "Ida", "Leo"];
 const NOMS = ["Bernard", "Keller", "Moreau", "Schmid", "Dubois", "Weber", "Laurent", "Fischer", "Roche", "Meier", "Girard", "Huber", "Blanc", "Frei", "Lopez", "Brunner", "Vogel", "Colin", "Berset", "Nguyen"];
-const HOTELS = ["Hotel Sunset", "Hotel Palm", "Bungalows Mer", "Resort Klong Dao", "Villa Lagon", "Guesthouse Vieux Port"];
+const HOTELS = ["Hotel Sunset", "Hotel Palm", "Sea Bungalows", "Resort Klong Dao", "Lagoon Villa", "Old Town Guesthouse"];
 
 // Générateur pseudo-aléatoire fixe (mulberry32).
 function hasard(graine) {
@@ -51,22 +51,23 @@ export function enrichirDemoStats(d, { ajd, ajouterJours, uid, contenu, nouvelle
     d.prestations.push(x);
     return x;
   };
-  const pKayak = prest(kayak, "activite", "Kayak mangroves, demi-journée", 900, "pp");
-  const pPlongee = prest(plongee, "activite", "Baptême de plongée", 2800, "pp");
+  // Noms de services en anglais, comme chez Secret : ce sont eux qui partent sur les factures et les vouchers.
+  const pKayak = prest(kayak, "activite", "Mangrove kayaking, half day", 900, "pp");
+  const pPlongee = prest(plongee, "activite", "Discover Scuba Diving", 2800, "pp");
   // Tarif « prix de base pour 1 ou 2 personnes, puis un supplément par personne en plus » (fictif) : base au groupe, supplément à la personne.
   const radeaux = partenaire("Radeaux démo", "Excursions", "Radeaux en bois, programmes privés");
-  const pRadeauxBase = prest(radeaux, "excursion", "Programme B : Pêche privée démo, Base 1-2 pers", 3500, "grp");
-  const pRadeauxSup = prest(radeaux, "excursion", "Programme B : Pêche privée démo, Personne supplémentaire", 1500, "sup");
-  pRadeauxBase.groupe = pRadeauxSup.groupe = "Radeaux privés démo";
+  const pRadeauxBase = prest(radeaux, "excursion", "Programme B: Private fishing demo, Base 1-2 pax", 3500, "grp");
+  const pRadeauxSup = prest(radeaux, "excursion", "Programme B: Private fishing demo, Extra person", 1500, "sup");
+  pRadeauxBase.groupe = pRadeauxSup.groupe = "Private rafts demo";
 
   // Catalogue de services : [prestation, prix unitaire, net unitaire, unité, taux de commission si payé sur place, durée avant le service]
   const byLib = (l) => d.prestations.find((p) => p.libelle.startsWith(l));
   const SERVICES = [
-    { p: byLib("4 îles en longtail, journée"), prix: 1200, net: 800, pers: true, poids: 5 },
-    { p: byLib("Koh Rok en longtail privé"), prix: 6500, net: 5000, pers: false, poids: 2 },
-    { p: byLib("Aéroport de Krabi"), prix: 2500, net: 2250, pers: false, poids: 4 },
-    { p: byLib("Coucher de soleil"), prix: 700, net: 500, pers: true, poids: 2 },
-    { p: byLib("Koh Lanta → Aéroport de Phuket"), prix: 4500, net: 4050, pers: false, poids: 1 },
+    { p: byLib("4 Islands by longtail, full day"), prix: 1200, net: 800, pers: true, poids: 5 },
+    { p: byLib("Koh Rok by private longtail"), prix: 6500, net: 5000, pers: false, poids: 2 },
+    { p: byLib("Krabi Airport"), prix: 2500, net: 2250, pers: false, poids: 4 },
+    { p: byLib("Sunset by longtail"), prix: 700, net: 500, pers: true, poids: 2 },
+    { p: byLib("Koh Lanta → Phuket Airport"), prix: 4500, net: 4050, pers: false, poids: 1 },
     { p: pKayak, prix: 900, net: null, pers: true, poids: 3, place: 0.15 },
     { p: pPlongee, prix: 2800, net: null, pers: true, poids: 2, place: 0.2 },
   ];
@@ -110,27 +111,19 @@ export function enrichirDemoStats(d, { ajd, ajouterJours, uid, contenu, nouvelle
     const pax = entre(1, 5);
     const responsable = choix([admin, admin, assistante, stagiaire]);
     const dossier = dossierDe(e2, c, `EX-${creeLe.slice(0, 4)}-${String(d.dossiers.filter((x) => x.entite_id === e2.id).length + 1).padStart(4, "0")}`, creeLe, responsable);
-    dossier.pays = choisis[0].p.famille === "transfert" ? "Transfert" : "Excursion";
-    // Un devis, accepté dans 74 % des cas ; les très récents restent ouverts, les anciens refusés sont marqués annulés.
-    const sort = rnd();
-    const accepte = age < 8 ? sort < 0.5 : sort < 0.78;
-    const annule = !accepte && age > 20 ? rnd() < 0.8 : age > 20 ? false : sort > 0.95;
+    dossier.pays = choisis[0].p.famille === "transfert" ? "Transfer" : "Excursion";
+    // Comme chez Secret : pas de devis, la facture part à la création du dossier, qui est accepté ce jour-là.
+    // Quelques dossiers sont annulés ensuite (le client renonce) : la facture reste, aucun paiement.
+    const annule = rnd() < 0.08;
     const lignes = choisis.map((s) => {
       const qte = s.pers ? pax : 1;
       const unite = euro ? Math.round(s.prix / 36) : s.prix;
       return { ...nouvelleLigne("ligne", { libelle: s.p.libelle, unite, qte }), paye_sur_place: !!s.place, _s: s };
     });
     const nettes = lignes.map(({ _s, ...l }) => l);
-    docDe(e2, dossier, "devis", creeLe, nettes, euro ? "EUR" : null);
-    if (accepte) {
-      const accLe = ajouterJours(creeLe, entre(0, 6));
-      dossier.accepte_le = accLe > ajd ? ajd : accLe;
-    }
-    dossier.annule = annule && !accepte ? true : accepte && rnd() < 0.06;
-    let facture = null;
-    if (dossier.accepte_le && !dossier.annule) {
-      facture = docDe(e2, dossier, "facture", dossier.accepte_le, nettes, euro ? "EUR" : null);
-    }
+    dossier.annule = annule;
+    const facture = docDe(e2, dossier, "facture", creeLe, nettes, euro ? "EUR" : null);
+    dossier.accepte_le = facture.date_emission;
     // Réservations auprès des partenaires.
     const serviceLe = ajouterJours(dossier.accepte_le || creeLe, entre(1, 18));
     lignes.forEach((l, k) => {
@@ -154,7 +147,7 @@ export function enrichirDemoStats(d, { ajd, ajouterJours, uid, contenu, nouvelle
       d.reservations_nets.push(n);
     });
     // Paiements : soldés pour 80 % des factures passées, acompte pour d'autres, rien pour quelques-unes (impayés).
-    if (facture) {
+    if (!annule) {
       const total = nettes.filter((l) => !l.paye_sur_place).reduce((s, l) => s + l.unite * l.qte, 0);
       const quand = ajouterJours(serviceLe, -entre(0, 3)) > ajd ? ajd : ajouterJours(serviceLe, -entre(0, 3));
       const t = rnd();
@@ -209,11 +202,10 @@ export function enrichirDemoStats(d, { ajd, ajouterJours, uid, contenu, nouvelle
   recents.forEach((x, k) => {
     const qui = [admin, assistante, stagiaire][k % 3];
     jr(-12 + k, "03:10", e2, qui, "dossiers", "insert", x.ref || "");
-    jr(-12 + k, "03:25", e2, qui, "documents", "insert", `devis ${x.ref || ""}`);
-    jr(-10 + k, "08:40", e2, assistante, "dossiers", "update", x.ref || "", { accepte_le: { avant: null, apres: j(-10 + k) } });
+    jr(-12 + k, "03:25", e2, qui, "documents", "insert", `facture ${x.ref || ""}`);
+    jr(-10 + k, "08:40", e2, assistante, "dossiers", "update", x.ref || "", { responsable_id: { avant: null, apres: assistante.user_id } });
     jr(-9 + k, "09:05", e2, admin, "paiements", "insert", `1'200 ${x.ref || ""}`);
   });
-  jr(-5, "04:00", e2, admin, "catalogue", "update", "Kayak mangroves, demi-journée", { prix_vente: { avant: 800, apres: 900 } });
   jr(-4, "05:30", e2, admin, "roles", "update", "Éditeur", { permissions: "modifié" });
   jr(-3, "02:15", e2, admin, "membres", "insert", "stagiaire@demo.test");
   jr(-2, "07:00", e2, admin, "reglages", "update", "");

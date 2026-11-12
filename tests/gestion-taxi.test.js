@@ -75,7 +75,10 @@ test("messages de Taxi : les deux textes de Jérémy mot pour mot, messages à M
   assert.ok(!MESSAGES_TAXI.some((m) => m.langue === "fr"), "pas de français pour Taxi");
   assert.equal(new Set(MESSAGES_TAXI.map((m) => m.id)).size, MESSAGES_TAXI.length);
   assert.deepEqual(messagesDefautPour({ fonctionnement: "taxi" }).map((m) => m.id), [...MESSAGES_TAXI.map((m) => m.id), "reponse-en"], "plus la réponse à une demande");
-  assert.equal(messagesDefautPour({ fonctionnement: "excursions" }), MESSAGES_DEFAUT);
+  // Secret écrit à ses clients en anglais seulement : aucun modèle français par défaut. ZTP garde les modèles généraux.
+  assert.deepEqual(messagesDefautPour({ fonctionnement: "excursions" }), MESSAGES_DEFAUT.filter((m) => m.langue !== "fr"));
+  assert.ok(!messagesDefautPour({ fonctionnement: "excursions" }).some((m) => m.langue === "fr"));
+  assert.equal(messagesDefautPour({ fonctionnement: "sur_mesure" }), MESSAGES_DEFAUT);
 });
 
 test("prix interne d'une course : il suit la date, le prix et le paiement au chauffeur, sans toucher au reste", async () => {

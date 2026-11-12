@@ -31,3 +31,24 @@ test("analyserLocal : facturé, encaissé, impayés et conversion sur une pério
   assert.deepEqual(r.pipeline, [{ devise: "CHF", montant: 500, nombre: 1 }]);
   assert.deepEqual(r.activite, { dossiers: 1, clients: 1 });
 });
+
+test("statistiques : chaque entreprise ses sections et son résumé du mois", async () => {
+  const { SECTIONS, sectionVisible } = await import("../src/gestion/js/views/analyses-sections.mjs");
+  const { resumeMois } = await import("../src/gestion/js/analyses-resume.mjs");
+  const visibles = (m) => Object.keys(SECTIONS).filter((k) => sectionVisible(SECTIONS[k], { reservations: true, ...m }));
+  assert.deepEqual(visibles({}), ["apercu", "ventes", "encaissements", "commissions", "clients", "services", "avenir", "devis"]);
+  assert.deepEqual(visibles({ reservations: false }), ["apercu", "ventes", "encaissements", "commissions", "clients", "avenir", "devis"], "ZTP sans réservations garde « À venir » pour les départs");
+  assert.deepEqual(visibles({ excursions: true }), ["apercu", "ventes", "encaissements", "commissions", "clients", "services", "avenir"], "Secret : pas de devis");
+  assert.deepEqual(visibles({ excursions: true, taxi: true }), ["apercu", "ventes", "commissions", "clients", "services", "avenir"], "Taxi : ni devis ni encaissements");
+  const faits = { nets: false, devise_defaut: "THB", dossiers: [], paiements: [], reservations: [] };
+  const base = { faits, jour: "2026-11-11", devise: "THB", entite: "X" };
+  const ztp = resumeMois(base);
+  assert.match(ztp, /Devis en attente/);
+  assert.match(ztp, /Encaissé chez nous/);
+  const secret = resumeMois({ ...base, excursions: true });
+  assert.ok(!secret.includes("Devis"), secret);
+  assert.match(secret, /Reste à encaisser/);
+  const taxi = resumeMois({ ...base, excursions: true, taxi: true });
+  assert.ok(!taxi.includes("Devis") && !taxi.includes("Encaissé chez nous") && !taxi.includes("Reste à encaisser"), taxi);
+  assert.match(taxi, /Volume vendu/);
+});

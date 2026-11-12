@@ -229,11 +229,21 @@ test("faits pour la réponse : prix de vente seulement, clés permises", () => {
   assert.equal(verifierFaits({ ...f, services: [] }).ok, false);
 });
 
-test("langue de la réponse : Secret toujours en anglais", () => {
-  assert.equal(langueReponse({ libelles: { facture: "INVOICE" } }, "fr"), "en");
-  assert.equal(langueReponse({ libelles: { facture: "FACTURE" } }, "en"), "en");
-  assert.equal(langueReponse({ libelles: { facture: "FACTURE" } }, "fr"), "fr");
+test("langue de la réponse : Secret et Taxi toujours en anglais, d'après le mode", () => {
+  assert.equal(langueReponse({ fonctionnement: "excursions", libelles: { facture: "FACTURE" } }, "fr"), "en", "Secret : anglais même si le libellé de facture est français");
+  assert.equal(langueReponse({ fonctionnement: "taxi" }, "fr"), "en");
+  assert.equal(langueReponse({ fonctionnement: "sur_mesure", libelles: { facture: "INVOICE" } }, "fr"), "fr", "ZTP : la langue du client");
+  assert.equal(langueReponse({ fonctionnement: "sur_mesure" }, "en"), "en");
   assert.equal(langueReponse({}, ""), "fr");
+});
+
+test("prompt de rédaction : Taxi signe du nom de l'entreprise, jamais Anaïs", () => {
+  const f = verifierFaits({ entreprise: "VIP TAXI LANTA", prenom: "Tom", devise: "THB", total: 1500, services: [{ libelle: "Krabi Airport → Koh Lanta", date: "2026-11-20", adultes: 2, prix: 1500 }] }).faits;
+  const p = promptRedaction({ faits: f, langue: "en" });
+  assert.match(p.system[0].text, /Have a nice day, VIP TAXI LANTA/);
+  assert.doesNotMatch(p.system[0].text, /Anaïs"/);
+  const s = promptRedaction({ faits: { ...f, entreprise: "Secret Travel & Tour" }, langue: "en" });
+  assert.match(s.system[0].text, /Have a lovely day, Anaïs/, "Secret garde la voix d'Anaïs");
 });
 
 test("prompt de rédaction : faits dans le message, voix et exemples en cache", () => {

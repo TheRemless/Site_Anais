@@ -1,6 +1,7 @@
 // À encaisser : ce que les clients doivent encore à l'agence, et les commissions que les prestataires reversent après les services payés sur place.
+// Chaque entreprise ne voit que ce qui la concerne : Zwald les clients seulement, Secret les deux, Taxi les commissions seulement (le client paie toujours le chauffeur).
 // Le geste central est le rapprochement : « Rattana m'a viré 5 400 ce mois-ci » se saisit une fois pour le partenaire et le mois.
-import { etat, peut, naviguer, nomPartenaire, nomClient, netReservation, enregistrerLie, dossiersAnnules, resumes, reglages } from "../etat.mjs";
+import { etat, peut, naviguer, nomPartenaire, nomClient, netReservation, enregistrerLie, dossiersAnnules, resumes, reglages, modeExcursions, modeTaxi } from "../etat.mjs";
 import { h, modal, confirmer, toast, num } from "../ui.mjs";
 import { aujourdhui, formatMontant, formatSommes, formatDate } from "../calc.mjs";
 import { commissionsARecevoir, repartirReception, nomMoisCourt } from "../operations-calc.mjs";
@@ -12,8 +13,8 @@ import { tr, N_, pluriel } from "../i18n.mjs";
 const signe = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + prix(Math.abs(n));
 
 export function vueEncaisser() {
-  const voitClients = peut("finances.voir");
-  const voitCommissions = voitNets();
+  const voitClients = peut("finances.voir") && !modeTaxi();
+  const voitCommissions = voitNets() && modeExcursions();
   if (!voitClients && !voitCommissions) return h("div", { "data-titre": tr("À encaisser") }, h("div", { class: "entete" }, h("h1", null, tr("À encaisser"))), vide(tr("Accès réservé"), tr("Cet écran demande le droit de voir les montants.")));
   const rafraichir = () => naviguer(location.hash);
   const ecrit = peut("dossiers.ecrire");
@@ -144,14 +145,14 @@ export function vueEncaisser() {
   return h(
     "div",
     { "data-titre": tr("À encaisser"), "data-large": true },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("À encaisser")), h("p", { class: "sous" }, tr("Ce que les clients doivent encore à l'agence, et les commissions que les prestataires reversent après les services payés sur place.")))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("À encaisser")), h("p", { class: "sous" }, modeTaxi() ? tr("Les commissions que le chauffeur reverse après les courses : le client le paie toujours directement.") : modeExcursions() ? tr("Ce que les clients doivent encore à l'agence, et les commissions que les prestataires reversent après les services payés sur place.") : tr("Ce que les clients doivent encore à l'agence.")))),
     h(
       "div",
       { class: "chiffres compacts" },
       voitClients ? chiffre(tr("Clients"), formatSommes(dus.map((r) => ({ montant: r.reste, devise: r.devise })), devise), pluriel(dus.length, N_("dossier à régler"), N_("dossiers à régler"))) : null,
       voitCommissions ? chiffre(tr("Commissions"), prix(totalCom), pluriel(aRecevoir.length, N_("partenaire à rapprocher"), N_("partenaires à rapprocher"))) : null
     ),
-    rienADire ? vide(tr("Rien à encaisser"), tr("Les clients ont tout payé et aucune commission n'est en attente.")) : null,
+    rienADire ? vide(tr("Rien à encaisser"), modeTaxi() ? tr("Aucune commission n'est en attente.") : modeExcursions() ? tr("Les clients ont tout payé et aucune commission n'est en attente.") : tr("Les clients ont tout payé.")) : null,
     dus.length ? h("section", null, h("h2", null, tr("Les clients doivent")), listeClients()) : null,
     aRecevoir.length
       ? h("section", { class: "commissions-recevoir" }, h("h2", null, tr("Commissions des prestataires")), h("p", { class: "aide" }, tr("Services payés sur place : le prestataire reverse une commission après la prestation. Un virement reçu se saisit une fois pour le partenaire et le mois.")), ecrit ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirRecalculCommissions(null, rafraichir) }, tr("Recalculer les commissions"))) : null, listeCommissions(aRecevoir, false))

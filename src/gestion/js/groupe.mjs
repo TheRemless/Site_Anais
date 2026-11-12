@@ -52,33 +52,45 @@ export const evolution = (actuel, precedent) => (precedent > 0 ? Math.round(((ac
 
 const nombre = (lignes) => (lignes || []).reduce((t, x) => t + Number(x.nombre || 0), 0);
 
+// Ce qui a un sens selon le fonctionnement de l'entreprise (reglages.fonctionnement). Les devis n'existent qu'en sur mesure (ZTP).
+// En taxi, le prix de la course vit sur un document interne de type « facture » jamais envoyé : ce n'est pas une facture client,
+// il ne compte ni dans le facturé, ni dans les impayés, ni dans la facture moyenne.
+export const avecDevis = (mode) => (mode || "sur_mesure") === "sur_mesure";
+export const avecFactures = (mode) => mode !== "taxi";
+
 // Chiffres d'une entreprise sur la période, convertis dans la devise de consolidation.
-export function syntheseEntite({ entite, donnees, precedent, cible, taux }) {
+export function syntheseEntite({ entite, donnees, precedent, cible, taux, mode }) {
   const somme = (l) => sommeConvertie(l, cible, taux);
-  const facture = somme(donnees.facture_par_mois);
+  const devis = avecDevis(mode);
+  const factures = avecFactures(mode);
+  const facture = somme(factures ? donnees.facture_par_mois : []);
   const encaisse = somme(donnees.encaisse_par_mois);
-  const impayes = somme(donnees.impayes);
-  const pipeline = somme(donnees.pipeline);
-  const nbFactures = nombre(donnees.facture_par_mois);
-  const prec = precedent ? { facture: somme(precedent.facture_par_mois).montant, encaisse: somme(precedent.encaisse_par_mois).montant } : null;
+  const impayes = somme(factures ? donnees.impayes : []);
+  const pipeline = somme(devis ? donnees.pipeline : []);
+  const nbFactures = factures ? nombre(donnees.facture_par_mois) : 0;
+  const prec = precedent ? { facture: factures ? somme(precedent.facture_par_mois).montant : 0, encaisse: somme(precedent.encaisse_par_mois).montant } : null;
   const activite = donnees.activite || {};
+  const d = devis ? donnees.devis || {} : {};
   return {
     entite,
+    mode: mode || "sur_mesure",
+    avecDevis: devis,
+    avecFactures: factures,
     facture: facture.montant,
     encaisse: encaisse.montant,
     impayes: impayes.montant,
     pipeline: pipeline.montant,
     nbFactures,
-    nbImpayes: nombre(donnees.impayes),
-    nbPipeline: nombre(donnees.pipeline),
+    nbImpayes: factures ? nombre(donnees.impayes) : 0,
+    nbPipeline: devis ? nombre(donnees.pipeline) : 0,
     panierMoyen: nbFactures ? arrondi(facture.montant / nbFactures) : null,
-    devisEmis: Number(donnees.devis.emis) || 0,
-    devisAcceptes: Number(donnees.devis.acceptes) || 0,
-    tauxAcceptation: donnees.devis.emis ? Math.round((donnees.devis.acceptes / donnees.devis.emis) * 100) : null,
-    delaiMoyen: donnees.devis.delai_moyen_jours ?? null,
+    devisEmis: Number(d.emis) || 0,
+    devisAcceptes: Number(d.acceptes) || 0,
+    tauxAcceptation: d.emis ? Math.round((d.acceptes / d.emis) * 100) : null,
+    delaiMoyen: d.delai_moyen_jours ?? null,
     dossiers: Number(activite.dossiers) || 0,
     clients: Number(activite.clients) || 0,
-    evolFacture: prec ? evolution(facture.montant, prec.facture) : null,
+    evolFacture: prec && factures ? evolution(facture.montant, prec.facture) : null,
     evolEncaisse: prec ? evolution(encaisse.montant, prec.encaisse) : null,
     precedent: prec,
     manquantes: [...new Set([...facture.manquantes, ...encaisse.manquantes, ...impayes.manquantes, ...pipeline.manquantes])],
@@ -100,19 +112,23 @@ export function consolider(syntheses) {
   }
   for (const k of ["facture", "encaisse", "impayes", "pipeline", "precFacture", "precEncaisse"]) tot[k] = arrondi(tot[k]);
   tot.manquantes = [...manquantes];
+  tot.avecDevis = syntheses.some((s) => s.avecDevis !== false);
+  tot.avecFactures = syntheses.some((s) => s.avecFactures !== false);
   tot.tauxAcceptation = tot.devisEmis ? Math.round((tot.devisAcceptes / tot.devisEmis) * 100) : null;
   tot.panierMoyen = tot.nbFactures ? arrondi(tot.facture / tot.nbFactures) : null;
   tot.evolFacture = tot.avecPrecedent ? evolution(tot.facture, tot.precFacture) : null;
   tot.evolEncaisse = tot.avecPrecedent ? evolution(tot.encaisse, tot.precEncaisse) : null;
-  tot.parts = syntheses.map((s) => ({ entite: s.entite, part: tot.facture > 0 ? Math.round((s.facture / tot.facture) * 100) : null }));
+  tot.parts = syntheses.map((s) => ({ entite: s.entite, part: s.avecFactures !== false && tot.facture > 0 ? Math.round((s.facture / tot.facture) * 100) : null }));
   return tot;
 }
 
 // Séries mensuelles par société, converties : [{ entite, valeurs: { "2026-10": 1234 } }]. Les montants sans taux sont ignorés.
+// Le facturé d'une entreprise en taxi reste vide (documents internes, pas de facture client).
 export function seriesMensuelles(parEntite, cle, cible, taux) {
-  return parEntite.map(({ entite, donnees }) => {
+  return parEntite.map(({ entite, donnees, mode }) => {
     const valeurs = {};
-    for (const x of donnees[cle] || []) {
+    const sansObjet = cle === "facture_par_mois" && !avecFactures(mode);
+    for (const x of sansObjet ? [] : donnees[cle] || []) {
       const v = convertir(x.montant, x.devise, cible, taux);
       if (v !== null) valeurs[x.mois] = arrondi((valeurs[x.mois] || 0) + v);
     }

@@ -1,5 +1,5 @@
 // Partenaires : la liste, la fiche d'un partenaire (contact, tarifs, règles, contrat, banque, tâches) et les formulaires.
-import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie, modeTaxi } from "../etat.mjs";
+import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie, modeTaxi, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
 import { TYPES_COMMISSION, SUR_PLACE, CHEZ_NOUS, modeParDefaut } from "../operations-calc.mjs";
@@ -19,6 +19,9 @@ export const GROUPES = [
 
 export const prix = (n) => (n === null || n === undefined || n === "" ? "—" : formatMontant(n));
 export const voitNets = () => peut("partenaires.nets");
+// Nets et marges des tarifs : jamais en Taxi, où le chauffeur n'est pas payé par l'agence et aucun tarif n'a de net.
+// `voitNets` reste le droit seul : il ouvre aussi les commissions de Taxi (À encaisser, Commission calculée).
+const voitNetsTarifs = () => voitNets() && !modeTaxi();
 
 // Marge affichée : montant puis pourcentage. Rouge quand nulle ou négative, orange sous 12 %.
 export function margeNoeud(vente, net) {
@@ -105,7 +108,7 @@ export function listePartenaires() {
                   h("span", { class: "carte-titre" }, p.nom),
                   h("span", { class: "carte-droite" }, tel ? h("span", null, tel.numero) : null),
                   h("span", { class: "carte-sous" }, p.role || p.categorie),
-                  h("span", { class: "carte-pied" }, etatContrat(p), h("span", { class: "ref" }, [n ? `${n} tarif${n > 1 ? "s" : ""}` : "", t ? `${t} trajet${t > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ")))
+                  h("span", { class: "carte-pied" }, modeTaxi() ? h("span") : etatContrat(p), h("span", { class: "ref" }, [n ? `${n} tarif${n > 1 ? "s" : ""}` : "", t ? `${t} trajet${t > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ")))
                 )
               );
             })
@@ -157,7 +160,7 @@ export function fichePartenaire(id) {
       "div",
       { class: "entete" },
       h("div", null, h("h1", null, p.nom), h("p", { class: "sous" }, [p.role, p.categorie].filter(Boolean).join(" · "), p.nom_thai ? h("span", { class: "sous-ligne", lang: "th" }, p.nom_thai) : null)),
-      h("div", { class: "entete-actions" }, etatContrat(p), ecrit ? h("button", { class: "secondaire", type: "button", onclick: () => { const fermer = modal(tr("Modifier le partenaire"), formulairePartenaire(p, () => (fermer(), rafraichir())), { large: true }); } }, tr("Modifier")) : null)
+      h("div", { class: "entete-actions" }, modeTaxi() ? null : etatContrat(p), ecrit ? h("button", { class: "secondaire", type: "button", onclick: () => { const fermer = modal(tr("Modifier le partenaire"), formulairePartenaire(p, () => (fermer(), rafraichir())), { large: true }); } }, tr("Modifier")) : null)
     ),
     p.actif === false ? h("div", { class: "bandeau-info" }, tr("Ce partenaire est marqué comme inactif : il n'apparaît plus dans les listes ni dans les devis.")) : null,
     h(
@@ -174,13 +177,13 @@ export function fichePartenaire(id) {
           ligne(N_("Line"), c.line),
           c.web ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, tr("Site")), h("a", { href: /^https?:/.test(c.web) ? c.web : `https://${c.web}`, target: "_blank", rel: "noopener" }, c.web)) : null,
           ligne(N_("Adresse"), c.adresse),
-          ligne(N_("Embarcadère"), c.embarcadere),
+          modeTaxi() ? null : ligne(N_("Embarcadère"), c.embarcadere),
           ligne(N_("Licence"), c.licence),
           (c.guichets || []).length
             ? h("div", { class: "guichets" }, h("h3", null, tr("Guichets et bureaux")), (c.guichets || []).map((g) => h("div", { class: "guichet" }, h("strong", null, g.lieu), g.adresse ? h("span", null, g.adresse) : null, (g.telephones || []).length ? h("span", { class: "tels" }, (g.telephones || []).map((n) => telephone({ numero: n }))) : null, g.line ? h("span", null, tr("Line : {line}", { line: g.line })) : null, g.email ? h("a", { href: `mailto:${g.email}` }, g.email) : null)))
             : null
         ),
-        bloc(
+        modeTaxi() ? null : bloc(
           N_("Contrat"),
           ligne(N_("Statut"), ct.statut),
           ligne(N_("Saison"), ct.saison),
@@ -189,7 +192,8 @@ export function fichePartenaire(id) {
           (ct.documents || []).length ? h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, tr("Documents")), h("span", null, (ct.documents || []).join(", "))) : null,
           (ct.evenements || []).length ? h("ul", { class: "liste-regles" }, (ct.evenements || []).map((e) => h("li", null, h("strong", null, e.date), ` ${e.libelle}`))) : null
         ),
-        prive || (ecrit && voitNets())
+        // Taxi : l'agence ne paie jamais le chauffeur, ni banque ni mode de paiement à tenir.
+        !modeTaxi() && (prive || (ecrit && voitNets()))
           ? bloc(
               N_("Paiement et coordonnées bancaires"),
               h("p", { class: "aide" }, tr("Visible seulement avec le droit « prix nets ». Ne figure jamais sur un document client.")),
@@ -205,8 +209,8 @@ export function fichePartenaire(id) {
         bloc(
           N_("Règles"),
           r.annulation ? h("div", null, h("h3", null, tr("Annulation")), paragraphes(r.annulation)) : null,
-          h("div", null, h("h3", null, tr("Règlement par les clients")), h("p", null, modeParDefaut(p) === SUR_PLACE ? tr("Sur place : le client paie le prestataire, qui reverse une commission.") : tr("Chez nous : le client règle l'agence, qui paie le prestataire."))),
-          paiementPartenaire(p, prive, voitNets()) ? h("div", null, h("h3", null, tr("Paiement")), paragraphes(paiementPartenaire(p, prive, voitNets()))) : null,
+          h("div", null, h("h3", null, tr("Règlement par les clients")), h("p", null, modeTaxi() ? tr("Sur place : le client paie le chauffeur. La commission se demande course par course.") : modeParDefaut(p) === SUR_PLACE ? tr("Sur place : le client paie le prestataire, qui reverse une commission.") : tr("Chez nous : le client règle l'agence, qui paie le prestataire."))),
+          !modeTaxi() && paiementPartenaire(p, prive, voitNets()) ? h("div", null, h("h3", null, tr("Paiement")), paragraphes(paiementPartenaire(p, prive, voitNets()))) : null,
           r.enfants && r.enfants.length ? h("div", null, h("h3", null, tr("Enfants")), liste(r.enfants)) : null,
           voitNets() && prive && prive.commission_regle && TYPES_COMMISSION[prive.commission_regle.type] ? h("div", null, h("h3", null, tr("Commission calculée")), h("p", null, prive.commission_regle.type === "vente_moins_net" ? tr(TYPES_COMMISSION.vente_moins_net) : `${tr(TYPES_COMMISSION[prive.commission_regle.type])} : ${prive.commission_regle.valeur}`), peut("dossiers.ecrire") ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirRecalculCommissions(p.id, () => naviguer(location.hash)) }, tr("Recalculer sur les réservations existantes")) : null) : null,
           commissionsPartenaire(p, prive, voitNets()).length ? h("div", null, h("h3", null, tr("Commission et marge")), liste(commissionsPartenaire(p, prive, voitNets()))) : null,
@@ -270,7 +274,7 @@ async function nouvelleTache(p, apres) {
 // ---- Tableau de prestations (fiche, écran Tarifs) ---------------------------------------------------------------
 // Tableau sur grand écran, cartes sur téléphone. Les colonnes net et marge n'existent qu'avec le droit.
 export function tableauPrestations(lignes, { avecPartenaire = true, apres = () => {} } = {}) {
-  const nets = voitNets();
+  const nets = voitNetsTarifs();
   const ecrit = peut("partenaires.ecrire");
   const detail = (x) => {
     const d = x.details || {};
@@ -360,6 +364,7 @@ export function formulairePartenaire(p, apres) {
   const notes = h("textarea", { id: "p-notes", rows: 3 });
   notes.value = p.notes || "";
   const actif = h("input", { id: "p-actif", type: "checkbox", checked: p.actif !== false });
+  const taxi = modeTaxi();
   return h(
     "form",
     {
@@ -392,12 +397,13 @@ export function formulairePartenaire(p, apres) {
     h("h3", null, tr("Contact")),
     h("div", { class: "grille-form" }, champ(tr("Personne"), personne), champ(tr("E-mails, séparés par des virgules"), emails), champ(tr("Line"), line), champ(tr("Site"), web)),
     champ(tr("Téléphones, un par ligne"), tels, tr("Numéro, puis libellé, puis « whatsapp », séparés par des barres verticales.")),
-    h("div", { class: "grille-form" }, champ(tr("Adresse"), adresse), champ(tr("Embarcadère ou point de départ"), embarcadere), champ(tr("Licence"), licence)),
+    // Taxi : ni embarcadère, ni check-in, ni contrat. Les champs masqués gardent leur valeur et s'enregistrent tels quels.
+    h("div", { class: "grille-form" }, champ(tr("Adresse"), adresse), taxi ? null : champ(tr("Embarcadère ou point de départ"), embarcadere), champ(tr("Licence"), licence)),
     h("h3", null, tr("Règles")),
     champ(tr("Règlement par les clients"), mode, tr("Les nouveaux services de ce partenaire prennent ce mode. Chaque service peut ensuite être changé d'un tap.")),
-    h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Enfants, une règle par ligne"), enfants), champ(tr("Check-in, une règle par ligne"), checkin)),
-    h("h3", null, tr("Contrat")),
-    h("div", { class: "grille-form" }, champ(tr("Statut"), statut), champ(tr("Saison"), saison), champ(tr("Fin du contrat"), fin, tr("Un rappel apparaît dans Aujourd'hui trente jours avant.")), champ(tr("Documents, séparés par des virgules"), documents)),
+    h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Enfants, une règle par ligne"), enfants), taxi ? null : champ(tr("Check-in, une règle par ligne"), checkin)),
+    taxi ? null : h("h3", null, tr("Contrat")),
+    taxi ? null : h("div", { class: "grille-form" }, champ(tr("Statut"), statut), champ(tr("Saison"), saison), champ(tr("Fin du contrat"), fin, tr("Un rappel apparaît dans Aujourd'hui trente jours avant.")), champ(tr("Documents, séparés par des virgules"), documents)),
     champ(tr("Notes"), notes),
     h("label", { class: "case", for: "p-actif" }, actif, tr("Partenaire actif")),
     h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
@@ -406,7 +412,8 @@ export function formulairePartenaire(p, apres) {
 
 export function formulairePrestation(x, apres) {
   const d = x.details || {};
-  const nets = voitNets();
+  const taxi = modeTaxi();
+  const nets = voitNetsTarifs();
   const n = x.id && nets ? netPrestation(x) : null;
   const partenaire = h("select", { id: "x-part" }, h("option", { value: "" }, tr("Sans partenaire (frais de parc, divers)")), etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
   partenaire.value = x.partenaire_id || "";
@@ -415,7 +422,7 @@ export function formulairePrestation(x, apres) {
   const groupe = h("input", { id: "x-groupe", value: x.groupe || "", list: "x-groupes", placeholder: tr("Excursions en groupe, Minivan privé…") });
   const groupes = h("datalist", { id: "x-groupes" }, [...new Set(etat.db.prestations.map((p) => p.groupe).filter(Boolean))].map((g) => h("option", { value: g })));
   const libelle = h("input", { id: "x-lib", value: x.libelle || "", required: true });
-  const libelleEn = h("input", { id: "x-lib-en", value: x.libelle_en || "", placeholder: tr("Pour les devis en anglais") });
+  const libelleEn = h("input", { id: "x-lib-en", value: x.libelle_en || "", placeholder: taxi ? tr("Pour les vouchers") : modeExcursions() ? tr("Pour les factures et les vouchers") : tr("Pour les devis en anglais") });
   const prixVente = h("input", { id: "x-prix", type: "number", step: "1", min: "0", value: x.prix_vente ?? "", inputmode: "numeric" });
   const unite = h("select", { id: "x-unite" }, Object.keys(UNITES).map((k) => h("option", { value: k }, k ? libelleUnite(k) : tr("sans unité"))));
   unite.value = x.unite || "pp";
@@ -456,8 +463,9 @@ export function formulairePrestation(x, apres) {
     champ(tr("Inclus"), inclus),
     champ(tr("Conditions"), conditions),
     champ(tr("Remarque interne"), note),
-    h("label", { class: "case", for: "x-place" }, surPlace, tr("À payer sur place par le client (frais de parc), hors total du devis")),
-    h("label", { class: "case", for: "x-actif" }, actif, tr("Proposé dans les devis et les listes")),
+    // Taxi : pas de frais de parc. La case masquée garde sa valeur.
+    taxi ? null : h("label", { class: "case", for: "x-place" }, surPlace, modeExcursions() ? tr("À payer sur place par le client (frais de parc), hors total de la facture") : tr("À payer sur place par le client (frais de parc), hors total du devis")),
+    h("label", { class: "case", for: "x-actif" }, actif, taxi ? tr("Proposé dans les vouchers et les listes") : modeExcursions() ? tr("Proposé dans les factures, les vouchers et les listes") : tr("Proposé dans les devis et les listes")),
     h("div", { class: "actions" }, x.id && peut("partenaires.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(tr("Supprimer « {libelle} » ? Les devis déjà créés ne changent pas.", { libelle: x.libelle }), tr("Supprimer"), true)) { await supprimer("prestations", x.id); toast(tr("Prestation supprimée.")); apres(null); } } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );
 }

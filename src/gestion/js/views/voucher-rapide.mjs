@@ -5,7 +5,7 @@ import { etat, inserer, modifier, reglages, chargerDossier } from "../etat.mjs";
 import { h, icone } from "../ui.mjs";
 import { uid } from "../defauts.mjs";
 import { TH, CHAMPS, valeursVides, erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, reservationApercu, correctionReservation, valeursDepuis, suggestionsLieux, mesVouchers, dateCourteTh } from "../voucher-rapide-calc.mjs";
-import { contenuCourse, heureBooking } from "../taxi-calc.mjs";
+import { contenuCourse, heureBooking, estTaxi } from "../taxi-calc.mjs";
 import { numeroVoucher, nomFichierVoucher, lienWhatsApp } from "../operations-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
 import { creerDossierExcursions, refProposee, refDefinitive } from "./creation-excursions.mjs";
@@ -205,7 +205,7 @@ export function vueVoucherRapide() {
     const liste = vouchersDuDossier(dossierId);
     const v = (reservationId && liste.find((y) => y.reservation.id === reservationId)) || liste[liste.length - 1] || { reservation: null, index: 1 };
     const client = etat.db.clients.find((c) => c.id === d.client_id) || {};
-    return { ...v, dossier: d, client, nomFichier: nomFichierVoucher(numeroVoucher(d.ref || "", v.index), client.nom || client.prenom || "") };
+    return { ...v, dossier: d, client, nomFichier: nomFichierVoucher(numeroVoucher(d.ref || "", v.index), client.nom || client.prenom || "", { taxi: estTaxi(reglages()) }) };
   };
 
   // ---- 3. Envoi à Anaïs -------------------------------------------------------------------------------------------

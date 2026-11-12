@@ -155,7 +155,7 @@ export function imprimerTousLesVouchers(dossierId) {
   const liste = vouchersDuDossier(dossierId);
   const d = etat.db.dossiers.find((y) => y.id === dossierId) || {};
   if (!liste.length) return;
-  imprimer(h("div", { class: "vouchers" }, liste.map(renderVoucher)), `Vouchers ${d.ref || ""}`);
+  imprimer(h("div", { class: "vouchers" }, liste.map(renderVoucher)), `${estTaxi(reglages()) ? "Booking confirmations" : "Vouchers"} ${d.ref || ""}`);
 }
 
 // Voucher d'exemple pour l'aperçu des réglages : il suit les champs en cours de modification.

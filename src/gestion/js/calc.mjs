@@ -244,9 +244,11 @@ export function nouvelleRef({ numerotation, prenom, nom, dateIso, pays, refsExis
   return base;
 }
 
+// Un document en anglais (Secret, Taxi) donne un PDF « Invoice » ou « Quote », pas « Facture » ni « Devis ».
 export function nomFichier(type, doc, dossier, client) {
   const nom = sansAccents(client && client.nom).split(/\s+/)[0] || "client";
-  const t = type === "facture_locale" ? "Facture locale" : type === "facture" ? "Facture" : "Devis";
+  const en = !!(doc && doc.contenu && doc.contenu.langue === "en");
+  const t = type === "facture_locale" ? "Facture locale" : type === "facture" ? (en ? "Invoice" : "Facture") : en ? "Quote" : "Devis";
   return `${t} ${dossier.ref} - ${nom}`;
 }
 

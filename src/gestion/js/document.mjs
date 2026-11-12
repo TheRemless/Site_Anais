@@ -116,13 +116,17 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu, nom
   if (!toutSurPlace && (complet ? paiementLignes.length : lb.pied_court)) colonnes.push(h("div", { class: "pied-col" }, h("h4", null, lb.infos_paiement), complet ? paiementLignes.map((l) => h("p", null, inline(l))) : h("p", { class: "italique" }, lb.pied_court)));
   if (avecQr) colonnes.push(h("div", { class: "pied-col wise" }, lb.qr_titre ? h("h4", null, lb.qr_titre) : null, h("div", { class: "qr-ligne" }, h("img", { src: mode.qr_image, alt: "QR code" }), mode.qr_pseudo ? h("span", { class: "pseudo" }, mode.qr_pseudo) : null)));
 
-  const phraseDesCgv = phraseCgv(lb, { estFacture, en, cgvUrl: reglages.conditions.cgv_url });
+  // Une facture sans lien vers des CGV (Secret, Taxi) n'imprime pas de phrase qui renvoie à des conditions absentes. ZTP a son lien : rien ne change.
+  const cgvUrl = (reglages.conditions.cgv_url || "").trim();
+  const phraseDesCgv = estFacture && !cgvUrl ? "" : phraseCgv(lb, { estFacture, en, cgvUrl });
   const cgvTexte = c.cgv === false || !phraseDesCgv ? null : h("div", { class: "cgv" }, markup(phraseDesCgv, vars));
 
   const centre = ap.entete === "centre";
   const refTexte = `${estFacture ? lb.ref_facture : lb.ref_devis} ${numero}`;
   const dateTexte = `${lb.date_emission} ${formatDate(doc.date_emission)}`;
-  const nomClient = client ? [client.civilite, [client.prenom, client.nom].filter(Boolean).join(" "), ...lignes(client.adresse)].filter(Boolean) : [];
+  // Secret et Taxi n'ont pas de civilité : une valeur laissée par l'ancien formulaire (« Madame » par défaut) ne s'imprime pas sur leurs documents.
+  const sansCivilite = reglages.fonctionnement === "excursions" || reglages.fonctionnement === "taxi";
+  const nomClient = client ? [sansCivilite ? "" : client.civilite, [client.prenom, client.nom].filter(Boolean).join(" "), ...lignes(client.adresse)].filter(Boolean) : [];
 
   return h(
     "div",

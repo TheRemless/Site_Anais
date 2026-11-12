@@ -1,6 +1,7 @@
 // Administration : entreprises et accès des utilisateurs. Réservée à l'administratrice générale.
 import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer } from "../etat.mjs";
-import { PERMISSIONS, DEPENDANCES } from "../defauts.mjs";
+import { DEPENDANCES, completerReglages } from "../defauts.mjs";
+import { droitsProposes } from "../droits.mjs";
 import { h, champ, modal, toast, slug, confirmer } from "../ui.mjs";
 import { vide, plierSections } from "./commun.mjs";
 import { tr, N_ } from "../i18n.mjs";
@@ -10,8 +11,20 @@ const PORTEES = [
   ["mes_dossiers", N_("Seulement les dossiers dont la personne est responsable ou qu'elle a créés")],
 ];
 
+// Fonctionnement d'une entreprise (sur_mesure, excursions, taxi) d'après ses réglages, même quand ce n'est pas l'entreprise ouverte.
+const fonctionnementDe = (entite) => completerReglages((etat.brut.reglages || {})[entite.id]).fonctionnement;
+
+// La description du rôle « Éditeur » créé avec l'entreprise parle de devis : chaque entreprise lit la sienne.
+const DESCRIPTION_EDITEUR = {
+  excursions: N_("Clients, dossiers, factures, vouchers et paiements. Ni réglages ni suppression."),
+  taxi: N_("Clients, dossiers et vouchers. Ni réglages ni suppression."),
+};
+const descriptionAffichee = (entite, r) => (r.systeme && r.nom === "Éditeur" && DESCRIPTION_EDITEUR[fonctionnementDe(entite)] ? tr(DESCRIPTION_EDITEUR[fonctionnementDe(entite)]) : descriptionRole(r));
+
 // Éditeur d'un rôle : nom, portée et une case à cocher par droit, avec leurs dépendances.
+// Seuls les droits qui servent dans l'entreprise du rôle sont proposés ; un droit déjà posé et masqué reste dans « choisis » et s'enregistre tel quel.
 function roleModal(entite, role, apres) {
+  const proposes = droitsProposes(fonctionnementDe(entite));
   const nouveau = !role.id;
   const verrou = role.systeme && role.nom === "Administrateur";
   const nom = h("input", { id: "rl-nom", value: role.nom || "", required: true, disabled: role.systeme });
@@ -31,13 +44,13 @@ function roleModal(entite, role, apres) {
     }
     majCases();
   };
-  const groupes = [...new Set(PERMISSIONS.map((p) => p.groupe))];
+  const groupes = [...new Set(proposes.map((p) => p.groupe))];
   const blocs = groupes.map((g) =>
     h(
       "fieldset",
       null,
       h("legend", null, tr(g)),
-      PERMISSIONS.filter((p) => p.groupe === g).map((p) => {
+      proposes.filter((p) => p.groupe === g).map((p) => {
         const c = h("input", { type: "checkbox", id: `perm-${p.code}`, disabled: verrou, onchange: (e) => basculer(p.code, e.target.checked) });
         cases.set(p.code, c);
         return h("div", null, h("label", { class: "case", for: `perm-${p.code}` }, c, tr(p.libelle)), p.aide ? h("p", { class: "aide decale" }, tr(p.aide)) : null);
@@ -222,6 +235,7 @@ export function vueAdmin() {
       ...entites.map((e) => {
         const roles = etat.brut.roles.filter((r) => r.entite_id === e.id).sort((a, b) => (b.systeme - a.systeme) || a.nom.localeCompare(b.nom));
         const usage = (r) => etat.brut.membres.filter((m) => m.role_id === r.id).length;
+        const proposes = droitsProposes(fonctionnementDe(e));
         return h(
           "div",
           { class: "bloc-roles" },
@@ -237,15 +251,15 @@ export function vueAdmin() {
                 h(
                   "tr",
                   null,
-                  h("td", { "data-label": tr("Rôle") }, h("strong", null, nomRole(r)), r.description ? h("span", { class: "sous-ligne" }, descriptionRole(r)) : null),
+                  h("td", { "data-label": tr("Rôle") }, h("strong", null, nomRole(r)), r.description ? h("span", { class: "sous-ligne" }, descriptionAffichee(e, r)) : null),
                   h("td", { "data-label": tr("Dossiers visibles") }, r.portee === "toute" ? tr("Tous") : tr("Ses dossiers")),
-                  h("td", { "data-label": tr("Droits") }, tr("{n} sur {n2}", { n: r.permissions.length, n2: PERMISSIONS.length })),
+                  h("td", { "data-label": tr("Droits") }, tr("{n} sur {n2}", { n: r.permissions.filter((c) => proposes.some((p) => p.code === c)).length, n2: proposes.length })),
                   h("td", { "data-label": tr("Personnes") }, usage(r)),
                   h(
                     "td",
                     { class: "action-cellule" },
                     h("button", { class: "secondaire petit", type: "button", onclick: () => roleModal(e, r, rafraichir) }, tr("Modifier")),
-                    h("button", { class: "secondaire petit", type: "button", onclick: () => roleModal(e, { nom: tr("{nom} (copie)", { nom: nomRole(r) }), description: descriptionRole(r), portee: r.portee, permissions: r.permissions }, rafraichir) }, tr("Dupliquer")),
+                    h("button", { class: "secondaire petit", type: "button", onclick: () => roleModal(e, { nom: tr("{nom} (copie)", { nom: nomRole(r) }), description: descriptionAffichee(e, r), portee: r.portee, permissions: r.permissions }, rafraichir) }, tr("Dupliquer")),
                     r.systeme || usage(r) ? null : h("button", { class: "lien danger-texte", type: "button", onclick: async () => { if (await confirmer(tr("Supprimer le rôle « {nom} » ?", { nom: nomRole(r) }), tr("Supprimer"), true)) { await supprimer("roles", r.id); rafraichir(); } } }, tr("Supprimer"))
                   )
                 )

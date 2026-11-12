@@ -26,7 +26,8 @@ const ONGLETS_TAXI = [
   ["annules", N_("Annulés"), (r) => r.statut === "annule"],
   ["tous", N_("Tous"), () => true],
 ];
-const ongletsActifs = () => (modeTaxi() ? ONGLETS_TAXI : ONGLETS);
+// Secret (excursions sans taxi) n'a ni devis ni dossier classé sans suite : ces deux onglets n'y existent pas.
+const ongletsActifs = () => (modeTaxi() ? ONGLETS_TAXI : modeExcursions() ? ONGLETS.filter(([cle]) => cle !== "attente" && cle !== "sans_suite") : ONGLETS);
 
 const TRIS = [
   ["recents", N_("Plus récents")],
@@ -82,6 +83,8 @@ export function listeDossiers() {
       h("button", { class: "lien", type: "button", onclick: () => (selection.clear(), majBarre(), dessiner()) }, tr("Tout désélectionner"))
     );
   };
+  const excursions = modeExcursions();
+  const taxi = modeTaxi();
   let limite = PAGE;
   function dessiner() {
     // Une recherche porte sur tous les dossiers : un dossier soldé ou annulé ne doit pas devenir introuvable parce qu'un autre onglet est ouvert.
@@ -92,7 +95,8 @@ export function listeDossiers() {
     const q = sansAccents(filtre.q);
     const lignes = resumes()
       .filter((r) => (q ? true : garde(r)))
-      .filter((r) => !q || sansAccents(`${nomClient(r.client)} ${r.dossier.ref} ${r.dossier.pays}`).includes(q))
+      // En excursions et en taxi, la recherche lit aussi les services du dossier (intitulé et réservations) à la place du pays.
+      .filter((r) => !q || sansAccents(`${nomClient(r.client)} ${r.dossier.ref} ${r.dossier.pays || ""} ${excursions ? `${r.dossier.bandeau || ""} ${etat.db.reservations.filter((x) => x.dossier_id === r.dossier.id).map((x) => x.libelle).join(" ")}` : ""}`).includes(q))
       .sort(COMPARE[filtre.tri]);
     vider(corps);
     corps.append(...(q && filtre.onglet !== "tous" ? [h("p", { class: "aide", role: "status" }, tr("La recherche porte sur tous les dossiers, quel que soit l'onglet."))] : []));
@@ -100,7 +104,7 @@ export function listeDossiers() {
       corps.append(
         etat.db.dossiers.length
           ? vide(tr("Aucun dossier ne correspond"), tr("Essayez un autre onglet ou effacez la recherche."))
-          : vide(tr("Aucun dossier pour l'instant"), tr("Un dossier regroupe le client, le voyage, le devis, la facture et les paiements."), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Créer le premier dossier")) : null)
+          : vide(tr("Aucun dossier pour l'instant"), taxi ? tr("Un dossier regroupe le client, la course et sa Booking confirmation.") : excursions ? tr("Un dossier regroupe le client, ses services, la facture et les paiements.") : tr("Un dossier regroupe le client, le voyage, le devis, la facture et les paiements."), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: "#/dossiers/nouveau" }, tr("Créer le premier dossier")) : null)
       );
       return;
     }
@@ -148,7 +152,7 @@ export function listeDossiers() {
   const majUrl = () => history.replaceState(null, "", `#/dossiers?onglet=${filtre.onglet}&tri=${filtre.tri}`);
   // Recherche collante, onglets en puces défilantes, tri dans la feuille « Filtrer » (à plat sur ordinateur).
   const filtres = barreFiltres({
-    recherche: { valeur: filtre.q, placeholder: tr("Nom du client, référence, pays"), libelle: tr("Rechercher") },
+    recherche: { valeur: filtre.q, placeholder: taxi ? tr("Nom du client, référence, trajet") : excursions ? tr("Nom du client, référence, service") : tr("Nom du client, référence, pays"), libelle: tr("Rechercher") },
     puces: { options: ongletsActifs().map(([cle, libelle]) => ({ valeur: cle, libelle: tr(libelle) })), valeur: filtre.onglet, libelle: tr("Dossiers") },
     filtres: [{ cle: "tri", libelle: tr("Trier par"), type: "select", neutre: "recents", valeur: filtre.tri, options: TRIS.map(([k, l]) => ({ valeur: k, libelle: tr(l) })) }],
     onchange: (v) => {
