@@ -11,7 +11,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync, execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { exporter, verifier, chiffrer, dechiffrer, serialiser, deserialiser, nomSauvegarde, dateDuNom, retention } from "./sauvegarde-lib.mjs";
+import { exporter, verifier, chiffrer, dechiffrer, serialiser, deserialiser, nomSauvegarde, dateDuNom, retention, lignesDeLaReponse } from "./sauvegarde-lib.mjs";
 
 const jourLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const heureLocale = (d) => `${jourLocal(d)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
@@ -139,9 +139,7 @@ export function requeteSupabase({ ref, bin = process.env.SUPABASE_BIN || "/opt/h
       const sortie = r.stdout || "";
       const debut = sortie.indexOf("{");
       if (r.status !== 0 || debut < 0) throw new Error(`supabase db query a échoué (code ${r.status}) : ${(r.stderr || sortie).replace(/\s+/g, " ").slice(0, 300)}`);
-      const j = JSON.parse(sortie.slice(debut, sortie.lastIndexOf("}") + 1));
-      if (!Array.isArray(j.rows)) throw new Error("réponse inattendue de supabase db query");
-      return j.rows;
+      return lignesDeLaReponse(sortie);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

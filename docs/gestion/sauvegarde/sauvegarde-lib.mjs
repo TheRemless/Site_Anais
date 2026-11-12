@@ -132,3 +132,31 @@ export function sqlDeRestauration(sauvegarde) {
   sortie.push("commit;", "");
   return sortie.join("\n");
 }
+
+// Réponse de `supabase db query -o json` : la CLI peut écrire plusieurs objets JSON à la suite (un en-tête « target », un avertissement,
+// la réponse avec `rows`), ou du texte autour. On découpe chaque objet de premier niveau en suivant les chaînes et les échappements,
+// on rend les lignes du premier objet qui a `rows`, et on remonte le message d'un objet d'erreur s'il n'y en a aucun.
+export function lignesDeLaReponse(sortie) {
+  const objets = [];
+  let profondeur = 0, debut = -1, enChaine = false, echappe = false;
+  for (let i = 0; i < sortie.length; i++) {
+    const c = sortie[i];
+    if (enChaine) {
+      if (echappe) echappe = false;
+      else if (c === "\\") echappe = true;
+      else if (c === '"') enChaine = false;
+      continue;
+    }
+    if (c === '"' && profondeur > 0) enChaine = true;
+    else if (c === "{") { if (profondeur === 0) debut = i; profondeur++; }
+    else if (c === "}" && profondeur > 0) {
+      profondeur--;
+      if (profondeur === 0) { try { objets.push(JSON.parse(sortie.slice(debut, i + 1))); } catch { /* texte entre accolades : ignoré */ } }
+    }
+  }
+  const reponse = objets.find((o) => o && Array.isArray(o.rows));
+  if (reponse) return reponse.rows;
+  const erreur = objets.find((o) => o && (o._tag === "Error" || o.error));
+  throw new Error(erreur ? `supabase db query : ${(erreur.error && erreur.error.message) || JSON.stringify(erreur).slice(0, 300)}` : "réponse inattendue de supabase db query");
+}
+
