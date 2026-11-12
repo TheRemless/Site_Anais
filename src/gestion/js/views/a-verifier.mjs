@@ -25,7 +25,7 @@ export const peutVerifier = () => Object.entries(droitsVerification()).some(([k,
 
 export function vueAVerifier() {
   if (!peutVerifier()) return vide(tr("Accès réservé"), tr("Cet écran est réservé aux rôles qui peuvent corriger les fiches."), h("a", { class: "bouton secondaire", href: "#/" }, tr("Retour au tableau de bord")));
-  const controles = aVerifier(etat.db, { droits: droitsVerification(), aujourdhui: aujourdhui() });
+  const controles = aVerifier(etat.db, { droits: droitsVerification(), aujourdhui: aujourdhui(), tr });
   const total = controles.reduce((s, c) => s + c.elements.length, 0);
   return h(
     "div",

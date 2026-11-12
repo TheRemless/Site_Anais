@@ -3,6 +3,16 @@
 import { createClient } from "../vendor/supabase.mjs";
 import { tr } from "./i18n.mjs";
 import { separerNets, fusionnerNets } from "./nets-documents.mjs";
+import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
+
+// La copie de la feuille du jour gardée sur ce téléphone ne survit pas à une déconnexion.
+const effacerCopieHorsLigne = () => {
+  try {
+    localStorage.removeItem(CLE_HORS_LIGNE);
+  } catch {
+    // stockage indisponible : rien à effacer
+  }
+};
 
 // Ordre d'import imposé par les clés étrangères.
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
@@ -33,7 +43,8 @@ const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise
 // Le catalogue (partenaires, tarifs, trajets et leurs nets) pèse l'essentiel de la lecture et ne change presque jamais : à la synchronisation de chaque minute on ne le relit
 // que s'il a changé (nombre de lignes, ou dernière modification des tables qui en ont une), ou au plus tard après un quart d'heure (les nets n'ont pas de date de modification).
 const CATALOGUE = ["partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets"];
-const AVEC_DATE = ["partenaires", "prestations", "trajets"];
+// Seules ces deux tables ont une colonne `updated_at` (vérifié sur la base) : les trajets et les tables de nets ne se comptent que.
+const AVEC_DATE = ["partenaires", "prestations"];
 const CATALOGUE_AGE_MAX = 15 * 60 * 1000;
 
 export function creer(config, { client, maintenant = () => Date.now() } = {}) {
@@ -131,11 +142,17 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return error ? null : data;
     },
     // Se déconnecter ferme cet appareil seulement (par défaut la bibliothèque ferme TOUTES les sessions : se déconnecter sur l'ordinateur coupait aussi l'iPhone).
+    // La synchronisation a écarté le résultat de la dernière lecture (une écriture a eu lieu pendant la lecture) : le catalogue lu n'est pas installé, on le relira.
+    annulerDerniereLecture() {
+      catalogueAChange = true;
+    },
     async deconnecter() {
+      effacerCopieHorsLigne();
       verifie(await sb.auth.signOut({ scope: "local" }).then(({ error }) => ({ data: null, error })));
     },
     // « Déconnecter tous mes appareils » : un geste à part, pour un téléphone perdu ou un compte utilisé sur un appareil prêté.
     async deconnecterPartout() {
+      effacerCopieHorsLigne();
       // signOut ne lève pas d'exception sur une erreur réseau : il renvoie `error`. On la lève, sinon le bouton ferait croire que les appareils sont fermés.
       verifie(await sb.auth.signOut({ scope: "global" }).then(({ error }) => ({ data: null, error })));
     },
@@ -146,10 +163,14 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       let relire = !reutilisable || catalogueAChange || maintenant() - catalogueLuA > CATALOGUE_AGE_MAX;
       let nouvelle = empreinte;
       // Marqueur lu avant le catalogue : un changement survenu pendant la lecture sera vu à la synchronisation suivante.
-      if (!relire) {
+      // Un marqueur illisible (coupure, droit retiré) ne fait pas échouer la synchronisation : on relit simplement le catalogue.
+      try {
         nouvelle = await empreinteCatalogue();
-        relire = nouvelle !== empreinte;
-      } else nouvelle = await empreinteCatalogue().catch(() => null);
+        relire = relire || nouvelle !== empreinte;
+      } catch {
+        nouvelle = null;
+        relire = true;
+      }
       const tables = ["entites", "profils", "roles", "membres", ...CHARGEES.filter((t) => relire || !CATALOGUE.includes(t))];
       // Toutes les lectures partent ensemble (elles étaient faites l'une après l'autre).
       const [lues, resumeLignes, taches, reglagesLignes] = await Promise.all([

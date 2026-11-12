@@ -10,7 +10,7 @@ function faux() {
   tables.partenaires = [{ id: "p1", nom: "A", updated_at: "2026-11-01T00:00:00Z" }];
   tables.prestations = [{ id: "s1", libelle: "X", updated_at: "2026-11-01T00:00:00Z" }, { id: "s2", libelle: "Y", updated_at: "2026-11-02T00:00:00Z" }];
   tables.prestations_nets = [{ id: "n1", prestation_id: "s1", net: 10 }];
-  tables.trajets = [{ id: "t1", updated_at: "2026-11-01T00:00:00Z" }];
+  tables.trajets = [{ id: "t1" }];
   tables.trajets_nets = [];
   tables.partenaires_prives = [];
   tables.clients = [{ id: "c1", nom: "Client" }];
@@ -32,6 +32,7 @@ function faux() {
       const t = tables[nom] || [];
       if (e.op !== "select") { lectures.push({ table: nom, genre: e.op }); return { data: e.op === "insert" ? { id: "nouveau", ...e.p } : [], error: null }; }
       if (e.head) { lectures.push({ table: nom, genre: "comptage" }); return { data: null, count: t.length, error: null }; }
+      if (e.colonnes === "updated_at" && !t.every((r) => "updated_at" in r)) { lectures.push({ table: nom, genre: "erreur" }); return { data: null, error: { code: "42703", message: `column ${nom}.updated_at does not exist` } }; }
       if (e.colonnes === "updated_at") { lectures.push({ table: nom, genre: "dernier" }); const tri = [...t].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))); return { data: tri.slice(0, e.limite || 1).map((r) => ({ updated_at: r.updated_at })), error: null }; }
       lectures.push({ table: nom, genre: "complete" });
       return { data: structuredClone(t), error: null };
@@ -123,4 +124,37 @@ test("synchronisation : sans copie précédente (première ouverture) ou avec un
   const lent = { ...sb, from: (nom) => { const q = from(nom); const then = q.then; q.then = (ok, ko) => { enVol++; pic = Math.max(pic, enVol); return new Promise((r) => setTimeout(r, 5)).then(() => then.call(q, ok, ko)).finally(() => enVol--).then(ok, ko); }; return q; } };
   await creer({}, { client: lent }).charger();
   assert.ok(pic >= 8, `au moins 8 lectures en même temps (${pic})`);
+});
+
+test("synchronisation : une table sans updated_at (trajets) ne fait jamais échouer la synchronisation ; une erreur de marqueur force la relecture", async () => {
+  const sb = faux();
+  let t = Date.parse("2026-11-12T10:00:00Z");
+  const store = creer({}, { client: sb, maintenant: () => t });
+  let brut = await store.charger();
+  for (let i = 0; i < 3; i++) {
+    t += 60000;
+    brut = await store.charger({ ancien: brut });
+  }
+  assert.equal(completes(sb, "prestations"), 1, "le catalogue reste en mémoire d'une minute à l'autre");
+  assert.ok(!sb.lectures.some((l) => l.table === "trajets" && l.genre === "dernier"), "pas de lecture de updated_at sur trajets");
+  // Marqueur illisible (coupure, droit retiré) : on relit tout au lieu d'échouer.
+  const cassee = { ...sb, from: (nom) => { const q = sb.from(nom); const then = q.then; q.then = (ok, ko) => then.call(q, (r) => ok(r), ko); return nom === "prestations" ? { ...q, select: (c, o) => (o && o.head ? { then: (ok) => ok({ error: { message: "Failed to fetch" } }) } : q.select(c, o)) } : q; } };
+  const store2 = creer({}, { client: cassee, maintenant: () => t });
+  const b2 = await store2.charger();
+  t += 60000;
+  await assert.doesNotReject(store2.charger({ ancien: b2 }));
+});
+
+test("synchronisation : si le résultat d'une lecture est écarté (écriture pendant la lecture), le catalogue sera relu à la suivante", async () => {
+  const sb = faux();
+  let t = Date.parse("2026-11-12T10:00:00Z");
+  const store = creer({}, { client: sb, maintenant: () => t });
+  const brut = await store.charger();
+  sb.tables.prestations.push({ id: "s3", libelle: "Z", updated_at: "2026-11-12T10:00:30Z" });
+  t += 60000;
+  await store.charger({ ancien: brut }); // lu, mais la synchronisation l'écarte (retour « ignore »)
+  store.annulerDerniereLecture();
+  t += 60000;
+  const apres = await store.charger({ ancien: brut });
+  assert.equal(apres.prestations.length, 3, "le changement d'un autre n'est pas perdu parce qu'une lecture a été écartée");
 });

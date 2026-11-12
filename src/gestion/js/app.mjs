@@ -707,5 +707,9 @@ init()
   .then(installerTirer)
   .catch((err) => {
     console.error(err);
+    // Réseau absent et copie de la feuille du jour sur ce téléphone : on l'affiche en lecture seule au lieu de l'écran d'erreur.
+    try {
+      if (localStorage.getItem("gestion-feuille-hors-ligne") && (navigator.onLine === false || /failed to fetch|networkerror|load failed|network/i.test(String(err && err.message)))) return void location.replace("hors-ligne.html");
+    } catch {}
     vider(racine).append(h("div", { class: "vide" }, h("h1", null, tr("Connexion à la base impossible")), h("p", null, err.message), h("button", { class: "principal", onclick: () => location.reload() }, tr("Réessayer"))));
   });

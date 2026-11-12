@@ -1,7 +1,8 @@
 // État partagé : le magasin de données, la copie en mémoire des tables et l'entreprise active.
 // `brut` contient tout ce que la base laisse voir à la personne connectée, `db` seulement l'entreprise active.
 import { creerStore } from "./store.mjs";
-import { resume, setDevise, setMasquerMontants } from "./calc.mjs";
+import { resume, setDevise, setMasquerMontants, aujourdhui } from "./calc.mjs";
+import { construireCopie, CLE_HORS_LIGNE } from "./feuille-hors-ligne-calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
 import { entreprisesVisibles } from "./groupe.mjs";
@@ -32,6 +33,18 @@ export async function init() {
   }
 }
 
+// Copie de la feuille d'aujourd'hui et de demain (sans montant, net ni commission) gardée sur ce téléphone pour être lue sans réseau (hors-ligne.html). Remplacée à chaque
+// chargement et à chaque synchronisation, effacée à la déconnexion (store-supabase.mjs) et jamais lue après 48 h. Le stockage refusé ou plein n'empêche rien.
+function copierPourHorsLigne() {
+  if (etat.store.mode !== "supabase" || !etat.session || !etat.brut) return;
+  try {
+    const entites = entitesAccessibles().filter((e) => permissionsDans(contexte(), e.id).includes("dossiers.lire"));
+    localStorage.setItem(CLE_HORS_LIGNE, JSON.stringify(construireCopie({ brut: etat.brut, entites, utilisateur: etat.session.id, aujourdhui: aujourdhui() })));
+  } catch {
+    // stockage refusé ou plein : l'outil fonctionne comme avant
+  }
+}
+
 export async function recharger() {
   etat.brut = await etat.store.charger();
   etat.moi = etat.brut.profils.find((p) => p.user_id === etat.session.id) || { user_id: etat.session.id, email: etat.session.email, super_admin: false, actif: true };
@@ -46,6 +59,7 @@ export async function recharger() {
   const ids = entitesAccessibles().map((e) => e.id);
   etat.entiteId = ids.includes(choisi) ? choisi : ids[0] || null;
   rebatir();
+  copierPourHorsLigne();
   signature = signer(etat.brut);
   modificationsVues = modifications;
 }
@@ -87,7 +101,11 @@ export async function synchroniser() {
   try {
     const avant = modifications;
     const neuf = await etat.store.charger({ ancien: etat.brut });
-    if (avant !== modifications || ecritures) return "ignore";
+    if (avant !== modifications || ecritures) {
+      // Le catalogue lu n'est pas installé : le store doit le relire à la prochaine synchronisation.
+      if (etat.store.annulerDerniereLecture) etat.store.annulerDerniereLecture();
+      return "ignore";
+    }
     const nouvelle = signer(neuf);
     if (nouvelle === signature) return "inchange";
     const miennes = modificationsVues !== modifications;
@@ -105,6 +123,7 @@ export async function synchroniser() {
     const ids = entitesAccessibles().map((e) => e.id);
     if (!ids.includes(etat.entiteId)) etat.entiteId = ids[0] || null;
     rebatir();
+    copierPourHorsLigne();
     return miennes ? "propre" : "modifie";
   } finally {
     enCours = false;

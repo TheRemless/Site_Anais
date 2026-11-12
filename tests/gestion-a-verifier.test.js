@@ -15,6 +15,17 @@ test("heures et durées écrites à la main : formats courants, null quand on ne
   assert.equal(minutesDepuisDuree("2 heures"), 120);
   assert.equal(minutesDepuisDuree("1 hour"), 60);
   assert.equal(minutesDepuisDuree("variable"), null);
+  // Cas relevés par la revue : décimales, sommes, fourchettes, AM/PM.
+  assert.equal(minutesDepuisDuree("1.5 h"), 90);
+  assert.equal(minutesDepuisDuree("1,5 heures"), 90);
+  assert.equal(minutesDepuisDuree("1h+1h"), 120);
+  assert.equal(minutesDepuisDuree("2h30 + 1h"), 210);
+  assert.equal(minutesDepuisDuree("2 heures (1h+1h)"), 120, "le total d'abord, pas la somme des parties en plus");
+  assert.equal(minutesDepuisDuree("1h-1h30"), null, "fourchette : ambiguë");
+  assert.equal(minutesDepuisDuree("3 à 4 heures"), null);
+  assert.equal(minutesDepuisDuree("45 mn"), 45);
+  assert.equal(minutesDepuisHeure("2:30 PM"), 14 * 60 + 30);
+  assert.equal(minutesDepuisHeure("12:00 AM"), 0);
 });
 
 test("durée d'un trajet : écart avec arrivée moins départ, minuit compris, null si une donnée manque", () => {
@@ -107,4 +118,10 @@ test("à vérifier : sans le droit « nets » le contrôle des nets n'existe pas
 test("à vérifier : une base vide ou incomplète ne plante pas", () => {
   assert.deepEqual(aVerifier({}, { droits: tous, aujourdhui: "2026-11-12" }), []);
   assert.doesNotThrow(() => aVerifier({ partenaires: [{ id: "p" }], prestations: [{ id: "s", actif: true }], trajets: [{ id: "t" }], reservations: [{ id: "r", statut: "demande" }] }, { droits: tous, aujourdhui: "2026-11-12" }));
+});
+
+test("à vérifier : les petites phrases composées passent par la traduction fournie", () => {
+  const l = aVerifier(db(), { droits: tous, aujourdhui: "2026-11-12", tr: (texte, vars = {}) => `EN:${String(texte).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "")}` });
+  assert.match(par(l, "trajets_duree")[0].detail, /EN:durée écrite « 1 h » \(écart 120 min\)/);
+  assert.match(par(l, "reservations_passees")[1].detail, /EN:demandée/);
 });

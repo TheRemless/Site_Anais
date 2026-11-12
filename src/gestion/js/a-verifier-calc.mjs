@@ -5,25 +5,37 @@
 const sansAccents = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const vide = (v) => v === null || v === undefined || v === "" || Number(v) <= 0;
 
-// Heure « 10:30 », « 10h30 », « 10.30 » → minutes depuis minuit, ou null.
+// Heure « 10:30 », « 10h30 », « 10.30 », « 2:30 PM » → minutes depuis minuit, ou null.
 export function minutesDepuisHeure(texte) {
-  const m = /(\d{1,2})\s*[:h.]\s*(\d{2})?/.exec(String(texte || ""));
+  const t = String(texte || "");
+  const m = /(\d{1,2})\s*[:h.]\s*(\d{2})?/.exec(t);
   if (!m) return null;
-  const h = Number(m[1]);
+  let h = Number(m[1]);
   const mi = Number(m[2] || 0);
+  if (/pm/i.test(t) && h < 12) h += 12;
+  if (/am/i.test(t) && h === 12) h = 0;
   return h > 23 || mi > 59 ? null : h * 60 + mi;
 }
 
-// Durée écrite à la main (« 3 h », « 1h30 », « 2 heures (1h+1h) », « Environ 3h00 », « 45 min », « 1 hour ») → minutes, ou null quand on ne la comprend pas.
+// Durée écrite à la main → minutes, ou null quand on ne la comprend pas ou qu'elle est ambiguë :
+// « 3 h », « 1h30 », « 1,5 h », « Environ 3h00 », « 45 min », « 2 heures (1h+1h) » (le total d'abord), « 1h+1h » (somme), mais pas « 1h-1h30 » ni « 3 à 4 heures » (fourchettes).
 export function minutesDepuisDuree(texte) {
-  const t = String(texte || "").toLowerCase();
-  let m = /(\d+)\s*h(?:eures?|ours?)?\s*(\d{1,2})?(?!\w*\s*\+)/.exec(t);
-  if (m && /\d\s*h/.test(m[0])) return Number(m[1]) * 60 + Number(m[2] || 0);
-  m = /(\d+)\s*(?:heures?|hours?)/.exec(t);
-  if (m) return Number(m[1]) * 60;
-  m = /(\d+)\s*min/.exec(t);
-  if (m) return Number(m[1]);
-  return null;
+  const brut = String(texte || "").toLowerCase();
+  if (/\d\s*(?:h|min|mn)?\s*(?:-|–|à|to)\s*\d/.test(brut.replace(/\(.*?\)/g, ""))) return null;
+  const un = (t) => {
+    let m = /(\d+)\s*h(?:eures?|ours?)?\s*(\d{1,2})(?!\d)/.exec(t);
+    if (m) return Number(m[1]) * 60 + Number(m[2]);
+    m = /(\d+(?:[.,]\d+)?)\s*(?:h|heures?|hours?)(?![a-z])/.exec(t);
+    if (m) return Math.round(Number(m[1].replace(",", ".")) * 60);
+    m = /(\d+)\s*(?:min|mn)/.exec(t);
+    return m ? Number(m[1]) : null;
+  };
+  const sansParentheses = brut.replace(/\(.*?\)/g, " ");
+  const somme = (t) => {
+    const parties = t.split("+").map(un);
+    return parties.length && parties.every((x) => x !== null) ? parties.reduce((s, x) => s + x, 0) : null;
+  };
+  return somme(sansParentheses) ?? somme((/\((.*?)\)/.exec(brut) || [])[1] || "");
 }
 
 // Écart entre la durée affichée et « arrivée moins départ » (passage de minuit compris), en minutes ; null si une des trois données manque.
@@ -42,7 +54,10 @@ const prixDansTexte = (details) => Object.values(details || {}).some((v) => type
 
 const telephonesDe = (p) => ((p && p.contact && p.contact.telephones) || []).filter((t) => String(t.numero || "").replace(/\D/g, "").length >= 6);
 
-export function aVerifier(db, { droits = {}, aujourdhui = "" } = {}) {
+// `tr` : la traduction de l'interface (par défaut, le texte tel quel) pour les petites phrases composées ici.
+const traduireParDefaut = (texte, vars = {}) => String(texte).replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ""));
+
+export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDefaut } = {}) {
   const sorties = [];
   const ajouter = (cle, droit, aRelire, elements) => elements.length && sorties.push({ cle, droit, aRelire, elements });
   const partenaires = db.partenaires || [];
@@ -72,15 +87,15 @@ export function aVerifier(db, { droits = {}, aujourdhui = "" } = {}) {
   const lienP = (p) => ({ id: p.id, lien: `#/partenaire/${p.id}`, texte: p.nom, detail: p.role || p.categorie || "" });
   ajouter("partenaires_sans_telephone", "partenaires", false, actifs.filter((p) => !telephonesDe(p).length).map(lienP));
   ajouter("partenaires_sans_whatsapp", "partenaires", false, actifs.filter((p) => telephonesDe(p).length && !telephonesDe(p).some((t) => t.whatsapp)).map(lienP));
-  ajouter("trajets_duree", "partenaires", true, trajets.map((t) => ({ t, e: ecartDuree(t) })).filter((x) => x.e !== null && x.e > 20).map(({ t, e }) => ({ id: t.id, lien: `#/trajets?de=${encodeURIComponent(t.de)}&vers=${encodeURIComponent(t.vers)}`, texte: `${t.de} → ${t.vers}`, detail: `${t.depart || "?"} → ${t.arrivee || "?"}, durée écrite « ${t.duree} » (écart ${e} min)` })));
+  ajouter("trajets_duree", "partenaires", true, trajets.map((t) => ({ t, e: ecartDuree(t) })).filter((x) => x.e !== null && x.e > 20).map(({ t, e }) => ({ id: t.id, lien: `#/trajets?de=${encodeURIComponent(t.de)}&vers=${encodeURIComponent(t.vers)}`, texte: `${t.de} → ${t.vers}`, detail: `${t.depart || "?"} → ${t.arrivee || "?"}, ${tr("durée écrite « {duree} » (écart {ecart} min)", { duree: t.duree, ecart: e })}` })));
 
   // Réservations, clients, dossiers
   const annules = new Set((db.dossiers || []).filter((d) => d.annule).map((d) => d.id));
   const clientDuDossier = new Map((db.dossiers || []).map((d) => [d.id, (db.clients || []).find((c) => c.id === d.client_id)]));
   const nomClient = (c) => (c ? [c.prenom, c.nom].filter(Boolean).join(" ") : "");
-  ajouter("reservations_passees", "dossiers", false, (db.reservations || []).filter((r) => aujourdhui && r.date_service && r.date_service < aujourdhui && (r.statut === "a_demander" || r.statut === "demande") && !annules.has(r.dossier_id)).map((r) => ({ id: r.id, lien: `#/dossier/${r.dossier_id}`, texte: r.libelle, detail: [nomClient(clientDuDossier.get(r.dossier_id)), r.date_service, r.statut === "demande" ? "demandée" : "à demander"].filter(Boolean).join(" · ") })));
-  ajouter("clients_sans_contact", "clients", false, (db.clients || []).filter((c) => !String(c.telephone || "").replace(/\D/g, "") && !String(c.email || "").trim()).map((c) => ({ id: c.id, lien: `#/client/${c.id}`, texte: nomClient(c) || "(sans nom)", detail: "" })));
-  ajouter("dossiers_sans_responsable", "dossiers", false, (db.dossiers || []).filter((d) => !d.responsable_id && !d.annule).map((d) => ({ id: d.id, lien: `#/dossier/${d.id}`, texte: d.ref || "(sans référence)", detail: nomClient((db.clients || []).find((c) => c.id === d.client_id)) })));
+  ajouter("reservations_passees", "dossiers", false, (db.reservations || []).filter((r) => aujourdhui && r.date_service && r.date_service < aujourdhui && (r.statut === "a_demander" || r.statut === "demande") && !annules.has(r.dossier_id)).map((r) => ({ id: r.id, lien: `#/dossier/${r.dossier_id}`, texte: r.libelle, detail: [nomClient(clientDuDossier.get(r.dossier_id)), r.date_service, r.statut === "demande" ? tr("demandée") : tr("à demander")].filter(Boolean).join(" · ") })));
+  ajouter("clients_sans_contact", "clients", false, (db.clients || []).filter((c) => !String(c.telephone || "").replace(/\D/g, "") && !String(c.email || "").trim()).map((c) => ({ id: c.id, lien: `#/client/${c.id}`, texte: nomClient(c) || tr("(sans nom)"), detail: "" })));
+  ajouter("dossiers_sans_responsable", "dossiers", false, (db.dossiers || []).filter((d) => !d.responsable_id && !d.annule).map((d) => ({ id: d.id, lien: `#/dossier/${d.id}`, texte: d.ref || tr("(sans référence)"), detail: nomClient((db.clients || []).find((c) => c.id === d.client_id)) })));
 
   const droitsOk = { partenaires: !!droits.partenaires, dossiers: !!droits.dossiers, clients: !!droits.clients };
   return sorties.filter((s) => droitsOk[s.droit]);

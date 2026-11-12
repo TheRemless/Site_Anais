@@ -54,10 +54,13 @@ test("manifeste : les raccourcis restent dans le périmètre de l'outil et ont l
   }
 });
 
-test("service worker : ni cache ni interception des requêtes (l'outil se charge toujours depuis le réseau)", () => {
+test("service worker : l'application n'est jamais mise en cache (seule la page hors connexion l'est), réseau d'abord", () => {
   const sw = fs.readFileSync(path.join(dossier, "sw.js"), "utf8").replace(/\/\/.*$/gm, "");
-  assert.doesNotMatch(sw, /\bcaches\b/);
-  assert.doesNotMatch(sw, /addEventListener\(\s*["']fetch["']/);
+  // Un seul cache, rempli seulement par la liste fixe des fichiers de la page hors connexion, jamais par une réponse réseau.
+  assert.equal((sw.match(/caches\.open/g) || []).length, 1);
+  assert.doesNotMatch(sw, /\.put\(/);
+  assert.match(sw, /respondWith\(fetch\(req\)\.catch/, "réseau d'abord : le cache ne sert que si la requête échoue");
+  for (const f of ["js/app.mjs", "js/etat.mjs", "index.html", "css/app.css"]) assert.ok(!sw.includes(`"${f}"`), `${f} n'est pas mis en cache`);
 });
 
 test("modulepreload : chaque module annoncé existe", () => {

@@ -1,7 +1,32 @@
-// Service worker de Gestion : il ne sert qu'à recevoir les rappels (Web Push) et à les afficher.
-// Il ne met rien en cache et n'intercepte aucune requête : l'outil se charge toujours depuis le réseau, jamais depuis une ancienne copie.
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+// Service worker de Gestion : il reçoit les rappels (Web Push) et les affiche, et garde la petite page hors connexion (voir plus bas).
+// L'outil se charge toujours depuis le réseau, jamais depuis une ancienne copie.
+// Hors connexion : le service worker garde UNIQUEMENT la petite page « hors-ligne » (quatre fichiers) pour afficher la copie de la feuille du jour gardée sur le téléphone quand le
+// réseau manque. L'application elle-même n'est jamais mise en cache : elle se charge toujours depuis le réseau, jamais depuis une ancienne copie, donc les mises à jour
+// arrivent comme avant. Une navigation vers /gestion/ qui échoue faute de réseau (et seulement elle) reçoit cette page.
+const CACHE = "gestion-hors-ligne-v1";
+const FICHIERS = ["hors-ligne.html", "hors-ligne.css", "hors-ligne.mjs", "js/feuille-hors-ligne-lecture.mjs"].map((f) => new URL(f, self.registration.scope).href);
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((c) => c.addAll(FICHIERS)).catch(() => {}).then(() => self.skipWaiting())
+  );
+});
+self.addEventListener("activate", (event) =>
+  event.waitUntil(
+    caches.keys().then((noms) => Promise.all(noms.filter((n) => n.startsWith("gestion-hors-ligne-") && n !== CACHE).map((n) => caches.delete(n)))).then(() => self.clients.claim())
+  )
+);
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return;
+  if (req.mode === "navigate") {
+    // Réseau d'abord, toujours ; la page hors connexion seulement si la requête échoue.
+    event.respondWith(fetch(req).catch(async () => (await caches.match(FICHIERS[0])) || Response.error()));
+    return;
+  }
+  if (FICHIERS.includes(req.url)) event.respondWith(fetch(req).catch(() => caches.match(req)));
+});
 
 self.addEventListener("push", (event) => {
   let rappel = {};
