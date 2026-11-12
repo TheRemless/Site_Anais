@@ -1,8 +1,10 @@
 // Factures pour la fiduciaire (migration 28) : une facture par service, adressée à l'entreprise prestataire, pour la seule part qui revient à l'agence.
 // Deux présentations d'un même écran :
-//   • complet (droit « fiduciaire.gerer » : Anaïs, Jérémy) : filtres par entreprise, calcul, écarts, avoirs, services à revoir ;
+//   • complet (droit « fiduciaire.gerer » : Anaïs, Jérémy) : filtres, calcul, écarts, avoirs, services à revoir ;
 //   • simple (« fiduciaire.preparer » seul : Mook) : en thaï, deux blocs, aucun net, aucune information qu'elle n'a pas à décider.
 // Les montants viennent de la base (le navigateur ne choisit jamais un montant) ; l'écran n'affiche que ce qu'elle renvoie.
+// Chaque entreprise ne montre que ses services et ses factures : Secret dans Secret, VIP Taxi Lanta dans Taxi (Jérémy, 12.11.2026).
+// La base renvoie tout ce que la personne a le droit de voir, toutes entreprises confondues : le tri se fait ici, sur l'entreprise ouverte.
 import { etat, peut } from "../etat.mjs";
 import { h, modal, toast, barreAction, confirmer } from "../ui.mjs";
 import { aujourdhui, formatMontant, formatDate } from "../calc.mjs";
@@ -22,13 +24,14 @@ export async function vueFiduciaire() {
   const date = (iso) => (simple ? jjmmaaaa(iso) : formatDate(iso));
   const titre = t("titre", tr("Factures pour la fiduciaire"));
   const racine = h("div", { "data-titre": titre, "data-large": true, class: "fiduciaire", lang: simple ? "th" : undefined });
-  const etatEcran = { filtres: { entite: "", mois: "", envoyee: simple ? "non" : "" }, choisies: new Set(), liste: [], preparer: [], occupe: false, nbPrep: 12, nbEmises: 30 };
+  const etatEcran = { filtres: { mois: "", envoyee: simple ? "non" : "" }, choisies: new Set(), liste: [], preparer: [], occupe: false, nbPrep: 12, nbEmises: 30 };
 
   async function charger() {
     const liste = await etat.store.fiduciaireListe();
     if (liste === null) return false;
-    etatEcran.liste = liste;
-    etatEcran.preparer = await etat.store.fiduciaireAPreparer();
+    const ici = (x) => x.entite_id === etat.entiteId;
+    etatEcran.liste = liste.filter(ici);
+    etatEcran.preparer = (await etat.store.fiduciaireAPreparer()).filter(ici);
     return true;
   }
 
@@ -56,8 +59,6 @@ export async function vueFiduciaire() {
     etatEcran.occupe = false;
     rendre();
   }
-
-  const nomEntite = (slug) => ((etat.brut.entites || []).find((e) => e.slug === slug) || {}).nom || slug;
 
   // « Revoir le calcul » : le détail, nets compris, pour les responsables qui ont le droit « nets ».
   async function revoirCalcul(ligne) {
@@ -131,7 +132,7 @@ export async function vueFiduciaire() {
         { class: "fid-corps" },
         h("div", { class: "fid-ligne" }, h("button", { class: "lien fid-numero", type: "button", onclick: () => ouvrirApercu(f) }, f.numero), f.type === "avoir" ? h("span", { class: "tag" }, t("avoir", tr("Avoir"))) : null, h("strong", { class: "fid-montant" }, formatMontant(f.montant, f.devise))),
         h("p", { class: "fid-a" }, h("span", { class: "etiquette" }, t("a", tr("À"))), " ", f.destinataire.nom),
-        h("p", { class: "fid-meta" }, date(f.date_facture), simple ? null : ` · ${nomEntite(f.entite_slug)}`),
+        h("p", { class: "fid-meta" }, date(f.date_facture)),
         h("p", { class: `fid-envoi${f.envoyee_le ? " fait" : ""}` }, f.envoyee_le ? t("envoyee_le", tr("Envoyée le {date}", { date: formatDate(f.envoyee_le) }), { date: jjmmaaaa(f.envoyee_le) }) : t("non_envoyee", tr("Pas encore envoyée")))
       )
     );
@@ -179,7 +180,6 @@ export async function vueFiduciaire() {
     const factures = aPreparer.filter((l) => l.type === "facture" && l.destinataire_nom && l.destinataire_adresse);
     const mois = [...new Set(etatEcran.liste.map((x) => String(x.date_facture).slice(0, 7)))].sort().reverse();
     const nomMois = (m) => { const [a, mm] = m.split("-"); return simple ? `${mm}/${a}` : `${formatDate(`${m}-01`).replace(/^\d+\s/, "")}`; };
-    const entites = [...new Set(etatEcran.liste.map((x) => x.entite_slug))];
     const choix = (id, libelle, options, valeur, onchange) => h("label", { class: "fid-filtre", for: id }, h("span", null, libelle), h("select", { id, onchange: (e) => onchange(e.target.value) }, options.map(([v, l]) => h("option", { value: v, selected: v === valeur }, l))));
     racine.replaceChildren(
       h("div", { class: "entete" }, h("div", null, h("h1", null, titre), h("p", { class: "sous" }, simple ? TH.intro.th : tr("Une facture par service, adressée à l'entreprise prestataire, pour la seule part qui revient à l'agence : la commission reçue, ou la marge quand le client a payé chez nous. Jamais ce que le client a payé en tout.")))),
@@ -196,7 +196,6 @@ export async function vueFiduciaire() {
         h(
           "div",
           { class: "fid-filtres" },
-          simple ? null : choix("fid-f-entite", tr("Entreprise"), [["", tr("Toutes")], ...entites.map((s) => [s, nomEntite(s)])], f.entite, (v) => { f.entite = v; rendre(); }),
           choix("fid-f-mois", t("mois", tr("Mois")), [["", t("tous_mois", tr("Tous les mois"))], ...mois.map((m) => [m, nomMois(m)])], f.mois, (v) => { f.mois = v; rendre(); }),
           choix("fid-f-envoi", t("envoi", tr("Envoi")), [["", t("toutes", tr("Toutes"))], ["non", t("non_envoyees", tr("Pas encore envoyées"))], ["oui", t("envoyees", tr("Envoyées"))]], f.envoyee, (v) => { f.envoyee = v; rendre(); })
         ),

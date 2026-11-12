@@ -128,7 +128,7 @@ test("droit « vouchers.seul » : choisi rôle par rôle, jamais dans « tous le
   for (const c of ["partenaires.nets", "reglages.ecrire", "paiements.ecrire"]) assert.ok(!requis.includes(c), c);
 });
 
-test("démo : l'assistante taxi n'a que cet écran dans Taxi et reste éditrice dans Excursions", () => {
+test("démo : l'assistante taxi n'a que le voucher et les factures fiduciaire dans Taxi, toutes les courses, et reste éditrice dans Excursions", () => {
   const ajouterJours = (iso, n) => new Date(Date.parse(iso) + n * 86400000).toISOString().slice(0, 10);
   const data = donneesDemo("2026-11-12", ajouterJours);
   const mook = data.profils.find((p) => p.email === "vouchers@demo.local");
@@ -138,7 +138,10 @@ test("démo : l'assistante taxi n'a que cet écran dans Taxi et reste éditrice 
   const pTaxi = permissionsDans(ctx, taxi.id);
   assert.ok(pTaxi.includes(DROIT_VOUCHER_SEUL));
   assert.ok(!pTaxi.includes("partenaires.nets"));
-  assert.equal(data.roles.find((r) => r.permissions.includes(DROIT_VOUCHER_SEUL)).portee, "mes_dossiers");
+  // Les factures fiduciaire de Taxi sont son travail (Jérémy, 12.11.2026) : elle voit toutes les courses de Taxi, jamais les nets ni les avoirs.
+  assert.equal(data.roles.find((r) => r.permissions.includes(DROIT_VOUCHER_SEUL)).portee, "toute");
+  assert.ok(pTaxi.includes("fiduciaire.preparer"));
+  assert.ok(!pTaxi.includes("fiduciaire.gerer"));
   assert.ok(!permissionsDans(ctx, excursions.id).includes(DROIT_VOUCHER_SEUL));
   for (const c of DEPENDANCES[DROIT_VOUCHER_SEUL]) assert.ok(pTaxi.includes(c), `rôle de démo sans ${c}`);
 });

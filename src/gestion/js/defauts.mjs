@@ -32,7 +32,7 @@ export const PERMISSIONS = [
   { code: "fiduciaire.preparer", groupe: N_("Fiduciaire"), libelle: N_("Préparer et envoyer les factures pour la fiduciaire"), aide: N_("Voir ce qui revient à l'agence sur chaque service (jamais les prix nets), émettre la facture, la télécharger et la marquer envoyée. Secret et Taxi.") },
   { code: "fiduciaire.gerer", groupe: N_("Fiduciaire"), libelle: N_("Corriger les factures pour la fiduciaire : avoirs et revue du calcul"), aide: N_("Émettre un avoir, retirer la mention « envoyée » et revoir le calcul (les nets se voient avec le droit « nets »).") },
   // Droit d'interface, pas un droit sur les données : il réduit l'outil à un écran. Il n'entre donc jamais dans « tous les droits ».
-  { code: "vouchers.seul", groupe: N_("Interface"), libelle: N_("Ne voir que l'écran « Nouveau voucher », en thaï (entreprise en mode taxi)"), aide: N_("Pour l'assistante : un formulaire, l'aperçu du voucher et l'envoi de l'image à Anaïs. Ni menu, ni autres écrans."), interface: true },
+  { code: "vouchers.seul", groupe: N_("Interface"), libelle: N_("Ne voir que l'écran « Nouveau voucher », en thaï (entreprise en mode taxi)"), aide: N_("Pour l'assistante : un formulaire, l'aperçu du voucher et l'envoi de l'image à Anaïs. Avec le droit « Préparer et envoyer les factures pour la fiduciaire », un second onglet ouvre ces factures. Ni menu, ni autres écrans."), interface: true },
 ];
 export const TOUTES_PERMISSIONS = PERMISSIONS.filter((p) => !p.interface).map((p) => p.code);
 
@@ -400,7 +400,7 @@ export function donneesDemo(ajd, ajouterJours) {
   const assistante = { user_id: uid(), email: "assistante@demo.local", nom: "Assistante démo", super_admin: false, actif: true };
   const stagiaire = { user_id: uid(), email: "stagiaire@demo.local", nom: "Stagiaire démo", super_admin: false, actif: true };
   const comptable = { user_id: uid(), email: "comptable@demo.local", nom: "Comptable démo", super_admin: false, actif: true };
-  const voucheuse = { user_id: uid(), email: "vouchers@demo.local", nom: "Assistante taxi démo (vouchers seulement)", super_admin: false, actif: true };
+  const voucheuse = { user_id: uid(), email: "vouchers@demo.local", nom: "Assistante taxi démo (vouchers et factures)", super_admin: false, actif: true };
   const roles = [];
   const roleDe = {};
   for (const e of [e1, e2, e3]) {
@@ -412,7 +412,7 @@ export function donneesDemo(ajd, ajouterJours) {
   }
   const rSans = { id: uid(), created_at: j(-30), entite_id: e3.id, nom: "Sans chiffres", description: "Voit les clients et les dossiers, jamais les montants.", portee: "toute", permissions: ["clients.lire", "dossiers.lire"], systeme: false };
   const rSes = { id: uid(), created_at: j(-30), entite_id: e2.id, nom: "Ses dossiers", description: "Travaille uniquement sur les dossiers dont elle est responsable.", portee: "mes_dossiers", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire"], systeme: false };
-  const rVouchers = { id: uid(), created_at: j(-1), entite_id: e3.id, nom: "Vouchers seulement", description: "L'écran « Nouveau voucher » en thaï, rien d'autre. Ne voit que les dossiers qu'elle a créés.", portee: "mes_dossiers", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "partenaires.lire", "vouchers.seul", "fiduciaire.preparer"], systeme: false };
+  const rVouchers = { id: uid(), created_at: j(-1), entite_id: e3.id, nom: "Vouchers et factures fiduciaire", description: "En thaï : l'écran « Nouveau voucher » et les factures pour la fiduciaire de toutes les courses de Taxi (jamais les nets). Ni menu, ni autres écrans.", portee: "toute", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "partenaires.lire", "vouchers.seul", "fiduciaire.preparer"], systeme: false };
   // Comme en production : l'Éditeur plus la préparation des factures pour la fiduciaire (ni nets, ni avoirs).
   const editeur2 = roles.find((r) => r.entite_id === e2.id && r.nom === "Éditeur");
   const rFiduciaire = { id: uid(), created_at: j(-1), entite_id: e2.id, nom: "Éditeur + factures fiduciaire", description: "Les droits de l'Éditeur, plus la préparation et l'envoi des factures pour la fiduciaire (jamais les nets).", portee: editeur2.portee, permissions: [...editeur2.permissions, "fiduciaire.preparer"], systeme: false };

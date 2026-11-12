@@ -300,6 +300,10 @@ function coqueSimple() {
       selecteurEntite(),
       etat.store.mode === "supabase" ? h("button", { class: "secondaire petit", type: "button", lang: "th", onclick: deconnecter }, icone("deconnexion", 18), "ออกจากระบบ") : null
     ),
+    // Les factures pour la fiduciaire sont aussi son travail (Jérémy, 12.11.2026) : deux onglets, le voucher et les factures.
+    peut("fiduciaire.preparer")
+      ? h("nav", { class: "onglets-simple", lang: "th", "aria-label": "เมนู" }, h("a", { href: "#/", "data-ecran": "voucher" }, "วอยเชอร์"), h("a", { href: "#/fiduciaire", "data-ecran": "fiduciaire" }, "ใบแจ้งหนี้"))
+      : null,
     h("div", { class: "contenu-simple" }, etat.store.mode === "demo" ? bandeauDemo() : null, h("main", { id: "principal", tabindex: "-1" }))
   );
 }
@@ -311,13 +315,17 @@ async function afficherVoucherSeul() {
     vider(racine).append(coqueSimple());
     racine.querySelector(".coque-simple").dataset.cle = cle;
   }
-  // Une adresse d'un autre écran (lien, favori) ramène ici sans rien ouvrir d'autre.
-  if (location.hash && location.hash !== "#/") history.replaceState(null, "", "#/");
-  const { vueVoucherRapide } = await import("./views/voucher-rapide.mjs");
-  const noeud = vueVoucherRapide();
+  // Deux écrans possibles : le voucher, et les factures pour la fiduciaire avec le droit « fiduciaire.preparer ».
+  // Une adresse d'un autre écran (lien, favori) ramène au voucher sans rien ouvrir d'autre.
+  const factures = location.hash === "#/fiduciaire" && peut("fiduciaire.preparer");
+  if (!factures && location.hash && location.hash !== "#/") history.replaceState(null, "", "#/");
+  for (const a of racine.querySelectorAll(".onglets-simple a")) a.setAttribute("aria-current", (a.dataset.ecran === "fiduciaire") === factures ? "page" : "false");
+  const moi = ++rendu;
+  const noeud = factures ? await (await import("./views/fiduciaire.mjs")).vueFiduciaire() : (await import("./views/voucher-rapide.mjs")).vueVoucherRapide();
+  if (moi !== rendu) return;
   document.getElementById("principal").replaceChildren(noeud);
   document.title = `${noeud.dataset.titre} - ${entiteActive().nom}`;
-  derniereVue = "#/";
+  derniereVue = factures ? "#/fiduciaire" : "#/";
 }
 
 function coque() {
