@@ -3,6 +3,16 @@
 import { createClient } from "../vendor/supabase.mjs";
 import { tr } from "./i18n.mjs";
 import { separerNets, fusionnerNets } from "./nets-documents.mjs";
+import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
+
+// La copie de la feuille du jour gardée sur ce téléphone ne survit pas à une déconnexion.
+const effacerCopieHorsLigne = () => {
+  try {
+    localStorage.removeItem(CLE_HORS_LIGNE);
+  } catch {
+    // stockage indisponible : rien à effacer
+  }
+};
 
 // Ordre d'import imposé par les clés étrangères.
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
@@ -30,7 +40,14 @@ function verifie({ data, error }) {
 // Le résumé tenu par la base est fusionné dans le dossier : ses colonnes sont COLONNES_RESUME (sauvegarde.mjs), que la sauvegarde retire avant d'écrire le fichier.
 const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise: r.devise, recu: Number(r.recu), sur_place: Number(r.sur_place) || 0 } : dossier);
 
-export function creer(config, { client } = {}) {
+// Le catalogue (partenaires, tarifs, trajets et leurs nets) pèse l'essentiel de la lecture et ne change presque jamais : à la synchronisation de chaque minute on ne le relit
+// que s'il a changé (nombre de lignes, ou dernière modification des tables qui en ont une), ou au plus tard après un quart d'heure (les nets n'ont pas de date de modification).
+const CATALOGUE = ["partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets"];
+// Seules ces deux tables ont une colonne `updated_at` (vérifié sur la base) : les trajets et les tables de nets ne se comptent que.
+const AVEC_DATE = ["partenaires", "prestations"];
+const CATALOGUE_AGE_MAX = 15 * 60 * 1000;
+
+export function creer(config, { client, maintenant = () => Date.now() } = {}) {
   const sb = client || createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
 
   // Migration 16 : les nets des documents sont dans documents_nets (la table existe pour tout le monde, mais ne renvoie rien sans le droit « nets »).
@@ -77,6 +94,19 @@ export function creer(config, { client } = {}) {
     return { ...ligne, contenu: fusionnerNets(ligne.contenu, nets) };
   }
 
+  // Marqueur du catalogue : une lecture minuscule par table (un comptage, et la dernière modification quand la table en a une).
+  async function empreinteCatalogue() {
+    const parties = await Promise.all(CATALOGUE.flatMap((t) => [
+      sb.from(t).select("id", { count: "exact", head: true }).then(({ count, error }) => { if (error) throw new Error(error.message); return `${t}:${count}`; }),
+      ...(AVEC_DATE.includes(t) ? [sb.from(t).select("updated_at").order("updated_at", { ascending: false }).limit(1).then(({ data, error }) => { if (error) throw new Error(error.message); return `${t}@${(data && data[0] && data[0].updated_at) || ""}`; })] : []),
+    ]));
+    return parties.join("|");
+  }
+  let empreinte = null;
+  let catalogueLuA = 0;
+  let catalogueAChange = true;
+  let enDeconnexion = false;
+
   async function toutes(table) {
     const lignes = [];
     for (let debut = 0; ; debut += PAGE) {
@@ -89,10 +119,17 @@ export function creer(config, { client } = {}) {
   return {
     mode: "supabase",
     async session() {
-      const { data } = await sb.auth.getSession();
+      const { data, error } = await sb.auth.getSession();
+      if (!data.session) {
+        // Réseau coupé et jeton expiré : on ne sait pas si la session est valide. La copie de la feuille du jour reste, et l'ouverture échoue pour que l'application l'affiche.
+        if (error && /fetch|network|retryable/i.test(`${error.name} ${error.message}`)) throw new Error(error.message);
+        // Plus de session (jeton refusé, déconnexion depuis un autre appareil, mot de passe changé) : la copie ne doit plus être lisible par personne.
+        effacerCopieHorsLigne();
+      }
       return data.session ? { id: data.session.user.id, email: data.session.user.email } : null;
     },
     async connecter(email, mdp) {
+      enDeconnexion = false;
       const { error } = await sb.auth.signInWithPassword({ email, password: mdp });
       if (error) throw new Error(error.message === "Invalid login credentials" ? tr("E-mail ou mot de passe incorrect.") : error.message);
     },
@@ -113,36 +150,88 @@ export function creer(config, { client } = {}) {
       return error ? null : data;
     },
     // Se déconnecter ferme cet appareil seulement (par défaut la bibliothèque ferme TOUTES les sessions : se déconnecter sur l'ordinateur coupait aussi l'iPhone).
+    // La synchronisation a écarté le résultat de la dernière lecture (une écriture a eu lieu pendant la lecture) : le catalogue lu n'est pas installé, on le relira.
+    // Vrai de la déconnexion à la prochaine connexion : etat.mjs n'écrit alors plus de copie hors ligne.
+    enDeconnexion() {
+      return enDeconnexion;
+    },
+    annulerDerniereLecture() {
+      catalogueAChange = true;
+    },
     async deconnecter() {
-      verifie(await sb.auth.signOut({ scope: "local" }).then(({ error }) => ({ data: null, error })));
+      enDeconnexion = true;
+      effacerCopieHorsLigne();
+      try {
+        verifie(await sb.auth.signOut({ scope: "local" }).then(({ error }) => ({ data: null, error })));
+      } finally {
+        // Une synchronisation en vol pendant la déconnexion a pu réécrire la copie : on l'efface de nouveau.
+        effacerCopieHorsLigne();
+      }
     },
     // « Déconnecter tous mes appareils » : un geste à part, pour un téléphone perdu ou un compte utilisé sur un appareil prêté.
     async deconnecterPartout() {
+      enDeconnexion = true;
+      effacerCopieHorsLigne();
       // signOut ne lève pas d'exception sur une erreur réseau : il renvoie `error`. On la lève, sinon le bouton ferait croire que les appareils sont fermés.
-      verifie(await sb.auth.signOut({ scope: "global" }).then(({ error }) => ({ data: null, error })));
+      try {
+        verifie(await sb.auth.signOut({ scope: "global" }).then(({ error }) => ({ data: null, error })));
+      } finally {
+        effacerCopieHorsLigne();
+      }
     },
-    async charger() {
+    // `ancien` : la copie en mémoire (synchronisation). Le catalogue qui n'a pas changé en est repris tel quel au lieu d'être relu.
+    async charger({ ancien = null } = {}) {
       const out = {};
-      for (const t of ["entites", "profils", "roles", "membres", ...CHARGEES]) out[t] = await toutes(t);
-      const resumes = new Map((await toutes("dossiers_resume")).map((r) => [r.dossier_id, r]));
+      const reutilisable = !!ancien && CATALOGUE.every((t) => Array.isArray(ancien[t]));
+      let relire = !reutilisable || catalogueAChange || maintenant() - catalogueLuA > CATALOGUE_AGE_MAX;
+      let nouvelle = empreinte;
+      // Marqueur lu avant le catalogue : un changement survenu pendant la lecture sera vu à la synchronisation suivante.
+      // Un marqueur illisible (coupure, droit retiré) ne fait pas échouer la synchronisation : on relit simplement le catalogue.
+      try {
+        nouvelle = await empreinteCatalogue();
+        relire = relire || nouvelle !== empreinte;
+      } catch {
+        nouvelle = null;
+        relire = true;
+      }
+      const tables = ["entites", "profils", "roles", "membres", ...CHARGEES.filter((t) => relire || !CATALOGUE.includes(t))];
+      // Toutes les lectures partent ensemble (elles étaient faites l'une après l'autre).
+      const [lues, resumeLignes, taches, reglagesLignes] = await Promise.all([
+        Promise.all(tables.map((t) => toutes(t))),
+        toutes("dossiers_resume"),
+        (() => {
+          // Les tâches à faire, et celles terminées depuis un mois.
+          const depuis = new Date(Date.now() - 30 * 86400000).toISOString();
+          return sb.from("taches").select("*").or(`fait.eq.false,fait_le.gte.${depuis}`).order("echeance", { nullsFirst: false }).limit(2000).then(verifie);
+        })(),
+        toutes("reglages"),
+      ]);
+      tables.forEach((t, i) => (out[t] = lues[i]));
+      if (!relire) for (const t of CATALOGUE) out[t] = ancien[t];
+      else {
+        empreinte = nouvelle;
+        catalogueLuA = maintenant();
+        catalogueAChange = false;
+      }
+      const resumes = new Map(resumeLignes.map((r) => [r.dossier_id, r]));
       out.dossiers = out.dossiers.map((d) => fusion(d, resumes.get(d.id)));
       out.documents = [];
       out.paiements = [];
-      // Les tâches à faire, et celles terminées depuis un mois.
-      const depuis = new Date(Date.now() - 30 * 86400000).toISOString();
-      out.taches = verifie(await sb.from("taches").select("*").or(`fait.eq.false,fait_le.gte.${depuis}`).order("echeance", { nullsFirst: false }).limit(2000));
-      const lignesReglages = await toutes("reglages");
+      out.taches = taches;
+      const lignesReglages = reglagesLignes;
       out.reglages = Object.fromEntries(lignesReglages.map((r) => [r.entite_id, r.valeur]));
       // Version de chaque réglage (migration 15) : sert à refuser d'écraser l'enregistrement d'une autre personne.
       out.reglages_maj = Object.fromEntries(lignesReglages.map((r) => [r.entite_id, r.updated_at]));
       return out;
     },
     async inserer(table, row) {
+      if (CATALOGUE.includes(table)) catalogueAChange = true;
       if (table === "documents") return ecrireDocument((contenu) => sb.from(table).insert({ ...row, contenu }).select().single(), row.contenu);
       return verifie(await sb.from(table).insert(row).select().single());
     },
     // `avant` : la version (`updated_at`) de la ligne telle que l'outil l'a lue. Si la ligne a changé depuis, rien n'est écrit et l'erreur porte `conflit`.
     async modifier(table, id, patch, avant) {
+      if (CATALOGUE.includes(table)) catalogueAChange = true;
       const ecriture = async (contenu) => {
         let q = sb.from(table).update(table === "documents" && contenu !== undefined ? { ...patch, contenu } : patch).eq("id", id);
         if (avant) q = q.eq("updated_at", avant);
@@ -156,6 +245,7 @@ export function creer(config, { client } = {}) {
       return table === "documents" ? (await avecNets([ligne]))[0] : ligne;
     },
     async supprimer(table, id) {
+      if (CATALOGUE.includes(table)) catalogueAChange = true;
       verifie(await sb.from(table).delete().eq("id", id).select());
     },
     async enregistrerReglages(entiteId, valeur, avant) {
@@ -291,6 +381,7 @@ export function creer(config, { client } = {}) {
     // Remplacement de la base partenaires APRÈS l'import : on retire seulement ce que le fichier ne contient plus (la base supprime en cascade les nets
     // et remet à vide le lien des réservations). `absents` : { partenaires, prestations, trajets } = listes d'identifiants.
     async supprimerAbsents(entiteId, absents) {
+      catalogueAChange = true;
       const par = (liste) => Array.from({ length: Math.ceil(liste.length / 100) }, (_, i) => liste.slice(i * 100, i * 100 + 100));
       for (const lot of par(absents.partenaires)) verifie(await sb.from("taches").delete().eq("entite_id", entiteId).in("partenaire_id", lot).select("id"));
       for (const lot of par(absents.trajets)) verifie(await sb.from("trajets").delete().eq("entite_id", entiteId).in("id", lot).select("id"));
@@ -298,10 +389,12 @@ export function creer(config, { client } = {}) {
       for (const lot of par(absents.partenaires)) verifie(await sb.from("partenaires").delete().eq("entite_id", entiteId).in("id", lot).select("id"));
     },
     async supprimerPartenaires(entiteId) {
+      catalogueAChange = true;
       verifie(await sb.from("taches").delete().eq("entite_id", entiteId).not("partenaire_id", "is", null).select("id"));
       verifie(await sb.from("partenaires").delete().eq("entite_id", entiteId).select("id"));
     },
     async importer(tables) {
+      catalogueAChange = true;
       // Avant toute écriture : la table des nets est-elle là si la sauvegarde en porte ? Un refus au milieu laisserait la base à moitié importée.
       const separe = await separation();
       if (!separe && (tables.documents || []).some((d) => Object.keys(separerNets(d.contenu).nets).length)) throw new Error(tr("Les prix nets ne peuvent pas être enregistrés : la migration 16 de la base n'est pas appliquée."));

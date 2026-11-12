@@ -85,10 +85,25 @@ test("clé VAPID : la clé publique en base64url devient 65 octets, point non co
   assert.equal(cle[0], 4);
 });
 
-test("service worker : affiche les rappels et ouvre l'outil, sans rien mettre en cache", () => {
+test("service worker : affiche les rappels et ouvre l'outil ; ne garde en cache que la page hors connexion, jamais l'application", () => {
   const sw = fs.readFileSync("src/gestion/sw.js", "utf8");
   assert.match(sw, /addEventListener\("push"/);
   assert.match(sw, /addEventListener\("notificationclick"/);
-  assert.doesNotMatch(sw, /addEventListener\("fetch"/);
-  assert.doesNotMatch(sw, /caches\./);
+  // La liste mise en cache est exactement celle de la page hors connexion : quatre fichiers, aucun écran ni script de l'application.
+  const liste = (sw.match(/const FICHIERS = \[([^\]]+)\]/) || [])[1] || "";
+  assert.deepEqual([...liste.matchAll(/"([^"]+)"/g)].map((m) => m[1]), ["hors-ligne.html", "hors-ligne.css", "hors-ligne.mjs", "js/feuille-hors-ligne-lecture.mjs"]);
+  // Réseau d'abord : le cache ne sert que si la requête échoue ; une navigation réussie n'est jamais stockée.
+  assert.match(sw, /fetch\(req\)\.catch/);
+  // Seules les réponses de ces quatre fichiers sont écrites dans le cache (mise à jour de la page hors connexion), jamais une page ou un script de l'application.
+  assert.equal((sw.match(/\.put\(/g) || []).length, 1);
+  assert.match(sw, /FICHIERS\.includes\(req\.url\)\)\s*\{[^}]*c\.put\(req/s);
+  // Un seul cache, ouvert sous son nom fixe (à l'installation et pour la mise à jour des quatre fichiers).
+  assert.deepEqual([...sw.matchAll(/caches\.open\(([^)]*)\)/g)].map((m) => m[1]), ["CACHE", "CACHE"]);
+});
+
+test("page hors connexion : n'importe que le module de lecture, ce que le service worker garde", () => {
+  const page = fs.readFileSync("src/gestion/hors-ligne.mjs", "utf8");
+  assert.deepEqual([...page.matchAll(/from "([^"]+)"/g)].map((m) => m[1]), ["./js/feuille-hors-ligne-lecture.mjs"]);
+  assert.doesNotMatch(page, /innerHTML|insertAdjacentHTML/);
+  assert.doesNotMatch(fs.readFileSync("src/gestion/js/feuille-hors-ligne-lecture.mjs", "utf8"), /^import /m);
 });

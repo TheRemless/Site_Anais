@@ -1,4 +1,5 @@
 import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, netReservation, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules, modeExcursions } from "./etat.mjs";
+import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
 import { libelleStatut, formatMontant, aujourdhui } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
@@ -15,6 +16,7 @@ const ROUTES = [
   [/^#\/messages$/, "messages", vers(() => import("./views/messages.mjs"), "vueMessages")],
   [/^#\/du$/, "du", vers(() => import("./views/du.mjs"), "vueDu")],
   [/^#\/encaisser$/, "encaisser", vers(() => import("./views/encaisser.mjs"), "vueEncaisser")],
+  [/^#\/a-verifier$/, "a-verifier", vers(() => import("./views/a-verifier.mjs"), "vueAVerifier")],
   [/^#\/partenaires$/, "partenaires", vers(() => import("./views/partenaires.mjs"), "listePartenaires")],
   [/^#\/partenaire\/([\w-]+)$/, "partenaires", vers(() => import("./views/partenaires.mjs"), "fichePartenaire")],
   [/^#\/tarifs(?:\?.*)?$/, "tarifs", vers(() => import("./views/tarifs.mjs"), "vueTarifs")],
@@ -177,6 +179,7 @@ function ecrans() {
       items: [
         ...si(peut("analytics.voir") && peut("finances.voir"), { href: "#/analyses", libelle: tr("Statistiques"), cle: "analyses", icone: "analyses" }),
         ...si(entitesAnalysables().length > 1, { href: "#/groupe", libelle: tr("Vue d'ensemble"), cle: "groupe", icone: "groupe" }),
+        ...si(peut("partenaires.ecrire") || peut("dossiers.ecrire") || peut("clients.ecrire"), { href: "#/a-verifier", libelle: tr("À vérifier"), cle: "a-verifier", icone: "regles" }),
         ...si(peut("journal.voir"), { href: "#/journal", libelle: tr("Journal"), cle: "journal", icone: "journal" }),
         ...si(estAdmin(), { href: "#/reglages", libelle: tr("Réglages"), cle: "reglages", icone: "reglages" }),
         ...si(estSuperAdmin(), { href: "#/admin", libelle: tr("Administration"), cle: "admin", icone: "admin" }),
@@ -705,5 +708,9 @@ init()
   .then(installerTirer)
   .catch((err) => {
     console.error(err);
+    // Réseau absent et copie de la feuille du jour sur ce téléphone : on l'affiche en lecture seule au lieu de l'écran d'erreur.
+    try {
+      if (localStorage.getItem(CLE_HORS_LIGNE) && (navigator.onLine === false || /failed to fetch|networkerror|load failed|network/i.test(String(err && err.message)))) return void location.replace("hors-ligne.html");
+    } catch {}
     vider(racine).append(h("div", { class: "vide" }, h("h1", null, tr("Connexion à la base impossible")), h("p", null, err.message), h("button", { class: "principal", onclick: () => location.reload() }, tr("Réessayer"))));
   });
