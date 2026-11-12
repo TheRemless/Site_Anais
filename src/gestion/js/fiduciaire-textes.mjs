@@ -52,6 +52,7 @@ export const MANQUE = {
   client_non_solde: N_("Le client n'a pas encore tout payé"),
   prestataire_non_paye: N_("Le prestataire n'est pas encore payé (net payé et date)"),
   marge_nulle: N_("La marge est nulle ou négative"),
+  service_supprime: N_("Le service a été supprimé alors qu'il était déjà facturé"),
 };
 
 // Remplace {variable} dans un texte thaï.

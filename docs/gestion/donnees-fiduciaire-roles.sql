@@ -5,6 +5,10 @@
 --   fiduciaire.preparer : voir ce qui revient à l'agence (jamais un net), émettre une facture, la télécharger, la marquer envoyée à la fiduciaire ;
 --   fiduciaire.gerer    : en plus, émettre un avoir, retirer la mention « envoyée », revoir le calcul (avec les nets, il faut aussi « partenaires.nets »).
 --
+-- Périmètre : comme pour les dossiers, un rôle « mes dossiers » ne voit que les services de ses dossiers (créés par la personne ou dont elle est responsable).
+-- Limite connue : le montant d'une facture « chez nous » est la marge ; avec le prix de vente de la réservation, qu'un rôle qui voit les dossiers lit déjà,
+-- on peut en déduire le net payé au prestataire. Pour l'éviter, ne donner « fiduciaire.preparer » qu'à des rôles qui voient déjà les nets, ou réserver ces factures à « gérer ».
+--
 -- 1. Administrateur de Secret et de Taxi : les deux droits (les administrateurs généraux les ont déjà avec la migration).
 -- 2. Mook (assistante d'Anaïs, profil 15c43035…) : dans Secret, un rôle « Éditeur + factures fiduciaire » = exactement les droits de l'Éditeur plus
 --    « fiduciaire.preparer ». Elle n'a ni « partenaires.nets » ni « fiduciaire.gerer ».

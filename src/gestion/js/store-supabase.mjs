@@ -274,7 +274,8 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async fiduciaireListe() {
       const { data, error } = await sb.from("fiduciaire_factures").select("*").order("numero", { ascending: false }).limit(2000);
       if (error) {
-        if (error.code === "42P01" || error.code === "PGRST205" || /fiduciaire_factures/i.test(error.message || "")) return null;
+        // Seule l'absence de la table veut dire « migration non appliquée » ; un refus de droit ou une panne reste une erreur.
+        if (error.code === "42P01" || error.code === "PGRST205") return null;
         throw new Error(error.message);
       }
       return data;
@@ -282,8 +283,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async fiduciaireAPreparer() {
       return verifie(await sb.rpc("fiduciaire_a_preparer"));
     },
-    async fiduciaireEmettre(reservationId, date = null) {
-      return verifie(await sb.rpc("emettre_facture_fiduciaire", { p_res: reservationId, p_date: date }));
+    async fiduciaireEmettre(reservationId, date = null, attendu = null) {
+      return verifie(await sb.rpc("emettre_facture_fiduciaire", { p_res: reservationId, p_date: date, p_attendu: attendu }));
+    },
+    async fiduciaireAnnuler(reservationId, date = null) {
+      return verifie(await sb.rpc("annuler_facture_fiduciaire", { p_res: reservationId, p_date: date }));
     },
     async fiduciaireEnvoyer(ids, date) {
       return verifie(await sb.rpc("marquer_envoyee_fiduciaire", { p_ids: ids, p_date: date }));

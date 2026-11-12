@@ -179,7 +179,7 @@ test("liste : filtres par entreprise, par mois et par envoi", () => {
 });
 
 import { TH, MANQUE, remplir } from "../src/gestion/js/fiduciaire-textes.mjs";
-import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal } from "../src/gestion/js/fiduciaire-local.mjs";
+import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal } from "../src/gestion/js/fiduciaire-local.mjs";
 import { aujourdhui, ajouterJours, totalDossier, sommePaiements } from "../src/gestion/js/calc.mjs";
 import { donneesDemo } from "../src/gestion/js/defauts.mjs";
 import { permissionsDans } from "../src/gestion/js/droits.mjs";
@@ -214,6 +214,7 @@ function demo() {
     const u = data.profils.find((p) => p.nom.includes(nom));
     const ctx = { profil: u, membres: data.membres, roles: data.roles };
     return {
+      voit: () => true,
       droit: (e, c) => permissionsDans(ctx, e).includes(c),
       resumeDe: (d) => ({ total: totalDossier(data.documents.filter((x) => x.dossier_id === d.id)), recu: sommePaiements(data.paiements.filter((p) => p.dossier_id === d.id)) }),
       utilisateurId: u.user_id,
@@ -245,7 +246,7 @@ test("démo : l'assistante ne retire pas la mention d'envoi, ne revoit pas le ca
   const l = aPreparerLocal(data, mook).find((x) => x.type === "facture" && x.cas === "sur_place" && x.destinataire_adresse);
   assert.ok(l, "la démonstration a des services payés sur place");
   const id = emettreLocal(data, mook, l.reservation_id);
-  assert.equal(envoyerLocal(data, mook, [id], "2026-12-01"), 1);
+  assert.equal(envoyerLocal(data, mook, [id], aujourdhui()), 1);
   assert.throws(() => envoyerLocal(data, mook, [id], null), /responsables/);
   assert.equal(envoyerLocal(data, anais, [id], null), 1);
   assert.throws(() => calculLocal(data, mook, l.reservation_id), /Droit insuffisant/);
@@ -254,9 +255,42 @@ test("démo : l'assistante ne retire pas la mention d'envoi, ne revoit pas le ca
   const n = data.reservations_nets.find((x) => x.reservation_id === l.reservation_id);
   n.commission_recue = l.montant - 100;
   assert.throws(() => emettreLocal(data, mook, l.reservation_id), /responsables/);
-  const idAvoir = emettreLocal(data, anais, l.reservation_id, "2026-12-05");
+  const idAvoir = emettreLocal(data, anais, l.reservation_id, null, "avoir");
   const avoir = data.fiduciaire_factures.find((x) => x.id === idAvoir);
   assert.equal(avoir.montant, -100);
-  assert.equal(avoir.numero, `CN-2026-001`);
+  assert.equal(avoir.numero, `CN-${avoir.annee}-001`);
   assert.equal(avoir.avoir_de, id);
+});
+
+test("démo : dates à venir refusées, avoir total d'un service dont la commission est reprise, garde de situation", () => {
+  const { data, mook, anais } = demo();
+  const l = aPreparerLocal(data, mook).find((x) => x.type === "facture" && x.cas === "sur_place" && x.destinataire_adresse);
+  assert.throws(() => envoyerLocal(data, mook, [], "2999-01-01"), /futur/);
+  assert.throws(() => emettreLocal(data, mook, l.reservation_id, null, "avoir"), /a changé/, "le type attendu ne correspond plus");
+  const id = emettreLocal(data, mook, l.reservation_id, null, "facture");
+  const n = data.reservations_nets.find((x) => x.reservation_id === l.reservation_id);
+  n.commission_recue = 0;
+  assert.throws(() => emettreLocal(data, anais, l.reservation_id), /Rien à facturer/);
+  const ligne = aPreparerLocal(data, anais).find((x) => x.reservation_id === l.reservation_id);
+  assert.equal(ligne.a_revoir, true);
+  assert.equal(ligne.deja_facture, l.montant);
+  assert.throws(() => annulerLocal(data, mook, l.reservation_id), /responsables/);
+  const idAv = annulerLocal(data, anais, l.reservation_id);
+  const av = data.fiduciaire_factures.find((x) => x.id === idAv);
+  assert.equal(av.montant, -l.montant);
+  assert.equal(av.avoir_de, id);
+  assert.throws(() => annulerLocal(data, anais, l.reservation_id), /déjà à zéro/);
+  // Service supprimé alors qu'il était facturé : listé pour les responsables seulement.
+  const l2 = aPreparerLocal(data, mook).find((x) => x.type === "facture" && x.cas === "sur_place" && x.destinataire_adresse);
+  emettreLocal(data, mook, l2.reservation_id);
+  data.reservations = data.reservations.filter((r) => r.id !== l2.reservation_id);
+  assert.ok(aPreparerLocal(data, anais).some((x) => x.reservation_id === l2.reservation_id && x.manque.includes("service_supprime")));
+  assert.ok(!aPreparerLocal(data, mook).some((x) => x.reservation_id === l2.reservation_id));
+});
+
+test("démo : un rôle limité à ses dossiers ne voit pas les services des autres", () => {
+  const { data, mook } = demo();
+  const limite = { ...mook, voit: (entite, dossier) => data.dossiers.some((d) => d.id === dossier && d.cree_par === "personne") };
+  assert.equal(aPreparerLocal(data, limite).length, 0);
+  assert.ok(aPreparerLocal(data, mook).length > 0);
 });

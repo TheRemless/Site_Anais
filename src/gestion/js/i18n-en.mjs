@@ -2436,4 +2436,10 @@ export const EN = {
   "La migration 28 de la base n'est pas appliquée. Voir docs/gestion/migration-28-fiduciaire.sql.": "Database migration 28 has not been applied. See docs/gestion/migration-28-fiduciaire.sql.",
   "Créer {n} factures ? Leurs numéros se suivent et une facture émise ne se supprime pas : une erreur se corrige par un avoir.": "Create {n} invoices? Their numbers follow each other and an issued invoice cannot be deleted: a mistake is corrected with a credit note.",
   "Voir la suite ({n})": "Show the rest ({n})",
+  "L'action est faite, mais la liste n'a pas pu être rechargée : {erreur}": "The action is done, but the list could not be reloaded: {erreur}",
+  "Annuler par un avoir les {montant} déjà facturés pour ce service ? L'avoir est définitif.": "Cancel the {montant} already invoiced for this service with a credit note? The credit note is final.",
+  "Avoir {numero} émis.": "Credit note {numero} issued.",
+  "Annuler par un avoir ({montant})": "Cancel with a credit note ({montant})",
+  "{n} facture(s) créée(s) avant l'erreur": "{n} invoice(s) created before the error",
+  "Le service a été supprimé alors qu'il était déjà facturé": "The service was deleted although it had already been invoiced",
 };

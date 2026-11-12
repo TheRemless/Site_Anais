@@ -36,17 +36,25 @@ export async function vueFiduciaire() {
     if (etatEcran.occupe) return;
     etatEcran.occupe = true;
     rendre();
+    let retour;
+    let erreur = null;
     try {
-      const retour = await travail();
-      await charger();
-      if (succes) toast(succes(retour));
+      retour = await travail();
     } catch (err) {
-      toast(simple ? remplir(TH.echec.th, { erreur: err.message }) : err.message, true);
-      try { await charger(); } catch { /* l'erreur déjà affichée suffit */ }
-    } finally {
-      etatEcran.occupe = false;
-      rendre();
+      erreur = err;
     }
+    // Le rechargement est séparé de l'action : une action réussie n'est jamais annoncée comme un échec parce que la liste n'a pas pu se rafraîchir.
+    let rechargement = null;
+    try {
+      await charger();
+    } catch (err) {
+      rechargement = err;
+    }
+    if (erreur) toast(simple ? remplir(TH.echec.th, { erreur: erreur.message }) : erreur.message, true);
+    else if (succes) toast(succes(retour));
+    if (rechargement) toast(simple ? remplir(TH.echec.th, { erreur: rechargement.message }) : tr("L'action est faite, mais la liste n'a pas pu être rechargée : {erreur}", { erreur: rechargement.message }), true);
+    etatEcran.occupe = false;
+    rendre();
   }
 
   const nomEntite = (slug) => ((etat.brut.entites || []).find((e) => e.slug === slug) || {}).nom || slug;
@@ -94,9 +102,13 @@ export async function vueFiduciaire() {
       if (est_avoir) detail.push(h("p", { class: "avertissement" }, tr("Le montant facturé est supérieur à ce qui revient à l'agence : un avoir ramène le total au bon montant.")));
     }
     if (manqueDest) detail.push(h("p", { class: "avertissement" }, manqueDest));
+    const annulerTout = () => agir(async () => {
+      if (!(await confirmer(tr("Annuler par un avoir les {montant} déjà facturés pour ce service ? L'avoir est définitif.", { montant: formatMontant(l.deja_facture, l.devise) }), tr("Émettre l'avoir"), true))) return null;
+      return etat.store.fiduciaireAnnuler(l.reservation_id);
+    }, (id) => { const f = id && etatEcran.liste.find((x) => x.id === id); return f ? tr("Avoir {numero} émis.", { numero: f.numero }) : ""; });
     const bouton = revoir
-      ? null
-      : h("button", { class: est_avoir ? "secondaire" : "principal", type: "button", disabled: !!manqueDest || etatEcran.occupe, onclick: () => agir(() => etat.store.fiduciaireEmettre(l.reservation_id, est_avoir ? aujourdhui() : null), (id) => { const f = etatEcran.liste.find((x) => x.id === id); return t("cree", tr("Facture {numero} créée.", { numero: f ? f.numero : "" }), { numero: f ? f.numero : "" }); }) }, est_avoir ? tr("Émettre l'avoir") : t("creer", tr("Créer la facture")));
+      ? (!simple ? h("button", { class: "secondaire", type: "button", disabled: etatEcran.occupe, onclick: annulerTout }, tr("Annuler par un avoir ({montant})", { montant: formatMontant(l.deja_facture, l.devise) })) : null)
+      : h("button", { class: est_avoir ? "secondaire" : "principal", type: "button", disabled: !!manqueDest || etatEcran.occupe, onclick: () => agir(() => etat.store.fiduciaireEmettre(l.reservation_id, null, l.type), (id) => { const f = etatEcran.liste.find((x) => x.id === id); return t("cree", tr("Facture {numero} créée.", { numero: f ? f.numero : "" }), { numero: f ? f.numero : "" }); }) }, est_avoir ? tr("Émettre l'avoir") : t("creer", tr("Créer la facture")));
     return h(
       "article",
       { class: `fid-carte${est_avoir ? " avoir" : ""}${revoir ? " a-revoir" : ""}` },
@@ -174,7 +186,7 @@ export async function vueFiduciaire() {
       h(
         "section",
         { class: "fid-bloc", "aria-labelledby": "fid-titre-prep" },
-        h("div", { class: "fid-bloc-tete" }, h("h2", { id: "fid-titre-prep" }, t("a_preparer", tr("À préparer")), aPreparer.length ? h("span", { class: "badge-compte" }, String(aPreparer.length)) : null), factures.length > 1 ? h("button", { class: "secondaire", type: "button", disabled: etatEcran.occupe, onclick: async () => { if (!(await confirmer(t("confirmer_tout", tr("Créer {n} factures ? Leurs numéros se suivent et une facture émise ne se supprime pas : une erreur se corrige par un avoir.", { n: factures.length }), { n: factures.length }), t("creer", tr("Créer la facture")), false, simple ? "✕" : tr("Annuler")))) return; agir(async () => { let n = 0; for (const l of factures) { await etat.store.fiduciaireEmettre(l.reservation_id, null); n++; } return n; }, (n) => t("creees", tr("{n} facture(s) créée(s).", { n }), { n })); } }, t("creer_tout", tr("Tout créer ({n})", { n: factures.length }), { n: factures.length })) : null),
+        h("div", { class: "fid-bloc-tete" }, h("h2", { id: "fid-titre-prep" }, t("a_preparer", tr("À préparer")), aPreparer.length ? h("span", { class: "badge-compte" }, String(aPreparer.length)) : null), factures.length > 1 ? h("button", { class: "secondaire", type: "button", disabled: etatEcran.occupe, onclick: async () => { if (!(await confirmer(t("confirmer_tout", tr("Créer {n} factures ? Leurs numéros se suivent et une facture émise ne se supprime pas : une erreur se corrige par un avoir.", { n: factures.length }), { n: factures.length }), t("creer", tr("Créer la facture")), false, simple ? "✕" : tr("Annuler")))) return; agir(async () => { let n = 0; try { for (const l of factures) { await etat.store.fiduciaireEmettre(l.reservation_id, null, "facture"); n++; } } catch (err) { throw new Error(n ? `${err.message} (${tr("{n} facture(s) créée(s) avant l'erreur", { n })})` : err.message); } return n; }, (n) => t("creees", tr("{n} facture(s) créée(s).", { n }), { n })); } }, t("creer_tout", tr("Tout créer ({n})", { n: factures.length }), { n: factures.length })) : null),
         aPreparer.length ? [h("div", { class: "fid-liste" }, aPreparer.slice(0, etatEcran.nbPrep).map(carteAPreparer)), plus(aPreparer.length, etatEcran.nbPrep, () => { etatEcran.nbPrep += 24; rendre(); })] : vide(t("rien", tr("Rien à préparer pour le moment")), simple ? "" : tr("Une facture se prépare quand l'agence a reçu de l'argent sur un service : la commission du prestataire, ou la marge une fois le client et le prestataire payés."))
       ),
       h(
