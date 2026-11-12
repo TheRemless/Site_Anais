@@ -140,3 +140,11 @@ export function classementGroupe(parEntite, cle, champ, cible, taux, limite = 8)
   }
   return [...m.values()].sort((a, b) => b.montant - a.montant || a.libelle.localeCompare(b.libelle)).slice(0, limite);
 }
+
+// Entreprises proposées dans l'outil : VIP Taxi Lanta reste en dehors tant qu'il n'a aucun dossier (décision du 12.11.2026).
+// Rien n'est supprimé : dès qu'un dossier existe pour lui, il réapparaît. Jamais de liste vide (une personne qui n'a que Taxi le garde).
+export function entreprisesVisibles(entites, dossiers) {
+  const avecDossier = new Set((dossiers || []).map((d) => d.entite_id));
+  const gardees = entites.filter((e) => e.slug !== "taxi" || avecDossier.has(e.id));
+  return gardees.length ? gardees : entites;
+}

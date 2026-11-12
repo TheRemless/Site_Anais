@@ -87,3 +87,15 @@ test("seriesMensuelles et classementGroupe : converties, les devises sans taux s
   assert.equal(top[0].entite, "ZTP");
   assert.equal(top[1].montant, 100);
 });
+
+test("entreprises visibles : Taxi reste hors de l'outil tant qu'il n'a aucun dossier, sans rien supprimer", async () => {
+  const { entreprisesVisibles } = await load();
+  const e = (id, slug) => ({ id, slug, nom: slug, actif: true });
+  const ztp = e("1", "ztp");
+  const secret = e("2", "secret");
+  const taxi = e("3", "taxi");
+  assert.deepEqual(entreprisesVisibles([ztp, secret, taxi], []).map((x) => x.slug), ["ztp", "secret"]);
+  assert.deepEqual(entreprisesVisibles([ztp, secret, taxi], [{ entite_id: "3" }]).map((x) => x.slug), ["ztp", "secret", "taxi"], "dès qu'il a un dossier, il revient seul");
+  assert.deepEqual(entreprisesVisibles([ztp, secret], []).map((x) => x.slug), ["ztp", "secret"], "une autre entreprise sans dossier reste visible");
+  assert.deepEqual(entreprisesVisibles([taxi], []).map((x) => x.slug), ["taxi"], "jamais de liste vide");
+});

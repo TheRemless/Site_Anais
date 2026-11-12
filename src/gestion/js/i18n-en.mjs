@@ -2163,4 +2163,5 @@ export const EN = {
   "Avis des clients": "Client reviews",
   "Lien d'avis Google": "Google review link",
   "Le message « avis » le met dans le texte (variable {lien_avis}). Les cartes « Hier » de l'accueil proposent de le demander une fois par client.": "The “review” message puts it in the text (variable {lien_avis}). The “Yesterday” cards on the home screen offer to ask for it once per client.",
+  "À payer au prestataire avant le {date} (la veille du départ) : Bundhaya peut annuler si ce n'est pas payé.": "To pay the provider before {date} (the day before departure): Bundhaya may cancel if it is not paid.",
 };

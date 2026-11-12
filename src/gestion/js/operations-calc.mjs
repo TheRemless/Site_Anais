@@ -472,6 +472,18 @@ export function notePasseport({ de = "", vers = "", libelle = "", compagnie = ""
 }
 const sansAccentsMin = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
+// Bundhaya se paie d'avance : les clients nous paient, et nous reversons au prestataire avant la veille du départ (jamais la veille : Bundhaya peut annuler).
+// Règle pour les traversées qui ne partent pas de Koh Lanta. Renvoie { avant, date_service } (« avant » : la veille, premier jour où ce n'est plus assez tôt) ou null.
+// Rien pour Rattana (payé sur place), ni pour un départ inconnu : on ne devine pas. `paye` : le net est déjà reversé.
+export function alerteAvantVeille(r, { partenaire = "", trajet = null, paye = false } = {}) {
+  if (!r || r.statut === "annule" || r.paye_sur_place || !r.date_service || paye || !/bundhaya/i.test(partenaire || "")) return null;
+  const depart = trajet ? trajet.de : String(r.libelle || "").split(/→|->/).length > 1 ? String(r.libelle).split(/→|->/)[0] : "";
+  if (!String(depart || "").trim() || /lanta/i.test(depart)) return null;
+  const d = new Date(`${r.date_service}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return { avant: d.toISOString().slice(0, 10), date_service: r.date_service };
+}
+
 // Dates du dossier déduites de ses réservations (hors annulées) : la première et la dernière date de service.
 export function datesDepuisReservations(reservations) {
   const dates = reservations.filter((r) => r.statut !== "annule" && r.date_service).map((r) => r.date_service).sort();
