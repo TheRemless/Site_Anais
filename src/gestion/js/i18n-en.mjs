@@ -1399,7 +1399,6 @@ export const EN = {
   "Tout ramener en": "Convert everything to",
   "Toute l'équipe": "The whole team",
   "Toute la période": "Whole period",
-  "Toute la période du contrat": "Whole contract period",
   "Toutes": "All",
   "Toutes les arrivées": "All arrivals",
   "Toutes les compagnies": "All boat companies",

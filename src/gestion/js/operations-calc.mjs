@@ -504,7 +504,7 @@ export function typeVoucher(reservation, prestation, partenaire = null) {
   const g = `${(prestation && prestation.groupe) || ""} ${(prestation && prestation.libelle) || ""}`;
   if (f === "frais") return null;
   // Une option (extension d'île, supplément) se note sur le voucher du tour, elle n'a pas le sien.
-  if (/^option|supplément|supplement|extension/i.test(g)) return null;
+  if ((prestation && prestation.unite === "sup") || /^option|supplément|supplement|extension|\bextra (?:dive|person)\b/i.test(g)) return null;
   if (f === "transfert") return /speedboat|ferry|bateau|boat/i.test(g) ? "billet" : "transfert";
   if (f === "location") return "location";
   if (f === "activite") return "activite";
@@ -532,22 +532,23 @@ export const estPrive = (prestation, reservation) => /priv|charter/i.test(`${(pr
 export function fraisDeParc(prestation) {
   const texte = (prestation && prestation.details && prestation.details.parc) || "";
   if (!texte) return { inclus: null, texte: "" };
-  const inclus = /inclu|included|compris/i.test(texte) && !/non inclu|not included|pas inclu|non compris|jamais/i.test(texte);
+  const inclus = /inclu|included|compris/i.test(texte) && !/non inclu|not included|pas inclu|non compris|jamais|never/i.test(texte);
   return { inclus, texte: inclus ? "" : texteParcEn(texte) };
 }
 
 // « Adulte étranger: 400 ฿ | Enfant: 200 ฿ (Thaï: 40 ฿ / 20 ฿) » → « Adult 400 THB, child 200 THB (Thai nationals 40 / 20 THB), cash on the day ».
 export function texteParcEn(texte) {
   let s = String(texte || "").replace(/\s*\n\s*/g, " ").trim();
-  s = s.replace(/^Selon destination\s*\(([^)]*)\)\s*/i, "$1, depending on the destination");
+  s = s.replace(/^(?:Selon destination|Depending on destination)\s*\(([^)]*)\)\s*/i, "$1, depending on the destination");
   s = s.replace(/(\d+)\s*à\s*(\d+)/g, "$1 to $2");
-  s = s.replace(/\(\s*([\d\s\/฿]+?)\s*thaï\s*\)/gi, "(Thai nationals $1)");
-  s = s.replace(/\(\s*Thaï\s*:\s*/gi, "(Thai nationals ");
-  s = s.replace(/Enfant thaï\s*:\s*/gi, "Thai child ");
-  s = s.replace(/Adulte étranger\s*:\s*/gi, "adult ").replace(/Enfant étranger\s*:\s*/gi, "child ").replace(/Enfant\s*:\s*/gi, "child ");
-  s = s.replace(/\/\s*adulte étranger/gi, "per adult").replace(/\/\s*enfant/gi, "per child").replace(/\/\s*adulte/gi, "per adult");
+  // Le texte de la base est en français (anciennes lignes) ou en anglais (depuis le 12.11.2026) : les deux donnent la même phrase.
+  s = s.replace(/\(\s*([\d\s\/฿]+?)\s*(?:thaï|Thai)\s*\)/gi, "(Thai nationals $1)");
+  s = s.replace(/\(\s*(?:Thaï|Thai)\s*:\s*/gi, "(Thai nationals ");
+  s = s.replace(/(?:Enfant thaï|Thai child)\s*:\s*/gi, "Thai child ");
+  s = s.replace(/(?:Adulte étranger|Foreign adult)\s*:\s*/gi, "adult ").replace(/(?:Enfant étranger|Foreign child)\s*:\s*/gi, "child ").replace(/\b(?:Enfant|Child)\s*:\s*/gi, "child ");
+  s = s.replace(/\/\s*(?:adulte étranger|foreign adult)/gi, "per adult").replace(/\/\s*(?:enfant|child)/gi, "per child").replace(/\/\s*adulte/gi, "per adult");
   s = s.replace(/฿\s*\/\s*(\d+)\s*฿/g, "/ $1 THB").replace(/฿/g, "THB");
-  s = s.replace(/\s*\|\s*/g, ", ").replace(/,?\s*À régler en espèces sur place/i, "");
+  s = s.replace(/\s*\|\s*/g, ", ").replace(/,?\s*(?:À régler en espèces sur place|To be paid in cash on site)/i, "");
   s = s.replace(/\s+/g, " ").replace(/\s+,/g, ",").replace(/\(\s+/g, "(").replace(/\s+\)/g, ")").trim();
   s = s.charAt(0).toUpperCase() + s.slice(1);
   return /cash/i.test(s) ? s : `${s}, cash on the day`;
@@ -556,7 +557,7 @@ export function texteParcEn(texte) {
 // Capacité du bateau quand la base en donne une en personnes (« 1 à 2 personnes »), rien pour « Par personne ».
 export function capaciteBateau(prestation) {
   const c = (prestation && prestation.details && prestation.details.capacite) || "";
-  return /\d/.test(c) && !/^par\b/i.test(c) ? c.replace(/\s*(à|-)\s*/g, " to ").replace(/personnes?/i, "people") : "";
+  return /\d/.test(c) && !/^(par|per)\b/i.test(c) ? c.replace(/\s*(à|-)\s*/g, " to ").replace(/personnes?/i, "people") : "";
 }
 
 // « Speedboat Privé\nRattana Pier » → bateau en anglais et quai de départ.
@@ -570,7 +571,7 @@ export function bateauEtQuai(prestation) {
 
 // Horaires de la base quand ils sont une plage d'heures (« 09h00 - 16h00 (Journée) » → « 09:00 - 16:00 (full day) »),
 // rien quand ce sont des jours d'ouverture, qui n'ont pas leur place sur un voucher.
-const PARENTHESES = [[/journée/i, "full day"], [/flexible/i, "flexible"], [/trajet\s*~?\s*(\d{1,2}h\d{2})/i, "about $1 ride"], [/départ/i, "departure"], [/bateau/i, "boat"]];
+const PARENTHESES = [[/journée|full day/i, "full day"], [/flexible/i, "flexible"], [/(?:trajet|ride)\s*~?\s*(\d{1,2}h\d{2})/i, "about $1 ride"], [/départ|departure/i, "departure"], [/bateau|boat/i, "boat"]];
 export function horairesTexte(horaires) {
   const premiere = String(horaires || "").split("\n")[0].trim();
   const m = premiere.match(/^(\d{1,2})[h:](\d{0,2})\s*(?:-|–|>|→)\s*(\d{1,2})[h:](\d{0,2})\s*(\(.*\))?$/);

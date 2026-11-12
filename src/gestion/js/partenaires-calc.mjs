@@ -53,6 +53,10 @@ export const prefixeProgramme = (libelle) => {
 export const estLigneSupplement = (l) => !!l && (l.supplement === true || /suppl[ée]mentaire|extra person/i.test(l.intro || ""));
 export const libelleUnite = (code, en = langueActive() === "en") => (UNITES[code] || UNITES[""])[en ? 1 : 0];
 
+// La période d'un trajet quand elle couvre tout le contrat : rien à afficher. Les anciens trajets la disent en français, les nouveaux en anglais.
+export const PERIODE_TOUTE = ["Toute la période du contrat", "Whole contract period"];
+export const periodeSpecifique = (periode) => (periode && !PERIODE_TOUTE.includes(periode) ? periode : "");
+
 // Devine l'unité d'après un texte de brochure (« Par personne », « Par bateau », « 4 à 6 personnes »).
 export function uniteDepuisTexte(texte) {
   const t = sansAccents(texte);

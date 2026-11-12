@@ -464,8 +464,8 @@ export function proposerOffresLibres(d, texte, { prestations = [], trajets = [],
     }
     // Un seul mot commun ne suffit que si le tarif n'en a qu'un et qu'il est assez long pour être précis.
     if (score < 0.5 || (motsCommuns < 2 && !(mots(p.libelle_en || p.libelle).length === 1 && mots(p.libelle_en || p.libelle)[0].length >= 5))) continue;
-    if (d.mode === "join") score += /join|collectif|partag/.test(groupe) ? 0.2 : -0.1;
-    if (d.mode === "private") score += /priv/.test(groupe) ? 0.2 : -0.1;
+    if (d.mode === "join") score += groupeJoin(groupe) ? 0.2 : -0.1;
+    if (d.mode === "private") score += groupePrive(groupe) ? 0.2 : -0.1;
     offres.push({ genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score });
   }
   return offres.map((o) => completerSupplement(completerEnfant(o, pax, prestations), pax, prestations)).sort((a, b) => b.score - a.score || (a.total ?? Infinity) - (b.total ?? Infinity)).slice(0, 6);
@@ -662,6 +662,10 @@ export function prixTrajet(t, { adultes, enfants }) {
   return { total: adulte * adultes + (enfantPrix || 0) * enfants, avertissement: "" };
 }
 
+// Le groupe d'une prestation dit si l'excursion est en groupe (join) ou privée, en français (anciennes données) comme en anglais. `groupe` est sans accents, en minuscules.
+export const groupeJoin = (groupe) => /join|collectif|partag|shared/.test(groupe);
+export const groupePrive = (groupe) => /priv/.test(groupe);
+
 // Tarif enfant d'une excursion : la prestation « enfant » du même partenaire et du même groupe, au même nom avant la virgule.
 const nomCourt = (l) => sansAccents(l).split(",")[0].trim();
 export function prestationEnfant(p, prestations = []) {
@@ -739,8 +743,8 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
       let score = recouvrement(d.type === "location" && d.vehiculeNom ? `${d.prestation} ${d.vehiculeNom}` : d.prestation, texte);
       if (score < 0.5) continue;
       const groupe = sansAccents(p.groupe || p.libelle);
-      if (d.mode === "join") score += /join|collectif|partag/.test(groupe) ? 0.2 : -0.1;
-      if (d.mode === "private") score += /priv/.test(groupe) ? 0.2 : -0.1;
+      if (d.mode === "join") score += groupeJoin(groupe) ? 0.2 : -0.1;
+      if (d.mode === "private") score += groupePrive(groupe) ? 0.2 : -0.1;
       offres.push({ genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score });
     }
   }

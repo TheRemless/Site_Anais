@@ -1,7 +1,7 @@
 // Trajets : le chercheur de liaisons (départ, arrivée, date, compagnie), les horaires, prix, nets et périodes.
 import { etat, peut, naviguer, nomPartenaire, netTrajet, inserer, modifier, supprimer, enregistrerLie } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
-import { filtrerTrajets, lieux, meilleursNets, resumeParCompagnie } from "../partenaires-calc.mjs";
+import { filtrerTrajets, lieux, meilleursNets, resumeParCompagnie, periodeSpecifique, PERIODE_TOUTE } from "../partenaires-calc.mjs";
 import { vide, cartes } from "./commun.mjs";
 import { prix, margeNoeud, voitNets } from "./partenaires.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
@@ -45,7 +45,7 @@ export function vueTrajets() {
       return;
     }
     const meilleurs = de.value && vers.value && nets ? meilleursNets(lignes, netDe) : new Set();
-    const detail = (t) => [t.mode ? `${t.mode}. ` : "", t.bebe ? `Bébé : ${t.bebe}. ` : "", t.numero ? `Ligne n°${t.numero}. ` : "", t.periode && t.periode !== "Toute la période du contrat" ? `Période : ${t.periode}.` : ""].join("").trim();
+    const detail = (t) => [t.mode ? `${t.mode}. ` : "", t.bebe ? `Bébé : ${t.bebe}. ` : "", t.numero ? `Ligne n°${t.numero}. ` : "", periodeSpecifique(t.periode) ? `Période : ${t.periode}.` : ""].join("").trim();
     const modif = (t) => (peut("partenaires.ecrire") ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Modifier le trajet"), formulaireTrajet(t, () => (fermer(), rafraichir()))); } }, tr("Modifier")) : null);
     const cieNom = (t) => h("span", { class: "tag cie" }, nomPartenaire(t.partenaire_id).split(" ")[0]);
     corps.append(
@@ -141,7 +141,7 @@ function formulaireTrajet(t, apres) {
       onsubmit: async (e) => {
         e.preventDefault();
         const fen = fenetres.value.split("\n").map((l) => l.match(/(\d{4}-\d{2}-\d{2})\D+(\d{4}-\d{2}-\d{2})/)).filter(Boolean).map((m) => [m[1], m[2]]);
-        const valeurs = { partenaire_id: cie.value, de: de.value.trim(), vers: vers.value.trim(), mode: mode.value.trim(), depart: depart.value, arrivee: arrivee.value, duree: duree.value.trim(), prix_adulte: num(ad.value), prix_enfant: num(ch.value), bebe: bebe.value.trim(), periode: periode.value.trim() || (fen.length ? "" : tr("Toute la période du contrat")), fenetres: fen, actif: actif.checked };
+        const valeurs = { partenaire_id: cie.value, de: de.value.trim(), vers: vers.value.trim(), mode: mode.value.trim(), depart: depart.value, arrivee: arrivee.value, duree: duree.value.trim(), prix_adulte: num(ad.value), prix_enfant: num(ch.value), bebe: bebe.value.trim(), periode: periode.value.trim() || (fen.length ? "" : PERIODE_TOUTE[1]), fenetres: fen, actif: actif.checked };
         try {
           const res = t.id ? await modifier("trajets", t.id, valeurs) : await inserer("trajets", { ...valeurs, numero: Math.max(0, ...etat.db.trajets.map((x) => x.numero || 0)) + 1 });
           if (nets && peut("partenaires.ecrire") && (adn.value !== "" || chn.value !== "" || n)) await enregistrerLie("trajets_nets", "trajet_id", res.id, { net_adulte: num(adn.value), net_enfant: num(chn.value) });

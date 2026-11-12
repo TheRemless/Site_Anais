@@ -4,7 +4,7 @@ import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet, modeTaxi }
 import { lignesSurPlace } from "../taxi-calc.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
-import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut } from "../partenaires-calc.mjs";
+import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut, periodeSpecifique } from "../partenaires-calc.mjs";
 import { prestationEnfant } from "../demande-calc.mjs";
 import { appliquerModeParDefaut } from "../operations-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
@@ -129,7 +129,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
           h(
             "li",
             { class: "choix" },
-            h("div", { class: "choix-texte" }, h("strong", null, `${t.de} → ${t.vers}, ${t.depart}`), h("span", null, [nomPartenaire(t.partenaire_id), t.mode, t.duree, t.periode && t.periode !== "Toute la période du contrat" ? t.periode : ""].filter(Boolean).join(" · "))),
+            h("div", { class: "choix-texte" }, h("strong", null, `${t.de} → ${t.vers}, ${t.depart}`), h("span", null, [nomPartenaire(t.partenaire_id), t.mode, t.duree, periodeSpecifique(t.periode)].filter(Boolean).join(" · "))),
             h("div", { class: "choix-prix" }, h("strong", null, prix(t.prix_adulte)), h("span", null, t.prix_enfant !== null && t.prix_enfant !== undefined ? tr("enfant {prix}", { prix: prix(t.prix_enfant) }) : tr("par adulte"))),
             h("div", { class: "choix-actions" }, ad, ch, h("button", { class: "principal petit", type: "button", onclick: () => { const nbEnfants = Number(ch.querySelector("input").value) || 0; if (nbEnfants > 0 && (t.prix_enfant === null || t.prix_enfant === undefined)) return toast(tr("Ce trajet n'a pas de tarif enfant : les enfants ne seraient pas facturés. Ajoutez le tarif enfant au partenaire ou mettez-les en adultes."), true); const l = lignesDepuisTrajet(t, netTrajet(t), { langue, date: date.value, adultes: Number(ad.querySelector("input").value) || 0, enfants: Number(ch.querySelector("input").value) || 0, compagnie: sansCompagnie ? "" : nomPartenaire(t.partenaire_id) }); if (!l.length) return toast(tr("Indiquez au moins un adulte ou un enfant."), true); ajoute(l, `${t.de} → ${t.vers}`); } }, tr("Ajouter")))
           )
