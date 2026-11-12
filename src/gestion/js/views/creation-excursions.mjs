@@ -25,7 +25,9 @@ export async function refDefinitive(ref, propose, regl = reglages()) {
 // `client` : { id } pour un client existant, sinon { prenom, nom, telephone, hotel, chambre } pour en créer un.
 // `lignes` : lignes de facture (avec `description` et `description_fixe` éventuels, comme dans l'écran de création).
 // `reservation` : { heure, lieu, bebes } posés sur chaque réservation créée (ce que le client a écrit, sans champ propre sur la facture).
-export async function creerDossierExcursions({ client, lignes: brutes, notes = "", ref, reservation = {} }) {
+// `parService` : [{ ligneIds, heure, lieu, bebes, dropoff, vol, bagages, personnes }], un par service avec les identifiants de ses lignes : chaque réservation prend
+// ce qui concerne SON service (dates, heures et lieux différents dans un même dossier). Sans lui, `reservation` vaut pour toutes.
+export async function creerDossierExcursions({ client, lignes: brutes, notes = "", ref, reservation = {}, parService = null }) {
   const regl = reglages();
   // `titre` : le nom court du service, qui sert aux réservations (une ligne adulte et sa ligne enfant en font une seule).
   const lignes = brutes.map((l) => (l.titre || l.kind === "texte" ? l : { ...l, titre: l.libelle }));
@@ -45,12 +47,22 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   await creerReservations(doc);
   // Heure, lieu de pickup, dépose, vol, bagages et bébés donnés par le client : posés sur les réservations qui viennent d'être créées
   // (la dépose, le vol et les bagages sont les champs du voucher de transfert).
-  const { heure = "", lieu = "", bebes = 0, dropoff = "", vol = "", bagages = 0, personnes = null } = reservation;
-  const details = { ...(dropoff ? { drop_off: dropoff } : {}), ...(vol ? { vol } : {}), ...(bagages ? { bagages: String(bagages) } : {}) };
-  if (heure || lieu || bebes || personnes || Object.keys(details).length) {
-    for (const r of etat.db.reservations.filter((x) => x.dossier_id === d.id)) {
-      await modifier("reservations", r.id, { ...(heure ? { heure_pickup: heure } : {}), ...(lieu ? { lieu_pickup: lieu } : {}), ...(bebes || personnes ? { personnes: { ...(r.personnes || {}), ...(personnes && !((r.personnes || {}).adultes || (r.personnes || {}).enfants) ? { adultes: personnes.adultes, enfants: personnes.enfants } : {}), ...(bebes ? { bebes } : {}) } } : {}), ...(Object.keys(details).length ? { details: { ...(r.details || {}), ...details } } : {}) });
-    }
+  const patch = (r, { heure = "", lieu = "", bebes = 0, dropoff = "", vol = "", bagages = 0, personnes = null }) => {
+    const details = { ...(dropoff ? { drop_off: dropoff } : {}), ...(vol ? { vol } : {}), ...(bagages ? { bagages: String(bagages) } : {}) };
+    const dejaDesGens = (r.personnes || {}).adultes || (r.personnes || {}).enfants;
+    return {
+      ...(heure ? { heure_pickup: heure } : {}),
+      ...(lieu ? { lieu_pickup: lieu } : {}),
+      ...(bebes || personnes ? { personnes: { ...(r.personnes || {}), ...(personnes && !dejaDesGens ? { adultes: personnes.adultes, enfants: personnes.enfants } : {}), ...(bebes ? { bebes } : {}) } } : {}),
+      ...(Object.keys(details).length ? { details: { ...(r.details || {}), ...details } } : {}),
+    };
+  };
+  const reservations = etat.db.reservations.filter((x) => x.dossier_id === d.id);
+  for (const r of reservations) {
+    const lies = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])]);
+    const propre = parService ? parService.find((sv) => sv.ligneIds.some((id) => lies.has(id))) : reservation;
+    const champs = propre ? patch(r, propre) : {};
+    if (Object.keys(champs).length) await modifier("reservations", r.id, champs);
   }
   return d;
 }

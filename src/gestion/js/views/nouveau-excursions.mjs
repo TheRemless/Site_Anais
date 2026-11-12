@@ -97,7 +97,7 @@ export function nouveauDossierExcursions() {
     bouton.textContent = tr("Création…");
     try {
       ref.value = await refDefinitive(ref.value, refProposee, regl);
-      const d = await creerDossierExcursions({ client: selClient.valeur ? { id: selClient.valeur } : { prenom: nvPrenom.value, nom: nvNom.value, telephone: nvTel.value, hotel: nvHotel.value, chambre: nvChambre.value }, lignes, notes: notes.value, ref: ref.value, reservation: demande ? demande.reservation || {} : {} });
+      const d = await creerDossierExcursions({ client: selClient.valeur ? { id: selClient.valeur } : { prenom: nvPrenom.value, nom: nvNom.value, telephone: nvTel.value, hotel: nvHotel.value, chambre: nvChambre.value }, lignes, notes: notes.value, ref: ref.value, reservation: demande ? demande.reservation || {} : {}, parService: demande ? demande.parService || null : null });
       viderBrouillon();
       naviguer(`#/dossier/${d.id}`);
     } catch (err) {

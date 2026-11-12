@@ -815,6 +815,24 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 /* Ce que le formulaire du site a dit en plus : option, lieux, vol, âges, prix annoncé. */
 .demande-site { margin: 0 0 12px; padding: 8px 12px 8px 28px; border-left: 3px solid var(--bord-fort); background: var(--surface-2); font-size: 0.9rem; }
 .demande-site li { margin: 2px 0; }
+/* Coller une demande : un service par ligne cochée, chacun avec sa date, son heure et ses personnes. */
+.services-titre { margin: 4px 0 8px; font-size: 1rem; }
+.services-liste { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 10px; }
+.dsv { border: 1px solid var(--bord-fort); border-radius: 8px; background: var(--surface); padding: 8px 12px 4px; }
+.dsv.decoche { opacity: 0.55; }
+.dsv-tete { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.dsv-tete .case-tache { margin: -4px 0 0 -10px; }
+.dsv-titre { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-top: 4px; }
+.dsv-titre select { min-height: 44px; font-weight: 600; }
+.dsv-detail, .dsv-phrase { font-size: 0.85rem; color: var(--texte-2); overflow-wrap: anywhere; }
+.dsv-titre .petit { align-self: flex-start; }
+.a-preciser { color: #8a5200; }
+.dsv-prix { padding-top: 6px; white-space: nowrap; font-variant-numeric: lining-nums tabular-nums; }
+.dsv-alertes { margin: 4px 0 2px; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.dsv-champs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; margin-top: 6px; }
+.dsv-champs .champ { margin-bottom: 8px; }
+@media (min-width: 720px) { .dsv-champs { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.services-total { margin: 6px 0 10px; font-weight: 700; font-variant-numeric: lining-nums tabular-nums; }
 /* ===== Fin session D ===== */
 /* ---- Paiements (session A) : puce « Chez nous / Sur place », écran À encaisser ---- */
 .mode-reglement { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--bord-fort, var(--bord)); border-radius: 999px; background: var(--surface); }
