@@ -18,6 +18,8 @@ import { ouvrirEnvois } from "./envois-vouchers.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { ouvrirSansSuite, rouvrirDevis, baseDistante } from "./sans-suite.mjs";
 import { peutClasser, disponible as sansSuiteDisponible } from "../sans-suite-calc.mjs";
+import { ouvrirCarnet, baseDistante as baseDistanteCarnet } from "./carnet.mjs";
+import { disponible as carnetDisponible, peutNoter } from "../carnet-calc.mjs";
 
 const rafraichir = () => naviguer(location.hash);
 const dernier = (docs, type) => docs.filter((d) => d.type === type).sort((a, b) => (a.created_at > b.created_at ? 1 : -1)).pop();
@@ -435,6 +437,10 @@ function ficheDossierVue(id) {
           sansSuiteOk ? h("button", { class: "principal", type: "button", onclick: () => rouvrirDevis(d, rafraichir) }, tr("Rouvrir le devis")) : null
         )
       : null;
+  // Solde : une fois le carnet de voyage envoyé, le solde est dû ce jour-là (les conditions disent « à la réception du carnet »).
+  const carnetOk = droit.dossiers && !excursions && carnetDisponible(d, baseDistanteCarnet());
+  const boutonCarnet = carnetOk && !d.carnet_envoye_le && peutNoter({ annule: !!d.annule, statut: r.statut, total: r.total, reste: r.reste }) ? h("button", { class: "secondaire", type: "button", onclick: () => ouvrirCarnet(d, rafraichir) }, tr("Carnet envoyé")) : null;
+  const ligneCarnet = carnetOk && d.carnet_envoye_le && !d.annule ? h("div", { class: "resume-sous-action resume-carnet" }, h("p", { class: "resume-detail" }, tr("Carnet envoyé le {date}", { date: formatDate(d.carnet_envoye_le) })), h("button", { class: "lien", type: "button", onclick: () => ouvrirCarnet(d, rafraichir) }, tr("Modifier"))) : null;
   const boutonSuivant = !suivante
     ? null
     : h(
@@ -470,6 +476,8 @@ function ficheDossierVue(id) {
             // « Tout sur place » : rien à encaisser chez nous, ni reste ni couleur d'alerte.
             r.statut === "sur_place" ? ligne(tr("Reste à payer"), tr("Rien chez nous"), "resume-ok") : ligne(tr("Reste à payer"), fm(r.reste), r.reste > 0 ? "resume-reste" : null),
             r.surPlace > 0 ? ligne(tr("À payer sur place"), fm(r.surPlace)) : null,
+            // Solde dû dès l'envoi du carnet (seulement quand il reste quelque chose à régler).
+            d.carnet_envoye_le && r.reste > 0 && !d.annule && r.statut !== "sur_place" ? ligne(tr("Solde dû dès le"), formatDate(d.carnet_envoye_le)) : null,
             ...ligneMarge.map(([l, v, det]) => ligne(l, det ? `${v} · ${det}` : v))
           ),
           // De l'argent reçu sans facture : à régulariser, sinon rien ne le rattache à un document.
@@ -488,7 +496,7 @@ function ficheDossierVue(id) {
           )
         : rsDossier.length ? bloc("resume-commission", tr("Commission"), h("p", { class: "resume-detail" }, tr("Aucun service payé sur place : pas de commission à recevoir."))) : null,
   ].filter(Boolean);
-  const resume = h("div", { class: "resume-dossier", role: "region", "aria-label": tr("Résumé du dossier") }, h("div", { class: "resume-grille" }, blocs), boutonSuivant, blocSansSuite || (boutonSansSuite ? h("div", { class: "resume-sous-action" }, boutonSansSuite) : null));
+  const resume = h("div", { class: "resume-dossier", role: "region", "aria-label": tr("Résumé du dossier") }, h("div", { class: "resume-grille" }, blocs), boutonSuivant, blocSansSuite || (boutonSansSuite || boutonCarnet ? h("div", { class: "resume-sous-action" }, boutonSansSuite || boutonCarnet) : ligneCarnet));
 
   const racine = h(
     "div",

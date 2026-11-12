@@ -1283,6 +1283,8 @@ details > summary { padding-block: 11px; margin: 0; }
 .resume-sous-action .secondaire { flex: 1; min-height: 44px; }
 .resume-sans-suite { display: grid; gap: 6px; background: var(--surface-2); }
 .resume-sans-suite .resume-valeur { margin: 0; }
+.resume-carnet { align-items: center; justify-content: space-between; gap: 12px; }
+.resume-carnet p { margin: 0; }
 @media (min-width: 720px) {
   .tache-actions { justify-content: flex-end; }
   .resume-sous-action { justify-content: flex-start; }

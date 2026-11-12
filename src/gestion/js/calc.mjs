@@ -275,6 +275,15 @@ export function echeanceAcompte(dossier, reglages) {
   return ajouterJours(dossier.accepte_le, Number(reglages.conditions.delai_jours) || 0);
 }
 
+// Échéance du solde. Les conditions disent « à la réception du carnet de voyage » : une fois le carnet envoyé, le solde est dû ce jour-là.
+// Tant qu'il n'est pas noté comme envoyé, l'ancienne règle reste : le solde est relevé 30 jours avant le départ.
+export const JOURS_SOLDE_AVANT_DEPART = 30;
+export function echeanceSolde(dossier) {
+  if (dossier.carnet_envoye_le) return { date: dossier.carnet_envoye_le, source: "carnet" };
+  if (dossier.date_depart) return { date: ajouterJours(dossier.date_depart, -JOURS_SOLDE_AVANT_DEPART), source: "depart" };
+  return null;
+}
+
 // Statut à partir de faits déjà connus : c'est ce qui permet de l'afficher sans charger les documents du dossier.
 export function statutDepuis({ annule, total, recu, accepteLe, devisEnvoyeLe, pct, surPlace = 0, sansSuite = false }) {
   if (annule) return "annule";
@@ -342,12 +351,16 @@ export function aFaire(resumes, today, reglages) {
       const depuis = r.devisEnvoyeLe ? joursEntre(r.devisEnvoyeLe, today) : 0;
       if (r.devisEnvoyeLe && depuis >= relance) items.push({ type: "devis_relance", resume: r, jours: depuis });
     }
-    if (r.statut === "acompte" && d.date_depart) {
-      const avant = joursEntre(today, d.date_depart);
-      if (avant >= 0 && avant <= 30 && r.reste > 0) items.push({ type: "solde_proche", resume: r, jours: avant });
+    if (r.statut === "acompte" && r.reste > 0) {
+      // Carnet envoyé (date passée ou du jour) : le solde est dû depuis cet envoi. Une date à venir ne fait pas taire l'ancienne règle.
+      if (d.carnet_envoye_le && d.carnet_envoye_le <= today) items.push({ type: "solde_du", resume: r, jours: joursEntre(d.carnet_envoye_le, today) });
+      else if (d.date_depart) {
+        const avant = joursEntre(today, d.date_depart);
+        if (avant >= 0 && avant <= JOURS_SOLDE_AVANT_DEPART) items.push({ type: "solde_proche", resume: r, jours: avant });
+      }
     }
   }
-  const ordre = { trop_percu: 0, acompte_retard: 1, solde_proche: 2, devis_relance: 3 };
+  const ordre = { trop_percu: 0, acompte_retard: 1, solde_du: 1, solde_proche: 2, devis_relance: 3 };
   return items.sort((a, b) => ordre[a.type] - ordre[b.type] || b.jours - a.jours);
 }
 
