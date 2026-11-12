@@ -420,51 +420,45 @@ export function ouvrirDemande() {
     texte = valeur;
     garde.ecrire(valeur.trim());
     erreur.textContent = "";
-    d = texte.trim() ? lireMessage(texte, aujourdhui()) : null;
+    const lu = texte.trim() ? lireMessage(texte, aujourdhui()) : null;
+    if (lu) return appliquer(lu, decouperServices(texte, lu, contexte(), aujourdhui()));
+    d = null;
+    vider();
+    corps.classList.remove("lu");
+    if (texte.trim()) reconnu.append(h("p", { class: "erreur-form", role: "alert" }, tr("Rien de reconnu dans ce texte. Collez le message du client tel qu'il est arrivé sur WhatsApp.")));
+  }
+
+  function vider() {
     clientId = "";
     refuse = new Set();
     services = [];
     if (redigerIA) redigerIA.vider();
     listeBloc.replaceChildren();
     reconnu.replaceChildren();
-    corps.classList.toggle("lu", !!d);
-    if (!texte.trim()) return;
-    if (!d) return reconnu.append(h("p", { class: "erreur-form", role: "alert" }, tr("Rien de reconnu dans ce texte. Collez le message du client tel qu'il est arrivé sur WhatsApp.")));
-    d.hotelSaisi = false;
+  }
+
+  // Une lecture (par règles ou par l'assistant IA) et ses services : tout ce qui avait été corrigé à la main repart de zéro.
+  // Un service lu par l'assistant porte `offresIA` (les lignes de la base qu'il a choisies) et `confiance`.
+  function appliquer(d2, trouves) {
+    erreur.textContent = "";
+    d = { ...d2, hotelSaisi: false };
+    vider();
+    corps.classList.add("lu");
     construire();
     poserLesBoutons();
     // Demande de transfert du site VIP Taxi Lanta collée dans une autre entreprise : on propose d'y passer, le message est repris là-bas.
     const taxi = demandeDeTaxi(texte, d) ? entrepriseTaxi(entitesAccessibles(), (id) => etat.brut.reglages[id], etat.entiteId) : null;
     if (taxi && peut("dossiers.ecrire")) reconnu.append(h("div", { class: "bandeau-info demande-bascule", role: "status" }, h("p", null, tr("Demande de transfert du site de {nom} : le dossier se crée dans {nom}.", { nom: taxi.nom })), h("button", { class: "principal petit", type: "button", onclick: () => basculer(taxi) }, tr("Passer à {nom}", { nom: taxi.nom }))));
     reconnu.append(champs, dynamique);
-    const trouves = decouperServices(texte, d, contexte(), aujourdhui());
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, copie: t.copie });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, copie: !!t.copie, ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
     dessinerClient();
     majTotal();
   }
 
   // Lecture par l'assistant IA (si l'entreprise l'a allumé) : ses services remplacent ceux des règles, tout reste corrigeable avant de créer.
-  function appliquerIA(lu) {
-    erreur.textContent = "";
-    d = { ...lu.d, hotelSaisi: false };
-    clientId = "";
-    refuse = new Set();
-    services = [];
-    if (redigerIA) redigerIA.vider();
-    listeBloc.replaceChildren();
-    reconnu.replaceChildren();
-    corps.classList.add("lu");
-    construire();
-    poserLesBoutons();
-    reconnu.append(champs, dynamique);
-    if (!lu.services.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140) });
-    for (const t of lu.services) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, offresIA: t.offres.map((o) => ({ genre: o.genre, id: o.id })), confiance: t.confiance });
-    dessinerClient();
-    majTotal();
-  }
-  const lireIA = boutonLireIA({ texte: () => zone.value, surResultat: appliquerIA });
+  const lireIA = boutonLireIA({ texte: () => zone.value, surResultat: (lu) => appliquer(lu.d, lu.services.map((t) => ({ ...t, offresIA: t.offres.map((o) => ({ genre: o.genre, id: o.id })) }))) });
   // Brouillon de réponse : un seul bloc par fenêtre, replacé à chaque lecture, pour qu'une correction de champ ne le perde pas.
   const redigerIA = boutonRedigerIA({ contexte: () => ({ d, services: coches().map((sv) => ({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, choisie: etatDe(sv).offre })), texte }) });
 
