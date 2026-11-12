@@ -547,7 +547,7 @@ export function formulaireReservation(r, apres) {
 }
 
 // Crée une réservation par ligne de partenaire du document qui n'en a pas encore.
-export async function creerReservations(doc) {
+export async function creerReservations(doc, { silencieux = false } = {}) {
   const existantes = etat.db.reservations.filter((r) => r.dossier_id === doc.dossier_id);
   const nouvelles = reservationsDepuisDocument(doc, { existantes, regleDe: regleCommissionDe });
   const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id);
@@ -567,7 +567,7 @@ export async function creerReservations(doc) {
     }
   }
   await synchroniserDatesDossier(doc.dossier_id);
-  toast(pluriel(n, N_("{n} réservation créée, à demander aux partenaires."), N_("{n} réservations créées, à demander aux partenaires.")));
+  if (!silencieux) toast(pluriel(n, N_("{n} réservation créée, à demander aux partenaires."), N_("{n} réservations créées, à demander aux partenaires.")));
 }
 
 

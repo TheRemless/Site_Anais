@@ -523,6 +523,8 @@ export function vueReglages() {
         h("p", { class: "aide" }, tr("Les vouchers sont en anglais. Un champ vide reprend la valeur de l'onglet Entreprise (nom, sous-titre, adresse, téléphone) ; le logo est celui de l'onglet Apparence. L'aperçu à droite suit vos modifications.")),
         h("div", { class: "grille-form" }, texte(N_("Nom affiché"), "voucher.nom", { placeholder: r.emetteur.nom }), texte(N_("Sous-titre"), "voucher.sous_titre", { placeholder: r.emetteur.sous_titre || tr("by Zwald Travel Planner CO., LTD.") }), texte(N_("Numéro de licence TAT"), "voucher.licence"), texte(N_("WhatsApp affiché"), "voucher.whatsapp", { placeholder: r.emetteur.telephone }), texte(N_("E-mail affiché"), "voucher.email", { type: "email" })),
         texte(N_("Adresse sur une ligne"), "voucher.adresse", { placeholder: (r.emetteur.adresse || "").split("\n").join(", ") }),
+        // Taxi : l'assistante envoie les vouchers de l'écran « Nouveau voucher » à Anaïs, qui les transmet au client.
+        r.fonctionnement === "taxi" ? texte(N_("WhatsApp d'Anaïs (reçoit les vouchers de l'assistante)"), "voucher.whatsapp_anais", { type: "tel", placeholder: "+66 …", aide: tr("Avec l'indicatif. Sur ordinateur, l'image est copiée et cette conversation s'ouvre ; sur téléphone, un bouton ouvre la conversation après l'envoi de l'image. Vide : l'assistante choisit Anaïs dans WhatsApp.") }) : null,
         champ(tr("Modèle de l'aperçu"), choixApercuVoucher),
         texte(N_("Texte de fin"), "voucher.merci", { multi: true, rows: 2, aide: tr("{entreprise} est remplacé par le nom affiché.") }),
         texte(N_("Texte de fin des vouchers de transfert"), "voucher.merci_transfert", { multi: true, rows: 2 }),

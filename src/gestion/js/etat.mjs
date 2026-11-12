@@ -237,6 +237,8 @@ export function moduleActif(nom) {
 // Le mode taxi (VIP Taxi Lanta) suit le même chemin que les excursions, sans facture : voir taxi-calc.mjs.
 export const modeTaxi = () => !!etat.db && estTaxi(etat.db.reglages);
 export const modeExcursions = () => !!etat.db && (etat.db.reglages.fonctionnement === "excursions" || modeTaxi());
+// L'assistante de Taxi (droit « vouchers.seul ») n'a que l'écran « Nouveau voucher » dans une entreprise en mode taxi. Ailleurs, rien ne change.
+export const ecranVoucherSeul = () => modeTaxi() && peut("vouchers.seul") && !estSuperAdmin();
 
 // ---- Chargement à la demande ---------------------------------------------------------------------------------
 // Documents et paiements ne sont pas chargés avec les listes : on les charge à l'ouverture d'un dossier.

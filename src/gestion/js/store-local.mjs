@@ -6,7 +6,7 @@ import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 
-const CLE = "gestion-zwald-demo-v10";
+const CLE = "gestion-zwald-demo-v11";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
 // Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
 const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches"];
@@ -182,8 +182,10 @@ export function creer() {
       throw new Error("Indisponible en mode démonstration.");
     },
     // Démo : une seule personne, pas de compteur partagé.
+    // Comme la base : le compteur tient compte des dossiers que la personne ne voit pas (rôle « ses dossiers », écran « Nouveau voucher »).
     async prochainNumeroRef(entiteId, annee, minimum) {
-      return minimum + 1;
+      const pris = data.dossiers.filter((d) => d.entite_id === entiteId).map((d) => (String(d.ref || "").match(new RegExp(`${annee}-(\\d+)$`)) || [])[1]).filter(Boolean).map(Number);
+      return Math.max(minimum, ...pris) + 1;
     },
     async definirMaLangue(code) {
       utilisateur.langue = code;

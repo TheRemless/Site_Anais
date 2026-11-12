@@ -28,7 +28,8 @@ export async function refDefinitive(ref, propose, regl = reglages()) {
 // `reservation` : { heure, lieu, bebes } posés sur chaque réservation créée (ce que le client a écrit, sans champ propre sur la facture).
 // `parService` : [{ ligneIds, heure, lieu, bebes, dropoff, vol, bagages, personnes }], un par service avec les identifiants de ses lignes : chaque réservation prend
 // ce qui concerne SON service (dates, heures et lieux différents dans un même dossier). Sans lui, `reservation` vaut pour toutes.
-export async function creerDossierExcursions({ client, lignes: brutes, notes = "", ref, reservation = {}, parService = null }) {
+// `silencieux` : pas de message de réussite (l'écran « Nouveau voucher », en thaï, dit lui-même ce qui s'est passé).
+export async function creerDossierExcursions({ client, lignes: brutes, notes = "", ref, reservation = {}, parService = null, silencieux = false }) {
   const regl = reglages();
   // `titre` : le nom court du service, qui sert aux réservations (une ligne adulte et sa ligne enfant en font une seule).
   // Taxi : tout est payé au chauffeur, quelle que soit la ligne (même une course saisie à la main, sans partenaire).
@@ -46,7 +47,7 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   const d = await inserer("dossiers", { ref: ref.trim(), client_id: clientId, pays: "", bandeau: services.filter((l) => !/,\s*(child|enfant)\b/i.test(l.libelle)).map((l) => l.libelle).join(" · ").slice(0, 120), date_depart: dates[0] || null, date_retour: dates.length > 1 ? dates[dates.length - 1] : null, accepte_le: aujourdhui(), annule: false, notes: notes.trim() });
   const contenu = { ...CONTENU_DEFAUT(), bandeau: "", colonnes: "total", langue, prestataire: partenaires.join(", "), variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: lignes.map(({ description, description_fixe, ...l }) => ({ ...l, titre: l.kind === "texte" ? undefined : l.titre, libelle: l.kind === "texte" ? l.libelle : (description_fixe && description.trim()) || descriptionService({ ...l, libelle: l.titre }, langue), intro: "" })) };
   const doc = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: aujourdhui(), envoye_le: null, updated_at: new Date().toISOString(), contenu });
-  await creerReservations(doc);
+  await creerReservations(doc, { silencieux });
   // Heure, lieu de pickup, dépose, vol, bagages et bébés donnés par le client : posés sur les réservations qui viennent d'être créées
   // (la dépose, le vol et les bagages sont les champs du voucher de transfert).
   const patch = (r, { heure = "", lieu = "", bebes = 0, dropoff = "", vol = "", bagages = 0, personnes = null, zonePickup = null }) => {
