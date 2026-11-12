@@ -148,7 +148,7 @@ const pickupDepuisLibelle = (r, p, trajet) => (trajet ? trajet.de : ((p && p.lib
 export function imprimerVoucher(x) {
   const d = etat.db.dossiers.find((y) => y.id === x.reservation.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === d.client_id) || {};
-  imprimer(renderVoucher(x), `Voucher ${numeroVoucher(d.ref || "", x.index)} - ${(client.nom || "client").split(/\s+/)[0]}`);
+  imprimer(renderVoucher(x), `${estTaxi(reglages()) ? "Booking confirmation" : "Voucher"} ${numeroVoucher(d.ref || "", x.index)} - ${(client.nom || "client").split(/\s+/)[0]}`);
 }
 
 export function imprimerTousLesVouchers(dossierId) {

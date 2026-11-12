@@ -55,6 +55,8 @@ export function listeDossiers() {
   selection.clear();
   // Un lien du tableau de bord ouvre directement le bon onglet (#/dossiers?onglet=encaisser).
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
+  // Un onglet d'une autre entreprise (« Soldés » de Secret) n'existe pas forcément ici : on revient au premier.
+  if (!ongletsActifs().some(([k]) => k === filtre.onglet)) filtre.onglet = ongletsActifs()[0][0];
   if (ongletsActifs().some(([k]) => k === params.get("onglet"))) { filtre.onglet = params.get("onglet"); filtre.q = ""; }
   if (COMPARE[params.get("tri")]) filtre.tri = params.get("tri");
   const corps = h("div");
@@ -84,6 +86,7 @@ export function listeDossiers() {
   function dessiner() {
     // Une recherche porte sur tous les dossiers : un dossier soldé ou annulé ne doit pas devenir introuvable parce qu'un autre onglet est ouvert.
     const onglet = ongletsActifs().find(([k]) => k === filtre.onglet) || ongletsActifs()[0];
+    filtre.onglet = onglet[0];
     const ajd = aujourdhui();
     const garde = (r) => (typeof onglet[2] === "function" ? onglet[2](r, ajd) : onglet[2].includes(r.statut));
     const q = sansAccents(filtre.q);

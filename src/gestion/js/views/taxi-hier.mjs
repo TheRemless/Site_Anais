@@ -34,7 +34,8 @@ export function sectionCommissionsHier(rafraichir) {
         telephone: telWhatsApp(p),
         vars: (langue) => variablesMessage({ reservation: r, client, dossier: d, partenaire: p || {}, entreprise: { nom: reglages().emetteur.nom || entiteActive().nom, devise }, langue }),
         surEnvoi: async () => {
-          await modifier("reservations", r.id, { details: { ...(r.details || {}), commission_demandee_le: ajd } });
+          const actuelle = etat.db.reservations.find((y) => y.id === r.id) || r;
+          await modifier("reservations", r.id, { details: { ...(actuelle.details || {}), commission_demandee_le: ajd } });
           rafraichir();
         },
       });

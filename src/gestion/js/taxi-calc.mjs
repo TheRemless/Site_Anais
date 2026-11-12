@@ -125,3 +125,6 @@ export function contenuCourse(contenu, r) {
   const pareil = suite.length === lignes.length && ["date_service", "paye_sur_place", "unite", "qte"].every((k) => (premiere[k] ?? null) === (nouvelle[k] ?? null));
   return pareil ? null : { ...contenu, lignes: suite };
 }
+
+// Une course saisie à la main (« Réservation à la main ») entre aussi dans le prix interne : sa ligne, payée au chauffeur.
+export const ligneCourse = (r, id) => ({ id, kind: "ligne", libelle: r.libelle || "", intro: "", puces: [], unite: Number(r.montant_vente) || 0, qte: 1, montant: null, pct: null, date_service: r.date_service || null, partenaire_id: r.partenaire_id || null, paye_sur_place: true });

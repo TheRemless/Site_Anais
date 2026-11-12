@@ -14,7 +14,7 @@ import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { telWhatsApp, commissionsPartenaire } from "../partenaires-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
-import { lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, proposerDePrevenir, synchroniserDatesDossier } from "./suivi-facture.mjs";
+import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, proposerDePrevenir, synchroniserDatesDossier } from "./suivi-facture.mjs";
 export { synchroniserDatesDossier };
 import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 import { gestesPrestataire, messageAuPrestataire as prevenirPrestataire } from "./prestataire.mjs";
@@ -37,6 +37,8 @@ export function messagePartenaire(r) {
 // `surEnvoi` : appelée quand le message part (WhatsApp ouvert) ou est copié, par exemple pour noter que l'avis a été demandé.
 export function messageClient(r, cle = "confirmation", { surEnvoi = null } = {}) {
   const c = clientDe(r) || {};
+  // Taxi n'a pas de rappel de la veille ni de message météo : le message d'envoi de la confirmation est proposé à la place.
+  if (modeTaxi() && cle !== "avis" && !(reglages().messages || []).some((m) => m.cle === cle)) cle = "confirmation";
   // Les clients de Secret reçoivent leurs documents en anglais : le message est proposé en anglais aussi.
   const langue = modeTaxi() || /invoice/i.test((reglages().libelles && reglages().libelles.facture) || "") ? "en" : "fr";
   // Trajet vers ou depuis Langkawi : la confirmation et le rappel portent la note du passeport et du check-in (en anglais, comme les vouchers).
@@ -512,6 +514,7 @@ export function formulaireReservation(r, apres) {
           await appliquerChangements(changements);
           const res = r.id ? await modifierProtege("reservations", r.id, valeurs, { base: r, arbitrer: arbitrerReservation(r) }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
           if (res && res.id && res.details === undefined) res.details = valeurs.details;
+          if (!r.id) await rattacherCourseTaxi(res);
           if (nets && (netPrevu.value !== "" || netPaye.value !== "" || payeLe.value || commissionPrevue.value !== "" || commissionRecue.value !== "" || commissionLe.value || n)) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: nb(netPrevu.value), net_paye: nb(netPaye.value), paye_le: payeLe.value || null, commission_prevue: nb(commissionPrevue.value), commission_recue: nb(commissionRecue.value), commission_recue_le: commissionLe.value || null });
           if (r.id && (dateChangee || annulee)) await synchroniserDatesDossier(r.dossier_id);
           toast(ecartRestant && ecartRestant.length ? `${tr("Réservation enregistrée.")} ${tr("La facture garde l'ancienne valeur, à corriger dans la facture :")} ${ecartRestant.join(" ; ")}` : tr("Réservation enregistrée."));

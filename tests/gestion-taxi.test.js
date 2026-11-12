@@ -90,3 +90,10 @@ test("prix interne d'une course : il suit la date, le prix et le paiement au cha
   const sansPrix = contenuCourse(contenu, { ligne_id: "l1", montant_vente: null, date_service: "2026-11-22" });
   assert.equal(sansPrix.lignes[0].unite, 2300, "sans prix saisi, l'ancien reste");
 });
+
+test("course saisie à la main : une ligne payée au chauffeur au prix de la course", async () => {
+  const { ligneCourse } = await import("../src/gestion/js/taxi-calc.mjs");
+  const l = ligneCourse({ libelle: "Private minivan: Koh Lanta → Trang", montant_vente: 3000, date_service: "2026-11-20", partenaire_id: "p" }, "x");
+  assert.deepEqual([l.id, l.kind, l.unite, l.qte, l.date_service, l.paye_sur_place], ["x", "ligne", 3000, 1, "2026-11-20", true]);
+  assert.equal(ligneCourse({ libelle: "A" }, "y").unite, 0, "sans prix : zéro, à compléter");
+});
