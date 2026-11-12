@@ -580,8 +580,15 @@ async function empreinteVersion() {
     return "";
   }
 }
+let empreinteInitiale = "";
+async function versionDisponible() {
+  if (!empreinteInitiale) return false;
+  const actuelle = await empreinteVersion();
+  return !!actuelle && actuelle !== empreinteInitiale;
+}
 async function surveillerVersion() {
   const initiale = await empreinteVersion();
+  empreinteInitiale = initiale;
   if (!initiale) return;
   let signale = false;
   const verifier = async () => {
@@ -612,13 +619,16 @@ window.addEventListener("error", (e) => signalerErreur(e.message));
 // au retour sur l'onglet puis chaque minute. L'écran n'est redessiné que s'il n'y a rien à perdre : pas de fenêtre ouverte,
 // pas de champ en cours de saisie, pas d'éditeur de document. Dans les autres cas les données sont déjà à jour pour l'écran suivant.
 const ECRANS_DE_LECTURE = /^#?\/?$|^#\/(dossiers|clients|taches|reservations|du|partenaires|trajets|tarifs|catalogue|analyses|groupe|journal)(\?.*)?$|^#\/analyses(\/[a-z]+)?(\?.*)?$|^#\/(dossier|client|partenaire)\/[\w-]+$/;
-function ecranLibre() {
-  if (!ECRANS_DE_LECTURE.test(location.hash || "#/")) return false;
-  if (document.querySelector(".modal-fond")) return false;
+// Une fenêtre ouverte, un champ en cours de saisie ou une saisie pas encore enregistrée : rien ne doit être redessiné ni déclenché par-dessus.
+function saisieEnCours() {
+  if (document.querySelector(".modal-fond")) return true;
   const actif = document.activeElement;
-  if (actif && actif.matches("input, textarea, select, [contenteditable]")) return false;
+  if (actif && actif.matches("input, textarea, select, [contenteditable]")) return true;
   const principal = document.getElementById("principal");
-  return ![...principal.querySelectorAll("input, textarea")].some((c) => !["checkbox", "radio", "button", "submit"].includes(c.type) && c.value !== c.defaultValue);
+  return !!principal && [...principal.querySelectorAll("input, textarea")].some((c) => !["checkbox", "radio", "button", "submit"].includes(c.type) && c.value !== c.defaultValue);
+}
+function ecranLibre() {
+  return ECRANS_DE_LECTURE.test(location.hash || "#/") && !saisieEnCours();
 }
 function surveillerDonnees() {
   let derniere = 0;
@@ -637,37 +647,62 @@ function surveillerDonnees() {
     if (hors) pastille.textContent = tr("Hors connexion : l'écran montre les données telles qu'elles étaient, et rien ne s'enregistre tant que le réseau n'est pas revenu.");
     else if (echecs >= 2) pastille.textContent = tr("Connexion perdue : les données affichées datent de {duree}. Elles se mettent à jour dès que le réseau revient.", { duree: pluriel(Math.max(1, Math.round((Date.now() - derniereReussite) / 60000)), N_("minute"), N_("minutes")) });
   };
-  const actualiser = async () => {
-    if (document.visibilityState !== "visible" || Date.now() - derniere < 10000) return;
+  // `force` : actualisation demandée par la personne (tirer pour actualiser), sans attendre les dix secondes ni la visibilité de l'onglet.
+  // Elle renvoie ce qui s'est passé pour que l'écran le dise.
+  const actualiser = async (force = false) => {
+    if (!force && (document.visibilityState !== "visible" || Date.now() - derniere < 10000)) return null;
     derniere = Date.now();
+    let resultat = "ignore";
+    let erreur = null;
     try {
-      const r = await synchroniser();
-      if (r !== "ignore") (echecs = 0), (derniereReussite = Date.now());
-      if (r === "modifie" || r === "propre") aRedessiner = true;
-      if (r === "modifie") annoncer = true;
+      resultat = await synchroniser();
+      if (resultat !== "ignore") (echecs = 0), (derniereReussite = Date.now());
+      if (resultat === "modifie" || resultat === "propre") aRedessiner = true;
+      if (resultat === "modifie") annoncer = true;
     } catch (err) {
       console.warn(err);
       echecs++;
+      erreur = err;
     }
     majPastille();
     if (aRedessiner && etat.session && ecranLibre()) {
       aRedessiner = false;
       window.dispatchEvent(new HashChangeEvent("hashchange"));
-      if (annoncer) toast(tr("Données mises à jour."));
+      if (annoncer && !force) toast(tr("Données mises à jour."));
       annoncer = false;
     }
+    return { resultat, erreur };
   };
-  document.addEventListener("visibilitychange", actualiser);
+  document.addEventListener("visibilitychange", () => actualiser());
   window.addEventListener("online", () => ((hors = false), majPastille(), actualiser()));
   window.addEventListener("offline", () => ((hors = true), majPastille()));
   majPastille();
-  setInterval(actualiser, 60 * 1000);
+  setInterval(() => actualiser(), 60 * 1000);
+  return actualiser;
+}
+
+// Tirer pour actualiser : seulement dans l'application installée sur l'écran d'accueil (Safari y offre ce geste dans l'onglet, pas dans l'application).
+// Le module ne se charge que là. Une nouvelle version de l'outil recharge la page ; sinon les données sont relues sans recharger.
+const installee = () => window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+function installerTirer(actualiser) {
+  if (!installee() || !("ontouchstart" in window)) return;
+  import("./tirer.mjs").then(({ installerTirer: installer }) =>
+    installer({
+      bloque: () => !etat.session || saisieEnCours(),
+      actualiser: async () => {
+        const [nouvelle, lecture] = await Promise.all([versionDisponible(), actualiser(true)]);
+        if (nouvelle) return { rechargement: true };
+        return { ...(lecture || { resultat: "ignore" }), demo: etat.store.mode !== "supabase" };
+      },
+    })
+  );
 }
 
 init()
   .then(afficher)
   .then(surveillerVersion)
   .then(surveillerDonnees)
+  .then(installerTirer)
   .catch((err) => {
     console.error(err);
     vider(racine).append(h("div", { class: "vide" }, h("h1", null, tr("Connexion à la base impossible")), h("p", null, err.message), h("button", { class: "principal", onclick: () => location.reload() }, tr("Réessayer"))));
