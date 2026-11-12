@@ -1,7 +1,7 @@
 [build]
   command = "npm run build"
   publish = "_site"
-  ignore = "[ -n \"$CACHED_COMMIT_REF\" ] && [ \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" ] && git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':!data/currency-rates.json'"
+  ignore = "bash scripts/netlify-ignore.sh"
 
 [functions]
   directory = "netlify/functions"
