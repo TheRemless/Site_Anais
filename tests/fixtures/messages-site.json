@@ -1,0 +1,62 @@
+[
+  {
+    "nom": "excursion collective",
+    "genre": "tour",
+    "message": "Booking request: 4 Islands – Join-in longtail\nDate: Wed 4 Nov 2026\nGuests: 2 adults, 1 child (age 7)\nPickup: Lanta Sand Resort (Klong Dao)\nName: Anna\nPrice: Adult: 1,000 THB / Child, 4 to 11: 600 THB"
+  },
+  {
+    "nom": "excursion privée avec supplément",
+    "genre": "tour",
+    "message": "Booking request: 4 Islands – Private longtail\nDate: Thu 12 Nov 2026\nGuests: 2 adults\nExtras: Add Koh Kradan\nPickup: Hotel Sunset, Klong Dao\nName: Tom Lee\nPrice: 1 to 2 people: 5,900 THB / Add Koh Kradan: +500 THB"
+  },
+  {
+    "nom": "excursion au départ de Krabi",
+    "genre": "tour",
+    "message": "Booking request: 4 Islands – Join-in speedboat from Krabi\nDeparture: from Krabi, pickup at your hotel in Krabi\nDate: Sun 15 Nov 2026\nGuests: 3 adults, 2 children (ages 4 and 9)\nPickup: Centara Krabi\nName: Marie\nPrice: Adult: 1,800 THB"
+  },
+  {
+    "nom": "excursion sur mesure sans prix",
+    "genre": "tour",
+    "message": "Booking request: 4 Islands – Custom day\nDate: Fri 20 Nov 2026\nGuests: 4 adults\nPickup: Lanta Castaway\nName: Paul"
+  },
+  {
+    "nom": "trajet complet",
+    "genre": "taxi",
+    "message": "Transfer request: Krabi Airport to Koh Lanta\nDate: Tue 10 Nov 2026\nPickup time: 14:30\nFlight or ferry: FD3xxx\nGuests: 2 adults, 1 child (age 5)\nChild seats: 1\nBags: 3\nPickup: Krabi Airport (KBV)\nDrop-off: Lanta Sand Resort\nName: Anna"
+  },
+  {
+    "nom": "trajet retour",
+    "genre": "taxi",
+    "message": "Transfer request: Koh Lanta to Krabi Airport\nDate: Wed 18 Nov 2026\nGuests: 1 adult\nPickup: Lanta Sand Resort\nDrop-off: Krabi Airport (KBV)\nName: Ben"
+  },
+  {
+    "nom": "trajet avec prix du site",
+    "genre": "taxi",
+    "message": "Transfer request: Krabi Airport to Koh Lanta\nDate: Tue 10 Nov 2026\nGuests: 2 adults\nPickup: Krabi Airport (KBV)\nDrop-off: Lanta Sand Resort\nPrice on the site: From 2,300 THB per vehicle\nName: Test"
+  },
+  {
+    "nom": "minivan partagé",
+    "genre": "taxi",
+    "message": "Shared minivan request (Secret Travel & Tour): Koh Lanta to Krabi Airport\nDate: Sat 14 Nov 2026\nPreferred pickup time: 09:00\nGuests: 2 adults\nPickup: Hotel Sunset\nDrop-off: Krabi Airport\nPrice on the site: From 800 THB per person\nName: Sophie"
+  },
+  {
+    "nom": "location de scooters",
+    "genre": "rental",
+    "message": "Rental request: Scooters\nVehicle: Honda Click 125\nVehicles: 2\nFrom: Thu 5 Nov 2026, 10:00\nTo: Sun 8 Nov 2026, 10:00\nName: Luc\nPrice: Honda Click 125: 250 THB per 24 hours\nEstimated total: 1,500 THB (3 days, 2 vehicles)"
+  },
+  {
+    "nom": "speedboat aller simple",
+    "genre": "speedboat",
+    "message": "Speedboat request: Koh Lanta to Koh Phi Phi\nDeparture: 08:00, arrives 09:30\nDate: Mon 9 Nov 2026\nTicket: one way\nGuests: 2 adults\nHotel on Koh Lanta: Hotel Sunset\nName: Eva"
+  },
+  {
+    "nom": "speedboat aller-retour de saison",
+    "genre": "speedboat",
+    "message": "Speedboat request: Koh Lanta to Koh Phi Phi\nDeparture: 11:30, arrives 13:00\nDate: Mon 9 Nov 2026\nSeason: Nov to Apr\nTicket: return, Koh Phi Phi to Koh Lanta\nReturn: Wed 11 Nov 2026, 15:00, arrives 16:30\nGuests: 2 adults, 1 child (age 8)\nHotel on Koh Lanta: Hotel Sunset\nName: Eva"
+  },
+  {
+    "nom": "liste de sorties",
+    "genre": "liste",
+    "message": "Trip list: 2 trips\nGuests: 2 adults\nPickup: Hotel Sunset\nName: Anna\n\nSat 21 Nov 2026\n4 Islands – Join-in longtail\nPrice: Adult: 1,000 THB / Child, 4 to 11: 600 THB\n\nMon 23 Nov 2026\nKoh Rok – Custom day"
+  }
+]

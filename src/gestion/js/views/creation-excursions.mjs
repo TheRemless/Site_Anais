@@ -43,11 +43,13 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   const contenu = { ...CONTENU_DEFAUT(), bandeau: "", colonnes: "total", langue, prestataire: partenaires.join(", "), variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: lignes.map(({ description, description_fixe, ...l }) => ({ ...l, titre: l.kind === "texte" ? undefined : l.titre, libelle: l.kind === "texte" ? l.libelle : (description_fixe && description.trim()) || descriptionService({ ...l, libelle: l.titre }, langue), intro: "" })) };
   const doc = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: aujourdhui(), envoye_le: null, updated_at: new Date().toISOString(), contenu });
   await creerReservations(doc);
-  // Heure, lieu de pickup et bébés donnés par le client : posés sur les réservations qui viennent d'être créées.
-  const { heure = "", lieu = "", bebes = 0 } = reservation;
-  if (heure || lieu || bebes) {
+  // Heure, lieu de pickup, dépose, vol, bagages et bébés donnés par le client : posés sur les réservations qui viennent d'être créées
+  // (la dépose, le vol et les bagages sont les champs du voucher de transfert).
+  const { heure = "", lieu = "", bebes = 0, dropoff = "", vol = "", bagages = 0, personnes = null } = reservation;
+  const details = { ...(dropoff ? { drop_off: dropoff } : {}), ...(vol ? { vol } : {}), ...(bagages ? { bagages: String(bagages) } : {}) };
+  if (heure || lieu || bebes || personnes || Object.keys(details).length) {
     for (const r of etat.db.reservations.filter((x) => x.dossier_id === d.id)) {
-      await modifier("reservations", r.id, { ...(heure ? { heure_pickup: heure } : {}), ...(lieu ? { lieu_pickup: lieu } : {}), ...(bebes ? { personnes: { ...(r.personnes || {}), bebes } } : {}) });
+      await modifier("reservations", r.id, { ...(heure ? { heure_pickup: heure } : {}), ...(lieu ? { lieu_pickup: lieu } : {}), ...(bebes || personnes ? { personnes: { ...(r.personnes || {}), ...(personnes && !((r.personnes || {}).adultes || (r.personnes || {}).enfants) ? { adultes: personnes.adultes, enfants: personnes.enfants } : {}), ...(bebes ? { bebes } : {}) } } : {}), ...(Object.keys(details).length ? { details: { ...(r.details || {}), ...details } } : {}) });
     }
   }
   return d;
