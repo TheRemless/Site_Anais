@@ -263,6 +263,27 @@ export function creer() {
           .map((l) => ({ ...l, auteur: nomDe(l.user_id) }))
       );
     },
+    async toutesTaches(entiteId) {
+      return structuredClone(data.taches.filter((t) => t.entite_id === entiteId));
+    },
+    async supprimerAbsents(entiteId, absents) {
+      const p = new Set(absents.partenaires);
+      const s = new Set(absents.prestations);
+      const t = new Set(absents.trajets);
+      data.taches = data.taches.filter((x) => !(x.entite_id === entiteId && p.has(x.partenaire_id)));
+      data.trajets = data.trajets.filter((x) => !t.has(x.id));
+      data.trajets_nets = data.trajets_nets.filter((x) => !t.has(x.trajet_id));
+      data.prestations = data.prestations.filter((x) => !s.has(x.id));
+      data.prestations_nets = data.prestations_nets.filter((x) => !s.has(x.prestation_id));
+      data.partenaires = data.partenaires.filter((x) => !p.has(x.id));
+      data.partenaires_prives = data.partenaires_prives.filter((x) => !p.has(x.partenaire_id));
+      for (const r of data.reservations) {
+        if (s.has(r.prestation_id)) r.prestation_id = null;
+        if (t.has(r.trajet_id)) r.trajet_id = null;
+        if (p.has(r.partenaire_id)) r.partenaire_id = null;
+      }
+      sauve();
+    },
     async supprimerPartenaires(entiteId) {
       const ids = new Set(data.partenaires.filter((p) => p.entite_id === entiteId).map((p) => p.id));
       data.taches = data.taches.filter((t) => !(t.entite_id === entiteId && t.partenaire_id));

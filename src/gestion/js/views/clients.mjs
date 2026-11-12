@@ -1,4 +1,4 @@
-import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier, reglages, peut } from "../etat.mjs";
+import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier, reglages, peut, corbeilleDossiers } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone } from "../ui.mjs";
 import { formatMontant, formatDate } from "../calc.mjs";
 import { pastille, vide, listeAdaptative, barreFiltres } from "./commun.mjs";
@@ -133,9 +133,18 @@ export function ficheClient(id) {
               class: "danger",
               type: "button",
               onclick: async () => {
+                // Un dossier supprimé reste 90 jours dans la corbeille : sans son client, il ne pourrait plus être restauré.
+                try {
+                  const enCorbeille = (await corbeilleDossiers()).filter((x) => x.ligne && x.ligne.client_id === id);
+                  if (enCorbeille.length) return toast(tr("Ce client a un dossier dans la corbeille ({refs}) : restaurez-le (Réglages, corbeille) avant de supprimer le client.", { refs: enCorbeille.map((x) => x.ligne.ref).join(", ") }), true);
+                } catch {}
                 if (await confirmer(tr("Supprimer définitivement {nomClient} ?", { nomClient: nomClient(client) }), tr("Supprimer"), true)) {
-                  await supprimer("clients", id);
-                  naviguer("#/clients");
+                  try {
+                    await supprimer("clients", id);
+                    naviguer("#/clients");
+                  } catch (err) {
+                    toast(tr("Suppression impossible : {message}", { message: err.message }), true);
+                  }
                 }
               },
             },
