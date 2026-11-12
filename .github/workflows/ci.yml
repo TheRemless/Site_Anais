@@ -32,8 +32,8 @@ jobs:
           npm init -y >/dev/null
           npm i @electric-sql/pglite@0.2.17 --silent
           cp "$GITHUB_WORKSPACE"/docs/gestion/verif-*.mjs "$GITHUB_WORKSPACE"/docs/gestion/schema-v1-reference.sql .
-          export GESTION_SQL="$GITHUB_WORKSPACE/docs/gestion/" GESTION_SRC="file://$GITHUB_WORKSPACE/src/gestion/js/"
-          for f in verif-securite verif-securite-argent verif-sauvegarde verif-analyses; do
+          export GESTION_SQL="$GITHUB_WORKSPACE/docs/gestion/" GESTION_SRC="file://$GITHUB_WORKSPACE/src/gestion/js/" GESTION_SAUV="file://$GITHUB_WORKSPACE/docs/gestion/sauvegarde/sauvegarde-lib.mjs"
+          for f in verif-securite verif-securite-argent verif-sauvegarde verif-sauvegarde-archive verif-analyses; do
             echo "== $f"
             node "$f.mjs" | tail -n 25
           done
