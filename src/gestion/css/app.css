@@ -132,7 +132,7 @@ img { max-width: 100%; }
 .bandeau-demo .lien { color: #5a4300; }
 @media (max-width: 719px) {
   .bandeau-demo { gap: 2px 12px; padding: 8px 12px; font-size: 0.82rem; }
-  .bandeau-demo .demo-choix { flex: 1; white-space: nowrap; }
+  .bandeau-demo .demo-choix { flex: 1; white-space: nowrap; min-width: 0; max-width: 100%; }
   .bandeau-demo .demo-choix select { flex: 1; min-width: 0; }
 }
 
