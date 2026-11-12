@@ -4,7 +4,7 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE, ajouterJours } from "../calc.mjs";
-import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, nbJoursLocation, lieuParDefaut, notePasseport, alerteAvantVeille } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, nbJoursLocation, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { demanderArbitrage } from "./conflit.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
@@ -165,12 +165,13 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   const er = r.statut !== "annule" && r.paye_sur_place ? ecartCommissionRecue(r) : null;
   // Bundhaya se paie d'avance : à reverser au prestataire avant la veille du départ (traversées qui ne partent pas de Koh Lanta).
   const trajetBateau = r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) : null;
+  const enCours = r.statut !== "annule" && locationEnCours(r, aujourdhui());
   const avantVeille = alerteAvantVeille(r, { partenaire: nomPartenaire(r.partenaire_id), trajet: trajetBateau, paye: !!(n && n.net_prevu !== null && n.net_prevu !== undefined && Number(n.net_paye || 0) >= Number(n.net_prevu)) });
   // Un seul geste principal par carte (l'étape suivante) ; le reste est dans le menu « … ».
   const gestes = ecrit ? gestesPrestataire(r, { apres }) : { etat: null, faire: {}, relancer: false, jourDeDemande: false };
   const vx = r.statut === "confirme" ? vouchersDuDossier(r.dossier_id).find((x) => x.reservation.id === r.id) || null : null;
   const voucherEnvoye = !!(vx && r.details && r.details.envois && r.details.envois.client);
-  const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, passee: !!(r.date_service && r.date_service < aujourdhui()), relancer: gestes.relancer, jourDeDemande: gestes.jourDeDemande, voucher: vx ? { envoye: voucherEnvoye } : null, liee: modeExcursions() && lieeFacture(r) };
+  const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, passee: !!(r.date_service && dateFinService(r) < aujourdhui()), relancer: gestes.relancer, jourDeDemande: gestes.jourDeDemande, voucher: vx ? { envoye: voucherEnvoye } : null, liee: modeExcursions() && lieeFacture(r) };
   const GESTES = {
     fait: [tr("S'est bien passé"), () => serviceFait(r, apres)],
     demander: [tr("Demander au prestataire"), gestes.faire.demander],
@@ -180,7 +181,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     pas_envoyee: [tr("Le message n'est pas parti ? Remettre à demander"), gestes.faire.pas_envoyee],
     changer: [tr("Changer le jour, l'heure ou les personnes"), gestes.faire.changer],
     message_partenaire: [tr("Message partenaire"), () => messagePartenaire(r)],
-    message_client: [tr("Message client"), () => messageClient(r, cleMessageClient(r.date_service, aujourdhui()))],
+    message_client: [tr("Message client"), () => messageClient(r, cleMessageReservation(r, aujourdhui()))],
     modifier: [tr("Modifier"), () => ouvrirModification(r, apres)],
     dupliquer: [tr("Dupliquer"), () => dupliquerService(r, apres)],
     voucher: [voucherEnvoye ? tr("Renvoyer le voucher") : tr("Envoyer le voucher"), () => vx && envoyerVoucher(vx)],
@@ -203,6 +204,8 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     h("span", { class: "carte-droite" }, h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("pickup {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
     h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes), r.lieu_pickup].filter(Boolean).join(" · ")),
     r.notes ? h("span", { class: "carte-sous" }, r.notes) : null,
+    // Une location commencée et pas encore rendue : ni en retard ni à confirmer, l'avis et la commission attendent le retour.
+    enCours ? h("div", { class: "etat-en-cours", role: "status" }, dateFinService(r) === aujourdhui() ? tr("Location en cours, retour aujourd'hui") : tr("Location en cours jusqu'au {date}", { date: formatDate(dateFinService(r)) })) : null,
     !e
       ? null
       : e.retiree
@@ -647,7 +650,7 @@ export function vueReservations() {
     const annules = dossiersAnnules();
     const rs = etat.db.reservations
       .map((r) => (annules.has(r.dossier_id) && r.statut !== "annule" ? { ...r, statut: "annule" } : r))
-      .filter((r) => (filtre.periode === "toutes" ? true : filtre.periode === "passees" ? r.date_service && r.date_service < ajd : !r.date_service || r.date_service >= ajd))
+      .filter((r) => (filtre.periode === "toutes" ? true : filtre.periode === "passees" ? r.date_service && dateFinService(r) < ajd : !r.date_service || dateFinService(r) >= ajd))
       .filter((r) => (!filtre.statut ? true : filtre.statut === "ouvertes" ? r.statut === "a_demander" || r.statut === "demande" : r.statut === filtre.statut))
       .filter((r) => !filtre.partenaire || r.partenaire_id === filtre.partenaire)
       .filter((r) => { const c = clientDe(r); const t = sans(`${r.libelle} ${c ? nomClient(c) : ""} ${r.lieu_pickup} ${r.reference_partenaire} ${nomPartenaire(r.partenaire_id)}`); return mots.every((m) => t.includes(m)); })

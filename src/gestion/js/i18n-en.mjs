@@ -2368,4 +2368,7 @@ export const EN = {
   "Proposer l'assistant dans « Coller une demande » : lire un message libre et rédiger la réponse": "Offer the assistant in “Paste a request”: read a free-form message and draft the reply",
   "L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous.": "The assistant (Claude, by Anthropic) receives the pasted message, the list of selling rates and, for a reply, the client's first name and the services with their prices. Never a net price, a commission or bank details. It suggests, you check: nothing is created or sent without you.",
   "{n} partenaires, {n2} tarifs": "{n} partners, {n2} rates",
+  "Locations en cours": "Rentals in progress",
+  "Location en cours, retour aujourd'hui": "Rental in progress, due back today",
+  "Location en cours jusqu'au {date}": "Rental in progress until {date}",
 };

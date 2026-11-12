@@ -252,7 +252,7 @@ export function commissions(X) {
   if (!X.nets) return [h("div", { class: "vide" }, h("h2", null, tr("Accès réservé")), h("p", null, tr("Les commissions, les nets et la marge demandent le droit « prix nets des partenaires ».")))];
   const f = X.faits;
   const ar = S.lignes("commission_a_recevoir", f, X.c);
-  const echues = ar.filter((l) => l.src.date_service && l.src.date_service < X.jour);
+  const echues = ar.filter((l) => l.src.date_service && (l.src.date_fin || l.src.date_service) < X.jour);
   const inconnue = S.valeur("marge_inconnue", f, X.c);
   const sansCom = S.valeur("commission_a_renseigner", f, X.c);
   const ecart = S.valeur("commission_ecart", f, X.c);
