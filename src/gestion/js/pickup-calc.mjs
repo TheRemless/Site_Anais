@@ -107,9 +107,10 @@ export function zoneProposee(hotel, grilles, reservations = []) {
 export function departDuTrajet(grille, { heure = "", vers = "" } = {}) {
   const h = heureDeGrille(String(heure).replace(/h/i, ":"));
   if (!h || !grille) return "";
+  // L'heure écrite dans le libellé de la colonne : « 10h30 », « 09h00 », « 10:30 ». « 1 hour » n'est pas une heure.
   const dansColonne = (c) => {
-    const m = /(\d{1,2})\s*[h:.]\s*([0-5]\d)?/i.exec(c.replace(/^.*?(?=\d{1,2}\s*[h:.])/s, ""));
-    return m ? `${String(m[1]).padStart(2, "0")}:${m[2] || "00"}` : "";
+    const m = /(\d{1,2})\s*(?:[:.]\s*([0-5]\d)|h\s*([0-5]\d)?)(?![a-z\d])/i.exec(c);
+    return m && Number(m[1]) < 24 ? `${String(m[1]).padStart(2, "0")}:${m[2] || m[3] || "00"}` : "";
   };
   const memes = grille.colonnes.filter((c) => dansColonne(c) === h);
   if (memes.length === 1) return memes[0];

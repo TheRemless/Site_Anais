@@ -132,11 +132,8 @@ export function ouvrirDemande() {
   // Lignes prises à la main : la date corrigée sur la ligne du service passe aux lignes (elle date la réservation), sauf si le service n'a pas de date.
   const lignesDuService = (sv, offre) => (sv.lignesCustom ? sv.lignesCustom.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, ...(l.kind !== "texte" && sv.date ? { date_service: sv.date } : {}) })) : offre ? lignesDe(offre, { date: sv.date, adultes: sv.adultes, enfants: sv.enfants }, langue, devise) : []);
   // Le partenaire du service : celui de l'offre, ou de la première ligne prise dans la base. Sa grille de pickup donne les zones.
-  const partenaireDuService = (sv) => {
-    if (sv.lignesCustom) return (sv.lignesCustom.find((l) => l.partenaire_id) || {}).partenaire_id || "";
-    const { offre } = etatDe(sv);
-    return (offre && offre.source && offre.source.partenaire_id) || "";
-  };
+  const partenaireDeOffre = (sv, offre) => (sv.lignesCustom ? (sv.lignesCustom.find((l) => l.partenaire_id) || {}).partenaire_id : offre && offre.source && offre.source.partenaire_id) || "";
+  const partenaireDuService = (sv) => partenaireDeOffre(sv, sv.lignesCustom ? null : etatDe(sv).offre);
   const estTransfert = (offre) => d.type === "transfer" || (offre && (offre.genre === "trajet" || (offre.source && offre.source.famille === "transfert")));
 
   // Réservation de ce service : heure, lieu de prise en charge, dépose, vol, bagages. Un trajet du site donne ses deux bouts.
@@ -184,7 +181,7 @@ export function ouvrirDemande() {
     n.alertes.hidden = !alertes.length;
     n.li.classList.toggle("decoche", !sv.coche);
     // Le partenaire a changé (autre offre choisie) : ses zones de pickup remplacent les précédentes.
-    const pid = partenaireDuService(sv);
+    const pid = partenaireDeOffre(sv, offre);
     if (sv.zones && pid !== sv.partenaireId) {
       sv.partenaireId = pid;
       sv.zones.rafraichir();

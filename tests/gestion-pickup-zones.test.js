@@ -123,3 +123,10 @@ test("départ d'un trajet : la colonne dont l'heure est celle du bateau, la dest
   assert.equal(departDuTrajet(deux, { heure: "10:30", vers: "Phuket" }), "", "même heure, destination absente : rien de deviné");
   assert.equal(departDuTrajet({ colonnes: ["Bateau 10h30"] }, { heure: "10:30", vers: "x" }), "Bateau 10h30");
 });
+
+test("départ d'un trajet : « 1 hour » n'est pas une heure, « 10:30 » et « 10h » le sont", () => {
+  assert.equal(departDuTrajet({ colonnes: ["Boat 1 hour before 10h30", "Other 12h00"] }, { heure: "10:30" }), "Boat 1 hour before 10h30");
+  assert.equal(departDuTrajet({ colonnes: ["Bateau 10:30"] }, { heure: "10h30" }), "Bateau 10:30");
+  assert.equal(departDuTrajet({ colonnes: ["Bateau 10h"] }, { heure: "10:00" }), "Bateau 10h");
+  assert.equal(departDuTrajet({ colonnes: ["Pickup 1 hour"] }, { heure: "01:00" }), "");
+});

@@ -94,26 +94,24 @@ export function blocZonesPickup({ id, partenaire, hotel = () => "", gardee = nul
   // Partenaire ou hôtel changé : les grilles sont relues. La zone déjà choisie reste si ce partenaire la connaît, sinon elle est retrouvée par son nom ; à défaut, la zone
   // d'une réservation précédente du même hôtel ou un nom de zone dans l'adresse est proposé (sélectionné mais sans heure, la personne confirme).
   function rafraichir() {
-    // Ce que la personne avait confirmé, lu dans les anciennes grilles avant de les remplacer.
-    const avant = valeur();
+    // Ce que la personne avait confirmé, lu dans les anciennes grilles avant de les remplacer : la clé d'une zone est sa place dans la grille, elle ne vaut
+    // pas d'une grille à l'autre, la zone est donc retrouvée par son nom.
+    const avant = valeur() || initiale;
     if (origine) {
-      cle = "";
       depart = "";
       origine = "";
     }
-    grilles = grillesDe(partenaire());
-    if (cle && !zoneDeCle(grilles, cle)) cle = "";
-    if (!cle && (avant || initiale)) {
-      cle = cleDeZoneGardee(grilles, avant || initiale);
-      if (cle && !depart && (avant || initiale).depart) depart = departApresChoix(grilles, cle, (avant || initiale).depart);
-    }
     initiale = null;
-    if (!cle) {
+    grilles = grillesDe(partenaire());
+    cle = avant ? cleDeZoneGardee(grilles, avant) : "";
+    if (cle && !depart && avant.depart) depart = avant.depart;
+    // Pas de zone choisie : celle d'une réservation précédente du même hôtel ou un nom de zone dans l'adresse est proposé, sans heure (la personne confirme).
+    if (!cle && grilles.length) {
       const prop = zoneProposee(hotel(), grilles, reservationsAvecZone());
       if (prop) {
         cle = prop.cle;
         origine = prop.origine;
-        depart = departPour(cle, depart);
+        depart = "";
       }
     }
     if (cle) depart = departPour(cle, depart);
