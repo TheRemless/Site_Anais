@@ -38,7 +38,7 @@ export function creer(config, { client } = {}) {
   // Une coupure ou une erreur passagère n'est PAS gardée : elle remonte, et la détection est refaite à l'appel suivant. Avant, un échec de la première
   // requête valait « pas de table » pour toute la session, et les nets d'un devis étaient alors écrits dans son contenu, lisible avec le seul droit finances.
   let netsSepares = null;
-  const tableAbsente = (e) => e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|Could not find the table/i.test(e.message || ""));
+  const tableAbsente = (e) => e && (e.code === "42P01" || e.code === "PGRST205" || /relation "[^"]*documents_nets" does not exist|Could not find the table ['"]?(public\.)?documents_nets/i.test(e.message || ""));
   const separation = () => {
     if (netsSepares !== null) return Promise.resolve(netsSepares);
     return Promise.resolve(sb.from("documents_nets").select("document_id").limit(1)).then(({ error }) => {
@@ -52,7 +52,9 @@ export function creer(config, { client } = {}) {
     const par = {};
     if (!ids.length || !(await separation())) return par;
     for (let i = 0; i < ids.length; i += 100) {
-      const { data } = await sb.from("documents_nets").select("document_id, nets").in("document_id", ids.slice(i, i + 100));
+      const { data, error } = await sb.from("documents_nets").select("document_id, nets").in("document_id", ids.slice(i, i + 100));
+      // Une erreur ici ne doit pas passer pour « aucun net » : une sauvegarde suivante écraserait les nets avec les seules lignes visibles.
+      if (error) throw new Error(error.message);
       for (const n of data || []) par[n.document_id] = n.nets;
     }
     return par;
@@ -112,11 +114,12 @@ export function creer(config, { client } = {}) {
     },
     // Se déconnecter ferme cet appareil seulement (par défaut la bibliothèque ferme TOUTES les sessions : se déconnecter sur l'ordinateur coupait aussi l'iPhone).
     async deconnecter() {
-      await sb.auth.signOut({ scope: "local" });
+      verifie(await sb.auth.signOut({ scope: "local" }).then(({ error }) => ({ data: null, error })));
     },
     // « Déconnecter tous mes appareils » : un geste à part, pour un téléphone perdu ou un compte utilisé sur un appareil prêté.
     async deconnecterPartout() {
-      await sb.auth.signOut({ scope: "global" });
+      // signOut ne lève pas d'exception sur une erreur réseau : il renvoie `error`. On la lève, sinon le bouton ferait croire que les appareils sont fermés.
+      verifie(await sb.auth.signOut({ scope: "global" }).then(({ error }) => ({ data: null, error })));
     },
     async charger() {
       const out = {};
@@ -299,20 +302,19 @@ export function creer(config, { client } = {}) {
       verifie(await sb.from("partenaires").delete().eq("entite_id", entiteId).select("id"));
     },
     async importer(tables) {
+      // Avant toute écriture : la table des nets est-elle là si la sauvegarde en porte ? Un refus au milieu laisserait la base à moitié importée.
+      const separe = await separation();
+      if (!separe && (tables.documents || []).some((d) => Object.keys(separerNets(d.contenu).nets).length)) throw new Error(tr("Les prix nets ne peuvent pas être enregistrés : la migration 16 de la base n'est pas appliquée."));
       // Ordre imposé par les clés étrangères.
       for (const t of TABLES) {
         let rows = tables[t] || [];
         // Une sauvegarde porte les nets dans le contenu des documents : à l'import ils vont dans documents_nets, pas dans le contenu.
         const nets = [];
         if (t === "documents") {
-          const separe = await separation();
           rows = rows.map((d) => {
             const s = separerNets(d.contenu);
-            if (Object.keys(s.nets).length) {
-              // Jamais dans le contenu : sans la table des nets, on refuse l'import plutôt que de les rendre lisibles avec le seul droit finances.
-              if (!separe) throw new Error(tr("Les prix nets ne peuvent pas être enregistrés : la migration 16 de la base n'est pas appliquée."));
-              nets.push({ document_id: d.id, entite_id: d.entite_id, nets: s.nets });
-            }
+            // Les nets sortent du contenu (jamais écrits dedans) ; le contrôle de la table a déjà eu lieu avant la première écriture.
+            if (Object.keys(s.nets).length) nets.push({ document_id: d.id, entite_id: d.entite_id, nets: s.nets });
             return { ...d, contenu: s.contenu };
           });
         }

@@ -17,7 +17,9 @@ test("rappels : alerte quand le dernier a échoué ou qu'aucun n'a réussi depui
   const recentEnErreur = etatRappels([ligne("2026-11-12T02:00:05Z", { erreur: "Timeout" }), ligne("2026-11-11T11:00:05Z")], MAINTENANT);
   assert.equal(recentEnErreur.statut, "alerte");
   assert.equal(recentEnErreur.message, "derniere_en_echec");
-  assert.equal(etatRappels([ligne("2026-11-12T02:00:05Z", { echecs: 1 })], MAINTENANT).message, "aucun_reussi_24h", "le seul rappel a des échecs : aucun n'a réussi");
+  assert.equal(etatRappels([ligne("2026-11-12T02:00:05Z", { envoyes: 0, echecs: 1, abonnements: 1 })], MAINTENANT).message, "aucun_reussi_24h", "le seul rappel a échoué partout : aucun n'a réussi");
+  // Un appareil en échec permanent (adresse qui répond 400) ne fait pas une alerte tant que les autres reçoivent le rappel.
+  assert.equal(etatRappels([ligne("2026-11-12T02:00:05Z", { abonnements: 3, envoyes: 2, echecs: 1 })], MAINTENANT).statut, "ok");
   const vieux = etatRappels([ligne("2026-11-10T11:00:05Z")], MAINTENANT);
   assert.equal(vieux.statut, "alerte");
   assert.equal(vieux.message, "aucun_reussi_24h");

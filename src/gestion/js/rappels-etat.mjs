@@ -2,7 +2,9 @@
 
 export const DELAI_ALERTE_H = 24;
 
-const reussi = (l) => !l.erreur && !(l.echecs > 0);
+// Réussi : pas d'erreur, et au moins un envoi quand il y avait des appareils (un appareil dont l'adresse répond 400 ou 403 chaque jour échoue sans jamais être retiré :
+// il ne doit pas donner une alerte permanente alors que les autres appareils reçoivent le rappel). Aucun abonnement ou rien à rappeler : succès.
+const reussi = (l) => !l.erreur && (!(l.echecs > 0) || l.envoyes > 0);
 
 // `lignes` : les dernières exécutions, la plus récente d'abord. `maintenant` : date de référence (ms ou Date).
 // Renvoie { statut: "aucune" | "ok" | "alerte", derniere, dernierReussi, message } : alerte si aucune exécution réussie depuis 24 h.

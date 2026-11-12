@@ -154,3 +154,17 @@ test("déconnexion : se déconnecter ne ferme que cet appareil, « tous les appa
   await store.deconnecterPartout();
   assert.deepEqual(appels, [{ scope: "local" }, { scope: "global" }]);
 });
+
+test("import : sans la table des nets, la sauvegarde qui en porte est refusée AVANT la première écriture (rien d'importé à moitié)", async () => {
+  const sb = faux({ tableNets: false });
+  const store = creer({}, { client: sb });
+  await assert.rejects(store.importer({ clients: [{ id: "c1", entite_id: "e1", nom: "X" }], documents: [{ id: "dx", entite_id: "e1", dossier_id: "D", type: "devis", date_emission: "2026-11-01", contenu: contenu() }] }), /migration 16/);
+  assert.equal(sb.tables.documents.length, 0);
+});
+
+test("déconnexion : une erreur renvoyée par signOut (réseau) est levée, pas avalée", async () => {
+  const sb = { ...faux(), auth: { signOut: async () => ({ error: { message: "Failed to fetch" } }) } };
+  const store = creer({}, { client: sb });
+  await assert.rejects(store.deconnecterPartout(), /Failed to fetch/);
+  await assert.rejects(store.deconnecter(), /Failed to fetch/);
+});
