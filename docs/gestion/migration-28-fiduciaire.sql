@@ -87,6 +87,8 @@ grant select on fiduciaire_factures to authenticated;
 create or replace function fiduciaire_voit(p_entite uuid, p_dossier uuid) returns boolean language sql stable security definer set search_path = public as $$
   select voit_tout(p_entite) or exists (select 1 from dossiers d where d.id = p_dossier and (d.cree_par = auth.uid() or d.responsable_id = auth.uid()))
 $$;
+revoke all on function fiduciaire_voit(uuid, uuid) from public, anon;
+grant execute on function fiduciaire_voit(uuid, uuid) to authenticated;
 create policy "lire les factures fiduciaire" on fiduciaire_factures for select to authenticated
   using (a_permission(entite_id, 'fiduciaire.preparer') and fiduciaire_voit(entite_id, (select r.dossier_id from reservations r where r.id = fiduciaire_factures.reservation_id)));
 
