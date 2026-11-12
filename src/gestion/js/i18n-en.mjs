@@ -100,6 +100,8 @@ export const EN = {
   "{n} échec(s) d'envoi": "{n} sending failure(s)",
   "Aucun rappel n'a réussi depuis plus de 24 h. Dernière exécution : le {date}.": "No reminder has succeeded for more than 24 hours. Last run: {date}.",
   "Rappels sur téléphone": "Phone reminders",
+  "Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.": "Add the country code, for example +41, +33 or +66, in place of the leading 0.",
+  "Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.": "Unreadable number: write it with its country code, for example +41 79 123 45 67.",
   "Appliquer": "Apply",
   " · net {prix}": " · net {prix}",
   " · Responsable : {x}": " · Person in charge: {x}",

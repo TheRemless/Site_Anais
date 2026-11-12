@@ -1,10 +1,11 @@
 import { etat, inserer, modifier, supprimer, nomClient, naviguer, resumeDossier, reglages, peut, corbeilleDossiers } from "../etat.mjs";
-import { h, champ, modal, confirmer, toast, icone } from "../ui.mjs";
+import { h, champ, modal, confirmer, toast, icone, erreurChamp } from "../ui.mjs";
 import { formatMontant, formatDate } from "../calc.mjs";
 import { pastille, vide, listeAdaptative, barreFiltres } from "./commun.mjs";
 import { correspond } from "../mobile-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { clientsProches } from "../demande-calc.mjs";
+import { verifierTelephoneClient, numerosClient } from "../client-calc.mjs";
 
 function formulaireClient(client, apres) {
   const civilites = [...reglages().listes.civilites];
@@ -25,7 +26,14 @@ function formulaireClient(client, apres) {
       class: "formulaire",
       onsubmit: async (e) => {
         e.preventDefault();
-        const valeurs = { civilite: civ.value, prenom: prenom.value.trim(), nom: nom.value.trim(), telephone: tel.value.trim(), email: email.value.trim(), adresse: adresse.value.trim(), notes: notes.value.trim() };
+        // Un numéro saisi ou modifié doit avoir son indicatif (+41, +33, +66…) : il sert à appeler et à écrire sur WhatsApp, l'indicatif n'est jamais deviné.
+        const verif = verifierTelephoneClient(tel.value, client.telephone);
+        erreurChamp(tel, "");
+        if (!verif.ok) {
+          erreurChamp(tel, verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67."));
+          return tel.focus();
+        }
+        const valeurs = { civilite: civ.value, prenom: prenom.value.trim(), nom: nom.value.trim(), telephone: verif.valeur, email: email.value.trim(), adresse: adresse.value.trim(), notes: notes.value.trim() };
         // Seuls les champs changés partent : un autre champ modifié entre-temps par quelqu'un d'autre n'est pas écrasé.
         const changes = client.id ? Object.fromEntries(Object.entries(valeurs).filter(([k, v]) => (client[k] || "") !== v)) : valeurs;
         const c = client.id ? (Object.keys(changes).length ? await modifier("clients", client.id, changes) : client) : await inserer("clients", valeurs);
@@ -87,11 +95,8 @@ export function ficheClient(id) {
   const client = etat.db.clients.find((c) => c.id === id);
   if (!client) return vide(tr("Client introuvable"), tr("Il a peut-être été supprimé."), h("a", { class: "bouton secondaire", href: "#/clients" }, tr("Retour aux clients")));
   const dossiers = etat.db.dossiers.filter((d) => d.client_id === id).map((d) => resumeDossier(d.id)).sort((a, b) => (b.dossier.date_depart || b.dossier.created_at || "").localeCompare(a.dossier.date_depart || a.dossier.created_at || ""));
-  // Numéro d'un client : l'indicatif du pays n'est pas deviné (un 079… suisse ne devient pas un +66). L'appel marche avec le numéro tel quel ; WhatsApp
-  // exige le format international (+ ou 00).
-  const brut = String(client.telephone || "").replace(/[^\d+]/g, "").replace(/^00/, "+");
-  const tel = brut.replace(/\D/g, "").length >= 6 ? brut : "";
-  const waNumero = tel.startsWith("+") ? tel.slice(1) : "";
+  // Numéro d'un client : l'indicatif du pays n'est jamais deviné (un 079 suisse n'est pas un +66). L'appel marche avec le numéro local tel quel, WhatsApp demande l'international.
+  const { appel: tel, whatsapp: waNumero } = numerosClient(client.telephone);
   // Un autre client avec le même numéro ou le même nom : probablement la même personne saisie deux fois.
   const doublons = clientsProches({ telephone: client.telephone, nom: `${client.prenom || ""} ${client.nom || ""}` }, etat.db.clients.filter((c) => c.id !== id));
   return h(
