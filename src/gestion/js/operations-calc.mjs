@@ -504,7 +504,7 @@ export function typeVoucher(reservation, prestation, partenaire = null) {
   const g = `${(prestation && prestation.groupe) || ""} ${(prestation && prestation.libelle) || ""}`;
   if (f === "frais") return null;
   // Une option (extension d'île, supplément) se note sur le voucher du tour, elle n'a pas le sien.
-  if ((prestation && prestation.unite === "sup") || /^option|supplément|supplement|extension|\bextra\b/i.test(g)) return null;
+  if ((prestation && prestation.unite === "sup") || /^option|supplément|supplement|extension|\bextra (?:dive|person)\b/i.test(g)) return null;
   if (f === "transfert") return /speedboat|ferry|bateau|boat/i.test(g) ? "billet" : "transfert";
   if (f === "location") return "location";
   if (f === "activite") return "activite";
@@ -545,7 +545,7 @@ export function texteParcEn(texte) {
   s = s.replace(/\(\s*([\d\s\/฿]+?)\s*(?:thaï|Thai)\s*\)/gi, "(Thai nationals $1)");
   s = s.replace(/\(\s*(?:Thaï|Thai)\s*:\s*/gi, "(Thai nationals ");
   s = s.replace(/(?:Enfant thaï|Thai child)\s*:\s*/gi, "Thai child ");
-  s = s.replace(/(?:Adulte étranger|Foreign adult)\s*:\s*/gi, "adult ").replace(/(?:Enfant étranger|Foreign child)\s*:\s*/gi, "child ").replace(/(?:Enfant|Child)\s*:\s*/gi, "child ");
+  s = s.replace(/(?:Adulte étranger|Foreign adult)\s*:\s*/gi, "adult ").replace(/(?:Enfant étranger|Foreign child)\s*:\s*/gi, "child ").replace(/\b(?:Enfant|Child)\s*:\s*/gi, "child ");
   s = s.replace(/\/\s*(?:adulte étranger|foreign adult)/gi, "per adult").replace(/\/\s*(?:enfant|child)/gi, "per child").replace(/\/\s*adulte/gi, "per adult");
   s = s.replace(/฿\s*\/\s*(\d+)\s*฿/g, "/ $1 THB").replace(/฿/g, "THB");
   s = s.replace(/\s*\|\s*/g, ", ").replace(/,?\s*(?:À régler en espèces sur place|To be paid in cash on site)/i, "");
