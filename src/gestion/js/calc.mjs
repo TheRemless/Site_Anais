@@ -11,6 +11,7 @@ export const STATUTS = {
   solde: N_("Soldé"),
   sur_place: N_("Tout sur place"),
   annule: N_("Annulé"),
+  sans_suite: N_("Sans suite"),
 };
 // Les clés restent en français dans STATUTS (exports, tests) ; l'écran affiche cette version traduite.
 export const libelleStatut = (code) => tr(STATUTS[code]);
@@ -275,8 +276,10 @@ export function echeanceAcompte(dossier, reglages) {
 }
 
 // Statut à partir de faits déjà connus : c'est ce qui permet de l'afficher sans charger les documents du dossier.
-export function statutDepuis({ annule, total, recu, accepteLe, devisEnvoyeLe, pct, surPlace = 0 }) {
+export function statutDepuis({ annule, total, recu, accepteLe, devisEnvoyeLe, pct, surPlace = 0, sansSuite = false }) {
   if (annule) return "annule";
+  // Devis classé sans suite : seulement tant que rien n'est accepté ni payé (sinon le dossier vit, la marque est ignorée).
+  if (sansSuite && !accepteLe && !(recu > 0)) return "sans_suite";
   if (total > 0 && recu >= total) return "solde";
   // Tous les services sont payés au prestataire : une fois le devis accepté, il n'y a rien à encaisser (jamais « paiement attendu »).
   if (!(total > 0) && surPlace > 0 && accepteLe) return "sur_place";
@@ -290,7 +293,7 @@ export function statutDepuis({ annule, total, recu, accepteLe, devisEnvoyeLe, pc
 export function statutDossier({ dossier, documents, paiements, reglages }) {
   const devis = dernier(documents, "devis");
   const doc = dernier(documents, "facture") || devis;
-  return statutDepuis({ annule: dossier.annule, total: totalDossier(documents), recu: sommePaiements(paiements), accepteLe: dossier.accepte_le, devisEnvoyeLe: devis && devis.envoye_le, pct: reglages.conditions.acompte_pct, surPlace: doc ? montantSurPlace(doc.contenu) : 0 });
+  return statutDepuis({ annule: dossier.annule, total: totalDossier(documents), recu: sommePaiements(paiements), accepteLe: dossier.accepte_le, devisEnvoyeLe: devis && devis.envoye_le, pct: reglages.conditions.acompte_pct, surPlace: doc ? montantSurPlace(doc.contenu) : 0, sansSuite: !!dossier.sans_suite_le });
 }
 
 // Résumé d'un dossier pour les listes et le tableau de bord. Quand ses documents et paiements ne sont pas chargés
@@ -318,7 +321,7 @@ export function resume(dossier, db, reglages) {
     reste: arrondi(total - recu),
     surPlace,
     devisEnvoyeLe,
-    statut: statutDepuis({ annule: dossier.annule, total, recu, accepteLe: dossier.accepte_le, devisEnvoyeLe, pct: reglages.conditions.acompte_pct, surPlace }),
+    statut: statutDepuis({ annule: dossier.annule, total, recu, accepteLe: dossier.accepte_le, devisEnvoyeLe, pct: reglages.conditions.acompte_pct, surPlace, sansSuite: !!dossier.sans_suite_le }),
   };
 }
 

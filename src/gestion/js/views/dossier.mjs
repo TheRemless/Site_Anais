@@ -16,6 +16,8 @@ import { envoyerDocument, sansImpression } from "./document-envoi.mjs";
 import { numeroVoucher, TITRES_VOUCHER, etatEnvoisVouchers } from "../operations-calc.mjs";
 import { ouvrirEnvois } from "./envois-vouchers.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { ouvrirSansSuite, rouvrirDevis, baseDistante } from "./sans-suite.mjs";
+import { peutClasser, disponible as sansSuiteDisponible } from "../sans-suite-calc.mjs";
 
 const rafraichir = () => naviguer(location.hash);
 const dernier = (docs, type) => docs.filter((d) => d.type === type).sort((a, b) => (a.created_at > b.created_at ? 1 : -1)).pop();
@@ -420,6 +422,19 @@ function ficheDossierVue(id) {
   const effectifTexte = effectif ? (effectif.min === effectif.max ? pluriel(effectif.max, N_("{n} personne"), N_("{n} personnes")) : tr("de {min} à {max} personnes", effectif)) : null;
   const puceEtat = (n, un, plusieurs, code) => (n ? h("span", { class: `resume-etat r-${code}` }, pluriel(n, un, plusieurs)) : null);
   const suivante = actionSuivante({ annule: !!d.annule, statut: r.statut, aEnvoyer, avecDevis, devisEnvoye: !!(devis && devis.envoye_le), accepte: !!d.accepte_le, facture: !!facture, reservations: rsDossier, reste: r.reste, droit });
+  // Devis sans réponse : « Sans suite » à côté de l'étape suivante. Une fois classé, le résumé dit depuis quand et pourquoi, et propose de rouvrir.
+  const sansSuiteOk = droit.dossiers && sansSuiteDisponible(d, baseDistante());
+  const boutonSansSuite = sansSuiteOk && peutClasser({ annule: !!d.annule, statut: r.statut }) && devis && devis.envoye_le ? h("button", { class: "secondaire", type: "button", onclick: () => ouvrirSansSuite(d, rafraichir) }, tr("Classer sans suite")) : null;
+  const blocSansSuite =
+    r.statut === "sans_suite"
+      ? h(
+          "div",
+          { class: "resume-action resume-sans-suite" },
+          h("p", { class: "resume-libelle" }, tr("Sans suite")),
+          h("p", { class: "resume-valeur" }, d.sans_suite_motif ? tr("Classé sans suite le {date} : {motif}", { date: formatDate(d.sans_suite_le), motif: tr(d.sans_suite_motif) }) : tr("Classé sans suite le {date}", { date: formatDate(d.sans_suite_le) })),
+          sansSuiteOk ? h("button", { class: "principal", type: "button", onclick: () => rouvrirDevis(d, rafraichir) }, tr("Rouvrir le devis")) : null
+        )
+      : null;
   const boutonSuivant = !suivante
     ? null
     : h(
@@ -473,7 +488,7 @@ function ficheDossierVue(id) {
           )
         : rsDossier.length ? bloc("resume-commission", tr("Commission"), h("p", { class: "resume-detail" }, tr("Aucun service payé sur place : pas de commission à recevoir."))) : null,
   ].filter(Boolean);
-  const resume = h("div", { class: "resume-dossier", role: "region", "aria-label": tr("Résumé du dossier") }, h("div", { class: "resume-grille" }, blocs), boutonSuivant);
+  const resume = h("div", { class: "resume-dossier", role: "region", "aria-label": tr("Résumé du dossier") }, h("div", { class: "resume-grille" }, blocs), boutonSuivant, blocSansSuite || (boutonSansSuite ? h("div", { class: "resume-sous-action" }, boutonSansSuite) : null));
 
   const racine = h(
     "div",

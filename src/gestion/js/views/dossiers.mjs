@@ -13,6 +13,7 @@ const ONGLETS = [
   ["cours", N_("En cours"), ["brouillon", "devis_envoye", "accepte", "acompte"]],
   ["soldes", N_("Soldés"), ["solde", "sur_place"]],
   ["annules", N_("Annulés"), ["annule"]],
+  ["sans_suite", N_("Sans suite"), ["sans_suite"]],
   ["encaisser", N_("À encaisser"), ["accepte", "acompte"]],
   ["attente", N_("Devis en attente"), ["devis_envoye"]],
   ["tous", N_("Tous"), Object.keys(STATUTS)],
