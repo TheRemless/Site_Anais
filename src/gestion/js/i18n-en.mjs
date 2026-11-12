@@ -27,6 +27,14 @@ export const EN = {
   "Résumé du dossier": "File summary",
   "Écart sur les commissions réglées": "Difference on settled commissions",
   // Session C (mobile) : application installée
+  "Tirer pour actualiser": "Pull to refresh",
+  "Relâcher pour actualiser": "Release to refresh",
+  "Actualisation…": "Refreshing…",
+  "À jour": "Up to date",
+  "Mise à jour de l'outil…": "Updating the tool…",
+  "Hors connexion : actualisation impossible.": "Offline: cannot refresh.",
+  "Actualisation impossible : {message}": "Cannot refresh: {message}",
+  "Une actualisation est déjà en cours.": "A refresh is already in progress.",
   "Hors connexion : l'écran montre les données telles qu'elles étaient, et rien ne s'enregistre tant que le réseau n'est pas revenu.": "Offline: the screen shows the data as it was, and nothing is saved until the network is back.",
   // Session C (mobile) : listes et fiche dossier
   "Compagnie, date, recherche": "Company, date, search",

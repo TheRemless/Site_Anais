@@ -1228,3 +1228,22 @@ details > summary { padding-block: 11px; margin: 0; }
 /* ---- Lot G1 : choix en colonne (annuler un service) ---- */
 .actions.colonne { flex-direction: column; align-items: stretch; justify-content: flex-start; }
 .actions.colonne button { width: 100%; min-height: 44px; }
+
+/* ==== Tirer pour actualiser (application installée) ================================================================ */
+/* L'indicateur sort de sous la barre du haut (encoche comprise, --haut-barre) : il suit le doigt, puis reste le temps de l'actualisation. */
+.tirer { position: fixed; z-index: 29; top: var(--haut-barre); left: 50%; width: max-content; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px); min-height: 36px; padding: 6px 14px 6px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--bord); box-shadow: var(--ombre-forte); color: var(--texte-2); font-size: 0.86rem; font-weight: 600; line-height: 1.25; pointer-events: none; opacity: var(--prog, 0); transform: translate(-50%, calc(var(--decal, 0) * 1px - 100% - 4px)); will-change: transform, opacity; }
+.tirer[hidden] { display: none; }
+.tirer.relache { transition: transform 0.24s var(--courbe), opacity 0.24s var(--courbe); }
+.tirer-icone { display: inline-flex; flex: none; }
+.tirer:not(.relache) .tirer-icone svg { transform: rotate(calc(var(--prog, 0) * 270deg)); }
+.tirer.arme { color: var(--teal-700); border-color: var(--teal); background: var(--teal-100); }
+.tirer.arme:not(.relache) .tirer-icone svg { transform: rotate(360deg); transition: transform 0.2s var(--courbe); }
+.tirer.actualise { color: var(--teal-700); }
+.tirer.actualise .tirer-icone svg { animation: tirer-tourne 0.9s linear infinite; }
+.tirer.erreur { color: var(--danger); border-color: var(--danger); background: var(--danger-fond); }
+@keyframes tirer-tourne { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .tirer, .tirer.relache { transition: none; transform: translate(-50%, 8px); }
+  .tirer-icone svg, .tirer.arme .tirer-icone svg { transform: none; transition: none; }
+  .tirer.actualise .tirer-icone svg { animation: none; }
+}
