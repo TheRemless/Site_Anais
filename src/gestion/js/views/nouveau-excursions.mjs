@@ -7,6 +7,7 @@ import { descriptionService, personnesTexte } from "../operations-calc.mjs";
 import { vide } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
+import { estTaxi } from "../taxi-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee as refPropose, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { lireBrouillon, viderBrouillon } from "./demande.mjs";
 import { clientsProches } from "../demande-calc.mjs";
@@ -17,6 +18,8 @@ export function nouveauDossierExcursions() {
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const regl = reglages();
   const langue = langueDocuments(regl);
+  // Taxi : pas de facture, une course payée au chauffeur ; les mots de l'écran le disent.
+  const taxi = estTaxi(regl);
   // Une demande collée peut avoir reconnu un client déjà connu.
   const demande = params.get("demande") ? lireBrouillon() : null;
   const selClient = selecteurClient({ valeur: params.get("client") || (demande && demande.client_id) || "", avecNouveau: peut("clients.ecrire"), surChangement: () => majClient() });
@@ -68,13 +71,13 @@ export function nouveauDossierExcursions() {
             ? h("p", { class: "aide" }, l.libelle)
             : [
                 h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), h("input", { id: `s${i}-d`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), dessiner()) })), champ(tr("Quantité"), h("input", { id: `s${i}-q`, type: "number", min: "1", step: "1", inputmode: "numeric", value: l.qte, onchange: (e) => ((l.qte = Number(e.target.value) || 1), dessiner()) })), champ(tr("Prix ({devise})", { devise: regl.devise }), h("input", { id: `s${i}-p`, type: "number", min: "0", step: "1", inputmode: "numeric", value: l.unite ?? "", onchange: (e) => ((l.unite = e.target.value === "" ? null : Number(e.target.value)), dessiner()) }))),
-                champ(tr("Description sur la facture"), h("input", { id: `s${i}-desc`, value: description(l), oninput: (e) => ((l.description = e.target.value), (l.description_fixe = true)) }), [l.partenaire_id ? nomPartenaire(l.partenaire_id) : "", "Texte vu par le client, en anglais. Modifiable."].filter(Boolean).join(" · ")),
+                champ(taxi ? tr("Libellé de la course") : tr("Description sur la facture"), h("input", { id: `s${i}-desc`, value: description(l), oninput: (e) => ((l.description = e.target.value), (l.description_fixe = true)) }), [l.partenaire_id ? nomPartenaire(l.partenaire_id) : "", "Texte vu par le client, en anglais. Modifiable."].filter(Boolean).join(" · ")),
               ]
         )
       )
     );
     const somme = lignes.filter((l) => l.kind !== "texte").reduce((s, l) => s + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
-    total.textContent = lignes.length ? tr("Total de la facture : {montant}", { montant: formatMontant(somme) }) : "";
+    total.textContent = !lignes.length ? "" : taxi ? tr("Prix de la course : {montant}, payé au chauffeur", { montant: formatMontant(somme) }) : tr("Total de la facture : {montant}", { montant: formatMontant(somme) });
   }
   dessiner();
 
@@ -83,7 +86,8 @@ export function nouveauDossierExcursions() {
   const notes = h("textarea", { id: "notes", rows: 2, placeholder: tr("Vol, allergies, demande particulière") });
   if (demande) notes.value = demande.notes;
   const erreur = h("p", { class: "erreur-form", role: "alert" });
-  const bouton = h("button", { class: "principal", type: "submit" }, tr("Créer la facture"));
+  const libelleCreer = () => (taxi ? tr("Créer la réservation") : tr("Créer la facture"));
+  const bouton = h("button", { class: "principal", type: "submit" }, libelleCreer());
 
   async function creer(e) {
     e.preventDefault();
@@ -91,7 +95,7 @@ export function nouveauDossierExcursions() {
     if (!selClient.valeur && !selClient.nouveau) return (erreur.textContent = tr("Choisissez un client, ou créez-en un.")), document.getElementById("client").focus();
     if (selClient.nouveau && !nvNom.value.trim()) return (erreur.textContent = tr("Indiquez le nom du client.")), nvNom.focus();
     if (!lignes.some((l) => l.kind !== "texte")) return (erreur.textContent = tr("Ajoutez au moins un service."));
-    if (!ref.value.trim()) return (erreur.textContent = tr("Indiquez le numéro de facture."));
+    if (!ref.value.trim()) return (erreur.textContent = taxi ? tr("Indiquez le numéro de réservation.") : tr("Indiquez le numéro de facture."));
     if (refExiste(ref.value)) return (erreur.textContent = tr("Ce numéro existe déjà. Modifiez-le.")), ref.focus();
     bouton.disabled = true;
     bouton.textContent = tr("Création…");
@@ -103,7 +107,7 @@ export function nouveauDossierExcursions() {
     } catch (err) {
       erreur.textContent = /duplicate|unique|23505/i.test(err.message) ? tr("Ce numéro existe déjà. Modifiez-le.") : err.message;
       bouton.disabled = false;
-      bouton.textContent = tr("Créer la facture");
+      bouton.textContent = libelleCreer();
     }
   }
   majClient();
@@ -111,13 +115,13 @@ export function nouveauDossierExcursions() {
   return h(
     "div",
     { "data-titre": tr("Nouveau dossier") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Nouveau dossier")), h("p", { class: "sous" }, tr("Indiquez le client et ses services. La facture et les réservations auprès des partenaires se créent en même temps.")))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Nouveau dossier")), h("p", { class: "sous" }, taxi ? tr("Indiquez le client et sa course. La réservation et sa Booking confirmation se créent en même temps.") : tr("Indiquez le client et ses services. La facture et les réservations auprès des partenaires se créent en même temps.")))),
     h(
       "form",
       { class: "formulaire", onsubmit: creer },
       h("fieldset", null, h("legend", null, tr("Client")), selClient.noeud, doublon, blocNouveau),
       h("fieldset", null, h("legend", null, tr("Services")), liste, h("div", { class: "ajouts" }, h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue, devise: regl.devise, sansCompagnie: true, defauts: defautsAjout(), onAjout: (nouvelles) => { nouvelles.forEach((l) => lignes.push({ ...l, titre: l.kind === "texte" ? undefined : l.libelle })); dessiner(); } }) }, tr("Ajouter un service"))), total),
-      h("fieldset", null, h("legend", null, tr("Facture")), h("div", { class: "grille-form" }, champ(tr("Numéro"), ref, tr("Numéro suivant de l'année pour cette entreprise, modifiable.")), champ(tr("Notes internes"), notes))),
+      h("fieldset", null, h("legend", null, taxi ? tr("Réservation") : tr("Facture")), h("div", { class: "grille-form" }, champ(tr("Numéro"), ref, tr("Numéro suivant de l'année pour cette entreprise, modifiable.")), champ(tr("Notes internes"), notes))),
       erreur,
       h("div", { class: "actions" }, h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Annuler")), bouton)
     )

@@ -1,11 +1,11 @@
 // État partagé : le magasin de données, la copie en mémoire des tables et l'entreprise active.
 // `brut` contient tout ce que la base laisse voir à la personne connectée, `db` seulement l'entreprise active.
+import { estTaxi } from "./taxi-calc.mjs";
 import { creerStore } from "./store.mjs";
 import { resume, setDevise, setMasquerMontants, aujourdhui } from "./calc.mjs";
 import { construireCopie, CLE_HORS_LIGNE } from "./feuille-hors-ligne-calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
-import { entreprisesVisibles } from "./groupe.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 
@@ -169,7 +169,7 @@ export async function choisirLangue(code) {
   else connexion.langueChoisie = true;
 }
 
-export const entitesAccessibles = () => entreprisesVisibles([...etat.brut.entites].filter((e) => e.actif).sort((a, b) => a.ordre - b.ordre || a.nom.localeCompare(b.nom)), etat.brut.dossiers);
+export const entitesAccessibles = () => [...etat.brut.entites].filter((e) => e.actif).sort((a, b) => a.ordre - b.ordre || a.nom.localeCompare(b.nom));
 export const entiteActive = () => etat.brut.entites.find((e) => e.id === etat.entiteId) || null;
 
 // Une copie de travail limitée à l'entreprise active : les écrans lisent etat.db sans se soucier des autres.
@@ -234,7 +234,9 @@ export function moduleActif(nom) {
   return true;
 }
 // Mode excursions (Secret) : pas de devis, facture directe, vouchers. Sinon voyages sur mesure (Zwald).
-export const modeExcursions = () => !!etat.db && etat.db.reglages.fonctionnement === "excursions";
+// Le mode taxi (VIP Taxi Lanta) suit le même chemin que les excursions, sans facture : voir taxi-calc.mjs.
+export const modeTaxi = () => !!etat.db && estTaxi(etat.db.reglages);
+export const modeExcursions = () => !!etat.db && (etat.db.reglages.fonctionnement === "excursions" || modeTaxi());
 
 // ---- Chargement à la demande ---------------------------------------------------------------------------------
 // Documents et paiements ne sont pas chargés avec les listes : on les charge à l'ouverture d'un dossier.

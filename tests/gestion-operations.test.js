@@ -41,7 +41,7 @@ test("description d'une ligne de facture en mode excursions", () => {
   assert.equal(descriptionService({ libelle: "4 îles", intro: "(par enfant)", qte: 1, date_service: "2026-12-10" }, "fr"), "4 îles, 1 enfant, 10 décembre 2026");
   assert.equal(descriptionService({ libelle: "Note", qte: null }), "Note");
 });
-import { MESSAGES_DEFAUT } from "../src/gestion/js/defauts.mjs";
+import { MESSAGES_DEFAUT, MESSAGES_TAXI } from "../src/gestion/js/defauts.mjs";
 
 test("réservations depuis un document : une par ligne de partenaire, ligne enfant distinguée, net à part", () => {
   const doc = {
@@ -104,7 +104,7 @@ test("gabarits : variables remplies, inconnues gardées, vides effacées", () =>
 
 test("variables d'un message depuis une réservation", () => {
   const v = variablesMessage({ reservation: { libelle: "4 îles", date_service: "2026-12-10", heure_pickup: "08:00", lieu_pickup: "Hotel Sunset", personnes: { adultes: 2 }, reference_partenaire: "LT-1" }, client: { prenom: "Ben", nom: "Walker" }, dossier: { ref: "EX-1" }, partenaire: { nom: "Longtail" }, entreprise: { nom: "Secret", telephone: "+66" }, langue: "en" });
-  assert.deepEqual(v, { client: "Ben Walker", prenom: "Ben", date: "10 December 2026", hotel: "Hotel Sunset", heure: "08:00", a_heure: " at 08:00", personnes: "2 adults", prestation: "4 Islands", partenaire: "Longtail", reference: "LT-1", entreprise: "Secret", telephone: "+66", lien_avis: "" });
+  assert.deepEqual(v, { client: "Ben Walker", prenom: "Ben", date: "10 December 2026", hotel: "Hotel Sunset", heure: "08:00", a_heure: " at 08:00", personnes: "2 adults", prestation: "4 Islands", partenaire: "Longtail", contact: "Longtail", dropoff: "", prix: "", reference: "LT-1", entreprise: "Secret", telephone: "+66", lien_avis: "" });
   const fr = variablesMessage({ reservation: {}, client: { prenom: "Ben", nom: "Walker", adresse: "Hotel Palm\nKoh Lanta" }, dossier: { ref: "EX-2", date_depart: "2027-01-05" } });
   assert.equal(fr.date, "5 janvier 2027");
   assert.equal(fr.hotel, "Hotel Palm");
@@ -112,7 +112,12 @@ test("variables d'un message depuis une réservation", () => {
   assert.equal(fr.a_heure, "");
   // Le modèle « réponse au client » a ses propres variables (services, total, formule d'appel) : celles de varsReponse.
   const connues = { ...v, ...varsReponse({ d: { nom: "A" }, services: [], entreprise: {} }) };
-  for (const m of MESSAGES_DEFAUT) for (const k of m.corps.match(/\{(\w+)\}/g) || []) assert.ok(k.slice(1, -1) in connues, `${m.id} utilise une variable connue : ${k}`);
+  for (const m of [...MESSAGES_DEFAUT, ...MESSAGES_TAXI]) for (const k of m.corps.match(/\{(\w+)\}/g) || []) assert.ok(k.slice(1, -1) in connues, `${m.id} utilise une variable connue : ${k}`);
+  // Taxi : la personne du partenaire, la dépose et le prix de la course.
+  const t = variablesMessage({ reservation: { libelle: "Private minivan: Koh Lanta → Krabi Airport", montant_vente: 2700, details: { drop_off: "Krabi Airport" } }, partenaire: { nom: "VIP Taxi Lanta", contact: { personne: "Mr. Brown" } }, entreprise: { nom: "VIP Taxi Lanta", devise: "THB" }, langue: "th" });
+  assert.equal(t.contact, "Mr. Brown");
+  assert.equal(t.dropoff, "Krabi Airport");
+  assert.equal(t.prix, "2,700 THB");
 });
 
 test("agenda : aujourd'hui, demain, à confirmer et en retard, annulées exclues", () => {

@@ -1,7 +1,7 @@
 // Messages types : la fenêtre « Copier un message » (depuis une réservation ou un dossier) et l'écran qui les gère.
 import { reglages, estAdmin, enregistrerReglages } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone } from "../ui.mjs";
-import { uid, MESSAGES_DEFAUT } from "../defauts.mjs";
+import { uid, messagesDefautPour } from "../defauts.mjs";
 import { remplirGabarit, destinataireMessage, gabaritsPropose, gabaritsManquants } from "../operations-calc.mjs";
 import { chiffres } from "./partenaires.mjs";
 import { sansAccents } from "../partenaires-calc.mjs";
@@ -19,7 +19,7 @@ export const DESTINATAIRES = [
   ["partenaire", N_("Au partenaire")],
 ];
 // Noms lisibles des variables, pour dire ce qui manque.
-const NOMS_VARIABLES = { client: N_("nom du client"), prenom: N_("prénom"), date: N_("date"), hotel: N_("hôtel"), heure: N_("heure de pickup"), personnes: N_("personnes"), prestation: N_("service"), partenaire: N_("partenaire"), reference: N_("référence"), lien_avis: N_("lien d'avis Google"), entreprise: N_("entreprise"), services: N_("services"), total: N_("total"), bonjour: N_("formule d'appel") };
+const NOMS_VARIABLES = { client: N_("nom du client"), prenom: N_("prénom"), date: N_("date"), hotel: N_("hôtel"), heure: N_("heure de pickup"), personnes: N_("personnes"), prestation: N_("service"), partenaire: N_("partenaire"), reference: N_("référence"), lien_avis: N_("lien d'avis Google"), contact: N_("contact du partenaire"), dropoff: N_("lieu de dépose"), prix: N_("prix"), entreprise: N_("entreprise"), services: N_("services"), total: N_("total"), bonjour: N_("formule d'appel") };
 const nomLangue = (code) => (LANGUES.find(([c]) => c === code) || [code, code])[1];
 
 async function copier(texte) {
@@ -37,7 +37,7 @@ async function copier(texte) {
 export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle = "", langue = "fr", telephone = "", pour = "client", surEnvoi = null, suite = "" }) {
   const varsDe = (l) => (typeof vars === "function" ? vars(l) : vars);
   // Les modèles de la base ; l'usage demandé (« relance »…) y manque-t-il, son modèle par défaut est proposé, jamais le premier modèle venu.
-  const tous = gabaritsPropose(messagesTypes(), MESSAGES_DEFAUT, { pour, langue, cle }).liste;
+  const tous = gabaritsPropose(messagesTypes(), messagesDefautPour(reglages()), { pour, langue, cle }).liste;
   if (!tous.length) return toast(pour === "partenaire" ? tr("Aucun message type pour les partenaires. Créez-en dans l'écran Messages.") : tr("Aucun message type pour les clients. Créez-en dans l'écran Messages."), true);
   const texte = h("textarea", { id: "msg-texte", rows: 11 });
   // La langue choisie la dernière fois pour ce numéro est reprise : Anaïs ne la rechoisit pas à chaque message au même client.
@@ -137,7 +137,7 @@ export function vueMessages() {
   const tous = messagesTypes();
   // Les modèles par défaut dont l'usage manque (une relance, une annulation…). Une entreprise dont les documents sont en anglais n'y gagne pas de français.
   const enAnglais = /invoice/i.test((reglages().libelles && reglages().libelles.facture) || "");
-  const manquants = admin ? gabaritsManquants(tous, MESSAGES_DEFAUT).filter((m) => !enAnglais || m.langue !== "fr") : [];
+  const manquants = admin ? gabaritsManquants(tous, messagesDefautPour(reglages())).filter((m) => !enAnglais || m.langue !== "fr") : [];
   const ajouterManquants = async () => {
     if (!(await confirmer(tr("Ajouter {n} modèles qui manquent ? Les modèles que vous avez modifiés ne sont pas touchés.", { n: manquants.length }), tr("Ajouter")))) return;
     try {
@@ -181,7 +181,7 @@ export function vueMessages() {
   return h(
     "div",
     { "data-titre": tr("Messages") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Messages types")), h("p", { class: "sous" }, tr("Au client : confirmation, rappel de la veille, avis, météo. Au partenaire : demande, relance, modification, annulation. À copier depuis une réservation."))), admin ? h("div", { class: "entete-actions" }, manquants.length ? h("button", { class: "secondaire", type: "button", onclick: ajouterManquants }, tr("Ajouter les modèles manquants")) : null, h("button", { class: "secondaire", type: "button", onclick: async () => { if (await confirmer(tr("Remettre les messages de départ ? Vos modifications seront perdues."), tr("Remettre"))) { await enregistrerReglages({ ...reglages(), messages: structuredClone(MESSAGES_DEFAUT) }); rafraichir(); } } }, tr("Remettre ceux de départ")), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, tr("Nouveau message"))) : null),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Messages types")), h("p", { class: "sous" }, tr("Au client : confirmation, rappel de la veille, avis, météo. Au partenaire : demande, relance, modification, annulation. À copier depuis une réservation."))), admin ? h("div", { class: "entete-actions" }, manquants.length ? h("button", { class: "secondaire", type: "button", onclick: ajouterManquants }, tr("Ajouter les modèles manquants")) : null, h("button", { class: "secondaire", type: "button", onclick: async () => { if (await confirmer(tr("Remettre les messages de départ ? Vos modifications seront perdues."), tr("Remettre"))) { await enregistrerReglages({ ...reglages(), messages: structuredClone(messagesDefautPour(reglages())) }); rafraichir(); } } }, tr("Remettre ceux de départ")), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, tr("Nouveau message"))) : null),
     tous.length > 4 ? barre.noeud : null,
     zone,
     !tous.length ? h("p", { class: "vide-court" }, tr("Aucun message type.")) : null,

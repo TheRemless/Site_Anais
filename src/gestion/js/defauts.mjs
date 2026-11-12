@@ -211,6 +211,26 @@ export const MESSAGES_DEFAUT = [
   { id: "annulation-th", pour: "partenaire", cle: "annulation", titre: "ยกเลิกการจอง (à relire)", langue: "th", corps: "สวัสดีค่ะ {partenaire}\n\nขอยกเลิกการจอง {reference} ค่ะ: {prestation} วันที่ {date} ลูกค้า {client}\nขออภัยในความไม่สะดวกนะคะ ขอบคุณค่ะ" },
 ];
 
+// Messages types de VIP Taxi Lanta (mode taxi). Les deux messages aux clients sont les textes de Jérémy du 12.11.2026, mot pour mot
+// (le lien d'avis passe par {lien_avis}, réglé dans Réglages). Les messages à Mr. Brown suivent le même ton, en anglais et en thaï ;
+// les textes thaïs sont à faire relire avant usage réel. {contact} = la personne du partenaire, {dropoff} et {prix} = ceux de la course.
+export const MESSAGES_TAXI = [
+  { id: "taxi-confirmation-en", pour: "client", cle: "confirmation", titre: "Booking confirmation sent", langue: "en", corps: "Thank you for choosing VIP TAXI LANTA. ✨\n\nPlease see the attached confirmation and show it to the driver at pick-up.\nLet us know if everything is correct\n\nPayment will be collected in cash directly by the driver (or you can pay through Wise before your transfer (3% fee), please let us know before.)\n\nIf you have any changes, please inform us as soon as possible.\n\nHave a nice day ☀️\nVIP TAXI LANTA 🌴" },
+  { id: "taxi-avis-en", pour: "client", cle: "avis", titre: "Review request the day after", langue: "en", corps: "Thank you again for choosing VIP TAXI LANTA today.\n\nWe hope you had a comfortable journey and that everything went smoothly with the driver and the transfer.\n\nIf you were satisfied with our service, we would truly appreciate it if you could leave us a review on Google. It really helps us grow and allows other travelers to discover our service 😊 ✨\n\nYou can leave your review here:\n{lien_avis}\n\nThank you very much for your trust, and we hope to drive you again in the future!\n\nSafe travels ✨🌴\nVIP TAXI LANTA by Mr. Brown" },
+  { id: "taxi-partenaire-en", pour: "partenaire", cle: "partenaire", titre: "New transfer", langue: "en", corps: "Hello {contact},\n\nNew transfer:\n• {prestation}\n• Date: {date}\n• Pickup: {hotel}{a_heure}\n• Drop-off: {dropoff}\n• {personnes}\n• Guest: {client}\n• Price: {prix}, paid to the driver\n• Ref: {reference}\n\nCan you confirm? Thank you 🙏" },
+  { id: "taxi-relance-en", pour: "partenaire", cle: "relance", titre: "Follow-up, no answer yet", langue: "en", corps: "Hello {contact},\n\nJust checking on transfer {reference}: {prestation} on {date}, {personnes}, guest {client}.\nCan you confirm? Thank you 🙏" },
+  { id: "taxi-modification-en", pour: "partenaire", cle: "modification", titre: "Change on a transfer", langue: "en", corps: "Hello {contact},\n\nChange on transfer {reference} ({client}):\n• {prestation}\n• Date: {date}\n• Pickup: {hotel}{a_heure}\n• Drop-off: {dropoff}\n• {personnes}\n\nCan you confirm the change? Thank you 🙏" },
+  { id: "taxi-annulation-en", pour: "partenaire", cle: "annulation", titre: "Cancellation", langue: "en", corps: "Hello {contact},\n\nPlease cancel transfer {reference}: {prestation} on {date}, guest {client}.\nSorry for the change, thank you 🙏" },
+  { id: "taxi-commission-en", pour: "partenaire", cle: "commission", titre: "Commission for yesterday's transfer", langue: "en", corps: "Hello {contact},\n\nAbout yesterday's transfer: {prestation} on {date}, guest {client} ({prix}).\nHow much is the commission for this one?\n\nThank you 🙏" },
+  { id: "taxi-partenaire-th", pour: "partenaire", cle: "partenaire", titre: "งานใหม่ (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nมีงานรับส่งใหม่ค่ะ\n• {prestation}\n• วันที่ {date}\n• รับที่: {hotel}{a_heure}\n• ส่งที่: {dropoff}\n• {personnes}\n• ลูกค้า: {client}\n• ราคา: {prix} ลูกค้าจ่ายคนขับ\n• เลขอ้างอิง: {reference}\n\nช่วยยืนยันด้วยนะคะ ขอบคุณค่ะ 🙏" },
+  { id: "taxi-relance-th", pour: "partenaire", cle: "relance", titre: "ติดตามงาน (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nขอติดตามงาน {reference} ค่ะ: {prestation} วันที่ {date} {personnes} ลูกค้า {client}\nช่วยยืนยันด้วยนะคะ ขอบคุณค่ะ 🙏" },
+  { id: "taxi-modification-th", pour: "partenaire", cle: "modification", titre: "แก้ไขงาน (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nขอแก้ไขงาน {reference} ({client}) ค่ะ\n• {prestation}\n• วันที่ {date}\n• รับที่: {hotel}{a_heure}\n• ส่งที่: {dropoff}\n• {personnes}\n\nช่วยยืนยันด้วยนะคะ ขอบคุณค่ะ 🙏" },
+  { id: "taxi-annulation-th", pour: "partenaire", cle: "annulation", titre: "ยกเลิกงาน (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nขอยกเลิกงาน {reference} ค่ะ: {prestation} วันที่ {date} ลูกค้า {client}\nขอโทษด้วยนะคะ ขอบคุณค่ะ 🙏" },
+  { id: "taxi-commission-th", pour: "partenaire", cle: "commission", titre: "ค่าคอมมิชชั่นงานเมื่อวาน (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nงานเมื่อวาน: {prestation} วันที่ {date} ลูกค้า {client} ({prix})\nค่าคอมมิชชั่นงานนี้เท่าไหร่คะ\n\nขอบคุณค่ะ 🙏" },
+];
+// Messages de départ d'une entreprise selon sa façon de travailler : ceux de Taxi en mode taxi, sinon les messages généraux.
+export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? MESSAGES_TAXI : MESSAGES_DEFAUT);
+
 // Réglages d'une entreprise nouvellement créée : aucun fait propre à une entreprise réelle.
 export const REGLAGES_NEUTRE = {
   messages: MESSAGES_DEFAUT,
@@ -287,6 +307,8 @@ export function reglagesIncomplets(r) {
   if (!r.emetteur.adresse.trim()) manque.push("l'adresse");
   if (!r.devise.trim()) manque.push("la devise");
   if (!r.emetteur.contact.trim()) manque.push("les coordonnées du pied de page");
+  // Taxi n'émet aucune facture : ni informations de paiement ni conditions à fournir (le client paie le chauffeur).
+  if (r.fonctionnement === "taxi") return manque;
   if (!r.paiement.texte.trim() && !r.apparence.qr_image) manque.push("les informations de paiement");
   if (!r.textes.variantes.some((v) => v.corps.trim())) manque.push("les conditions de paiement");
   return manque;
@@ -350,6 +372,9 @@ const REGLAGES_DEMO_TAXI = completerReglages({
   devise: "THB",
   conditions: { acompte_pct: 0, delai_jours: 5, relance_jours: 7, tva_mention: "", cgv_url: "" },
   numerotation: { mode: "sequence", prefixe: "TX" },
+  fonctionnement: "taxi",
+  messages: MESSAGES_TAXI,
+  voucher: { whatsapp: "+00 00 000 00 02", email: "contact@exemple.com" },
   dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Trajet" },
   listes: { pays: ["Aéroport", "Hôtel", "Excursion"] },
   libelles: LIBELLES_EN,
@@ -433,10 +458,14 @@ export function donneesDemo(ajd, ajouterJours) {
   ajoute(e2, c6, j(-2), "Transfert", "Transfert aéroport", { accepte_le: j(-2), responsable_id: stagiaire.user_id }, null, { contenu: contenu("Transfert aéroport", [ligne("Transfert Krabi aéroport, Koh Lanta", 1500)], "total") }, [{ date: j(-1), montant: 1500, type: "solde", moyen: "especes" }]);
   [["region", "Tour des 4 îles", 1200], ["region", "Transfert aéroport", 1500]].forEach(([kind, libelle, prix], i) => catalogue.push({ id: uid(), created_at: j(-90), entite_id: e2.id, kind, libelle, intro: "", puces: [], prix, ordre: i + 1, actif: true }));
 
-  // Entreprise 3 : taxi
+  // Entreprise 3 : taxi (mode taxi : pas de facture montrée, tout payé au chauffeur). Les réservations sont ajoutées plus bas.
   const c7 = client(e3, "Madame", "Lea", "Moreau", "Hotel Sea, Koh Lanta", "+33 6 00 00 00 07");
-  ajoute(e3, c7, j(-1), "Aéroport", "Trajet aéroport", { accepte_le: j(-1), responsable_id: assistante.user_id }, null, { contenu: contenu("Trajet aéroport", [ligne("Taxi Krabi aéroport, Koh Lanta", 1800)], "total") });
-  catalogue.push({ id: uid(), created_at: j(-90), entite_id: e3.id, kind: "region", libelle: "Taxi Krabi aéroport, Koh Lanta", intro: "", puces: [], prix: 1800, ordre: 1, actif: true });
+  const c8 = client(e3, "Monsieur", "Tom", "Becker", "Villa Demo, Klong Nin", "+49 170 0000008");
+  const course = (libelle, montant) => nouvelleLigne("ligne", { libelle, unite: montant, qte: 1, paye_sur_place: true });
+  const lc7 = course("Private minivan: Krabi Airport → Koh Lanta", 1800);
+  const lc8 = course("Private minivan: Koh Lanta → Phuket Airport", 2700);
+  ajoute(e3, c7, j(-3), "", "Private minivan: Krabi Airport → Koh Lanta", { accepte_le: j(-3), date_depart: j(-1), responsable_id: assistante.user_id }, null, { contenu: contenu("", [{ ...lc7, date_service: j(-1) }], "detail", { langue: "en" }) });
+  ajoute(e3, c8, j(-1), "", "Private minivan: Koh Lanta → Phuket Airport", { accepte_le: j(-1), date_depart: j(1) }, null, { contenu: contenu("", [{ ...lc8, date_service: j(1) }], "detail", { langue: "en" }) });
 
   // Entreprise 2 : quatre partenaires fictifs avec leurs tarifs, leurs nets et les trajets de deux compagnies de bateaux.
   const partenaires = [];
@@ -507,6 +536,13 @@ export function donneesDemo(ajd, ajouterJours) {
   reservation(dossiers[5], prestations[3], "Koh Rok et Koh Ha, frais de parc", j(1), { statut: "confirme", personnes: { adultes: 2, enfants: 0, bebes: 0 }, notes: "À payer en espèces sur l'île." }, null);
   reservation(dossiers[6], prestations[5], "Aéroport de Krabi → Koh Lanta", j(0), { heure_pickup: "14:30", lieu_pickup: "Aéroport de Krabi, vol FD3217", statut: "demande", montant_vente: 2500, personnes: { adultes: 1, enfants: 1, bebes: 0 } }, { net_prevu: 2250 });
   reservation(dossiers[5], prestations[8], "Coucher de soleil en longtail, 2 h", j(3), { montant_vente: 1400 }, { net_prevu: 1000 });
+  // Taxi : une course hier (la carte « Hier » propose l'avis et la commission) et une demain.
+  const dossiersTaxi = dossiers.filter((d) => d.entite_id === e3.id);
+  const chauffeurs = { id: uid(), created_at: j(-90), updated_at: j(-90), entite_id: e3.id, nom: "Chauffeurs démo", nom_thai: "", categorie: "Transferts terrestres et taxis", groupe: "transport", role: "Minivans privés", contact: { personne: "M. Démo", telephones: [{ numero: "083-000-0009", libelle: "", whatsapp: true }] }, regles: { mode_reglement: "sur_place" }, contrat: {}, notes: "", ordre: 1, actif: true };
+  partenaires.push(chauffeurs);
+  const courseTaxi = (dossier, ligneC, date, extra) => reservations.push({ id: uid(), created_at: j(-2), updated_at: j(-2), entite_id: e3.id, dossier_id: dossier.id, ligne_id: ligneC.id, prestation_id: null, trajet_id: null, partenaire_id: chauffeurs.id, libelle: ligneC.libelle, date_service: date, heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: ligneC.unite, paye_sur_place: true, notes: "", details: {}, ...extra });
+  courseTaxi(dossiersTaxi[0], lc7, j(-1), { heure_pickup: "11:00", lieu_pickup: "Krabi Airport, arrivals hall", personnes: { adultes: 4, enfants: 0, bebes: 0 }, details: { drop_off: "Hotel Sea, Koh Lanta", bagages: "oui" } });
+  courseTaxi(dossiersTaxi[1], lc8, j(1), { heure_pickup: "06:30", lieu_pickup: "Villa Demo, Klong Nin", personnes: { adultes: 2, enfants: 1, bebes: 1 }, statut: "demande", details: { drop_off: "Phuket Airport", bagages: "3" } });
   reservation(dossiers[6], prestations[6], "Koh Lanta → Aéroport de Phuket", j(-20), { statut: "confirme", heure_pickup: "06:00", lieu_pickup: "Hotel Palm", montant_vente: 4500 }, { net_prevu: 4050, net_paye: 4050, paye_le: j(-15) });
 
   const tache = (e, titre, jours, assignee, dossier, extra = {}) => ({ id: uid(), created_at: j(-3), entite_id: e.id, dossier_id: dossier ? dossier.id : null, partenaire_id: null, titre, description: "", echeance: jours === null ? null : j(jours), assignee_id: assignee ? assignee.user_id : null, fait: false, fait_le: null, fait_par: null, cree_par: admin.user_id, ...extra });

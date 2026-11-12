@@ -150,6 +150,11 @@ export function variablesMessage({ reservation = {}, client = {}, dossier = {}, 
     // Message en anglais ou en thaï : le nom du service passe par la traduction, un libellé d'origine en français n'y part pas tel quel.
     prestation: langue === "fr" ? reservation.libelle || "" : libelleClient(reservation.libelle || ""),
     partenaire: partenaire.nom || "",
+    // La personne à qui l'on écrit chez le partenaire (« Mr. Brown » pour VIP Taxi Lanta), sinon le nom du partenaire.
+    contact: ((partenaire.contact || {}).personne || "").trim() || partenaire.nom || "",
+    // Taxi : lieu de dépose et prix de la course (payé au chauffeur), tels que saisis sur la réservation.
+    dropoff: libelleClient(((reservation.details || {}).drop_off) || ""),
+    prix: reservation.montant_vente === null || reservation.montant_vente === undefined || reservation.montant_vente === "" ? "" : `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(Number(reservation.montant_vente))} ${entreprise.devise || "THB"}`,
     reference: reservation.reference_partenaire || dossier.ref || "",
     entreprise: entreprise.nom || "",
     telephone: entreprise.telephone || "",

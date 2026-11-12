@@ -5,6 +5,8 @@ import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
 import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER, pointEmbarquement, consigneCheckin, estPickupHotel, capaciteBateau, bateauEtQuai, horairesTexte, dureeTexte, venduParPersonne, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
+import { estTaxi } from "../taxi-calc.mjs";
+import { renderBookingConfirmation } from "./voucher-taxi.mjs";
 
 const TITRES = TITRES_VOUCHER;
 const case_ = (coche, libelle) => h("span", { class: `v-case${coche ? " cochee" : ""}` }, h("span", { class: "v-carre", "aria-hidden": "true" }, coche ? "☒" : "☐"), ` ${libelle}`);
@@ -17,7 +19,8 @@ export function vouchersDuDossier(dossierId) {
     .filter((r) => r.dossier_id === dossierId)
     .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || "") || a.libelle.localeCompare(b.libelle))
     .map((r) => ({ reservation: r, prestation: r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null }))
-    .map((x) => ({ ...x, type: typeVoucher(x.reservation, x.prestation, partenaireDe(x.reservation.partenaire_id)) }))
+    // Taxi : chaque course a sa « Booking confirmation », même saisie à la main sans prestation.
+    .map((x) => ({ ...x, type: typeVoucher(x.reservation, x.prestation, partenaireDe(x.reservation.partenaire_id)) || (estTaxi(reglages()) ? "transfert" : null) }))
     .filter((x) => x.type)
     // Le numéro se calcule avant d'écarter les annulées : annuler la première ne renumérote pas les vouchers déjà envoyés.
     .map((x, i) => ({ ...x, index: i + 1 }))
@@ -92,6 +95,9 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
   const typeVehicule = type === "location" ? [categorieVehicule(p), moteurTexte(p)].filter(Boolean).join(", ") : "";
   const tarifJour = jours && Number(r.montant_vente) > 0 ? Math.round((Number(r.montant_vente) / jours) * 100) / 100 : null;
 
+  // VIP Taxi Lanta : la « Booking confirmation » de son modèle, pas les vouchers de Secret.
+  if (estTaxi(regl)) return renderBookingConfirmation({ regl, client, r, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, email, adresse });
+
   const booking =
     type === "billet"
       ? [ligne("Route", `${dBillet.de} → ${dBillet.vers}`), ligne("Travel Date", dateTexte(r.date_service, "en")), ligne("Departure Time", dBillet.depart, h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Arrival Time: "), dBillet.arrivee), ligne("Boat", dBillet.mode), ligne("Company", operateur), ligne("Departure Pier / Check-in Point", embarquement), pickupInclus ? ligne("Hotel Pickup", [r.lieu_pickup, r.heure_pickup ? `at ${r.heure_pickup}` : ""].filter(Boolean).join(" ")) : null, ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), nbp(a), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), nbp(en_), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Infants: "), nbp(pers.bebes)), ligne("Luggage", bagages), ligne("Remarks", remarques)]
@@ -142,7 +148,7 @@ const pickupDepuisLibelle = (r, p, trajet) => (trajet ? trajet.de : ((p && p.lib
 export function imprimerVoucher(x) {
   const d = etat.db.dossiers.find((y) => y.id === x.reservation.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === d.client_id) || {};
-  imprimer(renderVoucher(x), `Voucher ${numeroVoucher(d.ref || "", x.index)} - ${(client.nom || "client").split(/\s+/)[0]}`);
+  imprimer(renderVoucher(x), `${estTaxi(reglages()) ? "Booking confirmation" : "Voucher"} ${numeroVoucher(d.ref || "", x.index)} - ${(client.nom || "client").split(/\s+/)[0]}`);
 }
 
 export function imprimerTousLesVouchers(dossierId) {

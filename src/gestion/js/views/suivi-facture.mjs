@@ -1,7 +1,9 @@
 // La facture suit la réservation : un seul chemin pour la date, les personnes, le mode de règlement et l'annulation.
 // Le formulaire de réservation, « Changer le jour » du prestataire, l'annulation par le sélecteur et l'alignement sur la facture passent tous par ici :
 // le nouveau total est montré avant d'enregistrer, une facture déjà envoyée demande confirmation, et le prestataire peut être prévenu.
-import { etat, chargerDossier, peut, reglages, nomPartenaire, modifier, modeExcursions } from "../etat.mjs";
+import { etat, chargerDossier, peut, reglages, nomPartenaire, modifier, inserer, modeExcursions, modeTaxi } from "../etat.mjs";
+import { contenuCourse, ligneCourse } from "../taxi-calc.mjs";
+import { uid, CONTENU_DEFAUT } from "../defauts.mjs";
 import { h, modal, confirmer, toast } from "../ui.mjs";
 import { formatMontant, formatDate, totaux } from "../calc.mjs";
 import { contenuAvecSurPlace, contenuAvecReservation, contenuSansReservation, attenduDepuisFacture, ecartReservation, personnesTexte, datesDepuisReservations } from "../operations-calc.mjs";
@@ -29,6 +31,7 @@ export function documentsSansService(documents, r) {
 // Renvoie null quand la personne renonce (ou ne peut pas), sinon { changements, ecartRestant, montantVente } : à l'appelant d'enregistrer les documents.
 export async function suivreFacture(r, valeurs, { avant, apres, mode = null, retirer = false, montantSuit = false, dejaConfirme = false }) {
   const resultat = { changements: [], ecartRestant: null, montantVente: null };
+  if (modeTaxi()) return suivreCourseTaxi(r, valeurs, retirer, resultat);
   const dateChangee = (apres.date_service || null) !== (avant.date_service || null);
   const pa = avant.personnes || {};
   const pb = apres.personnes || {};
@@ -81,6 +84,30 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
   return resultat;
 }
 
+// Taxi : pas de facture montrée, le prix interne suit la course en silence (date, prix, paiement au chauffeur, annulation).
+async function suivreCourseTaxi(r, valeurs, retirer, resultat) {
+  if (!lieeFacture(r) || !r.id) return resultat;
+  await chargerDossier(r.dossier_id);
+  const documents = etat.db.documents.filter((x) => x.dossier_id === r.dossier_id && x.type === "facture");
+  if (retirer) resultat.changements = documentsSansService(documents, r);
+  else for (const doc of documents) {
+    const suite = contenuCourse(doc.contenu, { ...r, ...valeurs });
+    if (suite) resultat.changements.push({ doc, suite });
+  }
+  return resultat;
+}
+
+// Taxi : une course créée sans ligne (à la main) est ajoutée au prix interne du dossier, qui est créé s'il n'existe pas encore.
+export async function rattacherCourseTaxi(r) {
+  if (!modeTaxi() || !r || !r.id || lieeFacture(r) || r.statut === "annule") return;
+  await chargerDossier(r.dossier_id);
+  const id = uid();
+  const doc = etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type === "facture");
+  if (doc) await modifier("documents", doc.id, { contenu: { ...doc.contenu, lignes: [...(doc.contenu.lignes || []), ligneCourse(r, id)] }, updated_at: new Date().toISOString() });
+  else await inserer("documents", { dossier_id: r.dossier_id, type: "facture", date_emission: r.date_service || new Date().toISOString().slice(0, 10), envoye_le: null, updated_at: new Date().toISOString(), contenu: { ...CONTENU_DEFAUT(), colonnes: "total", langue: "en", lignes: [ligneCourse(r, id)] } });
+  await modifier("reservations", r.id, { ligne_id: id, paye_sur_place: true });
+}
+
 export async function appliquerChangements(changements) {
   for (const { doc, suite } of changements) await modifier("documents", doc.id, { contenu: suite, updated_at: new Date().toISOString() });
 }
@@ -88,6 +115,8 @@ export async function appliquerChangements(changements) {
 // Annuler un service : trois issues. Retirer aussi ses lignes de la facture (le total baisse), garder la facture telle quelle, ou renoncer.
 // Renvoie « retirer », « garder » ou null.
 export function questionAnnulation(r, documents) {
+  // Taxi : une course annulée sort du prix interne, sans question (aucune facture n'existe aux yeux de la cliente).
+  if (modeTaxi()) return Promise.resolve("retirer");
   const sans = documentsSansService(documents, r);
   const principale = sans.find((x) => x.doc.type !== "devis") || sans[0];
   if (!principale) return Promise.resolve("garder");

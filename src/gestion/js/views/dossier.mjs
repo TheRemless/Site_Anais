@@ -1,4 +1,4 @@
-import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions, netReservation } from "../etat.mjs";
+import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions, modeTaxi, netReservation } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num, icone, barreAction } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, convertirContenu, sommePaiements, acceptationAuPaiement, payeSansFacture } from "../calc.mjs";
 import { uid, modesPaiement } from "../defauts.mjs";
@@ -49,6 +49,8 @@ function ficheDossierVue(id) {
   const locale = dernier(r.documents, "facture_locale");
   // Mode excursions (Secret) : pas de devis, la facture vient en premier, puis les vouchers.
   const excursions = modeExcursions();
+  // Mode taxi (VIP Taxi Lanta) : le prix vit sur un document interne jamais montré ; ni facture, ni paiement à enregistrer.
+  const taxi = modeTaxi();
   const avecDevis = !excursions && (!!devis || !facture);
   const acompte = acompteDu(r.total, regl.conditions.acompte_pct);
   const echeance = echeanceAcompte(d, regl);
@@ -402,7 +404,7 @@ function ficheDossierVue(id) {
   // Chaque chiffre vient de resumeDossier (total, reçu, reste, sur place) ou de commissionsARecevoir (commissions) : rien n'est recalculé ici.
   const rsDossier = etat.db.reservations.filter((x) => x.dossier_id === d.id);
   const nets = droit.finances && peut("partenaires.nets");
-  const aEnvoyer = droit.docs ? [devis, facture].find((x) => x && !x.envoye_le) : null;
+  const aEnvoyer = droit.docs && !taxi ? [devis, facture].find((x) => x && !x.envoye_le) : null;
   const envoyerDoc = (doc) => (sansImpression() ? envoyerDocument(doc, { marquerEnvoye: async () => { await modifier("documents", doc.id, { envoye_le: aujourdhui() }); rafraichir(); } }) : pdf(doc));
   const tel = numeroDe(client.telephone);
   const aller = (id, apres) => (e) => {
@@ -464,6 +466,8 @@ function ficheDossierVue(id) {
       : null,
     !droit.finances
       ? null
+      : taxi
+        ? bloc("resume-argent", tr("Prix de la course"), h("dl", null, ligne(tr("Payé au chauffeur"), fm(r.surPlace))), h("p", { class: "resume-detail" }, tr("En espèces, ou par Wise avant le transfert avec 3 % de frais.")))
       : bloc(
           "resume-argent",
           tr("À régler"),
@@ -513,7 +517,16 @@ function ficheDossierVue(id) {
       "section",
       null,
       h("h2", null, tr("Avancement")),
-      excursions
+      taxi
+        ? h(
+            "ol",
+            { class: "etapes" },
+            etape(true, N_("Course enregistrée"), tr("{montant}, payé au chauffeur en espèces ou par Wise avant le transfert (3 % de frais).", { montant: fm(r.surPlace) })),
+            etape(reservations.length > 0 && reservations.every((x) => x.statut === "confirme"), N_("Confirmée par le chauffeur"), reservations.length ? pluriel(reservations.length, N_("{confirmees} sur {n} confirmée"), N_("{confirmees} sur {n} confirmées"), { confirmees: reservations.filter((x) => x.statut === "confirme").length }) : tr("Aucune réservation."), null),
+            etape(envoisVouchers.client >= vouchers.length && vouchers.length > 0, N_("Booking confirmation envoyée"), !vouchers.length ? tr("Elle se prépare depuis la course ci-dessous.") : pluriel(vouchers.length, N_("{c} sur {n} envoyée au client"), N_("{c} sur {n} envoyées au client"), { c: envoisVouchers.client }), vouchers.length && droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirEnvois(vouchers, rafraichir) }, tr("Noter les envois")) : null),
+            etape(reservations.length > 0 && reservations.every((x) => x.date_service && x.date_service < ajd), N_("Course faite"), d.date_depart ? tr("Service le {date}", { date: formatDate(d.date_depart) }) : "", null)
+          )
+        : excursions
         ? h(
             "ol",
             { class: "etapes" },
@@ -538,14 +551,14 @@ function ficheDossierVue(id) {
       ? h(
           "section",
           { id: "vouchers" },
-          h("div", { class: "entete petit-entete" }, h("h2", null, tr("Vouchers")), vouchers.length > 1 && window.matchMedia("(hover: hover)").matches ? h("button", { class: "secondaire petit", type: "button", onclick: () => imprimerTousLesVouchers(d.id) }, tr("Tous les vouchers en PDF")) : null),
+          h("div", { class: "entete petit-entete" }, h("h2", null, taxi ? tr("Booking confirmation") : tr("Vouchers")), vouchers.length > 1 && window.matchMedia("(hover: hover)").matches ? h("button", { class: "secondaire petit", type: "button", onclick: () => imprimerTousLesVouchers(d.id) }, tr("Tous les vouchers en PDF")) : null),
           vouchers.length
-            ? h("ul", { class: "cartes" }, vouchers.map((x) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, x.reservation.libelle), h("span", { class: "carte-droite" }, h("strong", null, numeroVoucher(d.ref, x.index))), h("span", { class: "carte-sous" }, `${TITRES_VOUCHER[x.type] || "Voucher"} · ${x.reservation.date_service ? formatDate(x.reservation.date_service) : tr("date à fixer")}${x.reservation.heure_pickup ? ` · pickup ${x.reservation.heure_pickup}` : ""}`), h("span", { class: "carte-pied" }, h("span", null, r.statut === "solde" ? tr("Payé") : r.recu > 0 ? tr("Acompte") : tr("À payer sur place ou en attente")), h("span", { class: "carte-actions" }, droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation et voucher"), formulaireReservation(x.reservation, () => (fermer(), rafraichir())), { brouillon: `reservation:${x.reservation.id}` }); } }, tr("Modifier")) : null, h("button", { class: "principal petit", type: "button", onclick: () => envoyerVoucher(x) }, tr("Envoyer le voucher"))))))))
+            ? h("ul", { class: "cartes" }, vouchers.map((x) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, x.reservation.libelle), h("span", { class: "carte-droite" }, h("strong", null, numeroVoucher(d.ref, x.index))), h("span", { class: "carte-sous" }, `${taxi ? "Booking confirmation" : TITRES_VOUCHER[x.type] || "Voucher"} · ${x.reservation.date_service ? formatDate(x.reservation.date_service) : tr("date à fixer")}${x.reservation.heure_pickup ? ` · pickup ${x.reservation.heure_pickup}` : ""}`), h("span", { class: "carte-pied" }, h("span", null, taxi ? tr("Payé au chauffeur") : r.statut === "solde" ? tr("Payé") : r.recu > 0 ? tr("Acompte") : tr("À payer sur place ou en attente")), h("span", { class: "carte-actions" }, droit.dossiers ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation et voucher"), formulaireReservation(x.reservation, () => (fermer(), rafraichir())), { brouillon: `reservation:${x.reservation.id}` }); } }, tr("Modifier")) : null, h("button", { class: "principal petit", type: "button", onclick: () => envoyerVoucher(x) }, tr("Envoyer le voucher"))))))))
             : h("p", { class: "vide-court" }, tr("Un voucher par réservation (les frais de parc n'en ont pas). Créez d'abord les réservations ci-dessous.")),
-          h("details", { class: "aide-repli" }, h("summary", null, tr("Comment ça marche ?")), h("p", { class: "aide" }, tr("Le même voucher se donne au client et au prestataire. Les cases Paid, Deposit ou Pay on site suivent les paiements enregistrés sur la facture. « Modifier » ouvre la réservation avec les champs du voucher : chambre, drop-off, vol, bagages, type de tour ou de transfert, frais de parc, remarques.")))
+          taxi ? h("p", { class: "aide" }, tr("La même confirmation se donne au client et au chauffeur. « Modifier » ouvre la course : lieu et heure de pickup, drop-off, passagers, bagages, prix.")) : h("details", { class: "aide-repli" }, h("summary", null, tr("Comment ça marche ?")), h("p", { class: "aide" }, tr("Le même voucher se donne au client et au prestataire. Les cases Paid, Deposit ou Pay on site suivent les paiements enregistrés sur la facture. « Modifier » ouvre la réservation avec les champs du voucher : chambre, drop-off, vol, bagages, type de tour ou de transfert, frais de parc, remarques.")))
         )
       : null,
-    !droit.finances ? null : h(
+    !droit.finances || taxi ? null : h(
       "section",
       null,
       h("h2", null, tr("Documents")),
@@ -559,7 +572,7 @@ function ficheDossierVue(id) {
         : h("p", { class: "vide-court" }, tr("Aucun document.")),
       facture && !locale && droit.docs && !excursions ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, tr("Créer la facture locale"))) : null
     ),
-    droit.finances ? h("section", null, h("h2", null, tr("Paiements reçus")), tableauPaiements, droit.paiements ? [h("h3", null, tr("Enregistrer un paiement")), formPaiement] : null) : null,
+    droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), tableauPaiements, droit.paiements ? [h("h3", null, tr("Enregistrer un paiement")), formPaiement] : null) : null,
     moduleActif("reservations") ? sectionReservationsDossier(d, facture || devis || null) : null,
     sectionTachesDossier(d.id),
     sectionPieces(d),
@@ -620,11 +633,11 @@ function ficheDossierVue(id) {
   const avancement = sectionDe(tr("Avancement"));
   const services = sectionDe(TITRE_SERVICES);
   if (services) services.id = "services";
-  const apresAvancement = sectionDe(tr("Vouchers")) || avancement;
+  const apresAvancement = sectionDe(tr("Vouchers")) || sectionDe(tr("Booking confirmation")) || avancement;
   if (services && apresAvancement) apresAvancement.after(services);
   const etapes = racine.querySelector(".etapes");
   if (etapes) resumerEtapes(etapes);
-  plierSections(racine, { cle: d.id, ouverts: new Set([tr("Avancement"), TITRE_SERVICES, tr("Vouchers"), tr("Documents"), tr("Paiements reçus")]) });
+  plierSections(racine, { cle: d.id, ouverts: new Set([tr("Avancement"), TITRE_SERVICES, tr("Vouchers"), tr("Booking confirmation"), tr("Documents"), tr("Paiements reçus")]) });
 
   const gestes = [
     aEnvoyer ? h("button", { class: "principal", type: "button", onclick: () => envoyerDoc(aEnvoyer) }, aEnvoyer.type === "devis" ? tr("Envoyer le devis") : tr("Envoyer la facture")) : null,

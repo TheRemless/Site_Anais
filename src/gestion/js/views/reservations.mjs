@@ -1,5 +1,5 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
-import { etat, dossiersAnnules, peut, inserer, modifier, modifierProtege, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions } from "../etat.mjs";
+import { etat, dossiersAnnules, peut, inserer, modifier, modifierProtege, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions, modeTaxi } from "../etat.mjs";
 import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
@@ -14,7 +14,7 @@ import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { telWhatsApp, commissionsPartenaire } from "../partenaires-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
-import { lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, proposerDePrevenir, synchroniserDatesDossier } from "./suivi-facture.mjs";
+import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, proposerDePrevenir, synchroniserDatesDossier } from "./suivi-facture.mjs";
 export { synchroniserDatesDossier };
 import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
 import { gestesPrestataire, messageAuPrestataire as prevenirPrestataire } from "./prestataire.mjs";
@@ -26,18 +26,21 @@ import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
 const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || null;
 const clientDe = (r) => { const d = dossierDe(r); return d ? etat.db.clients.find((c) => c.id === d.client_id) || null : null; };
-const entreprise = () => ({ nom: reglages().emetteur.nom || entiteActive().nom, telephone: reglages().emetteur.telephone || "", lien_avis: (reglages().emetteur.lien_avis || "").trim() });
+const entreprise = () => ({ nom: reglages().emetteur.nom || entiteActive().nom, telephone: reglages().emetteur.telephone || "", lien_avis: (reglages().emetteur.lien_avis || "").trim(), devise: reglages().devise || "" });
 
 export function messagePartenaire(r) {
   const p = partenaireDe(r.partenaire_id);
-  const langue = "en";
+  // Mr. Brown (Taxi) ne lit pas l'anglais : le thaï est proposé d'abord. Le choix fait pour un numéro reste mémorisé.
+  const langue = modeTaxi() ? "th" : "en";
   ouvrirMessage({ titre: p ? tr("Message à {nom}", { nom: p.nom }) : tr("Message au partenaire"), pour: "partenaire", cle: "partenaire", langue, telephone: telWhatsApp(p), vars: variablesMessage({ reservation: r, client: clientDe(r) || {}, dossier: dossierDe(r) || {}, partenaire: p || {}, entreprise: entreprise(), langue }) });
 }
 // `surEnvoi` : appelée quand le message part (WhatsApp ouvert) ou est copié, par exemple pour noter que l'avis a été demandé.
 export function messageClient(r, cle = "confirmation", { surEnvoi = null } = {}) {
   const c = clientDe(r) || {};
+  // Taxi n'a pas de rappel de la veille ni de message météo : le message d'envoi de la confirmation est proposé à la place.
+  if (modeTaxi() && cle !== "avis" && !(reglages().messages || []).some((m) => m.cle === cle)) cle = "confirmation";
   // Les clients de Secret reçoivent leurs documents en anglais : le message est proposé en anglais aussi.
-  const langue = /invoice/i.test((reglages().libelles && reglages().libelles.facture) || "") ? "en" : "fr";
+  const langue = modeTaxi() || /invoice/i.test((reglages().libelles && reglages().libelles.facture) || "") ? "en" : "fr";
   // Trajet vers ou depuis Langkawi : la confirmation et le rappel portent la note du passeport et du check-in (en anglais, comme les vouchers).
   const trajet = r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) : null;
   const suite = langue === "en" && (cle === "confirmation" || cle === "rappel") ? notePasseport({ de: trajet && trajet.de, vers: trajet && trajet.vers, libelle: r.libelle, compagnie: nomPartenaire(r.partenaire_id) }) : "";
@@ -511,6 +514,7 @@ export function formulaireReservation(r, apres) {
           await appliquerChangements(changements);
           const res = r.id ? await modifierProtege("reservations", r.id, valeurs, { base: r, arbitrer: arbitrerReservation(r) }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
           if (res && res.id && res.details === undefined) res.details = valeurs.details;
+          if (!r.id) await rattacherCourseTaxi(res);
           if (nets && (netPrevu.value !== "" || netPaye.value !== "" || payeLe.value || commissionPrevue.value !== "" || commissionRecue.value !== "" || commissionLe.value || n)) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: nb(netPrevu.value), net_paye: nb(netPaye.value), paye_le: payeLe.value || null, commission_prevue: nb(commissionPrevue.value), commission_recue: nb(commissionRecue.value), commission_recue_le: commissionLe.value || null });
           if (r.id && (dateChangee || annulee)) await synchroniserDatesDossier(r.dossier_id);
           toast(ecartRestant && ecartRestant.length ? `${tr("Réservation enregistrée.")} ${tr("La facture garde l'ancienne valeur, à corriger dans la facture :")} ${ecartRestant.join(" ; ")}` : tr("Réservation enregistrée."));
@@ -609,7 +613,7 @@ export function sectionReservationsDossier(d, doc) {
         ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc), rafraichir()) }, (doc.type === "devis" ? pluriel(manquantes, N_("Créer {n} réservation depuis le devis"), N_("Créer {n} réservations depuis le devis")) : pluriel(manquantes, N_("Créer {n} réservation depuis la facture"), N_("Créer {n} réservations depuis la facture")))) : null, modeExcursions() ? h("button", { class: "principal petit", type: "button", onclick: () => ajouterServices(d, doc, rafraichir) }, tr("Ajouter un service")) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle réservation"), formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir())), { brouillon: `reservation-nouvelle:${d.id}` }); } }, modeExcursions() ? tr("Réservation à la main") : tr("Nouvelle réservation")))
         : null
     ),
-    rs.length ? listeReservations(rs, { avecDossier: false, apres: rafraichir, ecart: doc ? (r) => ecartReservation(r, doc) : null }) : h("p", { class: "vide-court" }, doc && manquantes ? tr("Les lignes de partenaires du document peuvent devenir des réservations en un clic.") : modeExcursions() ? tr("Aucune réservation. « Ajouter un service » met la prestation sur la facture et crée sa réservation.") : tr("Aucune réservation. Elles se créent depuis les lignes de partenaires du devis, ou à la main."))
+    rs.length ? listeReservations(rs, { avecDossier: false, apres: rafraichir, ecart: doc && !modeTaxi() ? (r) => ecartReservation(r, doc) : null }) : h("p", { class: "vide-court" }, doc && manquantes ? tr("Les lignes de partenaires du document peuvent devenir des réservations en un clic.") : modeExcursions() ? tr("Aucune réservation. « Ajouter un service » met la prestation sur la facture et crée sa réservation.") : tr("Aucune réservation. Elles se créent depuis les lignes de partenaires du devis, ou à la main."))
   );
 }
 
