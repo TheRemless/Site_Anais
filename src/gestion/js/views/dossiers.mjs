@@ -1,4 +1,4 @@
-import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe, modeExcursions, numeroSuivant } from "../etat.mjs";
+import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe, modeExcursions, modeTaxi, numeroSuivant } from "../etat.mjs";
 import { nouveauDossierExcursions } from "./nouveau-excursions.mjs";
 import { ouvrirDemande } from "./demande.mjs";
 import { h, champ, vider, toast, erreurChamp } from "../ui.mjs";
@@ -18,6 +18,15 @@ const ONGLETS = [
   ["attente", N_("Devis en attente"), ["devis_envoye"]],
   ["tous", N_("Tous"), Object.keys(STATUTS)],
 ];
+// Taxi : tout est payé au chauffeur, chaque dossier serait « soldé ». On range les courses par date plutôt que par paiement.
+const finCourse = (r) => r.dossier.date_retour || r.dossier.date_depart || null;
+const ONGLETS_TAXI = [
+  ["cours", N_("À venir"), (r, ajd) => r.statut !== "annule" && (!finCourse(r) || finCourse(r) >= ajd)],
+  ["passees", N_("Passées"), (r, ajd) => r.statut !== "annule" && !!finCourse(r) && finCourse(r) < ajd],
+  ["annules", N_("Annulés"), (r) => r.statut === "annule"],
+  ["tous", N_("Tous"), () => true],
+];
+const ongletsActifs = () => (modeTaxi() ? ONGLETS_TAXI : ONGLETS);
 
 const TRIS = [
   ["recents", N_("Plus récents")],
@@ -46,7 +55,7 @@ export function listeDossiers() {
   selection.clear();
   // Un lien du tableau de bord ouvre directement le bon onglet (#/dossiers?onglet=encaisser).
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
-  if (ONGLETS.some(([k]) => k === params.get("onglet"))) { filtre.onglet = params.get("onglet"); filtre.q = ""; }
+  if (ongletsActifs().some(([k]) => k === params.get("onglet"))) { filtre.onglet = params.get("onglet"); filtre.q = ""; }
   if (COMPARE[params.get("tri")]) filtre.tri = params.get("tri");
   const corps = h("div");
   const groupee = peut("dossiers.ecrire");
@@ -74,10 +83,12 @@ export function listeDossiers() {
   let limite = PAGE;
   function dessiner() {
     // Une recherche porte sur tous les dossiers : un dossier soldé ou annulé ne doit pas devenir introuvable parce qu'un autre onglet est ouvert.
-    const statuts = ONGLETS.find(([k]) => k === filtre.onglet)[2];
+    const onglet = ongletsActifs().find(([k]) => k === filtre.onglet) || ongletsActifs()[0];
+    const ajd = aujourdhui();
+    const garde = (r) => (typeof onglet[2] === "function" ? onglet[2](r, ajd) : onglet[2].includes(r.statut));
     const q = sansAccents(filtre.q);
     const lignes = resumes()
-      .filter((r) => (q ? true : statuts.includes(r.statut)))
+      .filter((r) => (q ? true : garde(r)))
       .filter((r) => !q || sansAccents(`${nomClient(r.client)} ${r.dossier.ref} ${r.dossier.pays}`).includes(q))
       .sort(COMPARE[filtre.tri]);
     vider(corps);
@@ -135,7 +146,7 @@ export function listeDossiers() {
   // Recherche collante, onglets en puces défilantes, tri dans la feuille « Filtrer » (à plat sur ordinateur).
   const filtres = barreFiltres({
     recherche: { valeur: filtre.q, placeholder: tr("Nom du client, référence, pays"), libelle: tr("Rechercher") },
-    puces: { options: ONGLETS.map(([cle, libelle]) => ({ valeur: cle, libelle: tr(libelle) })), valeur: filtre.onglet, libelle: tr("Dossiers") },
+    puces: { options: ongletsActifs().map(([cle, libelle]) => ({ valeur: cle, libelle: tr(libelle) })), valeur: filtre.onglet, libelle: tr("Dossiers") },
     filtres: [{ cle: "tri", libelle: tr("Trier par"), type: "select", neutre: "recents", valeur: filtre.tri, options: TRIS.map(([k, l]) => ({ valeur: k, libelle: tr(l) })) }],
     onchange: (v) => {
       filtre.onglet = v.puces;

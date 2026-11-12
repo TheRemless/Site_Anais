@@ -1,6 +1,7 @@
-import { etat, modifier, resumes, netReservation, nomClient, nomPartenaire, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif, dossiersAnnules, modeExcursions } from "../etat.mjs";
+import { etat, modifier, resumes, netReservation, nomClient, nomPartenaire, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif, dossiersAnnules, modeExcursions, modeTaxi } from "../etat.mjs";
 import { reglagesIncomplets } from "../defauts.mjs";
 import { ouvrirDemande } from "./demande.mjs";
+import { sectionCommissionsHier } from "./taxi-hier.mjs";
 import { h, icone } from "../ui.mjs";
 import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois, finDuMois } from "../calc.mjs";
 import { pastille, cartes, voyageTexte, lienDossier } from "./commun.mjs";
@@ -107,7 +108,8 @@ export async function tableauDeBord() {
     h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Aujourd'hui")), h("p", { class: "sous" }, dateLongue())), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, modeExcursions() ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, h("a", { class: "bouton principal seulement-bureau", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
     moduleActif("reservations") ? h("section", { class: "section-jour" }, h("h2", null, tr("Départs et pickups aujourd'hui"), h("span", { class: "tag" }, ag.aujourdhui.length)), ag.aujourdhui.length ? listeServices(ag.aujourdhui) : h("p", { class: "vide-court" }, tr("Aucun service aujourd'hui."))) : null,
     moduleActif("reservations") && ag.demain.length ? h("section", { class: "section-jour" }, h("h2", null, tr("Demain"), h("span", { class: "tag" }, ag.demain.length)), listeServices(ag.demain)) : null,
-    peut("finances.voir") ? h(
+    // Taxi : rien ne s'encaisse chez Anaïs (le client paie le chauffeur), ces chiffres resteraient à zéro.
+    peut("finances.voir") && !modeTaxi() ? h(
       "div",
       { class: "chiffres rail" },
       chiffre(formatSommes(encaisser.map((r) => ({ montant: r.reste, devise: r.devise })), reglages().devise), tr("Reste à encaisser"), pluriel(encaisser.length, N_("dossier accepté"), N_("dossiers acceptés")), "#/dossiers?onglet=encaisser&tri=reste"),
@@ -115,6 +117,8 @@ export async function tableauDeBord() {
       modeExcursions() ? null : chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), tr("Devis en attente de réponse"), pluriel(attente.length, N_("devis envoyé"), N_("devis envoyés")), "#/dossiers?onglet=attente")
     ) : null,
     moduleActif("reservations") && ag.hier.length ? sectionAvis(tr("Hier : à recontacter pour avoir leur avis"), ag.hier) : null,
+    // Taxi : la commission de chaque course d'hier se demande à Mr. Brown puis se saisit (aucune par défaut).
+    modeTaxi() && moduleActif("reservations") ? sectionCommissionsHier(rafraichir) : null,
     moduleActif("reservations") && aConfirmer.length
       ? h("section", null, h("h2", null, tr("À confirmer auprès des partenaires"), h("span", { class: "tag" }, aConfirmer.length)), listeReservations(aConfirmer.slice(0, 6), { apres: rafraichir }), aConfirmer.length > 6 ? h("p", { class: "plus" }, h("a", { href: "#/reservations?statut=ouvertes" }, tr("Voir les {n} réservations à confirmer", { n: aConfirmer.length }))) : null)
       : null,

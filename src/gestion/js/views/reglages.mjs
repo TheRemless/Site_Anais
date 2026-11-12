@@ -501,11 +501,11 @@ export function vueReglages() {
         champ(
           tr("Façon de travailler"),
           (() => {
-            const sel = h("select", { id: "fonctionnement", onchange: (e) => ((r.fonctionnement = e.target.value), marque()) }, h("option", { value: "sur_mesure" }, tr("Voyages sur mesure : devis, acompte, facture")), h("option", { value: "excursions" }, tr("Excursions et transferts : facture directe, puis vouchers")));
-            sel.value = r.fonctionnement === "excursions" ? "excursions" : "sur_mesure";
+            const sel = h("select", { id: "fonctionnement", onchange: (e) => ((r.fonctionnement = e.target.value), marque()) }, h("option", { value: "sur_mesure" }, tr("Voyages sur mesure : devis, acompte, facture")), h("option", { value: "excursions" }, tr("Excursions et transferts : facture directe, puis vouchers")), h("option", { value: "taxi" }, tr("Taxi : réservations et voucher, payé au chauffeur, sans facture")));
+            sel.value = ["excursions", "taxi"].includes(r.fonctionnement) ? r.fonctionnement : "sur_mesure";
             return sel;
           })(),
-          tr("En mode excursions, un nouveau dossier crée la facture et les réservations d'un coup, sans devis ni acompte, et chaque réservation a son voucher pour le client et le prestataire.")
+          tr("En mode excursions, un nouveau dossier crée la facture et les réservations d'un coup, sans devis ni acompte, et chaque réservation a son voucher pour le client et le prestataire. En mode taxi, pas de facture : chaque course a sa « Booking confirmation » et se paie au chauffeur.")
         )
       ),
       h(

@@ -1,6 +1,7 @@
 // Sélecteur de prestations et de trajets de partenaires pour l'éditeur de devis.
 // La fenêtre reste ouverte pour enchaîner plusieurs ajouts ; chaque ajout renvoie des lignes prêtes pour le document.
-import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet } from "../etat.mjs";
+import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet, modeTaxi } from "../etat.mjs";
+import { lignesSurPlace } from "../taxi-calc.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
 import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut } from "../partenaires-calc.mjs";
@@ -40,7 +41,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   };
   const ajoute = (lignes, nom) => {
     // Chaque service prend le mode de règlement habituel de son partenaire (chez nous ou sur place).
-    onAjout(appliquerModeParDefaut(lignes, partenaireDe));
+    onAjout(modeTaxi() ? lignesSurPlace(lignes) : appliquerModeParDefaut(lignes, partenaireDe));
     ajoutes++;
     termine.textContent = pluriel(ajoutes, N_("Terminé · {n} ajouté"), N_("Terminé · {n} ajoutés"));
     toast(tr("{nom} ajouté au document.", { nom }));

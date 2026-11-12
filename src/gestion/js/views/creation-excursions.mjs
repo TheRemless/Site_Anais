@@ -1,13 +1,14 @@
 // Création d'un dossier de Secret ou Taxi en une fois : le client, le dossier, la facture et une réservation par service.
 // Partagé par l'écran « Nouveau dossier » et par la fenêtre « Coller une demande », qui crée sans passer par l'écran.
 import { etat, inserer, modifier, reglages, nomPartenaire, numeroSuivant } from "../etat.mjs";
+import { estTaxi, lignesSurPlace } from "../taxi-calc.mjs";
 import { aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { descriptionService } from "../operations-calc.mjs";
 import { creerReservations } from "./reservations.mjs";
 
 // Les documents de Secret sont en anglais : les libellés anglais des prestations sont pris quand ils existent.
-export const langueDocuments = (regl = reglages()) => (/invoice/i.test((regl.libelles && regl.libelles.facture) || "") ? "en" : "");
+export const langueDocuments = (regl = reglages()) => (estTaxi(regl) || /invoice/i.test((regl.libelles && regl.libelles.facture) || "") ? "en" : "");
 
 // Numéro de facture proposé pour le prochain dossier de l'entreprise.
 export const refProposee = (regl = reglages()) => nouvelleRef({ numerotation: regl.numerotation, prenom: "", nom: "", dateIso: aujourdhui(), pays: "", refsExistantes: etat.db.dossiers.map((d) => d.ref) }) || "";
@@ -30,7 +31,8 @@ export async function refDefinitive(ref, propose, regl = reglages()) {
 export async function creerDossierExcursions({ client, lignes: brutes, notes = "", ref, reservation = {}, parService = null }) {
   const regl = reglages();
   // `titre` : le nom court du service, qui sert aux réservations (une ligne adulte et sa ligne enfant en font une seule).
-  const lignes = brutes.map((l) => (l.titre || l.kind === "texte" ? l : { ...l, titre: l.libelle }));
+  // Taxi : tout est payé au chauffeur, quelle que soit la ligne (même une course saisie à la main, sans partenaire).
+  const lignes = (estTaxi(regl) ? lignesSurPlace(brutes) : brutes).map((l) => (l.titre || l.kind === "texte" ? l : { ...l, titre: l.libelle }));
   const langue = langueDocuments(regl);
   let clientId = client.id;
   if (!clientId) {
