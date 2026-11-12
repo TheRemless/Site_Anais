@@ -270,6 +270,27 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const lignes = verifie(await sb.from("reglages").upsert({ entite_id: entiteId, valeur }).select());
       return lignes[0] && lignes[0].updated_at;
     },
+    // Factures pour la fiduciaire (migration 28). La liste vaut null tant que la migration n'est pas appliquée : l'écran l'explique.
+    async fiduciaireListe() {
+      const { data, error } = await sb.from("fiduciaire_factures").select("*").order("numero", { ascending: false }).limit(2000);
+      if (error) {
+        if (error.code === "42P01" || error.code === "PGRST205" || /fiduciaire_factures/i.test(error.message || "")) return null;
+        throw new Error(error.message);
+      }
+      return data;
+    },
+    async fiduciaireAPreparer() {
+      return verifie(await sb.rpc("fiduciaire_a_preparer"));
+    },
+    async fiduciaireEmettre(reservationId, date = null) {
+      return verifie(await sb.rpc("emettre_facture_fiduciaire", { p_res: reservationId, p_date: date }));
+    },
+    async fiduciaireEnvoyer(ids, date) {
+      return verifie(await sb.rpc("marquer_envoyee_fiduciaire", { p_ids: ids, p_date: date }));
+    },
+    async fiduciaireCalcul(reservationId) {
+      return verifie(await sb.rpc("fiduciaire_calcul", { p_res: reservationId }));
+    },
     // Langue de l'interface de la personne connectée (migration 13). Sans la migration l'appel échoue : l'outil garde alors la langue dans ce navigateur.
     async definirMaLangue(code) {
       verifie(await sb.rpc("definir_ma_langue", { l: code }));

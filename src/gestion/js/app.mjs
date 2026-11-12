@@ -14,6 +14,7 @@ const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
 const ROUTES = [
   [/^#\/reservations(?:\?.*)?$/, "reservations", vers(() => import("./views/reservations.mjs"), "vueReservations")],
   [/^#\/messages$/, "messages", vers(() => import("./views/messages.mjs"), "vueMessages")],
+  [/^#\/fiduciaire$/, "fiduciaire", vers(() => import("./views/fiduciaire.mjs"), "vueFiduciaire")],
   [/^#\/du$/, "du", vers(() => import("./views/du.mjs"), "vueDu")],
   [/^#\/encaisser$/, "encaisser", vers(() => import("./views/encaisser.mjs"), "vueEncaisser")],
   [/^#\/a-verifier$/, "a-verifier", vers(() => import("./views/a-verifier.mjs"), "vueAVerifier")],
@@ -161,7 +162,7 @@ function ecrans() {
   const aConfirmer = ag.enRetard.length + ag.aConfirmer.length;
   return [
     { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations", badge: aConfirmer }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
-    { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si(peut("finances.voir") || peut("partenaires.nets"), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
+    { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si(peut("finances.voir") || peut("partenaires.nets"), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(peut("fiduciaire.preparer") && modeExcursions(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
       titre: tr("Partenaires"),
       items: si(peut("partenaires.lire") && moduleActif("partenaires"), null).length

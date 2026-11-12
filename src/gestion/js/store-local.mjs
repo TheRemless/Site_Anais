@@ -5,8 +5,9 @@ import { donneesDemo, uid, REGLAGES_NEUTRE } from "./defauts.mjs";
 import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
+import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 
-const CLE = "gestion-zwald-demo-v11";
+const CLE = "gestion-zwald-demo-v12";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
 // Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
 const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches"];
@@ -26,6 +27,7 @@ export function creer() {
     }
     if (!data) data = donneesDemo(aujourdhui(), ajouterJours);
     for (const t of TABLES) data[t] = data[t] || [];
+    data.fiduciaire_factures = data.fiduciaire_factures || [];
     let choisi = null;
     try {
       choisi = localStorage.getItem(CLE_UTILISATEUR);
@@ -59,6 +61,8 @@ export function creer() {
     const visible = (d) => voitTout(ctx, d.entite_id) || d.responsable_id === utilisateur.user_id || d.cree_par === utilisateur.user_id;
     return data.dossiers.filter((d) => ids.has(d.entite_id) && permissionsDans(ctx, d.entite_id).includes("dossiers.lire") && visible(d));
   };
+  const droit = (entiteId, code) => permissionsDans(contexte(), entiteId).includes(code);
+  const resumeDe = (d) => avecResume(d, true);
   const financesDe = (entiteId) => permissionsDans(contexte(), entiteId).includes("finances.voir");
 
   const contexte = () => ({ profil: utilisateur, membres: data.membres, roles: data.roles });
@@ -82,6 +86,26 @@ export function creer() {
     async connecter() {},
     async deconnecter() {},
     async deconnecterPartout() {},
+    // Factures pour la fiduciaire (migration 28) : mêmes règles que les fonctions de la base, sur les données du navigateur.
+    async fiduciaireListe() {
+      return structuredClone(facturesVisibles(data, { droit }));
+    },
+    async fiduciaireAPreparer() {
+      return structuredClone(aPreparerLocal(data, { droit, resumeDe }));
+    },
+    async fiduciaireEmettre(reservationId, date = null) {
+      const id = emettreLocal(data, { droit, resumeDe, utilisateurId: utilisateur.user_id, aujourdhui: aujourdhui() }, reservationId, date);
+      sauve();
+      return id;
+    },
+    async fiduciaireEnvoyer(ids, date) {
+      const n = envoyerLocal(data, { droit, utilisateurId: utilisateur.user_id }, ids, date);
+      sauve();
+      return n;
+    },
+    async fiduciaireCalcul(reservationId) {
+      return calculLocal(data, { droit, resumeDe }, reservationId);
+    },
     async suiviRappels() {
       return null;
     },
