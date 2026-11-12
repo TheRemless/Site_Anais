@@ -14,6 +14,11 @@
     X-Frame-Options = "DENY"
     Referrer-Policy = "no-referrer"
     Cache-Control = "no-cache"
+    # Politique de sécurité du contenu : scripts de l'outil seulement (aucun script ni gestionnaire en ligne dans index.html), polices et images locales ou en data:/blob:
+    # (aperçus, PDF, captures html2canvas), réseau vers Supabase seulement, aucune intégration dans une autre page. Les styles en ligne sont permis : l'interface en pose
+    # par attribut (largeurs, variables). Toute nouvelle origine (autre API, CDN, police) doit être ajoutée ici, sinon le navigateur la bloque.
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://lkxqcmzeidlyssoqmqkh.supabase.co; font-src 'self'; connect-src 'self' https://lkxqcmzeidlyssoqmqkh.supabase.co wss://lkxqcmzeidlyssoqmqkh.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
 
 # Cache navigateur. Les images générées dans /img/ portent un hash dans leur nom :
 # elles ne changent jamais, cache d'un an. Les sources (/images/), polices, CSS et JS
