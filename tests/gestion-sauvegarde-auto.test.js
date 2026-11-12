@@ -172,3 +172,14 @@ test("fraîcheur : une alerte quand la dernière sauvegarde a plus d'un jour d'�
   fs.writeFileSync(path.join(o.destination, "gestion-2026-11-11.gsb"), "x");
   assert.equal(verifierFraicheur({ ...d, dossierEtat: path.join(o.dossierEtat, "autre") }).vieille, false, "hier : pas d'alerte");
 });
+
+test("réponse de la CLI : objets JSON à la suite, texte autour, accolades dans les chaînes", async () => {
+  const { lignesDeLaReponse } = await import("../docs/gestion/sauvegarde/sauvegarde-lib.mjs");
+  const reponse = '{\n  "boundary": "abc",\n  "rows": [{ "note": "un } dans {une} chaîne \\" fin" }],\n  "warning": "data within the <abc> boundaries"\n}';
+  // Cas réel du 12.11.2026 : un en-tête JSON avant la réponse faisait échouer la sauvegarde (« Unexpected non-whitespace character after JSON »).
+  const sortie = 'Target: project gestion-zwald\n{"target":{"kind":"linked"}}\n' + reponse + "\nA new version of Supabase CLI is available: v3.1.0\n";
+  assert.deepEqual(lignesDeLaReponse(sortie), [{ note: 'un } dans {une} chaîne " fin' }]);
+  assert.deepEqual(lignesDeLaReponse(reponse), [{ note: 'un } dans {une} chaîne " fin' }]);
+  assert.throws(() => lignesDeLaReponse('{"_tag":"Error","error":{"message":"permission denied"}}'), /permission denied/);
+  assert.throws(() => lignesDeLaReponse("rien"), /réponse inattendue/);
+});
