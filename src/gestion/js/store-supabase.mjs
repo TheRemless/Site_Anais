@@ -27,6 +27,7 @@ function verifie({ data, error }) {
   return data;
 }
 
+// Le résumé tenu par la base est fusionné dans le dossier : ses colonnes sont COLONNES_RESUME (sauvegarde.mjs), que la sauvegarde retire avant d'écrire le fichier.
 const fusion = (dossier, r) => (r ? { ...dossier, total: Number(r.total), devise: r.devise, recu: Number(r.recu), sur_place: Number(r.sur_place) || 0 } : dossier);
 
 export function creer(config, { client } = {}) {
@@ -250,6 +251,24 @@ export function creer(config, { client } = {}) {
     },
     // Remplacement de la base partenaires : les tâches liées à un partenaire, puis les partenaires (la base supprime
     // en cascade prestations, trajets, nets et données privées ; les réservations gardent leur libellé).
+    // Toutes les tâches de l'entreprise, terminées depuis longtemps comprises (la mémoire n'en garde qu'une partie) : pour la sauvegarde.
+    async toutesTaches(entiteId) {
+      const lignes = [];
+      for (let debut = 0; ; debut += PAGE) {
+        const page = verifie(await sb.from("taches").select("*").eq("entite_id", entiteId).order("created_at").order("id").range(debut, debut + PAGE - 1));
+        lignes.push(...page);
+        if (page.length < PAGE) return lignes;
+      }
+    },
+    // Remplacement de la base partenaires APRÈS l'import : on retire seulement ce que le fichier ne contient plus (la base supprime en cascade les nets
+    // et remet à vide le lien des réservations). `absents` : { partenaires, prestations, trajets } = listes d'identifiants.
+    async supprimerAbsents(entiteId, absents) {
+      const par = (liste) => Array.from({ length: Math.ceil(liste.length / 100) }, (_, i) => liste.slice(i * 100, i * 100 + 100));
+      for (const lot of par(absents.partenaires)) verifie(await sb.from("taches").delete().eq("entite_id", entiteId).in("partenaire_id", lot).select("id"));
+      for (const lot of par(absents.trajets)) verifie(await sb.from("trajets").delete().eq("entite_id", entiteId).in("id", lot).select("id"));
+      for (const lot of par(absents.prestations)) verifie(await sb.from("prestations").delete().eq("entite_id", entiteId).in("id", lot).select("id"));
+      for (const lot of par(absents.partenaires)) verifie(await sb.from("partenaires").delete().eq("entite_id", entiteId).in("id", lot).select("id"));
+    },
     async supprimerPartenaires(entiteId) {
       verifie(await sb.from("taches").delete().eq("entite_id", entiteId).not("partenaire_id", "is", null).select("id"));
       verifie(await sb.from("partenaires").delete().eq("entite_id", entiteId).select("id"));

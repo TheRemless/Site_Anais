@@ -267,6 +267,7 @@ export const supprimerPiece = (p) => etat.store.supprimerPiece(p);
 
 export const tousPaiements = () => etat.store.tousPaiements(etat.entiteId);
 export const tousDocuments = () => etat.store.tousDocuments(etat.entiteId);
+export const toutesTaches = () => etat.store.toutesTaches(etat.entiteId);
 
 async function insererBrut(table, row) {
   const ligne = TABLES.includes(table) ? { entite_id: etat.entiteId, ...row } : row;

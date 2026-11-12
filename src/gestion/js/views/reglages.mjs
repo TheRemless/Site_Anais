@@ -1,5 +1,5 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
-import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments } from "../etat.mjs";
+import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
@@ -7,7 +7,7 @@ import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne } 
 import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4, plierGroupes } from "./commun.mjs";
 import { tr, N_ } from "../i18n.mjs";
-import { VERSION_SAUVEGARDE, pourSauvegarde } from "../sauvegarde.mjs";
+import { VERSION_SAUVEGARDE, pourSauvegarde, verifierSauvegarde, absentsDeLaSauvegarde, reservationsPerdantLeurPrestataire } from "../sauvegarde.mjs";
 
 // Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
@@ -51,6 +51,8 @@ async function exporterTout() {
   // Documents et paiements ne sont pas en mémoire : on les lit dans la base.
   sauvegarde.documents = await tousDocuments();
   sauvegarde.paiements = await tousPaiements();
+  // Toutes les tâches, pas seulement celles gardées en mémoire (les terminées depuis plus d'un mois n'y sont pas).
+  sauvegarde.taches = pourSauvegarde("taches", await toutesTaches());
   telecharger(nomFichierEntite("sauvegarde", "json"), JSON.stringify(sauvegarde, null, 2), "application/json");
   toast(tr("Sauvegarde téléchargée. Gardez ce fichier en lieu sûr : il contient les données clients. Les fichiers joints n'y sont pas."));
 }
@@ -63,20 +65,28 @@ async function importer(fichier) {
     toast(tr("Ce fichier n'est pas une sauvegarde valide."), true);
     return;
   }
-  if (!data || !TABLES.every((t) => data[t] === undefined || Array.isArray(data[t]))) {
-    toast(tr("Ce fichier n'a pas le format d'une sauvegarde."), true);
+  const verif = verifierSauvegarde(data, entiteActive().slug);
+  if (!verif.ok) {
+    toast(verif.erreur === "autre_entreprise" ? tr("Cette sauvegarde est celle de l'entreprise « {autre} » : elle ne peut pas être importée dans « {nom} ».", { autre: verif.entreprise, nom: entiteActive().nom }) : tr("Ce fichier n'a pas le format d'une sauvegarde."), true);
     return;
   }
   const resume = TABLES.map((t) => `${(data[t] || []).length} ${t}`).join(", ");
   const remplace = !!(data.partenaires && data.partenaires.length) && document.getElementById("import-remplacer") && document.getElementById("import-remplacer").checked;
-  if (!(await confirmer(tr("Importer {resume} dans l'entreprise « {nom} » ?", { resume, nom: entiteActive().nom }) + (remplace ? tr(" Les partenaires, tarifs, trajets et tâches de partenaires actuels seront d'abord supprimés.") : tr(" Les éléments qui ont le même identifiant seront remplacés, les autres sont conservés.")), tr("Importer")))) return;
+  // Remplacer : on importe d'abord, puis on retire seulement ce que le fichier ne contient plus. On dit combien de réservations perdraient leur lien.
+  const absents = remplace ? absentsDeLaSauvegarde({ partenaires: etat.db.partenaires, prestations: etat.db.prestations, trajets: etat.db.trajets }, data) : null;
+  const perdent = remplace ? reservationsPerdantLeurPrestataire(etat.db.reservations, absents).length : 0;
+  const phrase = remplace
+    ? tr(" Ce que le fichier ne contient plus sera supprimé après l'import : {p} partenaires, {s} tarifs et {t} trajets (avec leurs nets). {r} réservations perdraient le lien avec leur prestataire ou leur tarif.", { p: absents.partenaires.length, s: absents.prestations.length, t: absents.trajets.length, r: perdent })
+    : tr(" Les éléments qui ont le même identifiant seront remplacés, les autres sont conservés.");
+  if (!(await confirmer(tr("Importer {resume} dans l'entreprise « {nom} » ?", { resume, nom: entiteActive().nom }) + phrase, tr("Importer"), !!perdent))) return;
   try {
-    if (remplace) await etat.store.supprimerPartenaires(etat.entiteId);
     const rows = {};
     // Les tables de nets n'ont pas de date de création : une sauvegarde ou un import plus ancien peut en porter une.
     const SANS_DATE = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
     for (const t of TABLES) rows[t] = pourSauvegarde(t, data[t]).map(({ created_at, ...r }) => ({ ...r, ...(SANS_DATE.includes(t) ? {} : { created_at }), entite_id: etat.entiteId }));
     await etat.store.importer(rows);
+    // L'import a réussi : seulement maintenant on retire ce que le fichier ne contient plus. Une erreur plus haut n'a rien supprimé.
+    if (remplace) await etat.store.supprimerAbsents(etat.entiteId, absents);
     const caseReglages = document.getElementById("import-reglages");
     if (data.reglages && caseReglages && caseReglages.checked) await enregistrerReglages(data.reglages);
     await recharger();
@@ -504,7 +514,7 @@ export function vueReglages() {
         h("p", { class: "aide" }, tr("Ces fichiers concernent seulement l'entreprise « {nom} ». Une sauvegarde contient les données clients : gardez-la en lieu sûr.", { nom: entiteActive().nom })),
         h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: exporterTout }, tr("Télécharger une sauvegarde complète")), h("button", { class: "secondaire", type: "button", onclick: exporterDossiers }, tr("Exporter les dossiers (Excel)")), h("button", { class: "secondaire", type: "button", onclick: exporterPaiements }, tr("Exporter les paiements (Excel)"))),
         // Remplacer la base partenaires efface en cascade les nets et les commissions : seulement pour qui les voit.
-        peut("partenaires.ecrire") && peut("partenaires.nets") ? h("label", { class: "case", for: "import-remplacer" }, h("input", { id: "import-remplacer", type: "checkbox", checked: true }), tr("Si le fichier contient des partenaires, remplacer la base partenaires (supprime d'abord les partenaires, tarifs, trajets et tâches de partenaires actuels)")) : null,
+        peut("partenaires.ecrire") && peut("partenaires.nets") ? h("label", { class: "case", for: "import-remplacer" }, h("input", { id: "import-remplacer", type: "checkbox" }), tr("Si le fichier contient des partenaires, remplacer la base partenaires (après l'import, supprime les partenaires, tarifs et trajets que le fichier ne contient plus)")) : null,
         peut("reglages.ecrire") ? h("label", { class: "case", for: "import-reglages" }, h("input", { id: "import-reglages", type: "checkbox" }), tr("Si le fichier contient les réglages, les restaurer aussi (remplace les textes des documents, les coordonnées de paiement et la numérotation actuels)")) : null,
         champ(tr("Restaurer ou importer une sauvegarde"), h("input", { id: "import-fichier", type: "file", accept: "application/json,.json", onchange: (e) => e.target.files[0] && importer(e.target.files[0]) }), tr("Elle sera importée dans « {nom} ». Les éléments déjà présents avec le même identifiant sont remplacés.", { nom: entiteActive().nom }))
       ),
