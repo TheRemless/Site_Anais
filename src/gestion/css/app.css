@@ -252,6 +252,7 @@ legend { padding: 0 6px; font-weight: 700; }
 .s-acompte { color: #086b6b; }
 .s-solde { color: #25653d; }
 .s-annule { color: #8f3a3a; }
+.s-sans_suite { color: #5b6670; }
 
 /* Avancement */
 .etapes { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--bord); border-radius: 8px; }
@@ -1246,4 +1247,22 @@ details > summary { padding-block: 11px; margin: 0; }
   .tirer, .tirer.relache { transition: none; transform: translate(-50%, 8px); }
   .tirer-icone svg, .tirer.arme .tirer-icone svg { transform: none; transition: none; }
   .tirer.actualise .tirer-icone svg { animation: none; }
+}
+
+/* ---- Devis sans suite ---- */
+.tache-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ss-motifs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+.ss-motifs button { min-height: 52px; }
+.ss-motifs button:last-child { grid-column: 1 / -1; }
+.ss-autre { display: grid; gap: 8px; margin-top: 4px; }
+.ss-autre[hidden] { display: none; }
+.resume-sous-action { padding: 10px 16px 14px; border-top: 1px solid var(--bord); display: flex; }
+.resume-sous-action .secondaire { flex: 1; min-height: 44px; }
+.resume-sans-suite { display: grid; gap: 6px; background: var(--surface-2); }
+.resume-sans-suite .resume-valeur { margin: 0; }
+@media (min-width: 720px) {
+  .tache-actions { justify-content: flex-end; }
+  .resume-sous-action { justify-content: flex-start; }
+  .resume-sous-action .secondaire { flex: none; }
+  .resume-sans-suite { display: flex; }
 }

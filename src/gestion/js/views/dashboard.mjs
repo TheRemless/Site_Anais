@@ -9,6 +9,8 @@ import { contratsAEcheance, chiffres as numeroDe } from "../partenaires-calc.mjs
 import { agenda, personnesTexte, cleMessageClient, avisParClient } from "../operations-calc.mjs";
 import { listeReservations, pastilleReservation, messageClient } from "./reservations.mjs";
 import { tr, N_, pluriel, dateLongue } from "../i18n.mjs";
+import { ouvrirSansSuite, baseDistante } from "./sans-suite.mjs";
+import { disponible as sansSuiteDisponible } from "../sans-suite-calc.mjs";
 
 
 function phrase(item) {
@@ -128,7 +130,13 @@ export async function tableauDeBord() {
               null,
               h("div", null, h("a", { class: "tache-nom", href: `#/dossier/${t.resume.dossier.id}` }, nomClient(t.resume.client)), h("span", { class: "ref" }, t.resume.dossier.ref)),
               h("p", null, phrase(t)),
-              h("a", { class: "bouton secondaire", href: `#/dossier/${t.resume.dossier.id}` }, tr("Ouvrir le dossier"))
+              h(
+                "div",
+                { class: "tache-actions" },
+                h("a", { class: "bouton secondaire", href: `#/dossier/${t.resume.dossier.id}` }, tr("Ouvrir le dossier")),
+                // Un devis resté sans réponse se classe d'un tap, avec son motif : il sort des relances.
+                t.type === "devis_relance" && peut("dossiers.ecrire") && sansSuiteDisponible(t.resume.dossier, baseDistante()) ? h("button", { class: "secondaire", type: "button", onclick: () => ouvrirSansSuite(t.resume.dossier, rafraichir) }, tr("Sans suite")) : null
+              )
             )
           )
         )

@@ -41,7 +41,8 @@ export function commissionDossier(reservations, netDe) {
 //   envoyer le document pas encore envoyé, noter l'acceptation du devis, demander le premier service à demander, enregistrer un paiement.
 // Un dossier « tout sur place » n'a rien à encaisser : jamais d'invitation à enregistrer un paiement.
 export function actionSuivante({ annule = false, statut, aEnvoyer = null, avecDevis = false, devisEnvoye = false, accepte = false, facture = false, reservations = [], reste = 0, droit = {} }) {
-  if (annule) return null;
+  // Un devis classé sans suite n'a plus de prochaine étape : seule la réouverture est proposée.
+  if (annule || statut === "sans_suite") return null;
   if (droit.docs && aEnvoyer) return { cle: "envoyer", type: aEnvoyer.type };
   if (droit.dossiers && avecDevis && devisEnvoye && !accepte) return { cle: "accepter" };
   const aDemander = droit.dossiers ? actives(reservations).find((r) => r.statut === "a_demander" && r.partenaire_id) : null;
