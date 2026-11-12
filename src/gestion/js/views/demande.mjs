@@ -72,6 +72,21 @@ function lignesBrutes(offre, d, langue, devise) {
 // L'hôtel du client connu : la première ligne de son adresse (« Hotel Sunset, Room 12 » → « Hotel Sunset »).
 const hotelDuClient = (c) => ((c && c.adresse) || "").split("\n")[0].replace(/,?\s*Room\s+\S+\s*$/i, "").trim();
 
+// Ce que le formulaire du site a dit en plus du prix à calculer : option, lieux, vol, âges, prix annoncé. Lu, jamais deviné.
+function lignesSite(d) {
+  if (!d.site) return [];
+  return [
+    d.option ? tr("Option demandée : {option}", { option: d.option }) : "",
+    d.pickup && d.type === "transfer" ? tr("Prise en charge : {lieu}", { lieu: d.pickup }) : "",
+    d.dropoff ? tr("Dépose : {lieu}", { lieu: d.dropoff }) : "",
+    d.vol ? tr("Vol ou bateau : {vol}", { vol: d.vol }) : "",
+    d.ages && d.ages.length ? tr("Âges des enfants : {ages}", { ages: d.ages.map((a) => (a === 0 ? tr("moins de 1 an") : a)).join(", ") }) : "",
+    d.prixSite ? tr("Prix indiqué sur le site : {prix}", { prix: d.prixSite }) : "",
+    d.sorties && d.sorties.length ? tr("Liste de {n} sorties : seule la première est préparée, les autres sont dans les notes du dossier.", { n: d.sorties.length + 1 }) : "",
+    d.type === "location" ? tr("Location : vérifiez la durée et le nombre de véhicules sur la facture.") : "",
+  ].filter(Boolean);
+}
+
 export function ouvrirDemande() {
   const regl = reglages();
   const devise = regl.devise || "THB";
@@ -113,8 +128,10 @@ export function ouvrirDemande() {
   function brouillonDossier(offre) {
     const nom = separerNom(d.nom);
     const c = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
-    const lieu = offre && offre.genre === "prestation" && d.hotel && d.hotel !== hotelDuClient(c) ? d.hotel : "";
-    return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: notesDemande(d), lignes: offre ? lignesDe(offre, d, langue, devise) : [], reservation: { heure: d.heure || "", lieu, bebes: d.bebes || 0 } };
+    // Un trajet du site donne ses deux bouts : la prise en charge va sur la réservation, la dépose dans les champs du voucher.
+    const transfert = d.type === "transfer";
+    const lieu = transfert ? d.pickup || "" : offre && offre.genre === "prestation" && d.hotel && d.hotel !== hotelDuClient(c) ? d.hotel : "";
+    return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: notesDemande(d), lignes: offre ? lignesDe(offre, d, langue, devise) : [], reservation: { heure: d.heure || "", lieu, bebes: d.bebes || 0, dropoff: transfert ? d.dropoff || "" : "", personnes: { adultes: d.adultes, enfants: d.enfants, bebes: d.bebes || 0 }, vol: d.vol || "", bagages: d.bagages || 0 } };
   }
 
   // Création directe : client, dossier, facture et réservations, sans passer par l'écran « Nouveau dossier ».
@@ -195,6 +212,7 @@ export function ouvrirDemande() {
       ...[
         mauvaise ? h("p", { class: "bandeau-info", role: "status" }, tr("Cette demande est adressée à {marque}. Changez d'entreprise en haut de l'écran pour utiliser sa base de prix.", { marque: d.marque })) : null,
         d.siegeEnfant || d.siegeBebe || d.bebes ? h("p", { class: "aide" }, [d.bebes ? tr("{n} bébé : noté dans le dossier.", { n: d.bebes }) : "", d.siegeEnfant ? tr("Siège enfant demandé.") : "", d.siegeBebe ? tr("Siège bébé demandé.") : ""].filter(Boolean).join(" ")) : null,
+        lignesSite(d).length ? h("ul", { class: "demande-site" }, lignesSite(d).map((l) => h("li", null, l))) : null,
         connu
           ? h("p", { class: "demande-client connu", role: "status" }, h("span", null, tr("Client déjà connu : {nom}", { nom: nomClient(connu) }), connu.telephone ? ` · ${connu.telephone}` : ""), h("button", { class: "lien", type: "button", onclick: () => (refuse.add(connu.id), (clientId = ""), !d.hotelSaisi && d.hotel === hotelDuClient(connu) && (d.hotel = ""), maj()) }, tr("Nouveau client")))
           : propose

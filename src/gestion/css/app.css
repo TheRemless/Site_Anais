@@ -812,6 +812,9 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .partage-etat.ok { border-color: var(--teal-600); background: var(--teal-100); color: var(--texte); }
 .partage-etapes { margin: 0 0 8px; padding-left: 1.3rem; }
 .partage-etapes li { margin-bottom: 4px; }
+/* Ce que le formulaire du site a dit en plus : option, lieux, vol, âges, prix annoncé. */
+.demande-site { margin: 0 0 12px; padding: 8px 12px 8px 28px; border-left: 3px solid var(--bord-fort); background: var(--surface-2); font-size: 0.9rem; }
+.demande-site li { margin: 2px 0; }
 /* ===== Fin session D ===== */
 /* ---- Paiements (session A) : puce « Chez nous / Sur place », écran À encaisser ---- */
 .mode-reglement { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--bord-fort, var(--bord)); border-radius: 999px; background: var(--surface); }

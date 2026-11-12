@@ -23,10 +23,143 @@ export function lireDate(texte, aujourdhui) {
 
 const entier = (v) => (Number(v) > 0 ? Math.floor(Number(v)) : 0);
 
+// ---- Messages du site actuel (secrettravelandtour.com, src/js/booking.js) ---------------------------------------------------------
+// La première ligne dit ce qui est demandé : « Booking request: », « Transfer request: », « Shared minivan request (marque): », « Rental request: »,
+// « Speedboat request: » ou « Trip list: ». Les lignes suivantes sont « Clé: valeur ». Les messages réels du site sont en fixtures
+// (tests/fixtures/messages-site.json, fabriquées par docs/gestion/regenerer-messages-site.mjs) : un test casse si le site change.
+const ENTETES_SITE = [
+  [/^booking request:\s*(.+)$/i, "tour"],
+  [/^transfer request:\s*(.+)$/i, "transfert"],
+  [/^shared minivan request\s*\((.+?)\):\s*(.+)$/i, "partage"],
+  [/^rental request:\s*(.+)$/i, "location"],
+  [/^speedboat request:\s*(.+)$/i, "speedboat"],
+  [/^trip list:\s*(\d+)/i, "liste"],
+];
+const SEP = /\s+[–—-]\s+/;
+const heureDe = (v) => {
+  const m = /(\d{1,2}):(\d{2})/.exec(v || "");
+  return m ? `${m[1].padStart(2, "0")}:${m[2]}` : "";
+};
+const BOUT_SANS_HOTEL = /airport|pier|ferry|bus|terminal|station|KBV|HKT|port\b/i;
+
+// « 2 adults, 1 child (age 7) », « 2 adults, 3 children (ages under 1, 3 and 10) » : adultes, enfants (3 ans et plus), bébés (moins de 3 ans) et âges.
+function lireInvites(v) {
+  const adultes = Number((/(\d+)\s+adults?/i.exec(v) || [])[1] || 0);
+  const m = /(\d+)\s+child(?:ren)?(?:\s*\(ages?\s*([^)]*)\))?/i.exec(v);
+  let ages = [];
+  if (m && m[2]) ages = m[2].split(/,|\band\b/).map((x) => x.trim()).filter(Boolean).map((x) => (/under\s*1/i.test(x) ? 0 : parseInt(x, 10))).filter((n) => Number.isFinite(n));
+  const enfants = ages.length ? ages.filter((a) => a >= 3).length : m ? Number(m[1]) : 0;
+  return { adultes, enfants, bebes: ages.filter((a) => a < 3).length, ages };
+}
+
+function trajetDe(texte) {
+  const m = /^(.+?) to (.+)$/.exec(texte.trim());
+  return m ? { de: m[1].trim(), vers: m[2].trim() } : { de: "", vers: texte.trim() };
+}
+
+function lireSite(lignes, aujourdhui) {
+  let genre = "";
+  let m = null;
+  for (const [re, g] of ENTETES_SITE) if ((m = re.exec(lignes[0]))) { genre = g; break; }
+  if (!genre) return null;
+  const d = { site: true, marque: "", type: "", nom: "", prestation: "", option: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, ages: [], vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, hotel: "", pickup: "", dropoff: "", vol: "", bagages: 0, extras: "", depart: "", billet: "", retour: "", saison: "", vehiculeNom: "", vehicules: 0, jusqua: "", prixSite: "", sorties: [] };
+  const optionVers = (txt) => {
+    if (/join/i.test(txt)) d.mode = "join";
+    else if (/private/i.test(txt)) d.mode = "private";
+    else if (/shared/i.test(txt)) d.mode = "shared";
+    if (/speed\s*boat/i.test(txt)) d.vehicule = "speedboat";
+    else if (/van|taxi|car\b/i.test(txt)) d.vehicule = "minivan";
+  };
+  if (genre === "tour") {
+    d.type = "tour";
+    const [produit, ...option] = m[1].split(SEP);
+    d.prestation = produit.trim();
+    d.option = option.join(" – ").trim();
+    optionVers(d.option);
+  } else if (genre === "transfert" || genre === "partage" || genre === "speedboat") {
+    d.type = "transfer";
+    let route = genre === "partage" ? m[2] : m[1];
+    if (genre === "partage") {
+      d.marque = m[1].trim();
+      d.mode = "shared";
+      d.vehicule = "minivan";
+    } else if (genre === "speedboat") d.vehicule = "speedboat";
+    const sep = SEP.exec(route);
+    const paren = /^(.*?)\s*\((.+)\)$/.exec(route);
+    if (sep) {
+      d.option = route.slice(sep.index + sep[0].length).trim();
+      route = route.slice(0, sep.index);
+    } else if (paren) {
+      route = paren[1];
+      d.option = paren[2].trim();
+    }
+    if (d.option) optionVers(d.option);
+    Object.assign(d, trajetDe(route));
+  } else if (genre === "location") {
+    d.type = "location";
+    d.prestation = m[1].trim();
+  } else if (genre === "liste") d.type = "tour";
+
+  // Lignes « Clé: valeur ». Dans une liste de sorties, chaque sortie a sa date, son titre et ses lignes : la première est la demande, les autres vont dans les notes.
+  const sorties = [];
+  let sortie = null;
+  for (const l of lignes.slice(1)) {
+    if (genre === "liste") {
+      const jour = /^(?:[A-Za-z]{3} \d{1,2} [A-Za-z]{3} \d{4}|Date to choose)$/.exec(l);
+      if (jour) { sortie = { date: /^Date/.test(l) ? "" : lireDate(l, aujourdhui), texte: l, titre: "" }; sorties.push(sortie); continue; }
+      if (sortie && !sortie.titre && !/^[A-Za-z ,]+:\s/.test(l)) { sortie.titre = l; continue; }
+    }
+    const k = /^([^:]+):\s*(.*)$/.exec(l);
+    if (!k) continue;
+    const cle = k[1].trim().toLowerCase();
+    const v = k[2].trim();
+    if (cle === "date") { d.dateTexte = v; d.date = lireDate(v, aujourdhui); }
+    else if (cle === "pickup time" || cle === "preferred pickup time") d.heure = heureDe(v) || d.heure;
+    else if (cle === "flight or ferry") d.vol = v;
+    else if (cle === "guests") Object.assign(d, lireInvites(v));
+    else if (cle === "child seats") d.siegeEnfant = Number(v) > 0 || d.siegeEnfant;
+    else if (cle === "bags") d.bagages = Number(v) || 0;
+    else if (cle === "pickup") { d.pickup = v; if (genre === "tour" || genre === "liste") d.hotel = v; }
+    else if (cle === "drop-off") d.dropoff = v;
+    else if (cle === "hotel on koh lanta") d.hotel = v;
+    else if (cle === "name") d.nom = v;
+    else if (cle === "extras") d.extras = v;
+    else if (cle === "departure") { d.depart = v; if (genre === "speedboat") d.heure = heureDe(v) || d.heure; }
+    else if (cle === "ticket") d.billet = /^return/i.test(v) ? "return" : "one way";
+    else if (cle === "return") d.retour = v;
+    else if (cle === "season") d.saison = v;
+    else if (cle === "vehicle") d.vehiculeNom = v;
+    else if (cle === "vehicles") d.vehicules = Number(v) || 0;
+    else if (cle === "from" && genre === "location") { d.dateTexte = v; d.date = lireDate(v, aujourdhui); d.heure = heureDe(v) || d.heure; }
+    else if (cle === "to" && genre === "location") d.jusqua = lireDate(v, aujourdhui);
+    else if (cle.startsWith("estimated total")) d.prixSite = v;
+    else if ((cle === "price on the site" || cle === "price") && !d.prixSite) d.prixSite = v;
+  }
+  if (genre === "liste" && sorties.length) {
+    const [premiere, ...autres] = sorties;
+    const [produit, ...option] = (premiere.titre || "").split(SEP);
+    d.prestation = (produit || "").trim();
+    d.option = option.join(" – ").trim();
+    optionVers(d.option);
+    d.date = premiere.date;
+    d.dateTexte = premiere.texte;
+    d.sorties = autres.map((x) => `${x.texte}: ${x.titre}`.trim());
+  }
+  // L'hôtel d'un trajet est le bout qui n'est pas un aéroport ou un embarcadère.
+  if (!d.hotel && genre !== "tour" && genre !== "liste") {
+    const bouts = [d.pickup, d.dropoff].filter(Boolean);
+    const hotels = bouts.filter((b) => !BOUT_SANS_HOTEL.test(b));
+    if (hotels.length === 1) d.hotel = hotels[0];
+  }
+  return d;
+}
+
 // Lit le message d'un formulaire. Renvoie null si le texte ne ressemble à aucune demande.
 export function lireDemande(texte, aujourdhui) {
   const lignes = String(texte || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (!lignes.length) return null;
+  const site = lireSite(lignes, aujourdhui);
+  if (site) return site;
   const d = { marque: "", type: "", nom: "", prestation: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, hotel: "" };
   for (const l of lignes) {
     let m;
@@ -155,8 +288,9 @@ export function lireLibre(texte, aujourdhui) {
   else if (/join[- ]?in|collectif|shared|partage|group tour/.test(t)) d.mode = "join";
 
   // Hôtel : un mot-clé d'hébergement suivi d'un nom propre, ou « staying at » suivi d'un nom propre.
-  const cap = `${MOT_NOM}(?:\\s+${MOT_NOM})*`;
-  const suite = `(?:,\\s*${cap})?`;
+  // Espaces et tabulations seulement : un nom ou un hôtel s'arrête à la fin de sa ligne (`\\s` avalait le retour à la ligne et le mot de la ligne suivante).
+  const cap = `${MOT_NOM}(?:[ \\t]+${MOT_NOM})*`;
+  const suite = `(?:,[ \\t]*${cap})?`;
   const capEn = new RegExp(cap, "uy");
   // Lecture après un mot d'introduction (casse libre), le nom propre lui-même doit avoir ses majuscules.
   const apres = (intro) => {
@@ -168,7 +302,7 @@ export function lireLibre(texte, aujourdhui) {
     return null;
   };
   const MOT_HEBERGEMENT = "hotel|hôtel|resort|bungalows?|villa|guest ?house|homestay|lodge|hostel|apartments?";
-  const mot = apres(new RegExp(`\\b(?:${MOT_HEBERGEMENT})\\s+(?=[${MAJ}])`, "giu"));
+  const mot = apres(new RegExp(`\\b(?:${MOT_HEBERGEMENT})[ \\t]+(?=[${MAJ}])`, "giu"));
   let hote = "";
   if (mot) {
     const debut = mot.debut;
@@ -179,10 +313,10 @@ export function lireLibre(texte, aujourdhui) {
     hote = x ? `${motTxt}${x[0]}`.trim() : "";
   }
   if (!hote) {
-    const h2 = apres(/(?:staying|stay|stayed|logeons|loge|hébergés?|hebergés?)\s+(?:at|in|à|au|chez|dans)\s+(?:the\s+|l['’]\s*|le\s+|la\s+)?/giu);
+    const h2 = apres(/(?:staying|stay|stayed|logeons|loge|hébergés?|hebergés?)[ \t]+(?:at|in|à|au|chez|dans)[ \t]+(?:the[ \t]+|l['’][ \t]*|le[ \t]+|la[ \t]+)?/giu);
     if (h2) {
       const reste = new RegExp(`${cap}${suite}`, "uy");
-      const fin = /(?:staying|stay|stayed|logeons|loge|hébergés?|hebergés?)\s+(?:at|in|à|au|chez|dans)\s+(?:the\s+|l['’]\s*|le\s+|la\s+)?/giu;
+      const fin = /(?:staying|stay|stayed|logeons|loge|hébergés?|hebergés?)[ \t]+(?:at|in|à|au|chez|dans)[ \t]+(?:the[ \t]+|l['’][ \t]*|le[ \t]+|la[ \t]+)?/giu;
       fin.lastIndex = h2.debut;
       const mm = fin.exec(brut);
       reste.lastIndex = mm.index + mm[0].length;
@@ -193,7 +327,7 @@ export function lireLibre(texte, aujourdhui) {
   d.hotel = hote;
 
   // Nom : « my name is Sophie Martin », « je suis Marc », sinon une signature en fin de message.
-  const n1 = apres(/(?:my name is|i am|i'm|je m['’]appelle|je suis|this is|c['’]est|name:)\s+/giu);
+  const n1 = apres(/(?:my name is|i am|i'm|je m['’]appelle|je suis|this is|c['’]est|name:)[ \t]+/giu);
   if (n1 && !NON_NOMS.test(n1.texte)) d.nom = n1.texte.trim();
   else {
     // Signature : après une formule de politesse, ou seule sur sa ligne ou après un point. Le téléphone en fin de message ne compte pas.
@@ -394,9 +528,10 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
     }
   } else if (d.prestation) {
     for (const p of prestations) {
-      if (p.actif === false || p.unite === "sup") continue;
+      // Le tarif enfant d'une excursion se rattache à son tarif adulte (completerEnfant) : il ne se propose pas seul, et ne passe jamais en tête.
+      if (p.actif === false || p.unite === "sup" || p.unite === "ch") continue;
       const texte = `${p.libelle} ${p.libelle_en || ""} ${p.groupe || ""}`;
-      let score = recouvrement(d.prestation, texte);
+      let score = recouvrement(d.type === "location" && d.vehiculeNom ? `${d.prestation} ${d.vehiculeNom}` : d.prestation, texte);
       if (score < 0.5) continue;
       const groupe = sansAccents(p.groupe || p.libelle);
       if (d.mode === "join") score += /join|collectif|partag/.test(groupe) ? 0.2 : -0.1;
@@ -427,7 +562,24 @@ export function reponsePrix(d, offre, { devise = "THB" } = {}) {
 
 // Notes internes d'un dossier créé depuis une demande : ce que le client a demandé et qui n'a pas de champ à lui.
 export function notesDemande(d) {
-  return [d.heure ? `Pickup time: ${d.heure}` : "", d.siegeEnfant ? "Child seat needed" : "", d.siegeBebe ? "Baby seat needed" : "", d.bebes ? `Babies (0-2): ${d.bebes}` : ""].filter(Boolean).join(". ");
+  return [
+    d.heure ? `Pickup time: ${d.heure}` : "",
+    d.vol ? `Flight or ferry: ${d.vol}` : "",
+    d.siegeEnfant ? "Child seat needed" : "",
+    d.siegeBebe ? "Baby seat needed" : "",
+    d.bebes ? `Babies (0-2): ${d.bebes}` : "",
+    d.ages && d.ages.length ? `Child ages: ${d.ages.map((a) => (a === 0 ? "under 1" : a)).join(", ")}` : "",
+    d.bagages ? `Bags: ${d.bagages}` : "",
+    d.extras ? `Extras: ${d.extras}` : "",
+    d.vehiculeNom ? `Vehicle: ${d.vehiculeNom}${d.vehicules > 1 ? ` × ${d.vehicules}` : ""}` : "",
+    d.jusqua ? `Rental until: ${d.jusqua}` : "",
+    d.billet ? `Ticket: ${d.billet}${d.retour ? `, return ${d.retour}` : ""}` : "",
+    d.saison ? `Season: ${d.saison}` : "",
+    d.sorties && d.sorties.length ? `Other trips: ${d.sorties.join(" | ")}` : "",
+    d.prixSite ? `Price on the site: ${d.prixSite}` : "",
+  ]
+    .filter(Boolean)
+    .join(". ");
 }
 
 // Prénom et nom d'un nom saisi sur le site (« Anna Keller ») : le premier mot est le prénom, le reste le nom.

@@ -2088,4 +2088,13 @@ export const EN = {
   "L'image n'a pas pu être copiée ({raison}) : enregistrez les images, puis joignez-les dans WhatsApp.": "The image could not be copied ({raison}): save the images, then attach them in WhatsApp.",
   "Le partage a échoué : les images ne sont pas parties, enregistrez-les puis joignez-les dans WhatsApp.": "Sharing failed: the images were not sent, save them then attach them in WhatsApp.",
   "Ce navigateur ne peut pas joindre l'image : enregistrez-la, puis joignez-la dans WhatsApp (Safari le fait d'un tap).": "This browser cannot attach the image: save it, then attach it in WhatsApp (Safari does it in one tap).",
+  "Option demandée : {option}": "Requested option: {option}",
+  "Prise en charge : {lieu}": "Pickup: {lieu}",
+  "Dépose : {lieu}": "Drop-off: {lieu}",
+  "Vol ou bateau : {vol}": "Flight or ferry: {vol}",
+  "Âges des enfants : {ages}": "Children's ages: {ages}",
+  "moins de 1 an": "under 1",
+  "Prix indiqué sur le site : {prix}": "Price shown on the site: {prix}",
+  "Liste de {n} sorties : seule la première est préparée, les autres sont dans les notes du dossier.": "List of {n} trips: only the first is prepared, the others are in the file notes.",
+  "Location : vérifiez la durée et le nombre de véhicules sur la facture.": "Rental: check the duration and number of vehicles on the invoice.",
 };
