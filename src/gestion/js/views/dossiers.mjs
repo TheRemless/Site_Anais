@@ -1,7 +1,8 @@
 import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe, modeExcursions, numeroSuivant } from "../etat.mjs";
 import { nouveauDossierExcursions } from "./nouveau-excursions.mjs";
 import { ouvrirDemande } from "./demande.mjs";
-import { h, champ, vider, toast } from "../ui.mjs";
+import { h, champ, vider, toast, erreurChamp } from "../ui.mjs";
+import { identiteDepuisSaisie, verifierNouveauClient } from "../client-calc.mjs";
 import { formatMontant, formatDate, aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero, periodeTexte, STATUTS } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { pastille, vide, voyageTexte, cartes, sousTitreDossier, barreFiltres } from "./commun.mjs";
@@ -168,8 +169,9 @@ export function nouveauDossier() {
   const nvPrenom = h("input", { id: "prenom", autocomplete: "off", oninput: majRef });
   const nvNom = h("input", { id: "nom", autocomplete: "off", oninput: majRef });
   const nvAdresse = h("textarea", { id: "adr", rows: 3, placeholder: tr("Rue et numéro\nCode postal, ville, pays") });
-  const nvTel = h("input", { id: "tel", type: "tel", autocomplete: "off" });
-  const blocNouveau = h("div", { class: "grille-form" }, champ(tr("Civilité"), nvCivilite), champ(tr("Prénom"), nvPrenom), champ(tr("Nom"), nvNom), champ(tr("Téléphone"), nvTel), champ(tr("Adresse"), nvAdresse));
+  const nvTel = h("input", { id: "tel", type: "tel", inputmode: "tel", autocomplete: "off", placeholder: "+41 79 123 45 67" });
+  const nvEmail = h("input", { id: "email", type: "email", inputmode: "email", autocomplete: "off", autocapitalize: "none", spellcheck: "false" });
+  const blocNouveau = h("div", { class: "grille-form" }, champ(tr("Civilité"), nvCivilite), champ(tr("Prénom"), nvPrenom), champ(tr("Nom"), nvNom), champ(tr("Téléphone"), nvTel), champ("E-mail", nvEmail), champ(tr("Adresse"), nvAdresse));
 
   const pays = h("select", { id: "pays", onchange: majBandeau }, listePays.map((p) => h("option", { value: p }, p === "Autre" ? tr("Autre") : p)));
   const paysLibre = h("input", { id: "pays-libre", oninput: majBandeau });
@@ -188,6 +190,12 @@ export function nouveauDossier() {
 
   function majClient() {
     blocNouveau.hidden = !selClient.nouveau;
+    // Le nom tapé dans la recherche est repris (prénom et nom séparés), sans écraser ce qui a déjà été écrit dans ces champs.
+    if (selClient.nouveau && !nvPrenom.value && !nvNom.value) {
+      const id = identiteDepuisSaisie(selClient.texteSaisi);
+      nvPrenom.value = id.prenom;
+      nvNom.value = id.nom;
+    }
     majRef();
   }
   function majBandeau() {
@@ -217,10 +225,18 @@ export function nouveauDossier() {
       document.getElementById("client").focus();
       return;
     }
-    if (selClient.nouveau && !nvNom.value.trim()) {
-      erreur.textContent = tr("Indiquez le nom du client.");
-      nvNom.focus();
-      return;
+    let coordonnees = { telephone: "", email: "" };
+    if (selClient.nouveau) {
+      // Le téléphone garde la règle des fiches client : indicatif obligatoire (+41, +33, +66…), jamais deviné.
+      erreurChamp(nvTel, "");
+      const verif = verifierNouveauClient({ nom: nvNom.value, telephone: nvTel.value, email: nvEmail.value });
+      if (!verif.ok) {
+        if (verif.champ === "nom") (erreur.textContent = tr("Indiquez le nom du client.")), nvNom.focus();
+        else if (verif.champ === "telephone") (erreurChamp(nvTel, verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.")), nvTel.focus());
+        else (erreur.textContent = tr("Cette adresse e-mail est illisible : vérifiez-la."), nvEmail.focus());
+        return;
+      }
+      coordonnees = verif.valeurs;
     }
     if (!ref.value.trim()) {
       erreur.textContent = regl.numerotation.mode === "sequence" ? tr("Indiquez la référence.") : tr("Indiquez la référence et le champ « {champ} ».", { champ: libellePays });
@@ -241,7 +257,7 @@ export function nouveauDossier() {
       }
       let clientId = selClient.valeur;
       if (!clientId) {
-        const c = await inserer("clients", { civilite: nvCivilite.value, prenom: nvPrenom.value.trim(), nom: nvNom.value.trim(), adresse: nvAdresse.value.trim(), telephone: nvTel.value.trim(), email: "", notes: "" });
+        const c = await inserer("clients", { civilite: nvCivilite.value, prenom: nvPrenom.value.trim(), nom: nvNom.value.trim(), adresse: nvAdresse.value.trim(), telephone: coordonnees.telephone, email: coordonnees.email, notes: "" });
         clientId = c.id;
       }
       const d = await inserer("dossiers", {

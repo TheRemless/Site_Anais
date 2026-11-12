@@ -27,6 +27,7 @@ export const EN = {
   "Résumé du dossier": "File summary",
   "Écart sur les commissions réglées": "Difference on settled commissions",
   // Session C (mobile) : application installée
+  "Cette adresse e-mail est illisible : vérifiez-la.": "This email address looks wrong: please check it.",
   "Tirer pour actualiser": "Pull to refresh",
   "Relâcher pour actualiser": "Release to refresh",
   "Actualisation…": "Refreshing…",
