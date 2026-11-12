@@ -14,8 +14,8 @@
 -- 1. Administrateur de Secret et de Taxi : les deux droits (les administrateurs généraux les ont déjà avec la migration).
 -- 2. Mook (assistante d'Anaïs, profil 15c43035…) : dans Secret, un rôle « Éditeur + factures fiduciaire » = exactement les droits de l'Éditeur plus
 --    « fiduciaire.preparer ». Elle n'a ni « partenaires.nets » ni « fiduciaire.gerer ».
--- 3. Dans Taxi : si le rôle « Vouchers seulement » existe (donnees-taxi-vouchers.sql), il reçoit « fiduciaire.preparer » ; sinon Mook, encore Éditeur de Taxi,
---    passe au même rôle « Éditeur + factures fiduciaire » dans Taxi. Les factures de Taxi se préparent depuis l'écran Fiduciaire de Secret.
+-- 3. Dans Taxi : si le rôle « Vouchers seulement » existe (donnees-taxi-vouchers.sql), il reçoit « fiduciaire.preparer » (renommé ensuite, voir donnees-mook-taxi-fiduciaire.sql) ; sinon Mook, encore Éditeur de Taxi,
+--    passe au même rôle « Éditeur + factures fiduciaire » dans Taxi. Les factures de Taxi se préparent dans Taxi (depuis le 12.11.2026, chaque entreprise n'affiche que les siennes).
 begin;
 
 update roles set permissions = permissions || array['fiduciaire.preparer', 'fiduciaire.gerer']

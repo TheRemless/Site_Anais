@@ -2373,7 +2373,7 @@ export const EN = {
   "Location en cours jusqu'au {date}": "Rental in progress until {date}",
   "Interface": "Interface",
   "Ne voir que l'écran « Nouveau voucher », en thaï (entreprise en mode taxi)": "Only see the “New voucher” screen, in Thai (company in taxi mode)",
-  "Pour l'assistante : un formulaire, l'aperçu du voucher et l'envoi de l'image à Anaïs. Ni menu, ni autres écrans.": "For the assistant: a form, the voucher preview and sending the image to Anaïs. No menu, no other screens.",
+  "Pour l'assistante : un formulaire, l'aperçu du voucher et l'envoi de l'image à Anaïs. Avec le droit « Préparer et envoyer les factures pour la fiduciaire », un second onglet ouvre ces factures. Ni menu, ni autres écrans.": "For the assistant: a form, the voucher preview and sending the image to Anaïs. With the right “Prepare and send the invoices for the accountant”, a second tab opens those invoices. No menu, no other screens.",
   "WhatsApp d'Anaïs (reçoit les vouchers de l'assistante)": "Anaïs's WhatsApp (receives the assistant's vouchers)",
   "Avec l'indicatif. Sur ordinateur, l'image est copiée et cette conversation s'ouvre ; sur téléphone, un bouton ouvre la conversation après l'envoi de l'image. Vide : l'assistante choisit Anaïs dans WhatsApp.": "With the country code. On a computer, the image is copied and this chat opens; on a phone, a button opens the chat after the image is sent. Empty: the assistant picks Anaïs in WhatsApp.",
   "Fiduciaire": "Accountant",

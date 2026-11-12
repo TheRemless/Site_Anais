@@ -1389,6 +1389,10 @@ details > summary { padding-block: 11px; margin: 0; }
 .barre-simple .entite-choix, .barre-simple .entite-nom { flex: 1; min-width: 0; margin: 0; }
 .barre-simple .entite-choix select { width: 100%; min-height: 44px; }
 .barre-simple button { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+/* Assistante : le voucher et les factures pour la fiduciaire, deux onglets sous la barre. */
+.onglets-simple { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--bord); }
+.onglets-simple a { display: flex; align-items: center; justify-content: center; min-height: 44px; border: 1px solid var(--bord); border-radius: var(--rayon); color: var(--texte); font-weight: 600; text-decoration: none; touch-action: manipulation; }
+.onglets-simple a[aria-current="page"] { background: var(--teal-700); border-color: var(--teal-700); color: #fff; }
 .contenu-simple { padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
 .contenu-simple .bandeau-demo { margin-bottom: 16px; }
 

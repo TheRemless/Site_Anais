@@ -221,7 +221,7 @@ function demo() {
       aujourdhui: aujourdhui(),
     };
   };
-  return { data, mook: qui("vouchers seulement"), anais: qui("Administratrice") };
+  return { data, mook: qui("vouchers et factures"), anais: qui("Administratrice") };
 }
 
 test("démo : l'assistante voit les montants qui reviennent à l'agence, sans écart ni net, et émet une facture", () => {
