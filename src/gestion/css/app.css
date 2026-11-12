@@ -1289,3 +1289,13 @@ details > summary { padding-block: 11px; margin: 0; }
   .resume-sous-action .secondaire { flex: none; }
   .resume-sans-suite { display: flex; }
 }
+/* ---- Zone de pickup (session D) : puces de zone dans « Coller une demande » et le formulaire de réservation ---- */
+.zones-pickup { margin: 4px 0 10px; }
+.zones-pickup[hidden] { display: none; }
+.zones-titre { margin: 0 0 6px; font-size: 0.85rem; font-weight: 600; color: var(--texte-2); }
+.zones-grille { margin: 6px 0 4px; font-size: 0.8rem; color: var(--texte-2); }
+.zones-puces { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.zones-puces .puce { max-width: 100%; overflow-wrap: anywhere; }
+.zones-pickup .champ { margin-bottom: 6px; }
+.zones-pickup .champ select { min-height: 44px; }
+.zones-pickup .aide { margin: 0 0 6px; }
