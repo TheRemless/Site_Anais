@@ -128,3 +128,10 @@ export function contenuCourse(contenu, r) {
 
 // Une course saisie à la main (« Réservation à la main ») entre aussi dans le prix interne : sa ligne, payée au chauffeur.
 export const ligneCourse = (r, id) => ({ id, kind: "ligne", libelle: r.libelle || "", intro: "", puces: [], unite: Number(r.montant_vente) || 0, qte: 1, montant: null, pct: null, date_service: r.date_service || null, partenaire_id: r.partenaire_id || null, paye_sur_place: true });
+
+// ---- Demande collée ----------------------------------------------------------------------------------------------
+// Une demande de transfert privé venue de la page /taxi/ du site (« Transfer request: … », lue par lireSite) appartient à VIP Taxi Lanta.
+// Le minivan partagé et le speedboat, eux aussi des « transferts » pour la lecture, restent à Secret.
+export const demandeDeTaxi = (texte, d) => !!d && d.type === "transfer" && d.mode !== "shared" && d.vehicule !== "speedboat" && /^\s*transfer request:/im.test(String(texte || ""));
+// L'entreprise en mode taxi vers laquelle basculer, parmi celles que la personne peut ouvrir (null si aucune, ou si c'est déjà l'active).
+export const entrepriseTaxi = (entites, reglagesDe, activeId) => entites.find((e) => e.id !== activeId && estTaxi(reglagesDe(e.id))) || null;

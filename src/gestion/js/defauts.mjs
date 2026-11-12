@@ -229,7 +229,8 @@ export const MESSAGES_TAXI = [
   { id: "taxi-commission-th", pour: "partenaire", cle: "commission", titre: "ค่าคอมมิชชั่นงานเมื่อวาน (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nงานเมื่อวาน: {prestation} วันที่ {date} ลูกค้า {client} ({prix})\nค่าคอมมิชชั่นงานนี้เท่าไหร่คะ\n\nขอบคุณค่ะ 🙏" },
 ];
 // Messages de départ d'une entreprise selon sa façon de travailler : ceux de Taxi en mode taxi, sinon les messages généraux.
-export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? MESSAGES_TAXI : MESSAGES_DEFAUT);
+// Taxi garde aussi la « réponse à une demande » en anglais (bouton « Répondre au client » de la demande collée).
+export const messagesDefautPour = (reglages) => (reglages && reglages.fonctionnement === "taxi" ? [...MESSAGES_TAXI, ...MESSAGES_DEFAUT.filter((m) => m.id === "reponse-en")] : MESSAGES_DEFAUT);
 
 // Réglages d'une entreprise nouvellement créée : aucun fait propre à une entreprise réelle.
 export const REGLAGES_NEUTRE = {

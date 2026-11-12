@@ -2327,4 +2327,6 @@ export const EN = {
   "Hier : commission à demander": "Yesterday: commission to ask for",
   "Prix de la course": "Ride price",
   "En espèces, ou par Wise avant le transfert avec 3 % de frais.": "In cash, or by Wise before the transfer with a 3% fee.",
+  "Demande de transfert du site de {nom} : le dossier se crée dans {nom}.": "Transfer request from the {nom} website: the file is created in {nom}.",
+  "Passer à {nom}": "Switch to {nom}",
 };

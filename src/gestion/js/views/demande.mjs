@@ -1,7 +1,8 @@
 // « Coller une demande » : le client écrit à Anaïs sur WhatsApp, le message arrive à sa façon ou depuis le formulaire du site. On le colle ici :
 // l'outil reconnaît la date, les personnes, l'hôtel, le client et le service cité, cherche le prix dans la base partenaires, et crée le dossier
 // d'un tap. Tout ce qui a été reconnu se corrige sur place, et le prix suit.
-import { etat, entiteActive, reglages, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient } from "../etat.mjs";
+import { etat, entiteActive, reglages, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite } from "../etat.mjs";
+import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { lireMessage, offresDuService, decouperServices, varsReponse, langueDuMessage, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
@@ -426,6 +427,9 @@ export function ouvrirDemande() {
     d.hotelSaisi = false;
     construire();
     poserLesBoutons();
+    // Demande de transfert du site VIP Taxi Lanta collée dans une autre entreprise : on propose d'y passer, le message est repris là-bas.
+    const taxi = demandeDeTaxi(texte, d) ? entrepriseTaxi(entitesAccessibles(), (id) => etat.brut.reglages[id], etat.entiteId) : null;
+    if (taxi && peut("dossiers.ecrire")) reconnu.append(h("div", { class: "bandeau-info demande-bascule", role: "status" }, h("p", null, tr("Demande de transfert du site de {nom} : le dossier se crée dans {nom}.", { nom: taxi.nom })), h("button", { class: "principal petit", type: "button", onclick: () => basculer(taxi) }, tr("Passer à {nom}", { nom: taxi.nom }))));
     reconnu.append(champs, dynamique);
     const trouves = decouperServices(texte, d, contexte(), aujourdhui());
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
@@ -453,6 +457,13 @@ export function ouvrirDemande() {
     reconnu
   );
   const fermer = modal(tr("Coller une demande"), corps, { large: true, protege: false });
+  // Le message reste dans le brouillon de l'appareil : la fenêtre rouverte dans l'autre entreprise le relit.
+  function basculer(cible) {
+    garde.ecrire(texte.trim());
+    fermer();
+    changerEntite(cible.id);
+    setTimeout(() => ouvrirDemande(), 300);
+  }
 
   // Message gardé d'un passage précédent : repris tel quel.
   const reprise = garde.lire();
