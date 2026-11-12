@@ -1229,6 +1229,11 @@ details > summary { padding-block: 11px; margin: 0; }
 .actions.colonne { flex-direction: column; align-items: stretch; justify-content: flex-start; }
 .actions.colonne button { width: 100%; min-height: 44px; }
 
+/* Fenêtre « modifiée entre-temps » : les deux valeurs côte à côte. */
+.tableau-conflit { width: 100%; border-collapse: collapse; margin: 0.5rem 0 1rem; font-size: 0.95rem; }
+.tableau-conflit th, .tableau-conflit td { text-align: left; vertical-align: top; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--bordure, #ddd); overflow-wrap: anywhere; }
+.tableau-conflit thead th { font-weight: 600; }
+@media (max-width: 520px) { .tableau-conflit { font-size: 0.9rem; } }
 /* ==== Tirer pour actualiser (application installée) ================================================================ */
 /* L'indicateur sort de sous la barre du haut (encoche comprise, --haut-barre) : il suit le doigt, puis reste le temps de l'actualisation. */
 .tirer { position: fixed; z-index: 29; top: var(--haut-barre); left: 50%; width: max-content; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px); min-height: 36px; padding: 6px 14px 6px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--bord); box-shadow: var(--ombre-forte); color: var(--texte-2); font-size: 0.86rem; font-weight: 600; line-height: 1.25; pointer-events: none; opacity: var(--prog, 0); transform: translate(-50%, calc(var(--decal, 0) * 1px - 100% - 4px)); will-change: transform, opacity; }

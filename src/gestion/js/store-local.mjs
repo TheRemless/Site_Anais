@@ -8,6 +8,8 @@ import { tr } from "./i18n.mjs";
 
 const CLE = "gestion-zwald-demo-v10";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
+// Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
+const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches"];
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
 const PARTENAIRES_PUBLIC = ["partenaires", "prestations", "trajets"];
 const PARTENAIRES_NETS = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
@@ -122,8 +124,13 @@ export function creer() {
       sauve();
       return structuredClone(ligne);
     },
-    async modifier(table, id, patch) {
+    async modifier(table, id, patch, avant) {
       const ligne = data[table].find((r) => r.id === id);
+      // Même contrôle que la base : la ligne a changé depuis qu'on l'a lue (autre onglet), rien n'est écrit.
+      if (avant && ligne.updated_at && ligne.updated_at !== avant) throw Object.assign(new Error(tr("Cette fiche a été modifiée par quelqu'un d'autre depuis que vous l'avez ouverte.")), { conflit: true });
+      patch = { ...patch };
+      delete patch.updated_at;
+      if (VERSIONNEES.includes(table)) patch.updated_at = new Date().toISOString();
       const details = {};
       for (const [k, v] of Object.entries(patch)) {
         if (["updated_at", "modifie_par"].includes(k) || JSON.stringify(ligne[k]) === JSON.stringify(v)) continue;

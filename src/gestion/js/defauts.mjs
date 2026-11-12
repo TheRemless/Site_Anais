@@ -119,6 +119,7 @@ export const MOYENS_DEFAUT = [
   { id: "wise", label: N_("Wise") },
   { id: "paypal", label: N_("PayPal") },
   { id: "twint", label: N_("TWINT") },
+  { id: "postfinance", label: N_("PostFinance") },
   { id: "especes", label: N_("Espèces") },
   { id: "autre", label: N_("Autre") },
 ];
