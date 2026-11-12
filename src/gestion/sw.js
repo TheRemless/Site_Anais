@@ -3,12 +3,13 @@
 // Hors connexion : le service worker garde UNIQUEMENT la petite page « hors-ligne » (quatre fichiers) pour afficher la copie de la feuille du jour gardée sur le téléphone quand le
 // réseau manque. L'application elle-même n'est jamais mise en cache : elle se charge toujours depuis le réseau, jamais depuis une ancienne copie, donc les mises à jour
 // arrivent comme avant. Une navigation vers /gestion/ qui échoue faute de réseau (et seulement elle) reçoit cette page.
-const CACHE = "gestion-hors-ligne-v1";
+const CACHE = "gestion-hors-ligne-v2";
 const FICHIERS = ["hors-ligne.html", "hors-ligne.css", "hors-ligne.mjs", "js/feuille-hors-ligne-lecture.mjs"].map((f) => new URL(f, self.registration.scope).href);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(FICHIERS)).catch(() => {}).then(() => self.skipWaiting())
+    // Un fichier à la fois : un 404 passager sur l'un n'empêche pas de garder les autres. Les fichiers sont aussi remis à jour à chaque lecture réussie (ci-dessous).
+    caches.open(CACHE).then((c) => Promise.all(FICHIERS.map((f) => c.add(f).catch(() => {})))).then(() => self.skipWaiting())
   );
 });
 self.addEventListener("activate", (event) =>
@@ -25,7 +26,10 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(fetch(req).catch(async () => (await caches.match(FICHIERS[0])) || Response.error()));
     return;
   }
-  if (FICHIERS.includes(req.url)) event.respondWith(fetch(req).catch(() => caches.match(req)));
+  if (FICHIERS.includes(req.url)) {
+    // Seuls ces quatre fichiers sont remis à jour dans le cache, quand le réseau répond : la page hors connexion suit les changements sans réinstaller le service worker.
+    event.respondWith(fetch(req).then((rep) => { if (rep.ok) { const copie = rep.clone(); caches.open(CACHE).then((c) => c.put(req, copie)).catch(() => {}); } return rep; }).catch(() => caches.match(req)));
+  }
 });
 
 self.addEventListener("push", (event) => {

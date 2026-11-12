@@ -105,6 +105,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
   let empreinte = null;
   let catalogueLuA = 0;
   let catalogueAChange = true;
+  let enDeconnexion = false;
 
   async function toutes(table) {
     const lignes = [];
@@ -118,10 +119,17 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
   return {
     mode: "supabase",
     async session() {
-      const { data } = await sb.auth.getSession();
+      const { data, error } = await sb.auth.getSession();
+      if (!data.session) {
+        // Réseau coupé et jeton expiré : on ne sait pas si la session est valide. La copie de la feuille du jour reste, et l'ouverture échoue pour que l'application l'affiche.
+        if (error && /fetch|network|retryable/i.test(`${error.name} ${error.message}`)) throw new Error(error.message);
+        // Plus de session (jeton refusé, déconnexion depuis un autre appareil, mot de passe changé) : la copie ne doit plus être lisible par personne.
+        effacerCopieHorsLigne();
+      }
       return data.session ? { id: data.session.user.id, email: data.session.user.email } : null;
     },
     async connecter(email, mdp) {
+      enDeconnexion = false;
       const { error } = await sb.auth.signInWithPassword({ email, password: mdp });
       if (error) throw new Error(error.message === "Invalid login credentials" ? tr("E-mail ou mot de passe incorrect.") : error.message);
     },
@@ -143,18 +151,33 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     },
     // Se déconnecter ferme cet appareil seulement (par défaut la bibliothèque ferme TOUTES les sessions : se déconnecter sur l'ordinateur coupait aussi l'iPhone).
     // La synchronisation a écarté le résultat de la dernière lecture (une écriture a eu lieu pendant la lecture) : le catalogue lu n'est pas installé, on le relira.
+    // Vrai de la déconnexion à la prochaine connexion : etat.mjs n'écrit alors plus de copie hors ligne.
+    enDeconnexion() {
+      return enDeconnexion;
+    },
     annulerDerniereLecture() {
       catalogueAChange = true;
     },
     async deconnecter() {
+      enDeconnexion = true;
       effacerCopieHorsLigne();
-      verifie(await sb.auth.signOut({ scope: "local" }).then(({ error }) => ({ data: null, error })));
+      try {
+        verifie(await sb.auth.signOut({ scope: "local" }).then(({ error }) => ({ data: null, error })));
+      } finally {
+        // Une synchronisation en vol pendant la déconnexion a pu réécrire la copie : on l'efface de nouveau.
+        effacerCopieHorsLigne();
+      }
     },
     // « Déconnecter tous mes appareils » : un geste à part, pour un téléphone perdu ou un compte utilisé sur un appareil prêté.
     async deconnecterPartout() {
+      enDeconnexion = true;
       effacerCopieHorsLigne();
       // signOut ne lève pas d'exception sur une erreur réseau : il renvoie `error`. On la lève, sinon le bouton ferait croire que les appareils sont fermés.
-      verifie(await sb.auth.signOut({ scope: "global" }).then(({ error }) => ({ data: null, error })));
+      try {
+        verifie(await sb.auth.signOut({ scope: "global" }).then(({ error }) => ({ data: null, error })));
+      } finally {
+        effacerCopieHorsLigne();
+      }
     },
     // `ancien` : la copie en mémoire (synchronisation). Le catalogue qui n'a pas changé en est repris tel quel au lieu d'être relu.
     async charger({ ancien = null } = {}) {

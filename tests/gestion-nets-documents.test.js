@@ -168,3 +168,39 @@ test("déconnexion : une erreur renvoyée par signOut (réseau) est levée, pas 
   await assert.rejects(store.deconnecterPartout(), /Failed to fetch/);
   await assert.rejects(store.deconnecter(), /Failed to fetch/);
 });
+
+// ---- Copie hors ligne et sessions (revue de sécurité) ----------------------------------------------------------------------------------------------------
+function faussePage() {
+  const stock = new Map();
+  globalThis.localStorage = { getItem: (k) => (stock.has(k) ? stock.get(k) : null), setItem: (k, v) => stock.set(k, String(v)), removeItem: (k) => stock.delete(k) };
+  return stock;
+}
+
+test("copie hors ligne : une session absente et refusée par le serveur efface la copie ; un réseau coupé la garde et fait échouer l'ouverture (pour afficher la copie)", async () => {
+  const stock = faussePage();
+  stock.set("gestion-feuille-hors-ligne", "{}");
+  const sansSession = (erreur) => ({ ...faux(), auth: { getSession: async () => ({ data: { session: null }, error: erreur }) } });
+  // Jeton refusé (déconnexion globale ailleurs) : plus de session, la copie est effacée.
+  assert.equal(await creer({}, { client: sansSession(null) }).session(), null);
+  assert.equal(stock.has("gestion-feuille-hors-ligne"), false);
+  // Réseau coupé avec un jeton expiré : on ne sait pas si la session est valide, la copie reste et l'ouverture échoue (l'application bascule alors sur la page hors connexion).
+  stock.set("gestion-feuille-hors-ligne", "{}");
+  await assert.rejects(creer({}, { client: sansSession({ name: "AuthRetryableFetchError", message: "Failed to fetch" }) }).session(), /Failed to fetch/);
+  assert.equal(stock.has("gestion-feuille-hors-ligne"), true);
+});
+
+test("copie hors ligne : pendant et après une déconnexion, plus rien n'est écrit ; la copie est aussi effacée après la déconnexion", async () => {
+  const stock = faussePage();
+  let relache;
+  const sb = { ...faux(), auth: { signOut: () => new Promise((r) => { relache = () => r({ error: null }); }) } };
+  const store = creer({}, { client: sb });
+  stock.set("gestion-feuille-hors-ligne", "{}");
+  const sortie = store.deconnecter();
+  assert.equal(stock.has("gestion-feuille-hors-ligne"), false);
+  assert.equal(store.enDeconnexion(), true, "une synchronisation qui se termine maintenant ne doit pas recréer la copie");
+  relache();
+  await sortie;
+  stock.set("gestion-feuille-hors-ligne", "{}"); // une écriture tardive
+  await store.connecter("a@b.ch", "x").catch(() => {});
+  assert.equal(store.enDeconnexion(), false, "une nouvelle connexion réautorise la copie");
+});

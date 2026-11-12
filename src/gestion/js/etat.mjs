@@ -35,13 +35,21 @@ export async function init() {
 
 // Copie de la feuille d'aujourd'hui et de demain (sans montant, net ni commission) gardée sur ce téléphone pour être lue sans réseau (hors-ligne.html). Remplacée à chaque
 // chargement et à chaque synchronisation, effacée à la déconnexion (store-supabase.mjs) et jamais lue après 48 h. Le stockage refusé ou plein n'empêche rien.
-function copierPourHorsLigne() {
-  if (etat.store.mode !== "supabase" || !etat.session || !etat.brut) return;
+function copierPourHorsLigne({ siPerimee = false } = {}) {
+  if (etat.store.mode !== "supabase" || !etat.session || !etat.brut || (etat.store.enDeconnexion && etat.store.enDeconnexion())) return;
   try {
+    // Synchronisation sans changement : la copie n'est réécrite que si elle a changé de jour ou a plus d'une demi-heure (sinon « demain » manquerait après minuit).
+    if (siPerimee) {
+      const actuelle = JSON.parse(localStorage.getItem(CLE_HORS_LIGNE) || "null");
+      if (actuelle && actuelle.enregistre_le && Date.now() - Date.parse(actuelle.enregistre_le) < 30 * 60000 && String(actuelle.enregistre_le).slice(0, 10) === new Date().toISOString().slice(0, 10)) return;
+    }
     const entites = entitesAccessibles().filter((e) => permissionsDans(contexte(), e.id).includes("dossiers.lire"));
     localStorage.setItem(CLE_HORS_LIGNE, JSON.stringify(construireCopie({ brut: etat.brut, entites, utilisateur: etat.session.id, aujourdhui: aujourdhui() })));
   } catch {
-    // stockage refusé ou plein : l'outil fonctionne comme avant
+    // Stockage refusé ou plein : l'ancienne copie ne doit pas survivre (ses droits ont pu changer), l'outil fonctionne comme avant.
+    try {
+      localStorage.removeItem(CLE_HORS_LIGNE);
+    } catch {}
   }
 }
 
@@ -107,7 +115,10 @@ export async function synchroniser() {
       return "ignore";
     }
     const nouvelle = signer(neuf);
-    if (nouvelle === signature) return "inchange";
+    if (nouvelle === signature) {
+      copierPourHorsLigne({ siPerimee: true });
+      return "inchange";
+    }
     const miennes = modificationsVues !== modifications;
     signature = nouvelle;
     modificationsVues = modifications;

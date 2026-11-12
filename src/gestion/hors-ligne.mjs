@@ -22,6 +22,9 @@ const telLien = (numero, texte) => {
 };
 const dateLongue = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(en ? "en-GB" : "fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
+const jourLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// « Aujourd'hui » et « Demain » seulement si la date est vraiment celle d'aujourd'hui ou de demain (une copie de la veille ne ment pas).
+const etiquetteJour = (iso) => (iso === jourLocal() ? `${T.aujourdhui} · ` : iso === jourLocal(new Date(Date.now() + 86400000)) ? `${T.demain} · ` : "");
 const racine = document.getElementById("app");
 let brut = null;
 try {
@@ -54,7 +57,7 @@ if (!lue.ok) {
       el("h1", {}, T.titre),
       el("p", { class: "bandeau", role: "status" }, T.bandeau.replace("{date}", quand)),
       copie.entreprises.length > 1 ? el("div", { class: "choix", role: "group" }, copie.entreprises.map((x, i) => el("button", { type: "button", "aria-pressed": String(i === entreprise), onclick: () => ((entreprise = i), dessiner()) }, x.nom))) : null,
-      e ? el("div", { class: "choix", role: "group" }, e.jours.map((x, i) => el("button", { type: "button", "aria-pressed": String(i === jour), onclick: () => ((jour = i), dessiner()) }, `${i === 0 ? T.aujourdhui : T.demain} · ${dateLongue(x.date)}`))) : null,
+      e ? el("div", { class: "choix", role: "group" }, e.jours.map((x, i) => el("button", { type: "button", "aria-pressed": String(i === jour), onclick: () => ((jour = i), dessiner()) }, `${etiquetteJour(x.date)}${dateLongue(x.date)}`))) : null,
       !j || !j.groupes.length
         ? el("p", { class: "aide" }, T.vide)
         : j.groupes.map((g) =>
