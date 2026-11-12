@@ -2,7 +2,7 @@
 // réservations à venir, devis), la période et la comparaison dans l'adresse, une liste derrière chaque chiffre.
 // Les faits viennent de la base (fonction analyse_faits), un appel par section ; les indicateurs sont dans stats-calc.mjs.
 // Réservé aux rôles qui ont les droits « analyses » et « montants » ; commissions, nets et marge demandent aussi « nets ».
-import { etat, peut, entiteActive, reglages, entitesAnalysables, modeExcursions } from "../etat.mjs";
+import { etat, peut, entiteActive, reglages, entitesAnalysables, modeExcursions, modeTaxi } from "../etat.mjs";
 import { h, vider, modal, toast } from "../ui.mjs";
 import { aujourdhui, formatDate, formatMontant } from "../calc.mjs";
 import { vide, telecharger } from "./commun.mjs";
@@ -106,7 +106,7 @@ export function vueAnalyses(sectionArg) {
   if (!(peut("analytics.voir") && peut("finances.voir"))) return vide(tr("Accès réservé"), tr("Le tableau analytique est réservé aux rôles qui ont les droits « analyses » et « montants »."), h("a", { class: "bouton secondaire", href: "#/" }, tr("Retour au tableau de bord")));
   const jour = aujourdhui();
   const q = new URLSearchParams(location.hash.includes("?") ? location.hash.slice(location.hash.indexOf("?") + 1) : "");
-  const section = SECTIONS[sectionArg] ? sectionArg : "apercu";
+  const section = SECTIONS[sectionArg] && !(modeTaxi() && SECTIONS[sectionArg].sansTaxi) ? sectionArg : "apercu";
   const def = SECTIONS[section];
   let cle = S.PERIODES.some(([k]) => k === q.get("p")) ? q.get("p") : "mois";
   let du, au;
@@ -122,7 +122,9 @@ export function vueAnalyses(sectionArg) {
   const lien = (nom, extra = {}) => adresse(nom, { ...base, g: null, ...extra });
   // Une agence sans partenaires payants (ZTP) n'a ni net ni marge : pas de section Commissions, pas de tuile Revenu, le revenu est l'encaissé.
   const nets = peut("partenaires.nets") && modeExcursions();
-  const sections = Object.entries(SECTIONS).filter(([, v]) => !v.nets || nets);
+  // Taxi : ni devis ni encaissement chez nous (le client paie le chauffeur), ces sections resteraient vides.
+  const taxi = modeTaxi();
+  const sections = Object.entries(SECTIONS).filter(([, v]) => (!v.nets || nets) && !(taxi && v.sansTaxi));
   const entiteId = etat.entiteId;
   const corps = h("div", { class: "st-corps", "aria-live": "polite" });
   const outilsDroite = h("div", { class: "entete-actions st-actions-haut" });
@@ -204,7 +206,7 @@ export function vueAnalyses(sectionArg) {
       vider(choixDevise);
       if (devs.length > 1) choixDevise.append(h("label", { for: "st-dev" }, tr("Devise")), h("select", { id: "st-dev", onchange: (e) => (location.hash = adresse(section, { ...base, dev: e.target.value, liste: mesure, filtre })) }, devs.map((x) => h("option", { value: x, selected: x === devise }, x))));
       const X = {
-        faits, du, au, jour, devise, cmp, gran, nets: !!faits.nets, section, entite: entiteActive().nom,
+        faits, du, au, jour, devise, cmp, gran, nets: !!faits.nets, taxi, section, entite: entiteActive().nom,
         c: { du, au, jour, devise }, tri: q.get("tri"), sens: q.get("sens"), q: q.get("q") || "", surEtat, sortie: [],
         peutGroupe: entitesAnalysables().length > 1,
         param: (extra) => adresse(section, { ...base, ...extra, liste: mesure, filtre }),
