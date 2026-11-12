@@ -6,8 +6,8 @@ import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu,
 import { pastille, cartes, voyageTexte, lienDossier } from "./commun.mjs";
 import { mesTaches, listeTaches } from "./taches.mjs";
 import { contratsAEcheance, chiffres as numeroDe } from "../partenaires-calc.mjs";
-import { agenda, personnesTexte } from "../operations-calc.mjs";
-import { listeReservations, pastilleReservation } from "./reservations.mjs";
+import { agenda, personnesTexte, cleMessageClient } from "../operations-calc.mjs";
+import { listeReservations, pastilleReservation, messageClient } from "./reservations.mjs";
 import { tr, N_, pluriel, dateLongue } from "../i18n.mjs";
 
 
@@ -45,7 +45,8 @@ function carteService(r) {
         { class: "service-pied" },
         pastilleReservation(r.statut),
         tel ? h("a", { class: "bouton secondaire petit", href: `tel:${tel}`, "aria-label": tr("Appeler {nom}", { nom: nomClient(c) }) }, icone("telephone", 16), tr("Appeler")) : null,
-        wa ? h("a", { class: "bouton secondaire petit", href: `https://wa.me/${wa}`, target: "_blank", rel: "noopener", "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(c) }) }, icone("whatsapp", 16), tr("WhatsApp")) : null
+        // Le message prêt d'après la date du service (rappel la veille, confirmation le jour, avis après) : jamais une conversation vide à rédiger.
+        wa ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageClient(r.date_service, aujourdhui())), "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(c) }) }, icone("whatsapp", 16), tr("WhatsApp")) : null
       )
     )
   );

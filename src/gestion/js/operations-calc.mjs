@@ -106,6 +106,36 @@ export function remplirGabarit(texte, vars = {}) {
 // Destinataire d'un message type : enregistré, sinon déduit de l'usage (les anciens messages n'avaient pas le champ).
 export const destinataireMessage = (m) => (m && m.pour) || (m && /partenaire|relance|modification|annulation|partner/i.test(m.cle || "") ? "partenaire" : "client");
 
+// Modèles proposés pour un destinataire, une langue et un usage (« relance », « modification »…). Ceux de la base d'abord ; quand l'usage demandé n'y est
+// pas (Secret n'a que la demande au partenaire), le modèle par défaut de cet usage est proposé à sa place, sans rien écrire en base. Jamais le premier
+// modèle venu : une relance ne doit pas partir comme une nouvelle demande de réservation. Renvoie { liste, choisi } (`choisi` : null sans usage connu).
+const memeUsage = (a, b) => destinataireMessage(a) === destinataireMessage(b) && (a.cle || "") === (b.cle || "") && a.langue === b.langue;
+export function gabaritsPropose(stockes, defauts, { pour, langue, cle = "" }) {
+  const base = (stockes || []).filter((m) => m && m.corps && destinataireMessage(m) === pour);
+  const virtuels = cle ? (defauts || []).filter((d) => d.cle === cle && destinataireMessage(d) === pour && !base.some((m) => memeUsage(m, d))).map((d) => ({ ...d, id: `defaut:${d.id}`, defaut: true, titre: d.titre })) : [];
+  const liste = [...virtuels, ...base];
+  const deLangue = liste.filter((m) => m.langue === langue);
+  if (!cle) return { liste, choisi: deLangue[0] || null };
+  return { liste, choisi: deLangue.find((m) => m.cle === cle) || null };
+}
+
+// Champs enregistrés au tap « Confirmée » : le statut, plus l'heure de pickup et la référence du prestataire quand on les donne (jamais effacés quand on ne les donne pas).
+export function champsConfirmation(r, { heure = "", reference = "" } = {}) {
+  const champs = { statut: "confirme" };
+  const h = String(heure || "").trim();
+  const ref = String(reference || "").trim();
+  if (h) champs.heure_pickup = h;
+  if (ref) champs.reference_partenaire = ref;
+  return champs;
+}
+
+// Modèles par défaut dont l'usage manque en base (même destinataire, même usage, même langue) : ce que « Ajouter les modèles manquants » ajoute,
+// sans jamais écraser un modèle modifié.
+export function gabaritsManquants(stockes, defauts) {
+  const base = (stockes || []).filter((m) => m && m.corps);
+  return (defauts || []).filter((d) => !base.some((m) => memeUsage(m, d))).map((d) => ({ ...d }));
+}
+
 export function variablesMessage({ reservation = {}, client = {}, dossier = {}, partenaire = {}, entreprise = {}, langue = "fr" } = {}) {
   const nomClient = [client.prenom, client.nom].filter(Boolean).join(" ");
   return {

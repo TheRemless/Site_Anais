@@ -3,7 +3,7 @@
 import { etat, modifier, partenaireDe, reglages, entiteActive } from "../etat.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
-import { variablesMessage } from "../operations-calc.mjs";
+import { variablesMessage, champsConfirmation } from "../operations-calc.mjs";
 import { telWhatsApp } from "../partenaires-calc.mjs";
 import { attente, detailsDemande, detailsRelance, detailsRefus, refusee } from "../prestataire-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -71,7 +71,22 @@ const demander = (r, apres) =>
     await enregistrer(r, (c) => ({ statut: "demande", details: detailsDemande(c, aujourdhui()) }), apres, tr("Marquée comme demandée."));
   });
 const relancer = (r, apres) => messageAuPrestataire(r, "relance", () => enregistrer(r, (c) => ({ details: detailsRelance(c, aujourdhui()) }), apres, tr("Relance notée.")));
-const confirmee = (r, apres) => enregistrer(r, { statut: "confirme" }, apres, tr("Confirmée par le prestataire."));
+// « Confirmée » : l'heure de pickup (qu'il confirme souvent dans sa réponse) et sa référence se notent tout de suite, mais restent facultatives.
+function confirmee(r, apres) {
+  const heure = h("input", { id: "cf-heure", type: "time", value: r.heure_pickup || "" });
+  const reference = h("input", { id: "cf-ref", value: r.reference_partenaire || "", autocomplete: "off", placeholder: tr("Numéro donné par le prestataire") });
+  const fermer = modal(
+    tr("Confirmée par le prestataire"),
+    h(
+      "form",
+      { class: "modal-corps reponse-prestataire", onsubmit: (e) => { e.preventDefault(); fermer(); enregistrer(r, champsConfirmation(courante(r), { heure: heure.value, reference: reference.value }), apres, tr("Confirmée par le prestataire.")); } },
+      h("p", { class: "aide" }, r.libelle),
+      h("div", { class: "grille-form compacte" }, champ(tr("Heure de pickup"), heure, r.heure_pickup ? "" : tr("Facultative : la réponse du prestataire la donne souvent.")), champ(tr("Référence du prestataire"), reference)),
+      h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Confirmer")))
+    ),
+    { protege: false }
+  );
+}
 const pasEnvoyee = (r, apres) => enregistrer(r, (c) => ({ statut: "a_demander", details: { ...(c.details || {}), demande_le: null, relance_le: null, relances: 0 } }), apres);
 
 // Autre réponse : le prestataire refuse, ou propose une autre heure.
