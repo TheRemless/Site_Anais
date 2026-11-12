@@ -7,7 +7,7 @@ import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu,
 import { pastille, cartes, voyageTexte, lienDossier } from "./commun.mjs";
 import { mesTaches, listeTaches } from "./taches.mjs";
 import { contratsAEcheance, chiffres as numeroDe } from "../partenaires-calc.mjs";
-import { agenda, personnesTexte, cleMessageClient, avisParClient } from "../operations-calc.mjs";
+import { agenda, personnesTexte, cleMessageReservation, avisParClient } from "../operations-calc.mjs";
 import { listeReservations, pastilleReservation, messageClient } from "./reservations.mjs";
 import { tr, N_, pluriel, dateLongue } from "../i18n.mjs";
 import { ouvrirSansSuite, baseDistante } from "./sans-suite.mjs";
@@ -50,7 +50,7 @@ function carteService(r) {
         pastilleReservation(r.statut),
         tel ? h("a", { class: "bouton secondaire petit", href: `tel:${tel}`, "aria-label": tr("Appeler {nom}", { nom: nomClient(c) }) }, icone("telephone", 16), tr("Appeler")) : null,
         // Le message prêt d'après la date du service (rappel la veille, confirmation le jour, avis après) : jamais une conversation vide à rédiger.
-        wa ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageClient(r.date_service, aujourdhui())), "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(c) }) }, icone("whatsapp", 16), tr("WhatsApp")) : null
+        wa ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageReservation(r, aujourdhui())), "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(c) }) }, icone("whatsapp", 16), tr("WhatsApp")) : null
       )
     )
   );
@@ -107,6 +107,8 @@ export async function tableauDeBord() {
       : null,
     h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Aujourd'hui")), h("p", { class: "sous" }, dateLongue())), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, modeExcursions() ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, h("a", { class: "bouton principal seulement-bureau", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
     moduleActif("reservations") ? h("section", { class: "section-jour" }, h("h2", null, tr("Départs et pickups aujourd'hui"), h("span", { class: "tag" }, ag.aujourdhui.length)), ag.aujourdhui.length ? listeServices(ag.aujourdhui) : h("p", { class: "vide-court" }, tr("Aucun service aujourd'hui."))) : null,
+    // Les locations commencées et pas encore rendues : une ligne chacune, avec la date de retour sur la carte.
+    moduleActif("reservations") && ag.enCours.length ? h("section", { class: "section-jour" }, h("h2", null, tr("Locations en cours"), h("span", { class: "tag" }, ag.enCours.length)), listeReservations(ag.enCours, { apres: rafraichir })) : null,
     moduleActif("reservations") && ag.demain.length ? h("section", { class: "section-jour" }, h("h2", null, tr("Demain"), h("span", { class: "tag" }, ag.demain.length)), listeServices(ag.demain)) : null,
     // Taxi : rien ne s'encaisse chez Anaïs (le client paie le chauffeur), ces chiffres resteraient à zéro.
     peut("finances.voir") && !modeTaxi() ? h(

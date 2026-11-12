@@ -1,6 +1,7 @@
 // Tableau analytique calculé dans le navigateur. Sert à la démonstration et de référence pour la fonction SQL
 // `analyse` : les deux doivent donner exactement les mêmes chiffres (voir tests/gestion-analyses.test.js).
 import { totaux, arrondi, joursEntre, montantSurPlace } from "./calc.mjs";
+import { dateFinService } from "./operations-calc.mjs";
 
 const mois = (iso) => iso.slice(0, 7);
 const dans = (iso, du, au) => !!iso && iso >= du && iso <= au;
@@ -200,6 +201,7 @@ export function faitsLocal(source, { debut, fin, jour, nets }) {
         partenaire: pa ? pa.nom : null,
         famille: (pr && pr.famille) || (r.trajet_id ? "billet" : "autre"),
         date_service: r.date_service || null,
+        date_fin: dateFinService(r),
         statut: r.statut,
         montant_vente: nombreOuNull(r.montant_vente),
         paye_sur_place: !!r.paye_sur_place,

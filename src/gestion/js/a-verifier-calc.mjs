@@ -2,6 +2,8 @@
 // `db` : la copie en mémoire de l'entreprise active. `droits` : { partenaires, dossiers, clients, nets } (booleens). `aujourdhui` : AAAA-MM-JJ.
 // Renvoie les contrôles qui ont au moins un cas : { cle, droit, aRelire, elements: [{ id, lien, texte, detail }] }. `aRelire` : un doute, pas une erreur certaine.
 
+import { dateFinService } from "./operations-calc.mjs";
+
 const sansAccents = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const vide = (v) => v === null || v === undefined || v === "" || Number(v) <= 0;
 
@@ -93,7 +95,7 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
   const annules = new Set((db.dossiers || []).filter((d) => d.annule).map((d) => d.id));
   const clientDuDossier = new Map((db.dossiers || []).map((d) => [d.id, (db.clients || []).find((c) => c.id === d.client_id)]));
   const nomClient = (c) => (c ? [c.prenom, c.nom].filter(Boolean).join(" ") : "");
-  ajouter("reservations_passees", "dossiers", false, (db.reservations || []).filter((r) => aujourdhui && r.date_service && r.date_service < aujourdhui && (r.statut === "a_demander" || r.statut === "demande") && !annules.has(r.dossier_id)).map((r) => ({ id: r.id, lien: `#/dossier/${r.dossier_id}`, texte: r.libelle, detail: [nomClient(clientDuDossier.get(r.dossier_id)), r.date_service, r.statut === "demande" ? tr("demandée") : tr("à demander")].filter(Boolean).join(" · ") })));
+  ajouter("reservations_passees", "dossiers", false, (db.reservations || []).filter((r) => aujourdhui && r.date_service && dateFinService(r) < aujourdhui && (r.statut === "a_demander" || r.statut === "demande") && !annules.has(r.dossier_id)).map((r) => ({ id: r.id, lien: `#/dossier/${r.dossier_id}`, texte: r.libelle, detail: [nomClient(clientDuDossier.get(r.dossier_id)), r.date_service, r.statut === "demande" ? tr("demandée") : tr("à demander")].filter(Boolean).join(" · ") })));
   ajouter("clients_sans_contact", "clients", false, (db.clients || []).filter((c) => !String(c.telephone || "").replace(/\D/g, "") && !String(c.email || "").trim()).map((c) => ({ id: c.id, lien: `#/client/${c.id}`, texte: nomClient(c) || tr("(sans nom)"), detail: "" })));
   ajouter("dossiers_sans_responsable", "dossiers", false, (db.dossiers || []).filter((d) => !d.responsable_id && !d.annule).map((d) => ({ id: d.id, lien: `#/dossier/${d.id}`, texte: d.ref || tr("(sans référence)"), detail: nomClient((db.clients || []).find((c) => c.id === d.client_id)) })));
 

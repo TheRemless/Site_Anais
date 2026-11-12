@@ -199,6 +199,17 @@ export const detailsAvecEnvoi = (details, cible, date) => ({ ...(details || {}),
 // du jour, ni dans les alertes « pickup à compléter », et leur ligne de facture ne crée pas de réservation.
 export const estFraisDeParc = (r) => !!r && !r.partenaire_id && /frais de parc|park fee|national park/i.test(r.libelle || "");
 
+// Dernier jour d'un service : le retour d'une location (`details.retour_date`), sinon le jour du service. Un retour avant la prise est une erreur de saisie
+// et ne compte pas. Les étapes d'après le service (avis, commission, « en retard », rappel de 9h) se calculent sur ce jour-là, pas sur celui de la prise.
+export function dateFinService(r) {
+  if (!r || !r.date_service) return null;
+  const retour = r.details && r.details.retour_date;
+  return /^\d{4}-\d{2}-\d{2}$/.test(retour || "") && retour > r.date_service ? retour : r.date_service;
+}
+
+// Une location commencée avant aujourd'hui et pas encore rendue (le jour du retour, elle l'est encore). Le jour de la prise, c'est un départ du jour.
+export const locationEnCours = (r, ajd) => !!r && !!r.date_service && r.date_service < ajd && dateFinService(r) >= ajd;
+
 // `netDe(r)` (facultatif) renvoie la ligne privée de la réservation : une commission reçue ou un net payé prouvent que le service a eu lieu.
 export function agenda(reservations, ajd, ecartees = new Set(), { netDe = () => null } = {}) {
   const demain = ajouterJours(ajd, 1);
@@ -208,10 +219,13 @@ export function agenda(reservations, ajd, ecartees = new Set(), { netDe = () => 
   return {
     aujourdhui: actives.filter((r) => r.date_service === ajd).sort(tri),
     demain: actives.filter((r) => r.date_service === demain).sort(tri),
-    hier: actives.filter((r) => r.date_service === hier).sort(tri),
+    // Hier : les services terminés hier. Une location rendue hier y est, une location qui court encore non.
+    hier: actives.filter((r) => dateFinService(r) === hier).sort(tri),
+    // En cours : les locations commencées et pas encore rendues. Elles ne sont ni « à confirmer » ni « en retard ».
+    enCours: actives.filter((r) => locationEnCours(r, ajd)).sort(tri),
     aConfirmer: actives.filter((r) => r.statut !== "confirme" && (!r.date_service || r.date_service >= ajd)).sort(tri),
     // En retard : passé et jamais confirmé. Un service marqué « s'est bien passé », dont la commission est reçue ou le net payé, n'est plus en retard.
-    enRetard: actives.filter((r) => r.statut !== "confirme" && r.date_service && r.date_service < ajd && !(r.details && r.details.fait_le) && !((n) => n && (n.commission_recue_le || (n.net_paye !== null && n.net_paye !== undefined)))(netDe(r))).sort(tri),
+    enRetard: actives.filter((r) => r.statut !== "confirme" && r.date_service && dateFinService(r) < ajd && !(r.details && r.details.fait_le) && !((n) => n && (n.commission_recue_le || (n.net_paye !== null && n.net_paye !== undefined)))(netDe(r))).sort(tri),
   };
 }
 
@@ -606,6 +620,13 @@ export function cleMessageClient(dateService, ajd) {
   if (!dateService) return "confirmation";
   if (dateService === ajouterJours(ajd, 1)) return "rappel";
   return dateService < ajd ? "avis" : "confirmation";
+}
+
+// Le message prêt d'une réservation : l'avis se demande après la fin du service (le retour d'une location), jamais pendant qu'elle court.
+export function cleMessageReservation(r, ajd) {
+  if (locationEnCours(r, ajd)) return "confirmation";
+  const fin = dateFinService(r);
+  return cleMessageClient(fin && fin < ajd ? fin : r.date_service, ajd);
 }
 
 // Hôtel et numéro de chambre d'après l'adresse du client (« Hotel Sunset, Room 12 ») ou le lieu de pickup.

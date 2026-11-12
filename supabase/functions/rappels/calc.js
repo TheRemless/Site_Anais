@@ -26,8 +26,15 @@ export function entitesLisibles({ profil, membres, roles }) {
 // Frais de parc : une somme à payer sur l'île, pas un service qui part (même règle que dans l'outil, operations-calc.mjs).
 const estFraisDeParc = (r) => !r.partenaire_id && /frais de parc|park fee|national park/i.test(r.libelle || "");
 
-function servicesDuJour(reservations, date, { entiteIds, ecartes }) {
-  return reservations.filter((r) => r.date_service === date && r.statut !== "annule" && !ecartes.has(r.dossier_id) && !estFraisDeParc(r) && (entiteIds === null || entiteIds.includes(r.entite_id)));
+// Dernier jour d'un service : le retour d'une location (details.retour_date), sinon le jour du service (même règle que dans l'outil, operations-calc.mjs).
+const dateFinService = (r) => {
+  const retour = r.details && r.details.retour_date;
+  return /^\d{4}-\d{2}-\d{2}$/.test(retour || "") && retour > r.date_service ? retour : r.date_service;
+};
+
+// `fin` : on cherche les services qui se terminent ce jour-là (rappel de 9h) et non ceux qui commencent ce jour-là (rappel de 18h).
+function servicesDuJour(reservations, date, { entiteIds, ecartes }, fin = false) {
+  return reservations.filter((r) => (fin ? dateFinService(r) : r.date_service) === date && r.statut !== "annule" && !ecartes.has(r.dossier_id) && !estFraisDeParc(r) && (entiteIds === null || entiteIds.includes(r.entite_id)));
 }
 
 function ventilation(liste, nomEntite, compter = (rs) => rs.length) {
@@ -49,9 +56,9 @@ export function rappelVeille(reservations, demain, { entiteIds, ecartes = new Se
   return { titre: `${pluriel(liste.length, "service", "services")} demain`, corps: [ventilation(liste, nomEntite), etat].filter(Boolean).join(" "), tag: "veille" };
 }
 
-// 9h : les clients dont un service a eu lieu la veille, à qui écrire pour savoir comment c'était.
+// 9h : les clients dont un service s'est terminé la veille (le retour pour une location), à qui écrire pour savoir comment c'était.
 export function rappelLendemain(reservations, hier, { entiteIds, ecartes = new Set(), nomEntite = () => "" }) {
-  const liste = servicesDuJour(reservations, hier, { entiteIds, ecartes });
+  const liste = servicesDuJour(reservations, hier, { entiteIds, ecartes }, true);
   if (!liste.length) return null;
   const dossiers = (rs) => new Set(rs.map((r) => r.dossier_id)).size;
   return { titre: `${pluriel(dossiers(liste), "client", "clients")} à recontacter`, corps: [ventilation(liste, nomEntite, dossiers), "Services d'hier : demandez-leur comment c'était."].filter(Boolean).join(" "), tag: "lendemain" };

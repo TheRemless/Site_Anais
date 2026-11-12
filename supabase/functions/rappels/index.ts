@@ -62,7 +62,8 @@ async function executer(db: ReturnType<typeof createClient>, type: string, aujou
     db.from("membres").select("user_id, entite_id, role_id").in("user_id", ids),
     db.from("roles").select("id, portee, permissions"),
     db.from("entites").select("id, nom"),
-    db.from("reservations").select("entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id").eq("date_service", cible).neq("statut", "annule"),
+    // 18h : les services qui partent demain. 9h : ceux qui se sont terminés hier, donc aussi une location prise plus tôt et rendue hier (details.retour_date).
+    db.from("reservations").select("entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, details").or(type === "lendemain" ? `date_service.eq.${cible},details->>retour_date.eq.${cible}` : `date_service.eq.${cible}`).neq("statut", "annule"),
   ]);
   for (const r of [profils, membres, roles, entites, reservations]) if (r.error) throw new Error(r.error.message);
 
