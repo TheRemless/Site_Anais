@@ -1,5 +1,7 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
 import { etat, dossiersAnnules, peut, inserer, modifier, modifierProtege, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions } from "../etat.mjs";
+import { blocZonesPickup } from "./pickup-zones.mjs";
+import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE, ajouterJours } from "../calc.mjs";
 import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, nbJoursLocation, lieuParDefaut, notePasseport, alerteAvantVeille } from "../operations-calc.mjs";
@@ -349,7 +351,25 @@ export function formulaireReservation(r, apres) {
   checkin.value = dt.checkin || "";
   const bateau = h("input", { id: "v-bateau", value: dt.bateau || "", placeholder: tr("Longtail, speedboat") });
   const programme = h("input", { id: "v-programme", value: dt.programme || "", placeholder: tr("Program A, 10 min session") });
-  const details = () => ({ ...dt, chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, retour_lieu: retourLieu.value.trim(), equipement: equipement.value.trim(), conditions: conditions.value.trim(), permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim() });
+  // Zone de l'hôtel sur la grille de pickup du partenaire : la zone et le départ remplissent l'heure, sans écraser une heure tapée à la main.
+  let heureDeGrille = "";
+  const zonesPickup = blocZonesPickup({
+    id: "r-zones",
+    partenaire: () => partenaireDe(partenaire.value || null),
+    hotel: () => lieu.value,
+    gardee: dt.pickup_zone || null,
+    trajet: () => etat.db.trajets.find((t) => t.id === r.trajet_id) || null,
+    surChoix: ({ heure: h2 }) => {
+      const n = heureAPoser({ actuelle: heure.value, derniereGrille: heureDeGrille, nouvelle: h2 });
+      if (n !== null) (heure.value = n), (heureDeGrille = n);
+    },
+  });
+  // L'heure enregistrée est celle de la grille tant qu'elle lui est égale : un autre choix de zone la remplace, une heure tapée à la main reste.
+  if (zonesPickup.valeur() && zonesPickup.heure() === heure.value) heureDeGrille = heure.value;
+  partenaire.addEventListener("change", () => zonesPickup.rafraichir());
+  lieu.addEventListener("change", () => zonesPickup.rafraichir());
+  const zoneGardee = () => (zonesPickup.valeur() ? { pickup_zone: zonesPickup.valeur() } : {});
+  const details = () => ({ ...Object.fromEntries(Object.entries(dt).filter(([k]) => k !== "pickup_zone")), ...zoneGardee(), chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, retour_lieu: retourLieu.value.trim(), equipement: equipement.value.trim(), conditions: conditions.value.trim(), permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim() });
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
   const prestation = r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null;
   const type = typeVoucher(r, prestation, partenaireDe(r.partenaire_id));
@@ -446,6 +466,7 @@ export function formulaireReservation(r, apres) {
     champ(tr("Prestation"), libelle),
     h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champ(tr("Statut"), statut), champ(tr("Référence du partenaire"), reference)),
     h("div", { class: "grille-form compacte" }, champ(type === "location" ? tr("Date de départ") : tr("Date du service"), date), champ(type === "location" ? tr("Heure de départ") : tr("Heure de pickup"), heure), champ(type === "location" ? tr("Lieu de départ ou de livraison") : tr("Lieu de pickup"), lieu)),
+    zonesPickup.noeud,
     blocRetour,
     // Une location se compte en jours : ni adultes ni enfants à demander (les nombres déjà saisis sont conservés). Les bébés ne figurent que sur les billets de bateau.
     h("div", { class: "grille-form compacte" }, type === "location" ? null : champ(tr("Adultes"), adultes), type === "location" ? null : champ(tr("Enfants"), enfants), type === null || type === "billet" ? champ(tr("Bébés"), bebes) : null, peut("finances.voir") ? champ(tr("Vendu au client"), vente) : null),

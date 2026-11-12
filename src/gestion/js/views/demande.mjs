@@ -9,6 +9,8 @@ import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut 
 import { appliquerModeParDefaut } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
+import { blocZonesPickup } from "./pickup-zones.mjs";
+import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 
@@ -129,6 +131,9 @@ export function ouvrirDemande() {
   }
   // Lignes prises à la main : la date corrigée sur la ligne du service passe aux lignes (elle date la réservation), sauf si le service n'a pas de date.
   const lignesDuService = (sv, offre) => (sv.lignesCustom ? sv.lignesCustom.map((l) => ({ ...l, titre: l.kind === "texte" ? undefined : l.libelle, ...(l.kind !== "texte" && sv.date ? { date_service: sv.date } : {}) })) : offre ? lignesDe(offre, { date: sv.date, adultes: sv.adultes, enfants: sv.enfants }, langue, devise) : []);
+  // Le partenaire du service : celui de l'offre, ou de la première ligne prise dans la base. Sa grille de pickup donne les zones.
+  const partenaireDeOffre = (sv, offre) => (sv.lignesCustom ? (sv.lignesCustom.find((l) => l.partenaire_id) || {}).partenaire_id : offre && offre.source && offre.source.partenaire_id) || "";
+  const partenaireDuService = (sv) => partenaireDeOffre(sv, sv.lignesCustom ? null : etatDe(sv).offre);
   const estTransfert = (offre) => d.type === "transfer" || (offre && (offre.genre === "trajet" || (offre.source && offre.source.famille === "transfert")));
 
   // Réservation de ce service : heure, lieu de prise en charge, dépose, vol, bagages. Un trajet du site donne ses deux bouts.
@@ -136,7 +141,9 @@ export function ouvrirDemande() {
     const c = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
     const siteTransfert = d.type === "transfer";
     const lieu = siteTransfert ? d.pickup || "" : offre && !estTransfert(offre) && d.hotel && d.hotel !== hotelDuClient(c) ? d.hotel : "";
-    return { heure: sv.heure || "", lieu, bebes: d.bebes || 0, personnes: { adultes: sv.adultes, enfants: sv.enfants }, dropoff: siteTransfert ? d.dropoff || "" : "", vol: siteTransfert ? d.vol || "" : "", bagages: siteTransfert ? d.bagages || 0 : 0 };
+    // Une zone de pickup choisie veut dire un pickup à l'hôtel : le lieu est l'hôtel, ce qui permet de retrouver la zone au prochain séjour.
+    const lieuFinal = lieu || (sv.zonePickup && d.hotel ? d.hotel : "");
+    return { heure: sv.heure || "", lieu: lieuFinal, bebes: d.bebes || 0, personnes: { adultes: sv.adultes, enfants: sv.enfants }, dropoff: siteTransfert ? d.dropoff || "" : "", vol: siteTransfert ? d.vol || "" : "", bagages: siteTransfert ? d.bagages || 0 : 0, zonePickup: sv.zonePickup || null };
   }
 
   const coches = () => services.filter((sv) => sv.coche);
@@ -173,6 +180,12 @@ export function ouvrirDemande() {
     n.alertes.replaceChildren(...alertes.map((a) => h("span", { class: "demande-attention" }, a)));
     n.alertes.hidden = !alertes.length;
     n.li.classList.toggle("decoche", !sv.coche);
+    // Le partenaire a changé (autre offre choisie) : ses zones de pickup remplacent les précédentes.
+    const pid = partenaireDeOffre(sv, offre);
+    if (sv.zones && pid !== sv.partenaireId) {
+      sv.partenaireId = pid;
+      sv.zones.rafraichir();
+    }
   }
 
   function construireService(sv) {
@@ -182,13 +195,39 @@ export function ouvrirDemande() {
       const input = h("input", { id: `svc${sv.id}-${cle}`, value: valeur, autocomplete: "off", ...opts, onchange: (e) => ((sv[cle] = opts.type === "number" ? entier(e.target.value) : e.target.value), majService(sv), majTotal()) });
       return champ(libelle, input);
     };
+    sv.partenaireId = partenaireDuService(sv);
+    // Zone de l'hôtel : choisir la zone et le départ remplit l'heure de pickup d'après la grille du partenaire, sans écraser une heure déjà écrite.
+    sv.zones = blocZonesPickup({
+      id: `svc${sv.id}-zones`,
+      partenaire: () => partenaireDe(partenaireDuService(sv)),
+      hotel: () => (d && d.hotel) || "",
+      trajet: () => {
+        const { offre } = etatDe(sv);
+        return offre && offre.genre === "trajet" ? offre.source : null;
+      },
+      surChoix: ({ heure, gardee }) => {
+        sv.zonePickup = gardee;
+        // L'heure du message qui est celle du bateau n'est pas l'heure de pickup : la grille la remplace.
+        const { offre } = etatDe(sv);
+        const heureBateau = offre && offre.genre === "trajet" && offre.source.depart ? offre.source.depart.slice(0, 5) : "";
+        const nouvelle = heureAPoser({ actuelle: sv.heure === heureBateau ? "" : sv.heure, derniereGrille: sv.heureGrille, nouvelle: heure });
+        if (nouvelle !== null) {
+          sv.heure = nouvelle;
+          sv.heureGrille = nouvelle;
+          const input = document.getElementById(`svc${sv.id}-heure`);
+          if (input) input.value = nouvelle;
+        }
+        majService(sv);
+      },
+    });
     const coche = h("input", { type: "checkbox", checked: sv.coche, "aria-label": tr("Créer ce service"), onchange: (e) => ((sv.coche = e.target.checked), majService(sv), majTotal()) });
     noeuds.li = h(
       "li",
       { class: "dsv" },
       h("div", { class: "dsv-tete" }, h("label", { class: "case-tache" }, coche), noeuds.titre, noeuds.prix),
       noeuds.alertes,
-      h("div", { class: "dsv-champs" }, champ4("date", tr("Date du service"), sv.date || "", { type: "date" }), champ4("heure", tr("Heure de pickup"), sv.heure || "", { type: "time" }), champ4("adultes", tr("Adultes"), String(sv.adultes), { type: "number", min: "0", step: "1", inputmode: "numeric" }), champ4("enfants", tr("Enfants"), String(sv.enfants), { type: "number", min: "0", step: "1", inputmode: "numeric" }))
+      h("div", { class: "dsv-champs" }, champ4("date", tr("Date du service"), sv.date || "", { type: "date" }), champ4("heure", tr("Heure de pickup"), sv.heure || "", { type: "time" }), champ4("adultes", tr("Adultes"), String(sv.adultes), { type: "number", min: "0", step: "1", inputmode: "numeric" }), champ4("enfants", tr("Enfants"), String(sv.enfants), { type: "number", min: "0", step: "1", inputmode: "numeric" })),
+      sv.zones.noeud
     );
     majService(sv);
     return noeuds.li;
@@ -239,6 +278,8 @@ export function ouvrirDemande() {
     clientBloc.replaceChildren();
     if (!d) return;
     retenirClient();
+    // L'hôtel a pu changer (corrigé, ou repris de la fiche du client) : les zones proposées pour cet hôtel suivent.
+    for (const sv of services) if (sv.zones) sv.zones.rafraichir();
     if (saisies.hotel && saisies.hotel.value !== (d.hotel || "")) saisies.hotel.value = d.hotel || "";
     const proches = clientsConnus();
     const connu = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
