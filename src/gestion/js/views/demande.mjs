@@ -244,7 +244,7 @@ export function ouvrirDemande() {
 
     const ecrit = peut("dossiers.ecrire");
     const tel = chiffres(d.telephone);
-    const reponse = choisie ? reponsePrix(d, choisie, { devise }) : "";
+    const reponse = choisie ? reponsePrix(d, choisie, { devise, compagnie: choisie.source ? nomPartenaire(choisie.source.partenaire_id) : "" }) : "";
     const bouton = h("button", { class: "principal", type: "button", onclick: (e) => creerMaintenant(choisie, e.currentTarget) }, choisie && choisie.total !== null ? tr("Créer le dossier · {montant}", { montant: formatMontant(choisie.total, devise) }) : tr("Créer le dossier"));
     dynamique.append(
       ...[
