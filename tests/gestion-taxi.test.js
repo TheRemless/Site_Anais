@@ -74,7 +74,7 @@ test("messages de Taxi : les deux textes de Jérémy mot pour mot, messages à M
   }
   assert.ok(!MESSAGES_TAXI.some((m) => m.langue === "fr"), "pas de français pour Taxi");
   assert.equal(new Set(MESSAGES_TAXI.map((m) => m.id)).size, MESSAGES_TAXI.length);
-  assert.equal(messagesDefautPour({ fonctionnement: "taxi" }), MESSAGES_TAXI);
+  assert.deepEqual(messagesDefautPour({ fonctionnement: "taxi" }).map((m) => m.id), [...MESSAGES_TAXI.map((m) => m.id), "reponse-en"], "plus la réponse à une demande");
   assert.equal(messagesDefautPour({ fonctionnement: "excursions" }), MESSAGES_DEFAUT);
 });
 
@@ -103,4 +103,21 @@ test("réglages de Taxi complets sans informations de paiement ni conditions", a
   const r = completerReglages({ fonctionnement: "taxi", devise: "THB", emetteur: { nom: "VIP Taxi Lanta", adresse: "Koh Lanta, Krabi, Thailand", contact: "+66 95 868 38 46" } });
   assert.deepEqual(reglagesIncomplets(r), []);
   assert.ok(reglagesIncomplets({ ...r, fonctionnement: "excursions" }).length > 0);
+});
+
+test("demande collée : « Transfer request: » du site va à Taxi, pas le minivan partagé ni le speedboat", async () => {
+  const { demandeDeTaxi, entrepriseTaxi } = await import("../src/gestion/js/taxi-calc.mjs");
+  const { lireMessage } = await import("../src/gestion/js/demande-calc.mjs");
+  const fixtures = JSON.parse((await import("node:fs")).readFileSync(new URL("./fixtures/messages-site.json", import.meta.url), "utf8"));
+  const liste = Array.isArray(fixtures) ? fixtures : fixtures.messages;
+  for (const f of liste) {
+    const d = lireMessage(f.message, "2026-11-08");
+    assert.equal(demandeDeTaxi(f.message, d), /^Transfer request:/.test(f.message), f.nom);
+  }
+  assert.equal(demandeDeTaxi("Transfer request: A to B", null), false);
+  const E = [{ id: "s", nom: "Secret" }, { id: "t", nom: "VIP Taxi Lanta" }];
+  const R = { s: { fonctionnement: "excursions" }, t: { fonctionnement: "taxi" } };
+  assert.equal(entrepriseTaxi(E, (id) => R[id], "s").id, "t");
+  assert.equal(entrepriseTaxi(E, (id) => R[id], "t"), null, "déjà dans Taxi");
+  assert.equal(entrepriseTaxi([E[0]], (id) => R[id], "s"), null, "Taxi inaccessible");
 });
