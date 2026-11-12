@@ -27,7 +27,7 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
   const base = (l) => `${l.trajet_id || ""}|${l.partenaire_id || ""}|${l.date_service || ""}`;
   const programmes = new Set(lignesDoc.filter((x) => estLigneSupplement(x) && prefixeProgramme(nomSansEnfant(x))).map((x) => `${base(x)}|${prefixeProgramme(nomSansEnfant(x))}`));
   for (const l of lignesDoc) {
-    if (l.kind === "texte" || l.kind === "remise" || !(l.prestation_id || l.trajet_id || l.libre) || deja.has(l.id)) continue;
+    if (l.kind === "texte" || l.kind === "remise" || !(l.prestation_id || l.trajet_id || l.libre) || deja.has(l.id) || estFraisDeParc({ partenaire_id: l.partenaire_id, libelle: l.titre || l.libelle })) continue;
     const prog = prefixeProgramme(nomSansEnfant(l));
     const cle = `${base(l)}|${prog && programmes.has(`${base(l)}|${prog}`) ? prog : sansAccentsMin(nomSansEnfant(l))}`;
     const qte = l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1;
@@ -158,17 +158,37 @@ export function variablesMessage({ reservation = {}, client = {}, dossier = {}, 
 
 // Agenda : aujourd'hui, demain, et ce qui reste à confirmer, hors annulées. Trié par heure de pickup puis libellé.
 // `ecartees` : identifiants des dossiers annulés, dont les réservations ne comptent plus (annuler un dossier ne change pas leur statut).
-export function agenda(reservations, ajd, ecartees = new Set()) {
+// Envois de vouchers : la trace est gardée par réservation (`details.envois.client`, `details.envois.prestataire`, avec la date). `reservations` : celles qui ont un voucher.
+// « Complet » : le client a reçu chaque voucher et chaque prestataire le sien (un voucher sans prestataire n'attend que le client).
+export function etatEnvoisVouchers(reservations) {
+  const envoi = (r, cle) => !!(r.details && r.details.envois && r.details.envois[cle]);
+  const total = reservations.length;
+  const avecPrestataire = reservations.filter((r) => r.partenaire_id);
+  const client = reservations.filter((r) => envoi(r, "client")).length;
+  const prestataires = avecPrestataire.filter((r) => envoi(r, "prestataire")).length;
+  return { total, client, prestataires, totalPrestataires: avecPrestataire.length, complet: total > 0 && client === total && prestataires === avecPrestataire.length };
+}
+
+// Les détails d'une réservation avec un envoi de plus (« client » ou « prestataire »), sans effacer les autres.
+export const detailsAvecEnvoi = (details, cible, date) => ({ ...(details || {}), envois: { ...((details && details.envois) || {}), [cible]: date } });
+
+// Frais de parc : une somme à payer sur l'île, pas un service qui part. Ni heure de pickup, ni prestataire : ils ne figurent ni dans l'agenda, ni dans la feuille
+// du jour, ni dans les alertes « pickup à compléter », et leur ligne de facture ne crée pas de réservation.
+export const estFraisDeParc = (r) => !!r && !r.partenaire_id && /frais de parc|park fee|national park/i.test(r.libelle || "");
+
+// `netDe(r)` (facultatif) renvoie la ligne privée de la réservation : une commission reçue ou un net payé prouvent que le service a eu lieu.
+export function agenda(reservations, ajd, ecartees = new Set(), { netDe = () => null } = {}) {
   const demain = ajouterJours(ajd, 1);
   const hier = ajouterJours(ajd, -1);
-  const actives = reservations.filter((r) => r.statut !== "annule" && !ecartees.has(r.dossier_id));
+  const actives = reservations.filter((r) => r.statut !== "annule" && !ecartees.has(r.dossier_id) && !estFraisDeParc(r));
   const tri = (a, b) => (a.date_service || "").localeCompare(b.date_service || "") || (a.heure_pickup || "99").localeCompare(b.heure_pickup || "99") || a.libelle.localeCompare(b.libelle);
   return {
     aujourdhui: actives.filter((r) => r.date_service === ajd).sort(tri),
     demain: actives.filter((r) => r.date_service === demain).sort(tri),
     hier: actives.filter((r) => r.date_service === hier).sort(tri),
     aConfirmer: actives.filter((r) => r.statut !== "confirme" && (!r.date_service || r.date_service >= ajd)).sort(tri),
-    enRetard: actives.filter((r) => r.statut !== "confirme" && r.date_service && r.date_service < ajd).sort(tri),
+    // En retard : passé et jamais confirmé. Un service marqué « s'est bien passé », dont la commission est reçue ou le net payé, n'est plus en retard.
+    enRetard: actives.filter((r) => r.statut !== "confirme" && r.date_service && r.date_service < ajd && !(r.details && r.details.fait_le) && !((n) => n && (n.commission_recue_le || (n.net_paye !== null && n.net_paye !== undefined)))(netDe(r))).sort(tri),
   };
 }
 
@@ -595,8 +615,8 @@ export function messageVoucher({ pour = "client", prenom = "", montant = null, d
 }
 
 // Lien WhatsApp : la conversation du numéro, ou le choix du contact quand on n'a pas de numéro. Un lien ne peut pas joindre d'image.
-export function lienWhatsApp(telephone, message) {
-  const numero = chiffres(telephone).replace("+", "");
+export function lienWhatsApp(telephone, message, options) {
+  const numero = chiffres(telephone, options).replace("+", "");
   return `https://wa.me/${numero}?text=${encodeURIComponent(message)}`;
 }
 
@@ -768,7 +788,7 @@ export function controlesVoucher(r, client = {}, type = "") {
 export function feuilleDuJour(reservations, date, contexte, ecartees = new Set()) {
   const groupes = new Map();
   for (const r of reservations) {
-    if (r.date_service !== date || r.statut === "annule" || ecartees.has(r.dossier_id)) continue;
+    if (r.date_service !== date || r.statut === "annule" || ecartees.has(r.dossier_id) || estFraisDeParc(r)) continue;
     const cle = r.partenaire_id || "";
     const g = groupes.get(cle) || { partenaire_id: r.partenaire_id || null, nom: (r.partenaire_id && contexte.partenaire(r.partenaire_id)) || "", lignes: [], adultes: 0, enfants: 0 };
     const c = contexte.client(r) || {};

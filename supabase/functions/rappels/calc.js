@@ -23,8 +23,11 @@ export function entitesLisibles({ profil, membres, roles }) {
     .map((m) => m.entite_id);
 }
 
+// Frais de parc : une somme à payer sur l'île, pas un service qui part (même règle que dans l'outil, operations-calc.mjs).
+const estFraisDeParc = (r) => !r.partenaire_id && /frais de parc|park fee|national park/i.test(r.libelle || "");
+
 function servicesDuJour(reservations, date, { entiteIds, ecartes }) {
-  return reservations.filter((r) => r.date_service === date && r.statut !== "annule" && !ecartes.has(r.dossier_id) && (entiteIds === null || entiteIds.includes(r.entite_id)));
+  return reservations.filter((r) => r.date_service === date && r.statut !== "annule" && !ecartes.has(r.dossier_id) && !estFraisDeParc(r) && (entiteIds === null || entiteIds.includes(r.entite_id)));
 }
 
 function ventilation(liste, nomEntite, compter = (rs) => rs.length) {

@@ -1,4 +1,4 @@
-import { etat, resumes, nomClient, nomPartenaire, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif, dossiersAnnules, modeExcursions } from "../etat.mjs";
+import { etat, resumes, netReservation, nomClient, nomPartenaire, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif, dossiersAnnules, modeExcursions } from "../etat.mjs";
 import { reglagesIncomplets } from "../defauts.mjs";
 import { ouvrirDemande } from "./demande.mjs";
 import { h, icone } from "../ui.mjs";
@@ -63,7 +63,7 @@ export async function tableauDeBord() {
   const ceMois = await paiementsPeriode(`${ajd.slice(0, 7)}-01`, finDuMois(ajd));
   const taches = aFaire(rs, ajd, reglages());
   const contrats = peut("partenaires.lire") && moduleActif("partenaires") ? contratsAEcheance(etat.db.partenaires, ajd) : [];
-  const ag = agenda(etat.db.reservations, ajd, dossiersAnnules());
+  const ag = agenda(etat.db.reservations, ajd, dossiersAnnules(), { netDe: netReservation });
   const aConfirmer = [...ag.enRetard, ...ag.aConfirmer];
   const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
   const sectionAgenda = (titre, rs, videTexte) => h("section", null, h("h2", null, titre, h("span", { class: "tag" }, rs.length)), rs.length ? listeReservations(rs, { apres: rafraichir }) : h("p", { class: "vide-court" }, videTexte));
@@ -87,7 +87,7 @@ export async function tableauDeBord() {
       { class: "chiffres rail" },
       chiffre(formatSommes(encaisser.map((r) => ({ montant: r.reste, devise: r.devise })), reglages().devise), tr("Reste à encaisser"), pluriel(encaisser.length, N_("dossier accepté"), N_("dossiers acceptés")), "#/dossiers?onglet=encaisser&tri=reste"),
       chiffre(formatSommes(ceMois.map((p) => ({ montant: p.montant, devise: deviseDe[p.dossier_id] })), reglages().devise), tr("Encaissé en {mois}", { mois: nomMois(ajd) }), pluriel(ceMois.length, N_("paiement"), N_("paiements"))),
-      chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), tr("Devis en attente de réponse"), pluriel(attente.length, N_("devis envoyé"), N_("devis envoyés")), "#/dossiers?onglet=attente")
+      modeExcursions() ? null : chiffre(formatSommes(attente.map((r) => ({ montant: r.total, devise: r.devise })), reglages().devise), tr("Devis en attente de réponse"), pluriel(attente.length, N_("devis envoyé"), N_("devis envoyés")), "#/dossiers?onglet=attente")
     ) : null,
     moduleActif("reservations") && ag.hier.length ? sectionAgenda(tr("Hier : à recontacter pour avoir leur avis"), ag.hier, "") : null,
     moduleActif("reservations") && aConfirmer.length
