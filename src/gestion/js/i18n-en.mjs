@@ -26,6 +26,13 @@ export const EN = {
   "Aucun service payé sur place : pas de commission à recevoir.": "No on-site service: no commission to receive.",
   "Résumé du dossier": "File summary",
   "Écart sur les commissions réglées": "Difference on settled commissions",
+  // Carte de réservation compacte
+  "Renvoyer le voucher": "Resend the voucher",
+  "Changer le statut": "Change the status",
+  "Plus d'actions : {libelle}": "More actions: {libelle}",
+  "Plus d'actions": "More actions",
+  "Voucher envoyé": "Voucher sent",
+  "Comment ça marche ?": "How does it work?",
   // Carnet envoyé
   "Carnet envoyé": "Travel booklet sent",
   "Carnet de voyage envoyé": "Travel booklet sent",

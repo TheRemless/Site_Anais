@@ -172,32 +172,23 @@ const TEXTES_ATTENTE = {
   hier: N_("Demandée hier"),
 };
 
-// Ligne d'état et boutons de la carte : ce qui est en cours et le geste suivant.
-export function actionsPrestataire(r, { apres }) {
-  if (!r.partenaire_id || r.statut === "annule") return null;
-  const changer = h("button", { class: "lien", type: "button", onclick: () => changerReservation(r, apres) }, tr("Changer le jour, l'heure ou les personnes"));
-  if (r.statut === "a_demander") {
-    return h(
-      "div",
-      { class: "prestataire-actions" },
-      refusee(r) ? h("p", { class: "prestataire-etat refus" }, tr("Refusée par le prestataire le {date}. À redemander ailleurs ou à une autre date.", { date: formatDate(r.details.refus_le) })) : null,
-      h("button", { class: "principal petit", type: "button", onclick: () => demander(r, apres) }, tr("Demander au prestataire")),
-      changer
-    );
-  }
-  if (r.statut === "confirme") return h("div", { class: "prestataire-actions" }, changer);
-  if (r.statut !== "demande") return null;
+// Ce que la carte de réservation doit savoir du prestataire : la ligne d'état (texte) et les gestes possibles, un par clé (la carte choisit
+// lequel devient le geste principal et lesquels vont dans le menu « … », voir carte-reservation-calc.mjs).
+export function gestesPrestataire(r, { apres }) {
+  const aucun = { etat: null, faire: {}, relancer: false, jourDeDemande: false };
+  if (!r.partenaire_id || r.statut === "annule") return aucun;
+  const faire = {
+    changer: () => changerReservation(r, apres),
+    demander: () => demander(r, apres),
+    confirmer: () => confirmee(r, apres),
+    autre_reponse: () => autreReponse(r, apres),
+    relancer: () => relancer(r, apres),
+    pas_envoyee: () => pasEnvoyee(r, apres),
+  };
+  if (r.statut === "a_demander") return { ...aucun, faire, etat: refusee(r) ? h("p", { class: "prestataire-etat refus" }, tr("Refusée par le prestataire le {date}. À redemander ailleurs ou à une autre date.", { date: formatDate(r.details.refus_le) })) : null };
+  if (r.statut !== "demande") return { ...aucun, faire };
   const a = attente(r, aujourdhui());
   const texte = !a || a.jours === null ? tr("Demandée, en attente") : a.jours === 0 ? tr(TEXTES_ATTENTE.jour) : a.jours === 1 ? tr(TEXTES_ATTENTE.hier) : tr("En attente depuis {n} jours", { n: a.jours });
-  return h(
-    "div",
-    { class: "prestataire-actions" },
-    h("p", { class: `prestataire-etat${a && a.relancer ? " long" : ""}` }, texte, a && a.relances ? ` · ${pluriel(a.relances, N_("{n} relance"), N_("{n} relances"))}` : "", ),
-    // Le jour même, un vrai bouton (et non un lien) : le message a pu ne pas partir de WhatsApp.
-    a && a.jours === 0 ? h("button", { class: "secondaire petit pas-envoyee", type: "button", onclick: () => pasEnvoyee(r, apres) }, tr("Le message n'est pas parti ? Remettre à demander")) : null,
-    h("button", { class: "principal petit", type: "button", onclick: () => confirmee(r, apres) }, tr("Confirmée")),
-    h("button", { class: "secondaire petit", type: "button", onclick: () => autreReponse(r, apres) }, tr("Autre réponse")),
-    h("button", { class: a && a.relancer ? "principal petit" : "secondaire petit", type: "button", onclick: () => relancer(r, apres) }, tr("Relancer")),
-    changer
-  );
+  const etat = h("p", { class: `prestataire-etat${a && a.relancer ? " long" : ""}` }, texte, a && a.relances ? ` · ${pluriel(a.relances, N_("{n} relance"), N_("{n} relances"))}` : "");
+  return { etat, faire, relancer: !!(a && a.relancer), jourDeDemande: !!(a && a.jours === 0) };
 }

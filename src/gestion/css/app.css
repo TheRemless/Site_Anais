@@ -1301,3 +1301,18 @@ details > summary { padding-block: 11px; margin: 0; }
 .zones-pickup .champ { margin-bottom: 6px; }
 .zones-pickup .champ select { min-height: 44px; }
 .zones-pickup .aide { margin: 0 0 6px; }
+
+/* ---- Carte de réservation : un geste principal et un menu « … » ---- */
+.carte-barre { grid-column: 1 / -1; display: flex; align-items: stretch; gap: 8px; margin-top: 10px; }
+.carte-barre .principal { flex: 1 1 auto; min-height: 44px; }
+.carte-barre.seul { justify-content: flex-end; }
+.carte-barre .bouton-menu { flex: none; width: 48px; min-height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.carte-barre .bouton-menu svg { stroke-width: 3; }
+.carte-lien.statique > .prestataire-etat { grid-column: 1 / -1; margin: 6px 0 0; }
+.menu-gestes { display: grid; gap: 8px; padding-top: 4px; }
+.menu-geste { width: 100%; min-height: 48px; justify-content: flex-start; text-align: left; }
+.menu-geste.courant { border-color: var(--teal); background: var(--teal-100); }
+@media (min-width: 720px) { .carte-barre { justify-content: flex-end; } .carte-barre .principal { flex: 0 1 auto; padding-left: 20px; padding-right: 20px; } }
+.aide-repli { margin: 0 0 10px; }
+.aide-repli > summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; font-weight: 600; color: var(--teal-700); }
+.aide-repli > .aide { margin-top: 0; }

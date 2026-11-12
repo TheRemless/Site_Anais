@@ -2,7 +2,7 @@
 import { etat, dossiersAnnules, peut, inserer, modifier, modifierProtege, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions } from "../etat.mjs";
 import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
-import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
+import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE, ajouterJours } from "../calc.mjs";
 import { STATUTS_RESERVATION, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, CHAMPS_VOUCHER, TITRES_VOUCHER, datesDepuisReservations, descriptionService, cleMessageClient, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, nbJoursLocation, lieuParDefaut, notePasseport, alerteAvantVeille } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
@@ -17,7 +17,10 @@ import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, proposerDePrevenir, synchroniserDatesDossier } from "./suivi-facture.mjs";
 export { synchroniserDatesDossier };
 import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
-import { actionsPrestataire, messageAuPrestataire as prevenirPrestataire } from "./prestataire.mjs";
+import { gestesPrestataire, messageAuPrestataire as prevenirPrestataire } from "./prestataire.mjs";
+import { vouchersDuDossier } from "./voucher.mjs";
+import { envoyerVoucher } from "./voucher-envoi.mjs";
+import { gestePrincipal, entreesMenu } from "../carte-reservation-calc.mjs";
 import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } from "./recalcul-commission.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
@@ -79,22 +82,47 @@ async function annulerService(r, apres) {
   }
 }
 
-function selecteurStatut(r, apres) {
-  const s = h("select", { class: `statut-choix r-${r.statut}`, "aria-label": tr("Statut de la réservation « {libelle} »", { libelle: r.libelle }), onchange: async () => {
-    if (s.value === "annule" && r.statut !== "annule") {
-      if (!(await annulerService(r, apres))) s.value = r.statut;
-      return;
-    }
-    try {
-      await modifier("reservations", r.id, { statut: s.value });
-      apres();
-    } catch (err) {
-      s.value = r.statut;
-      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
-    }
-  } }, Object.entries(STATUTS_RESERVATION).map(([v, l]) => h("option", { value: v }, tr(l))));
-  s.value = r.statut;
-  return s;
+// Change le statut d'une réservation. Annuler passe par le parcours complet (facture, prestataire). Renvoie true si c'est fait.
+async function appliquerStatut(r, valeur, apres) {
+  if (valeur === r.statut) return true;
+  if (valeur === "annule") return annulerService(r, apres);
+  try {
+    await modifier("reservations", r.id, { statut: valeur });
+    apres();
+    return true;
+  } catch (err) {
+    toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+    return false;
+  }
+}
+
+// Feuille de choix du statut : la réservation suit d'habitude le geste principal de sa carte, ce choix sert aux corrections.
+function choisirStatut(r, apres) {
+  const fermer = modal(
+    tr("Statut de la réservation « {libelle} »", { libelle: r.libelle }),
+    h(
+      "div",
+      { class: "modal-corps menu-gestes" },
+      Object.entries(STATUTS_RESERVATION).map(([v, l]) =>
+        h("button", { class: `secondaire menu-geste${v === r.statut ? " courant" : ""}`, type: "button", "aria-current": v === r.statut ? "true" : "false", onclick: () => (fermer(), appliquerStatut(r, v, apres)) }, pastilleReservation(v))
+      )
+    ),
+    { feuille: true, protege: false }
+  );
+}
+
+// Fenêtre de modification complète de la réservation.
+function ouvrirModification(r, apres) {
+  const fermer = modal(tr("Réservation"), formulaireReservation(r, () => (fermer(), apres())), { brouillon: `reservation:${r.id}` });
+}
+
+// Menu « … » d'une carte : les gestes qui ne sont pas le geste principal.
+function ouvrirMenu(r, entrees) {
+  const fermer = modal(
+    r.libelle,
+    h("div", { class: "modal-corps menu-gestes" }, entrees.map(([libelle, fait]) => h("button", { class: "secondaire menu-geste", type: "button", onclick: () => (fermer(), fait()) }, libelle))),
+    { feuille: true, protege: false }
+  );
 }
 
 // L'autre sens : la facture reprend la date, les personnes et le mode de règlement de la réservation (le montant, lui, reste celui de la facture).
@@ -135,6 +163,36 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   // Bundhaya se paie d'avance : à reverser au prestataire avant la veille du départ (traversées qui ne partent pas de Koh Lanta).
   const trajetBateau = r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) : null;
   const avantVeille = alerteAvantVeille(r, { partenaire: nomPartenaire(r.partenaire_id), trajet: trajetBateau, paye: !!(n && n.net_prevu !== null && n.net_prevu !== undefined && Number(n.net_paye || 0) >= Number(n.net_prevu)) });
+  // Un seul geste principal par carte (l'étape suivante) ; le reste est dans le menu « … ».
+  const gestes = ecrit ? gestesPrestataire(r, { apres }) : { etat: null, faire: {}, relancer: false, jourDeDemande: false };
+  const vx = r.statut === "confirme" ? vouchersDuDossier(r.dossier_id).find((x) => x.reservation.id === r.id) || null : null;
+  const voucherEnvoye = !!(vx && r.details && r.details.envois && r.details.envois.client);
+  const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, passee: !!(r.date_service && r.date_service < aujourdhui()), relancer: gestes.relancer, jourDeDemande: gestes.jourDeDemande, voucher: vx ? { envoye: voucherEnvoye } : null, liee: modeExcursions() && lieeFacture(r) };
+  const GESTES = {
+    fait: [tr("S'est bien passé"), () => serviceFait(r, apres)],
+    demander: [tr("Demander au prestataire"), gestes.faire.demander],
+    confirmer: [tr("Confirmée"), gestes.faire.confirmer],
+    relancer: [tr("Relancer"), gestes.faire.relancer],
+    autre_reponse: [tr("Autre réponse"), gestes.faire.autre_reponse],
+    pas_envoyee: [tr("Le message n'est pas parti ? Remettre à demander"), gestes.faire.pas_envoyee],
+    changer: [tr("Changer le jour, l'heure ou les personnes"), gestes.faire.changer],
+    message_partenaire: [tr("Message partenaire"), () => messagePartenaire(r)],
+    message_client: [tr("Message client"), () => messageClient(r, cleMessageClient(r.date_service, aujourdhui()))],
+    modifier: [tr("Modifier"), () => ouvrirModification(r, apres)],
+    dupliquer: [tr("Dupliquer"), () => dupliquerService(r, apres)],
+    voucher: [voucherEnvoye ? tr("Renvoyer le voucher") : tr("Envoyer le voucher"), () => vx && envoyerVoucher(vx)],
+    statut: [tr("Changer le statut"), () => choisirStatut(r, apres)],
+  };
+  const principal = gestePrincipal(ctx);
+  const menu = entreesMenu(ctx);
+  const barre = principal || menu.length
+    ? h(
+        "div",
+        { class: principal ? "carte-barre" : "carte-barre seul" },
+        principal ? h("button", { class: "principal", type: "button", onclick: GESTES[principal][1] }, GESTES[principal][0]) : null,
+        menu.length ? h("button", { class: "secondaire bouton-menu", type: "button", "aria-haspopup": "dialog", "aria-label": tr("Plus d'actions : {libelle}", { libelle: r.libelle }), title: tr("Plus d'actions"), onclick: () => ouvrirMenu(r, menu.map((k) => GESTES[k])) }, icone("ellipsis", 22)) : null
+      )
+    : null;
   return h(
     "div",
     { class: "carte-lien statique" },
@@ -153,10 +211,10 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     h(
       "span",
       { class: "carte-pied" },
-      h("span", null, ecrit ? selecteurStatut(r, apres) : pastilleReservation(r.statut), r.reference_partenaire ? h("span", { class: "tag" }, r.reference_partenaire) : null, r.paye_sur_place ? h("span", { class: "tag" }, tr("Sur place")) : null, !r.paye_sur_place && n && n.net_prevu != null ? h("span", { class: "tag" }, n.net_paye != null ? tr("net {prix}, payé", { prix: prix(n.net_prevu) }) : tr("net {prix}", { prix: prix(n.net_prevu) })) : null, avecDossier && d ? h("a", { class: "tag", href: `#/dossier/${d.id}` }, d.ref) : null),
-      h("span", { class: "carte-actions" }, ecrit && r.date_service && r.date_service < aujourdhui() && (r.statut === "a_demander" || r.statut === "demande") ? h("button", { class: "principal petit", type: "button", onclick: () => serviceFait(r, apres) }, tr("S'est bien passé")) : null, r.partenaire_id ? h("button", { class: "secondaire petit", type: "button", onclick: () => messagePartenaire(r) }, tr("Message partenaire")) : null, c ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageClient(r.date_service, aujourdhui())) }, tr("Message client")) : null, ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Réservation"), formulaireReservation(r, () => (fermer(), apres())), { brouillon: `reservation:${r.id}` }); } }, tr("Modifier")) : null, ecrit && modeExcursions() && lieeFacture(r) ? h("button", { class: "secondaire petit", type: "button", onclick: () => dupliquerService(r, apres) }, tr("Dupliquer")) : null)
+      h("span", null, pastilleReservation(r.statut), r.reference_partenaire ? h("span", { class: "tag" }, r.reference_partenaire) : null, r.paye_sur_place ? h("span", { class: "tag" }, tr("Sur place")) : null, !r.paye_sur_place && n && n.net_prevu != null ? h("span", { class: "tag" }, n.net_paye != null ? tr("net {prix}, payé", { prix: prix(n.net_prevu) }) : tr("net {prix}", { prix: prix(n.net_prevu) })) : null, voucherEnvoye ? h("span", { class: "tag" }, tr("Voucher envoyé")) : null, avecDossier && d ? h("a", { class: "tag", href: `#/dossier/${d.id}` }, d.ref) : null)
     ),
-    ecrit ? actionsPrestataire(r, { apres }) : null
+    gestes.etat,
+    barre
   );
 }
 
