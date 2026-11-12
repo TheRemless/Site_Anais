@@ -76,6 +76,9 @@ export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dr
   ];
 }
 
+// Lignes ajoutées par les valeurs trop longues pour leur colonne (96 mm : 40 caractères mesurés en 14,5 pt, 38 par prudence) : de quoi resserrer la page.
+export const lignesEnPlus = (valeurs, parLigne = 38) => (valeurs || []).reduce((n, v) => n + Math.max(0, Math.ceil(String(v || "").length / parLigne) - 1), 0);
+
 // Pied du voucher, mot pour mot d'après le modèle d'Anaïs (12.11.2026). `{entreprise}` = nom en capitales sur le modèle.
 export const PIED_BOOKING = {
   intro: "We’re happy to confirm your booking details as follows:",

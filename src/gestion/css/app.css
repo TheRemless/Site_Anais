@@ -1320,23 +1320,30 @@ details > summary { padding-block: 11px; margin: 0; }
 
 /* ---- Session Taxi (12.11.2026) : « Booking confirmation » de VIP Taxi Lanta, d'après le modèle d'Anaïs ---- */
 .voucher.voucher-taxi { min-height: 0; height: 296mm; display: flex; flex-direction: column; --vt-bleu: #0f75a7; --vt-cle: #0b4f71; --vt-encre: #08231e; --vt-or: #d9c28a; --vt-or-clair: #ece4b8; --vt-bleu-pale: #c4e7ef; position: relative; padding: 0; overflow: hidden; color: var(--vt-encre); font-family: "Raleway", system-ui, sans-serif; line-height: 1.35; }
-.vt-haut { position: relative; height: 84mm; }
-.vt-bandeau { position: relative; height: 80mm; overflow: hidden; }
-.vt-photo { display: block; width: 100%; height: 74mm; object-fit: cover; object-position: center 60%; }
-.vt-vague { position: absolute; left: -15%; width: 130%; top: 64mm; height: 60mm; box-sizing: border-box; border-top: 4.5mm solid var(--vt-bleu); border-radius: 50% / 24mm; background: #fff; }
-.vt-sceau { position: absolute; z-index: 1; right: 6mm; top: 40mm; width: 72mm; height: 72mm; box-sizing: border-box; border: 2.6mm solid var(--vt-bleu); border-radius: 50%; background: #fff; overflow: hidden; }
+/* En-tête mesuré sur le modèle d'Anaïs (1414 px pour 210 mm) : photo de 90,9 mm, vague de 3,4 mm qui descend de 85,7 mm à gauche
+   à 90,9 mm vers 115 mm et remonte à 87,9 mm à droite, sceau de 77,5 mm centré à 165,2 mm et 91,6 mm. La photo est celle du modèle :
+   le sceau et la vague recouvrent exactement les zones effacées (logo et vague d'origine). */
+.vt-haut { position: relative; height: 94mm; }
+.vt-bandeau { position: relative; height: 96mm; overflow: hidden; }
+.vt-photo { display: block; width: 100%; height: 90.9mm; object-fit: cover; object-position: center top; }
+.vt-vague { position: absolute; left: -35mm; width: 300mm; top: 90.9mm; height: 60mm; box-sizing: border-box; border-top: 3.4mm solid var(--vt-bleu); border-radius: 50% / 14.5mm; background: #fff; }
+.vt-sceau { position: absolute; z-index: 1; right: 6.1mm; top: 52.9mm; width: 77.5mm; height: 77.5mm; box-sizing: border-box; border: 1.6mm solid var(--vt-bleu); border-radius: 50%; background: #fff; overflow: hidden; }
 .vt-sceau img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .vt-titre { margin: 0; padding: 4mm 0 0 12mm; color: var(--vt-bleu); font-size: 35pt; font-weight: 700; line-height: 1.04; letter-spacing: 0.01em; }
 .vt-intro { margin: 3mm 0 0; padding-left: 9mm; font-size: 13.5pt; }
 .vt-cadre { margin: 7mm 8mm 0; padding: 3mm 6mm 3mm; border: 0.5mm solid var(--vt-or); border-radius: 6mm; }
 .vt-rang { display: grid; grid-template-columns: 82mm 1fr; align-items: baseline; gap: 4mm; padding: 2.4mm 0 2.1mm; border-bottom: 0.35mm dotted var(--vt-or); }
 .vt-rang:last-child { border-bottom: 0; }
+/* Valeur longue sur deux lignes : rangs resserrés (jusqu'à deux lignes en plus), puis texte plus petit au-delà. */
+.vt-serre .vt-rang { padding: 1.2mm 0 1mm; }
+.vt-serre .vt-cadre { margin-top: 5mm; }
+.vt-serre-fort .vt-cle, .vt-serre-fort .vt-valeur { font-size: 12.5pt; }
 .vt-cle, .vt-valeur { margin: 0; }
 .vt-cle { padding-left: 1mm; color: var(--vt-cle); font-size: 14.5pt; font-weight: 700; letter-spacing: 0.12em; }
 .vt-valeur { font-size: 14.5pt; overflow-wrap: anywhere; }
 .vt-valeur sup { font-size: 0.6em; line-height: 0; }
 .vt-bas { display: grid; grid-template-columns: 1fr 78mm; align-items: end; margin-top: auto; padding-top: 6mm; }
-.vt-pied { padding: 0 0 7mm 8mm; font-size: 11.2pt; line-height: 1.3; }
+.vt-pied { padding: 0 0 4.5mm 8mm; font-size: 11.2pt; line-height: 1.3; }
 .vt-pied p { margin: 0 0 3.6mm; }
 .vt-pied p:last-child { margin-bottom: 0; }
 .vt-contact { padding: 9mm 6mm 8mm 8mm; border-top-left-radius: 22mm; background: var(--vt-bleu); color: var(--vt-bleu-pale); text-align: right; }

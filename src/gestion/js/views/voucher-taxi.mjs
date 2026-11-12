@@ -2,7 +2,7 @@
 // Même chemin que les vouchers de Secret (image pour WhatsApp, PDF sur ordinateur) : renderVoucher() passe la main ici en mode taxi.
 // Toujours en anglais. Les textes du pied sont ceux du modèle, mot pour mot (taxi-calc.mjs).
 import { h } from "../ui.mjs";
-import { champsBooking, PIED_BOOKING } from "../taxi-calc.mjs";
+import { champsBooking, PIED_BOOKING, lignesEnPlus } from "../taxi-calc.mjs";
 
 const LOGO_DEFAUT = "assets/logo-vip-taxi.webp";
 const BANDEAU_DEFAUT = "assets/taxi-bandeau.webp";
@@ -16,9 +16,11 @@ export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", d
     c.date ? [`${c.date.mois} ${c.date.jour}`, h("sup", null, c.date.suffixe), ` ${c.date.annee}`] : c.valeur;
   const logo = (regl.apparence && regl.apparence.logo) || LOGO_DEFAUT;
   const lieu = adresse || PIED_BOOKING.lieu;
+  // La page A4 est pleine (en-tête du modèle) : une valeur qui passe à la ligne resserre les rangs pour que le pied reste visible.
+  const serre = lignesEnPlus(champs.map((c) => (c.date ? "" : c.valeur)));
   return h(
     "div",
-    { class: "voucher voucher-taxi" },
+    { class: `voucher voucher-taxi${serre >= 1 ? " vt-serre" : ""}${serre >= 3 ? " vt-serre-fort" : ""}` },
     h(
       "div",
       { class: "vt-haut" },
