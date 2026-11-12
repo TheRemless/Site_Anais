@@ -18,13 +18,23 @@ test("import : une sauvegarde d'une autre entreprise est refusée, pas la bonne 
   assert.equal(refus.erreur, "autre_entreprise");
   assert.equal(verifierSauvegarde({ clients: "oups" }, "secret").erreur, "format");
   assert.equal(verifierSauvegarde(null, "secret").erreur, "format");
+  // Fichiers mal formés : rien qui ressemble à une sauvegarde, éléments qui ne sont pas des objets, partenaires sans identifiant.
+  assert.equal(verifierSauvegarde({}, "secret").erreur, "format");
+  assert.equal(verifierSauvegarde([], "secret").erreur, "format");
+  assert.equal(verifierSauvegarde({ clients: [null] }, "secret").erreur, "format");
+  assert.equal(verifierSauvegarde({ partenaires: [{ nom: "sans id" }] }, "secret").erreur, "format");
+  assert.equal(verifierSauvegarde({ partenaires: [{ id: "p1" }], trajets: [{ id: "" }] }, "secret").erreur, "format");
+  assert.equal(verifierSauvegarde({ partenaires: [{ id: "p1" }] }, "secret").ok, true);
 });
 
 test("remplacer la base partenaires : ce qui n'est plus dans le fichier, et les réservations qui perdraient leur lien", () => {
-  const actuel = { partenaires: [{ id: "p1" }, { id: "p2" }], prestations: [{ id: "s1" }, { id: "s2" }], trajets: [{ id: "t1" }] };
+  const actuel = { partenaires: [{ id: "p1" }, { id: "p2" }], prestations: [{ id: "s1", partenaire_id: "p1" }, { id: "s2", partenaire_id: "p1" }], trajets: [{ id: "t1", partenaire_id: "p1" }] };
   const fichier = { partenaires: [{ id: "p1" }], prestations: [{ id: "s1" }], trajets: [] };
   const a = absentsDeLaSauvegarde(actuel, fichier);
   assert.deepEqual(a, { partenaires: ["p2"], prestations: ["s2"], trajets: ["t1"] });
+  // Un partenaire absent emporte ses tarifs et ses trajets, même si le fichier n'a pas ces rubriques.
+  const cascade = absentsDeLaSauvegarde({ partenaires: [{ id: "p1" }, { id: "p2" }], prestations: [{ id: "s1", partenaire_id: "p2" }, { id: "s3", partenaire_id: "p1" }], trajets: [{ id: "t2", partenaire_id: "p2" }] }, { partenaires: [{ id: "p1" }] });
+  assert.deepEqual(cascade, { partenaires: ["p2"], prestations: ["s1"], trajets: ["t2"] });
   const reservations = [
     { id: "r1", partenaire_id: "p1", prestation_id: "s1", trajet_id: null },
     { id: "r2", partenaire_id: "p2", prestation_id: "s2", trajet_id: null },

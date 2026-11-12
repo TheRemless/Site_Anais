@@ -89,15 +89,28 @@ await A.exec("delete from dossiers where id = '00000000-0000-4000-8000-000000000
 ok((await A.query("select count(*)::int n from corbeille")).rows[0].n === 1, "le dossier D1 est en corbeille");
 await A.exec("alter table reservations add column ajoutee_apres boolean not null default false");
 await A.exec("alter table paiements add column note_apres text not null default ''");
+// Le partenaire et le tarif de la réservation archivée disparaissent aussi (« remplacer la base partenaires ») : la restauration doit passer quand même.
+await A.exec("delete from partenaires where id = '00000000-0000-4000-8000-0000000000b1'");
 const id = (await A.query("select id from corbeille limit 1")).rows[0].id;
 let r;
 try { r = await A.query("select restaurer_dossier($1) as d", [id]); } catch (e) { r = { err: e.message }; }
 ok(!r.err && r.rows[0].d === "00000000-0000-4000-8000-0000000000d1", "restaurer_dossier réussit malgré les colonnes NOT NULL ajoutées depuis" + (r.err ? ` (${r.err})` : ""));
 if (!r.err) {
   ok((await A.query("select count(*)::int n from reservations where dossier_id = '00000000-0000-4000-8000-0000000000d1' and ajoutee_apres = false")).rows[0].n === 1, "la réservation est revenue, la nouvelle colonne a sa valeur par défaut");
+  ok((await A.query("select count(*)::int n from reservations where id = '00000000-0000-4000-8000-0000000000f1' and partenaire_id is null and prestation_id is null")).rows[0].n === 1, "la réservation revient avec son partenaire et son tarif remis à vide (ils n'existent plus)");
   ok((await A.query("select count(*)::int n from reservations_nets where reservation_id = '00000000-0000-4000-8000-0000000000f1'")).rows[0].n === 1, "ses nets sont revenus");
   ok((await A.query("select count(*)::int n from documents where dossier_id = '00000000-0000-4000-8000-0000000000d1'")).rows[0].n === 1, "le document est revenu");
 }
+
+let wl; try { await A.exec("select restaurer_lignes('profils', '[{\"user_id\": \"x\"}]'::jsonb)"); wl = {}; } catch (e) { wl = { err: e.message }; }
+ok(!!wl.err && /non restaurable/.test(wl.err), "restaurer_lignes refuse une table hors liste (profils)");
+let permis;
+try {
+  await A.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${admin}', false);`);
+  await A.exec("select restaurer_lignes('taches', '[]'::jsonb)");
+  permis = { ok: true };
+} catch (e) { permis = { err: e.message }; } finally { await A.exec("reset role"); }
+ok(!!permis.err, "restaurer_lignes n'est pas appelable par une personne connectée");
 
 console.log("3. Un client qui a un dossier dans la corbeille ne se supprime pas");
 await A.exec("delete from dossiers where id = '00000000-0000-4000-8000-0000000000d2'");
