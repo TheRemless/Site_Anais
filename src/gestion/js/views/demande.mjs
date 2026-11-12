@@ -203,6 +203,7 @@ export function ouvrirDemande() {
     const choisie = offreChoisie(liste);
     const marque = (d.marque || "").toLowerCase();
     const mauvaise = marque && !entiteActive().nom.toLowerCase().includes(marque.split(" ")[0]);
+    const sitesLignes = lignesSite(d);
     const proches = clientsConnus();
     const connu = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
     const propose = !connu ? proches.find((x) => x.raison === "nom") : null;
@@ -212,7 +213,7 @@ export function ouvrirDemande() {
       ...[
         mauvaise ? h("p", { class: "bandeau-info", role: "status" }, tr("Cette demande est adressée à {marque}. Changez d'entreprise en haut de l'écran pour utiliser sa base de prix.", { marque: d.marque })) : null,
         d.siegeEnfant || d.siegeBebe || d.bebes ? h("p", { class: "aide" }, [d.bebes ? tr("{n} bébé : noté dans le dossier.", { n: d.bebes }) : "", d.siegeEnfant ? tr("Siège enfant demandé.") : "", d.siegeBebe ? tr("Siège bébé demandé.") : ""].filter(Boolean).join(" ")) : null,
-        lignesSite(d).length ? h("ul", { class: "demande-site" }, lignesSite(d).map((l) => h("li", null, l))) : null,
+        sitesLignes.length ? h("ul", { class: "demande-site" }, sitesLignes.map((l) => h("li", null, l))) : null,
         connu
           ? h("p", { class: "demande-client connu", role: "status" }, h("span", null, tr("Client déjà connu : {nom}", { nom: nomClient(connu) }), connu.telephone ? ` · ${connu.telephone}` : ""), h("button", { class: "lien", type: "button", onclick: () => (refuse.add(connu.id), (clientId = ""), !d.hotelSaisi && d.hotel === hotelDuClient(connu) && (d.hotel = ""), maj()) }, tr("Nouveau client")))
           : propose

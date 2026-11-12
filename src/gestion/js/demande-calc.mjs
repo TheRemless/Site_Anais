@@ -35,12 +35,13 @@ const ENTETES_SITE = [
   [/^speedboat request:\s*(.+)$/i, "speedboat"],
   [/^trip list:\s*(\d+)/i, "liste"],
 ];
-const SEP = /\s+[–—-]\s+/;
+// Le site sépare la route et l'option par un tiret long (–) : un tiret court entre espaces fait partie d'un nom de lieu.
+const SEP = /\s+[–—]\s+/;
 const heureDe = (v) => {
   const m = /(\d{1,2}):(\d{2})/.exec(v || "");
   return m ? `${m[1].padStart(2, "0")}:${m[2]}` : "";
 };
-const BOUT_SANS_HOTEL = /airport|pier|ferry|bus|terminal|station|KBV|HKT|port\b/i;
+const BOUT_SANS_HOTEL = /\b(?:airport|pier|ferry|bus|terminal|KBV|HKT|port)\b/i;
 
 // « 2 adults, 1 child (age 7) », « 2 adults, 3 children (ages under 1, 3 and 10) » : adultes, enfants (3 ans et plus), bébés (moins de 3 ans) et âges.
 function lireInvites(v) {

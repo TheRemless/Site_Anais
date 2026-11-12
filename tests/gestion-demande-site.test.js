@@ -197,3 +197,12 @@ test("le tarif enfant ne se propose pas seul : l'offre de tête est le tarif adu
   assert.deepEqual(o.map((x) => x.id), ["a"]);
   assert.equal(o[0].total, 2 * 1200 + 900);
 });
+
+test("un lieu à tiret court ou un hôtel dont le nom contient « station » ou « bus » n'est pas mal découpé", () => {
+  const d = lireMessage("Transfer request: Krabi - Ao Nang to Koh Lanta\nGuests: 1 adult\nPickup: Krabi Airport\nDrop-off: Lanta Station Resort", AJD);
+  assert.equal(d.de, "Krabi - Ao Nang");
+  assert.equal(d.vers, "Koh Lanta");
+  assert.equal(d.hotel, "Lanta Station Resort");
+  const e = lireMessage("Transfer request: A to B\nGuests: 1 adult\nPickup: Bussaba Hotel\nDrop-off: Krabi Airport (KBV)", AJD);
+  assert.equal(e.hotel, "Bussaba Hotel");
+});
