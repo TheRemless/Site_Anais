@@ -1,5 +1,6 @@
 // Trace des envois de vouchers : à qui, quand. Un voucher « envoyé » n'est plus une supposition déduite du paiement.
-// `noterEnvoi(r, cible)` peut être appelée par l'écran d'envoi quand un voucher part ; en attendant, « Noter les envois » le fait à la main.
+// `noterEnvoi(r, cible)` est appelée par l'écran d'envoi (voucher-envoi.mjs) quand un voucher part : partage terminé ou conversation WhatsApp ouverte.
+// « Noter les envois » sert à corriger : un envoi fait hors de Gestion, ou parti depuis le partage du système sans destinataire connu.
 import { etat, modifier, peut, nomPartenaire } from "../etat.mjs";
 import { h, modal, toast } from "../ui.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
