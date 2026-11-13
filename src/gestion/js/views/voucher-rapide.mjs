@@ -4,7 +4,7 @@
 import { etat, inserer, modifier, reglages, chargerDossier } from "../etat.mjs";
 import { h, icone } from "../ui.mjs";
 import { uid } from "../defauts.mjs";
-import { TH, CHAMPS, valeursVides, erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, reservationApercu, correctionReservation, valeursDepuis, suggestionsLieux, mesVouchers, dateCourteTh } from "../voucher-rapide-calc.mjs";
+import { TH, CHAMPS, valeursVides, erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, reservationApercu, correctionReservation, valeursDepuis, suggestionsLieux, mesVouchers, dateCourteTh, partenaireDeTaxi } from "../voucher-rapide-calc.mjs";
 import { contenuCourse, heureBooking, estTaxi } from "../taxi-calc.mjs";
 import { numeroVoucher, nomFichierVoucher, lienWhatsApp } from "../operations-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
@@ -15,10 +15,7 @@ import { imageVoucher } from "./voucher-envoi.mjs";
 import { moyen, partager, enregistrer, copierImage } from "./partage.mjs";
 
 // Le partenaire de la course : VIP Taxi Lanta, seul partenaire de l'entreprise (lu avec le droit « voir les partenaires »).
-const partenaireTaxi = () => {
-  const actifs = etat.db.partenaires.filter((p) => p.actif !== false);
-  return actifs.find((p) => /taxi/i.test(p.nom || "")) || actifs[0] || null;
-};
+const partenaireTaxi = () => partenaireDeTaxi(etat.db.partenaires);
 const telAnais = () => chiffres((reglages().voucher || {}).whatsapp_anais || "").replace("+", "");
 
 let adresseImage = null;

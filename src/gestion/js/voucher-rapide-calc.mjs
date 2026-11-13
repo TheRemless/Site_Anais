@@ -130,6 +130,12 @@ export function donneesVoucher(v) {
   };
 }
 
+// Le partenaire d'une course : celui de l'entreprise dont le nom dit « taxi », sinon le premier actif (VIP Taxi Lanta n'en a qu'un).
+export function partenaireDeTaxi(partenaires = []) {
+  const actifs = partenaires.filter((p) => p.actif !== false);
+  return actifs.find((p) => /taxi/i.test(p.nom || "")) || actifs[0] || null;
+}
+
 // La ligne du prix interne de la course (jamais montré) : prix pour le véhicule, payé au chauffeur, sans prestation du catalogue.
 export const ligneVoucher = (x, { id, partenaireId = null }) => ({ id, kind: "ligne", libre: true, par: "veh", libelle: x.libelle, titre: x.libelle, intro: "", puces: [], unite: x.prix, qte: 1, montant: null, pct: null, date_service: x.date, partenaire_id: partenaireId, paye_sur_place: true });
 

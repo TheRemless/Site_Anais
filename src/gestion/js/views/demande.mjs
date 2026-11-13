@@ -1,7 +1,7 @@
 // « Coller une demande » : le client écrit à Anaïs sur WhatsApp, le message arrive à sa façon ou depuis le formulaire du site. On le colle ici :
 // l'outil reconnaît la date, les personnes, l'hôtel, le client et le service cité, cherche le prix dans la base partenaires, et crée le dossier
 // d'un tap. Tout ce qui a été reconnu se corrige sur place, et le prix suit.
-import { etat, entiteActive, reglages, modeExcursions, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite } from "../etat.mjs";
+import { etat, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite } from "../etat.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
@@ -14,6 +14,8 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { servicesCreation, saisieVide, nonVides } from "../creation-voucher-calc.mjs";
+import { blocServiceCreation } from "./champs-voucher.mjs";
 import { boutonLireIA, boutonRedigerIA, badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees } from "../assistant-calc.mjs";
 
@@ -147,7 +149,9 @@ export function ouvrirDemande() {
     const lieu = siteTransfert ? d.pickup || "" : offre && !estTransfert(offre) && d.hotel && d.hotel !== hotelDuClient(c) ? d.hotel : "";
     // Une zone de pickup choisie veut dire un pickup à l'hôtel : le lieu est l'hôtel, ce qui permet de retrouver la zone au prochain séjour.
     const lieuFinal = lieu || (sv.zonePickup && d.hotel ? d.hotel : "");
-    return { heure: sv.heure || "", lieu: lieuFinal, bebes: d.bebes || 0, personnes: { adultes: sv.adultes, enfants: sv.enfants }, dropoff: siteTransfert ? d.dropoff || "" : "", vol: siteTransfert ? d.vol || "" : "", bagages: siteTransfert ? d.bagages || 0 : 0, sieges: siteTransfert ? d.sieges || 0 : 0, zonePickup: sv.zonePickup || null };
+    // Les champs du voucher remplis dans la fenêtre l'emportent ; un lieu laissé vide reste celui de la demande.
+    const v = sv.saisie || saisieVide();
+    return { heure: sv.heure || "", lieu: (v.lieu || "").trim() || lieuFinal, bebes: v.bebes, personnes: { adultes: sv.adultes, enfants: sv.enfants }, sieges: v.sieges, details: nonVides(v.details), zonePickup: sv.zonePickup || null };
   }
 
   const coches = () => services.filter((sv) => sv.coche);
@@ -185,6 +189,13 @@ export function ouvrirDemande() {
     n.alertes.replaceChildren(...alertes.map((a) => h("span", { class: "demande-attention" }, a)));
     n.alertes.hidden = !alertes.length;
     n.li.classList.toggle("decoche", !sv.coche);
+    // Le bloc du voucher suit le modèle du service choisi (billet de bateau, excursion, transfert…) ; la saisie, elle, est gardée.
+    const service = servicesCreation(lignesDuService(sv, offre), { prestations: etat.db.prestations, partenaires: etat.db.partenaires })[0] || null;
+    const cle = service ? `${service.type}|${service.personnes.adultes + service.personnes.enfants > 0}` : "";
+    if (cle !== sv.cleVoucher) {
+      sv.cleVoucher = cle;
+      n.voucher.replaceChildren(...(service ? [blocServiceCreation({ service, saisie: sv.saisie, taxi: modeTaxi(), prefixe: `svc${sv.id}-v`, sauf: ["heure", "adultes", "enfants"], aideLieu: tr("Vide : celui de la demande, ou l'hôtel."), ouvert: false })].filter(Boolean) : []));
+    }
     // Le partenaire a changé (autre offre choisie) : ses zones de pickup remplacent les précédentes.
     const pid = partenaireDeOffre(sv, offre);
     if (sv.zones && pid !== sv.partenaireId) {
@@ -194,8 +205,11 @@ export function ouvrirDemande() {
   }
 
   function construireService(sv) {
-    const noeuds = { titre: h("div", { class: "dsv-titre" }), prix: h("strong", { class: "dsv-prix" }), alertes: h("p", { class: "dsv-alertes" }) };
+    const noeuds = { titre: h("div", { class: "dsv-titre" }), prix: h("strong", { class: "dsv-prix" }), alertes: h("p", { class: "dsv-alertes" }), voucher: h("div", { class: "dsv-voucher" }) };
     sv.noeuds = noeuds;
+    // Ce que la demande dit déjà pour le voucher (un trajet du site donne la dépose, le vol, les bagages et les sièges), modifiable dans la fenêtre.
+    const site = d.type === "transfer";
+    sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: site ? Number(d.sieges) || 0 : 0, details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
     const champ4 = (cle, libelle, valeur, opts = {}) => {
       const input = h("input", { id: `svc${sv.id}-${cle}`, value: valeur, autocomplete: "off", ...opts, onchange: (e) => ((sv[cle] = opts.type === "number" ? entier(e.target.value) : e.target.value), majService(sv), majTotal()) });
       return champ(libelle, input);
@@ -232,7 +246,8 @@ export function ouvrirDemande() {
       h("div", { class: "dsv-tete" }, h("label", { class: "case-tache" }, coche), noeuds.titre, noeuds.prix),
       noeuds.alertes,
       h("div", { class: "dsv-champs" }, champ4("date", tr("Date du service"), sv.date || "", { type: "date" }), champ4("heure", tr("Heure de pickup"), sv.heure || "", { type: "time" }), champ4("adultes", tr("Adultes"), String(sv.adultes), { type: "number", min: "0", step: "1", inputmode: "numeric" }), champ4("enfants", tr("Enfants"), String(sv.enfants), { type: "number", min: "0", step: "1", inputmode: "numeric" })),
-      sv.zones.noeud
+      sv.zones.noeud,
+      noeuds.voucher
     );
     majService(sv);
     return noeuds.li;
