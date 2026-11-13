@@ -66,3 +66,85 @@ test("actionSuivante : rien à encaisser quand tout est sur place ou soldé, rie
   assert.equal(actionSuivante({ ...base, statut: "accepte", reste: 300, aEnvoyer: { type: "facture" }, droit: { ...droit, docs: false } }).cle, "paiement", "sans le droit documents, pas d'envoi proposé : on passe à la suite");
   assert.equal(actionSuivante({ ...base, statut: "accepte", reste: 300 }).cle, "paiement");
 });
+
+// Lot B de l'audit du 13.11.2026 (points 4, 9 et 10).
+const droitTout = { docs: true, dossiers: true, paiements: true, finances: true };
+const vx = (r) => ({ reservation: r, type: "bateau", index: 1 });
+const envois = (client, prestataire) => ({ envois: { ...(client ? { client: "2026-11-13" } : {}), ...(prestataire ? { prestataire: "2026-11-13" } : {}) } });
+
+test("actionSuivante Secret : demander, confirmer, voucher, puis facture et paiement", async () => {
+  const { actionSuivante } = await load();
+  const base = { excursions: true, statut: "facture", facture: true, aEnvoyer: { type: "facture" }, reste: 500, droit: droitTout };
+  const a = res({ id: "a", statut: "a_demander" });
+  const b = res({ id: "b", statut: "demande" });
+  // Les deux services sont à demander : la facture non envoyée ne passe plus devant (audit, point 4).
+  const s1 = actionSuivante({ ...base, reservations: [a, res({ id: "a2", statut: "a_demander" })] });
+  assert.equal(s1.cle, "demander");
+  assert.equal(s1.reservation.id, "a");
+  const s2 = actionSuivante({ ...base, reservations: [b, res({ id: "c", statut: "confirme" })] });
+  assert.equal(s2.cle, "confirmer");
+  assert.equal(s2.reservation.id, "b");
+  const c = res({ id: "c", statut: "confirme" });
+  const s3 = actionSuivante({ ...base, reservations: [c], vouchers: [vx(c)] });
+  assert.equal(s3.cle, "voucher");
+  assert.equal(s3.voucher.reservation.id, "c");
+  // Voucher parti chez le client mais pas chez le prestataire : il reste à envoyer.
+  const c2 = res({ id: "c", statut: "confirme", details: envois(true, false) });
+  assert.equal(actionSuivante({ ...base, reservations: [c2], vouchers: [vx(c2)] }).cle, "voucher");
+  // Service sans prestataire : le client suffit.
+  const libre = res({ id: "l", statut: "confirme", partenaire_id: null, details: envois(true, false) });
+  const fini = res({ id: "c", statut: "confirme", details: envois(true, true) });
+  assert.deepEqual(actionSuivante({ ...base, reservations: [fini, libre], vouchers: [vx(fini), vx(libre)] }), { cle: "envoyer", type: "facture" });
+  assert.deepEqual(actionSuivante({ ...base, aEnvoyer: null, reservations: [fini], vouchers: [vx(fini)] }), { cle: "paiement" });
+});
+
+test("actionSuivante Secret et Taxi : chaque étape demande son droit, Taxi n'a ni facture ni paiement", async () => {
+  const { actionSuivante } = await load();
+  const c = res({ id: "c", statut: "confirme" });
+  const base = { excursions: true, statut: "facture", facture: true, aEnvoyer: { type: "facture" }, reste: 500, reservations: [res({ id: "a", statut: "a_demander" }), c], vouchers: [vx(c)] };
+  assert.equal(actionSuivante({ ...base, droit: { ...droitTout, dossiers: false } }).cle, "voucher", "sans le droit dossiers, pas de demande au prestataire");
+  assert.equal(actionSuivante({ ...base, droit: { ...droitTout, dossiers: false, finances: false } }).cle, "envoyer", "sans les finances, la section vouchers est cachée");
+  const fini = res({ id: "c", statut: "confirme", details: envois(true, true) });
+  assert.equal(actionSuivante({ ...base, taxi: true, aEnvoyer: { type: "facture" }, reservations: [fini], vouchers: [vx(fini)], droit: droitTout }), null, "Taxi : pas de facture à envoyer ni de paiement");
+  assert.equal(actionSuivante({ ...base, taxi: true, reservations: [c], vouchers: [vx(c)], droit: droitTout }).cle, "voucher", "Taxi : la Booking confirmation est l'étape suivante");
+  assert.equal(actionSuivante({ ...base, reservations: [res({ id: "x", statut: "annule" })], vouchers: [], aEnvoyer: null, statut: "solde", reste: 0, droit: droitTout }), null);
+});
+
+test("actionSuivante ZTP : « Créer la facture » quand l'acompte est reçu et qu'il n'y a pas encore de facture", async () => {
+  const { actionSuivante } = await load();
+  const base = { statut: "accepte", avecDevis: true, devisEnvoye: true, accepte: true, facture: false, reste: 500, droit: droitTout };
+  assert.deepEqual(actionSuivante({ ...base, acompteRecu: true }), { cle: "facture" });
+  assert.deepEqual(actionSuivante({ ...base, acompteRecu: false }), { cle: "paiement" }, "acompte pas encore reçu : on l'encaisse d'abord");
+  assert.deepEqual(actionSuivante({ ...base, acompteRecu: true, facture: true }), { cle: "paiement" });
+  assert.deepEqual(actionSuivante({ ...base, acompteRecu: true, droit: { ...droitTout, docs: false } }), { cle: "paiement" }, "sans le droit documents, pas de facture proposée");
+  assert.equal(actionSuivante({ ...base, acompteRecu: true, reservations: [res({ id: "a", statut: "a_demander" })] }).cle, "demander");
+  // Le mode ZTP ne propose jamais de voucher ni de confirmation.
+  const d = res({ id: "d", statut: "demande" });
+  assert.deepEqual(actionSuivante({ ...base, acompteRecu: true, reservations: [d], vouchers: [vx(d)] }), { cle: "facture" });
+});
+
+test("varianteFacture : la variante des réglages prévue pour les factures, sinon celle du devis signalée", async () => {
+  const { varianteFacture } = await load();
+  const variantes = [{ id: "qr", nom: "Avec QR Wise dans le pied de page" }, { id: "email", nom: "Coordonnées de paiement envoyées par e-mail" }];
+  assert.deepEqual(varianteFacture(variantes, "qr"), { variante: "qr", manque: true }, "aucune variante de facture : rien n'est inventé, le manque est signalé");
+  assert.deepEqual(varianteFacture([...variantes, { id: "fact", nom: "Facture : solde à la réception du carnet" }], "qr"), { variante: "fact", manque: false });
+  assert.deepEqual(varianteFacture([...variantes, { id: "inv", nom: "Invoice (balance)" }], "email"), { variante: "inv", manque: false });
+  assert.deepEqual(varianteFacture([...variantes, { id: "fact", nom: "Facture" }], "perso"), { variante: "perso", manque: false }, "un texte écrit à la main pour ce devis est gardé");
+  assert.deepEqual(varianteFacture([], ""), { variante: "", manque: true });
+  assert.deepEqual(varianteFacture([{ id: "x", nom: "Préfacture" }], "qr"), { variante: "qr", manque: true }, "un mot qui contient « facture » ne suffit pas");
+});
+
+test("envoi des documents : « Envoyer » ouvre la fenêtre d'envoi sur tous les appareils (audit, point 3)", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const lire = (f) => fs.readFileSync(path.join(__dirname, "..", "src", "gestion", "js", "views", f), "utf8");
+  const dossier = lire("dossier.mjs");
+  const editeur = lire("editeur.mjs");
+  // La fiche n'a plus de chemin « impression au bureau, envoi au téléphone ».
+  assert.doesNotMatch(dossier, /sansImpression/);
+  assert.match(dossier, /const envoyerDoc = \(doc\) =>\s*envoyerDocument\(/);
+  // L'éditeur : « Envoyer » appelle envoyerDocument sans condition ; « Imprimer » est un lien, sur ordinateur seulement.
+  assert.match(editeur, /const envoyer = \(\) => envoyerDocument\(/);
+  assert.match(editeur, /h\("button", \{ class: "principal", type: "button", onclick: envoyer \}, tr\("Envoyer"\)\)/);
+  assert.match(editeur, /sansImpression\(\) \? null : h\("button", \{ class: "lien", type: "button", title: tr\("Imprimer \(Ctrl\+P\)"\), onclick: imprimer \}, tr\("Imprimer"\)\)/);
+});

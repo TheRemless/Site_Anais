@@ -220,7 +220,7 @@ function editeurVue(id) {
     if (k === "z" && !e.shiftKey) (e.preventDefault(), annuler());
     else if ((k === "z" && e.shiftKey) || k === "y") (e.preventDefault(), retablir());
     else if (k === "s") (e.preventDefault(), sauverMaintenant().then(() => toast(tr("Enregistré."))));
-    else if (k === "p") (e.preventDefault(), telechargerPdf());
+    else if (k === "p") (e.preventDefault(), sansImpression() ? envoyer() : imprimer());
   };
   document.addEventListener("keydown", touche);
   window.addEventListener("hashchange", () => document.removeEventListener("keydown", touche), { once: true });
@@ -588,10 +588,11 @@ function editeurVue(id) {
   );
 
   // ---- Actions ------------------------------------------------------------------------------------------
-  // Un devis téléchargé part presque toujours chez le client : sans date d'envoi il n'est jamais relancé, donc on propose de la poser.
-  async function telechargerPdf() {
-    // Téléphone : « Imprimer » n'enregistre pas de PDF, on fabrique le fichier dans la page.
-    if (sansImpression()) return envoyerDocument({ ...doc }, { marquerEnvoye: () => boutonEnvoi.click() });
+  // « Envoyer » sur tous les appareils : le PDF est fabriqué dans la page, puis WhatsApp ou l'e-mail s'ouvre avec le message.
+  // Un document envoyé sans date d'envoi n'est jamais relancé : la fenêtre d'envoi propose de la poser.
+  const envoyer = () => envoyerDocument({ ...doc }, { marquerEnvoye: () => boutonEnvoi.click() });
+  // « Imprimer » (ordinateur seulement) : la fenêtre d'impression du navigateur, pour qui veut le papier ou son propre envoi.
+  async function imprimer() {
     pdf({ ...doc });
     if (aMarquerEnvoye(doc) && peut("documents.ecrire") && (await confirmer(doc.type === "devis" ? tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance.") : tr("Cette facture est-elle partie chez le client ? Marquée comme envoyée, elle n'apparaît plus comme « pas encore envoyée »."), doc.type === "devis" ? tr("Marquer comme envoyé") : tr("Marquer comme envoyée")))) boutonEnvoi.click();
   }
@@ -654,9 +655,9 @@ function editeurVue(id) {
       "div",
       { class: "entete editeur-entete" },
       h("div", null, h("h1", null, nomDoc), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
-      h("div", { class: "entete-actions" }, statut, lectureSeule ? null : btnVersions, btnAnnuler, btnRetablir, boutonEnvoi, h("button", { class: "principal", type: "button", title: tr("Télécharger le PDF (Ctrl+P)"), onclick: telechargerPdf }, sansImpression() ? tr("PDF et envoi") : tr("Télécharger le PDF")))
+      h("div", { class: "entete-actions" }, statut, lectureSeule ? null : btnVersions, btnAnnuler, btnRetablir, boutonEnvoi, sansImpression() ? null : h("button", { class: "lien", type: "button", title: tr("Imprimer (Ctrl+P)"), onclick: imprimer }, tr("Imprimer")), h("button", { class: "principal", type: "button", onclick: envoyer }, tr("Envoyer")))
     ),
-    h("p", { class: "aide-pdf seulement-bureau" }, tr("Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF ». Le fichier portera déjà le nom « {nomDoc} {ref} ». Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P PDF. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: dossier.ref })),
+    h("p", { class: "aide-pdf seulement-bureau" }, tr("« Envoyer » prépare le PDF « {nomDoc} {ref} » et ouvre WhatsApp ou l'e-mail du client avec le message. Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P imprimer. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: dossier.ref })),
     bandeauConflit,
     avertissementAnglais,
     lectureSeule ? h("p", { class: "bandeau-info" }, tr("Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.")) : null,

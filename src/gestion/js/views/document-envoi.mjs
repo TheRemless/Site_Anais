@@ -1,5 +1,6 @@
-// Envoi d'un devis ou d'une facture en PDF depuis un téléphone, où « Imprimer » ne sait pas enregistrer un PDF : le document est
+// Envoi d'un devis ou d'une facture en PDF, sur tous les appareils (bouton « Envoyer » de l'éditeur et de la fiche dossier) : le document est
 // photographié dans la page (même rendu que l'aperçu), découpé en pages A4 et mis dans un fichier PDF, à télécharger ou à partager.
+// « Imprimer » reste un lien secondaire sur ordinateur.
 // Sur téléphone, le partage de fichier ouvre la liste de WhatsApp (on y choisit le contact). Sur ordinateur, le PDF est téléchargé et la
 // conversation du numéro s'ouvre : un lien WhatsApp ne peut pas joindre de fichier.
 import { etat, nomClient, peut } from "../etat.mjs";
