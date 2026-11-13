@@ -63,7 +63,7 @@ function lireSite(lignes, aujourdhui) {
   let m = null;
   for (const [re, g] of ENTETES_SITE) if ((m = re.exec(lignes[0]))) { genre = g; break; }
   if (!genre) return null;
-  const d = { site: true, marque: "", type: "", nom: "", prestation: "", option: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, ages: [], vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, hotel: "", pickup: "", dropoff: "", vol: "", bagages: 0, extras: "", depart: "", billet: "", retour: "", saison: "", vehiculeNom: "", vehicules: 0, jusqua: "", prixSite: "", sorties: [] };
+  const d = { site: true, marque: "", type: "", nom: "", prestation: "", option: "", de: "", vers: "", date: "", dateTexte: "", heure: "", adultes: 0, enfants: 0, bebes: 0, ages: [], vehicule: "", mode: "", siegeEnfant: false, siegeBebe: false, sieges: 0, hotel: "", pickup: "", dropoff: "", vol: "", bagages: 0, extras: "", depart: "", billet: "", retour: "", saison: "", vehiculeNom: "", vehicules: 0, jusqua: "", prixSite: "", sorties: [] };
   const optionVers = (txt) => {
     if (/join/i.test(txt)) d.mode = "join";
     else if (/private/i.test(txt)) d.mode = "private";
@@ -118,7 +118,7 @@ function lireSite(lignes, aujourdhui) {
     else if (cle === "pickup time" || cle === "preferred pickup time") d.heure = heureDe(v) || d.heure;
     else if (cle === "flight or ferry") d.vol = v;
     else if (cle === "guests") Object.assign(d, lireInvites(v));
-    else if (cle === "child seats") d.siegeEnfant = Number(v) > 0 || d.siegeEnfant;
+    else if (cle === "child seats") { d.siegeEnfant = Number(v) > 0 || d.siegeEnfant; d.sieges = Number(v) || 0; }
     else if (cle === "bags") d.bagages = Number(v) || 0;
     else if (cle === "pickup") { d.pickup = v; if (genre === "tour" || genre === "liste") d.hotel = v; }
     else if (cle === "drop-off") d.dropoff = v;

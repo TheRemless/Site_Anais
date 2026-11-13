@@ -69,7 +69,9 @@ export function vueVoucherRapide() {
       champ("pickup", TH.pickup, texte({ list: "vr-lieux" }), TH.anglais_aide),
       champ("heure", TH.heure, h("input", { type: "time", step: 300 })),
       champ("dropoff", TH.dropoff, texte({ list: "vr-lieux" }), TH.anglais_aide),
+      champ("vol", TH.vol, texte({ autocapitalize: "characters" }), TH.vol_aide),
       h("div", { class: "vr-trio" }, champ("adultes", TH.adultes, nombre()), champ("enfants", TH.enfants, nombre()), champ("bagages", TH.bagages, texte({ inputmode: "text", autocapitalize: "off" }), TH.bagages_aide)),
+      champ("sieges", TH.sieges, nombre(), TH.sieges_aide, "vr-court"),
       champ("prix", TH.prix, h("input", { type: "text", inputmode: "decimal", autocomplete: "off", enterkeyhint: "done" }), TH.prix_aide, "vr-prix"),
       liste,
       h(

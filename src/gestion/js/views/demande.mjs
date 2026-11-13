@@ -147,7 +147,7 @@ export function ouvrirDemande() {
     const lieu = siteTransfert ? d.pickup || "" : offre && !estTransfert(offre) && d.hotel && d.hotel !== hotelDuClient(c) ? d.hotel : "";
     // Une zone de pickup choisie veut dire un pickup à l'hôtel : le lieu est l'hôtel, ce qui permet de retrouver la zone au prochain séjour.
     const lieuFinal = lieu || (sv.zonePickup && d.hotel ? d.hotel : "");
-    return { heure: sv.heure || "", lieu: lieuFinal, bebes: d.bebes || 0, personnes: { adultes: sv.adultes, enfants: sv.enfants }, dropoff: siteTransfert ? d.dropoff || "" : "", vol: siteTransfert ? d.vol || "" : "", bagages: siteTransfert ? d.bagages || 0 : 0, zonePickup: sv.zonePickup || null };
+    return { heure: sv.heure || "", lieu: lieuFinal, bebes: d.bebes || 0, personnes: { adultes: sv.adultes, enfants: sv.enfants }, dropoff: siteTransfert ? d.dropoff || "" : "", vol: siteTransfert ? d.vol || "" : "", bagages: siteTransfert ? d.bagages || 0 : 0, sieges: siteTransfert ? d.sieges || 0 : 0, zonePickup: sv.zonePickup || null };
   }
 
   const coches = () => services.filter((sv) => sv.coche);

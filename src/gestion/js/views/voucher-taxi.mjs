@@ -11,7 +11,8 @@ const BANDEAU_DEFAUT = "assets/taxi-bandeau.webp";
 export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", email = "", adresse = "" }) {
   const v = regl.voucher || {};
   const nom = [client.prenom, client.nom].filter(Boolean).join(" ");
-  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, montant: r.montant_vente, devise });
+  const dt = r.details || {};
+  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: dt.sieges, vol: dt.vol, montant: r.montant_vente, devise });
   const valeur = (c) =>
     c.date ? [`${c.date.mois} ${c.date.jour}`, h("sup", null, c.date.suffixe), ` ${c.date.annee}`] : c.valeur;
   const logo = (regl.apparence && regl.apparence.logo) || LOGO_DEFAUT;
