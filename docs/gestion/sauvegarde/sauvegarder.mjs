@@ -137,7 +137,7 @@ export function requeteSupabase({ ref, bin = process.env.SUPABASE_BIN || "/opt/h
       const r = spawnSync(bin, ["db", "query", `--remote=${ref}`, "--read-only", "-f", f, "-o", "json", "--workdir", app], { encoding: "utf8", maxBuffer: 512 * 1024 * 1024, timeout: 180000 });
       if (r.error) throw new Error(`supabase : ${r.error.message}`);
       const sortie = r.stdout || "";
-      const debut = sortie.indexOf("{");
+      const debut = sortie.search(/[[{]/);
       if (r.status !== 0 || debut < 0) throw new Error(`supabase db query a échoué (code ${r.status}) : ${(r.stderr || sortie).replace(/\s+/g, " ").slice(0, 300)}`);
       return lignesDeLaReponse(sortie);
     } finally {

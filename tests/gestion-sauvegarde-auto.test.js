@@ -182,4 +182,8 @@ test("réponse de la CLI : objets JSON à la suite, texte autour, accolades dans
   assert.deepEqual(lignesDeLaReponse(reponse), [{ note: 'un } dans {une} chaîne " fin' }]);
   assert.throws(() => lignesDeLaReponse('{"_tag":"Error","error":{"message":"permission denied"}}'), /permission denied/);
   assert.throws(() => lignesDeLaReponse("rien"), /réponse inattendue/);
+  // Cas réel du 13.11.2026 : lancée par launchd, la CLI écrit un simple tableau (sans `rows`), toutes les sauvegardes échouaient.
+  assert.deepEqual(lignesDeLaReponse('[\n  {\n    "deux": "x [1]",\n    "un": 1\n  }\n]\n'), [{ deux: "x [1]", un: 1 }]);
+  assert.deepEqual(lignesDeLaReponse("[]\n"), []);
+  assert.deepEqual(lignesDeLaReponse('{"target":{"kind":"linked"}}\n[{"un":1}]'), [{ un: 1 }]);
 });
