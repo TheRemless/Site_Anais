@@ -309,3 +309,8 @@ test("message combiné : le lieu de prise en charge reste avec son taxi, un tari
   assert.ok(!s[2].offres.some((o) => /Phi Phi|Krabi Airport → Koh Lanta/.test(o.titre)));
   assert.deepEqual([s[3].date, s[3].adultes, s[3].enfants], ["2026-11-23", 2, 2]);
 });
+
+test("un morceau placé devant un service garde sa date : « On 20 November, the 4 islands tour, and again on 25 November »", () => {
+  const s = services("On 20 November, the 4 islands tour, and again on 25 November, for 2 adults.");
+  assert.deepEqual(s.map((x) => [x.offres[0]?.id, x.date]), [["i4", "2026-11-20"], ["i4", "2026-11-25"]]);
+});

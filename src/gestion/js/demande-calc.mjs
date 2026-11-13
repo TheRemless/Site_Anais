@@ -649,14 +649,16 @@ export function decouperServices(texte, d, contexte, aujourdhui) {
         if (VERBES_DEMANDE.test(f) || (dateF && !estRepetition(f))) dansPhrase.push({ texte: f, i, inconnu: true });
         else if (dateF && (avant.dateFixe || dateDe(avant.texte)) && (avant.dateFixe || dateDe(avant.texte)) !== dateF) dansPhrase.push({ texte: `${avant.base || avant.texte} ${f}`, base: avant.base || avant.texte, i, copie: true, dateFixe: dateF, heureFixe: lireHeureLibre(f) });
         else avant.texte += ` ${f}`;
-      } else if (apres && !(dateF && !estRepetition(f) && MOTS_SERVICE.test(sansAcc(f)))) (apres.devant ||= []).push(f);
-      else if (VERBES_DEMANDE.test(f) || (dateF && MOTS_SERVICE.test(sansAcc(f)))) dansPhrase.push({ texte: f, i, inconnu: true, devant: enAttente.splice(0) });
+      } else if (apres && !(dateF && !estRepetition(f) && MOTS_SERVICE.test(sansAcc(f)))) {
+        // Placé devant le service, après ce qui y a déjà été placé : l'ordre du message (« please pick up from …, taxi to … »).
+        const n = apres.devant || 0;
+        apres.texte = `${apres.texte.slice(0, n)}${f} ${apres.texte.slice(n)}`;
+        apres.devant = n + f.length + 1;
+      } else if (VERBES_DEMANDE.test(f) || (dateF && MOTS_SERVICE.test(sansAcc(f)))) dansPhrase.push({ texte: [...enAttente.splice(0), f].join(" "), i, inconnu: true });
       // Ni service avant ni service connu après (« pick up from Koh Lanta Old Town, taxi to … » sans le trajet dans la base) : le fragment attend
       // le service inconnu qui suit. Une salutation seule ne compte pas.
       else if (!SALUTATION.test(f)) enAttente.push(f);
     }
-    // Les fragments placés devant un service gardent l'ordre du message (« please pick up from …, taxi to … »).
-    for (const g of dansPhrase) if (g.devant?.length) g.texte = `${g.devant.join(" ")} ${g.texte}`;
     dansPhrase.sort((a, b) => a.i - b.i);
     // Une seule date dans la phrase : tous ses services la prennent.
     const datesPhrase = [...new Set(dansPhrase.map((g) => g.dateFixe || dateDe(g.texte)).filter(Boolean))];
@@ -676,7 +678,7 @@ export function decouperServices(texte, d, contexte, aujourdhui) {
     if (date) derniere = date;
     const gens = personnesDetail(g.texte);
     // « for 3 » quand le message dit 2 adultes et 1 enfant : le même groupe, pas 3 adultes.
-    const memeGroupe = gens.total && gens.total === d.adultes + d.enfants;
+    const memeGroupe = gens.total && (gens.total === d.adultes + d.enfants || gens.total === d.adultes + d.enfants + d.bebes);
     const adultes = memeGroupe ? d.adultes : gens.adultes || d.adultes;
     // « for 2 adults » dans le fragment, « and 1 child » ailleurs : le même groupe garde ses enfants. Un autre nombre d'adultes est un autre groupe.
     const enfants = memeGroupe ? d.enfants : gens.enfants || (gens.adultes && gens.adultes !== d.adultes ? 0 : d.enfants);
