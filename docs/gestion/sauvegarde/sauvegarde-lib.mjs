@@ -136,6 +136,8 @@ export function sqlDeRestauration(sauvegarde) {
 // Réponse de `supabase db query -o json` : la CLI peut écrire plusieurs objets JSON à la suite (un en-tête « target », un avertissement,
 // la réponse avec `rows`), ou du texte autour. On découpe chaque objet de premier niveau en suivant les chaînes et les échappements,
 // on rend les lignes du premier objet qui a `rows`, et on remonte le message d'un objet d'erreur s'il n'y en a aucun.
+// Lancée hors d'un agent (la tâche launchd), la même CLI écrit les lignes en simple tableau, sans `rows` ni avertissement : un tableau de
+// premier niveau est alors la réponse (constaté le 13.11.2026, toutes les sauvegardes horaires échouaient).
 export function lignesDeLaReponse(sortie) {
   const objets = [];
   let profondeur = 0, debut = -1, enChaine = false, echappe = false;
@@ -148,14 +150,16 @@ export function lignesDeLaReponse(sortie) {
       continue;
     }
     if (c === '"' && profondeur > 0) enChaine = true;
-    else if (c === "{") { if (profondeur === 0) debut = i; profondeur++; }
-    else if (c === "}" && profondeur > 0) {
+    else if (c === "{" || c === "[") { if (profondeur === 0) debut = i; profondeur++; }
+    else if ((c === "}" || c === "]") && profondeur > 0) {
       profondeur--;
       if (profondeur === 0) { try { objets.push(JSON.parse(sortie.slice(debut, i + 1))); } catch { /* texte entre accolades : ignoré */ } }
     }
   }
   const reponse = objets.find((o) => o && Array.isArray(o.rows));
   if (reponse) return reponse.rows;
+  const tableau = objets.find((o) => Array.isArray(o));
+  if (tableau) return tableau;
   const erreur = objets.find((o) => o && (o._tag === "Error" || o.error));
   throw new Error(erreur ? `supabase db query : ${(erreur.error && erreur.error.message) || JSON.stringify(erreur).slice(0, 300)}` : "réponse inattendue de supabase db query");
 }
