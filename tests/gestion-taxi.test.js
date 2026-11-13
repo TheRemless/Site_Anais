@@ -1,7 +1,7 @@
 // VIP Taxi Lanta dans Gestion (12.11.2026) : mode taxi, Booking confirmation, commission du lendemain, messages types.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { estTaxi, lignesSurPlace, dateBookingTexte, dateBooking, heureBooking, passagersBooking, prixBooking, champsBooking, commissionsADemander, valeursCommission, PIED_BOOKING, lignesEnPlus } from "../src/gestion/js/taxi-calc.mjs";
+import { estTaxi, lignesSurPlace, dateBookingTexte, dateBooking, heureBooking, passagersBooking, prixBooking, champsBooking, commissionsADemander, commissionsParChauffeur, ligneCommission, varsCommissions, JOURS_COMMISSION, valeursCommission, PIED_BOOKING, lignesEnPlus } from "../src/gestion/js/taxi-calc.mjs";
 import { MESSAGES_TAXI, MESSAGES_DEFAUT, messagesDefautPour, completerReglages } from "../src/gestion/js/defauts.mjs";
 
 test("mode taxi : réglé par l'entreprise, toutes les lignes payées au chauffeur", () => {
@@ -45,23 +45,53 @@ test("Booking confirmation : date, heure, passagers et prix comme sur le modèle
   assert.match(PIED_BOOKING.paiement_wise, /Wise with a 3% fee/);
 });
 
-test("commission du lendemain : courses d'hier sur place, saisie ou non, annulées écartées", () => {
+test("commissions à demander : toute course passée sans commission sur 14 jours, saisies d'hier gardées, annulées écartées", () => {
   const R = [
     { id: "a", dossier_id: "d1", date_service: "2026-11-11", statut: "confirme", paye_sur_place: true },
     { id: "b", dossier_id: "d2", date_service: "2026-11-11", statut: "confirme", paye_sur_place: true, details: { commission_demandee_le: "2026-11-12" } },
     { id: "c", dossier_id: "d3", date_service: "2026-11-11", statut: "annule", paye_sur_place: true },
+    // Avant-hier : la course reste (le bug du point 7 la faisait disparaître si Gestion n'était pas ouvert la veille).
     { id: "d", dossier_id: "d4", date_service: "2026-11-10", statut: "confirme", paye_sur_place: true },
     { id: "e", dossier_id: "d5", date_service: "2026-11-11", statut: "confirme", paye_sur_place: true },
+    // Avant-hier avec commission saisie : À encaisser la suit, la carte ne la montre plus.
+    { id: "f", dossier_id: "d6", date_service: "2026-11-09", statut: "confirme", paye_sur_place: true },
+    // Il y a 14 jours : encore dans la fenêtre ; il y a 15 jours : hors fenêtre.
+    { id: "g", dossier_id: "d7", date_service: "2026-10-29", statut: "confirme", paye_sur_place: true },
+    { id: "h", dossier_id: "d8", date_service: "2026-10-28", statut: "confirme", paye_sur_place: true },
+    // Aujourd'hui et demain : pas encore faites. Payée chez nous : aucune commission à demander.
+    { id: "i", dossier_id: "d9", date_service: "2026-11-12", statut: "confirme", paye_sur_place: true },
+    { id: "j", dossier_id: "d10", date_service: "2026-11-13", statut: "confirme", paye_sur_place: true },
+    { id: "k", dossier_id: "d11", date_service: "2026-11-10", statut: "confirme", paye_sur_place: false },
   ];
-  const nets = { b: { commission_prevue: 270, commission_recue_le: null } };
-  const l = commissionsADemander(R, "2026-11-11", { ecartes: new Set(["d5"]), netDe: (r) => nets[r.id] || null });
-  assert.deepEqual(l.map((x) => [x.reservation.id, x.saisie, x.montant, x.demandeLe]), [["a", false, null, null], ["b", true, 270, "2026-11-12"]]);
+  const nets = { b: { commission_prevue: 270, commission_recue_le: null }, f: { commission_prevue: 300, commission_recue_le: null } };
+  const l = commissionsADemander(R, "2026-11-12", { ecartes: new Set(["d5"]), netDe: (r) => nets[r.id] || null });
+  assert.deepEqual(l.map((x) => [x.reservation.id, x.saisie, x.montant, x.demandeLe]), [["g", false, null, null], ["d", false, null, null], ["a", false, null, null], ["b", true, 270, "2026-11-12"]]);
+  assert.equal(JOURS_COMMISSION, 14);
+  assert.deepEqual(commissionsADemander(R, "2026-11-12", { jours: 3 }).map((x) => x.reservation.id), ["f", "d", "a", "b", "e"], "fenêtre réglable, sans nets tout est à saisir");
   assert.deepEqual(valeursCommission("270"), { commission_prevue: 270 });
   assert.deepEqual(valeursCommission("1'200,5", { recue: true, date: "2026-11-12" }), { commission_prevue: 1200.5, commission_recue: 1200.5, commission_recue_le: "2026-11-12" });
   assert.deepEqual(valeursCommission("0"), { commission_prevue: 0 }, "zéro : pas de commission cette fois");
   assert.equal(valeursCommission(""), null);
   assert.equal(valeursCommission("abc"), null);
   assert.equal(valeursCommission("-5"), null);
+});
+
+test("commissions : un seul message par chauffeur, qui liste ses courses encore à demander", () => {
+  const x = (id, partenaire_id, extra = {}) => ({ reservation: { id, partenaire_id, date_service: "2026-11-11" }, saisie: false, demandeLe: null, ...extra });
+  const g = commissionsParChauffeur([x("a", "brown"), x("b", "autre"), x("c", "brown"), x("d", "brown", { demandeLe: "2026-11-12" }), x("e", "brown", { saisie: true })]);
+  assert.deepEqual(g.map((y) => [y.partenaireId, y.courses.map((c) => c.reservation.id), y.aDemander.map((c) => c.reservation.id)]), [["brown", ["a", "c", "d", "e"], ["a", "c"]], ["autre", ["b"], ["b"]]]);
+  const v = varsCommissions([
+    { contact: "Mr. Brown", date: "10 November 2026", prestation: "Koh Lanta → Ao Nang", client: "Noah Schmid", prix: "2,700 THB" },
+    { contact: "Mr. Brown", date: "11 November 2026", prestation: "Krabi Airport → Koh Lanta", client: "Lea Moreau", prix: "" },
+  ]);
+  assert.deepEqual(v, { contact: "Mr. Brown", courses: "• 10 November 2026 · Koh Lanta → Ao Nang · Noah Schmid · 2,700 THB\n• 11 November 2026 · Krabi Airport → Koh Lanta · Lea Moreau" });
+  assert.equal(ligneCommission({ date: "", prestation: "X", client: "", prix: "" }), "• X");
+  // Le modèle groupé existe en anglais et en thaï, ne parle pas « d'hier » et liste les courses.
+  for (const langue of ["en", "th"]) {
+    const m = MESSAGES_TAXI.find((y) => y.cle === "commissions" && y.langue === langue && y.pour === "partenaire");
+    assert.ok(m && m.corps.includes("{courses}") && m.corps.includes("{contact}"), langue);
+    assert.ok(!/yesterday|เมื่อวาน/.test(m.corps + m.titre), `${langue} : pas « hier »`);
+  }
 });
 
 test("messages de Taxi : les deux textes de Jérémy mot pour mot, messages à Mr. Brown en anglais et en thaï", () => {

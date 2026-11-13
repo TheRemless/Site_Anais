@@ -114,18 +114,50 @@ export const PIED_BOOKING = {
   lieu: "Koh Lanta, Krabi, Thailand",
 };
 
-// ---- Commission demandée le lendemain ------------------------------------------------------------------------------
-// Courses d'hier (sur place, non annulées) dont la commission n'est pas encore saisie : la carte « Hier » propose de la demander.
+// ---- Commissions à demander -----------------------------------------------------------------------------------------
+// Courses passées (sur place, non annulées) dont la commission n'est pas encore saisie, sur les `jours` derniers jours : un jour
+// sans ouvrir Gestion ne fait plus perdre la commission (audit du 13.11.2026, point 7). Les courses d'hier déjà saisies restent
+// affichées avec leur montant, pour voir ce qui vient d'être fait. Triées de la plus ancienne à la plus récente.
 // `netDe(r)` : la ligne privée de la réservation ({ commission_prevue, commission_recue, commission_recue_le }) ou null.
-export function commissionsADemander(reservations, hier, { ecartes = new Set(), netDe = () => null } = {}) {
+export const JOURS_COMMISSION = 14;
+const jourAvant = (iso, n) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+};
+export function commissionsADemander(reservations, ajd, { ecartes = new Set(), netDe = () => null, jours = JOURS_COMMISSION } = {}) {
+  const hier = jourAvant(ajd, 1);
+  const depuis = jourAvant(ajd, jours);
   return (reservations || [])
-    .filter((r) => r.date_service === hier && r.statut !== "annule" && r.paye_sur_place && !ecartes.has(r.dossier_id))
+    .filter((r) => r.date_service && r.date_service < ajd && r.date_service >= depuis && r.statut !== "annule" && r.paye_sur_place && !ecartes.has(r.dossier_id))
     .map((r) => {
       const n = netDe(r) || {};
       const saisie = n.commission_prevue !== null && n.commission_prevue !== undefined;
       return { reservation: r, saisie, montant: saisie ? Number(n.commission_prevue) : null, recue: !!n.commission_recue_le, demandeLe: (r.details && r.details.commission_demandee_le) || null };
-    });
+    })
+    .filter((x) => !x.saisie || x.reservation.date_service === hier)
+    .sort((a, b) => (a.reservation.date_service < b.reservation.date_service ? -1 : a.reservation.date_service > b.reservation.date_service ? 1 : 0));
 }
+
+// Un seul message par chauffeur (point 8) : les commissions à demander groupées par partenaire, dans l'ordre de la liste.
+// `aDemander` : les courses sans montant saisi et pas encore demandées, celles que le message liste.
+export function commissionsParChauffeur(liste) {
+  const groupes = new Map();
+  for (const x of liste || []) {
+    const cle = x.reservation.partenaire_id || "";
+    const g = groupes.get(cle) || { partenaireId: x.reservation.partenaire_id || null, courses: [], aDemander: [] };
+    g.courses.push(x);
+    if (!x.saisie && !x.demandeLe) g.aDemander.push(x);
+    groupes.set(cle, g);
+  }
+  return [...groupes.values()];
+}
+
+// Une ligne du message groupé : « • 12 November · Krabi Airport → Koh Lanta · Lea Moreau · 1,800 THB ». Les morceaux viennent de
+// variablesMessage (date dans la langue du message), un morceau vide est omis.
+export const ligneCommission = (v) => `• ${[v.date, v.prestation, v.client, v.prix].filter((x) => String(x || "").trim()).join(" · ")}`;
+// Variables du message « commissions » : {contact} (Mr. Brown) et {courses}, une ligne par course. `parCourse` : les variablesMessage de chaque course.
+export const varsCommissions = (parCourse) => ({ contact: (parCourse[0] && parCourse[0].contact) || "", courses: parCourse.map(ligneCommission).join("\n") });
 
 // Valeurs à enregistrer quand Anaïs saisit la commission annoncée par Mr. Brown. `recue` : il l'a déjà donnée.
 export function valeursCommission(texte, { recue = false, date = "" } = {}) {
