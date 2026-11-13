@@ -248,6 +248,64 @@ test("sens d'un trajet : from et to font foi, sinon l'ordre des lieux", () => {
   assert.equal(sensTrajet("Krabi Airport", "Koh Lanta", "a transfer from Koh Lanta to Krabi airport"), "inverse");
   assert.equal(sensTrajet("Krabi Airport", "Koh Lanta", "transfer to Koh Lanta from Krabi airport"), "direct");
   assert.equal(sensTrajet("Krabi Airport", "Koh Lanta", "taxi Krabi airport - Koh Lanta"), "direct");
-  assert.equal(sensTrajet("Koh Lanta", "Phuket Airport", "un taxi vers l'aéroport de Phuket"), "");
+  assert.equal(sensTrajet("Koh Lanta", "Phuket Airport", "un taxi vers l'aéroport de Phuket"), "direct", "un seul bout, « vers » tranche");
   assert.equal(sensTrajet("Koh Phi Phi", "Koh Lanta", "de Koh Lanta à Koh Phi Phi"), "inverse");
+});
+
+// Trois cas laissés douteux par la PR 193 (13.11.2026), plus le sens d'un trajet dont un seul bout est cité.
+test("« pick up from Koh Lanta Old Town » : un lieu, pas l'hôtel, et le taxi n'est jamais proposé à l'envers", () => {
+  const msg = "Hi, please pick up from Koh Lanta Old Town, taxi to Krabi Airport on 20 November at 9am, 2 adults.";
+  const { d, s } = demo(msg);
+  assert.equal(d.hotel, "");
+  assert.equal(s.length, 1);
+  assert.match(s[0].phrase, /^please pick up from Koh Lanta Old Town taxi to Krabi Airport/);
+  assert.deepEqual([s[0].date, s[0].heure, s[0].adultes], ["2026-11-20", "09:00", 2]);
+  assert.ok(!s[0].offres.some((o) => /Krabi Airport → Koh Lanta/.test(o.titre)), "trajet en sens inverse proposé");
+  // Avec le trajet dans le bon sens dans la base, il est proposé.
+  const aller = CTX_DEMO.prestations.find((p) => p.libelle === "Krabi Airport → Koh Lanta");
+  const ctx = { ...CTX_DEMO, prestations: [...CTX_DEMO.prestations, { ...aller, id: "lanta-kbv", libelle: "Koh Lanta → Krabi Airport" }] };
+  const s2 = decouperServices(msg, lire(msg), ctx, AJD);
+  assert.equal(s2[0].offres[0].titre, "Koh Lanta → Krabi Airport");
+  assert.ok(!s2[0].offres.some((o) => /Krabi Airport → Koh Lanta/.test(o.titre)));
+});
+
+test("hôtel après « pick up from » : un nom d'hôtel reste lu, un quartier ou une plage non", () => {
+  assert.equal(lire("Can you pick us up from Pimalai tomorrow for 2, kayaking").hotel, "Pimalai");
+  assert.equal(lire("kayaking tomorrow for 2, pickup at Lanta Sand Resort").hotel, "Lanta Sand Resort");
+  assert.equal(lire("kayaking tomorrow for 2, pickup from Long Beach").hotel, "");
+  assert.equal(lire("kayaking tomorrow for 2, pick us up from Lanta Old Town").hotel, "");
+});
+
+test("« for 3 » quand le message dit 2 adultes et 1 enfant : le même groupe, pas 3 adultes", () => {
+  const s = services("Hello, we are 2 adults and 1 child. We want the 4 islands tour on 20 November for 3 and kayaking on 22 November.");
+  assert.deepEqual(s.map((x) => [x.adultes, x.enfants]), [[2, 1], [2, 1]]);
+  // Un autre total reste un autre groupe, en adultes comme avant.
+  assert.deepEqual([services("We are 2 adults and 1 child. Kayaking on 22 November for 5.")[0].adultes], [5]);
+});
+
+test("retour en bateau : le speedboat de l'aller passe devant le ferry au retour", () => {
+  const { s } = demo("Hello, we are 2 adults and 2 kids (5 and 10). Can we book a speedboat from Koh Lanta to Koh Phi Phi on 22 Nov, and back from Phi Phi to Lanta on 25 Nov? Staying at Pimalai Resort.");
+  assert.equal(s[1].vehicule, "speedboat");
+  assert.equal(s[1].offres[0].source.mode, "Speedboat");
+  assert.ok(s[1].offres.some((o) => o.source.mode === "Ferry"), "le ferry reste proposé derrière");
+  // Un retour qui cite son propre bateau le garde.
+  const { s: s2 } = demo("Speedboat from Koh Lanta to Koh Phi Phi on 22 Nov for 2, and back by ferry from Phi Phi to Lanta on 25 Nov.");
+  assert.equal(s2[1].vehicule, "");
+});
+
+test("sens avec un seul bout cité : « to » et « from » tranchent, sinon rien", () => {
+  assert.equal(sensTrajet("Krabi Airport", "Koh Lanta", "taxi to Krabi Airport"), "inverse");
+  assert.equal(sensTrajet("Koh Lanta", "Phuket Airport", "a taxi to Phuket airport"), "direct");
+  assert.equal(sensTrajet("Krabi Airport", "Koh Lanta", "pick up from Krabi airport at 2pm"), "direct");
+  assert.equal(sensTrajet("Krabi Airport", "Koh Lanta", "pick up from Koh Lanta Old Town"), "inverse");
+  assert.equal(sensTrajet("Krabi Airport", "Koh Lanta", "a taxi, Krabi airport, 2pm"), "");
+});
+
+test("message combiné : le lieu de prise en charge reste avec son taxi, un tarif en voiture ne répond pas à un retour en bateau", () => {
+  const { s } = demo("Hello, we are 2 adults and 2 kids (5 and 10). Can we book a speedboat from Koh Lanta to Koh Phi Phi on 22 Nov, and back from Phi Phi to Lanta on 25 Nov? Also please pick up from Koh Lanta Old Town, taxi to Krabi Airport on 27 November at 9am. We want kayaking on 23 November for 4.");
+  assert.equal(s.length, 4);
+  assert.ok(s[1].offres.length && s[1].offres.every((o) => /Phi Phi → Koh Lanta/.test(o.titre)), "seulement des bateaux Phi Phi → Lanta au retour");
+  assert.match(s[2].phrase, /^please pick up from Koh Lanta Old Town taxi to Krabi Airport/);
+  assert.ok(!s[2].offres.some((o) => /Phi Phi|Krabi Airport → Koh Lanta/.test(o.titre)));
+  assert.deepEqual([s[3].date, s[3].adultes, s[3].enfants], ["2026-11-23", 2, 2]);
 });
