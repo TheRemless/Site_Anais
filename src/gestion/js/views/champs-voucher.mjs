@@ -4,7 +4,7 @@
 import { h, champ, saisie } from "../ui.mjs";
 import { ajouterJours } from "../calc.mjs";
 import { nbJoursLocation, TITRES_VOUCHER } from "../operations-calc.mjs";
-import { champsCreation } from "../creation-voucher-calc.mjs";
+import { champsCreation, resumeSaisie } from "../creation-voucher-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
 // `details` : les valeurs de départ (celles de la réservation, ou ce que la demande collée a déjà lu).
@@ -107,8 +107,9 @@ export const champsLongs = (cles) => cles.filter((c) => LONGS.includes(c));
 // ---- Création d'un dossier : le bloc d'un service ---------------------------------------------------------------------------------------
 // Les champs du service (champsCreation), remplis d'après `saisie` ; chaque frappe tient `saisie` à jour, ce qui survit au redessin de l'écran.
 // `sauf` : les champs que l'écran pose déjà lui-même (la fenêtre « Coller une demande » a l'heure et les personnes de chaque service).
-// `aideLieu` : ce qui sert de lieu de pickup quand il reste vide.
-export function blocServiceCreation({ service, saisie: s, taxi = false, prefixe, sauf = [], aideLieu = "", ouvert = true }) {
+// `aideLieu` : ce qui sert de lieu de pickup quand il reste vide. `ouvert` : déplié au départ (un repli ou dépli à la main est gardé dans `saisie`).
+// `surSaisie(saisie)` : appelée après chaque frappe (le libellé d'une course hors catalogue suit son pickup et son drop-off).
+export function blocServiceCreation({ service, saisie: s, taxi = false, prefixe, sauf = [], aideLieu = "", ouvert = true, surSaisie = null }) {
   const cles = champsCreation(service, { taxi }).filter((c) => !sauf.includes(c));
   if (!cles.length) return null;
   const location = service.type === "location";
@@ -139,14 +140,21 @@ export function blocServiceCreation({ service, saisie: s, taxi = false, prefixe,
     const montres = new Set(cles);
     s.details = { ...Object.fromEntries(Object.entries(s.details || {}).filter(([k]) => !montres.has(k))), ...Object.fromEntries(Object.entries(details).filter(([k]) => montres.has(k))) };
     if (cles.includes("sieges")) s.sieges = sieges || 0;
+    resume.textContent = resumeSaisie(s);
+    if (surSaisie) surSaisie(s);
   };
   const titre = taxi ? "Booking confirmation" : TITRES_VOUCHER[service.type] || tr("Réservation");
-  return h(
+  // Replié, le bloc dit ce qui est déjà rempli : « 08:30 · Lanta Sand Resort ».
+  const resume = h("span", { class: "creation-voucher-resume" }, resumeSaisie(s));
+  const bloc = h(
     "details",
-    { class: "creation-voucher", ...(ouvert ? { open: true } : {}), oninput: lire, onchange: lire },
-    h("summary", null, titre),
+    { class: "creation-voucher", ...((s.ouvert ?? ouvert) ? { open: true } : {}), oninput: lire, onchange: lire },
+    h("summary", null, titre, resume),
     h("p", { class: "aide" }, taxi ? tr("Ce qui s'imprime sur la Booking confirmation. Modifiable ensuite dans la réservation.") : tr("Ce qui s'imprime sur le voucher. Modifiable ensuite dans la réservation.")),
     h("div", { class: "grille-form compacte" }, champsCourts(cles).map(noeud)),
     champsLongs(cles).map(noeud)
   );
+  // Seul le geste de la personne compte (l'événement « toggle » part aussi quand le bloc naît déplié).
+  bloc.querySelector("summary").addEventListener("click", () => (s.ouvert = !bloc.open));
+  return bloc;
 }

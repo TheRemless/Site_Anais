@@ -20,7 +20,7 @@ test("saisie complète : aucune erreur ; champs vides : une erreur sous chacun, 
   assert.deepEqual(erreursVoucher(bon), {});
   const e = erreursVoucher(valeursVides());
   assert.deepEqual(Object.keys(e).sort(), ["date", "dropoff", "heure", "nom", "pickup", "prix"].sort());
-  assert.deepEqual(CHAMPS, ["nom", "date", "pickup", "heure", "dropoff", "vol", "adultes", "enfants", "bagages", "sieges", "prix"]);
+  assert.deepEqual(CHAMPS, ["nom", "telephone", "date", "pickup", "heure", "dropoff", "vol", "adultes", "enfants", "bagages", "sieges", "prix"]);
 });
 
 test("le voucher est en anglais : un mot thaï dans un champ imprimé est refusé", () => {

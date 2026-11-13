@@ -10,6 +10,10 @@ export const TH = {
   titre: "วอยเชอร์ใหม่", // Nouveau voucher
   titre_modif: "แก้ไขวอยเชอร์", // Modifier le voucher
   nom: "ชื่อลูกค้า", // Nom du client
+  telephone: "เบอร์ WhatsApp ลูกค้า", // WhatsApp du client
+  telephone_aide: "ไม่บังคับ ใส่รหัสประเทศ เช่น +44 7700 900123", // Facultatif, avec l'indicatif du pays, par exemple +44 7700 900123
+  client_connu: "ลูกค้าเดิม", // Client déjà connu
+  utiliser_client: "ใช้ลูกค้านี้", // Utiliser ce client
   date: "วันที่", // Date
   pickup: "จุดรับ", // Lieu de prise en charge
   heure: "เวลารับ", // Heure de prise en charge
@@ -60,6 +64,7 @@ export const TH = {
   e_nombre: "กรุณากรอกเป็นตัวเลข", // Écrire un nombre
   e_prix: "กรุณากรอกราคาเป็นตัวเลข", // Écrire le prix en chiffres
   e_sieges: "คาร์ซีทมากกว่าจำนวนเด็ก", // Plus de sièges que d'enfants
+  e_tel: "เบอร์ไม่ถูกต้อง", // Numéro incorrect
 };
 
 // Le voucher est en anglais : un mot en écriture thaïe y serait illisible pour le client.
@@ -82,10 +87,17 @@ const entier = (v) => {
 
 // Valeurs vides d'un nouveau voucher. Deux adultes par défaut : la plupart des courses (prix pour 1 à 2 personnes dans le catalogue).
 // Le numéro de vol ou de bateau et les sièges enfant ou bébé (13.11.2026) : ce que le formulaire taxi du site demande au client.
-export const valeursVides = () => ({ nom: "", date: "", pickup: "", heure: "", dropoff: "", vol: "", adultes: "2", enfants: "", bagages: "", sieges: "", prix: "" });
+// Le WhatsApp du client et le client déjà connu choisi d'un tap (13.11.2026) : plus de nouveau client à chaque course.
+export const valeursVides = () => ({ nom: "", telephone: "", client_id: "", date: "", pickup: "", heure: "", dropoff: "", vol: "", adultes: "2", enfants: "", bagages: "", sieges: "", prix: "" });
 
 // Dans l'ordre de l'écran : la première erreur reçoit le focus.
-export const CHAMPS = ["nom", "date", "pickup", "heure", "dropoff", "vol", "adultes", "enfants", "bagages", "sieges", "prix"];
+export const CHAMPS = ["nom", "telephone", "date", "pickup", "heure", "dropoff", "vol", "adultes", "enfants", "bagages", "sieges", "prix"];
+
+// WhatsApp facultatif : vide, ou un numéro d'au moins 8 chiffres, sans lettres (« +66 81 234 5678 », « 0812345678 »).
+export const telephoneValide = (t) => {
+  const s = String(t || "").trim();
+  return !s || (!/[^\d\s+().-]/.test(s) && s.replace(/\D/g, "").length >= 8);
+};
 
 // Contrôle avant l'aperçu : { champ: code d'erreur } (codes de TH, « e_… »). Vide = tout est bon.
 export function erreursVoucher(v) {
@@ -108,8 +120,12 @@ export function erreursVoucher(v) {
   if (Number.isNaN(s)) e.sieges = "e_nombre";
   else if (s > 0 && !Number.isNaN(enf) && s > enf) e.sieges = "e_sieges";
   if (prixSaisi(v.prix) === null) e.prix = "e_prix";
+  if (!telephoneValide(v.telephone)) e.telephone = "e_tel";
   return e;
 }
+
+// Le libellé d'une course : son trajet, tel que le voucher, la facture et la fiche le disent.
+export const libelleTrajet = (pickup, dropoff) => `${String(pickup || "").trim()} → ${String(dropoff || "").trim()}`;
 
 // Ce que la course devient en base. Le nom va tout entier dans « nom » (le voucher affiche prénom et nom bout à bout).
 export function donneesVoucher(v) {
@@ -117,11 +133,13 @@ export function donneesVoucher(v) {
   const dropoff = String(v.dropoff).trim();
   return {
     nom: String(v.nom).trim().replace(/\s+/g, " "),
+    telephone: String(v.telephone || "").trim().replace(/\s+/g, " "),
+    clientId: v.client_id || null,
     date: v.date,
     heure: v.heure,
     pickup,
     dropoff,
-    libelle: `${pickup} → ${dropoff}`,
+    libelle: libelleTrajet(pickup, dropoff),
     personnes: { adultes: entier(v.adultes) || 0, enfants: entier(v.enfants) || 0, bebes: 0 },
     bagages: String(v.bagages || "").trim(),
     vol: String(v.vol || "").trim().replace(/\s+/g, " "),
@@ -167,6 +185,8 @@ export function valeursDepuis(r, client = {}) {
   const p = r.personnes || {};
   return {
     nom: [client.prenom, client.nom].filter(Boolean).join(" "),
+    telephone: client.telephone || "",
+    client_id: client.id || "",
     date: r.date_service || "",
     pickup: r.lieu_pickup || "",
     heure: /^\d{1,2}:\d{2}$/.test(r.heure_pickup || "") ? r.heure_pickup.padStart(5, "0") : "",
@@ -178,6 +198,29 @@ export function valeursDepuis(r, client = {}) {
     sieges: r.details && Number(r.details.sieges) > 0 ? String(r.details.sieges) : "",
     prix: r.montant_vente === null || r.montant_vente === undefined ? "" : String(r.montant_vente),
   };
+}
+
+// Clients du même nom vus dans les `jours` derniers jours (un dossier créé, ou une course à cette date) : proposés à Mook
+// pour ne pas créer un second client à chaque course (un aller et son retour). Les plus récents d'abord.
+const nomCle = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+export function clientsRecents({ nom, clients = [], dossiers = [], reservations = [], aujourdhui, jours = 30, limite = 3 }) {
+  const cle = nomCle(nom);
+  if (cle.length < 2 || !aujourdhui) return [];
+  const t = new Date(`${aujourdhui}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() - jours);
+  const depuis = t.toISOString().slice(0, 10);
+  const vu = new Map();
+  const noter = (clientId, date) => {
+    const d = String(date || "").slice(0, 10);
+    if (clientId && d >= depuis && d > (vu.get(clientId) || "")) vu.set(clientId, d);
+  };
+  const dossierClient = new Map(dossiers.map((d) => [d.id, d.client_id]));
+  for (const d of dossiers) if (!d.annule) noter(d.client_id, d.created_at);
+  for (const r of reservations) noter(dossierClient.get(r.dossier_id), r.date_service);
+  return clients
+    .filter((c) => vu.has(c.id) && nomCle([c.prenom, c.nom].filter(Boolean).join(" ")) === cle)
+    .sort((a, b) => vu.get(b.id).localeCompare(vu.get(a.id)))
+    .slice(0, limite);
 }
 
 // Lieux proposés en suggestion (jamais imposés) : ceux déjà saisis sur les courses, puis les destinations du catalogue de Taxi

@@ -2,7 +2,7 @@
 // testée dans tests/gestion-creation-voucher.test.js. Avant, il fallait créer le dossier, y revenir et éditer chaque réservation
 // (heure et lieu de pickup, drop-off, vol, bagages, type de tour, remarques…).
 import { reservationsDepuisDocument, typeVoucher, CHAMPS_VOUCHER } from "./operations-calc.mjs";
-import { erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher } from "./voucher-rapide-calc.mjs";
+import { erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, libelleTrajet } from "./voucher-rapide-calc.mjs";
 
 // Les services du dossier tels que la création en fera des réservations : une ligne adulte et sa ligne enfant font un seul service,
 // avec un seul voucher. Le regroupement est celui de la création elle-même (reservationsDepuisDocument), pour ne jamais diverger.
@@ -47,6 +47,22 @@ export function saisieDepuisDemande(entree = {}) {
     zonePickup: entree.zonePickup || null,
     details: nonVides({ drop_off: entree.dropoff || "", vol: entree.vol || "", bagages: entree.bagages ? String(entree.bagages) : "", ...(entree.details || {}) }),
   };
+}
+
+// Ce qui est déjà rempli, pour le résumé d'un bloc replié : « 08:30 · Lanta Sand Resort · Krabi Airport ».
+export const resumeSaisie = (s = {}) => [s.heure, (s.lieu || "").trim(), ((s.details || {}).drop_off || "").trim()].filter(Boolean).join(" · ");
+
+// Bloc déplié au départ : toujours sur un grand écran ; sur téléphone, avec deux services ou plus, seulement celui ajouté en dernier.
+export const blocOuvert = ({ telephone = false, nbServices = 1, service, dernier = null }) => !telephone || nbServices < 2 || (!!dernier && service.ligneIds.includes(dernier));
+
+// Course hors catalogue : son libellé suit le pickup et le drop-off saisis, pour que la facture, le dossier et la fiduciaire disent le même
+// trajet que la Booking confirmation. Rend le nouveau libellé, ou null s'il ne change pas (un des deux lieux vide : on garde l'ancien).
+export function libelleCourseSuivi(ligne, saisie) {
+  const p = (saisie.lieu || "").trim();
+  const d = ((saisie.details || {}).drop_off || "").trim();
+  if (!p || !d) return null;
+  const nouveau = libelleTrajet(p, d);
+  return nouveau === (ligne.titre || ligne.libelle) ? null : nouveau;
 }
 
 // La saisie d'un service, rangée sous l'identifiant d'une de ses lignes : retrouvée même si le regroupement change de première ligne.

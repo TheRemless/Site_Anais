@@ -24,7 +24,7 @@ export function ouvrirCourseLibre({ date = "", onAjout }) {
     vol: entree("vol", { placeholder: "FD3217" }),
     adultes: saisie(entree("adultes"), "entier"),
     enfants: saisie(entree("enfants"), "entier"),
-    bagages: saisie(entree("bagages"), "entier"),
+    bagages: entree("bagages"),
     sieges: saisie(entree("sieges"), "entier"),
     prix: saisie(entree("prix"), "montant"),
   };
@@ -52,7 +52,7 @@ export function ouvrirCourseLibre({ date = "", onAjout }) {
     h("div", { class: "grille-form compacte" }, champ(tr("Date de la course"), c.date), champ(tr("Heure de pickup"), c.heure)),
     h("div", { class: "grille-form" }, champ(tr("Lieu de pickup"), c.pickup, anglais), champ(tr("Drop-off"), c.dropoff, anglais)),
     champ(tr("Numéro de vol ou de bateau"), c.vol, tr("Si le pickup ou le drop-off est à l'aéroport ou au port. Sinon, laisser vide.")),
-    h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), c.adultes), champ(tr("Enfants"), c.enfants), champ(tr("Bagages"), c.bagages, tr("Un nombre, par exemple 3.")), champ(tr("Sièges enfant ou bébé"), c.sieges, tr("Vide si aucun."))),
+    h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), c.adultes), champ(tr("Enfants"), c.enfants), champ(tr("Bagages"), c.bagages, tr("Un nombre ou du texte, en anglais : 3, ou 2 suitcases, 1 golf bag.")), champ(tr("Sièges enfant ou bébé"), c.sieges, tr("Vide si aucun."))),
     champ(tr("Prix de la course ({devise})", { devise: reglages().devise || "THB" }), c.prix, tr("Payé en espèces au chauffeur.")),
     h("div", { class: "actions" }, h("button", { class: "secondaire", type: "button", onclick: () => fermer() }, tr("Annuler")), h("button", { class: "principal", type: "submit" }, tr("Ajouter la course")))
   );

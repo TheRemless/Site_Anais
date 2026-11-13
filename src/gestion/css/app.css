@@ -1406,6 +1406,7 @@ details > summary { padding-block: 11px; margin: 0; }
 .vr-champ input[type="date"], .vr-champ input[type="time"] { display: block; text-align: start; }
 .vr-champ input:focus-visible { outline: 3px solid var(--teal); outline-offset: 1px; border-color: var(--teal-700); }
 .vr-champ input[aria-invalid] { border-color: var(--danger); background: var(--danger-fond); }
+.vr-connu { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface-2); font-size: 1rem; }
 .vr-aide { margin: 0; font-size: 0.95rem; color: var(--texte-2); }
 .vr-erreur { margin: 0; font-size: 1rem; font-weight: 600; color: var(--danger); }
 .vr-erreur::before { content: "! "; }
@@ -1481,3 +1482,9 @@ details > summary { padding-block: 11px; margin: 0; }
 .fiduciaire[lang="th"] .fid-montant { font-size: 1.3rem; }
 .fiduciaire .barre-action > button { white-space: normal; line-height: 1.3; min-width: 0; }
 .fid-plus { margin: 14px 0 0; text-align: center; }
+
+/* Création d'un dossier : le bloc voucher de chaque service, replié sur téléphone avec ce qui est déjà rempli. */
+.creation-voucher { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--bord); }
+.creation-voucher > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.creation-voucher-resume { margin-left: 8px; font-weight: 400; color: var(--texte-2); }
+.creation-voucher-resume:empty { display: none; }
