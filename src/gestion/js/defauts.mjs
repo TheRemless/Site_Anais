@@ -121,6 +121,7 @@ export const LIBELLES_EN = {
   cgv: "The client acknowledges having read the [Terms and Conditions]({cgv_url}) of {entreprise} and accepts them in full. Signing this quote constitutes acceptance of the Terms and Conditions and a binding commitment.",
 };
 
+// Moyens de paiement de ZTP (et de toute entreprise sur mesure). Sert aussi de liste complète pour nommer un moyen enregistré.
 export const MOYENS_DEFAUT = [
   { id: "virement", label: N_("Virement bancaire") },
   { id: "wise", label: N_("Wise") },
@@ -130,6 +131,10 @@ export const MOYENS_DEFAUT = [
   { id: "especes", label: N_("Espèces") },
   { id: "autre", label: N_("Autre") },
 ];
+// Secret et Taxi encaissent surtout en espèces : Espèces en premier (choix par défaut d'un paiement), sans TWINT ni PostFinance,
+// qui sont suisses et propres à ZTP (audit du 13.11.2026, point 11).
+export const MOYENS_SUR_PLACE = ["especes", "virement", "wise", "paypal", "autre"].map((id) => MOYENS_DEFAUT.find((m) => m.id === id));
+export const moyensDefautPour = (fonctionnement) => (fonctionnement === "excursions" || fonctionnement === "taxi" ? MOYENS_SUR_PLACE : MOYENS_DEFAUT);
 
 // Texte de départ jusqu'au 8 novembre 2026 (taux de change écrit en dur, « de la facture » sur un devis) : reconnu pour proposer la version anglaise.
 const ANCIEN_COND_QR = `Un acompte de {acompte}% de la facture (non-remboursable) est demandé à la signature du devis, payable à {delai} jours, le reste du montant est à verser à la réception du carnet de voyage.
@@ -229,11 +234,14 @@ export const MESSAGES_TAXI = [
   { id: "taxi-modification-en", pour: "partenaire", cle: "modification", titre: "Change on a transfer", langue: "en", corps: "Hello {contact},\n\nChange on transfer {reference} ({client}):\n• {prestation}\n• Date: {date}\n• Pickup: {hotel}{a_heure}\n• Drop-off: {dropoff}\n• {personnes}\n\nCan you confirm the change? Thank you 🙏" },
   { id: "taxi-annulation-en", pour: "partenaire", cle: "annulation", titre: "Cancellation", langue: "en", corps: "Hello {contact},\n\nPlease cancel transfer {reference}: {prestation} on {date}, guest {client}.\nSorry for the change, thank you 🙏" },
   { id: "taxi-commission-en", pour: "partenaire", cle: "commission", titre: "Commission for yesterday's transfer", langue: "en", corps: "Hello {contact},\n\nAbout yesterday's transfer: {prestation} on {date}, guest {client} ({prix}).\nHow much is the commission for this one?\n\nThank you 🙏" },
+  // Un seul message pour toutes les courses à demander au même chauffeur (audit du 13.11.2026, point 8). {courses} : une ligne par course.
+  { id: "taxi-commissions-en", pour: "partenaire", cle: "commissions", titre: "Commissions for the last transfers", langue: "en", corps: "Hello {contact},\n\nCould you tell me the commission for these transfers?\n{courses}\n\nThank you 🙏" },
   { id: "taxi-partenaire-th", pour: "partenaire", cle: "partenaire", titre: "งานใหม่ (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nมีงานรับส่งใหม่ค่ะ\n• {prestation}\n• วันที่ {date}\n• รับที่: {hotel}{a_heure}\n• ส่งที่: {dropoff}\n• {personnes}\n• ลูกค้า: {client}\n• ราคา: {prix} ลูกค้าจ่ายคนขับ\n• เลขอ้างอิง: {reference}\n\nช่วยยืนยันด้วยนะคะ ขอบคุณค่ะ 🙏" },
   { id: "taxi-relance-th", pour: "partenaire", cle: "relance", titre: "ติดตามงาน (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nขอติดตามงาน {reference} ค่ะ: {prestation} วันที่ {date} {personnes} ลูกค้า {client}\nช่วยยืนยันด้วยนะคะ ขอบคุณค่ะ 🙏" },
   { id: "taxi-modification-th", pour: "partenaire", cle: "modification", titre: "แก้ไขงาน (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nขอแก้ไขงาน {reference} ({client}) ค่ะ\n• {prestation}\n• วันที่ {date}\n• รับที่: {hotel}{a_heure}\n• ส่งที่: {dropoff}\n• {personnes}\n\nช่วยยืนยันด้วยนะคะ ขอบคุณค่ะ 🙏" },
   { id: "taxi-annulation-th", pour: "partenaire", cle: "annulation", titre: "ยกเลิกงาน (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nขอยกเลิกงาน {reference} ค่ะ: {prestation} วันที่ {date} ลูกค้า {client}\nขอโทษด้วยนะคะ ขอบคุณค่ะ 🙏" },
   { id: "taxi-commission-th", pour: "partenaire", cle: "commission", titre: "ค่าคอมมิชชั่นงานเมื่อวาน (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nงานเมื่อวาน: {prestation} วันที่ {date} ลูกค้า {client} ({prix})\nค่าคอมมิชชั่นงานนี้เท่าไหร่คะ\n\nขอบคุณค่ะ 🙏" },
+  { id: "taxi-commissions-th", pour: "partenaire", cle: "commissions", titre: "ค่าคอมมิชชั่นงานที่ผ่านมา (à relire)", langue: "th", corps: "สวัสดีค่ะ {contact}\n\nรบกวนแจ้งค่าคอมมิชชั่นของงานเหล่านี้ด้วยค่ะ\n{courses}\n\nขอบคุณค่ะ 🙏" },
 ];
 // Messages de départ d'une entreprise selon sa façon de travailler : ceux de Taxi en mode taxi, sinon les messages généraux.
 // Taxi garde aussi la « réponse à une demande » en anglais (bouton « Répondre au client » de la demande collée).
@@ -308,7 +316,10 @@ export function completerReglages(brut) {
   if (r.apparence.qr_pseudo === undefined && p.wise_pseudo) r.apparence.qr_pseudo = p.wise_pseudo;
   const e = r.emetteur || {};
   if (e.contact === undefined && (e.contact_nom || e.whatsapp || e.email)) r.emetteur = { ...e, contact: [e.contact_nom, e.whatsapp, e.email].filter(Boolean).join("\n") };
-  return fusion(REGLAGES_NEUTRE, r);
+  const out = fusion(REGLAGES_NEUTRE, r);
+  // Liste jamais enregistrée : celle de la façon de travailler (Espèces d'abord pour Secret et Taxi). Une liste enregistrée reste telle quelle.
+  if (!(r.listes && Array.isArray(r.listes.moyens))) out.listes = { ...out.listes, moyens: moyensDefautPour(out.fonctionnement) };
+  return out;
 }
 
 // Ce qu'il manque pour que les documents d'une entreprise soient présentables.
@@ -484,6 +495,10 @@ export function donneesDemo(ajd, ajouterJours) {
   const lc8 = course("Private minivan: Koh Lanta → Phuket Airport", 2700);
   ajoute(e3, c7, j(-3), "", "Private minivan: Krabi Airport → Koh Lanta", { accepte_le: j(-3), date_depart: j(-1), responsable_id: assistante.user_id }, null, { contenu: contenu("", [{ ...lc7, date_service: j(-1) }], "detail", { langue: "en" }) });
   ajoute(e3, c8, j(-1), "", "Private minivan: Koh Lanta → Phuket Airport", { accepte_le: j(-1), date_depart: j(1) }, null, { contenu: contenu("", [{ ...lc8, date_service: j(1) }], "detail", { langue: "en" }) });
+  // Une course d'avant-hier encore sans commission : la carte « Commissions à demander » la garde et la groupe avec celle d'hier.
+  const c9 = client(e3, "Monsieur", "Noah", "Schmid", "Lanta Demo Resort, Long Beach", "+41 79 000 00 09");
+  const lc9 = course("Private Taxi: Koh Lanta → Ao Nang", 2700);
+  ajoute(e3, c9, j(-4), "", "Private Taxi: Koh Lanta → Ao Nang", { accepte_le: j(-4), date_depart: j(-2) }, null, { contenu: contenu("", [{ ...lc9, date_service: j(-2) }], "detail", { langue: "en" }) });
 
   // Entreprise 2 : quatre partenaires fictifs avec leurs tarifs, leurs nets et les trajets de deux compagnies de bateaux.
   const partenaires = [];
@@ -554,12 +569,17 @@ export function donneesDemo(ajd, ajouterJours) {
   reservation(dossiers[5], prestations[3], "Koh Rok and Koh Ha, park fees", j(1), { statut: "confirme", personnes: { adultes: 2, enfants: 0, bebes: 0 }, notes: "Paid in cash on the island." }, null);
   reservation(dossiers[6], prestations[5], "Krabi Airport → Koh Lanta", j(0), { heure_pickup: "14:30", lieu_pickup: "Krabi Airport, flight FD3217", statut: "demande", montant_vente: 2500, personnes: { adultes: 1, enfants: 1, bebes: 0 } }, { net_prevu: 2250 });
   reservation(dossiers[5], prestations[8], "Sunset by longtail, 2 hours", j(3), { montant_vente: 1400 }, { net_prevu: 1000 });
-  // Taxi : une course hier (la carte « Hier » propose l'avis et la commission) et une demain.
+  // Taxi : une course avant-hier et une hier (commissions à demander, avis d'hier) et une demain.
   const dossiersTaxi = dossiers.filter((d) => d.entite_id === e3.id);
   const chauffeurs = { id: uid(), created_at: j(-90), updated_at: j(-90), entite_id: e3.id, nom: "Chauffeurs démo", nom_thai: "", categorie: "Transferts terrestres et taxis", groupe: "transport", role: "Minivans privés", contact: { personne: "M. Démo", telephones: [{ numero: "083-000-0009", libelle: "", whatsapp: true }] }, regles: { mode_reglement: "sur_place" }, contrat: {}, notes: "", ordre: 1, actif: true };
   partenaires.push(chauffeurs);
+  // Trois tarifs du catalogue de VIP Taxi Lanta (prix de vente par véhicule, au départ de Koh Lanta, tels qu'en base le 13.11.2026) :
+  // sans eux, « Ajouter un service » affichait « 0 tarif » et le parcours d'Anaïs n'était pas testable en démo.
+  const NOTE_TAXI = "Child seat provided free. Price for 1 to 2 guests. Koh Lanta ferry crossing included up to 4 people (VIP Taxi Lanta pays the tickets), 60 ฿ per person from the 5th.";
+  [["Krabi Airport", 2300], ["Ao Nang", 2700], ["Phuket Airport and town", 4500]].forEach(([libelle, prix]) => prestations.push({ id: uid(), created_at: j(-90), updated_at: j(-90), entite_id: e3.id, partenaire_id: chauffeurs.id, famille: "transfert", groupe: "Private Taxi", libelle, libelle_en: "", details: { note: NOTE_TAXI }, prix_vente: prix, unite: "veh", sur_place: false, ordre: prestations.length + 1, actif: true }));
   const courseTaxi = (dossier, ligneC, date, extra) => reservations.push({ id: uid(), created_at: j(-2), updated_at: j(-2), entite_id: e3.id, dossier_id: dossier.id, ligne_id: ligneC.id, prestation_id: null, trajet_id: null, partenaire_id: chauffeurs.id, libelle: ligneC.libelle, date_service: date, heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: ligneC.unite, paye_sur_place: true, notes: "", details: {}, ...extra });
   courseTaxi(dossiersTaxi[0], lc7, j(-1), { heure_pickup: "11:00", lieu_pickup: "Krabi Airport, arrivals hall", personnes: { adultes: 4, enfants: 0, bebes: 0 }, details: { drop_off: "Hotel Sea, Koh Lanta", bagages: "oui" } });
+  courseTaxi(dossiersTaxi[2], lc9, j(-2), { heure_pickup: "09:00", lieu_pickup: "Lanta Demo Resort, Long Beach", personnes: { adultes: 2, enfants: 0, bebes: 0 }, details: { drop_off: "Ao Nang", bagages: "2" } });
   courseTaxi(dossiersTaxi[1], lc8, j(1), { heure_pickup: "06:30", lieu_pickup: "Villa Demo, Klong Nin", personnes: { adultes: 2, enfants: 1, bebes: 1 }, statut: "demande", details: { drop_off: "Phuket Airport", bagages: "3" } });
   reservation(dossiers[6], prestations[6], "Koh Lanta → Phuket Airport", j(-20), { statut: "confirme", heure_pickup: "06:00", lieu_pickup: "Hotel Palm", montant_vente: 4500 }, { net_prevu: 4050, net_paye: 4050, paye_le: j(-15) });
 

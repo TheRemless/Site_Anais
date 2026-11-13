@@ -42,6 +42,7 @@ test("description d'une ligne de facture en mode excursions", () => {
   assert.equal(descriptionService({ libelle: "Note", qte: null }), "Note");
 });
 import { MESSAGES_DEFAUT, MESSAGES_TAXI } from "../src/gestion/js/defauts.mjs";
+import { varsCommissions } from "../src/gestion/js/taxi-calc.mjs";
 
 test("réservations depuis un document : une par ligne de partenaire, ligne enfant distinguée, net à part", () => {
   const doc = {
@@ -111,7 +112,8 @@ test("variables d'un message depuis une réservation", () => {
   assert.equal(fr.reference, "EX-2");
   assert.equal(fr.a_heure, "");
   // Le modèle « réponse au client » a ses propres variables (services, total, formule d'appel) : celles de varsReponse.
-  const connues = { ...v, ...varsReponse({ d: { nom: "A" }, services: [], entreprise: {} }) };
+  // Le message groupé des commissions de Taxi ajoute {courses} (taxi-calc.mjs varsCommissions).
+  const connues = { ...v, ...varsReponse({ d: { nom: "A" }, services: [], entreprise: {} }), ...varsCommissions([v]) };
   for (const m of [...MESSAGES_DEFAUT, ...MESSAGES_TAXI]) for (const k of m.corps.match(/\{(\w+)\}/g) || []) assert.ok(k.slice(1, -1) in connues, `${m.id} utilise une variable connue : ${k}`);
   // Taxi : la personne du partenaire, la dépose et le prix de la course.
   const t = variablesMessage({ reservation: { libelle: "Private minivan: Koh Lanta → Krabi Airport", montant_vente: 2700, details: { drop_off: "Krabi Airport" } }, partenaire: { nom: "VIP Taxi Lanta", contact: { personne: "Mr. Brown" } }, entreprise: { nom: "VIP Taxi Lanta", devise: "THB" }, langue: "th" });

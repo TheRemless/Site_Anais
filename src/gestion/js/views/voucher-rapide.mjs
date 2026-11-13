@@ -4,7 +4,7 @@
 import { etat, inserer, modifier, reglages, chargerDossier } from "../etat.mjs";
 import { h, icone } from "../ui.mjs";
 import { uid } from "../defauts.mjs";
-import { TH, CHAMPS, valeursVides, erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, reservationApercu, correctionReservation, valeursDepuis, suggestionsLieux, mesVouchers, dateCourteTh } from "../voucher-rapide-calc.mjs";
+import { TH, CHAMPS, valeursVides, erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, reservationApercu, correctionReservation, valeursDepuis, suggestionsLieux, mesVouchers, dateCourteTh, partenaireDeTaxi, clientsRecents } from "../voucher-rapide-calc.mjs";
 import { contenuCourse, heureBooking, estTaxi } from "../taxi-calc.mjs";
 import { numeroVoucher, nomFichierVoucher, lienWhatsApp } from "../operations-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
@@ -13,12 +13,11 @@ import { synchroniserDatesDossier } from "./suivi-facture.mjs";
 import { vouchersDuDossier } from "./voucher.mjs";
 import { imageVoucher } from "./voucher-envoi.mjs";
 import { moyen, partager, enregistrer, copierImage } from "./partage.mjs";
+import { noterEnvoi } from "./envois-vouchers.mjs";
+import { aujourdhui } from "../calc.mjs";
 
 // Le partenaire de la course : VIP Taxi Lanta, seul partenaire de l'entreprise (lu avec le droit « voir les partenaires »).
-const partenaireTaxi = () => {
-  const actifs = etat.db.partenaires.filter((p) => p.actif !== false);
-  return actifs.find((p) => /taxi/i.test(p.nom || "")) || actifs[0] || null;
-};
+const partenaireTaxi = () => partenaireDeTaxi(etat.db.partenaires);
 const telAnais = () => chiffres((reglages().voucher || {}).whatsapp_anais || "").replace("+", "");
 
 let adresseImage = null;
@@ -61,10 +60,36 @@ export function vueVoucherRapide() {
     const texte = (attrs = {}) => h("input", { type: "text", autocomplete: "off", autocapitalize: "words", spellcheck: "false", enterkeyhint: "next", ...attrs });
     const nombre = (attrs = {}) => h("input", { type: "text", inputmode: "numeric", pattern: "[0-9]*", autocomplete: "off", enterkeyhint: "next", ...attrs });
 
+    // Client déjà connu : le même nom vu ces 30 derniers jours (un aller puis son retour) se choisit d'un tap, sans créer de doublon.
+    // Le client choisi reste lié tant que le nom n'est pas retouché.
+    let clientId = valeurs.client_id || "";
+    const connus = h("div", { class: "vr-connus", "aria-live": "polite" });
+    const proposer = () => {
+      const choisi = clientId && etat.db.clients.find((c) => c.id === clientId);
+      if (choisi && [choisi.prenom, choisi.nom].filter(Boolean).join(" ") !== champs.nom.value.trim().replace(/\s+/g, " ")) clientId = "";
+      const liste = clientId ? [] : clientsRecents({ nom: champs.nom.value, clients: etat.db.clients, dossiers: etat.db.dossiers, reservations: etat.db.reservations, aujourdhui: aujourdhui() });
+      connus.replaceChildren(
+        ...liste.map((c) =>
+          h(
+            "p",
+            { class: "vr-connu" },
+            h("span", null, `${TH.client_connu} : ${[c.prenom, c.nom].filter(Boolean).join(" ")}${c.telephone ? ` · ${c.telephone}` : ""}`),
+            h("button", { class: "secondaire petit", type: "button", onclick: () => {
+              clientId = c.id;
+              champs.nom.value = [c.prenom, c.nom].filter(Boolean).join(" ");
+              if (!champs.telephone.value.trim() && c.telephone) champs.telephone.value = c.telephone;
+              proposer();
+            } }, TH.utiliser_client)
+          )
+        )
+      );
+    };
     const form = h(
       "form",
       { class: "vr-form", novalidate: true, onsubmit: (e) => (e.preventDefault(), verifier()) },
       champ("nom", TH.nom, texte({ autocomplete: "off", name: "vr-nom" }), TH.anglais_aide),
+      connus,
+      champ("telephone", TH.telephone, h("input", { type: "tel", inputmode: "tel", autocomplete: "off", enterkeyhint: "next" }), TH.telephone_aide),
       champ("date", TH.date, h("input", { type: "date" })),
       champ("pickup", TH.pickup, texte({ list: "vr-lieux" }), TH.anglais_aide),
       champ("heure", TH.heure, h("input", { type: "time", step: 300 })),
@@ -83,7 +108,7 @@ export function vueVoucherRapide() {
     );
 
     function verifier() {
-      const v = Object.fromEntries(CHAMPS.map((c) => [c, champs[c].value]));
+      const v = { ...Object.fromEntries(CHAMPS.map((c) => [c, champs[c].value])), client_id: clientId };
       const e = erreursVoucher(v);
       for (const c of CHAMPS) {
         erreurs[c].hidden = !e[c];
@@ -95,6 +120,8 @@ export function vueVoucherRapide() {
       apercu(v, cible);
     }
 
+    champs.nom.addEventListener("input", proposer);
+    proposer();
     racine.replaceChildren(h("h1", null, cible ? TH.titre_modif : TH.titre), form, cible ? null : listeVouchers());
     window.scrollTo(0, 0);
   }
@@ -156,11 +183,13 @@ export function vueVoucherRapide() {
     });
   }
 
-  // Création en une fois : le client (nom seul, sans téléphone), le dossier, le prix interne de la course et sa réservation payée au chauffeur.
+  // Création en une fois : le client (nom et WhatsApp facultatif, ou un client déjà connu), le dossier, le prix interne de la course et sa réservation payée au chauffeur.
   // Le client, puis le dossier, sont gardés par l'aperçu (`essai`) dès qu'ils existent : si la suite échoue, un second tap reprend là.
   async function creer(x, essai) {
-    if (!essai.clientId) essai.clientId = (await inserer("clients", { civilite: "", prenom: "", nom: x.nom, adresse: "", telephone: "", email: "", notes: "" })).id;
-    else if ((etat.db.clients.find((c) => c.id === essai.clientId) || {}).nom !== x.nom) await modifier("clients", essai.clientId, { prenom: "", nom: x.nom });
+    // Un client déjà connu, choisi d'un tap, sert tel quel ; sinon un nouveau, avec son WhatsApp s'il est donné.
+    if (!essai.clientId && x.clientId && etat.db.clients.some((c) => c.id === x.clientId)) essai.clientId = x.clientId;
+    if (!essai.clientId) essai.clientId = (await inserer("clients", { civilite: "", prenom: "", nom: x.nom, adresse: "", telephone: x.telephone, email: "", notes: "" })).id;
+    else await majClient(essai.clientId, x);
     const p = partenaireTaxi();
     if (!essai.dossierId) {
       const propose = refProposee();
@@ -172,12 +201,22 @@ export function vueVoucherRapide() {
       const doc = etat.db.documents.find((y) => y.dossier_id === essai.dossierId && y.type === "facture");
       const ligne = doc && (doc.contenu.lignes || []).find((l) => l.kind === "ligne");
       const r = reservationApercu(x);
-      await inserer("reservations", { dossier_id: essai.dossierId, ligne_id: ligne ? ligne.id : null, prestation_id: null, trajet_id: null, partenaire_id: p ? p.id : null, libelle: r.libelle, date_service: r.date_service, heure_pickup: r.heure_pickup, lieu_pickup: r.lieu_pickup, personnes: r.personnes, statut: "a_demander", reference_partenaire: "", montant_vente: r.montant_vente, notes: "", paye_sur_place: true, details: r.details });
+      await inserer("reservations", { dossier_id: essai.dossierId, ligne_id: ligne ? ligne.id : null, prestation_id: null, trajet_id: null, partenaire_id: p ? p.id : null, libelle: r.libelle, date_service: r.date_service, heure_pickup: r.heure_pickup, lieu_pickup: r.lieu_pickup, personnes: r.personnes, statut: r.statut, reference_partenaire: "", montant_vente: r.montant_vente, notes: "", paye_sur_place: true, details: r.details });
     }
     const v = voucherDe(essai.dossierId);
     // creerReservations n'arrête pas la création quand la réservation échoue : on ne dit pas « créé » à tort.
     if (!v.reservation) throw new Error("reservation");
     return v;
+  }
+
+  // Le nom et le WhatsApp saisis passent sur la fiche du client ; un WhatsApp laissé vide n'efface pas celui qu'Anaïs a noté.
+  async function majClient(id, x) {
+    const c = etat.db.clients.find((y) => y.id === id) || {};
+    const patch = {
+      ...([c.prenom, c.nom].filter(Boolean).join(" ") !== x.nom ? { prenom: "", nom: x.nom } : {}),
+      ...(x.telephone && x.telephone !== (c.telephone || "") ? { telephone: x.telephone } : {}),
+    };
+    if (Object.keys(patch).length) await modifier("clients", id, patch);
   }
 
   // Correction : le nom, la course et son prix interne (jamais montré) suivent ce qui a été saisi.
@@ -186,7 +225,7 @@ export function vueVoucherRapide() {
     const r = etat.db.reservations.find((y) => y.id === cible.reservation.id) || cible.reservation;
     const d = etat.db.dossiers.find((y) => y.id === cible.dossier.id) || cible.dossier;
     const client = etat.db.clients.find((y) => y.id === cible.client.id) || cible.client;
-    if ([client.prenom, client.nom].filter(Boolean).join(" ") !== x.nom) await modifier("clients", client.id, { prenom: "", nom: x.nom });
+    await majClient(client.id, x);
     const suite = correctionReservation(r, x);
     if (suite) {
       await modifier("reservations", r.id, suite);
@@ -223,16 +262,25 @@ export function vueVoucherRapide() {
     // Un seul partage à la fois : le partage ouvert tout seul après la création peut encore être en cours quand Mook touche le bouton.
     let enCours = null;
     const partagerUneFois = () => (enCours ||= partager([fichier]).finally(() => (enCours = null)));
+    // L'image partie vers Anaïs, qui la transmet au client : l'envoi est noté, la fiche ne reste pas à « 0 sur 1 » (une fois par écran).
+    // Sur un téléphone qui ne partage pas, l'image enregistrée est celle que Mook envoie elle-même dans WhatsApp : notée aussi.
+    let note = false;
+    const noter = () => {
+      if (note || !v.reservation) return;
+      note = true;
+      noterEnvoi(v.reservation, "client");
+    };
     const envoyer = async () => {
       if (chemin === "natif") {
         const res = await partagerUneFois();
-        if (res === "ok") return dire(`✓ ${TH.choisir_anais}`);
+        if (res === "ok") return noter(), dire(`✓ ${TH.choisir_anais}`);
         if (res === "annule") return dire(TH.choisir_anais);
         return dire(TH.partage_echec, true);
       }
       if (chemin === "ordinateur") {
         const res = await copierImage(fichier);
         if (!res.ok) return dire(TH.partage_echec, true);
+        noter();
         dire(TH.image_copiee);
         if (tel) {
           const f = window.open(lienWhatsApp(tel, ""), "_blank");
@@ -252,7 +300,7 @@ export function vueVoucherRapide() {
         "div",
         { class: "vr-barre vr-barre-envoi" },
         chemin === "telephone_sans_partage" ? null : boutonEnvoyer,
-        h("button", { class: chemin === "telephone_sans_partage" ? "principal" : "secondaire", type: "button", onclick: () => enregistrer([fichier]) }, TH.enregistrer_image),
+        h("button", { class: chemin === "telephone_sans_partage" ? "principal" : "secondaire", type: "button", onclick: () => (enregistrer([fichier]), noter()) }, TH.enregistrer_image),
         tel && chemin !== "ordinateur" ? h("a", { class: "bouton secondaire", href: lienWhatsApp(tel, ""), target: "_blank", rel: "noopener" }, TH.ouvrir_chat) : null,
         h("button", { class: "secondaire", type: "button", onclick: () => formulaire() }, TH.nouveau)
       ),
@@ -264,7 +312,7 @@ export function vueVoucherRapide() {
     else if (chemin === "natif") dire(TH.choisir_anais);
     if (essayer && chemin === "natif") {
       // Le tap de création a pu « expirer » pendant l'enregistrement : un refus du navigateur ne dit rien de grave, le bouton reste là.
-      partagerUneFois().then((res) => (res === "ok" ? dire(`✓ ${TH.choisir_anais}`) : res === "annule" || (res.erreur && res.erreur.name === "NotAllowedError") ? null : dire(TH.partage_echec, true)));
+      partagerUneFois().then((res) => (res === "ok" ? (noter(), dire(`✓ ${TH.choisir_anais}`)) : res === "annule" || (res.erreur && res.erreur.name === "NotAllowedError") ? null : dire(TH.partage_echec, true)));
     }
   }
 
