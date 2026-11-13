@@ -112,3 +112,9 @@ test("libellés d'un document ou d'un message en anglais : libelle_en d'abord, j
   assert.equal(v.prestation, "4 Islands", "message en anglais : le nom du service est traduit");
   assert.equal(variablesMessage({ reservation: { libelle: "4 îles", date_service: "2026-12-10" }, langue: "fr" }).prestation, "4 îles", "message en français : inchangé");
 });
+
+test("voucher : la capacité du bateau ne s'imprime plus (Jérémy, 13.11.2026)", async () => {
+  const fs = await import("node:fs");
+  const source = fs.readFileSync(new URL("../src/gestion/js/views/voucher.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /Capacity|capaciteBateau/);
+});
