@@ -463,9 +463,19 @@ export function moteurTexte(prestation) {
 export const CHAMPS_VOUCHER = {
   billet: ["embarquement", "checkin", "bagages", "remarques", "remarques_paiement"],
   bateau: ["chambre", "type_tour", "bateau", "parc", "parc_texte", "remarques", "remarques_paiement"],
-  transfert: ["drop_off", "vol", "bagages", "type_transfert", "remarques", "remarques_paiement"],
+  transfert: ["drop_off", "vol", "bagages", "sieges", "type_transfert", "remarques", "remarques_paiement"],
   activite: ["chambre", "programme", "heure_service", "remarques", "remarques_paiement"],
   location: ["chambre", "retour_date", "retour_heure", "retour_lieu", "permis", "equipement", "caution", "conditions", "remarques", "remarques_paiement"],
+};
+// Les deux bouts d'un transfert d'après son trajet, sinon d'après le libellé « A → B » (de la prestation, sinon de la réservation) :
+// ce que le voucher et la Booking confirmation impriment quand le pickup ou le drop-off n'a pas été saisi.
+export const dropOffDepuisLibelle = (r, p, trajet) => (trajet ? trajet.vers : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→").pop().trim() : "");
+export const pickupDepuisLibelle = (r, p, trajet) => (trajet ? trajet.de : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→")[0].replace(/^[^:]*:\s*/, "").trim() : "");
+
+// Sièges enfant ou bébé d'un transfert, imprimés après le nombre d'enfants : « 1 (1 child seat) ». Rien quand il n'y en a pas.
+export const siegesVoucher = (n) => {
+  const s = Math.max(0, Math.floor(Number(n) || 0));
+  return s ? ` (${s} child ${s > 1 ? "seats" : "seat"})` : "";
 };
 export const TITRES_VOUCHER = { billet: "Boat Ticket Voucher", bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher", location: "Rental Voucher" };
 

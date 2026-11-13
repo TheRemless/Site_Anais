@@ -20,7 +20,7 @@ test("saisie complète : aucune erreur ; champs vides : une erreur sous chacun, 
   assert.deepEqual(erreursVoucher(bon), {});
   const e = erreursVoucher(valeursVides());
   assert.deepEqual(Object.keys(e).sort(), ["date", "dropoff", "heure", "nom", "pickup", "prix"].sort());
-  assert.deepEqual(CHAMPS, ["nom", "date", "pickup", "heure", "dropoff", "vol", "adultes", "enfants", "bagages", "sieges", "prix"]);
+  assert.deepEqual(CHAMPS, ["nom", "telephone", "date", "pickup", "heure", "dropoff", "vol", "adultes", "enfants", "bagages", "sieges", "prix"]);
 });
 
 test("le voucher est en anglais : un mot thaï dans un champ imprimé est refusé", () => {
@@ -68,7 +68,7 @@ test("ce qui est créé : une course libre payée au chauffeur, prix pour le vé
   assert.equal(res.reservation.paye_sur_place, true);
   assert.equal(res.reservation.date_service, "2026-11-14");
   assert.deepEqual(res.reservation.personnes, { adultes: 0, enfants: 0, bebes: 0 });
-  assert.deepEqual(reservationVoucher(x), { heure: "14:30", lieu: "Pimalai Resort", dropoff: "Krabi Airport", vol: "", bagages: "3", sieges: 0, personnes: { adultes: 2, enfants: 1 } });
+  assert.deepEqual(reservationVoucher(x), { statut: "confirme", heure: "14:30", lieu: "Pimalai Resort", dropoff: "Krabi Airport", vol: "", bagages: "3", sieges: 0, personnes: { adultes: 2, enfants: 1 } });
 });
 
 test("aperçu : la Booking confirmation lit les champs saisis tels quels", () => {

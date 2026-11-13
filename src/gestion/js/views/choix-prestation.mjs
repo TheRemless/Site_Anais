@@ -25,7 +25,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   const recents = (cle) => (cache[cle] ||= [...new Set(etat.db.reservations.filter((r) => r[cle]).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "")).map((r) => r[cle]))].slice(0, 5));
   let ajoutes = 0;
   const date = h("input", { id: "cp-date", type: "date", value: ctx.date, onchange: () => dessiner() });
-  const q = h("input", { id: "cp-q", type: "search", placeholder: tr("Île, excursion, transfert, compagnie…"), autocomplete: "off", oninput: () => dessiner() });
+  const q = h("input", { id: "cp-q", type: "search", placeholder: modeTaxi() ? tr("Aéroport, quai, plage…") : tr("Île, excursion, transfert, compagnie…"), autocomplete: "off", oninput: () => dessiner() });
   const liste = h("ul", { class: "choix-liste" });
   const compte = h("p", { class: "aide" });
   const onglets = h("div", { class: "onglets sous-onglets" }, ongletsDispo.map(([code, libelle]) => h("button", { type: "button", "aria-pressed": code === onglet ? "true" : "false", onclick: (e) => { onglet = code; for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false"); dessiner(); } }, libelle)));
