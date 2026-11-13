@@ -158,7 +158,10 @@ export function partenaireDeTaxi(partenaires = []) {
 export const ligneVoucher = (x, { id, partenaireId = null }) => ({ id, kind: "ligne", libre: true, par: "veh", libelle: x.libelle, titre: x.libelle, intro: "", puces: [], unite: x.prix, qte: 1, montant: null, pct: null, date_service: x.date, partenaire_id: partenaireId, paye_sur_place: true });
 
 // Ce qui se pose sur la réservation créée (mêmes champs que « Coller une demande » : heure, lieu, dépose, vol, bagages, sièges, personnes).
-export const reservationVoucher = (x) => ({ heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, vol: x.vol, bagages: x.bagages, sieges: x.sieges, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants } });
+// La course est confirmée dès sa création : Mook (ou Anaïs, pour une course hors catalogue) l'a déjà convenue avec Mr. Brown
+// (décision de Jérémy, 13.11.2026). Elle n'entre pas dans « À confirmer auprès des partenaires » et ne propose ni « Demander » ni relance.
+export const STATUT_COURSE = "confirme";
+export const reservationVoucher = (x) => ({ statut: STATUT_COURSE, heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, vol: x.vol, bagages: x.bagages, sieges: x.sieges, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants } });
 
 // Les champs facultatifs de la course dans `details` : posés s'ils sont remplis, retirés s'ils sont vidés.
 function detailsFacultatifs(details, x) {
@@ -170,7 +173,7 @@ function detailsFacultatifs(details, x) {
 }
 
 // Réservation telle que le voucher la lit, pour l'aperçu avant création (rien n'est encore en base).
-export const reservationApercu = (x) => ({ id: "apercu", libelle: x.libelle, date_service: x.date, heure_pickup: x.heure, lieu_pickup: x.pickup, personnes: x.personnes, montant_vente: x.prix, paye_sur_place: true, statut: "a_demander", details: detailsFacultatifs({ drop_off: x.dropoff }, x) });
+export const reservationApercu = (x) => ({ id: "apercu", libelle: x.libelle, date_service: x.date, heure_pickup: x.heure, lieu_pickup: x.pickup, personnes: x.personnes, montant_vente: x.prix, paye_sur_place: true, statut: STATUT_COURSE, details: detailsFacultatifs({ drop_off: x.dropoff }, x) });
 
 // Correction d'un voucher déjà créé : les champs de la réservation qui changent (null si rien ne change).
 export function correctionReservation(r, x) {

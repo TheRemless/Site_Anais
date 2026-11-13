@@ -2,9 +2,9 @@
 // et la course Taxi hors catalogue, calculée comme l'écran « Nouveau voucher » de l'assistante.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { servicesCreation, champsCreation, nonVides, saisieDepuisDemande, saisieDuService, parServiceCreation, erreursCourse, courseHorsCatalogue, resumeSaisie, blocOuvert, libelleCourseSuivi } from "../src/gestion/js/creation-voucher-calc.mjs";
+import { servicesCreation, boutsDuTrajet, saisieVide, champsCreation, nonVides, saisieDepuisDemande, saisieDuService, parServiceCreation, erreursCourse, courseHorsCatalogue, resumeSaisie, blocOuvert, libelleCourseSuivi } from "../src/gestion/js/creation-voucher-calc.mjs";
 import { CHAMPS_VOUCHER, reservationsDepuisDocument, siegesVoucher } from "../src/gestion/js/operations-calc.mjs";
-import { donneesVoucher, ligneVoucher, reservationVoucher, partenaireDeTaxi, erreursVoucher, telephoneValide, clientsRecents, valeursDepuis } from "../src/gestion/js/voucher-rapide-calc.mjs";
+import { donneesVoucher, ligneVoucher, reservationVoucher, reservationApercu, partenaireDeTaxi, erreursVoucher, telephoneValide, clientsRecents, valeursDepuis } from "../src/gestion/js/voucher-rapide-calc.mjs";
 
 const prestations = [
   { id: "p-4iles", famille: "excursion", groupe: "4 Islands", libelle: "4 Islands speedboat", unite: "pp" },
@@ -98,7 +98,7 @@ test("course Taxi hors catalogue : même contrôle et même calcul que l'écran 
   assert.deepEqual(sv.ligneIds, ["L1"]);
   assert.ok(champsCreation(sv, { taxi: true }).includes("adultes"));
   const [ps] = parServiceCreation([sv], new Map([["L1", saisie]]));
-  assert.deepEqual(ps, { ligneIds: ["L1"], heure: "14:30", lieu: "Pimalai Resort", bebes: 0, sieges: 1, personnes: { adultes: 2, enfants: 1 }, zonePickup: null, details: { drop_off: "Krabi Airport", vol: "FD 3217", bagages: "3" } });
+  assert.deepEqual(ps, { ligneIds: ["L1"], heure: "14:30", lieu: "Pimalai Resort", bebes: 0, sieges: 1, personnes: { adultes: 2, enfants: 1 }, zonePickup: null, statut: "confirme", details: { drop_off: "Krabi Airport", vol: "FD 3217", bagages: "3" } });
 });
 
 test("partenaire d'une course : celui qui dit taxi, sinon le premier actif", () => {
@@ -162,4 +162,41 @@ test("écran de l'assistante : WhatsApp facultatif, et le client du même nom vu
   const v = valeursDepuis({ date_service: "2026-11-14", personnes: {} }, clients[0]);
   assert.equal(v.client_id, "c1");
   assert.equal(v.telephone, "+447700900123");
+});
+
+test("courses de l'assistante et courses hors catalogue : confirmées dès la création ; un trajet du catalogue garde le statut normal", () => {
+  const v = { nom: "Emma", date: "2026-11-14", pickup: "Pimalai Resort", heure: "14:30", dropoff: "Krabi Airport", adultes: "2", prix: "2700" };
+  const x = donneesVoucher(v);
+  assert.equal(reservationVoucher(x).statut, "confirme");
+  assert.equal(reservationApercu(x).statut, "confirme", "la reprise après un échec pose aussi « confirme »");
+  assert.equal(courseHorsCatalogue(v, { id: "L1" }).saisie.statut, "confirme");
+  const catalogue = ligne("c", "p-transfert", "Koh Lanta to Krabi Airport", { par: "veh", qte: 1 });
+  const [sv] = servicesCreation([catalogue], { prestations });
+  assert.ok(!("statut" in parServiceCreation([sv], new Map())[0]));
+});
+
+test("Taxi : le pickup et le drop-off se préremplissent avec les deux bouts du trajet, sans écraser une saisie", () => {
+  const taxi = [{ id: "t1", famille: "transfert", groupe: "Private minivan", libelle: "Krabi Airport → Koh Lanta", unite: "veh" }];
+  const [sv] = servicesCreation([ligne("a", "t1", "Krabi Airport → Koh Lanta, private minivan", { par: "veh", qte: 1 })], { prestations: taxi });
+  assert.equal(sv.pickup, "Krabi Airport");
+  assert.equal(sv.dropoff, "Koh Lanta");
+  const s = boutsDuTrajet(saisieVide(), sv);
+  assert.equal(s.lieu, "Krabi Airport");
+  assert.equal(s.details.drop_off, "Koh Lanta");
+  // Anaïs précise : sa saisie reste au prochain redessin.
+  s.lieu = "Krabi Airport, arrivals gate 3";
+  boutsDuTrajet(s, sv);
+  assert.equal(s.lieu, "Krabi Airport, arrivals gate 3");
+  // Autre trajet choisi : les bouts encore automatiques suivent, pas ce qui a été tapé.
+  boutsDuTrajet(s, { pickup: "Koh Lanta", dropoff: "Phuket Airport" });
+  assert.equal(s.lieu, "Krabi Airport, arrivals gate 3");
+  assert.equal(s.details.drop_off, "Phuket Airport");
+  // La demande donne le lieu : seul le drop-off se préremplit.
+  const d = boutsDuTrajet({ ...saisieVide(), lieu: "" }, sv, { lieu: false });
+  assert.equal(d.lieu, "");
+  assert.equal(d.details.drop_off, "Koh Lanta");
+  // Sans « → » ni trajet, rien à deviner.
+  const [libre] = servicesCreation([ligne("b", null, "Airport transfer", { libre: true, par: "veh", qte: 1 })], {});
+  assert.equal(libre.pickup, "");
+  assert.deepEqual(boutsDuTrajet(saisieVide(), libre).details, {});
 });

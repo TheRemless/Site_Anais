@@ -68,7 +68,7 @@ test("ce qui est créé : une course libre payée au chauffeur, prix pour le vé
   assert.equal(res.reservation.paye_sur_place, true);
   assert.equal(res.reservation.date_service, "2026-11-14");
   assert.deepEqual(res.reservation.personnes, { adultes: 0, enfants: 0, bebes: 0 });
-  assert.deepEqual(reservationVoucher(x), { heure: "14:30", lieu: "Pimalai Resort", dropoff: "Krabi Airport", vol: "", bagages: "3", sieges: 0, personnes: { adultes: 2, enfants: 1 } });
+  assert.deepEqual(reservationVoucher(x), { statut: "confirme", heure: "14:30", lieu: "Pimalai Resort", dropoff: "Krabi Airport", vol: "", bagages: "3", sieges: 0, personnes: { adultes: 2, enfants: 1 } });
 });
 
 test("aperçu : la Booking confirmation lit les champs saisis tels quels", () => {

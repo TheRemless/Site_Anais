@@ -3,7 +3,7 @@
 import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, resumeDossier } from "../etat.mjs";
 import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
-import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER, pointEmbarquement, consigneCheckin, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, venduParPersonne, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher } from "../operations-calc.mjs";
+import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER, pointEmbarquement, consigneCheckin, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, venduParPersonne, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 import { estTaxi } from "../taxi-calc.mjs";
 import { renderBookingConfirmation } from "./voucher-taxi.mjs";
@@ -141,9 +141,6 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
     h("p", { class: "v-merci" }, ...merci.split("\n").flatMap((l, i) => (i ? [h("br"), l] : [l])))
   );
 }
-
-const dropOffDepuisLibelle = (r, p, trajet) => (trajet ? trajet.vers : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→").pop().trim() : "");
-const pickupDepuisLibelle = (r, p, trajet) => (trajet ? trajet.de : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→")[0].replace(/^[^:]*:\s*/, "").trim() : "");
 
 export function imprimerVoucher(x) {
   const d = etat.db.dossiers.find((y) => y.id === x.reservation.dossier_id) || {};

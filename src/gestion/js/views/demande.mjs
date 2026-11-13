@@ -14,7 +14,7 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { servicesCreation, saisieVide, nonVides } from "../creation-voucher-calc.mjs";
+import { servicesCreation, saisieVide, nonVides, boutsDuTrajet } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation } from "./champs-voucher.mjs";
 import { boutonLireIA, boutonRedigerIA, badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees } from "../assistant-calc.mjs";
@@ -190,10 +190,12 @@ export function ouvrirDemande() {
     n.alertes.hidden = !alertes.length;
     n.li.classList.toggle("decoche", !sv.coche);
     // Le bloc du voucher suit le modèle du service choisi (billet de bateau, excursion, transfert…) ; la saisie, elle, est gardée.
-    const service = servicesCreation(lignesDuService(sv, offre), { prestations: etat.db.prestations, partenaires: etat.db.partenaires })[0] || null;
-    const cle = service ? `${service.type}|${service.personnes.adultes + service.personnes.enfants > 0}` : "";
+    const service = servicesCreation(lignesDuService(sv, offre), { prestations: etat.db.prestations, partenaires: etat.db.partenaires, trajets: etat.db.trajets })[0] || null;
+    const cle = service ? `${service.type}|${service.personnes.adultes + service.personnes.enfants > 0}|${service.pickup}|${service.dropoff}` : "";
     if (cle !== sv.cleVoucher) {
       sv.cleVoucher = cle;
+      // Taxi : sans lieu donné par la demande, le pickup et le drop-off montrent les deux bouts du trajet choisi.
+      if (service && modeTaxi()) boutsDuTrajet(sv.saisie, service, { lieu: !(d.type === "transfer" && d.pickup) });
       n.voucher.replaceChildren(...(service ? [blocServiceCreation({ service, saisie: sv.saisie, taxi: modeTaxi(), prefixe: `svc${sv.id}-v`, sauf: ["heure", "adultes", "enfants"], aideLieu: tr("Vide : celui de la demande, ou l'hôtel."), ouvert: false })].filter(Boolean) : []));
     }
     // Le partenaire a changé (autre offre choisie) : ses zones de pickup remplacent les précédentes.

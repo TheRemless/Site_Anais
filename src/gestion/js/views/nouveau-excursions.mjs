@@ -12,7 +12,7 @@ import { creerDossierExcursions, langueDocuments, refProposee as refPropose, ref
 import { lireBrouillon, viderBrouillon } from "./demande.mjs";
 import { clientsProches } from "../demande-calc.mjs";
 import { tr } from "../i18n.mjs";
-import { servicesCreation, saisieDepuisDemande, saisieDuService, parServiceCreation, blocOuvert, libelleCourseSuivi } from "../creation-voucher-calc.mjs";
+import { servicesCreation, saisieDepuisDemande, saisieDuService, parServiceCreation, blocOuvert, libelleCourseSuivi, boutsDuTrajet } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation } from "./champs-voucher.mjs";
 import { ouvrirCourseLibre } from "./course-libre.mjs";
 
@@ -56,7 +56,7 @@ export function nouveauDossierExcursions() {
   // lignes. Une demande collée en a déjà lu une partie : prérempli, et modifiable.
   const saisies = new Map();
   if (demande) for (const e of demande.parService || (demande.reservation ? [{ ...demande.reservation, ligneIds: lignes.map((l) => l.id) }] : [])) if (e.ligneIds && e.ligneIds.length) saisies.set(e.ligneIds[0], saisieDepuisDemande(e));
-  const services = () => servicesCreation(lignes, { prestations: etat.db.prestations, partenaires: etat.db.partenaires });
+  const services = () => servicesCreation(lignes, { prestations: etat.db.prestations, partenaires: etat.db.partenaires, trajets: etat.db.trajets });
   // Courses Taxi hors catalogue : leur libellé suit le pickup et le drop-off, tant qu'il n'a pas été réécrit à la main (`description_fixe`).
   // Le service ajouté en dernier reste déplié sur téléphone.
   const coursesLibres = new Set();
@@ -91,7 +91,11 @@ export function nouveauDossierExcursions() {
     const parLigne = new Map(tous.map((sv) => [sv.cle, sv]));
     const blocVoucher = (l) => {
       const sv = parLigne.get(l.id);
-      return sv ? blocServiceCreation({ service: sv, saisie: saisieDuService(saisies, sv), taxi, prefixe: `s-${l.id}`, aideLieu: tr("Vide : l'adresse du client."), ouvert: blocOuvert({ telephone: telephone(), nbServices: tous.length, service: sv, dernier: dernierAjout }), surSaisie: suivreCourse(sv) }) : null;
+      if (!sv) return null;
+      // Taxi : le pickup et le drop-off montrent d'emblée les deux bouts du trajet, ce que la Booking confirmation imprimera.
+      const saisie = saisieDuService(saisies, sv);
+      if (taxi) boutsDuTrajet(saisie, sv);
+      return blocServiceCreation({ service: sv, saisie, taxi, prefixe: `s-${l.id}`, aideLieu: tr("Vide : l'adresse du client."), ouvert: blocOuvert({ telephone: telephone(), nbServices: tous.length, service: sv, dernier: dernierAjout }), surSaisie: suivreCourse(sv) });
     };
     lignes.forEach((l, i) =>
       liste.append(

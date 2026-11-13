@@ -1,18 +1,21 @@
 // Création d'un dossier de Secret ou de Taxi avec tout ce que le voucher dit, service par service (13.11.2026) : la logique pure, sans DOM,
 // testée dans tests/gestion-creation-voucher.test.js. Avant, il fallait créer le dossier, y revenir et éditer chaque réservation
 // (heure et lieu de pickup, drop-off, vol, bagages, type de tour, remarques…).
-import { reservationsDepuisDocument, typeVoucher, CHAMPS_VOUCHER } from "./operations-calc.mjs";
+import { reservationsDepuisDocument, typeVoucher, CHAMPS_VOUCHER, pickupDepuisLibelle, dropOffDepuisLibelle } from "./operations-calc.mjs";
+import { libelleClient } from "./partenaires-calc.mjs";
 import { erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, libelleTrajet } from "./voucher-rapide-calc.mjs";
 
 // Les services du dossier tels que la création en fera des réservations : une ligne adulte et sa ligne enfant font un seul service,
 // avec un seul voucher. Le regroupement est celui de la création elle-même (reservationsDepuisDocument), pour ne jamais diverger.
 // Rend [{ cle, ligneIds, libelle, date, personnes, type }] ; `type` est le modèle de voucher (null : pas de voucher, une option par exemple).
-export function servicesCreation(lignes, { prestations = [], partenaires = [] } = {}) {
+// `pickup` et `dropoff` : les deux bouts du trajet, tels que la Booking confirmation les imprimerait sans saisie.
+export function servicesCreation(lignes, { prestations = [], partenaires = [], trajets = [] } = {}) {
   const prets = lignes.map((l) => (l.titre || l.kind === "texte" ? l : { ...l, titre: l.libelle }));
   return reservationsDepuisDocument({ dossier_id: "", contenu: { lignes: prets } }, { uid: () => "" }).map(({ reservation: r }) => {
     const prestation = r.prestation_id ? prestations.find((p) => p.id === r.prestation_id) || null : null;
     const partenaire = r.partenaire_id ? partenaires.find((p) => p.id === r.partenaire_id) || null : null;
-    return { cle: r.ligne_id, ligneIds: (r.details && r.details.lignes_ids) || [r.ligne_id], libelle: r.libelle, date: r.date_service || "", personnes: r.personnes, type: typeVoucher(r, prestation, partenaire) };
+    const trajet = r.trajet_id ? trajets.find((t) => t.id === r.trajet_id) || null : null;
+    return { cle: r.ligne_id, ligneIds: (r.details && r.details.lignes_ids) || [r.ligne_id], libelle: r.libelle, date: r.date_service || "", personnes: r.personnes, type: typeVoucher(r, prestation, partenaire), pickup: libelleClient(pickupDepuisLibelle(r, prestation, trajet)), dropoff: libelleClient(dropOffDepuisLibelle(r, prestation, trajet)) };
   });
 }
 
@@ -32,7 +35,19 @@ export function champsCreation(service, { taxi = false } = {}) {
 export const nonVides = (o = {}) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v !== null && v !== undefined && v !== 0 && !(typeof v === "string" && !v.trim())));
 
 // Saisie vide d'un service : { heure, lieu, bebes, sieges, personnes, zonePickup, details }.
-export const saisieVide = () => ({ heure: "", lieu: "", bebes: 0, sieges: 0, personnes: null, zonePickup: null, details: {} });
+export const saisieVide = () => ({ heure: "", lieu: "", bebes: 0, sieges: 0, personnes: null, zonePickup: null, statut: "", details: {} });
+
+// Taxi : le pickup et le drop-off se préremplissent avec les deux bouts du trajet (« Krabi Airport »), pour qu'Anaïs voie ce qui
+// s'imprimera et n'ait qu'à préciser (« Krabi Airport, arrivals gate 3 »). Un champ déjà rempli reste tel quel, sauf s'il porte encore
+// le bout d'un trajet choisi avant (autre offre). `lieu: false` : la demande donne déjà le lieu de pickup.
+export function boutsDuTrajet(s, service, { lieu = true } = {}) {
+  const auto = s.auto || {};
+  const details = s.details || (s.details = {});
+  if (lieu && service.pickup && (!(s.lieu || "").trim() || s.lieu === auto.lieu)) s.lieu = service.pickup;
+  if (service.dropoff && (!(details.drop_off || "").trim() || details.drop_off === auto.drop_off)) details.drop_off = service.dropoff;
+  s.auto = { lieu: lieu ? service.pickup : auto.lieu, drop_off: service.dropoff };
+  return s;
+}
 
 // Ce qu'une demande collée a déjà lu pour un service (entrée de `parService`) : heure, lieu, dépose, vol, bagages, sièges, bébés, zone de pickup,
 // et les champs du voucher déjà remplis dans la fenêtre. Prérempli, et modifiable.
@@ -78,7 +93,7 @@ export function saisieDuService(saisies, service) {
 export function parServiceCreation(services, saisies) {
   return services.map((sv) => {
     const s = saisies.get(sv.ligneIds.find((x) => saisies.has(x))) || saisieVide();
-    return { ligneIds: sv.ligneIds, heure: s.heure || "", lieu: (s.lieu || "").trim(), bebes: Number(s.bebes) || 0, sieges: Number(s.sieges) || 0, personnes: s.personnes || null, zonePickup: s.zonePickup || null, details: nonVides(s.details) };
+    return { ligneIds: sv.ligneIds, heure: s.heure || "", lieu: (s.lieu || "").trim(), bebes: Number(s.bebes) || 0, sieges: Number(s.sieges) || 0, personnes: s.personnes || null, zonePickup: s.zonePickup || null, ...(s.statut ? { statut: s.statut } : {}), details: nonVides(s.details) };
   });
 }
 
@@ -95,6 +110,7 @@ export function courseHorsCatalogue(v, { id, partenaireId = null }) {
   const r = reservationVoucher(x);
   return {
     ligne: ligneVoucher(x, { id, partenaireId }),
-    saisie: { ...saisieVide(), heure: r.heure, lieu: r.lieu, sieges: r.sieges, personnes: r.personnes, details: nonVides({ drop_off: r.dropoff, vol: r.vol, bagages: r.bagages }) },
+    // Une course saisie à la main est déjà convenue avec le chauffeur (décision de Jérémy, 13.11.2026) : confirmée dès sa création.
+    saisie: { ...saisieVide(), heure: r.heure, lieu: r.lieu, sieges: r.sieges, personnes: r.personnes, statut: r.statut, details: nonVides({ drop_off: r.dropoff, vol: r.vol, bagages: r.bagages }) },
   };
 }

@@ -201,7 +201,7 @@ export function vueVoucherRapide() {
       const doc = etat.db.documents.find((y) => y.dossier_id === essai.dossierId && y.type === "facture");
       const ligne = doc && (doc.contenu.lignes || []).find((l) => l.kind === "ligne");
       const r = reservationApercu(x);
-      await inserer("reservations", { dossier_id: essai.dossierId, ligne_id: ligne ? ligne.id : null, prestation_id: null, trajet_id: null, partenaire_id: p ? p.id : null, libelle: r.libelle, date_service: r.date_service, heure_pickup: r.heure_pickup, lieu_pickup: r.lieu_pickup, personnes: r.personnes, statut: "a_demander", reference_partenaire: "", montant_vente: r.montant_vente, notes: "", paye_sur_place: true, details: r.details });
+      await inserer("reservations", { dossier_id: essai.dossierId, ligne_id: ligne ? ligne.id : null, prestation_id: null, trajet_id: null, partenaire_id: p ? p.id : null, libelle: r.libelle, date_service: r.date_service, heure_pickup: r.heure_pickup, lieu_pickup: r.lieu_pickup, personnes: r.personnes, statut: r.statut, reference_partenaire: "", montant_vente: r.montant_vente, notes: "", paye_sur_place: true, details: r.details });
     }
     const v = voucherDe(essai.dossierId);
     // creerReservations n'arrête pas la création quand la réservation échoue : on ne dit pas « créé » à tort.
