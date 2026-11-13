@@ -3,7 +3,7 @@
 import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, resumeDossier } from "../etat.mjs";
 import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
-import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER, pointEmbarquement, consigneCheckin, estPickupHotel, capaciteBateau, bateauEtQuai, horairesTexte, dureeTexte, venduParPersonne, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte } from "../operations-calc.mjs";
+import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER, pointEmbarquement, consigneCheckin, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, venduParPersonne, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 import { estTaxi } from "../taxi-calc.mjs";
 import { renderBookingConfirmation } from "./voucher-taxi.mjs";
@@ -56,7 +56,7 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
   const pickupInclus = !!(r.heure_pickup || r.lieu_pickup) && !!trajet;
   const bq = bateauEtQuai(p);
   const bateauTexte = dt.bateau || bq.bateau;
-  const capacite = capaciteBateau(p);
+  // La capacité du bateau ne s'imprime plus sur le voucher (Jérémy, 13.11.2026) : elle reste dans la fiche de la prestation.
   const horaires = horairesTexte(p && p.details && p.details.horaires);
   const duree = dureeTexte(p && p.details && p.details.duree);
   // Le programme ne s'imprime que s'il a été saisi : le groupe de la base (« Cours de cuisine ») n'apprend rien au client.
@@ -102,7 +102,7 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
     type === "billet"
       ? [ligne("Route", `${dBillet.de} → ${dBillet.vers}`), ligne("Travel Date", dateTexte(r.date_service, "en")), ligne("Departure Time", dBillet.depart, h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Arrival Time: "), dBillet.arrivee), ligne("Boat", dBillet.mode), ligne("Company", operateur), ligne("Departure Pier / Check-in Point", embarquement), pickupInclus ? ligne("Hotel Pickup", [r.lieu_pickup, r.heure_pickup ? `at ${r.heure_pickup}` : ""].filter(Boolean).join(" ")) : null, ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), nbp(a), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), nbp(en_), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Infants: "), nbp(pers.bebes)), ligne("Luggage", bagages), ligne("Remarks", remarques)]
       : type === "bateau"
-      ? [ligne("Tour Name", titrePrestation), ligne("Date", dateTexte(r.date_service, "en")), horaires ? ligne("Tour Hours", horaires) : null, bateauTexte ? ligne("Boat", bateauTexte, capacite ? [h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Capacity: "), capacite] : null) : null, bq.quai ? ligne("Departure Pier", bq.quai) : null, ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), nbp(a), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), nbp(en_)), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Tour Type: "), case_(!prive, "Join Tour"), " ", case_(prive, "Private Tour")), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
+      ? [ligne("Tour Name", titrePrestation), ligne("Date", dateTexte(r.date_service, "en")), horaires ? ligne("Tour Hours", horaires) : null, bateauTexte ? ligne("Boat", bateauTexte) : null, bq.quai ? ligne("Departure Pier", bq.quai) : null, ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), nbp(a), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), nbp(en_)), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Tour Type: "), case_(!prive, "Join Tour"), " ", case_(prive, "Private Tour")), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
       : type === "transfert"
         ? [ligne("Date", dateTexte(r.date_service, "en")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", pickupTransfert), ligne("Drop-off Location", dropOff), avecVol ? ligne("Flight Number", vol ? vol[0] : "") : null, ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), nbp(a), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), nbp(en_), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Luggage: "), bagages), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Transfer Type: "), ...[["taxi", "Private Taxi"], ["minivan", "Private Minivan"], ["partage", "Shared Minivan"]].flatMap(([k, l]) => [case_(transfert === k, l), " "])), ligne("Company / Operator", operateur), ligne("Remarks", remarques)]
         : type === "location"
