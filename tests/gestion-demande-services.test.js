@@ -2,7 +2,9 @@
 // message de réponse avec le total.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lireMessage, lireHeureLibre, decouperServices, varsReponse, langueDuMessage } from "../src/gestion/js/demande-calc.mjs";
+import { lireMessage, lireHeureLibre, decouperServices, varsReponse, langueDuMessage, sensTrajet } from "../src/gestion/js/demande-calc.mjs";
+import { donneesDemo } from "../src/gestion/js/defauts.mjs";
+import { ajouterJours } from "../src/gestion/js/calc.mjs";
 
 const AJD = "2026-11-12";
 const PRESTATIONS = [
@@ -161,4 +163,91 @@ test("taxi vers l'aéroport en français : le départ de Koh Lanta est sous-ente
   const s = services("Bonjour, nous sommes 2 adultes. Un taxi vers l'aéroport de Phuket le 24 novembre à 9h.");
   assert.equal(s[0].offres[0].id, "tx");
   assert.equal(s[0].heure, "09:00");
+});
+
+// ---- Messages WhatsApp réels, lus avec les tarifs et les trajets de la démo Excursions (aucune prestation ajoutée) --------------------------
+const DEMO = donneesDemo(AJD, ajouterJours);
+const SECRET = DEMO.entites[1].id;
+const CTX_DEMO = { prestations: DEMO.prestations.filter((p) => p.entite_id === SECRET), trajets: DEMO.trajets.filter((t) => t.entite_id === SECRET), nomPartenaire: () => "" };
+const demo = (t) => ({ d: lire(t), s: decouperServices(t, lire(t), CTX_DEMO, AJD) });
+
+test("message de l'audit du 13.11 : 2 services, l'enfant sur le tour, l'hôtel, le transfert du 24 à 9 h sans le trajet inverse", () => {
+  const { d, s } = demo("Hi! I'd like to book the 4 islands longtail tour for 2 adults and 1 child (8 years) on 20 November, pickup at Lanta Sand Resort. Also a transfer from Koh Lanta to Krabi airport on 24 November at 9am. My name is Sarah Miller, +44 7700 900123");
+  assert.equal(d.hotel, "Lanta Sand Resort");
+  assert.equal(d.nom, "Sarah Miller");
+  assert.equal(s.length, 2);
+  assert.equal(s[0].offres[0].titre, "4 Islands by longtail, full day");
+  assert.deepEqual([s[0].date, s[0].adultes, s[0].enfants], ["2026-11-20", 2, 1]);
+  assert.match(s[1].phrase, /from Koh Lanta to Krabi airport/);
+  assert.deepEqual([s[1].date, s[1].heure], ["2026-11-24", "09:00"]);
+  // La démo n'a que Krabi Airport → Koh Lanta : le service reste « à préciser » plutôt que réservé à l'envers.
+  assert.ok(!s[1].offres.some((o) => /Krabi Airport → Koh Lanta/.test(o.titre)), "trajet en sens inverse proposé");
+  assert.ok(!s[1].offres.some((o) => /Phuket|Lipe/.test(o.titre)), "un seul bout commun ne suffit pas");
+});
+
+test("aller et retour en bateau : chaque jour son sens, le speedboat demandé passe devant le ferry", () => {
+  const { d, s } = demo("Hello, we are 2 adults and 2 kids (5 and 10). Can we book a speedboat from Koh Lanta to Koh Phi Phi on 22 Nov, and back from Phi Phi to Lanta on 25 Nov? Staying at Pimalai Resort.");
+  assert.equal(d.hotel, "Pimalai Resort");
+  assert.equal(s.length, 2);
+  assert.equal(s[0].offres[0].source.mode, "Speedboat");
+  assert.ok(s[0].offres.every((o) => o.source.de === "Koh Lanta" && o.source.vers === "Koh Phi Phi"));
+  assert.ok(s[1].offres.length && s[1].offres.every((o) => o.source.de === "Koh Phi Phi" && o.source.vers === "Koh Lanta"));
+  assert.deepEqual(s.map((x) => [x.date, x.adultes, x.enfants]), [["2026-11-22", 2, 2], ["2026-11-25", 2, 2]]);
+});
+
+test("pickup à l'aéroport : le trajet dans le bon sens, l'aéroport n'est pas l'hôtel", () => {
+  const { d, s } = demo("Hi, can you pick us up from Krabi airport on 18 December at 2pm to Koh Lanta? 4 people, staying at Sea Breeze Bungalows, Klong Nin. Thanks, Tom");
+  assert.equal(d.hotel, "Sea Breeze Bungalows, Klong Nin");
+  assert.equal(d.nom, "Tom");
+  assert.equal(s.length, 1);
+  assert.equal(s[0].offres[0].titre, "Krabi Airport → Koh Lanta");
+  assert.deepEqual([s[0].date, s[0].heure, s[0].adultes, s[0].enfants], ["2026-12-18", "14:00", 4, 0]);
+});
+
+test("sortie au coucher du soleil puis taxi : l'âge de l'enfant reste sur la sortie, « X Hotel » est l'hôtel", () => {
+  const { d, s } = demo("Hello! Sunset longtail trip tomorrow for 2 adults and 1 kid (4 yrs old) please. We're at Lanta Garden Hotel. Then a taxi to Phuket airport on 20/11 at 7am. Anna");
+  assert.equal(d.hotel, "Lanta Garden Hotel");
+  assert.equal(s.length, 2);
+  assert.equal(s[0].offres[0].titre, "Sunset by longtail, 2 hours");
+  assert.deepEqual([s[0].date, s[0].adultes, s[0].enfants], ["2026-11-13", 2, 1]);
+  assert.equal(s[1].offres[0].titre, "Koh Lanta → Phuket Airport");
+  assert.deepEqual([s[1].date, s[1].heure], ["2026-11-20", "07:00"]);
+});
+
+test("en français : « 1 enfant de 6 ans » ne crée pas de service, l'hôtel est lu avant le mot Resort", () => {
+  const { d, s } = demo("Bonjour, nous sommes 2 adultes et 1 enfant de 6 ans. On voudrait le tour des 4 îles en longtail le 21 novembre, prise en charge au Lanta Sand Resort. Merci, Julie");
+  assert.equal(d.hotel, "Lanta Sand Resort");
+  assert.equal(s.length, 1);
+  assert.equal(s[0].offres[0].titre, "4 Islands by longtail, full day");
+  assert.deepEqual([s[0].date, s[0].adultes, s[0].enfants], ["2026-11-21", 2, 1]);
+  assert.ok(!/ {2}| \./.test(s[0].phrase), "phrase sans espaces en trop");
+});
+
+test("effectif : le même groupe d'adultes garde les enfants du message, un autre groupe non", () => {
+  const meme = services("We are 2 adults and 1 child. Kayaking on 20 november for 2 adults.");
+  assert.deepEqual([meme[0].adultes, meme[0].enfants], [2, 1]);
+  const autre = services("We are 2 adults and 1 child. Kayaking on 20 november for 4 adults.");
+  assert.deepEqual([autre[0].adultes, autre[0].enfants], [4, 0]);
+});
+
+test("un fragment de personnes, d'âges ou de date complète le service d'avant", () => {
+  const s = services("4 islands tour for 2 adults and 2 children aged 5 and 9 on 20 november");
+  assert.equal(s.length, 1);
+  assert.deepEqual([s[0].date, s[0].adultes, s[0].enfants], ["2026-11-20", 2, 2]);
+});
+
+test("hôtel : « pickup at X », « X Resort », sans prendre un aéroport ni une phrase pour un hôtel", () => {
+  assert.equal(lire("kayaking tomorrow for 2, pickup at Lanta Sand Resort").hotel, "Lanta Sand Resort");
+  assert.equal(lire("kayaking tomorrow for 2, pick us up from Pimalai please").hotel, "Pimalai");
+  assert.equal(lire("We are at Sea Breeze Bungalows, kayaking tomorrow for 2").hotel, "Sea Breeze Bungalows");
+  assert.equal(lire("pickup at Krabi Airport tomorrow 2pm for 2").hotel || "", "");
+  assert.equal(lire("The Resort is great, kayaking tomorrow for 2").hotel || "", "");
+});
+
+test("sens d'un trajet : from et to font foi, sinon l'ordre des lieux", () => {
+  assert.equal(sensTrajet("Krabi Airport", "Koh Lanta", "a transfer from Koh Lanta to Krabi airport"), "inverse");
+  assert.equal(sensTrajet("Krabi Airport", "Koh Lanta", "transfer to Koh Lanta from Krabi airport"), "direct");
+  assert.equal(sensTrajet("Krabi Airport", "Koh Lanta", "taxi Krabi airport - Koh Lanta"), "direct");
+  assert.equal(sensTrajet("Koh Lanta", "Phuket Airport", "un taxi vers l'aéroport de Phuket"), "");
+  assert.equal(sensTrajet("Koh Phi Phi", "Koh Lanta", "de Koh Lanta à Koh Phi Phi"), "inverse");
 });
