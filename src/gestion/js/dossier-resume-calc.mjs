@@ -37,16 +37,46 @@ export function commissionDossier(reservations, netDe) {
   };
 }
 
-// La prochaine chose à faire, une seule, dans l'ordre où elle se présente :
-//   envoyer le document pas encore envoyé, noter l'acceptation du devis, demander le premier service à demander, enregistrer un paiement.
-// Un dossier « tout sur place » n'a rien à encaisser : jamais d'invitation à enregistrer un paiement.
-export function actionSuivante({ annule = false, statut, aEnvoyer = null, avecDevis = false, devisEnvoye = false, accepte = false, facture = false, reservations = [], reste = 0, droit = {} }) {
+// Un voucher est parti quand il a été envoyé au client et, s'il a un prestataire, au prestataire aussi (même règle que etatEnvoisVouchers).
+const envoye = (r, cle) => !!(r.details && r.details.envois && r.details.envois[cle]);
+const voucherAEnvoyer = (x) => !envoye(x.reservation, "client") || (!!x.reservation.partenaire_id && !envoye(x.reservation, "prestataire"));
+
+// La prochaine chose à faire, une seule, dans l'ordre où elle se présente.
+//   ZTP : envoyer le document pas encore envoyé, noter l'acceptation du devis, demander le premier service à demander,
+//         créer la facture dès l'acompte reçu, enregistrer un paiement.
+//   Secret et Taxi (`excursions`) : demander, confirmer, envoyer le voucher, puis envoyer la facture et enregistrer un paiement.
+//         On ne propose pas la facture avant d'avoir la place chez le prestataire.
+// Un dossier « tout sur place » n'a rien à encaisser : jamais d'invitation à enregistrer un paiement. Taxi n'a ni facture ni paiement.
+export function actionSuivante({ annule = false, statut, aEnvoyer = null, avecDevis = false, devisEnvoye = false, accepte = false, facture = false, acompteRecu = false, reservations = [], vouchers = [], reste = 0, excursions = false, taxi = false, droit = {} }) {
   // Un devis classé sans suite n'a plus de prochaine étape : seule la réouverture est proposée.
   if (annule || statut === "sans_suite") return null;
+  const rs = actives(reservations);
+  const premiere = (s) => (droit.dossiers ? rs.find((r) => r.statut === s && r.partenaire_id) || null : null);
+  const paiement = droit.paiements && droit.finances && !taxi && (accepte || facture) && reste > 0 && statut !== "sur_place" && statut !== "solde" ? { cle: "paiement" } : null;
+  if (excursions) {
+    const aDemander = premiere("a_demander");
+    if (aDemander) return { cle: "demander", reservation: aDemander };
+    const aConfirmer = premiere("demande");
+    if (aConfirmer) return { cle: "confirmer", reservation: aConfirmer };
+    const voucher = droit.finances ? (vouchers || []).find((x) => x.reservation.statut !== "annule" && voucherAEnvoyer(x)) : null;
+    if (voucher) return { cle: "voucher", voucher };
+    if (droit.docs && aEnvoyer && !taxi) return { cle: "envoyer", type: aEnvoyer.type };
+    return paiement;
+  }
   if (droit.docs && aEnvoyer) return { cle: "envoyer", type: aEnvoyer.type };
   if (droit.dossiers && avecDevis && devisEnvoye && !accepte) return { cle: "accepter" };
-  const aDemander = droit.dossiers ? actives(reservations).find((r) => r.statut === "a_demander" && r.partenaire_id) : null;
+  const aDemander = premiere("a_demander");
   if (aDemander) return { cle: "demander", reservation: aDemander };
-  if (droit.paiements && droit.finances && (accepte || facture) && reste > 0 && statut !== "sur_place" && statut !== "solde") return { cle: "paiement" };
-  return null;
+  if (droit.docs && !facture && acompteRecu) return { cle: "facture" };
+  return paiement;
+}
+
+// Conditions de paiement d'une facture créée depuis le devis. Les variantes des réglages servent aux devis et aux factures ; celle du devis
+// parle de « la signature du devis ». Une variante dont le nom dit « facture » est prise à sa place ; sans elle, la facture garde la variante
+// du devis (rien n'est inventé) et `manque` le signale. Une variante « perso » écrite à la main pour ce devis est gardée telle quelle.
+export function varianteFacture(variantes, actuelle) {
+  if (actuelle === "perso") return { variante: "perso", manque: false };
+  const sansAccent = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const pourFacture = (variantes || []).find((v) => /\b(facture|invoice)\b/.test(sansAccent(v.nom)));
+  return pourFacture ? { variante: pourFacture.id, manque: false } : { variante: actuelle || "", manque: true };
 }
