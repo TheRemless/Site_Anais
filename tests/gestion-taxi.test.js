@@ -27,6 +27,8 @@ test("Booking confirmation : date, heure, passagers et prix comme sur le modèle
   assert.equal(passagersBooking({ adultes: 4 }, "oui"), "4 adults + luggage");
   assert.equal(passagersBooking({ adultes: 2, enfants: 1, bebes: 1 }, "3"), "2 adults, 1 child, 1 baby + 3 pieces of luggage");
   assert.equal(passagersBooking({ adultes: 1 }, ""), "1 adult");
+  assert.equal(passagersBooking({ adultes: 2, enfants: 2 }, "", 2), "2 adults, 2 children (2 child seats)");
+  assert.equal(passagersBooking({ adultes: 2 }, "", "x"), "2 adults", "un nombre de sièges illisible ne s'imprime pas");
   assert.equal(prixBooking(2700, "THB"), "2'700 THB (all fees included)");
   assert.equal(prixBooking(15000.5, "THB"), "15'000.50 THB (all fees included)");
   assert.equal(prixBooking(null), "", "sans prix, la ligne reste à remplir");
@@ -129,4 +131,15 @@ test("Booking confirmation : une valeur trop longue compte ses lignes en plus, p
   assert.equal(lignesEnPlus(["Emma Wilson", "Krabi Airport", ""]), 0);
   assert.equal(lignesEnPlus(["Pimalai Resort & Spa, Kantiang Bay, Koh Lanta Yai"]), 1);
   assert.equal(lignesEnPlus(["x".repeat(80), "y".repeat(40)]), 3);
+});
+
+test("numéro de vol ou de bateau : sur le lieu qui est l'aéroport ou le port, sinon sur la prise en charge", async () => {
+  const { lieuxAvecVol } = await import("../src/gestion/js/taxi-calc.mjs");
+  assert.deepEqual(lieuxAvecVol("Krabi Airport", "Pimalai Resort", "FD3217"), { pickup: "Krabi Airport, flight FD3217", dropoff: "Pimalai Resort" });
+  assert.deepEqual(lieuxAvecVol("Pimalai Resort", "Phuket Airport", "TG 226"), { pickup: "Pimalai Resort", dropoff: "Phuket Airport, flight TG 226" });
+  assert.deepEqual(lieuxAvecVol("Saladan Pier", "Krabi Town", "Tigerline"), { pickup: "Saladan Pier, boat Tigerline", dropoff: "Krabi Town" });
+  assert.deepEqual(lieuxAvecVol("Hotel A", "Hotel B", "FD1"), { pickup: "Hotel A, flight FD1", dropoff: "Hotel B" });
+  assert.deepEqual(lieuxAvecVol("Hotel A", "Hotel B", ""), { pickup: "Hotel A", dropoff: "Hotel B" });
+  assert.deepEqual(lieuxAvecVol("Krabi Airport, flight FD3217", "Hotel B", "FD3217"), { pickup: "Krabi Airport, flight FD3217", dropoff: "Hotel B" }, "jamais deux fois");
+  assert.deepEqual(lieuxAvecVol("Hotel A", "Lanta Sport Resort", "FD1"), { pickup: "Hotel A, flight FD1", dropoff: "Lanta Sport Resort" }, "« Sport » n'est pas un port");
 });

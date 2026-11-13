@@ -14,10 +14,14 @@ export const TH = {
   pickup: "จุดรับ", // Lieu de prise en charge
   heure: "เวลารับ", // Heure de prise en charge
   dropoff: "จุดส่ง", // Lieu de dépose
+  vol: "เลขเที่ยวบินหรือเรือ", // Numéro de vol ou de bateau
+  vol_aide: "ถ้ารับหรือส่งที่สนามบินหรือท่าเรือ เช่น FD3217 ถ้าไม่มี เว้นว่าง", // Si prise en charge ou dépose à l'aéroport ou au port, par exemple FD3217. Sinon, laisser vide
   adultes: "ผู้ใหญ่", // Adultes
   enfants: "เด็ก", // Enfants
   bagages: "กระเป๋า", // Bagages
   bagages_aide: "ตัวเลข เช่น 3", // Un nombre, par exemple 3
+  sieges: "คาร์ซีทเด็ก", // Sièges enfant ou bébé
+  sieges_aide: "จำนวนคาร์ซีทเด็กหรือเด็กเล็ก ถ้าไม่ต้องการ เว้นว่าง", // Nombre de sièges enfant ou bébé. Laisser vide si aucun
   prix: "ราคารวม (บาท)", // Prix total (bahts)
   prix_aide: "ลูกค้าจ่ายเงินสดให้คนขับ", // Le client paie en espèces au chauffeur
   anglais_aide: "พิมพ์เป็นภาษาอังกฤษ", // Écrire en anglais
@@ -55,6 +59,7 @@ export const TH = {
   e_adultes: "อย่างน้อย 1 คน", // Au moins 1 personne
   e_nombre: "กรุณากรอกเป็นตัวเลข", // Écrire un nombre
   e_prix: "กรุณากรอกราคาเป็นตัวเลข", // Écrire le prix en chiffres
+  e_sieges: "คาร์ซีทมากกว่าจำนวนเด็ก", // Plus de sièges que d'enfants
 };
 
 // Le voucher est en anglais : un mot en écriture thaïe y serait illisible pour le client.
@@ -76,9 +81,11 @@ const entier = (v) => {
 };
 
 // Valeurs vides d'un nouveau voucher. Deux adultes par défaut : la plupart des courses (prix pour 1 à 2 personnes dans le catalogue).
-export const valeursVides = () => ({ nom: "", date: "", pickup: "", heure: "", dropoff: "", adultes: "2", enfants: "", bagages: "", prix: "" });
+// Le numéro de vol ou de bateau et les sièges enfant ou bébé (13.11.2026) : ce que le formulaire taxi du site demande au client.
+export const valeursVides = () => ({ nom: "", date: "", pickup: "", heure: "", dropoff: "", vol: "", adultes: "2", enfants: "", bagages: "", sieges: "", prix: "" });
 
-export const CHAMPS = ["nom", "date", "pickup", "heure", "dropoff", "adultes", "enfants", "bagages", "prix"];
+// Dans l'ordre de l'écran : la première erreur reçoit le focus.
+export const CHAMPS = ["nom", "date", "pickup", "heure", "dropoff", "vol", "adultes", "enfants", "bagages", "sieges", "prix"];
 
 // Contrôle avant l'aperçu : { champ: code d'erreur } (codes de TH, « e_… »). Vide = tout est bon.
 export function erreursVoucher(v) {
@@ -93,8 +100,13 @@ export function erreursVoucher(v) {
   const a = entier(v.adultes);
   if (Number.isNaN(a)) e.adultes = "e_nombre";
   else if (a < 1) e.adultes = "e_adultes";
-  if (Number.isNaN(entier(v.enfants))) e.enfants = "e_nombre";
+  const enf = entier(v.enfants);
+  if (Number.isNaN(enf)) e.enfants = "e_nombre";
   if (contientThai(v.bagages)) e.bagages = "e_thai";
+  if (contientThai(v.vol)) e.vol = "e_thai";
+  const s = entier(v.sieges);
+  if (Number.isNaN(s)) e.sieges = "e_nombre";
+  else if (s > 0 && !Number.isNaN(enf) && s > enf) e.sieges = "e_sieges";
   if (prixSaisi(v.prix) === null) e.prix = "e_prix";
   return e;
 }
@@ -112,6 +124,8 @@ export function donneesVoucher(v) {
     libelle: `${pickup} → ${dropoff}`,
     personnes: { adultes: entier(v.adultes) || 0, enfants: entier(v.enfants) || 0, bebes: 0 },
     bagages: String(v.bagages || "").trim(),
+    vol: String(v.vol || "").trim().replace(/\s+/g, " "),
+    sieges: entier(v.sieges) || 0,
     prix: prixSaisi(v.prix),
   };
 }
@@ -119,17 +133,24 @@ export function donneesVoucher(v) {
 // La ligne du prix interne de la course (jamais montré) : prix pour le véhicule, payé au chauffeur, sans prestation du catalogue.
 export const ligneVoucher = (x, { id, partenaireId = null }) => ({ id, kind: "ligne", libre: true, par: "veh", libelle: x.libelle, titre: x.libelle, intro: "", puces: [], unite: x.prix, qte: 1, montant: null, pct: null, date_service: x.date, partenaire_id: partenaireId, paye_sur_place: true });
 
-// Ce qui se pose sur la réservation créée (mêmes champs que « Coller une demande » : heure, lieu, dépose, bagages, personnes).
-export const reservationVoucher = (x) => ({ heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, bagages: x.bagages, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants } });
+// Ce qui se pose sur la réservation créée (mêmes champs que « Coller une demande » : heure, lieu, dépose, vol, bagages, sièges, personnes).
+export const reservationVoucher = (x) => ({ heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, vol: x.vol, bagages: x.bagages, sieges: x.sieges, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants } });
+
+// Les champs facultatifs de la course dans `details` : posés s'ils sont remplis, retirés s'ils sont vidés.
+function detailsFacultatifs(details, x) {
+  for (const [cle, val] of [["bagages", x.bagages], ["vol", x.vol], ["sieges", x.sieges]]) {
+    if (val) details[cle] = val;
+    else delete details[cle];
+  }
+  return details;
+}
 
 // Réservation telle que le voucher la lit, pour l'aperçu avant création (rien n'est encore en base).
-export const reservationApercu = (x) => ({ id: "apercu", libelle: x.libelle, date_service: x.date, heure_pickup: x.heure, lieu_pickup: x.pickup, personnes: x.personnes, montant_vente: x.prix, paye_sur_place: true, statut: "a_demander", details: { drop_off: x.dropoff, ...(x.bagages ? { bagages: x.bagages } : {}) } });
+export const reservationApercu = (x) => ({ id: "apercu", libelle: x.libelle, date_service: x.date, heure_pickup: x.heure, lieu_pickup: x.pickup, personnes: x.personnes, montant_vente: x.prix, paye_sur_place: true, statut: "a_demander", details: detailsFacultatifs({ drop_off: x.dropoff }, x) });
 
 // Correction d'un voucher déjà créé : les champs de la réservation qui changent (null si rien ne change).
 export function correctionReservation(r, x) {
-  const details = { ...(r.details || {}), drop_off: x.dropoff };
-  if (x.bagages) details.bagages = x.bagages;
-  else delete details.bagages;
+  const details = detailsFacultatifs({ ...(r.details || {}), drop_off: x.dropoff }, x);
   const suite = { libelle: x.libelle, date_service: x.date, heure_pickup: x.heure, lieu_pickup: x.pickup, montant_vente: x.prix, personnes: { ...(r.personnes || {}), adultes: x.personnes.adultes, enfants: x.personnes.enfants }, details };
   const pareil = Object.keys(suite).every((k) => JSON.stringify(r[k] ?? null) === JSON.stringify(suite[k] ?? null));
   return pareil ? null : suite;
@@ -144,9 +165,11 @@ export function valeursDepuis(r, client = {}) {
     pickup: r.lieu_pickup || "",
     heure: /^\d{1,2}:\d{2}$/.test(r.heure_pickup || "") ? r.heure_pickup.padStart(5, "0") : "",
     dropoff: (r.details && r.details.drop_off) || "",
+    vol: (r.details && r.details.vol) || "",
     adultes: String(p.adultes || 0),
     enfants: p.enfants ? String(p.enfants) : "",
     bagages: (r.details && r.details.bagages) || "",
+    sieges: r.details && Number(r.details.sieges) > 0 ? String(r.details.sieges) : "",
     prix: r.montant_vente === null || r.montant_vente === undefined ? "" : String(r.montant_vente),
   };
 }

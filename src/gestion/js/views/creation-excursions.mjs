@@ -26,7 +26,7 @@ export async function refDefinitive(ref, propose, regl = reglages()) {
 // `client` : { id } pour un client existant, sinon { prenom, nom, telephone, hotel, chambre } pour en créer un.
 // `lignes` : lignes de facture (avec `description` et `description_fixe` éventuels, comme dans l'écran de création).
 // `reservation` : { heure, lieu, bebes } posés sur chaque réservation créée (ce que le client a écrit, sans champ propre sur la facture).
-// `parService` : [{ ligneIds, heure, lieu, bebes, dropoff, vol, bagages, personnes }], un par service avec les identifiants de ses lignes : chaque réservation prend
+// `parService` : [{ ligneIds, heure, lieu, bebes, dropoff, vol, bagages, sieges, personnes }], un par service avec les identifiants de ses lignes : chaque réservation prend
 // ce qui concerne SON service (dates, heures et lieux différents dans un même dossier). Sans lui, `reservation` vaut pour toutes.
 // `silencieux` : pas de message de réussite (l'écran « Nouveau voucher », en thaï, dit lui-même ce qui s'est passé).
 export async function creerDossierExcursions({ client, lignes: brutes, notes = "", ref, reservation = {}, parService = null, silencieux = false }) {
@@ -50,9 +50,9 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   await creerReservations(doc, { silencieux });
   // Heure, lieu de pickup, dépose, vol, bagages et bébés donnés par le client : posés sur les réservations qui viennent d'être créées
   // (la dépose, le vol et les bagages sont les champs du voucher de transfert).
-  const patch = (r, { heure = "", lieu = "", bebes = 0, dropoff = "", vol = "", bagages = 0, personnes = null, zonePickup = null }) => {
+  const patch = (r, { heure = "", lieu = "", bebes = 0, dropoff = "", vol = "", bagages = 0, sieges = 0, personnes = null, zonePickup = null }) => {
     // `zonePickup` : la zone de l'hôtel choisie sur la grille du partenaire, gardée pour proposer la même zone au prochain séjour dans cet hôtel.
-    const details = { ...(dropoff ? { drop_off: dropoff } : {}), ...(vol ? { vol } : {}), ...(bagages ? { bagages: String(bagages) } : {}), ...(zonePickup ? { pickup_zone: zonePickup } : {}) };
+    const details = { ...(dropoff ? { drop_off: dropoff } : {}), ...(vol ? { vol } : {}), ...(bagages ? { bagages: String(bagages) } : {}), ...(sieges ? { sieges: Number(sieges) } : {}), ...(zonePickup ? { pickup_zone: zonePickup } : {}) };
     const dejaDesGens = (r.personnes || {}).adultes || (r.personnes || {}).enfants;
     return {
       ...(heure ? { heure_pickup: heure } : {}),

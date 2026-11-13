@@ -43,11 +43,15 @@ export function heureBooking(texte) {
 
 const nombreDe = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
 // « 4 adults + luggage », « 2 adults, 1 child, 1 baby », d'après les personnes de la réservation et ses bagages.
-export function passagersBooking(personnes = {}, bagages = "") {
+// Les sièges enfant ou bébé suivent les personnes : « 2 adults, 1 child (1 child seat) + 3 pieces of luggage ».
+export function passagersBooking(personnes = {}, bagages = "", sieges = 0) {
   const a = Number(personnes.adultes) || 0;
   const e = Number(personnes.enfants) || 0;
   const b = Number(personnes.bebes) || 0;
-  const gens = [a ? nombreDe(a, "adult", "adults") : "", e ? nombreDe(e, "child", "children") : "", b ? nombreDe(b, "baby", "babies") : ""].filter(Boolean).join(", ");
+  const liste = [a ? nombreDe(a, "adult", "adults") : "", e ? nombreDe(e, "child", "children") : "", b ? nombreDe(b, "baby", "babies") : ""].filter(Boolean).join(", ");
+  const s = Math.max(0, Math.floor(Number(sieges) || 0));
+  const siege = s ? nombreDe(s, "child seat", "child seats") : "";
+  const gens = liste && siege ? `${liste} (${siege})` : liste || siege;
   const sac = String(bagages || "").trim();
   // Un nombre de bagages s'écrit « + 3 pieces of luggage », un oui sans nombre « + luggage » comme sur le modèle.
   const bag = !sac || sac === "0" ? "" : /^\d+$/.test(sac) ? `${sac} ${Number(sac) > 1 ? "pieces" : "piece"} of luggage` : /^(oui|yes|y|x|true)$/i.test(sac) ? "luggage" : sac;
@@ -64,14 +68,32 @@ export function prixBooking(montant, devise = "THB") {
 }
 
 // Ce que dit le voucher, champ par champ. `pickup` et `dropoff` viennent de la réservation (ou du trajet), jamais devinés.
-export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", montant = null, devise = "THB" }) {
+// Le numéro de vol ou de bateau rejoint le lieu qui est un aéroport ou un port (« Krabi Airport, flight FD3217 »), sinon la prise en charge.
+const PORT = /\b(pier|port|ferry|jetty|harbou?r)\b|ท่าเรือ/i;
+const AEROPORT = /airport|aéroport|aeroport|สนามบิน/i;
+export function lieuxAvecVol(pickup = "", dropoff = "", vol = "") {
+  const v = String(vol || "").trim();
+  if (!v) return { pickup, dropoff };
+  const avec = (lieu) => {
+    // Déjà écrit dans le lieu (« Krabi Airport, flight FD3217 » tapé à la main) : pas une seconde fois.
+    if (String(lieu || "").toLowerCase().includes(v.toLowerCase())) return lieu;
+    const mot = PORT.test(lieu) && !AEROPORT.test(lieu) ? "boat" : "flight";
+    return [String(lieu || "").trim(), `${mot} ${v}`].filter(Boolean).join(", ");
+  };
+  const ici = (lieu) => AEROPORT.test(lieu) || PORT.test(lieu);
+  if (!ici(pickup) && ici(dropoff)) return { pickup, dropoff: avec(dropoff) };
+  return { pickup: avec(pickup), dropoff };
+}
+
+export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB" }) {
+  ({ pickup, dropoff } = lieuxAvecVol(pickup, dropoff, vol));
   return [
     { cle: "NAME", valeur: nom },
     { cle: "DATE", valeur: dateBookingTexte(date), date: dateBooking(date) },
     { cle: "PICK UP LOCATION", valeur: pickup },
     { cle: "PICK UP TIME", valeur: heureBooking(heure) },
     { cle: "DROP OFF LOCATION", valeur: dropoff },
-    { cle: "PASSENGERS", valeur: passagersBooking(personnes, bagages) },
+    { cle: "PASSENGERS", valeur: passagersBooking(personnes, bagages, sieges) },
     { cle: "TOTAL PRICE", valeur: prixBooking(montant, devise) },
   ];
 }
