@@ -103,10 +103,12 @@ function vueConnexion() {
   return h("div", { class: "connexion" }, selecteurLangue(), h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Dossiers, réservations et paiements.")), form);
 }
 
-function selecteurEntite() {
+// `ou` : la barre où il s'affiche (« menu », « haut », « simple »). Les deux sélecteurs (barre latérale et barre du haut) sont dans la page
+// en même temps : chacun son identifiant, sinon `#entite` désigne celui qui est caché sur téléphone.
+function selecteurEntite(ou) {
   const liste = entitesAccessibles();
   if (liste.length < 2) return liste.length ? h("p", { class: "entite-nom" }, liste[0].nom) : null;
-  const sel = h("select", { id: "entite", "aria-label": tr("Entreprise"), onchange: (e) => changerEntite(e.target.value) }, liste.map((e) => h("option", { value: e.id }, e.nom)));
+  const sel = h("select", { id: `entite-${ou}`, "aria-label": tr("Entreprise"), onchange: (e) => changerEntite(e.target.value) }, liste.map((e) => h("option", { value: e.id }, e.nom)));
   sel.value = etat.entiteId;
   return h("div", { class: "entite-choix" }, sel);
 }
@@ -225,7 +227,7 @@ function menu() {
     "nav",
     { class: "menu", "aria-label": tr("Navigation principale") },
     h("a", { class: "marque", href: "#/" }, logo ? h("img", { src: logo, alt: "" }) : null, h("span", null, tr("Gestion"))),
-    selecteurEntite(),
+    selecteurEntite("menu"),
     h("button", { class: "recherche-bouton", type: "button", onclick: ouvrirRecherche }, icone("recherche", 18), h("span", null, tr("Rechercher")), h("kbd", null, "/")),
     sections(ecrans()),
     h("div", { class: "menu-bas" }, selecteurLangue(), blocCompte(), h("div", { class: "menu-outils" }, outilsCompte()))
@@ -235,7 +237,7 @@ function menu() {
 // Téléphone : l'entreprise et la recherche en haut, quatre onglets en bas.
 function barreHaut() {
   const logo = etat.db.reglages.apparence.logo;
-  return h("header", { class: "barre-haut" }, logo ? h("img", { class: "barre-logo", src: logo, alt: "" }) : null, selecteurEntite(), h("button", { class: "bouton-icone lien", type: "button", onclick: ouvrirRecherche, "aria-label": tr("Rechercher") }, icone("recherche", 22)));
+  return h("header", { class: "barre-haut" }, logo ? h("img", { class: "barre-logo", src: logo, alt: "" }) : null, selecteurEntite("haut"), h("button", { class: "bouton-icone lien", type: "button", onclick: ouvrirRecherche, "aria-label": tr("Rechercher") }, icone("recherche", 22)));
 }
 
 function barreOnglets() {
@@ -298,7 +300,7 @@ function coqueSimple() {
       "header",
       { class: "barre-simple" },
       logo ? h("img", { class: "barre-logo", src: logo, alt: "" }) : null,
-      selecteurEntite(),
+      selecteurEntite("simple"),
       etat.store.mode === "supabase" ? h("button", { class: "secondaire petit", type: "button", lang: "th", onclick: deconnecter }, icone("deconnexion", 18), "ออกจากระบบ") : null
     ),
     // Les factures pour la fiduciaire sont aussi son travail (Jérémy, 12.11.2026) : deux onglets, le voucher et les factures.
