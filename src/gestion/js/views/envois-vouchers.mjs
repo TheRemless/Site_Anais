@@ -1,13 +1,13 @@
 // Trace des envois de vouchers : à qui, quand. Un voucher « envoyé » n'est plus une supposition déduite du paiement.
 // `noterEnvoi(r, cible)` est appelée par l'écran d'envoi (voucher-envoi.mjs) quand un voucher part : partage terminé ou conversation WhatsApp ouverte.
 // « Noter les envois » sert à corriger : un envoi fait hors de Gestion, ou parti depuis le partage du système sans destinataire connu.
-import { etat, modifier, peut, nomPartenaire } from "../etat.mjs";
+import { etat, modifier, peut } from "../etat.mjs";
 import { h, modal, toast } from "../ui.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
 import { detailsAvecEnvoi } from "../operations-calc.mjs";
 import { tr } from "../i18n.mjs";
 
-// `cible` : « client » ou « prestataire ». Renvoie true si c'est noté.
+// `cible` : « client » (« prestataire » reste lisible dans les anciennes traces). Renvoie true si c'est noté.
 export async function noterEnvoi(r, cible, date = aujourdhui()) {
   try {
     const courante = etat.db.reservations.find((x) => x.id === r.id) || r;
@@ -19,7 +19,7 @@ export async function noterEnvoi(r, cible, date = aujourdhui()) {
   }
 }
 
-// Fenêtre « Noter les envois » : un voucher par ligne, avec le client et le prestataire.
+// Fenêtre « Noter les envois » : un voucher par ligne, envoyé ou non au client.
 export function ouvrirEnvois(vouchers, apres) {
   const liste = h("ul", { class: "envois-liste" });
   const dessiner = () => {
@@ -27,7 +27,7 @@ export function ouvrirEnvois(vouchers, apres) {
       ...vouchers.map(({ reservation: r }) => {
         const courante = etat.db.reservations.find((x) => x.id === r.id) || r;
         const envois = (courante.details && courante.details.envois) || {};
-        const cases = [["client", tr("Client")], ...(r.partenaire_id ? [["prestataire", nomPartenaire(r.partenaire_id) || tr("Prestataire")]] : [])];
+        const cases = [["client", tr("Client")]];
         return h(
           "li",
           { class: "envois-ligne" },
@@ -38,5 +38,5 @@ export function ouvrirEnvois(vouchers, apres) {
     );
   };
   dessiner();
-  const fermer = modal(tr("Envois des vouchers"), h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("Notez ici ce qui est vraiment parti, par client et par prestataire. L'étape du dossier ne passe à « fait » que lorsque tout est envoyé.")), liste, h("div", { class: "actions" }, h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Fermer")))), { protege: false });
+  const fermer = modal(tr("Envois des vouchers"), h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("Notez ici les vouchers vraiment partis chez le client. L'étape du dossier passe à « fait » quand tous sont envoyés.")), liste, h("div", { class: "actions" }, h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Fermer")))), { protege: false });
 }

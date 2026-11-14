@@ -14,7 +14,7 @@ import { envoiANoter } from "../envoi-voucher-calc.mjs";
 import { noterEnvoi } from "./envois-vouchers.mjs";
 import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
 import { numeroVoucher, nomFichierVoucher, messageVoucher, gabaritConfirmationVoucher, variablesMessage, lienWhatsApp, controlesVoucher } from "../operations-calc.mjs";
-import { chiffres, telWhatsApp } from "../partenaires-calc.mjs";
+import { chiffres } from "../partenaires-calc.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
 import { tr, N_ } from "../i18n.mjs";
 
@@ -55,7 +55,6 @@ export function envoyerVoucher(x) {
   const taxi = estTaxi(reglages());
   const nomFichier = nomFichierVoucher(numero, nomClient(client), { taxi });
   const telClient = chiffres(client.telephone);
-  const telPartenaire = chiffres(telWhatsApp(partenaire), { thaiLocal: true });
   const devise = ((resumeDossier(dossier.id) || {}).devise) || reglages().devise || "THB";
   const message = {
     // Le message de confirmation en anglais de l'entreprise ouverte (« taxi-confirmation-en » pour Taxi), rempli comme les autres messages types.
@@ -65,7 +64,6 @@ export function envoyerVoucher(x) {
       gabarit: gabaritConfirmationVoucher((reglages().messages || []).filter((m) => m && m.corps), messagesDefautPour(reglages())),
       vars: variablesMessage({ reservation: r, client, dossier, partenaire: partenaire || {}, entreprise: { nom: (reglages().emetteur || {}).nom || (entiteActive() || {}).nom || "", telephone: (reglages().emetteur || {}).telephone || "", lien_avis: ((reglages().emetteur || {}).lien_avis || "").trim(), devise }, langue: "en" }),
     }),
-    partenaire: messageVoucher({ pour: "partenaire", montant: r.montant_vente, devise }),
   };
 
   const avertissements = controlesVoucher(r, client, x.type || "");
@@ -96,12 +94,13 @@ export function envoyerVoucher(x) {
     note = true;
     // Fenêtre déjà fermée pendant l'écriture : la fiche se redessine maintenant.
     if (ferme) naviguer(location.hash);
-    toast(pour === "partenaire" ? tr("Envoi au prestataire noté dans le dossier.") : tr("Envoi au client noté dans le dossier."));
+    toast(tr("Envoi au client noté dans le dossier."));
   }
   // Ce qui reste possible quand l'image ne peut pas partir toute seule : l'enregistrer, copier le message, et seulement si on le dit
   // clairement, ouvrir WhatsApp avec le message seul.
   // Destinataires qui ont un message à envoyer : le client, et le prestataire quand son message existe (il porte le prix payé par le client).
-  const messages = () => [["client", tr("client"), telClient], ...(partenaire && message.partenaire ? [["partenaire", tr("prestataire"), telPartenaire]] : [])];
+  // Le client seulement : Anaïs écrit elle-même aux prestataires (Jérémy, 14.11.2026).
+  const messages = () => [["client", tr("client"), telClient]];
   const boutonsCopie = () => messages().map(([pour, nom]) => h("button", { class: "lien", type: "button", onclick: () => copierTexte(message[pour]) }, messages().length > 1 ? tr("Copier le message : {nom}", { nom }) : tr("Copier le message")));
   // Toujours à l'écran, dans tous les cas (même pendant la préparation et même quand tout le reste échoue) : enregistrer l'image et copier le message.
   const secours = ({ principal = false } = {}) => [
@@ -126,9 +125,9 @@ export function envoyerVoucher(x) {
   async function envoyerOrdinateur(pour, { ouvrir = true } = {}) {
     zone.effacer();
     const res = await copierImage(fichier);
-    const tel = pour === "partenaire" ? telPartenaire : telClient;
+    const tel = telClient;
     const lien = lienWhatsApp(tel, message[pour]);
-    const nom = pour === "partenaire" ? tr("le prestataire") : tr("le client");
+    const nom = tr("le client");
     if (!res.ok) {
       zone.echec({
         titre: tr("L'image n'a pas pu être copiée ({raison}) : enregistrez-la, puis joignez-la dans WhatsApp.", { raison: res.raison }),
@@ -206,11 +205,9 @@ export function envoyerVoucher(x) {
     zone.echec({ titre: tr("Le partage a échoué : les images ne sont pas parties, enregistrez-les puis joignez-les dans WhatsApp."), erreur: res.erreur, boutons: [h("button", { class: "principal", type: "button", onclick: () => enregistrer(fichiersTous) }, tr("Enregistrer les images")), ...boutonsCopie()] });
   });
 
-  const etiquette = (pour) => (pour === "client" ? tr("WhatsApp : client") : tr("WhatsApp : prestataire"));
   function afficherActions() {
     const chemin = moyen([fichier]);
     const destinataires = [["client"]];
-    if (partenaire) destinataires.push(["partenaire"]);
     const imprimer = window.matchMedia("(hover: hover)").matches ? [h("button", { class: "lien", type: "button", onclick: () => imprimerVoucher(x) }, tr("PDF"))] : [];
     if (chemin === "natif") {
       // La liste de partage du téléphone choisit l'application et le contact, l'image y est jointe. Sans prestataire, un seul bouton évident ;
@@ -218,7 +215,7 @@ export function envoyerVoucher(x) {
       actions.replaceChildren(
         ...(destinataires.length === 1
           ? [h("button", { class: "principal", type: "button", onclick: () => partagerImage("client") }, tr("Partager l'image du voucher"))]
-          : destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => partagerImage(pour) }, pour === "client" ? tr("Partager : client") : tr("Partager : prestataire")))),
+          : destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => partagerImage(pour) }, pour === "client" ? tr("Partager : client") : tr("Partager : client")))),
         boutonTous,
         ...secours(),
         ...imprimer
@@ -226,7 +223,7 @@ export function envoyerVoucher(x) {
       aide.textContent = tr("La liste de partage s'ouvre avec l'image : choisissez WhatsApp, puis le contact. Le message se copie à part, à coller sous l'image si vous le voulez.");
     } else if (chemin === "ordinateur") {
       actions.replaceChildren(
-        ...destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour) }, destinataires.length === 1 ? tr("Envoyer sur WhatsApp") : etiquette(pour))),
+        ...destinataires.map(([pour], i) => h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => envoyerOrdinateur(pour) }, tr("Envoyer sur WhatsApp"))),
         ...(partageFichiers([fichier]) ? [h("button", { class: "secondaire", type: "button", onclick: () => partagerImage(destinataires.length === 1 ? "client" : undefined) }, tr("Partager avec le système"))] : []),
         boutonTous,
         ...secours(),
@@ -249,7 +246,7 @@ export function envoyerVoucher(x) {
       "div",
       { class: "modal-corps envoi-voucher" },
       avertissements.length ? h("ul", { class: "bandeau-info avertissements-voucher", role: "status" }, avertissements.map((c) => h("li", null, tr(AVERTISSEMENTS[c])))) : null,
-      h("p", { class: "aide" }, [client.telephone ? `${nomClient(client)} ${client.telephone}` : nomClient(client), partenaire ? `${partenaire.nom}${telPartenaire ? ` ${telPartenaire}` : ""}` : ""].filter(Boolean).join(" · ")),
+      h("p", { class: "aide" }, [client.telephone ? `${nomClient(client)} ${client.telephone}` : nomClient(client)].filter(Boolean).join(" · ")),
       apercu,
       actions,
       aide,

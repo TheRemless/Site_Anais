@@ -13,12 +13,12 @@ import { vide, barreFiltres, lienDossier } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { telWhatsApp, commissionsPartenaire } from "../partenaires-calc.mjs";
+import { commissionsPartenaire } from "../partenaires-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
-import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, proposerDePrevenir, synchroniserDatesDossier } from "./suivi-facture.mjs";
+import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, synchroniserDatesDossier } from "./suivi-facture.mjs";
 export { synchroniserDatesDossier };
 import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
-import { gestesPrestataire, messageAuPrestataire as prevenirPrestataire } from "./prestataire.mjs";
+import { gestesPrestataire } from "./prestataire.mjs";
 import { vouchersDuDossier } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { gestePrincipal, entreesMenu } from "../carte-reservation-calc.mjs";
@@ -29,12 +29,6 @@ const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || 
 const clientDe = (r) => { const d = dossierDe(r); return d ? etat.db.clients.find((c) => c.id === d.client_id) || null : null; };
 const entreprise = () => ({ nom: reglages().emetteur.nom || entiteActive().nom, telephone: reglages().emetteur.telephone || "", lien_avis: (reglages().emetteur.lien_avis || "").trim(), devise: reglages().devise || "" });
 
-export function messagePartenaire(r) {
-  const p = partenaireDe(r.partenaire_id);
-  // Mr. Brown (Taxi) ne lit pas l'anglais : le thaï est proposé d'abord. Le choix fait pour un numéro reste mémorisé.
-  const langue = modeTaxi() ? "th" : "en";
-  ouvrirMessage({ titre: p ? tr("Message à {nom}", { nom: p.nom }) : tr("Message au partenaire"), pour: "partenaire", cle: "partenaire", langue, telephone: telWhatsApp(p), vars: variablesMessage({ reservation: r, client: clientDe(r) || {}, dossier: dossierDe(r) || {}, partenaire: p || {}, entreprise: entreprise(), langue }) });
-}
 // `surEnvoi` : appelée quand le message part (WhatsApp ouvert) ou est copié, par exemple pour noter que l'avis a été demandé.
 export function messageClient(r, cle = "confirmation", { surEnvoi = null } = {}) {
   const c = clientDe(r) || {};
@@ -68,7 +62,6 @@ async function annulerService(r, apres) {
     await modifier("reservations", r.id, { statut: "annule" });
     await synchroniserDatesDossier(r.dossier_id);
     apres();
-    proposerDePrevenir(r, "annulation", prevenirPrestataire);
     return true;
   } catch (err) {
     toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
@@ -166,7 +159,6 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, voucher: vx ? { envoye: voucherEnvoye } : null, liee: modeExcursions() && lieeFacture(r) };
   const GESTES = {
     changer: [tr("Changer le jour, l'heure ou les personnes"), gestes.faire.changer],
-    message_partenaire: [tr("Message partenaire"), () => messagePartenaire(r)],
     message_client: [tr("Message client"), () => messageClient(r, cleMessageReservation(r, aujourdhui()))],
     modifier: [tr("Modifier"), () => ouvrirModification(r, apres)],
     dupliquer: [tr("Dupliquer"), () => dupliquerService(r, apres)],
@@ -450,7 +442,6 @@ export function formulaireReservation(r, apres) {
           if (r.id && (dateChangee || annulee)) await synchroniserDatesDossier(r.dossier_id);
           toast(ecartRestant && ecartRestant.length ? `${tr("Réservation enregistrée.")} ${tr("La facture garde l'ancienne valeur, à corriger dans la facture :")} ${ecartRestant.join(" ; ")}` : tr("Réservation enregistrée."));
           apres(res);
-          if (annulee) proposerDePrevenir(r, "annulation", prevenirPrestataire);
         } catch (err) {
           toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
         }

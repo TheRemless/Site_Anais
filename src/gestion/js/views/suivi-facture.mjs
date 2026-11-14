@@ -143,20 +143,6 @@ export function questionAnnulation(r, documents) {
   });
 }
 
-// Prévenir le prestataire après un changement : « Prévenir » ouvre le message prêt (modification ou annulation), « Plus tard » ne fait rien.
-export function proposerDePrevenir(r, cle, ouvrirMessagePrestataire) {
-  if (!r.partenaire_id) return;
-  const fermer = modal(
-    cle === "annulation" ? tr("Prévenir le prestataire de l'annulation ?") : tr("Prévenir le prestataire du changement ?"),
-    h(
-      "div",
-      { class: "modal-corps" },
-      h("p", null, cle === "annulation" ? tr("« {libelle} » était déjà demandé : le prestataire doit savoir qu'il est annulé.", { libelle: r.libelle }) : tr("« {libelle} » était déjà demandé : le prestataire doit connaître le changement.", { libelle: r.libelle })),
-      h("div", { class: "actions" }, h("button", { class: "secondaire", type: "button", onclick: () => fermer() }, tr("Plus tard")), h("button", { class: "principal", type: "button", onclick: () => (fermer(), ouvrirMessagePrestataire(r, cle)) }, tr("Prévenir le prestataire")))
-    ),
-    { protege: false }
-  );
-}
 
 // En mode excursions, les dates du dossier sont celles de ses réservations : première et dernière date de service.
 export async function synchroniserDatesDossier(dossierId) {

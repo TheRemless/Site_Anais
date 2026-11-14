@@ -59,13 +59,13 @@ test("« en retard » : un service passé dont la commission est reçue, le net 
 });
 
 import { etatEnvoisVouchers, detailsAvecEnvoi } from "../src/gestion/js/operations-calc.mjs";
-test("vouchers envoyés : une vraie trace par voucher, au client et au prestataire", () => {
+test("vouchers envoyés : une vraie trace par voucher, au client seulement depuis le 14.11.2026", () => {
   const v = (id, extra = {}) => ({ id, partenaire_id: "p1", details: {}, ...extra });
   const rien = etatEnvoisVouchers([v("a"), v("b", { partenaire_id: null })]);
-  assert.deepEqual(rien, { total: 2, client: 0, prestataires: 0, totalPrestataires: 1, complet: false });
+  assert.deepEqual(rien, { total: 2, client: 0, complet: false });
   const partiel = etatEnvoisVouchers([v("a", { details: { envois: { client: "2026-11-11" } } }), v("b", { partenaire_id: null, details: { envois: { client: "2026-11-11" } } })]);
   assert.equal(partiel.client, 2);
-  assert.equal(partiel.complet, false, "le prestataire n'a pas reçu le sien");
+  assert.equal(partiel.complet, true, "le client a reçu chaque voucher : c'est complet, le prestataire n'est plus suivi");
   const tout = etatEnvoisVouchers([v("a", { details: { envois: { client: "2026-11-11", prestataire: "2026-11-11" } } }), v("b", { partenaire_id: null, details: { envois: { client: "2026-11-11" } } })]);
   assert.equal(tout.complet, true, "un voucher sans prestataire n'attend que le client");
   assert.equal(etatEnvoisVouchers([]).complet, false, "aucun voucher : rien n'est envoyé");

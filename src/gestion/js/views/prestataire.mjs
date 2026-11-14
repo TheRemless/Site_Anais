@@ -1,26 +1,10 @@
-// Gestes vers le prestataire depuis la carte d'une réservation : changer le jour, l'heure ou les personnes et le prévenir. Plus de demande ni de
-// suivi de réponse (Jérémy, 14.11.2026) : Anaïs demande la place avant de saisir le dossier, qui n'entre dans l'outil qu'une fois confirmé.
-import { etat, modifier, partenaireDe, reglages, entiteActive } from "../etat.mjs";
+// Changer le jour, l'heure, le lieu ou les personnes d'une réservation depuis sa carte. Rien n'est envoyé au prestataire : Anaïs lui écrit
+// elle-même (Jérémy, 14.11.2026), et le dossier n'entre dans l'outil qu'une fois la place confirmée.
+import { etat, modifier } from "../etat.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
-import { variablesMessage } from "../operations-calc.mjs";
-import { telWhatsApp } from "../partenaires-calc.mjs";
-import { ouvrirMessage } from "./messages.mjs";
 import { suivreFacture, appliquerChangements, synchroniserDatesDossier } from "./suivi-facture.mjs";
 import { tr } from "../i18n.mjs";
 
-const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || null;
-const clientDe = (r) => {
-  const d = dossierDe(r);
-  return d ? etat.db.clients.find((c) => c.id === d.client_id) || null : null;
-};
-
-// Message au prestataire : modèle « demande » ou « relance », en anglais, relu et modifiable avant l'envoi. `surEnvoi` s'exécute quand il part.
-export function messageAuPrestataire(r, cle, surEnvoi) {
-  const p = partenaireDe(r.partenaire_id);
-  const langue = "en";
-  const emetteur = reglages().emetteur || {};
-  ouvrirMessage({ titre: p ? tr("Message à {nom}", { nom: p.nom }) : tr("Message au partenaire"), pour: "partenaire", cle, langue, telephone: telWhatsApp(p), surEnvoi, vars: variablesMessage({ reservation: r, client: clientDe(r) || {}, dossier: dossierDe(r) || {}, partenaire: p || {}, entreprise: { nom: emetteur.nom || entiteActive().nom, telephone: emetteur.telephone || "" }, langue }) });
-}
 
 // Renvoie true si c'est enregistré. La réservation relue ici est la version courante : une synchronisation peut avoir changé la carte affichée.
 const courante = (r) => etat.db.reservations.find((x) => x.id === r.id) || r;
@@ -37,7 +21,7 @@ const enregistrer = async (r, champs, apres, message) => {
 };
 
 // Changer le jour, l'heure, le lieu ou les personnes sans ouvrir tout le formulaire. Sur une réservation déjà demandée au prestataire, on peut
-// enregistrer et le prévenir d'un tap : le message « modification » s'ouvre.
+// enregistrer.
 export function changerReservation(r, apres) {
   const p = r.personnes || {};
   const date = h("input", { id: "ch-date", type: "date", value: r.date_service || "" });
@@ -47,8 +31,7 @@ export function changerReservation(r, apres) {
   const enfants = h("input", { id: "ch-enf", type: "number", min: "0", step: "1", inputmode: "numeric", value: p.enfants ?? 0 });
   const nombre = (i) => Math.max(0, Math.floor(Number(i.value) || 0));
   const champs = () => ({ date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { ...p, adultes: nombre(adultes), enfants: nombre(enfants) } });
-  const prevenir = !!r.partenaire_id && r.statut !== "annule";
-  // Un seul chemin : la facture suit la date et les personnes (total montré, confirmation si elle est partie), puis la réservation, puis le prestataire peut être prévenu.
+  // Un seul chemin : la facture suit la date et les personnes (total montré, confirmation si elle est partie), puis la réservation.
   async function sauver() {
     const valeurs = champs();
     const suivi = await suivreFacture(r, valeurs, { avant: { date_service: r.date_service, personnes: r.personnes }, apres: { date_service: valeurs.date_service, personnes: valeurs.personnes }, montantSuit: true });
@@ -75,21 +58,14 @@ export function changerReservation(r, apres) {
       h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), adultes), champ(tr("Enfants"), enfants)),
       h("p", { class: "aide" }, tr("La facture suit la date et les personnes : le nouveau total s'affiche avant l'enregistrement.")),
       h("div", { class: "actions" },
-        h("button", { class: prevenir ? "secondaire" : "principal", type: "button", onclick: async () => { if (await sauver()) { fermer(); } } }, tr("Enregistrer")),
-        prevenir ? h("button", { class: "principal", type: "button", onclick: async () => {
-          const nouveau = { ...r, ...champs() };
-          if (await sauver()) {
-            fermer();
-            messageAuPrestataire(nouveau, "modification");
-          }
-        } }, tr("Enregistrer et prévenir le prestataire")) : null
+        h("button", { class: "principal", type: "button", onclick: async () => { if (await sauver()) { fermer(); } } }, tr("Enregistrer"))
       )
     ),
     { protege: false }
   );
 }
 
-// Ce que la carte de réservation peut faire avec le prestataire : changer le jour, l'heure ou les personnes (et le prévenir).
+// Ce que la carte de réservation propose : changer le jour, l'heure ou les personnes.
 export function gestesPrestataire(r, { apres }) {
   if (!r.partenaire_id || r.statut === "annule") return { faire: {} };
   return { faire: { changer: () => changerReservation(r, apres) } };
