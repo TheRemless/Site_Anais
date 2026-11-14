@@ -1,7 +1,7 @@
 // Création d'un dossier de Secret ou de Taxi avec tout ce que le voucher dit, service par service (13.11.2026) : la logique pure, sans DOM,
 // testée dans tests/gestion-creation-voucher.test.js. Avant, il fallait créer le dossier, y revenir et éditer chaque réservation
 // (heure et lieu de pickup, drop-off, vol, bagages, type de tour, remarques…).
-import { reservationsDepuisDocument, typeVoucher, CHAMPS_VOUCHER, pickupDepuisLibelle, dropOffDepuisLibelle } from "./operations-calc.mjs";
+import { reservationsDepuisDocument, typeVoucher, champsVoucherDe, pickupDepuisLibelle, dropOffDepuisLibelle } from "./operations-calc.mjs";
 import { libelleClient } from "./partenaires-calc.mjs";
 import { erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, libelleTrajet } from "./voucher-rapide-calc.mjs";
 
@@ -15,7 +15,7 @@ export function servicesCreation(lignes, { prestations = [], partenaires = [], t
     const prestation = r.prestation_id ? prestations.find((p) => p.id === r.prestation_id) || null : null;
     const partenaire = r.partenaire_id ? partenaires.find((p) => p.id === r.partenaire_id) || null : null;
     const trajet = r.trajet_id ? trajets.find((t) => t.id === r.trajet_id) || null : null;
-    return { cle: r.ligne_id, ligneIds: (r.details && r.details.lignes_ids) || [r.ligne_id], libelle: r.libelle, date: r.date_service || "", personnes: r.personnes, type: typeVoucher(r, prestation, partenaire), pickup: libelleClient(pickupDepuisLibelle(r, prestation, trajet)), dropoff: libelleClient(dropOffDepuisLibelle(r, prestation, trajet)) };
+    return { cle: r.ligne_id, ligneIds: (r.details && r.details.lignes_ids) || [r.ligne_id], libelle: r.libelle, date: r.date_service || "", personnes: r.personnes, type: typeVoucher(r, prestation, partenaire), trajet: !!trajet, pickup: libelleClient(pickupDepuisLibelle(r, prestation, trajet)), dropoff: libelleClient(dropOffDepuisLibelle(r, prestation, trajet)) };
   });
 }
 
@@ -28,7 +28,7 @@ export function champsCreation(service, { taxi = false } = {}) {
     return ["heure", "lieu", "drop_off", "vol", ...(sansPersonnes ? ["adultes", "enfants"] : []), "bagages", "sieges"];
   }
   const t = service.type;
-  return ["heure", "lieu", ...(t === null || t === "billet" ? ["bebes"] : []), ...(CHAMPS_VOUCHER[t] || [])];
+  return ["heure", "lieu", ...(t === null || t === "billet" ? ["bebes"] : []), ...champsVoucherDe(t, { trajet: !!service.trajet })];
 }
 
 // Garde les valeurs remplies : un champ vide ne s'écrit pas sur la réservation créée.

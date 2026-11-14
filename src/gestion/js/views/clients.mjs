@@ -1,4 +1,4 @@
-import { etat, inserer, modifier, modifierProtege, supprimer, nomClient, naviguer, resumeDossier, reglages, peut, corbeilleDossiers, modeExcursions } from "../etat.mjs";
+import { etat, inserer, modifier, modifierProtege, supprimer, nomClient, naviguer, resumeDossier, reglages, peut, corbeilleDossiers, modeExcursions, modeTaxi } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, erreurChamp } from "../ui.mjs";
 import { formatMontant, formatDate } from "../calc.mjs";
 import { pastille, vide, listeAdaptative, barreFiltres } from "./commun.mjs";
@@ -6,7 +6,7 @@ import { demanderArbitrage } from "./conflit.mjs";
 import { correspond } from "../mobile-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { clientsProches } from "../demande-calc.mjs";
-import { verifierTelephoneClient, numerosClient } from "../client-calc.mjs";
+import { verifierTelephoneClient, numerosClient, chambreDeLAdresse, adresseAvecChambre } from "../client-calc.mjs";
 
 function formulaireClient(client, apres) {
   // Secret et Taxi n'ont pas de civilité : le champ n'apparaît pas et la valeur déjà enregistrée reste telle quelle (rien n'est imposé).
@@ -20,8 +20,12 @@ function formulaireClient(client, apres) {
   const nom = h("input", { id: "c-nom", value: client.nom || "", required: true });
   const tel = h("input", { id: "c-tel", type: "tel", value: client.telephone || "" });
   const email = h("input", { id: "c-email", type: "email", value: client.email || "" });
-  const adresse = h("textarea", { id: "c-adr", rows: 3 });
-  adresse.value = client.adresse || "";
+  // Secret : l'hôtel et la chambre, que les vouchers impriment. La chambre reste rangée dans l'adresse (« Baiyok Hotel, Room 6 »).
+  const avecChambre = modeExcursions() && !modeTaxi();
+  const lu = avecChambre ? chambreDeLAdresse(client.adresse) : { adresse: client.adresse || "", chambre: "" };
+  const adresse = h("textarea", { id: "c-adr", rows: avecChambre ? 2 : 3 });
+  adresse.value = lu.adresse;
+  const chambre = h("input", { id: "c-chambre", value: lu.chambre, autocomplete: "off", placeholder: "12" });
   const notes = h("textarea", { id: "c-notes", rows: 2 });
   notes.value = client.notes || "";
   return h(
@@ -37,7 +41,7 @@ function formulaireClient(client, apres) {
           erreurChamp(tel, verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67."));
           return tel.focus();
         }
-        const valeurs = { civilite: civ.value, prenom: prenom.value.trim(), nom: nom.value.trim(), telephone: verif.valeur, email: email.value.trim(), adresse: adresse.value.trim(), notes: notes.value.trim() };
+        const valeurs = { civilite: civ.value, prenom: prenom.value.trim(), nom: nom.value.trim(), telephone: verif.valeur, email: email.value.trim(), adresse: avecChambre ? adresseAvecChambre(adresse.value, chambre.value) : adresse.value.trim(), notes: notes.value.trim() };
         // Seuls les champs changés partent : un autre champ modifié entre-temps par quelqu'un d'autre n'est pas écrasé.
         const changes = client.id ? Object.fromEntries(Object.entries(valeurs).filter(([k, v]) => (client[k] || "") !== v)) : valeurs;
         let c;
@@ -52,7 +56,9 @@ function formulaireClient(client, apres) {
       },
     },
     h("div", { class: "grille-form" }, sansCivilite ? null : champ(tr("Civilité"), civ), champ(tr("Prénom"), prenom), champ(tr("Nom"), nom), champ(tr("Téléphone"), tel), champ("E-mail", email, tr("Pour votre usage, il n'apparaît pas sur les documents."))),
-    champ(tr("Adresse, telle qu'elle doit apparaître sur le devis"), adresse),
+    avecChambre
+      ? h("div", { class: "grille-form" }, champ(tr("Hôtel ou adresse"), adresse), champ(tr("Numéro de chambre"), chambre, tr("Imprimé sur les vouchers quand le pickup est à cet hôtel.")))
+      : champ(modeExcursions() ? tr("Adresse") : tr("Adresse, telle qu'elle doit apparaître sur le devis"), adresse),
     champ(tr("Notes"), notes),
     peut("clients.ecrire") ? h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer le client"))) : h("p", { class: "aide" }, tr("Lecture seule : votre rôle ne permet pas de modifier les clients."))
   );

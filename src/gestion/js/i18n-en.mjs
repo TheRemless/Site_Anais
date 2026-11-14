@@ -1285,7 +1285,6 @@ export const EN = {
   "Shared minivan": "Shared minivan",
   "Signature du client, première ligne (devis)": "Client signature, first line (quote)",
   "Signature du client, seconde ligne": "Client signature, second line",
-  "Sinon celle de l'adresse du client.": "Otherwise the one from the client's address.",
   "Sinon celle de la compagnie, en anglais.": "Otherwise the company's one, in English.",
   "Sinon celui de la compagnie pour le lieu de départ.": "Otherwise the company's one for the departure place.",
   "Sinon celui de la prestation.": "Otherwise the one from the service.",
@@ -2530,4 +2529,10 @@ export const EN = {
   "Vide : celui de la demande, ou l'hôtel.": "Empty: the one in the request, or the hotel.",
   "Vide : l'adresse du client.": "Empty: the client's address.",
   "Texte vu par le client, en anglais. Modifiable.": "Text seen by the client, in English. Can be changed.",
+  "Hôtel ou adresse": "Hotel or address",
+  "Numéro de chambre": "Room number",
+  "Imprimé sur les vouchers quand le pickup est à cet hôtel.": "Printed on vouchers when the pickup is at this hotel.",
+  "Sinon celle de la fiche client, si le pickup est à son hôtel.": "Otherwise the one on the client record, if the pickup is at their hotel.",
+  "Heure de départ du bateau": "Boat departure time",
+  "Imprimée seulement si elle est remplie.": "Printed only when filled in.",
 };
