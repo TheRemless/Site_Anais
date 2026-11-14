@@ -130,7 +130,7 @@ export function enrichirDemoStats(d, { ajd, ajouterJours, uid, contenu, nouvelle
       const s = l._s;
       const passe = serviceLe < ajd;
       const vente = Math.round(l.unite * l.qte);
-      const r = { id: uid(), created_at: creeLe, updated_at: creeLe, entite_id: e2.id, dossier_id: dossier.id, ligne_id: l.id, prestation_id: s.p.id, trajet_id: null, partenaire_id: s.p.partenaire_id, libelle: l.libelle, date_service: ajouterJours(serviceLe, k % 2), heure_pickup: "08:00", lieu_pickup: choix(HOTELS), personnes: { adultes: s.pers ? pax : entre(1, 4), enfants: s.pers && rnd() < 0.25 ? 1 : 0, bebes: 0 }, statut: dossier.annule ? "annule" : passe ? "confirme" : choix(["a_demander", "demande", "confirme"]), reference_partenaire: "", montant_vente: vente, notes: "", details: {}, cree_par: admin.user_id, paye_sur_place: !!s.place };
+      const r = { id: uid(), created_at: creeLe, updated_at: creeLe, entite_id: e2.id, dossier_id: dossier.id, ligne_id: l.id, prestation_id: s.p.id, trajet_id: null, partenaire_id: s.p.partenaire_id, libelle: l.libelle, date_service: ajouterJours(serviceLe, k % 2), heure_pickup: "08:00", lieu_pickup: choix(HOTELS), personnes: { adultes: s.pers ? pax : entre(1, 4), enfants: s.pers && rnd() < 0.25 ? 1 : 0, bebes: 0 }, statut: dossier.annule ? "annule" : passe ? "confirme" : choix(["confirme", "confirme", "confirme"]), reference_partenaire: "", montant_vente: vente, notes: "", details: {}, cree_par: admin.user_id, paye_sur_place: !!s.place };
       d.reservations.push(r);
       const n = { id: uid(), entite_id: e2.id, reservation_id: r.id, net_prevu: null, net_paye: null, paye_le: null, commission_prevue: null, commission_recue: null, commission_recue_le: null };
       if (s.place) {

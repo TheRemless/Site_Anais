@@ -5,11 +5,9 @@ import { commissionsARecevoir } from "./operations-calc.mjs";
 const arr = (n) => Math.round(n * 100) / 100;
 const actives = (reservations) => (reservations || []).filter((r) => r.statut !== "annule");
 
-// Les services du dossier par état de demande au prestataire (hors annulés).
+// Nombre de services du dossier (hors annulés).
 export function etatsServices(reservations) {
-  const rs = actives(reservations);
-  const n = (s) => rs.filter((r) => r.statut === s).length;
-  return { total: rs.length, a_demander: n("a_demander"), demande: n("demande"), confirme: n("confirme") };
+  return { total: actives(reservations).length };
 }
 
 // Nombre de personnes d'un service : adultes, enfants et bébés. Un dossier dont les services n'ont pas tous le même groupe donne une fourchette.
@@ -42,22 +40,15 @@ const envoye = (r, cle) => !!(r.details && r.details.envois && r.details.envois[
 const voucherAEnvoyer = (x) => !envoye(x.reservation, "client") || (!!x.reservation.partenaire_id && !envoye(x.reservation, "prestataire"));
 
 // La prochaine chose à faire, une seule, dans l'ordre où elle se présente.
-//   ZTP : envoyer le document pas encore envoyé, noter l'acceptation du devis, demander le premier service à demander,
-//         créer la facture dès l'acompte reçu, enregistrer un paiement.
-//   Secret et Taxi (`excursions`) : demander, confirmer, envoyer le voucher, puis envoyer la facture et enregistrer un paiement.
-//         On ne propose pas la facture avant d'avoir la place chez le prestataire.
+//   ZTP : envoyer le document pas encore envoyé, noter l'acceptation du devis, créer la facture dès l'acompte reçu, enregistrer un paiement.
+//   Secret et Taxi (`excursions`) : envoyer le voucher, puis envoyer la facture et enregistrer un paiement. Le dossier n'entre dans l'outil
+//         qu'une fois la place prise chez le prestataire et le client d'accord (Jérémy, 14.11.2026) : plus d'étapes « demander » ni « confirmer ».
 // Un dossier « tout sur place » n'a rien à encaisser : jamais d'invitation à enregistrer un paiement. Taxi n'a ni facture ni paiement.
 export function actionSuivante({ annule = false, statut, aEnvoyer = null, avecDevis = false, devisEnvoye = false, accepte = false, facture = false, acompteRecu = false, reservations = [], vouchers = [], reste = 0, excursions = false, taxi = false, droit = {} }) {
   // Un devis classé sans suite n'a plus de prochaine étape : seule la réouverture est proposée.
   if (annule || statut === "sans_suite") return null;
-  const rs = actives(reservations);
-  const premiere = (s) => (droit.dossiers ? rs.find((r) => r.statut === s && r.partenaire_id) || null : null);
   const paiement = droit.paiements && droit.finances && !taxi && (accepte || facture) && reste > 0 && statut !== "sur_place" && statut !== "solde" ? { cle: "paiement" } : null;
   if (excursions) {
-    const aDemander = premiere("a_demander");
-    if (aDemander) return { cle: "demander", reservation: aDemander };
-    const aConfirmer = premiere("demande");
-    if (aConfirmer) return { cle: "confirmer", reservation: aConfirmer };
     const voucher = droit.finances ? (vouchers || []).find((x) => x.reservation.statut !== "annule" && voucherAEnvoyer(x)) : null;
     if (voucher) return { cle: "voucher", voucher };
     if (droit.docs && aEnvoyer && !taxi) return { cle: "envoyer", type: aEnvoyer.type };
@@ -65,8 +56,6 @@ export function actionSuivante({ annule = false, statut, aEnvoyer = null, avecDe
   }
   if (droit.docs && aEnvoyer) return { cle: "envoyer", type: aEnvoyer.type };
   if (droit.dossiers && avecDevis && devisEnvoye && !accepte) return { cle: "accepter" };
-  const aDemander = premiere("a_demander");
-  if (aDemander) return { cle: "demander", reservation: aDemander };
   if (droit.docs && !facture && acompteRecu) return { cle: "facture" };
   return paiement;
 }

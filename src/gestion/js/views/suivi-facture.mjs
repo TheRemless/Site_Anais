@@ -145,7 +145,7 @@ export function questionAnnulation(r, documents) {
 
 // Prévenir le prestataire après un changement : « Prévenir » ouvre le message prêt (modification ou annulation), « Plus tard » ne fait rien.
 export function proposerDePrevenir(r, cle, ouvrirMessagePrestataire) {
-  if (!r.partenaire_id || !(r.statut === "demande" || r.statut === "confirme")) return;
+  if (!r.partenaire_id) return;
   const fermer = modal(
     cle === "annulation" ? tr("Prévenir le prestataire de l'annulation ?") : tr("Prévenir le prestataire du changement ?"),
     h(

@@ -29,14 +29,14 @@ test("dates : le jour se lit à Bangkok, sept heures après l'heure UTC du serve
 test("veille : compte les services de demain, signale heure et confirmation manquantes, sans nom de client", () => {
   const m = rappelVeille(R, "2026-11-10", { entiteIds: null, nomEntite });
   assert.equal(m.titre, "4 services demain");
-  assert.equal(m.corps, "Secret 3, Taxi 1. 2 sans heure de pickup, 2 pas encore confirmés.");
+  assert.equal(m.corps, "Secret 3, Taxi 1. 2 sans heure de pickup.");
   assert.equal(m.tag, "veille");
 });
 
 test("veille : tout est en ordre, un seul service, une seule entreprise", () => {
   const m = rappelVeille(R, "2026-11-10", { entiteIds: ["S"], ecartes: new Set(["d1"]), nomEntite });
   assert.equal(m.titre, "1 service demain");
-  assert.equal(m.corps, "Tout est confirmé et chaque pickup a une heure.");
+  assert.equal(m.corps, "Chaque pickup a une heure.");
 });
 
 test("veille : rien à signaler s'il n'y a aucun service, les dossiers annulés et les entreprises non lisibles sont écartés", () => {

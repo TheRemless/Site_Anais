@@ -49,11 +49,9 @@ export function rappelVeille(reservations, demain, { entiteIds, ecartes = new Se
   const liste = servicesDuJour(reservations, demain, { entiteIds, ecartes });
   if (!liste.length) return null;
   const sansHeure = liste.filter((r) => !(r.heure_pickup || "").trim()).length;
-  const nonConfirmes = liste.filter((r) => r.statut !== "confirme").length;
   const manque = [];
   if (sansHeure) manque.push(`${sansHeure} sans heure de pickup`);
-  if (nonConfirmes) manque.push(`${nonConfirmes} ${nonConfirmes > 1 ? "pas encore confirmés" : "pas encore confirmé"}`);
-  const etat = manque.length ? `${manque.join(", ")}.` : "Tout est confirmé et chaque pickup a une heure.";
+  const etat = manque.length ? `${manque.join(", ")}.` : "Chaque pickup a une heure.";
   return { titre: `${pluriel(liste.length, "service", "services")} demain`, corps: [ventilation(liste, nomEntite), etat].filter(Boolean).join(" "), tag: "veille" };
 }
 

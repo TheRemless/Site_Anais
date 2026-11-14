@@ -143,7 +143,6 @@ export const MESURES = {
   services_place: { source: "reservations", flux: true, garde: (R, c) => actifR(R) && R.paye_sur_place && dans(R.date_service, c.du, c.au), montant: (R) => nb(R.montant_vente), date: (R) => R.date_service },
   a_venir: { source: "reservations", flux: false, garde: (R, c) => actifR(R) && R.date_service && R.date_service >= c.jour, montant: (R) => nb(R.montant_vente), date: (R) => R.date_service },
   a_venir_7: { source: "reservations", flux: false, garde: (R, c) => actifR(R) && R.date_service && dans(R.date_service, c.jour, ajouterJours(c.jour, 6)), montant: (R) => nb(R.montant_vente), date: (R) => R.date_service },
-  a_confirmer: { source: "reservations", flux: false, garde: (R, c) => actifR(R) && R.date_service && R.date_service >= c.jour && R.statut !== "confirme", montant: (R) => nb(R.montant_vente), date: (R) => R.date_service },
   sans_date: { source: "reservations", flux: false, garde: (R) => actifR(R) && !R.date_service, montant: (R) => nb(R.montant_vente), date: () => null },
   // Les mesures ci-dessous demandent le droit « nets » : sans lui, les champs sont vides et la mesure est indisponible.
   commission_prevue: {
@@ -383,7 +382,6 @@ export const DEFINITIONS = {
   services_place: [N_("Services payés sur place"), N_("Services que le client règle directement au prestataire. Le prestataire nous reverse ensuite une commission.")],
   a_venir: [N_("Services à venir"), N_("Réservations non annulées dont la date de service est aujourd'hui ou plus tard.")],
   a_venir_7: [N_("Services des 7 prochains jours"), N_("Réservations non annulées dont la date de service tombe entre aujourd'hui et dans six jours.")],
-  a_confirmer: [N_("Services à confirmer"), N_("Réservations non annulées, à venir, que le partenaire n'a pas encore confirmées.")],
   sans_date: [N_("Services sans date"), N_("Réservations non annulées dont la date de service n'est pas encore fixée.")],
   commission_prevue: [N_("Commissions prévues"), N_("Commissions attendues sur les services payés sur place dont la date de service tombe dans la période. Montant saisi sur chaque réservation.")],
   commission_recue: [N_("Commissions reçues"), N_("Commissions encaissées, datées par leur jour de réception.")],

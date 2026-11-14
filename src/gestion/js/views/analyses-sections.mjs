@@ -5,7 +5,7 @@ import { formatMontant, formatDate, ajouterJours } from "../calc.mjs";
 import { tr, N_, pluriel, moisLong, moisCourt } from "../i18n.mjs";
 import * as S from "../stats-calc.mjs";
 import { MOYENS_DEFAUT } from "../defauts.mjs";
-import { STATUTS_RESERVATION } from "../operations-calc.mjs";
+import { STATUTS_RESERVATION, statutReservation } from "../operations-calc.mjs";
 import { nomFamille } from "../partenaires-calc.mjs";
 import { tuile, graphiqueColonnes, legende, classement, tableauTrie, blocDefinitions } from "./analyses-widgets.mjs";
 
@@ -23,7 +23,7 @@ export function libelleGroupe(dim, g) {
     case "saison": return moisLong(`2000-${k}-01`);
     case "tranche": return tr("{tranche} jours", { tranche: k });
     case "famille": return k === "billet" ? tr("Billets de bateau") : nomFamille(k);
-    case "statut": return STATUTS_RESERVATION[k] ? tr(STATUTS_RESERVATION[k]) : k;
+    case "statut": return tr(STATUTS_RESERVATION[statutReservation(k)]);
     case "moyen": { const m = MOYENS_DEFAUT.find((x) => x.id === k); return m ? tr(m.label) : SPECIAUX.includes(k) ? tr(k) : k; }
     case "paiement": return k === "place" ? tr("Payé sur place") : tr("Payé chez nous");
     case "nature": return tr(k);
@@ -116,7 +116,7 @@ function aTraiter(X) {
     const r = S.valeur(id, X.faits, c);
     return r.nombre ? { texte: pluriel(r.nombre, un, plus), montant: montant ? r.montant : null, href: X.href(id) } : null;
   };
-  items.push(q("a_confirmer", N_("service à venir pas encore confirmé"), N_("services à venir pas encore confirmés")), q("sans_date", N_("service sans date de prestation"), N_("services sans date de prestation")));
+  items.push(q("sans_date", N_("service sans date de prestation"), N_("services sans date de prestation")));
   // Taxi : aucune commission par défaut, elle se note au cas par cas. Un service sans commission n'est pas un oubli.
   if (X.nets && !X.taxi) items.push(q("commission_a_renseigner", N_("service payé sur place sans commission notée"), N_("services payés sur place sans commission notée"), false));
   const lignes = items.filter(Boolean);
@@ -370,7 +370,6 @@ export function avenir(X) {
   X.sortie.push(...cases.map((k, i) => [tr(nom), libelleGroupe("semaine", { cle: k }), X.devise, serie[i].montant, nombres[i]]));
   const sur7 = S.valeur("a_venir_7", f, X.c);
   const toutes = S.valeur("a_venir", f, X.c);
-  const conf = S.valeur("a_confirmer", f, X.c);
   const sd = S.valeur("sans_date", f, X.c);
   const dep = S.valeur("departs", f, X.c);
   const prochains = S.grouper(S.lignesFiltrees("a_venir", f, X.c).filter((l) => l.date <= ajouterJours(X.jour, 13)), "jour", { tri: "cle" });
@@ -378,16 +377,14 @@ export function avenir(X) {
     tuiles(
       T(X, "a_venir_7", { grande: true, mini: false }),
       T(X, "a_venir", { mini: false }),
-      T(X, "a_confirmer", { mini: false }),
       sd.nombre ? T(X, "sans_date", { mini: false }) : null,
       !X.excursions && dep.nombre ? T(X, "departs", { mini: false }) : null
     ),
     bloc(titre(nom), graphiqueColonnes({ cases: cases.map((k) => ({ cle: k, court: jourCourt(k), libelle: libelleGroupe("semaine", { cle: k }) })), series: [{ nom: N_("Valeur des services"), classe: "s1", valeurs: serie.map((x) => x.montant) }], devise: X.devise, titre: tr(nom), lecture: (i) => h("div", { class: "st-lecture-corps" }, h("strong", { class: "st-lecture-titre" }, libelleGroupe("semaine", { cle: cases[i] })), h("p", null, h("span", { class: "st-lecture-valeur" }, m$(X, serie[i].montant)), " ", h("span", { class: "st-lecture-nom" }, compte(nombres[i], "services")))), lien: (i) => X.href("a_venir", `semaine:${cases[i]}`) })),
     bloc(titre(N_("Jour par jour, deux semaines")), prochains.length ? classement({ lignes: prochains.map((g) => ({ libelle: formatDate(g.cle), valeur: g.nombre, texte: compte(g.nombre, "services"), detail: tr("{montant} vendus", { montant: m$(X, g.montant) }), href: X.href("a_venir", `jour:${g.cle}`) })), max: 14 }) : h("p", { class: "vide-court" }, tr("Aucun service prévu dans les deux semaines."))),
-    bloc(titre(N_("Par statut")), rang(X, "a_venir", "statut", { tri: "cle" })),
     X.taxi ? null : bloc(titre(N_("Par partenaire")), rang(X, "a_venir", "partenaire")),
     h("p", { class: "aide" }, tr("{n} services à venir au total.", { n: toutes.nombre })),
-    blocDefinitions(["a_venir", "a_venir_7", "a_confirmer", "sans_date", "departs"].filter((i) => !(X.excursions && i === "departs")), S.DEFINITIONS),
+    blocDefinitions(["a_venir", "a_venir_7", "sans_date", "departs"].filter((i) => !(X.excursions && i === "departs")), S.DEFINITIONS),
   ];
 }
 
