@@ -49,6 +49,10 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
   const checkin = zone("checkin", dt.checkin, tr("Check-in at the pier 45 minutes before departure…"));
   const bateau = texte("bateau", dt.bateau, tr("Longtail, speedboat"));
   const programme = texte("programme", dt.programme, tr("Program A, 10 min session"));
+  const de = texte("de", dt.de, "Koh Lanta");
+  const vers = texte("vers", dt.vers, "Phuket");
+  const depart = h("input", { id: id("depart"), type: "time", value: dt.depart || "" });
+  const arrivee = h("input", { id: id("arrivee"), type: "time", value: dt.arrivee || "" });
 
   // Nombre de jours de location, calculé d'après la date de départ et celle de retour.
   const joursLocation = h("p", { class: "aide", "aria-live": "polite" });
@@ -60,7 +64,11 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
   majJours();
 
   const CHAMPS = {
-    chambre: () => champ(tr("Chambre"), chambre, tr("Sinon celle de l'adresse du client.")),
+    chambre: () => champ(tr("Chambre"), chambre, tr("Sinon celle de la fiche client, si le pickup est à son hôtel.")),
+    de: () => champ(tr("Départ"), de),
+    vers: () => champ(tr("Arrivée"), vers),
+    depart: () => champ(tr("Heure de départ du bateau"), depart),
+    arrivee: () => champ(tr("Heure d'arrivée"), arrivee, tr("Imprimée seulement si elle est remplie.")),
     drop_off: () => champ(tr("Drop-off"), dropOff),
     vol: () => champ(tr("Numéro de vol"), vol),
     bagages: () => champ(tr("Bagages"), bagages),
@@ -92,7 +100,7 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
   // Les sièges sont un nombre ; ils ne s'ajoutent qu'à une réservation qui en a, ou quand on en saisit (pas de « 0 » partout).
   const nbSieges = () => Math.max(0, Math.floor(Number(String(sieges.value).trim()) || 0));
   const valeurs = () => ({
-    chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, retour_lieu: retourLieu.value.trim(), equipement: equipement.value.trim(), conditions: conditions.value.trim(), permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim(),
+    chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, retour_lieu: retourLieu.value.trim(), equipement: equipement.value.trim(), conditions: conditions.value.trim(), permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim(), de: de.value.trim(), vers: vers.value.trim(), depart: depart.value, arrivee: arrivee.value,
     ...(nbSieges() > 0 || "sieges" in dt ? { sieges: nbSieges() } : {}),
   });
   return { CHAMPS, valeurs, majJours };

@@ -461,12 +461,16 @@ export function moteurTexte(prestation) {
 // Quatre modèles : bateau, transfert, activité, location. Chacun a ses champs propres sur la réservation.
 // Cinq modèles : billet de bateau (trajets des compagnies), excursion en bateau, transfert terrestre, activité, location.
 export const CHAMPS_VOUCHER = {
-  billet: ["embarquement", "checkin", "bagages", "remarques", "remarques_paiement"],
+  billet: ["de", "vers", "depart", "arrivee", "bateau", "embarquement", "checkin", "bagages", "remarques", "remarques_paiement"],
   bateau: ["chambre", "type_tour", "bateau", "parc", "parc_texte", "remarques", "remarques_paiement"],
   transfert: ["drop_off", "vol", "bagages", "sieges", "type_transfert", "remarques", "remarques_paiement"],
   activite: ["chambre", "programme", "heure_service", "remarques", "remarques_paiement"],
   location: ["chambre", "retour_date", "retour_heure", "retour_lieu", "permis", "equipement", "caution", "conditions", "remarques", "remarques_paiement"],
 };
+// Un billet lié à un trajet de la base en tire le départ, l'arrivée, les horaires et le bateau : ces champs ne se demandent que pour un billet
+// saisi à la main (partenaire ajouté sans trajet, Jérémy le 14.11.2026 : « un intitulé Route mais je ne vois pas où mettre le départ et l'arrivée »).
+const DU_TRAJET = ["de", "vers", "depart", "arrivee", "bateau"];
+export const champsVoucherDe = (type, { trajet = false } = {}) => (CHAMPS_VOUCHER[type] || []).filter((c) => !(type === "billet" && trajet && DU_TRAJET.includes(c)));
 // Les deux bouts d'un transfert d'après son trajet, sinon d'après le libellé « A → B » (de la prestation, sinon de la réservation) :
 // ce que le voucher et la Booking confirmation impriment quand le pickup ou le drop-off n'a pas été saisi.
 export const dropOffDepuisLibelle = (r, p, trajet) => (trajet ? trajet.vers : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→").pop().trim() : "");
@@ -664,8 +668,16 @@ export function cleMessageReservation(r, ajd) {
 
 // Hôtel et numéro de chambre d'après l'adresse du client (« Hotel Sunset, Room 12 ») ou le lieu de pickup.
 export function hotelEtChambre(client = {}, reservation = {}) {
-  const source = reservation.lieu_pickup || (client.adresse || "").split("\n")[0] || "";
-  // « Room 12 », « Ch. 5 », « Chambre A12 » en fin de ligne : le mot est entier et suivi d'un numéro (« Beach Resort » n'est pas une chambre).
+  const fiche = separerChambreLigne((client.adresse || "").split("\n")[0] || "");
+  const lieu = separerChambreLigne(reservation.lieu_pickup || "");
+  if (!lieu.hotel && !lieu.chambre) return fiche;
+  // La chambre de la fiche client vaut pour un pickup à son hôtel (« Baiyok Hotel » et « Baiyok Hotel, Room 6 »), jamais pour un autre lieu.
+  const meme = !!fiche.chambre && !!fiche.hotel && (sansAccentsMin(lieu.hotel).includes(sansAccentsMin(fiche.hotel)) || sansAccentsMin(fiche.hotel).includes(sansAccentsMin(lieu.hotel)));
+  return { hotel: lieu.hotel, chambre: lieu.chambre || (meme ? fiche.chambre : "") };
+}
+// « Room 12 », « Ch. 5 », « Chambre A12 » en fin de ligne : le mot est entier et suivi d'un numéro (« Beach Resort » n'est pas une chambre).
+export function separerChambreLigne(ligne) {
+  const source = String(ligne || "");
   const m = source.match(/(?:^|[,\s])(?:room|chambre|ch\.?)\s*(?:no\.?\s*)?(\d+[A-Za-z]?|[A-Za-z]\d+)\s*$/i);
   return { hotel: m ? source.slice(0, m.index).replace(/[,\s]+$/, "").trim() : source.trim(), chambre: m ? m[1] : "" };
 }

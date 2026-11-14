@@ -1,6 +1,22 @@
 // Fiche client : ce qui se vérifie sans écran (testé avec node --test).
 import { normaliserTelephone } from "./partenaires-calc.mjs";
 import { separerNom } from "./demande-calc.mjs";
+import { separerChambreLigne } from "./operations-calc.mjs";
+
+// Chambre de la fiche client (Secret) : rangée en fin de première ligne de l'adresse (« Baiyok Hotel, Room 6 »), comme à la création d'un dossier,
+// pour que les vouchers et la feuille du jour la retrouvent. La fiche la montre dans son propre champ.
+export function chambreDeLAdresse(adresse) {
+  const lignes = String(adresse || "").split("\n");
+  const { hotel, chambre } = separerChambreLigne(lignes[0] || "");
+  return { adresse: [hotel, ...lignes.slice(1)].join("\n").trim(), chambre };
+}
+export function adresseAvecChambre(adresse, chambre) {
+  const lignes = String(adresse || "").trim().split("\n");
+  const c = String(chambre || "").trim().replace(/^(?:room|chambre|ch\.?)\s*(?:no\.?\s*)?/i, "");
+  if (!c) return lignes.join("\n").trim();
+  lignes[0] = [lignes[0].trim().replace(/,\s*$/, ""), `Room ${c}`].filter(Boolean).join(", ");
+  return lignes.join("\n").trim();
+}
 
 // Téléphone saisi dans la fiche client. Vide : accepté (le champ est facultatif). Inchangé : accepté tel quel (un ancien numéro sans indicatif ne bloque pas
 // l'enregistrement des autres champs). Sinon il faut un numéro international : l'indicatif d'un client n'est jamais deviné (un « 079… » n'est pas un +66).
