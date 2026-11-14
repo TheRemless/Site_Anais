@@ -13,7 +13,7 @@ import { vide, barreFiltres, lienDossier } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { telWhatsApp, commissionsPartenaire } from "../partenaires-calc.mjs";
+import { commissionsPartenaire } from "../partenaires-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, synchroniserDatesDossier } from "./suivi-facture.mjs";
 export { synchroniserDatesDossier };
