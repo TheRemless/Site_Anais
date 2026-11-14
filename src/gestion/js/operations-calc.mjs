@@ -8,7 +8,10 @@ import { estTaxi } from "./taxi-calc.mjs";
 
 export { SUR_PLACE, CHEZ_NOUS, modeReglement };
 
-export const STATUTS_RESERVATION = { a_demander: N_("À demander"), demande: N_("Demandée, en attente"), confirme: N_("Confirmée"), annule: N_("Annulée") };
+// Anaïs demande au prestataire avant de saisir le dossier, qui n'entre dans l'outil qu'une fois confirmé par le client (Jérémy, 14.11.2026) :
+// une réservation est confirmée ou annulée, sans étapes de demande. Les anciens statuts « à demander » et « demandée » se lisent comme confirmés.
+export const STATUTS_RESERVATION = { confirme: N_("Confirmée"), annule: N_("Annulée") };
+export const statutReservation = (code) => (code === "annule" ? "annule" : "confirme");
 
 const nouvelId = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 const brut = (l) => (l.unite !== null && l.unite !== undefined && l.unite !== "" && l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.unite) * Number(l.qte) : l.montant !== null && l.montant !== undefined && l.montant !== "" ? Number(l.montant) : null);
@@ -59,7 +62,7 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     const l = g.premiere;
     return {
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
-      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: { ...(g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {}), ...(g.jours ? { jours: g.jours } : {}) } },
+      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: { ...(g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {}), ...(g.jours ? { jours: g.jours } : {}) } },
       net: g.net,
       // Service payé sur place : la commission attendue se calcule d'après la règle du partenaire (`regleDe(partenaire_id)`), seulement quand elle est connue.
       ...commissionDuGroupe(g, l, regleDe),

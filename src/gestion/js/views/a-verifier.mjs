@@ -15,7 +15,6 @@ const TITRES = {
   partenaires_sans_telephone: [N_("Partenaires actifs sans téléphone"), N_("Impossible de leur écrire ou de les appeler depuis l'outil.")],
   partenaires_sans_whatsapp: [N_("Partenaires actifs sans numéro WhatsApp"), N_("Le message de demande ne s'ouvre pas directement dans WhatsApp.")],
   trajets_duree: [N_("Durée affichée qui ne colle pas avec les horaires"), N_("Plus de 20 minutes d'écart entre « arrivée moins départ » et la durée écrite. Un trajet à plusieurs étapes peut l'expliquer : à relire, pas forcément une erreur.")],
-  reservations_passees: [N_("Réservations passées jamais confirmées"), N_("La date du service est passée et la réservation est encore « à demander » ou « demandée ».")],
   clients_sans_contact: [N_("Clients sans téléphone ni e-mail"), N_("Impossible de les joindre.")],
   dossiers_sans_responsable: [N_("Dossiers sans responsable"), N_("Personne n'est désignée pour suivre ces dossiers.")],
 };

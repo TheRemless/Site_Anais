@@ -60,7 +60,7 @@ test("réservations depuis un document : une par ligne de partenaire, ligne enfa
   let n = 0;
   const r = reservationsDepuisDocument(doc, { existantes: [{ ligne_id: "l5" }], uid: () => `R${++n}` });
   assert.equal(r.length, 2);
-  assert.deepEqual(r[0].reservation, { id: "R1", dossier_id: "D1", ligne_id: "l1", prestation_id: "x1", trajet_id: null, partenaire_id: "p1", libelle: "4 îles", date_service: "2026-12-10", heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: 2400, notes: "", paye_sur_place: false, details: {} });
+  assert.deepEqual(r[0].reservation, { id: "R1", dossier_id: "D1", ligne_id: "l1", prestation_id: "x1", trajet_id: null, partenaire_id: "p1", libelle: "4 îles", date_service: "2026-12-10", heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: 2400, notes: "", paye_sur_place: false, details: {} });
   assert.equal(r[0].net, 1600);
   assert.deepEqual(r[1].reservation.personnes, { adultes: 0, enfants: 1, bebes: 0 });
   assert.equal(r[1].reservation.trajet_id, "t1");

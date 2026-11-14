@@ -47,7 +47,7 @@ function carteService(r) {
       h(
         "div",
         { class: "service-pied" },
-        pastilleReservation(r.statut),
+        r.statut === "annule" ? pastilleReservation("annule") : null,
         tel ? h("a", { class: "bouton secondaire petit", href: `tel:${tel}`, "aria-label": tr("Appeler {nom}", { nom: nomClient(c) }) }, icone("telephone", 16), tr("Appeler")) : null,
         // Le message prêt d'après la date du service (rappel la veille, confirmation le jour, avis après) : jamais une conversation vide à rédiger.
         wa ? h("button", { class: "secondaire petit", type: "button", onclick: () => messageClient(r, cleMessageReservation(r, aujourdhui())), "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(c) }) }, icone("whatsapp", 16), tr("WhatsApp")) : null
@@ -68,7 +68,6 @@ export async function tableauDeBord() {
   const taches = aFaire(rs, ajd, reglages());
   const contrats = peut("partenaires.lire") && moduleActif("partenaires") ? contratsAEcheance(etat.db.partenaires, ajd) : [];
   const ag = agenda(etat.db.reservations, ajd, dossiersAnnules(), { netDe: netReservation });
-  const aConfirmer = [...ag.enRetard, ...ag.aConfirmer];
   const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
   // Hier : une demande d'avis par client, même avec plusieurs services. « Demander l'avis » ouvre le message prêt et, une fois parti, note la date sur ses services.
   const clientIdDe = (r) => (etat.db.dossiers.find((x) => x.id === r.dossier_id) || {}).client_id || null;
@@ -121,9 +120,6 @@ export async function tableauDeBord() {
     moduleActif("reservations") && ag.hier.length ? sectionAvis(tr("Hier : à recontacter pour avoir leur avis"), ag.hier) : null,
     // Taxi : la commission de chaque course d'hier se demande à Mr. Brown puis se saisit (aucune par défaut).
     modeTaxi() && moduleActif("reservations") ? sectionCommissionsHier(rafraichir) : null,
-    moduleActif("reservations") && aConfirmer.length
-      ? h("section", null, h("h2", null, tr("À confirmer auprès des partenaires"), h("span", { class: "tag" }, aConfirmer.length)), listeReservations(aConfirmer.slice(0, 6), { apres: rafraichir }), aConfirmer.length > 6 ? h("p", { class: "plus" }, h("a", { href: "#/reservations?statut=ouvertes" }, tr("Voir les {n} réservations à confirmer", { n: aConfirmer.length }))) : null)
-      : null,
     mesTaches().length
       ? h("section", null, h("h2", null, tr("Mes tâches")), listeTaches(mesTaches().slice(0, 6)), mesTaches().length > 6 ? h("p", { class: "plus" }, h("a", { href: "#/taches" }, tr("Voir les {n} tâches", { n: mesTaches().length }))) : h("p", { class: "plus" }, h("a", { href: "#/taches" }, tr("Toutes les tâches"))))
       : null,

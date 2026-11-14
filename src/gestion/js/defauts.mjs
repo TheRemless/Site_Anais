@@ -560,14 +560,14 @@ export function donneesDemo(ajd, ajouterJours) {
   const reservations = [];
   const reservations_nets = [];
   const reservation = (dossier, x, libelle, date, extra, nets) => {
-    const r = { id: uid(), created_at: j(-2), updated_at: j(-2), entite_id: e2.id, dossier_id: dossier.id, ligne_id: "", prestation_id: x ? x.id : null, trajet_id: null, partenaire_id: x ? x.partenaire_id : null, libelle, date_service: date, heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "a_demander", reference_partenaire: "", montant_vente: null, notes: "", details: {}, cree_par: admin.user_id, ...extra };
+    const r = { id: uid(), created_at: j(-2), updated_at: j(-2), entite_id: e2.id, dossier_id: dossier.id, ligne_id: "", prestation_id: x ? x.id : null, trajet_id: null, partenaire_id: x ? x.partenaire_id : null, libelle, date_service: date, heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: null, notes: "", details: {}, cree_par: admin.user_id, ...extra };
     reservations.push(r);
     if (nets) reservations_nets.push({ id: uid(), entite_id: e2.id, reservation_id: r.id, net_prevu: null, net_paye: null, paye_le: null, ...nets });
     return r;
   };
   reservation(dossiers[5], prestations[0], "4 Islands by longtail, full day", j(1), { heure_pickup: "08:00", lieu_pickup: "Hotel Sunset, Klong Dao", statut: "confirme", reference_partenaire: "LT-2211", montant_vente: 2400 }, { net_prevu: 1600 });
   reservation(dossiers[5], prestations[3], "Koh Rok and Koh Ha, park fees", j(1), { statut: "confirme", personnes: { adultes: 2, enfants: 0, bebes: 0 }, notes: "Paid in cash on the island." }, null);
-  reservation(dossiers[6], prestations[5], "Krabi Airport → Koh Lanta", j(0), { heure_pickup: "14:30", lieu_pickup: "Krabi Airport, flight FD3217", statut: "demande", montant_vente: 2500, personnes: { adultes: 1, enfants: 1, bebes: 0 } }, { net_prevu: 2250 });
+  reservation(dossiers[6], prestations[5], "Krabi Airport → Koh Lanta", j(0), { heure_pickup: "14:30", lieu_pickup: "Krabi Airport, flight FD3217", statut: "confirme", montant_vente: 2500, personnes: { adultes: 1, enfants: 1, bebes: 0 } }, { net_prevu: 2250 });
   reservation(dossiers[5], prestations[8], "Sunset by longtail, 2 hours", j(3), { montant_vente: 1400 }, { net_prevu: 1000 });
   // Taxi : une course avant-hier et une hier (commissions à demander, avis d'hier) et une demain.
   const dossiersTaxi = dossiers.filter((d) => d.entite_id === e3.id);
@@ -580,7 +580,7 @@ export function donneesDemo(ajd, ajouterJours) {
   const courseTaxi = (dossier, ligneC, date, extra) => reservations.push({ id: uid(), created_at: j(-2), updated_at: j(-2), entite_id: e3.id, dossier_id: dossier.id, ligne_id: ligneC.id, prestation_id: null, trajet_id: null, partenaire_id: chauffeurs.id, libelle: ligneC.libelle, date_service: date, heure_pickup: "", lieu_pickup: "", personnes: { adultes: 2, enfants: 0, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: ligneC.unite, paye_sur_place: true, notes: "", details: {}, ...extra });
   courseTaxi(dossiersTaxi[0], lc7, j(-1), { heure_pickup: "11:00", lieu_pickup: "Krabi Airport, arrivals hall", personnes: { adultes: 4, enfants: 0, bebes: 0 }, details: { drop_off: "Hotel Sea, Koh Lanta", bagages: "oui" } });
   courseTaxi(dossiersTaxi[2], lc9, j(-2), { heure_pickup: "09:00", lieu_pickup: "Lanta Demo Resort, Long Beach", personnes: { adultes: 2, enfants: 0, bebes: 0 }, details: { drop_off: "Ao Nang", bagages: "2" } });
-  courseTaxi(dossiersTaxi[1], lc8, j(1), { heure_pickup: "06:30", lieu_pickup: "Villa Demo, Klong Nin", personnes: { adultes: 2, enfants: 1, bebes: 1 }, statut: "demande", details: { drop_off: "Phuket Airport", bagages: "3" } });
+  courseTaxi(dossiersTaxi[1], lc8, j(1), { heure_pickup: "06:30", lieu_pickup: "Villa Demo, Klong Nin", personnes: { adultes: 2, enfants: 1, bebes: 1 }, statut: "confirme", details: { drop_off: "Phuket Airport", bagages: "3" } });
   reservation(dossiers[6], prestations[6], "Koh Lanta → Phuket Airport", j(-20), { statut: "confirme", heure_pickup: "06:00", lieu_pickup: "Hotel Palm", montant_vente: 4500 }, { net_prevu: 4050, net_paye: 4050, paye_le: j(-15) });
 
   const tache = (e, titre, jours, assignee, dossier, extra = {}) => ({ id: uid(), created_at: j(-3), entite_id: e.id, dossier_id: dossier ? dossier.id : null, partenaire_id: null, titre, description: "", echeance: jours === null ? null : j(jours), assignee_id: assignee ? assignee.user_id : null, fait: false, fait_le: null, fait_par: null, cree_par: admin.user_id, ...extra });

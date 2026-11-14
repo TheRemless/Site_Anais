@@ -86,7 +86,8 @@ test("à vérifier : chaque contrôle repère ses cas, pas les autres", () => {
   assert.deepEqual(par(l, "partenaires_sans_telephone").map((x) => x.id), ["p3"], "un partenaire inactif n'est pas signalé");
   assert.deepEqual(par(l, "partenaires_sans_whatsapp").map((x) => x.id), ["p2"], "avec téléphone mais sans WhatsApp");
   assert.deepEqual(par(l, "trajets_duree").map((x) => x.id), ["t2"], "écart de plus de 20 minutes (t3 : 30 min annoncées, 30 min réelles)");
-  assert.deepEqual(par(l, "reservations_passees").map((x) => x.id), ["r1", "r2"], "ni confirmée, ni à venir, ni d'un dossier annulé");
+  // Plus de contrôle « réservation passée jamais confirmée » : une réservation saisie est confirmée (14.11.2026).
+  assert.ok(!l.some((c) => c.cle === "reservations_passees"));
   assert.deepEqual(par(l, "clients_sans_contact").map((x) => x.id), ["c2"]);
   assert.deepEqual(par(l, "dossiers_sans_responsable").map((x) => x.id), ["d2"], "un dossier annulé n'est pas signalé");
 });
@@ -98,7 +99,6 @@ test("à vérifier : « à relire » pour les doutes, jamais pour les cas certai
   assert.equal(relire.groupes_en_double, true);
   assert.equal(relire.prestations_prix_en_texte, true);
   assert.equal(relire.trajets_sans_prix, false);
-  assert.equal(relire.reservations_passees, false);
   for (const c of l) for (const e of c.elements) assert.match(e.lien, /^#\//, `${c.cle} : lien vers la fiche`);
   assert.equal(par(l, "dossiers_sans_responsable")[0].lien, "#/dossier/d2");
   assert.equal(par(l, "partenaires_sans_telephone")[0].lien, "#/partenaire/p3");
@@ -109,7 +109,7 @@ test("à vérifier : sans le droit « nets » le contrôle des nets n'existe pas
   assert.equal(par(aVerifier(db(), { droits: { ...tous, nets: false }, aujourdhui: "2026-11-12" }), "prestations_sans_net").length, 0);
   assert.ok(!aVerifier(db(), { droits: { ...tous, nets: false }, aujourdhui: "2026-11-12" }).some((c) => c.cle === "prestations_sans_net"));
   const seulDossiers = aVerifier(db(), { droits: { dossiers: true }, aujourdhui: "2026-11-12" });
-  assert.deepEqual(seulDossiers.map((c) => c.cle).sort(), ["dossiers_sans_responsable", "reservations_passees"]);
+  assert.deepEqual(seulDossiers.map((c) => c.cle).sort(), ["dossiers_sans_responsable"]);
   assert.deepEqual(aVerifier(db(), { droits: {}, aujourdhui: "2026-11-12" }), []);
   // Aucune fuite de net dans les éléments rendus.
   assert.ok(!JSON.stringify(aVerifier(db(), { droits: { ...tous, nets: false }, aujourdhui: "2026-11-12" })).includes("800"));
@@ -123,5 +123,4 @@ test("à vérifier : une base vide ou incomplète ne plante pas", () => {
 test("à vérifier : les petites phrases composées passent par la traduction fournie", () => {
   const l = aVerifier(db(), { droits: tous, aujourdhui: "2026-11-12", tr: (texte, vars = {}) => `EN:${String(texte).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "")}` });
   assert.match(par(l, "trajets_duree")[0].detail, /EN:durée écrite « 1 h » \(écart 120 min\)/);
-  assert.match(par(l, "reservations_passees")[1].detail, /EN:demandée/);
 });

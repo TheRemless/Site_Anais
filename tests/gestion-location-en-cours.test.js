@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { agenda, dateFinService, locationEnCours, cleMessageReservation } from "../src/gestion/js/operations-calc.mjs";
 import { rappelVeille, rappelLendemain } from "../supabase/functions/rappels/calc.js";
-import { aVerifier } from "../src/gestion/js/a-verifier-calc.mjs";
 
 // Le cas réel du 12.11.2026 : Honda ADV 350 chez Noom Rental, prise le 11, retour le 15, jamais confirmée.
 const mckay = { id: "mckay", dossier_id: "d1", libelle: "Honda ADV 350", statut: "a_demander", date_service: "2026-11-11", details: { retour_date: "2026-11-15" } };
@@ -79,13 +78,6 @@ test("rappels : le rappel de 9h attend le lendemain du retour, celui de 18h rest
 test("rappels : un service d'un jour, ou sans détails, garde son comportement", () => {
   const R = [{ entite_id: "S", dossier_id: "d1", statut: "confirme", heure_pickup: "08:00", date_service: "2026-11-08" }];
   assert.ok(rappelLendemain(R, "2026-11-08", { entiteIds: null }));
-});
-
-test("à vérifier : une location en cours n'est pas une réservation passée sans réponse", () => {
-  const db = { reservations: [mckay, termineeHier], dossiers: [{ id: "d1" }, { id: "d2" }], clients: [] };
-  const l = aVerifier(db, { droits: { dossiers: true }, aujourdhui: "2026-11-12" });
-  const passees = (l.find((c) => c.cle === "reservations_passees") || { elements: [] }).elements;
-  assert.deepEqual(passees.map((x) => x.id), ["fini"]);
 });
 
 test("message client : pas d'avis pendant la location, l'avis vient après le retour", () => {

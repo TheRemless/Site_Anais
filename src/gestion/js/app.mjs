@@ -1,11 +1,10 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, netReservation, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, dossiersAnnules, modeExcursions, modeTaxi, ecranVoucherSeul } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul } from "./etat.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
 import { libelleStatut, formatMontant, aujourdhui } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { mesTaches } from "./views/taches.mjs";
-import { agenda } from "./operations-calc.mjs";
 import { retirerALaDeconnexion } from "./rappels.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 
@@ -160,10 +159,8 @@ function ecrans() {
   const ajd = aujourdhui();
   const enRetard = mesTaches().filter((t) => t.echeance && t.echeance <= ajd).length;
   const si = (ok, item) => (ok ? [item] : []);
-  const ag = agenda(etat.db.reservations, ajd, dossiersAnnules(), { netDe: netReservation });
-  const aConfirmer = ag.enRetard.length + ag.aConfirmer.length;
   return [
-    { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations", badge: aConfirmer }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
+    { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
     { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(peut("fiduciaire.preparer") && modeExcursions(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
       titre: tr("Partenaires"),

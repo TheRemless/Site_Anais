@@ -5,11 +5,11 @@ const load = () => import("../src/gestion/js/dossier-resume-calc.mjs");
 
 const res = (o) => ({ id: o.id || "r", dossier_id: "d1", statut: "demande", paye_sur_place: false, partenaire_id: "p1", personnes: { adultes: 2, enfants: 0, bebes: 0 }, montant_vente: 1000, ...o });
 
-test("etatsServices : compte les services par état, hors annulés", async () => {
+test("etatsServices : compte les services, hors annulés (plus d'états de demande depuis le 14.11.2026)", async () => {
   const { etatsServices } = await load();
   const rs = [res({ id: "a", statut: "a_demander" }), res({ id: "b", statut: "demande" }), res({ id: "c", statut: "confirme" }), res({ id: "d", statut: "confirme" }), res({ id: "e", statut: "annule" })];
-  assert.deepEqual(etatsServices(rs), { total: 4, a_demander: 1, demande: 1, confirme: 2 });
-  assert.deepEqual(etatsServices([]), { total: 0, a_demander: 0, demande: 0, confirme: 0 });
+  assert.deepEqual(etatsServices(rs), { total: 4 });
+  assert.deepEqual(etatsServices([]), { total: 0 });
 });
 
 test("personnesDossier : un effectif, ou une fourchette quand les groupes diffèrent", async () => {
@@ -44,14 +44,14 @@ test("commissionDossier : un service sur place sans commission renseignée est s
   assert.equal(c.sansCommission, 1);
 });
 
-test("actionSuivante : une seule étape, dans l'ordre envoyer, accepter, demander, encaisser", async () => {
+test("actionSuivante : une seule étape, dans l'ordre envoyer, accepter, encaisser ; jamais « demander »", async () => {
   const { actionSuivante } = await load();
   const droit = { docs: true, dossiers: true, paiements: true, finances: true };
   const base = { statut: "devis_envoye", avecDevis: true, devisEnvoye: true, accepte: false, facture: false, reservations: [], reste: 500, droit };
   assert.deepEqual(actionSuivante({ ...base, aEnvoyer: { type: "devis" }, devisEnvoye: false }), { cle: "envoyer", type: "devis" });
   assert.deepEqual(actionSuivante(base), { cle: "accepter" });
   const aDemander = res({ id: "a", statut: "a_demander" });
-  assert.equal(actionSuivante({ ...base, accepte: true, statut: "accepte", reservations: [aDemander] }).cle, "demander");
+  assert.equal(actionSuivante({ ...base, accepte: true, statut: "accepte", reservations: [aDemander] }).cle, "paiement");
   assert.equal(actionSuivante({ ...base, accepte: true, statut: "accepte", reservations: [res({ statut: "confirme" })] }).cle, "paiement");
 });
 
@@ -72,18 +72,14 @@ const droitTout = { docs: true, dossiers: true, paiements: true, finances: true 
 const vx = (r) => ({ reservation: r, type: "bateau", index: 1 });
 const envois = (client, prestataire) => ({ envois: { ...(client ? { client: "2026-11-13" } : {}), ...(prestataire ? { prestataire: "2026-11-13" } : {}) } });
 
-test("actionSuivante Secret : demander, confirmer, voucher, puis facture et paiement", async () => {
+test("actionSuivante Secret : voucher, puis facture et paiement ; jamais « demander » ni « confirmer »", async () => {
   const { actionSuivante } = await load();
   const base = { excursions: true, statut: "facture", facture: true, aEnvoyer: { type: "facture" }, reste: 500, droit: droitTout };
   const a = res({ id: "a", statut: "a_demander" });
   const b = res({ id: "b", statut: "demande" });
-  // Les deux services sont à demander : la facture non envoyée ne passe plus devant (audit, point 4).
-  const s1 = actionSuivante({ ...base, reservations: [a, res({ id: "a2", statut: "a_demander" })] });
-  assert.equal(s1.cle, "demander");
-  assert.equal(s1.reservation.id, "a");
-  const s2 = actionSuivante({ ...base, reservations: [b, res({ id: "c", statut: "confirme" })] });
-  assert.equal(s2.cle, "confirmer");
-  assert.equal(s2.reservation.id, "b");
+  // Une réservation saisie avant le 14.11 avec un ancien statut est confirmée : son voucher vient en premier.
+  assert.equal(actionSuivante({ ...base, reservations: [a], vouchers: [vx(a)] }).cle, "voucher");
+  assert.equal(actionSuivante({ ...base, reservations: [b] }).cle, "envoyer");
   const c = res({ id: "c", statut: "confirme" });
   const s3 = actionSuivante({ ...base, reservations: [c], vouchers: [vx(c)] });
   assert.equal(s3.cle, "voucher");
@@ -102,7 +98,7 @@ test("actionSuivante Secret et Taxi : chaque étape demande son droit, Taxi n'a 
   const { actionSuivante } = await load();
   const c = res({ id: "c", statut: "confirme" });
   const base = { excursions: true, statut: "facture", facture: true, aEnvoyer: { type: "facture" }, reste: 500, reservations: [res({ id: "a", statut: "a_demander" }), c], vouchers: [vx(c)] };
-  assert.equal(actionSuivante({ ...base, droit: { ...droitTout, dossiers: false } }).cle, "voucher", "sans le droit dossiers, pas de demande au prestataire");
+  assert.equal(actionSuivante({ ...base, droit: { ...droitTout, dossiers: false } }).cle, "voucher");
   assert.equal(actionSuivante({ ...base, droit: { ...droitTout, dossiers: false, finances: false } }).cle, "envoyer", "sans les finances, la section vouchers est cachée");
   const fini = res({ id: "c", statut: "confirme", details: envois(true, true) });
   assert.equal(actionSuivante({ ...base, taxi: true, aEnvoyer: { type: "facture" }, reservations: [fini], vouchers: [vx(fini)], droit: droitTout }), null, "Taxi : pas de facture à envoyer ni de paiement");
@@ -117,7 +113,7 @@ test("actionSuivante ZTP : « Créer la facture » quand l'acompte est reçu et 
   assert.deepEqual(actionSuivante({ ...base, acompteRecu: false }), { cle: "paiement" }, "acompte pas encore reçu : on l'encaisse d'abord");
   assert.deepEqual(actionSuivante({ ...base, acompteRecu: true, facture: true }), { cle: "paiement" });
   assert.deepEqual(actionSuivante({ ...base, acompteRecu: true, droit: { ...droitTout, docs: false } }), { cle: "paiement" }, "sans le droit documents, pas de facture proposée");
-  assert.equal(actionSuivante({ ...base, acompteRecu: true, reservations: [res({ id: "a", statut: "a_demander" })] }).cle, "demander");
+  assert.equal(actionSuivante({ ...base, acompteRecu: true, reservations: [res({ id: "a", statut: "a_demander" })] }).cle, "facture");
   // Le mode ZTP ne propose jamais de voucher ni de confirmation.
   const d = res({ id: "d", statut: "demande" });
   assert.deepEqual(actionSuivante({ ...base, acompteRecu: true, reservations: [d], vouchers: [vx(d)] }), { cle: "facture" });
