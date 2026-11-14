@@ -208,14 +208,12 @@ export function avisParClient(reservations, clientDe) {
 // Agenda : aujourd'hui, demain, et ce qui reste à confirmer, hors annulées. Trié par heure de pickup puis libellé.
 // `ecartees` : identifiants des dossiers annulés, dont les réservations ne comptent plus (annuler un dossier ne change pas leur statut).
 // Envois de vouchers : la trace est gardée par réservation (`details.envois.client`, `details.envois.prestataire`, avec la date). `reservations` : celles qui ont un voucher.
-// « Complet » : le client a reçu chaque voucher et chaque prestataire le sien (un voucher sans prestataire n'attend que le client).
+// « Complet » : le client a reçu chaque voucher. Anaïs écrit elle-même aux prestataires (Jérémy, 14.11.2026) : l'outil ne suit plus que le client.
 export function etatEnvoisVouchers(reservations) {
   const envoi = (r, cle) => !!(r.details && r.details.envois && r.details.envois[cle]);
   const total = reservations.length;
-  const avecPrestataire = reservations.filter((r) => r.partenaire_id);
   const client = reservations.filter((r) => envoi(r, "client")).length;
-  const prestataires = avecPrestataire.filter((r) => envoi(r, "prestataire")).length;
-  return { total, client, prestataires, totalPrestataires: avecPrestataire.length, complet: total > 0 && client === total && prestataires === avecPrestataire.length };
+  return { total, client, complet: total > 0 && client === total };
 }
 
 // Les détails d'une réservation avec un envoi de plus (« client » ou « prestataire »), sans effacer les autres.

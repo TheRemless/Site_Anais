@@ -84,9 +84,9 @@ test("actionSuivante Secret : voucher, puis facture et paiement ; jamais « dema
   const s3 = actionSuivante({ ...base, reservations: [c], vouchers: [vx(c)] });
   assert.equal(s3.cle, "voucher");
   assert.equal(s3.voucher.reservation.id, "c");
-  // Voucher parti chez le client mais pas chez le prestataire : il reste à envoyer.
+  // Voucher parti chez le client : c'est fait, l'envoi au prestataire n'est plus suivi (14.11.2026).
   const c2 = res({ id: "c", statut: "confirme", details: envois(true, false) });
-  assert.equal(actionSuivante({ ...base, reservations: [c2], vouchers: [vx(c2)] }).cle, "voucher");
+  assert.deepEqual(actionSuivante({ ...base, reservations: [c2], vouchers: [vx(c2)] }), { cle: "envoyer", type: "facture" });
   // Service sans prestataire : le client suffit.
   const libre = res({ id: "l", statut: "confirme", partenaire_id: null, details: envois(true, false) });
   const fini = res({ id: "c", statut: "confirme", details: envois(true, true) });

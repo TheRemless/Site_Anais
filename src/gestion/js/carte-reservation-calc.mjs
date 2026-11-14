@@ -15,7 +15,6 @@ export function entreesMenu(ctx) {
   const { statut, ecrit, aPartenaire, aClient, voucher, liee } = ctx;
   const principal = gestePrincipal(ctx);
   const l = [];
-  if (aPartenaire) l.push("message_partenaire");
   if (aClient) l.push("message_client");
   if (ecrit) {
     l.push("modifier");

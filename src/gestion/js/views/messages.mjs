@@ -18,6 +18,11 @@ export const DESTINATAIRES = [
   ["client", N_("Au client")],
   ["partenaire", N_("Au partenaire")],
 ];
+// Anaïs écrit elle-même aux prestataires (Jérémy, 14.11.2026) : plus de messages types vers eux à l'écran, sauf la commission de Taxi demandée
+// au chauffeur. Les modèles restent en base et dans les défauts (rien n'est effacé).
+const destinataires = () => (modeTaxi() ? DESTINATAIRES : DESTINATAIRES.filter(([pour]) => pour !== "partenaire"));
+const COMMISSIONS = new Set(["commission", "commissions"]);
+const visible = (m) => destinataireMessage(m) !== "partenaire" || (modeTaxi() && COMMISSIONS.has(m.cle));
 // Noms lisibles des variables, pour dire ce qui manque.
 const NOMS_VARIABLES = { client: N_("nom du client"), prenom: N_("prénom"), date: N_("date"), hotel: N_("hôtel"), heure: N_("heure de pickup"), personnes: N_("personnes"), prestation: N_("service"), partenaire: N_("partenaire"), reference: N_("référence"), lien_avis: N_("lien d'avis Google"), contact: N_("contact du partenaire"), dropoff: N_("lieu de dépose"), prix: N_("prix"), entreprise: N_("entreprise"), services: N_("services"), total: N_("total"), bonjour: N_("formule d'appel") };
 // Modèles par défaut de l'entreprise ouverte. Celle dont le client lit l'anglais (Secret, Taxi) n'en reçoit jamais en français.
@@ -98,7 +103,7 @@ export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle 
 // ---- Écran de gestion des messages types -----------------------------------------------------------------
 function formulaireMessage(m, apres) {
   const titre = h("input", { id: "m-titre", value: m.titre || "", required: true });
-  const pour = h("select", { id: "m-pour" }, DESTINATAIRES.map(([c, l]) => h("option", { value: c }, tr(l))));
+  const pour = h("select", { id: "m-pour" }, destinataires().map(([c, l]) => h("option", { value: c }, tr(l))));
   pour.value = destinataireMessage(m);
   const cle = h("input", { id: "m-cle", value: m.cle || "", list: "m-cles", placeholder: tr("confirmation, rappel, avis, meteo, partenaire, relance, modification, annulation") });
   const cles = h("datalist", { id: "m-cles" }, [...new Set(messagesTypes().map((x) => x.cle).filter(Boolean))].map((c) => h("option", { value: c })));
@@ -138,7 +143,7 @@ export function vueMessages() {
   const ouvrir = (m) => { const fermer = modal(m.id ? tr("Modifier le message") : tr("Nouveau message type"), formulaireMessage(m, () => (fermer(), rafraichir())), { large: true }); };
   const tous = messagesTypes();
   // Les modèles par défaut dont l'usage manque (une relance, une annulation…). Une entreprise dont les documents sont en anglais n'y gagne pas de français.
-  const manquants = admin ? gabaritsManquants(tous, defautsEntreprise()) : [];
+  const manquants = admin ? gabaritsManquants(tous, defautsEntreprise()).filter(visible) : [];
   const ajouterManquants = async () => {
     if (!(await confirmer(tr("Ajouter {n} modèles qui manquent ? Les modèles que vous avez modifiés ne sont pas touchés.", { n: manquants.length }), tr("Ajouter")))) return;
     try {
@@ -168,8 +173,8 @@ export function vueMessages() {
   const zone = h("div", { class: "messages-zone" });
   const correspond = (m) => !filtre.recherche.trim() || sansAccents(`${m.titre} ${m.cle} ${m.corps}`).includes(sansAccents(filtre.recherche.trim()));
   const sections = () =>
-    DESTINATAIRES.filter(([pour]) => filtre.pour === "tous" || filtre.pour === pour).flatMap(([pour, nomPour]) => LANGUES.map(([code, nom]) => {
-      const du = tous.filter((m) => destinataireMessage(m) === pour && m.langue === code && correspond(m));
+    destinataires().filter(([pour]) => filtre.pour === "tous" || filtre.pour === pour).flatMap(([pour, nomPour]) => LANGUES.map(([code, nom]) => {
+      const du = tous.filter((m) => visible(m) && destinataireMessage(m) === pour && m.langue === code && correspond(m));
       if (!du.length) return null;
       return h(
         "section",
@@ -191,7 +196,7 @@ export function vueMessages() {
     zone.replaceChildren(frais);
   }
   let minuteur = null;
-  const barre = barreFiltres({ recherche: { placeholder: tr("Titre, usage ou texte"), libelle: tr("Chercher un message") }, puces: { libelle: tr("Destinataire"), valeur: "tous", options: [{ valeur: "tous", libelle: tr("Tous") }, ...DESTINATAIRES.map(([valeur, libelle]) => ({ valeur, libelle: tr(libelle) }))] }, onchange: (v) => { filtre.recherche = v.recherche; filtre.pour = v.puces; clearTimeout(minuteur); minuteur = setTimeout(dessiner, 200); } });
+  const barre = barreFiltres({ recherche: { placeholder: tr("Titre, usage ou texte"), libelle: tr("Chercher un message") }, puces: { libelle: tr("Destinataire"), valeur: "tous", options: [{ valeur: "tous", libelle: tr("Tous") }, ...destinataires().map(([valeur, libelle]) => ({ valeur, libelle: tr(libelle) }))] }, onchange: (v) => { filtre.recherche = v.recherche; filtre.pour = v.puces; clearTimeout(minuteur); minuteur = setTimeout(dessiner, 200); } });
   dessiner();
   return h(
     "div",

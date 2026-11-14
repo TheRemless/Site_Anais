@@ -35,9 +35,9 @@ export function commissionDossier(reservations, netDe) {
   };
 }
 
-// Un voucher est parti quand il a été envoyé au client et, s'il a un prestataire, au prestataire aussi (même règle que etatEnvoisVouchers).
+// Un voucher est parti quand il a été envoyé au client (même règle que etatEnvoisVouchers) : l'envoi au prestataire n'est plus suivi.
 const envoye = (r, cle) => !!(r.details && r.details.envois && r.details.envois[cle]);
-const voucherAEnvoyer = (x) => !envoye(x.reservation, "client") || (!!x.reservation.partenaire_id && !envoye(x.reservation, "prestataire"));
+const voucherAEnvoyer = (x) => !envoye(x.reservation, "client");
 
 // La prochaine chose à faire, une seule, dans l'ordre où elle se présente.
 //   ZTP : envoyer le document pas encore envoyé, noter l'acceptation du devis, créer la facture dès l'acompte reçu, enregistrer un paiement.

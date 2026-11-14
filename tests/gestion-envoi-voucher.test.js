@@ -31,12 +31,12 @@ test("envoi déjà noté le même jour : rien à réécrire ; noté un autre jou
   assert.equal(envoiANoter({ pour: "client", issue: "partage", envois: null, date: D }), "client");
 });
 
-test("les clés notées sont celles que lit l'avancement du dossier (« Client : 1 sur 2 »)", () => {
+test("les clés notées sont celles que lit l'avancement du dossier (« 1 sur 2 envoyé au client »)", () => {
   const r1 = { id: 1, partenaire_id: 7, details: detailsAvecEnvoi({ pickup: "Hôtel" }, envoiANoter({ pour: "client", issue: "conversation", date: D }), D) };
   const r2 = { id: 2, partenaire_id: 8, details: {} };
   assert.equal(r1.details.pickup, "Hôtel");
-  assert.deepEqual(etatEnvoisVouchers([r1, r2]), { total: 2, client: 1, prestataires: 0, totalPrestataires: 2, complet: false });
-  r1.details = detailsAvecEnvoi(r1.details, envoiANoter({ pour: "partenaire", issue: "partage", date: D }), D);
-  assert.deepEqual(etatEnvoisVouchers([r1, r2]), { total: 2, client: 1, prestataires: 1, totalPrestataires: 2, complet: false });
+  assert.deepEqual(etatEnvoisVouchers([r1, r2]), { total: 2, client: 1, complet: false });
+  r2.details = detailsAvecEnvoi(r2.details, envoiANoter({ pour: "client", issue: "partage", date: D }), D);
+  assert.deepEqual(etatEnvoisVouchers([r1, r2]), { total: 2, client: 2, complet: true }, "le prestataire n'est plus suivi (14.11.2026)");
   assert.deepEqual(Object.values(CIBLE_ENVOI).sort(), ["client", "prestataire"]);
 });
