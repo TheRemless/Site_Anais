@@ -24,6 +24,7 @@ const AVERTISSEMENTS = {
   sans_heure: N_("L'heure de pickup n'est pas renseignée."),
   sans_lieu: N_("Le lieu de pickup n'est pas renseigné."),
   lieu_adresse_client: N_("Le lieu de pickup n'est pas renseigné : le voucher affichera l'adresse du client."),
+  sans_programme: N_("Retour au point de départ sans programme : le client et le chauffeur ne sauront pas ce qui est prévu."),
 };
 
 // Image PNG d'un voucher, à deux fois la taille de l'écran pour rester nette. Sans la hauteur minimale d'une page A4 : l'image s'arrête au contenu.

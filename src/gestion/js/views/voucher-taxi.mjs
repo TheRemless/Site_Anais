@@ -8,17 +8,19 @@ const LOGO_DEFAUT = "assets/logo-vip-taxi.webp";
 const BANDEAU_DEFAUT = "assets/taxi-bandeau.webp";
 
 // `regl` : réglages de l'entreprise ; le reste vient de renderVoucher (pickup et dépose déjà déduits de la réservation).
-export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", email = "", adresse = "" }) {
+// `retour` : { programme, duree } pour un retour au point de départ (16.11.2026), sinon null.
+export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", email = "", adresse = "", retour = null }) {
   const v = regl.voucher || {};
   const nom = [client.prenom, client.nom].filter(Boolean).join(" ");
   const dt = r.details || {};
-  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: dt.sieges, vol: dt.vol, montant: r.montant_vente, devise });
+  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: dt.sieges, vol: dt.vol, montant: r.montant_vente, devise, retour });
   const valeur = (c) =>
     c.date ? [`${c.date.mois} ${c.date.jour}`, h("sup", null, c.date.suffixe), ` ${c.date.annee}`] : c.valeur;
   const logo = (regl.apparence && regl.apparence.logo) || LOGO_DEFAUT;
   const lieu = adresse || PIED_BOOKING.lieu;
   // La page A4 est pleine (en-tête du modèle) : une valeur qui passe à la ligne resserre les rangs pour que le pied reste visible.
-  const serre = lignesEnPlus(champs.map((c) => (c.date ? "" : c.valeur)));
+  // Un rang de plus que le modèle (le programme et la durée d'un retour au départ) compte comme une ligne de plus.
+  const serre = lignesEnPlus(champs.map((c) => (c.date ? "" : c.valeur))) + Math.max(0, champs.length - 7);
   return h(
     "div",
     { class: `voucher voucher-taxi${serre >= 1 ? " vt-serre" : ""}${serre >= 3 ? " vt-serre-fort" : ""}` },

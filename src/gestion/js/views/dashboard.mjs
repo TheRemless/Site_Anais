@@ -12,6 +12,7 @@ import { listeReservations, pastilleReservation, messageClient } from "./reserva
 import { tr, N_, pluriel, dateLongue } from "../i18n.mjs";
 import { ouvrirSansSuite, baseDistante } from "./sans-suite.mjs";
 import { disponible as sansSuiteDisponible } from "../sans-suite-calc.mjs";
+import { resumeTrajet } from "../trajet-calc.mjs";
 
 
 function phrase(item) {
@@ -44,6 +45,8 @@ function carteService(r) {
       h("div", { class: "service-titre" }, lienDossier(r.libelle, d && d.id)),
       detail ? h("p", { class: "service-detail" }, detail) : null,
       r.lieu_pickup ? h("p", { class: "service-detail" }, r.lieu_pickup) : null,
+      // Retour au point de départ : on le voit d'un coup d'œil, avec la durée (16.11.2026).
+      resumeTrajet(r) ? h("p", { class: "service-detail" }, resumeTrajet(r)) : null,
       h(
         "div",
         { class: "service-pied" },

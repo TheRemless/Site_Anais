@@ -7,7 +7,8 @@ import { CLE_HORS_LIGNE, AGE_MAX_H, lireCopie } from "./feuille-hors-ligne-lectu
 export { CLE_HORS_LIGNE, AGE_MAX_H, lireCopie };
 const jourPlus = (jour, n) => new Date(Date.UTC(+jour.slice(0, 4), +jour.slice(5, 7) - 1, +jour.slice(8, 10)) + n * 86400000).toISOString().slice(0, 10);
 
-const LIGNE = ["heure", "libelle", "client", "telephone", "hotel", "chambre", "reference", "statut"];
+// `trajet` : « Back to pickup. Plan: … » d'un retour au point de départ (16.11.2026), vide pour un aller simple.
+const LIGNE = ["heure", "libelle", "client", "telephone", "hotel", "chambre", "trajet", "reference", "statut"];
 const garder = (o, cles) => Object.fromEntries(cles.map((k) => [k, o[k] ?? ""]));
 
 // `brut` : les données chargées (toutes les entreprises accessibles) ; `entites` : celles que la personne peut lire.

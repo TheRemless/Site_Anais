@@ -4,6 +4,7 @@
 import { etat, inserer, modifier, reglages, chargerDossier } from "../etat.mjs";
 import { h, icone } from "../ui.mjs";
 import { uid } from "../defauts.mjs";
+import { RETOUR_DEPART } from "../trajet-calc.mjs";
 import { TH, CHAMPS, valeursVides, erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, reservationApercu, correctionReservation, valeursDepuis, suggestionsLieux, mesVouchers, dateCourteTh, partenaireDeTaxi, clientsRecents } from "../voucher-rapide-calc.mjs";
 import { contenuCourse, heureBooking, estTaxi } from "../taxi-calc.mjs";
 import { numeroVoucher, nomFichierVoucher, lienWhatsApp } from "../operations-calc.mjs";
@@ -93,7 +94,11 @@ export function vueVoucherRapide() {
       champ("date", TH.date, h("input", { type: "date" })),
       champ("pickup", TH.pickup, texte({ list: "vr-lieux" }), TH.anglais_aide),
       champ("heure", TH.heure, h("input", { type: "time", step: 300 })),
-      champ("dropoff", TH.dropoff, texte({ list: "vr-lieux" }), TH.anglais_aide),
+      // Aller simple ou retour au point de départ (16.11.2026) : le second remplace le drop-off par le programme et la durée.
+      champ("trajet", TH.trajet, h("select", null, h("option", { value: "" }, TH.trajet_simple), h("option", { value: RETOUR_DEPART }, TH.trajet_retour)), TH.trajet_aide),
+      champ("dropoff", TH.dropoff, texte({ list: "vr-lieux" }), TH.anglais_aide, "vr-si-simple"),
+      champ("programme", TH.programme, h("textarea", { rows: 2, autocomplete: "off", autocapitalize: "sentences", spellcheck: "false" }), TH.programme_aide, "vr-si-retour"),
+      champ("duree", TH.duree, h("input", { type: "text", inputmode: "decimal", autocomplete: "off", enterkeyhint: "next" }), TH.duree_aide, "vr-court vr-si-retour"),
       champ("vol", TH.vol, texte({ autocapitalize: "characters" }), TH.vol_aide),
       h("div", { class: "vr-trio" }, champ("adultes", TH.adultes, nombre()), champ("enfants", TH.enfants, nombre()), champ("bagages", TH.bagages, texte({ inputmode: "text", autocapitalize: "off" }), TH.bagages_aide)),
       champ("sieges", TH.sieges, nombre(), TH.sieges_aide, "vr-court"),
@@ -122,6 +127,14 @@ export function vueVoucherRapide() {
 
     champs.nom.addEventListener("input", proposer);
     proposer();
+    // Le drop-off ou le programme et la durée, selon le type de trajet ; un champ caché garde ce qui y est écrit.
+    const majTrajet = () => {
+      const retour = champs.trajet.value === RETOUR_DEPART;
+      for (const n of form.querySelectorAll(".vr-si-simple")) n.hidden = retour;
+      for (const n of form.querySelectorAll(".vr-si-retour")) n.hidden = !retour;
+    };
+    champs.trajet.addEventListener("change", majTrajet);
+    majTrajet();
     racine.replaceChildren(h("h1", null, cible ? TH.titre_modif : TH.titre), form, cible ? null : listeVouchers());
     window.scrollTo(0, 0);
   }

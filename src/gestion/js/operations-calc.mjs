@@ -5,6 +5,7 @@ import { langueActive, N_ } from "./i18n.mjs";
 import { chiffres, estLigneSupplement, prefixeProgramme, libelleClient } from "./partenaires-calc.mjs";
 import { SUR_PLACE, CHEZ_NOUS, modeReglement } from "./calc.mjs";
 import { estTaxi } from "./taxi-calc.mjs";
+import { estRetourDepart, trajetPourChauffeur, DROPOFF_RETOUR } from "./trajet-calc.mjs";
 
 export { SUR_PLACE, CHEZ_NOUS, modeReglement };
 
@@ -179,7 +180,8 @@ export function variablesMessage({ reservation = {}, client = {}, dossier = {}, 
     // La personne à qui l'on écrit chez le partenaire (« Mr. Brown » pour VIP Taxi Lanta), sinon le nom du partenaire.
     contact: ((partenaire.contact || {}).personne || "").trim() || partenaire.nom || "",
     // Taxi : lieu de dépose et prix de la course (payé au chauffeur), tels que saisis sur la réservation.
-    dropoff: libelleClient(((reservation.details || {}).drop_off) || ""),
+    // Retour au point de départ (16.11.2026) : pas de dépose, on le dit plutôt que de laisser un blanc.
+    dropoff: estRetourDepart(reservation) ? DROPOFF_RETOUR[langue] || DROPOFF_RETOUR.en : libelleClient(((reservation.details || {}).drop_off) || ""),
     prix: reservation.montant_vente === null || reservation.montant_vente === undefined || reservation.montant_vente === "" ? "" : `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(Number(reservation.montant_vente))} ${entreprise.devise || "THB"}`,
     reference: reservation.reference_partenaire || dossier.ref || "",
     entreprise: entreprise.nom || "",
@@ -464,7 +466,8 @@ export function moteurTexte(prestation) {
 export const CHAMPS_VOUCHER = {
   billet: ["de", "vers", "depart", "arrivee", "bateau", "embarquement", "checkin", "bagages", "remarques", "remarques_paiement"],
   bateau: ["chambre", "type_tour", "bateau", "parc", "parc_texte", "remarques", "remarques_paiement"],
-  transfert: ["drop_off", "vol", "bagages", "sieges", "type_transfert", "remarques", "remarques_paiement"],
+  // `type_trajet` : aller simple (drop-off) ou retour au point de départ (programme et durée à la place du drop-off, trajet-calc.mjs).
+  transfert: ["type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "bagages", "sieges", "type_transfert", "remarques", "remarques_paiement"],
   activite: ["chambre", "programme", "heure_service", "remarques", "remarques_paiement"],
   location: ["chambre", "retour_date", "retour_heure", "retour_lieu", "permis", "equipement", "caution", "conditions", "remarques", "remarques_paiement"],
 };
@@ -474,7 +477,7 @@ const DU_TRAJET = ["de", "vers", "depart", "arrivee", "bateau"];
 export const champsVoucherDe = (type, { trajet = false } = {}) => (CHAMPS_VOUCHER[type] || []).filter((c) => !(type === "billet" && trajet && DU_TRAJET.includes(c)));
 // Les deux bouts d'un transfert d'après son trajet, sinon d'après le libellé « A → B » (de la prestation, sinon de la réservation) :
 // ce que le voucher et la Booking confirmation impriment quand le pickup ou le drop-off n'a pas été saisi.
-export const dropOffDepuisLibelle = (r, p, trajet) => (trajet ? trajet.vers : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→").pop().trim() : "");
+export const dropOffDepuisLibelle = (r, p, trajet) => (estRetourDepart(r) ? "" : trajet ? trajet.vers : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→").pop().trim() : "");
 export const pickupDepuisLibelle = (r, p, trajet) => (trajet ? trajet.de : ((p && p.libelle) || r.libelle || "").includes("→") ? ((p && p.libelle) || r.libelle).split("→")[0].replace(/^[^:]*:\s*/, "").trim() : "");
 
 // Sièges enfant ou bébé d'un transfert, imprimés après le nombre d'enfants : « 1 (1 child seat) ». Rien quand il n'y en a pas.
@@ -557,13 +560,15 @@ export function typeVoucher(reservation, prestation, partenaire = null) {
   if (f === "frais") return null;
   // Une option (extension d'île, supplément) se note sur le voucher du tour, elle n'a pas le sien.
   if ((prestation && prestation.unite === "sup") || /^option|supplément|supplement|extension|\bextra (?:dive|person)\b/i.test(g)) return null;
+  // Retour au point de départ : toujours un transfert (une course hors catalogue « Round trip from … » n'a ni prestation ni flèche).
+  if (estRetourDepart(reservation) && f !== "excursion" && f !== "activite" && f !== "location") return "transfert";
   if (f === "transfert") return /speedboat|ferry|bateau|boat/i.test(g) ? "billet" : "transfert";
   if (f === "location") return "location";
   if (f === "activite") return "activite";
   // Une excursion à la journée en taxi (VIP Taxi) est une activité, pas un transfert.
   if (f === "excursion") return /taxi|van/i.test((prestation && prestation.groupe) || "") ? "activite" : "bateau";
   if (/speedboat|ferry/i.test(reservation.libelle || "")) return "billet";
-  return /transfer|taxi|van|→/i.test(reservation.libelle || "") ? "transfert" : "activite";
+  return /transfer|taxi|van|→|^round trip from\b/i.test(reservation.libelle || "") ? "transfert" : "activite";
 }
 
 export const numeroVoucher = (ref, index) => `${ref}-${index}`;
@@ -901,6 +906,8 @@ export function controlesVoucher(r, client = {}, type = "") {
     if (!String(r.heure_pickup || "").trim()) codes.push("sans_heure");
     if (!String(r.lieu_pickup || "").trim()) codes.push((client.adresse || "").trim() ? "lieu_adresse_client" : "sans_lieu");
   }
+  // Retour au point de départ sans programme : le chauffeur ne saurait pas ce qui est prévu.
+  if (estRetourDepart(r) && !String((r.details || {}).programme_trajet || "").trim()) codes.push("sans_programme");
   return codes;
 }
 
@@ -915,7 +922,7 @@ export function feuilleDuJour(reservations, date, contexte, ecartees = new Set()
     const g = groupes.get(cle) || { partenaire_id: r.partenaire_id || null, nom: (r.partenaire_id && contexte.partenaire(r.partenaire_id)) || "", lignes: [], adultes: 0, enfants: 0 };
     const c = contexte.client(r) || {};
     const lieu = hotelEtChambre(c, r);
-    g.lignes.push({ id: r.id, heure: r.heure_pickup || "", client: [c.prenom, c.nom].filter(Boolean).join(" "), telephone: c.telephone || "", hotel: lieu.hotel, chambre: lieu.chambre, personnes: r.personnes || {}, libelle: r.libelle, reference: r.reference_partenaire || "", statut: r.statut });
+    g.lignes.push({ id: r.id, heure: r.heure_pickup || "", client: [c.prenom, c.nom].filter(Boolean).join(" "), telephone: c.telephone || "", hotel: lieu.hotel, chambre: lieu.chambre, personnes: r.personnes || {}, libelle: r.libelle, reference: r.reference_partenaire || "", statut: r.statut, trajet: trajetPourChauffeur(r) });
     g.adultes += Number(r.personnes && r.personnes.adultes) || 0;
     g.enfants += Number(r.personnes && r.personnes.enfants) || 0;
     groupes.set(cle, g);
@@ -928,6 +935,6 @@ export function feuilleDuJour(reservations, date, contexte, ecartees = new Set()
 // Texte à coller dans WhatsApp, en anglais comme les messages aux partenaires.
 export function texteFeuille(groupe, date) {
   const tete = `${groupe.nom ? `${groupe.nom}: ` : ""}${dateTexte(date, "en")}, ${personnesTexte({ adultes: groupe.adultes, enfants: groupe.enfants }, "en") || "0 passengers"}`;
-  const lignes = groupe.lignes.map((l) => [l.heure, libelleClient(l.libelle), l.client, l.telephone, [l.hotel, l.chambre ? `room ${l.chambre}` : ""].filter(Boolean).join(", "), personnesTexte(l.personnes, "en")].filter(Boolean).join(" · "));
+  const lignes = groupe.lignes.map((l) => [l.heure, libelleClient(l.libelle), l.client, l.telephone, [l.hotel, l.chambre ? `room ${l.chambre}` : ""].filter(Boolean).join(", "), l.trajet, personnesTexte(l.personnes, "en")].filter(Boolean).join(" · "));
   return [tete, ...lignes].join("\n");
 }

@@ -71,6 +71,7 @@ if (!lue.ok) {
                   el("p", {}, el("span", { class: "heure" }, l.heure || "—"), " · ", l.libelle),
                   el("p", {}, l.client, " ", telLien(l.telephone, l.telephone)),
                   el("p", { class: "aide" }, [l.hotel, l.chambre ? `${T.chambre} ${l.chambre}` : ""].filter(Boolean).join(", ")),
+                  l.trajet ? el("p", {}, l.trajet) : null,
                   el("p", { class: "aide" }, T.pers.replace("{a}", l.adultes).replace("{e}", l.enfants), l.reference ? ` · ${l.reference}` : "")
                 )
               ))
