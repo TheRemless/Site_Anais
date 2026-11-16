@@ -14,7 +14,7 @@ import { vide, barreFiltres, lienDossier } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { commissionsPartenaire } from "../partenaires-calc.mjs";
+import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, synchroniserDatesDossier } from "./suivi-facture.mjs";
 export { synchroniserDatesDossier };
@@ -113,11 +113,14 @@ function ouvrirMenu(r, entrees) {
   );
 }
 
-// L'autre sens : la facture reprend la date, les personnes et le mode de règlement de la réservation (le montant, lui, reste celui de la facture).
+// L'autre sens : la facture reprend de la réservation la date, les personnes, le mode de règlement, le libellé, le partenaire, le tarif
+// et, quand ils diffèrent, le prix (16.11.2026).
 async function alignerFacture(r, ecart, apres) {
   const a = ecart.attendu;
+  const differe = (cle) => ecart.champs.some((c) => c.cle === cle);
+  const service = { ...(differe("libelle") ? { libelle: r.libelle } : {}), ...(differe("partenaire_id") ? { partenaire_id: r.partenaire_id || null } : {}), ...((r.prestation_id || null) !== a.prestation_id || (r.trajet_id || null) !== a.trajet_id ? { prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null } : {}), ...(differe("montant_vente") && r.montant_vente !== null && r.montant_vente !== undefined ? { montant_vente: r.montant_vente } : {}) };
   try {
-    const suivi = await suivreFacture(r, {}, { avant: { date_service: a.date_service, personnes: a.personnes }, apres: { date_service: r.date_service, personnes: r.personnes }, mode: !!r.paye_sur_place !== a.paye_sur_place ? { surPlace: !!r.paye_sur_place } : null });
+    const suivi = await suivreFacture(r, {}, { avant: { date_service: a.date_service, personnes: a.personnes }, apres: { date_service: r.date_service, personnes: r.personnes }, mode: !!r.paye_sur_place !== a.paye_sur_place ? { surPlace: !!r.paye_sur_place } : null, service });
     if (!suivi) return;
     await appliquerChangements(suivi.changements);
     toast(tr("Facture alignée sur la réservation."));
@@ -131,7 +134,7 @@ async function alignerFacture(r, ecart, apres) {
 async function aligner(r, ecart, apres) {
   const a = ecart.attendu;
   try {
-    await modifier("reservations", r.id, { date_service: a.date_service, personnes: { ...(r.personnes || {}), adultes: a.personnes.adultes, enfants: a.personnes.enfants }, ...(a.montant_vente === null ? {} : { montant_vente: a.montant_vente }), paye_sur_place: a.paye_sur_place, ...(a.jours ? { details: { ...(r.details || {}), jours: a.jours } } : {}) });
+    await modifier("reservations", r.id, { date_service: a.date_service, personnes: { ...(r.personnes || {}), adultes: a.personnes.adultes, enfants: a.personnes.enfants }, ...(a.montant_vente === null ? {} : { montant_vente: a.montant_vente }), paye_sur_place: a.paye_sur_place, ...(a.libelle ? { libelle: a.libelle } : {}), ...(a.partenaire_id !== undefined ? { partenaire_id: a.partenaire_id } : {}), ...(a.jours ? { details: { ...(r.details || {}), jours: a.jours } } : {}) });
     await synchroniserDatesDossier(r.dossier_id);
     toast(tr("Réservation alignée sur la facture."));
     apres();
@@ -189,7 +192,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
       ? null
       : e.retiree
         ? h("div", { class: "ecart-facture", role: "status" }, tr("La ligne de cette réservation a été retirée du document."))
-        : h("div", { class: "ecart-facture", role: "status" }, h("ul", null, e.champs.map((c) => h("li", null, texteEcart(c, ((etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type === "facture") || {}).contenu || {}).devise || reglages().devise || "")))), ecrit ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => aligner(r, e, apres) }, tr("Aligner sur la facture")), peut("documents.ecrire") && e.champs.some((c) => ["date_service", "personnes", "paye_sur_place"].includes(c.cle)) ? h("button", { class: "secondaire petit", type: "button", onclick: () => alignerFacture(r, e, apres) }, tr("Mettre la facture comme la réservation")) : null) : null),
+        : h("div", { class: "ecart-facture", role: "status" }, h("ul", null, e.champs.map((c) => h("li", null, texteEcart(c, ((etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type === "facture") || {}).contenu || {}).devise || reglages().devise || "")))), ecrit ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => aligner(r, e, apres) }, tr("Aligner sur la facture")), peut("documents.ecrire") && e.champs.length ? h("button", { class: "secondaire petit", type: "button", onclick: () => alignerFacture(r, e, apres) }, tr("Mettre la facture comme la réservation")) : null) : null),
     avantVeille ? h("div", { class: "ecart-facture", role: "status" }, tr("À payer au prestataire avant le {date} (la veille du départ) : Bundhaya peut annuler si ce n'est pas payé.", { date: formatDate(avantVeille.avant) })) : null,
     er ? h("div", { class: "ecart-facture", role: "status" }, tr("Commission reçue {recue} (prévue {prevue}), mais la règle du partenaire donne {attendue}. Les montants reçus ne sont pas modifiés : vérifiez le net du tarif ou la règle.", { recue: prix(er.recue === null ? er.prevue : er.recue), prevue: prix(er.prevue), attendue: prix(er.attendue) })) : null,
     cc ? h("div", { class: "recalcul-commission", role: "status" }, h("span", null, cc.avant === null ? tr("Commission prévue : aucune. La règle du partenaire donne {apres}.", { apres: prix(cc.apres) }) : tr("Commission prévue : {avant}. La règle du partenaire donne {apres}.", { avant: prix(cc.avant), apres: prix(cc.apres) })), h("button", { class: "secondaire petit", type: "button", onclick: () => recalculerUneCommission(r, apres) }, tr("Recalculer la commission"))) : null,
@@ -293,12 +296,12 @@ async function supprimerReservation(r) {
 const nb = (v) => num(String(v ?? "").trim().replace(",", "."));
 
 // Deux personnes sur la même réservation : les champs changés d'un seul côté se gardent, un champ changé des deux côtés est soumis au choix.
-const ETIQUETTES_RESERVATION = { libelle: N_("Prestation"), partenaire_id: N_("Partenaire"), statut: N_("Statut"), reference_partenaire: N_("Référence du partenaire"), date_service: N_("Date du service"), heure_pickup: N_("Heure de pickup"), lieu_pickup: N_("Lieu de pickup"), personnes: N_("Personnes"), notes: N_("Notes"), montant_vente: N_("Montant vendu"), paye_sur_place: N_("Paiement") };
+const ETIQUETTES_RESERVATION = { libelle: N_("Prestation"), partenaire_id: N_("Partenaire"), prestation_id: N_("Tarif du catalogue"), statut: N_("Statut"), reference_partenaire: N_("Référence du partenaire"), date_service: N_("Date du service"), heure_pickup: N_("Heure de pickup"), lieu_pickup: N_("Lieu de pickup"), personnes: N_("Personnes"), notes: N_("Notes"), montant_vente: N_("Montant vendu"), paye_sur_place: N_("Paiement") };
 const arbitrerReservation = (r) => ({ conflits, courante, par }) =>
   demanderArbitrage({
     conflits, par, titreFiche: tr("La réservation « {libelle} »", { libelle: r.libelle || "" }),
     etiquettes: Object.fromEntries(Object.entries(ETIQUETTES_RESERVATION).map(([k, v]) => [k, tr(v)])),
-    format: (cle, v) => (cle === "partenaire_id" ? (v ? nomPartenaire(v) : tr("Sans partenaire")) : cle === "statut" ? tr(STATUTS_RESERVATION[statutReservation(v)]) : cle === "date_service" ? (v ? formatDate(v) : tr("Date à fixer")) : cle === "paye_sur_place" ? (v ? tr("sur place") : tr("chez nous")) : cle.startsWith("personnes.") ? (v === null || v === undefined ? "0" : String(v)) : null),
+    format: (cle, v) => (cle === "partenaire_id" ? (v ? nomPartenaire(v) : tr("Sans partenaire")) : cle === "prestation_id" ? (v ? ((etat.db.prestations.find((x) => x.id === v) || {}).libelle || "") : tr("Hors catalogue")) : cle === "statut" ? tr(STATUTS_RESERVATION[statutReservation(v)]) : cle === "date_service" ? (v ? formatDate(v) : tr("Date à fixer")) : cle === "paye_sur_place" ? (v ? tr("sur place") : tr("chez nous")) : cle.startsWith("personnes.") ? (v === null || v === undefined ? "0" : String(v)) : null),
   });
 
 export function formulaireReservation(r, apres) {
@@ -319,6 +322,56 @@ export function formulaireReservation(r, apres) {
   const reference = h("input", { id: "r-ref", value: r.reference_partenaire || "", placeholder: tr("Numéro donné par le partenaire") });
   const vente = saisie(h("input", { id: "r-vente", value: r.montant_vente ?? "" }), "montant");
   const venteInitiale = vente.value;
+  // Tarif du catalogue (16.11.2026) : la prestation ou le trajet d'où vient le service. Il suit le partenaire : un tarif d'un autre partenaire ne
+  // reste pas attaché au service (son voucher, sa facture et sa commission seraient ceux de l'autre). Choisir un tarif reprend son nom et son prix,
+  // sauf ce qu'on a tapé soi-même ici.
+  const langueDoc = langueClient(reglages()) === "en" ? "en" : "";
+  const nomTarif = (x) => (langueDoc === "en" ? x.libelle_en || libelleClient(x.libelle) : x.libelle);
+  const trajetActuel = r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) || null : null;
+  const prestationActuelle = r.prestation_id ? etat.db.prestations.find((x) => x.id === r.prestation_id) || null : null;
+  const valeurTarifInitiale = trajetActuel ? `t:${trajetActuel.id}` : r.prestation_id ? `p:${r.prestation_id}` : "";
+  const tarif = h("select", { id: "r-tarif" });
+  const aideTarif = h("p", { class: "aide", role: "status" });
+  let libelleSaisi = false;
+  let venteSaisie = false;
+  // Le tarif ne change que si on touche au tarif ou au partenaire ici : un tarif supprimé du catalogue, ou absent de la liste, reste attaché
+  // quand on ne modifie que l'heure ou le lieu.
+  let tarifTouche = false;
+  libelle.addEventListener("input", () => (libelleSaisi = true));
+  vente.addEventListener("input", () => (venteSaisie = true));
+  const remplirTarifs = () => {
+    const pid = partenaire.value || null;
+    const avant = tarif.options.length ? tarif.value : valeurTarifInitiale;
+    const options = [h("option", { value: "" }, tr("Hors catalogue"))];
+    if (trajetActuel && (trajetActuel.partenaire_id || null) === pid) options.push(h("option", { value: `t:${trajetActuel.id}` }, tr("Trajet : {de} → {vers}, {depart}", { de: trajetActuel.de, vers: trajetActuel.vers, depart: trajetActuel.depart || "" })));
+    // Les frais réglés sur place par le client ne sont pas des services : ils restent des notes de la facture.
+    const liste = etat.db.prestations.filter((x) => (x.partenaire_id || null) === pid && ((!x.sur_place && x.actif !== false) || x.id === r.prestation_id)).sort((a, b) => a.libelle.localeCompare(b.libelle));
+    for (const x of liste) options.push(h("option", { value: `p:${x.id}` }, x.prix_vente === null || x.prix_vente === undefined ? x.libelle : `${x.libelle} · ${prix(x.prix_vente)}${x.unite ? ` ${libelleUnite(x.unite)}` : ""}`));
+    tarif.replaceChildren(...options);
+    tarif.value = options.some((o) => o.value === avant) ? avant : "";
+  };
+  const majAideTarif = () => {
+    const ancien = valeurTarifInitiale && tarif.value !== valeurTarifInitiale ? (trajetActuel ? trajetActuel.partenaire_id : prestationActuelle && prestationActuelle.partenaire_id) : null;
+    const choisi = tarif.value.startsWith("p:") ? etat.db.prestations.find((x) => x.id === tarif.value.slice(2)) : null;
+    aideTarif.textContent =
+      choisi && (choisi.prix_vente === null || choisi.prix_vente === undefined) ? tr("Ce tarif n'a pas de prix de vente : indiquez le montant vendu au client.")
+      : !tarif.value && ancien && (partenaire.value || null) !== (ancien || null) ? tr("Le tarif d'avant est celui de {ancien} : choisissez un tarif de ce partenaire, ou gardez « Hors catalogue ».", { ancien: nomPartenaire(ancien) || tr("sans partenaire") })
+      : !tarif.value ? tr("Service hors catalogue : son nom et son prix sont ceux saisis ici.")
+      : "";
+    aideTarif.hidden = !aideTarif.textContent;
+  };
+  tarif.addEventListener("change", () => {
+    tarifTouche = true;
+    const choisi = tarif.value.startsWith("p:") ? etat.db.prestations.find((x) => x.id === tarif.value.slice(2)) : null;
+    if (choisi) {
+      if (!libelleSaisi) libelle.value = nomTarif(choisi);
+      // Une location « par jour » se compte en jours, pas en personnes.
+      const quantite = choisi.unite === "day" ? Math.max(1, Number((r.details || {}).jours) || 1) : quantiteParDefaut(choisi.unite, { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0 });
+      if (!venteSaisie && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round(Number(choisi.prix_vente) * quantite * 100) / 100);
+      proposerCommission();
+    }
+    majAideTarif();
+  });
   const netPrevu = saisie(h("input", { id: "r-net", value: n && n.net_prevu != null ? n.net_prevu : "" }), "montant");
   const netPaye = saisie(h("input", { id: "r-paye", value: n && n.net_paye != null ? n.net_paye : "" }), "montant");
   const payeLe = h("input", { id: "r-paye-le", type: "date", value: (n && n.paye_le) || "" });
@@ -351,11 +404,19 @@ export function formulaireReservation(r, apres) {
   const blocNets = h("div", { class: "grille-form compacte" }, champ(tr("Net prévu"), netPrevu, tr("Ce que le partenaire facturera à l'agence.")), champ(tr("Net payé"), netPaye), champ(tr("Payé le"), payeLe));
   const blocCommission = h("div", { class: "grille-form compacte" }, champ(tr("Commission prévue"), commissionPrevue, regleCommission), champ(tr("Commission reçue"), commissionRecue), champ(tr("Reçue le"), commissionLe));
   partenaire.addEventListener("change", () => {
-    // Une nouvelle réservation prend le mode habituel de son partenaire.
-    if (!r.id) surPlace.definir(modeParDefaut(partenaireDe(partenaire.value || null)));
+    // Le service prend le mode habituel de son partenaire, aussi quand on change le partenaire d'une réservation existante (16.11.2026) :
+    // un autre prestataire se paie peut-être autrement. La puce reste modifiable.
+    surPlace.definir(modeParDefaut(partenaireDe(partenaire.value || null)));
+    tarifTouche = true;
+    remplirTarifs();
+    majAideTarif();
     majCommission();
     proposerCommission();
   });
+  remplirTarifs();
+  majAideTarif();
+  const champTarif = champ(tr("Tarif du catalogue"), tarif);
+  champTarif.append(aideTarif);
   for (const x of [vente, adultes, enfants, netPrevu]) x.addEventListener("input", proposerCommission);
   // Une erreur disparaît dès que le champ est corrigé.
   for (const x of [libelle, adultes, enfants, bebes, vente, netPrevu, netPaye, commissionPrevue, commissionRecue]) x.addEventListener("input", () => erreurChamp(x, null));
@@ -421,7 +482,10 @@ export function formulaireReservation(r, apres) {
         // Retour au point de départ : le programme est obligatoire, la durée lisible si elle est donnée.
         if (blocVoucher) cv.verifierTrajet();
         if (focusPremiereErreur(e.target)) return;
-        const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: nb(vente.value), paye_sur_place: estSurPlace(), notes: notes.value.trim(), details: details() };
+        const tarifPrestation = tarif.value.startsWith("p:") ? tarif.value.slice(2) : null;
+        const tarifTrajet = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
+        const tarifChange = tarifTouche && ((tarifPrestation || null) !== (r.prestation_id || null) || (tarifTrajet || null) !== (r.trajet_id || null));
+        const valeurs = { ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: nb(vente.value), paye_sur_place: estSurPlace(), notes: notes.value.trim(), details: details() };
         // Course hors catalogue passée en « retour au point de départ » (ou revenue à l'aller simple) : son libellé généré suit, sauf s'il a été réécrit ici.
         if (valeurs.libelle === (r.libelle || "").trim()) {
           const suivi = libelleSelonTrajet({ libelle: valeurs.libelle, libre: !r.prestation_id && !r.trajet_id, lieu: valeurs.lieu_pickup, details: valeurs.details });
@@ -439,7 +503,9 @@ export function formulaireReservation(r, apres) {
             if (choix === null) return;
             retirer = choix === "retirer";
           }
-          const suivi = await suivreFacture(r, valeurs, { avant: { date_service: r.date_service, personnes: r.personnes }, apres: { date_service: valeurs.date_service, personnes: valeurs.personnes }, mode: modeChange ? { surPlace: estSurPlace() } : null, retirer, dejaConfirme: retirer, montantSuit: vente.value === venteInitiale });
+          // Libellé, partenaire, tarif et prix changés ici : les lignes de la facture (et du devis) suivent, avec le même avertissement (16.11.2026).
+          const service = r.id ? { ...(valeurs.libelle !== (r.libelle || "").trim() ? { libelle: valeurs.libelle } : {}), ...((valeurs.partenaire_id || null) !== (r.partenaire_id || null) ? { partenaire_id: valeurs.partenaire_id } : {}), ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), ...(vente.value !== venteInitiale && valeurs.montant_vente !== null ? { montant_vente: valeurs.montant_vente } : {}) } : {};
+          const suivi = await suivreFacture(r, valeurs, { avant: { date_service: r.date_service, personnes: r.personnes }, apres: { date_service: valeurs.date_service, personnes: valeurs.personnes }, mode: modeChange ? { surPlace: estSurPlace() } : null, retirer, dejaConfirme: retirer, montantSuit: vente.value === venteInitiale, service });
           if (!suivi) return;
           const { changements, ecartRestant } = suivi;
           if (suivi.montantVente !== null) valeurs.montant_vente = suivi.montantVente;
@@ -457,7 +523,7 @@ export function formulaireReservation(r, apres) {
       },
     },
     champ(tr("Prestation"), libelle),
-    h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champ(tr("Statut"), statut), champ(tr("Référence du partenaire"), reference)),
+    h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champTarif, champ(tr("Statut"), statut), champ(tr("Référence du partenaire"), reference)),
     h("div", { class: "grille-form compacte" }, champ(type === "location" ? tr("Date de départ") : tr("Date du service"), date), champ(type === "location" ? tr("Heure de départ") : tr("Heure de pickup"), heure), champ(type === "location" ? tr("Lieu de départ ou de livraison") : tr("Lieu de pickup"), lieu)),
     zonesPickup.noeud,
     blocRetour,

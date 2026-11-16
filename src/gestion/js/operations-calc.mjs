@@ -2,7 +2,7 @@
 // Aucune dépendance au navigateur pour pouvoir la tester avec node --test.
 
 import { langueActive, N_ } from "./i18n.mjs";
-import { chiffres, estLigneSupplement, prefixeProgramme, libelleClient } from "./partenaires-calc.mjs";
+import { chiffres, estLigneSupplement, prefixeProgramme, libelleClient, libelleUnite, quantiteParDefaut } from "./partenaires-calc.mjs";
 import { SUR_PLACE, CHEZ_NOUS, modeReglement } from "./calc.mjs";
 import { estTaxi } from "./taxi-calc.mjs";
 import { estRetourDepart, trajetPourChauffeur, DROPOFF_RETOUR } from "./trajet-calc.mjs";
@@ -772,6 +772,13 @@ export function attenduDepuisFacture(r, doc) {
     personnes: { adultes: utiles.filter((l) => !estLigneEnfant(l) && (compteDe(l) === "personnes" || (compteDe(l) === "aucun" && utiles.some(estLigneSupplement)))).reduce((s, l) => s + qte(l), 0) + (utiles.some(estLigneSupplement) ? 1 : 0), enfants: utiles.filter((l) => compteDe(l) === "personnes" && estLigneEnfant(l)).reduce((s, l) => s + qte(l), 0) },
     montant_vente: utiles.some((l) => brut(l) !== null) ? arr(utiles.reduce((s, l) => s + (brut(l) || 0), 0)) : null,
     paye_sur_place: utiles.some((l) => !!l.paye_sur_place),
+    // Le nom du service et son partenaire, tels que la réservation les a pris à sa création (16.11.2026).
+    libelle: nomSansEnfant(premiere),
+    // Une ligne ancienne, saisie dans l'éditeur, ne porte pas de partenaire (clé absente) : rien à comparer.
+    partenaire_id: premiere.partenaire_id === undefined ? undefined : premiere.partenaire_id || null,
+    // Le tarif du catalogue de la ligne (non comparé : il ne s'affiche pas, mais l'alignement en a besoin).
+    prestation_id: premiere.prestation_id || null,
+    trajet_id: premiere.trajet_id || null,
   };
 }
 
@@ -789,6 +796,10 @@ export function ecartReservation(r, doc) {
   if (fausse || (!a.sansPersonnes && ((Number(pr.adultes) || 0) !== a.personnes.adultes || (Number(pr.enfants) || 0) !== a.personnes.enfants))) champs.push({ cle: "personnes", reservation: { adultes: Number(pr.adultes) || 0, enfants: Number(pr.enfants) || 0 }, document: { adultes: a.personnes.adultes, enfants: a.personnes.enfants } });
   if (arr(Number(r.montant_vente) || 0) !== arr(Number(a.montant_vente) || 0)) champs.push({ cle: "montant_vente", reservation: Number(r.montant_vente) || 0, document: Number(a.montant_vente) || 0 });
   if (!!r.paye_sur_place !== a.paye_sur_place) champs.push({ cle: "paye_sur_place", reservation: !!r.paye_sur_place, document: a.paye_sur_place });
+  // Libellé et partenaire changés dans la réservation sans que la facture suive (16.11.2026 : la facture gardait le service et le partenaire d'avant).
+  // Comparés seulement quand la réservation les porte (toute réservation enregistrée a ces deux champs).
+  if (typeof r.libelle === "string" && r.libelle.trim() && r.libelle.trim() !== a.libelle) champs.push({ cle: "libelle", reservation: r.libelle.trim(), document: a.libelle });
+  if (r.partenaire_id !== undefined && a.partenaire_id !== undefined && (r.partenaire_id || null) !== a.partenaire_id) champs.push({ cle: "partenaire_id", reservation: r.partenaire_id || null, document: a.partenaire_id });
   return champs.length ? { retiree: false, champs, attendu: a } : null;
 }
 
@@ -858,7 +869,112 @@ export function contenuAvecReservation(contenu, r, avant, apres) {
     else reste.push({ cle, reservation: nouveaux, facture: groupe.reduce((somme, l) => somme + (qte(l) || 0), 0) });
   }
   if (!miseAJour.size) return { contenu: null, reste };
-  return { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? { ...l, ...miseAJour.get(l) } : l)) }, reste };
+  return { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? avecDescription(l, { ...l, ...miseAJour.get(l) }, contenu.langue) : l)) }, reste };
+}
+
+// ---- Description d'une ligne de service ---------------------------------------------------------------------------
+// En excursions, la ligne porte le nom court (`titre`) et une description générée : « Nom, 2 passengers, 20 November 2026 ». Quand la date, la quantité
+// ou le nom changent, la description générée suit ; une description réécrite à la main reste telle quelle.
+const descriptionGeneree = (l, langue) => {
+  if (!l.titre) return null;
+  const en = langue === "en";
+  return descriptionService({ ...l, libelle: l.titre, intro: estLigneEnfant(l) ? (en ? "(per child)" : "(par enfant)") : l.intro }, en ? "en" : "fr");
+};
+export function avecDescription(avant, apres, langue = "") {
+  const ancienne = descriptionGeneree(avant, langue);
+  if (ancienne === null || avant.libelle !== ancienne) return apres;
+  return { ...apres, libelle: descriptionGeneree(apres, langue) };
+}
+
+// ---- Libellé, partenaire, tarif ou prix changés depuis la réservation ----------------------------------------------
+// Les lignes du document qui correspondent à la réservation suivent ce qui a changé (16.11.2026 : Anaïs avait pris le tarif d'un autre partenaire,
+// puis changé libellé, partenaire et prix dans la réservation ; la facture gardait l'ancien service, l'ancien partenaire et 2 500 au lieu de 2 000).
+//   `cible` : { libelle, partenaire_id, prestation_id, trajet_id, montant_vente }, seulement les clés à suivre (undefined : on n'y touche pas).
+//   `prestationDe(id)` : la prestation du catalogue ; `netDe(prestation)` : son net (undefined quand on ne le voit pas) ; `personnes` : celles de la réservation ;
+//   `nomPartenaire(id)` : pour garder à jour la mention du prestataire quand elle n'a pas été réécrite.
+// Le nom suit sur toutes les lignes (adulte, enfant, supplément), comme le partenaire. Le tarif et le prix ne se reportent que sur un service d'une
+// seule ligne : réparti sur plusieurs lignes, le report serait deviné, il est laissé et signalé dans `reste`.
+// Renvoie { contenu, reste } : `contenu` vaut null quand rien ne change. Rien n'est modifié sur place.
+export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () => null, netDe = () => undefined, personnes = null, nomPartenaire = null } = {}) {
+  const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
+  const lignes = (contenu && contenu.lignes) || [];
+  const cibles = lignes.filter((l) => ids.has(l.id) && l.kind !== "texte" && l.kind !== "remise");
+  const reste = [];
+  if (!cibles.length) return { contenu: null, reste };
+  const langue = contenu.langue || "";
+  const en = langue === "en";
+  const premiere = cibles.find((l) => !estLigneEnfant(l)) || cibles[0];
+  const nouvelles = new Map(cibles.map((l) => [l, { ...l }]));
+  const seule = cibles.length === 1 ? cibles[0] : null;
+
+  if (cible.libelle !== undefined) {
+    const ancien = nomSansEnfant(premiere);
+    const nouveau = String(cible.libelle || "").trim();
+    // Une ligne sans nom (ancienne) : le nouveau nom va sur la ligne principale, sans rien coller devant un autre texte.
+    if (nouveau && !ancien) nouvelles.get(premiere)[premiere.titre !== undefined ? "titre" : "libelle"] = nouveau;
+    else if (nouveau && nouveau !== ancien) {
+      for (const l of cibles) {
+        const n = nouvelles.get(l);
+        let fait = false;
+        for (const k of ["titre", "libelle"]) if (typeof l[k] === "string" && l[k].startsWith(ancien)) (n[k] = nouveau + l[k].slice(ancien.length)), (fait = true);
+        if (!fait) reste.push({ cle: "libelle", reservation: nouveau, facture: l.titre || l.libelle });
+      }
+    }
+  }
+
+  if (cible.partenaire_id !== undefined) for (const l of cibles) if ((l.partenaire_id || null) !== (cible.partenaire_id || null)) nouvelles.get(l).partenaire_id = cible.partenaire_id || null;
+
+  // Tarif : la prestation (ou le trajet) du catalogue. Sans l'un ni l'autre, le service devient « hors catalogue » (`libre`), sur toutes ses lignes.
+  const prestationDemandee = cible.prestation_id !== undefined ? cible.prestation_id || null : undefined;
+  const trajetDemande = cible.trajet_id !== undefined ? cible.trajet_id || null : undefined;
+  const tarifChange = (prestationDemandee !== undefined && prestationDemandee !== (premiere.prestation_id || null)) || (trajetDemande !== undefined && trajetDemande !== (premiere.trajet_id || null));
+  if (tarifChange) {
+    const pid = prestationDemandee !== undefined ? prestationDemandee : premiere.prestation_id || null;
+    const tid = trajetDemande !== undefined ? trajetDemande : premiere.trajet_id || null;
+    if (!pid && !tid) {
+      for (const l of cibles) Object.assign(nouvelles.get(l), { prestation_id: null, trajet_id: null, libre: true, net: null });
+    } else if (seule) {
+      const n = nouvelles.get(seule);
+      const p = pid ? prestationDe(pid) : null;
+      Object.assign(n, { prestation_id: pid, trajet_id: tid });
+      delete n.libre;
+      const net = p ? netDe(p) : undefined;
+      n.net = net === undefined || net === null ? null : Number(net);
+      if (p) {
+        const avantCompte = compteDe(seule);
+        if (["boat", "veh", "day", "ses", "grp"].includes(p.unite)) n.par = p.unite;
+        else delete n.par;
+        if (p.unite === "sup") n.supplement = true;
+        else delete n.supplement;
+        if (seule.intro) n.intro = p.unite ? `(${libelleUnite(p.unite, en)})` : "";
+        // Une unité qui ne compte plus la même chose (personnes, véhicule, jours) : la quantité repart de la réservation.
+        if (compteDe(n) !== avantCompte) n.qte = p.unite === "day" ? Math.max(1, Number(r.details && r.details.jours) || 1) : quantiteParDefaut(p.unite, personnes || r.personnes || {});
+      }
+    } else reste.push({ cle: "prestation_id", reservation: pid, facture: premiere.prestation_id || null });
+  }
+
+  // Prix : le montant vendu de la réservation devient celui de la ligne (prix unitaire = montant / quantité, seulement s'il tombe juste).
+  if (cible.montant_vente !== undefined && cible.montant_vente !== null && cible.montant_vente !== "" && Number.isFinite(Number(cible.montant_vente))) {
+    const montant = arr(Number(cible.montant_vente));
+    const total = arr(cibles.reduce((s, l) => s + (brut(nouvelles.get(l)) || 0), 0));
+    if (total !== montant || cibles.every((l) => brut(nouvelles.get(l)) === null)) {
+      const n = seule ? nouvelles.get(seule) : null;
+      const q = n && n.qte !== null && n.qte !== undefined && n.qte !== "" ? Number(n.qte) : null;
+      if (n && q !== null && q > 0 && arr(arr(montant / q) * q) === montant) n.unite = arr(montant / q);
+      else if (n && q === null) n.montant = montant;
+      else reste.push({ cle: "montant_vente", reservation: montant, facture: total });
+    }
+  }
+
+  const changees = cibles.filter((l) => Object.keys(nouvelles.get(l)).some((k) => nouvelles.get(l)[k] !== l[k]) || Object.keys(l).some((k) => !(k in nouvelles.get(l))));
+  if (!changees.length) return { contenu: null, reste };
+  const suite = { ...contenu, lignes: lignes.map((l) => (changees.includes(l) ? avecDescription(l, nouvelles.get(l), langue) : l)) };
+  // Le prestataire affiché est posé à l'ajout des services : il suit seulement s'il n'a pas été réécrit à la main.
+  if (nomPartenaire && contenu.prestataire) {
+    const liste = (ls) => [...new Set(ls.map((l) => nomPartenaire(l.partenaire_id)).filter(Boolean))].join(", ");
+    if (contenu.prestataire === liste(lignes)) suite.prestataire = liste(suite.lignes);
+  }
+  return { contenu: suite, reste };
 }
 
 // ---- Service dupliqué : de nouvelles lignes pour un deuxième exemplaire -------------------------------------------

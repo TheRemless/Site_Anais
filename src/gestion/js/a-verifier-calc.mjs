@@ -1,6 +1,8 @@
 // « À vérifier » : les cas qui se règlent mieux au calme que devant un client. Calcul pur (aucune écriture, rien n'est corrigé automatiquement), testé avec node --test.
 // `db` : la copie en mémoire de l'entreprise active. `droits` : { partenaires, dossiers, clients, nets } (booleens). `aujourdhui` : AAAA-MM-JJ.
 // Renvoie les contrôles qui ont au moins un cas : { cle, droit, aRelire, elements: [{ id, lien, texte, detail }] }. `aRelire` : un doute, pas une erreur certaine.
+// `taxi` : l'entreprise est VIP Taxi Lanta (aucune facture montrée, le prix interne suit la course seul : pas de contrôle facture contre réservation).
+import { ecartReservation } from "./operations-calc.mjs";
 
 
 const sansAccents = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -58,7 +60,7 @@ const telephonesDe = (p) => ((p && p.contact && p.contact.telephones) || []).fil
 // `tr` : la traduction de l'interface (par défaut, le texte tel quel) pour les petites phrases composées ici.
 const traduireParDefaut = (texte, vars = {}) => String(texte).replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ""));
 
-export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDefaut } = {}) {
+export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDefaut, taxi = false } = {}) {
   const sorties = [];
   const ajouter = (cle, droit, aRelire, elements) => elements.length && sorties.push({ cle, droit, aRelire, elements });
   const partenaires = db.partenaires || [];
@@ -70,6 +72,9 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
   // Catalogue
   ajouter("trajets_sans_prix", "partenaires", false, trajets.filter((t) => vide(t.prix_adulte)).map((t) => ({ id: t.id, lien: `#/trajets?de=${encodeURIComponent(t.de)}&vers=${encodeURIComponent(t.vers)}`, texte: `${t.de} → ${t.vers}${t.depart ? `, ${t.depart}` : ""}`, detail: [nomPartenaire(t.partenaire_id), t.mode].filter(Boolean).join(" · ") })));
   ajouter("prestations_prix_en_texte", "partenaires", true, prestations.filter((x) => !x.sur_place && (x.prix_vente === null || x.prix_vente === undefined) && prixDansTexte(x.details)).map((x) => prest(x, "")));
+  // « Sur place » coché sur une prestation qui n'est pas un frais de parc : elle entre dans les dossiers comme une note hors total au lieu d'un service
+  // (16.11.2026, deux prestations de Mr Palm). Les prestations archivées comptent aussi : réactivées, elles referaient la même note.
+  ajouter("prestations_sur_place_hors_frais", "partenaires", false, (db.prestations || []).filter((x) => x.sur_place && x.famille !== "frais").map((x) => prest(x, tr("famille « {famille} »", { famille: x.famille || "?" }))));
   ajouter("prestations_a_zero", "partenaires", false, prestations.filter((x) => !x.sur_place && x.prix_vente !== null && x.prix_vente !== undefined && Number(x.prix_vente) === 0).map((x) => prest(x, "")));
   if (droits.nets) {
     const nets = new Map((db.prestations_nets || []).map((n) => [n.prestation_id, n]));
@@ -95,6 +100,41 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
   const clientDuDossier = new Map((db.dossiers || []).map((d) => [d.id, (db.clients || []).find((c) => c.id === d.client_id)]));
   const nomClient = (c) => (c ? [c.prenom, c.nom].filter(Boolean).join(" ") : "");
   ajouter("clients_sans_contact", "clients", false, (db.clients || []).filter((c) => !String(c.telephone || "").replace(/\D/g, "") && !String(c.email || "").trim()).map((c) => ({ id: c.id, lien: `#/client/${c.id}`, texte: nomClient(c) || tr("(sans nom)"), detail: "" })));
+  // Factures et devis : les documents de l'entreprise, quand l'écran a pu les charger (`db.documents`).
+  const documents = db.documents || [];
+  const dossiers = new Map((db.dossiers || []).map((d) => [d.id, d]));
+  const toutesPrestations = new Map((db.prestations || []).map((x) => [x.id, x]));
+  const NOM_DOC = { devis: tr("devis"), facture: tr("facture"), facture_locale: tr("facture locale") };
+  // Une note « à régler sur place » laissée par une prestation qui n'est pas un frais : à retirer du document (dans l'éditeur, « Supprimer » sur la ligne).
+  const notes = [];
+  for (const doc of documents) {
+    if (annules.has(doc.dossier_id) || !dossiers.has(doc.dossier_id)) continue;
+    for (const l of (doc.contenu && doc.contenu.lignes) || []) {
+      const x = l.kind === "texte" && l.sur_place && l.prestation_id ? toutesPrestations.get(l.prestation_id) : null;
+      if (x && x.famille !== "frais") notes.push({ id: `${doc.id}:${l.id}`, lien: `#/doc/${doc.id}`, texte: `${dossiers.get(doc.dossier_id).ref || ""} · ${NOM_DOC[doc.type] || doc.type}`, detail: String(l.libelle || "").slice(0, 120) });
+    }
+  }
+  ajouter("notes_sur_place_hors_frais", "dossiers", false, notes);
+  // Ligne de facture différente de sa réservation : libellé, partenaire, montant vendu ou paiement (16.11.2026). Le document comparé est celui de la fiche
+  // du dossier : la facture, sinon le devis.
+  if (!taxi && documents.length) {
+    const NOM_CHAMP = { libelle: tr("libellé"), partenaire_id: tr("partenaire"), montant_vente: tr("montant"), paye_sur_place: tr("paiement") };
+    const ecarts = [];
+    // Le document de référence de chaque dossier, calculé une fois : la facture, sinon le devis.
+    const reference = new Map();
+    for (const x of documents) {
+      const deja = reference.get(x.dossier_id);
+      if (x.type === "facture" ? !deja || deja.type !== "facture" : x.type === "devis" && !deja) reference.set(x.dossier_id, x);
+    }
+    for (const r of db.reservations || []) {
+      if (r.statut === "annule" || annules.has(r.dossier_id) || !dossiers.has(r.dossier_id)) continue;
+      const doc = reference.get(r.dossier_id);
+      const e = doc ? ecartReservation(r, doc) : null;
+      const champs = e && !e.retiree ? e.champs.filter((c) => NOM_CHAMP[c.cle]) : [];
+      if (champs.length) ecarts.push({ id: r.id, lien: `#/dossier/${r.dossier_id}`, texte: `${dossiers.get(r.dossier_id).ref || ""} · ${r.libelle || ""}`, detail: tr("Différent sur la facture : {champs}", { champs: champs.map((c) => NOM_CHAMP[c.cle]).join(", ") }) });
+    }
+    ajouter("factures_differentes_reservation", "dossiers", false, ecarts);
+  }
   ajouter("dossiers_sans_responsable", "dossiers", false, (db.dossiers || []).filter((d) => !d.responsable_id && !d.annule).map((d) => ({ id: d.id, lien: `#/dossier/${d.id}`, texte: d.ref || tr("(sans référence)"), detail: nomClient((db.clients || []).find((c) => c.id === d.client_id)) })));
 
   const droitsOk = { partenaires: !!droits.partenaires, dossiers: !!droits.dossiers, clients: !!droits.clients };
