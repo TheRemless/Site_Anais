@@ -148,7 +148,7 @@ Lisible à 375 px : le texte passe à la ligne, le lien suit le texte, la croix 
     var old = document.querySelector(".site-notice");
     if (old && (!b || old.dataset.noticeId !== b.id)) old.remove();
     if (!b || old && old.dataset.noticeId === b.id) return;
-    // … construire le HTML ci-dessus avec textContent (jamais innerHTML pour b.text) et l'insérer après l'en-tête
+    // … construire le HTML ci-dessus avec textContent (jamais innerHTML pour b.text, link.label, card_label) et l'insérer après l'en-tête
   }
   show(read(KEY, null));             // copie de la page précédente : affichée tout de suite, sans saut
   fetch(URL, { credentials: "omit" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {

@@ -133,13 +133,17 @@ create policy "traiter les demandes du site" on demandes_site for update to auth
 create trigger journaliser after update on demandes_site for each row execute function journaliser();
 
 -- Bandeaux : les membres de l'entreprise les voient, les rôles qui créent des dossiers (et voient toute l'entreprise) les gèrent.
+-- Seules Secret et VIP Taxi Lanta publient sur secrettravelandtour.com : un bandeau ne s'écrit que dans l'une de ces deux entreprises.
+create or replace function publie_sur_le_site(e uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from entites where id = e and slug in ('secret', 'taxi')) and lit_demandes_site(e) and a_permission(e, 'dossiers.ecrire')
+$$;
+revoke all on function publie_sur_le_site(uuid) from public, anon;
+grant execute on function publie_sur_le_site(uuid) to authenticated;
 grant select, insert, update, delete on bandeaux_site to authenticated;
 create policy "lire les bandeaux" on bandeaux_site for select to authenticated using (a_permission(entite_id, 'dossiers.lire'));
-create policy "créer un bandeau" on bandeaux_site for insert to authenticated with check (lit_demandes_site(entite_id) and a_permission(entite_id, 'dossiers.ecrire'));
-create policy "modifier un bandeau" on bandeaux_site for update to authenticated
-  using (lit_demandes_site(entite_id) and a_permission(entite_id, 'dossiers.ecrire'))
-  with check (lit_demandes_site(entite_id) and a_permission(entite_id, 'dossiers.ecrire'));
-create policy "supprimer un bandeau" on bandeaux_site for delete to authenticated using (lit_demandes_site(entite_id) and a_permission(entite_id, 'dossiers.ecrire'));
+create policy "créer un bandeau" on bandeaux_site for insert to authenticated with check (publie_sur_le_site(entite_id));
+create policy "modifier un bandeau" on bandeaux_site for update to authenticated using (publie_sur_le_site(entite_id)) with check (publie_sur_le_site(entite_id));
+create policy "supprimer un bandeau" on bandeaux_site for delete to authenticated using (publie_sur_le_site(entite_id));
 create trigger journaliser after insert or update or delete on bandeaux_site for each row execute function journaliser();
 
 commit;

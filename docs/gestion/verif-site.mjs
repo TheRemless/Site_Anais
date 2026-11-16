@@ -106,6 +106,8 @@ const b1 = await comme("anais", bandeau("secret", { marques: "secret,taxi" }));
 ok(b1.ok && b1.rows.length === 1, "Anaïs allume un bandeau pour les deux marques depuis Secret");
 ok((await comme("lecteur", bandeau("secret"))).ok === false, "un lecteur ne crée pas de bandeau");
 ok((await comme("ztp", bandeau("secret"))).ok === false, "un éditeur de Zwald ne crée pas de bandeau chez Secret");
+ok((await comme("ztp", bandeau("ztp"))).ok === false, "ni chez Zwald : seules Secret et Taxi publient sur secrettravelandtour.com");
+ok((await comme("root", bandeau("ztp"))).ok === false, "même l'administratrice générale ne publie pas depuis Zwald");
 ok((await comme("stagiaire", bandeau("secret"))).ok === false, "un rôle limité à ses dossiers ne publie pas sur le site");
 ok((await comme("mook", bandeau("taxi"))).ok === false, "l'écran « Nouveau voucher » seul ne publie pas sur le site");
 ok((await comme("anais", bandeau("secret", { texte: "x".repeat(141) }))).ok === false, "un texte de plus de 140 caractères est refusé");
