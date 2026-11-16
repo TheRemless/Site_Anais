@@ -1405,10 +1405,9 @@ details > summary { padding-block: 11px; margin: 0; }
 .vr-champ input, .vr-champ select, .vr-champ textarea { width: 100%; min-height: 52px; padding: 0 14px; font: inherit; font-size: 1.125rem; color: var(--texte); background: var(--surface); border: 1.5px solid var(--bord-champ); border-radius: 10px; -webkit-appearance: none; appearance: none; }
 .vr-champ input[type="date"], .vr-champ input[type="time"] { display: block; text-align: start; }
 .vr-champ input:focus-visible, .vr-champ select:focus-visible, .vr-champ textarea:focus-visible { outline: 3px solid var(--teal); outline-offset: 1px; border-color: var(--teal-700); }
-.vr-champ input[aria-invalid], .vr-champ select[aria-invalid], .vr-champ textarea[aria-invalid] { border-color: var(--danger); background: var(--danger-fond); }
+.vr-champ input[aria-invalid], .vr-champ select[aria-invalid], .vr-champ textarea[aria-invalid] { border-color: var(--danger); background-color: var(--danger-fond); }
 /* Type de trajet et programme d'un retour au point de départ (16.11.2026) : la flèche du menu, et une zone de texte sur deux lignes. */
 .vr-champ select { padding-inline-end: 40px; background-image: linear-gradient(45deg, transparent 50%, var(--texte) 50%), linear-gradient(135deg, var(--texte) 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size: 6px 6px; background-repeat: no-repeat; }
-.vr-champ select[aria-invalid] { background-color: var(--danger-fond); }
 .vr-champ textarea { min-height: 88px; padding: 12px 14px; line-height: 1.4; resize: vertical; }
 .vr-connu { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0; padding: 8px 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface-2); font-size: 1rem; }
 .vr-aide { margin: 0; font-size: 0.95rem; color: var(--texte-2); }

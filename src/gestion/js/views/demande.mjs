@@ -205,7 +205,9 @@ export function ouvrirDemande() {
       sv.cleVoucher = cle;
       // Taxi : sans lieu donné par la demande, le pickup et le drop-off montrent les deux bouts du trajet choisi.
       if (service && modeTaxi()) boutsDuTrajet(sv.saisie, service, { lieu: !(d.type === "transfer" && d.pickup) });
-      n.voucher.replaceChildren(...(service ? [blocServiceCreation({ service, saisie: sv.saisie, taxi: modeTaxi(), prefixe: `svc${sv.id}-v`, sauf: ["heure", "adultes", "enfants"], aideLieu: tr("Vide : celui de la demande, ou l'hôtel."), ouvert: false, surSaisie: () => {
+      n.voucher.replaceChildren(...(service ? [blocServiceCreation({ service, saisie: sv.saisie, taxi: modeTaxi(), prefixe: `svc${sv.id}-v`, sauf: ["heure", "adultes", "enfants"], aideLieu: tr("Vide : celui de la demande, ou l'hôtel."), ouvert: false, surSaisie: (s) => {
+        // Repassé en aller simple : ce n'est plus un retour au départ, les offres de la base et le cas général reviennent.
+        if (sv.retourDepart && (s.details || {}).type_trajet !== RETOUR_DEPART) return quitterRetour(sv);
         // Le prix tapé suit le lieu et le programme (libellé de la ligne) ; le titre du service redit le programme lu.
         majLigneRetour(sv);
         if (sv.retourDepart) majTitreRetour(sv);
@@ -298,6 +300,14 @@ export function ouvrirDemande() {
     const dt = (sv.saisie && sv.saisie.details) || {};
     return [dt.programme_trajet ? `« ${dt.programme_trajet} »` : tr("Programme à préciser dans le bloc du voucher."), dureeFrancais(dt.duree_h), tr("Aucune grille : indiquez le prix convenu pour ce programme.")].filter(Boolean).join(" · ");
   };
+  function quitterRetour(sv) {
+    sv.retourDepart = null;
+    if (sv.ligneRetour) sv.lignesCustom = null;
+    sv.ligneRetour = null;
+    sv.prixRetour = null;
+    // Le bloc du voucher se refait sur la nouvelle offre (après l'événement en cours) ; la saisie (lieu, drop-off, aller simple) est gardée.
+    setTimeout(() => (majService(sv), majTotal()));
+  }
   const majTitreRetour = (sv) => {
     const n = sv.noeuds && sv.noeuds.titre && sv.noeuds.titre.querySelector(".dsv-detail");
     if (n) n.textContent = texteRetour(sv);
@@ -463,6 +473,14 @@ export function ouvrirDemande() {
   }
 
   const modifier = (cle, valeur) => {
+    // Un retour au point de départ a pris l'hôtel lu comme lieu de pickup : corrigé ici, il suit (sauf un lieu réécrit dans le bloc du voucher).
+    if (cle === "hotel")
+      for (const sv of services.filter((x) => x.retourDepart && x.saisie && (x.saisie.lieu || "") === (d.hotel || ""))) {
+        sv.saisie.lieu = valeur;
+        const input = document.getElementById(`svc${sv.id}-v-lieu`);
+        if (input) input.value = valeur;
+        majLigneRetour(sv);
+      }
     d[cle] = valeur;
     if (cle === "hotel") d.hotelSaisi = true;
     dessinerClient();

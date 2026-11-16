@@ -88,7 +88,8 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
   // Un transfert « Pakbara Pier → Hat Yai Airport » part du quai, pas de l'hôtel du client.
   // Les tarifs par zone des taxis de Saladan n'ont pas de départ fixe : Anaïs remplit le pickup et le drop-off.
   const tarifZone = !!p && /saladan/i.test(p.groupe || "") && !(p.libelle || "").includes("→");
-  const pickupTransfert = r.lieu_pickup || libelleClient(pickupDepuisLibelle(r, p, trajet)) || (tarifZone ? "" : hotel);
+  // Retour au point de départ : jamais le premier bout d'un libellé « A → B » (un aéroport où le client ne sera pas), sinon l'hôtel du client.
+  const pickupTransfert = r.lieu_pickup || (estRetourDepart(r) ? hotel : libelleClient(pickupDepuisLibelle(r, p, trajet)) || (tarifZone ? "" : hotel));
   // Retour au point de départ (16.11.2026) : « Pickup and return », le programme et la durée à la place du drop-off, jamais « From X to X ».
   const retourDepart = estRetourDepart(r);
   const programmeTrajet = retourDepart ? String(dt.programme_trajet || "").trim() : "";

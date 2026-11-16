@@ -59,6 +59,8 @@ const course = (extra = {}) => ({ id: "R1", dossier_id: "D1", entite_id: "E", li
 test("durée : heures par demi-heure, vide = non précisée, illisible = erreur", () => {
   for (const [v, n] of [["3", 3], ["3,5", 3.5], ["1.5 h", 1.5], ["4 hours", 4], ["about 2h", 2], [4, 4], ["2.3", 2.5]]) assert.equal(T.lireDuree(v), n, String(v));
   for (const v of ["", null, "trois", "0", "30", "-2"]) assert.equal(T.lireDuree(v), null, String(v));
+  // Écrit à la main comme ailleurs dans Gestion (minutesDepuisDuree) : « 1h30 », « 90 min », « 45 min ».
+  for (const [v, n] of [["1h30", 1.5], ["90 min", 1.5], ["45 min", 1], ["Environ 3h00", 3]]) assert.equal(T.lireDuree(v), n, v);
   assert.equal(T.dureeInvalide(""), false, "vide n'est pas une erreur");
   assert.equal(T.dureeInvalide("trois"), true);
   assert.equal(T.dureeAnglais(4), "about 4 hours");
@@ -73,6 +75,9 @@ test("libellé : « Round trip from <lieu>: <programme> », jamais « X → X »
   assert.equal(T.libelleRetourDepart("Lanta Sand Resort", ""), "Round trip from Lanta Sand Resort");
   const long = T.libelleRetourDepart("Lanta Sand Resort", "Old Town, the viewpoint, the night market, then a long stop at the clinic in Saladan while the driver waits");
   assert.ok(long.length <= 90 && long.endsWith("…") && !long.includes("→"), long);
+  // Un lieu très long (adresse complète) est coupé, le programme garde sa place.
+  const adresse = T.libelleRetourDepart("Pimalai Resort & Spa, Kantiang Bay, Koh Lanta, villa 12 near the beach road", "Clinic in Saladan");
+  assert.ok(adresse.endsWith(": Clinic in Saladan") && adresse.length <= 90, adresse);
 });
 
 test("enregistrement : un aller simple n'a ni type ni programme ; un retour au départ n'a pas de drop-off", () => {
@@ -117,6 +122,9 @@ test("voucher Secret : « Pickup and return », « Plan » et « Duration », ja
   const sans = voucher(course({ details: { type_trajet: "retour_depart", programme_trajet: "" } }));
   assert.ok(!sans.some((x) => x.startsWith("Duration")));
   assert.ok(sans.includes("Plan: "));
+  // Une prestation « A → B » passée en retour au départ, sans lieu saisi : jamais le premier bout du libellé (l'aéroport).
+  const catalogue = voucher(course({ libelle: "Private minivan: Krabi Airport → Koh Lanta", lieu_pickup: "" }));
+  assert.ok(!catalogue.some((x) => /Krabi Airport/.test(x)), catalogue.join("\n"));
   // Un aller simple ne change pas.
   const simple = voucher(course({ libelle: "Lanta Sand Resort → Krabi Airport", details: { drop_off: "Krabi Airport" } }));
   assert.ok(simple.includes("Pickup Location: Lanta Sand Resort") && simple.includes("Drop-off Location: Krabi Airport"));
@@ -148,6 +156,9 @@ test("feuille du jour : le chauffeur lit le programme et la durée ; la copie ho
   assert.equal(g3.lignes[0].trajet, "Back to the pickup place. About 4 hours");
   const [g4] = O.feuilleDuJour([course({ libelle: "Private taxi", details: { ...RETOUR, programme_trajet: "Clinic. The driver waits." } })], "2026-11-20", contexte);
   assert.equal(g4.lignes[0].trajet, "Back to the pickup place. Plan: Clinic. The driver waits. About 4 hours");
+  // Un programme court contenu dans un libellé de prestation reste dit au chauffeur.
+  const [g5] = O.feuilleDuJour([course({ libelle: "Private taxi tour of the island", details: { ...RETOUR, programme_trajet: "Tour" } })], "2026-11-20", contexte);
+  assert.equal(g5.lignes[0].trajet, "Back to the pickup place. Plan: Tour. About 4 hours");
   const [g2] = O.feuilleDuJour([course({ details: { drop_off: "Krabi Airport" } })], "2026-11-20", contexte);
   assert.equal(g2.lignes[0].trajet, "", "un aller simple n'ajoute rien");
   const copie = construireCopie({ brut: { reservations: [course({ date_service: AJD, libelle: "Private taxi" })], dossiers: [{ id: "D1", entite_id: "E", client_id: "C" }], clients: [{ id: "C", prenom: "Anna", nom: "Keller" }], partenaires: [] }, entites: [{ id: "E", nom: "VIP Taxi Lanta" }], utilisateur: "u", aujourdhui: AJD });
@@ -254,6 +265,9 @@ test("message du site : « not sure », ligne absente, ligne plus bas et repli s
   assert.deepEqual([plusBas.vers, plusBas.dropoff, plusBas.retourDepart.programme], ["", "", "Clinic in Saladan"]);
   const vide = lire("Round trip, back to the pickup place\nPickup: \nPlan: \nTime needed: ").d;
   assert.deepEqual(vide.retourDepart, { programme: "", duree: null });
+  // Une sortie du site qui cite la phrase dans une ligne libre reste une sortie.
+  const sortie = lire("Booking request: Krabi day trip\nDate: Fri 20 Nov 2026\nExtras: round trip, back to the pickup place please\nGuests: 2 adults").d;
+  assert.deepEqual([sortie.type, sortie.retourDepart], ["tour", undefined]);
 });
 
 test("message libre : un retour au point de départ, avec son programme, sa durée et son lieu de pickup", () => {

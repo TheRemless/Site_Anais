@@ -7,22 +7,26 @@
 //   details.duree_h = durée en heures (nombre, facultatif)
 // Seuls Secret et Taxi saisissent des transferts : ZTP ne voit jamais ces champs.
 import { tr } from "./i18n.mjs";
+import { sansAccents } from "./partenaires-calc.mjs";
+import { minutesDepuisDuree } from "./a-verifier-calc.mjs";
 
 export const RETOUR_DEPART = "retour_depart";
 
 export const estRetourDepartDetails = (dt) => !!dt && dt.type_trajet === RETOUR_DEPART;
 export const estRetourDepart = (r) => !!r && estRetourDepartDetails(r.details);
 
-// « 3 », « 3,5 », « 3.5 h », « 4 hours », « about 2h » : la durée en heures, par demi-heure, de 0,5 à 24. null si vide ou illisible.
+// « 3 », « 3,5 », « 3.5 h », « 4 hours », « about 2h », « 1h30 », « 90 min » : la durée en heures, par demi-heure, de 0,5 à 24. null si vide ou illisible.
+// Les formats écrits à la main (« 1h30 », « 45 min ») passent par minutesDepuisDuree (a-verifier-calc.mjs), qui les lit déjà pour les prestations.
+const enHeures = (n) => (n > 0 && n <= 24 ? Math.max(0.5, Math.round(n * 2) / 2) : null);
 export function lireDuree(v) {
   if (v === null || v === undefined) return null;
-  if (typeof v === "number") return Number.isFinite(v) && v > 0 && v <= 24 ? Math.round(v * 2) / 2 : null;
+  if (typeof v === "number") return Number.isFinite(v) ? enHeures(v) : null;
   const t = String(v).trim().toLowerCase();
   if (!t) return null;
   const m = /^(?:about|around|approx\.?|environ|~)?\s*(\d{1,2}(?:[.,]\d+)?)\s*(?:h|hr|hrs|hours?|heures?|ชั่วโมง|ชม\.?)?$/.exec(t);
-  if (!m) return null;
-  const n = Number(m[1].replace(",", "."));
-  return n > 0 && n <= 24 ? Math.round(n * 2) / 2 : null;
+  if (m) return enHeures(Number(m[1].replace(",", ".")));
+  const minutes = minutesDepuisDuree(t);
+  return minutes ? enHeures(minutes / 60) : null;
 }
 // Durée saisie mais illisible (« trois », « 30 »…) : à signaler sous le champ. Vide = non précisée, ce n'est pas une erreur.
 export const dureeInvalide = (v) => String(v ?? "").trim() !== "" && lireDuree(v) === null;
@@ -44,7 +48,9 @@ const propre = (s) => String(s || "").replace(/\s+/g, " ").trim();
 // Le libellé d'une course de ce type, tel que la facture, la fiche, la fiduciaire et la recherche le disent : jamais « X → X ».
 // « Round trip from Lanta Sand Resort: Old Town and viewpoint ». Un programme long est coupé au mot (le voucher, lui, le donne en entier).
 export function libelleRetourDepart(lieu, programme = "", max = 90) {
-  const l = propre(lieu);
+  // Un lieu très long (adresse complète) est coupé au mot, pour que le programme garde sa place.
+  const brut = propre(lieu);
+  const l = brut.length > 40 ? `${brut.slice(0, 39).replace(/[\s,]+\S*$/, "")}…` : brut;
   const tete = l ? `Round trip from ${l}` : "Round trip";
   const p = propre(programme);
   if (!p) return tete;
@@ -62,7 +68,8 @@ export function trajetPourChauffeur(r) {
   const duree = dureeAnglais(dt.duree_h);
   // Le programme sans son point final (« … The driver waits. » ne fait pas « waits.. ») ; déjà dans le libellé d'une course hors catalogue, il n'est pas répété.
   const programme = propre(dt.programme_trajet).replace(/[\s.!;,]+$/, "");
-  const dejaDit = programme && propre(r.libelle).toLowerCase().includes(programme.toLowerCase());
+  // Seulement le libellé généré « Round trip from <lieu>: <programme> » : un programme court (« Tour ») n'est pas « déjà dit » par un libellé de prestation.
+  const dejaDit = programme && propre(r.libelle).toLowerCase().includes(`: ${programme.toLowerCase()}`);
   return ["Back to the pickup place", programme && !dejaDit ? `Plan: ${programme}` : "", duree ? duree.charAt(0).toUpperCase() + duree.slice(1) : ""].filter(Boolean).join(". ");
 }
 
@@ -105,7 +112,7 @@ export const dureeSite = (v) => (/not sure|unsure|don'?t know/i.test(String(v ||
 // Message libre : ce qui dit « on revient au même endroit » (le chauffeur attend, fait le tour, ramène à l'hôtel).
 // Indices forts : seuls, ils suffisent. Indices faibles (« and back », « round trip ») : seulement sans seconde date, sinon c'est un
 // aller-retour classique A → B puis B → A (règle RETOUR de demande-calc.mjs), qui fait deux services.
-const SANS_ACC = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const SANS_ACC = sansAccents;
 const LIEU_DEPART = "(?:the |our |my )?(?:hotel|resort|villa|bungalows?|guest ?house|homestay|accommodation|room|place|same (?:place|spot|point)|starting point|pick-?up (?:place|point|spot))";
 // Toujours un retour au départ : le chauffeur attend, fait le tour, ramène au même endroit.
 const ABSOLUS = [

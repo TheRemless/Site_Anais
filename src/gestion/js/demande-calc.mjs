@@ -145,7 +145,8 @@ function lireSite(lignes, aujourdhui) {
   }
   // Retour au point de départ : la ligne du site, en tête ou plus bas (« Transfer request: … – Round trip, back to the pickup place »).
   // Pas de drop-off ni de destination : le lieu de pickup est aussi celui du retour. Le prix se fixe à la main, aucune offre n'est cherchée.
-  if (genre === "retour" || lignes.some((l) => LIGNE_SITE.test(l))) {
+  // Seulement un transfert : une sortie ou une location qui cite la phrase dans une ligne libre reste ce qu'elle est.
+  if (genre === "retour" || (genre === "transfert" && lignes.some((l) => LIGNE_SITE.test(l)))) {
     d.type = "transfer";
     d.retourDepart = { programme: d.programme || "", duree: d.duree || null };
     d.de = d.pickup || d.de;
