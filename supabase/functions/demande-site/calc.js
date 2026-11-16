@@ -105,10 +105,11 @@ export function lireDemande(corps, { aujourdhui }) {
   };
 }
 
-// Adresse IP du visiteur telle que la passerelle Supabase la transmet (premier maillon de x-forwarded-for).
+// Adresse IP du visiteur. D'abord celle que pose Cloudflare (cf-connecting-ip) ou la passerelle (x-real-ip), que le visiteur ne peut pas choisir ;
+// x-forwarded-for en dernier recours seulement, car son premier maillon peut être écrit par le client lui-même.
 export function adresseIP(entetes) {
-  const brut = (entetes.get("x-forwarded-for") || entetes.get("x-real-ip") || "").split(",")[0].trim();
-  return brut.slice(0, 64);
+  const brut = entetes.get("cf-connecting-ip") || entetes.get("x-real-ip") || (entetes.get("x-forwarded-for") || "").split(",")[0];
+  return String(brut || "").trim().slice(0, 64);
 }
 
 const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];

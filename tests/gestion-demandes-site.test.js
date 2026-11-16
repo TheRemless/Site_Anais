@@ -59,10 +59,12 @@ test("demande-site : le champ piège rempli par un robot donne « ok » sans rie
   assert.deepEqual(lireDemande(corps({ website: "http://spam.example" }), { aujourdhui: AJD }), { piege: true });
 });
 
-test("demande-site : date valide entre hier et 400 jours, IP lue dans x-forwarded-for", () => {
+test("demande-site : date valide entre hier et 400 jours ; IP posée par Cloudflare avant celle que le client peut écrire", () => {
   assert.ok(dateValide("2026-11-15", AJD));
   assert.ok(!dateValide("2026-11-14", AJD));
   assert.equal(adresseIP(new Map([["x-forwarded-for", "203.0.113.5, 10.0.0.1"]])), "203.0.113.5");
+  assert.equal(adresseIP(new Map([["x-forwarded-for", "1.2.3.4"], ["cf-connecting-ip", "198.51.100.7"]])), "198.51.100.7");
+  assert.equal(adresseIP(new Map([["x-forwarded-for", "1.2.3.4"], ["x-real-ip", "198.51.100.8"]])), "198.51.100.8");
   assert.equal(adresseIP(new Map()), "");
 });
 
@@ -145,6 +147,13 @@ test("réponse de confirmation : anglais, récapitulatif, référence, changemen
   assert.match(taxi, /Payment in cash to the driver on the day\./);
   assert.ok(!/Total:/.test(taxi), "pas de total inventé");
   assert.ok(!/wa\.me|http/.test(sans + avec + taxi), "aucun lien : le numéro du client n'est pas connu");
+});
+
+test("réponse de confirmation à plusieurs services : chacun sa ligne, aucun faux changement", () => {
+  const final = { services: [{ titre: "4 Islands", date: "2026-11-18", heure: "08:30", adultes: 2 }, { titre: "Koh Rok", date: "2026-11-20", adultes: 2 }], date: "2026-11-18", adultes: 2, total: 5000, devise: "THB" };
+  assert.deepEqual(changements(D, final), []);
+  const r = reponseConfirmation(D, final, { aujourdhui: AJD });
+  assert.match(r, /Your booking is confirmed\.\n\n4 Islands, Wednesday 18 November, pickup 08:30, 2 adults\nKoh Rok, Friday 20 November, 2 adults\nPickup: Lanta Sand Resort\nTotal: 5,000 THB/);
 });
 
 test("réponse de refus : motif, autre date ou autre sortie, référence", () => {
@@ -236,6 +245,9 @@ test("vérification du bandeau : texte trop long, cible vide, lien hors du site,
   assert.equal(verifierBandeau({ ...base, cible: "produits" }, AJD)[0].code, "produits");
   assert.equal(verifierBandeau({ ...base, lien: "page", lien_page: "https://evil.example/" }, AJD)[0].code, "lien");
   assert.equal(verifierBandeau({ ...base, fin: "2026-11-16T00:00:00Z" }, AJD)[0].code, "dates");
+  // Dates en fuseaux différents : la comparaison se fait sur l'instant, pas sur le texte.
+  assert.equal(verifierBandeau({ ...base, debut: "2026-11-16T20:00:00.000Z", fin: "2026-11-17T00:00:00+07:00" }, AJD)[0].code, "dates");
+  assert.deepEqual(verifierBandeau({ ...base, debut: "2026-11-16T15:00:00.000Z", fin: "2026-11-16T23:59:59+07:00" }, AJD), []);
   assert.equal(verifierBandeau({ ...base, modele: "season-until", valeurs: {} }, AJD)[0].code, "champ_vide");
 });
 

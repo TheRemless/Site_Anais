@@ -2651,4 +2651,7 @@ export const EN = {
   "Demande refusée. La réponse reste dans « Revoir la réponse ».": "Request declined. The reply stays in “See the reply again”.",
   "Copie impossible dans ce navigateur : le texte est sélectionné, copiez-le à la main puis touchez le bouton pour marquer la demande refusée.": "This browser cannot copy: the text is selected, copy it by hand, then tap the button to mark the request declined.",
   "Marquer refusée": "Mark declined",
+  "Cette demande a déjà été traitée.": "This request has already been handled.",
+  "Quelqu'un a traité cette demande pendant ce temps : le dossier {ref} est peut-être en double, vérifiez-le.": "Someone handled this request in the meantime: file {ref} may be a duplicate, check it.",
+  "Quelqu'un a traité cette demande pendant ce temps.": "Someone handled this request in the meantime.",
 };

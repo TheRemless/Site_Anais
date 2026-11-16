@@ -106,6 +106,8 @@ function lignesSite(d) {
 // de l'appareil ; « Vérifier avant de créer », la réponse et le passage à une autre entreprise sont retirés (la demande appartient à son entreprise,
 // la réponse au client se prépare après la création) ; une fois le dossier créé, `surCree({ dossier, services, total })` prend la suite.
 export function ouvrirDemande(depuisSite = null) {
+  // Branchée directement sur un bouton (`onclick: ouvrirDemande`), la fonction reçoit l'événement du clic : ce n'est pas une demande du site.
+  if (!depuisSite || typeof depuisSite.texte !== "string") depuisSite = null;
   const regl = reglages();
   const devise = regl.devise || "THB";
   const langue = langueDocuments(regl);

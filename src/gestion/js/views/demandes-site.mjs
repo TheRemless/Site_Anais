@@ -12,7 +12,7 @@ import { copierTexte } from "./partage.mjs";
 import { vide } from "./commun.mjs";
 import {
   STATUTS_DEMANDE, MOTIFS_REFUS, nomProduit, titreOption, optionsProduit, texteDemande, changements, reponseConfirmation, reponseRefus,
-  trierDemandes, aTraiter, chiffresDemandes, cheminPage, produitSite,
+  trierDemandes, aTraiter, chiffresDemandes, cheminPage,
 } from "../demandes-site-calc.mjs";
 import { PRODUITS_SITE } from "../site-produits.mjs";
 
@@ -20,8 +20,6 @@ let onglet = "a_traiter";
 let periode = "30";
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
 
-// Compte affiché en badge dans le menu et sur l'accueil.
-export const demandesATraiter = () => (etat.db && etat.db.demandes_site ? aTraiter(etat.db.demandes_site).length : 0);
 // L'écran existe pour Secret et Taxi, pour qui lit tous les dossiers (comme la base : lit_demandes_site).
 export const demandesVisibles = () => modeExcursions() && peut("dossiers.lire");
 
@@ -68,15 +66,24 @@ function blocReference(d) {
 // ---- Les trois gestes ----------------------------------------------------------------------------------------------
 // Confirmer, ou confirmer avec les changements de « Modifier » : la fenêtre « Coller une demande » s'ouvre avec le message du site
 // (et les changements posés dessus), le dossier se crée d'un tap, puis la réponse anglaise est prête à copier.
+// Deux personnes peuvent avoir la même demande sous les yeux (téléphone d'Anaïs, ordinateur de Jérémy) : la version lue à l'ouverture
+// sert de verrou. Une demande traitée entre-temps n'est pas réécrite, et on dit quel dossier vient d'être créé en double.
+function dejaTraitee(d) {
+  const actuelle = (etat.brut.demandes_site || []).find((x) => x.id === d.id);
+  return actuelle && actuelle.statut !== "nouvelle" ? actuelle : null;
+}
 function confirmer_(d, modifs = {}) {
   const ref = d.ref || nomProduit(d);
+  if (dejaTraitee(d)) return void (toast(tr("Cette demande a déjà été traitée."), true), rafraichir());
   ouvrirDemande({
     titre: Object.keys(modifs).length ? tr("Confirmer {ref} avec les changements", { ref }) : tr("Confirmer {ref}", { ref }),
     texte: texteDemande(d, modifs),
     prixImpose: modifs.prix ?? null,
     surCree: async ({ dossier, services, total }) => {
       const s = services[0] || {};
+      // Plusieurs services (liste de sorties) : la réponse les reprend un par un, le total est celui de la facture.
       const final = {
+        ...(services.length > 1 ? { services: services.map((x) => ({ titre: x.titre, date: x.date, heure: x.heure, adultes: x.adultes, enfants: x.enfants })) } : {}),
         date: s.date || modifs.date || d.date_service,
         heure: s.heure || modifs.heure || d.heure,
         option_titre: modifs.option_titre || titreOption(d),
@@ -87,9 +94,9 @@ function confirmer_(d, modifs = {}) {
       };
       const decision = { changements: changements(d, final), final };
       try {
-        await modifier("demandes_site", d.id, { statut: "confirmee", dossier_id: dossier.id, decision });
+        await modifier("demandes_site", d.id, { statut: "confirmee", dossier_id: dossier.id, decision }, { verrou: true, version: d.updated_at });
       } catch (err) {
-        toast(tr("Dossier créé, mais la demande n'a pas pu être marquée confirmée : {erreur}", { erreur: err.message }), true);
+        toast(err.conflit ? tr("Quelqu'un a traité cette demande pendant ce temps : le dossier {ref} est peut-être en double, vérifiez-le.", { ref: dossier.ref }) : tr("Dossier créé, mais la demande n'a pas pu être marquée confirmée : {erreur}", { erreur: err.message }), true);
       }
       rafraichir();
       ouvrirReponse(d, reponseConfirmation(d, final, { aujourdhui: aujourdhui() }), { titre: tr("Réponse de confirmation"), dossierId: dossier.id });
@@ -99,6 +106,7 @@ function confirmer_(d, modifs = {}) {
 
 // « Modifier » : date, heure, option ou prix, puis la création comme pour « Confirmer ». La réponse dira ce qui a changé.
 function ouvrirModifier(d) {
+  if (dejaTraitee(d)) return void (toast(tr("Cette demande a déjà été traitée."), true), rafraichir());
   const date = h("input", { type: "date", value: d.date_service || "", min: aujourdhui() });
   const heure = h("input", { type: "time", value: d.heure || "" });
   // Les options de la page produit, plus celle de la demande si son nom a changé depuis sur le site.
@@ -142,6 +150,7 @@ function ouvrirModifier(d) {
 
 // « Refuser ou proposer autre chose » : un motif, une autre date ou une autre sortie, et la réponse se rédige à mesure.
 function ouvrirRefus(d) {
+  if (dejaTraitee(d)) return void (toast(tr("Cette demande a déjà été traitée."), true), rafraichir());
   const etatRefus = { motif: "complet", alternative: {} };
   const apercu = h("textarea", { id: "dsite-refus", rows: 9, lang: "en" });
   const majApercu = () => (apercu.value = reponseRefus(d, etatRefus, { aujourdhui: aujourdhui() }));
@@ -155,7 +164,13 @@ function ouvrirRefus(d) {
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   let copieRatee = false;
   const marquer = async (copiee) => {
-    await modifier("demandes_site", d.id, { statut: "refusee", decision: { motif: etatRefus.motif, alternative: etatRefus.alternative } });
+    try {
+      await modifier("demandes_site", d.id, { statut: "refusee", decision: { motif: etatRefus.motif, alternative: etatRefus.alternative } }, { verrou: true, version: d.updated_at });
+    } catch (err) {
+      fermer();
+      toast(err.conflit ? tr("Quelqu'un a traité cette demande pendant ce temps.") : err.message, true);
+      return rafraichir();
+    }
     fermer();
     toast(copiee ? tr("Demande refusée : la réponse est copiée.") : tr("Demande refusée. La réponse reste dans « Revoir la réponse »."));
     rafraichir();

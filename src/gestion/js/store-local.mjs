@@ -11,7 +11,7 @@ import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
 const CLE = "gestion-zwald-demo-v12";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
 // Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
-const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches"];
+const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches", "demandes_site", "bandeaux_site"];
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
 const PARTENAIRES_PUBLIC = ["partenaires", "prestations", "trajets"];
 const PARTENAIRES_NETS = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];

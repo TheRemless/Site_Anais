@@ -106,10 +106,11 @@ Deno.serve(async (req) => {
 
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   try {
-    const ipEmpreinte = await empreinte(ip || "inconnue");
+    // Sans adresse IP connue, pas de limite par appareil (tous les visiteurs partageraient la même) : seule la limite globale s'applique.
+    const ipEmpreinte = ip ? await empreinte(ip) : null;
     const depuis = (min: number) => new Date(Date.now() - min * 60000).toISOString();
     const [appareil, toutes, entite] = await Promise.all([
-      db.from("demandes_site").select("id", { count: "exact", head: true }).eq("ip_empreinte", ipEmpreinte).gte("created_at", depuis(LIMITE_APPAREIL.minutes)),
+      ipEmpreinte ? db.from("demandes_site").select("id", { count: "exact", head: true }).eq("ip_empreinte", ipEmpreinte).gte("created_at", depuis(LIMITE_APPAREIL.minutes)) : Promise.resolve({ count: 0, error: null }),
       db.from("demandes_site").select("id", { count: "exact", head: true }).gte("created_at", depuis(LIMITE_TOTALE.minutes)),
       db.from("entites").select("id").eq("slug", SLUG[ligne.marque as "secret" | "taxi"]).single(),
     ]);

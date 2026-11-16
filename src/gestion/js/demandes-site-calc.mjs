@@ -97,6 +97,8 @@ export function texteDemande(d, modifs = {}) {
 export function changements(d, final) {
   const out = [];
   const ajoute = (champ, avant, apres) => out.push({ champ, avant, apres });
+  // Plusieurs services : chacun a sa date et ses personnes, rien à comparer à une seule ligne de la demande.
+  if (final.services && final.services.length > 1) return out;
   if (final.date && d.date_service && final.date !== d.date_service) ajoute("date", d.date_service, final.date);
   if (final.heure && d.heure && final.heure !== d.heure) ajoute("heure", d.heure, final.heure);
   const optAvant = titreOption(d);
@@ -125,7 +127,11 @@ export function reponseConfirmation(d, final, { aujourdhui = "" } = {}) {
   const tete = ch.length === 0 ? `Your ${quoi} is confirmed.` : `Your ${quoi} is confirmed with ${ch.length === 1 ? "one change" : "these changes"}:`;
   const titre = [nomProduit(d), final.option_titre || titreOption(d)].filter(Boolean).join(" – ");
   const quand = [final.date ? dateAnglaise(final.date, aujourdhui) : "", final.heure ? `pickup ${final.heure}` : ""].filter(Boolean).join(", ");
-  const recap = [titre, quand, personnesAnglais(final.adultes || 0, final.enfants || 0), d.pickup ? `Pickup: ${d.pickup}` : "", final.total !== null && final.total !== undefined && final.total !== "" ? `Total: ${montantAnglais(final.total, devise)}` : ""].filter(Boolean);
+  const ligneService = (s) => [s.titre, s.date ? dateAnglaise(s.date, aujourdhui) : "", s.heure ? `pickup ${s.heure}` : "", personnesAnglais(s.adultes || 0, s.enfants || 0)].filter(Boolean).join(", ");
+  const total = final.total !== null && final.total !== undefined && final.total !== "" ? `Total: ${montantAnglais(final.total, devise)}` : "";
+  const recap = final.services && final.services.length > 1
+    ? [...final.services.map(ligneService), d.pickup ? `Pickup: ${d.pickup}` : "", total].filter(Boolean)
+    : [titre, quand, personnesAnglais(final.adultes || 0, final.enfants || 0), d.pickup ? `Pickup: ${d.pickup}` : "", total].filter(Boolean);
   // VIP Taxi Lanta : paiement en espèces au chauffeur (fait publié sur le site, site.json « payment »).
   const paiement = taxi ? ["Payment in cash to the driver on the day."] : [];
   return [salut, "", tete, ...ch.map((c) => ligneChangement(c, devise, aujourdhui)), "", ...recap, ...(paiement.length ? ["", ...paiement] : []), ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");

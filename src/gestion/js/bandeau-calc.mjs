@@ -89,7 +89,7 @@ export function verifierBandeau(b, aujourdhui) {
   if (b.cible === "produits" && !(b.produits || []).length) erreurs.push({ code: "produits" });
   if (b.cible === "sections" && !(b.sections || []).length) erreurs.push({ code: "sections" });
   if (b.lien === "page" && !/^\/[a-z0-9/-]{0,120}$/.test(b.lien_page || "")) erreurs.push({ code: "lien" });
-  if (b.fin && b.debut && b.fin <= b.debut) erreurs.push({ code: "dates" });
+  if (b.fin && b.debut && Date.parse(b.fin) <= Date.parse(b.debut)) erreurs.push({ code: "dates" });
   if (b.valeurs && b.valeurs.date2 && b.valeurs.date && b.valeurs.date2 <= b.valeurs.date) erreurs.push({ code: "date2" });
   return erreurs;
 }

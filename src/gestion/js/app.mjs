@@ -557,10 +557,8 @@ async function afficher() {
     return;
   }
   if (ecranVoucherSeul()) return afficherVoucherSeul();
-  // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change, et quand le nombre de demandes du site
-  // à traiter change (une demande arrive à la synchronisation, une autre est confirmée) : le badge suit.
-  const aTraiterSite = siteVisible() ? aTraiter(etat.db.demandes_site || []).length : 0;
-  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}|${aTraiterSite}`;
+  // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change. Ses badges, eux, suivent à chaque affichage (majBadges).
+  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}`;
   const existante = racine.querySelector(".coque");
   if (!existante || existante.dataset.cle !== cle) {
     vider(racine).append(coque());
@@ -605,6 +603,27 @@ async function afficher() {
   document.querySelector(".coque").classList.toggle("avec-plus", ECRANS_AVEC_PLUS.test(hash) && !!document.querySelector(".bouton-plus"));
   restaurerDefilement(hash);
   derniereVue = hash;
+  majBadges();
+}
+
+// Badges du menu, des onglets et de « Plus » remis à jour sur place à chaque affichage : une demande du site arrivée à la synchronisation,
+// une demande confirmée ou une tâche cochée changent le chiffre sans refaire tout le menu.
+function majBadges() {
+  const tous = tousEcrans();
+  const poser = (lien, n, libelle) => {
+    let b = lien.querySelector(".badge");
+    if (!n) return void (b && b.remove());
+    if (!b) {
+      b = h("span", { class: "badge" });
+      (lien.querySelector(".onglet-icone") || lien).append(b);
+    }
+    b.textContent = n;
+    if (libelle) b.setAttribute("aria-label", libelle);
+  };
+  for (const e of tous) for (const a of document.querySelectorAll(`[data-cle="${e.cle}"]`)) poser(a, e.badge || 0, a.classList.contains("lien-ecran") && e.badge ? e.badgeLibelle || tr("{badge} en retard", { badge: e.badge }) : null);
+  const onglets = ongletsMobiles();
+  const plus = document.querySelector('button[data-cle="plus"]');
+  if (plus) poser(plus, tous.filter((e) => !onglets.includes(e.cle)).reduce((n, e) => n + (e.badge || 0), 0), null);
 }
 
 function ouvrirAide() {
