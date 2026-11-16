@@ -2,6 +2,8 @@
 // L'assistante d'Anaïs (Mook) parle thaï : l'écran est en thaï, le voucher reste en anglais. Elle saisit la course telle qu'elle l'a
 // convenue (prise en charge et dépose presque toujours à l'hôtel, donc hors catalogue) et envoie l'image à Anaïs, qui la transmet au client.
 
+import { RETOUR_DEPART, lireDuree, dureeInvalide, libelleRetourDepart } from "./trajet-calc.mjs";
+
 // Droit d'interface : la personne qui l'a ne voit, dans une entreprise en mode taxi, que cet écran. Il n'est jamais dans « tous les droits ».
 export const DROIT_VOUCHER_SEUL = "vouchers.seul";
 
@@ -18,6 +20,15 @@ export const TH = {
   pickup: "จุดรับ", // Lieu de prise en charge
   heure: "เวลารับ", // Heure de prise en charge
   dropoff: "จุดส่ง", // Lieu de dépose
+  // Retour au point de départ (16.11.2026), textes à faire relire par Mook comme les autres.
+  trajet: "แบบการเดินทาง", // Type de trajet
+  trajet_simple: "เที่ยวเดียว ไปส่งที่อื่น", // Aller simple, dépose ailleurs
+  trajet_retour: "ไปแล้วกลับมาจุดรับเดิม", // Aller puis retour au lieu de prise en charge
+  trajet_aide: "ลูกค้าไปเที่ยวหรือไปทำธุระ แล้วคนขับพากลับมาที่เดิม", // Le client fait un tour ou une course, puis le chauffeur le ramène au même endroit
+  programme: "แผนการเดินทาง", // Programme
+  programme_aide: "ลูกค้าจะไปที่ไหน ทำอะไร พิมพ์เป็นภาษาอังกฤษ เช่น Old Town and viewpoint tour", // Où va le client, ce qu'il fait, en anglais, par exemple…
+  duree: "ใช้เวลาประมาณกี่ชั่วโมง", // Environ combien d'heures
+  duree_aide: "ไม่บังคับ ตัวเลข เช่น 3 ถ้าไม่ทราบ เว้นว่าง", // Facultatif, un nombre, par exemple 3. Si on ne sait pas, laisser vide
   vol: "เลขเที่ยวบินหรือเรือ", // Numéro de vol ou de bateau
   vol_aide: "ถ้ารับหรือส่งที่สนามบินหรือท่าเรือ เช่น FD3217 ถ้าไม่มี เว้นว่าง", // Si prise en charge ou dépose à l'aéroport ou au port, par exemple FD3217. Sinon, laisser vide
   adultes: "ผู้ใหญ่", // Adultes
@@ -65,6 +76,7 @@ export const TH = {
   e_prix: "กรุณากรอกราคาเป็นตัวเลข", // Écrire le prix en chiffres
   e_sieges: "คาร์ซีทมากกว่าจำนวนเด็ก", // Plus de sièges que d'enfants
   e_tel: "เบอร์ไม่ถูกต้อง", // Numéro incorrect
+  e_duree: "กรุณากรอกจำนวนชั่วโมงเป็นตัวเลข เช่น 3", // Écrire le nombre d'heures en chiffres, par exemple 3
 };
 
 // Le voucher est en anglais : un mot en écriture thaïe y serait illisible pour le client.
@@ -88,10 +100,12 @@ const entier = (v) => {
 // Valeurs vides d'un nouveau voucher. Deux adultes par défaut : la plupart des courses (prix pour 1 à 2 personnes dans le catalogue).
 // Le numéro de vol ou de bateau et les sièges enfant ou bébé (13.11.2026) : ce que le formulaire taxi du site demande au client.
 // Le WhatsApp du client et le client déjà connu choisi d'un tap (13.11.2026) : plus de nouveau client à chaque course.
-export const valeursVides = () => ({ nom: "", telephone: "", client_id: "", date: "", pickup: "", heure: "", dropoff: "", vol: "", adultes: "2", enfants: "", bagages: "", sieges: "", prix: "" });
+// `trajet` : vide pour un aller simple, « retour_depart » pour un retour au point de départ (programme et durée à la place du drop-off).
+export const valeursVides = () => ({ nom: "", telephone: "", client_id: "", date: "", pickup: "", heure: "", trajet: "", dropoff: "", programme: "", duree: "", vol: "", adultes: "2", enfants: "", bagages: "", sieges: "", prix: "" });
+export const estRetour = (v) => (v && v.trajet) === RETOUR_DEPART;
 
 // Dans l'ordre de l'écran : la première erreur reçoit le focus.
-export const CHAMPS = ["nom", "telephone", "date", "pickup", "heure", "dropoff", "vol", "adultes", "enfants", "bagages", "sieges", "prix"];
+export const CHAMPS = ["nom", "telephone", "date", "pickup", "heure", "trajet", "dropoff", "programme", "duree", "vol", "adultes", "enfants", "bagages", "sieges", "prix"];
 
 // WhatsApp facultatif : vide, ou un numéro d'au moins 8 chiffres, sans lettres (« +66 81 234 5678 », « 0812345678 »).
 export const telephoneValide = (t) => {
@@ -102,7 +116,8 @@ export const telephoneValide = (t) => {
 // Contrôle avant l'aperçu : { champ: code d'erreur } (codes de TH, « e_… »). Vide = tout est bon.
 export function erreursVoucher(v) {
   const e = {};
-  for (const c of ["nom", "pickup", "dropoff"]) {
+  // Retour au point de départ : pas de drop-off, mais un programme obligatoire (en anglais, il s'imprime) et une durée lisible si elle est donnée.
+  for (const c of ["nom", "pickup", estRetour(v) ? "programme" : "dropoff"]) {
     const t = String(v[c] || "").trim();
     if (!t) e[c] = "e_vide";
     else if (contientThai(t)) e[c] = "e_thai";
@@ -121,6 +136,7 @@ export function erreursVoucher(v) {
   else if (s > 0 && !Number.isNaN(enf) && s > enf) e.sieges = "e_sieges";
   if (prixSaisi(v.prix) === null) e.prix = "e_prix";
   if (!telephoneValide(v.telephone)) e.telephone = "e_tel";
+  if (estRetour(v) && dureeInvalide(v.duree)) e.duree = "e_duree";
   return e;
 }
 
@@ -130,7 +146,9 @@ export const libelleTrajet = (pickup, dropoff) => `${String(pickup || "").trim()
 // Ce que la course devient en base. Le nom va tout entier dans « nom » (le voucher affiche prénom et nom bout à bout).
 export function donneesVoucher(v) {
   const pickup = String(v.pickup).trim();
-  const dropoff = String(v.dropoff).trim();
+  const retour = estRetour(v);
+  const dropoff = retour ? "" : String(v.dropoff || "").trim();
+  const programme = retour ? String(v.programme || "").trim().replace(/\s+/g, " ") : "";
   return {
     nom: String(v.nom).trim().replace(/\s+/g, " "),
     telephone: String(v.telephone || "").trim().replace(/\s+/g, " "),
@@ -139,7 +157,10 @@ export function donneesVoucher(v) {
     heure: v.heure,
     pickup,
     dropoff,
-    libelle: libelleTrajet(pickup, dropoff),
+    libelle: retour ? libelleRetourDepart(pickup, programme) : libelleTrajet(pickup, dropoff),
+    type_trajet: retour ? RETOUR_DEPART : "",
+    programme_trajet: programme,
+    duree_h: retour ? lireDuree(v.duree) || "" : "",
     personnes: { adultes: entier(v.adultes) || 0, enfants: entier(v.enfants) || 0, bebes: 0 },
     bagages: String(v.bagages || "").trim(),
     vol: String(v.vol || "").trim().replace(/\s+/g, " "),
@@ -161,14 +182,16 @@ export const ligneVoucher = (x, { id, partenaireId = null }) => ({ id, kind: "li
 // La course est confirmée dès sa création : Mook (ou Anaïs, pour une course hors catalogue) l'a déjà convenue avec Mr. Brown
 // (décision de Jérémy, 13.11.2026). Elle n'entre pas dans « À confirmer auprès des partenaires » et ne propose ni « Demander » ni relance.
 export const STATUT_COURSE = "confirme";
-export const reservationVoucher = (x) => ({ statut: STATUT_COURSE, heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, vol: x.vol, bagages: x.bagages, sieges: x.sieges, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants } });
+export const reservationVoucher = (x) => ({ statut: STATUT_COURSE, heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, vol: x.vol, bagages: x.bagages, sieges: x.sieges, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants }, ...(x.type_trajet ? { details: detailsFacultatifs({}, { type_trajet: x.type_trajet, programme_trajet: x.programme_trajet, duree_h: x.duree_h }) } : {}) });
 
 // Les champs facultatifs de la course dans `details` : posés s'ils sont remplis, retirés s'ils sont vidés.
+// Un retour au point de départ garde son type, son programme et sa durée, et n'a pas de drop-off.
 function detailsFacultatifs(details, x) {
-  for (const [cle, val] of [["bagages", x.bagages], ["vol", x.vol], ["sieges", x.sieges]]) {
+  for (const [cle, val] of [["bagages", x.bagages], ["vol", x.vol], ["sieges", x.sieges], ["type_trajet", x.type_trajet], ["programme_trajet", x.programme_trajet], ["duree_h", x.duree_h]]) {
     if (val) details[cle] = val;
     else delete details[cle];
   }
+  if (!details.drop_off) delete details.drop_off;
   return details;
 }
 
@@ -193,7 +216,10 @@ export function valeursDepuis(r, client = {}) {
     date: r.date_service || "",
     pickup: r.lieu_pickup || "",
     heure: /^\d{1,2}:\d{2}$/.test(r.heure_pickup || "") ? r.heure_pickup.padStart(5, "0") : "",
+    trajet: (r.details && r.details.type_trajet) || "",
     dropoff: (r.details && r.details.drop_off) || "",
+    programme: (r.details && r.details.programme_trajet) || "",
+    duree: r.details && r.details.duree_h ? String(r.details.duree_h) : "",
     vol: (r.details && r.details.vol) || "",
     adultes: String(p.adultes || 0),
     enfants: p.enfants ? String(p.enfants) : "",

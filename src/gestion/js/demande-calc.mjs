@@ -3,6 +3,7 @@
 // Rien n'est inventé : un prix vient d'une ligne de la base, et sans correspondance on propose seulement de chercher à la main.
 import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSupplementaires, prefixeProgramme } from "./partenaires-calc.mjs";
 import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
+import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -34,6 +35,8 @@ const ENTETES_SITE = [
   [/^rental request:\s*(.+)$/i, "location"],
   [/^speedboat request:\s*(.+)$/i, "speedboat"],
   [/^trip list:\s*(\d+)/i, "liste"],
+  // Retour au point de départ (formulaire taxi du site, 16.11.2026) : « Round trip, back to the pickup place », puis Pickup, Plan, Time needed.
+  [/^round trip,?\s*back to (?:the )?pick-?up place\b\s*:?\s*(.*)$/i, "retour"],
 ];
 // Le site sépare la route et l'option par un tiret long (–) : un tiret court entre espaces fait partie d'un nom de lieu.
 const SEP = /\s+[–—]\s+/;
@@ -96,6 +99,8 @@ function lireSite(lignes, aujourdhui) {
     }
     if (d.option) optionVers(d.option);
     Object.assign(d, trajetDe(route));
+  } else if (genre === "retour") {
+    d.type = "transfer";
   } else if (genre === "location") {
     d.type = "location";
     d.prestation = m[1].trim();
@@ -135,6 +140,18 @@ function lireSite(lignes, aujourdhui) {
     else if (cle === "to" && genre === "location") d.jusqua = lireDate(v, aujourdhui);
     else if (cle.startsWith("estimated total")) d.prixSite = v;
     else if ((cle === "price on the site" || cle === "price") && !d.prixSite) d.prixSite = v;
+    else if (cle === "plan") d.programme = v;
+    else if (cle === "time needed") { d.dureeTexte = v; d.duree = dureeSite(v); }
+  }
+  // Retour au point de départ : la ligne du site, en tête ou plus bas (« Transfer request: … – Round trip, back to the pickup place »).
+  // Pas de drop-off ni de destination : le lieu de pickup est aussi celui du retour. Le prix se fixe à la main, aucune offre n'est cherchée.
+  if (genre === "retour" || lignes.some((l) => LIGNE_SITE.test(l))) {
+    d.type = "transfer";
+    d.retourDepart = { programme: d.programme || "", duree: d.duree || null };
+    d.de = d.pickup || d.de;
+    d.vers = "";
+    d.dropoff = "";
+    d.option = "";
   }
   if (genre === "liste" && sorties.length) {
     const [premiere, ...autres] = sorties;
@@ -609,6 +626,8 @@ const MOTS_SERVICE = /\b(?:transfers?|transferts?|taxi|minivan|van|ferry|speed ?
 // Offres d'un service du message, recalculées à chaque correction de sa date ou de ses personnes (les prix en dépendent, les départs aussi).
 // `service` : { phrase, date, adultes, enfants }. Le message du formulaire du site se lit par ses lignes, le message libre par la phrase du service.
 export function offresDuService(d, texte, service, contexte) {
+  // Retour au point de départ du site : aucune grille, le prix se fixe au cas par cas.
+  if (!d.libre && d.retourDepart) return [];
   if (!d.libre) return offresPour({ ...d, date: service.date, adultes: service.adultes, enfants: service.enfants }, texte, contexte).slice(0, 4);
   const base = { adultes: service.adultes, enfants: service.enfants, bebes: d.bebes, date: service.date || "", hotel: "", nom: "", telephone: "" };
   const propres = modeEtVehicule(service.phrase);
@@ -620,7 +639,7 @@ export function decouperServices(texte, d, contexte, aujourdhui) {
   if (!d) return [];
   const offresDe = (phrase, sur = {}) => offresDuService(d, texte, { phrase, adultes: d.adultes, enfants: d.enfants, date: "", ...sur }, contexte);
   // Message du formulaire du site (ou de l'ancien) : une seule demande, lue par ses lignes.
-  if (!d.libre) return [{ phrase: texte, date: d.date || "", heure: d.heure || "", adultes: d.adultes, enfants: d.enfants, offres: offresDuService(d, texte, { phrase: texte, date: d.date || "", adultes: d.adultes, enfants: d.enfants }, contexte), copie: false }];
+  if (!d.libre) return [{ phrase: texte, date: d.date || "", heure: d.heure || "", adultes: d.adultes, enfants: d.enfants, offres: offresDuService(d, texte, { phrase: texte, date: d.date || "", adultes: d.adultes, enfants: d.enfants }, contexte), copie: false, retourDepart: d.retourDepart || null }];
 
   const sans = sansIdentite(texte, d);
   const phrases = sans.split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
@@ -660,6 +679,9 @@ export function decouperServices(texte, d, contexte, aujourdhui) {
       else if (!SALUTATION.test(f)) enAttente.push(f);
     }
     dansPhrase.sort((a, b) => a.i - b.i);
+    // La phrase d'origine et le nombre de services qu'elle porte : de quoi lire un « retour au point de départ » (« and back », « wait for us »)
+    // dont les mots ont été coupés en fragments.
+    for (const g of dansPhrase) (g.source = phrase), (g.nbDansPhrase = dansPhrase.length);
     // Une seule date dans la phrase : tous ses services la prennent.
     const datesPhrase = [...new Set(dansPhrase.map((g) => g.dateFixe || dateDe(g.texte)).filter(Boolean))];
     for (const g of dansPhrase) {
@@ -667,7 +689,11 @@ export function decouperServices(texte, d, contexte, aujourdhui) {
       groupes.push(g);
     }
   }
-  if (!groupes.length) return [];
+  if (!groupes.length) {
+    // Aucun service reconnu, mais une course aller-retour au même endroit (« can you take us to Old Town and back? ») : un service à prix libre.
+    const r = retourDuService({ nbDansPhrase: 1, source: texte, texte }, { texte, nbServices: 1, dateDe, taxi: !!(contexte && contexte.taxi), offres: [] });
+    return r ? [{ phrase: sans.replace(/\s{2,}/g, " ").trim(), date: d.date || "", heure: d.heure || "", adultes: d.adultes, enfants: d.enfants, vehicule: "", mode: "", offres: [], copie: false, retourDepart: r }] : [];
+  }
   // Une seule date dans tout le message : les services sans date la prennent.
   const toutesDates = [...new Set(groupes.map((g) => g.dateFixe || dateDe(g.texte) || g.dateSurPhrase).filter(Boolean))];
   let derniere = "";
@@ -688,8 +714,30 @@ export function decouperServices(texte, d, contexte, aujourdhui) {
     const propres = modeEtVehicule(g.texte);
     const herite = precedent && RETOUR.test(sansAcc(g.texte)) ? { vehicule: propres.vehicule ? "" : precedent.vehicule, mode: propres.mode ? "" : precedent.mode } : { vehicule: "", mode: "" };
     precedent = { vehicule: propres.vehicule || herite.vehicule, mode: propres.mode || herite.mode };
-    return { phrase: g.texte.replace(/\s+([.,!?])/g, "$1").replace(/\s{2,}/g, " ").trim(), date, heure, adultes, enfants, ...herite, offres: g.inconnu ? [] : offresDe(g.texte, { date, adultes, enfants, ...herite }), copie: !!g.copie };
+    const offres = g.inconnu ? [] : offresDe(g.texte, { date, adultes, enfants, ...herite });
+    // Retour au point de départ : pas d'offre de la base, le prix se fixe à la main.
+    const retourDepart = retourDuService(g, { texte, nbServices: groupes.length, dateDe, taxi: !!(contexte && contexte.taxi), offres });
+    return { phrase: g.texte.replace(/\s+([.,!?])/g, "$1").replace(/\s{2,}/g, " ").trim(), date, heure, adultes, enfants, ...herite, offres: retourDepart ? [] : offres, copie: !!g.copie, retourDepart };
   });
+}
+
+// Retour au point de départ dans un message libre (16.11.2026) : « taxi to Old Town and back », « drive us around and wait for us », « nous ramener à
+// l'hôtel ». Seulement pour une course en voiture (un mot de véhicule, ou une demande faite à Taxi) et jamais pour un aller-retour classique : deux dates dans
+// la phrase (« to Krabi on the 12th and back on the 15th ») font deux services, comme avant. Le programme est la phrase utile, la durée celle citée.
+const MOTS_VOITURE = /\b(?:taxi|transfers?|transferts?|driver|chauffeur|car|voiture|van|minivan|songthaew|tuk ?tuk|ride|drive|driving|take (?:us|me)|emmener|nous conduire)\b/;
+function retourDuService(g, { texte, nbServices, dateDe, taxi, offres }) {
+  const seul = g.nbDansPhrase === 1;
+  const zone = seul ? g.source : g.texte;
+  // Une offre de la base qui n'est pas un transfert (une sortie, un tour en bateau) : c'est elle, pas une course aller-retour.
+  if (offres.some((o) => o.genre === "trajet" || (o.source && o.source.famille && o.source.famille !== "transfert"))) return null;
+  const nbDates = (t) => new Set(t.split(COUPURES).map((f) => dateDe(f)).filter(Boolean)).size;
+  const voiture = (t) => taxi || MOTS_VOITURE.test(sansAcc(t));
+  let r = voiture(zone) ? lireRetourDepartLibre(zone, { nbDates: nbDates(zone) }) : null;
+  // Un seul service dans le message : les autres phrases (« The driver can wait for us. ») le décrivent aussi.
+  if (!r && nbServices === 1 && voiture(texte)) r = lireRetourDepartLibre(texte, { nbDates: nbDates(texte) });
+  if (!r) return null;
+  // Le programme se lit dans le message d'origine (le nom de l'hôtel y est encore) quand il n'y a qu'un service.
+  return nbServices === 1 ? { ...r, programme: phraseProgramme(texte) } : r;
 }
 
 // Langue de la réponse à une demande collée : en excursions (Secret et Taxi) toujours l'anglais, comme tout ce que voit le client ;

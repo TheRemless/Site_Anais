@@ -14,10 +14,12 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { servicesCreation, saisieVide, nonVides, boutsDuTrajet } from "../creation-voucher-calc.mjs";
-import { blocServiceCreation } from "./champs-voucher.mjs";
+import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, ligneRetourDepart } from "../creation-voucher-calc.mjs";
+import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { boutonLireIA, boutonRedigerIA, badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees } from "../assistant-calc.mjs";
+import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
+import { partenaireDeTaxi } from "../voucher-rapide-calc.mjs";
 
 // Brouillon passé à l'écran « Nouveau dossier » : lu une seule fois.
 let brouillon = null;
@@ -88,6 +90,9 @@ function lignesSite(d) {
     d.option ? tr("Option demandée : {option}", { option: d.option }) : "",
     d.pickup && d.type === "transfer" ? tr("Prise en charge : {lieu}", { lieu: d.pickup }) : "",
     d.dropoff ? tr("Dépose : {lieu}", { lieu: d.dropoff }) : "",
+    // Retour au point de départ (formulaire taxi du site) : le programme et la durée tels que le client les a écrits.
+    d.retourDepart ? tr("Retour au point de départ : {programme}", { programme: d.retourDepart.programme || tr("programme à demander") }) : "",
+    d.retourDepart && d.dureeTexte ? tr("Durée indiquée : {duree}", { duree: d.dureeTexte }) : "",
     d.vol ? tr("Vol ou bateau : {vol}", { vol: d.vol }) : "",
     d.ages && d.ages.length ? tr("Âges des enfants : {ages}", { ages: d.ages.map((a) => (a === 0 ? tr("moins de 1 an") : a)).join(", ") }) : "",
     d.prixSite ? tr("Prix indiqué sur le site : {prix}", { prix: d.prixSite }) : "",
@@ -100,7 +105,8 @@ export function ouvrirDemande() {
   const regl = reglages();
   const devise = regl.devise || "THB";
   const langue = langueDocuments(regl);
-  const contexte = () => ({ prestations: etat.db.prestations, trajets: etat.db.trajets, nomPartenaire });
+  // `taxi` : chez VIP Taxi Lanta, toute demande est une course en voiture (un « wait for us » suffit à lire un retour au point de départ).
+  const contexte = () => ({ prestations: etat.db.prestations, trajets: etat.db.trajets, nomPartenaire, taxi: modeTaxi() });
   let d = null;
   let texte = "";
   let clientId = ""; // client existant retenu ; vide pour un nouveau client
@@ -126,7 +132,8 @@ export function ouvrirDemande() {
 
   // ---- Les services --------------------------------------------------------------------------------------------------------------
   // Un service lu par l'assistant garde les lignes de la base qu'il a choisies, recalculées pour ses personnes.
-  const offresDe = (sv) => (sv.lignesCustom ? [] : sv.offresIA ? offresRecalculees(sv.offresIA, sv, contexte()) : offresDuService(d, texte, sv, contexte()));
+  // Retour au point de départ : aucune grille, le prix se saisit à la main sur le service (décision de Jérémy, 16.11.2026).
+  const offresDe = (sv) => (sv.lignesCustom || sv.retourDepart ? [] : sv.offresIA ? offresRecalculees(sv.offresIA, sv, contexte()) : offresDuService(d, texte, sv, contexte()));
   const choisie = (sv, offres) => offres.find((o) => clefOffre(o) === sv.offreId) || offres[0] || null;
   const sommeCustom = (sv) => sv.lignesCustom.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
   // Ce que le service donne : son offre choisie, ou les lignes prises à la main dans la base.
@@ -170,7 +177,9 @@ export function ouvrirDemande() {
     const { offre, offres } = etatDe(sv);
     const n = sv.noeuds;
     n.titre.replaceChildren();
-    if (sv.lignesCustom) n.titre.append(h("strong", null, offre.titre), h("button", { class: "lien", type: "button", onclick: () => choisirDansBase(sv) }, tr("Ajouter une ligne")));
+    // Retour au point de départ à prix tapé : le titre garde le champ du prix (les lignes prises dans la base, elles, ont le cas général).
+    if (sv.retourDepart && (!sv.lignesCustom || sv.ligneRetour)) n.titre.append(h("strong", null, tr("Retour au point de départ")), h("span", { class: "dsv-detail" }, texteRetour(sv)), prixRetour(sv), h("button", { class: "lien", type: "button", onclick: () => choisirDansBase(sv) }, tr("Choisir dans la base")));
+    else if (sv.lignesCustom) n.titre.append(h("strong", null, offre.titre), h("button", { class: "lien", type: "button", onclick: () => choisirDansBase(sv) }, tr("Ajouter une ligne")));
     else if (!offres.length) n.titre.append(h("strong", { class: "a-preciser" }, tr("À préciser")), h("span", { class: "dsv-phrase" }, `« ${sv.phrase.length > 90 ? `${sv.phrase.slice(0, 90)}…` : sv.phrase} »`), h("button", { class: "secondaire petit", type: "button", onclick: () => choisirDansBase(sv) }, tr("Choisir dans la base")));
     else if (offres.length === 1) n.titre.append(h("strong", null, offres[0].titre), h("span", { class: "dsv-detail" }, offres[0].detail));
     else {
@@ -196,7 +205,11 @@ export function ouvrirDemande() {
       sv.cleVoucher = cle;
       // Taxi : sans lieu donné par la demande, le pickup et le drop-off montrent les deux bouts du trajet choisi.
       if (service && modeTaxi()) boutsDuTrajet(sv.saisie, service, { lieu: !(d.type === "transfer" && d.pickup) });
-      n.voucher.replaceChildren(...(service ? [blocServiceCreation({ service, saisie: sv.saisie, taxi: modeTaxi(), prefixe: `svc${sv.id}-v`, sauf: ["heure", "adultes", "enfants"], aideLieu: tr("Vide : celui de la demande, ou l'hôtel."), ouvert: false })].filter(Boolean) : []));
+      n.voucher.replaceChildren(...(service ? [blocServiceCreation({ service, saisie: sv.saisie, taxi: modeTaxi(), prefixe: `svc${sv.id}-v`, sauf: ["heure", "adultes", "enfants"], aideLieu: tr("Vide : celui de la demande, ou l'hôtel."), ouvert: false, surSaisie: () => {
+        // Le prix tapé suit le lieu et le programme (libellé de la ligne) ; le titre du service redit le programme lu.
+        majLigneRetour(sv);
+        if (sv.retourDepart) majTitreRetour(sv);
+      } })].filter(Boolean) : []));
     }
     // Le partenaire a changé (autre offre choisie) : ses zones de pickup remplacent les précédentes.
     const pid = partenaireDeOffre(sv, offre);
@@ -212,6 +225,12 @@ export function ouvrirDemande() {
     // Ce que la demande dit déjà pour le voucher (un trajet du site donne la dépose, le vol, les bagages et les sièges), modifiable dans la fenêtre.
     const site = d.type === "transfer";
     sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: site ? Number(d.sieges) || 0 : 0, details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
+    // Retour au point de départ lu dans le message : le type, le programme et la durée sont déjà posés ; le lieu de pickup est celui de la demande (ou l'hôtel).
+    if (sv.retourDepart) {
+      sv.saisie.details = { ...nonVides({ ...sv.saisie.details, drop_off: "" }), type_trajet: RETOUR_DEPART, ...nonVides({ programme_trajet: sv.retourDepart.programme || "", duree_h: sv.retourDepart.duree || "" }) };
+      sv.saisie.lieu = (site && d.pickup) || d.hotel || "";
+      sv.saisie.ouvert = true;
+    }
     const champ4 = (cle, libelle, valeur, opts = {}) => {
       const input = h("input", { id: `svc${sv.id}-${cle}`, value: valeur, autocomplete: "off", ...opts, onchange: (e) => ((sv[cle] = opts.type === "number" ? entier(e.target.value) : e.target.value), majService(sv), majTotal()) });
       return champ(libelle, input);
@@ -262,9 +281,46 @@ export function ouvrirDemande() {
     return sv;
   }
 
+  // Retour au point de départ : le prix convenu, tapé ici, devient la ligne du service (« Round trip from Lanta Sand Resort: Old Town tour »).
+  // Le libellé suit le lieu et le programme saisis dans le bloc du voucher ; chez Taxi, la course est celle du chauffeur de l'entreprise.
+  function prixRetour(sv) {
+    const input = h("input", { id: `svc${sv.id}-prix`, type: "number", min: "0", step: "any", inputmode: "decimal", placeholder: tr("Prix ({devise})", { devise }), "aria-label": tr("Prix convenu ({devise})", { devise }), value: sv.prixRetour ?? "", onchange: (e) => {
+      const v = e.target.value.trim();
+      sv.prixRetour = v === "" ? null : Number(v);
+      majLigneRetour(sv);
+      majService(sv);
+      majTotal();
+    } });
+    return input;
+  }
+  // « « Old Town, the driver waits » · environ 3 h · Aucune grille… » : ce que le service porte déjà, sous son titre.
+  const texteRetour = (sv) => {
+    const dt = (sv.saisie && sv.saisie.details) || {};
+    return [dt.programme_trajet ? `« ${dt.programme_trajet} »` : tr("Programme à préciser dans le bloc du voucher."), dureeFrancais(dt.duree_h), tr("Aucune grille : indiquez le prix convenu pour ce programme.")].filter(Boolean).join(" · ");
+  };
+  const majTitreRetour = (sv) => {
+    const n = sv.noeuds && sv.noeuds.titre && sv.noeuds.titre.querySelector(".dsv-detail");
+    if (n) n.textContent = texteRetour(sv);
+  };
+  function majLigneRetour(sv) {
+    if (!sv.retourDepart) return;
+    if (sv.prixRetour === null || sv.prixRetour === undefined || !(sv.prixRetour >= 0)) {
+      if (sv.ligneRetour) sv.lignesCustom = null;
+      sv.ligneRetour = null;
+      return;
+    }
+    const p = modeTaxi() ? partenaireDeTaxi(etat.db.partenaires) : null;
+    const dt = (sv.saisie && sv.saisie.details) || {};
+    sv.ligneRetour = ligneRetourDepart({ lieu: (sv.saisie && sv.saisie.lieu) || (d && (d.pickup || d.hotel)) || "", programme: dt.programme_trajet || "", prix: sv.prixRetour, date: sv.date, partenaireId: p ? p.id : null }, sv.ligneRetour);
+    const l = sv.ligneRetour;
+    sv.lignesCustom = [l];
+  }
+
   // Service que la base ne propose pas tel quel : la fenêtre des tarifs reprend sa date et ses personnes, chaque ajout devient une ligne du service.
   function choisirDansBase(sv) {
     choisirPrestation({ langue, devise, sansCompagnie: true, dossierId: null, defauts: { date: sv.date, adultes: sv.adultes, enfants: sv.enfants }, onAjout: (lignes) => {
+      // Une ligne prise dans la base remplace le prix tapé d'un retour au point de départ.
+      if (sv.ligneRetour) (sv.lignesCustom = null), (sv.ligneRetour = null), (sv.prixRetour = null);
       sv.lignesCustom = [...(sv.lignesCustom || []), ...lignes];
       const premiere = lignes.find((l) => l.date_service);
       if (!sv.date && premiere) {
@@ -340,14 +396,29 @@ export function ouvrirDemande() {
     const lignes = [];
     const parService = [];
     for (const sv of coches()) {
+      majLigneRetour(sv);
       const { offre } = etatDe(sv);
       const ls = lignesDuService(sv, offre);
       if (!ls.length) return { manque: sv };
       lignes.push(...ls);
       parService.push({ ligneIds: ls.map((l) => l.id), ...reservationDe(sv, offre) });
     }
+    // Retour au point de départ sans programme : on ne crée pas, le champ est montré.
+    const incomplet = trajetIncomplet(parService);
+    if (incomplet) return { incomplet: coches()[incomplet.index], code: incomplet.code, champ: incomplet.champ };
     const plusieurs = parService.length > 1;
     return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: [notesDemande(plusieurs ? { ...d, heure: "" } : d), d.remarquesIA].filter(Boolean).join("\n"), lignes, parService, reservation: parService[0] || {} };
+  }
+
+  // Un retour au point de départ sans programme (ou à durée illisible) : le bloc du service se déplie et le champ prend le focus.
+  function montrerIncomplet(b) {
+    erreur.textContent = tr(ERREURS_TRAJET[b.code]);
+    const sv = b.incomplet;
+    const champ_ = document.getElementById(`svc${sv.id}-v-${b.champ === "duree_h" ? "duree-h" : "programme-trajet"}`);
+    if (!champ_) return;
+    const bloc = champ_.closest("details");
+    if (bloc) bloc.open = true;
+    champ_.focus();
   }
 
   // Création directe : client, dossier, facture et une réservation par service, sans passer par l'écran « Nouveau dossier ».
@@ -357,7 +428,9 @@ export function ouvrirDemande() {
     if (nouveauClient && !d.nom.trim()) return (erreur.textContent = tr("Indiquez le nom du client.")), document.getElementById("dem-nom").focus();
     if (nouveauClient && !peut("clients.ecrire")) return (erreur.textContent = tr("Votre rôle ne permet pas de créer un client : choisissez un client existant."));
     const b = preparer();
+    if (b.manque && b.manque.retourDepart) return (erreur.textContent = tr("Indiquez le prix convenu du retour au point de départ, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
     if (b.manque) return (erreur.textContent = tr("Choisissez le service de « {phrase} » ou décochez cette ligne.", { phrase: b.manque.phrase.slice(0, 60) }));
+    if (b.incomplet) return montrerIncomplet(b);
     const ref = refProposee(regl);
     if (!ref.trim() || refExiste(ref)) return (erreur.textContent = tr("Le numéro de facture n'a pas pu être proposé : créez le dossier depuis « Nouveau dossier »."));
     creation = true;
@@ -381,7 +454,9 @@ export function ouvrirDemande() {
   // Ouvre l'écran « Nouveau dossier » déjà rempli, pour vérifier ou compléter avant de créer.
   function verifierAvant() {
     const b = preparer();
+    if (b.manque && b.manque.retourDepart) return (erreur.textContent = tr("Indiquez le prix convenu du retour au point de départ, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
     if (b.manque) return (erreur.textContent = tr("Choisissez le service de « {phrase} » ou décochez cette ligne.", { phrase: b.manque.phrase.slice(0, 60) }));
+    if (b.incomplet) return montrerIncomplet(b);
     brouillon = b;
     fermer();
     naviguer("#/dossiers/nouveau?demande=1");
@@ -470,7 +545,7 @@ export function ouvrirDemande() {
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
     dessinerClient();
     majTotal();
   }

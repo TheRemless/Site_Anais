@@ -12,8 +12,8 @@ import { creerDossierExcursions, langueDocuments, refProposee as refPropose, ref
 import { lireBrouillon, viderBrouillon } from "./demande.mjs";
 import { clientsProches } from "../demande-calc.mjs";
 import { tr } from "../i18n.mjs";
-import { servicesCreation, saisieDepuisDemande, saisieDuService, parServiceCreation, blocOuvert, libelleCourseSuivi, boutsDuTrajet } from "../creation-voucher-calc.mjs";
-import { blocServiceCreation } from "./champs-voucher.mjs";
+import { servicesCreation, saisieDepuisDemande, saisieDuService, parServiceCreation, blocOuvert, libelleCourseSuivi, boutsDuTrajet, trajetIncomplet } from "../creation-voucher-calc.mjs";
+import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { ouvrirCourseLibre } from "./course-libre.mjs";
 
 export function nouveauDossierExcursions() {
@@ -134,6 +134,19 @@ export function nouveauDossierExcursions() {
     if (!lignes.some((l) => l.kind !== "texte")) return (erreur.textContent = tr("Ajoutez au moins un service."));
     if (!ref.value.trim()) return (erreur.textContent = taxi ? tr("Indiquez le numéro de réservation.") : tr("Indiquez le numéro de facture."));
     if (refExiste(ref.value)) return (erreur.textContent = tr("Ce numéro existe déjà. Modifiez-le.")), ref.focus();
+    // Retour au point de départ sans programme (ou durée illisible) : le service se déplie et le champ prend le focus.
+    const incomplet = trajetIncomplet(parServiceCreation(services(), saisies));
+    if (incomplet) {
+      erreur.textContent = tr(ERREURS_TRAJET[incomplet.code]);
+      const cle = incomplet.ligneIds.find((id) => document.getElementById(`s-${id}-${incomplet.champ === "duree_h" ? "duree-h" : "programme-trajet"}`)) || incomplet.ligneIds[0];
+      const champ_ = document.getElementById(`s-${cle}-${incomplet.champ === "duree_h" ? "duree-h" : "programme-trajet"}`);
+      if (champ_) {
+        const bloc = champ_.closest("details");
+        if (bloc) bloc.open = true;
+        champ_.focus();
+      }
+      return;
+    }
     bouton.disabled = true;
     bouton.textContent = tr("Création…");
     try {

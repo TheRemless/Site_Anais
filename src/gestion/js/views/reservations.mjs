@@ -2,6 +2,7 @@
 import { etat, dossiersAnnules, peut, inserer, modifier, modifierProtege, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions, modeTaxi } from "../etat.mjs";
 import { blocZonesPickup } from "./pickup-zones.mjs";
 import { champsVoucher, champsCourts, champsLongs } from "./champs-voucher.mjs";
+import { estRetourDepart, resumeTrajet, libelleSelonTrajet } from "../trajet-calc.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
@@ -180,7 +181,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     { class: "carte-lien statique" },
     h("span", { class: "carte-titre" }, avecDossier ? lienDossier(r.libelle, r.dossier_id) : r.libelle),
     h("span", { class: "carte-droite" }, h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("pickup {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
-    h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes), r.lieu_pickup].filter(Boolean).join(" · ")),
+    h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes), r.lieu_pickup, resumeTrajet(r)].filter(Boolean).join(" · ")),
     r.notes ? h("span", { class: "carte-sous" }, r.notes) : null,
     // Une location commencée et pas encore rendue : ni en retard ni à confirmer, l'avis et la commission attendent le retour.
     enCours ? h("div", { class: "etat-en-cours", role: "status" }, dateFinService(r) === aujourdhui() ? tr("Location en cours, retour aujourd'hui") : tr("Location en cours jusqu'au {date}", { date: formatDate(dateFinService(r)) })) : null,
@@ -227,7 +228,8 @@ export async function dupliquerService(r, apres) {
         libelle: r.libelle, date_service: jour.value || null, heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "",
         personnes: { ...(r.personnes || {}), adultes: attendu.personnes.adultes, enfants: attendu.personnes.enfants },
         statut: "confirme", reference_partenaire: "", montant_vente: attendu.montant_vente ?? r.montant_vente ?? null, notes: "", paye_sur_place: !!r.paye_sur_place,
-        details: copie.ids.length > 1 ? { lignes_ids: copie.ids } : {},
+        // Un retour au point de départ dupliqué reste un retour au point de départ, avec son programme et sa durée.
+        details: { ...(copie.ids.length > 1 ? { lignes_ids: copie.ids } : {}), ...(estRetourDepart(r) ? { type_trajet: r.details.type_trajet, programme_trajet: r.details.programme_trajet || "", ...(r.details.duree_h ? { duree_h: r.details.duree_h } : {}) } : {}) },
       });
       try {
         await modifier("documents", doc.id, { contenu: copie.contenu, updated_at: new Date().toISOString() });
@@ -395,7 +397,7 @@ export function formulaireReservation(r, apres) {
   const avecVoucher = modeExcursions() && !modeTaxi();
   const blocRetour = avecVoucher && type === "location" ? h("div", { class: "grille-form compacte" }, RETOUR.map((c) => CHAMPS[c]())) : null;
   const blocVoucher = modeTaxi()
-    ? h("fieldset", null, h("legend", null, "Booking confirmation"), h("p", { class: "aide" }, tr("Ce qui s'imprime sur la Booking confirmation en plus de la course.")), h("div", { class: "grille-form" }, CHAMPS.drop_off(), CHAMPS.vol(), CHAMPS.bagages(), CHAMPS.sieges()))
+    ? h("fieldset", null, h("legend", null, "Booking confirmation"), h("p", { class: "aide" }, tr("Ce qui s'imprime sur la Booking confirmation en plus de la course.")), h("div", { class: "grille-form" }, CHAMPS.type_trajet(), CHAMPS.drop_off(), CHAMPS.programme_trajet(), CHAMPS.duree_h(), CHAMPS.vol(), CHAMPS.bagages(), CHAMPS.sieges()))
     : avecVoucher && type
     ? h("fieldset", null, h("legend", null, TITRES_VOUCHER[type]), h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(type, { trajet: !!r.trajet_id }), type === "location" ? RETOUR : []).map((c) => CHAMPS[c]())), champsLongs(champsVoucherDe(type, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]()))
     : null;
@@ -416,8 +418,15 @@ export function formulaireReservation(r, apres) {
           if (v === null) erreurChamp(c, tr("Saisissez un nombre."));
           else if (v < 0) erreurChamp(c, tr("Le nombre ne peut pas être négatif."));
         }
+        // Retour au point de départ : le programme est obligatoire, la durée lisible si elle est donnée.
+        if (blocVoucher) cv.verifierTrajet();
         if (focusPremiereErreur(e.target)) return;
         const valeurs = { libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: nb(vente.value), paye_sur_place: estSurPlace(), notes: notes.value.trim(), details: details() };
+        // Course hors catalogue passée en « retour au point de départ » (ou revenue à l'aller simple) : son libellé généré suit, sauf s'il a été réécrit ici.
+        if (valeurs.libelle === (r.libelle || "").trim()) {
+          const suivi = libelleSelonTrajet({ libelle: valeurs.libelle, libre: !r.prestation_id && !r.trajet_id, lieu: valeurs.lieu_pickup, details: valeurs.details });
+          if (suivi) valeurs.libelle = suivi;
+        }
         try {
           // La facture suit la réservation (mode de règlement, date, personnes, annulation) par le chemin commun : total montré, confirmation si elle est partie.
           const modeChange = estSurPlace() !== !!r.paye_sur_place;
@@ -572,7 +581,7 @@ export function vueReservations() {
       .filter((r) => (filtre.periode === "toutes" ? true : filtre.periode === "passees" ? r.date_service && dateFinService(r) < ajd : !r.date_service || dateFinService(r) >= ajd))
       .filter((r) => (!STATUTS_RESERVATION[filtre.statut] ? true : statutReservation(r.statut) === filtre.statut))
       .filter((r) => !filtre.partenaire || r.partenaire_id === filtre.partenaire)
-      .filter((r) => { const c = clientDe(r); const t = sans(`${r.libelle} ${c ? nomClient(c) : ""} ${r.lieu_pickup} ${r.reference_partenaire} ${nomPartenaire(r.partenaire_id)}`); return mots.every((m) => t.includes(m)); })
+      .filter((r) => { const c = clientDe(r); const t = sans(`${r.libelle} ${c ? nomClient(c) : ""} ${r.lieu_pickup} ${(r.details && r.details.programme_trajet) || ""} ${r.reference_partenaire} ${nomPartenaire(r.partenaire_id)}`); return mots.every((m) => t.includes(m)); })
       .sort((a, b) => (filtre.periode === "passees" ? -1 : 1) * ((a.date_service || "9999").localeCompare(b.date_service || "9999") || (a.heure_pickup || "99").localeCompare(b.heure_pickup || "99")));
     corps.replaceChildren();
     if (!rs.length) return corps.append(vide(tr("Aucune réservation ne correspond"), etat.db.reservations.length ? tr("Changez la période, le statut ou le partenaire.") : tr("Les réservations se créent depuis la fiche d'un dossier, à partir des lignes de partenaires du devis.")));

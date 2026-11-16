@@ -30,12 +30,12 @@ test("une ligne adulte et sa ligne enfant font un seul service, avec le modèle 
 
 test("champs à la création : ceux du modèle de voucher pour Secret, ceux de la Booking confirmation pour Taxi", () => {
   assert.deepEqual(champsCreation({ type: "bateau" }), ["heure", "lieu", ...CHAMPS_VOUCHER.bateau]);
-  assert.deepEqual(champsCreation({ type: "transfert" }), ["heure", "lieu", "drop_off", "vol", "bagages", "sieges", "type_transfert", "remarques", "remarques_paiement"]);
+  assert.deepEqual(champsCreation({ type: "transfert" }), ["heure", "lieu", "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "bagages", "sieges", "type_transfert", "remarques", "remarques_paiement"]);
   assert.deepEqual(champsCreation({ type: "billet" }), ["heure", "lieu", "bebes", ...CHAMPS_VOUCHER.billet]);
   assert.deepEqual(champsCreation({ type: null }), ["heure", "lieu", "bebes"], "une option sans voucher garde heure, lieu et bébés, comme la fiche");
   // Taxi : prix par véhicule, les passagers se saisissent ; jamais de champ de Secret (type de tour, frais de parc).
   const taxi = champsCreation({ type: "transfert", personnes: { adultes: 0, enfants: 0 } }, { taxi: true });
-  assert.deepEqual(taxi, ["heure", "lieu", "drop_off", "vol", "adultes", "enfants", "bagages", "sieges"]);
+  assert.deepEqual(taxi, ["heure", "lieu", "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "adultes", "enfants", "bagages", "sieges"]);
   assert.ok(!champsCreation({ type: "transfert", personnes: { adultes: 2, enfants: 0 } }, { taxi: true }).includes("adultes"), "déjà comptés par la ligne");
   for (const c of ["type_tour", "parc", "chambre", "remarques"]) assert.ok(!taxi.includes(c), c);
 });

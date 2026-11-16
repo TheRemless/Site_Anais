@@ -85,14 +85,16 @@ export function lieuxAvecVol(pickup = "", dropoff = "", vol = "") {
   return { pickup: avec(pickup), dropoff };
 }
 
-export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB" }) {
-  ({ pickup, dropoff } = lieuxAvecVol(pickup, dropoff, vol));
+// `retour` : { programme, duree } pour un retour au point de départ (16.11.2026). Le lieu devient « PICK UP AND RETURN », le drop-off laisse
+// la place au programme (« PLAN ») et à la durée (« DURATION », seulement si elle est donnée). Jamais « From X to X ».
+export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB", retour = null }) {
+  ({ pickup, dropoff } = lieuxAvecVol(pickup, retour ? "" : dropoff, vol));
   return [
     { cle: "NAME", valeur: nom },
     { cle: "DATE", valeur: dateBookingTexte(date), date: dateBooking(date) },
-    { cle: "PICK UP LOCATION", valeur: pickup },
+    { cle: retour ? "PICK UP AND RETURN" : "PICK UP LOCATION", valeur: pickup },
     { cle: "PICK UP TIME", valeur: heureBooking(heure) },
-    { cle: "DROP OFF LOCATION", valeur: dropoff },
+    ...(retour ? [{ cle: "PLAN", valeur: retour.programme || "" }, ...(retour.duree ? [{ cle: "DURATION", valeur: retour.duree }] : [])] : [{ cle: "DROP OFF LOCATION", valeur: dropoff }]),
     { cle: "PASSENGERS", valeur: passagersBooking(personnes, bagages, sieges) },
     { cle: "TOTAL PRICE", valeur: prixBooking(montant, devise) },
   ];
@@ -189,6 +191,7 @@ export const ligneCourse = (r, id) => ({ id, kind: "ligne", libelle: r.libelle |
 // ---- Demande collée ----------------------------------------------------------------------------------------------
 // Une demande de transfert privé venue de la page /taxi/ du site (« Transfer request: … », lue par lireSite) appartient à VIP Taxi Lanta.
 // Le minivan partagé et le speedboat, eux aussi des « transferts » pour la lecture, restent à Secret.
-export const demandeDeTaxi = (texte, d) => !!d && d.type === "transfer" && d.mode !== "shared" && d.vehicule !== "speedboat" && /^\s*transfer request:/im.test(String(texte || ""));
+// Le retour au point de départ (« Round trip, back to the pickup place », pages /taxi/ et /taxi/songthaew/, 16.11.2026) aussi.
+export const demandeDeTaxi = (texte, d) => !!d && d.type === "transfer" && d.mode !== "shared" && d.vehicule !== "speedboat" && /^\s*(?:transfer request:|round trip,?\s*back to (?:the )?pick-?up place)/im.test(String(texte || ""));
 // L'entreprise en mode taxi vers laquelle basculer, parmi celles que la personne peut ouvrir (null si aucune, ou si c'est déjà l'active).
 export const entrepriseTaxi = (entites, reglagesDe, activeId) => entites.find((e) => e.id !== activeId && estTaxi(reglagesDe(e.id))) || null;

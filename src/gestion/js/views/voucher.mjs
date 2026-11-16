@@ -6,6 +6,7 @@ import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
 import { typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, personnesTexte, remplirGabarit, TITRES_VOUCHER, pointEmbarquement, consigneCheckin, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, venduParPersonne, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 import { estTaxi } from "../taxi-calc.mjs";
+import { estRetourDepart, dureeAnglais } from "../trajet-calc.mjs";
 import { renderBookingConfirmation } from "./voucher-taxi.mjs";
 
 const TITRES = TITRES_VOUCHER;
@@ -88,6 +89,10 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
   // Les tarifs par zone des taxis de Saladan n'ont pas de départ fixe : Anaïs remplit le pickup et le drop-off.
   const tarifZone = !!p && /saladan/i.test(p.groupe || "") && !(p.libelle || "").includes("→");
   const pickupTransfert = r.lieu_pickup || libelleClient(pickupDepuisLibelle(r, p, trajet)) || (tarifZone ? "" : hotel);
+  // Retour au point de départ (16.11.2026) : « Pickup and return », le programme et la durée à la place du drop-off, jamais « From X to X ».
+  const retourDepart = estRetourDepart(r);
+  const programmeTrajet = retourDepart ? String(dt.programme_trajet || "").trim() : "";
+  const dureeTrajet = retourDepart ? dureeAnglais(dt.duree_h) : "";
   const vol = dt.vol ? [dt.vol] : null; // jamais déduit des notes internes : « Payé 1200 THB » n'est pas un vol
   const avecVol = !!dt.vol || concerneUnVol(r.libelle, dropOff, pickupTransfert, r.notes);
   const bagages = dt.bagages || "";
@@ -103,7 +108,7 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
   const tarifJour = jours && Number(r.montant_vente) > 0 ? Math.round((Number(r.montant_vente) / jours) * 100) / 100 : null;
 
   // VIP Taxi Lanta : la « Booking confirmation » de son modèle, pas les vouchers de Secret.
-  if (estTaxi(regl)) return renderBookingConfirmation({ regl, client, r, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, email, adresse });
+  if (estTaxi(regl)) return renderBookingConfirmation({ regl, client, r, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, email, adresse, retour: retourDepart ? { programme: programmeTrajet, duree: dureeTrajet } : null });
 
   const booking =
     type === "billet"
@@ -111,7 +116,7 @@ export function renderVoucher({ reservation: r, prestation: p, type, index }, co
       : type === "bateau"
       ? [ligne("Tour Name", titrePrestation), ligne("Date", dateTexte(r.date_service, "en")), horaires ? ligne("Tour Hours", horaires) : null, bateauTexte ? ligne("Boat", bateauTexte) : null, bq.quai ? ligne("Departure Pier", bq.quai) : null, ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), nbp(a), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), nbp(en_)), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Tour Type: "), case_(!prive, "Join Tour"), " ", case_(prive, "Private Tour")), ligne("Company / Operator", operateur), ligneSi("Remarks", remarques)]
       : type === "transfert"
-        ? [ligne("Date", dateTexte(r.date_service, "en")), ligne("Pickup Time", r.heure_pickup), ligne("Pickup Location", pickupTransfert), ligne("Drop-off Location", dropOff), avecVol ? ligne("Flight Number", vol ? vol[0] : "") : null, ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), nbp(a), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), nbp(en_), siegesVoucher(dt.sieges), ...cleEnLigne("Luggage", bagages)), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Transfer Type: "), ...[["taxi", "Private Taxi"], ["minivan", "Private Minivan"], ["partage", "Shared Minivan"]].flatMap(([k, l]) => [case_(transfert === k, l), " "])), ligne("Company / Operator", operateur), ligneSi("Remarks", remarques)]
+        ? [ligne("Date", dateTexte(r.date_service, "en")), ligne("Pickup Time", r.heure_pickup), ...(retourDepart ? [ligne("Pickup and return", pickupTransfert), ligne("Plan", programmeTrajet), ligneSi("Duration", dureeTrajet)] : [ligne("Pickup Location", pickupTransfert), ligne("Drop-off Location", dropOff)]), avecVol ? ligne("Flight Number", vol ? vol[0] : "") : null, ligne("Number of Passengers", "", h("span", { class: "v-cle" }, "Adults: "), nbp(a), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), nbp(en_), siegesVoucher(dt.sieges), ...cleEnLigne("Luggage", bagages)), h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, "Transfer Type: "), ...[["taxi", "Private Taxi"], ["minivan", "Private Minivan"], ["partage", "Shared Minivan"]].flatMap(([k, l]) => [case_(transfert === k, l), " "])), ligne("Company / Operator", operateur), ligneSi("Remarks", remarques)]
         : type === "location"
           ? [ligne("Vehicle", titrePrestation), typeVehicule ? ligne("Type / Engine", typeVehicule) : null, ligne("Pickup Date & Time", [dateTexte(r.date_service, "en"), r.heure_pickup].filter(Boolean).join(", ")), ligne("Pickup Location", r.lieu_pickup || hotel), ligne("Return Date & Time", [dateTexte(dt.retour_date, "en"), dt.retour_heure].filter(Boolean).join(", ")), ligne("Return Location", dt.retour_lieu || r.lieu_pickup || hotel), jours ? ligne("Rental Duration", `${jours} ${jours > 1 ? "days" : "day"}`) : null, ligne("Driver's Name", nomClient), ligneSi("Driving Licence", dt.permis), ligneSi("Equipment", dt.equipement), ligne("Company / Operator", operateur), ligneSi("Remarks", remarques)]
           : [ligne("Activity / Tour", titrePrestation), programme ? ligne("Program / Option", programme) : null, ligne("Date & Time", [dateTexte(r.date_service, "en"), dt.heure_service || horaires].filter(Boolean).join(", ")), duree ? ligne("Duration", duree) : null, ligneSi("Pickup Time", r.heure_pickup), ligneSi("Pickup Location", r.lieu_pickup || hotel), ligne("Number of Guests", "", h("span", { class: "v-cle" }, "Adults: "), nbp(a), h("span", { class: "v-espace" }), h("span", { class: "v-cle" }, "Children: "), nbp(en_)), ligne("Company / Operator", operateur), ligneSi("Remarks", remarques)];

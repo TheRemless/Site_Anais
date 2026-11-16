@@ -28,6 +28,8 @@ export function texteFeuillePartage(groupe, date) {
       l.client,
       l.telephone,
       [l.hotel, l.chambre ? `room ${l.chambre}` : ""].filter(Boolean).join(", ") || "pickup TBC",
+      // Retour au point de départ : le programme et la durée, pour que le chauffeur sache ce qui est prévu (16.11.2026).
+      l.trajet,
       personnesTexte(l.personnes, "en"),
     ]
       .filter(Boolean)
