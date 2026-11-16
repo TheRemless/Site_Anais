@@ -1491,3 +1491,98 @@ details > summary { padding-block: 11px; margin: 0; }
 .creation-voucher > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .creation-voucher-resume { margin-left: 8px; font-weight: 400; color: var(--texte-2); }
 .creation-voucher-resume:empty { display: none; }
+
+/* ---- Demandes du site (migration 30) ------------------------------------------------------------------------------- */
+.dsite-liste, .bsite-liste { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
+@media (min-width: 900px) { .dsite-liste { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); } }
+.dsite-carte { padding: 14px 16px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; }
+.dsite-carte.s-confirmee, .dsite-carte.s-refusee, .dsite-carte.s-classee { background: #fbfcfc; }
+.dsite-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+/* La référence WhatsApp se lit de loin : c'est elle qu'Anaïs cherche dans ses conversations. */
+.dsite-ref { margin: 0; display: flex; flex-direction: column; }
+.dsite-ref-libelle { font-size: 0.75rem; font-weight: 600; color: var(--texte-2); }
+.dsite-ref strong { font-size: 1.55rem; line-height: 1.1; font-weight: 800; letter-spacing: 0.02em; font-variant-numeric: lining-nums tabular-nums; color: var(--teal-700); overflow-wrap: anywhere; }
+.dsite-ref.sans strong { font-size: 1rem; letter-spacing: 0; color: var(--texte); }
+.dsite-recue { flex: none; font-size: 0.82rem; color: var(--texte-2); white-space: nowrap; padding-top: 2px; }
+.dsite-produit { margin: 10px 0 2px; font-size: 1.05rem; }
+.dsite-produit span { display: block; font-size: 0.9rem; font-weight: 600; color: var(--texte-2); }
+.dsite-quand { margin: 0; font-weight: 600; }
+.dsite-client, .dsite-detail { margin: 2px 0 0; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
+.dsite-etat { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 10px 0 0; font-size: 0.9rem; }
+.dsite-etat .tag { margin-left: 0; }
+.dsite-statut.s-confirmee { background: var(--teal-100); color: var(--teal-700); }
+.dsite-statut.s-refusee { background: var(--danger-fond); color: var(--danger); }
+.dsite-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.dsite-actions button { min-height: 44px; }
+@media (max-width: 719px) {
+  .dsite-actions .principal { flex: 1 1 100%; }
+  .dsite-actions .secondaire { flex: 1 1 0; }
+}
+.dsite-groupe { margin-bottom: 16px; }
+.dsite-groupe legend { font-weight: 700; padding: 0 4px; }
+.dsite-reponse textarea, .dsite-refus textarea { width: 100%; font: inherit; font-size: 0.95rem; line-height: 1.5; }
+.dsite-reponse .dsite-ref, .dsite-refus .dsite-ref { margin-bottom: 12px; }
+.dsite-chiffres .puces { margin-bottom: 12px; }
+.dsite-tableau { margin-top: 8px; }
+.dsite-tableau table { width: 100%; }
+.dsite-accueil-lien { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; min-height: 52px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--bord-champ); border-radius: 12px; color: inherit; text-decoration: none; }
+.dsite-accueil-lien strong { color: var(--teal-700); letter-spacing: 0.02em; }
+.dsite-accueil-plus { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: var(--teal-700); }
+.dsite-accueil h2 .badge-tag { background: var(--danger); color: #fff; }
+
+/* ---- Bandeau du site : écran de saisie ---------------------------------------------------------------------------- */
+.bsite-carte { padding: 14px 16px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; }
+.bsite-carte.e-termine, .bsite-carte.e-eteint { opacity: 0.75; }
+.bsite-meta { margin: 8px 0 0; font-size: 0.9rem; color: var(--texte-2); }
+.bsite-meta .tag { margin-left: 0; }
+.bsite-etat.e-en_ligne { background: var(--teal-100); color: var(--teal-700); }
+.bsite-modeles { display: grid; gap: 4px; margin-bottom: 12px; }
+.bsite-modele { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 10px 12px; border: 1px solid var(--bord); border-radius: 8px; cursor: pointer; }
+.bsite-modele:has(input:checked) { border-color: var(--teal-600); background: var(--teal-100); }
+.bsite-modele input { margin-top: 3px; flex: none; }
+.bsite-compteur { margin-top: 0; }
+.bsite-compteur.trop { color: var(--danger); font-weight: 700; }
+.bsite-cases { display: flex; flex-wrap: wrap; gap: 0 18px; }
+.bsite-cases.defilant { max-height: 240px; overflow: auto; flex-direction: column; flex-wrap: nowrap; padding-right: 8px; }
+.bsite-anciens { margin-top: 24px; }
+.bsite-anciens summary { min-height: 44px; display: flex; align-items: center; font-weight: 700; cursor: pointer; }
+.bsite-apercu-bloc h3 { font-size: 1rem; margin: 4px 0 10px; }
+.bsite-apercus { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.bsite-apercu { margin: 0; }
+.bsite-apercu figcaption { font-size: 0.8rem; font-weight: 600; color: var(--texte-2); margin-bottom: 4px; }
+.bsite-ecran { max-width: 375px; border: 1px solid var(--bord-fort); border-radius: 10px; overflow: hidden; background: #fff; }
+.bsite-entete { padding: 12px 16px; font-weight: 700; font-size: 0.9rem; }
+.bsite-page { display: grid; gap: 8px; padding: 14px 16px 16px; }
+.bsite-page span { height: 9px; border-radius: 4px; background: #e9e3d8; }
+.bsite-page span:nth-child(2) { width: 82%; }
+.bsite-page span:nth-child(3) { width: 64%; }
+.marque-secret .bsite-entete { background: #0B3B3C; color: #EEF3F1; font-family: "Cormorant Garamond", Georgia, serif; font-size: 1.05rem; }
+.marque-secret .bsite-ecran, .marque-secret .bsite-page { background: #FFFFFF; }
+.marque-taxi .bsite-entete { background: #1B130D; color: #D9AA4E; font-family: "Chonburi", Georgia, serif; font-weight: 400; }
+.marque-taxi .bsite-ecran, .marque-taxi .bsite-page { background: #F8F5EC; }
+.marque-taxi .bsite-page span { background: #DDD3C0; }
+
+/* ---- Bandeau du site : rendu (mêmes classes et couleurs que sur le site, docs/gestion/bandeau-site.md) --------------- */
+.site-notice { --n-bg: #F6EFE4; --n-ink: #14262B; --n-icon: currentColor; --n-rule: #E3DACB; background: var(--n-bg); color: var(--n-ink); border-bottom: 1px solid var(--n-rule); font-family: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif; }
+.site-notice__inner { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 10px 16px; }
+.site-notice__icon { color: var(--n-icon); margin-top: 1px; }
+.site-notice__text { margin: 0; font-size: 15px; line-height: 1.45; font-weight: 600; }
+.site-notice__link { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+.site-notice__close { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; margin: -6px -8px -6px 0; font-size: 20px; line-height: 1; opacity: 0.8; }
+/* Secret Travel & Tour : sable, mer profonde, encre. L'ambre de l'alerte mer est le seul ajout à la palette du site. */
+.marque-secret.site-notice--sea { --n-bg: #F7D58B; --n-ink: #14262B; --n-rule: #E6BC5C; }
+.marque-secret.site-notice--season { --n-bg: #B5CBC6; --n-ink: #0B3B3C; --n-rule: #9FB8B2; }
+.marque-secret.site-notice--new { --n-bg: #0F6B61; --n-ink: #FFFFFF; --n-rule: #0F6B61; }
+.marque-secret.site-notice--urgent { --n-bg: #14262B; --n-ink: #FFFFFF; --n-icon: #F7D58B; --n-rule: #14262B; }
+/* VIP Taxi Lanta, « Laque et or » : papier ivoire, laque noire, l'or en aplat. */
+.marque-taxi.site-notice { font-family: "Bai Jamjuree", system-ui, -apple-system, "Segoe UI", sans-serif; }
+.marque-taxi.site-notice--info { --n-bg: #EFE8DA; --n-ink: #1B130D; --n-rule: #DDD3C0; }
+.marque-taxi.site-notice--sea { --n-bg: #D9AA4E; --n-ink: #1B130D; --n-rule: #B98B31; }
+.marque-taxi.site-notice--season { --n-bg: #7C5A1C; --n-ink: #F3ECDC; --n-rule: #7C5A1C; }
+.marque-taxi.site-notice--new { --n-bg: #FFFDF8; --n-ink: #1B130D; --n-icon: #7C5A1C; --n-rule: #B98B31; }
+.marque-taxi.site-notice--urgent { --n-bg: #1B130D; --n-ink: #FFFDF8; --n-icon: #D9AA4E; --n-rule: #1B130D; }
+/* Dans une fenêtre, les choix courts passent à la ligne au lieu de défiler : tout se voit d'un coup d'œil à 375 px. */
+.dsite-groupe .puces { flex-wrap: wrap; overflow: visible; }
+.bsite-modele input[type="radio"] { width: 20px; height: 20px; min-height: 0; flex: none; margin: 2px 0 0; padding: 0; accent-color: var(--teal-600); }
+.bsite-modele > span { flex: 1 1 auto; min-width: 0; }
+.dsite-accueil-plus svg { transform: rotate(-90deg); }

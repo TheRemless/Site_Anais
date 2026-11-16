@@ -6,6 +6,7 @@ import { sousTitreDossier } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { mesTaches } from "./views/taches.mjs";
 import { retirerALaDeconnexion } from "./rappels.mjs";
+import { aTraiter } from "./demandes-site-calc.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 
 // Chaque écran se charge à sa première visite : le premier affichage n'attend que l'accueil.
@@ -14,6 +15,8 @@ const ROUTES = [
   [/^#\/reservations(?:\?.*)?$/, "reservations", vers(() => import("./views/reservations.mjs"), "vueReservations")],
   [/^#\/messages$/, "messages", vers(() => import("./views/messages.mjs"), "vueMessages")],
   [/^#\/fiduciaire$/, "fiduciaire", vers(() => import("./views/fiduciaire.mjs"), "vueFiduciaire")],
+  [/^#\/demandes(?:\?.*)?$/, "demandes", vers(() => import("./views/demandes-site.mjs"), "vueDemandesSite")],
+  [/^#\/bandeau$/, "bandeau", vers(() => import("./views/bandeau-site.mjs"), "vueBandeauSite")],
   [/^#\/du$/, "du", vers(() => import("./views/du.mjs"), "vueDu")],
   [/^#\/encaisser$/, "encaisser", vers(() => import("./views/encaisser.mjs"), "vueEncaisser")],
   [/^#\/a-verifier$/, "a-verifier", vers(() => import("./views/a-verifier.mjs"), "vueAVerifier")],
@@ -154,13 +157,25 @@ function bandeauDemo() {
   );
 }
 
+// Le site secrettravelandtour.com (migration 30) : demandes reçues et bandeau, pour Secret et Taxi seulement, pour qui voit tous les dossiers.
+// Le badge compte les demandes à traiter : elles arrivent avec une notification, le chiffre reste jusqu'à la réponse.
+const siteVisible = () => modeExcursions() && peut("dossiers.lire") && voitToutActif();
+function voitToutActif() {
+  if (estSuperAdmin()) return true;
+  const m = etat.brut.membres.find((x) => x.user_id === etat.session.id && x.entite_id === etat.entiteId);
+  const r = m && etat.brut.roles.find((x) => x.id === m.role_id);
+  return !!r && r.portee === "toute";
+}
+
 // Écrans ouverts à la personne connectée, groupés comme dans la barre latérale.
 function ecrans() {
   const ajd = aujourdhui();
   const enRetard = mesTaches().filter((t) => t.echeance && t.echeance <= ajd).length;
   const si = (ok, item) => (ok ? [item] : []);
+  const demandes = siteVisible() ? aTraiter(etat.db.demandes_site || []).length : 0;
   return [
     { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
+    { titre: tr("Site"), items: siteVisible() ? [{ href: "#/demandes", libelle: tr("Demandes du site"), cle: "demandes", icone: "messages", badge: demandes, badgeLibelle: tr("{badge} à traiter", { badge: demandes }) }, { href: "#/bandeau", libelle: tr("Bandeau du site"), cle: "bandeau", icone: "alerte" }] : [] },
     { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(peut("fiduciaire.preparer") && modeExcursions(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
       titre: tr("Partenaires"),
@@ -193,7 +208,7 @@ function ecrans() {
 const ongletsMobiles = () => ["tableau", "dossiers", moduleActif("reservations") ? "reservations" : null, "clients"].filter(Boolean);
 const tousEcrans = () => ecrans().flatMap((s) => s.items);
 
-const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": tr("{badge} en retard", { badge: e.badge }) }, e.badge) : null);
+const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": e.badgeLibelle || tr("{badge} en retard", { badge: e.badge }) }, e.badge) : null);
 const sections = (liste, apres) => liste.map((s) => h("div", { class: "menu-section" }, h("p", { class: "menu-section-titre" }, s.titre), h("ul", null, s.items.map((e) => h("li", null, lienEcran(e, apres))))));
 
 async function deconnecter() {
@@ -315,6 +330,7 @@ function ecranDeLEntreprise(cle) {
   if (cle === "reservations" || cle === "messages") return moduleActif(cle);
   if (cle === "catalogue") return moduleActif("catalogue");
   if (cle === "fiduciaire") return modeExcursions();
+  if (cle === "demandes" || cle === "bandeau") return siteVisible();
   return true;
 }
 
@@ -541,8 +557,10 @@ async function afficher() {
     return;
   }
   if (ecranVoucherSeul()) return afficherVoucherSeul();
-  // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change.
-  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}`;
+  // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change, et quand le nombre de demandes du site
+  // à traiter change (une demande arrive à la synchronisation, une autre est confirmée) : le badge suit.
+  const aTraiterSite = siteVisible() ? aTraiter(etat.db.demandes_site || []).length : 0;
+  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}|${aTraiterSite}`;
   const existante = racine.querySelector(".coque");
   if (!existante || existante.dataset.cle !== cle) {
     vider(racine).append(coque());

@@ -116,6 +116,23 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     }
   }
 
+  // Demandes et bandeau du site (migration 30) : les deux tables manquent tant que la migration n'est pas appliquée. On le dit à l'écran
+  // (`site_disponible` faux) au lieu d'échouer : le reste de l'outil se charge comme avant. Les demandes : les 1 000 plus récentes suffisent
+  // (quelques-unes par jour), la base filtre déjà par entreprise et par rôle.
+  async function lireSite() {
+    const lire = async (table, requete) => {
+      const { data, error } = await requete;
+      if (!error) return data || [];
+      if (error.code === "42P01" || error.code === "PGRST205" || new RegExp(`relation "[^"]*${table}" does not exist|Could not find the table`, "i").test(error.message || "")) return null;
+      throw new Error(error.message);
+    };
+    const [demandes, bandeaux] = await Promise.all([
+      lire("demandes_site", sb.from("demandes_site").select("*").order("created_at", { ascending: false }).limit(1000)),
+      lire("bandeaux_site", sb.from("bandeaux_site").select("*").order("created_at", { ascending: false }).limit(200)),
+    ]);
+    return { demandes_site: demandes || [], bandeaux_site: bandeaux || [], site_disponible: demandes !== null && bandeaux !== null };
+  }
+
   return {
     mode: "supabase",
     async session() {
@@ -209,7 +226,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       const tables = ["entites", "profils", "roles", "membres", ...CHARGEES.filter((t) => relire || !CATALOGUE.includes(t))];
       // Toutes les lectures partent ensemble (elles étaient faites l'une après l'autre).
-      const [lues, resumeLignes, taches, reglagesLignes] = await Promise.all([
+      const [lues, resumeLignes, taches, reglagesLignes, site] = await Promise.all([
         Promise.all(tables.map((t) => toutes(t))),
         toutes("dossiers_resume"),
         (() => {
@@ -218,8 +235,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
           return sb.from("taches").select("*").or(`fait.eq.false,fait_le.gte.${depuis}`).order("echeance", { nullsFirst: false }).limit(2000).then(verifie);
         })(),
         toutes("reglages"),
+        lireSite(),
       ]);
       tables.forEach((t, i) => (out[t] = lues[i]));
+      Object.assign(out, site);
       if (!relire) for (const t of CATALOGUE) out[t] = ancien[t];
       else {
         empreinte = nouvelle;
