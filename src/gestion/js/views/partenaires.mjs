@@ -3,7 +3,7 @@ import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPa
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
 import { TYPES_COMMISSION, SUR_PLACE, CHEZ_NOUS, modeParDefaut } from "../operations-calc.mjs";
-import { FAMILLES, nomFamille, libelleUnite, marge, correspond, UNITES, chiffres, commissionsPartenaire, paiementPartenaire } from "../partenaires-calc.mjs";
+import { FAMILLES, surPlacePossible, nomFamille, libelleUnite, marge, correspond, UNITES, chiffres, commissionsPartenaire, paiementPartenaire } from "../partenaires-calc.mjs";
 import { vide, cartes } from "./commun.mjs";
 import { listeTaches } from "./taches.mjs";
 import { tr, N_ } from "../i18n.mjs";
@@ -438,13 +438,32 @@ export function formulairePrestation(x, apres) {
   note.value = d.note || "";
   const surPlace = h("input", { id: "x-place", type: "checkbox", checked: !!x.sur_place });
   const actif = h("input", { id: "x-actif", type: "checkbox", checked: x.actif !== false });
+  // « Sur place » n'existe que pour un frais que le client règle lui-même (droit de parc, entrée) : la prestation devient une note hors total.
+  // Un partenaire que les clients paient directement (mode « sur place ») n'en relève pas : ses services restent des services, marqués payés sur place
+  // (16.11.2026, deux prestations de Mr Palm cochées par erreur sont devenues des notes « 0 THB per adult » sur la facture).
+  const caseSurPlace = taxi ? null : h("label", { class: "case", for: "x-place" }, surPlace, tr("Frais que le client règle lui-même sur place (droit de parc, entrée) : s'ajoute au dossier comme une note, hors total"));
+  const avertSurPlace = h("p", { class: "bandeau-info", role: "status" });
+  const aidePartenaire = h("p", { class: "aide", role: "status" });
+  const majSurPlace = () => {
+    const frais = surPlacePossible(famille.value);
+    if (caseSurPlace) caseSurPlace.hidden = !frais;
+    // Une prestation déjà notée « sur place » qui n'est pas un frais : elle redevient un service normal à l'enregistrement.
+    avertSurPlace.textContent = !taxi && x.sur_place && !frais ? tr("Cette prestation était notée « frais réglé sur place » : en l'enregistrant, elle redevient un service normal, ajouté au dossier avec son prix.") : "";
+    avertSurPlace.hidden = !avertSurPlace.textContent;
+    const p = partenaireDe(partenaire.value || null);
+    aidePartenaire.textContent = !taxi && p && modeParDefaut(p) === SUR_PLACE ? tr("Les clients de {partenaire} le paient directement : ses services s'ajoutent normalement au dossier, marqués payés sur place.", { partenaire: p.nom }) : "";
+    aidePartenaire.hidden = !aidePartenaire.textContent;
+  };
+  famille.addEventListener("change", majSurPlace);
+  partenaire.addEventListener("change", majSurPlace);
+  majSurPlace();
   return h(
     "form",
     {
       class: "modal-corps",
       onsubmit: async (e) => {
         e.preventDefault();
-        const valeurs = { partenaire_id: partenaire.value || null, famille: famille.value, groupe: groupe.value.trim(), libelle: libelle.value.trim(), libelle_en: libelleEn.value.trim(), prix_vente: num(prixVente.value), unite: unite.value, sur_place: surPlace.checked, actif: actif.checked, details: { ...d, horaires: horaires.value.trim(), capacite: capacite.value.trim(), inclus: inclus.value.trim(), conditions: conditions.value.trim(), note: note.value.trim() } };
+        const valeurs = { partenaire_id: partenaire.value || null, famille: famille.value, groupe: groupe.value.trim(), libelle: libelle.value.trim(), libelle_en: libelleEn.value.trim(), prix_vente: num(prixVente.value), unite: unite.value, sur_place: surPlacePossible(famille.value) && surPlace.checked, actif: actif.checked, details: { ...d, horaires: horaires.value.trim(), capacite: capacite.value.trim(), inclus: inclus.value.trim(), conditions: conditions.value.trim(), note: note.value.trim() } };
         try {
           const res = x.id ? await modifier("prestations", x.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("prestations", { ...valeurs, ordre: Math.max(0, ...etat.db.prestations.map((p) => p.ordre || 0)) + 1 });
           if (nets && peut("partenaires.ecrire") && (net.value !== "" || netEnfant.value !== "" || n)) await enregistrerLie("prestations_nets", "prestation_id", res.id, { net: num(net.value), net_enfant: num(netEnfant.value), note: n ? n.note || "" : "" });
@@ -456,6 +475,7 @@ export function formulairePrestation(x, apres) {
       },
     },
     h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champ(tr("Famille"), famille), champ(tr("Groupe"), [groupe, groupes])),
+    aidePartenaire,
     champ(tr("Libellé"), libelle),
     champ(tr("Libellé en anglais"), libelleEn),
     h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente"), prixVente, tr("Laissez vide quand le prix se négocie à chaque client.")), champ(tr("Unité"), unite), nets ? champ(tr("Prix net"), net, tr("Ce que le partenaire facture.")) : null, nets ? champ(tr("Net enfant"), netEnfant) : null),
@@ -463,8 +483,9 @@ export function formulairePrestation(x, apres) {
     champ(tr("Inclus"), inclus),
     champ(tr("Conditions"), conditions),
     champ(tr("Remarque interne"), note),
-    // Taxi : pas de frais de parc. La case masquée garde sa valeur.
-    taxi ? null : h("label", { class: "case", for: "x-place" }, surPlace, modeExcursions() ? tr("À payer sur place par le client (frais de parc), hors total de la facture") : tr("À payer sur place par le client (frais de parc), hors total du devis")),
+    // Taxi : pas de frais de parc. La case n'apparaît que pour la famille « Frais de parc ».
+    caseSurPlace,
+    avertSurPlace,
     h("label", { class: "case", for: "x-actif" }, actif, taxi ? tr("Proposé dans les vouchers et les listes") : modeExcursions() ? tr("Proposé dans les factures, les vouchers et les listes") : tr("Proposé dans les devis et les listes")),
     h("div", { class: "actions" }, x.id && peut("partenaires.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(tr("Supprimer « {libelle} » ? Les devis déjà créés ne changent pas.", { libelle: x.libelle }), tr("Supprimer"), true)) { await supprimer("prestations", x.id); toast(tr("Prestation supprimée.")); apres(null); } } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );

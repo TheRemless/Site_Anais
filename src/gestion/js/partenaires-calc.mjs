@@ -10,6 +10,8 @@ export const FAMILLES = [
   ["frais", N_("Frais de parc")],
   ["autre", N_("Autres")],
 ];
+// « Réglé sur place par le client » (note hors total) n'a de sens que pour un frais : droit de parc, entrée (16.11.2026).
+export const surPlacePossible = (famille) => famille === "frais";
 export const nomFamille = (code) => {
   const f = FAMILLES.find(([c]) => c === code);
   return f ? tr(f[1]) : code;
@@ -276,13 +278,19 @@ export function libelleClient(libelle) {
 const nouvelId = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 const texteMontant = (n, devise) => `${Number(n).toLocaleString("fr-CH").replace(/ | |,/g, "'")} ${devise}`;
 
+// Note « à régler sur place » d'un frais que le client paie lui-même (droit de parc, entrée). Le montant n'est écrit que s'il est connu, avec l'unité
+// du tarif (par adulte, par personne, par véhicule…) ; le prix enfant (`details.enfant`) ne s'ajoute qu'à un tarif par adulte ou par personne.
+// Sans prix : « à régler sur place », sans montant (16.11.2026 : une prestation sans prix sortait « 0 THB per adult »).
+const montantConnu = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) && Number(v) > 0;
 export function noteSurPlace(x, langue = "", devise = "THB") {
   const d = x.details || {};
   const en = langue === "en";
   const lib = en ? x.libelle_en || x.libelle : x.libelle;
-  const enfant = d.enfant !== undefined && d.enfant !== null && d.enfant !== "";
-  if (en) return `To be paid on site in cash: ${lib}, ${texteMontant(x.prix_vente, devise)} per adult${enfant ? ` and ${texteMontant(d.enfant, devise)} per child` : ""}. Never included by the operators.`;
-  return `À régler sur place, en espèces : ${lib}, ${texteMontant(x.prix_vente, devise)} par adulte${enfant ? ` et ${texteMontant(d.enfant, devise)} par enfant` : ""}. Jamais inclus par les prestataires.`;
+  const unite = libelleUnite(x.unite || "", en);
+  const prix = montantConnu(x.prix_vente) ? `${texteMontant(x.prix_vente, devise)}${unite ? ` ${unite}` : ""}` : "";
+  const enfant = prix && ["ad", "pp"].includes(x.unite) && montantConnu(d.enfant) ? `${en ? " and" : " et"} ${texteMontant(d.enfant, devise)} ${libelleUnite("ch", en)}` : "";
+  if (en) return `To be paid on site in cash: ${lib}${prix ? `, ${prix}${enfant}` : ""}. Never included by the operators.`;
+  return `À régler sur place, en espèces : ${lib}${prix ? `, ${prix}${enfant}` : ""}. Jamais inclus par les prestataires.`;
 }
 
 export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1, devise = "THB", uid = nouvelId } = {}) {

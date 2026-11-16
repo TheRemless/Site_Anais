@@ -1,22 +1,31 @@
 // La facture suit la réservation : un seul chemin pour la date, les personnes, le mode de règlement et l'annulation.
 // Le formulaire de réservation, « Changer le jour » du prestataire, l'annulation par le sélecteur et l'alignement sur la facture passent tous par ici :
 // le nouveau total est montré avant d'enregistrer, une facture déjà envoyée demande confirmation, et le prestataire peut être prévenu.
-import { etat, chargerDossier, peut, reglages, nomPartenaire, modifier, inserer, modeExcursions, modeTaxi } from "../etat.mjs";
+import { etat, chargerDossier, peut, reglages, nomPartenaire, modifier, inserer, modeExcursions, modeTaxi, netPrestation } from "../etat.mjs";
 import { contenuCourse, ligneCourse } from "../taxi-calc.mjs";
 import { uid, CONTENU_DEFAUT } from "../defauts.mjs";
 import { h, modal, confirmer, toast } from "../ui.mjs";
 import { formatMontant, formatDate, totaux } from "../calc.mjs";
-import { contenuAvecSurPlace, contenuAvecReservation, contenuSansReservation, attenduDepuisFacture, ecartReservation, personnesTexte, datesDepuisReservations } from "../operations-calc.mjs";
+import { contenuAvecSurPlace, contenuAvecReservation, contenuAvecService, contenuSansReservation, attenduDepuisFacture, ecartReservation, personnesTexte, datesDepuisReservations } from "../operations-calc.mjs";
 import { tr } from "../i18n.mjs";
 
 export const lieeFacture = (r) => !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
 
 // Texte d'un écart entre la réservation et la facture : « Date : 12 déc. sur la réservation, 14 déc. sur la facture ».
 export function texteEcart(c, devise) {
-  const v = (x) => (c.cle === "date_service" ? (x ? formatDate(x) : tr("à fixer")) : c.cle === "personnes" ? personnesTexte(x) || "0" : c.cle === "paye_sur_place" ? (x ? tr("sur place") : tr("chez nous")) : formatMontant(x, devise));
-  const nom = c.cle === "date_service" ? tr("Date") : c.cle === "personnes" ? tr("Personnes") : c.cle === "paye_sur_place" ? tr("Paiement") : tr("Montant vendu");
+  const v = (x) => (c.cle === "date_service" ? (x ? formatDate(x) : tr("à fixer")) : c.cle === "personnes" ? personnesTexte(x) || "0" : c.cle === "paye_sur_place" ? (x ? tr("sur place") : tr("chez nous")) : c.cle === "libelle" ? `« ${x} »` : c.cle === "partenaire_id" ? (x ? nomPartenaire(x) : tr("sans partenaire")) : formatMontant(x, devise));
+  const nom = c.cle === "date_service" ? tr("Date") : c.cle === "personnes" ? tr("Personnes") : c.cle === "paye_sur_place" ? tr("Paiement") : c.cle === "libelle" ? tr("Prestation") : c.cle === "partenaire_id" ? tr("Partenaire") : tr("Montant vendu");
   return tr("{nom} : {reservation} sur la réservation, {document} sur la facture", { nom, reservation: v(c.reservation), document: v(c.document) });
 }
+
+// Ce qui suit sur la facture, en mots : « le libellé, le partenaire et le prix ».
+const NOMS_SERVICE = { libelle: () => tr("le libellé"), partenaire_id: () => tr("le partenaire"), prestation_id: () => tr("le tarif"), montant_vente: () => tr("le prix") };
+const listeService = (cles) => {
+  const noms = [...new Set(cles.map((k) => (k === "trajet_id" ? "prestation_id" : k)))].filter((k) => NOMS_SERVICE[k]).map((k) => NOMS_SERVICE[k]());
+  return noms.length > 1 ? tr("{debut} et {fin}", { debut: noms.slice(0, -1).join(", "), fin: noms[noms.length - 1] }) : noms[0] || "";
+};
+// Les options de contenuAvecService tirées de la base en mémoire.
+const optionsService = (personnes) => ({ prestationDe: (id) => etat.db.prestations.find((p) => p.id === id) || null, netDe: (p) => { const n = netPrestation(p); return n ? n.net : undefined; }, personnes, nomPartenaire });
 
 // Les documents du dossier (devis, factures) avec leur contenu une fois ce service retiré. Vide quand le service n'est sur aucun document.
 export function documentsSansService(documents, r) {
@@ -28,16 +37,18 @@ export function documentsSansService(documents, r) {
 //   `mode` : { surPlace } quand le mode de règlement change ; `retirer` : le service quitte la facture (annulation) ;
 //   `dejaConfirme` : la personne vient de voir le nouveau total (question d'annulation), inutile de le redemander ;
 //   `montantSuit` : le montant vendu de la réservation suit la facture tant qu'on ne l'a pas saisi soi-même.
+//   `service` : { libelle, partenaire_id, prestation_id, trajet_id, montant_vente }, ce qui a changé dans la réservation et que les lignes suivent (16.11.2026).
 // Renvoie null quand la personne renonce (ou ne peut pas), sinon { changements, ecartRestant, montantVente } : à l'appelant d'enregistrer les documents.
-export async function suivreFacture(r, valeurs, { avant, apres, mode = null, retirer = false, montantSuit = false, dejaConfirme = false }) {
+export async function suivreFacture(r, valeurs, { avant, apres, mode = null, retirer = false, montantSuit = false, dejaConfirme = false, service = {} }) {
   const resultat = { changements: [], ecartRestant: null, montantVente: null };
-  if (modeTaxi()) return suivreCourseTaxi(r, valeurs, retirer, resultat);
+  if (modeTaxi()) return suivreCourseTaxi(r, valeurs, retirer, resultat, service);
   const dateChangee = (apres.date_service || null) !== (avant.date_service || null);
   const pa = avant.personnes || {};
   const pb = apres.personnes || {};
   const personnesChangees = (Number(pb.adultes) || 0) !== (Number(pa.adultes) || 0) || (Number(pb.enfants) || 0) !== (Number(pa.enfants) || 0);
   const modeChange = !!mode;
-  if (!(lieeFacture(r) && r.id && (retirer || modeChange || dateChangee || personnesChangees))) return resultat;
+  const clesService = Object.keys(service || {}).filter((k) => service[k] !== undefined);
+  if (!(lieeFacture(r) && r.id && (retirer || modeChange || dateChangee || personnesChangees || clesService.length))) return resultat;
   await chargerDossier(r.dossier_id);
   const documents = etat.db.documents.filter((x) => x.dossier_id === r.dossier_id);
   if (retirer) resultat.changements = documentsSansService(documents, r).filter((x) => x.doc.type === "facture" || x.doc.type === "facture_locale");
@@ -46,6 +57,7 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
       let suite = doc.contenu;
       if (modeChange) suite = contenuAvecSurPlace(suite, r, mode.surPlace) || suite;
       if (dateChangee || personnesChangees) suite = contenuAvecReservation(suite, r, avant, apres).contenu || suite;
+      if (clesService.length) suite = contenuAvecService(suite, r, service, optionsService(apres.personnes)).contenu || suite;
       if (suite !== doc.contenu) resultat.changements.push({ doc, suite });
     }
   // Sans le droit de modifier les factures : le mode et l'annulation ne se font pas à moitié, mais la date et les personnes s'enregistrent et l'écart reste signalé.
@@ -66,6 +78,12 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
     else if (total0 !== total1) phrases.push(tr("La facture suit cette modification, et son total passe de {avant} à {apres}.", { avant: total0, apres: total1 }));
     else phrases.push(tr("La facture suit cette modification."));
     if (modeChange && (dateChangee || personnesChangees)) phrases.push(tr("La date et les personnes de ce service y sont aussi mises à jour."));
+    if (clesService.length && !retirer) {
+      // Seulement ce que la facture a vraiment pris : un prix réparti sur plusieurs lignes reste à corriger, il est signalé après l'enregistrement.
+      const restants = new Set(((ecartReservation({ ...r, ...valeurs }, { contenu: principale.suite }) || {}).champs || []).map((c) => c.cle));
+      const quoi = listeService(clesService.filter((k) => !restants.has(k)));
+      if (quoi) phrases.push(tr("Sur la facture, ce service prend aussi {quoi} de la réservation.", { quoi }));
+    }
     const phrase = phrases.join(" ");
     // Le montant vendu suit la facture tant qu'on ne l'a pas saisi soi-même.
     const attendu = attenduDepuisFacture({ ...r, ...valeurs }, { contenu: principale.suite });
@@ -79,20 +97,25 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
   const refDoc = principale ? { contenu: principale.suite } : documents.find((x) => x.type !== "devis");
   const ecart = !retirer && refDoc ? ecartReservation({ ...r, ...valeurs }, refDoc) : null;
   const deviseEcart = (refDoc && refDoc.contenu.devise) || reglages().devise;
-  resultat.ecartRestant = ecart && ecart.champs.length ? ecart.champs.filter((c) => c.cle === "date_service" || c.cle === "personnes").map((c) => texteEcart(c, deviseEcart)) : null;
+  // Seulement ce que cette modification devait faire suivre (date, personnes, et ce qui a changé dans le service).
+  const suivis = new Set(["date_service", "personnes", ...clesService]);
+  resultat.ecartRestant = ecart && ecart.champs.length ? ecart.champs.filter((c) => suivis.has(c.cle)).map((c) => texteEcart(c, deviseEcart)) : null;
   if (factureNonSuivie) toast(tr("La facture n'a pas suivi : votre rôle ne permet pas de la modifier."), true);
   return resultat;
 }
 
-// Taxi : pas de facture montrée, le prix interne suit la course en silence (date, prix, paiement au chauffeur, annulation).
-async function suivreCourseTaxi(r, valeurs, retirer, resultat) {
+// Taxi : pas de facture montrée, le prix interne suit la course en silence (date, prix, paiement au chauffeur, annulation), ainsi que le libellé,
+// le chauffeur et le tarif (le prix, lui, est déjà suivi par contenuCourse).
+async function suivreCourseTaxi(r, valeurs, retirer, resultat, service = {}) {
   if (!lieeFacture(r) || !r.id) return resultat;
   await chargerDossier(r.dossier_id);
   const documents = etat.db.documents.filter((x) => x.dossier_id === r.dossier_id && x.type === "facture");
+  const { montant_vente, ...sansPrix } = service || {};
   if (retirer) resultat.changements = documentsSansService(documents, r);
   else for (const doc of documents) {
-    const suite = contenuCourse(doc.contenu, { ...r, ...valeurs });
-    if (suite) resultat.changements.push({ doc, suite });
+    let suite = contenuCourse(doc.contenu, { ...r, ...valeurs }) || doc.contenu;
+    if (Object.keys(sansPrix).length) suite = contenuAvecService(suite, r, sansPrix, optionsService(valeurs.personnes)).contenu || suite;
+    if (suite !== doc.contenu) resultat.changements.push({ doc, suite });
   }
   return resultat;
 }
