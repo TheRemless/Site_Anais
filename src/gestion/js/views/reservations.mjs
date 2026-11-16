@@ -334,15 +334,18 @@ export function formulaireReservation(r, apres) {
   const aideTarif = h("p", { class: "aide", role: "status" });
   let libelleSaisi = false;
   let venteSaisie = false;
+  // Le tarif ne change que si on touche au tarif ou au partenaire ici : un tarif supprimé du catalogue, ou absent de la liste, reste attaché
+  // quand on ne modifie que l'heure ou le lieu.
+  let tarifTouche = false;
   libelle.addEventListener("input", () => (libelleSaisi = true));
   vente.addEventListener("input", () => (venteSaisie = true));
   const remplirTarifs = () => {
     const pid = partenaire.value || null;
-    const avant = tarif.value || valeurTarifInitiale;
+    const avant = tarif.options.length ? tarif.value : valeurTarifInitiale;
     const options = [h("option", { value: "" }, tr("Hors catalogue"))];
     if (trajetActuel && (trajetActuel.partenaire_id || null) === pid) options.push(h("option", { value: `t:${trajetActuel.id}` }, tr("Trajet : {de} → {vers}, {depart}", { de: trajetActuel.de, vers: trajetActuel.vers, depart: trajetActuel.depart || "" })));
     // Les frais réglés sur place par le client ne sont pas des services : ils restent des notes de la facture.
-    const liste = etat.db.prestations.filter((x) => !x.sur_place && (x.partenaire_id || null) === pid && (x.actif !== false || x.id === r.prestation_id)).sort((a, b) => a.libelle.localeCompare(b.libelle));
+    const liste = etat.db.prestations.filter((x) => (x.partenaire_id || null) === pid && ((!x.sur_place && x.actif !== false) || x.id === r.prestation_id)).sort((a, b) => a.libelle.localeCompare(b.libelle));
     for (const x of liste) options.push(h("option", { value: `p:${x.id}` }, x.prix_vente === null || x.prix_vente === undefined ? x.libelle : `${x.libelle} · ${prix(x.prix_vente)}${x.unite ? ` ${libelleUnite(x.unite)}` : ""}`));
     tarif.replaceChildren(...options);
     tarif.value = options.some((o) => o.value === avant) ? avant : "";
@@ -358,10 +361,13 @@ export function formulaireReservation(r, apres) {
     aideTarif.hidden = !aideTarif.textContent;
   };
   tarif.addEventListener("change", () => {
+    tarifTouche = true;
     const choisi = tarif.value.startsWith("p:") ? etat.db.prestations.find((x) => x.id === tarif.value.slice(2)) : null;
     if (choisi) {
       if (!libelleSaisi) libelle.value = nomTarif(choisi);
-      if (!venteSaisie && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round(Number(choisi.prix_vente) * quantiteParDefaut(choisi.unite, { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0 }) * 100) / 100);
+      // Une location « par jour » se compte en jours, pas en personnes.
+      const quantite = choisi.unite === "day" ? Math.max(1, Number((r.details || {}).jours) || 1) : quantiteParDefaut(choisi.unite, { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0 });
+      if (!venteSaisie && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round(Number(choisi.prix_vente) * quantite * 100) / 100);
       proposerCommission();
     }
     majAideTarif();
@@ -401,6 +407,7 @@ export function formulaireReservation(r, apres) {
     // Le service prend le mode habituel de son partenaire, aussi quand on change le partenaire d'une réservation existante (16.11.2026) :
     // un autre prestataire se paie peut-être autrement. La puce reste modifiable.
     surPlace.definir(modeParDefaut(partenaireDe(partenaire.value || null)));
+    tarifTouche = true;
     remplirTarifs();
     majAideTarif();
     majCommission();
@@ -477,7 +484,7 @@ export function formulaireReservation(r, apres) {
         if (focusPremiereErreur(e.target)) return;
         const tarifPrestation = tarif.value.startsWith("p:") ? tarif.value.slice(2) : null;
         const tarifTrajet = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
-        const tarifChange = (tarifPrestation || null) !== (r.prestation_id || null) || (tarifTrajet || null) !== (r.trajet_id || null);
+        const tarifChange = tarifTouche && ((tarifPrestation || null) !== (r.prestation_id || null) || (tarifTrajet || null) !== (r.trajet_id || null));
         const valeurs = { ...(tarifChange ? { prestation_id: tarifPrestation, trajet_id: tarifTrajet } : {}), libelle: libelle.value.trim(), partenaire_id: partenaire.value || null, date_service: date.value || null, heure_pickup: heure.value, lieu_pickup: lieu.value.trim(), personnes: { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0, bebes: nb(bebes.value) || 0 }, statut: statut.value, reference_partenaire: reference.value.trim(), montant_vente: nb(vente.value), paye_sur_place: estSurPlace(), notes: notes.value.trim(), details: details() };
         // Course hors catalogue passée en « retour au point de départ » (ou revenue à l'aller simple) : son libellé généré suit, sauf s'il a été réécrit ici.
         if (valeurs.libelle === (r.libelle || "").trim()) {

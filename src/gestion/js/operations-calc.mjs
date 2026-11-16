@@ -910,7 +910,9 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
   if (cible.libelle !== undefined) {
     const ancien = nomSansEnfant(premiere);
     const nouveau = String(cible.libelle || "").trim();
-    if (nouveau && nouveau !== ancien) {
+    // Une ligne sans nom (ancienne) : le nouveau nom va sur la ligne principale, sans rien coller devant un autre texte.
+    if (nouveau && !ancien) nouvelles.get(premiere)[premiere.titre !== undefined ? "titre" : "libelle"] = nouveau;
+    else if (nouveau && nouveau !== ancien) {
       for (const l of cibles) {
         const n = nouvelles.get(l);
         let fait = false;

@@ -137,7 +137,7 @@ test("écart réservation et facture : le libellé et le partenaire sont compar�
 test("la fiche de réservation fait suivre la facture : tarif, partenaire, prix, et mode du nouveau partenaire", () => {
   const vue = lire("views/reservations.mjs");
   assert.match(vue, /montantSuit: vente\.value === venteInitiale, service \}\)/, "le formulaire passe ce qui a changé");
-  assert.match(vue, /surPlace\.definir\(modeParDefaut\(partenaireDe\(partenaire\.value \|\| null\)\)\);\n\s+remplirTarifs\(\);/, "changer de partenaire reprend son mode et ses tarifs");
+  assert.match(vue, /surPlace\.definir\(modeParDefaut\(partenaireDe\(partenaire\.value \|\| null\)\)\);\n\s+tarifTouche = true;\n\s+remplirTarifs\(\);/, "changer de partenaire reprend son mode et ses tarifs");
   assert.match(vue, /peut\("documents\.ecrire"\) && e\.champs\.length \? h\("button"/, "« Mettre la facture comme la réservation » pour tout écart");
   const suivi = lire("views/suivi-facture.mjs");
   assert.match(suivi, /principale\.doc\.envoye_le && !dejaConfirme/, "une facture envoyée demande toujours confirmation");
@@ -191,4 +191,21 @@ test("écart réservation et facture : une ligne ancienne sans partenaire (clé 
   assert.equal(ecartReservation(resa, doc), null);
   // Une ligne « sans partenaire » explicite (null) est comparée.
   assert.deepEqual(ecartReservation(resa, { contenu: { lignes: [{ ...sansCle, partenaire_id: null }] } }).champs.map((c) => c.cle), ["partenaire_id"]);
+});
+
+test("revue : le tarif ne se détache pas sur une modification sans rapport, un nom vide ne se colle pas devant le texte", () => {
+  const vue = lire("views/reservations.mjs");
+  assert.match(vue, /const tarifChange = tarifTouche && \(/, "seul un geste sur le tarif ou le partenaire change le tarif");
+  assert.match(vue, /x\.id === r\.prestation_id\)\)/, "le tarif actuel reste dans la liste, même archivé ou coché sur place");
+  assert.match(vue, /choisi\.unite === "day" \? Math\.max\(1, Number\(\(r\.details \|\| \{\}\)\.jours\) \|\| 1\)/, "une location par jour compte ses jours");
+  const ancienne = { id: "L", kind: "ligne", libelle: "", unite: 500, qte: 1, prestation_id: "p", partenaire_id: "x" };
+  const { contenu } = contenuAvecService({ lignes: [ancienne] }, { ligne_id: "L", details: {} }, { libelle: "Taxi Lanta" }, {});
+  assert.equal(contenu.lignes[0].libelle, "Taxi Lanta");
+  // Le document de référence est la facture, même quand le devis vient après dans la liste.
+  const db = {
+    dossiers: [{ id: "d", ref: "R", responsable_id: "u" }],
+    documents: [{ id: "f", dossier_id: "d", type: "facture", contenu: { lignes: [structuredClone(ligneVip)] } }, { id: "v", dossier_id: "d", type: "devis", contenu: { lignes: [{ ...structuredClone(ligneVip), unite: 9999 }] } }],
+    reservations: [{ ...resa, dossier_id: "d" }],
+  };
+  assert.equal(aVerifier(db, { droits: { dossiers: true } }).some((c) => c.cle === "factures_differentes_reservation"), false);
 });

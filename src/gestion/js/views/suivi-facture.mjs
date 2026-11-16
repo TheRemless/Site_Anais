@@ -81,6 +81,9 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
     if (clesService.length && !retirer) {
       // Seulement ce que la facture a vraiment pris : un prix réparti sur plusieurs lignes reste à corriger, il est signalé après l'enregistrement.
       const restants = new Set(((ecartReservation({ ...r, ...valeurs }, { contenu: principale.suite }) || {}).champs || []).map((c) => c.cle));
+      // Le tarif n'est pas un écart affiché : il est « suivi » seulement si la ligne porte bien le tarif demandé.
+      const apres = attenduDepuisFacture(r, { contenu: principale.suite });
+      if (apres && !apres.retiree && ((service.prestation_id !== undefined && apres.prestation_id !== (service.prestation_id || null)) || (service.trajet_id !== undefined && apres.trajet_id !== (service.trajet_id || null)))) restants.add("prestation_id");
       const quoi = listeService(clesService.filter((k) => !restants.has(k)));
       if (quoi) phrases.push(tr("Sur la facture, ce service prend aussi {quoi} de la réservation.", { quoi }));
     }

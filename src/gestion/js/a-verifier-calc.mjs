@@ -120,10 +120,15 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
   if (!taxi && documents.length) {
     const NOM_CHAMP = { libelle: tr("libellé"), partenaire_id: tr("partenaire"), montant_vente: tr("montant"), paye_sur_place: tr("paiement") };
     const ecarts = [];
+    // Le document de référence de chaque dossier, calculé une fois : la facture, sinon le devis.
+    const reference = new Map();
+    for (const x of documents) {
+      const deja = reference.get(x.dossier_id);
+      if (x.type === "facture" ? !deja || deja.type !== "facture" : x.type === "devis" && !deja) reference.set(x.dossier_id, x);
+    }
     for (const r of db.reservations || []) {
       if (r.statut === "annule" || annules.has(r.dossier_id) || !dossiers.has(r.dossier_id)) continue;
-      const docs = documents.filter((x) => x.dossier_id === r.dossier_id);
-      const doc = docs.find((x) => x.type === "facture") || docs.find((x) => x.type === "devis");
+      const doc = reference.get(r.dossier_id);
       const e = doc ? ecartReservation(r, doc) : null;
       const champs = e && !e.retiree ? e.champs.filter((c) => NOM_CHAMP[c.cle]) : [];
       if (champs.length) ecarts.push({ id: r.id, lien: `#/dossier/${r.dossier_id}`, texte: `${dossiers.get(r.dossier_id).ref || ""} · ${r.libelle || ""}`, detail: tr("Différent sur la facture : {champs}", { champs: champs.map((c) => NOM_CHAMP[c.cle]).join(", ") }) });
