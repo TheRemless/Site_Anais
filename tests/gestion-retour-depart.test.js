@@ -270,6 +270,32 @@ test("message du site : « not sure », ligne absente, ligne plus bas et repli s
   assert.deepEqual([sortie.type, sortie.retourDepart], ["tour", undefined]);
 });
 
+// Format envoyé par le site (session du site, 16.11.2026 ; figé dans tests/round-trip.test.js du dépôt Secrettravelandtour).
+const HUB = `Round trip, back to the pickup place
+Pickup: Lanta Sand Resort
+Plan: Old Town, then dinner at a restaurant in Saladan
+Time needed: about 4 hours
+Date: Tue 17 Nov 2026
+Pickup time: 17:00
+Guests: 2 adults, 1 child (age 7)
+Child seats: 1
+Name: Anna`;
+
+test("message du site tel qu'il part : hub /taxi/, songthaew, une heure, « not sure », pickup à l'aéroport", () => {
+  const { d, services } = lire(HUB);
+  assert.deepEqual([d.type, d.pickup, d.dropoff, d.date, d.heure, d.adultes, d.enfants, d.sieges, d.bagages, d.nom], ["transfer", "Lanta Sand Resort", "", "2026-11-17", "17:00", 2, 1, 1, 0, "Anna"]);
+  assert.deepEqual(d.retourDepart, { programme: "Old Town, then dinner at a restaurant in Saladan", duree: 4 });
+  assert.deepEqual(services[0].offres, []);
+  assert.equal(demandeDeTaxi(HUB, d), true);
+  const songthaew = lire(HUB.replace("Time needed: about 4 hours\n", "Time needed: about 4 hours\nVehicle: songthaew\n")).d;
+  assert.deepEqual([songthaew.vehiculeNom, songthaew.retourDepart.duree], ["songthaew", 4]);
+  assert.equal(lire(HUB.replace("about 4 hours", "about 1 hour")).d.retourDepart.duree, 1);
+  assert.equal(lire(HUB.replace("about 4 hours", "about 12 hours")).d.retourDepart.duree, 12);
+  assert.equal(lire(HUB.replace("about 4 hours", "not sure")).d.retourDepart.duree, null);
+  const aeroport = lire(HUB.replace("Pickup: Lanta Sand Resort", "Pickup: Krabi Airport (KBV)").replace("Pickup time: 17:00", "Pickup time: 17:00 (landing)\nFlight or ferry: FD3217")).d;
+  assert.deepEqual([aeroport.pickup, aeroport.heure, aeroport.vol, aeroport.dropoff], ["Krabi Airport (KBV)", "17:00", "FD3217", ""]);
+});
+
 test("message libre : un retour au point de départ, avec son programme, sa durée et son lieu de pickup", () => {
   const a = lire("Hi, can you take us from Lanta Sand Resort to Old Town and back on 20 November? 2 adults. Thanks, Marc");
   assert.equal(a.services.length, 1);
