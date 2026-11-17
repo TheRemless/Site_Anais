@@ -36,8 +36,9 @@ export function commissionDossier(reservations, netDe) {
 }
 
 // Un voucher est parti quand il a été envoyé au client (même règle que etatEnvoisVouchers) : l'envoi au prestataire n'est plus suivi.
+// Un voucher modifié depuis son envoi (`x.envoi.modifie`, voir vouchersDuDossier) est à renvoyer : c'est de nouveau l'étape suivante.
 const envoye = (r, cle) => !!(r.details && r.details.envois && r.details.envois[cle]);
-const voucherAEnvoyer = (x) => !envoye(x.reservation, "client");
+const voucherAEnvoyer = (x) => !envoye(x.reservation, "client") || !!(x.envoi && x.envoi.modifie);
 
 // La prochaine chose à faire, une seule, dans l'ordre où elle se présente.
 //   ZTP : envoyer le document pas encore envoyé, noter l'acceptation du devis, créer la facture dès l'acompte reçu, enregistrer un paiement.

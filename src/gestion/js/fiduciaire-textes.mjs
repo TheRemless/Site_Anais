@@ -42,6 +42,7 @@ export const TH = {
   echec: { th: "ไม่สำเร็จ กรุณาบอกอานาอิส: {erreur}", fr: "Échec, prévenez Anaïs : {erreur}" },
   pas_prete: { th: "ส่วนนี้ยังไม่พร้อมใช้งาน กรุณาบอกอานาอิส", fr: "Cette fonction n'est pas encore prête : prévenez Anaïs." },
   fermer: { th: "ปิด", fr: "Fermer" },
+  inactif: { th: "บริษัทนี้ไม่ออกใบแจ้งหนี้สำหรับผู้ทำบัญชี", fr: "Cette entreprise n'émet pas de factures pour la fiduciaire" },
 };
 
 // Ce qui empêche de facturer un service, pour les responsables (codes de cibleAgence). Mook ne voit jamais cette liste.
@@ -53,6 +54,7 @@ export const MANQUE = {
   prestataire_non_paye: N_("Le prestataire n'est pas encore payé (net payé et date)"),
   marge_nulle: N_("La marge est nulle ou négative"),
   service_supprime: N_("Le service a été supprimé alors qu'il était déjà facturé"),
+  partenaire_change: N_("Le prestataire du service a changé : l'ancien garde une facture pour ce service"),
 };
 
 // Remplace {variable} dans un texte thaï.

@@ -2,7 +2,8 @@
 // elle-même (Jérémy, 14.11.2026), et le dossier n'entre dans l'outil qu'une fois la place confirmée.
 import { etat, modifier } from "../etat.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
-import { suivreFacture, appliquerChangements, synchroniserDatesDossier } from "./suivi-facture.mjs";
+import { suivreFacture, appliquerChangements, synchroniserDatesDossier, apercuFacture, texteRaisonEnfant } from "./suivi-facture.mjs";
+import { formatMontant } from "../calc.mjs";
 import { tr } from "../i18n.mjs";
 
 
@@ -47,6 +48,19 @@ export function changerReservation(r, apres) {
     if (fait && (valeurs.date_service || null) !== (r.date_service || null)) await synchroniserDatesDossier(r.dossier_id);
     return fait;
   }
+  // Le nouveau total de la facture, recalculé à chaque saisie (date, adultes, enfants), comme le promet l'aide de la fenêtre.
+  const apercu = h("p", { class: "aide apercu-total", "aria-live": "polite", hidden: true });
+  const majApercu = () => {
+    const a = apercuFacture(r, champs());
+    const placeChange = !!a && a.placeAvant !== a.placeApres;
+    apercu.hidden = !a || (a.avant === a.apres && !placeChange && !a.raison);
+    if (!a) return;
+    const total = a.avant === a.apres ? tr("Total de la facture inchangé : {montant}.", { montant: formatMontant(a.apres, a.devise) }) : tr("Total de la facture : {avant} → {apres}.", { avant: formatMontant(a.avant, a.devise), apres: formatMontant(a.apres, a.devise) });
+    // Service payé sur place : le total de la facture ne bouge pas, ce que le client paie au prestataire si (contrôle du 17.11.2026, D9).
+    const place = placeChange ? tr("À payer sur place au prestataire : {avant} → {apres}.", { avant: formatMontant(a.placeAvant, a.devise), apres: formatMontant(a.placeApres, a.devise) }) : "";
+    apercu.textContent = [place && a.avant === a.apres ? "" : total, place, a.enfantAjoute ? tr("La ligne enfant est ajoutée au tarif enfant du catalogue.") : "", a.raison ? texteRaisonEnfant(a.raison) : ""].filter(Boolean).join(" ");
+  };
+  for (const i of [date, adultes, enfants]) i.addEventListener("input", majApercu);
   const fermer = modal(
     tr("Changer la réservation"),
     h(
@@ -57,6 +71,7 @@ export function changerReservation(r, apres) {
       champ(tr("Lieu de pickup"), lieu),
       h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), adultes), champ(tr("Enfants"), enfants)),
       h("p", { class: "aide" }, tr("La facture suit la date et les personnes : le nouveau total s'affiche avant l'enregistrement.")),
+      apercu,
       h("div", { class: "actions" },
         h("button", { class: "principal", type: "button", onclick: async () => { if (await sauver()) { fermer(); } } }, tr("Enregistrer"))
       )

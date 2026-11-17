@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import * as F from "../supabase/functions/rappels/calc.js";
 import * as G from "../src/gestion/js/rappel-h1-calc.mjs";
+import * as E from "../src/gestion/js/rappels-etat.mjs";
 
 const R = (o = {}) => ({ id: "r1", entite_id: "S", dossier_id: "d1", libelle: "4 Islands", date_service: "2026-11-17", heure_pickup: "08:00", lieu_pickup: "Hotel Sunset", personnes: { adultes: 2 }, statut: "confirme", partenaire_id: "p1", details: {}, ...o });
 const bkk = (iso) => Date.parse(`${iso}+07:00`); // heure de Bangkok écrite à la main → instant
@@ -79,7 +80,8 @@ test("réglage de l'entreprise : allumé par défaut partout ; Secret et Taxi ra
   // La fonction ne cherche les services une heure avant que dans les entreprises de services : ZTP n'en reçoit pas.
   const fonction = fs.readFileSync(new URL("../supabase/functions/rappels/index.ts", import.meta.url), "utf8");
   assert.match(fonction, /rappelAvantActif\(l\.valeur\) && modeRappel\(l\.valeur\) === "service"/);
-  assert.match(fonction, /rappelAvantActif\(l\.valeur\) && modeRappel\(l\.valeur\) === "depart"/);
+  // Le départ de demain (ZTP) : choisi par entitesDuDepart, au passage de la veille.
+  assert.match(fonction, /const departs = t === "veille" \? entitesDuDepart\(heure, ids, valeurs\) : \[\]/);
 });
 
 test("destinataires : ceux qui voient toute l'entreprise, sans l'écran voucher seul ni qui a coupé son rappel ; chaque entreprise les siens", () => {
@@ -185,4 +187,41 @@ test("partenaire : seulement les détails utiles, jamais un message rédigé (r�
 test("cases « rappel envoyé » : gardées dans la réservation, lues pour l'accueil", () => {
   assert.deepEqual(G.etatRappel(R({ details: { rappel_client_le: "2026-11-17T00:05:00Z" } })), { client: "2026-11-17T00:05:00Z", partenaire: null });
   assert.deepEqual(G.etatRappel({}), { client: null, partenaire: null });
+});
+
+test("départ de demain (ZTP) : avec le passage de la veille, à l'heure réglée ; 18 h si la veille est coupée ; jamais Secret ni Taxi", () => {
+  const ids = ["Z", "Z2", "Z3", "S", "T", "Zoff"];
+  const valeurs = {
+    Z: { fonctionnement: "sur_mesure" },
+    Z2: { fonctionnement: "sur_mesure", rappels: { veille: 20, lendemain: 9 } },
+    Z3: { fonctionnement: "sur_mesure", rappels: { veille: null } },
+    S: { fonctionnement: "excursions" },
+    T: { fonctionnement: "taxi" },
+    Zoff: { fonctionnement: "sur_mesure", rappels: { h1: false } },
+  };
+  // Envoi forcé de la veille (cron de 18 h d'avant le lot G) : toutes les entreprises ZTP où le rappel du départ est allumé, comme avant.
+  assert.deepEqual(F.entitesDuDepart(null, ids, valeurs), ["Z", "Z2", "Z3"]);
+  // Appel horaire : chacune à son heure.
+  assert.deepEqual(F.entitesDuDepart(18, ids, valeurs), ["Z", "Z3"]);
+  assert.deepEqual(F.entitesDuDepart(20, ids, valeurs), ["Z2"]);
+  assert.deepEqual(F.entitesDuDepart(9, ids, valeurs), []);
+  // Une entreprise sans ligne de réglages : pas de rappel du départ (comme avant la fusion) ; une ligne sans heures : 18 h.
+  assert.deepEqual(F.entitesDuDepart(18, ["X"], {}), []);
+  assert.deepEqual(F.entitesDuDepart(18, ["X"], { X: {} }), ["X"]);
+  // L'outil et la fonction donnent la même heure au départ.
+  for (const r of [undefined, {}, { veille: 20 }, { veille: null }, { veille: 0 }, { veille: "x" }]) assert.equal(E.heureDepart(r), F.heureDepart(r), JSON.stringify(r));
+});
+
+test("fenêtre Rappels : changer les heures garde l'interrupteur « Rappel 1 h avant » de l'entreprise (rappels.h1)", () => {
+  const vue = fs.readFileSync(new URL("../src/gestion/js/views/rappels.mjs", import.meta.url), "utf8");
+  assert.match(vue, /rappels: \{ \.\.\.\(reglages\(\)\.rappels \|\| \{\}\), veille: lire\(veille\), lendemain: lire\(lendemain\) \}/);
+});
+
+test("fenêtre Rappels : jamais « null » dans la fenêtre d'une personne qui n'est pas administratrice", () => {
+  const vue = fs.readFileSync(new URL("../src/gestion/js/views/rappels.mjs", import.meta.url), "utf8");
+  // replaceChildren(null) écrit le texte « null » : le bloc des heures s'ajoute par un tableau, vide pour les autres.
+  assert.ok(!/estAdmin\(\) \? reglageHeures\(dessiner\) : null/.test(vue));
+  assert.equal((vue.match(/\.\.\.\(estAdmin\(\) \? \[reglageHeures\(dessiner\)\] : \[\]\)/g) || []).length, 2);
+  // En démonstration aussi, les heures viennent avant « Fermer ».
+  assert.ok(vue.indexOf("...(estAdmin() ? [reglageHeures(dessiner)] : []), h(\"div\", { class: \"actions gauche\" }") > 0);
 });

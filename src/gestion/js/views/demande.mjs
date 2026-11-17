@@ -19,7 +19,7 @@ import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { boutonLireIA, boutonRedigerIA, badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
-import { partenaireDeTaxi } from "../voucher-rapide-calc.mjs";
+import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { imposerTotal } from "../demandes-site-calc.mjs";
 
 // Brouillon passé à l'écran « Nouveau dossier » : lu une seule fois.
@@ -35,6 +35,7 @@ const AVERTISSEMENTS = {
   prix_a_definir: N_("Prix à définir dans la base."),
   sur_place: N_("À payer sur place."),
   enfant_plein_tarif: N_("Pas de tarif enfant : les enfants sont comptés au tarif adulte."),
+  enfant_non_compte: N_("Tarif par adulte sans prix enfant : les enfants ne sont pas comptés."),
   supplement_a_definir: N_("Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base."),
 };
 
@@ -112,7 +113,7 @@ export function ouvrirDemande(depuisSite = null) {
   const devise = regl.devise || "THB";
   const langue = langueDocuments(regl);
   // `taxi` : chez VIP Taxi Lanta, toute demande est une course en voiture (un « wait for us » suffit à lire un retour au point de départ).
-  const contexte = () => ({ prestations: etat.db.prestations, trajets: etat.db.trajets, nomPartenaire, taxi: modeTaxi() });
+  const contexte = () => ({ prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire, taxi: modeTaxi() });
   let d = null;
   let texte = "";
   let clientId = ""; // client existant retenu ; vide pour un nouveau client
@@ -326,7 +327,7 @@ export function ouvrirDemande(depuisSite = null) {
       sv.ligneRetour = null;
       return;
     }
-    const p = modeTaxi() ? partenaireDeTaxi(etat.db.partenaires) : null;
+    const p = modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null;
     const dt = (sv.saisie && sv.saisie.details) || {};
     sv.ligneRetour = ligneRetourDepart({ lieu: (sv.saisie && sv.saisie.lieu) || (d && (d.pickup || d.hotel)) || "", programme: dt.programme_trajet || "", prix: sv.prixRetour, date: sv.date, partenaireId: p ? p.id : null }, sv.ligneRetour);
     const l = sv.ligneRetour;

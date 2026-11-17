@@ -26,17 +26,19 @@ test("dates : le jour se lit à Bangkok, sept heures après l'heure UTC du serve
   assert.equal(dateCible("autre", "2026-11-09"), null);
 });
 
-test("veille : compte les services de demain, signale heure et confirmation manquantes, sans nom de client", () => {
+test("veille : compte les services de demain, signale heure et lieu manquants, sans nom de client", () => {
   const m = rappelVeille(R, "2026-11-10", { entiteIds: null, nomEntite });
   assert.equal(m.titre, "4 services demain");
-  assert.equal(m.corps, "Secret 3, Taxi 1. 2 sans heure de pickup.");
+  // Aucun service de R n'a de lieu ni d'hôtel client : les 4 sont « sans lieu ». L'écran promettait « pas de confirmation », jamais compté (audit n° 76).
+  assert.equal(m.corps, "Secret 3, Taxi 1. 2 sans heure de pickup, 4 sans lieu de pickup.");
   assert.equal(m.tag, "veille");
 });
 
 test("veille : tout est en ordre, un seul service, une seule entreprise", () => {
-  const m = rappelVeille(R, "2026-11-10", { entiteIds: ["S"], ecartes: new Set(["d1"]), nomEntite });
+  const avecLieu = R.map((r) => ({ ...r, adresse_client: "Hotel Sunset" }));
+  const m = rappelVeille(avecLieu, "2026-11-10", { entiteIds: ["S"], ecartes: new Set(["d1"]), nomEntite });
   assert.equal(m.titre, "1 service demain");
-  assert.equal(m.corps, "Chaque pickup a une heure.");
+  assert.equal(m.corps, "Chaque pickup a une heure et un lieu.");
 });
 
 test("veille : rien à signaler s'il n'y a aucun service, les dossiers annulés et les entreprises non lisibles sont écartés", () => {

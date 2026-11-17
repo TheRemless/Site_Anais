@@ -63,19 +63,26 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     const l = g.premiere;
     return {
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
-      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: { ...(g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {}), ...(g.jours ? { jours: g.jours } : {}) } },
-      net: g.net,
+      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: { ...(g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {}), ...(g.jours ? { jours: g.jours } : {}), ...(modeleDeLigne(l) ? { modele_voucher: modeleDeLigne(l) } : {}) } },
+      // Net partiel laissé vide (Jérémy, 17.11.2026 : « on mettra le net final au cas par cas ») : quand une ligne à prix du service n'a pas de net,
+      // le net prévu reste vide plutôt que la somme des seuls nets connus. Le service apparaît alors dans « À vérifier ».
+      net: netCompletDe(g) ? g.net : null,
       // Service payé sur place : la commission attendue se calcule d'après la règle du partenaire (`regleDe(partenaire_id)`), seulement quand elle est connue.
       ...commissionDuGroupe(g, l, regleDe),
     };
   });
 }
 
+// Le modèle de voucher choisi dans « Autre prestation » (ligne hors catalogue) suit la ligne jusqu'à sa réservation.
+const modeleDeLigne = (l) => modeleChoisi({ details: { modele_voucher: l && l.modele_voucher } });
+
+// Le net d'un service n'est connu que s'il l'est pour chacune de ses lignes qui ont un prix (une ligne offerte ou sans prix ne compte pas).
+const netCompletDe = (g) => g.lignes.every((x) => !(brut(x) > 0) || (x.net !== null && x.net !== undefined));
+
 function commissionDuGroupe(g, l, regleDe) {
   if (!regleDe || !g.lignes.some((x) => x.paye_sur_place)) return {};
   // Le net ne compte que s'il est connu pour toutes les lignes qui ont un prix : un net partiel gonflerait la commission.
-  const netComplet = g.lignes.every((x) => !(brut(x) > 0) || (x.net !== null && x.net !== undefined));
-  const c = commissionPrevue(regleDe(l.partenaire_id || null), { vente: g.vente, net: netComplet ? g.net : null, adultes: g.adultes, enfants: g.enfants });
+  const c = commissionPrevue(regleDe(l.partenaire_id || null), { vente: g.vente, net: netCompletDe(g) ? g.net : null, adultes: g.adultes, enfants: g.enfants });
   return c === null ? {} : { commission_prevue: c };
 }
 
@@ -122,7 +129,8 @@ const memeUsage = (a, b) => destinataireMessage(a) === destinataireMessage(b) &&
 export function gabaritsPropose(stockes, defauts, { pour, langue, cle = "" }) {
   const base = (stockes || []).filter((m) => m && m.corps && destinataireMessage(m) === pour);
   const virtuels = cle ? (defauts || []).filter((d) => d.cle === cle && destinataireMessage(d) === pour && !base.some((m) => memeUsage(m, d))).map((d) => ({ ...d, id: `defaut:${d.id}`, defaut: true, titre: d.titre })) : [];
-  const liste = [...virtuels, ...base];
+  // Un message désactivé (lot D) n'est pas proposé, et il empêche aussi le modèle de départ du même usage de revenir.
+  const liste = [...virtuels, ...base.filter((m) => m.actif !== false)];
   const deLangue = liste.filter((m) => m.langue === langue);
   if (!cle) return { liste, choisi: deLangue[0] || null };
   return { liste, choisi: deLangue.find((m) => m.cle === cle) || null };
@@ -211,11 +219,14 @@ export function avisParClient(reservations, clientDe) {
 // `ecartees` : identifiants des dossiers annulés, dont les réservations ne comptent plus (annuler un dossier ne change pas leur statut).
 // Envois de vouchers : la trace est gardée par réservation (`details.envois.client`, `details.envois.prestataire`, avec la date). `reservations` : celles qui ont un voucher.
 // « Complet » : le client a reçu chaque voucher. Anaïs écrit elle-même aux prestataires (Jérémy, 14.11.2026) : l'outil ne suit plus que le client.
-export function etatEnvoisVouchers(reservations) {
+// `modifies` (facultatif) : identifiants des réservations dont le voucher a changé depuis l'envoi (voir empreinteVoucher). Un voucher
+// modifié compte comme à renvoyer : le dossier ne reste pas « Vouchers envoyés » (audit du 16.11.2026, n° 24).
+export function etatEnvoisVouchers(reservations, { modifies = new Set() } = {}) {
   const envoi = (r, cle) => !!(r.details && r.details.envois && r.details.envois[cle]);
   const total = reservations.length;
-  const client = reservations.filter((r) => envoi(r, "client")).length;
-  return { total, client, complet: total > 0 && client === total };
+  const client = reservations.filter((r) => envoi(r, "client") && !modifies.has(r.id)).length;
+  const aRenvoyer = reservations.filter((r) => envoi(r, "client") && modifies.has(r.id)).length;
+  return { total, client, complet: total > 0 && client === total, ...(aRenvoyer ? { aRenvoyer } : {}) };
 }
 
 // Les détails d'une réservation avec un envoi de plus (« client » ou « prestataire »), sans effacer les autres.
@@ -393,14 +404,30 @@ export function lieuParDefaut(reservationsDuDossier, client = {}) {
 // Un partenaire a-t-il un mode et une règle de commission renseignés ? Sert à signaler ce qui reste à compléter.
 export const regleDeCommissionComplete = (regle) => commissionPrevue(regle, { vente: 1, net: 1, adultes: 1 }) !== null;
 
+// Les services d'un groupe (partenaire et mois) qu'un virement peut solder, ceux dont la réception n'est pas encore datée. Seuls les services
+// passés (avant `ajd`) avec une commission prévue sont cochés d'avance : un service à venir ou sans commission ne se marque reçu que si
+// quelqu'un le coche. Renvoie [{ reservation, prevue (nombre ou null), passe, coche }], dans l'ordre des dates.
+export function servicesAReceptionner(reservations, netDe, ajd) {
+  return (reservations || [])
+    .filter((r) => !(netDe(r) || {}).commission_recue_le)
+    .map((r) => {
+      const n = netDe(r) || {};
+      const prevue = n.commission_prevue !== null && n.commission_prevue !== undefined ? Number(n.commission_prevue) : null;
+      const passe = !!r.date_service && r.date_service < ajd;
+      return { reservation: r, prevue, passe, coche: passe && prevue !== null };
+    })
+    .sort((a, b) => String(a.reservation.date_service || "9999").localeCompare(String(b.reservation.date_service || "9999")));
+}
+
 // Le partenaire a versé `montant` pour ce groupe (partenaire et mois) : on le répartit sur ses réservations, proportionnellement à la commission
-// prévue (à parts égales quand rien n'est prévu), et on date la réception. Le dernier prend l'arrondi. Renvoie
-// [{ reservation_id, commission_recue }] et l'écart avec ce qui était attendu (positif : le partenaire a versé plus).
-export function repartirReception(reservations, netDe, montant) {
+// prévue (à parts égales quand rien n'est prévu), et on date la réception. Le dernier prend l'arrondi. `ids` : seulement ces réservations (la
+// liste cochée), sinon toutes celles qui ne sont pas encore réglées. Renvoie [{ reservation_id, commission_recue }] et l'écart avec ce qui était
+// attendu (positif : le partenaire a versé plus).
+export function repartirReception(reservations, netDe, montant, { ids = null } = {}) {
   const m = Math.round(Number(montant) * 100) / 100;
   const cibles = reservations.filter((r) => {
     const n = netDe(r);
-    return !(n && n.commission_recue_le);
+    return !(n && n.commission_recue_le) && (!ids || ids.has(r.id));
   });
   const prevue = (r) => {
     const n = netDe(r);
@@ -513,6 +540,23 @@ const POINTS_EN = [
 export const pointEmbarquementEn = (texte) => POINTS_EN.reduce((s, [re, en]) => s.replace(re, en), String(texte || "")).replace(/undefined/g, "");
 export const estPickupHotel = (embarquement) => /hotel pickup|pickup at (your|the) hotel/i.test(embarquement || "");
 
+// Embarcadère d'une compagnie, d'après sa fiche (audit n° 48) : le point d'embarquement du lieu de départ, sinon l'embarcadère général
+// de la fiche (« Embarcadère ou point de départ »), mis en anglais comme les points d'embarquement.
+// L'embarcadère général ne sert qu'à une compagnie sans points par lieu : avec des points, un départ d'un autre lieu n'a pas d'embarcadère connu.
+export function embarcadereFiche(partenaire, lieu) {
+  const points = (partenaire && partenaire.regles && partenaire.regles.points_embarquement) || [];
+  if (points.length) return pointEmbarquement(partenaire, lieu);
+  return pointEmbarquementEn(String((partenaire && partenaire.contact && partenaire.contact.embarcadere) || "").trim());
+}
+
+// Consigne de check-in imprimée sur le billet : celle écrite en anglais dans la fiche de la compagnie (`regles.checkin_voucher`), sinon
+// celle écrite ici d'après son nom. Un trajet vers ou depuis Langkawi garde la consigne de l'immigration (passeports), qui vaut pour toutes.
+export function consigneCheckinFiche(partenaire, trajet = {}) {
+  const fiche = String((partenaire && partenaire.regles && partenaire.regles.checkin_voucher) || "").trim();
+  if (fiche && !/langkawi/i.test(`${trajet.de || ""} ${trajet.vers || ""}`)) return fiche;
+  return consigneCheckin((partenaire && partenaire.nom) || "", trajet);
+}
+
 // Consigne de check-in en anglais, d'après la compagnie et la ligne (Langkawi demande les passeports).
 export function consigneCheckin(nomCompagnie, trajet = {}) {
   const c = sansAccentsMin(nomCompagnie);
@@ -551,8 +595,24 @@ export function datesDepuisReservations(reservations) {
   return { date_depart: dates[0], date_retour: dates.length > 1 && dates[dates.length - 1] !== dates[0] ? dates[dates.length - 1] : null };
 }
 
+// Modèle de voucher choisi sur la réservation (`details.modele_voucher`, lot B du 17.11.2026) : il passe avant toute déduction.
+// « aucun » : pas de voucher pour ce service (une option, un supplément). Vide : automatique, d'après la prestation et le libellé.
+export const MODELES_VOUCHER = ["billet", "bateau", "transfert", "activite", "location"];
+export const SANS_VOUCHER = "aucun";
+export const modeleChoisi = (reservation) => {
+  const m = (reservation && reservation.details && reservation.details.modele_voucher) || "";
+  return m === SANS_VOUCHER || MODELES_VOUCHER.includes(m) ? m : "";
+};
+
 // `partenaire` (facultatif) : pour une réservation à la main chez une compagnie de bateaux (Bundhaya, Satun), un billet.
 export function typeVoucher(reservation, prestation, partenaire = null) {
+  const choisi = modeleChoisi(reservation);
+  if (choisi) return choisi === SANS_VOUCHER ? null : choisi;
+  return typeVoucherDeduit(reservation, prestation, partenaire);
+}
+
+// La déduction d'avant (prestation, trajet, mots du libellé) : la valeur par défaut du menu « Modèle de voucher ».
+export function typeVoucherDeduit(reservation, prestation, partenaire = null) {
   if (reservation.trajet_id) return "billet";
   if (!prestation && partenaire && ((partenaire.regles && partenaire.regles.points_embarquement && partenaire.regles.points_embarquement.length) || /speed ?boat|ferry/i.test(partenaire.nom || ""))) return "billet";
   const f = prestation ? prestation.famille : "";
@@ -573,12 +633,111 @@ export function typeVoucher(reservation, prestation, partenaire = null) {
 
 export const numeroVoucher = (ref, index) => `${ref}-${index}`;
 
+// Numéros des vouchers d'un dossier. `liste` : dans l'ordre de création, chacun avec `fige` (son numéro gardé au premier envoi, ou null).
+// Un numéro parti chez le client ne change plus (audit du 16.11.2026, n° 25) : supprimer un service ou le passer en option ne renumérote
+// que les vouchers jamais envoyés, qui gardent leur rang quand il est libre, sinon prennent le premier numéro libre au-dessus.
+// Renvoie les index (1, 2, 3…) dans l'ordre de `liste`.
+export function numerosVouchers(liste) {
+  const pris = new Set(liste.map((x) => (x && x.fige ? Number(x.fige) : null)).filter((n) => n > 0));
+  const donnes = new Set();
+  return liste.map((x, i) => {
+    if (x && Number(x.fige) > 0) return Number(x.fige);
+    let n = i + 1;
+    while (pris.has(n) || donnes.has(n)) n++;
+    donnes.add(n);
+    return n;
+  });
+}
+
 // Statut de paiement imprimé sur le voucher, d'après ce que le dossier a encaissé.
+// « en_attente » (Payment Pending) : rien n'est encore reçu et le client ne paie pas le prestataire. Ce n'est pas « sur place » : il paiera
+// Anaïs, par virement ou autrement (audit du 16.11.2026, n° 26).
 export function statutPaiementVoucher({ total = 0, recu = 0, surPlace = false } = {}) {
   if (surPlace) return "sur_place";
   if (total > 0 && recu >= total) return "paye";
   if (recu > 0) return "acompte";
-  return "sur_place";
+  return "en_attente";
+}
+
+// Prix par personne imprimé sur le voucher d'activité : seulement quand il n'y a qu'un tarif connu (audit n° 27). Une moyenne
+// vente ÷ personnes serait fausse si l'enfant paie moins, ou si le prix est celui d'un groupe.
+//   - prestation du catalogue vendue à la personne (pas de prix de groupe, de véhicule ni de service hors catalogue) ;
+//   - sans enfant : le prix réellement vendu par adulte, s'il tombe juste au centime ;
+//   - avec enfants : seulement si aucun tarif enfant n'est connu (`tarifEnfant` : prestationEnfant de demande-calc.mjs, qui lit le prix enfant
+//     de la prestation ou l'ancienne prestation enfant séparée) et que tout le monde a payé le prix de la prestation.
+// Renvoie le prix, ou null quand il ne faut rien imprimer.
+export function prixParPersonneVoucher({ prestation = null, montant = null, adultes = 0, enfants = 0, tarifEnfant = null } = {}) {
+  if (!prestation || !["pp", "ad", "pers"].includes(prestation.unite)) return null;
+  if (montant === null || montant === undefined || montant === "" || !Number.isFinite(Number(montant))) return null;
+  const a = Number(adultes) || 0;
+  const e = Number(enfants) || 0;
+  if (a + e <= 0) return null;
+  const unite = Math.round((Number(montant) / (a + e)) * 100) / 100;
+  if (Math.round(unite * (a + e) * 100) !== Math.round(Number(montant) * 100)) return null;
+  if (!e) return unite;
+  if (tarifEnfant) return null;
+  return prestation.prix_vente !== null && prestation.prix_vente !== undefined && Number(prestation.prix_vente) === unite ? unite : null;
+}
+
+// ---- Voucher figé à l'envoi (audit n° 22, 24, 25) ------------------------------------------------------------------------------
+// Ce qui part chez le client ne change plus quand le catalogue change : au premier envoi, la réservation garde dans `details.voucher_fige`
+// le numéro, le modèle, l'opérateur et ce que le voucher lisait dans la prestation, le trajet et la fiche du partenaire, plus une empreinte
+// de ce qu'il imprimait. Ensuite, une réservation, un client ou un paiement qui change donne une autre empreinte : « modifié depuis l'envoi ».
+// Seuls les champs que le voucher imprime comptent : une note interne, un net ou une trace d'avis ne changent pas l'empreinte.
+const CHAMPS_EMPREINTE_DETAILS = [...new Set([...Object.values(CHAMPS_VOUCHER).flat(), "modele_voucher", "jours"])];
+const stable = (v) => (Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(",")}}` : JSON.stringify(v === undefined ? null : v));
+// FNV-1a sur 32 bits : assez pour reconnaître un changement, sans dépendance.
+function hacher(texte) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < texte.length; i++) {
+    h ^= texte.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+const videOuTexte = (v) => (v === null || v === undefined ? "" : typeof v === "string" ? v.trim() : v);
+// `statut` : le statut de paiement imprimé (statutPaiementVoucher). `devise` : celle du dossier.
+export function empreinteVoucher({ reservation: r = {}, client = {}, statut = "", devise = "" } = {}) {
+  const dt = r.details || {};
+  const p = r.personnes || {};
+  const donnees = {
+    libelle: videOuTexte(r.libelle), date: r.date_service || "", heure: videOuTexte(r.heure_pickup), lieu: videOuTexte(r.lieu_pickup),
+    personnes: [Number(p.adultes) || 0, Number(p.enfants) || 0, Number(p.bebes) || 0],
+    vente: r.montant_vente === null || r.montant_vente === undefined || r.montant_vente === "" ? null : Math.round(Number(r.montant_vente) * 100),
+    partenaire: r.partenaire_id || null, prestation: r.prestation_id || null, trajet: r.trajet_id || null, surPlace: !!r.paye_sur_place, ref: videOuTexte(r.reference_partenaire),
+    details: Object.fromEntries(CHAMPS_EMPREINTE_DETAILS.filter((k) => videOuTexte(dt[k]) !== "" && dt[k] !== undefined).map((k) => [k, videOuTexte(dt[k])])),
+    client: [videOuTexte(client.prenom), videOuTexte(client.nom), videOuTexte(client.telephone), videOuTexte(String(client.adresse || "").split("\n")[0])],
+    // Le statut de paiement de l'agence ne compte pas (contrôle du 17.11.2026, D6) : un paiement reçu ne fait pas repasser les vouchers
+    // « à renvoyer ». Seul ce que le client paie sur place compte (`surPlace`, ci-dessus).
+    statut: statut === "sur_place" ? statut : "", devise,
+  };
+  return hacher(stable(donnees));
+}
+
+// La trace figée d'un envoi, à poser dans `details.voucher_fige`. `valeurs` : ce que le voucher a lu ailleurs que dans la réservation
+// (voir valeursCatalogue dans views/voucher.mjs). Un renvoi garde le numéro du premier envoi.
+export function voucherFige({ reservation: r = {}, index, numero, empreinte, valeurs = {}, date, avant = null }) {
+  return { le: date, premier_le: (avant && avant.premier_le) || (avant && avant.le) || date, index: (avant && avant.index) || index, numero: (avant && avant.numero) || numero, empreinte, prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, partenaire_id: r.partenaire_id || null, valeurs };
+}
+
+// Les valeurs figées ne valent que pour le même service : un autre partenaire, une autre prestation ou un autre trajet choisis sur la
+// réservation sont une modification de la réservation (le voucher suit, et l'empreinte le signale).
+export const valeursFigees = (r) => {
+  const f = r && r.details && r.details.voucher_fige;
+  if (!f || !f.valeurs) return null;
+  const meme = (f.prestation_id || null) === (r.prestation_id || null) && (f.trajet_id || null) === (r.trajet_id || null) && (f.partenaire_id || null) === (r.partenaire_id || null);
+  return meme ? f.valeurs : null;
+};
+
+// « Pas envoyé » : l'envoi noté par erreur s'efface, avec ce qui avait été figé (le numéro redevient libre).
+export function detailsSansEnvoi(details, cible = "client") {
+  const d = { ...(details || {}) };
+  const envois = { ...(d.envois || {}) };
+  delete envois[cible];
+  if (Object.keys(envois).length) d.envois = envois;
+  else delete d.envois;
+  if (cible === "client") delete d.voucher_fige;
+  return d;
 }
 
 // Join ou privé, d'après le groupe ou le libellé de la prestation.
@@ -792,8 +951,12 @@ export function ecartReservation(r, doc) {
   // Une facture sans personnes (location, véhicule, forfait) : on ne compare pas, sauf quand la réservation porte une quantité prise à tort pour des personnes
   // (4 jours devenus « 4 passagers »). Elle se corrige alors, en gardant ce qui a été saisi à la main (autre nombre que la quantité facturée).
   const quantiteFacturee = (doc && doc.contenu ? doc.contenu.lignes : []).filter((l) => (new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean))).has(l.id) && l.kind !== "texte" && l.kind !== "remise" && compteDe(l) !== "personnes").reduce((s, l) => s + (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1), 0);
-  const fausse = a.sansPersonnes && (Number(pr.adultes) || 0) > 0 && (Number(pr.adultes) || 0) === quantiteFacturee && !(Number(pr.enfants) || 0);
-  if (fausse || (!a.sansPersonnes && ((Number(pr.adultes) || 0) !== a.personnes.adultes || (Number(pr.enfants) || 0) !== a.personnes.enfants))) champs.push({ cle: "personnes", reservation: { adultes: Number(pr.adultes) || 0, enfants: Number(pr.enfants) || 0 }, document: { adultes: a.personnes.adultes, enfants: a.personnes.enfants } });
+  // Des personnes reprises du dossier sur un service par véhicule (lot C2, 17.11.2026) ne sont pas cette erreur.
+  const fausse = a.sansPersonnes && !(r.details && r.details.personnes_du_dossier) && (Number(pr.adultes) || 0) > 0 && (Number(pr.adultes) || 0) === quantiteFacturee && !(Number(pr.enfants) || 0);
+  // Enfants repris du dossier sur un service sans ligne enfant (contrôle du 17.11.2026, D8) : un tarif par personne compte tout le monde au prix
+  // adulte (2 adultes + 1 enfant = 3 personnes facturées), un tarif par adulte ne facture pas l'enfant. Ce n'est pas un écart.
+  const enfantsDuDossier = !!(r.details && r.details.personnes_du_dossier) && !a.personnes.enfants && (Number(pr.enfants) || 0) > 0 && ((Number(pr.adultes) || 0) + (Number(pr.enfants) || 0) === a.personnes.adultes || (Number(pr.adultes) || 0) === a.personnes.adultes);
+  if (fausse || (!a.sansPersonnes && !enfantsDuDossier && ((Number(pr.adultes) || 0) !== a.personnes.adultes || (Number(pr.enfants) || 0) !== a.personnes.enfants))) champs.push({ cle: "personnes", reservation: { adultes: Number(pr.adultes) || 0, enfants: Number(pr.enfants) || 0 }, document: { adultes: a.personnes.adultes, enfants: a.personnes.enfants } });
   if (arr(Number(r.montant_vente) || 0) !== arr(Number(a.montant_vente) || 0)) champs.push({ cle: "montant_vente", reservation: Number(r.montant_vente) || 0, document: Number(a.montant_vente) || 0 });
   if (!!r.paye_sur_place !== a.paye_sur_place) champs.push({ cle: "paye_sur_place", reservation: !!r.paye_sur_place, document: a.paye_sur_place });
   // Libellé et partenaire changés dans la réservation sans que la facture suive (16.11.2026 : la facture gardait le service et le partenaire d'avant).
@@ -825,7 +988,9 @@ export function contenuAvecSurPlace(contenu, r, valeur) {
 // personnes d'avant (prix par personne) : un prix de groupe, un montant fixe ou une quantité réglée à la main ne bougent pas, et sont signalés.
 // Renvoie { contenu, reste } : `contenu` vaut null quand rien ne change sur le document ; `reste` liste ce que la facture garde en l'état
 // ({ cle: "date_service" | "adultes" | "enfants", ... }). Rien n'est modifié sur place. L'heure du pickup ne figure pas sur la facture.
-export function contenuAvecReservation(contenu, r, avant, apres) {
+// `tarifEnfant(ligne)` : le tarif enfant du catalogue de la ligne ({ unite, net }) ou null. Il dit si des enfants comptés au prix adulte le sont faute
+// de prix enfant ; sans lui, seule une réservation aux personnes reprises du dossier prend ce chemin.
+export function contenuAvecReservation(contenu, r, avant, apres, { tarifEnfant = null } = {}) {
   const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
   const lignes = (contenu && contenu.lignes) || [];
   const cibles = lignes.filter((l) => ids.has(l.id) && l.kind !== "texte" && l.kind !== "remise");
@@ -857,6 +1022,19 @@ export function contenuAvecReservation(contenu, r, avant, apres) {
       else reste.push({ cle: "adultes", reservation: nb(apres.personnes && apres.personnes.adultes), facture: qte(supplement) + 2 });
     }
     return miseAJour.size ? { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? { ...l, ...miseAJour.get(l) } : l)) }, reste } : { contenu: null, reste };
+  }
+  // Enfants comptés au prix adulte (pas de ligne enfant, la quantité est adultes + enfants : tarif sans prix enfant, personnes reprises du dossier,
+  // contrôle du 17.11.2026, D8 et D9) : la ligne suit le nombre total de personnes.
+  const total = (p) => nb(p && p.adultes) + nb(p && p.enfants);
+  const seuleAdulte = cibles.length === 1 && !estLigneEnfant(cibles[0]) ? cibles[0] : null;
+  // Seulement quand le tarif n'a pas de prix enfant, ou que les enfants viennent du dossier (revue de la PR 217) : sinon l'enfant ajouté reçoit
+  // sa ligne enfant (contenuAvecEnfants), au lieu d'un adulte de plus.
+  const sansPrixEnfant = (l) => { const t = tarifEnfant ? tarifEnfant(l) : undefined; return t === null || (!!t && (t.unite === null || t.unite === undefined || t.unite === "")); };
+  const enfantsAuPrixAdulte = !!seuleAdulte && nb(avant.personnes && avant.personnes.enfants) > 0 && parPersonne(seuleAdulte) && seuleAdulte.unite !== null && seuleAdulte.unite !== undefined && seuleAdulte.unite !== "" && qte(seuleAdulte) === total(avant.personnes) && (!!(r.details && r.details.personnes_du_dossier) || sansPrixEnfant(seuleAdulte));
+  if (enfantsAuPrixAdulte) {
+    if (total(apres.personnes) !== total(avant.personnes) && total(apres.personnes) > 0) modif(seuleAdulte, { qte: total(apres.personnes) });
+    if (!miseAJour.size) return { contenu: null, reste };
+    return { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? avecDescription(l, { ...l, ...miseAJour.get(l) }, contenu.langue) : l)) }, reste };
   }
   // Personnes : une ligne adulte et une ligne enfant au plus.
   const parGroupe = [["adultes", cibles.filter((l) => !estLigneEnfant(l))], ["enfants", cibles.filter(estLigneEnfant)]];
@@ -895,7 +1073,9 @@ export function avecDescription(avant, apres, langue = "") {
 // Le nom suit sur toutes les lignes (adulte, enfant, supplément), comme le partenaire. Le tarif et le prix ne se reportent que sur un service d'une
 // seule ligne : réparti sur plusieurs lignes, le report serait deviné, il est laissé et signalé dans `reste`.
 // Renvoie { contenu, reste } : `contenu` vaut null quand rien ne change. Rien n'est modifié sur place.
-export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () => null, netDe = () => undefined, personnes = null, nomPartenaire = null } = {}) {
+// `tarifEnfantDe(pid)` : le tarif enfant d'une prestation ({ net, prestation_id }) pour les lignes enfant d'un service adulte + enfant
+// (contrôle du 17.11.2026, D4 : un service changé de partenaire ne garde pas le net de l'ancien sur sa ligne enfant).
+export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () => null, netDe = () => undefined, tarifEnfantDe = () => null, personnes = null, nomPartenaire = null } = {}) {
   const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
   const lignes = (contenu && contenu.lignes) || [];
   const cibles = lignes.filter((l) => ids.has(l.id) && l.kind !== "texte" && l.kind !== "remise");
@@ -933,20 +1113,27 @@ export function contenuAvecService(contenu, r, cible = {}, { prestationDe = () =
     const tid = trajetDemande !== undefined ? trajetDemande : premiere.trajet_id || null;
     if (!pid && !tid) {
       for (const l of cibles) Object.assign(nouvelles.get(l), { prestation_id: null, trajet_id: null, libre: true, net: null });
-    } else if (seule) {
-      const n = nouvelles.get(seule);
+    } else if (seule || cibles.filter((l) => !estLigneEnfant(l)).length === 1) {
+      // Une ligne adulte et ses lignes enfant : l'adulte prend le tarif et son net, chaque ligne enfant le tarif enfant et son net (ou aucun net).
+      const adulte = seule || cibles.find((l) => !estLigneEnfant(l));
+      for (const l of cibles.filter((x) => x !== adulte)) {
+        const t = pid ? tarifEnfantDe(pid) : null;
+        Object.assign(nouvelles.get(l), { prestation_id: (t && t.prestation_id) || pid, trajet_id: tid, net: t && t.net !== null && t.net !== undefined ? Number(t.net) : null });
+        delete nouvelles.get(l).libre;
+      }
+      const n = nouvelles.get(adulte);
       const p = pid ? prestationDe(pid) : null;
       Object.assign(n, { prestation_id: pid, trajet_id: tid });
       delete n.libre;
       const net = p ? netDe(p) : undefined;
       n.net = net === undefined || net === null ? null : Number(net);
       if (p) {
-        const avantCompte = compteDe(seule);
+        const avantCompte = compteDe(adulte);
         if (["boat", "veh", "day", "ses", "grp"].includes(p.unite)) n.par = p.unite;
         else delete n.par;
         if (p.unite === "sup") n.supplement = true;
         else delete n.supplement;
-        if (seule.intro) n.intro = p.unite ? `(${libelleUnite(p.unite, en)})` : "";
+        if (adulte.intro) n.intro = p.unite ? `(${libelleUnite(p.unite, en)})` : "";
         // Une unité qui ne compte plus la même chose (personnes, véhicule, jours) : la quantité repart de la réservation.
         if (compteDe(n) !== avantCompte) n.qte = p.unite === "day" ? Math.max(1, Number(r.details && r.details.jours) || 1) : quantiteParDefaut(p.unite, personnes || r.personnes || {});
       }
@@ -1050,7 +1237,8 @@ export function feuilleDuJour(reservations, date, contexte, ecartees = new Set()
 
 // Texte à coller dans WhatsApp, en anglais comme les messages aux partenaires.
 export function texteFeuille(groupe, date) {
-  const tete = `${groupe.nom ? `${groupe.nom}: ` : ""}${dateTexte(date, "en")}, ${personnesTexte({ adultes: groupe.adultes, enfants: groupe.enfants }, "en") || "0 passengers"}`;
+  const passagers = personnesTexte({ adultes: groupe.adultes, enfants: groupe.enfants }, "en");
+  const tete = `${groupe.nom ? `${groupe.nom}: ` : ""}${dateTexte(date, "en")}${passagers ? `, ${passagers}` : ""}`;
   const lignes = groupe.lignes.map((l) => [l.heure, libelleClient(l.libelle), l.client, l.telephone, [l.hotel, l.chambre ? `room ${l.chambre}` : ""].filter(Boolean).join(", "), l.trajet, personnesTexte(l.personnes, "en")].filter(Boolean).join(" · "));
   return [tete, ...lignes].join("\n");
 }

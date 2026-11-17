@@ -4,6 +4,7 @@ import { createClient } from "../vendor/supabase.mjs";
 import { tr } from "./i18n.mjs";
 import { separerNets, fusionnerNets } from "./nets-documents.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
+import { lireRetourLien } from "./compte-calc.mjs";
 
 // La copie de la feuille du jour gardée sur ce téléphone ne survit pas à une déconnexion.
 const effacerCopieHorsLigne = () => {
@@ -48,7 +49,13 @@ const AVEC_DATE = ["partenaires", "prestations"];
 const CATALOGUE_AGE_MAX = 15 * 60 * 1000;
 
 export function creer(config, { client, maintenant = () => Date.now() } = {}) {
+  // Retour d'un lien d'invitation ou de mot de passe (lot D) : lu AVANT que la bibliothèque n'ouvre la session et n'efface l'adresse.
+  // Une erreur (lien expiré) est effacée de l'adresse ici : elle n'est pas un écran de l'outil.
+  let retour = typeof location !== "undefined" ? lireRetourLien(location.hash) : { type: null, erreur: null };
+  if (retour.erreur && typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
   const sb = client || createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
+  // Adresse de retour des liens : l'outil lui-même (elle doit figurer dans les « Redirect URLs » de Supabase, voir mise-en-route.md).
+  const adresseOutil = () => `${location.origin}${location.pathname}`;
 
   // Migration 16 : les nets des documents sont dans documents_nets (la table existe pour tout le monde, mais ne renvoie rien sans le droit « nets »).
   // La détection ne garde en mémoire que ce qui est sûr : « la table est là » (vrai) ou « la table n'existe pas » (faux, migration 16 pas appliquée).
@@ -64,6 +71,9 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       throw new Error(error.message);
     });
   };
+  // Documents dont on a lu une ligne de nets : seuls ceux-là peuvent voir leurs nets vidés (lot I, contrôle du 17.11.2026). Qui ne lit pas les nets
+  // n'en efface jamais.
+  const avecNetsLus = new Set();
   // Nets de documents, par identifiant de document. Sans le droit « nets », la base ne renvoie rien : les lignes restent sans net.
   async function netsDes(ids) {
     const par = {};
@@ -72,7 +82,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { data, error } = await sb.from("documents_nets").select("document_id, nets").in("document_id", ids.slice(i, i + 100));
       // Une erreur ici ne doit pas passer pour « aucun net » : une sauvegarde suivante écraserait les nets avec les seules lignes visibles.
       if (error) throw new Error(error.message);
-      for (const n of data || []) par[n.document_id] = n.nets;
+      for (const n of data || []) (par[n.document_id] = n.nets), avecNetsLus.add(n.document_id);
     }
     return par;
   }
@@ -90,8 +100,24 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await ecriture(contenu));
     }
     const ligne = verifie(await ecriture(contenu));
-    if (Object.keys(nets).length) verifie(await sb.from("documents_nets").upsert({ document_id: ligne.id, entite_id: ligne.entite_id, nets }).select());
-    return { ...ligne, contenu: fusionnerNets(ligne.contenu, nets) };
+    // Un net effacé exprès reste effacé, un net que le contenu ne porte pas reste (lot I, revue du lot J). Pour un document lu avec ses nets :
+    // une ligne qui a la clé `net` prend sa valeur (vide = effacé), une ligne sans la clé (version restaurée, contenu venu d'ailleurs) garde le
+    // net enregistré. Avant, le dernier net effacé revenait au chargement suivant.
+    let aEcrire = Object.keys(nets).length ? nets : null;
+    if (avecNetsLus.has(ligne.id)) {
+      const ancien = (verifie(await sb.from("documents_nets").select("nets").eq("document_id", ligne.id).maybeSingle()) || {}).nets || {};
+      aEcrire = {};
+      for (const l of contenuComplet.lignes || []) {
+        if (!l || !l.id) continue;
+        if ("net" in l) { if (nets[l.id] !== undefined) aEcrire[l.id] = nets[l.id]; }
+        else if (ancien[l.id] !== undefined && ancien[l.id] !== null) aEcrire[l.id] = ancien[l.id];
+      }
+    }
+    if (aEcrire) {
+      verifie(await sb.from("documents_nets").upsert({ document_id: ligne.id, entite_id: ligne.entite_id, nets: aEcrire }).select());
+      avecNetsLus.add(ligne.id);
+    }
+    return { ...ligne, contenu: fusionnerNets(ligne.contenu, aEcrire || nets) };
   }
 
   // Marqueur du catalogue : une lecture minuscule par table (un comptage, et la dernière modification quand la table en a une).
@@ -178,6 +204,51 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         /* réponse sans JSON : traitée comme une indisponibilité */
       }
       return { erreur: "indisponible" };
+    },
+    // ---- Comptes (lot D, 17.11.2026) ----
+    // Ce que le lien ouvert a demandé (« invite » ou « recovery ») ou son erreur ; rendu une seule fois.
+    retourLien() {
+      const r = retour;
+      retour = { type: null, erreur: null };
+      return r;
+    },
+    // Fonction « invitation » (administratrice générale) : inviter, lien de mot de passe, supprimer un compte. Renvoie la réponse, ou { erreur }.
+    async invitation(corps) {
+      const { data, error } = await sb.functions.invoke("invitation", { body: { ...corps, retour: adresseOutil() } });
+      if (!error) return data;
+      try {
+        const detail = error.context && typeof error.context.json === "function" ? await error.context.json() : null;
+        if (detail && detail.erreur) return detail;
+      } catch {
+        /* réponse sans JSON : fonction absente ou en panne */
+      }
+      return { erreur: "indisponible" };
+    },
+    // « Mot de passe oublié » sur l'écran de connexion : Supabase envoie l'e-mail (son serveur d'envoi doit être réglé, voir mise-en-route.md).
+    async motDePasseOublie(email) {
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: adresseOutil() });
+      if (error) throw new Error(error.message);
+    },
+    // Nouveau mot de passe de la personne connectée. `actuel` : vérifié d'abord quand on le change depuis le menu du compte
+    // (pas après un lien d'invitation ou de mot de passe oublié, où la personne ne le connaît pas).
+    async changerMotDePasse(nouveau, actuel = null) {
+      if (actuel !== null) {
+        const { data } = await sb.auth.getSession();
+        const email = data && data.session && data.session.user.email;
+        const { error } = await sb.auth.signInWithPassword({ email, password: actuel });
+        if (error) throw new Error(tr("Le mot de passe actuel n'est pas le bon."));
+      }
+      const { error } = await sb.auth.updateUser({ password: nouveau });
+      if (error) throw new Error(/different from the old|same/i.test(error.message) ? tr("Le nouveau mot de passe doit être différent de l'ancien.") : error.message);
+    },
+    // Versions précédentes des réglages (migration 38). null tant que la migration n'est pas appliquée.
+    async historiqueReglages(entiteId) {
+      const { data, error } = await sb.from("reglages_historique").select("id, valeur, version_du, remplace_le, remplace_par").eq("entite_id", entiteId).order("remplace_le", { ascending: false }).limit(20);
+      if (error) {
+        if (error.code === "42P01" || error.code === "PGRST205") return null;
+        throw new Error(error.message);
+      }
+      return data;
     },
     // Se déconnecter ferme cet appareil seulement (par défaut la bibliothèque ferme TOUTES les sessions : se déconnecter sur l'ordinateur coupait aussi l'iPhone).
     // La synchronisation a écarté le résultat de la dernière lecture (une écriture a eu lieu pendant la lecture) : le catalogue lu n'est pas installé, on le relira.
@@ -302,11 +373,17 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async fiduciaireAPreparer() {
       return verifie(await sb.rpc("fiduciaire_a_preparer"));
     },
+    // Migration 36 appliquée ? La colonne destinataire_id n'existe qu'avec elle (réglages de l'écran Fiduciaire).
+    async fiduciaireMigration36() {
+      const { error } = await sb.from("fiduciaire_factures").select("destinataire_id").limit(1);
+      return !error;
+    },
     async fiduciaireEmettre(reservationId, date = null, attendu = null) {
       return verifie(await sb.rpc("emettre_facture_fiduciaire", { p_res: reservationId, p_date: date, p_attendu: attendu }));
     },
-    async fiduciaireAnnuler(reservationId, date = null) {
-      return verifie(await sb.rpc("annuler_facture_fiduciaire", { p_res: reservationId, p_date: date }));
+    // `destinataire` (migration 36) : le prestataire dont la facture s'annule, quand le service a changé de prestataire.
+    async fiduciaireAnnuler(reservationId, date = null, destinataire = null) {
+      return verifie(await sb.rpc("annuler_facture_fiduciaire", { p_res: reservationId, p_date: date, ...(destinataire ? { p_destinataire: destinataire } : {}) }));
     },
     async fiduciaireEnvoyer(ids, date) {
       return verifie(await sb.rpc("marquer_envoyee_fiduciaire", { p_ids: ids, p_date: date }));
@@ -332,6 +409,25 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async restaurerDossier(id) {
       return verifie(await sb.rpc("restaurer_dossier", { p_id: id }));
     },
+    // Devis et factures supprimés seuls (sans leur dossier) des 90 derniers jours, et leur restauration avec leurs nets (migration 34).
+    async documentsSupprimes(entiteId) {
+      return verifie(await sb.rpc("documents_supprimes", { p_entite: entiteId }));
+    },
+    async restaurerDocument(documentId) {
+      return verifie(await sb.rpc("restaurer_document", { p_document: documentId }));
+    },
+    // Prochain numéro de la séquence annuelle, réservé à l'administratrice (migration 34).
+    async lireProchainNumero(entiteId, annee) {
+      return verifie(await sb.rpc("lire_prochain_numero", { p_entite: entiteId, p_annee: annee }));
+    },
+    async fixerProchainNumero(entiteId, annee, prochain) {
+      return verifie(await sb.rpc("fixer_prochain_numero", { p_entite: entiteId, p_annee: annee, p_prochain: prochain }));
+    },
+    // Fusion de deux fiches client en une transaction (migration de fusion) : dossiers déplacés, champs vides remplis, l'autre fiche supprimée.
+    // `patch` sert à la démo ; la base calcule elle-même ce qu'elle reprend (même règle que fusionClients).
+    async fusionnerClients({ garder, absorbe }) {
+      return verifie(await sb.rpc("fusionner_clients", { p_garder: garder, p_absorbe: absorbe }));
+    },
     // Numéro suivant de la séquence annuelle (migration 14). Échoue tant que la migration n'est pas appliquée : l'appelant garde alors son calcul.
     async prochainNumeroRef(entiteId, annee, minimum) {
       return verifie(await sb.rpc("prochain_numero_ref", { p_entite: entiteId, p_annee: annee, p_minimum: minimum }));
@@ -346,6 +442,13 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await sb.rpc("equipe_de", { e: entiteId }));
     },
     // Un dossier avec son résumé à jour (après une modification de ses documents ou paiements).
+    // La ligne de nets d'une réservation, relue après une écriture : le déclencheur remplir_nets (migration 32) a pu la recalculer.
+    // Sans le droit « nets », la base ne renvoie rien.
+    async netsReservations(ids) {
+      const out = [];
+      for (let i = 0; i < ids.length; i += 100) out.push(...(verifie(await sb.from("reservations_nets").select("*").in("reservation_id", ids.slice(i, i + 100))) || []));
+      return out;
+    },
     async resumeDossier(id) {
       const d = verifie(await sb.from("dossiers").select("*").eq("id", id).maybeSingle());
       if (!d) return null;

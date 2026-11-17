@@ -8,6 +8,7 @@ import { mesTaches } from "./views/taches.mjs";
 import { retirerALaDeconnexion } from "./rappels.mjs";
 import { aTraiter } from "./demandes-site-calc.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
+import { reglagesFid } from "./fiduciaire-calc.mjs";
 
 // Chaque écran se charge à sa première visite : le premier affichage n'attend que l'accueil.
 const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
@@ -101,9 +102,17 @@ function vueConnexion() {
     h("div", { class: "champ" }, h("label", { for: "email" }, tr("Adresse e-mail")), email),
     h("div", { class: "champ" }, h("label", { for: "mdp" }, tr("Mot de passe")), mdp),
     erreur,
-    bouton
+    bouton,
+    // Mot de passe oublié (audit n° 2) : un e-mail de Supabase, ou un lien que l'administratrice crée dans Administration.
+    h("button", { class: "lien", type: "button", onclick: async () => (await import("./views/compte.mjs")).ouvrirMotDePasseOublie(email.value.trim()) }, tr("Mot de passe oublié ?"))
   );
-  return h("div", { class: "connexion" }, selecteurLangue(), h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Dossiers, réservations et paiements.")), form);
+  // Lien d'invitation ou de mot de passe expiré, ou déjà utilisé : on le dit au lieu d'un écran de connexion muet.
+  const lienPerime = etat.retour.erreur
+    ? h("p", { class: "bandeau-info", role: "alert" }, etat.retour.erreur === "expire" ? tr("Ce lien a expiré ou a déjà servi. Demandez-en un nouveau à l'administratrice, ou utilisez « Mot de passe oublié ».") : tr("Ce lien n'a pas pu être utilisé. Demandez-en un nouveau à l'administratrice, ou utilisez « Mot de passe oublié »."))
+    : null;
+  // Dit une fois : après une connexion puis une déconnexion, l'écran ne parle plus de ce lien.
+  etat.retour = { ...etat.retour, erreur: null };
+  return h("div", { class: "connexion" }, selecteurLangue(), h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Dossiers, réservations et paiements.")), lienPerime, form);
 }
 
 // `ou` : la barre où il s'affiche (« menu », « haut », « simple »). Les deux sélecteurs (barre latérale et barre du haut) sont dans la page
@@ -111,7 +120,11 @@ function vueConnexion() {
 function selecteurEntite(ou) {
   const liste = entitesAccessibles();
   if (liste.length < 2) return liste.length ? h("p", { class: "entite-nom" }, liste[0].nom) : null;
-  const sel = h("select", { id: `entite-${ou}`, "aria-label": tr("Entreprise"), onchange: (e) => changerEntite(e.target.value) }, liste.map((e) => h("option", { value: e.id }, e.nom)));
+  const sel = h("select", { id: `entite-${ou}`, "aria-label": tr("Entreprise"), onchange: async (e) => {
+    // Réglages modifiés et pas enregistrés : on demande avant de changer d'entreprise (le formulaire appartient à l'entreprise ouverte).
+    if (!(await peutQuitter())) return void (e.target.value = etat.entiteId);
+    changerEntite(e.target.value);
+  } }, liste.map((e) => h("option", { value: e.id }, e.nom)));
   sel.value = etat.entiteId;
   return h("div", { class: "entite-choix" }, sel);
 }
@@ -177,7 +190,7 @@ function ecrans() {
   return [
     { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
     { titre: tr("Site"), items: siteVisible() ? [{ href: "#/demandes", libelle: tr("Demandes du site"), cle: "demandes", icone: "messages", badge: demandes, badgeLibelle: tr("{badge} à traiter", { badge: demandes }) }, { href: "#/bandeau", libelle: tr("Bandeau du site"), cle: "bandeau", icone: "alerte" }] : [] },
-    { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(peut("fiduciaire.preparer") && modeExcursions(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
+    { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(fiduciaireAuMenu(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
       titre: tr("Partenaires"),
       items: si(peut("partenaires.lire") && moduleActif("partenaires"), null).length
@@ -222,10 +235,15 @@ async function deconnecter() {
   afficher();
 }
 
-function blocCompte() {
+// Le nom en bas du menu ouvre « Mon compte » (langue, mot de passe, appareils), pour tout le monde (audit n° 3).
+const ouvrirMonCompte = async (apres) => {
+  if (apres) apres();
+  (await import("./views/compte.mjs")).ouvrirCompte({ deconnecter: etat.store.mode === "supabase" ? deconnecter : null, apresLangue: afficher });
+};
+function blocCompte(apres) {
   const nom = etat.moi.nom || etat.session.email;
   const initiales = nom.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((s) => s.charAt(0).toUpperCase()).join("");
-  return h("div", { class: "compte" }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
+  return h("button", { class: "compte", type: "button", title: tr("Mon compte"), "aria-label": tr("Mon compte : {nom}", { nom }), onclick: () => ouvrirMonCompte(apres) }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
 }
 const outilsCompte = (apres) => [
   // La cloche s'ouvre aussi en démonstration : on y règle son « Rappel 1 h avant » (les notifications, elles, demandent la vraie base).
@@ -277,7 +295,7 @@ function ouvrirPlus() {
   const restants = ecrans().map((s) => ({ ...s, items: s.items.filter((e) => !onglets.includes(e.cle)) })).filter((s) => s.items.length);
   let fermer;
   const apres = () => fermer();
-  fermer = modal(tr("Plus"), h("div", { class: "feuille-menu" }, sections(restants, apres), h("div", { class: "feuille-pied" }, selecteurLangue(apres), blocCompte(), h("div", { class: "menu-outils" }, outilsCompte(apres)))), { feuille: true });
+  fermer = modal(tr("Plus"), h("div", { class: "feuille-menu" }, sections(restants, apres), h("div", { class: "feuille-pied" }, selecteurLangue(apres), blocCompte(apres), h("div", { class: "menu-outils" }, outilsCompte(apres)))), { feuille: true });
 }
 
 // Bouton « + » flottant sur les écrans de liste : un geste pour créer. La création elle-même vit dans les écrans de saisie.
@@ -315,15 +333,23 @@ function coqueSimple() {
       { class: "barre-simple" },
       logo ? h("img", { class: "barre-logo", src: logo, alt: "" }) : null,
       selecteurEntite("simple"),
+      // Mon compte (mot de passe, appareils), dans la langue de l'interface de la personne : l'outil n'a pas d'interface en thaï.
+      h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => ouvrirMonCompte(), "aria-label": tr("Mon compte"), title: tr("Mon compte") }, icone("clients", 18)),
       etat.store.mode === "supabase" ? h("button", { class: "secondaire petit", type: "button", lang: "th", onclick: deconnecter }, icone("deconnexion", 18), "ออกจากระบบ") : null
     ),
     // Les factures pour la fiduciaire sont aussi son travail (Jérémy, 12.11.2026) : deux onglets, le voucher et les factures.
-    peut("fiduciaire.preparer")
+    // Pas d'onglet dans une entreprise qui n'émet pas de factures pour la fiduciaire (Taxi, 17.11.2026).
+    peut("fiduciaire.preparer") && reglagesFid(etat.db.reglages).actif
       ? h("nav", { class: "onglets-simple", lang: "th", "aria-label": "เมนู" }, h("a", { href: "#/", "data-ecran": "voucher" }, "วอยเชอร์"), h("a", { href: "#/fiduciaire", "data-ecran": "fiduciaire" }, "ใบแจ้งหนี้"))
       : null,
     h("div", { class: "contenu-simple" }, etat.store.mode === "demo" ? bandeauDemo() : null, h("main", { id: "principal", tabindex: "-1" }))
   );
 }
+
+// Fiduciaire au menu : dans une entreprise qui émet ces factures (Secret) ; dans une autre (Taxi, 17.11.2026), seulement pour qui peut la réactiver.
+// Taxi n'émet pas de factures pour la fiduciaire (décision 5) : l'entrée sort du menu tant qu'elle n'y est pas réactivée, ce qui se fait depuis les
+// Réglages (onglet « Écrans », contrôle du 17.11.2026, D10).
+const fiduciaireAuMenu = () => peut("fiduciaire.preparer") && modeExcursions() && (reglagesFid(etat.db.reglages).actif || (!modeTaxi() && peut("fiduciaire.gerer") && peut("reglages.ecrire")));
 
 // Écrans propres à un type d'entreprise : ZTP (voyages sur mesure), Secret (excursions), Taxi.
 function ecranDeLEntreprise(cle) {
@@ -345,7 +371,7 @@ async function afficherVoucherSeul() {
   }
   // Deux écrans possibles : le voucher, et les factures pour la fiduciaire avec le droit « fiduciaire.preparer ».
   // Une adresse d'un autre écran (lien, favori) ramène au voucher sans rien ouvrir d'autre.
-  const factures = location.hash === "#/fiduciaire" && peut("fiduciaire.preparer");
+  const factures = location.hash === "#/fiduciaire" && peut("fiduciaire.preparer") && reglagesFid(etat.db.reglages).actif;
   if (!factures && location.hash && location.hash !== "#/") history.replaceState(null, "", "#/");
   for (const a of racine.querySelectorAll(".onglets-simple a")) a.setAttribute("aria-current", (a.dataset.ecran === "fiduciaire") === factures ? "page" : "false");
   const moi = ++rendu;
@@ -543,6 +569,13 @@ async function afficher() {
     document.title = tr("Connexion - Gestion");
     return;
   }
+  // Lien d'invitation ou de mot de passe oublié : la session est ouverte, la personne choisit son mot de passe avant tout autre écran.
+  if (etat.retour.type) {
+    const { vueNouveauMotDePasse } = await import("./views/compte.mjs");
+    vider(racine).append(vueNouveauMotDePasse(etat.retour.type, () => ((etat.retour = { type: null, erreur: null }), history.replaceState(null, "", "#/"), afficher())));
+    document.title = tr("Mot de passe - Gestion");
+    return;
+  }
   if (!entiteActive()) {
     vider(racine).append(
       h(
@@ -674,7 +707,26 @@ document.addEventListener("keydown", (e) => {
   else if (k === "/") (e.preventDefault(), ouvrirRecherche());
 });
 
-window.addEventListener("hashchange", afficher);
+// Un écran qui a des modifications non enregistrées pose `etat.garde` (Réglages, audit n° 38). Quitter par le menu, la recherche, un raccourci ou
+// le bouton retour demande d'abord ; « Rester » remet l'adresse de l'écran ouvert sans le redessiner.
+async function peutQuitter() {
+  if (!etat.garde || !etat.garde()) return true;
+  const { confirmer } = await import("./ui.mjs");
+  const ok = await confirmer(tr("Les réglages modifiés ne sont pas enregistrés. Quitter sans enregistrer ?"), tr("Quitter sans enregistrer"), true, tr("Rester"));
+  if (ok) etat.garde = null;
+  return ok;
+}
+let retourEnCours = false;
+window.addEventListener("hashchange", async () => {
+  if (retourEnCours) return void (retourEnCours = false);
+  if (etat.garde && derniereVue && location.hash !== derniereVue && !(await peutQuitter())) {
+    retourEnCours = true;
+    location.replace(derniereVue);
+    return;
+  }
+  etat.garde = null;
+  afficher();
+});
 
 // L'outil reste ouvert des journées entières dans un onglet : quand une nouvelle version est publiée, un bandeau
 // propose de recharger, sinon l'ancien code tourne jusqu'au prochain rechargement complet.

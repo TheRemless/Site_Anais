@@ -9,6 +9,10 @@ verify_jwt = false
 [functions.assistant]
 verify_jwt = true
 
+# Appelée par l'administratrice générale (Administration) : la passerelle vérifie le jeton, la fonction vérifie ensuite est_super_admin().
+[functions.invitation]
+verify_jwt = true
+
 # Appelée par le site public (secrettravelandtour.com) sans compte : la fonction contrôle elle-même l'origine, la taille, le piège à robots et la cadence.
 [functions.demande-site]
 verify_jwt = false

@@ -1,9 +1,40 @@
-// Fenêtre « Rappels » : activer ou couper les notifications de ce téléphone, et son propre « Rappel 1 h avant » (migration 31, réglage du profil).
-import { etat, reglages } from "../etat.mjs";
+// Fenêtre « Rappels » : activer ou couper les notifications de ce téléphone, son propre « Rappel 1 h avant » (migration 31, réglage du profil)
+// et, pour l'administratrice, les heures des rappels dans l'entreprise ouverte (lot G).
+import { etat, estAdmin, reglages, enregistrerReglages, entiteActive } from "../etat.mjs";
 import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
-import { h, modal, toast } from "../ui.mjs";
+import { h, modal, toast, champ } from "../ui.mjs";
 import { tr } from "../i18n.mjs";
 import { situation, activer, desactiver, essai } from "../rappels.mjs";
+import { heuresRappels, heureDepart } from "../rappels-etat.mjs";
+
+// Heures de l'entreprise ouverte (Bangkok). La fonction passe chaque heure et envoie les rappels des entreprises réglées sur cette heure-là.
+function reglageHeures(apres) {
+  const hrs = heuresRappels(reglages().rappels);
+  const choix = (id, valeur) => h("select", { id }, h("option", { value: "", selected: valeur === null }, tr("Coupé")), Array.from({ length: 24 }, (_, n) => h("option", { value: String(n), selected: valeur === n }, `${n} h`)));
+  const veille = choix("rp-veille", hrs.veille);
+  const lendemain = choix("rp-lendemain", hrs.lendemain);
+  return h(
+    "form",
+    {
+      class: "formulaire",
+      onsubmit: async (e) => {
+        e.preventDefault();
+        const lire = (sel) => (sel.value === "" ? null : Number(sel.value));
+        try {
+          await enregistrerReglages({ ...reglages(), rappels: { ...(reglages().rappels || {}), veille: lire(veille), lendemain: lire(lendemain) } });
+          toast(tr("Heures des rappels enregistrées."));
+          apres();
+        } catch (err) {
+          toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+        }
+      },
+    },
+    h("h3", null, tr("Heures des rappels de {nom}", { nom: entiteActive().nom })),
+    h("p", { class: "aide" }, tr("Heure de Bangkok. Elles valent pour tous les téléphones abonnés qui voient cette entreprise.")),
+    h("div", { class: "grille-form" }, champ(tr("La veille"), veille), champ(tr("Le lendemain"), lendemain)),
+    h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "submit" }, tr("Enregistrer les heures")))
+  );
+}
 
 export function ouvrirRappels() {
   const corps = h("div", { class: "modal-corps rappels" });
@@ -31,14 +62,14 @@ export function ouvrirRappels() {
     return h(
       "div",
       { class: "rappel-h1-profil" },
-      h("label", { class: "case" }, caseH1, h("span", null, h("strong", null, depart ? tr("Rappel la veille du départ") : tr("Rappel 1 h avant chaque service")), h("br"), depart ? tr("La veille à 18h, une notification pour chaque voyage accepté qui part le lendemain.") : tr("Une notification une heure avant chaque réservation qui a une heure, pour rappeler le client et le partenaire."))),
+      h("label", { class: "case" }, caseH1, h("span", null, h("strong", null, depart ? tr("Rappel la veille du départ") : tr("Rappel 1 h avant chaque service")), h("br"), depart ? tr("La veille à {heure}, une notification pour chaque voyage accepté qui part le lendemain.", { heure: `${heureDepart(reglages().rappels)} h` }) : tr("Une notification une heure avant chaque réservation qui a une heure, pour rappeler le client et le partenaire."))),
       entreprise ? null : h("p", { class: "aide" }, tr("Éteint pour cette entreprise dans les réglages : vous ne recevrez rien ici tant qu'il n'y est pas allumé."))
     );
   }
   async function dessiner() {
     corps.replaceChildren(h("p", { class: "aide" }, tr("Chargement…")));
     if (etat.store.mode !== "supabase") {
-      corps.replaceChildren(blocH1(), h("p", { class: "aide" }, tr("Démonstration : aucune notification ne part de cet appareil. Le réglage ci-dessus est gardé dans la démo.")), h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: fermer }, tr("Fermer"))));
+      corps.replaceChildren(blocH1(), h("p", { class: "aide" }, tr("Démonstration : aucune notification ne part de cet appareil. Le réglage ci-dessus est gardé dans la démo.")), ...(estAdmin() ? [reglageHeures(dessiner)] : []), h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: fermer }, tr("Fermer"))));
       return;
     }
     let s;
@@ -69,12 +100,13 @@ export function ouvrirRappels() {
       inactif: tr("Les rappels ne sont pas activés sur cet appareil."),
       actif: tr("Les rappels sont actifs sur cet appareil."),
     }[s];
+    const hrs = heuresRappels(reglages().rappels);
     corps.replaceChildren(
       blocH1(),
       h("ul", { class: "liste-aide" },
-        h("li", null, h("strong", null, tr("18h, la veille")), tr("Les services du lendemain, avec ceux qui n'ont pas d'heure de pickup.")),
-        modeRappel(reglages()) === "depart" ? h("li", null, h("strong", null, tr("18h, la veille du départ")), tr("Chaque voyage accepté qui part le lendemain : un tap ouvre le dossier.")) : h("li", null, h("strong", null, tr("1 h avant")), tr("Chaque service qui a une heure : un tap ouvre la réservation et son rappel.")),
-        h("li", null, h("strong", null, tr("9h, le lendemain")), tr("Les clients dont un service a eu lieu la veille, à recontacter pour avoir leur avis."))
+        h("li", null, h("strong", null, hrs.veille === null ? tr("La veille : coupé") : tr("{heure}, la veille", { heure: `${hrs.veille} h` })), " ", tr("Les services du lendemain, avec ceux qui n'ont pas d'heure ou pas de lieu de pickup.")),
+        modeRappel(reglages()) === "depart" ? h("li", null, h("strong", null, tr("{heure}, la veille du départ", { heure: `${heureDepart(reglages().rappels)} h` })), " ", tr("Chaque voyage accepté qui part le lendemain : un tap ouvre le dossier.")) : h("li", null, h("strong", null, tr("1 h avant")), " ", tr("Chaque service qui a une heure : un tap ouvre la réservation et son rappel.")),
+        h("li", null, h("strong", null, hrs.lendemain === null ? tr("Le lendemain : coupé") : tr("{heure}, le lendemain", { heure: `${hrs.lendemain} h` })), " ", tr("Les clients dont un service a eu lieu la veille, à recontacter pour avoir leur avis."))
       ),
       h("p", { class: "aide" }, tr("Heure de Bangkok. Les rappels du soir et du matin ne contiennent aucun nom de client ; ceux d'une heure avant et de la veille du départ le contiennent, lisible une fois le téléphone déverrouillé.")),
       h("p", { class: "rappels-etat", role: "status" }, etatTexte),
@@ -83,7 +115,8 @@ export function ouvrirRappels() {
         s === "actif" ? actionner(tr("Envoyer un essai"), "secondaire", essai) : null,
         s === "actif" ? actionner(tr("Désactiver"), "secondaire", () => desactiver(etat.store), tr("Rappels désactivés sur cet appareil.")) : null,
         h("button", { class: "secondaire", type: "button", onclick: fermer }, tr("Fermer"))
-      )
+      ),
+      ...(estAdmin() ? [reglageHeures(dessiner)] : [])
     );
   }
   dessiner();

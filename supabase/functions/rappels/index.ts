@@ -1,10 +1,16 @@
-// Fonction planifiée « rappels » : appelée par pg_cron à 18h (veille) et 9h (lendemain), heure de Bangkok, et toutes les 5 minutes pour le rappel
-// une heure avant chaque service (« h1 », migration 31).
-// Elle lit les réservations avec la clé de service, calcule le texte de chaque personne selon les entreprises qu'elle voit,
-// puis envoie une notification Web Push à chacun de ses appareils abonnés. Aucun nom de client ne part dans la notification.
+// Fonction planifiée « rappels ». Façons de l'appeler (heure de Bangkok) :
+// - { "type": "auto" } chaque heure par pg_cron : elle envoie le rappel de la veille et celui du lendemain des entreprises dont l'heure réglée
+//   (Réglages > rappels, 18 h et 9 h par défaut) est l'heure qu'il est à Bangkok (lot G, 17.11.2026), et avec le passage de la veille le départ
+//   de demain de chaque voyage ZTP (migration 31) ;
+// - { "type": "veille" } ou { "type": "lendemain" } : envoi forcé, à toute heure, pour toutes les entreprises où ce rappel n'est pas coupé
+//   (les crons de 18h et 9h posés avant le lot G, et les essais) ; la veille envoie aussi les départs ZTP de demain ;
+// - { "type": "h1" } toutes les 5 minutes : le rappel une heure avant chaque service (Secret, Taxi, migration 31), et
+//   { "mode": "h1", "service_id": "…", "force": true } pour forcer celui d'un service.
+// Elle lit les réservations avec la clé de service, calcule le texte de chaque personne selon les entreprises qu'elle voit et dans sa langue,
+// puis envoie une notification Web Push à chacun de ses appareils abonnés. Les résumés de la veille et du lendemain ne contiennent aucun nom de client.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
-import { dateBangkok, dateCible, entitesLisibles, rappelDuType, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
+import { dateBangkok, dateCible, entitesLisibles, rappelDuType, heureBangkok, entitesDuRappel, entitesDuDepart, restreindre, TYPES, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
 
@@ -46,43 +52,62 @@ Deno.serve(async (req) => {
   // Une administratrice connectée n'a que l'envoi forcé : les passages planifiés restent au cron et à la clé de service.
   if (qui === "admin") return json({ erreur: "non autorisé" }, 401);
   if (type === "h1") return rappelH1(demande);
-  if (type !== "veille" && type !== "lendemain") return json({ erreur: "type inconnu" }, 400);
-  // `date` et `user_id` ne servent qu'aux essais : sans eux, c'est la date du jour à Bangkok et tous les abonnés.
+  if (type !== "auto" && !TYPES.includes(type)) return json({ erreur: "type inconnu" }, 400);
+  // `date`, `heure` et `user_id` ne servent qu'aux essais : sans eux, c'est la date et l'heure de Bangkok et tous les abonnés.
   const aujourdhui = /^\d{4}-\d{2}-\d{2}$/.test(demande.date || "") ? demande.date : dateBangkok();
-  const cible = dateCible(type, aujourdhui)!;
+  const heure = type === "auto" ? (Number.isInteger(demande.heure) && demande.heure >= 0 && demande.heure <= 23 ? demande.heure : heureBangkok()) : null;
 
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
 
-  // Chaque exécution laisse une ligne de suivi (date, type, envoyés, échecs, erreur) : « le cron a réussi » ne dit que la requête est partie, pas que les
-  // rappels ont été envoyés (le 11.11.2026 la requête a expiré après 5 s sans que personne le sache). Les essais ciblés (`user_id`) ne sont pas notés.
-  const debut = Date.now();
-  let res = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0 };
-  let erreur = "";
-  try {
-    res = await executer(db, type, aujourdhui, cible, demande);
-  } catch (err) {
-    erreur = String((err && err.message) || err).slice(0, 300);
-  }
-  // 18h : en plus du résumé, le départ de demain de chaque voyage ZTP (une notification par dossier, une seule fois par date de départ).
-  // À part : une panne du résumé ne prive pas les départs de leur rappel, et inversement.
-  if (type === "veille") {
-    try {
-      const dep = await executerDeparts(db, cible, demande);
-      res = { abonnements: Math.max(res.abonnements, dep.abonnements), envoyes: res.envoyes + dep.envoyes, retires: res.retires + dep.retires, echecs: res.echecs + dep.echecs };
-    } catch (err) {
-      erreur = [erreur, `départs : ${String((err && err.message) || err)}`].filter(Boolean).join(" ; ").slice(0, 300);
+  // Les réglages de chaque entreprise : heures des rappels (valeur.rappels) et rappel du départ (ZTP). Sans lecture possible, l'appel s'arrête et le dit :
+  // mieux vaut aucun rappel qu'un rappel à la mauvaise heure.
+  const [entites, reglages] = await Promise.all([db.from("entites").select("id, nom"), db.from("reglages").select("entite_id, valeur")]);
+  if (entites.error || reglages.error) return json({ erreur: (entites.error || reglages.error)!.message }, 500);
+  const valeurs = Object.fromEntries((reglages.data || []).map((r) => [r.entite_id, r.valeur]));
+  const parEntite = Object.fromEntries(Object.entries(valeurs).map(([id, v]) => [id, v && typeof v === "object" ? (v as { rappels?: unknown }).rappels : undefined]));
+  const ids = (entites.data || []).map((e) => e.id);
+
+  const resultats = [];
+  for (const t of type === "auto" ? TYPES : [type]) {
+    const retenues = entitesDuRappel(t, heure, ids, parEntite);
+    // Le départ de demain (ZTP) part avec le passage de la veille, à l'heure de la veille de l'entreprise (18 h si elle est coupée : il a son propre réglage).
+    const departs = t === "veille" ? entitesDuDepart(heure, ids, valeurs) : [];
+    if (!retenues.length && !departs.length) continue;
+    const cible = dateCible(t, aujourdhui)!;
+    // Chaque envoi laisse une ligne de suivi (date, type, envoyés, échecs, erreur) : « le cron a réussi » ne dit que la requête est partie, pas que les
+    // rappels ont été envoyés (le 11.11.2026 la requête a expiré après 5 s sans que personne le sache). Les essais ciblés (`user_id`) ne sont pas notés.
+    // Une heure où aucune entreprise n'a de rappel ne laisse pas de ligne.
+    const debut = Date.now();
+    let res = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0 };
+    let erreur = "";
+    if (retenues.length) {
+      try {
+        res = await executer(db, t, aujourdhui, cible, demande, retenues, entites.data || []);
+      } catch (err) {
+        erreur = String((err && err.message) || err).slice(0, 300);
+      }
     }
+    // À part : une panne du résumé ne prive pas les départs de leur rappel, et inversement.
+    if (departs.length) {
+      try {
+        const dep = await executerDeparts(db, cible, demande, departs);
+        res = { abonnements: Math.max(res.abonnements, dep.abonnements), envoyes: res.envoyes + dep.envoyes, retires: res.retires + dep.retires, echecs: res.echecs + dep.echecs };
+      } catch (err) {
+        erreur = [erreur, `départs : ${String((err && err.message) || err)}`].filter(Boolean).join(" ; ").slice(0, 300);
+      }
+    }
+    if (!demande.user_id) {
+      const { error } = await db.from("rappels_suivi").insert({ type: t, cible, ...res, erreur, duree_ms: Date.now() - debut });
+      if (error) console.error("suivi des rappels non écrit :", error.message);
+    }
+    resultats.push({ type: t, cible, ...res, ...(erreur ? { erreur } : {}) });
   }
-  if (!demande.user_id) {
-    const { error } = await db.from("rappels_suivi").insert({ type, cible, ...res, erreur, duree_ms: Date.now() - debut });
-    if (error) console.error("suivi des rappels non écrit :", error.message);
-  }
-  return json({ type, cible, ...res, ...(erreur ? { erreur } : {}) }, erreur ? 500 : 200);
+  return json({ heure, resultats }, resultats.some((r) => r.erreur) ? 500 : 200);
 });
 
-// Envoie les rappels d'un type pour une date cible et renvoie les comptes. Lève une erreur si la base répond mal : l'appelant la note.
-async function executer(db: ReturnType<typeof createClient>, type: string, aujourdhui: string, cible: string, demande: { user_id?: string }) {
+// Envoie les rappels d'un type pour une date cible, pour les entreprises `retenues`, et renvoie les comptes. Lève une erreur si la base répond mal : l'appelant la note.
+async function executer(db: ReturnType<typeof createClient>, type: string, aujourdhui: string, cible: string, demande: { user_id?: string }, retenues: string[], entites: { id: string; nom: string }[]) {
   let requeteAbos = db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth");
   if (demande.user_id) requeteAbos = requeteAbos.eq("user_id", demande.user_id);
   const { data: abos, error: errAbos } = await requeteAbos;
@@ -90,21 +115,26 @@ async function executer(db: ReturnType<typeof createClient>, type: string, aujou
   if (!abos?.length) return { abonnements: 0, envoyes: 0, retires: 0, echecs: 0 };
 
   const ids = [...new Set(abos.map((a) => a.user_id))];
-  const [profils, membres, roles, entites, reservations] = await Promise.all([
-    db.from("profils").select("user_id, actif, super_admin").in("user_id", ids),
+  const [profils, membres, roles, reservations] = await Promise.all([
+    db.from("profils").select("user_id, actif, super_admin, langue").in("user_id", ids),
     db.from("membres").select("user_id, entite_id, role_id").in("user_id", ids),
     db.from("roles").select("id, portee, permissions"),
-    db.from("entites").select("id, nom"),
-    // 18h : les services qui partent demain. 9h : ceux qui se sont terminés hier, donc aussi une location prise plus tôt et rendue hier (details.retour_date).
-    db.from("reservations").select("entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, details").or(type === "lendemain" ? `date_service.eq.${cible},details->>retour_date.eq.${cible}` : `date_service.eq.${cible}`).neq("statut", "annule"),
+    // La veille : les services qui partent demain. Le lendemain : ceux qui se sont terminés hier, donc aussi une location prise plus tôt et rendue hier (details.retour_date).
+    db.from("reservations").select("entite_id, dossier_id, statut, heure_pickup, lieu_pickup, date_service, libelle, partenaire_id, details").in("entite_id", retenues).or(type === "lendemain" ? `date_service.eq.${cible},details->>retour_date.eq.${cible}` : `date_service.eq.${cible}`).neq("statut", "annule"),
   ]);
-  for (const r of [profils, membres, roles, entites, reservations]) if (r.error) throw new Error(r.error.message);
+  for (const r of [profils, membres, roles, reservations]) if (r.error) throw new Error(r.error.message);
 
+  // Les dossiers des services : annulés à écarter, et l'hôtel du client quand la réservation n'a pas de lieu de pickup (même règle que la feuille du jour).
   const dossiersIds = [...new Set(reservations.data!.map((r) => r.dossier_id))];
-  const annules = dossiersIds.length ? await db.from("dossiers").select("id").eq("annule", true).in("id", dossiersIds) : { data: [], error: null };
-  if (annules.error) throw new Error(annules.error.message);
-  const ecartes = new Set((annules.data || []).map((d) => d.id));
-  const nomEntite = (id: string) => (entites.data!.find((e) => e.id === id) || { nom: "" }).nom;
+  const dossiers = dossiersIds.length ? await db.from("dossiers").select("id, annule, client_id").in("id", dossiersIds) : { data: [], error: null };
+  if (dossiers.error) throw new Error(dossiers.error.message);
+  const ecartes = new Set((dossiers.data || []).filter((d) => d.annule).map((d) => d.id));
+  const clientsIds = [...new Set((dossiers.data || []).map((d) => d.client_id).filter(Boolean))];
+  const clients = clientsIds.length ? await db.from("clients").select("id, adresse").in("id", clientsIds) : { data: [], error: null };
+  if (clients.error) throw new Error(clients.error.message);
+  const adresseDe = new Map((dossiers.data || []).map((d) => [d.id, String(((clients.data || []).find((c) => c.id === d.client_id) || {}).adresse || "").split("\n")[0]]));
+  const services = reservations.data!.map((r) => ({ ...r, adresse_client: adresseDe.get(r.dossier_id) || "" }));
+  const nomEntite = (id: string) => (entites.find((e) => e.id === id) || { nom: "" }).nom;
 
   let envoyes = 0;
   let retires = 0;
@@ -112,8 +142,9 @@ async function executer(db: ReturnType<typeof createClient>, type: string, aujou
   for (const userId of ids) {
     const profil = profils.data!.find((p) => p.user_id === userId);
     if (!profil) continue;
-    const entiteIds = entitesLisibles({ profil, membres: membres.data!, roles: roles.data! });
-    const message = rappelDuType(type, reservations.data!, aujourdhui, { entiteIds, ecartes, nomEntite });
+    const lisibles = entitesLisibles({ profil, membres: membres.data!, roles: roles.data! });
+    const entiteIds = restreindre(lisibles, retenues);
+    const message = rappelDuType(type, services, aujourdhui, { entiteIds, ecartes, nomEntite, langue: profil.langue === "en" ? "en" : "fr" });
     if (!message) continue;
     const charge = JSON.stringify({ ...message, url: "/gestion/#/" });
     for (const abo of abos.filter((a) => a.user_id === userId)) {
@@ -272,12 +303,10 @@ async function envoyerH1(db: ReturnType<typeof createClient>, aRappeler: Array<{
   return { abonnements: abos.data!.length, envoyes, retires, echecs, services: nouveaux.length };
 }
 
-// ---- ZTP : départ du client demain (appelé par le passage de 18h) ----------------------------------------------------------------------
-async function executerDeparts(db: ReturnType<typeof createClient>, demain: string, demande: { user_id?: string }) {
+// ---- ZTP : départ du client demain (appelé par le passage de la veille) ----------------------------------------------------------------------
+// `actives` : les entreprises ZTP dont le rappel du départ part à ce passage (entitesDuDepart).
+async function executerDeparts(db: ReturnType<typeof createClient>, demain: string, demande: { user_id?: string }, actives: string[]) {
   const vide = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0 };
-  const reglages = await db.from("reglages").select("entite_id, valeur");
-  if (reglages.error) throw new Error(reglages.error.message);
-  const actives = reglages.data!.filter((l) => rappelAvantActif(l.valeur) && modeRappel(l.valeur) === "depart").map((l) => l.entite_id);
   if (!actives.length) return vide;
   const lus = await db.from("dossiers").select("id, entite_id, ref, client_id, bandeau, pays, date_depart, accepte_le, annule, sans_suite_le").in("entite_id", actives).eq("date_depart", demain);
   if (lus.error) throw new Error(lus.error.message);

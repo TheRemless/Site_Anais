@@ -397,7 +397,11 @@ input.couleur { width: 72px; padding: 2px; }
 .carte-lien > details { grid-column: 1 / -1; }
 .tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.75rem; font-weight: 600; vertical-align: 1px; white-space: nowrap; }
 .tag.meilleur { background: #e3f3e8; color: #25653d; }
+.tag.alerte { background: var(--danger-fond); color: var(--danger); }
 .tag.cie { margin-left: 0; background: var(--teal-100); color: var(--teal-700); }
+/* Voucher modifié depuis son envoi (lot B, 17.11.2026) : même jaune que les écarts de facture. */
+.tag.tag-alerte { background: #fff4d6; color: #5a4300; }
+.envois-fait { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .net { color: var(--texte-2); }
 .marge { font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
 .marge-basse { color: #8a5200; }
@@ -663,6 +667,12 @@ details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-w
 .version-choix strong { font-weight: 700; }
 .version-choix span { font-size: 0.85rem; color: var(--texte-2); }
 .version-choix .version-nb { color: var(--teal-700); font-weight: 600; }
+/* Lot C1 : version identique à un envoi, ligne sans prix, bandeau d'un document envoyé. */
+.version-choix .version-envoi { font-size: 0.85em; color: #5a4300; }
+.carte-ligne.ligne-sans-prix { border-left: 3px solid var(--danger); }
+.carte-ligne.ligne-sans-prix .calc { color: var(--danger); font-weight: 600; }
+.bandeau-envoi p { margin: 0 0 0.25rem; }
+.bandeau-envoi .actions { margin-top: 0.5rem; }
 .version-choix[aria-pressed="true"] { background: var(--teal-100); border-color: var(--teal-600); box-shadow: inset 3px 0 0 var(--teal-600); }
 .version-detail h3 { margin: 0 0 8px; }
 .version-diff { margin: 0 0 14px; padding: 0 0 0 18px; display: grid; gap: 6px; }
@@ -850,6 +860,16 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .detail-services summary { display: flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--teal-700); cursor: pointer; }
 .detail-services ul { list-style: none; margin: 0 0 6px; padding: 0; }
 .detail-services li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--bord); font-size: 0.92rem; }
+/* À encaisser : la liste à cocher d'un virement ou d'une réception à annuler, et le bandeau « Recalculer » toujours présent. */
+.liste-reception { list-style: none; margin: 0 0 8px; padding: 0; max-height: 45vh; overflow: auto; }
+.liste-reception li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 2px 0; border-top: 1px solid var(--bord); font-size: 0.92rem; }
+.liste-reception .case { flex: 1; min-width: 0; font-weight: 400; }
+.liste-reception .case input { flex: none; width: 20px; height: 20px; }
+.liste-reception .case .tag { margin-left: 6px; }
+.liste-reception strong { flex: none; }
+.bandeau-recalcul { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin: 0 0 20px; padding: 8px 14px; border: 1px solid var(--bord); border-radius: var(--rayon); font-size: 0.92rem; }
+.bandeau-recalcul.a-faire { background: #fff4d6; border-color: #e8d49a; color: #5a4300; }
+.bandeau-recalcul button { min-height: 44px; }
 .commissions-recues > summary { display: flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--teal-700); cursor: pointer; }
 .commissions-recevoir .carte-actions, .commissions-recues .carte-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 719px) {
@@ -1485,12 +1505,85 @@ details > summary { padding-block: 11px; margin: 0; }
 .fiduciaire[lang="th"] .fid-montant { font-size: 1.3rem; }
 .fiduciaire .barre-action > button { white-space: normal; line-height: 1.3; min-width: 0; }
 .fid-plus { margin: 14px 0 0; text-align: center; }
+.fid-inactif { margin: 0 0 20px; padding: 12px 14px; border-radius: 10px; background: var(--danger-fond); color: var(--danger); font-weight: 600; }
+.fid-reglages { margin-top: 8px; border-top: 1px solid var(--bord); padding-top: 8px; }
+.fid-reglages > summary { display: flex; align-items: center; min-height: 44px; }
+.fid-reglages-corps { display: grid; gap: 10px; max-width: 720px; }
+.fid-reglages-grille { display: grid; gap: 0 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
 
 /* Création d'un dossier : le bloc voucher de chaque service, replié sur téléphone avec ce qui est déjà rempli. */
 .creation-voucher { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--bord); }
 .creation-voucher > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .creation-voucher-resume { margin-left: 8px; font-weight: 400; color: var(--texte-2); }
 .creation-voucher-resume:empty { display: none; }
+/* ---- Tâches : boutons Reporter, Modifier, Supprimer (lot G, 17.11.2026) : sous le texte sur téléphone ---- */
+.tache-boutons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+@media (max-width: 719px) {
+  .tache { flex-wrap: wrap; }
+  .tache-texte { flex: 1 1 calc(100% - 60px); min-width: 0; }
+  .tache-boutons { flex-basis: 100%; padding-left: 42px; }
+}
+
+/* Partenaires et catalogue (lot A, 17.11.2026) : éléments masqués en gris, prix à saisir, lignes de téléphones et de fenêtres, ordre des tarifs. */
+.tag.attention { background: #fdf0dc; color: #8a5200; }
+.carte.inactif .carte-lien { background: var(--surface-2); }
+.carte.inactif .carte-titre, .carte.inactif .carte-sous { color: var(--texte-2); }
+.inactif td strong { color: var(--texte-2); }
+p.etiquette { margin: 0 0 4px; font-size: 0.88rem; font-weight: 600; }
+.lignes-saisie { display: grid; gap: 8px; margin-bottom: 8px; }
+.ligne-saisie { display: grid; gap: 8px; align-items: center; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto auto; }
+.ligne-saisie.fenetre { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+.ligne-saisie.zone { grid-template-columns: minmax(0, 1.4fr) repeat(var(--colonnes, 1), minmax(64px, 0.7fr)) auto; }
+.ligne-saisie .case { min-height: 44px; white-space: nowrap; }
+.ligne-saisie input { min-width: 0; }
+.editeur-grille { border: 1px solid var(--bord); border-radius: var(--rayon); padding: 12px; margin-bottom: 12px; }
+.editeur-grille .entete-grille { display: flex; gap: 8px; align-items: end; margin-bottom: 8px; }
+.editeur-grille .entete-grille .champ { flex: 1; margin: 0; }
+.ordre-tarif { display: inline-flex; gap: 2px; }
+.ordre-tarif .bouton-icone { width: 36px; height: 36px; }
+@media (max-width: 600px) {
+  .ligne-saisie { grid-template-columns: minmax(0, 1fr) auto; }
+  .ligne-saisie > :first-child { grid-column: 1 / -1; }
+  .ligne-saisie.fenetre { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .ligne-saisie.fenetre > :first-child { grid-column: auto; }
+  .ligne-saisie.zone { grid-template-columns: repeat(var(--colonnes, 1), minmax(0, 1fr)) auto; }
+}
+
+/* Lot D (17.11.2026) : équipe, réglages, messages. */
+/* Le nom en bas du menu ouvre « Mon compte » : un bouton qui garde l'allure du bloc. */
+button.compte { width: 100%; padding: 6px; margin: 0; border: 1px solid transparent; border-radius: var(--rayon); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.compte:hover { background: var(--surface-2); }
+button.compte:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+.compte-menu h3 { margin: 18px 0 6px; font-size: 1rem; }
+.compte-menu h3:first-of-type { margin-top: 8px; }
+/* Éléments archivés (variantes, informations de paiement, moyens, messages désactivés) : visibles en gris, réactivables. */
+.carte-ligne.archive, .carte.archive, .ligne-moyen.archive { opacity: 0.62; }
+.carte-ligne.archive:focus-within, .carte.archive:focus-within, .ligne-moyen.archive:focus-within { opacity: 1; }
+.liste-moyens { display: grid; gap: 8px; }
+.ligne-moyen { display: flex; align-items: center; gap: 10px; }
+.ligne-moyen input { flex: 1; min-width: 0; }
+.liste-moyens > button { justify-self: start; }
+.petit-lien { font-size: 0.85rem; margin-top: 4px; }
+/* Textes thaïs de l'écran de Mook : le français à gauche, le thaï à droite ; l'un sous l'autre sur téléphone. */
+.grille-thai { display: grid; gap: 10px; }
+.ligne-thai { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 4px 14px; align-items: start; padding-bottom: 10px; border-bottom: 1px solid var(--bord); }
+.ligne-thai-fr { margin: 6px 0 0; color: var(--texte-2); font-size: 0.92rem; }
+.ligne-thai textarea { width: 100%; min-height: 2.6em; resize: vertical; }
+@media (max-width: 719px) {
+  .ligne-thai { grid-template-columns: minmax(0, 1fr); }
+}
+/* Lot I (17.11.2026) : net ou commission manquants, saisis en un geste (« À vérifier » et carte du service dans le dossier). */
+.saisie-rapide { grid-column: 1 / -1; display: grid; gap: 4px; margin: 8px 0 0; padding: 10px 12px; border-radius: var(--rayon); background: var(--surface-2); }
+.carte > .saisie-rapide { flex: 1 1 100%; margin: 0 16px 14px; }
+.saisie-rapide .etiquette { font-weight: 600; font-size: 0.92rem; }
+.saisie-rapide-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.saisie-rapide-ligne input { flex: 0 1 12em; min-width: 8em; }
+.saisie-rapide .aide { margin: 0; }
+.saisie-rapide .erreur-champ { margin: 0; flex-basis: 100%; }
+
+/* Lot J (17.11.2026) : écarts soldés montrés à part sous l'encaissé, proposition de modèle de voucher. */
+.sec.bloc { display: block; font-size: 0.82rem; font-weight: 400; }
+.proposition-modele { margin-top: 0.25rem; }
 
 /* ---- Demandes du site (migration 30) ------------------------------------------------------------------------------- */
 .dsite-liste, .bsite-liste { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }

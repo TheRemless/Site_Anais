@@ -1,14 +1,15 @@
 // Copie de la feuille du jour pour la lire sans réseau : aujourd'hui et demain, seulement ce qu'un chauffeur ou un capitaine doit savoir (heures, lieux, personnes, téléphones,
 // partenaires). JAMAIS de montant, de net ni de commission : la liste des champs gardés est écrite ci-dessous, ce qui n'y figure pas ne part pas sur le téléphone.
 // Logique pure, testée avec node --test ; le stockage (localStorage) et l'affichage sont dans etat.mjs et hors-ligne.mjs.
-import { feuilleDuJour } from "./operations-calc.mjs";
+import { feuilleJour } from "./feuille-calc.mjs";
 import { CLE_HORS_LIGNE, AGE_MAX_H, lireCopie } from "./feuille-hors-ligne-lecture.mjs";
 
 export { CLE_HORS_LIGNE, AGE_MAX_H, lireCopie };
 const jourPlus = (jour, n) => new Date(Date.UTC(+jour.slice(0, 4), +jour.slice(5, 7) - 1, +jour.slice(8, 10)) + n * 86400000).toISOString().slice(0, 10);
 
 // `trajet` : « Back to pickup. Plan: … » d'un retour au point de départ (16.11.2026), vide pour un aller simple.
-const LIGNE = ["heure", "libelle", "client", "telephone", "hotel", "chambre", "trajet", "reference", "statut"];
+// `sorte` et `precision` (17.11.2026) : pickup, retour ou location en cours, et le drop-off, le vol ou le jour de location, en anglais (feuille-calc.mjs).
+const LIGNE = ["heure", "libelle", "client", "telephone", "hotel", "chambre", "trajet", "precision", "sorte", "reference", "statut"];
 const garder = (o, cles) => Object.fromEntries(cles.map((k) => [k, o[k] ?? ""]));
 
 // `brut` : les données chargées (toutes les entreprises accessibles) ; `entites` : celles que la personne peut lire.
@@ -33,7 +34,7 @@ export function construireCopie({ brut, entites, utilisateur, aujourdhui, mainte
         nom: e.nom,
         jours: jours.map((date) => ({
           date,
-          groupes: feuilleDuJour(reservations, date, contexte, annules).map((g) => {
+          groupes: feuilleJour(reservations, date, contexte, annules).map((g) => {
             const tels = ((partenaire(g.partenaire_id) || {}).contact || {}).telephones || [];
             const tel = tels.find((t) => t.whatsapp) || tels[0];
             return {

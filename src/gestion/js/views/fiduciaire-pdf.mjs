@@ -10,16 +10,20 @@ import { tr } from "../i18n.mjs";
 const LARGEUR = 794; // A4 à 96 dpi
 const ECHELLE = 2;
 
-// Réglages d'apparence (logo, couleurs, libellés) de l'entreprise émettrice : Secret, quelle que soit l'entreprise active.
-export function reglagesEmetteur() {
+// Réglages d'apparence (logo, couleurs, libellés) de l'entreprise émettrice : celle copiée sur la facture (migration 36),
+// ou Secret pour une facture émise avant (la migration 28 faisait toujours émettre Secret).
+export function reglagesEmetteur(facture = null) {
   const brut = etat.brut || {};
+  const regl = brut.reglages || {};
+  const fige = facture && facture.emetteur && facture.emetteur.entite_id;
+  if (fige && regl[fige]) return regl[fige];
   const secret = (brut.entites || []).find((e) => e.slug === "secret" || e.slug === "excursions");
-  return (secret && brut.reglages && brut.reglages[secret.id]) || etat.db.reglages;
+  return (secret && regl[secret.id]) || etat.db.reglages;
 }
 
 export function feuilleFacture(facture) {
   const { doc, client, dossier } = contenuDepuisFacture(facture);
-  return renderDocument({ type: "facture", doc, dossier, client, reglages: reglagesFiduciaire(reglagesEmetteur(), facture), recu: 0 });
+  return renderDocument({ type: "facture", doc, dossier, client, reglages: reglagesFiduciaire(reglagesEmetteur(facture), facture), recu: 0 });
 }
 
 export const nomFichierFacture = (facture) => `${facture.numero}.pdf`;

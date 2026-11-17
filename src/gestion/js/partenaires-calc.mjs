@@ -101,11 +101,64 @@ export function trajetDisponible(t, dateIso) {
   return f.some(([debut, fin]) => dateIso >= debut && dateIso <= fin);
 }
 
+// Fenêtres de circulation saisies en paires de dates (« du », « au ») : une ligne vide est ignorée, une ligne à moitié remplie ou à l'envers est une erreur
+// dite à la personne, jamais ignorée en silence (audit n° 47 : une ligne mal tapée donnait un trajet valable toute l'année).
+// Rend { fenetres: [[du, au], …], erreur: "" | "incomplete" | "ordre" | "date", ligne: index de la ligne en cause }.
+const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
+export function lireFenetres(paires) {
+  const fenetres = [];
+  for (let i = 0; i < paires.length; i++) {
+    const du = String(paires[i][0] || "").trim();
+    const au = String(paires[i][1] || "").trim();
+    if (!du && !au) continue;
+    if (!du || !au) return { fenetres: [], erreur: "incomplete", ligne: i };
+    if (!DATE_ISO.test(du) || !DATE_ISO.test(au)) return { fenetres: [], erreur: "date", ligne: i };
+    if (au < du) return { fenetres: [], erreur: "ordre", ligne: i };
+    fenetres.push([du, au]);
+  }
+  return { fenetres, erreur: "", ligne: -1 };
+}
+
+// Ordre des tarifs d'un même groupe : monter ou descendre une prestation échange sa place avec sa voisine. Les ordres égaux ou manquants
+// (anciennes données) sont renumérotés à la suite du plus petit, dans l'ordre affiché. Rend la liste des changements { id, ordre } à enregistrer.
+export function deplacer(lignes, id, sens) {
+  const liste = [...lignes];
+  const i = liste.findIndex((x) => x.id === id);
+  const j = i + (sens < 0 ? -1 : 1);
+  if (i < 0 || j < 0 || j >= liste.length) return [];
+  [liste[i], liste[j]] = [liste[j], liste[i]];
+  const base = Math.min(...lignes.map((x) => Number(x.ordre) || 0));
+  return liste.map((x, k) => ({ id: x.id, ordre: base + k })).filter((c) => (lignes.find((x) => x.id === c.id) || {}).ordre !== c.ordre);
+}
+
+// Ce qui utilise un partenaire, une prestation ou un trajet : les services enregistrés (réservations, annulées comprises).
+// Un élément utilisé ne se supprime pas, il se masque (audit n° 14 et 15) : la suppression viderait le lien des réservations,
+// le voucher perdrait son opérateur, ses horaires et ses frais de parc, et les statistiques passeraient en « autre ».
+export function utilisations({ partenaire = null, prestation = null, trajet = null }, { reservations = [], prestations = [], trajets = [] } = {}) {
+  if (prestation) return reservations.filter((r) => r.prestation_id === prestation.id).length;
+  if (trajet) return reservations.filter((r) => r.trajet_id === trajet.id).length;
+  if (!partenaire) return 0;
+  const sesPrestations = new Set(prestations.filter((x) => x.partenaire_id === partenaire.id).map((x) => x.id));
+  const sesTrajets = new Set(trajets.filter((x) => x.partenaire_id === partenaire.id).map((x) => x.id));
+  return reservations.filter((r) => r.partenaire_id === partenaire.id || sesPrestations.has(r.prestation_id) || sesTrajets.has(r.trajet_id)).length;
+}
+
+// Unité proposée à l'ouverture du formulaire : celle de la prestation (« sans unité » compris, audit n° 11) ; pour une nouvelle,
+// « par véhicule » en Taxi (une course se paie à la voiture, audit n° 20), « par personne » ailleurs.
+export const uniteInitiale = (x, taxi = false) => (x && x.id ? x.unite || "" : (x && x.unite) || (taxi ? "veh" : "pp"));
+export const familleInitiale = (x, taxi = false) => (x && x.famille) || (taxi ? "transfert" : "excursion");
+
 export const lieux = (trajets) => [...new Set(trajets.flatMap((t) => [t.de, t.vers]))].filter(Boolean).sort((a, b) => a.localeCompare(b, "fr"));
 
-export function filtrerTrajets(trajets, { de = "", vers = "", partenaireId = "", date = "", q = "", nomPartenaire = () => "" } = {}) {
+// Un partenaire masqué (inactif) : ses tarifs et ses trajets ne se proposent plus pour une nouvelle saisie (16.11.2026, audit n° 16).
+export const partenaireInactif = (id, partenaires = []) => !!id && partenaires.some((p) => p.id === id && p.actif === false);
+// Une prestation ou un trajet qu'on peut proposer pour une nouvelle saisie : actif, et d'un partenaire actif (ou sans partenaire).
+export const proposable = (x, partenaires = []) => !!x && x.actif !== false && !partenaireInactif(x.partenaire_id, partenaires);
+
+// `avecInactifs` : l'écran Trajets montre aussi les trajets masqués (en gris) pour les retrouver et les réactiver ; ailleurs, seuls les trajets proposables.
+export function filtrerTrajets(trajets, { de = "", vers = "", partenaireId = "", date = "", q = "", nomPartenaire = () => "", partenaires = [], avecInactifs = false } = {}) {
   return trajets
-    .filter((t) => t.actif !== false)
+    .filter((t) => avecInactifs || proposable(t, partenaires))
     .filter((t) => (!de || t.de === de) && (!vers || t.vers === vers) && (!partenaireId || t.partenaire_id === partenaireId) && trajetDisponible(t, date))
     .filter((t) => correspond([t.de, t.vers, t.mode, t.depart, t.arrivee, t.periode, nomPartenaire(t.partenaire_id)].join(" "), q))
     .sort((a, b) => `${a.de}${a.vers}`.localeCompare(`${b.de}${b.vers}`, "fr") || (a.depart || "").localeCompare(b.depart || ""));
@@ -293,13 +346,20 @@ export function noteSurPlace(x, langue = "", devise = "THB") {
   return `À régler sur place, en espèces : ${lib}${prix ? `, ${prix}${enfant}` : ""}. Jamais inclus par les prestataires.`;
 }
 
+// Net d'une ligne : le net du tarif ; pour la ligne enfant d'une prestation qui porte son « Prix enfant » (`enfant_de`), le net enfant
+// (audit n° 19 : il s'enregistrait sans jamais être lu). Pas de net enfant connu : aucun net, plutôt que le net adulte.
+const valeur = (v) => (v !== null && v !== undefined && v !== "" ? Number(v) : null);
+export const netDeLigne = (x, net) => (!net ? null : x && x.enfant_de ? valeur(net.net_enfant) : valeur(net.net));
+
 export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1, devise = "THB", uid = nouvelId } = {}) {
   const en = langue === "en";
   const base = { id: uid(), intro: "", puces: [], unite: null, qte: null, montant: null, pct: null, prestation_id: x.id, partenaire_id: x.partenaire_id || null, date_service: date || null };
   if (x.sur_place) return { ...base, kind: "texte", libelle: noteSurPlace(x, langue, devise), sur_place: true };
   // En anglais : le libellé anglais de la prestation, sinon le libellé nettoyé et traduit pour le client.
   // `par` garde l'unité du tarif (grp, boat, sup…) : l'intro est vidée dans la facture, et un prix de groupe ne se met pas à l'échelle des personnes.
-  return { ...base, ...(x.unite === "sup" ? { supplement: true } : {}), ...(["boat", "veh", "day", "ses", "grp"].includes(x.unite) ? { par: x.unite } : {}), kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: x.unite === "sup" ? Math.max(0, Number(qte) || 0) : Number(qte) || 1, net: net && net.net !== null && net.net !== undefined ? Number(net.net) : null };
+  // Prestation à 0 au catalogue : offerte au client (décision 8, contrôle du 17.11.2026, D7). La ligne compte 0 et s'imprime « Offert » / « Complimentary ».
+  const offert = x.prix_vente !== null && x.prix_vente !== undefined && x.prix_vente !== "" && Number(x.prix_vente) === 0 ? { offert: true } : {};
+  return { ...base, ...offert, ...(x.unite === "sup" ? { supplement: true } : {}), ...(["boat", "veh", "day", "ses", "grp"].includes(x.unite) ? { par: x.unite } : {}), kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: x.unite === "sup" ? Math.max(0, Number(qte) || 0) : Number(qte) || 1, net: netDeLigne(x, net) };
 }
 
 // Prestation hors base : une ligne saisie à la main qui a pourtant sa réservation (donc son voucher), repérée par `libre`.
@@ -380,3 +440,23 @@ export function telWhatsApp(p) {
 // `autorise` : la personne a le droit de voir les nets (sans lui, rien n'est rendu). Par défaut, `prive` renseigné.
 export const commissionsPartenaire = (p, prive, autorise = !!prive) => (!autorise ? [] : prive && Array.isArray(prive.commissions) && prive.commissions.length ? prive.commissions : (p.regles && p.regles.commissions) || []);
 export const paiementPartenaire = (p, prive, autorise = !!prive) => (!autorise ? "" : (prive && prive.paiement) || (p.regles && p.regles.paiement) || "");
+
+// Décision 3 du 17.11.2026, étendue à la réservation et à la facture (contrôle du 17.11.2026, D3) : sans le droit « partenaires.prix », un prix
+// venu du catalogue ne se change pas (« Vendu au client » d'une réservation, prix ou montant d'une ligne qui vient d'un tarif). Un prix vide
+// (tarif « prix à saisir ») ou un service hors catalogue se remplit toujours. `x` : une réservation ({ prestation_id, trajet_id, montant_vente })
+// ou une ligne de document ({ prestation_id, trajet_id, unite, montant }). `catalogue` : { prestations, trajets }. Renvoie vrai si le prix est figé.
+const prixConnu = (v) => v !== null && v !== undefined && v !== "";
+export function prixVenteFige(x, catalogue, { droitPrix = false } = {}) {
+  if (droitPrix || !x) return false;
+  const actuel = "montant_vente" in x ? x.montant_vente : prixConnu(x.unite) ? x.unite : x.montant;
+  if (!prixConnu(actuel)) return false;
+  if (x.trajet_id) {
+    const t = ((catalogue && catalogue.trajets) || []).find((y) => y.id === x.trajet_id);
+    return !!t && prixConnu(t.prix_adulte);
+  }
+  if (x.prestation_id) {
+    const p = ((catalogue && catalogue.prestations) || []).find((y) => y.id === x.prestation_id);
+    return !!p && !p.sur_place && prixConnu(p.prix_vente);
+  }
+  return false;
+}

@@ -1,14 +1,23 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
 import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
-import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches } from "../etat.mjs";
+import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
+import { sectionVouchers } from "./reglages-vouchers.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
+// Lot C1 (devis et factures) : corbeille des documents, prochain numéro, noms des devises.
+import { sectionCorbeilleDocuments } from "./corbeille-documents.mjs";
+import { blocProchainNumero } from "./prochain-numero.mjs";
+import { champDevisesNoms } from "./devises-reglages.mjs";
 import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4, plierGroupes } from "./commun.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
-import { etatRappels } from "../rappels-etat.mjs";
+import { etatRappels, heureDepart } from "../rappels-etat.mjs";
+import { reglagesFid } from "../fiduciaire-calc.mjs";
+// Lot D (équipe, réglages, messages) : historique, archives, moyens de paiement, textes thaïs de l'écran de Mook.
+import { groupesModifies, nomGroupe, archiverVariante, reactiverVariante, variantesActives, identifiantMoyen } from "../reglages-calc.mjs";
+import { ecransThaiPour, texteValide, variablesDe } from "../textes-thai.mjs";
 import { VERSION_SAUVEGARDE, pourSauvegarde, verifierSauvegarde, absentsDeLaSauvegarde, reservationsPerdantLeurPrestataire } from "../sauvegarde.mjs";
 
 // Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
@@ -168,8 +177,8 @@ const LIBELLES = [
   ["devis", N_("Titre du devis")],
   ["facture", N_("Titre de la facture")],
   ["facture_locale", N_("Titre de la facture locale (vide : comme la facture)")],
-  ["ref_devis", N_("Début de la référence (devis)")],
-  ["ref_facture", N_("Début de la référence (facture)")],
+  ["ref_devis", N_("Texte devant le numéro (devis)")],
+  ["ref_facture", N_("Texte devant le numéro (facture)")],
   ["date_emission", N_("Libellé de la date")],
   ["unite", N_("Colonne du prix unitaire")],
   ["qte", N_("Colonne de la quantité")],
@@ -221,8 +230,10 @@ export function vueReglages() {
     indicateur.textContent = tr("Modifications non enregistrées");
     redessinerApercu();
   };
-  window.addEventListener("hashchange", () => (modifie = false), { once: true });
-  window.addEventListener("beforeunload", (e) => modifie && e.preventDefault());
+  // Quitter avec des modifications non enregistrées (menu, recherche, autre entreprise, retour) demande d'abord : app.mjs lit cette garde (audit n° 38).
+  const garde = () => modifie;
+  etat.garde = garde;
+  window.addEventListener("beforeunload", (e) => etat.garde === garde && modifie && e.preventDefault());
 
   // Champs liés à un chemin des réglages
   let compteur = 0;
@@ -292,7 +303,7 @@ export function vueReglages() {
 
   // Aperçu d'un document d'exemple avec les réglages en cours de saisie
   const exemple = () => {
-    const modele = r.dossier.modele_bandeau.replace("{PAYS}", (r.listes.pays[0] || "").toUpperCase()).replace("{PERIODE}", "DU 2 AU 12 DÉCEMBRE").replace(/^[\s-]+|[\s-]+$/g, "");
+    const modele = r.dossier.modele_bandeau.replace("{PAYS}", (r.listes.pays[0] || "").toUpperCase()).replace("{PERIODE}", ztp ? "DU 2 AU 12 DÉCEMBRE" : "2 TO 12 DECEMBER").replace(/^[\s-]+|[\s-]+$/g, "");
     const doc = {
       date_emission: aujourdhui(),
       contenu: {
@@ -322,6 +333,14 @@ export function vueReglages() {
   const dessinerVariantes = () => {
     blocVariantes.replaceChildren(
       ...r.textes.variantes.map((v, i) => {
+        // Une variante n'est jamais supprimée : des devis et des factures la citent. Archivée, elle n'est plus proposée et se réactive (audit n° 37).
+        const archiver = () => {
+          const liste = archiverVariante(r.textes.variantes, v.id);
+          if (!liste) return toast(tr("Gardez au moins une variante proposée."), true);
+          r.textes.variantes = liste;
+          dessinerVariantes();
+          marque();
+        };
         const nom = h("input", { id: `v${i}-nom`, value: v.nom, oninput: (e) => ((v.nom = e.target.value), marque()) });
         const corps = h("textarea", { id: `v${i}-corps`, rows: 8, oninput: (e) => ((v.corps = e.target.value), marque()) });
         corps.value = v.corps;
@@ -333,8 +352,16 @@ export function vueReglages() {
         clotureEn.value = v.cloture_en || "";
         return h(
           "div",
-          { class: "carte-ligne" },
-          h("div", { class: "carte-ligne-tete" }, h("strong", null, tr("Variante {x}", { x: i + 1 })), h("span", { class: "outils" }, r.textes.variantes.length > 1 ? h("button", { class: "lien danger-texte", type: "button", onclick: () => (r.textes.variantes.splice(i, 1), dessinerVariantes(), marque()) }, tr("Supprimer")) : null)),
+          { class: `carte-ligne${v.archive ? " archive" : ""}` },
+          h(
+            "div",
+            { class: "carte-ligne-tete" },
+            h("strong", null, v.archive ? tr("Variante {x} (archivée)", { x: i + 1 }) : tr("Variante {x}", { x: i + 1 })),
+            h("span", { class: "outils" }, v.archive
+              ? h("button", { class: "lien", type: "button", onclick: () => ((r.textes.variantes = reactiverVariante(r.textes.variantes, v.id)), dessinerVariantes(), marque()) }, tr("Réactiver"))
+              : variantesActives(r.textes.variantes).length > 1 ? h("button", { class: "lien", type: "button", title: tr("Elle n'est plus proposée aux nouveaux documents. Ceux qui l'utilisent la gardent."), onclick: archiver }, tr("Archiver")) : null)
+          ),
+          v.archive ? h("p", { class: "aide" }, tr("Plus proposée aux nouveaux documents. Les devis et factures qui l'utilisent la gardent telle quelle.")) : null,
           champ(tr("Nom (visible dans la liste du devis)"), nom),
           champ(tr("Conditions de paiement"), corps),
           champ(tr("Fin du texte"), cloture),
@@ -354,8 +381,10 @@ export function vueReglages() {
       ...r.paiement.autres.map((m, i) =>
         h(
           "div",
-          { class: "carte-ligne" },
-          h("div", { class: "carte-ligne-tete" }, h("strong", null, m.nom || tr("Informations {x}", { x: i + 2 })), h("span", { class: "outils" }, h("button", { class: "lien danger-texte", type: "button", onclick: () => (r.paiement.autres.splice(i, 1), dessinerAutres(), marque()) }, tr("Supprimer")))),
+          { class: `carte-ligne${m.archive ? " archive" : ""}` },
+          // Jamais supprimées : une facture qui les cite basculerait en silence sur le compte principal. Archivées, elles ne sont plus proposées (audit n° 37).
+          h("div", { class: "carte-ligne-tete" }, h("strong", null, m.archive ? tr("{nom} (archivées)", { nom: m.nom || tr("Informations {x}", { x: i + 2 }) }) : m.nom || tr("Informations {x}", { x: i + 2 })), h("span", { class: "outils" }, h("button", { class: "lien", type: "button", onclick: () => ((m.archive = !m.archive), dessinerAutres(), marque()) }, m.archive ? tr("Réactiver") : tr("Archiver")))),
+          m.archive ? h("p", { class: "aide" }, tr("Plus proposées aux nouveaux documents. Ceux qui les utilisent les impriment toujours.")) : null,
           texte(N_("Nom (visible dans la liste du document)"), `paiement.autres.${i}.nom`, { placeholder: tr("Par exemple : Banque thaïlandaise (THB)") }),
           texte(N_("Informations de paiement du pied de page"), `paiement.autres.${i}.texte`, { multi: true, rows: 5, aide: tr("Une ligne par information. **gras** possible.") }),
           image(N_("QR code (facultatif)"), `paiement.autres.${i}.qr_image`, { maxPx: 700 }),
@@ -370,14 +399,25 @@ export function vueReglages() {
   const entete = h("select", { id: uid(), onchange: (e) => ((r.apparence.entete = e.target.value), marque()) }, h("option", { value: "classique" }, tr("Classique : logo à droite, titre en grand")), h("option", { value: "centre" }, tr("Centrée : logo et titre du document au centre")));
   entete.value = r.apparence.entete;
 
-  const moyens = h("textarea", { id: uid(), rows: 5 });
-  moyens.value = r.listes.moyens.map((m) => m.label).join("\n");
-  moyens.addEventListener("input", () => {
-    const anciens = new Map(r.listes.moyens.map((m) => [m.label.toLowerCase(), m.id]));
-    const lignes = moyens.value.split("\n").map((x) => x.trim()).filter(Boolean);
-    r.listes.moyens = lignes.map((label) => ({ id: anciens.get(label.toLowerCase()) || slug(label) || "autre", label }));
-    marque();
-  });
+  // Moyens de paiement : une ligne par moyen. Renommer garde l'identifiant (les paiements enregistrés le citent) ; un moyen ne se supprime pas,
+  // il s'archive : il n'est plus proposé pour un nouveau paiement et garde son nom sur les anciens (audit n° 75).
+  const moyens = h("div", { class: "liste-moyens" });
+  const dessinerMoyens = () => {
+    moyens.replaceChildren(
+      ...r.listes.moyens.map((m, i) => {
+        const nom = h("input", { id: `moyen-${i}`, value: m.label, "aria-label": tr("Nom du moyen de paiement"), oninput: (e) => ((m.label = e.target.value), marque()) });
+        return h("div", { class: `ligne-moyen${m.archive ? " archive" : ""}` }, nom, m.archive ? h("span", { class: "tag" }, tr("archivé")) : null, h("button", { class: "lien", type: "button", onclick: () => ((m.archive = !m.archive), dessinerMoyens(), marque()) }, m.archive ? tr("Réactiver") : tr("Archiver")));
+      }),
+      h("button", { class: "secondaire petit", type: "button", onclick: () => {
+        const label = tr("Nouveau moyen");
+        r.listes.moyens.push({ id: identifiantMoyen(label, r.listes.moyens, slug), label });
+        dessinerMoyens();
+        marque();
+        moyens.querySelector(`#moyen-${r.listes.moyens.length - 1}`).select();
+      } }, tr("Ajouter un moyen de paiement"))
+    );
+  };
+  dessinerMoyens();
 
   const modeNum = h("select", { id: uid(), onchange: (e) => ((r.numerotation.mode = e.target.value), (prefixe.hidden = chiffres.hidden = e.target.value !== "sequence"), marque()) }, h("option", { value: "sequence" }, tr("Numéro de séquence par année (ex. ST-2026-0001)")), ztp || r.numerotation.mode === "initiales" ? h("option", { value: "initiales" }, tr("Initiales, date et pays (ex. LD20261009 Thaïlande)")) : null);
   modeNum.value = r.numerotation.mode;
@@ -393,19 +433,34 @@ export function vueReglages() {
   const cibleTextes = () => (langueTextes === "en" ? r.libelles_en : r.libelles);
   const dessinerLibelles = () => {
     const cible = cibleTextes();
+    // Le texte de départ en gris dans le champ, et un lien pour le reprendre : un libellé vidé par erreur se répare champ par champ (audit n° 73).
+    const defauts = langueTextes === "en" ? LIBELLES_EN : LIBELLES_FR;
     libellesGrille.replaceChildren(
       ...LIBELLES.filter(([cle]) => ztp || !LIBELLES_DEVIS.includes(cle)).map(([cle, nom]) => {
-        const el = h("input", { id: `lb-${cle}`, value: cible[cle] ?? "", oninput: (e) => ((cible[cle] = e.target.value), marque()) });
-        return champ(tr(nom), el);
+        const defaut = defauts[cle] || "";
+        const el = h("input", { id: `lb-${cle}`, value: cible[cle] ?? "", placeholder: defaut, oninput: (e) => ((cible[cle] = e.target.value), majLien(), marque()) });
+        const lien = h("button", { class: "lien petit-lien", type: "button", onclick: () => ((el.value = cible[cle] = defaut), majLien(), marque()) }, tr("Valeur par défaut"));
+        const majLien = () => (lien.hidden = !defaut || el.value === defaut);
+        majLien();
+        const bloc = champ(tr(nom), el, !defaut ? tr("Vide : rien ne s'imprime.") : null);
+        el.after(lien);
+        return bloc;
       })
     );
-    const cgv = h("textarea", { id: "lb-cgv", rows: 4, oninput: (e) => ((cible.cgv = e.target.value), marque()) });
+    const cgv = h("textarea", { id: "lb-cgv", rows: 4, placeholder: defauts.cgv, oninput: (e) => ((cible.cgv = e.target.value), marque()) });
     cgv.value = cible.cgv ?? "";
     // La phrase des conditions générales « du devis » (signature valant acceptation) ne concerne que ZTP.
-    if (ztp) libellesGrille.append(h("div", { class: "pleine-largeur" }, champ(tr("Phrase sur les conditions générales"), cgv, tr("Laissez vide pour ne pas l'afficher. [texte](lien) crée un lien. {cgv_url} et {entreprise} se remplissent seuls."))));
+    const avecLien = (bloc, champEl, lien) => (champEl.after(lien), bloc);
+    const remettreCgv = h("button", { class: "lien petit-lien", type: "button", onclick: () => ((cgv.value = cible.cgv = defauts.cgv), marque()) }, tr("Valeur par défaut"));
+    if (ztp) libellesGrille.append(h("div", { class: "pleine-largeur" }, avecLien(champ(tr("Phrase sur les conditions générales"), cgv, tr("Laissez vide pour ne pas l'afficher, ni sur les devis ni sur les factures. [texte](lien) crée un lien. {cgv_url} et {entreprise} se remplissent seuls.")), cgv, remettreCgv)));
     const cgvFacture = h("textarea", { id: "lb-cgv-facture", rows: 2, placeholder: CGV_FACTURE[langueTextes === "en" ? "en" : "fr"], oninput: (e) => ((cible.cgv_facture = e.target.value), marque()) });
     cgvFacture.value = cible.cgv_facture ?? "";
-    libellesGrille.append(h("div", { class: "pleine-largeur" }, champ(tr("Phrase sur les conditions générales, facture"), cgvFacture, tr("Laissez vide pour la phrase par défaut de la facture. Même syntaxe que ci-dessus."))));
+    // Ce que dit l'aide doit être vrai : la phrase de la facture ne s'imprime que si celle du devis n'est pas vide, et sans lien des conditions
+    // générales (onglet Dossiers et listes), les mots entre crochets s'impriment sans lien.
+    const aideCgvFacture = [tr("Vide : la phrase en gris ci-dessus. Même syntaxe que la phrase du devis.")];
+    if (!(cible.cgv || "").trim()) aideCgvFacture.push(tr("Rien ne s'imprime tant que la phrase sur les conditions générales est vide."));
+    if (!(r.conditions.cgv_url || "").trim()) aideCgvFacture.push(tr("Sans lien des conditions générales, le texte entre crochets s'imprime sans lien."));
+    libellesGrille.append(h("div", { class: "pleine-largeur" }, champ(tr("Phrase sur les conditions générales, facture"), cgvFacture, aideCgvFacture.join(" "))));
   };
   const remplirTextes = (base) => {
     const cle = langueTextes === "en" ? "libelles_en" : "libelles";
@@ -436,6 +491,101 @@ export function vueReglages() {
     });
   }
 
+  // ---- Textes thaïs de l'écran de Mook ----
+  const ecransThai = ecransThaiPour(fon);
+  const blocTextesThai = (ecran) => {
+    const lignes = ecran.lignes.map((l) => {
+      const actuel = ((r.textes_thai || {})[ecran.id] || {})[l.cle] || "";
+      const alerte = h("p", { class: "erreur-form", role: "status" });
+      const champThai = h("textarea", { id: `th-${ecran.id}-${l.cle}`, rows: 1, lang: "th", placeholder: l.depart, "aria-label": tr("Texte thaï : {fr}", { fr: l.fr }) });
+      champThai.value = actuel;
+      const remettre = h("button", { class: "lien petit-lien", type: "button", onclick: () => ((champThai.value = ""), enregistrer(), maj(), marque()) }, tr("Texte de départ"));
+      const enregistrer = () => {
+        const v = champThai.value.trim();
+        r.textes_thai = r.textes_thai || {};
+        const textes = (r.textes_thai[ecran.id] = { ...(r.textes_thai[ecran.id] || {}) });
+        if (!v || v === l.depart) delete textes[l.cle];
+        else textes[l.cle] = v;
+      };
+      // L'affichage seul ne touche pas aux réglages : seule une saisie écrit (sinon l'historique verrait un faux changement).
+      const maj = () => {
+        const v = champThai.value.trim();
+        // Un texte qui perd ou ajoute une {variable} n'est pas utilisé : l'écran garde le texte de départ, et on le dit ici.
+        const vars = variablesDe(l.depart);
+        alerte.textContent = v && texteValide(l.depart, v) === null ? tr("Ce texte n'est pas utilisé : il doit contenir {liste}, comme le texte de départ.", { liste: vars.length ? vars.map((x) => `{${x}}`).join(" ") : tr("aucun mot entre accolades") }) : "";
+        alerte.hidden = !alerte.textContent;
+        remettre.hidden = !v;
+      };
+      champThai.addEventListener("input", () => (enregistrer(), maj(), marque()));
+      maj();
+      return h("div", { class: "ligne-thai" }, h("p", { class: "ligne-thai-fr" }, l.fr || l.cle), h("div", null, champThai, remettre, alerte));
+    });
+    return h("fieldset", null, h("legend", null, tr(ecran.nom)), h("div", { class: "grille-thai" }, ...lignes));
+  };
+
+  // ---- Historique des réglages ----
+  const blocHistorique = h("div", null);
+  const nomPersonne = (id) => {
+    const p = id && etat.brut.profils.find((x) => x.user_id === id);
+    return p ? p.nom || p.email : id ? tr("une personne qui n'a plus de compte") : tr("la base");
+  };
+  const quand = (d) => (d ? new Date(d).toLocaleString(localeActive(), { dateStyle: "medium", timeStyle: "short" }) : "");
+  const dessinerHistorique = async () => {
+    blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("Chargement…")));
+    let versions;
+    try {
+      versions = await historiqueReglages();
+    } catch (err) {
+      return blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("Historique indisponible : {message}", { message: err.message })));
+    }
+    if (versions === null) return blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("L'historique s'active avec la migration 38 de la base.")));
+    if (!versions.length) return blocHistorique.replaceChildren(h("p", { class: "vide-court" }, tr("Aucune version précédente pour l'instant : la première sera gardée au prochain enregistrement.")));
+    const actuelle = reglages();
+    blocHistorique.replaceChildren(
+      h(
+        "ul",
+        { class: "cartes" },
+        versions.map((v) => {
+          const groupes = groupesModifies(v.valeur, actuelle);
+          return h(
+            "li",
+            { class: "carte" },
+            h(
+              "div",
+              { class: "carte-lien statique" },
+              h("span", { class: "carte-titre" }, v.version_du ? tr("Version du {date}", { date: quand(v.version_du) }) : tr("Version d'avant le {date}", { date: quand(v.remplace_le) })),
+              h("span", { class: "carte-sous" }, tr("Remplacée le {date} par {nom}", { date: quand(v.remplace_le), nom: nomPersonne(v.remplace_par) })),
+              h("span", { class: "carte-sous" }, groupes.length ? tr("Différent d'aujourd'hui : {liste}", { liste: groupes.map((g) => tr(nomGroupe(g))).join(", ") }) : tr("Identique aux réglages d'aujourd'hui")),
+              h(
+                "span",
+                { class: "carte-pied" },
+                h("span"),
+                h(
+                  "span",
+                  { class: "carte-actions" },
+                  groupes.length
+                    ? h("button", { class: "secondaire petit", type: "button", onclick: async () => {
+                        const texte = tr("Revenir aux réglages de cette version ? Ce qui change : {liste}. La version actuelle est gardée dans l'historique : vous pourrez y revenir.", { liste: groupes.map((g) => tr(nomGroupe(g))).join(", ") }) + (modifie ? tr(" Les modifications non enregistrées de cet écran seront perdues.") : "");
+                        if (!(await confirmer(texte, tr("Revenir à cette version")))) return;
+                        try {
+                          await enregistrerReglages(structuredClone(v.valeur), versionLue);
+                          modifie = false;
+                          toast(tr("Réglages remis comme dans cette version."));
+                          window.dispatchEvent(new HashChangeEvent("hashchange"));
+                        } catch (err) {
+                          toast(err.conflit ? tr("Quelqu'un d'autre a enregistré les réglages entre-temps. Rechargez la page, puis recommencez.") : tr("Enregistrement impossible : {message}", { message: err.message }), true);
+                        }
+                      } }, tr("Revenir à cette version"))
+                    : null
+                )
+              )
+            )
+          );
+        })
+      )
+    );
+  };
+
   const sections = {
     entreprise: h(
       "div",
@@ -458,10 +608,11 @@ export function vueReglages() {
       "div",
       null,
       // Acompte et relance de devis : ZTP seulement. Taxi n'a ni facture ni conditions.
-      taxi ? null : h("fieldset", null, h("legend", null, tr("Conditions")), ztp ? h("div", { class: "grille-form" }, texte(N_("Acompte demandé (%, 0 si aucun)"), "conditions.acompte_pct", { type: "number" }), texte(N_("Délai de paiement de l'acompte (jours)"), "conditions.delai_jours", { type: "number" }), texte(N_("Relancer un devis sans réponse après (jours)"), "conditions.relance_jours", { type: "number" })) : null, texte(N_("Mention de TVA"), "conditions.tva_mention", { aide: tr("Par exemple « TVA non applicable ». Vide pour ne rien afficher.") }), texte(N_("Mention de TVA en anglais (facultatif)"), "conditions.tva_mention_en", { aide: tr("Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise.") }), texte(N_("Lien des conditions générales"), "conditions.cgv_url", { type: "url" })),
-      h("fieldset", null, h("legend", null, tr("Dossiers")), champ(tr("Numérotation"), modeNum), prefixe, chiffres, ...(ztp ? [texte(N_("Nom du champ « pays »"), "dossier.libelle_pays", { aide: tr("Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier.") }), liste(N_("Valeurs proposées, une par ligne"), "listes.pays"), texte(N_("Modèle du titre du document"), "dossier.modele_bandeau", { aide: tr("{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}.") })] : [])),
+      // ZTP : acompte, délais et relance. Secret : le délai que {delai} imprime dans ses conditions (avant, il valait toujours 10, audit n° 42).
+      taxi ? null : h("fieldset", null, h("legend", null, tr("Conditions")), ztp ? h("div", { class: "grille-form" }, texte(N_("Acompte demandé (%, 0 si aucun)"), "conditions.acompte_pct", { type: "number" }), texte(N_("Délai de paiement de l'acompte (jours)"), "conditions.delai_jours", { type: "number", aide: tr("Remplace {delai} dans les conditions de paiement.") }), texte(N_("Relancer un devis sans réponse après (jours)"), "conditions.relance_jours", { type: "number", placeholder: "7", aide: tr("0 : jamais de relance. Vide : 7 jours.") }), texte(N_("Solde à relever avant le départ (jours)"), "conditions.solde_jours", { type: "number", placeholder: "30", aide: tr("Tant que le carnet de voyage n'est pas noté envoyé, « À faire » rappelle le solde ce nombre de jours avant le départ. Vide : 30 jours.") })) : texte(N_("Délai de paiement (jours)"), "conditions.delai_jours", { type: "number", aide: tr("Remplace {delai} dans les conditions de paiement des factures.") }), texte(N_("Mention de TVA"), "conditions.tva_mention", { aide: tr("Par exemple « TVA non applicable ». Vide pour ne rien afficher.") }), texte(N_("Mention de TVA en anglais (facultatif)"), "conditions.tva_mention_en", { aide: tr("Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise.") }), texte(N_("Lien des conditions générales"), "conditions.cgv_url", { type: "url" })),
+      h("fieldset", null, h("legend", null, tr("Dossiers")), champ(tr("Numérotation"), modeNum), prefixe, chiffres, r.numerotation.mode === "sequence" ? blocProchainNumero(r.numerotation) : null, ...(ztp ? [texte(N_("Nom du champ « pays »"), "dossier.libelle_pays", { aide: tr("Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier.") }), liste(N_("Valeurs proposées, une par ligne"), "listes.pays"), texte(N_("Modèle du titre du document"), "dossier.modele_bandeau", { aide: tr("{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}.") })] : [])),
       // Civilités : formulaire client de ZTP seulement. Devises et moyens de paiement : pas en Taxi (rien n'est payé chez nous).
-      taxi ? null : h("fieldset", null, h("legend", null, tr("Listes")), ztp ? liste(N_("Civilités des clients, une par ligne"), "listes.civilites") : null, liste(N_("Devises proposées pour un document, une par ligne"), "listes.devises", tr("Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs.")), champ(tr("Moyens de paiement, un par ligne"), moyens))
+      taxi ? null : h("fieldset", null, h("legend", null, tr("Listes")), ztp ? liste(N_("Civilités des clients, une par ligne"), "listes.civilites") : null, liste(N_("Devises proposées pour un document, une par ligne"), "listes.devises", tr("Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs.")), champDevisesNoms(r, marque), champ(tr("Moyens de paiement, un par ligne"), moyens))
     ),
     textes: h(
       "div",
@@ -496,7 +647,7 @@ export function vueReglages() {
         "fieldset",
         null,
         h("legend", null, tr("Écrans de cette entreprise")),
-        h("p", { class: "aide" }, ztp ? tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». Le catalogue de formules sert aux devis.", { nom: entiteActive().nom }) : tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». En automatique, Partenaires, Réservations et Messages sont affichés.", { nom: entiteActive().nom })),
+        h("p", { class: "aide" }, ztp ? tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». Le catalogue de formules sert aux devis.", { nom: entiteActive().nom }) : tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». En automatique, chacun est affiché. Masquer un écran ne masque que lui.", { nom: entiteActive().nom })),
         h(
           "div",
           { class: "grille-form" },
@@ -516,7 +667,22 @@ export function vueReglages() {
         champ(
           tr("Façon de travailler"),
           (() => {
-            const sel = h("select", { id: "fonctionnement", onchange: (e) => ((r.fonctionnement = e.target.value), marque()) }, h("option", { value: "sur_mesure" }, tr("Voyages sur mesure : devis, acompte, facture")), h("option", { value: "excursions" }, tr("Excursions et transferts : facture directe, puis vouchers")), h("option", { value: "taxi" }, tr("Taxi : réservations et voucher, payé au chauffeur, sans facture")));
+            // Changer la façon de travailler change tout l'outil de l'entreprise : confirmation forte, qui dit ce qui change (audit n° 71).
+            const NOMS = { sur_mesure: tr("Voyages sur mesure"), excursions: tr("Excursions et transferts"), taxi: tr("Taxi") };
+            const sel = h("select", { id: "fonctionnement", onchange: async (e) => {
+              const avant = ["excursions", "taxi"].includes(r.fonctionnement) ? r.fonctionnement : "sur_mesure";
+              const apres = e.target.value;
+              e.target.value = avant;
+              const ok = await confirmer(
+                tr("Passer « {nom} » de « {avant} » à « {apres} » ? Après l'enregistrement, cela change pour toute l'équipe : les écrans et le menu, les documents créés (devis ou facture directe, vouchers, Booking confirmation), les droits proposés dans les rôles, les messages types et l'écran de l'assistante. Les dossiers et documents existants ne changent pas. À ne faire que pour une entreprise qui change vraiment de métier.", { nom: entiteActive().nom, avant: NOMS[avant], apres: NOMS[apres] }),
+                tr("Changer la façon de travailler"),
+                true
+              );
+              if (!ok) return;
+              e.target.value = apres;
+              r.fonctionnement = apres;
+              marque();
+            } }, h("option", { value: "sur_mesure" }, tr("Voyages sur mesure : devis, acompte, facture")), h("option", { value: "excursions" }, tr("Excursions et transferts : facture directe, puis vouchers")), h("option", { value: "taxi" }, tr("Taxi : réservations et voucher, payé au chauffeur, sans facture")));
             sel.value = ["excursions", "taxi"].includes(r.fonctionnement) ? r.fonctionnement : "sur_mesure";
             return sel;
           })(),
@@ -532,7 +698,7 @@ export function vueReglages() {
           "label",
           { class: "case" },
           h("input", { type: "checkbox", id: "rappel-h1", checked: rappelAvantActif(r), onchange: (e) => ((r.rappels = { ...(r.rappels || {}), h1: e.target.checked }), marque()) }),
-          modeRappel(r) === "depart" ? tr("Notification sur téléphone la veille du départ de chaque voyage accepté, à 18h") : tr("Notification sur téléphone une heure avant chaque réservation qui a une heure")
+          modeRappel(r) === "depart" ? tr("Notification sur téléphone la veille du départ de chaque voyage accepté, à {heure}", { heure: `${heureDepart(r.rappels)} h` }) : tr("Notification sur téléphone une heure avant chaque réservation qui a une heure")
         ),
         h("p", { class: "aide" }, modeRappel(r) === "depart" ? tr("Le nom du client et le voyage, un tap ouvre le dossier. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche).") : tr("Le nom du client, le service, les personnes et le pickup, un tap ouvre la réservation et son rappel. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche)."))
       ),
@@ -545,49 +711,19 @@ export function vueReglages() {
         h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre et rédiger la réponse")),
         h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous."))
       ),
-      ztp ? null : h(
-        "fieldset",
-        null,
-        h("legend", null, taxi ? tr("Booking confirmation") : tr("Vouchers")),
-        h("p", { class: "aide" }, tr("Les vouchers sont en anglais. Un champ vide reprend la valeur de l'onglet Entreprise (nom, sous-titre, adresse, téléphone) ; le logo est celui de l'onglet Apparence. L'aperçu à droite suit vos modifications.")),
-        h("div", { class: "grille-form" }, texte(N_("Nom affiché"), "voucher.nom", { placeholder: r.emetteur.nom }), texte(N_("Sous-titre"), "voucher.sous_titre", { placeholder: r.emetteur.sous_titre || "" }), taxi ? null : texte(N_("Numéro de licence TAT"), "voucher.licence"), texte(N_("WhatsApp affiché"), "voucher.whatsapp", { placeholder: r.emetteur.telephone }), texte(N_("E-mail affiché"), "voucher.email", { type: "email" })),
-        texte(N_("Adresse sur une ligne"), "voucher.adresse", { placeholder: (r.emetteur.adresse || "").split("\n").join(", ") }),
-        // Taxi : l'assistante envoie les vouchers de l'écran « Nouveau voucher » à Anaïs, qui les transmet au client.
-        r.fonctionnement === "taxi" ? texte(N_("WhatsApp d'Anaïs (reçoit les vouchers de l'assistante)"), "voucher.whatsapp_anais", { type: "tel", placeholder: "+66 …", aide: tr("Avec l'indicatif. Sur ordinateur, l'image est copiée et cette conversation s'ouvre ; sur téléphone, un bouton ouvre la conversation après l'envoi de l'image. Vide : l'assistante choisit Anaïs dans WhatsApp.") }) : null,
-        // La Booking confirmation de Taxi a un seul modèle et ses propres textes de pied : ni choix de modèle, ni textes de fin.
-        taxi ? null : champ(tr("Modèle de l'aperçu"), choixApercuVoucher),
-        taxi ? null : texte(N_("Texte de fin"), "voucher.merci", { multi: true, rows: 2, aide: tr("{entreprise} est remplacé par le nom affiché.") }),
-        taxi ? null : texte(N_("Texte de fin des vouchers de transfert"), "voucher.merci_transfert", { multi: true, rows: 2 }),
-        taxi ? null : texte(N_("Note des vouchers de transfert"), "voucher.note_transfert", { multi: true, rows: 2 })
-      )
+      // Taxi : la fiduciaire n'est plus au menu (décision 5). Elle se rouvre d'ici pour être réactivée un jour (contrôle du 17.11.2026, D10).
+      taxi && peut("fiduciaire.gerer") && peut("reglages.ecrire") && !reglagesFid(etat.db.reglages).actif
+        ? h("fieldset", null, h("legend", null, tr("Factures pour la fiduciaire")), h("p", { class: "aide" }, tr("{entreprise} n'émet pas de factures pour la fiduciaire : l'écran n'est plus dans le menu. Il reste ouvert ici, pour revoir ce qui a déjà été facturé ou réactiver ces factures un jour.", { entreprise: entiteActive().nom })), h("a", { class: "bouton secondaire petit", href: "#/fiduciaire" }, tr("Ouvrir l'écran Fiduciaire")))
+        : null,
+      // État des rappels sur téléphone (avant dans l'onglet Compte, devenu « Mon compte » pour chacun).
+      sectionRappels
     ),
-    // Sécurité du compte : « Se déconnecter » ne ferme que cet appareil ; ici, tous les appareils d'un coup (téléphone perdu, appareil prêté).
-    compte: h(
-      "div",
-      null,
-      h(
-        "section",
-        null,
-        h("h2", null, tr("Sécurité du compte")),
-        h("p", { class: "aide" }, tr("« Se déconnecter » ne ferme que l'appareil que vous utilisez : l'iPhone reste connecté quand vous quittez l'ordinateur. Pour fermer vos sessions partout, utilisez le bouton ci-dessous.")),
-        h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: async () => {
-          if (!(await confirmer(tr("Tous vos appareils seront déconnectés, celui-ci compris. Il faudra se reconnecter avec l'e-mail et le mot de passe."), tr("Déconnecter partout"), true))) return;
-          try {
-            await etat.store.deconnecterPartout();
-            location.reload();
-          } catch (err) {
-            toast(tr("Déconnexion impossible : {message}", { message: err.message }), true);
-          }
-        } }, tr("Déconnecter tous mes appareils"))),
-        sectionRappels,
-        h("h3", null, tr("Téléphone perdu ou volé")),
-        h("ol", { class: "aide" },
-          h("li", null, tr("Sur un autre appareil, ouvrez Réglages, Compte, puis « Déconnecter tous mes appareils ». Les sessions sont fermées, mais un appareil déjà ouvert peut encore servir jusqu'à une heure.")),
-          h("li", null, tr("Pour couper l'accès tout de suite, l'administratrice générale décoche « Compte actif » pour cette personne dans Administration.")),
-          h("li", null, tr("Changez ensuite le mot de passe, puis réactivez le compte."))
-        )
-      )
-    ),
+    // Vouchers (Secret) ou Booking confirmation (Taxi) : un onglet à part, géré dans reglages-vouchers.mjs (lot B du 17.11.2026).
+    ...(ztp ? {} : { vouchers: sectionVouchers({ r, taxi, texte, image, marque, choixApercuVoucher }) }),
+    // Textes thaïs de l'écran de Mook, le français en regard (section 2 de l'audit). Secret : factures pour la fiduciaire ; Taxi : voucher et factures.
+    ...(ecransThai.length ? { thai: h("div", null, h("p", { class: "aide" }, tr("Les textes que lit l'assistante sur son écran simple. À gauche, ce qu'ils disent en français ; à droite, le texte thaï affiché. Vide : le texte de départ, en gris. Les mots entre accolades, comme {n} ou {nom}, se remplissent seuls : gardez-les tels quels.")), ...ecransThai.map(blocTextesThai)) } : {}),
+    // Historique des réglages (migration 38) : chaque enregistrement garde la version remplacée, on peut y revenir (audit n° 39).
+    historique: h("div", null, h("section", null, h("h2", null, tr("Historique des réglages")), h("p", { class: "aide" }, tr("Chaque enregistrement garde la version d'avant (les 60 dernières, les 20 plus récentes affichées ici). Revenir à une version la réenregistre telle quelle : la version actuelle entre à son tour dans l'historique, rien n'est perdu.")), blocHistorique)),
     donnees: h(
       "div",
       null,
@@ -602,7 +738,8 @@ export function vueReglages() {
         peut("reglages.ecrire") ? h("label", { class: "case", for: "import-reglages" }, h("input", { id: "import-reglages", type: "checkbox" }), tr("Si le fichier contient les réglages, les restaurer aussi (remplace les textes des documents, les coordonnées de paiement et la numérotation actuels)")) : null,
         champ(tr("Restaurer ou importer une sauvegarde"), h("input", { id: "import-fichier", type: "file", accept: "application/json,.json", onchange: (e) => e.target.files[0] && importer(e.target.files[0]) }), tr("Elle sera importée dans « {nom} ». Les éléments déjà présents avec le même identifiant sont remplacés.", { nom: entiteActive().nom }))
       ),
-      !peut("dossiers.supprimer") ? null : sectionCorbeille()
+      !peut("dossiers.supprimer") ? null : sectionCorbeille(),
+      !peut("documents.supprimer") || taxi ? null : sectionCorbeilleDocuments()
     ),
   };
 
@@ -614,8 +751,10 @@ export function vueReglages() {
     ...(taxi ? [] : [["textes", tr("Textes des documents")]]),
     ["apparence", tr("Apparence")],
     ["ecrans", tr("Écrans")],
+    ...(ztp ? [] : [["vouchers", taxi ? tr("Booking confirmation") : tr("Vouchers")]]),
+    ...(ecransThai.length ? [["thai", tr("Textes en thaï")]] : []),
     ...(peut("exports.faire") ? [["donnees", tr("Sauvegarde")]] : []),
-    ...(etat.store.mode === "supabase" ? [["compte", tr("Compte")]] : []),
+    ["historique", tr("Historique")],
   ];
   const barre = h("div", { class: "onglets sous-onglets" });
   // Groupes repliables sur téléphone, et recherche d'un réglage dans tous les onglets.
@@ -640,11 +779,13 @@ export function vueReglages() {
     for (const [k, el] of Object.entries(sections)) el.hidden = k !== cle;
     for (const b of barre.children) b.setAttribute("aria-pressed", b.dataset.cle === cle ? "true" : "false");
     // Taxi n'a aucun document A4 ; ZTP n'a pas de voucher.
-    zoneApercu.hidden = taxi || cle === "donnees" || cle === "ecrans" || cle === "compte";
-    zoneVoucher.hidden = ztp || cle !== "ecrans";
-    if (cle === "ecrans") redessinerVoucher();
-    boutonEnregistrer.hidden = cle === "donnees" || cle === "compte";
-    if (cle !== "donnees" && cle !== "compte") redessiner();
+    const sansApercu = ["donnees", "ecrans", "vouchers", "thai", "historique"].includes(cle);
+    zoneApercu.hidden = taxi || sansApercu;
+    zoneVoucher.hidden = ztp || cle !== "vouchers";
+    if (cle === "vouchers") redessinerVoucher();
+    boutonEnregistrer.hidden = cle === "donnees" || cle === "historique";
+    if (cle === "historique") dessinerHistorique();
+    if (!sansApercu) redessiner();
   };
   ONGLETS.forEach(([cle, libelle]) => barre.append(h("button", { type: "button", "data-cle": cle, "aria-pressed": "false", onclick: () => montrer(cle) }, libelle)));
 
@@ -652,7 +793,12 @@ export function vueReglages() {
   const enregistrer = async (e) => {
     e.preventDefault();
     if (!taxi && !r.textes.variantes.length) return toast(tr("Gardez au moins une variante de conditions de paiement."), true);
+    if (r.listes.moyens.some((m) => !String(m.label || "").trim())) return toast(tr("Donnez un nom à chaque moyen de paiement (ou archivez celui qui ne sert plus)."), true);
+    r.listes.moyens = r.listes.moyens.map((m) => ({ ...m, label: m.label.trim() }));
     r.devise = (r.devise || "").trim().toUpperCase();
+    // Changer la devise de l'entreprise ne convertit rien : les documents gardent la leur (écrite dans chaque document), les nouveaux prennent la nouvelle.
+    const deviseAvant = (reglages() || {}).devise;
+    if (deviseAvant && r.devise && r.devise !== deviseAvant && !(await confirmer(tr("Passer la devise de l'entreprise de {avant} à {apres} ? Les devis et factures déjà créés gardent {avant}. Les nouveaux documents, les prix du catalogue et des partenaires s'afficheront en {apres}, sans conversion des montants.", { avant: deviseAvant, apres: r.devise }), tr("Changer la devise"), true))) return;
     boutonEnregistrer.disabled = true;
     try {
       await enregistrerReglages(r, versionLue);

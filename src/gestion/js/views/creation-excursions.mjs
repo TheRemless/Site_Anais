@@ -7,6 +7,8 @@ import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { descriptionService, langueClient } from "../operations-calc.mjs";
 import { creerReservations } from "./reservations.mjs";
 import { nonVides } from "../creation-voucher-calc.mjs";
+import { verifierTelephoneClient } from "../client-calc.mjs";
+import { tr } from "../i18n.mjs";
 
 // Les documents de Secret et de Taxi sont en anglais (d'après le mode de l'entreprise) : les libellés anglais des prestations sont pris quand ils existent.
 export const langueDocuments = (regl = reglages()) => (langueClient(regl) === "en" ? "en" : "");
@@ -32,16 +34,25 @@ export async function refDefinitive(ref, propose, regl = reglages()) {
 // `statut` : le statut de départ de la réservation (une course Taxi saisie à la main naît « confirme »), sinon celui de la création.
 // `details` : les champs du voucher saisis à la création (chambre, type de tour, remarques…, voir champs-voucher.mjs), posés tels quels s'ils sont remplis.
 // `silencieux` : pas de message de réussite (l'écran « Nouveau voucher », en thaï, dit lui-même ce qui s'est passé).
-export async function creerDossierExcursions({ client, lignes: brutes, notes = "", ref, reservation = {}, parService = null, silencieux = false }) {
+// `personnes` : { adultes, enfants } du dossier (Nouveau dossier de Secret) : les services sans ligne enfant ou sans personnes les reprennent.
+export async function creerDossierExcursions({ client, lignes: brutes, notes = "", ref, reservation = {}, parService = null, silencieux = false, personnes = null }) {
   const regl = reglages();
   // `titre` : le nom court du service, qui sert aux réservations (une ligne adulte et sa ligne enfant en font une seule).
   // Taxi : tout est payé au chauffeur, quelle que soit la ligne (même une course saisie à la main, sans partenaire).
   const lignes = (estTaxi(regl) ? lignesSurPlace(brutes) : brutes).map((l) => (l.titre || l.kind === "texte" ? l : { ...l, titre: l.libelle }));
   const langue = langueDocuments(regl);
   let clientId = client.id;
+  // Nouveau client : son numéro doit avoir l'indicatif (contrôle de la fiche client), vérifié avant d'écrire quoi que ce soit.
+  // Le numéro est enregistré sous sa forme internationale (« +41791234567 »), celle qu'il faut au bouton WhatsApp.
+  let telephone = (client.telephone || "").trim();
+  if (!clientId) {
+    const verif = verifierTelephoneClient(telephone, "");
+    if (!verif.ok) throw new Error(verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays au téléphone du client, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Téléphone du client illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67."));
+    telephone = verif.valeur;
+  }
   if (!clientId) {
     const adresse = [(client.hotel || "").trim(), (client.chambre || "").trim() ? `Room ${client.chambre.trim()}` : ""].filter(Boolean).join(", ");
-    const c = await inserer("clients", { civilite: "", prenom: (client.prenom || "").trim(), nom: (client.nom || "").trim(), adresse, telephone: (client.telephone || "").trim(), email: "", notes: "" });
+    const c = await inserer("clients", { civilite: "", prenom: (client.prenom || "").trim(), nom: (client.nom || "").trim(), adresse, telephone, email: "", notes: "" });
     clientId = c.id;
   }
   const dates = lignes.map((l) => l.date_service).filter(Boolean).sort();
@@ -50,19 +61,23 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   const d = await inserer("dossiers", { ref: ref.trim(), client_id: clientId, pays: "", bandeau: services.filter((l) => !/,\s*(child|enfant)\b/i.test(l.libelle)).map((l) => l.libelle).join(" · ").slice(0, 120), date_depart: dates[0] || null, date_retour: dates.length > 1 ? dates[dates.length - 1] : null, accepte_le: aujourdhui(), annule: false, notes: notes.trim() });
   const contenu = { ...CONTENU_DEFAUT(), bandeau: "", colonnes: "total", langue, prestataire: partenaires.join(", "), variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: lignes.map(({ description, description_fixe, ...l }) => ({ ...l, titre: l.kind === "texte" ? undefined : l.titre, libelle: l.kind === "texte" ? l.libelle : (description_fixe && description.trim()) || descriptionService({ ...l, libelle: l.titre }, langue), intro: "" })) };
   const doc = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: aujourdhui(), envoye_le: null, updated_at: new Date().toISOString(), contenu });
-  await creerReservations(doc, { silencieux });
+  await creerReservations(doc, { silencieux, personnesDossier: personnes });
   // Heure, lieu de pickup, dépose, vol, bagages et bébés donnés par le client : posés sur les réservations qui viennent d'être créées
   // (la dépose, le vol et les bagages sont les champs du voucher de transfert).
   const patch = (r, { heure = "", lieu = "", bebes = 0, dropoff = "", vol = "", bagages = 0, sieges = 0, personnes = null, zonePickup = null, statut = "", details: saisis = {} }) => {
     // `zonePickup` : la zone de l'hôtel choisie sur la grille du partenaire, gardée pour proposer la même zone au prochain séjour dans cet hôtel.
     const details = { ...nonVides(saisis), ...(dropoff ? { drop_off: dropoff } : {}), ...(vol ? { vol } : {}), ...(bagages ? { bagages: String(bagages) } : {}), ...(sieges ? { sieges: Number(sieges) } : {}), ...(zonePickup ? { pickup_zone: zonePickup } : {}) };
-    const dejaDesGens = (r.personnes || {}).adultes || (r.personnes || {}).enfants;
+    // Des personnes reprises du dossier (Adultes et Enfants du Nouveau dossier) cèdent la place à celles que le service donne lui-même.
+    const repris = !!(r.details && r.details.personnes_du_dossier);
+    const dejaDesGens = !repris && ((r.personnes || {}).adultes || (r.personnes || {}).enfants);
+    const propres = !!personnes && !dejaDesGens;
+    const detailsBase = propres && repris ? Object.fromEntries(Object.entries(r.details || {}).filter(([k]) => k !== "personnes_du_dossier")) : r.details || {};
     return {
       ...(statut ? { statut } : {}),
       ...(heure ? { heure_pickup: heure } : {}),
       ...(lieu ? { lieu_pickup: lieu } : {}),
-      ...(bebes || personnes ? { personnes: { ...(r.personnes || {}), ...(personnes && !dejaDesGens ? { adultes: personnes.adultes, enfants: personnes.enfants } : {}), ...(bebes ? { bebes } : {}) } } : {}),
-      ...(Object.keys(details).length ? { details: { ...(r.details || {}), ...details } } : {}),
+      ...(bebes || personnes ? { personnes: { ...(r.personnes || {}), ...(propres ? { adultes: personnes.adultes, enfants: personnes.enfants } : {}), ...(bebes ? { bebes } : {}) } } : {}),
+      ...(Object.keys(details).length || detailsBase !== (r.details || {}) ? { details: { ...detailsBase, ...details } } : {}),
     };
   };
   const reservations = etat.db.reservations.filter((x) => x.dossier_id === d.id);

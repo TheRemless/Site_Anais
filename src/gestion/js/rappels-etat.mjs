@@ -19,3 +19,17 @@ export function etatRappels(lignes, maintenant = Date.now()) {
   if (!reussi(derniere)) return { statut: "alerte", derniere, dernierReussi, message: "derniere_en_echec" };
   return { statut: "ok", derniere, dernierReussi, message: "ok" };
 }
+
+// Heures des rappels d'une entreprise (reglages.rappels = { veille, lendemain }, heure de Bangkok, null = coupé) : la même règle que la fonction
+// (supabase/functions/rappels/calc.js, un test vérifie qu'elles s'accordent). Sans réglage : 18 h la veille, 9 h le lendemain.
+export const HEURES_RAPPELS = { veille: 18, lendemain: 9 };
+export function heuresRappels(reglage) {
+  const r = reglage && typeof reglage === "object" ? reglage : {};
+  const heure = (v, defaut) => (v === undefined ? defaut : v === null || v === false || v === "" ? null : Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 23 ? Number(v) : defaut);
+  return { veille: heure(r.veille, HEURES_RAPPELS.veille), lendemain: heure(r.lendemain, HEURES_RAPPELS.lendemain) };
+}
+// Heure du rappel du départ (ZTP) : celle de la veille, 18 h si la veille est coupée (même règle que heureDepart de la fonction, un test vérifie l'accord).
+export const heureDepart = (rappels) => {
+  const h = heuresRappels(rappels).veille;
+  return h === null ? HEURES_RAPPELS.veille : h;
+};

@@ -149,7 +149,8 @@ export function vueGroupe() {
         num(sy.avecFactures ? montant(sy.facture, cible) : sansObjet(), { "data-label": tr("Facturé") }),
         num(sy.avecFactures ? evol(sy.evolFacture) : sansObjet(), { "data-label": tr("Évolution") }),
         h("td", { class: "num part-cellule", "data-label": tr("Part") }, !sy.avecFactures ? sansObjet() : groupe.parts[k].part === null ? "—" : [h("span", { class: `barre-h serie-${k % 5}`, style: `width:${Math.max(2, groupe.parts[k].part)}%`, "aria-hidden": "true" }), `${groupe.parts[k].part} %`]),
-        num(montant(sy.encaisse, cible), { "data-label": tr("Encaissé") }),
+        // Écarts soldés (frais Wise, change) : à part, sous l'encaissé qu'ils ne gonflent pas (lot I).
+        num([montant(sy.encaisse, cible), sy.nbEcarts ? h("span", { class: "sec bloc" }, tr("écarts soldés à part : {montant}", { montant: montant(sy.ecarts, cible) })) : null], { "data-label": tr("Encaissé") }),
         num(!sy.avecFactures ? sansObjet() : sy.nbImpayes ? montant(sy.impayes, cible) : "—", { "data-label": tr("Impayés") }),
         num(!sy.avecDevis ? sansObjet() : sy.nbPipeline ? `${montant(sy.pipeline, cible)} (${sy.nbPipeline})` : "—", { "data-label": tr("Devis en attente") }),
         num(!sy.avecDevis ? sansObjet() : sy.devisEmis ? `${sy.devisAcceptes} / ${sy.devisEmis}${sy.tauxAcceptation !== null ? ` (${sy.tauxAcceptation} %)` : ""}` : "—", { "data-label": tr("Devis acceptés / émis") }),
@@ -163,7 +164,7 @@ export function vueGroupe() {
       num(h("strong", null, montant(groupe.facture, cible)), { "data-label": tr("Facturé") }),
       num(evol(groupe.evolFacture), { "data-label": tr("Évolution") }),
       num("100 %", { "data-label": tr("Part") }),
-      num(h("strong", null, montant(groupe.encaisse, cible)), { "data-label": tr("Encaissé") }),
+      num([h("strong", null, montant(groupe.encaisse, cible)), groupe.nbEcarts ? h("span", { class: "sec bloc" }, tr("écarts soldés à part : {montant}", { montant: montant(groupe.ecarts, cible) })) : null], { "data-label": tr("Encaissé") }),
       num(groupe.nbImpayes ? montant(groupe.impayes, cible) : "—", { "data-label": tr("Impayés") }),
       num(!groupe.avecDevis ? sansObjet() : groupe.nbPipeline ? `${montant(groupe.pipeline, cible)} (${groupe.nbPipeline})` : "—", { "data-label": tr("Devis en attente") }),
       num(!groupe.avecDevis ? sansObjet() : groupe.devisEmis ? `${groupe.devisAcceptes} / ${groupe.devisEmis}${groupe.tauxAcceptation !== null ? ` (${groupe.tauxAcceptation} %)` : ""}` : "—", { "data-label": tr("Devis acceptés / émis") }),
@@ -219,6 +220,8 @@ export function vueGroupe() {
         { class: "chiffres" },
         chiffre(tr("Facturé, toutes sociétés"), montant(groupe.facture, cible), h("span", null, evol(groupe.evolFacture), tr(" par rapport à la période précédente · {nbFactures} facture(s)", { nbFactures: groupe.nbFactures }))),
         chiffre(tr("Encaissé"), montant(groupe.encaisse, cible), h("span", null, evol(groupe.evolEncaisse), tr(" par rapport à la période précédente"))),
+        // Petits restes soldés sans que l'argent arrive (frais Wise, change) : ni dans l'encaissé, ni perdus de vue (lot I, contrôle du 17.11.2026).
+        groupe.nbEcarts ? chiffre(tr("Écarts soldés"), montant(groupe.ecarts, cible), tr("Frais Wise ou de change soldés sans arriver chez nous : hors de l'encaissé.")) : null,
         chiffre(tr("Impayés en cours"), groupe.nbImpayes ? montant(groupe.impayes, cible) : "—", groupe.nbImpayes ? pluriel(groupe.nbImpayes, N_("{n} facture non soldée, à ce jour"), N_("{n} factures non soldées, à ce jour")) : tr("Aucune facture en attente de paiement"))
       ),
       h(
@@ -267,11 +270,11 @@ export function vueGroupe() {
 
   function exporter(syntheses, groupe, series, mois, cible) {
     const cellule = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
-    const lignes = [[tr("Société"), tr("Facturé ({cible})", { cible }), tr("Évolution %"), tr("Part %"), tr("Encaissé ({cible})", { cible }), tr("Impayés ({cible})", { cible }), tr("Devis en attente ({cible})", { cible }), tr("Devis émis"), tr("Devis acceptés"), tr("Dossiers"), tr("Clients"), tr("Facture moyenne ({cible})", { cible })]];
+    const lignes = [[tr("Société"), tr("Facturé ({cible})", { cible }), tr("Évolution %"), tr("Part %"), tr("Encaissé ({cible})", { cible }), tr("Écarts soldés ({cible})", { cible }), tr("Impayés ({cible})", { cible }), tr("Devis en attente ({cible})", { cible }), tr("Devis émis"), tr("Devis acceptés"), tr("Dossiers"), tr("Clients"), tr("Facture moyenne ({cible})", { cible })]];
     // Un chiffre sans objet pour la société (devis hors sur mesure, facture en taxi) reste une case vide, pas un zéro.
     const si = (oui, v) => (oui ? v : "");
-    syntheses.forEach((sy, k) => lignes.push([sy.entite.nom, si(sy.avecFactures, sy.facture), sy.evolFacture ?? "", groupe.parts[k].part ?? "", sy.encaisse, si(sy.avecFactures, sy.impayes), si(sy.avecDevis, sy.pipeline), si(sy.avecDevis, sy.devisEmis), si(sy.avecDevis, sy.devisAcceptes), sy.dossiers, sy.clients, sy.panierMoyen ?? ""]));
-    lignes.push([tr("Toutes les sociétés"), groupe.facture, groupe.evolFacture ?? "", 100, groupe.encaisse, groupe.impayes, si(groupe.avecDevis, groupe.pipeline), si(groupe.avecDevis, groupe.devisEmis), si(groupe.avecDevis, groupe.devisAcceptes), groupe.dossiers, groupe.clients, groupe.panierMoyen ?? ""]);
+    syntheses.forEach((sy, k) => lignes.push([sy.entite.nom, si(sy.avecFactures, sy.facture), sy.evolFacture ?? "", groupe.parts[k].part ?? "", sy.encaisse, sy.ecarts || 0, si(sy.avecFactures, sy.impayes), si(sy.avecDevis, sy.pipeline), si(sy.avecDevis, sy.devisEmis), si(sy.avecDevis, sy.devisAcceptes), sy.dossiers, sy.clients, sy.panierMoyen ?? ""]));
+    lignes.push([tr("Toutes les sociétés"), groupe.facture, groupe.evolFacture ?? "", 100, groupe.encaisse, groupe.ecarts, groupe.impayes, si(groupe.avecDevis, groupe.pipeline), si(groupe.avecDevis, groupe.devisEmis), si(groupe.avecDevis, groupe.devisAcceptes), groupe.dossiers, groupe.clients, groupe.panierMoyen ?? ""]);
     lignes.push([]);
     lignes.push([tr("Mois"), ...series.map((x) => `${x.entite.nom} (${cible})`), tr("Total ({cible})", { cible })]);
     for (const m of mois) lignes.push([m, ...series.map((x) => x.valeurs[m] || 0), series.reduce((t, x) => t + (x.valeurs[m] || 0), 0)]);

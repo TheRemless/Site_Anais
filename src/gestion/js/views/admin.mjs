@@ -1,10 +1,12 @@
 // Administration : entreprises et accès des utilisateurs. Réservée à l'administratrice générale.
-import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer } from "../etat.mjs";
-import { DEPENDANCES, completerReglages } from "../defauts.mjs";
-import { droitsProposes } from "../droits.mjs";
-import { h, champ, modal, toast, slug, confirmer } from "../ui.mjs";
+// Lot D (17.11.2026) : inviter une personne, lien de mot de passe, supprimer un compte, langue d'une autre personne, Administrateur calculé.
+import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation } from "../etat.mjs";
+import { DEPENDANCES, completerReglages, PERMISSIONS } from "../defauts.mjs";
+import { droitsProposes, droitsDuRole, droitsRetires } from "../droits.mjs";
+import { accesChoisis, messageInvitation, messageLien } from "../compte-calc.mjs";
+import { h, champ, modal, toast, slug, confirmer, icone, saisie } from "../ui.mjs";
 import { vide, plierSections } from "./commun.mjs";
-import { tr, N_ } from "../i18n.mjs";
+import { tr, N_, LANGUES, pluriel } from "../i18n.mjs";
 
 const PORTEES = [
   ["toute", N_("Tous les dossiers de l'entreprise")],
@@ -26,21 +28,29 @@ const descriptionAffichee = (entite, r) => (r.systeme && r.nom === "Éditeur" &&
 function roleModal(entite, role, apres) {
   const proposes = droitsProposes(fonctionnementDe(entite));
   const nouveau = !role.id;
-  const verrou = role.systeme && role.nom === "Administrateur";
+  // L'Administrateur a tous les droits, calculés (migration 38) : ses cases sont toutes cochées et ne se décochent pas.
+  const verrou = !!role.tous_droits || (role.systeme && role.nom === "Administrateur");
   const nom = h("input", { id: "rl-nom", value: role.nom || "", required: true, disabled: role.systeme });
   const description = h("input", { id: "rl-desc", value: role.description || "" });
   const portee = h("select", { id: "rl-portee", disabled: verrou }, PORTEES.map(([v, l]) => h("option", { value: v }, tr(l))));
   portee.value = role.portee || "toute";
-  const choisis = new Set(role.permissions || []);
+  const choisis = new Set(verrou ? droitsDuRole({ ...role, tous_droits: true }) : role.permissions || []);
   const cases = new Map();
   const majCases = () => cases.forEach((c, code) => (c.checked = choisis.has(code)));
+  // Décocher un droit retire aussi ceux qui en dépendent : on le dit tout de suite (audit n° 40, « vouchers.seul » partait en silence).
+  const aussiRetires = h("p", { class: "bandeau-info", role: "status", hidden: true });
+  const libelleDroit = (code) => tr((PERMISSIONS.find((p) => p.code === code) || { libelle: code }).libelle);
   const basculer = (code, coche) => {
     if (coche) {
       choisis.add(code);
       (DEPENDANCES[code] || []).forEach((d) => choisis.add(d));
+      aussiRetires.hidden = true;
     } else {
       choisis.delete(code);
-      for (const [autre, requis] of Object.entries(DEPENDANCES)) if (requis.includes(code)) choisis.delete(autre);
+      const partis = [];
+      for (const [autre, requis] of Object.entries(DEPENDANCES)) if (requis.includes(code) && choisis.has(autre)) (choisis.delete(autre), partis.push(autre));
+      aussiRetires.textContent = partis.length ? tr("Retiré aussi, car il en dépend : {liste}.", { liste: partis.map(libelleDroit).join(", ") }) : "";
+      aussiRetires.hidden = !partis.length;
     }
     majCases();
   };
@@ -68,6 +78,18 @@ function roleModal(entite, role, apres) {
           e.preventDefault();
           const valeurs = { nom: nom.value.trim(), description: description.value.trim(), portee: portee.value, permissions: [...choisis] };
           if (etat.brut.roles.some((r) => r.entite_id === entite.id && r.id !== role.id && r.nom.toLowerCase() === valeurs.nom.toLowerCase())) return toast(tr("Ce nom de rôle existe déjà."), true);
+          // Un rôle déjà donné qui perd des droits : la confirmation les nomme, l'écran simple en premier (audit n° 40).
+          const retires = nouveau ? [] : droitsRetires(role.permissions, valeurs.permissions);
+          if (retires.length) {
+            const n = etat.brut.membres.filter((m) => m.role_id === role.id).length;
+            const ecranSimple = retires.some((p) => p.code === "vouchers.seul");
+            const texte = [
+              tr("Le rôle « {nom} » perd : {liste}.", { nom: nomRole(role), liste: retires.map((p) => tr(p.libelle)).join(" ; ") }),
+              ecranSimple ? tr("Sans l'écran simple, la personne passe à l'outil complet, en français ou en anglais : elle n'a plus son écran en thaï.") : "",
+              n ? pluriel(n, N_("Cela s'applique tout de suite à la personne qui a ce rôle."), N_("Cela s'applique tout de suite aux {n} personnes qui ont ce rôle.")) : "",
+            ].filter(Boolean).join(" ");
+            if (!(await confirmer(texte, tr("Retirer ces droits"), true))) return;
+          }
           try {
             if (nouveau) await inserer("roles", { ...valeurs, entite_id: entite.id, systeme: false });
             else await modifier("roles", role.id, valeurs);
@@ -82,7 +104,8 @@ function roleModal(entite, role, apres) {
       champ(tr("Nom du rôle"), nom),
       champ(tr("Description"), description, tr("Pour s'y retrouver dans la liste.")),
       champ(tr("Dossiers visibles"), portee, verrou ? tr("L'administrateur a tous les droits, ce rôle n'est pas modifiable.") : null),
-      h("p", { class: "aide" }, tr("Chaque case ajoute un droit. Un droit en suppose d'autres : « modifier » coche automatiquement « voir ».")),
+      verrou ? h("p", { class: "aide" }, tr("Tous les droits, calculés : un droit ajouté plus tard à l'outil arrive seul dans ce rôle, sans rien régler.")) : h("p", { class: "aide" }, tr("Chaque case ajoute un droit. Un droit en suppose d'autres : « modifier » coche automatiquement « voir ».")),
+      aussiRetires,
       ...blocs,
       h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), verrou ? null : h("button", { type: "submit", class: "principal" }, tr("Enregistrer le rôle")))
     ),
@@ -153,17 +176,101 @@ function modifierEntiteModal(e, apres) {
   );
 }
 
-function accesModal(profil, apres) {
-  const moi = profil.user_id === etat.session.id;
-  const nom = h("input", { id: "ua-nom", value: profil.nom || "" });
-  const actif = h("input", { id: "ua-actif", type: "checkbox", checked: profil.actif, disabled: moi });
-  const superAdmin = h("input", { id: "ua-super", type: "checkbox", checked: profil.super_admin, disabled: moi });
-  const selects = etat.brut.entites.map((e) => {
-    const m = etat.brut.membres.find((x) => x.user_id === profil.user_id && x.entite_id === e.id);
-    const sel = h("select", { id: `ua-${e.id}` }, h("option", { value: "" }, tr("Aucun accès")), etat.brut.roles.filter((r) => r.entite_id === e.id).map((r) => h("option", { value: r.id }, nomRole(r))));
+// Un lien d'invitation ou de mot de passe à envoyer soi-même : copier, WhatsApp (la personne choisit le contact) ou e-mail.
+function lienModal({ titre, intro, lien, email, nom, langue, type, erreur }) {
+  const message = messageLien({ lien, langue, type, nom });
+  const zone = h("textarea", { id: "lien-texte", rows: 7, readonly: true });
+  zone.value = message;
+  const objet = langue === "en" ? (type === "invite" ? "Your access to Gestion" : "Your Gestion password") : type === "invite" ? "Votre accès à Gestion" : "Votre mot de passe Gestion";
+  let fermer;
+  fermer = modal(
+    titre,
+    h(
+      "div",
+      { class: "modal-corps" },
+      erreur ? h("p", { class: "bandeau-info", role: "alert" }, erreur) : null,
+      h("p", null, intro),
+      champ(tr("Message à envoyer, lien compris"), zone),
+      h("p", { class: "aide" }, tr("Le lien ne sert qu'une fois et expire vite (une heure si rien n'a été réglé dans Supabase) : envoyez-le tout de suite. Expiré ? « Gérer l'accès », puis « Lien pour choisir un mot de passe ».")),
+      h(
+        "div",
+        { class: "actions" },
+        h("a", { class: "bouton secondaire", href: `mailto:${encodeURIComponent(email || "")}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(message)}` }, tr("Par e-mail")),
+        h("a", { class: "bouton secondaire", href: `https://wa.me/?text=${encodeURIComponent(message)}`, target: "_blank", rel: "noopener" }, icone("whatsapp"), tr("Par WhatsApp")),
+        h("button", { class: "principal", type: "button", onclick: async () => { try { await navigator.clipboard.writeText(message); toast(tr("Message copié.")); } catch { zone.select(); toast(tr("Copie impossible dans ce navigateur : sélectionnez le texte à la main."), true); } } }, icone("copier"), tr("Copier")),
+        h("button", { class: "secondaire", type: "button", onclick: () => fermer() }, tr("Fermer"))
+      )
+    )
+  );
+}
+
+// Choix de la langue de l'outil d'une personne : français, anglais, ou celle de son navigateur (vide).
+const selectLangue = (id, valeur) => {
+  const sel = h("select", { id }, h("option", { value: "" }, tr("Celle de son navigateur")), LANGUES.map((l) => h("option", { value: l.code }, l.nom)));
+  sel.value = valeur || "";
+  return sel;
+};
+// Un sélecteur de rôle par entreprise (« Aucun accès » par défaut).
+const selectsAcces = (prefixe, profil) =>
+  etat.brut.entites.map((e) => {
+    const m = profil && etat.brut.membres.find((x) => x.user_id === profil.user_id && x.entite_id === e.id);
+    const sel = h("select", { id: `${prefixe}-${e.id}` }, h("option", { value: "" }, tr("Aucun accès")), etat.brut.roles.filter((r) => r.entite_id === e.id).map((r) => h("option", { value: r.id }, nomRole(r))));
     sel.value = m ? m.role_id : "";
     return [e, sel];
   });
+
+// Inviter une personne (audit n° 1) : le compte, son nom, sa langue et ses accès d'un coup, puis un lien à lui envoyer.
+function inviterModal(apres) {
+  const email = saisie(h("input", { id: "inv-email", type: "email", required: true, autocomplete: "off" }), "email");
+  const nom = h("input", { id: "inv-nom", autocomplete: "off" });
+  const langue = selectLangue("inv-langue", "");
+  const selects = selectsAcces("inv", null);
+  const erreur = h("p", { class: "erreur-form", role: "alert" });
+  const bouton = h("button", { class: "principal", type: "submit" }, tr("Créer le compte et le lien"));
+  let fermer;
+  fermer = modal(
+    tr("Inviter une personne"),
+    h(
+      "form",
+      {
+        class: "modal-corps",
+        onsubmit: async (e) => {
+          e.preventDefault();
+          erreur.textContent = "";
+          const acces = accesChoisis(selects.map(([en, sel]) => ({ entite_id: en.id, role_id: sel.value })));
+          if (!acces.length && !(await confirmer(tr("Aucune entreprise n'est cochée : la personne pourra se connecter mais ne verra rien. Créer le compte quand même ?"), tr("Créer sans accès")))) return;
+          bouton.disabled = true;
+          try {
+            const r = await invitation({ action: "inviter", email: email.value.trim(), nom: nom.value.trim(), langue: langue.value || null, acces });
+            if (r.erreur && !r.lien) return void (erreur.textContent = tr(messageInvitation(r.erreur)));
+            fermer();
+            apres();
+            lienModal({ titre: tr("Compte créé"), intro: tr("Envoyez ce message à {nom}. En ouvrant le lien, la personne choisit son mot de passe et arrive dans l'outil.", { nom: nom.value.trim() || email.value.trim() }), lien: r.lien, email: email.value.trim(), nom: nom.value.trim(), langue: langue.value, type: "invite", erreur: r.erreur ? tr(messageInvitation(r.erreur)) : null });
+          } finally {
+            bouton.disabled = false;
+          }
+        },
+      },
+      champ(tr("Adresse e-mail"), email, tr("Elle sert d'identifiant pour se connecter.")),
+      champ(tr("Nom affiché"), nom),
+      champ(tr("Langue de l'outil"), langue, tr("Français ou anglais. L'écran simple de l'assistante reste en thaï.")),
+      h("fieldset", null, h("legend", null, tr("Accès par entreprise")), h("div", { class: "acces-grille" }, selects.map(([e, sel]) => champ(e.actif ? e.nom : tr("{nom} (désactivée)", { nom: e.nom }), sel)))),
+      h("p", { class: "aide" }, tr("Rien n'est envoyé par l'outil : il vous donne un lien à transmettre vous-même, par WhatsApp ou par e-mail.")),
+      erreur,
+      h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), bouton)
+    ),
+    { large: true }
+  );
+}
+
+function accesModal(profil, apres) {
+  const moi = profil.user_id === etat.session.id;
+  const nom = h("input", { id: "ua-nom", value: profil.nom || "" });
+  // Langue de l'outil de cette personne (audit n° 87) : l'administratrice la règle, la personne peut encore la changer dans « Mon compte ».
+  const langue = selectLangue("ua-langue", profil.langue);
+  const actif = h("input", { id: "ua-actif", type: "checkbox", checked: profil.actif, disabled: moi });
+  const superAdmin = h("input", { id: "ua-super", type: "checkbox", checked: profil.super_admin, disabled: moi });
+  const selects = selectsAcces("ua", profil);
   const grille = h("div", { class: "acces-grille" }, selects.map(([e, sel]) => champ(e.actif ? e.nom : tr("{nom} (désactivée)", { nom: e.nom }), sel)));
   const majSuper = () => (grille.hidden = superAdmin.checked);
   superAdmin.addEventListener("change", majSuper);
@@ -177,7 +284,7 @@ function accesModal(profil, apres) {
         onsubmit: async (ev) => {
           ev.preventDefault();
           try {
-            await modifierProfil(profil.user_id, { nom: nom.value.trim() || null, actif: moi ? true : actif.checked, super_admin: moi ? true : superAdmin.checked });
+            await modifierProfil(profil.user_id, { nom: nom.value.trim() || null, actif: moi ? true : actif.checked, super_admin: moi ? true : superAdmin.checked, ...((langue.value || null) !== (profil.langue || null) ? { langue: langue.value || null } : {}) });
             for (const [e, sel] of selects) {
               const avant = etat.brut.membres.find((x) => x.user_id === profil.user_id && x.entite_id === e.id);
               if ((avant ? avant.role_id : "") !== sel.value) await definirAcces(profil.user_id, e.id, sel.value || null);
@@ -191,10 +298,31 @@ function accesModal(profil, apres) {
         },
       },
       champ(tr("Nom affiché"), nom),
+      champ(tr("Langue de l'outil"), langue, tr("Français ou anglais. La personne peut la changer ensuite dans « Mon compte ».")),
       h("label", { class: "case", for: "ua-actif" }, actif, tr("Compte actif (décochez pour couper tout accès sans supprimer le compte)")),
       h("label", { class: "case", for: "ua-super" }, superAdmin, tr("Administratrice générale : voit toutes les entreprises et gère les accès")),
       moi ? h("p", { class: "aide" }, tr("Vous ne pouvez pas modifier votre propre statut.")) : null,
       grille,
+      // Mot de passe oublié, invitation expirée : un lien à envoyer soi-même. Supprimer : seulement un autre compte que le sien.
+      h(
+        "div",
+        { class: "actions gauche" },
+        h("button", { type: "button", class: "secondaire petit", onclick: async () => {
+          const r = await invitation({ action: "lien_mot_de_passe", user_id: profil.user_id });
+          if (r.erreur) return toast(tr(messageInvitation(r.erreur)), true);
+          lienModal({ titre: tr("Lien pour choisir un mot de passe"), intro: tr("Envoyez ce message à {nom}. Le lien ouvre l'outil et demande un nouveau mot de passe.", { nom: profil.nom || profil.email }), lien: r.lien, email: profil.email, nom: profil.nom || "", langue: profil.langue, type: "recovery" });
+        } }, tr("Lien pour choisir un mot de passe")),
+        moi ? null : h("button", { type: "button", class: "lien danger-texte", onclick: async () => {
+          const dossiers = etat.brut.dossiers.filter((d) => d.responsable_id === profil.user_id).length;
+          const texte = tr("Supprimer définitivement le compte de {nom} ? La personne ne pourra plus se connecter et perd tous ses accès. Ses dossiers, factures et paiements restent.", { nom: profil.nom || profil.email }) + (dossiers ? ` ${pluriel(dossiers, N_("Un dossier n'aura plus de responsable."), N_("{n} dossiers n'auront plus de responsable."))}` : "") + ` ${tr("Pour une simple pause, décochez plutôt « Compte actif ».")}`;
+          if (!(await confirmer(texte, tr("Supprimer le compte"), true))) return;
+          const r = await invitation({ action: "supprimer", user_id: profil.user_id });
+          if (r.erreur) return toast(tr(messageInvitation(r.erreur)), true);
+          fermer();
+          toast(tr("Compte supprimé."));
+          apres();
+        } }, tr("Supprimer le compte"))
+      ),
       h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Enregistrer")))
     )
   );
@@ -253,13 +381,13 @@ export function vueAdmin() {
                   null,
                   h("td", { "data-label": tr("Rôle") }, h("strong", null, nomRole(r)), r.description ? h("span", { class: "sous-ligne" }, descriptionAffichee(e, r)) : null),
                   h("td", { "data-label": tr("Dossiers visibles") }, r.portee === "toute" ? tr("Tous") : tr("Ses dossiers")),
-                  h("td", { "data-label": tr("Droits") }, tr("{n} sur {n2}", { n: r.permissions.filter((c) => proposes.some((p) => p.code === c)).length, n2: proposes.length })),
+                  h("td", { "data-label": tr("Droits") }, r.tous_droits ? tr("Tous (calculés)") : tr("{n} sur {n2}", { n: r.permissions.filter((c) => proposes.some((p) => p.code === c)).length, n2: proposes.length })),
                   h("td", { "data-label": tr("Personnes") }, usage(r)),
                   h(
                     "td",
                     { class: "action-cellule" },
                     h("button", { class: "secondaire petit", type: "button", onclick: () => roleModal(e, r, rafraichir) }, tr("Modifier")),
-                    h("button", { class: "secondaire petit", type: "button", onclick: () => roleModal(e, { nom: tr("{nom} (copie)", { nom: nomRole(r) }), description: descriptionAffichee(e, r), portee: r.portee, permissions: r.permissions }, rafraichir) }, tr("Dupliquer")),
+                    h("button", { class: "secondaire petit", type: "button", onclick: () => roleModal(e, { nom: tr("{nom} (copie)", { nom: nomRole(r) }), description: descriptionAffichee(e, r), portee: r.portee, permissions: droitsDuRole(r) }, rafraichir) }, tr("Dupliquer")),
                     r.systeme || usage(r) ? null : h("button", { class: "lien danger-texte", type: "button", onclick: async () => { if (await confirmer(tr("Supprimer le rôle « {nom} » ?", { nom: nomRole(r) }), tr("Supprimer"), true)) { await supprimer("roles", r.id); rafraichir(); } } }, tr("Supprimer"))
                   )
                 )
@@ -272,8 +400,8 @@ export function vueAdmin() {
     h(
       "section",
       null,
-      h("h2", null, tr("Utilisateurs")),
-      h("p", { class: "aide" }, tr("Pour ajouter une personne, créez d'abord son compte dans Supabase (Authentication, Users, Add user). Elle apparaît ensuite ici et vous lui donnez accès aux entreprises voulues, comme éditeur (documents, clients, paiements) ou comme administrateur (réglages compris).")),
+      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Utilisateurs")), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: () => inviterModal(rafraichir) }, tr("Inviter une personne")))),
+      h("p", { class: "aide" }, tr("« Inviter une personne » crée son compte avec ses accès et vous donne un lien à lui envoyer : elle y choisit son mot de passe. « Gérer l'accès » change ses rôles et sa langue, crée un lien pour un mot de passe oublié, coupe ou supprime le compte.")),
       h(
         "table",
         { class: "tableau simple" },

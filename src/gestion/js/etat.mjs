@@ -8,18 +8,22 @@ import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
+import { appliquerTextesThai } from "./textes-thai.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
 const CLE_ENTITE = "gestion-zwald-entite";
 
 // `documentsOuverts` : documents en cours d'édition. La synchronisation ne leur retire pas leur copie en mémoire, l'éditeur en a besoin.
-export const etat = { store: null, brut: null, db: null, session: null, moi: null, entiteId: null, documentsOuverts: new Set() };
+// `retour` : ce qu'a demandé le lien qui a ouvert l'outil (invitation, mot de passe oublié) ou son erreur (lien expiré), voir compte-calc.mjs.
+// `garde` : posée par un écran qui a des modifications non enregistrées (Réglages) ; elle rend vrai tant qu'il faut demander avant de le quitter.
+export const etat = { store: null, brut: null, db: null, session: null, moi: null, entiteId: null, documentsOuverts: new Set(), retour: { type: null, erreur: null }, garde: null };
 
 export async function init() {
   // La langue de ce navigateur sert dès l'écran de connexion ; celle du compte la remplace après la connexion.
   const stockee = langueStockee();
   if (stockee) definirLangue(stockee);
   etat.store = await creerStore();
+  if (etat.store.retourLien) etat.retour = etat.store.retourLien();
   etat.session = await etat.store.session();
   if (!etat.session) return void (await pretLangue());
   try {
@@ -181,6 +185,8 @@ function rebatir() {
   db.reglages = completerReglages(etat.brut.reglages[e]);
   db.roles = etat.brut.roles.filter((r) => r.entite_id === e);
   etat.db = db;
+  // Textes thaïs de l'écran de Mook : ceux de cette entreprise s'ils ont été modifiés dans Réglages, sinon ceux de départ.
+  appliquerTextesThai(db.reglages.textes_thai);
   setDevise(db.reglages.devise);
   setMasquerMontants(!peut("finances.voir"));
 }
@@ -226,8 +232,8 @@ export const descriptionRole = (r) => (r.systeme ? tr(r.description) : r.descrip
 
 export const reglages = () => etat.db.reglages;
 
-// Chaque entreprise choisit ses écrans (Réglages, Écrans). En automatique, Partenaires apparaît dès qu'il y a un partenaire,
-// Réservations et Messages suivent Partenaires, Catalogue est toujours là. Zwald et Secret n'ont donc pas le même menu.
+// Chaque entreprise choisit ses écrans (Réglages, Écrans). En automatique, Partenaires, Réservations et Messages sont affichés en Secret et
+// en Taxi, et le Catalogue en ZTP. Chacun se masque seul : masquer Partenaires ne masque plus Réservations ni Messages (audit n° 72).
 export function moduleActif(nom) {
   // Chaque entreprise n'a que ses écrans (Jérémy, 12.11.2026) : partenaires, réservations et messages n'existent qu'en excursions et en taxi,
   // le catalogue de formules de devis qu'en voyages sur mesure (ZTP). Le réglage « Écrans » ne peut pas les rouvrir ailleurs.
@@ -235,8 +241,6 @@ export function moduleActif(nom) {
   if (nom === "catalogue" && modeExcursions()) return false;
   const v = ((etat.db && etat.db.reglages.modules) || {})[nom];
   if (v === true || v === false) return v;
-  if (nom === "partenaires") return etat.db.partenaires.length > 0 || modeExcursions();
-  if (nom === "reservations" || nom === "messages") return moduleActif("partenaires");
   if (nom === "catalogue") return !modeExcursions();
   return true;
 }
@@ -280,6 +284,35 @@ async function actualiserResume(dossierId) {
   }
 }
 
+// Après l'écriture d'une réservation, la base a pu recalculer son net et sa commission prévus (migration 32) : on relit sa ligne de nets,
+// sinon la fiche garde l'ancien net jusqu'à la prochaine synchronisation (contrôle du 17.11.2026, D2). Seulement pour qui voit les nets.
+// Pendant avecNetsGroupes (création de plusieurs services d'un coup), la relecture attend la fin : une seule requête et un seul rebatir.
+let netsDifferes = null;
+async function actualiserNets(ids) {
+  const liste = [].concat(ids).filter(Boolean);
+  if (!liste.length || !peut("partenaires.nets") || typeof etat.store.netsReservations !== "function") return;
+  if (netsDifferes) return void liste.forEach((id) => netsDifferes.add(id));
+  try {
+    const lus = await etat.store.netsReservations(liste);
+    const set = new Set(liste);
+    etat.brut.reservations_nets = [...etat.brut.reservations_nets.filter((x) => !set.has(x.reservation_id)), ...lus];
+    rebatir();
+  } catch {
+    // Relecture impossible (réseau) : la synchronisation suivante l'apportera.
+  }
+}
+export async function avecNetsGroupes(fn) {
+  if (netsDifferes) return fn();
+  netsDifferes = new Set();
+  try {
+    return await fn();
+  } finally {
+    const ids = [...netsDifferes];
+    netsDifferes = null;
+    await actualiserNets(ids);
+  }
+}
+
 // Prochain numéro de la séquence annuelle des références, attribué par la base (migration 14) : il ne redescend jamais, donc un dossier
 // supprimé ne rend pas son numéro, et il tient compte des dossiers que cette personne ne voit pas. `minimum` est le plus grand numéro que
 // cette personne voit. Sans la migration, ou hors ligne, on retombe sur le calcul local (minimum + 1).
@@ -316,9 +349,13 @@ export const toutesTaches = () => etat.store.toutesTaches(etat.entiteId);
 async function insererBrut(table, row) {
   const ligne = TABLES.includes(table) ? { entite_id: etat.entiteId, ...row } : row;
   const r = await etat.store.inserer(table, ligne);
-  etat.brut[table].push(r);
+  // Une ligne de nets complétée par la base (fusionner_nets) garde son identifiant : elle remplace celle de la réservation au lieu d'un doublon.
+  const deja = table === "reservations_nets" ? etat.brut[table].findIndex((x) => x.id === r.id || x.reservation_id === r.reservation_id) : -1;
+  if (deja >= 0) etat.brut[table][deja] = r;
+  else etat.brut[table].push(r);
   rebatir();
   if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
+  if (table === "reservations") await actualiserNets(r.id);
   return r;
 }
 export const inserer = (...a) => ecrire(() => insererBrut(...a));
@@ -336,6 +373,7 @@ async function modifierBrut(table, id, patch, { verrou = false, version = undefi
   else etat.brut[table].push(r);
   rebatir();
   if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
+  if (table === "reservations") await actualiserNets(r.id);
   return r;
 }
 export const modifier = (...a) => ecrire(() => modifierBrut(...a));
@@ -410,7 +448,9 @@ export async function creerEntite(nom, slug) {
   const e = await etat.store.inserer("entites", { nom, slug, actif: true, ordre });
   const base = completerReglages({ emetteur: { nom } });
   await etat.store.enregistrerReglages(e.id, base);
-  for (const r of ROLES_SYSTEME) etat.brut.roles.push(await etat.store.inserer("roles", { entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: r.permissions, systeme: true }));
+  // `tous_droits` (migration 38) n'est écrit que si la base a déjà la colonne : avant la migration, l'insertion échouerait.
+  const avecTousDroits = etat.brut.roles.some((r) => "tous_droits" in r);
+  for (const r of ROLES_SYSTEME) etat.brut.roles.push(await etat.store.inserer("roles", { entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: r.permissions, systeme: true, ...(avecTousDroits ? { tous_droits: !!r.tous_droits } : {}) }));
   etat.brut.entites.push(e);
   etat.brut.reglages[e.id] = base;
   rebatir();
@@ -445,6 +485,16 @@ async function modifierProfilBrut(userId, patch) {
 export const modifierProfil = (...a) => ecrire(() => modifierProfilBrut(...a));
 
 export const equipe = () => etat.store.equipe(etat.entiteId);
+
+// Comptes de l'équipe (administratrice générale) : fonction « invitation » côté serveur. Renvoie sa réponse ou { erreur }.
+export async function invitation(corps) {
+  if (!etat.store.invitation) return { erreur: "indisponible" };
+  const r = await etat.store.invitation(corps);
+  // Compte créé, même si son profil ou ses accès ont échoué (r.user_id) : la liste le montre pour qu'on règle le reste à la main.
+  if (r && (!r.erreur || r.user_id) && corps.action !== "lien_mot_de_passe") await recharger();
+  return r || { erreur: "indisponible" };
+}
+export const historiqueReglages = () => (etat.store.historiqueReglages ? etat.store.historiqueReglages(etat.entiteId) : Promise.resolve(null));
 
 export const resumes = () => etat.db.dossiers.map((d) => resume(d, etat.db, etat.db.reglages));
 export const resumeDossier = (id) => {

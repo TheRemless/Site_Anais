@@ -121,8 +121,9 @@ export function ajouterJours(iso, n) {
 
 // Montant d'une ligne hors remise en pourcentage.
 // Prix d'une ligne tel qu'il est écrit, qu'il soit encaissé par nous ou payé au prestataire.
+// Une ligne « Offert » compte 0 (décision 8 du 17.11.2026) ; une ligne sans prix compte 0 aussi, mais bloque l'envoi d'une facture (documents-calc.mjs).
 export function montantLigne(l) {
-  if (!l || l.kind === "texte") return 0;
+  if (!l || l.kind === "texte" || l.offert) return 0;
   if (estNombre(l.unite) && estNombre(l.qte)) return produitArrondi(l.unite, l.qte);
   return estNombre(l.montant) ? arrondi(l.montant) : 0;
 }
@@ -192,19 +193,24 @@ export function equivalents(total, lignes) {
 }
 
 const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const MOIS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-// « DU 2 AU 12 DÉCEMBRE 2026 », pour le bandeau du document.
-export function periodeTexte(debut, fin) {
+// « DU 2 AU 12 DÉCEMBRE 2026 » pour le bandeau du document, « 2 TO 12 DECEMBER 2026 » pour un document en anglais (`langue` = "en").
+export function periodeTexte(debut, fin, langue = "") {
   if (!debut) return "";
+  const en = langue === "en";
+  const M = en ? MOIS_EN : MOIS;
   const [a1, m1, j1] = debut.split("-").map(Number);
-  if (!fin) return `${MOIS[m1 - 1]} ${a1}`.toUpperCase();
+  if (!fin) return `${M[m1 - 1]} ${a1}`.toUpperCase();
   const [a2, m2, j2] = fin.split("-").map(Number);
-  if (a1 === a2 && m1 === m2) return `DU ${j1} AU ${j2} ${MOIS[m2 - 1]} ${a2}`.toUpperCase();
-  if (a1 === a2) return `DU ${j1} ${MOIS[m1 - 1]} AU ${j2} ${MOIS[m2 - 1]} ${a2}`.toUpperCase();
-  return `DU ${j1} ${MOIS[m1 - 1]} ${a1} AU ${j2} ${MOIS[m2 - 1]} ${a2}`.toUpperCase();
+  const de = en ? "" : "DU ";
+  const a = en ? " TO " : " AU ";
+  if (a1 === a2 && m1 === m2) return `${de}${j1}${a}${j2} ${M[m2 - 1]} ${a2}`.toUpperCase();
+  if (a1 === a2) return `${de}${j1} ${M[m1 - 1]}${a}${j2} ${M[m2 - 1]} ${a2}`.toUpperCase();
+  return `${de}${j1} ${M[m1 - 1]} ${a1}${a}${j2} ${M[m2 - 1]} ${a2}`.toUpperCase();
 }
 
-// Mois dans la langue de l'interface (les bandeaux de documents gardent le français, voir periodeTexte).
+// Mois dans la langue de l'interface (le bandeau d'un document suit la langue du document, voir periodeTexte).
 export function nomMois(iso) {
   return moisLong(iso);
 }
@@ -245,11 +251,13 @@ export function nouvelleRef({ numerotation, prenom, nom, dateIso, pays, refsExis
 }
 
 // Un document en anglais (Secret, Taxi) donne un PDF « Invoice » ou « Quote », pas « Facture » ni « Devis ».
+// Le numéro est celui imprimé sur le document (numéro affiché, sinon la référence du dossier) : le même dans le PDF, le message et le nom du fichier.
 export function nomFichier(type, doc, dossier, client) {
   const nom = sansAccents(client && client.nom).split(/\s+/)[0] || "client";
   const en = !!(doc && doc.contenu && doc.contenu.langue === "en");
   const t = type === "facture_locale" ? "Facture locale" : type === "facture" ? (en ? "Invoice" : "Facture") : en ? "Quote" : "Devis";
-  return `${t} ${dossier.ref} - ${nom}`;
+  const numero = ((doc && doc.contenu && doc.contenu.numero) || "").trim() || dossier.ref;
+  return `${t} ${numero} - ${nom}`;
 }
 
 export function sommePaiements(paiements) {
@@ -268,6 +276,25 @@ export function totalDossier(documents) {
   return doc ? totaux(doc.contenu).net : 0;
 }
 
+// L'acompte % d'un dossier : celui figé à l'envoi de son devis (colonne `acompte_pct` du dossier, ou copie figée dans le document), sinon
+// celui des réglages du jour. Changer l'acompte dans les Réglages ne fait plus redevenir « paiement attendu » un acompte déjà reçu.
+const pctConnu = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v));
+export function acomptePct(dossier, documents, reglages) {
+  if (dossier && pctConnu(dossier.acompte_pct)) return Number(dossier.acompte_pct);
+  const figes = (documents || []).filter((d) => d && d.contenu && d.contenu.fige && pctConnu(d.contenu.fige.acompte_pct));
+  const doc = figes.find((d) => d.type === "devis") || figes.find((d) => d.type === "facture");
+  if (doc) return Number(doc.contenu.fige.acompte_pct);
+  return Number(reglages && reglages.conditions && reglages.conditions.acompte_pct) || 0;
+}
+
+// Jours avant de relancer un devis sans réponse : vide = 7 jours, 0 = jamais.
+export function joursRelance(conditions) {
+  const v = conditions && conditions.relance_jours;
+  if (v === null || v === undefined || String(v).trim() === "") return 7;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 7;
+}
+
 export function acompteDu(total, pct) {
   return arrondi((total * (Number(pct) || 0)) / 100);
 }
@@ -278,11 +305,18 @@ export function echeanceAcompte(dossier, reglages) {
 }
 
 // Échéance du solde. Les conditions disent « à la réception du carnet de voyage » : une fois le carnet envoyé, le solde est dû ce jour-là.
-// Tant qu'il n'est pas noté comme envoyé, l'ancienne règle reste : le solde est relevé 30 jours avant le départ.
+// Tant qu'il n'est pas noté comme envoyé, l'ancienne règle reste : le solde est relevé 30 jours avant le départ, ou le nombre de jours
+// réglé dans Réglages ZTP (conditions.solde_jours, lot D du 17.11.2026). Vide ou illisible : 30 jours.
 export const JOURS_SOLDE_AVANT_DEPART = 30;
-export function echeanceSolde(dossier) {
+export function joursSolde(conditions) {
+  const v = conditions && conditions.solde_jours;
+  if (v === null || v === undefined || String(v).trim() === "") return JOURS_SOLDE_AVANT_DEPART;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : JOURS_SOLDE_AVANT_DEPART;
+}
+export function echeanceSolde(dossier, reglages = null) {
   if (dossier.carnet_envoye_le) return { date: dossier.carnet_envoye_le, source: "carnet" };
-  if (dossier.date_depart) return { date: ajouterJours(dossier.date_depart, -JOURS_SOLDE_AVANT_DEPART), source: "depart" };
+  if (dossier.date_depart) return { date: ajouterJours(dossier.date_depart, -joursSolde(reglages && reglages.conditions)), source: "depart" };
   return null;
 }
 
@@ -304,7 +338,7 @@ export function statutDepuis({ annule, total, recu, accepteLe, devisEnvoyeLe, pc
 export function statutDossier({ dossier, documents, paiements, reglages }) {
   const devis = dernier(documents, "devis");
   const doc = dernier(documents, "facture") || devis;
-  return statutDepuis({ annule: dossier.annule, total: totalDossier(documents), recu: sommePaiements(paiements), accepteLe: dossier.accepte_le, devisEnvoyeLe: devis && devis.envoye_le, pct: reglages.conditions.acompte_pct, surPlace: doc ? montantSurPlace(doc.contenu) : 0, sansSuite: !!dossier.sans_suite_le });
+  return statutDepuis({ annule: dossier.annule, total: totalDossier(documents), recu: sommePaiements(paiements), accepteLe: dossier.accepte_le, devisEnvoyeLe: devis && devis.envoye_le, pct: acomptePct(dossier, documents, reglages), surPlace: doc ? montantSurPlace(doc.contenu) : 0, sansSuite: !!dossier.sans_suite_le });
 }
 
 // Résumé d'un dossier pour les listes et le tableau de bord. Quand ses documents et paiements ne sont pas chargés
@@ -320,6 +354,7 @@ export function resume(dossier, db, reglages) {
   // Prix des services payés directement aux prestataires (hors total) : sans documents chargés, la base le tient à jour (migration 19).
   const surPlace = charge ? (doc ? montantSurPlace(doc.contenu) : 0) : Number(dossier.sur_place) || 0;
   const devisEnvoyeLe = charge ? (devis && devis.envoye_le) || null : dossier.devis_envoye_le || null;
+  const pct = acomptePct(dossier, documents, reglages);
   return {
     dossier,
     client: db.clients.find((c) => c.id === dossier.client_id) || null,
@@ -332,33 +367,35 @@ export function resume(dossier, db, reglages) {
     reste: arrondi(total - recu),
     surPlace,
     devisEnvoyeLe,
-    statut: statutDepuis({ annule: dossier.annule, total, recu, accepteLe: dossier.accepte_le, devisEnvoyeLe, pct: reglages.conditions.acompte_pct, surPlace, sansSuite: !!dossier.sans_suite_le }),
+    pct,
+    statut: statutDepuis({ annule: dossier.annule, total, recu, accepteLe: dossier.accepte_le, devisEnvoyeLe, pct, surPlace, sansSuite: !!dossier.sans_suite_le }),
   };
 }
 
 // Ce qui demande une action, du plus urgent au moins urgent.
 export function aFaire(resumes, today, reglages) {
-  const relance = Number(reglages.conditions.relance_jours) || 7;
+  const relance = joursRelance(reglages.conditions);
+  const avantDepart = joursSolde(reglages.conditions);
   const items = [];
   for (const r of resumes) {
     const d = r.dossier;
     // Argent à rendre : un dossier payé au-delà de son total. (Un dossier annulé avec un acompte conservé reste hors de la liste : on ne
     // peut pas distinguer l'acompte gardé d'un remboursement oublié, la fiche du dossier le rappelle.)
     if (r.statut !== "annule" && r.total > 0 && arrondi(r.recu - r.total) > 0) items.push({ type: "trop_percu", resume: r, jours: 0 });
-    if (r.statut === "accepte" && acompteDu(r.total, reglages.conditions.acompte_pct) > 0) {
+    if (r.statut === "accepte" && acompteDu(r.total, r.pct ?? reglages.conditions.acompte_pct) > 0) {
       const ech = echeanceAcompte(d, reglages);
       if (ech && ech < today) items.push({ type: "acompte_retard", resume: r, jours: joursEntre(ech, today) });
     }
     if (r.statut === "devis_envoye") {
       const depuis = r.devisEnvoyeLe ? joursEntre(r.devisEnvoyeLe, today) : 0;
-      if (r.devisEnvoyeLe && depuis >= relance) items.push({ type: "devis_relance", resume: r, jours: depuis });
+      if (r.devisEnvoyeLe && relance > 0 && depuis >= relance) items.push({ type: "devis_relance", resume: r, jours: depuis });
     }
     if (r.statut === "acompte" && r.reste > 0) {
       // Carnet envoyé (date passée ou du jour) : le solde est dû depuis cet envoi. Une date à venir ne fait pas taire l'ancienne règle.
       if (d.carnet_envoye_le && d.carnet_envoye_le <= today) items.push({ type: "solde_du", resume: r, jours: joursEntre(d.carnet_envoye_le, today) });
       else if (d.date_depart) {
         const avant = joursEntre(today, d.date_depart);
-        if (avant >= 0 && avant <= JOURS_SOLDE_AVANT_DEPART) items.push({ type: "solde_proche", resume: r, jours: avant });
+        if (avant >= 0 && avant <= avantDepart) items.push({ type: "solde_proche", resume: r, jours: avant });
       }
     }
   }

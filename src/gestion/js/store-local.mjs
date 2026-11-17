@@ -6,9 +6,11 @@ import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
+import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
 import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
 
-const CLE = "gestion-zwald-demo-v12";
+// v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
+const CLE = "gestion-zwald-demo-v13";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
 // Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
 const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches", "demandes_site", "bandeaux_site"];
@@ -32,6 +34,17 @@ export function creer() {
     if (!data.bandeaux_site) data.bandeaux_site = bandeauxDemo({ entites: data.entites, ajd: aujourdhui(), uid });
     for (const t of TABLES) data[t] = data[t] || [];
     data.fiduciaire_factures = data.fiduciaire_factures || [];
+    // Corbeille des documents et compteurs de numéros, comme la base (migration 34). L'acompte figé du dossier existe comme colonne.
+    data.corbeille_documents = data.corbeille_documents || [];
+    data.compteurs_ref = data.compteurs_ref || {};
+    // Historique des réglages (migration 38), comme la base : la version remplacée à chaque enregistrement, 60 au plus par entreprise.
+    data.reglages_historique = data.reglages_historique || [];
+    for (const d of data.dossiers || []) if (!("acompte_pct" in d)) d.acompte_pct = null;
+    // Nets de démo d'avant le calcul par la base (17.11.2026, D2) : ils comptent comme calculés, pour suivre un enfant ajouté ou un tarif changé.
+    for (const n of data.reservations_nets) {
+      if (!("net_prevu_auto" in n)) n.net_prevu_auto = n.net_prevu ?? null;
+      if (!("commission_prevue_auto" in n)) n.commission_prevue_auto = n.commission_prevue ?? null;
+    }
     let choisi = null;
     try {
       choisi = localStorage.getItem(CLE_UTILISATEUR);
@@ -75,11 +88,43 @@ export function creer() {
   const accessibles = () => (utilisateur.super_admin ? data.entites.map((e) => e.id) : data.membres.filter((m) => m.user_id === utilisateur.user_id).map((m) => m.entite_id));
   const nomDe = (id) => (data.profils.find((p) => p.user_id === id) || {}).nom || null;
 
+  // Comme le déclencheur garder_prix_vente (migration 38) : sans le droit « partenaires.prix », un prix de vente ne change pas et un tarif ou un
+  // trajet créé naît sans prix.
+  const garderPrix = (table, avant, apres) => {
+    if (!["prestations", "trajets"].includes(table) || droit(apres.entite_id, "partenaires.prix")) return;
+    const n = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
+    const enfant = (x) => n(((x && x.details) || {}).enfant);
+    const prix = table === "prestations" ? (x) => [n(x.prix_vente), enfant(x), x.unite || ""] : (x) => [n(x.prix_adulte), n(x.prix_enfant)];
+    const change = avant ? JSON.stringify(prix(avant)) !== JSON.stringify(prix(apres)) : prix(apres).slice(0, 2).some((v) => v !== null);
+    if (change) throw new Error(tr("Le prix de vente est réservé aux personnes qui ont le droit « Modifier les prix de vente ». Laissez le prix tel quel, ou demandez à l'administratrice."));
+  };
+
+  // Comme le déclencheur remplir_nets (migration 32) : après l'écriture d'une réservation de Secret, le net et la commission prévus suivent le tarif,
+  // les personnes et les lignes de facture, sans jamais écraser une valeur saisie à la main (contrôle du 17.11.2026, D2).
+  const remplirNets = (r, avant) => {
+    const suivi = suiviDeclencheur(avant, r);
+    if (!suivi) return;
+    const n = data.reservations_nets.find((x) => x.reservation_id === r.id) || null;
+    const excursions = (entiteId) => ((data.reglages || {})[entiteId] || {}).fonctionnement === "excursions";
+    const valeurs = calculerNets(r, n, { ...data, excursions }, { suivreNet: suivi.suivreNet });
+    if (!valeurs) return;
+    if (n) {
+      const details = Object.fromEntries(["net_prevu", "commission_prevue"].filter((k) => (n[k] ?? null) !== (valeurs[k] ?? null)).map((k) => [k, { avant: n[k] ?? null, apres: valeurs[k] }]));
+      Object.assign(n, valeurs);
+      if (Object.keys(details).length) journaliser("reservations_nets", "update", n, details);
+    } else {
+      const ligne = { id: uid(), created_at: aujourdhui(), entite_id: r.entite_id, reservation_id: r.id, net_paye: null, paye_le: null, commission_recue: null, commission_recue_le: null, ...valeurs };
+      data.reservations_nets.push(ligne);
+      journaliser("reservations_nets", "insert", ligne, Object.fromEntries(["net_prevu", "commission_prevue"].filter((k) => valeurs[k] !== null).map((k) => [k, { avant: null, apres: valeurs[k] }])));
+    }
+  };
+
   // Journal tenu à la main, comme le fait le déclencheur de la vraie base.
   const journaliser = (table, action, ligne, details = {}) => {
-    // Les tables de nets ne passent pas par le journal, comme dans la vraie base.
-    if (PARTENAIRES_NETS.includes(table)) return;
-    const libelle = { dossiers: ligne.ref, clients: [ligne.prenom, ligne.nom].filter(Boolean).join(" "), catalogue: ligne.libelle, roles: ligne.nom, taches: ligne.titre, pieces_jointes: ligne.nom, partenaires: ligne.nom, prestations: ligne.libelle, trajets: `${ligne.de} → ${ligne.vers}`, reservations: ligne.libelle, documents: `${ligne.type || ""} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim(), paiements: `${ligne.montant} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim() }[table] || "";
+    // Les tables de nets ne passent pas par le journal, comme dans la vraie base, sauf les nets et commissions des réservations : ceux-là n'y sont lisibles
+    // qu'avec le droit « nets » (migration du lot G, 17.11.2026).
+    if (PARTENAIRES_NETS.includes(table) && table !== "reservations_nets") return;
+    const libelle = { dossiers: ligne.ref, clients: [ligne.prenom, ligne.nom].filter(Boolean).join(" "), catalogue: ligne.libelle, roles: ligne.nom, taches: ligne.titre, pieces_jointes: ligne.nom, partenaires: ligne.nom, prestations: ligne.libelle, trajets: `${ligne.de} → ${ligne.vers}`, reservations: ligne.libelle, reservations_nets: (data.reservations.find((r) => r.id === ligne.reservation_id) || {}).libelle || "", documents: `${ligne.type || ""} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim(), paiements: `${ligne.montant} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim() }[table] || "";
     data.journal.unshift({ id: Date.now() + Math.random(), created_at: new Date().toISOString(), entite_id: ligne.entite_id || null, user_id: utilisateur.user_id, table_name: table, action, cible: ligne.id || "", libelle, details });
     data.journal.length = Math.min(data.journal.length, 500);
   };
@@ -92,9 +137,53 @@ export function creer() {
     async connecter() {},
     async deconnecter() {},
     async deconnecterPartout() {},
+    // ---- Comptes (lot D) : la démo crée et supprime les comptes dans le navigateur ; les liens sont factices, rien n'est envoyé.
+    retourLien() {
+      return { type: null, erreur: null };
+    },
+    async invitation(corps) {
+      await new Promise((r) => setTimeout(r, 300));
+      if (!utilisateur.super_admin) return { erreur: "droit_manquant" };
+      const lienDemo = (type) => `${location.origin}${location.pathname}?demo#demo-${type}-${Math.random().toString(36).slice(2, 10)}`;
+      if (corps.action === "inviter") {
+        const email = String(corps.email || "").trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { erreur: "email_invalide" };
+        if (data.profils.some((p) => (p.email || "").toLowerCase() === email)) return { erreur: "deja_inscrit" };
+        const acces = corps.acces || [];
+        if (!acces.every((a) => data.roles.some((r) => r.id === a.role_id && r.entite_id === a.entite_id))) return { erreur: "acces_invalide" };
+        const p = { user_id: uid(), email, nom: corps.nom || null, super_admin: false, actif: true, langue: corps.langue || null };
+        data.profils.push(p);
+        for (const a of acces) data.membres.push({ user_id: p.user_id, entite_id: a.entite_id, role_id: a.role_id });
+        sauve();
+        return { user_id: p.user_id, lien: lienDemo("invitation") };
+      }
+      const cible = data.profils.find((p) => p.user_id === corps.user_id);
+      if (!cible) return { erreur: "personne_inconnue" };
+      if (corps.action === "lien_mot_de_passe") return { lien: lienDemo("mot-de-passe") };
+      if (corps.action === "supprimer") {
+        if (cible.user_id === utilisateur.user_id) return { erreur: "soi_meme" };
+        if (cible.super_admin && data.profils.filter((p) => p.super_admin && p.actif).length <= 1) return { erreur: "derniere_administratrice" };
+        data.profils = data.profils.filter((p) => p !== cible);
+        data.membres = data.membres.filter((m) => m.user_id !== cible.user_id);
+        for (const d of data.dossiers) if (d.responsable_id === cible.user_id) d.responsable_id = null;
+        sauve();
+        return { ok: true };
+      }
+      return { erreur: "action_inconnue" };
+    },
+    async motDePasseOublie() {},
+    async changerMotDePasse() {
+      await new Promise((r) => setTimeout(r, 200));
+    },
+    async historiqueReglages(entiteId) {
+      return structuredClone(data.reglages_historique.filter((x) => x.entite_id === entiteId).slice(0, 20));
+    },
     // Factures pour la fiduciaire (migration 28) : mêmes règles que les fonctions de la base, sur les données du navigateur.
     async fiduciaireListe() {
       return structuredClone(facturesVisibles(data, { droit, voit }));
+    },
+    async fiduciaireMigration36() {
+      return true;
     },
     async fiduciaireAPreparer() {
       return structuredClone(aPreparerLocal(data, { droit, resumeDe, voit }));
@@ -104,8 +193,8 @@ export function creer() {
       sauve();
       return id;
     },
-    async fiduciaireAnnuler(reservationId, date = null) {
-      const id = annulerLocal(data, { droit, aujourdhui: aujourdhui() }, reservationId, date);
+    async fiduciaireAnnuler(reservationId, date = null, destinataire = null) {
+      const id = annulerLocal(data, { droit, aujourdhui: aujourdhui() }, reservationId, date, destinataire);
       sauve();
       return id;
     },
@@ -180,11 +269,30 @@ export function creer() {
     },
     async inserer(table, row) {
       const ligne = { id: uid(), created_at: aujourdhui(), ...row };
+      garderPrix(table, null, ligne);
+      // Comme la base (migration 34) : un document écrit toujours sa devise, un dossier a sa colonne d'acompte figé.
+      if (table === "documents" && ligne.contenu && !ligne.contenu.devise) ligne.contenu = { ...ligne.contenu, devise: (data.reglages[ligne.entite_id] || {}).devise || "CHF" };
+      if (table === "dossiers" && !("acompte_pct" in ligne)) ligne.acompte_pct = null;
       if (table === "dossiers") ligne.responsable_id = ligne.responsable_id || utilisateur.user_id;
       if (TABLES.includes(table) && !["catalogue", "trajets", ...PARTENAIRES_NETS].includes(table)) ligne.cree_par = utilisateur.user_id;
+      // Comme fusionner_nets (migration 32) : une insertion pour une réservation qui a déjà sa ligne de nets la complète, l'identifiant reste.
+      if (table === "reservations_nets") {
+        const existante = data.reservations_nets.find((x) => x.reservation_id === ligne.reservation_id);
+        if (existante) {
+          const envoyees = Object.fromEntries(Object.entries(row).filter(([k, v]) => v !== null && v !== undefined && k !== "id"));
+          const details = Object.fromEntries(Object.entries(envoyees).filter(([k, v]) => !["entite_id", "reservation_id"].includes(k) && JSON.stringify(existante[k] ?? null) !== JSON.stringify(v)).map(([k, v]) => [k, { avant: existante[k] ?? null, apres: v }]));
+          Object.assign(existante, envoyees);
+          if (Object.keys(details).length) journaliser(table, "update", existante, details);
+          sauve();
+          return structuredClone(existante);
+        }
+      }
       data[table].push(ligne);
+      if (table === "reservations") remplirNets(ligne, null);
       if (table === "entites") data.reglages[ligne.id] = structuredClone(REGLAGES_NEUTRE);
-      journaliser(table, "insert", ligne);
+      // Comme le déclencheur de la base : la création d'un net ou d'une commission note les valeurs saisies.
+      const saisies = table === "reservations_nets" ? Object.fromEntries(Object.entries(ligne).filter(([k, v]) => !["id", "entite_id", "reservation_id", "created_at"].includes(k) && v !== null && v !== undefined && v !== "").map(([k, v]) => [k, { avant: null, apres: v }])) : {};
+      journaliser(table, "insert", ligne, saisies);
       sauve();
       return structuredClone(ligne);
     },
@@ -193,6 +301,7 @@ export function creer() {
       // Même contrôle que la base : la ligne a changé depuis qu'on l'a lue (autre onglet), rien n'est écrit.
       if (avant && ligne.updated_at && ligne.updated_at !== avant) throw Object.assign(new Error(tr("Cette fiche a été modifiée par quelqu'un d'autre depuis que vous l'avez ouverte.")), { conflit: true });
       patch = { ...patch };
+      garderPrix(table, ligne, { ...ligne, ...patch });
       delete patch.updated_at;
       if (VERSIONNEES.includes(table)) patch.updated_at = new Date().toISOString();
       // Comme le déclencheur de la migration 30 : un changement de statut note qui et quand.
@@ -203,13 +312,17 @@ export function creer() {
         const court = (x) => JSON.stringify(x ?? null).length <= 120;
         details[k] = court(ligne[k]) && court(v) ? { avant: ligne[k] ?? null, apres: v } : "modifié";
       }
+      const copie = table === "reservations" ? structuredClone(ligne) : null;
       Object.assign(ligne, patch);
       if (Object.keys(details).length) journaliser(table, "update", ligne, details);
+      if (copie) remplirNets(ligne, copie);
       sauve();
       return structuredClone(ligne);
     },
     async supprimer(table, id) {
       const ligne = data[table].find((r) => r.id === id);
+      // Un devis ou une facture supprimé seul reste 90 jours restaurable (comme documents_historique en base).
+      if (table === "documents" && ligne) data.corbeille_documents = [{ ligne: structuredClone(ligne), supprime_le: new Date().toISOString() }, ...data.corbeille_documents.filter((x) => x.ligne.id !== id)];
       data[table] = data[table].filter((r) => r.id !== id);
       if (table === "dossiers") {
         data.documents = data.documents.filter((d) => d.dossier_id !== id);
@@ -219,6 +332,13 @@ export function creer() {
       sauve();
     },
     async enregistrerReglages(entiteId, valeur) {
+      const ancienne = data.reglages[entiteId];
+      if (ancienne && JSON.stringify(ancienne) !== JSON.stringify(valeur)) {
+        data.reglages_historique.unshift({ id: Date.now() + Math.random(), entite_id: entiteId, valeur: structuredClone(ancienne), version_du: (data.reglages_maj || {})[entiteId] || null, remplace_le: new Date().toISOString(), remplace_par: utilisateur.user_id });
+        const garder = new Set(data.reglages_historique.filter((x) => x.entite_id === entiteId).slice(0, 60));
+        data.reglages_historique = data.reglages_historique.filter((x) => x.entite_id !== entiteId || garder.has(x));
+      }
+      (data.reglages_maj ||= {})[entiteId] = new Date().toISOString();
       data.reglages[entiteId] = valeur;
       journaliser("reglages", "update", { entite_id: entiteId, id: entiteId });
       sauve();
@@ -233,11 +353,57 @@ export function creer() {
     async restaurerDossier() {
       throw new Error("Indisponible en mode démonstration.");
     },
+    async documentsSupprimes(entiteId) {
+      const limite = Date.now() - 90 * 86400000;
+      return data.corbeille_documents
+        .filter((x) => x.ligne.entite_id === entiteId && Date.parse(x.supprime_le) > limite && data.dossiers.some((d) => d.id === x.ligne.dossier_id) && !data.documents.some((d) => d.id === x.ligne.id))
+        .map((x) => ({ document_id: x.ligne.id, dossier_id: x.ligne.dossier_id, ref: (data.dossiers.find((d) => d.id === x.ligne.dossier_id) || {}).ref, type: x.ligne.type, numero: (x.ligne.contenu || {}).numero || null, date_emission: x.ligne.date_emission, envoye_le: x.ligne.envoye_le, devise: (x.ligne.contenu || {}).devise, contenu: x.ligne.contenu, supprime_le: x.supprime_le }));
+    },
+    async restaurerDocument(documentId) {
+      const x = data.corbeille_documents.find((c) => c.ligne.id === documentId);
+      if (!x) throw new Error(tr("Document introuvable dans la corbeille (plus de 90 jours, ou déjà restauré)."));
+      if (!data.dossiers.some((d) => d.id === x.ligne.dossier_id)) throw new Error(tr("Le dossier de ce document a été supprimé : restaurez d'abord le dossier."));
+      data.documents.push(structuredClone(x.ligne));
+      data.corbeille_documents = data.corbeille_documents.filter((c) => c !== x);
+      journaliser("documents", "insert", x.ligne);
+      sauve();
+      return x.ligne.dossier_id;
+    },
+    async lireProchainNumero(entiteId, annee) {
+      const pris = Math.max(0, ...data.dossiers.filter((d) => d.entite_id === entiteId).map((d) => Number((String(d.ref || "").match(new RegExp(`(?:^|-)${annee}-(\\d+)$`)) || [])[1]) || 0));
+      const compteur = data.compteurs_ref[`${entiteId}:${annee}`] || 0;
+      return { prochain: Math.max(pris, compteur) + 1, minimum: pris + 1 };
+    },
+    async fixerProchainNumero(entiteId, annee, prochain) {
+      const { minimum } = await this.lireProchainNumero(entiteId, annee);
+      if (!(prochain >= minimum)) throw new Error(tr("Le numéro {pris} est déjà donné cette année : choisissez {minimum} ou plus.", { pris: minimum - 1, minimum }));
+      data.compteurs_ref[`${entiteId}:${annee}`] = prochain - 1;
+      sauve();
+      return prochain;
+    },
+    // Fusion de deux fiches client, comme la fonction fusionner_clients de la base : les dossiers de l'autre fiche passent sur celle qu'on garde,
+    // ses champs vides se remplissent, puis l'autre fiche est supprimée.
+    async fusionnerClients({ garder, absorbe, patch }) {
+      const g = data.clients.find((c) => c.id === garder);
+      const a = data.clients.find((c) => c.id === absorbe);
+      if (!g || !a || g.id === a.id || g.entite_id !== a.entite_id) throw new Error(tr("Fusion impossible : les deux fiches doivent être deux clients différents de la même entreprise."));
+      if (!(droit(g.entite_id, "clients.fusionner") || (droit(g.entite_id, "clients.supprimer") && droit(g.entite_id, "dossiers.ecrire")))) throw new Error(tr("Votre rôle ne permet pas de fusionner des clients."));
+      if (!voitTout(contexte(), g.entite_id)) throw new Error(tr("Fusion réservée aux rôles qui voient tous les dossiers de l'entreprise."));
+      for (const d of data.dossiers.filter((x) => x.client_id === absorbe)) await this.modifier("dossiers", d.id, { client_id: garder });
+      if (patch && Object.keys(patch).length) await this.modifier("clients", garder, patch);
+      await this.supprimer("clients", absorbe);
+      return garder;
+    },
     // Démo : une seule personne, pas de compteur partagé.
     // Comme la base : le compteur tient compte des dossiers que la personne ne voit pas (rôle « ses dossiers », écran « Nouveau voucher »).
     async prochainNumeroRef(entiteId, annee, minimum) {
       const pris = data.dossiers.filter((d) => d.entite_id === entiteId).map((d) => (String(d.ref || "").match(new RegExp(`${annee}-(\\d+)$`)) || [])[1]).filter(Boolean).map(Number);
-      return Math.max(minimum, ...pris) + 1;
+      // Le compteur fixé par l'administratrice (saut de numérotation) compte aussi, comme en base.
+      const cle = `${entiteId}:${annee}`;
+      const n = Math.max(minimum, data.compteurs_ref[cle] || 0, ...pris) + 1;
+      data.compteurs_ref[cle] = n;
+      sauve();
+      return n;
     },
     async definirRappelH1(actif) {
       utilisateur.rappel_h1 = !!actif;
@@ -300,6 +466,11 @@ export function creer() {
       journaliser("pieces_jointes", "delete", piece);
       sauve();
     },
+    // La ligne de nets d'une réservation, relue après une écriture (la base, ou ici remplirNets, a pu la recalculer). Rien sans le droit « nets ».
+    async netsReservations(ids) {
+      const set = new Set(ids);
+      return data.reservations_nets.filter((x) => set.has(x.reservation_id) && droit(x.entite_id, "partenaires.nets")).map((x) => structuredClone(x));
+    },
     async resumeDossier(id) {
       const d = dossiersVisibles().find((x) => x.id === id);
       return d ? structuredClone(avecResume(d, financesDe(d.entite_id))) : null;
@@ -341,9 +512,10 @@ export function creer() {
     },
     async journal({ entiteId, table, userId, avant, limite = 50 }) {
       if (!permissionsDans(contexte(), entiteId).includes("journal.voir")) return [];
+      const nets = permissionsDans(contexte(), entiteId).includes("partenaires.nets");
       return structuredClone(
         data.journal
-          .filter((l) => l.entite_id === entiteId && (!table || l.table_name === table) && (!userId || l.user_id === userId) && (!avant || l.created_at < avant))
+          .filter((l) => l.entite_id === entiteId && (!table || l.table_name === table) && (!userId || l.user_id === userId) && (!avant || l.created_at < avant) && (nets || l.table_name !== "reservations_nets"))
           .slice(0, limite)
           .map((l) => ({ ...l, auteur: nomDe(l.user_id) }))
       );

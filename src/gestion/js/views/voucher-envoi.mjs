@@ -9,7 +9,7 @@ import { etat, nomClient, partenaireDe, resumeDossier, reglages, entiteActive, p
 import { estTaxi } from "../taxi-calc.mjs";
 import { messagesDefautPour } from "../defauts.mjs";
 import { h, modal, toast } from "../ui.mjs";
-import { aujourdhui } from "../calc.mjs";
+import { aujourdhui, formatDate } from "../calc.mjs";
 import { envoiANoter } from "../envoi-voucher-calc.mjs";
 import { noterEnvoi } from "./envois-vouchers.mjs";
 import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
@@ -52,7 +52,7 @@ export function envoyerVoucher(x) {
   const dossier = etat.db.dossiers.find((d) => d.id === r.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === dossier.client_id) || {};
   const partenaire = partenaireDe(r.partenaire_id);
-  const numero = numeroVoucher(dossier.ref || "", x.index);
+  const numero = x.numero || numeroVoucher(dossier.ref || "", x.index);
   const taxi = estTaxi(reglages());
   const nomFichier = nomFichierVoucher(numero, nomClient(client), { taxi });
   const telClient = chiffres(client.telephone);
@@ -74,7 +74,21 @@ export function envoyerVoucher(x) {
   let fichier = null;
   const zone = zoneEnvoi({ fichiers: () => (fichier ? [fichier] : []) });
 
+  // Image ou PDF enregistrés pour un envoi hors de WhatsApp (e-mail, autre messagerie, depuis un ordinateur) : rien n'est noté tout seul, la
+  // personne dit elle-même que le voucher est parti (contrôle du 17.11.2026, D5). Un renvoi garde le numéro du premier envoi.
+  const gesteNoterManuel = () => {
+    if (!peut("dossiers.ecrire")) return null;
+    const v = vouchersDuDossier(r.dossier_id).find((y) => y.reservation.id === r.id);
+    const modifie = !!(v && v.envoi && v.envoi.modifie);
+    return h("button", { class: "secondaire", type: "button", onclick: () => noter("client", "manuel") }, modifie ? tr("Marquer renvoyé") : tr("Marquer envoyé au client"));
+  };
+  const proposerNoterManuel = () => {
+    const b = gesteNoterManuel();
+    if (b) zone.succes({ titre: tr("Une fois le voucher parti chez le client (e-mail, autre messagerie), notez-le ici."), boutons: [b] });
+  };
   const enregistrerImage = () => enregistrer([fichier]);
+  // Le bouton « Enregistrer l'image » du bas propose ensuite de noter l'envoi ; ailleurs (zone d'erreur, consignes WhatsApp) il ne fait qu'enregistrer.
+  const enregistrerEtProposer = () => (enregistrerImage(), proposerNoterManuel());
 
   // Note l'envoi des vouchers `reservations` à `pour` (« client » ou « partenaire ») si le geste a abouti (`issue`, voir envoiANoter).
   // La fiche se redessine à la fermeture de la fenêtre, pour ne pas bouger la page pendant qu'on colle l'image (ou à la fin de l'écriture si
@@ -86,7 +100,8 @@ export function envoyerVoucher(x) {
     let n = 0;
     for (const y of reservations) {
       const courante = etat.db.reservations.find((z) => z.id === y.id) || y;
-      const cible = envoiANoter({ pour, issue, envois: courante.details && courante.details.envois, date });
+      const modifie = !!((vouchersDuDossier(courante.dossier_id).find((v) => v.reservation.id === courante.id) || {}).envoi || {}).modifie;
+      const cible = envoiANoter({ pour, issue, envois: courante.details && courante.details.envois, date, modifie });
       if (!cible) continue;
       if (!(await noterEnvoi(courante, cible, date))) break;
       n++;
@@ -105,7 +120,7 @@ export function envoyerVoucher(x) {
   const boutonsCopie = () => messages().map(([pour, nom]) => h("button", { class: "lien", type: "button", onclick: () => copierTexte(message[pour]) }, messages().length > 1 ? tr("Copier le message : {nom}", { nom }) : tr("Copier le message")));
   // Toujours à l'écran, dans tous les cas (même pendant la préparation et même quand tout le reste échoue) : enregistrer l'image et copier le message.
   const secours = ({ principal = false } = {}) => [
-    h("button", { class: principal ? "principal" : "secondaire", type: "button", disabled: !fichier, onclick: enregistrerImage }, tr("Enregistrer l'image")),
+    h("button", { class: principal ? "principal" : "secondaire", type: "button", disabled: !fichier, onclick: enregistrerEtProposer }, tr("Enregistrer l'image")),
     ...boutonsCopie(),
   ];
   // Dans le cadre d'état : WhatsApp avec le message seul, étiqueté sans ambiguïté, jamais ouvert tout seul.
@@ -183,7 +198,7 @@ export function envoyerVoucher(x) {
       if (ferme) return;
       boutonTous.textContent = tr("Préparation des vouchers {i} sur {n}…", { i: i + 1, n: freres.length });
       const blob = y.reservation.id === r.id && fichier ? fichier : await imageVoucher(y);
-      fichiers.push(new File([blob], nomFichierVoucher(numeroVoucher(dossier.ref || "", y.index), nomClient(client), { taxi }), { type: "image/png" }));
+      fichiers.push(new File([blob], nomFichierVoucher(y.numero || numeroVoucher(dossier.ref || "", y.index), nomClient(client), { taxi }), { type: "image/png" }));
     }
     fichiersTous = fichiers;
     boutonTous.disabled = false;
@@ -209,7 +224,7 @@ export function envoyerVoucher(x) {
   function afficherActions() {
     const chemin = moyen([fichier]);
     const destinataires = [["client"]];
-    const imprimer = window.matchMedia("(hover: hover)").matches ? [h("button", { class: "lien", type: "button", onclick: () => imprimerVoucher(x) }, tr("PDF"))] : [];
+    const imprimer = window.matchMedia("(hover: hover)").matches ? [h("button", { class: "lien", type: "button", onclick: () => (imprimerVoucher(x), proposerNoterManuel()) }, tr("PDF"))] : [];
     if (chemin === "natif") {
       // La liste de partage du téléphone choisit l'application et le contact, l'image y est jointe. Sans prestataire, un seul bouton évident ;
       // avec un prestataire, un bouton par destinataire, pour noter à qui le voucher est parti.
@@ -246,6 +261,7 @@ export function envoyerVoucher(x) {
     h(
       "div",
       { class: "modal-corps envoi-voucher" },
+      x.envoi && x.envoi.modifie ? h("p", { class: "ecart-facture", role: "status" }, tr("Modifié depuis l'envoi du {date} : renvoyez cette version au client.", { date: formatDate(x.envoi.le) })) : null,
       avertissements.length ? h("ul", { class: "bandeau-info avertissements-voucher", role: "status" }, avertissements.map((c) => h("li", null, tr(AVERTISSEMENTS[c])))) : null,
       h("p", { class: "aide" }, [client.telephone ? `${nomClient(client)} ${client.telephone}` : nomClient(client)].filter(Boolean).join(" · ")),
       apercu,

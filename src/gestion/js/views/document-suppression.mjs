@@ -1,5 +1,5 @@
 // Suppression d'un devis ou d'une facture. Le dossier, ses paiements, ses réservations et ses vouchers ne bougent pas : seul le document part.
-// (La base en garde une copie 90 jours dans l'historique des documents.)
+// La base en garde une copie 90 jours, avec ses nets : « Restaurer » dans Réglages, onglet Sauvegarde (corbeille-documents.mjs).
 import { etat, supprimer } from "../etat.mjs";
 import { toast, confirmer } from "../ui.mjs";
 import { formatDate } from "../calc.mjs";
@@ -14,6 +14,8 @@ export async function supprimerDocument(doc, apres = () => {}) {
   const paiements = etat.db.paiements.filter((p) => p.dossier_id === doc.dossier_id).length;
   if (paiements) phrases.push(pluriel(paiements, N_("{n} paiement enregistré reste dans le dossier."), N_("{n} paiements enregistrés restent dans le dossier.")));
   phrases.push(tr("Le dossier, ses réservations et ses vouchers ne sont pas touchés."));
+  // La base garde le document 90 jours (migration 34) : il se restaure depuis Réglages, onglet Sauvegarde.
+  phrases.push(tr("Le document reste 90 jours dans la corbeille des devis et factures (Réglages, onglet Sauvegarde) et peut être restauré."));
   if (!(await confirmer(phrases.join(" "), tr("Supprimer"), true))) return false;
   try {
     await supprimer("documents", doc.id);
