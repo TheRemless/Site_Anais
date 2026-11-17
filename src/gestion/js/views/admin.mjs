@@ -1,12 +1,13 @@
 // Administration : entreprises et accès des utilisateurs. Réservée à l'administratrice générale.
 // Lot D (17.11.2026) : inviter une personne, lien de mot de passe, supprimer un compte, langue d'une autre personne, Administrateur calculé.
-import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation } from "../etat.mjs";
+import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, organisation, modifierOrganisation, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation } from "../etat.mjs";
 import { DEPENDANCES, completerReglages, PERMISSIONS } from "../defauts.mjs";
 import { droitsProposes, droitsDuRole, droitsRetires } from "../droits.mjs";
 import { accesChoisis, messageInvitation, messageLien } from "../compte-calc.mjs";
 import { h, champ, modal, toast, slug, confirmer, icone, saisie } from "../ui.mjs";
 import { vide, plierSections } from "./commun.mjs";
 import { tr, N_, LANGUES, pluriel } from "../i18n.mjs";
+import { MODELES, MODELE_DEFAUT, DEVISES_PROPOSEES } from "../modeles-metier.mjs";
 
 const PORTEES = [
   ["toute", N_("Tous les dossiers de l'entreprise")],
@@ -113,12 +114,65 @@ function roleModal(entite, role, apres) {
   );
 }
 
-function nouvelleEntiteModal(apres) {
+// Fuseaux proposés pour l'organisation : celui du navigateur en tête, puis la liste du navigateur (ou une liste courte s'il ne la donne pas).
+const FUSEAUX_COURTS = ["Asia/Bangkok", "Europe/Zurich", "Europe/Paris", "Europe/London", "America/New_York", "America/Los_Angeles", "Asia/Singapore", "Asia/Bali", "Australia/Sydney"];
+const fuseaux = () => {
+  const liste = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : FUSEAUX_COURTS;
+  return [...new Set(liste.concat(FUSEAUX_COURTS))].sort();
+};
+
+// Organisation (migration 42) : le client du logiciel. Son administrateur règle le nom, le fuseau des rappels et la langue de départ des comptes.
+function blocOrganisation(rafraichir) {
+  const o = organisation();
+  if (!o) return null;
+  const nom = h("input", { id: "org-nom", value: o.nom || "", required: true });
+  const fuseau = h("select", { id: "org-fuseau" }, ...fuseaux().map((z) => h("option", { value: z }, z)));
+  fuseau.value = o.fuseau || "Asia/Bangkok";
+  const langue = h("select", { id: "org-langue" }, ...LANGUES.map((l) => h("option", { value: l.code }, l.nom)));
+  langue.value = o.langue || "en";
+  return h(
+    "section",
+    null,
+    h("h2", null, tr("Organisation")),
+    h("p", { class: "aide" }, tr("L'organisation regroupe vos entreprises et votre équipe. Personne en dehors d'elle ne voit vos données.")),
+    h(
+      "form",
+      {
+        class: "formulaire",
+        onsubmit: async (e) => {
+          e.preventDefault();
+          try {
+            await modifierOrganisation({ nom: nom.value.trim(), fuseau: fuseau.value, langue: langue.value });
+            toast(tr("Organisation enregistrée."));
+            rafraichir();
+          } catch (err) {
+            toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+          }
+        },
+      },
+      champ(tr("Nom de l'organisation"), nom),
+      champ(tr("Fuseau horaire"), fuseau, tr("Les rappels partent à l'heure de ce fuseau, changements d'heure compris.")),
+      champ(tr("Langue de départ"), langue, tr("Langue de l'interface pour les nouveaux comptes. Chacun peut ensuite choisir la sienne.")),
+      h("div", { class: "actions" }, h("button", { type: "submit", class: "principal" }, tr("Enregistrer")))
+    )
+  );
+}
+
+export function nouvelleEntiteModal(apres) {
   const nom = h("input", { id: "ne-nom", required: true });
   const code = h("input", { id: "ne-slug", required: true, pattern: "[a-z0-9-]+" });
   let manuel = false;
   code.addEventListener("input", () => (manuel = true));
   nom.addEventListener("input", () => !manuel && (code.value = slug(nom.value)));
+  // Modèle métier (étape 3 du SaaS) : la façon de travailler et des textes de départ neutres, en anglais. « Réglages vides » : comme avant.
+  const choixModele = h("select", { id: "ne-modele" }, ...MODELES.map((m) => h("option", { value: m.id }, tr(m.nom))), h("option", { value: "" }, tr("Réglages vides")));
+  // Une organisation en français (Zwald) garde par défaut l'ancien comportement : réglages vides, en français. Les autres partent du modèle.
+  choixModele.value = (organisation() || {}).langue === "fr" ? "" : MODELE_DEFAUT;
+  const aideModele = h("p", { class: "aide" });
+  const decrire = () => (aideModele.textContent = choixModele.value ? tr(MODELES.find((m) => m.id === choixModele.value).description) : tr("Elle démarre sans client ni catalogue, avec des réglages vides à compléter dans l'écran Réglages de cette entreprise."));
+  choixModele.addEventListener("change", decrire);
+  decrire();
+  const devise = h("select", { id: "ne-devise" }, h("option", { value: "" }, tr("Plus tard")), ...DEVISES_PROPOSEES.map((d) => h("option", { value: d }, d)));
   const fermer = modal(
     tr("Nouvelle entreprise"),
     h(
@@ -129,7 +183,7 @@ function nouvelleEntiteModal(apres) {
           e.preventDefault();
           if (etat.brut.entites.some((x) => x.slug === code.value)) return toast(tr("Ce code existe déjà."), true);
           try {
-            await creerEntite(nom.value.trim(), code.value.trim());
+            await creerEntite(nom.value.trim(), code.value.trim(), { modele: choixModele.value || null, devise: devise.value });
             fermer();
             toast(tr("Entreprise créée. Complétez ses réglages avant de créer des documents."));
             apres();
@@ -140,7 +194,9 @@ function nouvelleEntiteModal(apres) {
       },
       champ(tr("Nom"), nom),
       champ(tr("Code court"), code, tr("Lettres minuscules, chiffres et tirets. Il ne change plus ensuite.")),
-      h("p", { class: "aide" }, tr("Elle démarre sans client ni catalogue, avec des réglages vides à compléter dans l'écran Réglages de cette entreprise.")),
+      champ(tr("Type d'activité"), choixModele),
+      aideModele,
+      champ(tr("Devise des documents"), devise),
       h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Créer l'entreprise")))
     )
   );
@@ -177,6 +233,47 @@ function modifierEntiteModal(e, apres) {
 }
 
 // Un lien d'invitation ou de mot de passe à envoyer soi-même : copier, WhatsApp (la personne choisit le contact) ou e-mail.
+// Nouveau client (éditeur du logiciel, pendant l'appel de mise en route) : le compte du futur administrateur et son organisation.
+// Le lien rendu s'envoie au client ; il choisit son mot de passe, puis crée sa première entreprise depuis un modèle métier.
+export function nouveauClientModal() {
+  const organisationNom = h("input", { id: "nc-organisation", required: true, maxlength: 120 });
+  const nom = h("input", { id: "nc-nom", maxlength: 120 });
+  const email = h("input", { id: "nc-email", type: "email", required: true });
+  const fuseau = h("select", { id: "nc-fuseau" }, ...fuseaux().map((z) => h("option", { value: z }, z)));
+  try {
+    fuseau.value = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Bangkok";
+  } catch {
+    fuseau.value = "Asia/Bangkok";
+  }
+  const langue = h("select", { id: "nc-langue" }, ...LANGUES.map((l) => h("option", { value: l.code }, l.nom)));
+  langue.value = "en";
+  const erreur = h("p", { class: "erreur", role: "alert" });
+  const fermer = modal(
+    tr("Nouveau client"),
+    h(
+      "form",
+      {
+        class: "modal-corps",
+        onsubmit: async (e) => {
+          e.preventDefault();
+          erreur.textContent = "";
+          const r = await invitation({ action: "creer_client", organisation: organisationNom.value.trim(), nom: nom.value.trim(), email: email.value.trim(), fuseau: fuseau.value, langue: langue.value });
+          if (r.erreur) return void (erreur.textContent = tr(messageInvitation(r.erreur)));
+          fermer();
+          lienModal({ titre: tr("Client créé"), intro: tr("Envoyez ce message à {nom}. En ouvrant le lien, la personne choisit son mot de passe, puis crée sa première entreprise.", { nom: nom.value.trim() || email.value.trim() }), lien: r.lien, email: email.value.trim(), nom: nom.value.trim(), langue: langue.value, type: "invite" });
+        },
+      },
+      champ(tr("Nom de l'organisation"), organisationNom),
+      champ(tr("Nom de l'administrateur"), nom),
+      champ(tr("E-mail de l'administrateur"), email),
+      champ(tr("Fuseau horaire"), fuseau),
+      champ(tr("Langue de départ"), langue),
+      erreur,
+      h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Créer le client")))
+    )
+  );
+}
+
 function lienModal({ titre, intro, lien, email, nom, langue, type, erreur }) {
   const message = messageLien({ lien, langue, type, nom });
   const zone = h("textarea", { id: "lien-texte", rows: 7, readonly: true });
@@ -343,10 +440,11 @@ export function vueAdmin() {
     "div",
     { "data-titre": tr("Administration") },
     h("div", { class: "entete" }, h("h1", null, tr("Administration"))),
+    blocOrganisation(rafraichir),
     h(
       "section",
       null,
-      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Entreprises")), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: () => nouvelleEntiteModal(rafraichir) }, tr("Nouvelle entreprise")))),
+      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Entreprises")), h("div", { class: "entete-actions" }, etat.moi && etat.moi.plateforme ? h("button", { class: "secondaire", type: "button", onclick: () => nouveauClientModal() }, tr("Nouveau client")) : null, h("button", { class: "secondaire", type: "button", onclick: () => nouvelleEntiteModal(rafraichir) }, tr("Nouvelle entreprise")))),
       h("p", { class: "aide" }, tr("Chaque entreprise a ses propres clients, dossiers, paiements, catalogue, réglages, logo et devise. Personne ne voit une entreprise sans y avoir accès.")),
       h(
         "table",

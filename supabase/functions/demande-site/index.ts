@@ -4,18 +4,33 @@
 // Contrat et réponses : docs/gestion/demandes-site.md. Logique pure : ./calc.js (testée par tests/gestion-demandes-site.test.js).
 //
 // Protections : origine du site seulement (CORS), méthode POST, taille et formats contrôlés, champ piège pour les robots, limite par appareil
-// (empreinte salée de l'IP, jamais l'IP elle-même) et limite globale, vérification Cloudflare Turnstile prête à allumer (TURNSTILE_SECRET).
+// (empreinte salée de l'IP, jamais l'IP elle-même) et limite par organisation, vérification Cloudflare Turnstile prête à allumer (TURNSTILE_SECRET).
 // Secrets : DEMANDES_SEL (sel de l'empreinte d'IP), VAPID_* (déjà posés pour les rappels). Facultatifs : TURNSTILE_SECRET, TURNSTILE_OBLIGATOIRE=1.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
-import { origineAdmise, lireDemande, adresseIP, notification, destinataires, REPONSES, reponseInvalide, TAILLE_MAX, LIMITE_APPAREIL, LIMITE_TOTALE } from "./calc.js";
-import { dateBangkok } from "../rappels/calc.js";
+import { origineAdmise, lireOrigines, lireDemande, adresseIP, notification, destinataires, REPONSES, reponseInvalide, choisirEntite, TAILLE_MAX, LIMITE_APPAREIL, LIMITE_TOTALE } from "./calc.js";
+import { dateDans, fuseauValide } from "../rappels/calc.js";
 
-const SLUG = { secret: "secret", taxi: "taxi" };
+// Organisation propriétaire du site qui appelle cette fonction (Zwald par défaut). Une marque est le slug d'une de ses entreprises qui publient sur le site.
+const ORGANISATION = Deno.env.get("SITE_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
+// Adresses de ce site (CORS et page d'où vient la demande). Sans réglage : secrettravelandtour.com.
+const ORIGINES = lireOrigines(Deno.env.get("SITE_ORIGINES"));
+const admise = (origine: string | null) => origineAdmise(origine, ORIGINES);
+
+// Fuseau de cette organisation (organisations.fuseau) : « aujourd'hui » d'une demande est celui du client, pas celui de Bangkok.
+// Lu une fois par instance ; une lecture impossible donne Bangkok et sera retentée à l'appel suivant.
+let fuseauLu: string | null = null;
+async function fuseauDuSite() {
+  if (fuseauLu) return fuseauLu;
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const { data, error } = await db.from("organisations").select("fuseau").eq("id", ORGANISATION).maybeSingle();
+  if (error) return fuseauValide(null);
+  return (fuseauLu = fuseauValide(data && data.fuseau));
+}
 
 function entetesCors(origine: string | null) {
   const h: Record<string, string> = { "Content-Type": "application/json", Vary: "Origin", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
-  if (origine && origineAdmise(origine)) {
+  if (origine && admise(origine)) {
     h["Access-Control-Allow-Origin"] = origine;
     h["Access-Control-Allow-Methods"] = "POST, OPTIONS";
     h["Access-Control-Allow-Headers"] = "Content-Type";
@@ -74,10 +89,10 @@ async function lireCorps(req: Request) {
 
 Deno.serve(async (req) => {
   const origine = req.headers.get("origin");
-  if (req.method === "OPTIONS") return new Response(null, { status: origineAdmise(origine) ? 204 : 403, headers: entetesCors(origine) });
+  if (req.method === "OPTIONS") return new Response(null, { status: admise(origine) ? 204 : 403, headers: entetesCors(origine) });
   if (req.method !== "POST") return repondre(REPONSES.methode, origine);
   // Un navigateur envoie toujours l'origine sur un POST d'une autre adresse : sans elle, ou d'ailleurs, on refuse.
-  if (!origineAdmise(origine)) return repondre(REPONSES.origine, origine);
+  if (!admise(origine)) return repondre(REPONSES.origine, origine);
   const type = (req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
   // text/plain : le site l'envoie ainsi pour éviter la requête de contrôle CORS (un envoi « keepalive » doit rester simple).
   if (type !== "application/json" && type !== "text/plain") return repondre(REPONSES.type, origine);
@@ -85,10 +100,10 @@ Deno.serve(async (req) => {
   const corps = await lireCorps(req);
   if (corps === null) return repondre(REPONSES.trop_gros, origine);
 
-  const aujourdhui = dateBangkok();
+  const aujourdhui = dateDans(await fuseauDuSite());
   let ligne;
   try {
-    ligne = lireDemande(corps, { aujourdhui });
+    ligne = lireDemande(corps, { aujourdhui, origines: ORIGINES });
   } catch (e) {
     return repondre(e.code === "trop_gros" ? REPONSES.trop_gros : reponseInvalide(e), origine);
   }
@@ -106,22 +121,28 @@ Deno.serve(async (req) => {
 
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   try {
-    // Sans adresse IP connue, pas de limite par appareil (tous les visiteurs partageraient la même) : seule la limite globale s'applique.
+    // Sans adresse IP connue, pas de limite par appareil (tous les visiteurs partageraient la même) : seule la limite de l'organisation s'applique.
     const ipEmpreinte = ip ? await empreinte(ip) : null;
     const depuis = (min: number) => new Date(Date.now() - min * 60000).toISOString();
-    const [appareil, toutes, entite] = await Promise.all([
+    const [appareil, entites] = await Promise.all([
       ipEmpreinte ? db.from("demandes_site").select("id", { count: "exact", head: true }).eq("ip_empreinte", ipEmpreinte).gte("created_at", depuis(LIMITE_APPAREIL.minutes)) : Promise.resolve({ count: 0, error: null }),
-      db.from("demandes_site").select("id", { count: "exact", head: true }).gte("created_at", depuis(LIMITE_TOTALE.minutes)),
-      db.from("entites").select("id").eq("slug", SLUG[ligne.marque as "secret" | "taxi"]).single(),
+      // Entreprises de cette organisation qui publient sur le site : la marque reçue doit être le slug de l'une d'elles.
+      db.from("entites").select("id, nom, slug").eq("organisation_id", ORGANISATION).eq("publie_site", true),
     ]);
-    for (const r of [appareil, toutes, entite]) if (r.error) throw new Error(r.error.message);
-    if ((appareil.count || 0) >= LIMITE_APPAREIL.nombre || (toutes.count || 0) >= LIMITE_TOTALE.nombre) return repondre(REPONSES.limite, origine);
+    for (const r of [appareil, entites]) if (r.error) throw new Error(r.error.message);
+    const ids = (entites.data || []).map((e) => e.id);
+    // Garde-fou par organisation : seules ses demandes comptent, la rafale reçue par le site d'un autre client ne bloque pas celui-ci.
+    const toutes = ids.length ? await db.from("demandes_site").select("id", { count: "exact", head: true }).in("entite_id", ids).gte("created_at", depuis(LIMITE_TOTALE.minutes)) : { count: 0, error: null };
+    if (toutes.error) throw new Error(toutes.error.message);
+    // Limites, puis marque inconnue ou d'une autre organisation (la base la refuserait aussi, controler_marques_site) : rien n'est écrit.
+    const { reponse, entite } = choisirEntite({ marque: ligne.marque, entites: entites.data, appareil: appareil.count || 0, organisation: toutes.count || 0 });
+    if (reponse) return repondre(reponse, origine);
 
-    const { data: ecrite, error } = await db.from("demandes_site").insert({ ...ligne, entite_id: entite.data!.id, ip_empreinte: ipEmpreinte }).select("id, entite_id").single();
+    const { data: ecrite, error } = await db.from("demandes_site").insert({ ...ligne, entite_id: entite.id, ip_empreinte: ipEmpreinte }).select("id, entite_id").single();
     if (error) throw new Error(error.message);
 
     // La notification part après la réponse : le site n'attend pas Apple ni Google.
-    const envoi = prevenir(db, ecrite, ligne, aujourdhui).catch((err) => console.error("notification non envoyée :", String(err?.message || err)));
+    const envoi = prevenir(db, ecrite, ligne, aujourdhui, entite.nom).catch((err) => console.error("notification non envoyée :", String(err?.message || err)));
     // deno-lint-ignore no-explicit-any
     const runtime = (globalThis as any).EdgeRuntime;
     if (runtime?.waitUntil) runtime.waitUntil(envoi);
@@ -134,9 +155,10 @@ Deno.serve(async (req) => {
 });
 
 // Envoie la notification aux appareils abonnés des personnes qui lisent les demandes de l'entreprise.
-async function prevenir(db: ReturnType<typeof createClient>, ecrite: { id: string; entite_id: string }, ligne: Record<string, unknown>, aujourdhui: string) {
+async function prevenir(db: ReturnType<typeof createClient>, ecrite: { id: string; entite_id: string }, ligne: Record<string, unknown>, aujourdhui: string, entreprise: string) {
   const [profils, membres, roles] = await Promise.all([
-    db.from("profils").select("user_id, actif, super_admin"),
+    // Seulement les comptes de l'organisation : un administrateur d'une autre organisation ne reçoit rien.
+    db.from("profils").select("user_id, actif, super_admin").eq("organisation_id", ORGANISATION),
     db.from("membres").select("user_id, entite_id, role_id").eq("entite_id", ecrite.entite_id),
     db.from("roles").select("id, portee, permissions").eq("entite_id", ecrite.entite_id),
   ]);
@@ -148,7 +170,7 @@ async function prevenir(db: ReturnType<typeof createClient>, ecrite: { id: strin
   if (!abos.data?.length) return;
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
   // L'adresse ouvre la boîte dans la bonne entreprise (l'outil change d'entreprise s'il le faut).
-  const charge = JSON.stringify({ ...notification(ligne, aujourdhui), url: `/gestion/#/demandes?entite=${ecrite.entite_id}` });
+  const charge = JSON.stringify({ ...notification(ligne, aujourdhui, entreprise), url: `/gestion/#/demandes?entite=${ecrite.entite_id}` });
   for (const abo of abos.data) {
     try {
       await webpush.sendNotification({ endpoint: abo.endpoint, keys: { p256dh: abo.p256dh, auth: abo.auth } }, charge, { TTL: 12 * 3600 });

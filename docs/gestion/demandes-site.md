@@ -12,6 +12,7 @@ POST https://lkxqcmzeidlyssoqmqkh.supabase.co/functions/v1/demande-site
 
 - Pas de clé, pas de jeton : la fonction est publique (`verify_jwt = false`) et se protège elle-même.
 - Origines admises : `https://secrettravelandtour.com`, `https://www.secrettravelandtour.com`, `http://localhost:<port>` et `http://127.0.0.1:<port>` pour les essais. Tout autre site reçoit 403.
+- Autre client du logiciel : le secret `SITE_ORGANISATION` donne son organisation et `SITE_ORIGINES` ses adresses (https, séparées par des virgules). Sans `SITE_ORIGINES`, ce sont celles de secrettravelandtour.com.
 - En-tête `Content-Type: text/plain;charset=UTF-8` (le corps reste du JSON). C'est voulu : une requête « simple » n'a pas de requête de contrôle CORS, ce qui rend l'envoi `keepalive` fiable sur iPhone. `application/json` est aussi accepté.
 - 4 096 octets au plus.
 
@@ -45,7 +46,7 @@ Ce que la feuille sait déjà, plus le numéro WhatsApp du visiteur (depuis le 1
 
 | Champ | Obligatoire | Format | D'où il vient dans `booking.js` |
 |---|---|---|---|
-| `brand` | oui | `"secret"` ou `"taxi"` | `"taxi"` pour les pages VIP Taxi Lanta (`/taxi/…`), `"secret"` partout ailleurs, minivan partagé de `/transfers/` compris |
+| `brand` | oui | slug d'une entreprise de l'organisation qui publie sur le site (`"secret"` ou `"taxi"` chez Zwald), sinon 400 `invalid` sur `brand` | `"taxi"` pour les pages VIP Taxi Lanta (`/taxi/…`), `"secret"` partout ailleurs, minivan partagé de `/transfers/` compris |
 | `product_id` | oui | `[a-z0-9-]`, 60 caractères au plus | `config.productId` |
 | `product` | non | 120 caractères | `config.product` |
 | `option` | non | 80 caractères | `state.option` (ou `state.route` pour le speedboat) |
@@ -123,7 +124,7 @@ Le site n'a rien à en faire : il ne les lit pas. Elles servent aux essais.
 | 405 | `{"ok":false,"error":"method"}` | autre chose que POST |
 | 413 | `{"ok":false,"error":"too_large"}` | plus de 4 096 octets |
 | 415 | `{"ok":false,"error":"content_type"}` | ni `text/plain` ni `application/json` |
-| 429 | `{"ok":false,"error":"rate_limited"}` | plus de 5 demandes en 10 minutes depuis le même appareil, ou plus de 300 en une heure sur tout le site |
+| 429 | `{"ok":false,"error":"rate_limited"}` | plus de 5 demandes en 10 minutes depuis le même appareil, ou plus de 300 en une heure pour les entreprises de l’organisation (le site d’un autre client ne compte pas) |
 | 500 | `{"ok":false,"error":"server"}` | panne de la base |
 
 ## Appel depuis `booking.js`

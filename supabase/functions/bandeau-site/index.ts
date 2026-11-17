@@ -18,15 +18,20 @@ Deno.serve(async (req) => {
   if (req.method !== "GET" && req.method !== "HEAD") return new Response(JSON.stringify({ error: "method" }), { status: 405, headers: ENTETES });
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   const maintenant = new Date().toISOString();
+  // Seulement les bandeaux des entreprises de l'organisation propriétaire du site (Zwald par défaut) qui publient sur le site.
+  const organisation = Deno.env.get("SITE_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
+  const ent = await db.from("entites").select("id").eq("organisation_id", organisation).eq("publie_site", true);
+  const ids = (ent.data || []).map((e) => e.id);
   const { data, error } = await db
     .from("bandeaux_site")
     .select("id, marques, type, texte, valeurs, lien, lien_page, cible, sections, produits, debut, fin, fermable, priorite, actif")
     .eq("actif", true)
+    .in("entite_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
     .lte("debut", maintenant)
     .or(`fin.is.null,fin.gt.${maintenant}`)
     .limit(50);
-  if (error) {
-    console.error("bandeaux non lus :", error.message);
+  if (error || ent.error) {
+    console.error("bandeaux non lus :", (error || ent.error)!.message);
     // Le site n'affiche rien plutôt qu'une erreur : liste vide, cache très court.
     return new Response(JSON.stringify({ version: 1, generated_at: maintenant, banners: [] }), { status: 200, headers: { ...ENTETES, "Cache-Control": "public, max-age=15" } });
   }

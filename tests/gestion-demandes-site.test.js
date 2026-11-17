@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { origineAdmise, lireDemande, dateValide, adresseIP, notification, destinataires, REPONSES, reponseInvalide, TAILLE_MAX } from "../supabase/functions/demande-site/calc.js";
+import { origineAdmise, lireOrigines, ORIGINES_DEFAUT, lireDemande, dateValide, adresseIP, notification, destinataires, REPONSES, reponseInvalide, choisirEntite, LIMITE_APPAREIL, LIMITE_TOTALE, TAILLE_MAX } from "../supabase/functions/demande-site/calc.js";
 import { reponsePublique, bandeauPublic, choisirBandeau, enLigne } from "../supabase/functions/bandeau-site/calc.js";
 import { texteDemande, changements, reponseConfirmation, reponseRefus, imposerTotal, chiffresDemandes, trierDemandes, dateAnglaise, montantAnglais, cheminPage, titreOption, nomProduit } from "../src/gestion/js/demandes-site-calc.mjs";
 import { MODELES, texteBandeau, verifierBandeau, finProposee, etiquetteCarte, ligneBandeau, etatBandeau, libelleLien, pagesLien, TEXTE_MAX } from "../src/gestion/js/bandeau-calc.mjs";
@@ -34,7 +34,9 @@ test("demande-site : une demande correcte donne la ligne à écrire, rien de plu
 
 test("demande-site : formats, tailles et types sont contrôlés", () => {
   const o = { aujourdhui: AJD };
-  assert.deepEqual(erreurDe(() => lireDemande(corps({ brand: "zwald" }), o)), { code: "marque", champ: "brand" });
+  // La forme seulement : l'existence de la marque (entreprise de l'organisation qui publie sur le site) est vérifiée dans la base.
+  for (const brand of ["Secret", "../x", "a b", "x".repeat(41), 42, ["secret"]]) assert.deepEqual(erreurDe(() => lireDemande(corps({ brand }), o)), { code: "marque", champ: "brand" }, String(brand));
+  assert.equal(lireDemande(corps({ brand: "ride-co" }), o).marque, "ride-co", "une marque d'un autre client passe le contrôle de forme");
   assert.deepEqual(erreurDe(() => lireDemande(corps({ product_id: "../etc" }), o)), { code: "produit", champ: "product_id" });
   assert.deepEqual(erreurDe(() => lireDemande(corps({ date: "2026-02-30" }), o)), { code: "date", champ: "date" });
   assert.deepEqual(erreurDe(() => lireDemande(corps({ date: "2028-01-01" }), o)), { code: "date", champ: "date" }, "plus de 400 jours");
@@ -76,7 +78,8 @@ test("demande-site : la notification dit la sortie, les personnes et le jour, ja
   assert.ok(!/Anna|Keller|Lanta Sand/.test(JSON.stringify(n)));
   assert.equal(notification({ ...l, date_service: AJD }, AJD).corps.endsWith("aujourd'hui"), true);
   assert.match(notification({ ...l, date_service: "2027-01-05", option_titre: null }, AJD).corps, /mardi 5 janvier$/);
-  assert.equal(notification({ marque: "taxi", produit_id: "x", produit: "Krabi Airport to Koh Lanta", adultes: 1, date_service: "2026-11-17" }, AJD).titre, "Nouvelle demande VIP Taxi Lanta");
+  assert.equal(notification({ marque: "taxi", produit_id: "x", produit: "Krabi Airport to Koh Lanta", adultes: 1, date_service: "2026-11-17" }, AJD, "VIP Taxi Lanta").titre, "Nouvelle demande VIP Taxi Lanta");
+  assert.equal(notification({ marque: "ride-co", produit_id: "x", adultes: 1 }, AJD, "Ride Co").titre, "Nouvelle demande Ride Co", "le titre vient du nom de l'entreprise, pas de la marque");
 });
 
 test("demande-site : la notification va à qui lit les demandes de l'entreprise, jamais à l'écran voucher seul", () => {
@@ -322,4 +325,34 @@ test("contrats du site : les deux documents existent et donnent l'adresse des fo
   assert.match(demandes, /functions\/v1\/demande-site/);
   assert.match(demandes, /keepalive: true/);
   assert.match(bandeau, /functions\/v1\/bandeau-site/);
+});
+
+test("demande-site : les adresses du site viennent de SITE_ORIGINES, celui d'Anaïs sans réglage", () => {
+  assert.deepEqual(lireOrigines(undefined), ORIGINES_DEFAUT);
+  assert.deepEqual(lireOrigines("http://ride.example, https://ride.example/chemin, javascript:x"), ORIGINES_DEFAUT, "rien de valable");
+  const o = lireOrigines(" https://Ride.example/ ,https://www.ride.example,https://ride.example");
+  assert.deepEqual(o, ["https://ride.example", "https://www.ride.example"]);
+  assert.ok(origineAdmise("https://ride.example", o));
+  assert.ok(origineAdmise("http://localhost:8080", o), "la machine de développement reste admise");
+  assert.equal(origineAdmise("https://secrettravelandtour.com", o), false, "un client ne reçoit pas les demandes du site d'Anaïs");
+  const page = (url, origines) => lireDemande(corps({ page_url: url }), { aujourdhui: AJD, origines }).page_url;
+  assert.equal(page("https://ride.example/tours/a/?x=1", o), "https://ride.example/tours/a/?x=1");
+  assert.equal(page("https://ride.example.evil.example/", o), null);
+  assert.equal(page("https://secrettravelandtour.com/tours/", o), null);
+  assert.equal(page("https://secrettravelandtour.com/tours/"), "https://secrettravelandtour.com/tours/");
+});
+
+test("demande du site : limite par organisation, puis marque de l'organisation (choisirEntite, fonction demande-site)", () => {
+  const entites = [{ id: "e1", nom: "Secret Travel & Tour", slug: "secret" }, { id: "e2", nom: "VIP Taxi Lanta", slug: "taxi" }];
+  assert.deepEqual(choisirEntite({ marque: "taxi", entites, appareil: 0, organisation: 0 }), { entite: entites[1] });
+  assert.deepEqual(choisirEntite({ marque: "ride-co", entites }), { reponse: reponseInvalide({ champ: "brand" }) }, "marque d'une autre organisation");
+  assert.deepEqual(choisirEntite({ marque: "secret", entites: [] }).reponse.corps.field, "brand", "organisation sans site");
+  assert.equal(choisirEntite({ marque: "secret", entites, organisation: LIMITE_TOTALE.nombre }).reponse, REPONSES.limite);
+  assert.equal(choisirEntite({ marque: "secret", entites, appareil: LIMITE_APPAREIL.nombre }).reponse, REPONSES.limite);
+  assert.deepEqual(choisirEntite({ marque: "secret", entites, organisation: LIMITE_TOTALE.nombre - 1 }).entite, entites[0]);
+  // La fonction compte les demandes des seules entreprises de l'organisation et passe par choisirEntite.
+  const src = fs.readFileSync("supabase/functions/demande-site/index.ts", "utf8");
+  assert.match(src, /\.in\("entite_id", ids\)\.gte\("created_at", depuis\(LIMITE_TOTALE\.minutes\)\)/);
+  assert.match(src, /choisirEntite\(\{ marque: ligne\.marque, entites: entites\.data/);
+  assert.doesNotMatch(src, /entite\.data/);
 });

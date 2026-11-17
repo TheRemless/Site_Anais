@@ -110,7 +110,7 @@ export async function tableauDeBord() {
     manque.length
       ? h("div", { class: "bandeau-info", role: "status" }, tr("Les réglages de {nom} ne sont pas terminés : il manque {liste}. ", { nom: entiteActive().nom, liste: manque.join(", ") }), estAdmin() ? h("a", { href: "#/reglages" }, tr("Les compléter")) : tr("Prévenez l'administratrice."))
       : null,
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Aujourd'hui")), h("p", { class: "sous" }, dateLongue())), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, modeExcursions() ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, h("a", { class: "bouton principal seulement-bureau", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Aujourd'hui")), h("p", { class: "sous" }, dateLongue())), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, moduleActif("demande_collee") ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, h("a", { class: "bouton principal seulement-bureau", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
     // Demandes arrivées du site (Secret et Taxi) : en tête, c'est ce qui attend une réponse.
     sectionDemandesAccueil(),
     // Les services qui partent dans les deux heures, avec l'état de leur rappel (client, partenaire) : la notification « Dans 1 h » y mène aussi.
@@ -129,7 +129,7 @@ export async function tableauDeBord() {
     ) : null,
     moduleActif("reservations") && ag.hier.length ? sectionAvis(tr("Hier : à recontacter pour avoir leur avis"), ag.hier) : null,
     // Taxi : la commission de chaque course d'hier se demande à Mr. Brown puis se saisit (aucune par défaut).
-    modeTaxi() && moduleActif("reservations") ? sectionCommissionsHier(rafraichir) : null,
+    moduleActif("commissions") ? sectionCommissionsHier(rafraichir) : null,
     mesTaches().length
       ? h("section", null, h("h2", null, tr("Mes tâches")), listeTaches(mesTaches().slice(0, 6)), mesTaches().length > 6 ? h("p", { class: "plus" }, h("a", { href: "#/taches" }, tr("Voir les {n} tâches", { n: mesTaches().length }))) : h("p", { class: "plus" }, h("a", { href: "#/taches" }, tr("Toutes les tâches"))))
       : null,

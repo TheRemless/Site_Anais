@@ -1,10 +1,12 @@
 // État partagé : le magasin de données, la copie en mémoire des tables et l'entreprise active.
 // `brut` contient tout ce que la base laisse voir à la personne connectée, `db` seulement l'entreprise active.
+import { moduleAllume, modulesReglables } from "./modules.mjs";
 import { estTaxi } from "./taxi-calc.mjs";
 import { creerStore } from "./store.mjs";
 import { resume, setDevise, setMasquerMontants, aujourdhui } from "./calc.mjs";
 import { construireCopie, CLE_HORS_LIGNE } from "./feuille-hors-ligne-calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
+import { reglagesModele } from "./modeles-metier.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
@@ -232,18 +234,11 @@ export const descriptionRole = (r) => (r.systeme ? tr(r.description) : r.descrip
 
 export const reglages = () => etat.db.reglages;
 
-// Chaque entreprise choisit ses écrans (Réglages, Écrans). En automatique, Partenaires, Réservations et Messages sont affichés en Secret et
-// en Taxi, et le Catalogue en ZTP. Chacun se masque seul : masquer Partenaires ne masque plus Réservations ni Messages (audit n° 72).
-export function moduleActif(nom) {
-  // Chaque entreprise n'a que ses écrans (Jérémy, 12.11.2026) : partenaires, réservations et messages n'existent qu'en excursions et en taxi,
-  // le catalogue de formules de devis qu'en voyages sur mesure (ZTP). Le réglage « Écrans » ne peut pas les rouvrir ailleurs.
-  if (["partenaires", "reservations", "messages"].includes(nom) && !modeExcursions()) return false;
-  if (nom === "catalogue" && modeExcursions()) return false;
-  const v = ((etat.db && etat.db.reglages.modules) || {})[nom];
-  if (v === true || v === false) return v;
-  if (nom === "catalogue") return !modeExcursions();
-  return true;
-}
+// Chaque entreprise choisit ses écrans (Réglages, Écrans) parmi les modules de sa façon de travailler : voir modules.mjs.
+// Un module n'existe que là où il a un sens (Jérémy, 12.11.2026) ; Masquer n'éteint que lui et ce qui en dépend (audit n° 72).
+const contexteModules = () => ({ reglages: etat.db && etat.db.reglages, publieSite: (entiteActive() || {}).publie_site });
+export const moduleActif = (nom) => !!etat.db && moduleAllume(nom, contexteModules());
+export const modulesProposes = () => (etat.db ? modulesReglables(contexteModules()) : []);
 // Mode excursions (Secret) : pas de devis, facture directe, vouchers. Sinon voyages sur mesure (Zwald).
 // Le mode taxi (VIP Taxi Lanta) suit le même chemin que les excursions, sans facture : voir taxi-calc.mjs.
 export const modeTaxi = () => !!etat.db && estTaxi(etat.db.reglages);
@@ -443,13 +438,15 @@ async function enregistrerReglagesBrut(valeur, versionLue) {
 export const enregistrerReglages = (...a) => ecrire(() => enregistrerReglagesBrut(...a));
 
 // Administration (administrateur général seulement, la base le refuse aux autres)
-export async function creerEntite(nom, slug) {
+// `modele` : un modèle métier (modeles-metier.mjs) qui donne la façon de travailler et des textes neutres. Sans modèle : réglages vides, comme avant.
+export async function creerEntite(nom, slug, { modele = null, devise = "" } = {}) {
   const ordre = Math.max(0, ...etat.brut.entites.map((e) => e.ordre || 0)) + 1;
   const e = await etat.store.inserer("entites", { nom, slug, actif: true, ordre });
-  const base = completerReglages({ emetteur: { nom } });
+  const base = completerReglages(modele ? reglagesModele(modele, { nom, devise }) : { emetteur: { nom } });
   await etat.store.enregistrerReglages(e.id, base);
   // `tous_droits` (migration 38) n'est écrit que si la base a déjà la colonne : avant la migration, l'insertion échouerait.
-  const avecTousDroits = etat.brut.roles.some((r) => "tous_droits" in r);
+  // Sans aucun rôle chargé (première entreprise d'un nouveau client), la base a forcément la colonne : les organisations (migration 42) viennent après.
+  const avecTousDroits = etat.brut.roles.some((r) => "tous_droits" in r) || (!etat.brut.roles.length && organisation() !== null);
   for (const r of ROLES_SYSTEME) etat.brut.roles.push(await etat.store.inserer("roles", { entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: r.permissions, systeme: true, ...(avecTousDroits ? { tous_droits: !!r.tous_droits } : {}) }));
   etat.brut.entites.push(e);
   etat.brut.reglages[e.id] = base;
@@ -464,6 +461,24 @@ async function modifierEntiteBrut(id, patch) {
   rebatir();
 }
 export const modifierEntite = (...a) => ecrire(() => modifierEntiteBrut(...a));
+
+// L'organisation de la personne connectée (migration 42) : null tant que la base n'a pas la migration.
+// L'éditeur du logiciel lit toutes les organisations : on prend celle de son propre compte, jamais la première venue.
+export const organisation = () => {
+  const liste = (etat.brut && etat.brut.organisations) || [];
+  const mienne = etat.moi && etat.moi.organisation_id;
+  return (mienne ? liste.find((o) => o.id === mienne) : liste.length === 1 ? liste[0] : null) || null;
+};
+// Nom, fuseau et langue : l'administrateur de l'organisation seul (la base refuse le statut et les options payantes).
+async function modifierOrganisationBrut(patch) {
+  const o = organisation();
+  if (!o) throw new Error(tr("Réglages de l'organisation indisponibles : la base n'a pas encore la migration 42."));
+  const champs = Object.fromEntries(Object.entries(patch).filter(([k]) => ["nom", "fuseau", "langue"].includes(k)));
+  const r = await etat.store.modifier("organisations", o.id, champs);
+  etat.brut.organisations = [{ ...o, ...r }];
+  rebatir();
+}
+export const modifierOrganisation = (...a) => ecrire(() => modifierOrganisationBrut(...a));
 
 export async function definirAcces(userId, entiteId, roleId) {
   if (roleId) {

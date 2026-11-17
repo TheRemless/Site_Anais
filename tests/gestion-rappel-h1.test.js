@@ -142,7 +142,8 @@ test("envoi forcé d'un service : même message que le cron, hors fenêtre, mêm
   assert.deepEqual([60, 55, 54, 61, 125, 0, -10].map(F.quandH1), ["Dans 1 h", "Dans 1 h", "Dans 54 min", "Dans 1 h 01", "Dans 2 h 05", "Maintenant", "Commencé il y a 10 min"]);
   const fonction = fs.readFileSync(new URL("../supabase/functions/rappels/index.ts", import.meta.url), "utf8");
   assert.match(fonction, /if \(!qui\) return json\(\{ erreur: "non autorisé" \}, 401\)/, "aucun appel anonyme");
-  assert.match(fonction, /if \(type === "h1" && demande\.force\) return rappelForce\(demande\)/);
+  assert.match(fonction, /if \(type === "h1" && demande\.force\) return rappelForce\(demande, qui === "admin" \? await organisationAppelant\(fourni\) : null\)/);
+  assert.match(fonction, /organisation !== null && \(!organisation \|\| !ent\.data \|\| ent\.data\.organisation_id !== organisation\)\) return json\(\{ erreur: "service_introuvable" \}, 404\)/, "une administratrice ne force que les services de son organisation");
   assert.match(fonction, /if \(qui === "admin"\) return json/, "une administratrice connectée n'a que l'envoi forcé");
   assert.match(fonction, /moi\.data && moi\.data\.super_admin && moi\.data\.actif \? "admin" : null/);
   assert.match(fonction, /rappels_h1_envois"\)\.upsert/, "le service forcé est marqué : le cron n'enverra pas de doublon");

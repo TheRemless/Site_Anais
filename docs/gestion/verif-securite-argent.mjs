@@ -41,6 +41,8 @@ const E = (await db.query("select id from entites where slug = 'ztp'")).rows[0].
 const AUTRE = (await db.query("select id from entites where slug = 'secret'")).rows[0].id;
 const U = {};
 for (const k of ["admin", "editeur", "lecteur", "limite", "nets", "etranger"]) U[k] = (await db.query("insert into auth.users (email) values ($1) returning id", [k + "@test"])).rows[0].id;
+// Migration 42 : le premier compte ne devient plus administrateur tout seul ; l'administratrice est désignée dans l'organisation Zwald.
+await db.exec(`update profils set super_admin = true, organisation_id = '00000000-0000-0000-0000-00000000a000' where user_id = '${U.admin}'`);
 // admin = premier compte = administratrice générale
 await db.exec(`insert into roles (entite_id, nom, portee, permissions) values
   ('${E}', 'Limité avec analyses', 'mes_dossiers', array['clients.lire','dossiers.lire','finances.voir','analytics.voir']),
@@ -139,7 +141,7 @@ ok(JSON.stringify(avant) === JSON.stringify(apres) && !JSON.stringify(rec.rows).
 ok(Number(avant.total) === 1000 && Number(avant.sur_place) === 900, "le résumé : total 1000 chez nous, 900 sur place");
 
 console.log("Suivi des rappels (migration 23)");
-await db.exec("insert into rappels_suivi (type, cible, abonnements, envoyes, erreur) values ('veille', '2026-11-12', 2, 2, '')");
+await db.exec("insert into rappels_suivi (type, cible, abonnements, envoyes, erreur, organisation_id) values ('veille', '2026-11-12', 2, 2, '', '00000000-0000-0000-0000-00000000a000')");
 ok((await essaie(U.admin, "select count(*)::int n from rappels_suivi")).rows[0].n === 1, "l'administratrice générale lit le suivi");
 ok((await essaie(U.lecteur, "select count(*)::int n from rappels_suivi")).rows[0].n === 0, "un Lecteur ne lit pas le suivi");
 ok((await essaie(U.editeur, "select count(*)::int n from rappels_suivi")).rows[0].n === 0, "un Éditeur sans droit réglages ne le lit pas");

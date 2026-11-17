@@ -1,4 +1,5 @@
 import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul } from "./etat.mjs";
+import { MODULES, moduleDeLEcran } from "./modules.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
 import { libelleStatut, formatMontant, aujourdhui } from "./calc.mjs";
@@ -171,11 +172,14 @@ function bandeauDemo() {
   );
 }
 
-// Le site secrettravelandtour.com (migration 30) : demandes reçues et bandeau, pour Secret et Taxi seulement, pour qui voit tous les dossiers.
+// Le site public (migration 30) : modules « Demandes du site » et « Bandeau du site », dans une entreprise qui publie sur le site
+// (entites.publie_site, Secret et Taxi chez Zwald), pour qui voit tous les dossiers.
 // Le badge compte les demandes à traiter : elles arrivent avec une notification, le chiffre reste jusqu'à la réponse.
-const siteVisible = () => modeExcursions() && peut("dossiers.lire") && voitToutActif();
+// Règle commune aux deux écrans du site : lire les dossiers et les voir tous (comme la base : lit_demandes_site).
+const voitLeSite = () => peut("dossiers.lire") && voitToutActif();
+const siteVisible = () => moduleActif("demandes_site") && voitLeSite();
 // Le bandeau du site public ne se change qu'avec « Modifier les réglages » (Jérémy, 17.11.2026 : Mook ne change pas les bandeaux ; migration 40).
-const bandeauVisible = () => siteVisible() && peut("dossiers.ecrire") && peut("reglages.ecrire");
+const bandeauVisible = () => moduleActif("bandeau_site") && voitLeSite() && peut("dossiers.ecrire") && peut("reglages.ecrire");
 function voitToutActif() {
   if (estSuperAdmin()) return true;
   const m = etat.brut.membres.find((x) => x.user_id === etat.session.id && x.entite_id === etat.entiteId);
@@ -191,7 +195,7 @@ function ecrans() {
   const demandes = siteVisible() ? aTraiter(etat.db.demandes_site || []).length : 0;
   return [
     { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
-    { titre: tr("Site"), items: siteVisible() ? [{ href: "#/demandes", libelle: tr("Demandes du site"), cle: "demandes", icone: "messages", badge: demandes, badgeLibelle: tr("{badge} à traiter", { badge: demandes }) }, ...(bandeauVisible() ? [{ href: "#/bandeau", libelle: tr("Bandeau du site"), cle: "bandeau", icone: "alerte" }] : [])] : [] },
+    { titre: tr("Site"), items: [...si(siteVisible(), { href: "#/demandes", libelle: tr("Demandes du site"), cle: "demandes", icone: "messages", badge: demandes, badgeLibelle: tr("{badge} à traiter", { badge: demandes }) }), ...si(bandeauVisible(), { href: "#/bandeau", libelle: tr("Bandeau du site"), cle: "bandeau", icone: "alerte" })] },
     { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(fiduciaireAuMenu(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
       titre: tr("Partenaires"),
@@ -199,11 +203,10 @@ function ecrans() {
         ? [
             { href: "#/partenaires", libelle: tr("Partenaires"), cle: "partenaires", icone: "partenaires" },
             { href: "#/tarifs", libelle: tr("Tarifs"), cle: "tarifs", icone: "tarifs" },
-            // Taxi n'a que des prestations (pas d'horaires de bateaux) et tout se paie au chauffeur : ni Trajets ni Dû aux partenaires.
-            ...si(!modeTaxi(), { href: "#/trajets", libelle: tr("Trajets"), cle: "trajets", icone: "bateau" }),
-            // Règles compare les conditions de plusieurs partenaires (parc national, enfants, annulation) : Taxi n'a qu'un prestataire.
-            ...si(!modeTaxi(), { href: "#/regles", libelle: tr("Règles"), cle: "regles", icone: "regles" }),
-            ...si(peut("partenaires.nets") && !modeTaxi(), { href: "#/du", libelle: tr("Dû aux partenaires"), cle: "du", icone: "du" }),
+            // Modules « Trajets et règles » et « Dû aux partenaires » : excursions seulement (Taxi n'a ni horaires de bateaux ni dû, tout se paie au chauffeur).
+            ...si(moduleActif("trajets"), { href: "#/trajets", libelle: tr("Trajets"), cle: "trajets", icone: "bateau" }),
+            ...si(moduleActif("trajets"), { href: "#/regles", libelle: tr("Règles"), cle: "regles", icone: "regles" }),
+            ...si(peut("partenaires.nets") && moduleActif("du"), { href: "#/du", libelle: tr("Dû aux partenaires"), cle: "du", icone: "du" }),
           ]
         : [],
     },
@@ -318,7 +321,7 @@ function ouvrirNouveau() {
       "div",
       { class: "modal-corps" },
       choix("dossiers", tr("Nouveau dossier"), modeExcursions() ? tr("Un client, un ou plusieurs services") : tr("Un client, un voyage, un devis"), va("#/dossiers/nouveau")),
-      modeExcursions() ? choix("messages", tr("Coller une demande"), tr("Un message WhatsApp du client devient un dossier"), async () => (fermer(), (await import("./views/demande.mjs")).ouvrirDemande())) : null
+      moduleActif("demande_collee") ? choix("messages", tr("Coller une demande"), tr("Un message WhatsApp du client devient un dossier"), async () => (fermer(), (await import("./views/demande.mjs")).ouvrirDemande())) : null
     ),
     { protege: false }
   );
@@ -352,18 +355,14 @@ function coqueSimple() {
 // Fiduciaire au menu : dans une entreprise qui émet ces factures (Secret) ; dans une autre (Taxi, 17.11.2026), seulement pour qui peut la réactiver.
 // Taxi n'émet pas de factures pour la fiduciaire (décision 5) : l'entrée sort du menu tant qu'elle n'y est pas réactivée, ce qui se fait depuis les
 // Réglages (onglet « Écrans », contrôle du 17.11.2026, D10).
-const fiduciaireAuMenu = () => peut("fiduciaire.preparer") && modeExcursions() && (reglagesFid(etat.db.reglages).actif || (!modeTaxi() && peut("fiduciaire.gerer") && peut("reglages.ecrire")));
+const fiduciaireAuMenu = () => peut("fiduciaire.preparer") && moduleActif("fiduciaire") && (reglagesFid(etat.db.reglages).actif || (!modeTaxi() && peut("fiduciaire.gerer") && peut("reglages.ecrire")));
 
-// Écrans propres à un type d'entreprise : ZTP (voyages sur mesure), Secret (excursions), Taxi.
+// Écrans propres à un module (modules.mjs) : fermés si le module n'existe pas ou est masqué pour cette entreprise.
 function ecranDeLEntreprise(cle) {
-  if (["partenaires", "tarifs"].includes(cle)) return moduleActif("partenaires");
-  if (["trajets", "regles", "du"].includes(cle)) return moduleActif("partenaires") && !modeTaxi();
-  if (cle === "reservations" || cle === "messages") return moduleActif(cle);
-  if (cle === "catalogue") return moduleActif("catalogue");
-  if (cle === "fiduciaire") return modeExcursions();
   if (cle === "demandes") return siteVisible();
   if (cle === "bandeau") return bandeauVisible();
-  return true;
+  const m = moduleDeLEcran(cle);
+  return !m || moduleActif(m.id);
 }
 
 async function afficherVoucherSeul() {
@@ -446,7 +445,7 @@ function chercher(q) {
       .slice(0, 6)
       .forEach((x) => out.push({ groupe: tr("Tarifs"), icone: "tarifs", titre: x.libelle, detail: [nomPartenaire(x.partenaire_id), x.groupe].filter(Boolean).join(" · "), droite: x.prix_vente != null ? formatMontant(x.prix_vente) : "", href: `#/tarifs?famille=${x.famille}&q=${encodeURIComponent(x.libelle)}` }));
     const paires = new Map();
-    if (!modeTaxi()) for (const t of etat.db.trajets) if (correspond(sansAccents(`${t.de} ${t.vers} ${nomPartenaire(t.partenaire_id)}`))) paires.set(`${t.de}|${t.vers}`, (paires.get(`${t.de}|${t.vers}`) || 0) + 1);
+    if (moduleActif("trajets")) for (const t of etat.db.trajets) if (correspond(sansAccents(`${t.de} ${t.vers} ${nomPartenaire(t.partenaire_id)}`))) paires.set(`${t.de}|${t.vers}`, (paires.get(`${t.de}|${t.vers}`) || 0) + 1);
     [...paires].slice(0, 5).forEach(([k, n]) => {
       const [de, vers] = k.split("|");
       out.push({ groupe: tr("Trajets"), icone: "bateau", titre: `${de} → ${vers}`, detail: pluriel(n, N_("départ"), N_("départs")), href: `#/trajets?de=${encodeURIComponent(de)}&vers=${encodeURIComponent(vers)}` });
@@ -586,8 +585,17 @@ async function afficher() {
         "div",
         { class: "connexion" },
         selecteurLangue(),
-        h("h1", null, tr("Aucun accès pour l'instant")),
-        h("p", { class: "sous" }, tr("Votre compte ({email}) n'a pas encore accès à une entreprise. Demandez à l'administratrice de vous en donner un.", { email: etat.session.email })),
+        h("h1", null, etat.moi && etat.moi.super_admin ? tr("Votre première entreprise") : etat.moi && etat.moi.plateforme ? tr("Clients") : tr("Aucun accès pour l'instant")),
+        etat.moi && etat.moi.super_admin
+          ? h("p", { class: "sous" }, tr("Bienvenue. Créez votre première entreprise pour commencer : choisissez votre type d'activité, vous compléterez ensuite ses réglages."))
+          : etat.moi && etat.moi.plateforme
+            ? h("p", { class: "sous" }, tr("Compte éditeur : vous créez ici l'organisation d'un nouveau client et son administrateur. Vous ne voyez aucune de leurs données."))
+            : h("p", { class: "sous" }, tr("Votre compte ({email}) n'a pas encore accès à une entreprise. Demandez à l'administratrice de vous en donner un.", { email: etat.session.email })),
+        // Nouveau client (migration 42) : son administrateur crée sa première entreprise ici ; l'éditeur crée les clients.
+        etat.moi && etat.moi.super_admin
+          ? h("button", { class: "principal", type: "button", onclick: async () => (await import("./views/admin.mjs")).nouvelleEntiteModal(() => { const e = etat.brut.entites[etat.brut.entites.length - 1]; if (e) changerEntite(e.id); afficher(); }) }, tr("Créer votre première entreprise"))
+          : null,
+        etat.moi && etat.moi.plateforme ? h("button", { class: "principal", type: "button", onclick: async () => (await import("./views/admin.mjs")).nouveauClientModal() }, tr("Nouveau client")) : null,
         etat.store.mode === "demo" ? bandeauDemo() : null,
         etat.store.mode === "supabase" ? h("button", { class: "secondaire", type: "button", onclick: async () => (await etat.store.deconnecter(), (etat.session = null), afficher()) }, tr("Se déconnecter")) : null
       )
@@ -599,8 +607,9 @@ async function afficher() {
   const entiteDemandee = new URLSearchParams(location.hash.split("?")[1] || "").get("entite");
   if (entiteDemandee && entiteDemandee !== etat.entiteId && entitesAccessibles().some((e) => e.id === entiteDemandee)) changerEntite(entiteDemandee, { naviguer: false });
   if (ecranVoucherSeul()) return afficherVoucherSeul();
-  // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change. Ses badges, eux, suivent à chaque affichage (majBadges).
-  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}`;
+  // Le menu dépend de l'entreprise active, des droits et des modules allumés (Réglages, Écrans) : on le refait quand l'un d'eux change.
+  // Ses badges, eux, suivent à chaque affichage (majBadges).
+  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}|${MODULES.filter((m) => moduleActif(m.id)).map((m) => m.id).join(",")}|${fiduciaireAuMenu()}`;
   const existante = racine.querySelector(".coque");
   if (!existante || existante.dataset.cle !== cle) {
     vider(racine).append(coque());

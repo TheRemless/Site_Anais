@@ -2,7 +2,7 @@
 // Client : le rappel prêt à copier (heure, lieu, personnes, ce qu'il faut prévoir quand la base le dit) et la case « Rappel envoyé ».
 // Partenaire : aucun message rédigé (Jérémy, 14.11.2026 : Anaïs écrit elle-même au prestataire), seulement son nom, son téléphone et ce qu'il
 // faut lui dire, avec la case « Rappel fait ». Rien ne part tout seul, ni au client ni au partenaire.
-import { etat, modifier, peut, reglages, entiteActive, nomClient, partenaireDe, dossiersAnnules } from "../etat.mjs";
+import { etat, modifier, peut, reglages, entiteActive, nomClient, partenaireDe, dossiersAnnules, organisation } from "../etat.mjs";
 import { h, icone } from "../ui.mjs";
 import { formatDate } from "../calc.mjs";
 import { tr, localeActive } from "../i18n.mjs";
@@ -108,7 +108,7 @@ export async function vueReservation(id) {
 
 // Accueil « Aujourd'hui » : les services des deux prochaines heures et où en est leur rappel.
 export function sectionProchainsServices() {
-  const liste = prochainsServices(etat.db.reservations, Date.now(), { heures: 2, ecartes: dossiersAnnules() });
+  const liste = prochainsServices(etat.db.reservations, Date.now(), { heures: 2, ecartes: dossiersAnnules(), fuseau: (organisation() || {}).fuseau });
   if (!liste.length) return null;
   const pastille = (fait, libelle) => h("span", { class: `tag rappel-etat ${fait ? "fait" : "a-faire"}` }, fait ? tr("{qui} : fait", { qui: libelle }) : tr("{qui} : à faire", { qui: libelle }));
   return h(

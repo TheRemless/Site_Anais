@@ -4,13 +4,25 @@
 
 export const TAILLE_MAX = 4096; // octets du corps : une demande en fait moins de 1 500 avec son message
 export const LIMITE_APPAREIL = { nombre: 5, minutes: 10 }; // 5 demandes en 10 minutes par appareil (empreinte d'IP)
-export const LIMITE_TOTALE = { nombre: 300, minutes: 60 }; // garde-fou global : au-delà, le site est attaqué, pas visité
+export const LIMITE_TOTALE = { nombre: 300, minutes: 60 }; // garde-fou par organisation : au-delà, son site est attaqué, pas visité
 
-const ORIGINES = ["https://secrettravelandtour.com", "https://www.secrettravelandtour.com"];
+// Site de l'organisation qui reçoit les demandes : celui d'Anaïs par défaut, un autre client pose SITE_ORIGINES (adresses séparées par des virgules).
+export const ORIGINES_DEFAUT = ["https://secrettravelandtour.com", "https://www.secrettravelandtour.com"];
 const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/;
+const ORIGINE = /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(:\d{1,5})?$/;
+
+// Lit SITE_ORIGINES : seules les adresses https complètes, sans chemin, sont gardées. Rien de valable donne le site d'Anaïs.
+export function lireOrigines(brut) {
+  const liste = String(brut || "").split(",").map((x) => x.trim().toLowerCase().replace(/\/+$/, "")).filter((x) => ORIGINE.test(x));
+  return liste.length ? [...new Set(liste)] : ORIGINES_DEFAUT;
+}
 
 // Origines admises : le site, et la machine de développement pour les essais.
-export const origineAdmise = (origine) => !!origine && (ORIGINES.includes(origine) || LOCAL.test(origine));
+export const origineAdmise = (origine, origines = ORIGINES_DEFAUT) => !!origine && (origines.includes(origine) || LOCAL.test(origine));
+
+// Une marque est le slug d'une entreprise qui publie sur le site (même forme que entites.slug et la contrainte de demandes_site).
+// Son existence est vérifiée par la fonction dans la base (entites.publie_site de l'organisation), pas ici.
+export const MARQUE = /^[a-z0-9-]{1,40}$/;
 
 // Texte propre : sans caractère de contrôle (le retour à la ligne est gardé là où il est permis), espaces en trop retirés, longueur bornée.
 const CONTROLE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200F\u2028-\u202E\u2066-\u2069]/g;
@@ -78,7 +90,7 @@ const champ = (nom, f) => {
 
 // Lit le corps reçu (texte JSON) et renvoie la ligne à écrire, ou lève une erreur avec `code` et `champ`.
 // `piege: true` : le champ piège (« website ») est rempli, c'est un robot ; l'appelant répond « ok » sans rien écrire.
-export function lireDemande(corps, { aujourdhui }) {
+export function lireDemande(corps, { aujourdhui, origines = ORIGINES_DEFAUT }) {
   if (typeof corps !== "string" || !corps) throw erreur("vide");
   if (new TextEncoder().encode(corps).length > TAILLE_MAX) throw erreur("trop_gros");
   let d;
@@ -89,7 +101,7 @@ export function lireDemande(corps, { aujourdhui }) {
   }
   if (!d || typeof d !== "object" || Array.isArray(d)) throw erreur("json");
   if (d.website) return { piege: true };
-  const marque = d.brand === "secret" || d.brand === "taxi" ? d.brand : null;
+  const marque = typeof d.brand === "string" && MARQUE.test(d.brand) ? d.brand : null;
   if (!marque) throw Object.assign(erreur("marque"), { champ: "brand" });
   const produitId = champ("product_id", () => texte(d.product_id, 60));
   if (!produitId || !/^[a-z0-9-]{1,60}$/.test(produitId)) throw Object.assign(erreur("produit"), { champ: "product_id" });
@@ -107,7 +119,7 @@ export function lireDemande(corps, { aujourdhui }) {
   if (!/^[A-Z]{3}$/.test(devise)) throw Object.assign(erreur("format"), { champ: "currency" });
   // L'adresse de la page n'est gardée que si elle est sur le site (ou la machine de développement) : on n'enregistre pas un lien choisi par un tiers.
   const page = champ("page_url", () => texte(d.page_url, 300));
-  const pageUrl = page && /^(https:\/\/(www\.)?secrettravelandtour\.com|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)(\/[^\s]*)?$/.test(page) ? page : null;
+  const pageUrl = page && pageDuSite(page, origines) ? page : null;
   return {
     marque,
     ref,
@@ -129,6 +141,12 @@ export function lireDemande(corps, { aujourdhui }) {
   };
 }
 
+// Adresse d'une page du site : une origine admise suivie d'un chemin (ou de rien), sans espace.
+function pageDuSite(page, origines) {
+  const m = /^(https?:\/\/[^/?#\s]+)([/?#][^\s]*)?$/.exec(page);
+  return !!m && origineAdmise(m[1], origines);
+}
+
 // Adresse IP du visiteur. D'abord celle que pose Cloudflare (cf-connecting-ip) ou la passerelle (x-real-ip), que le visiteur ne peut pas choisir ;
 // x-forwarded-for en dernier recours seulement, car son premier maillon peut être écrit par le client lui-même.
 export function adresseIP(entetes) {
@@ -141,7 +159,8 @@ const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
 
 // Notification envoyée à l'équipe : la sortie, les personnes, le jour. Jamais le nom ni l'hôtel du client (elle passe par Apple et Google).
 // « 4 Islands, 2 adultes, mardi 18 » ; le mois est ajouté quand la date n'est pas dans les 30 prochains jours.
-export function notification(ligne, aujourdhui) {
+// Le titre nomme l'entreprise qui reçoit la demande (entites.nom), pour qu'une organisation à plusieurs marques sache laquelle.
+export function notification(ligne, aujourdhui, entreprise = "") {
   const morceaux = [ligne.produit || ligne.produit_id];
   if (ligne.option_titre) morceaux[0] += ` (${ligne.option_titre})`;
   const personnes = [ligne.adultes ? pluriel(ligne.adultes, "adulte", "adultes") : "", ligne.enfants ? pluriel(ligne.enfants, "enfant", "enfants") : ""].filter(Boolean).join(", ");
@@ -152,7 +171,7 @@ export function notification(ligne, aujourdhui) {
     const mois = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"][d.getUTCMonth()];
     morceaux.push(ecart === 0 ? "aujourd'hui" : ecart === 1 ? "demain" : `${JOURS[d.getUTCDay()]} ${d.getUTCDate()}${ecart < 0 || ecart > 30 ? ` ${mois}` : ""}`);
   }
-  return { titre: ligne.marque === "taxi" ? "Nouvelle demande VIP Taxi Lanta" : "Nouvelle demande du site", corps: morceaux.join(", "), tag: `demande-site-${ligne.marque}` };
+  return { titre: entreprise ? `Nouvelle demande ${entreprise}` : "Nouvelle demande du site", corps: morceaux.join(", "), tag: `demande-site-${ligne.marque}` };
 }
 
 // Personnes qui reçoivent la notification d'une demande : celles qui lisent les demandes de cette entreprise (même règle que la base,
@@ -183,3 +202,11 @@ export const REPONSES = {
   serveur: { status: 500, corps: { ok: false, error: "server" } },
 };
 export const reponseInvalide = (e) => ({ status: 400, corps: { ok: false, error: "invalid", ...(e.champ ? { field: e.champ } : {}) } });
+
+// Décide où écrire une demande valide : limite par appareil, limite de l'organisation (ses demandes seulement), puis marque.
+// entites : celles de l'organisation qui publient sur le site ({ id, nom, slug }). Renvoie { reponse } pour refuser, sinon { entite }.
+export function choisirEntite({ marque, entites, appareil = 0, organisation = 0 }) {
+  if (appareil >= LIMITE_APPAREIL.nombre || organisation >= LIMITE_TOTALE.nombre) return { reponse: REPONSES.limite };
+  const entite = (entites || []).find((e) => e.slug === marque);
+  return entite ? { entite } : { reponse: reponseInvalide({ champ: "brand" }) };
+}

@@ -1,11 +1,11 @@
-// « Demandes du site » : les demandes de réservation envoyées depuis secrettravelandtour.com (migration 30), une carte par demande.
+// « Demandes du site » : les demandes de réservation envoyées par le formulaire du site (migration 30), une carte par demande.
 // Anaïs reçoit une notification, ouvre la carte, et en un geste confirme (le dossier se crée comme avec « Coller une demande »), modifie
 // (date, heure, option, prix) puis confirme, ou refuse en proposant autre chose. Chaque fois une réponse anglaise pour le client.
 // Depuis la migration 41, la feuille du site donne le numéro WhatsApp : « Écrire sur WhatsApp » ouvre sa conversation avec la réponse déjà
 // écrite (lien wa.me, Anaïs relit et envoie elle-même), et « Il n'a pas écrit » prépare un mot quand son message n'est jamais arrivé.
 // Sans numéro (demande plus ancienne), la réponse se copie et la référence en grand sert à retrouver la conversation.
-// Rien ne part tout seul, ni au client ni au prestataire (règle du 14.11.2026). Secret et Taxi seulement ; chaque entreprise ne voit que ses demandes.
-import { etat, modifier, peut, modeExcursions, modeTaxi, naviguer, recharger } from "../etat.mjs";
+// Rien ne part tout seul, ni au client ni au prestataire (règle du 14.11.2026). Module « Demandes du site » ; chaque entreprise ne voit que ses demandes.
+import { etat, modifier, peut, modeTaxi, naviguer, recharger, moduleActif, entiteActive } from "../etat.mjs";
 import { h, modal, toast, champ, puces, confirmer, icone } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
@@ -22,8 +22,8 @@ let onglet = "a_traiter";
 let periode = "30";
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
 
-// L'écran existe pour Secret et Taxi, pour qui lit tous les dossiers (comme la base : lit_demandes_site).
-export const demandesVisibles = () => modeExcursions() && peut("dossiers.lire");
+// Module « Demandes du site » (entreprise qui publie sur le site), pour qui lit les dossiers (comme la base : lit_demandes_site).
+export const demandesVisibles = () => moduleActif("demandes_site") && peut("dossiers.lire");
 
 // « mar. 18 nov. » dans la langue de l'interface.
 const jourCourt = (iso) => (iso ? new Date(`${iso}T00:00:00Z`).toLocaleDateString(localeActive(), { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }) : "");
@@ -181,8 +181,8 @@ function ouvrirRefus(d) {
   const majApercu = () => ((apercu.value = reponseRefus(d, etatRefus, { aujourdhui: aujourdhui() })), majLien());
   const motifs = puces({ libelle: tr("Motif"), valeur: etatRefus.motif, options: Object.entries(MOTIFS_REFUS).map(([valeur, l]) => ({ valeur, libelle: tr(l) })), onchange: (v) => ((etatRefus.motif = v), majApercu()) });
   const autreDate = h("input", { type: "date", min: aujourdhui(), onchange: (e) => ((etatRefus.alternative.date = e.target.value || undefined), majApercu()) });
-  const marque = d.marque === "taxi" ? "taxi" : "secret";
-  const autres = PRODUITS_SITE.filter((p) => p.marque === marque && p.id !== d.produit_id);
+  // Autres sorties de la même marque (la liste des produits du site ne connaît que celles de Zwald : vide pour une autre marque).
+  const autres = PRODUITS_SITE.filter((p) => p.marque === d.marque && p.id !== d.produit_id);
   const autreSortie = h("select", { onchange: (e) => ((etatRefus.alternative.produit_id = e.target.value || undefined), majApercu()) }, h("option", { value: "" }, tr("Aucune")), autres.map((p) => h("option", { value: p.id }, p.nom)));
   majApercu();
   let fermer;
@@ -368,7 +368,7 @@ export async function vueDemandesSite() {
   return h(
     "div",
     { "data-titre": tr("Demandes du site"), class: "dsite" },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Demandes du site")), h("p", { class: "sous" }, modeTaxi() ? tr("Demandes de transfert envoyées depuis la page VIP Taxi Lanta du site.") : tr("Demandes envoyées depuis secrettravelandtour.com. Le client a aussi écrit sur WhatsApp."))), simuler ? h("div", { class: "entete-actions" }, simuler) : null),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Demandes du site")), h("p", { class: "sous" }, tr("Demandes envoyées par le formulaire du site pour « {nom} ». Le client a aussi écrit sur WhatsApp.", { nom: (entiteActive() || {}).nom || "" }))), simuler ? h("div", { class: "entete-actions" }, simuler) : null),
     etat.brut.site_disponible === false ? h("p", { class: "bandeau-info", role: "status" }, tr("La base n'a pas encore les demandes du site (migration 30 à appliquer).")) : null,
     choix.noeud,
     onglet === "chiffres"
