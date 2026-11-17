@@ -100,8 +100,8 @@ export function creer() {
       sauve();
       return id;
     },
-    async fiduciaireAnnuler(reservationId, date = null) {
-      const id = annulerLocal(data, { droit, aujourdhui: aujourdhui() }, reservationId, date);
+    async fiduciaireAnnuler(reservationId, date = null, destinataire = null) {
+      const id = annulerLocal(data, { droit, aujourdhui: aujourdhui() }, reservationId, date, destinataire);
       sauve();
       return id;
     },

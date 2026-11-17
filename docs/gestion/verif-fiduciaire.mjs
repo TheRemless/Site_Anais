@@ -1,4 +1,4 @@
-// Vérifie la migration 28 (factures pour la fiduciaire) sur un Postgres en mémoire : droits, montants, numérotation sans trou, factures figées,
+// Vérifie les migrations 28 et 31 (factures pour la fiduciaire) sur un Postgres en mémoire : droits, montants, numérotation sans trou, factures figées,
 // et surtout que la base et le code de l'outil (cibleAgence) calculent le même montant sur les mêmes cas.
 //   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17
 //   cp <repo>/docs/gestion/verif-fiduciaire.mjs . && GESTION_SQL=<repo>/docs/gestion/ GESTION_SRC=file://<repo>/src/gestion/js/ node verif-fiduciaire.mjs
@@ -6,7 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 import fs from "node:fs";
 const W = process.env.GESTION_SQL || "./";
 const SRC = process.env.GESTION_SRC || "../src/gestion/js/";
-const { cibleAgence, aEmettre, libelleFacture, formaterNumero } = await import(SRC + "fiduciaire-calc.mjs");
+const { cibleAgence, aEmettre, libelleFacture, formaterNumero, parDestinataire, partRemise } = await import(SRC + "fiduciaire-calc.mjs");
 let echecs = 0;
 const ok = (c, msg) => { if (!c) { echecs++; console.log("  ECHEC:", msg); } else console.log("  ok:", msg); };
 const harnais = `
@@ -22,10 +22,16 @@ grant usage on schema public, auth to authenticated, anon;
 alter default privileges in schema public grant all on tables to anon, authenticated;
 alter default privileges in schema public grant execute on functions to anon, authenticated;
 `;
-const db = new PGlite();
-await db.exec(harnais);
-await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
-for (const f of fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]))) await db.exec(fs.readFileSync(W + f, "utf8"));
+// Une base neuve avec les migrations 18 à `jusqua` (toutes par défaut).
+const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[23]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
+async function nouvelleBase(jusqua = Infinity) {
+  const base = new PGlite();
+  await base.exec(harnais);
+  await base.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
+  for (const f of migrations.filter((n) => parseInt(n.split("-")[1]) <= jusqua)) await base.exec(fs.readFileSync(W + f, "utf8"));
+  return base;
+}
+const db = await nouvelleBase();
 // Pas de « grant execute on all functions » ici : il masquerait les revoke de la migration 28 (le contrôle des fonctions internes en dépend).
 
 const essaie = async (userId, sql, params = []) => {
@@ -39,8 +45,8 @@ const ent = {};
 for (const s of ["ztp", "secret", "taxi"]) ent[s] = (await un("select id from entites where slug = $1", [s])).id;
 
 // Réglages de Secret : de faux coordonnées bancaires, jamais les vraies.
-await db.exec(`update reglages set valeur = valeur || '{"devise":"THB","emetteur":{"nom":"Secret Travel & Tour","sous_titre":"by Zwald Travel Planner Co., Ltd.","adresse":"292 Moo 2, 81150, Koh Lanta, Krabi","telephone":"+66 00 000 0000","licence":"34/04000"},"paiement":{"texte":"**Account Name:** Zwald Travel Planner Co., Ltd.\\n**Account Number:** 000-0-00000-0"}}'::jsonb where entite_id = '${ent.secret}'`);
-await db.exec(`update reglages set valeur = valeur || '{"devise":"THB"}'::jsonb where entite_id = '${ent.taxi}'`);
+await db.exec(`update reglages set valeur = valeur || '{"devise":"THB","fonctionnement":"excursions","emetteur":{"nom":"Secret Travel & Tour","sous_titre":"by Zwald Travel Planner Co., Ltd.","adresse":"292 Moo 2, 81150, Koh Lanta, Krabi","telephone":"+66 00 000 0000","licence":"34/04000"},"paiement":{"texte":"**Account Name:** Zwald Travel Planner Co., Ltd.\\n**Account Number:** 000-0-00000-0"}}'::jsonb where entite_id = '${ent.secret}'`);
+await db.exec(`update reglages set valeur = valeur || '{"devise":"THB","fonctionnement":"taxi","emetteur":{"nom":"VIP Taxi Lanta","adresse":"Koh Lanta"}}'::jsonb where entite_id = '${ent.taxi}'`);
 
 // Personnes : Mook (prépare, ne voit pas les nets), Anaïs (gère, voit les nets), un lecteur sans droit, une personne limitée à Taxi.
 const U = {};
@@ -101,9 +107,17 @@ const entreeJs = async (id) => {
   const n = (await un("select * from reservations_nets where reservation_id = $1", [id])) || null;
   const rs = await un("select * from dossiers_resume where dossier_id = $1", [r.dossier_id]);
   const dp = await un("select max(date)::text d from paiements where dossier_id = $1", [r.dossier_id]);
-  const deja = Number((await un("select coalesce(sum(montant), 0) s from fiduciaire_factures where reservation_id = $1", [id])).s);
+  // Comme fiduciaire-local.mjs : « déjà facturé » au prestataire actuel, part de la remise de la facture du client, dossier annulé.
+  const p = (await un("select id, nom from partenaires where id = $1 and entite_id = $2", [r.partenaire_id, r.entite_id])) || null;
+  const factures = (await db.query("select montant, destinataire_id, destinataire from fiduciaire_factures where reservation_id = $1", [id])).rows.map((f) => ({ ...f, montant: Number(f.montant) }));
+  const deja = parDestinataire(factures, p).deja;
+  const ids = [r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean);
+  const docs = (await db.query("select contenu from documents where dossier_id = $1 and type = 'facture' order by date_emission desc, created_at desc", [r.dossier_id])).rows;
+  const doc = docs.find((x) => ((x.contenu || {}).lignes || []).some((l) => ids.includes(l.id)));
+  const annule = (await un("select annule from dossiers where id = $1", [r.dossier_id])).annule;
   const iso = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
-  const reservation = { statut: r.statut, paye_sur_place: r.paye_sur_place, montant_vente: r.montant_vente === null ? null : Number(r.montant_vente) };
+  const vente = r.montant_vente === null ? null : Number(r.montant_vente);
+  const reservation = { statut: r.statut, paye_sur_place: r.paye_sur_place, montant_vente: vente, remise: doc ? partRemise(doc.contenu, ids, vente) : 0, dossier_annule: annule };
   const net = { net_paye: n.net_paye === null ? null : Number(n.net_paye), paye_le: iso(n.paye_le), commission_prevue: n.commission_prevue === null ? null : Number(n.commission_prevue), commission_recue: n.commission_recue === null ? null : Number(n.commission_recue), commission_recue_le: iso(n.commission_recue_le) };
   const paiement = rs ? { regle: Number(rs.total) > 0 && Number(rs.recu) >= Number(rs.total), date: dp.d } : null;
   return { reservation, net, paiement, deja };
@@ -114,7 +128,7 @@ const compare = async (nom) => {
   const js = cibleAgence(e.reservation, e.net, e.paiement, e.deja);
   const b = await un("select * from fiduciaire_cible($1)", [id]);
   const iso = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
-  const memes = js.cas === b.cas && js.cible === Number(b.cible) && js.date === iso(b.date_cible) && js.pret === b.pret && JSON.stringify(js.manque) === JSON.stringify(b.manque) && (js.ecart === null ? b.ecart === null : js.ecart === Number(b.ecart)) && js.a_revoir === b.a_revoir && e.deja === Number(b.deja);
+  const memes = (e.reservation.paye_sur_place || e.reservation.statut === "annule" || e.reservation.dossier_annule || e.reservation.remise === Number(b.remise)) && js.cas === b.cas && js.cible === Number(b.cible) && js.date === iso(b.date_cible) && js.pret === b.pret && JSON.stringify(js.manque) === JSON.stringify(b.manque) && (js.ecart === null ? b.ecart === null : js.ecart === Number(b.ecart)) && js.a_revoir === b.a_revoir && e.deja === Number(b.deja);
   ok(memes, `${nom} : ${JSON.stringify({ cas: b.cas, cible: Number(b.cible), date: iso(b.date_cible), pret: b.pret, manque: b.manque })}${memes ? "" : " / code : " + JSON.stringify(js)}`);
   return { js, b };
 };
@@ -147,7 +161,7 @@ ok((await essaie(U.taxiste, `select emettre_facture_fiduciaire('${R.surPlace}')`
 console.log("Administrateur général");
 await db.exec(`insert into profils (user_id, email, nom, super_admin, actif) values ('${U.root}', 'root@test', 'Root', true, true) on conflict (user_id) do update set super_admin = true, actif = true`);
 ok((await essaie(U.root, "select toutes_permissions() t")).rows[0].t.includes("fiduciaire.gerer"), "« tous les droits » comprend les deux droits fiduciaire");
-ok((await essaie(U.root, "select count(*)::int n from fiduciaire_a_preparer()")).rows[0].n >= 5, "un administrateur général voit ce qu'il y a à préparer");
+ok((await essaie(U.root, "select count(*)::int n from fiduciaire_a_preparer()")).rows[0].n >= 4, "un administrateur général voit ce qu'il y a à préparer");
 
 console.log("Émission et numérotation");
 const e1 = await essaie(U.mook, `select emettre_facture_fiduciaire('${R.surPlace}') id`);
@@ -170,9 +184,15 @@ ok(f2.numero === "COM-2026-002" && Number(f2.montant) === 500 && f2.cas === "che
 ok(f2.date_facture.toISOString().slice(0, 10) === "2026-11-09", "marge datée du plus tardif des deux paiements (2026-11-09)");
 const e3 = await essaie(U.mook, `select emettre_facture_fiduciaire('${R.partielle}') id`);
 ok(e3.ok && Number((await un("select montant from fiduciaire_factures where id = $1", [e3.rows[0].id])).montant) === 200, "commission partielle : 200 facturés");
+// Taxi sort de la fiduciaire (décision du 17.11.2026) : rien à préparer, rien à émettre, tant que le réglage « actif » n'est pas coché.
+ok(!(await essaie(U.mook, "select * from fiduciaire_a_preparer()")).rows.some((x) => x.reservation_id === R.taxi), "Taxi : la course n'est pas proposée");
+const taxiRefus = await essaie(U.mook, `select emettre_facture_fiduciaire('${R.taxi}') id`);
+ok(taxiRefus.ok === false && /n'émet pas de factures pour la fiduciaire/.test(taxiRefus.err), "Taxi : l'émission est refusée avec un message clair");
+await db.exec(`update reglages set valeur = valeur || '{"fiduciaire":{"actif":true}}'::jsonb where entite_id = '${ent.taxi}'`);
 const e4 = await essaie(U.mook, `select emettre_facture_fiduciaire('${R.taxi}') id`);
 const f4 = e4.ok ? await un("select * from fiduciaire_factures where id = $1", [e4.rows[0].id]) : null;
-ok(e4.ok && f4.entite_slug === "taxi" && f4.destinataire.nom === "VIP Taxi Lanta" && f4.emetteur.emetteur.nom === "Secret Travel & Tour", "Taxi : facture émise par Secret, adressée à VIP Taxi Lanta");
+ok(e4.ok && f4.entite_slug === "taxi" && f4.destinataire.nom === "VIP Taxi Lanta" && f4.emetteur.emetteur.nom === "VIP Taxi Lanta" && f4.destinataire_id === vip, "Taxi réactivé par le réglage : facture émise par l'entreprise du service, adressée à VIP Taxi Lanta");
+await db.exec(`update reglages set valeur = valeur || '{"fiduciaire":{"actif":false}}'::jsonb where entite_id = '${ent.taxi}'`);
 ok((await essaie(U.mook, `select emettre_facture_fiduciaire('${R.nonSolde}')`)).ok === false, "client non soldé : rien à émettre");
 
 console.log("Complément, avoir, correction");
@@ -227,12 +247,14 @@ ok((await essaie(U.taxiste, "select numero from fiduciaire_factures")).rows.leng
 console.log("Corrections après relecture");
 const J = async (n) => (await un("select (current_date + $1::int)::text d", [n])).d;
 // Fonctions internes : fermées aux utilisateurs connectés.
-for (const f of ["fiduciaire_cible", "fiduciaire_libelle", "fiduciaire_depuis", "fiduciaire_emetteur", "fiduciaire_initiales", "fiduciaire_date_en"]) {
-  const args = { fiduciaire_cible: `'${R.surPlace}'`, fiduciaire_libelle: `'${R.surPlace}'`, fiduciaire_depuis: "", fiduciaire_emetteur: "", fiduciaire_initiales: "'x'", fiduciaire_date_en: "current_date" }[f];
+const internes = { fiduciaire_cible: `'${R.surPlace}'`, fiduciaire_libelle: `'${R.surPlace}'`, fiduciaire_depuis: `'${ent.secret}'`, fiduciaire_emetteur: `'${ent.secret}'`, fiduciaire_initiales: "'x'", fiduciaire_date_en: "current_date",
+  fiduciaire_reglages: `'${ent.secret}'`, fiduciaire_concernee: `'${ent.secret}'`, fiduciaire_texte: "'a', 'b'", remise_reservation: `'${R.surPlace}'` };
+for (const f of Object.keys(internes)) {
+  const args = internes[f];
   const r = await essaie(U.anais, `select ${f}(${args})`);
   ok(r.ok === false && /permission denied/i.test(r.err), `${f} n'est pas appelable par un utilisateur connecté`);
 }
-ok((await essaie(U.anais, "select fiduciaire_prochain_numero('facture', current_date)")).ok === false, "fiduciaire_prochain_numero non plus");
+ok((await essaie(U.anais, "select fiduciaire_prochain_numero('facture', current_date, 'COM')")).ok === false, "fiduciaire_prochain_numero non plus");
 ok((await essaie(null, "select * from fiduciaire_a_preparer()")).ok === false || (await essaie(null, "select * from fiduciaire_a_preparer()")).rows.length === 0, "sans connexion, rien à préparer");
 
 // Périmètre « mes dossiers » : la personne limitée ne voit que les services de ses dossiers.
@@ -264,7 +286,9 @@ ok(avoirFutur.ok === false && /entre la date/.test(avoirFutur.err), "un avoir ne
 
 // Destinataire d'une autre entreprise : jamais copié.
 const vipSecret = await resa("taxi", await dossier("taxi", cliT, 0, 0), rattana, "Mauvais partenaire", { surPlace: true, vente: 900, comPrevue: 90, comRecue: 90, comLe: "2026-11-11" });
+await db.exec(`update reglages set valeur = valeur || '{"fiduciaire":{"actif":true}}'::jsonb where entite_id = '${ent.taxi}'`);
 const croise = await essaie(U.taxiste, `select emettre_facture_fiduciaire('${vipSecret}')`);
+await db.exec(`update reglages set valeur = valeur || '{"fiduciaire":{"actif":false}}'::jsonb where entite_id = '${ent.taxi}'`);
 ok(croise.ok === false && /pas de prestataire/.test(croise.err), "un partenaire d'une autre entreprise n'est pas reconnu comme destinataire");
 ok((await essaie(U.taxiste, "select * from fiduciaire_a_preparer()")).rows.every((x) => x.reservation_id !== vipSecret || x.destinataire_nom === null), "et son nom ne fuit pas dans la liste");
 
@@ -297,6 +321,90 @@ const orphelin = (await essaie(U.anais, "select * from fiduciaire_a_preparer()")
 ok(orphelin && orphelin.a_revoir && orphelin.manque.includes("service_supprime") && Number(orphelin.deja_facture) === 80, "un service supprimé encore facturé est listé pour les responsables");
 ok(!(await essaie(U.mook, "select * from fiduciaire_a_preparer()")).rows.some((x) => x.reservation_id === R.supprime), "mais pas pour l'assistante");
 ok((await essaie(U.anais, `select annuler_facture_fiduciaire('${R.supprime}') id`)).ok, "l'avoir s'émet même sans le service");
+
+console.log("Lot H : remise, dossier annulé, destinataire, réglages, QR figé");
+// Remise : 10 % sur la facture du client, la marge baisse de la part du service.
+const dossierRemise = (await un("insert into dossiers (entite_id, ref, client_id) values ($1, 'INV-2026-R01', $2) returning id", [ent.secret, cli])).id;
+await db.exec(`insert into documents (entite_id, dossier_id, type, date_emission, contenu) values ('${ent.secret}', '${dossierRemise}', 'facture', '2026-11-01', '{"devise":"THB","lignes":[{"id":"lr1","kind":"ligne","libelle":"Private longtail","unite":3000,"qte":1},{"id":"lr2","kind":"ligne","libelle":"Park fee","unite":400,"qte":1,"paye_sur_place":true},{"id":"lr3","kind":"remise","libelle":"Discount","pct":10}]}')`);
+await db.exec(`insert into paiements (entite_id, dossier_id, date, montant) values ('${ent.secret}', '${dossierRemise}', '2026-11-08', 2700)`);
+R.remise = (await un("insert into reservations (entite_id, dossier_id, partenaire_id, libelle, date_service, montant_vente, ligne_id) values ($1, $2, $3, 'Private longtail', '2026-11-10', 3000, 'lr1') returning id", [ent.secret, dossierRemise, rattana])).id;
+await db.query("insert into reservations_nets (entite_id, reservation_id, net_paye, paye_le) values ($1, $2, 2500, '2026-11-09')", [ent.secret, R.remise]);
+const { b: bRemise } = await compare("remise");
+ok(Number(bRemise.cible) === 200 && Number(bRemise.remise) === 300, "remise de 10 % : marge 3000 − 300 − 2500 = 200, comme le code");
+const eRem = await essaie(U.mook, `select emettre_facture_fiduciaire('${R.remise}') id`);
+const fRem = eRem.ok ? await un("select * from fiduciaire_factures where id = $1", [eRem.rows[0].id]) : null;
+ok(eRem.ok && Number(fRem.montant) === 200 && fRem.libelle.startsWith("Margin on Private longtail"), "facture de 200, libellé « Margin on »");
+ok(fRem.libelle === libelleFacture({ libelle: "Private longtail", date_service: "2026-11-10" }, { dossierRef: "INV-2026-R01", prenom: "Jane", nom: "Example", cas: "chez_nous" }), "libellé identique au code : " + fRem.libelle);
+const calcRem = await essaie(U.anais, `select fiduciaire_calcul('${R.remise}') j`);
+ok(calcRem.ok && calcRem.rows[0].j.remise === 300, "« Revoir le calcul » montre la part de la remise");
+
+// Dossier annulé, réservation restée confirmée : plus de marge, l'avoir est proposé.
+await db.exec(`update dossiers set annule = true where id = '${dossierRemise}'`);
+const { js: jsAnnule } = await compare("remise");
+ok(aEmettre(jsAnnule, 200).type === "avoir", "dossier annulé : le code propose l'avoir de 200");
+const ligneAnnule = (await essaie(U.anais, "select * from fiduciaire_a_preparer()")).rows.find((x) => x.reservation_id === R.remise);
+ok(ligneAnnule && ligneAnnule.type === "avoir" && Number(ligneAnnule.montant) === 200, "la base aussi : avoir de 200 à préparer");
+await db.exec(`update dossiers set annule = false where id = '${dossierRemise}'`);
+
+// Le prestataire change après facture : le nouveau reçoit tout, l'ancien garde sa facture jusqu'à l'avoir.
+const nouveauPresta = await part("secret", "New Boat Co.", "3 Moo 1, Koh Lanta, Krabi 81150");
+await db.exec(`update reservations set partenaire_id = '${nouveauPresta}' where id = '${R.remise}'`);
+await compare("remise");
+const apresChange = (await essaie(U.anais, "select * from fiduciaire_a_preparer()")).rows.filter((x) => x.reservation_id === R.remise);
+const pourNouveau = apresChange.find((x) => x.type === "facture");
+const pourAncien = apresChange.find((x) => (x.manque || []).includes("partenaire_change"));
+ok(pourNouveau && Number(pourNouveau.montant) === 200 && pourNouveau.destinataire_nom === "New Boat Co.", "nouveau prestataire : le montant entier (200), pas la différence");
+ok(pourAncien && Number(pourAncien.deja_facture) === 200 && pourAncien.destinataire_nom === "Rattana Tour Co., Ltd." && pourAncien.destinataire_cle === rattana, "ancien prestataire : à revoir, avec ses 200 déjà facturés");
+ok(!(await essaie(U.mook, "select * from fiduciaire_a_preparer()")).rows.some((x) => (x.manque || []).includes("partenaire_change")), "l'assistante ne voit pas l'avoir à l'ancien");
+const eNouv = await essaie(U.mook, `select emettre_facture_fiduciaire('${R.remise}') id`);
+ok(eNouv.ok && (await un("select destinataire_id from fiduciaire_factures where id = $1", [eNouv.rows[0].id])).destinataire_id === nouveauPresta, "facture au nouveau prestataire émise");
+const ambigu = await essaie(U.anais, `select annuler_facture_fiduciaire('${R.remise}')`);
+ok(ambigu.ok === false && /plusieurs prestataires/.test(ambigu.err), "deux destinataires : l'avoir demande lequel");
+const avAncien = await essaie(U.anais, `select annuler_facture_fiduciaire('${R.remise}', null, '${rattana}') id`);
+const fAvAncien = avAncien.ok ? await un("select * from fiduciaire_factures where id = $1", [avAncien.rows[0].id]) : null;
+ok(avAncien.ok && Number(fAvAncien.montant) === -200 && fAvAncien.destinataire_id === rattana && fAvAncien.avoir_de === fRem.id, "avoir de −200 à l'ancien, qui renvoie à sa facture");
+ok(!(await essaie(U.anais, "select * from fiduciaire_a_preparer()")).rows.some((x) => x.reservation_id === R.remise), "tout est juste : plus rien pour ce service");
+
+// Réglages : préfixe, titres, mots ; QR figé (il vient de reglages.apparence).
+await db.exec(`update reglages set valeur = valeur || '{"apparence":{"qr_image":"data:image/png;base64,QR1","qr_pseudo":"@secret"},"fiduciaire":{"depuis":"2026-11-01","prefixe_facture":"SEC","titre_facture":"TAX INVOICE","mot_commission":"Agency commission on"}}'::jsonb where entite_id = '${ent.secret}'`);
+R.reglages = await resa("secret", await dossier("secret", cli, 0, 0), rattana, "Réglages", { surPlace: true, comPrevue: 30, comRecue: 30, comLe: await J(-1) });
+const eReg = await essaie(U.mook, `select emettre_facture_fiduciaire('${R.reglages}') id`);
+const fReg = eReg.ok ? await un("select * from fiduciaire_factures where id = $1", [eReg.rows[0].id]) : null;
+ok(eReg.ok && fReg.numero === formaterNumero("facture", fReg.annee, 1, "SEC"), "nouveau préfixe : nouvelle série SEC-…-001 (" + (fReg && fReg.numero) + ")");
+ok(fReg.libelle.startsWith("Agency commission on Réglages"), "mot du libellé réglé");
+ok(fReg.emetteur.paiement.qr_image === "data:image/png;base64,QR1" && fReg.emetteur.paiement.qr_pseudo === "@secret" && fReg.emetteur.titres.facture === "TAX INVOICE" && fReg.emetteur.entite_id === ent.secret, "QR, titres et entreprise émettrice copiés sur la facture");
+await db.exec(`update reglages set valeur = jsonb_set(valeur, '{apparence,qr_image}', '""') where entite_id = '${ent.secret}'`);
+R.sansQr = await resa("secret", await dossier("secret", cli, 0, 0), rattana, "Sans QR", { surPlace: true, comPrevue: 20, comRecue: 20, comLe: await J(-1) });
+const eSq = await essaie(U.mook, `select emettre_facture_fiduciaire('${R.sansQr}') id`);
+const fSq = eSq.ok ? await un("select emetteur from fiduciaire_factures where id = $1", [eSq.rows[0].id]) : null;
+ok(eSq.ok && fSq.emetteur.paiement.qr_image === "", "sans QR le jour de l'émission : la clé est écrite vide, la facture reste sans QR");
+ok(await fige(`update fiduciaire_factures set destinataire_id = null where id = '${fReg.id}'`), "le destinataire est figé lui aussi");
+
+console.log("Migration 31 sur une base qui a déjà des factures (comme la production)");
+{
+  const ancienne = await nouvelleBase(30);
+  const q1 = async (sql, p = []) => (await ancienne.query(sql, p)).rows[0];
+  const sec = (await q1("select id from entites where slug = 'secret'")).id;
+  await ancienne.exec(`update reglages set valeur = valeur || '{"devise":"THB","fonctionnement":"excursions","emetteur":{"nom":"Secret Travel & Tour"},"paiement":{"texte":"x"}}'::jsonb where entite_id = '${sec}'`);
+  const c0 = (await q1("insert into clients (entite_id, prenom, nom) values ($1, 'Jane', 'Example') returning id", [sec])).id;
+  const p0 = (await q1("insert into partenaires (entite_id, nom, contact) values ($1, 'Rattana Tour Co., Ltd.', '{\"adresse\":\"1 Moo 2\"}') returning id", [sec])).id;
+  const d0 = (await q1("insert into dossiers (entite_id, ref, client_id) values ($1, 'INV-2026-001', $2) returning id", [sec, c0])).id;
+  const r0 = (await q1("insert into reservations (entite_id, dossier_id, partenaire_id, libelle, date_service, montant_vente, paye_sur_place) values ($1, $2, $3, 'Longtail', '2026-11-10', 3000, true) returning id", [sec, d0, p0])).id;
+  await ancienne.query("insert into reservations_nets (entite_id, reservation_id, commission_prevue, commission_recue, commission_recue_le) values ($1, $2, 300, 300, '2026-11-12')", [sec, r0]);
+  // Un administrateur général émet, comme Anaïs le 16.11.2026.
+  const root = (await q1("insert into auth.users (email) values ('root@test') returning id")).id;
+  await ancienne.exec(`insert into profils (user_id, email, nom, super_admin, actif) values ('${root}', 'root@test', 'Root', true, true) on conflict (user_id) do update set super_admin = true, actif = true`);
+  const commeRoot = async (sql) => { await ancienne.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${root}', false);`); try { return (await ancienne.query(sql)).rows[0]; } finally { await ancienne.exec("reset role;"); } };
+  const f0 = (await commeRoot(`select emettre_facture_fiduciaire('${r0}') id`)).id;
+  await ancienne.exec(fs.readFileSync(W + migrations.find((n) => n.startsWith("migration-31-")), "utf8"));
+  const apres = await q1("select destinataire_id, numero, emetteur from fiduciaire_factures where id = $1", [f0]);
+  ok(apres.destinataire_id === p0 && apres.numero === "COM-2026-001", "la facture existante reçoit son destinataire, sans changer de numéro");
+  ok((await q1("select prefixe from fiduciaire_compteurs where type = 'facture'")).prefixe === "COM", "le compteur existant devient la série COM");
+  await ancienne.query("update reservations_nets set commission_recue = 350 where reservation_id = $1", [r0]);
+  const f1b = (await commeRoot(`select emettre_facture_fiduciaire('${r0}') id`)).id;
+  const comp = await q1("select numero, montant from fiduciaire_factures where id = $1", [f1b]);
+  ok(comp.numero === "COM-2026-002" && Number(comp.montant) === 50, "la série continue (COM-2026-002) et le complément tient compte de l'ancienne facture");
+}
 
 console.log(echecs ? `${echecs} échec(s)` : "tout est ok");
 process.exit(echecs ? 1 : 0);

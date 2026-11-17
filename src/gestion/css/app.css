@@ -1485,6 +1485,11 @@ details > summary { padding-block: 11px; margin: 0; }
 .fiduciaire[lang="th"] .fid-montant { font-size: 1.3rem; }
 .fiduciaire .barre-action > button { white-space: normal; line-height: 1.3; min-width: 0; }
 .fid-plus { margin: 14px 0 0; text-align: center; }
+.fid-inactif { margin: 0 0 20px; padding: 12px 14px; border-radius: 10px; background: var(--danger-fond); color: var(--danger); font-weight: 600; }
+.fid-reglages { margin-top: 8px; border-top: 1px solid var(--bord); padding-top: 8px; }
+.fid-reglages > summary { display: flex; align-items: center; min-height: 44px; }
+.fid-reglages-corps { display: grid; gap: 10px; max-width: 720px; }
+.fid-reglages-grille { display: grid; gap: 0 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
 
 /* Création d'un dossier : le bloc voucher de chaque service, replié sur téléphone avec ce qui est déjà rempli. */
 .creation-voucher { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--bord); }
