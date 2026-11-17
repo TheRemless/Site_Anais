@@ -242,3 +242,19 @@ test("démo : préfixes, titres et QR copiés à l'émission ; changer de préfi
   assert.equal(f2.emetteur.titres.facture, "TAX INVOICE");
   assert.equal(reglagesFiduciaire(data.reglages[secret.id], f1).libelles_en.facture, "INVOICE", "l'ancienne facture garde son titre");
 });
+
+test("relecture : compte bancaire figé même vide, avoir relié à une facture d'avant la migration 31", () => {
+  const reglages = { emetteur: { nom: "Secret" }, paiement: { texte: "Compte ajouté plus tard" }, apparence: { qr_image: "" }, libelles_en: {} };
+  const vide = reglagesFiduciaire(reglages, { type: "facture", emetteur: { paiement: { texte: "", qr_image: "", qr_pseudo: "" } } });
+  assert.equal(vide.paiement.texte, "", "émise sans compte : reste sans compte");
+  const { data, secret, anais } = demo();
+  data.reglages[secret.id] = { ...data.reglages[secret.id], fiduciaire: { actif: true } };
+  const { r, p } = serviceChezNous(data, secret);
+  const f = emis(data, anais, r.id);
+  delete f.destinataire_id; // comme une facture émise avant la migration 31
+  data.reservations_nets.find((x) => x.reservation_id === r.id).net_paye = 2600;
+  const av = emis(data, anais, r.id);
+  assert.equal(av.type, "avoir");
+  assert.equal(av.avoir_de, f.id, "l'avoir renvoie à la facture reconnue par le nom du prestataire");
+  assert.equal(p.nom, f.destinataire.nom);
+});

@@ -92,6 +92,9 @@ export function creer() {
     async fiduciaireListe() {
       return structuredClone(facturesVisibles(data, { droit, voit }));
     },
+    async fiduciaireMigration31() {
+      return true;
+    },
     async fiduciaireAPreparer() {
       return structuredClone(aPreparerLocal(data, { droit, resumeDe, voit }));
     },

@@ -379,6 +379,8 @@ const eSq = await essaie(U.mook, `select emettre_facture_fiduciaire('${R.sansQr}
 const fSq = eSq.ok ? await un("select emetteur from fiduciaire_factures where id = $1", [eSq.rows[0].id]) : null;
 ok(eSq.ok && fSq.emetteur.paiement.qr_image === "", "sans QR le jour de l'émission : la clé est écrite vide, la facture reste sans QR");
 ok(await fige(`update fiduciaire_factures set destinataire_id = null where id = '${fReg.id}'`), "le destinataire est figé lui aussi");
+ok((await un("select fiduciaire_texte(E'\\n SEC\\t \\n', 'COM') t")).t === "SEC" && (await un("select fiduciaire_texte(E' \\n ', 'COM') t")).t === "COM", "les blancs (retours à la ligne compris) se retirent comme trim() dans l'outil");
+ok(Object.prototype.hasOwnProperty.call(fSq.emetteur.paiement, "texte"), "le texte du compte est toujours copié, même vide");
 
 console.log("Migration 31 sur une base qui a déjà des factures (comme la production)");
 {

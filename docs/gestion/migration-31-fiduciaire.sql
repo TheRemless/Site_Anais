@@ -41,7 +41,8 @@ alter table fiduciaire_factures drop constraint if exists fiduciaire_factures_ty
 
 -- 3. Réglages de la fiduciaire d'une entreprise, avec leurs valeurs par défaut (reglagesFid côté outil).
 create or replace function fiduciaire_texte(v text, d text) returns text language sql immutable as $$
-  select coalesce(nullif(btrim(coalesce(v, '')), ''), d)
+  -- Mêmes blancs retirés que trim() côté outil (espaces, tabulations, retours à la ligne).
+  select coalesce(nullif(regexp_replace(coalesce(v, ''), '^\s+|\s+$', '', 'g'), ''), d)
 $$;
 create or replace function fiduciaire_reglages(p_entite uuid) returns jsonb language sql stable security definer set search_path = public as $$
   with g as (select (select valeur from reglages where entite_id = p_entite) as v),
@@ -224,7 +225,8 @@ begin
     'entite_id', p_entite,
     'emetteur', jsonb_strip_nulls(jsonb_build_object('nom', reg->'emetteur'->'nom', 'sous_titre', reg->'emetteur'->'sous_titre', 'adresse', reg->'emetteur'->'adresse',
       'telephone', reg->'emetteur'->'telephone', 'licence', reg->'emetteur'->'licence', 'contact', reg->'emetteur'->'contact')),
-    'paiement', jsonb_strip_nulls(jsonb_build_object('nom', reg->'paiement'->'nom', 'texte', reg->'paiement'->'texte'))
+    'paiement', jsonb_strip_nulls(jsonb_build_object('nom', reg->'paiement'->'nom'))
+      || jsonb_build_object('texte', coalesce(reg->'paiement'->>'texte', ''))
       || jsonb_build_object('qr_image', coalesce(reg->'apparence'->>'qr_image', ''), 'qr_pseudo', coalesce(reg->'apparence'->>'qr_pseudo', '')),
     'titres', jsonb_build_object('facture', g->>'titre_facture', 'avoir', g->>'titre_avoir', 'ref_facture', g->>'ref_facture', 'ref_avoir', g->>'ref_avoir'));
 end

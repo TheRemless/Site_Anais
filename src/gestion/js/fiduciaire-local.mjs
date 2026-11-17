@@ -1,6 +1,6 @@
 // Démonstration : ce que font les fonctions des migrations 28 et 31 (fiduciaire_a_preparer, emettre_facture_fiduciaire, annuler_facture_fiduciaire,
 // marquer_envoyee_fiduciaire, fiduciaire_calcul), sur les données du navigateur. Mêmes règles, mêmes messages d'erreur ; le calcul vient de fiduciaire-calc.mjs.
-import { cibleAgence, aEmettre, libelleFacture, formaterNumero, reglagesFid, partRemise, parDestinataire, cleDestinataire, prefixeDe } from "./fiduciaire-calc.mjs";
+import { cibleAgence, aEmettre, libelleFacture, formaterNumero, reglagesFid, partRemise, parDestinataire, cleDestinataire, pourPartenaire, prefixeDe } from "./fiduciaire-calc.mjs";
 
 // L'écran existe pour les entreprises en mode excursions ou taxi ; les factures ne s'y émettent que si le réglage « actif » est vrai (faux par défaut en Taxi).
 const concernee = (data, entiteId) => ["excursions", "taxi"].includes(((data.reglages || {})[entiteId] || {}).fonctionnement);
@@ -60,7 +60,7 @@ function copieEmetteur(data, entiteId) {
   return {
     entite_id: entiteId,
     emetteur: pick(reg.emetteur, ["nom", "sous_titre", "adresse", "telephone", "licence", "contact"]),
-    paiement: { ...pick(reg.paiement, ["nom", "texte"]), qr_image: app.qr_image || "", qr_pseudo: app.qr_pseudo || "" },
+    paiement: { ...pick(reg.paiement, ["nom"]), texte: (reg.paiement || {}).texte || "", qr_image: app.qr_image || "", qr_pseudo: app.qr_pseudo || "" },
     titres: { facture: f.titre_facture, avoir: f.titre_avoir, ref_facture: f.ref_facture, ref_avoir: f.ref_avoir },
   };
 }
@@ -138,7 +138,7 @@ export function emettreLocal(data, { droit, resumeDe, voit, utilisateurId, aujou
   if (!dest) throw new Error("Ce service n'a pas de prestataire : le destinataire de la facture manque");
   if (!dest.adresse) throw new Error(`L'adresse de ${dest.nom} manque dans sa fiche partenaire`);
   const reg = data.reglages[r.entite_id] || {};
-  const precedenteFacture = [...data.fiduciaire_factures].reverse().find((f) => f.reservation_id === r.id && f.type === "facture" && cleDestinataire(f) === e.partenaire.id);
+  const precedenteFacture = [...data.fiduciaire_factures].reverse().find((f) => f.reservation_id === r.id && f.type === "facture" && pourPartenaire(f, e.partenaire));
   if (emission.type === "facture" && cible.date > aujourdhui) throw new Error(`La date de réception (${cible.date}) est dans le futur : corrigez-la avant de facturer`);
   const jour = emission.type === "facture" ? cible.date : dateAvoir || aujourdhui;
   if (emission.type === "avoir" && (jour > aujourdhui || (precedenteFacture && jour < precedenteFacture.date_facture))) throw new Error("La date de l'avoir doit se situer entre la date de la facture et aujourd'hui");

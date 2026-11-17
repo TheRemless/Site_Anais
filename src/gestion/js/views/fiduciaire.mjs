@@ -38,7 +38,7 @@ export async function vueFiduciaire() {
   const date = (iso) => (simple ? jjmmaaaa(iso) : formatDate(iso));
   const titre = t("titre", tr("Factures pour la fiduciaire"));
   const racine = h("div", { "data-titre": titre, "data-large": true, class: "fiduciaire", lang: simple ? "th" : undefined });
-  const etatEcran = { filtres: { mois: "", envoyee: simple ? "non" : "" }, choisies: new Set(), liste: [], preparer: [], occupe: false, nbPrep: 12, nbEmises: 30, reglagesOuverts: false };
+  const etatEcran = { filtres: { mois: "", envoyee: simple ? "non" : "" }, choisies: new Set(), liste: [], preparer: [], occupe: false, nbPrep: 12, nbEmises: 30, reglagesOuverts: false, m31: null };
 
   async function charger() {
     const liste = await etat.store.fiduciaireListe();
@@ -46,6 +46,8 @@ export async function vueFiduciaire() {
     const ici = (x) => x.entite_id === etat.entiteId;
     etatEcran.liste = liste.filter(ici);
     etatEcran.preparer = (await etat.store.fiduciaireAPreparer()).filter(ici);
+    // Les réglages de l'écran n'ont d'effet qu'avec la migration 31 (préfixes, titres, mots, émetteur, entreprise active).
+    if (etatEcran.m31 === null) etatEcran.m31 = etat.store.fiduciaireMigration31 ? await etat.store.fiduciaireMigration31() : true;
     return true;
   }
 
@@ -88,7 +90,7 @@ export async function vueFiduciaire() {
       ? [[tr("Service payé"), tr("sur place, chez le prestataire")], [tr("Commission prévue"), m(c.commission_prevue)], [tr("Commission reçue"), m(c.commission_recue)], [tr("Reçue le"), d(c.commission_recue_le)]]
       : [[tr("Service payé"), tr("chez nous")], [tr("Prix de vente (payé par le client)"), m(c.montant_vente)], [tr("Net prévu au prestataire"), m(c.net_prevu)], [tr("Net payé au prestataire"), m(c.net_paye)], [tr("Prestataire payé le"), d(c.paye_le)]];
     if (c.cas !== "sur_place" && Number(c.remise) > 0) lignes.splice(2, 0, [tr("Part de la remise de la facture du client"), `− ${m(c.remise)}`]);
-    if (c.dossier_annule) lignes.push([tr("Dossier"), tr("annulé : aucune marge, le déjà facturé s'annule par un avoir")]);
+    if (c.dossier_annule && c.cas !== "sur_place") lignes.push([tr("Dossier"), tr("annulé : aucune marge, le déjà facturé s'annule par un avoir")]);
     lignes.push([tr("Montant qui revient à l'agence"), m(c.cible)], [tr("Déjà facturé"), m(c.deja_facture)], [tr("Date de la facture"), d(c.date)]);
     if (c.manque && c.manque.length) lignes.push([tr("Ce qui manque"), c.manque.map((x) => tr(MANQUE[x] || x)).join(" ; ")]);
     const fermer = modal(
@@ -201,18 +203,20 @@ export async function vueFiduciaire() {
     const brut = (r.fiduciaire || {});
     const entreprise = (entiteActive() || {}).nom || "";
     const id = (k) => `fid-reg-${k}`;
-    const texte = (k, aide) => champ(LIBELLES_REGLAGES[k](), h("input", { type: "text", id: id(k), value: typeof brut[k] === "string" ? brut[k] : "", placeholder: FID_DEFAUT[k], maxlength: k.startsWith("prefixe") ? 12 : 60 }), aide);
-    const caseActif = h("input", { type: "checkbox", id: id("actif"), checked: f.actif });
-    const depuis = h("input", { type: "date", id: id("depuis"), value: f.depuis || "" });
+    // Les champs sont gardés ici : l'écran n'est pas encore dans la page au premier affichage (pas de document.getElementById).
+    const champs = {};
+    const texte = (k, aide) => champ(LIBELLES_REGLAGES[k](), (champs[k] = h("input", { type: "text", id: id(k), value: typeof brut[k] === "string" ? brut[k] : "", placeholder: FID_DEFAUT[k], maxlength: k.startsWith("prefixe") ? 12 : 60, disabled: !etatEcran.m31 })), aide);
+    const caseActif = h("input", { type: "checkbox", id: id("actif"), checked: f.actif, disabled: !etatEcran.m31 });
+    const depuis = h("input", { type: "date", id: id("depuis"), value: f.depuis || "", disabled: !etatEcran.m31 });
     const exemple = h("p", { class: "aide" });
     const montrerExemple = () => {
-      const val = (k) => (document.getElementById(id(k)) || {}).value || FID_DEFAUT[k];
+      const val = (k) => (champs[k] && champs[k].value) || FID_DEFAUT[k];
       const annee = aujourdhui().slice(0, 4);
-      exemple.textContent = tr("Numéros : {facture} pour une facture, {avoir} pour un avoir.", { facture: formaterNumero("facture", annee, 1, val("prefixe_facture").trim()), avoir: formaterNumero("avoir", annee, 1, val("prefixe_avoir").trim()) });
+      exemple.textContent = tr("Exemple de numéros, {facture} pour une facture et {avoir} pour un avoir.", { facture: formaterNumero("facture", annee, 1, val("prefixe_facture").trim()), avoir: formaterNumero("avoir", annee, 1, val("prefixe_avoir").trim()) });
     };
     const enregistrer = async (e) => {
       e.preventDefault();
-      const lu = (k) => (document.getElementById(id(k)).value || "").trim();
+      const lu = (k) => ((champs[k] && champs[k].value) || "").trim();
       const pf = lu("prefixe_facture") || FID_DEFAUT.prefixe_facture;
       const pa = lu("prefixe_avoir") || FID_DEFAUT.prefixe_avoir;
       if (![pf, pa].every((x) => /^[A-Za-z0-9-]{1,12}$/.test(x))) return toast(tr("Un préfixe ne contient que des lettres, des chiffres ou des tirets (12 au plus)."), true);
@@ -237,19 +241,20 @@ export async function vueFiduciaire() {
       h(
         "form",
         { class: "fid-reglages-corps", oninput: montrerExemple, onsubmit: enregistrer },
+        etatEcran.m31 ? null : h("p", { class: "avertissement" }, tr("Ces réglages ne s'appliquent pas encore, la base attend sa mise à jour (migration 31).")),
         h("label", { class: "case", for: id("actif") }, caseActif, " ", tr("{entreprise} émet des factures pour la fiduciaire", { entreprise })),
-        h("p", { class: "aide" }, tr("Décoché : aucune facture n'est proposée dans cette entreprise. Ce qui a déjà été facturé reste ici et se corrige par un avoir.")),
-        champ(tr("Date de départ"), depuis, tr("Un service reçu avant cette date et jamais facturé n'est pas proposé. Vide : aucune limite.")),
+        h("p", { class: "aide" }, tr("Case décochée, aucune facture n'est proposée dans cette entreprise. Ce qui a déjà été facturé reste ici et se corrige par un avoir.")),
+        champ(tr("Date de départ"), depuis, tr("Un service reçu avant cette date et jamais facturé n'est pas proposé. Laissée vide, la date ne limite rien.")),
         h("div", { class: "fid-reglages-grille" }, texte("prefixe_facture"), texte("prefixe_avoir")),
         exemple,
         h("div", { class: "fid-reglages-grille" }, texte("titre_facture"), texte("titre_avoir"), texte("ref_facture"), texte("ref_avoir")),
-        h("div", { class: "fid-reglages-grille" }, texte("mot_commission", tr("Service payé sur place : la commission reçue du prestataire.")), texte("mot_marge", tr("Service payé chez nous : la marge, prix de vente moins net payé."))),
-        h("p", { class: "aide" }, tr("Émetteur : {nom}. Son identité, son compte bancaire et son QR code se règlent dans Réglages. Ils sont copiés sur chaque facture le jour de l'émission : les changer ensuite ne modifie pas les factures déjà émises.", { nom: (r.emetteur || {}).nom || entreprise })),
-        h("p", { class: "aide" }, tr("Les textes de la facture sont en anglais : la fiduciaire les lit tels quels. Un champ vide reprend le texte par défaut.")),
-        h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
+        h("div", { class: "fid-reglages-grille" }, texte("mot_commission", tr("Pour un service payé sur place, la commission reçue du prestataire.")), texte("mot_marge", tr("Pour un service payé chez nous, la marge (prix de vente moins net payé)."))),
+        h("p", { class: "aide" }, tr("L'émetteur est {nom}. Son identité, son compte bancaire et son QR code se règlent dans Réglages. Ils sont copiés sur chaque facture le jour de l'émission, les changer ensuite ne modifie pas les factures déjà émises.", { nom: (r.emetteur || {}).nom || entreprise })),
+        h("p", { class: "aide" }, tr("Les textes de la facture sont en anglais, la fiduciaire les lit tels quels. Un champ vide reprend le texte par défaut.")),
+        h("div", { class: "actions" }, h("button", { class: "principal", type: "submit", disabled: !etatEcran.m31 }, tr("Enregistrer")))
       )
     );
-    queueMicrotask(montrerExemple);
+    montrerExemple();
     return details;
   }
 

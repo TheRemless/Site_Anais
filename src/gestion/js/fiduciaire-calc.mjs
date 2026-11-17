@@ -224,7 +224,8 @@ export function reglagesFiduciaire(reglages, facture) {
   return {
     ...reglages,
     emetteur: { ...reglages.emetteur, ...(figes.emetteur || {}) },
-    paiement: { ...(reglages.paiement || {}), texte: paie.texte !== undefined ? paie.texte : (reglages.paiement || {}).texte, ...(paie.nom ? { nom: paie.nom } : {}) },
+    // Facture de la migration 31 (QR copié) : le texte du compte est figé lui aussi, même absent. Avant : le texte copié, sinon l'actuel.
+    paiement: { ...(reglages.paiement || {}), texte: paie.texte !== undefined ? paie.texte : qrFige ? "" : (reglages.paiement || {}).texte, ...(paie.nom ? { nom: paie.nom } : {}) },
     apparence: { ...(reglages.apparence || {}), ...(qrFige ? { qr_image: paie.qr_image || "", qr_pseudo: paie.qr_pseudo || "" } : {}) },
     libelles_en: { ...(reglages.libelles_en || {}), facture: (avoir ? titres.avoir : titres.facture) || (avoir ? FID_DEFAUT.titre_avoir : FID_DEFAUT.titre_facture), ref_facture: (avoir ? titres.ref_avoir : titres.ref_facture) || (avoir ? FID_DEFAUT.ref_avoir : FID_DEFAUT.ref_facture) },
   };

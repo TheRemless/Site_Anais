@@ -283,6 +283,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async fiduciaireAPreparer() {
       return verifie(await sb.rpc("fiduciaire_a_preparer"));
     },
+    // Migration 31 appliquée ? La colonne destinataire_id n'existe qu'avec elle (réglages de l'écran Fiduciaire).
+    async fiduciaireMigration31() {
+      const { error } = await sb.from("fiduciaire_factures").select("destinataire_id").limit(1);
+      return !error;
+    },
     async fiduciaireEmettre(reservationId, date = null, attendu = null) {
       return verifie(await sb.rpc("emettre_facture_fiduciaire", { p_res: reservationId, p_date: date, p_attendu: attendu }));
     },
