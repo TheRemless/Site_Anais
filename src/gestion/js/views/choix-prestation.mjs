@@ -4,7 +4,7 @@ import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet, modeTaxi, 
 import { lignesSurPlace } from "../taxi-calc.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
-import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut, periodeSpecifique } from "../partenaires-calc.mjs";
+import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut, periodeSpecifique, proposable } from "../partenaires-calc.mjs";
 import { prestationEnfant } from "../demande-calc.mjs";
 import { appliquerModeParDefaut, MODELES_VOUCHER, SANS_VOUCHER, TITRES_VOUCHER, typeVoucherDeduit } from "../operations-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
@@ -15,7 +15,9 @@ import { tr, pluriel, N_ } from "../i18n.mjs";
 export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCompagnie = false, dossierId = null, defauts = {} }) {
   // Taxi : pas d'horaires de bateaux, l'onglet Trajets n'a rien à montrer.
   const ongletsDispo = [["tarifs", tr("Tarifs")], ...(modeTaxi() ? [] : [["trajets", tr("Trajets")]]), ["libre", tr("Autre prestation")]];
-  let onglet = etat.db.prestations.some((x) => x.actif !== false) || modeTaxi() ? "tarifs" : "trajets";
+  // Un tarif ou un trajet masqué, ou d'un partenaire masqué, ne se propose pas (audit n° 16).
+  const proposables = () => etat.db.prestations.filter((x) => proposable(x, etat.db.partenaires));
+  let onglet = proposables().length || modeTaxi() ? "tarifs" : "trajets";
   const dernier = dossierId ? etat.db.reservations.filter((r) => r.dossier_id === dossierId).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0] : null;
   const ctx = { date: defauts.date || (dernier && dernier.date_service) || "", adultes: defauts.adultes ?? (dernier && dernier.personnes ? dernier.personnes.adultes : 0) ?? 0, enfants: defauts.enfants ?? (dernier && dernier.personnes ? dernier.personnes.enfants : 0) ?? 0 };
   // Quantité proposée selon l'unité du tarif : par personne, par adulte, par enfant, sinon une seule.
@@ -29,14 +31,18 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   const liste = h("ul", { class: "choix-liste" });
   const compte = h("p", { class: "aide" });
   const onglets = h("div", { class: "onglets sous-onglets" }, ongletsDispo.map(([code, libelle]) => h("button", { type: "button", "aria-pressed": code === onglet ? "true" : "false", onclick: (e) => { onglet = code; for (const b of onglets.children) b.setAttribute("aria-pressed", b === e.currentTarget ? "true" : "false"); dessiner(); } }, libelle)));
-  const prix = (n) => (n === null || n === undefined ? tr("prix à définir") : formatMontant(n, devise));
+  const sansPrix = (n) => n === null || n === undefined || n === "";
+  // Sans prix de vente : la ligne entre au document sans montant ; elle est marquée pour qu'on pense à le saisir (audit n° 21).
+  const prix = (n) => (sansPrix(n) ? h("span", { class: "tag attention" }, tr("prix à saisir")) : formatMontant(n, devise));
   const termine = h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Terminé"));
   // Un tarif par personne avec des enfants au dossier : les adultes au tarif adulte, les enfants au tarif enfant de la base (une ligne chacun, comme
   // « Coller une demande »). Quantité changée à la main : une seule ligne, comme saisie. Sans tarif enfant, les enfants restent au tarif adulte.
   const lignesPrestation = (x, quantite) => {
     const adulte = ligneDepuisPrestation(x, netPrestation(x), { langue, date: date.value, qte: quantite, devise });
     const e = ["pp", "ad"].includes(x.unite) && ctx.enfants > 0 && quantite === qteDefaut(x) ? prestationEnfant(x, etat.db.prestations) : null;
-    if (!e || e.prix_vente === null || e.prix_vente === undefined) return [adulte];
+    // Tarif par adulte sans prix enfant : les enfants ne sont pas facturés. On le dit, sans bloquer (offert ou gratuit chez le partenaire, c'est possible).
+    if (x.unite === "ad" && ctx.enfants > 0 && quantite === qteDefaut(x) && (!e || sansPrix(e.prix_vente)) && !x.sur_place) toast(tr("Tarif par adulte sans prix enfant : les enfants ne sont pas facturés. Ajoutez le prix enfant dans la fiche de la prestation si besoin."), true);
+    if (!e || sansPrix(e.prix_vente)) return [adulte];
     const adultes = ligneDepuisPrestation(x, netPrestation(x), { langue, date: date.value, qte: Math.max(1, ctx.adultes), devise });
     const enfant = ligneDepuisPrestation(e, netPrestation(e), { langue, date: date.value, qte: ctx.enfants, devise });
     return [adultes, { ...enfant, libelle: `${adultes.libelle}, ${langue === "en" ? "child" : "enfant"}`, intro: `(${langue === "en" ? "per child" : "par enfant"})` }];
@@ -55,7 +61,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   const libelleLibre = h("input", { id: "cp-l-nom", autocomplete: "off" });
   const prixLibre = h("input", { id: "cp-l-prix", type: "number", min: "0", step: "any", inputmode: "decimal" });
   const qteLibre = h("input", { id: "cp-l-qte", type: "number", min: "1", step: "1", value: 1, inputmode: "numeric" });
-  const partenaireLibre = h("select", { id: "cp-l-part" }, h("option", { value: "" }, tr("Aucun partenaire")), [...etat.db.partenaires].sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
+  const partenaireLibre = h("select", { id: "cp-l-part" }, h("option", { value: "" }, tr("Aucun partenaire")), etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
   // Lot B (17.11.2026, audit n° 23) : le net, pour que la marge ne compte pas toute la vente, et le modèle de voucher, choisi plutôt que deviné
   // d'après les mots du libellé (« van », « speedboat »). Le net ne part jamais sur la facture : il rejoint la table protégée des nets.
   const avecNetLibre = peut("partenaires.nets");
@@ -114,8 +120,8 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
     for (const x of [liste, compte, champRecherche, noteBas]) x.hidden = libre;
     if (libre) return;
     if (onglet === "tarifs") {
-      const lignes = etat.db.prestations
-        .filter((x) => x.actif !== false && correspond(`${x.libelle} ${x.libelle_en} ${x.groupe} ${nomFamille(x.famille)} ${nomPartenaire(x.partenaire_id)}`, q.value))
+      const lignes = proposables()
+        .filter((x) => correspond(`${x.libelle} ${x.libelle_en} ${x.groupe} ${nomFamille(x.famille)} ${nomPartenaire(x.partenaire_id)}`, q.value))
         .sort((a, b) => FAMILLES.findIndex(([c]) => c === a.famille) - FAMILLES.findIndex(([c]) => c === b.famille) || nomPartenaire(a.partenaire_id).localeCompare(nomPartenaire(b.partenaire_id)) || (a.ordre || 0) - (b.ordre || 0));
       compte.textContent = pluriel(lignes.length, N_("{n} tarif."), N_("{n} tarifs."));
       const frequents = q.value.trim() ? [] : recents("prestation_id").map((id) => lignes.find((x) => x.id === id)).filter(Boolean);
@@ -140,7 +146,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
         );
       }
     } else {
-      const lignes = filtrerTrajets(etat.db.trajets, { date: date.value, q: q.value, nomPartenaire });
+      const lignes = filtrerTrajets(etat.db.trajets, { date: date.value, q: q.value, nomPartenaire, partenaires: etat.db.partenaires });
       compte.textContent = date.value ? pluriel(lignes.length, N_("{n} départ à cette date."), N_("{n} départs à cette date.")) : pluriel(lignes.length, N_("{n} départ."), N_("{n} départs."));
       const frequentsT = q.value.trim() ? [] : recents("trajet_id").map((id) => lignes.find((t) => t.id === id)).filter(Boolean);
       const ordreT = frequentsT.length ? [...frequentsT, ...lignes.filter((t) => !frequentsT.includes(t))] : lignes;

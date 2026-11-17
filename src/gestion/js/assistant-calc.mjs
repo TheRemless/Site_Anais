@@ -2,7 +2,7 @@
 // et qui prépare les faits envoyés pour rédiger une réponse. Les prix viennent toujours de la base chargée dans l'outil, avec les mêmes
 // calculs que la lecture par règles (demande-calc.mjs) : Claude choisit une ligne du catalogue, il ne donne jamais un prix.
 import { prixPrestation, prixTrajet, completerEnfant, completerSupplement, separerNom, lireMessage, offresPour } from "./demande-calc.mjs";
-import { libelleClient, libelleUnite } from "./partenaires-calc.mjs";
+import { libelleClient, libelleUnite, proposable } from "./partenaires-calc.mjs";
 import { horairesTexte, dureeTexte, fraisDeParc } from "./operations-calc.mjs";
 
 // L'assistant est éteint tant que l'entreprise ne l'a pas allumé dans Réglages (case « Assistant IA »).
@@ -11,15 +11,16 @@ export const assistantActif = (regl) => !!(regl && regl.assistant_ia === true);
 const paxDe = (s) => ({ adultes: s.adultes || (s.enfants ? 0 : 1), enfants: s.enfants || 0 });
 
 // Une offre de la base, dans la forme de la lecture par règles : titre, détail, prix calculé, tarif enfant et supplément rattachés.
-export function offreDepuisBase(ref, pax, { prestations = [], trajets = [], nomPartenaire = () => "" } = {}) {
+// Un tarif masqué, ou d'un partenaire masqué, ne se propose pas (`partenaires`, audit n° 16).
+export function offreDepuisBase(ref, pax, { prestations = [], trajets = [], nomPartenaire = () => "", partenaires = [] } = {}) {
   if (!ref) return null;
   if (ref.genre === "trajet") {
-    const t = trajets.find((x) => x.id === ref.id && x.actif !== false);
+    const t = trajets.find((x) => x.id === ref.id && proposable(x, partenaires));
     if (!t) return null;
     const { total, avertissement } = prixTrajet(t, pax);
     return { genre: "trajet", id: t.id, source: t, titre: `${t.de} → ${t.vers}${t.depart ? `, ${t.depart}` : ""}`, detail: [t.mode, nomPartenaire(t.partenaire_id)].filter(Boolean).join(" · "), total, avertissement, score: 1 };
   }
-  const p = prestations.find((x) => x.id === ref.id && x.actif !== false);
+  const p = prestations.find((x) => x.id === ref.id && proposable(x, partenaires));
   if (!p) return null;
   const offre = { genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score: 1 };
   return completerSupplement(completerEnfant(offre, pax, prestations), pax, prestations);

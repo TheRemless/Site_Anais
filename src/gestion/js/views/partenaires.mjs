@@ -3,10 +3,12 @@ import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPa
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
 import { TYPES_COMMISSION, SUR_PLACE, CHEZ_NOUS, modeParDefaut } from "../operations-calc.mjs";
-import { FAMILLES, surPlacePossible, nomFamille, libelleUnite, marge, correspond, UNITES, chiffres, commissionsPartenaire, paiementPartenaire } from "../partenaires-calc.mjs";
+import { FAMILLES, surPlacePossible, nomFamille, libelleUnite, marge, correspond, UNITES, chiffres, commissionsPartenaire, paiementPartenaire, utilisations, uniteInitiale, familleInitiale, deplacer, proposable } from "../partenaires-calc.mjs";
+import { prestationEnfantSeparee } from "../demande-calc.mjs";
+import { heureDeGrille } from "../pickup-calc.mjs";
 import { vide, cartes } from "./commun.mjs";
 import { listeTaches } from "./taches.mjs";
-import { tr, N_ } from "../i18n.mjs";
+import { tr, N_, pluriel } from "../i18n.mjs";
 import { ouvrirRecalculCommissions } from "./recalcul-commission.mjs";
 
 export const GROUPES = [
@@ -73,15 +75,33 @@ const paragraphes = (texte) => String(texte || "").split("\n").filter((l) => l.t
 const liste = (items) => (items && items.length ? h("ul", { class: "liste-regles" }, items.map((x) => h("li", null, x))) : null);
 
 // ---- Liste --------------------------------------------------------------------------------------------------
+// Un partenaire masqué (inactif) reste dans la liste, en gris, quand on coche « Afficher les masqués » : on le retrouve et on le réactive sans l'URL (audit n° 5).
 export function listePartenaires() {
+  const params = new URLSearchParams(location.hash.split("?")[1] || "");
   const corps = h("div");
-  const q = h("input", { id: "rech-partenaires", type: "search", placeholder: tr("Nom, catégorie, personne"), oninput: () => dessiner() });
+  const q = h("input", { id: "rech-partenaires", type: "search", value: params.get("q") || "", placeholder: tr("Nom, catégorie, personne"), oninput: () => dessiner() });
+  const nbMasques = etat.db.partenaires.filter((p) => p.actif === false).length;
+  const masques = h("input", { id: "voir-masques", type: "checkbox", checked: params.get("masques") === "1", onchange: () => dessiner() });
+  const caseMasques = nbMasques ? h("label", { class: "case", for: "voir-masques" }, masques, pluriel(nbMasques, N_("Afficher le partenaire masqué ({n})"), N_("Afficher les partenaires masqués ({n})"))) : null;
+  const texteDe = (p) => `${p.nom} ${p.nom_thai} ${p.categorie} ${p.role} ${(p.contact || {}).personne || ""}`;
   function dessiner() {
+    const u = new URLSearchParams();
+    if (q.value) u.set("q", q.value);
+    if (masques.checked) u.set("masques", "1");
+    history.replaceState(null, "", `#/partenaires${u.toString() ? `?${u}` : ""}`);
     corps.replaceChildren();
-    const tous = etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => (a.ordre || 0) - (b.ordre || 0) || a.nom.localeCompare(b.nom));
-    const visibles = tous.filter((p) => correspond(`${p.nom} ${p.nom_thai} ${p.categorie} ${p.role} ${(p.contact || {}).personne || ""}`, q.value));
+    const tous = etat.db.partenaires.filter((p) => masques.checked || p.actif !== false).sort((a, b) => (a.ordre || 0) - (b.ordre || 0) || a.nom.localeCompare(b.nom));
+    const visibles = tous.filter((p) => correspond(texteDe(p), q.value));
+    // La recherche ne trouve qu'un partenaire masqué : on le dit, plutôt que « aucun partenaire ».
+    const masquesTrouves = masques.checked ? 0 : etat.db.partenaires.filter((p) => p.actif === false && correspond(texteDe(p), q.value)).length;
     if (!visibles.length) {
-      corps.append(tous.length ? vide(tr("Aucun partenaire ne correspond"), tr("Essayez une autre recherche.")) : vide(tr("Aucun partenaire pour l'instant"), tr("Un partenaire regroupe ses contacts, ses tarifs, ses trajets, ses règles et son contrat."), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, tr("Ajouter le premier partenaire")) : null));
+      corps.append(
+        masquesTrouves
+          ? vide(pluriel(masquesTrouves, N_("{n} partenaire masqué correspond"), N_("{n} partenaires masqués correspondent")), tr("Cochez « Afficher les partenaires masqués » pour les voir et les réactiver."))
+          : tous.length
+            ? vide(tr("Aucun partenaire ne correspond"), tr("Essayez une autre recherche."))
+            : vide(tr("Aucun partenaire pour l'instant"), tr("Un partenaire regroupe ses contacts, ses tarifs, ses trajets, ses règles et son contrat."), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, tr("Ajouter le premier partenaire")) : null)
+      );
       return;
     }
     for (const [code, titre] of GROUPES) {
@@ -97,18 +117,19 @@ export function listePartenaires() {
             { class: "cartes grille" },
             du.map((p) => {
               const n = etat.db.prestations.filter((x) => x.partenaire_id === p.id && x.actif !== false).length;
-              const t = etat.db.trajets.filter((x) => x.partenaire_id === p.id).length;
+              const t = etat.db.trajets.filter((x) => x.partenaire_id === p.id && x.actif !== false).length;
               const tel = ((p.contact || {}).telephones || [])[0];
+              const masque = p.actif === false;
               return h(
                 "li",
-                { class: "carte" },
+                { class: masque ? "carte inactif" : "carte" },
                 h(
                   "a",
                   { class: "carte-lien", href: `#/partenaire/${p.id}` },
-                  h("span", { class: "carte-titre" }, p.nom),
+                  h("span", { class: "carte-titre" }, p.nom, masque ? h("span", { class: "tag" }, tr("masqué")) : null),
                   h("span", { class: "carte-droite" }, tel ? h("span", null, tel.numero) : null),
                   h("span", { class: "carte-sous" }, p.role || p.categorie),
-                  h("span", { class: "carte-pied" }, modeTaxi() ? h("span") : etatContrat(p), h("span", { class: "ref" }, [n ? `${n} tarif${n > 1 ? "s" : ""}` : "", t ? `${t} trajet${t > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ")))
+                  h("span", { class: "carte-pied" }, modeTaxi() || masque ? h("span") : etatContrat(p), h("span", { class: "ref" }, [n ? pluriel(n, N_("{n} tarif"), N_("{n} tarifs")) : "", t ? pluriel(t, N_("{n} trajet"), N_("{n} trajets")) : ""].filter(Boolean).join(" · ")))
                 )
               );
             })
@@ -121,11 +142,15 @@ export function listePartenaires() {
     const fermer = modal(p.id ? tr("Modifier le partenaire") : tr("Nouveau partenaire"), formulairePartenaire(p, (r) => (fermer(), naviguer(`#/partenaire/${r.id}`))), { large: true });
   };
   dessiner();
+  const nbActifs = etat.db.partenaires.filter((p) => p.actif !== false).length;
+  // Les tarifs et trajets proposés : ceux d'un partenaire masqué ne comptent plus.
+  const nbTarifs = etat.db.prestations.filter((x) => proposable(x, etat.db.partenaires)).length;
+  const nbTrajets = etat.db.trajets.filter((t) => proposable(t, etat.db.partenaires)).length;
   return h(
     "div",
     { "data-titre": tr("Partenaires") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Partenaires")), h("p", { class: "sous" }, (modeTaxi() ? tr("{n} partenaires, {n2} tarifs", { n: etat.db.partenaires.filter((p) => p.actif !== false).length, n2: etat.db.prestations.filter((p) => p.actif !== false).length }) : tr("{n} partenaires, {n2} tarifs, {n3} trajets", { n: etat.db.partenaires.filter((p) => p.actif !== false).length, n2: etat.db.prestations.filter((p) => p.actif !== false).length, n3: etat.db.trajets.length })))), h("div", { class: "entete-actions" }, h("a", { class: "bouton secondaire", href: "#/tarifs" }, tr("Tarifs")), h("a", { class: "bouton secondaire", href: "#/trajets" }, tr("Trajets")), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, tr("Nouveau partenaire")) : null)),
-    h("div", { class: "barre-outils" }, h("div", { class: "champ recherche" }, h("label", { for: "rech-partenaires" }, tr("Rechercher")), q)),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Partenaires")), h("p", { class: "sous" }, [pluriel(nbActifs, N_("{n} partenaire"), N_("{n} partenaires")), pluriel(nbTarifs, N_("{n} tarif"), N_("{n} tarifs")), modeTaxi() ? "" : pluriel(nbTrajets, N_("{n} trajet"), N_("{n} trajets"))].filter(Boolean).join(", "))), h("div", { class: "entete-actions" }, h("a", { class: "bouton secondaire", href: "#/tarifs" }, tr("Tarifs")), modeTaxi() ? null : h("a", { class: "bouton secondaire", href: "#/trajets" }, tr("Trajets")), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, tr("Nouveau partenaire")) : null)),
+    h("div", { class: "barre-outils" }, h("div", { class: "champ recherche" }, h("label", { for: "rech-partenaires" }, tr("Rechercher")), q), caseMasques),
     corps
   );
 }
@@ -141,6 +166,7 @@ export function fichePartenaire(id) {
   const prive = voitNets() ? privePartenaire(p) : null;
   const prestations = etat.db.prestations.filter((x) => x.partenaire_id === p.id).sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
   const trajets = etat.db.trajets.filter((x) => x.partenaire_id === p.id);
+  const trajetsActifs = trajets.filter((x) => x.actif !== false);
   const taches = etat.db.taches.filter((t) => t.partenaire_id === p.id && !t.fait);
   const rafraichir = () => naviguer(location.hash);
   const bloc = (titre, ...contenu) => (contenu.flat().some(Boolean) ? h("section", { class: "bloc" }, h("h2", null, tr(titre)), ...contenu) : null);
@@ -149,7 +175,7 @@ export function fichePartenaire(id) {
   const groupes = [...new Set(prestations.map((x) => x.groupe || nomFamille(x.famille)))];
   const tarifs = groupes.map((g) => {
     const lignes = prestations.filter((x) => (x.groupe || nomFamille(x.famille)) === g);
-    return h("div", { class: "groupe-tarifs" }, h("h3", null, g), tableauPrestations(lignes, { avecPartenaire: false, apres: rafraichir }));
+    return h("div", { class: "groupe-tarifs" }, h("h3", null, g), tableauPrestations(lignes, { avecPartenaire: false, apres: rafraichir, ordonnable: ecrit }));
   });
 
   return h(
@@ -162,7 +188,7 @@ export function fichePartenaire(id) {
       h("div", null, h("h1", null, p.nom), h("p", { class: "sous" }, [p.role, p.categorie].filter(Boolean).join(" · "), p.nom_thai ? h("span", { class: "sous-ligne", lang: "th" }, p.nom_thai) : null)),
       h("div", { class: "entete-actions" }, modeTaxi() ? null : etatContrat(p), ecrit ? h("button", { class: "secondaire", type: "button", onclick: () => { const fermer = modal(tr("Modifier le partenaire"), formulairePartenaire(p, () => (fermer(), rafraichir())), { large: true }); } }, tr("Modifier")) : null)
     ),
-    p.actif === false ? h("div", { class: "bandeau-info" }, tr("Ce partenaire est marqué comme inactif : il n'apparaît plus dans les listes ni dans les devis.")) : null,
+    p.actif === false ? h("div", { class: "bandeau-info" }, tr("Ce partenaire est masqué : ni lui, ni ses tarifs, ni ses trajets ne sont proposés pour les nouvelles saisies. Les services déjà enregistrés, leurs factures et leurs vouchers ne changent pas."), ecrit ? h("div", { class: "actions gauche" }, h("button", { class: "principal petit", type: "button", onclick: () => basculerPartenaire(p, true, rafraichir) }, tr("Réactiver ce partenaire"))) : null) : null,
     h(
       "div",
       { class: "deux-colonnes fiche" },
@@ -217,15 +243,25 @@ export function fichePartenaire(id) {
           r.checkin && r.checkin.length ? h("div", null, h("h3", null, tr("Check-in")), liste(r.checkin)) : null,
           r.points_embarquement && r.points_embarquement.length ? h("div", null, h("h3", null, tr("Points d'embarquement")), h("ul", { class: "liste-regles" }, r.points_embarquement.map((x) => h("li", null, h("strong", null, x.lieu), ` ${x.ou}`)))) : null
         ),
-        (r.pickups || []).length ? bloc(N_("Prise en charge à l'hôtel"), (r.pickups || []).map(tableauPickup)) : null,
+        // Grilles de pickup et points d'embarquement : modifiables ici (audit n° 8). Taxi n'a ni bateau ni grille de pickup.
+        (r.pickups || []).length || (ecrit && !modeTaxi())
+          ? h(
+              "section",
+              { class: "bloc" },
+              h("h2", null, tr("Prise en charge à l'hôtel")),
+              (r.pickups || []).map(tableauPickup),
+              (r.pickups || []).length ? null : h("p", { class: "vide-court" }, tr("Aucune grille de pickup. Une grille donne l'heure de pickup de chaque zone pour chaque départ.")),
+              ecrit && !modeTaxi() ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Pickups et points d'embarquement"), formulaireEmbarquementPickup(p, () => (fermer(), rafraichir())), { large: true }); } }, tr("Modifier les pickups et les points d'embarquement"))) : null
+            )
+          : null,
         p.notes ? bloc(N_("Notes"), paragraphes(p.notes)) : null,
-        trajets.length ? bloc(N_("Trajets"), h("p", null, tr("{n} trajets avec horaires, prix et périodes. ", { n: trajets.length }), h("a", { href: `#/trajets?partenaire=${p.id}` }, tr("Voir les trajets")))) : null
+        trajets.length ? bloc(N_("Trajets"), h("p", null, pluriel(trajetsActifs.length, N_("{n} trajet proposé"), N_("{n} trajets proposés")), trajets.length > trajetsActifs.length ? [", ", pluriel(trajets.length - trajetsActifs.length, N_("{n} masqué"), N_("{n} masqués"))] : "", ". ", h("a", { href: `#/trajets?partenaire=${p.id}${trajets.length > trajetsActifs.length ? "&masques=1" : ""}` }, tr("Voir les trajets")))) : null
       )
     ),
     h(
       "section",
       null,
-      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Tarifs")), ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle prestation"), formulairePrestation({ partenaire_id: p.id }, () => (fermer(), rafraichir()))); } }, tr("Nouvelle prestation")) : null),
+      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Tarifs")), ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirPrestation({ partenaire_id: p.id }, rafraichir) }, tr("Nouvelle prestation")) : null),
       prestations.length ? tarifs : h("p", { class: "vide-court" }, tr("Aucun tarif enregistré pour ce partenaire."))
     ),
     h(
@@ -234,8 +270,47 @@ export function fichePartenaire(id) {
       h("div", { class: "entete petit-entete" }, h("h2", null, tr("À régler avec ce partenaire")), peut("taches.ecrire") ? h("button", { class: "secondaire petit", type: "button", onclick: () => nouvelleTache(p, rafraichir) }, tr("Nouvelle tâche")) : null),
       taches.length ? listeTaches(taches, { avecDossier: false }) : h("p", { class: "vide-court" }, tr("Rien en attente. Les points à clarifier avec le partenaire s'ajoutent ici comme des tâches."))
     ),
-    ecrit ? h("div", { class: "zone-danger" }, h("button", { class: "lien danger-texte", type: "button", onclick: async () => { if (await confirmer(tr("Supprimer « {nom} » et tous ses tarifs et trajets ? Les devis déjà créés ne changent pas.", { nom: p.nom }), tr("Supprimer"), true)) { await supprimer("partenaires", p.id); toast(tr("Partenaire supprimé.")); naviguer("#/partenaires"); } } }, tr("Supprimer ce partenaire"))) : null
+    ecrit || peut("partenaires.supprimer")
+      ? h(
+          "div",
+          { class: "zone-danger" },
+          ecrit && p.actif !== false ? h("button", { class: "lien", type: "button", onclick: () => basculerPartenaire(p, false, rafraichir) }, tr("Masquer ce partenaire")) : null,
+          peut("partenaires.supprimer") ? h("button", { class: "lien danger-texte", type: "button", onclick: () => supprimerPartenaire(p, prestations, trajets, rafraichir) }, tr("Supprimer ce partenaire")) : null
+        )
+      : null
   );
+}
+
+// Masquer ou réactiver un partenaire : il garde ses tarifs, ses trajets et ses services. Masqué, rien de lui n'est proposé pour une nouvelle saisie.
+async function basculerPartenaire(p, actif, apres, { dejaConfirme = false } = {}) {
+  if (!actif && !dejaConfirme && !(await confirmer(tr("Masquer « {nom} » ? Ni lui, ni ses tarifs, ni ses trajets ne seront proposés pour les nouvelles saisies. Les services déjà enregistrés, leurs factures et leurs vouchers ne changent pas. Vous pourrez le réactiver depuis la liste, avec « Afficher les partenaires masqués ».", { nom: p.nom }), tr("Masquer")))) return;
+  try {
+    await modifier("partenaires", p.id, { actif, updated_at: new Date().toISOString() });
+    toast(actif ? tr("Partenaire réactivé.") : tr("Partenaire masqué."));
+    apres();
+  } catch (err) {
+    toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+  }
+}
+
+// Supprimer un partenaire : refusé s'il a des services enregistrés (on propose de le masquer), sinon une confirmation qui dit tout ce qui part avec lui (audit n° 14).
+async function supprimerPartenaire(p, prestations, trajets, apres) {
+  const n = utilisations({ partenaire: p }, etat.db);
+  if (n) {
+    const masquer = await confirmer(pluriel(n, N_("« {nom} » a {n} service enregistré. Le supprimer retirerait l'opérateur de ce service, de son voucher et des commissions. Masquez-le plutôt : il ne sera plus proposé et ce qui existe ne change pas."), N_("« {nom} » a {n} services enregistrés. Le supprimer retirerait l'opérateur de ces services, de leurs vouchers et des commissions. Masquez-le plutôt : il ne sera plus proposé et ce qui existe ne change pas."), { nom: p.nom }), p.actif === false ? tr("Fermer") : tr("Masquer ce partenaire"));
+    if (masquer && p.actif !== false) await basculerPartenaire(p, false, apres, { dejaConfirme: true });
+    return;
+  }
+  const taches = etat.db.taches.filter((t) => t.partenaire_id === p.id).length;
+  const message = tr("Supprimer définitivement « {nom} » ? Partent avec lui : {tarifs}, {trajets}, leurs prix nets, ses coordonnées bancaires et ses commissions. {taches} Aucun service n'est enregistré avec lui. Cette suppression ne peut pas être annulée : pour le garder sans le proposer, masquez-le.", { nom: p.nom, tarifs: pluriel(prestations.length, N_("{n} tarif"), N_("{n} tarifs")), trajets: pluriel(trajets.length, N_("{n} trajet"), N_("{n} trajets")), taches: taches ? pluriel(taches, N_("Sa tâche reste, sans partenaire."), N_("Ses {n} tâches restent, sans partenaire.")) : "" });
+  if (!(await confirmer(message, tr("Supprimer définitivement"), true))) return;
+  try {
+    await supprimer("partenaires", p.id);
+    toast(tr("Partenaire supprimé."));
+    naviguer("#/partenaires");
+  } catch (err) {
+    toast(tr("Suppression impossible : {message}", { message: err.message }), true);
+  }
 }
 
 function tableauPickup(t) {
@@ -273,9 +348,21 @@ async function nouvelleTache(p, apres) {
 
 // ---- Tableau de prestations (fiche, écran Tarifs) ---------------------------------------------------------------
 // Tableau sur grand écran, cartes sur téléphone. Les colonnes net et marge n'existent qu'avec le droit.
-export function tableauPrestations(lignes, { avecPartenaire = true, apres = () => {} } = {}) {
+// `ordonnable` : flèches pour monter ou descendre un tarif dans son groupe (fiche du partenaire, audit n° 82).
+export function tableauPrestations(lignes, { avecPartenaire = true, apres = () => {}, ordonnable = false } = {}) {
   const nets = voitNetsTarifs();
   const ecrit = peut("partenaires.ecrire");
+  // Sans prix de vente : marqué « prix à saisir », jamais « — » qui passe pour un prix connu (audit n° 21).
+  const vente = (x) => (x.prix_vente === null || x.prix_vente === undefined || x.prix_vente === "" ? h("span", { class: "tag attention" }, tr("prix à saisir")) : prix(x.prix_vente));
+  const deplacerTarif = async (x, sens) => {
+    try {
+      for (const c of deplacer(lignes, x.id, sens)) await modifier("prestations", c.id, { ordre: c.ordre });
+      apres();
+    } catch (err) {
+      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+    }
+  };
+  const fleches = (x, i) => (ordonnable && ecrit && lignes.length > 1 ? h("span", { class: "ordre-tarif" }, h("button", { class: "bouton-icone secondaire", type: "button", disabled: i === 0, "aria-label": tr("Monter « {libelle} »", { libelle: x.libelle }), title: tr("Monter"), onclick: () => deplacerTarif(x, -1) }, "↑"), h("button", { class: "bouton-icone secondaire", type: "button", disabled: i === lignes.length - 1, "aria-label": tr("Descendre « {libelle} »", { libelle: x.libelle }), title: tr("Descendre"), onclick: () => deplacerTarif(x, 1) }, "↓")) : null);
   const detail = (x) => {
     const d = x.details || {};
     const items = [[N_("Horaires"), d.horaires], [N_("Durée"), d.duree], [N_("Capacité"), d.capacite], [N_("Bateau"), d.bateau], [N_("Pour qui"), d.qui], [N_("Inclus"), d.inclus], [N_("Frais de parc"), d.parc], [N_("Conditions"), d.conditions], [N_("Remarque"), d.note], [N_("Moteur"), d.moteur], [N_("Montant en thaï"), d.montant_thai], [N_("Prix affiché"), d.vente_texte]].filter(([, v]) => v !== undefined && v !== null && v !== "");
@@ -284,18 +371,18 @@ export function tableauPrestations(lignes, { avecPartenaire = true, apres = () =
     if (!items.length) return null;
     return h("details", { class: "detail-prestation" }, h("summary", null, tr("Détail")), items.map(([k, v]) => h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, tr(k)), h("span", null, paragraphes(String(v))))));
   };
-  const modif = (x) => (ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Modifier la prestation"), formulairePrestation(x, () => (fermer(), apres()))); } }, tr("Modifier")) : null);
+  const modif = (x) => (ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirPrestation(x, apres) }, tr("Modifier")) : null);
   const sousTexte = (x) => [x.details && x.details.horaires, x.details && x.details.capacite, x.details && x.details.duree, libelleUnite(x.unite), x.sur_place ? tr("à payer sur place") : ""].filter(Boolean).join(" · ");
   return [
-    cartes(lignes, (x) => {
+    cartes(lignes, (x, i) => {
       const n = nets ? netPrestation(x) : null;
       return h(
         "div",
-        { class: "carte-lien statique" },
+        { class: x.actif === false ? "carte-lien statique inactif" : "carte-lien statique" },
         h("span", { class: "carte-titre" }, x.libelle, x.actif === false ? h("span", { class: "tag" }, tr("masqué")) : null),
-        h("span", { class: "carte-droite" }, h("strong", null, prix(x.prix_vente)), nets ? h("span", { class: "net" }, n && n.net != null ? tr("net {prix}", { prix: prix(n.net) }) : tr("net n/d")) : null),
+        h("span", { class: "carte-droite" }, h("strong", null, vente(x)), nets ? h("span", { class: "net" }, n && n.net != null ? tr("net {prix}", { prix: prix(n.net) }) : tr("net n/d")) : null),
         h("span", { class: "carte-sous" }, [avecPartenaire ? nomPartenaire(x.partenaire_id) : "", sousTexte(x)].filter(Boolean).join(" · ")),
-        h("span", { class: "carte-pied" }, nets ? margeNoeud(x.prix_vente, n && n.net) : h("span"), modif(x)),
+        h("span", { class: "carte-pied" }, nets ? margeNoeud(x.prix_vente, n && n.net) : h("span"), h("span", null, fleches(x, i ?? lignes.indexOf(x)), modif(x))),
         detail(x)
       );
     }),
@@ -306,7 +393,7 @@ export function tableauPrestations(lignes, { avecPartenaire = true, apres = () =
       h(
         "tbody",
         null,
-        lignes.map((x) => {
+        lignes.map((x, i) => {
           const n = nets ? netPrestation(x) : null;
           return h(
             "tr",
@@ -314,10 +401,10 @@ export function tableauPrestations(lignes, { avecPartenaire = true, apres = () =
             avecPartenaire ? h("td", null, h("a", { href: `#/partenaire/${x.partenaire_id}` }, nomPartenaire(x.partenaire_id)) || "—") : null,
             h("td", null, h("strong", null, x.libelle), x.actif === false ? h("span", { class: "tag" }, tr("masqué")) : null, h("span", { class: "sous-ligne" }, sousTexte(x)), detail(x)),
             h("td", null, libelleUnite(x.unite)),
-            h("td", { class: "num" }, prix(x.prix_vente)),
+            h("td", { class: "num" }, vente(x)),
             nets ? h("td", { class: "num net" }, n && n.net != null ? prix(n.net) : "n/d") : null,
             nets ? h("td", { class: "num" }, margeNoeud(x.prix_vente, n && n.net)) : null,
-            h("td", { class: "action-cellule" }, modif(x))
+            h("td", { class: "action-cellule" }, fleches(x, i), modif(x))
           );
         })
       )
@@ -327,6 +414,33 @@ export function tableauPrestations(lignes, { avecPartenaire = true, apres = () =
 
 // ---- Formulaires --------------------------------------------------------------------------------------------
 const lignesVers = (texte) => String(texte || "").split("\n").map((l) => l.trim()).filter(Boolean);
+
+// Lignes répétées d'un formulaire (téléphones, points d'embarquement, fenêtres, zones) : un bouton pour en ajouter, une croix par ligne.
+// `faire(valeur)` rend { noeud, valeur: () => … } ; `valeurs()` rend les valeurs des lignes restantes, dans l'ordre.
+function lignesRepetees(depart, faire, { ajouter = tr("Ajouter une ligne"), vide = {} } = {}) {
+  const zone = h("div", { class: "lignes-saisie" });
+  const lignes = [];
+  const ajouterLigne = (v, focus = false) => {
+    const l = faire(v);
+    const retirer = h("button", { class: "bouton-icone secondaire", type: "button", "aria-label": tr("Retirer cette ligne"), title: tr("Retirer"), onclick: () => { lignes.splice(lignes.indexOf(l), 1); l.noeud.remove(); } }, icone("fermer"));
+    l.noeud.append(retirer);
+    lignes.push(l);
+    zone.append(l.noeud);
+    if (focus) l.noeud.querySelector("input")?.focus();
+  };
+  depart.forEach((v) => ajouterLigne(v));
+  const bouton = h("button", { class: "secondaire petit", type: "button", onclick: () => ajouterLigne(vide, true) }, ajouter);
+  return { noeud: h("div", null, zone, bouton), valeurs: () => lignes.map((l) => l.valeur()), ajouter: ajouterLigne };
+}
+
+// Un téléphone par ligne : numéro, libellé et une vraie case WhatsApp (audit n° 56 : « | WhatsApp » écrit en libellé laissait la case décochée).
+function ligneTelephone(t = {}) {
+  const k = Math.random().toString(36).slice(2, 8);
+  const numero = h("input", { id: `tel-n-${k}`, type: "tel", value: t.numero || "", placeholder: tr("081-000-0000"), "aria-label": tr("Numéro") });
+  const libelle = h("input", { id: `tel-l-${k}`, value: t.libelle || "", placeholder: tr("Réservations, bureau…"), "aria-label": tr("Libellé du numéro") });
+  const wa = h("input", { id: `tel-w-${k}`, type: "checkbox", checked: !!t.whatsapp });
+  return { noeud: h("div", { class: "ligne-saisie tel-ligne" }, numero, libelle, h("label", { class: "case", for: wa.id }, wa, tr("WhatsApp"))), valeur: () => ({ numero: numero.value.trim(), libelle: libelle.value.trim(), whatsapp: wa.checked }) };
+}
 
 export function formulairePartenaire(p, apres) {
   const c = p.contact || {};
@@ -340,8 +454,7 @@ export function formulairePartenaire(p, apres) {
   groupe.value = GROUPES.some(([v]) => v === p.groupe) ? p.groupe : "autre";
   const role = h("input", { id: "p-role", value: p.role || "", placeholder: tr("Ce que fait ce partenaire, en une ligne") });
   const personne = h("input", { id: "p-personne", value: c.personne || "" });
-  const tels = h("textarea", { id: "p-tels", rows: 3, placeholder: tr("081-000-0000 | Réservations | whatsapp") });
-  tels.value = (c.telephones || []).map((t) => [t.numero, t.libelle || "", t.whatsapp ? "whatsapp" : ""].join(" | ").replace(/( \| )+$/, "")).join("\n");
+  const tels = lignesRepetees((c.telephones || []).length ? c.telephones : [{}], ligneTelephone, { ajouter: tr("Ajouter un numéro") });
   const emails = h("input", { id: "p-emails", value: (c.emails || []).join(", ") });
   const line = h("input", { id: "p-line", value: c.line || "" });
   const web = h("input", { id: "p-web", value: c.web || "" });
@@ -357,29 +470,40 @@ export function formulairePartenaire(p, apres) {
   mode.value = modeParDefaut(p);
   const checkin = h("textarea", { id: "p-checkin", rows: 2 });
   checkin.value = (r.checkin || []).join("\n");
+  // Consigne de check-in imprimée sur le voucher, en anglais (lue par le voucher, lot B) : la règle « Check-in » ci-dessus reste une note interne en français.
+  const checkinVoucher = h("textarea", { id: "p-checkin-voucher", rows: 2, lang: "en", placeholder: "Check-in opens 45 minutes before departure." });
+  checkinVoucher.value = r.checkin_voucher || "";
   const statut = h("input", { id: "p-statut", value: ct.statut || "", placeholder: tr("Tarifs nets confirmés, contrat à signer…") });
   const saison = h("input", { id: "p-saison", value: ct.saison || "" });
+  const validite = h("input", { id: "p-validite", value: ct.validite || "", placeholder: tr("Tarifs valables jusqu'au 30 avril 2027…") });
+  const etatC = h("select", { id: "p-etat" }, h("option", { value: "" }, tr("Rien à signaler")), h("option", { value: "attention" }, tr("À surveiller")));
+  etatC.value = ct.etat === "attention" ? "attention" : "";
   const fin = h("input", { id: "p-fin", type: "date", value: ct.fin || "" });
   const documents = h("input", { id: "p-docs", value: (ct.documents || []).join(", ") });
   const notes = h("textarea", { id: "p-notes", rows: 3 });
   notes.value = p.notes || "";
   const actif = h("input", { id: "p-actif", type: "checkbox", checked: p.actif !== false });
   const taxi = modeTaxi();
+  const erreur = h("p", { class: "erreur-form", role: "alert" });
   return h(
     "form",
     {
       class: "modal-corps",
       onsubmit: async (e) => {
         e.preventDefault();
+        erreur.textContent = "";
+        const telephones = tels.valeurs().filter((t) => t.numero || t.libelle);
+        if (telephones.some((t) => !t.numero)) return (erreur.textContent = tr("Un numéro de téléphone est vide : remplissez-le ou retirez la ligne."));
         const valeurs = {
           nom: nom.value.trim(),
           nom_thai: nomThai.value.trim(),
           categorie: categorie.value.trim(),
           groupe: groupe.value,
           role: role.value.trim(),
-          contact: { ...c, personne: personne.value.trim(), telephones: lignesVers(tels.value).map((l) => { const [numero, libelle, wa] = l.split("|").map((x) => x.trim()); return { numero, libelle: libelle || "", whatsapp: /whatsapp|wa/i.test(wa || "") }; }), emails: emails.value.split(",").map((x) => x.trim()).filter(Boolean), line: line.value.trim(), web: web.value.trim(), adresse: adresse.value.trim(), embarcadere: embarcadere.value.trim(), licence: licence.value.trim() },
-          regles: { ...r, mode_reglement: mode.value === SUR_PLACE ? SUR_PLACE : undefined, annulation: annulation.value.trim(), enfants: lignesVers(enfants.value), checkin: lignesVers(checkin.value) },
-          contrat: { ...ct, statut: statut.value.trim(), saison: saison.value.trim(), fin: fin.value || null, documents: documents.value.split(",").map((x) => x.trim()).filter(Boolean) },
+          contact: { ...c, personne: personne.value.trim(), telephones, emails: emails.value.split(",").map((x) => x.trim()).filter(Boolean), line: line.value.trim(), web: web.value.trim(), adresse: adresse.value.trim(), embarcadere: embarcadere.value.trim(), licence: licence.value.trim() },
+          // Taxi : le client paie toujours le chauffeur, le menu n'y est pas montré et le mode enregistré ne change pas (audit n° 55).
+          regles: { ...r, mode_reglement: taxi ? r.mode_reglement : mode.value === SUR_PLACE ? SUR_PLACE : undefined, annulation: annulation.value.trim(), enfants: lignesVers(enfants.value), checkin: lignesVers(checkin.value), checkin_voucher: taxi ? r.checkin_voucher || "" : checkinVoucher.value.trim() },
+          contrat: { ...ct, statut: statut.value.trim(), saison: saison.value.trim(), validite: validite.value.trim(), etat: etatC.value || undefined, fin: fin.value || null, documents: documents.value.split(",").map((x) => x.trim()).filter(Boolean) },
           notes: notes.value.trim(),
           actif: actif.checked,
         };
@@ -396,46 +520,174 @@ export function formulairePartenaire(p, apres) {
     champ(tr("Rôle"), role),
     h("h3", null, tr("Contact")),
     h("div", { class: "grille-form" }, champ(tr("Personne"), personne), champ(tr("E-mails, séparés par des virgules"), emails), champ(tr("Line"), line), champ(tr("Site"), web)),
-    champ(tr("Téléphones, un par ligne"), tels, tr("Numéro, puis libellé, puis « whatsapp », séparés par des barres verticales.")),
+    h("div", { class: "champ" }, h("p", { class: "etiquette" }, tr("Téléphones")), tels.noeud, h("p", { class: "aide" }, tr("Un numéro par ligne. Cochez WhatsApp pour le bouton WhatsApp de la fiche."))),
     // Taxi : ni embarcadère, ni check-in, ni contrat. Les champs masqués gardent leur valeur et s'enregistrent tels quels.
     h("div", { class: "grille-form" }, champ(tr("Adresse"), adresse), taxi ? null : champ(tr("Embarcadère ou point de départ"), embarcadere), champ(tr("Licence"), licence)),
     h("h3", null, tr("Règles")),
-    champ(tr("Règlement par les clients"), mode, tr("Les nouveaux services de ce partenaire prennent ce mode. Chaque service peut ensuite être changé d'un tap.")),
-    h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Enfants, une règle par ligne"), enfants), taxi ? null : champ(tr("Check-in, une règle par ligne"), checkin)),
+    taxi ? null : champ(tr("Règlement par les clients"), mode, tr("Les nouveaux services de ce partenaire prennent ce mode. Chaque service peut ensuite être changé d'un tap.")),
+    h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Enfants, une règle par ligne"), enfants), taxi ? null : champ(tr("Check-in, une règle par ligne"), checkin), taxi ? null : champ(tr("Consigne de check-in sur le voucher (anglais)"), checkinVoucher, tr("Imprimée telle quelle sur le voucher du client. Quelques lignes au plus."))),
     taxi ? null : h("h3", null, tr("Contrat")),
-    taxi ? null : h("div", { class: "grille-form" }, champ(tr("Statut"), statut), champ(tr("Saison"), saison), champ(tr("Fin du contrat"), fin, tr("Un rappel apparaît dans Aujourd'hui trente jours avant.")), champ(tr("Documents, séparés par des virgules"), documents)),
+    taxi ? null : h("div", { class: "grille-form" }, champ(tr("Statut"), statut), champ(tr("Saison"), saison), champ(tr("Validité"), validite), champ(tr("État"), etatC, tr("« À surveiller » met le contrat en orange dans la liste.")), champ(tr("Fin du contrat"), fin, tr("Un rappel apparaît dans Aujourd'hui trente jours avant.")), champ(tr("Documents, séparés par des virgules"), documents, tr("Les noms des documents seulement : le fichier lui-même se garde hors de l'outil pour l'instant."))),
     champ(tr("Notes"), notes),
-    h("label", { class: "case", for: "p-actif" }, actif, tr("Partenaire actif")),
+    h("label", { class: "case", for: "p-actif" }, actif, tr("Partenaire proposé pour les nouvelles saisies")),
+    h("p", { class: "aide" }, tr("Décoché, le partenaire est masqué : ni lui, ni ses tarifs, ni ses trajets ne sont proposés. Les services déjà enregistrés ne changent pas.")),
+    erreur,
     h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );
 }
 
-export function formulairePrestation(x, apres) {
+// Points d'embarquement et grilles de pickup du partenaire (audit n° 8). Une grille : un titre, ses départs (colonnes) et, pour chaque zone,
+// l'heure de pickup à chaque départ. Une case vide ou « - » : pas de pickup. Une heure illisible est refusée, jamais devinée (pickup-calc.mjs).
+export function formulaireEmbarquementPickup(p, apres) {
+  const r = p.regles || {};
+  const k = () => Math.random().toString(36).slice(2, 8);
+  const points = lignesRepetees(r.points_embarquement || [], (x = {}) => {
+    const i = k();
+    const lieu = h("input", { id: `pe-l-${i}`, value: x.lieu || "", placeholder: tr("Koh Lanta"), "aria-label": tr("Lieu") });
+    const ou = h("input", { id: `pe-o-${i}`, value: x.ou || "", placeholder: tr("Saladan Pier, comptoir n° 3"), "aria-label": tr("Point d'embarquement") });
+    return { noeud: h("div", { class: "ligne-saisie fenetre" }, lieu, ou), valeur: () => ({ lieu: lieu.value.trim(), ou: ou.value.trim() }) };
+  }, { ajouter: tr("Ajouter un point d'embarquement") });
+
+  const zoneGrilles = h("div");
+  const grilles = [];
+  const ajouterGrille = (g = { titre: "", colonnes: [], lignes: [] }) => {
+    const i = k();
+    const titre = h("input", { id: `pg-t-${i}`, value: g.titre || "", placeholder: tr("Pickup à Lanta") });
+    const colonnes = h("input", { id: `pg-c-${i}`, value: (g.colonnes || []).join(", "), placeholder: tr("Bateau 10h30, Bateau 13h00") });
+    let lignes = (g.lignes || []).map((l) => [...l]);
+    const zones = h("div", { class: "lignes-saisie" });
+    const colonnesDe = () => colonnes.value.split(",").map((x) => x.trim()).filter(Boolean);
+    let champsZones = [];
+    // Changer les départs redessine les zones en gardant les heures déjà tapées, colonne par colonne.
+    const lire = () => (lignes = champsZones.map((z) => [z.nom.value, ...z.heures.map((x) => x.value)]));
+    const dessinerZones = () => {
+      const cols = colonnesDe();
+      zones.replaceChildren();
+      champsZones = [];
+      zones.style.setProperty("--colonnes", String(Math.max(1, cols.length)));
+      lignes.forEach((l, li) => {
+        const z = { nom: h("input", { value: l[0] || "", placeholder: tr("Klong Dao"), "aria-label": tr("Zone") }), heures: cols.map((c, ci) => h("input", { value: l[ci + 1] || "", placeholder: "09:40", inputmode: "numeric", "aria-label": tr("Heure de pickup, {zone}, {depart}", { zone: l[0] || tr("zone"), depart: c }) })) };
+        champsZones.push(z);
+        zones.append(h("div", { class: "ligne-saisie zone" }, z.nom, ...z.heures, h("button", { class: "bouton-icone secondaire", type: "button", "aria-label": tr("Retirer cette zone"), title: tr("Retirer"), onclick: () => { lire(); lignes.splice(li, 1); dessinerZones(); } }, icone("fermer"))));
+      });
+    };
+    colonnes.addEventListener("change", () => (lire(), dessinerZones()));
+    dessinerZones();
+    const bloc = h(
+      "div",
+      { class: "editeur-grille" },
+      h("div", { class: "entete-grille" }, champ(tr("Titre de la grille"), titre), h("button", { class: "lien danger-texte", type: "button", onclick: () => { grilles.splice(grilles.indexOf(objet), 1); bloc.remove(); } }, tr("Retirer la grille"))),
+      champ(tr("Départs, séparés par des virgules"), colonnes, tr("Une colonne par départ. Les heures se tapent ensuite zone par zone.")),
+      h("p", { class: "etiquette" }, tr("Zones et heures de pickup")),
+      zones,
+      h("button", { class: "secondaire petit", type: "button", onclick: () => { lire(); lignes.push([""]); dessinerZones(); zones.lastElementChild?.querySelector("input")?.focus(); } }, tr("Ajouter une zone"))
+    );
+    const objet = { titre, colonnesDe, lire: () => (lire(), lignes) };
+    grilles.push(objet);
+    zoneGrilles.append(bloc);
+  };
+  (r.pickups || []).forEach(ajouterGrille);
+  const erreur = h("p", { class: "erreur-form", role: "alert" });
+  return h(
+    "form",
+    {
+      class: "modal-corps",
+      onsubmit: async (e) => {
+        e.preventDefault();
+        erreur.textContent = "";
+        const points_embarquement = points.valeurs().filter((x) => x.lieu || x.ou);
+        const pickups = [];
+        for (const g of grilles) {
+          const colonnes = g.colonnesDe();
+          const lignes = g.lire().filter((l) => String(l[0] || "").trim() || l.slice(1).some((v) => String(v || "").trim()));
+          if (!lignes.length && !g.titre.value.trim()) continue;
+          if (!colonnes.length) return (erreur.textContent = tr("La grille « {titre} » n'a pas de départ : indiquez au moins un départ.", { titre: g.titre.value.trim() || tr("sans titre") }));
+          const propres = [];
+          for (const l of lignes) {
+            const zone = String(l[0] || "").trim();
+            if (!zone) return (erreur.textContent = tr("Une zone sans nom dans la grille « {titre} » : nommez-la ou retirez-la.", { titre: g.titre.value.trim() || tr("sans titre") }));
+            const heures = colonnes.map((_, ci) => String(l[ci + 1] || "").trim());
+            const mauvaise = heures.find((v) => v && v !== "-" && !heureDeGrille(v));
+            if (mauvaise) return (erreur.textContent = tr("« {heure} » n'est pas une heure lisible ({zone}). Écrivez 09:40, ou laissez vide s'il n'y a pas de pickup.", { heure: mauvaise, zone }));
+            propres.push([zone, ...heures.map((v) => (v === "-" ? "" : heureDeGrille(v)))]);
+          }
+          pickups.push({ titre: g.titre.value.trim(), colonnes, lignes: propres });
+        }
+        try {
+          await modifier("partenaires", p.id, { regles: { ...r, points_embarquement, pickups }, updated_at: new Date().toISOString() });
+          toast(tr("Pickups et points d'embarquement enregistrés."));
+          apres();
+        } catch (err) {
+          toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+        }
+      },
+    },
+    h("h3", null, tr("Points d'embarquement")),
+    h("p", { class: "aide" }, tr("Où le client embarque, lieu par lieu. Le billet de bateau l'imprime quand le départ correspond.")),
+    points.noeud,
+    h("h3", null, tr("Grilles de pickup")),
+    h("p", { class: "aide" }, tr("L'heure de pickup se remplit d'après la zone de l'hôtel et le départ choisi, dans « Coller une demande » et dans la réservation.")),
+    zoneGrilles,
+    h("button", { class: "secondaire petit", type: "button", onclick: () => ajouterGrille() }, tr("Ajouter une grille")),
+    erreur,
+    h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
+  );
+}
+
+// Ouvre la fiche d'une prestation dans une fenêtre ; `apres` rafraîchit l'écran appelant.
+export function ouvrirPrestation(x, apres = () => naviguer(location.hash), options = {}) {
+  const fermer = modal(x.id ? tr("Modifier la prestation") : options.copie ? tr("Copie de la prestation") : tr("Nouvelle prestation"), formulairePrestation(x, () => (fermer(), apres()), { ...options, rouvrir: (y, o) => (fermer(), apres(), ouvrirPrestation(y, apres, o)) }), { large: true });
+}
+
+const AUCUN = "aucun";
+const nombreOuNul = (v) => (String(v ?? "").trim() === "" ? null : num(v));
+
+// `options.netsDepart` : les nets à proposer (copie d'une prestation) ; `options.rouvrir(y, o)` : ferme cette fiche et en ouvre une autre (Dupliquer).
+export function formulairePrestation(x, apres, options = {}) {
   const d = x.details || {};
   const taxi = modeTaxi();
   const nets = voitNetsTarifs();
-  const n = x.id && nets ? netPrestation(x) : null;
-  const partenaire = h("select", { id: "x-part" }, h("option", { value: "" }, tr("Sans partenaire (frais de parc, divers)")), etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
-  partenaire.value = x.partenaire_id || "";
+  const n = x.id && nets ? netPrestation(x) : nets ? options.netsDepart || null : null;
+  // Partenaire obligatoire (audit n° 60) : « Sans partenaire » est un choix explicite (frais de parc, divers), jamais un défaut.
+  // Un partenaire masqué reste dans la liste quand c'est le sien (audit n° 17), sinon la prestation perdait son partenaire à l'enregistrement.
+  const actuel = partenaireDe(x.partenaire_id);
+  const partenaire = h(
+    "select",
+    { id: "x-part" },
+    h("option", { value: "" }, tr("Choisir le partenaire")),
+    h("option", { value: AUCUN }, tr("Sans partenaire (frais de parc, divers)")),
+    etat.db.partenaires.filter((p) => p.actif !== false || p.id === x.partenaire_id).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.actif === false ? tr("{nom} (masqué)", { nom: p.nom }) : p.nom))
+  );
+  partenaire.value = x.partenaire_id && actuel ? x.partenaire_id : x.id || options.copie ? AUCUN : "";
   const famille = h("select", { id: "x-famille" }, FAMILLES.map(([v, l]) => h("option", { value: v }, tr(l))));
-  famille.value = x.famille || "excursion";
+  famille.value = familleInitiale(x, taxi);
   const groupe = h("input", { id: "x-groupe", value: x.groupe || "", list: "x-groupes", placeholder: tr("Excursions en groupe, Minivan privé…") });
   const groupes = h("datalist", { id: "x-groupes" }, [...new Set(etat.db.prestations.map((p) => p.groupe).filter(Boolean))].map((g) => h("option", { value: g })));
   const libelle = h("input", { id: "x-lib", value: x.libelle || "", required: true });
   const libelleEn = h("input", { id: "x-lib-en", value: x.libelle_en || "", placeholder: taxi ? tr("Pour les vouchers") : modeExcursions() ? tr("Pour les factures et les vouchers") : tr("Pour les devis en anglais") });
-  const prixVente = h("input", { id: "x-prix", type: "number", step: "1", min: "0", value: x.prix_vente ?? "", inputmode: "numeric" });
+  const nombre = (id, v) => h("input", { id, type: "number", step: "1", min: "0", value: v ?? "", inputmode: "numeric" });
+  const prixVente = nombre("x-prix", x.prix_vente);
+  const prixEnfant = nombre("x-prix-enf", d.enfant);
   const unite = h("select", { id: "x-unite" }, Object.keys(UNITES).map((k) => h("option", { value: k }, k ? libelleUnite(k) : tr("sans unité"))));
-  unite.value = x.unite || "pp";
-  const net = h("input", { id: "x-net", type: "number", step: "1", min: "0", value: n && n.net != null ? n.net : "", inputmode: "numeric" });
-  const netEnfant = h("input", { id: "x-net-enf", type: "number", step: "1", min: "0", value: n && n.net_enfant != null ? n.net_enfant : "", inputmode: "numeric" });
-  const horaires = h("input", { id: "x-horaires", value: d.horaires || "" });
-  const capacite = h("input", { id: "x-cap", value: d.capacite || "" });
-  const inclus = h("textarea", { id: "x-inclus", rows: 3 });
-  inclus.value = d.inclus || "";
-  const conditions = h("textarea", { id: "x-cond", rows: 2 });
-  conditions.value = d.conditions || "";
-  const note = h("textarea", { id: "x-note", rows: 2 });
-  note.value = d.note || "";
+  // « Sans unité » reste « sans unité » à la réouverture (audit n° 11) ; Taxi : « par véhicule » pour une nouvelle course (audit n° 20).
+  unite.value = options.copie ? x.unite || "" : uniteInitiale(x, taxi);
+  const net = nombre("x-net", n && n.net != null ? n.net : "");
+  const netEnfant = nombre("x-net-enf", n && n.net_enfant != null ? n.net_enfant : "");
+  const texte = (id, v, attrs = {}) => h("input", { id, value: v || "", ...attrs });
+  const zone = (id, v, rows = 2) => { const t = h("textarea", { id, rows }); t.value = v || ""; return t; };
+  const horaires = texte("x-horaires", d.horaires);
+  const duree = texte("x-duree", d.duree, { placeholder: tr("4 h, journée…") });
+  const capacite = texte("x-cap", d.capacite, { placeholder: tr("1 à 6 personnes") });
+  const qui = texte("x-qui", d.qui, { placeholder: tr("Dès 6 ans, débutants acceptés…") });
+  const bateau = zone("x-bateau", d.bateau);
+  const parc = zone("x-parc", d.parc);
+  const moteur = texte("x-moteur", d.moteur, { placeholder: tr("125 cc auto") });
+  const thaiAdulte = nombre("x-thai-ad", d.thai_adulte);
+  const thaiEnfant = nombre("x-thai-enf", d.thai_enfant);
+  const montantThai = texte("x-montant-thai", d.montant_thai, { lang: "th" });
+  const inclus = zone("x-inclus", d.inclus, 3);
+  const conditions = zone("x-cond", d.conditions);
+  const note = zone("x-note", d.note);
   const surPlace = h("input", { id: "x-place", type: "checkbox", checked: !!x.sur_place });
   const actif = h("input", { id: "x-actif", type: "checkbox", checked: x.actif !== false });
   // « Sur place » n'existe que pour un frais que le client règle lui-même (droit de parc, entrée) : la prestation devient une note hors total.
@@ -444,51 +696,142 @@ export function formulairePrestation(x, apres) {
   const caseSurPlace = taxi ? null : h("label", { class: "case", for: "x-place" }, surPlace, tr("Frais que le client règle lui-même sur place (droit de parc, entrée) : s'ajoute au dossier comme une note, hors total"));
   const avertSurPlace = h("p", { class: "bandeau-info", role: "status" });
   const aidePartenaire = h("p", { class: "aide", role: "status" });
+  const aideEnfant = h("p", { class: "aide", role: "status" });
+  // Champs propres à une famille : bateau et frais de parc pour une excursion ou une activité, moteur pour une location, tarif thaï pour un frais.
+  // Masqués, ils gardent leur valeur et s'enregistrent tels quels.
+  const champBateau = champ(tr("Bateau et quai"), bateau, tr("Première ligne : le bateau. Ligne suivante : le quai de départ. Imprimés sur le voucher."));
+  const champParc = champ(tr("Frais de parc"), parc, tr("Ce que le client paie sur place, ou « inclus ». Imprimé sur le voucher."));
+  const champMoteur = champ(tr("Moteur"), moteur, tr("Imprimé sur le voucher de location."));
+  const champsThai = h("div", { class: "grille-form compacte" }, champ(tr("Tarif thaï adulte"), thaiAdulte), champ(tr("Tarif thaï enfant"), thaiEnfant));
   const majSurPlace = () => {
     const frais = surPlacePossible(famille.value);
     if (caseSurPlace) caseSurPlace.hidden = !frais;
     // Une prestation déjà notée « sur place » qui n'est pas un frais : elle redevient un service normal à l'enregistrement.
     avertSurPlace.textContent = !taxi && x.sur_place && !frais ? tr("Cette prestation était notée « frais réglé sur place » : en l'enregistrant, elle redevient un service normal, ajouté au dossier avec son prix.") : "";
     avertSurPlace.hidden = !avertSurPlace.textContent;
-    const p = partenaireDe(partenaire.value || null);
+    const p = partenaireDe(partenaire.value && partenaire.value !== AUCUN ? partenaire.value : null);
     aidePartenaire.textContent = !taxi && p && modeParDefaut(p) === SUR_PLACE ? tr("Les clients de {partenaire} le paient directement : ses services s'ajoutent normalement au dossier, marqués payés sur place.", { partenaire: p.nom }) : "";
     aidePartenaire.hidden = !aidePartenaire.textContent;
+    const f = famille.value;
+    champBateau.hidden = taxi || !["excursion", "activite"].includes(f);
+    champParc.hidden = taxi || !["excursion", "activite"].includes(f);
+    champMoteur.hidden = taxi || f !== "location";
+    champsThai.hidden = taxi || f !== "frais";
+    // Prix enfant : seulement pour un tarif par personne ou par adulte. Une prestation enfant séparée existante continue de servir tant que le champ est vide.
+    const parPersonne = ["pp", "ad"].includes(unite.value);
+    prixEnfant.disabled = !parPersonne;
+    netEnfant.disabled = !parPersonne;
+    const separee = parPersonne && x.id ? prestationEnfantSeparee({ ...x, unite: unite.value, partenaire_id: partenaire.value === AUCUN ? null : partenaire.value, famille: f, groupe: groupe.value.trim(), libelle: libelle.value }, etat.db.prestations) : null;
+    aideEnfant.textContent = !parPersonne
+      ? tr("Pas de prix enfant pour un tarif {unite}.", { unite: libelleUnite(unite.value) || tr("sans unité") })
+      : separee && prixEnfant.value === ""
+        ? tr("Le tarif enfant vient aujourd'hui de la prestation « {libelle} ». Remplissez le prix enfant pour le tenir ici.", { libelle: separee.libelle })
+        : unite.value === "ad" && prixEnfant.value === ""
+          ? tr("Vide : les enfants ne sont pas facturés (tarif par adulte).")
+          : prixEnfant.value === ""
+            ? tr("Vide : les enfants paient le prix adulte.")
+            : tr("Les enfants ont leur ligne à ce prix sur la facture.");
   };
   famille.addEventListener("change", majSurPlace);
   partenaire.addEventListener("change", majSurPlace);
+  unite.addEventListener("change", majSurPlace);
+  prixEnfant.addEventListener("input", majSurPlace);
   majSurPlace();
+  const erreur = h("p", { class: "erreur-form", role: "alert" });
+  const valeursSaisies = () => {
+    // Prix enfant grisé (tarif ni par personne ni par adulte) : il ne s'enregistre pas, plutôt que de rester caché en base.
+    const nombres = { enfant: prixEnfant.disabled ? null : nombreOuNul(prixEnfant.value), thai_adulte: nombreOuNul(thaiAdulte.value), thai_enfant: nombreOuNul(thaiEnfant.value) };
+    const details = { ...d, horaires: horaires.value.trim(), duree: duree.value.trim(), capacite: capacite.value.trim(), qui: qui.value.trim(), bateau: bateau.value.trim(), parc: parc.value.trim(), moteur: moteur.value.trim(), montant_thai: montantThai.value.trim(), inclus: inclus.value.trim(), conditions: conditions.value.trim(), note: note.value.trim() };
+    // Les nombres vides disparaissent des détails (un « 0 » reste : prix enfant gratuit). Les textes vides absents au départ ne s'ajoutent pas.
+    for (const [k, v] of Object.entries(nombres)) if (v === null) delete details[k]; else details[k] = v;
+    for (const k of ["duree", "qui", "bateau", "parc", "moteur", "montant_thai"]) if (details[k] === "" && !(k in d)) delete details[k];
+    return { partenaire_id: partenaire.value === AUCUN ? null : partenaire.value, famille: famille.value, groupe: groupe.value.trim(), libelle: libelle.value.trim(), libelle_en: libelleEn.value.trim(), prix_vente: num(prixVente.value), unite: unite.value, sur_place: surPlacePossible(famille.value) && surPlace.checked, actif: actif.checked, details };
+  };
+  const ecrit = peut("partenaires.ecrire");
+  // Enregistre la fiche ; rend la prestation enregistrée, ou null (erreur dite à la personne).
+  const enregistrer = async () => {
+    erreur.textContent = "";
+    if (!partenaire.value) return (erreur.textContent = tr("Choisissez le partenaire, ou « Sans partenaire » pour un frais de parc ou un divers.")), partenaire.focus(), null;
+    const valeurs = valeursSaisies();
+    try {
+      const res = x.id ? await modifier("prestations", x.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("prestations", { ...valeurs, ordre: Math.max(0, ...etat.db.prestations.map((p) => p.ordre || 0)) + 1 });
+      if (nets && ecrit && (net.value !== "" || netEnfant.value !== "" || (x.id && n))) await enregistrerLie("prestations_nets", "prestation_id", res.id, { net: num(net.value), net_enfant: netEnfant.disabled ? null : num(netEnfant.value), note: n ? n.note || "" : "" });
+      toast(tr("Prestation enregistrée."));
+      return res;
+    } catch (err) {
+      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+      return null;
+    }
+  };
   return h(
     "form",
     {
       class: "modal-corps",
       onsubmit: async (e) => {
         e.preventDefault();
-        const valeurs = { partenaire_id: partenaire.value || null, famille: famille.value, groupe: groupe.value.trim(), libelle: libelle.value.trim(), libelle_en: libelleEn.value.trim(), prix_vente: num(prixVente.value), unite: unite.value, sur_place: surPlacePossible(famille.value) && surPlace.checked, actif: actif.checked, details: { ...d, horaires: horaires.value.trim(), capacite: capacite.value.trim(), inclus: inclus.value.trim(), conditions: conditions.value.trim(), note: note.value.trim() } };
-        try {
-          const res = x.id ? await modifier("prestations", x.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("prestations", { ...valeurs, ordre: Math.max(0, ...etat.db.prestations.map((p) => p.ordre || 0)) + 1 });
-          if (nets && peut("partenaires.ecrire") && (net.value !== "" || netEnfant.value !== "" || n)) await enregistrerLie("prestations_nets", "prestation_id", res.id, { net: num(net.value), net_enfant: num(netEnfant.value), note: n ? n.note || "" : "" });
-          toast(tr("Prestation enregistrée."));
-          apres(res);
-        } catch (err) {
-          toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
-        }
+        const res = await enregistrer();
+        if (res) apres(res);
       },
     },
     h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champ(tr("Famille"), famille), champ(tr("Groupe"), [groupe, groupes])),
     aidePartenaire,
     champ(tr("Libellé"), libelle),
     champ(tr("Libellé en anglais"), libelleEn),
-    h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente"), prixVente, tr("Laissez vide quand le prix se négocie à chaque client.")), champ(tr("Unité"), unite), nets ? champ(tr("Prix net"), net, tr("Ce que le partenaire facture.")) : null, nets ? champ(tr("Net enfant"), netEnfant) : null),
-    h("div", { class: "grille-form" }, champ(tr("Horaires"), horaires), champ(tr("Capacité ou pour qui"), capacite)),
+    h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente"), prixVente, tr("Vide : « prix à saisir » à chaque client. 0 : offert.")), champ(tr("Unité"), unite), champ(tr("Prix enfant"), prixEnfant), nets ? champ(tr("Prix net"), net, tr("Ce que le partenaire facture.")) : null, nets ? champ(tr("Net enfant"), netEnfant, tr("Pris pour la ligne enfant.")) : null),
+    aideEnfant,
+    h("div", { class: "grille-form" }, champ(tr("Horaires"), horaires), champ(tr("Durée"), duree, tr("Imprimée sur le voucher.")), champ(tr("Capacité"), capacite), champ(tr("Pour qui"), qui)),
+    champBateau,
+    champParc,
+    champMoteur,
+    champsThai,
+    taxi ? champ(tr("Montant en thaï"), montantThai, tr("Le prix tel que le chauffeur le lit.")) : null,
     champ(tr("Inclus"), inclus),
     champ(tr("Conditions"), conditions),
     champ(tr("Remarque interne"), note),
     // Taxi : pas de frais de parc. La case n'apparaît que pour la famille « Frais de parc ».
     caseSurPlace,
     avertSurPlace,
-    h("label", { class: "case", for: "x-actif" }, actif, taxi ? tr("Proposé dans les vouchers et les listes") : modeExcursions() ? tr("Proposé dans les factures, les vouchers et les listes") : tr("Proposé dans les devis et les listes")),
-    h("div", { class: "actions" }, x.id && peut("partenaires.ecrire") ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(tr("Supprimer « {libelle} » ? Les devis déjà créés ne changent pas.", { libelle: x.libelle }), tr("Supprimer"), true)) { await supprimer("prestations", x.id); toast(tr("Prestation supprimée.")); apres(null); } } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
+    h("label", { class: "case", for: "x-actif" }, actif, tr("Proposé pour les nouvelles saisies")),
+    h("p", { class: "aide" }, tr("Décoché, la prestation est masquée. Les services déjà saisis, leurs factures et leurs vouchers ne changent pas.")),
+    erreur,
+    h(
+      "div",
+      { class: "actions" },
+      x.id && peut("partenaires.supprimer") ? h("button", { class: "danger", type: "button", onclick: () => supprimerPrestation(x, apres) }, tr("Supprimer")) : null,
+      x.id && ecrit && options.rouvrir ? h("button", { class: "secondaire", type: "button", onclick: async () => {
+        // L'original est d'abord enregistré tel qu'il est à l'écran : rien de ce qu'on vient d'y taper ne se perd en ouvrant la copie.
+        const copie = { ...valeursSaisies(), libelle: tr("{libelle} (copie)", { libelle: libelle.value.trim() }) };
+        const netsCopie = nets ? { net: num(net.value), net_enfant: num(netEnfant.value) } : null;
+        if (await enregistrer()) options.rouvrir(copie, { copie: true, netsDepart: netsCopie });
+      } }, tr("Dupliquer")) : null,
+      h("button", { class: "principal", type: "submit" }, tr("Enregistrer"))
+    )
   );
+}
+
+// Supprimer une prestation : refusé si des services l'utilisent (on propose de la masquer), sinon une confirmation qui dit ce qui part avec elle (audit n° 15).
+async function supprimerPrestation(x, apres) {
+  const n = utilisations({ prestation: x }, etat.db);
+  if (n) {
+    const masquer = await confirmer(pluriel(n, N_("« {libelle} » est utilisée par {n} service. La supprimer retirerait à ce service son type de voucher, ses horaires et ses frais de parc. Masquez-la plutôt : elle ne sera plus proposée et ce qui existe ne change pas."), N_("« {libelle} » est utilisée par {n} services. La supprimer retirerait à ces services leur type de voucher, leurs horaires et leurs frais de parc. Masquez-la plutôt : elle ne sera plus proposée et ce qui existe ne change pas."), { libelle: x.libelle }), x.actif === false ? tr("Fermer") : tr("Masquer la prestation"));
+    if (!masquer || x.actif === false) return;
+    try {
+      await modifier("prestations", x.id, { actif: false, updated_at: new Date().toISOString() });
+      toast(tr("Prestation masquée."));
+      apres(null);
+    } catch (err) {
+      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+    }
+    return;
+  }
+  if (!(await confirmer(tr("Supprimer définitivement « {libelle} » et son prix net ? Aucun service ne l'utilise. Cette suppression ne peut pas être annulée.", { libelle: x.libelle }), tr("Supprimer définitivement"), true))) return;
+  try {
+    await supprimer("prestations", x.id);
+    toast(tr("Prestation supprimée."));
+    apres(null);
+  } catch (err) {
+    toast(tr("Suppression impossible : {message}", { message: err.message }), true);
+  }
 }
 
 function formulairePrive(p, prive, apres) {
