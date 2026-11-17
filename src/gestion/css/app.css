@@ -850,6 +850,16 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .detail-services summary { display: flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--teal-700); cursor: pointer; }
 .detail-services ul { list-style: none; margin: 0 0 6px; padding: 0; }
 .detail-services li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--bord); font-size: 0.92rem; }
+/* À encaisser : la liste à cocher d'un virement ou d'une réception à annuler, et le bandeau « Recalculer » toujours présent. */
+.liste-reception { list-style: none; margin: 0 0 8px; padding: 0; max-height: 45vh; overflow: auto; }
+.liste-reception li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 2px 0; border-top: 1px solid var(--bord); font-size: 0.92rem; }
+.liste-reception .case { flex: 1; min-width: 0; font-weight: 400; }
+.liste-reception .case input { flex: none; width: 20px; height: 20px; }
+.liste-reception .case .tag { margin-left: 6px; }
+.liste-reception strong { flex: none; }
+.bandeau-recalcul { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin: 0 0 20px; padding: 8px 14px; border: 1px solid var(--bord); border-radius: var(--rayon); font-size: 0.92rem; }
+.bandeau-recalcul.a-faire { background: #fff4d6; border-color: #e8d49a; color: #5a4300; }
+.bandeau-recalcul button { min-height: 44px; }
 .commissions-recues > summary { display: flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--teal-700); cursor: pointer; }
 .commissions-recevoir .carte-actions, .commissions-recues .carte-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 719px) {

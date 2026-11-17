@@ -393,14 +393,30 @@ export function lieuParDefaut(reservationsDuDossier, client = {}) {
 // Un partenaire a-t-il un mode et une règle de commission renseignés ? Sert à signaler ce qui reste à compléter.
 export const regleDeCommissionComplete = (regle) => commissionPrevue(regle, { vente: 1, net: 1, adultes: 1 }) !== null;
 
+// Les services d'un groupe (partenaire et mois) qu'un virement peut solder, ceux dont la réception n'est pas encore datée. Seuls les services
+// passés (avant `ajd`) avec une commission prévue sont cochés d'avance : un service à venir ou sans commission ne se marque reçu que si
+// quelqu'un le coche. Renvoie [{ reservation, prevue (nombre ou null), passe, coche }], dans l'ordre des dates.
+export function servicesAReceptionner(reservations, netDe, ajd) {
+  return (reservations || [])
+    .filter((r) => !(netDe(r) || {}).commission_recue_le)
+    .map((r) => {
+      const n = netDe(r) || {};
+      const prevue = n.commission_prevue !== null && n.commission_prevue !== undefined ? Number(n.commission_prevue) : null;
+      const passe = !!r.date_service && r.date_service < ajd;
+      return { reservation: r, prevue, passe, coche: passe && prevue !== null };
+    })
+    .sort((a, b) => String(a.reservation.date_service || "9999").localeCompare(String(b.reservation.date_service || "9999")));
+}
+
 // Le partenaire a versé `montant` pour ce groupe (partenaire et mois) : on le répartit sur ses réservations, proportionnellement à la commission
-// prévue (à parts égales quand rien n'est prévu), et on date la réception. Le dernier prend l'arrondi. Renvoie
-// [{ reservation_id, commission_recue }] et l'écart avec ce qui était attendu (positif : le partenaire a versé plus).
-export function repartirReception(reservations, netDe, montant) {
+// prévue (à parts égales quand rien n'est prévu), et on date la réception. Le dernier prend l'arrondi. `ids` : seulement ces réservations (la
+// liste cochée), sinon toutes celles qui ne sont pas encore réglées. Renvoie [{ reservation_id, commission_recue }] et l'écart avec ce qui était
+// attendu (positif : le partenaire a versé plus).
+export function repartirReception(reservations, netDe, montant, { ids = null } = {}) {
   const m = Math.round(Number(montant) * 100) / 100;
   const cibles = reservations.filter((r) => {
     const n = netDe(r);
-    return !(n && n.commission_recue_le);
+    return !(n && n.commission_recue_le) && (!ids || ids.has(r.id));
   });
   const prevue = (r) => {
     const n = netDe(r);
