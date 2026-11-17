@@ -38,7 +38,7 @@ test("copie : aucun montant, net, commission, note interne, e-mail ni adresse co
   for (const interdit of ["montant", "4800", "3200", "net", "commission", "200,", "interne", "secret@x.ch", "note privée", "details"]) assert.ok(!texte.includes(interdit), `« ${interdit} » ne doit pas figurer dans la copie`);
   // Les champs d'une ligne sont ceux de la liste blanche, pas un « tout sauf » : une colonne ajoutée plus tard ne fuit pas.
   const ligne = copie().entreprises[0].jours[0].groupes[0].lignes[0];
-  assert.deepEqual(Object.keys(ligne).sort(), ["adultes", "bebes", "chambre", "client", "enfants", "heure", "hotel", "libelle", "reference", "statut", "telephone", "trajet"]);
+  assert.deepEqual(Object.keys(ligne).sort(), ["adultes", "bebes", "chambre", "client", "enfants", "heure", "hotel", "libelle", "precision", "reference", "sorte", "statut", "telephone", "trajet"]);
 });
 
 test("lecture : acceptée si récente et de la même personne ; refusée sinon (autre personne, trop ancienne, illisible, autre version)", () => {

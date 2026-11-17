@@ -1491,3 +1491,10 @@ details > summary { padding-block: 11px; margin: 0; }
 .creation-voucher > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .creation-voucher-resume { margin-left: 8px; font-weight: 400; color: var(--texte-2); }
 .creation-voucher-resume:empty { display: none; }
+/* ---- Tâches : boutons Reporter, Modifier, Supprimer (lot G, 17.11.2026) : sous le texte sur téléphone ---- */
+.tache-boutons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+@media (max-width: 719px) {
+  .tache { flex-wrap: wrap; }
+  .tache-texte { flex: 1 1 calc(100% - 60px); min-width: 0; }
+  .tache-boutons { flex-basis: 100%; padding-left: 42px; }
+}

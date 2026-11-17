@@ -1,11 +1,9 @@
-// Feuille du jour : les services d'une date, par partenaire ou chauffeur, à envoyer en un tap (texte WhatsApp en anglais).
-// Les pickups sans heure ou sans hôtel sont signalés avant l'envoi, avec un tap pour les compléter.
-import { etat, partenaireDe, nomPartenaire, dossiersAnnules, peut } from "../etat.mjs";
+// Feuille du jour : les services d'une date, par partenaire ou chauffeur, en texte anglais à copier ou à partager. Les pickups sans heure ou sans hôtel
+// sont signalés, avec un tap pour les compléter. Aucun envoi vers le prestataire depuis l'outil : Anaïs lui écrit elle-même (décision du 17.11.2026).
+import { etat, nomPartenaire, dossiersAnnules, peut } from "../etat.mjs";
 import { h, modal, toast } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
-import { feuilleDuJour, lienWhatsApp } from "../operations-calc.mjs";
-import { alertesFeuille, texteFeuillePartage, joursProposes } from "../feuille-calc.mjs";
-import { chiffres, telWhatsApp } from "../partenaires-calc.mjs";
+import { alertesFeuille, texteFeuillePartage, joursProposes, feuilleJour } from "../feuille-calc.mjs";
 import { changerReservation } from "./prestataire.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
@@ -41,17 +39,13 @@ export function ouvrirFeuilleDuJour() {
     }
   }
 
-  // Un tap : la conversation du partenaire s'ouvre avec la feuille. Sans numéro, la liste de partage du téléphone, sinon la copie.
-  async function envoyer(texte, tel) {
-    if (tel) return window.open(lienWhatsApp(tel, texte), "_blank", "noopener");
-    if (navigator.share) {
-      try {
-        return await navigator.share({ text: texte });
-      } catch (err) {
-        if (err.name === "AbortError") return;
-      }
+  // La liste de partage du téléphone : Anaïs choisit elle-même à qui l'envoyer.
+  async function partager(texte) {
+    try {
+      await navigator.share({ text: texte });
+    } catch (err) {
+      if (err.name !== "AbortError") copier(texte);
     }
-    copier(texte);
   }
 
   function dessiner() {
@@ -59,7 +53,7 @@ export function ouvrirFeuilleDuJour() {
     corps.replaceChildren();
     alertes.replaceChildren();
     if (!jour) return corps.append(h("p", { class: "aide" }, tr("Choisissez une date.")));
-    const groupes = feuilleDuJour(etat.db.reservations, jour, contexte, dossiersAnnules());
+    const groupes = feuilleJour(etat.db.reservations, jour, contexte, dossiersAnnules());
     if (!groupes.length) return corps.append(h("p", { class: "vide-court" }, tr("Aucune réservation ce jour-là.")));
 
     const aCompleter = alertesFeuille(groupes);
@@ -81,8 +75,6 @@ export function ouvrirFeuilleDuJour() {
 
     for (const g of groupes) {
       const texte = texteFeuillePartage(g, jour);
-      const p = g.partenaire_id ? partenaireDe(g.partenaire_id) : null;
-      const tel = p ? chiffres(telWhatsApp(p), { thaiLocal: true }) : "";
       corps.append(
         h(
           "section",
@@ -92,8 +84,8 @@ export function ouvrirFeuilleDuJour() {
           h(
             "div",
             { class: "actions gauche" },
-            h("button", { class: "principal", type: "button", onclick: () => envoyer(texte, tel) }, g.nom ? tr("Envoyer à {nom}", { nom: g.nom }) : tr("Envoyer")),
-            h("button", { class: "secondaire", type: "button", onclick: () => copier(texte) }, tr("Copier"))
+            h("button", { class: "principal", type: "button", onclick: () => copier(texte) }, tr("Copier")),
+            navigator.share ? h("button", { class: "secondaire", type: "button", onclick: () => partager(texte) }, tr("Partager")) : null
           )
         )
       );
