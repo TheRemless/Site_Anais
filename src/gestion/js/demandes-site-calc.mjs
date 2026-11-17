@@ -1,0 +1,208 @@
+// Demandes du site (migration 30) : la logique pure de la boîte « Demandes du site ».
+// Ce que l'écran montre d'une demande, le message à relire par « Coller une demande », les changements décidés par Anaïs,
+// les réponses anglaises à copier dans la conversation WhatsApp du client, et les petits chiffres. Rien ne part au prestataire.
+import { PRODUITS_SITE } from "./site-produits.mjs";
+import { N_ } from "./i18n.mjs";
+
+export const STATUTS_DEMANDE = { nouvelle: N_("À traiter"), confirmee: N_("Confirmée"), refusee: N_("Refusée"), classee: N_("Classée") };
+export const MOTIFS_REFUS = { complet: N_("Complet ce jour-là"), mer: N_("Mer trop agitée"), indisponible: N_("Pas possible ce jour-là"), autre: N_("Sans motif") };
+
+export const produitSite = (id) => PRODUITS_SITE.find((p) => p.id === id) || null;
+export const nomProduit = (d) => d.produit || (produitSite(d.produit_id) || {}).nom || d.produit_id;
+export function titreOption(d) {
+  if (d.option_titre) return d.option_titre;
+  const p = produitSite(d.produit_id);
+  const o = p && d.option_id ? p.options.find((x) => x.id === d.option_id) : null;
+  return o ? o.titre : d.option_id || "";
+}
+// Options proposées pour « Modifier » : celles de la page produit du site.
+export const optionsProduit = (id) => (produitSite(id) || { options: [] }).options;
+
+// La demande telle qu'elle vaut maintenant : ce que le client a envoyé, avec les changements décidés par Anaïs par-dessus.
+export function demandeEffective(d, modifs = {}) {
+  const m = modifs || {};
+  return {
+    ...d,
+    date_service: m.date || d.date_service,
+    heure: m.heure || d.heure,
+    option_titre: m.option_titre || titreOption(d),
+    adultes: m.adultes ?? d.adultes,
+    enfants: m.enfants ?? d.enfants,
+    total: m.prix ?? null,
+  };
+}
+
+// ---- Dates et nombres en anglais, comme le site ------------------------------------------------------------
+const JOURS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MOIS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const utc = (iso) => new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+// « Tuesday 18 November » (l'année n'est ajoutée que si elle n'est pas celle d'aujourd'hui).
+export function dateAnglaise(iso, aujourdhui = "") {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(iso || "")) return "";
+  const d = utc(iso);
+  const an = aujourdhui && aujourdhui.slice(0, 4) !== iso.slice(0, 4) ? ` ${d.getUTCFullYear()}` : "";
+  return `${JOURS[d.getUTCDay()]} ${d.getUTCDate()} ${MOIS[d.getUTCMonth()]}${an}`;
+}
+// « Wed 4 Nov 2026 » : la ligne « Date: » d'un message du site, celle que lit « Coller une demande ».
+export const dateDuSite = (iso) => {
+  const d = utc(iso);
+  return `${JOURS[d.getUTCDay()].slice(0, 3)} ${d.getUTCDate()} ${MOIS[d.getUTCMonth()].slice(0, 3)} ${d.getUTCFullYear()}`;
+};
+export const montantAnglais = (n, devise = "THB") => `${Math.round(Number(n) * 100) / 100 === Math.round(Number(n)) ? Math.round(Number(n)).toLocaleString("en-US") : Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${devise}`;
+const pl = (n, un, plusieurs) => `${n} ${n === 1 ? un : plusieurs}`;
+export const personnesAnglais = (adultes, enfants) => [adultes ? pl(adultes, "adult", "adults") : "", enfants ? pl(enfants, "child", "children") : ""].filter(Boolean).join(", ");
+export const prenom = (nom) => String(nom || "").trim().split(/\s+/)[0] || "";
+
+// ---- Le message à relire ------------------------------------------------------------------------------------------
+// Le message que le site a envoyé à WhatsApp, avec les changements d'Anaïs posés dessus : « Coller une demande » le lit comme d'habitude
+// (même format, mêmes tests), trouve le service dans la base de prix et crée le dossier. Sans message (ancien site), il est reconstruit.
+export function texteDemande(d, modifs = {}) {
+  const e = demandeEffective(d, modifs);
+  const transfert = d.marque === "taxi" || /^(Transfer|Shared minivan) request:/m.test(d.message || "");
+  let lignes = (d.message || "").split("\n").filter((l) => l.trim());
+  if (!lignes.length) {
+    const option = e.option_titre ? ` – ${e.option_titre}` : "";
+    lignes = [transfert ? `Transfer request: ${nomProduit(d)}${option}` : `Booking request: ${nomProduit(d)}${option}`];
+    if (d.date_service) lignes.push(`Date: ${dateDuSite(d.date_service)}`);
+    if (d.heure) lignes.push(`Pickup time: ${d.heure}`);
+    const gens = personnesAnglais(d.adultes || 0, d.enfants || 0);
+    if (gens) lignes.push(`Guests: ${gens}`);
+    if (d.pickup) lignes.push(`Pickup: ${d.pickup}`);
+    if (d.nom) lignes.push(`Name: ${d.nom}`);
+    if (d.total_estime) lignes.push(`Estimated total: ${montantAnglais(d.total_estime, d.devise || "THB")}`);
+  }
+  const m = modifs || {};
+  // Nouvelle option : la première ligne « … request: Produit – Option » change de fin.
+  if (m.option_titre && /^(Booking|Transfer) request:/.test(lignes[0])) {
+    const avant = titreOption(d);
+    lignes[0] = avant && lignes[0].endsWith(` – ${avant}`) ? `${lignes[0].slice(0, -avant.length)}${m.option_titre}` : `${lignes[0].replace(/ – .*$/, "")} – ${m.option_titre}`;
+  }
+  const poser = (prefixe, valeur, apres) => {
+    const i = lignes.findIndex((l) => l.startsWith(prefixe));
+    if (i >= 0) lignes[i] = `${prefixe} ${valeur}`;
+    else {
+      const j = lignes.findIndex((l) => l.startsWith(apres));
+      lignes.splice(j >= 0 ? j + 1 : 1, 0, `${prefixe} ${valeur}`);
+    }
+  };
+  if (m.date) poser("Date:", dateDuSite(m.date), "Booking request:");
+  if (m.heure) poser("Pickup time:", m.heure, "Date:");
+  if (m.adultes !== undefined || m.enfants !== undefined) poser("Guests:", personnesAnglais(e.adultes || 0, e.enfants || 0), "Date:");
+  return lignes.join("\n");
+}
+
+// ---- Changements et réponses ---------------------------------------------------------------------------------------
+// Ce qui a changé entre la demande et ce qui a été réservé. `final` : { date, heure, option_titre, adultes, enfants, total, devise }.
+// Une heure absente de la demande (une sortie : le site ne la demande pas) n'est pas un changement, c'est une précision.
+export function changements(d, final) {
+  const out = [];
+  const ajoute = (champ, avant, apres) => out.push({ champ, avant, apres });
+  // Plusieurs services : chacun a sa date et ses personnes, rien à comparer à une seule ligne de la demande.
+  if (final.services && final.services.length > 1) return out;
+  if (final.date && d.date_service && final.date !== d.date_service) ajoute("date", d.date_service, final.date);
+  if (final.heure && d.heure && final.heure !== d.heure) ajoute("heure", d.heure, final.heure);
+  const optAvant = titreOption(d);
+  if (final.option_titre && optAvant && final.option_titre !== optAvant) ajoute("option", optAvant, final.option_titre);
+  const gensAvant = personnesAnglais(d.adultes || 0, d.enfants || 0);
+  const gensApres = personnesAnglais(final.adultes || 0, final.enfants || 0);
+  if (gensAvant && gensApres && gensAvant !== gensApres) ajoute("personnes", gensAvant, gensApres);
+  if (final.total !== null && final.total !== undefined && d.total_estime !== null && d.total_estime !== undefined && Number(final.total) !== Number(d.total_estime)) ajoute("prix", Number(d.total_estime), Number(final.total));
+  return out;
+}
+
+const LIBELLE_CHANGEMENT = { date: "Date", heure: "Pickup time", option: "Option", personnes: "Guests", prix: "Price" };
+function ligneChangement(c, devise, aujourdhui) {
+  const v = (x) => (c.champ === "date" ? dateAnglaise(x, aujourdhui) : c.champ === "prix" ? montantAnglais(x, devise) : x);
+  return `${LIBELLE_CHANGEMENT[c.champ]}: ${v(c.apres)} instead of ${v(c.avant)}`;
+}
+
+// Réponse de confirmation (avec les changements s'il y en a), en anglais, à copier dans la conversation WhatsApp du client.
+// Le site ne donne pas le numéro du client : pas de lien wa.me, la référence sert à retrouver la conversation.
+export function reponseConfirmation(d, final, { aujourdhui = "" } = {}) {
+  const devise = final.devise || d.devise || "THB";
+  const taxi = d.marque === "taxi";
+  const ch = changements(d, final);
+  const salut = prenom(d.nom) ? `Hi ${prenom(d.nom)},` : "Hi,";
+  const quoi = taxi ? "transfer" : "booking";
+  const tete = ch.length === 0 ? `Your ${quoi} is confirmed.` : `Your ${quoi} is confirmed with ${ch.length === 1 ? "one change" : "these changes"}:`;
+  const titre = [nomProduit(d), final.option_titre || titreOption(d)].filter(Boolean).join(" – ");
+  const quand = [final.date ? dateAnglaise(final.date, aujourdhui) : "", final.heure ? `pickup ${final.heure}` : ""].filter(Boolean).join(", ");
+  const ligneService = (s) => [s.titre, s.date ? dateAnglaise(s.date, aujourdhui) : "", s.heure ? `pickup ${s.heure}` : "", personnesAnglais(s.adultes || 0, s.enfants || 0)].filter(Boolean).join(", ");
+  const total = final.total !== null && final.total !== undefined && final.total !== "" ? `Total: ${montantAnglais(final.total, devise)}` : "";
+  const recap = final.services && final.services.length > 1
+    ? [...final.services.map(ligneService), d.pickup ? `Pickup: ${d.pickup}` : "", total].filter(Boolean)
+    : [titre, quand, personnesAnglais(final.adultes || 0, final.enfants || 0), d.pickup ? `Pickup: ${d.pickup}` : "", total].filter(Boolean);
+  // VIP Taxi Lanta : paiement en espèces au chauffeur (fait publié sur le site, site.json « payment »).
+  const paiement = taxi ? ["Payment in cash to the driver on the day."] : [];
+  return [salut, "", tete, ...ch.map((c) => ligneChangement(c, devise, aujourdhui)), "", ...recap, ...(paiement.length ? ["", ...paiement] : []), ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");
+}
+
+const PHRASE_MOTIF = {
+  complet: "Unfortunately it is fully booked that day.",
+  mer: "Unfortunately the sea is too rough for this trip that day.",
+  indisponible: "Unfortunately we cannot arrange it that day.",
+  autre: "Unfortunately we cannot confirm it this time.",
+};
+// Refus poli, avec une autre date et/ou une autre sortie si Anaïs en propose une. `alternative` : { date, produit_id }.
+export function reponseRefus(d, { motif = "autre", alternative = {} } = {}, { aujourdhui = "" } = {}) {
+  const salut = prenom(d.nom) ? `Hi ${prenom(d.nom)},` : "Hi,";
+  const quand = d.date_service ? ` on ${dateAnglaise(d.date_service, aujourdhui)}` : "";
+  const autre = alternative.produit_id ? (produitSite(alternative.produit_id) || { nom: alternative.produit_id }).nom : "";
+  const autreDate = alternative.date ? dateAnglaise(alternative.date, aujourdhui) : "";
+  const offre = autre && autreDate ? `We can offer ${autre} on ${autreDate} instead.` : autre ? `We can offer ${autre} instead.` : autreDate ? `We can offer ${autreDate} instead.` : "";
+  return [salut, "", `Thank you for your request for ${nomProduit(d)}${quand}.`, PHRASE_MOTIF[motif] || PHRASE_MOTIF.autre, ...(offre ? [offre, "Would that work for you?"] : ["We hope to see you another time."]), ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");
+}
+
+// Total réservé imposé (prix convenu dans « Modifier ») : l'écart va sur la première ligne chiffrée, par unité si la division tombe juste,
+// sinon cette ligne passe à une quantité de 1 au montant total. Les autres lignes ne bougent pas, le total des lignes vaut toujours `total`.
+export function imposerTotal(lignes, total) {
+  const chiffrees = lignes.filter((l) => l.kind !== "texte");
+  if (!chiffrees.length || total === null || total === undefined || total === "" || !Number.isFinite(Number(total))) return lignes;
+  const somme = chiffrees.reduce((s, l) => s + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
+  const ecart = Math.round((Number(total) - somme) * 100) / 100;
+  if (!ecart) return lignes;
+  const premiere = chiffrees[0];
+  const qte = Number(premiere.qte) || 1;
+  const montant = (Number(premiere.unite) || 0) * qte + ecart;
+  const parUnite = Math.round((montant / qte) * 100) / 100;
+  const juste = Math.round(parUnite * qte * 100) === Math.round(montant * 100);
+  return lignes.map((l) => (l !== premiere ? l : juste ? { ...l, unite: parUnite } : { ...l, unite: Math.round(montant * 100) / 100, qte: 1 }));
+}
+
+// ---- Liste et chiffres -----------------------------------------------------------------------------------------------
+export const aTraiter = (demandes) => demandes.filter((d) => d.statut === "nouvelle");
+// Plus récentes d'abord ; les demandes à traiter avant les autres.
+export const trierDemandes = (demandes) => [...demandes].sort((a, b) => (b.statut === "nouvelle") - (a.statut === "nouvelle") || String(b.created_at).localeCompare(String(a.created_at)));
+
+// Chemin de la page d'où vient la demande (« /tours/4-islands/ »), sans le domaine ni les paramètres.
+export function cheminPage(url) {
+  try {
+    return new URL(url).pathname || "/";
+  } catch {
+    return "";
+  }
+}
+
+// Reçues, confirmées, refusées par sortie et par page d'origine, sur une période. Une demande « classée » (essai, doublon) ne compte nulle part.
+export function chiffresDemandes(demandes, { depuis = "" } = {}) {
+  const liste = demandes.filter((d) => d.statut !== "classee" && (!depuis || String(d.created_at).slice(0, 10) >= depuis));
+  const compte = (rs) => ({ recues: rs.length, confirmees: rs.filter((d) => d.statut === "confirmee").length, refusees: rs.filter((d) => d.statut === "refusee").length, a_traiter: rs.filter((d) => d.statut === "nouvelle").length });
+  const grouper = (cle, nom) => {
+    const groupes = new Map();
+    for (const d of liste) {
+      const k = cle(d) || "";
+      if (!groupes.has(k)) groupes.set(k, []);
+      groupes.get(k).push(d);
+    }
+    return [...groupes].map(([k, rs]) => ({ cle: k, nom: nom(k, rs[0]), ...compte(rs) })).sort((a, b) => b.recues - a.recues || a.nom.localeCompare(b.nom));
+  };
+  const total = compte(liste);
+  const tranchees = total.confirmees + total.refusees;
+  return {
+    ...total,
+    // Taux de confirmation sur les demandes déjà tranchées (celles à traiter n'ont pas encore de réponse).
+    taux: tranchees ? Math.round((total.confirmees / tranchees) * 100) : null,
+    parProduit: grouper((d) => d.produit_id, (k, d) => nomProduit(d)),
+    parPage: grouper((d) => cheminPage(d.page_url), (k) => k || "?"),
+  };
+}

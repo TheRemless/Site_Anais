@@ -10,7 +10,7 @@ import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 import { appliquerTextesThai } from "./textes-thai.mjs";
 
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
+const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
 const CLE_ENTITE = "gestion-zwald-entite";
 
 // `documentsOuverts` : documents en cours d'édition. La synchronisation ne leur retire pas leur copie en mémoire, l'éditeur en a besoin.
@@ -180,7 +180,8 @@ export const entiteActive = () => etat.brut.entites.find((e) => e.id === etat.en
 function rebatir() {
   const e = etat.entiteId;
   const db = {};
-  for (const t of TABLES) db[t] = etat.brut[t].filter((r) => r.entite_id === e);
+  // Les tables du site (migration 30) peuvent manquer dans une copie ancienne : liste vide.
+  for (const t of TABLES) db[t] = (etat.brut[t] || []).filter((r) => r.entite_id === e);
   db.reglages = completerReglages(etat.brut.reglages[e]);
   db.roles = etat.brut.roles.filter((r) => r.entite_id === e);
   etat.db = db;
@@ -190,7 +191,8 @@ function rebatir() {
   setMasquerMontants(!peut("finances.voir"));
 }
 
-export function changerEntite(id) {
+// `naviguer: false` : l'adresse demandée est gardée (une notification qui ouvre un dossier d'une autre entreprise, « ?entite=… »).
+export function changerEntite(id, { naviguer = true } = {}) {
   etat.entiteId = id;
   try {
     localStorage.setItem(CLE_ENTITE, id);
@@ -198,6 +200,7 @@ export function changerEntite(id) {
     // sans importance
   }
   rebatir();
+  if (!naviguer) return;
   // Un dossier ouvert appartient à l'ancienne entreprise : on revient au tableau de bord.
   if (location.hash && location.hash !== "#/") location.hash = "#/";
   else window.dispatchEvent(new HashChangeEvent("hashchange"));

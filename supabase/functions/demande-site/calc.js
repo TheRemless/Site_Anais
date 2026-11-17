@@ -1,0 +1,161 @@
+// Fonction publique « demande-site » : la logique pure (origine admise, lecture et contrôle de la demande, texte de la notification).
+// Aucune dépendance : le même fichier sert à la fonction Supabase et aux tests (tests/gestion-demandes-site.test.js).
+// Contrat avec le site : docs/gestion/demandes-site.md.
+
+export const TAILLE_MAX = 4096; // octets du corps : une demande en fait moins de 1 500 avec son message
+export const LIMITE_APPAREIL = { nombre: 5, minutes: 10 }; // 5 demandes en 10 minutes par appareil (empreinte d'IP)
+export const LIMITE_TOTALE = { nombre: 300, minutes: 60 }; // garde-fou global : au-delà, le site est attaqué, pas visité
+
+const ORIGINES = ["https://secrettravelandtour.com", "https://www.secrettravelandtour.com"];
+const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/;
+
+// Origines admises : le site, et la machine de développement pour les essais.
+export const origineAdmise = (origine) => !!origine && (ORIGINES.includes(origine) || LOCAL.test(origine));
+
+// Texte propre : sans caractère de contrôle (le retour à la ligne est gardé là où il est permis), espaces en trop retirés, longueur bornée.
+const CONTROLE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200F\u2028-\u202E\u2066-\u2069]/g;
+function texte(v, max, { lignes = false } = {}) {
+  if (v === undefined || v === null || v === "") return null;
+  if (typeof v !== "string" && typeof v !== "number") throw erreur("type");
+  let s = String(v).replace(CONTROLE, "").replace(/\r\n?/g, "\n");
+  s = lignes ? s.split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim() : s.replace(/\s+/g, " ").trim();
+  if (!s) return null;
+  if (s.length > max) throw erreur("trop_long");
+  return s;
+}
+function entier(v, min, max) {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < min || n > max) throw erreur("nombre");
+  return n;
+}
+function erreur(code) {
+  const e = new Error(code);
+  e.code = code;
+  return e;
+}
+
+// Date au format AAAA-MM-JJ, réelle, entre hier et dans 400 jours (heure de Bangkok).
+export function dateValide(iso, aujourdhui) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return false;
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso) return false;
+  const jours = (d - new Date(`${aujourdhui}T00:00:00Z`)) / 86400000;
+  return jours >= -1 && jours <= 400;
+}
+
+const champ = (nom, f) => {
+  try {
+    return f();
+  } catch (e) {
+    e.champ = nom;
+    throw e;
+  }
+};
+
+// Lit le corps reçu (texte JSON) et renvoie la ligne à écrire, ou lève une erreur avec `code` et `champ`.
+// `piege: true` : le champ piège (« website ») est rempli, c'est un robot ; l'appelant répond « ok » sans rien écrire.
+export function lireDemande(corps, { aujourdhui }) {
+  if (typeof corps !== "string" || !corps) throw erreur("vide");
+  if (new TextEncoder().encode(corps).length > TAILLE_MAX) throw erreur("trop_gros");
+  let d;
+  try {
+    d = JSON.parse(corps);
+  } catch {
+    throw erreur("json");
+  }
+  if (!d || typeof d !== "object" || Array.isArray(d)) throw erreur("json");
+  if (d.website) return { piege: true };
+  const marque = d.brand === "secret" || d.brand === "taxi" ? d.brand : null;
+  if (!marque) throw Object.assign(erreur("marque"), { champ: "brand" });
+  const produitId = champ("product_id", () => texte(d.product_id, 60));
+  if (!produitId || !/^[a-z0-9-]{1,60}$/.test(produitId)) throw Object.assign(erreur("produit"), { champ: "product_id" });
+  const ref = champ("ref", () => texte(d.ref, 24));
+  if (ref && !/^[A-Z0-9-]{3,24}$/.test(ref)) throw Object.assign(erreur("format"), { champ: "ref" });
+  const date = champ("date", () => texte(d.date, 10));
+  if (date && !dateValide(date, aujourdhui)) throw Object.assign(erreur("date"), { champ: "date" });
+  const heure = champ("time", () => texte(d.time, 5));
+  if (heure && !/^([01]\d|2[0-3]):[0-5]\d$/.test(heure)) throw Object.assign(erreur("format"), { champ: "time" });
+  const adultes = champ("adults", () => entier(d.adults, 0, 60));
+  const enfants = champ("children", () => entier(d.children, 0, 60));
+  const total = d.estimated_total === undefined || d.estimated_total === null || d.estimated_total === "" ? null : Number(d.estimated_total);
+  if (total !== null && !(Number.isFinite(total) && total >= 0 && total <= 10000000)) throw Object.assign(erreur("nombre"), { champ: "estimated_total" });
+  const devise = champ("currency", () => texte(d.currency, 3)) || "THB";
+  if (!/^[A-Z]{3}$/.test(devise)) throw Object.assign(erreur("format"), { champ: "currency" });
+  // L'adresse de la page n'est gardée que si elle est sur le site (ou la machine de développement) : on n'enregistre pas un lien choisi par un tiers.
+  const page = champ("page_url", () => texte(d.page_url, 300));
+  const pageUrl = page && /^(https:\/\/(www\.)?secrettravelandtour\.com|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)(\/[^\s]*)?$/.test(page) ? page : null;
+  return {
+    marque,
+    ref,
+    produit_id: produitId,
+    produit: champ("product", () => texte(d.product, 120)),
+    option_id: champ("option", () => texte(d.option, 80)),
+    option_titre: champ("option_label", () => texte(d.option_label, 120)),
+    date_service: date,
+    heure,
+    adultes,
+    enfants,
+    pickup: champ("pickup", () => texte(d.pickup, 200)),
+    nom: champ("name", () => texte(d.name, 100)),
+    total_estime: total === null ? null : Math.round(total * 100) / 100,
+    devise,
+    page_url: pageUrl,
+    message: champ("message", () => texte(d.message, 2000, { lignes: true })),
+  };
+}
+
+// Adresse IP du visiteur. D'abord celle que pose Cloudflare (cf-connecting-ip) ou la passerelle (x-real-ip), que le visiteur ne peut pas choisir ;
+// x-forwarded-for en dernier recours seulement, car son premier maillon peut être écrit par le client lui-même.
+export function adresseIP(entetes) {
+  const brut = entetes.get("cf-connecting-ip") || entetes.get("x-real-ip") || (entetes.get("x-forwarded-for") || "").split(",")[0];
+  return String(brut || "").trim().slice(0, 64);
+}
+
+const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
+
+// Notification envoyée à l'équipe : la sortie, les personnes, le jour. Jamais le nom ni l'hôtel du client (elle passe par Apple et Google).
+// « 4 Islands, 2 adultes, mardi 18 » ; le mois est ajouté quand la date n'est pas dans les 30 prochains jours.
+export function notification(ligne, aujourdhui) {
+  const morceaux = [ligne.produit || ligne.produit_id];
+  if (ligne.option_titre) morceaux[0] += ` (${ligne.option_titre})`;
+  const personnes = [ligne.adultes ? pluriel(ligne.adultes, "adulte", "adultes") : "", ligne.enfants ? pluriel(ligne.enfants, "enfant", "enfants") : ""].filter(Boolean).join(", ");
+  if (personnes) morceaux.push(personnes);
+  if (ligne.date_service) {
+    const d = new Date(`${ligne.date_service}T00:00:00Z`);
+    const ecart = (d - new Date(`${aujourdhui}T00:00:00Z`)) / 86400000;
+    const mois = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"][d.getUTCMonth()];
+    morceaux.push(ecart === 0 ? "aujourd'hui" : ecart === 1 ? "demain" : `${JOURS[d.getUTCDay()]} ${d.getUTCDate()}${ecart < 0 || ecart > 30 ? ` ${mois}` : ""}`);
+  }
+  return { titre: ligne.marque === "taxi" ? "Nouvelle demande VIP Taxi Lanta" : "Nouvelle demande du site", corps: morceaux.join(", "), tag: `demande-site-${ligne.marque}` };
+}
+
+// Personnes qui reçoivent la notification d'une demande : celles qui lisent les demandes de cette entreprise (même règle que la base,
+// lit_demandes_site : voir tous les dossiers, sans l'écran « Nouveau voucher » seul). Un super administrateur les reçoit toutes.
+export function destinataires({ entiteId, profils, membres, roles }) {
+  const roleDe = new Map(roles.map((r) => [r.id, r]));
+  return profils
+    .filter((p) => p.actif)
+    .filter((p) => {
+      if (p.super_admin) return true;
+      const m = membres.find((x) => x.user_id === p.user_id && x.entite_id === entiteId);
+      const r = m && roleDe.get(m.role_id);
+      const perms = (r && r.permissions) || [];
+      return !!r && r.portee === "toute" && perms.includes("dossiers.lire") && !perms.includes("vouchers.seul");
+    })
+    .map((p) => p.user_id);
+}
+
+// Réponses : un code court en anglais pour le site (il ne les montre pas), jamais le détail interne.
+export const REPONSES = {
+  ok: { status: 202, corps: { ok: true } },
+  origine: { status: 403, corps: { ok: false, error: "origin" } },
+  methode: { status: 405, corps: { ok: false, error: "method" } },
+  type: { status: 415, corps: { ok: false, error: "content_type" } },
+  trop_gros: { status: 413, corps: { ok: false, error: "too_large" } },
+  limite: { status: 429, corps: { ok: false, error: "rate_limited" } },
+  captcha: { status: 403, corps: { ok: false, error: "turnstile" } },
+  serveur: { status: 500, corps: { ok: false, error: "server" } },
+};
+export const reponseInvalide = (e) => ({ status: 400, corps: { ok: false, error: "invalid", ...(e.champ ? { field: e.champ } : {}) } });
