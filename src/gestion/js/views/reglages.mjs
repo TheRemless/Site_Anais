@@ -1,4 +1,5 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
+import { modulesReglables } from "../modules.mjs";
 import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
 import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
@@ -647,15 +648,15 @@ export function vueReglages() {
         "fieldset",
         null,
         h("legend", null, tr("Écrans de cette entreprise")),
-        h("p", { class: "aide" }, ztp ? tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». Le catalogue de formules sert aux devis.", { nom: entiteActive().nom }) : tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». En automatique, chacun est affiché. Masquer un écran ne masque que lui.", { nom: entiteActive().nom })),
+        h("p", { class: "aide" }, tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». Chaque façon de travailler a ses écrans : seuls les siens sont proposés. Masquer un écran masque aussi ceux qui en dépendent.", { nom: entiteActive().nom })),
         h(
           "div",
           { class: "grille-form" },
-          ...(ztp ? [["catalogue", tr("Catalogue de formules")]] : [["partenaires", taxi ? tr("Partenaires et tarifs") : tr("Partenaires, tarifs, trajets, règles et dû")], ["reservations", tr("Réservations et agenda du jour")], ["messages", tr("Messages types")]]).map(([cle, libelle]) => {
-            const v = (r.modules || {})[cle];
-            const sel = h("select", { id: `mod-${cle}`, onchange: (e) => { r.modules = r.modules || {}; r.modules[cle] = { auto: null, oui: true, non: false }[e.target.value]; marque(); } }, h("option", { value: "auto" }, tr("Automatique")), h("option", { value: "oui" }, tr("Affiché")), h("option", { value: "non" }, tr("Masqué")));
-            sel.value = v === true ? "oui" : v === false ? "non" : "auto";
-            return champ(libelle, sel);
+          // Modules de la façon de travailler enregistrée (modules.mjs). Un choix ancien « Automatique » vaut « Affiché ».
+          ...modulesReglables({ reglages: r, publieSite: entiteActive().publie_site }).map((m) => {
+            const sel = h("select", { id: `mod-${m.id}`, onchange: (e) => { r.modules = r.modules || {}; r.modules[m.id] = e.target.value === "non" ? false : true; marque(); } }, h("option", { value: "oui" }, tr("Affiché")), h("option", { value: "non" }, tr("Masqué")));
+            sel.value = (r.modules || {})[m.id] === false ? "non" : "oui";
+            return champ(tr(m.nom), sel, m.aide ? tr(m.aide) : undefined);
           })
         ),
         h("p", { class: "aide" }, tr("Le menu se met à jour après l'enregistrement. Les droits des rôles s'appliquent toujours en plus."))

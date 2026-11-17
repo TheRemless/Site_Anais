@@ -1,5 +1,6 @@
 // État partagé : le magasin de données, la copie en mémoire des tables et l'entreprise active.
 // `brut` contient tout ce que la base laisse voir à la personne connectée, `db` seulement l'entreprise active.
+import { moduleAllume, modulesReglables } from "./modules.mjs";
 import { estTaxi } from "./taxi-calc.mjs";
 import { creerStore } from "./store.mjs";
 import { resume, setDevise, setMasquerMontants, aujourdhui } from "./calc.mjs";
@@ -233,18 +234,11 @@ export const descriptionRole = (r) => (r.systeme ? tr(r.description) : r.descrip
 
 export const reglages = () => etat.db.reglages;
 
-// Chaque entreprise choisit ses écrans (Réglages, Écrans). En automatique, Partenaires, Réservations et Messages sont affichés en Secret et
-// en Taxi, et le Catalogue en ZTP. Chacun se masque seul : masquer Partenaires ne masque plus Réservations ni Messages (audit n° 72).
-export function moduleActif(nom) {
-  // Chaque entreprise n'a que ses écrans (Jérémy, 12.11.2026) : partenaires, réservations et messages n'existent qu'en excursions et en taxi,
-  // le catalogue de formules de devis qu'en voyages sur mesure (ZTP). Le réglage « Écrans » ne peut pas les rouvrir ailleurs.
-  if (["partenaires", "reservations", "messages"].includes(nom) && !modeExcursions()) return false;
-  if (nom === "catalogue" && modeExcursions()) return false;
-  const v = ((etat.db && etat.db.reglages.modules) || {})[nom];
-  if (v === true || v === false) return v;
-  if (nom === "catalogue") return !modeExcursions();
-  return true;
-}
+// Chaque entreprise choisit ses écrans (Réglages, Écrans) parmi les modules de sa façon de travailler : voir modules.mjs.
+// Un module n'existe que là où il a un sens (Jérémy, 12.11.2026) ; Masquer n'éteint que lui et ce qui en dépend (audit n° 72).
+const contexteModules = () => ({ reglages: etat.db && etat.db.reglages, publieSite: (entiteActive() || {}).publie_site });
+export const moduleActif = (nom) => !!etat.db && moduleAllume(nom, contexteModules());
+export const modulesProposes = () => (etat.db ? modulesReglables(contexteModules()) : []);
 // Mode excursions (Secret) : pas de devis, facture directe, vouchers. Sinon voyages sur mesure (Zwald).
 // Le mode taxi (VIP Taxi Lanta) suit le même chemin que les excursions, sans facture : voir taxi-calc.mjs.
 export const modeTaxi = () => !!etat.db && estTaxi(etat.db.reglages);
