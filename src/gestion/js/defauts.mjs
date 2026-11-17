@@ -13,6 +13,7 @@ export const PERMISSIONS = [
   { code: "clients.lire", groupe: N_("Clients"), libelle: N_("Voir les clients") },
   { code: "clients.ecrire", groupe: N_("Clients"), libelle: N_("Créer et modifier les clients") },
   { code: "clients.supprimer", groupe: N_("Clients"), libelle: N_("Supprimer un client") },
+  { code: "clients.fusionner", groupe: N_("Clients"), libelle: N_("Fusionner deux fiches du même client"), aide: N_("Les dossiers de l'autre fiche passent sur celle qu'on garde, puis l'autre fiche disparaît. Sans ce droit, la fusion demande « Supprimer un client » et « Créer et modifier les dossiers ».") },
   { code: "dossiers.lire", groupe: N_("Dossiers"), libelle: N_("Voir les dossiers") },
   { code: "dossiers.ecrire", groupe: N_("Dossiers"), libelle: N_("Créer et modifier les dossiers") },
   { code: "dossiers.supprimer", groupe: N_("Dossiers"), libelle: N_("Supprimer un dossier") },
@@ -40,6 +41,7 @@ export const TOUTES_PERMISSIONS = PERMISSIONS.filter((p) => !p.interface).map((p
 export const DEPENDANCES = {
   "clients.ecrire": ["clients.lire"],
   "clients.supprimer": ["clients.lire"],
+  "clients.fusionner": ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire"],
   "dossiers.ecrire": ["dossiers.lire", "clients.lire"],
   "dossiers.supprimer": ["dossiers.lire"],
   "documents.ecrire": ["dossiers.lire", "finances.voir"],

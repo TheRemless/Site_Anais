@@ -43,6 +43,10 @@ export function identiteDepuisSaisie(texte) {
   return separerNom(String(texte || "").replace(/\s+/g, " ").trim());
 }
 
+// Fusionner deux fiches : le droit « clients.fusionner », ou à défaut ceux qu'il remplace (supprimer un client et modifier les dossiers),
+// comme la fonction fusionner_clients de la base. `peut(code)` dit si la personne a ce droit dans l'entreprise.
+export const peutFusionnerClients = (peut) => peut("clients.fusionner") || (peut("clients.supprimer") && peut("dossiers.ecrire"));
+
 const FORME_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Vérifie un nouveau client avant de l'enregistrer : le nom est obligatoire, le téléphone doit avoir son indicatif (jamais deviné),
 // l'e-mail facultatif doit avoir une forme d'adresse. Renvoie { ok, champ, raison, valeurs } ; `valeurs.telephone` est le numéro normalisé.

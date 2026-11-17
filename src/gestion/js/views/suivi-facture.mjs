@@ -1,12 +1,14 @@
 // La facture suit la réservation : un seul chemin pour la date, les personnes, le mode de règlement et l'annulation.
 // Le formulaire de réservation, « Changer le jour » du prestataire, l'annulation par le sélecteur et l'alignement sur la facture passent tous par ici :
 // le nouveau total est montré avant d'enregistrer, une facture déjà envoyée demande confirmation, et le prestataire peut être prévenu.
-import { etat, chargerDossier, peut, reglages, nomPartenaire, modifier, inserer, modeExcursions, modeTaxi, netPrestation } from "../etat.mjs";
+import { etat, chargerDossier, peut, reglages, nomPartenaire, modifier, inserer, modeExcursions, modeTaxi, netPrestation, netTrajet } from "../etat.mjs";
 import { contenuCourse, ligneCourse } from "../taxi-calc.mjs";
 import { uid, CONTENU_DEFAUT } from "../defauts.mjs";
 import { h, modal, confirmer, toast } from "../ui.mjs";
 import { formatMontant, formatDate, totaux } from "../calc.mjs";
-import { contenuAvecSurPlace, contenuAvecReservation, contenuAvecService, contenuSansReservation, attenduDepuisFacture, ecartReservation, personnesTexte, datesDepuisReservations } from "../operations-calc.mjs";
+import { contenuAvecSurPlace, contenuAvecReservation, contenuAvecService, contenuSansReservation, attenduDepuisFacture, ecartReservation, personnesTexte, datesDepuisReservations, descriptionService } from "../operations-calc.mjs";
+import { prestationEnfant } from "../demande-calc.mjs";
+import { contenuAvecEnfants, lignesIdsAvec } from "../dossier-gestes-calc.mjs";
 import { tr } from "../i18n.mjs";
 
 export const lieeFacture = (r) => !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
@@ -52,20 +54,31 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
   await chargerDossier(r.dossier_id);
   const documents = etat.db.documents.filter((x) => x.dossier_id === r.dossier_id);
   if (retirer) resultat.changements = documentsSansService(documents, r).filter((x) => x.doc.type === "facture" || x.doc.type === "facture_locale");
-  else
-    for (const doc of documents) {
-      let suite = doc.contenu;
-      if (modeChange) suite = contenuAvecSurPlace(suite, r, mode.surPlace) || suite;
-      if (dateChangee || personnesChangees) suite = contenuAvecReservation(suite, r, avant, apres).contenu || suite;
-      if (clesService.length) suite = contenuAvecService(suite, r, service, optionsService(apres.personnes)).contenu || suite;
-      if (suite !== doc.contenu) resultat.changements.push({ doc, suite });
+  else {
+    const s = suitesDocuments(documents, r, { avant, apres, mode, service: clesService.length ? service : null });
+    resultat.changements = s.changements;
+    // Enfant ajouté : la ligne enfant créée sur la facture devient une ligne de cette réservation (sinon elle paraîtrait en écart).
+    if (s.ajoutees.length) {
+      resultat.detailsAvant = { avait: "details" in valeurs, valeur: valeurs.details };
+      let ids = null;
+      for (const id of s.ajoutees) ids = lignesIdsAvec({ ...r, details: { ...(r.details || {}), ...(ids ? { lignes_ids: ids } : {}) } }, id);
+      valeurs.details = { ...(valeurs.details || r.details || {}), lignes_ids: ids };
+      resultat.details = valeurs.details;
     }
+    resultat.raisonEnfant = s.raisonEnfant;
+  }
   // Sans le droit de modifier les factures : le mode et l'annulation ne se font pas à moitié, mais la date et les personnes s'enregistrent et l'écart reste signalé.
   let factureNonSuivie = false;
   if (resultat.changements.length && !peut("documents.ecrire")) {
     if (modeChange || retirer) return void toast(tr("Ce service figure sur la facture, et votre rôle ne permet pas de la modifier : la modification n'est pas enregistrée."), true);
     resultat.changements.length = 0;
     factureNonSuivie = true;
+    // La ligne enfant n'est pas écrite : la réservation ne la compte pas.
+    if (resultat.details) {
+      if (resultat.detailsAvant.avait) valeurs.details = resultat.detailsAvant.valeur;
+      else delete valeurs.details;
+      resultat.details = null;
+    }
   }
   const principale = resultat.changements.find((x) => x.doc.type !== "devis") || resultat.changements[0];
   if (principale) {
@@ -78,6 +91,8 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
     else if (total0 !== total1) phrases.push(tr("La facture suit cette modification, et son total passe de {avant} à {apres}.", { avant: total0, apres: total1 }));
     else phrases.push(tr("La facture suit cette modification."));
     if (modeChange && (dateChangee || personnesChangees)) phrases.push(tr("La date et les personnes de ce service y sont aussi mises à jour."));
+    if (resultat.details) phrases.push(tr("La ligne enfant est ajoutée au tarif enfant du catalogue."));
+    if (resultat.raisonEnfant) phrases.push(texteRaisonEnfant(resultat.raisonEnfant));
     if (clesService.length && !retirer) {
       // Seulement ce que la facture a vraiment pris : un prix réparti sur plusieurs lignes reste à corriger, il est signalé après l'enregistrement.
       const restants = new Set(((ecartReservation({ ...r, ...valeurs }, { contenu: principale.suite }) || {}).champs || []).map((c) => c.cle));
@@ -104,7 +119,79 @@ export async function suivreFacture(r, valeurs, { avant, apres, mode = null, ret
   const suivis = new Set(["date_service", "personnes", ...clesService]);
   resultat.ecartRestant = ecart && ecart.champs.length ? ecart.champs.filter((c) => suivis.has(c.cle)).map((c) => texteEcart(c, deviseEcart)) : null;
   if (factureNonSuivie) toast(tr("La facture n'a pas suivi : votre rôle ne permet pas de la modifier."), true);
+  // Rien n'a changé sur la facture mais l'enfant n'y est pas : la raison est dite (avant, aucun total ni message ne s'affichait).
+  else if (!principale && resultat.raisonEnfant) toast(texteRaisonEnfant(resultat.raisonEnfant), resultat.raisonEnfant !== "prix_global");
   return resultat;
+}
+
+// Pourquoi la facture ne prend pas l'enfant ajouté à la réservation.
+export function texteRaisonEnfant(raison) {
+  if (raison === "sans_tarif") return tr("Ce service n'a pas de tarif enfant dans le catalogue : la facture garde ses lignes. Ajoutez le prix enfant à la prestation, ou comptez l'enfant comme adulte.");
+  if (raison === "prix_global") return tr("Ce service a un prix par véhicule ou au forfait : l'enfant ne change pas la facture.");
+  if (raison === "plusieurs_lignes") return tr("Ce service a plusieurs lignes adultes sur la facture : ajoutez la ligne enfant dans la facture.");
+  return "";
+}
+
+// Tarif enfant d'une ligne de service, pris dans le catalogue : prix enfant de la prestation (champ « Prix enfant »), sinon la prestation enfant
+// séparée du même partenaire (ancienne façon, toujours valable), sinon le prix enfant du trajet. Le net enfant suit quand on le connaît.
+export function tarifEnfantCatalogue(l) {
+  const vide = (x) => x === null || x === undefined || x === "";
+  if (l.trajet_id) {
+    const t = etat.db.trajets.find((x) => x.id === l.trajet_id);
+    if (!t || vide(t.prix_enfant)) return null;
+    const n = netTrajet(t);
+    return { unite: Number(t.prix_enfant), net: n && !vide(n.net_enfant) ? Number(n.net_enfant) : null };
+  }
+  if (!l.prestation_id) return null;
+  const p = etat.db.prestations.find((x) => x.id === l.prestation_id);
+  if (!p) return null;
+  const prix = !vide(p.prix_enfant) ? p.prix_enfant : p.details && !vide(p.details.prix_enfant) ? p.details.prix_enfant : null;
+  if (prix !== null) {
+    const n = netPrestation(p);
+    return { unite: Number(prix), net: n && !vide(n.net_enfant) ? Number(n.net_enfant) : null };
+  }
+  const e = prestationEnfant(p, etat.db.prestations);
+  if (!e || vide(e.prix_vente)) return null;
+  const n = netPrestation(e);
+  return { unite: Number(e.prix_vente), net: n && !vide(n.net) ? Number(n.net) : null, prestation_id: e.id };
+}
+
+// Ce que deviennent les documents du dossier quand la réservation change : date, personnes (ligne enfant comprise), mode de règlement, service.
+// Sans effet de bord : sert à l'enregistrement comme à l'aperçu du nouveau total. Renvoie { changements, ajoutees, raisonEnfant }.
+function suitesDocuments(documents, r, { avant, apres, mode = null, service = null }) {
+  const dateChangee = (apres.date_service || null) !== (avant.date_service || null);
+  const pa = avant.personnes || {};
+  const pb = apres.personnes || {};
+  const personnesChangees = (Number(pb.adultes) || 0) !== (Number(pa.adultes) || 0) || (Number(pb.enfants) || 0) !== (Number(pa.enfants) || 0);
+  const out = { changements: [], ajoutees: [], raisonEnfant: "" };
+  for (const doc of documents) {
+    let suite = doc.contenu;
+    if (mode) suite = contenuAvecSurPlace(suite, r, mode.surPlace) || suite;
+    if (dateChangee || personnesChangees) suite = contenuAvecReservation(suite, r, avant, apres).contenu || suite;
+    if (personnesChangees) {
+      const langue = suite.langue === "en" ? "en" : "";
+      const e = contenuAvecEnfants(suite, r, avant, apres, { tarifEnfant: tarifEnfantCatalogue, uid, langue, decrire: (l) => descriptionService(l, langue || "fr") });
+      if (e.contenu) suite = e.contenu;
+      if (e.ajoutee) out.ajoutees.push(e.ajoutee);
+      if (e.raison && doc.type !== "devis" && !out.raisonEnfant) out.raisonEnfant = e.raison;
+    }
+    if (service) suite = contenuAvecService(suite, r, service, optionsService(apres.personnes)).contenu || suite;
+    if (suite !== doc.contenu) out.changements.push({ doc, suite });
+  }
+  return out;
+}
+
+// Aperçu du nouveau total pendant la saisie (« Changer la réservation ») : ce que deviendrait la facture, sans rien enregistrer.
+// Renvoie null quand le service n'est sur aucune facture chargée (ou en Taxi), sinon { avant, apres, devise, raison }.
+export function apercuFacture(r, valeurs) {
+  if (modeTaxi() || !lieeFacture(r)) return null;
+  const documents = etat.db.documents.filter((x) => x.dossier_id === r.dossier_id && x.type === "facture");
+  if (!documents.length) return null;
+  const s = suitesDocuments(documents, r, { avant: { date_service: r.date_service, personnes: r.personnes }, apres: { date_service: valeurs.date_service, personnes: valeurs.personnes } });
+  const doc = documents[documents.length - 1];
+  const suite = (s.changements.find((x) => x.doc === doc) || {}).suite || doc.contenu;
+  const devise = doc.contenu.devise || reglages().devise;
+  return { avant: totaux(doc.contenu).net, apres: totaux(suite).net, devise, raison: s.raisonEnfant, enfantAjoute: s.ajoutees.length > 0 };
 }
 
 // Taxi : pas de facture montrée, le prix interne suit la course en silence (date, prix, paiement au chauffeur, annulation), ainsi que le libellé,

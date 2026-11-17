@@ -7,6 +7,8 @@ import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { descriptionService, langueClient } from "../operations-calc.mjs";
 import { creerReservations } from "./reservations.mjs";
 import { nonVides } from "../creation-voucher-calc.mjs";
+import { verifierNouveauClient } from "../client-calc.mjs";
+import { tr } from "../i18n.mjs";
 
 // Les documents de Secret et de Taxi sont en anglais (d'après le mode de l'entreprise) : les libellés anglais des prestations sont pris quand ils existent.
 export const langueDocuments = (regl = reglages()) => (langueClient(regl) === "en" ? "en" : "");
@@ -39,9 +41,17 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   const lignes = (estTaxi(regl) ? lignesSurPlace(brutes) : brutes).map((l) => (l.titre || l.kind === "texte" ? l : { ...l, titre: l.libelle }));
   const langue = langueDocuments(regl);
   let clientId = client.id;
+  // Nouveau client : son numéro doit avoir l'indicatif (contrôle de la fiche client), vérifié avant d'écrire quoi que ce soit.
+  // Le numéro est enregistré sous sa forme internationale (« +41791234567 »), celle qu'il faut au bouton WhatsApp.
+  let telephone = (client.telephone || "").trim();
+  if (!clientId) {
+    const verif = verifierNouveauClient({ nom: client.nom, telephone });
+    if (!verif.ok && verif.champ === "telephone") throw new Error(verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays au téléphone du client, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Téléphone du client illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67."));
+    if (verif.ok) telephone = verif.valeurs.telephone;
+  }
   if (!clientId) {
     const adresse = [(client.hotel || "").trim(), (client.chambre || "").trim() ? `Room ${client.chambre.trim()}` : ""].filter(Boolean).join(", ");
-    const c = await inserer("clients", { civilite: "", prenom: (client.prenom || "").trim(), nom: (client.nom || "").trim(), adresse, telephone: (client.telephone || "").trim(), email: "", notes: "" });
+    const c = await inserer("clients", { civilite: "", prenom: (client.prenom || "").trim(), nom: (client.nom || "").trim(), adresse, telephone, email: "", notes: "" });
     clientId = c.id;
   }
   const dates = lignes.map((l) => l.date_service).filter(Boolean).sort();

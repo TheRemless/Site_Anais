@@ -1,7 +1,7 @@
 // Nouveau dossier en mode excursions (Secret Travel & Tour) : le client, ses services pris dans la base partenaires,
 // et la facture créée dans la foulée avec une réservation par service. Pas de devis, pas d'acompte.
 import { etat, naviguer, reglages, peut, nomPartenaire, nomClient } from "../etat.mjs";
-import { h, champ, toast, vider } from "../ui.mjs";
+import { h, champ, toast, vider, erreurChamp } from "../ui.mjs";
 import { formatMontant, formatDate } from "../calc.mjs";
 import { descriptionService, personnesTexte } from "../operations-calc.mjs";
 import { vide } from "./commun.mjs";
@@ -12,6 +12,7 @@ import { creerDossierExcursions, langueDocuments, refProposee as refPropose, ref
 import { lireBrouillon, viderBrouillon } from "./demande.mjs";
 import { clientsProches } from "../demande-calc.mjs";
 import { tr } from "../i18n.mjs";
+import { identiteDepuisSaisie, verifierNouveauClient } from "../client-calc.mjs";
 import { servicesCreation, saisieDepuisDemande, saisieDuService, parServiceCreation, blocOuvert, libelleCourseSuivi, boutsDuTrajet, trajetIncomplet } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { ouvrirCourseLibre } from "./course-libre.mjs";
@@ -41,7 +42,17 @@ export function nouveauDossierExcursions() {
     doublon.replaceChildren(h("span", null, x.raison === "telephone" ? tr("Ce numéro est déjà celui de {nom}.", { nom: nomClient(x.client) }) : tr("Un client porte déjà ce nom : {nom}.", { nom: nomClient(x.client) })), h("button", { class: "secondaire petit", type: "button", onclick: () => selClient.choisirId(x.client.id) }, tr("Utiliser ce client")));
   };
   for (const i of [nvPrenom, nvNom, nvTel]) i.addEventListener("input", chercherDoublon);
-  const majClient = () => ((blocNouveau.hidden = !selClient.nouveau), selClient.nouveau ? chercherDoublon() : (doublon.hidden = true));
+  const majClient = () => {
+    blocNouveau.hidden = !selClient.nouveau;
+    if (!selClient.nouveau) return void (doublon.hidden = true);
+    // Le nom tapé dans la recherche est repris (prénom et nom séparés), sans écraser ce qui est déjà écrit dans ces champs.
+    if (!nvPrenom.value && !nvNom.value && selClient.texteSaisi) {
+      const id = identiteDepuisSaisie(selClient.texteSaisi);
+      nvPrenom.value = id.prenom;
+      nvNom.value = id.nom;
+    }
+    chercherDoublon();
+  };
 
   // Demande collée : le client, l'hôtel et les services sont déjà remplis, il reste à vérifier et à créer.
   if (demande && !demande.client_id) {
@@ -131,6 +142,12 @@ export function nouveauDossierExcursions() {
     erreur.textContent = "";
     if (!selClient.valeur && !selClient.nouveau) return (erreur.textContent = tr("Choisissez un client, ou créez-en un.")), document.getElementById("client").focus();
     if (selClient.nouveau && !nvNom.value.trim()) return (erreur.textContent = tr("Indiquez le nom du client.")), nvNom.focus();
+    // Le téléphone garde la règle des fiches client : indicatif obligatoire (+41, +33, +66…), jamais deviné. Sans lui, pas de bouton WhatsApp.
+    erreurChamp(nvTel, "");
+    if (selClient.nouveau) {
+      const verif = verifierNouveauClient({ nom: nvNom.value, telephone: nvTel.value });
+      if (!verif.ok && verif.champ === "telephone") return erreurChamp(nvTel, verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Numéro illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67.")), nvTel.focus();
+    }
     if (!lignes.some((l) => l.kind !== "texte")) return (erreur.textContent = tr("Ajoutez au moins un service."));
     if (!ref.value.trim()) return (erreur.textContent = taxi ? tr("Indiquez le numéro de réservation.") : tr("Indiquez le numéro de facture."));
     if (refExiste(ref.value)) return (erreur.textContent = tr("Ce numéro existe déjà. Modifiez-le.")), ref.focus();
@@ -165,7 +182,7 @@ export function nouveauDossierExcursions() {
   return h(
     "div",
     { "data-titre": tr("Nouveau dossier") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Nouveau dossier")), h("p", { class: "sous" }, taxi ? tr("Indiquez le client et sa course. La réservation et sa Booking confirmation se créent en même temps.") : tr("Indiquez le client et ses services. La facture et les réservations auprès des partenaires se créent en même temps.")))),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Nouveau dossier")), h("p", { class: "sous" }, taxi ? tr("Indiquez le client et sa course. La réservation et sa Booking confirmation se créent en même temps.") : tr("Indiquez le client et ses services. Les services et la facture se créent en même temps.")))),
     h(
       "form",
       { class: "formulaire", onsubmit: creer },

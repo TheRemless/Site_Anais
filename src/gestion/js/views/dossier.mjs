@@ -20,8 +20,44 @@ import { ouvrirSansSuite, rouvrirDevis, baseDistante } from "./sans-suite.mjs";
 import { peutClasser, disponible as sansSuiteDisponible } from "../sans-suite-calc.mjs";
 import { ouvrirCarnet, baseDistante as baseDistanteCarnet } from "./carnet.mjs";
 import { disponible as carnetDisponible, peutNoter } from "../carnet-calc.mjs";
+import { typePaiement, paiementEnDouble, ecartASolder, TYPES_PAIEMENT, reservationsAReactiver, reactivation } from "../dossier-gestes-calc.mjs";
 
 const rafraichir = () => naviguer(location.hash);
+
+// Réactiver les réservations d'un dossier qu'on vient de réactiver. Celles annulées avec le dossier sont cochées ; celles annulées une à une
+// avant restent décochées (leur service avait peut-être été retiré de la facture). Rien n'est envoyé au prestataire.
+function proposerReactivation(d) {
+  const { cochees, autres } = reservationsAReactiver(etat.db.reservations, d.id);
+  if (!cochees.length && !autres.length) return Promise.resolve();
+  const cases = [...cochees.map((x) => [x, true]), ...autres.map((x) => [x, false])].map(([x, coche]) => [x, h("input", { type: "checkbox", id: `react-${x.id}`, checked: coche })]);
+  const quand = (x) => (x.date_service ? formatDate(x.date_service) : tr("date à fixer"));
+  return new Promise((resolve) => {
+    const valider = async (e) => {
+      e.currentTarget.disabled = true;
+      const choisies = cases.filter(([, c]) => c.checked).map(([x]) => x);
+      try {
+        for (const x of choisies) await modifier("reservations", x.id, reactivation(x));
+        if (choisies.length) toast(pluriel(choisies.length, N_("{n} réservation réactivée. Le prestataire n'est pas prévenu par l'outil."), N_("{n} réservations réactivées. Les prestataires ne sont pas prévenus par l'outil.")));
+      } catch (err) {
+        toast(tr("Une réservation n'a pas pu être réactivée : {message}", { message: err.message }), true);
+      }
+      fermer();
+    };
+    const fermer = modal(
+      tr("Réactiver aussi les réservations ?"),
+      h(
+        "div",
+        { class: "modal-corps" },
+        h("p", null, cochees.length ? tr("Les réservations cochées ont été annulées avec le dossier. Elles redeviennent confirmées.") : tr("Ce dossier a des réservations annulées. Cochez celles qui reprennent.")),
+        cases.map(([x, c]) => h("label", { class: "case", for: c.id }, c, `${x.libelle} · ${quand(x)}`)),
+        autres.length && cochees.length ? h("p", { class: "aide" }, tr("Les réservations décochées avaient été annulées avant le dossier.")) : null,
+        h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Laisser annulées")), h("button", { type: "button", class: "principal", onclick: valider }, tr("Réactiver la sélection")))
+      ),
+      { protege: false, ferme: () => resolve() }
+    );
+  });
+}
+
 const dernier = (docs, type) => docs.filter((d) => d.type === type).sort((a, b) => (a.created_at > b.created_at ? 1 : -1)).pop();
 
 // Les documents et paiements d'un dossier se chargent à son ouverture.
@@ -224,6 +260,13 @@ function ficheDossierVue(id) {
   };
 
   // Paiements
+  // Le même montant déjà saisi à trois jours près : on demande avant d'enregistrer un second paiement identique.
+  const pasEnDouble = async ({ date, montant }, sauf = null) => {
+    const x = paiementEnDouble(paiements, { date, montant }, { sauf });
+    return !x || (await confirmer(tr("Un paiement de {montant} du {date} est déjà enregistré sur ce dossier. Enregistrer ce second paiement quand même ?", { montant: fm(x.montant), date: formatDate(x.date) }), tr("Enregistrer les deux")));
+  };
+  const LIBELLES_TYPE = { acompte: N_("Acompte"), solde: N_("Solde"), ecart: N_("Écart soldé (frais, change)"), autre: N_("Autre"), remboursement: N_("Remboursement") };
+  const libelleType = (t) => tr(LIBELLES_TYPE[t] || LIBELLES_TYPE.autre);
   const dateP = h("input", { id: "p-date", type: "date", value: ajd, required: true });
   const montantP = h("input", { id: "p-montant", type: "number", step: "0.01", min: "0", required: true, inputmode: "decimal" });
   const manque = r.recu < acompte ? arrondi(acompte - r.recu) : Math.max(0, r.reste);
@@ -260,13 +303,14 @@ function ficheDossierVue(id) {
         }
         // Un montant au-delà du reste à payer est le plus souvent une faute de frappe : on demande avant d'enregistrer.
         if (!rembourse && r.total > 0 && arrondi(montant - Math.max(0, r.reste)) > 0 && !(await confirmer(tr("Ce montant dépasse le reste à payer ({reste}). L'enregistrer quand même ?", { reste: fm(Math.max(0, r.reste)) }), tr("Enregistrer")))) return;
+        if (!(await pasEnDouble({ date: dateP.value, montant: rembourse ? -montant : montant }))) return;
         boutonPaiement.disabled = true;
         try {
           await inserer("paiements", {
             dossier_id: d.id,
             date: dateP.value,
             montant: rembourse ? -montant : montant,
-            type: rembourse ? "remboursement" : r.recu < acompte ? "acompte" : "solde",
+            type: typePaiement({ montant, recu: r.recu, total: r.total, rembourse }),
             moyen: moyenP.value,
             origine_montant: rembourse ? null : num(origineM.value),
             origine_devise: rembourse ? "" : origineD.value,
@@ -288,7 +332,7 @@ function ficheDossierVue(id) {
     h("div", { class: "actions" }, boutonPaiement)
   );
 
-  // Corriger un paiement mal saisi (date, montant, moyen, note) sans le supprimer et le ressaisir. Le sens (reçu ou remboursé) ne change pas.
+  // Corriger un paiement mal saisi (date, montant, type, moyen, note, montant et devise d'origine) sans le supprimer et le ressaisir. Le sens (reçu ou remboursé) ne change pas.
   const corrigerPaiement = (p) => {
     const rembourse = Number(p.montant) < 0;
     const f = {
@@ -296,8 +340,14 @@ function ficheDossierVue(id) {
       montant: h("input", { id: "pc-montant", type: "number", step: "0.01", min: "0", required: true, inputmode: "decimal", value: Math.abs(Number(p.montant)) }),
       moyen: h("select", { id: "pc-moyen" }, MOYENS.map(([v, l]) => h("option", { value: v }, l))),
       note: h("input", { id: "pc-note", value: p.note || "" }),
+      // Le type se corrige (un acompte affiché « Solde », un écart saisi comme paiement) ; un remboursement reste un remboursement.
+      type: h("select", { id: "pc-type", disabled: rembourse }, (rembourse ? ["remboursement"] : TYPES_PAIEMENT).map((t) => h("option", { value: t }, libelleType(t)))),
+      origineM: h("input", { id: "pc-orig-m", type: "number", step: "0.01", min: "0", inputmode: "decimal", value: p.origine_montant ?? "" }),
+      origineD: h("select", { id: "pc-orig-d" }, [...new Set(["", ...(reglages().listes.devises || ["CHF", "EUR", "THB", "USD"]), ...(p.origine_devise ? [p.origine_devise] : [])])].map((v) => h("option", { value: v }, v || tr("Aucune")))),
     };
     f.moyen.value = p.moyen || "";
+    f.type.value = rembourse ? "remboursement" : TYPES_PAIEMENT.includes(p.type) ? p.type : "autre";
+    f.origineD.value = p.origine_devise || "";
     const enregistrer = h("button", { type: "submit", class: "principal" }, tr("Enregistrer"));
     const fermer = modal(
       rembourse ? tr("Corriger le remboursement") : tr("Corriger le paiement"),
@@ -313,9 +363,10 @@ function ficheDossierVue(id) {
             const autres = arrondi(r.recu - Number(p.montant));
             if (rembourse && montant > autres) return toast(tr("Le remboursement dépasse ce qui a été encaissé ({recu}).", { recu: fm(autres) }), true);
             if (!rembourse && r.total > 0 && arrondi(autres + montant - r.total) > 0 && !(await confirmer(tr("Avec ce montant, le dossier serait payé au-delà de son total. L'enregistrer quand même ?"), tr("Enregistrer")))) return;
+            if ((f.date.value !== p.date || arrondi(montant) !== arrondi(Math.abs(Number(p.montant)))) && !(await pasEnDouble({ date: f.date.value, montant: rembourse ? -montant : montant }, p.id))) return;
             enregistrer.disabled = true;
             try {
-              await modifier("paiements", p.id, { date: f.date.value, montant: rembourse ? -montant : montant, moyen: f.moyen.value, note: f.note.value.trim() });
+              await modifier("paiements", p.id, { date: f.date.value, montant: rembourse ? -montant : montant, moyen: f.moyen.value, note: f.note.value.trim(), type: rembourse ? "remboursement" : f.type.value, origine_montant: rembourse ? null : num(f.origineM.value), origine_devise: rembourse ? "" : f.origineD.value });
               fermer();
               toast(tr("Paiement corrigé."));
               rafraichir();
@@ -325,7 +376,7 @@ function ficheDossierVue(id) {
             }
           },
         },
-        h("div", { class: "grille-form" }, champ(tr("Date de réception"), f.date), champ(rembourse ? tr("Montant remboursé ({x})", { x: r.devise || regl.devise }) : tr("Montant reçu ({x})", { x: r.devise || regl.devise }), f.montant), champ(tr("Moyen de paiement"), f.moyen), champ(tr("Note"), f.note)),
+        h("div", { class: "grille-form" }, champ(tr("Date de réception"), f.date), champ(rembourse ? tr("Montant remboursé ({x})", { x: r.devise || regl.devise }) : tr("Montant reçu ({x})", { x: r.devise || regl.devise }), f.montant), champ(tr("Type"), f.type), champ(tr("Moyen de paiement"), f.moyen), champ(tr("Note"), f.note), rembourse ? null : champ(tr("Montant d'origine, si payé en devise"), f.origineM), rembourse ? null : champ(tr("Devise d'origine"), f.origineD)),
         h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), enregistrer)
       )
     );
@@ -347,7 +398,7 @@ function ficheDossierVue(id) {
                 "tr",
                 null,
                 h("td", { "data-label": tr("Date") }, formatDate(p.date)),
-                h("td", { "data-label": tr("Type") }, p.type === "acompte" ? tr("Acompte") : p.type === "solde" ? tr("Solde") : p.type === "remboursement" ? tr("Remboursement") : tr("Autre")),
+                h("td", { "data-label": tr("Type") }, libelleType(p.type)),
                 h("td", { "data-label": tr("Moyen") }, nomMoyen(p.moyen)),
                 h("td", { "data-label": tr("Note") }, [p.note, p.origine_montant ? `${p.origine_montant} ${p.origine_devise}` : ""].filter(Boolean).join(", ")),
                 h("td", { class: "num", "data-label": tr("Montant") }, fm(p.montant)),
@@ -376,6 +427,26 @@ function ficheDossierVue(id) {
         )
       )
     : h("p", { class: "vide-court" }, tr("Aucun paiement enregistré."));
+
+  // Un petit reste qui ne viendra jamais (frais Wise, écart de change) : on le solde en un geste, et le dossier sort de « À encaisser ».
+  // Il s'enregistre comme un paiement de type « écart », sans moyen de paiement, pour que le reste tombe à zéro et que la trace demeure.
+  // Seulement pour un petit reste (5 % du total au plus) : un solde ZTP encore attendu après l'acompte n'est pas un écart. Un reste plus gros
+  // qui ne viendra pas se solde quand même : « Corriger » un paiement permet de lui donner le type « Écart soldé ».
+  const ecartBrut = !d.annule ? ecartASolder({ total: r.total, recu: r.recu }) : null;
+  const ecart = ecartBrut && ecartBrut.petit ? ecartBrut : null;
+  const solderEcart = ecart && droit.paiements
+    ? h("div", { class: "actions gauche solder-ecart" }, h("button", { class: "secondaire", type: "button", onclick: async () => {
+        const phrase = tr("Solder l'écart de {montant} ? Il s'enregistre comme « écart soldé » (frais Wise, change) : le dossier est soldé et sort de « À encaisser ». Supprimez cette ligne si l'argent arrive finalement.", { montant: fm(ecart.montant) });
+        if (!(await confirmer(phrase, tr("Solder l'écart")))) return;
+        try {
+          await inserer("paiements", { dossier_id: d.id, date: ajd, montant: ecart.montant, type: "ecart", moyen: "", origine_montant: null, origine_devise: "", note: tr("Frais ou écart de change") });
+          toast(tr("Écart soldé."));
+          rafraichir();
+        } catch (err) {
+          toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+        }
+      } }, tr("Solder l'écart ({montant})", { montant: fm(ecart.montant) })), h("p", { class: "aide" }, tr("Pour un petit reste qui ne sera pas payé : frais Wise, écart de change.")))
+    : null;
 
   // « Envoyer » sur tous les appareils : PDF prêt, conversation WhatsApp ou e-mail ouverts avec le message (« Imprimer » reste dans la fenêtre d'envoi).
   // Une facture envoyée fige son montant reçu, comme dans l'éditeur.
@@ -595,7 +666,7 @@ function ficheDossierVue(id) {
         : h("p", { class: "vide-court" }, tr("Aucun document.")),
       facture && !locale && droit.docs && !excursions ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: creerLocale }, tr("Créer la facture locale"))) : null
     ),
-    droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), tableauPaiements, droit.paiements ? [h("h3", null, tr("Enregistrer un paiement")), formPaiement] : null) : null,
+    droit.finances && !taxi ? h("section", null, h("h2", null, tr("Paiements reçus")), tableauPaiements, solderEcart, droit.paiements ? [h("h3", null, tr("Enregistrer un paiement")), formPaiement] : null) : null,
     moduleActif("reservations") ? sectionReservationsDossier(d, facture || devis || null) : null,
     sectionTachesDossier(d.id),
     sectionPieces(d),
@@ -620,11 +691,14 @@ function ficheDossierVue(id) {
                 // Les réservations d'un dossier annulé ne comptent déjà plus dans l'agenda ni dans le dû ; on propose de les marquer aussi, pour que la liste et les vouchers soient justes.
                 if (aAnnuler.length && (await confirmer(pluriel(aAnnuler.length, N_("Ce dossier a {n} réservation active. La marquer aussi comme annulée ? Le prestataire n'est pas prévenu par l'outil."), N_("Ce dossier a {n} réservations actives. Les marquer aussi comme annulées ? Les prestataires ne sont pas prévenus par l'outil.")), tr("Marquer les réservations annulées"), true))) {
                   try {
-                    for (const x of aAnnuler) await modifier("reservations", x.id, { statut: "annule" });
+                    // La marque permet de les proposer à la réactivation du dossier (et pas celles annulées une à une avant).
+                    for (const x of aAnnuler) await modifier("reservations", x.id, { statut: "annule", details: { ...(x.details || {}), annule_avec_dossier: true } });
                   } catch (err) {
                     toast(tr("Une réservation n'a pas pu être annulée : {message}", { message: err.message }), true);
                   }
                 }
+                // Dossier réactivé : ses réservations annulées avec lui sont proposées à la réactivation, les autres sont listées sans être cochées.
+                if (d.annule) await proposerReactivation(d);
                 rafraichir();
               }
             },
