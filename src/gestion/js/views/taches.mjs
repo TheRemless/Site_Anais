@@ -47,10 +47,13 @@ function modifierTache(t) {
   const description = h("textarea", { id: "tm-desc", rows: 3 });
   description.value = t.description || "";
   const echeance = h("input", { id: "tm-ech", type: "date", value: t.echeance || "" });
-  const sel = h("select", { id: "tm-qui" }, h("option", { value: "" }, tr("Personne")));
+  // La personne actuelle est choisie d'emblée : un enregistrement avant le chargement de l'équipe ne la retire pas.
+  const sel = h("select", { id: "tm-qui" }, h("option", { value: "" }, tr("Personne")), t.assignee_id ? h("option", { value: t.assignee_id, selected: true }, t.assignee_id === etat.session.id ? tr("Moi") : "…") : null);
   equipe().then((gens) => {
-    sel.append(...gens.map((p) => h("option", { value: p.user_id }, p.user_id === etat.session.id ? tr("Moi") : p.nom || p.email)));
-    sel.value = t.assignee_id || "";
+    const choisi = sel.value;
+    sel.replaceChildren(h("option", { value: "" }, tr("Personne")), ...gens.map((p) => h("option", { value: p.user_id }, p.user_id === etat.session.id ? tr("Moi") : p.nom || p.email)));
+    if (choisi && !gens.some((p) => p.user_id === choisi)) sel.append(h("option", { value: choisi }, "…"));
+    sel.value = choisi;
   });
   const form = h(
     "form",

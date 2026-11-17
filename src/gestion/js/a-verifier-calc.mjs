@@ -221,5 +221,6 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
   ajouter("dossiers_sans_responsable", "dossiers", false, (db.dossiers || []).filter((d) => !d.responsable_id && !d.annule).map((d) => ({ id: d.id, lien: `#/dossier/${d.id}`, texte: d.ref || tr("(sans référence)"), detail: nomClient((db.clients || []).find((c) => c.id === d.client_id)) })));
 
   const droitsOk = { partenaires: !!droits.partenaires, dossiers: !!droits.dossiers, clients: !!droits.clients };
-  return sorties.filter((s) => droitsOk[s.droit]);
+  // Dans l'ordre de CONTROLES (celui de l'écran de réglage) : les services à venir d'abord.
+  return sorties.filter((s) => droitsOk[s.droit]).sort((a, b) => CONTROLES.indexOf(a.cle) - CONTROLES.indexOf(b.cle));
 }

@@ -237,3 +237,9 @@ test("journal : réservations, partenaires, prestations, trajets, et nets seulem
   assert.match(sql, /create trigger journaliser after insert or update or delete on reservations_nets/);
   assert.match(sql, /table_name <> 'reservations_nets' or a_permission\(entite_id, 'partenaires\.nets'\)/);
 });
+
+test("à vérifier : les contrôles sortent dans l'ordre de l'écran de réglage", () => {
+  const l = aVerifier(base(), { droits: tous, aujourdhui: "2026-11-17" }).map((c) => CONTROLES.indexOf(c.cle));
+  assert.deepEqual(l, [...l].sort((a, b) => a - b));
+  assert.equal(aVerifier(base(), { droits: tous, aujourdhui: "2026-11-17" })[0].cle, "services_sans_heure");
+});
