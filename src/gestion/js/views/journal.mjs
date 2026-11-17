@@ -3,6 +3,7 @@ import { etat, peut, equipe, entiteActive, moduleActif, modeExcursions, modeTaxi
 import { h, vider } from "../ui.mjs";
 import { vide } from "./commun.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
+import { valeurJournal } from "../journal-calc.mjs";
 
 const OBJETS = { dossiers: N_("le dossier"), clients: N_("le client"), documents: N_("le document"), paiements: N_("le paiement"), catalogue: N_("l'entrée du catalogue"), reglages: N_("les réglages"), roles: N_("le rôle"), membres: N_("l'accès de"), taches: N_("la tâche"), pieces_jointes: N_("la pièce jointe"), reservations: N_("la réservation"), reservations_nets: N_("le net ou la commission de"), partenaires: N_("le partenaire"), prestations: N_("la prestation"), trajets: N_("le trajet") };
 const VERBES = { insert: N_("a créé"), update: N_("a modifié"), delete: N_("a supprimé") };
@@ -12,10 +13,9 @@ const CHAMPS = { bandeau: N_("le titre"), accepte_le: N_("la date d'acceptation"
   net_prevu: N_("le net prévu"), net_paye: N_("le net payé"), paye_le: N_("la date de paiement"), commission_prevue: N_("la commission prévue"), commission_recue: N_("la commission reçue"), commission_recue_le: N_("la date de la commission"),
   prix_vente: N_("le prix de vente"), prix_adulte: N_("le prix adulte"), prix_enfant: N_("le prix enfant"), famille: N_("la famille"), groupe: N_("le groupe"), unite: N_("l'unité"), sur_place: N_("le frais réglé sur place"), de: N_("le départ"), vers: N_("l'arrivée"), depart: N_("l'heure de départ"), arrivee: N_("l'heure d'arrivée"), duree: N_("la durée"), mode: N_("le mode"), contact: N_("les coordonnées"), contrat: N_("le contrat"), regles: N_("les règles"), categorie: N_("la catégorie"), role: N_("le rôle du partenaire"), description: N_("la description") };
 
-const valeur = (v, cle) => (v === null || v === undefined || v === "" ? tr("vide") : typeof v === "object" ? JSON.stringify(v) : CHAMPS_PERSONNE.includes(cle) && PERSONNES.has(v) ? PERSONNES.get(v) : String(v));
-
+// Les valeurs en mots : noms des prestations, partenaires, trajets, clients et personnes, jamais un identifiant brut (contrôle du 17.11.2026, D13).
 const PERSONNES = new Map();
-const CHAMPS_PERSONNE = ["responsable_id", "assignee_id", "fait_par"];
+const valeur = (v, cle) => valeurJournal(cle, v, { prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, clients: etat.db.clients, personnes: PERSONNES });
 
 function detail(l) {
   const entrees = Object.entries(l.details || {});
@@ -23,7 +23,7 @@ function detail(l) {
   return h(
     "ul",
     { class: "journal-detail" },
-    entrees.map(([k, v]) => h("li", null, `${CHAMPS[k] ? tr(CHAMPS[k]) : k}`.replace(/^./, (c) => c.toUpperCase()), v && typeof v === "object" ? `: ${valeur(v.avant)} → ${valeur(v.apres)}` : tr(" modifié")))
+    entrees.map(([k, v]) => h("li", null, `${CHAMPS[k] ? tr(CHAMPS[k]) : k}`.replace(/^./, (c) => c.toUpperCase()), v && typeof v === "object" ? `: ${valeur(v.avant, k)} → ${valeur(v.apres, k)}` : tr(" modifié")))
   );
 }
 

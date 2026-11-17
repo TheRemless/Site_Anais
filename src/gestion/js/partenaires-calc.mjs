@@ -357,7 +357,9 @@ export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1,
   if (x.sur_place) return { ...base, kind: "texte", libelle: noteSurPlace(x, langue, devise), sur_place: true };
   // En anglais : le libellé anglais de la prestation, sinon le libellé nettoyé et traduit pour le client.
   // `par` garde l'unité du tarif (grp, boat, sup…) : l'intro est vidée dans la facture, et un prix de groupe ne se met pas à l'échelle des personnes.
-  return { ...base, ...(x.unite === "sup" ? { supplement: true } : {}), ...(["boat", "veh", "day", "ses", "grp"].includes(x.unite) ? { par: x.unite } : {}), kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: x.unite === "sup" ? Math.max(0, Number(qte) || 0) : Number(qte) || 1, net: netDeLigne(x, net) };
+  // Prestation à 0 au catalogue : offerte au client (décision 8, contrôle du 17.11.2026, D7). La ligne compte 0 et s'imprime « Offert » / « Complimentary ».
+  const offert = x.prix_vente !== null && x.prix_vente !== undefined && x.prix_vente !== "" && Number(x.prix_vente) === 0 ? { offert: true } : {};
+  return { ...base, ...offert, ...(x.unite === "sup" ? { supplement: true } : {}), ...(["boat", "veh", "day", "ses", "grp"].includes(x.unite) ? { par: x.unite } : {}), kind: "ligne", libelle: en ? x.libelle_en || libelleClient(x.libelle) : x.libelle, intro: x.unite ? `(${libelleUnite(x.unite, en)})` : "", unite: x.prix_vente, qte: x.unite === "sup" ? Math.max(0, Number(qte) || 0) : Number(qte) || 1, net: netDeLigne(x, net) };
 }
 
 // Prestation hors base : une ligne saisie à la main qui a pourtant sa réservation (donc son voucher), repérée par `libre`.
@@ -438,3 +440,23 @@ export function telWhatsApp(p) {
 // `autorise` : la personne a le droit de voir les nets (sans lui, rien n'est rendu). Par défaut, `prive` renseigné.
 export const commissionsPartenaire = (p, prive, autorise = !!prive) => (!autorise ? [] : prive && Array.isArray(prive.commissions) && prive.commissions.length ? prive.commissions : (p.regles && p.regles.commissions) || []);
 export const paiementPartenaire = (p, prive, autorise = !!prive) => (!autorise ? "" : (prive && prive.paiement) || (p.regles && p.regles.paiement) || "");
+
+// Décision 3 du 17.11.2026, étendue à la réservation et à la facture (contrôle du 17.11.2026, D3) : sans le droit « partenaires.prix », un prix
+// venu du catalogue ne se change pas (« Vendu au client » d'une réservation, prix ou montant d'une ligne qui vient d'un tarif). Un prix vide
+// (tarif « prix à saisir ») ou un service hors catalogue se remplit toujours. `x` : une réservation ({ prestation_id, trajet_id, montant_vente })
+// ou une ligne de document ({ prestation_id, trajet_id, unite, montant }). `catalogue` : { prestations, trajets }. Renvoie vrai si le prix est figé.
+const prixConnu = (v) => v !== null && v !== undefined && v !== "";
+export function prixVenteFige(x, catalogue, { droitPrix = false } = {}) {
+  if (droitPrix || !x) return false;
+  const actuel = "montant_vente" in x ? x.montant_vente : prixConnu(x.unite) ? x.unite : x.montant;
+  if (!prixConnu(actuel)) return false;
+  if (x.trajet_id) {
+    const t = ((catalogue && catalogue.trajets) || []).find((y) => y.id === x.trajet_id);
+    return !!t && prixConnu(t.prix_adulte);
+  }
+  if (x.prestation_id) {
+    const p = ((catalogue && catalogue.prestations) || []).find((y) => y.id === x.prestation_id);
+    return !!p && !p.sur_place && prixConnu(p.prix_vente);
+  }
+  return false;
+}

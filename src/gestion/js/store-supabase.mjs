@@ -71,6 +71,9 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       throw new Error(error.message);
     });
   };
+  // Documents dont on a lu une ligne de nets : seuls ceux-là peuvent voir leurs nets vidés (lot I, contrôle du 17.11.2026). Qui ne lit pas les nets
+  // n'en efface jamais.
+  const avecNetsLus = new Set();
   // Nets de documents, par identifiant de document. Sans le droit « nets », la base ne renvoie rien : les lignes restent sans net.
   async function netsDes(ids) {
     const par = {};
@@ -79,7 +82,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { data, error } = await sb.from("documents_nets").select("document_id, nets").in("document_id", ids.slice(i, i + 100));
       // Une erreur ici ne doit pas passer pour « aucun net » : une sauvegarde suivante écraserait les nets avec les seules lignes visibles.
       if (error) throw new Error(error.message);
-      for (const n of data || []) par[n.document_id] = n.nets;
+      for (const n of data || []) (par[n.document_id] = n.nets), avecNetsLus.add(n.document_id);
     }
     return par;
   }
@@ -97,7 +100,12 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await ecriture(contenu));
     }
     const ligne = verifie(await ecriture(contenu));
-    if (Object.keys(nets).length) verifie(await sb.from("documents_nets").upsert({ document_id: ligne.id, entite_id: ligne.entite_id, nets }).select());
+    // Un net effacé exprès reste effacé : quand le dernier net d'un document lu avec ses nets disparaît, sa ligne de nets est vidée aussi
+    // (avant, rien n'était écrit et l'ancien net revenait au chargement suivant). Les autres cas remplacent déjà tout l'objet des nets.
+    if (Object.keys(nets).length || avecNetsLus.has(ligne.id)) {
+      verifie(await sb.from("documents_nets").upsert({ document_id: ligne.id, entite_id: ligne.entite_id, nets }).select());
+      avecNetsLus.add(ligne.id);
+    }
     return { ...ligne, contenu: fusionnerNets(ligne.contenu, nets) };
   }
 
@@ -400,6 +408,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await sb.rpc("equipe_de", { e: entiteId }));
     },
     // Un dossier avec son résumé à jour (après une modification de ses documents ou paiements).
+    // La ligne de nets d'une réservation, relue après une écriture : le déclencheur remplir_nets (migration 30) a pu la recalculer.
+    // Sans le droit « nets », la base ne renvoie rien.
+    async netsReservation(reservationId) {
+      return verifie(await sb.from("reservations_nets").select("*").eq("reservation_id", reservationId).maybeSingle());
+    },
     async resumeDossier(id) {
       const d = verifie(await sb.from("dossiers").select("*").eq("id", id).maybeSingle());
       if (!d) return null;

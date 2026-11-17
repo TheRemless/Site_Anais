@@ -43,10 +43,12 @@ const m$ = (X, v) => formatMontant(v, X.devise);
 
 // ---- Briques communes ---------------------------------------------------------------------------------------------------
 // Tuile d'une mesure : chiffre, écart, mini graphique, lien vers la liste.
+// Mesures dont la hausse n'est ni bonne ni mauvaise : leur écart reste gris (écarts soldés, lot I).
+const NEUTRES = new Set(["ecart_solde"]);
 function T(X, id, { libelle, valeur, detail, grande, href, mini = true } = {}) {
   const r = S.comparer(id, X.faits, X.c, X.cmp);
   const serie = mini && S.estFlux(id) ? S.serie(id, X.faits, X.c, X.gran).map((x) => x.montant) : null;
-  return tuile({ libelle: libelle || titreMesure(id), valeur: valeur ?? m$(X, r.actuel.montant), detail: detail === undefined ? compte(r.actuel.nombre, id) : detail, ecart: r.ecart, precedent: r.precedent ? r.precedent.montant : null, devise: X.devise, serie, href: href === undefined ? X.href(id) : href, aide: S.DEFINITIONS[id], grande });
+  return tuile({ libelle: libelle || titreMesure(id), valeur: valeur ?? m$(X, r.actuel.montant), detail: detail === undefined ? compte(r.actuel.nombre, id) : detail, ecart: r.ecart, ecartNeutre: NEUTRES.has(id), precedent: r.precedent ? r.precedent.montant : null, devise: X.devise, serie, href: href === undefined ? X.href(id) : href, aide: S.DEFINITIONS[id], grande });
 }
 
 // Classement d'une mesure par dimension ; chaque ligne ouvre sa liste.

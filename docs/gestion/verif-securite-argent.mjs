@@ -327,6 +327,70 @@ console.log("Migration 31 : net et commission prévus remplis par la base (lot F
   r = await insererPar("mook", base(id(99), { trajet_id: TR2, partenaire_id: P_NOUS, personnes: { adultes: 2, enfants: 1 }, montant_vente: 2400 }));
   ok(r.ok && (await netsDe(id(99))).length === 0, "trajet saisi à la main sans net enfant : net prévu vide, pas 2 × net adulte");
 
+  // 5 ter. Enfant ajouté après coup (contrôle du 17.11.2026, D2) : « Changer le jour, l'heure ou les personnes » ajoute à la facture une ligne enfant
+  //    au net connu (contenuAvecEnfants, comme suivreFacture), puis la réservation compte cette ligne et l'enfant. Le net prévu suit : 2 × net adulte
+  //    + net enfant, que l'enfant ait son « Prix enfant » sur la prestation (décision 7) ou une prestation enfant séparée (ancienne façon).
+  //    La démo (nets-base-local.mjs) doit donner le même net que la base.
+  {
+    const { contenuAvecEnfants, lignesIdsAvec } = await import(new URL(SRC + "dossier-gestes-calc.mjs", import.meta.url));
+    const { netReservationCalcule, calculerNets } = await import(new URL(SRC + "nets-base-local.mjs", import.meta.url));
+    const PE = id(17), PA = id(18), PAC = id(19), DE = id(36);
+    await db.exec(`insert into dossiers (id, entite_id, ref, client_id) values ('${DE}', '${S}', 'S-ENF', '${id(41)}');
+      insert into prestations (id, entite_id, partenaire_id, famille, libelle, prix_vente, unite, sur_place, details) values
+        ('${PE}', '${S}', '${P_NOUS}', 'excursion', 'Tour E', 1500, 'pp', false, '{"enfant": 900}'),
+        ('${PA}', '${S}', '${P_NOUS}', 'excursion', '4 Islands', 1200, 'pp', false, '{}'),
+        ('${PAC}', '${S}', '${P_NOUS}', 'excursion', '4 Islands, enfant', 900, 'ch', false, '{}');
+      insert into prestations_nets (entite_id, prestation_id, net, net_enfant) values ('${S}', '${PE}', 1000, 600), ('${S}', '${PA}', 800, null), ('${S}', '${PAC}', 600, null);`);
+    const catalogue = {
+      prestations: [{ id: PE, partenaire_id: P_NOUS, libelle: "Tour E", prix_vente: 1500, unite: "pp", details: { enfant: 900 } }, { id: PA, partenaire_id: P_NOUS, libelle: "4 Islands", prix_vente: 1200, unite: "pp" }, { id: PAC, partenaire_id: P_NOUS, libelle: "4 Islands, enfant", prix_vente: 900, unite: "ch" }],
+      prestations_nets: [{ prestation_id: PE, net: 1000, net_enfant: 600 }, { prestation_id: PA, net: 800, net_enfant: null }, { prestation_id: PAC, net: 600, net_enfant: null }],
+      trajets: [], trajets_nets: [], dossiers: [], partenaires_prives: [], excursions: () => true,
+    };
+    const cas = [
+      { nom: "prix enfant sur la prestation", p: catalogue.prestations[0], net: 1000, tarif: { unite: 900, net: 600 }, attendu: 2600, rid: id(75), doc: "00000000-0000-4000-8000-0000000031d1" },
+      { nom: "prestation enfant séparée", p: catalogue.prestations[1], net: 800, tarif: { unite: 900, net: 600, prestation_id: PAC }, attendu: 2200, rid: id(76), doc: "00000000-0000-4000-8000-0000000031d2" },
+    ];
+    for (const c of cas) {
+      for (const qui of ["mook", "anais"]) {
+        const rid = qui === "mook" ? c.rid : c.rid.replace(/..$/, (x) => String(Number(x) + 10));
+        const docId = qui === "mook" ? c.doc : c.doc.replace(/d(\d)$/, "e$1");
+        let k = 0;
+        const uidE = () => `e${rid.slice(-2)}-${++k}`;
+        const adulte = ligneDepuisPrestation(c.p, { net: c.net }, { qte: 2, date: "2026-12-10", langue: "en", uid: uidE });
+        const contenu0 = { langue: "en", lignes: [adulte] };
+        const [att] = reservationsDepuisDocument({ dossier_id: DE, contenu: contenu0 }, { uid: () => rid, regleDe: () => null });
+        const x = att.reservation;
+        // Anaïs écrit les nets des lignes (documents_nets) ; Mook ne les voit pas : la base prend ceux du catalogue.
+        const ecrireDoc = async (contenu, creer) => {
+          const sep = separerNets(contenu);
+          if (creer) await db.query(`insert into documents (id, entite_id, dossier_id, type, date_emission, contenu) values ($1, $2, $3, 'facture', '2026-11-17', $4)`, [docId, S, DE, JSON.stringify(sep.contenu)]);
+          else await db.query(`update documents set contenu = $1, updated_at = now() where id = $2`, [JSON.stringify(sep.contenu), docId]);
+          if (qui === "anais") await db.query(`insert into documents_nets (document_id, entite_id, nets) values ($1, $2, $3) on conflict (document_id) do update set nets = excluded.nets`, [docId, S, JSON.stringify(sep.nets)]);
+        };
+        await ecrireDoc(contenu0, true);
+        const champs = { id: rid, entite_id: S, dossier_id: DE, ligne_id: x.ligne_id, prestation_id: x.prestation_id, partenaire_id: x.partenaire_id, libelle: x.libelle, date_service: x.date_service, personnes: x.personnes, statut: "confirme", montant_vente: x.montant_vente, paye_sur_place: false, details: x.details };
+        const ins = await insererPar(qui, champs);
+        ok(ins.ok && (await netsDe(rid))[0].net === 2 * c.net, `${c.nom} (${qui}) : net prévu de départ 2 × ${c.net} ${ins.err || ""}`);
+        // L'enfant ajouté : la ligne enfant entre à la facture, puis la réservation la compte avec ses personnes.
+        const avant = { personnes: { adultes: 2, enfants: 0 } }, apres = { personnes: { adultes: 2, enfants: 1 } };
+        const e = contenuAvecEnfants(contenu0, { ...x, details: {} }, avant, apres, { tarifEnfant: () => c.tarif, uid: () => `${rid.slice(-2)}-enfant`, langue: "en" });
+        ok(!!e.ajoutee, `(contexte) ${c.nom} : la ligne enfant est ajoutée à la facture`);
+        await ecrireDoc(e.contenu, false);
+        const lignes_ids = lignesIdsAvec({ ...x, details: {} }, e.ajoutee);
+        const maj = await essaie(U[qui], `update reservations set personnes = '{"adultes": 2, "enfants": 1}', details = '${JSON.stringify({ ...x.details, lignes_ids })}', montant_vente = ${x.montant_vente + 900} where id = '${rid}'`);
+        const lu = (await netsDe(rid))[0];
+        ok(maj.ok && lu.net === c.attendu && lu.net_auto === c.attendu, `${c.nom} (${qui}) : enfant ajouté après coup, net prévu ${lu.net} (attendu ${c.attendu}) ${maj.err || ""}`);
+        // La démo, sur les mêmes données (nets dans les lignes pour Anaïs, absents pour Mook), donne le même net.
+        const docDemo = { id: docId, dossier_id: DE, type: "facture", updated_at: "x", contenu: qui === "anais" ? e.contenu : separerNets(e.contenu).contenu };
+        const rDemo = { ...champs, personnes: { adultes: 2, enfants: 1 }, details: { ...x.details, lignes_ids } };
+        const demo = netReservationCalcule(rDemo, { ...catalogue, documents: [docDemo] });
+        ok(demo.net === c.attendu, `${c.nom} (${qui}) : la démo calcule le même net (${demo.net})`);
+        const suite = calculerNets(rDemo, { net_prevu: 2 * c.net, net_prevu_auto: 2 * c.net }, { ...catalogue, documents: [docDemo] });
+        ok(suite && suite.net_prevu === c.attendu, `${c.nom} (${qui}) : la démo réécrit le net calculé, pas un net saisi`);
+      }
+    }
+  }
+
   // 6. Règle de commission : la base et commissionPrevue rendent la même chose sur une grille de cas.
   const types = ["pourcent_vente", "pourcent_net", "fixe_personne", "fixe_reservation", "vente_moins_net", "inconnu"];
   const valeurs = [10, "12.5", "", null, -1, "abc", 0];

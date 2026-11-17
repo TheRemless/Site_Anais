@@ -281,6 +281,20 @@ async function actualiserResume(dossierId) {
   }
 }
 
+// Après l'écriture d'une réservation, la base a pu recalculer son net et sa commission prévus (migration 30) : on relit sa ligne de nets,
+// sinon la fiche garde l'ancien net jusqu'à la prochaine synchronisation (contrôle du 17.11.2026, D2). Seulement pour qui voit les nets.
+async function actualiserNets(reservationId) {
+  if (!peut("partenaires.nets") || typeof etat.store.netsReservation !== "function") return;
+  try {
+    const n = await etat.store.netsReservation(reservationId);
+    const liste = etat.brut.reservations_nets.filter((x) => x.reservation_id !== reservationId);
+    etat.brut.reservations_nets = n ? [...liste, n] : liste;
+    rebatir();
+  } catch {
+    // Relecture impossible (réseau) : la synchronisation suivante l'apportera.
+  }
+}
+
 // Prochain numéro de la séquence annuelle des références, attribué par la base (migration 14) : il ne redescend jamais, donc un dossier
 // supprimé ne rend pas son numéro, et il tient compte des dossiers que cette personne ne voit pas. `minimum` est le plus grand numéro que
 // cette personne voit. Sans la migration, ou hors ligne, on retombe sur le calcul local (minimum + 1).
@@ -320,6 +334,7 @@ async function insererBrut(table, row) {
   etat.brut[table].push(r);
   rebatir();
   if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
+  if (table === "reservations") await actualiserNets(r.id);
   return r;
 }
 export const inserer = (...a) => ecrire(() => insererBrut(...a));
@@ -337,6 +352,7 @@ async function modifierBrut(table, id, patch, { verrou = false, version = undefi
   else etat.brut[table].push(r);
   rebatir();
   if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
+  if (table === "reservations") await actualiserNets(r.id);
   return r;
 }
 export const modifier = (...a) => ecrire(() => modifierBrut(...a));

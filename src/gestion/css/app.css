@@ -1580,3 +1580,7 @@ button.compte:focus-visible { outline: 2px solid var(--teal); outline-offset: 1p
 .saisie-rapide-ligne input { flex: 0 1 12em; min-width: 8em; }
 .saisie-rapide .aide { margin: 0; }
 .saisie-rapide .erreur-champ { margin: 0; flex-basis: 100%; }
+
+/* Lot J (17.11.2026) : écarts soldés montrés à part sous l'encaissé, proposition de modèle de voucher. */
+.sec.bloc { display: block; font-size: 0.82rem; font-weight: 400; }
+.proposition-modele { margin-top: 0.25rem; }

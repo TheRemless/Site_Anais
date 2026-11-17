@@ -52,10 +52,13 @@ export function changerReservation(r, apres) {
   const apercu = h("p", { class: "aide apercu-total", "aria-live": "polite", hidden: true });
   const majApercu = () => {
     const a = apercuFacture(r, champs());
-    apercu.hidden = !a || (a.avant === a.apres && !a.raison);
+    const placeChange = !!a && a.placeAvant !== a.placeApres;
+    apercu.hidden = !a || (a.avant === a.apres && !placeChange && !a.raison);
     if (!a) return;
     const total = a.avant === a.apres ? tr("Total de la facture inchangé : {montant}.", { montant: formatMontant(a.apres, a.devise) }) : tr("Total de la facture : {avant} → {apres}.", { avant: formatMontant(a.avant, a.devise), apres: formatMontant(a.apres, a.devise) });
-    apercu.textContent = [total, a.enfantAjoute ? tr("La ligne enfant est ajoutée au tarif enfant du catalogue.") : "", a.raison ? texteRaisonEnfant(a.raison) : ""].filter(Boolean).join(" ");
+    // Service payé sur place : le total de la facture ne bouge pas, ce que le client paie au prestataire si (contrôle du 17.11.2026, D9).
+    const place = placeChange ? tr("À payer sur place au prestataire : {avant} → {apres}.", { avant: formatMontant(a.placeAvant, a.devise), apres: formatMontant(a.placeApres, a.devise) }) : "";
+    apercu.textContent = [place && a.avant === a.apres ? "" : total, place, a.enfantAjoute ? tr("La ligne enfant est ajoutée au tarif enfant du catalogue.") : "", a.raison ? texteRaisonEnfant(a.raison) : ""].filter(Boolean).join(" ");
   };
   for (const i of [date, adultes, enfants]) i.addEventListener("input", majApercu);
   const fermer = modal(

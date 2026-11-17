@@ -10,7 +10,7 @@ import { ecartReservation, estFraisDeParc, hotelEtChambre, dateTexte } from "./o
 export const CONTROLES = [
   "services_sans_heure", "services_sans_lieu", "services_sans_prix", "services_sans_net", "services_sans_commission",
   "factures_differentes_reservation", "notes_sur_place_hors_frais", "dossiers_sans_responsable", "clients_en_double", "clients_sans_contact",
-  "trajets_sans_prix", "prestations_prix_en_texte", "prestations_sur_place_hors_frais", "prestations_a_zero", "prestations_sans_net", "groupes_en_double",
+  "trajets_sans_prix", "prestations_prix_en_texte", "prestations_sur_place_hors_frais", "prestations_sans_net", "groupes_en_double",
   "partenaires_sans_telephone", "partenaires_sans_whatsapp", "trajets_duree",
 ];
 // Seuils par défaut : ceux d'avant les réglages (20 minutes d'écart de durée, un téléphone d'au moins 6 chiffres, 100 lignes par contrôle) et 7 jours pour
@@ -104,7 +104,7 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
   // « Sur place » coché sur une prestation qui n'est pas un frais de parc : elle entre dans les dossiers comme une note hors total au lieu d'un service
   // (16.11.2026, deux prestations de Mr Palm). Les prestations archivées comptent aussi : réactivées, elles referaient la même note.
   ajouter("prestations_sur_place_hors_frais", "partenaires", false, (db.prestations || []).filter((x) => x.sur_place && x.famille !== "frais").map((x) => prest(x, tr("famille « {famille} »", { famille: x.famille || "?" }))));
-  ajouter("prestations_a_zero", "partenaires", false, prestations.filter((x) => !x.sur_place && x.prix_vente !== null && x.prix_vente !== undefined && Number(x.prix_vente) === 0).map((x) => prest(x, "")));
+  // Une prestation à 0 est offerte (décision 8) : elle arrive en facture marquée « Offert », ce n'est plus un oubli à vérifier (D7).
   if (droits.nets) {
     const nets = new Map((db.prestations_nets || []).map((n) => [n.prestation_id, n]));
     ajouter("prestations_sans_net", "partenaires", false, prestations.filter((x) => !x.sur_place && Number(x.prix_vente) > 0 && (!nets.has(x.id) || nets.get(x.id).net === null || nets.get(x.id).net === undefined)).map((x) => prest(x, "")));

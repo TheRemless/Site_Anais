@@ -65,6 +65,8 @@ export function syntheseEntite({ entite, donnees, precedent, cible, taux, mode }
   const factures = avecFactures(mode);
   const facture = somme(factures ? donnees.facture_par_mois : []);
   const encaisse = somme(donnees.encaisse_par_mois);
+  // Écarts soldés (frais Wise, change) : hors de l'encaissé, montrés à part (lot I, contrôle du 17.11.2026).
+  const ecarts = somme(donnees.ecart_par_mois || []);
   const impayes = somme(factures ? donnees.impayes : []);
   const pipeline = somme(devis ? donnees.pipeline : []);
   const nbFactures = factures ? nombre(donnees.facture_par_mois) : 0;
@@ -78,6 +80,8 @@ export function syntheseEntite({ entite, donnees, precedent, cible, taux, mode }
     avecFactures: factures,
     facture: facture.montant,
     encaisse: encaisse.montant,
+    ecarts: ecarts.montant,
+    nbEcarts: nombre(donnees.ecart_par_mois || []),
     impayes: impayes.montant,
     pipeline: pipeline.montant,
     nbFactures,
@@ -93,16 +97,16 @@ export function syntheseEntite({ entite, donnees, precedent, cible, taux, mode }
     evolFacture: prec && factures ? evolution(facture.montant, prec.facture) : null,
     evolEncaisse: prec ? evolution(encaisse.montant, prec.encaisse) : null,
     precedent: prec,
-    manquantes: [...new Set([...facture.manquantes, ...encaisse.manquantes, ...impayes.manquantes, ...pipeline.manquantes])],
+    manquantes: [...new Set([...facture.manquantes, ...encaisse.manquantes, ...ecarts.manquantes, ...impayes.manquantes, ...pipeline.manquantes])],
   };
 }
 
 // Total du groupe et part de chaque société dans le facturé.
 export function consolider(syntheses) {
-  const tot = { facture: 0, encaisse: 0, impayes: 0, pipeline: 0, nbFactures: 0, nbImpayes: 0, nbPipeline: 0, devisEmis: 0, devisAcceptes: 0, dossiers: 0, clients: 0, precFacture: 0, precEncaisse: 0, avecPrecedent: false, manquantes: [] };
+  const tot = { facture: 0, encaisse: 0, ecarts: 0, nbEcarts: 0, impayes: 0, pipeline: 0, nbFactures: 0, nbImpayes: 0, nbPipeline: 0, devisEmis: 0, devisAcceptes: 0, dossiers: 0, clients: 0, precFacture: 0, precEncaisse: 0, avecPrecedent: false, manquantes: [] };
   const manquantes = new Set();
   for (const s of syntheses) {
-    for (const k of ["facture", "encaisse", "impayes", "pipeline", "nbFactures", "nbImpayes", "nbPipeline", "devisEmis", "devisAcceptes", "dossiers", "clients"]) tot[k] += s[k];
+    for (const k of ["facture", "encaisse", "ecarts", "nbEcarts", "impayes", "pipeline", "nbFactures", "nbImpayes", "nbPipeline", "devisEmis", "devisAcceptes", "dossiers", "clients"]) tot[k] += s[k] || 0;
     if (s.precedent) {
       tot.avecPrecedent = true;
       tot.precFacture += s.precedent.facture;
@@ -110,7 +114,7 @@ export function consolider(syntheses) {
     }
     s.manquantes.forEach((d) => manquantes.add(d));
   }
-  for (const k of ["facture", "encaisse", "impayes", "pipeline", "precFacture", "precEncaisse"]) tot[k] = arrondi(tot[k]);
+  for (const k of ["facture", "encaisse", "ecarts", "impayes", "pipeline", "precFacture", "precEncaisse"]) tot[k] = arrondi(tot[k]);
   tot.manquantes = [...manquantes];
   tot.avecDevis = syntheses.some((s) => s.avecDevis !== false);
   tot.avecFactures = syntheses.some((s) => s.avecFactures !== false);

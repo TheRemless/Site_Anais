@@ -2,6 +2,7 @@ import { variantesProposees } from "../reglages-calc.mjs";
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument, estAdmin } from "../etat.mjs";
 import { h, champ, toast, num, vider, icone, modal, confirmer, erreurChamp } from "../ui.mjs";
 import { montantSaisi } from "../nets-reservation-calc.mjs";
+import { prixVenteFige } from "../partenaires-calc.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace, modeReglement, SUR_PLACE, aMarquerEnvoye } from "../calc.mjs";
 import { puceMode } from "./mode-reglement.mjs";
 import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs";
@@ -537,16 +538,20 @@ function editeurVue(id) {
       montants.push(champ(tr("Type de remise"), mode));
       if (l.pct != null) montants.push(champ(tr("Pourcentage"), h("input", { id: `l${l.id}-pct`, type: "number", step: "0.1", min: "0", value: l.pct, oninput: maj("pct", num) })));
     }
+    // Prix venu d'un tarif du catalogue : sans le droit « Modifier les prix de vente », il ne se change pas (décision 3, contrôle du 17.11.2026, D3).
+    // Un prix vide (« prix à saisir ») ou une ligne hors catalogue se remplit toujours.
+    const prixFige = prixVenteFige(l, etat.db, { droitPrix: peut("partenaires.prix") });
     // Service offert au client (rare) : il compte 0 et s'imprime « Offert » (« Complimentary » en anglais). Un prix vide n'est pas un service offert.
     if (l.kind === "ligne" || l.kind === "bloc") {
-      champs.push(h("label", { class: "case", for: `l${l.id}-offert` }, h("input", { id: `l${l.id}-offert`, type: "checkbox", checked: !!l.offert, onchange: (e) => ((l.offert = e.target.checked || undefined), dessinerLignes(), change()) }), tr("Offert au client (compte 0, imprimé « Offert »)")));
+      champs.push(h("label", { class: "case", for: `l${l.id}-offert` }, h("input", { id: `l${l.id}-offert`, type: "checkbox", checked: !!l.offert, disabled: prixFige, onchange: (e) => ((l.offert = e.target.checked || undefined), dessinerLignes(), change()) }), tr("Offert au client (compte 0, imprimé « Offert »)")));
     }
+    if (prixFige) champs.push(h("p", { class: "aide" }, tr("Prix du catalogue : votre rôle ne permet pas de le changer. La quantité reste modifiable.")));
     if (l.kind !== "texte" && l.pct == null && !l.offert) {
       if (detail) {
-        montants.push(champ(tr("Prix unitaire ({devDoc})", { devDoc: devDoc() }), h("input", { id: `l${l.id}-u`, type: "number", step: "0.01", value: l.unite ?? "", oninput: maj("unite", num) })));
+        montants.push(champ(tr("Prix unitaire ({devDoc})", { devDoc: devDoc() }), h("input", { id: `l${l.id}-u`, type: "number", step: "0.01", value: l.unite ?? "", disabled: prixFige, oninput: maj("unite", num) })));
         montants.push(champ(tr("Quantité"), h("input", { id: `l${l.id}-q`, type: "number", step: "1", value: l.qte ?? "", oninput: maj("qte", num) })));
       }
-      montants.push(champ(detail ? tr("Total fixe (si pas de quantité)") : l.kind === "bloc" ? tr("Montant (vide si le prix est sur les lignes suivantes)") : tr("Montant ({devDoc})", { devDoc: devDoc() }), h("input", { id: `l${l.id}-m`, type: "number", step: "0.01", value: l.montant ?? "", oninput: maj("montant", num) })));
+      montants.push(champ(detail ? tr("Total fixe (si pas de quantité)") : l.kind === "bloc" ? tr("Montant (vide si le prix est sur les lignes suivantes)") : tr("Montant ({devDoc})", { devDoc: devDoc() }), h("input", { id: `l${l.id}-m`, type: "number", step: "0.01", value: l.montant ?? "", disabled: prixFige, oninput: maj("montant", num) })));
       montants.push(champ(tr("Texte à la place du montant"), h("input", { id: `l${l.id}-t`, value: l.texte_montant ?? "", placeholder: tr("inclus, offert"), oninput: (e) => ((l.texte_montant = e.target.value.trim() || null), change()) })));
     }
     const presetRemise =

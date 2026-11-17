@@ -8,7 +8,7 @@ import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremi
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
 import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
 import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
-import { personnesDuDossier, sansPersonne } from "../dossier-gestes-calc.mjs";
+import { personnesDuDossier, personnesSelonDossier } from "../dossier-gestes-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { demanderArbitrage } from "./conflit.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
@@ -16,7 +16,7 @@ import { vide, barreFiltres, lienDossier } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut } from "../partenaires-calc.mjs";
+import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, prixVenteFige } from "../partenaires-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { champsNetsChanges } from "../nets-reservation-calc.mjs";
 import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, synchroniserDatesDossier } from "./suivi-facture.mjs";
@@ -178,7 +178,8 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     message_client: [tr("Message client"), () => messageClient(r, cleMessageReservation(r, aujourdhui()))],
     modifier: [tr("Modifier"), () => ouvrirModification(r, apres)],
     dupliquer: [tr("Dupliquer"), () => dupliquerService(r, apres)],
-    voucher: [voucherEnvoye ? tr("Renvoyer le voucher") : tr("Envoyer le voucher"), () => vx && envoyerVoucher(vx)],
+    // Taxi : la Booking confirmation (D12).
+    voucher: [modeTaxi() ? (voucherEnvoye ? tr("Renvoyer la Booking confirmation") : tr("Envoyer la Booking confirmation")) : voucherEnvoye ? tr("Renvoyer le voucher") : tr("Envoyer le voucher"), () => vx && envoyerVoucher(vx)],
     statut: [tr("Changer le statut"), () => choisirStatut(r, apres)],
   };
   const principal = gestePrincipal(ctx);
@@ -383,7 +384,7 @@ export function formulaireReservation(r, apres) {
       if (!libelleSaisi) libelle.value = nomTarif(choisi);
       // Une location « par jour » se compte en jours, pas en personnes.
       const quantite = choisi.unite === "day" ? Math.max(1, Number((r.details || {}).jours) || 1) : quantiteParDefaut(choisi.unite, { adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0 });
-      if (!venteSaisie && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round(Number(choisi.prix_vente) * quantite * 100) / 100);
+      if ((!venteSaisie || !peut("partenaires.prix")) && choisi.prix_vente !== null && choisi.prix_vente !== undefined) vente.value = String(Math.round(Number(choisi.prix_vente) * quantite * 100) / 100);
       proposerCommission();
     }
     majAideTarif();
@@ -431,6 +432,17 @@ export function formulaireReservation(r, apres) {
   });
   remplirTarifs();
   majAideTarif();
+  // « Vendu au client » d'un service du catalogue : sans le droit « Modifier les prix de vente », il ne se change pas (décision 3, contrôle du
+  // 17.11.2026, D3). Un tarif sans prix ou un service hors catalogue se remplit toujours.
+  const droitPrix = peut("partenaires.prix");
+  const majVenteFigee = () => {
+    const fige = prixVenteFige({ prestation_id: tarif.value.startsWith("p:") ? tarif.value.slice(2) : null, trajet_id: tarif.value.startsWith("t:") ? tarif.value.slice(2) : null, montant_vente: vente.value.trim() === "" ? null : vente.value }, etat.db, { droitPrix });
+    vente.disabled = fige;
+    vente.title = fige ? tr("Prix du catalogue : votre rôle ne permet pas de le changer.") : "";
+  };
+  tarif.addEventListener("change", majVenteFigee);
+  partenaire.addEventListener("change", majVenteFigee);
+  majVenteFigee();
   const champTarif = champ(tr("Tarif du catalogue"), tarif);
   champTarif.append(aideTarif);
   for (const x of [vente, adultes, enfants, netPrevu]) x.addEventListener("input", proposerCommission);
@@ -493,10 +505,56 @@ export function formulaireReservation(r, apres) {
   };
   modele.addEventListener("change", dessinerModele);
   if (avecVoucher) dessinerModele();
+  // Partenaire ou tarif changé (contrôle du 17.11.2026, D4) : le modèle de voucher ne change pas en silence. Le modèle figé à l'envoi, choisi, ou
+  // déduit jusqu'ici reste ; si le nouveau partenaire ou tarif en donnerait un autre, l'outil le propose.
+  const propositionModele = h("p", { class: "aide proposition-modele", role: "status", hidden: true });
+  const modeleAvant = modele.value === SANS_VOUCHER ? null : modele.value || modeleAuto || null;
+  const majPropositionModele = () => {
+    if (!avecVoucher) return;
+    const pid = tarif.value.startsWith("p:") ? tarif.value.slice(2) : null;
+    const tid = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
+    const memeService = (partenaire.value || null) === (r.partenaire_id || null) && pid === (r.prestation_id || null) && tid === (r.trajet_id || null);
+    const p2 = pid ? etat.db.prestations.find((x) => x.id === pid) || null : null;
+    const nouveau = typeVoucherDeduit({ ...r, prestation_id: pid, trajet_id: tid, libelle: libelle.value }, p2, partenaireDe(partenaire.value || null)) || null;
+    // Le modèle d'avant devient un choix explicite : il ne suivra plus la déduction d'après le nouveau partenaire.
+    if (!memeService && modele.value === "") {
+      modele.value = modeleAvant || SANS_VOUCHER;
+      dessinerModele();
+    }
+    const actuel = modele.value === SANS_VOUCHER ? null : modele.value || modeleAuto || null;
+    propositionModele.replaceChildren();
+    propositionModele.hidden = memeService || actuel === nouveau;
+    if (propositionModele.hidden) return;
+    propositionModele.append(
+      tr("Avec ce partenaire, le voucher serait « {nouveau} ». Le modèle « {actuel} » est gardé.", { nouveau: nouveau ? TITRES_VOUCHER[nouveau] : tr("Pas de voucher"), actuel: actuel ? TITRES_VOUCHER[actuel] : tr("Pas de voucher") }),
+      " ",
+      h("button", { class: "lien", type: "button", onclick: () => { modele.value = nouveau || SANS_VOUCHER; dessinerModele(); majPropositionModele(); } }, nouveau ? tr("Prendre « {modele} »", { modele: TITRES_VOUCHER[nouveau] }) : tr("Passer en « Pas de voucher »"))
+    );
+  };
+  for (const x of [tarif, partenaire]) x.addEventListener("change", majPropositionModele);
+  modele.addEventListener("change", majPropositionModele);
+  // Net et commission prévus : ceux de l'ancien partenaire ou de l'ancien tarif ne restent pas (D4). Tant qu'ils ne sont ni payés ni retapés ici,
+  // ils sont vidés avant l'enregistrement et la base les recalcule d'après le nouveau tarif (migration 30), comme pour une création.
+  let netTape = false;
+  let commissionTapee = false;
+  netPrevu.addEventListener("input", () => (netTape = true));
+  commissionPrevue.addEventListener("input", () => (commissionTapee = true));
+  const netLibre = !n || (n.net_paye == null && !n.paye_le);
+  const commissionLibre = !n || (n.commission_recue == null && !n.commission_recue_le);
+  const majNetsAvantChangement = () => {
+    if (!nets || !r.id) return;
+    const pid = tarif.value.startsWith("p:") ? tarif.value.slice(2) : null;
+    const tid = tarif.value.startsWith("t:") ? tarif.value.slice(2) : null;
+    const change = (partenaire.value || null) !== (r.partenaire_id || null) || pid !== (r.prestation_id || null) || tid !== (r.trajet_id || null);
+    const indication = tr("Recalculé à l'enregistrement, d'après le nouveau tarif");
+    if (change && netLibre && !netTape) (netPrevu.value = ""), (netPrevu.placeholder = indication);
+    if (change && commissionLibre && !commissionTapee) (commissionPrevue.value = ""), (commissionPrevue.placeholder = indication), (commissionSaisie = false);
+  };
+  for (const x of [tarif, partenaire]) x.addEventListener("change", majNetsAvantChangement);
   const blocVoucher = modeTaxi()
     ? h("fieldset", null, h("legend", null, "Booking confirmation"), h("p", { class: "aide" }, tr("Ce qui s'imprime sur la Booking confirmation en plus de la course.")), h("div", { class: "grille-form" }, CHAMPS.type_trajet(), CHAMPS.drop_off(), CHAMPS.programme_trajet(), CHAMPS.duree_h(), CHAMPS.vol(), CHAMPS.bagages(), CHAMPS.sieges()), CHAMPS.remarques())
     : avecVoucher
-    ? h("fieldset", null, legende, champ(tr("Modèle de voucher"), modele, tr("Automatique : déduit de la prestation et du libellé. Choisissez-le quand la déduction se trompe, ou « Pas de voucher » pour une option.")), champsDuModele)
+    ? h("fieldset", null, legende, champ(tr("Modèle de voucher"), modele, tr("Automatique : déduit de la prestation et du libellé. Choisissez-le quand la déduction se trompe, ou « Pas de voucher » pour une option.")), propositionModele, champsDuModele)
     : null;
   return h(
     "form",
@@ -546,12 +604,19 @@ export function formulaireReservation(r, apres) {
           const { changements, ecartRestant } = suivi;
           if (suivi.montantVente !== null) valeurs.montant_vente = suivi.montantVente;
           await appliquerChangements(changements);
+          // Partenaire ou tarif changé (D4) : le net et la commission de l'ancien sont vidés d'abord, la base les recalcule à l'écriture du service.
+          const serviceChange = !!r.id && ((valeurs.partenaire_id || null) !== (r.partenaire_id || null) || tarifChange);
+          const aVider = serviceChange && nets && n ? { ...(netLibre && !netTape && n.net_prevu != null ? { net_prevu: null } : {}), ...(commissionLibre && !commissionTapee && n.commission_prevue != null ? { commission_prevue: null } : {}) } : {};
+          if (Object.keys(aVider).length) await enregistrerLie("reservations_nets", "reservation_id", r.id, aVider);
           const res = r.id ? await modifierProtege("reservations", r.id, valeurs, { base: r, arbitrer: arbitrerReservation(r) }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
           if (res && res.id && res.details === undefined) res.details = valeurs.details;
           if (!r.id) await rattacherCourseTaxi(res);
           // Seuls les champs changés ici s'écrivent : la base recalcule le net et la commission prévus quand le tarif, les personnes ou le mode changent
           // (migration 31), et la valeur lue à l'ouverture ne doit pas écraser ce recalcul.
           const netsChanges = nets ? champsNetsChanges(n, { net_prevu: nb(netPrevu.value), net_paye: nb(netPaye.value), paye_le: payeLe.value || null, commission_prevue: nb(commissionPrevue.value), commission_recue: nb(commissionRecue.value), commission_recue_le: commissionLe.value || null }) : {};
+          // Ce que la base vient de recalculer n'est pas réécrit par le champ vidé (ou rempli d'après la règle) du formulaire.
+          if (serviceChange && !netTape) delete netsChanges.net_prevu;
+          if (serviceChange && !commissionTapee) delete netsChanges.commission_prevue;
           if (Object.keys(netsChanges).length) await enregistrerLie("reservations_nets", "reservation_id", res.id, netsChanges);
           if (r.id && (dateChangee || annulee)) await synchroniserDatesDossier(r.dossier_id);
           toast(ecartRestant && ecartRestant.length ? `${tr("Réservation enregistrée.")} ${tr("La facture garde l'ancienne valeur, à corriger dans la facture :")} ${ecartRestant.join(" ; ")}` : tr("Réservation enregistrée."));
@@ -582,8 +647,11 @@ export function formulaireReservation(r, apres) {
 
 // Crée une réservation par ligne de partenaire du document qui n'en a pas encore.
 // `personnesDuDossier` : un service sans personnes (prix par véhicule, par bateau, au forfait) prend celles du dossier (service ajouté à un dossier existant).
-export async function creerReservations(doc, { silencieux = false, personnesDuDossier: avecPersonnes = false } = {}) {
+// `personnesDossier` : { adultes, enfants } saisis au Nouveau dossier ; sans eux, ceux du dossier existant (`personnesDuDossier`). Un service sans
+// ligne enfant prend les enfants du dossier quand sa quantité est celle du dossier (personnesSelonDossier, contrôle du 17.11.2026, D8).
+export async function creerReservations(doc, { silencieux = false, personnesDuDossier: avecPersonnes = false, personnesDossier = null } = {}) {
   const existantes = etat.db.reservations.filter((r) => r.dossier_id === doc.dossier_id);
+  const duDossier = personnesDossier && (Number(personnesDossier.adultes) || 0) + (Number(personnesDossier.enfants) || 0) ? personnesDossier : avecPersonnes ? personnesDuDossier(existantes) : null;
   const nouvelles = reservationsDepuisDocument(doc, { existantes, regleDe: regleCommissionDe });
   const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id);
   const clientDuDossier = (dossier && etat.db.clients.find((c) => c.id === dossier.client_id)) || {};
@@ -594,11 +662,10 @@ export async function creerReservations(doc, { silencieux = false, personnesDuDo
       const { id, ...sansId } = reservation;
       // Le lieu de pickup du dossier est repris (dernier service, sinon adresse du client) : un service ajouté ne part pas sans lieu.
       sansId.lieu_pickup = sansId.lieu_pickup || lieuParDefaut([...existantes, ...etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id && !existantes.includes(x))], clientDuDossier);
-      if (avecPersonnes && sansPersonne(sansId.personnes)) {
-        const p = personnesDuDossier(etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id));
-        // La marque dit que ces personnes viennent du dossier : 1 adulte pour 1 véhicule n'est pas une quantité prise pour des personnes.
-        if (p) (sansId.personnes = { ...(sansId.personnes || {}), ...p }), (sansId.details = { ...(sansId.details || {}), personnes_du_dossier: true });
-      }
+      // La marque dit que ces personnes viennent du dossier : 1 adulte pour 1 véhicule n'est pas une quantité prise pour des personnes, et 3 personnes
+      // facturées au prix adulte peuvent être 2 adultes et 1 enfant.
+      const p = duDossier ? personnesSelonDossier(sansId.personnes, duDossier, ((sansId.prestation_id && etat.db.prestations.find((x) => x.id === sansId.prestation_id)) || {}).unite || "") : null;
+      if (p) (sansId.personnes = { ...(sansId.personnes || {}), ...p }), (sansId.details = { ...(sansId.details || {}), personnes_du_dossier: true });
       const res = await inserer("reservations", sansId);
       if ((net !== null || commission_prevue !== undefined) && voitNets() && peut("dossiers.ecrire")) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: net, net_paye: null, paye_le: null, ...(commission_prevue !== undefined ? { commission_prevue } : {}) });
       n++;
@@ -651,7 +718,8 @@ export function sectionReservationsDossier(d, doc) {
     h(
       "div",
       { class: "entete petit-entete" },
-      h("h2", null, tr("Réservations auprès des partenaires")),
+      // « Services » (audit n° 54, contrôle du 17.11.2026, D12), comme dans Nouveau dossier.
+      h("h2", null, tr("Services")),
       ecrit
         ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc, { personnesDuDossier: true }), rafraichir()) }, (doc.type === "devis" ? pluriel(manquantes, N_("Créer {n} réservation depuis le devis"), N_("Créer {n} réservations depuis le devis")) : pluriel(manquantes, N_("Créer {n} réservation depuis la facture"), N_("Créer {n} réservations depuis la facture")))) : null, modeExcursions() ? h("button", { class: "principal petit", type: "button", onclick: () => ajouterServices(d, doc, rafraichir) }, tr("Ajouter un service")) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle réservation"), formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir())), { brouillon: `reservation-nouvelle:${d.id}` }); } }, modeExcursions() ? tr("Réservation à la main") : tr("Nouvelle réservation")))
         : null

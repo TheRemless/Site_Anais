@@ -192,9 +192,10 @@ export const ecrireDevisesNoms = (o) => Object.entries(o || {}).map(([code, v]) 
 // ---- Message et objet de l'envoi ------------------------------------------------------------------------------------
 // Modèles par défaut dans MESSAGES_DEFAUT (defauts.mjs), modifiables dans l'écran Messages : usages « envoi_devis », « envoi_facture »,
 // « objet_devis », « objet_facture ». Sans modèle, le texte de secours ci-dessous (le même que les modèles par défaut).
-const USAGES_ENVOI = ["envoi_devis", "envoi_facture", "objet_devis", "objet_facture"];
+const USAGES_ENVOI = ["envoi_devis", "envoi_facture", "objet_devis", "objet_facture", "renvoi_facture", "objet_renvoi_facture"];
 export const SECOURS_ENVOI = Object.fromEntries(["fr", "en"].map((langue) => [langue, Object.fromEntries(USAGES_ENVOI.map((cle) => [cle, (MESSAGES_DEFAUT.find((m) => m.cle === cle && m.langue === langue) || {}).corps || ""]))]));
 // Usage du message et de l'objet pour un document.
-export const usagesEnvoi = (type) => (type === "devis" ? { message: "envoi_devis", objet: "objet_devis" } : { message: "envoi_facture", objet: "objet_facture" });
+// `renvoi` : une facture déjà envoyée et corrigée repart avec le modèle « facture mise à jour » (D16, 17.11.2026).
+export const usagesEnvoi = (type, { renvoi = false } = {}) => (type === "devis" ? { message: "envoi_devis", objet: "objet_devis" } : renvoi ? { message: "renvoi_facture", objet: "objet_renvoi_facture" } : { message: "envoi_facture", objet: "objet_facture" });
 // Variables du message d'envoi : {bonjour} (« Hello Anna, »), {prenom}, {numero}, {client}, {entreprise}, {total}.
 export const varsEnvoi = ({ en, prenom = "", numero = "", client = "", entreprise = "", total = "" }) => ({ bonjour: `${en ? "Hello" : "Bonjour"}${prenom ? ` ${prenom}` : ""},`, prenom, numero, client, entreprise, total });

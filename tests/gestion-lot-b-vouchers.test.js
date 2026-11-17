@@ -73,7 +73,10 @@ test("n° 24 : l'empreinte change avec ce qui s'imprime, pas avec les notes ni l
   assert.ok(!meme({ ...r, details: { remarques: "Aisle seat" } }), "remarques imprimées");
   assert.ok(!meme({ ...r, details: { ...r.details, modele_voucher: "activite" } }), "modèle choisi");
   assert.ok(!meme(r, { ...c, nom: "Smith" }), "nom du client");
-  assert.ok(!meme(r, c, "acompte"), "statut de paiement imprimé");
+  // Contrôle du 17.11.2026, D6 : un paiement reçu ne fait pas repasser le voucher « à renvoyer ». Seul le paiement sur place compte.
+  assert.ok(meme(r, c, "acompte"), "statut de paiement de l'agence ignoré");
+  assert.ok(meme(r, c, "paye"), "facture soldée ignorée");
+  assert.ok(!meme(r, c, "sur_place"), "payé sur place : compte");
 });
 
 test("n° 22 et 25 : la trace figée garde le numéro du premier envoi, et ne vaut que pour le même service", () => {

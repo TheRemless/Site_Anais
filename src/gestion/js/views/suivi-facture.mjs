@@ -5,7 +5,7 @@ import { etat, chargerDossier, peut, reglages, nomPartenaire, modifier, inserer,
 import { contenuCourse, ligneCourse } from "../taxi-calc.mjs";
 import { uid, CONTENU_DEFAUT } from "../defauts.mjs";
 import { h, modal, confirmer, toast } from "../ui.mjs";
-import { formatMontant, formatDate, totaux } from "../calc.mjs";
+import { formatMontant, formatDate, totaux, montantSurPlace } from "../calc.mjs";
 import { contenuAvecSurPlace, contenuAvecReservation, contenuAvecService, contenuSansReservation, attenduDepuisFacture, ecartReservation, personnesTexte, datesDepuisReservations, descriptionService } from "../operations-calc.mjs";
 import { prestationEnfant, prixEnfantDe } from "../demande-calc.mjs";
 import { contenuAvecEnfants, lignesIdsAvec } from "../dossier-gestes-calc.mjs";
@@ -27,7 +27,8 @@ const listeService = (cles) => {
   return noms.length > 1 ? tr("{debut} et {fin}", { debut: noms.slice(0, -1).join(", "), fin: noms[noms.length - 1] }) : noms[0] || "";
 };
 // Les options de contenuAvecService tirées de la base en mémoire.
-const optionsService = (personnes) => ({ prestationDe: (id) => etat.db.prestations.find((p) => p.id === id) || null, netDe: (p) => { const n = netPrestation(p); return n ? n.net : undefined; }, personnes, nomPartenaire });
+// Le tarif enfant (prix enfant de la prestation, ou prestation enfant séparée) donne le net des lignes enfant (contrôle du 17.11.2026, D4).
+const optionsService = (personnes) => ({ prestationDe: (id) => etat.db.prestations.find((p) => p.id === id) || null, netDe: (p) => { const n = netPrestation(p); return n ? n.net : undefined; }, tarifEnfantDe: (pid) => tarifEnfantCatalogue({ prestation_id: pid }), personnes, nomPartenaire });
 
 // Les documents du dossier (devis, factures) avec leur contenu une fois ce service retiré. Vide quand le service n'est sur aucun document.
 export function documentsSansService(documents, r) {
@@ -194,7 +195,8 @@ export function apercuFacture(r, valeurs) {
   const doc = ch ? ch.doc : documents[0];
   const suite = ch ? ch.suite : doc.contenu;
   const devise = doc.contenu.devise || reglages().devise;
-  return { avant: totaux(doc.contenu).net, apres: totaux(suite).net, devise, raison: s.raisonEnfant, enfantAjoute: s.ajoutees.length > 0 };
+  // Ce que le client paie sur place au prestataire (contrôle du 17.11.2026, D9) : le total de la facture n'en dit rien, cet aperçu le montre aussi.
+  return { avant: totaux(doc.contenu).net, apres: totaux(suite).net, placeAvant: montantSurPlace(doc.contenu), placeApres: montantSurPlace(suite), devise, raison: s.raisonEnfant, enfantAjoute: s.ajoutees.length > 0 };
 }
 
 // Taxi : pas de facture montrée, le prix interne suit la course en silence (date, prix, paiement au chauffeur, annulation), ainsi que le libellé,

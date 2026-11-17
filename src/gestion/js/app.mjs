@@ -330,7 +330,9 @@ function coqueSimple() {
 }
 
 // Fiduciaire au menu : dans une entreprise qui émet ces factures (Secret) ; dans une autre (Taxi, 17.11.2026), seulement pour qui peut la réactiver.
-const fiduciaireAuMenu = () => peut("fiduciaire.preparer") && modeExcursions() && (reglagesFid(etat.db.reglages).actif || (peut("fiduciaire.gerer") && peut("reglages.ecrire")));
+// Taxi n'émet pas de factures pour la fiduciaire (décision 5) : l'entrée sort du menu tant qu'elle n'y est pas réactivée, ce qui se fait depuis les
+// Réglages (onglet « Écrans », contrôle du 17.11.2026, D10).
+const fiduciaireAuMenu = () => peut("fiduciaire.preparer") && modeExcursions() && (reglagesFid(etat.db.reglages).actif || (!modeTaxi() && peut("fiduciaire.gerer") && peut("reglages.ecrire")));
 
 // Écrans propres à un type d'entreprise : ZTP (voyages sur mesure), Secret (excursions), Taxi.
 function ecranDeLEntreprise(cle) {

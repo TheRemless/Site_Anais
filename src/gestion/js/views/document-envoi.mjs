@@ -11,7 +11,7 @@ import { moyen, partageFichiers, partager, enregistrer, copierTexte, zoneEnvoi }
 import { lienWhatsApp, gabaritsPropose, remplirGabarit } from "../operations-calc.mjs";
 import { messagesDefautPour } from "../defauts.mjs";
 import { messagesTypes } from "./messages.mjs";
-import { numeroDocument, usagesEnvoi, varsEnvoi, SECOURS_ENVOI, envoiBloque, lignesSansPrix } from "../documents-calc.mjs";
+import { numeroDocument, usagesEnvoi, varsEnvoi, SECOURS_ENVOI, envoiBloque, lignesSansPrix, etatEnvoi } from "../documents-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
 import { construirePdf, decouperPages, hauteurPage } from "../pdf-simple.mjs";
 import { tr } from "../i18n.mjs";
@@ -55,11 +55,12 @@ export async function fabriquerPdf(doc) {
 
 // Message et objet de l'e-mail qui accompagnent le document : modèles de l'écran Messages (usages « envoi_facture », « objet_facture »,
 // « envoi_devis », « objet_devis ») dans la langue du document, sinon le texte de départ. Le numéro est celui imprimé sur le document.
-export function textesEnvoi(doc, dossier, client) {
+// `renvoi` : la facture est déjà partie et repart corrigée : modèles « renvoi_facture » et « objet_renvoi_facture » (D16).
+export function textesEnvoi(doc, dossier, client, { renvoi = false } = {}) {
   const regl = reglages();
   const en = doc.contenu.langue === "en";
   const langue = en ? "en" : "fr";
-  const usages = usagesEnvoi(doc.type);
+  const usages = usagesEnvoi(doc.type, { renvoi: !!doc.envoye_le && (renvoi || etatEnvoi(doc).modifie) });
   const modele = (cle) => {
     const m = gabaritsPropose(messagesTypes(), messagesDefautPour(regl), { pour: "client", langue, cle }).choisi;
     return (m && m.corps) || SECOURS_ENVOI[langue][cle];
@@ -92,7 +93,7 @@ export function envoyerDocument(doc, { marquerEnvoye = null, renvoi = false } = 
   const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === dossier.client_id) || {};
   const tel = chiffres(client.telephone);
-  const { message, objet } = textesEnvoi(doc, dossier, client);
+  const { message, objet } = textesEnvoi(doc, dossier, client, { renvoi });
   const numero = numeroDocument(doc, dossier);
   const apercu = h("div", { class: "envoi-apercu", "aria-live": "polite" }, h("p", { class: "aide" }, tr("Préparation du PDF…")));
   const actions = h("div", { class: "actions envoi-actions" });

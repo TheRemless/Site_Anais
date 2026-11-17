@@ -74,7 +74,19 @@ export function envoyerVoucher(x) {
   let fichier = null;
   const zone = zoneEnvoi({ fichiers: () => (fichier ? [fichier] : []) });
 
-  const enregistrerImage = () => enregistrer([fichier]);
+  // Image ou PDF enregistrés pour un envoi hors de WhatsApp (e-mail, autre messagerie, depuis un ordinateur) : rien n'est noté tout seul, la
+  // personne dit elle-même que le voucher est parti (contrôle du 17.11.2026, D5). Un renvoi garde le numéro du premier envoi.
+  const gesteNoterManuel = () => {
+    if (!peut("dossiers.ecrire")) return null;
+    const v = vouchersDuDossier(r.dossier_id).find((y) => y.reservation.id === r.id);
+    const modifie = !!(v && v.envoi && v.envoi.modifie);
+    return h("button", { class: "secondaire", type: "button", onclick: () => noter("client", "manuel") }, modifie ? tr("Marquer renvoyé") : tr("Marquer envoyé au client"));
+  };
+  const proposerNoterManuel = () => {
+    const b = gesteNoterManuel();
+    if (b) zone.succes({ titre: tr("Une fois le voucher parti chez le client (e-mail, autre messagerie), notez-le ici."), boutons: [b] });
+  };
+  const enregistrerImage = () => (enregistrer([fichier]), proposerNoterManuel());
 
   // Note l'envoi des vouchers `reservations` à `pour` (« client » ou « partenaire ») si le geste a abouti (`issue`, voir envoiANoter).
   // La fiche se redessine à la fermeture de la fenêtre, pour ne pas bouger la page pendant qu'on colle l'image (ou à la fin de l'écriture si
@@ -210,7 +222,7 @@ export function envoyerVoucher(x) {
   function afficherActions() {
     const chemin = moyen([fichier]);
     const destinataires = [["client"]];
-    const imprimer = window.matchMedia("(hover: hover)").matches ? [h("button", { class: "lien", type: "button", onclick: () => imprimerVoucher(x) }, tr("PDF"))] : [];
+    const imprimer = window.matchMedia("(hover: hover)").matches ? [h("button", { class: "lien", type: "button", onclick: () => (imprimerVoucher(x), proposerNoterManuel()) }, tr("PDF"))] : [];
     if (chemin === "natif") {
       // La liste de partage du téléphone choisit l'application et le contact, l'image y est jointe. Sans prestataire, un seul bouton évident ;
       // avec un prestataire, un bouton par destinataire, pour noter à qui le voucher est parti.

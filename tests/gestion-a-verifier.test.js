@@ -79,7 +79,8 @@ const par = (liste, cle) => (liste.find((c) => c.cle === cle) || { elements: [] 
 test("à vérifier : chaque contrôle repère ses cas, pas les autres", () => {
   const l = aVerifier(db(), { droits: tous, aujourdhui: "2026-11-12" });
   assert.deepEqual(par(l, "trajets_sans_prix").map((x) => x.id), ["t2", "t3"], "prix vide ou à zéro, trajets actifs seulement");
-  assert.deepEqual(par(l, "prestations_a_zero").map((x) => x.id), ["s2"], "un prix à zéro (le frais de parc payé sur place et l'archivée ne comptent pas)");
+  // Décision 8 (contrôle du 17.11.2026, D7) : une prestation à 0 est offerte, elle n'est plus un cas à vérifier.
+  assert.equal(l.some((c) => c.cle === "prestations_a_zero"), false, "plus de contrôle « Prestations à zéro »");
   assert.deepEqual(par(l, "prestations_prix_en_texte").map((x) => x.id), ["s3"]);
   assert.deepEqual(par(l, "prestations_sans_net").map((x) => x.id), ["s3".replace("s3", "s4")].filter(Boolean), "net absent ou vide : la plongée ; ni le prix à zéro ni le texte seul");
   assert.deepEqual(par(l, "groupes_en_double").map((x) => x.texte), ["Excursions en groupe / excursions en groupe "]);

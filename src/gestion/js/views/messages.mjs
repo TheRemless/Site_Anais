@@ -20,7 +20,8 @@ export const DESTINATAIRES = [
 ];
 // Anaïs écrit elle-même aux prestataires (Jérémy, 14.11.2026) : plus de messages types vers eux à l'écran, sauf la commission de Taxi demandée
 // au chauffeur. Les modèles restent en base et dans les défauts (rien n'est effacé).
-const destinataires = () => (modeTaxi() ? DESTINATAIRES : DESTINATAIRES.filter(([pour]) => pour !== "partenaire"));
+// Taxi : le seul message vers un partenaire est la commission du chauffeur, la puce le dit (contrôle du 17.11.2026, D11).
+const destinataires = () => (modeTaxi() ? DESTINATAIRES.map(([pour, nom]) => [pour, pour === "partenaire" ? N_("Au chauffeur") : nom]) : DESTINATAIRES.filter(([pour]) => pour !== "partenaire"));
 const COMMISSIONS = new Set(["commission", "commissions"]);
 const visible = (m) => destinataireMessage(m) !== "partenaire" || (modeTaxi() && COMMISSIONS.has(m.cle));
 // Noms lisibles des variables, pour dire ce qui manque.
@@ -40,6 +41,8 @@ export const USAGES = [
   { cle: "reponse", pour: "client", libelle: N_("Réponse à une demande"), modes: ["excursions", "taxi"] },
   { cle: "envoi_facture", pour: "client", libelle: N_("Envoi de la facture (message)"), modes: ["sur_mesure", "excursions"] },
   { cle: "objet_facture", pour: "client", libelle: N_("Envoi de la facture (objet de l'e-mail)"), modes: ["sur_mesure", "excursions"] },
+  { cle: "renvoi_facture", pour: "client", libelle: N_("Renvoi de la facture corrigée (message)"), modes: ["sur_mesure", "excursions"] },
+  { cle: "objet_renvoi_facture", pour: "client", libelle: N_("Renvoi de la facture corrigée (objet de l'e-mail)"), modes: ["sur_mesure", "excursions"] },
   { cle: "envoi_devis", pour: "client", libelle: N_("Envoi du devis (message)"), modes: ["sur_mesure"] },
   { cle: "objet_devis", pour: "client", libelle: N_("Envoi du devis (objet de l'e-mail)"), modes: ["sur_mesure"] },
   { cle: "commission", pour: "partenaire", libelle: N_("Commission d'une course (au chauffeur)"), modes: ["taxi"] },
@@ -160,7 +163,7 @@ function formulaireMessage(m, apres) {
     h("div", { class: "grille-form" }, champ(tr("Titre"), titre), champ(tr("Usage"), cle, tr("Quand l'outil propose ce message. Le même usage dans plusieurs langues : le bon est proposé selon la langue.")), champ(tr("Langue"), langue)),
     h("label", { class: "case", for: "m-actif" }, actif, tr("Proposer ce message")),
     h("p", { class: "aide" }, tr("Décoché, ni ce message ni le modèle de départ du même usage ne sont proposés : l'usage est désactivé dans cette langue.")),
-    champ(tr("Texte"), corps, tr("Variables : {client} {prenom} {date} {hotel} {heure} {a_heure} {personnes} {prestation} {partenaire} {reference} {entreprise} {telephone} {lien_avis}")),
+    champ(tr("Texte"), corps, tr("Variables : {client} {prenom} {date} {hotel} {heure} {a_heure} {personnes} {prestation} {partenaire} {reference} {entreprise} {telephone} {lien_avis}. Envoi d'une facture : {bonjour} {numero} {total}")),
     h("div", { class: "actions" }, m.id ? h("button", { class: "danger", type: "button", onclick: async () => {
       // Supprimer le seul message d'un usage fait revenir le modèle de départ : on le dit, et on renvoie vers « Proposer ce message ».
       const defautRevient = defautsEntreprise().some((d) => d.cle === m.cle && d.langue === m.langue && !messagesTypes().some((x) => x.id !== m.id && x.cle === m.cle && x.langue === m.langue));

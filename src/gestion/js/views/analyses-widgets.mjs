@@ -36,10 +36,11 @@ export function compact(n) {
 }
 
 // Écart face à la période de comparaison : flèche et texte, jamais la couleur seule.
-export function ecartTexte(ecart, precedent, devise, { monnaie = true, unite = "", inverse = false } = {}) {
+// `neutre` : une mesure qui n'est ni bonne ni mauvaise quand elle monte (écarts soldés, lot I) : flèche grise, ni verte ni rouge.
+export function ecartTexte(ecart, precedent, devise, { monnaie = true, unite = "", inverse = false, neutre = false } = {}) {
   if (!ecart) return null;
   const nom = ecart.delta > 0 ? "haut" : ecart.delta < 0 ? "bas" : "egal";
-  const bon = ecart.sens === "hausse" || ecart.sens === "nouveau" ? !inverse : ecart.sens === "baisse" ? inverse : null;
+  const bon = neutre ? null : ecart.sens === "hausse" || ecart.sens === "nouveau" ? !inverse : ecart.sens === "baisse" ? inverse : null;
   const classe = bon === null ? "neutre" : bon ? "plus" : "moins";
   const arrondi1 = Math.round(ecart.delta * 10) / 10;
   const texte = unite ? (arrondi1 === 0 ? tr("stable") : `${arrondi1 > 0 ? "+" : ""}${String(arrondi1).replace(".", tr(","))} ${tr(unite)}`) : ecart.pct === null ? (ecart.sens === "nouveau" ? tr("nouveau") : tr("stable")) : `${ecart.pct > 0 ? "+" : ""}${ecart.pct} %`;
@@ -60,8 +61,8 @@ function minigraphe(valeurs) {
 }
 
 // Tuile cliquable : valeur, variation, mini graphique. `aide` = [titre, texte] ouvre « Comment c'est calculé ».
-export function tuile({ libelle, valeur, detail, ecart, precedent, devise, monnaie = true, ecartUnite = "", ecartInverse = false, serie, href, aide, grande = false }) {
-  const corps = [h("span", { class: "st-tuile-libelle" }, libelle), h("strong", { class: "st-tuile-valeur" }, valeur), ecart ? ecartTexte(ecart, precedent, devise, { monnaie, unite: ecartUnite, inverse: ecartInverse }) : null, detail ? h("span", { class: "st-tuile-detail" }, detail) : null, minigraphe(serie)];
+export function tuile({ libelle, valeur, detail, ecart, precedent, devise, monnaie = true, ecartUnite = "", ecartInverse = false, ecartNeutre = false, serie, href, aide, grande = false }) {
+  const corps = [h("span", { class: "st-tuile-libelle" }, libelle), h("strong", { class: "st-tuile-valeur" }, valeur), ecart ? ecartTexte(ecart, precedent, devise, { monnaie, unite: ecartUnite, inverse: ecartInverse, neutre: ecartNeutre }) : null, detail ? h("span", { class: "st-tuile-detail" }, detail) : null, minigraphe(serie)];
   return h(
     "div",
     { class: `st-tuile${grande ? " grande" : ""}` },
