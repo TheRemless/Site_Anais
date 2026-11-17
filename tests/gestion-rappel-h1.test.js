@@ -212,3 +212,10 @@ test("fenêtre Rappels : changer les heures garde l'interrupteur « Rappel 1 h a
   const vue = fs.readFileSync(new URL("../src/gestion/js/views/rappels.mjs", import.meta.url), "utf8");
   assert.match(vue, /rappels: \{ \.\.\.\(reglages\(\)\.rappels \|\| \{\}\), veille: lire\(veille\), lendemain: lire\(lendemain\) \}/);
 });
+
+test("fenêtre Rappels : jamais « null » dans la fenêtre d'une personne qui n'est pas administratrice", () => {
+  const vue = fs.readFileSync(new URL("../src/gestion/js/views/rappels.mjs", import.meta.url), "utf8");
+  // replaceChildren(null) écrit le texte « null » : le bloc des heures s'ajoute par un tableau, vide pour les autres.
+  assert.ok(!/estAdmin\(\) \? reglageHeures\(dessiner\) : null/.test(vue));
+  assert.equal((vue.match(/\.\.\.\(estAdmin\(\) \? \[reglageHeures\(dessiner\)\] : \[\]\)/g) || []).length, 2);
+});

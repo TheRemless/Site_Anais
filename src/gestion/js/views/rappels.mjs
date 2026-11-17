@@ -72,7 +72,7 @@ export function ouvrirRappels() {
   async function dessiner() {
     corps.replaceChildren(h("p", { class: "aide" }, tr("Chargement…")));
     if (etat.store.mode !== "supabase") {
-      corps.replaceChildren(blocH1(), h("p", { class: "aide" }, tr("Démonstration : aucune notification ne part de cet appareil. Le réglage ci-dessus est gardé dans la démo.")), h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: fermer }, tr("Fermer"))), estAdmin() ? reglageHeures(dessiner) : null);
+      corps.replaceChildren(blocH1(), h("p", { class: "aide" }, tr("Démonstration : aucune notification ne part de cet appareil. Le réglage ci-dessus est gardé dans la démo.")), h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: fermer }, tr("Fermer"))), ...(estAdmin() ? [reglageHeures(dessiner)] : []));
       return;
     }
     let s;
@@ -119,7 +119,7 @@ export function ouvrirRappels() {
         s === "actif" ? actionner(tr("Désactiver"), "secondaire", () => desactiver(etat.store), tr("Rappels désactivés sur cet appareil.")) : null,
         h("button", { class: "secondaire", type: "button", onclick: fermer }, tr("Fermer"))
       ),
-      estAdmin() ? reglageHeures(dessiner) : null
+      ...(estAdmin() ? [reglageHeures(dessiner)] : [])
     );
   }
   dessiner();
