@@ -1,7 +1,10 @@
-import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions, modeTaxi, netReservation } from "../etat.mjs";
+import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions, modeTaxi, netReservation, estAdmin } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, num, icone, barreAction } from "../ui.mjs";
-import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, convertirContenu, sommePaiements, acceptationAuPaiement, payeSansFacture } from "../calc.mjs";
-import { uid, modesPaiement } from "../defauts.mjs";
+import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, acceptationAuPaiement, payeSansFacture } from "../calc.mjs";
+import { uid, modesPaiement, CONTENU_DEFAUT } from "../defauts.mjs";
+import { patchEnvoi, etatEnvoi, numeroVerrouille, localeEnRetard, ecartRecu } from "../documents-calc.mjs";
+import { contenuLocale } from "./facture-locale.mjs";
+import { langueClient } from "../operations-calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { sectionTachesDossier } from "./taches.mjs";
 import { sectionPieces } from "./pieces.mjs";
@@ -52,7 +55,8 @@ function ficheDossierVue(id) {
   // Mode taxi (VIP Taxi Lanta) : le prix vit sur un document interne jamais montré ; ni facture, ni paiement à enregistrer.
   const taxi = modeTaxi();
   const avecDevis = !excursions && (!!devis || !facture);
-  const acompte = acompteDu(r.total, regl.conditions.acompte_pct);
+  // Acompte figé à l'envoi du devis (r.pct), pas celui des Réglages du jour.
+  const acompte = acompteDu(r.total, r.pct ?? regl.conditions.acompte_pct);
   const echeance = echeanceAcompte(d, regl);
   const ajd = aujourdhui();
   // Marge du dossier : total du document qui fait foi moins les nets des lignes de partenaires, pour qui voit les nets.
@@ -70,8 +74,19 @@ function ficheDossierVue(id) {
   // Étapes du dossier : le statut en découle, ces boutons ne font qu'enregistrer des faits.
   const etape = (fait, titre, detail, action) => h("li", { class: fait ? "etape fait" : "etape" }, h("span", { class: "etape-etat" }, fait ? tr("Fait") : tr("À faire")), h("div", { class: "etape-texte" }, h("strong", null, tr(titre)), detail ? h("span", null, detail) : null), action || null);
 
+  // Un document qui part chez le client se fige : émetteur, banque, devise, acompte (documents-calc.mjs). Le devis fige aussi l'acompte % du dossier.
+  const noterEnvoi = async (doc, recu = null) => {
+    await modifier("documents", doc.id, patchEnvoi(doc, regl, { date: ajd, paiements, recu }));
+    if (doc.type === "devis" && "acompte_pct" in d && d.acompte_pct == null) {
+      try {
+        await modifier("dossiers", d.id, { acompte_pct: Number(regl.conditions.acompte_pct) || 0 });
+      } catch (err) {
+        toast(tr("Acompte non figé sur le dossier : {message}", { message: err.message }), true);
+      }
+    }
+  };
   const marquerEnvoye = async () => {
-    await modifier("documents", devis.id, { envoye_le: ajd });
+    await noterEnvoi(devis);
     toast(tr("Devis marqué comme envoyé."));
     rafraichir();
   };
@@ -97,13 +112,27 @@ function ficheDossierVue(id) {
     );
   };
   const creerFacture = async () => {
-    const base = devis ? structuredClone(devis.contenu) : { bandeau: d.bandeau, colonnes: "total", lignes: [], equivalents: { actif: false }, pied: "qr", variante: "qr", tva: true };
+    // Sans devis (Secret, ou facture recréée après une suppression) : le même gabarit que « Ajouter un service », en anglais pour Secret.
+    const base = devis ? structuredClone(devis.contenu) : excursions ? { ...CONTENU_DEFAUT(), colonnes: "total", langue: langueClient(regl) === "en" ? "en" : "", variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: [] } : { bandeau: d.bandeau, colonnes: "total", lignes: [], equivalents: { actif: false }, pied: "qr", variante: "qr", tva: true };
     base.montant_recu = null;
+    // La facture repart sans trace d'envoi du devis ; elle écrit toujours sa devise.
+    delete base.fige;
+    delete base.envois;
+    delete base.source;
+    base.devise = base.devise || regl.devise;
     // Les conditions du devis parlent de « la signature du devis » : la facture prend la variante des réglages prévue pour les factures.
     const cond = varianteFacture(regl.textes.variantes, base.variante);
     base.variante = cond.variante;
     const f = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: ajd, envoye_le: null, updated_at: new Date().toISOString(), contenu: base });
     if (cond.manque && !excursions) toast(tr("Aucune variante de conditions pour les factures dans les réglages : la facture garde celle du devis. Vérifiez la phrase avant l'envoi."), true);
+    // Facturer un devis, c'est qu'il est accepté : sans cela le dossier restait « Devis envoyé », hors de « À encaisser » et relancé comme un devis.
+    if (devis && !d.accepte_le && !d.annule) {
+      try {
+        await modifier("dossiers", d.id, { accepte_le: ajd });
+      } catch (err) {
+        toast(tr("Acceptation non enregistrée : {message}", { message: err.message }), true);
+      }
+    }
     naviguer(`#/doc/${f.id}`);
   };
 
@@ -132,11 +161,8 @@ function ficheDossierVue(id) {
             e.preventDefault();
             const t = num(taux.value);
             if (!t || t <= 0) return toast(tr("Indiquez le taux de conversion."), true);
-            const contenu = convertirContenu(facture.contenu, t, cible.value);
-            contenu.lignes = contenu.lignes.map((l) => ({ ...l, id: uid() }));
-            contenu.paiement = mode.value;
-            contenu.numero = numero.value.trim();
-            contenu.langue = langue.value;
+            // La facture locale garde l'empreinte de la facture copiée et le taux : si la facture change, l'écart se voit et la copie se recrée.
+            const contenu = contenuLocale(facture, { taux: t, devise: cible.value, paiement: mode.value, numero: numero.value.trim(), langue: langue.value });
             const f = await inserer("documents", { dossier_id: d.id, type: "facture_locale", date_emission: facture.date_emission, envoye_le: null, updated_at: new Date().toISOString(), contenu });
             fermer();
             naviguer(`#/doc/${f.id}`);
@@ -173,6 +199,10 @@ function ficheDossierVue(id) {
               contenu.lignes = contenu.lignes.map((l) => ({ ...l, id: uid() }));
               contenu.montant_recu = null;
               delete contenu.libelle_recu;
+              delete contenu.fige;
+              delete contenu.envois;
+              delete contenu.source;
+              delete contenu.numero;
               const nouveau = await inserer("documents", { dossier_id: nd.id, type: "devis", date_emission: ajd, envoye_le: null, updated_at: new Date().toISOString(), contenu });
               fermer();
               toast(tr("Dossier dupliqué. Adaptez maintenant le devis."));
@@ -201,6 +231,16 @@ function ficheDossierVue(id) {
       respSel.value = d.responsable_id || "";
     });
     const ref = h("input", { id: "m-ref", value: d.ref });
+    // Un devis ou une facture est parti avec ce numéro : il ne change plus, sauf par l'administratrice après confirmation.
+    const refBloquee = numeroVerrouille(r.documents);
+    ref.readOnly = refBloquee;
+    const deverrouiller = h("button", { class: "lien", type: "button", hidden: !refBloquee || !estAdmin(), onclick: async () => {
+      if (!(await confirmer(tr("Un document est déjà parti chez le client avec le numéro {ref}. Le changer renumérote le devis, la facture et les vouchers de ce dossier : le client aura deux numéros pour le même dossier. Le changer quand même ?", { ref: d.ref }), tr("Changer le numéro"), true))) return;
+      ref.readOnly = false;
+      deverrouiller.hidden = true;
+      ref.focus();
+    } }, tr("Changer le numéro"));
+    const aideRef = refBloquee ? tr("Document déjà envoyé : le numéro ne change plus.") : null;
     const fermer = modal(
       tr("Modifier le dossier"),
       h(
@@ -209,6 +249,7 @@ function ficheDossierVue(id) {
           class: "modal-corps",
           onsubmit: async (e) => {
             e.preventDefault();
+            if (ref.readOnly && ref.value.trim() !== d.ref) ref.value = d.ref;
             if (etat.db.dossiers.some((x) => x.id !== d.id && x.ref === ref.value.trim())) {
               toast(tr("Cette référence existe déjà."), true);
               return;
@@ -220,7 +261,7 @@ function ficheDossierVue(id) {
           },
         },
         selClient.noeud,
-        excursions ? h("div", { class: "grille-form" }, champ(taxi ? tr("Numéro de réservation") : tr("Numéro de facture"), ref), champ(tr("Responsable"), respSel), h("p", { class: "aide pleine-largeur" }, tr("Les dates du dossier sont celles de ses réservations, elles se mettent à jour toutes seules."))) : h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || tr("Pays"), pays), champ(tr("Référence"), ref), champ(tr("Début"), depart), champ(tr("Fin"), retour), champ(tr("Date d'acceptation du devis"), accepte, tr("Laissez vide si le client n'a pas encore accepté.")), champ(tr("Responsable du dossier"), respSel, tr("Avec un rôle limité à « ses dossiers », la personne ne voit que ceux dont elle est responsable."))),
+        excursions ? h("div", { class: "grille-form" }, h("div", null, champ(taxi ? tr("Numéro de réservation") : tr("Numéro de facture"), ref, aideRef), deverrouiller), champ(tr("Responsable"), respSel), h("p", { class: "aide pleine-largeur" }, tr("Les dates du dossier sont celles de ses réservations, elles se mettent à jour toutes seules."))) : h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || tr("Pays"), pays), h("div", null, champ(tr("Référence"), ref, aideRef), deverrouiller), champ(tr("Début"), depart), champ(tr("Fin"), retour), champ(tr("Date d'acceptation du devis"), accepte, tr("Laissez vide si le client n'a pas encore accepté.")), champ(tr("Responsable du dossier"), respSel, tr("Avec un rôle limité à « ses dossiers », la personne ne voit que ceux dont elle est responsable."))),
         h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Enregistrer")))
       )
     );
@@ -382,13 +423,24 @@ function ficheDossierVue(id) {
 
   // « Envoyer » sur tous les appareils : PDF prêt, conversation WhatsApp ou e-mail ouverts avec le message (« Imprimer » reste dans la fenêtre d'envoi).
   // Une facture envoyée fige son montant reçu, comme dans l'éditeur.
-  const envoyerDoc = (doc) =>
+  // Modifié depuis l'envoi : c'est un renvoi, et le montant reçu imprimé peut d'abord se mettre à jour d'après les paiements.
+  const envoyerDoc = async (doc) => {
+    const renvoi = etatEnvoi(doc).modifie;
+    const ecart = renvoi ? ecartRecu(doc, paiements) : null;
+    // Le nouveau montant reçu part dans le PDF et ne s'enregistre qu'avec l'envoi : fermer la fenêtre sans envoyer ne change rien.
+    let recu = null;
+    if (ecart && (await confirmer(tr("La facture envoyée indique {imprime} reçus. Les paiements enregistrés font {paiements}. Mettre {paiements} sur la facture renvoyée ?", { imprime: fm(ecart.imprime, doc.contenu.devise), paiements: fm(ecart.paiements, doc.contenu.devise) }), tr("Mettre à jour le montant reçu")))) {
+      recu = ecart.paiements;
+      doc = { ...doc, contenu: { ...doc.contenu, montant_recu: recu } };
+    }
     envoyerDocument(doc, {
+      renvoi,
       marquerEnvoye: async () => {
-        await modifier("documents", doc.id, { envoye_le: aujourdhui(), ...(doc.type === "facture" && doc.contenu.montant_recu == null ? { contenu: { ...doc.contenu, montant_recu: sommePaiements(etat.db.paiements.filter((p) => p.dossier_id === doc.dossier_id)) } } : {}) });
+        await noterEnvoi(doc, recu);
         rafraichir();
       },
     });
+  };
   const ligneDoc = (doc, libelle) => {
     const t = totaux(doc.contenu, doc.type === "facture" && doc.contenu.montant_recu != null ? doc.contenu.montant_recu : 0);
     return h(
@@ -396,7 +448,8 @@ function ficheDossierVue(id) {
       null,
       h("td", { "data-label": tr("Document") }, h("a", { href: `#/doc/${doc.id}` }, tr(libelle))),
       h("td", { "data-label": tr("Émis le") }, formatDate(doc.date_emission)),
-      h("td", { "data-label": tr("Envoyé le") }, doc.envoye_le ? formatDate(doc.envoye_le) : tr("Pas encore")),
+      // Modifié depuis l'envoi : le client a encore l'ancienne version (« Renvoyer » dans l'éditeur). Facture locale en retard sur la facture.
+      h("td", { "data-label": tr("Envoyé le") }, doc.envoye_le ? formatDate(doc.envoye_le) : tr("Pas encore"), etatEnvoi(doc).modifie ? h("span", { class: "tag alerte" }, tr("modifié depuis l'envoi")) : null, doc.type === "facture_locale" && localeEnRetard(doc, facture) ? h("span", { class: "tag alerte" }, tr("facture modifiée depuis")) : null),
       h("td", { class: "num", "data-label": tr("Total") }, fm(t.net, doc.contenu.devise)),
       h("td", { class: "action-cellule" }, h("a", { class: "bouton secondaire petit", href: `#/doc/${doc.id}` }, tr("Ouvrir")), h("button", { class: "secondaire petit", type: "button", onclick: () => envoyerDoc(doc) }, doc.type === "facture_locale" ? "PDF" : tr("Envoyer")), peut("documents.supprimer") ? h("button", { class: "secondaire petit danger-texte", type: "button", onclick: () => supprimerDocument(doc, rafraichir) }, tr("Supprimer")) : null)
     );
@@ -502,7 +555,7 @@ function ficheDossierVue(id) {
             "dl",
             null,
             ligne(tr("Total"), fm(r.total)),
-            acompte > 0 && r.statut !== "sur_place" ? ligne(tr("Acompte ({acompte_pct}%)", { acompte_pct: regl.conditions.acompte_pct }), fm(acompte)) : null,
+            acompte > 0 && r.statut !== "sur_place" ? ligne(tr("Acompte ({acompte_pct}%)", { acompte_pct: r.pct ?? regl.conditions.acompte_pct }), fm(acompte)) : null,
             ligne(tr("Reçu"), fm(r.recu)),
             // « Tout sur place » : rien à encaisser chez nous, ni reste ni couleur d'alerte.
             r.statut === "sur_place" ? ligne(tr("Reste à payer"), tr("Rien chez nous"), "resume-ok") : ligne(tr("Reste à payer"), fm(r.reste), r.reste > 0 ? "resume-reste" : null),
@@ -640,7 +693,8 @@ function ficheDossierVue(id) {
             class: "danger",
             type: "button",
             onclick: async () => {
-              if (await confirmer(tr("Supprimer définitivement ce dossier avec ses documents et ses paiements ? Cette action est irréversible."), tr("Supprimer définitivement"), true)) {
+              // La base garde le dossier 90 jours dans la corbeille (Réglages, onglet Sauvegarde) : le message le dit (17.11.2026).
+              if (await confirmer(etat.store.mode === "supabase" ? tr("Supprimer ce dossier avec ses documents, ses paiements et ses réservations ? Il reste 90 jours dans la corbeille (Réglages, onglet Sauvegarde) et peut être restauré pendant ce temps.") : tr("Supprimer ce dossier avec ses documents et ses paiements ? En démonstration, il ne peut pas être restauré."), tr("Supprimer le dossier"), true)) {
                 await supprimer("dossiers", d.id);
                 naviguer("#/dossiers");
                 toast(tr("Dossier supprimé."));

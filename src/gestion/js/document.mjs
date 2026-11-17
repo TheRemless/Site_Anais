@@ -2,22 +2,28 @@
 // Tout ce qui est propre à une entreprise (textes, logo, couleurs, coordonnées) vient de ses réglages.
 import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, lignesEquivalents, formatNombre, acompteDu, montantLigne, montantSurPlace } from "./calc.mjs";
 import { h, markup, inline } from "./ui.mjs";
-import { modePaiement, LIBELLES_EN, phraseCgv, conditionsDocument, mentionTva } from "./defauts.mjs";
+import { LIBELLES_EN, phraseCgv, conditionsDocument, mentionTva } from "./defauts.mjs";
+import { reglagesDuDocument, paiementDuDocument, infoDevise, texteOffert } from "./documents-calc.mjs";
 
 const lignes = (texte) => (texte || "").split("\n").filter((l) => l.trim() !== "");
 
-export function renderDocument({ type, doc, dossier, client, reglages, recu, nomPartenaire = () => "" }) {
+export function renderDocument({ type, doc, dossier, client, reglages: reglagesDuJour, recu, nomPartenaire = () => "" }) {
   const c = doc.contenu;
+  // Un document envoyé garde l'émetteur, la banque, la devise et l'acompte du jour de son envoi (contenu.fige) : changer les réglages ne le redessine pas.
+  const reglages = reglagesDuDocument(reglagesDuJour, c);
   const t = totaux(c, recu);
   const e = reglages.emetteur;
   const en = c.langue === "en";
+  // Secret et Taxi écrivent à leurs clients en anglais, même quand le document reste en « langue principale » (leurs libellés sont anglais) :
+  // les mentions écrites ici (« pay on arrival », « Complimentary », licence) suivent, au lieu de sortir en français sur une facture anglaise.
+  const enClient = en || (!c.langue && (reglagesDuJour.fonctionnement === "excursions" || reglagesDuJour.fonctionnement === "taxi"));
   // Document en anglais : textes fixes anglais des réglages (ceux de la langue principale ne sont pas touchés).
   const lb = en ? { ...LIBELLES_EN, ...(reglages.libelles_en || {}) } : reglages.libelles;
   const ap = reglages.apparence;
   const detail = c.colonnes === "detail";
   const locale = type === "facture_locale";
   const estFacture = type === "facture" || locale;
-  const mode = modePaiement(reglages, c.paiement);
+  const mode = paiementDuDocument(reglagesDuJour, c);
   const numero = (c.numero || "").trim() || dossier.ref;
   const titreType = locale ? lb.facture_locale || lb.facture : estFacture ? lb.facture : lb.devis;
   const variante = conditionsDocument(reglages, c, en);
@@ -32,12 +38,11 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu, nom
   const surPlaceTotal = montantSurPlace(c);
   const toutSurPlace = surPlaceTotal > 0 && t.sousTotal === 0;
   const eqBarre = lignesEq ? equivalents(toutSurPlace ? surPlaceTotal : t.reste, lignesEq) : [];
-  const SYMBOLES = { EUR: "€", USD: "$" };
-  const texteEq = (x) => `${formatNombre(x.montant)} ${SYMBOLES[x.code] || x.code}`;
-  const NOMS_DEVISES = { CHF: "Swiss Franc", EUR: "Euro", THB: "Thai Baht", USD: "US Dollar", GBP: "Pound Sterling" };
+  // Noms et symboles des devises : réglables (Réglages, Dossiers et listes), valeurs par défaut dans documents-calc.mjs.
+  const texteEq = (x) => `${formatNombre(x.montant)} ${infoDevise(reglagesDuJour, x.code).symbole}`;
   const vars = {
     devise: dev,
-    devise_nom: NOMS_DEVISES[dev] || dev,
+    devise_nom: infoDevise(reglagesDuJour, dev).nom,
     acompte: pct,
     solde: 100 - pct,
     delai: reglages.conditions.delai_jours,
@@ -50,7 +55,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu, nom
 
   // Textes propres aux lignes payées directement au prestataire (pas dans les réglages : ils s'appliquent aux documents déjà enregistrés).
   // Mêmes mots que le voucher (« Pay on arrival ») : la facture et le voucher d'un service disent la même chose.
-  const TXT_PLACE = en
+  const TXT_PLACE = enClient
     ? { court: "pay on arrival", barre: "DUE ON SITE", note_mixte: "The amount due on site is paid directly to the providers and is not included in the total above.", note_tout: "Paid directly to the providers on site.", autres: "Other services" }
     : { court: "à payer sur place", barre: "À PAYER SUR PLACE", note_mixte: "Le montant à payer sur place est réglé directement aux prestataires et n'est pas compris dans le total ci-dessus.", note_tout: "Réglé directement aux prestataires sur place.", autres: "Autres services" };
   // Le détail par prestataire : à qui le client paie quoi, une fois sur place.
@@ -89,7 +94,8 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu, nom
       description,
       detail ? h("div", { class: "unite" }, unite) : null,
       detail ? h("div", { class: "qte" }, qte) : null,
-      h("div", { class: l.texte_montant ? "montant txt" : "montant" }, l.texte_montant || (aMontant ? formatMontant(montant, dev) : ""))
+      // Ligne offerte : « Offert » (« Complimentary » en anglais) à la place du montant, sauf texte choisi pour cette ligne.
+      h("div", { class: l.texte_montant || l.offert ? "montant txt" : "montant" }, l.texte_montant || (l.offert ? texteOffert(enClient) : aMontant ? formatMontant(montant, dev) : ""))
     );
   };
 
@@ -146,7 +152,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu, nom
         e.sous_titre ? h("span", { class: "sous-titre" }, e.sous_titre.toUpperCase()) : null,
         lignes(e.adresse).map((l) => h("p", null, l)),
         e.telephone ? h("p", null, e.telephone) : null,
-        e.licence ? h("p", { class: "sheet-licence" }, `${en ? "TAT licence" : "Licence TAT"}: ${e.licence}`) : null
+        e.licence ? h("p", { class: "sheet-licence" }, `${enClient ? "TAT licence" : "Licence TAT"}: ${e.licence}`) : null
       ),
       h(
         "div",

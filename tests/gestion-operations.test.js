@@ -103,7 +103,7 @@ test("gabarits : variables remplies, inconnues gardées, vides effacées", () =>
   assert.equal(remplirGabarit("Pickup : {hotel}{a_heure} \n", { hotel: "", a_heure: "" }), "Pickup :");
 });
 
-test("variables d'un message depuis une réservation", () => {
+test("variables d'un message depuis une réservation", async () => {
   const v = variablesMessage({ reservation: { libelle: "4 îles", date_service: "2026-12-10", heure_pickup: "08:00", lieu_pickup: "Hotel Sunset", personnes: { adultes: 2 }, reference_partenaire: "LT-1" }, client: { prenom: "Ben", nom: "Walker" }, dossier: { ref: "EX-1" }, partenaire: { nom: "Longtail" }, entreprise: { nom: "Secret", telephone: "+66" }, langue: "en" });
   assert.deepEqual(v, { client: "Ben Walker", prenom: "Ben", date: "10 December 2026", hotel: "Hotel Sunset", heure: "08:00", a_heure: " at 08:00", personnes: "2 adults", prestation: "4 Islands", partenaire: "Longtail", contact: "Longtail", dropoff: "", prix: "", reference: "LT-1", entreprise: "Secret", telephone: "+66", lien_avis: "" });
   const fr = variablesMessage({ reservation: {}, client: { prenom: "Ben", nom: "Walker", adresse: "Hotel Palm\nKoh Lanta" }, dossier: { ref: "EX-2", date_depart: "2027-01-05" } });
@@ -113,7 +113,9 @@ test("variables d'un message depuis une réservation", () => {
   assert.equal(fr.a_heure, "");
   // Le modèle « réponse au client » a ses propres variables (services, total, formule d'appel) : celles de varsReponse.
   // Le message groupé des commissions de Taxi ajoute {courses} (taxi-calc.mjs varsCommissions).
-  const connues = { ...v, ...varsReponse({ d: { nom: "A" }, services: [], entreprise: {} }), ...varsCommissions([v]) };
+  // L'envoi d'un devis ou d'une facture a ses variables (numéro du document) : celles de varsEnvoi (documents-calc.mjs, lot C1).
+  const { varsEnvoi } = await import("../src/gestion/js/documents-calc.mjs");
+  const connues = { ...v, ...varsReponse({ d: { nom: "A" }, services: [], entreprise: {} }), ...varsCommissions([v]), ...varsEnvoi({ en: true }) };
   for (const m of [...MESSAGES_DEFAUT, ...MESSAGES_TAXI]) for (const k of m.corps.match(/\{(\w+)\}/g) || []) assert.ok(k.slice(1, -1) in connues, `${m.id} utilise une variable connue : ${k}`);
   // Taxi : la personne du partenaire, la dépose et le prix de la course.
   const t = variablesMessage({ reservation: { libelle: "Private minivan: Koh Lanta → Krabi Airport", montant_vente: 2700, details: { drop_off: "Krabi Airport" } }, partenaire: { nom: "VIP Taxi Lanta", contact: { personne: "Mr. Brown" } }, entreprise: { nom: "VIP Taxi Lanta", devise: "THB" }, langue: "th" });

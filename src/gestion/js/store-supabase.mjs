@@ -315,6 +315,20 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async restaurerDossier(id) {
       return verifie(await sb.rpc("restaurer_dossier", { p_id: id }));
     },
+    // Devis et factures supprimés seuls (sans leur dossier) des 90 derniers jours, et leur restauration avec leurs nets (migration 31).
+    async documentsSupprimes(entiteId) {
+      return verifie(await sb.rpc("documents_supprimes", { p_entite: entiteId }));
+    },
+    async restaurerDocument(documentId) {
+      return verifie(await sb.rpc("restaurer_document", { p_document: documentId }));
+    },
+    // Prochain numéro de la séquence annuelle, réservé à l'administratrice (migration 31).
+    async lireProchainNumero(entiteId, annee) {
+      return verifie(await sb.rpc("lire_prochain_numero", { p_entite: entiteId, p_annee: annee }));
+    },
+    async fixerProchainNumero(entiteId, annee, prochain) {
+      return verifie(await sb.rpc("fixer_prochain_numero", { p_entite: entiteId, p_annee: annee, p_prochain: prochain }));
+    },
     // Numéro suivant de la séquence annuelle (migration 14). Échoue tant que la migration n'est pas appliquée : l'appelant garde alors son calcul.
     async prochainNumeroRef(entiteId, annee, minimum) {
       return verifie(await sb.rpc("prochain_numero_ref", { p_entite: entiteId, p_annee: annee, p_minimum: minimum }));

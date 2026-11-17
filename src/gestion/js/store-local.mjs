@@ -28,6 +28,10 @@ export function creer() {
     if (!data) data = donneesDemo(aujourdhui(), ajouterJours);
     for (const t of TABLES) data[t] = data[t] || [];
     data.fiduciaire_factures = data.fiduciaire_factures || [];
+    // Corbeille des documents et compteurs de numéros, comme la base (migration 31). L'acompte figé du dossier existe comme colonne.
+    data.corbeille_documents = data.corbeille_documents || [];
+    data.compteurs_ref = data.compteurs_ref || {};
+    for (const d of data.dossiers || []) if (!("acompte_pct" in d)) d.acompte_pct = null;
     let choisi = null;
     try {
       choisi = localStorage.getItem(CLE_UTILISATEUR);
@@ -165,6 +169,9 @@ export function creer() {
     },
     async inserer(table, row) {
       const ligne = { id: uid(), created_at: aujourdhui(), ...row };
+      // Comme la base (migration 31) : un document écrit toujours sa devise, un dossier a sa colonne d'acompte figé.
+      if (table === "documents" && ligne.contenu && !ligne.contenu.devise) ligne.contenu = { ...ligne.contenu, devise: (data.reglages[ligne.entite_id] || {}).devise || "CHF" };
+      if (table === "dossiers" && !("acompte_pct" in ligne)) ligne.acompte_pct = null;
       if (table === "dossiers") ligne.responsable_id = ligne.responsable_id || utilisateur.user_id;
       if (TABLES.includes(table) && !["catalogue", "trajets", ...PARTENAIRES_NETS].includes(table)) ligne.cree_par = utilisateur.user_id;
       data[table].push(ligne);
@@ -195,6 +202,8 @@ export function creer() {
     },
     async supprimer(table, id) {
       const ligne = data[table].find((r) => r.id === id);
+      // Un devis ou une facture supprimé seul reste 90 jours restaurable (comme documents_historique en base).
+      if (table === "documents" && ligne) data.corbeille_documents = [{ ligne: structuredClone(ligne), supprime_le: new Date().toISOString() }, ...data.corbeille_documents.filter((x) => x.ligne.id !== id)];
       data[table] = data[table].filter((r) => r.id !== id);
       if (table === "dossiers") {
         data.documents = data.documents.filter((d) => d.dossier_id !== id);
@@ -218,11 +227,44 @@ export function creer() {
     async restaurerDossier() {
       throw new Error("Indisponible en mode démonstration.");
     },
+    async documentsSupprimes(entiteId) {
+      const limite = Date.now() - 90 * 86400000;
+      return data.corbeille_documents
+        .filter((x) => x.ligne.entite_id === entiteId && Date.parse(x.supprime_le) > limite && data.dossiers.some((d) => d.id === x.ligne.dossier_id) && !data.documents.some((d) => d.id === x.ligne.id))
+        .map((x) => ({ document_id: x.ligne.id, dossier_id: x.ligne.dossier_id, ref: (data.dossiers.find((d) => d.id === x.ligne.dossier_id) || {}).ref, type: x.ligne.type, numero: (x.ligne.contenu || {}).numero || null, date_emission: x.ligne.date_emission, envoye_le: x.ligne.envoye_le, devise: (x.ligne.contenu || {}).devise, contenu: x.ligne.contenu, supprime_le: x.supprime_le }));
+    },
+    async restaurerDocument(documentId) {
+      const x = data.corbeille_documents.find((c) => c.ligne.id === documentId);
+      if (!x) throw new Error(tr("Document introuvable dans la corbeille (plus de 90 jours, ou déjà restauré)."));
+      if (!data.dossiers.some((d) => d.id === x.ligne.dossier_id)) throw new Error(tr("Le dossier de ce document a été supprimé : restaurez d'abord le dossier."));
+      data.documents.push(structuredClone(x.ligne));
+      data.corbeille_documents = data.corbeille_documents.filter((c) => c !== x);
+      journaliser("documents", "insert", x.ligne);
+      sauve();
+      return x.ligne.dossier_id;
+    },
+    async lireProchainNumero(entiteId, annee) {
+      const pris = Math.max(0, ...data.dossiers.filter((d) => d.entite_id === entiteId).map((d) => Number((String(d.ref || "").match(new RegExp(`(?:^|-)${annee}-(\\d+)$`)) || [])[1]) || 0));
+      const compteur = data.compteurs_ref[`${entiteId}:${annee}`] || 0;
+      return { prochain: Math.max(pris, compteur) + 1, minimum: pris + 1 };
+    },
+    async fixerProchainNumero(entiteId, annee, prochain) {
+      const { minimum } = await this.lireProchainNumero(entiteId, annee);
+      if (!(prochain >= minimum)) throw new Error(tr("Le numéro {pris} est déjà donné cette année : choisissez {minimum} ou plus.", { pris: minimum - 1, minimum }));
+      data.compteurs_ref[`${entiteId}:${annee}`] = prochain - 1;
+      sauve();
+      return prochain;
+    },
     // Démo : une seule personne, pas de compteur partagé.
     // Comme la base : le compteur tient compte des dossiers que la personne ne voit pas (rôle « ses dossiers », écran « Nouveau voucher »).
     async prochainNumeroRef(entiteId, annee, minimum) {
       const pris = data.dossiers.filter((d) => d.entite_id === entiteId).map((d) => (String(d.ref || "").match(new RegExp(`${annee}-(\\d+)$`)) || [])[1]).filter(Boolean).map(Number);
-      return Math.max(minimum, ...pris) + 1;
+      // Le compteur fixé par l'administratrice (saut de numérotation) compte aussi, comme en base.
+      const cle = `${entiteId}:${annee}`;
+      const n = Math.max(minimum, data.compteurs_ref[cle] || 0, ...pris) + 1;
+      data.compteurs_ref[cle] = n;
+      sauve();
+      return n;
     },
     async definirMaLangue(code) {
       utilisateur.langue = code;
