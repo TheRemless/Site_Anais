@@ -159,6 +159,14 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     return { demandes_site: demandes || [], bandeaux_site: bandeaux || [], site_disponible: demandes !== null && bandeaux !== null };
   }
 
+  // L'organisation de la personne connectée (migration 41) : nom, fuseau, langue. Avant la migration la table manque : liste vide, rien ne casse.
+  async function lireOrganisations() {
+    const { data, error } = await sb.from("organisations").select("id, nom, fuseau, langue, statut, options");
+    if (!error) return data || [];
+    if (error.code === "42P01" || error.code === "PGRST205" || /relation "[^"]*organisations" does not exist|Could not find the table/i.test(error.message || "")) return [];
+    throw new Error(error.message);
+  }
+
   return {
     mode: "supabase",
     async session() {
@@ -297,7 +305,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       const tables = ["entites", "profils", "roles", "membres", ...CHARGEES.filter((t) => relire || !CATALOGUE.includes(t))];
       // Toutes les lectures partent ensemble (elles étaient faites l'une après l'autre).
-      const [lues, resumeLignes, taches, reglagesLignes, site] = await Promise.all([
+      const [lues, resumeLignes, taches, reglagesLignes, site, organisations] = await Promise.all([
         Promise.all(tables.map((t) => toutes(t))),
         toutes("dossiers_resume"),
         (() => {
@@ -307,8 +315,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         })(),
         toutes("reglages"),
         lireSite(),
+        lireOrganisations(),
       ]);
       tables.forEach((t, i) => (out[t] = lues[i]));
+      out.organisations = organisations;
       Object.assign(out, site);
       if (!relire) for (const t of CATALOGUE) out[t] = ancien[t];
       else {

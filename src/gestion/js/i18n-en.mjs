@@ -3343,4 +3343,23 @@ export const EN = {
   "Le nom du client, le service, les personnes et le pickup, un tap ouvre la réservation et son rappel. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche).": "The client's name, the service, the people and the pickup, one tap opens the booking and its reminder. Everyone can turn it off for themselves in the “Reminders” window (the bell).",
   // Bandeau du site réservé au droit « Modifier les réglages » (migration 40)
   "Le bandeau du site est réservé aux personnes qui ont le droit « Modifier les réglages de l'entreprise ».": "The website banner is only for people with the “Edit the company settings” permission.",
+  // Modèles métier et organisation (étape 3 du SaaS, migration 41)
+  "Réglages de l'organisation indisponibles : la base n'a pas encore la migration 41.": "Organisation settings are not available yet: the database does not have migration 41.",
+  "Devis, acompte, facture et carnet de voyage. Catalogue de formules et de prix.": "Quotes, deposits, invoices and travel booklets. A catalogue of packages and prices.",
+  "Excursions et activités": "Tours and activities",
+  "Facture directe sans devis, prestataires avec leurs prix nets, réservations et vouchers.": "Direct invoices without quotes, suppliers with their net prices, bookings and vouchers.",
+  "Transferts et taxi": "Transfers and taxi",
+  "Booking confirmation sans facture, le client paie le chauffeur, commissions des chauffeurs.": "Booking confirmations without invoices, the client pays the driver, driver commissions.",
+  "Organisation": "Organisation",
+  "L'organisation regroupe vos entreprises et votre équipe. Personne en dehors d'elle ne voit vos données.": "Your organisation groups your companies and your team. Nobody outside it can see your data.",
+  "Organisation enregistrée.": "Organisation saved.",
+  "Nom de l'organisation": "Organisation name",
+  "Fuseau horaire": "Time zone",
+  "Enregistré pour les rappels. Pour l'instant, ils partent encore à l'heure de Bangkok.": "Saved for reminders. For now, they are still sent on Bangkok time.",
+  "Langue de départ": "Default language",
+  "Langue de l'interface pour les nouveaux comptes. Chacun peut ensuite choisir la sienne.": "Interface language for new accounts. Everyone can then choose their own.",
+  "Réglages vides": "Empty settings",
+  "Plus tard": "Later",
+  "Type d'activité": "Type of business",
+  "Devise des documents": "Currency of documents",
 };

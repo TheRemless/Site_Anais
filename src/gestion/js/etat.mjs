@@ -5,6 +5,7 @@ import { creerStore } from "./store.mjs";
 import { resume, setDevise, setMasquerMontants, aujourdhui } from "./calc.mjs";
 import { construireCopie, CLE_HORS_LIGNE } from "./feuille-hors-ligne-calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
+import { reglagesModele } from "./modeles-metier.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
@@ -443,10 +444,11 @@ async function enregistrerReglagesBrut(valeur, versionLue) {
 export const enregistrerReglages = (...a) => ecrire(() => enregistrerReglagesBrut(...a));
 
 // Administration (administrateur général seulement, la base le refuse aux autres)
-export async function creerEntite(nom, slug) {
+// `modele` : un modèle métier (modeles-metier.mjs) qui donne la façon de travailler et des textes neutres. Sans modèle : réglages vides, comme avant.
+export async function creerEntite(nom, slug, { modele = null, devise = "" } = {}) {
   const ordre = Math.max(0, ...etat.brut.entites.map((e) => e.ordre || 0)) + 1;
   const e = await etat.store.inserer("entites", { nom, slug, actif: true, ordre });
-  const base = completerReglages({ emetteur: { nom } });
+  const base = completerReglages(modele ? reglagesModele(modele, { nom, devise }) : { emetteur: { nom } });
   await etat.store.enregistrerReglages(e.id, base);
   // `tous_droits` (migration 38) n'est écrit que si la base a déjà la colonne : avant la migration, l'insertion échouerait.
   const avecTousDroits = etat.brut.roles.some((r) => "tous_droits" in r);
@@ -464,6 +466,19 @@ async function modifierEntiteBrut(id, patch) {
   rebatir();
 }
 export const modifierEntite = (...a) => ecrire(() => modifierEntiteBrut(...a));
+
+// L'organisation de la personne connectée (migration 41) : null tant que la base n'a pas la migration.
+export const organisation = () => ((etat.brut && etat.brut.organisations) || [])[0] || null;
+// Nom, fuseau et langue : l'administrateur de l'organisation seul (la base refuse le statut et les options payantes).
+async function modifierOrganisationBrut(patch) {
+  const o = organisation();
+  if (!o) throw new Error(tr("Réglages de l'organisation indisponibles : la base n'a pas encore la migration 41."));
+  const champs = Object.fromEntries(Object.entries(patch).filter(([k]) => ["nom", "fuseau", "langue"].includes(k)));
+  const r = await etat.store.modifier("organisations", o.id, champs);
+  etat.brut.organisations = [{ ...o, ...r }];
+  rebatir();
+}
+export const modifierOrganisation = (...a) => ecrire(() => modifierOrganisationBrut(...a));
 
 export async function definirAcces(userId, entiteId, roleId) {
   if (roleId) {

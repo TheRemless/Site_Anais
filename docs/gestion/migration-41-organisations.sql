@@ -103,7 +103,9 @@ begin
   elsif coalesce(meta->>'nouvelle_organisation', '') <> 'true' and (select count(*) from organisations) = 1 then
     select id into org from organisations;
   end if;
-  insert into profils (user_id, email, super_admin, organisation_id) values (new.id, new.email, false, org) on conflict do nothing;
+  -- Langue de départ du compte : celle de l'organisation (Réglages > Administration). Chacun la change ensuite pour lui.
+  insert into profils (user_id, email, super_admin, organisation_id, langue)
+  values (new.id, new.email, false, org, (select langue from organisations where id = org)) on conflict do nothing;
   return new;
 end
 $$;

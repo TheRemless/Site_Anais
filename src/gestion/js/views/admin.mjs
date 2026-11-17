@@ -1,12 +1,13 @@
 // Administration : entreprises et accès des utilisateurs. Réservée à l'administratrice générale.
 // Lot D (17.11.2026) : inviter une personne, lien de mot de passe, supprimer un compte, langue d'une autre personne, Administrateur calculé.
-import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation } from "../etat.mjs";
+import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, organisation, modifierOrganisation, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation } from "../etat.mjs";
 import { DEPENDANCES, completerReglages, PERMISSIONS } from "../defauts.mjs";
 import { droitsProposes, droitsDuRole, droitsRetires } from "../droits.mjs";
 import { accesChoisis, messageInvitation, messageLien } from "../compte-calc.mjs";
 import { h, champ, modal, toast, slug, confirmer, icone, saisie } from "../ui.mjs";
 import { vide, plierSections } from "./commun.mjs";
 import { tr, N_, LANGUES, pluriel } from "../i18n.mjs";
+import { MODELES, MODELE_DEFAUT, DEVISES_PROPOSEES } from "../modeles-metier.mjs";
 
 const PORTEES = [
   ["toute", N_("Tous les dossiers de l'entreprise")],
@@ -113,12 +114,64 @@ function roleModal(entite, role, apres) {
   );
 }
 
+// Fuseaux proposés pour l'organisation : celui du navigateur en tête, puis la liste du navigateur (ou une liste courte s'il ne la donne pas).
+const FUSEAUX_COURTS = ["Asia/Bangkok", "Europe/Zurich", "Europe/Paris", "Europe/London", "America/New_York", "America/Los_Angeles", "Asia/Singapore", "Asia/Bali", "Australia/Sydney"];
+const fuseaux = () => {
+  const liste = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : FUSEAUX_COURTS;
+  return [...new Set(liste.concat(FUSEAUX_COURTS))].sort();
+};
+
+// Organisation (migration 41) : le client du logiciel. Son administrateur règle le nom, le fuseau des rappels et la langue de départ des comptes.
+function blocOrganisation(rafraichir) {
+  const o = organisation();
+  if (!o) return null;
+  const nom = h("input", { id: "org-nom", value: o.nom || "", required: true });
+  const fuseau = h("select", { id: "org-fuseau" }, ...fuseaux().map((z) => h("option", { value: z }, z)));
+  fuseau.value = o.fuseau || "Asia/Bangkok";
+  const langue = h("select", { id: "org-langue" }, ...LANGUES.map((l) => h("option", { value: l.code }, l.nom)));
+  langue.value = o.langue || "en";
+  return h(
+    "section",
+    null,
+    h("h2", null, tr("Organisation")),
+    h("p", { class: "aide" }, tr("L'organisation regroupe vos entreprises et votre équipe. Personne en dehors d'elle ne voit vos données.")),
+    h(
+      "form",
+      {
+        class: "formulaire",
+        onsubmit: async (e) => {
+          e.preventDefault();
+          try {
+            await modifierOrganisation({ nom: nom.value.trim(), fuseau: fuseau.value, langue: langue.value });
+            toast(tr("Organisation enregistrée."));
+            rafraichir();
+          } catch (err) {
+            toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+          }
+        },
+      },
+      champ(tr("Nom de l'organisation"), nom),
+      champ(tr("Fuseau horaire"), fuseau, tr("Enregistré pour les rappels. Pour l'instant, ils partent encore à l'heure de Bangkok.")),
+      champ(tr("Langue de départ"), langue, tr("Langue de l'interface pour les nouveaux comptes. Chacun peut ensuite choisir la sienne.")),
+      h("div", { class: "actions" }, h("button", { type: "submit", class: "principal" }, tr("Enregistrer")))
+    )
+  );
+}
+
 function nouvelleEntiteModal(apres) {
   const nom = h("input", { id: "ne-nom", required: true });
   const code = h("input", { id: "ne-slug", required: true, pattern: "[a-z0-9-]+" });
   let manuel = false;
   code.addEventListener("input", () => (manuel = true));
   nom.addEventListener("input", () => !manuel && (code.value = slug(nom.value)));
+  // Modèle métier (étape 3 du SaaS) : la façon de travailler et des textes de départ neutres, en anglais. « Réglages vides » : comme avant.
+  const choixModele = h("select", { id: "ne-modele" }, ...MODELES.map((m) => h("option", { value: m.id }, tr(m.nom))), h("option", { value: "" }, tr("Réglages vides")));
+  choixModele.value = MODELE_DEFAUT;
+  const aideModele = h("p", { class: "aide" });
+  const decrire = () => (aideModele.textContent = choixModele.value ? tr(MODELES.find((m) => m.id === choixModele.value).description) : tr("Elle démarre sans client ni catalogue, avec des réglages vides à compléter dans l'écran Réglages de cette entreprise."));
+  choixModele.addEventListener("change", decrire);
+  decrire();
+  const devise = h("select", { id: "ne-devise" }, h("option", { value: "" }, tr("Plus tard")), ...DEVISES_PROPOSEES.map((d) => h("option", { value: d }, d)));
   const fermer = modal(
     tr("Nouvelle entreprise"),
     h(
@@ -129,7 +182,7 @@ function nouvelleEntiteModal(apres) {
           e.preventDefault();
           if (etat.brut.entites.some((x) => x.slug === code.value)) return toast(tr("Ce code existe déjà."), true);
           try {
-            await creerEntite(nom.value.trim(), code.value.trim());
+            await creerEntite(nom.value.trim(), code.value.trim(), { modele: choixModele.value || null, devise: devise.value });
             fermer();
             toast(tr("Entreprise créée. Complétez ses réglages avant de créer des documents."));
             apres();
@@ -140,7 +193,9 @@ function nouvelleEntiteModal(apres) {
       },
       champ(tr("Nom"), nom),
       champ(tr("Code court"), code, tr("Lettres minuscules, chiffres et tirets. Il ne change plus ensuite.")),
-      h("p", { class: "aide" }, tr("Elle démarre sans client ni catalogue, avec des réglages vides à compléter dans l'écran Réglages de cette entreprise.")),
+      champ(tr("Type d'activité"), choixModele),
+      aideModele,
+      champ(tr("Devise des documents"), devise),
       h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Créer l'entreprise")))
     )
   );
@@ -343,6 +398,7 @@ export function vueAdmin() {
     "div",
     { "data-titre": tr("Administration") },
     h("div", { class: "entete" }, h("h1", null, tr("Administration"))),
+    blocOrganisation(rafraichir),
     h(
       "section",
       null,
