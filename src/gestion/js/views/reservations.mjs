@@ -16,6 +16,7 @@ import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut } from "../partenaires-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
+import { champsNetsChanges } from "../nets-reservation-calc.mjs";
 import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, synchroniserDatesDossier } from "./suivi-facture.mjs";
 export { synchroniserDatesDossier };
 import { ouvrirFeuilleDuJour } from "./feuille-jour.mjs";
@@ -513,7 +514,10 @@ export function formulaireReservation(r, apres) {
           const res = r.id ? await modifierProtege("reservations", r.id, valeurs, { base: r, arbitrer: arbitrerReservation(r) }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
           if (res && res.id && res.details === undefined) res.details = valeurs.details;
           if (!r.id) await rattacherCourseTaxi(res);
-          if (nets && (netPrevu.value !== "" || netPaye.value !== "" || payeLe.value || commissionPrevue.value !== "" || commissionRecue.value !== "" || commissionLe.value || n)) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: nb(netPrevu.value), net_paye: nb(netPaye.value), paye_le: payeLe.value || null, commission_prevue: nb(commissionPrevue.value), commission_recue: nb(commissionRecue.value), commission_recue_le: commissionLe.value || null });
+          // Seuls les champs changés ici s'écrivent : la base recalcule le net et la commission prévus quand le tarif, les personnes ou le mode changent
+          // (migration 31), et la valeur lue à l'ouverture ne doit pas écraser ce recalcul.
+          const netsChanges = nets ? champsNetsChanges(n, { net_prevu: nb(netPrevu.value), net_paye: nb(netPaye.value), paye_le: payeLe.value || null, commission_prevue: nb(commissionPrevue.value), commission_recue: nb(commissionRecue.value), commission_recue_le: commissionLe.value || null }) : {};
+          if (Object.keys(netsChanges).length) await enregistrerLie("reservations_nets", "reservation_id", res.id, netsChanges);
           if (r.id && (dateChangee || annulee)) await synchroniserDatesDossier(r.dossier_id);
           toast(ecartRestant && ecartRestant.length ? `${tr("Réservation enregistrée.")} ${tr("La facture garde l'ancienne valeur, à corriger dans la facture :")} ${ecartRestant.join(" ; ")}` : tr("Réservation enregistrée."));
           apres(res);
