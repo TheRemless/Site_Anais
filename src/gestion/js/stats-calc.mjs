@@ -7,7 +7,7 @@
 //
 // Définitions (voir aussi DEFINITIONS plus bas, affichées à l'écran) :
 //  - Volume vendu : valeur des services vendus, y compris ceux que le client paie sur place au prestataire.
-//  - Encaissé chez nous : l'argent passé par Anaïs (paiements des clients, remboursements en moins).
+//  - Encaissé chez nous : l'argent passé par Anaïs (paiements des clients, remboursements en moins), sans les écarts soldés (frais, change).
 //  - Commission : ce que le prestataire reverse sur un service payé sur place (prévue, reçue, reste).
 //  - Revenu : encaissé chez nous, moins les nets payés aux partenaires, plus les commissions reçues (flux de trésorerie de la période).
 import { arrondi, ajouterJours, joursEntre } from "./calc.mjs";
@@ -110,6 +110,7 @@ const tranche = (age, bornes) => {
   return age <= a ? `0-${a}` : age <= b ? `${a + 1}-${b}` : age <= c ? `${b + 1}-${c}` : `${c}+`;
 };
 const actifR = (R) => R.statut !== "annule" && !R.dossier_annule;
+export const estEcartSolde = (P) => !!P && P.type === "ecart";
 
 export const MESURES = {
   vendu: {
@@ -122,7 +123,10 @@ export const MESURES = {
     garde: (D, c) => !D.annule && D.f_date && dans(D.f_date, c.du, c.au),
     montant: (D) => nb(D.total), date: (D) => D.f_date,
   },
-  encaisse: { source: "paiements", flux: true, garde: (P, c) => dans(P.date, c.du, c.au), montant: (P) => nb(P.montant), date: (P) => P.date },
+  // Un « Écart soldé (frais, change) » solde le dossier sans que l'argent soit arrivé chez nous (frais Wise, change) : il n'est pas de l'encaissé
+  // et se compte à part (Jérémy, 17.11.2026). Le reste à encaisser d'un dossier, lui, le compte toujours comme réglé.
+  encaisse: { source: "paiements", flux: true, garde: (P, c) => dans(P.date, c.du, c.au) && !estEcartSolde(P), montant: (P) => nb(P.montant), date: (P) => P.date },
+  ecart_solde: { source: "paiements", flux: true, garde: (P, c) => dans(P.date, c.du, c.au) && estEcartSolde(P), montant: (P) => nb(P.montant), date: (P) => P.date },
   a_encaisser: {
     source: "dossiers", flux: false,
     garde: (D) => !D.annule && D.f_date && resteDu(D) > 0,
@@ -369,7 +373,8 @@ export function indicateursClients(faits, ctx) {
 export const DEFINITIONS = {
   vendu: [N_("Volume vendu"), N_("Valeur des services vendus sur la période, y compris ceux que le client paie directement au prestataire. Dossiers acceptés ou facturés, hors dossiers annulés. La date retenue est celle de la facture, sinon celle de l'acceptation, sinon celle du devis.")],
   facture: [N_("Facturé"), N_("Total à régler chez nous des factures émises sur la période, hors dossiers annulés. Les services payés sur place n'y sont pas, car le client ne nous les paie pas.")],
-  encaisse: [N_("Encaissé chez nous"), N_("Argent passé par nous, c'est-à-dire les paiements des clients datés de la période, remboursements déduits.")],
+  encaisse: [N_("Encaissé chez nous"), N_("Argent passé par nous, c'est-à-dire les paiements des clients datés de la période, remboursements déduits. Les écarts soldés (frais, change) n'y sont pas : ils sont comptés à part.")],
+  ecart_solde: [N_("Écarts soldés"), N_("Petits restes soldés sans que l'argent arrive chez nous (frais Wise, change), datés de la période. Le dossier est soldé, mais ces montants ne sont pas de l'encaissé.")],
   a_encaisser: [N_("Reste à encaisser"), N_("Ce que les clients nous doivent encore sur les factures émises, à ce jour. Les services payés sur place n'entrent pas dans ce chiffre.")],
   devis_emis: [N_("Devis émis"), N_("Devis datés de la période, quel que soit leur sort.")],
   devis_acceptes: [N_("Devis acceptés"), N_("Parmi les devis émis sur la période, ceux dont le dossier est accepté. Le taux est la part des devis émis.")],

@@ -202,14 +202,17 @@ export function ventes(X) {
 export function encaissements(X) {
   const f = X.faits;
   const gros = S.lignes("a_encaisser", f, X.c).sort((a, b) => b.montant - a.montant).slice(0, 5);
+  // Écarts soldés (frais Wise, change) : hors de l'encaissé, montrés à part dès qu'il y en a sur la période ou sur celle de comparaison.
+  const ecarts = S.comparer("ecart_solde", f, X.c, X.cmp);
+  const avecEcarts = !!(ecarts.actuel.nombre || (ecarts.precedent && ecarts.precedent.nombre));
   return [
-    tuiles(T(X, "encaisse", { grande: true }), T(X, "facture"), T(X, "a_encaisser")),
+    tuiles(T(X, "encaisse", { grande: true }), T(X, "facture"), T(X, "a_encaisser"), avecEcarts ? T(X, "ecart_solde") : null),
     X.excursions ? h("p", { class: "aide st-note" }, tr("Les services payés sur place au prestataire ne passent pas par nous, ils ne sont ni facturés ni à encaisser. Ils figurent dans le volume vendu.")) : null,
     graphe(X, [{ id: "facture", nom: N_("Facturé"), classe: "s1" }, { id: "encaisse", nom: N_("Encaissé chez nous"), classe: "s2" }], N_("Facturé et encaissé")),
     bloc(titre(N_("Reste à encaisser, par ancienneté")), rang(X, "a_encaisser", "tranche", { tri: "cle" }), h("p", { class: "aide" }, tr("L'ancienneté se compte depuis la date de la facture."))),
     bloc(titre(N_("Plus gros restes à encaisser")), gros.length ? classement({ lignes: gros.map((l) => ({ libelle: l.titre, valeur: l.montant, texte: m$(X, l.montant), detail: tr("facture de {n} jours", { n: l.age }), href: `#/dossier/${l.dossier_id}` })), max: 5 }) : h("p", { class: "vide-court" }, tr("Aucun reste à encaisser."))),
     bloc(titre(N_("Encaissé par moyen de paiement")), rang(X, "encaisse", "moyen")),
-    blocDefinitions(["encaisse", "facture", "a_encaisser"], S.DEFINITIONS),
+    blocDefinitions(["encaisse", "facture", "a_encaisser", ...(avecEcarts ? ["ecart_solde"] : [])], S.DEFINITIONS),
   ];
 }
 

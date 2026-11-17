@@ -483,7 +483,11 @@ function editeurVue(id) {
           "div",
           { class: "ligne-partenaire" },
           champ(tr("Date du service"), h("input", { id: `l${l.id}-ds`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), change()) })),
-          peut("partenaires.nets") && l.net != null ? h("p", { class: "aide" }, tr("Net partenaire : {net}", { net: formatMontant(l.net, devDoc()) + (l.qte ? ` × ${l.qte}` : "") })) : null
+          // Net de la ligne, par unité : saisi ici quand il manque (ligne tapée par Mook, sans droit « nets », ou prestation sans net au catalogue).
+          // Il ne compte pas dans l'empreinte d'envoi : le compléter ne marque pas la facture « modifiée depuis l'envoi » (17.11.2026).
+          peut("partenaires.nets") && l.kind === "ligne" && !l.paye_sur_place
+            ? champ(tr("Net partenaire, par unité"), h("input", { id: `l${l.id}-net`, inputmode: "decimal", autocomplete: "off", value: l.net ?? "", oninput: (e) => ((l.net = num(String(e.target.value).trim().replace(/[\s']/g, "").replace(",", "."))), change()) }), tr("Ce que le prestataire facture pour une unité de cette ligne. Vide : la marge du dossier reste à compléter."))
+            : peut("partenaires.nets") && l.net != null ? h("p", { class: "aide" }, tr("Net partenaire : {net}", { net: formatMontant(l.net, devDoc()) + (l.qte ? ` × ${l.qte}` : "") })) : null
         )
       );
     }

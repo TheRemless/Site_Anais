@@ -27,6 +27,7 @@ import { vouchersDuDossier } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { gestePrincipal, entreesMenu } from "../carte-reservation-calc.mjs";
 import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } from "./recalcul-commission.mjs";
+import { saisieRapideNet } from "./saisie-net.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
 const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || null;
@@ -208,6 +209,9 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     avantVeille ? h("div", { class: "ecart-facture", role: "status" }, tr("À payer au prestataire avant le {date} (la veille du départ) : Bundhaya peut annuler si ce n'est pas payé.", { date: formatDate(avantVeille.avant) })) : null,
     er ? h("div", { class: "ecart-facture", role: "status" }, tr("Commission reçue {recue} (prévue {prevue}), mais la règle du partenaire donne {attendue}. Les montants reçus ne sont pas modifiés : vérifiez le net du tarif ou la règle.", { recue: prix(er.recue === null ? er.prevue : er.recue), prevue: prix(er.prevue), attendue: prix(er.attendue) })) : null,
     cc ? h("div", { class: "recalcul-commission", role: "status" }, h("span", null, cc.avant === null ? tr("Commission prévue : aucune. La règle du partenaire donne {apres}.", { apres: prix(cc.apres) }) : tr("Commission prévue : {avant}. La règle du partenaire donne {apres}.", { avant: prix(cc.avant), apres: prix(cc.apres) })), h("button", { class: "secondaire petit", type: "button", onclick: () => recalculerUneCommission(r, apres) }, tr("Recalculer la commission"))) : null,
+    // Net ou commission manquants : un champ et Enregistrer, sans ouvrir la fiche (17.11.2026). Quand la règle du partenaire donne la commission,
+    // « Recalculer la commission » ci-dessus suffit. Seulement dans le dossier : l'agenda et la liste des réservations restent des listes de travail.
+    cc || avecDossier ? null : saisieRapideNet(r, { apres }),
     h(
       "span",
       { class: "carte-pied" },

@@ -1,17 +1,24 @@
-// « À vérifier » : les cas qui se règlent mieux au calme que devant un client, chacun avec un lien vers la fiche à corriger. Lecture seule : rien n'est corrigé ici.
+// « À vérifier » : les cas qui se règlent mieux au calme que devant un client, chacun avec un lien vers la fiche à corriger.
+// Seuls un net ou une commission manquants se saisissent ici même (un champ, puis Enregistrer : Jérémy, 17.11.2026). Le reste se corrige sur la fiche.
 import { etat, peut, entiteActive, modeTaxi, tousDocuments, estAdmin, reglages, enregistrerReglages } from "../etat.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { aVerifier, CONTROLES, reglageAVerifier } from "../a-verifier-calc.mjs";
 import { vide } from "./commun.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { saisieRapideNet, reservationParId } from "./saisie-net.mjs";
+
+// Contrôles dont chaque ligne se complète sur place, un champ puis Enregistrer (Jérémy, 17.11.2026).
+const SAISIE_RAPIDE = new Set(["services_sans_net", "services_sans_commission"]);
+// Contrôles dépliés par la personne : ils le restent quand l'écran se redessine après un enregistrement (elle ne perd pas sa place).
+const ouverts = new Set();
 
 const TITRES = {
   services_sans_heure: [N_("Services à venir sans heure de pickup"), N_("Dans les prochains jours (réglable). Le chauffeur ou le bateau ne sait pas quand passer.")],
   services_sans_lieu: [N_("Services à venir sans lieu de pickup"), N_("Dans les prochains jours (réglable). Ni lieu de pickup sur la réservation, ni hôtel sur la fiche du client.")],
   services_sans_prix: [N_("Services à venir sans prix"), N_("Le prix de vente de la réservation est vide. Une prestation offerte se note à 0 : elle n'apparaît pas ici.")],
-  services_sans_net: [N_("Services à venir sans net"), N_("Payés chez nous, sans net prévu : la marge et ce que l'on doit au prestataire ne se calculent pas.")],
-  services_sans_commission: [N_("Services à venir sans commission"), N_("Payés sur place au prestataire, sans commission prévue : rien ne rappellera de la lui demander.")],
+  services_sans_net: [N_("Services à venir sans net"), N_("Payés chez nous, sans net prévu : la marge et ce que l'on doit au prestataire ne se calculent pas. Un service dont un des nets manque (adulte ou enfant) reste ici jusqu'à ce que le net total soit saisi.")],
+  services_sans_commission: [N_("Services à venir sans commission"), N_("Payés sur place au prestataire, sans commission prévue : rien ne rappellera de la lui demander. Saisissez-la ici.")],
   clients_en_double: [N_("Clients peut-être en double"), N_("Même téléphone, même e-mail ou même prénom et nom. Si c'est la même personne, gardez une fiche et rattachez-y ses dossiers.")],
   trajets_sans_prix: [N_("Trajets sans prix de vente"), N_("Ces trajets actifs ne peuvent pas être vendus tant que leur prix de vente manque ou vaut zéro.")],
   prestations_prix_en_texte: [N_("Prix écrit seulement en texte"), N_("Le prix de vente est vide mais un prix figure dans le texte de la prestation : à reporter dans le champ du prix.")],
@@ -111,10 +118,10 @@ export async function vueAVerifier() {
             const [titre, aide] = TITRES[c.cle];
             return h(
               "details",
-              { class: "controle", open: controles.length <= 3 },
+              { class: "controle", open: controles.length <= 3 || ouverts.has(c.cle), ontoggle: (e) => (e.target.open ? ouverts.add(c.cle) : ouverts.delete(c.cle)) },
               h("summary", null, h("strong", null, tr(titre)), " ", h("span", { class: "tag" }, String(c.elements.length)), c.aRelire ? h("span", { class: "tag" }, tr("à relire")) : null),
               h("p", { class: "aide" }, tr(aide)),
-              h("ul", { class: "cartes" }, c.elements.slice(0, regle.lignes_max).map((e) => h("li", { class: "carte" }, h("a", { class: "carte-lien", href: e.lien }, h("span", { class: "carte-titre" }, e.texte), e.detail ? h("span", { class: "carte-sous" }, e.detail) : null)))),
+              h("ul", { class: "cartes" }, c.elements.slice(0, regle.lignes_max).map((e) => h("li", { class: "carte" }, h("a", { class: "carte-lien", href: e.lien }, h("span", { class: "carte-titre" }, e.texte), e.detail ? h("span", { class: "carte-sous" }, e.detail) : null), SAISIE_RAPIDE.has(c.cle) && reservationParId(e.id) ? saisieRapideNet(reservationParId(e.id), { apres: rafraichir }) : null))),
               c.elements.length > regle.lignes_max ? h("p", { class: "aide" }, tr("Les {max} premiers sont affichés ({n} au total).", { max: regle.lignes_max, n: c.elements.length })) : null
             );
           })

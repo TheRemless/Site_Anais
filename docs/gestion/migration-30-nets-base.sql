@@ -12,10 +12,11 @@
 --   * Net prévu, réservation née de lignes de facture (ligne_id, details.lignes_ids) : somme, ligne par ligne, du net de la ligne × sa quantité
 --     (reservationsDepuisDocument). Le net d'une ligne est celui du document (documents_nets) ou, à défaut, celui du catalogue : la prestation
 --     (`prestations_nets.net`, `net_enfant` pour une ligne enfant quand il existe), ou le trajet (`net_adulte`, `net_enfant` pour une ligne enfant).
---     Les nets inconnus ne comptent pas ; sans aucun net connu, le net reste vide.
+--     Net partiel laissé vide (Jérémy, 17.11.2026 : « on mettra le net final au cas par cas ») : si une seule ligne à prix du service n'a pas
+--     de net, le net prévu reste vide, jamais la somme des seuls nets connus. Le service apparaît alors dans « À vérifier » pour Anaïs.
 --   * Net prévu, réservation saisie sans ligne (formulaire « Réservation à la main ») : le net du tarif × la quantité du formulaire (quantiteParDefaut :
 --     par personne = adultes + enfants, par adulte = adultes, par enfant = enfants, par personne supplémentaire = personnes au-delà de deux, par jour =
---     jours, sinon 1). Trajet : adultes × net adulte, plus enfants × net enfant quand le trajet a un prix enfant.
+--     jours, sinon 1). Trajet : adultes × net adulte, plus enfants × net enfant quand le trajet a un prix enfant ; un des deux nets manque : vide.
 --   * Commission prévue : seulement pour un service payé sur place, d'après la règle chiffrée du partenaire (`partenaires_prives.commission_regle`,
 --     commissionPrevue) : % de la vente, % du net (seulement si le net de chaque ligne vendue est connu), montant par personne (adultes + enfants),
 --     montant par réservation, ou vente moins net (jamais négative). Une donnée manque : rien n'est écrit, on ne devine jamais.
@@ -148,7 +149,10 @@ begin
       end loop;
     end if;
   end if;
-  if trouve then return; end if;
+  if trouve then
+    if not complet then net := null; end if;
+    return;
+  end if;
   -- 2. Sans ligne trouvée : le tarif de la réservation et ses personnes.
   if r.trajet_id is not null then
     select * into t from trajets where id = r.trajet_id;
@@ -159,6 +163,7 @@ begin
     if e > 0 and t.prix_enfant is not null then
       if tn.net_enfant is not null then net := coalesce(net, 0) + round(tn.net_enfant * e, 2); else complet := false; end if;
     end if;
+    if not complet then net := null; end if;
     return;
   end if;
   if r.prestation_id is not null then

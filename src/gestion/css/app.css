@@ -1548,3 +1548,12 @@ p.etiquette { margin: 0 0 4px; font-size: 0.88rem; font-weight: 600; }
   .ligne-saisie.fenetre > :first-child { grid-column: auto; }
   .ligne-saisie.zone { grid-template-columns: repeat(var(--colonnes, 1), minmax(0, 1fr)) auto; }
 }
+
+/* Lot I (17.11.2026) : net ou commission manquants, saisis en un geste (« À vérifier » et carte du service dans le dossier). */
+.saisie-rapide { grid-column: 1 / -1; display: grid; gap: 4px; margin: 8px 0 0; padding: 10px 12px; border-radius: var(--rayon); background: var(--surface-2); }
+.carte > .saisie-rapide { flex: 1 1 100%; margin: 0 16px 14px; }
+.saisie-rapide .etiquette { font-weight: 600; font-size: 0.92rem; }
+.saisie-rapide-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.saisie-rapide-ligne input { flex: 0 1 12em; min-width: 8em; }
+.saisie-rapide .aide { margin: 0; }
+.saisie-rapide .erreur-champ { margin: 0; flex-basis: 100%; }

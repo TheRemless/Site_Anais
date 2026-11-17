@@ -64,7 +64,9 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     return {
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
       reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: { ...(g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {}), ...(g.jours ? { jours: g.jours } : {}), ...(modeleDeLigne(l) ? { modele_voucher: modeleDeLigne(l) } : {}) } },
-      net: g.net,
+      // Net partiel laissé vide (Jérémy, 17.11.2026 : « on mettra le net final au cas par cas ») : quand une ligne à prix du service n'a pas de net,
+      // le net prévu reste vide plutôt que la somme des seuls nets connus. Le service apparaît alors dans « À vérifier ».
+      net: netCompletDe(g) ? g.net : null,
       // Service payé sur place : la commission attendue se calcule d'après la règle du partenaire (`regleDe(partenaire_id)`), seulement quand elle est connue.
       ...commissionDuGroupe(g, l, regleDe),
     };
@@ -74,11 +76,13 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
 // Le modèle de voucher choisi dans « Autre prestation » (ligne hors catalogue) suit la ligne jusqu'à sa réservation.
 const modeleDeLigne = (l) => modeleChoisi({ details: { modele_voucher: l && l.modele_voucher } });
 
+// Le net d'un service n'est connu que s'il l'est pour chacune de ses lignes qui ont un prix (une ligne offerte ou sans prix ne compte pas).
+const netCompletDe = (g) => g.lignes.every((x) => !(brut(x) > 0) || (x.net !== null && x.net !== undefined));
+
 function commissionDuGroupe(g, l, regleDe) {
   if (!regleDe || !g.lignes.some((x) => x.paye_sur_place)) return {};
   // Le net ne compte que s'il est connu pour toutes les lignes qui ont un prix : un net partiel gonflerait la commission.
-  const netComplet = g.lignes.every((x) => !(brut(x) > 0) || (x.net !== null && x.net !== undefined));
-  const c = commissionPrevue(regleDe(l.partenaire_id || null), { vente: g.vente, net: netComplet ? g.net : null, adultes: g.adultes, enfants: g.enfants });
+  const c = commissionPrevue(regleDe(l.partenaire_id || null), { vente: g.vente, net: netCompletDe(g) ? g.net : null, adultes: g.adultes, enfants: g.enfants });
   return c === null ? {} : { commission_prevue: c };
 }
 
