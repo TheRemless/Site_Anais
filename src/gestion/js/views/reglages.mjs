@@ -13,7 +13,7 @@ import { champDevisesNoms } from "./devises-reglages.mjs";
 import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4, plierGroupes } from "./commun.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
-import { etatRappels, heuresRappels } from "../rappels-etat.mjs";
+import { etatRappels, heureDepart } from "../rappels-etat.mjs";
 import { reglagesFid } from "../fiduciaire-calc.mjs";
 // Lot D (équipe, réglages, messages) : historique, archives, moyens de paiement, textes thaïs de l'écran de Mook.
 import { groupesModifies, nomGroupe, archiverVariante, reactiverVariante, variantesActives, identifiantMoyen } from "../reglages-calc.mjs";
@@ -698,7 +698,7 @@ export function vueReglages() {
           "label",
           { class: "case" },
           h("input", { type: "checkbox", id: "rappel-h1", checked: rappelAvantActif(r), onchange: (e) => ((r.rappels = { ...(r.rappels || {}), h1: e.target.checked }), marque()) }),
-          modeRappel(r) === "depart" ? tr("Notification sur téléphone la veille du départ de chaque voyage accepté, à {heure}", { heure: `${heuresRappels(r.rappels).veille ?? 18} h` }) : tr("Notification sur téléphone une heure avant chaque réservation qui a une heure")
+          modeRappel(r) === "depart" ? tr("Notification sur téléphone la veille du départ de chaque voyage accepté, à {heure}", { heure: `${heureDepart(r.rappels)} h` }) : tr("Notification sur téléphone une heure avant chaque réservation qui a une heure")
         ),
         h("p", { class: "aide" }, modeRappel(r) === "depart" ? tr("Le nom du client et le voyage, un tap ouvre le dossier. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche).") : tr("Le nom du client, le service, les personnes et le pickup, un tap ouvre la réservation et son rappel. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche)."))
       ),

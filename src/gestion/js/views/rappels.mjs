@@ -5,10 +5,7 @@ import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { tr } from "../i18n.mjs";
 import { situation, activer, desactiver, essai } from "../rappels.mjs";
-import { heuresRappels } from "../rappels-etat.mjs";
-
-// Le départ de demain (ZTP) part avec le rappel de la veille, à 18 h si celui-ci est coupé (même règle que entitesDuDepart de la fonction).
-const heureDepart = (hrs) => (hrs.veille === null ? 18 : hrs.veille);
+import { heuresRappels, heureDepart } from "../rappels-etat.mjs";
 
 // Heures de l'entreprise ouverte (Bangkok). La fonction passe chaque heure et envoie les rappels des entreprises réglées sur cette heure-là.
 function reglageHeures(apres) {
@@ -65,14 +62,14 @@ export function ouvrirRappels() {
     return h(
       "div",
       { class: "rappel-h1-profil" },
-      h("label", { class: "case" }, caseH1, h("span", null, h("strong", null, depart ? tr("Rappel la veille du départ") : tr("Rappel 1 h avant chaque service")), h("br"), depart ? tr("La veille à {heure}, une notification pour chaque voyage accepté qui part le lendemain.", { heure: `${heureDepart(heuresRappels(reglages().rappels))} h` }) : tr("Une notification une heure avant chaque réservation qui a une heure, pour rappeler le client et le partenaire."))),
+      h("label", { class: "case" }, caseH1, h("span", null, h("strong", null, depart ? tr("Rappel la veille du départ") : tr("Rappel 1 h avant chaque service")), h("br"), depart ? tr("La veille à {heure}, une notification pour chaque voyage accepté qui part le lendemain.", { heure: `${heureDepart(reglages().rappels)} h` }) : tr("Une notification une heure avant chaque réservation qui a une heure, pour rappeler le client et le partenaire."))),
       entreprise ? null : h("p", { class: "aide" }, tr("Éteint pour cette entreprise dans les réglages : vous ne recevrez rien ici tant qu'il n'y est pas allumé."))
     );
   }
   async function dessiner() {
     corps.replaceChildren(h("p", { class: "aide" }, tr("Chargement…")));
     if (etat.store.mode !== "supabase") {
-      corps.replaceChildren(blocH1(), h("p", { class: "aide" }, tr("Démonstration : aucune notification ne part de cet appareil. Le réglage ci-dessus est gardé dans la démo.")), h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: fermer }, tr("Fermer"))), ...(estAdmin() ? [reglageHeures(dessiner)] : []));
+      corps.replaceChildren(blocH1(), h("p", { class: "aide" }, tr("Démonstration : aucune notification ne part de cet appareil. Le réglage ci-dessus est gardé dans la démo.")), ...(estAdmin() ? [reglageHeures(dessiner)] : []), h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: fermer }, tr("Fermer"))));
       return;
     }
     let s;
@@ -108,7 +105,7 @@ export function ouvrirRappels() {
       blocH1(),
       h("ul", { class: "liste-aide" },
         h("li", null, h("strong", null, hrs.veille === null ? tr("La veille : coupé") : tr("{heure}, la veille", { heure: `${hrs.veille} h` })), " ", tr("Les services du lendemain, avec ceux qui n'ont pas d'heure ou pas de lieu de pickup.")),
-        modeRappel(reglages()) === "depart" ? h("li", null, h("strong", null, tr("{heure}, la veille du départ", { heure: `${heureDepart(hrs)} h` })), " ", tr("Chaque voyage accepté qui part le lendemain : un tap ouvre le dossier.")) : h("li", null, h("strong", null, tr("1 h avant")), " ", tr("Chaque service qui a une heure : un tap ouvre la réservation et son rappel.")),
+        modeRappel(reglages()) === "depart" ? h("li", null, h("strong", null, tr("{heure}, la veille du départ", { heure: `${heureDepart(reglages().rappels)} h` })), " ", tr("Chaque voyage accepté qui part le lendemain : un tap ouvre le dossier.")) : h("li", null, h("strong", null, tr("1 h avant")), " ", tr("Chaque service qui a une heure : un tap ouvre la réservation et son rappel.")),
         h("li", null, h("strong", null, hrs.lendemain === null ? tr("Le lendemain : coupé") : tr("{heure}, le lendemain", { heure: `${hrs.lendemain} h` })), " ", tr("Les clients dont un service a eu lieu la veille, à recontacter pour avoir leur avis."))
       ),
       h("p", { class: "aide" }, tr("Heure de Bangkok. Les rappels du soir et du matin ne contiennent aucun nom de client ; ceux d'une heure avant et de la veille du départ le contiennent, lisible une fois le téléphone déverrouillé.")),

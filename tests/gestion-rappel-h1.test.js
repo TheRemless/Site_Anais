@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import * as F from "../supabase/functions/rappels/calc.js";
 import * as G from "../src/gestion/js/rappel-h1-calc.mjs";
+import * as E from "../src/gestion/js/rappels-etat.mjs";
 
 const R = (o = {}) => ({ id: "r1", entite_id: "S", dossier_id: "d1", libelle: "4 Islands", date_service: "2026-11-17", heure_pickup: "08:00", lieu_pickup: "Hotel Sunset", personnes: { adultes: 2 }, statut: "confirme", partenaire_id: "p1", details: {}, ...o });
 const bkk = (iso) => Date.parse(`${iso}+07:00`); // heure de Bangkok écrite à la main → instant
@@ -204,8 +205,11 @@ test("départ de demain (ZTP) : avec le passage de la veille, à l'heure réglé
   assert.deepEqual(F.entitesDuDepart(18, ids, valeurs), ["Z", "Z3"]);
   assert.deepEqual(F.entitesDuDepart(20, ids, valeurs), ["Z2"]);
   assert.deepEqual(F.entitesDuDepart(9, ids, valeurs), []);
-  // Une entreprise sans réglage du tout : ZTP par défaut, 18 h.
-  assert.deepEqual(F.entitesDuDepart(18, ["X"], {}), ["X"]);
+  // Une entreprise sans ligne de réglages : pas de rappel du départ (comme avant la fusion) ; une ligne sans heures : 18 h.
+  assert.deepEqual(F.entitesDuDepart(18, ["X"], {}), []);
+  assert.deepEqual(F.entitesDuDepart(18, ["X"], { X: {} }), ["X"]);
+  // L'outil et la fonction donnent la même heure au départ.
+  for (const r of [undefined, {}, { veille: 20 }, { veille: null }, { veille: 0 }, { veille: "x" }]) assert.equal(E.heureDepart(r), F.heureDepart(r), JSON.stringify(r));
 });
 
 test("fenêtre Rappels : changer les heures garde l'interrupteur « Rappel 1 h avant » de l'entreprise (rappels.h1)", () => {
@@ -218,4 +222,6 @@ test("fenêtre Rappels : jamais « null » dans la fenêtre d'une personne qui n
   // replaceChildren(null) écrit le texte « null » : le bloc des heures s'ajoute par un tableau, vide pour les autres.
   assert.ok(!/estAdmin\(\) \? reglageHeures\(dessiner\) : null/.test(vue));
   assert.equal((vue.match(/\.\.\.\(estAdmin\(\) \? \[reglageHeures\(dessiner\)\] : \[\]\)/g) || []).length, 2);
+  // En démonstration aussi, les heures viennent avant « Fermer ».
+  assert.ok(vue.indexOf("...(estAdmin() ? [reglageHeures(dessiner)] : []), h(\"div\", { class: \"actions gauche\" }") > 0);
 });

@@ -145,13 +145,17 @@ export function rappelAvantActif(reglages) {
 export const modeRappel = (reglages) => (["excursions", "taxi"].includes(reglages && reglages.fonctionnement) ? "service" : "depart");
 // Entreprises dont le rappel du départ de demain (ZTP) part à cette heure (`heure` = null : envoi forcé de la veille, toutes), d'après
 // { entite_id: reglages.valeur }. Il part avec le passage de la veille, à l'heure de la veille de l'entreprise ; si la veille est coupée, à 18 h,
-// puisqu'il a son propre interrupteur (rappels.h1). Sans réglage : 18 h, comme avant le lot G.
+// puisqu'il a son propre interrupteur (rappels.h1). Une entreprise sans ligne de réglages n'en a pas (comme avant la fusion).
+export const heureDepart = (rappels) => {
+  const h = heuresRappels(rappels).veille;
+  return h === null ? HEURES_DEFAUT.veille : h;
+};
 export function entitesDuDepart(heure, entiteIds, valeurs = {}) {
   return entiteIds.filter((id) => {
+    if (!Object.prototype.hasOwnProperty.call(valeurs, id)) return false;
     const v = valeurs[id];
     if (!rappelAvantActif(v) || modeRappel(v) !== "depart") return false;
-    const h = heuresRappels(v && v.rappels).veille;
-    return heure === null || (h === null ? HEURES_DEFAUT.veille : h) === heure;
+    return heure === null || heureDepart(v && v.rappels) === heure;
   });
 }
 
