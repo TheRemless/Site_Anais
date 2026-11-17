@@ -1548,3 +1548,27 @@ p.etiquette { margin: 0 0 4px; font-size: 0.88rem; font-weight: 600; }
   .ligne-saisie.fenetre > :first-child { grid-column: auto; }
   .ligne-saisie.zone { grid-template-columns: repeat(var(--colonnes, 1), minmax(0, 1fr)) auto; }
 }
+
+/* Lot D (17.11.2026) : équipe, réglages, messages. */
+/* Le nom en bas du menu ouvre « Mon compte » : un bouton qui garde l'allure du bloc. */
+button.compte { width: 100%; padding: 6px; margin: 0; border: 1px solid transparent; border-radius: var(--rayon); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.compte:hover { background: var(--surface-2); }
+button.compte:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+.compte-menu h3 { margin: 18px 0 6px; font-size: 1rem; }
+.compte-menu h3:first-of-type { margin-top: 8px; }
+/* Éléments archivés (variantes, informations de paiement, moyens, messages désactivés) : visibles en gris, réactivables. */
+.carte-ligne.archive, .carte.archive, .ligne-moyen.archive { opacity: 0.62; }
+.carte-ligne.archive:focus-within, .carte.archive:focus-within, .ligne-moyen.archive:focus-within { opacity: 1; }
+.liste-moyens { display: grid; gap: 8px; }
+.ligne-moyen { display: flex; align-items: center; gap: 10px; }
+.ligne-moyen input { flex: 1; min-width: 0; }
+.liste-moyens > button { justify-self: start; }
+.petit-lien { font-size: 0.85rem; margin-top: 4px; }
+/* Textes thaïs de l'écran de Mook : le français à gauche, le thaï à droite ; l'un sous l'autre sur téléphone. */
+.grille-thai { display: grid; gap: 10px; }
+.ligne-thai { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 4px 14px; align-items: start; padding-bottom: 10px; border-bottom: 1px solid var(--bord); }
+.ligne-thai-fr { margin: 6px 0 0; color: var(--texte-2); font-size: 0.92rem; }
+.ligne-thai textarea { width: 100%; min-height: 2.6em; resize: vertical; }
+@media (max-width: 719px) {
+  .ligne-thai { grid-template-columns: minmax(0, 1fr); }
+}

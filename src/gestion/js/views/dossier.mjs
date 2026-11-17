@@ -82,7 +82,8 @@ function ficheDossierVue(id) {
     responsable.textContent = p ? tr(" · Responsable : {x}", { x: p.nom || p.email }) : "";
   });
   const regl = reglages();
-  const MOYENS = regl.listes.moyens.map((m) => [m.id, tr(m.label)]);
+  // Un moyen archivé (lot D) garde son nom sur les paiements déjà enregistrés, mais n'est plus proposé pour un nouveau.
+  const MOYENS = regl.listes.moyens.map((m) => [m.id, tr(m.label), !!m.archive]);
   const devis = dernier(r.documents, "devis");
   const facture = dernier(r.documents, "facture");
   const locale = dernier(r.documents, "facture_locale");
@@ -323,7 +324,7 @@ function ficheDossierVue(id) {
     montantP.value = rembourse ? (r.recu > 0 ? r.recu : "") : manque > 0 ? manque : "";
     boutonPaiement.textContent = rembourse ? tr("Enregistrer le remboursement") : tr("Enregistrer le paiement");
   };
-  const moyenP = h("select", { id: "p-moyen" }, MOYENS.map(([v, l]) => h("option", { value: v }, l)));
+  const moyenP = h("select", { id: "p-moyen" }, MOYENS.filter(([, , archive]) => !archive).map(([v, l]) => h("option", { value: v }, l)));
   const origineM = h("input", { id: "p-orig-m", type: "number", step: "0.01", min: "0", inputmode: "decimal" });
   const origineD = h("select", { id: "p-orig-d" }, ["", ...(reglages().listes.devises || ["CHF", "EUR", "THB", "USD"])].map((v) => h("option", { value: v }, v || tr("Aucune"))));
   const noteP = h("input", { id: "p-note" });
@@ -382,7 +383,7 @@ function ficheDossierVue(id) {
     const f = {
       date: h("input", { id: "pc-date", type: "date", value: p.date, required: true }),
       montant: h("input", { id: "pc-montant", type: "number", step: "0.01", min: "0", required: true, inputmode: "decimal", value: Math.abs(Number(p.montant)) }),
-      moyen: h("select", { id: "pc-moyen" }, MOYENS.map(([v, l]) => h("option", { value: v }, l))),
+      moyen: h("select", { id: "pc-moyen" }, MOYENS.filter(([v, , archive]) => !archive || v === p.moyen).map(([v, l]) => h("option", { value: v }, l))),
       note: h("input", { id: "pc-note", value: p.note || "" }),
       // Le type se corrige (un acompte affiché « Solde », un écart saisi comme paiement) ; un remboursement reste un remboursement.
       type: h("select", { id: "pc-type", disabled: rembourse }, (rembourse ? ["remboursement"] : TYPES_PAIEMENT).map((t) => h("option", { value: t }, libelleType(t)))),

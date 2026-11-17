@@ -1,3 +1,4 @@
+import { variantesProposees } from "../reglages-calc.mjs";
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument, estAdmin } from "../etat.mjs";
 import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace, modeReglement, SUR_PLACE, aMarquerEnvoye } from "../calc.mjs";
@@ -272,7 +273,7 @@ function editeurVue(id) {
   // La période du bandeau (« DU 2 AU 12 DÉCEMBRE 2026 ») suit la langue du document.
   const selLangue = h("select", { id: "d-langue", onchange: (e) => { c.langue = e.target.value; const b = bandeauDansLangue(c.bandeau, dossier, c.langue); if (b !== c.bandeau) (c.bandeau = b), (bandeau.value = b); change(); } }, h("option", { value: "" }, tr("Langue principale")), h("option", { value: "en" }, tr("English")));
   selLangue.value = c.langue === "en" ? "en" : "";
-  const modes = modesPaiement(regl);
+  const modes = modesPaiement(regl, { garder: c.paiement });
   const selPaiement = h("select", { id: "d-paiement", onchange: (e) => ((c.paiement = e.target.value), change()) }, modes.map((m) => h("option", { value: m.id }, m.nom)));
   selPaiement.value = modes.some((m) => m.id === (c.paiement || "")) ? c.paiement || "" : "";
   const numeroDoc = h("input", { id: "d-numero", value: c.numero || "", placeholder: dossier.ref, oninput: (e) => ((c.numero = e.target.value), change()) });
@@ -357,7 +358,7 @@ function editeurVue(id) {
         change();
       },
     },
-    regl.textes.variantes.map((v) => h("option", { value: v.id }, v.nom)),
+    variantesProposees(regl.textes.variantes, c.variante).map((v) => h("option", { value: v.id }, v.nom)),
     h("option", { value: "perso" }, tr("Texte propre à ce document"))
   );
   const cgv = h("input", { id: "d-cgv", type: "checkbox", checked: c.cgv !== false, onchange: (e) => ((c.cgv = e.target.checked), change()) });

@@ -11,11 +11,18 @@ export function roleDans({ profil, membres, roles }, entiteId) {
   return (m && roles.find((r) => r.id === m.role_id)) || null;
 }
 
+// Un rôle « tous les droits » (l'Administrateur de chaque entreprise, migration 36) reçoit la liste complète, calculée comme pour
+// l'administratrice générale : un droit ajouté au code lui arrive sans toucher au rôle.
+export const droitsDuRole = (r) => (r ? (r.tous_droits ? TOUTES_PERMISSIONS : r.permissions || []) : []);
+
 export function permissionsDans(ctx, entiteId) {
   if (actif(ctx.profil) && ctx.profil.super_admin) return TOUTES_PERMISSIONS;
-  const r = roleDans(ctx, entiteId);
-  return r ? r.permissions : [];
+  return droitsDuRole(roleDans(ctx, entiteId));
 }
+
+// Ce qu'un rôle perd entre deux listes de droits, dans l'ordre de l'écran : la confirmation le nomme (audit n° 40).
+// « vouchers.seul » est un droit d'interface : le perdre fait passer la personne de l'écran simple en thaï à l'outil complet.
+export const droitsRetires = (avant, apres) => PERMISSIONS.filter((p) => (avant || []).includes(p.code) && !(apres || []).includes(p.code));
 
 export function voitTout(ctx, entiteId) {
   if (actif(ctx.profil) && ctx.profil.super_admin) return true;

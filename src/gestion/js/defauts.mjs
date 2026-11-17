@@ -24,7 +24,8 @@ export const PERMISSIONS = [
   { code: "taches.ecrire", groupe: N_("Tâches"), libelle: N_("Créer et modifier les tâches et rappels"), aide: N_("Chacun peut toujours cocher comme faites les tâches qui lui sont confiées.") },
   { code: "catalogue.ecrire", groupe: N_("Catalogue"), libelle: N_("Modifier le catalogue de formules et de prix") },
   { code: "partenaires.lire", groupe: N_("Partenaires"), libelle: N_("Voir les partenaires, leurs tarifs et leurs trajets") },
-  { code: "partenaires.ecrire", groupe: N_("Partenaires"), libelle: N_("Modifier les partenaires, les tarifs et les trajets") },
+  { code: "partenaires.ecrire", groupe: N_("Partenaires"), libelle: N_("Modifier les partenaires, les tarifs et les trajets"), aide: N_("Sans le droit « prix de vente », la fiche se modifie mais les prix restent ceux d'avant.") },
+  { code: "partenaires.prix", groupe: N_("Partenaires"), libelle: N_("Modifier les prix de vente des tarifs et des trajets"), aide: N_("Prix de vente, prix enfant et unité d'un tarif ; prix adulte et enfant d'un trajet. Sans ce droit, un tarif ou un trajet créé naît sans prix.") },
   { code: "partenaires.supprimer", groupe: N_("Partenaires"), libelle: N_("Supprimer un partenaire, une prestation ou un trajet"), aide: N_("Seulement ce qu'aucun service n'utilise. Sans ce droit, on peut toujours masquer.") },
   { code: "partenaires.nets", groupe: N_("Partenaires"), libelle: N_("Voir les prix nets, les marges et les coordonnées bancaires des partenaires"), aide: N_("Sans ce droit, la personne voit les prix de vente mais ni les nets ni les marges.") },
   { code: "reglages.ecrire", groupe: N_("Administration"), libelle: N_("Modifier les réglages de l'entreprise (coordonnées bancaires comprises)") },
@@ -53,15 +54,18 @@ export const DEPENDANCES = {
   "partenaires.ecrire": ["partenaires.lire"],
   "partenaires.nets": ["partenaires.lire"],
   "partenaires.supprimer": ["partenaires.lire", "partenaires.ecrire"],
+  "partenaires.prix": ["partenaires.lire", "partenaires.ecrire"],
   "fiduciaire.gerer": ["fiduciaire.preparer"],
   // Créer un voucher crée le client, le dossier, le prix interne de la course et sa réservation avec le partenaire.
   "vouchers.seul": ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "partenaires.lire"],
 };
 
 // Rôles créés avec chaque entreprise. Ils se modifient ensuite librement dans l'écran Administration.
+// L'Administrateur a `tous_droits` (migration 36) : ses droits sont calculés, comme ceux de l'administratrice générale. Un droit ajouté plus tard
+// lui arrive sans rien toucher à son rôle ; sa liste enregistrée ne sert qu'à une base où la migration 36 n'est pas encore appliquée.
 export const ROLES_SYSTEME = [
-  { nom: N_("Administrateur"), description: N_("Tous les droits dans l'entreprise."), portee: "toute", permissions: TOUTES_PERMISSIONS },
-  { nom: N_("Éditeur"), description: N_("Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression."), portee: "toute", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire", "taches.ecrire", "catalogue.ecrire", "partenaires.lire", "partenaires.ecrire"] },
+  { nom: N_("Administrateur"), description: N_("Tous les droits dans l'entreprise."), portee: "toute", permissions: TOUTES_PERMISSIONS, tous_droits: true },
+  { nom: N_("Éditeur"), description: N_("Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression."), portee: "toute", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire", "taches.ecrire", "catalogue.ecrire", "partenaires.lire", "partenaires.ecrire", "partenaires.prix"] },
   { nom: N_("Lecteur"), description: N_("Consultation seulement, montants visibles."), portee: "toute", permissions: ["clients.lire", "dossiers.lire", "finances.voir", "analytics.voir", "partenaires.lire"] },
 ];
 
@@ -277,7 +281,8 @@ export const REGLAGES_NEUTRE = {
   emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", licence: "", contact: "" },
   paiement: { texte: "", nom: "", autres: [] },
   devise: "",
-  conditions: { acompte_pct: 0, delai_jours: 10, relance_jours: 7, tva_mention: "", tva_mention_en: "", cgv_url: "" },
+  // `solde_jours` : ZTP relève le solde d'un voyage ce nombre de jours avant le départ, tant que le carnet n'est pas envoyé (calc.mjs).
+  conditions: { acompte_pct: 0, delai_jours: 10, relance_jours: 7, solde_jours: 30, tva_mention: "", tva_mention_en: "", cgv_url: "" },
   taux: { eur: 1.058, thb: 40.54 },
   numerotation: { mode: "sequence", prefixe: "", chiffres: 4 },
   dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Pays" },
@@ -289,12 +294,13 @@ export const REGLAGES_NEUTRE = {
 };
 
 // Informations de paiement proposées pour un document : celles de l'entreprise (avec le QR code des réglages), puis les autres.
-export function modesPaiement(r) {
+// Une information archivée (lot D, audit n° 37) n'est plus proposée, sauf au document qui l'utilise déjà (`garder`), et s'imprime toujours.
+export function modesPaiement(r, { garder = null, archives = false } = {}) {
   const principal = { id: "", nom: r.paiement.nom || "Principal", texte: r.paiement.texte, qr_image: r.apparence.qr_image, qr_pseudo: r.apparence.qr_pseudo };
-  const autres = (r.paiement.autres || []).map((m) => ({ id: m.id, nom: m.nom || "Sans nom", texte: m.texte || "", qr_image: m.qr_image || "", qr_pseudo: m.qr_pseudo || "" }));
+  const autres = (r.paiement.autres || []).filter((m) => archives || !m.archive || (garder && m.id === garder)).map((m) => ({ id: m.id, nom: m.nom || "Sans nom", texte: m.texte || "", qr_image: m.qr_image || "", qr_pseudo: m.qr_pseudo || "" }));
   return [principal, ...autres];
 }
-export const modePaiement = (r, id) => modesPaiement(r).find((m) => m.id === (id || "")) || modesPaiement(r)[0];
+export const modePaiement = (r, id) => modesPaiement(r, { archives: true }).find((m) => m.id === (id || "")) || modesPaiement(r)[0];
 
 const estObjet = (v) => v && typeof v === "object" && !Array.isArray(v);
 function fusion(base, extra) {
@@ -431,7 +437,7 @@ export function donneesDemo(ajd, ajouterJours) {
   const roleDe = {};
   for (const e of [e1, e2, e3]) {
     for (const r of ROLES_SYSTEME) {
-      const ro = { id: uid(), created_at: j(-90), entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: [...r.permissions], systeme: true };
+      const ro = { id: uid(), created_at: j(-90), entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: [...r.permissions], systeme: true, tous_droits: !!r.tous_droits };
       roles.push(ro);
       roleDe[`${e.id}:${r.nom}`] = ro.id;
     }
@@ -439,9 +445,9 @@ export function donneesDemo(ajd, ajouterJours) {
   const rSans = { id: uid(), created_at: j(-30), entite_id: e3.id, nom: "Sans chiffres", description: "Voit les clients et les dossiers, jamais les montants.", portee: "toute", permissions: ["clients.lire", "dossiers.lire"], systeme: false };
   const rSes = { id: uid(), created_at: j(-30), entite_id: e2.id, nom: "Ses dossiers", description: "Travaille uniquement sur les dossiers dont elle est responsable.", portee: "mes_dossiers", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire"], systeme: false };
   const rVouchers = { id: uid(), created_at: j(-1), entite_id: e3.id, nom: "Vouchers et factures fiduciaire", description: "En thaï : l'écran « Nouveau voucher » et les factures pour la fiduciaire de toutes les courses de Taxi (jamais les nets). Ni menu, ni autres écrans.", portee: "toute", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "partenaires.lire", "vouchers.seul", "fiduciaire.preparer"], systeme: false };
-  // Comme en production : l'Éditeur plus la préparation des factures pour la fiduciaire (ni nets, ni avoirs).
+  // Comme en production : l'Éditeur plus la préparation des factures pour la fiduciaire (ni nets, ni avoirs), sans les prix de vente (décision 3, 17.11.2026).
   const editeur2 = roles.find((r) => r.entite_id === e2.id && r.nom === "Éditeur");
-  const rFiduciaire = { id: uid(), created_at: j(-1), entite_id: e2.id, nom: "Éditeur + factures fiduciaire", description: "Les droits de l'Éditeur, plus la préparation et l'envoi des factures pour la fiduciaire (jamais les nets).", portee: editeur2.portee, permissions: [...editeur2.permissions, "fiduciaire.preparer"], systeme: false };
+  const rFiduciaire = { id: uid(), created_at: j(-1), entite_id: e2.id, nom: "Éditeur + factures fiduciaire", description: "Les droits de l'Éditeur sans les prix de vente, plus la préparation et l'envoi des factures pour la fiduciaire (jamais les nets).", portee: editeur2.portee, permissions: [...editeur2.permissions.filter((d) => d !== "partenaires.prix"), "fiduciaire.preparer"], systeme: false };
   roles.push(rSans, rSes, rVouchers, rFiduciaire);
   const membres = [
     { user_id: assistante.user_id, entite_id: e2.id, role_id: roleDe[`${e2.id}:Éditeur`] },

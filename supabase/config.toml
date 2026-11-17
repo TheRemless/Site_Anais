@@ -8,3 +8,7 @@ verify_jwt = false
 # Appelée par l'outil avec la session de la personne connectée : la passerelle vérifie le jeton, la fonction vérifie ensuite les droits.
 [functions.assistant]
 verify_jwt = true
+
+# Appelée par l'administratrice générale (Administration) : la passerelle vérifie le jeton, la fonction vérifie ensuite est_super_admin().
+[functions.invitation]
+verify_jwt = true
