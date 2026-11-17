@@ -11,7 +11,8 @@ import webpush from "npm:web-push@3.6.7";
 import { origineAdmise, lireDemande, adresseIP, notification, destinataires, REPONSES, reponseInvalide, TAILLE_MAX, LIMITE_APPAREIL, LIMITE_TOTALE } from "./calc.js";
 import { dateBangkok } from "../rappels/calc.js";
 
-const SLUG = { secret: "secret", taxi: "taxi" };
+// Organisation propriétaire du site qui appelle cette fonction (Zwald par défaut). Une marque est le slug d'une de ses entreprises qui publient sur le site.
+const ORGANISATION = Deno.env.get("SITE_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
 
 function entetesCors(origine: string | null) {
   const h: Record<string, string> = { "Content-Type": "application/json", Vary: "Origin", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
@@ -112,7 +113,7 @@ Deno.serve(async (req) => {
     const [appareil, toutes, entite] = await Promise.all([
       ipEmpreinte ? db.from("demandes_site").select("id", { count: "exact", head: true }).eq("ip_empreinte", ipEmpreinte).gte("created_at", depuis(LIMITE_APPAREIL.minutes)) : Promise.resolve({ count: 0, error: null }),
       db.from("demandes_site").select("id", { count: "exact", head: true }).gte("created_at", depuis(LIMITE_TOTALE.minutes)),
-      db.from("entites").select("id").eq("slug", SLUG[ligne.marque as "secret" | "taxi"]).single(),
+      db.from("entites").select("id, organisation_id").eq("organisation_id", ORGANISATION).eq("slug", String(ligne.marque)).eq("publie_site", true).single(),
     ]);
     for (const r of [appareil, toutes, entite]) if (r.error) throw new Error(r.error.message);
     if ((appareil.count || 0) >= LIMITE_APPAREIL.nombre || (toutes.count || 0) >= LIMITE_TOTALE.nombre) return repondre(REPONSES.limite, origine);
@@ -136,7 +137,8 @@ Deno.serve(async (req) => {
 // Envoie la notification aux appareils abonnés des personnes qui lisent les demandes de l'entreprise.
 async function prevenir(db: ReturnType<typeof createClient>, ecrite: { id: string; entite_id: string }, ligne: Record<string, unknown>, aujourdhui: string) {
   const [profils, membres, roles] = await Promise.all([
-    db.from("profils").select("user_id, actif, super_admin"),
+    // Seulement les comptes de l'organisation : un administrateur d'une autre organisation ne reçoit rien.
+    db.from("profils").select("user_id, actif, super_admin").eq("organisation_id", ORGANISATION),
     db.from("membres").select("user_id, entite_id, role_id").eq("entite_id", ecrite.entite_id),
     db.from("roles").select("id, portee, permissions").eq("entite_id", ecrite.entite_id),
   ]);

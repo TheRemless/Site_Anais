@@ -44,11 +44,11 @@ export function entitesDuRappel(type, heure, entiteIds, reglagesParEntite = {}) 
 // Ce qu'une personne voit (`entiteIds`, null = tout) restreint aux entreprises du rappel en cours.
 export const restreindre = (entiteIds, retenues) => (entiteIds === null ? [...retenues] : entiteIds.filter((id) => retenues.includes(id)));
 
-// Entreprises dont une personne reçoit les rappels : toutes pour un super administrateur, sinon celles où son rôle lit tous les dossiers.
+// Entreprises dont une personne reçoit les rappels : celles de son organisation pour un administrateur (toutes si la liste des entreprises n'est pas fournie), sinon celles où son rôle lit tous les dossiers.
 // Un rôle « vouchers.seul » (l'assistante thaïe de Taxi, écran voucher seul) n'en reçoit pas : la notification ouvre un écran qu'elle n'a pas et n'existe pas en thaï.
-export function entitesLisibles({ profil, membres, roles }) {
+export function entitesLisibles({ profil, membres, roles, entites }) {
   if (!profil || !profil.actif) return [];
-  if (profil.super_admin) return null;
+  if (profil.super_admin) return entites ? entites.filter((e) => e.organisation_id === profil.organisation_id).map((e) => e.id) : null;
   const roleDe = new Map(roles.map((r) => [r.id, r]));
   return membres
     .filter((m) => m.user_id === profil.user_id)
@@ -221,9 +221,9 @@ export function messageDepart(d, { client = "", entreprise = "" } = {}) {
 }
 
 // Qui reçoit le rappel d'un service d'une entreprise : ceux qui reçoivent ses rappels (entitesLisibles), sauf qui a coupé « Rappel 1 h avant » dans son profil.
-export function destinatairesH1({ profils, membres, roles }, entiteId) {
+export function destinatairesH1({ profils, membres, roles, entites }, entiteId) {
   return profils.filter((p) => p.rappel_h1 !== false).filter((profil) => {
-    const ids = entitesLisibles({ profil, membres, roles });
+    const ids = entitesLisibles({ profil, membres, roles, entites });
     return ids === null ? !!(profil.actif) : ids.includes(entiteId);
   }).map((p) => p.user_id);
 }

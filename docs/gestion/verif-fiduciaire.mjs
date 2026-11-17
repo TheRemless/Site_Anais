@@ -23,7 +23,7 @@ alter default privileges in schema public grant all on tables to anon, authentic
 alter default privileges in schema public grant execute on functions to anon, authenticated;
 `;
 // Une base neuve avec les migrations 18 à `jusqua` (toutes par défaut).
-const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[23]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
+const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
 async function nouvelleBase(jusqua = Infinity) {
   const base = new PGlite();
   await base.exec(harnais);
@@ -160,6 +160,7 @@ ok((await essaie(U.taxiste, `select emettre_facture_fiduciaire('${R.surPlace}')`
 
 console.log("Administrateur général");
 await db.exec(`insert into profils (user_id, email, nom, super_admin, actif) values ('${U.root}', 'root@test', 'Root', true, true) on conflict (user_id) do update set super_admin = true, actif = true`);
+await db.exec(`select set_config('request.jwt.claim.sub', '', false); update profils set organisation_id = '00000000-0000-0000-0000-00000000a000' where user_id = '${U.root}'`);
 ok((await essaie(U.root, "select toutes_permissions() t")).rows[0].t.includes("fiduciaire.gerer"), "« tous les droits » comprend les deux droits fiduciaire");
 ok((await essaie(U.root, "select count(*)::int n from fiduciaire_a_preparer()")).rows[0].n >= 4, "un administrateur général voit ce qu'il y a à préparer");
 

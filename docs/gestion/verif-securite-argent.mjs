@@ -41,6 +41,8 @@ const E = (await db.query("select id from entites where slug = 'ztp'")).rows[0].
 const AUTRE = (await db.query("select id from entites where slug = 'secret'")).rows[0].id;
 const U = {};
 for (const k of ["admin", "editeur", "lecteur", "limite", "nets", "etranger"]) U[k] = (await db.query("insert into auth.users (email) values ($1) returning id", [k + "@test"])).rows[0].id;
+// Migration 40 : le premier compte ne devient plus administrateur tout seul ; l'administratrice est désignée dans l'organisation Zwald.
+await db.exec(`update profils set super_admin = true, organisation_id = '00000000-0000-0000-0000-00000000a000' where user_id = '${U.admin}'`);
 // admin = premier compte = administratrice générale
 await db.exec(`insert into roles (entite_id, nom, portee, permissions) values
   ('${E}', 'Limité avec analyses', 'mes_dossiers', array['clients.lire','dossiers.lire','finances.voir','analytics.voir']),

@@ -48,7 +48,7 @@ const comme = (u, sql, p) => essaie("authenticated", U[u], sql, p);
 // un éditeur de Zwald seulement, l'administratrice générale.
 const U = {};
 for (const k of ["anais", "editrice", "lecteur", "stagiaire", "mook", "ztp", "root"]) U[k] = (await un("insert into auth.users (email) values ($1) returning id", [k + "@test"])).id;
-await db.exec(`update profils set super_admin = true where user_id = '${U.root}'`);
+await db.exec(`update profils set super_admin = true, organisation_id = '00000000-0000-0000-0000-00000000a000' where user_id = '${U.root}'`);
 await db.exec(`insert into roles (entite_id, nom, portee, permissions) values ('${ent.secret}', 'Ses dossiers', 'mes_dossiers', array['clients.lire','clients.ecrire','dossiers.lire','dossiers.ecrire'])`);
 await db.exec(`insert into roles (entite_id, nom, portee, permissions) values ('${ent.taxi}', 'Vouchers', 'toute', array['clients.lire','clients.ecrire','dossiers.lire','dossiers.ecrire','vouchers.seul'])`);
 const membre = (u, s, role) => db.exec(`insert into membres values ('${U[u]}', '${ent[s]}', (select id from roles where entite_id = '${ent[s]}' and nom = '${role}'))`);

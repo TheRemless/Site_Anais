@@ -48,7 +48,8 @@ Deno.serve(async (req) => {
   if (!qui) return json({ erreur: "non autorisé" }, 401);
   // « mode » est accepté comme synonyme de « type » (appel à la main) : { mode: "h1", service_id, force: true }.
   const type = demande.type || demande.mode;
-  if (type === "h1" && demande.force) return rappelForce(demande);
+  // Une administratrice ne force que les services de son organisation (le cron et la clé de service, tous).
+  if (type === "h1" && demande.force) return rappelForce(demande, qui === "admin" ? await organisationAppelant(fourni) : null);
   // Une administratrice connectée n'a que l'envoi forcé : les passages planifiés restent au cron et à la clé de service.
   if (qui === "admin") return json({ erreur: "non autorisé" }, 401);
   if (type === "h1") return rappelH1(demande);
@@ -62,7 +63,7 @@ Deno.serve(async (req) => {
 
   // Les réglages de chaque entreprise : heures des rappels (valeur.rappels) et rappel du départ (ZTP). Sans lecture possible, l'appel s'arrête et le dit :
   // mieux vaut aucun rappel qu'un rappel à la mauvaise heure.
-  const [entites, reglages] = await Promise.all([db.from("entites").select("id, nom"), db.from("reglages").select("entite_id, valeur")]);
+  const [entites, reglages] = await Promise.all([db.from("entites").select("id, nom, organisation_id"), db.from("reglages").select("entite_id, valeur")]);
   if (entites.error || reglages.error) return json({ erreur: (entites.error || reglages.error)!.message }, 500);
   const valeurs = Object.fromEntries((reglages.data || []).map((r) => [r.entite_id, r.valeur]));
   const parEntite = Object.fromEntries(Object.entries(valeurs).map(([id, v]) => [id, v && typeof v === "object" ? (v as { rappels?: unknown }).rappels : undefined]));
@@ -107,7 +108,7 @@ Deno.serve(async (req) => {
 });
 
 // Envoie les rappels d'un type pour une date cible, pour les entreprises `retenues`, et renvoie les comptes. Lève une erreur si la base répond mal : l'appelant la note.
-async function executer(db: ReturnType<typeof createClient>, type: string, aujourdhui: string, cible: string, demande: { user_id?: string }, retenues: string[], entites: { id: string; nom: string }[]) {
+async function executer(db: ReturnType<typeof createClient>, type: string, aujourdhui: string, cible: string, demande: { user_id?: string }, retenues: string[], entites: { id: string; nom: string; organisation_id: string }[]) {
   let requeteAbos = db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth");
   if (demande.user_id) requeteAbos = requeteAbos.eq("user_id", demande.user_id);
   const { data: abos, error: errAbos } = await requeteAbos;
@@ -116,7 +117,7 @@ async function executer(db: ReturnType<typeof createClient>, type: string, aujou
 
   const ids = [...new Set(abos.map((a) => a.user_id))];
   const [profils, membres, roles, reservations] = await Promise.all([
-    db.from("profils").select("user_id, actif, super_admin, langue").in("user_id", ids),
+    db.from("profils").select("user_id, actif, super_admin, langue, organisation_id").in("user_id", ids),
     db.from("membres").select("user_id, entite_id, role_id").in("user_id", ids),
     db.from("roles").select("id, portee, permissions"),
     // La veille : les services qui partent demain. Le lendemain : ceux qui se sont terminés hier, donc aussi une location prise plus tôt et rendue hier (details.retour_date).
@@ -142,7 +143,7 @@ async function executer(db: ReturnType<typeof createClient>, type: string, aujou
   for (const userId of ids) {
     const profil = profils.data!.find((p) => p.user_id === userId);
     if (!profil) continue;
-    const lisibles = entitesLisibles({ profil, membres: membres.data!, roles: roles.data! });
+    const lisibles = entitesLisibles({ profil, membres: membres.data!, roles: roles.data!, entites });
     const entiteIds = restreindre(lisibles, retenues);
     const message = rappelDuType(type, services, aujourdhui, { entiteIds, ecartes, nomEntite, langue: profil.langue === "en" ? "en" : "fr" });
     if (!message) continue;
@@ -208,7 +209,17 @@ async function executerH1(db: ReturnType<typeof createClient>, maintenant: numbe
 
 // Envoi forcé d'un service : la même notification que le cron (texte, nom du client, destinataires, lien), tout de suite, hors de la fenêtre.
 // Le service est marqué comme notifié pour son heure : le cron n'en enverra pas un second.
-async function rappelForce(demande: { service_id?: string; maintenant?: string }) {
+// Organisation du compte connecté (null si introuvable : l'envoi forcé est alors refusé).
+async function organisationAppelant(jeton: string) {
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: `Bearer ${jeton}` } }, auth: { persistSession: false } });
+  const { data: qui } = await sb.auth.getUser();
+  if (!qui?.user) return "";
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const moi = await db.from("profils").select("organisation_id").eq("user_id", qui.user.id).maybeSingle();
+  return (moi.data && moi.data.organisation_id) || "";
+}
+
+async function rappelForce(demande: { service_id?: string; maintenant?: string }, organisation: string | null = null) {
   if (typeof demande.service_id !== "string" || !UUID.test(demande.service_id)) return json({ erreur: "service_id manquant ou invalide" }, 400);
   const maintenant = demande.maintenant && !Number.isNaN(Date.parse(demande.maintenant)) ? Date.parse(demande.maintenant) : Date.now();
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -216,6 +227,11 @@ async function rappelForce(demande: { service_id?: string; maintenant?: string }
   const lue = await db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, lieu_pickup, personnes, details").eq("id", demande.service_id).maybeSingle();
   if (lue.error) return json({ erreur: lue.error.message }, 500);
   if (!lue.data) return json({ erreur: "service_introuvable" }, 404);
+  if (organisation !== null) {
+    const ent = await db.from("entites").select("organisation_id").eq("id", lue.data.entite_id).maybeSingle();
+    // Même réponse qu'un service absent : une autre organisation n'apprend pas qu'il existe.
+    if (!organisation || ent.error || !ent.data || ent.data.organisation_id !== organisation) return json({ erreur: "service_introuvable" }, 404);
+  }
   const [dossier, reglages] = await Promise.all([
     db.from("dossiers").select("id, annule, client_id").eq("id", lue.data.dossier_id).maybeSingle(),
     db.from("reglages").select("valeur").eq("entite_id", lue.data.entite_id).maybeSingle(),
@@ -245,10 +261,10 @@ async function envoyerH1(db: ReturnType<typeof createClient>, aRappeler: Array<{
   const clientIds = [...new Set(dossiers.map((d) => d.client_id).filter(Boolean))];
   const [abos, profils, membres, roles, entites, clients] = await Promise.all([
     requeteAbos,
-    db.from("profils").select("user_id, actif, super_admin, rappel_h1"),
+    db.from("profils").select("user_id, actif, super_admin, rappel_h1, organisation_id"),
     db.from("membres").select("user_id, entite_id, role_id"),
     db.from("roles").select("id, portee, permissions"),
-    db.from("entites").select("id, nom"),
+    db.from("entites").select("id, nom, organisation_id"),
     db.from("clients").select("id, prenom, nom").in("id", clientIds.length ? clientIds : ["00000000-0000-0000-0000-000000000000"]),
   ]);
   for (const r of [abos, profils, membres, roles, entites, clients]) if (r.error) throw new Error(r.error.message);
@@ -270,12 +286,12 @@ async function envoyerH1(db: ReturnType<typeof createClient>, aRappeler: Array<{
   if (!nouveaux.length) return { ...vide, abonnements: abos.data!.length, services: aRappeler.length };
 
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
-  const ctx = { profils: profils.data!, membres: membres.data!, roles: roles.data! };
+  const ctx = { profils: profils.data!, membres: membres.data!, roles: roles.data!, entites: entites.data! };
   const nomEntite = (id: string) => (entites.data!.find((e) => e.id === id) || { nom: "" }).nom;
   // Le nom de l'entreprise n'est ajouté que pour qui en suit plusieurs (Anaïs : Secret et Taxi).
   const plusieurs = (id: string) => {
     const profil = ctx.profils.find((p) => p.user_id === id);
-    const ids = entitesLisibles({ profil, membres: ctx.membres, roles: ctx.roles });
+    const ids = entitesLisibles({ profil, membres: ctx.membres, roles: ctx.roles, entites: ctx.entites });
     return ids === null || ids.length > 1;
   };
   let envoyes = 0;
@@ -316,10 +332,10 @@ async function executerDeparts(db: ReturnType<typeof createClient>, demain: stri
   if (demande.user_id) requeteAbos = requeteAbos.eq("user_id", demande.user_id);
   const [abos, profils, membres, roles, entites, clients] = await Promise.all([
     requeteAbos,
-    db.from("profils").select("user_id, actif, super_admin, rappel_h1"),
+    db.from("profils").select("user_id, actif, super_admin, rappel_h1, organisation_id"),
     db.from("membres").select("user_id, entite_id, role_id"),
     db.from("roles").select("id, portee, permissions"),
-    db.from("entites").select("id, nom"),
+    db.from("entites").select("id, nom, organisation_id"),
     db.from("clients").select("id, prenom, nom").in("id", [...new Set(partent.map((d) => d.client_id))]),
   ]);
   for (const r of [abos, profils, membres, roles, entites, clients]) if (r.error) throw new Error(r.error.message);
@@ -334,7 +350,7 @@ async function executerDeparts(db: ReturnType<typeof createClient>, demain: stri
   }
   if (!nouveaux.length) return vide;
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
-  const ctx = { profils: profils.data!, membres: membres.data!, roles: roles.data! };
+  const ctx = { profils: profils.data!, membres: membres.data!, roles: roles.data!, entites: entites.data! };
   const nomEntite = (id: string) => (entites.data!.find((e) => e.id === id) || { nom: "" }).nom;
   let envoyes = 0;
   let retires = 0;
@@ -342,7 +358,7 @@ async function executerDeparts(db: ReturnType<typeof createClient>, demain: stri
   const retiresIds = new Set();
   for (const d of nouveaux) {
     for (const userId of destinatairesH1(ctx, d.entite_id)) {
-      const ids = entitesLisibles({ profil: ctx.profils.find((p) => p.user_id === userId), membres: ctx.membres, roles: ctx.roles });
+      const ids = entitesLisibles({ profil: ctx.profils.find((p) => p.user_id === userId), membres: ctx.membres, roles: ctx.roles, entites: ctx.entites });
       const charge = JSON.stringify(messageDepart(d, { client: nomClient(clients.data!.find((c) => c.id === d.client_id)), entreprise: ids === null || ids.length > 1 ? nomEntite(d.entite_id) : "" }));
       for (const abo of abos.data!.filter((a) => a.user_id === userId && !retiresIds.has(a.id))) {
         try {
