@@ -4,7 +4,7 @@
 import { h, champ } from "../ui.mjs";
 import { etat } from "../etat.mjs";
 import { tr, N_ } from "../i18n.mjs";
-import { GROUPES_VOUCHER, GROUPES_BOOKING } from "../textes-voucher.mjs";
+import { GROUPES_VOUCHER, GROUPES_BOOKING, textesAEnregistrer } from "../textes-voucher.mjs";
 import { chauffeurAChoisir, partenaireDeTaxi } from "../voucher-rapide-calc.mjs";
 
 // `r` : les réglages en cours de modification. `texte`, `image` : les champs liés à un chemin des réglages (reglages.mjs).
@@ -18,9 +18,9 @@ export function sectionVouchers({ r, taxi, texte, image, marque, choixApercuVouc
     const id = `vt-${cle}`;
     const el = h("input", { id, placeholder: defaut, autocomplete: "off" });
     el.value = r.voucher.textes[cle] || "";
+    // Seul ce qui diffère du texte d'origine se garde : un texte identique continue de suivre le défaut.
     el.addEventListener("input", () => {
-      if (el.value.trim()) r.voucher.textes[cle] = el.value;
-      else delete r.voucher.textes[cle];
+      r.voucher.textes = textesAEnregistrer({ ...r.voucher.textes, [cle]: el.value });
       marque();
     });
     return h("div", { class: "champ" }, h("label", { for: id }, defaut), el);
@@ -78,7 +78,7 @@ function blocCourses({ r, marque }) {
   jours.addEventListener("input", () => {
     const t = jours.value.trim();
     const n = Number(t);
-    erreur.textContent = t && !(Number.isInteger(n) && n > 0) ? tr("Un nombre de jours entier, ou vide pour toutes.") : "";
+    erreur.textContent = t && !(Number.isInteger(n) && n > 0) ? tr("Un nombre de jours entier, ou vide pour toutes. Tant que ce n'est pas corrigé, la valeur d'avant reste enregistrée.") : "";
     if (!t) delete r.taxi.jours_commission;
     else if (Number.isInteger(n) && n > 0) r.taxi.jours_commission = n;
     marque();

@@ -37,6 +37,8 @@ test("n° 25 : un numéro envoyé ne change plus ; les vouchers jamais envoyés 
   // Un service passé en option avant un voucher envoyé n° 3 : le premier non envoyé reprend 1, l'autre 2.
   assert.deepEqual(numerosVouchers([{}, {}, { fige: 3 }]), [1, 2, 3]);
   assert.deepEqual(numerosVouchers([{}, { fige: 1 }]), [2, 1], "un rang déjà pris par un envoi passe au suivant libre");
+  // Un voucher envoyé (n° 1) dont le service passe ensuite à « Pas de voucher » garde son numéro réservé (dernière entrée, hors liste).
+  assert.deepEqual(numerosVouchers([{}, { fige: 1 }]).slice(0, 1), [2]);
 });
 
 test("n° 26 : rien reçu et pas payé sur place, c'est « Payment Pending », plus « à payer sur place »", () => {

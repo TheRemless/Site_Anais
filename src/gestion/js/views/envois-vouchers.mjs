@@ -68,7 +68,7 @@ export function ouvrirEnvois(vouchers, apres) {
                     h("span", { class: "tag" }, tr("{nom} : envoyé le {date}", { nom, date: formatDate(envois[cle]) })),
                     modifie ? h("span", { class: "tag tag-alerte" }, tr("modifié depuis l'envoi")) : null,
                     " ",
-                    h("button", { class: "lien petit", type: "button", disabled: !ecrit, title: tr("L'envoi a été noté par erreur : il s'efface, et le numéro du voucher n'est plus figé."), onclick: async () => { if (await annulerEnvoi(courante, cle)) { toast(tr("Envoi retiré.")); dessiner(); apres(); } } }, tr("Pas envoyé"))
+                    h("button", { class: "lien petit", type: "button", disabled: !ecrit, title: tr("L'envoi a été noté par erreur : il s'efface. Le numéro du voucher n'est plus figé."), onclick: async () => { if (await annulerEnvoi(courante, cle)) { toast(tr("Envoi retiré.")); dessiner(); apres(); } } }, tr("Pas envoyé"))
                   )
                 : h("button", { class: "secondaire petit", type: "button", disabled: !ecrit, onclick: async () => { if (await noterEnvoi(courante, cle)) { dessiner(); apres(); } } }, tr("{nom} : marquer envoyé", { nom }))
             )

@@ -153,12 +153,12 @@ export const GROUPES_BOOKING = [
       ["b_merci", "Thank you for choosing VIP TAXI LANTA – we look forward to driving you safely and comfortably to your destination! 🚐✨"],
       ["b_salutation", "Kind regards,"],
       ["b_signature", "VIP TAXI LANTA Team"],
-      ["b_lieu", "Koh Lanta, Krabi, Thailand"],
     ],
   },
 ];
 
-export const DEFAUTS_TEXTES = Object.fromEntries([...GROUPES_VOUCHER, ...GROUPES_BOOKING].flatMap((g) => g.cles));
+// Le lieu sous la signature est l'adresse du bloc d'en-tête (« Adresse sur une ligne ») ; ce texte ne sert que quand elle est vide.
+export const DEFAUTS_TEXTES = { ...Object.fromEntries([...GROUPES_VOUCHER, ...GROUPES_BOOKING].flatMap((g) => g.cles)), b_lieu: "Koh Lanta, Krabi, Thailand" };
 
 // La fonction qui donne le texte d'une clé pour ces réglages : celui saisi dans `voucher.textes`, sinon le défaut. Un texte fait seulement
 // d'espaces vaut le défaut (un champ vidé ne doit jamais imprimer un intitulé vide).

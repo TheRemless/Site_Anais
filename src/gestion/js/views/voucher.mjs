@@ -58,19 +58,33 @@ export function vouchersDuDossier(dossierId) {
       return { reservation: r, prestation, type: modeleDe(r, sourcesVoucher(r, prestation), taxi) };
     })
     .filter((x) => x.type);
-  const index = numerosVouchers(base.map((x) => ({ fige: (x.reservation.details && x.reservation.details.voucher_fige && x.reservation.details.voucher_fige.index) || null })));
-  const client = (d && etat.db.clients.find((c) => c.id === d.client_id)) || {};
-  const res = d ? resumeDossier(d.id) : null;
-  const devise = (res && res.devise) || reglages().devise || "THB";
+  const indexFige = (r) => (r.details && r.details.voucher_fige && r.details.voucher_fige.index) || null;
+  // Un numéro envoyé reste pris même si son service n'a plus de voucher (« Pas de voucher » choisi après l'envoi) : il n'est jamais redonné.
+  const horsListe = etat.db.reservations.filter((r) => r.dossier_id === dossierId && indexFige(r) && !base.some((x) => x.reservation.id === r.id)).map((r) => ({ fige: indexFige(r) }));
+  const index = numerosVouchers([...base.map((x) => ({ fige: indexFige(x.reservation) })), ...horsListe]);
+  // L'empreinte ne se calcule que pour les vouchers déjà envoyés : la liste des réservations appelle cette fonction pour chaque carte.
+  const empreinteDe = empreinteDuDossier(d);
   return base
     .map((x, i) => {
       const r = x.reservation;
       const fige = (r.details && r.details.voucher_fige) || null;
       const le = (r.details && r.details.envois && r.details.envois.client) || null;
-      const empreinte = empreinteVoucher({ reservation: r, client, statut: statutPaiementVoucher({ ...(res || {}), surPlace: !!r.paye_sur_place }), devise });
-      return { ...x, index: index[i], numero: (fige && fige.numero) || numeroVoucher((d && d.ref) || "", index[i]), envoi: { le, empreinte, modifie: !!(le && fige && fige.empreinte && fige.empreinte !== empreinte) } };
+      const empreinte = le && fige ? empreinteDe(r) : null;
+      return { ...x, index: index[i], numero: (fige && fige.numero) || numeroVoucher((d && d.ref) || "", index[i]), envoi: { le, empreinte, modifie: !!(empreinte && fige.empreinte && fige.empreinte !== empreinte) } };
     })
     .filter((x) => x.reservation.statut !== "annule");
+}
+
+// L'empreinte d'un voucher du dossier `d` : le client et le résumé (statut de paiement, devise) ne se lisent qu'une fois, au premier besoin.
+function empreinteDuDossier(d) {
+  let ctx = null;
+  return (r) => {
+    if (!ctx) {
+      const res = d ? resumeDossier(d.id) : null;
+      ctx = { client: (d && etat.db.clients.find((c) => c.id === d.client_id)) || {}, res, devise: (res && res.devise) || reglages().devise || "THB" };
+    }
+    return empreinteVoucher({ reservation: r, client: ctx.client, statut: statutPaiementVoucher({ ...(ctx.res || {}), surPlace: !!r.paye_sur_place }), devise: ctx.devise });
+  };
 }
 
 // La trace à poser sur la réservation quand son voucher part (premier envoi ou renvoi) : `x` vient de vouchersDuDossier.
@@ -80,7 +94,8 @@ export function figerVoucher(x, date = aujourdhui()) {
   const src = sourcesVoucher(r, x.prestation);
   const modele = src.modele || typeVoucherDeduit(r, src.prestation, src.partenaire) || (taxi ? "transfert" : null);
   const valeurs = { modele, prestation: extraitPrestation(src.prestation), trajet: extraitTrajet(src.trajet), partenaire: extraitPartenaire(src.partenaire) };
-  return voucherFige({ reservation: r, index: x.index, numero: x.numero, empreinte: x.envoi ? x.envoi.empreinte : "", valeurs, date, avant: (r.details && r.details.voucher_fige) || null });
+  const d = etat.db.dossiers.find((y) => y.id === r.dossier_id) || null;
+  return voucherFige({ reservation: r, index: x.index, numero: x.numero, empreinte: empreinteDuDossier(d)(r), valeurs, date, avant: (r.details && r.details.voucher_fige) || null });
 }
 
 // `contexte` (facultatif) : réglages, dossier, client et résumé à utiliser à la place de la base, pour l'aperçu des réglages.
