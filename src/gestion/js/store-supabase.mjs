@@ -421,8 +421,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // Un dossier avec son résumé à jour (après une modification de ses documents ou paiements).
     // La ligne de nets d'une réservation, relue après une écriture : le déclencheur remplir_nets (migration 30) a pu la recalculer.
     // Sans le droit « nets », la base ne renvoie rien.
-    async netsReservation(reservationId) {
-      return verifie(await sb.from("reservations_nets").select("*").eq("reservation_id", reservationId).maybeSingle());
+    async netsReservations(ids) {
+      const out = [];
+      for (let i = 0; i < ids.length; i += 100) out.push(...(verifie(await sb.from("reservations_nets").select("*").in("reservation_id", ids.slice(i, i + 100))) || []));
+      return out;
     },
     async resumeDossier(id) {
       const d = verifie(await sb.from("dossiers").select("*").eq("id", id).maybeSingle());

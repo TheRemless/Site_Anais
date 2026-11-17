@@ -283,15 +283,30 @@ async function actualiserResume(dossierId) {
 
 // Après l'écriture d'une réservation, la base a pu recalculer son net et sa commission prévus (migration 30) : on relit sa ligne de nets,
 // sinon la fiche garde l'ancien net jusqu'à la prochaine synchronisation (contrôle du 17.11.2026, D2). Seulement pour qui voit les nets.
-async function actualiserNets(reservationId) {
-  if (!peut("partenaires.nets") || typeof etat.store.netsReservation !== "function") return;
+// Pendant avecNetsGroupes (création de plusieurs services d'un coup), la relecture attend la fin : une seule requête et un seul rebatir.
+let netsDifferes = null;
+async function actualiserNets(ids) {
+  const liste = [].concat(ids).filter(Boolean);
+  if (!liste.length || !peut("partenaires.nets") || typeof etat.store.netsReservations !== "function") return;
+  if (netsDifferes) return void liste.forEach((id) => netsDifferes.add(id));
   try {
-    const n = await etat.store.netsReservation(reservationId);
-    const liste = etat.brut.reservations_nets.filter((x) => x.reservation_id !== reservationId);
-    etat.brut.reservations_nets = n ? [...liste, n] : liste;
+    const lus = await etat.store.netsReservations(liste);
+    const set = new Set(liste);
+    etat.brut.reservations_nets = [...etat.brut.reservations_nets.filter((x) => !set.has(x.reservation_id)), ...lus];
     rebatir();
   } catch {
     // Relecture impossible (réseau) : la synchronisation suivante l'apportera.
+  }
+}
+export async function avecNetsGroupes(fn) {
+  if (netsDifferes) return fn();
+  netsDifferes = new Set();
+  try {
+    return await fn();
+  } finally {
+    const ids = [...netsDifferes];
+    netsDifferes = null;
+    await actualiserNets(ids);
   }
 }
 
@@ -331,7 +346,10 @@ export const toutesTaches = () => etat.store.toutesTaches(etat.entiteId);
 async function insererBrut(table, row) {
   const ligne = TABLES.includes(table) ? { entite_id: etat.entiteId, ...row } : row;
   const r = await etat.store.inserer(table, ligne);
-  etat.brut[table].push(r);
+  // Une ligne de nets complétée par la base (fusionner_nets) garde son identifiant : elle remplace celle de la réservation au lieu d'un doublon.
+  const deja = table === "reservations_nets" ? etat.brut[table].findIndex((x) => x.id === r.id || x.reservation_id === r.reservation_id) : -1;
+  if (deja >= 0) etat.brut[table][deja] = r;
+  else etat.brut[table].push(r);
   rebatir();
   if (table === "documents" || table === "paiements") await actualiserResume(r.dossier_id);
   if (table === "reservations") await actualiserNets(r.id);

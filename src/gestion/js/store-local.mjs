@@ -440,9 +440,9 @@ export function creer() {
       sauve();
     },
     // La ligne de nets d'une réservation, relue après une écriture (la base, ou ici remplirNets, a pu la recalculer). Rien sans le droit « nets ».
-    async netsReservation(reservationId) {
-      const n = data.reservations_nets.find((x) => x.reservation_id === reservationId);
-      return n && droit(n.entite_id, "partenaires.nets") ? structuredClone(n) : null;
+    async netsReservations(ids) {
+      const set = new Set(ids);
+      return data.reservations_nets.filter((x) => set.has(x.reservation_id) && droit(x.entite_id, "partenaires.nets")).map((x) => structuredClone(x));
     },
     async resumeDossier(id) {
       const d = dossiersVisibles().find((x) => x.id === id);

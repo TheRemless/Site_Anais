@@ -1,5 +1,5 @@
 // Réservations auprès des partenaires : liste, formulaire, section d'un dossier, messages.
-import { etat, dossiersAnnules, peut, inserer, modifier, modifierProtege, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, chargerDossier, reglages, entiteActive, modeExcursions, modeTaxi } from "../etat.mjs";
+import { etat, dossiersAnnules, peut, inserer, modifier, modifierProtege, supprimer, naviguer, nomClient, nomPartenaire, partenaireDe, privePartenaire, netReservation, enregistrerLie, avecNetsGroupes, chargerDossier, reglages, entiteActive, modeExcursions, modeTaxi } from "../etat.mjs";
 import { blocZonesPickup } from "./pickup-zones.mjs";
 import { champsVoucher, champsCourts, champsLongs } from "./champs-voucher.mjs";
 import { estRetourDepart, resumeTrajet, libelleSelonTrajet } from "../trajet-calc.mjs";
@@ -8,7 +8,8 @@ import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremi
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
 import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
 import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
-import { personnesDuDossier, personnesSelonDossier } from "../dossier-gestes-calc.mjs";
+import { personnesSelonDossier, personnesPourService } from "../dossier-gestes-calc.mjs";
+import { venteDuTarif } from "../demande-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { demanderArbitrage } from "./conflit.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
@@ -443,6 +444,17 @@ export function formulaireReservation(r, apres) {
   tarif.addEventListener("change", majVenteFigee);
   partenaire.addEventListener("change", majVenteFigee);
   majVenteFigee();
+  // Prix figé d'un service saisi à la main : il suit les adultes et les enfants (prix du tarif, prix enfant compris), puisque la personne ne peut
+  // pas le corriger (revue de la PR 217). Lié à une facture, le montant suit déjà la facture (suivreFacture).
+  const venteSelonPersonnes = () => {
+    if (!vente.disabled || lieeFacture) return;
+    const prestation = tarif.value.startsWith("p:") ? etat.db.prestations.find((x) => x.id === tarif.value.slice(2)) || null : null;
+    const trajet = tarif.value.startsWith("t:") ? etat.db.trajets.find((x) => x.id === tarif.value.slice(2)) || null : null;
+    const v = venteDuTarif({ prestation, trajet, adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0, jours: details().jours, prestations: etat.db.prestations });
+    if (v !== null) vente.value = String(v);
+  };
+  for (const x of [adultes, enfants]) x.addEventListener("input", venteSelonPersonnes);
+  tarif.addEventListener("change", venteSelonPersonnes);
   const champTarif = champ(tr("Tarif du catalogue"), tarif);
   champTarif.append(aideTarif);
   for (const x of [vente, adultes, enfants, netPrevu]) x.addEventListener("input", proposerCommission);
@@ -661,19 +673,20 @@ export function formulaireReservation(r, apres) {
 // ligne enfant prend les enfants du dossier quand sa quantité est celle du dossier (personnesSelonDossier, contrôle du 17.11.2026, D8).
 export async function creerReservations(doc, { silencieux = false, personnesDuDossier: avecPersonnes = false, personnesDossier = null } = {}) {
   const existantes = etat.db.reservations.filter((r) => r.dossier_id === doc.dossier_id);
-  const duDossier = personnesDossier && (Number(personnesDossier.adultes) || 0) + (Number(personnesDossier.enfants) || 0) ? personnesDossier : avecPersonnes ? personnesDuDossier(existantes) : null;
   const nouvelles = reservationsDepuisDocument(doc, { existantes, regleDe: regleCommissionDe });
   const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id);
   const clientDuDossier = (dossier && etat.db.clients.find((c) => c.id === dossier.client_id)) || {};
   if (!nouvelles.length) return toast(tr("Toutes les lignes de partenaires ont déjà leur réservation."));
   let n = 0;
-  for (const { reservation, net, commission_prevue } of nouvelles) {
+  // Les nets recalculés par la base se relisent en une fois, à la fin de la boucle.
+  await avecNetsGroupes(async () => { for (const { reservation, net, commission_prevue } of nouvelles) {
     try {
       const { id, ...sansId } = reservation;
       // Le lieu de pickup du dossier est repris (dernier service, sinon adresse du client) : un service ajouté ne part pas sans lieu.
       sansId.lieu_pickup = sansId.lieu_pickup || lieuParDefaut([...existantes, ...etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id && !existantes.includes(x))], clientDuDossier);
       // La marque dit que ces personnes viennent du dossier : 1 adulte pour 1 véhicule n'est pas une quantité prise pour des personnes, et 3 personnes
       // facturées au prix adulte peuvent être 2 adultes et 1 enfant.
+      const duDossier = personnesPourService({ fixes: personnesDossier, duDossier: avecPersonnes, reservations: etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id) });
       const p = duDossier ? personnesSelonDossier(sansId.personnes, duDossier, ((sansId.prestation_id && etat.db.prestations.find((x) => x.id === sansId.prestation_id)) || {}).unite || "") : null;
       if (p) (sansId.personnes = { ...(sansId.personnes || {}), ...p }), (sansId.details = { ...(sansId.details || {}), personnes_du_dossier: true });
       const res = await inserer("reservations", sansId);
@@ -682,7 +695,7 @@ export async function creerReservations(doc, { silencieux = false, personnesDuDo
     } catch (err) {
       toast(tr("Une réservation n'a pas pu être créée : {message}", { message: err.message }), true);
     }
-  }
+  } });
   await synchroniserDatesDossier(doc.dossier_id);
   if (!silencieux) toast(pluriel(n, N_("{n} réservation créée."), N_("{n} réservations créées.")));
 }

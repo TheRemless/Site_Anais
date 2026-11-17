@@ -96,6 +96,11 @@ export const sansPersonne = (p) => !((Number(p && p.adultes) || 0) + (Number(p &
 // Les personnes d'un service créé d'après ses lignes, corrigées par celles du dossier (contrôle du 17.11.2026, D8) : un service sans personnes
 // (véhicule, forfait) les prend toutes ; un service sans ligne enfant compte les enfants du dossier quand sa quantité est celle du dossier
 // (par personne : adultes + enfants ; par adulte : les adultes). Renvoie { adultes, enfants }, ou null quand rien ne change.
+// Les personnes du dossier pour un service créé : celles saisies au Nouveau dossier (`fixes`), sinon, pour un service ajouté à un dossier existant
+// (`duDossier`), celles de ses réservations actuelles, relues à chaque service : une réservation créée juste avant dans la même boucle compte
+// (revue de la PR 217 : un transfert par véhicule après une excursion pour 2 adultes naissait à 0 personne).
+export const personnesPourService = ({ fixes = null, duDossier = false, reservations = [] } = {}) => (fixes && (Number(fixes.adultes) || 0) + (Number(fixes.enfants) || 0) ? fixes : duDossier ? personnesDuDossier(reservations) : null);
+
 // `unite` : l'unité du tarif. Un tarif par adulte ne facture pas l'enfant : ses adultes égaux à ceux du dossier comptent aussi les enfants. Pour un
 // tarif par personne, seule une quantité égale à adultes + enfants dit que les enfants y sont.
 export function personnesSelonDossier(personnes, dossier, unite = "") {

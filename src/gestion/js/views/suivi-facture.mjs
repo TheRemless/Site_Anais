@@ -169,7 +169,7 @@ function suitesDocuments(documents, r, { avant, apres, mode = null, service = nu
   for (const doc of documents) {
     let suite = doc.contenu;
     if (mode) suite = contenuAvecSurPlace(suite, r, mode.surPlace) || suite;
-    if (dateChangee || personnesChangees) suite = contenuAvecReservation(suite, r, avant, apres).contenu || suite;
+    if (dateChangee || personnesChangees) suite = contenuAvecReservation(suite, r, avant, apres, { tarifEnfant: tarifEnfantCatalogue }).contenu || suite;
     if (personnesChangees) {
       const langue = suite.langue === "en" ? "en" : "";
       const e = contenuAvecEnfants(suite, r, avant, apres, { tarifEnfant: tarifEnfantCatalogue, uid, langue, decrire: (l) => descriptionService(l, langue || "fr") });

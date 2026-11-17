@@ -988,7 +988,9 @@ export function contenuAvecSurPlace(contenu, r, valeur) {
 // personnes d'avant (prix par personne) : un prix de groupe, un montant fixe ou une quantité réglée à la main ne bougent pas, et sont signalés.
 // Renvoie { contenu, reste } : `contenu` vaut null quand rien ne change sur le document ; `reste` liste ce que la facture garde en l'état
 // ({ cle: "date_service" | "adultes" | "enfants", ... }). Rien n'est modifié sur place. L'heure du pickup ne figure pas sur la facture.
-export function contenuAvecReservation(contenu, r, avant, apres) {
+// `tarifEnfant(ligne)` : le tarif enfant du catalogue de la ligne ({ unite, net }) ou null. Il dit si des enfants comptés au prix adulte le sont faute
+// de prix enfant ; sans lui, seule une réservation aux personnes reprises du dossier prend ce chemin.
+export function contenuAvecReservation(contenu, r, avant, apres, { tarifEnfant = null } = {}) {
   const ids = new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean));
   const lignes = (contenu && contenu.lignes) || [];
   const cibles = lignes.filter((l) => ids.has(l.id) && l.kind !== "texte" && l.kind !== "remise");
@@ -1025,7 +1027,10 @@ export function contenuAvecReservation(contenu, r, avant, apres) {
   // contrôle du 17.11.2026, D8 et D9) : la ligne suit le nombre total de personnes.
   const total = (p) => nb(p && p.adultes) + nb(p && p.enfants);
   const seuleAdulte = cibles.length === 1 && !estLigneEnfant(cibles[0]) ? cibles[0] : null;
-  const enfantsAuPrixAdulte = !!seuleAdulte && nb(avant.personnes && avant.personnes.enfants) > 0 && parPersonne(seuleAdulte) && seuleAdulte.unite !== null && seuleAdulte.unite !== undefined && seuleAdulte.unite !== "" && qte(seuleAdulte) === total(avant.personnes);
+  // Seulement quand le tarif n'a pas de prix enfant, ou que les enfants viennent du dossier (revue de la PR 217) : sinon l'enfant ajouté reçoit
+  // sa ligne enfant (contenuAvecEnfants), au lieu d'un adulte de plus.
+  const sansPrixEnfant = (l) => { const t = tarifEnfant ? tarifEnfant(l) : undefined; return t === null || (!!t && (t.unite === null || t.unite === undefined || t.unite === "")); };
+  const enfantsAuPrixAdulte = !!seuleAdulte && nb(avant.personnes && avant.personnes.enfants) > 0 && parPersonne(seuleAdulte) && seuleAdulte.unite !== null && seuleAdulte.unite !== undefined && seuleAdulte.unite !== "" && qte(seuleAdulte) === total(avant.personnes) && (!!(r.details && r.details.personnes_du_dossier) || sansPrixEnfant(seuleAdulte));
   if (enfantsAuPrixAdulte) {
     if (total(apres.personnes) !== total(avant.personnes) && total(apres.personnes) > 0) modif(seuleAdulte, { qte: total(apres.personnes) });
     if (!miseAJour.size) return { contenu: null, reste };

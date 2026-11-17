@@ -234,3 +234,51 @@ test("D9 et D8 : la ligne qui compte adultes + enfants au prix adulte suit le no
   const plus = contenuAvecEnfants(e, r, avant, { personnes: { adultes: 2, enfants: 2 } }, { tarifEnfant: () => ({ unite: 400, net: 300 }), uid: () => "x" });
   assert.equal(plus.ajoutee, null, "pas de ligne enfant en plus des enfants déjà comptés");
 });
+
+// ---- Revue de la PR 217 par la session principale -----------------------------------------------------------------------------
+test("revue 1 : les personnes du dossier se relisent à chaque service créé, une réservation créée juste avant compte", async () => {
+  const { personnesPourService, personnesSelonDossier } = await import("../src/gestion/js/dossier-gestes-calc.mjs");
+  // Dossier sans réservation, « Créer 2 réservations depuis la facture » : une excursion pour 2 adultes, puis un transfert par véhicule.
+  const creees = [];
+  const excursion = { personnes: { adultes: 2, enfants: 0 } };
+  const d1 = personnesPourService({ duDossier: true, reservations: creees });
+  assert.equal(d1, null, "rien encore dans le dossier");
+  creees.push({ ...excursion, statut: "confirme" });
+  const d2 = personnesPourService({ duDossier: true, reservations: creees });
+  assert.deepEqual(personnesSelonDossier({ adultes: 0, enfants: 0 }, d2, "veh"), { adultes: 2, enfants: 0 }, "le transfert prend les 2 adultes de l'excursion créée juste avant");
+  assert.deepEqual(personnesPourService({ fixes: { adultes: 2, enfants: 1 }, duDossier: true, reservations: creees }), { adultes: 2, enfants: 1 }, "les personnes du Nouveau dossier passent d'abord");
+  assert.equal(personnesPourService({ reservations: creees }), null, "création depuis une facture sans reprise : rien");
+});
+
+test("revue 2 : le prix figé d'un service à la main suit les adultes et les enfants, prix enfant compris", async () => {
+  const { venteDuTarif } = await import("../src/gestion/js/demande-calc.mjs");
+  const pp = { id: "pp", partenaire_id: "p", famille: "excursion", libelle: "Tour", prix_vente: 1200, unite: "pp", details: {} };
+  assert.equal(venteDuTarif({ prestation: pp, adultes: 2 }), 2400);
+  assert.equal(venteDuTarif({ prestation: pp, adultes: 3 }), 3600, "de 2 à 3 adultes : 3 600, pas 2 400");
+  assert.equal(venteDuTarif({ prestation: pp, adultes: 2, enfants: 1 }), 3600, "sans prix enfant : l'enfant au prix par personne");
+  const avecEnfant = { ...pp, details: { enfant: 900 } };
+  assert.equal(venteDuTarif({ prestation: avecEnfant, adultes: 2, enfants: 1 }), 3300);
+  const separee = { id: "pc", partenaire_id: "p", famille: "excursion", libelle: "Tour, enfant", prix_vente: 800, unite: "ch" };
+  assert.equal(venteDuTarif({ prestation: pp, adultes: 2, enfants: 1, prestations: [pp, separee] }), 3200, "prestation enfant séparée");
+  assert.equal(venteDuTarif({ prestation: { ...pp, unite: "veh", prix_vente: 2500 }, adultes: 4 }), 2500, "par véhicule : un seul prix");
+  assert.equal(venteDuTarif({ prestation: { ...pp, unite: "day", prix_vente: 300 }, jours: 3 }), 900);
+  assert.equal(venteDuTarif({ trajet: { prix_adulte: 1900, prix_enfant: 1400 }, adultes: 2, enfants: 1 }), 5200);
+  assert.equal(venteDuTarif({ prestation: { ...pp, prix_vente: null }, adultes: 2 }), null, "prix à saisir : rien d'imposé");
+});
+
+test("revue 3 : une ligne adulte qui compte un enfant ne prend un adulte de plus que si le tarif n'a pas de prix enfant", async () => {
+  const { contenuAvecReservation } = await import("../src/gestion/js/operations-calc.mjs");
+  const l = { id: "a", kind: "ligne", libelle: "Tour", titre: "Tour", intro: "(per person)", unite: 1200, qte: 3, prestation_id: "pp" };
+  const r = { ligne_id: "a", details: {}, personnes: { adultes: 2, enfants: 1 } };
+  const avant = { personnes: { adultes: 2, enfants: 1 } };
+  const apres = { personnes: { adultes: 2, enfants: 2 } };
+  // Le tarif a un prix enfant : la ligne adulte ne bouge pas, l'enfant ajouté reçoit sa ligne enfant.
+  const avecPrix = contenuAvecReservation({ lignes: [l] }, r, avant, apres, { tarifEnfant: () => ({ unite: 900, net: 600 }) });
+  assert.equal(avecPrix.contenu, null);
+  const e = contenuAvecEnfants({ lignes: [l] }, r, avant, apres, { tarifEnfant: () => ({ unite: 900, net: 600 }), uid: () => "enf" });
+  assert.equal(e.ajoutee, "enf");
+  // Sans prix enfant, ou enfants repris du dossier : la ligne suit le total.
+  assert.equal(contenuAvecReservation({ lignes: [l] }, r, avant, apres, { tarifEnfant: () => null }).contenu.lignes[0].qte, 4);
+  assert.equal(contenuAvecReservation({ lignes: [l] }, { ...r, details: { personnes_du_dossier: true } }, avant, apres).contenu.lignes[0].qte, 4);
+  assert.equal(contenuAvecReservation({ lignes: [l] }, r, avant, apres).contenu, null, "sans rien savoir du tarif : pas de devinette");
+});
