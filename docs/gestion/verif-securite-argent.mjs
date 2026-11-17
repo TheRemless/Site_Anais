@@ -151,7 +151,7 @@ console.log("Migration 31 : net et commission prévus remplis par la base (lot F
 {
   const SRC = process.env.GESTION_SRC || "../src/gestion/js/";
   const { reservationsDepuisDocument, commissionPrevue } = await import(new URL(SRC + "operations-calc.mjs", import.meta.url));
-  const { ligneDepuisPrestation, lignesDepuisTrajet } = await import(new URL(SRC + "partenaires-calc.mjs", import.meta.url));
+  const { ligneDepuisPrestation, lignesDepuisTrajet, quantiteParDefaut } = await import(new URL(SRC + "partenaires-calc.mjs", import.meta.url));
   const { separerNets } = await import(new URL(SRC + "nets-documents.mjs", import.meta.url));
   const S = AUTRE;
   const T = (await db.query("select id from entites where slug = 'taxi'")).rows[0].id;
@@ -218,6 +218,36 @@ console.log("Migration 31 : net et commission prévus remplis par la base (lot F
   await essaie(U.anais, `update reservations_nets set net_paye = 1000, paye_le = '2026-11-20' where reservation_id = '${id(52)}'`);
   await essaie(U.mook, `update reservations set personnes = '{"adultes": 5}' where id = '${id(52)}'`);
   ok((await netsDe(id(52)))[0].net === 4000, "un net payé ne bouge plus");
+  // Le net ne suit que ce qui le fait (tarif, personnes, jours, lignes) : un prix vendu changé ne reprend pas un net du catalogue modifié depuis.
+  await insererPar("mook", base(id(59), { prestation_id: X, partenaire_id: P_NOUS, personnes: { adultes: 2 }, montant_vente: 2000 }));
+  await db.exec(`update prestations_nets set net = 750 where prestation_id = '${X}'`);
+  await essaie(U.mook, `update reservations set montant_vente = 2100, paye_sur_place = false where id = '${id(59)}'`);
+  ok((await netsDe(id(59)))[0].net === 1400, "prix vendu changé : le net calculé reste celui de la vente");
+  await essaie(U.mook, `update reservations set personnes = '{"adultes": 3}' where id = '${id(59)}'`);
+  ok((await netsDe(id(59)))[0].net === 2250, "personnes changées : le net suit le catalogue du jour");
+  await db.exec(`update prestations_nets set net = 700 where prestation_id = '${X}'`);
+
+  // Quantité d'un tarif sans ligne de facture : la même que le formulaire (quantiteParDefaut, location au jour), pour chaque unité.
+  let q = 0, qEcarts = 0;
+  for (const unite of ["pp", "ad", "ch", "sup", "day", "boat", "veh", "grp", ""]) {
+    const pid = `00000000-0000-4000-8000-0000000033${String(q).padStart(2, "0")}`;
+    await db.exec(`insert into prestations (id, entite_id, partenaire_id, famille, libelle, prix_vente, unite) values ('${pid}', '${S}', '${P_NOUS}', 'activite', 'Unité ${unite}', 100, '${unite}');
+      insert into prestations_nets (entite_id, prestation_id, net) values ('${S}', '${pid}', 33.33)`);
+    for (const [ad, en, jours] of [[0, 0, null], [1, 0, 3], [2, 1, null], [4, 2, 0]]) {
+      const rid = `00000000-0000-4000-8000-0000000032${String(++q).padStart(2, "0")}`;
+      await insererPar("mook", base(rid, { prestation_id: pid, partenaire_id: P_NOUS, personnes: { adultes: ad, enfants: en }, details: jours === null ? {} : { jours } }));
+      const quantite = unite === "day" ? Math.max(1, Number(jours) || 1) : quantiteParDefaut(unite, { adultes: ad, enfants: en });
+      const attendu = Math.round(33.33 * quantite * 100) / 100;
+      const lu = ((await netsDe(rid))[0] || {}).net ?? null;
+      if (lu !== attendu) { qEcarts++; console.log("   écart", unite, ad, en, jours, attendu, lu); }
+    }
+  }
+  ok(qEcarts === 0, `réservation à la main : net = net du tarif × quantité du formulaire (${q} cas, neuf unités)`);
+
+  // L'interface qui insère ses nets sur une ligne déjà créée par la base : l'identifiant de la ligne ne change pas.
+  const idAvant = (await db.query(`select id from reservations_nets where reservation_id = '${id(59)}'`)).rows[0].id;
+  await essaie(U.anais, `insert into reservations_nets (entite_id, reservation_id, commission_recue) values ('${S}', '${id(59)}', 1)`);
+  ok((await db.query(`select id from reservations_nets where reservation_id = '${id(59)}'`)).rows[0].id === idAvant, "la ligne complétée garde son identifiant (un autre appareil peut toujours la modifier)");
 
   // 3. Taxi, annulations : rien.
   r = await essaie(U.mookTaxi, `insert into reservations (entite_id, dossier_id, libelle, prestation_id, partenaire_id, personnes, montant_vente, paye_sur_place) values ('${T}', '${DT}', 'Course', '${XT}', '${PT}', '{"adultes":2}', 800, true) returning id`);
@@ -251,6 +281,9 @@ console.log("Migration 31 : net et commission prévus remplis par la base (lot F
     { ...ligneDepuisPrestation(P[Z], nets[Z], { qte: 2, date: "2026-12-04", uid }), paye_sur_place: true },
     { ...ligneDepuisPrestation(P[ZC], nets[ZC], { qte: 1, date: "2026-12-04", uid }), paye_sur_place: true },
   ];
+  // Ligne enfant d'une prestation qui a un net enfant (décision 7) : la base prend le net enfant.
+  await db.exec(`update prestations_nets set net_enfant = 500 where prestation_id = '${Y}'`);
+  lignes.push({ ...ligneDepuisPrestation(P[Y], { net: 500 }, { qte: 1, date: "2026-12-03", uid }), libelle: "Tour Y, child", intro: "(per child)", paye_sur_place: true });
   const doc = { dossier_id: D, contenu: { lignes } };
   const attendues = reservationsDepuisDocument(doc, { uid: (() => { let k = 60; return () => id(++k); })(), regleDe: (pid) => regles[pid] || null });
   ok(attendues.length === 4, "(contexte) quatre réservations attendues, dont une adulte + enfant réunie");

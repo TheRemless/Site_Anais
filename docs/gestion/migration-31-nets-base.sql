@@ -179,8 +179,10 @@ end
 $$;
 
 -- Calcule et écrit le net et la commission prévus d'une réservation. `p_vides_seulement` : ne remplit que les valeurs vides (rattrapage) ;
--- sinon une valeur encore égale au dernier calcul de la base suit aussi le nouveau calcul. Renvoie vrai si une ligne a été écrite.
-create or replace function calculer_nets_reservation(p_id uuid, p_vides_seulement boolean default false) returns boolean
+-- sinon une valeur encore égale au dernier calcul de la base suit aussi le nouveau calcul. `p_suivre_net` : faux quand rien de ce qui fait le net
+-- n'a changé (seulement le prix vendu, le mode ou le partenaire) ; le net calculé reste alors tel quel, même si le catalogue a changé depuis.
+-- Renvoie vrai si une ligne a été écrite.
+create or replace function calculer_nets_reservation(p_id uuid, p_vides_seulement boolean default false, p_suivre_net boolean default true) returns boolean
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   r reservations%rowtype;
@@ -201,7 +203,7 @@ begin
   if not exists (select 1 from reglages g where g.entite_id = r.entite_id and g.valeur->>'fonctionnement' = 'excursions') then return false; end if;
   if exists (select 1 from dossiers d where d.id = r.dossier_id and d.annule) then return false; end if;
   select * into n from reservations_nets where reservation_id = r.id for update;
-  net_gere := n.id is null or (n.net_paye is null and n.paye_le is null and (n.net_prevu is null or (not p_vides_seulement and n.net_prevu = n.net_prevu_auto)));
+  net_gere := n.id is null or (n.net_paye is null and n.paye_le is null and (n.net_prevu is null or (p_suivre_net and not p_vides_seulement and n.net_prevu = n.net_prevu_auto)));
   com_gere := n.id is null or (n.commission_recue is null and n.commission_recue_le is null and (n.commission_prevue is null or (not p_vides_seulement and n.commission_prevue = n.commission_prevue_auto)));
   if not net_gere and not com_gere then return false; end if;
   select * into c from net_reservation_calcule(r);
@@ -246,7 +248,11 @@ begin
     and (new.details->'jours') is not distinct from (old.details->'jours') and (new.details->'lignes_ids') is not distinct from (old.details->'lignes_ids') then
     return null;
   end if;
-  perform calculer_nets_reservation(new.id, false);
+  -- Le net ne dépend que du tarif, des personnes, des jours et des lignes (et revient avec un service réactivé).
+  perform calculer_nets_reservation(new.id, false, tg_op = 'INSERT'
+    or new.prestation_id is distinct from old.prestation_id or new.trajet_id is distinct from old.trajet_id
+    or new.personnes is distinct from old.personnes or new.ligne_id is distinct from old.ligne_id or new.statut is distinct from old.statut
+    or (new.details->'jours') is distinct from (old.details->'jours') or (new.details->'lignes_ids') is distinct from (old.details->'lignes_ids'));
   return null;
 end
 $$;
@@ -264,6 +270,8 @@ begin
   select * into existante from reservations_nets where reservation_id = new.reservation_id and id <> new.id for update;
   if existante.id is null then return new; end if;
   new := jsonb_populate_record(new, to_jsonb(existante) || jsonb_strip_nulls(to_jsonb(new)));
+  -- La ligne garde son identifiant : un autre appareil qui l'a déjà lue peut toujours la modifier.
+  new.id := existante.id;
   delete from reservations_nets where id = existante.id;
   return new;
 end
@@ -277,7 +285,7 @@ revoke all on function nombre_json(jsonb) from public, anon, authenticated;
 revoke all on function commission_calculee(jsonb, numeric, numeric, numeric, numeric) from public, anon, authenticated;
 revoke all on function net_catalogue_ligne(text, text, boolean) from public, anon, authenticated;
 revoke all on function net_reservation_calcule(reservations) from public, anon, authenticated;
-revoke all on function calculer_nets_reservation(uuid, boolean) from public, anon, authenticated;
+revoke all on function calculer_nets_reservation(uuid, boolean, boolean) from public, anon, authenticated;
 revoke all on function remplir_nets_reservation() from public, anon, authenticated;
 revoke all on function fusionner_nets_reservation() from public, anon, authenticated;
 
