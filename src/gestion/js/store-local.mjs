@@ -88,6 +88,11 @@ export function creer() {
   const accessibles = () => (utilisateur.super_admin ? data.entites.map((e) => e.id) : data.membres.filter((m) => m.user_id === utilisateur.user_id).map((m) => m.entite_id));
   const nomDe = (id) => (data.profils.find((p) => p.user_id === id) || {}).nom || null;
 
+  // Comme publie_sur_le_site (migration 40) : un bandeau du site ne s'écrit qu'avec « Modifier les réglages ».
+  const garderBandeau = (table, entiteId) => {
+    if (table === "bandeaux_site" && !(droit(entiteId, "dossiers.ecrire") && droit(entiteId, "reglages.ecrire"))) throw new Error(tr("Le bandeau du site est réservé aux personnes qui ont le droit « Modifier les réglages de l'entreprise »."));
+  };
+
   // Comme le déclencheur garder_prix_vente (migration 38) : sans le droit « partenaires.prix », un prix de vente ne change pas et un tarif ou un
   // trajet créé naît sans prix.
   const garderPrix = (table, avant, apres) => {
@@ -270,6 +275,7 @@ export function creer() {
     async inserer(table, row) {
       const ligne = { id: uid(), created_at: aujourdhui(), ...row };
       garderPrix(table, null, ligne);
+      garderBandeau(table, ligne.entite_id);
       // Comme la base (migration 34) : un document écrit toujours sa devise, un dossier a sa colonne d'acompte figé.
       if (table === "documents" && ligne.contenu && !ligne.contenu.devise) ligne.contenu = { ...ligne.contenu, devise: (data.reglages[ligne.entite_id] || {}).devise || "CHF" };
       if (table === "dossiers" && !("acompte_pct" in ligne)) ligne.acompte_pct = null;
@@ -302,6 +308,7 @@ export function creer() {
       if (avant && ligne.updated_at && ligne.updated_at !== avant) throw Object.assign(new Error(tr("Cette fiche a été modifiée par quelqu'un d'autre depuis que vous l'avez ouverte.")), { conflit: true });
       patch = { ...patch };
       garderPrix(table, ligne, { ...ligne, ...patch });
+      garderBandeau(table, ligne.entite_id);
       delete patch.updated_at;
       if (VERSIONNEES.includes(table)) patch.updated_at = new Date().toISOString();
       // Comme le déclencheur de la migration 30 : un changement de statut note qui et quand.
@@ -321,6 +328,7 @@ export function creer() {
     },
     async supprimer(table, id) {
       const ligne = data[table].find((r) => r.id === id);
+      if (ligne) garderBandeau(table, ligne.entite_id);
       // Un devis ou une facture supprimé seul reste 90 jours restaurable (comme documents_historique en base).
       if (table === "documents" && ligne) data.corbeille_documents = [{ ligne: structuredClone(ligne), supprime_le: new Date().toISOString() }, ...data.corbeille_documents.filter((x) => x.ligne.id !== id)];
       data[table] = data[table].filter((r) => r.id !== id);

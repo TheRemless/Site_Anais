@@ -1758,7 +1758,7 @@ export const EN = {
   "Changer le numéro": "Change the number",
   "Document déjà envoyé : le numéro ne change plus.": "Document already sent: the number no longer changes.",
   "Document envoyé : le numéro ne change plus.": "Document sent: the number no longer changes.",
-  "La facture envoyée indique {imprime} reçus. Les paiements enregistrés font {paiements}. Mettre {paiements} sur la facture renvoyée ?": "The invoice that was sent shows {imprime} received. The recorded payments add up to {paiements}. Put {paiements} on the invoice you send again?",
+  "La facture envoyée indique {imprime} reçus. Les paiements enregistrés font {paiements}. Mettre {paiements} sur la facture renvoyée ?": "The invoice that was sent shows {imprime} received. The recorded payments add up to {paiements}. Put {paiements} on the resent invoice?",
   "Mettre à jour le montant reçu": "Update the amount received",
   "modifié depuis l'envoi": "changed since sent",
   "facture modifiée depuis": "invoice changed since",
@@ -1776,10 +1776,9 @@ export const EN = {
   "Retirer la date d'envoi du {date} ? La facture redevient « pas encore envoyée » et son montant reçu suit de nouveau les paiements. À faire seulement si elle n'est pas partie chez le client.": "Remove the sent date {date}? The invoice becomes “not sent yet” again and its amount received follows the payments again. Only do this if it never went to the client.",
   "Retirer la date d'envoi du {date} ? Le document redevient « pas encore envoyé ». À faire seulement s'il n'est pas parti chez le client.": "Remove the sent date {date}? The document becomes “not sent yet” again. Only do this if it never went to the client.",
   "Retirer la date d'envoi": "Remove the sent date",
-  "Renvoyer": "Send again",
   "renvoyée le {dates}": "sent again on {dates}",
   "Modifiée depuis l'envoi du {date} : le client a encore l'ancienne version. Renvoyez-lui la version corrigée.": "Changed since it was sent on {date}: the client still has the old version. Send them the corrected version.",
-  "Les coordonnées de l'entreprise, la banque ou l'acompte ont changé dans les Réglages depuis l'envoi : ce document garde ceux du jour de l'envoi. « Renvoyer » prend ceux d'aujourd'hui.": "The company details, bank or deposit changed in Settings since it was sent: this document keeps those of the day it was sent. “Send again” uses today's.",
+  "Les coordonnées de l'entreprise, la banque ou l'acompte ont changé dans les Réglages depuis l'envoi : ce document garde ceux du jour de l'envoi. « Renvoyer » prend ceux d'aujourd'hui.": "The company details, bank or deposit changed in Settings since it was sent: this document keeps those of the day it was sent. “Resend” uses today's.",
   "La facture du client a été modifiée depuis la création de cette facture locale : les montants peuvent ne plus correspondre.": "The client's invoice has changed since this local invoice was created: the amounts may no longer match.",
   "Recréer depuis la facture": "Recreate from the invoice",
   "Taux de la facture locale inconnu : supprimez-la puis créez-la de nouveau depuis le dossier.": "Local invoice rate unknown: delete it, then create it again from the file.",
@@ -3342,4 +3341,6 @@ export const EN = {
   "Notification sur téléphone la veille du départ de chaque voyage accepté, à {heure}": "Phone notification the day before each accepted trip leaves, at {heure}",
   "Le nom du client et le voyage, un tap ouvre le dossier. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche).": "The client's name and the trip, one tap opens the file. Everyone can turn it off for themselves in the “Reminders” window (the bell).",
   "Le nom du client, le service, les personnes et le pickup, un tap ouvre la réservation et son rappel. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche).": "The client's name, the service, the people and the pickup, one tap opens the booking and its reminder. Everyone can turn it off for themselves in the “Reminders” window (the bell).",
+  // Bandeau du site réservé au droit « Modifier les réglages » (migration 40)
+  "Le bandeau du site est réservé aux personnes qui ont le droit « Modifier les réglages de l'entreprise ».": "The website banner is only for people with the “Edit the company settings” permission.",
 };

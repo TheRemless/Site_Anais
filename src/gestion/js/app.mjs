@@ -174,6 +174,8 @@ function bandeauDemo() {
 // Le site secrettravelandtour.com (migration 30) : demandes reçues et bandeau, pour Secret et Taxi seulement, pour qui voit tous les dossiers.
 // Le badge compte les demandes à traiter : elles arrivent avec une notification, le chiffre reste jusqu'à la réponse.
 const siteVisible = () => modeExcursions() && peut("dossiers.lire") && voitToutActif();
+// Le bandeau du site public ne se change qu'avec « Modifier les réglages » (Jérémy, 17.11.2026 : Mook ne change pas les bandeaux ; migration 40).
+const bandeauVisible = () => siteVisible() && peut("dossiers.ecrire") && peut("reglages.ecrire");
 function voitToutActif() {
   if (estSuperAdmin()) return true;
   const m = etat.brut.membres.find((x) => x.user_id === etat.session.id && x.entite_id === etat.entiteId);
@@ -189,7 +191,7 @@ function ecrans() {
   const demandes = siteVisible() ? aTraiter(etat.db.demandes_site || []).length : 0;
   return [
     { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
-    { titre: tr("Site"), items: siteVisible() ? [{ href: "#/demandes", libelle: tr("Demandes du site"), cle: "demandes", icone: "messages", badge: demandes, badgeLibelle: tr("{badge} à traiter", { badge: demandes }) }, { href: "#/bandeau", libelle: tr("Bandeau du site"), cle: "bandeau", icone: "alerte" }] : [] },
+    { titre: tr("Site"), items: siteVisible() ? [{ href: "#/demandes", libelle: tr("Demandes du site"), cle: "demandes", icone: "messages", badge: demandes, badgeLibelle: tr("{badge} à traiter", { badge: demandes }) }, ...(bandeauVisible() ? [{ href: "#/bandeau", libelle: tr("Bandeau du site"), cle: "bandeau", icone: "alerte" }] : [])] : [] },
     { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(fiduciaireAuMenu(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
       titre: tr("Partenaires"),
@@ -358,7 +360,8 @@ function ecranDeLEntreprise(cle) {
   if (cle === "reservations" || cle === "messages") return moduleActif(cle);
   if (cle === "catalogue") return moduleActif("catalogue");
   if (cle === "fiduciaire") return modeExcursions();
-  if (cle === "demandes" || cle === "bandeau") return siteVisible();
+  if (cle === "demandes") return siteVisible();
+  if (cle === "bandeau") return bandeauVisible();
   return true;
 }
 
