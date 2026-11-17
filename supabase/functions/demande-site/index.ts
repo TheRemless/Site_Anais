@@ -4,11 +4,11 @@
 // Contrat et réponses : docs/gestion/demandes-site.md. Logique pure : ./calc.js (testée par tests/gestion-demandes-site.test.js).
 //
 // Protections : origine du site seulement (CORS), méthode POST, taille et formats contrôlés, champ piège pour les robots, limite par appareil
-// (empreinte salée de l'IP, jamais l'IP elle-même) et limite globale, vérification Cloudflare Turnstile prête à allumer (TURNSTILE_SECRET).
+// (empreinte salée de l'IP, jamais l'IP elle-même) et limite par organisation, vérification Cloudflare Turnstile prête à allumer (TURNSTILE_SECRET).
 // Secrets : DEMANDES_SEL (sel de l'empreinte d'IP), VAPID_* (déjà posés pour les rappels). Facultatifs : TURNSTILE_SECRET, TURNSTILE_OBLIGATOIRE=1.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
-import { origineAdmise, lireOrigines, lireDemande, adresseIP, notification, destinataires, REPONSES, reponseInvalide, TAILLE_MAX, LIMITE_APPAREIL, LIMITE_TOTALE } from "./calc.js";
+import { origineAdmise, lireOrigines, lireDemande, adresseIP, notification, destinataires, REPONSES, reponseInvalide, choisirEntite, TAILLE_MAX, LIMITE_APPAREIL, LIMITE_TOTALE } from "./calc.js";
 import { dateDans, fuseauValide } from "../rappels/calc.js";
 
 // Organisation propriétaire du site qui appelle cette fonction (Zwald par défaut). Une marque est le slug d'une de ses entreprises qui publient sur le site.
@@ -121,25 +121,28 @@ Deno.serve(async (req) => {
 
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   try {
-    // Sans adresse IP connue, pas de limite par appareil (tous les visiteurs partageraient la même) : seule la limite globale s'applique.
+    // Sans adresse IP connue, pas de limite par appareil (tous les visiteurs partageraient la même) : seule la limite de l'organisation s'applique.
     const ipEmpreinte = ip ? await empreinte(ip) : null;
     const depuis = (min: number) => new Date(Date.now() - min * 60000).toISOString();
-    const [appareil, toutes, entite] = await Promise.all([
+    const [appareil, entites] = await Promise.all([
       ipEmpreinte ? db.from("demandes_site").select("id", { count: "exact", head: true }).eq("ip_empreinte", ipEmpreinte).gte("created_at", depuis(LIMITE_APPAREIL.minutes)) : Promise.resolve({ count: 0, error: null }),
-      db.from("demandes_site").select("id", { count: "exact", head: true }).gte("created_at", depuis(LIMITE_TOTALE.minutes)),
-      // Filtre de marque : une entreprise de cette organisation, qui publie sur le site, dont le slug est la marque reçue.
-      db.from("entites").select("id, nom").eq("organisation_id", ORGANISATION).eq("slug", String(ligne.marque)).eq("publie_site", true).maybeSingle(),
+      // Entreprises de cette organisation qui publient sur le site : la marque reçue doit être le slug de l'une d'elles.
+      db.from("entites").select("id, nom, slug").eq("organisation_id", ORGANISATION).eq("publie_site", true),
     ]);
-    for (const r of [appareil, toutes, entite]) if (r.error) throw new Error(r.error.message);
-    if ((appareil.count || 0) >= LIMITE_APPAREIL.nombre || (toutes.count || 0) >= LIMITE_TOTALE.nombre) return repondre(REPONSES.limite, origine);
-    // Marque inconnue ou d'une autre organisation : demande invalide, rien n'est écrit (la base le refuserait aussi, controler_marques_site).
-    if (!entite.data) return repondre(reponseInvalide({ champ: "brand" }), origine);
+    for (const r of [appareil, entites]) if (r.error) throw new Error(r.error.message);
+    const ids = (entites.data || []).map((e) => e.id);
+    // Garde-fou par organisation : seules ses demandes comptent, la rafale reçue par le site d'un autre client ne bloque pas celui-ci.
+    const toutes = ids.length ? await db.from("demandes_site").select("id", { count: "exact", head: true }).in("entite_id", ids).gte("created_at", depuis(LIMITE_TOTALE.minutes)) : { count: 0, error: null };
+    if (toutes.error) throw new Error(toutes.error.message);
+    // Limites, puis marque inconnue ou d'une autre organisation (la base la refuserait aussi, controler_marques_site) : rien n'est écrit.
+    const { reponse, entite } = choisirEntite({ marque: ligne.marque, entites: entites.data, appareil: appareil.count || 0, organisation: toutes.count || 0 });
+    if (reponse) return repondre(reponse, origine);
 
-    const { data: ecrite, error } = await db.from("demandes_site").insert({ ...ligne, entite_id: entite.data.id, ip_empreinte: ipEmpreinte }).select("id, entite_id").single();
+    const { data: ecrite, error } = await db.from("demandes_site").insert({ ...ligne, entite_id: entite.id, ip_empreinte: ipEmpreinte }).select("id, entite_id").single();
     if (error) throw new Error(error.message);
 
     // La notification part après la réponse : le site n'attend pas Apple ni Google.
-    const envoi = prevenir(db, ecrite, ligne, aujourdhui, entite.data.nom).catch((err) => console.error("notification non envoyée :", String(err?.message || err)));
+    const envoi = prevenir(db, ecrite, ligne, aujourdhui, entite.nom).catch((err) => console.error("notification non envoyée :", String(err?.message || err)));
     // deno-lint-ignore no-explicit-any
     const runtime = (globalThis as any).EdgeRuntime;
     if (runtime?.waitUntil) runtime.waitUntil(envoi);

@@ -35,7 +35,8 @@ export const moduleDeLEcran = (cle) => MODULES.find((m) => m.ecrans.includes(cle
 // publieSite : entites.publie_site. Une valeur absente (données d'avant la migration 41, démo) ne ferme rien.
 export function moduleDisponible(id, { reglages, publieSite } = {}) {
   const m = moduleDe(id);
-  if (!m) return true;
+  // Un id inconnu (faute de frappe à l'appel) ferme : un écran ne s'ouvre jamais par erreur dans une entreprise qui ne l'a pas.
+  if (!m) return false;
   if (!m.pour.includes(fonctionnementDe(reglages))) return false;
   if (m.site && publieSite === false) return false;
   if (m.requiert && !moduleAllume(m.requiert, { reglages, publieSite })) return false;

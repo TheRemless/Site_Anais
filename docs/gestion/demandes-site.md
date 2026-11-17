@@ -79,7 +79,7 @@ Le site n'a rien à en faire : il ne les lit pas. Elles servent aux essais.
 | 405 | `{"ok":false,"error":"method"}` | autre chose que POST |
 | 413 | `{"ok":false,"error":"too_large"}` | plus de 4 096 octets |
 | 415 | `{"ok":false,"error":"content_type"}` | ni `text/plain` ni `application/json` |
-| 429 | `{"ok":false,"error":"rate_limited"}` | plus de 5 demandes en 10 minutes depuis le même appareil, ou plus de 300 en une heure sur tout le site |
+| 429 | `{"ok":false,"error":"rate_limited"}` | plus de 5 demandes en 10 minutes depuis le même appareil, ou plus de 300 en une heure pour les entreprises de l’organisation (le site d’un autre client ne compte pas) |
 | 500 | `{"ok":false,"error":"server"}` | panne de la base |
 
 ## Appel depuis `booking.js`

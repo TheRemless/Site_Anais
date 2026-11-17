@@ -175,9 +175,11 @@ function bandeauDemo() {
 // Le site public (migration 30) : modules « Demandes du site » et « Bandeau du site », dans une entreprise qui publie sur le site
 // (entites.publie_site, Secret et Taxi chez Zwald), pour qui voit tous les dossiers.
 // Le badge compte les demandes à traiter : elles arrivent avec une notification, le chiffre reste jusqu'à la réponse.
-const siteVisible = () => moduleActif("demandes_site") && peut("dossiers.lire") && voitToutActif();
+// Règle commune aux deux écrans du site : lire les dossiers et les voir tous (comme la base : lit_demandes_site).
+const voitLeSite = () => peut("dossiers.lire") && voitToutActif();
+const siteVisible = () => moduleActif("demandes_site") && voitLeSite();
 // Le bandeau du site public ne se change qu'avec « Modifier les réglages » (Jérémy, 17.11.2026 : Mook ne change pas les bandeaux ; migration 40).
-const bandeauVisible = () => moduleActif("bandeau_site") && peut("dossiers.lire") && voitToutActif() && peut("dossiers.ecrire") && peut("reglages.ecrire");
+const bandeauVisible = () => moduleActif("bandeau_site") && voitLeSite() && peut("dossiers.ecrire") && peut("reglages.ecrire");
 function voitToutActif() {
   if (estSuperAdmin()) return true;
   const m = etat.brut.membres.find((x) => x.user_id === etat.session.id && x.entite_id === etat.entiteId);

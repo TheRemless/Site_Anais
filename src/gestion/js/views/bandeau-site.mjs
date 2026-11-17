@@ -1,4 +1,4 @@
-// « Bandeau du site » : l'information en haut des pages de secrettravelandtour.com (mer agitée, saison, nouveauté, perturbation), allumée
+// « Bandeau du site » : l'information en haut des pages du site public (secrettravelandtour.com chez Zwald : mer agitée, saison, nouveauté, perturbation), allumée
 // et éteinte par Anaïs (migration 30). Elle choisit un modèle anglais et le remplit, l'outil écrit le texte, propose la fin automatique
 // et montre le rendu dans les marques de l'organisation qui publient sur le site (Secret, VIP Taxi Lanta « Laque et or ») avant publication. Un tap l'éteint.
 // Le site lit les bandeaux en ligne par la fonction publique « bandeau-site » (docs/gestion/bandeau-site.md).
@@ -20,7 +20,9 @@ function marquesSite() {
   const pub = (etat.brut.entites || []).filter((e) => e.publie_site === true);
   return pub.length ? Object.fromEntries(pub.map((e) => [e.slug, e.nom])) : MARQUES_ZWALD;
 }
-const nomMarque = (m) => marquesSite()[m] || m;
+// Calculées une fois par écran (vueBandeauSite) et par fenêtre de saisie, pas à chaque carte.
+let marques = {};
+const nomMarque = (m) => marques[m] || m;
 const PRIORITES = { 1: N_("Haute"), 2: N_("Normale"), 3: N_("Basse") };
 const CHAMPS_LIBELLES = { trip: N_("Sortie"), option: N_("Option"), date: N_("Date"), date2: N_("Nouvelle date"), de: N_("De"), a: N_("À"), texte: N_("Texte en anglais") };
 const ERREURS = {
@@ -64,7 +66,7 @@ export function noeudBandeau(b, marque) {
 }
 // Aperçu dans les marques choisies, chacune dans un cadre de téléphone (375 px) sous un faux en-tête de la marque.
 function apercu(b) {
-  const marques = b.marques && b.marques.length ? b.marques : Object.keys(marquesSite()).slice(0, 1);
+  const marques = b.marques && b.marques.length ? b.marques : Object.keys(marques).slice(0, 1);
   return h(
     "div",
     { class: "bsite-apercus" },
@@ -87,7 +89,8 @@ const quand = (iso) => new Date(iso).toLocaleString(localeActive(), { weekday: "
 function ouvrirSaisie(existant = null) {
   const ajd = aujourdhui();
   const slug = (entiteActive() || {}).slug;
-  const marqueEntreprise = slug in marquesSite() ? slug : Object.keys(marquesSite())[0];
+  marques = marquesSite();
+  const marqueEntreprise = Object.hasOwn(marques, slug || "") ? slug : Object.keys(marques)[0];
   const b = existant
     ? { ...structuredClone(existant), valeurs: { ...(existant.valeurs || {}) } }
     : { type: "sea", modele: "sea-today", valeurs: {}, marques: [marqueEntreprise], cible: "tout", sections: [], produits: [], lien: "aucun", lien_page: null, debut: new Date().toISOString(), fin: finProposee("sea-today", {}, ajd), fermable: true, priorite: 2, actif: true };
@@ -237,7 +240,7 @@ function ouvrirSaisie(existant = null) {
     { class: "modal-corps bsite-saisie" },
     h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Type d'information")), choixType.noeud, aideType),
     h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Texte (anglais, prêt à l'emploi)")), blocModeles, blocChamps, compteur),
-    h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Où")), h("div", { class: "bsite-cases" }, Object.keys(marquesSite()).map(caseMarque)), choixCible.noeud, blocCible),
+    h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Où")), h("div", { class: "bsite-cases" }, Object.keys(marques).map(caseMarque)), choixCible.noeud, blocCible),
     h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Lien")), choixLien.noeud, blocLien),
     h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Quand")), h("div", { class: "grille-form compacte" }, champ(tr("Début"), debut), champ(tr("Fin"), fin)), h("label", { class: "case" }, sansFin, tr("Sans fin (à éteindre à la main)")), h("p", { class: "aide" }, tr("La fin est proposée d'après le modèle : le bandeau disparaît seul du site."))),
     h("fieldset", { class: "dsite-groupe" }, h("legend", null, tr("Affichage")), fermable, h("p", { class: "aide" }, tr("Un seul bandeau par page : la priorité départage, puis le type (perturbation d'abord).")), choixPriorite.noeud),
@@ -286,15 +289,16 @@ function carte(b, ecrit) {
 export async function vueBandeauSite() {
   // Même droit que la base (publie_sur_le_site, migration 40) : « Modifier les réglages » en plus des dossiers.
   const ecrit = peut("dossiers.ecrire") && peut("reglages.ecrire");
+  marques = marquesSite();
   const tous = [...(etat.db.bandeaux_site || [])];
   const actifs = tous.filter((b) => ["en_ligne", "programme"].includes(etatBandeau(b))).sort(ordreAffichage);
   const anciens = tous.filter((b) => !actifs.includes(b)).sort((a, b) => String(b.debut).localeCompare(String(a.debut))).slice(0, 20);
   const enLigne = (m) => actifs.filter((b) => etatBandeau(b) === "en_ligne" && b.marques.includes(m)).length;
-  const concurrents = Object.keys(marquesSite()).filter((m) => enLigne(m) > 1);
+  const concurrents = Object.keys(marques).filter((m) => enLigne(m) > 1);
   return h(
     "div",
     { "data-titre": tr("Bandeau du site"), class: "bsite" },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Bandeau du site")), h("p", { class: "sous" }, tr("Une information en haut des pages de secrettravelandtour.com. Le site la montre dans la minute, un tap l'éteint."))), ecrit ? h("div", { class: "entete-actions" }, h("button", { class: "principal", type: "button", onclick: () => ouvrirSaisie() }, icone("ajouter", 18), tr("Nouveau bandeau"))) : null),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Bandeau du site")), h("p", { class: "sous" }, tr("Une information en haut des pages du site. Le site la montre dans la minute, un tap l'éteint."))), ecrit ? h("div", { class: "entete-actions" }, h("button", { class: "principal", type: "button", onclick: () => ouvrirSaisie() }, icone("ajouter", 18), tr("Nouveau bandeau"))) : null),
     etat.brut.site_disponible === false ? h("p", { class: "bandeau-info", role: "status" }, tr("La base n'a pas encore le bandeau du site (migration 30 à appliquer).")) : null,
     concurrents.length ? h("p", { class: "bandeau-info", role: "status" }, tr("Plusieurs bandeaux en ligne pour {marques} : une page n'en montre qu'un, le premier de la liste qui la vise.", { marques: concurrents.map(nomMarque).join(", ") })) : null,
     h("section", null, h("h2", null, tr("En ligne et programmés"), h("span", { class: "tag" }, actifs.length)), actifs.length ? h("ul", { class: "bsite-liste" }, actifs.map((b) => carte(b, ecrit))) : vide(tr("Aucun bandeau sur le site"), tr("Mer agitée, sortie fermée pour la saison, nouveauté : choisissez un modèle, l'outil écrit le texte anglais."))),

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { origineAdmise, lireOrigines, ORIGINES_DEFAUT, lireDemande, dateValide, adresseIP, notification, destinataires, REPONSES, reponseInvalide, TAILLE_MAX } from "../supabase/functions/demande-site/calc.js";
+import { origineAdmise, lireOrigines, ORIGINES_DEFAUT, lireDemande, dateValide, adresseIP, notification, destinataires, REPONSES, reponseInvalide, choisirEntite, LIMITE_APPAREIL, LIMITE_TOTALE, TAILLE_MAX } from "../supabase/functions/demande-site/calc.js";
 import { reponsePublique, bandeauPublic, choisirBandeau, enLigne } from "../supabase/functions/bandeau-site/calc.js";
 import { texteDemande, changements, reponseConfirmation, reponseRefus, imposerTotal, chiffresDemandes, trierDemandes, dateAnglaise, montantAnglais, cheminPage, titreOption, nomProduit } from "../src/gestion/js/demandes-site-calc.mjs";
 import { MODELES, texteBandeau, verifierBandeau, finProposee, etiquetteCarte, ligneBandeau, etatBandeau, libelleLien, pagesLien, TEXTE_MAX } from "../src/gestion/js/bandeau-calc.mjs";
@@ -340,4 +340,19 @@ test("demande-site : les adresses du site viennent de SITE_ORIGINES, celui d'Ana
   assert.equal(page("https://ride.example.evil.example/", o), null);
   assert.equal(page("https://secrettravelandtour.com/tours/", o), null);
   assert.equal(page("https://secrettravelandtour.com/tours/"), "https://secrettravelandtour.com/tours/");
+});
+
+test("demande du site : limite par organisation, puis marque de l'organisation (choisirEntite, fonction demande-site)", () => {
+  const entites = [{ id: "e1", nom: "Secret Travel & Tour", slug: "secret" }, { id: "e2", nom: "VIP Taxi Lanta", slug: "taxi" }];
+  assert.deepEqual(choisirEntite({ marque: "taxi", entites, appareil: 0, organisation: 0 }), { entite: entites[1] });
+  assert.deepEqual(choisirEntite({ marque: "ride-co", entites }), { reponse: reponseInvalide({ champ: "brand" }) }, "marque d'une autre organisation");
+  assert.deepEqual(choisirEntite({ marque: "secret", entites: [] }).reponse.corps.field, "brand", "organisation sans site");
+  assert.equal(choisirEntite({ marque: "secret", entites, organisation: LIMITE_TOTALE.nombre }).reponse, REPONSES.limite);
+  assert.equal(choisirEntite({ marque: "secret", entites, appareil: LIMITE_APPAREIL.nombre }).reponse, REPONSES.limite);
+  assert.deepEqual(choisirEntite({ marque: "secret", entites, organisation: LIMITE_TOTALE.nombre - 1 }).entite, entites[0]);
+  // La fonction compte les demandes des seules entreprises de l'organisation et passe par choisirEntite.
+  const src = fs.readFileSync("supabase/functions/demande-site/index.ts", "utf8");
+  assert.match(src, /\.in\("entite_id", ids\)\.gte\("created_at", depuis\(LIMITE_TOTALE\.minutes\)\)/);
+  assert.match(src, /choisirEntite\(\{ marque: ligne\.marque, entites: entites\.data/);
+  assert.doesNotMatch(src, /entite\.data/);
 });

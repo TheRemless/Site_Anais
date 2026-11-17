@@ -36,7 +36,7 @@ test("modules : le réglage « Écrans » éteint un module, il ne l'ouvre jamai
   assert.equal(moduleAllume("trajets", ctx("excursions", { partenaires: false, trajets: true })), false, "un module requis éteint ferme ceux qui en dépendent");
   assert.equal(moduleAllume("trajets", ctx("excursions", { trajets: false })), false);
   assert.equal(moduleAllume("partenaires", ctx("excursions", { trajets: false })), true, "masquer Trajets ne masque que lui");
-  assert.equal(moduleAllume("inconnu", ctx("sur_mesure")), true);
+  assert.equal(moduleAllume("inconnu", ctx("excursions")), false, "un id inconnu ferme");
 });
 
 test("modules du site : seulement dans une entreprise qui publie sur le site", () => {

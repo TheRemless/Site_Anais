@@ -25,7 +25,7 @@ test("les fonctions serveur lisent l'organisation", () => {
   assert.equal((rappels.match(/entitesLisibles\(\{[^}]*entites/g) || []).length, 3, "chaque appel transmet les entreprises");
   assert.doesNotMatch(rappels, /select\("id, nom"\)/, "les entreprises sont lues avec leur organisation");
   const demande = fs.readFileSync(new URL("../supabase/functions/demande-site/index.ts", import.meta.url), "utf8");
-  assert.match(demande, /\.eq\("organisation_id", ORGANISATION\)\.eq\("slug"/);
+  assert.match(demande, /from\("entites"\)\.select\("id, nom, slug"\)\.eq\("organisation_id", ORGANISATION\)\.eq\("publie_site", true\)/);
   assert.match(demande, /from\("profils"\)\.select\("user_id, actif, super_admin"\)\.eq\("organisation_id", ORGANISATION\)/);
   assert.doesNotMatch(demande, /const SLUG/);
   const bandeau = fs.readFileSync(new URL("../supabase/functions/bandeau-site/index.ts", import.meta.url), "utf8");

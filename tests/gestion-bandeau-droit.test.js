@@ -15,7 +15,8 @@ test("migration 40 : publie_sur_le_site demande « reglages.ecrire » en plus de
 
 test("menu, route et écran : le bandeau n'apparaît qu'avec le droit, les demandes du site ne changent pas", () => {
   const app = source("app.mjs");
-  assert.match(app, /const bandeauVisible = \(\) => moduleActif\("bandeau_site"\) && peut\("dossiers\.lire"\) && voitToutActif\(\) && peut\("dossiers\.ecrire"\) && peut\("reglages\.ecrire"\);/);
+  assert.match(app, /const voitLeSite = \(\) => peut\("dossiers\.lire"\) && voitToutActif\(\);/);
+  assert.match(app, /const bandeauVisible = \(\) => moduleActif\("bandeau_site"\) && voitLeSite\(\) && peut\("dossiers\.ecrire"\) && peut\("reglages\.ecrire"\);/);
   assert.match(app, /\.\.\.si\(bandeauVisible\(\), \{ href: "#\/bandeau"/);
   assert.match(app, /if \(cle === "bandeau"\) return bandeauVisible\(\);/);
   assert.match(app, /if \(cle === "demandes"\) return siteVisible\(\);/);

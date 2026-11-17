@@ -4,7 +4,7 @@
 
 export const TAILLE_MAX = 4096; // octets du corps : une demande en fait moins de 1 500 avec son message
 export const LIMITE_APPAREIL = { nombre: 5, minutes: 10 }; // 5 demandes en 10 minutes par appareil (empreinte d'IP)
-export const LIMITE_TOTALE = { nombre: 300, minutes: 60 }; // garde-fou global : au-delà, le site est attaqué, pas visité
+export const LIMITE_TOTALE = { nombre: 300, minutes: 60 }; // garde-fou par organisation : au-delà, son site est attaqué, pas visité
 
 // Site de l'organisation qui reçoit les demandes : celui d'Anaïs par défaut, un autre client pose SITE_ORIGINES (adresses séparées par des virgules).
 export const ORIGINES_DEFAUT = ["https://secrettravelandtour.com", "https://www.secrettravelandtour.com"];
@@ -178,3 +178,11 @@ export const REPONSES = {
   serveur: { status: 500, corps: { ok: false, error: "server" } },
 };
 export const reponseInvalide = (e) => ({ status: 400, corps: { ok: false, error: "invalid", ...(e.champ ? { field: e.champ } : {}) } });
+
+// Décide où écrire une demande valide : limite par appareil, limite de l'organisation (ses demandes seulement), puis marque.
+// entites : celles de l'organisation qui publient sur le site ({ id, nom, slug }). Renvoie { reponse } pour refuser, sinon { entite }.
+export function choisirEntite({ marque, entites, appareil = 0, organisation = 0 }) {
+  if (appareil >= LIMITE_APPAREIL.nombre || organisation >= LIMITE_TOTALE.nombre) return { reponse: REPONSES.limite };
+  const entite = (entites || []).find((e) => e.slug === marque);
+  return entite ? { entite } : { reponse: reponseInvalide({ champ: "brand" }) };
+}
