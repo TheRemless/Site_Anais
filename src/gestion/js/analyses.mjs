@@ -72,7 +72,9 @@ export function analyserLocal({ dossiers, documents, paiements, clients, profils
 
   return {
     facture_par_mois: parMois(facturesPeriode, (x) => mois(x.date_emission), (x) => x.contenu.devise || devDefaut, (x) => totaux(x.contenu).net),
-    encaisse_par_mois: parMois(paiements.filter((p) => dans(p.date, du, au)), (p) => mois(p.date), (p) => (parId.get(p.dossier_id) || {}).devise || devDefaut, (p) => Number(p.montant)),
+    // Un écart soldé (frais Wise, change) n'est pas de l'encaissé : il se compte à part (17.11.2026, migration 37). Le reste dû le compte toujours.
+    encaisse_par_mois: parMois(paiements.filter((p) => dans(p.date, du, au) && p.type !== "ecart"), (p) => mois(p.date), (p) => (parId.get(p.dossier_id) || {}).devise || devDefaut, (p) => Number(p.montant)),
+    ecart_par_mois: parMois(paiements.filter((p) => dans(p.date, du, au) && p.type === "ecart"), (p) => mois(p.date), (p) => (parId.get(p.dossier_id) || {}).devise || devDefaut, (p) => Number(p.montant)),
     devis: {
       emis: devisPeriode.length,
       acceptes: devisPeriode.filter((x) => x.d.accepte_le).length,

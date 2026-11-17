@@ -25,7 +25,7 @@ const db = new PGlite();
 await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
 // schema.sql s'arrête avant les migrations suivantes : on les applique dans l'ordre (18 : sur place, 19 : paiements, 20 : statistiques, 21 : portée, 29 : date_fin).
-for (const f of ["migration-18-sur-place.sql", "migration-19-paiements.sql", "migration-20-statistiques.sql", "migration-21-analyses-portee.sql", "migration-29-analyses-date-fin.sql"]) await db.exec(fs.readFileSync(W + f, "utf8"));
+for (const f of ["migration-18-sur-place.sql", "migration-19-paiements.sql", "migration-20-statistiques.sql", "migration-21-analyses-portee.sql", "migration-29-analyses-date-fin.sql", "migration-37-ecart-hors-encaisse.sql"]) await db.exec(fs.readFileSync(W + f, "utf8"));
 await db.exec("grant all on all tables in schema public to authenticated;");
 
 const E = (await db.query("select id from entites where slug = 'ztp'")).rows[0].id;
@@ -65,6 +65,8 @@ const paiements = [
   { id: pid(2), dossier_id: ids[0], date: "2026-10-20", montant: 100 },
   { id: pid(3), dossier_id: ids[2], date: "2026-08-20", montant: 12000 },
   { id: pid(4), dossier_id: ids[3], date: "2026-10-16", montant: 50, moyen: "especes", type: "solde" },
+  // Écart soldé (frais Wise) : hors de l'encaissé, dans ecart_par_mois ; le reste dû du dossier le compte (migration 36).
+  { id: "00000000-0000-4000-8000-0000000000e5", dossier_id: ids[1], date: "2026-10-21", montant: 0.4, moyen: "", type: "ecart" },
 ];
 for (const c of clients) await db.query("insert into clients (id, entite_id, prenom, nom) values ($1, $2, $3, $4)", [c.id, E, c.prenom, c.nom]);
 for (const d of dossiers) await db.query("insert into dossiers (id, entite_id, ref, client_id, pays, responsable_id, accepte_le, annule) values ($1,$2,$3,$4,$5,$6,$7,$8)", [d.id, E, "R" + d.id.slice(-2), d.client_id, d.pays, d.responsable_id, d.accepte_le, d.annule]);
@@ -99,6 +101,8 @@ ok(v.impayes.length === 1 && v.impayes[0].tranche === "0-30" && v.impayes[0].dev
 ok(v.top_clients.length >= 2 && v.top_clients[0].client === "Alice Martin", "meilleur client : Alice Martin");
 ok(!JSON.stringify(v).includes("999"), "le dossier annulé n'est pas compté");
 ok(v.pipeline.length === 1 && v.pipeline[0].devise === "CHF" && Number(v.pipeline[0].montant) === 500 && v.pipeline[0].nombre === 1, "devis en attente : 500 CHF (ni accepté, ni annulé, ni facturé)");
+ok(v.encaisse_par_mois.some((x) => x.mois === "2026-10" && x.devise === "CHF" && Number(x.montant) === 150 && x.nombre === 2), "encaissé d'octobre : 100 + 50, sans l'écart soldé de 0,40");
+ok(v.ecart_par_mois.length === 1 && v.ecart_par_mois[0].mois === "2026-10" && Number(v.ecart_par_mois[0].montant) === 0.4 && v.ecart_par_mois[0].nombre === 1, "écart soldé compté à part (ecart_par_mois)");
 ok(Number(v.activite.dossiers) === 3 && Number(v.activite.clients) === 2, "activité : 3 dossiers retenus pour 2 clients");
 
 // 2b. résumé des dossiers tenu à jour par les déclencheurs

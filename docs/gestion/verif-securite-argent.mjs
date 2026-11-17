@@ -296,6 +296,37 @@ console.log("Migration 31 : net et commission prévus remplis par la base (lot F
     ok(res.ok && lu.net === a.net && (lu.com ?? null) === com, `facture saisie par Mook, « ${x.libelle} » : net ${lu.net === a.net ? "=" : "≠"} interface, commission ${(lu.com ?? null) === com ? "=" : "≠"} interface ${res.err || ""}`);
   }
 
+  // 5 bis. Net partiel laissé vide (Jérémy, 17.11.2026) : un service dont une ligne à prix n'a pas de net garde un net prévu vide, dans la base
+  //    comme dans l'interface. Trajet sans net enfant (adulte + enfant), prestation avec une ligne enfant hors catalogue, ligne offerte sans net.
+  const TR2 = id(22), W1 = id(16);
+  await db.exec(`insert into trajets (id, entite_id, partenaire_id, de, vers, mode, depart, prix_adulte, prix_enfant) values ('${TR2}', '${S}', '${P_NOUS}', 'Lanta', 'Ngai', 'Longtail', '09:00', 900, 600);
+    insert into trajets_nets (entite_id, trajet_id, net_adulte, net_enfant) values ('${S}', '${TR2}', 700, null);
+    insert into prestations (id, entite_id, partenaire_id, famille, libelle, prix_vente, unite, sur_place) values ('${W1}', '${S}', '${P_PLACE}', 'excursion', 'Tour W', 1800, 'ad', false);
+    insert into prestations_nets (entite_id, prestation_id, net) values ('${S}', '${W1}', 1300);`);
+  const PW = { id: W1, partenaire_id: P_PLACE, libelle: "Tour W", prix_vente: 1800, unite: "ad" };
+  const lignesP = [
+    ...lignesDepuisTrajet({ id: TR2, partenaire_id: P_NOUS, de: "Lanta", vers: "Ngai", mode: "Longtail", depart: "09:00", prix_adulte: 900, prix_enfant: 600 }, { net_adulte: 700, net_enfant: null }, { adultes: 2, enfants: 1, date: "2026-12-05", langue: "en", uid }),
+    { ...ligneDepuisPrestation(PW, { net: 1300 }, { qte: 2, date: "2026-12-06", uid }), paye_sur_place: true },
+    // Ligne enfant tapée à la main (pas de prestation enfant au catalogue, pas de net enfant) : le net du service reste vide.
+    { id: uid(), kind: "ligne", libelle: "Tour W, child", intro: "(per child)", unite: 900, qte: 1, date_service: "2026-12-06", partenaire_id: P_PLACE, libre: true, net: null, paye_sur_place: true },
+    // Une ligne offerte (prix 0) sans net ne rend pas le service incomplet.
+    { ...ligneDepuisPrestation(P[X], nets[X], { qte: 2, date: "2026-12-07", uid }) },
+    { id: uid(), kind: "ligne", libelle: "Tour X, child", intro: "(per child)", unite: 0, qte: 1, date_service: "2026-12-07", partenaire_id: P_NOUS, libre: true, net: null },
+  ];
+  const docP = { dossier_id: D, contenu: { lignes: lignesP } };
+  const attenduesP = reservationsDepuisDocument(docP, { uid: (() => { let k = 90; return () => id(++k); })(), regleDe: (pid) => regles[pid] || null });
+  ok(attenduesP.length === 3 && attenduesP[0].net === null && attenduesP[1].net === null && attenduesP[2].net === 1400, "interface : net vide quand une ligne à prix n'a pas de net (trajet, ligne enfant), plein quand la seule ligne sans net est offerte");
+  await db.query(`insert into documents (entite_id, dossier_id, type, date_emission, contenu) values ($1, $2, 'facture', '2026-11-17', $3)`, [S, D, JSON.stringify(separerNets(docP.contenu).contenu)]);
+  for (const a of attenduesP) {
+    const x = a.reservation;
+    const res = await insererPar("mook", { id: x.id, entite_id: S, dossier_id: D, ligne_id: x.ligne_id, prestation_id: x.prestation_id, trajet_id: x.trajet_id, partenaire_id: x.partenaire_id, libelle: x.libelle, date_service: x.date_service, personnes: x.personnes, statut: x.statut, montant_vente: x.montant_vente, paye_sur_place: x.paye_sur_place, details: x.details });
+    const lu = (await netsDe(x.id))[0] || {};
+    const com = a.commission_prevue === undefined ? null : a.commission_prevue;
+    ok(res.ok && (lu.net ?? null) === a.net && (lu.com ?? null) === com, `net partiel, « ${x.libelle} » : net ${(lu.net ?? null) === a.net ? "=" : "≠"} interface (${lu.net ?? "vide"}), commission ${(lu.com ?? null) === com ? "=" : "≠"} interface ${res.err || ""}`);
+  }
+  r = await insererPar("mook", base(id(99), { trajet_id: TR2, partenaire_id: P_NOUS, personnes: { adultes: 2, enfants: 1 }, montant_vente: 2400 }));
+  ok(r.ok && (await netsDe(id(99))).length === 0, "trajet saisi à la main sans net enfant : net prévu vide, pas 2 × net adulte");
+
   // 6. Règle de commission : la base et commissionPrevue rendent la même chose sur une grille de cas.
   const types = ["pourcent_vente", "pourcent_net", "fixe_personne", "fixe_reservation", "vente_moins_net", "inconnu"];
   const valeurs = [10, "12.5", "", null, -1, "abc", 0];
