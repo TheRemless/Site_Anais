@@ -4,7 +4,7 @@
 import { etat, modifier, enregistrerLie, nomClient, partenaireDe, dossiersAnnules, reglages, entiteActive, peut } from "../etat.mjs";
 import { h, icone, toast, confirmer } from "../ui.mjs";
 import { aujourdhui, formatMontant, formatDate } from "../calc.mjs";
-import { commissionsADemander, commissionsParChauffeur, valeursCommission, varsCommissions } from "../taxi-calc.mjs";
+import { commissionsADemander, commissionsParChauffeur, valeursCommission, varsCommissions, joursCommission } from "../taxi-calc.mjs";
 import { variablesMessage } from "../operations-calc.mjs";
 import { telWhatsApp } from "../partenaires-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
@@ -27,7 +27,7 @@ export function sectionCommissionsHier(rafraichir) {
   if (!peut("partenaires.nets")) return null;
   const ajd = aujourdhui();
   // Toute course passée sans commission saisie, sur 14 jours : un jour sans ouvrir Gestion ne fait plus perdre la commission.
-  const liste = commissionsADemander(etat.db.reservations, ajd, { ecartes: dossiersAnnules(), netDe }).map((x) => (x.saisie ? { ...x, recueLe: (netDe(x.reservation) || {}).commission_recue_le || null } : x));
+  const liste = commissionsADemander(etat.db.reservations, ajd, { ecartes: dossiersAnnules(), netDe, jours: joursCommission(reglages()) }).map((x) => (x.saisie ? { ...x, recueLe: (netDe(x.reservation) || {}).commission_recue_le || null } : x));
   const deja = new Set(liste.map((x) => x.reservation.id));
   for (const id of saisiesRecentes) {
     const r = etat.db.reservations.find((y) => y.id === id);

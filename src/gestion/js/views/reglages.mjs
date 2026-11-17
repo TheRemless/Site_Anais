@@ -1,6 +1,7 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
 import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
+import { sectionVouchers } from "./reglages-vouchers.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
@@ -530,23 +531,10 @@ export function vueReglages() {
         h("legend", null, tr("Assistant IA")),
         h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre et rédiger la réponse")),
         h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous."))
-      ),
-      ztp ? null : h(
-        "fieldset",
-        null,
-        h("legend", null, taxi ? tr("Booking confirmation") : tr("Vouchers")),
-        h("p", { class: "aide" }, tr("Les vouchers sont en anglais. Un champ vide reprend la valeur de l'onglet Entreprise (nom, sous-titre, adresse, téléphone) ; le logo est celui de l'onglet Apparence. L'aperçu à droite suit vos modifications.")),
-        h("div", { class: "grille-form" }, texte(N_("Nom affiché"), "voucher.nom", { placeholder: r.emetteur.nom }), texte(N_("Sous-titre"), "voucher.sous_titre", { placeholder: r.emetteur.sous_titre || "" }), taxi ? null : texte(N_("Numéro de licence TAT"), "voucher.licence"), texte(N_("WhatsApp affiché"), "voucher.whatsapp", { placeholder: r.emetteur.telephone }), texte(N_("E-mail affiché"), "voucher.email", { type: "email" })),
-        texte(N_("Adresse sur une ligne"), "voucher.adresse", { placeholder: (r.emetteur.adresse || "").split("\n").join(", ") }),
-        // Taxi : l'assistante envoie les vouchers de l'écran « Nouveau voucher » à Anaïs, qui les transmet au client.
-        r.fonctionnement === "taxi" ? texte(N_("WhatsApp d'Anaïs (reçoit les vouchers de l'assistante)"), "voucher.whatsapp_anais", { type: "tel", placeholder: "+66 …", aide: tr("Avec l'indicatif. Sur ordinateur, l'image est copiée et cette conversation s'ouvre ; sur téléphone, un bouton ouvre la conversation après l'envoi de l'image. Vide : l'assistante choisit Anaïs dans WhatsApp.") }) : null,
-        // La Booking confirmation de Taxi a un seul modèle et ses propres textes de pied : ni choix de modèle, ni textes de fin.
-        taxi ? null : champ(tr("Modèle de l'aperçu"), choixApercuVoucher),
-        taxi ? null : texte(N_("Texte de fin"), "voucher.merci", { multi: true, rows: 2, aide: tr("{entreprise} est remplacé par le nom affiché.") }),
-        taxi ? null : texte(N_("Texte de fin des vouchers de transfert"), "voucher.merci_transfert", { multi: true, rows: 2 }),
-        taxi ? null : texte(N_("Note des vouchers de transfert"), "voucher.note_transfert", { multi: true, rows: 2 })
       )
     ),
+    // Vouchers (Secret) ou Booking confirmation (Taxi) : un onglet à part, géré dans reglages-vouchers.mjs (lot B du 17.11.2026).
+    ...(ztp ? {} : { vouchers: sectionVouchers({ r, taxi, texte, image, marque, choixApercuVoucher }) }),
     // Sécurité du compte : « Se déconnecter » ne ferme que cet appareil ; ici, tous les appareils d'un coup (téléphone perdu, appareil prêté).
     compte: h(
       "div",
@@ -600,6 +588,7 @@ export function vueReglages() {
     ...(taxi ? [] : [["textes", tr("Textes des documents")]]),
     ["apparence", tr("Apparence")],
     ["ecrans", tr("Écrans")],
+    ...(ztp ? [] : [["vouchers", taxi ? tr("Booking confirmation") : tr("Vouchers")]]),
     ...(peut("exports.faire") ? [["donnees", tr("Sauvegarde")]] : []),
     ...(etat.store.mode === "supabase" ? [["compte", tr("Compte")]] : []),
   ];
@@ -626,9 +615,9 @@ export function vueReglages() {
     for (const [k, el] of Object.entries(sections)) el.hidden = k !== cle;
     for (const b of barre.children) b.setAttribute("aria-pressed", b.dataset.cle === cle ? "true" : "false");
     // Taxi n'a aucun document A4 ; ZTP n'a pas de voucher.
-    zoneApercu.hidden = taxi || cle === "donnees" || cle === "ecrans" || cle === "compte";
-    zoneVoucher.hidden = ztp || cle !== "ecrans";
-    if (cle === "ecrans") redessinerVoucher();
+    zoneApercu.hidden = taxi || cle === "donnees" || cle === "ecrans" || cle === "vouchers" || cle === "compte";
+    zoneVoucher.hidden = ztp || cle !== "vouchers";
+    if (cle === "vouchers") redessinerVoucher();
     boutonEnregistrer.hidden = cle === "donnees" || cle === "compte";
     if (cle !== "donnees" && cle !== "compte") redessiner();
   };

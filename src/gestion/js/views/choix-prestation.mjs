@@ -1,12 +1,12 @@
 // Sélecteur de prestations et de trajets de partenaires pour l'éditeur de devis.
 // La fenêtre reste ouverte pour enchaîner plusieurs ajouts ; chaque ajout renvoie des lignes prêtes pour le document.
-import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet, modeTaxi } from "../etat.mjs";
+import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet, modeTaxi, modeExcursions, peut } from "../etat.mjs";
 import { lignesSurPlace } from "../taxi-calc.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant } from "../calc.mjs";
 import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut, periodeSpecifique } from "../partenaires-calc.mjs";
 import { prestationEnfant } from "../demande-calc.mjs";
-import { appliquerModeParDefaut } from "../operations-calc.mjs";
+import { appliquerModeParDefaut, MODELES_VOUCHER, SANS_VOUCHER, TITRES_VOUCHER, typeVoucherDeduit } from "../operations-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
 // `sansCompagnie` : le nom de la compagnie n'est pas répété dans le libellé des trajets (facture de Secret).
@@ -56,6 +56,21 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   const prixLibre = h("input", { id: "cp-l-prix", type: "number", min: "0", step: "any", inputmode: "decimal" });
   const qteLibre = h("input", { id: "cp-l-qte", type: "number", min: "1", step: "1", value: 1, inputmode: "numeric" });
   const partenaireLibre = h("select", { id: "cp-l-part" }, h("option", { value: "" }, tr("Aucun partenaire")), [...etat.db.partenaires].sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
+  // Lot B (17.11.2026, audit n° 23) : le net, pour que la marge ne compte pas toute la vente, et le modèle de voucher, choisi plutôt que deviné
+  // d'après les mots du libellé (« van », « speedboat »). Le net ne part jamais sur la facture : il rejoint la table protégée des nets.
+  const avecNetLibre = peut("partenaires.nets");
+  const netLibre = h("input", { id: "cp-l-net", type: "number", min: "0", step: "any", inputmode: "decimal" });
+  const avecModeleLibre = modeExcursions() && !modeTaxi();
+  const modeleLibre = h("select", { id: "cp-l-modele" });
+  const majModeleLibre = () => {
+    const auto = typeVoucherDeduit({ libelle: libelleLibre.value }, null, partenaireDe(partenaireLibre.value || null));
+    const garde = modeleLibre.value;
+    modeleLibre.replaceChildren(h("option", { value: "" }, auto ? tr("Automatique : {modele}", { modele: TITRES_VOUCHER[auto] }) : tr("Automatique : pas de voucher")), ...MODELES_VOUCHER.map((m) => h("option", { value: m }, TITRES_VOUCHER[m])), h("option", { value: SANS_VOUCHER }, tr("Pas de voucher")));
+    modeleLibre.value = garde;
+  };
+  majModeleLibre();
+  libelleLibre.addEventListener("change", majModeleLibre);
+  partenaireLibre.addEventListener("change", majModeleLibre);
   const erreurLibre = h("p", { class: "erreur-form", role: "alert" });
   const formulaireLibre = h(
     "form",
@@ -67,11 +82,17 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
         erreurLibre.textContent = "";
         if (!libelleLibre.value.trim()) return (erreurLibre.textContent = tr("Indiquez le nom de la prestation.")), libelleLibre.focus();
         if (prixLibre.value === "" || !(Number(prixLibre.value) >= 0)) return (erreurLibre.textContent = tr("Indiquez le prix de vente, 0 si la prestation est offerte.")), prixLibre.focus();
+        if (avecNetLibre && netLibre.value !== "" && !(Number(netLibre.value) >= 0)) return (erreurLibre.textContent = tr("Le net est un nombre positif, ou vide s'il n'est pas connu.")), netLibre.focus();
         const l = ligneLibre({ libelle: libelleLibre.value, prix: prixLibre.value, qte: qteLibre.value, partenaire_id: partenaireLibre.value, date: date.value });
+        if (avecNetLibre && netLibre.value !== "") l.net = Number(netLibre.value);
+        if (avecModeleLibre && modeleLibre.value) l.modele_voucher = modeleLibre.value;
         ajoute([l], l.libelle);
         libelleLibre.value = "";
         prixLibre.value = "";
         qteLibre.value = 1;
+        netLibre.value = "";
+        modeleLibre.value = "";
+        majModeleLibre();
         libelleLibre.focus();
       },
     },
@@ -79,6 +100,8 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
     champ(tr("Prestation"), libelleLibre, tr("Le nom tel que le client le lira sur la facture.")),
     h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente ({devise})", { devise }), prixLibre, tr("Par unité.")), champ(tr("Quantité"), qteLibre)),
     champ(tr("Partenaire (facultatif)"), partenaireLibre, tr("Celui qui réalise la prestation, s'il y en a un.")),
+    avecNetLibre ? champ(tr("Net ({devise})", { devise }), netLibre, tr("Par unité, ce que le partenaire facture à l'agence. Vide s'il n'est pas connu.")) : null,
+    avecModeleLibre ? champ(tr("Modèle de voucher"), modeleLibre, tr("Automatique : deviné d'après le nom. Choisissez-le si la déduction se trompe.")) : null,
     erreurLibre,
     h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Ajouter")))
   );

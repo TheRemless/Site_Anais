@@ -4,10 +4,11 @@ export const CIBLE_ENVOI = { client: "client", partenaire: "prestataire" };
 
 // `issue` : « partage » (la liste de partage du téléphone s'est fermée sur un envoi), « conversation » (la conversation WhatsApp du numéro
 // s'est ouverte, l'image copiée), ou toute autre valeur (partage annulé ou en échec, copie refusée, onglet bloqué) qui ne note rien.
-// `envois` : la trace actuelle de la réservation. Rien à écrire si l'envoi est déjà noté à cette date (image copiée une deuxième fois).
+// `envois` : la trace actuelle de la réservation. Rien à écrire si l'envoi est déjà noté à cette date (image copiée une deuxième fois),
+// sauf si le voucher a changé depuis (`modifie`, lot B du 17.11.2026) : le renvoi du jour doit figer la nouvelle version.
 // Renvoie la clé à noter, ou null.
-export function envoiANoter({ pour, issue, envois = {}, date }) {
+export function envoiANoter({ pour, issue, envois = {}, date, modifie = false }) {
   const cible = CIBLE_ENVOI[pour];
   if (!cible || (issue !== "partage" && issue !== "conversation")) return null;
-  return envois && envois[cible] === date ? null : cible;
+  return envois && envois[cible] === date && !modifie ? null : cible;
 }

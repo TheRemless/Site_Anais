@@ -63,13 +63,16 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     const l = g.premiere;
     return {
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
-      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: { ...(g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {}), ...(g.jours ? { jours: g.jours } : {}) } },
+      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: { ...(g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {}), ...(g.jours ? { jours: g.jours } : {}), ...(modeleDeLigne(l) ? { modele_voucher: modeleDeLigne(l) } : {}) } },
       net: g.net,
       // Service payé sur place : la commission attendue se calcule d'après la règle du partenaire (`regleDe(partenaire_id)`), seulement quand elle est connue.
       ...commissionDuGroupe(g, l, regleDe),
     };
   });
 }
+
+// Le modèle de voucher choisi dans « Autre prestation » (ligne hors catalogue) suit la ligne jusqu'à sa réservation.
+const modeleDeLigne = (l) => modeleChoisi({ details: { modele_voucher: l && l.modele_voucher } });
 
 function commissionDuGroupe(g, l, regleDe) {
   if (!regleDe || !g.lignes.some((x) => x.paye_sur_place)) return {};
@@ -211,11 +214,14 @@ export function avisParClient(reservations, clientDe) {
 // `ecartees` : identifiants des dossiers annulés, dont les réservations ne comptent plus (annuler un dossier ne change pas leur statut).
 // Envois de vouchers : la trace est gardée par réservation (`details.envois.client`, `details.envois.prestataire`, avec la date). `reservations` : celles qui ont un voucher.
 // « Complet » : le client a reçu chaque voucher. Anaïs écrit elle-même aux prestataires (Jérémy, 14.11.2026) : l'outil ne suit plus que le client.
-export function etatEnvoisVouchers(reservations) {
+// `modifies` (facultatif) : identifiants des réservations dont le voucher a changé depuis l'envoi (voir empreinteVoucher). Un voucher
+// modifié compte comme à renvoyer : le dossier ne reste pas « Vouchers envoyés » (audit du 16.11.2026, n° 24).
+export function etatEnvoisVouchers(reservations, { modifies = new Set() } = {}) {
   const envoi = (r, cle) => !!(r.details && r.details.envois && r.details.envois[cle]);
   const total = reservations.length;
-  const client = reservations.filter((r) => envoi(r, "client")).length;
-  return { total, client, complet: total > 0 && client === total };
+  const client = reservations.filter((r) => envoi(r, "client") && !modifies.has(r.id)).length;
+  const aRenvoyer = reservations.filter((r) => envoi(r, "client") && modifies.has(r.id)).length;
+  return { total, client, complet: total > 0 && client === total, ...(aRenvoyer ? { aRenvoyer } : {}) };
 }
 
 // Les détails d'une réservation avec un envoi de plus (« client » ou « prestataire »), sans effacer les autres.
@@ -529,6 +535,23 @@ const POINTS_EN = [
 export const pointEmbarquementEn = (texte) => POINTS_EN.reduce((s, [re, en]) => s.replace(re, en), String(texte || "")).replace(/undefined/g, "");
 export const estPickupHotel = (embarquement) => /hotel pickup|pickup at (your|the) hotel/i.test(embarquement || "");
 
+// Embarcadère d'une compagnie, d'après sa fiche (audit n° 48) : le point d'embarquement du lieu de départ, sinon l'embarcadère général
+// de la fiche (« Embarcadère ou point de départ »), mis en anglais comme les points d'embarquement.
+// L'embarcadère général ne sert qu'à une compagnie sans points par lieu : avec des points, un départ d'un autre lieu n'a pas d'embarcadère connu.
+export function embarcadereFiche(partenaire, lieu) {
+  const points = (partenaire && partenaire.regles && partenaire.regles.points_embarquement) || [];
+  if (points.length) return pointEmbarquement(partenaire, lieu);
+  return pointEmbarquementEn(String((partenaire && partenaire.contact && partenaire.contact.embarcadere) || "").trim());
+}
+
+// Consigne de check-in imprimée sur le billet : celle écrite en anglais dans la fiche de la compagnie (`regles.checkin_voucher`), sinon
+// celle écrite ici d'après son nom. Un trajet vers ou depuis Langkawi garde la consigne de l'immigration (passeports), qui vaut pour toutes.
+export function consigneCheckinFiche(partenaire, trajet = {}) {
+  const fiche = String((partenaire && partenaire.regles && partenaire.regles.checkin_voucher) || "").trim();
+  if (fiche && !/langkawi/i.test(`${trajet.de || ""} ${trajet.vers || ""}`)) return fiche;
+  return consigneCheckin((partenaire && partenaire.nom) || "", trajet);
+}
+
 // Consigne de check-in en anglais, d'après la compagnie et la ligne (Langkawi demande les passeports).
 export function consigneCheckin(nomCompagnie, trajet = {}) {
   const c = sansAccentsMin(nomCompagnie);
@@ -567,8 +590,24 @@ export function datesDepuisReservations(reservations) {
   return { date_depart: dates[0], date_retour: dates.length > 1 && dates[dates.length - 1] !== dates[0] ? dates[dates.length - 1] : null };
 }
 
+// Modèle de voucher choisi sur la réservation (`details.modele_voucher`, lot B du 17.11.2026) : il passe avant toute déduction.
+// « aucun » : pas de voucher pour ce service (une option, un supplément). Vide : automatique, d'après la prestation et le libellé.
+export const MODELES_VOUCHER = ["billet", "bateau", "transfert", "activite", "location"];
+export const SANS_VOUCHER = "aucun";
+export const modeleChoisi = (reservation) => {
+  const m = (reservation && reservation.details && reservation.details.modele_voucher) || "";
+  return m === SANS_VOUCHER || MODELES_VOUCHER.includes(m) ? m : "";
+};
+
 // `partenaire` (facultatif) : pour une réservation à la main chez une compagnie de bateaux (Bundhaya, Satun), un billet.
 export function typeVoucher(reservation, prestation, partenaire = null) {
+  const choisi = modeleChoisi(reservation);
+  if (choisi) return choisi === SANS_VOUCHER ? null : choisi;
+  return typeVoucherDeduit(reservation, prestation, partenaire);
+}
+
+// La déduction d'avant (prestation, trajet, mots du libellé) : la valeur par défaut du menu « Modèle de voucher ».
+export function typeVoucherDeduit(reservation, prestation, partenaire = null) {
   if (reservation.trajet_id) return "billet";
   if (!prestation && partenaire && ((partenaire.regles && partenaire.regles.points_embarquement && partenaire.regles.points_embarquement.length) || /speed ?boat|ferry/i.test(partenaire.nom || ""))) return "billet";
   const f = prestation ? prestation.famille : "";
@@ -589,12 +628,109 @@ export function typeVoucher(reservation, prestation, partenaire = null) {
 
 export const numeroVoucher = (ref, index) => `${ref}-${index}`;
 
+// Numéros des vouchers d'un dossier. `liste` : dans l'ordre de création, chacun avec `fige` (son numéro gardé au premier envoi, ou null).
+// Un numéro parti chez le client ne change plus (audit du 16.11.2026, n° 25) : supprimer un service ou le passer en option ne renumérote
+// que les vouchers jamais envoyés, qui gardent leur rang quand il est libre, sinon prennent le premier numéro libre au-dessus.
+// Renvoie les index (1, 2, 3…) dans l'ordre de `liste`.
+export function numerosVouchers(liste) {
+  const pris = new Set(liste.map((x) => (x && x.fige ? Number(x.fige) : null)).filter((n) => n > 0));
+  const donnes = new Set();
+  return liste.map((x, i) => {
+    if (x && Number(x.fige) > 0) return Number(x.fige);
+    let n = i + 1;
+    while (pris.has(n) || donnes.has(n)) n++;
+    donnes.add(n);
+    return n;
+  });
+}
+
 // Statut de paiement imprimé sur le voucher, d'après ce que le dossier a encaissé.
+// « en_attente » (Payment Pending) : rien n'est encore reçu et le client ne paie pas le prestataire. Ce n'est pas « sur place » : il paiera
+// Anaïs, par virement ou autrement (audit du 16.11.2026, n° 26).
 export function statutPaiementVoucher({ total = 0, recu = 0, surPlace = false } = {}) {
   if (surPlace) return "sur_place";
   if (total > 0 && recu >= total) return "paye";
   if (recu > 0) return "acompte";
-  return "sur_place";
+  return "en_attente";
+}
+
+// Prix par personne imprimé sur le voucher d'activité : seulement quand il n'y a qu'un tarif connu (audit n° 27). Une moyenne
+// vente ÷ personnes serait fausse si l'enfant paie moins, ou si le prix est celui d'un groupe.
+//   - prestation du catalogue vendue à la personne (pas de prix de groupe, de véhicule ni de service hors catalogue) ;
+//   - sans enfant : le prix réellement vendu par adulte, s'il tombe juste au centime ;
+//   - avec enfants : seulement si aucun tarif enfant n'est connu (`tarifEnfant` : prestationEnfant de demande-calc.mjs, qui lit le prix enfant
+//     de la prestation ou l'ancienne prestation enfant séparée) et que tout le monde a payé le prix de la prestation.
+// Renvoie le prix, ou null quand il ne faut rien imprimer.
+export function prixParPersonneVoucher({ prestation = null, montant = null, adultes = 0, enfants = 0, tarifEnfant = null } = {}) {
+  if (!prestation || !["pp", "ad", "pers"].includes(prestation.unite)) return null;
+  if (montant === null || montant === undefined || montant === "" || !Number.isFinite(Number(montant))) return null;
+  const a = Number(adultes) || 0;
+  const e = Number(enfants) || 0;
+  if (a + e <= 0) return null;
+  const unite = Math.round((Number(montant) / (a + e)) * 100) / 100;
+  if (Math.round(unite * (a + e) * 100) !== Math.round(Number(montant) * 100)) return null;
+  if (!e) return unite;
+  if (tarifEnfant) return null;
+  return prestation.prix_vente !== null && prestation.prix_vente !== undefined && Number(prestation.prix_vente) === unite ? unite : null;
+}
+
+// ---- Voucher figé à l'envoi (audit n° 22, 24, 25) ------------------------------------------------------------------------------
+// Ce qui part chez le client ne change plus quand le catalogue change : au premier envoi, la réservation garde dans `details.voucher_fige`
+// le numéro, le modèle, l'opérateur et ce que le voucher lisait dans la prestation, le trajet et la fiche du partenaire, plus une empreinte
+// de ce qu'il imprimait. Ensuite, une réservation, un client ou un paiement qui change donne une autre empreinte : « modifié depuis l'envoi ».
+// Seuls les champs que le voucher imprime comptent : une note interne, un net ou une trace d'avis ne changent pas l'empreinte.
+const CHAMPS_EMPREINTE_DETAILS = [...new Set([...Object.values(CHAMPS_VOUCHER).flat(), "modele_voucher", "jours"])];
+const stable = (v) => (Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(",")}}` : JSON.stringify(v === undefined ? null : v));
+// FNV-1a sur 32 bits : assez pour reconnaître un changement, sans dépendance.
+function hacher(texte) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < texte.length; i++) {
+    h ^= texte.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+const videOuTexte = (v) => (v === null || v === undefined ? "" : typeof v === "string" ? v.trim() : v);
+// `statut` : le statut de paiement imprimé (statutPaiementVoucher). `devise` : celle du dossier.
+export function empreinteVoucher({ reservation: r = {}, client = {}, statut = "", devise = "" } = {}) {
+  const dt = r.details || {};
+  const p = r.personnes || {};
+  const donnees = {
+    libelle: videOuTexte(r.libelle), date: r.date_service || "", heure: videOuTexte(r.heure_pickup), lieu: videOuTexte(r.lieu_pickup),
+    personnes: [Number(p.adultes) || 0, Number(p.enfants) || 0, Number(p.bebes) || 0],
+    vente: r.montant_vente === null || r.montant_vente === undefined || r.montant_vente === "" ? null : Math.round(Number(r.montant_vente) * 100),
+    partenaire: r.partenaire_id || null, prestation: r.prestation_id || null, trajet: r.trajet_id || null, surPlace: !!r.paye_sur_place, ref: videOuTexte(r.reference_partenaire),
+    details: Object.fromEntries(CHAMPS_EMPREINTE_DETAILS.filter((k) => videOuTexte(dt[k]) !== "" && dt[k] !== undefined).map((k) => [k, videOuTexte(dt[k])])),
+    client: [videOuTexte(client.prenom), videOuTexte(client.nom), videOuTexte(client.telephone), videOuTexte(String(client.adresse || "").split("\n")[0])],
+    statut, devise,
+  };
+  return hacher(stable(donnees));
+}
+
+// La trace figée d'un envoi, à poser dans `details.voucher_fige`. `valeurs` : ce que le voucher a lu ailleurs que dans la réservation
+// (voir valeursCatalogue dans views/voucher.mjs). Un renvoi garde le numéro du premier envoi.
+export function voucherFige({ reservation: r = {}, index, numero, empreinte, valeurs = {}, date, avant = null }) {
+  return { le: date, premier_le: (avant && avant.premier_le) || (avant && avant.le) || date, index: (avant && avant.index) || index, numero: (avant && avant.numero) || numero, empreinte, prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, partenaire_id: r.partenaire_id || null, valeurs };
+}
+
+// Les valeurs figées ne valent que pour le même service : un autre partenaire, une autre prestation ou un autre trajet choisis sur la
+// réservation sont une modification de la réservation (le voucher suit, et l'empreinte le signale).
+export const valeursFigees = (r) => {
+  const f = r && r.details && r.details.voucher_fige;
+  if (!f || !f.valeurs) return null;
+  const meme = (f.prestation_id || null) === (r.prestation_id || null) && (f.trajet_id || null) === (r.trajet_id || null) && (f.partenaire_id || null) === (r.partenaire_id || null);
+  return meme ? f.valeurs : null;
+};
+
+// « Pas envoyé » : l'envoi noté par erreur s'efface, avec ce qui avait été figé (le numéro redevient libre).
+export function detailsSansEnvoi(details, cible = "client") {
+  const d = { ...(details || {}) };
+  const envois = { ...(d.envois || {}) };
+  delete envois[cible];
+  if (Object.keys(envois).length) d.envois = envois;
+  else delete d.envois;
+  if (cible === "client") delete d.voucher_fige;
+  return d;
 }
 
 // Join ou privé, d'après le groupe ou le libellé de la prestation.

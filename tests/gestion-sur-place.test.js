@@ -91,7 +91,7 @@ test("commissions à recevoir : par partenaire et par mois, prévue, reçue, res
 test("voucher : un service payé sur place annonce le paiement au prestataire, même si le dossier est soldé", () => {
   assert.equal(statutPaiementVoucher({ total: 2000, recu: 2000 }), "paye");
   assert.equal(statutPaiementVoucher({ total: 2000, recu: 2000, surPlace: true }), "sur_place");
-  assert.equal(statutPaiementVoucher({ total: 0, recu: 0 }), "sur_place");
+  assert.equal(statutPaiementVoucher({ total: 0, recu: 0 }), "en_attente", "rien reçu, pas payé sur place : en attente (lot B)");
 });
 
 test("réservation cochée « payé sur place » : ses lignes passent sur le document, le total baisse, et on peut revenir en arrière", () => {
