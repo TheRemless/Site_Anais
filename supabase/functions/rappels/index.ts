@@ -118,7 +118,7 @@ async function executer(db: ReturnType<typeof createClient>, type: string, aujou
   const [profils, membres, roles, reservations] = await Promise.all([
     db.from("profils").select("user_id, actif, super_admin, langue").in("user_id", ids),
     db.from("membres").select("user_id, entite_id, role_id").in("user_id", ids),
-    db.from("roles").select("id, portee, permissions"),
+    db.from("roles").select("*"),
     // La veille : les services qui partent demain. Le lendemain : ceux qui se sont terminés hier, donc aussi une location prise plus tôt et rendue hier (details.retour_date).
     db.from("reservations").select("entite_id, dossier_id, statut, heure_pickup, lieu_pickup, date_service, libelle, partenaire_id, details").in("entite_id", retenues).or(type === "lendemain" ? `date_service.eq.${cible},details->>retour_date.eq.${cible}` : `date_service.eq.${cible}`).neq("statut", "annule"),
   ]);
@@ -247,7 +247,7 @@ async function envoyerH1(db: ReturnType<typeof createClient>, aRappeler: Array<{
     requeteAbos,
     db.from("profils").select("user_id, actif, super_admin, rappel_h1"),
     db.from("membres").select("user_id, entite_id, role_id"),
-    db.from("roles").select("id, portee, permissions"),
+    db.from("roles").select("*"),
     db.from("entites").select("id, nom"),
     db.from("clients").select("id, prenom, nom").in("id", clientIds.length ? clientIds : ["00000000-0000-0000-0000-000000000000"]),
   ]);
@@ -318,7 +318,7 @@ async function executerDeparts(db: ReturnType<typeof createClient>, demain: stri
     requeteAbos,
     db.from("profils").select("user_id, actif, super_admin, rappel_h1"),
     db.from("membres").select("user_id, entite_id, role_id"),
-    db.from("roles").select("id, portee, permissions"),
+    db.from("roles").select("*"),
     db.from("entites").select("id, nom"),
     db.from("clients").select("id, prenom, nom").in("id", [...new Set(partent.map((d) => d.client_id))]),
   ]);

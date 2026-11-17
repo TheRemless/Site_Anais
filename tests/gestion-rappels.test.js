@@ -65,8 +65,8 @@ test("rappelDuType : le type choisit la date, un type inconnu ne donne rien", ()
 
 test("entreprises lisibles : super admin voit tout, un rôle limité ou inactif ne reçoit rien", () => {
   const roles = [
-    { id: "r1", portee: "toute", permissions: ["dossiers.lire"] },
-    { id: "r2", portee: "mes_dossiers", permissions: ["dossiers.lire"] },
+    { id: "r1", portee: "toute", permissions: ["dossiers.lire", "reglages.ecrire"] },
+    { id: "r2", portee: "mes_dossiers", permissions: ["dossiers.lire", "reglages.ecrire"] },
     { id: "r3", portee: "toute", permissions: ["taches.lire"] },
   ];
   const membres = [
@@ -83,7 +83,7 @@ test("entreprises lisibles : super admin voit tout, un rôle limité ou inactif 
 
 test("entreprises lisibles : le rôle « vouchers.seul » (assistante de Taxi) ne reçoit aucun rappel", () => {
   const roles = [
-    { id: "admin", portee: "toute", permissions: ["dossiers.lire", "dossiers.ecrire"] },
+    { id: "admin", portee: "toute", permissions: ["dossiers.lire", "dossiers.ecrire", "reglages.ecrire"] },
     { id: "mook", portee: "toute", permissions: ["clients.lire", "dossiers.lire", "dossiers.ecrire", "vouchers.seul", "fiduciaire.preparer"] },
   ];
   const membres = [
@@ -122,4 +122,29 @@ test("page hors connexion : n'importe que le module de lecture, ce que le servic
   assert.deepEqual([...page.matchAll(/from "([^"]+)"/g)].map((m) => m[1]), ["./js/feuille-hors-ligne-lecture.mjs"]);
   assert.doesNotMatch(page, /innerHTML|insertAdjacentHTML/);
   assert.doesNotMatch(fs.readFileSync("src/gestion/js/feuille-hors-ligne-lecture.mjs", "utf8"), /^import /m);
+});
+
+test("rappels : seulement pour les administratrices (Jérémy, 17.11.2026) ; Mook dans Secret, un éditeur ou un lecteur n'en reçoivent pas", () => {
+  const roles = [
+    { id: "admin", portee: "toute", permissions: [], tous_droits: true },
+    { id: "ancien-admin", portee: "toute", permissions: ["dossiers.lire", "dossiers.ecrire", "reglages.ecrire"] },
+    { id: "editeur-fid", portee: "toute", permissions: ["clients.lire", "dossiers.lire", "dossiers.ecrire", "partenaires.ecrire", "fiduciaire.preparer"] },
+    { id: "lecteur", portee: "toute", permissions: ["dossiers.lire", "finances.voir"] },
+  ];
+  const membres = [
+    { user_id: "anais", entite_id: "S", role_id: "admin" }, { user_id: "anais", entite_id: "T", role_id: "ancien-admin" },
+    { user_id: "mook", entite_id: "S", role_id: "editeur-fid" }, { user_id: "lec", entite_id: "S", role_id: "lecteur" },
+  ];
+  const lit = (u) => entitesLisibles({ profil: { user_id: u, actif: true, super_admin: false }, membres, roles });
+  assert.deepEqual(lit("anais"), ["S", "T"], "Administrateur calculé (tous_droits) et Administrateur d'avant la migration 38");
+  assert.deepEqual(lit("mook"), []);
+  assert.deepEqual(lit("lec"), []);
+  const index = fs.readFileSync("supabase/functions/rappels/index.ts", "utf8");
+  assert.ok(!/select\("id, portee, permissions"\)/.test(index), "les rôles sont lus avec tous_droits (select *)");
+});
+
+test("la cloche n'apparaît qu'à l'administratrice de l'entreprise ouverte (même critère que la fonction)", () => {
+  const app = fs.readFileSync("src/gestion/js/app.mjs", "utf8");
+  assert.match(app, /estAdmin\(\) \? h\("button", \{ class: "bouton-icone secondaire", type: "button", onclick: async \(\) => \(apres && apres\(\), \(await import\("\.\/views\/rappels\.mjs"\)\)\.ouvrirRappels\(\)\)/);
+  assert.match(fs.readFileSync("src/gestion/js/etat.mjs", "utf8"), /export const estAdmin = \(\) => peut\("reglages\.ecrire"\);/);
 });

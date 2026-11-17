@@ -249,7 +249,8 @@ function blocCompte(apres) {
 }
 const outilsCompte = (apres) => [
   // La cloche s'ouvre aussi en démonstration : on y règle son « Rappel 1 h avant » (les notifications, elles, demandent la vraie base).
-  h("button", { class: "bouton-icone secondaire", type: "button", onclick: async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels()), "aria-label": tr("Rappels"), title: tr("Rappels") }, icone("cloche")),
+  // Seulement pour l'administratrice de l'entreprise ouverte : la fonction n'envoie les rappels qu'à elle (Jérémy, 17.11.2026).
+  estAdmin() ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels()), "aria-label": tr("Rappels"), title: tr("Rappels") }, icone("cloche")) : null,
   h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirAide()), "aria-label": tr("Raccourcis clavier"), title: tr("Raccourcis clavier (?)") }, icone("clavier")),
   etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: deconnecter, "aria-label": tr("Se déconnecter"), title: tr("Se déconnecter") }, icone("deconnexion")) : null,
 ];

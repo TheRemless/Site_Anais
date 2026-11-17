@@ -44,8 +44,10 @@ export function entitesDuRappel(type, heure, entiteIds, reglagesParEntite = {}) 
 // Ce qu'une personne voit (`entiteIds`, null = tout) restreint aux entreprises du rappel en cours.
 export const restreindre = (entiteIds, retenues) => (entiteIds === null ? [...retenues] : entiteIds.filter((id) => retenues.includes(id)));
 
-// Entreprises dont une personne reçoit les rappels : toutes pour un super administrateur, sinon celles où son rôle lit tous les dossiers.
-// Un rôle « vouchers.seul » (l'assistante thaïe de Taxi, écran voucher seul) n'en reçoit pas : la notification ouvre un écran qu'elle n'a pas et n'existe pas en thaï.
+// Entreprises dont une personne reçoit les rappels : toutes pour un super administrateur, sinon celles où elle est administratrice
+// (rôle « tous les droits » de la migration 38, ou droit « Modifier les réglages de l'entreprise »), avec un rôle qui lit tous les dossiers.
+// Jérémy, 17.11.2026 : les rappels sont pour Anaïs, pas pour les autres utilisateurs (Mook, éditeurs, lecteurs). Même critère que estAdmin() dans l'outil.
+// Un rôle « vouchers.seul » (l'assistante thaïe de Taxi, écran voucher seul) n'en reçoit pas non plus.
 export function entitesLisibles({ profil, membres, roles }) {
   if (!profil || !profil.actif) return [];
   if (profil.super_admin) return null;
@@ -54,7 +56,10 @@ export function entitesLisibles({ profil, membres, roles }) {
     .filter((m) => m.user_id === profil.user_id)
     .filter((m) => {
       const r = roleDe.get(m.role_id);
-      return r && r.portee === "toute" && (r.permissions || []).includes("dossiers.lire") && !(r.permissions || []).includes("vouchers.seul");
+      if (!r || r.portee !== "toute") return false;
+      const perms = r.permissions || [];
+      const administratrice = r.tous_droits === true || perms.includes("reglages.ecrire");
+      return administratrice && (r.tous_droits === true || perms.includes("dossiers.lire")) && !perms.includes("vouchers.seul");
     })
     .map((m) => m.entite_id);
 }
