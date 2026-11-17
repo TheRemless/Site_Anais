@@ -146,7 +146,7 @@ export function creer() {
       await new Promise((r) => setTimeout(r, 200));
     },
     async historiqueReglages(entiteId) {
-      return structuredClone(data.reglages_historique.filter((x) => x.entite_id === entiteId));
+      return structuredClone(data.reglages_historique.filter((x) => x.entite_id === entiteId).slice(0, 20));
     },
     // Factures pour la fiduciaire (migration 28) : mêmes règles que les fonctions de la base, sur les données du navigateur.
     async fiduciaireListe() {

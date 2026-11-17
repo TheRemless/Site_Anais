@@ -3079,7 +3079,7 @@ export const EN = {
   "Changer la façon de travailler": "Change the way of working",
   "Les textes que lit l'assistante sur son écran simple. À gauche, ce qu'ils disent en français ; à droite, le texte thaï affiché. Vide : le texte de départ, en gris. Les mots entre accolades, comme {n} ou {nom}, se remplissent seuls : gardez-les tels quels.": "The texts the assistant reads on her simple screen. On the left, what they say in French; on the right, the Thai text shown. Empty: the starting text, in grey. Words in braces, like {n} or {nom}, fill in by themselves: keep them as they are.",
   "Historique des réglages": "Settings history",
-  "Chaque enregistrement garde la version d'avant (les 60 dernières). Revenir à une version la réenregistre telle quelle : la version actuelle entre à son tour dans l'historique, rien n'est perdu.": "Each save keeps the previous version (the last 60). Going back to a version saves it again as it was: the current version goes into the history in turn, nothing is lost.",
+  "Chaque enregistrement garde la version d'avant (les 60 dernières, les 20 plus récentes affichées ici). Revenir à une version la réenregistre telle quelle : la version actuelle entre à son tour dans l'historique, rien n'est perdu.": "Each save keeps the previous version (the last 60, the 20 most recent shown here). Going back to a version saves it again as it was: the current version goes into the history in turn, nothing is lost.",
   "Textes en thaï": "Thai texts",
   "Historique": "History",
   "Donnez un nom à chaque moyen de paiement (ou archivez celui qui ne sert plus).": "Give a name to each payment method (or archive the one no longer used).",

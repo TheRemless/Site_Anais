@@ -181,7 +181,7 @@ function formulaireTrajet(t, apres, options = {}) {
     const lu = lireFenetres(fenetres.valeurs());
     if (lu.erreur) return (erreur.textContent = messageFenetre(lu)), null;
     try {
-      const res = t.id ? await modifier("trajets", t.id, valeursSaisies(lu.fenetres)) : await inserer("trajets", { ...valeursSaisies(lu.fenetres), numero: Math.max(0, ...etat.db.trajets.map((x) => x.numero || 0)) + 1 });
+      const res = t.id ? await modifier("trajets", t.id, { ...valeursSaisies(lu.fenetres), ...(prixFige ? { prix_adulte: t.prix_adulte ?? null, prix_enfant: t.prix_enfant ?? null } : {}) }) : await inserer("trajets", { ...valeursSaisies(lu.fenetres), numero: Math.max(0, ...etat.db.trajets.map((x) => x.numero || 0)) + 1 });
       if (nets && ecrit && (adn.value !== "" || chn.value !== "" || (t.id && n))) await enregistrerLie("trajets_nets", "trajet_id", res.id, { net_adulte: num(adn.value), net_enfant: num(chn.value) });
       toast(tr("Trajet enregistré."));
       return res;

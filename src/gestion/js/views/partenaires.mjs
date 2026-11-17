@@ -760,6 +760,14 @@ export function formulairePrestation(x, apres, options = {}) {
     erreur.textContent = "";
     if (!partenaire.value) return (erreur.textContent = tr("Choisissez le partenaire, ou « Sans partenaire » pour un frais de parc ou un divers.")), partenaire.focus(), null;
     const valeurs = valeursSaisies();
+    // Sans le droit « prix de vente », les prix repartent exactement comme en base (même un prix enfant que le formulaire aurait retiré) :
+    // sinon la base refuserait tout l'enregistrement.
+    if (prixFige && x.id) {
+      valeurs.prix_vente = x.prix_vente ?? null;
+      valeurs.unite = x.unite;
+      if (d.enfant === undefined) delete valeurs.details.enfant;
+      else valeurs.details.enfant = d.enfant;
+    }
     try {
       const res = x.id ? await modifier("prestations", x.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("prestations", { ...valeurs, ordre: Math.max(0, ...etat.db.prestations.map((p) => p.ordre || 0)) + 1 });
       if (nets && ecrit && (net.value !== "" || netEnfant.value !== "" || (x.id && n))) await enregistrerLie("prestations_nets", "prestation_id", res.id, { net: num(net.value), net_enfant: netEnfant.disabled ? null : num(netEnfant.value), note: n ? n.note || "" : "" });

@@ -263,3 +263,11 @@ test("n° 41 et 51 : usages en liste fermée, rien vers le prestataire sauf la c
   assert.match(src, /gabaritsRemis\(tous\.filter\(visible\), defautsEntreprise\(\)\.filter\(visible\)\)/);
   assert.doesNotMatch(src, /list: "m-cles"/);
 });
+
+// ---- Corrections de la revue (PR 214) -------------------------------------------------------------------------------------------------
+test("revue : sans le droit, les prix repartent comme en base ; l'onglet thaï n'écrit rien sans saisie", () => {
+  assert.match(source("views/partenaires.mjs"), /if \(prixFige && x\.id\) \{\n\s+valeurs\.prix_vente = x\.prix_vente \?\? null;/);
+  assert.match(source("views/trajets.mjs"), /prixFige \? \{ prix_adulte: t\.prix_adulte \?\? null, prix_enfant: t\.prix_enfant \?\? null \}/);
+  assert.match(source("views/reglages.mjs"), /champThai\.addEventListener\("input", \(\) => \(enregistrer\(\), maj\(\), marque\(\)\)\)/);
+  assert.match(source("etat.mjs"), /\(!r\.erreur \|\| r\.user_id\)/);
+});

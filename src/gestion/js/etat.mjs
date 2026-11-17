@@ -453,7 +453,8 @@ export const equipe = () => etat.store.equipe(etat.entiteId);
 export async function invitation(corps) {
   if (!etat.store.invitation) return { erreur: "indisponible" };
   const r = await etat.store.invitation(corps);
-  if (r && !r.erreur && corps.action !== "lien_mot_de_passe") await recharger();
+  // Compte créé, même si son profil ou ses accès ont échoué (r.user_id) : la liste le montre pour qu'on règle le reste à la main.
+  if (r && (!r.erreur || r.user_id) && corps.action !== "lien_mot_de_passe") await recharger();
   return r || { erreur: "indisponible" };
 }
 export const historiqueReglages = () => (etat.store.historiqueReglages ? etat.store.historiqueReglages(etat.entiteId) : Promise.resolve(null));

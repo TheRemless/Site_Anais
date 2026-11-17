@@ -497,20 +497,24 @@ export function vueReglages() {
       const alerte = h("p", { class: "erreur-form", role: "status" });
       const champThai = h("textarea", { id: `th-${ecran.id}-${l.cle}`, rows: 1, lang: "th", placeholder: l.depart, "aria-label": tr("Texte thaï : {fr}", { fr: l.fr }) });
       champThai.value = actuel;
-      const remettre = h("button", { class: "lien petit-lien", type: "button", onclick: () => ((champThai.value = ""), maj(), marque()) }, tr("Texte de départ"));
-      const maj = () => {
+      const remettre = h("button", { class: "lien petit-lien", type: "button", onclick: () => ((champThai.value = ""), enregistrer(), maj(), marque()) }, tr("Texte de départ"));
+      const enregistrer = () => {
         const v = champThai.value.trim();
         r.textes_thai = r.textes_thai || {};
         const textes = (r.textes_thai[ecran.id] = { ...(r.textes_thai[ecran.id] || {}) });
         if (!v || v === l.depart) delete textes[l.cle];
         else textes[l.cle] = v;
+      };
+      // L'affichage seul ne touche pas aux réglages : seule une saisie écrit (sinon l'historique verrait un faux changement).
+      const maj = () => {
+        const v = champThai.value.trim();
         // Un texte qui perd ou ajoute une {variable} n'est pas utilisé : l'écran garde le texte de départ, et on le dit ici.
         const vars = variablesDe(l.depart);
         alerte.textContent = v && texteValide(l.depart, v) === null ? tr("Ce texte n'est pas utilisé : il doit contenir {liste}, comme le texte de départ.", { liste: vars.length ? vars.map((x) => `{${x}}`).join(" ") : tr("aucun mot entre accolades") }) : "";
         alerte.hidden = !alerte.textContent;
         remettre.hidden = !v;
       };
-      champThai.addEventListener("input", () => (maj(), marque()));
+      champThai.addEventListener("input", () => (enregistrer(), maj(), marque()));
       maj();
       return h("div", { class: "ligne-thai" }, h("p", { class: "ligne-thai-fr" }, l.fr || l.cle), h("div", null, champThai, remettre, alerte));
     });
@@ -700,7 +704,7 @@ export function vueReglages() {
     // Textes thaïs de l'écran de Mook, le français en regard (section 2 de l'audit). Secret : factures pour la fiduciaire ; Taxi : voucher et factures.
     ...(ecransThai.length ? { thai: h("div", null, h("p", { class: "aide" }, tr("Les textes que lit l'assistante sur son écran simple. À gauche, ce qu'ils disent en français ; à droite, le texte thaï affiché. Vide : le texte de départ, en gris. Les mots entre accolades, comme {n} ou {nom}, se remplissent seuls : gardez-les tels quels.")), ...ecransThai.map(blocTextesThai)) } : {}),
     // Historique des réglages (migration 36) : chaque enregistrement garde la version remplacée, on peut y revenir (audit n° 39).
-    historique: h("div", null, h("section", null, h("h2", null, tr("Historique des réglages")), h("p", { class: "aide" }, tr("Chaque enregistrement garde la version d'avant (les 60 dernières). Revenir à une version la réenregistre telle quelle : la version actuelle entre à son tour dans l'historique, rien n'est perdu.")), blocHistorique)),
+    historique: h("div", null, h("section", null, h("h2", null, tr("Historique des réglages")), h("p", { class: "aide" }, tr("Chaque enregistrement garde la version d'avant (les 60 dernières, les 20 plus récentes affichées ici). Revenir à une version la réenregistre telle quelle : la version actuelle entre à son tour dans l'historique, rien n'est perdu.")), blocHistorique)),
     donnees: h(
       "div",
       null,

@@ -130,7 +130,7 @@ function formulaireMessage(m, apres) {
   const usages = usagesProposes(modeEntreprise());
   const ancien = m.cle && !usages.some((u) => u.cle === m.cle) ? m.cle : null;
   const cle = h("select", { id: "m-cle" }, ...usages.map((u) => h("option", { value: u.cle }, tr(u.libelle))), ancien ? h("option", { value: ancien }, libelleUsage(ancien)) : null, h("option", { value: "" }, libelleUsage("")));
-  cle.value = m.id ? m.cle || "" : usages[0].cle;
+  cle.value = m.id ? m.cle || "" : (usages[0] || { cle: "" }).cle;
   const actif = h("input", { id: "m-actif", type: "checkbox", checked: m.actif !== false });
   const langue = h("select", { id: "m-langue" }, LANGUES.map(([c, l]) => h("option", { value: c }, l)));
   langue.value = m.langue || "fr";

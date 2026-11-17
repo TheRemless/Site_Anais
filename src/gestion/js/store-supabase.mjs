@@ -207,7 +207,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     },
     // Versions précédentes des réglages (migration 36). null tant que la migration n'est pas appliquée.
     async historiqueReglages(entiteId) {
-      const { data, error } = await sb.from("reglages_historique").select("id, valeur, version_du, remplace_le, remplace_par").eq("entite_id", entiteId).order("remplace_le", { ascending: false }).limit(60);
+      const { data, error } = await sb.from("reglages_historique").select("id, valeur, version_du, remplace_le, remplace_par").eq("entite_id", entiteId).order("remplace_le", { ascending: false }).limit(20);
       if (error) {
         if (error.code === "42P01" || error.code === "PGRST205") return null;
         throw new Error(error.message);

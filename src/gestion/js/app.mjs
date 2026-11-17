@@ -106,6 +106,8 @@ function vueConnexion() {
   const lienPerime = etat.retour.erreur
     ? h("p", { class: "bandeau-info", role: "alert" }, etat.retour.erreur === "expire" ? tr("Ce lien a expiré ou a déjà servi. Demandez-en un nouveau à l'administratrice, ou utilisez « Mot de passe oublié ».") : tr("Ce lien n'a pas pu être utilisé. Demandez-en un nouveau à l'administratrice, ou utilisez « Mot de passe oublié »."))
     : null;
+  // Dit une fois : après une connexion puis une déconnexion, l'écran ne parle plus de ce lien.
+  etat.retour = { ...etat.retour, erreur: null };
   return h("div", { class: "connexion" }, selecteurLangue(), h("h1", null, tr("Gestion")), h("p", { class: "sous" }, tr("Dossiers, réservations et paiements.")), lienPerime, form);
 }
 
