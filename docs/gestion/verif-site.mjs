@@ -1,4 +1,4 @@
-// Vérifie les migrations 30 et 40 (demandes et bandeau du site) sur un Postgres en mémoire : qui lit, qui traite, ce qui ne se modifie jamais, et que le public n'écrit rien.
+// Vérifie les migrations 30, 40 et 41 (demandes et bandeau du site, numéro WhatsApp) sur un Postgres en mémoire : qui lit, qui traite, ce qui ne se modifie jamais, et que le public n'écrit rien.
 //   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17
 //   cp <repo>/docs/gestion/verif-site.mjs . && GESTION_SQL=<repo>/docs/gestion/ node verif-site.mjs
 import { PGlite } from "@electric-sql/pglite";
@@ -26,7 +26,9 @@ await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
 const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
 for (const f of migrations) await db.exec(fs.readFileSync(W + f, "utf8"));
-ok(migrations.includes("migration-30-site.sql") && migrations.includes("migration-40-bandeau-reglages.sql"), "les migrations 30 et 40 sont appliquées, dans l'ordre");
+ok(migrations.includes("migration-30-site.sql") && migrations.includes("migration-40-bandeau-reglages.sql") && migrations.includes("migration-41-demande-whatsapp.sql"), "les migrations 30, 40 et 41 sont appliquées, dans l'ordre");
+await db.exec(fs.readFileSync(W + "migration-41-demande-whatsapp.sql", "utf8"));
+ok(true, "la migration 41 se rejoue sans erreur");
 // Droits des tables déjà là (comme sur Supabase) : la migration 30 ne doit pas compter sur ce qui précède.
 await db.exec("grant all on all tables in schema public to authenticated; grant usage, select on all sequences in schema public to authenticated; revoke insert, update, delete on journal from authenticated;");
 // …sauf les tables de la migration 30, refermées par elle : on rejoue ses « revoke » et « grant » pour annuler le « grant all » ci-dessus.
@@ -100,6 +102,26 @@ const fige = await db.query(`update demandes_site set produit_id = 'autre' where
 ok(!fige, "même la clé de service ne réécrit pas ce que le client a envoyé (déclencheur)");
 const j = await db.query(`select action from journal where table_name = 'demandes_site'`);
 ok(j.rows.length === 2, "le journal note les deux traitements");
+
+console.log("== Numéro WhatsApp (migration 41) ==");
+const avecNumero = async (s, tel, saisi = null, nom = "Anna Maria Keller-Schmid") => db.query(`insert into demandes_site (entite_id, marque, produit_id, nom, telephone, telephone_saisi) values ($1, $2, '4-islands', $3, $4, $5) returning id`, [ent[s], s, nom, tel, saisi]).then((r) => r.rows[0].id, (e) => ({ erreur: e.message }));
+const wS = await avecNumero("secret", "+41791234567");
+const wT = await avecNumero("taxi", "+66812345678");
+ok(typeof wS === "string" && typeof wT === "string", "la fonction écrit un numéro E.164 et le nom complet");
+ok(typeof (await avecNumero("secret", null, "079 123 45 67")) === "string", "un numéro illisible est gardé tel que saisi, sans numéro");
+ok(typeof (await avecNumero("secret", null)) === "string", "une demande sans numéro (page en cache) passe toujours");
+for (const faux of ["0791234567", "+41 79 123 45 67", "+0791234567", "+1234567", "+1234567890123456", "41791234567"]) ok((await avecNumero("secret", faux)).erreur, `la base refuse « ${faux} » (pas du E.164)`);
+ok((await avecNumero("secret", "+41791234567", "079")).erreur, "pas de saisie gardée à côté d'un numéro lisible");
+ok((await avecNumero("secret", null, "x".repeat(41))).erreur, "une saisie gardée fait 40 caractères au plus");
+ok(typeof (await avecNumero("secret", "+41791234567", null, "x".repeat(120))) === "string" && (await avecNumero("secret", "+41791234567", null, "x".repeat(121))).erreur, "le nom complet va jusqu'à 120 caractères, pas plus");
+const numeros = async (u) => ((await comme(u, "select telephone from demandes_site where telephone is not null order by telephone")).rows || []).map((r) => r.telephone).join(",");
+ok((await numeros("lecteur")).split(",").every((n) => n === "+41791234567") && !(await numeros("lecteur")).includes("+66"), "un lecteur de Secret voit les numéros de Secret, pas ceux de Taxi");
+ok((await numeros("ztp")) === "" && (await numeros("stagiaire")) === "" && (await numeros("mook")) === "", "Zwald, un rôle limité à ses dossiers et l'écran voucher seul ne voient aucun numéro");
+ok((await essaie("anon", null, "select telephone from demandes_site")).ok === false, "anon ne lit aucun numéro");
+ok((await comme("anais", `update demandes_site set telephone = '+33612345678' where id = '${wS}'`)).ok === false, "le numéro ne se modifie pas depuis l'outil (colonne fermée)");
+ok(await db.query(`update demandes_site set telephone = '+33612345678' where id = '${wS}'`).then(() => false, () => true), "ni par la clé de service (déclencheur « figer »)");
+await comme("anais", `update demandes_site set statut = 'confirmee' where id = '${wS}'`);
+ok((await un(`select count(*)::int n from journal where table_name = 'demandes_site' and (details::text like '%41791234567%' or details::text like '%Keller-Schmid%')`)).n === 0, "le journal note le traitement, jamais le numéro ni le nom");
 
 console.log("== Bandeaux ==");
 const bandeau = (e, o = {}) => `insert into bandeaux_site (entite_id, marques, type, modele, texte, lien, lien_page, cible, produits) values ('${ent[e]}', '{${o.marques || "secret"}}', '${o.type || "sea"}', 'sea-today', '${o.texte || "Rough sea today: island trips are moved to tomorrow."}', '${o.lien || "aucun"}', ${o.page ? `'${o.page}'` : "null"}, '${o.cible || "tout"}', '{${o.produits || ""}}') returning id`;

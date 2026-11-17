@@ -1,4 +1,4 @@
-// Fonction « invitation » et organisations (migration 41) : chaque geste reste dans l'organisation de l'appelant ; l'éditeur crée les clients.
+// Fonction « invitation » et organisations (migration 42) : chaque geste reste dans l'organisation de l'appelant ; l'éditeur crée les clients.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

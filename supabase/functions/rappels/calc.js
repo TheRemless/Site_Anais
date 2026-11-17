@@ -3,7 +3,7 @@
 // Aucune dépendance : le même fichier sert à la fonction Supabase et aux tests. Pas de nom de client dans les textes,
 // car une notification passe par les serveurs d'Apple et de Google.
 
-// Fuseau de chaque organisation (organisations.fuseau, migration 41). Bangkok par défaut et pour un fuseau inconnu. Les heures d'été sont gérées
+// Fuseau de chaque organisation (organisations.fuseau, migration 42). Bangkok par défaut et pour un fuseau inconnu. Les heures d'été sont gérées
 // (Intl), contrairement à l'ancien décalage fixe de +7 h qui ne valait que pour Bangkok.
 export const FUSEAU_DEFAUT = "Asia/Bangkok";
 const formats = new Map();
@@ -83,8 +83,11 @@ export function entitesDuRappel(type, heure, entiteIds, reglagesParEntite = {}) 
 // Ce qu'une personne voit (`entiteIds`, null = tout) restreint aux entreprises du rappel en cours.
 export const restreindre = (entiteIds, retenues) => (entiteIds === null ? [...retenues] : entiteIds.filter((id) => retenues.includes(id)));
 
-// Entreprises dont une personne reçoit les rappels : celles de son organisation pour un administrateur (toutes si la liste des entreprises n'est pas fournie), sinon celles où son rôle lit tous les dossiers.
-// Un rôle « vouchers.seul » (l'assistante thaïe de Taxi, écran voucher seul) n'en reçoit pas : la notification ouvre un écran qu'elle n'a pas et n'existe pas en thaï.
+// Entreprises dont une personne reçoit les rappels : pour un super administrateur, celles de son organisation (toutes si la liste des entreprises
+// n'est pas fournie) ; sinon celles où elle est administratrice (rôle « tous les droits » de la migration 38, ou droit « Modifier les réglages
+// de l'entreprise »), avec un rôle qui lit tous les dossiers.
+// Jérémy, 17.11.2026 : les rappels sont pour Anaïs, pas pour les autres utilisateurs (Mook, éditeurs, lecteurs). Même critère que estAdmin() dans l'outil.
+// Un rôle « vouchers.seul » (l'assistante thaïe de Taxi, écran voucher seul) n'en reçoit pas non plus.
 export function entitesLisibles({ profil, membres, roles, entites }) {
   if (!profil || !profil.actif) return [];
   if (profil.super_admin) return entites ? entites.filter((e) => e.organisation_id === profil.organisation_id).map((e) => e.id) : null;
@@ -93,7 +96,10 @@ export function entitesLisibles({ profil, membres, roles, entites }) {
     .filter((m) => m.user_id === profil.user_id)
     .filter((m) => {
       const r = roleDe.get(m.role_id);
-      return r && r.portee === "toute" && (r.permissions || []).includes("dossiers.lire") && !(r.permissions || []).includes("vouchers.seul");
+      if (!r || r.portee !== "toute") return false;
+      const perms = r.permissions || [];
+      const administratrice = r.tous_droits === true || perms.includes("reglages.ecrire");
+      return administratrice && (r.tous_droits === true || perms.includes("dossiers.lire")) && !perms.includes("vouchers.seul");
     })
     .map((m) => m.entite_id);
 }

@@ -2,7 +2,7 @@
 // Le même fichier sert à la fonction Supabase (Deno) et aux tests (node --test).
 //
 // Trois gestes, réservés à l'administrateur d'une organisation (vérifié côté serveur par est_super_admin() avec la session de la personne),
-// et toujours limités aux comptes et aux entreprises de SON organisation (migration 41) :
+// et toujours limités aux comptes et aux entreprises de SON organisation (migration 42) :
 //   * « inviter » : crée le compte, son nom, sa langue et ses accès, et rend un lien d'invitation à envoyer soi-même (WhatsApp, e-mail) ;
 //   * « lien_mot_de_passe » : rend un lien pour choisir un nouveau mot de passe (mot de passe oublié, invitation expirée) ;
 //   * « supprimer » : supprime le compte. Ses dossiers restent, sans responsable ; ses accès partent avec lui.

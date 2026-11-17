@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
 
   // Les réglages de chaque entreprise : heures des rappels (valeur.rappels) et rappel du départ (ZTP). Sans lecture possible, l'appel s'arrête et le dit :
-  // mieux vaut aucun rappel qu'un rappel à la mauvaise heure. Le fuseau vient de l'organisation (migration 41).
+  // mieux vaut aucun rappel qu'un rappel à la mauvaise heure. Le fuseau vient de l'organisation (migration 42).
   const [entites, reglages, organisations] = await Promise.all([db.from("entites").select("id, nom, organisation_id"), db.from("reglages").select("entite_id, valeur"), db.from("organisations").select("id, fuseau")]);
   if (entites.error || reglages.error || organisations.error) return json({ erreur: (entites.error || reglages.error || organisations.error)!.message }, 500);
   const valeurs = Object.fromEntries((reglages.data || []).map((r) => [r.entite_id, r.valeur]));
@@ -132,7 +132,7 @@ async function lireCommun(db: ReturnType<typeof createClient>, demande: { user_i
   const [profils, membres, roles] = await Promise.all([
     db.from("profils").select("user_id, actif, super_admin, langue, organisation_id").in("user_id", ids),
     db.from("membres").select("user_id, entite_id, role_id").in("user_id", ids),
-    db.from("roles").select("id, portee, permissions"),
+    db.from("roles").select("*"),
   ]);
   for (const r of [profils, membres, roles]) if (r.error) throw new Error(r.error.message);
   return { abos, profils: profils.data!, membres: membres.data!, roles: roles.data! } as Commun;
@@ -229,7 +229,7 @@ async function rappelH1(demande: { maintenant?: string; user_id?: string }) {
 
 async function noterSuiviH1(db: ReturnType<typeof createClient>, maintenant: number, res: { abonnements: number; envoyes: number; retires: number; echecs: number }, erreur: string, debut: number, organisation: string | null, fuseau: string) {
   const { abonnements, envoyes, retires, echecs } = res;
-  // Sans organisation connue, aucune ligne : la base la refuse (migration 41) plutôt que de la ranger chez un autre client.
+  // Sans organisation connue, aucune ligne : la base la refuse (migration 42) plutôt que de la ranger chez un autre client.
   if (!organisation) return console.error("suivi du rappel h1 sans organisation :", erreur || "aucune erreur");
   const { error } = await db.from("rappels_suivi").insert({ type: "h1", cible: dateDans(fuseau, new Date(maintenant)), abonnements, envoyes, retires, echecs, erreur, duree_ms: Date.now() - debut, organisation_id: organisation });
   if (error) console.error("suivi du rappel h1 non écrit :", error.message);
@@ -322,7 +322,7 @@ async function envoyerH1(db: ReturnType<typeof createClient>, aRappeler: Array<{
     requeteAbos,
     db.from("profils").select("user_id, actif, super_admin, rappel_h1, organisation_id"),
     db.from("membres").select("user_id, entite_id, role_id"),
-    db.from("roles").select("id, portee, permissions"),
+    db.from("roles").select("*"),
     db.from("entites").select("id, nom, organisation_id"),
     db.from("clients").select("id, prenom, nom").in("id", clientIds.length ? clientIds : ["00000000-0000-0000-0000-000000000000"]),
   ]);
@@ -393,7 +393,7 @@ async function executerDeparts(db: ReturnType<typeof createClient>, demain: stri
     requeteAbos,
     db.from("profils").select("user_id, actif, super_admin, rappel_h1, organisation_id"),
     db.from("membres").select("user_id, entite_id, role_id"),
-    db.from("roles").select("id, portee, permissions"),
+    db.from("roles").select("*"),
     db.from("entites").select("id, nom, organisation_id"),
     db.from("clients").select("id, prenom, nom").in("id", [...new Set(partent.map((d) => d.client_id))]),
   ]);

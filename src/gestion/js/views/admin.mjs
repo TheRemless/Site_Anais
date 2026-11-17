@@ -121,7 +121,7 @@ const fuseaux = () => {
   return [...new Set(liste.concat(FUSEAUX_COURTS))].sort();
 };
 
-// Organisation (migration 41) : le client du logiciel. Son administrateur règle le nom, le fuseau des rappels et la langue de départ des comptes.
+// Organisation (migration 42) : le client du logiciel. Son administrateur règle le nom, le fuseau des rappels et la langue de départ des comptes.
 function blocOrganisation(rafraichir) {
   const o = organisation();
   if (!o) return null;

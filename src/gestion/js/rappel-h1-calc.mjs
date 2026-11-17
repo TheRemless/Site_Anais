@@ -5,7 +5,7 @@
 import { personnesTexte, consigneCheckin, notePasseport, fraisDeParc, typeVoucher, estFraisDeParc } from "./operations-calc.mjs";
 import { libelleClient } from "./partenaires-calc.mjs";
 
-// Fuseau de chaque organisation (organisations.fuseau, migration 41). Bangkok par défaut et pour un fuseau inconnu. Les heures d'été sont gérées
+// Fuseau de chaque organisation (organisations.fuseau, migration 42). Bangkok par défaut et pour un fuseau inconnu. Les heures d'été sont gérées
 // (Intl), contrairement à l'ancien décalage fixe de +7 h qui ne valait que pour Bangkok.
 export const FUSEAU_DEFAUT = "Asia/Bangkok";
 const formats = new Map();

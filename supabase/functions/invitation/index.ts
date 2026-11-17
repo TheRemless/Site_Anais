@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
   const admin = createClient(URL_SB, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
   const noter = (action: string, libelle: string, cible: string) =>
     admin.from("journal").insert({ entite_id: null, organisation_id: organisation, user_id: qui.user.id, table_name: "comptes", action, cible, libelle, details: {} }).then(() => null, () => null);
-  // Organisation de l'administrateur (migration 41) : chaque geste reste dans celle-ci.
+  // Organisation de l'administrateur (migration 42) : chaque geste reste dans celle-ci.
   const { data: moi, error: errMoi } = await admin.from("profils").select("organisation_id").eq("user_id", qui.user.id).maybeSingle();
   if (errMoi) return json({ erreur: "base" }, 500);
   const organisation = (moi && moi.organisation_id) || null;

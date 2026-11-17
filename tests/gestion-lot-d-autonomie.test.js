@@ -141,7 +141,7 @@ test("fonction invitation : rôles cohérents, suppression bornée", async () =>
 test("fonction invitation : la clé de service n'est utilisée qu'après le contrôle de l'administratrice générale", () => {
   const src = fs.readFileSync(path.join(__dirname, "..", "supabase", "functions", "invitation", "index.ts"), "utf8");
   assert.ok(src.indexOf('sb.rpc("est_super_admin")') > 0);
-  // Chaque usage de la clé de service suit un contrôle : est_plateforme() pour créer un client (éditeur, migration 41), est_super_admin() sinon.
+  // Chaque usage de la clé de service suit un contrôle : est_plateforme() pour créer un client (éditeur, migration 42), est_super_admin() sinon.
   const controle = (i) => Math.max(src.lastIndexOf('sb.rpc("est_super_admin")', i), src.lastIndexOf('sb.rpc("est_plateforme")', i));
   for (let i = src.indexOf("SUPABASE_SERVICE_ROLE_KEY"); i >= 0; i = src.indexOf("SUPABASE_SERVICE_ROLE_KEY", i + 1)) assert.ok(controle(i) > 0, `clé de service sans contrôle avant (position ${i})`);
   assert.ok(src.indexOf('sb.rpc("est_plateforme")') < src.indexOf('sb.rpc("creer_organisation"'));

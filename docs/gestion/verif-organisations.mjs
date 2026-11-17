@@ -1,4 +1,4 @@
-// Vérifie la migration 41 (plusieurs organisations) sur un Postgres en mémoire : aucune donnée d'une organisation n'est visible depuis une autre.
+// Vérifie la migration 42 (plusieurs organisations) sur un Postgres en mémoire : aucune donnée d'une organisation n'est visible depuis une autre.
 //   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17
 //   cp <repo>/docs/gestion/verif-organisations.mjs . && GESTION_SQL=<repo>/docs/gestion/ node verif-organisations.mjs
 import { PGlite } from "@electric-sql/pglite";
@@ -26,17 +26,17 @@ const db = new PGlite();
 await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
 const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[789]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
-// Une base qui a déjà servi : des numéros de fiduciaire et un suivi de rappels existent avant la migration 41.
+// Une base qui a déjà servi : des numéros de fiduciaire et un suivi de rappels existent avant la migration 42.
 const avant41 = migrations.filter((f) => parseInt(f.split("-")[1]) < 41);
 for (const f of avant41) await db.exec(fs.readFileSync(W + f, "utf8"));
 await db.exec("insert into fiduciaire_compteurs (prefixe, annee, type, dernier) values ('COM', 2026, 'facture', 7); insert into rappels_suivi (type) values ('veille');");
 for (const f of migrations.filter((f) => !avant41.includes(f))) await db.exec(fs.readFileSync(W + f, "utf8"));
-ok(migrations.at(-1) === "migration-41-organisations.sql", "la migration 41 est appliquée en dernier");
-await db.exec(fs.readFileSync(W + "migration-41-organisations.sql", "utf8"));
-ok(true, "la migration 41 se rejoue sans erreur");
-// Droits des tables comme sur Supabase, puis les « revoke » et « grant » de la migration 41 rejoués.
+ok(migrations.at(-1) === "migration-42-organisations.sql", "la migration 42 est appliquée en dernier");
+await db.exec(fs.readFileSync(W + "migration-42-organisations.sql", "utf8"));
+ok(true, "la migration 42 se rejoue sans erreur");
+// Droits des tables comme sur Supabase, puis les « revoke » et « grant » de la migration 42 rejoués.
 await db.exec("grant all on all tables in schema public to authenticated; grant usage, select on all sequences in schema public to authenticated; revoke insert, update, delete on journal from authenticated;");
-for (const l of fs.readFileSync(W + "migration-41-organisations.sql", "utf8").split("\n").filter((x) => /^(revoke|grant) .* on organisations /.test(x))) await db.exec(l);
+for (const l of fs.readFileSync(W + "migration-42-organisations.sql", "utf8").split("\n").filter((x) => /^(revoke|grant) .* on organisations /.test(x))) await db.exec(l);
 
 const un = async (sql, p = []) => (await db.query(sql, p)).rows[0];
 const ZWALD = "00000000-0000-0000-0000-00000000a000";

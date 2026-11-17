@@ -32,7 +32,7 @@ export const moduleDe = (id) => PAR_ID.get(id) || null;
 export const moduleDeLEcran = (cle) => MODULES.find((m) => m.ecrans.includes(cle)) || null;
 
 // Le module existe-t-il pour cette entreprise (façon de travailler, module requis, site) ? Le réglage « Écrans » n'y change rien.
-// publieSite : entites.publie_site. Une valeur absente (données d'avant la migration 41, démo) ne ferme rien.
+// publieSite : entites.publie_site. Une valeur absente (données d'avant la migration 42, démo) ne ferme rien.
 export function moduleDisponible(id, { reglages, publieSite } = {}) {
   const m = moduleDe(id);
   // Un id inconnu (faute de frappe à l'appel) ferme : un écran ne s'ouvre jamais par erreur dans une entreprise qui ne l'a pas.

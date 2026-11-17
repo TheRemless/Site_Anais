@@ -3254,6 +3254,16 @@ export const EN = {
   "Proposer un autre trajet": "Offer another route",
   "Proposer une autre sortie": "Offer another trip",
   "Copier et marquer refusée": "Copy and mark declined",
+  "Écrire sur WhatsApp": "Write on WhatsApp",
+  "« Écrire sur WhatsApp » ouvre la conversation de {numero} avec la réponse déjà écrite : relisez-la et envoyez-la dans WhatsApp.": "“Write on WhatsApp” opens the chat with {numero} with the reply already written: check it and send it in WhatsApp.",
+  "Numéro à vérifier : {saisi}": "Number to check: {saisi}",
+  "Pas de numéro WhatsApp": "No WhatsApp number",
+  "Refuser sur WhatsApp": "Decline on WhatsApp",
+  "Demande refusée : WhatsApp s'ouvre avec la réponse.": "Request declined: WhatsApp opens with the reply.",
+  "Son message WhatsApp n'est pas arrivé": "Their WhatsApp message never arrived",
+  "Pour un client dont la demande est arrivée ici mais pas son message. La demande reste « à traiter » : quand il répond, confirmez-la comme d'habitude.": "For a client whose request arrived here but whose message did not. The request stays “to handle”: when they reply, confirm it as usual.",
+  "Message en anglais": "Message in English",
+  "Il n'a pas écrit": "No message received",
   "Classer cette demande sans réponse ? Elle sort de la liste et des chiffres (essai, doublon, message déjà traité ailleurs).": "File this request without a reply? It leaves the list and the figures (test, duplicate, message already handled elsewhere).",
   "Classer": "File",
   "Réponse de refus": "Decline reply",
@@ -3337,8 +3347,8 @@ export const EN = {
   "Le nom du client, le service, les personnes et le pickup, un tap ouvre la réservation et son rappel. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche).": "The client's name, the service, the people and the pickup, one tap opens the booking and its reminder. Everyone can turn it off for themselves in the “Reminders” window (the bell).",
   // Bandeau du site réservé au droit « Modifier les réglages » (migration 40)
   "Le bandeau du site est réservé aux personnes qui ont le droit « Modifier les réglages de l'entreprise ».": "The website banner is only for people with the “Edit the company settings” permission.",
-  // Modèles métier et organisation (étape 3 du SaaS, migration 41)
-  "Réglages de l'organisation indisponibles : la base n'a pas encore la migration 41.": "Organisation settings are not available yet: the database does not have migration 41.",
+  // Modèles métier et organisation (étape 3 du SaaS, migration 42)
+  "Réglages de l'organisation indisponibles : la base n'a pas encore la migration 42.": "Organisation settings are not available yet: the database does not have migration 42.",
   "Devis, acompte, facture et carnet de voyage. Catalogue de formules et de prix.": "Quotes, deposits, invoices and travel booklets. A catalogue of packages and prices.",
   "Excursions et activités": "Tours and activities",
   "Facture directe sans devis, prestataires avec leurs prix nets, réservations et vouchers.": "Direct invoices without quotes, suppliers with their net prices, bookings and vouchers.",

@@ -159,7 +159,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     return { demandes_site: demandes || [], bandeaux_site: bandeaux || [], site_disponible: demandes !== null && bandeaux !== null };
   }
 
-  // L'organisation de la personne connectée (migration 41) : nom, fuseau, langue. Avant la migration la table manque : liste vide, rien ne casse.
+  // L'organisation de la personne connectée (migration 42) : nom, fuseau, langue. Avant la migration la table manque : liste vide, rien ne casse.
   async function lireOrganisations() {
     const { data, error } = await sb.from("organisations").select("id, nom, fuseau, langue, statut, options");
     if (!error) return data || [];

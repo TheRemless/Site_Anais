@@ -14,7 +14,7 @@ import {
 
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
 // Marques du site : les entreprises de l'organisation qui publient sur le site (entites.publie_site), par slug.
-// Sans cette colonne (démo, base d'avant la migration 41), les deux marques de Zwald.
+// Sans cette colonne (démo, base d'avant la migration 42), les deux marques de Zwald.
 const MARQUES_ZWALD = { secret: "Secret Travel & Tour", taxi: "VIP Taxi Lanta" };
 function marquesSite() {
   const pub = (etat.brut.entites || []).filter((e) => e.publie_site === true);

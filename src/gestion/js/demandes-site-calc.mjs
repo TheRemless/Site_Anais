@@ -116,8 +116,27 @@ function ligneChangement(c, devise, aujourdhui) {
   return `${LIBELLE_CHANGEMENT[c.champ]}: ${v(c.apres)} instead of ${v(c.avant)}`;
 }
 
-// Réponse de confirmation (avec les changements s'il y en a), en anglais, à copier dans la conversation WhatsApp du client.
-// Le site ne donne pas le numéro du client : pas de lien wa.me, la référence sert à retrouver la conversation.
+// ---- Numéro WhatsApp du client (migration 41) ----------------------------------------------------------------------
+// La fonction « demande-site » le garde au format E.164 (« +41791234567 »). Une demande d'avant le 17.11.2026, ou d'une page du site encore
+// en cache, n'en a pas : la carte le dit et la réponse se copie comme avant.
+export const E164 = /^\+[1-9]\d{7,14}$/;
+export const numeroWhatsApp = (d) => (d && typeof d.telephone === "string" && E164.test(d.telephone) ? d.telephone : "");
+// Lien qui ouvre la conversation du client avec la réponse déjà écrite. Rien ne part : Anaïs relit et envoie elle-même dans WhatsApp.
+export function lienWhatsAppClient(d, texte = "") {
+  const numero = numeroWhatsApp(d);
+  if (!numero) return "";
+  return `https://wa.me/${numero.slice(1)}${texte ? `?text=${encodeURIComponent(texte)}` : ""}`;
+}
+// Les groupes de chiffres changent d'un pays à l'autre (« +33 6 39 98 00 02 », « +44 7700 900123 ») : on ne montre à part que l'indicatif,
+// plutôt que de couper faux.
+export function numeroAffiche(e164) {
+  const m = /^\+(1|7|2[07]|3[0-469]|4[013-9]|5[1-8]|6[0-6]|8[1246]|9[0-58]|\d{3})(\d+)$/.exec(e164 || "");
+  if (!m) return e164 || "";
+  return `+${m[1]} ${m[2]}`;
+}
+
+// Réponse de confirmation (avec les changements s'il y en a), en anglais, pour la conversation WhatsApp du client :
+// « Écrire sur WhatsApp » l'ouvre avec ce texte quand la demande a un numéro, sinon on la copie et la référence aide à retrouver la conversation.
 export function reponseConfirmation(d, final, { aujourdhui = "" } = {}) {
   const devise = final.devise || d.devise || "THB";
   const taxi = d.marque === "taxi";
@@ -151,6 +170,15 @@ export function reponseRefus(d, { motif = "autre", alternative = {} } = {}, { au
   const autreDate = alternative.date ? dateAnglaise(alternative.date, aujourdhui) : "";
   const offre = autre && autreDate ? `We can offer ${autre} on ${autreDate} instead.` : autre ? `We can offer ${autre} instead.` : autreDate ? `We can offer ${autreDate} instead.` : "";
   return [salut, "", `Thank you for your request for ${nomProduit(d)}${quand}.`, PHRASE_MOTIF[motif] || PHRASE_MOTIF.autre, ...(offre ? [offre, "Would that work for you?"] : ["We hope to see you another time."]), ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");
+}
+
+// « Il n'a pas écrit » : la demande est arrivée dans Gestion mais pas son message WhatsApp. Un mot poli pour demander si elle tient toujours.
+// La demande reste « à traiter » : le client répond, puis Anaïs confirme, modifie ou refuse comme d'habitude.
+export function reponseSansMessage(d, { aujourdhui = "" } = {}) {
+  const salut = prenom(d.nom) ? `Hi ${prenom(d.nom)},` : "Hi,";
+  const quoi = d.marque === "taxi" ? "transfer request" : "booking request";
+  const quand = d.date_service ? ` on ${dateAnglaise(d.date_service, aujourdhui)}` : "";
+  return [salut, "", `We received your ${quoi} from our website for ${nomProduit(d)}${quand}, but your WhatsApp message didn't reach us.`, "Is it still on? Just reply here and we'll take care of it.", ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");
 }
 
 // Total réservé imposé (prix convenu dans « Modifier ») : l'écart va sur la première ligne chiffrée, par unité si la division tombe juste,

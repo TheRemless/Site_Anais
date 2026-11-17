@@ -18,7 +18,7 @@ POST https://lkxqcmzeidlyssoqmqkh.supabase.co/functions/v1/demande-site
 
 ## Corps (JSON)
 
-Uniquement ce que la feuille sait déjà. Aucun champ nouveau à demander au visiteur (pas de téléphone, pas d'e-mail).
+Ce que la feuille sait déjà, plus le numéro WhatsApp du visiteur (depuis le 17.11.2026, voir « Numéro WhatsApp et nom complet »). Pas d'e-mail.
 
 ```json
 {
@@ -33,6 +33,7 @@ Uniquement ce que la feuille sait déjà. Aucun champ nouveau à demander au vis
   "children": 1,
   "pickup": "Lanta Sand Resort (Klong Dao)",
   "name": "Anna Keller",
+  "whatsapp": "+41 79 123 45 67",
   "estimated_total": 3000,
   "currency": "THB",
   "ref": "FOUR-7K3Q",
@@ -55,7 +56,9 @@ Uniquement ce que la feuille sait déjà. Aucun champ nouveau à demander au vis
 | `adults` | non | entier 0 à 60 | `state.adults` |
 | `children` | non | entier 0 à 60 | `state.childAges.length` |
 | `pickup` | non | 200 caractères | `state.pickup` ou `state.pickupAt` |
-| `name` | non | 100 caractères | `state.name` |
+| `name` | non | 120 caractères, prénom et nom | `state.name` (nom complet, voir plus bas) |
+| `whatsapp` | non pour la fonction, obligatoire dans la feuille | numéro international, voir plus bas | le nouveau champ « WhatsApp number » de la feuille |
+| `whatsapp_country` | non | indicatif du pays, 1 à 3 chiffres (`"41"`, `"+41"` accepté) | seulement si la feuille a un choix du pays séparé du numéro |
 | `estimated_total` | non | nombre 0 à 10 000 000 | `trackInfo(config, state).value` (absent s'il n'y a pas de prix) |
 | `currency` | non | 3 lettres, `THB` par défaut | `"THB"` |
 | `ref` | non | `[A-Z0-9-]`, 3 à 24 caractères | la référence ajoutée au message WhatsApp (voir plus bas) |
@@ -65,6 +68,48 @@ Uniquement ce que la feuille sait déjà. Aucun champ nouveau à demander au vis
 | `turnstile_token` | non | texte | jeton Cloudflare Turnstile, quand Jérémy l'aura allumé |
 
 Gestion se sert surtout de `message` : c'est le texte que « Coller une demande » sait déjà lire (mêmes tests, `tests/fixtures/messages-site.json`). Les autres champs servent à la carte, à la notification et aux chiffres. Un champ inconnu est ignoré.
+
+## Numéro WhatsApp et nom complet (17.11.2026)
+
+Des visiteurs remplissent la feuille mais leur message WhatsApp n'arrive jamais. La feuille demande donc le numéro WhatsApp et le nom complet : Anaïs peut écrire au client depuis Gestion même quand son message manque.
+
+### Ce que le site envoie
+
+- `name` : prénom et nom dans un seul texte, `"Anna Keller"`. 120 caractères au plus (`maxlength="120"` sur le champ). Au-delà, toute la demande est refusée (400, `field: "name"`).
+- `whatsapp` : le numéro **au format international**, de préférence déjà en E.164 (`"+41791234567"`). La fonction accepte aussi les espaces, tirets, points, parenthèses, le `00` devant (`"0041 79 123 45 67"`) et le `(0)` des numéros écrits `"+41 (0)79 123 45 67"`.
+- `whatsapp_country` : seulement si la feuille a un menu du pays à côté d'un numéro national. La fonction retire alors le 0 de tête (sauf pour l'Italie, `39`) et met l'indicatif devant : `whatsapp: "079 123 45 67"` avec `whatsapp_country: "41"` donne `+41791234567`.
+
+Exemples ramenés à `+41791234567` : `"+41 79 123 45 67"`, `"0041-79-123-45-67"`, `"+41 (0)79 123 45 67"`, `"079 123 45 67"` avec `"41"`. Un numéro national sans indicatif (`"079 123 45 67"` seul) n'est pas deviné.
+
+### Ce que fait la fonction
+
+- Numéro lisible : gardé en E.164 dans `demandes_site.telephone` (`+`, puis 8 à 15 chiffres).
+- Numéro illisible (indicatif manquant, lettres, trop court ou trop long) : la demande est **quand même écrite**, sans numéro, et ce que le visiteur a tapé est gardé à part (40 caractères au plus). Gestion affiche « Numéro à vérifier : … ».
+- Pas de numéro (page du site encore en cache, ancienne feuille) : la demande passe comme avant. Gestion affiche « Pas de numéro WhatsApp ».
+- Le numéro n'est écrit nulle part ailleurs que dans la table : ni dans les journaux de la fonction, ni dans la notification (elle passe par Apple et Google), ni dans le journal de Gestion.
+
+**Pourquoi la fonction ne refuse jamais une demande pour le numéro.** La copie vers Gestion sert justement de filet quand le message WhatsApp n'arrive pas. Le site ne lit pas la réponse de la fonction : un refus ne ferait rien voir au visiteur, il ferait seulement perdre la demande une seconde fois. Le champ est donc **obligatoire dans la feuille** (`required`, vérifié avant l'ouverture de WhatsApp) et **facultatif dans la fonction**. Une date limite ou un numéro de version de la feuille ne changerait rien pour le visiteur et ferait perdre les demandes des pages en cache.
+
+### Ordre de mise en production
+
+1. Migration 41 dans Supabase.
+2. Fonction `demande-site` redéployée.
+3. Seulement ensuite, la nouvelle feuille sur le site.
+
+L'ancienne fonction ignore un champ qu'elle ne connaît pas, elle ne le refuse pas (voir `lireDemande`) : une nouvelle feuille publiée trop tôt ne casserait rien, mais les numéros envoyés avant l'étape 2 seraient perdus.
+
+### Feuille : champ conseillé
+
+```html
+<label for="bk-whatsapp">WhatsApp number</label>
+<input id="bk-whatsapp" name="whatsapp" type="tel" inputmode="tel" autocomplete="tel" required maxlength="24"
+       placeholder="+41 79 123 45 67">
+<p class="hint">With country code, the number you use on WhatsApp.</p>
+```
+
+Avant d'ouvrir WhatsApp, la feuille vérifie qu'il commence par `+` ou `00` et compte 8 à 15 chiffres (`value.replace(/\D/g, "").length`), sinon elle affiche « Add your country code, e.g. +41 ». Pas d'attribut `pattern` : avec les caractères `( ) -` il n'est pas lu de la même façon par tous les navigateurs.
+
+Le numéro ne va pas dans le message WhatsApp : il vient déjà du téléphone du visiteur.
 
 ## Réponses
 
@@ -107,6 +152,7 @@ function sendCopy(config, state, message, ref) {
       children: (state.childAges || []).length,
       pickup: clean(state.pickup || state.pickupAt || ""),
       name: clean(state.name),
+      whatsapp: clean(state.whatsapp || ""),
       estimated_total: typeof info.value === "number" ? info.value : null,
       currency: "THB",
       ref: ref || "",
@@ -187,14 +233,14 @@ Le widget ne doit pas retarder WhatsApp : si le jeton n'est pas prêt au moment 
 
 ## Données personnelles
 
-Le nom, l'hôtel et le message du client sont gardés dans la base de Gestion, lisibles seulement par les rôles qui voient tous les dossiers de l'entreprise. L'adresse IP n'est jamais gardée (seulement une empreinte salée pour la limite de cadence). La politique de confidentialité du site (`/privacy/`) doit dire que la demande est aussi enregistrée dans l'outil de réservation de l'agence : à mettre à jour en même temps que `booking.js`.
+Le nom, le numéro WhatsApp, l'hôtel et le message du client sont gardés dans la base de Gestion, lisibles seulement par les rôles qui voient tous les dossiers de l'entreprise. L'adresse IP n'est jamais gardée (seulement une empreinte salée pour la limite de cadence). La politique de confidentialité du site (`/privacy/`) doit dire que la demande est aussi enregistrée dans l'outil de réservation de l'agence : à mettre à jour en même temps que `booking.js`.
 
 ## Essai
 
 ```bash
 curl -i -X POST https://lkxqcmzeidlyssoqmqkh.supabase.co/functions/v1/demande-site \
   -H "Origin: http://localhost:8080" -H "Content-Type: text/plain;charset=UTF-8" \
-  --data '{"brand":"secret","product_id":"4-islands","product":"4 Islands","date":"2026-12-01","adults":2,"name":"Test","ref":"TEST-0001"}'
+  --data '{"brand":"secret","product_id":"4-islands","product":"4 Islands","date":"2026-12-01","adults":2,"name":"Test Essai","whatsapp":"+66 81 234 5678","ref":"TEST-0001"}'
 ```
 
 Puis « Classer » la demande d'essai dans Gestion (elle sort des chiffres).

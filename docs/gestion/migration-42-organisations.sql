@@ -1,4 +1,4 @@
--- Gestion : migration 41, plusieurs organisations (préparation du logiciel pour d'autres clients).
+-- Gestion : migration 42, plusieurs organisations (préparation du logiciel pour d'autres clients).
 -- Une organisation est un client du logiciel. Elle regroupe ses entreprises (entites) et ses comptes (profils).
 -- La base actuelle devient l'organisation « Zwald Travel Planner » (ZTP, Secret, Taxi) : rien ne change pour ses comptes.
 --

@@ -445,7 +445,7 @@ export async function creerEntite(nom, slug, { modele = null, devise = "" } = {}
   const base = completerReglages(modele ? reglagesModele(modele, { nom, devise }) : { emetteur: { nom } });
   await etat.store.enregistrerReglages(e.id, base);
   // `tous_droits` (migration 38) n'est écrit que si la base a déjà la colonne : avant la migration, l'insertion échouerait.
-  // Sans aucun rôle chargé (première entreprise d'un nouveau client), la base a forcément la colonne : les organisations (migration 41) viennent après.
+  // Sans aucun rôle chargé (première entreprise d'un nouveau client), la base a forcément la colonne : les organisations (migration 42) viennent après.
   const avecTousDroits = etat.brut.roles.some((r) => "tous_droits" in r) || (!etat.brut.roles.length && organisation() !== null);
   for (const r of ROLES_SYSTEME) etat.brut.roles.push(await etat.store.inserer("roles", { entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: r.permissions, systeme: true, ...(avecTousDroits ? { tous_droits: !!r.tous_droits } : {}) }));
   etat.brut.entites.push(e);
@@ -462,7 +462,7 @@ async function modifierEntiteBrut(id, patch) {
 }
 export const modifierEntite = (...a) => ecrire(() => modifierEntiteBrut(...a));
 
-// L'organisation de la personne connectée (migration 41) : null tant que la base n'a pas la migration.
+// L'organisation de la personne connectée (migration 42) : null tant que la base n'a pas la migration.
 // L'éditeur du logiciel lit toutes les organisations : on prend celle de son propre compte, jamais la première venue.
 export const organisation = () => {
   const liste = (etat.brut && etat.brut.organisations) || [];
@@ -472,7 +472,7 @@ export const organisation = () => {
 // Nom, fuseau et langue : l'administrateur de l'organisation seul (la base refuse le statut et les options payantes).
 async function modifierOrganisationBrut(patch) {
   const o = organisation();
-  if (!o) throw new Error(tr("Réglages de l'organisation indisponibles : la base n'a pas encore la migration 41."));
+  if (!o) throw new Error(tr("Réglages de l'organisation indisponibles : la base n'a pas encore la migration 42."));
   const champs = Object.fromEntries(Object.entries(patch).filter(([k]) => ["nom", "fuseau", "langue"].includes(k)));
   const r = await etat.store.modifier("organisations", o.id, champs);
   etat.brut.organisations = [{ ...o, ...r }];
