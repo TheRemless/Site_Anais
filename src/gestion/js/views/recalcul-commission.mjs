@@ -93,3 +93,27 @@ export function ouvrirRecalculCommissions(partenaireId = null, apres = () => {})
     { protege: false }
   );
 }
+
+// Bandeau toujours visible dans À encaisser : il dit combien de commissions prévues manquent ou s'écartent de la règle de leur partenaire,
+// et ouvre le recalcul même quand tout est à jour (une règle posée ou changée après coup se rattrape d'ici).
+export function bandeauRecalcul(apres = () => {}) {
+  if (!peutRecalculer()) return null;
+  const t = recalculerCommissions(etat.db.reservations, contexte());
+  const vides = t.changements.filter((x) => x.avant === null).length;
+  const differentes = t.changements.length - vides;
+  const morceaux = [
+    vides ? pluriel(vides, N_("{n} commission prévue à remplir d'après la règle du partenaire"), N_("{n} commissions prévues à remplir d'après la règle du partenaire")) : "",
+    differentes ? pluriel(differentes, N_("{n} commission prévue différente de la règle du partenaire"), N_("{n} commissions prévues différentes de la règle du partenaire")) : "",
+  ].filter(Boolean);
+  // Sans règle chiffrée ou sans net, le recalcul ne peut rien : on le dit, pour que la règle se complète sur la fiche du partenaire. Seulement
+  // pour les services encore sans commission prévue : une commission saisie à la main n'a pas besoin de règle.
+  const sansCommission = recalculerCommissions(etat.db.reservations, contexte(), { seulementVides: true }).impossibles;
+  const sansRegle = sansCommission ? pluriel(sansCommission, N_("{n} service sans commission prévue ni règle pour la calculer : à compléter sur la fiche du partenaire"), N_("{n} services sans commission prévue ni règle pour la calculer : à compléter sur la fiche du partenaire")) : "";
+  const texte = [morceaux.length ? morceaux.join(" · ") : sansRegle ? tr("Les autres commissions prévues suivent les règles des partenaires") : tr("Les commissions prévues suivent les règles des partenaires"), sansRegle].filter(Boolean).join(". ") + ".";
+  return h(
+    "div",
+    { class: `bandeau-recalcul${morceaux.length ? " a-faire" : ""}`, role: "status" },
+    h("span", null, texte),
+    h("button", { class: morceaux.length ? "principal petit" : "secondaire petit", type: "button", onclick: () => ouvrirRecalculCommissions(null, apres) }, tr("Recalculer les commissions"))
+  );
+}
