@@ -1,4 +1,5 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
+import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
 import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
 import { sectionVouchers } from "./reglages-vouchers.mjs";
@@ -12,7 +13,7 @@ import { champDevisesNoms } from "./devises-reglages.mjs";
 import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4, plierGroupes } from "./commun.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
-import { etatRappels } from "../rappels-etat.mjs";
+import { etatRappels, heureDepart } from "../rappels-etat.mjs";
 import { reglagesFid } from "../fiduciaire-calc.mjs";
 // Lot D (équipe, réglages, messages) : historique, archives, moyens de paiement, textes thaïs de l'écran de Mook.
 import { groupesModifies, nomGroupe, archiverVariante, reactiverVariante, variantesActives, identifiantMoyen } from "../reglages-calc.mjs";
@@ -537,7 +538,7 @@ export function vueReglages() {
     } catch (err) {
       return blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("Historique indisponible : {message}", { message: err.message })));
     }
-    if (versions === null) return blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("L'historique s'active avec la migration 36 de la base.")));
+    if (versions === null) return blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("L'historique s'active avec la migration 38 de la base.")));
     if (!versions.length) return blocHistorique.replaceChildren(h("p", { class: "vide-court" }, tr("Aucune version précédente pour l'instant : la première sera gardée au prochain enregistrement.")));
     const actuelle = reglages();
     blocHistorique.replaceChildren(
@@ -688,6 +689,19 @@ export function vueReglages() {
           tr("En mode excursions, un nouveau dossier crée la facture et les réservations d'un coup, sans devis ni acompte, et chaque réservation a son voucher pour le client et le prestataire. En mode taxi, pas de facture : chaque course a sa « Booking confirmation » et se paie au chauffeur.")
         )
       ),
+      // Rappels avant le service (migration 31), allumés par défaut : Secret et Taxi une heure avant chaque service, ZTP la veille du départ.
+      h(
+        "fieldset",
+        null,
+        h("legend", null, modeRappel(r) === "depart" ? tr("Rappel la veille du départ") : tr("Rappel 1 h avant chaque service")),
+        h(
+          "label",
+          { class: "case" },
+          h("input", { type: "checkbox", id: "rappel-h1", checked: rappelAvantActif(r), onchange: (e) => ((r.rappels = { ...(r.rappels || {}), h1: e.target.checked }), marque()) }),
+          modeRappel(r) === "depart" ? tr("Notification sur téléphone la veille du départ de chaque voyage accepté, à {heure}", { heure: `${heureDepart(r.rappels)} h` }) : tr("Notification sur téléphone une heure avant chaque réservation qui a une heure")
+        ),
+        h("p", { class: "aide" }, modeRappel(r) === "depart" ? tr("Le nom du client et le voyage, un tap ouvre le dossier. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche).") : tr("Le nom du client, le service, les personnes et le pickup, un tap ouvre la réservation et son rappel. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche)."))
+      ),
       // Assistant IA : éteint par défaut, allumé par entreprise. Il ne fonctionne qu'une fois la fonction « assistant » déployée avec sa clé.
       // Il vit dans « Coller une demande », qui n'existe qu'en Secret et en Taxi.
       ztp ? null : h(
@@ -708,7 +722,7 @@ export function vueReglages() {
     ...(ztp ? {} : { vouchers: sectionVouchers({ r, taxi, texte, image, marque, choixApercuVoucher }) }),
     // Textes thaïs de l'écran de Mook, le français en regard (section 2 de l'audit). Secret : factures pour la fiduciaire ; Taxi : voucher et factures.
     ...(ecransThai.length ? { thai: h("div", null, h("p", { class: "aide" }, tr("Les textes que lit l'assistante sur son écran simple. À gauche, ce qu'ils disent en français ; à droite, le texte thaï affiché. Vide : le texte de départ, en gris. Les mots entre accolades, comme {n} ou {nom}, se remplissent seuls : gardez-les tels quels.")), ...ecransThai.map(blocTextesThai)) } : {}),
-    // Historique des réglages (migration 36) : chaque enregistrement garde la version remplacée, on peut y revenir (audit n° 39).
+    // Historique des réglages (migration 38) : chaque enregistrement garde la version remplacée, on peut y revenir (audit n° 39).
     historique: h("div", null, h("section", null, h("h2", null, tr("Historique des réglages")), h("p", { class: "aide" }, tr("Chaque enregistrement garde la version d'avant (les 60 dernières, les 20 plus récentes affichées ici). Revenir à une version la réenregistre telle quelle : la version actuelle entre à son tour dans l'historique, rien n'est perdu.")), blocHistorique)),
     donnees: h(
       "div",

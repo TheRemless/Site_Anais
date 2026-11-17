@@ -1,4 +1,4 @@
-// Le net et la commission prévus d'une réservation, calculés comme la base (migration 30 : net_reservation_calcule, calculer_nets_reservation,
+// Le net et la commission prévus d'une réservation, calculés comme la base (migration 32 : net_reservation_calcule, calculer_nets_reservation,
 // remplir_nets_reservation), pour la démo (store-local.mjs) : sans ce miroir, la démo ne recalculait rien et un enfant ajouté après coup laissait
 // le net prévu à l'ancien montant (contrôle du 17.11.2026, D2). Logique pure, testée avec node --test et comparée à la base dans
 // verif-securite-argent.mjs. Toute règle changée ici doit l'être aussi dans la migration (et l'inverse).

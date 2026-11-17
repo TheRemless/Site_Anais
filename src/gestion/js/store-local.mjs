@@ -7,13 +7,14 @@ import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
+import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
 const CLE = "gestion-zwald-demo-v13";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
 // Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
-const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches"];
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
+const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches", "demandes_site", "bandeaux_site"];
+const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
 const PARTENAIRES_PUBLIC = ["partenaires", "prestations", "trajets"];
 const PARTENAIRES_NETS = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
 const LIMITE_DEMO = 1.5 * 1024 * 1024;
@@ -28,12 +29,15 @@ export function creer() {
       data = null;
     }
     if (!data) data = donneesDemo(aujourdhui(), ajouterJours);
+    // Demandes et bandeau du site : posés aussi dans une démo déjà enregistrée dans ce navigateur (créée avant la migration 30).
+    if (!data.demandes_site) data.demandes_site = demandesDemo({ entites: data.entites, ajd: aujourdhui(), ajouterJours, uid });
+    if (!data.bandeaux_site) data.bandeaux_site = bandeauxDemo({ entites: data.entites, ajd: aujourdhui(), uid });
     for (const t of TABLES) data[t] = data[t] || [];
     data.fiduciaire_factures = data.fiduciaire_factures || [];
-    // Corbeille des documents et compteurs de numéros, comme la base (migration 31). L'acompte figé du dossier existe comme colonne.
+    // Corbeille des documents et compteurs de numéros, comme la base (migration 34). L'acompte figé du dossier existe comme colonne.
     data.corbeille_documents = data.corbeille_documents || [];
     data.compteurs_ref = data.compteurs_ref || {};
-    // Historique des réglages (migration 36), comme la base : la version remplacée à chaque enregistrement, 60 au plus par entreprise.
+    // Historique des réglages (migration 38), comme la base : la version remplacée à chaque enregistrement, 60 au plus par entreprise.
     data.reglages_historique = data.reglages_historique || [];
     for (const d of data.dossiers || []) if (!("acompte_pct" in d)) d.acompte_pct = null;
     // Nets de démo d'avant le calcul par la base (17.11.2026, D2) : ils comptent comme calculés, pour suivre un enfant ajouté ou un tarif changé.
@@ -84,7 +88,7 @@ export function creer() {
   const accessibles = () => (utilisateur.super_admin ? data.entites.map((e) => e.id) : data.membres.filter((m) => m.user_id === utilisateur.user_id).map((m) => m.entite_id));
   const nomDe = (id) => (data.profils.find((p) => p.user_id === id) || {}).nom || null;
 
-  // Comme le déclencheur garder_prix_vente (migration 36) : sans le droit « partenaires.prix », un prix de vente ne change pas et un tarif ou un
+  // Comme le déclencheur garder_prix_vente (migration 38) : sans le droit « partenaires.prix », un prix de vente ne change pas et un tarif ou un
   // trajet créé naît sans prix.
   const garderPrix = (table, avant, apres) => {
     if (!["prestations", "trajets"].includes(table) || droit(apres.entite_id, "partenaires.prix")) return;
@@ -95,7 +99,7 @@ export function creer() {
     if (change) throw new Error(tr("Le prix de vente est réservé aux personnes qui ont le droit « Modifier les prix de vente ». Laissez le prix tel quel, ou demandez à l'administratrice."));
   };
 
-  // Comme le déclencheur remplir_nets (migration 30) : après l'écriture d'une réservation de Secret, le net et la commission prévus suivent le tarif,
+  // Comme le déclencheur remplir_nets (migration 32) : après l'écriture d'une réservation de Secret, le net et la commission prévus suivent le tarif,
   // les personnes et les lignes de facture, sans jamais écraser une valeur saisie à la main (contrôle du 17.11.2026, D2).
   const remplirNets = (r, avant) => {
     const suivi = suiviDeclencheur(avant, r);
@@ -178,7 +182,7 @@ export function creer() {
     async fiduciaireListe() {
       return structuredClone(facturesVisibles(data, { droit, voit }));
     },
-    async fiduciaireMigration31() {
+    async fiduciaireMigration36() {
       return true;
     },
     async fiduciaireAPreparer() {
@@ -204,6 +208,16 @@ export function creer() {
     },
     async suiviRappels() {
       return null;
+    },
+    // Démonstration : une demande arrive du site, comme l'écrirait la fonction « demande-site ».
+    async simulerDemandeSite(entiteId) {
+      const e = data.entites.find((x) => x.id === entiteId);
+      const modele = demandesDemo({ entites: data.entites, ajd: aujourdhui(), ajouterJours, uid }).find((d) => d.entite_id === entiteId && d.statut === "nouvelle");
+      if (!e || !modele) return null;
+      const ligne = { ...modele, id: uid(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ref: `${modele.ref.split("-")[0]}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` };
+      data.demandes_site.push(ligne);
+      sauve();
+      return structuredClone(ligne);
     },
     // Démonstration : rien ne part chez Anthropic, la réponse est simulée à partir de la lecture par règles (assistant-calc.mjs).
     async assistant(corps) {
@@ -244,6 +258,11 @@ export function creer() {
       out.reservations = data.reservations.filter((r) => idsDossiers.has(r.dossier_id));
       const idsRes = new Set(out.reservations.map((r) => r.id));
       out.reservations_nets = out.reservations_nets.filter((n) => idsRes.has(n.reservation_id));
+      // Demandes du site : comme lit_demandes_site (migration 30), un rôle qui voit tous les dossiers, jamais l'écran « Nouveau voucher » seul.
+      const litDemandes = (eid) => droit(eid, "dossiers.lire") && voitTout(ctx, eid) && !droit(eid, "vouchers.seul");
+      out.demandes_site = data.demandes_site.filter((d) => ids.has(d.entite_id) && litDemandes(d.entite_id));
+      out.bandeaux_site = data.bandeaux_site.filter((b) => ids.has(b.entite_id) && droit(b.entite_id, "dossiers.lire"));
+      out.site_disponible = true;
       out.profils = utilisateur.super_admin ? data.profils : data.profils.filter((p) => p.user_id === uidCourant);
       out.membres = utilisateur.super_admin ? data.membres : data.membres.filter((m) => m.user_id === uidCourant);
       return structuredClone(out);
@@ -251,12 +270,12 @@ export function creer() {
     async inserer(table, row) {
       const ligne = { id: uid(), created_at: aujourdhui(), ...row };
       garderPrix(table, null, ligne);
-      // Comme la base (migration 31) : un document écrit toujours sa devise, un dossier a sa colonne d'acompte figé.
+      // Comme la base (migration 34) : un document écrit toujours sa devise, un dossier a sa colonne d'acompte figé.
       if (table === "documents" && ligne.contenu && !ligne.contenu.devise) ligne.contenu = { ...ligne.contenu, devise: (data.reglages[ligne.entite_id] || {}).devise || "CHF" };
       if (table === "dossiers" && !("acompte_pct" in ligne)) ligne.acompte_pct = null;
       if (table === "dossiers") ligne.responsable_id = ligne.responsable_id || utilisateur.user_id;
       if (TABLES.includes(table) && !["catalogue", "trajets", ...PARTENAIRES_NETS].includes(table)) ligne.cree_par = utilisateur.user_id;
-      // Comme fusionner_nets (migration 30) : une insertion pour une réservation qui a déjà sa ligne de nets la complète, l'identifiant reste.
+      // Comme fusionner_nets (migration 32) : une insertion pour une réservation qui a déjà sa ligne de nets la complète, l'identifiant reste.
       if (table === "reservations_nets") {
         const existante = data.reservations_nets.find((x) => x.reservation_id === ligne.reservation_id);
         if (existante) {
@@ -285,6 +304,8 @@ export function creer() {
       garderPrix(table, ligne, { ...ligne, ...patch });
       delete patch.updated_at;
       if (VERSIONNEES.includes(table)) patch.updated_at = new Date().toISOString();
+      // Comme le déclencheur de la migration 30 : un changement de statut note qui et quand.
+      if (table === "demandes_site" && patch.statut && patch.statut !== ligne.statut) Object.assign(patch, { traitee_le: new Date().toISOString(), traitee_par: utilisateur.user_id });
       const details = {};
       for (const [k, v] of Object.entries(patch)) {
         if (["updated_at", "modifie_par"].includes(k) || JSON.stringify(ligne[k]) === JSON.stringify(v)) continue;
@@ -383,6 +404,12 @@ export function creer() {
       data.compteurs_ref[cle] = n;
       sauve();
       return n;
+    },
+    async definirRappelH1(actif) {
+      utilisateur.rappel_h1 = !!actif;
+      const p = data.profils.find((x) => x.user_id === utilisateur.user_id);
+      if (p) p.rappel_h1 = !!actif;
+      sauve();
     },
     async definirMaLangue(code) {
       utilisateur.langue = code;

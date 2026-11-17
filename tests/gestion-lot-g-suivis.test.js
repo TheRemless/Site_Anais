@@ -211,7 +211,11 @@ test("heures des rappels : l'outil et la fonction lisent le réglage de la même
 
 test("fonction rappels : appel horaire « auto », lieu et langue lus, entreprises restreintes", () => {
   const index = fs.readFileSync("supabase/functions/rappels/index.ts", "utf8");
-  assert.match(index, /demande\.type !== "auto"/);
+  assert.match(index, /type !== "auto" && !TYPES\.includes\(type\)/);
+  // Les trois crons de la production restent acceptés tels quels (rattrapage de master, 17.11.2026) : veille, lendemain, h1, plus l'appel horaire.
+  assert.match(index, /const type = demande\.type \|\| demande\.mode;/);
+  assert.match(index, /if \(type === "h1"\) return rappelH1\(demande\)/);
+  assert.match(index, /for \(const t of type === "auto" \? TYPES : \[type\]\)/);
   assert.match(index, /lieu_pickup/);
   assert.match(index, /super_admin, langue/);
   assert.match(index, /\.in\("entite_id", retenues\)/);
@@ -233,7 +237,7 @@ test("journal : réservations, partenaires, prestations, trajets, et nets seulem
   const vue = fs.readFileSync("src/gestion/js/views/journal.mjs", "utf8");
   for (const t of ["reservations", "reservations_nets", "partenaires", "prestations", "trajets"]) assert.match(vue, new RegExp(`\\["${t}", N_\\(`));
   assert.match(vue, /"reservations_nets" \? moduleActif\("partenaires"\) && peut\("partenaires\.nets"\)/);
-  const sql = fs.readFileSync("docs/gestion/migration-35-journal-nets.sql", "utf8");
+  const sql = fs.readFileSync("docs/gestion/migration-37-journal-nets.sql", "utf8");
   assert.match(sql, /create trigger journaliser after insert or update or delete on reservations_nets/);
   assert.match(sql, /table_name <> 'reservations_nets' or a_permission\(entite_id, 'partenaires\.nets'\)/);
 });

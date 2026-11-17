@@ -1,4 +1,4 @@
-// Démonstration : ce que font les fonctions des migrations 28 et 31 (fiduciaire_a_preparer, emettre_facture_fiduciaire, annuler_facture_fiduciaire,
+// Démonstration : ce que font les fonctions des migrations 28 et 36 (fiduciaire_a_preparer, emettre_facture_fiduciaire, annuler_facture_fiduciaire,
 // marquer_envoyee_fiduciaire, fiduciaire_calcul), sur les données du navigateur. Mêmes règles, mêmes messages d'erreur ; le calcul vient de fiduciaire-calc.mjs.
 import { cibleAgence, aEmettre, libelleFacture, formaterNumero, reglagesFid, partRemise, parDestinataire, cleDestinataire, pourPartenaire, prefixeDe } from "./fiduciaire-calc.mjs";
 

@@ -28,3 +28,8 @@ export function heuresRappels(reglage) {
   const heure = (v, defaut) => (v === undefined ? defaut : v === null || v === false || v === "" ? null : Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 23 ? Number(v) : defaut);
   return { veille: heure(r.veille, HEURES_RAPPELS.veille), lendemain: heure(r.lendemain, HEURES_RAPPELS.lendemain) };
 }
+// Heure du rappel du départ (ZTP) : celle de la veille, 18 h si la veille est coupée (même règle que heureDepart de la fonction, un test vérifie l'accord).
+export const heureDepart = (rappels) => {
+  const h = heuresRappels(rappels).veille;
+  return h === null ? HEURES_RAPPELS.veille : h;
+};

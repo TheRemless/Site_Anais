@@ -82,7 +82,7 @@ test("déjà facturé par destinataire : l'ancien prestataire garde son total, l
   const fs = [
     { montant: 300, destinataire_id: "pa", destinataire: { nom: A.nom } },
     { montant: -50, destinataire_id: "pa", destinataire: { nom: A.nom } },
-    { montant: 100, destinataire: { nom: B.nom } }, // facture d'avant la migration 31 : reconnue par le nom
+    { montant: 100, destinataire: { nom: B.nom } }, // facture d'avant la migration 36 : reconnue par le nom
   ];
   assert.deepEqual(parDestinataire(fs, B), { deja: 100, anciens: [{ cle: "pa", destinataire_id: "pa", nom: A.nom, adresse: "", total: 250 }] });
   assert.deepEqual(parDestinataire(fs, A).deja, 250);
@@ -103,7 +103,7 @@ test("QR code et titres figés à l'émission ; une ancienne facture garde l'aff
   const sansQr = reglagesFiduciaire(reglages, { type: "facture", emetteur: { paiement: { texte: "x", qr_image: "", qr_pseudo: "" } } });
   assert.equal(sansQr.apparence.qr_image, "", "émise sans QR : reste sans QR même si un QR est ajouté ensuite");
   const ancienne = reglagesFiduciaire(reglages, { type: "avoir", emetteur: { paiement: { texte: "x" } } });
-  assert.equal(ancienne.apparence.qr_image, "data:image/png;base64,ACTUEL", "facture d'avant la migration 31 : affichage inchangé");
+  assert.equal(ancienne.apparence.qr_image, "data:image/png;base64,ACTUEL", "facture d'avant la migration 36 : affichage inchangé");
   assert.equal(ancienne.libelles_en.facture, "CREDIT NOTE");
   assert.equal(ancienne.libelles_en.ref_facture, "Credit note no.");
 });
@@ -243,7 +243,7 @@ test("démo : préfixes, titres et QR copiés à l'émission ; changer de préfi
   assert.equal(reglagesFiduciaire(data.reglages[secret.id], f1).libelles_en.facture, "INVOICE", "l'ancienne facture garde son titre");
 });
 
-test("relecture : compte bancaire figé même vide, avoir relié à une facture d'avant la migration 31", () => {
+test("relecture : compte bancaire figé même vide, avoir relié à une facture d'avant la migration 36", () => {
   const reglages = { emetteur: { nom: "Secret" }, paiement: { texte: "Compte ajouté plus tard" }, apparence: { qr_image: "" }, libelles_en: {} };
   const vide = reglagesFiduciaire(reglages, { type: "facture", emetteur: { paiement: { texte: "", qr_image: "", qr_pseudo: "" } } });
   assert.equal(vide.paiement.texte, "", "émise sans compte : reste sans compte");
@@ -251,7 +251,7 @@ test("relecture : compte bancaire figé même vide, avoir relié à une facture 
   data.reglages[secret.id] = { ...data.reglages[secret.id], fiduciaire: { actif: true } };
   const { r, p } = serviceChezNous(data, secret);
   const f = emis(data, anais, r.id);
-  delete f.destinataire_id; // comme une facture émise avant la migration 31
+  delete f.destinataire_id; // comme une facture émise avant la migration 36
   data.reservations_nets.find((x) => x.reservation_id === r.id).net_paye = 2600;
   const av = emis(data, anais, r.id);
   assert.equal(av.type, "avoir");

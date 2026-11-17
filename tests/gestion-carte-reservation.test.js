@@ -26,7 +26,7 @@ test("annulée ou lecture seule : aucun geste principal", async () => {
 test("le menu : message client, modifier, changer, voucher et statut ; plus de demande, confirmation, relance ni « s'est bien passé »", async () => {
   const { entreesMenu } = await load();
   const m = entreesMenu(c({}));
-  assert.deepEqual(m, ["message_client", "modifier", "changer", "statut"], "plus de message au partenaire (14.11.2026)");
+  assert.deepEqual(m, ["rappel", "message_client", "modifier", "changer", "statut"], "plus de message au partenaire (14.11.2026) ; le rappel ouvre la fiche, sans rien envoyer");
   for (const ancien of ["demander", "confirmer", "relancer", "autre_reponse", "pas_envoyee", "fait"]) for (const statut of ["a_demander", "demande", "confirme"]) assert.ok(!entreesMenu(c({ statut })).includes(ancien), `${ancien} (${statut})`);
   assert.ok(!entreesMenu(c({ voucher: { envoye: false } })).includes("voucher"), "déjà le geste principal");
   assert.ok(entreesMenu(c({ voucher: { envoye: true } })).includes("voucher"), "renvoyer le voucher reste dans le menu");
@@ -40,8 +40,9 @@ test("dupliquer seulement pour un service lié à une ligne de facture", async (
 
 test("lecture seule : seulement les messages", async () => {
   const { entreesMenu } = await load();
-  assert.deepEqual(entreesMenu(c({ ecrit: false })), ["message_client"]);
-  assert.deepEqual(entreesMenu(c({ ecrit: false, aPartenaire: false, aClient: false })), []);
+  // Le rappel (fiche et cases « rappel envoyé ») reste lisible en lecture seule ; la base refuse la case à qui n'écrit pas.
+  assert.deepEqual(entreesMenu(c({ ecrit: false })), ["rappel", "message_client"]);
+  assert.deepEqual(entreesMenu(c({ ecrit: false, aPartenaire: false, aClient: false })), ["rappel"]);
 });
 
 test("annulée : messages, modifier et statut pour la réactiver, ni changer ni voucher", async () => {

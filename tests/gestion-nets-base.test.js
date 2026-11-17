@@ -1,4 +1,4 @@
-// Lot F (audit du 16.11.2026, point 12) : la base remplit le net et la commission prévus (migration 31). Le formulaire de réservation
+// Lot F (audit du 16.11.2026, point 12) : la base remplit le net et la commission prévus (migration 32). Le formulaire de réservation
 // n'écrit plus que les champs de nets changés, pour ne pas écraser ce recalcul avec la valeur lue à l'ouverture.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -36,8 +36,8 @@ test("le formulaire passe par champsNetsChanges avant d'écrire les nets", () =>
   assert.doesNotMatch(src, /\|\| n\)\) await enregistrerLie\("reservations_nets"/);
 });
 
-test("la migration 31 : déclencheur à l'insertion et aux changements, fonctions fermées à l'API, Secret seulement", () => {
-  const sql = fs.readFileSync(new URL("../docs/gestion/migration-30-nets-base.sql", import.meta.url), "utf8");
+test("la migration 32 : déclencheur à l'insertion et aux changements, fonctions fermées à l'API, Secret seulement", () => {
+  const sql = fs.readFileSync(new URL("../docs/gestion/migration-32-nets-base.sql", import.meta.url), "utf8");
   assert.match(sql, /create trigger remplir_nets after insert or update on reservations/);
   assert.match(sql, /create trigger fusionner_nets before insert on reservations_nets/);
   assert.match(sql, /valeur->>'fonctionnement' = 'excursions'/);

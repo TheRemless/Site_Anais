@@ -6,6 +6,7 @@ import { sousTitreDossier } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { mesTaches } from "./views/taches.mjs";
 import { retirerALaDeconnexion } from "./rappels.mjs";
+import { aTraiter } from "./demandes-site-calc.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
 
@@ -13,8 +14,11 @@ import { reglagesFid } from "./fiduciaire-calc.mjs";
 const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
 const ROUTES = [
   [/^#\/reservations(?:\?.*)?$/, "reservations", vers(() => import("./views/reservations.mjs"), "vueReservations")],
+  [/^#\/reservation\/([\w-]+)(?:\?.*)?$/, "reservation", vers(() => import("./views/reservation-rappel.mjs"), "vueReservation")],
   [/^#\/messages$/, "messages", vers(() => import("./views/messages.mjs"), "vueMessages")],
   [/^#\/fiduciaire$/, "fiduciaire", vers(() => import("./views/fiduciaire.mjs"), "vueFiduciaire")],
+  [/^#\/demandes(?:\?.*)?$/, "demandes", vers(() => import("./views/demandes-site.mjs"), "vueDemandesSite")],
+  [/^#\/bandeau$/, "bandeau", vers(() => import("./views/bandeau-site.mjs"), "vueBandeauSite")],
   [/^#\/du$/, "du", vers(() => import("./views/du.mjs"), "vueDu")],
   [/^#\/encaisser$/, "encaisser", vers(() => import("./views/encaisser.mjs"), "vueEncaisser")],
   [/^#\/a-verifier$/, "a-verifier", vers(() => import("./views/a-verifier.mjs"), "vueAVerifier")],
@@ -26,7 +30,7 @@ const ROUTES = [
   [/^#?\/?$/, "tableau", tableauDeBord],
   [/^#\/dossiers(?:\?.*)?$/, "dossiers", vers(() => import("./views/dossiers.mjs"), "listeDossiers")],
   [/^#\/dossiers\/nouveau(?:\?.*)?$/, "dossiers", vers(() => import("./views/dossiers.mjs"), "nouveauDossier")],
-  [/^#\/dossier\/([\w-]+)$/, "dossiers", vers(() => import("./views/dossier.mjs"), "ficheDossier")],
+  [/^#\/dossier\/([\w-]+)(?:\?.*)?$/, "dossiers", vers(() => import("./views/dossier.mjs"), "ficheDossier")],
   [/^#\/doc\/([\w-]+)$/, "dossiers", vers(() => import("./views/editeur.mjs"), "editeur")],
   [/^#\/clients$/, "clients", vers(() => import("./views/clients.mjs"), "listeClients")],
   [/^#\/client\/([\w-]+)$/, "clients", vers(() => import("./views/clients.mjs"), "ficheClient")],
@@ -167,13 +171,25 @@ function bandeauDemo() {
   );
 }
 
+// Le site secrettravelandtour.com (migration 30) : demandes reçues et bandeau, pour Secret et Taxi seulement, pour qui voit tous les dossiers.
+// Le badge compte les demandes à traiter : elles arrivent avec une notification, le chiffre reste jusqu'à la réponse.
+const siteVisible = () => modeExcursions() && peut("dossiers.lire") && voitToutActif();
+function voitToutActif() {
+  if (estSuperAdmin()) return true;
+  const m = etat.brut.membres.find((x) => x.user_id === etat.session.id && x.entite_id === etat.entiteId);
+  const r = m && etat.brut.roles.find((x) => x.id === m.role_id);
+  return !!r && r.portee === "toute";
+}
+
 // Écrans ouverts à la personne connectée, groupés comme dans la barre latérale.
 function ecrans() {
   const ajd = aujourdhui();
   const enRetard = mesTaches().filter((t) => t.echeance && t.echeance <= ajd).length;
   const si = (ok, item) => (ok ? [item] : []);
+  const demandes = siteVisible() ? aTraiter(etat.db.demandes_site || []).length : 0;
   return [
     { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
+    { titre: tr("Site"), items: siteVisible() ? [{ href: "#/demandes", libelle: tr("Demandes du site"), cle: "demandes", icone: "messages", badge: demandes, badgeLibelle: tr("{badge} à traiter", { badge: demandes }) }, { href: "#/bandeau", libelle: tr("Bandeau du site"), cle: "bandeau", icone: "alerte" }] : [] },
     { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(fiduciaireAuMenu(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
       titre: tr("Partenaires"),
@@ -206,7 +222,7 @@ function ecrans() {
 const ongletsMobiles = () => ["tableau", "dossiers", moduleActif("reservations") ? "reservations" : null, "clients"].filter(Boolean);
 const tousEcrans = () => ecrans().flatMap((s) => s.items);
 
-const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": tr("{badge} en retard", { badge: e.badge }) }, e.badge) : null);
+const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": e.badgeLibelle || tr("{badge} en retard", { badge: e.badge }) }, e.badge) : null);
 const sections = (liste, apres) => liste.map((s) => h("div", { class: "menu-section" }, h("p", { class: "menu-section-titre" }, s.titre), h("ul", null, s.items.map((e) => h("li", null, lienEcran(e, apres))))));
 
 async function deconnecter() {
@@ -230,7 +246,8 @@ function blocCompte(apres) {
   return h("button", { class: "compte", type: "button", title: tr("Mon compte"), "aria-label": tr("Mon compte : {nom}", { nom }), onclick: () => ouvrirMonCompte(apres) }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
 }
 const outilsCompte = (apres) => [
-  etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels()), "aria-label": tr("Rappels sur ce téléphone"), title: tr("Rappels sur ce téléphone") }, icone("cloche")) : null,
+  // La cloche s'ouvre aussi en démonstration : on y règle son « Rappel 1 h avant » (les notifications, elles, demandent la vraie base).
+  h("button", { class: "bouton-icone secondaire", type: "button", onclick: async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels()), "aria-label": tr("Rappels"), title: tr("Rappels") }, icone("cloche")),
   h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirAide()), "aria-label": tr("Raccourcis clavier"), title: tr("Raccourcis clavier (?)") }, icone("clavier")),
   etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: deconnecter, "aria-label": tr("Se déconnecter"), title: tr("Se déconnecter") }, icone("deconnexion")) : null,
 ];
@@ -341,6 +358,7 @@ function ecranDeLEntreprise(cle) {
   if (cle === "reservations" || cle === "messages") return moduleActif(cle);
   if (cle === "catalogue") return moduleActif("catalogue");
   if (cle === "fiduciaire") return modeExcursions();
+  if (cle === "demandes" || cle === "bandeau") return siteVisible();
   return true;
 }
 
@@ -573,8 +591,11 @@ async function afficher() {
     document.title = tr("Aucun accès - Gestion");
     return;
   }
+  // Une notification ouvre l'écran dans l'entreprise qu'elle concerne (« ?entite=… ») : on y passe si la personne y a accès.
+  const entiteDemandee = new URLSearchParams(location.hash.split("?")[1] || "").get("entite");
+  if (entiteDemandee && entiteDemandee !== etat.entiteId && entitesAccessibles().some((e) => e.id === entiteDemandee)) changerEntite(entiteDemandee, { naviguer: false });
   if (ecranVoucherSeul()) return afficherVoucherSeul();
-  // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change.
+  // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change. Ses badges, eux, suivent à chaque affichage (majBadges).
   const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}`;
   const existante = racine.querySelector(".coque");
   if (!existante || existante.dataset.cle !== cle) {
@@ -620,6 +641,27 @@ async function afficher() {
   document.querySelector(".coque").classList.toggle("avec-plus", ECRANS_AVEC_PLUS.test(hash) && !!document.querySelector(".bouton-plus"));
   restaurerDefilement(hash);
   derniereVue = hash;
+  majBadges();
+}
+
+// Badges du menu, des onglets et de « Plus » remis à jour sur place à chaque affichage : une demande du site arrivée à la synchronisation,
+// une demande confirmée ou une tâche cochée changent le chiffre sans refaire tout le menu.
+function majBadges() {
+  const tous = tousEcrans();
+  const poser = (lien, n, libelle) => {
+    let b = lien.querySelector(".badge");
+    if (!n) return void (b && b.remove());
+    if (!b) {
+      b = h("span", { class: "badge" });
+      (lien.querySelector(".onglet-icone") || lien).append(b);
+    }
+    b.textContent = n;
+    if (libelle) b.setAttribute("aria-label", libelle);
+  };
+  for (const e of tous) for (const a of document.querySelectorAll(`[data-cle="${e.cle}"]`)) poser(a, e.badge || 0, a.classList.contains("lien-ecran") && e.badge ? e.badgeLibelle || tr("{badge} en retard", { badge: e.badge }) : null);
+  const onglets = ongletsMobiles();
+  const plus = document.querySelector('button[data-cle="plus"]');
+  if (plus) poser(plus, tous.filter((e) => !onglets.includes(e.cle)).reduce((n, e) => n + (e.badge || 0), 0), null);
 }
 
 function ouvrirAide() {

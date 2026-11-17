@@ -1,4 +1,4 @@
--- Gestion : migration 37, un écart soldé n'est plus de l'encaissé dans les analyses par société (Jérémy, 17.11.2026).
+-- Gestion : migration 39, un écart soldé n'est plus de l'encaissé dans les analyses par société (Jérémy, 17.11.2026).
 --
 -- Un paiement de type « Écart soldé (frais, change) » (`paiements.type = 'ecart'`, lot C2) solde un petit reste sans que l'argent arrive chez nous
 -- (frais Wise, change). Il comptait dans « Encaissé » de la vue par société (`tableau_analytique`, colonne `encaisse_par_mois`). Il en sort et se

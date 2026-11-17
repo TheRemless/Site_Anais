@@ -1,4 +1,4 @@
-// Vérifie la migration 36 (équipe et réglages, lot D) et donnees-mook-secret-prix.sql sur un Postgres en mémoire :
+// Vérifie la migration 38 (équipe et réglages, lot D) et donnees-mook-secret-prix.sql sur un Postgres en mémoire :
 //   * le rôle Administrateur reçoit tous les droits de la base, même si sa liste enregistrée est vide (droits calculés) ;
 //   * la liste de la base est celle de l'outil (defauts.mjs), clients.fusionner et partenaires.supprimer compris ;
 //   * sans « partenaires.prix », on modifie une prestation ou un trajet mais jamais son prix ; le rôle de Mook le perd, garde le reste ;
@@ -28,11 +28,11 @@ alter default privileges in schema public grant execute on functions to anon, au
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
-// Toutes les migrations dans l'ordre (18 et suivantes), puis la 36 une seconde fois : elle se rejoue sans erreur ni doublon.
+// Toutes les migrations dans l'ordre (18 et suivantes), puis la 38 une seconde fois : elle se rejoue sans erreur ni doublon.
 const migs = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
-ok(migs.some((n) => n.startsWith("migration-36-")), "la migration 36 est trouvée");
+ok(migs.some((n) => n.startsWith("migration-38-")), "la migration 38 est trouvée");
 for (const f of migs) await db.exec(fs.readFileSync(W + f, "utf8"));
-await db.exec(fs.readFileSync(W + migs.find((n) => n.startsWith("migration-36-")), "utf8"));
+await db.exec(fs.readFileSync(W + migs.find((n) => n.startsWith("migration-38-")), "utf8"));
 
 const essaie = async (userId, sql, params = []) => {
   await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${userId || ""}', false);`);
@@ -71,7 +71,7 @@ ok(!droitsLectrice.includes("reglages.ecrire") && droitsLectrice.includes("parte
 
 // ---- 2. Prix de vente ---------------------------------------------------------------------------------------------------------------
 // Rejouer la migration après l'ajout du rôle de Mook : comme en production, il reçoit « partenaires.prix » (il a « partenaires.ecrire »).
-await db.exec(fs.readFileSync(W + migs.find((n) => n.startsWith("migration-36-")), "utf8"));
+await db.exec(fs.readFileSync(W + migs.find((n) => n.startsWith("migration-38-")), "utf8"));
 const droitsMook = async () => (await un("select permissions from roles where entite_id = $1 and nom = 'Éditeur + factures fiduciaire'", [secret])).permissions;
 ok((await droitsMook()).includes("partenaires.prix"), "la migration donne le droit aux rôles qui modifient les partenaires (personne ne perd rien)");
 ok((await droitsMook()).filter((d) => d === "partenaires.prix").length === 1, "sans doublon après deux passages");
@@ -101,7 +101,7 @@ ok(passe(await essaie(U.mook, "update trajets set depart = '09:00' where id = $1
 ok(refuse(await essaie(U.mook, "insert into prestations (entite_id, partenaire_id, famille, libelle, prix_vente) values ($1, $2, 'excursion', 'Copie', 1500) returning id", [secret, part])), "elle ne crée pas une prestation avec un prix");
 ok(passe(await essaie(U.mook, "insert into prestations (entite_id, partenaire_id, famille, libelle) values ($1, $2, 'excursion', 'Sans prix') returning id", [secret, part])), "elle crée une prestation sans prix");
 ok(refuse(await essaie(U.mook, "insert into trajets (entite_id, partenaire_id, de, vers, prix_adulte) values ($1, $2, 'Lanta', 'Lipe', 1800) returning id", [secret, part])), "elle ne crée pas un trajet avec un prix");
-ok((await essaie(U.mook, "delete from partenaires where id = $1 returning id", [part])).rows.length === 0, "elle ne supprime pas un partenaire (droit partenaires.supprimer, migration 31)");
+ok((await essaie(U.mook, "delete from partenaires where id = $1 returning id", [part])).rows.length === 0, "elle ne supprime pas un partenaire (droit partenaires.supprimer, migration 33)");
 const p = await un("select prix_vente, unite, details->'enfant' enfant from prestations where id = $1", [pres]);
 ok(Number(p.prix_vente) === 1500 && p.unite === "pp" && Number(p.enfant) === 900, "les prix sont intacts");
 ok(passe(await essaie(U.anais, "update prestations set prix_vente = 1600, details = details || '{\"enfant\": 950}' where id = $1 returning id", [pres])), "l'administratrice change le prix");

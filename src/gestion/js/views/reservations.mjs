@@ -176,6 +176,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, voucher: vx ? { envoye: voucherEnvoye, modifie: voucherModifie } : null, liee: modeExcursions() && lieeFacture(r) };
   const GESTES = {
     changer: [tr("Changer le jour, l'heure ou les personnes"), gestes.faire.changer],
+    rappel: [tr("Rappel"), () => naviguer(`#/reservation/${r.id}`)],
     message_client: [tr("Message client"), () => messageClient(r, cleMessageReservation(r, aujourdhui()))],
     modifier: [tr("Modifier"), () => ouvrirModification(r, apres)],
     dupliquer: [tr("Dupliquer"), () => dupliquerService(r, apres)],
@@ -546,7 +547,7 @@ export function formulaireReservation(r, apres) {
   for (const x of [tarif, partenaire]) x.addEventListener("change", majPropositionModele);
   modele.addEventListener("change", majPropositionModele);
   // Net et commission prévus : ceux de l'ancien partenaire ou de l'ancien tarif ne restent pas (D4). Tant qu'ils ne sont ni payés ni retapés ici,
-  // ils sont vidés avant l'enregistrement et la base les recalcule d'après le nouveau tarif (migration 30), comme pour une création.
+  // ils sont vidés avant l'enregistrement et la base les recalcule d'après le nouveau tarif (migration 32), comme pour une création.
   let netTape = false;
   let commissionTapee = false;
   netPrevu.addEventListener("input", () => (netTape = true));
@@ -633,7 +634,7 @@ export function formulaireReservation(r, apres) {
           if (!res) return;
           if (!r.id) await rattacherCourseTaxi(res);
           // Seuls les champs changés ici s'écrivent : la base recalcule le net et la commission prévus quand le tarif, les personnes ou le mode changent
-          // (migration 31), et la valeur lue à l'ouverture ne doit pas écraser ce recalcul.
+          // (migration 32), et la valeur lue à l'ouverture ne doit pas écraser ce recalcul.
           const netsChanges = nets ? champsNetsChanges(n, { net_prevu: nb(netPrevu.value), net_paye: nb(netPaye.value), paye_le: payeLe.value || null, commission_prevue: nb(commissionPrevue.value), commission_recue: nb(commissionRecue.value), commission_recue_le: commissionLe.value || null }) : {};
           // Ce que la base vient de recalculer n'est pas réécrit par le champ vidé (ou rempli d'après la règle) du formulaire.
           if (serviceChange && !netTape) delete netsChanges.net_prevu;

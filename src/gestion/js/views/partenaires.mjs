@@ -672,7 +672,7 @@ export function formulairePrestation(x, apres, options = {}) {
   // « Sans unité » reste « sans unité » à la réouverture (audit n° 11) ; Taxi : « par véhicule » pour une nouvelle course (audit n° 20).
   unite.value = options.copie ? x.unite || "" : uniteInitiale(x, taxi);
   // Décision 3 de Jérémy (17.11.2026), lot D : sans le droit « prix de vente », les prix se lisent mais ne se changent pas (la base le refuse
-  // aussi, migration 36). Une prestation créée ou dupliquée sans ce droit naît sans prix : l'administratrice le mettra.
+  // aussi, migration 38). Une prestation créée ou dupliquée sans ce droit naît sans prix : l'administratrice le mettra.
   const prixFige = !peut("partenaires.prix");
   if (prixFige) {
     for (const c of [prixVente, prixEnfant]) (c.readOnly = true), !x.id && (c.value = "");

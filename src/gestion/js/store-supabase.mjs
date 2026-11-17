@@ -142,6 +142,23 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     }
   }
 
+  // Demandes et bandeau du site (migration 30) : les deux tables manquent tant que la migration n'est pas appliquée. On le dit à l'écran
+  // (`site_disponible` faux) au lieu d'échouer : le reste de l'outil se charge comme avant. Les demandes : les 1 000 plus récentes suffisent
+  // (quelques-unes par jour), la base filtre déjà par entreprise et par rôle.
+  async function lireSite() {
+    const lire = async (table, requete) => {
+      const { data, error } = await requete;
+      if (!error) return data || [];
+      if (error.code === "42P01" || error.code === "PGRST205" || new RegExp(`relation "[^"]*${table}" does not exist|Could not find the table`, "i").test(error.message || "")) return null;
+      throw new Error(error.message);
+    };
+    const [demandes, bandeaux] = await Promise.all([
+      lire("demandes_site", sb.from("demandes_site").select("*").order("created_at", { ascending: false }).limit(1000)),
+      lire("bandeaux_site", sb.from("bandeaux_site").select("*").order("created_at", { ascending: false }).limit(200)),
+    ]);
+    return { demandes_site: demandes || [], bandeaux_site: bandeaux || [], site_disponible: demandes !== null && bandeaux !== null };
+  }
+
   return {
     mode: "supabase",
     async session() {
@@ -224,7 +241,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { error } = await sb.auth.updateUser({ password: nouveau });
       if (error) throw new Error(/different from the old|same/i.test(error.message) ? tr("Le nouveau mot de passe doit être différent de l'ancien.") : error.message);
     },
-    // Versions précédentes des réglages (migration 36). null tant que la migration n'est pas appliquée.
+    // Versions précédentes des réglages (migration 38). null tant que la migration n'est pas appliquée.
     async historiqueReglages(entiteId) {
       const { data, error } = await sb.from("reglages_historique").select("id, valeur, version_du, remplace_le, remplace_par").eq("entite_id", entiteId).order("remplace_le", { ascending: false }).limit(20);
       if (error) {
@@ -280,7 +297,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       const tables = ["entites", "profils", "roles", "membres", ...CHARGEES.filter((t) => relire || !CATALOGUE.includes(t))];
       // Toutes les lectures partent ensemble (elles étaient faites l'une après l'autre).
-      const [lues, resumeLignes, taches, reglagesLignes] = await Promise.all([
+      const [lues, resumeLignes, taches, reglagesLignes, site] = await Promise.all([
         Promise.all(tables.map((t) => toutes(t))),
         toutes("dossiers_resume"),
         (() => {
@@ -289,8 +306,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
           return sb.from("taches").select("*").or(`fait.eq.false,fait_le.gte.${depuis}`).order("echeance", { nullsFirst: false }).limit(2000).then(verifie);
         })(),
         toutes("reglages"),
+        lireSite(),
       ]);
       tables.forEach((t, i) => (out[t] = lues[i]));
+      Object.assign(out, site);
       if (!relire) for (const t of CATALOGUE) out[t] = ancien[t];
       else {
         empreinte = nouvelle;
@@ -354,15 +373,15 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async fiduciaireAPreparer() {
       return verifie(await sb.rpc("fiduciaire_a_preparer"));
     },
-    // Migration 31 appliquée ? La colonne destinataire_id n'existe qu'avec elle (réglages de l'écran Fiduciaire).
-    async fiduciaireMigration31() {
+    // Migration 36 appliquée ? La colonne destinataire_id n'existe qu'avec elle (réglages de l'écran Fiduciaire).
+    async fiduciaireMigration36() {
       const { error } = await sb.from("fiduciaire_factures").select("destinataire_id").limit(1);
       return !error;
     },
     async fiduciaireEmettre(reservationId, date = null, attendu = null) {
       return verifie(await sb.rpc("emettre_facture_fiduciaire", { p_res: reservationId, p_date: date, p_attendu: attendu }));
     },
-    // `destinataire` (migration 31) : le prestataire dont la facture s'annule, quand le service a changé de prestataire.
+    // `destinataire` (migration 36) : le prestataire dont la facture s'annule, quand le service a changé de prestataire.
     async fiduciaireAnnuler(reservationId, date = null, destinataire = null) {
       return verifie(await sb.rpc("annuler_facture_fiduciaire", { p_res: reservationId, p_date: date, ...(destinataire ? { p_destinataire: destinataire } : {}) }));
     },
@@ -373,6 +392,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await sb.rpc("fiduciaire_calcul", { p_res: reservationId }));
     },
     // Langue de l'interface de la personne connectée (migration 13). Sans la migration l'appel échoue : l'outil garde alors la langue dans ce navigateur.
+    // « Rappel 1 h avant » de la personne connectée (migration 31).
+    async definirRappelH1(actif) {
+      verifie(await sb.rpc("definir_rappel_h1", { allume: !!actif }));
+    },
     async definirMaLangue(code) {
       verifie(await sb.rpc("definir_ma_langue", { l: code }));
     },
@@ -386,14 +409,14 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async restaurerDossier(id) {
       return verifie(await sb.rpc("restaurer_dossier", { p_id: id }));
     },
-    // Devis et factures supprimés seuls (sans leur dossier) des 90 derniers jours, et leur restauration avec leurs nets (migration 31).
+    // Devis et factures supprimés seuls (sans leur dossier) des 90 derniers jours, et leur restauration avec leurs nets (migration 34).
     async documentsSupprimes(entiteId) {
       return verifie(await sb.rpc("documents_supprimes", { p_entite: entiteId }));
     },
     async restaurerDocument(documentId) {
       return verifie(await sb.rpc("restaurer_document", { p_document: documentId }));
     },
-    // Prochain numéro de la séquence annuelle, réservé à l'administratrice (migration 31).
+    // Prochain numéro de la séquence annuelle, réservé à l'administratrice (migration 34).
     async lireProchainNumero(entiteId, annee) {
       return verifie(await sb.rpc("lire_prochain_numero", { p_entite: entiteId, p_annee: annee }));
     },
@@ -419,7 +442,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await sb.rpc("equipe_de", { e: entiteId }));
     },
     // Un dossier avec son résumé à jour (après une modification de ses documents ou paiements).
-    // La ligne de nets d'une réservation, relue après une écriture : le déclencheur remplir_nets (migration 30) a pu la recalculer.
+    // La ligne de nets d'une réservation, relue après une écriture : le déclencheur remplir_nets (migration 32) a pu la recalculer.
     // Sans le droit « nets », la base ne renvoie rien.
     async netsReservations(ids) {
       const out = [];

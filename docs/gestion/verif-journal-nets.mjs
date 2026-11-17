@@ -54,8 +54,8 @@ const avant = (await db.query("select count(*)::int n from journal where table_n
 await essaie(u.admin, `insert into reservations_nets (entite_id, reservation_id, net_prevu) values ('${E}', '${R}', 1600)`);
 ok(avant === 0 && (await db.query("select count(*)::int n from journal where table_name = 'reservations_nets'")).rows[0].n === 0, "avant la migration, les nets ne passent pas par le journal");
 
-await db.exec(lire(W + "migration-35-journal-nets.sql"));
-await db.exec(lire(W + "migration-35-journal-nets.sql"));
+await db.exec(lire(W + "migration-37-journal-nets.sql"));
+await db.exec(lire(W + "migration-37-journal-nets.sql"));
 ok(true, "la migration se rejoue sans erreur (idempotente)");
 await db.exec("grant all on all tables in schema public to authenticated; revoke insert, update, delete on journal from authenticated;");
 

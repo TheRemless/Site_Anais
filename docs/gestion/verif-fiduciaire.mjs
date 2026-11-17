@@ -1,4 +1,4 @@
-// Vérifie les migrations 28 et 31 (factures pour la fiduciaire) sur un Postgres en mémoire : droits, montants, numérotation sans trou, factures figées,
+// Vérifie les migrations 28 et 36 (factures pour la fiduciaire) sur un Postgres en mémoire : droits, montants, numérotation sans trou, factures figées,
 // et surtout que la base et le code de l'outil (cibleAgence) calculent le même montant sur les mêmes cas.
 //   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17
 //   cp <repo>/docs/gestion/verif-fiduciaire.mjs . && GESTION_SQL=<repo>/docs/gestion/ GESTION_SRC=file://<repo>/src/gestion/js/ node verif-fiduciaire.mjs
@@ -382,9 +382,9 @@ ok(await fige(`update fiduciaire_factures set destinataire_id = null where id = 
 ok((await un("select fiduciaire_texte(E'\\n SEC\\t \\n', 'COM') t")).t === "SEC" && (await un("select fiduciaire_texte(E' \\n ', 'COM') t")).t === "COM", "les blancs (retours à la ligne compris) se retirent comme trim() dans l'outil");
 ok(Object.prototype.hasOwnProperty.call(fSq.emetteur.paiement, "texte"), "le texte du compte est toujours copié, même vide");
 
-console.log("Migration 31 sur une base qui a déjà des factures (comme la production)");
+console.log("Migration 36 sur une base qui a déjà des factures (comme la production)");
 {
-  const ancienne = await nouvelleBase(33);
+  const ancienne = await nouvelleBase(35);
   const q1 = async (sql, p = []) => (await ancienne.query(sql, p)).rows[0];
   const sec = (await q1("select id from entites where slug = 'secret'")).id;
   await ancienne.exec(`update reglages set valeur = valeur || '{"devise":"THB","fonctionnement":"excursions","emetteur":{"nom":"Secret Travel & Tour"},"paiement":{"texte":"x"}}'::jsonb where entite_id = '${sec}'`);
@@ -398,7 +398,7 @@ console.log("Migration 31 sur une base qui a déjà des factures (comme la produ
   await ancienne.exec(`insert into profils (user_id, email, nom, super_admin, actif) values ('${root}', 'root@test', 'Root', true, true) on conflict (user_id) do update set super_admin = true, actif = true`);
   const commeRoot = async (sql) => { await ancienne.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${root}', false);`); try { return (await ancienne.query(sql)).rows[0]; } finally { await ancienne.exec("reset role;"); } };
   const f0 = (await commeRoot(`select emettre_facture_fiduciaire('${r0}') id`)).id;
-  await ancienne.exec(fs.readFileSync(W + migrations.find((n) => n.startsWith("migration-34-")), "utf8"));
+  await ancienne.exec(fs.readFileSync(W + migrations.find((n) => n.startsWith("migration-36-")), "utf8"));
   const apres = await q1("select destinataire_id, numero, emetteur from fiduciaire_factures where id = $1", [f0]);
   ok(apres.destinataire_id === p0 && apres.numero === "COM-2026-001", "la facture existante reçoit son destinataire, sans changer de numéro");
   ok((await q1("select prefixe from fiduciaire_compteurs where type = 'facture'")).prefixe === "COM", "le compteur existant devient la série COM");

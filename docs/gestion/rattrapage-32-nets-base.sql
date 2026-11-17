@@ -1,5 +1,5 @@
--- Gestion : rattrapage de la migration 30. Remplit le net et la commission prévus des réservations existantes de Secret qui n'en ont pas.
--- À exécuter après la migration 31, seulement avec le oui de Jérémy.
+-- Gestion : rattrapage de la migration 32. Remplit le net et la commission prévus des réservations existantes de Secret qui n'en ont pas.
+-- À exécuter après la migration 32, seulement avec le oui de Jérémy.
 --
 -- Ne remplit que des valeurs vides, avec les règles du déclencheur (calculer_nets_reservation en mode « vides seulement ») :
 --   * une valeur déjà présente (saisie par Anaïs, venue de la facture) ne change jamais ;

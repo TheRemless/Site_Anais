@@ -28,7 +28,7 @@ const descriptionAffichee = (entite, r) => (r.systeme && r.nom === "Éditeur" &&
 function roleModal(entite, role, apres) {
   const proposes = droitsProposes(fonctionnementDe(entite));
   const nouveau = !role.id;
-  // L'Administrateur a tous les droits, calculés (migration 36) : ses cases sont toutes cochées et ne se décochent pas.
+  // L'Administrateur a tous les droits, calculés (migration 38) : ses cases sont toutes cochées et ne se décochent pas.
   const verrou = !!role.tous_droits || (role.systeme && role.nom === "Administrateur");
   const nom = h("input", { id: "rl-nom", value: role.nom || "", required: true, disabled: role.systeme });
   const description = h("input", { id: "rl-desc", value: role.description || "" });

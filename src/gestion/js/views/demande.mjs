@@ -20,6 +20,7 @@ import { boutonLireIA, boutonRedigerIA, badgeConfiance } from "./assistant-deman
 import { offresRecalculees } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
+import { imposerTotal } from "../demandes-site-calc.mjs";
 
 // Brouillon passé à l'écran « Nouveau dossier » : lu une seule fois.
 let brouillon = null;
@@ -102,7 +103,12 @@ function lignesSite(d) {
   ].filter(Boolean);
 }
 
-export function ouvrirDemande() {
+// `depuisSite` (boîte « Demandes du site ») : { texte, titre, prixImpose, surCree }. Le message vient de la demande, pas du presse-papiers ni du brouillon
+// de l'appareil ; « Vérifier avant de créer », la réponse et le passage à une autre entreprise sont retirés (la demande appartient à son entreprise,
+// la réponse au client se prépare après la création) ; une fois le dossier créé, `surCree({ dossier, services, total })` prend la suite.
+export function ouvrirDemande(depuisSite = null) {
+  // Branchée directement sur un bouton (`onclick: ouvrirDemande`), la fonction reçoit l'événement du clic : ce n'est pas une demande du site.
+  if (!depuisSite || typeof depuisSite.texte !== "string") depuisSite = null;
   const regl = reglages();
   const devise = regl.devise || "THB";
   const langue = langueDocuments(regl);
@@ -113,6 +119,7 @@ export function ouvrirDemande() {
   let clientId = ""; // client existant retenu ; vide pour un nouveau client
   let refuse = new Set(); // clients proposés que la personne a écartés
   let creation = false;
+  const prixImpose = depuisSite && depuisSite.prixImpose !== null && depuisSite.prixImpose !== undefined && depuisSite.prixImpose !== "" ? Number(depuisSite.prixImpose) : null;
   let services = []; // un par service cité dans le message : { id, coche, phrase, date, heure, adultes, enfants, offreId, lignesCustom, copie, noeuds }
   let compteur = 0;
 
@@ -345,8 +352,9 @@ export function ouvrirDemande() {
   }
 
   function majTotal() {
-    const { total, complet } = totalGeneral();
     const n = coches().length;
+    // Prix convenu dans « Modifier » : c'est lui que la facture prendra (un seul service).
+    const { total, complet } = prixImpose !== null && n === 1 ? { total: prixImpose, complet: true } : totalGeneral();
     totalBloc.textContent = n ? (complet ? tr("Total : {montant}", { montant: formatMontant(total, devise) }) : tr("Total : prix à confirmer pour au moins un service")) : tr("Aucun service coché.");
     if (bouton) {
       bouton.textContent = n ? (complet ? tr("Créer le dossier · {n} · {montant}", { n: pluriel(n, N_("{n} service"), N_("{n} services")), montant: formatMontant(total, devise) }) : tr("Créer le dossier · {n}", { n: pluriel(n, N_("{n} service"), N_("{n} services")) })) : tr("Créer le dossier sans service");
@@ -418,7 +426,9 @@ export function ouvrirDemande() {
     const incomplet = trajetIncomplet(parService);
     if (incomplet) return { incomplet: coches()[incomplet.index], code: incomplet.code, champ: incomplet.champ };
     const plusieurs = parService.length > 1;
-    return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: [notesDemande(plusieurs ? { ...d, heure: "" } : d), d.remarquesIA].filter(Boolean).join("\n"), lignes, parService, reservation: parService[0] || {} };
+    // Prix convenu dans « Modifier » (un seul service) : la facture prend ce total, l'écart va sur la première ligne.
+    const finales = prixImpose !== null && !plusieurs ? imposerTotal(lignes, prixImpose) : lignes;
+    return { prenom: nom.prenom, nom: nom.nom, telephone: d.telephone || "", hotel: d.hotel, client_id: clientId, personnes: { adultes: d.adultes, enfants: d.enfants }, notes: [notesDemande(plusieurs ? { ...d, heure: "" } : d), d.remarquesIA].filter(Boolean).join("\n"), lignes: finales, parService, reservation: parService[0] || {} };
   }
 
   // Un retour au point de départ sans programme (ou à durée illisible) : le bloc du service se déplie et le champ prend le focus.
@@ -450,9 +460,12 @@ export function ouvrirDemande() {
     try {
       const numero = await refDefinitive(ref, ref, regl);
       const dossier = await creerDossierExcursions({ client: clientId ? { id: clientId } : { prenom: b.prenom, nom: b.nom, telephone: b.telephone, hotel: b.hotel, chambre: "" }, lignes: b.lignes, notes: b.notes, ref: numero, reservation: b.reservation, parService: b.parService });
-      garde.ecrire("");
+      if (!depuisSite) garde.ecrire("");
+      const finals = coches().map((sv) => ({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, titre: (etatDe(sv).offre || {}).titre || "", total: (etatDe(sv).offre || {}).total ?? null }));
+      const somme = b.lignes.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
       fermer();
       toast(tr("Dossier {ref} créé.", { ref: dossier.ref }));
+      if (depuisSite && depuisSite.surCree) return void depuisSite.surCree({ dossier, services: finals, total: Math.round(somme * 100) / 100 });
       naviguer(`#/dossier/${dossier.id}`);
     } catch (err) {
       erreur.textContent = /duplicate|unique|23505/i.test(err.message) ? tr("Ce numéro existe déjà. Réessayez.") : err.message;
@@ -512,7 +525,8 @@ export function ouvrirDemande() {
     const sitesLignes = lignesSite(d);
     dynamique.replaceChildren(
       ...[
-        mauvaise ? h("p", { class: "bandeau-info", role: "status" }, tr("Cette demande est adressée à {marque}. Changez d'entreprise en haut de l'écran pour utiliser sa base de prix.", { marque: d.marque })) : null,
+        mauvaise && !depuisSite ? h("p", { class: "bandeau-info", role: "status" }, tr("Cette demande est adressée à {marque}. Changez d'entreprise en haut de l'écran pour utiliser sa base de prix.", { marque: d.marque })) : null,
+        prixImpose !== null ? h("p", { class: "bandeau-info", role: "status" }, coches().length > 1 ? tr("Prix convenu : {prix}. Plusieurs services : ajustez la facture dans le dossier.", { prix: formatMontant(prixImpose, devise) }) : tr("Prix convenu : {prix}. La facture prendra ce total.", { prix: formatMontant(prixImpose, devise) })) : null,
         d.siegeEnfant || d.siegeBebe || d.bebes ? h("p", { class: "aide" }, [d.bebes ? tr("{n} bébé : noté dans le dossier.", { n: d.bebes }) : "", d.siegeEnfant ? tr("Siège enfant demandé.") : "", d.siegeBebe ? tr("Siège bébé demandé.") : ""].filter(Boolean).join(" ")) : null,
         sitesLignes.length ? h("ul", { class: "demande-site" }, sitesLignes.map((l) => h("li", null, l))) : null,
         clientBloc,
@@ -522,7 +536,7 @@ export function ouvrirDemande() {
         totalBloc,
         redigerIA,
         erreur,
-        h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, reponse, ecrit ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
+        h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, depuisSite ? null : reponse, ecrit && !depuisSite ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
       ].filter(Boolean)
     );
   }
@@ -530,7 +544,7 @@ export function ouvrirDemande() {
   // Relire le texte : tout ce qui avait été corrigé à la main est perdu, c'est un autre message.
   function lire(valeur) {
     texte = valeur;
-    garde.ecrire(valeur.trim());
+    if (!depuisSite) garde.ecrire(valeur.trim());
     erreur.textContent = "";
     const lu = texte.trim() ? lireMessage(texte, aujourdhui()) : null;
     if (lu) return appliquer(lu, decouperServices(texte, lu, contexte(), aujourdhui()));
@@ -559,7 +573,7 @@ export function ouvrirDemande() {
     construire();
     poserLesBoutons();
     // Demande de transfert du site VIP Taxi Lanta collée dans une autre entreprise : on propose d'y passer, le message est repris là-bas.
-    const taxi = demandeDeTaxi(texte, d) ? entrepriseTaxi(entitesAccessibles(), (id) => etat.brut.reglages[id], etat.entiteId) : null;
+    const taxi = !depuisSite && demandeDeTaxi(texte, d) ? entrepriseTaxi(entitesAccessibles(), (id) => etat.brut.reglages[id], etat.entiteId) : null;
     if (taxi && peut("dossiers.ecrire")) reconnu.append(h("div", { class: "bandeau-info demande-bascule", role: "status" }, h("p", null, tr("Demande de transfert du site de {nom} : le dossier se crée dans {nom}.", { nom: taxi.nom })), h("button", { class: "principal petit", type: "button", onclick: () => basculer(taxi) }, tr("Passer à {nom}", { nom: taxi.nom }))));
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
@@ -588,11 +602,11 @@ export function ouvrirDemande() {
   corps.append(
     h("p", { class: "aide demande-aide" }, tr("Collez le message du client, tel qu'il est arrivé sur WhatsApp. Chaque service cité est reconnu avec sa date, ses personnes et son prix, et le prix vient de la base.")),
     h("div", { class: "champ demande-message" }, h("label", { for: "demande-texte" }, tr("Message du client")), zone),
-    h("div", { class: "actions gauche" }, coller, effacer),
+    ...(depuisSite ? [] : [h("div", { class: "actions gauche" }, coller, effacer)]),
     ...(lireIA ? [lireIA] : []),
     reconnu
   );
-  const fermer = modal(tr("Coller une demande"), corps, { large: true, protege: false });
+  const fermer = modal(depuisSite ? depuisSite.titre : tr("Coller une demande"), corps, { large: true, protege: false });
   // Le message reste dans le brouillon de l'appareil : la fenêtre rouverte dans l'autre entreprise le relit.
   function basculer(cible) {
     garde.ecrire(texte.trim());
@@ -601,8 +615,8 @@ export function ouvrirDemande() {
     setTimeout(() => ouvrirDemande(), 300);
   }
 
-  // Message gardé d'un passage précédent : repris tel quel.
-  const reprise = garde.lire();
+  // Demande du site : son message, jamais le brouillon de l'appareil. Sinon, message gardé d'un passage précédent, repris tel quel.
+  const reprise = depuisSite ? depuisSite.texte : garde.lire();
   if (reprise) {
     zone.value = reprise;
     lire(reprise);

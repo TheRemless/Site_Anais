@@ -1,5 +1,5 @@
 // Prochain numéro de la séquence annuelle (ST-2026-0001), réservé à l'administratrice : un saut de numérotation ou une reprise après un autre
-// logiciel se fait ici, sans SQL. Jamais en dessous d'un numéro déjà donné cette année (dossiers de la corbeille compris). Migration 31.
+// logiciel se fait ici, sans SQL. Jamais en dessous d'un numéro déjà donné cette année (dossiers de la corbeille compris). Migration 34.
 import { etat, estAdmin } from "../etat.mjs";
 import { h, champ, toast, confirmer, num } from "../ui.mjs";
 import { refDepuisNumero } from "../calc.mjs";

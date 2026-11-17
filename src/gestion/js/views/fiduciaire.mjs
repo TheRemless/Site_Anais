@@ -38,7 +38,7 @@ export async function vueFiduciaire() {
   const date = (iso) => (simple ? jjmmaaaa(iso) : formatDate(iso));
   const titre = t("titre", tr("Factures pour la fiduciaire"));
   const racine = h("div", { "data-titre": titre, "data-large": true, class: "fiduciaire", lang: simple ? "th" : undefined });
-  const etatEcran = { filtres: { mois: "", envoyee: simple ? "non" : "" }, choisies: new Set(), liste: [], preparer: [], occupe: false, nbPrep: 12, nbEmises: 30, reglagesOuverts: false, m31: null };
+  const etatEcran = { filtres: { mois: "", envoyee: simple ? "non" : "" }, choisies: new Set(), liste: [], preparer: [], occupe: false, nbPrep: 12, nbEmises: 30, reglagesOuverts: false, m36: null };
 
   async function charger() {
     const liste = await etat.store.fiduciaireListe();
@@ -46,8 +46,8 @@ export async function vueFiduciaire() {
     const ici = (x) => x.entite_id === etat.entiteId;
     etatEcran.liste = liste.filter(ici);
     etatEcran.preparer = (await etat.store.fiduciaireAPreparer()).filter(ici);
-    // Les réglages de l'écran n'ont d'effet qu'avec la migration 31 (préfixes, titres, mots, émetteur, entreprise active).
-    if (etatEcran.m31 === null) etatEcran.m31 = etat.store.fiduciaireMigration31 ? await etat.store.fiduciaireMigration31() : true;
+    // Les réglages de l'écran n'ont d'effet qu'avec la migration 36 (préfixes, titres, mots, émetteur, entreprise active).
+    if (etatEcran.m36 === null) etatEcran.m36 = etat.store.fiduciaireMigration36 ? await etat.store.fiduciaireMigration36() : true;
     return true;
   }
 
@@ -205,9 +205,9 @@ export async function vueFiduciaire() {
     const id = (k) => `fid-reg-${k}`;
     // Les champs sont gardés ici : l'écran n'est pas encore dans la page au premier affichage (pas de document.getElementById).
     const champs = {};
-    const texte = (k, aide) => champ(LIBELLES_REGLAGES[k](), (champs[k] = h("input", { type: "text", id: id(k), value: typeof brut[k] === "string" ? brut[k] : "", placeholder: FID_DEFAUT[k], maxlength: k.startsWith("prefixe") ? 12 : 60, disabled: !etatEcran.m31 })), aide);
-    const caseActif = h("input", { type: "checkbox", id: id("actif"), checked: f.actif, disabled: !etatEcran.m31 });
-    const depuis = h("input", { type: "date", id: id("depuis"), value: f.depuis || "", disabled: !etatEcran.m31 });
+    const texte = (k, aide) => champ(LIBELLES_REGLAGES[k](), (champs[k] = h("input", { type: "text", id: id(k), value: typeof brut[k] === "string" ? brut[k] : "", placeholder: FID_DEFAUT[k], maxlength: k.startsWith("prefixe") ? 12 : 60, disabled: !etatEcran.m36 })), aide);
+    const caseActif = h("input", { type: "checkbox", id: id("actif"), checked: f.actif, disabled: !etatEcran.m36 });
+    const depuis = h("input", { type: "date", id: id("depuis"), value: f.depuis || "", disabled: !etatEcran.m36 });
     const exemple = h("p", { class: "aide" });
     const montrerExemple = () => {
       const val = (k) => (champs[k] && champs[k].value) || FID_DEFAUT[k];
@@ -241,7 +241,7 @@ export async function vueFiduciaire() {
       h(
         "form",
         { class: "fid-reglages-corps", oninput: montrerExemple, onsubmit: enregistrer },
-        etatEcran.m31 ? null : h("p", { class: "avertissement" }, tr("Ces réglages ne s'appliquent pas encore, la base attend sa mise à jour (migration 31).")),
+        etatEcran.m36 ? null : h("p", { class: "avertissement" }, tr("Ces réglages ne s'appliquent pas encore, la base attend sa mise à jour (migration 36).")),
         h("label", { class: "case", for: id("actif") }, caseActif, " ", tr("{entreprise} émet des factures pour la fiduciaire", { entreprise })),
         h("p", { class: "aide" }, tr("Case décochée, aucune facture n'est proposée dans cette entreprise. Ce qui a déjà été facturé reste ici et se corrige par un avoir.")),
         champ(tr("Date de départ"), depuis, tr("Un service reçu avant cette date et jamais facturé n'est pas proposé. Laissée vide, la date ne limite rien.")),
@@ -251,7 +251,7 @@ export async function vueFiduciaire() {
         h("div", { class: "fid-reglages-grille" }, texte("mot_commission", tr("Pour un service payé sur place, la commission reçue du prestataire.")), texte("mot_marge", tr("Pour un service payé chez nous, la marge (prix de vente moins net payé)."))),
         h("p", { class: "aide" }, tr("L'émetteur est {nom}. Son identité, son compte bancaire et son QR code se règlent dans Réglages. Ils sont copiés sur chaque facture le jour de l'émission, les changer ensuite ne modifie pas les factures déjà émises.", { nom: (r.emetteur || {}).nom || entreprise })),
         h("p", { class: "aide" }, tr("Les textes de la facture sont en anglais, la fiduciaire les lit tels quels. Un champ vide reprend le texte par défaut.")),
-        h("div", { class: "actions" }, h("button", { class: "principal", type: "submit", disabled: !etatEcran.m31 }, tr("Enregistrer")))
+        h("div", { class: "actions" }, h("button", { class: "principal", type: "submit", disabled: !etatEcran.m36 }, tr("Enregistrer")))
       )
     );
     montrerExemple();

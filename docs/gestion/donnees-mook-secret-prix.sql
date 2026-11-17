@@ -1,9 +1,9 @@
 -- Gestion : décision 3 de Jérémy (17.11.2026). Mook, dans Secret, ne modifie plus un prix de vente ni ne supprime un partenaire.
--- À passer APRÈS la migration 36 (qui crée le droit « partenaires.prix » et le donne à tout rôle qui modifie les partenaires).
+-- À passer APRÈS la migration 38 (qui crée le droit « partenaires.prix » et le donne à tout rôle qui modifie les partenaires).
 --
 -- Rôle visé : « Éditeur + factures fiduciaire » de l'entreprise « secret », celui de Mook (relevé en lecture seule le 17.11.2026 : une personne,
 -- droits catalogue.ecrire, clients.ecrire, clients.lire, documents.ecrire, dossiers.ecrire, dossiers.lire, fiduciaire.preparer, finances.voir,
--- partenaires.ecrire, partenaires.lire, taches.ecrire). Il n'a pas « partenaires.supprimer » : la migration 31 ne le donne qu'aux Administrateurs.
+-- partenaires.ecrire, partenaires.lire, taches.ecrire). Il n'a pas « partenaires.supprimer » : la migration 33 ne le donne qu'aux Administrateurs.
 --
 -- Effet : ce rôle perd « partenaires.prix » (et « partenaires.supprimer » s'il l'avait reçu entre-temps). Tout le reste est gardé :
 -- elle crée et modifie toujours les partenaires, les prestations et les trajets (libellés, horaires, masquer), sans en changer les prix.
