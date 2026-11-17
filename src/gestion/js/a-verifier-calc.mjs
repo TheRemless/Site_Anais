@@ -1,8 +1,35 @@
 // « À vérifier » : les cas qui se règlent mieux au calme que devant un client. Calcul pur (aucune écriture, rien n'est corrigé automatiquement), testé avec node --test.
 // `db` : la copie en mémoire de l'entreprise active. `droits` : { partenaires, dossiers, clients, nets } (booleens). `aujourdhui` : AAAA-MM-JJ.
 // Renvoie les contrôles qui ont au moins un cas : { cle, droit, aRelire, elements: [{ id, lien, texte, detail }] }. `aRelire` : un doute, pas une erreur certaine.
-// `taxi` : l'entreprise est VIP Taxi Lanta (aucune facture montrée, le prix interne suit la course seul : pas de contrôle facture contre réservation).
-import { ecartReservation } from "./operations-calc.mjs";
+// `taxi` : l'entreprise est VIP Taxi Lanta (aucune facture montrée, le prix interne suit la course seul : pas de contrôle facture contre réservation,
+// ni de net ou de commission : Mr. Brown n'est pas payé par l'agence et sa commission se saisit le lendemain).
+// `reglage` : les réglages de l'écran (reglages.a_verifier), voir `reglageAVerifier`.
+import { ecartReservation, estFraisDeParc, hotelEtChambre, dateTexte } from "./operations-calc.mjs";
+
+// Les contrôles, dans l'ordre de l'écran. Chacun peut être coupé dans les réglages de l'écran (17.11.2026, audit section 2).
+export const CONTROLES = [
+  "services_sans_heure", "services_sans_lieu", "services_sans_prix", "services_sans_net", "services_sans_commission",
+  "factures_differentes_reservation", "notes_sur_place_hors_frais", "dossiers_sans_responsable", "clients_en_double", "clients_sans_contact",
+  "trajets_sans_prix", "prestations_prix_en_texte", "prestations_sur_place_hors_frais", "prestations_a_zero", "prestations_sans_net", "groupes_en_double",
+  "partenaires_sans_telephone", "partenaires_sans_whatsapp", "trajets_duree",
+];
+// Seuils par défaut : ceux d'avant les réglages (20 minutes d'écart de durée, un téléphone d'au moins 6 chiffres, 100 lignes par contrôle) et 7 jours pour
+// l'heure et le lieu de pickup (plus loin, ils se fixent souvent la veille).
+export const REGLAGE_A_VERIFIER = { ecart_duree_min: 20, chiffres_telephone: 6, lignes_max: 100, horizon_jours: 7, desactives: [] };
+const entier = (v, defaut, min, max) => (Number.isInteger(Number(v)) && v !== "" && v !== null && Number(v) >= min && Number(v) <= max ? Number(v) : defaut);
+// Les réglages enregistrés, complétés et bornés : une valeur absente ou hors limites reprend le défaut.
+export function reglageAVerifier(brut) {
+  const r = brut && typeof brut === "object" ? brut : {};
+  const d = REGLAGE_A_VERIFIER;
+  return {
+    ecart_duree_min: entier(r.ecart_duree_min, d.ecart_duree_min, 0, 1440),
+    chiffres_telephone: entier(r.chiffres_telephone, d.chiffres_telephone, 1, 20),
+    lignes_max: entier(r.lignes_max, d.lignes_max, 10, 1000),
+    horizon_jours: entier(r.horizon_jours, d.horizon_jours, 0, 365),
+    desactives: Array.isArray(r.desactives) ? r.desactives.filter((c) => CONTROLES.includes(c)) : [],
+  };
+}
+const plusJours = (iso, n) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) + n * 86400000).toISOString().slice(0, 10);
 
 
 const sansAccents = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -55,14 +82,16 @@ export function ecartDuree(trajet) {
 const PRIX_EN_TEXTE = /\d[\d' ,.]*\s*(?:฿|thb|baht|chf|eur|€)/i;
 const prixDansTexte = (details) => Object.values(details || {}).some((v) => typeof v === "string" && PRIX_EN_TEXTE.test(v));
 
-const telephonesDe = (p) => ((p && p.contact && p.contact.telephones) || []).filter((t) => String(t.numero || "").replace(/\D/g, "").length >= 6);
 
 // `tr` : la traduction de l'interface (par défaut, le texte tel quel) pour les petites phrases composées ici.
 const traduireParDefaut = (texte, vars = {}) => String(texte).replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ""));
 
-export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDefaut, taxi = false } = {}) {
+export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDefaut, taxi = false, reglage = null } = {}) {
+  const regle = reglageAVerifier(reglage);
+  const coupes = new Set(regle.desactives);
+  const telephonesDe = (p) => ((p && p.contact && p.contact.telephones) || []).filter((t) => String(t.numero || "").replace(/\D/g, "").length >= regle.chiffres_telephone);
   const sorties = [];
-  const ajouter = (cle, droit, aRelire, elements) => elements.length && sorties.push({ cle, droit, aRelire, elements });
+  const ajouter = (cle, droit, aRelire, elements) => !coupes.has(cle) && elements.length && sorties.push({ cle, droit, aRelire, elements });
   const partenaires = db.partenaires || [];
   const nomPartenaire = (id) => (partenaires.find((p) => p.id === id) || {}).nom || "";
   const prestations = (db.prestations || []).filter((x) => x.actif !== false);
@@ -93,16 +122,70 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
   const lienP = (p) => ({ id: p.id, lien: `#/partenaire/${p.id}`, texte: p.nom, detail: p.role || p.categorie || "" });
   ajouter("partenaires_sans_telephone", "partenaires", false, actifs.filter((p) => !telephonesDe(p).length).map(lienP));
   ajouter("partenaires_sans_whatsapp", "partenaires", false, actifs.filter((p) => telephonesDe(p).length && !telephonesDe(p).some((t) => t.whatsapp)).map(lienP));
-  ajouter("trajets_duree", "partenaires", true, trajets.map((t) => ({ t, e: ecartDuree(t) })).filter((x) => x.e !== null && x.e > 20).map(({ t, e }) => ({ id: t.id, lien: `#/trajets?de=${encodeURIComponent(t.de)}&vers=${encodeURIComponent(t.vers)}`, texte: `${t.de} → ${t.vers}`, detail: `${t.depart || "?"} → ${t.arrivee || "?"}, ${tr("durée écrite « {duree} » (écart {ecart} min)", { duree: t.duree, ecart: e })}` })));
+  ajouter("trajets_duree", "partenaires", true, trajets.map((t) => ({ t, e: ecartDuree(t) })).filter((x) => x.e !== null && x.e > regle.ecart_duree_min).map(({ t, e }) => ({ id: t.id, lien: `#/trajets?de=${encodeURIComponent(t.de)}&vers=${encodeURIComponent(t.vers)}`, texte: `${t.de} → ${t.vers}`, detail: `${t.depart || "?"} → ${t.arrivee || "?"}, ${tr("durée écrite « {duree} » (écart {ecart} min)", { duree: t.duree, ecart: e })}` })));
 
   // Réservations, clients, dossiers
   const annules = new Set((db.dossiers || []).filter((d) => d.annule).map((d) => d.id));
-  const clientDuDossier = new Map((db.dossiers || []).map((d) => [d.id, (db.clients || []).find((c) => c.id === d.client_id)]));
+  const clientsParId = new Map((db.clients || []).map((c) => [c.id, c]));
+  const clientDuDossier = new Map((db.dossiers || []).map((d) => [d.id, clientsParId.get(d.client_id)]));
+  const dossiers = new Map((db.dossiers || []).map((d) => [d.id, d]));
   const nomClient = (c) => (c ? [c.prenom, c.nom].filter(Boolean).join(" ") : "");
+  // Services à venir (17.11.2026, audit n° 45) : hors dossiers annulés, services annulés et frais de parc. L'heure et le lieu ne comptent que pour les jours
+  // proches (`horizon_jours`), le prix, le net et la commission pour tous. Le lieu est celui de la feuille du jour : le lieu de pickup, sinon l'hôtel du client.
+  const limite = aujourdhui ? plusJours(aujourdhui, regle.horizon_jours) : "9999-12-31";
+  const aVenir = (db.reservations || []).filter((r) => r.statut !== "annule" && !annules.has(r.dossier_id) && dossiers.has(r.dossier_id) && r.date_service && r.date_service >= aujourdhui && !estFraisDeParc(r));
+  const proches = aVenir.filter((r) => r.date_service <= limite);
+  const service = (r) => ({ id: r.id, lien: `#/dossier/${r.dossier_id}`, texte: `${dossiers.get(r.dossier_id).ref || ""} · ${r.libelle || ""}`, detail: [dateTexte(r.date_service), nomClient(clientDuDossier.get(r.dossier_id))].filter(Boolean).join(" · ") });
+  const parDate = (a, b) => String(a.date_service).localeCompare(String(b.date_service));
+  ajouter("services_sans_heure", "dossiers", false, proches.filter((r) => !String(r.heure_pickup || "").trim()).sort(parDate).map(service));
+  ajouter("services_sans_lieu", "dossiers", false, proches.filter((r) => !hotelEtChambre(clientDuDossier.get(r.dossier_id) || {}, r).hotel).sort(parDate).map(service));
+  // Prix vide, pas à zéro : une prestation offerte vaut 0 (décision du 17.11.2026).
+  ajouter("services_sans_prix", "dossiers", false, aVenir.filter((r) => r.montant_vente === null || r.montant_vente === undefined || r.montant_vente === "").sort(parDate).map(service));
+  if (droits.nets && !taxi) {
+    // Un service payé chez nous attend son net ; payé sur place, la commission que le prestataire reverse. Sans partenaire, ni l'un ni l'autre.
+    const netsRes = new Map((db.reservations_nets || []).map((n) => [n.reservation_id, n]));
+    const manque = (r, champ) => {
+      const n = netsRes.get(r.id);
+      return !n || n[champ] === null || n[champ] === undefined || n[champ] === "";
+    };
+    const avecPartenaire = aVenir.filter((r) => r.partenaire_id).sort(parDate);
+    ajouter("services_sans_net", "dossiers", false, avecPartenaire.filter((r) => !r.paye_sur_place && manque(r, "net_prevu")).map(service));
+    ajouter("services_sans_commission", "dossiers", false, avecPartenaire.filter((r) => r.paye_sur_place && manque(r, "commission_prevue")).map(service));
+  }
+  // Clients en double (« à relire ») : même téléphone (les 8 derniers chiffres, l'indicatif peut manquer), même e-mail ou même prénom et nom.
+  const clients = db.clients || [];
+  const chef = new Map(clients.map((c) => [c.id, c.id]));
+  const racine = (id) => (chef.get(id) === id ? id : racine(chef.get(id)));
+  const raisons = new Map();
+  const vus = new Map();
+  for (const c of clients) {
+    const chiffresTel = String(c.telephone || "").replace(/\D/g, "");
+    const nom = sansAccents([c.prenom, c.nom].join(" ")).replace(/[^a-z0-9]+/g, " ").trim();
+    const cles = [
+      chiffresTel.length >= Math.max(regle.chiffres_telephone, 8) ? ["telephone", chiffresTel.slice(-8)] : null,
+      String(c.email || "").trim() ? ["email", String(c.email).trim().toLowerCase()] : null,
+      String(c.prenom || "").trim() && String(c.nom || "").trim() ? ["nom", nom] : null,
+    ].filter(Boolean);
+    for (const [type, valeur] of cles) {
+      const k = `${type}:${valeur}`;
+      if (!vus.has(k)) {
+        vus.set(k, c.id);
+        continue;
+      }
+      const a = racine(vus.get(k));
+      const b = racine(c.id);
+      if (a !== b) chef.set(b, a);
+      raisons.set(c.id, [...(raisons.get(c.id) || []), type]);
+      raisons.set(vus.get(k), [...(raisons.get(vus.get(k)) || []), type]);
+    }
+  }
+  const paquets = new Map();
+  for (const c of clients) if (raisons.has(c.id)) paquets.set(racine(c.id), [...(paquets.get(racine(c.id)) || []), c]);
+  const NOM_RAISON = { telephone: tr("même téléphone"), email: tr("même e-mail"), nom: tr("même nom") };
+  ajouter("clients_en_double", "clients", true, [...paquets.values()].filter((l) => l.length > 1).map((l) => ({ id: l[0].id, lien: `#/client/${l[0].id}`, texte: l.map((c) => nomClient(c) || tr("(sans nom)")).join(" / "), detail: [...new Set(l.flatMap((c) => raisons.get(c.id) || []))].map((x) => NOM_RAISON[x]).join(", ") })));
   ajouter("clients_sans_contact", "clients", false, (db.clients || []).filter((c) => !String(c.telephone || "").replace(/\D/g, "") && !String(c.email || "").trim()).map((c) => ({ id: c.id, lien: `#/client/${c.id}`, texte: nomClient(c) || tr("(sans nom)"), detail: "" })));
   // Factures et devis : les documents de l'entreprise, quand l'écran a pu les charger (`db.documents`).
   const documents = db.documents || [];
-  const dossiers = new Map((db.dossiers || []).map((d) => [d.id, d]));
   const toutesPrestations = new Map((db.prestations || []).map((x) => [x.id, x]));
   const NOM_DOC = { devis: tr("devis"), facture: tr("facture"), facture_locale: tr("facture locale") };
   // Une note « à régler sur place » laissée par une prestation qui n'est pas un frais : à retirer du document (dans l'éditeur, « Supprimer » sur la ligne).
@@ -138,5 +221,6 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
   ajouter("dossiers_sans_responsable", "dossiers", false, (db.dossiers || []).filter((d) => !d.responsable_id && !d.annule).map((d) => ({ id: d.id, lien: `#/dossier/${d.id}`, texte: d.ref || tr("(sans référence)"), detail: nomClient((db.clients || []).find((c) => c.id === d.client_id)) })));
 
   const droitsOk = { partenaires: !!droits.partenaires, dossiers: !!droits.dossiers, clients: !!droits.clients };
-  return sorties.filter((s) => droitsOk[s.droit]);
+  // Dans l'ordre de CONTROLES (celui de l'écran de réglage) : les services à venir d'abord.
+  return sorties.filter((s) => droitsOk[s.droit]).sort((a, b) => CONTROLES.indexOf(a.cle) - CONTROLES.indexOf(b.cle));
 }

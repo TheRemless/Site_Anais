@@ -108,8 +108,9 @@ test("à vérifier : « à relire » pour les doutes, jamais pour les cas certai
 test("à vérifier : sans le droit « nets » le contrôle des nets n'existe pas, et chaque contrôle suit le droit de qui peut corriger", () => {
   assert.equal(par(aVerifier(db(), { droits: { ...tous, nets: false }, aujourdhui: "2026-11-12" }), "prestations_sans_net").length, 0);
   assert.ok(!aVerifier(db(), { droits: { ...tous, nets: false }, aujourdhui: "2026-11-12" }).some((c) => c.cle === "prestations_sans_net"));
-  const seulDossiers = aVerifier(db(), { droits: { dossiers: true }, aujourdhui: "2026-11-12" });
-  assert.deepEqual(seulDossiers.map((c) => c.cle).sort(), ["dossiers_sans_responsable"]);
+  // Avec le seul droit « dossiers » : les contrôles des dossiers et des services à venir (r4, sans heure, lieu ni prix), rien sur le catalogue ni les clients.
+  const seulDossiers = aVerifier(db(), { droits: { dossiers: true }, aujourdhui: "2026-11-12", reglage: { horizon_jours: 30 } });
+  assert.deepEqual(seulDossiers.map((c) => c.cle).sort(), ["dossiers_sans_responsable", "services_sans_heure", "services_sans_lieu", "services_sans_prix"]);
   assert.deepEqual(aVerifier(db(), { droits: {}, aujourdhui: "2026-11-12" }), []);
   // Aucune fuite de net dans les éléments rendus.
   assert.ok(!JSON.stringify(aVerifier(db(), { droits: { ...tous, nets: false }, aujourdhui: "2026-11-12" })).includes("800"));

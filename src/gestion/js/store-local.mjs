@@ -73,9 +73,10 @@ export function creer() {
 
   // Journal tenu à la main, comme le fait le déclencheur de la vraie base.
   const journaliser = (table, action, ligne, details = {}) => {
-    // Les tables de nets ne passent pas par le journal, comme dans la vraie base.
-    if (PARTENAIRES_NETS.includes(table)) return;
-    const libelle = { dossiers: ligne.ref, clients: [ligne.prenom, ligne.nom].filter(Boolean).join(" "), catalogue: ligne.libelle, roles: ligne.nom, taches: ligne.titre, pieces_jointes: ligne.nom, partenaires: ligne.nom, prestations: ligne.libelle, trajets: `${ligne.de} → ${ligne.vers}`, reservations: ligne.libelle, documents: `${ligne.type || ""} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim(), paiements: `${ligne.montant} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim() }[table] || "";
+    // Les tables de nets ne passent pas par le journal, comme dans la vraie base, sauf les nets et commissions des réservations : ceux-là n'y sont lisibles
+    // qu'avec le droit « nets » (migration du lot G, 17.11.2026).
+    if (PARTENAIRES_NETS.includes(table) && table !== "reservations_nets") return;
+    const libelle = { dossiers: ligne.ref, clients: [ligne.prenom, ligne.nom].filter(Boolean).join(" "), catalogue: ligne.libelle, roles: ligne.nom, taches: ligne.titre, pieces_jointes: ligne.nom, partenaires: ligne.nom, prestations: ligne.libelle, trajets: `${ligne.de} → ${ligne.vers}`, reservations: ligne.libelle, reservations_nets: (data.reservations.find((r) => r.id === ligne.reservation_id) || {}).libelle || "", documents: `${ligne.type || ""} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim(), paiements: `${ligne.montant} ${(data.dossiers.find((d) => d.id === ligne.dossier_id) || {}).ref || ""}`.trim() }[table] || "";
     data.journal.unshift({ id: Date.now() + Math.random(), created_at: new Date().toISOString(), entite_id: ligne.entite_id || null, user_id: utilisateur.user_id, table_name: table, action, cible: ligne.id || "", libelle, details });
     data.journal.length = Math.min(data.journal.length, 500);
   };
@@ -168,7 +169,9 @@ export function creer() {
       if (TABLES.includes(table) && !["catalogue", "trajets", ...PARTENAIRES_NETS].includes(table)) ligne.cree_par = utilisateur.user_id;
       data[table].push(ligne);
       if (table === "entites") data.reglages[ligne.id] = structuredClone(REGLAGES_NEUTRE);
-      journaliser(table, "insert", ligne);
+      // Comme le déclencheur de la base : la création d'un net ou d'une commission note les valeurs saisies.
+      const saisies = table === "reservations_nets" ? Object.fromEntries(Object.entries(ligne).filter(([k, v]) => !["id", "entite_id", "reservation_id", "created_at"].includes(k) && v !== null && v !== undefined && v !== "").map(([k, v]) => [k, { avant: null, apres: v }])) : {};
+      journaliser(table, "insert", ligne, saisies);
       sauve();
       return structuredClone(ligne);
     },
@@ -317,9 +320,10 @@ export function creer() {
     },
     async journal({ entiteId, table, userId, avant, limite = 50 }) {
       if (!permissionsDans(contexte(), entiteId).includes("journal.voir")) return [];
+      const nets = permissionsDans(contexte(), entiteId).includes("partenaires.nets");
       return structuredClone(
         data.journal
-          .filter((l) => l.entite_id === entiteId && (!table || l.table_name === table) && (!userId || l.user_id === userId) && (!avant || l.created_at < avant))
+          .filter((l) => l.entite_id === entiteId && (!table || l.table_name === table) && (!userId || l.user_id === userId) && (!avant || l.created_at < avant) && (nets || l.table_name !== "reservations_nets"))
           .slice(0, limite)
           .map((l) => ({ ...l, auteur: nomDe(l.user_id) }))
       );
