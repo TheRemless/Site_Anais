@@ -671,6 +671,13 @@ export function formulairePrestation(x, apres, options = {}) {
   const unite = h("select", { id: "x-unite" }, Object.keys(UNITES).map((k) => h("option", { value: k }, k ? libelleUnite(k) : tr("sans unité"))));
   // « Sans unité » reste « sans unité » à la réouverture (audit n° 11) ; Taxi : « par véhicule » pour une nouvelle course (audit n° 20).
   unite.value = options.copie ? x.unite || "" : uniteInitiale(x, taxi);
+  // Décision 3 de Jérémy (17.11.2026), lot D : sans le droit « prix de vente », les prix se lisent mais ne se changent pas (la base le refuse
+  // aussi, migration 36). Une prestation créée ou dupliquée sans ce droit naît sans prix : l'administratrice le mettra.
+  const prixFige = !peut("partenaires.prix");
+  if (prixFige) {
+    for (const c of [prixVente, prixEnfant]) (c.readOnly = true), !x.id && (c.value = "");
+    unite.disabled = !!x.id;
+  }
   const net = nombre("x-net", n && n.net != null ? n.net : "");
   const netEnfant = nombre("x-net-enf", n && n.net_enfant != null ? n.net_enfant : "");
   const texte = (id, v, attrs = {}) => h("input", { id, value: v || "", ...attrs });
@@ -777,7 +784,7 @@ export function formulairePrestation(x, apres, options = {}) {
     aidePartenaire,
     champ(tr("Libellé"), libelle),
     champ(tr("Libellé en anglais"), libelleEn),
-    h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente"), prixVente, tr("Vide : « prix à saisir » à chaque client. 0 : offert.")), champ(tr("Unité"), unite), champ(tr("Prix enfant"), prixEnfant), nets ? champ(tr("Prix net"), net, tr("Ce que le partenaire facture.")) : null, nets ? champ(tr("Net enfant"), netEnfant, tr("Pris pour la ligne enfant.")) : null),
+    h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente"), prixVente, prixFige ? tr("Prix, prix enfant et unité : réservés à qui a le droit « Modifier les prix de vente ».") : tr("Vide : « prix à saisir » à chaque client. 0 : offert.")), champ(tr("Unité"), unite), champ(tr("Prix enfant"), prixEnfant), nets ? champ(tr("Prix net"), net, tr("Ce que le partenaire facture.")) : null, nets ? champ(tr("Net enfant"), netEnfant, tr("Pris pour la ligne enfant.")) : null),
     aideEnfant,
     h("div", { class: "grille-form" }, champ(tr("Horaires"), horaires), champ(tr("Durée"), duree, tr("Imprimée sur le voucher.")), champ(tr("Capacité"), capacite), champ(tr("Pour qui"), qui)),
     champBateau,

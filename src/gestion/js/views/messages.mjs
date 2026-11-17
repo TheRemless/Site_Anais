@@ -29,6 +29,29 @@ const NOMS_VARIABLES = { client: N_("nom du client"), prenom: N_("prénom"), dat
 const defautsEntreprise = () => messagesDefautPour(reglages()).filter((m) => langueClient(reglages()) !== "en" || m.langue !== "fr");
 const nomLangue = (code) => (LANGUES.find(([c]) => c === code) || [code, code])[1];
 
+// Usages d'un message, en liste fermée (audit n° 41) : c'est l'usage qui dit quand l'outil propose le message (le bouton « Message client »
+// d'une réservation propose « confirmation » ou « rappel », la carte « Hier » propose « avis »…). Un usage tapé à la main ne servait jamais.
+// `modes` : les entreprises où l'usage sert. Vers un partenaire, seule la commission de Taxi reste (Anaïs écrit elle-même aux prestataires).
+export const USAGES = [
+  { cle: "confirmation", pour: "client", libelle: N_("Confirmation de la réservation"), modes: ["excursions", "taxi"] },
+  { cle: "rappel", pour: "client", libelle: N_("Rappel de la veille"), modes: ["excursions", "taxi"] },
+  { cle: "avis", pour: "client", libelle: N_("Demande d'avis"), modes: ["excursions", "taxi"] },
+  { cle: "meteo", pour: "client", libelle: N_("Météo, report ou annulation"), modes: ["excursions", "taxi"] },
+  { cle: "reponse", pour: "client", libelle: N_("Réponse à une demande"), modes: ["excursions", "taxi"] },
+  { cle: "envoi_facture", pour: "client", libelle: N_("Envoi de la facture (message)"), modes: ["sur_mesure", "excursions"] },
+  { cle: "objet_facture", pour: "client", libelle: N_("Envoi de la facture (objet de l'e-mail)"), modes: ["sur_mesure", "excursions"] },
+  { cle: "envoi_devis", pour: "client", libelle: N_("Envoi du devis (message)"), modes: ["sur_mesure"] },
+  { cle: "objet_devis", pour: "client", libelle: N_("Envoi du devis (objet de l'e-mail)"), modes: ["sur_mesure"] },
+  { cle: "commission", pour: "partenaire", libelle: N_("Commission d'une course (au chauffeur)"), modes: ["taxi"] },
+  { cle: "commissions", pour: "partenaire", libelle: N_("Commissions de plusieurs courses (au chauffeur)"), modes: ["taxi"] },
+];
+const modeEntreprise = () => (modeTaxi() ? "taxi" : reglages().fonctionnement === "excursions" ? "excursions" : "sur_mesure");
+export const usagesProposes = (mode) => USAGES.filter((u) => u.modes.includes(mode));
+const libelleUsage = (cle) => {
+  const u = USAGES.find((x) => x.cle === cle);
+  return u ? tr(u.libelle) : cle ? tr("« {cle} » (ancien usage)", { cle }) : tr("Aucun : seulement choisi à la main");
+};
+
 async function copier(texte) {
   try {
     await navigator.clipboard.writeText(texte);
@@ -103,10 +126,12 @@ export function ouvrirMessage({ titre = tr("Copier un message"), vars = {}, cle 
 // ---- Écran de gestion des messages types -----------------------------------------------------------------
 function formulaireMessage(m, apres) {
   const titre = h("input", { id: "m-titre", value: m.titre || "", required: true });
-  const pour = h("select", { id: "m-pour" }, destinataires().map(([c, l]) => h("option", { value: c }, tr(l))));
-  pour.value = destinataireMessage(m);
-  const cle = h("input", { id: "m-cle", value: m.cle || "", list: "m-cles", placeholder: tr("confirmation, rappel, avis, meteo, partenaire, relance, modification, annulation") });
-  const cles = h("datalist", { id: "m-cles" }, [...new Set(messagesTypes().map((x) => x.cle).filter(Boolean))].map((c) => h("option", { value: c })));
+  // L'usage se choisit dans une liste : il décide quand le message est proposé, et donc son destinataire. Un ancien usage tapé à la main reste choisi.
+  const usages = usagesProposes(modeEntreprise());
+  const ancien = m.cle && !usages.some((u) => u.cle === m.cle) ? m.cle : null;
+  const cle = h("select", { id: "m-cle" }, ...usages.map((u) => h("option", { value: u.cle }, tr(u.libelle))), ancien ? h("option", { value: ancien }, libelleUsage(ancien)) : null, h("option", { value: "" }, libelleUsage("")));
+  cle.value = m.id ? m.cle || "" : usages[0].cle;
+  const actif = h("input", { id: "m-actif", type: "checkbox", checked: m.actif !== false });
   const langue = h("select", { id: "m-langue" }, LANGUES.map(([c, l]) => h("option", { value: c }, l)));
   langue.value = m.langue || "fr";
   const corps = h("textarea", { id: "m-corps", rows: 10, required: true });
@@ -118,7 +143,8 @@ function formulaireMessage(m, apres) {
       onsubmit: async (e) => {
         e.preventDefault();
         const liste = messagesTypes().map((x) => ({ ...x }));
-        const valeurs = { id: m.id || uid(), pour: pour.value, titre: titre.value.trim(), cle: cle.value.trim(), langue: langue.value, corps: corps.value.trim() };
+        const u = USAGES.find((x) => x.cle === cle.value);
+        const valeurs = { id: m.id || uid(), pour: u ? u.pour : cle.value === ancien ? destinataireMessage(m) : "client", titre: titre.value.trim(), cle: cle.value, langue: langue.value, corps: corps.value.trim(), ...(actif.checked ? {} : { actif: false }) };
         const i = liste.findIndex((x) => x.id === valeurs.id);
         if (i >= 0) liste[i] = valeurs;
         else liste.push(valeurs);
@@ -131,9 +157,16 @@ function formulaireMessage(m, apres) {
         }
       },
     },
-    h("div", { class: "grille-form" }, champ(tr("Destinataire"), pour, tr("Proposé depuis le bouton Client ou le bouton Partenaire d'une réservation.")), champ(tr("Titre"), titre), champ(tr("Usage"), [cle, cles], tr("Le même usage dans plusieurs langues : le bon est proposé selon la langue.")), champ(tr("Langue"), langue)),
+    h("div", { class: "grille-form" }, champ(tr("Titre"), titre), champ(tr("Usage"), cle, tr("Quand l'outil propose ce message. Le même usage dans plusieurs langues : le bon est proposé selon la langue.")), champ(tr("Langue"), langue)),
+    h("label", { class: "case", for: "m-actif" }, actif, tr("Proposer ce message")),
+    h("p", { class: "aide" }, tr("Décoché, ni ce message ni le modèle de départ du même usage ne sont proposés : l'usage est désactivé dans cette langue.")),
     champ(tr("Texte"), corps, tr("Variables : {client} {prenom} {date} {hotel} {heure} {a_heure} {personnes} {prestation} {partenaire} {reference} {entreprise} {telephone} {lien_avis}")),
-    h("div", { class: "actions" }, m.id ? h("button", { class: "danger", type: "button", onclick: async () => { if (await confirmer(tr("Supprimer « {titre} » ?", { titre: m.titre }), tr("Supprimer"), true)) { await enregistrerReglages({ ...reglages(), messages: messagesTypes().filter((x) => x.id !== m.id) }); apres(); } } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
+    h("div", { class: "actions" }, m.id ? h("button", { class: "danger", type: "button", onclick: async () => {
+      // Supprimer le seul message d'un usage fait revenir le modèle de départ : on le dit, et on renvoie vers « Proposer ce message ».
+      const defautRevient = defautsEntreprise().some((d) => d.cle === m.cle && d.langue === m.langue && !messagesTypes().some((x) => x.id !== m.id && x.cle === m.cle && x.langue === m.langue));
+      const texte = defautRevient ? tr("Supprimer « {titre} » ? Le modèle de départ de cet usage sera de nouveau proposé à sa place. Pour ne plus rien proposer, décochez plutôt « Proposer ce message ».", { titre: m.titre }) : tr("Supprimer « {titre} » ?", { titre: m.titre });
+      if (await confirmer(texte, tr("Supprimer"), true)) { await enregistrerReglages({ ...reglages(), messages: messagesTypes().filter((x) => x.id !== m.id) }); apres(); }
+    } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
   );
 }
 
@@ -155,8 +188,11 @@ export function vueMessages() {
     }
   };
   // Remettre les modèles de départ sans effacer ceux de l'entreprise : seuls les modèles d'origine reprennent leur texte, les autres restent.
+  // Seuls les modèles visibles sont remis : jamais de modèle vers le prestataire (audit n° 51). Un message désactivé le reste.
   const remettre = async () => {
-    const r = gabaritsRemis(tous, defautsEntreprise());
+    const remis = gabaritsRemis(tous.filter(visible), defautsEntreprise().filter(visible));
+    const desactives = new Set(tous.filter((m) => m.actif === false).map((m) => m.id));
+    const r = { ...remis, liste: [...remis.liste.map((m) => (desactives.has(m.id) ? { ...m, actif: false } : m)), ...tous.filter((m) => !visible(m))] };
     const texte = r.gardes
       ? tr("Remettre le texte de départ de {remis} modèles et ajouter {ajoutes} modèles manquants ? Vos {gardes} modèles créés à part sont gardés.", { remis: r.remis, ajoutes: r.ajoutes, gardes: r.gardes })
       : tr("Remettre le texte de départ de {remis} modèles et ajouter {ajoutes} modèles manquants ? Les modifications de ces modèles seront perdues.", { remis: r.remis, ajoutes: r.ajoutes });
@@ -181,7 +217,7 @@ export function vueMessages() {
         null,
         h("h2", null, tr("{pour}, {langue}", { pour: tr(nomPour), langue: { fr: tr("en français"), en: tr("en anglais"), th: tr("en thaï") }[code] || nom })),
         code === "th" ? h("p", { class: "aide" }, tr("Propositions à faire relire par une personne qui lit le thaï avant usage réel.")) : null,
-        h("ul", { class: "cartes" }, du.map((m) => h("li", { class: "carte" }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, m.titre, h("span", { class: "tag" }, m.cle)), h("pre", { class: "message-texte" }, m.corps), h("span", { class: "carte-pied" }, h("span"), h("span", { class: "carte-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => copier(m.corps) }, tr("Copier")), admin ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrir(m) }, tr("Modifier")) : null))))))
+        h("ul", { class: "cartes" }, du.map((m) => h("li", { class: `carte${m.actif === false ? " archive" : ""}` }, h("div", { class: "carte-lien statique" }, h("span", { class: "carte-titre" }, m.titre, h("span", { class: "tag" }, libelleUsage(m.cle)), m.actif === false ? h("span", { class: "tag" }, tr("Désactivé")) : null), h("pre", { class: "message-texte" }, m.corps), h("span", { class: "carte-pied" }, h("span"), h("span", { class: "carte-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => copier(m.corps) }, tr("Copier")), admin ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrir(m) }, tr("Modifier")) : null))))))
       );
     }));
 
@@ -201,7 +237,7 @@ export function vueMessages() {
   return h(
     "div",
     { "data-titre": tr("Messages") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Messages types")), h("p", { class: "sous" }, modeTaxi() ? tr("Au client : confirmation, avis. Au partenaire : demande, relance, modification, annulation. À copier depuis une réservation.") : tr("Au client : confirmation, rappel de la veille, avis, météo. Au partenaire : demande, relance, modification, annulation. À copier depuis une réservation."))), admin ? h("div", { class: "entete-actions" }, manquants.length ? h("button", { class: "secondaire", type: "button", onclick: ajouterManquants }, tr("Ajouter les modèles manquants")) : null, h("button", { class: "secondaire", type: "button", onclick: remettre }, tr("Remettre ceux de départ")), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, tr("Nouveau message"))) : null),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Messages types")), h("p", { class: "sous" }, modeTaxi() ? tr("Au client : confirmation, avis. Au chauffeur : la commission des courses de la veille. À copier depuis une réservation.") : tr("Au client : confirmation, rappel de la veille, avis, météo, réponse à une demande. À copier depuis une réservation ou une demande."))), admin ? h("div", { class: "entete-actions" }, manquants.length ? h("button", { class: "secondaire", type: "button", onclick: ajouterManquants }, tr("Ajouter les modèles manquants")) : null, h("button", { class: "secondaire", type: "button", onclick: remettre }, tr("Remettre ceux de départ")), h("button", { class: "principal", type: "button", onclick: () => ouvrir({}) }, tr("Nouveau message"))) : null),
     tous.length > 4 ? barre.noeud : null,
     zone,
     !tous.length ? h("p", { class: "vide-court" }, tr("Aucun message type.")) : null,

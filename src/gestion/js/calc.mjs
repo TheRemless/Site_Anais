@@ -305,11 +305,18 @@ export function echeanceAcompte(dossier, reglages) {
 }
 
 // Échéance du solde. Les conditions disent « à la réception du carnet de voyage » : une fois le carnet envoyé, le solde est dû ce jour-là.
-// Tant qu'il n'est pas noté comme envoyé, l'ancienne règle reste : le solde est relevé 30 jours avant le départ.
+// Tant qu'il n'est pas noté comme envoyé, l'ancienne règle reste : le solde est relevé 30 jours avant le départ, ou le nombre de jours
+// réglé dans Réglages ZTP (conditions.solde_jours, lot D du 17.11.2026). Vide ou illisible : 30 jours.
 export const JOURS_SOLDE_AVANT_DEPART = 30;
-export function echeanceSolde(dossier) {
+export function joursSolde(conditions) {
+  const v = conditions && conditions.solde_jours;
+  if (v === null || v === undefined || String(v).trim() === "") return JOURS_SOLDE_AVANT_DEPART;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : JOURS_SOLDE_AVANT_DEPART;
+}
+export function echeanceSolde(dossier, reglages = null) {
   if (dossier.carnet_envoye_le) return { date: dossier.carnet_envoye_le, source: "carnet" };
-  if (dossier.date_depart) return { date: ajouterJours(dossier.date_depart, -JOURS_SOLDE_AVANT_DEPART), source: "depart" };
+  if (dossier.date_depart) return { date: ajouterJours(dossier.date_depart, -joursSolde(reglages && reglages.conditions)), source: "depart" };
   return null;
 }
 
@@ -368,6 +375,7 @@ export function resume(dossier, db, reglages) {
 // Ce qui demande une action, du plus urgent au moins urgent.
 export function aFaire(resumes, today, reglages) {
   const relance = joursRelance(reglages.conditions);
+  const avantDepart = joursSolde(reglages.conditions);
   const items = [];
   for (const r of resumes) {
     const d = r.dossier;
@@ -387,7 +395,7 @@ export function aFaire(resumes, today, reglages) {
       if (d.carnet_envoye_le && d.carnet_envoye_le <= today) items.push({ type: "solde_du", resume: r, jours: joursEntre(d.carnet_envoye_le, today) });
       else if (d.date_depart) {
         const avant = joursEntre(today, d.date_depart);
-        if (avant >= 0 && avant <= JOURS_SOLDE_AVANT_DEPART) items.push({ type: "solde_proche", resume: r, jours: avant });
+        if (avant >= 0 && avant <= avantDepart) items.push({ type: "solde_proche", resume: r, jours: avant });
       }
     }
   }

@@ -7,7 +7,8 @@ import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 
-const CLE = "gestion-zwald-demo-v12";
+// v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
+const CLE = "gestion-zwald-demo-v13";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
 // Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
 const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches"];
@@ -31,6 +32,8 @@ export function creer() {
     // Corbeille des documents et compteurs de numéros, comme la base (migration 31). L'acompte figé du dossier existe comme colonne.
     data.corbeille_documents = data.corbeille_documents || [];
     data.compteurs_ref = data.compteurs_ref || {};
+    // Historique des réglages (migration 36), comme la base : la version remplacée à chaque enregistrement, 60 au plus par entreprise.
+    data.reglages_historique = data.reglages_historique || [];
     for (const d of data.dossiers || []) if (!("acompte_pct" in d)) d.acompte_pct = null;
     let choisi = null;
     try {
@@ -75,6 +78,17 @@ export function creer() {
   const accessibles = () => (utilisateur.super_admin ? data.entites.map((e) => e.id) : data.membres.filter((m) => m.user_id === utilisateur.user_id).map((m) => m.entite_id));
   const nomDe = (id) => (data.profils.find((p) => p.user_id === id) || {}).nom || null;
 
+  // Comme le déclencheur garder_prix_vente (migration 36) : sans le droit « partenaires.prix », un prix de vente ne change pas et un tarif ou un
+  // trajet créé naît sans prix.
+  const garderPrix = (table, avant, apres) => {
+    if (!["prestations", "trajets"].includes(table) || droit(apres.entite_id, "partenaires.prix")) return;
+    const n = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
+    const enfant = (x) => n(((x && x.details) || {}).enfant);
+    const prix = table === "prestations" ? (x) => [n(x.prix_vente), enfant(x), x.unite || ""] : (x) => [n(x.prix_adulte), n(x.prix_enfant)];
+    const change = avant ? JSON.stringify(prix(avant)) !== JSON.stringify(prix(apres)) : prix(apres).slice(0, 2).some((v) => v !== null);
+    if (change) throw new Error(tr("Le prix de vente est réservé aux personnes qui ont le droit « Modifier les prix de vente ». Laissez le prix tel quel, ou demandez à l'administratrice."));
+  };
+
   // Journal tenu à la main, comme le fait le déclencheur de la vraie base.
   const journaliser = (table, action, ligne, details = {}) => {
     // Les tables de nets ne passent pas par le journal, comme dans la vraie base, sauf les nets et commissions des réservations : ceux-là n'y sont lisibles
@@ -93,6 +107,47 @@ export function creer() {
     async connecter() {},
     async deconnecter() {},
     async deconnecterPartout() {},
+    // ---- Comptes (lot D) : la démo crée et supprime les comptes dans le navigateur ; les liens sont factices, rien n'est envoyé.
+    retourLien() {
+      return { type: null, erreur: null };
+    },
+    async invitation(corps) {
+      await new Promise((r) => setTimeout(r, 300));
+      if (!utilisateur.super_admin) return { erreur: "droit_manquant" };
+      const lienDemo = (type) => `${location.origin}${location.pathname}?demo#demo-${type}-${Math.random().toString(36).slice(2, 10)}`;
+      if (corps.action === "inviter") {
+        const email = String(corps.email || "").trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { erreur: "email_invalide" };
+        if (data.profils.some((p) => (p.email || "").toLowerCase() === email)) return { erreur: "deja_inscrit" };
+        const acces = corps.acces || [];
+        if (!acces.every((a) => data.roles.some((r) => r.id === a.role_id && r.entite_id === a.entite_id))) return { erreur: "acces_invalide" };
+        const p = { user_id: uid(), email, nom: corps.nom || null, super_admin: false, actif: true, langue: corps.langue || null };
+        data.profils.push(p);
+        for (const a of acces) data.membres.push({ user_id: p.user_id, entite_id: a.entite_id, role_id: a.role_id });
+        sauve();
+        return { user_id: p.user_id, lien: lienDemo("invitation") };
+      }
+      const cible = data.profils.find((p) => p.user_id === corps.user_id);
+      if (!cible) return { erreur: "personne_inconnue" };
+      if (corps.action === "lien_mot_de_passe") return { lien: lienDemo("mot-de-passe") };
+      if (corps.action === "supprimer") {
+        if (cible.user_id === utilisateur.user_id) return { erreur: "soi_meme" };
+        if (cible.super_admin && data.profils.filter((p) => p.super_admin && p.actif).length <= 1) return { erreur: "derniere_administratrice" };
+        data.profils = data.profils.filter((p) => p !== cible);
+        data.membres = data.membres.filter((m) => m.user_id !== cible.user_id);
+        for (const d of data.dossiers) if (d.responsable_id === cible.user_id) d.responsable_id = null;
+        sauve();
+        return { ok: true };
+      }
+      return { erreur: "action_inconnue" };
+    },
+    async motDePasseOublie() {},
+    async changerMotDePasse() {
+      await new Promise((r) => setTimeout(r, 200));
+    },
+    async historiqueReglages(entiteId) {
+      return structuredClone(data.reglages_historique.filter((x) => x.entite_id === entiteId));
+    },
     // Factures pour la fiduciaire (migration 28) : mêmes règles que les fonctions de la base, sur les données du navigateur.
     async fiduciaireListe() {
       return structuredClone(facturesVisibles(data, { droit, voit }));
@@ -169,6 +224,7 @@ export function creer() {
     },
     async inserer(table, row) {
       const ligne = { id: uid(), created_at: aujourdhui(), ...row };
+      garderPrix(table, null, ligne);
       // Comme la base (migration 31) : un document écrit toujours sa devise, un dossier a sa colonne d'acompte figé.
       if (table === "documents" && ligne.contenu && !ligne.contenu.devise) ligne.contenu = { ...ligne.contenu, devise: (data.reglages[ligne.entite_id] || {}).devise || "CHF" };
       if (table === "dossiers" && !("acompte_pct" in ligne)) ligne.acompte_pct = null;
@@ -187,6 +243,7 @@ export function creer() {
       // Même contrôle que la base : la ligne a changé depuis qu'on l'a lue (autre onglet), rien n'est écrit.
       if (avant && ligne.updated_at && ligne.updated_at !== avant) throw Object.assign(new Error(tr("Cette fiche a été modifiée par quelqu'un d'autre depuis que vous l'avez ouverte.")), { conflit: true });
       patch = { ...patch };
+      garderPrix(table, ligne, { ...ligne, ...patch });
       delete patch.updated_at;
       if (VERSIONNEES.includes(table)) patch.updated_at = new Date().toISOString();
       const details = {};
@@ -213,6 +270,13 @@ export function creer() {
       sauve();
     },
     async enregistrerReglages(entiteId, valeur) {
+      const ancienne = data.reglages[entiteId];
+      if (ancienne && JSON.stringify(ancienne) !== JSON.stringify(valeur)) {
+        data.reglages_historique.unshift({ id: Date.now() + Math.random(), entite_id: entiteId, valeur: structuredClone(ancienne), version_du: (data.reglages_maj || {})[entiteId] || null, remplace_le: new Date().toISOString(), remplace_par: utilisateur.user_id });
+        const garder = new Set(data.reglages_historique.filter((x) => x.entite_id === entiteId).slice(0, 60));
+        data.reglages_historique = data.reglages_historique.filter((x) => x.entite_id !== entiteId || garder.has(x));
+      }
+      (data.reglages_maj ||= {})[entiteId] = new Date().toISOString();
       data.reglages[entiteId] = valeur;
       journaliser("reglages", "update", { entite_id: entiteId, id: entiteId });
       sauve();

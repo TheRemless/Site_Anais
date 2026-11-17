@@ -161,6 +161,9 @@ function formulaireTrajet(t, apres, options = {}) {
   const nombre = (id, v) => h("input", { id, type: "number", min: "0", step: "1", value: v ?? "", inputmode: "numeric" });
   const ad = nombre("f-ad", t.prix_adulte);
   const ch = nombre("f-ch", t.prix_enfant);
+  // Décision 3 (lot D) : sans le droit « prix de vente », les prix du trajet ne se changent pas ; un trajet créé ou dupliqué naît sans prix.
+  const prixFige = !peut("partenaires.prix");
+  if (prixFige) for (const c of [ad, ch]) (c.readOnly = true), !t.id && (c.value = "");
   const adn = nombre("f-adn", n && n.net_adulte != null ? n.net_adulte : "");
   const chn = nombre("f-chn", n && n.net_enfant != null ? n.net_enfant : "");
   const bebe = h("input", { id: "f-bebe", value: t.bebe || "", placeholder: tr("Gratuit") });
@@ -200,7 +203,7 @@ function formulaireTrajet(t, apres, options = {}) {
     champ(tr("Compagnie"), cie),
     h("div", { class: "grille-form" }, champ(tr("Départ"), [de, lieuxListe]), champ(tr("Arrivée"), vers), champ(tr("Type"), [mode, modes])),
     h("div", { class: "grille-form compacte" }, champ(tr("Heure de départ"), depart), champ(tr("Heure d'arrivée"), arrivee), champ(tr("Durée"), duree)),
-    h("div", { class: "grille-form compacte" }, champ(tr("Prix adulte"), ad), champ(tr("Prix enfant"), ch), nets ? champ(tr("Net adulte"), adn) : null, nets ? champ(tr("Net enfant"), chn) : null),
+    h("div", { class: "grille-form compacte" }, champ(tr("Prix adulte"), ad, prixFige ? tr("Réservé à qui a le droit « Modifier les prix de vente ».") : null), champ(tr("Prix enfant"), ch), nets ? champ(tr("Net adulte"), adn) : null, nets ? champ(tr("Net enfant"), chn) : null),
     h("div", { class: "grille-form" }, champ(tr("Bébé"), bebe), champ(tr("Période, en clair"), periode, tr("Vide : « toute la période du contrat » quand il n'y a pas de fenêtre."))),
     h("div", { class: "champ" }, h("p", { class: "etiquette" }, tr("Fenêtres de circulation")), fenetres.noeud, h("p", { class: "aide" }, tr("Du … au …, une ligne par période. Aucune fenêtre : le trajet circule toute l'année."))),
     h("label", { class: "case", for: "f-actif" }, actif, tr("Proposé pour les nouvelles saisies")),

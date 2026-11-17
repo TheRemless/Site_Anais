@@ -4,6 +4,7 @@ import { createClient } from "../vendor/supabase.mjs";
 import { tr } from "./i18n.mjs";
 import { separerNets, fusionnerNets } from "./nets-documents.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
+import { lireRetourLien } from "./compte-calc.mjs";
 
 // La copie de la feuille du jour gardée sur ce téléphone ne survit pas à une déconnexion.
 const effacerCopieHorsLigne = () => {
@@ -48,7 +49,13 @@ const AVEC_DATE = ["partenaires", "prestations"];
 const CATALOGUE_AGE_MAX = 15 * 60 * 1000;
 
 export function creer(config, { client, maintenant = () => Date.now() } = {}) {
+  // Retour d'un lien d'invitation ou de mot de passe (lot D) : lu AVANT que la bibliothèque n'ouvre la session et n'efface l'adresse.
+  // Une erreur (lien expiré) est effacée de l'adresse ici : elle n'est pas un écran de l'outil.
+  let retour = typeof location !== "undefined" ? lireRetourLien(location.hash) : { type: null, erreur: null };
+  if (retour.erreur && typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
   const sb = client || createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
+  // Adresse de retour des liens : l'outil lui-même (elle doit figurer dans les « Redirect URLs » de Supabase, voir mise-en-route.md).
+  const adresseOutil = () => `${location.origin}${location.pathname}`;
 
   // Migration 16 : les nets des documents sont dans documents_nets (la table existe pour tout le monde, mais ne renvoie rien sans le droit « nets »).
   // La détection ne garde en mémoire que ce qui est sûr : « la table est là » (vrai) ou « la table n'existe pas » (faux, migration 16 pas appliquée).
@@ -161,6 +168,51 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         /* réponse sans JSON : traitée comme une indisponibilité */
       }
       return { erreur: "indisponible" };
+    },
+    // ---- Comptes (lot D, 17.11.2026) ----
+    // Ce que le lien ouvert a demandé (« invite » ou « recovery ») ou son erreur ; rendu une seule fois.
+    retourLien() {
+      const r = retour;
+      retour = { type: null, erreur: null };
+      return r;
+    },
+    // Fonction « invitation » (administratrice générale) : inviter, lien de mot de passe, supprimer un compte. Renvoie la réponse, ou { erreur }.
+    async invitation(corps) {
+      const { data, error } = await sb.functions.invoke("invitation", { body: { ...corps, retour: adresseOutil() } });
+      if (!error) return data;
+      try {
+        const detail = error.context && typeof error.context.json === "function" ? await error.context.json() : null;
+        if (detail && detail.erreur) return detail;
+      } catch {
+        /* réponse sans JSON : fonction absente ou en panne */
+      }
+      return { erreur: "indisponible" };
+    },
+    // « Mot de passe oublié » sur l'écran de connexion : Supabase envoie l'e-mail (son serveur d'envoi doit être réglé, voir mise-en-route.md).
+    async motDePasseOublie(email) {
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: adresseOutil() });
+      if (error) throw new Error(error.message);
+    },
+    // Nouveau mot de passe de la personne connectée. `actuel` : vérifié d'abord quand on le change depuis le menu du compte
+    // (pas après un lien d'invitation ou de mot de passe oublié, où la personne ne le connaît pas).
+    async changerMotDePasse(nouveau, actuel = null) {
+      if (actuel !== null) {
+        const { data } = await sb.auth.getSession();
+        const email = data && data.session && data.session.user.email;
+        const { error } = await sb.auth.signInWithPassword({ email, password: actuel });
+        if (error) throw new Error(tr("Le mot de passe actuel n'est pas le bon."));
+      }
+      const { error } = await sb.auth.updateUser({ password: nouveau });
+      if (error) throw new Error(/different from the old|same/i.test(error.message) ? tr("Le nouveau mot de passe doit être différent de l'ancien.") : error.message);
+    },
+    // Versions précédentes des réglages (migration 36). null tant que la migration n'est pas appliquée.
+    async historiqueReglages(entiteId) {
+      const { data, error } = await sb.from("reglages_historique").select("id, valeur, version_du, remplace_le, remplace_par").eq("entite_id", entiteId).order("remplace_le", { ascending: false }).limit(60);
+      if (error) {
+        if (error.code === "42P01" || error.code === "PGRST205") return null;
+        throw new Error(error.message);
+      }
+      return data;
     },
     // Se déconnecter ferme cet appareil seulement (par défaut la bibliothèque ferme TOUTES les sessions : se déconnecter sur l'ordinateur coupait aussi l'iPhone).
     // La synchronisation a écarté le résultat de la dernière lecture (une écriture a eu lieu pendant la lecture) : le catalogue lu n'est pas installé, on le relira.

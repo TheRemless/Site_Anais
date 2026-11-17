@@ -125,7 +125,8 @@ const memeUsage = (a, b) => destinataireMessage(a) === destinataireMessage(b) &&
 export function gabaritsPropose(stockes, defauts, { pour, langue, cle = "" }) {
   const base = (stockes || []).filter((m) => m && m.corps && destinataireMessage(m) === pour);
   const virtuels = cle ? (defauts || []).filter((d) => d.cle === cle && destinataireMessage(d) === pour && !base.some((m) => memeUsage(m, d))).map((d) => ({ ...d, id: `defaut:${d.id}`, defaut: true, titre: d.titre })) : [];
-  const liste = [...virtuels, ...base];
+  // Un message désactivé (lot D) n'est pas proposé, et il empêche aussi le modèle de départ du même usage de revenir.
+  const liste = [...virtuels, ...base.filter((m) => m.actif !== false)];
   const deLangue = liste.filter((m) => m.langue === langue);
   if (!cle) return { liste, choisi: deLangue[0] || null };
   return { liste, choisi: deLangue.find((m) => m.cle === cle) || null };

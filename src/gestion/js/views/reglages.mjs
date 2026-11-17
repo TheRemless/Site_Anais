@@ -1,5 +1,5 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
-import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches } from "../etat.mjs";
+import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
 import { sectionVouchers } from "./reglages-vouchers.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
@@ -13,6 +13,9 @@ import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4, plierGroupes } from "./commun.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
 import { etatRappels } from "../rappels-etat.mjs";
+// Lot D (équipe, réglages, messages) : historique, archives, moyens de paiement, textes thaïs de l'écran de Mook.
+import { groupesModifies, nomGroupe, archiverVariante, reactiverVariante, variantesActives, identifiantMoyen } from "../reglages-calc.mjs";
+import { ecransThaiPour, texteValide, variablesDe } from "../textes-thai.mjs";
 import { VERSION_SAUVEGARDE, pourSauvegarde, verifierSauvegarde, absentsDeLaSauvegarde, reservationsPerdantLeurPrestataire } from "../sauvegarde.mjs";
 
 // Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
@@ -172,8 +175,8 @@ const LIBELLES = [
   ["devis", N_("Titre du devis")],
   ["facture", N_("Titre de la facture")],
   ["facture_locale", N_("Titre de la facture locale (vide : comme la facture)")],
-  ["ref_devis", N_("Début de la référence (devis)")],
-  ["ref_facture", N_("Début de la référence (facture)")],
+  ["ref_devis", N_("Texte devant le numéro (devis)")],
+  ["ref_facture", N_("Texte devant le numéro (facture)")],
   ["date_emission", N_("Libellé de la date")],
   ["unite", N_("Colonne du prix unitaire")],
   ["qte", N_("Colonne de la quantité")],
@@ -225,8 +228,10 @@ export function vueReglages() {
     indicateur.textContent = tr("Modifications non enregistrées");
     redessinerApercu();
   };
-  window.addEventListener("hashchange", () => (modifie = false), { once: true });
-  window.addEventListener("beforeunload", (e) => modifie && e.preventDefault());
+  // Quitter avec des modifications non enregistrées (menu, recherche, autre entreprise, retour) demande d'abord : app.mjs lit cette garde (audit n° 38).
+  const garde = () => modifie;
+  etat.garde = garde;
+  window.addEventListener("beforeunload", (e) => etat.garde === garde && modifie && e.preventDefault());
 
   // Champs liés à un chemin des réglages
   let compteur = 0;
@@ -326,6 +331,14 @@ export function vueReglages() {
   const dessinerVariantes = () => {
     blocVariantes.replaceChildren(
       ...r.textes.variantes.map((v, i) => {
+        // Une variante n'est jamais supprimée : des devis et des factures la citent. Archivée, elle n'est plus proposée et se réactive (audit n° 37).
+        const archiver = () => {
+          const liste = archiverVariante(r.textes.variantes, v.id);
+          if (!liste) return toast(tr("Gardez au moins une variante proposée."), true);
+          r.textes.variantes = liste;
+          dessinerVariantes();
+          marque();
+        };
         const nom = h("input", { id: `v${i}-nom`, value: v.nom, oninput: (e) => ((v.nom = e.target.value), marque()) });
         const corps = h("textarea", { id: `v${i}-corps`, rows: 8, oninput: (e) => ((v.corps = e.target.value), marque()) });
         corps.value = v.corps;
@@ -337,8 +350,16 @@ export function vueReglages() {
         clotureEn.value = v.cloture_en || "";
         return h(
           "div",
-          { class: "carte-ligne" },
-          h("div", { class: "carte-ligne-tete" }, h("strong", null, tr("Variante {x}", { x: i + 1 })), h("span", { class: "outils" }, r.textes.variantes.length > 1 ? h("button", { class: "lien danger-texte", type: "button", onclick: () => (r.textes.variantes.splice(i, 1), dessinerVariantes(), marque()) }, tr("Supprimer")) : null)),
+          { class: `carte-ligne${v.archive ? " archive" : ""}` },
+          h(
+            "div",
+            { class: "carte-ligne-tete" },
+            h("strong", null, v.archive ? tr("Variante {x} (archivée)", { x: i + 1 }) : tr("Variante {x}", { x: i + 1 })),
+            h("span", { class: "outils" }, v.archive
+              ? h("button", { class: "lien", type: "button", onclick: () => ((r.textes.variantes = reactiverVariante(r.textes.variantes, v.id)), dessinerVariantes(), marque()) }, tr("Réactiver"))
+              : variantesActives(r.textes.variantes).length > 1 ? h("button", { class: "lien", type: "button", title: tr("Elle n'est plus proposée aux nouveaux documents. Ceux qui l'utilisent la gardent."), onclick: archiver }, tr("Archiver")) : null)
+          ),
+          v.archive ? h("p", { class: "aide" }, tr("Plus proposée aux nouveaux documents. Les devis et factures qui l'utilisent la gardent telle quelle.")) : null,
           champ(tr("Nom (visible dans la liste du devis)"), nom),
           champ(tr("Conditions de paiement"), corps),
           champ(tr("Fin du texte"), cloture),
@@ -358,8 +379,10 @@ export function vueReglages() {
       ...r.paiement.autres.map((m, i) =>
         h(
           "div",
-          { class: "carte-ligne" },
-          h("div", { class: "carte-ligne-tete" }, h("strong", null, m.nom || tr("Informations {x}", { x: i + 2 })), h("span", { class: "outils" }, h("button", { class: "lien danger-texte", type: "button", onclick: () => (r.paiement.autres.splice(i, 1), dessinerAutres(), marque()) }, tr("Supprimer")))),
+          { class: `carte-ligne${m.archive ? " archive" : ""}` },
+          // Jamais supprimées : une facture qui les cite basculerait en silence sur le compte principal. Archivées, elles ne sont plus proposées (audit n° 37).
+          h("div", { class: "carte-ligne-tete" }, h("strong", null, m.archive ? tr("{nom} (archivées)", { nom: m.nom || tr("Informations {x}", { x: i + 2 }) }) : m.nom || tr("Informations {x}", { x: i + 2 })), h("span", { class: "outils" }, h("button", { class: "lien", type: "button", onclick: () => ((m.archive = !m.archive), dessinerAutres(), marque()) }, m.archive ? tr("Réactiver") : tr("Archiver")))),
+          m.archive ? h("p", { class: "aide" }, tr("Plus proposées aux nouveaux documents. Ceux qui les utilisent les impriment toujours.")) : null,
           texte(N_("Nom (visible dans la liste du document)"), `paiement.autres.${i}.nom`, { placeholder: tr("Par exemple : Banque thaïlandaise (THB)") }),
           texte(N_("Informations de paiement du pied de page"), `paiement.autres.${i}.texte`, { multi: true, rows: 5, aide: tr("Une ligne par information. **gras** possible.") }),
           image(N_("QR code (facultatif)"), `paiement.autres.${i}.qr_image`, { maxPx: 700 }),
@@ -374,14 +397,25 @@ export function vueReglages() {
   const entete = h("select", { id: uid(), onchange: (e) => ((r.apparence.entete = e.target.value), marque()) }, h("option", { value: "classique" }, tr("Classique : logo à droite, titre en grand")), h("option", { value: "centre" }, tr("Centrée : logo et titre du document au centre")));
   entete.value = r.apparence.entete;
 
-  const moyens = h("textarea", { id: uid(), rows: 5 });
-  moyens.value = r.listes.moyens.map((m) => m.label).join("\n");
-  moyens.addEventListener("input", () => {
-    const anciens = new Map(r.listes.moyens.map((m) => [m.label.toLowerCase(), m.id]));
-    const lignes = moyens.value.split("\n").map((x) => x.trim()).filter(Boolean);
-    r.listes.moyens = lignes.map((label) => ({ id: anciens.get(label.toLowerCase()) || slug(label) || "autre", label }));
-    marque();
-  });
+  // Moyens de paiement : une ligne par moyen. Renommer garde l'identifiant (les paiements enregistrés le citent) ; un moyen ne se supprime pas,
+  // il s'archive : il n'est plus proposé pour un nouveau paiement et garde son nom sur les anciens (audit n° 75).
+  const moyens = h("div", { class: "liste-moyens" });
+  const dessinerMoyens = () => {
+    moyens.replaceChildren(
+      ...r.listes.moyens.map((m, i) => {
+        const nom = h("input", { id: `moyen-${i}`, value: m.label, "aria-label": tr("Nom du moyen de paiement"), oninput: (e) => ((m.label = e.target.value), marque()) });
+        return h("div", { class: `ligne-moyen${m.archive ? " archive" : ""}` }, nom, m.archive ? h("span", { class: "tag" }, tr("archivé")) : null, h("button", { class: "lien", type: "button", onclick: () => ((m.archive = !m.archive), dessinerMoyens(), marque()) }, m.archive ? tr("Réactiver") : tr("Archiver")));
+      }),
+      h("button", { class: "secondaire petit", type: "button", onclick: () => {
+        const label = tr("Nouveau moyen");
+        r.listes.moyens.push({ id: identifiantMoyen(label, r.listes.moyens, slug), label });
+        dessinerMoyens();
+        marque();
+        moyens.querySelector(`#moyen-${r.listes.moyens.length - 1}`).select();
+      } }, tr("Ajouter un moyen de paiement"))
+    );
+  };
+  dessinerMoyens();
 
   const modeNum = h("select", { id: uid(), onchange: (e) => ((r.numerotation.mode = e.target.value), (prefixe.hidden = chiffres.hidden = e.target.value !== "sequence"), marque()) }, h("option", { value: "sequence" }, tr("Numéro de séquence par année (ex. ST-2026-0001)")), ztp || r.numerotation.mode === "initiales" ? h("option", { value: "initiales" }, tr("Initiales, date et pays (ex. LD20261009 Thaïlande)")) : null);
   modeNum.value = r.numerotation.mode;
@@ -397,19 +431,34 @@ export function vueReglages() {
   const cibleTextes = () => (langueTextes === "en" ? r.libelles_en : r.libelles);
   const dessinerLibelles = () => {
     const cible = cibleTextes();
+    // Le texte de départ en gris dans le champ, et un lien pour le reprendre : un libellé vidé par erreur se répare champ par champ (audit n° 73).
+    const defauts = langueTextes === "en" ? LIBELLES_EN : LIBELLES_FR;
     libellesGrille.replaceChildren(
       ...LIBELLES.filter(([cle]) => ztp || !LIBELLES_DEVIS.includes(cle)).map(([cle, nom]) => {
-        const el = h("input", { id: `lb-${cle}`, value: cible[cle] ?? "", oninput: (e) => ((cible[cle] = e.target.value), marque()) });
-        return champ(tr(nom), el);
+        const defaut = defauts[cle] || "";
+        const el = h("input", { id: `lb-${cle}`, value: cible[cle] ?? "", placeholder: defaut, oninput: (e) => ((cible[cle] = e.target.value), majLien(), marque()) });
+        const lien = h("button", { class: "lien petit-lien", type: "button", onclick: () => ((el.value = cible[cle] = defaut), majLien(), marque()) }, tr("Valeur par défaut"));
+        const majLien = () => (lien.hidden = !defaut || el.value === defaut);
+        majLien();
+        const bloc = champ(tr(nom), el, !defaut ? tr("Vide : rien ne s'imprime.") : null);
+        el.after(lien);
+        return bloc;
       })
     );
-    const cgv = h("textarea", { id: "lb-cgv", rows: 4, oninput: (e) => ((cible.cgv = e.target.value), marque()) });
+    const cgv = h("textarea", { id: "lb-cgv", rows: 4, placeholder: defauts.cgv, oninput: (e) => ((cible.cgv = e.target.value), marque()) });
     cgv.value = cible.cgv ?? "";
     // La phrase des conditions générales « du devis » (signature valant acceptation) ne concerne que ZTP.
-    if (ztp) libellesGrille.append(h("div", { class: "pleine-largeur" }, champ(tr("Phrase sur les conditions générales"), cgv, tr("Laissez vide pour ne pas l'afficher. [texte](lien) crée un lien. {cgv_url} et {entreprise} se remplissent seuls."))));
+    const avecLien = (bloc, champEl, lien) => (champEl.after(lien), bloc);
+    const remettreCgv = h("button", { class: "lien petit-lien", type: "button", onclick: () => ((cgv.value = cible.cgv = defauts.cgv), marque()) }, tr("Valeur par défaut"));
+    if (ztp) libellesGrille.append(h("div", { class: "pleine-largeur" }, avecLien(champ(tr("Phrase sur les conditions générales"), cgv, tr("Laissez vide pour ne pas l'afficher, ni sur les devis ni sur les factures. [texte](lien) crée un lien. {cgv_url} et {entreprise} se remplissent seuls.")), cgv, remettreCgv)));
     const cgvFacture = h("textarea", { id: "lb-cgv-facture", rows: 2, placeholder: CGV_FACTURE[langueTextes === "en" ? "en" : "fr"], oninput: (e) => ((cible.cgv_facture = e.target.value), marque()) });
     cgvFacture.value = cible.cgv_facture ?? "";
-    libellesGrille.append(h("div", { class: "pleine-largeur" }, champ(tr("Phrase sur les conditions générales, facture"), cgvFacture, tr("Laissez vide pour la phrase par défaut de la facture. Même syntaxe que ci-dessus."))));
+    // Ce que dit l'aide doit être vrai : la phrase de la facture ne s'imprime que si celle du devis n'est pas vide, et sans lien des conditions
+    // générales (onglet Dossiers et listes), les mots entre crochets s'impriment sans lien.
+    const aideCgvFacture = [tr("Vide : la phrase en gris ci-dessus. Même syntaxe que la phrase du devis.")];
+    if (!(cible.cgv || "").trim()) aideCgvFacture.push(tr("Rien ne s'imprime tant que la phrase sur les conditions générales est vide."));
+    if (!(r.conditions.cgv_url || "").trim()) aideCgvFacture.push(tr("Sans lien des conditions générales, le texte entre crochets s'imprime sans lien."));
+    libellesGrille.append(h("div", { class: "pleine-largeur" }, champ(tr("Phrase sur les conditions générales, facture"), cgvFacture, aideCgvFacture.join(" "))));
   };
   const remplirTextes = (base) => {
     const cle = langueTextes === "en" ? "libelles_en" : "libelles";
@@ -440,6 +489,97 @@ export function vueReglages() {
     });
   }
 
+  // ---- Textes thaïs de l'écran de Mook ----
+  const ecransThai = ecransThaiPour(fon);
+  const blocTextesThai = (ecran) => {
+    const lignes = ecran.lignes.map((l) => {
+      const actuel = ((r.textes_thai || {})[ecran.id] || {})[l.cle] || "";
+      const alerte = h("p", { class: "erreur-form", role: "status" });
+      const champThai = h("textarea", { id: `th-${ecran.id}-${l.cle}`, rows: 1, lang: "th", placeholder: l.depart, "aria-label": tr("Texte thaï : {fr}", { fr: l.fr }) });
+      champThai.value = actuel;
+      const remettre = h("button", { class: "lien petit-lien", type: "button", onclick: () => ((champThai.value = ""), maj(), marque()) }, tr("Texte de départ"));
+      const maj = () => {
+        const v = champThai.value.trim();
+        r.textes_thai = r.textes_thai || {};
+        const textes = (r.textes_thai[ecran.id] = { ...(r.textes_thai[ecran.id] || {}) });
+        if (!v || v === l.depart) delete textes[l.cle];
+        else textes[l.cle] = v;
+        // Un texte qui perd ou ajoute une {variable} n'est pas utilisé : l'écran garde le texte de départ, et on le dit ici.
+        const vars = variablesDe(l.depart);
+        alerte.textContent = v && texteValide(l.depart, v) === null ? tr("Ce texte n'est pas utilisé : il doit contenir {liste}, comme le texte de départ.", { liste: vars.length ? vars.map((x) => `{${x}}`).join(" ") : tr("aucun mot entre accolades") }) : "";
+        alerte.hidden = !alerte.textContent;
+        remettre.hidden = !v;
+      };
+      champThai.addEventListener("input", () => (maj(), marque()));
+      maj();
+      return h("div", { class: "ligne-thai" }, h("p", { class: "ligne-thai-fr" }, l.fr || l.cle), h("div", null, champThai, remettre, alerte));
+    });
+    return h("fieldset", null, h("legend", null, tr(ecran.nom)), h("div", { class: "grille-thai" }, ...lignes));
+  };
+
+  // ---- Historique des réglages ----
+  const blocHistorique = h("div", null);
+  const nomPersonne = (id) => {
+    const p = id && etat.brut.profils.find((x) => x.user_id === id);
+    return p ? p.nom || p.email : id ? tr("une personne qui n'a plus de compte") : tr("la base");
+  };
+  const quand = (d) => (d ? new Date(d).toLocaleString(localeActive(), { dateStyle: "medium", timeStyle: "short" }) : "");
+  const dessinerHistorique = async () => {
+    blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("Chargement…")));
+    let versions;
+    try {
+      versions = await historiqueReglages();
+    } catch (err) {
+      return blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("Historique indisponible : {message}", { message: err.message })));
+    }
+    if (versions === null) return blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("L'historique s'active avec la migration 36 de la base.")));
+    if (!versions.length) return blocHistorique.replaceChildren(h("p", { class: "vide-court" }, tr("Aucune version précédente pour l'instant : la première sera gardée au prochain enregistrement.")));
+    const actuelle = reglages();
+    blocHistorique.replaceChildren(
+      h(
+        "ul",
+        { class: "cartes" },
+        versions.map((v) => {
+          const groupes = groupesModifies(v.valeur, actuelle);
+          return h(
+            "li",
+            { class: "carte" },
+            h(
+              "div",
+              { class: "carte-lien statique" },
+              h("span", { class: "carte-titre" }, v.version_du ? tr("Version du {date}", { date: quand(v.version_du) }) : tr("Version d'avant le {date}", { date: quand(v.remplace_le) })),
+              h("span", { class: "carte-sous" }, tr("Remplacée le {date} par {nom}", { date: quand(v.remplace_le), nom: nomPersonne(v.remplace_par) })),
+              h("span", { class: "carte-sous" }, groupes.length ? tr("Différent d'aujourd'hui : {liste}", { liste: groupes.map((g) => tr(nomGroupe(g))).join(", ") }) : tr("Identique aux réglages d'aujourd'hui")),
+              h(
+                "span",
+                { class: "carte-pied" },
+                h("span"),
+                h(
+                  "span",
+                  { class: "carte-actions" },
+                  groupes.length
+                    ? h("button", { class: "secondaire petit", type: "button", onclick: async () => {
+                        const texte = tr("Revenir aux réglages de cette version ? Ce qui change : {liste}. La version actuelle est gardée dans l'historique : vous pourrez y revenir.", { liste: groupes.map((g) => tr(nomGroupe(g))).join(", ") }) + (modifie ? tr(" Les modifications non enregistrées de cet écran seront perdues.") : "");
+                        if (!(await confirmer(texte, tr("Revenir à cette version")))) return;
+                        try {
+                          await enregistrerReglages(structuredClone(v.valeur), versionLue);
+                          modifie = false;
+                          toast(tr("Réglages remis comme dans cette version."));
+                          window.dispatchEvent(new HashChangeEvent("hashchange"));
+                        } catch (err) {
+                          toast(err.conflit ? tr("Quelqu'un d'autre a enregistré les réglages entre-temps. Rechargez la page, puis recommencez.") : tr("Enregistrement impossible : {message}", { message: err.message }), true);
+                        }
+                      } }, tr("Revenir à cette version"))
+                    : null
+                )
+              )
+            )
+          );
+        })
+      )
+    );
+  };
+
   const sections = {
     entreprise: h(
       "div",
@@ -462,7 +602,8 @@ export function vueReglages() {
       "div",
       null,
       // Acompte et relance de devis : ZTP seulement. Taxi n'a ni facture ni conditions.
-      taxi ? null : h("fieldset", null, h("legend", null, tr("Conditions")), ztp ? h("div", { class: "grille-form" }, texte(N_("Acompte demandé (%, 0 si aucun)"), "conditions.acompte_pct", { type: "number" }), texte(N_("Délai de paiement de l'acompte (jours)"), "conditions.delai_jours", { type: "number" }), texte(N_("Relancer un devis sans réponse après (jours)"), "conditions.relance_jours", { type: "number", aide: tr("0 : jamais de relance. Vide : 7 jours.") })) : null, texte(N_("Mention de TVA"), "conditions.tva_mention", { aide: tr("Par exemple « TVA non applicable ». Vide pour ne rien afficher.") }), texte(N_("Mention de TVA en anglais (facultatif)"), "conditions.tva_mention_en", { aide: tr("Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise.") }), texte(N_("Lien des conditions générales"), "conditions.cgv_url", { type: "url" })),
+      // ZTP : acompte, délais et relance. Secret : le délai que {delai} imprime dans ses conditions (avant, il valait toujours 10, audit n° 42).
+      taxi ? null : h("fieldset", null, h("legend", null, tr("Conditions")), ztp ? h("div", { class: "grille-form" }, texte(N_("Acompte demandé (%, 0 si aucun)"), "conditions.acompte_pct", { type: "number" }), texte(N_("Délai de paiement de l'acompte (jours)"), "conditions.delai_jours", { type: "number", aide: tr("Remplace {delai} dans les conditions de paiement.") }), texte(N_("Relancer un devis sans réponse après (jours)"), "conditions.relance_jours", { type: "number", placeholder: "7", aide: tr("0 : jamais de relance. Vide : 7 jours.") }), texte(N_("Solde à relever avant le départ (jours)"), "conditions.solde_jours", { type: "number", placeholder: "30", aide: tr("Tant que le carnet de voyage n'est pas noté envoyé, « À faire » rappelle le solde ce nombre de jours avant le départ. Vide : 30 jours.") })) : texte(N_("Délai de paiement (jours)"), "conditions.delai_jours", { type: "number", aide: tr("Remplace {delai} dans les conditions de paiement des factures.") }), texte(N_("Mention de TVA"), "conditions.tva_mention", { aide: tr("Par exemple « TVA non applicable ». Vide pour ne rien afficher.") }), texte(N_("Mention de TVA en anglais (facultatif)"), "conditions.tva_mention_en", { aide: tr("Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise.") }), texte(N_("Lien des conditions générales"), "conditions.cgv_url", { type: "url" })),
       h("fieldset", null, h("legend", null, tr("Dossiers")), champ(tr("Numérotation"), modeNum), prefixe, chiffres, r.numerotation.mode === "sequence" ? blocProchainNumero(r.numerotation) : null, ...(ztp ? [texte(N_("Nom du champ « pays »"), "dossier.libelle_pays", { aide: tr("Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier.") }), liste(N_("Valeurs proposées, une par ligne"), "listes.pays"), texte(N_("Modèle du titre du document"), "dossier.modele_bandeau", { aide: tr("{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}.") })] : [])),
       // Civilités : formulaire client de ZTP seulement. Devises et moyens de paiement : pas en Taxi (rien n'est payé chez nous).
       taxi ? null : h("fieldset", null, h("legend", null, tr("Listes")), ztp ? liste(N_("Civilités des clients, une par ligne"), "listes.civilites") : null, liste(N_("Devises proposées pour un document, une par ligne"), "listes.devises", tr("Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs.")), champDevisesNoms(r, marque), champ(tr("Moyens de paiement, un par ligne"), moyens))
@@ -500,7 +641,7 @@ export function vueReglages() {
         "fieldset",
         null,
         h("legend", null, tr("Écrans de cette entreprise")),
-        h("p", { class: "aide" }, ztp ? tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». Le catalogue de formules sert aux devis.", { nom: entiteActive().nom }) : tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». En automatique, Partenaires, Réservations et Messages sont affichés.", { nom: entiteActive().nom })),
+        h("p", { class: "aide" }, ztp ? tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». Le catalogue de formules sert aux devis.", { nom: entiteActive().nom }) : tr("Les écrans choisis ici n'apparaissent que pour « {nom} ». En automatique, chacun est affiché. Masquer un écran ne masque que lui.", { nom: entiteActive().nom })),
         h(
           "div",
           { class: "grille-form" },
@@ -520,7 +661,22 @@ export function vueReglages() {
         champ(
           tr("Façon de travailler"),
           (() => {
-            const sel = h("select", { id: "fonctionnement", onchange: (e) => ((r.fonctionnement = e.target.value), marque()) }, h("option", { value: "sur_mesure" }, tr("Voyages sur mesure : devis, acompte, facture")), h("option", { value: "excursions" }, tr("Excursions et transferts : facture directe, puis vouchers")), h("option", { value: "taxi" }, tr("Taxi : réservations et voucher, payé au chauffeur, sans facture")));
+            // Changer la façon de travailler change tout l'outil de l'entreprise : confirmation forte, qui dit ce qui change (audit n° 71).
+            const NOMS = { sur_mesure: tr("Voyages sur mesure"), excursions: tr("Excursions et transferts"), taxi: tr("Taxi") };
+            const sel = h("select", { id: "fonctionnement", onchange: async (e) => {
+              const avant = ["excursions", "taxi"].includes(r.fonctionnement) ? r.fonctionnement : "sur_mesure";
+              const apres = e.target.value;
+              e.target.value = avant;
+              const ok = await confirmer(
+                tr("Passer « {nom} » de « {avant} » à « {apres} » ? Après l'enregistrement, cela change pour toute l'équipe : les écrans et le menu, les documents créés (devis ou facture directe, vouchers, Booking confirmation), les droits proposés dans les rôles, les messages types et l'écran de l'assistante. Les dossiers et documents existants ne changent pas. À ne faire que pour une entreprise qui change vraiment de métier.", { nom: entiteActive().nom, avant: NOMS[avant], apres: NOMS[apres] }),
+                tr("Changer la façon de travailler"),
+                true
+              );
+              if (!ok) return;
+              e.target.value = apres;
+              r.fonctionnement = apres;
+              marque();
+            } }, h("option", { value: "sur_mesure" }, tr("Voyages sur mesure : devis, acompte, facture")), h("option", { value: "excursions" }, tr("Excursions et transferts : facture directe, puis vouchers")), h("option", { value: "taxi" }, tr("Taxi : réservations et voucher, payé au chauffeur, sans facture")));
             sel.value = ["excursions", "taxi"].includes(r.fonctionnement) ? r.fonctionnement : "sur_mesure";
             return sel;
           })(),
@@ -535,37 +691,16 @@ export function vueReglages() {
         h("legend", null, tr("Assistant IA")),
         h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre et rédiger la réponse")),
         h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous."))
-      )
+      ),
+      // État des rappels sur téléphone (avant dans l'onglet Compte, devenu « Mon compte » pour chacun).
+      sectionRappels
     ),
     // Vouchers (Secret) ou Booking confirmation (Taxi) : un onglet à part, géré dans reglages-vouchers.mjs (lot B du 17.11.2026).
     ...(ztp ? {} : { vouchers: sectionVouchers({ r, taxi, texte, image, marque, choixApercuVoucher }) }),
-    // Sécurité du compte : « Se déconnecter » ne ferme que cet appareil ; ici, tous les appareils d'un coup (téléphone perdu, appareil prêté).
-    compte: h(
-      "div",
-      null,
-      h(
-        "section",
-        null,
-        h("h2", null, tr("Sécurité du compte")),
-        h("p", { class: "aide" }, tr("« Se déconnecter » ne ferme que l'appareil que vous utilisez : l'iPhone reste connecté quand vous quittez l'ordinateur. Pour fermer vos sessions partout, utilisez le bouton ci-dessous.")),
-        h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: async () => {
-          if (!(await confirmer(tr("Tous vos appareils seront déconnectés, celui-ci compris. Il faudra se reconnecter avec l'e-mail et le mot de passe."), tr("Déconnecter partout"), true))) return;
-          try {
-            await etat.store.deconnecterPartout();
-            location.reload();
-          } catch (err) {
-            toast(tr("Déconnexion impossible : {message}", { message: err.message }), true);
-          }
-        } }, tr("Déconnecter tous mes appareils"))),
-        sectionRappels,
-        h("h3", null, tr("Téléphone perdu ou volé")),
-        h("ol", { class: "aide" },
-          h("li", null, tr("Sur un autre appareil, ouvrez Réglages, Compte, puis « Déconnecter tous mes appareils ». Les sessions sont fermées, mais un appareil déjà ouvert peut encore servir jusqu'à une heure.")),
-          h("li", null, tr("Pour couper l'accès tout de suite, l'administratrice générale décoche « Compte actif » pour cette personne dans Administration.")),
-          h("li", null, tr("Changez ensuite le mot de passe, puis réactivez le compte."))
-        )
-      )
-    ),
+    // Textes thaïs de l'écran de Mook, le français en regard (section 2 de l'audit). Secret : factures pour la fiduciaire ; Taxi : voucher et factures.
+    ...(ecransThai.length ? { thai: h("div", null, h("p", { class: "aide" }, tr("Les textes que lit l'assistante sur son écran simple. À gauche, ce qu'ils disent en français ; à droite, le texte thaï affiché. Vide : le texte de départ, en gris. Les mots entre accolades, comme {n} ou {nom}, se remplissent seuls : gardez-les tels quels.")), ...ecransThai.map(blocTextesThai)) } : {}),
+    // Historique des réglages (migration 36) : chaque enregistrement garde la version remplacée, on peut y revenir (audit n° 39).
+    historique: h("div", null, h("section", null, h("h2", null, tr("Historique des réglages")), h("p", { class: "aide" }, tr("Chaque enregistrement garde la version d'avant (les 60 dernières). Revenir à une version la réenregistre telle quelle : la version actuelle entre à son tour dans l'historique, rien n'est perdu.")), blocHistorique)),
     donnees: h(
       "div",
       null,
@@ -594,8 +729,9 @@ export function vueReglages() {
     ["apparence", tr("Apparence")],
     ["ecrans", tr("Écrans")],
     ...(ztp ? [] : [["vouchers", taxi ? tr("Booking confirmation") : tr("Vouchers")]]),
+    ...(ecransThai.length ? [["thai", tr("Textes en thaï")]] : []),
     ...(peut("exports.faire") ? [["donnees", tr("Sauvegarde")]] : []),
-    ...(etat.store.mode === "supabase" ? [["compte", tr("Compte")]] : []),
+    ["historique", tr("Historique")],
   ];
   const barre = h("div", { class: "onglets sous-onglets" });
   // Groupes repliables sur téléphone, et recherche d'un réglage dans tous les onglets.
@@ -620,11 +756,13 @@ export function vueReglages() {
     for (const [k, el] of Object.entries(sections)) el.hidden = k !== cle;
     for (const b of barre.children) b.setAttribute("aria-pressed", b.dataset.cle === cle ? "true" : "false");
     // Taxi n'a aucun document A4 ; ZTP n'a pas de voucher.
-    zoneApercu.hidden = taxi || cle === "donnees" || cle === "ecrans" || cle === "vouchers" || cle === "compte";
+    const sansApercu = ["donnees", "ecrans", "vouchers", "thai", "historique"].includes(cle);
+    zoneApercu.hidden = taxi || sansApercu;
     zoneVoucher.hidden = ztp || cle !== "vouchers";
     if (cle === "vouchers") redessinerVoucher();
-    boutonEnregistrer.hidden = cle === "donnees" || cle === "compte";
-    if (cle !== "donnees" && cle !== "compte") redessiner();
+    boutonEnregistrer.hidden = cle === "donnees" || cle === "historique";
+    if (cle === "historique") dessinerHistorique();
+    if (!sansApercu) redessiner();
   };
   ONGLETS.forEach(([cle, libelle]) => barre.append(h("button", { type: "button", "data-cle": cle, "aria-pressed": "false", onclick: () => montrer(cle) }, libelle)));
 
@@ -632,6 +770,8 @@ export function vueReglages() {
   const enregistrer = async (e) => {
     e.preventDefault();
     if (!taxi && !r.textes.variantes.length) return toast(tr("Gardez au moins une variante de conditions de paiement."), true);
+    if (r.listes.moyens.some((m) => !String(m.label || "").trim())) return toast(tr("Donnez un nom à chaque moyen de paiement (ou archivez celui qui ne sert plus)."), true);
+    r.listes.moyens = r.listes.moyens.map((m) => ({ ...m, label: m.label.trim() }));
     r.devise = (r.devise || "").trim().toUpperCase();
     // Changer la devise de l'entreprise ne convertit rien : les documents gardent la leur (écrite dans chaque document), les nouveaux prennent la nouvelle.
     const deviseAvant = (reglages() || {}).devise;
