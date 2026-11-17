@@ -176,5 +176,23 @@ try { await db.exec("insert into rappels_suivi (type) values ('veille')"); } cat
 ok(/null/.test(sansOrg), "une ligne de suivi sans organisation est refusée, plus rangée chez Zwald");
 ok((await nb(anais, "select * from rappels_suivi")) === 1 && (await nb(marc, "select * from rappels_suivi")) === 1, "chacun ne voit que le suivi de ses rappels");
 
+console.log("== Revue de sécurité du 17.11.2026 : un compte ne change pas d'organisation ==");
+// Écriture « clé de service » (sans connexion) : c'est ce que ferait la fonction invitation trompée par l'adresse d'un autre client.
+const deplace = await db.query("update profils set organisation_id = $1 where user_id = $2", [ZWALD, invitee]).then(() => "ok", (e) => e.message);
+ok(/non modifiable/.test(deplace), "même avec la clé de service, un compte de B ne passe pas chez Zwald");
+ok((await un("select organisation_id from profils where user_id = $1", [invitee])).organisation_id === B, "le compte reste dans B");
+const vide = await db.query("update profils set organisation_id = null where user_id = $1", [invitee]).then(() => "ok", (e) => e.message);
+ok(/non modifiable/.test(vide), "ni ne perd son organisation");
+// Un accès resté d'une autre organisation (ligne membres posée sans le contrôle des accès) n'ouvre rien.
+const ztpS = (await un("select id from entites where organisation_id = $1 order by slug limit 1", [ZWALD])).id;
+const roleS = (await un("select id from roles where entite_id = $1 order by nom limit 1", [ztpS])).id;
+await db.exec("alter table membres disable trigger user");
+await db.query("insert into membres (user_id, entite_id, role_id) values ($1, $2, $3)", [invitee, ztpS, roleS]);
+await db.exec("alter table membres enable trigger user");
+const vu = await essaie(invitee, "select est_membre($1) m, voit_tout($1) v, cardinality(permissions_dans($1)) n", [ztpS]);
+ok(vu.ok && vu.rows[0].m === false && vu.rows[0].v === false && vu.rows[0].n === 0, "un accès dans une entreprise de Zwald ne vaut rien pour un compte de B " + (vu.err || ""));
+ok((await nb(invitee, "select * from dossiers where entite_id = $1", [ztpS])) === 0, "il ne lit aucun dossier de Zwald");
+await db.query("delete from membres where user_id = $1 and entite_id = $2", [invitee, ztpS]);
+
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);

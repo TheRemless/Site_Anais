@@ -73,6 +73,14 @@ export function accesCoherents(acces, roles) {
 // Un compte d'une autre organisation est traité comme inconnu : l'administrateur d'un client n'apprend même pas qu'il existe.
 export const memeOrganisation = (organisationAppelant, cible) => !!organisationAppelant && !!cible && cible.organisation_id === organisationAppelant;
 
+// Inviter une adresse (sécurité, 17.11.2026) : refusé si elle a déjà un compte dans une autre organisation, ou dans aucune (l'administrateur
+// d'un nouveau client avant sa première entreprise). Sinon un administrateur prendrait, par un nouveau lien d'invitation, le compte pas
+// encore confirmé d'une personne d'un autre client. `existant` : le profil de cette adresse, ou null.
+export const invitationPermise = (organisation, existant) => !!organisation && (!existant || existant.organisation_id === organisation);
+// Après la création du lien, contrôle sur le compte réellement touché (par son identifiant, quelle que soit la casse de l'adresse) :
+// un compte tout neuf n'a pas d'organisation ou a déjà celle de l'appelant ; un compte d'une autre organisation n'est jamais rattaché.
+export const rattachementPermis = (organisation, profil) => !!organisation && (!profil || profil.organisation_id == null || profil.organisation_id === organisation);
+
 // Chaque entreprise demandée appartient à l'organisation de l'appelant (entreprises lues en base par la fonction).
 export const entreprisesDeLOrganisation = (acces, entites, organisation) => acces.every((a) => (entites || []).some((e) => e.id === a.entite_id && e.organisation_id === organisation));
 

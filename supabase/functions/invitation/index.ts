@@ -4,7 +4,7 @@
 // qui ne quitte jamais le serveur, pour créer un compte, rendre un lien de mot de passe ou supprimer un compte.
 // Aucun e-mail n'est envoyé : l'outil montre le lien, Anaïs l'envoie elle-même. Voir calc.js pour les règles.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { accesCoherents, dejaInscrit, entreprisesDeLOrganisation, lireDemande, memeOrganisation, suppressionPermise } from "./calc.js";
+import { accesCoherents, dejaInscrit, entreprisesDeLOrganisation, invitationPermise, lireDemande, memeOrganisation, rattachementPermis, suppressionPermise } from "./calc.js";
 
 const ORIGINES = (Deno.env.get("INVITATION_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim()).filter(Boolean);
 
@@ -79,9 +79,18 @@ Deno.serve(async (req) => {
       if (error || errE) return json({ erreur: "base" }, 500);
       if (!accesCoherents(lu.acces, roles || []) || !entreprisesDeLOrganisation(lu.acces, ents || [], organisation)) return json({ erreur: "acces_invalide" }, 400);
     }
+    // Adresse déjà inscrite dans une autre organisation (ou dans aucune) : refus avant tout lien. Un nouveau lien remplacerait celui que
+    // la personne a reçu de son propre administrateur, et la suite rattacherait son compte à l'organisation de l'appelant.
+    const { data: existant, error: errEx } = await admin.from("profils").select("organisation_id").eq("email", lu.email).maybeSingle();
+    if (errEx) return json({ erreur: "base" }, 500);
+    if (!invitationPermise(organisation, existant)) return json({ erreur: "deja_inscrit" }, 409);
     const { data, error } = await admin.auth.admin.generateLink({ type: "invite", email: lu.email, options: { redirectTo: lu.retour } });
     if (error) return json({ erreur: dejaInscrit(error.message) ? "deja_inscrit" : "creation_impossible" }, dejaInscrit(error.message) ? 409 : 500);
     const userId = data.user.id;
+    // Même contrôle sur le compte que Supabase a réellement touché : son lien n'est jamais renvoyé s'il est d'une autre organisation.
+    const { data: touche, error: errT } = await admin.from("profils").select("organisation_id").eq("user_id", userId).maybeSingle();
+    if (errT) return json({ erreur: "base" }, 500);
+    if (!rattachementPermis(organisation, touche)) return json({ erreur: "deja_inscrit" }, 409);
     // Le profil est créé par la base à l'inscription (creer_profil) ; on y met le nom et la langue choisis.
     // Rattachement à l'organisation de l'administrateur, écrit ici avec la clé de service : la base ne croit jamais l'organisation venue
     // de la métadonnée d'un compte (n'importe qui la choisit en s'inscrivant). Sans langue choisie : celle de l'organisation.

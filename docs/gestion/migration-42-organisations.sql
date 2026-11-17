@@ -68,20 +68,21 @@ $$;
 revoke all on function mon_organisation(), organisation_de(uuid), est_plateforme(), admin_de(uuid) from public, anon;
 grant execute on function mon_organisation(), organisation_de(uuid), est_plateforme(), admin_de(uuid) to authenticated;
 
+-- Un accès (membres) ne vaut que dans une entreprise de l'organisation du compte : une ligne restée d'une autre organisation n'ouvre rien.
 create or replace function permissions_dans(e uuid) returns text[] language sql stable security definer set search_path = public as $$
   select case
     when admin_de(e) then toutes_permissions()
     -- Rôle « tous droits » (Administrateur calculé, migration 38) : toutes les permissions, même celles ajoutées après sa création.
-    else coalesce((select case when r.tous_droits then toutes_permissions() else r.permissions end from membres m join roles r on r.id = m.role_id join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif), '{}')
+    else coalesce((select case when r.tous_droits then toutes_permissions() else r.permissions end from membres m join roles r on r.id = m.role_id join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif and p.organisation_id = organisation_de(e)), '{}')
   end
 $$;
 
 create or replace function est_membre(e uuid) returns boolean language sql stable security definer set search_path = public as $$
-  select admin_de(e) or exists (select 1 from membres m join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif)
+  select admin_de(e) or exists (select 1 from membres m join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif and p.organisation_id = organisation_de(e))
 $$;
 
 create or replace function voit_tout(e uuid) returns boolean language sql stable security definer set search_path = public as $$
-  select admin_de(e) or coalesce((select r.portee = 'toute' from membres m join roles r on r.id = m.role_id join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif), false)
+  select admin_de(e) or coalesce((select r.portee = 'toute' from membres m join roles r on r.id = m.role_id join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif and p.organisation_id = organisation_de(e)), false)
 $$;
 
 create or replace function equipe_de(e uuid) returns table (user_id uuid, nom text, email text) language sql stable security definer set search_path = public as $$
@@ -120,6 +121,12 @@ $$;
 create or replace function proteger_profil() returns trigger language plpgsql security definer set search_path = public as $$
 begin
   -- Sans connexion (éditeur SQL de Supabase, clé de service), éditeur, ou mise à jour faite par un autre déclencheur : autorisé.
+  -- Un compte déjà rattaché ne change jamais d'organisation, même avec la clé de service ou par un déclencheur : seul l'éditeur connecté
+  -- le peut. Une fonction serveur trompée (invitation d'une adresse d'un autre client) ne déplace donc pas un compte (revue de sécurité, 17.11.2026).
+  -- Un compte sans organisation reçoit la sienne (creer_organisation, controler_membre, invitation).
+  if old.organisation_id is not null and new.organisation_id is distinct from old.organisation_id and not est_plateforme() then
+    raise exception 'Organisation d''un compte non modifiable' using errcode = '42501';
+  end if;
   if auth.uid() is null or est_plateforme() or pg_trigger_depth() > 1 then
     if new.plateforme is distinct from old.plateforme and auth.uid() is not null and not est_plateforme() then raise exception 'Statut d''éditeur non modifiable' using errcode = '42501'; end if;
     return new;

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { lireDemande, memeOrganisation, entreprisesDeLOrganisation, suppressionPermise } from "../supabase/functions/invitation/calc.js";
+import { lireDemande, memeOrganisation, entreprisesDeLOrganisation, suppressionPermise, invitationPermise, rattachementPermis } from "../supabase/functions/invitation/calc.js";
 
 const ORIGINES = ["https://gestion.exemple.com"];
 const retour = "https://gestion.exemple.com/gestion/";
@@ -50,4 +50,25 @@ test("la fonction applique ces règles et rattache l'invité à l'organisation",
   assert.match(f, /entreprisesDeLOrganisation\(lu\.acces, ents \|\| \[\], organisation\)/);
   // L'ordre compte : le contrôle d'administrateur passe avant tout usage de la clé de service pour les trois gestes d'équipe.
   assert.ok(f.indexOf('sb.rpc("est_super_admin")') < f.indexOf("const admin = createClient"));
+});
+
+test("inviter : une adresse d'une autre organisation (ou d'aucune) est refusée avant et après la création du lien (revue de sécurité, 17.11.2026)", () => {
+  const A = "aaaaaaaa-0000-0000-0000-000000000001";
+  const B = "bbbbbbbb-0000-0000-0000-000000000002";
+  assert.equal(invitationPermise(A, null), true, "adresse inconnue");
+  assert.equal(invitationPermise(A, { organisation_id: A }), true, "relance d'une invitation de la même organisation");
+  assert.equal(invitationPermise(A, { organisation_id: B }), false, "employé pas encore confirmé d'un autre client");
+  assert.equal(invitationPermise(A, { organisation_id: null }), false, "administrateur d'un nouveau client avant sa première entreprise");
+  assert.equal(invitationPermise(null, null), false);
+  assert.equal(rattachementPermis(A, null), true);
+  assert.equal(rattachementPermis(A, { organisation_id: null }), true, "compte tout neuf");
+  assert.equal(rattachementPermis(A, { organisation_id: A }), true);
+  assert.equal(rattachementPermis(A, { organisation_id: B }), false);
+  const src = fs.readFileSync("supabase/functions/invitation/index.ts", "utf8");
+  const inviter = src.slice(src.indexOf('if (lu.action === "inviter")'), src.indexOf('if (lu.action === "lien_mot_de_passe")'));
+  const avant = inviter.indexOf("invitationPermise(organisation, existant)");
+  const lien = inviter.indexOf("generateLink(");
+  const apres = inviter.indexOf("rattachementPermis(organisation, touche)");
+  assert.ok(avant > 0 && avant < lien, "contrôle de l'adresse avant le lien");
+  assert.ok(apres > lien && apres < inviter.indexOf("profils\").upsert"), "contrôle du compte touché avant le rattachement");
 });
