@@ -3311,7 +3311,6 @@ export const EN = {
   "Une notification une heure avant chaque réservation qui a une heure, pour rappeler le client et le partenaire.": "A notification one hour before each booking that has a time, to remind the client and the partner.",
   "Éteint pour cette entreprise dans les réglages : vous ne recevrez rien ici tant qu'il n'y est pas allumé.": "Turned off for this company in the settings: you will get nothing here until it is turned on there.",
   "Démonstration : aucune notification ne part de cet appareil. Le réglage ci-dessus est gardé dans la démo.": "Demo: no notification leaves this device. The setting above is kept in the demo.",
-  "Les services du lendemain, avec ceux qui n'ont pas d'heure de pickup.": "Tomorrow's services, with those that have no pickup time.",
   "1 h avant": "1 hour before",
   "Chaque service qui a une heure : un tap ouvre la réservation et son rappel.": "Each service that has a time: one tap opens the booking and its reminder.",
   "Notification sur téléphone une heure avant chaque réservation qui a une heure": "Phone notification one hour before each booking that has a time",

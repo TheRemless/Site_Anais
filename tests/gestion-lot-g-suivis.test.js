@@ -211,7 +211,11 @@ test("heures des rappels : l'outil et la fonction lisent le réglage de la même
 
 test("fonction rappels : appel horaire « auto », lieu et langue lus, entreprises restreintes", () => {
   const index = fs.readFileSync("supabase/functions/rappels/index.ts", "utf8");
-  assert.match(index, /demande\.type !== "auto"/);
+  assert.match(index, /type !== "auto" && !TYPES\.includes\(type\)/);
+  // Les trois crons de la production restent acceptés tels quels (rattrapage de master, 17.11.2026) : veille, lendemain, h1, plus l'appel horaire.
+  assert.match(index, /const type = demande\.type \|\| demande\.mode;/);
+  assert.match(index, /if \(type === "h1"\) return rappelH1\(demande\)/);
+  assert.match(index, /for \(const t of type === "auto" \? TYPES : \[type\]\)/);
   assert.match(index, /lieu_pickup/);
   assert.match(index, /super_admin, langue/);
   assert.match(index, /\.in\("entite_id", retenues\)/);

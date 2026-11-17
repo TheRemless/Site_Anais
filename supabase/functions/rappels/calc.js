@@ -174,7 +174,7 @@ export const datesH1 = (maintenant) => {
   return [ajd, decaler(ajd, 1)];
 };
 
-const personnesFr = (p = {}) => [p.adultes ? pluriel(p.adultes, "adulte", "adultes") : "", p.enfants ? pluriel(p.enfants, "enfant", "enfants") : "", p.bebes ? pluriel(p.bebes, "bébé", "bébés") : ""].filter(Boolean).join(", ");
+const personnesFr = (p = {}) => [p.adultes ? pluriel(p.adultes, ["adulte", "adultes"]) : "", p.enfants ? pluriel(p.enfants, ["enfant", "enfants"]) : "", p.bebes ? pluriel(p.bebes, ["bébé", "bébés"]) : ""].filter(Boolean).join(", ");
 
 // « Dans 1 h : Sarah Miller, 4 Islands » / « 2 adultes, pickup 08:00, Hotel Sunset ». Le nom du client y est (Jérémy, 17.11.2026 : le téléphone
 // d'Anaïs ne montre le contenu d'une notification qu'une fois déverrouillé). `entreprise` : ajouté pour qui suit plusieurs entreprises.
