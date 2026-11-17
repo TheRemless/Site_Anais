@@ -241,7 +241,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { error } = await sb.auth.updateUser({ password: nouveau });
       if (error) throw new Error(/different from the old|same/i.test(error.message) ? tr("Le nouveau mot de passe doit être différent de l'ancien.") : error.message);
     },
-    // Versions précédentes des réglages (migration 36). null tant que la migration n'est pas appliquée.
+    // Versions précédentes des réglages (migration 38). null tant que la migration n'est pas appliquée.
     async historiqueReglages(entiteId) {
       const { data, error } = await sb.from("reglages_historique").select("id, valeur, version_du, remplace_le, remplace_par").eq("entite_id", entiteId).order("remplace_le", { ascending: false }).limit(20);
       if (error) {
@@ -373,15 +373,15 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async fiduciaireAPreparer() {
       return verifie(await sb.rpc("fiduciaire_a_preparer"));
     },
-    // Migration 31 appliquée ? La colonne destinataire_id n'existe qu'avec elle (réglages de l'écran Fiduciaire).
-    async fiduciaireMigration31() {
+    // Migration 36 appliquée ? La colonne destinataire_id n'existe qu'avec elle (réglages de l'écran Fiduciaire).
+    async fiduciaireMigration36() {
       const { error } = await sb.from("fiduciaire_factures").select("destinataire_id").limit(1);
       return !error;
     },
     async fiduciaireEmettre(reservationId, date = null, attendu = null) {
       return verifie(await sb.rpc("emettre_facture_fiduciaire", { p_res: reservationId, p_date: date, p_attendu: attendu }));
     },
-    // `destinataire` (migration 31) : le prestataire dont la facture s'annule, quand le service a changé de prestataire.
+    // `destinataire` (migration 36) : le prestataire dont la facture s'annule, quand le service a changé de prestataire.
     async fiduciaireAnnuler(reservationId, date = null, destinataire = null) {
       return verifie(await sb.rpc("annuler_facture_fiduciaire", { p_res: reservationId, p_date: date, ...(destinataire ? { p_destinataire: destinataire } : {}) }));
     },
@@ -409,14 +409,14 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async restaurerDossier(id) {
       return verifie(await sb.rpc("restaurer_dossier", { p_id: id }));
     },
-    // Devis et factures supprimés seuls (sans leur dossier) des 90 derniers jours, et leur restauration avec leurs nets (migration 31).
+    // Devis et factures supprimés seuls (sans leur dossier) des 90 derniers jours, et leur restauration avec leurs nets (migration 34).
     async documentsSupprimes(entiteId) {
       return verifie(await sb.rpc("documents_supprimes", { p_entite: entiteId }));
     },
     async restaurerDocument(documentId) {
       return verifie(await sb.rpc("restaurer_document", { p_document: documentId }));
     },
-    // Prochain numéro de la séquence annuelle, réservé à l'administratrice (migration 31).
+    // Prochain numéro de la séquence annuelle, réservé à l'administratrice (migration 34).
     async lireProchainNumero(entiteId, annee) {
       return verifie(await sb.rpc("lire_prochain_numero", { p_entite: entiteId, p_annee: annee }));
     },
@@ -442,7 +442,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await sb.rpc("equipe_de", { e: entiteId }));
     },
     // Un dossier avec son résumé à jour (après une modification de ses documents ou paiements).
-    // La ligne de nets d'une réservation, relue après une écriture : le déclencheur remplir_nets (migration 30) a pu la recalculer.
+    // La ligne de nets d'une réservation, relue après une écriture : le déclencheur remplir_nets (migration 32) a pu la recalculer.
     // Sans le droit « nets », la base ne renvoie rien.
     async netsReservations(ids) {
       const out = [];

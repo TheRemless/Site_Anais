@@ -1,5 +1,5 @@
--- Gestion : migration 36, équipe et réglages (lot D de l'audit d'autonomie, 17.11.2026).
--- À appliquer après la migration 35. Se rejoue sans erreur ni doublon.
+-- Gestion : migration 38, équipe et réglages (lot D de l'audit d'autonomie, 17.11.2026).
+-- À appliquer après la migration 37. Se rejoue sans erreur ni doublon.
 --
 -- 1. Rôle « Administrateur » calculé (audit n° 4). Avant : ses droits étaient une liste enregistrée. Chaque nouveau droit demandait du SQL
 --    (fiduciaire, partenaires.supprimer, clients.fusionner…) et un oubli laissait Anaïs sans le droit dans une entreprise.
@@ -26,7 +26,7 @@ begin;
 alter table roles add column if not exists tous_droits boolean not null default false;
 update roles set tous_droits = true where systeme and nom = 'Administrateur' and not tous_droits;
 
--- La liste reprend celle de la migration 33 (clients.fusionner, partenaires.supprimer compris) et ajoute partenaires.prix.
+-- La liste reprend celle de la migration 35 (clients.fusionner, partenaires.supprimer compris) et ajoute partenaires.prix.
 create or replace function toutes_permissions() returns text[] language sql immutable as $$
   select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'clients.fusionner', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir', 'partenaires.lire', 'partenaires.ecrire', 'partenaires.prix', 'partenaires.nets', 'partenaires.supprimer', 'fiduciaire.preparer', 'fiduciaire.gerer']::text[]
 $$;

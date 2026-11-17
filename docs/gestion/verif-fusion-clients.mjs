@@ -1,4 +1,4 @@
-// Vérifie la migration 31 (fusion de deux fiches client) sur un Postgres en mémoire : schema.sql, migrations 18 à 29, puis 31.
+// Vérifie la migration 35 (fusion de deux fiches client) sur un Postgres en mémoire : schema.sql, migrations 18 à 34, puis 35.
 //   (même mise en place que verif-securite.mjs : GESTION_SQL=<repo>/docs/gestion/ node verif-fusion-clients.mjs)
 import { PGlite } from "@electric-sql/pglite";
 import fs from "node:fs";
@@ -23,10 +23,10 @@ const lire = (f) => fs.readFileSync(W + f, "utf8").replace("create extension if 
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec(lire("schema.sql"));
-for (const f of fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d|3[0-2])-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]))) await db.exec(lire(f));
-await db.exec(lire("migration-33-fusion-clients.sql"));
-await db.exec(lire("migration-33-fusion-clients.sql"));
-ok(true, "la migration 31 s'applique deux fois sans erreur");
+for (const f of fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d|3[0-4])-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]))) await db.exec(lire(f));
+await db.exec(lire("migration-35-fusion-clients.sql"));
+await db.exec(lire("migration-35-fusion-clients.sql"));
+ok(true, "la migration 35 s'applique deux fois sans erreur");
 
 const un = async (sql, p = []) => (await db.query(sql, p)).rows[0];
 const essaie = async (userId, sql, params = []) => {

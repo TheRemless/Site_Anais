@@ -10,7 +10,7 @@ import { tr } from "../i18n.mjs";
 const LARGEUR = 794; // A4 à 96 dpi
 const ECHELLE = 2;
 
-// Réglages d'apparence (logo, couleurs, libellés) de l'entreprise émettrice : celle copiée sur la facture (migration 31),
+// Réglages d'apparence (logo, couleurs, libellés) de l'entreprise émettrice : celle copiée sur la facture (migration 36),
 // ou Secret pour une facture émise avant (la migration 28 faisait toujours émettre Secret).
 export function reglagesEmetteur(facture = null) {
   const brut = etat.brut || {};

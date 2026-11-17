@@ -1,4 +1,4 @@
-// Corbeille des devis et factures supprimés seuls (le dossier existe encore) : 90 jours pour les restaurer, avec leurs nets (migration 31).
+// Corbeille des devis et factures supprimés seuls (le dossier existe encore) : 90 jours pour les restaurer, avec leurs nets (migration 34).
 // Un document parti avec son dossier se restaure avec lui, depuis la corbeille des dossiers.
 import { etat, nomClient, naviguer, chargerDossier } from "../etat.mjs";
 import { h, toast, confirmer } from "../ui.mjs";
@@ -14,7 +14,7 @@ export function sectionCorbeilleDocuments() {
     try {
       lignes = await etat.store.documentsSupprimes(etat.entiteId);
     } catch (err) {
-      // Sans la migration 31, la fonction n'existe pas encore : on le dit sans bloquer le reste de l'écran.
+      // Sans la migration 34, la fonction n'existe pas encore : on le dit sans bloquer le reste de l'écran.
       liste.replaceChildren(h("p", { class: "aide" }, tr("Corbeille des documents indisponible : {message}", { message: err.message })));
       return;
     }

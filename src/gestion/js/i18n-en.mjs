@@ -2526,7 +2526,7 @@ export const EN = {
   "{n} facture(s) créée(s) avant l'erreur": "{n} invoice(s) created before the error",
   "Le service a été supprimé alors qu'il était déjà facturé": "The service was deleted although it had already been invoiced",
   // Fiduciaire, lot H (17.11.2026)
-  "Ces réglages ne s'appliquent pas encore, la base attend sa mise à jour (migration 31).": "These settings do not apply yet, the database is waiting for its update (migration 31).",
+  "Ces réglages ne s'appliquent pas encore, la base attend sa mise à jour (migration 36).": "These settings do not apply yet, the database is waiting for its update (migration 36).",
   "Part de la remise de la facture du client": "Share of the client invoice discount",
   "annulé : aucune marge, le déjà facturé s'annule par un avoir": "cancelled: no margin, anything already invoiced is cancelled with a credit note",
   "Le prestataire de ce service a changé. {nom} a déjà reçu une facture de {montant} pour ce service : annulez-la par un avoir. La facture au nouveau prestataire se prépare à part, pour le montant entier.": "The provider of this service has changed. {nom} has already received an invoice of {montant} for this service: cancel it with a credit note. The invoice to the new provider is prepared separately, for the full amount.",
@@ -3048,7 +3048,7 @@ export const EN = {
   "aucun mot entre accolades": "no word in braces",
   "une personne qui n'a plus de compte": "a person who no longer has an account",
   "la base": "the database",
-  "L'historique s'active avec la migration 36 de la base.": "The history starts with migration 36 of the database.",
+  "L'historique s'active avec la migration 38 de la base.": "The history starts with migration 38 of the database.",
   "Aucune version précédente pour l'instant : la première sera gardée au prochain enregistrement.": "No previous version yet: the first one will be kept at the next save.",
   "Version d'avant le {date}": "Version before {date}",
   "Remplacée le {date} par {nom}": "Replaced on {date} by {nom}",

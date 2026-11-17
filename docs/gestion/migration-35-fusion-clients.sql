@@ -1,4 +1,4 @@
--- Gestion : migration 33, fusion de deux fiches client (lot C2 de l'autonomie, 17.11.2026). À appliquer après la migration 32.
+-- Gestion : migration 35, fusion de deux fiches client (lot C2 de l'autonomie, 17.11.2026). À appliquer après la migration 34.
 -- Le même client saisi deux fois : ses dossiers passent sur la fiche gardée, les champs vides de celle-ci prennent ceux de l'autre,
 -- les notes s'ajoutent, puis l'autre fiche est supprimée. Le tout en une transaction, pour ne jamais laisser une fusion à moitié faite.
 --
@@ -56,7 +56,7 @@ grant execute on function fusionner_clients(uuid, uuid) to authenticated;
 
 
 -- Le droit « clients.fusionner » entre dans « tous les droits » et dans le rôle « Administrateur » de chaque entreprise, comme
--- « partenaires.supprimer » à la migration 31 : la liste de la base reste celle de l'outil (defauts.mjs).
+-- « partenaires.supprimer » à la migration 33 : la liste de la base reste celle de l'outil (defauts.mjs).
 create or replace function toutes_permissions() returns text[] language sql immutable as $$
   select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'clients.fusionner', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir', 'partenaires.lire', 'partenaires.ecrire', 'partenaires.nets', 'partenaires.supprimer', 'fiduciaire.preparer', 'fiduciaire.gerer']::text[]
 $$;

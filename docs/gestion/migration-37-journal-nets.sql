@@ -1,4 +1,4 @@
--- Gestion : migration 35 du lot G (17.11.2026, audit n° 78), journal des nets et commissions des réservations.
+-- Gestion : migration 37 du lot G (17.11.2026, audit n° 78), journal des nets et commissions des réservations.
 -- À exécuter une seule fois, après les migrations 18 et 28. Idempotente.
 --
 -- Jusqu'ici, la table reservations_nets ne passait pas par le journal : le journal est lisible avec le droit « journal.voir », il aurait recopié des nets

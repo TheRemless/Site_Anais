@@ -232,7 +232,7 @@ test("points 9 et 85 : corbeille des documents et suppression d'un dossier resta
   assert.match(dossier, /Il reste 90 jours dans la corbeille/);
   assert.match(source("views/reglages.mjs"), /sectionCorbeilleDocuments\(\)/);
   assert.match(source("store-supabase.mjs"), /sb\.rpc\("restaurer_document", \{ p_document: documentId \}\)/);
-  const sql = fs.readFileSync(path.join(__dirname, "..", "docs", "gestion", "migration-32-documents.sql"), "utf8");
+  const sql = fs.readFileSync(path.join(__dirname, "..", "docs", "gestion", "migration-34-documents.sql"), "utf8");
   assert.match(sql, /create or replace function restaurer_document\(p_document uuid\)/);
   assert.match(sql, /create or replace function fixer_prochain_numero\(/);
 });

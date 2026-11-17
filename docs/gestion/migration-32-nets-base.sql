@@ -1,4 +1,4 @@
--- Gestion : migration 30, le net et la commission prévus d'une réservation sont remplis par la base (lot F, point 12 de l'audit du 16.11.2026).
+-- Gestion : migration 32, le net et la commission prévus d'une réservation sont remplis par la base (lot F, point 12 de l'audit du 16.11.2026).
 --
 -- Le problème : quand Mook saisit un service dans Secret, son rôle n'a pas « partenaires.nets ». L'interface ne lit ni le net du catalogue ni la règle
 -- de commission du partenaire, et ne peut rien écrire dans `reservations_nets`. La réservation restait sans net ni commission prévus : marge, dû aux
@@ -34,15 +34,15 @@
 -- réservation qui a déjà sa ligne (créée par le déclencheur) la complète au lieu d'échouer sur la clé unique : les valeurs envoyées gagnent, les
 -- autres sont gardées.
 --
--- À exécuter une seule fois, après la migration 29. Ne modifie aucune donnée existante (le rattrapage est à part : rattrapage-30-nets-base.sql).
+-- À exécuter une seule fois, après la migration 31. Ne modifie aucune donnée existante (le rattrapage est à part : rattrapage-32-nets-base.sql).
 -- Idempotente.
 
 begin;
 
 alter table reservations_nets add column if not exists net_prevu_auto numeric(12, 2);
 alter table reservations_nets add column if not exists commission_prevue_auto numeric(12, 2);
-comment on column reservations_nets.net_prevu_auto is 'Dernier net prévu calculé par la base (migration 30). net_prevu différent : saisi à la main, jamais réécrit.';
-comment on column reservations_nets.commission_prevue_auto is 'Dernière commission prévue calculée par la base (migration 30). commission_prevue différente : saisie à la main, jamais réécrite.';
+comment on column reservations_nets.net_prevu_auto is 'Dernier net prévu calculé par la base (migration 32). net_prevu différent : saisi à la main, jamais réécrit.';
+comment on column reservations_nets.commission_prevue_auto is 'Dernière commission prévue calculée par la base (migration 32). commission_prevue différente : saisie à la main, jamais réécrite.';
 
 -- Un nombre lu dans du JSON (nombre, ou texte qui en est un), sinon null : `Number(x)` de l'interface, sans les cas exotiques.
 create or replace function nombre_json(v jsonb) returns numeric language sql immutable set search_path = public, pg_temp as $$

@@ -189,7 +189,7 @@ test("droit « partenaires.supprimer » : séparé, dans Administrateur, pas dan
   assert.deepEqual(DEPENDANCES["partenaires.supprimer"], ["partenaires.lire", "partenaires.ecrire"]);
   assert.ok(ROLES_SYSTEME.find((r) => r.nom === "Administrateur").permissions.includes("partenaires.supprimer"));
   assert.ok(!ROLES_SYSTEME.find((r) => r.nom === "Éditeur").permissions.includes("partenaires.supprimer"));
-  const sql = fs.readFileSync(new URL("../docs/gestion/migration-31-partenaires-supprimer.sql", import.meta.url), "utf8");
+  const sql = fs.readFileSync(new URL("../docs/gestion/migration-33-partenaires-supprimer.sql", import.meta.url), "utf8");
   for (const t of ["partenaires", "prestations", "trajets"]) assert.match(sql, new RegExp(`on ${t} as restrictive for delete to authenticated using \\(a_permission\\(entite_id, 'partenaires\\.supprimer'\\)\\)`));
 });
 

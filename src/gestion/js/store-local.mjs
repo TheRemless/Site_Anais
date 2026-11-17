@@ -34,10 +34,10 @@ export function creer() {
     if (!data.bandeaux_site) data.bandeaux_site = bandeauxDemo({ entites: data.entites, ajd: aujourdhui(), uid });
     for (const t of TABLES) data[t] = data[t] || [];
     data.fiduciaire_factures = data.fiduciaire_factures || [];
-    // Corbeille des documents et compteurs de numéros, comme la base (migration 31). L'acompte figé du dossier existe comme colonne.
+    // Corbeille des documents et compteurs de numéros, comme la base (migration 34). L'acompte figé du dossier existe comme colonne.
     data.corbeille_documents = data.corbeille_documents || [];
     data.compteurs_ref = data.compteurs_ref || {};
-    // Historique des réglages (migration 36), comme la base : la version remplacée à chaque enregistrement, 60 au plus par entreprise.
+    // Historique des réglages (migration 38), comme la base : la version remplacée à chaque enregistrement, 60 au plus par entreprise.
     data.reglages_historique = data.reglages_historique || [];
     for (const d of data.dossiers || []) if (!("acompte_pct" in d)) d.acompte_pct = null;
     // Nets de démo d'avant le calcul par la base (17.11.2026, D2) : ils comptent comme calculés, pour suivre un enfant ajouté ou un tarif changé.
@@ -88,7 +88,7 @@ export function creer() {
   const accessibles = () => (utilisateur.super_admin ? data.entites.map((e) => e.id) : data.membres.filter((m) => m.user_id === utilisateur.user_id).map((m) => m.entite_id));
   const nomDe = (id) => (data.profils.find((p) => p.user_id === id) || {}).nom || null;
 
-  // Comme le déclencheur garder_prix_vente (migration 36) : sans le droit « partenaires.prix », un prix de vente ne change pas et un tarif ou un
+  // Comme le déclencheur garder_prix_vente (migration 38) : sans le droit « partenaires.prix », un prix de vente ne change pas et un tarif ou un
   // trajet créé naît sans prix.
   const garderPrix = (table, avant, apres) => {
     if (!["prestations", "trajets"].includes(table) || droit(apres.entite_id, "partenaires.prix")) return;
@@ -99,7 +99,7 @@ export function creer() {
     if (change) throw new Error(tr("Le prix de vente est réservé aux personnes qui ont le droit « Modifier les prix de vente ». Laissez le prix tel quel, ou demandez à l'administratrice."));
   };
 
-  // Comme le déclencheur remplir_nets (migration 30) : après l'écriture d'une réservation de Secret, le net et la commission prévus suivent le tarif,
+  // Comme le déclencheur remplir_nets (migration 32) : après l'écriture d'une réservation de Secret, le net et la commission prévus suivent le tarif,
   // les personnes et les lignes de facture, sans jamais écraser une valeur saisie à la main (contrôle du 17.11.2026, D2).
   const remplirNets = (r, avant) => {
     const suivi = suiviDeclencheur(avant, r);
@@ -182,7 +182,7 @@ export function creer() {
     async fiduciaireListe() {
       return structuredClone(facturesVisibles(data, { droit, voit }));
     },
-    async fiduciaireMigration31() {
+    async fiduciaireMigration36() {
       return true;
     },
     async fiduciaireAPreparer() {
@@ -270,12 +270,12 @@ export function creer() {
     async inserer(table, row) {
       const ligne = { id: uid(), created_at: aujourdhui(), ...row };
       garderPrix(table, null, ligne);
-      // Comme la base (migration 31) : un document écrit toujours sa devise, un dossier a sa colonne d'acompte figé.
+      // Comme la base (migration 34) : un document écrit toujours sa devise, un dossier a sa colonne d'acompte figé.
       if (table === "documents" && ligne.contenu && !ligne.contenu.devise) ligne.contenu = { ...ligne.contenu, devise: (data.reglages[ligne.entite_id] || {}).devise || "CHF" };
       if (table === "dossiers" && !("acompte_pct" in ligne)) ligne.acompte_pct = null;
       if (table === "dossiers") ligne.responsable_id = ligne.responsable_id || utilisateur.user_id;
       if (TABLES.includes(table) && !["catalogue", "trajets", ...PARTENAIRES_NETS].includes(table)) ligne.cree_par = utilisateur.user_id;
-      // Comme fusionner_nets (migration 30) : une insertion pour une réservation qui a déjà sa ligne de nets la complète, l'identifiant reste.
+      // Comme fusionner_nets (migration 32) : une insertion pour une réservation qui a déjà sa ligne de nets la complète, l'identifiant reste.
       if (table === "reservations_nets") {
         const existante = data.reservations_nets.find((x) => x.reservation_id === ligne.reservation_id);
         if (existante) {

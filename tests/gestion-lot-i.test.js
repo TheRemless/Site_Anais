@@ -133,7 +133,7 @@ test("statistiques : l'écart soldé sort de l'encaissé et se compte à part ; 
   assert.ok(MESURES.ecart_solde && DEFINITIONS.ecart_solde, "la mesure a sa définition affichée");
 });
 
-test("analyses par société : encaissé sans l'écart, écart à part (miroir de la migration 36)", () => {
+test("analyses par société : encaissé sans l'écart, écart à part (miroir de la migration 39)", () => {
   const a = analyserLocal(source(), "2026-11-01", "2026-11-30", "2026-11-17");
   assert.deepEqual(a.encaisse_par_mois, [{ mois: "2026-11", devise: "THB", montant: 9960, nombre: 1 }]);
   assert.deepEqual(a.ecart_par_mois, [{ mois: "2026-11", devise: "THB", montant: 40, nombre: 1 }]);

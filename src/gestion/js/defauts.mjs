@@ -61,8 +61,8 @@ export const DEPENDANCES = {
 };
 
 // Rôles créés avec chaque entreprise. Ils se modifient ensuite librement dans l'écran Administration.
-// L'Administrateur a `tous_droits` (migration 36) : ses droits sont calculés, comme ceux de l'administratrice générale. Un droit ajouté plus tard
-// lui arrive sans rien toucher à son rôle ; sa liste enregistrée ne sert qu'à une base où la migration 36 n'est pas encore appliquée.
+// L'Administrateur a `tous_droits` (migration 38) : ses droits sont calculés, comme ceux de l'administratrice générale. Un droit ajouté plus tard
+// lui arrive sans rien toucher à son rôle ; sa liste enregistrée ne sert qu'à une base où la migration 38 n'est pas encore appliquée.
 export const ROLES_SYSTEME = [
   { nom: N_("Administrateur"), description: N_("Tous les droits dans l'entreprise."), portee: "toute", permissions: TOUTES_PERMISSIONS, tous_droits: true },
   { nom: N_("Éditeur"), description: N_("Clients, dossiers, devis, factures et paiements. Ni réglages ni suppression."), portee: "toute", permissions: ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "paiements.ecrire", "taches.ecrire", "catalogue.ecrire", "partenaires.lire", "partenaires.ecrire", "partenaires.prix"] },

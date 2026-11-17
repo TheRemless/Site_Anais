@@ -12,7 +12,7 @@ import { usagesEnvoi, SECOURS_ENVOI } from "../src/gestion/js/documents-calc.mjs
 import { MESSAGES_DEFAUT } from "../src/gestion/js/defauts.mjs";
 import { totaux } from "../src/gestion/js/calc.mjs";
 
-// ---- D2 : la démo recalcule le net prévu comme la base (migration 30) --------------------------------------------------------
+// ---- D2 : la démo recalcule le net prévu comme la base (migration 32) --------------------------------------------------------
 const catalogue = () => ({
   prestations: [
     { id: "pe", partenaire_id: "p1", libelle: "Tour E", prix_vente: 1500, unite: "pp", details: { enfant: 900 } },

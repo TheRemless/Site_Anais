@@ -233,7 +233,7 @@ test("journal : réservations, partenaires, prestations, trajets, et nets seulem
   const vue = fs.readFileSync("src/gestion/js/views/journal.mjs", "utf8");
   for (const t of ["reservations", "reservations_nets", "partenaires", "prestations", "trajets"]) assert.match(vue, new RegExp(`\\["${t}", N_\\(`));
   assert.match(vue, /"reservations_nets" \? moduleActif\("partenaires"\) && peut\("partenaires\.nets"\)/);
-  const sql = fs.readFileSync("docs/gestion/migration-35-journal-nets.sql", "utf8");
+  const sql = fs.readFileSync("docs/gestion/migration-37-journal-nets.sql", "utf8");
   assert.match(sql, /create trigger journaliser after insert or update or delete on reservations_nets/);
   assert.match(sql, /table_name <> 'reservations_nets' or a_permission\(entite_id, 'partenaires\.nets'\)/);
 });

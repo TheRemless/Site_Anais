@@ -538,7 +538,7 @@ export function vueReglages() {
     } catch (err) {
       return blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("Historique indisponible : {message}", { message: err.message })));
     }
-    if (versions === null) return blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("L'historique s'active avec la migration 36 de la base.")));
+    if (versions === null) return blocHistorique.replaceChildren(h("p", { class: "aide" }, tr("L'historique s'active avec la migration 38 de la base.")));
     if (!versions.length) return blocHistorique.replaceChildren(h("p", { class: "vide-court" }, tr("Aucune version précédente pour l'instant : la première sera gardée au prochain enregistrement.")));
     const actuelle = reglages();
     blocHistorique.replaceChildren(
@@ -722,7 +722,7 @@ export function vueReglages() {
     ...(ztp ? {} : { vouchers: sectionVouchers({ r, taxi, texte, image, marque, choixApercuVoucher }) }),
     // Textes thaïs de l'écran de Mook, le français en regard (section 2 de l'audit). Secret : factures pour la fiduciaire ; Taxi : voucher et factures.
     ...(ecransThai.length ? { thai: h("div", null, h("p", { class: "aide" }, tr("Les textes que lit l'assistante sur son écran simple. À gauche, ce qu'ils disent en français ; à droite, le texte thaï affiché. Vide : le texte de départ, en gris. Les mots entre accolades, comme {n} ou {nom}, se remplissent seuls : gardez-les tels quels.")), ...ecransThai.map(blocTextesThai)) } : {}),
-    // Historique des réglages (migration 36) : chaque enregistrement garde la version remplacée, on peut y revenir (audit n° 39).
+    // Historique des réglages (migration 38) : chaque enregistrement garde la version remplacée, on peut y revenir (audit n° 39).
     historique: h("div", null, h("section", null, h("h2", null, tr("Historique des réglages")), h("p", { class: "aide" }, tr("Chaque enregistrement garde la version d'avant (les 60 dernières, les 20 plus récentes affichées ici). Revenir à une version la réenregistre telle quelle : la version actuelle entre à son tour dans l'historique, rien n'est perdu.")), blocHistorique)),
     donnees: h(
       "div",

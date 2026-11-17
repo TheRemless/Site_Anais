@@ -11,7 +11,7 @@ export function roleDans({ profil, membres, roles }, entiteId) {
   return (m && roles.find((r) => r.id === m.role_id)) || null;
 }
 
-// Un rôle « tous les droits » (l'Administrateur de chaque entreprise, migration 36) reçoit la liste complète, calculée comme pour
+// Un rôle « tous les droits » (l'Administrateur de chaque entreprise, migration 38) reçoit la liste complète, calculée comme pour
 // l'administratrice générale : un droit ajouté au code lui arrive sans toucher au rôle.
 export const droitsDuRole = (r) => (r ? (r.tous_droits ? TOUTES_PERMISSIONS : r.permissions || []) : []);
 

@@ -284,7 +284,7 @@ async function actualiserResume(dossierId) {
   }
 }
 
-// Après l'écriture d'une réservation, la base a pu recalculer son net et sa commission prévus (migration 30) : on relit sa ligne de nets,
+// Après l'écriture d'une réservation, la base a pu recalculer son net et sa commission prévus (migration 32) : on relit sa ligne de nets,
 // sinon la fiche garde l'ancien net jusqu'à la prochaine synchronisation (contrôle du 17.11.2026, D2). Seulement pour qui voit les nets.
 // Pendant avecNetsGroupes (création de plusieurs services d'un coup), la relecture attend la fin : une seule requête et un seul rebatir.
 let netsDifferes = null;
@@ -448,7 +448,7 @@ export async function creerEntite(nom, slug) {
   const e = await etat.store.inserer("entites", { nom, slug, actif: true, ordre });
   const base = completerReglages({ emetteur: { nom } });
   await etat.store.enregistrerReglages(e.id, base);
-  // `tous_droits` (migration 36) n'est écrit que si la base a déjà la colonne : avant la migration, l'insertion échouerait.
+  // `tous_droits` (migration 38) n'est écrit que si la base a déjà la colonne : avant la migration, l'insertion échouerait.
   const avecTousDroits = etat.brut.roles.some((r) => "tous_droits" in r);
   for (const r of ROLES_SYSTEME) etat.brut.roles.push(await etat.store.inserer("roles", { entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: r.permissions, systeme: true, ...(avecTousDroits ? { tous_droits: !!r.tous_droits } : {}) }));
   etat.brut.entites.push(e);

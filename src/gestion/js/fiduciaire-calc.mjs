@@ -159,7 +159,7 @@ export const PREFIXES = { facture: FID_DEFAUT.prefixe_facture, avoir: FID_DEFAUT
 export const prefixeDe = (type, reglages = null) => { const f = reglagesFid(reglages); return type === "avoir" ? f.prefixe_avoir : f.prefixe_facture; };
 export const formaterNumero = (type, annee, seq, prefixe = null) => `${prefixe || PREFIXES[type] || PREFIXES.facture}-${annee}-${String(seq).padStart(3, "0")}`;
 
-// Destinataire d'une facture : le partenaire (destinataire_id), ou son nom pour une facture émise avant la migration 31.
+// Destinataire d'une facture : le partenaire (destinataire_id), ou son nom pour une facture émise avant la migration 36.
 export const cleDestinataire = (f) => (f.destinataire_id ? String(f.destinataire_id) : `nom:${(f.destinataire || {}).nom || ""}`);
 export const pourPartenaire = (f, partenaire) => !!partenaire && (f.destinataire_id ? f.destinataire_id === partenaire.id : (f.destinataire || {}).nom === partenaire.nom);
 
@@ -214,7 +214,7 @@ export function contenuDepuisFacture(f) {
 
 // Réglages d'affichage : ceux de l'entreprise émettrice, avec l'émetteur, le compte bancaire, le QR code et les titres tels qu'ils étaient le jour de l'émission.
 // Le QR d'une facture se lit dans `apparence` (modesPaiement) : la copie figée le remplace, même vide (une facture émise sans QR reste sans QR).
-// Une facture émise avant la migration 31 n'a pas de copie du QR ni des titres : elle garde l'affichage d'avant (QR et titres actuels, mots par défaut).
+// Une facture émise avant la migration 36 n'a pas de copie du QR ni des titres : elle garde l'affichage d'avant (QR et titres actuels, mots par défaut).
 export function reglagesFiduciaire(reglages, facture) {
   const figes = facture.emetteur || {};
   const paie = figes.paiement || {};
@@ -224,7 +224,7 @@ export function reglagesFiduciaire(reglages, facture) {
   return {
     ...reglages,
     emetteur: { ...reglages.emetteur, ...(figes.emetteur || {}) },
-    // Facture de la migration 31 (QR copié) : le texte du compte est figé lui aussi, même absent. Avant : le texte copié, sinon l'actuel.
+    // Facture de la migration 36 (QR copié) : le texte du compte est figé lui aussi, même absent. Avant : le texte copié, sinon l'actuel.
     paiement: { ...(reglages.paiement || {}), texte: paie.texte !== undefined ? paie.texte : qrFige ? "" : (reglages.paiement || {}).texte, ...(paie.nom ? { nom: paie.nom } : {}) },
     apparence: { ...(reglages.apparence || {}), ...(qrFige ? { qr_image: paie.qr_image || "", qr_pseudo: paie.qr_pseudo || "" } : {}) },
     libelles_en: { ...(reglages.libelles_en || {}), facture: (avoir ? titres.avoir : titres.facture) || (avoir ? FID_DEFAUT.titre_avoir : FID_DEFAUT.titre_facture), ref_facture: (avoir ? titres.ref_avoir : titres.ref_facture) || (avoir ? FID_DEFAUT.ref_avoir : FID_DEFAUT.ref_facture) },
