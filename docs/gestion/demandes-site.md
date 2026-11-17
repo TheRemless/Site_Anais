@@ -12,6 +12,7 @@ POST https://lkxqcmzeidlyssoqmqkh.supabase.co/functions/v1/demande-site
 
 - Pas de clé, pas de jeton : la fonction est publique (`verify_jwt = false`) et se protège elle-même.
 - Origines admises : `https://secrettravelandtour.com`, `https://www.secrettravelandtour.com`, `http://localhost:<port>` et `http://127.0.0.1:<port>` pour les essais. Tout autre site reçoit 403.
+- Autre client du logiciel : le secret `SITE_ORGANISATION` donne son organisation et `SITE_ORIGINES` ses adresses (https, séparées par des virgules). Sans `SITE_ORIGINES`, ce sont celles de secrettravelandtour.com.
 - En-tête `Content-Type: text/plain;charset=UTF-8` (le corps reste du JSON). C'est voulu : une requête « simple » n'a pas de requête de contrôle CORS, ce qui rend l'envoi `keepalive` fiable sur iPhone. `application/json` est aussi accepté.
 - 4 096 octets au plus.
 
@@ -44,7 +45,7 @@ Uniquement ce que la feuille sait déjà. Aucun champ nouveau à demander au vis
 
 | Champ | Obligatoire | Format | D'où il vient dans `booking.js` |
 |---|---|---|---|
-| `brand` | oui | `"secret"` ou `"taxi"` | `"taxi"` pour les pages VIP Taxi Lanta (`/taxi/…`), `"secret"` partout ailleurs, minivan partagé de `/transfers/` compris |
+| `brand` | oui | slug d'une entreprise de l'organisation qui publie sur le site (`"secret"` ou `"taxi"` chez Zwald), sinon 400 `invalid` sur `brand` | `"taxi"` pour les pages VIP Taxi Lanta (`/taxi/…`), `"secret"` partout ailleurs, minivan partagé de `/transfers/` compris |
 | `product_id` | oui | `[a-z0-9-]`, 60 caractères au plus | `config.productId` |
 | `product` | non | 120 caractères | `config.product` |
 | `option` | non | 80 caractères | `state.option` (ou `state.route` pour le speedboat) |
