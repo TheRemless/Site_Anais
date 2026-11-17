@@ -585,8 +585,17 @@ async function afficher() {
         "div",
         { class: "connexion" },
         selecteurLangue(),
-        h("h1", null, tr("Aucun accès pour l'instant")),
-        h("p", { class: "sous" }, tr("Votre compte ({email}) n'a pas encore accès à une entreprise. Demandez à l'administratrice de vous en donner un.", { email: etat.session.email })),
+        h("h1", null, etat.moi && etat.moi.super_admin ? tr("Votre première entreprise") : etat.moi && etat.moi.plateforme ? tr("Clients") : tr("Aucun accès pour l'instant")),
+        etat.moi && etat.moi.super_admin
+          ? h("p", { class: "sous" }, tr("Bienvenue. Créez votre première entreprise pour commencer : choisissez votre type d'activité, vous compléterez ensuite ses réglages."))
+          : etat.moi && etat.moi.plateforme
+            ? h("p", { class: "sous" }, tr("Compte éditeur : vous créez ici l'organisation d'un nouveau client et son administrateur. Vous ne voyez aucune de leurs données."))
+            : h("p", { class: "sous" }, tr("Votre compte ({email}) n'a pas encore accès à une entreprise. Demandez à l'administratrice de vous en donner un.", { email: etat.session.email })),
+        // Nouveau client (migration 41) : son administrateur crée sa première entreprise ici ; l'éditeur crée les clients.
+        etat.moi && etat.moi.super_admin
+          ? h("button", { class: "principal", type: "button", onclick: async () => (await import("./views/admin.mjs")).nouvelleEntiteModal(() => { const e = etat.brut.entites[etat.brut.entites.length - 1]; if (e) changerEntite(e.id); afficher(); }) }, tr("Créer votre première entreprise"))
+          : null,
+        etat.moi && etat.moi.plateforme ? h("button", { class: "principal", type: "button", onclick: async () => (await import("./views/admin.mjs")).nouveauClientModal() }, tr("Nouveau client")) : null,
         etat.store.mode === "demo" ? bandeauDemo() : null,
         etat.store.mode === "supabase" ? h("button", { class: "secondaire", type: "button", onclick: async () => (await etat.store.deconnecter(), (etat.session = null), afficher()) }, tr("Se déconnecter")) : null
       )

@@ -1,13 +1,16 @@
 // Fonction « invitation » de Gestion : la logique pure (lecture et contrôle de la demande), sans dépendance.
 // Le même fichier sert à la fonction Supabase (Deno) et aux tests (node --test).
 //
-// Trois gestes, réservés à l'administratrice générale (vérifié côté serveur par est_super_admin() avec la session de la personne) :
+// Trois gestes, réservés à l'administrateur d'une organisation (vérifié côté serveur par est_super_admin() avec la session de la personne),
+// et toujours limités aux comptes et aux entreprises de SON organisation (migration 41) :
 //   * « inviter » : crée le compte, son nom, sa langue et ses accès, et rend un lien d'invitation à envoyer soi-même (WhatsApp, e-mail) ;
 //   * « lien_mot_de_passe » : rend un lien pour choisir un nouveau mot de passe (mot de passe oublié, invitation expirée) ;
 //   * « supprimer » : supprime le compte. Ses dossiers restent, sans responsable ; ses accès partent avec lui.
+// Un quatrième, « creer_client », est réservé à l'éditeur du logiciel (est_plateforme()) : il crée le compte du futur administrateur d'un client
+// et son organisation (creer_organisation), pendant l'appel de mise en route.
 // La fonction n'envoie aucun e-mail : elle ne dépend pas du serveur d'envoi de Supabase. Le lien n'est jamais écrit dans le journal.
 
-export const ACTIONS = ["inviter", "lien_mot_de_passe", "supprimer"];
+export const ACTIONS = ["inviter", "lien_mot_de_passe", "supprimer", "creer_client"];
 export const LANGUES = ["fr", "en"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]{2,}$/;
@@ -46,6 +49,12 @@ export function lireDemande(demande, { origines = [] } = {}) {
   if (!emailValide(email)) return { ok: false, erreur: "email_invalide" };
   const nom = typeof demande.nom === "string" ? demande.nom.trim().slice(0, 120) : "";
   const langue = LANGUES.includes(demande.langue) ? demande.langue : null;
+  if (action === "creer_client") {
+    const organisation = typeof demande.organisation === "string" ? demande.organisation.trim().slice(0, 120) : "";
+    if (!organisation) return { ok: false, erreur: "organisation_invalide" };
+    const fuseau = typeof demande.fuseau === "string" && /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+){0,2}$/.test(demande.fuseau) && demande.fuseau.length <= 60 ? demande.fuseau : "Asia/Bangkok";
+    return { ok: true, action, email, nom, langue: langue || "en", organisation, fuseau, retour: demande.retour };
+  }
   const acces = Array.isArray(demande.acces) ? demande.acces : [];
   if (acces.length > 30) return { ok: false, erreur: "acces_invalide" };
   const vus = new Set();
@@ -61,9 +70,16 @@ export function accesCoherents(acces, roles) {
   return acces.every((a) => (roles || []).some((r) => r.id === a.role_id && r.entite_id === a.entite_id));
 }
 
-// Supprimer un compte : jamais le sien, jamais la dernière administratrice générale active.
-export function suppressionPermise({ appelant, cible, superAdminsActifs }) {
+// Un compte d'une autre organisation est traité comme inconnu : l'administrateur d'un client n'apprend même pas qu'il existe.
+export const memeOrganisation = (organisationAppelant, cible) => !!organisationAppelant && !!cible && cible.organisation_id === organisationAppelant;
+
+// Chaque entreprise demandée appartient à l'organisation de l'appelant (entreprises lues en base par la fonction).
+export const entreprisesDeLOrganisation = (acces, entites, organisation) => acces.every((a) => (entites || []).some((e) => e.id === a.entite_id && e.organisation_id === organisation));
+
+// Supprimer un compte : jamais le sien, jamais un compte d'une autre organisation, jamais le dernier administrateur actif de l'organisation.
+export function suppressionPermise({ appelant, cible, superAdminsActifs, organisation = undefined }) {
   if (!cible) return { ok: false, erreur: "personne_inconnue" };
+  if (organisation !== undefined && !memeOrganisation(organisation, cible)) return { ok: false, erreur: "personne_inconnue" };
   if (cible.user_id === appelant) return { ok: false, erreur: "soi_meme" };
   if (cible.super_admin && cible.actif && superAdminsActifs <= 1) return { ok: false, erreur: "derniere_administratrice" };
   return { ok: true };

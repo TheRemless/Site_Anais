@@ -3362,4 +3362,16 @@ export const EN = {
   "Plus tard": "Later",
   "Type d'activité": "Type of business",
   "Devise des documents": "Currency of documents",
+  // Invitation d'un client et première entreprise (étape 3 du SaaS)
+  "Votre première entreprise": "Your first company",
+  "Bienvenue. Créez votre première entreprise pour commencer : choisissez votre type d'activité, vous compléterez ensuite ses réglages.": "Welcome. Create your first company to get started: choose your type of business, then complete its settings.",
+  "Compte éditeur : vous créez ici l'organisation d'un nouveau client et son administrateur. Vous ne voyez aucune de leurs données.": "Publisher account: here you create a new client's organisation and its administrator. You cannot see any of their data.",
+  "Créer votre première entreprise": "Create your first company",
+  "Donnez un nom à l'organisation du client.": "Give the client's organisation a name.",
+  "L'organisation n'a pas pu être créée. Le compte a été retiré : réessayez.": "The organisation could not be created. The account was removed: please try again.",
+  "Client créé": "Client created",
+  "Envoyez ce message à {nom}. En ouvrant le lien, la personne choisit son mot de passe, puis crée sa première entreprise.": "Send this message to {nom}. When they open the link, they choose a password and then create their first company.",
+  "Nom de l'administrateur": "Administrator's name",
+  "E-mail de l'administrateur": "Administrator's email",
+  "Créer le client": "Create client",
 };

@@ -88,6 +88,12 @@ console.log("== Isolation ==");
 const cree = await essaie(marc, "insert into entites (slug, nom) values ('secret', 'Agence B') returning id, organisation_id");
 ok(cree.ok && cree.rows[0].organisation_id === B, "Marc crée une entreprise dans B, même slug que chez Zwald " + (cree.err || ""));
 const eB = cree.rows[0].id;
+// Première entreprise d'un nouveau client, comme creerEntite dans l'outil : ses rôles de départ et ses réglages (modèle métier).
+const roleCree = await essaie(marc, "insert into roles (entite_id, nom, permissions, systeme) values ($1, 'Administrateur', array['reglages.ecrire'], true) returning id", [eB]);
+ok(roleCree.ok, "Marc crée les rôles de sa première entreprise " + (roleCree.err || ""));
+const regl = await essaie(marc, `insert into reglages (entite_id, valeur) values ($1, '{"fonctionnement":"excursions","emetteur":{"nom":"Agence B"}}'::jsonb) on conflict (entite_id) do update set valeur = excluded.valeur returning entite_id`, [eB]);
+ok(regl.ok, "Marc enregistre les réglages de sa première entreprise " + (regl.err || ""));
+ok(!(await essaie(marc, `update reglages set valeur = '{}'::jsonb where entite_id = (select id from entites where slug = 'secret' and organisation_id = '${ZWALD}') returning entite_id`)).rows?.length, "Marc ne touche pas aux réglages de Secret");
 ok(!(await essaie(marc, `insert into entites (slug, nom, organisation_id) values ('x', 'Pirate', '${ZWALD}')`)).ok, "Marc ne peut pas créer d'entreprise dans Zwald");
 const ent = {};
 for (const s of ["ztp", "secret", "taxi"]) ent[s] = (await un("select id from entites where slug = $1 and organisation_id = $2", [s, ZWALD])).id;

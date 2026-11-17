@@ -158,7 +158,7 @@ function blocOrganisation(rafraichir) {
   );
 }
 
-function nouvelleEntiteModal(apres) {
+export function nouvelleEntiteModal(apres) {
   const nom = h("input", { id: "ne-nom", required: true });
   const code = h("input", { id: "ne-slug", required: true, pattern: "[a-z0-9-]+" });
   let manuel = false;
@@ -232,6 +232,47 @@ function modifierEntiteModal(e, apres) {
 }
 
 // Un lien d'invitation ou de mot de passe à envoyer soi-même : copier, WhatsApp (la personne choisit le contact) ou e-mail.
+// Nouveau client (éditeur du logiciel, pendant l'appel de mise en route) : le compte du futur administrateur et son organisation.
+// Le lien rendu s'envoie au client ; il choisit son mot de passe, puis crée sa première entreprise depuis un modèle métier.
+export function nouveauClientModal() {
+  const organisationNom = h("input", { id: "nc-organisation", required: true, maxlength: 120 });
+  const nom = h("input", { id: "nc-nom", maxlength: 120 });
+  const email = h("input", { id: "nc-email", type: "email", required: true });
+  const fuseau = h("select", { id: "nc-fuseau" }, ...fuseaux().map((z) => h("option", { value: z }, z)));
+  try {
+    fuseau.value = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Bangkok";
+  } catch {
+    fuseau.value = "Asia/Bangkok";
+  }
+  const langue = h("select", { id: "nc-langue" }, ...LANGUES.map((l) => h("option", { value: l.code }, l.nom)));
+  langue.value = "en";
+  const erreur = h("p", { class: "erreur", role: "alert" });
+  const fermer = modal(
+    tr("Nouveau client"),
+    h(
+      "form",
+      {
+        class: "modal-corps",
+        onsubmit: async (e) => {
+          e.preventDefault();
+          erreur.textContent = "";
+          const r = await invitation({ action: "creer_client", organisation: organisationNom.value.trim(), nom: nom.value.trim(), email: email.value.trim(), fuseau: fuseau.value, langue: langue.value });
+          if (r.erreur) return void (erreur.textContent = tr(messageInvitation(r.erreur)));
+          fermer();
+          lienModal({ titre: tr("Client créé"), intro: tr("Envoyez ce message à {nom}. En ouvrant le lien, la personne choisit son mot de passe, puis crée sa première entreprise.", { nom: nom.value.trim() || email.value.trim() }), lien: r.lien, email: email.value.trim(), nom: nom.value.trim(), langue: langue.value, type: "invite" });
+        },
+      },
+      champ(tr("Nom de l'organisation"), organisationNom),
+      champ(tr("Nom de l'administrateur"), nom),
+      champ(tr("E-mail de l'administrateur"), email),
+      champ(tr("Fuseau horaire"), fuseau),
+      champ(tr("Langue de départ"), langue),
+      erreur,
+      h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Créer le client")))
+    )
+  );
+}
+
 function lienModal({ titre, intro, lien, email, nom, langue, type, erreur }) {
   const message = messageLien({ lien, langue, type, nom });
   const zone = h("textarea", { id: "lien-texte", rows: 7, readonly: true });
