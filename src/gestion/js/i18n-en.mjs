@@ -2629,4 +2629,6 @@ export const EN = {
   "Trajet masqué.": "Route hidden.",
   "Supprimer définitivement le trajet {de} → {vers} de {depart} et ses prix nets ? Aucun service ne l'utilise. Cette suppression ne peut pas être annulée.": "Delete the {de} → {vers} route at {depart} and its net prices for good? No booking uses it. This cannot be undone.",
   "Trajet supprimé.": "Route deleted.",
+  "Consigne de check-in sur le voucher (anglais)": "Check-in note on the voucher (English)",
+  "Imprimée telle quelle sur le voucher du client. Quelques lignes au plus.": "Printed as is on the client's voucher. A few lines at most.",
 };

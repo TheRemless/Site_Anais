@@ -230,3 +230,9 @@ test("assistant : un tarif d'un partenaire masqué n'est pas repris (revue, n° 
   assert.equal(offreDepuisBase({ genre: "prestation", id: "b" }, { adultes: 1, enfants: 0 }, { prestations: [p], partenaires }), null);
   assert.match(lire("views/assistant-demande.mjs"), /partenaires: etat\.db\.partenaires, nomPartenaire/);
 });
+
+test("consigne de check-in du voucher, en anglais, dans la fiche partenaire (clé regles.checkin_voucher, lue par le lot B)", () => {
+  const p = lire("views/partenaires.mjs");
+  assert.match(p, /id: "p-checkin-voucher"/);
+  assert.match(p, /checkin_voucher: taxi \? r\.checkin_voucher \|\| "" : checkinVoucher\.value\.trim\(\)/);
+});

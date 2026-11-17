@@ -470,6 +470,9 @@ export function formulairePartenaire(p, apres) {
   mode.value = modeParDefaut(p);
   const checkin = h("textarea", { id: "p-checkin", rows: 2 });
   checkin.value = (r.checkin || []).join("\n");
+  // Consigne de check-in imprimée sur le voucher, en anglais (lue par le voucher, lot B) : la règle « Check-in » ci-dessus reste une note interne en français.
+  const checkinVoucher = h("textarea", { id: "p-checkin-voucher", rows: 2, lang: "en", placeholder: "Check-in opens 45 minutes before departure." });
+  checkinVoucher.value = r.checkin_voucher || "";
   const statut = h("input", { id: "p-statut", value: ct.statut || "", placeholder: tr("Tarifs nets confirmés, contrat à signer…") });
   const saison = h("input", { id: "p-saison", value: ct.saison || "" });
   const validite = h("input", { id: "p-validite", value: ct.validite || "", placeholder: tr("Tarifs valables jusqu'au 30 avril 2027…") });
@@ -499,7 +502,7 @@ export function formulairePartenaire(p, apres) {
           role: role.value.trim(),
           contact: { ...c, personne: personne.value.trim(), telephones, emails: emails.value.split(",").map((x) => x.trim()).filter(Boolean), line: line.value.trim(), web: web.value.trim(), adresse: adresse.value.trim(), embarcadere: embarcadere.value.trim(), licence: licence.value.trim() },
           // Taxi : le client paie toujours le chauffeur, le menu n'y est pas montré et le mode enregistré ne change pas (audit n° 55).
-          regles: { ...r, mode_reglement: taxi ? r.mode_reglement : mode.value === SUR_PLACE ? SUR_PLACE : undefined, annulation: annulation.value.trim(), enfants: lignesVers(enfants.value), checkin: lignesVers(checkin.value) },
+          regles: { ...r, mode_reglement: taxi ? r.mode_reglement : mode.value === SUR_PLACE ? SUR_PLACE : undefined, annulation: annulation.value.trim(), enfants: lignesVers(enfants.value), checkin: lignesVers(checkin.value), checkin_voucher: taxi ? r.checkin_voucher || "" : checkinVoucher.value.trim() },
           contrat: { ...ct, statut: statut.value.trim(), saison: saison.value.trim(), validite: validite.value.trim(), etat: etatC.value || undefined, fin: fin.value || null, documents: documents.value.split(",").map((x) => x.trim()).filter(Boolean) },
           notes: notes.value.trim(),
           actif: actif.checked,
@@ -522,7 +525,7 @@ export function formulairePartenaire(p, apres) {
     h("div", { class: "grille-form" }, champ(tr("Adresse"), adresse), taxi ? null : champ(tr("Embarcadère ou point de départ"), embarcadere), champ(tr("Licence"), licence)),
     h("h3", null, tr("Règles")),
     taxi ? null : champ(tr("Règlement par les clients"), mode, tr("Les nouveaux services de ce partenaire prennent ce mode. Chaque service peut ensuite être changé d'un tap.")),
-    h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Enfants, une règle par ligne"), enfants), taxi ? null : champ(tr("Check-in, une règle par ligne"), checkin)),
+    h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Enfants, une règle par ligne"), enfants), taxi ? null : champ(tr("Check-in, une règle par ligne"), checkin), taxi ? null : champ(tr("Consigne de check-in sur le voucher (anglais)"), checkinVoucher, tr("Imprimée telle quelle sur le voucher du client. Quelques lignes au plus."))),
     taxi ? null : h("h3", null, tr("Contrat")),
     taxi ? null : h("div", { class: "grille-form" }, champ(tr("Statut"), statut), champ(tr("Saison"), saison), champ(tr("Validité"), validite), champ(tr("État"), etatC, tr("« À surveiller » met le contrat en orange dans la liste.")), champ(tr("Fin du contrat"), fin, tr("Un rappel apparaît dans Aujourd'hui trente jours avant.")), champ(tr("Documents, séparés par des virgules"), documents, tr("Les noms des documents seulement : le fichier lui-même se garde hors de l'outil pour l'instant."))),
     champ(tr("Notes"), notes),
