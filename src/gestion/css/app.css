@@ -1491,3 +1491,28 @@ details > summary { padding-block: 11px; margin: 0; }
 .creation-voucher > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .creation-voucher-resume { margin-left: 8px; font-weight: 400; color: var(--texte-2); }
 .creation-voucher-resume:empty { display: none; }
+
+/* Partenaires et catalogue (lot A, 17.11.2026) : éléments masqués en gris, prix à saisir, lignes de téléphones et de fenêtres, ordre des tarifs. */
+.tag.attention { background: #fdf0dc; color: #8a5200; }
+.carte.inactif .carte-lien { background: var(--surface-2); }
+.carte.inactif .carte-titre, .carte.inactif .carte-sous { color: var(--texte-2); }
+.inactif td strong { color: var(--texte-2); }
+p.etiquette { margin: 0 0 4px; font-size: 0.88rem; font-weight: 600; }
+.lignes-saisie { display: grid; gap: 8px; margin-bottom: 8px; }
+.ligne-saisie { display: grid; gap: 8px; align-items: center; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto auto; }
+.ligne-saisie.fenetre { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+.ligne-saisie.zone { grid-template-columns: minmax(0, 1.4fr) repeat(var(--colonnes, 1), minmax(64px, 0.7fr)) auto; }
+.ligne-saisie .case { min-height: 44px; white-space: nowrap; }
+.ligne-saisie input { min-width: 0; }
+.editeur-grille { border: 1px solid var(--bord); border-radius: var(--rayon); padding: 12px; margin-bottom: 12px; }
+.editeur-grille .entete-grille { display: flex; gap: 8px; align-items: end; margin-bottom: 8px; }
+.editeur-grille .entete-grille .champ { flex: 1; margin: 0; }
+.ordre-tarif { display: inline-flex; gap: 2px; }
+.ordre-tarif .bouton-icone { width: 36px; height: 36px; }
+@media (max-width: 600px) {
+  .ligne-saisie { grid-template-columns: minmax(0, 1fr) auto; }
+  .ligne-saisie > :first-child { grid-column: 1 / -1; }
+  .ligne-saisie.fenetre { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .ligne-saisie.fenetre > :first-child { grid-column: auto; }
+  .ligne-saisie.zone { grid-template-columns: repeat(var(--colonnes, 1), minmax(0, 1fr)) auto; }
+}

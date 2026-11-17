@@ -1,7 +1,7 @@
 // Demande d'un client reçue par WhatsApp : lecture du message que rédigent les formulaires des sites Secret et Taxi, propositions de prix
 // d'après la base partenaires, et réponse prête à envoyer. Logique pure, testée avec node --test.
 // Rien n'est inventé : un prix vient d'une ligne de la base, et sans correspondance on propose seulement de chercher à la main.
-import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSupplementaires, prefixeProgramme } from "./partenaires-calc.mjs";
+import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSupplementaires, prefixeProgramme, proposable } from "./partenaires-calc.mjs";
 import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 
@@ -523,7 +523,7 @@ export function sensTrajet(de, vers, texte) {
 
 // Offres de la base citées dans un message libre : tous les mots distinctifs d'un tarif (ou les deux bouts d'un trajet) doivent apparaître.
 // `contexte` : le reste du message, qui complète une phrase où un seul bout du trajet est cité (« un taxi vers l'aéroport de Phuket » : l'autre bout est l'hôtel).
-export function proposerOffresLibres(d, texte, { prestations = [], trajets = [], nomPartenaire = () => "", contexte = "" } = {}) {
+export function proposerOffresLibres(d, texte, { prestations = [], trajets = [], nomPartenaire = () => "", contexte = "", partenaires = [] } = {}) {
   const pax = { adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants };
   const offres = [];
   // L'hôtel et le nom du client ne désignent pas le service : « Klong Dao » dans l'adresse ne doit pas faire trouver un trajet.
@@ -531,7 +531,7 @@ export function proposerOffresLibres(d, texte, { prestations = [], trajets = [],
   const mt = mots(texte);
   const rang = (mot) => mt.findIndex((x) => x === mot || (x.length > 3 && mot.length > 3 && (x.startsWith(mot) || mot.startsWith(x))));
   for (const t of trajets) {
-    if (t.actif === false || (d.date && !trajetDisponible(t, d.date))) continue;
+    if (!proposable(t, partenaires) || (d.date && !trajetDisponible(t, d.date))) continue;
     const de = mots(t.de);
     const vers = mots(t.vers);
     let rDe = recouvrement(t.de, texte);
@@ -563,7 +563,7 @@ export function proposerOffresLibres(d, texte, { prestations = [], trajets = [],
   }
   for (const p of prestations) {
     // Les frais de parc (à payer sur place) et les tarifs enfant se rattachent à une excursion, ils ne se proposent pas seuls.
-    if (p.actif === false || p.famille === "option" || p.famille === "frais" || p.sur_place || p.unite === "ch" || p.unite === "sup") continue;
+    if (!proposable(p, partenaires) || p.famille === "option" || p.famille === "frais" || p.sur_place || p.unite === "ch" || p.unite === "sup") continue;
     const groupe = sansAccents(p.groupe || p.libelle);
     let score = 0;
     let motsCommuns = 0;
@@ -852,9 +852,23 @@ export function prixTrajet(t, { adultes, enfants }) {
 export const groupeJoin = (groupe) => /join|collectif|partag|shared/.test(groupe);
 export const groupePrive = (groupe) => /priv/.test(groupe);
 
-// Tarif enfant d'une excursion : la prestation « enfant » du même partenaire et du même groupe, au même nom avant la virgule.
+// Tarif enfant d'une excursion (décision de Jérémy du 17.11.2026) :
+// 1. le champ « Prix enfant » de la prestation (`details.enfant`), qui donne un tarif enfant « virtuel » : même prestation (même id, donc même réservation
+//    et même net, dont le net enfant est lu par `netDeLigne`), unité « par enfant », marqué `enfant_de` ;
+// 2. sinon, comme avant, la prestation « enfant » séparée du même partenaire et du même groupe, au même nom avant la virgule (les anciennes continuent de marcher).
+// Un frais réglé sur place n'a pas de ligne enfant à part : sa note dit déjà le prix enfant.
 const nomCourt = (l) => sansAccents(l).split(",")[0].trim();
+export const prixEnfantDe = (p) => {
+  const v = p && p.details ? p.details.enfant : null;
+  return v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+};
 export function prestationEnfant(p, prestations = []) {
+  if (!["pp", "ad"].includes(p.unite)) return null;
+  const prix = prixEnfantDe(p);
+  if (prix !== null && !p.sur_place) return { ...p, unite: "ch", prix_vente: prix, enfant_de: p.id };
+  return prestationEnfantSeparee(p, prestations);
+}
+export function prestationEnfantSeparee(p, prestations = []) {
   if (!["pp", "ad"].includes(p.unite)) return null;
   return prestations.find((q) => q.id !== p.id && q.actif !== false && q.unite === "ch" && q.partenaire_id === p.partenaire_id && q.famille === p.famille && (q.groupe || "") === (p.groupe || "") && nomCourt(q.libelle) === nomCourt(p.libelle)) || null;
 }
@@ -867,6 +881,8 @@ export function completerEnfant(offre, pax, prestations) {
   const e = prestationEnfant(p, prestations);
   if (e && e.prix_vente !== null && e.prix_vente !== undefined && offre.total !== null) return { ...offre, enfant: e, total: Number(p.prix_vente) * pax.adultes + Number(e.prix_vente) * pax.enfants };
   if (!e && p.unite === "pp" && offre.total !== null) return { ...offre, avertissement: offre.avertissement || "enfant_plein_tarif" };
+  // Tarif par adulte sans tarif enfant : les enfants ne sont pas comptés. On le dit (audit n° 18), sans rien deviner.
+  if (!e && p.unite === "ad" && offre.total !== null) return { ...offre, avertissement: offre.avertissement || "enfant_non_compte" };
   return offre;
 }
 
@@ -893,12 +909,13 @@ export function completerSupplement(offre, pax, prestations) {
 
 // Offres de la base qui correspondent à la demande, la plus proche en premier. Au plus six.
 // `nomPartenaire(id)` renvoie le nom du partenaire.
-export function proposerOffres(d, { prestations = [], trajets = [], nomPartenaire = () => "" } = {}) {
+// `partenaires` : un partenaire masqué ne se propose plus (ses tarifs et trajets non plus).
+export function proposerOffres(d, { prestations = [], trajets = [], nomPartenaire = () => "", partenaires = [] } = {}) {
   const pax = { adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants };
   const offres = [];
   if (d.type === "transfer" || (d.de && d.vers)) {
     for (const t of trajets) {
-      if (t.actif === false || (d.date && !trajetDisponible(t, d.date))) continue;
+      if (!proposable(t, partenaires) || (d.date && !trajetDisponible(t, d.date))) continue;
       const direct = Math.min(recouvrement(d.de, t.de), recouvrement(d.vers, t.vers));
       const inverse = Math.min(recouvrement(d.de, t.vers), recouvrement(d.vers, t.de));
       let score = Math.max(direct, inverse);
@@ -915,7 +932,7 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
       offres.push({ genre: "trajet", id: t.id, source: t, titre: `${t.de} → ${t.vers}${t.depart ? `, ${t.depart}` : ""}`, detail: [t.mode, nomPartenaire(t.partenaire_id)].filter(Boolean).join(" · "), total, avertissement, score });
     }
     for (const p of prestations) {
-      if (p.actif === false || p.famille !== "transfert" || p.unite === "sup") continue;
+      if (!proposable(p, partenaires) || p.famille !== "transfert" || p.unite === "sup") continue;
       const texte = `${p.libelle} ${p.libelle_en || ""} ${p.groupe || ""}`;
       const score = Math.min(recouvrement(d.de, texte), recouvrement(d.vers, texte));
       if (score < 0.5) continue;
@@ -924,7 +941,7 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
   } else if (d.prestation) {
     for (const p of prestations) {
       // Le tarif enfant d'une excursion se rattache à son tarif adulte (completerEnfant) : il ne se propose pas seul, et ne passe jamais en tête.
-      if (p.actif === false || p.unite === "sup" || p.unite === "ch") continue;
+      if (!proposable(p, partenaires) || p.unite === "sup" || p.unite === "ch") continue;
       const texte = `${p.libelle} ${p.libelle_en || ""} ${p.groupe || ""}`;
       let score = recouvrement(d.type === "location" && d.vehiculeNom ? `${d.prestation} ${d.vehiculeNom}` : d.prestation, texte);
       if (score < 0.5) continue;

@@ -24,6 +24,7 @@ export const PERMISSIONS = [
   { code: "catalogue.ecrire", groupe: N_("Catalogue"), libelle: N_("Modifier le catalogue de formules et de prix") },
   { code: "partenaires.lire", groupe: N_("Partenaires"), libelle: N_("Voir les partenaires, leurs tarifs et leurs trajets") },
   { code: "partenaires.ecrire", groupe: N_("Partenaires"), libelle: N_("Modifier les partenaires, les tarifs et les trajets") },
+  { code: "partenaires.supprimer", groupe: N_("Partenaires"), libelle: N_("Supprimer un partenaire, une prestation ou un trajet"), aide: N_("Seulement ce qu'aucun service n'utilise. Sans ce droit, on peut toujours masquer.") },
   { code: "partenaires.nets", groupe: N_("Partenaires"), libelle: N_("Voir les prix nets, les marges et les coordonnées bancaires des partenaires"), aide: N_("Sans ce droit, la personne voit les prix de vente mais ni les nets ni les marges.") },
   { code: "reglages.ecrire", groupe: N_("Administration"), libelle: N_("Modifier les réglages de l'entreprise (coordonnées bancaires comprises)") },
   { code: "exports.faire", groupe: N_("Administration"), libelle: N_("Exporter et sauvegarder les données") },
@@ -49,6 +50,7 @@ export const DEPENDANCES = {
   "taches.ecrire": ["dossiers.lire"],
   "partenaires.ecrire": ["partenaires.lire"],
   "partenaires.nets": ["partenaires.lire"],
+  "partenaires.supprimer": ["partenaires.lire", "partenaires.ecrire"],
   "fiduciaire.gerer": ["fiduciaire.preparer"],
   // Créer un voucher crée le client, le dossier, le prix interne de la course et sa réservation avec le partenaire.
   "vouchers.seul": ["clients.lire", "clients.ecrire", "dossiers.lire", "dossiers.ecrire", "documents.ecrire", "finances.voir", "partenaires.lire"],
