@@ -191,7 +191,11 @@ function ouvrirRefus(d) {
   // Le lien suit l'aperçu : il change à chaque motif ou proposition, pas seulement à la frappe.
   const wa = boutonWhatsApp(d, apercu, { libelle: tr("Refuser sur WhatsApp"), surOuverture: () => marquer("whatsapp") });
   majLien = () => wa && (wa.href = lienWhatsAppClient(d, apercu.value));
+  // Un second appui (WhatsApp touché deux fois, ou WhatsApp puis Copier) ne remarque pas la demande : le verrou de version y verrait un conflit.
+  let marquee = false;
   const marquer = async (comment) => {
+    if (marquee) return;
+    marquee = true;
     try {
       await modifier("demandes_site", d.id, { statut: "refusee", decision: { motif: etatRefus.motif, alternative: etatRefus.alternative } }, { verrou: true, version: d.updated_at });
     } catch (err) {
@@ -235,6 +239,7 @@ function ouvrirRefus(d) {
 
 // « Il n'a pas écrit » : la demande est dans Gestion, son message WhatsApp jamais arrivé. Un mot au client, la demande reste à traiter.
 function ouvrirSansMessage(d) {
+  if (dejaTraitee(d)) return void (toast(tr("Cette demande a déjà été traitée."), true), rafraichir());
   const zone = h("textarea", { id: "dsite-sans-message", rows: 8, lang: "en", spellcheck: "true" });
   zone.value = reponseSansMessage(d, { aujourdhui: aujourdhui() });
   const wa = boutonWhatsApp(d, zone);

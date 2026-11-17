@@ -54,7 +54,8 @@ export function telephoneE164(brut, indicatif) {
   if (brut === undefined || brut === null || brut === "" || (typeof brut !== "string" && typeof brut !== "number")) return { telephone: null, telephone_saisi: null };
   const saisi = String(brut).replace(CONTROLE, "").replace(/\s+/g, " ").trim();
   if (!saisi) return { telephone: null, telephone_saisi: null };
-  const illisible = { telephone: null, telephone_saisi: saisi.slice(0, 40) };
+  // Coupé par caractère, pas par unité UTF-16 : un émoji coupé en deux rendrait le texte invalide pour la base, et la demande serait perdue.
+  const illisible = { telephone: null, telephone_saisi: Array.from(saisi).slice(0, 40).join("") };
   let n = saisi.replace(/^tel:/i, "").replace(/^(\+|00)\s*(\d{1,3})\s*\(0\)/, "$1$2").replace(/[\s.\-()/\u00A0]/g, "");
   if (!/^\+?\d+$/.test(n)) return illisible;
   if (n.startsWith("00")) n = `+${n.slice(2)}`;

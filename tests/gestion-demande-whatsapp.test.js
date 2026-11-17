@@ -38,6 +38,9 @@ test("numéro illisible : la demande n'est jamais perdue, la saisie est gardée 
     assert.equal(r.telephone_saisi, saisi);
   }
   assert.equal(telephoneE164("9".repeat(80)).telephone_saisi.length, 40);
+  const emoji = telephoneE164("x".repeat(39) + "📞📞").telephone_saisi;
+  assert.equal(Array.from(emoji).length, 40, "coupé par caractère");
+  assert.ok(emoji.isWellFormed(), "jamais un émoji coupé en deux (texte invalide pour la base)");
   assert.deepEqual(telephoneE164("  \u0000‮ "), { telephone: null, telephone_saisi: null });
   for (const vide of [undefined, null, "", { a: 1 }, ["+41791234567"]]) assert.deepEqual(telephoneE164(vide), { telephone: null, telephone_saisi: null });
   const l = lireDemande(corps({ whatsapp: "pas de numéro !" }), { aujourdhui: AJD });
