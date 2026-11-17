@@ -2,7 +2,7 @@
 // Depuis le 13.11.2026 : toutes les courses des 14 derniers jours sans commission saisie, et un seul message par chauffeur.
 // La commission saisie est la « commission prévue » de la réservation : l'écran À encaisser la suit ensuite comme pour Secret.
 import { etat, modifier, enregistrerLie, nomClient, partenaireDe, dossiersAnnules, reglages, entiteActive, peut } from "../etat.mjs";
-import { h, icone, toast } from "../ui.mjs";
+import { h, icone, toast, confirmer } from "../ui.mjs";
 import { aujourdhui, formatMontant, formatDate } from "../calc.mjs";
 import { commissionsADemander, commissionsParChauffeur, valeursCommission, varsCommissions } from "../taxi-calc.mjs";
 import { variablesMessage } from "../operations-calc.mjs";
@@ -79,6 +79,7 @@ export function sectionCommissionsHier(rafraichir) {
         const valeurs = valeursCommission(montant.value, { recue: recue.checked, date: date.value });
         if (!valeurs) return toast(tr("Indiquez un montant, 0 s'il n'y a pas de commission."), true), montant.focus();
         // Décochée, la réception s'efface. Montant inchangé sur une commission déjà reçue : le montant reçu (et son éventuel écart) reste tel quel.
+        if (!recue.checked && edition && x.recue && !(await confirmer(tr("La réception de cette commission sera effacée (montant reçu et date). Continuer ?"), tr("Effacer la réception"), true))) return;
         if (!recue.checked) Object.assign(valeurs, { commission_recue: null, commission_recue_le: null });
         else if (edition && x.recue && valeurs.commission_prevue === x.montant) delete valeurs.commission_recue;
         try {

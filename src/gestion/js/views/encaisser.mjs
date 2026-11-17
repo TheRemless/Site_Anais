@@ -3,7 +3,7 @@
 // Le geste central est le rapprochement : « Rattana m'a viré 5 400 ce mois-ci » se saisit une fois pour le partenaire et le mois.
 import { etat, peut, naviguer, nomPartenaire, nomClient, netReservation, enregistrerLie, dossiersAnnules, resumes, reglages, modeExcursions, modeTaxi } from "../etat.mjs";
 import { h, modal, confirmer, toast, num } from "../ui.mjs";
-import { aujourdhui, formatMontant, formatSommes, formatDate } from "../calc.mjs";
+import { aujourdhui, formatMontant, formatSommes, formatDate, arrondi } from "../calc.mjs";
 import { commissionsARecevoir, repartirReception, servicesAReceptionner, nomMoisCourt } from "../operations-calc.mjs";
 import { vide, listeAdaptative } from "./commun.mjs";
 import { voitNets, prix } from "./partenaires.mjs";
@@ -36,7 +36,6 @@ export function vueEncaisser() {
     const client = d ? nomClient(etat.db.clients.find((c) => c.id === d.client_id)) : "";
     return [client, r.libelle, r.date_service ? formatDate(r.date_service) : ""].filter(Boolean).join(" · ");
   };
-  const arr = (x) => Math.round(x * 100) / 100;
   const enregistrerReception = (x, date) => enregistrerLie("reservations_nets", "reservation_id", x.reservation_id, { commission_recue: x.commission_recue, commission_recue_le: date });
 
   // « J'ai reçu un virement » : on coche d'abord les services que le virement solde (d'avance, les services passés avec une commission prévue),
@@ -45,7 +44,7 @@ export function vueEncaisser() {
     const services = servicesAReceptionner(g.reservations, netReservation, ajd);
     const cases = services.map((x) => ({ x, input: h("input", { type: "checkbox", checked: x.coche, "data-reservation": x.reservation.id }) }));
     const cochees = () => cases.filter((c) => c.input.checked).map((c) => c.x);
-    const attenduCoche = () => arr(cochees().reduce((s, x) => s + (x.prevue || 0), 0));
+    const attenduCoche = () => arrondi(cochees().reduce((s, x) => s + (x.prevue || 0), 0));
     const montant = h("input", { id: "enc-montant", type: "number", min: "0", step: "any", inputmode: "decimal", value: String(attenduCoche()), required: true });
     const date = h("input", { id: "enc-date", type: "date", value: ajd, max: ajd, required: true });
     const ecart = h("p", { class: "ecart-reception", "aria-live": "polite" });
@@ -55,7 +54,7 @@ export function vueEncaisser() {
     const majEcart = () => {
       const attendu = attenduCoche();
       const v = commePrevu ? attendu : num(montant.value);
-      const e = v === null ? 0 : arr(v - attendu);
+      const e = v === null ? 0 : arrondi(v - attendu);
       ecart.textContent = !cochees().length ? "" : e === 0 ? tr("Comme prévu.") : e > 0 ? tr("{ecart} de plus que prévu.", { ecart: prix(e) }) : tr("{ecart} de moins que prévu.", { ecart: prix(-e) });
     };
     const maj = () => {
@@ -148,6 +147,7 @@ export function vueEncaisser() {
         },
         h("p", { class: "aide" }, tr("{mois}. Cochez les services marqués reçus par erreur : le montant reçu et sa date sont effacés, la commission prévue ne change pas et le service revient dans les commissions à recevoir.", { mois: nomMoisCourt(g.mois) })),
         h("ul", { class: "liste-reception" }, cases.map(ligne)),
+        modeTaxi() ? null : h("p", { class: "bandeau-info" }, tr("Si une facture pour la fiduciaire a déjà été créée pour ce service, elle ne s'annule pas d'ici : vérifiez l'écran Fiduciaire.")),
         h("div", { class: "actions" }, h("button", { class: "secondaire", type: "button", onclick: () => fermer() }, tr("Fermer")), bouton)
       ),
       { feuille: true }

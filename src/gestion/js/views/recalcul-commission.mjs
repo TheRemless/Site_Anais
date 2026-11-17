@@ -105,8 +105,10 @@ export function bandeauRecalcul(apres = () => {}) {
     vides ? pluriel(vides, N_("{n} commission prévue à remplir d'après la règle du partenaire"), N_("{n} commissions prévues à remplir d'après la règle du partenaire")) : "",
     differentes ? pluriel(differentes, N_("{n} commission prévue différente de la règle du partenaire"), N_("{n} commissions prévues différentes de la règle du partenaire")) : "",
   ].filter(Boolean);
-  // Sans règle chiffrée ou sans net, le recalcul ne peut rien : on le dit, pour que la règle se complète sur la fiche du partenaire.
-  const sansRegle = t.impossibles ? pluriel(t.impossibles, N_("{n} service sans règle de commission ou sans net : à compléter sur la fiche du partenaire"), N_("{n} services sans règle de commission ou sans net : à compléter sur la fiche du partenaire")) : "";
+  // Sans règle chiffrée ou sans net, le recalcul ne peut rien : on le dit, pour que la règle se complète sur la fiche du partenaire. Seulement
+  // pour les services encore sans commission prévue : une commission saisie à la main n'a pas besoin de règle.
+  const sansCommission = recalculerCommissions(etat.db.reservations, contexte(), { seulementVides: true }).impossibles;
+  const sansRegle = sansCommission ? pluriel(sansCommission, N_("{n} service sans commission prévue ni règle pour la calculer : à compléter sur la fiche du partenaire"), N_("{n} services sans commission prévue ni règle pour la calculer : à compléter sur la fiche du partenaire")) : "";
   const texte = [morceaux.length ? morceaux.join(" · ") : sansRegle ? tr("Les autres commissions prévues suivent les règles des partenaires") : tr("Les commissions prévues suivent les règles des partenaires"), sansRegle].filter(Boolean).join(". ") + ".";
   return h(
     "div",
