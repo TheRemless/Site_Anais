@@ -50,13 +50,18 @@ Deno.serve(async (req) => {
   let erreur = "";
   try {
     res = await executer(db, type, aujourdhui, cible, demande);
-    // 18h : en plus du résumé, le départ de demain de chaque voyage ZTP (une notification par dossier, une seule fois par date de départ).
-    if (type === "veille") {
-      const dep = await executerDeparts(db, cible, demande);
-      res = { abonnements: Math.max(res.abonnements, dep.abonnements), envoyes: res.envoyes + dep.envoyes, retires: res.retires + dep.retires, echecs: res.echecs + dep.echecs };
-    }
   } catch (err) {
     erreur = String((err && err.message) || err).slice(0, 300);
+  }
+  // 18h : en plus du résumé, le départ de demain de chaque voyage ZTP (une notification par dossier, une seule fois par date de départ).
+  // À part : une panne du résumé ne prive pas les départs de leur rappel, et inversement.
+  if (type === "veille") {
+    try {
+      const dep = await executerDeparts(db, cible, demande);
+      res = { abonnements: Math.max(res.abonnements, dep.abonnements), envoyes: res.envoyes + dep.envoyes, retires: res.retires + dep.retires, echecs: res.echecs + dep.echecs };
+    } catch (err) {
+      erreur = [erreur, `départs : ${String((err && err.message) || err)}`].filter(Boolean).join(" ; ").slice(0, 300);
+    }
   }
   if (!demande.user_id) {
     const { error } = await db.from("rappels_suivi").insert({ type, cible, ...res, erreur, duree_ms: Date.now() - debut });
@@ -155,19 +160,9 @@ async function executerH1(db: ReturnType<typeof createClient>, maintenant: numbe
   const aRappeler = servicesH1(candidates, maintenant, { ecartes: new Set((dossiers.data || []).filter((d) => d.annule).map((d) => d.id)) });
   if (!aRappeler.length) return vide;
 
-  // Marquage avant l'envoi, en une écriture : une ligne par service et par heure de début. Deux exécutions qui se chevauchent ne notifient
-  // pas deux fois ; une heure changée donne une autre clé, donc un nouveau rappel. Un essai ciblé (user_id) ne marque rien.
-  let nouveaux = aRappeler;
-  if (!demande.user_id) {
-    const { data: marques, error } = await db.from("rappels_h1_envois").upsert(aRappeler.map((x) => ({ reservation_id: x.reservation.id, debut: new Date(x.debut).toISOString() })), { onConflict: "reservation_id,debut", ignoreDuplicates: true }).select("reservation_id");
-    if (error) throw new Error(error.message);
-    const ids = new Set((marques || []).map((m) => m.reservation_id));
-    nouveaux = aRappeler.filter((x) => ids.has(x.reservation.id));
-  }
-  if (!nouveaux.length) return { ...vide, services: aRappeler.length };
-
   let requeteAbos = db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth");
   if (demande.user_id) requeteAbos = requeteAbos.eq("user_id", demande.user_id);
+  // Tout ce qu'il faut pour envoyer est lu AVANT le marquage : une lecture qui échoue laisse les services non marqués, rattrapés au passage suivant.
   const clientIds = [...new Set((dossiers.data || []).map((d) => d.client_id).filter(Boolean))];
   const [abos, profils, membres, roles, entites, clients] = await Promise.all([
     requeteAbos,
@@ -178,11 +173,22 @@ async function executerH1(db: ReturnType<typeof createClient>, maintenant: numbe
     db.from("clients").select("id, prenom, nom").in("id", clientIds.length ? clientIds : ["00000000-0000-0000-0000-000000000000"]),
   ]);
   for (const r of [abos, profils, membres, roles, entites, clients]) if (r.error) throw new Error(r.error.message);
-  if (!abos.data!.length) return { ...vide, services: nouveaux.length };
+  if (!abos.data!.length) return { ...vide, services: aRappeler.length };
   const clientDe = (r: { dossier_id: string }) => {
     const d = (dossiers.data || []).find((x) => x.id === r.dossier_id);
     return nomClient((clients.data || []).find((c) => c.id === (d && d.client_id)));
   };
+  // Marquage avant l'envoi, en une écriture : une ligne par service et par heure de début. Deux exécutions qui se chevauchent ne notifient
+  // pas deux fois ; une heure changée donne une autre clé, donc un nouveau rappel. Un essai ciblé (user_id) ne marque rien.
+  let nouveaux = aRappeler;
+  if (!demande.user_id) {
+    const { data: marques, error } = await db.from("rappels_h1_envois").upsert(aRappeler.map((x) => ({ reservation_id: x.reservation.id, debut: new Date(x.debut).toISOString() })), { onConflict: "reservation_id,debut", ignoreDuplicates: true }).select("reservation_id");
+    if (error) throw new Error(error.message);
+    const ids = new Set((marques || []).map((m) => m.reservation_id));
+    nouveaux = aRappeler.filter((x) => ids.has(x.reservation.id));
+  }
+  if (!nouveaux.length) return { ...vide, abonnements: abos.data!.length, services: aRappeler.length };
+
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
   const ctx = { profils: profils.data!, membres: membres.data!, roles: roles.data! };
   const nomEntite = (id: string) => (entites.data!.find((e) => e.id === id) || { nom: "" }).nom;
@@ -228,14 +234,6 @@ async function executerDeparts(db: ReturnType<typeof createClient>, demain: stri
   if (lus.error) throw new Error(lus.error.message);
   const partent = departsDemain(lus.data || [], demain);
   if (!partent.length) return vide;
-  let nouveaux = partent;
-  if (!demande.user_id) {
-    const { data: marques, error } = await db.from("rappels_depart_envois").upsert(partent.map((d) => ({ dossier_id: d.id, date_depart: d.date_depart })), { onConflict: "dossier_id,date_depart", ignoreDuplicates: true }).select("dossier_id");
-    if (error) throw new Error(error.message);
-    const ids = new Set((marques || []).map((m) => m.dossier_id));
-    nouveaux = partent.filter((d) => ids.has(d.id));
-  }
-  if (!nouveaux.length) return vide;
   let requeteAbos = db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth");
   if (demande.user_id) requeteAbos = requeteAbos.eq("user_id", demande.user_id);
   const [abos, profils, membres, roles, entites, clients] = await Promise.all([
@@ -244,10 +242,19 @@ async function executerDeparts(db: ReturnType<typeof createClient>, demain: stri
     db.from("membres").select("user_id, entite_id, role_id"),
     db.from("roles").select("id, portee, permissions"),
     db.from("entites").select("id, nom"),
-    db.from("clients").select("id, prenom, nom").in("id", [...new Set(nouveaux.map((d) => d.client_id))]),
+    db.from("clients").select("id, prenom, nom").in("id", [...new Set(partent.map((d) => d.client_id))]),
   ]);
   for (const r of [abos, profils, membres, roles, entites, clients]) if (r.error) throw new Error(r.error.message);
   if (!abos.data!.length) return vide;
+  // Marquage après les lectures, juste avant l'envoi (même raison que pour le rappel d'une heure avant).
+  let nouveaux = partent;
+  if (!demande.user_id) {
+    const { data: marques, error } = await db.from("rappels_depart_envois").upsert(partent.map((d) => ({ dossier_id: d.id, date_depart: d.date_depart })), { onConflict: "dossier_id,date_depart", ignoreDuplicates: true }).select("dossier_id");
+    if (error) throw new Error(error.message);
+    const ids = new Set((marques || []).map((m) => m.dossier_id));
+    nouveaux = partent.filter((d) => ids.has(d.id));
+  }
+  if (!nouveaux.length) return vide;
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
   const ctx = { profils: profils.data!, membres: membres.data!, roles: roles.data! };
   const nomEntite = (id: string) => (entites.data!.find((e) => e.id === id) || { nom: "" }).nom;
