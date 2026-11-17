@@ -262,3 +262,23 @@ test("point 9 en démo : un document supprimé se restaure", async () => {
   assert.equal(await store.prochainNumeroRef(e, annee, 0), lu.minimum + 40);
   delete globalThis.localStorage;
 });
+
+test("revue : l'empreinte ne dépend ni des nets ni de la forme des équivalents, l'envoi garde les objets de l'éditeur", async () => {
+  const { patchEnvoi, etatEnvoi } = await docs();
+  const anais = facture([{ id: "l1", kind: "ligne", libelle: "Tour", montant: 100, net: 60 }], { equivalents: { actif: false } });
+  const envoyee = { ...anais, ...patchEnvoi(anais, REGL, { date: "2026-11-11" }) };
+  // Mook ne reçoit pas les nets ; l'éditeur ajoute `lignes: []` aux équivalents à l'ouverture.
+  const vueMook = { ...envoyee, contenu: { ...structuredClone(envoyee.contenu), lignes: [{ id: "l1", kind: "ligne", libelle: "Tour", montant: 100 }], equivalents: { actif: false, lignes: [] } } };
+  assert.equal(etatEnvoi(vueMook).modifie, false);
+  const ancienFormat = { ...envoyee, contenu: { ...structuredClone(envoyee.contenu), equivalents: { actif: true, eur: 1.05, thb: 38 } } };
+  const nouveauFormat = { ...ancienFormat, contenu: { ...ancienFormat.contenu, equivalents: { actif: true, lignes: [{ code: "EUR", taux: 1.05 }, { code: "THB", taux: 38 }] } } };
+  const { empreinteDocument } = await docs();
+  assert.equal(empreinteDocument(ancienFormat), empreinteDocument(nouveauFormat));
+  const editeur = source("views/editeur.mjs");
+  assert.match(editeur, /for \(const k of \["fige", "envois", "devise", "montant_recu"\]\)/, "l'envoi ne remplace pas les lignes de l'éditeur");
+  assert.doesNotMatch(editeur, /for \(const k of Object\.keys\(c\)\) delete c\[k\];/);
+  // Un document envoyé avant le lot (sans trace) se fige quand on le renvoie.
+  assert.match(source("views/document-envoi.mjs"), /\(renvoi \|\| sansTrace\)/);
+  // Fiche dossier : le montant reçu mis à jour ne s'enregistre qu'avec l'envoi.
+  assert.match(source("views/dossier.mjs"), /await noterEnvoi\(doc, recu\);/);
+});

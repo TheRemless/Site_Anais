@@ -70,6 +70,10 @@ begin
   if not a_permission(h.entite_id, 'documents.supprimer') then
     raise exception 'Droit insuffisant pour restaurer un document' using errcode = '42501';
   end if;
+  -- Même portée que la liste : un rôle limité à ses dossiers ne restaure que dans ses dossiers.
+  if not (voit_tout(h.entite_id) or exists (select 1 from dossiers d where d.id = h.dossier_id and (d.responsable_id = auth.uid() or d.cree_par = auth.uid()))) then
+    raise exception 'Ce document appartient à un dossier que votre rôle ne voit pas' using errcode = '42501';
+  end if;
   if exists (select 1 from documents where id = p_document) then
     raise exception 'Ce document est déjà revenu dans son dossier';
   end if;

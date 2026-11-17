@@ -636,12 +636,13 @@ function editeurVue(id) {
   // ---- Actions ------------------------------------------------------------------------------------------
   // « Envoyer » sur tous les appareils : le PDF est fabriqué dans la page, puis WhatsApp ou l'e-mail s'ouvre avec le message.
   // Un document envoyé sans date d'envoi n'est jamais relancé : la fenêtre d'envoi propose de la poser.
-  // Remplace le contenu par celui calculé (envoi, retrait de l'envoi) sans changer d'objet : tout l'éditeur garde `c`.
+  // Reporte sur `c` ce que l'envoi (ou son retrait) change : date, copie figée, traces, devise, montant reçu. Le reste du contenu garde ses
+  // objets (lignes, équivalents) : les champs de l'éditeur pointent dessus, les remplacer ferait perdre les modifications suivantes.
   const appliquer = (patch) => {
     if ("envoye_le" in patch) doc.envoye_le = patch.envoye_le;
-    if (patch.contenu) {
-      for (const k of Object.keys(c)) delete c[k];
-      Object.assign(c, patch.contenu);
+    for (const k of ["fige", "envois", "devise", "montant_recu"]) {
+      if (patch.contenu && k in patch.contenu) c[k] = patch.contenu[k];
+      else delete c[k];
     }
   };
   // Marquer le document parti chez le client : date, copie figée de l'émetteur, de la banque, de la devise et de l'acompte, trace de l'envoi.

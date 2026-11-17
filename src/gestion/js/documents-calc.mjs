@@ -4,8 +4,8 @@
 // - Une modification après l'envoi se voit (« modifié depuis l'envoi ») et se renvoie ; la facture n'est jamais redessinée avec les réglages du jour.
 // - Une ligne sans prix bloque l'envoi d'une facture ; une ligne « Offert » compte 0 et s'imprime comme offerte.
 // Logique pure, sans navigateur, testée par node --test.
-import { modePaiement } from "./defauts.mjs";
-import { sommePaiements, arrondi, acomptePct, joursRelance, periodeTexte } from "./calc.mjs";
+import { modePaiement, MESSAGES_DEFAUT } from "./defauts.mjs";
+import { sommePaiements, arrondi, acomptePct, joursRelance, periodeTexte, lignesEquivalents } from "./calc.mjs";
 export { acomptePct, joursRelance };
 
 const estNombre = (v) => v !== null && v !== undefined && v !== "" && !Number.isNaN(Number(v));
@@ -27,11 +27,16 @@ function fnv(s) {
   return h.toString(16).padStart(8, "0");
 }
 // Ce que voit le client : le contenu et la date d'émission. Les traces d'envoi, la copie figée et la source d'une facture locale n'en font pas partie.
+// Les nets ne comptent pas (seules les personnes qui ont le droit « nets » les reçoivent dans les lignes), ni la forme des équivalents que
+// l'éditeur remet au format actuel à l'ouverture : seuls les équivalents affichés comptent.
 export function empreinteDocument(doc) {
   const c = { ...((doc && doc.contenu) || {}) };
   delete c.fige;
   delete c.envois;
   delete c.source;
+  if (Array.isArray(c.lignes)) c.lignes = c.lignes.map((l) => (l && typeof l === "object" && "net" in l ? (({ net, ...reste }) => reste)(l) : l));
+  const eq = c.equivalents;
+  c.equivalents = eq && eq.actif ? { actif: true, lignes: (lignesEquivalents(eq) || []).map((x) => ({ code: x.code, taux: x.taux ?? "" })) } : undefined;
   return fnv(stable({ c, d: (doc && doc.date_emission) || "" }));
 }
 
@@ -187,10 +192,8 @@ export const ecrireDevisesNoms = (o) => Object.entries(o || {}).map(([code, v]) 
 // ---- Message et objet de l'envoi ------------------------------------------------------------------------------------
 // Modèles par défaut dans MESSAGES_DEFAUT (defauts.mjs), modifiables dans l'écran Messages : usages « envoi_devis », « envoi_facture »,
 // « objet_devis », « objet_facture ». Sans modèle, le texte de secours ci-dessous (le même que les modèles par défaut).
-export const SECOURS_ENVOI = {
-  fr: { envoi_devis: "{bonjour} voici votre devis {numero}.", envoi_facture: "{bonjour} voici votre facture {numero}.", objet_devis: "Votre devis {numero}", objet_facture: "Votre facture {numero}" },
-  en: { envoi_devis: "{bonjour} here is your quote {numero}.", envoi_facture: "{bonjour} here is your invoice {numero}.", objet_devis: "Your quote {numero}", objet_facture: "Your invoice {numero}" },
-};
+const USAGES_ENVOI = ["envoi_devis", "envoi_facture", "objet_devis", "objet_facture"];
+export const SECOURS_ENVOI = Object.fromEntries(["fr", "en"].map((langue) => [langue, Object.fromEntries(USAGES_ENVOI.map((cle) => [cle, (MESSAGES_DEFAUT.find((m) => m.cle === cle && m.langue === langue) || {}).corps || ""]))]));
 // Usage du message et de l'objet pour un document.
 export const usagesEnvoi = (type) => (type === "devis" ? { message: "envoi_devis", objet: "objet_devis" } : { message: "envoi_facture", objet: "objet_facture" });
 // Variables du message d'envoi : {bonjour} (« Hello Anna, »), {prenom}, {numero}, {client}, {entreprise}, {total}.

@@ -72,8 +72,8 @@ function ficheDossierVue(id) {
   const etape = (fait, titre, detail, action) => h("li", { class: fait ? "etape fait" : "etape" }, h("span", { class: "etape-etat" }, fait ? tr("Fait") : tr("À faire")), h("div", { class: "etape-texte" }, h("strong", null, tr(titre)), detail ? h("span", null, detail) : null), action || null);
 
   // Un document qui part chez le client se fige : émetteur, banque, devise, acompte (documents-calc.mjs). Le devis fige aussi l'acompte % du dossier.
-  const noterEnvoi = async (doc) => {
-    await modifier("documents", doc.id, patchEnvoi(doc, regl, { date: ajd, paiements }));
+  const noterEnvoi = async (doc, recu = null) => {
+    await modifier("documents", doc.id, patchEnvoi(doc, regl, { date: ajd, paiements, recu }));
     if (doc.type === "devis" && "acompte_pct" in d && d.acompte_pct == null) {
       try {
         await modifier("dossiers", d.id, { acompte_pct: Number(regl.conditions.acompte_pct) || 0 });
@@ -424,13 +424,16 @@ function ficheDossierVue(id) {
   const envoyerDoc = async (doc) => {
     const renvoi = etatEnvoi(doc).modifie;
     const ecart = renvoi ? ecartRecu(doc, paiements) : null;
+    // Le nouveau montant reçu part dans le PDF et ne s'enregistre qu'avec l'envoi : fermer la fenêtre sans envoyer ne change rien.
+    let recu = null;
     if (ecart && (await confirmer(tr("La facture envoyée indique {imprime} reçus. Les paiements enregistrés font {paiements}. Mettre {paiements} sur la facture renvoyée ?", { imprime: fm(ecart.imprime, doc.contenu.devise), paiements: fm(ecart.paiements, doc.contenu.devise) }), tr("Mettre à jour le montant reçu")))) {
-      doc = await modifier("documents", doc.id, { contenu: { ...doc.contenu, montant_recu: ecart.paiements } });
+      recu = ecart.paiements;
+      doc = { ...doc, contenu: { ...doc.contenu, montant_recu: recu } };
     }
     envoyerDocument(doc, {
       renvoi,
       marquerEnvoye: async () => {
-        await noterEnvoi(doc);
+        await noterEnvoi(doc, recu);
         rafraichir();
       },
     });

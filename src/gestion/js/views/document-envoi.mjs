@@ -103,7 +103,9 @@ export function envoyerDocument(doc, { marquerEnvoye = null, renvoi = false } = 
 
   // Un devis qui part sans date d'envoi n'est jamais relancé : on propose de la poser.
   async function apres() {
-    if (marquerEnvoye && renvoi && peut("documents.ecrire")) return void (await marquerEnvoye());
+    // Renvoi d'une version corrigée, ou document envoyé avant le 17.11.2026 (sans trace d'envoi) : l'envoi se note, ce qui fige le document.
+    const sansTrace = !!doc.envoye_le && !(Array.isArray(doc.contenu.envois) && doc.contenu.envois.length);
+    if (marquerEnvoye && (renvoi || sansTrace) && peut("documents.ecrire")) return void (await marquerEnvoye());
     if (marquerEnvoye && aMarquerEnvoye(doc) && peut("documents.ecrire") && (await confirmer(doc.type === "devis" ? tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance.") : tr("Cette facture est-elle partie chez le client ? Marquée comme envoyée, elle n'apparaît plus comme « pas encore envoyée »."), doc.type === "devis" ? tr("Marquer comme envoyé") : tr("Marquer comme envoyée")))) await marquerEnvoye();
   }
   const telechargerPdf = () => enregistrer([fichier]);

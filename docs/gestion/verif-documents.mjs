@@ -90,6 +90,16 @@ await db.exec(`delete from dossiers where id = '${D3}'`);
 ok((await essaie(U.admin, "select * from documents_supprimes($1)", [E])).rows.every((x) => x.document_id !== d3), "un document parti avec son dossier n'est pas proposé ici");
 ok(!(await essaie(U.admin, "select restaurer_document($1)", [d3])).ok, "et ne se restaure pas sans son dossier");
 
+console.log("== portée de la restauration");
+await db.exec(`insert into roles (entite_id, nom, portee, permissions) values ('${E}', 'Limitée', 'mes_dossiers', array['dossiers.lire','dossiers.ecrire','documents.ecrire','documents.supprimer','finances.voir'])`);
+U.limitee = (await un("insert into auth.users (email) values ('limitee@test') returning id")).id;
+await db.exec(`insert into membres values ('${U.limitee}', '${E}', (select id from roles where entite_id = '${E}' and nom = 'Limitée'))`);
+const autre = (await un(`insert into documents (entite_id, dossier_id, type, date_emission, contenu) values ($1, $2, 'devis', '2026-11-04', '{"lignes":[]}') returning id`, [E, D])).id;
+await db.exec(`delete from documents where id = '${autre}'`);
+ok((await essaie(U.limitee, "select * from documents_supprimes($1)", [E])).rows.length === 0, "un rôle limité à ses dossiers ne voit pas les documents des autres");
+ok(!(await essaie(U.limitee, "select restaurer_document($1)", [autre])).ok, "ni ne les restaure en passant par l'identifiant");
+ok((await essaie(U.admin, "select restaurer_document($1)", [autre])).ok, "l'administratrice, elle, le restaure");
+
 console.log("== prochain numéro");
 const lu = await essaie(U.admin, "select lire_prochain_numero($1, 2026) n", [E]);
 ok(lu.ok && lu.rows[0].n.minimum === 10 && lu.rows[0].n.prochain === 10, "le prochain numéro suit le plus grand déjà donné (0009 → 10)");
