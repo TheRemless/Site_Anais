@@ -6,12 +6,13 @@ import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
+import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
 
 const CLE = "gestion-zwald-demo-v12";
 const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
 // Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
-const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches"];
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets"];
+const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches", "demandes_site", "bandeaux_site"];
+const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
 const PARTENAIRES_PUBLIC = ["partenaires", "prestations", "trajets"];
 const PARTENAIRES_NETS = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
 const LIMITE_DEMO = 1.5 * 1024 * 1024;
@@ -26,6 +27,9 @@ export function creer() {
       data = null;
     }
     if (!data) data = donneesDemo(aujourdhui(), ajouterJours);
+    // Demandes et bandeau du site : posés aussi dans une démo déjà enregistrée dans ce navigateur (créée avant la migration 30).
+    if (!data.demandes_site) data.demandes_site = demandesDemo({ entites: data.entites, ajd: aujourdhui(), ajouterJours, uid });
+    if (!data.bandeaux_site) data.bandeaux_site = bandeauxDemo({ entites: data.entites, ajd: aujourdhui(), uid });
     for (const t of TABLES) data[t] = data[t] || [];
     data.fiduciaire_factures = data.fiduciaire_factures || [];
     let choisi = null;
@@ -116,6 +120,16 @@ export function creer() {
     async suiviRappels() {
       return null;
     },
+    // Démonstration : une demande arrive du site, comme l'écrirait la fonction « demande-site ».
+    async simulerDemandeSite(entiteId) {
+      const e = data.entites.find((x) => x.id === entiteId);
+      const modele = demandesDemo({ entites: data.entites, ajd: aujourdhui(), ajouterJours, uid }).find((d) => d.entite_id === entiteId && d.statut === "nouvelle");
+      if (!e || !modele) return null;
+      const ligne = { ...modele, id: uid(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ref: `${modele.ref.split("-")[0]}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` };
+      data.demandes_site.push(ligne);
+      sauve();
+      return structuredClone(ligne);
+    },
     // Démonstration : rien ne part chez Anthropic, la réponse est simulée à partir de la lecture par règles (assistant-calc.mjs).
     async assistant(corps) {
       await new Promise((r) => setTimeout(r, 700));
@@ -155,6 +169,11 @@ export function creer() {
       out.reservations = data.reservations.filter((r) => idsDossiers.has(r.dossier_id));
       const idsRes = new Set(out.reservations.map((r) => r.id));
       out.reservations_nets = out.reservations_nets.filter((n) => idsRes.has(n.reservation_id));
+      // Demandes du site : comme lit_demandes_site (migration 30), un rôle qui voit tous les dossiers, jamais l'écran « Nouveau voucher » seul.
+      const litDemandes = (eid) => droit(eid, "dossiers.lire") && voitTout(ctx, eid) && !droit(eid, "vouchers.seul");
+      out.demandes_site = data.demandes_site.filter((d) => ids.has(d.entite_id) && litDemandes(d.entite_id));
+      out.bandeaux_site = data.bandeaux_site.filter((b) => ids.has(b.entite_id) && droit(b.entite_id, "dossiers.lire"));
+      out.site_disponible = true;
       out.profils = utilisateur.super_admin ? data.profils : data.profils.filter((p) => p.user_id === uidCourant);
       out.membres = utilisateur.super_admin ? data.membres : data.membres.filter((m) => m.user_id === uidCourant);
       return structuredClone(out);
@@ -176,6 +195,8 @@ export function creer() {
       patch = { ...patch };
       delete patch.updated_at;
       if (VERSIONNEES.includes(table)) patch.updated_at = new Date().toISOString();
+      // Comme le déclencheur de la migration 30 : un changement de statut note qui et quand.
+      if (table === "demandes_site" && patch.statut && patch.statut !== ligne.statut) Object.assign(patch, { traitee_le: new Date().toISOString(), traitee_par: utilisateur.user_id });
       const details = {};
       for (const [k, v] of Object.entries(patch)) {
         if (["updated_at", "modifie_par"].includes(k) || JSON.stringify(ligne[k]) === JSON.stringify(v)) continue;

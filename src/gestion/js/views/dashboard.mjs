@@ -13,6 +13,7 @@ import { tr, N_, pluriel, dateLongue } from "../i18n.mjs";
 import { ouvrirSansSuite, baseDistante } from "./sans-suite.mjs";
 import { disponible as sansSuiteDisponible } from "../sans-suite-calc.mjs";
 import { resumeTrajet } from "../trajet-calc.mjs";
+import { sectionDemandesAccueil } from "./demandes-site.mjs";
 
 
 function phrase(item) {
@@ -108,6 +109,8 @@ export async function tableauDeBord() {
       ? h("div", { class: "bandeau-info", role: "status" }, tr("Les réglages de {nom} ne sont pas terminés : il manque {liste}. ", { nom: entiteActive().nom, liste: manque.join(", ") }), estAdmin() ? h("a", { href: "#/reglages" }, tr("Les compléter")) : tr("Prévenez l'administratrice."))
       : null,
     h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Aujourd'hui")), h("p", { class: "sous" }, dateLongue())), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, modeExcursions() ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, h("a", { class: "bouton principal seulement-bureau", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
+    // Demandes arrivées du site (Secret et Taxi) : en tête, c'est ce qui attend une réponse.
+    sectionDemandesAccueil(),
     moduleActif("reservations") ? h("section", { class: "section-jour" }, h("h2", null, tr("Départs et pickups aujourd'hui"), h("span", { class: "tag" }, ag.aujourdhui.length)), ag.aujourdhui.length ? listeServices(ag.aujourdhui) : h("p", { class: "vide-court" }, tr("Aucun service aujourd'hui."))) : null,
     // Les locations commencées et pas encore rendues : une ligne chacune, avec la date de retour sur la carte.
     moduleActif("reservations") && ag.enCours.length ? h("section", { class: "section-jour" }, h("h2", null, tr("Locations en cours"), h("span", { class: "tag" }, ag.enCours.length)), listeReservations(ag.enCours, { apres: rafraichir })) : null,
