@@ -71,6 +71,9 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       throw new Error(error.message);
     });
   };
+  // Documents dont on a lu une ligne de nets : seuls ceux-là peuvent voir leurs nets vidés (lot I, contrôle du 17.11.2026). Qui ne lit pas les nets
+  // n'en efface jamais.
+  const avecNetsLus = new Set();
   // Nets de documents, par identifiant de document. Sans le droit « nets », la base ne renvoie rien : les lignes restent sans net.
   async function netsDes(ids) {
     const par = {};
@@ -79,7 +82,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { data, error } = await sb.from("documents_nets").select("document_id, nets").in("document_id", ids.slice(i, i + 100));
       // Une erreur ici ne doit pas passer pour « aucun net » : une sauvegarde suivante écraserait les nets avec les seules lignes visibles.
       if (error) throw new Error(error.message);
-      for (const n of data || []) par[n.document_id] = n.nets;
+      for (const n of data || []) (par[n.document_id] = n.nets), avecNetsLus.add(n.document_id);
     }
     return par;
   }
@@ -97,8 +100,24 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await ecriture(contenu));
     }
     const ligne = verifie(await ecriture(contenu));
-    if (Object.keys(nets).length) verifie(await sb.from("documents_nets").upsert({ document_id: ligne.id, entite_id: ligne.entite_id, nets }).select());
-    return { ...ligne, contenu: fusionnerNets(ligne.contenu, nets) };
+    // Un net effacé exprès reste effacé, un net que le contenu ne porte pas reste (lot I, revue du lot J). Pour un document lu avec ses nets :
+    // une ligne qui a la clé `net` prend sa valeur (vide = effacé), une ligne sans la clé (version restaurée, contenu venu d'ailleurs) garde le
+    // net enregistré. Avant, le dernier net effacé revenait au chargement suivant.
+    let aEcrire = Object.keys(nets).length ? nets : null;
+    if (avecNetsLus.has(ligne.id)) {
+      const ancien = (verifie(await sb.from("documents_nets").select("nets").eq("document_id", ligne.id).maybeSingle()) || {}).nets || {};
+      aEcrire = {};
+      for (const l of contenuComplet.lignes || []) {
+        if (!l || !l.id) continue;
+        if ("net" in l) { if (nets[l.id] !== undefined) aEcrire[l.id] = nets[l.id]; }
+        else if (ancien[l.id] !== undefined && ancien[l.id] !== null) aEcrire[l.id] = ancien[l.id];
+      }
+    }
+    if (aEcrire) {
+      verifie(await sb.from("documents_nets").upsert({ document_id: ligne.id, entite_id: ligne.entite_id, nets: aEcrire }).select());
+      avecNetsLus.add(ligne.id);
+    }
+    return { ...ligne, contenu: fusionnerNets(ligne.contenu, aEcrire || nets) };
   }
 
   // Marqueur du catalogue : une lecture minuscule par table (un comptage, et la dernière modification quand la table en a une).
@@ -400,6 +419,13 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await sb.rpc("equipe_de", { e: entiteId }));
     },
     // Un dossier avec son résumé à jour (après une modification de ses documents ou paiements).
+    // La ligne de nets d'une réservation, relue après une écriture : le déclencheur remplir_nets (migration 30) a pu la recalculer.
+    // Sans le droit « nets », la base ne renvoie rien.
+    async netsReservations(ids) {
+      const out = [];
+      for (let i = 0; i < ids.length; i += 100) out.push(...(verifie(await sb.from("reservations_nets").select("*").in("reservation_id", ids.slice(i, i + 100))) || []));
+      return out;
+    },
     async resumeDossier(id) {
       const d = verifie(await sb.from("dossiers").select("*").eq("id", id).maybeSingle());
       if (!d) return null;

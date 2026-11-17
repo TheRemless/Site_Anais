@@ -13,6 +13,7 @@ import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4, plierGroupes } from "./commun.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
 import { etatRappels } from "../rappels-etat.mjs";
+import { reglagesFid } from "../fiduciaire-calc.mjs";
 // Lot D (équipe, réglages, messages) : historique, archives, moyens de paiement, textes thaïs de l'écran de Mook.
 import { groupesModifies, nomGroupe, archiverVariante, reactiverVariante, variantesActives, identifiantMoyen } from "../reglages-calc.mjs";
 import { ecransThaiPour, texteValide, variablesDe } from "../textes-thai.mjs";
@@ -696,6 +697,10 @@ export function vueReglages() {
         h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre et rédiger la réponse")),
         h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous."))
       ),
+      // Taxi : la fiduciaire n'est plus au menu (décision 5). Elle se rouvre d'ici pour être réactivée un jour (contrôle du 17.11.2026, D10).
+      taxi && peut("fiduciaire.gerer") && peut("reglages.ecrire") && !reglagesFid(etat.db.reglages).actif
+        ? h("fieldset", null, h("legend", null, tr("Factures pour la fiduciaire")), h("p", { class: "aide" }, tr("{entreprise} n'émet pas de factures pour la fiduciaire : l'écran n'est plus dans le menu. Il reste ouvert ici, pour revoir ce qui a déjà été facturé ou réactiver ces factures un jour.", { entreprise: entiteActive().nom })), h("a", { class: "bouton secondaire petit", href: "#/fiduciaire" }, tr("Ouvrir l'écran Fiduciaire")))
+        : null,
       // État des rappels sur téléphone (avant dans l'onglet Compte, devenu « Mon compte » pour chacun).
       sectionRappels
     ),

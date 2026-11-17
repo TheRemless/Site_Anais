@@ -2,6 +2,7 @@
 import { dateTexte, personnesTexte, feuilleDuJour, hotelEtChambre, estFraisDeParc, dateFinService } from "./operations-calc.mjs";
 import { libelleClient } from "./partenaires-calc.mjs";
 import { estRetourDepart } from "./trajet-calc.mjs";
+import { personnesDuDossier, sansPersonne } from "./dossier-gestes-calc.mjs";
 
 const joursEntre = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
 
@@ -25,7 +26,17 @@ function precisionPickup(r) {
 // Chaque ligne a `sorte` (« pickup », « retour », « en_cours ») et `precision`. Les personnes de l'en-tête ne comptent que les pickups.
 export function feuilleJour(reservations, date, contexte, ecartees = new Set()) {
   const parId = new Map((reservations || []).map((r) => [r.id, r]));
-  const groupes = feuilleDuJour(reservations || [], date, contexte, ecartees).map((g) => ({ ...g, lignes: g.lignes.map((l) => ({ ...l, sorte: "pickup", precision: precisionPickup(parId.get(l.id)) })) }));
+  // Un transfert par véhicule n'a pas de personnes : la ligne prend les passagers du dossier (ses autres services), sinon n'en dit rien
+  // (contrôle du 17.11.2026, D14 : « 0 passengers » en tête de la feuille).
+  const duDossier = (r) => (r && sansPersonne(r.personnes) ? personnesDuDossier((reservations || []).filter((x) => x.dossier_id === r.dossier_id), r.id) : null);
+  const groupes = feuilleDuJour(reservations || [], date, contexte, ecartees).map((g) => {
+    const lignes = g.lignes.map((l) => {
+      const p = duDossier(parId.get(l.id));
+      return { ...l, ...(p ? { personnes: { ...l.personnes, ...p }, personnes_du_dossier: true } : {}), sorte: "pickup", precision: precisionPickup(parId.get(l.id)) };
+    });
+    const somme = (k) => lignes.reduce((t, l) => t + (Number(l.personnes && l.personnes[k]) || 0), 0);
+    return { ...g, lignes, adultes: somme("adultes"), enfants: somme("enfants") };
+  });
   const groupeDe = (r) => {
     const cle = r.partenaire_id || null;
     let g = groupes.find((x) => (x.partenaire_id || null) === cle);
@@ -85,7 +96,9 @@ export function alertesFeuille(groupes) {
 // Un groupe sans pickup ce jour-là (seulement des retours ou des locations en cours) n'annonce pas « 0 passengers ».
 export function texteFeuillePartage(groupe, date) {
   const pickups = groupe.lignes.some((l) => !l.sorte || l.sorte === "pickup");
-  const tete = `${groupe.nom ? `${groupe.nom}: ` : ""}${dateTexte(date, "en")}${pickups ? `, ${personnesTexte({ adultes: groupe.adultes, enfants: groupe.enfants }, "en") || "0 passengers"}` : ""}`;
+  // Personne de connu (service par véhicule, dossier sans autre service) : rien plutôt que « 0 passengers » (D14).
+  const passagers = pickups ? personnesTexte({ adultes: groupe.adultes, enfants: groupe.enfants }, "en") : "";
+  const tete = `${groupe.nom ? `${groupe.nom}: ` : ""}${dateTexte(date, "en")}${passagers ? `, ${passagers}` : ""}`;
   const lignes = groupe.lignes.map((l) =>
     [
       l.sorte === "en_cours" ? "" : l.heure || "time TBC",

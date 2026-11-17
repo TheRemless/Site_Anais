@@ -1,7 +1,7 @@
 // Demande d'un client reçue par WhatsApp : lecture du message que rédigent les formulaires des sites Secret et Taxi, propositions de prix
 // d'après la base partenaires, et réponse prête à envoyer. Logique pure, testée avec node --test.
 // Rien n'est inventé : un prix vient d'une ligne de la base, et sans correspondance on propose seulement de chercher à la main.
-import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSupplementaires, prefixeProgramme, proposable } from "./partenaires-calc.mjs";
+import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSupplementaires, prefixeProgramme, proposable, quantiteParDefaut } from "./partenaires-calc.mjs";
 import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
 
@@ -871,6 +871,33 @@ export function prestationEnfant(p, prestations = []) {
 export function prestationEnfantSeparee(p, prestations = []) {
   if (!["pp", "ad"].includes(p.unite)) return null;
   return prestations.find((q) => q.id !== p.id && q.actif !== false && q.unite === "ch" && q.partenaire_id === p.partenaire_id && q.famille === p.famille && (q.groupe || "") === (p.groupe || "") && nomCourt(q.libelle) === nomCourt(p.libelle)) || null;
+}
+
+// Prix vendu d'un service d'après son tarif du catalogue et ses personnes (revue de la PR 217) : sert au « Vendu au client » figé de Mook, qui
+// ne peut pas le corriger à la main. Prestation : par jour × jours, par personne ou par adulte avec le prix enfant quand il existe (prix enfant
+// de la prestation ou prestation enfant séparée), sinon la quantité du formulaire (quantiteParDefaut). Trajet : adultes au prix adulte, enfants
+// au prix enfant, ou au prix adulte quand le trajet n'en a pas. null quand le tarif n'a pas de prix.
+export function venteDuTarif({ prestation = null, trajet = null, adultes = 0, enfants = 0, jours = null, prestations = [] } = {}) {
+  const a = Math.max(0, Number(adultes) || 0);
+  const e = Math.max(0, Number(enfants) || 0);
+  const prix = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+  const arr = (x) => Math.round(x * 100) / 100;
+  if (trajet) {
+    const pa = prix(trajet.prix_adulte);
+    if (pa === null) return null;
+    const pe = prix(trajet.prix_enfant);
+    return arr(a * pa + e * (pe ?? pa));
+  }
+  if (!prestation) return null;
+  const pv = prix(prestation.prix_vente);
+  if (pv === null) return null;
+  if (prestation.unite === "day") return arr(pv * Math.max(1, Number(jours) || 1));
+  if (["pp", "ad"].includes(prestation.unite) && e > 0) {
+    const enf = prestationEnfant(prestation, prestations);
+    const pe = enf ? prix(enf.prix_vente) : null;
+    if (pe !== null) return arr(a * pv + e * pe);
+  }
+  return arr(pv * quantiteParDefaut(prestation.unite, { adultes: a, enfants: e }));
 }
 
 // Prix d'une prestation avec ses enfants : adultes au tarif adulte, enfants au tarif enfant s'il existe. Sans tarif enfant, les enfants

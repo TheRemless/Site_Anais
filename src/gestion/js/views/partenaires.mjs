@@ -792,7 +792,7 @@ export function formulairePrestation(x, apres, options = {}) {
     aidePartenaire,
     champ(tr("Libellé"), libelle),
     champ(tr("Libellé en anglais"), libelleEn),
-    h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente"), prixVente, prixFige ? tr("Prix, prix enfant et unité : réservés à qui a le droit « Modifier les prix de vente ».") : tr("Vide : « prix à saisir » à chaque client. 0 : offert.")), champ(tr("Unité"), unite), champ(tr("Prix enfant"), prixEnfant), nets ? champ(tr("Prix net"), net, tr("Ce que le partenaire facture.")) : null, nets ? champ(tr("Net enfant"), netEnfant, tr("Pris pour la ligne enfant.")) : null),
+    h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente"), prixVente, prixFige ? tr("Prix, prix enfant et unité : réservés à qui a le droit « Modifier les prix de vente ».") : tr("Vide : « prix à saisir » à chaque client. 0 : offert, la ligne s'imprime « Offert » sur la facture.")), champ(tr("Unité"), unite), champ(tr("Prix enfant"), prixEnfant), nets ? champ(tr("Prix net"), net, tr("Ce que le partenaire facture.")) : null, nets ? champ(tr("Net enfant"), netEnfant, tr("Pris pour la ligne enfant.")) : null),
     aideEnfant,
     h("div", { class: "grille-form" }, champ(tr("Horaires"), horaires), champ(tr("Durée"), duree, tr("Imprimée sur le voucher.")), champ(tr("Capacité"), capacite), champ(tr("Pour qui"), qui)),
     champBateau,

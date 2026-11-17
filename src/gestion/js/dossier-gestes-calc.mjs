@@ -93,6 +93,28 @@ export function personnesDuDossier(reservations, sauf = null) {
 }
 export const sansPersonne = (p) => !((Number(p && p.adultes) || 0) + (Number(p && p.enfants) || 0));
 
+// Les personnes d'un service créé d'après ses lignes, corrigées par celles du dossier (contrôle du 17.11.2026, D8) : un service sans personnes
+// (véhicule, forfait) les prend toutes ; un service sans ligne enfant compte les enfants du dossier quand sa quantité est celle du dossier
+// (par personne : adultes + enfants ; par adulte : les adultes). Renvoie { adultes, enfants }, ou null quand rien ne change.
+// Les personnes du dossier pour un service créé : celles saisies au Nouveau dossier (`fixes`), sinon, pour un service ajouté à un dossier existant
+// (`duDossier`), celles de ses réservations actuelles, relues à chaque service : une réservation créée juste avant dans la même boucle compte
+// (revue de la PR 217 : un transfert par véhicule après une excursion pour 2 adultes naissait à 0 personne).
+export const personnesPourService = ({ fixes = null, duDossier = false, reservations = [] } = {}) => (fixes && (Number(fixes.adultes) || 0) + (Number(fixes.enfants) || 0) ? fixes : duDossier ? personnesDuDossier(reservations) : null);
+
+// `unite` : l'unité du tarif. Un tarif par adulte ne facture pas l'enfant : ses adultes égaux à ceux du dossier comptent aussi les enfants. Pour un
+// tarif par personne, seule une quantité égale à adultes + enfants dit que les enfants y sont.
+export function personnesSelonDossier(personnes, dossier, unite = "") {
+  if (!dossier) return null;
+  const da = Number(dossier.adultes) || 0;
+  const de = Number(dossier.enfants) || 0;
+  if (!(da + de)) return null;
+  if (sansPersonne(personnes)) return { adultes: da, enfants: de };
+  const a = Number(personnes.adultes) || 0;
+  const e = Number(personnes.enfants) || 0;
+  if (e || !de) return null;
+  return a === da + de || (unite === "ad" && a === da) ? { adultes: da, enfants: de } : null;
+}
+
 // ---- Fusion de deux clients -------------------------------------------------------------------------------------------
 // Ce que la fiche gardée reçoit de l'autre : chaque champ vide prend la valeur de l'autre fiche, les notes s'ajoutent. Rien d'écrit n'est écrasé.
 // Même règle que la fonction fusionner_clients de la base (migration de fusion), pour que la démo et la production donnent la même fiche.
@@ -137,6 +159,9 @@ export function contenuAvecEnfants(contenu, r, avant, apres, { tarifEnfant = () 
   if (adultes.length !== 1) return rien(adultes.length ? "plusieurs_lignes" : "");
   const adulte = adultes[0];
   if (!parPersonne(adulte)) return rien("prix_global");
+  // Enfants déjà comptés au prix adulte sur cette ligne (contenuAvecReservation l'a mise au nombre total de personnes) : pas de ligne enfant en plus.
+  const tot = (p) => (Number(p && p.adultes) || 0) + (Number(p && p.enfants) || 0);
+  if (anciens > 0 && qteDe(adulte) === tot(apres && apres.personnes)) return rien();
   const t = tarifEnfant(adulte);
   if (!t || t.unite === null || t.unite === undefined || t.unite === "" || Number.isNaN(Number(t.unite))) return rien("sans_tarif");
   const en = langue === "en";

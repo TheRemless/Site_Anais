@@ -74,7 +74,21 @@ export function envoyerVoucher(x) {
   let fichier = null;
   const zone = zoneEnvoi({ fichiers: () => (fichier ? [fichier] : []) });
 
+  // Image ou PDF enregistrés pour un envoi hors de WhatsApp (e-mail, autre messagerie, depuis un ordinateur) : rien n'est noté tout seul, la
+  // personne dit elle-même que le voucher est parti (contrôle du 17.11.2026, D5). Un renvoi garde le numéro du premier envoi.
+  const gesteNoterManuel = () => {
+    if (!peut("dossiers.ecrire")) return null;
+    const v = vouchersDuDossier(r.dossier_id).find((y) => y.reservation.id === r.id);
+    const modifie = !!(v && v.envoi && v.envoi.modifie);
+    return h("button", { class: "secondaire", type: "button", onclick: () => noter("client", "manuel") }, modifie ? tr("Marquer renvoyé") : tr("Marquer envoyé au client"));
+  };
+  const proposerNoterManuel = () => {
+    const b = gesteNoterManuel();
+    if (b) zone.succes({ titre: tr("Une fois le voucher parti chez le client (e-mail, autre messagerie), notez-le ici."), boutons: [b] });
+  };
   const enregistrerImage = () => enregistrer([fichier]);
+  // Le bouton « Enregistrer l'image » du bas propose ensuite de noter l'envoi ; ailleurs (zone d'erreur, consignes WhatsApp) il ne fait qu'enregistrer.
+  const enregistrerEtProposer = () => (enregistrerImage(), proposerNoterManuel());
 
   // Note l'envoi des vouchers `reservations` à `pour` (« client » ou « partenaire ») si le geste a abouti (`issue`, voir envoiANoter).
   // La fiche se redessine à la fermeture de la fenêtre, pour ne pas bouger la page pendant qu'on colle l'image (ou à la fin de l'écriture si
@@ -106,7 +120,7 @@ export function envoyerVoucher(x) {
   const boutonsCopie = () => messages().map(([pour, nom]) => h("button", { class: "lien", type: "button", onclick: () => copierTexte(message[pour]) }, messages().length > 1 ? tr("Copier le message : {nom}", { nom }) : tr("Copier le message")));
   // Toujours à l'écran, dans tous les cas (même pendant la préparation et même quand tout le reste échoue) : enregistrer l'image et copier le message.
   const secours = ({ principal = false } = {}) => [
-    h("button", { class: principal ? "principal" : "secondaire", type: "button", disabled: !fichier, onclick: enregistrerImage }, tr("Enregistrer l'image")),
+    h("button", { class: principal ? "principal" : "secondaire", type: "button", disabled: !fichier, onclick: enregistrerEtProposer }, tr("Enregistrer l'image")),
     ...boutonsCopie(),
   ];
   // Dans le cadre d'état : WhatsApp avec le message seul, étiqueté sans ambiguïté, jamais ouvert tout seul.
@@ -210,7 +224,7 @@ export function envoyerVoucher(x) {
   function afficherActions() {
     const chemin = moyen([fichier]);
     const destinataires = [["client"]];
-    const imprimer = window.matchMedia("(hover: hover)").matches ? [h("button", { class: "lien", type: "button", onclick: () => imprimerVoucher(x) }, tr("PDF"))] : [];
+    const imprimer = window.matchMedia("(hover: hover)").matches ? [h("button", { class: "lien", type: "button", onclick: () => (imprimerVoucher(x), proposerNoterManuel()) }, tr("PDF"))] : [];
     if (chemin === "natif") {
       // La liste de partage du téléphone choisit l'application et le contact, l'image y est jointe. Sans prestataire, un seul bouton évident ;
       // avec un prestataire, un bouton par destinataire, pour noter à qui le voucher est parti.

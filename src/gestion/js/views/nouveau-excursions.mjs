@@ -8,6 +8,7 @@ import { vide } from "./commun.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { estTaxi } from "../taxi-calc.mjs";
+import { prixVenteFige } from "../partenaires-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee as refPropose, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { lireBrouillon, viderBrouillon } from "./demande.mjs";
 import { clientsProches } from "../demande-calc.mjs";
@@ -85,10 +86,20 @@ export function nouveauDossierExcursions() {
       if (desc) desc.value = descriptionService({ ...l, libelle: nouveau }, langue);
     }
   };
+  // Adultes et enfants du dossier (Secret, contrôle du 17.11.2026, D8) : le prix enfant et le nombre de personnes servent dès l'ajout d'un service,
+  // et un service sans tarif enfant ou par véhicule compte les enfants du dossier. Une demande collée les préremplit.
+  const pDemande = (demande && demande.personnes) || {};
+  const nbAdultes = h("input", { id: "nd-adultes", type: "number", min: "0", step: "1", inputmode: "numeric", value: pDemande.adultes ?? "" });
+  const nbEnfants = h("input", { id: "nd-enfants", type: "number", min: "0", step: "1", inputmode: "numeric", value: pDemande.enfants ?? "" });
+  const personnesSaisies = () => {
+    const a = Math.max(0, Math.floor(Number(nbAdultes.value) || 0));
+    const e = Math.max(0, Math.floor(Number(nbEnfants.value) || 0));
+    return taxi || !(a + e) ? null : { adultes: a, enfants: e };
+  };
   // Le service suivant se fait en général le même jour et pour les mêmes personnes que le précédent.
   const defautsAjout = () => {
     const l = [...lignes].reverse().find((x) => x.date_service);
-    return { date: l ? l.date_service : "", ...(demande && demande.personnes ? demande.personnes : {}) };
+    return { date: l ? l.date_service : "", ...(demande && demande.personnes ? demande.personnes : {}), ...(personnesSaisies() || {}) };
   };
   const liste = h("div");
   const total = h("p", { class: "total-edition" });
@@ -117,7 +128,7 @@ export function nouveauDossierExcursions() {
           l.kind === "texte"
             ? h("p", { class: "aide" }, l.libelle)
             : [
-                h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), h("input", { id: `s${i}-d`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), dessiner()) })), champ(tr("Quantité"), h("input", { id: `s${i}-q`, type: "number", min: "1", step: "1", inputmode: "numeric", value: l.qte, onchange: (e) => ((l.qte = Number(e.target.value) || 1), dessiner()) })), champ(tr("Prix ({devise})", { devise: regl.devise }), h("input", { id: `s${i}-p`, type: "number", min: "0", step: "1", inputmode: "numeric", value: l.unite ?? "", onchange: (e) => ((l.unite = e.target.value === "" ? null : Number(e.target.value)), dessiner()) }))),
+                h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), h("input", { id: `s${i}-d`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), dessiner()) })), champ(tr("Quantité"), h("input", { id: `s${i}-q`, type: "number", min: "1", step: "1", inputmode: "numeric", value: l.qte, onchange: (e) => ((l.qte = Number(e.target.value) || 1), dessiner()) })), champ(tr("Prix ({devise})", { devise: regl.devise }), h("input", { id: `s${i}-p`, type: "number", min: "0", step: "1", inputmode: "numeric", value: l.unite ?? "", disabled: prixVenteFige(l, etat.db, { droitPrix: peut("partenaires.prix") }), title: prixVenteFige(l, etat.db, { droitPrix: peut("partenaires.prix") }) ? tr("Prix du catalogue : votre rôle ne permet pas de le changer.") : null, onchange: (e) => ((l.unite = e.target.value === "" ? null : Number(e.target.value)), dessiner()) }))),
                 champ(taxi ? tr("Libellé de la course") : tr("Description sur la facture"), h("input", { id: `s${i}-desc`, value: description(l), oninput: (e) => ((l.description = e.target.value), (l.description_fixe = true)) }), [l.partenaire_id ? nomPartenaire(l.partenaire_id) : "", tr("Texte vu par le client, en anglais. Modifiable.")].filter(Boolean).join(" · ")),
                 blocVoucher(l),
               ]
@@ -168,7 +179,7 @@ export function nouveauDossierExcursions() {
     bouton.textContent = tr("Création…");
     try {
       ref.value = await refDefinitive(ref.value, refProposee, regl);
-      const d = await creerDossierExcursions({ client: selClient.valeur ? { id: selClient.valeur } : { prenom: nvPrenom.value, nom: nvNom.value, telephone: nvTel.value, hotel: nvHotel.value, chambre: nvChambre.value }, lignes, notes: notes.value, ref: ref.value, parService: parServiceCreation(services(), saisies) });
+      const d = await creerDossierExcursions({ client: selClient.valeur ? { id: selClient.valeur } : { prenom: nvPrenom.value, nom: nvNom.value, telephone: nvTel.value, hotel: nvHotel.value, chambre: nvChambre.value }, lignes, notes: notes.value, ref: ref.value, parService: parServiceCreation(services(), saisies), personnes: personnesSaisies() });
       viderBrouillon();
       naviguer(`#/dossier/${d.id}`);
     } catch (err) {
@@ -187,7 +198,7 @@ export function nouveauDossierExcursions() {
       "form",
       { class: "formulaire", onsubmit: creer },
       h("fieldset", null, h("legend", null, tr("Client")), selClient.noeud, doublon, blocNouveau),
-      h("fieldset", null, h("legend", null, tr("Services")), liste, h("div", { class: "ajouts" }, h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue, devise: regl.devise, sansCompagnie: true, defauts: defautsAjout(), onAjout: (nouvelles) => { nouvelles.forEach((l) => lignes.push({ ...l, titre: l.kind === "texte" ? undefined : l.libelle })); dernierAjout = (nouvelles.find((l) => l.kind !== "texte") || {}).id || dernierAjout; dessiner(); } }) }, taxi ? tr("Course du catalogue") : tr("Ajouter un service")), taxi ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirCourseLibre({ date: defautsAjout().date, onAjout: ({ ligne, saisie }) => { lignes.push(ligne); saisies.set(ligne.id, saisie); coursesLibres.add(ligne.id); dernierAjout = ligne.id; dessiner(); } }) }, tr("Course hors catalogue")) : null), total),
+      h("fieldset", null, h("legend", null, tr("Services")), taxi ? null : h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), nbAdultes), champ(tr("Enfants"), nbEnfants, tr("Le prix enfant du catalogue sert dès l'ajout d'un service."))), liste, h("div", { class: "ajouts" }, h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue, devise: regl.devise, sansCompagnie: true, defauts: defautsAjout(), onAjout: (nouvelles) => { nouvelles.forEach((l) => lignes.push({ ...l, titre: l.kind === "texte" ? undefined : l.libelle })); dernierAjout = (nouvelles.find((l) => l.kind !== "texte") || {}).id || dernierAjout; dessiner(); } }) }, taxi ? tr("Course du catalogue") : tr("Ajouter un service")), taxi ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirCourseLibre({ date: defautsAjout().date, onAjout: ({ ligne, saisie }) => { lignes.push(ligne); saisies.set(ligne.id, saisie); coursesLibres.add(ligne.id); dernierAjout = ligne.id; dessiner(); } }) }, tr("Course hors catalogue")) : null), total),
       h("fieldset", null, h("legend", null, taxi ? tr("Réservation") : tr("Facture")), h("div", { class: "grille-form" }, champ(tr("Numéro"), ref, tr("Numéro suivant de l'année pour cette entreprise, modifiable.")), champ(tr("Notes internes"), notes))),
       erreur,
       h("div", { class: "actions" }, h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Annuler")), bouton)

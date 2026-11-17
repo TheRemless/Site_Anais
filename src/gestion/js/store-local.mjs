@@ -6,6 +6,7 @@ import { permissionsDans, voitTout } from "./droits.mjs";
 import { analyserLocal, faitsLocal } from "./analyses.mjs";
 import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
+import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
 const CLE = "gestion-zwald-demo-v13";
@@ -35,6 +36,11 @@ export function creer() {
     // Historique des réglages (migration 36), comme la base : la version remplacée à chaque enregistrement, 60 au plus par entreprise.
     data.reglages_historique = data.reglages_historique || [];
     for (const d of data.dossiers || []) if (!("acompte_pct" in d)) d.acompte_pct = null;
+    // Nets de démo d'avant le calcul par la base (17.11.2026, D2) : ils comptent comme calculés, pour suivre un enfant ajouté ou un tarif changé.
+    for (const n of data.reservations_nets) {
+      if (!("net_prevu_auto" in n)) n.net_prevu_auto = n.net_prevu ?? null;
+      if (!("commission_prevue_auto" in n)) n.commission_prevue_auto = n.commission_prevue ?? null;
+    }
     let choisi = null;
     try {
       choisi = localStorage.getItem(CLE_UTILISATEUR);
@@ -87,6 +93,26 @@ export function creer() {
     const prix = table === "prestations" ? (x) => [n(x.prix_vente), enfant(x), x.unite || ""] : (x) => [n(x.prix_adulte), n(x.prix_enfant)];
     const change = avant ? JSON.stringify(prix(avant)) !== JSON.stringify(prix(apres)) : prix(apres).slice(0, 2).some((v) => v !== null);
     if (change) throw new Error(tr("Le prix de vente est réservé aux personnes qui ont le droit « Modifier les prix de vente ». Laissez le prix tel quel, ou demandez à l'administratrice."));
+  };
+
+  // Comme le déclencheur remplir_nets (migration 30) : après l'écriture d'une réservation de Secret, le net et la commission prévus suivent le tarif,
+  // les personnes et les lignes de facture, sans jamais écraser une valeur saisie à la main (contrôle du 17.11.2026, D2).
+  const remplirNets = (r, avant) => {
+    const suivi = suiviDeclencheur(avant, r);
+    if (!suivi) return;
+    const n = data.reservations_nets.find((x) => x.reservation_id === r.id) || null;
+    const excursions = (entiteId) => ((data.reglages || {})[entiteId] || {}).fonctionnement === "excursions";
+    const valeurs = calculerNets(r, n, { ...data, excursions }, { suivreNet: suivi.suivreNet });
+    if (!valeurs) return;
+    if (n) {
+      const details = Object.fromEntries(["net_prevu", "commission_prevue"].filter((k) => (n[k] ?? null) !== (valeurs[k] ?? null)).map((k) => [k, { avant: n[k] ?? null, apres: valeurs[k] }]));
+      Object.assign(n, valeurs);
+      if (Object.keys(details).length) journaliser("reservations_nets", "update", n, details);
+    } else {
+      const ligne = { id: uid(), created_at: aujourdhui(), entite_id: r.entite_id, reservation_id: r.id, net_paye: null, paye_le: null, commission_recue: null, commission_recue_le: null, ...valeurs };
+      data.reservations_nets.push(ligne);
+      journaliser("reservations_nets", "insert", ligne, Object.fromEntries(["net_prevu", "commission_prevue"].filter((k) => valeurs[k] !== null).map((k) => [k, { avant: null, apres: valeurs[k] }])));
+    }
   };
 
   // Journal tenu à la main, comme le fait le déclencheur de la vraie base.
@@ -230,7 +256,20 @@ export function creer() {
       if (table === "dossiers" && !("acompte_pct" in ligne)) ligne.acompte_pct = null;
       if (table === "dossiers") ligne.responsable_id = ligne.responsable_id || utilisateur.user_id;
       if (TABLES.includes(table) && !["catalogue", "trajets", ...PARTENAIRES_NETS].includes(table)) ligne.cree_par = utilisateur.user_id;
+      // Comme fusionner_nets (migration 30) : une insertion pour une réservation qui a déjà sa ligne de nets la complète, l'identifiant reste.
+      if (table === "reservations_nets") {
+        const existante = data.reservations_nets.find((x) => x.reservation_id === ligne.reservation_id);
+        if (existante) {
+          const envoyees = Object.fromEntries(Object.entries(row).filter(([k, v]) => v !== null && v !== undefined && k !== "id"));
+          const details = Object.fromEntries(Object.entries(envoyees).filter(([k, v]) => !["entite_id", "reservation_id"].includes(k) && JSON.stringify(existante[k] ?? null) !== JSON.stringify(v)).map(([k, v]) => [k, { avant: existante[k] ?? null, apres: v }]));
+          Object.assign(existante, envoyees);
+          if (Object.keys(details).length) journaliser(table, "update", existante, details);
+          sauve();
+          return structuredClone(existante);
+        }
+      }
       data[table].push(ligne);
+      if (table === "reservations") remplirNets(ligne, null);
       if (table === "entites") data.reglages[ligne.id] = structuredClone(REGLAGES_NEUTRE);
       // Comme le déclencheur de la base : la création d'un net ou d'une commission note les valeurs saisies.
       const saisies = table === "reservations_nets" ? Object.fromEntries(Object.entries(ligne).filter(([k, v]) => !["id", "entite_id", "reservation_id", "created_at"].includes(k) && v !== null && v !== undefined && v !== "").map(([k, v]) => [k, { avant: null, apres: v }])) : {};
@@ -252,8 +291,10 @@ export function creer() {
         const court = (x) => JSON.stringify(x ?? null).length <= 120;
         details[k] = court(ligne[k]) && court(v) ? { avant: ligne[k] ?? null, apres: v } : "modifié";
       }
+      const copie = table === "reservations" ? structuredClone(ligne) : null;
       Object.assign(ligne, patch);
       if (Object.keys(details).length) journaliser(table, "update", ligne, details);
+      if (copie) remplirNets(ligne, copie);
       sauve();
       return structuredClone(ligne);
     },
@@ -397,6 +438,11 @@ export function creer() {
       delete (data.fichiers || {})[piece.chemin];
       journaliser("pieces_jointes", "delete", piece);
       sauve();
+    },
+    // La ligne de nets d'une réservation, relue après une écriture (la base, ou ici remplirNets, a pu la recalculer). Rien sans le droit « nets ».
+    async netsReservations(ids) {
+      const set = new Set(ids);
+      return data.reservations_nets.filter((x) => set.has(x.reservation_id) && droit(x.entite_id, "partenaires.nets")).map((x) => structuredClone(x));
     },
     async resumeDossier(id) {
       const d = dossiersVisibles().find((x) => x.id === id);

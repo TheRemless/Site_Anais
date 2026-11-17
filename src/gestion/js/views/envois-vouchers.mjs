@@ -68,6 +68,9 @@ export function ouvrirEnvois(vouchers, apres) {
                     h("span", { class: "tag" }, tr("{nom} : envoyé le {date}", { nom, date: formatDate(envois[cle]) })),
                     modifie ? h("span", { class: "tag tag-alerte" }, tr("modifié depuis l'envoi")) : null,
                     " ",
+                    // Renvoyé hors de WhatsApp (image ou PDF depuis un ordinateur) : la nouvelle version se fige, le numéro du premier envoi reste (D5).
+                    modifie ? h("button", { class: "principal petit", type: "button", disabled: !ecrit, title: tr("Le voucher modifié est reparti chez le client : sa nouvelle version est notée, son numéro ne change pas."), onclick: async () => { if (await noterEnvoi(courante, cle)) { toast(tr("Renvoi noté.")); dessiner(); apres(); } } }, tr("Marquer renvoyé")) : null,
+                    modifie ? " " : null,
                     h("button", { class: "lien petit", type: "button", disabled: !ecrit, title: tr("L'envoi a été noté par erreur : il s'efface. Le numéro du voucher n'est plus figé."), onclick: async () => { if (await annulerEnvoi(courante, cle)) { toast(tr("Envoi retiré.")); dessiner(); apres(); } } }, tr("Pas envoyé"))
                   )
                 : h("button", { class: "secondaire petit", type: "button", disabled: !ecrit, onclick: async () => { if (await noterEnvoi(courante, cle)) { dessiner(); apres(); } } }, tr("{nom} : marquer envoyé", { nom }))
@@ -78,5 +81,5 @@ export function ouvrirEnvois(vouchers, apres) {
     );
   };
   dessiner();
-  const fermer = modal(tr("Envois des vouchers"), h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("Notez ici les vouchers vraiment partis chez le client. L'étape du dossier passe à « fait » quand tous sont envoyés. « Pas envoyé » retire un envoi noté par erreur.")), liste, h("div", { class: "actions" }, h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Fermer")))), { protege: false });
+  const fermer = modal(tr("Envois des vouchers"), h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("Notez ici les vouchers vraiment partis chez le client. L'étape du dossier passe à « fait » quand tous sont envoyés. « Marquer renvoyé » note un voucher modifié reparti hors de WhatsApp, sans changer son numéro. « Pas envoyé » retire un envoi noté par erreur.")), liste, h("div", { class: "actions" }, h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Fermer")))), { protege: false });
 }

@@ -784,7 +784,7 @@ function ficheDossierVue(id) {
   );
   // Hiérarchie de la fiche : l'état et la prochaine étape d'abord, puis les services, les documents et les paiements ouverts,
   // le reste replié. Au téléphone, une barre collante porte les gestes principaux (envoyer, écrire au client, ajouter un service).
-  const TITRE_SERVICES = tr("Réservations auprès des partenaires");
+  const TITRE_SERVICES = tr("Services");
   const sectionDe = (nom) => [...racine.children].find((e) => e.tagName === "SECTION" && ((e.querySelector(":scope > h2, :scope > .petit-entete > h2") || {}).textContent === nom));
   const avancement = sectionDe(tr("Avancement"));
   const services = sectionDe(TITRE_SERVICES);

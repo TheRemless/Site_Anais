@@ -204,3 +204,20 @@ test("copie hors ligne : pendant et après une déconnexion, plus rien n'est éc
   await store.connecter("a@b.ch", "x").catch(() => {});
   assert.equal(store.enDeconnexion(), false, "une nouvelle connexion réautorise la copie");
 });
+
+test("magasin (lot I, revue du lot J) : un net effacé exprès reste effacé, une version restaurée sans nets garde ceux enregistrés", async () => {
+  const sb = faux();
+  sb.tables.documents.push({ id: "d0", dossier_id: "D", entite_id: "e1", type: "facture", contenu: { lignes: [{ id: "l1", unite: 100, qte: 1 }, { id: "l2", unite: 50, qte: 1 }] } });
+  sb.tables.documents_nets.push({ document_id: "d0", entite_id: "e1", nets: { l1: 70, l2: 30 } });
+  const store = creer({}, { client: sb });
+  const lu = (await store.dossierComplet("D")).documents[0];
+  assert.equal(lu.contenu.lignes[0].net, 70);
+  // Version restaurée (contenu de l'historique, sans clé `net`) : les nets enregistrés restent.
+  await store.modifier("documents", "d0", { contenu: { lignes: [{ id: "l1", unite: 110, qte: 1 }, { id: "l2", unite: 50, qte: 1 }] } });
+  assert.deepEqual(sb.tables.documents_nets[0].nets, { l1: 70, l2: 30 });
+  // Le net de l2 effacé dans l'éditeur (clé présente, vide) : il part ; puis le dernier net effacé : l'objet est vidé.
+  await store.modifier("documents", "d0", { contenu: { lignes: [{ id: "l1", unite: 110, qte: 1, net: 70 }, { id: "l2", unite: 50, qte: 1, net: null }] } });
+  assert.deepEqual(sb.tables.documents_nets[0].nets, { l1: 70 });
+  await store.modifier("documents", "d0", { contenu: { lignes: [{ id: "l1", unite: 110, qte: 1, net: null }, { id: "l2", unite: 50, qte: 1, net: null }] } });
+  assert.deepEqual(sb.tables.documents_nets[0].nets, {});
+});
