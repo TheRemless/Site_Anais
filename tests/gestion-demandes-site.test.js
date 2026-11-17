@@ -23,7 +23,7 @@ test("demande-site : seul le site (et la machine de développement) est une orig
 
 test("demande-site : une demande correcte donne la ligne à écrire, rien de plus", () => {
   const l = lireDemande(corps({ extra: "ignoré", ip_empreinte: "x", statut: "confirmee", entite_id: "y" }), { aujourdhui: AJD });
-  assert.deepEqual(Object.keys(l).sort(), ["adultes", "date_service", "devise", "enfants", "heure", "marque", "message", "nom", "option_id", "option_titre", "page_url", "pickup", "produit", "produit_id", "ref", "total_estime"].sort());
+  assert.deepEqual(Object.keys(l).sort(), ["adultes", "date_service", "devise", "enfants", "heure", "marque", "message", "nom", "option_id", "option_titre", "page_url", "pickup", "produit", "produit_id", "ref", "telephone", "telephone_saisi", "total_estime"].sort());
   assert.equal(l.marque, "secret");
   assert.equal(l.date_service, "2026-11-18");
   assert.equal(l.adultes, 2);
@@ -42,7 +42,7 @@ test("demande-site : formats, tailles et types sont contrôlés", () => {
   assert.deepEqual(erreurDe(() => lireDemande(corps({ adults: 2.5 }), o)), { code: "nombre", champ: "adults" });
   assert.deepEqual(erreurDe(() => lireDemande(corps({ adults: 500 }), o)), { code: "nombre", champ: "adults" });
   assert.deepEqual(erreurDe(() => lireDemande(corps({ estimated_total: -1 }), o)), { code: "nombre", champ: "estimated_total" });
-  assert.deepEqual(erreurDe(() => lireDemande(corps({ name: "x".repeat(101) }), o)), { code: "trop_long", champ: "name" });
+  assert.deepEqual(erreurDe(() => lireDemande(corps({ name: "x".repeat(121) }), o)), { code: "trop_long", champ: "name" });
   assert.deepEqual(erreurDe(() => lireDemande(corps({ name: { a: 1 } }), o)), { code: "type", champ: "name" });
   assert.deepEqual(erreurDe(() => lireDemande(corps({ ref: "four<script>" }), o)), { code: "format", champ: "ref" });
   assert.equal(erreurDe(() => lireDemande("{pas du json", o)).code, "json");

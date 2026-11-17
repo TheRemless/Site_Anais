@@ -1,8 +1,10 @@
 // « Demandes du site » : les demandes de réservation envoyées depuis secrettravelandtour.com (migration 30), une carte par demande.
 // Anaïs reçoit une notification, ouvre la carte, et en un geste confirme (le dossier se crée comme avec « Coller une demande »), modifie
-// (date, heure, option, prix) puis confirme, ou refuse en proposant autre chose. Chaque fois une réponse anglaise à copier dans la
-// conversation WhatsApp du client : le site ne donne pas son numéro, la référence affichée en grand sert à retrouver la conversation.
-// Rien ne part au prestataire (règle du 14.11.2026). Secret et Taxi seulement ; chaque entreprise ne voit que ses demandes.
+// (date, heure, option, prix) puis confirme, ou refuse en proposant autre chose. Chaque fois une réponse anglaise pour le client.
+// Depuis la migration 41, la feuille du site donne le numéro WhatsApp : « Écrire sur WhatsApp » ouvre sa conversation avec la réponse déjà
+// écrite (lien wa.me, Anaïs relit et envoie elle-même), et « Il n'a pas écrit » prépare un mot quand son message n'est jamais arrivé.
+// Sans numéro (demande plus ancienne), la réponse se copie et la référence en grand sert à retrouver la conversation.
+// Rien ne part tout seul, ni au client ni au prestataire (règle du 14.11.2026). Secret et Taxi seulement ; chaque entreprise ne voit que ses demandes.
 import { etat, modifier, peut, modeExcursions, modeTaxi, naviguer, recharger } from "../etat.mjs";
 import { h, modal, toast, champ, puces, confirmer, icone } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
@@ -12,7 +14,7 @@ import { copierTexte } from "./partage.mjs";
 import { vide } from "./commun.mjs";
 import {
   STATUTS_DEMANDE, MOTIFS_REFUS, nomProduit, titreOption, optionsProduit, texteDemande, changements, reponseConfirmation, reponseRefus,
-  trierDemandes, aTraiter, chiffresDemandes, cheminPage,
+  trierDemandes, aTraiter, chiffresDemandes, cheminPage, numeroWhatsApp, lienWhatsAppClient, numeroAffiche, reponseSansMessage,
 } from "../demandes-site-calc.mjs";
 import { PRODUITS_SITE } from "../site-produits.mjs";
 
@@ -36,28 +38,49 @@ function recue(iso) {
 const personnes = (d) => [d.adultes ? pluriel(d.adultes, N_("adulte"), N_("adultes")) : "", d.enfants ? pluriel(d.enfants, N_("enfant"), N_("enfants")) : ""].filter(Boolean).join(", ");
 
 // ---- Réponse au client ---------------------------------------------------------------------------------------------
-// Texte anglais modifiable, un bouton Copier, la référence en grand pour retrouver la conversation. Jamais de lien wa.me : pas de numéro.
+// Le bouton « Écrire sur WhatsApp » : un vrai lien (pas window.open après une attente, que Safari bloque), tenu à jour avec le texte.
+// `surOuverture` : ce qui suit l'appui (marquer la demande refusée), sans retenir l'ouverture de WhatsApp.
+function boutonWhatsApp(d, zone, { libelle = tr("Écrire sur WhatsApp"), surOuverture = null } = {}) {
+  if (!numeroWhatsApp(d)) return null;
+  const lien = h("a", { class: "bouton principal dsite-wa", target: "_blank", rel: "noopener", href: lienWhatsAppClient(d, zone.value), onclick: () => surOuverture && surOuverture() }, icone("whatsapp", 18), libelle);
+  zone.addEventListener("input", () => (lien.href = lienWhatsAppClient(d, zone.value)));
+  return lien;
+}
+
+// Texte anglais modifiable, « Écrire sur WhatsApp » quand la demande a un numéro, un bouton Copier, la référence en grand.
 function ouvrirReponse(d, texte, { titre, dossierId = null, apresCopie = null } = {}) {
   const zone = h("textarea", { id: "dsite-reponse", rows: 12, lang: "en", spellcheck: "true" }, texte);
   zone.value = texte;
+  const wa = boutonWhatsApp(d, zone);
   let fermer;
   const copier = h("button", { class: "principal", type: "button", onclick: async () => {
     await copierTexte(zone.value);
     if (apresCopie) await apresCopie(zone.value);
   } }, icone("copier", 18), tr("Copier"));
+  if (wa) copier.className = "secondaire";
   const corps = h(
     "div",
     { class: "modal-corps dsite-reponse" },
     blocReference(d),
-    h("p", { class: "aide" }, tr("Ouvrez la conversation WhatsApp de ce client, collez la réponse et envoyez-la. Le texte reste modifiable ici.")),
+    h("p", { class: "aide" }, wa ? tr("« Écrire sur WhatsApp » ouvre la conversation de {numero} avec la réponse déjà écrite : relisez-la et envoyez-la dans WhatsApp.", { numero: numeroAffiche(numeroWhatsApp(d)) }) : tr("Ouvrez la conversation WhatsApp de ce client, collez la réponse et envoyez-la. Le texte reste modifiable ici.")),
     champ(tr("Réponse en anglais"), zone),
-    h("div", { class: "barre-modal" }, copier, dossierId ? h("button", { class: "secondaire", type: "button", onclick: () => (fermer(), naviguer(`#/dossier/${dossierId}`)) }, tr("Ouvrir le dossier")) : null)
+    h("div", { class: "barre-modal" }, wa, copier, dossierId ? h("button", { class: "secondaire", type: "button", onclick: () => (fermer(), naviguer(`#/dossier/${dossierId}`)) }, tr("Ouvrir le dossier")) : null)
   );
   fermer = modal(titre, corps, { protege: false });
 }
 
 // La référence WhatsApp en grand ; sans référence (ancien site), le nom et l'heure d'envoi pour retrouver le message.
 function blocReference(d) {
+  return h("div", { class: "dsite-reperes" }, blocRef(d), blocNumero(d));
+}
+// Le numéro WhatsApp donné sur le site ; ce qui a été tapé quand la fonction n'a pas pu le lire ; rien d'inventé sinon.
+function blocNumero(d) {
+  const numero = numeroWhatsApp(d);
+  if (numero) return h("p", { class: "dsite-numero" }, icone("whatsapp", 16), h("span", null, numeroAffiche(numero)));
+  if (d.telephone_saisi) return h("p", { class: "dsite-numero a-verifier" }, tr("Numéro à vérifier : {saisi}", { saisi: d.telephone_saisi }));
+  return h("p", { class: "dsite-numero sans" }, tr("Pas de numéro WhatsApp"));
+}
+function blocRef(d) {
   return d.ref
     ? h("p", { class: "dsite-ref" }, h("span", { class: "dsite-ref-libelle" }, tr("Réf. WhatsApp")), h("strong", null, d.ref))
     : h("p", { class: "dsite-ref sans" }, h("span", { class: "dsite-ref-libelle" }, tr("Sans référence")), h("strong", null, tr("Message de {nom}, {quand}", { nom: d.nom || tr("nom inconnu"), quand: recue(d.created_at) })));
@@ -78,6 +101,7 @@ function confirmer_(d, modifs = {}) {
   ouvrirDemande({
     titre: Object.keys(modifs).length ? tr("Confirmer {ref} avec les changements", { ref }) : tr("Confirmer {ref}", { ref }),
     texte: texteDemande(d, modifs),
+    telephone: numeroWhatsApp(d),
     prixImpose: modifs.prix ?? null,
     surCree: async ({ dossier, services, total }) => {
       const s = services[0] || {};
@@ -153,7 +177,8 @@ function ouvrirRefus(d) {
   if (dejaTraitee(d)) return void (toast(tr("Cette demande a déjà été traitée."), true), rafraichir());
   const etatRefus = { motif: "complet", alternative: {} };
   const apercu = h("textarea", { id: "dsite-refus", rows: 9, lang: "en" });
-  const majApercu = () => (apercu.value = reponseRefus(d, etatRefus, { aujourdhui: aujourdhui() }));
+  let majLien = () => {};
+  const majApercu = () => ((apercu.value = reponseRefus(d, etatRefus, { aujourdhui: aujourdhui() })), majLien());
   const motifs = puces({ libelle: tr("Motif"), valeur: etatRefus.motif, options: Object.entries(MOTIFS_REFUS).map(([valeur, l]) => ({ valeur, libelle: tr(l) })), onchange: (v) => ((etatRefus.motif = v), majApercu()) });
   const autreDate = h("input", { type: "date", min: aujourdhui(), onchange: (e) => ((etatRefus.alternative.date = e.target.value || undefined), majApercu()) });
   const marque = d.marque === "taxi" ? "taxi" : "secret";
@@ -163,7 +188,10 @@ function ouvrirRefus(d) {
   let fermer;
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   let copieRatee = false;
-  const marquer = async (copiee) => {
+  // Le lien suit l'aperçu : il change à chaque motif ou proposition, pas seulement à la frappe.
+  const wa = boutonWhatsApp(d, apercu, { libelle: tr("Refuser sur WhatsApp"), surOuverture: () => marquer("whatsapp") });
+  majLien = () => wa && (wa.href = lienWhatsAppClient(d, apercu.value));
+  const marquer = async (comment) => {
     try {
       await modifier("demandes_site", d.id, { statut: "refusee", decision: { motif: etatRefus.motif, alternative: etatRefus.alternative } }, { verrou: true, version: d.updated_at });
     } catch (err) {
@@ -172,15 +200,15 @@ function ouvrirRefus(d) {
       return rafraichir();
     }
     fermer();
-    toast(copiee ? tr("Demande refusée : la réponse est copiée.") : tr("Demande refusée. La réponse reste dans « Revoir la réponse »."));
+    toast(comment === "whatsapp" ? tr("Demande refusée : WhatsApp s'ouvre avec la réponse.") : comment === "copiee" ? tr("Demande refusée : la réponse est copiée.") : tr("Demande refusée. La réponse reste dans « Revoir la réponse »."));
     rafraichir();
   };
   // Copie refusée par le navigateur : le texte est sélectionné pour une copie à la main, la demande n'est marquée qu'au second appui.
   const copierPuisMarquer = async (btn) => {
-    if (copieRatee) return marquer(false);
+    if (copieRatee) return marquer("");
     try {
       await navigator.clipboard.writeText(apercu.value);
-      await marquer(true);
+      await marquer("copiee");
     } catch {
       copieRatee = true;
       apercu.focus();
@@ -199,7 +227,26 @@ function ouvrirRefus(d) {
       h("div", { class: "grille-form compacte" }, champ(tr("Proposer une autre date"), autreDate), champ(d.marque === "taxi" ? tr("Proposer un autre trajet") : tr("Proposer une autre sortie"), autreSortie)),
       champ(tr("Réponse en anglais"), apercu),
       erreur,
-      h("div", { class: "barre-modal" }, h("button", { class: "principal", type: "button", onclick: (e) => copierPuisMarquer(e.currentTarget) }, icone("copier", 18), tr("Copier et marquer refusée")))
+      h("div", { class: "barre-modal" }, wa, h("button", { class: wa ? "secondaire" : "principal", type: "button", onclick: (e) => copierPuisMarquer(e.currentTarget) }, icone("copier", 18), tr("Copier et marquer refusée")))
+    ),
+    { protege: false }
+  );
+}
+
+// « Il n'a pas écrit » : la demande est dans Gestion, son message WhatsApp jamais arrivé. Un mot au client, la demande reste à traiter.
+function ouvrirSansMessage(d) {
+  const zone = h("textarea", { id: "dsite-sans-message", rows: 8, lang: "en", spellcheck: "true" });
+  zone.value = reponseSansMessage(d, { aujourdhui: aujourdhui() });
+  const wa = boutonWhatsApp(d, zone);
+  modal(
+    tr("Son message WhatsApp n'est pas arrivé"),
+    h(
+      "div",
+      { class: "modal-corps dsite-reponse" },
+      blocReference(d),
+      h("p", { class: "aide" }, tr("Pour un client dont la demande est arrivée ici mais pas son message. La demande reste « à traiter » : quand il répond, confirmez-la comme d'habitude.")),
+      champ(tr("Message en anglais"), zone),
+      h("div", { class: "barre-modal" }, wa, h("button", { class: wa ? "secondaire" : "principal", type: "button", onclick: () => copierTexte(zone.value) }, icone("copier", 18), tr("Copier")))
     ),
     { protege: false }
   );
@@ -251,6 +298,7 @@ function carte(d) {
           h("button", { class: "principal", type: "button", onclick: () => confirmer_(d) }, tr("Confirmer")),
           h("button", { class: "secondaire", type: "button", onclick: () => ouvrirModifier(d) }, tr("Modifier")),
           h("button", { class: "secondaire", type: "button", onclick: () => ouvrirRefus(d) }, tr("Refuser")),
+          numeroWhatsApp(d) ? h("button", { class: "secondaire", type: "button", onclick: () => ouvrirSansMessage(d) }, icone("whatsapp", 16), tr("Il n'a pas écrit")) : null,
           h("button", { class: "lien", type: "button", onclick: () => classer(d) }, tr("Classer"))
         )
       : d.statut === "confirmee" || d.statut === "refusee"

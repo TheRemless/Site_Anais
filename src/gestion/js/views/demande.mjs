@@ -103,7 +103,7 @@ function lignesSite(d) {
   ].filter(Boolean);
 }
 
-// `depuisSite` (boîte « Demandes du site ») : { texte, titre, prixImpose, surCree }. Le message vient de la demande, pas du presse-papiers ni du brouillon
+// `depuisSite` (boîte « Demandes du site ») : { texte, titre, telephone, prixImpose, surCree }. Le message vient de la demande, pas du presse-papiers ni du brouillon
 // de l'appareil ; « Vérifier avant de créer », la réponse et le passage à une autre entreprise sont retirés (la demande appartient à son entreprise,
 // la réponse au client se prépare après la création) ; une fois le dossier créé, `surCree({ dossier, services, total })` prend la suite.
 export function ouvrirDemande(depuisSite = null) {
@@ -568,6 +568,9 @@ export function ouvrirDemande(depuisSite = null) {
   function appliquer(d2, trouves) {
     erreur.textContent = "";
     d = { ...d2, hotelSaisi: false };
+    // Demande du site : le numéro WhatsApp donné dans la feuille (migration 41) n'est pas dans le message, il va dans la fiche du client
+    // (et retrouve un client déjà connu par son numéro). Lecture par règles comme par l'assistant.
+    if (depuisSite && depuisSite.telephone && !d.telephone) d.telephone = depuisSite.telephone;
     vider();
     corps.classList.add("lu");
     construire();
