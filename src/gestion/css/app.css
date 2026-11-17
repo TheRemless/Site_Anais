@@ -1614,7 +1614,13 @@ button.compte:focus-visible { outline: 2px solid var(--teal); outline-offset: 1p
 .dsite-groupe { margin-bottom: 16px; }
 .dsite-groupe legend { font-weight: 700; padding: 0 4px; }
 .dsite-reponse textarea, .dsite-refus textarea { width: 100%; font: inherit; font-size: 0.95rem; line-height: 1.5; }
-.dsite-reponse .dsite-ref, .dsite-refus .dsite-ref { margin-bottom: 12px; }
+.dsite-reperes { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dsite-reponse .dsite-reperes, .dsite-refus .dsite-reperes { margin-bottom: 12px; }
+.dsite-numero { margin: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 0.95rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--texte); overflow-wrap: anywhere; }
+.dsite-numero svg { flex: none; color: #128c4a; }
+.dsite-numero.a-verifier { font-weight: 600; color: var(--danger); }
+.dsite-numero.sans { font-weight: 400; font-size: 0.85rem; color: var(--texte-2); }
+a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .dsite-chiffres .puces { margin-bottom: 12px; }
 .dsite-tableau { margin-top: 8px; }
 .dsite-tableau table { width: 100%; }

@@ -44,6 +44,29 @@ export function dateValide(iso, aujourdhui) {
   return jours >= -1 && jours <= 400;
 }
 
+// Numéro WhatsApp du client au format international E.164 (« +41791234567 ») : ce que la feuille envoie, mis au propre.
+// Espaces, tirets, points, barres et parenthèses retirés ; « 00 » devant devient « + » ; le « (0) » des numéros écrits « +41 (0)79 … » tombe.
+// Un numéro national (commence par 0, ou sans indicatif) n'est accepté qu'avec l'indicatif du pays (`indicatif`, champ « whatsapp_country ») :
+// le 0 de tête est alors retiré, sauf pour l'Italie (+39) qui le garde. Sans indicatif, on ne devine pas le pays.
+// Ne lève jamais d'erreur : une demande n'est pas perdue pour un numéro mal tapé. Renvoie { telephone, telephone_saisi } :
+// le numéro E.164, ou null et ce qui a été saisi (40 caractères au plus) pour qu'Anaïs le voie.
+export function telephoneE164(brut, indicatif) {
+  if (brut === undefined || brut === null || brut === "" || (typeof brut !== "string" && typeof brut !== "number")) return { telephone: null, telephone_saisi: null };
+  const saisi = String(brut).replace(CONTROLE, "").replace(/\s+/g, " ").trim();
+  if (!saisi) return { telephone: null, telephone_saisi: null };
+  // Coupé par caractère, pas par unité UTF-16 : un émoji coupé en deux rendrait le texte invalide pour la base, et la demande serait perdue.
+  const illisible = { telephone: null, telephone_saisi: Array.from(saisi).slice(0, 40).join("") };
+  let n = saisi.replace(/^tel:/i, "").replace(/^(\+|00)\s*(\d{1,3})\s*\(0\)/, "$1$2").replace(/[\s.\-()/\u00A0]/g, "");
+  if (!/^\+?\d+$/.test(n)) return illisible;
+  if (n.startsWith("00")) n = `+${n.slice(2)}`;
+  else if (!n.startsWith("+")) {
+    const pays = String(indicatif ?? "").replace(/^(\+|00)/, "").trim();
+    if (!/^[1-9]\d{0,2}$/.test(pays)) return illisible;
+    n = `+${pays}${pays === "39" ? n : n.replace(/^0/, "")}`;
+  }
+  return /^\+[1-9]\d{7,14}$/.test(n) ? { telephone: n, telephone_saisi: null } : illisible;
+}
+
 const champ = (nom, f) => {
   try {
     return f();
@@ -97,7 +120,8 @@ export function lireDemande(corps, { aujourdhui }) {
     adultes,
     enfants,
     pickup: champ("pickup", () => texte(d.pickup, 200)),
-    nom: champ("name", () => texte(d.name, 100)),
+    nom: champ("name", () => texte(d.name, 120)),
+    ...telephoneE164(d.whatsapp, d.whatsapp_country),
     total_estime: total === null ? null : Math.round(total * 100) / 100,
     devise,
     page_url: pageUrl,
