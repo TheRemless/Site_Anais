@@ -8,6 +8,7 @@ import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremi
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
 import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
 import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
+import { personnesDuDossier, sansPersonne } from "../dossier-gestes-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { demanderArbitrage } from "./conflit.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
@@ -122,9 +123,15 @@ async function alignerFacture(r, ecart, apres) {
   const differe = (cle) => ecart.champs.some((c) => c.cle === cle);
   const service = { ...(differe("libelle") ? { libelle: r.libelle } : {}), ...(differe("partenaire_id") ? { partenaire_id: r.partenaire_id || null } : {}), ...((r.prestation_id || null) !== a.prestation_id || (r.trajet_id || null) !== a.trajet_id ? { prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null } : {}), ...(differe("montant_vente") && r.montant_vente !== null && r.montant_vente !== undefined ? { montant_vente: r.montant_vente } : {}) };
   try {
-    const suivi = await suivreFacture(r, {}, { avant: { date_service: a.date_service, personnes: a.personnes }, apres: { date_service: r.date_service, personnes: r.personnes }, mode: !!r.paye_sur_place !== a.paye_sur_place ? { surPlace: !!r.paye_sur_place } : null, service });
+    const valeurs = {};
+    // Le montant vendu suit la facture s'il la suivait déjà (une ligne enfant ajoutée change le total du service).
+    const montantSuit = !("montant_vente" in service) && Math.round((Number(r.montant_vente) || 0) * 100) === Math.round((Number(a.montant_vente) || 0) * 100);
+    const suivi = await suivreFacture(r, valeurs, { avant: { date_service: a.date_service, personnes: a.personnes }, apres: { date_service: r.date_service, personnes: r.personnes }, mode: !!r.paye_sur_place !== a.paye_sur_place ? { surPlace: !!r.paye_sur_place } : null, service, montantSuit });
     if (!suivi) return;
     await appliquerChangements(suivi.changements);
+    // Une ligne enfant ajoutée à la facture devient une ligne de la réservation, et son prix entre dans le montant vendu.
+    const patch = { ...(valeurs.details ? { details: valeurs.details } : {}), ...(suivi.montantVente !== null ? { montant_vente: suivi.montantVente } : {}) };
+    if (Object.keys(patch).length) await modifier("reservations", r.id, patch);
     toast(tr("Facture alignée sur la réservation."));
     apres();
   } catch (err) {
@@ -570,7 +577,8 @@ export function formulaireReservation(r, apres) {
 }
 
 // Crée une réservation par ligne de partenaire du document qui n'en a pas encore.
-export async function creerReservations(doc, { silencieux = false } = {}) {
+// `personnesDuDossier` : un service sans personnes (prix par véhicule, par bateau, au forfait) prend celles du dossier (service ajouté à un dossier existant).
+export async function creerReservations(doc, { silencieux = false, personnesDuDossier: avecPersonnes = false } = {}) {
   const existantes = etat.db.reservations.filter((r) => r.dossier_id === doc.dossier_id);
   const nouvelles = reservationsDepuisDocument(doc, { existantes, regleDe: regleCommissionDe });
   const dossier = etat.db.dossiers.find((d) => d.id === doc.dossier_id);
@@ -582,6 +590,11 @@ export async function creerReservations(doc, { silencieux = false } = {}) {
       const { id, ...sansId } = reservation;
       // Le lieu de pickup du dossier est repris (dernier service, sinon adresse du client) : un service ajouté ne part pas sans lieu.
       sansId.lieu_pickup = sansId.lieu_pickup || lieuParDefaut([...existantes, ...etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id && !existantes.includes(x))], clientDuDossier);
+      if (avecPersonnes && sansPersonne(sansId.personnes)) {
+        const p = personnesDuDossier(etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id));
+        // La marque dit que ces personnes viennent du dossier : 1 adulte pour 1 véhicule n'est pas une quantité prise pour des personnes.
+        if (p) (sansId.personnes = { ...(sansId.personnes || {}), ...p }), (sansId.details = { ...(sansId.details || {}), personnes_du_dossier: true });
+      }
       const res = await inserer("reservations", sansId);
       if ((net !== null || commission_prevue !== undefined) && voitNets() && peut("dossiers.ecrire")) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: net, net_paye: null, paye_le: null, ...(commission_prevue !== undefined ? { commission_prevue } : {}) });
       n++;
@@ -614,7 +627,7 @@ export function ajouterServices(d, doc, apres) {
       const partenaires = [...new Set(contenu.lignes.map((l) => nomPartenaire(l.partenaire_id)).filter(Boolean))];
       if (partenaires.length) contenu.prestataire = partenaires.join(", ");
       const maj = await modifier("documents", cible.id, { contenu, updated_at: new Date().toISOString() });
-      await creerReservations(maj);
+      await creerReservations(maj, { personnesDuDossier: true });
       apres();
     } catch (err) {
       toast(tr("Ajout impossible : {message}", { message: err.message }), true);
@@ -636,7 +649,7 @@ export function sectionReservationsDossier(d, doc) {
       { class: "entete petit-entete" },
       h("h2", null, tr("Réservations auprès des partenaires")),
       ecrit
-        ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc), rafraichir()) }, (doc.type === "devis" ? pluriel(manquantes, N_("Créer {n} réservation depuis le devis"), N_("Créer {n} réservations depuis le devis")) : pluriel(manquantes, N_("Créer {n} réservation depuis la facture"), N_("Créer {n} réservations depuis la facture")))) : null, modeExcursions() ? h("button", { class: "principal petit", type: "button", onclick: () => ajouterServices(d, doc, rafraichir) }, tr("Ajouter un service")) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle réservation"), formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir())), { brouillon: `reservation-nouvelle:${d.id}` }); } }, modeExcursions() ? tr("Réservation à la main") : tr("Nouvelle réservation")))
+        ? h("div", { class: "entete-actions" }, manquantes ? h("button", { class: "principal petit", type: "button", onclick: async () => (await creerReservations(doc, { personnesDuDossier: true }), rafraichir()) }, (doc.type === "devis" ? pluriel(manquantes, N_("Créer {n} réservation depuis le devis"), N_("Créer {n} réservations depuis le devis")) : pluriel(manquantes, N_("Créer {n} réservation depuis la facture"), N_("Créer {n} réservations depuis la facture")))) : null, modeExcursions() ? h("button", { class: "principal petit", type: "button", onclick: () => ajouterServices(d, doc, rafraichir) }, tr("Ajouter un service")) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => { const fermer = modal(tr("Nouvelle réservation"), formulaireReservation({ dossier_id: d.id, date_service: d.date_depart || "" }, () => (fermer(), rafraichir())), { brouillon: `reservation-nouvelle:${d.id}` }); } }, modeExcursions() ? tr("Réservation à la main") : tr("Nouvelle réservation")))
         : null
     ),
     rs.length ? listeReservations(rs, { avecDossier: false, apres: rafraichir, ecart: doc && !modeTaxi() ? (r) => ecartReservation(r, doc) : null }) : h("p", { class: "vide-court" }, doc && manquantes ? tr("Les lignes de partenaires du document peuvent devenir des réservations en un clic.") : modeExcursions() ? tr("Aucune réservation. « Ajouter un service » met la prestation sur la facture et crée sa réservation.") : tr("Aucune réservation. Elles se créent depuis les lignes de partenaires du devis, ou à la main."))

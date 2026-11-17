@@ -255,6 +255,19 @@ export function creer() {
       sauve();
       return prochain;
     },
+    // Fusion de deux fiches client, comme la fonction fusionner_clients de la base : les dossiers de l'autre fiche passent sur celle qu'on garde,
+    // ses champs vides se remplissent, puis l'autre fiche est supprimée.
+    async fusionnerClients({ garder, absorbe, patch }) {
+      const g = data.clients.find((c) => c.id === garder);
+      const a = data.clients.find((c) => c.id === absorbe);
+      if (!g || !a || g.id === a.id || g.entite_id !== a.entite_id) throw new Error(tr("Fusion impossible : les deux fiches doivent être deux clients différents de la même entreprise."));
+      if (!(droit(g.entite_id, "clients.fusionner") || (droit(g.entite_id, "clients.supprimer") && droit(g.entite_id, "dossiers.ecrire")))) throw new Error(tr("Votre rôle ne permet pas de fusionner des clients."));
+      if (!voitTout(contexte(), g.entite_id)) throw new Error(tr("Fusion réservée aux rôles qui voient tous les dossiers de l'entreprise."));
+      for (const d of data.dossiers.filter((x) => x.client_id === absorbe)) await this.modifier("dossiers", d.id, { client_id: garder });
+      if (patch && Object.keys(patch).length) await this.modifier("clients", garder, patch);
+      await this.supprimer("clients", absorbe);
+      return garder;
+    },
     // Démo : une seule personne, pas de compteur partagé.
     // Comme la base : le compteur tient compte des dossiers que la personne ne voit pas (rôle « ses dossiers », écran « Nouveau voucher »).
     async prochainNumeroRef(entiteId, annee, minimum) {

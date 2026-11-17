@@ -1,4 +1,4 @@
-import { etat, inserer, modifier, modifierProtege, supprimer, nomClient, naviguer, resumeDossier, reglages, peut, corbeilleDossiers, modeExcursions, modeTaxi } from "../etat.mjs";
+import { etat, inserer, modifier, modifierProtege, supprimer, nomClient, naviguer, resumeDossier, reglages, peut, corbeilleDossiers, modeExcursions, modeTaxi, recharger } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, erreurChamp } from "../ui.mjs";
 import { formatMontant, formatDate } from "../calc.mjs";
 import { pastille, vide, listeAdaptative, barreFiltres } from "./commun.mjs";
@@ -6,7 +6,10 @@ import { demanderArbitrage } from "./conflit.mjs";
 import { correspond } from "../mobile-calc.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { clientsProches } from "../demande-calc.mjs";
-import { verifierTelephoneClient, numerosClient, chambreDeLAdresse, adresseAvecChambre } from "../client-calc.mjs";
+import { verifierTelephoneClient, numerosClient, chambreDeLAdresse, adresseAvecChambre, peutFusionnerClients } from "../client-calc.mjs";
+import { servicesSuivantAdresse, fusionClients } from "../dossier-gestes-calc.mjs";
+import { aujourdhui } from "../calc.mjs";
+import { selecteurClient } from "./selecteur-client.mjs";
 
 function formulaireClient(client, apres) {
   // Secret et Taxi n'ont pas de civilité : le champ n'apparaît pas et la valeur déjà enregistrée reste telle quelle (rien n'est imposé).
@@ -52,6 +55,8 @@ function formulaireClient(client, apres) {
           throw err;
         }
         toast(tr("Client enregistré."));
+        // Hôtel ou chambre changés : les services à venir copiés de l'ancien hôtel sont proposés à la mise à jour (vouchers, feuille du jour).
+        if (client.id && "adresse" in changes) await suivreAdresse(client, changes.adresse);
         apres(c);
       },
     },
@@ -62,6 +67,79 @@ function formulaireClient(client, apres) {
     champ(tr("Notes"), notes),
     peut("clients.ecrire") ? h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Enregistrer le client"))) : h("p", { class: "aide" }, tr("Lecture seule : votre rôle ne permet pas de modifier les clients."))
   );
+}
+
+// Le lieu de pickup est copié de la fiche client à la création du service : un hôtel ou une chambre changés après coup n'y arrivaient pas.
+async function suivreAdresse(client, adresse) {
+  if (!peut("dossiers.ecrire")) return;
+  const dossiers = new Set(etat.db.dossiers.filter((d) => d.client_id === client.id && !d.annule).map((d) => d.id));
+  const aSuivre = servicesSuivantAdresse({ avant: client.adresse, apres: adresse, reservations: etat.db.reservations.filter((r) => dossiers.has(r.dossier_id)), aujourdhui: aujourdhui() });
+  if (!aSuivre.length) return;
+  const noms = aSuivre.slice(0, 3).map((x) => x.reservation.libelle).join(", ") + (aSuivre.length > 3 ? "…" : "");
+  const nouveau = String(adresse || "").split("\n")[0].trim();
+  const question = pluriel(aSuivre.length, N_("{n} service à venir part encore de l'ancien hôtel ({noms}). Mettre son lieu de pickup à « {nouveau} » ? Le voucher et la feuille du jour suivront."), N_("{n} services à venir partent encore de l'ancien hôtel ({noms}). Mettre leur lieu de pickup à « {nouveau} » ? Les vouchers et la feuille du jour suivront."), { noms, nouveau });
+  if (!(await confirmer(question, tr("Mettre à jour les services"), false, tr("Garder l'ancien lieu")))) return;
+  try {
+    for (const { reservation, champs } of aSuivre) await modifier("reservations", reservation.id, champs);
+    toast(pluriel(aSuivre.length, N_("{n} service mis à jour."), N_("{n} services mis à jour.")));
+  } catch (err) {
+    toast(tr("Un service n'a pas pu être mis à jour : {message}", { message: err.message }), true);
+  }
+}
+
+// Fusionner une autre fiche dans celle-ci : ses dossiers passent ici, les champs vides d'ici prennent les siens, puis elle disparaît.
+// On garde la fiche ouverte ; pour garder l'autre, on ouvre l'autre fiche.
+function ouvrirFusion(client, propose = null) {
+  const sel = selecteurClient({ id: "fusion-client", libelle: tr("Fiche à fusionner dans celle-ci"), valeur: propose || "", surChangement: () => majResume() });
+  const resume = h("div", { class: "fusion-resume", "aria-live": "polite" });
+  const bouton = h("button", { type: "button", class: "danger", disabled: true }, tr("Fusionner"));
+  const majResume = () => {
+    const autre = sel.valeur && sel.valeur !== client.id ? etat.db.clients.find((c) => c.id === sel.valeur) : null;
+    bouton.disabled = !autre;
+    if (!autre) return resume.replaceChildren(sel.valeur === client.id ? h("p", { class: "erreur-form" }, tr("Choisissez une autre fiche que celle-ci.")) : null);
+    const n = etat.db.dossiers.filter((d) => d.client_id === autre.id).length;
+    const repris = Object.keys(fusionClients(client, autre)).filter((k) => k !== "notes").map((k) => tr(ETIQUETTES_CLIENT[k]).toLowerCase());
+    resume.replaceChildren(
+      h("ul", null,
+        h("li", null, pluriel(n, N_("{n} dossier de {autre} passe sur {garde}."), N_("{n} dossiers de {autre} passent sur {garde}."), { autre: nomClient(autre), garde: nomClient(client) })),
+        repris.length ? h("li", null, tr("Champs vides repris de l'autre fiche : {champs}.", { champs: repris.join(", ") })) : h("li", null, tr("Les coordonnées de cette fiche restent telles quelles.")),
+        autre.notes ? h("li", null, tr("Ses notes s'ajoutent à celles de cette fiche.")) : null,
+        h("li", null, tr("La fiche de {autre} est ensuite supprimée.", { autre: nomClient(autre) }))
+      )
+    );
+  };
+  bouton.addEventListener("click", async () => {
+    const autre = etat.db.clients.find((c) => c.id === sel.valeur);
+    if (!autre) return;
+    bouton.disabled = true;
+    try {
+      // Un dossier de l'autre fiche dans la corbeille ne pourrait plus être restauré sans elle (même garde-fou que la suppression).
+      const enCorbeille = (await corbeilleDossiers().catch(() => [])).filter((x) => x.ligne && x.ligne.client_id === autre.id);
+      if (enCorbeille.length) {
+        bouton.disabled = false;
+        return toast(tr("L'autre fiche a un dossier dans la corbeille ({refs}) : restaurez-le (Réglages, corbeille) avant la fusion.", { refs: enCorbeille.map((x) => x.ligne.ref).join(", ") }), true);
+      }
+      await etat.store.fusionnerClients({ garder: client.id, absorbe: autre.id, patch: fusionClients(client, autre) });
+      await recharger();
+      fermer();
+      toast(tr("Fiches fusionnées : {nom} garde tous les dossiers.", { nom: nomClient(client) }));
+      naviguer(`#/client/${client.id}`);
+    } catch (err) {
+      bouton.disabled = false;
+      toast(/fusionner_clients|function .* does not exist|PGRST202/i.test(err.message) ? tr("La base n'a pas encore la fusion des clients : la migration de fusion doit d'abord être appliquée.") : tr("Fusion impossible : {message}", { message: err.message }), true);
+    }
+  });
+  const fermer = modal(
+    tr("Fusionner avec une autre fiche"),
+    h("div", { class: "modal-corps" },
+      h("p", { class: "aide" }, tr("Pour un client saisi deux fois. Cette fiche-ci est gardée ; ouvrez l'autre fiche si c'est elle que vous voulez garder.")),
+      sel.noeud,
+      resume,
+      h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), bouton)
+    ),
+    { protege: false }
+  );
+  majResume();
 }
 
 // Deux personnes sur la même fiche client : un champ changé des deux côtés est soumis au choix, le reste se garde.
@@ -119,6 +197,7 @@ export function ficheClient(id) {
   const { appel: tel, whatsapp: waNumero } = numerosClient(client.telephone);
   // Un autre client avec le même numéro ou le même nom : probablement la même personne saisie deux fois.
   const doublons = clientsProches({ telephone: client.telephone, nom: `${client.prenom || ""} ${client.nom || ""}` }, etat.db.clients.filter((c) => c.id !== id));
+  const fusion = peutFusionnerClients(peut);
   return h(
     "div",
     { "data-titre": nomClient(client) },
@@ -126,7 +205,7 @@ export function ficheClient(id) {
     h("div", { class: "entete" }, h("h1", null, nomClient(client)), peut("dossiers.ecrire") ? h("a", { class: "bouton principal", href: `#/dossiers/nouveau?client=${id}` }, tr("Nouveau dossier pour ce client")) : null),
     // Joindre le client en un tap : appel et WhatsApp (le numéro est nettoyé comme sur l'accueil).
     tel ? h("div", { class: "actions gauche client-joindre" }, h("a", { class: "bouton secondaire", href: `tel:${tel}`, "aria-label": tr("Appeler {nom}", { nom: nomClient(client) }) }, icone("telephone", 18), tr("Appeler")), waNumero ? h("a", { class: "bouton secondaire", href: `https://wa.me/${waNumero}`, target: "_blank", rel: "noopener", "aria-label": tr("WhatsApp à {nom}", { nom: nomClient(client) }) }, icone("whatsapp", 18), tr("WhatsApp")) : null) : null,
-    doublons.length ? h("div", { class: "ecart-facture doublons-client", role: "status" }, h("p", null, h("strong", null, pluriel(doublons.length, N_("Doublon possible"), N_("Doublons possibles")))), h("ul", null, doublons.map(({ client: c, raison }) => h("li", null, h("a", { href: `#/client/${c.id}` }, nomClient(c)), ` · ${raison === "telephone" ? tr("même numéro de téléphone") : tr("même nom")}`))), h("p", { class: "aide" }, tr("Rien n'est fusionné tout seul : ouvrez l'autre fiche pour comparer, puis déplacez ou supprimez ce qui est en trop."))) : null,
+    doublons.length ? h("div", { class: "ecart-facture doublons-client", role: "status" }, h("p", null, h("strong", null, pluriel(doublons.length, N_("Doublon possible"), N_("Doublons possibles")))), h("ul", null, doublons.map(({ client: c, raison }) => h("li", null, h("a", { href: `#/client/${c.id}` }, nomClient(c)), ` · ${raison === "telephone" ? tr("même numéro de téléphone") : tr("même nom")}`, fusion ? [" ", h("button", { class: "lien", type: "button", onclick: () => ouvrirFusion(client, c.id) }, tr("Fusionner ici"))] : null))), h("p", { class: "aide" }, fusion ? tr("Rien n'est fusionné tout seul. « Fusionner ici » montre ce qui change avant de le faire.") : tr("Rien n'est fusionné tout seul : ouvrez l'autre fiche pour comparer. La fusion demande le droit « Fusionner deux fiches du même client »."))) : null,
     h("section", null, h("h2", null, tr("Coordonnées")), formulaireClient(client, () => naviguer(location.hash))),
     h(
       "section",
@@ -146,6 +225,7 @@ export function ficheClient(id) {
           }).noeud
         : h("p", { class: "vide-court" }, tr("Aucun dossier pour ce client."))
     ),
+    fusion ? h("section", null, h("h2", null, tr("Fusionner avec une autre fiche")), h("p", { class: "aide" }, tr("Le même client saisi deux fois : ses dossiers passent sur cette fiche, puis l'autre fiche disparaît.")), h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: () => ouvrirFusion(client) }, tr("Fusionner avec…")))) : null,
     !peut("clients.supprimer") ? null : h(
       "section",
       { class: "zone-danger" },

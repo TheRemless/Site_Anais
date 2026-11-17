@@ -329,6 +329,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async fixerProchainNumero(entiteId, annee, prochain) {
       return verifie(await sb.rpc("fixer_prochain_numero", { p_entite: entiteId, p_annee: annee, p_prochain: prochain }));
     },
+    // Fusion de deux fiches client en une transaction (migration de fusion) : dossiers déplacés, champs vides remplis, l'autre fiche supprimée.
+    // `patch` sert à la démo ; la base calcule elle-même ce qu'elle reprend (même règle que fusionClients).
+    async fusionnerClients({ garder, absorbe }) {
+      return verifie(await sb.rpc("fusionner_clients", { p_garder: garder, p_absorbe: absorbe }));
+    },
     // Numéro suivant de la séquence annuelle (migration 14). Échoue tant que la migration n'est pas appliquée : l'appelant garde alors son calcul.
     async prochainNumeroRef(entiteId, annee, minimum) {
       return verifie(await sb.rpc("prochain_numero_ref", { p_entite: entiteId, p_annee: annee, p_minimum: minimum }));
