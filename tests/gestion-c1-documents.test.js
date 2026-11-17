@@ -107,7 +107,13 @@ test("décision 8 : la ligne offerte s'imprime « Offert », « Complimentary »
   const { texteOffert } = await docs();
   assert.equal(texteOffert(false), "Offert");
   assert.equal(texteOffert(true), "Complimentary");
-  assert.match(source("document.mjs"), /l\.offert \? texteOffert\(en\)/);
+  assert.match(source("document.mjs"), /l\.offert \? texteOffert\(enClient\)/);
+});
+
+test("« (à payer sur place) » : en anglais sur une facture de Secret ou de Taxi, même en langue principale", () => {
+  const doc = source("document.mjs");
+  assert.match(doc, /const enClient = en \|\| \(!c\.langue && \(reglagesDuJour\.fonctionnement === "excursions" \|\| reglagesDuJour\.fonctionnement === "taxi"\)\);/);
+  assert.match(doc, /const TXT_PLACE = enClient\s*\?\s*\{ court: "pay on arrival"/);
 });
 
 test("point 65 : un seul numéro dans le PDF, le message, l'objet et le nom du fichier", async () => {
@@ -144,7 +150,7 @@ test("point 33 : le numéro d'un dossier dont un document est parti se verrouill
   const dossier = source("views/dossier.mjs");
   assert.match(dossier, /ref\.readOnly = refBloquee/);
   assert.match(dossier, /hidden: !refBloquee \|\| !estAdmin\(\)/, "seule l'administratrice déverrouille");
-  assert.match(source("views/editeur.mjs"), /numeroDoc\.readOnly = numeroBloque/);
+  assert.match(source("views/editeur.mjs"), /numeroDoc\.readOnly = bloque;/);
 });
 
 test("point 35 : la devise est toujours écrite, et les noms de devises se règlent", async () => {

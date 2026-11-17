@@ -295,7 +295,7 @@ export function vueReglages() {
 
   // Aperçu d'un document d'exemple avec les réglages en cours de saisie
   const exemple = () => {
-    const modele = r.dossier.modele_bandeau.replace("{PAYS}", (r.listes.pays[0] || "").toUpperCase()).replace("{PERIODE}", "DU 2 AU 12 DÉCEMBRE").replace(/^[\s-]+|[\s-]+$/g, "");
+    const modele = r.dossier.modele_bandeau.replace("{PAYS}", (r.listes.pays[0] || "").toUpperCase()).replace("{PERIODE}", ztp ? "DU 2 AU 12 DÉCEMBRE" : "2 TO 12 DECEMBER").replace(/^[\s-]+|[\s-]+$/g, "");
     const doc = {
       date_emission: aujourdhui(),
       contenu: {

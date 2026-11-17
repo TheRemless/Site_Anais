@@ -277,15 +277,23 @@ function editeurVue(id) {
   selPaiement.value = modes.some((m) => m.id === (c.paiement || "")) ? c.paiement || "" : "";
   const numeroDoc = h("input", { id: "d-numero", value: c.numero || "", placeholder: dossier.ref, oninput: (e) => ((c.numero = e.target.value), change()) });
   // Le numéro d'un document parti chez le client ne change plus en passant : l'administratrice peut le déverrouiller, après confirmation.
-  let numeroBloque = numeroVerrouille([doc]);
-  numeroDoc.readOnly = numeroBloque;
-  const deverrouillerNumero = h("button", { class: "lien", type: "button", hidden: !numeroBloque || !estAdmin(), onclick: async () => {
+  // Verrou recalculé à chaque envoi ou retrait de la date d'envoi (majVerrouNumero), tant que l'administratrice ne l'a pas levé.
+  let numeroDeverrouille = false;
+  const numeroBloque = numeroVerrouille([doc]);
+  const deverrouillerNumero = h("button", { class: "lien", type: "button", onclick: async () => {
     if (!(await confirmer(tr("Ce document est déjà parti chez le client avec le numéro {numero}. Changer le numéro donne au client deux documents différents pour le même service. Le changer quand même ?", { numero: numeroDocument(doc, dossier) }), tr("Changer le numéro"), true))) return;
-    numeroBloque = false;
-    numeroDoc.readOnly = false;
-    deverrouillerNumero.hidden = true;
+    numeroDeverrouille = true;
+    majVerrouNumero();
     numeroDoc.focus();
   } }, tr("Changer le numéro"));
+  const majVerrouNumero = () => {
+    const bloque = numeroVerrouille([doc]) && !numeroDeverrouille;
+    numeroDoc.readOnly = bloque;
+    deverrouillerNumero.hidden = !bloque || !estAdmin();
+    const aide = numeroDoc.parentElement && numeroDoc.parentElement.querySelector(".aide");
+    if (aide) aide.textContent = bloque ? tr("Document envoyé : le numéro ne change plus.") : tr("Remplace la référence du dossier sur ce document.");
+  };
+  majVerrouNumero();
   const prestataire = h("input", { id: "d-prestataire", value: c.prestataire || "", placeholder: tr("Qui réalise le service, si ce n'est pas vous"), oninput: (e) => ((c.prestataire = e.target.value), change()) });
   const bandeau = h("input", { id: "d-bandeau", value: c.bandeau, oninput: (e) => ((c.bandeau = e.target.value), change()) });
   const colonnes = h(
@@ -676,6 +684,7 @@ function editeurVue(id) {
   function majBoutonEnvoi() {
     boutonEnvoi.textContent = doc.envoye_le ? (estFacture || locale ? tr("Envoyée le {date}", { date: formatDate(doc.envoye_le) }) : tr("Envoyé le {date}", { date: formatDate(doc.envoye_le) })) : estFacture || locale ? tr("Marquer comme envoyée") : tr("Marquer comme envoyé");
     boutonEnvoi.title = doc.envoye_le ? tr("Cliquer pour retirer la date d'envoi") : "";
+    majVerrouNumero();
     majBandeauEnvoi();
   }
   boutonEnvoi.addEventListener("click", async () => {
@@ -700,7 +709,7 @@ function editeurVue(id) {
     if (!e.envoye) return;
     const renvois = e.envois.slice(1).map((x) => formatDate(x.le));
     const quand = e.envois.length ? (estFacture || locale ? tr("Envoyée le {date}", { date: formatDate(e.envois[0].le) }) : tr("Envoyé le {date}", { date: formatDate(e.envois[0].le) })) : estFacture || locale ? tr("Envoyée le {date}", { date: formatDate(e.le) }) : tr("Envoyé le {date}", { date: formatDate(e.le) });
-    texteEnvoi.textContent = [quand, renvois.length ? tr("renvoyée le {dates}", { dates: renvois.join(", ") }) : "", e.modifie ? tr("Modifiée depuis l'envoi du {date} : le client a encore l'ancienne version. Renvoyez-lui la version corrigée.", { date: formatDate(e.le) }) : ""].filter(Boolean).join(". ") + ".";
+    texteEnvoi.textContent = [quand, renvois.length ? tr("renvoyée le {dates}", { dates: renvois.join(", ") }) : "", e.modifie ? tr("Modifiée depuis l'envoi du {date} : le client a encore l'ancienne version. Renvoyez-lui la version corrigée.", { date: formatDate(e.le) }) : ""].filter(Boolean).map((x) => x.replace(/\.$/, "")).join(". ") + ".";
     bandeauEnvoi.classList.toggle("bandeau-alerte", e.modifie);
     bandeauEnvoi.classList.toggle("bandeau-info", !e.modifie);
     boutonRenvoyer.hidden = !e.modifie;
