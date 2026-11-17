@@ -10,6 +10,7 @@ import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 import { estTaxi } from "../taxi-calc.mjs";
 import { estRetourDepart, dureeAnglais } from "../trajet-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
+import { prestationEnfant } from "../demande-calc.mjs";
 import { renderBookingConfirmation } from "./voucher-taxi.mjs";
 
 const case_ = (coche, libelle) => h("span", { class: `v-case${coche ? " cochee" : ""}` }, h("span", { class: "v-carre", "aria-hidden": "true" }, coche ? "☒" : "☐"), ` ${libelle}`);
@@ -24,7 +25,7 @@ const prix = (n, devise) => (n === null || n === undefined || n === "" ? "" : `$
 // ---- Ce que le voucher lit hors de la réservation ---------------------------------------------------------------------------------
 // La prestation, le trajet et la fiche du partenaire, réduits à ce qui s'imprime (jamais de net) : ce qui se fige à l'envoi.
 const sansNets = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => !/net|commission/i.test(k)));
-const extraitPrestation = (p) => (p ? { libelle: p.libelle || "", libelle_en: p.libelle_en || "", famille: p.famille || "", groupe: p.groupe || "", unite: p.unite || "", prix_vente: p.prix_vente ?? null, ...(p.prix_enfant !== undefined ? { prix_enfant: p.prix_enfant } : {}), details: sansNets(p.details) } : null);
+const extraitPrestation = (p) => (p ? { libelle: p.libelle || "", libelle_en: p.libelle_en || "", famille: p.famille || "", groupe: p.groupe || "", unite: p.unite || "", prix_vente: p.prix_vente ?? null, details: sansNets(p.details) } : null);
 const extraitTrajet = (t) => (t ? { de: t.de || "", vers: t.vers || "", depart: t.depart || "", arrivee: t.arrivee || "", mode: t.mode || "" } : null);
 const extraitPartenaire = (p) => (p ? { nom: p.nom || "", contact: { embarcadere: (p.contact && p.contact.embarcadere) || "" }, regles: { points_embarquement: (p.regles && p.regles.points_embarquement) || [], checkin_voucher: (p.regles && p.regles.checkin_voucher) || "" } } : null);
 
@@ -169,7 +170,9 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const bagages = dt.bagages || "";
   const remarquesPaiement = dt.remarques_paiement || "";
   // Prix par personne : seulement s'il n'y a qu'un tarif connu (audit n° 27), jamais une moyenne.
-  const prixPersonne = prixParPersonneVoucher({ prestation: p, montant: r.montant_vente, adultes: a, enfants: en_ });
+  // Tarif enfant : celui de la prestation (prix enfant) ou une ancienne prestation enfant séparée, cherchée sur la prestation de la base.
+  const tarifEnfant = en_ > 0 && p && ["pp", "ad"].includes(p.unite) ? prestationEnfant(pLive && pLive.unite === p.unite ? pLive : p, etat.db.prestations) : null;
+  const prixPersonne = prixParPersonneVoucher({ prestation: p, montant: r.montant_vente, adultes: a, enfants: en_, tarifEnfant });
   const nb = (n) => String(Number(n) || 0);
   // Aucune personne connue (un bateau, un véhicule ou un groupe facturé à la pièce) : les cases restent à remplir, pas de « 0 » ni de nombre inventé.
   const sansPersonnes = a + en_ + (Number(pers.bebes) || 0) === 0;

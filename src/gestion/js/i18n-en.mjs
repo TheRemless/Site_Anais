@@ -2531,8 +2531,6 @@ export const EN = {
   "Envoi retiré.": "Sending removed.",
   "Pas envoyé": "Not sent",
   "Notez ici les vouchers vraiment partis chez le client. L'étape du dossier passe à « fait » quand tous sont envoyés. « Pas envoyé » retire un envoi noté par erreur.": "Note here the vouchers actually sent to the client. The file step turns “done” once all are sent. “Not sent” removes a sending noted by mistake.",
-  "Consigne de check-in sur le voucher (en anglais)": "Check-in instruction on the voucher (in English)",
-  "Imprimée sur les billets de bateau de cette compagnie. Vide : le texte grisé. Les trajets vers ou depuis Langkawi gardent la consigne de l'immigration.": "Printed on this company's boat tickets. Empty: the greyed text. Routes to or from Langkawi keep the immigration instruction.",
   "Textes de la Booking confirmation": "Booking confirmation texts",
   "Textes du voucher": "Voucher texts",
   "Chaque ligne montre le texte imprimé aujourd'hui. Tapez le vôtre pour le remplacer ; un champ vide reprend le texte d'origine. Les vouchers sont en anglais.": "Each line shows the text printed today. Type yours to replace it; an empty field goes back to the original text. Vouchers are in English.",

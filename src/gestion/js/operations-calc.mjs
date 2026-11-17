@@ -642,9 +642,10 @@ export function statutPaiementVoucher({ total = 0, recu = 0, surPlace = false } 
 // vente ÷ personnes serait fausse si l'enfant paie moins, ou si le prix est celui d'un groupe.
 //   - prestation du catalogue vendue à la personne (pas de prix de groupe, de véhicule ni de service hors catalogue) ;
 //   - sans enfant : le prix réellement vendu par adulte, s'il tombe juste au centime ;
-//   - avec enfants : seulement si tout le monde a payé le même prix, et qu'aucun prix enfant différent n'est connu.
+//   - avec enfants : seulement si aucun tarif enfant n'est connu (`tarifEnfant` : prestationEnfant de demande-calc.mjs, qui lit le prix enfant
+//     de la prestation ou l'ancienne prestation enfant séparée) et que tout le monde a payé le prix de la prestation.
 // Renvoie le prix, ou null quand il ne faut rien imprimer.
-export function prixParPersonneVoucher({ prestation = null, montant = null, adultes = 0, enfants = 0 } = {}) {
+export function prixParPersonneVoucher({ prestation = null, montant = null, adultes = 0, enfants = 0, tarifEnfant = null } = {}) {
   if (!prestation || !["pp", "ad", "pers"].includes(prestation.unite)) return null;
   if (montant === null || montant === undefined || montant === "" || !Number.isFinite(Number(montant))) return null;
   const a = Number(adultes) || 0;
@@ -653,9 +654,7 @@ export function prixParPersonneVoucher({ prestation = null, montant = null, adul
   const unite = Math.round((Number(montant) / (a + e)) * 100) / 100;
   if (Math.round(unite * (a + e) * 100) !== Math.round(Number(montant) * 100)) return null;
   if (!e) return unite;
-  const enfant = prestation.prix_enfant ?? (prestation.details && prestation.details.prix_enfant);
-  const prixEnfantConnu = enfant !== null && enfant !== undefined && enfant !== "" && Number.isFinite(Number(enfant));
-  if (prixEnfantConnu && Number(enfant) !== Number(prestation.prix_vente)) return null;
+  if (tarifEnfant) return null;
   return prestation.prix_vente !== null && prestation.prix_vente !== undefined && Number(prestation.prix_vente) === unite ? unite : null;
 }
 

@@ -53,7 +53,7 @@ test("n° 27 : le prix par personne ne s'imprime que s'il n'y a qu'un tarif conn
   assert.equal(prixParPersonneVoucher({ prestation: pp, montant: 2400, adultes: 2 }), 1200);
   assert.equal(prixParPersonneVoucher({ prestation: pp, montant: 3000, adultes: 2, enfants: 1 }), null, "l'enfant paie moins : pas de moyenne");
   assert.equal(prixParPersonneVoucher({ prestation: pp, montant: 3600, adultes: 2, enfants: 1 }), 1200, "tout le monde au même prix");
-  assert.equal(prixParPersonneVoucher({ prestation: { ...pp, prix_enfant: 600 }, montant: 3600, adultes: 2, enfants: 1 }), null, "un prix enfant différent est connu");
+  assert.equal(prixParPersonneVoucher({ prestation: { ...pp, details: { enfant: 1200 } }, montant: 3600, adultes: 2, enfants: 1, tarifEnfant: { unite: "ch", prix_vente: 1200 } }), null, "un tarif enfant est connu (prix enfant ou prestation séparée) : deux tarifs");
   assert.equal(prixParPersonneVoucher({ prestation: { unite: "grp", prix_vente: 5000 }, montant: 5000, adultes: 4 }), null, "prix de groupe");
   assert.equal(prixParPersonneVoucher({ prestation: null, montant: 5000, adultes: 4 }), null, "hors catalogue : peut-être un prix de groupe");
   assert.equal(prixParPersonneVoucher({ prestation: pp, montant: 1000, adultes: 3 }), null, "ne tombe pas juste au centime");

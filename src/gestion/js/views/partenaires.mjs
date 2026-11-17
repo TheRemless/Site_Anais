@@ -2,7 +2,7 @@
 import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie, modeTaxi, modeExcursions } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
-import { TYPES_COMMISSION, SUR_PLACE, CHEZ_NOUS, modeParDefaut, consigneCheckin } from "../operations-calc.mjs";
+import { TYPES_COMMISSION, SUR_PLACE, CHEZ_NOUS, modeParDefaut } from "../operations-calc.mjs";
 import { FAMILLES, surPlacePossible, nomFamille, libelleUnite, marge, correspond, UNITES, chiffres, commissionsPartenaire, paiementPartenaire } from "../partenaires-calc.mjs";
 import { vide, cartes } from "./commun.mjs";
 import { listeTaches } from "./taches.mjs";
@@ -357,9 +357,6 @@ export function formulairePartenaire(p, apres) {
   mode.value = modeParDefaut(p);
   const checkin = h("textarea", { id: "p-checkin", rows: 2 });
   checkin.value = (r.checkin || []).join("\n");
-  // Consigne imprimée sur les billets de bateau (lot B du 17.11.2026, audit n° 48) : en anglais, elle passe avant celle écrite dans l'outil.
-  const checkinVoucher = h("textarea", { id: "p-checkin-voucher", rows: 2, placeholder: consigneCheckin(p.nom || "", {}) });
-  checkinVoucher.value = r.checkin_voucher || "";
   const statut = h("input", { id: "p-statut", value: ct.statut || "", placeholder: tr("Tarifs nets confirmés, contrat à signer…") });
   const saison = h("input", { id: "p-saison", value: ct.saison || "" });
   const fin = h("input", { id: "p-fin", type: "date", value: ct.fin || "" });
@@ -381,7 +378,7 @@ export function formulairePartenaire(p, apres) {
           groupe: groupe.value,
           role: role.value.trim(),
           contact: { ...c, personne: personne.value.trim(), telephones: lignesVers(tels.value).map((l) => { const [numero, libelle, wa] = l.split("|").map((x) => x.trim()); return { numero, libelle: libelle || "", whatsapp: /whatsapp|wa/i.test(wa || "") }; }), emails: emails.value.split(",").map((x) => x.trim()).filter(Boolean), line: line.value.trim(), web: web.value.trim(), adresse: adresse.value.trim(), embarcadere: embarcadere.value.trim(), licence: licence.value.trim() },
-          regles: { ...r, mode_reglement: mode.value === SUR_PLACE ? SUR_PLACE : undefined, annulation: annulation.value.trim(), enfants: lignesVers(enfants.value), checkin: lignesVers(checkin.value), checkin_voucher: checkinVoucher.value.trim() || undefined },
+          regles: { ...r, mode_reglement: mode.value === SUR_PLACE ? SUR_PLACE : undefined, annulation: annulation.value.trim(), enfants: lignesVers(enfants.value), checkin: lignesVers(checkin.value) },
           contrat: { ...ct, statut: statut.value.trim(), saison: saison.value.trim(), fin: fin.value || null, documents: documents.value.split(",").map((x) => x.trim()).filter(Boolean) },
           notes: notes.value.trim(),
           actif: actif.checked,
@@ -405,7 +402,6 @@ export function formulairePartenaire(p, apres) {
     h("h3", null, tr("Règles")),
     champ(tr("Règlement par les clients"), mode, tr("Les nouveaux services de ce partenaire prennent ce mode. Chaque service peut ensuite être changé d'un tap.")),
     h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Enfants, une règle par ligne"), enfants), taxi ? null : champ(tr("Check-in, une règle par ligne"), checkin)),
-    taxi ? null : champ(tr("Consigne de check-in sur le voucher (en anglais)"), checkinVoucher, tr("Imprimée sur les billets de bateau de cette compagnie. Vide : le texte grisé. Les trajets vers ou depuis Langkawi gardent la consigne de l'immigration.")),
     taxi ? null : h("h3", null, tr("Contrat")),
     taxi ? null : h("div", { class: "grille-form" }, champ(tr("Statut"), statut), champ(tr("Saison"), saison), champ(tr("Fin du contrat"), fin, tr("Un rappel apparaît dans Aujourd'hui trente jours avant.")), champ(tr("Documents, séparés par des virgules"), documents)),
     champ(tr("Notes"), notes),
