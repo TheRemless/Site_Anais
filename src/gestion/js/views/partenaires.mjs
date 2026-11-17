@@ -736,7 +736,8 @@ export function formulairePrestation(x, apres, options = {}) {
   majSurPlace();
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   const valeursSaisies = () => {
-    const nombres = { enfant: nombreOuNul(prixEnfant.value), thai_adulte: nombreOuNul(thaiAdulte.value), thai_enfant: nombreOuNul(thaiEnfant.value) };
+    // Prix enfant grisé (tarif ni par personne ni par adulte) : il ne s'enregistre pas, plutôt que de rester caché en base.
+    const nombres = { enfant: prixEnfant.disabled ? null : nombreOuNul(prixEnfant.value), thai_adulte: nombreOuNul(thaiAdulte.value), thai_enfant: nombreOuNul(thaiEnfant.value) };
     const details = { ...d, horaires: horaires.value.trim(), duree: duree.value.trim(), capacite: capacite.value.trim(), qui: qui.value.trim(), bateau: bateau.value.trim(), parc: parc.value.trim(), moteur: moteur.value.trim(), montant_thai: montantThai.value.trim(), inclus: inclus.value.trim(), conditions: conditions.value.trim(), note: note.value.trim() };
     // Les nombres vides disparaissent des détails (un « 0 » reste : prix enfant gratuit). Les textes vides absents au départ ne s'ajoutent pas.
     for (const [k, v] of Object.entries(nombres)) if (v === null) delete details[k]; else details[k] = v;
@@ -744,23 +745,29 @@ export function formulairePrestation(x, apres, options = {}) {
     return { partenaire_id: partenaire.value === AUCUN ? null : partenaire.value, famille: famille.value, groupe: groupe.value.trim(), libelle: libelle.value.trim(), libelle_en: libelleEn.value.trim(), prix_vente: num(prixVente.value), unite: unite.value, sur_place: surPlacePossible(famille.value) && surPlace.checked, actif: actif.checked, details };
   };
   const ecrit = peut("partenaires.ecrire");
+  // Enregistre la fiche ; rend la prestation enregistrée, ou null (erreur dite à la personne).
+  const enregistrer = async () => {
+    erreur.textContent = "";
+    if (!partenaire.value) return (erreur.textContent = tr("Choisissez le partenaire, ou « Sans partenaire » pour un frais de parc ou un divers.")), partenaire.focus(), null;
+    const valeurs = valeursSaisies();
+    try {
+      const res = x.id ? await modifier("prestations", x.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("prestations", { ...valeurs, ordre: Math.max(0, ...etat.db.prestations.map((p) => p.ordre || 0)) + 1 });
+      if (nets && ecrit && (net.value !== "" || netEnfant.value !== "" || (x.id && n))) await enregistrerLie("prestations_nets", "prestation_id", res.id, { net: num(net.value), net_enfant: netEnfant.disabled ? null : num(netEnfant.value), note: n ? n.note || "" : "" });
+      toast(tr("Prestation enregistrée."));
+      return res;
+    } catch (err) {
+      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+      return null;
+    }
+  };
   return h(
     "form",
     {
       class: "modal-corps",
       onsubmit: async (e) => {
         e.preventDefault();
-        erreur.textContent = "";
-        if (!partenaire.value) return (erreur.textContent = tr("Choisissez le partenaire, ou « Sans partenaire » pour un frais de parc ou un divers.")), partenaire.focus();
-        const valeurs = valeursSaisies();
-        try {
-          const res = x.id ? await modifier("prestations", x.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("prestations", { ...valeurs, ordre: Math.max(0, ...etat.db.prestations.map((p) => p.ordre || 0)) + 1 });
-          if (nets && ecrit && (net.value !== "" || netEnfant.value !== "" || (x.id && n))) await enregistrerLie("prestations_nets", "prestation_id", res.id, { net: num(net.value), net_enfant: num(netEnfant.value), note: n ? n.note || "" : "" });
-          toast(tr("Prestation enregistrée."));
-          apres(res);
-        } catch (err) {
-          toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
-        }
+        const res = await enregistrer();
+        if (res) apres(res);
       },
     },
     h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champ(tr("Famille"), famille), champ(tr("Groupe"), [groupe, groupes])),
@@ -788,7 +795,12 @@ export function formulairePrestation(x, apres, options = {}) {
       "div",
       { class: "actions" },
       x.id && peut("partenaires.supprimer") ? h("button", { class: "danger", type: "button", onclick: () => supprimerPrestation(x, apres) }, tr("Supprimer")) : null,
-      x.id && ecrit && options.rouvrir ? h("button", { class: "secondaire", type: "button", onclick: () => options.rouvrir({ ...valeursSaisies(), libelle: tr("{libelle} (copie)", { libelle: libelle.value.trim() }) }, { copie: true, netsDepart: nets ? { net: num(net.value), net_enfant: num(netEnfant.value) } : null }) }, tr("Dupliquer")) : null,
+      x.id && ecrit && options.rouvrir ? h("button", { class: "secondaire", type: "button", onclick: async () => {
+        // L'original est d'abord enregistré tel qu'il est à l'écran : rien de ce qu'on vient d'y taper ne se perd en ouvrant la copie.
+        const copie = { ...valeursSaisies(), libelle: tr("{libelle} (copie)", { libelle: libelle.value.trim() }) };
+        const netsCopie = nets ? { net: num(net.value), net_enfant: num(netEnfant.value) } : null;
+        if (await enregistrer()) options.rouvrir(copie, { copie: true, netsDepart: netsCopie });
+      } }, tr("Dupliquer")) : null,
       h("button", { class: "principal", type: "submit" }, tr("Enregistrer"))
     )
   );

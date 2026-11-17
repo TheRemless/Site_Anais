@@ -171,25 +171,30 @@ function formulaireTrajet(t, apres, options = {}) {
   const ecrit = peut("partenaires.ecrire");
   const valeursSaisies = (fen) => ({ partenaire_id: cie.value, de: de.value.trim(), vers: vers.value.trim(), mode: mode.value.trim(), depart: depart.value, arrivee: arrivee.value, duree: duree.value.trim(), prix_adulte: num(ad.value), prix_enfant: num(ch.value), bebe: bebe.value.trim(), periode: periode.value.trim() || (fen.length ? "" : PERIODE_TOUTE[1]), fenetres: fen, actif: actif.checked });
   const messageFenetre = (lu) => ({ incomplete: tr("Fenêtre n° {n} : indiquez la date de début et la date de fin, ou retirez la ligne.", { n: lu.ligne + 1 }), ordre: tr("Fenêtre n° {n} : la date de fin est avant la date de début.", { n: lu.ligne + 1 }), date: tr("Fenêtre n° {n} : date illisible.", { n: lu.ligne + 1 }) })[lu.erreur];
+  // Enregistre le trajet ; rend le trajet enregistré, ou null (erreur dite à la personne).
+  const enregistrer = async () => {
+    erreur.textContent = "";
+    if (!cie.value) return (erreur.textContent = tr("Choisissez la compagnie du trajet.")), cie.focus(), null;
+    const lu = lireFenetres(fenetres.valeurs());
+    if (lu.erreur) return (erreur.textContent = messageFenetre(lu)), null;
+    try {
+      const res = t.id ? await modifier("trajets", t.id, valeursSaisies(lu.fenetres)) : await inserer("trajets", { ...valeursSaisies(lu.fenetres), numero: Math.max(0, ...etat.db.trajets.map((x) => x.numero || 0)) + 1 });
+      if (nets && ecrit && (adn.value !== "" || chn.value !== "" || (t.id && n))) await enregistrerLie("trajets_nets", "trajet_id", res.id, { net_adulte: num(adn.value), net_enfant: num(chn.value) });
+      toast(tr("Trajet enregistré."));
+      return res;
+    } catch (err) {
+      toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
+      return null;
+    }
+  };
   return h(
     "form",
     {
       class: "modal-corps",
       onsubmit: async (e) => {
         e.preventDefault();
-        erreur.textContent = "";
-        if (!cie.value) return (erreur.textContent = tr("Choisissez la compagnie du trajet.")), cie.focus();
-        const lu = lireFenetres(fenetres.valeurs());
-        if (lu.erreur) return (erreur.textContent = messageFenetre(lu));
-        const valeurs = valeursSaisies(lu.fenetres);
-        try {
-          const res = t.id ? await modifier("trajets", t.id, valeurs) : await inserer("trajets", { ...valeurs, numero: Math.max(0, ...etat.db.trajets.map((x) => x.numero || 0)) + 1 });
-          if (nets && ecrit && (adn.value !== "" || chn.value !== "" || (t.id && n))) await enregistrerLie("trajets_nets", "trajet_id", res.id, { net_adulte: num(adn.value), net_enfant: num(chn.value) });
-          toast(tr("Trajet enregistré."));
-          apres(res);
-        } catch (err) {
-          toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
-        }
+        const res = await enregistrer();
+        if (res) apres(res);
       },
     },
     champ(tr("Compagnie"), cie),
@@ -207,7 +212,12 @@ function formulaireTrajet(t, apres, options = {}) {
       t.id && peut("partenaires.supprimer") ? h("button", { class: "danger", type: "button", onclick: () => supprimerTrajet(t, apres) }, tr("Supprimer")) : null,
       // Dupliquer : le même trajet à une autre heure, sans tout retaper (audit n° 82). Les heures sont vidées, le reste est repris.
       t.id && ecrit && options.rouvrir
-        ? h("button", { class: "secondaire", type: "button", onclick: () => { const lu = lireFenetres(fenetres.valeurs()); options.rouvrir({ ...valeursSaisies(lu.erreur ? t.fenetres || [] : lu.fenetres), depart: "", arrivee: "" }, { copie: true, netsDepart: nets ? { net_adulte: num(adn.value), net_enfant: num(chn.value) } : null }); } }, tr("Dupliquer"))
+        ? h("button", { class: "secondaire", type: "button", onclick: async () => {
+            // L'original est d'abord enregistré tel qu'il est à l'écran : rien de ce qu'on vient d'y taper ne se perd en ouvrant la copie.
+            const copie = { ...valeursSaisies(lireFenetres(fenetres.valeurs()).fenetres), depart: "", arrivee: "" };
+            const netsCopie = nets ? { net_adulte: num(adn.value), net_enfant: num(chn.value) } : null;
+            if (await enregistrer()) options.rouvrir(copie, { copie: true, netsDepart: netsCopie });
+          } }, tr("Dupliquer"))
         : null,
       h("button", { class: "principal", type: "submit" }, tr("Enregistrer"))
     )

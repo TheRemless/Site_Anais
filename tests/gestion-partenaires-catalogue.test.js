@@ -107,7 +107,7 @@ test("fiche prestation : durée, bateau, frais de parc, moteur, pour qui, tarifs
   const p = lire("views/partenaires.mjs");
   for (const id of ["x-duree", "x-bateau", "x-parc", "x-moteur", "x-qui", "x-thai-ad", "x-thai-enf", "x-montant-thai", "x-prix-enf"]) assert.match(p, new RegExp(`"${id}"`), id);
   assert.match(p, /duree: duree\.value\.trim\(\)/);
-  assert.match(p, /enfant: nombreOuNul\(prixEnfant\.value\)/);
+  assert.match(p, /enfant: prixEnfant\.disabled \? null : nombreOuNul\(prixEnfant\.value\)/);
 });
 
 test("téléphones : une ligne par numéro et une vraie case WhatsApp (n° 56)", () => {
@@ -210,4 +210,23 @@ test("choix des services : tarifs masqués écartés, « prix à saisir » marqu
   assert.match(c, /proposable\(x, etat\.db\.partenaires\)/);
   assert.match(c, /partenaires: etat\.db\.partenaires \}\)/, "les trajets aussi");
   assert.match(c, /tr\("prix à saisir"\)/);
+});
+
+// ---- Revue de code (PR 210) ------------------------------------------------------------------------------------------
+test("dupliquer enregistre d'abord l'original : rien de ce qui vient d'être tapé ne se perd (revue)", () => {
+  for (const f of ["views/partenaires.mjs", "views/trajets.mjs"]) assert.match(lire(f), /if \(await enregistrer\(\)\) options\.rouvrir\(copie/, f);
+});
+
+test("prix enfant grisé (tarif au bateau, au véhicule…) : il ne s'enregistre pas (revue)", () => {
+  const p = lire("views/partenaires.mjs");
+  assert.match(p, /enfant: prixEnfant\.disabled \? null :/);
+  assert.match(p, /net_enfant: netEnfant\.disabled \? null :/);
+});
+
+test("assistant : un tarif d'un partenaire masqué n'est pas repris (revue, n° 16)", async () => {
+  const { offreDepuisBase } = await import("../src/gestion/js/assistant-calc.mjs");
+  const p = { id: "b", partenaire_id: "masque", famille: "excursion", libelle: "Tour", prix_vente: 900, unite: "pp", actif: true };
+  assert.ok(offreDepuisBase({ genre: "prestation", id: "b" }, { adultes: 1, enfants: 0 }, { prestations: [p] }));
+  assert.equal(offreDepuisBase({ genre: "prestation", id: "b" }, { adultes: 1, enfants: 0 }, { prestations: [p], partenaires }), null);
+  assert.match(lire("views/assistant-demande.mjs"), /partenaires: etat\.db\.partenaires, nomPartenaire/);
 });

@@ -71,7 +71,7 @@ export function boutonLireIA({ texte, surResultat }) {
         ligne.textContent = `${messageErreur(r && r.erreur)} ${tr("La lecture habituelle reste affichée.")}`;
         return;
       }
-      const lu = propositionVersDemande(r.proposition, { prestations: etat.db.prestations, trajets: etat.db.trajets, nomPartenaire });
+      const lu = propositionVersDemande(r.proposition, { prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire });
       surResultat({ ...lu, avertissements: r.avertissements || [], remarques: r.proposition.remarques || "" });
       ligne.replaceChildren(...[h("p", null, tr("Lu par l'assistant : vérifiez chaque champ avant de créer.")), r.proposition.remarques ? h("p", { class: "assistant-remarque" }, r.proposition.remarques) : null, listeAvertissements(r.avertissements)].filter(Boolean));
     } catch {
