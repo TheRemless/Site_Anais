@@ -1,4 +1,4 @@
--- Gestion : migration 40, plusieurs organisations (préparation du logiciel pour d'autres clients).
+-- Gestion : migration 41, plusieurs organisations (préparation du logiciel pour d'autres clients).
 -- Une organisation est un client du logiciel. Elle regroupe ses entreprises (entites) et ses comptes (profils).
 -- La base actuelle devient l'organisation « Zwald Travel Planner » (ZTP, Secret, Taxi) : rien ne change pour ses comptes.
 --
@@ -8,7 +8,7 @@
 --   * le tout premier compte créé ne devient plus administrateur automatiquement ;
 --   * un compte ne peut être membre que des entreprises de son organisation ;
 --   * numérotation des factures pour la fiduciaire séparée par organisation ;
---   * émetteur des factures pour la fiduciaire et entreprises qui publient sur un site : réglages de l'organisation, plus des noms écrits dans le code ;
+--   * entreprises qui publient sur un site : réglage de l'entreprise (publie_site), plus des noms écrits dans le code ;
 --   * suivi des rappels rangé par organisation.
 -- À exécuter une seule fois, après les migrations précédentes. Idempotente.
 
@@ -42,10 +42,6 @@ create index if not exists entites_organisation on entites (organisation_id);
 -- Les entreprises qui reçoivent les demandes et publient les bandeaux d'un site public.
 alter table entites add column if not exists publie_site boolean not null default false;
 update entites set publie_site = true where organisation_id = '00000000-0000-0000-0000-00000000a000' and slug in ('secret', 'taxi') and not publie_site;
-
-alter table organisations add column if not exists fiduciaire_emetteur uuid references entites (id) on delete set null;
-update organisations o set fiduciaire_emetteur = e.id from entites e
-where o.id = '00000000-0000-0000-0000-00000000a000' and o.fiduciaire_emetteur is null and e.organisation_id = o.id and e.slug = 'secret';
 
 alter table profils add column if not exists organisation_id uuid references organisations (id) on delete restrict;
 alter table profils add column if not exists plateforme boolean not null default false;
@@ -182,14 +178,13 @@ create policy "gérer les accès" on membres for all to authenticated using (adm
 
 -- L'organisation : ses membres la lisent, son administrateur règle le fuseau et la langue. Le statut et les options restent à l'éditeur.
 grant select on organisations to authenticated;
-grant update (nom, fuseau, langue, fiduciaire_emetteur) on organisations to authenticated;
+grant update (nom, fuseau, langue) on organisations to authenticated;
 drop policy if exists "voir son organisation" on organisations;
 create policy "voir son organisation" on organisations for select to authenticated using (id = mon_organisation() or est_plateforme());
 drop policy if exists "régler son organisation" on organisations;
 create policy "régler son organisation" on organisations for update to authenticated
   using (est_super_admin() and id = mon_organisation())
-  with check (est_super_admin() and id = mon_organisation()
-    and (fiduciaire_emetteur is null or exists (select 1 from entites e where e.id = fiduciaire_emetteur and e.organisation_id = organisations.id)));
+  with check (est_super_admin() and id = mon_organisation());
 
 -- 5. Création d'une organisation par l'éditeur, pendant l'appel de mise en route.
 -- Le futur administrateur a déjà créé son compte (lien d'invitation) : il devient administrateur de la nouvelle organisation.
@@ -211,20 +206,22 @@ $$;
 revoke all on function creer_organisation(text, text, text, text) from public, anon;
 grant execute on function creer_organisation(text, text, text, text) to authenticated;
 
--- 6. Fiduciaire : numérotation et émetteur propres à chaque organisation.
+-- 6. Fiduciaire : une série de numéros par organisation. Depuis la migration 36, l'émetteur, la date de départ et les préfixes sont déjà
+-- des réglages de chaque entreprise (fiduciaire_reglages). Il restait la série (préfixe, année) commune à toute la base : deux organisations
+-- avec le préfixe COM se seraient partagé les numéros. La série devient (organisation, préfixe, année), le numéro unique dans l'organisation.
 alter table fiduciaire_compteurs add column if not exists organisation_id uuid references organisations (id) on delete cascade;
 update fiduciaire_compteurs set organisation_id = '00000000-0000-0000-0000-00000000a000' where organisation_id is null;
 alter table fiduciaire_compteurs alter column organisation_id set not null;
 alter table fiduciaire_compteurs drop constraint if exists fiduciaire_compteurs_pkey;
-alter table fiduciaire_compteurs add primary key (organisation_id, annee, type);
+alter table fiduciaire_compteurs add primary key (organisation_id, prefixe, annee);
 
 alter table fiduciaire_factures add column if not exists organisation_id uuid references organisations (id) on delete restrict;
+alter table fiduciaire_factures disable trigger figer;
 update fiduciaire_factures f set organisation_id = e.organisation_id from entites e where e.id = f.entite_id and f.organisation_id is null;
+alter table fiduciaire_factures enable trigger figer;
 alter table fiduciaire_factures alter column organisation_id set not null;
 alter table fiduciaire_factures drop constraint if exists fiduciaire_factures_numero_key;
-alter table fiduciaire_factures drop constraint if exists fiduciaire_factures_type_annee_seq_key;
 create unique index if not exists fiduciaire_factures_org_numero on fiduciaire_factures (organisation_id, numero);
-create unique index if not exists fiduciaire_factures_org_seq on fiduciaire_factures (organisation_id, type, annee, seq);
 
 create or replace function fiduciaire_organisation() returns trigger language plpgsql security definer set search_path = public as $$
 begin
@@ -235,41 +232,21 @@ $$;
 drop trigger if exists fiduciaire_organisation on fiduciaire_factures;
 create trigger fiduciaire_organisation before insert on fiduciaire_factures for each row execute function fiduciaire_organisation();
 
-create or replace function fiduciaire_depuis() returns date language sql stable security definer set search_path = public as $$
-  select nullif(g.valeur->'fiduciaire'->>'depuis', '')::date
-  from organisations o join reglages g on g.entite_id = o.fiduciaire_emetteur
-  where o.id = mon_organisation()
-$$;
-revoke all on function fiduciaire_depuis() from public, anon, authenticated;
-
-create or replace function fiduciaire_prochain_numero(p_genre text, p_jour date, out o_annee integer, out o_seq integer, out o_numero text)
+-- Même signature que la migration 36 (appelée par emettre_facture_fiduciaire et annuler_facture_fiduciaire, qui ont déjà vérifié
+-- que la personne écrit dans l'entreprise du service, donc dans son organisation).
+create or replace function fiduciaire_prochain_numero(p_genre text, p_jour date, p_prefixe text, out o_annee integer, out o_seq integer, out o_numero text)
 language plpgsql security definer set search_path = public as $$
 declare
   org uuid := mon_organisation();
 begin
   if org is null then raise exception 'Compte sans organisation' using errcode = '42501'; end if;
   o_annee := extract(year from p_jour)::int;
-  insert into fiduciaire_compteurs (organisation_id, annee, type, dernier) values (org, o_annee, p_genre, 0) on conflict do nothing;
-  update fiduciaire_compteurs set dernier = dernier + 1 where organisation_id = org and annee = o_annee and type = p_genre returning dernier into o_seq;
-  o_numero := (case when p_genre = 'avoir' then 'CN' else 'COM' end) || '-' || o_annee || '-' || lpad(o_seq::text, 3, '0');
+  insert into fiduciaire_compteurs (organisation_id, prefixe, annee, type, dernier) values (org, p_prefixe, o_annee, p_genre, 0) on conflict do nothing;
+  update fiduciaire_compteurs set dernier = dernier + 1 where organisation_id = org and prefixe = p_prefixe and annee = o_annee returning dernier into o_seq;
+  o_numero := p_prefixe || '-' || o_annee || '-' || lpad(o_seq::text, 3, '0');
 end
 $$;
-revoke all on function fiduciaire_prochain_numero(text, date) from public, anon, authenticated;
-
-create or replace function fiduciaire_emetteur() returns jsonb language plpgsql stable security definer set search_path = public as $$
-declare
-  reg jsonb;
-begin
-  select g.valeur into reg from organisations o join reglages g on g.entite_id = o.fiduciaire_emetteur where o.id = mon_organisation();
-  if reg is null or coalesce(reg->'emetteur'->>'nom', '') = '' then raise exception 'Choisissez l''entreprise émettrice des factures pour la fiduciaire et remplissez son émetteur'; end if;
-  return jsonb_build_object(
-    'devise', coalesce(reg->>'devise', 'THB'),
-    'emetteur', jsonb_strip_nulls(jsonb_build_object('nom', reg->'emetteur'->'nom', 'sous_titre', reg->'emetteur'->'sous_titre', 'adresse', reg->'emetteur'->'adresse',
-      'telephone', reg->'emetteur'->'telephone', 'licence', reg->'emetteur'->'licence', 'contact', reg->'emetteur'->'contact')),
-    'paiement', jsonb_strip_nulls(jsonb_build_object('texte', reg->'paiement'->'texte', 'qr_image', reg->'paiement'->'qr_image', 'qr_pseudo', reg->'paiement'->'qr_pseudo')));
-end
-$$;
-revoke all on function fiduciaire_emetteur() from public, anon, authenticated;
+revoke all on function fiduciaire_prochain_numero(text, date, text) from public, anon, authenticated;
 
 -- 7. Site public : n'importe quelle entreprise marquée publie_site, plus seulement « secret » et « taxi ».
 alter table demandes_site drop constraint if exists demandes_site_marque_check;
@@ -297,7 +274,8 @@ drop trigger if exists controler_marques_site on bandeaux_site;
 create trigger controler_marques_site before insert or update of marques, entite_id on bandeaux_site for each row execute function controler_marques_site();
 
 create or replace function publie_sur_le_site(e uuid) returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from entites where id = e and publie_site) and lit_demandes_site(e) and a_permission(e, 'dossiers.ecrire')
+  select exists (select 1 from entites where id = e and publie_site) and lit_demandes_site(e)
+    and a_permission(e, 'dossiers.ecrire') and a_permission(e, 'reglages.ecrire')
 $$;
 
 -- 8. Suivi des rappels par organisation. Les lignes anciennes, sans organisation, restent à Zwald.

@@ -1,4 +1,4 @@
-// Vérifie la migration 40 (plusieurs organisations) sur un Postgres en mémoire : aucune donnée d'une organisation n'est visible depuis une autre.
+// Vérifie la migration 41 (plusieurs organisations) sur un Postgres en mémoire : aucune donnée d'une organisation n'est visible depuis une autre.
 //   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17
 //   cp <repo>/docs/gestion/verif-organisations.mjs . && GESTION_SQL=<repo>/docs/gestion/ node verif-organisations.mjs
 import { PGlite } from "@electric-sql/pglite";
@@ -25,18 +25,18 @@ alter default privileges in schema public grant execute on functions to anon, au
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
-const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[789]|[234]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
-// Une base qui a déjà servi : des numéros de fiduciaire et un suivi de rappels existent avant la migration 40.
-const avant40 = migrations.filter((f) => parseInt(f.split("-")[1]) < 40);
-for (const f of avant40) await db.exec(fs.readFileSync(W + f, "utf8"));
-await db.exec("insert into fiduciaire_compteurs (annee, type, dernier) values (2026, 'facture', 7); insert into rappels_suivi (type) values ('veille');");
-for (const f of migrations.filter((f) => !avant40.includes(f))) await db.exec(fs.readFileSync(W + f, "utf8"));
-ok(migrations.at(-1) === "migration-40-organisations.sql", "la migration 40 est appliquée en dernier");
-await db.exec(fs.readFileSync(W + "migration-40-organisations.sql", "utf8"));
-ok(true, "la migration 40 se rejoue sans erreur");
-// Droits des tables comme sur Supabase, puis les « revoke » et « grant » de la migration 40 rejoués.
+const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[789]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
+// Une base qui a déjà servi : des numéros de fiduciaire et un suivi de rappels existent avant la migration 41.
+const avant41 = migrations.filter((f) => parseInt(f.split("-")[1]) < 41);
+for (const f of avant41) await db.exec(fs.readFileSync(W + f, "utf8"));
+await db.exec("insert into fiduciaire_compteurs (prefixe, annee, type, dernier) values ('COM', 2026, 'facture', 7); insert into rappels_suivi (type) values ('veille');");
+for (const f of migrations.filter((f) => !avant41.includes(f))) await db.exec(fs.readFileSync(W + f, "utf8"));
+ok(migrations.at(-1) === "migration-41-organisations.sql", "la migration 41 est appliquée en dernier");
+await db.exec(fs.readFileSync(W + "migration-41-organisations.sql", "utf8"));
+ok(true, "la migration 41 se rejoue sans erreur");
+// Droits des tables comme sur Supabase, puis les « revoke » et « grant » de la migration 41 rejoués.
 await db.exec("grant all on all tables in schema public to authenticated; grant usage, select on all sequences in schema public to authenticated; revoke insert, update, delete on journal from authenticated;");
-for (const l of fs.readFileSync(W + "migration-40-organisations.sql", "utf8").split("\n").filter((x) => /^(revoke|grant) .* on organisations /.test(x))) await db.exec(l);
+for (const l of fs.readFileSync(W + "migration-41-organisations.sql", "utf8").split("\n").filter((x) => /^(revoke|grant) .* on organisations /.test(x))) await db.exec(l);
 
 const un = async (sql, p = []) => (await db.query(sql, p)).rows[0];
 const ZWALD = "00000000-0000-0000-0000-00000000a000";
@@ -52,7 +52,6 @@ const compte = async (email, meta = null) => (await un("insert into auth.users (
 console.log("== Reprise de la base existante ==");
 ok((await un("select count(*)::int n from entites where organisation_id = $1", [ZWALD])).n === 3, "ZTP, Secret et Taxi sont dans l'organisation Zwald");
 ok((await un("select count(*)::int n from profils where organisation_id is distinct from $1", [ZWALD])).n === 0, "tous les comptes existants sont dans Zwald");
-ok((await un("select (select slug from entites where id = fiduciaire_emetteur) s from organisations where id = $1", [ZWALD])).s === "secret", "Secret reste l'émetteur des factures pour la fiduciaire");
 ok((await un("select array_agg(slug order by slug) s from entites where publie_site")).s.join() === "secret,taxi", "Secret et Taxi publient toujours sur le site");
 ok((await un("select dernier, organisation_id from fiduciaire_compteurs where annee = 2026")).organisation_id === ZWALD, "le compteur de fiduciaire existant passe à Zwald");
 ok((await un("select count(*)::int n from rappels_suivi where organisation_id = $1", [ZWALD])).n === 1, "le suivi des rappels existant passe à Zwald");
@@ -110,7 +109,6 @@ ok((await nb(marc, "select * from organisations")) === 1 && (await nb(anais, "se
 const opt = await essaie(marc, `update organisations set options = array['assistant'] where id = '${B}'`);
 ok(!opt.ok, "Marc ne peut pas s'offrir une option payante");
 ok((await essaie(marc, `update organisations set fuseau = 'Europe/Paris' where id = '${B}'`)).ok, "Marc règle le fuseau de son organisation");
-ok(!(await essaie(marc, `update organisations set fiduciaire_emetteur = '${ent.secret}' where id = '${B}'`)).ok, "l'émetteur fiduciaire doit être une entreprise de l'organisation");
 
 console.log("== Accès ==");
 const roleB = (await un("insert into roles (entite_id, nom, permissions) values ($1, 'Assistante', array['clients.lire']) returning id", [eB])).id;
@@ -134,16 +132,19 @@ ok(eq.ok && eq.rows.length === 2, "l'équipe de B compte Marc et Julie, pas Ana�
 console.log("== Fiduciaire ==");
 const num = async (u) => {
   await db.exec(`select set_config('request.jwt.claim.sub', '${u}', false);`);
-  return (await un("select o_numero from fiduciaire_prochain_numero('facture', '2026-11-17')")).o_numero;
+  return (await un("select o_numero from fiduciaire_prochain_numero('facture', '2026-11-17', 'COM')")).o_numero;
 };
 ok((await num(anais)) === "COM-2026-008", "Zwald continue sa numérotation");
 ok((await num(marc)) === "COM-2026-001", "B commence sa propre numérotation");
-await db.exec(`select set_config('request.jwt.claim.sub', '${anais}', false);`);
-ok((await un("select fiduciaire_emetteur() is not null or true as v")).v, "l'émetteur de Zwald se lit");
-await db.exec(`select set_config('request.jwt.claim.sub', '${marc}', false);`);
+ok((await num(anais)) === "COM-2026-009", "Zwald garde sa série même quand B émet");
+ok((await un("select count(*)::int n from fiduciaire_compteurs where prefixe = 'COM' and annee = 2026")).n === 2, "deux séries COM 2026, une par organisation");
+await db.exec(`select set_config('request.jwt.claim.sub', '${julie}', false);`);
+ok((await un("select o_numero from fiduciaire_prochain_numero('facture', '2026-11-17', 'COM')")).o_numero === "COM-2026-002", "Julie (membre de B) suit la série de B");
+await db.exec(`select set_config('request.jwt.claim.sub', '${enAttente}', false);`);
 let err = "";
-try { await db.query("select fiduciaire_emetteur()"); } catch (e) { err = e.message; }
-ok(/émettrice/.test(err), "sans émetteur choisi, B reçoit un message clair");
+try { await db.query("select fiduciaire_prochain_numero('facture', '2026-11-17', 'COM')"); } catch (e) { err = e.message; }
+ok(/sans organisation/.test(err), "un compte sans organisation ne tire aucun numéro");
+await db.exec(`select set_config('request.jwt.claim.sub', '', false);`);
 
 console.log("== Suivi des rappels ==");
 await db.exec(`insert into rappels_suivi (type, organisation_id) values ('veille', '${B}')`);
