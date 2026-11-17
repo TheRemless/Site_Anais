@@ -1415,6 +1415,7 @@ export const EN = {
   "Supprimer « {titre} » ?": "Delete \"{titre}\"?",
   "Supprimer ce client": "Delete this client",
   "Supprimer ce partenaire": "Delete this partner",
+  "Supprimer définitivement": "Delete permanently",
   "Supprimer définitivement {nomClient} ?": "Delete {nomClient} permanently?",
   "Supprimer la ligne {x}": "Delete line {x}",
   "Supprimer la réservation « {libelle} » ?": "Delete the reservation \"{libelle}\"?",

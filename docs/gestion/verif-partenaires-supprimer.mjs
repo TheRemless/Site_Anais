@@ -27,9 +27,11 @@ alter default privileges in schema public grant execute on functions to anon, au
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
-for (const f of fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d|3[01])-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]))) await db.exec(fs.readFileSync(W + f, "utf8"));
-// Deux fois : la migration se rejoue sans erreur ni doublon.
+const migs = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
+for (const f of migs.filter((n) => parseInt(n.split("-")[1]) <= 31)) await db.exec(fs.readFileSync(W + f, "utf8"));
+// Deux fois : la migration se rejoue sans erreur ni doublon. Puis les migrations suivantes (32 à 35), comme en production.
 await db.exec(fs.readFileSync(W + "migration-31-partenaires-supprimer.sql", "utf8"));
+for (const f of migs.filter((n) => parseInt(n.split("-")[1]) > 31)) await db.exec(fs.readFileSync(W + f, "utf8"));
 
 const essaie = async (userId, sql, params = []) => {
   await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${userId || ""}', false);`);

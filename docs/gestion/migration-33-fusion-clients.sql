@@ -54,4 +54,14 @@ end $$;
 revoke all on function fusionner_clients(uuid, uuid) from public, anon;
 grant execute on function fusionner_clients(uuid, uuid) to authenticated;
 
+
+-- Le droit « clients.fusionner » entre dans « tous les droits » et dans le rôle « Administrateur » de chaque entreprise, comme
+-- « partenaires.supprimer » à la migration 31 : la liste de la base reste celle de l'outil (defauts.mjs).
+create or replace function toutes_permissions() returns text[] language sql immutable as $$
+  select array['clients.lire', 'clients.ecrire', 'clients.supprimer', 'clients.fusionner', 'dossiers.lire', 'dossiers.ecrire', 'dossiers.supprimer', 'documents.ecrire', 'documents.supprimer', 'finances.voir', 'paiements.ecrire', 'taches.ecrire', 'catalogue.ecrire', 'reglages.ecrire', 'exports.faire', 'analytics.voir', 'journal.voir', 'partenaires.lire', 'partenaires.ecrire', 'partenaires.nets', 'partenaires.supprimer', 'fiduciaire.preparer', 'fiduciaire.gerer']::text[]
+$$;
+
+update roles set permissions = permissions || array['clients.fusionner']
+where nom = 'Administrateur' and not ('clients.fusionner' = any (permissions));
+
 commit;
