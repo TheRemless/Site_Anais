@@ -7,6 +7,7 @@ import { tableauDeBord } from "./views/dashboard.mjs";
 import { mesTaches } from "./views/taches.mjs";
 import { retirerALaDeconnexion } from "./rappels.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
+import { reglagesFid } from "./fiduciaire-calc.mjs";
 
 // Chaque écran se charge à sa première visite : le premier affichage n'attend que l'accueil.
 const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
@@ -161,7 +162,7 @@ function ecrans() {
   const si = (ok, item) => (ok ? [item] : []);
   return [
     { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
-    { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(peut("fiduciaire.preparer") && modeExcursions(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
+    { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(fiduciaireAuMenu(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
       titre: tr("Partenaires"),
       items: si(peut("partenaires.lire") && moduleActif("partenaires"), null).length
@@ -301,12 +302,16 @@ function coqueSimple() {
       etat.store.mode === "supabase" ? h("button", { class: "secondaire petit", type: "button", lang: "th", onclick: deconnecter }, icone("deconnexion", 18), "ออกจากระบบ") : null
     ),
     // Les factures pour la fiduciaire sont aussi son travail (Jérémy, 12.11.2026) : deux onglets, le voucher et les factures.
-    peut("fiduciaire.preparer")
+    // Pas d'onglet dans une entreprise qui n'émet pas de factures pour la fiduciaire (Taxi, 17.11.2026).
+    peut("fiduciaire.preparer") && reglagesFid(etat.db.reglages).actif
       ? h("nav", { class: "onglets-simple", lang: "th", "aria-label": "เมนู" }, h("a", { href: "#/", "data-ecran": "voucher" }, "วอยเชอร์"), h("a", { href: "#/fiduciaire", "data-ecran": "fiduciaire" }, "ใบแจ้งหนี้"))
       : null,
     h("div", { class: "contenu-simple" }, etat.store.mode === "demo" ? bandeauDemo() : null, h("main", { id: "principal", tabindex: "-1" }))
   );
 }
+
+// Fiduciaire au menu : dans une entreprise qui émet ces factures (Secret) ; dans une autre (Taxi, 17.11.2026), seulement pour qui peut la réactiver.
+const fiduciaireAuMenu = () => peut("fiduciaire.preparer") && modeExcursions() && (reglagesFid(etat.db.reglages).actif || (peut("fiduciaire.gerer") && peut("reglages.ecrire")));
 
 // Écrans propres à un type d'entreprise : ZTP (voyages sur mesure), Secret (excursions), Taxi.
 function ecranDeLEntreprise(cle) {
@@ -327,7 +332,7 @@ async function afficherVoucherSeul() {
   }
   // Deux écrans possibles : le voucher, et les factures pour la fiduciaire avec le droit « fiduciaire.preparer ».
   // Une adresse d'un autre écran (lien, favori) ramène au voucher sans rien ouvrir d'autre.
-  const factures = location.hash === "#/fiduciaire" && peut("fiduciaire.preparer");
+  const factures = location.hash === "#/fiduciaire" && peut("fiduciaire.preparer") && reglagesFid(etat.db.reglages).actif;
   if (!factures && location.hash && location.hash !== "#/") history.replaceState(null, "", "#/");
   for (const a of racine.querySelectorAll(".onglets-simple a")) a.setAttribute("aria-current", (a.dataset.ecran === "fiduciaire") === factures ? "page" : "false");
   const moi = ++rendu;

@@ -92,6 +92,9 @@ export function creer() {
     async fiduciaireListe() {
       return structuredClone(facturesVisibles(data, { droit, voit }));
     },
+    async fiduciaireMigration31() {
+      return true;
+    },
     async fiduciaireAPreparer() {
       return structuredClone(aPreparerLocal(data, { droit, resumeDe, voit }));
     },
@@ -100,8 +103,8 @@ export function creer() {
       sauve();
       return id;
     },
-    async fiduciaireAnnuler(reservationId, date = null) {
-      const id = annulerLocal(data, { droit, aujourdhui: aujourdhui() }, reservationId, date);
+    async fiduciaireAnnuler(reservationId, date = null, destinataire = null) {
+      const id = annulerLocal(data, { droit, aujourdhui: aujourdhui() }, reservationId, date, destinataire);
       sauve();
       return id;
     },

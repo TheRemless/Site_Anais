@@ -5,15 +5,29 @@
 // Les montants viennent de la base (le navigateur ne choisit jamais un montant) ; l'écran n'affiche que ce qu'elle renvoie.
 // Chaque entreprise ne montre que ses services et ses factures : Secret dans Secret, VIP Taxi Lanta dans Taxi (Jérémy, 12.11.2026).
 // La base renvoie tout ce que la personne a le droit de voir, toutes entreprises confondues : le tri se fait ici, sur l'entreprise ouverte.
-import { etat, peut } from "../etat.mjs";
-import { h, modal, toast, barreAction, confirmer } from "../ui.mjs";
+// Taxi n'émet pas de factures pour la fiduciaire (Jérémy, 17.11.2026) : chaque entreprise a un réglage « actif », réglable en bas de cet écran,
+// avec la date de départ, les préfixes des numéros, les titres et les mots du libellé (bloc réservé à qui a « gérer » et « réglages »).
+import { etat, peut, reglages, enregistrerReglages, entiteActive } from "../etat.mjs";
+import { h, modal, toast, barreAction, confirmer, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant, formatDate } from "../calc.mjs";
-import { filtrerFactures } from "../fiduciaire-calc.mjs";
+import { filtrerFactures, reglagesFid, formaterNumero, FID_DEFAUT } from "../fiduciaire-calc.mjs";
 import { TH, MANQUE, remplir } from "../fiduciaire-textes.mjs";
 import { fabriquerPdfFactures, feuilleFacture } from "./fiduciaire-pdf.mjs";
 import { apercuA4, vide } from "./commun.mjs";
 import { partageFichiers, partager, enregistrer } from "./partage.mjs";
 import { tr } from "../i18n.mjs";
+
+// Libellés des champs du bloc de réglages (fonctions : la langue de l'interface peut changer après le chargement du module).
+const LIBELLES_REGLAGES = {
+  prefixe_facture: () => tr("Préfixe des factures"),
+  prefixe_avoir: () => tr("Préfixe des avoirs"),
+  titre_facture: () => tr("Titre d'une facture"),
+  titre_avoir: () => tr("Titre d'un avoir"),
+  ref_facture: () => tr("Devant le numéro d'une facture"),
+  ref_avoir: () => tr("Devant le numéro d'un avoir"),
+  mot_commission: () => tr("Début du libellé d'une commission"),
+  mot_marge: () => tr("Début du libellé d'une marge"),
+};
 
 const jjmmaaaa = (iso) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
 
@@ -24,7 +38,7 @@ export async function vueFiduciaire() {
   const date = (iso) => (simple ? jjmmaaaa(iso) : formatDate(iso));
   const titre = t("titre", tr("Factures pour la fiduciaire"));
   const racine = h("div", { "data-titre": titre, "data-large": true, class: "fiduciaire", lang: simple ? "th" : undefined });
-  const etatEcran = { filtres: { mois: "", envoyee: simple ? "non" : "" }, choisies: new Set(), liste: [], preparer: [], occupe: false, nbPrep: 12, nbEmises: 30 };
+  const etatEcran = { filtres: { mois: "", envoyee: simple ? "non" : "" }, choisies: new Set(), liste: [], preparer: [], occupe: false, nbPrep: 12, nbEmises: 30, reglagesOuverts: false, m31: null };
 
   async function charger() {
     const liste = await etat.store.fiduciaireListe();
@@ -32,6 +46,8 @@ export async function vueFiduciaire() {
     const ici = (x) => x.entite_id === etat.entiteId;
     etatEcran.liste = liste.filter(ici);
     etatEcran.preparer = (await etat.store.fiduciaireAPreparer()).filter(ici);
+    // Les réglages de l'écran n'ont d'effet qu'avec la migration 31 (préfixes, titres, mots, émetteur, entreprise active).
+    if (etatEcran.m31 === null) etatEcran.m31 = etat.store.fiduciaireMigration31 ? await etat.store.fiduciaireMigration31() : true;
     return true;
   }
 
@@ -73,6 +89,8 @@ export async function vueFiduciaire() {
     const lignes = c.cas === "sur_place"
       ? [[tr("Service payé"), tr("sur place, chez le prestataire")], [tr("Commission prévue"), m(c.commission_prevue)], [tr("Commission reçue"), m(c.commission_recue)], [tr("Reçue le"), d(c.commission_recue_le)]]
       : [[tr("Service payé"), tr("chez nous")], [tr("Prix de vente (payé par le client)"), m(c.montant_vente)], [tr("Net prévu au prestataire"), m(c.net_prevu)], [tr("Net payé au prestataire"), m(c.net_paye)], [tr("Prestataire payé le"), d(c.paye_le)]];
+    if (c.cas !== "sur_place" && Number(c.remise) > 0) lignes.splice(2, 0, [tr("Part de la remise de la facture du client"), `− ${m(c.remise)}`]);
+    if (c.dossier_annule && c.cas !== "sur_place") lignes.push([tr("Dossier"), tr("annulé : aucune marge, le déjà facturé s'annule par un avoir")]);
     lignes.push([tr("Montant qui revient à l'agence"), m(c.cible)], [tr("Déjà facturé"), m(c.deja_facture)], [tr("Date de la facture"), d(c.date)]);
     if (c.manque && c.manque.length) lignes.push([tr("Ce qui manque"), c.manque.map((x) => tr(MANQUE[x] || x)).join(" ; ")]);
     const fermer = modal(
@@ -93,28 +111,33 @@ export async function vueFiduciaire() {
     const manqueDest = !l.destinataire_nom ? t("sans_prestataire", tr("Ce service n'a pas de prestataire : l'ajouter à la réservation.")) : !l.destinataire_adresse ? t("adresse_manque", tr("L'adresse de {nom} manque dans sa fiche partenaire.", { nom: l.destinataire_nom }), { nom: l.destinataire_nom }) : null;
     const est_avoir = l.type === "avoir";
     const revoir = l.a_revoir && !l.type;
+    const ancien = (l.manque || []).includes("partenaire_change");
     const detail = [];
     detail.push(h("p", { class: "ligne-a" }, h("span", { class: "etiquette" }, t("a", tr("À"))), " ", h("strong", null, l.destinataire_nom || "–")));
     if (l.date_cible) detail.push(h("p", { class: "ligne-date" }, h("span", { class: "etiquette" }, t("recu_le", tr("Reçu le"))), " ", date(l.date_cible)));
     if (!simple) {
       detail.push(h("p", { class: "ligne-cas" }, l.cas === "sur_place" ? tr("Commission reçue du prestataire") : tr("Marge : prix de vente moins net payé")));
       if (l.ecart !== null && l.ecart !== undefined && Number(l.ecart) !== 0) detail.push(h("p", { class: "ligne-ecart" }, tr("Écart avec la commission prévue : {ecart}", { ecart: formatMontant(l.ecart, l.devise) })));
-      if (revoir) detail.push(h("p", { class: "avertissement" }, tr("Déjà facturé, mais le calcul ne permet plus de dire ce qui revient à l'agence. Corrigez la réservation ou ses montants, puis un avoir se proposera."), " ", (l.manque || []).map((x) => tr(MANQUE[x] || x)).join(" ; ")));
+      if (ancien) detail.push(h("p", { class: "avertissement" }, tr("Le prestataire de ce service a changé. {nom} a déjà reçu une facture de {montant} pour ce service : annulez-la par un avoir. La facture au nouveau prestataire se prépare à part, pour le montant entier.", { nom: l.destinataire_nom || "–", montant: formatMontant(l.deja_facture, l.devise) })));
+      else if (revoir) detail.push(h("p", { class: "avertissement" }, tr("Déjà facturé, mais le calcul ne permet plus de dire ce qui revient à l'agence. Corrigez la réservation ou ses montants, puis un avoir se proposera."), " ", (l.manque || []).map((x) => tr(MANQUE[x] || x)).join(" ; ")));
       if (est_avoir) detail.push(h("p", { class: "avertissement" }, tr("Le montant facturé est supérieur à ce qui revient à l'agence : un avoir ramène le total au bon montant.")));
     }
-    if (manqueDest) detail.push(h("p", { class: "avertissement" }, manqueDest));
+    if (manqueDest && !revoir) detail.push(h("p", { class: "avertissement" }, manqueDest));
     const annulerTout = () => agir(async () => {
-      if (!(await confirmer(tr("Annuler par un avoir les {montant} déjà facturés pour ce service ? L'avoir est définitif.", { montant: formatMontant(l.deja_facture, l.devise) }), tr("Émettre l'avoir"), true))) return null;
-      return etat.store.fiduciaireAnnuler(l.reservation_id);
+      const question = ancien
+        ? tr("Annuler par un avoir à {nom} les {montant} déjà facturés pour ce service ? L'avoir est définitif.", { nom: l.destinataire_nom || "–", montant: formatMontant(l.deja_facture, l.devise) })
+        : tr("Annuler par un avoir les {montant} déjà facturés pour ce service ? L'avoir est définitif.", { montant: formatMontant(l.deja_facture, l.devise) });
+      if (!(await confirmer(question, tr("Émettre l'avoir"), true))) return null;
+      return etat.store.fiduciaireAnnuler(l.reservation_id, null, l.destinataire_cle || null);
     }, (id) => { const f = id && etatEcran.liste.find((x) => x.id === id); return f ? tr("Avoir {numero} émis.", { numero: f.numero }) : ""; });
     const bouton = revoir
-      ? (!simple ? h("button", { class: "secondaire", type: "button", disabled: etatEcran.occupe, onclick: annulerTout }, tr("Annuler par un avoir ({montant})", { montant: formatMontant(l.deja_facture, l.devise) })) : null)
+      ? (!simple ? h("button", { class: "secondaire", type: "button", disabled: etatEcran.occupe, onclick: annulerTout }, ancien ? tr("Avoir à {nom} ({montant})", { nom: l.destinataire_nom || "–", montant: formatMontant(l.deja_facture, l.devise) }) : tr("Annuler par un avoir ({montant})", { montant: formatMontant(l.deja_facture, l.devise) })) : null)
       : h("button", { class: est_avoir ? "secondaire" : "principal", type: "button", disabled: !!manqueDest || etatEcran.occupe, onclick: () => agir(() => etat.store.fiduciaireEmettre(l.reservation_id, null, l.type), (id) => { const f = etatEcran.liste.find((x) => x.id === id); return t("cree", tr("Facture {numero} créée.", { numero: f ? f.numero : "" }), { numero: f ? f.numero : "" }); }) }, est_avoir ? tr("Émettre l'avoir") : t("creer", tr("Créer la facture")));
     return h(
       "article",
       { class: `fid-carte${est_avoir ? " avoir" : ""}${revoir ? " a-revoir" : ""}` },
       h("div", { class: "fid-carte-haut" }, h("div", null, h("h3", null, l.libelle), detail), h("div", { class: "fid-montant" }, revoir ? null : h("strong", null, formatMontant(est_avoir ? -l.montant : l.montant, l.devise)), est_avoir ? h("span", { class: "tag" }, tr("Avoir")) : null)),
-      h("div", { class: "actions" }, bouton, !simple && peut("partenaires.nets") ? h("button", { class: "lien", type: "button", onclick: () => revoirCalcul(l) }, tr("Revoir le calcul")) : null)
+      h("div", { class: "actions" }, bouton, !simple && peut("partenaires.nets") && !ancien && !(l.manque || []).includes("service_supprime") ? h("button", { class: "lien", type: "button", onclick: () => revoirCalcul(l) }, tr("Revoir le calcul")) : null)
     );
   }
 
@@ -171,6 +194,70 @@ export async function vueFiduciaire() {
     );
   }
 
+  // Réglages de la fiduciaire de l'entreprise ouverte (reglages.fiduciaire) : ce qui demandait un développeur (audit du 16.11.2026, section 2).
+  // L'émetteur, le compte et le QR code viennent des Réglages de l'entreprise ; ils sont copiés sur chaque facture le jour de l'émission.
+  function blocReglages() {
+    if (simple || !(peut("fiduciaire.gerer") && peut("reglages.ecrire"))) return null;
+    const r = reglages();
+    const f = reglagesFid(r);
+    const brut = (r.fiduciaire || {});
+    const entreprise = (entiteActive() || {}).nom || "";
+    const id = (k) => `fid-reg-${k}`;
+    // Les champs sont gardés ici : l'écran n'est pas encore dans la page au premier affichage (pas de document.getElementById).
+    const champs = {};
+    const texte = (k, aide) => champ(LIBELLES_REGLAGES[k](), (champs[k] = h("input", { type: "text", id: id(k), value: typeof brut[k] === "string" ? brut[k] : "", placeholder: FID_DEFAUT[k], maxlength: k.startsWith("prefixe") ? 12 : 60, disabled: !etatEcran.m31 })), aide);
+    const caseActif = h("input", { type: "checkbox", id: id("actif"), checked: f.actif, disabled: !etatEcran.m31 });
+    const depuis = h("input", { type: "date", id: id("depuis"), value: f.depuis || "", disabled: !etatEcran.m31 });
+    const exemple = h("p", { class: "aide" });
+    const montrerExemple = () => {
+      const val = (k) => (champs[k] && champs[k].value) || FID_DEFAUT[k];
+      const annee = aujourdhui().slice(0, 4);
+      exemple.textContent = tr("Exemple de numéros, {facture} pour une facture et {avoir} pour un avoir.", { facture: formaterNumero("facture", annee, 1, val("prefixe_facture").trim()), avoir: formaterNumero("avoir", annee, 1, val("prefixe_avoir").trim()) });
+    };
+    const enregistrer = async (e) => {
+      e.preventDefault();
+      const lu = (k) => ((champs[k] && champs[k].value) || "").trim();
+      const pf = lu("prefixe_facture") || FID_DEFAUT.prefixe_facture;
+      const pa = lu("prefixe_avoir") || FID_DEFAUT.prefixe_avoir;
+      if (![pf, pa].every((x) => /^[A-Za-z0-9-]{1,12}$/.test(x))) return toast(tr("Un préfixe ne contient que des lettres, des chiffres ou des tirets (12 au plus)."), true);
+      if (pf.toUpperCase() === pa.toUpperCase()) return toast(tr("Les factures et les avoirs ont chacun leur préfixe."), true);
+      const nouveau = { actif: caseActif.checked, depuis: depuis.value || "" };
+      for (const k of Object.keys(FID_DEFAUT)) if (k !== "depuis") { const v = lu(k); if (v && v !== FID_DEFAUT[k]) nouveau[k] = v; }
+      if (f.actif && !nouveau.actif && !(await confirmer(tr("Arrêter les factures pour la fiduciaire dans {entreprise} ? Plus aucune facture ne sera proposée ; celles déjà émises restent et se corrigent par un avoir.", { entreprise }), tr("Arrêter"), true))) return;
+      if ((pf !== f.prefixe_facture || pa !== f.prefixe_avoir) && etatEcran.liste.length && !(await confirmer(tr("Changer de préfixe démarre une nouvelle série de numéros, à partir de 1. Les factures déjà émises gardent leur numéro. Continuer ?"), tr("Changer")))) return;
+      try {
+        await enregistrerReglages({ ...structuredClone(r), fiduciaire: nouveau });
+        toast(tr("Réglages de la fiduciaire enregistrés."));
+        etatEcran.reglagesOuverts = true;
+        await agir(async () => null, null);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    };
+    const details = h(
+      "details",
+      { class: "fid-reglages", open: etatEcran.reglagesOuverts || undefined, ontoggle: (e) => { etatEcran.reglagesOuverts = e.target.open; } },
+      h("summary", null, tr("Réglages des factures pour la fiduciaire")),
+      h(
+        "form",
+        { class: "fid-reglages-corps", oninput: montrerExemple, onsubmit: enregistrer },
+        etatEcran.m31 ? null : h("p", { class: "avertissement" }, tr("Ces réglages ne s'appliquent pas encore, la base attend sa mise à jour (migration 31).")),
+        h("label", { class: "case", for: id("actif") }, caseActif, " ", tr("{entreprise} émet des factures pour la fiduciaire", { entreprise })),
+        h("p", { class: "aide" }, tr("Case décochée, aucune facture n'est proposée dans cette entreprise. Ce qui a déjà été facturé reste ici et se corrige par un avoir.")),
+        champ(tr("Date de départ"), depuis, tr("Un service reçu avant cette date et jamais facturé n'est pas proposé. Laissée vide, la date ne limite rien.")),
+        h("div", { class: "fid-reglages-grille" }, texte("prefixe_facture"), texte("prefixe_avoir")),
+        exemple,
+        h("div", { class: "fid-reglages-grille" }, texte("titre_facture"), texte("titre_avoir"), texte("ref_facture"), texte("ref_avoir")),
+        h("div", { class: "fid-reglages-grille" }, texte("mot_commission", tr("Pour un service payé sur place, la commission reçue du prestataire.")), texte("mot_marge", tr("Pour un service payé chez nous, la marge (prix de vente moins net payé)."))),
+        h("p", { class: "aide" }, tr("L'émetteur est {nom}. Son identité, son compte bancaire et son QR code se règlent dans Réglages. Ils sont copiés sur chaque facture le jour de l'émission, les changer ensuite ne modifie pas les factures déjà émises.", { nom: (r.emetteur || {}).nom || entreprise })),
+        h("p", { class: "aide" }, tr("Les textes de la facture sont en anglais, la fiduciaire les lit tels quels. Un champ vide reprend le texte par défaut.")),
+        h("div", { class: "actions" }, h("button", { class: "principal", type: "submit", disabled: !etatEcran.m31 }, tr("Enregistrer")))
+      )
+    );
+    montrerExemple();
+    return details;
+  }
+
   function rendre() {
     if (!etatEcran.choisies.size) document.documentElement.classList.remove("a-barre-action");
     const f = etatEcran.filtres;
@@ -181,9 +268,13 @@ export async function vueFiduciaire() {
     const mois = [...new Set(etatEcran.liste.map((x) => String(x.date_facture).slice(0, 7)))].sort().reverse();
     const nomMois = (m) => { const [a, mm] = m.split("-"); return simple ? `${mm}/${a}` : `${formatDate(`${m}-01`).replace(/^\d+\s/, "")}`; };
     const choix = (id, libelle, options, valeur, onchange) => h("label", { class: "fid-filtre", for: id }, h("span", null, libelle), h("select", { id, onchange: (e) => onchange(e.target.value) }, options.map(([v, l]) => h("option", { value: v, selected: v === valeur }, l))));
-    racine.replaceChildren(
+    const actif = reglagesFid(reglages()).actif;
+    // replaceChildren écrirait « null » : les blocs absents sont retirés.
+    racine.replaceChildren(...[
       h("div", { class: "entete" }, h("div", null, h("h1", null, titre), h("p", { class: "sous" }, simple ? TH.intro.th : tr("Une facture par service, adressée à l'entreprise prestataire, pour la seule part qui revient à l'agence : la commission reçue, ou la marge quand le client a payé chez nous. Jamais ce que le client a payé en tout.")))),
-      h(
+      actif ? null : h("p", { class: "avertissement fid-inactif" }, t("inactif", tr("{entreprise} n'émet pas de factures pour la fiduciaire. Ce qui a déjà été facturé reste ici et se corrige par un avoir.", { entreprise: (entiteActive() || {}).nom || "" }))),
+      // Entreprise inactive sans rien à corriger : pas de bloc « À préparer », dont le texte d'aide laisserait croire que des factures viendront.
+      !actif && !aPreparer.length ? null : h(
         "section",
         { class: "fid-bloc", "aria-labelledby": "fid-titre-prep" },
         h("div", { class: "fid-bloc-tete" }, h("h2", { id: "fid-titre-prep" }, t("a_preparer", tr("À préparer")), aPreparer.length ? h("span", { class: "badge-compte" }, String(aPreparer.length)) : null), factures.length > 1 ? h("button", { class: "secondaire", type: "button", disabled: etatEcran.occupe, onclick: async () => { if (!(await confirmer(t("confirmer_tout", tr("Créer {n} factures ? Leurs numéros se suivent et une facture émise ne se supprime pas : une erreur se corrige par un avoir.", { n: factures.length }), { n: factures.length }), t("creer", tr("Créer la facture")), false, simple ? "✕" : tr("Annuler")))) return; agir(async () => { let n = 0; try { for (const l of factures) { await etat.store.fiduciaireEmettre(l.reservation_id, null, "facture"); n++; } } catch (err) { throw new Error(n ? `${err.message} (${tr("{n} facture(s) créée(s) avant l'erreur", { n })})` : err.message); } return n; }, (n) => t("creees", tr("{n} facture(s) créée(s).", { n }), { n })); } }, t("creer_tout", tr("Tout créer ({n})", { n: factures.length }), { n: factures.length })) : null),
@@ -211,8 +302,9 @@ export async function vueFiduciaire() {
               ),
             ]
           : vide(t("aucune", tr("Aucune facture pour le moment")), simple ? "" : tr("Les factures créées apparaissent ici, à télécharger et à marquer comme envoyées."))
-      )
-    );
+      ),
+      blocReglages(),
+    ].filter(Boolean));
   }
 
   let pret;
