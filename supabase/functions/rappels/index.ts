@@ -1,6 +1,6 @@
-// Fonction planifiée « rappels ». Façons de l'appeler (heure de Bangkok) :
+// Fonction planifiée « rappels ». Façons de l'appeler (heure locale de chaque organisation, organisations.fuseau, Bangkok par défaut) :
 // - { "type": "auto" } chaque heure par pg_cron : elle envoie le rappel de la veille et celui du lendemain des entreprises dont l'heure réglée
-//   (Réglages > rappels, 18 h et 9 h par défaut) est l'heure qu'il est à Bangkok (lot G, 17.11.2026), et avec le passage de la veille le départ
+//   (Réglages > rappels, 18 h et 9 h par défaut) est l'heure qu'il est dans le fuseau de son organisation (lot G, 17.11.2026 ; fuseau : étape 3 du SaaS), et avec le passage de la veille le départ
 //   de demain de chaque voyage ZTP (migration 31) ;
 // - { "type": "veille" } ou { "type": "lendemain" } : envoi forcé, à toute heure, pour toutes les entreprises où ce rappel n'est pas coupé
 //   (les crons de 18h et 9h posés avant le lot G, et les essais) ; la veille envoie aussi les départs ZTP de demain ;
@@ -10,7 +10,7 @@
 // puis envoie une notification Web Push à chacun de ses appareils abonnés. Les résumés de la veille et du lendemain ne contiennent aucun nom de client.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
-import { dateBangkok, dateCible, entitesLisibles, rappelDuType, heureBangkok, entitesDuRappel, entitesDuDepart, restreindre, TYPES, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
+import { dateDans, heureDans, fuseauValide, dateCible, entitesLisibles, rappelDuType, entitesDuRappel, entitesDuDepart, restreindre, TYPES, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
 
@@ -54,57 +54,66 @@ Deno.serve(async (req) => {
   if (qui === "admin") return json({ erreur: "non autorisé" }, 401);
   if (type === "h1") return rappelH1(demande);
   if (type !== "auto" && !TYPES.includes(type)) return json({ erreur: "type inconnu" }, 400);
-  // `date`, `heure` et `user_id` ne servent qu'aux essais : sans eux, c'est la date et l'heure de Bangkok et tous les abonnés.
-  const aujourdhui = /^\d{4}-\d{2}-\d{2}$/.test(demande.date || "") ? demande.date : dateBangkok();
-  const heure = type === "auto" ? (Number.isInteger(demande.heure) && demande.heure >= 0 && demande.heure <= 23 ? demande.heure : heureBangkok()) : null;
+  // `date`, `heure` et `user_id` ne servent qu'aux essais : sans eux, c'est la date et l'heure locales de chaque organisation et tous les abonnés.
+  const dateEssai = /^\d{4}-\d{2}-\d{2}$/.test(demande.date || "") ? demande.date : null;
+  const heureEssai = Number.isInteger(demande.heure) && demande.heure >= 0 && demande.heure <= 23 ? demande.heure : null;
 
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
 
   // Les réglages de chaque entreprise : heures des rappels (valeur.rappels) et rappel du départ (ZTP). Sans lecture possible, l'appel s'arrête et le dit :
-  // mieux vaut aucun rappel qu'un rappel à la mauvaise heure.
-  const [entites, reglages] = await Promise.all([db.from("entites").select("id, nom, organisation_id"), db.from("reglages").select("entite_id, valeur")]);
-  if (entites.error || reglages.error) return json({ erreur: (entites.error || reglages.error)!.message }, 500);
+  // mieux vaut aucun rappel qu'un rappel à la mauvaise heure. Le fuseau vient de l'organisation (migration 41).
+  const [entites, reglages, organisations] = await Promise.all([db.from("entites").select("id, nom, organisation_id"), db.from("reglages").select("entite_id, valeur"), db.from("organisations").select("id, fuseau")]);
+  if (entites.error || reglages.error || organisations.error) return json({ erreur: (entites.error || reglages.error || organisations.error)!.message }, 500);
   const valeurs = Object.fromEntries((reglages.data || []).map((r) => [r.entite_id, r.valeur]));
   const parEntite = Object.fromEntries(Object.entries(valeurs).map(([id, v]) => [id, v && typeof v === "object" ? (v as { rappels?: unknown }).rappels : undefined]));
-  const ids = (entites.data || []).map((e) => e.id);
+  const fuseauOrg = new Map((organisations.data || []).map((o) => [o.id, fuseauValide(o.fuseau)]));
 
+  // Une passe par organisation : sa date et son heure locales, ses entreprises, sa ligne de suivi. À 11 h UTC, 18 h à Bangkok et midi à Zurich.
   const resultats = [];
-  for (const t of type === "auto" ? TYPES : [type]) {
-    const retenues = entitesDuRappel(t, heure, ids, parEntite);
-    // Le départ de demain (ZTP) part avec le passage de la veille, à l'heure de la veille de l'entreprise (18 h si elle est coupée : il a son propre réglage).
-    const departs = t === "veille" ? entitesDuDepart(heure, ids, valeurs) : [];
-    if (!retenues.length && !departs.length) continue;
-    const cible = dateCible(t, aujourdhui)!;
-    // Chaque envoi laisse une ligne de suivi (date, type, envoyés, échecs, erreur) : « le cron a réussi » ne dit que la requête est partie, pas que les
-    // rappels ont été envoyés (le 11.11.2026 la requête a expiré après 5 s sans que personne le sache). Les essais ciblés (`user_id`) ne sont pas notés.
-    // Une heure où aucune entreprise n'a de rappel ne laisse pas de ligne.
-    const debut = Date.now();
-    let res = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0 };
-    let erreur = "";
-    if (retenues.length) {
-      try {
-        res = await executer(db, t, aujourdhui, cible, demande, retenues, entites.data || []);
-      } catch (err) {
-        erreur = String((err && err.message) || err).slice(0, 300);
+  const parOrganisation = new Map<string, string[]>();
+  for (const e of entites.data || []) parOrganisation.set(e.organisation_id, [...(parOrganisation.get(e.organisation_id) || []), e.id]);
+  for (const [org, ids] of parOrganisation) {
+    const fuseau = fuseauOrg.get(org) || fuseauValide(null);
+    const maintenant = new Date();
+    const aujourdhui = dateEssai || dateDans(fuseau, maintenant);
+    const heure = type === "auto" ? (heureEssai ?? heureDans(fuseau, maintenant)) : null;
+    for (const t of type === "auto" ? TYPES : [type]) {
+      const retenues = entitesDuRappel(t, heure, ids, parEntite);
+      // Le départ de demain (ZTP) part avec le passage de la veille, à l'heure de la veille de l'entreprise (18 h si elle est coupée : il a son propre réglage).
+      const departs = t === "veille" ? entitesDuDepart(heure, ids, valeurs) : [];
+      if (!retenues.length && !departs.length) continue;
+      const cible = dateCible(t, aujourdhui)!;
+      // Chaque envoi laisse une ligne de suivi (date, type, envoyés, échecs, erreur) : « le cron a réussi » ne dit que la requête est partie, pas que les
+      // rappels ont été envoyés (le 11.11.2026 la requête a expiré après 5 s sans que personne le sache). Les essais ciblés (`user_id`) ne sont pas notés.
+      // Une heure où aucune entreprise n'a de rappel ne laisse pas de ligne.
+      const debut = Date.now();
+      let res = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0 };
+      let erreur = "";
+      if (retenues.length) {
+        try {
+          res = await executer(db, t, aujourdhui, cible, demande, retenues, entites.data || []);
+        } catch (err) {
+          erreur = String((err && err.message) || err).slice(0, 300);
+        }
       }
-    }
-    // À part : une panne du résumé ne prive pas les départs de leur rappel, et inversement.
-    if (departs.length) {
-      try {
-        const dep = await executerDeparts(db, cible, demande, departs);
-        res = { abonnements: Math.max(res.abonnements, dep.abonnements), envoyes: res.envoyes + dep.envoyes, retires: res.retires + dep.retires, echecs: res.echecs + dep.echecs };
-      } catch (err) {
-        erreur = [erreur, `départs : ${String((err && err.message) || err)}`].filter(Boolean).join(" ; ").slice(0, 300);
+      // À part : une panne du résumé ne prive pas les départs de leur rappel, et inversement.
+      if (departs.length) {
+        try {
+          const dep = await executerDeparts(db, cible, demande, departs);
+          res = { abonnements: Math.max(res.abonnements, dep.abonnements), envoyes: res.envoyes + dep.envoyes, retires: res.retires + dep.retires, echecs: res.echecs + dep.echecs };
+        } catch (err) {
+          erreur = [erreur, `départs : ${String((err && err.message) || err)}`].filter(Boolean).join(" ; ").slice(0, 300);
+        }
       }
+      if (!demande.user_id) {
+        const { error } = await db.from("rappels_suivi").insert({ type: t, cible, ...res, erreur, duree_ms: Date.now() - debut, organisation_id: org });
+        if (error) console.error("suivi des rappels non écrit :", error.message);
+      }
+      resultats.push({ organisation: org, fuseau, heure, type: t, cible, ...res, ...(erreur ? { erreur } : {}) });
     }
-    if (!demande.user_id) {
-      const { error } = await db.from("rappels_suivi").insert({ type: t, cible, ...res, erreur, duree_ms: Date.now() - debut });
-      if (error) console.error("suivi des rappels non écrit :", error.message);
-    }
-    resultats.push({ type: t, cible, ...res, ...(erreur ? { erreur } : {}) });
   }
-  return json({ heure, resultats }, resultats.some((r) => r.erreur) ? 500 : 200);
+  return json({ resultats }, resultats.some((r) => r.erreur) ? 500 : 200);
 });
 
 // Envoie les rappels d'un type pour une date cible, pour les entreprises `retenues`, et renvoie les comptes. Lève une erreur si la base répond mal : l'appelant la note.
@@ -167,32 +176,46 @@ async function executer(db: ReturnType<typeof createClient>, type: string, aujou
 // ---- Rappel une heure avant chaque service ----------------------------------------------------------------------------------------------
 // `maintenant` (ISO) et `user_id` ne servent qu'aux essais. Une exécution sans service à rappeler ne laisse pas de ligne de suivi (il y en aurait 288 par jour) ;
 // un envoi ou une erreur en laisse une, comme les rappels de 18h et 9h.
+// Une passe par organisation, à l'heure de son fuseau, avec sa ligne de suivi.
 async function rappelH1(demande: { maintenant?: string; user_id?: string }) {
   const maintenant = demande.maintenant && !Number.isNaN(Date.parse(demande.maintenant)) ? Date.parse(demande.maintenant) : Date.now();
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  const debut = Date.now();
-  let res = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0, services: 0 };
-  let erreur = "";
-  try {
-    res = await executerH1(db, maintenant, demande);
-  } catch (err) {
-    erreur = String((err && err.message) || err).slice(0, 300);
+  const [entites, organisations] = await Promise.all([db.from("entites").select("id, organisation_id"), db.from("organisations").select("id, fuseau")]);
+  if (entites.error || organisations.error) return json({ type: "h1", erreur: (entites.error || organisations.error)!.message }, 500);
+  const fuseauOrg = new Map((organisations.data || []).map((o) => [o.id, fuseauValide(o.fuseau)]));
+  const parOrganisation = new Map<string, string[]>();
+  for (const e of entites.data || []) parOrganisation.set(e.organisation_id, [...(parOrganisation.get(e.organisation_id) || []), e.id]);
+  const total = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0, services: 0 };
+  const erreurs: string[] = [];
+  for (const [org, ids] of parOrganisation) {
+    const fuseau = fuseauOrg.get(org) || fuseauValide(null);
+    const debut = Date.now();
+    let res = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0, services: 0 };
+    let erreur = "";
+    try {
+      res = await executerH1(db, maintenant, demande, ids, fuseau);
+    } catch (err) {
+      erreur = String((err && err.message) || err).slice(0, 300);
+    }
+    if (!demande.user_id && (res.envoyes || res.echecs || erreur)) await noterSuiviH1(db, maintenant, res, erreur, debut, org, fuseau);
+    for (const k of Object.keys(total) as (keyof typeof total)[]) total[k] += res[k];
+    if (erreur) erreurs.push(erreur);
   }
-  if (!demande.user_id && (res.envoyes || res.echecs || erreur)) await noterSuiviH1(db, maintenant, res, erreur, debut);
-  return json({ type: "h1", ...res, ...(erreur ? { erreur } : {}) }, erreur ? 500 : 200);
+  const erreur = erreurs.join(" ; ").slice(0, 300);
+  return json({ type: "h1", ...total, ...(erreur ? { erreur } : {}) }, erreur ? 500 : 200);
 }
 
-async function noterSuiviH1(db: ReturnType<typeof createClient>, maintenant: number, res: { abonnements: number; envoyes: number; retires: number; echecs: number }, erreur: string, debut: number) {
+async function noterSuiviH1(db: ReturnType<typeof createClient>, maintenant: number, res: { abonnements: number; envoyes: number; retires: number; echecs: number }, erreur: string, debut: number, organisation: string | null, fuseau: string) {
   const { abonnements, envoyes, retires, echecs } = res;
-  const { error } = await db.from("rappels_suivi").insert({ type: "h1", cible: dateBangkok(new Date(maintenant)), abonnements, envoyes, retires, echecs, erreur, duree_ms: Date.now() - debut });
+  const { error } = await db.from("rappels_suivi").insert({ type: "h1", cible: dateDans(fuseau, new Date(maintenant)), abonnements, envoyes, retires, echecs, erreur, duree_ms: Date.now() - debut, ...(organisation ? { organisation_id: organisation } : {}) });
   if (error) console.error("suivi du rappel h1 non écrit :", error.message);
 }
 
-async function executerH1(db: ReturnType<typeof createClient>, maintenant: number, demande: { user_id?: string }) {
+async function executerH1(db: ReturnType<typeof createClient>, maintenant: number, demande: { user_id?: string }, entiteIds: string[], fuseau: string) {
   const vide = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0, services: 0 };
   const [reglages, reservations] = await Promise.all([
-    db.from("reglages").select("entite_id, valeur"),
-    db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, lieu_pickup, personnes, details").in("date_service", datesH1(maintenant)).neq("statut", "annule"),
+    db.from("reglages").select("entite_id, valeur").in("entite_id", entiteIds),
+    db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, lieu_pickup, personnes, details").in("entite_id", entiteIds).in("date_service", datesH1(maintenant, [fuseau])).neq("statut", "annule"),
   ]);
   for (const r of [reglages, reservations]) if (r.error) throw new Error(r.error.message);
   // Seules les entreprises de services (Secret, Taxi) qui ont le rappel allumé ; ZTP a le sien la veille du départ, pas un par service.
@@ -202,7 +225,7 @@ async function executerH1(db: ReturnType<typeof createClient>, maintenant: numbe
   const dossiersIds = [...new Set(candidates.map((r) => r.dossier_id))];
   const dossiers = await db.from("dossiers").select("id, annule, client_id").in("id", dossiersIds);
   if (dossiers.error) throw new Error(dossiers.error.message);
-  const aRappeler = servicesH1(candidates, maintenant, { ecartes: new Set((dossiers.data || []).filter((d) => d.annule).map((d) => d.id)) });
+  const aRappeler = servicesH1(candidates, maintenant, { ecartes: new Set((dossiers.data || []).filter((d) => d.annule).map((d) => d.id)), fuseauDe: () => fuseau });
   if (!aRappeler.length) return vide;
   return envoyerH1(db, aRappeler, dossiers.data || [], { essai: !!demande.user_id, userId: demande.user_id, force: false });
 }
@@ -227,17 +250,19 @@ async function rappelForce(demande: { service_id?: string; maintenant?: string }
   const lue = await db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, lieu_pickup, personnes, details").eq("id", demande.service_id).maybeSingle();
   if (lue.error) return json({ erreur: lue.error.message }, 500);
   if (!lue.data) return json({ erreur: "service_introuvable" }, 404);
-  if (organisation !== null) {
-    const ent = await db.from("entites").select("organisation_id").eq("id", lue.data.entite_id).maybeSingle();
-    // Même réponse qu'un service absent : une autre organisation n'apprend pas qu'il existe.
-    if (!organisation || ent.error || !ent.data || ent.data.organisation_id !== organisation) return json({ erreur: "service_introuvable" }, 404);
-  }
+  const ent = await db.from("entites").select("organisation_id").eq("id", lue.data.entite_id).maybeSingle();
+  if (ent.error) return json({ erreur: ent.error.message }, 500);
+  // Même réponse qu'un service absent : une autre organisation n'apprend pas qu'il existe.
+  if (organisation !== null && (!organisation || !ent.data || ent.data.organisation_id !== organisation)) return json({ erreur: "service_introuvable" }, 404);
+  const orgService = (ent.data && ent.data.organisation_id) || null;
+  const org = orgService ? await db.from("organisations").select("fuseau").eq("id", orgService).maybeSingle() : null;
+  const fuseau = fuseauValide(org && org.data ? org.data.fuseau : null);
   const [dossier, reglages] = await Promise.all([
     db.from("dossiers").select("id, annule, client_id").eq("id", lue.data.dossier_id).maybeSingle(),
     db.from("reglages").select("valeur").eq("entite_id", lue.data.entite_id).maybeSingle(),
   ]);
   if (dossier.error || reglages.error) return json({ erreur: (dossier.error || reglages.error)!.message }, 500);
-  const choix = serviceForce(lue.data, maintenant, { dossierAnnule: !!(dossier.data && dossier.data.annule), reglages: reglages.data ? reglages.data.valeur : null });
+  const choix = serviceForce(lue.data, maintenant, { dossierAnnule: !!(dossier.data && dossier.data.annule), reglages: reglages.data ? reglages.data.valeur : null, fuseau });
   if (choix.erreur) return json({ erreur: choix.erreur }, 409);
   let res = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0, services: 0 };
   let erreur = "";
@@ -246,7 +271,7 @@ async function rappelForce(demande: { service_id?: string; maintenant?: string }
   } catch (err) {
     erreur = String((err && err.message) || err).slice(0, 300);
   }
-  await noterSuiviH1(db, maintenant, res, erreur, debut);
+  await noterSuiviH1(db, maintenant, res, erreur, debut, orgService, fuseau);
   const m = messageH1(choix.service, { client: "" });
   return json({ type: "h1", force: true, service: { id: lue.data.id, libelle: lue.data.libelle, debut: new Date(choix.service.debut).toISOString(), quand: m.titre.split(" : ")[0] }, ...res, ...(erreur ? { erreur } : {}) }, erreur ? 500 : 200);
 }

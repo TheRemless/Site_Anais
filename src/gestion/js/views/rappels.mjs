@@ -1,13 +1,15 @@
 // Fenêtre « Rappels » : activer ou couper les notifications de ce téléphone, son propre « Rappel 1 h avant » (migration 31, réglage du profil)
 // et, pour l'administratrice, les heures des rappels dans l'entreprise ouverte (lot G).
-import { etat, estAdmin, reglages, enregistrerReglages, entiteActive } from "../etat.mjs";
+import { etat, estAdmin, reglages, enregistrerReglages, entiteActive, organisation } from "../etat.mjs";
+
+const fuseauOrganisation = () => (organisation() || {}).fuseau || "Asia/Bangkok";
 import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { tr } from "../i18n.mjs";
 import { situation, activer, desactiver, essai } from "../rappels.mjs";
 import { heuresRappels, heureDepart } from "../rappels-etat.mjs";
 
-// Heures de l'entreprise ouverte (Bangkok). La fonction passe chaque heure et envoie les rappels des entreprises réglées sur cette heure-là.
+// Heures de l'entreprise ouverte, dans le fuseau de son organisation (Bangkok par défaut). La fonction passe chaque heure et envoie les rappels des entreprises réglées sur cette heure-là.
 function reglageHeures(apres) {
   const hrs = heuresRappels(reglages().rappels);
   const choix = (id, valeur) => h("select", { id }, h("option", { value: "", selected: valeur === null }, tr("Coupé")), Array.from({ length: 24 }, (_, n) => h("option", { value: String(n), selected: valeur === n }, `${n} h`)));
@@ -30,7 +32,7 @@ function reglageHeures(apres) {
       },
     },
     h("h3", null, tr("Heures des rappels de {nom}", { nom: entiteActive().nom })),
-    h("p", { class: "aide" }, tr("Heure de Bangkok. Elles valent pour tous les téléphones abonnés qui voient cette entreprise.")),
+    h("p", { class: "aide" }, tr("Heure de votre organisation ({fuseau}). Elles valent pour tous les téléphones abonnés qui voient cette entreprise.", { fuseau: fuseauOrganisation() })),
     h("div", { class: "grille-form" }, champ(tr("La veille"), veille), champ(tr("Le lendemain"), lendemain)),
     h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "submit" }, tr("Enregistrer les heures")))
   );
@@ -108,7 +110,7 @@ export function ouvrirRappels() {
         modeRappel(reglages()) === "depart" ? h("li", null, h("strong", null, tr("{heure}, la veille du départ", { heure: `${heureDepart(reglages().rappels)} h` })), " ", tr("Chaque voyage accepté qui part le lendemain : un tap ouvre le dossier.")) : h("li", null, h("strong", null, tr("1 h avant")), " ", tr("Chaque service qui a une heure : un tap ouvre la réservation et son rappel.")),
         h("li", null, h("strong", null, hrs.lendemain === null ? tr("Le lendemain : coupé") : tr("{heure}, le lendemain", { heure: `${hrs.lendemain} h` })), " ", tr("Les clients dont un service a eu lieu la veille, à recontacter pour avoir leur avis."))
       ),
-      h("p", { class: "aide" }, tr("Heure de Bangkok. Les rappels du soir et du matin ne contiennent aucun nom de client ; ceux d'une heure avant et de la veille du départ le contiennent, lisible une fois le téléphone déverrouillé.")),
+      h("p", { class: "aide" }, tr("Heure de votre organisation ({fuseau}). Les rappels du soir et du matin ne contiennent aucun nom de client ; ceux d'une heure avant et de la veille du départ le contiennent, lisible une fois le téléphone déverrouillé.", { fuseau: fuseauOrganisation() })),
       h("p", { class: "rappels-etat", role: "status" }, etatTexte),
       h("div", { class: "actions gauche" },
         s === "inactif" ? actionner(tr("Activer les rappels"), "principal", async () => { const reg = await activer(etat.store); await essai(reg); }, tr("Rappels activés sur cet appareil.")) : null,

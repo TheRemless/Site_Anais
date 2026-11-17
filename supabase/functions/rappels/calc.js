@@ -1,11 +1,50 @@
-// Rappels de Gestion : la logique pure (dates et heures à Bangkok, heures réglées par entreprise, quelles entreprises voit une personne,
+// Rappels de Gestion : la logique pure (dates et heures dans le fuseau de chaque organisation, heures réglées par entreprise, quelles entreprises voit une personne,
 // texte des deux notifications dans sa langue).
 // Aucune dépendance : le même fichier sert à la fonction Supabase et aux tests. Pas de nom de client dans les textes,
 // car une notification passe par les serveurs d'Apple et de Google.
 
-const DECALAGE_BANGKOK = 7 * 3600 * 1000;
+// Fuseau de chaque organisation (organisations.fuseau, migration 41). Bangkok par défaut et pour un fuseau inconnu. Les heures d'été sont gérées
+// (Intl), contrairement à l'ancien décalage fixe de +7 h qui ne valait que pour Bangkok.
+export const FUSEAU_DEFAUT = "Asia/Bangkok";
+const formats = new Map();
+function format(fuseau) {
+  if (!formats.has(fuseau)) formats.set(fuseau, new Intl.DateTimeFormat("en-CA", { timeZone: fuseau, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }));
+  return formats.get(fuseau);
+}
+export function fuseauValide(z) {
+  try {
+    if (typeof z === "string" && z) {
+      format(z);
+      return z;
+    }
+  } catch {
+    // Fuseau inconnu : celui par défaut.
+  }
+  return FUSEAU_DEFAUT;
+}
+function parties(fuseau, ms) {
+  const o = {};
+  for (const p of format(fuseauValide(fuseau)).formatToParts(new Date(ms))) o[p.type] = p.value;
+  return o;
+}
+export const dateDans = (fuseau, d = new Date()) => {
+  const p = parties(fuseau, d.getTime());
+  return `${p.year}-${p.month}-${p.day}`;
+};
+export const heureDans = (fuseau, d = new Date()) => Number(parties(fuseau, d.getTime()).hour) % 24;
+// Décalage du fuseau sur UTC à cet instant (ms).
+const decalageDans = (fuseau, ms) => {
+  const p = parties(fuseau, ms);
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second) - Math.floor(ms / 1000) * 1000;
+};
+// Instant UTC (ms) d'une date et d'une heure locales dans ce fuseau.
+export function instantLocal(fuseau, a, m, j, h, mi) {
+  const naif = Date.UTC(a, m - 1, j, h, mi);
+  const t = naif - decalageDans(fuseau, naif);
+  return naif - decalageDans(fuseau, t);
+}
 
-export const dateBangkok = (d = new Date()) => new Date(d.getTime() + DECALAGE_BANGKOK).toISOString().slice(0, 10);
+export const dateBangkok = (d = new Date()) => dateDans(FUSEAU_DEFAUT, d);
 export const decaler = (iso, n) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) + n * 86400000).toISOString().slice(0, 10);
 
 // Textes des notifications dans la langue de la personne (profils.langue, français par défaut). Les rôles « vouchers.seul » (écran thaï) n'en reçoivent pas.
@@ -31,7 +70,7 @@ export function heuresRappels(reglage) {
   const heure = (v, defaut) => (v === undefined ? defaut : v === null || v === false || v === "" ? null : Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 23 ? Number(v) : defaut);
   return { veille: heure(r.veille, HEURES_DEFAUT.veille), lendemain: heure(r.lendemain, HEURES_DEFAUT.lendemain) };
 }
-export const heureBangkok = (d = new Date()) => new Date(d.getTime() + DECALAGE_BANGKOK).getUTCHours();
+export const heureBangkok = (d = new Date()) => heureDans(FUSEAU_DEFAUT, d);
 
 // Les entreprises dont le rappel `type` part à cette heure (`heure` = null : à toute heure, pour un envoi forcé), d'après { entite_id: réglage rappels }.
 // Une entreprise où ce rappel est coupé n'est jamais retenue.
@@ -128,12 +167,12 @@ export function heureService(r) {
   return null;
 }
 
-// Instant du début du service (millisecondes UTC). Bangkok est à UTC+7 toute l'année.
-export function debutService(r) {
+// Instant du début du service (millisecondes UTC), à l'heure du fuseau de son organisation (Bangkok par défaut).
+export function debutService(r, fuseau = FUSEAU_DEFAUT) {
   const h = heureService(r);
   if (!h || !/^\d{4}-\d{2}-\d{2}$/.test((r && r.date_service) || "")) return null;
   const [a, m, j] = r.date_service.split("-").map(Number);
-  return Date.UTC(a, m - 1, j, +h.slice(0, 2), +h.slice(3, 5)) - DECALAGE_BANGKOK;
+  return instantLocal(fuseau, a, m, j, +h.slice(0, 2), +h.slice(3, 5));
 }
 
 // Réglage de l'entreprise (valeur.rappels.h1), allumé par défaut partout. Ce qu'il rappelle dépend du métier (Jérémy, 17.11.2026) :
@@ -160,11 +199,12 @@ export function entitesDuDepart(heure, entiteIds, valeurs = {}) {
 }
 
 // Services à notifier maintenant : pas annulés, dossier pas annulé, pas des frais de parc, avec une heure, début dans la fenêtre.
-export function servicesH1(reservations, maintenant, { ecartes = new Set(), fenetre = FENETRE_H1 } = {}) {
+// `fuseauDe(entite_id)` : le fuseau de l'organisation de l'entreprise du service.
+export function servicesH1(reservations, maintenant, { ecartes = new Set(), fenetre = FENETRE_H1, fuseauDe = () => FUSEAU_DEFAUT } = {}) {
   const out = [];
   for (const r of reservations) {
     if (r.statut === "annule" || ecartes.has(r.dossier_id) || estFraisDeParc(r)) continue;
-    const debut = debutService(r);
+    const debut = debutService(r, fuseauDe(r.entite_id));
     if (debut === null) continue;
     const minutes = Math.round((debut - maintenant) / 60000);
     if (minutes <= fenetre.max && minutes >= fenetre.min) out.push({ reservation: r, debut, minutes });
@@ -172,10 +212,14 @@ export function servicesH1(reservations, maintenant, { ecartes = new Set(), fene
   return out.sort((a, b) => a.debut - b.debut);
 }
 
-// Dates à charger pour trouver les services de l'heure qui vient : aujourd'hui et demain à Bangkok (vers minuit, le service est déjà le lendemain).
-export const datesH1 = (maintenant) => {
-  const ajd = dateBangkok(new Date(maintenant));
-  return [ajd, decaler(ajd, 1)];
+// Dates à charger pour trouver les services de l'heure qui vient : aujourd'hui et demain dans chaque fuseau (vers minuit, le service est déjà le lendemain).
+export const datesH1 = (maintenant, fuseaux = [FUSEAU_DEFAUT]) => {
+  const dates = new Set();
+  for (const z of fuseaux.length ? fuseaux : [FUSEAU_DEFAUT]) {
+    const ajd = dateDans(z, new Date(maintenant));
+    dates.add(ajd).add(decaler(ajd, 1));
+  }
+  return [...dates].sort();
 };
 
 const personnesFr = (p = {}) => [p.adultes ? pluriel(p.adultes, ["adulte", "adultes"]) : "", p.enfants ? pluriel(p.enfants, ["enfant", "enfants"]) : "", p.bebes ? pluriel(p.bebes, ["bébé", "bébés"]) : ""].filter(Boolean).join(", ");
@@ -231,13 +275,13 @@ export function destinatairesH1({ profils, membres, roles, entites }, entiteId) 
 // Envoi forcé (après un déploiement, pour vérifier sur le téléphone d'Anaïs) : un service donné, tout de suite, hors de la fenêtre.
 // Mêmes refus que le cron, sauf l'heure : service annulé, dossier annulé, frais de parc, pas d'heure, entreprise sans rappel une heure avant.
 // Renvoie { service } (même forme que servicesH1) ou { erreur }.
-export function serviceForce(r, maintenant, { dossierAnnule = false, reglages = null } = {}) {
+export function serviceForce(r, maintenant, { dossierAnnule = false, reglages = null, fuseau = FUSEAU_DEFAUT } = {}) {
   if (!r) return { erreur: "service_introuvable" };
   if (r.statut === "annule" || dossierAnnule) return { erreur: "service_annule" };
   if (estFraisDeParc(r)) return { erreur: "frais_de_parc" };
   if (modeRappel(reglages) !== "service") return { erreur: "entreprise_sans_rappel_h1" };
   if (!rappelAvantActif(reglages)) return { erreur: "rappel_eteint" };
-  const debut = debutService(r);
+  const debut = debutService(r, fuseau);
   if (debut === null) return { erreur: "service_sans_heure" };
   return { service: { reservation: r, debut, minutes: Math.round((debut - maintenant) / 60000) } };
 }

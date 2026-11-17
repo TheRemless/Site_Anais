@@ -151,7 +151,7 @@ function blocOrganisation(rafraichir) {
         },
       },
       champ(tr("Nom de l'organisation"), nom),
-      champ(tr("Fuseau horaire"), fuseau, tr("Enregistré pour les rappels. Pour l'instant, ils partent encore à l'heure de Bangkok.")),
+      champ(tr("Fuseau horaire"), fuseau, tr("Les rappels partent à l'heure de ce fuseau, changements d'heure compris.")),
       champ(tr("Langue de départ"), langue, tr("Langue de l'interface pour les nouveaux comptes. Chacun peut ensuite choisir la sienne.")),
       h("div", { class: "actions" }, h("button", { type: "submit", class: "principal" }, tr("Enregistrer")))
     )
