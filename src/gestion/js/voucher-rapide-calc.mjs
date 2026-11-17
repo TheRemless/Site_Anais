@@ -169,10 +169,20 @@ export function donneesVoucher(v) {
   };
 }
 
-// Le partenaire d'une course : celui de l'entreprise dont le nom dit « taxi », sinon le premier actif (VIP Taxi Lanta n'en a qu'un).
-export function partenaireDeTaxi(partenaires = []) {
+// Le partenaire d'une course (le chauffeur, qui reçoit la commission) : celui choisi dans Réglages > Booking confirmation
+// (`reglages.taxi.chauffeur_id`, audit du 16.11.2026, n° 43), s'il est encore actif. Sans choix, la déduction d'avant sert de défaut : le seul
+// partenaire actif, sinon celui dont le nom dit « taxi », sinon le premier actif.
+export function partenaireDeTaxi(partenaires = [], choisiId = null) {
   const actifs = partenaires.filter((p) => p.actif !== false);
-  return actifs.find((p) => /taxi/i.test(p.nom || "")) || actifs[0] || null;
+  const choisi = choisiId ? actifs.find((p) => p.id === choisiId) : null;
+  return choisi || actifs.find((p) => /taxi/i.test(p.nom || "")) || actifs[0] || null;
+}
+// Le chauffeur réglé, lu dans les réglages de l'entreprise.
+export const chauffeurRegle = (reglages) => (reglages && reglages.taxi && reglages.taxi.chauffeur_id) || null;
+// Le choix est à faire quand plusieurs partenaires actifs pourraient recevoir les courses et qu'aucun n'est réglé (ou que le réglé est inactif).
+export function chauffeurAChoisir(partenaires = [], choisiId = null) {
+  const actifs = partenaires.filter((p) => p.actif !== false);
+  return actifs.length > 1 && !(choisiId && actifs.some((p) => p.id === choisiId));
 }
 
 // La ligne du prix interne de la course (jamais montré) : prix pour le véhicule, payé au chauffeur, sans prestation du catalogue.

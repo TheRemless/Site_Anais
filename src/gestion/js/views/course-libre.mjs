@@ -4,7 +4,7 @@
 import { etat, reglages } from "../etat.mjs";
 import { h, champ, modal, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
 import { uid } from "../defauts.mjs";
-import { valeursVides, suggestionsLieux, partenaireDeTaxi } from "../voucher-rapide-calc.mjs";
+import { valeursVides, suggestionsLieux, partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { erreursCourse, courseHorsCatalogue } from "../creation-voucher-calc.mjs";
 import { tr, N_ } from "../i18n.mjs";
 import { RETOUR_DEPART } from "../trajet-calc.mjs";
@@ -60,7 +60,7 @@ export function ouvrirCourseLibre({ date = "", onAjout }) {
         const erreurs = erreursCourse(valeurs);
         for (const [k, x] of Object.entries(c)) erreurChamp(x, erreurs[k] ? tr(ERREURS[erreurs[k]]) : null);
         if (focusPremiereErreur(form)) return;
-        const p = partenaireDeTaxi(etat.db.partenaires);
+        const p = partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages()));
         onAjout(courseHorsCatalogue(valeurs, { id: uid(), partenaireId: p ? p.id : null }));
         fermer();
       },

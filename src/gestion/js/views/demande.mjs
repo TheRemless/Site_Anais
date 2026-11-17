@@ -19,7 +19,7 @@ import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { boutonLireIA, boutonRedigerIA, badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
-import { partenaireDeTaxi } from "../voucher-rapide-calc.mjs";
+import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 
 // Brouillon passé à l'écran « Nouveau dossier » : lu une seule fois.
 let brouillon = null;
@@ -319,7 +319,7 @@ export function ouvrirDemande() {
       sv.ligneRetour = null;
       return;
     }
-    const p = modeTaxi() ? partenaireDeTaxi(etat.db.partenaires) : null;
+    const p = modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null;
     const dt = (sv.saisie && sv.saisie.details) || {};
     sv.ligneRetour = ligneRetourDepart({ lieu: (sv.saisie && sv.saisie.lieu) || (d && (d.pickup || d.hotel)) || "", programme: dt.programme_trajet || "", prix: sv.prixRetour, date: sv.date, partenaireId: p ? p.id : null }, sv.ligneRetour);
     const l = sv.ligneRetour;

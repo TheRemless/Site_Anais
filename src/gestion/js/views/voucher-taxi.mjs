@@ -1,8 +1,10 @@
 // Voucher de VIP Taxi Lanta : la « Booking confirmation » d'Anaïs reproduite d'après son modèle (12.11.2026).
 // Même chemin que les vouchers de Secret (image pour WhatsApp, PDF sur ordinateur) : renderVoucher() passe la main ici en mode taxi.
-// Toujours en anglais. Les textes du pied sont ceux du modèle, mot pour mot (taxi-calc.mjs).
+// Toujours en anglais. Les textes sont ceux du modèle, mot pour mot, et se règlent dans Réglages > Booking confirmation (textes-voucher.mjs).
+// La photo du bandeau se téléverse dans les mêmes réglages (`voucher.bandeau`).
 import { h } from "../ui.mjs";
-import { champsBooking, PIED_BOOKING, lignesEnPlus } from "../taxi-calc.mjs";
+import { champsBooking, lignesEnPlus } from "../taxi-calc.mjs";
+import { textesVoucher } from "../textes-voucher.mjs";
 
 const LOGO_DEFAUT = "assets/logo-vip-taxi.webp";
 const BANDEAU_DEFAUT = "assets/taxi-bandeau.webp";
@@ -11,13 +13,14 @@ const BANDEAU_DEFAUT = "assets/taxi-bandeau.webp";
 // `retour` : { programme, duree } pour un retour au point de départ (16.11.2026), sinon null.
 export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", email = "", adresse = "", retour = null }) {
   const v = regl.voucher || {};
+  const t = textesVoucher(regl);
   const nom = [client.prenom, client.nom].filter(Boolean).join(" ");
   const dt = r.details || {};
-  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: dt.sieges, vol: dt.vol, montant: r.montant_vente, devise, retour });
+  const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: dt.sieges, vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, t });
   const valeur = (c) =>
     c.date ? [`${c.date.mois} ${c.date.jour}`, h("sup", null, c.date.suffixe), ` ${c.date.annee}`] : c.valeur;
   const logo = (regl.apparence && regl.apparence.logo) || LOGO_DEFAUT;
-  const lieu = adresse || PIED_BOOKING.lieu;
+  const lieu = adresse || t("b_lieu");
   // La page A4 est pleine (en-tête du modèle) : une valeur qui passe à la ligne resserre les rangs pour que le pied reste visible.
   // Un rang de plus que le modèle (le programme et la durée d'un retour au départ) compte comme une ligne de plus.
   const serre = lignesEnPlus(champs.map((c) => (c.date ? "" : c.valeur))) + Math.max(0, champs.length - 7);
@@ -30,8 +33,8 @@ export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", d
       h("div", { class: "vt-bandeau" }, h("img", { class: "vt-photo", src: v.bandeau || BANDEAU_DEFAUT, alt: "" }), h("div", { class: "vt-vague", "aria-hidden": "true" })),
       h("div", { class: "vt-sceau" }, h("img", { src: logo, alt: "VIP Taxi Lanta, Mr. Brown" }))
     ),
-    h("h1", { class: "vt-titre" }, "BOOKING", h("br"), "CONFIRMATION"),
-    h("p", { class: "vt-intro" }, PIED_BOOKING.intro),
+    h("h1", { class: "vt-titre" }, t("b_titre_1"), h("br"), t("b_titre_2")),
+    h("p", { class: "vt-intro" }, t("b_intro")),
     h(
       "div",
       { class: "vt-cadre" },
@@ -43,12 +46,12 @@ export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", d
       h(
         "div",
         { class: "vt-pied" },
-        h("p", null, PIED_BOOKING.paiement, " ", h("em", null, PIED_BOOKING.paiement_wise), h("br"), PIED_BOOKING.attente, h("br"), PIED_BOOKING.changement),
-        h("p", null, PIED_BOOKING.merci),
-        h("p", null, PIED_BOOKING.salutation),
-        h("p", null, PIED_BOOKING.signature, h("br"), lieu)
+        h("p", null, t("b_paiement"), " ", h("em", null, t("b_paiement_wise")), h("br"), t("b_attente"), h("br"), t("b_changement")),
+        h("p", null, t("b_merci")),
+        h("p", null, t("b_salutation")),
+        h("p", null, t("b_signature"), h("br"), lieu)
       ),
-      h("div", { class: "vt-contact" }, h("p", { class: "vt-contact-titre" }, "CONTACT US:"), whatsapp ? h("p", null, whatsapp) : null, email ? h("p", null, email) : null)
+      h("div", { class: "vt-contact" }, h("p", { class: "vt-contact-titre" }, t("b_contact")), whatsapp ? h("p", null, whatsapp) : null, email ? h("p", null, email) : null)
     )
   );
 }

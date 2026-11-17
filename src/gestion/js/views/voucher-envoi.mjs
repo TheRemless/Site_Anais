@@ -9,7 +9,7 @@ import { etat, nomClient, partenaireDe, resumeDossier, reglages, entiteActive, p
 import { estTaxi } from "../taxi-calc.mjs";
 import { messagesDefautPour } from "../defauts.mjs";
 import { h, modal, toast } from "../ui.mjs";
-import { aujourdhui } from "../calc.mjs";
+import { aujourdhui, formatDate } from "../calc.mjs";
 import { envoiANoter } from "../envoi-voucher-calc.mjs";
 import { noterEnvoi } from "./envois-vouchers.mjs";
 import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
@@ -52,7 +52,7 @@ export function envoyerVoucher(x) {
   const dossier = etat.db.dossiers.find((d) => d.id === r.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === dossier.client_id) || {};
   const partenaire = partenaireDe(r.partenaire_id);
-  const numero = numeroVoucher(dossier.ref || "", x.index);
+  const numero = x.numero || numeroVoucher(dossier.ref || "", x.index);
   const taxi = estTaxi(reglages());
   const nomFichier = nomFichierVoucher(numero, nomClient(client), { taxi });
   const telClient = chiffres(client.telephone);
@@ -86,7 +86,8 @@ export function envoyerVoucher(x) {
     let n = 0;
     for (const y of reservations) {
       const courante = etat.db.reservations.find((z) => z.id === y.id) || y;
-      const cible = envoiANoter({ pour, issue, envois: courante.details && courante.details.envois, date });
+      const modifie = !!((vouchersDuDossier(courante.dossier_id).find((v) => v.reservation.id === courante.id) || {}).envoi || {}).modifie;
+      const cible = envoiANoter({ pour, issue, envois: courante.details && courante.details.envois, date, modifie });
       if (!cible) continue;
       if (!(await noterEnvoi(courante, cible, date))) break;
       n++;
@@ -183,7 +184,7 @@ export function envoyerVoucher(x) {
       if (ferme) return;
       boutonTous.textContent = tr("Préparation des vouchers {i} sur {n}…", { i: i + 1, n: freres.length });
       const blob = y.reservation.id === r.id && fichier ? fichier : await imageVoucher(y);
-      fichiers.push(new File([blob], nomFichierVoucher(numeroVoucher(dossier.ref || "", y.index), nomClient(client), { taxi }), { type: "image/png" }));
+      fichiers.push(new File([blob], nomFichierVoucher(y.numero || numeroVoucher(dossier.ref || "", y.index), nomClient(client), { taxi }), { type: "image/png" }));
     }
     fichiersTous = fichiers;
     boutonTous.disabled = false;
@@ -246,6 +247,7 @@ export function envoyerVoucher(x) {
     h(
       "div",
       { class: "modal-corps envoi-voucher" },
+      x.envoi && x.envoi.modifie ? h("p", { class: "ecart-facture", role: "status" }, tr("Modifié depuis l'envoi du {date} : renvoyez cette version au client.", { date: formatDate(x.envoi.le) })) : null,
       avertissements.length ? h("ul", { class: "bandeau-info avertissements-voucher", role: "status" }, avertissements.map((c) => h("li", null, tr(AVERTISSEMENTS[c])))) : null,
       h("p", { class: "aide" }, [client.telephone ? `${nomClient(client)} ${client.telephone}` : nomClient(client)].filter(Boolean).join(" · ")),
       apercu,

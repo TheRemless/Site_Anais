@@ -6,6 +6,7 @@ import { estRetourDepart, resumeTrajet, libelleSelonTrajet } from "../trajet-cal
 import { heureAPoser } from "../pickup-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, saisie, erreurChamp, focusPremiereErreur, icone } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, totaux, modeReglement, SUR_PLACE } from "../calc.mjs";
+import { MODELES_VOUCHER, SANS_VOUCHER, modeleChoisi, typeVoucherDeduit, valeursFigees } from "../operations-calc.mjs";
 import { STATUTS_RESERVATION, statutReservation, reservationsDepuisDocument, variablesMessage, personnesTexte, dateTexte, typeVoucher, champsVoucherDe, TITRES_VOUCHER, datesDepuisReservations, descriptionService, ecartReservation, contenuSansReservation, contenuAvecSurPlace, contenuAvecReservation, contenuAvecServiceDuplique, attenduDepuisFacture, modeParDefaut, commissionPrevue as commissionPrevue_, lieuParDefaut, notePasseport, alerteAvantVeille, dateFinService, locationEnCours, cleMessageReservation, langueClient } from "../operations-calc.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { demanderArbitrage } from "./conflit.mjs";
@@ -160,7 +161,9 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   // Le geste « Envoyer le voucher » n'existe qu'en excursions et en taxi : ZTP n'a pas de voucher.
   const vx = modeExcursions() && r.statut !== "annule" ? vouchersDuDossier(r.dossier_id).find((x) => x.reservation.id === r.id) || null : null;
   const voucherEnvoye = !!(vx && r.details && r.details.envois && r.details.envois.client);
-  const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, voucher: vx ? { envoye: voucherEnvoye } : null, liee: modeExcursions() && lieeFacture(r) };
+  // Modifié depuis l'envoi (audit n° 24) : un bandeau le dit, et « Renvoyer » devient le geste principal.
+  const voucherModifie = !!(vx && vx.envoi && vx.envoi.modifie);
+  const ctx = { statut: r.statut, ecrit, aPartenaire: !!r.partenaire_id, aClient: !!c, voucher: vx ? { envoye: voucherEnvoye, modifie: voucherModifie } : null, liee: modeExcursions() && lieeFacture(r) };
   const GESTES = {
     changer: [tr("Changer le jour, l'heure ou les personnes"), gestes.faire.changer],
     message_client: [tr("Message client"), () => messageClient(r, cleMessageReservation(r, aujourdhui()))],
@@ -193,6 +196,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
       : e.retiree
         ? h("div", { class: "ecart-facture", role: "status" }, tr("La ligne de cette réservation a été retirée du document."))
         : h("div", { class: "ecart-facture", role: "status" }, h("ul", null, e.champs.map((c) => h("li", null, texteEcart(c, ((etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type === "facture") || {}).contenu || {}).devise || reglages().devise || "")))), ecrit ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => aligner(r, e, apres) }, tr("Aligner sur la facture")), peut("documents.ecrire") && e.champs.length ? h("button", { class: "secondaire petit", type: "button", onclick: () => alignerFacture(r, e, apres) }, tr("Mettre la facture comme la réservation")) : null) : null),
+    voucherModifie ? h("div", { class: "ecart-facture", role: "status" }, modeTaxi() ? tr("Booking confirmation modifiée depuis l'envoi du {date} : renvoyez-la au client.", { date: formatDate(vx.envoi.le) }) : tr("Voucher modifié depuis l'envoi du {date} : renvoyez-le au client.", { date: formatDate(vx.envoi.le) })) : null,
     avantVeille ? h("div", { class: "ecart-facture", role: "status" }, tr("À payer au prestataire avant le {date} (la veille du départ) : Bundhaya peut annuler si ce n'est pas payé.", { date: formatDate(avantVeille.avant) })) : null,
     er ? h("div", { class: "ecart-facture", role: "status" }, tr("Commission reçue {recue} (prévue {prevue}), mais la règle du partenaire donne {attendue}. Les montants reçus ne sont pas modifiés : vérifiez le net du tarif ou la règle.", { recue: prix(er.recue === null ? er.prevue : er.recue), prevue: prix(er.prevue), attendue: prix(er.attendue) })) : null,
     cc ? h("div", { class: "recalcul-commission", role: "status" }, h("span", null, cc.avant === null ? tr("Commission prévue : aucune. La règle du partenaire donne {apres}.", { apres: prix(cc.apres) }) : tr("Commission prévue : {avant}. La règle du partenaire donne {apres}.", { avant: prix(cc.avant), apres: prix(cc.apres) })), h("button", { class: "secondaire petit", type: "button", onclick: () => recalculerUneCommission(r, apres) }, tr("Recalculer la commission"))) : null,
@@ -445,10 +449,20 @@ export function formulaireReservation(r, apres) {
   partenaire.addEventListener("change", () => zonesPickup.rafraichir());
   lieu.addEventListener("change", () => zonesPickup.rafraichir());
   const zoneGardee = () => (zonesPickup.valeur() ? { pickup_zone: zonesPickup.valeur() } : {});
-  const details = () => ({ ...Object.fromEntries(Object.entries(dt).filter(([k]) => k !== "pickup_zone")), ...zoneGardee(), ...cv.valeurs() });
   // Le bloc Voucher ne montre que les champs du modèle de cette prestation.
   const prestation = r.prestation_id ? etat.db.prestations.find((p) => p.id === r.prestation_id) || null : null;
   const type = typeVoucher(r, prestation, partenaireDe(r.partenaire_id));
+  // Modèle de voucher (audit n° 22 et 23) : choisi ici, sinon celui figé au premier envoi, sinon la déduction d'après la prestation et le libellé.
+  const figees = valeursFigees(r);
+  const modeleAuto = (figees && figees.modele) || typeVoucherDeduit(r, prestation, partenaireDe(r.partenaire_id));
+  const modele = h("select", { id: "r-modele" }, h("option", { value: "" }, modeleAuto ? tr("Automatique : {modele}", { modele: TITRES_VOUCHER[modeleAuto] }) : tr("Automatique : pas de voucher")), MODELES_VOUCHER.map((m) => h("option", { value: m }, TITRES_VOUCHER[m])), h("option", { value: SANS_VOUCHER }, tr("Pas de voucher")));
+  modele.value = modeleChoisi(r);
+  const details = () => {
+    const d = { ...Object.fromEntries(Object.entries(dt).filter(([k]) => k !== "pickup_zone" && k !== "modele_voucher")), ...zoneGardee(), ...cv.valeurs() };
+    if (avecVoucher && modele.value) d.modele_voucher = modele.value;
+    else if (!avecVoucher && dt.modele_voucher) d.modele_voucher = dt.modele_voucher;
+    return d;
+  };
   date.addEventListener("change", cv.majJours);
   const CHAMPS = cv.CHAMPS;
   // Une location : la prise et le retour se lisent côte à côte, juste sous la date de départ.
@@ -457,10 +471,20 @@ export function formulaireReservation(r, apres) {
   // voir renderBookingConfirmation) ; ZTP n'en a aucun.
   const avecVoucher = modeExcursions() && !modeTaxi();
   const blocRetour = avecVoucher && type === "location" ? h("div", { class: "grille-form compacte" }, RETOUR.map((c) => CHAMPS[c]())) : null;
+  // Le choix du modèle redessine les champs du bloc : ce qui est déjà tapé reste dans les champs, même cachés.
+  const champsDuModele = h("div");
+  const legende = h("legend");
+  const dessinerModele = () => {
+    const m = modele.value === SANS_VOUCHER ? null : modele.value || modeleAuto;
+    legende.textContent = m ? TITRES_VOUCHER[m] : tr("Voucher");
+    champsDuModele.replaceChildren(...(m ? [h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(m, { trajet: !!r.trajet_id }), m === "location" ? RETOUR : []).map((c) => CHAMPS[c]())), ...champsLongs(champsVoucherDe(m, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]())] : [h("p", { class: "aide" }, tr("Ce service n'a pas de voucher : il ne figure ni dans les envois ni dans les PDF."))]));
+  };
+  modele.addEventListener("change", dessinerModele);
+  if (avecVoucher) dessinerModele();
   const blocVoucher = modeTaxi()
-    ? h("fieldset", null, h("legend", null, "Booking confirmation"), h("p", { class: "aide" }, tr("Ce qui s'imprime sur la Booking confirmation en plus de la course.")), h("div", { class: "grille-form" }, CHAMPS.type_trajet(), CHAMPS.drop_off(), CHAMPS.programme_trajet(), CHAMPS.duree_h(), CHAMPS.vol(), CHAMPS.bagages(), CHAMPS.sieges()))
-    : avecVoucher && type
-    ? h("fieldset", null, h("legend", null, TITRES_VOUCHER[type]), h("p", { class: "aide" }, tr("Ce qui s'imprime sur ce voucher en plus de la réservation. En automatique, le type et les frais de parc sont déduits de la prestation.")), h("div", { class: "grille-form" }, champsCourts(champsVoucherDe(type, { trajet: !!r.trajet_id }), type === "location" ? RETOUR : []).map((c) => CHAMPS[c]())), champsLongs(champsVoucherDe(type, { trajet: !!r.trajet_id })).map((c) => CHAMPS[c]()))
+    ? h("fieldset", null, h("legend", null, "Booking confirmation"), h("p", { class: "aide" }, tr("Ce qui s'imprime sur la Booking confirmation en plus de la course.")), h("div", { class: "grille-form" }, CHAMPS.type_trajet(), CHAMPS.drop_off(), CHAMPS.programme_trajet(), CHAMPS.duree_h(), CHAMPS.vol(), CHAMPS.bagages(), CHAMPS.sieges()), CHAMPS.remarques())
+    : avecVoucher
+    ? h("fieldset", null, legende, champ(tr("Modèle de voucher"), modele, tr("Automatique : déduit de la prestation et du libellé. Choisissez-le quand la déduction se trompe, ou « Pas de voucher » pour une option.")), champsDuModele)
     : null;
   return h(
     "form",
@@ -523,7 +547,8 @@ export function formulaireReservation(r, apres) {
       },
     },
     champ(tr("Prestation"), libelle),
-    h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champTarif, champ(tr("Statut"), statut), champ(tr("Référence du partenaire"), reference)),
+    // La référence s'imprime sur le voucher de Secret (« Operator ref. » dans Remarks, audit n° 61) ; Taxi ne l'imprime pas.
+    h("div", { class: "grille-form" }, champ(tr("Partenaire"), partenaire), champTarif, champ(tr("Statut"), statut), champ(tr("Référence du partenaire"), reference, modeExcursions() && !modeTaxi() ? tr("Imprimée sur le voucher, dans Remarks (« Operator ref. »).") : null)),
     h("div", { class: "grille-form compacte" }, champ(type === "location" ? tr("Date de départ") : tr("Date du service"), date), champ(type === "location" ? tr("Heure de départ") : tr("Heure de pickup"), heure), champ(type === "location" ? tr("Lieu de départ ou de livraison") : tr("Lieu de pickup"), lieu)),
     zonesPickup.noeud,
     blocRetour,

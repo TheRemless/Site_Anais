@@ -4,6 +4,8 @@
 // Le prix de la course reste sur un document interne du dossier (type « facture », jamais affiché) : statuts, statistiques et
 // commissions se calculent ainsi comme pour Secret, sans rien changer à la base.
 
+import { textesVoucher, DEFAUTS_TEXTES } from "./textes-voucher.mjs";
+
 export const FONCTIONNEMENT_TAXI = "taxi";
 export const estTaxi = (reglages) => !!reglages && reglages.fonctionnement === FONCTIONNEMENT_TAXI;
 
@@ -59,12 +61,13 @@ export function passagersBooking(personnes = {}, bagages = "", sieges = 0) {
 }
 
 // « 2'700 THB (all fees included) » : l'apostrophe des milliers du modèle. Sans prix, rien (la ligne reste à remplir).
-export function prixBooking(montant, devise = "THB") {
+// `t` : les textes de la Booking confirmation (textesVoucher), « (all fees included) » se règle dans Réglages.
+export function prixBooking(montant, devise = "THB", t = textesVoucher(null)) {
   if (montant === null || montant === undefined || montant === "" || !Number.isFinite(Number(montant))) return "";
   const n = Math.round(Number(montant) * 100) / 100;
   const [ent, dec] = n.toFixed(2).split(".");
   const milliers = ent.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-  return `${milliers}${dec === "00" ? "" : `.${dec}`} ${devise || "THB"} (all fees included)`;
+  return `${milliers}${dec === "00" ? "" : `.${dec}`} ${devise || "THB"} ${t("b_tous_frais")}`.trim();
 }
 
 // Ce que dit le voucher, champ par champ. `pickup` et `dropoff` viennent de la réservation (ou du trajet), jamais devinés.
@@ -87,41 +90,43 @@ export function lieuxAvecVol(pickup = "", dropoff = "", vol = "") {
 
 // `retour` : { programme, duree } pour un retour au point de départ (16.11.2026). Le lieu devient « PICK UP AND RETURN », le drop-off laisse
 // la place au programme (« PLAN ») et à la durée (« DURATION », seulement si elle est donnée). Jamais « From X to X ».
-export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB", retour = null }) {
+// `remarques` : le champ « Remarks » de la course (lot B du 17.11.2026), imprimé en dernier seulement s'il est rempli.
+// `t` : les textes réglables (textesVoucher) ; sans réglages, ceux du modèle d'Anaïs.
+export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dropoff = "", personnes = {}, bagages = "", sieges = 0, vol = "", montant = null, devise = "THB", retour = null, remarques = "", t = textesVoucher(null) }) {
   ({ pickup, dropoff } = lieuxAvecVol(pickup, retour ? "" : dropoff, vol));
+  const rem = String(remarques || "").trim();
   return [
-    { cle: "NAME", valeur: nom },
-    { cle: "DATE", valeur: dateBookingTexte(date), date: dateBooking(date) },
-    { cle: retour ? "PICK UP AND RETURN" : "PICK UP LOCATION", valeur: pickup },
-    { cle: "PICK UP TIME", valeur: heureBooking(heure) },
-    ...(retour ? [{ cle: "PLAN", valeur: retour.programme || "" }, ...(retour.duree ? [{ cle: "DURATION", valeur: retour.duree }] : [])] : [{ cle: "DROP OFF LOCATION", valeur: dropoff }]),
-    { cle: "PASSENGERS", valeur: passagersBooking(personnes, bagages, sieges) },
-    { cle: "TOTAL PRICE", valeur: prixBooking(montant, devise) },
+    { cle: t("b_nom"), valeur: nom },
+    { cle: t("b_date"), valeur: dateBookingTexte(date), date: dateBooking(date) },
+    { cle: retour ? t("b_pickup_retour") : t("b_pickup"), valeur: pickup },
+    { cle: t("b_heure"), valeur: heureBooking(heure) },
+    ...(retour ? [{ cle: t("b_programme"), valeur: retour.programme || "" }, ...(retour.duree ? [{ cle: t("b_duree"), valeur: retour.duree }] : [])] : [{ cle: t("b_dropoff"), valeur: dropoff }]),
+    { cle: t("b_passagers"), valeur: passagersBooking(personnes, bagages, sieges) },
+    { cle: t("b_prix"), valeur: prixBooking(montant, devise, t) },
+    ...(rem ? [{ cle: t("b_remarques"), valeur: rem }] : []),
   ];
 }
 
 // Lignes ajoutées par les valeurs trop longues pour leur colonne (96 mm : 40 caractères mesurés en 14,5 pt, 38 par prudence) : de quoi resserrer la page.
 export const lignesEnPlus = (valeurs, parLigne = 38) => (valeurs || []).reduce((n, v) => n + Math.max(0, Math.ceil(String(v || "").length / parLigne) - 1), 0);
 
-// Pied du voucher, mot pour mot d'après le modèle d'Anaïs (12.11.2026). `{entreprise}` = nom en capitales sur le modèle.
-export const PIED_BOOKING = {
-  intro: "We’re happy to confirm your booking details as follows:",
-  paiement: "Payment will be collected in cash by the driver directly",
-  paiement_wise: "(or you can pay through Wise with a 3% fee, please inform us before)",
-  attente: "Your driver will be waiting for you at the meeting point.",
-  changement: "If your plan changes, please let us know as soon as possible.",
-  merci: "Thank you for choosing VIP TAXI LANTA – we look forward to driving you safely and comfortably to your destination! 🚐✨",
-  salutation: "Kind regards,",
-  signature: "VIP TAXI LANTA Team",
-  lieu: "Koh Lanta, Krabi, Thailand",
-};
+// Pied du voucher, mot pour mot d'après le modèle d'Anaïs (12.11.2026). Les textes vivent dans textes-voucher.mjs (clés « b_… ») et se
+// règlent dans Réglages > Booking confirmation ; cet objet garde les défauts pour qui les lit encore ainsi.
+export const PIED_BOOKING = Object.fromEntries(["intro", "paiement", "paiement_wise", "attente", "changement", "merci", "salutation", "signature", "lieu"].map((k) => [k, DEFAUTS_TEXTES[`b_${k}`]]));
 
 // ---- Commissions à demander -----------------------------------------------------------------------------------------
-// Courses passées (sur place, non annulées) dont la commission n'est pas encore saisie, sur les `jours` derniers jours : un jour
-// sans ouvrir Gestion ne fait plus perdre la commission (audit du 13.11.2026, point 7). Les courses d'hier déjà saisies restent
-// affichées avec leur montant, pour voir ce qui vient d'être fait. Triées de la plus ancienne à la plus récente.
+// Courses passées (sur place, non annulées) dont la commission n'est pas encore saisie : un jour sans ouvrir Gestion ne fait plus perdre
+// la commission (audit du 13.11.2026, point 7). Les courses d'hier déjà saisies restent affichées avec leur montant, pour voir ce qui vient
+// d'être fait. Triées de la plus ancienne à la plus récente.
+// `jours` : la fenêtre, en jours. Sans limite par défaut (audit du 16.11.2026, n° 46 : passé 14 jours, une commission jamais demandée sortait de
+// la liste sans alerte) ; Réglages > Booking confirmation peut en poser une (`reglages.taxi.jours_commission`, voir joursCommission).
 // `netDe(r)` : la ligne privée de la réservation ({ commission_prevue, commission_recue, commission_recue_le }) ou null.
-export const JOURS_COMMISSION = 14;
+export const JOURS_COMMISSION = null;
+// La fenêtre réglée : un nombre entier de jours supérieur à 0, sinon pas de limite (null).
+export const joursCommission = (reglages) => {
+  const n = Number(reglages && reglages.taxi && reglages.taxi.jours_commission);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
 const jourAvant = (iso, n) => {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - n);
@@ -129,7 +134,7 @@ const jourAvant = (iso, n) => {
 };
 export function commissionsADemander(reservations, ajd, { ecartes = new Set(), netDe = () => null, jours = JOURS_COMMISSION } = {}) {
   const hier = jourAvant(ajd, 1);
-  const depuis = jourAvant(ajd, jours);
+  const depuis = jours ? jourAvant(ajd, jours) : "";
   return (reservations || [])
     .filter((r) => r.date_service && r.date_service < ajd && r.date_service >= depuis && r.statut !== "annule" && r.paye_sur_place && !ecartes.has(r.dossier_id))
     .map((r) => {

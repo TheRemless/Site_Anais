@@ -1,13 +1,13 @@
 // Carte de réservation : un seul geste principal (l'étape suivante), le reste dans un menu « … ». Logique pure, testée avec node --test.
 // `ctx` : { statut, ecrit, aPartenaire, aClient, voucher, liee }
-//   voucher : null (pas de voucher) ou { envoye } ; liee : le service vient d'une ligne de facture en mode excursions (peut se dupliquer).
+//   voucher : null (pas de voucher) ou { envoye, modifie } (modifié depuis l'envoi : « Renvoyer » redevient le geste principal) ; liee : le service vient d'une ligne de facture en mode excursions (peut se dupliquer).
 
 // L'étape suivante d'une réservation, ou null quand il n'y en a pas (annulée, lecture seule, voucher parti).
 // Plus d'étapes de demande au prestataire (Jérémy, 14.11.2026) : une réservation saisie est confirmée, il ne reste qu'à envoyer son voucher.
 export function gestePrincipal(ctx) {
   const { statut, ecrit, voucher } = ctx;
   if (!ecrit || statut === "annule") return null;
-  return voucher && !voucher.envoye ? "voucher" : null;
+  return voucher && (!voucher.envoye || voucher.modifie) ? "voucher" : null;
 }
 
 // Les autres gestes, dans l'ordre du menu. Un geste qui est déjà le geste principal n'y revient pas.

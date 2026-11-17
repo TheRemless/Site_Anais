@@ -55,7 +55,7 @@ test("commissions à demander : toute course passée sans commission sur 14 jour
     { id: "e", dossier_id: "d5", date_service: "2026-11-11", statut: "confirme", paye_sur_place: true },
     // Avant-hier avec commission saisie : À encaisser la suit, la carte ne la montre plus.
     { id: "f", dossier_id: "d6", date_service: "2026-11-09", statut: "confirme", paye_sur_place: true },
-    // Il y a 14 jours : encore dans la fenêtre ; il y a 15 jours : hors fenêtre.
+    // Il y a 14 et 15 jours : sans limite (audit du 16.11.2026, n° 46), une commission jamais demandée ne sort plus de la liste.
     { id: "g", dossier_id: "d7", date_service: "2026-10-29", statut: "confirme", paye_sur_place: true },
     { id: "h", dossier_id: "d8", date_service: "2026-10-28", statut: "confirme", paye_sur_place: true },
     // Aujourd'hui et demain : pas encore faites. Payée chez nous : aucune commission à demander.
@@ -65,8 +65,9 @@ test("commissions à demander : toute course passée sans commission sur 14 jour
   ];
   const nets = { b: { commission_prevue: 270, commission_recue_le: null }, f: { commission_prevue: 300, commission_recue_le: null } };
   const l = commissionsADemander(R, "2026-11-12", { ecartes: new Set(["d5"]), netDe: (r) => nets[r.id] || null });
-  assert.deepEqual(l.map((x) => [x.reservation.id, x.saisie, x.montant, x.demandeLe]), [["g", false, null, null], ["d", false, null, null], ["a", false, null, null], ["b", true, 270, "2026-11-12"]]);
-  assert.equal(JOURS_COMMISSION, 14);
+  assert.deepEqual(l.map((x) => [x.reservation.id, x.saisie, x.montant, x.demandeLe]), [["h", false, null, null], ["g", false, null, null], ["d", false, null, null], ["a", false, null, null], ["b", true, 270, "2026-11-12"]]);
+  assert.equal(JOURS_COMMISSION, null, "pas de limite par défaut");
+  assert.deepEqual(commissionsADemander(R, "2026-11-12", { ecartes: new Set(["d5"]), netDe: (r) => nets[r.id] || null, jours: 14 }).map((x) => x.reservation.id), ["g", "d", "a", "b"], "une fenêtre de 14 jours réglée garde l'ancien comportement");
   assert.deepEqual(commissionsADemander(R, "2026-11-12", { jours: 3 }).map((x) => x.reservation.id), ["f", "d", "a", "b", "e"], "fenêtre réglable, sans nets tout est à saisir");
   assert.deepEqual(valeursCommission("270"), { commission_prevue: 270 });
   assert.deepEqual(valeursCommission("1'200,5", { recue: true, date: "2026-11-12" }), { commission_prevue: 1200.5, commission_recue: 1200.5, commission_recue_le: "2026-11-12" });

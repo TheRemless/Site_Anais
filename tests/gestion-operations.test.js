@@ -19,7 +19,7 @@ test("vouchers : modèle d'après la prestation, numéro, statut de paiement", (
   assert.equal(numeroVoucher("INV-2026-001", 2), "INV-2026-001-2");
   assert.equal(statutPaiementVoucher({ total: 2400, recu: 2400 }), "paye");
   assert.equal(statutPaiementVoucher({ total: 2400, recu: 1000 }), "acompte");
-  assert.equal(statutPaiementVoucher({ total: 2400, recu: 0 }), "sur_place");
+  assert.equal(statutPaiementVoucher({ total: 2400, recu: 0 }), "en_attente", "rien reçu et pas sur place : Payment Pending, pas « à payer sur place » (lot B)");
 });
 
 test("vouchers : privé ou join, frais de parc, type de transfert, hôtel et chambre", () => {
