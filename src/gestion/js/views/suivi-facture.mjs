@@ -7,7 +7,7 @@ import { uid, CONTENU_DEFAUT } from "../defauts.mjs";
 import { h, modal, confirmer, toast } from "../ui.mjs";
 import { formatMontant, formatDate, totaux } from "../calc.mjs";
 import { contenuAvecSurPlace, contenuAvecReservation, contenuAvecService, contenuSansReservation, attenduDepuisFacture, ecartReservation, personnesTexte, datesDepuisReservations, descriptionService } from "../operations-calc.mjs";
-import { prestationEnfant } from "../demande-calc.mjs";
+import { prestationEnfant, prixEnfantDe } from "../demande-calc.mjs";
 import { contenuAvecEnfants, lignesIdsAvec } from "../dossier-gestes-calc.mjs";
 import { tr } from "../i18n.mjs";
 
@@ -145,7 +145,8 @@ export function tarifEnfantCatalogue(l) {
   if (!l.prestation_id) return null;
   const p = etat.db.prestations.find((x) => x.id === l.prestation_id);
   if (!p) return null;
-  const prix = !vide(p.prix_enfant) ? p.prix_enfant : p.details && !vide(p.details.prix_enfant) ? p.details.prix_enfant : null;
+  // Champ « Prix enfant » du lot A (`details.enfant`, lu par prixEnfantDe) : le net enfant de la même prestation suit. Un frais réglé sur place n'a pas de ligne enfant.
+  const prix = p.sur_place ? null : prixEnfantDe(p);
   if (prix !== null) {
     const n = netPrestation(p);
     return { unite: Number(prix), net: n && !vide(n.net_enfant) ? Number(n.net_enfant) : null };
