@@ -185,7 +185,8 @@ function rebatir() {
   setMasquerMontants(!peut("finances.voir"));
 }
 
-export function changerEntite(id) {
+// `naviguer: false` : l'adresse demandée est gardée (une notification qui ouvre un dossier d'une autre entreprise, « ?entite=… »).
+export function changerEntite(id, { naviguer = true } = {}) {
   etat.entiteId = id;
   try {
     localStorage.setItem(CLE_ENTITE, id);
@@ -193,6 +194,7 @@ export function changerEntite(id) {
     // sans importance
   }
   rebatir();
+  if (!naviguer) return;
   // Un dossier ouvert appartient à l'ancienne entreprise : on revient au tableau de bord.
   if (location.hash && location.hash !== "#/") location.hash = "#/";
   else window.dispatchEvent(new HashChangeEvent("hashchange"));

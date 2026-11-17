@@ -13,6 +13,7 @@ import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
 const ROUTES = [
   [/^#\/reservations(?:\?.*)?$/, "reservations", vers(() => import("./views/reservations.mjs"), "vueReservations")],
+  [/^#\/reservation\/([\w-]+)(?:\?.*)?$/, "reservation", vers(() => import("./views/reservation-rappel.mjs"), "vueReservation")],
   [/^#\/messages$/, "messages", vers(() => import("./views/messages.mjs"), "vueMessages")],
   [/^#\/fiduciaire$/, "fiduciaire", vers(() => import("./views/fiduciaire.mjs"), "vueFiduciaire")],
   [/^#\/demandes(?:\?.*)?$/, "demandes", vers(() => import("./views/demandes-site.mjs"), "vueDemandesSite")],
@@ -28,7 +29,7 @@ const ROUTES = [
   [/^#?\/?$/, "tableau", tableauDeBord],
   [/^#\/dossiers(?:\?.*)?$/, "dossiers", vers(() => import("./views/dossiers.mjs"), "listeDossiers")],
   [/^#\/dossiers\/nouveau(?:\?.*)?$/, "dossiers", vers(() => import("./views/dossiers.mjs"), "nouveauDossier")],
-  [/^#\/dossier\/([\w-]+)$/, "dossiers", vers(() => import("./views/dossier.mjs"), "ficheDossier")],
+  [/^#\/dossier\/([\w-]+)(?:\?.*)?$/, "dossiers", vers(() => import("./views/dossier.mjs"), "ficheDossier")],
   [/^#\/doc\/([\w-]+)$/, "dossiers", vers(() => import("./views/editeur.mjs"), "editeur")],
   [/^#\/clients$/, "clients", vers(() => import("./views/clients.mjs"), "listeClients")],
   [/^#\/client\/([\w-]+)$/, "clients", vers(() => import("./views/clients.mjs"), "ficheClient")],
@@ -227,7 +228,8 @@ function blocCompte() {
   return h("div", { class: "compte" }, h("span", { class: "avatar", "aria-hidden": "true" }, initiales), h("span", { class: "compte-texte" }, h("strong", null, nom), roleActif() ? h("span", null, roleActif()) : null));
 }
 const outilsCompte = (apres) => [
-  etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels()), "aria-label": tr("Rappels sur ce téléphone"), title: tr("Rappels sur ce téléphone") }, icone("cloche")) : null,
+  // La cloche s'ouvre aussi en démonstration : on y règle son « Rappel 1 h avant » (les notifications, elles, demandent la vraie base).
+  h("button", { class: "bouton-icone secondaire", type: "button", onclick: async () => (apres && apres(), (await import("./views/rappels.mjs")).ouvrirRappels()), "aria-label": tr("Rappels"), title: tr("Rappels") }, icone("cloche")),
   h("button", { class: "bouton-icone secondaire", type: "button", onclick: () => (apres && apres(), ouvrirAide()), "aria-label": tr("Raccourcis clavier"), title: tr("Raccourcis clavier (?)") }, icone("clavier")),
   etat.store.mode === "supabase" ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: deconnecter, "aria-label": tr("Se déconnecter"), title: tr("Se déconnecter") }, icone("deconnexion")) : null,
 ];
@@ -556,6 +558,9 @@ async function afficher() {
     document.title = tr("Aucun accès - Gestion");
     return;
   }
+  // Une notification ouvre l'écran dans l'entreprise qu'elle concerne (« ?entite=… ») : on y passe si la personne y a accès.
+  const entiteDemandee = new URLSearchParams(location.hash.split("?")[1] || "").get("entite");
+  if (entiteDemandee && entiteDemandee !== etat.entiteId && entitesAccessibles().some((e) => e.id === entiteDemandee)) changerEntite(entiteDemandee, { naviguer: false });
   if (ecranVoucherSeul()) return afficherVoucherSeul();
   // Le menu dépend de l'entreprise active et des droits : on le refait quand l'un des deux change. Ses badges, eux, suivent à chaque affichage (majBadges).
   const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}`;

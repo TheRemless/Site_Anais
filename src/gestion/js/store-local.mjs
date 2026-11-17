@@ -239,6 +239,15 @@ export function creer() {
       const pris = data.dossiers.filter((d) => d.entite_id === entiteId).map((d) => (String(d.ref || "").match(new RegExp(`${annee}-(\\d+)$`)) || [])[1]).filter(Boolean).map(Number);
       return Math.max(minimum, ...pris) + 1;
     },
+    async envoyerNotificationTest() {
+      return { demo: true };
+    },
+    async definirRappelH1(actif) {
+      utilisateur.rappel_h1 = !!actif;
+      const p = data.profils.find((x) => x.user_id === utilisateur.user_id);
+      if (p) p.rappel_h1 = !!actif;
+      sauve();
+    },
     async definirMaLangue(code) {
       utilisateur.langue = code;
       sauve();

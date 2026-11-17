@@ -15,6 +15,8 @@ export function entreesMenu(ctx) {
   const { statut, ecrit, aPartenaire, aClient, voucher, liee } = ctx;
   const principal = gestePrincipal(ctx);
   const l = [];
+  // Le rappel du service (fiche avec le texte pour le client et ce qu'il faut dire au partenaire) : pour un service pas annulé.
+  if (statut !== "annule") l.push("rappel");
   if (aClient) l.push("message_client");
   if (ecrit) {
     l.push("modifier");

@@ -1,4 +1,5 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
+import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
 import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
@@ -100,6 +101,31 @@ async function importer(fichier) {
 
 // ---- Corbeille des dossiers supprimés ------------------------------------------------------------------------
 // Un dossier supprimé reste récupérable 90 jours (migration 15) avec ses documents, paiements, réservations et tâches.
+// Notification test (administratrice générale) : un faux rappel « [TEST] Dans 1 h : Sarah Miller, 4 Islands » vers les appareils d'un profil choisi.
+// Elle ouvre les réglages, jamais une vraie réservation. Le résultat dit combien d'appareils sont abonnés : c'est aussi la vérification d'un téléphone.
+function blocNotificationTest() {
+  const actifs = [...etat.brut.profils].filter((p) => p.actif !== false).sort((a, b) => (a.nom || a.email || "").localeCompare(b.nom || b.email || ""));
+  const choix = h("select", { id: "test-notif-profil" }, actifs.map((p) => h("option", { value: p.user_id }, p.user_id === etat.session.id ? tr("{nom} (moi)", { nom: p.nom || p.email }) : p.nom || p.email)));
+  choix.value = etat.session.id;
+  const resultat = h("p", { class: "aide", role: "status" });
+  const bouton = h("button", { class: "secondaire", type: "button", onclick: async () => {
+    const nom = choix.options[choix.selectedIndex].textContent;
+    bouton.disabled = true;
+    resultat.textContent = tr("Envoi…");
+    try {
+      const r = await etat.store.envoyerNotificationTest(choix.value);
+      resultat.textContent = r.demo ? tr("Démonstration : rien n'est envoyé. Avec la vraie base, le message part vers les appareils de {nom}.", { nom })
+        : r.erreur ? tr("Envoi refusé : {erreur}", { erreur: r.erreur === "reserve_admin" ? tr("réservé à l'administratrice générale") : r.erreur })
+        : !r.abonnements ? tr("Aucun appareil abonné pour {nom}. Sur son iPhone (iOS 16.4 ou plus) : ouvrir Gestion depuis l'icône de l'écran d'accueil, toucher la cloche, « Activer les rappels », puis autoriser les notifications.", { nom })
+        : tr("Envoyée à {nom} : {envoyes} appareil(s) sur {abonnements}, {echecs} échec(s).", { nom, envoyes: r.envoyes, abonnements: r.abonnements, echecs: r.echecs });
+    } catch (err) {
+      resultat.textContent = tr("Envoi impossible : {message}", { message: err.message });
+    }
+    bouton.disabled = false;
+  } }, tr("Envoyer une notification test"));
+  return h("div", { class: "notification-test" }, h("h3", null, tr("Notification test")), champ(tr("Envoyer à"), choix), h("div", { class: "actions gauche" }, bouton), resultat);
+}
+
 function sectionCorbeille() {
   const liste = h("div", null, h("p", { class: "aide" }, tr("Chargement…")));
   const dessiner = async () => {
@@ -521,6 +547,20 @@ export function vueReglages() {
           })(),
           tr("En mode excursions, un nouveau dossier crée la facture et les réservations d'un coup, sans devis ni acompte, et chaque réservation a son voucher pour le client et le prestataire. En mode taxi, pas de facture : chaque course a sa « Booking confirmation » et se paie au chauffeur.")
         )
+      ),
+      // Rappels avant le service (migration 31), allumés par défaut : Secret et Taxi une heure avant chaque service, ZTP la veille du départ.
+      h(
+        "fieldset",
+        null,
+        h("legend", null, modeRappel(r) === "depart" ? tr("Rappel la veille du départ") : tr("Rappel 1 h avant chaque service")),
+        h(
+          "label",
+          { class: "case" },
+          h("input", { type: "checkbox", id: "rappel-h1", checked: rappelAvantActif(r), onchange: (e) => ((r.rappels = { ...(r.rappels || {}), h1: e.target.checked }), marque()) }),
+          modeRappel(r) === "depart" ? tr("Notification sur téléphone la veille du départ de chaque voyage accepté, à 18h") : tr("Notification sur téléphone une heure avant chaque réservation qui a une heure")
+        ),
+        h("p", { class: "aide" }, modeRappel(r) === "depart" ? tr("Le nom du client et le voyage, un tap ouvre le dossier. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche).") : tr("Le nom du client, le service, les personnes et le pickup, un tap ouvre la réservation et son rappel. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche).")),
+        estSuperAdmin() ? blocNotificationTest() : null
       ),
       // Assistant IA : éteint par défaut, allumé par entreprise. Il ne fonctionne qu'une fois la fonction « assistant » déployée avec sa clé.
       // Il vit dans « Coller une demande », qui n'existe qu'en Secret et en Taxi.
