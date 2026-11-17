@@ -585,6 +585,8 @@ export function formulaireReservation(r, apres) {
           const suivi = libelleSelonTrajet({ libelle: valeurs.libelle, libre: !r.prestation_id && !r.trajet_id, lieu: valeurs.lieu_pickup, details: valeurs.details });
           if (suivi) valeurs.libelle = suivi;
         }
+        // Net et commission vidés avant l'écriture du service (D4) : remis tels quels si l'écriture échoue ou est abandonnée.
+        let nouvelEssaiNets = null;
         try {
           // La facture suit la réservation (mode de règlement, date, personnes, annulation) par le chemin commun : total montré, confirmation si elle est partie.
           const modeChange = estSurPlace() !== !!r.paye_sur_place;
@@ -607,9 +609,16 @@ export function formulaireReservation(r, apres) {
           // Partenaire ou tarif changé (D4) : le net et la commission de l'ancien sont vidés d'abord, la base les recalcule à l'écriture du service.
           const serviceChange = !!r.id && ((valeurs.partenaire_id || null) !== (r.partenaire_id || null) || tarifChange);
           const aVider = serviceChange && nets && n ? { ...(netLibre && !netTape && n.net_prevu != null ? { net_prevu: null } : {}), ...(commissionLibre && !commissionTapee && n.commission_prevue != null ? { commission_prevue: null } : {}) } : {};
-          if (Object.keys(aVider).length) await enregistrerLie("reservations_nets", "reservation_id", r.id, aVider);
+          if (Object.keys(aVider).length) {
+            await enregistrerLie("reservations_nets", "reservation_id", r.id, aVider);
+            nouvelEssaiNets = Object.fromEntries(Object.keys(aVider).map((k) => [k, n[k]]));
+          }
           const res = r.id ? await modifierProtege("reservations", r.id, valeurs, { base: r, arbitrer: arbitrerReservation(r) }) : await inserer("reservations", { dossier_id: r.dossier_id, ligne_id: r.ligne_id || "", prestation_id: r.prestation_id || null, trajet_id: r.trajet_id || null, ...valeurs });
           if (res && res.id && res.details === undefined) res.details = valeurs.details;
+          // Pas de réservation écrite (conflit abandonné) : les nets d'avant reviennent.
+          if (!res && nouvelEssaiNets) await enregistrerLie("reservations_nets", "reservation_id", r.id, nouvelEssaiNets);
+          nouvelEssaiNets = null;
+          if (!res) return;
           if (!r.id) await rattacherCourseTaxi(res);
           // Seuls les champs changés ici s'écrivent : la base recalcule le net et la commission prévus quand le tarif, les personnes ou le mode changent
           // (migration 31), et la valeur lue à l'ouverture ne doit pas écraser ce recalcul.
@@ -622,6 +631,7 @@ export function formulaireReservation(r, apres) {
           toast(ecartRestant && ecartRestant.length ? `${tr("Réservation enregistrée.")} ${tr("La facture garde l'ancienne valeur, à corriger dans la facture :")} ${ecartRestant.join(" ; ")}` : tr("Réservation enregistrée."));
           apres(res);
         } catch (err) {
+          if (nouvelEssaiNets) await enregistrerLie("reservations_nets", "reservation_id", r.id, nouvelEssaiNets).catch(() => {});
           toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
         }
       },

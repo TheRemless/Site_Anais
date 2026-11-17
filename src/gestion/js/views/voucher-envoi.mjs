@@ -86,7 +86,9 @@ export function envoyerVoucher(x) {
     const b = gesteNoterManuel();
     if (b) zone.succes({ titre: tr("Une fois le voucher parti chez le client (e-mail, autre messagerie), notez-le ici."), boutons: [b] });
   };
-  const enregistrerImage = () => (enregistrer([fichier]), proposerNoterManuel());
+  const enregistrerImage = () => enregistrer([fichier]);
+  // Le bouton « Enregistrer l'image » du bas propose ensuite de noter l'envoi ; ailleurs (zone d'erreur, consignes WhatsApp) il ne fait qu'enregistrer.
+  const enregistrerEtProposer = () => (enregistrerImage(), proposerNoterManuel());
 
   // Note l'envoi des vouchers `reservations` à `pour` (« client » ou « partenaire ») si le geste a abouti (`issue`, voir envoiANoter).
   // La fiche se redessine à la fermeture de la fenêtre, pour ne pas bouger la page pendant qu'on colle l'image (ou à la fin de l'écriture si
@@ -118,7 +120,7 @@ export function envoyerVoucher(x) {
   const boutonsCopie = () => messages().map(([pour, nom]) => h("button", { class: "lien", type: "button", onclick: () => copierTexte(message[pour]) }, messages().length > 1 ? tr("Copier le message : {nom}", { nom }) : tr("Copier le message")));
   // Toujours à l'écran, dans tous les cas (même pendant la préparation et même quand tout le reste échoue) : enregistrer l'image et copier le message.
   const secours = ({ principal = false } = {}) => [
-    h("button", { class: principal ? "principal" : "secondaire", type: "button", disabled: !fichier, onclick: enregistrerImage }, tr("Enregistrer l'image")),
+    h("button", { class: principal ? "principal" : "secondaire", type: "button", disabled: !fichier, onclick: enregistrerEtProposer }, tr("Enregistrer l'image")),
     ...boutonsCopie(),
   ];
   // Dans le cadre d'état : WhatsApp avec le message seul, étiqueté sans ambiguïté, jamais ouvert tout seul.

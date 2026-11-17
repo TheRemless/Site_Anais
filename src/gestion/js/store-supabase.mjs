@@ -100,13 +100,24 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await ecriture(contenu));
     }
     const ligne = verifie(await ecriture(contenu));
-    // Un net effacé exprès reste effacé : quand le dernier net d'un document lu avec ses nets disparaît, sa ligne de nets est vidée aussi
-    // (avant, rien n'était écrit et l'ancien net revenait au chargement suivant). Les autres cas remplacent déjà tout l'objet des nets.
-    if (Object.keys(nets).length || avecNetsLus.has(ligne.id)) {
-      verifie(await sb.from("documents_nets").upsert({ document_id: ligne.id, entite_id: ligne.entite_id, nets }).select());
+    // Un net effacé exprès reste effacé, un net que le contenu ne porte pas reste (lot I, revue du lot J). Pour un document lu avec ses nets :
+    // une ligne qui a la clé `net` prend sa valeur (vide = effacé), une ligne sans la clé (version restaurée, contenu venu d'ailleurs) garde le
+    // net enregistré. Avant, le dernier net effacé revenait au chargement suivant.
+    let aEcrire = Object.keys(nets).length ? nets : null;
+    if (avecNetsLus.has(ligne.id)) {
+      const ancien = (verifie(await sb.from("documents_nets").select("nets").eq("document_id", ligne.id).maybeSingle()) || {}).nets || {};
+      aEcrire = {};
+      for (const l of contenuComplet.lignes || []) {
+        if (!l || !l.id) continue;
+        if ("net" in l) { if (nets[l.id] !== undefined) aEcrire[l.id] = nets[l.id]; }
+        else if (ancien[l.id] !== undefined && ancien[l.id] !== null) aEcrire[l.id] = ancien[l.id];
+      }
+    }
+    if (aEcrire) {
+      verifie(await sb.from("documents_nets").upsert({ document_id: ligne.id, entite_id: ligne.entite_id, nets: aEcrire }).select());
       avecNetsLus.add(ligne.id);
     }
-    return { ...ligne, contenu: fusionnerNets(ligne.contenu, nets) };
+    return { ...ligne, contenu: fusionnerNets(ligne.contenu, aEcrire || nets) };
   }
 
   // Marqueur du catalogue : une lecture minuscule par table (un comptage, et la dernière modification quand la table en a une).

@@ -67,13 +67,17 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   const patch = (r, { heure = "", lieu = "", bebes = 0, dropoff = "", vol = "", bagages = 0, sieges = 0, personnes = null, zonePickup = null, statut = "", details: saisis = {} }) => {
     // `zonePickup` : la zone de l'hôtel choisie sur la grille du partenaire, gardée pour proposer la même zone au prochain séjour dans cet hôtel.
     const details = { ...nonVides(saisis), ...(dropoff ? { drop_off: dropoff } : {}), ...(vol ? { vol } : {}), ...(bagages ? { bagages: String(bagages) } : {}), ...(sieges ? { sieges: Number(sieges) } : {}), ...(zonePickup ? { pickup_zone: zonePickup } : {}) };
-    const dejaDesGens = (r.personnes || {}).adultes || (r.personnes || {}).enfants;
+    // Des personnes reprises du dossier (Adultes et Enfants du Nouveau dossier) cèdent la place à celles que le service donne lui-même.
+    const repris = !!(r.details && r.details.personnes_du_dossier);
+    const dejaDesGens = !repris && ((r.personnes || {}).adultes || (r.personnes || {}).enfants);
+    const propres = !!personnes && !dejaDesGens;
+    const detailsBase = propres && repris ? Object.fromEntries(Object.entries(r.details || {}).filter(([k]) => k !== "personnes_du_dossier")) : r.details || {};
     return {
       ...(statut ? { statut } : {}),
       ...(heure ? { heure_pickup: heure } : {}),
       ...(lieu ? { lieu_pickup: lieu } : {}),
-      ...(bebes || personnes ? { personnes: { ...(r.personnes || {}), ...(personnes && !dejaDesGens ? { adultes: personnes.adultes, enfants: personnes.enfants } : {}), ...(bebes ? { bebes } : {}) } } : {}),
-      ...(Object.keys(details).length ? { details: { ...(r.details || {}), ...details } } : {}),
+      ...(bebes || personnes ? { personnes: { ...(r.personnes || {}), ...(propres ? { adultes: personnes.adultes, enfants: personnes.enfants } : {}), ...(bebes ? { bebes } : {}) } } : {}),
+      ...(Object.keys(details).length || detailsBase !== (r.details || {}) ? { details: { ...detailsBase, ...details } } : {}),
     };
   };
   const reservations = etat.db.reservations.filter((x) => x.dossier_id === d.id);

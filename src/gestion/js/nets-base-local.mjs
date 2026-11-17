@@ -3,6 +3,7 @@
 // le net prévu à l'ancien montant (contrôle du 17.11.2026, D2). Logique pure, testée avec node --test et comparée à la base dans
 // verif-securite-argent.mjs. Toute règle changée ici doit l'être aussi dans la migration (et l'inverse).
 import { commissionPrevue } from "./operations-calc.mjs";
+import { quantiteParDefaut } from "./partenaires-calc.mjs";
 
 // `Number(x)` de la base (nombre_json) : un nombre, ou un texte qui en est un, sinon null.
 export function nombre(v) {
@@ -78,7 +79,7 @@ export function netReservationCalcule(r, db) {
     if (!x || x.sur_place) return { net: null, complet: false };
     const pn = (db.prestations_nets || []).find((y) => y.prestation_id === x.id) || {};
     const jours = nombre(r.details && r.details.jours);
-    const q = x.unite === "day" ? Math.max(1, jours || 1) : x.unite === "sup" ? Math.max(0, a + e - 2) : ({ pp: a + e, ad: a, ch: e }[x.unite] ?? 1) || 1;
+    const q = x.unite === "day" ? Math.max(1, jours || 1) : quantiteParDefaut(x.unite, { adultes: a, enfants: e });
     return nombre(pn.net) !== null ? { net: arr(nombre(pn.net) * q), complet: true } : { net: null, complet: false };
   }
   return { net: null, complet: false };
