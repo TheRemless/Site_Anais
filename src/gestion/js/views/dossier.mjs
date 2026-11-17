@@ -347,6 +347,7 @@ function ficheDossierVue(id) {
     };
     f.moyen.value = p.moyen || "";
     f.type.value = rembourse ? "remboursement" : TYPES_PAIEMENT.includes(p.type) ? p.type : "autre";
+    const typeInitial = f.type.value;
     f.origineD.value = p.origine_devise || "";
     const enregistrer = h("button", { type: "submit", class: "principal" }, tr("Enregistrer"));
     const fermer = modal(
@@ -366,7 +367,7 @@ function ficheDossierVue(id) {
             if ((f.date.value !== p.date || arrondi(montant) !== arrondi(Math.abs(Number(p.montant)))) && !(await pasEnDouble({ date: f.date.value, montant: rembourse ? -montant : montant }, p.id))) return;
             enregistrer.disabled = true;
             try {
-              await modifier("paiements", p.id, { date: f.date.value, montant: rembourse ? -montant : montant, moyen: f.moyen.value, note: f.note.value.trim(), type: rembourse ? "remboursement" : f.type.value, origine_montant: rembourse ? null : num(f.origineM.value), origine_devise: rembourse ? "" : f.origineD.value });
+              await modifier("paiements", p.id, { date: f.date.value, montant: rembourse ? -montant : montant, moyen: f.moyen.value, note: f.note.value.trim(), ...(f.type.value !== typeInitial ? { type: f.type.value } : {}), origine_montant: rembourse ? null : num(f.origineM.value), origine_devise: rembourse ? "" : f.origineD.value });
               fermer();
               toast(tr("Paiement corrigé."));
               rafraichir();

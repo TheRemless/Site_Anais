@@ -188,8 +188,10 @@ export function apercuFacture(r, valeurs) {
   const documents = etat.db.documents.filter((x) => x.dossier_id === r.dossier_id && x.type === "facture");
   if (!documents.length) return null;
   const s = suitesDocuments(documents, r, { avant: { date_service: r.date_service, personnes: r.personnes }, apres: { date_service: valeurs.date_service, personnes: valeurs.personnes } });
-  const doc = documents[documents.length - 1];
-  const suite = (s.changements.find((x) => x.doc === doc) || {}).suite || doc.contenu;
+  // La même facture que celle dont suivreFacture annonce le total : la première qui change, sinon la première du dossier.
+  const ch = s.changements[0];
+  const doc = ch ? ch.doc : documents[0];
+  const suite = ch ? ch.suite : doc.contenu;
   const devise = doc.contenu.devise || reglages().devise;
   return { avant: totaux(doc.contenu).net, apres: totaux(suite).net, devise, raison: s.raisonEnfant, enfantAjoute: s.ajoutees.length > 0 };
 }

@@ -7,7 +7,7 @@ import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { descriptionService, langueClient } from "../operations-calc.mjs";
 import { creerReservations } from "./reservations.mjs";
 import { nonVides } from "../creation-voucher-calc.mjs";
-import { verifierNouveauClient } from "../client-calc.mjs";
+import { verifierTelephoneClient } from "../client-calc.mjs";
 import { tr } from "../i18n.mjs";
 
 // Les documents de Secret et de Taxi sont en anglais (d'après le mode de l'entreprise) : les libellés anglais des prestations sont pris quand ils existent.
@@ -45,9 +45,9 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   // Le numéro est enregistré sous sa forme internationale (« +41791234567 »), celle qu'il faut au bouton WhatsApp.
   let telephone = (client.telephone || "").trim();
   if (!clientId) {
-    const verif = verifierNouveauClient({ nom: client.nom, telephone });
-    if (!verif.ok && verif.champ === "telephone") throw new Error(verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays au téléphone du client, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Téléphone du client illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67."));
-    if (verif.ok) telephone = verif.valeurs.telephone;
+    const verif = verifierTelephoneClient(telephone, "");
+    if (!verif.ok) throw new Error(verif.raison === "sans_indicatif" ? tr("Ajoutez l'indicatif du pays au téléphone du client, par exemple +41, +33 ou +66, à la place du 0 du début.") : tr("Téléphone du client illisible : écrivez-le avec son indicatif, par exemple +41 79 123 45 67."));
+    telephone = verif.valeur;
   }
   if (!clientId) {
     const adresse = [(client.hotel || "").trim(), (client.chambre || "").trim() ? `Room ${client.chambre.trim()}` : ""].filter(Boolean).join(", ");

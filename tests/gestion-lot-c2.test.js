@@ -77,6 +77,11 @@ test("service par véhicule ajouté à un dossier : la réservation prend les pe
   const autres = [{ id: "r1", dossier_id: "d", statut: "confirme", personnes: { adultes: 2, enfants: 1 } }, { id: "r2", dossier_id: "d", statut: "confirme", personnes: { adultes: 1, enfants: 0 } }, { id: "r3", statut: "annule", personnes: { adultes: 6 } }];
   assert.deepEqual(personnesDuDossier(autres), { adultes: 2, enfants: 1 }, "le service qui compte le plus de monde, hors annulé");
   assert.equal(personnesDuDossier([]), null);
+  // 1 adulte repris du dossier pour 1 véhicule : pas la fausse alerte « quantité prise pour des personnes ».
+  const fac = { contenu: doc.contenu };
+  const base = { ligne_id: "v", date_service: null, personnes: { adultes: 1, enfants: 0 }, montant_vente: 1800, paye_sur_place: false };
+  assert.equal(ecartReservation({ ...base, details: { personnes_du_dossier: true } }, fac), null);
+  assert.deepEqual(ecartReservation({ ...base, details: {} }, fac).champs.map((c) => c.cle), ["personnes"], "sans la marque, l'ancienne alerte reste");
 });
 
 // ---- n° 66 : fusion de clients -------------------------------------------------------------------------------------------
@@ -109,7 +114,7 @@ test("n° 67 : le nom tapé est repris et le téléphone sans indicatif est refu
   assert.match(ecran, /identiteDepuisSaisie\(selClient\.texteSaisi\)/, "l'écran Excursions reprend le nom tapé");
   assert.match(ecran, /verifierNouveauClient\(/, "et contrôle l'indicatif");
   const creation = fs.readFileSync(new URL("../src/gestion/js/views/creation-excursions.mjs", import.meta.url), "utf8");
-  assert.match(creation, /verifierNouveauClient\(/, "la création (aussi par « Coller une demande ») refuse un numéro sans indicatif");
+  assert.match(creation, /verifierTelephoneClient\(telephone, ""\)/, "la création (aussi par « Coller une demande ») refuse un numéro sans indicatif, même sans nom");
 });
 
 // ---- n° 54 : textes du nouveau dossier ------------------------------------------------------------------------------------

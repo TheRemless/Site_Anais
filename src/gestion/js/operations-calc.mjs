@@ -792,7 +792,8 @@ export function ecartReservation(r, doc) {
   // Une facture sans personnes (location, véhicule, forfait) : on ne compare pas, sauf quand la réservation porte une quantité prise à tort pour des personnes
   // (4 jours devenus « 4 passagers »). Elle se corrige alors, en gardant ce qui a été saisi à la main (autre nombre que la quantité facturée).
   const quantiteFacturee = (doc && doc.contenu ? doc.contenu.lignes : []).filter((l) => (new Set([r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean))).has(l.id) && l.kind !== "texte" && l.kind !== "remise" && compteDe(l) !== "personnes").reduce((s, l) => s + (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1), 0);
-  const fausse = a.sansPersonnes && (Number(pr.adultes) || 0) > 0 && (Number(pr.adultes) || 0) === quantiteFacturee && !(Number(pr.enfants) || 0);
+  // Des personnes reprises du dossier sur un service par véhicule (lot C2, 17.11.2026) ne sont pas cette erreur.
+  const fausse = a.sansPersonnes && !(r.details && r.details.personnes_du_dossier) && (Number(pr.adultes) || 0) > 0 && (Number(pr.adultes) || 0) === quantiteFacturee && !(Number(pr.enfants) || 0);
   if (fausse || (!a.sansPersonnes && ((Number(pr.adultes) || 0) !== a.personnes.adultes || (Number(pr.enfants) || 0) !== a.personnes.enfants))) champs.push({ cle: "personnes", reservation: { adultes: Number(pr.adultes) || 0, enfants: Number(pr.enfants) || 0 }, document: { adultes: a.personnes.adultes, enfants: a.personnes.enfants } });
   if (arr(Number(r.montant_vente) || 0) !== arr(Number(a.montant_vente) || 0)) champs.push({ cle: "montant_vente", reservation: Number(r.montant_vente) || 0, document: Number(a.montant_vente) || 0 });
   if (!!r.paye_sur_place !== a.paye_sur_place) champs.push({ cle: "paye_sur_place", reservation: !!r.paye_sur_place, document: a.paye_sur_place });
