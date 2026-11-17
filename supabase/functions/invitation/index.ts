@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       return json({ erreur: "organisation_impossible" }, 500);
     }
     await service.from("profils").update({ nom: lu.nom || null, langue: lu.langue }).eq("user_id", userId);
-    await service.from("journal").insert({ entite_id: null, user_id: qui.user.id, table_name: "organisations", action: "insert", cible: org.data, libelle: lu.organisation, details: {} }).then(() => null, () => null);
+    await service.from("journal").insert({ entite_id: null, organisation_id: org.data, user_id: qui.user.id, table_name: "organisations", action: "insert", cible: org.data, libelle: lu.organisation, details: {} }).then(() => null, () => null);
     return json({ user_id: userId, organisation_id: org.data, lien: data.properties.action_link });
   }
 
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
   // Client de service : seulement après le contrôle ci-dessus.
   const admin = createClient(URL_SB, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
   const noter = (action: string, libelle: string, cible: string) =>
-    admin.from("journal").insert({ entite_id: null, user_id: qui.user.id, table_name: "comptes", action, cible, libelle, details: {} }).then(() => null, () => null);
+    admin.from("journal").insert({ entite_id: null, organisation_id: organisation, user_id: qui.user.id, table_name: "comptes", action, cible, libelle, details: {} }).then(() => null, () => null);
   // Organisation de l'administrateur (migration 41) : chaque geste reste dans celle-ci.
   const { data: moi, error: errMoi } = await admin.from("profils").select("organisation_id").eq("user_id", qui.user.id).maybeSingle();
   if (errMoi) return json({ erreur: "base" }, 500);
@@ -79,13 +79,14 @@ Deno.serve(async (req) => {
       if (error || errE) return json({ erreur: "base" }, 500);
       if (!accesCoherents(lu.acces, roles || []) || !entreprisesDeLOrganisation(lu.acces, ents || [], organisation)) return json({ erreur: "acces_invalide" }, 400);
     }
-    // La métadonnée rattache le compte à l'organisation dès sa création (creer_profil, migration 41).
-    const { data, error } = await admin.auth.admin.generateLink({ type: "invite", email: lu.email, options: { redirectTo: lu.retour, data: { organisation_id: organisation } } });
+    const { data, error } = await admin.auth.admin.generateLink({ type: "invite", email: lu.email, options: { redirectTo: lu.retour } });
     if (error) return json({ erreur: dejaInscrit(error.message) ? "deja_inscrit" : "creation_impossible" }, dejaInscrit(error.message) ? 409 : 500);
     const userId = data.user.id;
     // Le profil est créé par la base à l'inscription (creer_profil) ; on y met le nom et la langue choisis.
-    // Sans langue choisie, le compte garde celle de son organisation (posée par creer_profil).
-    const profil = await admin.from("profils").upsert({ user_id: userId, email: lu.email, nom: lu.nom || null, ...(lu.langue ? { langue: lu.langue } : {}), actif: true }, { onConflict: "user_id" });
+    // Rattachement à l'organisation de l'administrateur, écrit ici avec la clé de service : la base ne croit jamais l'organisation venue
+    // de la métadonnée d'un compte (n'importe qui la choisit en s'inscrivant). Sans langue choisie : celle de l'organisation.
+    const { data: org } = await admin.from("organisations").select("langue").eq("id", organisation).maybeSingle();
+    const profil = await admin.from("profils").upsert({ user_id: userId, email: lu.email, nom: lu.nom || null, organisation_id: organisation, langue: lu.langue || (org && org.langue) || null, actif: true }, { onConflict: "user_id" });
     if (profil.error) return json({ erreur: "profil_impossible", user_id: userId, lien: data.properties.action_link }, 500);
     if (lu.acces.length) {
       const m = await admin.from("membres").upsert(lu.acces.map((a) => ({ user_id: userId, entite_id: a.entite_id, role_id: a.role_id })), { onConflict: "user_id,entite_id" });

@@ -9,10 +9,21 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import { origineAdmise, lireDemande, adresseIP, notification, destinataires, REPONSES, reponseInvalide, TAILLE_MAX, LIMITE_APPAREIL, LIMITE_TOTALE } from "./calc.js";
-import { dateBangkok } from "../rappels/calc.js";
+import { dateDans, fuseauValide } from "../rappels/calc.js";
 
 // Organisation propriétaire du site qui appelle cette fonction (Zwald par défaut). Une marque est le slug d'une de ses entreprises qui publient sur le site.
 const ORGANISATION = Deno.env.get("SITE_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
+
+// Fuseau de cette organisation (organisations.fuseau) : « aujourd'hui » d'une demande est celui du client, pas celui de Bangkok.
+// Lu une fois par instance ; une lecture impossible donne Bangkok et sera retentée à l'appel suivant.
+let fuseauLu: string | null = null;
+async function fuseauDuSite() {
+  if (fuseauLu) return fuseauLu;
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const { data, error } = await db.from("organisations").select("fuseau").eq("id", ORGANISATION).maybeSingle();
+  if (error) return fuseauValide(null);
+  return (fuseauLu = fuseauValide(data && data.fuseau));
+}
 
 function entetesCors(origine: string | null) {
   const h: Record<string, string> = { "Content-Type": "application/json", Vary: "Origin", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
@@ -86,7 +97,7 @@ Deno.serve(async (req) => {
   const corps = await lireCorps(req);
   if (corps === null) return repondre(REPONSES.trop_gros, origine);
 
-  const aujourdhui = dateBangkok();
+  const aujourdhui = dateDans(await fuseauDuSite());
   let ligne;
   try {
     ligne = lireDemande(corps, { aujourdhui });

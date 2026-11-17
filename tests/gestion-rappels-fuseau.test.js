@@ -55,6 +55,10 @@ test("la fonction passe une fois par organisation, à son heure, et note le suiv
   assert.match(f, /for \(const \[org, ids\] of parOrganisation\)/);
   assert.match(f, /heureDans\(fuseau, maintenant\)/);
   assert.match(f, /rappels_suivi"\)\.insert\(\{ type: t, cible, \.\.\.res, erreur, duree_ms: Date\.now\(\) - debut, organisation_id: org \}\)/);
-  assert.match(f, /executerH1\(db, maintenant, demande, ids, fuseau\)/);
+  assert.match(f, /servicesH1ParOrganisation\(db, maintenant\)/, "le rappel une heure avant lit toutes les organisations en une fois");
+  assert.match(f, /const commun = \(\) => \(lu \|\|= lireCommun\(db, demande\)\)/, "abonnements, profils, accès et rôles lus une seule fois par appel");
+  assert.match(f, /if \(!organisation\) return console\.error/, "jamais de ligne de suivi sans organisation");
+  const d = fs.readFileSync(new URL("../supabase/functions/demande-site/index.ts", import.meta.url), "utf8");
+  assert.match(d, /dateDans\(await fuseauDuSite\(\)\)/, "les demandes du site sont datées dans le fuseau de l'organisation");
   assert.ok(!/DECALAGE_BANGKOK|dateBangkok\(/.test(f), "plus de décalage fixe dans la fonction");
 });

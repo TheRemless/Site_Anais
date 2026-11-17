@@ -40,7 +40,10 @@ test("la fonction applique ces règles et rattache l'invité à l'organisation",
   assert.match(f, /data: \{ nouvelle_organisation: "true" \}/);
   assert.match(f, /sb\.rpc\("creer_organisation"/, "l'organisation est créée avec la session de l'éditeur, pas la clé de service");
   assert.match(f, /deleteUser\(userId\)/, "un compte sans organisation est retiré");
-  assert.match(f, /data: \{ organisation_id: organisation \}/, "l'invité rejoint l'organisation de l'administrateur");
+  assert.match(f, /upsert\(\{ user_id: userId, email: lu\.email, nom: lu\.nom \|\| null, organisation_id: organisation,/, "l'invité est rattaché par la clé de service, jamais par sa métadonnée");
+  assert.ok(!/data: \{ organisation_id/.test(f), "plus de métadonnée « utilisateur » pour l'organisation");
+  assert.match(f, /table_name: "comptes"/);
+  assert.match(f, /entite_id: null, organisation_id: organisation, user_id/, "le journal des comptes porte l'organisation");
   assert.match(f, /!memeOrganisation\(organisation, p\)\) return json\(\{ erreur: "personne_inconnue" \}, 404\)/, "pas de lien de mot de passe hors organisation");
   assert.match(f, /\.eq\("organisation_id", organisation\)/, "dernier administrateur compté dans l'organisation");
   assert.match(f, /suppressionPermise\(\{ appelant: qui\.user\.id, cible, superAdminsActifs: count \|\| 0, organisation \}\)/);

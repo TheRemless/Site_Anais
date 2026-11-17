@@ -451,7 +451,8 @@ export async function creerEntite(nom, slug, { modele = null, devise = "" } = {}
   const base = completerReglages(modele ? reglagesModele(modele, { nom, devise }) : { emetteur: { nom } });
   await etat.store.enregistrerReglages(e.id, base);
   // `tous_droits` (migration 38) n'est écrit que si la base a déjà la colonne : avant la migration, l'insertion échouerait.
-  const avecTousDroits = etat.brut.roles.some((r) => "tous_droits" in r);
+  // Sans aucun rôle chargé (première entreprise d'un nouveau client), la base a forcément la colonne : les organisations (migration 41) viennent après.
+  const avecTousDroits = etat.brut.roles.some((r) => "tous_droits" in r) || (!etat.brut.roles.length && organisation() !== null);
   for (const r of ROLES_SYSTEME) etat.brut.roles.push(await etat.store.inserer("roles", { entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: r.permissions, systeme: true, ...(avecTousDroits ? { tous_droits: !!r.tous_droits } : {}) }));
   etat.brut.entites.push(e);
   etat.brut.reglages[e.id] = base;
@@ -468,7 +469,12 @@ async function modifierEntiteBrut(id, patch) {
 export const modifierEntite = (...a) => ecrire(() => modifierEntiteBrut(...a));
 
 // L'organisation de la personne connectée (migration 41) : null tant que la base n'a pas la migration.
-export const organisation = () => ((etat.brut && etat.brut.organisations) || [])[0] || null;
+// L'éditeur du logiciel lit toutes les organisations : on prend celle de son propre compte, jamais la première venue.
+export const organisation = () => {
+  const liste = (etat.brut && etat.brut.organisations) || [];
+  const mienne = etat.moi && etat.moi.organisation_id;
+  return (mienne ? liste.find((o) => o.id === mienne) : liste.length === 1 ? liste[0] : null) || null;
+};
 // Nom, fuseau et langue : l'administrateur de l'organisation seul (la base refuse le statut et les options payantes).
 async function modifierOrganisationBrut(patch) {
   const o = organisation();

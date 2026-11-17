@@ -70,6 +70,8 @@ Deno.serve(async (req) => {
   const fuseauOrg = new Map((organisations.data || []).map((o) => [o.id, fuseauValide(o.fuseau)]));
 
   // Une passe par organisation : sa date et son heure locales, ses entreprises, sa ligne de suivi. À 11 h UTC, 18 h à Bangkok et midi à Zurich.
+  let lu: Promise<Commun> | null = null;
+  const commun = () => (lu ||= lireCommun(db, demande));
   const resultats = [];
   const parOrganisation = new Map<string, string[]>();
   for (const e of entites.data || []) parOrganisation.set(e.organisation_id, [...(parOrganisation.get(e.organisation_id) || []), e.id]);
@@ -92,7 +94,7 @@ Deno.serve(async (req) => {
       let erreur = "";
       if (retenues.length) {
         try {
-          res = await executer(db, t, aujourdhui, cible, demande, retenues, entites.data || []);
+          res = await executer(db, t, aujourdhui, cible, demande, retenues, entites.data || [], commun, org);
         } catch (err) {
           erreur = String((err && err.message) || err).slice(0, 300);
         }
@@ -117,22 +119,38 @@ Deno.serve(async (req) => {
 });
 
 // Envoie les rappels d'un type pour une date cible, pour les entreprises `retenues`, et renvoie les comptes. Lève une erreur si la base répond mal : l'appelant la note.
-async function executer(db: ReturnType<typeof createClient>, type: string, aujourdhui: string, cible: string, demande: { user_id?: string }, retenues: string[], entites: { id: string; nom: string; organisation_id: string }[]) {
+// Abonnements, profils, accès et rôles : lus une seule fois par appel, partagés par toutes les organisations (au lieu d'une lecture complète
+// par organisation et par type de rappel).
+type Commun = { abos: Array<{ id: string; user_id: string; endpoint: string; p256dh: string; auth: string }>; profils: Array<Record<string, unknown> & { user_id: string; organisation_id: string; langue?: string }>; membres: Array<{ user_id: string; entite_id: string; role_id: string }>; roles: Array<{ id: string; portee: string; permissions: string[] }> };
+async function lireCommun(db: ReturnType<typeof createClient>, demande: { user_id?: string }): Promise<Commun> {
   let requeteAbos = db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth");
   if (demande.user_id) requeteAbos = requeteAbos.eq("user_id", demande.user_id);
   const { data: abos, error: errAbos } = await requeteAbos;
   if (errAbos) throw new Error(errAbos.message);
-  if (!abos?.length) return { abonnements: 0, envoyes: 0, retires: 0, echecs: 0 };
-
+  if (!abos?.length) return { abos: [], profils: [], membres: [], roles: [] };
   const ids = [...new Set(abos.map((a) => a.user_id))];
-  const [profils, membres, roles, reservations] = await Promise.all([
+  const [profils, membres, roles] = await Promise.all([
     db.from("profils").select("user_id, actif, super_admin, langue, organisation_id").in("user_id", ids),
     db.from("membres").select("user_id, entite_id, role_id").in("user_id", ids),
     db.from("roles").select("id, portee, permissions"),
-    // La veille : les services qui partent demain. Le lendemain : ceux qui se sont terminés hier, donc aussi une location prise plus tôt et rendue hier (details.retour_date).
-    db.from("reservations").select("entite_id, dossier_id, statut, heure_pickup, lieu_pickup, date_service, libelle, partenaire_id, details").in("entite_id", retenues).or(type === "lendemain" ? `date_service.eq.${cible},details->>retour_date.eq.${cible}` : `date_service.eq.${cible}`).neq("statut", "annule"),
   ]);
-  for (const r of [profils, membres, roles, reservations]) if (r.error) throw new Error(r.error.message);
+  for (const r of [profils, membres, roles]) if (r.error) throw new Error(r.error.message);
+  return { abos, profils: profils.data!, membres: membres.data!, roles: roles.data! } as Commun;
+}
+
+async function executer(db: ReturnType<typeof createClient>, type: string, aujourdhui: string, cible: string, demande: { user_id?: string }, retenues: string[], entites: { id: string; nom: string; organisation_id: string }[], commun: () => Promise<Commun>, organisation: string) {
+  const c = await commun();
+  // Seulement les comptes de cette organisation : un autre client ne reçoit jamais ses rappels.
+  const abos = c.abos.filter((a) => (c.profils.find((p) => p.user_id === a.user_id) || { organisation_id: null }).organisation_id === organisation);
+  if (!abos.length) return { abonnements: 0, envoyes: 0, retires: 0, echecs: 0 };
+
+  const ids = [...new Set(abos.map((a) => a.user_id))];
+  const profils = { data: c.profils };
+  const membres = { data: c.membres };
+  const roles = { data: c.roles };
+  // La veille : les services qui partent demain. Le lendemain : ceux qui se sont terminés hier, donc aussi une location prise plus tôt et rendue hier (details.retour_date).
+  const reservations = await db.from("reservations").select("entite_id, dossier_id, statut, heure_pickup, lieu_pickup, date_service, libelle, partenaire_id, details").in("entite_id", retenues).or(type === "lendemain" ? `date_service.eq.${cible},details->>retour_date.eq.${cible}` : `date_service.eq.${cible}`).neq("statut", "annule");
+  if (reservations.error) throw new Error(reservations.error.message);
 
   // Les dossiers des services : annulés à écarter, et l'hôtel du client quand la réservation n'a pas de lieu de pickup (même règle que la feuille du jour).
   const dossiersIds = [...new Set(reservations.data!.map((r) => r.dossier_id))];
@@ -176,24 +194,28 @@ async function executer(db: ReturnType<typeof createClient>, type: string, aujou
 // ---- Rappel une heure avant chaque service ----------------------------------------------------------------------------------------------
 // `maintenant` (ISO) et `user_id` ne servent qu'aux essais. Une exécution sans service à rappeler ne laisse pas de ligne de suivi (il y en aurait 288 par jour) ;
 // un envoi ou une erreur en laisse une, comme les rappels de 18h et 9h.
-// Une passe par organisation, à l'heure de son fuseau, avec sa ligne de suivi.
+// Toutes les organisations en une lecture (toutes les 5 minutes), chaque service à l'heure du fuseau de son organisation ;
+// l'envoi et la ligne de suivi restent par organisation (seulement celles qui ont un service à rappeler).
 async function rappelH1(demande: { maintenant?: string; user_id?: string }) {
   const maintenant = demande.maintenant && !Number.isNaN(Date.parse(demande.maintenant)) ? Date.parse(demande.maintenant) : Date.now();
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  const [entites, organisations] = await Promise.all([db.from("entites").select("id, organisation_id"), db.from("organisations").select("id, fuseau")]);
-  if (entites.error || organisations.error) return json({ type: "h1", erreur: (entites.error || organisations.error)!.message }, 500);
-  const fuseauOrg = new Map((organisations.data || []).map((o) => [o.id, fuseauValide(o.fuseau)]));
-  const parOrganisation = new Map<string, string[]>();
-  for (const e of entites.data || []) parOrganisation.set(e.organisation_id, [...(parOrganisation.get(e.organisation_id) || []), e.id]);
   const total = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0, services: 0 };
   const erreurs: string[] = [];
-  for (const [org, ids] of parOrganisation) {
-    const fuseau = fuseauOrg.get(org) || fuseauValide(null);
+  let parOrganisation: Map<string, { fuseau: string; services: ReturnType<typeof servicesH1>; dossiers: Array<{ id: string; client_id: string }> }>;
+  try {
+    parOrganisation = await servicesH1ParOrganisation(db, maintenant);
+  } catch (err) {
+    const erreur = String((err && err.message) || err).slice(0, 300);
+    // Panne avant de savoir quelle organisation est concernée : pas de ligne de suivi (elle serait chez un client au hasard), le journal de la fonction la garde.
+    console.error("rappel h1 :", erreur);
+    return json({ type: "h1", ...total, erreur }, 500);
+  }
+  for (const [org, { fuseau, services, dossiers }] of parOrganisation) {
     const debut = Date.now();
     let res = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0, services: 0 };
     let erreur = "";
     try {
-      res = await executerH1(db, maintenant, demande, ids, fuseau);
+      res = await envoyerH1(db, services, dossiers, { essai: !!demande.user_id, userId: demande.user_id, force: false });
     } catch (err) {
       erreur = String((err && err.message) || err).slice(0, 300);
     }
@@ -207,27 +229,39 @@ async function rappelH1(demande: { maintenant?: string; user_id?: string }) {
 
 async function noterSuiviH1(db: ReturnType<typeof createClient>, maintenant: number, res: { abonnements: number; envoyes: number; retires: number; echecs: number }, erreur: string, debut: number, organisation: string | null, fuseau: string) {
   const { abonnements, envoyes, retires, echecs } = res;
-  const { error } = await db.from("rappels_suivi").insert({ type: "h1", cible: dateDans(fuseau, new Date(maintenant)), abonnements, envoyes, retires, echecs, erreur, duree_ms: Date.now() - debut, ...(organisation ? { organisation_id: organisation } : {}) });
+  // Sans organisation connue, aucune ligne : la base la refuse (migration 41) plutôt que de la ranger chez un autre client.
+  if (!organisation) return console.error("suivi du rappel h1 sans organisation :", erreur || "aucune erreur");
+  const { error } = await db.from("rappels_suivi").insert({ type: "h1", cible: dateDans(fuseau, new Date(maintenant)), abonnements, envoyes, retires, echecs, erreur, duree_ms: Date.now() - debut, organisation_id: organisation });
   if (error) console.error("suivi du rappel h1 non écrit :", error.message);
 }
 
-async function executerH1(db: ReturnType<typeof createClient>, maintenant: number, demande: { user_id?: string }, entiteIds: string[], fuseau: string) {
-  const vide = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0, services: 0 };
-  const [reglages, reservations] = await Promise.all([
-    db.from("reglages").select("entite_id, valeur").in("entite_id", entiteIds),
-    db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, lieu_pickup, personnes, details").in("entite_id", entiteIds).in("date_service", datesH1(maintenant, [fuseau])).neq("statut", "annule"),
-  ]);
-  for (const r of [reglages, reservations]) if (r.error) throw new Error(r.error.message);
+// Services à rappeler maintenant, rangés par organisation. Une seule lecture des entreprises, des réglages et des réservations.
+async function servicesH1ParOrganisation(db: ReturnType<typeof createClient>, maintenant: number) {
+  const [entites, organisations, reglages] = await Promise.all([db.from("entites").select("id, organisation_id"), db.from("organisations").select("id, fuseau"), db.from("reglages").select("entite_id, valeur")]);
+  for (const r of [entites, organisations, reglages]) if (r.error) throw new Error(r.error.message);
+  const fuseauOrg = new Map((organisations.data || []).map((o) => [o.id, fuseauValide(o.fuseau)]));
+  const orgDe = new Map((entites.data || []).map((e) => [e.id, e.organisation_id]));
+  const fuseauDe = (entiteId: string) => fuseauOrg.get(orgDe.get(entiteId) || "") || fuseauValide(null);
+  const out = new Map<string, { fuseau: string; services: ReturnType<typeof servicesH1>; dossiers: Array<{ id: string; client_id: string }> }>();
   // Seules les entreprises de services (Secret, Taxi) qui ont le rappel allumé ; ZTP a le sien la veille du départ, pas un par service.
-  const actives = new Set(reglages.data!.filter((l) => rappelAvantActif(l.valeur) && modeRappel(l.valeur) === "service").map((l) => l.entite_id));
-  const candidates = reservations.data!.filter((r) => actives.has(r.entite_id));
-  if (!candidates.length) return vide;
-  const dossiersIds = [...new Set(candidates.map((r) => r.dossier_id))];
+  const actives = [...new Set(reglages.data!.filter((l) => rappelAvantActif(l.valeur) && modeRappel(l.valeur) === "service").map((l) => l.entite_id))];
+  if (!actives.length) return out;
+  const reservations = await db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, lieu_pickup, personnes, details").in("entite_id", actives).in("date_service", datesH1(maintenant, [...new Set([...fuseauOrg.values()])])).neq("statut", "annule");
+  if (reservations.error) throw new Error(reservations.error.message);
+  if (!reservations.data!.length) return out;
+  const dossiersIds = [...new Set(reservations.data!.map((r) => r.dossier_id))];
   const dossiers = await db.from("dossiers").select("id, annule, client_id").in("id", dossiersIds);
   if (dossiers.error) throw new Error(dossiers.error.message);
-  const aRappeler = servicesH1(candidates, maintenant, { ecartes: new Set((dossiers.data || []).filter((d) => d.annule).map((d) => d.id)), fuseauDe: () => fuseau });
-  if (!aRappeler.length) return vide;
-  return envoyerH1(db, aRappeler, dossiers.data || [], { essai: !!demande.user_id, userId: demande.user_id, force: false });
+  const aRappeler = servicesH1(reservations.data!, maintenant, { ecartes: new Set((dossiers.data || []).filter((d) => d.annule).map((d) => d.id)), fuseauDe });
+  for (const x of aRappeler) {
+    const org = orgDe.get(x.reservation.entite_id) || "";
+    if (!out.has(org)) out.set(org, { fuseau: fuseauDe(x.reservation.entite_id), services: [], dossiers: [] });
+    const g = out.get(org)!;
+    g.services.push(x);
+    const d = (dossiers.data || []).find((y) => y.id === x.reservation.dossier_id);
+    if (d && !g.dossiers.includes(d)) g.dossiers.push(d);
+  }
+  return out;
 }
 
 // Envoi forcé d'un service : la même notification que le cron (texte, nom du client, destinataires, lien), tout de suite, hors de la fenêtre.

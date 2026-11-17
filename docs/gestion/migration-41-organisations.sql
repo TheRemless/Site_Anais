@@ -71,7 +71,8 @@ grant execute on function mon_organisation(), organisation_de(uuid), est_platefo
 create or replace function permissions_dans(e uuid) returns text[] language sql stable security definer set search_path = public as $$
   select case
     when admin_de(e) then toutes_permissions()
-    else coalesce((select r.permissions from membres m join roles r on r.id = m.role_id join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif), '{}')
+    -- Rôle « tous droits » (Administrateur calculé, migration 38) : toutes les permissions, même celles ajoutées après sa création.
+    else coalesce((select case when r.tous_droits then toutes_permissions() else r.permissions end from membres m join roles r on r.id = m.role_id join profils p on p.user_id = m.user_id where m.user_id = auth.uid() and m.entite_id = e and p.actif), '{}')
   end
 $$;
 
@@ -90,16 +91,19 @@ create or replace function equipe_de(e uuid) returns table (user_id uuid, nom te
 $$;
 
 -- Un nouveau compte n'a aucun droit. Son organisation :
---   * celle de l'invitation (métadonnée organisation_id posée par l'éditeur ou une fonction d'invitation) ;
---   * aucune si l'invitation annonce une nouvelle organisation (métadonnée nouvelle_organisation), créée ensuite par creer_organisation ;
+--   * celle de la métadonnée d'application organisation_id (raw_app_meta_data, que seule la clé de service écrit). La métadonnée
+--     « utilisateur » (raw_user_meta_data) n'est jamais crue pour l'organisation : n'importe qui la choisit en s'inscrivant avec la clé publique ;
+--   * aucune si l'invitation annonce une nouvelle organisation (nouvelle_organisation), créée ensuite par creer_organisation ;
 --   * sinon, tant qu'il n'existe qu'une organisation, celle-ci : un compte ajouté à la main dans Supabase apparaît dans « Utilisateurs », comme avant.
+-- La fonction « invitation » (clé de service) rattache elle-même l'invité à l'organisation de l'administrateur, juste après sa création.
 create or replace function creer_profil() returns trigger language plpgsql security definer set search_path = public as $$
 declare
   meta jsonb := coalesce(to_jsonb(new)->'raw_user_meta_data', '{}'::jsonb);
+  app jsonb := coalesce(to_jsonb(new)->'raw_app_meta_data', '{}'::jsonb);
   org uuid;
 begin
-  if meta->>'organisation_id' ~ '^[0-9a-f-]{36}$' then
-    select id into org from organisations where id = (meta->>'organisation_id')::uuid;
+  if app->>'organisation_id' ~ '^[0-9a-f-]{36}$' then
+    select id into org from organisations where id = (app->>'organisation_id')::uuid;
   elsif coalesce(meta->>'nouvelle_organisation', '') <> 'true' and (select count(*) from organisations) = 1 then
     select id into org from organisations;
   end if;
@@ -283,14 +287,26 @@ $$;
 -- 8. Suivi des rappels par organisation. Les lignes anciennes, sans organisation, restent à Zwald.
 alter table rappels_suivi add column if not exists organisation_id uuid references organisations (id) on delete cascade;
 update rappels_suivi set organisation_id = '00000000-0000-0000-0000-00000000a000' where organisation_id is null;
--- Tant que la fonction « rappels » n'écrit pas encore l'organisation de chaque envoi, ses lignes restent à Zwald (seule organisation qui envoie des rappels).
-alter table rappels_suivi alter column organisation_id set default '00000000-0000-0000-0000-00000000a000';
+-- La fonction « rappels » écrit l'organisation de chaque passage : pas de valeur par défaut, une ligne sans organisation est refusée
+-- au lieu d'être rangée chez Zwald (elle montrerait les envois d'un autre client).
+alter table rappels_suivi alter column organisation_id drop default;
+alter table rappels_suivi alter column organisation_id set not null;
 create index if not exists rappels_suivi_organisation on rappels_suivi (organisation_id, cree_le desc);
 drop policy if exists "lire le suivi des rappels" on rappels_suivi;
 create policy "lire le suivi des rappels" on rappels_suivi for select to authenticated using (
   organisation_id = mon_organisation() and (est_super_admin() or exists (
     select 1 from membres m join roles r on r.id = m.role_id join profils p on p.user_id = m.user_id
     where m.user_id = auth.uid() and p.actif and 'reglages.ecrire' = any (r.permissions)))
+);
+
+-- 9. Journal des comptes (invitations, liens de mot de passe, suppressions, organisations créées) : ces lignes n'ont pas d'entreprise.
+-- Elles portent l'organisation, et seul son administrateur les lit (avant : toute administratrice générale, donc toutes les organisations).
+alter table journal add column if not exists organisation_id uuid references organisations (id) on delete cascade;
+update journal set organisation_id = '00000000-0000-0000-0000-00000000a000' where entite_id is null and organisation_id is null;
+drop policy if exists "lire le journal" on journal;
+create policy "lire le journal" on journal for select to authenticated using (
+  (entite_id is not null and a_permission(entite_id, 'journal.voir') and (table_name <> 'reservations_nets' or a_permission(entite_id, 'partenaires.nets')))
+  or (entite_id is null and organisation_id = mon_organisation() and est_super_admin())
 );
 
 commit;

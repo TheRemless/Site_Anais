@@ -166,7 +166,8 @@ export function nouvelleEntiteModal(apres) {
   nom.addEventListener("input", () => !manuel && (code.value = slug(nom.value)));
   // Modèle métier (étape 3 du SaaS) : la façon de travailler et des textes de départ neutres, en anglais. « Réglages vides » : comme avant.
   const choixModele = h("select", { id: "ne-modele" }, ...MODELES.map((m) => h("option", { value: m.id }, tr(m.nom))), h("option", { value: "" }, tr("Réglages vides")));
-  choixModele.value = MODELE_DEFAUT;
+  // Une organisation en français (Zwald) garde par défaut l'ancien comportement : réglages vides, en français. Les autres partent du modèle.
+  choixModele.value = (organisation() || {}).langue === "fr" ? "" : MODELE_DEFAUT;
   const aideModele = h("p", { class: "aide" });
   const decrire = () => (aideModele.textContent = choixModele.value ? tr(MODELES.find((m) => m.id === choixModele.value).description) : tr("Elle démarre sans client ni catalogue, avec des réglages vides à compléter dans l'écran Réglages de cette entreprise."));
   choixModele.addEventListener("change", decrire);
@@ -443,7 +444,7 @@ export function vueAdmin() {
     h(
       "section",
       null,
-      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Entreprises")), h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: () => nouvelleEntiteModal(rafraichir) }, tr("Nouvelle entreprise")))),
+      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Entreprises")), h("div", { class: "entete-actions" }, etat.moi && etat.moi.plateforme ? h("button", { class: "secondaire", type: "button", onclick: () => nouveauClientModal() }, tr("Nouveau client")) : null, h("button", { class: "secondaire", type: "button", onclick: () => nouvelleEntiteModal(rafraichir) }, tr("Nouvelle entreprise")))),
       h("p", { class: "aide" }, tr("Chaque entreprise a ses propres clients, dossiers, paiements, catalogue, réglages, logo et devise. Personne ne voit une entreprise sans y avoir accès.")),
       h(
         "table",

@@ -9,7 +9,7 @@ const ok = (c, msg) => { if (!c) { echecs++; console.log("  ECHEC:", msg); } els
 const harnais = `
 create role anon; create role authenticated;
 create schema auth;
-create table auth.users (id uuid primary key default gen_random_uuid(), email text, created_at timestamptz default now(), raw_user_meta_data jsonb);
+create table auth.users (id uuid primary key default gen_random_uuid(), email text, created_at timestamptz default now(), raw_user_meta_data jsonb, raw_app_meta_data jsonb);
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 create schema storage;
 create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint);
@@ -47,7 +47,8 @@ const essaie = async (userId, sql, params = []) => {
   finally { await db.exec("reset role;"); }
 };
 const nb = async (u, sql, p) => { const r = await essaie(u, sql, p); return r.ok ? r.rows.length : -1; };
-const compte = async (email, meta = null) => (await un("insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id", [email, meta])).id;
+// `meta` : métadonnée « utilisateur » (choisie par qui s'inscrit) ; `app` : métadonnée d'application (clé de service seulement).
+const compte = async (email, meta = null, app = null) => (await un("insert into auth.users (email, raw_user_meta_data, raw_app_meta_data) values ($1, $2, $3) returning id", [email, meta, app])).id;
 
 console.log("== Reprise de la base existante ==");
 ok((await un("select count(*)::int n from entites where organisation_id = $1", [ZWALD])).n === 3, "ZTP, Secret et Taxi sont dans l'organisation Zwald");
@@ -78,7 +79,7 @@ ok(!refus.ok, "l'administratrice de Zwald ne peut pas créer d'organisation");
 const r = await essaie(editeur, "select creer_organisation('Agence B', 'marc@test', 'Europe/Zurich', 'en') as id");
 ok(r.ok, "l'éditeur crée l'organisation B " + (r.err || ""));
 const B = r.rows[0].id;
-const invitee = await compte("invitee-b@test", { organisation_id: B });
+const invitee = await compte("invitee-b@test", null, { organisation_id: B });
 ok((await un("select langue from profils where user_id = $1", [invitee])).langue === "en", "un compte invité par B démarre en anglais, la langue de B");
 ok((await un("select super_admin, organisation_id from profils where user_id = $1", [marc])).organisation_id === B, "Marc devient administrateur de B");
 ok(!(await essaie(editeur, "select creer_organisation('Autre', 'marc@test')")).ok, "un compte déjà rattaché ne change pas d'organisation");
@@ -124,8 +125,10 @@ const roleB = (await un("insert into roles (entite_id, nom, permissions) values 
 const roleZ = (await un("select id from roles where entite_id = $1 limit 1", [ent.secret])).id;
 const julie = await compte("julie@test");
 ok((await un("select organisation_id from profils where user_id = $1", [julie])).organisation_id === null, "avec deux organisations, un compte sans invitation n'est rattaché à aucune");
-const invite = await compte("invite@test", { organisation_id: B });
-ok((await un("select organisation_id from profils where user_id = $1", [invite])).organisation_id === B, "un compte invité par B rejoint B");
+const invite = await compte("invite@test", null, { organisation_id: B });
+ok((await un("select organisation_id from profils where user_id = $1", [invite])).organisation_id === B, "un compte créé par la clé de service pour B rejoint B");
+const intrus = await compte("intrus@test", { organisation_id: B });
+ok((await un("select organisation_id from profils where user_id = $1", [intrus])).organisation_id === null, "une inscription qui annonce elle-même l'organisation B n'y entre pas");
 const lien = await essaie(marc, "insert into membres (user_id, entite_id, role_id) values ($1, $2, $3)", [julie, eB, roleB]);
 ok(lien.ok, "Marc donne un accès à un compte neuf " + (lien.err || ""));
 ok((await un("select organisation_id from profils where user_id = $1", [julie])).organisation_id === B, "le compte neuf est rattaché à B");
@@ -133,6 +136,10 @@ ok(!(await essaie(anais, "insert into membres (user_id, entite_id, role_id) valu
 ok(!(await essaie(marc, "insert into membres (user_id, entite_id, role_id) values ($1, $2, $3)", [julie, ent.secret, roleZ])).ok, "Marc ne peut pas ouvrir Secret de Zwald");
 ok(!(await essaie(marc, "insert into membres (user_id, entite_id, role_id) values ($1, $2, $3)", [julie, eB, roleZ])).ok, "un rôle d'une autre entreprise est refusé");
 ok((await nb(julie, "select * from clients")) === 1, "Julie voit le client de B");
+ok((await essaie(julie, "select a_permission($1, 'partenaires.prix') v", [eB])).rows[0].v === false, "sans « tous droits », Julie n'a que les droits de son rôle");
+await db.exec(`update roles set tous_droits = true where id = '${roleB}'`);
+ok((await essaie(julie, "select a_permission($1, 'partenaires.prix') v", [eB])).rows[0].v === true, "rôle « tous droits » (migration 38) : Julie a toutes les permissions");
+await db.exec(`update roles set tous_droits = false where id = '${roleB}'`);
 ok(!(await essaie(marc, "insert into membres (user_id, entite_id, role_id) values ($1, $2, $3)", [enAttente, eB, roleB])).ok, "Marc ne peut pas prendre un compte qui attend sa propre organisation");
 ok((await un("select organisation_id from profils where user_id = $1", [enAttente])).organisation_id === null, "ce compte reste libre");
 const eq = await essaie(marc, "select * from equipe_de($1)", [eB]);
@@ -155,8 +162,18 @@ try { await db.query("select fiduciaire_prochain_numero('facture', '2026-11-17',
 ok(/sans organisation/.test(err), "un compte sans organisation ne tire aucun numéro");
 await db.exec(`select set_config('request.jwt.claim.sub', '', false);`);
 
+console.log("== Journal des comptes ==");
+await db.exec(`insert into journal (entite_id, organisation_id, table_name, action, cible, libelle) values (null, '${ZWALD}', 'comptes', 'invite', 'x', 'zwald'), (null, '${B}', 'comptes', 'invite', 'y', 'b')`);
+const jA = await essaie(anais, "select libelle from journal where entite_id is null and table_name = 'comptes'");
+ok(jA.ok && jA.rows.map((x) => x.libelle).join() === "zwald", "Anaïs lit le journal des comptes de Zwald, pas celui de B");
+const jJ = await essaie(julie, "select libelle from journal where entite_id is null");
+ok(jJ.ok && jJ.rows.length === 0, "un membre qui n'est pas administrateur ne lit pas le journal des comptes");
+
 console.log("== Suivi des rappels ==");
 await db.exec(`insert into rappels_suivi (type, organisation_id) values ('veille', '${B}')`);
+let sansOrg = "";
+try { await db.exec("insert into rappels_suivi (type) values ('veille')"); } catch (e) { sansOrg = e.message; }
+ok(/null/.test(sansOrg), "une ligne de suivi sans organisation est refusée, plus rangée chez Zwald");
 ok((await nb(anais, "select * from rappels_suivi")) === 1 && (await nb(marc, "select * from rappels_suivi")) === 1, "chacun ne voit que le suivi de ses rappels");
 
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");

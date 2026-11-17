@@ -44,3 +44,16 @@ test("migration 41 : le bandeau du site garde le droit « reglages.ecrire » de 
   assert.match(corps, /a_permission\(e, 'reglages\.ecrire'\)/);
   assert.match(corps, /publie_site/);
 });
+
+test("outil : organisation du compte, rôle « tous droits » de la première entreprise, éditeur et modèle par défaut", () => {
+  const etat = fs.readFileSync(new URL("../src/gestion/js/etat.mjs", import.meta.url), "utf8");
+  assert.match(etat, /const mienne = etat\.moi && etat\.moi\.organisation_id;/, "l'éditeur ne prend pas la première organisation venue");
+  assert.match(etat, /\|\| \(!etat\.brut\.roles\.length && organisation\(\) !== null\)/, "première entreprise : le rôle Administrateur a « tous droits »");
+  const admin = fs.readFileSync(new URL("../src/gestion/js/views/admin.mjs", import.meta.url), "utf8");
+  assert.match(admin, /etat\.moi && etat\.moi\.plateforme \? h\("button", \{ class: "secondaire", type: "button", onclick: \(\) => nouveauClientModal\(\) \}/, "« Nouveau client » aussi dans Administration");
+  assert.match(admin, /\(organisation\(\) \|\| \{\}\)\.langue === "fr" \? "" : MODELE_DEFAUT/, "organisation en français : réglages vides par défaut, comme avant");
+  const sql = fs.readFileSync(new URL("../docs/gestion/migration-41-organisations.sql", import.meta.url), "utf8");
+  assert.match(sql, /case when r\.tous_droits then toutes_permissions\(\) else r\.permissions end/, "permissions_dans garde la règle de la migration 38");
+  assert.match(sql, /app->>'organisation_id'/);
+  assert.doesNotMatch(sql, /meta->>'organisation_id'/, "la métadonnée choisie à l'inscription n'est jamais crue");
+});

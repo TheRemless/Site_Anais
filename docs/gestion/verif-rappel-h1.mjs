@@ -77,8 +77,8 @@ ok((await essaie("authenticated", U.autre, `update profils set rappel_h1 = false
 ok((await essaie("anon", null, "select definir_rappel_h1(true)")).ok === false, "anon n'appelle pas la fonction");
 
 console.log("== Suivi ==");
-ok((await db.query("insert into rappels_suivi (type, envoyes) values ('h1', 1) returning id")).rows.length === 1, "le suivi accepte le type h1");
-ok(await db.query("insert into rappels_suivi (type) values ('autre')").then(() => false, () => true), "et refuse un type inconnu");
+ok((await db.query("insert into rappels_suivi (type, envoyes, organisation_id) values ('h1', 1, '00000000-0000-0000-0000-00000000a000') returning id")).rows.length === 1, "le suivi accepte le type h1");
+ok(await db.query("insert into rappels_suivi (type, organisation_id) values ('autre', '00000000-0000-0000-0000-00000000a000')").then(() => false, () => true), "et refuse un type inconnu");
 await db.query(`delete from reservations where id = '${res}'`);
 ok((await un("select count(*)::int n from rappels_h1_envois")).n === 0, "une réservation supprimée emporte ses marques");
 
