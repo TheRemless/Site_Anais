@@ -14,7 +14,8 @@ const ERREURS = { vide: () => tr("Indiquez un montant."), invalide: () => tr("Mo
 // Le petit formulaire d'un service, ou null quand il n'y a rien à compléter. `apres` : appelé une fois enregistré (rafraîchir l'écran).
 export function saisieRapideNet(r, { apres = () => {} } = {}) {
   const n = netReservation(r);
-  const quoi = champSaisieRapide(r, n, droitsSaisieRapide());
+  const dossierAnnule = !!(etat.db.dossiers || []).find((d) => d.id === r.dossier_id && d.annule);
+  const quoi = champSaisieRapide(r, n, { ...droitsSaisieRapide(), dossierAnnule });
   if (!quoi) return null;
   const net = quoi === "net_prevu";
   const id = `sr-${net ? "net" : "com"}-${r.id}`;

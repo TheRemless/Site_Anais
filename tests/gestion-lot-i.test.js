@@ -90,6 +90,7 @@ test("saisie rapide : réservée au droit « nets » avec l'écriture, jamais en
   assert.equal(champSaisieRapide({ ...r, paye_sur_place: true }, null, { nets: true, ecrit: true, taxi: true }), null);
   assert.equal(champSaisieRapide({ ...r, statut: "annule" }, null, { nets: true, ecrit: true }), null);
   assert.equal(champSaisieRapide({ ...r, partenaire_id: null }, null, { nets: true, ecrit: true }), null);
+  assert.equal(champSaisieRapide(r, null, { nets: true, ecrit: true, dossierAnnule: true }), null, "dossier annulé");
 });
 
 test("montant saisi : espaces, apostrophes et virgule acceptés ; vide, texte et négatif refusés", () => {

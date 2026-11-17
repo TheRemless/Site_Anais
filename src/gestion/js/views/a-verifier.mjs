@@ -121,7 +121,7 @@ export async function vueAVerifier() {
               { class: "controle", open: controles.length <= 3 || ouverts.has(c.cle), ontoggle: (e) => (e.target.open ? ouverts.add(c.cle) : ouverts.delete(c.cle)) },
               h("summary", null, h("strong", null, tr(titre)), " ", h("span", { class: "tag" }, String(c.elements.length)), c.aRelire ? h("span", { class: "tag" }, tr("à relire")) : null),
               h("p", { class: "aide" }, tr(aide)),
-              h("ul", { class: "cartes" }, c.elements.slice(0, regle.lignes_max).map((e) => h("li", { class: "carte" }, h("a", { class: "carte-lien", href: e.lien }, h("span", { class: "carte-titre" }, e.texte), e.detail ? h("span", { class: "carte-sous" }, e.detail) : null), SAISIE_RAPIDE.has(c.cle) && reservationParId(e.id) ? saisieRapideNet(reservationParId(e.id), { apres: rafraichir }) : null))),
+              h("ul", { class: "cartes" }, c.elements.slice(0, regle.lignes_max).map((e) => h("li", { class: "carte" }, h("a", { class: "carte-lien", href: e.lien }, h("span", { class: "carte-titre" }, e.texte), e.detail ? h("span", { class: "carte-sous" }, e.detail) : null), SAISIE_RAPIDE.has(c.cle) ? ((r) => (r ? saisieRapideNet(r, { apres: rafraichir }) : null))(reservationParId(e.id)) : null))),
               c.elements.length > regle.lignes_max ? h("p", { class: "aide" }, tr("Les {max} premiers sont affichés ({n} au total).", { max: regle.lignes_max, n: c.elements.length })) : null
             );
           })

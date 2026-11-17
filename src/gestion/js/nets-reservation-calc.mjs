@@ -15,8 +15,9 @@ export function champsNetsChanges(avant, saisis) {
 // manque, arrive sans net prévu (payé chez nous) ou sans commission prévue (payé sur place). Renvoie le champ à proposer, ou null.
 // `droits` : { nets: droit « partenaires.nets », ecrit: droit « dossiers.ecrire », taxi: entreprise en mode Taxi }.
 // Taxi n'a rien ici : pas de net (les clients paient le chauffeur), et sa commission se saisit par son propre geste.
-export function champSaisieRapide(r, n, { nets = false, ecrit = false, taxi = false } = {}) {
-  if (!r || !nets || !ecrit || taxi || r.statut === "annule" || !r.partenaire_id) return null;
+// `dossierAnnule` : le dossier du service est annulé (rien à compléter, comme dans « À vérifier » et la base).
+export function champSaisieRapide(r, n, { nets = false, ecrit = false, taxi = false, dossierAnnule = false } = {}) {
+  if (!r || !nets || !ecrit || taxi || dossierAnnule || r.statut === "annule" || !r.partenaire_id) return null;
   const champ = r.paye_sur_place ? "commission_prevue" : "net_prevu";
   return vide(n && n[champ]) ? champ : null;
 }

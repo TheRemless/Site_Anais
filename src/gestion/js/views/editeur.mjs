@@ -1,5 +1,6 @@
 import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument, estAdmin } from "../etat.mjs";
-import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs";
+import { h, champ, toast, num, vider, icone, modal, confirmer, erreurChamp } from "../ui.mjs";
+import { montantSaisi } from "../nets-reservation-calc.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace, modeReglement, SUR_PLACE, aMarquerEnvoye } from "../calc.mjs";
 import { puceMode } from "./mode-reglement.mjs";
 import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs";
@@ -486,7 +487,14 @@ function editeurVue(id) {
           // Net de la ligne, par unité : saisi ici quand il manque (ligne tapée par Mook, sans droit « nets », ou prestation sans net au catalogue).
           // Il ne compte pas dans l'empreinte d'envoi : le compléter ne marque pas la facture « modifiée depuis l'envoi » (17.11.2026).
           peut("partenaires.nets") && l.kind === "ligne" && !l.paye_sur_place
-            ? champ(tr("Net partenaire, par unité"), h("input", { id: `l${l.id}-net`, inputmode: "decimal", autocomplete: "off", value: l.net ?? "", oninput: (e) => ((l.net = num(String(e.target.value).trim().replace(/[\s']/g, "").replace(",", "."))), change()) }), tr("Ce que le prestataire facture pour une unité de cette ligne. Vide : la marge du dossier reste à compléter."))
+            ? champ(tr("Net partenaire, par unité"), h("input", { id: `l${l.id}-net`, inputmode: "decimal", autocomplete: "off", value: l.net ?? "", oninput: (e) => {
+              // Même lecture que la saisie rapide : un texte non reconnu ou négatif ne touche pas au net déjà enregistré.
+              const m = montantSaisi(e.target.value);
+              if (m.erreur && m.erreur !== "vide") return erreurChamp(e.target, m.erreur === "negatif" ? tr("Le montant ne peut pas être négatif.") : tr("Montant non reconnu : des chiffres seulement, par exemple 1200 ou 1200,50."));
+              erreurChamp(e.target, null);
+              l.net = m.erreur ? null : m.valeur;
+              change();
+            } }), tr("Ce que le prestataire facture pour une unité de cette ligne. Vide : la marge du dossier reste à compléter."))
             : peut("partenaires.nets") && l.net != null ? h("p", { class: "aide" }, tr("Net partenaire : {net}", { net: formatMontant(l.net, devDoc()) + (l.qte ? ` × ${l.qte}` : "") })) : null
         )
       );
