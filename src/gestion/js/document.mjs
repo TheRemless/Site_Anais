@@ -2,12 +2,15 @@
 // Tout ce qui est propre à une entreprise (textes, logo, couleurs, coordonnées) vient de ses réglages.
 import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, lignesEquivalents, formatNombre, acompteDu, montantLigne, montantSurPlace } from "./calc.mjs";
 import { h, markup, inline } from "./ui.mjs";
-import { modePaiement, LIBELLES_EN, phraseCgv, conditionsDocument, mentionTva } from "./defauts.mjs";
+import { LIBELLES_EN, phraseCgv, conditionsDocument, mentionTva } from "./defauts.mjs";
+import { reglagesDuDocument, paiementDuDocument, infoDevise, texteOffert } from "./documents-calc.mjs";
 
 const lignes = (texte) => (texte || "").split("\n").filter((l) => l.trim() !== "");
 
-export function renderDocument({ type, doc, dossier, client, reglages, recu, nomPartenaire = () => "" }) {
+export function renderDocument({ type, doc, dossier, client, reglages: reglagesDuJour, recu, nomPartenaire = () => "" }) {
   const c = doc.contenu;
+  // Un document envoyé garde l'émetteur, la banque, la devise et l'acompte du jour de son envoi (contenu.fige) : changer les réglages ne le redessine pas.
+  const reglages = reglagesDuDocument(reglagesDuJour, c);
   const t = totaux(c, recu);
   const e = reglages.emetteur;
   const en = c.langue === "en";
@@ -17,7 +20,7 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu, nom
   const detail = c.colonnes === "detail";
   const locale = type === "facture_locale";
   const estFacture = type === "facture" || locale;
-  const mode = modePaiement(reglages, c.paiement);
+  const mode = paiementDuDocument(reglagesDuJour, c);
   const numero = (c.numero || "").trim() || dossier.ref;
   const titreType = locale ? lb.facture_locale || lb.facture : estFacture ? lb.facture : lb.devis;
   const variante = conditionsDocument(reglages, c, en);
@@ -32,12 +35,11 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu, nom
   const surPlaceTotal = montantSurPlace(c);
   const toutSurPlace = surPlaceTotal > 0 && t.sousTotal === 0;
   const eqBarre = lignesEq ? equivalents(toutSurPlace ? surPlaceTotal : t.reste, lignesEq) : [];
-  const SYMBOLES = { EUR: "€", USD: "$" };
-  const texteEq = (x) => `${formatNombre(x.montant)} ${SYMBOLES[x.code] || x.code}`;
-  const NOMS_DEVISES = { CHF: "Swiss Franc", EUR: "Euro", THB: "Thai Baht", USD: "US Dollar", GBP: "Pound Sterling" };
+  // Noms et symboles des devises : réglables (Réglages, Dossiers et listes), valeurs par défaut dans documents-calc.mjs.
+  const texteEq = (x) => `${formatNombre(x.montant)} ${infoDevise(reglagesDuJour, x.code).symbole}`;
   const vars = {
     devise: dev,
-    devise_nom: NOMS_DEVISES[dev] || dev,
+    devise_nom: infoDevise(reglagesDuJour, dev).nom,
     acompte: pct,
     solde: 100 - pct,
     delai: reglages.conditions.delai_jours,
@@ -89,7 +91,8 @@ export function renderDocument({ type, doc, dossier, client, reglages, recu, nom
       description,
       detail ? h("div", { class: "unite" }, unite) : null,
       detail ? h("div", { class: "qte" }, qte) : null,
-      h("div", { class: l.texte_montant ? "montant txt" : "montant" }, l.texte_montant || (aMontant ? formatMontant(montant, dev) : ""))
+      // Ligne offerte : « Offert » (« Complimentary » en anglais) à la place du montant, sauf texte choisi pour cette ligne.
+      h("div", { class: l.texte_montant || l.offert ? "montant txt" : "montant" }, l.texte_montant || (l.offert ? texteOffert(en) : aMontant ? formatMontant(montant, dev) : ""))
     );
   };
 

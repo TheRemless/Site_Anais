@@ -4,6 +4,10 @@ import { voucherExemple } from "./voucher.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
+// Lot C1 (devis et factures) : corbeille des documents, prochain numéro, noms des devises.
+import { sectionCorbeilleDocuments } from "./corbeille-documents.mjs";
+import { blocProchainNumero } from "./prochain-numero.mjs";
+import { champDevisesNoms } from "./devises-reglages.mjs";
 import { renderDocument } from "../document.mjs";
 import { telecharger, vide, apercuA4, plierGroupes } from "./commun.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
@@ -457,10 +461,10 @@ export function vueReglages() {
       "div",
       null,
       // Acompte et relance de devis : ZTP seulement. Taxi n'a ni facture ni conditions.
-      taxi ? null : h("fieldset", null, h("legend", null, tr("Conditions")), ztp ? h("div", { class: "grille-form" }, texte(N_("Acompte demandé (%, 0 si aucun)"), "conditions.acompte_pct", { type: "number" }), texte(N_("Délai de paiement de l'acompte (jours)"), "conditions.delai_jours", { type: "number" }), texte(N_("Relancer un devis sans réponse après (jours)"), "conditions.relance_jours", { type: "number" })) : null, texte(N_("Mention de TVA"), "conditions.tva_mention", { aide: tr("Par exemple « TVA non applicable ». Vide pour ne rien afficher.") }), texte(N_("Mention de TVA en anglais (facultatif)"), "conditions.tva_mention_en", { aide: tr("Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise.") }), texte(N_("Lien des conditions générales"), "conditions.cgv_url", { type: "url" })),
-      h("fieldset", null, h("legend", null, tr("Dossiers")), champ(tr("Numérotation"), modeNum), prefixe, chiffres, ...(ztp ? [texte(N_("Nom du champ « pays »"), "dossier.libelle_pays", { aide: tr("Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier.") }), liste(N_("Valeurs proposées, une par ligne"), "listes.pays"), texte(N_("Modèle du titre du document"), "dossier.modele_bandeau", { aide: tr("{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}.") })] : [])),
+      taxi ? null : h("fieldset", null, h("legend", null, tr("Conditions")), ztp ? h("div", { class: "grille-form" }, texte(N_("Acompte demandé (%, 0 si aucun)"), "conditions.acompte_pct", { type: "number" }), texte(N_("Délai de paiement de l'acompte (jours)"), "conditions.delai_jours", { type: "number" }), texte(N_("Relancer un devis sans réponse après (jours)"), "conditions.relance_jours", { type: "number", aide: tr("0 : jamais de relance. Vide : 7 jours.") })) : null, texte(N_("Mention de TVA"), "conditions.tva_mention", { aide: tr("Par exemple « TVA non applicable ». Vide pour ne rien afficher.") }), texte(N_("Mention de TVA en anglais (facultatif)"), "conditions.tva_mention_en", { aide: tr("Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise.") }), texte(N_("Lien des conditions générales"), "conditions.cgv_url", { type: "url" })),
+      h("fieldset", null, h("legend", null, tr("Dossiers")), champ(tr("Numérotation"), modeNum), prefixe, chiffres, r.numerotation.mode === "sequence" ? blocProchainNumero(r.numerotation) : null, ...(ztp ? [texte(N_("Nom du champ « pays »"), "dossier.libelle_pays", { aide: tr("Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier.") }), liste(N_("Valeurs proposées, une par ligne"), "listes.pays"), texte(N_("Modèle du titre du document"), "dossier.modele_bandeau", { aide: tr("{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}.") })] : [])),
       // Civilités : formulaire client de ZTP seulement. Devises et moyens de paiement : pas en Taxi (rien n'est payé chez nous).
-      taxi ? null : h("fieldset", null, h("legend", null, tr("Listes")), ztp ? liste(N_("Civilités des clients, une par ligne"), "listes.civilites") : null, liste(N_("Devises proposées pour un document, une par ligne"), "listes.devises", tr("Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs.")), champ(tr("Moyens de paiement, un par ligne"), moyens))
+      taxi ? null : h("fieldset", null, h("legend", null, tr("Listes")), ztp ? liste(N_("Civilités des clients, une par ligne"), "listes.civilites") : null, liste(N_("Devises proposées pour un document, une par ligne"), "listes.devises", tr("Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs.")), champDevisesNoms(r, marque), champ(tr("Moyens de paiement, un par ligne"), moyens))
     ),
     textes: h(
       "div",
@@ -588,7 +592,8 @@ export function vueReglages() {
         peut("reglages.ecrire") ? h("label", { class: "case", for: "import-reglages" }, h("input", { id: "import-reglages", type: "checkbox" }), tr("Si le fichier contient les réglages, les restaurer aussi (remplace les textes des documents, les coordonnées de paiement et la numérotation actuels)")) : null,
         champ(tr("Restaurer ou importer une sauvegarde"), h("input", { id: "import-fichier", type: "file", accept: "application/json,.json", onchange: (e) => e.target.files[0] && importer(e.target.files[0]) }), tr("Elle sera importée dans « {nom} ». Les éléments déjà présents avec le même identifiant sont remplacés.", { nom: entiteActive().nom }))
       ),
-      !peut("dossiers.supprimer") ? null : sectionCorbeille()
+      !peut("dossiers.supprimer") ? null : sectionCorbeille(),
+      !peut("documents.supprimer") || taxi ? null : sectionCorbeilleDocuments()
     ),
   };
 
@@ -639,6 +644,9 @@ export function vueReglages() {
     e.preventDefault();
     if (!taxi && !r.textes.variantes.length) return toast(tr("Gardez au moins une variante de conditions de paiement."), true);
     r.devise = (r.devise || "").trim().toUpperCase();
+    // Changer la devise de l'entreprise ne convertit rien : les documents gardent la leur (écrite dans chaque document), les nouveaux prennent la nouvelle.
+    const deviseAvant = (reglages() || {}).devise;
+    if (deviseAvant && r.devise && r.devise !== deviseAvant && !(await confirmer(tr("Passer la devise de l'entreprise de {avant} à {apres} ? Les devis et factures déjà créés gardent {avant}. Les nouveaux documents, les prix du catalogue et des partenaires s'afficheront en {apres}, sans conversion des montants.", { avant: deviseAvant, apres: r.devise }), tr("Changer la devise"), true))) return;
     boutonEnregistrer.disabled = true;
     try {
       await enregistrerReglages(r, versionLue);

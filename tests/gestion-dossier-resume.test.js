@@ -138,9 +138,10 @@ test("envoi des documents : « Envoyer » ouvre la fenêtre d'envoi sur tous les
   const editeur = lire("editeur.mjs");
   // La fiche n'a plus de chemin « impression au bureau, envoi au téléphone ».
   assert.doesNotMatch(dossier, /sansImpression/);
-  assert.match(dossier, /const envoyerDoc = \(doc\) =>\s*envoyerDocument\(/);
+  // Lot C1 : un document modifié depuis l'envoi part comme un renvoi (montant reçu proposé à la mise à jour avant).
+  assert.match(dossier, /const envoyerDoc = async \(doc\) => \{[\s\S]*?envoyerDocument\(doc, \{\s*renvoi,/);
   // L'éditeur : « Envoyer » appelle envoyerDocument sans condition ; « Imprimer » est un lien, sur ordinateur seulement.
-  assert.match(editeur, /const envoyer = \(\) => envoyerDocument\(/);
+  assert.match(editeur, /const envoyer = \(\) => \(etatEnvoi\(doc\)\.modifie \? renvoyer\(\) : envoyerDocument\(/);
   assert.match(editeur, /h\("button", \{ class: "principal", type: "button", onclick: envoyer \}, tr\("Envoyer"\)\)/);
   assert.match(editeur, /sansImpression\(\) \? null : h\("button", \{ class: "lien", type: "button", title: tr\("Imprimer \(Ctrl\+P\)"\), onclick: imprimer \}, tr\("Imprimer"\)\)/);
 });

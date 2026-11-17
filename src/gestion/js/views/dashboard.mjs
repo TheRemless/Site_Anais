@@ -18,7 +18,7 @@ import { resumeTrajet } from "../trajet-calc.mjs";
 function phrase(item) {
   const r = item.resume;
   if (item.type === "acompte_retard") {
-    const manque = acompteDu(r.total, reglages().conditions.acompte_pct) - r.recu;
+    const manque = acompteDu(r.total, r.pct ?? reglages().conditions.acompte_pct) - r.recu;
     return tr("Acompte attendu depuis {jours} ({montant})", { jours: pluriel(item.jours, N_("jour"), N_("jours")), montant: formatMontant(manque, r.devise) });
   }
   if (item.type === "trop_percu") return tr("Trop-perçu de {montant} à rembourser", { montant: formatMontant(r.recu - r.total, r.devise) });

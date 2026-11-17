@@ -50,7 +50,8 @@ export function phrase(c, devise) {
 
 // `versions` : lignes de l'historique (archive_le, ligne). `actuel` : { contenu, date_emission }.
 // `rendre(version)` renvoie le nœud du document tel qu'il serait ; `restaurer(version, fermer)` fait la restauration.
-export function ouvrirVersions({ versions, actuel, devise, rendre, restaurer }) {
+// `etiquette(version)` (facultatif) : « Version envoyée au client le … » quand la version est celle d'un envoi ; `envoiActuel` : la même mention pour le document actuel.
+export function ouvrirVersions({ versions, actuel, devise, rendre, restaurer, etiquette = () => "", envoiActuel = "" }) {
   if (!versions.length) {
     modal(tr("Versions de ce document"), h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("Une version est gardée avant chaque série de modifications, au plus toutes les cinq minutes, et les trente dernières sont conservées.")), h("p", { class: "vide-court" }, tr("Aucune version gardée pour l'instant. Une version est gardée avant chaque série de modifications."))));
     return;
@@ -86,7 +87,8 @@ export function ouvrirVersions({ versions, actuel, devise, rendre, restaurer }) 
             { type: "button", class: "version-choix", "aria-pressed": String(i === choisi), onclick: () => { choisi = i; apercu.hidden = true; dessinerListe(); dessinerDetail(); } },
             h("strong", null, dateHeure(v.archive_le)),
             h("span", null, formatMontant(totaux(v.ligne.contenu).net, v.ligne.contenu.devise || devise)),
-            h("span", { class: "version-nb" }, cmp.identique ? tr("Identique à l'actuel") : n === 1 ? tr("1 différence") : tr("{n} différences", { n }))
+            h("span", { class: "version-nb" }, cmp.identique ? tr("Identique à l'actuel") : n === 1 ? tr("1 différence") : tr("{n} différences", { n })),
+            etiquette(v) ? h("span", { class: "version-envoi" }, etiquette(v)) : null
           )
         );
       })
@@ -99,6 +101,8 @@ export function ouvrirVersions({ versions, actuel, devise, rendre, restaurer }) 
     apercu.hidden = true;
     detail.replaceChildren(
       h("h3", null, tr("Version du {date}", { date: dateHeure(v.archive_le) })),
+      etiquette(v) ? h("p", { class: "aide" }, etiquette(v)) : null,
+      envoiActuel ? h("p", { class: "aide" }, tr("Document actuel : {mention}.", { mention: envoiActuel })) : null,
       ...(cmp.identique
         ? [h("p", { class: "aide" }, tr("Cette version est identique au document actuel."))]
         : [h("p", { class: "aide" }, tr("Ce qui change si vous restaurez cette version :")), h("ul", { class: "version-diff" }, cmp.changements.map((c) => h("li", { class: `diff-${c.type}` }, phrase(c, devise))))]),

@@ -397,6 +397,7 @@ input.couleur { width: 72px; padding: 2px; }
 .carte-lien > details { grid-column: 1 / -1; }
 .tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.75rem; font-weight: 600; vertical-align: 1px; white-space: nowrap; }
 .tag.meilleur { background: #e3f3e8; color: #25653d; }
+.tag.alerte { background: var(--danger-fond); color: var(--danger); }
 .tag.cie { margin-left: 0; background: var(--teal-100); color: var(--teal-700); }
 .net { color: var(--texte-2); }
 .marge { font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
@@ -663,6 +664,12 @@ details summary { cursor: pointer; margin: 8px 0; color: var(--teal-700); font-w
 .version-choix strong { font-weight: 700; }
 .version-choix span { font-size: 0.85rem; color: var(--texte-2); }
 .version-choix .version-nb { color: var(--teal-700); font-weight: 600; }
+/* Lot C1 : version identique à un envoi, ligne sans prix, bandeau d'un document envoyé. */
+.version-choix .version-envoi { font-size: 0.85em; color: #5a4300; }
+.carte-ligne.ligne-sans-prix { border-left: 3px solid var(--danger); }
+.carte-ligne.ligne-sans-prix .calc { color: var(--danger); font-weight: 600; }
+.bandeau-envoi p { margin: 0 0 0.25rem; }
+.bandeau-envoi .actions { margin-top: 0.5rem; }
 .version-choix[aria-pressed="true"] { background: var(--teal-100); border-color: var(--teal-600); box-shadow: inset 3px 0 0 var(--teal-600); }
 .version-detail h3 { margin: 0 0 8px; }
 .version-diff { margin: 0 0 14px; padding: 0 0 0 18px; display: grid; gap: 6px; }

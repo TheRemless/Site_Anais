@@ -1,4 +1,4 @@
-import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument } from "../etat.mjs";
+import { etat, modifier, nomClient, reglages, naviguer, peut, chargerDocument, moduleActif, versionsDocument, estAdmin } from "../etat.mjs";
 import { h, champ, toast, num, vider, icone, modal, confirmer } from "../ui.mjs";
 import { totaux, formatMontant, formatDate, aujourdhui, remiseJours, sommePaiements, montantLigne, montantSurPlace, modeReglement, SUR_PLACE, aMarquerEnvoye } from "../calc.mjs";
 import { puceMode } from "./mode-reglement.mjs";
@@ -6,10 +6,12 @@ import { nouvelleLigne, modesPaiement, conditionsDocument } from "../defauts.mjs
 import { vide, feuille, pdf, montantRecu } from "./commun.mjs";
 import { ouvrirVersions as ouvrirVersionsDocument } from "./versions.mjs";
 import { supprimerDocument } from "./document-suppression.mjs";
-import { envoyerDocument, sansImpression } from "./document-envoi.mjs";
+import { envoyerDocument, sansImpression, refuserSansPrix } from "./document-envoi.mjs";
+import { etatEnvoi, patchEnvoi, patchRetraitEnvoi, ecartRecu, reglagesChanges, lignesSansPrix, ligneSansPrix, envoiBloque, numeroDocument, numeroVerrouille, empreinteDocument, bandeauDansLangue, localeEnRetard } from "../documents-calc.mjs";
+import { regenererLocale } from "./facture-locale.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { apercuMobile } from "./apercu-mobile.mjs";
-import { tr, localeActive } from "../i18n.mjs";
+import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
 
 const LARGEUR_FEUILLE = 794; // 210 mm à 96 dpi
 const MAX_HISTORIQUE = 100;
@@ -47,8 +49,12 @@ function editeurVue(id) {
     delete eq.eur;
     delete eq.thb;
   }
+  // La devise est toujours écrite dans le document (17.11.2026) : changer celle de l'entreprise ne relabellise plus les anciens documents.
+  const deviseAEcrire = !c.devise && !!regl.devise;
+  if (deviseAEcrire) c.devise = regl.devise;
 
   const statut = h("span", { class: "etat-enregistrement", role: "status" }, tr("Enregistré"));
+  const avertissementPrix = h("p", { class: "bandeau-alerte", role: "status", hidden: true });
   const avertissementAnglais = h("p", { class: "bandeau-info", role: "status", hidden: true }, tr("Ce document est en anglais, mais les conditions de paiement n'ont pas de version anglaise : elles s'impriment en français. Ajoutez-la dans Réglages, onglet Textes."));
   const cadre = h("div", { class: "apercu-cadre" });
   const echelle = h("div", { class: "apercu-echelle" });
@@ -156,6 +162,13 @@ function editeurVue(id) {
       devise: doc.contenu.devise || regl.devise,
       rendre: (v) => feuille({ ...doc, contenu: v.ligne.contenu, date_emission: v.ligne.date_emission }).noeud,
       restaurer: restaurerVersion,
+      // Une version identique à un envoi se repère : « envoyée au client le … ».
+      etiquette: (v) => {
+        const e = empreinteDocument({ contenu: v.ligne.contenu, date_emission: v.ligne.date_emission });
+        const envoi = (Array.isArray(c.envois) ? c.envois : []).filter((x) => x.empreinte === e).pop();
+        return envoi ? tr("Version envoyée au client le {date}", { date: formatDate(envoi.le) }) : "";
+      },
+      envoiActuel: (() => { const e = etatEnvoi(doc); return e.envoye && !e.modifie && e.envois.length ? tr("Version envoyée au client le {date}", { date: formatDate(e.le) }) : ""; })(),
     });
   }
   const btnVersions = h("button", { class: "secondaire petit", type: "button", onclick: ouvrirVersions }, tr("Versions"));
@@ -243,8 +256,11 @@ function editeurVue(id) {
     avertissementAnglais.hidden = !(c.langue === "en" && conditionsDocument(regl, c, true).manqueEn);
   }
 
+  // Bandeau « envoyée le … » : redessiné à chaque modification (défini plus bas, avec les gestes d'envoi).
+  let majBandeauEnvoi = () => {};
   const change = () => {
     statut.textContent = tr("Enregistrement…");
+    majBandeauEnvoi();
     sauver();
     planifierInstantane();
     dessinerApercu();
@@ -253,12 +269,23 @@ function editeurVue(id) {
 
   // ---- Champs généraux --------------------------------------------------------------------------------
   const date = h("input", { id: "d-date", type: "date", value: doc.date_emission, oninput: (e) => ((doc.date_emission = e.target.value), change()) });
-  const selLangue = h("select", { id: "d-langue", onchange: (e) => ((c.langue = e.target.value), change()) }, h("option", { value: "" }, tr("Langue principale")), h("option", { value: "en" }, tr("English")));
+  // La période du bandeau (« DU 2 AU 12 DÉCEMBRE 2026 ») suit la langue du document.
+  const selLangue = h("select", { id: "d-langue", onchange: (e) => { c.langue = e.target.value; const b = bandeauDansLangue(c.bandeau, dossier, c.langue); if (b !== c.bandeau) (c.bandeau = b), (bandeau.value = b); change(); } }, h("option", { value: "" }, tr("Langue principale")), h("option", { value: "en" }, tr("English")));
   selLangue.value = c.langue === "en" ? "en" : "";
   const modes = modesPaiement(regl);
   const selPaiement = h("select", { id: "d-paiement", onchange: (e) => ((c.paiement = e.target.value), change()) }, modes.map((m) => h("option", { value: m.id }, m.nom)));
   selPaiement.value = modes.some((m) => m.id === (c.paiement || "")) ? c.paiement || "" : "";
   const numeroDoc = h("input", { id: "d-numero", value: c.numero || "", placeholder: dossier.ref, oninput: (e) => ((c.numero = e.target.value), change()) });
+  // Le numéro d'un document parti chez le client ne change plus en passant : l'administratrice peut le déverrouiller, après confirmation.
+  let numeroBloque = numeroVerrouille([doc]);
+  numeroDoc.readOnly = numeroBloque;
+  const deverrouillerNumero = h("button", { class: "lien", type: "button", hidden: !numeroBloque || !estAdmin(), onclick: async () => {
+    if (!(await confirmer(tr("Ce document est déjà parti chez le client avec le numéro {numero}. Changer le numéro donne au client deux documents différents pour le même service. Le changer quand même ?", { numero: numeroDocument(doc, dossier) }), tr("Changer le numéro"), true))) return;
+    numeroBloque = false;
+    numeroDoc.readOnly = false;
+    deverrouillerNumero.hidden = true;
+    numeroDoc.focus();
+  } }, tr("Changer le numéro"));
   const prestataire = h("input", { id: "d-prestataire", value: c.prestataire || "", placeholder: tr("Qui réalise le service, si ce n'est pas vous"), oninput: (e) => ((c.prestataire = e.target.value), change()) });
   const bandeau = h("input", { id: "d-bandeau", value: c.bandeau, oninput: (e) => ((c.bandeau = e.target.value), change()) });
   const colonnes = h(
@@ -284,7 +311,7 @@ function editeurVue(id) {
       id: "d-dev",
       value: devDoc(),
       onchange: (e) => {
-        c.devise = e.target.value === regl.devise ? undefined : e.target.value;
+        c.devise = e.target.value;
         // Une devise ne peut pas être son propre équivalent.
         eq.lignes = eq.lignes.filter((l) => l.code !== devDoc());
         dessinerLignes();
@@ -416,8 +443,15 @@ function editeurVue(id) {
     totalTexte.textContent = place > 0 && estFacture ? tr("{texte}, à payer sur place {montant}", { texte: total, montant: formatMontant(place, d) }) : total;
     c.lignes.forEach((l, i) => {
       const el = listeLignes.querySelector(`[data-calc="${l.id}"]`);
-      if (el) el.textContent = l.paye_sur_place ? tr("{montant}, à payer sur place", { montant: formatMontant(montantLigne(l), d) }) : formatMontant(t.montants[i], d);
+      const sansPrix = ligneSansPrix(l);
+      if (el) el.textContent = sansPrix ? tr("Prix à saisir") : l.offert ? tr("Offert") : l.paye_sur_place ? tr("{montant}, à payer sur place", { montant: formatMontant(montantLigne(l), d) }) : formatMontant(t.montants[i], d);
+      const carte = listeLignes.querySelector(`[data-id="${l.id}"]`);
+      if (carte) carte.classList.toggle("ligne-sans-prix", sansPrix);
     });
+    // Une ligne sans prix compte 0 dans le total, mais une facture ne part pas tant qu'elle en a une (décision du 17.11.2026).
+    const manquants = lignesSansPrix(c);
+    avertissementPrix.hidden = !manquants.length;
+    avertissementPrix.textContent = !manquants.length ? "" : estFacture || locale ? pluriel(manquants.length, N_("{n} ligne sans prix ({lignes}) : indiquez un prix ou cochez « Offert ». La facture ne peut pas être envoyée avant."), N_("{n} lignes sans prix ({lignes}) : indiquez un prix ou cochez « Offert ». La facture ne peut pas être envoyée avant."), { lignes: manquants.map((l) => (l.libelle || "").trim() || "…").join(", ") }) : pluriel(manquants.length, N_("{n} ligne sans prix ({lignes}) : elle compte 0 dans le total."), N_("{n} lignes sans prix ({lignes}) : elles comptent 0 dans le total."), { lignes: manquants.map((l) => (l.libelle || "").trim() || "…").join(", ") });
   }
 
   function deplacer(i, delta) {
@@ -482,7 +516,11 @@ function editeurVue(id) {
       montants.push(champ(tr("Type de remise"), mode));
       if (l.pct != null) montants.push(champ(tr("Pourcentage"), h("input", { id: `l${l.id}-pct`, type: "number", step: "0.1", min: "0", value: l.pct, oninput: maj("pct", num) })));
     }
-    if (l.kind !== "texte" && l.pct == null) {
+    // Service offert au client (rare) : il compte 0 et s'imprime « Offert » (« Complimentary » en anglais). Un prix vide n'est pas un service offert.
+    if (l.kind === "ligne" || l.kind === "bloc") {
+      champs.push(h("label", { class: "case", for: `l${l.id}-offert` }, h("input", { id: `l${l.id}-offert`, type: "checkbox", checked: !!l.offert, onchange: (e) => ((l.offert = e.target.checked || undefined), dessinerLignes(), change()) }), tr("Offert au client (compte 0, imprimé « Offert »)")));
+    }
+    if (l.kind !== "texte" && l.pct == null && !l.offert) {
       if (detail) {
         montants.push(champ(tr("Prix unitaire ({devDoc})", { devDoc: devDoc() }), h("input", { id: `l${l.id}-u`, type: "number", step: "0.01", value: l.unite ?? "", oninput: maj("unite", num) })));
         montants.push(champ(tr("Quantité"), h("input", { id: `l${l.id}-q`, type: "number", step: "1", value: l.qte ?? "", oninput: maj("qte", num) })));
@@ -590,34 +628,97 @@ function editeurVue(id) {
   // ---- Actions ------------------------------------------------------------------------------------------
   // « Envoyer » sur tous les appareils : le PDF est fabriqué dans la page, puis WhatsApp ou l'e-mail s'ouvre avec le message.
   // Un document envoyé sans date d'envoi n'est jamais relancé : la fenêtre d'envoi propose de la poser.
-  const envoyer = () => envoyerDocument({ ...doc }, { marquerEnvoye: () => boutonEnvoi.click() });
+  // Remplace le contenu par celui calculé (envoi, retrait de l'envoi) sans changer d'objet : tout l'éditeur garde `c`.
+  const appliquer = (patch) => {
+    if ("envoye_le" in patch) doc.envoye_le = patch.envoye_le;
+    if (patch.contenu) {
+      for (const k of Object.keys(c)) delete c[k];
+      Object.assign(c, patch.contenu);
+    }
+  };
+  // Marquer le document parti chez le client : date, copie figée de l'émetteur, de la banque, de la devise et de l'acompte, trace de l'envoi.
+  async function marquerEnvoi() {
+    if (envoiBloque(doc)) return void refuserSansPrix(doc);
+    appliquer(patchEnvoi(doc, regl, { date: aujourdhui(), paiements }));
+    if (doc.type === "devis" && "acompte_pct" in dossier && dossier.acompte_pct == null) {
+      // L'acompte % du dossier se fige au premier envoi du devis (migration du lot C1) : un changement des Réglages ne le change plus.
+      try {
+        await modifier("dossiers", dossier.id, { acompte_pct: c.fige.acompte_pct });
+      } catch (err) {
+        toast(tr("Acompte non figé sur le dossier : {message}", { message: err.message }), true);
+      }
+    }
+    majBoutonEnvoi();
+    change();
+    if (blocRecu) toast(tr("Facture envoyée : le montant reçu est figé."));
+  }
+  // « Renvoyer » la version corrigée : au besoin, le montant reçu imprimé est d'abord mis à jour d'après les paiements enregistrés.
+  async function renvoyer() {
+    const ecart = ecartRecu(doc, paiements);
+    if (ecart && (await confirmer(tr("La facture envoyée indique {imprime} reçus. Les paiements enregistrés font {paiements}. Mettre {paiements} sur la facture renvoyée ?", { imprime: formatMontant(ecart.imprime, devDoc()), paiements: formatMontant(ecart.paiements, devDoc()) }), tr("Mettre à jour le montant reçu")))) {
+      c.montant_recu = ecart.paiements;
+      const champRecu = formulaire.querySelector("#d-recu");
+      if (champRecu) champRecu.value = ecart.paiements;
+      change();
+      await sauverMaintenant();
+    }
+    envoyerDocument({ ...doc, contenu: structuredClone(c) }, { renvoi: true, marquerEnvoye: marquerEnvoi });
+  }
+  // « Envoyer » sur tous les appareils : le PDF est fabriqué dans la page, puis WhatsApp ou l'e-mail s'ouvre avec le message.
+  // Un document envoyé sans date d'envoi n'est jamais relancé : la fenêtre d'envoi propose de la poser. Modifié depuis l'envoi : c'est un renvoi.
+  const envoyer = () => (etatEnvoi(doc).modifie ? renvoyer() : envoyerDocument({ ...doc }, { marquerEnvoye: marquerEnvoi }));
   // « Imprimer » (ordinateur seulement) : la fenêtre d'impression du navigateur, pour qui veut le papier ou son propre envoi.
   async function imprimer() {
     pdf({ ...doc });
-    if (aMarquerEnvoye(doc) && peut("documents.ecrire") && (await confirmer(doc.type === "devis" ? tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance.") : tr("Cette facture est-elle partie chez le client ? Marquée comme envoyée, elle n'apparaît plus comme « pas encore envoyée »."), doc.type === "devis" ? tr("Marquer comme envoyé") : tr("Marquer comme envoyée")))) boutonEnvoi.click();
+    if (aMarquerEnvoye(doc) && !envoiBloque(doc) && peut("documents.ecrire") && (await confirmer(doc.type === "devis" ? tr("Ce devis est-il parti chez le client ? Marqué comme envoyé, il apparaît dans « À faire » pour la relance.") : tr("Cette facture est-elle partie chez le client ? Marquée comme envoyée, elle n'apparaît plus comme « pas encore envoyée »."), doc.type === "devis" ? tr("Marquer comme envoyé") : tr("Marquer comme envoyée")))) await marquerEnvoi();
   }
   const boutonEnvoi = h("button", { class: "secondaire", type: "button" });
   function majBoutonEnvoi() {
     boutonEnvoi.textContent = doc.envoye_le ? (estFacture || locale ? tr("Envoyée le {date}", { date: formatDate(doc.envoye_le) }) : tr("Envoyé le {date}", { date: formatDate(doc.envoye_le) })) : estFacture || locale ? tr("Marquer comme envoyée") : tr("Marquer comme envoyé");
     boutonEnvoi.title = doc.envoye_le ? tr("Cliquer pour retirer la date d'envoi") : "";
+    majBandeauEnvoi();
   }
-  boutonEnvoi.addEventListener("click", () => {
-    if (doc.envoye_le) {
-      doc.envoye_le = null;
-      if (estFacture) c.montant_recu = null;
-    } else {
-      doc.envoye_le = aujourdhui();
-      if (estFacture && c.montant_recu == null) c.montant_recu = sommePaiements(paiements);
-    }
+  boutonEnvoi.addEventListener("click", async () => {
+    if (!doc.envoye_le) return marquerEnvoi();
+    // Retirer la date d'envoi se confirme : le document redevient « pas encore envoyé » et, s'il n'a été envoyé qu'une fois, perd sa copie figée.
+    const message = estFacture ? tr("Retirer la date d'envoi du {date} ? La facture redevient « pas encore envoyée » et son montant reçu suit de nouveau les paiements. À faire seulement si elle n'est pas partie chez le client.", { date: formatDate(doc.envoye_le) }) : tr("Retirer la date d'envoi du {date} ? Le document redevient « pas encore envoyé ». À faire seulement s'il n'est pas parti chez le client.", { date: formatDate(doc.envoye_le) });
+    if (!(await confirmer(message, tr("Retirer la date d'envoi"), true))) return;
+    appliquer(patchRetraitEnvoi(doc));
     majBoutonEnvoi();
     change();
-    if (blocRecu) toast(doc.envoye_le ? tr("Facture envoyée : le montant reçu est figé.") : tr("Date d'envoi retirée."));
+    toast(tr("Date d'envoi retirée."));
   });
+
+  // Bandeau d'un document envoyé : quand, combien de fois, et s'il a changé depuis (décision du 17.11.2026 : on renvoie la version corrigée).
+  const texteEnvoi = h("p");
+  const boutonRenvoyer = h("button", { class: "principal petit", type: "button", onclick: () => renvoyer() }, tr("Renvoyer"));
+  const noteReglages = h("p", { class: "aide" });
+  const bandeauEnvoi = h("div", { class: "bandeau-info bandeau-envoi", role: "status", hidden: true }, texteEnvoi, noteReglages, h("div", { class: "actions gauche" }, boutonRenvoyer));
+  majBandeauEnvoi = () => {
+    const e = etatEnvoi(doc);
+    bandeauEnvoi.hidden = !e.envoye;
+    if (!e.envoye) return;
+    const renvois = e.envois.slice(1).map((x) => formatDate(x.le));
+    const quand = e.envois.length ? (estFacture || locale ? tr("Envoyée le {date}", { date: formatDate(e.envois[0].le) }) : tr("Envoyé le {date}", { date: formatDate(e.envois[0].le) })) : estFacture || locale ? tr("Envoyée le {date}", { date: formatDate(e.le) }) : tr("Envoyé le {date}", { date: formatDate(e.le) });
+    texteEnvoi.textContent = [quand, renvois.length ? tr("renvoyée le {dates}", { dates: renvois.join(", ") }) : "", e.modifie ? tr("Modifiée depuis l'envoi du {date} : le client a encore l'ancienne version. Renvoyez-lui la version corrigée.", { date: formatDate(e.le) }) : ""].filter(Boolean).join(". ") + ".";
+    bandeauEnvoi.classList.toggle("bandeau-alerte", e.modifie);
+    bandeauEnvoi.classList.toggle("bandeau-info", !e.modifie);
+    boutonRenvoyer.hidden = !e.modifie;
+    noteReglages.textContent = reglagesChanges(regl, c) ? tr("Les coordonnées de l'entreprise, la banque ou l'acompte ont changé dans les Réglages depuis l'envoi : ce document garde ceux du jour de l'envoi. « Renvoyer » prend ceux d'aujourd'hui.") : "";
+    noteReglages.hidden = !noteReglages.textContent;
+  };
   majBoutonEnvoi();
+
+  // Facture locale : copie figée de la facture du client. Si la facture a été corrigée depuis, on le dit et on propose de la recréer.
+  const factureSource = locale ? etat.db.documents.find((x) => x.id === (c.source || {}).facture_id) : null;
+  const bandeauLocale = locale && localeEnRetard(doc, factureSource)
+    ? h("div", { class: "bandeau-alerte", role: "status" }, h("p", null, tr("La facture du client a été modifiée depuis la création de cette facture locale : les montants peuvent ne plus correspondre.")), peut("documents.ecrire") ? h("div", { class: "actions gauche" }, h("button", { class: "principal petit", type: "button", onclick: async () => { if (await regenererLocale(doc, factureSource)) naviguer(location.hash); } }, tr("Recréer depuis la facture"))) : null)
+    : null;
 
   dessinerLignes();
   dessinerApercu();
   majBoutonsHistorique();
+  if (deviseAEcrire && peut("documents.ecrire")) sauver();
   window.addEventListener("resize", ajusterEchelle);
   window.addEventListener("hashchange", () => window.removeEventListener("resize", ajusterEchelle), { once: true });
   new ResizeObserver(() => requestAnimationFrame(ajusterEchelle)).observe(zoneApercu);
@@ -625,7 +726,7 @@ function editeurVue(id) {
   const formulaire = h(
     "div",
     { class: "editeur-form" },
-    h("fieldset", null, h("legend", null, tr("En-tête")), h("div", { class: "grille-form" }, champ(tr("Date d'émission"), date), champ(tr("Colonnes"), colonnes), champ(tr("Devise du document"), deviseSel)), champ(tr("Titre dans la bande de couleur"), bandeau), champ(tr("Prestataire du service (facultatif)"), prestataire), h("div", { class: "grille-form" }, champ(tr("Langue du document"), selLangue), modes.length > 1 ? champ(tr("Informations de paiement"), selPaiement) : null, champ(tr("Numéro affiché (facultatif)"), numeroDoc, tr("Remplace la référence du dossier sur ce document.")))),
+    h("fieldset", null, h("legend", null, tr("En-tête")), h("div", { class: "grille-form" }, champ(tr("Date d'émission"), date), champ(tr("Colonnes"), colonnes), champ(tr("Devise du document"), deviseSel)), champ(tr("Titre dans la bande de couleur"), bandeau), champ(tr("Prestataire du service (facultatif)"), prestataire), h("div", { class: "grille-form" }, champ(tr("Langue du document"), selLangue), modes.length > 1 ? champ(tr("Informations de paiement"), selPaiement) : null, h("div", null, champ(tr("Numéro affiché (facultatif)"), numeroDoc, numeroBloque ? tr("Document envoyé : le numéro ne change plus.") : tr("Remplace la référence du dossier sur ce document.")), deverrouillerNumero))),
     h("fieldset", null, h("legend", null, tr("Contenu")), listeLignes, h("div", { class: "ajouts" }, moduleActif("catalogue") ? h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("bloc", { intro: "comprenant:" })) }, tr("Ajouter un bloc de formule")) : null, h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("ligne")) }, tr("Ajouter une ligne")), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("remise")) }, tr("Ajouter une remise")), h("button", { class: "secondaire petit", type: "button", onclick: () => ajoute(nouvelleLigne("texte")) }, tr("Ajouter une note")), peut("partenaires.lire") && moduleActif("partenaires") && (etat.db.prestations.length || etat.db.trajets.length) ? h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue: c.langue, devise: devDoc(), onAjout: (lignes) => { lignes.forEach((l) => c.lignes.push(l)); dessinerLignes(); change(); } }) }, tr("Prestation d'un partenaire")) : null), moduleActif("catalogue") ? champ(tr("Catalogue"), depuisCatalogue) : null, totalTexte),
     blocRecu,
     h(
@@ -657,8 +758,11 @@ function editeurVue(id) {
       h("div", null, h("h1", null, nomDoc), h("p", { class: "sous" }, h("span", { class: "ref" }, dossier.ref), " · ", nomClient(client))),
       h("div", { class: "entete-actions" }, statut, lectureSeule ? null : btnVersions, btnAnnuler, btnRetablir, boutonEnvoi, sansImpression() ? null : h("button", { class: "lien", type: "button", title: tr("Imprimer (Ctrl+P)"), onclick: imprimer }, tr("Imprimer")), h("button", { class: "principal", type: "button", onclick: envoyer }, tr("Envoyer")))
     ),
-    h("p", { class: "aide-pdf seulement-bureau" }, tr("« Envoyer » prépare le PDF « {nomDoc} {ref} » et ouvre WhatsApp ou l'e-mail du client avec le message. Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P imprimer. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: dossier.ref })),
+    h("p", { class: "aide-pdf seulement-bureau" }, tr("« Envoyer » prépare le PDF « {nomDoc} {ref} » et ouvre WhatsApp ou l'e-mail du client avec le message. Raccourcis : Ctrl+Z annuler, Ctrl+Maj+Z rétablir, Ctrl+S enregistrer, Ctrl+P imprimer. Le formulaire et l'aperçu défilent séparément.", { nomDoc, ref: numeroDocument(doc, dossier) })),
     bandeauConflit,
+    bandeauEnvoi,
+    bandeauLocale,
+    avertissementPrix,
     avertissementAnglais,
     lectureSeule ? h("p", { class: "bandeau-info" }, tr("Lecture seule : votre rôle ne permet pas de modifier les devis et factures. Vous pouvez les consulter et télécharger le PDF.")) : null,
     barreEditeur,
@@ -666,7 +770,7 @@ function editeurVue(id) {
   );
   if (lectureSeule) {
     for (const el of formulaire.querySelectorAll("input, select, textarea, button")) el.disabled = true;
-    for (const b of [btnAnnuler, btnRetablir, boutonEnvoi]) b.disabled = true;
+    for (const b of [btnAnnuler, btnRetablir, boutonEnvoi, boutonRenvoyer]) b.disabled = true;
   }
 
   // Après un « annuler », l'écran est reconstruit : on retrouve les positions de défilement.
