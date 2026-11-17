@@ -1,4 +1,4 @@
--- Gestion : migration 31 (lot C1 de l'autonomie, 17.11.2026), devis et factures. Numéro à confirmer à l'intégration des lots.
+-- Gestion : migration 32 (lot C1 de l'autonomie, 17.11.2026), devis et factures. À appliquer après les migrations 30 et 31.
 -- 1. Corbeille des documents : un devis ou une facture supprimé seul (sans son dossier) se retrouve 90 jours et se restaure, avec ses nets.
 --    `documents_supprimes(entite)` liste ce qui est restaurable, `restaurer_document(id)` le remet. Même droit que pour le supprimer.
 -- 2. Prochain numéro de la séquence annuelle (ST-2026-0001) : l'administratrice le lit et le change dans Réglages, sans SQL.

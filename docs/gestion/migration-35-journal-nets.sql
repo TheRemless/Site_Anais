@@ -1,5 +1,5 @@
--- Gestion : migration du lot G (17.11.2026, audit n° 78), journal des nets et commissions des réservations.
--- Numéro à donner à l'intégration (après la 30), le fichier sera renommé en conséquence. À exécuter une seule fois, après les migrations 18 et 28. Idempotente.
+-- Gestion : migration 35 du lot G (17.11.2026, audit n° 78), journal des nets et commissions des réservations.
+-- À exécuter une seule fois, après les migrations 18 et 28. Idempotente.
 --
 -- Jusqu'ici, la table reservations_nets ne passait pas par le journal : le journal est lisible avec le droit « journal.voir », il aurait recopié des nets
 -- à des personnes qui n'ont pas le droit « partenaires.nets ». Résultat : un net prévu, un net payé ou une commission changés ne laissaient aucune trace.

@@ -37,7 +37,7 @@ test("le formulaire passe par champsNetsChanges avant d'écrire les nets", () =>
 });
 
 test("la migration 31 : déclencheur à l'insertion et aux changements, fonctions fermées à l'API, Secret seulement", () => {
-  const sql = fs.readFileSync(new URL("../docs/gestion/migration-31-nets-base.sql", import.meta.url), "utf8");
+  const sql = fs.readFileSync(new URL("../docs/gestion/migration-30-nets-base.sql", import.meta.url), "utf8");
   assert.match(sql, /create trigger remplir_nets after insert or update on reservations/);
   assert.match(sql, /create trigger fusionner_nets before insert on reservations_nets/);
   assert.match(sql, /valeur->>'fonctionnement' = 'excursions'/);

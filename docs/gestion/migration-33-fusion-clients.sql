@@ -1,4 +1,4 @@
--- Gestion : migration 31, fusion de deux fiches client (lot C2 de l'autonomie, 17.11.2026). À appliquer après la migration 30.
+-- Gestion : migration 33, fusion de deux fiches client (lot C2 de l'autonomie, 17.11.2026). À appliquer après la migration 32.
 -- Le même client saisi deux fois : ses dossiers passent sur la fiche gardée, les champs vides de celle-ci prennent ceux de l'autre,
 -- les notes s'ajoutent, puis l'autre fiche est supprimée. Le tout en une transaction, pour ne jamais laisser une fusion à moitié faite.
 --

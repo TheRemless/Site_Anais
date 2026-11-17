@@ -1,5 +1,5 @@
 -- Gestion : migration 31, droit « partenaires.supprimer » (lot A de l'audit d'autonomie, 17.11.2026).
--- Numéro provisoire : d'autres lots préparent aussi une migration ; renuméroter à l'intégration si besoin.
+-- À appliquer après la migration 30.
 --
 -- Avant : « partenaires.ecrire » suffisait pour supprimer un partenaire, une prestation ou un trajet. Supprimer un partenaire efface en cascade
 -- ses tarifs, ses trajets et leurs nets, et vide le partenaire des réservations (vouchers sans opérateur, commissions Taxi sans destinataire).

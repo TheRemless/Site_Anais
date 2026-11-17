@@ -100,7 +100,7 @@ test("n° 66 : le droit « Fusionner deux fiches » existe, suppose de modifier 
   assert.equal(peutFusionnerClients(avec("clients.fusionner")), true);
   assert.equal(peutFusionnerClients(avec("clients.supprimer", "dossiers.ecrire")), true);
   assert.equal(peutFusionnerClients(avec("clients.ecrire", "dossiers.ecrire", "partenaires.ecrire")), false, "rôle actuel de Mook dans Secret");
-  const sql = fs.readFileSync(new URL("../docs/gestion/migration-31-fusion-clients.sql", import.meta.url), "utf8");
+  const sql = fs.readFileSync(new URL("../docs/gestion/migration-33-fusion-clients.sql", import.meta.url), "utf8");
   assert.match(sql, /'clients\.fusionner'/);
   assert.match(sql, /a_permission\(g\.entite_id, 'clients\.supprimer'\) and a_permission\(g\.entite_id, 'dossiers\.ecrire'\)/, "même règle que l'interface");
 });

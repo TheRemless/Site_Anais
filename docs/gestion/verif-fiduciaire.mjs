@@ -384,7 +384,7 @@ ok(Object.prototype.hasOwnProperty.call(fSq.emetteur.paiement, "texte"), "le tex
 
 console.log("Migration 31 sur une base qui a déjà des factures (comme la production)");
 {
-  const ancienne = await nouvelleBase(30);
+  const ancienne = await nouvelleBase(33);
   const q1 = async (sql, p = []) => (await ancienne.query(sql, p)).rows[0];
   const sec = (await q1("select id from entites where slug = 'secret'")).id;
   await ancienne.exec(`update reglages set valeur = valeur || '{"devise":"THB","fonctionnement":"excursions","emetteur":{"nom":"Secret Travel & Tour"},"paiement":{"texte":"x"}}'::jsonb where entite_id = '${sec}'`);
@@ -398,7 +398,7 @@ console.log("Migration 31 sur une base qui a déjà des factures (comme la produ
   await ancienne.exec(`insert into profils (user_id, email, nom, super_admin, actif) values ('${root}', 'root@test', 'Root', true, true) on conflict (user_id) do update set super_admin = true, actif = true`);
   const commeRoot = async (sql) => { await ancienne.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${root}', false);`); try { return (await ancienne.query(sql)).rows[0]; } finally { await ancienne.exec("reset role;"); } };
   const f0 = (await commeRoot(`select emettre_facture_fiduciaire('${r0}') id`)).id;
-  await ancienne.exec(fs.readFileSync(W + migrations.find((n) => n.startsWith("migration-31-")), "utf8"));
+  await ancienne.exec(fs.readFileSync(W + migrations.find((n) => n.startsWith("migration-34-")), "utf8"));
   const apres = await q1("select destinataire_id, numero, emetteur from fiduciaire_factures where id = $1", [f0]);
   ok(apres.destinataire_id === p0 && apres.numero === "COM-2026-001", "la facture existante reçoit son destinataire, sans changer de numéro");
   ok((await q1("select prefixe from fiduciaire_compteurs where type = 'facture'")).prefixe === "COM", "le compteur existant devient la série COM");

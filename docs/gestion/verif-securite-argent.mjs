@@ -25,11 +25,11 @@ alter default privileges in schema public grant execute on functions to anon, au
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
-for (const f of fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d|31)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]))) await db.exec(fs.readFileSync(W + f, "utf8"));
+for (const f of fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]))) await db.exec(fs.readFileSync(W + f, "utf8"));
 // Droits de table comme en production (migration 16 puis 3 : tout est fermé à anon, les politiques font le tri).
 await db.exec("revoke execute on all functions in schema public from public, anon; grant execute on all functions in schema public to authenticated;");
 // La migration 31 passe en production après ces droits par défaut : ses fonctions internes (qui lisent les nets) restent fermées à l'API.
-for (const l of fs.readFileSync(W + "migration-31-nets-base.sql", "utf8").split("\n").filter((x) => /^revoke all on function/.test(x))) await db.exec(l);
+for (const l of fs.readFileSync(W + "migration-30-nets-base.sql", "utf8").split("\n").filter((x) => /^revoke all on function/.test(x))) await db.exec(l);
 
 const essaie = async (userId, sql, role = "authenticated") => {
   await db.exec(`set role ${role}; select set_config('request.jwt.claim.sub', '${userId || ""}', false);`);
@@ -318,7 +318,7 @@ console.log("Migration 31 : net et commission prévus remplis par la base (lot F
   await db.exec(`insert into reservations_nets (entite_id, reservation_id, net_prevu) values ('${S}', '${id(72)}', 999), ('${S}', '${id(73)}', 1234)`);
   await db.exec("alter table reservations enable trigger remplir_nets");
   const avantR = (await db.query("select reservation_id, to_jsonb(n) - 'id' as j from reservations_nets n order by reservation_id")).rows;
-  const rattrapage = fs.readFileSync(W + "rattrapage-31-nets-base.sql", "utf8");
+  const rattrapage = fs.readFileSync(W + "rattrapage-30-nets-base.sql", "utf8");
   const passe1 = (await db.query(rattrapage.replace(/^begin;|^commit;/gm, ""))).rows[0].reservations_completees;
   ok(Number(passe1) === 2, `premier passage : 2 réservations complétées (lu : ${passe1})`);
   ok(JSON.stringify(await netsDe(id(71))) === JSON.stringify([{ net: 1400, com: null, net_auto: 1400, com_auto: null }]), "réservation sans ligne de nets : net rempli");

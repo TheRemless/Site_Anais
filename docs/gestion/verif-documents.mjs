@@ -23,7 +23,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
-const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d|30)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
+const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d|3[01])-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
 for (const f of migrations) await db.exec(fs.readFileSync(W + f, "utf8"));
 
 const un = async (sql, p = []) => (await db.query(sql, p)).rows[0];
@@ -49,8 +49,8 @@ await db.exec(`insert into membres values ('${U.admin}', '${E}', (select id from
 await db.exec(`insert into membres values ('${U.lecteur}', '${E}', (select id from roles where entite_id = '${E}' and nom = 'Lecteur'))`);
 
 console.log("== migration 31");
-await db.exec(fs.readFileSync(W + "migration-31-c1-documents.sql", "utf8"));
-await db.exec(fs.readFileSync(W + "migration-31-c1-documents.sql", "utf8"));
+await db.exec(fs.readFileSync(W + "migration-32-documents.sql", "utf8"));
+await db.exec(fs.readFileSync(W + "migration-32-documents.sql", "utf8"));
 ok(true, "elle se rejoue sans erreur (idempotente)");
 
 console.log("== devise toujours écrite");

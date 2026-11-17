@@ -23,9 +23,9 @@ const lire = (f) => fs.readFileSync(W + f, "utf8").replace("create extension if 
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec(lire("schema.sql"));
-for (const f of fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]))) await db.exec(lire(f));
-await db.exec(lire("migration-31-fusion-clients.sql"));
-await db.exec(lire("migration-31-fusion-clients.sql"));
+for (const f of fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d|3[0-2])-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]))) await db.exec(lire(f));
+await db.exec(lire("migration-33-fusion-clients.sql"));
+await db.exec(lire("migration-33-fusion-clients.sql"));
 ok(true, "la migration 31 s'applique deux fois sans erreur");
 
 const un = async (sql, p = []) => (await db.query(sql, p)).rows[0];

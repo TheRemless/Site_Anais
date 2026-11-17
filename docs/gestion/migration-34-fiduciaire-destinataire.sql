@@ -1,4 +1,4 @@
--- Gestion : migration 31, factures pour la fiduciaire, lot H de l'audit d'autonomie (17.11.2026).
+-- Gestion : migration 34, factures pour la fiduciaire, lot H de l'audit d'autonomie (17.11.2026).
 -- À exécuter une seule fois, après la migration 28. Les fonctions restent compatibles avec l'outil d'avant (mêmes noms, arguments en plus facultatifs).
 --
 -- Ce qui change :
