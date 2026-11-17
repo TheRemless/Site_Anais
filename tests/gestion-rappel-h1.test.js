@@ -122,13 +122,29 @@ test("ZTP : la veille exacte du départ, un voyage accepté ; rien pour un voyag
   assert.match(sql, /primary key \(dossier_id, date_depart\)/);
 });
 
-test("notification test : forme d'un vrai rappel, marquée [TEST], détails fictifs, ouvre les réglages ; réservée à l'administratrice générale", () => {
-  const m = F.messageTest();
-  assert.equal(m.titre, "[TEST] Dans 1 h : Sarah Miller, 4 Islands");
-  assert.equal(m.url, "/gestion/#/reglages");
+test("envoi forcé d'un service : même message que le cron, hors fenêtre, mêmes refus ; jamais sans secret, clé de service ou administratrice", () => {
+  const regl = { fonctionnement: "excursions" };
+  const t = bkk("2026-11-17T08:10");
+  const ok = F.serviceForce(R(), t, { reglages: regl });
+  assert.equal(ok.service.minutes, -10, "déjà commencé : envoyé quand même");
+  assert.deepEqual(F.messageH1(ok.service, { client: "Sarah Miller" }), { titre: "Commencé il y a 10 min : Sarah Miller, 4 Islands", corps: "2 adultes, pickup 08:00, Hotel Sunset", tag: "h1-r1", url: "/gestion/#/reservation/r1?entite=S" });
+  assert.equal(F.serviceForce(R(), bkk("2026-11-17T07:00"), { reglages: regl }).service.minutes, 60);
+  assert.deepEqual(F.serviceForce(null, t, { reglages: regl }), { erreur: "service_introuvable" });
+  assert.deepEqual(F.serviceForce(R({ statut: "annule" }), t, { reglages: regl }), { erreur: "service_annule" });
+  assert.deepEqual(F.serviceForce(R(), t, { reglages: regl, dossierAnnule: true }), { erreur: "service_annule" });
+  assert.deepEqual(F.serviceForce(R({ heure_pickup: "TBC" }), t, { reglages: regl }), { erreur: "service_sans_heure" });
+  assert.deepEqual(F.serviceForce(R(), t, { reglages: { fonctionnement: "sur_mesure" } }), { erreur: "entreprise_sans_rappel_h1" });
+  assert.deepEqual(F.serviceForce(R(), t, { reglages: { fonctionnement: "taxi", rappels: { h1: false } } }), { erreur: "rappel_eteint" });
+  assert.deepEqual(F.serviceForce(R({ partenaire_id: null, libelle: "Park fee" }), t, { reglages: regl }), { erreur: "frais_de_parc" });
+  // Le libellé de l'heure : celui du cron dans la fenêtre, lisible en dehors.
+  assert.deepEqual([60, 55, 54, 61, 125, 0, -10].map(F.quandH1), ["Dans 1 h", "Dans 1 h", "Dans 54 min", "Dans 1 h 01", "Dans 2 h 05", "Maintenant", "Commencé il y a 10 min"]);
   const fonction = fs.readFileSync(new URL("../supabase/functions/rappels/index.ts", import.meta.url), "utf8");
-  assert.match(fonction, /if \(!moi\.data \|\| !moi\.data\.super_admin \|\| !moi\.data\.actif\) return repondre\(\{ erreur: "reserve_admin" \}, 403\)/);
-  assert.match(fonction, /sb\.auth\.getUser\(\)/, "le jeton de la session est vérifié");
+  assert.match(fonction, /if \(!qui\) return json\(\{ erreur: "non autorisé" \}, 401\)/, "aucun appel anonyme");
+  assert.match(fonction, /if \(type === "h1" && demande\.force\) return rappelForce\(demande\)/);
+  assert.match(fonction, /if \(qui === "admin"\) return json/, "une administratrice connectée n'a que l'envoi forcé");
+  assert.match(fonction, /moi\.data && moi\.data\.super_admin && moi\.data\.actif \? "admin" : null/);
+  assert.match(fonction, /rappels_h1_envois"\)\.upsert/, "le service forcé est marqué : le cron n'enverra pas de doublon");
+  assert.ok(!/messageTest|\[TEST\]/.test(fonction), "plus de notification test");
 });
 
 test("l'outil et la fonction lisent l'heure et le début de la même façon", () => {

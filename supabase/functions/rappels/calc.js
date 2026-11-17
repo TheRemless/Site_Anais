@@ -129,8 +129,18 @@ const personnesFr = (p = {}) => [p.adultes ? pluriel(p.adultes, "adulte", "adult
 
 // « Dans 1 h : Sarah Miller, 4 Islands » / « 2 adultes, pickup 08:00, Hotel Sunset ». Le nom du client y est (Jérémy, 17.11.2026 : le téléphone
 // d'Anaïs ne montre le contenu d'une notification qu'une fois déverrouillé). `entreprise` : ajouté pour qui suit plusieurs entreprises.
+// Quand commence le service, dit comme le cron le dit (« Dans 1 h » de 55 à 60 minutes). Hors de la fenêtre, pour un envoi forcé : « Dans 2 h 05 »,
+// « Maintenant », « Commencé il y a 10 min ».
+export function quandH1(minutes) {
+  if (minutes >= 55 && minutes <= 60) return "Dans 1 h";
+  if (minutes > 60) return `Dans ${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")}`;
+  if (minutes > 0) return `Dans ${minutes} min`;
+  if (minutes === 0) return "Maintenant";
+  return `Commencé il y a ${-minutes} min`;
+}
+
 export function messageH1({ reservation: r, minutes }, { entreprise = "", client = "" } = {}) {
-  const quand = minutes >= 55 ? "Dans 1 h" : `Dans ${minutes} min`;
+  const quand = quandH1(minutes);
   const heure = heureService(r);
   const corps = [entreprise, personnesFr(r.personnes || {}), heure ? `pickup ${heure}` : "", (r.lieu_pickup || "").trim()].filter(Boolean).join(", ");
   return { titre: `${quand} : ${[client, r.libelle].filter(Boolean).join(", ")}`, corps, tag: `h1-${r.id}`, url: `/gestion/#/reservation/${r.id}?entite=${r.entite_id}` };
@@ -157,16 +167,24 @@ export function messageDepart(d, { client = "", entreprise = "" } = {}) {
   return { titre: `Demain : départ de ${client || d.ref}`, corps, tag: `depart-${d.id}`, url: `/gestion/#/dossier/${d.id}?entite=${d.entite_id}` };
 }
 
-// Notification test (bouton de Jérémy dans les réglages) : exactement la forme d'un rappel « Dans 1 h », marquée [TEST], avec des détails fictifs.
-// Elle ouvre les réglages, jamais une vraie réservation.
-export function messageTest() {
-  return { titre: "[TEST] Dans 1 h : Sarah Miller, 4 Islands", corps: "2 adultes, pickup 08:00, Hotel Sunset", tag: "test", url: "/gestion/#/reglages" };
-}
-
 // Qui reçoit le rappel d'un service d'une entreprise : ceux qui reçoivent ses rappels (entitesLisibles), sauf qui a coupé « Rappel 1 h avant » dans son profil.
 export function destinatairesH1({ profils, membres, roles }, entiteId) {
   return profils.filter((p) => p.rappel_h1 !== false).filter((profil) => {
     const ids = entitesLisibles({ profil, membres, roles });
     return ids === null ? !!(profil.actif) : ids.includes(entiteId);
   }).map((p) => p.user_id);
+}
+
+// Envoi forcé (après un déploiement, pour vérifier sur le téléphone d'Anaïs) : un service donné, tout de suite, hors de la fenêtre.
+// Mêmes refus que le cron, sauf l'heure : service annulé, dossier annulé, frais de parc, pas d'heure, entreprise sans rappel une heure avant.
+// Renvoie { service } (même forme que servicesH1) ou { erreur }.
+export function serviceForce(r, maintenant, { dossierAnnule = false, reglages = null } = {}) {
+  if (!r) return { erreur: "service_introuvable" };
+  if (r.statut === "annule" || dossierAnnule) return { erreur: "service_annule" };
+  if (estFraisDeParc(r)) return { erreur: "frais_de_parc" };
+  if (modeRappel(reglages) !== "service") return { erreur: "entreprise_sans_rappel_h1" };
+  if (!rappelAvantActif(reglages)) return { erreur: "rappel_eteint" };
+  const debut = debutService(r);
+  if (debut === null) return { erreur: "service_sans_heure" };
+  return { service: { reservation: r, debut, minutes: Math.round((debut - maintenant) / 60000) } };
 }

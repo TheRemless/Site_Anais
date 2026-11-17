@@ -315,18 +315,6 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await sb.rpc("fiduciaire_calcul", { p_res: reservationId }));
     },
     // Langue de l'interface de la personne connectée (migration 13). Sans la migration l'appel échoue : l'outil garde alors la langue dans ce navigateur.
-    // Notification test (administratrice générale seulement, la fonction le vérifie avec le jeton de la session).
-    async envoyerNotificationTest(userId) {
-      const { data, error } = await sb.functions.invoke("rappels", { body: { type: "test", user_id: userId } });
-      if (!error) return data;
-      try {
-        const detail = error.context && typeof error.context.json === "function" ? await error.context.json() : null;
-        if (detail && detail.erreur) return detail;
-      } catch {
-        /* réponse sans JSON */
-      }
-      throw new Error(error.message);
-    },
     // « Rappel 1 h avant » de la personne connectée (migration 31).
     async definirRappelH1(actif) {
       verifie(await sb.rpc("definir_rappel_h1", { allume: !!actif }));

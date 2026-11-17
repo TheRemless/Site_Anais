@@ -4,7 +4,7 @@
 // puis envoie une notification Web Push à chacun de ses appareils abonnés. Aucun nom de client ne part dans la notification.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
-import { dateBangkok, dateCible, entitesLisibles, rappelDuType, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, messageTest } from "./calc.js";
+import { dateBangkok, dateCible, entitesLisibles, rappelDuType, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
 
@@ -17,23 +17,34 @@ async function memeSecret(a: string, b: string) {
   return ecart === 0;
 }
 
-// Le bouton « Envoyer une notification test » appelle la fonction depuis l'outil (navigateur) : seulement pour lui, CORS limité à Gestion.
-const ORIGINES = ["https://gestion.zwaldtravelplanner.com", "https://zwaldtravelplanner.com"];
-const entetesTest = (req: Request) => {
-  const origine = req.headers.get("origin") || "";
-  const local = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/.test(origine);
-  return { "Access-Control-Allow-Origin": ORIGINES.includes(origine) || local ? origine : ORIGINES[0], "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS", Vary: "Origin", "Content-Type": "application/json" };
-};
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Qui appelle : le cron (RAPPELS_SECRET), la clé de service du projet, ou (seulement pour l'envoi forcé d'un service) une administratrice
+// générale connectée. Jamais un appel anonyme.
+async function appelant(jeton: string) {
+  if (!jeton) return null;
+  const secret = Deno.env.get("RAPPELS_SECRET");
+  if (secret && (await memeSecret(jeton, secret))) return "cron";
+  const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (service && (await memeSecret(jeton, service))) return "service";
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: `Bearer ${jeton}` } }, auth: { persistSession: false } });
+  const { data: qui, error } = await sb.auth.getUser();
+  if (error || !qui?.user) return null;
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const moi = await db.from("profils").select("super_admin, actif").eq("user_id", qui.user.id).maybeSingle();
+  return moi.data && moi.data.super_admin && moi.data.actif ? "admin" : null;
+}
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: entetesTest(req) });
   const fourni = (req.headers.get("authorization") || "").replace(/^Bearer /, "");
-  const demande = await req.json().catch(() => ({}));
-  // Notification test : le jeton de la personne connectée, qui doit être administratrice générale. Jamais le secret du cron, jamais sans compte.
-  if (demande && demande.type === "test") return notificationTest(req, fourni, demande);
-  const secret = Deno.env.get("RAPPELS_SECRET");
-  if (!secret || !(await memeSecret(fourni, secret))) return json({ erreur: "non autorisé" }, 401);
-  const type = demande.type;
+  const demande = (await req.json().catch(() => null)) || {};
+  const qui = await appelant(fourni);
+  if (!qui) return json({ erreur: "non autorisé" }, 401);
+  // « mode » est accepté comme synonyme de « type » (appel à la main) : { mode: "h1", service_id, force: true }.
+  const type = demande.type || demande.mode;
+  if (type === "h1" && demande.force) return rappelForce(demande);
+  // Une administratrice connectée n'a que l'envoi forcé : les passages planifiés restent au cron et à la clé de service.
+  if (qui === "admin") return json({ erreur: "non autorisé" }, 401);
   if (type === "h1") return rappelH1(demande);
   if (type !== "veille" && type !== "lendemain") return json({ erreur: "type inconnu" }, 400);
   // `date` et `user_id` ne servent qu'aux essais : sans eux, c'est la date du jour à Bangkok et tous les abonnés.
@@ -135,12 +146,14 @@ async function rappelH1(demande: { maintenant?: string; user_id?: string }) {
   } catch (err) {
     erreur = String((err && err.message) || err).slice(0, 300);
   }
-  if (!demande.user_id && (res.envoyes || res.echecs || erreur)) {
-    const { abonnements, envoyes, retires, echecs } = res;
-    const { error } = await db.from("rappels_suivi").insert({ type: "h1", cible: dateBangkok(new Date(maintenant)), abonnements, envoyes, retires, echecs, erreur, duree_ms: Date.now() - debut });
-    if (error) console.error("suivi du rappel h1 non écrit :", error.message);
-  }
+  if (!demande.user_id && (res.envoyes || res.echecs || erreur)) await noterSuiviH1(db, maintenant, res, erreur, debut);
   return json({ type: "h1", ...res, ...(erreur ? { erreur } : {}) }, erreur ? 500 : 200);
+}
+
+async function noterSuiviH1(db: ReturnType<typeof createClient>, maintenant: number, res: { abonnements: number; envoyes: number; retires: number; echecs: number }, erreur: string, debut: number) {
+  const { abonnements, envoyes, retires, echecs } = res;
+  const { error } = await db.from("rappels_suivi").insert({ type: "h1", cible: dateBangkok(new Date(maintenant)), abonnements, envoyes, retires, echecs, erreur, duree_ms: Date.now() - debut });
+  if (error) console.error("suivi du rappel h1 non écrit :", error.message);
 }
 
 async function executerH1(db: ReturnType<typeof createClient>, maintenant: number, demande: { user_id?: string }) {
@@ -159,11 +172,46 @@ async function executerH1(db: ReturnType<typeof createClient>, maintenant: numbe
   if (dossiers.error) throw new Error(dossiers.error.message);
   const aRappeler = servicesH1(candidates, maintenant, { ecartes: new Set((dossiers.data || []).filter((d) => d.annule).map((d) => d.id)) });
   if (!aRappeler.length) return vide;
+  return envoyerH1(db, aRappeler, dossiers.data || [], { essai: !!demande.user_id, userId: demande.user_id, force: false });
+}
 
+// Envoi forcé d'un service : la même notification que le cron (texte, nom du client, destinataires, lien), tout de suite, hors de la fenêtre.
+// Le service est marqué comme notifié pour son heure : le cron n'en enverra pas un second.
+async function rappelForce(demande: { service_id?: string; maintenant?: string }) {
+  if (typeof demande.service_id !== "string" || !UUID.test(demande.service_id)) return json({ erreur: "service_id manquant ou invalide" }, 400);
+  const maintenant = demande.maintenant && !Number.isNaN(Date.parse(demande.maintenant)) ? Date.parse(demande.maintenant) : Date.now();
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const debut = Date.now();
+  const lue = await db.from("reservations").select("id, entite_id, dossier_id, statut, heure_pickup, date_service, libelle, partenaire_id, lieu_pickup, personnes, details").eq("id", demande.service_id).maybeSingle();
+  if (lue.error) return json({ erreur: lue.error.message }, 500);
+  if (!lue.data) return json({ erreur: "service_introuvable" }, 404);
+  const [dossier, reglages] = await Promise.all([
+    db.from("dossiers").select("id, annule, client_id").eq("id", lue.data.dossier_id).maybeSingle(),
+    db.from("reglages").select("valeur").eq("entite_id", lue.data.entite_id).maybeSingle(),
+  ]);
+  if (dossier.error || reglages.error) return json({ erreur: (dossier.error || reglages.error)!.message }, 500);
+  const choix = serviceForce(lue.data, maintenant, { dossierAnnule: !!(dossier.data && dossier.data.annule), reglages: reglages.data ? reglages.data.valeur : null });
+  if (choix.erreur) return json({ erreur: choix.erreur }, 409);
+  let res = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0, services: 0 };
+  let erreur = "";
+  try {
+    res = await envoyerH1(db, [choix.service], dossier.data ? [dossier.data] : [], { essai: false, force: true });
+  } catch (err) {
+    erreur = String((err && err.message) || err).slice(0, 300);
+  }
+  await noterSuiviH1(db, maintenant, res, erreur, debut);
+  const m = messageH1(choix.service, { client: "" });
+  return json({ type: "h1", force: true, service: { id: lue.data.id, libelle: lue.data.libelle, debut: new Date(choix.service.debut).toISOString(), quand: m.titre.split(" : ")[0] }, ...res, ...(erreur ? { erreur } : {}) }, erreur ? 500 : 200);
+}
+
+// Lit les destinataires, marque les services (une ligne par service et par heure), puis envoie. Tout est lu AVANT le marquage : une lecture qui
+// échoue laisse les services non marqués, rattrapés au passage suivant. Un essai ciblé (userId) ne marque rien ; un envoi forcé marque mais
+// envoie même si le service l'était déjà (c'est une demande explicite).
+async function envoyerH1(db: ReturnType<typeof createClient>, aRappeler: Array<{ reservation: Record<string, unknown> & { id: string; entite_id: string; dossier_id: string }; debut: number; minutes: number }>, dossiers: Array<{ id: string; client_id: string }>, { essai, userId, force }: { essai: boolean; userId?: string; force: boolean }) {
+  const vide = { abonnements: 0, envoyes: 0, retires: 0, echecs: 0, services: 0 };
   let requeteAbos = db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth");
-  if (demande.user_id) requeteAbos = requeteAbos.eq("user_id", demande.user_id);
-  // Tout ce qu'il faut pour envoyer est lu AVANT le marquage : une lecture qui échoue laisse les services non marqués, rattrapés au passage suivant.
-  const clientIds = [...new Set((dossiers.data || []).map((d) => d.client_id).filter(Boolean))];
+  if (userId) requeteAbos = requeteAbos.eq("user_id", userId);
+  const clientIds = [...new Set(dossiers.map((d) => d.client_id).filter(Boolean))];
   const [abos, profils, membres, roles, entites, clients] = await Promise.all([
     requeteAbos,
     db.from("profils").select("user_id, actif, super_admin, rappel_h1"),
@@ -175,17 +223,18 @@ async function executerH1(db: ReturnType<typeof createClient>, maintenant: numbe
   for (const r of [abos, profils, membres, roles, entites, clients]) if (r.error) throw new Error(r.error.message);
   if (!abos.data!.length) return { ...vide, services: aRappeler.length };
   const clientDe = (r: { dossier_id: string }) => {
-    const d = (dossiers.data || []).find((x) => x.id === r.dossier_id);
+    const d = dossiers.find((x) => x.id === r.dossier_id);
     return nomClient((clients.data || []).find((c) => c.id === (d && d.client_id)));
   };
-  // Marquage avant l'envoi, en une écriture : une ligne par service et par heure de début. Deux exécutions qui se chevauchent ne notifient
-  // pas deux fois ; une heure changée donne une autre clé, donc un nouveau rappel. Un essai ciblé (user_id) ne marque rien.
+  // Marquage : deux exécutions qui se chevauchent ne notifient pas deux fois ; une heure changée donne une autre clé, donc un nouveau rappel.
   let nouveaux = aRappeler;
-  if (!demande.user_id) {
+  if (!essai) {
     const { data: marques, error } = await db.from("rappels_h1_envois").upsert(aRappeler.map((x) => ({ reservation_id: x.reservation.id, debut: new Date(x.debut).toISOString() })), { onConflict: "reservation_id,debut", ignoreDuplicates: true }).select("reservation_id");
     if (error) throw new Error(error.message);
-    const ids = new Set((marques || []).map((m) => m.reservation_id));
-    nouveaux = aRappeler.filter((x) => ids.has(x.reservation.id));
+    if (!force) {
+      const ids = new Set((marques || []).map((m) => m.reservation_id));
+      nouveaux = aRappeler.filter((x) => ids.has(x.reservation.id));
+    }
   }
   if (!nouveaux.length) return { ...vide, abonnements: abos.data!.length, services: aRappeler.length };
 
@@ -193,8 +242,8 @@ async function executerH1(db: ReturnType<typeof createClient>, maintenant: numbe
   const ctx = { profils: profils.data!, membres: membres.data!, roles: roles.data! };
   const nomEntite = (id: string) => (entites.data!.find((e) => e.id === id) || { nom: "" }).nom;
   // Le nom de l'entreprise n'est ajouté que pour qui en suit plusieurs (Anaïs : Secret et Taxi).
-  const plusieurs = (userId: string) => {
-    const profil = ctx.profils.find((p) => p.user_id === userId);
+  const plusieurs = (id: string) => {
+    const profil = ctx.profils.find((p) => p.user_id === id);
     const ids = entitesLisibles({ profil, membres: ctx.membres, roles: ctx.roles });
     return ids === null || ids.length > 1;
   };
@@ -203,9 +252,9 @@ async function executerH1(db: ReturnType<typeof createClient>, maintenant: numbe
   let echecs = 0;
   const retiresIds = new Set();
   for (const service of nouveaux) {
-    for (const userId of destinatairesH1(ctx, service.reservation.entite_id)) {
-      const charge = JSON.stringify(messageH1(service, { entreprise: plusieurs(userId) ? nomEntite(service.reservation.entite_id) : "", client: clientDe(service.reservation) }));
-      for (const abo of abos.data!.filter((a) => a.user_id === userId && !retiresIds.has(a.id))) {
+    for (const destinataire of destinatairesH1(ctx, service.reservation.entite_id)) {
+      const charge = JSON.stringify(messageH1(service, { entreprise: plusieurs(destinataire) ? nomEntite(service.reservation.entite_id) : "", client: clientDe(service.reservation) }));
+      for (const abo of abos.data!.filter((a) => a.user_id === destinataire && !retiresIds.has(a.id))) {
         try {
           // TTL court : un rappel « dans 1 h » qui arrive deux heures plus tard n'a plus de sens.
           await webpush.sendNotification({ endpoint: abo.endpoint, keys: { p256dh: abo.p256dh, auth: abo.auth } }, charge, { TTL: 3600, urgency: "high" });
@@ -281,42 +330,4 @@ async function executerDeparts(db: ReturnType<typeof createClient>, demain: stri
     }
   }
   return { abonnements: abos.data!.length, envoyes, retires, echecs };
-}
-
-// ---- Notification test (bouton des réglages, administratrice générale seulement) -----------------------------------------------------
-// Rien n'est lu ni marqué : un message fictif, marqué [TEST], vers les appareils du profil choisi. Renvoie le nombre d'appareils et d'envois,
-// ce qui dit aussi si la personne a un abonnement actif.
-async function notificationTest(req: Request, jeton: string, demande: { user_id?: string }) {
-  const h = entetesTest(req);
-  const repondre = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: h });
-  if (!jeton) return repondre({ erreur: "non_connecte" }, 401);
-  const URL_SB = Deno.env.get("SUPABASE_URL")!;
-  const sb = createClient(URL_SB, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: `Bearer ${jeton}` } }, auth: { persistSession: false } });
-  const { data: qui, error } = await sb.auth.getUser();
-  if (error || !qui?.user) return repondre({ erreur: "non_connecte" }, 401);
-  const db = createClient(URL_SB, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  const moi = await db.from("profils").select("super_admin, actif").eq("user_id", qui.user.id).maybeSingle();
-  if (moi.error) return repondre({ erreur: "base" }, 500);
-  if (!moi.data || !moi.data.super_admin || !moi.data.actif) return repondre({ erreur: "reserve_admin" }, 403);
-  const cible = typeof demande.user_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(demande.user_id) ? demande.user_id : qui.user.id;
-  const abos = await db.from("abonnements_push").select("id, endpoint, p256dh, auth").eq("user_id", cible);
-  if (abos.error) return repondre({ erreur: "base" }, 500);
-  if (!abos.data!.length) return repondre({ abonnements: 0, envoyes: 0, echecs: 0, retires: 0 });
-  webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
-  const charge = JSON.stringify(messageTest());
-  let envoyes = 0;
-  let echecs = 0;
-  let retires = 0;
-  for (const abo of abos.data!) {
-    try {
-      await webpush.sendNotification({ endpoint: abo.endpoint, keys: { p256dh: abo.p256dh, auth: abo.auth } }, charge, { TTL: 600, urgency: "high" });
-      envoyes++;
-    } catch (err) {
-      if (err.statusCode === 404 || err.statusCode === 410) {
-        await db.from("abonnements_push").delete().eq("id", abo.id);
-        retires++;
-      } else echecs++;
-    }
-  }
-  return repondre({ abonnements: abos.data!.length, envoyes, echecs, retires });
 }
