@@ -85,7 +85,7 @@ test("réglage de l'entreprise : allumé par défaut partout ; Secret et Taxi ra
 });
 
 test("destinataires : ceux qui voient toute l'entreprise, sans l'écran voucher seul ni qui a coupé son rappel ; chaque entreprise les siens", () => {
-  const roles = [{ id: "ed", portee: "toute", permissions: ["dossiers.lire"] }, { id: "mes", portee: "mes_dossiers", permissions: ["dossiers.lire"] }, { id: "vs", portee: "toute", permissions: ["dossiers.lire", "vouchers.seul"] }];
+  const roles = [{ id: "ed", portee: "toute", permissions: ["dossiers.lire", "reglages.ecrire"] }, { id: "mes", portee: "mes_dossiers", permissions: ["dossiers.lire", "reglages.ecrire"] }, { id: "vs", portee: "toute", permissions: ["dossiers.lire", "reglages.ecrire", "vouchers.seul"] }];
   const profils = [
     { user_id: "anais", actif: true }, { user_id: "stag", actif: true }, { user_id: "mook", actif: true }, { user_id: "ztp", actif: true },
     { user_id: "root", actif: true, super_admin: true }, { user_id: "coupe", actif: true, rappel_h1: false }, { user_id: "parti", actif: false },
