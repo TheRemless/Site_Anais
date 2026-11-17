@@ -1586,3 +1586,28 @@ details > summary { padding-block: 11px; margin: 0; }
 .bsite-modele input[type="radio"] { width: 20px; height: 20px; min-height: 0; flex: none; margin: 2px 0 0; padding: 0; accent-color: var(--teal-600); }
 .bsite-modele > span { flex: 1 1 auto; min-width: 0; }
 .dsite-accueil-plus svg { transform: rotate(-90deg); }
+
+/* ---- Rappel une heure avant (migration 31) ---------------------------------------------------------------------------- */
+.rappel-bloc { margin-top: 20px; padding: 16px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; }
+.rappel-bloc > h2 { margin-bottom: 4px; }
+.rappel-partie { padding-top: 14px; margin-top: 14px; border-top: 1px solid var(--bord); }
+.rappel-partie:first-of-type { border-top: 0; margin-top: 4px; padding-top: 4px; }
+.rappel-partie h3 { font-size: 1rem; margin: 0 0 8px; }
+.rappel-libelle { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 4px; }
+.rappel-bloc textarea { width: 100%; font-size: 0.95rem; line-height: 1.5; }
+.rappel-bloc .actions { margin: 10px 0 4px; }
+.rappel-case { margin-top: 4px; }
+.rappel-quand { margin-left: 8px; font-size: 0.85rem; font-weight: 400; color: var(--texte-2); }
+.rappel-details { display: grid; grid-template-columns: minmax(96px, max-content) minmax(0, 1fr); gap: 6px 16px; margin: 10px 0; }
+.rappel-ligne { display: contents; }
+.rappel-details dt { color: var(--texte-2); font-size: 0.9rem; }
+.rappel-details dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.rappel-tel { display: inline-flex; align-items: center; min-height: 44px; margin-right: 12px; }
+.rappel-etat { margin-left: 0; margin-right: 6px; }
+.rappel-etat.fait { background: var(--teal-100); color: var(--teal-700); }
+.rappel-etat.a-faire { background: #fff4d6; color: #5a4300; }
+.rappel-ouvrir { display: inline-flex; align-items: center; gap: 2px; font-weight: 700; color: var(--teal-700); }
+.rappel-ouvrir svg { transform: rotate(-90deg); }
+.rappel-h1-profil { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--bord); }
+.rappel-h1-profil .case { align-items: flex-start; }
+.rappel-h1-profil .case input { margin-top: 3px; }

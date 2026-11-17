@@ -315,6 +315,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return verifie(await sb.rpc("fiduciaire_calcul", { p_res: reservationId }));
     },
     // Langue de l'interface de la personne connectée (migration 13). Sans la migration l'appel échoue : l'outil garde alors la langue dans ce navigateur.
+    // « Rappel 1 h avant » de la personne connectée (migration 31).
+    async definirRappelH1(actif) {
+      verifie(await sb.rpc("definir_rappel_h1", { allume: !!actif }));
+    },
     async definirMaLangue(code) {
       verifie(await sb.rpc("definir_ma_langue", { l: code }));
     },

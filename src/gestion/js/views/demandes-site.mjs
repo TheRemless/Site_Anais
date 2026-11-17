@@ -3,7 +3,7 @@
 // (date, heure, option, prix) puis confirme, ou refuse en proposant autre chose. Chaque fois une réponse anglaise à copier dans la
 // conversation WhatsApp du client : le site ne donne pas son numéro, la référence affichée en grand sert à retrouver la conversation.
 // Rien ne part au prestataire (règle du 14.11.2026). Secret et Taxi seulement ; chaque entreprise ne voit que ses demandes.
-import { etat, modifier, peut, modeExcursions, modeTaxi, entitesAccessibles, changerEntite, naviguer, recharger } from "../etat.mjs";
+import { etat, modifier, peut, modeExcursions, modeTaxi, naviguer, recharger } from "../etat.mjs";
 import { h, modal, toast, champ, puces, confirmer, icone } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
@@ -292,12 +292,7 @@ function blocChiffres(demandes) {
 
 // ---- Écran ------------------------------------------------------------------------------------------------------------------
 export async function vueDemandesSite() {
-  // Une notification ouvre l'écran dans l'entreprise de la demande (« ?entite=… ») : on y passe si on y a accès.
-  const cible = new URLSearchParams((location.hash.split("?")[1] || "")).get("entite");
-  if (cible && cible !== etat.entiteId && entitesAccessibles().some((e) => e.id === cible)) {
-    changerEntite(cible);
-    setTimeout(() => (location.hash = "#/demandes"), 0);
-  }
+  // Une notification ouvre l'écran dans l'entreprise de la demande (« ?entite=… ») : app.mjs y passe avant d'afficher.
   const demandes = etat.db.demandes_site || [];
   const nouvelles = aTraiter(demandes);
   const liste = trierDemandes(onglet === "a_traiter" ? nouvelles : onglet === "traitees" ? demandes.filter((d) => d.statut !== "nouvelle" && d.statut !== "classee") : demandes);
