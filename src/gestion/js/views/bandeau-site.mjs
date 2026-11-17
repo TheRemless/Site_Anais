@@ -276,7 +276,8 @@ function carte(b, ecrit) {
 }
 
 export async function vueBandeauSite() {
-  const ecrit = peut("dossiers.ecrire");
+  // Même droit que la base (publie_sur_le_site, migration 40) : « Modifier les réglages » en plus des dossiers.
+  const ecrit = peut("dossiers.ecrire") && peut("reglages.ecrire");
   const tous = [...(etat.db.bandeaux_site || [])];
   const actifs = tous.filter((b) => ["en_ligne", "programme"].includes(etatBandeau(b))).sort(ordreAffichage);
   const anciens = tous.filter((b) => !actifs.includes(b)).sort((a, b) => String(b.debut).localeCompare(String(a.debut))).slice(0, 20);

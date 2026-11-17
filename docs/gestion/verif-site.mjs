@@ -1,4 +1,4 @@
-// Vérifie la migration 30 (demandes et bandeau du site) sur un Postgres en mémoire : qui lit, qui traite, ce qui ne se modifie jamais, et que le public n'écrit rien.
+// Vérifie les migrations 30 et 40 (demandes et bandeau du site) sur un Postgres en mémoire : qui lit, qui traite, ce qui ne se modifie jamais, et que le public n'écrit rien.
 //   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17
 //   cp <repo>/docs/gestion/verif-site.mjs . && GESTION_SQL=<repo>/docs/gestion/ node verif-site.mjs
 import { PGlite } from "@electric-sql/pglite";
@@ -24,9 +24,9 @@ alter default privileges in schema public grant execute on functions to anon, au
 const db = new PGlite();
 await db.exec(harnais);
 await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
-const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d|3\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
+const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
 for (const f of migrations) await db.exec(fs.readFileSync(W + f, "utf8"));
-ok(migrations.includes("migration-30-site.sql"), "la migration 30 est appliquée après les autres");
+ok(migrations.includes("migration-30-site.sql") && migrations.includes("migration-40-bandeau-reglages.sql"), "les migrations 30 et 40 sont appliquées, dans l'ordre");
 // Droits des tables déjà là (comme sur Supabase) : la migration 30 ne doit pas compter sur ce qui précède.
 await db.exec("grant all on all tables in schema public to authenticated; grant usage, select on all sequences in schema public to authenticated; revoke insert, update, delete on journal from authenticated;");
 // …sauf les tables de la migration 30, refermées par elle : on rejoue ses « revoke » et « grant » pour annuler le « grant all » ci-dessus.
@@ -44,15 +44,16 @@ const essaie = async (role, userId, sql, params = []) => {
 };
 const comme = (u, sql, p) => essaie("authenticated", U[u], sql, p);
 
-// Personnes : Anaïs (Éditeur de Secret et de Taxi), un lecteur de Secret, une stagiaire limitée à ses dossiers, l'assistante « vouchers seulement » de Taxi,
+// Personnes : Anaïs (Administrateur de Secret et de Taxi), une éditrice de Secret (le rôle de Mook n'a pas « reglages.ecrire »), un lecteur de Secret, une stagiaire limitée à ses dossiers, l'assistante « vouchers seulement » de Taxi,
 // un éditeur de Zwald seulement, l'administratrice générale.
 const U = {};
-for (const k of ["anais", "lecteur", "stagiaire", "mook", "ztp", "root"]) U[k] = (await un("insert into auth.users (email) values ($1) returning id", [k + "@test"])).id;
+for (const k of ["anais", "editrice", "lecteur", "stagiaire", "mook", "ztp", "root"]) U[k] = (await un("insert into auth.users (email) values ($1) returning id", [k + "@test"])).id;
 await db.exec(`update profils set super_admin = true where user_id = '${U.root}'`);
 await db.exec(`insert into roles (entite_id, nom, portee, permissions) values ('${ent.secret}', 'Ses dossiers', 'mes_dossiers', array['clients.lire','clients.ecrire','dossiers.lire','dossiers.ecrire'])`);
 await db.exec(`insert into roles (entite_id, nom, portee, permissions) values ('${ent.taxi}', 'Vouchers', 'toute', array['clients.lire','clients.ecrire','dossiers.lire','dossiers.ecrire','vouchers.seul'])`);
 const membre = (u, s, role) => db.exec(`insert into membres values ('${U[u]}', '${ent[s]}', (select id from roles where entite_id = '${ent[s]}' and nom = '${role}'))`);
-await membre("anais", "secret", "Éditeur"); await membre("anais", "taxi", "Éditeur");
+await membre("anais", "secret", "Administrateur"); await membre("anais", "taxi", "Administrateur");
+await membre("editrice", "secret", "Éditeur");
 await membre("lecteur", "secret", "Lecteur");
 await membre("stagiaire", "secret", "Ses dossiers");
 await membre("mook", "taxi", "Vouchers");
@@ -105,6 +106,8 @@ const bandeau = (e, o = {}) => `insert into bandeaux_site (entite_id, marques, t
 const b1 = await comme("anais", bandeau("secret", { marques: "secret,taxi" }));
 ok(b1.ok && b1.rows.length === 1, "Anaïs allume un bandeau pour les deux marques depuis Secret");
 ok((await comme("lecteur", bandeau("secret"))).ok === false, "un lecteur ne crée pas de bandeau");
+// Migration 40 (Jérémy, 17.11.2026) : Mook ne change pas les bandeaux. Écrire les dossiers ne suffit plus, il faut « reglages.ecrire ».
+ok((await comme("editrice", bandeau("secret"))).ok === false, "une éditrice de Secret (sans « Modifier les réglages ») ne crée pas de bandeau");
 ok((await comme("ztp", bandeau("secret"))).ok === false, "un éditeur de Zwald ne crée pas de bandeau chez Secret");
 ok((await comme("ztp", bandeau("ztp"))).ok === false, "ni chez Zwald : seules Secret et Taxi publient sur secrettravelandtour.com");
 ok((await comme("root", bandeau("ztp"))).ok === false, "même l'administratrice générale ne publie pas depuis Zwald");
@@ -119,6 +122,9 @@ ok((await comme("lecteur", "select 1 from bandeaux_site")).rows.length === 2, "u
 ok((await comme("ztp", "select 1 from bandeaux_site")).rows.length === 0, "Zwald ne voit pas les bandeaux de Secret");
 ok((await comme("anais", `update bandeaux_site set actif = false where id = '${b1.rows[0].id}'`)).n === 1, "un tap l'éteint");
 ok((await comme("lecteur", `delete from bandeaux_site where id = '${b1.rows[0].id}'`)).n === 0, "un lecteur ne le supprime pas");
+ok((await comme("editrice", "select 1 from bandeaux_site")).rows.length === 2, "l'éditrice voit toujours les bandeaux");
+ok((await comme("editrice", `update bandeaux_site set actif = true where id = '${b1.rows[0].id}'`)).n === 0, "l'éditrice ne rallume ni ne modifie un bandeau");
+ok((await comme("editrice", `delete from bandeaux_site where id = '${b1.rows[0].id}'`)).n === 0, "l'éditrice ne supprime pas un bandeau");
 ok((await comme("anais", `update bandeaux_site set fin = debut - interval '1 hour' where id = '${b1.rows[0].id}'`)).ok === false, "une fin avant le début est refusée");
 
 console.log("== Fonctions ==");
