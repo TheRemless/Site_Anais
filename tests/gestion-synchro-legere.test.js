@@ -39,7 +39,9 @@ function faux() {
     }
     return q;
   };
-  return { from, tables, lectures };
+  // Fonctions de la base (clients_lies, migration 46) : aucune ligne.
+  const rpc = async () => ({ data: [], error: null });
+  return { from, rpc, tables, lectures };
 }
 const completes = (sb, table) => sb.lectures.filter((l) => l.table === table && l.genre === "complete").length;
 const CATALOGUE = ["partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets"];

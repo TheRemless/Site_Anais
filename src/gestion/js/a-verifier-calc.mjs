@@ -86,7 +86,9 @@ const prixDansTexte = (details) => Object.values(details || {}).some((v) => type
 // `tr` : la traduction de l'interface (par défaut, le texte tel quel) pour les petites phrases composées ici.
 const traduireParDefaut = (texte, vars = {}) => String(texte).replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ""));
 
-export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDefaut, taxi = false, reglage = null } = {}) {
+// `entiteId` : l'entreprise vérifiée. Ses écrans lisent aussi les fiches clients d'une autre entreprise que ses dossiers utilisent (fiches
+// partagées, migration 46) : celles-ci se vérifient dans leur entreprise, jamais ici.
+export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDefaut, taxi = false, reglage = null, entiteId = null } = {}) {
   const regle = reglageAVerifier(reglage);
   const coupes = new Set(regle.desactives);
   const telephonesDe = (p) => ((p && p.contact && p.contact.telephones) || []).filter((t) => String(t.numero || "").replace(/\D/g, "").length >= regle.chiffres_telephone);
@@ -153,7 +155,7 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
     ajouter("services_sans_commission", "dossiers", false, avecPartenaire.filter((r) => r.paye_sur_place && manque(r, "commission_prevue")).map(service));
   }
   // Clients en double (« à relire ») : même téléphone (les 8 derniers chiffres, l'indicatif peut manquer), même e-mail ou même prénom et nom.
-  const clients = db.clients || [];
+  const clients = (db.clients || []).filter((c) => !c.nom_seul && (!entiteId || c.entite_id === entiteId));
   const chef = new Map(clients.map((c) => [c.id, c.id]));
   const racine = (id) => (chef.get(id) === id ? id : racine(chef.get(id)));
   const raisons = new Map();
@@ -183,7 +185,7 @@ export function aVerifier(db, { droits = {}, aujourdhui = "", tr = traduireParDe
   for (const c of clients) if (raisons.has(c.id)) paquets.set(racine(c.id), [...(paquets.get(racine(c.id)) || []), c]);
   const NOM_RAISON = { telephone: tr("même téléphone"), email: tr("même e-mail"), nom: tr("même nom") };
   ajouter("clients_en_double", "clients", true, [...paquets.values()].filter((l) => l.length > 1).map((l) => ({ id: l[0].id, lien: `#/client/${l[0].id}`, texte: l.map((c) => nomClient(c) || tr("(sans nom)")).join(" / "), detail: [...new Set(l.flatMap((c) => raisons.get(c.id) || []))].map((x) => NOM_RAISON[x]).join(", ") })));
-  ajouter("clients_sans_contact", "clients", false, (db.clients || []).filter((c) => !String(c.telephone || "").replace(/\D/g, "") && !String(c.email || "").trim()).map((c) => ({ id: c.id, lien: `#/client/${c.id}`, texte: nomClient(c) || tr("(sans nom)"), detail: "" })));
+  ajouter("clients_sans_contact", "clients", false, clients.filter((c) => !String(c.telephone || "").replace(/\D/g, "") && !String(c.email || "").trim()).map((c) => ({ id: c.id, lien: `#/client/${c.id}`, texte: nomClient(c) || tr("(sans nom)"), detail: "" })));
   // Factures et devis : les documents de l'entreprise, quand l'écran a pu les charger (`db.documents`).
   const documents = db.documents || [];
   const toutesPrestations = new Map((db.prestations || []).map((x) => [x.id, x]));

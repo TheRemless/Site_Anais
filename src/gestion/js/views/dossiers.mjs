@@ -1,4 +1,4 @@
-import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe, modeExcursions, modeTaxi, numeroSuivant, moduleActif } from "../etat.mjs";
+import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe, modeExcursions, modeTaxi, numeroSuivant, moduleActif, clientParId } from "../etat.mjs";
 import { nouveauDossierExcursions } from "./nouveau-excursions.mjs";
 import { ouvrirDemande } from "./demande.mjs";
 import { boutonConfirmation } from "./commun.mjs";
@@ -229,7 +229,7 @@ export function nouveauDossier() {
   }
   function majRef() {
     if (refManuelle) return;
-    const c = selClient.valeur ? etat.db.clients.find((x) => x.id === selClient.valeur) : selClient.nouveau ? { prenom: nvPrenom.value, nom: nvNom.value } : null;
+    const c = selClient.valeur ? clientParId(selClient.valeur) : selClient.nouveau ? { prenom: nvPrenom.value, nom: nvNom.value } : null;
     const pret = c && (c.prenom || c.nom) && (regl.numerotation.mode === "sequence" || paysChoisi());
     ref.value = pret ? nouvelleRef({ numerotation: regl.numerotation, prenom: c.prenom, nom: c.nom, dateIso: aujourdhui(), pays: paysChoisi(), refsExistantes: etat.db.dossiers.map((d) => d.ref) }) : "";
   }

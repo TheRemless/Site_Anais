@@ -1,13 +1,13 @@
 // « Coller une demande » : le client écrit à Anaïs sur WhatsApp, le message arrive à sa façon ou depuis le formulaire du site. On le colle ici :
 // l'outil reconnaît la date, les personnes, l'hôtel, le client et le service cité, cherche le prix dans la base partenaires, et crée le dossier
 // d'un tap. Tout ce qui a été reconnu se corrige sur place, et le prix suit.
-import { etat, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite, confirmationPermise } from "../etat.mjs";
+import { etat, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite, confirmationPermise, clientParId, clientsProposes } from "../etat.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { lireMessage, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
-import { appliquerModeParDefaut } from "../operations-calc.mjs";
+import { appliquerModeParDefaut, adresseEstHotel } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { blocZonesPickup } from "./pickup-zones.mjs";
@@ -85,7 +85,8 @@ function lignesBrutes(offre, d, langue, devise) {
 }
 
 // L'hôtel du client connu : la première ligne de son adresse (« Hotel Sunset, Room 12 » → « Hotel Sunset »).
-const hotelDuClient = (c) => ((c && c.adresse) || "").split("\n")[0].replace(/,?\s*Room\s+\S+\s*$/i, "").trim();
+// L'hôtel noté sur la fiche. Une fiche partagée par une autre entreprise (ZTP) porte une adresse postale : pas d'hôtel.
+const hotelDuClient = (c) => (c && !adresseEstHotel(c, etat.entiteId) ? "" : ((c && c.adresse) || "").split("\n")[0].replace(/,?\s*Room\s+\S+\s*$/i, "").trim());
 
 // Ce que le formulaire du site a dit en plus du prix à calculer : option, lieux, vol, âges, prix annoncé. Lu, jamais deviné.
 function lignesSite(d) {
@@ -138,7 +139,7 @@ export function ouvrirDemande(depuisSite = null) {
 
   const clefOffre = (o) => `${o.genre}:${o.id}`;
   const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
-  const clientsConnus = () => (d ? clientsProches(d, etat.db.clients).filter((x) => !refuse.has(x.client.id)) : []);
+  const clientsConnus = () => (d ? clientsProches(d, clientsProposes()).filter((x) => !refuse.has(x.client.id)) : []);
 
   // ---- Les services --------------------------------------------------------------------------------------------------------------
   // Un service lu par l'assistant garde les lignes de la base qu'il a choisies, recalculées pour ses personnes.
@@ -161,7 +162,7 @@ export function ouvrirDemande(depuisSite = null) {
 
   // Réservation de ce service : heure, lieu de prise en charge, dépose, vol, bagages. Un trajet du site donne ses deux bouts.
   function reservationDe(sv, offre) {
-    const c = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
+    const c = clientId ? clientParId(clientId) : null;
     const siteTransfert = d.type === "transfer";
     const lieu = siteTransfert ? d.pickup || "" : offre && !estTransfert(offre) && d.hotel && d.hotel !== hotelDuClient(c) ? d.hotel : "";
     // Une zone de pickup choisie veut dire un pickup à l'hôtel : le lieu est l'hôtel, ce qui permet de retrouver la zone au prochain séjour.
@@ -369,7 +370,7 @@ export function ouvrirDemande(depuisSite = null) {
     const proches = clientsConnus();
     if (clientId && !proches.some((x) => x.client.id === clientId)) clientId = "";
     if (!clientId && proches[0] && proches[0].raison === "telephone") clientId = proches[0].client.id;
-    const c = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
+    const c = clientId ? clientParId(clientId) : null;
     if (c && !d.hotel && !d.hotelSaisi) d.hotel = hotelDuClient(c);
   }
 
@@ -381,7 +382,7 @@ export function ouvrirDemande(depuisSite = null) {
     for (const sv of services) if (sv.zones) sv.zones.rafraichir();
     if (saisies.hotel && saisies.hotel.value !== (d.hotel || "")) saisies.hotel.value = d.hotel || "";
     const proches = clientsConnus();
-    const connu = clientId ? etat.db.clients.find((x) => x.id === clientId) : null;
+    const connu = clientId ? clientParId(clientId) : null;
     const propose = !connu ? proches.find((x) => x.raison === "nom") : null;
     clientBloc.append(
       ...[

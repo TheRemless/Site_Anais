@@ -1,15 +1,20 @@
 // Choix d'un client par recherche : on tape quelques lettres, on choisit dans une courte liste.
 // Reste utilisable avec des milliers de clients, contrairement à une liste déroulante complète.
-import { chercherClients, nomClient, etat } from "../etat.mjs";
+import { chercherClients, nomClient, clientParId, etiquetteClient } from "../etat.mjs";
 import { h } from "../ui.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
 const resume = (c) => [(c.adresse || "").split("\n").pop(), c.telephone].filter(Boolean).join(" · ");
+// Fiche partagée par une autre entreprise (migration 46) : le sigle de son entreprise, « ZTP ».
+const etiquette = (c) => {
+  const s = etiquetteClient(c);
+  return s ? h("span", { class: "etiquette-partage", title: tr("Fiche partagée par une autre entreprise : un changement se voit des deux côtés.") }, s) : null;
+};
 
 // Renvoie { noeud, valeur, nouveau } : `valeur` est l'identifiant du client choisi, `nouveau` vaut true si
 // la personne a demandé à créer un client.
 export function selecteurClient({ id = "client", libelle = tr("Client"), valeur = "", avecNouveau = false, surChangement = () => {} } = {}) {
-  let choisi = valeur ? etat.db.clients.find((c) => c.id === valeur) || null : null;
+  let choisi = valeur ? clientParId(valeur) : null;
   let nouveau = false;
   let texteNouveau = ""; // ce qui était tapé quand « Créer un nouveau client » a été choisi
   let resultats = [];
@@ -30,7 +35,7 @@ export function selecteurClient({ id = "client", libelle = tr("Client"), valeur 
   };
 
   const dessiner = (texte) => {
-    const options = resultats.map((c, i) => h("li", { id: `${id}-o${i}`, role: "option", "aria-selected": i === actif ? "true" : "false", onmousedown: (e) => (e.preventDefault(), choisir(c)) }, h("strong", null, nomClient(c)), resume(c) ? h("span", { class: "sous-ligne" }, resume(c)) : null));
+    const options = resultats.map((c, i) => h("li", { id: `${id}-o${i}`, role: "option", "aria-selected": i === actif ? "true" : "false", onmousedown: (e) => (e.preventDefault(), choisir(c)) }, h("strong", null, nomClient(c), etiquette(c)), resume(c) ? h("span", { class: "sous-ligne" }, resume(c)) : null));
     const creer = avecNouveau ? h("li", { id: `${id}-nouveau`, role: "option", class: "combo-creer", "aria-selected": actif === resultats.length ? "true" : "false", onmousedown: (e) => (e.preventDefault(), creerNouveau()) }, texte.trim() ? tr("Créer un nouveau client « {trim} »", { trim: texte.trim() }) : tr("Créer un nouveau client")) : null;
     liste.replaceChildren(...options, creer);
     if (!options.length && !creer) liste.replaceChildren(h("li", { class: "combo-vide", role: "presentation" }, tr("Aucun client trouvé.")));
@@ -64,7 +69,7 @@ export function selecteurClient({ id = "client", libelle = tr("Client"), valeur 
   const majPuce = () => {
     puce.replaceChildren(
       choisi
-        ? h("p", null, h("strong", null, nomClient(choisi)), resume(choisi) ? h("span", { class: "sous-ligne" }, resume(choisi)) : null)
+        ? h("p", null, h("strong", null, nomClient(choisi), etiquette(choisi)), resume(choisi) ? h("span", { class: "sous-ligne" }, resume(choisi)) : null)
         : nouveau
           ? h("p", null, h("strong", null, tr("Nouveau client")), h("span", { class: "sous-ligne" }, tr("Renseignez ses coordonnées ci-dessous.")))
           : null,
@@ -141,7 +146,7 @@ export function selecteurClient({ id = "client", libelle = tr("Client"), valeur 
     nouveauClient: () => creerNouveau(),
     // Choisit un client connu d'après son identifiant (doublon repéré pendant la saisie d'un nouveau client).
     choisirId: (id) => {
-      const c = etat.db.clients.find((x) => x.id === id);
+      const c = clientParId(id);
       if (c) choisir(c);
     },
   };

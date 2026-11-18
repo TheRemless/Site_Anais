@@ -2,7 +2,7 @@
 // Commune à l'écran « Nouveau voucher » de Mook (voucher-rapide.mjs) et à « Coller une confirmation » (confirmation.mjs, 18.11.2026).
 // `x` : la course telle que donneesVoucher (voucher-rapide-calc.mjs) la rend. Taxi : le chauffeur réglé (Mr. Brown) ; Secret : un taxi
 // indépendant, sans partenaire (décision de Jérémy, 18.11.2026), jamais un partenaire de Secret deviné par son nom.
-import { etat, inserer, modifier, reglages, chargerDossier, modeTaxi } from "../etat.mjs";
+import { etat, inserer, modifier, reglages, chargerDossier, modeTaxi, clientParId, clientEtranger } from "../etat.mjs";
 import { uid } from "../defauts.mjs";
 import { ligneVoucher, reservationVoucher, reservationApercu, partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { creerDossierExcursions, refProposee, refDefinitive } from "./creation-excursions.mjs";
@@ -22,9 +22,10 @@ export function courseDuDossier(dossierId, reservationId = null) {
 
 // Le nom et le WhatsApp saisis passent sur la fiche du client ; un WhatsApp laissé vide n'efface pas celui qu'Anaïs a noté.
 export async function majClientCourse(id, x) {
-  const c = etat.db.clients.find((y) => y.id === id) || {};
+  const c = clientParId(id) || {};
+  // Une fiche partagée par une autre entreprise (ZTP) garde son prénom et son nom : la confirmation écrit souvent « Mr Martin ».
   const patch = {
-    ...([c.prenom, c.nom].filter(Boolean).join(" ") !== x.nom ? { prenom: "", nom: x.nom } : {}),
+    ...(!clientEtranger(c) && [c.prenom, c.nom].filter(Boolean).join(" ") !== x.nom ? { prenom: "", nom: x.nom } : {}),
     ...(x.telephone && x.telephone !== (c.telephone || "") ? { telephone: x.telephone } : {}),
   };
   if (Object.keys(patch).length) await modifier("clients", id, patch);
@@ -34,7 +35,7 @@ export async function majClientCourse(id, x) {
 // sont gardés dans `essai` dès qu'ils existent : si la suite échoue, un second essai reprend là au lieu de créer des doublons.
 // `notes` : la note interne du dossier (jamais imprimée). Renvoie courseDuDossier du dossier créé.
 export async function creerCourse(x, essai, { notes = "" } = {}) {
-  if (!essai.clientId && x.clientId && etat.db.clients.some((c) => c.id === x.clientId)) essai.clientId = x.clientId;
+  if (!essai.clientId && x.clientId && clientParId(x.clientId)) essai.clientId = x.clientId;
   if (!essai.clientId) essai.clientId = (await inserer("clients", { civilite: "", prenom: "", nom: x.nom, adresse: "", telephone: x.telephone, email: "", notes: "" })).id;
   else await majClientCourse(essai.clientId, x);
   const p = partenaireCourse();

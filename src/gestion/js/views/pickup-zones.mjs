@@ -2,6 +2,7 @@
 // Utilisé dans « Coller une demande » et dans le formulaire de réservation. Le calcul est dans pickup-calc.mjs : aucune heure ne vient d'ailleurs que de la grille.
 import { h } from "../ui.mjs";
 import { etat } from "../etat.mjs";
+import { adresseEstHotel } from "../operations-calc.mjs";
 import { tr } from "../i18n.mjs";
 import { grillesDe, zoneDeCle, heureDeLaGrille, departApresChoix, departDuTrajet, zoneAGarder, cleDeZoneGardee, zoneProposee } from "../pickup-calc.mjs";
 
@@ -10,7 +11,9 @@ function reservationsAvecZone() {
   const hotelDuClient = (r) => {
     const d = etat.db.dossiers.find((x) => x.id === r.dossier_id);
     const c = d ? etat.db.clients.find((x) => x.id === d.client_id) : null;
-    return ((c && c.adresse) || "").split("\n")[0].replace(/,?\s*Room\s+\S+\s*$/i, "").trim();
+    // Une fiche partagée par une autre entreprise (ZTP) n'a pas d'hôtel : son adresse est postale.
+    if (!c || !adresseEstHotel(c, r.entite_id)) return "";
+    return (c.adresse || "").split("\n")[0].replace(/,?\s*Room\s+\S+\s*$/i, "").trim();
   };
   return etat.db.reservations.filter((r) => r.details && r.details.pickup_zone).map((r) => ({ ...r, lieu_pickup: r.lieu_pickup || hotelDuClient(r) }));
 }

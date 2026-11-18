@@ -8,6 +8,7 @@ import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
 import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
+import { avecNomsLies, peutUtiliserPartages } from "./partage-clients-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
 const CLE = "gestion-zwald-demo-v13";
@@ -55,6 +56,12 @@ export function creer() {
     for (const p of data.profils) if (p.plateforme && !p.organisation_id) p.organisation_id = ORG_DEMO;
     // Dernière connexion (auth.users.last_sign_in_at) : l'équipe de démo travaille déjà ; un client neuf n'a encore personne de connecté.
     for (const p of data.profils) if (!("connecte_le" in p)) p.connecte_le = p.organisation_id === ORG_DEMO ? aujourdhui() : null;
+    // Fiches clients partagées (migration 46) : l'agence (voyages sur mesure) partage ses clients avec les entreprises d'excursions et de taxi
+    // de la même organisation, comme ZTP avec Secret et Taxi chez Zwald. Posé aussi dans une démo déjà enregistrée dans ce navigateur.
+    if (!data.partages_clients) {
+      const f = (e) => ((data.reglages || {})[e.id] || {}).fonctionnement;
+      data.partages_clients = data.entites.filter((s) => !["excursions", "taxi"].includes(f(s))).flatMap((s) => data.entites.filter((c) => c.id !== s.id && c.organisation_id === s.organisation_id && ["excursions", "taxi"].includes(f(c))).map((c) => ({ source_id: s.id, cible_id: c.id, organisation_id: s.organisation_id })));
+    }
     let choisi = null;
     try {
       choisi = localStorage.getItem(CLE_UTILISATEUR);
@@ -107,6 +114,23 @@ export function creer() {
     !data.profils.some((p) => p.organisation_id === org && p.connecte_le) &&
     !data.clients.some((c) => (data.entites.find((e) => e.id === c.entite_id) || {}).organisation_id === org);
   const nomDe = (id) => (data.profils.find((p) => p.user_id === id) || {}).nom || null;
+
+  // Comme controler_client_dossier (migration 46) : un dossier ne prend la fiche d'une autre entreprise que si elle la partage avec la sienne,
+  // et seulement pour l'administration qui lit cette fiche. Un dossier déjà relié garde son client.
+  const garderClientDossier = (table, avant, apres) => {
+    if (table !== "dossiers" || !apres.client_id) return;
+    if (avant && avant.client_id === apres.client_id && avant.entite_id === apres.entite_id) return;
+    const c = data.clients.find((x) => x.id === apres.client_id);
+    if (!c || c.entite_id === apres.entite_id) return;
+    if (!(data.partages_clients || []).some((p) => p.source_id === c.entite_id && p.cible_id === apres.entite_id)) throw new Error(tr("Ce client appartient à une autre entreprise qui ne partage pas ses clients avec celle-ci."));
+    const ctx = contexte();
+    const permis = peutUtiliserPartages({ superAdmin: !!utilisateur.super_admin, permissionsSource: permissionsDans(ctx, c.entite_id), permissionsCible: permissionsDans(ctx, apres.entite_id), voitToutSource: voitTout(ctx, c.entite_id) });
+    if (!permis) throw new Error(tr("Seule l'administration utilise les clients d'une autre entreprise."));
+  };
+  // Comme garder_entite_client (migration 46) : une fiche utilisée par des dossiers ne change pas d'entreprise.
+  const garderEntiteClient = (table, avant, apres) => {
+    if (table === "clients" && avant && apres.entite_id && apres.entite_id !== avant.entite_id && data.dossiers.some((d) => d.client_id === avant.id)) throw new Error(tr("Ce client a des dossiers : il ne change pas d'entreprise."));
+  };
 
   // Comme publie_sur_le_site (migration 40) : un bandeau du site ne s'écrit qu'avec « Modifier les réglages ».
   const garderBandeau = (table, entiteId) => {
@@ -316,6 +340,11 @@ export function creer() {
       const idsDossiers = new Set(dossiers.map((d) => d.id));
       out.dossiers = dossiers;
       out.clients = data.clients.filter((c) => ids.has(c.entite_id) && permissionsDans(ctx, c.entite_id).includes("clients.lire") && (voitTout(ctx, c.entite_id) || c.cree_par === uidCourant || dossiers.some((d) => d.client_id === c.id)));
+      // Comme clients_lies (migration 46) : le nom seul du client d'une autre entreprise sur un dossier visible dont la fiche n'est pas lisible.
+      const lus = new Set(out.clients.map((c) => c.id));
+      const lies = data.clients.filter((c) => !lus.has(c.id) && dossiers.some((d) => d.client_id === c.id && d.entite_id !== c.entite_id)).map(({ id, entite_id, civilite, prenom, nom }) => ({ id, entite_id, civilite, prenom, nom }));
+      out.clients = avecNomsLies(out.clients, lies);
+      out.partages_clients = (data.partages_clients || []).filter((p) => p.organisation_id === monOrg());
       out.dossiers = dossiers.map((d) => avecResume(d, financesDe(d.entite_id)));
       // Comme avec la vraie base, documents et paiements se chargent à l'ouverture d'un dossier.
       out.documents = [];
@@ -344,6 +373,7 @@ export function creer() {
     async inserer(table, row) {
       const ligne = { id: uid(), created_at: aujourdhui(), ...row };
       garderPrix(table, null, ligne);
+      garderClientDossier(table, null, ligne);
       garderBandeau(table, ligne.entite_id);
       // Comme la base (migration 34) : un document écrit toujours sa devise, un dossier a sa colonne d'acompte figé.
       if (table === "documents" && ligne.contenu && !ligne.contenu.devise) ligne.contenu = { ...ligne.contenu, devise: (data.reglages[ligne.entite_id] || {}).devise || "CHF" };
@@ -377,6 +407,8 @@ export function creer() {
       if (avant && ligne.updated_at && ligne.updated_at !== avant) throw Object.assign(new Error(tr("Cette fiche a été modifiée par quelqu'un d'autre depuis que vous l'avez ouverte.")), { conflit: true });
       patch = { ...patch };
       garderPrix(table, ligne, { ...ligne, ...patch });
+      garderClientDossier(table, ligne, { ...ligne, ...patch });
+      garderEntiteClient(table, ligne, { ...ligne, ...patch });
       garderBandeau(table, ligne.entite_id);
       delete patch.updated_at;
       if (VERSIONNEES.includes(table)) patch.updated_at = new Date().toISOString();
@@ -463,13 +495,24 @@ export function creer() {
     async fusionnerClients({ garder, absorbe, patch }) {
       const g = data.clients.find((c) => c.id === garder);
       const a = data.clients.find((c) => c.id === absorbe);
-      if (!g || !a || g.id === a.id || g.entite_id !== a.entite_id) throw new Error(tr("Fusion impossible : les deux fiches doivent être deux clients différents de la même entreprise."));
-      if (!(droit(g.entite_id, "clients.fusionner") || (droit(g.entite_id, "clients.supprimer") && droit(g.entite_id, "dossiers.ecrire")))) throw new Error(tr("Votre rôle ne permet pas de fusionner des clients."));
-      if (!voitTout(contexte(), g.entite_id)) throw new Error(tr("Fusion réservée aux rôles qui voient tous les dossiers de l'entreprise."));
+      // Comme la base (migration 46) : une fiche de la cible se rattache aussi à la fiche de l'entreprise qui partage ses clients avec elle.
+      const partage = !!g && !!a && (data.partages_clients || []).some((p) => p.source_id === g.entite_id && p.cible_id === a.entite_id);
+      if (!g || !a || g.id === a.id || (g.entite_id !== a.entite_id && !partage)) throw new Error(tr("Fusion impossible : les deux fiches doivent être deux clients différents de la même entreprise."));
+      if (!(droit(a.entite_id, "clients.fusionner") || (droit(a.entite_id, "clients.supprimer") && droit(a.entite_id, "dossiers.ecrire")))) throw new Error(tr("Votre rôle ne permet pas de fusionner des clients."));
+      if (!voitTout(contexte(), a.entite_id)) throw new Error(tr("Fusion réservée aux rôles qui voient tous les dossiers de l'entreprise."));
+      if (g.entite_id !== a.entite_id && !(peutUtiliserPartages({ superAdmin: !!utilisateur.super_admin, permissionsSource: permissionsDans(contexte(), g.entite_id), permissionsCible: permissionsDans(contexte(), a.entite_id), voitToutSource: voitTout(contexte(), g.entite_id) }) && droit(g.entite_id, "clients.ecrire"))) throw new Error(tr("Seule l'administration rattache un client à la fiche d'une autre entreprise."));
       for (const d of data.dossiers.filter((x) => x.client_id === absorbe)) await this.modifier("dossiers", d.id, { client_id: garder });
       if (patch && Object.keys(patch).length) await this.modifier("clients", garder, patch);
       await this.supprimer("clients", absorbe);
       return garder;
+    },
+    // « Partage ses clients avec » (migration 46) : l'administration générale, deux entreprises de son organisation.
+    async partagerClients(sourceId, cibleId, actif) {
+      const org = (id) => (data.entites.find((e) => e.id === id) || {}).organisation_id;
+      if (!utilisateur.super_admin || !monOrg() || org(sourceId) !== monOrg() || org(cibleId) !== monOrg() || sourceId === cibleId) throw new Error(tr("Réservé à l'administration générale, entre deux entreprises de l'organisation."));
+      data.partages_clients = (data.partages_clients || []).filter((p) => !(p.source_id === sourceId && p.cible_id === cibleId));
+      if (actif) data.partages_clients.push({ source_id: sourceId, cible_id: cibleId, organisation_id: monOrg() });
+      sauve();
     },
     // Démo : une seule personne, pas de compteur partagé.
     // Comme la base : le compteur tient compte des dossiers que la personne ne voit pas (rôle « ses dossiers », écran « Nouveau voucher »).

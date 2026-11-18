@@ -1,6 +1,6 @@
 // Nouveau dossier en mode excursions (Secret Travel & Tour) : le client, ses services pris dans la base partenaires,
 // et la facture créée dans la foulée avec une réservation par service. Pas de devis, pas d'acompte.
-import { etat, naviguer, reglages, peut, nomPartenaire, nomClient } from "../etat.mjs";
+import { etat, naviguer, reglages, peut, nomPartenaire, nomClient, clientsProposes } from "../etat.mjs";
 import { h, champ, toast, vider, erreurChamp } from "../ui.mjs";
 import { formatMontant, formatDate } from "../calc.mjs";
 import { descriptionService, personnesTexte } from "../operations-calc.mjs";
@@ -37,7 +37,7 @@ export function nouveauDossierExcursions() {
   // Un client qui existe déjà (même téléphone ou même nom) : on le propose avant d'en créer un second.
   const doublon = h("p", { class: "demande-client", role: "status", hidden: true });
   const chercherDoublon = () => {
-    const x = clientsProches({ nom: [nvPrenom.value, nvNom.value].filter(Boolean).join(" "), telephone: nvTel.value }, etat.db.clients)[0];
+    const x = clientsProches({ nom: [nvPrenom.value, nvNom.value].filter(Boolean).join(" "), telephone: nvTel.value }, clientsProposes())[0];
     doublon.hidden = !x;
     if (!x) return;
     doublon.replaceChildren(h("span", null, x.raison === "telephone" ? tr("Ce numéro est déjà celui de {nom}.", { nom: nomClient(x.client) }) : tr("Un client porte déjà ce nom : {nom}.", { nom: nomClient(x.client) })), h("button", { class: "secondaire petit", type: "button", onclick: () => selClient.choisirId(x.client.id) }, tr("Utiliser ce client")));

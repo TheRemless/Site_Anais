@@ -1,7 +1,7 @@
 // Administration : entreprises et accès des utilisateurs. Réservée à l'administratrice générale.
 // Lot D (17.11.2026) : inviter une personne, lien de mot de passe, supprimer un compte, langue d'une autre personne, Administrateur calculé.
 import { libelleAdmin, LIBELLE_ADMIN_NEUTRE } from "../noms-calc.mjs";
-import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, organisation, modifierOrganisation, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation, installerClient } from "../etat.mjs";
+import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, organisation, modifierOrganisation, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation, installerClient, partagerClients } from "../etat.mjs";
 import { DEPENDANCES, completerReglages, PERMISSIONS } from "../defauts.mjs";
 import { droitsProposes, droitsDuRole, droitsRetires } from "../droits.mjs";
 import { accesChoisis, messageInvitation, messageLien } from "../compte-calc.mjs";
@@ -513,6 +513,52 @@ function accesModal(profil, apres) {
   );
 }
 
+// Fiches clients partagées (migration 46) : une entreprise « partage ses clients avec » d'autres de l'organisation. Sens unique : la cible
+// trouve et utilise les fiches de la source, jamais l'inverse. Seule l'administration s'en sert ; l'assistante ne voit que le nom du client
+// sur ses dossiers. Rien d'autre ne passe d'une entreprise à l'autre.
+function blocPartageClients(entites) {
+  const partages = etat.brut.partages_clients || [];
+  const coche = (source, cible) => partages.some((p) => p.source_id === source.id && p.cible_id === cible.id);
+  const changer = async (source, cible, actif, input) => {
+    input.disabled = true;
+    try {
+      await partagerClients(source.id, cible.id, actif);
+      toast(actif ? tr("{cible} trouve maintenant les clients de {source}.", { source: source.nom, cible: cible.nom }) : tr("{cible} ne trouve plus les clients de {source}. Les dossiers déjà créés gardent leur client.", { source: source.nom, cible: cible.nom }));
+    } catch (err) {
+      input.checked = !actif;
+      toast(/partages_clients|does not exist|PGRST205/i.test(err.message) ? tr("La base n'a pas encore le partage des clients : la migration 46 doit d'abord être appliquée.") : tr("Réglage impossible : {message}", { message: err.message }), true);
+    } finally {
+      input.disabled = false;
+    }
+  };
+  return h(
+    "section",
+    { class: "bloc-partage-clients" },
+    h("h2", null, tr("Fiches clients partagées")),
+    h("p", { class: "aide" }, tr("Une entreprise peut partager ses fiches clients avec une autre : la même fiche sert alors dans les dossiers des deux, sans copie, et un changement se voit des deux côtés. Le partage va dans un seul sens. Seule l'administration choisit ces clients ; les autres rôles voient seulement le nom du client sur leurs dossiers. Les dossiers, montants et réglages restent à chaque entreprise.")),
+    h(
+      "div",
+      { class: "liste-partages" },
+      entites.map((source) =>
+        h(
+          "fieldset",
+          { class: "partage-source" },
+          h("legend", null, tr("{source} partage ses clients avec", { source: source.nom })),
+          entites
+            .filter((cible) => cible.id !== source.id)
+            .map((cible) => {
+              const input = h("input", { type: "checkbox", checked: coche(source, cible) });
+              input.addEventListener("change", () => changer(source, cible, input.checked, input));
+              // Un partage dans les deux sens mélangerait les clients des deux entreprises : on le signale.
+              const inverse = coche(cible, source);
+              return h("label", { class: "case" }, input, cible.nom, inverse ? h("span", { class: "aide" }, " " + tr("(partage déjà ses clients avec {source})", { source: source.nom })) : null);
+            })
+        )
+      )
+    )
+  );
+}
+
 export function vueAdmin() {
   if (!estSuperAdmin()) return vide(tr("Accès réservé"), tr("Cet écran est réservé à l'administratrice générale."), h("a", { class: "bouton secondaire", href: "#/" }, tr("Retour au tableau de bord")));
   const rafraichir = () => naviguer(location.hash);
@@ -541,6 +587,7 @@ export function vueAdmin() {
         h("tbody", null, entites.map((e) => h("tr", null, h("td", { "data-label": tr("Entreprise") }, e.nom), h("td", { "data-label": tr("Code"), class: "ref" }, e.slug), h("td", { "data-label": tr("Personnes") }, nbMembres(e.id)), h("td", { "data-label": tr("Statut") }, e.actif ? tr("Active") : tr("Désactivée")), h("td", { class: "action-cellule" }, h("button", { class: "secondaire petit", type: "button", onclick: () => modifierEntiteModal(e, rafraichir) }, tr("Modifier"))))))
       )
     ),
+    entites.length > 1 ? blocPartageClients(entites) : null,
     h(
       "section",
       null,

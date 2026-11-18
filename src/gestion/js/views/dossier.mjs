@@ -1,4 +1,4 @@
-import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions, modeTaxi, netReservation, estAdmin } from "../etat.mjs";
+import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions, modeTaxi, netReservation, estAdmin, clientParId, etiquetteClient } from "../etat.mjs";
 import { estBookingConfirmation } from "../taxi-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, icone, barreAction } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, acceptationAuPaiement, payeSansFacture } from "../calc.mjs";
@@ -7,6 +7,7 @@ import { patchEnvoi, etatEnvoi, numeroVerrouille, localeEnRetard, ecartRecu } fr
 import { contenuLocale } from "./facture-locale.mjs";
 import { langueClient } from "../operations-calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
+import { ouvrirFicheClientModal, peutModifierFiche } from "./clients.mjs";
 import { sectionTachesDossier } from "./taches.mjs";
 import { sectionPieces } from "./pieces.mjs";
 import { pastille, vide, sousTitreDossier, plierSections, resumerEtapes } from "./commun.mjs";
@@ -229,7 +230,7 @@ function ficheDossierVue(id) {
           class: "modal-corps",
           onsubmit: async (e) => {
             e.preventDefault();
-            const cl = etat.db.clients.find((x) => x.id === sel.valeur);
+            const cl = clientParId(sel.valeur);
             try {
               const ref = nouvelleRef({ numerotation: regl.numerotation, prenom: cl.prenom, nom: cl.nom, dateIso: ajd, pays: d.pays || "", refsExistantes: etat.db.dossiers.map((x) => x.ref) });
               const nd = await inserer("dossiers", { ref, client_id: cl.id, pays: d.pays, bandeau: d.bandeau, date_depart: null, date_retour: null, accepte_le: null, annule: false, notes: "" });
@@ -258,7 +259,26 @@ function ficheDossierVue(id) {
   };
 
   const modifierDossier = () => {
-    const selClient = selecteurClient({ id: "m-client", valeur: d.client_id });
+    // « Modifier la fiche client » suit le client choisi : corrigé sur place, sans quitter le dossier ni perdre la saisie (Jérémy, 18.11.2026).
+    let ficheModifiee = false;
+    const selClient = selecteurClient({ id: "m-client", valeur: d.client_id, surChangement: () => majFiche() });
+    const boutonFiche = h("button", { class: "lien", type: "button", onclick: () => {
+      const c = clientParId(selClient.valeur);
+      ouvrirFicheClientModal(c, (maj) => {
+        ficheModifiee = true;
+        selClient.choisirId(maj.id || c.id);
+      });
+    } }, tr("Modifier la fiche client"));
+    const sigleFiche = h("span", { class: "etiquette-partage" });
+    const blocFiche = h("p", { class: "fiche-depuis-dossier" }, boutonFiche, sigleFiche);
+    function majFiche() {
+      const c = clientParId(selClient.valeur);
+      blocFiche.hidden = !peutModifierFiche(c);
+      const s = c ? etiquetteClient(c) : "";
+      sigleFiche.textContent = s ? tr("fiche {sigle}", { sigle: s }) : "";
+      sigleFiche.hidden = !s;
+    }
+    majFiche();
     const pays = h("input", { id: "m-pays", value: d.pays || "" });
     const depart = h("input", { id: "m-depart", type: "date", value: d.date_depart || "" });
     const retour = h("input", { id: "m-retour", type: "date", value: d.date_retour || "" });
@@ -292,6 +312,7 @@ function ficheDossierVue(id) {
               toast(tr("Cette référence existe déjà."), true);
               return;
             }
+            ficheModifiee = false;
             await modifier("dossiers", d.id, excursions ? { client_id: selClient.valeur || d.client_id, ref: ref.value.trim(), responsable_id: respSel.value || null } : { client_id: selClient.valeur || d.client_id, pays: pays.value.trim(), date_depart: depart.value || null, date_retour: retour.value || null, accepte_le: accepte.value || null, ref: ref.value.trim(), responsable_id: respSel.value || null });
             fermer();
             toast(tr("Dossier modifié."));
@@ -299,9 +320,11 @@ function ficheDossierVue(id) {
           },
         },
         selClient.noeud,
+        blocFiche,
         excursions ? h("div", { class: "grille-form" }, h("div", null, champ(taxi ? tr("Numéro de réservation") : tr("Numéro de facture"), ref, aideRef), deverrouiller), champ(tr("Responsable"), respSel), h("p", { class: "aide pleine-largeur" }, tr("Les dates du dossier sont celles de ses réservations, elles se mettent à jour toutes seules."))) : h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || tr("Pays"), pays), h("div", null, champ(tr("Référence"), ref, aideRef), deverrouiller), champ(tr("Début"), depart), champ(tr("Fin"), retour), champ(tr("Date d'acceptation du devis"), accepte, tr("Laissez vide si le client n'a pas encore accepté.")), champ(tr("Responsable du dossier"), respSel, tr("Avec un rôle limité à « ses dossiers », la personne ne voit que ceux dont elle est responsable."))),
         h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Enregistrer")))
-      )
+      ),
+      { ferme: () => ficheModifiee && rafraichir() }
     );
   };
 
