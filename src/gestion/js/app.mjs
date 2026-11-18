@@ -815,7 +815,8 @@ let empreinteInitiale = "";
 async function versionDisponible() {
   if (!empreinteInitiale) return false;
   const actuelle = await empreinteVersion();
-  return !!actuelle && actuelle !== empreinteInitiale;
+  // Seulement deux empreintes de même nature : un version.json manqué une fois (réseau) ne doit pas faire comparer un ETag à une version.
+  return !!actuelle && actuelle.startsWith("v:") === empreinteInitiale.startsWith("v:") && actuelle !== empreinteInitiale;
 }
 // Le bandeau « Nouvelle version de Gestion ». Recharger ne perd jamais une saisie en cours : une fiche, une fenêtre ouverte ou un champ
 // modifié font d'abord poser la question ; sinon le rechargement est immédiat. Le bandeau reste jusqu'au rechargement.

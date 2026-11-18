@@ -128,6 +128,7 @@ test("version : vérifiée au retour sur l'onglet et toutes les 3 minutes ; rech
   const app = lire("app.mjs");
   assert.match(app, /const r = await fetch\("version\.json", \{ cache: "no-store" \}\);/);
   assert.match(app, /setInterval\(verifier, 3 \* 60 \* 1000\)/);
+  assert.match(app, /actuelle\.startsWith\("v:"\) === empreinteInitiale\.startsWith\("v:"\)/, "jamais un ETag comparé à une version");
   assert.match(app, /document\.addEventListener\("visibilitychange", verifier\);/);
   // Le bandeau ne recharge pas d'office : avec une saisie en cours, il demande d'abord.
   assert.match(app, /if \(saisieEnCours\(\)\) \{\n\s+const \{ confirmer \} = await import\("\.\/ui\.mjs"\);/);
