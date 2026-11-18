@@ -5,6 +5,7 @@ import { tr } from "./i18n.mjs";
 import { separerNets, fusionnerNets } from "./nets-documents.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { lireRetourLien } from "./compte-calc.mjs";
+import { avecNomsLies } from "./partage-clients-calc.mjs";
 
 // La copie de la feuille du jour gardée sur ce téléphone ne survit pas à une déconnexion.
 const effacerCopieHorsLigne = () => {
@@ -174,6 +175,16 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     throw new Error(error.message);
   }
 
+  // Fiches clients partagées (migration 46) : le réglage de l'organisation, et le nom des clients d'une autre entreprise aux dossiers que la
+  // personne voit sans lire leur fiche (l'assistante de Secret au client ZTP). Avant la migration : rien, l'outil marche comme avant.
+  async function lirePartages() {
+    const absente = (e) => e && (e.code === "42P01" || e.code === "PGRST205" || e.code === "PGRST202" || e.code === "42883" || /does not exist|Could not find the (table|function)/i.test(e.message || ""));
+    const [p, l] = await Promise.all([sb.from("partages_clients").select("source_id, cible_id, organisation_id"), sb.rpc("clients_lies")]);
+    if (p.error && !absente(p.error)) throw new Error(p.error.message);
+    if (l.error && !absente(l.error)) throw new Error(l.error.message);
+    return { partages_clients: p.error ? [] : p.data || [], lies: l.error ? [] : l.data || [] };
+  }
+
   return {
     mode: "supabase",
     async session() {
@@ -320,7 +331,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       const tables = ["entites", "profils", "roles", "membres", ...CHARGEES.filter((t) => relire || !CATALOGUE.includes(t))];
       // Toutes les lectures partent ensemble (elles étaient faites l'une après l'autre).
-      const [lues, resumeLignes, taches, reglagesLignes, site, organisations] = await Promise.all([
+      const [lues, resumeLignes, taches, reglagesLignes, site, organisations, partages] = await Promise.all([
         Promise.all(tables.map((t) => toutes(t))),
         toutes("dossiers_resume"),
         (() => {
@@ -331,9 +342,12 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         toutes("reglages"),
         lireSite(),
         lireOrganisations(),
+        lirePartages(),
       ]);
       tables.forEach((t, i) => (out[t] = lues[i]));
       out.organisations = organisations;
+      out.partages_clients = partages.partages_clients;
+      out.clients = avecNomsLies(out.clients, partages.lies);
       Object.assign(out, site);
       if (!relire) for (const t of CATALOGUE) out[t] = ancien[t];
       else {
@@ -452,6 +466,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // `patch` sert à la démo ; la base calcule elle-même ce qu'elle reprend (même règle que fusionClients).
     async fusionnerClients({ garder, absorbe }) {
       return verifie(await sb.rpc("fusionner_clients", { p_garder: garder, p_absorbe: absorbe }));
+    },
+    // « Partage ses clients avec » (migration 46), réglé par l'administration générale. La base refuse deux organisations différentes.
+    async partagerClients(sourceId, cibleId, actif) {
+      if (actif) verifie(await sb.from("partages_clients").upsert({ source_id: sourceId, cible_id: cibleId }, { onConflict: "source_id,cible_id", ignoreDuplicates: true }).select());
+      else verifie(await sb.from("partages_clients").delete().eq("source_id", sourceId).eq("cible_id", cibleId).select());
     },
     // Numéro suivant de la séquence annuelle (migration 14). Échoue tant que la migration n'est pas appliquée : l'appelant garde alors son calcul.
     async prochainNumeroRef(entiteId, annee, minimum) {

@@ -1,4 +1,4 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher, confirmationPermise } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher, confirmationPermise, clientsProposes, clientEtranger, etiquetteClient } from "./etat.mjs";
 import { MODULES, moduleDeLEcran } from "./modules.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
@@ -474,10 +474,12 @@ function chercher(q) {
     .sort((a, b) => b.dossier.created_at.localeCompare(a.dossier.created_at))
     .slice(0, 6)
     .forEach((r) => out.push(resultatDossier(r)));
-  etat.db.clients
+  // Les fiches d'ici, puis celles qu'une autre entreprise partage (ZTP dans Secret et Taxi), avec le sigle de leur entreprise.
+  clientsProposes()
     .filter((c) => correspond(sansAccents(`${nomClient(c)} ${c.telephone} ${c.email} ${c.adresse}`)))
+    .sort((a, b) => Number(clientEtranger(a)) - Number(clientEtranger(b)))
     .slice(0, 6)
-    .forEach((c) => out.push({ groupe: tr("Clients"), icone: "clients", titre: nomClient(c), detail: [c.telephone, (c.adresse || "").split("\n").filter(Boolean).pop()].filter(Boolean).join(" · "), href: `#/client/${c.id}` }));
+    .forEach((c) => out.push({ groupe: tr("Clients"), icone: "clients", titre: nomClient(c), detail: [c.telephone, (c.adresse || "").split("\n").filter(Boolean).pop()].filter(Boolean).join(" · "), droite: etiquetteClient(c), href: `#/client/${c.id}` }));
   if (peut("partenaires.lire") && moduleActif("partenaires")) {
     etat.db.partenaires
       .filter((p) => p.actif !== false && correspond(sansAccents(`${p.nom} ${p.nom_thai} ${p.categorie} ${p.role}`)))

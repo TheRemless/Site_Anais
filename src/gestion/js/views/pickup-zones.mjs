@@ -10,7 +10,9 @@ function reservationsAvecZone() {
   const hotelDuClient = (r) => {
     const d = etat.db.dossiers.find((x) => x.id === r.dossier_id);
     const c = d ? etat.db.clients.find((x) => x.id === d.client_id) : null;
-    return ((c && c.adresse) || "").split("\n")[0].replace(/,?\s*Room\s+\S+\s*$/i, "").trim();
+    // Une fiche partagée par une autre entreprise (ZTP) n'a pas d'hôtel : son adresse est postale.
+    if (!c || (c.entite_id && c.entite_id !== r.entite_id)) return "";
+    return (c.adresse || "").split("\n")[0].replace(/,?\s*Room\s+\S+\s*$/i, "").trim();
   };
   return etat.db.reservations.filter((r) => r.details && r.details.pickup_zone).map((r) => ({ ...r, lieu_pickup: r.lieu_pickup || hotelDuClient(r) }));
 }

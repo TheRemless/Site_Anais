@@ -2,7 +2,7 @@
 // (« 📢 New booking confirmation: VIP TAXI LANTA, Name:…, Date:… ») devient un dossier et sa Booking confirmation, d'un collage et d'un bouton.
 // Lecture : confirmation-calc.mjs. Création : creation-course.mjs, la même que l'écran « Nouveau voucher » de Mook. Rien n'est envoyé tout seul :
 // l'image se partage ou se télécharge d'un geste, le dossier s'ouvre d'un lien.
-import { etat, naviguer, changerEntite, entitesAccessibles, reglagesDe, permissionsDe, nomClient } from "../etat.mjs";
+import { etat, naviguer, changerEntite, entitesAccessibles, reglagesDe, permissionsDe, nomClient, clientsPartages, sigleDe } from "../etat.mjs";
 import { h, modal, toast, icone } from "../ui.mjs";
 import { tr, N_ } from "../i18n.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
@@ -101,11 +101,13 @@ export function ouvrirConfirmation(texteInitial = "") {
   let clientTrouve = null;
   const dessinerClient = () => {
     const id = entrepriseChoisie();
-    clientTrouve = id ? clientExistant({ nom: champs.nom.value, telephone: champs.telephone.value, clients: etat.brut.clients.filter((c) => c.entite_id === id) }) : null;
+    // Un client de l'entreprise d'abord ; sinon une fiche partagée (ZTP pour Secret et Taxi), étiquetée.
+    const lu = { nom: champs.nom.value, telephone: champs.telephone.value };
+    clientTrouve = id ? clientExistant({ ...lu, clients: etat.brut.clients.filter((c) => c.entite_id === id && !c.nom_seul) }) || clientExistant({ ...lu, clients: clientsPartages(id) }) : null;
     blocClient.replaceChildren(
       ...(clientTrouve
         ? [
-            h("p", null, tr("Client déjà connu : {nom}", { nom: [nomClient(clientTrouve), clientTrouve.telephone].filter(Boolean).join(" · ") })),
+            h("p", null, tr("Client déjà connu : {nom}", { nom: [nomClient(clientTrouve), clientTrouve.telephone].filter(Boolean).join(" · ") }), clientTrouve.entite_id !== id ? h("span", { class: "etiquette-partage" }, sigleDe(clientTrouve.entite_id)) : null),
             h("label", { class: "case" }, h("input", { type: "radio", name: "cc-client", value: "existant", checked: true }), tr("Utiliser ce client")),
             h("label", { class: "case" }, h("input", { type: "radio", name: "cc-client", value: "nouveau" }), tr("Créer un nouveau client")),
           ]

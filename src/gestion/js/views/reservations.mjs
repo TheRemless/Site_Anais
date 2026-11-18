@@ -684,7 +684,7 @@ export async function creerReservations(doc, { silencieux = false, personnesDuDo
     try {
       const { id, ...sansId } = reservation;
       // Le lieu de pickup du dossier est repris (dernier service, sinon adresse du client) : un service ajouté ne part pas sans lieu.
-      sansId.lieu_pickup = sansId.lieu_pickup || lieuParDefaut([...existantes, ...etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id && !existantes.includes(x))], clientDuDossier);
+      sansId.lieu_pickup = sansId.lieu_pickup || lieuParDefaut([...existantes, ...etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id && !existantes.includes(x))], clientDuDossier, dossier && dossier.entite_id);
       // La marque dit que ces personnes viennent du dossier : 1 adulte pour 1 véhicule n'est pas une quantité prise pour des personnes, et 3 personnes
       // facturées au prix adulte peuvent être 2 adultes et 1 enfant.
       const duDossier = personnesPourService({ fixes: personnesDossier, duDossier: avecPersonnes, reservations: etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id) });

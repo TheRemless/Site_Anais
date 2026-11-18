@@ -22,6 +22,7 @@ import { ecransThaiPour, texteValide, variablesDe, prenomThai } from "../textes-
 // Migration 44 : la personne responsable, le libellé de licence et la voix de l'assistant viennent des réglages, plus du code.
 import { responsableDe, remplirResponsable, prenomDe, administrateursDe } from "../noms-calc.mjs";
 import { numeroLicenceDe } from "./reglages-vouchers.mjs";
+import { clientsPourSauvegarde } from "../partage-clients-calc.mjs";
 import { VERSION_SAUVEGARDE, pourSauvegarde, verifierSauvegarde, absentsDeLaSauvegarde, reservationsPerdantLeurPrestataire, fusionnerPartenairesImport } from "../sauvegarde.mjs";
 
 // Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
@@ -61,6 +62,8 @@ async function exporterPaiements() {
 async function exporterTout() {
   const sauvegarde = { version: VERSION_SAUVEGARDE, entreprise: entiteActive().slug, exporte_le: new Date().toISOString() };
   for (const t of TABLES) sauvegarde[t] = pourSauvegarde(t, etat.db[t]);
+  // Ses propres fiches seulement : une fiche partagée par une autre entreprise (ZTP) reste dans la sauvegarde de son entreprise.
+  sauvegarde.clients = pourSauvegarde("clients", clientsPourSauvegarde(etat.db.clients, etat.entiteId));
   // Les réglages de l'entreprise (textes des documents, coordonnées de paiement, numérotation) font partie de la sauvegarde.
   if (peut("reglages.ecrire")) sauvegarde.reglages = reglages();
   // Documents et paiements ne sont pas en mémoire : on les lit dans la base.

@@ -15,6 +15,7 @@ import { reglerCompagnies } from "./partenaires-calc.mjs";
 import { responsableDe, libelleAdmin } from "./noms-calc.mjs";
 import { entreprisesVoucher } from "./voucher-rapide-calc.mjs";
 import { entreprisesConfirmation } from "./confirmation-calc.mjs";
+import { clientsDeLEntreprise, clientsPartages as partagesCalc, clientsProposes as proposesCalc, clientEtranger as etrangerCalc, sigleEntreprise, peutUtiliserPartages } from "./partage-clients-calc.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
 const CLE_ENTITE = "gestion-zwald-entite";
@@ -196,6 +197,9 @@ function rebatir() {
   const db = {};
   // Les tables du site (migration 30) peuvent manquer dans une copie ancienne : liste vide.
   for (const t of TABLES) db[t] = (etat.brut[t] || []).filter((r) => r.entite_id === e);
+  // Fiches partagées (migration 46) : une fiche d'une autre entreprise utilisée par un dossier d'ici se lit comme les autres (son nom sur
+  // le dossier, le voucher, la feuille du jour). Elle reste la fiche de son entreprise : voir clientEtranger.
+  db.clients = clientsDeLEntreprise({ clients: etat.brut.clients || [], dossiers: db.dossiers, entiteId: e });
   db.reglages = completerReglages(etat.brut.reglages[e]);
   db.roles = etat.brut.roles.filter((r) => r.entite_id === e);
   etat.db = db;
@@ -542,6 +546,14 @@ async function modifierOrganisationBrut(patch) {
 }
 export const modifierOrganisation = (...a) => ecrire(() => modifierOrganisationBrut(...a));
 
+// « Partage ses clients avec » (migration 46), réglé dans Administration par l'administration générale.
+export async function partagerClients(sourceId, cibleId, actif) {
+  await etat.store.partagerClients(sourceId, cibleId, actif);
+  const autres = (etat.brut.partages_clients || []).filter((p) => !(p.source_id === sourceId && p.cible_id === cibleId));
+  etat.brut.partages_clients = actif ? [...autres, { source_id: sourceId, cible_id: cibleId }] : autres;
+  rebatir();
+}
+
 export async function definirAcces(userId, entiteId, roleId) {
   if (roleId) {
     await etat.store.donnerAcces(userId, entiteId, roleId);
@@ -589,9 +601,10 @@ export async function chercherClients(q, limite = 8) {
   if (!mots.length) {
     const dernier = new Map();
     for (const d of etat.db.dossiers) if (!dernier.has(d.client_id) || d.created_at > dernier.get(d.client_id)) dernier.set(d.client_id, d.created_at);
-    return [...etat.db.clients].sort((a, b) => (dernier.get(b.id) || "").localeCompare(dernier.get(a.id) || "") || nomClient(a).localeCompare(nomClient(b))).slice(0, limite);
+    // Sans saisie : les clients récents d'ici seulement. Les fiches partagées viennent quand on tape un nom.
+    return etat.db.clients.filter((c) => !c.nom_seul).sort((a, b) => (dernier.get(b.id) || "").localeCompare(dernier.get(a.id) || "") || nomClient(a).localeCompare(nomClient(b))).slice(0, limite);
   }
-  return etat.db.clients
+  return clientsProposes()
     .map((c) => {
       const nom = sansAccents(nomClient(c));
       const tout = `${nom} ${sansAccents(`${c.telephone} ${c.email} ${c.adresse}`)}`;
@@ -599,10 +612,32 @@ export async function chercherClients(q, limite = 8) {
       return { c, rang: mots.every((m) => nom.startsWith(m) || nom.includes(` ${m}`)) ? 0 : 1 };
     })
     .filter(Boolean)
-    .sort((a, b) => a.rang - b.rang || nomClient(a.c).localeCompare(nomClient(b.c)))
+    // À rang égal, les fiches d'ici avant les fiches partagées.
+    .sort((a, b) => a.rang - b.rang || Number(clientEtranger(a.c)) - Number(clientEtranger(b.c)) || nomClient(a.c).localeCompare(nomClient(b.c)))
     .slice(0, limite)
     .map((x) => x.c);
 }
+
+// ---- Fiches clients partagées (migration 46) -------------------------------------------------------------------------------
+// Une entreprise « partage ses clients avec » d'autres de l'organisation (ZTP vers Secret et Taxi chez Zwald). Dans la cible,
+// l'administration trouve et choisit ces fiches (recherche, choix du client, collages) ; l'assistante jamais. La base garantit la même règle.
+export const partageClientsPermis = (sourceId, cibleId = etat.entiteId) =>
+  !!etat.brut && peutUtiliserPartages({ superAdmin: estSuperAdmin(), permissionsSource: permissionsDe(sourceId), permissionsCible: permissionsDe(cibleId) });
+// Les fiches des entreprises qui partagent avec `entiteId`, quand la personne peut s'en servir.
+export const clientsPartages = (entiteId = etat.entiteId) =>
+  etat.brut ? partagesCalc({ clients: etat.brut.clients || [], partages: etat.brut.partages_clients || [], entiteId, permis: (s) => partageClientsPermis(s, entiteId) }) : [];
+// Les fiches que l'on choisit dans `entiteId` : les siennes, puis les fiches partagées.
+export const clientsProposes = (entiteId = etat.entiteId) => {
+  const propres = entiteId === etat.entiteId && etat.db ? etat.db.clients : clientsDeLEntreprise({ clients: (etat.brut && etat.brut.clients) || [], dossiers: (etat.brut && etat.brut.dossiers) || [], entiteId });
+  return proposesCalc(propres, clientsPartages(entiteId));
+};
+// Une fiche par son identifiant : celles de l'entreprise, puis les fiches partagées (un client ZTP choisi pour un nouveau dossier Secret).
+export const clientParId = (id) => (id && ((etat.db && etat.db.clients.find((c) => c.id === id)) || clientsPartages().find((c) => c.id === id))) || null;
+export const clientEtranger = (c) => etrangerCalc(c, etat.entiteId);
+// L'étiquette d'une fiche partagée : le sigle de son entreprise (« ZTP »). Vide pour une fiche d'ici.
+export const nomEntreprise = (id) => ((etat.brut && etat.brut.entites.find((e) => e.id === id)) || {}).nom || "";
+export const sigleDe = (entiteId) => sigleEntreprise(nomEntreprise(entiteId));
+export const etiquetteClient = (c) => (clientEtranger(c) ? sigleDe(c.entite_id) : "");
 
 export const nomClient = (c) => (c ? [c.prenom, c.nom].filter(Boolean).join(" ") : tr("Client inconnu"));
 

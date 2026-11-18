@@ -395,9 +395,11 @@ export function recalculerCommissions(reservations, { regleDe, netDe = () => nul
 }
 
 // Lieu de pickup d'un service ajouté à un dossier : le dernier lieu saisi sur ses autres réservations, sinon la première ligne de l'adresse du client.
-export function lieuParDefaut(reservationsDuDossier, client = {}) {
+// `entiteId` : l'entreprise du dossier. Une fiche partagée par une autre entreprise (ZTP) a une adresse postale, pas un lieu de pickup.
+export function lieuParDefaut(reservationsDuDossier, client = {}, entiteId = null) {
   const avecLieu = (reservationsDuDossier || []).filter((r) => String(r.lieu_pickup || "").trim()).sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
   if (avecLieu.length) return String(avecLieu[0].lieu_pickup).trim();
+  if (client && client.entite_id && entiteId && client.entite_id !== entiteId) return "";
   return String((client && client.adresse) || "").split("\n")[0].trim();
 }
 
@@ -848,8 +850,11 @@ export function cleMessageReservation(r, ajd) {
 }
 
 // Hôtel et numéro de chambre d'après l'adresse du client (« Hotel Sunset, Room 12 ») ou le lieu de pickup.
+// Une fiche partagée par une autre entreprise (fiche ZTP sur un service de Secret, migration 46) porte une adresse postale, pas un hôtel :
+// elle ne donne jamais le lieu de pickup.
 export function hotelEtChambre(client = {}, reservation = {}) {
-  const fiche = separerChambreLigne((client.adresse || "").split("\n")[0] || "");
+  const autre = !!client.entite_id && !!reservation.entite_id && client.entite_id !== reservation.entite_id;
+  const fiche = separerChambreLigne(autre ? "" : (client.adresse || "").split("\n")[0] || "");
   const lieu = separerChambreLigne(reservation.lieu_pickup || "");
   if (!lieu.hotel && !lieu.chambre) return fiche;
   // La chambre de la fiche client vaut pour un pickup à son hôtel (« Baiyok Hotel » et « Baiyok Hotel, Room 6 »), jamais pour un autre lieu.
@@ -1223,7 +1228,9 @@ export function controlesVoucher(r, client = {}, type = "") {
   if (!r.date_service) codes.push("sans_date");
   if (type !== "location") {
     if (!String(r.heure_pickup || "").trim()) codes.push("sans_heure");
-    if (!String(r.lieu_pickup || "").trim()) codes.push((client.adresse || "").trim() ? "lieu_adresse_client" : "sans_lieu");
+    // L'adresse d'une fiche partagée par une autre entreprise (ZTP) n'est pas un hôtel : le voucher n'a alors pas de lieu.
+    const adresseHotel = (client.adresse || "").trim() && !(client.entite_id && r.entite_id && client.entite_id !== r.entite_id);
+    if (!String(r.lieu_pickup || "").trim()) codes.push(adresseHotel ? "lieu_adresse_client" : "sans_lieu");
   }
   // Retour au point de départ sans programme : le chauffeur ne saurait pas ce qui est prévu.
   if (estRetourDepart(r) && !String((r.details || {}).programme_trajet || "").trim()) codes.push("sans_programme");

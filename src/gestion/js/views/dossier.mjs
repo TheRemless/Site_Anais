@@ -1,4 +1,4 @@
-import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions, modeTaxi, netReservation, estAdmin } from "../etat.mjs";
+import { etat, resumeDossier, modifier, inserer, supprimer, nomClient, naviguer, reglages, peut, equipe, chargerDossier, moduleActif, modeExcursions, modeTaxi, netReservation, estAdmin, clientParId } from "../etat.mjs";
 import { estBookingConfirmation } from "../taxi-calc.mjs";
 import { h, champ, modal, confirmer, toast, num, icone, barreAction } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui, acompteDu, echeanceAcompte, totaux, arrondi, nouvelleRef, tauxVers, acceptationAuPaiement, payeSansFacture } from "../calc.mjs";
@@ -229,7 +229,7 @@ function ficheDossierVue(id) {
           class: "modal-corps",
           onsubmit: async (e) => {
             e.preventDefault();
-            const cl = etat.db.clients.find((x) => x.id === sel.valeur);
+            const cl = clientParId(sel.valeur);
             try {
               const ref = nouvelleRef({ numerotation: regl.numerotation, prenom: cl.prenom, nom: cl.nom, dateIso: ajd, pays: d.pays || "", refsExistantes: etat.db.dossiers.map((x) => x.ref) });
               const nd = await inserer("dossiers", { ref, client_id: cl.id, pays: d.pays, bandeau: d.bandeau, date_depart: null, date_retour: null, accepte_le: null, annule: false, notes: "" });

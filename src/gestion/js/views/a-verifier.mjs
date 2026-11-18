@@ -97,7 +97,7 @@ export async function vueAVerifier() {
     }
   }
   const regle = reglageAVerifier(reglages().a_verifier);
-  const controles = aVerifier({ ...etat.db, documents }, { droits: droitsVerification(), aujourdhui: aujourdhui(), tr, taxi: modeTaxi(), reglage: regle });
+  const controles = aVerifier({ ...etat.db, documents }, { droits: droitsVerification(), aujourdhui: aujourdhui(), tr, taxi: modeTaxi(), reglage: regle, entiteId: etat.entiteId });
   const coupes = regle.desactives.filter((c) => controlesProposes().includes(c)).length;
   const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
   const total = controles.reduce((s, c) => s + c.elements.length, 0);
