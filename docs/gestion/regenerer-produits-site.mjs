@@ -9,9 +9,11 @@
 //   - `tarifs` : ses lignes de prix reliées à un tarif de Gestion par src/_data/gestion-keys.json du site (clé « slug|option|ligne »),
 //     { ligne, prestation, libelle } : la ligne telle que le site l'écrit, l'identifiant du tarif dans Gestion et son libellé anglais.
 //     Ni prix ni net : le tarif lui-même reste dans la base.
+//     Une option sans ligne de prix (« Price on WhatsApp ») prend ses tarifs dans docs/gestion/cles-options-site.json de ce dépôt
+//     (clé « slug|identifiant de l'option »), où `ligne` est la tranche de groupe du tarif.
 //   - `anciens` : les titres que l'option a portés avant (historique git du site), pour lire un message envoyé avant un changement de nom.
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,6 +34,9 @@ const lireJson = (spec) => {
 const SECTION = { tours: "islands", activities: "activities", "secret-transfers": "transfers", products: "rental", taxi: "taxi" };
 const fichiers = git("ls-tree", "-r", "--name-only", ref, "src/_data/products").split("\n").filter((f) => f.endsWith(".json"));
 const cles = lireJson(`${ref}:src/_data/gestion-keys.json`) || {};
+const ICI = path.dirname(fileURLToPath(import.meta.url));
+const clesOptions = JSON.parse(readFileSync(path.join(ICI, "cles-options-site.json"), "utf8"));
+const clesOptionsLues = new Set();
 
 // Anciens titres de chaque option : tous les commits qui ont touché un fichier produit, option par option (même identifiant).
 const titresPasses = new Map(); // « slug|id » → Set des titres
@@ -70,6 +75,13 @@ const produits = fichiers.map((f) => {
         .map((r) => ({ ligne: r.label, cle: cles[`${p.slug}|${titre}|${r.label}`] }))
         .filter((x) => x.cle && x.cle.prestation)
         .map((x) => ({ ligne: x.ligne, prestation: x.cle.prestation, libelle: x.cle.gestion || "" }));
+      // Option sans ligne de prix reliée : la clé d'option de Gestion. Une option qui a ses lignes garde celles du site.
+      const cleOption = clesOptions[`${p.slug}|${o.id}`];
+      if (cleOption) {
+        clesOptionsLues.add(`${p.slug}|${o.id}`);
+        if (tarifs.length) console.warn(`${p.slug}|${o.id} : l'option a des prix sur le site, la clé de cles-options-site.json est ignorée.`);
+        else tarifs.push(...cleOption.map((x) => ({ ligne: x.ligne, prestation: x.prestation, libelle: x.libelle || "" })));
+      }
       const anciens = [...(titresPasses.get(`${p.slug}|${o.id}`) || [])].filter((t) => t !== titre && !titres.includes(t) && porteurs.get(t) === 1).sort();
       return { id: o.id, titre, ...(tarifs.length ? { tarifs } : {}), ...(anciens.length ? { anciens } : {}) };
     }),
@@ -78,7 +90,9 @@ const produits = fichiers.map((f) => {
 produits.sort((a, b) => a.marque.localeCompare(b.marque) || a.section.localeCompare(b.section) || a.nom.localeCompare(b.nom));
 const commit = git("rev-parse", "--short", ref).trim();
 
-const sortie = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../src/gestion/js/site-produits.mjs");
+const sortie = path.join(ICI, "../../src/gestion/js/site-produits.mjs");
+const orphelines = Object.keys(clesOptions).filter((k) => !k.startsWith("_") && !clesOptionsLues.has(k));
+for (const k of orphelines) console.warn(`${k} : aucune option de ce nom sur le site (${ref}), clé de cles-options-site.json non utilisée.`);
 writeFileSync(
   sortie,
   `// Pages produit du site secrettravelandtour.com, recopiées par docs/gestion/regenerer-produits-site.mjs (${ref} ${commit}). Ne pas modifier à la main.

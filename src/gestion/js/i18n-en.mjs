@@ -170,6 +170,7 @@ export const EN = {
   "Service dupliqué.": "Service duplicated.",
   "Aucune personne supplémentaire : rien à ajouter. Indiquez combien de personnes dépassent les deux premières.": "No extra person: nothing to add. Enter how many people go beyond the first two.",
   "Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base.": "Extra person price to set in the database: the price only counts the base.",
+  "Le groupe ne tient dans aucune tranche de ce tarif : prix à vérifier avec le prestataire.": "The group fits none of this rate's group sizes: check the price with the partner.",
   "Cette sauvegarde est celle de l'entreprise « {autre} » : elle ne peut pas être importée dans « {nom} ».": "This backup belongs to the company “{autre}”: it cannot be imported into “{nom}”.",
   " Ce que le fichier ne contient plus sera supprimé après l'import : {p} partenaires, {s} tarifs et {t} trajets (avec leurs nets). {r} réservations perdraient le lien avec leur prestataire ou leur tarif.": " What the file no longer contains will be deleted after the import: {p} partners, {s} rates and {t} routes (with their nets). {r} reservations would lose the link to their provider or rate.",
   "Si le fichier contient des partenaires, remplacer la base partenaires (après l'import, supprime les partenaires, tarifs et trajets que le fichier ne contient plus)": "If the file contains partners, replace the partner base (after the import, deletes the partners, rates and routes the file no longer contains)",

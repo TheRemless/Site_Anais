@@ -37,6 +37,7 @@ const AVERTISSEMENTS = {
   enfant_plein_tarif: N_("Pas de tarif enfant : les enfants sont comptés au tarif adulte."),
   enfant_non_compte: N_("Tarif par adulte sans prix enfant : les enfants ne sont pas comptés."),
   supplement_a_definir: N_("Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base."),
+  groupe_hors_tranche: N_("Le groupe ne tient dans aucune tranche de ce tarif : prix à vérifier avec le prestataire."),
 };
 
 // Le message collé est gardé sur l'appareil jusqu'à la création du dossier : un appel ou un changement d'écran ne le perd pas.

@@ -1,0 +1,24 @@
+{
+  "_lisez-moi": "Options du site secrettravelandtour.com sans ligne de prix (prix sur WhatsApp) : « slug|identifiant de l'option » vers les tarifs de Gestion (entreprise Secret). Lu par docs/gestion/regenerer-produits-site.mjs, recopié dans src/gestion/js/site-produits.mjs (options[].tarifs). `ligne` donne la tranche de groupe du tarif (champ capacité en base) : celle qui contient le nombre de personnes passe devant. Identifiants et libellés relevés en lecture seule dans la base le 18.11.2026. Jamais de prix ni de net ici. Une option qui a des lignes de prix sur le site garde celles de src/_data/gestion-keys.json du site.",
+  "4-islands|private-longtail": [
+    { "ligne": "1 to 2 people", "prestation": "86089978-5c93-5713-aae4-5231d9be8f3c", "libelle": "Private 4 Islands (Koh Mook, Koh Ngai, Koh Chuek, Koh Maa)" },
+    { "ligne": "3 to 4 people", "prestation": "71b95917-0c36-58fe-a833-0cc27c17c101", "libelle": "Private 4 Islands (Koh Mook, Koh Ngai, Koh Chuek, Koh Maa)" },
+    { "ligne": "5 to 6 people", "prestation": "1e3a5589-f9ee-56f7-acb4-387caf77167d", "libelle": "Private 4 Islands (Koh Mook, Koh Ngai, Koh Chuek, Koh Maa)" }
+  ],
+  "koh-phi-phi|private-longtail": [
+    { "ligne": "1 to 5 people", "prestation": "0711f191-fe3b-587f-a28a-db415fd235e7", "libelle": "Private Koh Phi Phi by longtail (Phi Phi Leh, Bamboo Island, Phi Phi Don)" }
+  ],
+  "koh-rok-koh-haa|private-longtail": [
+    { "ligne": "1 to 3 people", "prestation": "0e1f1b13-07a1-5496-ab02-02068d7f428b", "libelle": "Private Koh Rok (Koh Rok Nok & Koh Rok Nai)" },
+    { "ligne": "4 to 6 people", "prestation": "1961d3a3-783e-5c91-af21-2b93561cbc59", "libelle": "Private Koh Rok (Koh Rok Nok & Koh Rok Nai)" }
+  ],
+  "4-islands|private-speedboat": [
+    { "ligne": "Whole boat, custom day", "prestation": "e1c1818e-ead0-4b8c-bc68-364fb9cf0007", "libelle": "Private speedboat OctopuSea, custom day" }
+  ],
+  "koh-phi-phi|private-speedboat": [
+    { "ligne": "Whole boat, custom day", "prestation": "e1c1818e-ead0-4b8c-bc68-364fb9cf0007", "libelle": "Private speedboat OctopuSea, custom day" }
+  ],
+  "koh-rok-koh-haa|private-speedboat": [
+    { "ligne": "Whole boat, custom day", "prestation": "e1c1818e-ead0-4b8c-bc68-364fb9cf0007", "libelle": "Private speedboat OctopuSea, custom day" }
+  ]
+}

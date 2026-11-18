@@ -1017,9 +1017,18 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
       avertissement: p.sur_place ? "sur_place" : "",
       score,
       ligneSite: t.ligne,
+      ...(tranche ? { tranche } : {}),
       ...(enfant && enfant.unite === "ch" ? { enfantSite: enfant } : {}),
     });
   });
+  // Bateau privé : un groupe plus grand que toutes les tranches actives ne prend pas le prix de la plus petite. La plus grande tranche passe
+  // devant et l'offre le dit, le prix est à vérifier avec le prestataire.
+  if (offres.length && offres.every((o) => o.tranche) && !offres.some((o) => groupe >= o.tranche[0] && groupe <= o.tranche[1])) {
+    for (const o of offres) {
+      o.avertissement = o.avertissement || "groupe_hors_tranche";
+      if (groupe > o.tranche[1]) o.score += o.tranche[1] / 1000;
+    }
+  }
   return offres.sort((a, b) => b.score - a.score);
 }
 
