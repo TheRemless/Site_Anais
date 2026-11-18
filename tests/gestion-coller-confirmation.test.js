@@ -299,7 +299,7 @@ test("client : l'écran demande un choix quand des fiches au même nom sont prop
   const ecran = lire("views/confirmation.mjs");
   assert.match(ecran, /candidats\.parNom\.map\(\(c\) => ligneClient\(c, id, false\)\)/, "aucune fiche au même nom n'est cochée");
   assert.match(ecran, /ligneClient\(candidats\.parTelephone, id, true\)/, "même WhatsApp : cochée");
-  assert.match(ecran, /if \(candidats\.parNom\.length && !choixClient\(\)\)/, "création refusée tant que rien n'est choisi");
+  assert.match(ecran, /if \(fichesAffichees && !choixClient\(\)\)/, "création refusée tant que rien n'est choisi");
   // Les fiches partagées viennent de clientsPartages (règle de la PR 234 : administratrices seulement, jamais Mook).
   assert.match(ecran, /partages: clientsPartages\(id\)/);
   assert.match(lire("views/creation-course.mjs"), /nomARemplacer\(\[c\.prenom, c\.nom\]/);
