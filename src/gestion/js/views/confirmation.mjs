@@ -166,6 +166,8 @@ export function ouvrirConfirmation(texteInitial = "") {
       champs[cle].removeAttribute("aria-invalid");
     }
     majTrajet();
+    // Une nouvelle confirmation collée : la recherche manuelle d'avant ne masque pas les fiches proposées pour ce nom.
+    recherche.value = "";
     dessinerEntreprises(lu.marque);
     dessinerClient();
     ignorees.replaceChildren(...(lu.ignorees.length ? [h("p", { class: "aide" }, tr("Lignes non reprises (à recopier dans un champ si besoin) :")), h("ul", null, lu.ignorees.map((l) => h("li", null, l)))] : []));

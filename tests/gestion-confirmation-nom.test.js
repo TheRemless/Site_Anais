@@ -70,6 +70,7 @@ test("2. la recherche des fiches se relance pendant la frappe (nom, WhatsApp, re
   assert.match(ecran, /for \(const c of \[champs\.nom, champs\.telephone, recherche\]\) c\.addEventListener\("input", relancer\);/);
   assert.match(ecran, /attenteClient = setTimeout\(dessinerClient, 250\)/);
   assert.match(ecran, /const avant = choixClient\(\);/);
+  assert.match(ecran, /recherche\.value = "";\n\s+dessinerEntreprises\(lu\.marque\);/, "un nouveau collage efface la recherche d'avant");
   assert.match(ecran, /if \(fichesAffichees && !choixClient\(\)\)/, "création refusée tant qu'une fiche proposée n'est ni choisie ni écartée");
 });
 
