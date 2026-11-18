@@ -6,6 +6,7 @@
 import { h } from "../ui.mjs";
 import { champsBooking, lignesEnPlus } from "../taxi-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
+import { photoBandeau } from "./voucher-taxi.mjs";
 
 const LOGO_DEFAUT = "assets/logo-secret.png";
 const BANDEAU_DEFAUT = "assets/secret-bandeau.webp";
@@ -48,7 +49,7 @@ export function renderBookingSecret({ regl, client = {}, r, pickup = "", dropoff
     h(
       "div",
       { class: "vt-haut" },
-      h("div", { class: "vt-bandeau" }, h("img", { class: "vt-photo", src: v.bandeau || BANDEAU_DEFAUT, alt: "" }), h("div", { class: "vt-vague", "aria-hidden": "true" })),
+      h("div", { class: "vt-bandeau" }, photoBandeau(v.bandeau || BANDEAU_DEFAUT), h("div", { class: "vt-vague", "aria-hidden": "true" })),
       h("div", { class: "vt-sceau" }, h("img", { src: logo, alt: nomSociete || "" }))
     ),
     h("h1", { class: "vt-titre" }, t("b_titre_1"), h("br"), t("b_titre_2")),

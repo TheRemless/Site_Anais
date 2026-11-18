@@ -1342,13 +1342,14 @@ details > summary { padding-block: 11px; margin: 0; }
 .aide-repli > .aide { margin-top: 0; }
 
 /* ---- Session Taxi (12.11.2026) : « Booking confirmation » de VIP Taxi Lanta, d'après le modèle d'Anaïs ---- */
-.voucher.voucher-taxi { min-height: 0; height: 296mm; display: flex; flex-direction: column; --vt-bleu: #0f75a7; --vt-cle: #0b4f71; --vt-encre: #08231e; --vt-or: #d9c28a; --vt-or-clair: #ece4b8; --vt-bleu-pale: #c4e7ef; position: relative; padding: 0; overflow: hidden; color: var(--vt-encre); font-family: "Raleway", system-ui, sans-serif; line-height: 1.35; }
+.voucher.voucher-taxi { min-height: 0; height: 296mm; display: flex; flex-direction: column; --vt-bleu: #0f75a7; --vt-cle: #0b4f71; --vt-encre: #08231e; --vt-or: #d9c28a; --vt-or-clair: #ece4b8; --vt-bleu-pale: #c4e7ef; position: relative; padding: 0; overflow: hidden; color: var(--vt-encre); font-family: "Raleway", system-ui, sans-serif; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.voucher.voucher-taxi * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 /* En-tête mesuré sur le modèle d'Anaïs (1414 px pour 210 mm) : photo de 90,9 mm, vague de 3,4 mm qui descend de 85,7 mm à gauche
    à 90,9 mm vers 115 mm et remonte à 87,9 mm à droite, sceau de 77,5 mm centré à 165,2 mm et 91,6 mm. La photo est celle du modèle :
    le sceau et la vague recouvrent exactement les zones effacées (logo et vague d'origine). */
 .vt-haut { position: relative; height: 94mm; }
 .vt-bandeau { position: relative; height: 96mm; overflow: hidden; }
-.vt-photo { display: block; width: 100%; height: 90.9mm; object-fit: cover; object-position: center top; }
+.vt-photo { display: block; width: 100%; height: 90.9mm; background-repeat: no-repeat; background-size: cover; background-position: center top; }
 .vt-vague { position: absolute; left: -35mm; width: 300mm; top: 90.9mm; height: 60mm; box-sizing: border-box; border-top: 3.4mm solid var(--vt-bleu); border-radius: 50% / 14.5mm; background: #fff; }
 .vt-sceau { position: absolute; z-index: 1; right: 6.1mm; top: 52.9mm; width: 77.5mm; height: 77.5mm; box-sizing: border-box; border: 1.6mm solid var(--vt-bleu); border-radius: 50%; background: #fff; overflow: hidden; }
 .vt-sceau img { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -1378,7 +1379,8 @@ details > summary { padding-block: 11px; margin: 0; }
 .voucher.voucher-secret { --vt-bleu: #3b7c6a; --vt-cle: #3b7c7a; --vt-encre: #022421; --vt-or: #e2c27d; --vt-or-clair: #ecd7a1; --vt-bleu-pale: #ecd7a1; font-family: "Montserrat", "Raleway", system-ui, sans-serif; }
 .voucher-secret > * { position: relative; z-index: 1; }
 .voucher-secret > .vs-lignes { position: absolute; z-index: 0; right: 0; bottom: 0; width: 100%; height: auto; opacity: 0.32; pointer-events: none; }
-.voucher-secret .vt-photo { object-position: center 88%; }
+/* Photo recadrée au format du bandeau (2,31) sur le modèle : temples juste sous le bord, voiture de gauche coupée au même endroit. */
+.voucher-secret .vt-photo { background-position: center center; }
 .voucher-secret .vt-sceau img { position: absolute; left: -11%; top: -11%; width: 122%; height: 122%; max-width: none; }
 .voucher-secret .vt-titre { padding: 3mm 0 0 12.5mm; font-size: 39pt; font-weight: 700; line-height: 1.1; letter-spacing: 0.005em; }
 .voucher-secret .vt-intro { margin-top: 1.5mm; padding-left: 8.5mm; font-size: 13pt; }

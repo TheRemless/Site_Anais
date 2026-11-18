@@ -7,6 +7,11 @@ import { champsBooking, lignesEnPlus } from "../taxi-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
 
 const LOGO_DEFAUT = "assets/logo-vip-taxi.webp";
+
+// La photo du bandeau en arrière-plan « cover » : html2canvas, qui fabrique l'image envoyée, ignore `object-fit` et étirait une <img> dans son
+// cadre (photo aplatie, 18.11.2026). Un arrière-plan garde ses proportions partout (aperçu, image, impression), quelle que soit la photo
+// téléversée dans les réglages.
+export const photoBandeau = (src) => h("div", { class: "vt-photo", role: "presentation", style: `background-image: url("${String(src).replace(/["\\\n]/g, encodeURIComponent)}")` });
 const BANDEAU_DEFAUT = "assets/taxi-bandeau.webp";
 
 // `regl` : réglages de l'entreprise ; le reste vient de renderVoucher (pickup et dépose déjà déduits de la réservation).
@@ -30,7 +35,7 @@ export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", d
     h(
       "div",
       { class: "vt-haut" },
-      h("div", { class: "vt-bandeau" }, h("img", { class: "vt-photo", src: v.bandeau || BANDEAU_DEFAUT, alt: "" }), h("div", { class: "vt-vague", "aria-hidden": "true" })),
+      h("div", { class: "vt-bandeau" }, photoBandeau(v.bandeau || BANDEAU_DEFAUT), h("div", { class: "vt-vague", "aria-hidden": "true" })),
       h("div", { class: "vt-sceau" }, h("img", { src: logo, alt: "VIP Taxi Lanta, Mr. Brown" }))
     ),
     h("h1", { class: "vt-titre" }, t("b_titre_1"), h("br"), t("b_titre_2")),

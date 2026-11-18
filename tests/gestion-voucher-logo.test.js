@@ -146,7 +146,8 @@ test("voucher Secret : la Booking confirmation de Secret (modèle du 18.11.2026)
   const images = [];
   const chercher = (n) => (n instanceof El ? (n.tag === "img" && images.push(n.attrs.src), n.children.forEach(chercher)) : null);
   chercher(v);
-  assert.ok(images.includes("logo-secret.webp") && images.includes("assets/secret-bandeau.webp"), images.join(", "));
+  assert.ok(images.includes("logo-secret.webp"), images.join(", "));
+  assert.match(v.lignes.length ? JSON.stringify(v.children[1].children[0].children[0].attrs) : "", /secret-bandeau\.webp/, "photo du modèle en arrière-plan");
   // Un WhatsApp réglé dans le bloc Vouchers passe avant le téléphone de l'émetteur.
   assert.ok(rendu(r, { ...SECRET, voucher: { whatsapp: "+66 95 868 38 46" } }).lignes.includes("+66 95 868 38 46"));
   // Textes modifiés dans Réglages > Vouchers de Secret.
@@ -284,5 +285,42 @@ test("état : sous le logo de Secret, Mook reste sur l'écran voucher, écrit da
   } finally {
     delete globalThis.localStorage;
     delete globalThis.location;
+  }
+});
+
+// ---- Photo du bandeau : jamais déformée (18.11.2026) ----------------------------------------------------------------------------
+// html2canvas, qui fabrique l'image envoyée, ignore `object-fit` : une <img> était étirée dans son cadre (photo de Secret aplatie).
+// La photo est un arrière-plan « cover » (proportions gardées pour toute photo) et les photos par défaut ont exactement le format du bandeau.
+test("bandeau : arrière-plan « cover », jamais une <img> étirée ; photos par défaut au format du bandeau (210 × 90,9 mm)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const trouver = (n, pred) => (n instanceof El ? (pred(n) ? n : n.children.map((c) => trouver(c, pred)).find(Boolean) || null) : null);
+  const r = { ...V.reservationApercu(V.donneesVoucher(bon), { independant: true }), id: "R1", dossier_id: "D1" };
+  for (const [regl, defaut] of [[SECRET, "assets/secret-bandeau.webp"], [TAXI, "assets/taxi-bandeau.webp"]]) {
+    const v = rendu(r, regl);
+    assert.equal(trouver(v, (n) => n.tag === "img" && /vt-photo/.test(n.attrs.class || n.className)), null, "pas d'<img> pour la photo");
+    const photo = trouver(v, (n) => (n.attrs.class || n.className) === "vt-photo");
+    assert.ok(photo && photo.tag === "div", "la photo est un bloc");
+    assert.equal(photo.attrs.style, `background-image: url("${defaut}")`);
+    // Une photo téléversée dans les réglages passe de même, guillemets neutralisés.
+    const autre = trouver(rendu(r, { ...regl, voucher: { bandeau: 'data:image/png;base64,AA"BB' } }), (n) => (n.attrs.class || n.className) === "vt-photo");
+    assert.equal(autre.attrs.style, 'background-image: url("data:image/png;base64,AA%22BB")');
+  }
+  // La règle CSS : arrière-plan couvrant, aucun object-fit (ignoré par html2canvas).
+  const css = readFileSync(new URL("../src/gestion/css/app.css", import.meta.url), "utf8");
+  const regle = css.match(/^\.vt-photo \{([^}]*)\}/m);
+  assert.ok(regle, "règle .vt-photo");
+  assert.match(regle[1], /background-size: cover/);
+  assert.doesNotMatch(css, /\.vt-photo[^{]*\{[^}]*object-fit/);
+  // Format des photos par défaut : celui du bandeau à 1 % près (lu dans l'en-tête WebP), pour que « cover » ne coupe rien d'autre que prévu.
+  const tailleWebp = (b) => {
+    const type = b.toString("ascii", 12, 16);
+    if (type === "VP8 ") return [b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff];
+    if (type === "VP8L") { const n = b.readUInt32LE(21); return [(n & 0x3fff) + 1, ((n >> 14) & 0x3fff) + 1]; }
+    if (type === "VP8X") return [b.readUIntLE(24, 3) + 1, b.readUIntLE(27, 3) + 1];
+    throw new Error(`WebP inconnu : ${type}`);
+  };
+  for (const f of ["secret-bandeau.webp", "taxi-bandeau.webp"]) {
+    const [w, h] = tailleWebp(readFileSync(new URL(`../src/gestion/assets/${f}`, import.meta.url)));
+    assert.ok(Math.abs(w / h / (210 / 90.9) - 1) < 0.01, `${f} : ${w}×${h}`);
   }
 });
