@@ -1,6 +1,7 @@
 -- Gestion : migration 42, plusieurs organisations (préparation du logiciel pour d'autres clients).
 -- Une organisation est un client du logiciel. Elle regroupe ses entreprises (entites) et ses comptes (profils).
--- La base actuelle devient l'organisation « Zwald Travel Planner » (ZTP, Secret, Taxi) : rien ne change pour ses comptes.
+-- La base d'Anaïs devient l'organisation « Zwald Travel Planner » (ZTP, Secret, Taxi) : rien ne change pour ses comptes.
+-- Sur une base neuve (schéma neutre, sans entreprise), aucune organisation n'est créée et aucun compte n'est rattaché.
 --
 -- Ce que la migration change :
 --   * « administratrice générale » (profils.super_admin) veut dire désormais « administrateur de son organisation » : elle ne voit plus que les entreprises de son organisation ;
@@ -28,13 +29,15 @@ create table if not exists organisations (
 alter table organisations enable row level security;
 revoke all on organisations from anon, authenticated;
 
-insert into organisations (id, nom, fuseau, langue, options)
-values ('00000000-0000-0000-0000-00000000a000', 'Zwald Travel Planner', 'Asia/Bangkok', 'fr', array['whatsapp', 'assistant'])
-on conflict (id) do nothing;
-
 -- 2. Rattachement des entreprises et des comptes.
+-- L'organisation Zwald n'est créée que sur la base d'Anaïs, qui a déjà des entreprises sans organisation (premier passage de la migration).
+-- Sur une base neuve (schema.sql sans donnees-ztp-depart.sql) : aucune organisation, aucun rattachement (revue du 18.11.2026).
 alter table entites add column if not exists organisation_id uuid references organisations (id) on delete restrict;
-update entites set organisation_id = '00000000-0000-0000-0000-00000000a000' where organisation_id is null;
+insert into organisations (id, nom, fuseau, langue, options)
+select '00000000-0000-0000-0000-00000000a000', 'Zwald Travel Planner', 'Asia/Bangkok', 'fr', array['whatsapp', 'assistant']
+where exists (select 1 from entites where organisation_id is null)
+on conflict (id) do nothing;
+update entites set organisation_id = '00000000-0000-0000-0000-00000000a000' where organisation_id is null and exists (select 1 from organisations where id = '00000000-0000-0000-0000-00000000a000');
 alter table entites alter column organisation_id set not null;
 alter table entites drop constraint if exists entites_slug_key;
 create unique index if not exists entites_organisation_slug on entites (organisation_id, slug);
@@ -45,7 +48,10 @@ update entites set publie_site = true where organisation_id = '00000000-0000-000
 
 alter table profils add column if not exists organisation_id uuid references organisations (id) on delete restrict;
 alter table profils add column if not exists plateforme boolean not null default false;
-update profils set organisation_id = '00000000-0000-0000-0000-00000000a000' where organisation_id is null;
+-- Seulement les comptes qui existaient avant l'organisation Zwald : rejouer la migration ne prend jamais un compte créé depuis
+-- (administrateur d'un nouveau client en attente de sa propre organisation, éditeur).
+update profils p set organisation_id = '00000000-0000-0000-0000-00000000a000'
+from organisations o where o.id = '00000000-0000-0000-0000-00000000a000' and p.organisation_id is null and not p.plateforme and p.created_at <= o.created_at;
 create index if not exists profils_organisation on profils (organisation_id);
 
 -- 3. Droits, calculés dans l'organisation de la personne connectée.
@@ -105,8 +111,9 @@ declare
 begin
   if app->>'organisation_id' ~ '^[0-9a-f-]{36}$' then
     select id into org from organisations where id = (app->>'organisation_id')::uuid;
-  elsif coalesce(meta->>'nouvelle_organisation', '') <> 'true' and (select count(*) from organisations) = 1 then
-    select id into org from organisations;
+  elsif coalesce(meta->>'nouvelle_organisation', '') <> 'true' and (select count(*) from organisations) = 1 and exists (select 1 from organisations where id = '00000000-0000-0000-0000-00000000a000') then
+    -- Seulement sur la base d'Anaïs tant que Zwald est seule : sur une base neuve, un compte n'est rattaché à rien.
+    org := '00000000-0000-0000-0000-00000000a000';
   end if;
   -- Langue de départ du compte : celle de l'organisation (Réglages > Administration). Chacun la change ensuite pour lui.
   insert into profils (user_id, email, super_admin, organisation_id, langue)
@@ -223,7 +230,7 @@ grant execute on function creer_organisation(text, text, text, text) to authenti
 -- des réglages de chaque entreprise (fiduciaire_reglages). Il restait la série (préfixe, année) commune à toute la base : deux organisations
 -- avec le préfixe COM se seraient partagé les numéros. La série devient (organisation, préfixe, année), le numéro unique dans l'organisation.
 alter table fiduciaire_compteurs add column if not exists organisation_id uuid references organisations (id) on delete cascade;
-update fiduciaire_compteurs set organisation_id = '00000000-0000-0000-0000-00000000a000' where organisation_id is null;
+update fiduciaire_compteurs set organisation_id = '00000000-0000-0000-0000-00000000a000' where organisation_id is null and exists (select 1 from organisations where id = '00000000-0000-0000-0000-00000000a000');
 alter table fiduciaire_compteurs alter column organisation_id set not null;
 alter table fiduciaire_compteurs drop constraint if exists fiduciaire_compteurs_pkey;
 alter table fiduciaire_compteurs add primary key (organisation_id, prefixe, annee);
@@ -293,7 +300,7 @@ $$;
 
 -- 8. Suivi des rappels par organisation. Les lignes anciennes, sans organisation, restent à Zwald.
 alter table rappels_suivi add column if not exists organisation_id uuid references organisations (id) on delete cascade;
-update rappels_suivi set organisation_id = '00000000-0000-0000-0000-00000000a000' where organisation_id is null;
+update rappels_suivi set organisation_id = '00000000-0000-0000-0000-00000000a000' where organisation_id is null and exists (select 1 from organisations where id = '00000000-0000-0000-0000-00000000a000');
 -- La fonction « rappels » écrit l'organisation de chaque passage : pas de valeur par défaut, une ligne sans organisation est refusée
 -- au lieu d'être rangée chez Zwald (elle montrerait les envois d'un autre client).
 alter table rappels_suivi alter column organisation_id drop default;
@@ -309,7 +316,7 @@ create policy "lire le suivi des rappels" on rappels_suivi for select to authent
 -- 9. Journal des comptes (invitations, liens de mot de passe, suppressions, organisations créées) : ces lignes n'ont pas d'entreprise.
 -- Elles portent l'organisation, et seul son administrateur les lit (avant : toute administratrice générale, donc toutes les organisations).
 alter table journal add column if not exists organisation_id uuid references organisations (id) on delete cascade;
-update journal set organisation_id = '00000000-0000-0000-0000-00000000a000' where entite_id is null and organisation_id is null;
+update journal set organisation_id = '00000000-0000-0000-0000-00000000a000' where entite_id is null and organisation_id is null and exists (select 1 from organisations where id = '00000000-0000-0000-0000-00000000a000');
 drop policy if exists "lire le journal" on journal;
 create policy "lire le journal" on journal for select to authenticated using (
   (entite_id is not null and a_permission(entite_id, 'journal.voir') and (table_name <> 'reservations_nets' or a_permission(entite_id, 'partenaires.nets')))

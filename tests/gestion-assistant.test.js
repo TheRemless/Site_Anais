@@ -237,13 +237,16 @@ test("langue de la réponse : Secret et Taxi toujours en anglais, d'après le mo
   assert.equal(langueReponse({}, ""), "fr");
 });
 
-test("prompt de rédaction : Taxi signe du nom de l'entreprise, jamais Anaïs", () => {
+test("prompt de rédaction : sans voix réglée, signé du nom de l'entreprise, jamais Anaïs", () => {
   const f = verifierFaits({ entreprise: "VIP TAXI LANTA", prenom: "Tom", devise: "THB", total: 1500, services: [{ libelle: "Krabi Airport → Koh Lanta", date: "2026-11-20", adultes: 2, prix: 1500 }] }).faits;
   const p = promptRedaction({ faits: f, langue: "en" });
   assert.match(p.system[0].text, /Have a nice day, VIP TAXI LANTA/);
   assert.doesNotMatch(p.system[0].text, /Anaïs"/);
-  const s = promptRedaction({ faits: { ...f, entreprise: "Secret Travel & Tour" }, langue: "en" });
-  assert.match(s.system[0].text, /Have a lovely day, Anaïs/, "Secret garde la voix d'Anaïs");
+  // Migration 44 : la voix vient des réglages de l'entreprise (assistant_voix), plus du code. Sans voix réglée, la voix neutre.
+  const s = promptRedaction({ faits: { ...f, entreprise: "Secret Travel & Tour" }, langue: "en", voix: { en: "Voix réglée de {entreprise}.\nHave a lovely day, Anaïs" } });
+  assert.match(s.system[0].text, /Voix réglée de Secret Travel & Tour\.\nHave a lovely day, Anaïs/, "la voix réglée est reprise, {entreprise} rempli");
+  const n = promptRedaction({ faits: { ...f, entreprise: "Agence Demo" }, langue: "en" });
+  assert.doesNotMatch(n.system[0].text, /Anaïs|Koh Lanta|VIP TAXI/, "voix neutre sans nom d'Anaïs");
 });
 
 test("prompt de rédaction : faits dans le message, voix et exemples en cache", () => {

@@ -6,11 +6,13 @@ import { creerStore } from "./store.mjs";
 import { resume, setDevise, setMasquerMontants, aujourdhui } from "./calc.mjs";
 import { construireCopie, CLE_HORS_LIGNE } from "./feuille-hors-ligne-calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
-import { reglagesModele } from "./modeles-metier.mjs";
+import { codeCourt, departModele } from "./modeles-metier.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 import { appliquerTextesThai } from "./textes-thai.mjs";
+import { reglerCompagnies } from "./partenaires-calc.mjs";
+import { responsableDe, libelleAdmin } from "./noms-calc.mjs";
 import { entreprisesVoucher } from "./voucher-rapide-calc.mjs";
 import { entreprisesConfirmation } from "./confirmation-calc.mjs";
 
@@ -197,9 +199,12 @@ function rebatir() {
   db.reglages = completerReglages(etat.brut.reglages[e]);
   db.roles = etat.brut.roles.filter((r) => r.entite_id === e);
   etat.db = db;
+  // « par X » se traduit « by X » pour les partenaires de l'entreprise et les compagnies de ses réglages (migration 43).
+  reglerCompagnies([...(db.partenaires || []).map((p) => p.nom), ...(db.reglages.compagnies || [])]);
   // Textes thaïs de l'écran de Mook : ceux de cette entreprise s'ils ont été modifiés dans Réglages, sinon ceux de départ.
   // Voucher sous le logo de Secret : l'écran reste celui de Taxi, avec ses textes.
-  appliquerTextesThai(etat.voucherDepuis ? reglagesDe(etat.voucherDepuis).textes_thai : db.reglages.textes_thai);
+  const idThai = etat.voucherDepuis || etat.entiteId;
+  appliquerTextesThai(etat.voucherDepuis ? reglagesDe(etat.voucherDepuis).textes_thai : db.reglages.textes_thai, responsableEntite(idThai));
   setDevise(db.reglages.devise);
   setMasquerMontants(!peut("finances.voir"));
 }
@@ -239,7 +244,7 @@ export const entitesAnalysables = () =>
     return p.includes("analytics.voir") && p.includes("finances.voir");
   });
 export function roleActif() {
-  if (estSuperAdmin()) return tr("Administratrice générale");
+  if (estSuperAdmin()) return tr(libelleAdmin(organisation()));
   const r = roleDans(contexte(), etat.entiteId);
   return r ? nomRole(r) : null;
 }
@@ -251,8 +256,11 @@ export const nomRole = (r) => (r.systeme ? tr(r.nom) : r.nom);
 export const descriptionRole = (r) => (r.systeme ? tr(r.description) : r.description);
 
 export const reglages = () => etat.db.reglages;
-// Les réglages d'une autre entreprise accessible (le WhatsApp d'Anaïs, réglé dans Taxi, pendant un voucher sous le logo de Secret).
+// Les réglages d'une autre entreprise accessible (le WhatsApp de la personne responsable, réglé dans Taxi, pendant un voucher sous le logo de Secret).
 export const reglagesDe = (id) => completerReglages(etat.brut.reglages[id]);
+// La personne responsable d'une entreprise (migration 44) : { user_id, prenom, prenom_th }, voir noms-calc.mjs.
+export const responsableEntite = (id = etat.entiteId) =>
+  responsableDe(etat.brut && etat.brut.reglages ? etat.brut.reglages[id] : null, { profils: (etat.brut && etat.brut.profils) || [], membres: (etat.brut && etat.brut.membres) || [], roles: (etat.brut && etat.brut.roles) || [], entiteId: id });
 
 // Chaque entreprise choisit ses écrans (Réglages, Écrans) parmi les modules de sa façon de travailler : voir modules.mjs.
 // Un module n'existe que là où il a un sens (Jérémy, 12.11.2026) ; Masquer n'éteint que lui et ce qui en dépend (audit n° 72).
@@ -483,16 +491,27 @@ export const enregistrerReglages = (...a) => ecrire(() => enregistrerReglagesBru
 export async function creerEntite(nom, slug, { modele = null, devise = "" } = {}) {
   const ordre = Math.max(0, ...etat.brut.entites.map((e) => e.ordre || 0)) + 1;
   const e = await etat.store.inserer("entites", { nom, slug, actif: true, ordre });
-  const base = completerReglages(modele ? reglagesModele(modele, { nom, devise }) : { emetteur: { nom } });
+  const depart = modele ? departModele(modele, { nom, devise }) : null;
+  const base = depart ? depart.reglages : completerReglages({ emetteur: { nom } });
   await etat.store.enregistrerReglages(e.id, base);
   // `tous_droits` (migration 38) n'est écrit que si la base a déjà la colonne : avant la migration, l'insertion échouerait.
   // Sans aucun rôle chargé (première entreprise d'un nouveau client), la base a forcément la colonne : les organisations (migration 42) viennent après.
   const avecTousDroits = etat.brut.roles.some((r) => "tous_droits" in r) || (!etat.brut.roles.length && organisation() !== null);
   for (const r of ROLES_SYSTEME) etat.brut.roles.push(await etat.store.inserer("roles", { entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: r.permissions, systeme: true, ...(avecTousDroits ? { tous_droits: !!r.tous_droits } : {}) }));
+  // Catalogue d'exemple du modèle (formules sans prix), comme installer_entreprise (migration 45).
+  for (const [i, c] of ((depart && depart.catalogue) || []).entries()) etat.brut.catalogue.push(await etat.store.inserer("catalogue", { entite_id: e.id, ...c, ordre: i + 1, actif: true }));
   etat.brut.entites.push(e);
   etat.brut.reglages[e.id] = base;
   rebatir();
   return e;
+}
+
+// Mise en route d'un client (éditeur du logiciel, migration 45) : sa première entreprise, prête, depuis un modèle métier.
+// L'éditeur n'y a ensuite aucun accès : rien n'est ajouté à son état.
+export async function installerClient(organisationId, { nom, modele, devise }) {
+  if (!etat.store.installerEntreprise) throw new Error(tr("Indisponible"));
+  const depart = departModele(modele, { nom, devise });
+  return etat.store.installerEntreprise({ organisation: organisationId, nom, slug: codeCourt(nom), ...depart });
 }
 
 async function modifierEntiteBrut(id, patch) {
@@ -510,11 +529,13 @@ export const organisation = () => {
   const mienne = etat.moi && etat.moi.organisation_id;
   return (mienne ? liste.find((o) => o.id === mienne) : liste.length === 1 ? liste[0] : null) || null;
 };
-// Nom, fuseau et langue : l'administrateur de l'organisation seul (la base refuse le statut et les options payantes).
+// Nom, fuseau, langue et libellé du rôle d'administration (migration 44) : l'administrateur de l'organisation seul (la base refuse le statut
+// et les options payantes). Un libellé vide redevient null (libellé neutre) ; il n'est envoyé que si la base a la colonne.
 async function modifierOrganisationBrut(patch) {
   const o = organisation();
   if (!o) throw new Error(tr("Réglages de l'organisation indisponibles : la base n'a pas encore la migration 42."));
-  const champs = Object.fromEntries(Object.entries(patch).filter(([k]) => ["nom", "fuseau", "langue"].includes(k)));
+  const champs = Object.fromEntries(Object.entries(patch).filter(([k]) => ["nom", "fuseau", "langue"].includes(k) || (k === "libelle_admin" && "libelle_admin" in o)));
+  if ("libelle_admin" in champs) champs.libelle_admin = String(champs.libelle_admin || "").trim().slice(0, 60) || null;
   const r = await etat.store.modifier("organisations", o.id, champs);
   etat.brut.organisations = [{ ...o, ...r }];
   rebatir();

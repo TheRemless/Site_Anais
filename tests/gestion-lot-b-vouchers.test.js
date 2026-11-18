@@ -7,6 +7,7 @@ import { envoiANoter } from "../src/gestion/js/envoi-voucher-calc.mjs";
 import { gestePrincipal, entreesMenu } from "../src/gestion/js/carte-reservation-calc.mjs";
 import { actionSuivante } from "../src/gestion/js/dossier-resume-calc.mjs";
 import { partenaireDeTaxi, chauffeurAChoisir, chauffeurRegle } from "../src/gestion/js/voucher-rapide-calc.mjs";
+import { BUNDHAYA, DESTINATIONS } from "./fixtures/regles-partenaires-anais.mjs";
 import { textesVoucher, DEFAUTS_TEXTES, GROUPES_VOUCHER, GROUPES_BOOKING, textesAEnregistrer } from "../src/gestion/js/textes-voucher.mjs";
 import { champsBooking, prixBooking, joursCommission, commissionsADemander, PIED_BOOKING } from "../src/gestion/js/taxi-calc.mjs";
 
@@ -121,12 +122,13 @@ test("n° 48 : embarcadère et check-in lus dans la fiche de la compagnie avant 
   assert.equal(embarcadereFiche(null, "x"), "");
   const avecConsigne = { nom: "Bundhaya Speed Boat", regles: { checkin_voucher: "Check-in 1 hour before, counter 3." } };
   assert.equal(consigneCheckinFiche(avecConsigne, { de: "Koh Lanta", vers: "Koh Lipe" }), "Check-in 1 hour before, counter 3.");
-  assert.match(consigneCheckinFiche(avecConsigne, { de: "Koh Lipe", vers: "Langkawi" }), /passport/i, "Langkawi garde la consigne de l'immigration");
-  assert.match(consigneCheckinFiche({ nom: "Bundhaya Speed Boat", regles: {} }, { de: "Koh Lanta" }), /45 minutes before departure/, "sans consigne dans la fiche : celle d'avant");
+  assert.match(consigneCheckinFiche(avecConsigne, { de: "Koh Lipe", vers: "Langkawi" }, DESTINATIONS), /passport/i, "Langkawi (destination à passeport des réglages) garde la consigne de l'immigration");
+  assert.match(consigneCheckinFiche(BUNDHAYA, { de: "Koh Lanta" }, DESTINATIONS), /45 minutes before departure/, "la consigne écrite par la migration 43 sur la fiche de Bundhaya");
+  assert.match(consigneCheckinFiche({ nom: "Bundhaya Speed Boat", regles: {} }, { de: "Koh Lanta" }), /30 minutes before departure/, "sans consigne dans la fiche : la consigne générale, plus rien d'après le nom");
 });
 
-test("n° 43 : les courses Taxi vont au chauffeur réglé, la recherche de « taxi » dans le nom n'est plus qu'un défaut", () => {
-  const P = [{ id: "a", nom: "Lanta Cars" }, { id: "b", nom: "VIP Taxi Lanta" }, { id: "c", nom: "Second Taxi", actif: false }];
+test("n° 43 : les courses Taxi vont au chauffeur réglé, la case « taxi par défaut » de la fiche n'est plus qu'un défaut", () => {
+  const P = [{ id: "a", nom: "Lanta Cars" }, { id: "b", nom: "VIP Taxi Lanta", taxi_defaut: true }, { id: "c", nom: "Second Taxi", actif: false, taxi_defaut: true }];
   assert.equal(partenaireDeTaxi(P).id, "b", "défaut d'avant");
   assert.equal(partenaireDeTaxi(P, "a").id, "a", "le réglage l'emporte");
   assert.equal(partenaireDeTaxi(P, "c").id, "b", "un chauffeur réglé mais désactivé ne reçoit plus de course");
@@ -152,7 +154,7 @@ test("textes réglables : un défaut par clé, le texte saisi le remplace, un te
   assert.equal(new Set(cles).size, cles.length, "aucune clé en double");
   const t = textesVoucher({ voucher: { textes: { nom_client: "Name", licence: "  ", b_tous_frais: "(fees included)" } } });
   assert.equal(t("nom_client"), "Name");
-  assert.equal(t("licence"), "TAT licence", "espaces seuls : le défaut");
+  assert.equal(t("licence"), "Licence", "espaces seuls : le défaut (neutre depuis la migration 44, « TAT licence » est dans les réglages d’Anaïs)");
   assert.equal(t("titre_bateau"), "Boat Tour Voucher");
   assert.equal(textesVoucher(null)("en_attente"), "Payment Pending");
   assert.equal(PIED_BOOKING.paiement_wise, DEFAUTS_TEXTES.b_paiement_wise, "la mention Wise reste telle quelle (décision 6)");

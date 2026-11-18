@@ -147,7 +147,10 @@ test("voucher Secret : la Booking confirmation de Secret (modèle du 18.11.2026)
   const chercher = (n) => (n instanceof El ? (n.tag === "img" && images.push(n.attrs.src), n.children.forEach(chercher)) : null);
   chercher(v);
   assert.ok(images.includes("logo-secret.webp"), images.join(", "));
-  assert.match(v.lignes.length ? JSON.stringify(v.children[1].children[0].children[0].attrs) : "", /secret-bandeau\.webp/, "photo du modèle en arrière-plan");
+  // Migration 44 : plus de photo par défaut dans le code ; Secret d'Anaïs a la sienne dans ses réglages.
+  assert.ok(!JSON.stringify(v).includes("secret-bandeau.webp"), "sans photo réglée : aucune photo");
+  const avecPhoto = rendu(r, { ...SECRET, voucher: { bandeau: "assets/secret-bandeau.webp" } });
+  assert.match(JSON.stringify(avecPhoto.children[1].children[0].children[0].attrs), /secret-bandeau\.webp/, "la photo réglée en arrière-plan");
   // Un WhatsApp réglé dans le bloc Vouchers passe avant le téléphone de l'émetteur.
   assert.ok(rendu(r, { ...SECRET, voucher: { whatsapp: "+66 95 868 38 46" } }).lignes.includes("+66 95 868 38 46"));
   // Textes modifiés dans Réglages > Vouchers de Secret.
@@ -296,7 +299,9 @@ test("bandeau : arrière-plan « cover », jamais une <img> étirée ; photos pa
   const trouver = (n, pred) => (n instanceof El ? (pred(n) ? n : n.children.map((c) => trouver(c, pred)).find(Boolean) || null) : null);
   const r = { ...V.reservationApercu(V.donneesVoucher(bon), { independant: true }), id: "R1", dossier_id: "D1" };
   for (const [regl, defaut] of [[SECRET, "assets/secret-bandeau.webp"], [TAXI, "assets/taxi-bandeau.webp"]]) {
-    const v = rendu(r, regl);
+    // Migration 44 : la photo d'avant est enregistrée dans les réglages d'Anaïs ; sans photo réglée, aucune.
+    assert.equal(trouver(rendu(r, regl), (n) => (n.attrs.class || n.className) === "vt-photo"), null, "sans photo réglée : aucune photo");
+    const v = rendu(r, { ...regl, voucher: { ...(regl.voucher || {}), bandeau: defaut } });
     assert.equal(trouver(v, (n) => n.tag === "img" && /vt-photo/.test(n.attrs.class || n.className)), null, "pas d'<img> pour la photo");
     const photo = trouver(v, (n) => (n.attrs.class || n.className) === "vt-photo");
     assert.ok(photo && photo.tag === "div", "la photo est un bloc");

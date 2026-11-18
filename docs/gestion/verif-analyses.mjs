@@ -23,7 +23,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 `;
 const db = new PGlite();
 await db.exec(harnais);
-await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
+await db.exec((fs.readFileSync(W + "schema.sql", "utf8") + fs.readFileSync(W + "donnees-ztp-depart.sql", "utf8")).replace("create extension if not exists pgcrypto;", ""));
 // schema.sql s'arrête avant les migrations suivantes : on les applique dans l'ordre (18 : sur place, 19 : paiements, 20 : statistiques, 21 : portée, 29 : date_fin).
 for (const f of ["migration-18-sur-place.sql", "migration-19-paiements.sql", "migration-20-statistiques.sql", "migration-21-analyses-portee.sql", "migration-29-analyses-date-fin.sql", "migration-39-ecart-hors-encaisse.sql"]) await db.exec(fs.readFileSync(W + f, "utf8"));
 await db.exec("grant all on all tables in schema public to authenticated;");

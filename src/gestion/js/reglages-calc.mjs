@@ -20,6 +20,8 @@ const GROUPES = {
   modules: N_("Écrans"),
   fonctionnement: N_("Façon de travailler"),
   assistant_ia: N_("Assistant IA"),
+  assistant_voix: N_("Voix de l'assistant IA"),
+  responsable: N_("Personne responsable"),
   voucher: N_("Vouchers"),
   taxi: N_("Booking confirmation"),
   fiduciaire: N_("Fiduciaire"),

@@ -4,7 +4,7 @@
 // qui ne quitte jamais le serveur, pour créer un compte, rendre un lien de mot de passe ou supprimer un compte.
 // Aucun e-mail n'est envoyé : l'outil montre le lien, Anaïs l'envoie elle-même. Voir calc.js pour les règles.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { accesCoherents, dejaInscrit, entreprisesDeLOrganisation, invitationPermise, lireDemande, memeOrganisation, rattachementPermis, suppressionPermise } from "./calc.js";
+import { accesCoherents, dejaInscrit, entreprisesDeLOrganisation, invitationPermise, lireDemande, memeOrganisation, premiereAdministratrice, rattachementPermis, suppressionPermise } from "./calc.js";
 
 const ORIGINES = (Deno.env.get("INVITATION_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim()).filter(Boolean);
 
@@ -54,6 +54,23 @@ Deno.serve(async (req) => {
     await service.from("profils").update({ nom: lu.nom || null, langue: lu.langue }).eq("user_id", userId);
     await service.from("journal").insert({ entite_id: null, organisation_id: org.data, user_id: qui.user.id, table_name: "organisations", action: "insert", cible: org.data, libelle: lu.organisation, details: {} }).then(() => null, () => null);
     return json({ user_id: userId, organisation_id: org.data, lien: data.properties.action_link });
+  }
+
+  // Client créé à moitié (éditeur) : un nouveau lien pour sa première administratrice, seulement si personne du client ne s'est connecté.
+  // client_a_reprendre, appelée avec la session de l'éditeur, vérifie qu'il est éditeur et que le client est neuf (migration 45).
+  if (lu.action === "reprendre_client") {
+    const { data: neuf, error: errN } = await sb.rpc("client_a_reprendre", { p_organisation: lu.organisationId });
+    if (errN) return json({ erreur: /42501|Réservé/.test(String(errN.code) + errN.message) ? "droit_manquant" : "base" }, errN.code === "42501" ? 403 : 500);
+    if (neuf !== true) return json({ erreur: "client_en_service" }, 409);
+    const service = createClient(URL_SB, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: profils, error: errP } = await service.from("profils").select("user_id, email, nom, langue, super_admin, actif, organisation_id, created_at").eq("organisation_id", lu.organisationId);
+    if (errP) return json({ erreur: "base" }, 500);
+    const cible = premiereAdministratrice(profils || [], lu.organisationId);
+    if (!cible) return json({ erreur: "personne_inconnue" }, 404);
+    const lien = await service.auth.admin.generateLink({ type: "recovery", email: cible.email, options: { redirectTo: lu.retour } });
+    if (lien.error) return json({ erreur: "lien_impossible" }, 500);
+    await service.from("journal").insert({ entite_id: null, organisation_id: lu.organisationId, user_id: qui.user.id, table_name: "comptes", action: "lien_mot_de_passe", cible: cible.user_id, libelle: cible.email, details: {} }).then(() => null, () => null);
+    return json({ lien: lien.data.properties.action_link, email: cible.email, nom: cible.nom || "", langue: cible.langue || "en", user_id: cible.user_id });
   }
 
   const { data: estAdmin, error: errAdmin } = await sb.rpc("est_super_admin");

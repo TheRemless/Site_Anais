@@ -24,9 +24,9 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 
 ## Installation neuve
 
-1. Créer le projet Supabase (région Europe), puis **SQL Editor**, coller `docs/gestion/schema.sql`, **Run**.
+1. Créer le projet Supabase (région Europe), puis **SQL Editor**, coller `docs/gestion/schema.sql`, **Run**. Ce schéma est neutre : aucune entreprise, aucun réglage. Pour la base d'Anaïs seulement, exécuter ensuite `docs/gestion/donnees-ztp-depart.sql` (ZTP, Secret, Taxi, leurs rôles, réglages et le catalogue de ZTP), puis les `migration-*.sql` dans l'ordre.
 2. **Authentication**, **Sign In / Providers** : désactiver **Allow new users to sign up**.
-3. **Authentication**, **Users**, **Add user** : créer le compte de l'administratrice (Auto Confirm User). Le tout premier compte devient automatiquement administratrice générale.
+3. **Authentication**, **Users**, **Add user** : créer le compte de l'administratrice (Auto Confirm User). Sur la base d'Anaïs, un compte créé à la main rejoint Zwald tant qu'elle est la seule organisation, puis se règle dans **Administration**. Sur une base neuve (sans `donnees-ztp-depart.sql`), la migration 42 ne crée aucune organisation et un compte n'est rattaché à rien : créer celui de l'éditeur, puis `update profils set plateforme = true where email = '…';` dans **SQL Editor**. Il crée ensuite chaque client depuis l'écran **Clients**.
 4. Renseigner l'URL du projet et la clé `anon public` dans `src/gestion/js/config.mjs`, puis publier.
 
 ## Mise à jour d'une base déjà installée
@@ -64,6 +64,14 @@ Tout se fait dans l'outil, sans ouvrir Supabase (lot D, 17.11.2026), une fois la
 
 - **Mot de passe oublié ?** sur l'écran de connexion : Supabase envoie un e-mail avec un lien. Il faut que l'envoi d'e-mails de Supabase soit réglé (**Authentication**, **Emails**, **SMTP Settings**, par exemple avec le compte Infomaniak) : le serveur d'envoi intégré de Supabase n'écrit qu'aux membres de l'équipe du projet, quelques fois par heure. Sans réglage, l'administratrice crée le lien dans **Gérer l'accès** et l'envoie par WhatsApp.
 - **Mon compte** (le nom en bas du menu, ou dans « Plus » sur téléphone ; l'icône en haut de l'écran simple de l'assistante) est ouvert à tous : langue de l'outil, **Changer mon mot de passe** (l'actuel est demandé), **Déconnecter tous mes appareils**, et la marche à suivre pour un téléphone perdu.
+
+## Mise en route d'un client du logiciel
+
+Pendant l'appel, avec le compte éditeur (`profils.plateforme`), écran **Clients**, **Nouveau client** : nom de l'organisation, type d'activité (voyages sur mesure, excursions, transferts), devise, fuseau, langue, nom et e-mail de l'administrateur.
+L'outil crée le compte et l'organisation (fonction `invitation`, action `creer_client`), puis la première entreprise au nom de l'organisation (fonction `installer_entreprise`, migration 45) : réglages du modèle en anglais, messages types, moyens de paiement sans TWINT ni PostFinance, trois rôles, catalogue d'exemple sans prix pour un travel planner. Rien ne vient de Zwald : les données de départ sont dans `src/gestion/js/modeles-metier.mjs` (`departModele`), la même source que la démo et l'écran « Nouvelle entreprise ».
+Le lien rendu s'envoie au client. Il choisit son mot de passe et arrive sur l'accueil de son entreprise, qui lui dit ce qui manque (adresse, pied de page, paiement, conditions). L'éditeur ne voit ensuite aucune de ses données. Il ne peut installer ni produire de lien que chez un client neuf : organisation active, sans entreprise pour l'installation, dont personne ne s'est encore connecté. Tant que c'est le cas, **Reprendre** dans la liste des clients installe l'entreprise qui manque et produit un nouveau lien pour la première administratrice (fonction `invitation`, action `reprendre_client`). Le lien s'envoie au client sans l'ouvrir soi-même : il connecte à son compte.
+Les taux des équivalents indicatifs partent vides (base : la devise du client) : aucun document ne propose de conversion tant qu'ils ne sont pas remplis dans **Réglages**.
+Contrôle sur un Postgres en mémoire : `docs/gestion/verif-mise-en-route.mjs`.
 
 ## Installer la fonction `invitation`
 
@@ -197,6 +205,7 @@ Le tableau des analyses ne compte que les dossiers qui ont une facture, et l'anc
 39. Écart soldé hors de l'encaissé (17.11.2026) : `migration-39-ecart-hors-encaisse.sql` (`tableau_analytique` compte l'écart à part dans `ecart_par_mois`). Contrôle `verif-analyses.mjs`.
 40. Bandeau du site réservé aux réglages (17.11.2026) : `migration-40-bandeau-reglages.sql`. Créer, modifier, éteindre ou supprimer un bandeau demande en plus le droit « Modifier les réglages de l'entreprise » (Administrateur) : Mook ne change plus les bandeaux, elle les voit toujours. Les demandes du site ne changent pas. Ne dépend que de la 30. Contrôle `verif-site.mjs`.
 41. Numéro WhatsApp des demandes du site (17.11.2026) : `migration-41-demande-whatsapp.sql` (colonnes `telephone` au format E.164 et `telephone_saisi`, nom complet à 120 caractères), puis redéployer `demande-site`, puis seulement publier la nouvelle feuille du site. Ne modifie aucune donnée. Ne dépend que de la 30. Contrôle `verif-site.mjs`.
+45. Mise en route d'un client du logiciel (18.11.2026) : `migration-45-mise-en-route.sql` (une fonction `installer_entreprise`, réservée à l'éditeur et à une organisation sans entreprise ; ne modifie aucune donnée). À exécuter après la 42, avant de publier la version dont l'écran **Nouveau client** demande le type d'activité et la devise.
 Ordre de grandeur : confortable jusqu'à quelques dizaines de milliers de dossiers et de clients. Au-delà, il faudra passer les listes en pagination côté base (la recherche de client y est déjà préparée). Le résumé suit le droit « voir les montants » : sans ce droit, les totaux d'un dossier ne sont pas lisibles.
 
 ## À savoir
@@ -204,4 +213,4 @@ Ordre de grandeur : confortable jusqu'à quelques dizaines de milliers de dossie
 - Un projet Supabase gratuit peut être mis en pause après une semaine sans activité. Il se réactive depuis le tableau de bord Supabase.
 - Le PDF se génère par l'impression du navigateur : choisir « Enregistrer au format PDF ». Le nom de fichier est déjà rempli.
 - Import de l'historique Zwald (`historique-complet.json`) : choisir l'entreprise **Zwald Travel Planner** dans le menu, puis **Réglages**, **Sauvegarde**, **Restaurer ou importer**. L'import va dans l'entreprise active.
-- Le fichier `schema.sql` et la migration contiennent les coordonnées bancaires : ne pas les publier.
+- Le dépôt est public. `donnees-ztp-depart.sql` ne contient que des coordonnées déjà publiques de ZTP (adresse, téléphone, e-mail, pseudo Wise des factures). Aucune donnée privée n'y entre : ni IBAN, ni nets de partenaires, ni clients. Ces données se saisissent dans l'outil. `schema.sql` ne contient aucune donnée.

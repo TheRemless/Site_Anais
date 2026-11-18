@@ -42,9 +42,9 @@ export function messageClient(r, cle = "confirmation", { surEnvoi = null } = {})
   if (modeTaxi() && cle !== "avis" && !(reglages().messages || []).some((m) => m.cle === cle)) cle = "confirmation";
   // Les clients de Secret et de Taxi reçoivent tout en anglais (d'après le mode de l'entreprise) : le message est proposé en anglais aussi.
   const langue = langueClient(reglages());
-  // Trajet vers ou depuis Langkawi : la confirmation et le rappel portent la note du passeport et du check-in (en anglais, comme les vouchers).
+  // Trajet vers ou depuis une destination à passeport (réglages) : la confirmation et le rappel portent la note du passeport et du check-in (en anglais, comme les vouchers).
   const trajet = r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) : null;
-  const suite = langue === "en" && (cle === "confirmation" || cle === "rappel") ? notePasseport({ de: trajet && trajet.de, vers: trajet && trajet.vers, libelle: r.libelle, compagnie: nomPartenaire(r.partenaire_id) }) : "";
+  const suite = langue === "en" && (cle === "confirmation" || cle === "rappel") ? notePasseport({ de: trajet && trajet.de, vers: trajet && trajet.vers, libelle: r.libelle, partenaire: partenaireDe(r.partenaire_id), destinations: reglages().destinations_passeport }) : "";
   ouvrirMessage({ titre: tr("Message à {nomClient}", { nomClient: nomClient(c) }), pour: "client", cle, langue, telephone: c.telephone || "", surEnvoi, suite, vars: variablesMessage({ reservation: r, client: c, dossier: dossierDe(r) || {}, partenaire: partenaireDe(r.partenaire_id) || {}, entreprise: entreprise(), langue }) });
 }
 
@@ -162,10 +162,10 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
   const e = ecart && r.statut !== "annule" ? ecart(r) : null;
   const cc = r.statut !== "annule" && r.paye_sur_place ? commissionARecalculer(r) : null;
   const er = r.statut !== "annule" && r.paye_sur_place ? ecartCommissionRecue(r) : null;
-  // Bundhaya se paie d'avance : à reverser au prestataire avant la veille du départ (traversées qui ne partent pas de Koh Lanta).
+  // Partenaire payé d'avance (case de sa fiche) : à reverser au prestataire avant la veille du départ, sauf départ d'un lieu exclu sur la fiche.
   const trajetBateau = r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) : null;
   const enCours = r.statut !== "annule" && locationEnCours(r, aujourdhui());
-  const avantVeille = alerteAvantVeille(r, { partenaire: nomPartenaire(r.partenaire_id), trajet: trajetBateau, paye: !!(n && n.net_prevu !== null && n.net_prevu !== undefined && Number(n.net_paye || 0) >= Number(n.net_prevu)) });
+  const avantVeille = alerteAvantVeille(r, { partenaire: partenaireDe(r.partenaire_id), trajet: trajetBateau, paye: !!(n && n.net_prevu !== null && n.net_prevu !== undefined && Number(n.net_paye || 0) >= Number(n.net_prevu)) });
   // Un seul geste principal par carte (l'étape suivante) ; le reste est dans le menu « … ».
   const gestes = ecrit ? gestesPrestataire(r, { apres }) : { faire: {} };
   // Le geste « Envoyer le voucher » n'existe qu'en excursions et en taxi : ZTP n'a pas de voucher.
@@ -209,7 +209,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
         ? h("div", { class: "ecart-facture", role: "status" }, tr("La ligne de cette réservation a été retirée du document."))
         : h("div", { class: "ecart-facture", role: "status" }, h("ul", null, e.champs.map((c) => h("li", null, texteEcart(c, ((etat.db.documents.find((x) => x.dossier_id === r.dossier_id && x.type === "facture") || {}).contenu || {}).devise || reglages().devise || "")))), ecrit ? h("div", { class: "actions gauche" }, h("button", { class: "secondaire petit", type: "button", onclick: () => aligner(r, e, apres) }, tr("Aligner sur la facture")), peut("documents.ecrire") && e.champs.length ? h("button", { class: "secondaire petit", type: "button", onclick: () => alignerFacture(r, e, apres) }, tr("Mettre la facture comme la réservation")) : null) : null),
     voucherModifie ? h("div", { class: "ecart-facture", role: "status" }, modeTaxi() ? tr("Booking confirmation modifiée depuis l'envoi du {date} : renvoyez-la au client.", { date: formatDate(vx.envoi.le) }) : tr("Voucher modifié depuis l'envoi du {date} : renvoyez-le au client.", { date: formatDate(vx.envoi.le) })) : null,
-    avantVeille ? h("div", { class: "ecart-facture", role: "status" }, tr("À payer au prestataire avant le {date} (la veille du départ) : Bundhaya peut annuler si ce n'est pas payé.", { date: formatDate(avantVeille.avant) })) : null,
+    avantVeille ? h("div", { class: "ecart-facture", role: "status" }, tr("À payer au prestataire avant le {date} (la veille du départ) : {partenaire} peut annuler si ce n'est pas payé.", { date: formatDate(avantVeille.avant), partenaire: nomPartenaire(r.partenaire_id) })) : null,
     er ? h("div", { class: "ecart-facture", role: "status" }, tr("Commission reçue {recue} (prévue {prevue}), mais la règle du partenaire donne {attendue}. Les montants reçus ne sont pas modifiés : vérifiez le net du tarif ou la règle.", { recue: prix(er.recue === null ? er.prevue : er.recue), prevue: prix(er.prevue), attendue: prix(er.attendue) })) : null,
     cc ? h("div", { class: "recalcul-commission", role: "status" }, h("span", null, cc.avant === null ? tr("Commission prévue : aucune. La règle du partenaire donne {apres}.", { apres: prix(cc.apres) }) : tr("Commission prévue : {avant}. La règle du partenaire donne {apres}.", { avant: prix(cc.avant), apres: prix(cc.apres) })), h("button", { class: "secondaire petit", type: "button", onclick: () => recalculerUneCommission(r, apres) }, tr("Recalculer la commission"))) : null,
     // Net ou commission manquants : un champ et Enregistrer, sans ouvrir la fiche (17.11.2026). Quand la règle du partenaire donne la commission,

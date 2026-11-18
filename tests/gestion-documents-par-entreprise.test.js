@@ -15,7 +15,7 @@ test("nom du fichier du voucher : « Booking confirmation » en taxi, « Voucher
 test("message joint au voucher : le modèle « confirmation » en anglais de l'entreprise, le texte écrit en dur seulement en secours", () => {
   const taxi = messagesDefautPour({ fonctionnement: "taxi" });
   const gabaritTaxi = gabaritConfirmationVoucher([], taxi);
-  assert.match(gabaritTaxi, /Thank you for choosing VIP TAXI LANTA/, "Taxi : taxi-confirmation-en");
+  assert.match(gabaritTaxi, /Thank you for choosing \{entreprise\}/, "Taxi : taxi-confirmation-en (la marque vient du nom de l'entreprise, migration 44)");
   assert.equal(messageVoucher({ pour: "client", prenom: "Tom", gabarit: gabaritTaxi }), gabaritTaxi.trim());
 
   // Un modèle propre à l'entreprise passe avant le modèle par défaut, et ses variables sont remplies.

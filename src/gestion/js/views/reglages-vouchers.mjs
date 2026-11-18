@@ -3,8 +3,9 @@
 // en défaut), et pour Taxi la photo du bandeau, le chauffeur des courses et la fenêtre des commissions à demander.
 import { h, champ } from "../ui.mjs";
 import { etat } from "../etat.mjs";
-import { tr, N_ } from "../i18n.mjs";
-import { GROUPES_VOUCHER, GROUPES_BOOKING, GROUPES_BOOKING_SECRET, textesAEnregistrer } from "../textes-voucher.mjs";
+import { tr, N_, langueActive } from "../i18n.mjs";
+import { libelleLicence, responsableDe, voyelle } from "../noms-calc.mjs";
+import { GROUPES_VOUCHER, GROUPES_BOOKING, GROUPES_BOOKING_SECRET, textesAEnregistrer, textesVoucher } from "../textes-voucher.mjs";
 
 // Secret (18.11.2026) : sa Booking confirmation des transferts payés au chauffeur reprend le titre et les rubriques de celle de Taxi (sans
 // « (all fees included) », que son modèle n'imprime pas) et a ses propres textes.
@@ -13,6 +14,22 @@ const groupesBookingSecret = () => [
   ...GROUPES_BOOKING_SECRET,
 ];
 import { chauffeurAChoisir, partenaireDeTaxi } from "../voucher-rapide-calc.mjs";
+
+// Le champ du WhatsApp qui reçoit les vouchers de l'assistante (clé historique `voucher.whatsapp_anais`), au nom de la personne responsable.
+function whatsappResponsable(texte, prenom) {
+  const nom = prenom || tr("la personne responsable");
+  const libelle = voyelle(nom) ? tr("WhatsApp d'{responsable} (reçoit les vouchers de l'assistante)", { responsable: nom }) : tr("WhatsApp de {responsable} (reçoit les vouchers de l'assistante)", { responsable: nom });
+  return texte(libelle, "voucher.whatsapp_anais", { type: "tel", placeholder: "+66 …", aide: tr("Avec l'indicatif. Sur ordinateur, l'image est copiée et cette conversation s'ouvre ; sur téléphone, un bouton ouvre la conversation après l'envoi de l'image. Vide : l'assistante choisit {responsable} dans WhatsApp.", { responsable: nom }) });
+}
+
+// « Numéro de licence TAT » : le libellé de licence de l'entreprise (migration 44), « Numéro de licence » sans libellé.
+export function numeroLicenceDe(r) {
+  const en = langueActive() === "en";
+  const l = libelleLicence((r && r.emetteur) || {}, en);
+  return tr("Numéro de {licence}", { licence: en ? l : l.charAt(0).toLowerCase() + l.slice(1) });
+}
+// Le prénom de la personne responsable dans un libellé : « WhatsApp d'Anaïs », « WhatsApp de Mook ».
+const responsableReglages = (r) => responsableDe(r, { profils: etat.brut.profils || [], membres: etat.brut.membres || [], roles: etat.brut.roles || [], entiteId: etat.entiteId }).prenom;
 
 // `r` : les réglages en cours de modification. `texte`, `image` : les champs liés à un chemin des réglages (reglages.mjs).
 // `marque()` : signale une modification. `choixApercuVoucher` : le menu du modèle montré dans l'aperçu.
@@ -46,16 +63,16 @@ export function sectionVouchers({ r, taxi, texte, image, marque, choixApercuVouc
     null,
     h("legend", null, taxi ? tr("Booking confirmation") : tr("Vouchers")),
     h("p", { class: "aide" }, tr("Les vouchers sont en anglais. Un champ vide reprend la valeur de l'onglet Entreprise (nom, sous-titre, adresse, téléphone) ; le logo est celui de l'onglet Apparence. L'aperçu à droite suit vos modifications.")),
-    h("div", { class: "grille-form" }, texte(N_("Nom affiché"), "voucher.nom", { placeholder: r.emetteur.nom }), texte(N_("Sous-titre"), "voucher.sous_titre", { placeholder: r.emetteur.sous_titre || "" }), taxi ? null : texte(N_("Numéro de licence TAT"), "voucher.licence", { aide: tr("Son intitulé (« TAT licence ») se change dans « Textes du voucher ».") }), texte(N_("WhatsApp affiché"), "voucher.whatsapp", { placeholder: r.emetteur.telephone }), texte(N_("E-mail affiché"), "voucher.email", { type: "email" })),
+    h("div", { class: "grille-form" }, texte(N_("Nom affiché"), "voucher.nom", { placeholder: r.emetteur.nom }), texte(N_("Sous-titre"), "voucher.sous_titre", { placeholder: r.emetteur.sous_titre || "" }), taxi ? null : texte(numeroLicenceDe(r), "voucher.licence", { aide: tr("Son intitulé (« {intitule} ») se change dans « Textes du voucher ».", { intitule: textesVoucher(r)("licence") }) }), texte(N_("WhatsApp affiché"), "voucher.whatsapp", { placeholder: r.emetteur.telephone }), texte(N_("E-mail affiché"), "voucher.email", { type: "email" })),
     texte(N_("Adresse sur une ligne"), "voucher.adresse", { placeholder: (r.emetteur.adresse || "").split("\n").join(", ") }),
     // Taxi : l'assistante envoie les vouchers de l'écran « Nouveau voucher » à Anaïs, qui les transmet au client.
-    taxi ? texte(N_("WhatsApp d'Anaïs (reçoit les vouchers de l'assistante)"), "voucher.whatsapp_anais", { type: "tel", placeholder: "+66 …", aide: tr("Avec l'indicatif. Sur ordinateur, l'image est copiée et cette conversation s'ouvre ; sur téléphone, un bouton ouvre la conversation après l'envoi de l'image. Vide : l'assistante choisit Anaïs dans WhatsApp.") }) : null,
+    taxi ? whatsappResponsable(texte, responsableReglages(r)) : null,
     // La Booking confirmation de Taxi a un seul modèle : ni choix de modèle, ni textes de fin (ses textes sont dans le bloc des textes).
     taxi ? null : champ(tr("Modèle de l'aperçu"), choixApercuVoucher),
     taxi ? null : texte(N_("Texte de fin"), "voucher.merci", { multi: true, rows: 2, aide: tr("{entreprise} est remplacé par le nom affiché.") }),
     taxi ? null : texte(N_("Texte de fin des vouchers de transfert"), "voucher.merci_transfert", { multi: true, rows: 2 }),
     taxi ? null : texte(N_("Note des vouchers de transfert"), "voucher.note_transfert", { multi: true, rows: 2 }),
-    taxi ? image(N_("Photo du bandeau"), "voucher.bandeau", { maxPx: 1400, aide: tr("En haut de la Booking confirmation. Sans photo, celle du modèle d'Anaïs.") }) : null
+    taxi ? image(N_("Photo du bandeau"), "voucher.bandeau", { maxPx: 1400, aide: tr("En haut de la Booking confirmation. Sans photo, celle du modèle par défaut.") }) : null
   );
 
   return h("div", null, entete, taxi ? blocCourses({ r, marque }) : null, blocTextes(taxi ? GROUPES_BOOKING : [...GROUPES_VOUCHER, ...groupesBookingSecret()]));

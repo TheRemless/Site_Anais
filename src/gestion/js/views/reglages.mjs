@@ -1,7 +1,7 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
 import { modulesReglables, moduleAllume, moduleDe } from "../modules.mjs";
 import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
-import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages } from "../etat.mjs";
+import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages, equipe } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
 import { sectionVouchers } from "./reglages-vouchers.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
@@ -18,8 +18,11 @@ import { etatRappels, heureDepart } from "../rappels-etat.mjs";
 import { reglagesFid } from "../fiduciaire-calc.mjs";
 // Lot D (équipe, réglages, messages) : historique, archives, moyens de paiement, textes thaïs de l'écran de Mook.
 import { groupesModifies, nomGroupe, archiverVariante, reactiverVariante, variantesActives, identifiantMoyen } from "../reglages-calc.mjs";
-import { ecransThaiPour, texteValide, variablesDe } from "../textes-thai.mjs";
-import { VERSION_SAUVEGARDE, pourSauvegarde, verifierSauvegarde, absentsDeLaSauvegarde, reservationsPerdantLeurPrestataire } from "../sauvegarde.mjs";
+import { ecransThaiPour, texteValide, variablesDe, prenomThai } from "../textes-thai.mjs";
+// Migration 44 : la personne responsable, le libellé de licence et la voix de l'assistant viennent des réglages, plus du code.
+import { responsableDe, remplirResponsable, prenomDe, administrateursDe } from "../noms-calc.mjs";
+import { numeroLicenceDe } from "./reglages-vouchers.mjs";
+import { VERSION_SAUVEGARDE, pourSauvegarde, verifierSauvegarde, absentsDeLaSauvegarde, reservationsPerdantLeurPrestataire, fusionnerPartenairesImport } from "../sauvegarde.mjs";
 
 // Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
@@ -96,6 +99,8 @@ async function importer(fichier) {
     // Les tables de nets n'ont pas de date de création : une sauvegarde ou un import plus ancien peut en porter une.
     const SANS_DATE = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
     for (const t of TABLES) rows[t] = pourSauvegarde(t, data[t]).map(({ created_at, ...r }) => ({ ...r, ...(SANS_DATE.includes(t) ? {} : { created_at }), entite_id: etat.entiteId }));
+    // Règles des partenaires (migration 43) : un fichier qui ne les porte pas n'efface pas celles de la base.
+    rows.partenaires = fusionnerPartenairesImport(rows.partenaires, etat.db.partenaires);
     await etat.store.importer(rows);
     // L'import a réussi : seulement maintenant on retire ce que le fichier ne contient plus. Une erreur plus haut n'a rien supprimé.
     if (remplace) await etat.store.supprimerAbsents(etat.entiteId, absents);
@@ -111,6 +116,51 @@ async function importer(fichier) {
 
 // ---- Corbeille des dossiers supprimés ------------------------------------------------------------------------
 // Un dossier supprimé reste récupérable 90 jours (migration 15) avec ses documents, paiements, réservations et tâches.
+// Réglages des règles de destination (migration 43). `r.destinations_passeport` : [{ lieux, mentions, note_en, note_fr }] ;
+// `r.compagnies` : noms que « par X » traduit en « by X » sur les vouchers, en plus des partenaires.
+const versListe = (texte) => String(texte || "").split(",").map((x) => x.trim()).filter(Boolean);
+function blocDestinations(r, marque, uid) {
+  r.destinations_passeport = Array.isArray(r.destinations_passeport) ? r.destinations_passeport : [];
+  const zone = h("div", { class: "destinations-passeport" });
+  const dessiner = () => {
+    zone.replaceChildren(
+      ...[...r.destinations_passeport.map((d, i) => {
+        const maj = (cle, valeur) => {
+          r.destinations_passeport[i] = { ...r.destinations_passeport[i], [cle]: valeur };
+          marque();
+        };
+        const lieux = h("input", { id: uid(), value: (d.lieux || []).join(", "), placeholder: tr("Lieux séparés par des virgules"), oninput: (e) => maj("lieux", versListe(e.target.value)) });
+        const mentions = h("input", { id: uid(), value: (d.mentions || []).join(", "), placeholder: tr("Mots séparés par des virgules"), oninput: (e) => maj("mentions", versListe(e.target.value)) });
+        const noteFr = h("textarea", { id: uid(), rows: 3, oninput: (e) => maj("note_fr", e.target.value) });
+        noteFr.value = d.note_fr || "";
+        const noteEn = h("textarea", { id: uid(), rows: 3, lang: "en", oninput: (e) => maj("note_en", e.target.value) });
+        noteEn.value = d.note_en || "";
+        const retirer = h("button", { class: "secondaire petit", type: "button", onclick: () => { r.destinations_passeport.splice(i, 1); marque(); dessiner(); } }, tr("Retirer cette destination"));
+        return h(
+          "div",
+          { class: "destination-passeport" },
+          h("div", { class: "grille-form" }, champ(tr("Départ ou arrivée"), lieux, tr("La consigne de check-in « passeport » de la compagnie s'imprime pour une ligne qui part de ces lieux ou y arrive.")), champ(tr("Autres mots du libellé"), mentions, tr("Ajoutent seulement la note au client, par exemple le nom du pays."))),
+          h("div", { class: "grille-form" }, champ(tr("Note au client (français)"), noteFr), champ(tr("Note au client (anglais)"), noteEn, tr("Vouchers, confirmations, rappels et réponses en anglais."))),
+          h("div", { class: "actions gauche" }, retirer)
+        );
+      }),
+      r.destinations_passeport.length ? null : h("p", { class: "vide-court" }, tr("Aucune destination à passeport."))].filter(Boolean)
+    );
+  };
+  dessiner();
+  const ajouter = h("button", { class: "secondaire petit", type: "button", onclick: () => { r.destinations_passeport.push({ lieux: [], mentions: [], note_fr: "", note_en: "" }); marque(); dessiner(); zone.querySelector(".destination-passeport:last-of-type input")?.focus(); } }, tr("Ajouter une destination"));
+  const compagnies = h("input", { id: uid(), value: (r.compagnies || []).join(", "), placeholder: tr("Noms séparés par des virgules"), oninput: (e) => ((r.compagnies = versListe(e.target.value)), marque()) });
+  return h(
+    "fieldset",
+    null,
+    h("legend", null, tr("Destinations à passeport")),
+    h("p", { class: "aide" }, tr("Un trajet vers ou depuis une de ces destinations porte la note au client et la consigne de check-in « passeport » de la compagnie (fiche du partenaire).")),
+    zone,
+    h("div", { class: "actions gauche" }, ajouter),
+    champ(tr("Compagnies citées dans les libellés"), compagnies, tr("« par X » devient « by X » sur les vouchers. Les noms des partenaires sont déjà connus : ajoutez seulement les autres compagnies."))
+  );
+}
+
 function sectionCorbeille() {
   const liste = h("div", null, h("p", { class: "aide" }, tr("Chargement…")));
   const dessiner = async () => {
@@ -492,13 +542,60 @@ export function vueReglages() {
     });
   }
 
+  // ---- Personne responsable (migration 44) ----
+  // Son prénom remplace celui d'Anaïs dans les textes de l'outil : écran de l'assistante, fiduciaire, WhatsApp qui reçoit les vouchers.
+  // Par défaut, la première administratrice de l'entreprise.
+  const donneesEquipe = () => ({ profils: etat.brut.profils || [], membres: etat.brut.membres || [], roles: etat.brut.roles || [], entiteId: etat.entiteId });
+  const responsableIci = () => responsableDe(r, donneesEquipe());
+  const numeroLicence = () => numeroLicenceDe(r);
+  function blocResponsable() {
+    const choix = h("select", { id: "responsable-qui" });
+    const prenom = h("input", { id: "responsable-prenom", autocomplete: "off" });
+    const prenomTh = h("input", { id: "responsable-prenom-th", lang: "th", autocomplete: "off" });
+    const ecrire_ = () => {
+      const user_id = choix.value || "";
+      r.responsable = { ...(r.responsable || {}), user_id, prenom: prenom.value.trim(), prenom_th: prenomTh.value.trim() };
+      marque();
+    };
+    let equipeLue = [];
+    const remplirChoix = (equipe) => {
+      equipeLue = equipe;
+      const premier = administrateursDe(donneesEquipe())[0];
+      const auto = premier ? tr("Automatique : {nom}", { nom: prenomDe(premier) }) : tr("Automatique : la première administratrice");
+      choix.replaceChildren(h("option", { value: "" }, auto), ...equipe.map((p) => h("option", { value: p.user_id }, p.nom || p.email || p.user_id)));
+      choix.value = (r.responsable && r.responsable.user_id) || "";
+    };
+    remplirChoix([]);
+    equipe().then((liste) => remplirChoix(liste || [])).catch(() => {});
+    const actuel = r.responsable || {};
+    prenom.value = actuel.prenom || "";
+    prenomTh.value = actuel.prenom_th || "";
+    prenom.placeholder = responsableIci().prenom || "";
+    choix.addEventListener("change", () => {
+      // Le prénom vient de equipe_de : l'administration d'une entreprise ne lit pas tous les profils (RLS).
+      const p = [...equipeLue, ...(etat.brut.profils || [])].find((x) => x.user_id === choix.value);
+      prenom.value = p ? prenomDe(p) : "";
+      prenomTh.value = "";
+      ecrire_();
+    });
+    prenom.addEventListener("input", ecrire_);
+    prenomTh.addEventListener("input", ecrire_);
+    return h(
+      "fieldset",
+      null,
+      h("legend", null, tr("Personne responsable")),
+      h("p", { class: "aide" }, tr("Son prénom apparaît dans les textes de l'outil : « prévenez … », le WhatsApp qui reçoit les vouchers de l'assistante.")),
+      h("div", { class: "grille-form" }, champ(tr("Dans l'équipe"), choix), champ(tr("Prénom affiché"), prenom), ecransThai.length ? champ(tr("Prénom écrit en thaï (facultatif)"), prenomTh, tr("Pour l'écran en thaï de l'assistante. Vide : le prénom tel quel.")) : null)
+    );
+  }
+
   // ---- Textes thaïs de l'écran de Mook ----
   const ecransThai = ecransThaiPour(fon);
   const blocTextesThai = (ecran) => {
     const lignes = ecran.lignes.map((l) => {
       const actuel = ((r.textes_thai || {})[ecran.id] || {})[l.cle] || "";
       const alerte = h("p", { class: "erreur-form", role: "status" });
-      const champThai = h("textarea", { id: `th-${ecran.id}-${l.cle}`, rows: 1, lang: "th", placeholder: l.depart, "aria-label": tr("Texte thaï : {fr}", { fr: l.fr }) });
+      const champThai = h("textarea", { id: `th-${ecran.id}-${l.cle}`, rows: 1, lang: "th", placeholder: remplirResponsable(l.depart, ecran.id === "fiduciaire" ? prenomThai(responsableIci()) : responsableIci(), { thai: true }), "aria-label": tr("Texte thaï : {fr}", { fr: remplirResponsable(l.fr, responsableIci()) }) });
       champThai.value = actuel;
       const remettre = h("button", { class: "lien petit-lien", type: "button", onclick: () => ((champThai.value = ""), enregistrer(), maj(), marque()) }, tr("Texte de départ"));
       const enregistrer = () => {
@@ -519,7 +616,7 @@ export function vueReglages() {
       };
       champThai.addEventListener("input", () => (enregistrer(), maj(), marque()));
       maj();
-      return h("div", { class: "ligne-thai" }, h("p", { class: "ligne-thai-fr" }, l.fr || l.cle), h("div", null, champThai, remettre, alerte));
+      return h("div", { class: "ligne-thai" }, h("p", { class: "ligne-thai-fr" }, remplirResponsable(l.fr, responsableIci()) || l.cle), h("div", null, champThai, remettre, alerte));
     });
     return h("fieldset", null, h("legend", null, tr(ecran.nom)), h("div", { class: "grille-thai" }, ...lignes));
   };
@@ -591,7 +688,9 @@ export function vueReglages() {
     entreprise: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, tr("Identité sur les documents")), texte(N_("Nom de l'entreprise"), "emetteur.nom"), texte(N_("Sous-titre sous le nom (facultatif)"), "emetteur.sous_titre", { aide: tr("Par exemple « by Nom de la société mère ».") }), texte(N_("Adresse"), "emetteur.adresse", { multi: true, rows: 3 }), texte(N_("Téléphone affiché sous l'adresse"), "emetteur.telephone"), taxi ? null : texte(N_("Numéro de licence TAT"), "emetteur.licence", { aide: ztp ? tr("Affiché sous l'adresse sur les devis et factures.") : tr("Affiché sous l'adresse sur les factures et sur les vouchers (sauf si le bloc Vouchers a le sien).") })),
+      h("fieldset", null, h("legend", null, tr("Identité sur les documents")), texte(N_("Nom de l'entreprise"), "emetteur.nom"), texte(N_("Sous-titre sous le nom (facultatif)"), "emetteur.sous_titre", { aide: tr("Par exemple « by Nom de la société mère ».") }), texte(N_("Adresse"), "emetteur.adresse", { multi: true, rows: 3 }), texte(N_("Téléphone affiché sous l'adresse"), "emetteur.telephone"), taxi ? null : texte(numeroLicence(), "emetteur.licence", { aide: ztp ? tr("Affiché sous l'adresse sur les devis et factures.") : tr("Affiché sous l'adresse sur les factures et sur les vouchers (sauf si le bloc Vouchers a le sien).") })),
+      taxi ? null : h("fieldset", null, h("legend", null, tr("Intitulé de la licence")), h("div", { class: "grille-form" }, texte(N_("En français"), "emetteur.licence_libelle", { placeholder: "Licence" }), texte(N_("En anglais"), "emetteur.licence_libelle_en", { placeholder: "Licence" })), h("p", { class: "aide" }, tr("Imprimé devant le numéro de licence sur les devis et factures. Vide : « Licence »."))),
+      blocResponsable(),
       // L'avis Google se demande par les messages et les cartes « Hier » de l'accueil : Secret et Taxi seulement.
       ztp ? null : h("fieldset", null, h("legend", null, tr("Avis des clients")), texte(N_("Lien d'avis Google"), "emetteur.lien_avis", { placeholder: "https://g.page/r/…/review", aide: tr("Le message « avis » le met dans le texte (variable {lien_avis}). Les cartes « Hier » de l'accueil proposent de le demander une fois par client.") })),
       h("fieldset", null, h("legend", null, tr("Bloc de contact du pied de page")), texte(N_("Une ligne par information"), "emetteur.contact", { multi: true, rows: 4, aide: tr("Nom de la personne, WhatsApp, e-mail, site… Ce que vous voulez voir en bas de chaque document.") }))
@@ -613,7 +712,9 @@ export function vueReglages() {
       taxi ? null : h("fieldset", null, h("legend", null, tr("Conditions")), ztp ? h("div", { class: "grille-form" }, texte(N_("Acompte demandé (%, 0 si aucun)"), "conditions.acompte_pct", { type: "number" }), texte(N_("Délai de paiement de l'acompte (jours)"), "conditions.delai_jours", { type: "number", aide: tr("Remplace {delai} dans les conditions de paiement.") }), texte(N_("Relancer un devis sans réponse après (jours)"), "conditions.relance_jours", { type: "number", placeholder: "7", aide: tr("0 : jamais de relance. Vide : 7 jours.") }), texte(N_("Solde à relever avant le départ (jours)"), "conditions.solde_jours", { type: "number", placeholder: "30", aide: tr("Tant que le carnet de voyage n'est pas noté envoyé, « À faire » rappelle le solde ce nombre de jours avant le départ. Vide : 30 jours.") })) : texte(N_("Délai de paiement (jours)"), "conditions.delai_jours", { type: "number", aide: tr("Remplace {delai} dans les conditions de paiement des factures.") }), texte(N_("Mention de TVA"), "conditions.tva_mention", { aide: tr("Par exemple « TVA non applicable ». Vide pour ne rien afficher.") }), texte(N_("Mention de TVA en anglais (facultatif)"), "conditions.tva_mention_en", { aide: tr("Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise.") }), texte(N_("Lien des conditions générales"), "conditions.cgv_url", { type: "url" })),
       h("fieldset", null, h("legend", null, tr("Dossiers")), champ(tr("Numérotation"), modeNum), prefixe, chiffres, r.numerotation.mode === "sequence" ? blocProchainNumero(r.numerotation) : null, ...(ztp ? [texte(N_("Nom du champ « pays »"), "dossier.libelle_pays", { aide: tr("Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier.") }), liste(N_("Valeurs proposées, une par ligne"), "listes.pays"), texte(N_("Modèle du titre du document"), "dossier.modele_bandeau", { aide: tr("{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}.") })] : [])),
       // Civilités : formulaire client de ZTP seulement. Devises et moyens de paiement : pas en Taxi (rien n'est payé chez nous).
-      taxi ? null : h("fieldset", null, h("legend", null, tr("Listes")), ztp ? liste(N_("Civilités des clients, une par ligne"), "listes.civilites") : null, liste(N_("Devises proposées pour un document, une par ligne"), "listes.devises", tr("Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs.")), champDevisesNoms(r, marque), champ(tr("Moyens de paiement, un par ligne"), moyens))
+      taxi ? null : h("fieldset", null, h("legend", null, tr("Listes")), ztp ? liste(N_("Civilités des clients, une par ligne"), "listes.civilites") : null, liste(N_("Devises proposées pour un document, une par ligne"), "listes.devises", tr("Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs.")), champDevisesNoms(r, marque), champ(tr("Moyens de paiement, un par ligne"), moyens)),
+      // Destinations à passeport et compagnies citées dans les libellés (migration 43) : excursions seulement, là où partent les billets de bateau.
+      fon === "excursions" ? blocDestinations(r, marque, uid) : null,
     ),
     textes: h(
       "div",
@@ -725,7 +826,11 @@ export function vueReglages() {
         null,
         h("legend", null, tr("Assistant IA")),
         h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre et rédiger la réponse")),
-        h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous."))
+        h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous.")),
+        h("p", { class: "aide" }, tr("Sa voix : comment il écrit les brouillons de réponse. Vide : une voix neutre, sobre et chaleureuse, signée du nom de l'entreprise. {entreprise} est remplacé par le nom de l'entreprise.")),
+        texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: tr("Par exemple « Phuket (Thaïlande) ». Il sert à lire les dates (« demain ») et à situer l'agence.") }),
+        texte(N_("Voix en français"), "assistant_voix.fr", { multi: true, rows: 6 }),
+        texte(N_("Voix en anglais"), "assistant_voix.en", { multi: true, rows: 6 })
       ),
       // Taxi : la fiduciaire n'est plus au menu (décision 5). Elle se rouvre d'ici pour être réactivée un jour (contrôle du 17.11.2026, D10).
       taxi && peut("fiduciaire.gerer") && peut("reglages.ecrire") && !reglagesFid(etat.db.reglages).actif

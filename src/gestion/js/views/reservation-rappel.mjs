@@ -44,7 +44,7 @@ export function blocRappel(r) {
   const regl = reglages();
   const langue = langueClient(regl);
   const lieu = (r.lieu_pickup || "").trim() || (c ? hotelEtChambre(c, r).hotel : "");
-  const texte = texteRappelClient(r, { prenom: c ? c.prenom || nomClient(c) : "", lieu, entreprise: (regl.emetteur && regl.emetteur.nom) || entiteActive().nom, langue, prevoir: langue === "en" ? aPrevoir(r, { prestation, partenaire, trajet }) : [] });
+  const texte = texteRappelClient(r, { prenom: c ? c.prenom || nomClient(c) : "", lieu, entreprise: (regl.emetteur && regl.emetteur.nom) || entiteActive().nom, langue, prevoir: langue === "en" ? aPrevoir(r, { prestation, partenaire, trajet, destinations: regl.destinations_passeport }) : [] });
   const zone = h("textarea", { id: `rappel-${r.id}`, rows: 9, lang: langue });
   zone.value = texte;
   const tel = c ? chiffres(c.telephone).replace(/\D/g, "") : "";
