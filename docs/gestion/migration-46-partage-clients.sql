@@ -107,7 +107,9 @@ create trigger controler_client_dossier before insert or update of client_id, en
 -- sauvegarde qui réécrit entite_id déplacerait la fiche de la source dans la cible.
 create or replace function garder_entite_client() returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  if new.entite_id is distinct from old.entite_id and exists (select 1 from dossiers where client_id = old.id) then
+  -- Les dossiers de la corbeille comptent aussi : restaurés, ils retrouvent leur client (exception de controler_client_dossier).
+  if new.entite_id is distinct from old.entite_id and (exists (select 1 from dossiers where client_id = old.id)
+      or exists (select 1 from corbeille where table_name = 'dossiers' and ligne->>'client_id' = old.id::text)) then
     raise exception 'Ce client a des dossiers : il ne change pas d''entreprise' using errcode = '23503';
   end if;
   return new;

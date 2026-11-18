@@ -183,6 +183,11 @@ ok(supprime.ok && !!enCorbeille, "le dossier supprimé part dans la corbeille");
 const restaure = await essaie(anais, "select restaurer_dossier($1) as id", [enCorbeille.id]);
 ok(restaure.ok && (await un("select client_id from dossiers where id = $1", [aRestaurer])).client_id === ztp, "il se restaure avec sa fiche ZTP, même partage retiré " + (restaure.err || ""));
 await db.query("insert into partages_clients (source_id, cible_id) values ($1, $2)", [Z, S]);
+const seulEnCorbeille = await nouveau(anais, S, "Corbeille");
+const dC = (await dossier(anais, S, seulEnCorbeille)).rows[0].id;
+await essaie(anais, "delete from dossiers where id = $1", [dC]);
+const deplace = await essaie(anais, "update clients set entite_id = $2 where id = $1", [seulEnCorbeille, Z]);
+ok(!deplace.ok, "une fiche dont le seul dossier est dans la corbeille ne change pas d'entreprise (la restauration recréerait un lien sans partage)");
 const faux = await essaie(mook, "insert into dossiers (id, entite_id, ref, client_id) values (gen_random_uuid(), $1, 'X-FAUX', $2)", [S, ztp]);
 ok(!faux.ok, "un dossier neuf (absent de la corbeille) au client ZTP reste refusé à Mook");
 
