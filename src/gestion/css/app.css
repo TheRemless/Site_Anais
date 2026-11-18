@@ -1803,3 +1803,5 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .partage-source { margin: 0; }
 .partage-source legend { font-weight: 600; padding: 0 4px; }
 .partage-source .case { margin-bottom: 10px; }
+.fiche-depuis-dossier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: -8px 0 16px; }
+.fiche-depuis-dossier .lien { min-height: 44px; padding: 0; }

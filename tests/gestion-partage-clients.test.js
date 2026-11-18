@@ -229,3 +229,19 @@ test("migration 46 : clé sur l'identifiant, déclencheur, nom seul, retour en a
   assert.ok(!fs.readdirSync(new URL("../docs/gestion/", import.meta.url)).some((f) => /^migration-\d+-.*retour/.test(f)), "le retour n'est pas pris pour une migration par les contrôles");
   assert.match(fs.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"), /verif-partage-clients/);
 });
+
+test("Modifier le dossier : « Modifier la fiche client » sur place, mêmes droits que la fiche, fiche ZTP signalée (Jérémy, 18.11.2026)", () => {
+  const dossier = source("views/dossier.mjs");
+  const clients = source("views/clients.mjs");
+  // Le bouton suit le client choisi et ouvre la fiche par-dessus la fenêtre du dossier : la saisie du dossier reste.
+  assert.match(dossier, /selecteurClient\(\{ id: "m-client", valeur: d\.client_id, surChangement: \(\) => majFiche\(\) \}\)/);
+  assert.match(dossier, /ouvrirFicheClientModal\(c, \(maj\) => \{\n\s+ficheModifiee = true;\n\s+selClient\.choisirId\(maj\.id \|\| c\.id\);/);
+  assert.match(dossier, /selClient\.noeud,\n\s+blocFiche,/);
+  assert.match(dossier, /blocFiche\.hidden = !peutModifierFiche\(c\);/);
+  assert.match(dossier, /sigleFiche\.textContent = s \? tr\("fiche \{sigle\}", \{ sigle: s \}\) : "";/, "« fiche ZTP » à côté d'une fiche partagée");
+  assert.match(dossier, /\{ ferme: \(\) => ficheModifiee && rafraichir\(\) \}/, "le dossier affiché suit la fiche corrigée, même si on annule la fenêtre du dossier");
+  // Mêmes droits que la fiche client ; une fiche ZTP : l'administration qui l'utilise ; jamais le nom seul de l'assistante.
+  assert.match(clients, /export const peutModifierFiche = \(c\) => !!c && !c\.nom_seul && \(clientEtranger\(c\) \? partageClientsPermis\(c\.entite_id\) : peut\("clients\.ecrire"\)\);/);
+  assert.match(clients, /export function ouvrirFicheClientModal\(client, apres = \(\) => \{\}\) \{\n\s+if \(!peutModifierFiche\(client\)\) return;/);
+  assert.match(clients, /formulaireClient\(client, \(c\) => \{\n\s+fermer\(\);\n\s+apres\(c\);/, "le même formulaire que la fiche : nom, prénom, WhatsApp, e-mail, adresse ou hôtel et chambre, notes");
+});

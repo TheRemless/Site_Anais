@@ -3555,4 +3555,9 @@ export const EN = {
   "(sans réf.)": "(no ref.)",
   "annulé": "cancelled",
   "Fiche partagée par une autre entreprise : un changement se voit des deux côtés.": "Record shared by another business: a change shows on both sides.",
+  "Modifier la fiche client": "Edit client record",
+  "Fiche client ({sigle})": "Client record ({sigle})",
+  "Fiche de {source} : la modifier ici la modifie aussi dans {source}.": "{source} record: changing it here also changes it in {source}.",
+  "fiche {sigle}": "{sigle} record",
+  "Fiche client": "Client record",
 };

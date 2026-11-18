@@ -80,6 +80,29 @@ function formulaireClient(client, apres) {
   );
 }
 
+// Peut-on corriger cette fiche ? Mêmes droits que la fiche client : « clients.ecrire » ; une fiche partagée par une autre entreprise (ZTP),
+// seulement l'administration qui l'utilise ici. Jamais un client dont on ne voit que le nom (l'assistante).
+export const peutModifierFiche = (c) => !!c && !c.nom_seul && (clientEtranger(c) ? partageClientsPermis(c.entite_id) : peut("clients.ecrire"));
+
+// « Modifier la fiche client » depuis un autre écran (Modifier le dossier, 18.11.2026) : la fiche dans une fenêtre par-dessus, l'écran
+// d'en dessous et sa saisie restent. Une fiche ZTP ouverte dans Secret ou Taxi est la fiche unique de ZTP. `apres(client)` après l'enregistrement.
+export function ouvrirFicheClientModal(client, apres = () => {}) {
+  if (!peutModifierFiche(client)) return;
+  const sigle = etiquetteClient(client);
+  const fermer = modal(
+    sigle ? tr("Fiche client ({sigle})", { sigle }) : tr("Fiche client"),
+    h(
+      "div",
+      { class: "modal-corps" },
+      sigle ? h("p", { class: "bandeau-partage", role: "note" }, tr("Fiche de {source} : la modifier ici la modifie aussi dans {source}.", { source: nomEntreprise(client.entite_id) })) : null,
+      formulaireClient(client, (c) => {
+        fermer();
+        apres(c);
+      })
+    )
+  );
+}
+
 // Le lieu de pickup est copié de la fiche client à la création du service : un hôtel ou une chambre changés après coup n'y arrivaient pas.
 async function suivreAdresse(client, adresse) {
   if (!peut("dossiers.ecrire")) return;
