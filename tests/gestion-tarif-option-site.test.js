@@ -98,6 +98,44 @@ test("autres pages à options proches : 4 Islands, Mangroves, longtails privés 
   }
 });
 
+test("options à plusieurs lignes de prix : la ligne choisie sur le site (cours, kart, quad) passe devant, l'enfant suit la même ligne", () => {
+  const P = [
+    t("74a7cce0-0000-4000-8000-000000000001", "p-dive", "Courses", "Advanced Open Water (2 days, 5 dives)", "pp", 14000),
+    t("c17460d1-0000-4000-8000-000000000001", "p-dive", "Courses", "Open Water Diver (18 m, 3 days, 4 dives)", "pp", 14000),
+    t("65a7e434-0000-4000-8000-000000000001", "p-kart", "Electric go-karting", "15 min · Large single seat", "veh", 699),
+    t("8518f7b6-0000-4000-8000-000000000001", "p-kart", "Electric go-karting", "15 min · Small single seat", "veh", 499),
+    t("bc64fa51-0000-4000-8000-000000000001", "p-atv", "ATV", "P2: ATV 1 hour (forest & viewpoint), driver", "pp", 1500),
+    t("6efaea15-0000-4000-8000-000000000001", "p-atv", "ATV", "P2: ATV 1 hour (forest & viewpoint), passenger", "pp", 1300),
+    t("7addd7fd-0000-4000-8000-000000000001", "p-atv", "ATV", "P2: ATV 1 hour (forest & viewpoint), driver child (6-12)", "ch", 1200),
+    t("e3de51b5-0000-4000-8000-000000000001", "p-atv", "ATV", "P2: ATV 1 hour (forest & viewpoint), passenger child (4-12)", "ch", 900),
+  ];
+  // Identifiants inventés : les tarifs se retrouvent par leur libellé, seul à le porter.
+  const ctx = { ...CONTEXTE, prestations: P };
+  const plongee = "Booking request: Scuba diving – Courses\nCourse: Advanced Open Water Diver, 2 days, 5 dives\nDate: Wed 25 Nov 2026\nGuests: 1 adult\nPickup: Lanta Sand Resort\nName: Anna Keller\nEstimated total: 14,000 THB";
+  assert.equal(premiere(plongee, ctx).offre.titre, "Advanced Open Water (2 days, 5 dives)");
+  const kart = "Booking request: Electric go-kart – 15 minutes\nKarts: 1 × Large single seat\nDate: Wed 25 Nov 2026\nPickup: Lanta Sand Resort\nName: Anna Keller\nEstimated total: 699 THB";
+  assert.equal(premiere(kart, ctx).offre.titre, "15 min · Large single seat");
+  const quad = "Booking request: ATV (quad bike) – 1 hour, forest and viewpoint\nRiders and passengers: 2 × Adult passenger\nDate: Wed 25 Nov 2026\nPickup: Lanta Sand Resort\nName: Anna Keller\nEstimated total: 2,600 THB";
+  assert.equal(premiere(quad, ctx).offre.titre, "P2: ATV 1 hour (forest & viewpoint), passenger");
+  // Passager adulte avec un enfant : le tarif enfant est celui du passager, pas celui du pilote.
+  const d = { ...lireMessage(quad, AJD), adultes: 1, enfants: 1, ages: [8] };
+  const [passager] = tarifsDuSite(d, ctx);
+  assert.equal(passager.enfantSite.id, "e3de51b5-0000-4000-8000-000000000001");
+});
+
+test("location : le véhicule cité donne son tarif ; sans véhicule, rien n'est imposé (pas le modèle le plus cher de la liste)", () => {
+  const P = [
+    { ...t("bb013c90-1a2b-4c3d-8e4f-000000000001", "p-rent", "Scooters", "Honda PCX 160", "day", 550), famille: "location" },
+    { ...t("a64e2400-1a2b-4c3d-8e4f-000000000001", "p-rent", "Scooters", "Honda Click 125", "day", 250), famille: "location" },
+  ];
+  const ctx = { ...CONTEXTE, prestations: P };
+  const avec = "Rental request: Scooters and small bikes\nVehicle: Honda PCX 160\nVehicles: 1\nFrom: Wed 25 Nov 2026\nTo: Fri 27 Nov 2026\nName: Anna Keller\nPrice: Honda PCX 160: 550 THB per 24 hours";
+  const d = lireMessage(avec, AJD);
+  assert.deepEqual(tarifsDuSite(d, ctx).map((o) => o.titre), ["Honda PCX 160"]);
+  const sans = lireMessage("Rental request: Scooters and small bikes\nVehicles: 1\nFrom: Wed 25 Nov 2026\nTo: Fri 27 Nov 2026\nName: Anna Keller", AJD);
+  assert.deepEqual(tarifsDuSite(sans, ctx), []);
+});
+
 test("liste de sorties du site : la sortie lue garde le tarif de son option", () => {
   const texte = "Trip list: 2 trips\nGuests: 2 adults, 1 child (age 7)\nPickup: Lanta Sand Resort\nName: Anna Keller\n\nWed 25 Nov 2026\nKoh Rok & Koh Haa – Sunset trip\nEstimated total: 6,800 THB\n\nFri 27 Nov 2026\nKoh Phi Phi – Full-day sunset trip\nEstimated total: 10,700 THB\n\nEstimated total, all trips: 17,500 THB";
   const { offre } = premiere(texte);

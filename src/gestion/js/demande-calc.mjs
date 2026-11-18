@@ -986,7 +986,8 @@ function tarifDeLigne(t, prestations, partenaires) {
 
 // Les offres de l'option cochée, dans l'ordre de la page, avec le tarif enfant de la même option (`enfantSite`). En tête : la ligne citée par
 // le message (cours, karts, véhicule), puis la tranche de groupe qui contient le nombre de personnes (les moins de 4 ans ne comptent pas, comme
-// sur le site). Les tarifs enfant et les suppléments ne se proposent pas seuls.
+// sur le site). Les tarifs enfant et les suppléments ne se proposent pas seuls. Location : seul le véhicule cité par le message impose son tarif
+// (le champ « Model » du site est facultatif) ; sans véhicule reconnu, rien n'est imposé et le recouvrement propose les modèles proches.
 export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartenaire = () => "" } = {}) {
   const trouve = optionDuSite(d);
   if (!trouve || !(trouve.option.tarifs || []).length) return [];
@@ -1000,10 +1001,12 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
     if (LIGNE_ENFANT.test(t.ligne) || LIGNE_A_PART.test(t.ligne)) return;
     const p = tarifDeLigne(t, prestations, partenaires);
     if (!p || p.unite === "ch" || p.unite === "sup" || offres.some((o) => o.id === p.id)) return;
+    const citee = cite.includes(` ${cleTexte(t.ligne)} `);
+    if (d.type === "location" && !citee) return;
     const tranche = trancheGroupe(t.ligne);
     const ligneEnfant = enfants.length === 1 ? enfants[0] : enfants.find((e) => fondLigne(e.ligne) === fondLigne(t.ligne));
     const enfant = ligneEnfant ? tarifDeLigne(ligneEnfant, prestations, partenaires) : null;
-    const score = 10 + (cite.includes(` ${cleTexte(t.ligne)} `) ? 1 : 0) + (tranche && groupe >= tranche[0] && groupe <= tranche[1] ? 0.5 : 0) - i / 1000;
+    const score = 10 + (citee ? 1 : 0) + (tranche && groupe >= tranche[0] && groupe <= tranche[1] ? 0.5 : 0) - i / 1000;
     offres.push({
       genre: "prestation",
       id: p.id,
