@@ -23,6 +23,7 @@ import {
   validerLecture,
   validerRedaction,
   verifierFaits,
+  reglagesAssistant,
 } from "./calc.js";
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
@@ -69,6 +70,8 @@ Deno.serve(async (req) => {
   ]);
   if (regl.error || perms.error || appels.error) return json({ erreur: "base" }, 500);
   const reglages = regl.data ? regl.data.valeur : null;
+  // Voix, lieu et personne responsable de l'entreprise (migration 44).
+  const ra = reglagesAssistant(reglages);
   const limite = Number(Deno.env.get("ASSISTANT_LIMITE_JOUR")) || LIMITE_JOUR_DEFAUT;
   const acces = controlerAcces({ usage, entiteId, permissions: perms.data || [], reglages, appelsDuJour: appels.count || 0, limite });
   if (!acces.ok) return json({ erreur: acces.erreur, ...(acces.manque ? { manque: acces.manque } : {}), ...(acces.limite ? { limite: acces.limite } : {}) }, acces.statut);
@@ -94,7 +97,7 @@ Deno.serve(async (req) => {
     if (ps.error || ts.error || pa.error) return json({ erreur: "base" }, 500);
     const catalogue = construireCatalogue({ prestations: ps.data || [], trajets: ts.data || [], partenaires: pa.data || [] });
     const aujourdhui = dateBangkok();
-    prompt = promptLecture({ entreprise: en.data?.nom || "", catalogue: catalogue.texte, aujourdhui, message });
+    prompt = promptLecture({ entreprise: en.data?.nom || "", catalogue: catalogue.texte, aujourdhui, message, lieu: ra.lieu, responsable: ra.responsable });
     schema = SCHEMA_LECTURE;
     valider = (v) => validerLecture(v, { refs: catalogue.refs, message, aujourdhui });
   } else {
@@ -105,7 +108,7 @@ Deno.serve(async (req) => {
       .filter((m: { pour?: string; langue?: string }) => m.pour === "client" && m.langue === langue)
       .slice(0, 3)
       .map((m: { corps?: string }) => m.corps || "");
-    prompt = promptRedaction({ faits: verif.faits, langue, exemples, taxi: !!reglages && reglages.fonctionnement === "taxi", messageClient: typeof demande.texte === "string" ? demande.texte : "", consigne: typeof demande.consigne === "string" ? demande.consigne : "" });
+    prompt = promptRedaction({ faits: verif.faits, langue, exemples, voix: ra.voix, responsable: ra.responsable, entreprise: (reglages && reglages.emetteur && reglages.emetteur.nom) || "", messageClient: typeof demande.texte === "string" ? demande.texte : "", consigne: typeof demande.consigne === "string" ? demande.consigne : "" });
     schema = SCHEMA_REDACTION;
     valider = (v) => ({ ...validerRedaction(v, verif.faits), langue });
   }

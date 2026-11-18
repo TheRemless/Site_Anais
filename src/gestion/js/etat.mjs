@@ -11,6 +11,7 @@ import { permissionsDans, roleDans } from "./droits.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 import { appliquerTextesThai } from "./textes-thai.mjs";
+import { responsableDe, libelleAdmin } from "./noms-calc.mjs";
 import { entreprisesVoucher } from "./voucher-rapide-calc.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
@@ -198,7 +199,8 @@ function rebatir() {
   etat.db = db;
   // Textes thaïs de l'écran de Mook : ceux de cette entreprise s'ils ont été modifiés dans Réglages, sinon ceux de départ.
   // Voucher sous le logo de Secret : l'écran reste celui de Taxi, avec ses textes.
-  appliquerTextesThai(etat.voucherDepuis ? reglagesDe(etat.voucherDepuis).textes_thai : db.reglages.textes_thai);
+  const idThai = etat.voucherDepuis || etat.entiteId;
+  appliquerTextesThai(etat.voucherDepuis ? reglagesDe(etat.voucherDepuis).textes_thai : db.reglages.textes_thai, responsableEntite(idThai));
   setDevise(db.reglages.devise);
   setMasquerMontants(!peut("finances.voir"));
 }
@@ -233,7 +235,7 @@ export const entitesAnalysables = () =>
     return p.includes("analytics.voir") && p.includes("finances.voir");
   });
 export function roleActif() {
-  if (estSuperAdmin()) return tr("Administratrice générale");
+  if (estSuperAdmin()) return tr(libelleAdmin(organisation()));
   const r = roleDans(contexte(), etat.entiteId);
   return r ? nomRole(r) : null;
 }
@@ -245,8 +247,11 @@ export const nomRole = (r) => (r.systeme ? tr(r.nom) : r.nom);
 export const descriptionRole = (r) => (r.systeme ? tr(r.description) : r.description);
 
 export const reglages = () => etat.db.reglages;
-// Les réglages d'une autre entreprise accessible (le WhatsApp d'Anaïs, réglé dans Taxi, pendant un voucher sous le logo de Secret).
+// Les réglages d'une autre entreprise accessible (le WhatsApp de la personne responsable, réglé dans Taxi, pendant un voucher sous le logo de Secret).
 export const reglagesDe = (id) => completerReglages(etat.brut.reglages[id]);
+// La personne responsable d'une entreprise (migration 44) : { user_id, prenom, prenom_th }, voir noms-calc.mjs.
+export const responsableEntite = (id = etat.entiteId) =>
+  responsableDe(etat.brut && etat.brut.reglages ? etat.brut.reglages[id] : null, { profils: (etat.brut && etat.brut.profils) || [], membres: (etat.brut && etat.brut.membres) || [], roles: (etat.brut && etat.brut.roles) || [], entiteId: id });
 
 // Chaque entreprise choisit ses écrans (Réglages, Écrans) parmi les modules de sa façon de travailler : voir modules.mjs.
 // Un module n'existe que là où il a un sens (Jérémy, 12.11.2026) ; Masquer n'éteint que lui et ce qui en dépend (audit n° 72).

@@ -1,5 +1,6 @@
 // Rendu du devis ou de la facture au format A4. Le même rendu sert à l'aperçu et au PDF.
 // Tout ce qui est propre à une entreprise (textes, logo, couleurs, coordonnées) vient de ses réglages.
+import { libelleLicence } from "./noms-calc.mjs";
 import { totaux, afficherSousTotal, formatMontant, formatDate, equivalents, lignesEquivalents, formatNombre, acompteDu, montantLigne, montantSurPlace } from "./calc.mjs";
 import { h, markup, inline } from "./ui.mjs";
 import { LIBELLES_EN, phraseCgv, conditionsDocument, mentionTva } from "./defauts.mjs";
@@ -152,7 +153,7 @@ export function renderDocument({ type, doc, dossier, client, reglages: reglagesD
         e.sous_titre ? h("span", { class: "sous-titre" }, e.sous_titre.toUpperCase()) : null,
         lignes(e.adresse).map((l) => h("p", null, l)),
         e.telephone ? h("p", null, e.telephone) : null,
-        e.licence ? h("p", { class: "sheet-licence" }, `${enClient ? "TAT licence" : "Licence TAT"}: ${e.licence}`) : null
+        e.licence ? h("p", { class: "sheet-licence" }, `${libelleLicence(e, enClient)}: ${e.licence}`) : null
       ),
       h(
         "div",

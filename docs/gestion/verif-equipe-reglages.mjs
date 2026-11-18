@@ -112,6 +112,8 @@ ok((await db.query("update prestations set prix_vente = 1750 where id = $1 retur
 await db.exec("select set_config('request.jwt.claim.sub', '', false)");
 
 // ---- 3. Historique des réglages -----------------------------------------------------------------------------------------------------
+// Les migrations qui remplissent des réglages (44 : noms et marques) laissent une version ; on part d'un historique vide pour compter.
+await db.exec("delete from reglages_historique");
 const avant = (await un("select valeur from reglages where entite_id = $1", [secret])).valeur;
 ok(passe(await essaie(U.anais, "update reglages set valeur = valeur || '{\"devise\": \"EUR\"}' where entite_id = $1 returning entite_id", [secret])), "l'administratrice enregistre les réglages");
 let hist = await essaie(U.anais, "select valeur, remplace_par from reglages_historique where entite_id = $1 order by remplace_le desc, id desc", [secret]);

@@ -5,6 +5,7 @@
 import { h } from "../ui.mjs";
 import { champsBooking, lignesEnPlus } from "../taxi-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
+import { avecMarque } from "../noms-calc.mjs";
 
 const LOGO_DEFAUT = "assets/logo-vip-taxi.webp";
 
@@ -16,9 +17,11 @@ const BANDEAU_DEFAUT = "assets/taxi-bandeau.webp";
 
 // `regl` : réglages de l'entreprise ; le reste vient de renderVoucher (pickup et dépose déjà déduits de la réservation).
 // `retour` : { programme, duree } pour un retour au point de départ (16.11.2026), sinon null.
-export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", email = "", adresse = "", retour = null }) {
+export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", email = "", adresse = "", retour = null, nomSociete = "" }) {
   const v = regl.voucher || {};
-  const t = textesVoucher(regl);
+  // {ENTREPRISE} : le nom de l'entreprise du voucher en capitales (pied de page, migration 44).
+  const textes = textesVoucher(regl);
+  const t = (cle) => avecMarque(textes(cle), nomSociete);
   const nom = [client.prenom, client.nom].filter(Boolean).join(" ");
   const dt = r.details || {};
   const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: dt.sieges, vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, t });
@@ -36,7 +39,7 @@ export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", d
       "div",
       { class: "vt-haut" },
       h("div", { class: "vt-bandeau" }, photoBandeau(v.bandeau || BANDEAU_DEFAUT), h("div", { class: "vt-vague", "aria-hidden": "true" })),
-      h("div", { class: "vt-sceau" }, h("img", { src: logo, alt: "VIP Taxi Lanta, Mr. Brown" }))
+      h("div", { class: "vt-sceau" }, h("img", { src: logo, alt: nomSociete || "" }))
     ),
     h("h1", { class: "vt-titre" }, t("b_titre_1"), h("br"), t("b_titre_2")),
     h("p", { class: "vt-intro" }, t("b_intro")),

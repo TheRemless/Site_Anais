@@ -35,7 +35,7 @@ export const PERMISSIONS = [
   { code: "fiduciaire.preparer", groupe: N_("Fiduciaire"), libelle: N_("Préparer et envoyer les factures pour la fiduciaire"), aide: N_("Voir ce qui revient à l'agence sur chaque service (jamais les prix nets), émettre la facture, la télécharger et la marquer envoyée. Secret et Taxi.") },
   { code: "fiduciaire.gerer", groupe: N_("Fiduciaire"), libelle: N_("Corriger les factures pour la fiduciaire : avoirs et revue du calcul"), aide: N_("Émettre un avoir, retirer la mention « envoyée » et revoir le calcul (les nets se voient avec le droit « nets »).") },
   // Droit d'interface, pas un droit sur les données : il réduit l'outil à un écran. Il n'entre donc jamais dans « tous les droits ».
-  { code: "vouchers.seul", groupe: N_("Interface"), libelle: N_("Ne voir que l'écran « Nouveau voucher », en thaï (entreprise en mode taxi)"), aide: N_("Pour l'assistante : un formulaire, l'aperçu du voucher et l'envoi de l'image à Anaïs. Avec le droit « Préparer et envoyer les factures pour la fiduciaire », un second onglet ouvre ces factures. Ni menu, ni autres écrans."), interface: true },
+  { code: "vouchers.seul", groupe: N_("Interface"), libelle: N_("Ne voir que l'écran « Nouveau voucher », en thaï (entreprise en mode taxi)"), aide: N_("Pour l'assistante : un formulaire, l'aperçu du voucher et l'envoi de l'image à la personne responsable. Avec le droit « Préparer et envoyer les factures pour la fiduciaire », un second onglet ouvre ces factures. Ni menu, ni autres écrans."), interface: true },
 ];
 export const TOUTES_PERMISSIONS = PERMISSIONS.filter((p) => !p.interface).map((p) => p.code);
 
@@ -245,12 +245,13 @@ export const MESSAGES_DEFAUT = [
   { id: "annulation-th", pour: "partenaire", cle: "annulation", titre: "ยกเลิกการจอง (à relire)", langue: "th", corps: "สวัสดีค่ะ {partenaire}\n\nขอยกเลิกการจอง {reference} ค่ะ: {prestation} วันที่ {date} ลูกค้า {client}\nขออภัยในความไม่สะดวกนะคะ ขอบคุณค่ะ" },
 ];
 
-// Messages types de VIP Taxi Lanta (mode taxi). Les deux messages aux clients sont les textes de Jérémy du 12.11.2026, mot pour mot
+// Messages types du mode taxi. Les deux messages aux clients sont les textes de Jérémy du 12.11.2026, la marque remplacée par {entreprise}
+// (migration 44 : Taxi d'Anaïs a ses messages enregistrés dans ses réglages, avec « VIP TAXI LANTA » en toutes lettres)
 // (le lien d'avis passe par {lien_avis}, réglé dans Réglages). Les messages à Mr. Brown suivent le même ton, en anglais et en thaï ;
 // les textes thaïs sont à faire relire avant usage réel. {contact} = la personne du partenaire, {dropoff} et {prix} = ceux de la course.
 export const MESSAGES_TAXI = [
-  { id: "taxi-confirmation-en", pour: "client", cle: "confirmation", titre: "Booking confirmation sent", langue: "en", corps: "Thank you for choosing VIP TAXI LANTA. ✨\n\nPlease see the attached confirmation and show it to the driver at pick-up.\nLet us know if everything is correct\n\nPayment will be collected in cash directly by the driver (or you can pay through Wise before your transfer (3% fee), please let us know before.)\n\nIf you have any changes, please inform us as soon as possible.\n\nHave a nice day ☀️\nVIP TAXI LANTA 🌴" },
-  { id: "taxi-avis-en", pour: "client", cle: "avis", titre: "Review request the day after", langue: "en", corps: "Thank you again for choosing VIP TAXI LANTA today.\n\nWe hope you had a comfortable journey and that everything went smoothly with the driver and the transfer.\n\nIf you were satisfied with our service, we would truly appreciate it if you could leave us a review on Google. It really helps us grow and allows other travelers to discover our service 😊 ✨\n\nYou can leave your review here:\n{lien_avis}\n\nThank you very much for your trust, and we hope to drive you again in the future!\n\nSafe travels ✨🌴\nVIP TAXI LANTA by Mr. Brown" },
+  { id: "taxi-confirmation-en", pour: "client", cle: "confirmation", titre: "Booking confirmation sent", langue: "en", corps: "Thank you for choosing {entreprise}. ✨\n\nPlease see the attached confirmation and show it to the driver at pick-up.\nLet us know if everything is correct\n\nPayment will be collected in cash directly by the driver (or you can pay through Wise before your transfer (3% fee), please let us know before.)\n\nIf you have any changes, please inform us as soon as possible.\n\nHave a nice day ☀️\n{entreprise} 🌴" },
+  { id: "taxi-avis-en", pour: "client", cle: "avis", titre: "Review request the day after", langue: "en", corps: "Thank you again for choosing {entreprise} today.\n\nWe hope you had a comfortable journey and that everything went smoothly with the driver and the transfer.\n\nIf you were satisfied with our service, we would truly appreciate it if you could leave us a review on Google. It really helps us grow and allows other travelers to discover our service 😊 ✨\n\nYou can leave your review here:\n{lien_avis}\n\nThank you very much for your trust, and we hope to drive you again in the future!\n\nSafe travels ✨🌴\n{entreprise} by Mr. Brown" },
   { id: "taxi-partenaire-en", pour: "partenaire", cle: "partenaire", titre: "New transfer", langue: "en", corps: "Hello {contact},\n\nNew transfer:\n• {prestation}\n• Date: {date}\n• Pickup: {hotel}{a_heure}\n• Drop-off: {dropoff}\n• {personnes}\n• Guest: {client}\n• Price: {prix}, paid to the driver\n• Ref: {reference}\n\nCan you confirm? Thank you 🙏" },
   { id: "taxi-relance-en", pour: "partenaire", cle: "relance", titre: "Follow-up, no answer yet", langue: "en", corps: "Hello {contact},\n\nJust checking on transfer {reference}: {prestation} on {date}, {personnes}, guest {client}.\nCan you confirm? Thank you 🙏" },
   { id: "taxi-modification-en", pour: "partenaire", cle: "modification", titre: "Change on a transfer", langue: "en", corps: "Hello {contact},\n\nChange on transfer {reference} ({client}):\n• {prestation}\n• Date: {date}\n• Pickup: {hotel}{a_heure}\n• Drop-off: {dropoff}\n• {personnes}\n\nCan you confirm the change? Thank you 🙏" },
@@ -283,7 +284,11 @@ export const REGLAGES_NEUTRE = {
   assistant_ia: false,
   // Vouchers (mode excursions) : en-tête et textes fixes, en anglais.
   voucher: { nom: "", sous_titre: "", adresse: "", whatsapp: "", email: "", licence: "", merci: "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", merci_transfert: "Thank you for booking with {entreprise}!\nWe wish you a wonderful journey.", note_transfert: "Your driver will be waiting for you at the meeting point.\nIf your plan changes, please let us know as soon as possible.", whatsapp_anais: "" },
-  emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", licence: "", contact: "" },
+  emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", licence: "", licence_libelle: "", licence_libelle_en: "", contact: "" },
+  // Migration 44 : la personne responsable (son prénom dans les textes de l'outil, vide = la première administratrice) et la voix
+  // de l'assistant IA (vide = voix neutre signée du nom de l'entreprise). Voir noms-calc.mjs et supabase/functions/assistant/calc.js.
+  responsable: { user_id: "", prenom: "", prenom_th: "" },
+  assistant_voix: { lieu: "", fr: "", en: "" },
   paiement: { texte: "", nom: "", autres: [] },
   devise: "",
   // `solde_jours` : ZTP relève le solde d'un voyage ce nombre de jours avant le départ, tant que le carnet n'est pas envoyé (calc.mjs).
@@ -406,6 +411,8 @@ const REGLAGES_DEMO_TOURS = completerReglages({
   numerotation: { mode: "sequence", prefixe: "EX" },
   fonctionnement: "excursions",
   voucher: { licence: "11/00000", email: "contact@exemple.com" },
+  // Personne responsable de la démo (migration 44) : son prénom dans les écrans de l'assistante et de la fiduciaire.
+  responsable: { prenom: "Nina", prenom_th: "นีน่า" },
   dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Service" },
   listes: { pays: ["Excursion", "Transfer"] },
   libelles: LIBELLES_EN,
@@ -421,6 +428,8 @@ const REGLAGES_DEMO_TAXI = completerReglages({
   numerotation: { mode: "sequence", prefixe: "TX" },
   fonctionnement: "taxi",
   messages: MESSAGES_TAXI,
+  // Personne responsable de la démo (migration 44) : son prénom dans les écrans de l'assistante et de la fiduciaire.
+  responsable: { prenom: "Nina", prenom_th: "นีน่า" },
   voucher: { whatsapp: "+00 00 000 00 02", email: "contact@exemple.com" },
   dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Trajet" },
   listes: { pays: [] },

@@ -1,7 +1,7 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
 import { modulesReglables, moduleAllume, moduleDe } from "../modules.mjs";
 import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
-import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages } from "../etat.mjs";
+import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages, equipe } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
 import { sectionVouchers } from "./reglages-vouchers.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
@@ -18,7 +18,10 @@ import { etatRappels, heureDepart } from "../rappels-etat.mjs";
 import { reglagesFid } from "../fiduciaire-calc.mjs";
 // Lot D (équipe, réglages, messages) : historique, archives, moyens de paiement, textes thaïs de l'écran de Mook.
 import { groupesModifies, nomGroupe, archiverVariante, reactiverVariante, variantesActives, identifiantMoyen } from "../reglages-calc.mjs";
-import { ecransThaiPour, texteValide, variablesDe } from "../textes-thai.mjs";
+import { ecransThaiPour, texteValide, variablesDe, prenomThai } from "../textes-thai.mjs";
+// Migration 44 : la personne responsable, le libellé de licence et la voix de l'assistant viennent des réglages, plus du code.
+import { responsableDe, remplirResponsable, prenomDe, administrateursDe } from "../noms-calc.mjs";
+import { numeroLicenceDe } from "./reglages-vouchers.mjs";
 import { VERSION_SAUVEGARDE, pourSauvegarde, verifierSauvegarde, absentsDeLaSauvegarde, reservationsPerdantLeurPrestataire } from "../sauvegarde.mjs";
 
 // Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
@@ -492,13 +495,57 @@ export function vueReglages() {
     });
   }
 
+  // ---- Personne responsable (migration 44) ----
+  // Son prénom remplace celui d'Anaïs dans les textes de l'outil : écran de l'assistante, fiduciaire, WhatsApp qui reçoit les vouchers.
+  // Par défaut, la première administratrice de l'entreprise.
+  const donneesEquipe = () => ({ profils: etat.brut.profils || [], membres: etat.brut.membres || [], roles: etat.brut.roles || [], entiteId: etat.entiteId });
+  const responsableIci = () => responsableDe(r, donneesEquipe());
+  const numeroLicence = () => numeroLicenceDe(r);
+  function blocResponsable() {
+    const choix = h("select", { id: "responsable-qui" });
+    const prenom = h("input", { id: "responsable-prenom", autocomplete: "off" });
+    const prenomTh = h("input", { id: "responsable-prenom-th", lang: "th", autocomplete: "off" });
+    const ecrire_ = () => {
+      const user_id = choix.value || "";
+      r.responsable = { ...(r.responsable || {}), user_id, prenom: prenom.value.trim(), prenom_th: prenomTh.value.trim() };
+      marque();
+    };
+    const remplirChoix = (equipe) => {
+      const premier = administrateursDe(donneesEquipe())[0];
+      const auto = premier ? tr("Automatique : {nom}", { nom: prenomDe(premier) }) : tr("Automatique : la première administratrice");
+      choix.replaceChildren(h("option", { value: "" }, auto), ...equipe.map((p) => h("option", { value: p.user_id }, p.nom || p.email || p.user_id)));
+      choix.value = (r.responsable && r.responsable.user_id) || "";
+    };
+    remplirChoix([]);
+    equipe().then((liste) => remplirChoix(liste || [])).catch(() => {});
+    const actuel = r.responsable || {};
+    prenom.value = actuel.prenom || "";
+    prenomTh.value = actuel.prenom_th || "";
+    prenom.placeholder = responsableIci().prenom || "";
+    choix.addEventListener("change", () => {
+      const p = (etat.brut.profils || []).find((x) => x.user_id === choix.value);
+      prenom.value = p ? prenomDe(p) : "";
+      prenomTh.value = "";
+      ecrire_();
+    });
+    prenom.addEventListener("input", ecrire_);
+    prenomTh.addEventListener("input", ecrire_);
+    return h(
+      "fieldset",
+      null,
+      h("legend", null, tr("Personne responsable")),
+      h("p", { class: "aide" }, tr("Son prénom apparaît dans les textes de l'outil : « prévenez … », le WhatsApp qui reçoit les vouchers de l'assistante.")),
+      h("div", { class: "grille-form" }, champ(tr("Dans l'équipe"), choix), champ(tr("Prénom affiché"), prenom), ecransThai.length ? champ(tr("Prénom écrit en thaï (facultatif)"), prenomTh, tr("Pour l'écran en thaï de l'assistante. Vide : le prénom tel quel.")) : null)
+    );
+  }
+
   // ---- Textes thaïs de l'écran de Mook ----
   const ecransThai = ecransThaiPour(fon);
   const blocTextesThai = (ecran) => {
     const lignes = ecran.lignes.map((l) => {
       const actuel = ((r.textes_thai || {})[ecran.id] || {})[l.cle] || "";
       const alerte = h("p", { class: "erreur-form", role: "status" });
-      const champThai = h("textarea", { id: `th-${ecran.id}-${l.cle}`, rows: 1, lang: "th", placeholder: l.depart, "aria-label": tr("Texte thaï : {fr}", { fr: l.fr }) });
+      const champThai = h("textarea", { id: `th-${ecran.id}-${l.cle}`, rows: 1, lang: "th", placeholder: remplirResponsable(l.depart, ecran.id === "fiduciaire" ? prenomThai(responsableIci()) : responsableIci(), { thai: true }), "aria-label": tr("Texte thaï : {fr}", { fr: remplirResponsable(l.fr, responsableIci()) }) });
       champThai.value = actuel;
       const remettre = h("button", { class: "lien petit-lien", type: "button", onclick: () => ((champThai.value = ""), enregistrer(), maj(), marque()) }, tr("Texte de départ"));
       const enregistrer = () => {
@@ -519,7 +566,7 @@ export function vueReglages() {
       };
       champThai.addEventListener("input", () => (enregistrer(), maj(), marque()));
       maj();
-      return h("div", { class: "ligne-thai" }, h("p", { class: "ligne-thai-fr" }, l.fr || l.cle), h("div", null, champThai, remettre, alerte));
+      return h("div", { class: "ligne-thai" }, h("p", { class: "ligne-thai-fr" }, remplirResponsable(l.fr, responsableIci()) || l.cle), h("div", null, champThai, remettre, alerte));
     });
     return h("fieldset", null, h("legend", null, tr(ecran.nom)), h("div", { class: "grille-thai" }, ...lignes));
   };
@@ -591,7 +638,9 @@ export function vueReglages() {
     entreprise: h(
       "div",
       null,
-      h("fieldset", null, h("legend", null, tr("Identité sur les documents")), texte(N_("Nom de l'entreprise"), "emetteur.nom"), texte(N_("Sous-titre sous le nom (facultatif)"), "emetteur.sous_titre", { aide: tr("Par exemple « by Nom de la société mère ».") }), texte(N_("Adresse"), "emetteur.adresse", { multi: true, rows: 3 }), texte(N_("Téléphone affiché sous l'adresse"), "emetteur.telephone"), taxi ? null : texte(N_("Numéro de licence TAT"), "emetteur.licence", { aide: ztp ? tr("Affiché sous l'adresse sur les devis et factures.") : tr("Affiché sous l'adresse sur les factures et sur les vouchers (sauf si le bloc Vouchers a le sien).") })),
+      h("fieldset", null, h("legend", null, tr("Identité sur les documents")), texte(N_("Nom de l'entreprise"), "emetteur.nom"), texte(N_("Sous-titre sous le nom (facultatif)"), "emetteur.sous_titre", { aide: tr("Par exemple « by Nom de la société mère ».") }), texte(N_("Adresse"), "emetteur.adresse", { multi: true, rows: 3 }), texte(N_("Téléphone affiché sous l'adresse"), "emetteur.telephone"), taxi ? null : texte(numeroLicence(), "emetteur.licence", { aide: ztp ? tr("Affiché sous l'adresse sur les devis et factures.") : tr("Affiché sous l'adresse sur les factures et sur les vouchers (sauf si le bloc Vouchers a le sien).") })),
+      taxi ? null : h("fieldset", null, h("legend", null, tr("Intitulé de la licence")), h("div", { class: "grille-form" }, texte(N_("En français"), "emetteur.licence_libelle", { placeholder: "Licence" }), texte(N_("En anglais"), "emetteur.licence_libelle_en", { placeholder: "Licence" })), h("p", { class: "aide" }, tr("Imprimé devant le numéro de licence sur les devis et factures. Vide : « Licence »."))),
+      blocResponsable(),
       // L'avis Google se demande par les messages et les cartes « Hier » de l'accueil : Secret et Taxi seulement.
       ztp ? null : h("fieldset", null, h("legend", null, tr("Avis des clients")), texte(N_("Lien d'avis Google"), "emetteur.lien_avis", { placeholder: "https://g.page/r/…/review", aide: tr("Le message « avis » le met dans le texte (variable {lien_avis}). Les cartes « Hier » de l'accueil proposent de le demander une fois par client.") })),
       h("fieldset", null, h("legend", null, tr("Bloc de contact du pied de page")), texte(N_("Une ligne par information"), "emetteur.contact", { multi: true, rows: 4, aide: tr("Nom de la personne, WhatsApp, e-mail, site… Ce que vous voulez voir en bas de chaque document.") }))
@@ -725,7 +774,11 @@ export function vueReglages() {
         null,
         h("legend", null, tr("Assistant IA")),
         h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre et rédiger la réponse")),
-        h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous."))
+        h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous.")),
+        h("p", { class: "aide" }, tr("Sa voix : comment il écrit les brouillons de réponse. Vide : une voix neutre, sobre et chaleureuse, signée du nom de l'entreprise. {entreprise} est remplacé par le nom de l'entreprise.")),
+        texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: tr("Par exemple « Phuket (Thaïlande) ». Il sert à lire les dates (« demain ») et à situer l'agence.") }),
+        texte(N_("Voix en français"), "assistant_voix.fr", { multi: true, rows: 6 }),
+        texte(N_("Voix en anglais"), "assistant_voix.en", { multi: true, rows: 6 })
       ),
       // Taxi : la fiduciaire n'est plus au menu (décision 5). Elle se rouvre d'ici pour être réactivée un jour (contrôle du 17.11.2026, D10).
       taxi && peut("fiduciaire.gerer") && peut("reglages.ecrire") && !reglagesFid(etat.db.reglages).actif

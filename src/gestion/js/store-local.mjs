@@ -235,7 +235,7 @@ export function creer() {
       const requis = corps.usage === "lire" ? ["partenaires.lire", "dossiers.ecrire"] : ["partenaires.lire", "dossiers.lire"];
       if (requis.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };
       if (corps.usage === "lire") return simulerLecture(corps.texte || "", { prestations: data.prestations.filter((p) => p.entite_id === e), trajets: data.trajets.filter((t) => t.entite_id === e), nomPartenaire: (id) => (data.partenaires.find((p) => p.id === id) || {}).nom || "" }, aujourdhui());
-      if (corps.usage === "rediger") return simulerRedaction(corps.faits, ["excursions", "taxi"].includes((data.reglages[e] || {}).fonctionnement) ? "en" : corps.langue);
+      if (corps.usage === "rediger") return simulerRedaction(corps.faits, ["excursions", "taxi"].includes((data.reglages[e] || {}).fonctionnement) ? "en" : corps.langue, (((data.reglages[e] || {}).responsable || {}).prenom || ""));
       return { erreur: "usage_inconnu" };
     },
     async charger() {

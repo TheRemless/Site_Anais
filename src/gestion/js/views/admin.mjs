@@ -1,5 +1,6 @@
 // Administration : entreprises et accès des utilisateurs. Réservée à l'administratrice générale.
 // Lot D (17.11.2026) : inviter une personne, lien de mot de passe, supprimer un compte, langue d'une autre personne, Administrateur calculé.
+import { libelleAdmin } from "../noms-calc.mjs";
 import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, organisation, modifierOrganisation, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation } from "../etat.mjs";
 import { DEPENDANCES, completerReglages, PERMISSIONS } from "../defauts.mjs";
 import { droitsProposes, droitsDuRole, droitsRetires } from "../droits.mjs";
@@ -397,7 +398,7 @@ function accesModal(profil, apres) {
       champ(tr("Nom affiché"), nom),
       champ(tr("Langue de l'outil"), langue, tr("Français ou anglais. La personne peut la changer ensuite dans « Mon compte ».")),
       h("label", { class: "case", for: "ua-actif" }, actif, tr("Compte actif (décochez pour couper tout accès sans supprimer le compte)")),
-      h("label", { class: "case", for: "ua-super" }, superAdmin, tr("Administratrice générale : voit toutes les entreprises et gère les accès")),
+      h("label", { class: "case", for: "ua-super" }, superAdmin, tr("{role} : voit toutes les entreprises et gère les accès", { role: tr(libelleAdmin(organisation())) })),
       moi ? h("p", { class: "aide" }, tr("Vous ne pouvez pas modifier votre propre statut.")) : null,
       grille,
       // Mot de passe oublié, invitation expirée : un lien à envoyer soi-même. Supprimer : seulement un autre compte que le sien.

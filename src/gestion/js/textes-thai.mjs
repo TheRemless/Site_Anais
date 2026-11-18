@@ -5,6 +5,7 @@
 import { TH as TH_VOUCHER } from "./voucher-rapide-calc.mjs";
 import { TH as TH_FIDUCIAIRE } from "./fiduciaire-textes.mjs";
 import { N_ } from "./i18n.mjs";
+import { remplirResponsable } from "./noms-calc.mjs";
 
 // Le français de chaque texte de l'écran « Nouveau voucher » (les commentaires de voucher-rapide-calc.mjs).
 const FR_VOUCHER = {
@@ -42,11 +43,11 @@ const FR_VOUCHER = {
   anglais_aide: "Écrire en anglais",
   apercu: "Voir l'aperçu",
   modifier: "Modifier",
-  creer: "Créer et envoyer à Anaïs",
-  enregistrer: "Enregistrer et envoyer à Anaïs",
-  envoyer: "Envoyer l'image à Anaïs",
+  creer: "Créer et envoyer à {responsable}",
+  enregistrer: "Enregistrer et envoyer à {responsable}",
+  envoyer: "Envoyer l'image à {responsable}",
   enregistrer_image: "Enregistrer l'image",
-  ouvrir_chat: "Ouvrir la conversation d'Anaïs",
+  ouvrir_chat: "Ouvrir la conversation {de_responsable}",
   nouveau: "Faire un nouveau voucher",
   annuler: "Annuler",
   retour: "Retour",
@@ -58,10 +59,10 @@ const FR_VOUCHER = {
   preparation: "Préparation de l'image…",
   cree: "Voucher créé",
   modifie: "Enregistré",
-  choisir_anais: "Dans WhatsApp, choisir Anaïs puis envoyer",
+  choisir_anais: "Dans WhatsApp, choisir {responsable} puis envoyer",
   partage_impossible: "Ce téléphone ne peut pas envoyer l'image directement : enregistrer l'image puis l'envoyer dans WhatsApp",
   partage_echec: "L'envoi de l'image a échoué : enregistrer l'image puis l'envoyer dans WhatsApp",
-  image_copiee: "Image copiée, la coller dans la conversation d'Anaïs",
+  image_copiee: "Image copiée, la coller dans la conversation {de_responsable}",
   echec: "Échec, réessayer",
   image_echec: "L'image n'a pas pu être faite",
   reessayer: "Refaire l'image",
@@ -81,15 +82,19 @@ const FR_VOUCHER = {
 // Textes de départ, relevés une fois au chargement, avant tout changement.
 const DEPART_VOUCHER = { ...TH_VOUCHER };
 const DEPART_FIDUCIAIRE = Object.fromEntries(Object.entries(TH_FIDUCIAIRE).map(([k, v]) => [k, v.th]));
+const FR_FIDUCIAIRE = Object.fromEntries(Object.entries(TH_FIDUCIAIRE).map(([k, v]) => [k, v.fr]));
 
 // `modes` : les façons de travailler où l'écran existe. Le voucher simple n'existe qu'en Taxi ; les factures pour la fiduciaire en Secret et en Taxi.
 export const ECRANS_THAI = [
   { id: "voucher", nom: N_("Écran « Nouveau voucher »"), modes: ["taxi"], lignes: Object.keys(DEPART_VOUCHER).map((cle) => ({ cle, fr: FR_VOUCHER[cle] || "", depart: DEPART_VOUCHER[cle] })) },
-  { id: "fiduciaire", nom: N_("Écran « Factures pour la fiduciaire »"), modes: ["excursions", "taxi"], lignes: Object.keys(DEPART_FIDUCIAIRE).map((cle) => ({ cle, fr: TH_FIDUCIAIRE[cle].fr, depart: DEPART_FIDUCIAIRE[cle] })) },
+  { id: "fiduciaire", nom: N_("Écran « Factures pour la fiduciaire »"), modes: ["excursions", "taxi"], lignes: Object.keys(DEPART_FIDUCIAIRE).map((cle) => ({ cle, fr: FR_FIDUCIAIRE[cle], depart: DEPART_FIDUCIAIRE[cle] })) },
 ];
 export const ecransThaiPour = (fonctionnement) => ECRANS_THAI.filter((e) => e.modes.includes(fonctionnement));
 
-const variables = (t) => [...String(t || "").matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
+// {responsable} et {de_responsable} (le prénom de la personne responsable, migration 44) sont facultatifs : un texte
+// enregistré avant, qui écrit le prénom en toutes lettres, reste valable.
+const FACULTATIVES = new Set(["responsable", "de_responsable"]);
+const variables = (t) => [...String(t || "").matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((v) => !FACULTATIVES.has(v)).sort().join(",");
 // Le texte enregistré s'il est utilisable : pas vide, et avec exactement les mêmes {variables} que le texte de départ. Sinon null.
 export function texteValide(depart, texte) {
   const t = typeof texte === "string" ? texte.trim() : "";
@@ -98,10 +103,19 @@ export function texteValide(depart, texte) {
 }
 export const variablesDe = (t) => variables(t).split(",").filter(Boolean);
 
+// Le responsable vu par un texte thaï de la fiduciaire : son prénom écrit en thaï quand il est réglé.
+export const prenomThai = (resp) => resp && { ...resp, prenom: resp.prenom_th || resp.prenom };
+
 // Pose les textes d'une entreprise sur les textes de départ (et remet ceux de départ là où elle n'a rien changé).
-export function appliquerTextesThai(textes) {
+// `responsable` : { prenom, prenom_th } de responsableDe (noms-calc.mjs), inséré à la place de {responsable} ({de_responsable} :
+// « d'Anaïs »). L'écran du voucher écrit le prénom en lettres latines, celui de la fiduciaire en thaï.
+export function appliquerTextesThai(textes, responsable = null) {
   const v = (textes && textes.voucher) || {};
   const f = (textes && textes.fiduciaire) || {};
-  for (const [cle, depart] of Object.entries(DEPART_VOUCHER)) TH_VOUCHER[cle] = texteValide(depart, v[cle]) ?? depart;
-  for (const [cle, depart] of Object.entries(DEPART_FIDUCIAIRE)) TH_FIDUCIAIRE[cle].th = texteValide(depart, f[cle]) ?? depart;
+  for (const [cle, depart] of Object.entries(DEPART_VOUCHER)) TH_VOUCHER[cle] = remplirResponsable(texteValide(depart, v[cle]) ?? depart, responsable, { thai: true });
+  for (const [cle, depart] of Object.entries(DEPART_FIDUCIAIRE)) {
+    // Texte thaï : le prénom écrit en thaï quand il est réglé (« อานาอิส »).
+    TH_FIDUCIAIRE[cle].th = remplirResponsable(texteValide(depart, f[cle]) ?? depart, prenomThai(responsable), { thai: true });
+    TH_FIDUCIAIRE[cle].fr = remplirResponsable(FR_FIDUCIAIRE[cle], responsable);
+  }
 }

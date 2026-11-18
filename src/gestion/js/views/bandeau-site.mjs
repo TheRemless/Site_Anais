@@ -2,7 +2,7 @@
 // et éteinte par Anaïs (migration 30). Elle choisit un modèle anglais et le remplit, l'outil écrit le texte, propose la fin automatique
 // et montre le rendu dans les marques de l'organisation qui publient sur le site (Secret, VIP Taxi Lanta « Laque et or ») avant publication. Un tap l'éteint.
 // Le site lit les bandeaux en ligne par la fonction publique « bandeau-site » (docs/gestion/bandeau-site.md).
-import { etat, inserer, modifier, supprimer, peut, entiteActive } from "../etat.mjs";
+import { etat, inserer, modifier, supprimer, peut, entiteActive, responsableEntite } from "../etat.mjs";
 import { h, modal, toast, champ, puces, confirmer, icone } from "../ui.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
@@ -14,11 +14,10 @@ import {
 
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
 // Marques du site : les entreprises de l'organisation qui publient sur le site (entites.publie_site), par slug.
-// Sans cette colonne (démo, base d'avant la migration 42), les deux marques de Zwald.
-const MARQUES_ZWALD = { secret: "Secret Travel & Tour", taxi: "VIP Taxi Lanta" };
+// Sans cette colonne (démo, base d'avant la migration 42), le nom de chaque entreprise par slug (plus de marques écrites ici, migration 44).
 function marquesSite() {
   const pub = (etat.brut.entites || []).filter((e) => e.publie_site === true);
-  return pub.length ? Object.fromEntries(pub.map((e) => [e.slug, e.nom])) : MARQUES_ZWALD;
+  return Object.fromEntries((pub.length ? pub : etat.brut.entites || []).map((e) => [e.slug, e.nom]));
 }
 // Calculées une fois par écran (vueBandeauSite) et par fenêtre de saisie, pas à chaque carte.
 let marques = {};
@@ -203,7 +202,7 @@ function ouvrirSaisie(existant = null) {
     blocLien.replaceChildren(
       ...[
       b.lien === "page" ? champ(tr("Page du site"), h("select", { onchange: (e) => ((b.lien_page = e.target.value), maj()) }, pages.map((p) => h("option", { value: p.href, selected: p.href === b.lien_page }, p.section ? tr(p.nom) : p.nom))), tr("Le lien s'appellera « {libelle} ».", { libelle: libelleLien(b.lien_page) })) : null,
-      b.lien === "whatsapp" ? h("p", { class: "aide" }, tr("Le lien « Ask on WhatsApp » ouvre la conversation avec Anaïs.")) : null,
+      b.lien === "whatsapp" ? h("p", { class: "aide" }, tr("Le lien « Ask on WhatsApp » ouvre la conversation avec {responsable}.", { responsable: responsableEntite().prenom || tr("la personne responsable") })) : null,
       ].filter(Boolean)
     );
     choixLien.definir(b.lien);
