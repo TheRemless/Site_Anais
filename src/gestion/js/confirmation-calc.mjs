@@ -169,6 +169,14 @@ export function lireMarque(ligne) {
   return null;
 }
 
+// Une ligne qui ressemble à un nom de personne : des lettres (accents compris), espaces, apostrophes, points ou tirets, 2 à 60 caractères,
+// 5 mots au plus, sans chiffre ni « : ». « Julien Rochat », « Mr. Varrin », « Anne-Sophie O'Neil ».
+export const ressembleANom = (ligne) => {
+  const t = propre(ligne);
+  if (/^(hi|hello|hey|dear|bonjour|salut|coucou|thanks?|thank you|merci|good (morning|afternoon|evening)|sawa?dee|ok|okay|confirmed?|booking|new booking|round trip)\b/i.test(t)) return false;
+  return /^\p{L}[\p{L}'’. -]{1,59}$/u.test(t) && t.split(/\s+/).length <= 5 && !lireMarque(t);
+};
+
 // Lecture du texte collé. `aujourdhui` : AAAA-MM-JJ (année d'une date qui n'en a pas).
 // Renvoie { marque, valeurs, lus, ignorees } : `valeurs` a la forme de l'écran de Mook, plus `remarques` ; `lus` : les champs trouvés ;
 // `ignorees` : les lignes qui n'ont rien donné (montrées à l'écran, pour que rien ne se perde sans le dire).
@@ -179,6 +187,9 @@ export function lireConfirmation(texte, { aujourdhui = "" } = {}) {
   let marque = null;
   let dernier = null;
   let retourVu = false;
+  // La première ligne qui n'est ni la marque, ni l'en-tête, ni un « Libellé: valeur » (null tant qu'aucune ligne utile n'est vue, "" si la
+  // première ligne utile est un libellé).
+  let premiereUtile = null;
   const lignes = String(texte || "").replace(/\r/g, "").split("\n").map(propre).filter(Boolean);
   for (const ligne of lignes) {
     const m = /^([^:：]{1,40})[:：]\s*(.*)$/.exec(ligne);
@@ -200,10 +211,12 @@ export function lireConfirmation(texte, { aujourdhui = "" } = {}) {
         valeurs.remarques = `${valeurs.remarques} ${ligne}`.trim();
         continue;
       }
+      if (!m && premiereUtile === null) premiereUtile = ligne;
       ignorees.push(ligne);
       dernier = null;
       continue;
     }
+    if (premiereUtile === null) premiereUtile = "";
     const v = m[2].trim();
     dernier = champ;
     if (!v) continue;
@@ -233,6 +246,13 @@ export function lireConfirmation(texte, { aujourdhui = "" } = {}) {
       } else valeurs.dropoff = v;
     } else if (champ === "pickup") valeurs.pickup = lireAllerRetour(v).retour ? ((retourVu = true), lireAllerRetour(v).reste) : v;
     else valeurs[champ] = v;
+  }
+  // Un nom collé seul (« Julien Rochat »), ou une première ligne utile qui ressemble à un nom (ni « : », ni chiffre) : le nom du client,
+  // quand aucun « Name: » ne l'a donné (Jérémy, 18.11.2026).
+  if (!valeurs.nom && premiereUtile && ressembleANom(premiereUtile)) {
+    valeurs.nom = premiereUtile;
+    lus.add("nom");
+    ignorees.splice(ignorees.indexOf(premiereUtile), 1);
   }
   if (retourVu) {
     valeurs.trajet = RETOUR_DEPART;
@@ -303,10 +323,46 @@ export function clientsCandidats({ nom = "", telephone = "", propres = [], parta
     const parTelephone = recents.find((c) => propresIds.has(c.id) && memeTel(c)) || recents.find(memeTel);
     if (parTelephone) return { parTelephone, parNom: [] };
   }
+  const rangs = recents.map((c) => ({ c, rang: rangNom(nom, c) })).filter((x) => x.rang !== null);
+  // Les noms complets identiques d'abord, puis le nom de famille seul, puis les mots retrouvés ; à rang égal, les plus récentes.
+  return { parTelephone: null, parNom: rangs.sort((a, b) => a.rang - b.rang).slice(0, limite).map((x) => x.c) };
+}
+
+// Le rang d'une fiche pour un nom collé ou tapé, sans accents ni casse (null : pas proposée). Jérémy, 18.11.2026 :
+// 0 : nom complet identique, prénom et nom dans un sens ou dans l'autre (« Julien Rochat », « Rochat Julien ») ;
+// 1 : le nom de famille de la fiche, tapé seul (« Rochat ») ou parmi les mots tapés (« Julien Rochat » pour la fiche « Rochat ») ;
+// 2 : tous les mots d'au moins 3 lettres se retrouvent dans le prénom et le nom (« Julien », « Juli Roch », « Varrin » pour « Jean Varrin »).
+// Un mot plus court (« Mr », « J. ») ne compte pas ; sans aucun mot d'au moins 3 lettres, rien n'est proposé au-delà du nom identique.
+export function rangNom(nom, c) {
   const n = cleNom(nom);
-  if (n.length < 2) return { parTelephone: null, parNom: [] };
-  const memeNom = (c) => [[c.prenom, c.nom], [c.nom, c.prenom], [c.nom]].some((parts) => cleNom(parts.filter(Boolean).join(" ")) === n);
-  return { parTelephone: null, parNom: recents.filter(memeNom).slice(0, limite) };
+  if (n.length < 2 || !c) return null;
+  const complet = cleNom([c.prenom, c.nom].filter(Boolean).join(" "));
+  if ([complet, cleNom([c.nom, c.prenom].filter(Boolean).join(" "))].includes(n)) return 0;
+  const mots = n.split(" ").map((m) => m.replace(/[^\p{L}'-]/gu, "")).filter((m) => m.length >= 3);
+  // Le nom de famille de la fiche est le nom tapé, ou l'un de ses mots (« Julien Rochat » pour la fiche « Rochat »).
+  if (c.nom && (cleNom(c.nom) === n || mots.includes(cleNom(c.nom)))) return 1;
+  return mots.length && complet && mots.every((m) => complet.includes(m)) ? 2 : null;
+}
+
+// « Chercher un client existant » (18.11.2026) : dans les fiches de l'entreprise et les fiches partagées (mêmes règles d'accès que les
+// propositions), par le nom (rangNom), ou par le WhatsApp dès 4 chiffres tapés. Pour choisir une fiche même quand le nom collé est mal écrit.
+export function chercherFiches({ q = "", propres = [], partages = [], dossiers = [], limite = 8 }) {
+  const t = String(q || "").trim();
+  if (t.length < 2) return [];
+  const vus = new Set();
+  const tous = [...propres, ...partages].filter((c) => c && !c.nom_seul && (vus.has(c.id) ? false : vus.add(c.id)));
+  const dernier = new Map();
+  for (const d of dossiers) if (d.client_id && String(d.created_at || "") > String(dernier.get(d.client_id) || "")) dernier.set(d.client_id, String(d.created_at || ""));
+  const recence = (c) => dernier.get(c.id) || String(c.created_at || "");
+  const chiffres = t.replace(/\D/g, "");
+  const parTel = chiffres.length >= 4 && chiffres.length >= t.replace(/[\s+().-]/g, "").length - 1;
+  const rang = (c) => (parTel ? (String(c.telephone || "").replace(/\D/g, "").includes(chiffres) ? 0 : null) : rangNom(t, c));
+  return tous
+    .map((c) => ({ c, rang: rang(c) }))
+    .filter((x) => x.rang !== null)
+    .sort((a, b) => a.rang - b.rang || recence(b.c).localeCompare(recence(a.c)))
+    .slice(0, limite)
+    .map((x) => x.c);
 }
 
 // Ce qui aide à reconnaître une fiche proposée : l'étiquette de son entreprise (« ZTP »), le WhatsApp masqué en partie, la ville (dernière

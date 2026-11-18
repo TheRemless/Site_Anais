@@ -6,7 +6,7 @@ import { etat, naviguer, changerEntite, entitesAccessibles, reglagesDe, permissi
 import { h, modal, toast, icone } from "../ui.mjs";
 import { tr, N_ } from "../i18n.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
-import { lireConfirmation, erreursConfirmation, entreprisesConfirmation, clientsCandidats, reperesClient } from "../confirmation-calc.mjs";
+import { lireConfirmation, erreursConfirmation, entreprisesConfirmation, clientsCandidats, reperesClient, chercherFiches } from "../confirmation-calc.mjs";
 import { donneesVoucher, valeursVides } from "../voucher-rapide-calc.mjs";
 import { RETOUR_DEPART } from "../trajet-calc.mjs";
 import { estBookingConfirmation } from "../taxi-calc.mjs";
@@ -99,9 +99,13 @@ export function ouvrirConfirmation(texteInitial = "") {
   // Client déjà connu (18.11.2026) : même WhatsApp -> la fiche est choisie d'office, comme avant. Sinon, les fiches au même nom, de l'entreprise
   // ou partagées (ZTP, administration seulement), avec de quoi les reconnaître, et rien de présélectionné : on choisit une fiche ou
   // « Créer un nouveau client » (confirmations sans WhatsApp, Varrin par exemple : pas de doublon, pas d'homonyme servi d'office).
-  const blocClient = h("div", { class: "cc-client", "aria-live": "polite" });
+  // La liste des fiches se redessine (pendant la frappe du nom, du WhatsApp ou de la recherche) ; le champ de recherche, lui, reste en place.
+  const listeClients = h("div", { class: "cc-fiches", "aria-live": "polite" });
+  const recherche = h("input", { id: "cc-recherche-client", type: "search", autocomplete: "off", spellcheck: "false", placeholder: tr("Nom ou WhatsApp") });
+  const blocClient = h("div", { class: "cc-client" }, listeClients, h("div", { class: "champ cc-recherche" }, h("label", { for: "cc-recherche-client" }, tr("Chercher un client existant")), recherche));
   let candidats = { parTelephone: null, parNom: [] };
-  const choixClient = () => (blocClient.querySelector("input[name=cc-client]:checked") || {}).value || "";
+  let fichesAffichees = 0;
+  const choixClient = () => (listeClients.querySelector("input[name=cc-client]:checked") || {}).value || "";
   const repere = (c, id) => {
     const r = reperesClient(c, { dossiers: etat.brut.dossiers || [], sigle: c.entite_id !== id ? sigleDe(c.entite_id) : "" });
     return [r.whatsapp ? `WhatsApp ${r.whatsapp}` : tr("sans WhatsApp"), r.ville, r.dernier ? tr("dernier dossier {ref} ({date})", { ref: r.dernier.ref, date: formatDate(r.dernier.date) }) : tr("aucun dossier")].filter(Boolean).join(" · ");
@@ -110,20 +114,34 @@ export function ouvrirConfirmation(texteInitial = "") {
   const ligneClient = (c, id, coche) => h("label", { class: "case cc-candidat" }, h("input", { type: "radio", name: "cc-client", value: c.id, checked: coche }), texteClient(c, id));
   const dessinerClient = () => {
     const id = entrepriseChoisie();
-    candidats = id
-      ? clientsCandidats({ nom: champs.nom.value, telephone: champs.telephone.value, propres: etat.brut.clients.filter((c) => c.entite_id === id && !c.nom_seul), partages: clientsPartages(id), dossiers: etat.brut.dossiers || [] })
-      : { parTelephone: null, parNom: [] };
-    const nouveau = (coche) => h("label", { class: "case" }, h("input", { type: "radio", name: "cc-client", value: "nouveau", checked: coche }), tr("Créer un nouveau client"));
-    blocClient.replaceChildren(
-      ...(candidats.parTelephone
-        ? [h("p", null, tr("Client déjà connu (même WhatsApp) :")), ligneClient(candidats.parTelephone, id, true), nouveau(false)]
+    // Le choix déjà fait est gardé quand la liste se redessine et que la fiche y est encore.
+    const avant = choixClient();
+    const sources = id ? { propres: etat.brut.clients.filter((c) => c.entite_id === id && !c.nom_seul), partages: clientsPartages(id), dossiers: etat.brut.dossiers || [] } : null;
+    candidats = sources ? clientsCandidats({ nom: champs.nom.value, telephone: champs.telephone.value, ...sources }) : { parTelephone: null, parNom: [] };
+    const q = recherche.value.trim();
+    const trouvees = sources && q ? chercherFiches({ q, ...sources }) : [];
+    const nouveau = () => h("label", { class: "case" }, h("input", { type: "radio", name: "cc-client", value: "nouveau" }), tr("Créer un nouveau client"));
+    const contenu = q
+      ? trouvees.length
+        ? [h("p", null, tr("Fiches trouvées pour « {q} » :", { q })), ...trouvees.map((c) => ligneClient(c, id, false)), nouveau()]
+        : [h("p", { class: "aide" }, tr("Aucune fiche pour « {q} ».", { q }))]
+      : candidats.parTelephone
+        ? [h("p", null, tr("Client déjà connu (même WhatsApp) :")), ligneClient(candidats.parTelephone, id, true), nouveau()]
         : candidats.parNom.length
-          ? [h("p", null, candidats.parNom.length > 1 ? tr("Plusieurs fiches portent ce nom : choisissez la bonne, ou un nouveau client.") : tr("Une fiche porte ce nom : est-ce le même client ?")), ...candidats.parNom.map((c) => ligneClient(c, id, false)), nouveau(false)]
-          : [])
-    );
+          ? [h("p", null, candidats.parNom.length > 1 ? tr("Plusieurs fiches ressemblent à ce nom : choisissez la bonne, ou un nouveau client.") : tr("Une fiche ressemble à ce nom : est-ce le même client ?")), ...candidats.parNom.map((c) => ligneClient(c, id, false)), nouveau()]
+          : [];
+    fichesAffichees = q ? trouvees.length : candidats.parTelephone ? 1 : candidats.parNom.length;
+    listeClients.replaceChildren(...contenu);
+    const reprise = avant && listeClients.querySelector(`input[name=cc-client][value="${CSS.escape(avant)}"]`);
+    if (reprise) reprise.checked = true;
   };
-  champs.nom.addEventListener("change", dessinerClient);
-  champs.telephone.addEventListener("change", dessinerClient);
+  // Pendant la frappe (léger délai), pas seulement à la sortie du champ : le nom tapé ou corrigé relance la recherche des fiches.
+  let attenteClient = null;
+  const relancer = () => {
+    clearTimeout(attenteClient);
+    attenteClient = setTimeout(dessinerClient, 250);
+  };
+  for (const c of [champs.nom, champs.telephone, recherche]) c.addEventListener("input", relancer);
 
   const ignorees = h("div", { class: "cc-ignorees" });
   const etatCreation = h("div", { class: "cc-etat", role: "status" });
@@ -191,7 +209,7 @@ export function ouvrirConfirmation(texteInitial = "") {
     const cible = entrepriseChoisie();
     if (!cible) return toast(tr("Choisissez l'entreprise du dossier."), true);
     // Des fiches au même nom sont proposées sans présélection : il faut en choisir une, ou « Créer un nouveau client ».
-    if (candidats.parNom.length && !choixClient()) {
+    if (fichesAffichees && !choixClient()) {
       blocClient.scrollIntoView({ block: "center" });
       return toast(tr("Choisissez le client : une des fiches proposées, ou « Créer un nouveau client »."), true);
     }
