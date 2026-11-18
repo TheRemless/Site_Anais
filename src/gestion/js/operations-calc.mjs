@@ -185,7 +185,7 @@ export function variablesMessage({ reservation = {}, client = {}, dossier = {}, 
     // Message en anglais ou en thaï : le nom du service passe par la traduction, un libellé d'origine en français n'y part pas tel quel.
     prestation: langue === "fr" ? reservation.libelle || "" : libelleClient(reservation.libelle || ""),
     partenaire: partenaire.nom || "",
-    // La personne à qui l'on écrit chez le partenaire (« Mr. Brown » pour VIP Taxi Lanta), sinon le nom du partenaire.
+    // La personne à qui l'on écrit chez le partenaire (le contact de sa fiche), sinon le nom du partenaire.
     contact: ((partenaire.contact || {}).personne || "").trim() || partenaire.nom || "",
     // Taxi : lieu de dépose et prix de la course (payé au chauffeur), tels que saisis sur la réservation.
     // Retour au point de départ (16.11.2026) : pas de dépose, on le dit plutôt que de laisser un blanc.
@@ -514,7 +514,7 @@ export const siegesVoucher = (n) => {
 };
 export const TITRES_VOUCHER = { billet: "Boat Ticket Voucher", bateau: "Boat Tour Voucher", transfert: "Transfer Voucher", activite: "Activity & Tour Voucher", location: "Rental Voucher" };
 
-// Point d'embarquement de la compagnie pour un lieu de départ (« Koh Lanta » → « Saladan Pier »).
+// Point d'embarquement de la compagnie pour un lieu de départ, d'après les points de sa fiche.
 export function pointEmbarquement(partenaire, lieu) {
   const points = (partenaire && partenaire.regles && partenaire.regles.points_embarquement) || [];
   const cible = sansAccentsMin(lieu);
@@ -522,7 +522,7 @@ export function pointEmbarquement(partenaire, lieu) {
   return p ? pointEmbarquementEn(p.ou) : "";
 }
 
-// Les points d'embarquement de la base sont en français (« Bureau Bundhaya au Pakbara Pier ») : en anglais pour le voucher.
+// Les points d'embarquement de la base sont écrits en français (« Bureau X au Y Pier ») : en anglais pour le voucher.
 const POINTS_EN = [
   [/^Bureau (.+?) (?:à|au) (.+)$/i, "$1 office at $2"],
   [/^Bureau ([^,]+)(,.*)?$/i, "$1 office$2"],
@@ -549,44 +549,59 @@ export function embarcadereFiche(partenaire, lieu) {
   return pointEmbarquementEn(String((partenaire && partenaire.contact && partenaire.contact.embarcadere) || "").trim());
 }
 
-// Consigne de check-in imprimée sur le billet : celle écrite en anglais dans la fiche de la compagnie (`regles.checkin_voucher`), sinon
-// celle écrite ici d'après son nom. Un trajet vers ou depuis Langkawi garde la consigne de l'immigration (passeports), qui vaut pour toutes.
-export function consigneCheckinFiche(partenaire, trajet = {}) {
-  const fiche = String((partenaire && partenaire.regles && partenaire.regles.checkin_voucher) || "").trim();
-  if (fiche && !/langkawi/i.test(`${trajet.de || ""} ${trajet.vers || ""}`)) return fiche;
-  return consigneCheckin((partenaire && partenaire.nom) || "", trajet);
+// ---- Règles des partenaires et des destinations (migration 43, 18.11.2026) -------------------------------------------------
+// Plus aucun nom de compagnie ni de lieu dans ces règles : chacune se lit sur la fiche du partenaire (Partenaires) ou dans les
+// destinations à passeport des réglages de l'entreprise (`reglages.destinations_passeport`).
+export const CHECKIN_DEFAUT = "Please arrive at the pier 30 minutes before departure with this voucher and your passport or ID.";
+export const CHECKIN_PASSEPORT_DEFAUT = "Check-in 90 minutes before departure for immigration formalities. Passport of each passenger required.";
+
+// Destination à passeport d'un trajet : la première règle dont un lieu figure dans le départ, l'arrivée ou le libellé (sans accents ni majuscules).
+// Une règle : { lieux: ["…"], note_en, note_fr }. `champs` : où chercher (le check-in ne regarde que le départ et l'arrivée).
+const termes = (x) => (Array.isArray(x) ? x : String(x || "").split(",")).map(sansAccentsMin).filter(Boolean);
+export function destinationPasseport(destinations, textes) {
+  const t = sansAccentsMin(textes.filter(Boolean).join(" "));
+  if (!t) return null;
+  return (destinations || []).find((d) => d && termes(d.lieux).some((l) => t.includes(l))) || null;
 }
 
-// Consigne de check-in en anglais, d'après la compagnie et la ligne (Langkawi demande les passeports).
-export function consigneCheckin(nomCompagnie, trajet = {}) {
-  const c = sansAccentsMin(nomCompagnie);
-  const langkawi = /langkawi/i.test(`${trajet.de || ""} ${trajet.vers || ""}`);
-  if (langkawi) return c.includes("bundhaya") ? "Check-in 90 minutes before departure, counter closes 45 minutes before. Passport of each passenger required (immigration), kept by the captain during the crossing." : "Check-in 90 minutes before departure for immigration formalities. Passport of each passenger required.";
-  if (c.includes("bundhaya")) return "Check-in at the pier 45 minutes before departure, counter closes 15 minutes before. Please bring this voucher and your passport or ID.";
-  if (c.includes("satun")) return "Please present this voucher at the counter 30 minutes before departure, counter closes 20 minutes before. Passport or ID required.";
-  return "Please arrive at the pier 30 minutes before departure with this voucher and your passport or ID.";
+// Consigne de check-in de la compagnie (anglais) : celle de sa fiche, sinon la consigne générale. Sur une ligne vers ou depuis une destination
+// à passeport : la consigne « passeport » de la fiche (`checkin_passeport`), sinon celle de l'immigration, qui vaut pour toutes.
+export function consigneCheckin(partenaire, { passeport = false } = {}) {
+  const p = partenaire || {};
+  if (passeport) return String(p.checkin_passeport || "").trim() || CHECKIN_PASSEPORT_DEFAUT;
+  return String((p.regles && p.regles.checkin_voucher) || "").trim() || CHECKIN_DEFAUT;
 }
-// Trajet vers ou depuis la Malaisie (Langkawi) : la note à lire par le client avant de partir. Le passeport valable au moins six mois vient de la consigne de
-// Jérémy ; le check-in plus tôt est le texte de la compagnie (consigneCheckin), repris tel quel. Vide pour tout autre trajet.
-export function notePasseport({ de = "", vers = "", libelle = "", compagnie = "" } = {}) {
-  const lieux = `${de} ${vers} ${libelle}`;
-  if (!/langkawi|malaysia|malaisie/i.test(lieux)) return "";
-  const trajet = /langkawi/i.test(`${de} ${vers}`) ? { de, vers } : { de: "Langkawi", vers: "" };
-  return `Travelling to or from Langkawi (Malaysia): please bring your passport, valid for at least six months. ${consigneCheckin(compagnie, trajet)}`;
+// Consigne imprimée sur le billet : la ligne passe par une destination à passeport quand son départ ou son arrivée en est une.
+export const consigneCheckinFiche = (partenaire, trajet = {}, destinations = []) => consigneCheckin(partenaire, { passeport: !!destinationPasseport(destinations, [trajet.de, trajet.vers]) });
+
+// Trajet vers ou depuis une destination à passeport : la note à lire par le client avant de partir (texte de la règle), suivie de la consigne
+// de check-in « passeport » de la compagnie. Vide pour tout autre trajet. `langue` : « fr » pour la note française (le check-in reste anglais).
+export function notePasseport({ de = "", vers = "", libelle = "", partenaire = null, destinations = [], langue = "en" } = {}) {
+  const d = destinationPasseport(destinations, [de, vers, libelle]);
+  if (!d) return "";
+  const note = String((langue === "fr" ? d.note_fr || d.note_en : d.note_en || d.note_fr) || "").trim();
+  return `${note} ${consigneCheckin(partenaire, { passeport: true })}`.trim();
 }
 const sansAccentsMin = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-// Bundhaya se paie d'avance : les clients nous paient, et nous reversons au prestataire avant la veille du départ (jamais la veille : Bundhaya peut annuler).
-// Règle pour les traversées qui ne partent pas de Koh Lanta. Renvoie { avant, date_service } (« avant » : la veille, premier jour où ce n'est plus assez tôt) ou null.
-// Rien pour Rattana (payé sur place), ni pour un départ inconnu : on ne devine pas. `paye` : le net est déjà reversé.
-export function alerteAvantVeille(r, { partenaire = "", trajet = null, paye = false } = {}) {
-  if (!r || r.statut === "annule" || r.paye_sur_place || !r.date_service || paye || !/bundhaya/i.test(partenaire || "")) return null;
+// Partenaire payé d'avance (case « À payer avant la veille » de la fiche) : les clients nous paient, et nous reversons au prestataire avant
+// la veille du départ (jamais la veille : il peut annuler). Sauf pour un départ de l'un des lieux de `payer_avant_veille_sauf` (séparés par
+// des virgules). Renvoie { avant, date_service } (« avant » : la veille, premier jour où ce n'est plus assez tôt) ou null.
+// Rien pour un service payé sur place, ni pour un départ inconnu : on ne devine pas. `paye` : le net est déjà reversé.
+export function alerteAvantVeille(r, { partenaire = null, trajet = null, paye = false } = {}) {
+  if (!r || r.statut === "annule" || r.paye_sur_place || !r.date_service || paye || !(partenaire && partenaire.payer_avant_veille)) return null;
   const depart = trajet ? trajet.de : String(r.libelle || "").split(/→|->/).length > 1 ? String(r.libelle).split(/→|->/)[0] : "";
-  if (!String(depart || "").trim() || /lanta/i.test(depart)) return null;
+  if (!String(depart || "").trim()) return null;
+  const d0 = sansAccentsMin(depart);
+  if (termes(partenaire.payer_avant_veille_sauf).some((l) => d0.includes(l))) return null;
   const d = new Date(`${r.date_service}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
   return { avant: d.toISOString().slice(0, 10), date_service: r.date_service };
 }
+
+// Tarifs par zone (case « Tarifs par zone » de la fiche) : une prestation sans « A → B » n'a pas de départ fixe, le pickup et le drop-off
+// se remplissent à la main sur le voucher.
+export const estTarifZone = (prestation, partenaire) => !!prestation && !!(partenaire && partenaire.tarif_zone) && !String(prestation.libelle || "").includes("→");
 
 // Dates du dossier déduites de ses réservations (hors annulées) : la première et la dernière date de service.
 export function datesDepuisReservations(reservations) {
@@ -604,7 +619,7 @@ export const modeleChoisi = (reservation) => {
   return m === SANS_VOUCHER || MODELES_VOUCHER.includes(m) ? m : "";
 };
 
-// `partenaire` (facultatif) : pour une réservation à la main chez une compagnie de bateaux (Bundhaya, Satun), un billet.
+// `partenaire` (facultatif) : pour une réservation à la main chez une compagnie de bateaux (points d'embarquement sur sa fiche), un billet.
 export function typeVoucher(reservation, prestation, partenaire = null) {
   const choisi = modeleChoisi(reservation);
   if (choisi) return choisi === SANS_VOUCHER ? null : choisi;

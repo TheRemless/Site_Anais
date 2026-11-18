@@ -760,11 +760,10 @@ export function langueDuMessage(texte) {
 }
 
 const nombreLangue = (n, langue) => (langue === "fr" ? new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(n).replace(/[  ]/g, " ") : nombre(n));
-const NOTE_LANGKAWI_FR = "Trajet vers ou depuis Langkawi (Malaisie) : prévoyez votre passeport, valable au moins six mois.";
 
 // Variables du modèle « réponse au client » : un seul message qui reprend chaque service avec SA date, son prix, et le total. Tout est dans la langue
 // demandée, un prix ou une date inconnus sont dits en toutes lettres, jamais laissés vides. `services` : [{ offre, phrase, date, adultes, enfants, bebes }].
-export function varsReponse({ d, services, devise = "THB", langue = "en", entreprise = {}, nomPartenaire = () => "" }) {
+export function varsReponse({ d, services, devise = "THB", langue = "en", entreprise = {}, partenaireDe = () => null, destinations = [] }) {
   const fr = langue === "fr";
   const prenom = prenomDe(d.nom);
   let total = 0;
@@ -779,9 +778,9 @@ export function varsReponse({ d, services, devise = "THB", langue = "en", entrep
     else complet = false;
     const prix = prixConnu ? `${devise} ${nombreLangue(o.total, langue)}` : fr ? "prix à confirmer" : "price to be confirmed";
     let bloc = `• ${titre}\n  ${date} · ${gens} · ${prix}`;
-    // Trajet vers ou depuis Langkawi : passeport et check-in à lire avant de réserver.
-    const note = o ? notePasseport({ de: o.source && o.source.de, vers: o.source && o.source.vers, libelle: o.titre, compagnie: o.source ? nomPartenaire(o.source.partenaire_id) : "" }) : "";
-    if (note) bloc += `\n  ${fr ? `${NOTE_LANGKAWI_FR} ${note.split(/months\.\s*/)[1] || ""}`.trim() : note}`;
+    // Trajet vers ou depuis une destination à passeport (réglages) : passeport et check-in à lire avant de réserver.
+    const note = o ? notePasseport({ de: o.source && o.source.de, vers: o.source && o.source.vers, libelle: o.titre, partenaire: o.source ? partenaireDe(o.source.partenaire_id) : null, destinations, langue }) : "";
+    if (note) bloc += `\n  ${note}`;
     return bloc;
   });
   return {
@@ -1079,7 +1078,7 @@ const prenomDe = (nom) => (nom || "").trim().split(/\s+/)[0] || "";
 const nombre = (n) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
 
 // Texte anglais à envoyer au client : ce qui a été demandé, le prix de la base, et la question de la réservation. Rien d'autre.
-export function reponsePrix(d, offre, { devise = "THB", compagnie = "" } = {}) {
+export function reponsePrix(d, offre, { devise = "THB", partenaire = null, destinations = [] } = {}) {
   const prenom = prenomDe(d.nom);
   const lignes = [`Hello${prenom ? ` ${prenom}` : ""},`, ""];
   lignes.push(offre.titre);
@@ -1088,8 +1087,8 @@ export function reponsePrix(d, offre, { devise = "THB", compagnie = "" } = {}) {
   const gens = personnesTexte({ adultes: d.adultes, enfants: d.enfants, bebes: d.bebes }, "en");
   if (gens) lignes.push(`People: ${gens}`);
   if (offre.total !== null && offre.total !== undefined) lignes.push(`Price: ${devise} ${nombre(offre.total)}`);
-  // Trajet vers ou depuis Langkawi : passeport et check-in à lire avant de réserver.
-  const passeport = notePasseport({ de: offre.source && offre.source.de, vers: offre.source && offre.source.vers, libelle: offre.titre, compagnie });
+  // Trajet vers ou depuis une destination à passeport (réglages) : passeport et check-in à lire avant de réserver.
+  const passeport = notePasseport({ de: offre.source && offre.source.de, vers: offre.source && offre.source.vers, libelle: offre.titre, partenaire, destinations });
   if (passeport) lignes.push("", passeport);
   lignes.push("", "Would you like me to book it?");
   return lignes.join("\n");

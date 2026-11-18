@@ -2,7 +2,7 @@
 // Heure et début d'un service (recopie de supabase/functions/rappels/calc.js, un test vérifie l'accord), services des deux prochaines heures,
 // texte du rappel au client (prêt à copier, jamais envoyé seul) et détails utiles pour le partenaire. Rien n'est écrit pour le partenaire
 // (Jérémy, 14.11.2026 : Anaïs lui écrit elle-même) : seulement son nom, son téléphone et ce qu'il faut lui dire.
-import { personnesTexte, consigneCheckin, notePasseport, fraisDeParc, typeVoucher, estFraisDeParc } from "./operations-calc.mjs";
+import { personnesTexte, consigneCheckinFiche, notePasseport, fraisDeParc, typeVoucher, estFraisDeParc } from "./operations-calc.mjs";
 import { libelleClient } from "./partenaires-calc.mjs";
 
 // Fuseau de chaque organisation (organisations.fuseau, migration 42). Bangkok par défaut et pour un fuseau inconnu. Les heures d'été sont gérées
@@ -85,14 +85,15 @@ export function prochainsServices(reservations, maintenant, { heures = 2, apres 
     .sort((a, b) => a.debut - b.debut);
 }
 
-// Ce qu'on sait de ce qu'il faut emporter ou prévoir, tiré des données (jamais inventé) : passeport pour Langkawi, check-in d'un billet de bateau,
+// Ce qu'on sait de ce qu'il faut emporter ou prévoir, tiré des données (jamais inventé) : passeport pour une destination à passeport
+// (`destinations` : reglages.destinations_passeport), check-in d'un billet de bateau,
 // frais de parc non inclus, remarques du voucher. En anglais pour Secret et Taxi, comme les vouchers.
-export function aPrevoir(r, { prestation = null, partenaire = null, trajet = null } = {}) {
+export function aPrevoir(r, { prestation = null, partenaire = null, trajet = null, destinations = [] } = {}) {
   const out = [];
   const d = (r && r.details) || {};
-  const passeport = notePasseport({ de: trajet && trajet.de, vers: trajet && trajet.vers, libelle: r.libelle, compagnie: (partenaire && partenaire.nom) || "" });
+  const passeport = notePasseport({ de: trajet && trajet.de, vers: trajet && trajet.vers, libelle: r.libelle, partenaire, destinations });
   if (passeport) out.push(passeport);
-  else if (typeVoucher(r, prestation, partenaire) === "billet") out.push(consigneCheckin((partenaire && partenaire.nom) || "", trajet || {}));
+  else if (typeVoucher(r, prestation, partenaire) === "billet") out.push(consigneCheckinFiche(partenaire, trajet || {}, destinations));
   const parc = fraisDeParc(prestation);
   const parcTexte = (parc.texte || "").replace(/\.\s*,/g, ",").replace(/\.$/, "");
   if (parc.inclus === false && parcTexte) out.push(/park fee/i.test(parcTexte) ? `${parcTexte}.` : `National park fee not included: ${parcTexte}.`);

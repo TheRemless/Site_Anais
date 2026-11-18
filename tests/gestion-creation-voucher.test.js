@@ -101,8 +101,8 @@ test("course Taxi hors catalogue : même contrôle et même calcul que l'écran 
   assert.deepEqual(ps, { ligneIds: ["L1"], heure: "14:30", lieu: "Pimalai Resort", bebes: 0, sieges: 1, personnes: { adultes: 2, enfants: 1 }, zonePickup: null, statut: "confirme", details: { drop_off: "Krabi Airport", vol: "FD 3217", bagages: "3" } });
 });
 
-test("partenaire d'une course : celui qui dit taxi, sinon le premier actif", () => {
-  assert.equal(partenaireDeTaxi([{ id: "a", nom: "Chauffeurs" }, { id: "b", nom: "VIP Taxi Lanta" }]).id, "b");
+test("partenaire d'une course : celui de la case « taxi par défaut », sinon le premier actif", () => {
+  assert.equal(partenaireDeTaxi([{ id: "a", nom: "Chauffeurs" }, { id: "b", nom: "VIP Taxi Lanta", taxi_defaut: true }]).id, "b");
   assert.equal(partenaireDeTaxi([{ id: "a", nom: "Vieux", actif: false }, { id: "c", nom: "Chauffeurs démo" }]).id, "c");
   assert.equal(partenaireDeTaxi([]), null);
 });

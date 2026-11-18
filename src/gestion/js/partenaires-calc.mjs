@@ -218,7 +218,7 @@ const TRADUCTIONS = [
   [/\bExcursion d'une journée\b/gi, "Full-day trip"],
   [/\bExcursion d'une demi-journée\b/gi, "Half-day trip"],
   [/\bfrontière malaisienne\b/gi, "Malaysian border"],
-  [/\bAssociation des taxis de Saladan\b/gi, "Saladan Taxi Association"],
+  [/\bAssociation des taxis de (\p{Lu}[\p{L}'-]*)(?![\p{L}])/gu, "$1 Taxi Association"],
   [/\bdécouverte de\b/gi, "discovery of"],
   [/\bvan partagé/gi, "shared van"],
   [/\bAéroport de Hat ?yai\b/gi, "Hat Yai Airport"],
@@ -288,7 +288,8 @@ const TRADUCTIONS = [
   [/\bgare\b/gi, "station"],
   [/\bville\b/gi, "city"],
   [/\baéroport\b/gi, "airport"],
-  [/\bpar (ferry|Lomprayah|Seatran)\b/gi, "by $1"],
+  // « par ferry », « par » suivi du nom d'une compagnie (une majuscule) : « by … ». Jamais « par personne » (ligne suivante).
+  [/\b(?:[Pp]ar|PAR) ([Ff]erry|FERRY|(?!Personne?(?![\p{L}]))\p{Lu}[\p{L}-]*)(?![\p{L}])/gu, "by $1"],
   [/,?\s*par person(?:ne)?\b/gi, ", per person"],
   [/\s+ou\s+/g, " or "],
   // Plongée, locations et programmes.
