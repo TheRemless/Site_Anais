@@ -172,7 +172,7 @@ test("rappel au client : heure, lieu, personnes, et ce qu'il faut prévoir seule
   const t = G.texteRappelClient(r, { prenom: "Anna", lieu: "Hotel Sunset", entreprise: "Secret Travel & Tour", prevoir });
   assert.equal(t, ["Hello Anna,", "", "A quick reminder for today: 4 Islands by longtail, full day.", "Pickup at 08:00 from Hotel Sunset. Please be ready a few minutes early.", "For 2 adults, 1 child.", "National park fee not included: Adult 400 THB, cash on the day.", "Bring a towel.", "", "See you soon,", "Secret Travel & Tour"].join("\n"));
   assert.deepEqual(G.aPrevoir(R(), {}), [], "rien d'inventé quand la base ne dit rien");
-  assert.match(G.aPrevoir(R({ libelle: "Koh Lanta → Langkawi" }), { partenaire: { nom: "Satun Pakbara" }, trajet: { de: "Koh Lanta", vers: "Langkawi" } })[0], /passport/);
+  assert.match(G.aPrevoir(R({ libelle: "Koh Lanta → Langkawi" }), { partenaire: { nom: "Satun Pakbara" }, trajet: { de: "Koh Lanta", vers: "Langkawi" }, destinations: [{ lieux: ["Langkawi"], note_en: "Bring your passport." }] })[0], /passport/);
   assert.match(G.texteRappelClient(R(), { langue: "fr", prenom: "Marc", entreprise: "Zwald" }), /^Bonjour Marc,\n\nPetit rappel pour tout à l'heure : 4 Islands\.\nPrise en charge à 08:00\./);
 });
 

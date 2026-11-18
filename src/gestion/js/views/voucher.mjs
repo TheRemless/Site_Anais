@@ -5,7 +5,7 @@
 import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, resumeDossier } from "../etat.mjs";
 import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
-import { typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, statutPaiementVoucher, prixParPersonneVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
+import { typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, statutPaiementVoucher, prixParPersonneVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 import { estTaxi, estBookingSecret, estBookingConfirmation } from "../taxi-calc.mjs";
 import { estRetourDepart, dureeAnglais } from "../trajet-calc.mjs";
@@ -28,14 +28,22 @@ const prix = (n, devise) => (n === null || n === undefined || n === "" ? "" : `$
 const sansNets = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => !/net|commission/i.test(k)));
 const extraitPrestation = (p) => (p ? { libelle: p.libelle || "", libelle_en: p.libelle_en || "", famille: p.famille || "", groupe: p.groupe || "", unite: p.unite || "", prix_vente: p.prix_vente ?? null, details: sansNets(p.details) } : null);
 const extraitTrajet = (t) => (t ? { de: t.de || "", vers: t.vers || "", depart: t.depart || "", arrivee: t.arrivee || "", mode: t.mode || "" } : null);
-const extraitPartenaire = (p) => (p ? { nom: p.nom || "", contact: { embarcadere: (p.contact && p.contact.embarcadere) || "" }, regles: { points_embarquement: (p.regles && p.regles.points_embarquement) || [], checkin_voucher: (p.regles && p.regles.checkin_voucher) || "" } } : null);
+// Règles de la fiche (migration 43) : la consigne « passeport » et les tarifs par zone se figent avec le reste.
+const extraitPartenaire = (p) => (p ? { nom: p.nom || "", contact: { embarcadere: (p.contact && p.contact.embarcadere) || "" }, regles: { points_embarquement: (p.regles && p.regles.points_embarquement) || [], checkin_voucher: (p.regles && p.regles.checkin_voucher) || "" }, checkin_passeport: p.checkin_passeport || "", tarif_zone: !!p.tarif_zone } : null);
+// Fiche figée avant la migration 43 : ses consignes venaient alors du nom de la compagnie. Elle prend celles que la migration a écrites sur
+// la fiche actuelle (consigne de check-in quand la figée était vide, consigne « passeport », tarifs par zone) : le voucher renvoyé reste le même.
+export const completerFigee = (fige, live) => {
+  if (!fige || "checkin_passeport" in fige || !live) return fige;
+  const l = extraitPartenaire(live);
+  return { ...fige, regles: { ...(fige.regles || {}), checkin_voucher: (fige.regles && fige.regles.checkin_voucher) || l.regles.checkin_voucher }, checkin_passeport: l.checkin_passeport, tarif_zone: l.tarif_zone };
+};
 
 // Les sources d'un voucher : celles figées au premier envoi quand la réservation porte encore le même service, sinon celles de la base.
 function sourcesVoucher(r, prestationLive) {
   const live = { prestation: prestationLive || null, trajet: r.trajet_id ? etat.db.trajets.find((t) => t.id === r.trajet_id) || null : null, partenaire: partenaireDe(r.partenaire_id) || null, modele: null };
   const f = valeursFigees(r);
   if (!f) return live;
-  return { prestation: "prestation" in f ? f.prestation : live.prestation, trajet: "trajet" in f ? f.trajet : live.trajet, partenaire: "partenaire" in f ? f.partenaire : live.partenaire, modele: f.modele || null };
+  return { prestation: "prestation" in f ? f.prestation : live.prestation, trajet: "trajet" in f ? f.trajet : live.trajet, partenaire: "partenaire" in f ? completerFigee(f.partenaire, live.partenaire) : live.partenaire, modele: f.modele || null };
 }
 
 // Modèle du voucher : celui choisi sur la réservation, sinon celui figé à l'envoi, sinon la déduction. Taxi : toujours la Booking confirmation.
@@ -132,7 +140,7 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const embarquement = dt.embarquement || embarcadereFiche(compagnie, dBillet.de) || (trajet ? r.lieu_pickup || "" : "");
   const pickupInclus = !!(r.heure_pickup || r.lieu_pickup) && (!!trajet || !!r.lieu_pickup);
   // Quand la compagnie vient chercher le client à l'hôtel, pas de comptoir : il doit être prêt dans le hall.
-  const checkin = dt.checkin || (estPickupHotel(embarquement) || (!trajet && !embarquement && r.lieu_pickup) ? t("lobby") : consigneCheckinFiche(compagnie || { nom: nomPartenaire(r.partenaire_id) }, dBillet));
+  const checkin = dt.checkin || (estPickupHotel(embarquement) || (!trajet && !embarquement && r.lieu_pickup) ? t("lobby") : consigneCheckinFiche(compagnie || partenaireDe(r.partenaire_id), dBillet, regl.destinations_passeport));
   const bq = bateauEtQuai(p);
   const bateauTexte = dt.bateau || bq.bateau;
   // La capacité du bateau ne s'imprime plus sur le voucher (Jérémy, 13.11.2026) : elle reste dans la fiche de la prestation.
@@ -160,8 +168,8 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const remarques = [dt.remarques, r.reference_partenaire ? `${t("ref_operateur")} ${r.reference_partenaire}` : ""].filter(Boolean).join(" · ");
   const dropOff = libelleClient(dt.drop_off || dropOffDepuisLibelle(r, p, trajet));
   // Un transfert « Pakbara Pier → Hat Yai Airport » part du quai, pas de l'hôtel du client.
-  // Les tarifs par zone des taxis de Saladan n'ont pas de départ fixe : Anaïs remplit le pickup et le drop-off.
-  const tarifZone = !!p && /saladan/i.test(p.groupe || "") && !(p.libelle || "").includes("→");
+  // Tarifs par zone (case de la fiche du partenaire) : pas de départ fixe, le pickup et le drop-off se remplissent à la main.
+  const tarifZone = estTarifZone(p, (pLive && partenaireDe(pLive.partenaire_id)) || compagnie || partenaireDe(r.partenaire_id));
   // Retour au point de départ : jamais le premier bout d'un libellé « A → B » (un aéroport où le client ne sera pas), sinon l'hôtel du client.
   const pickupTransfert = r.lieu_pickup || (estRetourDepart(r) ? hotel : libelleClient(pickupDepuisLibelle(r, p, trajet)) || (tarifZone ? "" : hotel));
   // Retour au point de départ (16.11.2026) : « Pickup and return », le programme et la durée à la place du drop-off, jamais « From X to X ».

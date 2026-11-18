@@ -31,7 +31,7 @@ const avant41 = migrations.filter((f) => parseInt(f.split("-")[1]) < 41);
 for (const f of avant41) await db.exec(fs.readFileSync(W + f, "utf8"));
 await db.exec("insert into fiduciaire_compteurs (prefixe, annee, type, dernier) values ('COM', 2026, 'facture', 7); insert into rappels_suivi (type) values ('veille');");
 for (const f of migrations.filter((f) => !avant41.includes(f))) await db.exec(fs.readFileSync(W + f, "utf8"));
-ok(migrations.at(-1) === "migration-42-organisations.sql", "la migration 42 est appliquée en dernier");
+ok(migrations.includes("migration-42-organisations.sql"), "la migration 42 est appliquée (les suivantes après elle)");
 await db.exec(fs.readFileSync(W + "migration-42-organisations.sql", "utf8"));
 ok(true, "la migration 42 se rejoue sans erreur");
 // Droits des tables comme sur Supabase, puis les « revoke » et « grant » de la migration 42 rejoués.

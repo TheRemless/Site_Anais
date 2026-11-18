@@ -406,7 +406,7 @@ export function ouvrirDemande(depuisSite = null) {
       // Secret et Taxi répondent toujours en anglais, avec les libellés anglais des services.
       langue: langueReponse(texte, modeExcursions()),
       telephone: d.telephone || "",
-      vars: (l) => varsReponse({ d, services: coches().map((sv) => ({ ...sv, offre: etatDe(sv).offre, bebes: d.bebes })), devise, langue: l === "fr" && !modeExcursions() ? "fr" : "en", entreprise, nomPartenaire }),
+      vars: (l) => varsReponse({ d, services: coches().map((sv) => ({ ...sv, offre: etatDe(sv).offre, bebes: d.bebes })), devise, langue: l === "fr" && !modeExcursions() ? "fr" : "en", entreprise, partenaireDe, destinations: reglages().destinations_passeport }),
     });
   }
 

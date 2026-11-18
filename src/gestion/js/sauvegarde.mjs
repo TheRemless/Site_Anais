@@ -1,6 +1,21 @@
 // Sauvegarde et restauration : ce qui part dans le fichier, et ce qui est refusé à l'import. Logique pure, testable avec node --test.
 
+import { REGLES_PARTENAIRE_NEUTRES } from "./defauts.mjs";
+
 export const VERSION_SAUVEGARDE = 3;
+
+// Import de partenaires (sauvegarde ou fichier d'import-partenaires.mjs) : un fichier plus ancien que la migration 43 n'a ni les cases des
+// règles ni la consigne de check-in écrite par la migration. Une ligne qui existe déjà garde ce que le fichier ne dit pas (cases, clés de
+// `regles` absentes) ; une ligne nouvelle prend les valeurs par défaut de la base. Ce que le fichier dit l'emporte toujours.
+export function fusionnerPartenairesImport(lignes, existants = []) {
+  const parId = new Map((existants || []).map((p) => [p.id, p]));
+  return (lignes || []).map((ligne) => {
+    const avant = parId.get(ligne.id);
+    const cases = Object.fromEntries(Object.entries(REGLES_PARTENAIRE_NEUTRES).map(([k, v]) => [k, avant && avant[k] !== undefined && avant[k] !== null ? avant[k] : v]));
+    const regles = avant ? { ...(avant.regles || {}), ...(ligne.regles || {}) } : ligne.regles || {};
+    return { ...cases, ...Object.fromEntries(Object.entries(ligne).filter(([, v]) => v !== undefined)), regles };
+  });
+}
 
 // Colonnes que l'outil ajoute aux lignes en mémoire (le résumé d'un dossier tenu par la base) : elles n'existent pas dans la table,
 // la base refuserait l'import d'une ligne qui les porte.

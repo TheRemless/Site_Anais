@@ -4,7 +4,7 @@
 // Le fichier produit contient les prix nets et les coordonnées bancaires des partenaires : il ne se publie pas.
 import fs from "node:fs";
 import { randomUUID, createHash } from "node:crypto";
-import { uniteDepuisTexte, libelleClient } from "../../src/gestion/js/partenaires-calc.mjs";
+import { uniteDepuisTexte, libelleClient, reglerCompagnies } from "../../src/gestion/js/partenaires-calc.mjs";
 
 // Identifiant stable à partir d'une clé lisible : régénérer le fichier redonne les mêmes identifiants, donc un
 // nouvel import remplace les lignes au lieu de les dupliquer.
@@ -35,6 +35,9 @@ const nombre = (v) => (v === null || v === undefined || v === "" || Number.isNaN
 const texte = (v) => (v === null || v === undefined ? "" : Array.isArray(v) ? v.join(", ") : String(v));
 
 export function convertir(D, entiteId, uid = null, maintenant = new Date().toISOString()) {
+  // « par X » → « by X » dans les libellés anglais : les partenaires du fichier et les compagnies citées dans la base de Secret (comme reglages.compagnies,
+  // migration 43). Ce script ne sert qu'aux données d'Anaïs.
+  reglerCompagnies([...(D.partners || []).map((p) => p.name), "Lomprayah", "Seatran"]);
   let n = 0;
   const prochain = () => (uid ? uid() : idStable(`${entiteId}:${++n}`));
   const out = { version: 2, entreprise: "secret", exporte_le: maintenant, partenaires: [], partenaires_prives: [], prestations: [], prestations_nets: [], trajets: [], trajets_nets: [], taches: [] };

@@ -241,6 +241,7 @@ export function fichePartenaire(id) {
           voitNets() && prive && prive.commission_regle && TYPES_COMMISSION[prive.commission_regle.type] ? h("div", null, h("h3", null, tr("Commission calculée")), h("p", null, prive.commission_regle.type === "vente_moins_net" ? tr(TYPES_COMMISSION.vente_moins_net) : `${tr(TYPES_COMMISSION[prive.commission_regle.type])} : ${prive.commission_regle.valeur}`), peut("dossiers.ecrire") ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirRecalculCommissions(p.id, () => naviguer(location.hash)) }, tr("Recalculer sur les réservations existantes")) : null) : null,
           commissionsPartenaire(p, prive, voitNets()).length ? h("div", null, h("h3", null, tr("Commission et marge")), liste(commissionsPartenaire(p, prive, voitNets()))) : null,
           r.checkin && r.checkin.length ? h("div", null, h("h3", null, tr("Check-in")), liste(r.checkin)) : null,
+          reglesAgence(p).length ? h("div", null, h("h3", null, tr("Règles de l'agence")), liste(reglesAgence(p))) : null,
           r.points_embarquement && r.points_embarquement.length ? h("div", null, h("h3", null, tr("Points d'embarquement")), h("ul", { class: "liste-regles" }, r.points_embarquement.map((x) => h("li", null, h("strong", null, x.lieu), ` ${x.ou}`)))) : null
         ),
         // Grilles de pickup et points d'embarquement : modifiables ici (audit n° 8). Taxi n'a ni bateau ni grille de pickup.
@@ -412,6 +413,16 @@ export function tableauPrestations(lignes, { avecPartenaire = true, apres = () =
   ];
 }
 
+// Les cases de la fiche (migration 43), en phrases : ce que l'outil fait de ce partenaire.
+function reglesAgence(p) {
+  const out = [];
+  if (p.payer_avant_veille) out.push(p.payer_avant_veille_sauf ? tr("À payer avant la veille du départ, sauf départ de {lieux}.", { lieux: p.payer_avant_veille_sauf }) : tr("À payer avant la veille du départ."));
+  if (p.checkin_passeport) out.push(tr("Check-in avec passeport : {texte}", { texte: p.checkin_passeport }));
+  if (p.tarif_zone) out.push(tr("Tarifs par zone : pickup et drop-off à remplir sur le voucher."));
+  if (p.taxi_defaut) out.push(tr("Partenaire taxi par défaut."));
+  return out;
+}
+
 // ---- Formulaires --------------------------------------------------------------------------------------------
 const lignesVers = (texte) => String(texte || "").split("\n").map((l) => l.trim()).filter(Boolean);
 
@@ -483,6 +494,13 @@ export function formulairePartenaire(p, apres) {
   const notes = h("textarea", { id: "p-notes", rows: 3 });
   notes.value = p.notes || "";
   const actif = h("input", { id: "p-actif", type: "checkbox", checked: p.actif !== false });
+  // Règles de l'agence avec ce partenaire (migration 43) : des cases sur la fiche, plus aucun nom de compagnie dans le code.
+  const avance = h("input", { id: "p-avance", type: "checkbox", checked: !!p.payer_avant_veille });
+  const avanceSauf = h("input", { id: "p-avance-sauf", value: p.payer_avant_veille_sauf || "", placeholder: tr("Lieux séparés par des virgules") });
+  const checkinPasseport = h("textarea", { id: "p-checkin-passeport", rows: 2, lang: "en", placeholder: "Check-in 90 minutes before departure. Passport of each passenger required." });
+  checkinPasseport.value = p.checkin_passeport || "";
+  const tarifZone = h("input", { id: "p-tarif-zone", type: "checkbox", checked: !!p.tarif_zone });
+  const taxiDefaut = h("input", { id: "p-taxi-defaut", type: "checkbox", checked: !!p.taxi_defaut });
   const taxi = modeTaxi();
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   return h(
@@ -506,6 +524,12 @@ export function formulairePartenaire(p, apres) {
           contrat: { ...ct, statut: statut.value.trim(), saison: saison.value.trim(), validite: validite.value.trim(), etat: etatC.value || undefined, fin: fin.value || null, documents: documents.value.split(",").map((x) => x.trim()).filter(Boolean) },
           notes: notes.value.trim(),
           actif: actif.checked,
+          // Champs masqués (Taxi : ni avance ni passeport ; ailleurs : pas de taxi par défaut) : la valeur enregistrée ne change pas.
+          payer_avant_veille: taxi ? !!p.payer_avant_veille : avance.checked,
+          payer_avant_veille_sauf: taxi ? p.payer_avant_veille_sauf || "" : avanceSauf.value.trim(),
+          checkin_passeport: taxi ? p.checkin_passeport || "" : checkinPasseport.value.trim(),
+          tarif_zone: tarifZone.checked,
+          taxi_defaut: taxi ? taxiDefaut.checked : !!p.taxi_defaut,
         };
         try {
           const res = p.id ? await modifier("partenaires", p.id, { ...valeurs, updated_at: new Date().toISOString() }) : await inserer("partenaires", { ...valeurs, ordre: Math.max(0, ...etat.db.partenaires.map((x) => x.ordre || 0)) + 1 });
@@ -526,6 +550,17 @@ export function formulairePartenaire(p, apres) {
     h("h3", null, tr("Règles")),
     taxi ? null : champ(tr("Règlement par les clients"), mode, tr("Les nouveaux services de ce partenaire prennent ce mode. Chaque service peut ensuite être changé d'un tap.")),
     h("div", { class: "grille-form" }, champ(tr("Annulation"), annulation), champ(tr("Enfants, une règle par ligne"), enfants), taxi ? null : champ(tr("Check-in, une règle par ligne"), checkin), taxi ? null : champ(tr("Consigne de check-in sur le voucher (anglais)"), checkinVoucher, tr("Imprimée telle quelle sur le voucher du client. Quelques lignes au plus."))),
+    h(
+      "div",
+      { class: "regles-partenaire" },
+      taxi ? null : h("label", { class: "case", for: "p-avance" }, avance, tr("À payer au prestataire avant la veille du départ")),
+      taxi ? null : champ(tr("Sauf départ de"), avanceSauf, tr("Pas d'alerte pour un départ de ces lieux. Vide : tous les départs.")),
+      taxi ? null : champ(tr("Consigne de check-in avec passeport (anglais)"), checkinPasseport, tr("Pour un trajet vers ou depuis une destination à passeport (Réglages). Vide : la consigne générale de l'immigration.")),
+      h("label", { class: "case", for: "p-tarif-zone" }, tarifZone, tr("Tarifs par zone, sans départ fixe")),
+      h("p", { class: "aide" }, tr("Le voucher laisse le pickup et le drop-off à remplir pour un tarif sans « A → B ».")),
+      taxi ? h("label", { class: "case", for: "p-taxi-defaut" }, taxiDefaut, tr("Partenaire taxi par défaut")) : null,
+      taxi ? h("p", { class: "aide" }, tr("Reçoit les courses quand aucun chauffeur n'est choisi dans Réglages > Booking confirmation.")) : null
+    ),
     taxi ? null : h("h3", null, tr("Contrat")),
     taxi ? null : h("div", { class: "grille-form" }, champ(tr("Statut"), statut), champ(tr("Saison"), saison), champ(tr("Validité"), validite), champ(tr("État"), etatC, tr("« À surveiller » met le contrat en orange dans la liste.")), champ(tr("Fin du contrat"), fin, tr("Un rappel apparaît dans Aujourd'hui trente jours avant.")), champ(tr("Documents, séparés par des virgules"), documents, tr("Les noms des documents seulement : le fichier lui-même se garde hors de l'outil pour l'instant."))),
     champ(tr("Notes"), notes),

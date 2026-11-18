@@ -296,6 +296,11 @@ export const REGLAGES_NEUTRE = {
   libelles: LIBELLES_FR,
   libelles_en: LIBELLES_EN,
   textes: { variantes: [{ id: "standard", nom: "Standard", corps: "", cloture: "" }] },
+  // Destinations à passeport (migration 43) : un trajet vers ou depuis l'un de ces lieux porte la note du passeport (vouchers, messages,
+  // rappels, réponse à une demande) et la consigne de check-in « passeport » de la compagnie. { lieux: ["…"], note_en, note_fr }.
+  destinations_passeport: [],
+  // Compagnies citées dans les libellés sans être partenaires (« par X » → « by X » sur les vouchers), en plus des noms des partenaires.
+  compagnies: [],
 };
 
 // Informations de paiement proposées pour un document : celles de l'entreprise (avec le QR code des réglages), puis les autres.
@@ -377,10 +382,24 @@ export function nouvelleLigne(kind, props = {}) {
   return { id: uid(), kind, libelle: "", intro: "", puces: [], unite: null, qte: null, montant: null, pct: null, ...props };
 }
 
+// Colonnes des règles d'un partenaire (migration 43), aux valeurs par défaut de la base : aucune règle.
+export const REGLES_PARTENAIRE_NEUTRES = { payer_avant_veille: false, payer_avant_veille_sauf: "", checkin_passeport: "", tarif_zone: false, taxi_defaut: false };
+
 // ---------------------------------------------------------------------------------------------
 // Démonstration : trois entreprises fictives, deux utilisateurs, des dossiers à tous les statuts.
 // ---------------------------------------------------------------------------------------------
+// La destination à passeport et les compagnies écrites par la migration 43 pour les entreprises d'Anaïs : la démonstration a les mêmes.
+export const COMPAGNIES_DEMO = ["Lomprayah", "Seatran"];
+// `lieux` : départ ou arrivée qui demande la consigne de check-in « passeport » ; `mentions` : mots qui, dans le libellé, ajoutent seulement la note.
+export const DESTINATION_PASSEPORT_DEMO = {
+  lieux: ["Langkawi"],
+  mentions: ["Malaysia", "Malaisie"],
+  note_en: "Travelling to or from Langkawi (Malaysia): please bring your passport, valid for at least six months.",
+  note_fr: "Trajet vers ou depuis Langkawi (Malaisie) : prévoyez votre passeport, valable au moins six mois.",
+};
 const REGLAGES_DEMO_AGENCE = completerReglages({
+  destinations_passeport: [DESTINATION_PASSEPORT_DEMO],
+  compagnies: COMPAGNIES_DEMO,
   emetteur: { nom: "Agence démo", adresse: "1 rue de l'Exemple\n00000 Ville", telephone: "+00 00 000 00 00", licence: "00/00000", contact: "Prénom Nom\n+00 00 000 00 00 (WhatsApp)\ncontact@exemple.com" },
   paiement: { texte: "Banque: Banque démo\nIBAN: CH00 0000 0000 0000 0000 0\nSwift: XXXXXXXXXXX\nPrénom Nom\n0000 Ville", },
   devise: "CHF",
@@ -399,6 +418,8 @@ const REGLAGES_DEMO_AGENCE = completerReglages({
 });
 
 const REGLAGES_DEMO_TOURS = completerReglages({
+  destinations_passeport: [DESTINATION_PASSEPORT_DEMO],
+  compagnies: COMPAGNIES_DEMO,
   emetteur: { nom: "Excursions démo", adresse: "2 chemin de la Plage\n00000 Ville", telephone: "+00 00 000 00 01", licence: "00/00001", contact: "Équipe démo\ncontact@exemple.com" },
   paiement: { texte: "Banque: Banque démo\nNuméro de compte: 000-0-00000-0\nTitulaire: Excursions démo" },
   devise: "THB",
@@ -413,6 +434,8 @@ const REGLAGES_DEMO_TOURS = completerReglages({
 });
 
 const REGLAGES_DEMO_TAXI = completerReglages({
+  destinations_passeport: [DESTINATION_PASSEPORT_DEMO],
+  compagnies: COMPAGNIES_DEMO,
   emetteur: { nom: "Taxi démo", adresse: "3 route de l'Aéroport\n00000 Ville", telephone: "+00 00 000 00 02", contact: "Taxi démo\ncontact@exemple.com" },
   // Taxi n'émet aucune facture : ni texte de paiement ni liste de pays (le client paie le chauffeur).
   paiement: { texte: "" },
@@ -532,7 +555,7 @@ export function donneesDemo(ajd, ajouterJours) {
   const trajets = [];
   const trajets_nets = [];
   const partenaire = (nom, categorie, groupe, role, extra = {}) => {
-    const p = { id: uid(), created_at: j(-90), updated_at: j(-90), entite_id: e2.id, nom, nom_thai: "", categorie, groupe, role, contact: {}, regles: {}, contrat: {}, notes: "", ordre: partenaires.length + 1, actif: true, ...extra };
+    const p = { id: uid(), created_at: j(-90), updated_at: j(-90), entite_id: e2.id, nom, nom_thai: "", categorie, groupe, role, contact: {}, regles: {}, contrat: {}, notes: "", ordre: partenaires.length + 1, actif: true, ...REGLES_PARTENAIRE_NEUTRES, ...extra };
     partenaires.push(p);
     return p;
   };
@@ -610,7 +633,7 @@ export function donneesDemo(ajd, ajouterJours) {
   reservation(dossiers[5], prestations[8], "Sunset by longtail, 2 hours", j(3), { montant_vente: 1400 }, { net_prevu: 1000 });
   // Taxi : une course avant-hier et une hier (commissions à demander, avis d'hier) et une demain.
   const dossiersTaxi = dossiers.filter((d) => d.entite_id === e3.id);
-  const chauffeurs = { id: uid(), created_at: j(-90), updated_at: j(-90), entite_id: e3.id, nom: "Chauffeurs démo", nom_thai: "", categorie: "Transferts terrestres et taxis", groupe: "transport", role: "Minivans privés", contact: { personne: "M. Démo", telephones: [{ numero: "083-000-0009", libelle: "", whatsapp: true }] }, regles: { mode_reglement: "sur_place" }, contrat: {}, notes: "", ordre: 1, actif: true };
+  const chauffeurs = { id: uid(), created_at: j(-90), updated_at: j(-90), entite_id: e3.id, nom: "Chauffeurs démo", nom_thai: "", categorie: "Transferts terrestres et taxis", groupe: "transport", role: "Minivans privés", contact: { personne: "M. Démo", telephones: [{ numero: "083-000-0009", libelle: "", whatsapp: true }] }, regles: { mode_reglement: "sur_place" }, contrat: {}, notes: "", ordre: 1, actif: true, ...REGLES_PARTENAIRE_NEUTRES };
   partenaires.push(chauffeurs);
   // Trois tarifs du catalogue de VIP Taxi Lanta (prix de vente par véhicule, au départ de Koh Lanta, tels qu'en base le 13.11.2026) :
   // sans eux, « Ajouter un service » affichait « 0 tarif » et le parcours d'Anaïs n'était pas testable en démo.

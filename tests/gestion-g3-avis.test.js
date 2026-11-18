@@ -35,39 +35,40 @@ test("message d'avis : le lien d'avis Google vient des réglages, absent il est 
 
 import { notePasseport, consigneCheckin } from "../src/gestion/js/operations-calc.mjs";
 import { reponsePrix } from "../src/gestion/js/demande-calc.mjs";
+import { BUNDHAYA, SATUN, VIP, DESTINATIONS } from "./fixtures/regles-partenaires-anais.mjs";
 
 test("passeport pour Langkawi : une note claire pour tout trajet vers ou depuis la Malaisie, avec le check-in de la compagnie", () => {
   const trajet = { de: "Koh Lipe", vers: "Langkawi" };
-  const note = notePasseport({ ...trajet, compagnie: "Bundhaya Speed Boat" });
+  const note = notePasseport({ ...trajet, partenaire: BUNDHAYA, destinations: DESTINATIONS });
   assert.match(note, /passport/i);
   assert.match(note, /at least six months/);
-  assert.ok(note.includes(consigneCheckin("Bundhaya Speed Boat", trajet)), "le texte de check-in de la compagnie est repris tel quel, rien n'est inventé");
-  assert.ok(notePasseport({ de: "Langkawi", vers: "Koh Lipe", compagnie: "Satun Pakbara Speed Boat Club" }).includes(consigneCheckin("Satun Pakbara Speed Boat Club", { de: "Langkawi", vers: "Koh Lipe" })), "depuis Langkawi aussi");
-  assert.equal(notePasseport({ de: "Koh Lanta", vers: "Krabi Airport", compagnie: "Bundhaya Speed Boat" }), "", "rien pour un trajet thaïlandais");
-  assert.match(notePasseport({ libelle: "Speedboat to Langkawi", compagnie: "" }), /six months/, "service saisi à la main : le libellé suffit");
+  assert.ok(note.includes(consigneCheckin(BUNDHAYA, { passeport: true })), "le texte de check-in de la compagnie est repris tel quel, rien n'est inventé");
+  assert.ok(notePasseport({ de: "Langkawi", vers: "Koh Lipe", partenaire: SATUN, destinations: DESTINATIONS }).includes(consigneCheckin(SATUN, { passeport: true })), "depuis Langkawi aussi");
+  assert.equal(notePasseport({ de: "Koh Lanta", vers: "Krabi Airport", partenaire: BUNDHAYA, destinations: DESTINATIONS }), "", "rien pour un trajet thaïlandais");
+  assert.match(notePasseport({ libelle: "Speedboat to Langkawi", destinations: DESTINATIONS }), /six months/, "service saisi à la main : le libellé suffit");
   assert.equal(notePasseport({}), "");
 });
 
 test("réponse à une demande collée : le trajet Langkawi porte la note du passeport, un autre trajet non", () => {
   const d = { nom: "Anna Keller", date: "2026-12-10", adultes: 2, enfants: 0, bebes: 0 };
-  const lang = reponsePrix(d, { titre: "Koh Lipe → Langkawi, 10:30", total: 3600, source: { de: "Koh Lipe", vers: "Langkawi" } }, { compagnie: "Bundhaya Speed Boat" });
+  const lang = reponsePrix(d, { titre: "Koh Lipe → Langkawi, 10:30", total: 3600, source: { de: "Koh Lipe", vers: "Langkawi" } }, { partenaire: BUNDHAYA, destinations: DESTINATIONS });
   assert.match(lang, /passport/i);
   assert.ok(lang.indexOf("passport") < lang.indexOf("Would you like me to book it?"), "avant la question finale");
-  const autre = reponsePrix(d, { titre: "Koh Lanta → Krabi Airport", total: 700, source: { de: "Koh Lanta", vers: "Krabi Airport" } }, { compagnie: "" });
+  const autre = reponsePrix(d, { titre: "Koh Lanta → Krabi Airport", total: 700, source: { de: "Koh Lanta", vers: "Krabi Airport" } }, { destinations: DESTINATIONS });
   assert.doesNotMatch(autre, /passport/i);
 });
 
-test("Bundhaya payé d'avance : à régler au prestataire avant la veille, sauf au départ de Koh Lanta, hors Rattana, hors payé sur place", async () => {
+test("payé d'avance (case de la fiche, Bundhaya) : à régler au prestataire avant la veille, sauf au départ de Koh Lanta, hors Rattana, hors payé sur place", async () => {
   const { alerteAvantVeille } = await import("../src/gestion/js/operations-calc.mjs");
   const r = (extra = {}) => ({ statut: "confirme", paye_sur_place: false, date_service: "2026-12-10", libelle: "Pakbara → Langkawi", ...extra });
-  const ok = alerteAvantVeille(r(), { partenaire: "Bundhaya Speed Boat", trajet: { de: "Pakbara", vers: "Langkawi" } });
+  const ok = alerteAvantVeille(r(), { partenaire: BUNDHAYA, trajet: { de: "Pakbara", vers: "Langkawi" } });
   assert.deepEqual(ok, { avant: "2026-12-09", date_service: "2026-12-10" });
-  assert.equal(alerteAvantVeille(r(), { partenaire: "Bundhaya Speed Boat", trajet: { de: "Koh Lanta", vers: "Langkawi" } }), null, "départ de Koh Lanta : pas de règle");
-  assert.equal(alerteAvantVeille(r(), { partenaire: "Rattana Tour", trajet: { de: "Pakbara", vers: "Langkawi" } }), null, "rien pour Rattana");
-  assert.equal(alerteAvantVeille(r({ paye_sur_place: true }), { partenaire: "Bundhaya", trajet: { de: "Pakbara" } }), null);
-  assert.equal(alerteAvantVeille(r({ statut: "annule" }), { partenaire: "Bundhaya", trajet: { de: "Pakbara" } }), null);
-  assert.equal(alerteAvantVeille(r({ date_service: null }), { partenaire: "Bundhaya", trajet: { de: "Pakbara" } }), null);
-  assert.equal(alerteAvantVeille(r(), { partenaire: "Bundhaya", trajet: null }).avant, "2026-12-09", "départ lu dans le libellé quand il n'y a pas de trajet");
-  assert.equal(alerteAvantVeille(r({ libelle: "Billet Bundhaya" }), { partenaire: "Bundhaya", trajet: null }), null, "départ inconnu : rien n'est deviné");
-  assert.equal(alerteAvantVeille(r(), { partenaire: "Bundhaya", trajet: { de: "Pakbara" }, paye: true }), null, "déjà payé au prestataire");
+  assert.equal(alerteAvantVeille(r(), { partenaire: BUNDHAYA, trajet: { de: "Koh Lanta", vers: "Langkawi" } }), null, "départ de Koh Lanta : pas de règle");
+  assert.equal(alerteAvantVeille(r(), { partenaire: { nom: "Rattana Tour" }, trajet: { de: "Pakbara", vers: "Langkawi" } }), null, "rien pour Rattana");
+  assert.equal(alerteAvantVeille(r({ paye_sur_place: true }), { partenaire: BUNDHAYA, trajet: { de: "Pakbara" } }), null);
+  assert.equal(alerteAvantVeille(r({ statut: "annule" }), { partenaire: BUNDHAYA, trajet: { de: "Pakbara" } }), null);
+  assert.equal(alerteAvantVeille(r({ date_service: null }), { partenaire: BUNDHAYA, trajet: { de: "Pakbara" } }), null);
+  assert.equal(alerteAvantVeille(r(), { partenaire: BUNDHAYA, trajet: null }).avant, "2026-12-09", "départ lu dans le libellé quand il n'y a pas de trajet");
+  assert.equal(alerteAvantVeille(r({ libelle: "Billet Bundhaya" }), { partenaire: BUNDHAYA, trajet: null }), null, "départ inconnu : rien n'est deviné");
+  assert.equal(alerteAvantVeille(r(), { partenaire: BUNDHAYA, trajet: { de: "Pakbara" }, paye: true }), null, "déjà payé au prestataire");
 });

@@ -19,7 +19,7 @@ import { reglagesFid } from "../fiduciaire-calc.mjs";
 // Lot D (équipe, réglages, messages) : historique, archives, moyens de paiement, textes thaïs de l'écran de Mook.
 import { groupesModifies, nomGroupe, archiverVariante, reactiverVariante, variantesActives, identifiantMoyen } from "../reglages-calc.mjs";
 import { ecransThaiPour, texteValide, variablesDe } from "../textes-thai.mjs";
-import { VERSION_SAUVEGARDE, pourSauvegarde, verifierSauvegarde, absentsDeLaSauvegarde, reservationsPerdantLeurPrestataire } from "../sauvegarde.mjs";
+import { VERSION_SAUVEGARDE, pourSauvegarde, verifierSauvegarde, absentsDeLaSauvegarde, reservationsPerdantLeurPrestataire, fusionnerPartenairesImport } from "../sauvegarde.mjs";
 
 // Les tables des partenaires font partie de la sauvegarde et de l'import (nets compris pour qui a le droit de les lire).
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
@@ -96,6 +96,8 @@ async function importer(fichier) {
     // Les tables de nets n'ont pas de date de création : une sauvegarde ou un import plus ancien peut en porter une.
     const SANS_DATE = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
     for (const t of TABLES) rows[t] = pourSauvegarde(t, data[t]).map(({ created_at, ...r }) => ({ ...r, ...(SANS_DATE.includes(t) ? {} : { created_at }), entite_id: etat.entiteId }));
+    // Règles des partenaires (migration 43) : un fichier qui ne les porte pas n'efface pas celles de la base.
+    rows.partenaires = fusionnerPartenairesImport(rows.partenaires, etat.db.partenaires);
     await etat.store.importer(rows);
     // L'import a réussi : seulement maintenant on retire ce que le fichier ne contient plus. Une erreur plus haut n'a rien supprimé.
     if (remplace) await etat.store.supprimerAbsents(etat.entiteId, absents);
@@ -111,6 +113,51 @@ async function importer(fichier) {
 
 // ---- Corbeille des dossiers supprimés ------------------------------------------------------------------------
 // Un dossier supprimé reste récupérable 90 jours (migration 15) avec ses documents, paiements, réservations et tâches.
+// Réglages des règles de destination (migration 43). `r.destinations_passeport` : [{ lieux, mentions, note_en, note_fr }] ;
+// `r.compagnies` : noms que « par X » traduit en « by X » sur les vouchers, en plus des partenaires.
+const versListe = (texte) => String(texte || "").split(",").map((x) => x.trim()).filter(Boolean);
+function blocDestinations(r, marque, uid) {
+  r.destinations_passeport = Array.isArray(r.destinations_passeport) ? r.destinations_passeport : [];
+  const zone = h("div", { class: "destinations-passeport" });
+  const dessiner = () => {
+    zone.replaceChildren(
+      ...[...r.destinations_passeport.map((d, i) => {
+        const maj = (cle, valeur) => {
+          r.destinations_passeport[i] = { ...r.destinations_passeport[i], [cle]: valeur };
+          marque();
+        };
+        const lieux = h("input", { id: uid(), value: (d.lieux || []).join(", "), placeholder: tr("Lieux séparés par des virgules"), oninput: (e) => maj("lieux", versListe(e.target.value)) });
+        const mentions = h("input", { id: uid(), value: (d.mentions || []).join(", "), placeholder: tr("Mots séparés par des virgules"), oninput: (e) => maj("mentions", versListe(e.target.value)) });
+        const noteFr = h("textarea", { id: uid(), rows: 3, oninput: (e) => maj("note_fr", e.target.value) });
+        noteFr.value = d.note_fr || "";
+        const noteEn = h("textarea", { id: uid(), rows: 3, lang: "en", oninput: (e) => maj("note_en", e.target.value) });
+        noteEn.value = d.note_en || "";
+        const retirer = h("button", { class: "secondaire petit", type: "button", onclick: () => { r.destinations_passeport.splice(i, 1); marque(); dessiner(); } }, tr("Retirer cette destination"));
+        return h(
+          "div",
+          { class: "destination-passeport" },
+          h("div", { class: "grille-form" }, champ(tr("Départ ou arrivée"), lieux, tr("La consigne de check-in « passeport » de la compagnie s'imprime pour une ligne qui part de ces lieux ou y arrive.")), champ(tr("Autres mots du libellé"), mentions, tr("Ajoutent seulement la note au client, par exemple le nom du pays."))),
+          h("div", { class: "grille-form" }, champ(tr("Note au client (français)"), noteFr), champ(tr("Note au client (anglais)"), noteEn, tr("Vouchers, confirmations, rappels et réponses en anglais."))),
+          h("div", { class: "actions gauche" }, retirer)
+        );
+      }),
+      r.destinations_passeport.length ? null : h("p", { class: "vide-court" }, tr("Aucune destination à passeport."))].filter(Boolean)
+    );
+  };
+  dessiner();
+  const ajouter = h("button", { class: "secondaire petit", type: "button", onclick: () => { r.destinations_passeport.push({ lieux: [], mentions: [], note_fr: "", note_en: "" }); marque(); dessiner(); zone.querySelector(".destination-passeport:last-of-type input")?.focus(); } }, tr("Ajouter une destination"));
+  const compagnies = h("input", { id: uid(), value: (r.compagnies || []).join(", "), placeholder: tr("Noms séparés par des virgules"), oninput: (e) => ((r.compagnies = versListe(e.target.value)), marque()) });
+  return h(
+    "fieldset",
+    null,
+    h("legend", null, tr("Destinations à passeport")),
+    h("p", { class: "aide" }, tr("Un trajet vers ou depuis une de ces destinations porte la note au client et la consigne de check-in « passeport » de la compagnie (fiche du partenaire).")),
+    zone,
+    h("div", { class: "actions gauche" }, ajouter),
+    champ(tr("Compagnies citées dans les libellés"), compagnies, tr("« par X » devient « by X » sur les vouchers. Les noms des partenaires sont déjà connus : ajoutez seulement les autres compagnies."))
+  );
+}
+
 function sectionCorbeille() {
   const liste = h("div", null, h("p", { class: "aide" }, tr("Chargement…")));
   const dessiner = async () => {
@@ -613,7 +660,9 @@ export function vueReglages() {
       taxi ? null : h("fieldset", null, h("legend", null, tr("Conditions")), ztp ? h("div", { class: "grille-form" }, texte(N_("Acompte demandé (%, 0 si aucun)"), "conditions.acompte_pct", { type: "number" }), texte(N_("Délai de paiement de l'acompte (jours)"), "conditions.delai_jours", { type: "number", aide: tr("Remplace {delai} dans les conditions de paiement.") }), texte(N_("Relancer un devis sans réponse après (jours)"), "conditions.relance_jours", { type: "number", placeholder: "7", aide: tr("0 : jamais de relance. Vide : 7 jours.") }), texte(N_("Solde à relever avant le départ (jours)"), "conditions.solde_jours", { type: "number", placeholder: "30", aide: tr("Tant que le carnet de voyage n'est pas noté envoyé, « À faire » rappelle le solde ce nombre de jours avant le départ. Vide : 30 jours.") })) : texte(N_("Délai de paiement (jours)"), "conditions.delai_jours", { type: "number", aide: tr("Remplace {delai} dans les conditions de paiement des factures.") }), texte(N_("Mention de TVA"), "conditions.tva_mention", { aide: tr("Par exemple « TVA non applicable ». Vide pour ne rien afficher.") }), texte(N_("Mention de TVA en anglais (facultatif)"), "conditions.tva_mention_en", { aide: tr("Pour les documents écrits en anglais. Vide : la mention ci-dessus est reprise.") }), texte(N_("Lien des conditions générales"), "conditions.cgv_url", { type: "url" })),
       h("fieldset", null, h("legend", null, tr("Dossiers")), champ(tr("Numérotation"), modeNum), prefixe, chiffres, r.numerotation.mode === "sequence" ? blocProchainNumero(r.numerotation) : null, ...(ztp ? [texte(N_("Nom du champ « pays »"), "dossier.libelle_pays", { aide: tr("Par exemple Pays, Service ou Trajet. C'est la liste proposée à la création d'un dossier.") }), liste(N_("Valeurs proposées, une par ligne"), "listes.pays"), texte(N_("Modèle du titre du document"), "dossier.modele_bandeau", { aide: tr("{PAYS} et {PERIODE} se remplissent avec le dossier. Exemple : VOYAGE EN {PAYS} - {PERIODE}.") })] : [])),
       // Civilités : formulaire client de ZTP seulement. Devises et moyens de paiement : pas en Taxi (rien n'est payé chez nous).
-      taxi ? null : h("fieldset", null, h("legend", null, tr("Listes")), ztp ? liste(N_("Civilités des clients, une par ligne"), "listes.civilites") : null, liste(N_("Devises proposées pour un document, une par ligne"), "listes.devises", tr("Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs.")), champDevisesNoms(r, marque), champ(tr("Moyens de paiement, un par ligne"), moyens))
+      taxi ? null : h("fieldset", null, h("legend", null, tr("Listes")), ztp ? liste(N_("Civilités des clients, une par ligne"), "listes.civilites") : null, liste(N_("Devises proposées pour un document, une par ligne"), "listes.devises", tr("Codes courts comme CHF, EUR, THB, USD. Servent aussi pour les équivalents indicatifs.")), champDevisesNoms(r, marque), champ(tr("Moyens de paiement, un par ligne"), moyens)),
+      // Destinations à passeport et compagnies citées dans les libellés (migration 43) : excursions seulement, là où partent les billets de bateau.
+      fon === "excursions" ? blocDestinations(r, marque, uid) : null,
     ),
     textes: h(
       "div",

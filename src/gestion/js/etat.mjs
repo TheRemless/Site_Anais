@@ -11,6 +11,7 @@ import { permissionsDans, roleDans } from "./droits.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 import { appliquerTextesThai } from "./textes-thai.mjs";
+import { reglerCompagnies } from "./partenaires-calc.mjs";
 import { entreprisesVoucher } from "./voucher-rapide-calc.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
@@ -196,6 +197,8 @@ function rebatir() {
   db.reglages = completerReglages(etat.brut.reglages[e]);
   db.roles = etat.brut.roles.filter((r) => r.entite_id === e);
   etat.db = db;
+  // « par X » se traduit « by X » pour les partenaires de l'entreprise et les compagnies de ses réglages (migration 43).
+  reglerCompagnies([...(db.partenaires || []).map((p) => p.nom), ...(db.reglages.compagnies || [])]);
   // Textes thaïs de l'écran de Mook : ceux de cette entreprise s'ils ont été modifiés dans Réglages, sinon ceux de départ.
   // Voucher sous le logo de Secret : l'écran reste celui de Taxi, avec ses textes.
   appliquerTextesThai(etat.voucherDepuis ? reglagesDe(etat.voucherDepuis).textes_thai : db.reglages.textes_thai);

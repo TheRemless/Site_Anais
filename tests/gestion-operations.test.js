@@ -2,6 +2,7 @@ import { test } from "node:test";
 import { varsReponse } from "../src/gestion/js/demande-calc.mjs";
 import assert from "node:assert/strict";
 import { reservationsDepuisDocument, personnesTexte, remplirGabarit, variablesMessage, agenda, duParPartenaire, dateTexte, nomMoisCourt, typeVoucher, numeroVoucher, statutPaiementVoucher, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, descriptionService, datesDepuisReservations, CHAMPS_VOUCHER, pointEmbarquement, consigneCheckin, destinataireMessage, cleMessageClient, ecartReservation, contenuSansReservation, controlesVoucher, feuilleDuJour, texteFeuille } from "../src/gestion/js/operations-calc.mjs";
+import { BUNDHAYA, SATUN } from "./fixtures/regles-partenaires-anais.mjs";
 
 test("vouchers : modèle d'après la prestation, numéro, statut de paiement", () => {
   assert.equal(typeVoucher({ trajet_id: "t" }, null), "billet", "un trajet de compagnie est un billet de bateau");
@@ -168,10 +169,11 @@ test("billet de bateau : embarcadère de la compagnie et consigne de check-in en
   assert.equal(pointEmbarquement(bund, "Phuket"), "Rassada Pier, counter no. 11");
   assert.equal(pointEmbarquement(bund, "Koh Lipe"), "");
   assert.equal(pointEmbarquement(null, "Koh Lanta"), "");
-  assert.match(consigneCheckin("Bundhaya Speed Boat", { de: "Koh Lanta", vers: "Koh Lipe" }), /45 minutes before departure/);
-  assert.match(consigneCheckin("Bundhaya Speed Boat", { de: "Koh Lipe", vers: "Langkawi" }), /90 minutes.*passport/i);
-  assert.match(consigneCheckin("Satun Pakbara Speed Boat Club", { de: "Koh Lanta", vers: "Koh Ngai" }), /30 minutes before departure/);
-  assert.match(consigneCheckin("Ferry démo", {}), /30 minutes before departure/);
+  assert.match(consigneCheckin(BUNDHAYA), /45 minutes before departure/);
+  assert.match(consigneCheckin(BUNDHAYA, { passeport: true }), /90 minutes.*passport/i);
+  assert.match(consigneCheckin(SATUN), /30 minutes before departure/);
+  assert.match(consigneCheckin(SATUN, { passeport: true }), /immigration formalities/, "sans consigne passeport sur la fiche : celle de l'immigration");
+  assert.match(consigneCheckin({ nom: "Ferry démo" }), /30 minutes before departure/);
 });
 
 test("voucher : une réservation à la main chez une compagnie de bateaux est un billet", () => {
