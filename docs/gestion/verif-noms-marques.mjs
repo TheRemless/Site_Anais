@@ -39,7 +39,7 @@ const AVIS_AVANT = {
 async function base() {
   const db = new PGlite();
   await db.exec(harnais);
-  await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
+  await db.exec((fs.readFileSync(W + "schema.sql", "utf8") + fs.readFileSync(W + "donnees-ztp-depart.sql", "utf8")).replace("create extension if not exists pgcrypto;", ""));
   const num = (f) => parseInt(f.split("-")[1]);
   const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[789]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => num(a) - num(b));
   for (const f of migrations.filter((f) => num(f) < 44)) await db.exec(fs.readFileSync(W + f, "utf8"));
