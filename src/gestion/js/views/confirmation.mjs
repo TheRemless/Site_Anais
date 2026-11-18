@@ -194,7 +194,8 @@ export function ouvrirConfirmation() {
       resultat(fait);
     } catch (err) {
       console.error(err);
-      etatCreation.replaceChildren(h("p", { class: "cc-erreur" }, tr("La création n'a pas abouti : {message}. Rien n'est créé deux fois : réessayez.", { message: err.message })));
+      const nom = (entitesAccessibles().find((x) => x.id === cible) || {}).nom || "";
+      etatCreation.replaceChildren(h("p", { class: "cc-erreur" }, tr("La création dans {entreprise} n'a pas abouti : {message}. Rien n'est créé deux fois : réessayez.", { entreprise: nom, message: err.message })));
       bouton.disabled = false;
       bouton.textContent = tr("Créer le dossier et la Booking confirmation");
     }

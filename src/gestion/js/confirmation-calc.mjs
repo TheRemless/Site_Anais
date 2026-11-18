@@ -221,7 +221,9 @@ export function lireConfirmation(texte, { aujourdhui = "" } = {}) {
       valeurs.bagages = p.bagages || (/^(yes|y|oui)$/i.test(v) ? "yes" : "");
     } else if (champ === "sieges") valeurs.sieges = (/\d+/.exec(v) || [""])[0];
     else if (champ === "prix") {
-      const n = prixSaisi(v.replace(/[^\d.,'’\s]/g, " ").trim().split(/\s+/)[0] || "");
+      // Un seul montant : lu. Plusieurs nombres (« 2 cars x 1500 THB ») : gardé tel quel, l'écran demande le total au lieu de deviner.
+      const nombres = v.match(/\d[\d.,'’]*/g) || [];
+      const n = nombres.length === 1 ? prixSaisi(nombres[0]) : null;
       valeurs.prix = n === null ? v : String(n);
     } else if (champ === "dropoff") {
       const r = lireAllerRetour(v);

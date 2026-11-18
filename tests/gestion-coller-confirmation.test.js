@@ -118,6 +118,11 @@ Drop-off location: Saladan pier`;
   assert.equal(e.adultes, "e_passagers");
   assert.equal(e.date, "e_date");
   assert.ok(!e.nom && !e.pickup && !e.dropoff && !e.heure);
+  // Prix ambigu (plusieurs nombres) : jamais deviné, signalé.
+  const ambigu = lireConfirmation("Name: A\nPrice: 2 cars x 1500 THB", { aujourdhui: AJD }).valeurs;
+  assert.equal(ambigu.prix, "2 cars x 1500 THB");
+  assert.equal(erreursConfirmation(ambigu).prix, "e_prix");
+  assert.equal(lireConfirmation("Price: THB 1,000.50", { aujourdhui: AJD }).valeurs.prix, "1000.5");
   // Un aller-retour sans programme : le programme est demandé.
   const sans = lireConfirmation("Name: A\nDate: 22/11/2026\nPick-up time: 10:00\nPick-up location: Hotel\nDrop-off location: round trip\nPassengers: 2\nPrice: 500", { aujourdhui: AJD }).valeurs;
   assert.equal(sans.trajet, RETOUR_DEPART);

@@ -1672,7 +1672,7 @@ export const EN = {
   "Ce qui a été compris": "What was understood",
   "Corrigez ce qui doit l'être. Rien n'est créé avant le bouton.": "Correct anything that needs it. Nothing is created before you press the button.",
   "Choisissez l'entreprise du dossier.": "Choose the company for the file.",
-  "La création n'a pas abouti : {message}. Rien n'est créé deux fois : réessayez.": "Creation failed: {message}. Nothing is created twice: try again.",
+  "La création dans {entreprise} n'a pas abouti : {message}. Rien n'est créé deux fois : réessayez.": "Creation in {entreprise} failed: {message}. Nothing is created twice: try again.",
   "Ouvrir le dossier {ref}": "Open file {ref}",
   "Dossier {ref} créé pour {nom}, le {date}.": "File {ref} created for {nom}, on {date}.",
   "Le partage n'a pas abouti : téléchargez l'image.": "Sharing failed: download the image.",
