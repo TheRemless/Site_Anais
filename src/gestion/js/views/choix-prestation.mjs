@@ -41,8 +41,9 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   // Pas quand la quantité d'un tarif par personne a été changée à la main (on ne sait plus qui elle compte), ni pour une location ou un supplément.
   const avecParticipants = (lignes, x, quantite) => {
     const p = { adultes: Math.max(0, Number(ctx.adultes) || 0), enfants: Math.max(0, Number(ctx.enfants) || 0) };
-    if (!(p.adultes + p.enfants) || ["day", "sup"].includes(x.unite) || x.sur_place) return lignes;
-    if (["pp", "ad", "ch", "", null, undefined].includes(x.unite) && quantite !== qteDefaut(x)) return lignes;
+    // Seulement les unités connues : un tarif sans unité garde la lecture d'avant (sa quantité ne dit pas qui elle compte).
+    if (!(p.adultes + p.enfants) || x.sur_place || !["pp", "ad", "ch", "grp", "boat", "veh", "ses"].includes(x.unite)) return lignes;
+    if (["pp", "ad", "ch"].includes(x.unite) && quantite !== qteDefaut(x)) return lignes;
     return lignes.map((l) => (l.kind === "ligne" ? { ...l, personnes: p } : l));
   };
   const lignesPrestation = (x, quantite) => avecParticipants(lignesTarif(x, quantite), x, quantite);

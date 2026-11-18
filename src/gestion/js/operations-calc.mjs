@@ -1102,7 +1102,7 @@ export function contenuAvecReservation(contenu, r, avant, apres, { tarifEnfant =
       if (qte(supplement) === Math.max(0, avantTotal - 2)) modif(supplement, { qte: Math.max(0, apresTotal - 2) });
       else reste.push({ cle: "adultes", reservation: nb(apres.personnes && apres.personnes.adultes), facture: qte(supplement) + 2 });
     }
-    return miseAJour.size ? { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? { ...l, ...miseAJour.get(l) } : l)) }, reste } : { contenu: null, reste };
+    return miseAJour.size ? { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? avecDescription(l, { ...l, ...miseAJour.get(l) }, contenu.langue) : l)) }, reste } : { contenu: null, reste };
   }
   // Enfants comptés au prix adulte (pas de ligne enfant, la quantité est adultes + enfants : tarif sans prix enfant, personnes reprises du dossier,
   // contrôle du 17.11.2026, D8 et D9) : la ligne suit le nombre total de personnes.
