@@ -4,6 +4,7 @@
 //   cp <repo>/docs/gestion/verif-regles-partenaires.mjs . && GESTION_SQL=<repo>/docs/gestion/ node verif-regles-partenaires.mjs
 import { PGlite } from "@electric-sql/pglite";
 import fs from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 const W = process.env.GESTION_SQL || "./";
 let echecs = 0;
 const ok = (c, msg) => { if (!c) { echecs++; console.log("  ECHEC:", msg); } else console.log("  ok:", msg); };
@@ -42,7 +43,9 @@ const autreOrg = (await un("insert into organisations (nom) values ('Autre agenc
 const autre = (await un("insert into entites (nom, slug, organisation_id) values ('Autre', 'autre', $1) returning id", [autreOrg])).id;
 // Réglages existants des entreprises de Zwald (une avec une destination déjà réglée à la main : elle ne change pas).
 for (const e of [ztp, secret]) await db.query("insert into reglages (entite_id, valeur) values ($1, $2) on conflict (entite_id) do update set valeur = excluded.valeur", [e, { devise: "THB" }]);
-await db.query("insert into reglages (entite_id, valeur) values ($1, $2) on conflict (entite_id) do update set valeur = excluded.valeur", [taxi, { devise: "THB", destinations_passeport: [] }]);
+// Taxi : le code publié avant la migration a pu enregistrer les valeurs vides par défaut ; ZTP : une destination réglée à la main reste.
+await db.query("insert into reglages (entite_id, valeur) values ($1, $2) on conflict (entite_id) do update set valeur = excluded.valeur", [taxi, { devise: "THB", destinations_passeport: [], compagnies: [] }]);
+await db.query("update reglages set valeur = valeur || $2 where entite_id = $1", [ztp, { destinations_passeport: [{ lieux: ["Bali"], note_en: "x" }], compagnies: ["Autre"] }]);
 await db.query("insert into reglages (entite_id, valeur) values ($1, $2)", [autre, { devise: "EUR" }]);
 
 const part = async (entite, nom, regles = {}) => (await un("insert into partenaires (entite_id, nom, regles) values ($1, $2, $3) returning id", [entite, nom, regles])).id;
@@ -85,9 +88,15 @@ ok(!r.payer_avant_veille && !r.tarif_zone && !r.taxi_defaut && r.checkin_passepo
 
 console.log("== Destination à passeport ==");
 const dest = async (e) => (await un("select valeur->'destinations_passeport' d from reglages where entite_id = $1", [e])).d;
-const attendu = [{ lieux: ["Langkawi", "Malaysia", "Malaisie"], note_en: "Travelling to or from Langkawi (Malaysia): please bring your passport, valid for at least six months.", note_fr: "Trajet vers ou depuis Langkawi (Malaisie) : prévoyez votre passeport, valable au moins six mois." }];
-ok(JSON.stringify(await dest(ztp)) === JSON.stringify(attendu) && JSON.stringify(await dest(secret)) === JSON.stringify(attendu), "ZTP et Secret : Langkawi, Malaysia, Malaisie avec les deux notes d'avant");
-ok(JSON.stringify(await dest(taxi)) === "[]", "une destination déjà réglée n'est pas écrasée");
+const attendu = [{ lieux: ["Langkawi"], mentions: ["Malaysia", "Malaisie"], note_en: "Travelling to or from Langkawi (Malaysia): please bring your passport, valid for at least six months.", note_fr: "Trajet vers ou depuis Langkawi (Malaisie) : prévoyez votre passeport, valable au moins six mois." }];
+// jsonb range les clés à sa façon : comparaison en profondeur.
+const egal = (a, b) => isDeepStrictEqual(a, b);
+ok(egal(await dest(secret), attendu), "Secret : Langkawi (lieu), Malaysia et Malaisie (mentions), avec les deux notes d'avant");
+ok(egal(await dest(taxi), attendu), "Taxi : une liste vide (valeur par défaut du code) est remplie");
+ok(egal(await dest(ztp), [{ lieux: ["Bali"], note_en: "x" }]), "une destination déjà réglée n'est pas écrasée");
+const comp = async (e) => (await un("select valeur->'compagnies' c from reglages where entite_id = $1", [e])).c;
+ok(egal(await comp(secret), ["Lomprayah", "Seatran"]) && egal(await comp(taxi), ["Lomprayah", "Seatran"]), "compagnies Lomprayah et Seatran pour Secret et Taxi (absentes ou vides)");
+ok(egal(await comp(ztp), ["Autre"]), "des compagnies déjà réglées ne sont pas écrasées");
 ok((await un("select valeur->>'devise' d from reglages where entite_id = $1", [ztp])).d === "THB", "les autres réglages ne bougent pas");
 ok((await un("select count(*)::int n from reglages_historique")).n === histAvant, "l'ajout ne laisse aucune version dans l'historique des réglages");
 await db.query("update reglages set valeur = valeur || '{\"devise\": \"EUR\"}' where entite_id = $1", [ztp]);
@@ -98,7 +107,7 @@ const ba = await p(bundhayaAutre);
 ok(!ba.payer_avant_veille && ba.checkin_passeport === "" && ba.checkin === null, "un « Bundhaya » d'une autre organisation n'a aucune règle");
 const ta = await p(taxiAutre);
 ok(!ta.taxi_defaut && !ta.tarif_zone, "un « taxi » d'une autre organisation n'est ni taxi par défaut ni à tarifs par zone");
-ok((await dest(autre)) === null, "une autre organisation n'a pas de destination à passeport");
+ok((await dest(autre)) === null && (await comp(autre)) === null, "une autre organisation n'a ni destination à passeport ni compagnie");
 const nouveau = await p(await part(autre, "Nouveau partenaire"));
 ok(!nouveau.payer_avant_veille && nouveau.payer_avant_veille_sauf === "" && nouveau.checkin_passeport === "" && !nouveau.tarif_zone && !nouveau.taxi_defaut, "un nouveau partenaire commence sans règle");
 

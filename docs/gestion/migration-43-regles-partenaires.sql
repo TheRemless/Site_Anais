@@ -7,7 +7,8 @@
 --     (avant : leur texte écrit dans le code d'après le nom) ;
 --   * partenaires.tarif_zone : tarifs par zone sans départ fixe (avant : groupe de prestation contenant « Saladan ») ;
 --   * partenaires.taxi_defaut : partenaire taxi par défaut du voucher rapide (avant : nom contenant « taxi ») ;
---   * reglages.valeur.destinations_passeport : destinations à passeport de chaque entreprise (avant : « Langkawi », « Malaysia », « Malaisie » dans le code).
+--   * reglages.valeur.destinations_passeport : destinations à passeport de chaque entreprise (avant : « Langkawi », « Malaysia », « Malaisie » dans le code) ;
+--   * reglages.valeur.compagnies : compagnies que « par X » traduit en « by X » (avant : « Lomprayah », « Seatran » dans le code).
 -- Les valeurs reprennent exactement les règles d'avant pour l'organisation Zwald : rien ne change pour Anaïs.
 -- Les nouvelles organisations commencent sans aucune règle.
 -- À exécuter une seule fois, après la migration 42 et AVANT de publier le code qui lit ces colonnes. Idempotente.
@@ -57,17 +58,26 @@ from entites e
 where e.id = p.entite_id and e.organisation_id = '00000000-0000-0000-0000-00000000a000'
   and p.nom ~* 'taxi' and not p.taxi_defaut;
 
--- 3. Destination à passeport des entreprises de Zwald (ZTP, Secret, Taxi), quand elle n'est pas déjà réglée.
+-- 3. Réglages des entreprises de Zwald (ZTP, Secret, Taxi). Une valeur absente ou vide s'écrit : vide est la valeur par défaut du code, qu'un
+-- enregistrement des réglages a pu poser si le code est publié avant la migration (aucun écran ne permettait encore de les remplir).
+--   * destinations_passeport : un départ ou une arrivée « Langkawi » demande la consigne passeport ; « Malaysia » ou « Malaisie » dans le libellé
+--     ajoute seulement la note, comme avant ;
+--   * compagnies : citées dans les libellés sans être partenaires (« par Lomprayah » → « by Lomprayah »), en plus des noms des partenaires.
 -- L'historique des réglages (migration 38) ne garde pas de version pour cet ajout : Anaïs n'a rien changé.
 alter table reglages disable trigger archiver_reglages;
 update reglages r set valeur = r.valeur || jsonb_build_object('destinations_passeport', jsonb_build_array(jsonb_build_object(
-  'lieux', jsonb_build_array('Langkawi', 'Malaysia', 'Malaisie'),
+  'lieux', jsonb_build_array('Langkawi'),
+  'mentions', jsonb_build_array('Malaysia', 'Malaisie'),
   'note_en', 'Travelling to or from Langkawi (Malaysia): please bring your passport, valid for at least six months.',
   'note_fr', 'Trajet vers ou depuis Langkawi (Malaisie) : prévoyez votre passeport, valable au moins six mois.'
 )))
 from entites e
 where e.id = r.entite_id and e.organisation_id = '00000000-0000-0000-0000-00000000a000'
-  and not (r.valeur ? 'destinations_passeport');
+  and coalesce(r.valeur->'destinations_passeport', '[]'::jsonb) in ('[]'::jsonb, 'null'::jsonb);
+update reglages r set valeur = r.valeur || jsonb_build_object('compagnies', jsonb_build_array('Lomprayah', 'Seatran'))
+from entites e
+where e.id = r.entite_id and e.organisation_id = '00000000-0000-0000-0000-00000000a000'
+  and coalesce(r.valeur->'compagnies', '[]'::jsonb) in ('[]'::jsonb, 'null'::jsonb);
 alter table reglages enable trigger archiver_reglages;
 
 commit;

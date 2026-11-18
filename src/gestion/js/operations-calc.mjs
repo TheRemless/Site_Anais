@@ -555,13 +555,14 @@ export function embarcadereFiche(partenaire, lieu) {
 export const CHECKIN_DEFAUT = "Please arrive at the pier 30 minutes before departure with this voucher and your passport or ID.";
 export const CHECKIN_PASSEPORT_DEFAUT = "Check-in 90 minutes before departure for immigration formalities. Passport of each passenger required.";
 
-// Destination à passeport d'un trajet : la première règle dont un lieu figure dans le départ, l'arrivée ou le libellé (sans accents ni majuscules).
-// Une règle : { lieux: ["…"], note_en, note_fr }. `champs` : où chercher (le check-in ne regarde que le départ et l'arrivée).
+// Destination à passeport : la première règle dont un mot figure dans `textes` (sans accents ni majuscules). Une règle :
+// { lieux: ["…"], mentions: ["…"], note_en, note_fr }. `lieux` : un départ ou une arrivée qui demande la consigne de check-in « passeport ».
+// `mentions` (avec `avecMentions`) : des mots qui, n'importe où dans le trajet ou le libellé, ajoutent la note sans être un lieu de la ligne.
 const termes = (x) => (Array.isArray(x) ? x : String(x || "").split(",")).map(sansAccentsMin).filter(Boolean);
-export function destinationPasseport(destinations, textes) {
+export function destinationPasseport(destinations, textes, { avecMentions = false } = {}) {
   const t = sansAccentsMin(textes.filter(Boolean).join(" "));
   if (!t) return null;
-  return (destinations || []).find((d) => d && termes(d.lieux).some((l) => t.includes(l))) || null;
+  return (destinations || []).find((d) => d && [...termes(d.lieux), ...(avecMentions ? termes(d.mentions) : [])].some((l) => t.includes(l))) || null;
 }
 
 // Consigne de check-in de la compagnie (anglais) : celle de sa fiche, sinon la consigne générale. Sur une ligne vers ou depuis une destination
@@ -577,7 +578,7 @@ export const consigneCheckinFiche = (partenaire, trajet = {}, destinations = [])
 // Trajet vers ou depuis une destination à passeport : la note à lire par le client avant de partir (texte de la règle), suivie de la consigne
 // de check-in « passeport » de la compagnie. Vide pour tout autre trajet. `langue` : « fr » pour la note française (le check-in reste anglais).
 export function notePasseport({ de = "", vers = "", libelle = "", partenaire = null, destinations = [], langue = "en" } = {}) {
-  const d = destinationPasseport(destinations, [de, vers, libelle]);
+  const d = destinationPasseport(destinations, [de, vers, libelle], { avecMentions: true });
   if (!d) return "";
   const note = String((langue === "fr" ? d.note_fr || d.note_en : d.note_en || d.note_fr) || "").trim();
   return `${note} ${consigneCheckin(partenaire, { passeport: true })}`.trim();

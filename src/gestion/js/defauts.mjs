@@ -299,6 +299,8 @@ export const REGLAGES_NEUTRE = {
   // Destinations à passeport (migration 43) : un trajet vers ou depuis l'un de ces lieux porte la note du passeport (vouchers, messages,
   // rappels, réponse à une demande) et la consigne de check-in « passeport » de la compagnie. { lieux: ["…"], note_en, note_fr }.
   destinations_passeport: [],
+  // Compagnies citées dans les libellés sans être partenaires (« par X » → « by X » sur les vouchers), en plus des noms des partenaires.
+  compagnies: [],
 };
 
 // Informations de paiement proposées pour un document : celles de l'entreprise (avec le QR code des réglages), puis les autres.
@@ -386,14 +388,18 @@ export const REGLES_PARTENAIRE_NEUTRES = { payer_avant_veille: false, payer_avan
 // ---------------------------------------------------------------------------------------------
 // Démonstration : trois entreprises fictives, deux utilisateurs, des dossiers à tous les statuts.
 // ---------------------------------------------------------------------------------------------
-// La destination à passeport écrite par la migration 43 pour les entreprises d'Anaïs : la démonstration a la même.
+// La destination à passeport et les compagnies écrites par la migration 43 pour les entreprises d'Anaïs : la démonstration a les mêmes.
+export const COMPAGNIES_DEMO = ["Lomprayah", "Seatran"];
+// `lieux` : départ ou arrivée qui demande la consigne de check-in « passeport » ; `mentions` : mots qui, dans le libellé, ajoutent seulement la note.
 export const DESTINATION_PASSEPORT_DEMO = {
-  lieux: ["Langkawi", "Malaysia", "Malaisie"],
+  lieux: ["Langkawi"],
+  mentions: ["Malaysia", "Malaisie"],
   note_en: "Travelling to or from Langkawi (Malaysia): please bring your passport, valid for at least six months.",
   note_fr: "Trajet vers ou depuis Langkawi (Malaisie) : prévoyez votre passeport, valable au moins six mois.",
 };
 const REGLAGES_DEMO_AGENCE = completerReglages({
   destinations_passeport: [DESTINATION_PASSEPORT_DEMO],
+  compagnies: COMPAGNIES_DEMO,
   emetteur: { nom: "Agence démo", adresse: "1 rue de l'Exemple\n00000 Ville", telephone: "+00 00 000 00 00", licence: "00/00000", contact: "Prénom Nom\n+00 00 000 00 00 (WhatsApp)\ncontact@exemple.com" },
   paiement: { texte: "Banque: Banque démo\nIBAN: CH00 0000 0000 0000 0000 0\nSwift: XXXXXXXXXXX\nPrénom Nom\n0000 Ville", },
   devise: "CHF",
@@ -413,6 +419,7 @@ const REGLAGES_DEMO_AGENCE = completerReglages({
 
 const REGLAGES_DEMO_TOURS = completerReglages({
   destinations_passeport: [DESTINATION_PASSEPORT_DEMO],
+  compagnies: COMPAGNIES_DEMO,
   emetteur: { nom: "Excursions démo", adresse: "2 chemin de la Plage\n00000 Ville", telephone: "+00 00 000 00 01", licence: "00/00001", contact: "Équipe démo\ncontact@exemple.com" },
   paiement: { texte: "Banque: Banque démo\nNuméro de compte: 000-0-00000-0\nTitulaire: Excursions démo" },
   devise: "THB",
@@ -428,6 +435,7 @@ const REGLAGES_DEMO_TOURS = completerReglages({
 
 const REGLAGES_DEMO_TAXI = completerReglages({
   destinations_passeport: [DESTINATION_PASSEPORT_DEMO],
+  compagnies: COMPAGNIES_DEMO,
   emetteur: { nom: "Taxi démo", adresse: "3 route de l'Aéroport\n00000 Ville", telephone: "+00 00 000 00 02", contact: "Taxi démo\ncontact@exemple.com" },
   // Taxi n'émet aucune facture : ni texte de paiement ni liste de pays (le client paie le chauffeur).
   paiement: { texte: "" },

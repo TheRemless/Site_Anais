@@ -13,10 +13,12 @@ export const RATTANA = { id: "rattana", nom: "Rattana Tour", regles: {}, ...neut
 export const SANS_REGLE = { id: "autre", nom: "Ferry démo", regles: {}, ...neutre };
 export const PARTENAIRES = [BUNDHAYA, SATUN, NAN, VIP, RATTANA, SANS_REGLE];
 
-// reglages.valeur.destinations_passeport des trois entreprises de Zwald.
+// reglages.valeur.destinations_passeport et reglages.valeur.compagnies des trois entreprises de Zwald.
+export const COMPAGNIES = ["Lomprayah", "Seatran"];
 export const DESTINATIONS = [
   {
-    lieux: ["Langkawi", "Malaysia", "Malaisie"],
+    lieux: ["Langkawi"],
+    mentions: ["Malaysia", "Malaisie"],
     note_en: "Travelling to or from Langkawi (Malaysia): please bring your passport, valid for at least six months.",
     note_fr: "Trajet vers ou depuis Langkawi (Malaisie) : prévoyez votre passeport, valable au moins six mois.",
   },

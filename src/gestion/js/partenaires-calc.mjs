@@ -218,7 +218,8 @@ const TRADUCTIONS = [
   [/\bExcursion d'une journée\b/gi, "Full-day trip"],
   [/\bExcursion d'une demi-journée\b/gi, "Half-day trip"],
   [/\bfrontière malaisienne\b/gi, "Malaysian border"],
-  [/\bAssociation des taxis de (\p{Lu}[\p{L}'-]*)(?![\p{L}])/gu, "$1 Taxi Association"],
+  // Tout le lieu jusqu'à une virgule, une parenthèse ou la fin (« Association des taxis de Koh Lanta » → « Koh Lanta Taxi Association »).
+  [/\bAssociation des taxis de ([^,()]+?)(?=\s*[,(]|\s*$)/gi, "$1 Taxi Association"],
   [/\bdécouverte de\b/gi, "discovery of"],
   [/\bvan partagé/gi, "shared van"],
   [/\bAéroport de Hat ?yai\b/gi, "Hat Yai Airport"],
@@ -288,8 +289,8 @@ const TRADUCTIONS = [
   [/\bgare\b/gi, "station"],
   [/\bville\b/gi, "city"],
   [/\baéroport\b/gi, "airport"],
-  // « par ferry », « par » suivi du nom d'une compagnie (une majuscule) : « by … ». Jamais « par personne » (ligne suivante).
-  [/\b(?:[Pp]ar|PAR) ([Ff]erry|FERRY|(?!Personne?(?![\p{L}]))\p{Lu}[\p{L}-]*)(?![\p{L}])/gu, "by $1"],
+  // « par ferry » et « par » suivi d'une compagnie connue de l'entreprise (ses partenaires et `reglages.compagnies`, voir reglerCompagnies) : « by … ».
+  [() => regexCompagnies, "by $1"],
   [/,?\s*par person(?:ne)?\b/gi, ", per person"],
   [/\s+ou\s+/g, " or "],
   // Plongée, locations et programmes.
@@ -322,8 +323,18 @@ const TRADUCTIONS = [
 ];
 export function libelleClient(libelle) {
   let t = String(libelle || "");
-  for (const [re, par] of TRADUCTIONS) t = t.replace(re, par);
+  for (const [re, par] of TRADUCTIONS) t = t.replace(typeof re === "function" ? re() : re, par);
   return t.trim();
+}
+
+// Compagnies que « par X » traduit en « by X » (migration 43) : les noms des partenaires de l'entreprise active et la liste de ses réglages
+// (`reglages.compagnies`, pour une compagnie citée dans les libellés sans être partenaire). Aucun nom écrit dans le code. Réglé par etat.mjs à
+// chaque changement d'entreprise ou de données ; sans appel, seul « par ferry » se traduit.
+const echapper = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+let regexCompagnies = /\bpar (ferry)(?![\p{L}])/giu;
+export function reglerCompagnies(noms = []) {
+  const liste = [...new Set((noms || []).map((n) => String(n || "").trim()).filter((n) => n.length >= 2))].sort((a, b) => b.length - a.length).map(echapper);
+  regexCompagnies = new RegExp(`\\bpar (ferry${liste.length ? `|${liste.join("|")}` : ""})(?![\\p{L}])`, "giu");
 }
 
 // ---- Lignes de devis depuis une prestation ou un trajet ------------------------------------------------------
