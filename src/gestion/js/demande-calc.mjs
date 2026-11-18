@@ -4,6 +4,7 @@
 import { sansAccents, trajetDisponible, libelleUnite, libelleClient, personnesSupplementaires, prefixeProgramme, proposable, quantiteParDefaut } from "./partenaires-calc.mjs";
 import { dateTexte, personnesTexte, notePasseport } from "./operations-calc.mjs";
 import { LIGNE_SITE, dureeSite, lireRetourDepartLibre, phraseProgramme } from "./trajet-calc.mjs";
+import { PRODUITS_SITE } from "./site-produits.mjs";
 
 const MOIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const iso = (a, m, j) => `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
@@ -109,10 +110,13 @@ function lireSite(lignes, aujourdhui) {
   // Lignes « Clé: valeur ». Dans une liste de sorties, chaque sortie a sa date, son titre et ses lignes : la première est la demande, les autres vont dans les notes.
   const sorties = [];
   let sortie = null;
+  // Les lignes du service lu (la demande, ou la première sortie d'une liste) : elles disent quelle ligne de prix du site a été choisie (tarifsDuSite).
+  d.lignesService = genre === "liste" ? [] : lignes.slice(1);
   for (const l of lignes.slice(1)) {
     if (genre === "liste") {
       const jour = /^(?:[A-Za-z]{3} \d{1,2} [A-Za-z]{3} \d{4}|Date to choose)$/.exec(l);
-      if (jour) { sortie = { date: /^Date/.test(l) ? "" : lireDate(l, aujourdhui), texte: l, titre: "" }; sorties.push(sortie); continue; }
+      if (jour) { sortie = { date: /^Date/.test(l) ? "" : lireDate(l, aujourdhui), texte: l, titre: "", lignes: [] }; sorties.push(sortie); continue; }
+      if (sortie) sortie.lignes.push(l);
       if (sortie && !sortie.titre && !/^[A-Za-z ,]+:\s/.test(l)) { sortie.titre = l; continue; }
     }
     const k = /^([^:]+):\s*(.*)$/.exec(l);
@@ -162,6 +166,7 @@ function lireSite(lignes, aujourdhui) {
     optionVers(d.option);
     d.date = premiere.date;
     d.dateTexte = premiere.texte;
+    d.lignesService = premiere.lignes;
     d.sorties = autres.map((x) => `${x.texte}: ${x.titre}`.trim());
   }
   // L'hôtel d'un trajet est le bout qui n'est pas un aéroport ou un embarcadère.
@@ -905,7 +910,9 @@ export function venteDuTarif({ prestation = null, trajet = null, adultes = 0, en
 export function completerEnfant(offre, pax, prestations) {
   const p = offre.source;
   if (offre.genre !== "prestation" || !pax.enfants || p.sur_place) return offre;
-  const e = prestationEnfant(p, prestations);
+  // Le « Prix enfant » de la prestation d'abord (décision du 17.11.2026), puis le tarif enfant que le site relie à l'option cochée, puis le nom.
+  const site = offre.enfantSite && ["pp", "ad"].includes(p.unite) ? offre.enfantSite : null;
+  const e = (prixEnfantDe(p) !== null ? prestationEnfant(p, prestations) : null) || site || prestationEnfant(p, prestations);
   if (e && e.prix_vente !== null && e.prix_vente !== undefined && offre.total !== null) return { ...offre, enfant: e, total: Number(p.prix_vente) * pax.adultes + Number(e.prix_vente) * pax.enfants };
   if (!e && p.unite === "pp" && offre.total !== null) return { ...offre, avertissement: offre.avertissement || "enfant_plein_tarif" };
   // Tarif par adulte sans tarif enfant : les enfants ne sont pas comptés. On le dit (audit n° 18), sans rien deviner.
@@ -932,6 +939,85 @@ export function completerSupplement(offre, pax, prestations) {
   if (!s || !qte) return offre;
   if (s.prix_vente === null || s.prix_vente === undefined || offre.total === null) return { ...offre, avertissement: offre.avertissement || "supplement_a_definir" };
   return { ...offre, supplement: { source: s, qte }, total: offre.total + Number(s.prix_vente) * qte };
+}
+
+// ---- Tarif de l'option cochée sur le site ----------------------------------------------------------------------------
+// Le message du site dit le produit et l'option (« Booking request: Koh Rok & Koh Haa – Day trip », « Rental request: Big bikes »). La page produit
+// du site (site-produits.mjs, recopié depuis le site avec src/_data/gestion-keys.json) relie chaque ligne de prix de l'option à un tarif de Gestion.
+// Ce tarif-là est proposé en premier, sans deviner (18.11.2026). Rien n'est imposé quand l'option n'est pas reconnue ou que son tarif n'est pas en base.
+const cleTexte = (s) => sansAccents(s).replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+const LIGNE_ENFANT = /^child\b/i;
+// Supplément à cocher ou personne en plus : ils s'ajoutent au tarif de base (completerSupplement), ils ne le remplacent pas.
+const LIGNE_A_PART = /^(?:add\b|each extra person\b|extra\b)/i;
+// « 1 to 3 people », « 1 or 2 people, the raft » : la tranche de groupe d'un bateau privé.
+const trancheGroupe = (ligne) => {
+  const m = /^(\d+)\s*(?:to|or|-|–)\s*(\d+)\s+(?:people|persons?|pax)\b/i.exec(ligne || "");
+  return m ? [Number(m[1]), Number(m[2])] : null;
+};
+// Ce qui distingue une ligne d'une autre une fois l'âge retiré : « Adult rider » et « Child rider, 6 to 12 » donnent « rider ».
+const fondLigne = (l) => cleTexte(l).replace(/\b(?:adults?|child(?:ren)?|from|age|to|and|per|person|\d+)\b/g, " ").replace(/\s+/g, " ").trim();
+
+// L'option du site citée par le message : { produit, option }, ou null (message libre, produit ou option inconnus du site).
+// Un message envoyé avant un changement de nom de l'option se lit par ses anciens titres.
+export function optionDuSite(d) {
+  if (!d || !d.site || d.libre || !d.prestation) return null;
+  const location = d.type === "location";
+  if (!location && d.type !== "tour") return null;
+  const nom = cleTexte(d.prestation);
+  const produits = location ? PRODUITS_SITE.filter((p) => p.section === "rental") : PRODUITS_SITE.filter((p) => p.marque === "secret" && cleTexte(p.nom) === nom);
+  const titre = location ? nom : cleTexte(d.option);
+  for (const produit of produits) {
+    if (!titre && produit.options.length === 1) return { produit, option: produit.options[0] };
+    const option = produit.options.find((o) => cleTexte(o.titre) === titre) || produit.options.find((o) => (o.anciens || []).some((a) => cleTexte(a) === titre));
+    if (titre && option) return { produit, option };
+  }
+  return null;
+}
+
+// Le tarif de Gestion d'une ligne du site : par son identifiant, sinon (démonstration, tarif recréé) par son libellé quand un seul tarif actif le porte.
+// Un tarif trouvé par son identifiant mais masqué ne se remplace pas par un autre du même nom.
+function tarifDeLigne(t, prestations, partenaires) {
+  const parId = prestations.find((p) => p.id === t.prestation);
+  if (parId) return proposable(parId, partenaires) ? parId : null;
+  const l = cleTexte(t.libelle);
+  const memes = l ? prestations.filter((p) => proposable(p, partenaires) && (cleTexte(p.libelle_en) === l || cleTexte(p.libelle) === l)) : [];
+  return memes.length === 1 ? memes[0] : null;
+}
+
+// Les offres de l'option cochée, dans l'ordre de la page, avec le tarif enfant de la même option (`enfantSite`). En tête : la ligne citée par
+// le message (cours, karts, véhicule), puis la tranche de groupe qui contient le nombre de personnes (les moins de 4 ans ne comptent pas, comme
+// sur le site). Les tarifs enfant et les suppléments ne se proposent pas seuls.
+export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartenaire = () => "" } = {}) {
+  const trouve = optionDuSite(d);
+  if (!trouve || !(trouve.option.tarifs || []).length) return [];
+  const pax = { adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants || 0 };
+  const groupe = pax.adultes + (d.ages && d.ages.length ? d.ages.filter((a) => a >= 4).length : pax.enfants);
+  const cite = ` ${cleTexte([...(d.lignesService || []), d.vehiculeNom || ""].join(" "))} `;
+  const lignes = trouve.option.tarifs;
+  const enfants = lignes.filter((t) => LIGNE_ENFANT.test(t.ligne));
+  const offres = [];
+  lignes.forEach((t, i) => {
+    if (LIGNE_ENFANT.test(t.ligne) || LIGNE_A_PART.test(t.ligne)) return;
+    const p = tarifDeLigne(t, prestations, partenaires);
+    if (!p || p.unite === "ch" || p.unite === "sup" || offres.some((o) => o.id === p.id)) return;
+    const tranche = trancheGroupe(t.ligne);
+    const ligneEnfant = enfants.length === 1 ? enfants[0] : enfants.find((e) => fondLigne(e.ligne) === fondLigne(t.ligne));
+    const enfant = ligneEnfant ? tarifDeLigne(ligneEnfant, prestations, partenaires) : null;
+    const score = 10 + (cite.includes(` ${cleTexte(t.ligne)} `) ? 1 : 0) + (tranche && groupe >= tranche[0] && groupe <= tranche[1] ? 0.5 : 0) - i / 1000;
+    offres.push({
+      genre: "prestation",
+      id: p.id,
+      source: p,
+      titre: p.libelle_en || libelleClient(p.libelle),
+      detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "),
+      total: prixPrestation(p, pax),
+      avertissement: p.sur_place ? "sur_place" : "",
+      score,
+      ligneSite: t.ligne,
+      ...(enfant && enfant.unite === "ch" ? { enfantSite: enfant } : {}),
+    });
+  });
+  return offres.sort((a, b) => b.score - a.score);
 }
 
 // Offres de la base qui correspondent à la demande, la plus proche en premier. Au plus six.
@@ -966,9 +1052,13 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
       offres.push({ genre: "prestation", id: p.id, source: p, titre: p.libelle_en || libelleClient(p.libelle), detail: [libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "), total: prixPrestation(p, pax), avertissement: p.sur_place ? "sur_place" : "", score });
     }
   } else if (d.prestation) {
+    // Demande du site : le tarif de l'option cochée passe devant (tarifsDuSite). Le recouvrement de mots ne propose plus que les autres tarifs.
+    const site = tarifsDuSite(d, { prestations, partenaires, nomPartenaire });
+    offres.push(...site);
+    const deja = new Set(site.map((o) => o.id));
     for (const p of prestations) {
       // Le tarif enfant d'une excursion se rattache à son tarif adulte (completerEnfant) : il ne se propose pas seul, et ne passe jamais en tête.
-      if (!proposable(p, partenaires) || p.unite === "sup" || p.unite === "ch") continue;
+      if (deja.has(p.id) || !proposable(p, partenaires) || p.unite === "sup" || p.unite === "ch") continue;
       const texte = `${p.libelle} ${p.libelle_en || ""} ${p.groupe || ""}`;
       let score = recouvrement(d.type === "location" && d.vehiculeNom ? `${d.prestation} ${d.vehiculeNom}` : d.prestation, texte);
       if (score < 0.5) continue;
