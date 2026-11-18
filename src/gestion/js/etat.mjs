@@ -11,6 +11,7 @@ import { permissionsDans, roleDans } from "./droits.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 import { appliquerTextesThai } from "./textes-thai.mjs";
+import { entreprisesVoucher } from "./voucher-rapide-calc.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
 const CLE_ENTITE = "gestion-zwald-entite";
@@ -18,7 +19,9 @@ const CLE_ENTITE = "gestion-zwald-entite";
 // `documentsOuverts` : documents en cours d'édition. La synchronisation ne leur retire pas leur copie en mémoire, l'éditeur en a besoin.
 // `retour` : ce qu'a demandé le lien qui a ouvert l'outil (invitation, mot de passe oublié) ou son erreur (lien expiré), voir compte-calc.mjs.
 // `garde` : posée par un écran qui a des modifications non enregistrées (Réglages) ; elle rend vrai tant qu'il faut demander avant de le quitter.
-export const etat = { store: null, brut: null, db: null, session: null, moi: null, entiteId: null, documentsOuverts: new Set(), retour: { type: null, erreur: null }, garde: null };
+// `voucherDepuis` : l'entreprise Taxi de l'écran « Nouveau voucher » quand ce voucher se fait sous le logo d'une autre entreprise (Secret,
+// 18.11.2026) ; l'entreprise active est alors celle du logo. Null partout ailleurs. Jamais gardé dans ce navigateur : un rechargement revient à Taxi.
+export const etat = { store: null, brut: null, db: null, session: null, moi: null, entiteId: null, voucherDepuis: null, documentsOuverts: new Set(), retour: { type: null, erreur: null }, garde: null };
 
 export async function init() {
   // La langue de ce navigateur sert dès l'écran de connexion ; celle du compte la remplace après la connexion.
@@ -72,6 +75,7 @@ export async function recharger() {
   }
   const ids = entitesAccessibles().map((e) => e.id);
   etat.entiteId = ids.includes(choisi) ? choisi : ids[0] || null;
+  etat.voucherDepuis = null;
   rebatir();
   copierPourHorsLigne();
   signature = signer(etat.brut);
@@ -139,6 +143,11 @@ export async function synchroniser() {
     etat.moi = neuf.profils.find((p) => p.user_id === etat.session.id) || etat.moi;
     const ids = entitesAccessibles().map((e) => e.id);
     if (!ids.includes(etat.entiteId)) etat.entiteId = ids[0] || null;
+    // Voucher sous un autre logo : si l'une des deux entreprises n'est plus permise (accès retiré entre-temps), retour à l'entreprise Taxi.
+    if (etat.voucherDepuis && !entitesVoucher().some((e) => e.id === etat.entiteId)) {
+      etat.entiteId = ids.includes(etat.voucherDepuis) ? etat.voucherDepuis : ids[0] || null;
+      etat.voucherDepuis = null;
+    }
     rebatir();
     copierPourHorsLigne();
     return miennes ? "propre" : "modifie";
@@ -188,7 +197,8 @@ function rebatir() {
   db.roles = etat.brut.roles.filter((r) => r.entite_id === e);
   etat.db = db;
   // Textes thaïs de l'écran de Mook : ceux de cette entreprise s'ils ont été modifiés dans Réglages, sinon ceux de départ.
-  appliquerTextesThai(db.reglages.textes_thai);
+  // Voucher sous le logo de Secret : l'écran reste celui de Taxi, avec ses textes.
+  appliquerTextesThai(etat.voucherDepuis ? reglagesDe(etat.voucherDepuis).textes_thai : db.reglages.textes_thai);
   setDevise(db.reglages.devise);
   setMasquerMontants(!peut("finances.voir"));
 }
@@ -196,6 +206,8 @@ function rebatir() {
 // `naviguer: false` : l'adresse demandée est gardée (une notification qui ouvre un dossier d'une autre entreprise, « ?entite=… »).
 export function changerEntite(id, { naviguer = true } = {}) {
   etat.entiteId = id;
+  // Un changement d'entreprise choisi dans le bandeau quitte le voucher fait sous un autre logo.
+  etat.voucherDepuis = null;
   try {
     localStorage.setItem(CLE_ENTITE, id);
   } catch {
@@ -233,6 +245,8 @@ export const nomRole = (r) => (r.systeme ? tr(r.nom) : r.nom);
 export const descriptionRole = (r) => (r.systeme ? tr(r.description) : r.description);
 
 export const reglages = () => etat.db.reglages;
+// Les réglages d'une autre entreprise accessible (le WhatsApp d'Anaïs, réglé dans Taxi, pendant un voucher sous le logo de Secret).
+export const reglagesDe = (id) => completerReglages(etat.brut.reglages[id]);
 
 // Chaque entreprise choisit ses écrans (Réglages, Écrans) parmi les modules de sa façon de travailler : voir modules.mjs.
 // Un module n'existe que là où il a un sens (Jérémy, 12.11.2026) ; Masquer n'éteint que lui et ce qui en dépend (audit n° 72).
@@ -244,7 +258,28 @@ export const modulesProposes = () => (etat.db ? modulesReglables(contexteModules
 export const modeTaxi = () => !!etat.db && estTaxi(etat.db.reglages);
 export const modeExcursions = () => !!etat.db && (etat.db.reglages.fonctionnement === "excursions" || modeTaxi());
 // L'assistante de Taxi (droit « vouchers.seul ») n'a que l'écran « Nouveau voucher » dans une entreprise en mode taxi. Ailleurs, rien ne change.
-export const ecranVoucherSeul = () => modeTaxi() && peut("vouchers.seul") && !estSuperAdmin();
+// Un voucher fait sous le logo de Secret (etat.voucherDepuis) reste sur cet écran : Secret n'y est que l'entreprise du dossier.
+const voucherSeulDans = (id) => {
+  const r = etat.brut && etat.brut.reglages[id] ? completerReglages(etat.brut.reglages[id]) : null;
+  return estTaxi(r) && permissionsDans(contexte(), id).includes("vouchers.seul");
+};
+export const ecranVoucherSeul = () => !!etat.db && !estSuperAdmin() && (etat.voucherDepuis ? voucherSeulDans(etat.voucherDepuis) : modeTaxi() && peut("vouchers.seul"));
+// L'entreprise Taxi de l'écran « Nouveau voucher », quelle que soit l'entreprise du voucher en cours.
+export const entiteVoucherOrigine = () => etat.voucherDepuis || etat.entiteId;
+// Les entreprises sous le logo desquelles la personne fait un voucher : l'entreprise Taxi d'abord, puis celles en mode excursions où elle crée des dossiers.
+export const entitesVoucher = () => {
+  const origine = entiteVoucherOrigine();
+  if (!origine || !voucherSeulDans(origine)) return [];
+  return entreprisesVoucher({ entites: entitesAccessibles(), origine, permissions: (id) => permissionsDans(contexte(), id), reglages: (id) => reglagesDe(id) });
+};
+// Fait le voucher en cours dans cette entreprise (l'une de entitesVoucher) sans quitter l'écran ni changer l'entreprise gardée dans ce navigateur.
+export function travaillerPourVoucher(id) {
+  const origine = entiteVoucherOrigine();
+  if (!id || id === etat.entiteId || !entitesVoucher().some((e) => e.id === id)) return;
+  etat.voucherDepuis = id === origine ? null : origine;
+  etat.entiteId = id;
+  rebatir();
+}
 
 // ---- Chargement à la demande ---------------------------------------------------------------------------------
 // Documents et paiements ne sont pas chargés avec les listes : on les charge à l'ouverture d'un dossier.

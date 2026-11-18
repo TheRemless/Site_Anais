@@ -1,7 +1,9 @@
 // Écran « Nouveau voucher » de VIP Taxi Lanta (12.11.2026), en thaï, pour l'assistante d'Anaïs : un formulaire, l'aperçu de la
 // « Booking confirmation », un bouton qui crée tout (client, dossier, course payée au chauffeur, voucher) et envoie l'image à Anaïs,
 // puis la liste de ses derniers vouchers pour corriger une heure ou renvoyer. Le voucher reste en anglais. Logique : voucher-rapide-calc.mjs.
-import { etat, inserer, modifier, reglages, chargerDossier } from "../etat.mjs";
+// Logo du voucher (18.11.2026) : VIP Taxi Lanta (par défaut, Mr. Brown) ou Secret Travel & Tour (taxi indépendant, sans partenaire). Le dossier,
+// la course et le voucher vont dans l'entreprise du logo, avec ses réglages et ses droits (etat.mjs, travaillerPourVoucher).
+import { etat, inserer, modifier, reglages, chargerDossier, modeTaxi, travaillerPourVoucher, entitesVoucher, entiteVoucherOrigine, reglagesDe } from "../etat.mjs";
 import { h, icone } from "../ui.mjs";
 import { uid } from "../defauts.mjs";
 import { RETOUR_DEPART } from "../trajet-calc.mjs";
@@ -18,8 +20,11 @@ import { noterEnvoi } from "./envois-vouchers.mjs";
 import { aujourdhui } from "../calc.mjs";
 
 // Le partenaire de la course : VIP Taxi Lanta, seul partenaire de l'entreprise (lu avec le droit « voir les partenaires »).
-const partenaireTaxi = () => partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages()));
-const telAnais = () => chiffres((reglages().voucher || {}).whatsapp_anais || "").replace("+", "");
+// Sous le logo de Secret, aucun : c'est un taxi indépendant (décision de Jérémy, 18.11.2026), jamais un partenaire de Secret deviné par son nom.
+const partenaireTaxi = () => (modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null);
+// Le WhatsApp d'Anaïs est réglé dans Taxi : il sert aussi aux vouchers faits sous le logo de Secret.
+const telAnais = () => chiffres((reglagesDe(entiteVoucherOrigine()).voucher || {}).whatsapp_anais || "").replace("+", "");
+const independant = () => !modeTaxi();
 
 let adresseImage = null;
 const urlImage = (blob) => {
@@ -32,14 +37,38 @@ export function vueVoucherRapide() {
   const racine = h("div", { class: "vr", lang: "th", "data-titre": TH.titre });
   // Hors du formulaire vierge, l'écran ne doit pas être redessiné par la relecture automatique (app.mjs, saisieEnCours).
   const occupe = (oui) => racine.toggleAttribute("data-occupe", !!oui);
+  // L'entreprise Taxi de l'écran et les logos proposés (un seul : pas de choix à l'écran, comme avant).
+  const origine = entiteVoucherOrigine();
+  const marques = entitesVoucher();
+  const choixMarques = marques.length > 1;
+  const nomEntite = (id) => ((marques.find((m) => m.id === id) || etat.brut.entites.find((e) => e.id === id)) || {}).nom || "";
+  const ligneMarque = (id) => (choixMarques ? h("p", { class: "vr-marque-ligne" }, nomEntite(id)) : null);
+  // Le temps d'un geste (noter un envoi) dans l'entreprise d'un voucher, puis retour à celle de l'écran.
+  const dansEntite = (id, fn) => {
+    const avant = etat.entiteId;
+    travaillerPourVoucher(id);
+    try {
+      return fn();
+    } finally {
+      travaillerPourVoucher(avant);
+    }
+  };
 
   // ---- 1. Formulaire ----------------------------------------------------------------------------------------------
   // `cible` : le voucher corrigé ({ reservation, dossier, client }), sinon un nouveau.
+  // `valeurs.entite_id` : l'entreprise du logo choisi (retour depuis l'aperçu) ; un nouveau voucher repart de Taxi. Une correction reste dans
+  // l'entreprise du voucher, sans choix.
   function formulaire(valeurs = valeursVides(), cible = null) {
-    occupe(!!cible);
+    travaillerPourVoucher(cible ? cible.dossier.entite_id : valeurs.entite_id || origine);
+    occupe(!!cible || etat.entiteId !== origine);
     const champs = {};
     const erreurs = {};
-    const lieux = suggestionsLieux(etat.db.prestations, etat.db.reservations);
+    // Lieux déjà saisis : les courses de Taxi et celles des vouchers de la personne sous un autre logo ; le catalogue de Taxi seulement.
+    const miens = new Set(etat.brut.dossiers.filter((d) => d.cree_par === etat.session.id).map((d) => d.id));
+    const lieux = suggestionsLieux(
+      etat.brut.prestations.filter((p) => p.entite_id === origine),
+      etat.brut.reservations.filter((r) => r.entite_id === origine || miens.has(r.dossier_id))
+    );
     const liste = h("datalist", { id: "vr-lieux" }, lieux.map((l) => h("option", { value: l })));
     const champ = (cle, libelle, input, aide = null, classe = "") => {
       input.id = `vr-${cle}`;
@@ -85,9 +114,29 @@ export function vueVoucherRapide() {
         )
       );
     };
+    // Le logo : deux choix en haut du formulaire, VIP Taxi Lanta coché par défaut. Un client déjà connu appartient à une entreprise :
+    // changer de logo le délie et cherche les clients connus de l'autre.
+    const choisirMarque = (id) => {
+      travaillerPourVoucher(id);
+      occupe(etat.entiteId !== origine);
+      clientId = "";
+      proposer();
+    };
+    const marque = !choixMarques
+      ? null
+      : cible
+        ? h("p", { class: "vr-marque-fixe" }, `${TH.marque} : `, h("strong", null, nomEntite(etat.entiteId)))
+        : h(
+            "fieldset",
+            { class: "vr-marques", "aria-describedby": "vr-marque-aide" },
+            h("legend", null, TH.marque),
+            h("div", { class: "vr-marques-choix" }, marques.map((m) => h("label", { class: "vr-marque" }, h("input", { type: "radio", name: "vr-marque", value: m.id, checked: m.id === etat.entiteId, onchange: () => choisirMarque(m.id) }), h("span", { lang: "en" }, m.nom)))),
+            h("p", { class: "vr-aide", id: "vr-marque-aide" }, TH.marque_aide)
+          );
     const form = h(
       "form",
       { class: "vr-form", novalidate: true, onsubmit: (e) => (e.preventDefault(), verifier()) },
+      marque,
       champ("nom", TH.nom, texte({ autocomplete: "off", name: "vr-nom" }), TH.anglais_aide),
       connus,
       champ("telephone", TH.telephone, h("input", { type: "tel", inputmode: "tel", autocomplete: "off", enterkeyhint: "next" }), TH.telephone_aide),
@@ -113,7 +162,7 @@ export function vueVoucherRapide() {
     );
 
     function verifier() {
-      const v = { ...Object.fromEntries(CHAMPS.map((c) => [c, champs[c].value])), client_id: clientId };
+      const v = { ...Object.fromEntries(CHAMPS.map((c) => [c, champs[c].value])), client_id: clientId, entite_id: etat.entiteId };
       const e = erreursVoucher(v);
       for (const c of CHAMPS) {
         erreurs[c].hidden = !e[c];
@@ -144,8 +193,12 @@ export function vueVoucherRapide() {
     occupe(true);
     const x = donneesVoucher(valeurs);
     const client = { prenom: "", nom: x.nom };
-    const r = cible ? { ...cible.reservation, ...correctionReservation(cible.reservation, x) } : reservationApercu(x);
+    const r = cible ? { ...cible.reservation, ...correctionReservation(cible.reservation, x) } : reservationApercu(x, { independant: independant() });
     const image = h("div", { class: "vr-image", "aria-live": "polite" }, h("p", { class: "vr-attente" }, TH.preparation));
+    // Le voucher de Secret imprime son numéro (référence du dossier et rang) : une correction montre le sien, un nouveau celui qui est proposé.
+    // Le Booking confirmation de Taxi n'en a pas. Après l'enregistrement, l'image envoyée est refaite avec le dossier réel (voir plus bas).
+    const vu = cible ? voucherDe(cible.dossier.id, cible.reservation.id) : null;
+    const dossierApercu = cible ? cible.dossier : modeTaxi() ? {} : { ref: refProposee() };
     const bouton = h("button", { class: "principal", type: "button", disabled: true }, TH.preparation);
     const etat_ = h("div", { class: "vr-etat", role: "status" });
     let blob = null;
@@ -154,7 +207,7 @@ export function vueVoucherRapide() {
       image.replaceChildren(h("p", { class: "vr-attente" }, TH.preparation));
       bouton.disabled = true;
       bouton.textContent = TH.preparation;
-      imageVoucher({ reservation: r, prestation: null, type: "transfert", index: 1 }, { client, dossier: {}, resume: null })
+      imageVoucher({ reservation: r, prestation: null, type: "transfert", index: (vu && vu.index) || 1, numero: vu && vu.numero }, { client, dossier: dossierApercu, resume: null })
         .then((b) => {
           blob = b;
           image.replaceChildren(h("img", { src: urlImage(b), alt: "Booking confirmation" }));
@@ -169,6 +222,7 @@ export function vueVoucherRapide() {
     };
     racine.replaceChildren(
       h("button", { class: "lien vr-retour", type: "button", onclick: () => formulaire(valeurs, cible) }, icone("retour", 18), TH.modifier),
+      ligneMarque(etat.entiteId),
       h("h1", null, x.nom),
       h("p", { class: "vr-resume" }, [dateCourteTh(x.date), heureBooking(x.heure), x.libelle].filter(Boolean).join(" · ")),
       image,
@@ -186,7 +240,9 @@ export function vueVoucherRapide() {
       etat_.textContent = "";
       try {
         const fait = cible ? await corriger(cible, x) : await creer(x, essai);
-        envoi(fait, blob, { essayer: true, titre: cible ? TH.modifie : TH.cree });
+        // Hors Taxi, l'image se refait avec le numéro du dossier enregistré (l'aperçu n'avait que celui proposé).
+        if (modeTaxi()) envoi(fait, blob, { essayer: true, titre: cible ? TH.modifie : TH.cree });
+        else renvoyer(fait, { essayer: true, titre: cible ? TH.modifie : TH.cree });
       } catch (err) {
         console.error(err);
         etat_.replaceChildren(h("p", { class: "vr-erreur" }, `${TH.echec} (${err.message})`));
@@ -207,13 +263,13 @@ export function vueVoucherRapide() {
     if (!essai.dossierId) {
       const propose = refProposee();
       const ref = await refDefinitive(propose, propose);
-      essai.dossierId = (await creerDossierExcursions({ client: { id: essai.clientId }, lignes: [ligneVoucher(x, { id: uid(), partenaireId: p ? p.id : null })], ref, parService: null, reservation: reservationVoucher(x), silencieux: true })).id;
+      essai.dossierId = (await creerDossierExcursions({ client: { id: essai.clientId }, lignes: [ligneVoucher(x, { id: uid(), partenaireId: p ? p.id : null })], ref, parService: null, reservation: reservationVoucher(x, { independant: independant() }), silencieux: true })).id;
     } else if (!voucherDe(essai.dossierId).reservation) {
       // Dossier créé mais réservation refusée au premier essai : on ne pose que la réservation, liée à la ligne du prix interne.
       await chargerDossier(essai.dossierId);
       const doc = etat.db.documents.find((y) => y.dossier_id === essai.dossierId && y.type === "facture");
       const ligne = doc && (doc.contenu.lignes || []).find((l) => l.kind === "ligne");
-      const r = reservationApercu(x);
+      const r = reservationApercu(x, { independant: independant() });
       await inserer("reservations", { dossier_id: essai.dossierId, ligne_id: ligne ? ligne.id : null, prestation_id: null, trajet_id: null, partenaire_id: p ? p.id : null, libelle: r.libelle, date_service: r.date_service, heure_pickup: r.heure_pickup, lieu_pickup: r.lieu_pickup, personnes: r.personnes, statut: r.statut, reference_partenaire: "", montant_vente: r.montant_vente, notes: "", paye_sur_place: true, details: r.details });
     }
     const v = voucherDe(essai.dossierId);
@@ -259,7 +315,10 @@ export function vueVoucherRapide() {
     const liste = vouchersDuDossier(dossierId);
     const v = (reservationId && liste.find((y) => y.reservation.id === reservationId)) || liste[liste.length - 1] || { reservation: null, index: 1 };
     const client = etat.db.clients.find((c) => c.id === d.client_id) || {};
-    return { ...v, dossier: d, client, nomFichier: nomFichierVoucher(v.numero || numeroVoucher(d.ref || "", v.index), client.nom || client.prenom || "", { taxi: estTaxi(reglages()) }) };
+    // Sous un autre logo que Taxi, le nom du fichier commence par l'entreprise : Anaïs sait d'un coup d'œil de laquelle il s'agit.
+    const fichier = nomFichierVoucher(v.numero || numeroVoucher(d.ref || "", v.index), client.nom || client.prenom || "", { taxi: estTaxi(reglages()) });
+    const prefixe = d.entite_id && d.entite_id !== origine ? `${nomEntite(d.entite_id).replace(/[\\/:*?"<>|]/g, "").trim()} - ` : "";
+    return { ...v, dossier: d, client, entite_id: d.entite_id || null, nomFichier: `${prefixe}${fichier}` };
   };
 
   // ---- 3. Envoi à Anaïs -------------------------------------------------------------------------------------------
@@ -281,7 +340,8 @@ export function vueVoucherRapide() {
     const noter = () => {
       if (note || !v.reservation) return;
       note = true;
-      noterEnvoi(v.reservation, "client");
+      // Dans l'entreprise du voucher, même si Mook a déjà commencé un nouveau voucher sous l'autre logo.
+      dansEntite(v.dossier.entite_id || etat.entiteId, () => noterEnvoi(v.reservation, "client"));
     };
     const envoyer = async () => {
       if (chemin === "natif") {
@@ -306,6 +366,7 @@ export function vueVoucherRapide() {
     const boutonEnvoyer = h("button", { class: "principal", type: "button", onclick: envoyer }, icone("whatsapp", 20), TH.envoyer);
     racine.replaceChildren(
       titre ? h("p", { class: "vr-succes" }, icone("coche", 22), titre) : null,
+      ligneMarque(v.dossier.entite_id),
       h("h1", null, v.client.nom || ""),
       h("p", { class: "vr-resume" }, [dateCourteTh(v.reservation && v.reservation.date_service), heureBooking(v.reservation && v.reservation.heure_pickup), v.reservation && v.reservation.libelle].filter(Boolean).join(" · ")),
       message,
@@ -330,17 +391,35 @@ export function vueVoucherRapide() {
   }
 
   // Renvoyer un voucher déjà créé : l'image se refait (elle suit toute correction), puis le même écran d'envoi.
-  function renvoyer(v) {
+  // Le voucher se refait dans son entreprise, avec ses réglages, son logo et son numéro.
+  // Juste après une création (`options.titre`), « créé » s'affiche dès l'attente : une image ratée ne fait pas croire que rien n'a été enregistré,
+  // et « Refaire l'image » la refait sans recréer de dossier.
+  let tirage = 0;
+  function renvoyer(v, options = {}) {
+    const entite = v.entite_id || v.dossier.entite_id;
+    travaillerPourVoucher(entite);
     occupe(true);
-    racine.replaceChildren(h("button", { class: "lien vr-retour", type: "button", onclick: () => formulaire() }, icone("retour", 18), TH.retour), h("p", { class: "vr-attente" }, TH.preparation));
-    imageVoucher({ reservation: v.reservation, prestation: null, type: "transfert", index: 1 }, { client: v.client, dossier: v.dossier, resume: null })
-      .then((blob) => envoi(voucherDe(v.dossier.id, v.reservation.id), blob))
-      .catch((err) => racine.append(h("p", { class: "vr-erreur" }, `${TH.image_echec} (${err.message})`)));
+    const moi = ++tirage;
+    const retour = h("button", { class: "lien vr-retour", type: "button", onclick: () => (tirage++, formulaire()) }, icone("retour", 18), TH.retour);
+    const succes = options.titre ? h("p", { class: "vr-succes" }, icone("coche", 22), options.titre) : null;
+    // L'entreprise du voucher n'est plus permise (accès retiré) : jamais une image faite avec les réglages d'une autre.
+    if (entite && etat.entiteId !== entite) return racine.replaceChildren(retour, h("p", { class: "vr-erreur" }, TH.image_echec));
+    const x = voucherDe(v.dossier.id, v.reservation.id);
+    racine.replaceChildren(retour, succes, h("p", { class: "vr-attente" }, TH.preparation));
+    imageVoucher({ reservation: x.reservation || v.reservation, prestation: null, type: "transfert", index: x.index || 1, numero: x.numero }, { client: x.client, dossier: x.dossier, resume: null })
+      // Mook a pu revenir au formulaire pendant la préparation : l'image arrivée après ne remplace pas ce qu'elle fait.
+      .then((blob) => moi === tirage && envoi(x, blob, options))
+      .catch((err) => {
+        if (moi !== tirage) return;
+        racine.replaceChildren(retour, succes, h("p", { class: "vr-erreur" }, `${TH.image_echec} (${err.message})`), h("div", { class: "vr-barre" }, h("button", { class: "principal", type: "button", onclick: () => renvoyer(v, options) }, TH.reessayer)));
+      });
   }
 
   // ---- 4. Derniers vouchers --------------------------------------------------------------------------------------
   function listeVouchers() {
-    const liste = mesVouchers({ reservations: etat.db.reservations, dossiers: etat.db.dossiers, clients: etat.db.clients, moi: etat.session.id });
+    // Ceux des deux entreprises (Taxi et Secret), chacun avec la sienne.
+    const entites = choixMarques ? marques.map((m) => m.id) : [etat.entiteId];
+    const liste = mesVouchers({ reservations: etat.brut.reservations, dossiers: etat.brut.dossiers, clients: etat.brut.clients, moi: etat.session.id, entites });
     return h(
       "section",
       { class: "vr-liste", "aria-labelledby": "vr-derniers" },
@@ -360,7 +439,7 @@ export function vueVoucherRapide() {
                   h("strong", null, [v.client.prenom, v.client.nom].filter(Boolean).join(" ")),
                   h("span", null, [dateCourteTh(r.date_service), heureBooking(r.heure_pickup)].filter(Boolean).join(" · ")),
                   h("span", { class: "vr-trajet" }, r.libelle || ""),
-                  v.annule ? h("span", { class: "tag" }, TH.annule) : null
+                  choixMarques || v.annule ? h("span", { class: "vr-tags" }, choixMarques ? h("span", { class: `tag vr-tag-marque${v.entite_id === origine ? "" : " autre"}`, lang: "en" }, nomEntite(v.entite_id)) : null, v.annule ? h("span", { class: "tag" }, TH.annule) : null) : null
                 ),
                 v.annule
                   ? null
