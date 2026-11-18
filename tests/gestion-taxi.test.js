@@ -101,7 +101,7 @@ test("messages de Taxi : les deux textes de Jérémy mot pour mot, messages à M
   assert.ok(de("taxi-confirmation-en").corps.startsWith("Thank you for choosing {entreprise}. ✨\n\nPlease see the attached confirmation and show it to the driver at pick-up."));
   assert.ok(de("taxi-confirmation-en").corps.endsWith("Have a nice day ☀️\n{entreprise} 🌴"));
   assert.ok(de("taxi-avis-en").corps.includes("You can leave your review here:\n{lien_avis}\n"));
-  assert.ok(de("taxi-avis-en").corps.endsWith("Safe travels ✨🌴\n{entreprise} by Mr. Brown"));
+  assert.ok(de("taxi-avis-en").corps.endsWith("Safe travels ✨🌴\n{entreprise}"), "défaut neutre : sans le nom du partenaire (Taxi d'Anaïs a son message enregistré)");
   for (const cle of ["partenaire", "relance", "modification", "annulation", "commission"]) {
     for (const langue of ["en", "th"]) assert.ok(MESSAGES_TAXI.some((m) => m.cle === cle && m.langue === langue && m.pour === "partenaire"), `${cle} en ${langue}`);
   }

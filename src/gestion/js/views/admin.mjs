@@ -1,6 +1,6 @@
 // Administration : entreprises et accès des utilisateurs. Réservée à l'administratrice générale.
 // Lot D (17.11.2026) : inviter une personne, lien de mot de passe, supprimer un compte, langue d'une autre personne, Administrateur calculé.
-import { libelleAdmin } from "../noms-calc.mjs";
+import { libelleAdmin, LIBELLE_ADMIN_NEUTRE } from "../noms-calc.mjs";
 import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, organisation, modifierOrganisation, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation } from "../etat.mjs";
 import { DEPENDANCES, completerReglages, PERMISSIONS } from "../defauts.mjs";
 import { droitsProposes, droitsDuRole, droitsRetires } from "../droits.mjs";
@@ -131,6 +131,8 @@ function blocOrganisation(rafraichir) {
   fuseau.value = o.fuseau || "Asia/Bangkok";
   const langue = h("select", { id: "org-langue" }, ...LANGUES.map((l) => h("option", { value: l.code }, l.nom)));
   langue.value = o.langue || "en";
+  // Migration 44 : le libellé du rôle d'administration (« Administratrice générale »), seulement quand la base a la colonne.
+  const libelleRole = "libelle_admin" in o ? h("input", { id: "org-libelle-admin", value: o.libelle_admin || "", maxlength: 60, placeholder: tr(LIBELLE_ADMIN_NEUTRE) }) : null;
   return h(
     "section",
     null,
@@ -143,7 +145,7 @@ function blocOrganisation(rafraichir) {
         onsubmit: async (e) => {
           e.preventDefault();
           try {
-            await modifierOrganisation({ nom: nom.value.trim(), fuseau: fuseau.value, langue: langue.value });
+            await modifierOrganisation({ nom: nom.value.trim(), fuseau: fuseau.value, langue: langue.value, ...(libelleRole ? { libelle_admin: libelleRole.value } : {}) });
             toast(tr("Organisation enregistrée."));
             rafraichir();
           } catch (err) {
@@ -154,6 +156,7 @@ function blocOrganisation(rafraichir) {
       champ(tr("Nom de l'organisation"), nom),
       champ(tr("Fuseau horaire"), fuseau, tr("Les rappels partent à l'heure de ce fuseau, changements d'heure compris.")),
       champ(tr("Langue de départ"), langue, tr("Langue de l'interface pour les nouveaux comptes. Chacun peut ensuite choisir la sienne.")),
+      libelleRole ? champ(tr("Nom du rôle d'administration"), libelleRole, tr("Affiché à côté du nom des personnes qui administrent l'organisation. Vide : « {neutre} ».", { neutre: tr(LIBELLE_ADMIN_NEUTRE) })) : null,
       h("div", { class: "actions" }, h("button", { type: "submit", class: "principal" }, tr("Enregistrer")))
     )
   );

@@ -509,11 +509,13 @@ export const organisation = () => {
   const mienne = etat.moi && etat.moi.organisation_id;
   return (mienne ? liste.find((o) => o.id === mienne) : liste.length === 1 ? liste[0] : null) || null;
 };
-// Nom, fuseau et langue : l'administrateur de l'organisation seul (la base refuse le statut et les options payantes).
+// Nom, fuseau, langue et libellé du rôle d'administration (migration 44) : l'administrateur de l'organisation seul (la base refuse le statut
+// et les options payantes). Un libellé vide redevient null (libellé neutre) ; il n'est envoyé que si la base a la colonne.
 async function modifierOrganisationBrut(patch) {
   const o = organisation();
   if (!o) throw new Error(tr("Réglages de l'organisation indisponibles : la base n'a pas encore la migration 42."));
-  const champs = Object.fromEntries(Object.entries(patch).filter(([k]) => ["nom", "fuseau", "langue"].includes(k)));
+  const champs = Object.fromEntries(Object.entries(patch).filter(([k]) => ["nom", "fuseau", "langue"].includes(k) || (k === "libelle_admin" && "libelle_admin" in o)));
+  if ("libelle_admin" in champs) champs.libelle_admin = String(champs.libelle_admin || "").trim().slice(0, 60) || null;
   const r = await etat.store.modifier("organisations", o.id, champs);
   etat.brut.organisations = [{ ...o, ...r }];
   rebatir();

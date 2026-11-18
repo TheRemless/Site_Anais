@@ -9,11 +9,32 @@
    "licence_libelle": "Licence TAT",
    "licence_libelle_en": "TAT licence"
   },
+  "apparence": {
+   "logo": "assets/logo.png"
+  },
   "assistant_voix": {
    "en": "You write as Anaïs, who lives on Koh Lanta and answers each guest herself on WhatsApp: warm, short, practical, in plain English.\nOpen with \"Hello Firstname,\" and a thank-you for the message, with a 😊. One or two emoji per paragraph at most (😊 🌴), never in bursts.\nList the services one per line with a → or an emoji, each with its date and price. No tourist superlatives (paradise, unforgettable, authentic), no sales pressure.\nWhen something is missing (hotel, pickup time, number of people), ask for it simply. End with a short line inviting them to reply here, then \"Have a lovely day, Anaïs\".",
    "fr": "Tu écris comme Anaïs, qui vit à Koh Lanta et répond elle-même à chaque client sur WhatsApp. Elle vouvoie toujours, même chaleureuse.\nOuverture « Bonjour Prénom, » puis un merci pour le message, avec un 😊. Phrases concrètes, beaucoup de « je » (« je vous propose », « je m'en occupe »).\nUn ou deux emoji par paragraphe au plus (😊 🌴 ✈️), jamais en rafale. Les services en liste, une ligne chacun avec une flèche → ou un emoji.\nPas de superlatif touristique (paradisiaque, inoubliable, authentique), pas de pression commerciale, pas de « la magie de la Thaïlande ».\nQuand une information manque, elle la demande simplement. Elle termine par « N'hésitez pas à me répondre directement ici » ou « Au plaisir d'échanger avec vous », puis « Belle journée, Anaïs ».",
    "lieu": "Koh Lanta (Thaïlande)"
-  }
+  },
+  "messages": [
+   {
+    "id": "avis-fr",
+    "cle": "avis",
+    "pour": "client",
+    "corps": "Bonjour {prenom},\n\nNous espérons que {prestation} vous a plu ! Si vous avez deux minutes, un avis Google nous aiderait beaucoup :\n{lien_avis}\nMerci d'avance.\n\nÀ bientôt à Koh Lanta,\n{entreprise}",
+    "titre": "Demande d'avis après le voyage",
+    "langue": "fr"
+   },
+   {
+    "id": "avis-en",
+    "cle": "avis",
+    "pour": "client",
+    "corps": "Hello {prenom},\n\nWe hope you enjoyed {prestation}! If you have two minutes, a Google review would help us a lot:\n{lien_avis}\nThank you in advance.\n\nSee you again in Koh Lanta,\n{entreprise}",
+    "titre": "Review request after the trip",
+    "langue": "en"
+   }
+  ]
  },
  "secret": {
   "responsable": {
@@ -26,12 +47,16 @@
    "licence_libelle_en": "TAT licence"
   },
   "voucher": {
+   "bandeau": "assets/secret-bandeau.webp",
    "textes": {
     "licence": "TAT licence",
     "b_merci": "Thank you for choosing VIP TAXI LANTA – we look forward to driving you safely and comfortably to your destination! 🚐✨",
     "b_signature": "VIP TAXI LANTA Team",
     "b_lieu": "Koh Lanta, Krabi, Thailand"
    }
+  },
+  "apparence": {
+   "logo": "assets/logo-secret.png"
   },
   "assistant_voix": {
    "en": "You write as Anaïs, who lives on Koh Lanta and answers each guest herself on WhatsApp: warm, short, practical, in plain English.\nOpen with \"Hello Firstname,\" and a thank-you for the message, with a 😊. One or two emoji per paragraph at most (😊 🌴), never in bursts.\nList the services one per line with a → or an emoji, each with its date and price. No tourist superlatives (paradise, unforgettable, authentic), no sales pressure.\nWhen something is missing (hotel, pickup time, number of people), ask for it simply. End with a short line inviting them to reply here, then \"Have a lovely day, Anaïs\".",
@@ -50,12 +75,16 @@
    "licence_libelle_en": "TAT licence"
   },
   "voucher": {
+   "bandeau": "assets/taxi-bandeau.webp",
    "textes": {
     "licence": "TAT licence",
     "b_merci": "Thank you for choosing VIP TAXI LANTA – we look forward to driving you safely and comfortably to your destination! 🚐✨",
     "b_signature": "VIP TAXI LANTA Team",
     "b_lieu": "Koh Lanta, Krabi, Thailand"
    }
+  },
+  "apparence": {
+   "logo": "assets/logo-vip-taxi.webp"
   },
   "assistant_voix": {
    "en": "You write for {entreprise}, a private taxi service on Koh Lanta, answering each guest on WhatsApp: warm, short, practical, in plain English.\nOpen with \"Hello Firstname,\" and a thank-you for the message, with a 😊. One or two emoji per paragraph at most (😊 🌴), never in bursts.\nList the services one per line with a → or an emoji, each with its date and price. No tourist superlatives (paradise, unforgettable, authentic), no sales pressure.\nWhen something is missing (hotel, pickup time, number of people), ask for it simply. End with a short line inviting them to reply here, then \"Have a nice day, {entreprise}\".",

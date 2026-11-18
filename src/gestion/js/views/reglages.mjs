@@ -510,7 +510,9 @@ export function vueReglages() {
       r.responsable = { ...(r.responsable || {}), user_id, prenom: prenom.value.trim(), prenom_th: prenomTh.value.trim() };
       marque();
     };
+    let equipeLue = [];
     const remplirChoix = (equipe) => {
+      equipeLue = equipe;
       const premier = administrateursDe(donneesEquipe())[0];
       const auto = premier ? tr("Automatique : {nom}", { nom: prenomDe(premier) }) : tr("Automatique : la première administratrice");
       choix.replaceChildren(h("option", { value: "" }, auto), ...equipe.map((p) => h("option", { value: p.user_id }, p.nom || p.email || p.user_id)));
@@ -523,7 +525,8 @@ export function vueReglages() {
     prenomTh.value = actuel.prenom_th || "";
     prenom.placeholder = responsableIci().prenom || "";
     choix.addEventListener("change", () => {
-      const p = (etat.brut.profils || []).find((x) => x.user_id === choix.value);
+      // Le prénom vient de equipe_de : l'administration d'une entreprise ne lit pas tous les profils (RLS).
+      const p = [...equipeLue, ...(etat.brut.profils || [])].find((x) => x.user_id === choix.value);
       prenom.value = p ? prenomDe(p) : "";
       prenomTh.value = "";
       ecrire_();

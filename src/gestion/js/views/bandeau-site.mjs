@@ -8,7 +8,7 @@ import { aujourdhui } from "../calc.mjs";
 import { tr, N_, localeActive } from "../i18n.mjs";
 import { vide } from "./commun.mjs";
 import {
-  TEXTE_MAX, TYPES_BANDEAU, SECTIONS_SITE, MODELES, modele, modelesDuType, texteBandeau, verifierBandeau, finProposee, ligneBandeau, etatBandeau,
+  TEXTE_MAX, TYPES_BANDEAU, SECTIONS_SITE, nomSection, MODELES, modele, modelesDuType, texteBandeau, verifierBandeau, finProposee, ligneBandeau, etatBandeau,
   ETATS_BANDEAU, pagesLien, libelleLien, produitSite, produitsDeMarques, ordreAffichage,
 } from "../bandeau-calc.mjs";
 
@@ -56,7 +56,7 @@ function svgIcone(type) {
   return s;
 }
 export function noeudBandeau(b, marque) {
-  const lien = b.lien === "page" && b.lien_page ? h("a", { class: "site-notice__link", href: "#", tabindex: "-1", onclick: (e) => e.preventDefault() }, libelleLien(b.lien_page)) : b.lien === "whatsapp" ? h("a", { class: "site-notice__link", href: "#", tabindex: "-1", onclick: (e) => e.preventDefault() }, "Ask on WhatsApp") : null;
+  const lien = b.lien === "page" && b.lien_page ? h("a", { class: "site-notice__link", href: "#", tabindex: "-1", onclick: (e) => e.preventDefault() }, libelleLien(b.lien_page, marques)) : b.lien === "whatsapp" ? h("a", { class: "site-notice__link", href: "#", tabindex: "-1", onclick: (e) => e.preventDefault() }, "Ask on WhatsApp") : null;
   return h(
     "div",
     { class: `site-notice site-notice--${b.type} marque-${marque}`, lang: "en" },
@@ -185,7 +185,7 @@ function ouvrirSaisie(existant = null) {
   function dessinerCible() {
     if (b.cible === "sections")
       blocCible.replaceChildren(
-        h("div", { class: "bsite-cases" }, Object.entries(SECTIONS_SITE).filter(([k]) => (k === "taxi" ? b.marques.includes("taxi") : b.marques.includes("secret"))).map(([k, l]) => h("label", { class: "case" }, h("input", { type: "checkbox", checked: b.sections.includes(k), onchange: (e) => ((b.sections = e.target.checked ? [...b.sections, k] : b.sections.filter((x) => x !== k)), maj()) }), tr(l))))
+        h("div", { class: "bsite-cases" }, Object.entries(SECTIONS_SITE).filter(([k]) => (k === "taxi" ? b.marques.includes("taxi") : b.marques.includes("secret"))).map(([k]) => h("label", { class: "case" }, h("input", { type: "checkbox", checked: b.sections.includes(k), onchange: (e) => ((b.sections = e.target.checked ? [...b.sections, k] : b.sections.filter((x) => x !== k)), maj()) }), tr(nomSection(k, marques)))))
       );
     else if (b.cible === "produits")
       blocCible.replaceChildren(
@@ -201,7 +201,7 @@ function ouvrirSaisie(existant = null) {
     if (b.lien === "page" && !pages.some((p) => p.href === b.lien_page)) b.lien_page = (b.valeurs.trip && (produitSite(b.valeurs.trip) || {}).url) || (pages[0] || {}).href || null;
     blocLien.replaceChildren(
       ...[
-      b.lien === "page" ? champ(tr("Page du site"), h("select", { onchange: (e) => ((b.lien_page = e.target.value), maj()) }, pages.map((p) => h("option", { value: p.href, selected: p.href === b.lien_page }, p.section ? tr(p.nom) : p.nom))), tr("Le lien s'appellera « {libelle} ».", { libelle: libelleLien(b.lien_page) })) : null,
+      b.lien === "page" ? champ(tr("Page du site"), h("select", { onchange: (e) => ((b.lien_page = e.target.value), maj()) }, pages.map((p) => h("option", { value: p.href, selected: p.href === b.lien_page }, p.section ? tr(p.nom, { marque: nomMarque(p.marque || "") }) : p.nom))), tr("Le lien s'appellera « {libelle} ».", { libelle: libelleLien(b.lien_page, marques) })) : null,
       b.lien === "whatsapp" ? h("p", { class: "aide" }, tr("Le lien « Ask on WhatsApp » ouvre la conversation avec {responsable}.", { responsable: responsableEntite().prenom || tr("la personne responsable") })) : null,
       ].filter(Boolean)
     );
@@ -222,7 +222,7 @@ function ouvrirSaisie(existant = null) {
     erreur.textContent = "";
     btn.disabled = true;
     try {
-      const ligne = ligneBandeau(b, ajd);
+      const ligne = ligneBandeau(b, ajd, marques);
       if (existant) await modifier("bandeaux_site", existant.id, ligne);
       else await inserer("bandeaux_site", ligne);
       fermer();
@@ -258,7 +258,7 @@ function ouvrirSaisie(existant = null) {
 // ---- Liste ----------------------------------------------------------------------------------------------------------------
 function carte(b, ecrit) {
   const etatB = etatBandeau(b);
-  const cibles = b.cible === "tout" ? tr("Tout le site") : b.cible === "sections" ? b.sections.map((s) => tr(SECTIONS_SITE[s] || s)).join(", ") : b.produits.map((id) => (produitSite(id) || { nom: id }).nom).join(", ");
+  const cibles = b.cible === "tout" ? tr("Tout le site") : b.cible === "sections" ? b.sections.map((s) => tr(nomSection(s, marques))).join(", ") : b.produits.map((id) => (produitSite(id) || { nom: id }).nom).join(", ");
   const periode = [tr("Depuis {date}", { date: quand(b.debut) }), b.fin ? tr("jusqu'au {date}", { date: quand(b.fin) }) : tr("sans fin")].join(" ");
   return h(
     "li",

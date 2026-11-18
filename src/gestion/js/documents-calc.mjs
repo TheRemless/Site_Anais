@@ -45,7 +45,7 @@ const choisir = (o, cles) => Object.fromEntries(cles.filter((k) => o && o[k] !==
 export function figerReglages(reglages, contenu) {
   const mode = modePaiement(reglages, contenu.paiement);
   return {
-    emetteur: choisir(reglages.emetteur, ["nom", "sous_titre", "adresse", "telephone", "licence", "contact"]),
+    emetteur: choisir(reglages.emetteur, ["nom", "sous_titre", "adresse", "telephone", "licence", "licence_libelle", "licence_libelle_en", "contact"]),
     paiement: { texte: mode.texte || "", qr_image: mode.qr_image || "", qr_pseudo: mode.qr_pseudo || "" },
     devise: contenu.devise || reglages.devise || "",
     acompte_pct: Number(reglages.conditions && reglages.conditions.acompte_pct) || 0,

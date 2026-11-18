@@ -7,13 +7,13 @@ import { champsBooking, lignesEnPlus } from "../taxi-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
 import { avecMarque } from "../noms-calc.mjs";
 
-const LOGO_DEFAUT = "assets/logo-vip-taxi.webp";
+// Plus d'image de marque par défaut (migration 44) : sans logo ni photo dans les réglages, la Booking confirmation n'en montre pas.
+// Taxi d'Anaïs a son logo et sa photo enregistrés (la migration y écrit la photo d'avant).
 
 // La photo du bandeau en arrière-plan « cover » : html2canvas, qui fabrique l'image envoyée, ignore `object-fit` et étirait une <img> dans son
 // cadre (photo aplatie, 18.11.2026). Un arrière-plan garde ses proportions partout (aperçu, image, impression), quelle que soit la photo
 // téléversée dans les réglages.
 export const photoBandeau = (src) => h("div", { class: "vt-photo", role: "presentation", style: `background-image: url("${String(src).replace(/["\\\n]/g, encodeURIComponent)}")` });
-const BANDEAU_DEFAUT = "assets/taxi-bandeau.webp";
 
 // `regl` : réglages de l'entreprise ; le reste vient de renderVoucher (pickup et dépose déjà déduits de la réservation).
 // `retour` : { programme, duree } pour un retour au point de départ (16.11.2026), sinon null.
@@ -27,7 +27,7 @@ export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", d
   const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: dt.sieges, vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, t });
   const valeur = (c) =>
     c.date ? [`${c.date.mois} ${c.date.jour}`, h("sup", null, c.date.suffixe), ` ${c.date.annee}`] : c.valeur;
-  const logo = (regl.apparence && regl.apparence.logo) || LOGO_DEFAUT;
+  const logo = (regl.apparence && regl.apparence.logo) || "";
   const lieu = adresse || t("b_lieu");
   // La page A4 est pleine (en-tête du modèle) : une valeur qui passe à la ligne resserre les rangs pour que le pied reste visible.
   // Un rang de plus que le modèle (le programme et la durée d'un retour au départ) compte comme une ligne de plus.
@@ -38,8 +38,8 @@ export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", d
     h(
       "div",
       { class: "vt-haut" },
-      h("div", { class: "vt-bandeau" }, photoBandeau(v.bandeau || BANDEAU_DEFAUT), h("div", { class: "vt-vague", "aria-hidden": "true" })),
-      h("div", { class: "vt-sceau" }, h("img", { src: logo, alt: nomSociete || "" }))
+      h("div", { class: "vt-bandeau" }, v.bandeau ? photoBandeau(v.bandeau) : null, h("div", { class: "vt-vague", "aria-hidden": "true" })),
+      logo ? h("div", { class: "vt-sceau" }, h("img", { src: logo, alt: nomSociete || "" })) : null
     ),
     h("h1", { class: "vt-titre" }, t("b_titre_1"), h("br"), t("b_titre_2")),
     h("p", { class: "vt-intro" }, t("b_intro")),

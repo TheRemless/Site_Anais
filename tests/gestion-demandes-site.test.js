@@ -306,7 +306,8 @@ test("état et liens : en ligne, programmé, terminé, éteint ; pages proposée
   assert.equal(etatBandeau({ actif: true, debut: "2026-11-15T00:00:00Z", fin: "2026-11-16T01:00:00Z" }, t), "termine");
   assert.equal(etatBandeau({ actif: false, debut: "2026-11-16T00:00:00Z" }, t), "eteint");
   assert.equal(libelleLien("/tours/4-islands/"), "See 4 Islands");
-  assert.equal(libelleLien("/taxi/"), "See VIP Taxi Lanta");
+  assert.equal(libelleLien("/taxi/", { taxi: "VIP Taxi Lanta" }), "See VIP Taxi Lanta", "le nom de l'entreprise qui publie (migration 44)");
+  assert.equal(libelleLien("/taxi/"), "See the page", "sans nom : neutre");
   assert.ok(pagesLien(["taxi"]).every((p) => p.href.startsWith("/taxi/")));
   assert.ok(!pagesLien(["secret"]).some((p) => p.href.startsWith("/taxi/")));
 });

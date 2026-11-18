@@ -134,10 +134,58 @@ test("assistant en démo : signature d'Anaïs identique, celle du responsable ai
   assert.match(simulerRedaction({ ...FAITS, entreprise: "Andaman Rides" }, "en").message, /Have a lovely day, Andaman Rides$/);
 });
 
-test("messages types du mode taxi : la marque devient {entreprise}, le texte reste celui de Jérémy", async () => {
-  const { MESSAGES_TAXI } = await js("defauts.mjs");
-  for (const { id, corps } of AVANT.messagesTaxi) assert.equal(MESSAGES_TAXI.find((m) => m.id === id).corps.replaceAll("{entreprise}", "VIP TAXI LANTA"), corps, id);
-  assert.ok(!MESSAGES_TAXI.some((m) => /VIP TAXI LANTA/.test(m.corps)));
+test("messages types : défauts neutres, ceux d'Anaïs enregistrés chez elle mot pour mot", async () => {
+  const { MESSAGES_TAXI, MESSAGES_DEFAUT } = await js("defauts.mjs");
+  // Taxi : la marque devient {entreprise}, et la signature perd « by Mr. Brown » (Taxi d'Anaïs a ses messages enregistrés en base).
+  const conf = AVANT.messagesTaxi.find((m) => m.id === "taxi-confirmation-en");
+  assert.equal(MESSAGES_TAXI.find((m) => m.id === conf.id).corps.replaceAll("{entreprise}", "VIP TAXI LANTA"), conf.corps);
+  const avis = AVANT.messagesTaxi.find((m) => m.id === "taxi-avis-en");
+  assert.equal(MESSAGES_TAXI.find((m) => m.id === avis.id).corps.replace(/\{entreprise\}$/, "{entreprise} by Mr. Brown").replaceAll("{entreprise}", "VIP TAXI LANTA"), avis.corps);
+  assert.ok(!MESSAGES_TAXI.concat(MESSAGES_DEFAUT).some((m) => NOMS_ANAIS.test(m.corps) || /Mr\. Brown/.test(m.corps)), "aucun nom d'Anaïs ni de partenaire dans les défauts");
+  // ZTP n'avait aucun message enregistré : la migration enregistre ceux d'avant (« À bientôt à Koh Lanta »).
+  assert.match(ANAIS.ztp.messages.find((m) => m.id === "avis-fr").corps, /À bientôt à Koh Lanta,\n\{entreprise\}$/);
+  assert.match(ANAIS.ztp.messages.find((m) => m.id === "avis-en").corps, /See you again in Koh Lanta,\n\{entreprise\}$/);
+  assert.match(MESSAGES_DEFAUT.find((m) => m.id === "avis-fr").corps, /À bientôt,\n\{entreprise\}$/);
+});
+
+test("Booking confirmation : logo et photo de Taxi d'Anaïs enregistrés, aucune image de marque par défaut", async () => {
+  assert.equal(ANAIS.taxi.apparence.logo, "assets/logo-vip-taxi.webp");
+  assert.equal(ANAIS.taxi.voucher.bandeau, "assets/taxi-bandeau.webp", "la photo d'avant, écrite par la migration");
+  assert.equal(ANAIS.secret.voucher.bandeau, "assets/secret-bandeau.webp");
+  const { readFileSync } = require("node:fs");
+  for (const f of ["views/voucher-taxi.mjs", "views/voucher-secret.mjs"]) {
+    const code = readFileSync(require("node:path").join(__dirname, "../src/gestion/js", f), "utf8").replace(/^\s*\/\/.*$/gm, "");
+    assert.doesNotMatch(code, /logo-vip-taxi|taxi-bandeau|logo-secret|secret-bandeau/, f);
+  }
+});
+
+test("documents envoyés : le libellé de licence est figé avec l'émetteur", async () => {
+  const { figerReglages } = await js("documents-calc.mjs");
+  const { completerReglages } = await js("defauts.mjs");
+  const r = completerReglages({ emetteur: { nom: "Zwald", licence: "12/3456", licence_libelle: "Licence TAT", licence_libelle_en: "TAT licence" } });
+  const f = figerReglages(r, {});
+  assert.equal(f.emetteur.licence_libelle, "Licence TAT");
+  assert.equal(f.emetteur.licence_libelle_en, "TAT licence");
+});
+
+test("personne responsable choisie dans l'équipe : son prénom, même sans lire les profils", async () => {
+  const { responsableDe } = await js("noms-calc.mjs");
+  const equipe = [{ user_id: "u2", nom: "Mook Srisuk", email: "mook@x.test" }, { user_id: "u3", nom: "", email: "lek@x.test" }];
+  const admins = { entiteId: "e1", profils: [{ user_id: "u1", nom: "Bea", super_admin: true }], membres: [], roles: [] };
+  assert.equal(responsableDe({ responsable: { user_id: "u2", prenom: "" } }, { ...admins, equipe }).prenom, "Mook", "le prénom vient de equipe_de");
+  assert.equal(responsableDe({ responsable: { user_id: "u3" } }, { equipe }).prenom, "Lek", "nom vide : la partie de l'e-mail");
+  assert.equal(responsableDe({ responsable: { user_id: "u9" } }, admins).prenom, "", "personne choisie inconnue : jamais une autre administratrice");
+  assert.equal(responsableDe({ responsable: { user_id: "u2", prenom: "Nok" } }, { equipe }).prenom, "Nok", "un prénom saisi passe avant");
+});
+
+test("bandeau du site : la page du taxi porte le nom de l'entreprise qui publie", async () => {
+  const { libelleLien, nomSection, ligneBandeau } = await js("bandeau-calc.mjs");
+  assert.equal(libelleLien("/taxi/", { taxi: "VIP Taxi Lanta" }), "See VIP Taxi Lanta", "Anaïs : comme avant");
+  assert.equal(libelleLien("/taxi/", { taxi: "Andaman Rides" }), "See Andaman Rides");
+  assert.equal(nomSection("taxi", { taxi: "VIP Taxi Lanta" }), "VIP Taxi Lanta");
+  assert.equal(nomSection("taxi"), "Taxi");
+  const l = ligneBandeau({ modele: "new-trip", valeurs: { trip: "x" }, marques: ["taxi"], cible: "tout", sections: [], produits: [], lien: "page", lien_page: "/taxi/" }, "2026-11-18", { taxi: "VIP Taxi Lanta" });
+  assert.equal(l.valeurs.lien_libelle, "See VIP Taxi Lanta");
 });
 
 test("élision et responsable par défaut", async () => {

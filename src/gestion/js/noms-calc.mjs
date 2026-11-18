@@ -33,10 +33,18 @@ export function administrateursDe({ profils = [], membres = [], roles = [], enti
 // La personne responsable de l'entreprise : celle choisie dans Réglages (reglages.responsable), sinon la première administratrice.
 // Rend { user_id, prenom, prenom_th } ; prenom vide quand personne n'est connu (l'assistante ne lit pas les profils de l'équipe).
 // `prenom_th` : le prénom écrit en thaï pour les écrans de l'assistante thaïe, sinon le prénom tel quel.
+// `donnees.equipe` : la liste de equipe_de (user_id, nom, email), lisible par l'administration d'une entreprise qui ne lit pas tous les profils.
 export function responsableDe(reglages, donnees = {}) {
   const r = (reglages && reglages.responsable) || {};
+  const th = String(r.prenom_th || "").trim();
   const prenom = String(r.prenom || "").trim();
-  if (prenom) return { user_id: r.user_id || null, prenom, prenom_th: String(r.prenom_th || "").trim() || prenom };
+  if (prenom) return { user_id: r.user_id || null, prenom, prenom_th: th || prenom };
+  // Une personne choisie sans prénom saisi : son prénom à elle, jamais celui d'une autre administratrice.
+  if (r.user_id) {
+    const p = [...(donnees.equipe || []), ...(donnees.profils || [])].find((x) => x && x.user_id === r.user_id);
+    const pr = p ? prenomDe(p) : "";
+    return { user_id: r.user_id, prenom: pr, prenom_th: th || pr };
+  }
   const premier = administrateursDe(donnees)[0];
   const p = premier ? prenomDe(premier) : "";
   return { user_id: premier ? premier.user_id : null, prenom: p, prenom_th: p };
@@ -69,4 +77,6 @@ export const avecMarque = (texte, nomSociete) => String(texte ?? "").replaceAll(
 // Libellé du rôle d'administration de l'organisation (profils.super_admin) : celui de l'organisation (organisations.libelle_admin),
 // sinon le libellé neutre. Clé française : la traduction anglaise passe par tr() à l'affichage.
 export const LIBELLE_ADMIN_NEUTRE = N_("Administration de l'organisation");
+// Libellés enregistrés par une organisation qui ont leur traduction anglaise (organisations.libelle_admin, rendu par tr()).
+export const LIBELLES_ADMIN_TRADUITS = [N_("Administratrice générale")];
 export const libelleAdmin = (org) => String((org && org.libelle_admin) || "").trim() || LIBELLE_ADMIN_NEUTRE;
