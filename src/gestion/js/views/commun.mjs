@@ -2,7 +2,7 @@ import { h, vider, ajouter, modal, icone, saisie, puces as fabriquePuces } from 
 import { trier, tranche, compterFiltres } from "../mobile-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 import { libelleStatut, sommePaiements, nomFichier } from "../calc.mjs";
-import { etat, imprimer, nomPartenaire, nomClient } from "../etat.mjs";
+import { etat, imprimer, nomPartenaire, nomClient, confirmationPermise } from "../etat.mjs";
 import { renderDocument } from "../document.mjs";
 
 // Titre d'un service, d'une tâche ou d'un dossier qui mène au dossier : zone tactile de 44 px (voir .titre-lien), focus visible,
@@ -394,3 +394,10 @@ export function apercuA4(fabrique) {
   redessiner();
   return { zone, redessiner };
 }
+
+// « Coller une confirmation » sur ordinateur (18.11.2026) : à côté de « Coller une demande » et « Nouveau dossier », mêmes règles que le « + »
+// du téléphone (confirmationPermise). La fenêtre se charge au clic.
+export const boutonConfirmation = () =>
+  confirmationPermise()
+    ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: async () => (await import("./confirmation.mjs")).ouvrirConfirmation() }, tr("Coller une confirmation"))
+    : null;

@@ -1,6 +1,7 @@
 import { etat, modifier, resumes, netReservation, nomClient, nomPartenaire, reglages, estAdmin, entiteActive, peut, paiementsPeriode, moduleActif, dossiersAnnules, modeExcursions, modeTaxi } from "../etat.mjs";
 import { reglagesIncomplets } from "../defauts.mjs";
 import { ouvrirDemande } from "./demande.mjs";
+import { boutonConfirmation } from "./commun.mjs";
 import { sectionCommissionsHier } from "./taxi-hier.mjs";
 import { h, icone } from "../ui.mjs";
 import { aFaire, aujourdhui, formatMontant, formatSommes, formatDate, acompteDu, joursEntre, nomMois, finDuMois } from "../calc.mjs";
@@ -110,7 +111,7 @@ export async function tableauDeBord() {
     manque.length
       ? h("div", { class: "bandeau-info", role: "status" }, tr("Les réglages de {nom} ne sont pas terminés : il manque {liste}. ", { nom: entiteActive().nom, liste: manque.join(", ") }), estAdmin() ? h("a", { href: "#/reglages" }, tr("Les compléter")) : tr("Prévenez l'administratrice."))
       : null,
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Aujourd'hui")), h("p", { class: "sous" }, dateLongue())), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, moduleActif("demande_collee") ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, h("a", { class: "bouton principal seulement-bureau", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Aujourd'hui")), h("p", { class: "sous" }, dateLongue())), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, moduleActif("demande_collee") ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, boutonConfirmation(), h("a", { class: "bouton principal seulement-bureau", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
     // Demandes arrivées du site (Secret et Taxi) : en tête, c'est ce qui attend une réponse.
     sectionDemandesAccueil(),
     // Les services qui partent dans les deux heures, avec l'état de leur rappel (client, partenaire) : la notification « Dans 1 h » y mène aussi.

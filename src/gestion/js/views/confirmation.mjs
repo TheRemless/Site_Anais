@@ -34,7 +34,8 @@ const ERREURS = {
 
 const entreprises = (marque) => entreprisesConfirmation({ entites: entitesAccessibles(), reglages: (id) => reglagesDe(id), permissions: (id) => permissionsDe(id), marque });
 
-export function ouvrirConfirmation() {
+// `texteInitial` : une confirmation déjà collée ailleurs (« Coller une demande » propose la bascule), lue dès l'ouverture.
+export function ouvrirConfirmation(texteInitial = "") {
   const depart = etat.entiteId;
   let fermer;
   let essai = { clientId: null, dossierId: null, entite: null };
@@ -249,5 +250,8 @@ export function ouvrirConfirmation() {
   );
   // Fermée après une création dans une autre entreprise : l'écran se redessine dans celle du dossier.
   fermer = modal(tr("Coller une confirmation"), corps, { large: true, protege: false, ferme: () => etat.entiteId !== depart && window.dispatchEvent(new HashChangeEvent("hashchange")) });
-  zone.focus();
+  if (typeof texteInitial === "string" && texteInitial.trim()) {
+    zone.value = texteInitial;
+    lire();
+  } else zone.focus();
 }

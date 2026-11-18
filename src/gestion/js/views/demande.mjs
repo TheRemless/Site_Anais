@@ -1,7 +1,7 @@
 // « Coller une demande » : le client écrit à Anaïs sur WhatsApp, le message arrive à sa façon ou depuis le formulaire du site. On le colle ici :
 // l'outil reconnaît la date, les personnes, l'hôtel, le client et le service cité, cherche le prix dans la base partenaires, et crée le dossier
 // d'un tap. Tout ce qui a été reconnu se corrige sur place, et le prix suit.
-import { etat, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite } from "../etat.mjs";
+import { etat, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite, confirmationPermise } from "../etat.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
@@ -21,6 +21,7 @@ import { offresRecalculees } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { imposerTotal } from "../demandes-site-calc.mjs";
+import { ressembleAConfirmation } from "../confirmation-calc.mjs";
 
 // Brouillon passé à l'écran « Nouveau dossier » : lu une seule fois.
 let brouillon = null;
@@ -545,6 +546,7 @@ export function ouvrirDemande(depuisSite = null) {
   // Relire le texte : tout ce qui avait été corrigé à la main est perdu, c'est un autre message.
   function lire(valeur) {
     texte = valeur;
+    majVersConfirmation();
     if (!depuisSite) garde.ecrire(valeur.trim());
     erreur.textContent = "";
     const lu = texte.trim() ? lireMessage(texte, aujourdhui()) : null;
@@ -602,12 +604,36 @@ export function ouvrirDemande(depuisSite = null) {
   } }, tr("Coller"));
   const effacer = h("button", { class: "lien", type: "button", onclick: () => ((zone.value = ""), lire(""), zone.focus()) }, tr("Effacer"));
 
+  // Filet (18.11.2026) : une confirmation de course collée ici (« New booking confirmation », VIP TAXI LANTA…, Name:, Pick-up…) relève de
+  // « Coller une confirmation ». On le dit et on propose d'y passer avec le même texte ; rien n'est créé d'office, la lecture ici continue.
+  const versConfirmation = h("div", { class: "demande-vers-confirmation", role: "status" });
+  function majVersConfirmation() {
+    const oui = !depuisSite && confirmationPermise() && ressembleAConfirmation(texte, { aujourdhui: aujourdhui() });
+    versConfirmation.replaceChildren(
+      ...(oui
+        ? [
+            h(
+              "div",
+              { class: "bandeau-info" },
+              h("p", null, tr("Ce texte ressemble à une confirmation de course : « Coller une confirmation » en fait le dossier et la Booking confirmation.")),
+              h("button", { class: "principal", type: "button", onclick: async () => {
+                const t = texte;
+                garde.ecrire("");
+                fermer();
+                (await import("./confirmation.mjs")).ouvrirConfirmation(t);
+              } }, tr("Ouvrir « Coller une confirmation » avec ce texte"))
+            ),
+          ]
+        : [])
+    );
+  }
   const corps = h("div", { class: "modal-corps demande" });
   corps.append(
     h("p", { class: "aide demande-aide" }, tr("Collez le message du client, tel qu'il est arrivé sur WhatsApp. Chaque service cité est reconnu avec sa date, ses personnes et son prix, et le prix vient de la base.")),
     h("div", { class: "champ demande-message" }, h("label", { for: "demande-texte" }, tr("Message du client")), zone),
     ...(depuisSite ? [] : [h("div", { class: "actions gauche" }, coller, effacer)]),
     ...(lireIA ? [lireIA] : []),
+    versConfirmation,
     reconnu
   );
   const fermer = modal(depuisSite ? depuisSite.titre : tr("Coller une demande"), corps, { large: true, protege: false });

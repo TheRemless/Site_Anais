@@ -1780,3 +1780,7 @@ a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justif
 .cc-succes { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px; font-weight: 700; color: var(--teal-700); background: var(--teal-100); border-radius: 8px; }
 .cc-image img { display: block; width: 100%; max-width: 420px; height: auto; margin: 0 auto 12px; border: 1px solid var(--bord); border-radius: 8px; }
 .confirmation-collee .actions { flex-wrap: wrap; }
+/* « Coller une demande » : bascule proposée vers « Coller une confirmation » (18.11.2026). */
+.demande-vers-confirmation:empty { display: none; }
+.demande-vers-confirmation .bandeau-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
+.demande-vers-confirmation .bandeau-info p { flex: 1 1 260px; margin: 0; }
