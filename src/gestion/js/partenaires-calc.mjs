@@ -375,8 +375,12 @@ export function ligneDepuisPrestation(x, net, { langue = "", date = "", qte = 1,
 }
 
 // Prestation hors base : une ligne saisie à la main qui a pourtant sa réservation (donc son voucher), repérée par `libre`.
-export function ligneLibre({ libelle, prix, qte = 1, partenaire_id = null, date = "" }, { uid = nouvelId } = {}) {
-  return { id: uid(), kind: "ligne", libre: true, libelle: String(libelle).trim(), intro: "", puces: [], unite: Number(prix), qte: Number(qte) || 1, montant: null, pct: null, prestation_id: null, trajet_id: null, partenaire_id: partenaire_id || null, date_service: date || null, net: null };
+// `par` (18.11.2026) : "grp", prix total du groupe (quantité 1), ou "pp", prix par personne (quantité = participants, modifiable). Absent : la
+// lecture d'avant (quantité de personnes). `personnes` : { adultes, enfants } qui viennent, gardés à part de la quantité facturée.
+export function ligneLibre({ libelle, prix, qte = 1, partenaire_id = null, date = "", par = "", personnes = null }, { uid = nouvelId } = {}) {
+  const a = personnes ? Math.max(0, Math.floor(Number(personnes.adultes) || 0)) : 0;
+  const e = personnes ? Math.max(0, Math.floor(Number(personnes.enfants) || 0)) : 0;
+  return { id: uid(), kind: "ligne", libre: true, libelle: String(libelle).trim(), intro: "", puces: [], unite: Number(prix), qte: par === "grp" ? 1 : Number(qte) || 1, montant: null, pct: null, prestation_id: null, trajet_id: null, partenaire_id: partenaire_id || null, date_service: date || null, net: null, ...(par === "grp" || par === "pp" ? { par } : {}), ...(a + e ? { personnes: { adultes: a, enfants: e } } : {}) };
 }
 
 // Un trajet donne une ligne par adulte et, s'il y a des enfants et un prix enfant, une ligne enfant.

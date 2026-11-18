@@ -680,7 +680,7 @@ export async function creerReservations(doc, { silencieux = false, personnesDuDo
   if (!nouvelles.length) return toast(tr("Toutes les lignes de partenaires ont déjà leur réservation."));
   let n = 0;
   // Les nets recalculés par la base se relisent en une fois, à la fin de la boucle.
-  await avecNetsGroupes(async () => { for (const { reservation, net, commission_prevue } of nouvelles) {
+  await avecNetsGroupes(async () => { for (const { reservation, net, commission_prevue, participants } of nouvelles) {
     try {
       const { id, ...sansId } = reservation;
       // Le lieu de pickup du dossier est repris (dernier service, sinon adresse du client) : un service ajouté ne part pas sans lieu.
@@ -688,7 +688,7 @@ export async function creerReservations(doc, { silencieux = false, personnesDuDo
       // La marque dit que ces personnes viennent du dossier : 1 adulte pour 1 véhicule n'est pas une quantité prise pour des personnes, et 3 personnes
       // facturées au prix adulte peuvent être 2 adultes et 1 enfant.
       const duDossier = personnesPourService({ fixes: personnesDossier, duDossier: avecPersonnes, reservations: etat.db.reservations.filter((x) => x.dossier_id === doc.dossier_id) });
-      const p = duDossier ? personnesSelonDossier(sansId.personnes, duDossier, ((sansId.prestation_id && etat.db.prestations.find((x) => x.id === sansId.prestation_id)) || {}).unite || "") : null;
+      const p = duDossier && !participants ? personnesSelonDossier(sansId.personnes, duDossier, ((sansId.prestation_id && etat.db.prestations.find((x) => x.id === sansId.prestation_id)) || {}).unite || "") : null;
       if (p) (sansId.personnes = { ...(sansId.personnes || {}), ...p }), (sansId.details = { ...(sansId.details || {}), personnes_du_dossier: true });
       const res = await inserer("reservations", sansId);
       if ((net !== null || commission_prevue !== undefined) && voitNets() && peut("dossiers.ecrire")) await enregistrerLie("reservations_nets", "reservation_id", res.id, { net_prevu: net, net_paye: null, paye_le: null, ...(commission_prevue !== undefined ? { commission_prevue } : {}) });
