@@ -275,6 +275,9 @@ test("client : même WhatsApp -> choisi d'office ; sinon même nom -> proposé s
   const tel = clientsCandidats({ nom: "Emma Wilson", telephone: "+41790001122", propres, partages, dossiers });
   assert.equal(tel.parTelephone.id, "Z2");
   assert.deepEqual(tel.parNom, []);
+  // Même numéro dans l'entreprise et dans ZTP : la fiche de l'entreprise passe devant.
+  const double = clientsCandidats({ nom: "", telephone: "+41790001122", propres: [{ id: "T9", entite_id: TAXI, nom: "Emma", telephone: "+41 79 000 11 22", created_at: "2026-01-01" }], partages, dossiers });
+  assert.equal(double.parTelephone.id, "T9");
   // Un numéro inconnu ne choisit rien : on retombe sur les fiches au même nom, non présélectionnées.
   assert.equal(clientsCandidats({ nom: "Emma Wilson", telephone: "+66 81 999 0000", propres, partages }).parTelephone, null);
   // Rien en commun : rien de proposé.

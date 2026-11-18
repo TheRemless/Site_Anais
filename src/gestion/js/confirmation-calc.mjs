@@ -297,7 +297,10 @@ export function clientsCandidats({ nom = "", telephone = "", propres = [], parta
   const recents = tous.sort((a, b) => recence(b).localeCompare(recence(a)));
   const tel = String(telephone || "").replace(/\D/g, "");
   if (tel.length >= 8) {
-    const parTelephone = recents.find((c) => String(c.telephone || "").replace(/\D/g, "").slice(-8) === tel.slice(-8));
+    // La fiche de l'entreprise d'abord, la fiche partagée ensuite (comme avant la PR 234), la plus récente dans chaque groupe.
+    const memeTel = (c) => String(c.telephone || "").replace(/\D/g, "").slice(-8) === tel.slice(-8);
+    const propresIds = new Set(propres.map((c) => c.id));
+    const parTelephone = recents.find((c) => propresIds.has(c.id) && memeTel(c)) || recents.find(memeTel);
     if (parTelephone) return { parTelephone, parNom: [] };
   }
   const n = cleNom(nom);
