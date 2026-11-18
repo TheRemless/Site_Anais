@@ -195,10 +195,9 @@ export function vueVoucherRapide() {
     const client = { prenom: "", nom: x.nom };
     const r = cible ? { ...cible.reservation, ...correctionReservation(cible.reservation, x) } : reservationApercu(x, { independant: independant() });
     const image = h("div", { class: "vr-image", "aria-live": "polite" }, h("p", { class: "vr-attente" }, TH.preparation));
-    // Le voucher de Secret imprime son numéro (référence du dossier et rang) : une correction montre le sien, un nouveau celui qui est proposé.
-    // Le Booking confirmation de Taxi n'en a pas. Après l'enregistrement, l'image envoyée est refaite avec le dossier réel (voir plus bas).
+    // Une correction montre le voucher avec son dossier ; la Booking confirmation (Taxi, Secret) n'imprime pas de numéro.
     const vu = cible ? voucherDe(cible.dossier.id, cible.reservation.id) : null;
-    const dossierApercu = cible ? cible.dossier : modeTaxi() ? {} : { ref: refProposee() };
+    const dossierApercu = cible ? cible.dossier : {};
     const bouton = h("button", { class: "principal", type: "button", disabled: true }, TH.preparation);
     const etat_ = h("div", { class: "vr-etat", role: "status" });
     let blob = null;

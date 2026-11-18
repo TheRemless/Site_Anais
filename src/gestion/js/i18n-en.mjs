@@ -1642,6 +1642,7 @@ export const EN = {
   "Envoyer sur WhatsApp": "Send on WhatsApp",
   "PDF": "PDF",
   "Voucher {numero}": "Voucher {numero}",
+  "Booking confirmation {numero}": "Booking confirmation {numero}",
   "L'image n'a pas pu être fabriquée : {message}": "The image could not be created: {message}",
   "Réservé aux personnes qui voient les prix nets.": "Reserved for people who can see the net prices.",
   "Ce document est en anglais, mais les conditions de paiement n'ont pas de version anglaise : elles s'impriment en français. Ajoutez-la dans Réglages, onglet Textes.": "This document is in English, but the payment terms have no English version: they print in French. Add it in Settings, Texts tab.",
