@@ -1409,6 +1409,25 @@ details > summary { padding-block: 11px; margin: 0; }
 .voucher-secret.vt-serre .vt-cadre { margin-top: 4mm; }
 .voucher-secret.vt-serre-fort .vt-cle { font-size: 14.5pt; }
 .voucher-secret.vt-serre-fort .vt-valeur { font-size: 13.5pt; }
+/* Crans posés à la mesure (ajusterBooking, voucher-taxi.mjs) quand le pied dépasse encore la page : titre, cadre et pied plus serrés.
+   Sélecteurs à trois classes : ils passent devant les règles de Taxi et de Secret ci-dessus. */
+.voucher-taxi.vt-serre-max .vt-titre { padding-top: 3mm; font-size: 33pt; line-height: 1.04; }
+.voucher-taxi.vt-serre-max .vt-intro { margin-top: 1mm; font-size: 12pt; }
+.voucher-taxi.vt-serre-max .vt-cadre { margin-top: 3mm; padding-top: 1mm; padding-bottom: 1mm; }
+.voucher-taxi.vt-serre-max .vt-rang { padding: 0.9mm 0 0.7mm; line-height: 1.25; }
+.voucher-taxi.vt-serre-max .vt-cle { font-size: 12pt; }
+.voucher-taxi.vt-serre-max .vt-valeur { font-size: 12pt; }
+.voucher-secret.vt-serre-max .vt-cle { font-size: 13.5pt; }
+.voucher-secret.vt-serre-max .vt-valeur { font-size: 13pt; }
+.voucher-taxi.vt-serre-max .vt-bas { padding-top: 3mm; }
+.voucher-taxi.vt-serre-max .vt-pied { padding-bottom: 3mm; font-size: 11pt; line-height: 1.18; }
+.voucher-taxi.vt-serre-max .vt-pied p { margin-bottom: 2mm; }
+.voucher-taxi.vt-serre-ultra .vt-titre { padding-top: 2mm; font-size: 27pt; }
+.voucher-taxi.vt-serre-ultra .vt-cadre { margin-top: 2mm; }
+.voucher-taxi.vt-serre-ultra .vt-rang { padding: 0.3mm 0 0.2mm; line-height: 1.15; }
+.voucher-taxi.vt-serre-ultra .vt-cle, .voucher-taxi.vt-serre-ultra .vt-valeur { font-size: 11pt; }
+.voucher-taxi.vt-serre-ultra .vt-pied { font-size: 9.8pt; line-height: 1.12; }
+.voucher-taxi.vt-serre-ultra .vt-pied p { margin-bottom: 1.4mm; }
 .vs-points li { margin: 0; }
 .voucher-secret .vt-contact { padding: 9mm 7mm 9mm 8mm; border-top-left-radius: 26mm; }
 .voucher-secret .vt-contact-titre { font-size: 24pt; font-weight: 400; color: var(--vt-or-clair); }
@@ -1809,3 +1828,8 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .partage-source .case { margin-bottom: 10px; }
 .fiche-depuis-dossier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: -8px 0 16px; }
 .fiche-depuis-dossier .lien { min-height: 44px; padding: 0; }
+/* « Coller une confirmation » : fiches proposées au même nom (18.11.2026), avec leurs repères sous le nom. */
+.cc-candidat { align-items: flex-start; padding: 6px 0; }
+.cc-candidat input[type="radio"] { margin-top: 2px; }
+.cc-candidat > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
+.cc-repere { flex-basis: 100%; color: var(--texte-2); font-size: 0.9rem; font-weight: 400; overflow-wrap: anywhere; }

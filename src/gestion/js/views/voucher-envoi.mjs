@@ -13,6 +13,7 @@ import { aujourdhui, formatDate } from "../calc.mjs";
 import { envoiANoter } from "../envoi-voucher-calc.mjs";
 import { noterEnvoi } from "./envois-vouchers.mjs";
 import { renderVoucher, imprimerVoucher, vouchersDuDossier } from "./voucher.mjs";
+import { ajusterBooking } from "./voucher-taxi.mjs";
 import { numeroVoucher, nomFichierVoucher, messageVoucher, gabaritConfirmationVoucher, variablesMessage, lienWhatsApp, controlesVoucher } from "../operations-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
@@ -38,6 +39,8 @@ export async function imageVoucher(x, contexte = undefined) {
     // decode() ne se résout jamais dans une page passée en arrière-plan (téléphone qui change d'application) : trois secondes au plus.
     const delai = () => new Promise((ok) => setTimeout(ok, 3000));
     await Promise.all([...hote.querySelectorAll("img")].map((i) => (i.decode ? Promise.race([i.decode().catch(() => {}), delai()]) : null)));
+    // Booking confirmation : resserrée tant que son pied dépasse la page (polices chargées, mesure réelle).
+    ajusterBooking(hote);
     const canvas = await html2canvas(hote.firstChild, { scale: 2, backgroundColor: "#ffffff", useCORS: true, logging: false });
     return await new Promise((ok, ko) => canvas.toBlob((b) => (b ? ok(b) : ko(new Error(tr("L'image n'a pas pu être fabriquée.")))), "image/png"));
   } finally {

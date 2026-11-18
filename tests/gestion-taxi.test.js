@@ -39,7 +39,8 @@ test("Booking confirmation : date, heure, passagers et prix comme sur le modèle
     ["PICK UP LOCATION", "Venice Krabi Villa Resort"],
     ["PICK UP TIME", "11 am"],
     ["DROP OFF LOCATION", "Moonlight Bay Resort"],
-    ["PASSENGERS", "4 adults + luggage"],
+    ["PASSENGERS", "4 adults"],
+    ["LUGGAGE", "Yes"],
     ["TOTAL PRICE", "2'700 THB (all fees included)"],
   ]);
   assert.match(PIED_BOOKING.paiement_wise, /Wise with a 3% fee/);
@@ -173,4 +174,33 @@ test("numéro de vol ou de bateau : sur le lieu qui est l'aéroport ou le port, 
   assert.deepEqual(lieuxAvecVol("Hotel A", "Hotel B", ""), { pickup: "Hotel A", dropoff: "Hotel B" });
   assert.deepEqual(lieuxAvecVol("Krabi Airport, flight FD3217", "Hotel B", "FD3217"), { pickup: "Krabi Airport, flight FD3217", dropoff: "Hotel B" }, "jamais deux fois");
   assert.deepEqual(lieuxAvecVol("Hotel A", "Lanta Sport Resort", "FD1"), { pickup: "Hotel A, flight FD1", dropoff: "Lanta Sport Resort" }, "« Sport » n'est pas un port");
+});
+
+test("LUGGAGE (18.11.2026) : sur sa propre ligne sous PASSENGERS, seulement s'il y a des bagages, jamais « no luggage »", async () => {
+  const { bagagesBooking } = await import("../src/gestion/js/taxi-calc.mjs");
+  assert.equal(bagagesBooking("3"), "3 pieces");
+  assert.equal(bagagesBooking("1"), "1 piece");
+  assert.equal(bagagesBooking("yes"), "Yes");
+  assert.equal(bagagesBooking("2 big bags"), "2 big bags");
+  for (const rien of ["", "0", "no", "none", null, undefined]) assert.equal(bagagesBooking(rien), "", String(rien));
+  const base = { nom: "Varrin", date: "2026-12-25", pickup: "Suvarnabhumi Airport", heure: "10:05", dropoff: "Miami Hotel", personnes: { adultes: 2, enfants: 1 }, sieges: 1, montant: 700 };
+  const avec = champsBooking({ ...base, bagages: "3", remarques: "Gate 3" }).map((c) => c.cle);
+  assert.deepEqual(avec, ["NAME", "DATE", "PICK UP LOCATION", "PICK UP TIME", "DROP OFF LOCATION", "PASSENGERS", "LUGGAGE", "TOTAL PRICE", "REMARKS"]);
+  const sans = champsBooking({ ...base, bagages: "" });
+  assert.ok(!sans.some((c) => c.cle === "LUGGAGE"));
+  assert.equal(sans.find((c) => c.cle === "PASSENGERS").valeur, "2 adults, 1 child (1 child seat)");
+  assert.ok(!sans.some((c) => /luggage/i.test(c.valeur)), "jamais « no luggage »");
+});
+
+test("pied jamais coupé (18.11.2026) : la Booking confirmation se resserre à la mesure, pour l'image comme pour l'impression", async () => {
+  const { readFileSync } = await import("node:fs");
+  const lire = (f) => readFileSync(new URL(`../src/gestion/${f}`, import.meta.url), "utf8");
+  assert.match(lire("js/views/voucher-envoi.mjs"), /ajusterBooking\(hote\);\n\s+const canvas = await html2canvas/, "mesure avant de fabriquer l'image");
+  const voucher = lire("js/views/voucher.mjs");
+  assert.match(voucher, /imprimer\(ajusterHorsEcran\(renderVoucher\(x\)\)/, "impression d'un voucher");
+  assert.match(voucher, /imprimer\(ajusterHorsEcran\(h\("div", \{ class: "vouchers" \}/, "impression de tous les vouchers");
+  const taxi = lire("js/views/voucher-taxi.mjs");
+  assert.match(taxi, /const CRANS = \["vt-serre", "vt-serre-fort", "vt-serre-max", "vt-serre-ultra"\];/);
+  const css = lire("css/app.css");
+  for (const cran of ["vt-serre-max", "vt-serre-ultra"]) assert.match(css, new RegExp(`\\.voucher-taxi\\.${cran} \\.vt-rang \\{`), cran);
 });

@@ -7,6 +7,7 @@ import { uid } from "../defauts.mjs";
 import { ligneVoucher, reservationVoucher, reservationApercu, partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { creerDossierExcursions, refProposee, refDefinitive } from "./creation-excursions.mjs";
 import { vouchersDuDossier } from "./voucher.mjs";
+import { nomARemplacer } from "../confirmation-calc.mjs";
 
 export const partenaireCourse = () => (modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null);
 const independant = () => !modeTaxi();
@@ -25,7 +26,8 @@ export async function majClientCourse(id, x) {
   const c = clientParId(id) || {};
   // Une fiche partagée par une autre entreprise (ZTP) garde son prénom et son nom : la confirmation écrit souvent « Mr Martin ».
   const patch = {
-    ...(!clientEtranger(c) && [c.prenom, c.nom].filter(Boolean).join(" ") !== x.nom ? { prenom: "", nom: x.nom } : {}),
+    // Un nom collé plus court (« Varrin » pour la fiche « Jean Varrin ») ne la renomme pas non plus.
+    ...(!clientEtranger(c) && nomARemplacer([c.prenom, c.nom].filter(Boolean).join(" "), x.nom) ? { prenom: "", nom: x.nom } : {}),
     ...(x.telephone && x.telephone !== (c.telephone || "") ? { telephone: x.telephone } : {}),
   };
   if (Object.keys(patch).length) await modifier("clients", id, patch);

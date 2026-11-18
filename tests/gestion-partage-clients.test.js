@@ -154,10 +154,13 @@ test("écrans : recherche, choix du client, collages et demandes proposent les f
   assert.match(source("app.mjs"), /clientsProposes\(\)\n\s+\.filter\(\(c\) => correspond/, "recherche globale");
   assert.match(source("app.mjs"), /droite: etiquetteClient\(c\)/);
   assert.match(source("views/selecteur-client.mjs"), /nomClient\(c\), etiquette\(c\)/);
-  assert.match(source("views/confirmation.mjs"), /clientExistant\(\{ nom: "", telephone: lu\.telephone, clients: clientsPartages\(id\) \}\)/, "Coller une confirmation retrouve une fiche ZTP après celles de l'entreprise, sur le WhatsApp seulement (pas un homonyme)");
+  // Coller une confirmation (18.11.2026, après cette PR) : une fiche ZTP est choisie d'office sur le même WhatsApp seulement ; au même nom,
+  // elle est proposée sans présélection (un homonyme ne reçoit jamais la course d'office). Détail : gestion-coller-confirmation.test.js.
+  assert.match(source("views/confirmation.mjs"), /partages: clientsPartages\(id\)/);
+  assert.match(source("views/confirmation.mjs"), /candidats\.parNom\.map\(\(c\) => ligneClient\(c, id, false\)\)/);
   assert.match(source("views/demande.mjs"), /clientsProches\(d, clientsProposes\(\)\)/, "demande collée et demandes du site");
   assert.match(source("views/nouveau-excursions.mjs"), /clientsProposes\(\)\)\[0\]/);
-  assert.match(source("views/creation-course.mjs"), /!clientEtranger\(c\) && \[c\.prenom, c\.nom\]/, "une confirmation ne réécrit pas le nom d'une fiche ZTP");
+  assert.match(source("views/creation-course.mjs"), /!clientEtranger\(c\) && nomARemplacer\(\[c\.prenom, c\.nom\]/, "une confirmation ne réécrit pas le nom d'une fiche ZTP");
 });
 
 test("démo : l'administratrice utilise une fiche de l'agence dans Excursions ; l'assistante voit le nom seul et ne peut rien relier", async () => {

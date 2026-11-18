@@ -137,6 +137,7 @@ export const GROUPES_BOOKING = [
       ["b_duree", "DURATION"],
       ["b_dropoff", "DROP OFF LOCATION"],
       ["b_passagers", "PASSENGERS"],
+      ["b_bagages", "LUGGAGE"],
       ["b_prix", "TOTAL PRICE"],
       ["b_remarques", "REMARKS"],
       ["b_tous_frais", "(all fees included)"],

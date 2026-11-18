@@ -282,6 +282,67 @@ export function clientExistant({ nom = "", telephone = "", clients = [] }) {
   return n.length >= 2 ? recents.find((c) => cleNom([c.prenom, c.nom].filter(Boolean).join(" ")) === n) || null : null;
 }
 
+// Fiches proposées pour la confirmation (Jérémy, 18.11.2026, après la PR 234). `propres` : les fiches de l'entreprise du dossier ; `partages` :
+// les fiches qu'elle reçoit (ZTP pour Secret et Taxi), déjà réservées à l'administration (clientsPartages, etat.mjs) — jamais pour Mook.
+// - Même WhatsApp (8 derniers chiffres) : la fiche est retrouvée et choisie d'office (`parTelephone`), comme avant.
+// - Sans WhatsApp commun : les fiches au même nom (nom et prénom dans un sens ou dans l'autre, ou le seul nom de famille, « Varrin » pour
+//   « Jean Varrin ») sont proposées (`parNom`, les plus récentes d'abord, 5 au plus), sans aucune présélection : un homonyme ne reçoit
+//   jamais une course d'office. Renvoie { parTelephone, parNom }.
+export function clientsCandidats({ nom = "", telephone = "", propres = [], partages = [], dossiers = [], limite = 5 }) {
+  const vus = new Set();
+  const tous = [...propres, ...partages].filter((c) => c && !c.nom_seul && (vus.has(c.id) ? false : vus.add(c.id)));
+  const dernier = new Map();
+  for (const d of dossiers) if (d.client_id && String(d.created_at || "") > String(dernier.get(d.client_id) || "")) dernier.set(d.client_id, String(d.created_at || ""));
+  const recence = (c) => dernier.get(c.id) || String(c.created_at || "");
+  const recents = tous.sort((a, b) => recence(b).localeCompare(recence(a)));
+  const tel = String(telephone || "").replace(/\D/g, "");
+  if (tel.length >= 8) {
+    // La fiche de l'entreprise d'abord, la fiche partagée ensuite (comme avant la PR 234), la plus récente dans chaque groupe.
+    const memeTel = (c) => String(c.telephone || "").replace(/\D/g, "").slice(-8) === tel.slice(-8);
+    const propresIds = new Set(propres.map((c) => c.id));
+    const parTelephone = recents.find((c) => propresIds.has(c.id) && memeTel(c)) || recents.find(memeTel);
+    if (parTelephone) return { parTelephone, parNom: [] };
+  }
+  const n = cleNom(nom);
+  if (n.length < 2) return { parTelephone: null, parNom: [] };
+  const memeNom = (c) => [[c.prenom, c.nom], [c.nom, c.prenom], [c.nom]].some((parts) => cleNom(parts.filter(Boolean).join(" ")) === n);
+  return { parTelephone: null, parNom: recents.filter(memeNom).slice(0, limite) };
+}
+
+// Ce qui aide à reconnaître une fiche proposée : l'étiquette de son entreprise (« ZTP »), le WhatsApp masqué en partie, la ville (dernière
+// ligne de l'adresse, sans code postal) et le dernier dossier (référence et date). `sigle` : celui de l'entreprise de la fiche, vide si c'est
+// l'entreprise du dossier.
+export const whatsappMasque = (t) => {
+  const brut = String(t || "").trim();
+  const ch = brut.replace(/\D/g, "");
+  if (ch.length < 6) return "";
+  return `${brut.startsWith("+") ? "+" : ""}${ch.slice(0, 2)} ••• ${ch.slice(-4)}`;
+};
+// « Rue du Lac 12\n1204 Genève, Suisse » -> « Genève, Suisse » ; « 12 rue du Lac, 1000 Lausanne » -> « Lausanne ». Une adresse d'un seul
+// morceau (« Villa Demo ») ne dit pas de ville.
+export const villeDe = (adresse) => {
+  const lignes = String(adresse || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  let derniere = lignes.length > 1 ? lignes[lignes.length - 1] : "";
+  if (!derniere && lignes.length === 1) {
+    const parts = lignes[0].split(",").map((p) => p.trim()).filter(Boolean);
+    derniere = parts.length > 1 ? parts.slice(1).join(", ") : "";
+  }
+  return derniere.replace(/\b[A-Z]{0,2}-?\d{3,6}\b/g, "").replace(/\s+/g, " ").replace(/^[\s,]+|[\s,]+$/g, "").trim();
+};
+export function reperesClient(c, { dossiers = [], sigle = "" } = {}) {
+  const siens = dossiers.filter((d) => d.client_id === c.id).sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+  const d = siens[0];
+  return { sigle, whatsapp: whatsappMasque(c.telephone), ville: villeDe(c.adresse), dernier: d ? { ref: d.ref || "", date: d.date_depart || String(d.created_at || "").slice(0, 10) } : null };
+}
+
+// Le nom collé remplace-t-il celui de la fiche ? Pas quand il y est déjà contenu (« Varrin » pour « Jean Varrin ») : une confirmation écrit
+// souvent le seul nom de famille, la fiche garde le plus complet.
+export const nomARemplacer = (ancien, nouveau) => {
+  const a = cleNom(ancien);
+  const n = cleNom(nouveau);
+  return !!n && a !== n && !(a && ` ${a} `.includes(` ${n} `));
+};
+
 // Le texte collé dans « Coller une demande » est-il une confirmation de course (Jérémy, 18.11.2026) ? L'en-tête « New booking confirmation »,
 // ou une ligne de marque (VIP TAXI LANTA, SECRET TRAVEL & TOUR) suivie d'au moins deux libellés connus, ou quatre libellés de course
 // (Name, Date, Pick-up time, Pick-up location, Drop-off location, passagers) avec un prix convenu (« Price: »). Une demande du site
