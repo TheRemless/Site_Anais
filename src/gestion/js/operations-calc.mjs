@@ -525,11 +525,11 @@ export function moteurTexte(prestation) {
 // Cinq modèles : billet de bateau (trajets des compagnies), excursion en bateau, transfert terrestre, activité, location.
 export const CHAMPS_VOUCHER = {
   billet: ["de", "vers", "depart", "arrivee", "bateau", "embarquement", "checkin", "bagages", "remarques", "remarques_paiement"],
-  bateau: ["chambre", "type_tour", "bateau", "parc", "parc_texte", "remarques", "remarques_paiement"],
+  bateau: ["hotel", "chambre", "type_tour", "bateau", "parc", "parc_texte", "remarques", "remarques_paiement"],
   // `type_trajet` : aller simple (drop-off) ou retour au point de départ (programme et durée à la place du drop-off, trajet-calc.mjs).
   transfert: ["type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "bagages", "sieges", "type_transfert", "remarques", "remarques_paiement"],
-  activite: ["chambre", "programme", "heure_service", "remarques", "remarques_paiement"],
-  location: ["chambre", "retour_date", "retour_heure", "retour_lieu", "permis", "equipement", "caution", "conditions", "remarques", "remarques_paiement"],
+  activite: ["hotel", "chambre", "programme", "heure_service", "remarques", "remarques_paiement"],
+  location: ["hotel", "chambre", "retour_date", "retour_heure", "retour_lieu", "permis", "equipement", "caution", "conditions", "remarques", "remarques_paiement"],
 };
 // Un billet lié à un trajet de la base en tire le départ, l'arrivée, les horaires et le bateau : ces champs ne se demandent que pour un billet
 // saisi à la main (partenaire ajouté sans trajet, Jérémy le 14.11.2026 : « un intitulé Route mais je ne vois pas où mettre le départ et l'arrivée »).
@@ -884,6 +884,16 @@ export function cleMessageReservation(r, ajd) {
 
 // Hôtel et numéro de chambre d'après l'adresse du client (« Hotel Sunset, Room 12 ») ou le lieu de pickup.
 // Une fiche partagée par une autre entreprise (ZTP sur un service de Secret) ne donne jamais le lieu : voir adresseEstHotel.
+// L'hôtel imprimé dans les détails du client (« Hotel / Accommodation ») : celui saisi sur la réservation (`details.hotel`, même vide :
+// effacé exprès), sinon celui de la fiche client. Jamais le lieu de pickup (INV-2026-035, 18.11.2026 : « Ayutthaya Train Station »
+// s'imprimait comme hébergement). `chambre` : celle saisie, sinon celle de la fiche ou du pickup quand un hôtel s'imprime.
+export function hebergementVoucher(client = {}, reservation = {}) {
+  const dt = reservation.details || {};
+  const fiche = hotelEtChambre(client, { entite_id: reservation.entite_id });
+  const hotel = "hotel" in dt ? String(dt.hotel || "").trim() : fiche.hotel;
+  const chambre = String(dt.chambre || "").trim() || (hotel ? hotelEtChambre(client, reservation).chambre : "");
+  return { hotel, chambre };
+}
 export function hotelEtChambre(client = {}, reservation = {}) {
   const fiche = separerChambreLigne(adresseHotel(client, reservation.entite_id).split("\n")[0] || "");
   const lieu = separerChambreLigne(reservation.lieu_pickup || "");
@@ -1086,6 +1096,15 @@ export function contenuAvecReservation(contenu, r, avant, apres, { tarifEnfant =
   // Une ligne seule hors catalogue ou à prix de groupe : la facture ne compte pas les personnes, seul le libellé change. Un prix par personne hors
   // catalogue suit le nombre de participants tant que la quantité était ce nombre.
   const seule = participantsDuService(cibles) && (cibles[0].libre || compteDe(cibles[0]) !== "personnes") ? cibles[0] : null;
+  // Ligne hors catalogue d'avant ce choix (sans `par` ni participants, INV-2026-035) : lue comme un prix de groupe, le choix sûr. Les
+  // personnes changées entrent comme participants, la quantité et le total ne bougent pas (1 200 ne devient pas 2 400 avec un adulte de plus).
+  const ancienneLibre = cibles.length === 1 && cibles[0].libre && !cibles[0].par && !participantsLigne(cibles[0]) && !estLigneSupplement(cibles[0]) ? cibles[0] : null;
+  if (ancienneLibre) {
+    const pAvant = { adultes: nb(avant.personnes && avant.personnes.adultes), enfants: nb(avant.personnes && avant.personnes.enfants) };
+    if (pApres.adultes + pApres.enfants > 0 && (pAvant.adultes !== pApres.adultes || pAvant.enfants !== pApres.enfants)) modif(ancienneLibre, { personnes: pApres });
+    if (!miseAJour.size) return { contenu: null, reste };
+    return { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? avecDescription(l, { ...l, ...miseAJour.get(l) }, contenu.langue) : l)) }, reste };
+  }
   if (seule) {
     const p = participantsLigne(seule);
     if (participantsChanges(seule) && compteDe(seule) === "personnes" && qte(seule) === p.adultes + p.enfants) modif(seule, { qte: pApres.adultes + pApres.enfants });

@@ -159,6 +159,8 @@ export function contenuAvecEnfants(contenu, r, avant, apres, { tarifEnfant = () 
   if (adultes.length !== 1) return rien(adultes.length ? "plusieurs_lignes" : "");
   const adulte = adultes[0];
   if (!parPersonne(adulte)) return rien("prix_global");
+  // Hors catalogue (18.11.2026) : pas de tarif enfant à poser. Prix par personne : la quantité suit déjà les participants ; sinon prix de groupe.
+  if (adulte.libre) return rien(adulte.par === "pp" ? "" : "prix_global");
   // Enfants déjà comptés au prix adulte sur cette ligne (contenuAvecReservation l'a mise au nombre total de personnes) : pas de ligne enfant en plus.
   const tot = (p) => (Number(p && p.adultes) || 0) + (Number(p && p.enfants) || 0);
   if (anciens > 0 && qteDe(adulte) === tot(apres && apres.personnes)) return rien();

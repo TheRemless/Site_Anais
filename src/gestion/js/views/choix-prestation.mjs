@@ -3,10 +3,10 @@
 import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet, modeTaxi, modeExcursions, peut } from "../etat.mjs";
 import { lignesSurPlace } from "../taxi-calc.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
-import { formatMontant } from "../calc.mjs";
+import { formatMontant, SUR_PLACE } from "../calc.mjs";
 import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut, periodeSpecifique, proposable } from "../partenaires-calc.mjs";
 import { prestationEnfant } from "../demande-calc.mjs";
-import { appliquerModeParDefaut, MODELES_VOUCHER, SANS_VOUCHER, TITRES_VOUCHER, typeVoucherDeduit } from "../operations-calc.mjs";
+import { appliquerModeParDefaut, modeParDefaut, MODELES_VOUCHER, SANS_VOUCHER, TITRES_VOUCHER, typeVoucherDeduit } from "../operations-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
 // `sansCompagnie` : le nom de la compagnie n'est pas répété dans le libellé des trajets (facture de Secret).
@@ -111,6 +111,11 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   majModeleLibre();
   libelleLibre.addEventListener("change", majModeleLibre);
   partenaireLibre.addEventListener("change", majModeleLibre);
+  // Payé sur place (INV-2026-035, 18.11.2026 : le voucher disait « Payment Pending » alors que les clients payaient le tuk-tuk en espèces) :
+  // la case suit le mode habituel du partenaire choisi et se change à la main. Cochée, le voucher dit « Pay on Arrival ».
+  const surPlaceLibre = h("input", { type: "checkbox", id: "cp-l-surplace" });
+  const surPlaceDuPartenaire = () => modeParDefaut(partenaireDe(partenaireLibre.value || null)) === SUR_PLACE;
+  partenaireLibre.addEventListener("change", () => (surPlaceLibre.checked = surPlaceDuPartenaire()));
   const erreurLibre = h("p", { class: "erreur-form", role: "alert" });
   const formulaireLibre = h(
     "form",
@@ -128,12 +133,18 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
         const l = ligneLibre({ libelle: libelleLibre.value, prix: prixLibre.value, qte: qteLibre.value, partenaire_id: partenaireLibre.value, date: date.value, par: parPersonne.checked ? "pp" : "grp", personnes });
         if (avecNetLibre && netLibre.value !== "") l.net = Number(netLibre.value);
         if (avecModeleLibre && modeleLibre.value) l.modele_voucher = modeleLibre.value;
+        // Taxi : tout est payé au chauffeur (lignesSurPlace). Ailleurs, la case l'emporte sur le mode du partenaire.
+        if (!modeTaxi()) {
+          if (surPlaceLibre.checked) l.paye_sur_place = true;
+          else if (surPlaceDuPartenaire()) l.paye_sur_place = false;
+        }
         ajoute([l], l.libelle);
         libelleLibre.value = "";
         prixLibre.value = "";
         qteLibreTouchee = false;
         majQteLibre();
         netLibre.value = "";
+        surPlaceLibre.checked = surPlaceDuPartenaire();
         modeleLibre.value = "";
         majModeleLibre();
         libelleLibre.focus();
@@ -145,6 +156,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
     h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), adultesLibre), champ(tr("Enfants"), enfantsLibre)),
     h("div", { class: "grille-form compacte" }, h("div", { class: "champ" }, h("label", { for: "cp-l-prix" }, tr("Prix de vente ({devise})", { devise })), prixLibre, aidePrixLibre), champQteLibre),
     champ(tr("Partenaire (facultatif)"), partenaireLibre, tr("Celui qui réalise la prestation, s'il y en a un.")),
+    modeTaxi() ? null : h("label", { class: "case" }, surPlaceLibre, tr("Payé sur place par le client, au prestataire ou au chauffeur")),
     avecNetLibre ? h("div", { class: "champ" }, h("label", { for: "cp-l-net" }, tr("Net ({devise})", { devise })), netLibre, aideNetLibre) : null,
     avecModeleLibre ? champ(tr("Modèle de voucher"), modeleLibre, tr("Automatique : deviné d'après le nom. Choisissez-le si la déduction se trompe.")) : null,
     erreurLibre,
