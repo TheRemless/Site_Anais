@@ -7,10 +7,12 @@
 //   * « lien_mot_de_passe » : rend un lien pour choisir un nouveau mot de passe (mot de passe oublié, invitation expirée) ;
 //   * « supprimer » : supprime le compte. Ses dossiers restent, sans responsable ; ses accès partent avec lui.
 // Un quatrième, « creer_client », est réservé à l'éditeur du logiciel (est_plateforme()) : il crée le compte du futur administrateur d'un client
-// et son organisation (creer_organisation), pendant l'appel de mise en route.
+// et son organisation (creer_organisation), pendant l'appel de mise en route. Un cinquième, « reprendre_client », lui aussi réservé à l'éditeur,
+// rend un nouveau lien pour la première administratrice d'un client créé à moitié, tant que personne de ce client ne s'est connecté
+// (client_a_reprendre, migration 45).
 // La fonction n'envoie aucun e-mail : elle ne dépend pas du serveur d'envoi de Supabase. Le lien n'est jamais écrit dans le journal.
 
-export const ACTIONS = ["inviter", "lien_mot_de_passe", "supprimer", "creer_client"];
+export const ACTIONS = ["inviter", "lien_mot_de_passe", "supprimer", "creer_client", "reprendre_client"];
 export const LANGUES = ["fr", "en"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]{2,}$/;
@@ -41,6 +43,10 @@ export function lireDemande(demande, { origines = [] } = {}) {
     return { ok: true, action, userId: demande.user_id };
   }
   if (!redirectionAutorisee(demande.retour, origines)) return { ok: false, erreur: "retour_refuse" };
+  if (action === "reprendre_client") {
+    if (!estUuid(demande.organisation_id)) return { ok: false, erreur: "organisation_invalide" };
+    return { ok: true, action, organisationId: demande.organisation_id, retour: demande.retour };
+  }
   if (action === "lien_mot_de_passe") {
     if (!estUuid(demande.user_id)) return { ok: false, erreur: "personne_invalide" };
     return { ok: true, action, userId: demande.user_id, retour: demande.retour };
@@ -95,3 +101,11 @@ export function suppressionPermise({ appelant, cible, superAdminsActifs, organis
 
 // L'erreur de Supabase quand l'adresse a déjà un compte (le texte varie selon les versions).
 export const dejaInscrit = (message) => /already (been )?registered|already exists|email_exists|user_already_exists/i.test(String(message || ""));
+
+// Reprise d'un client (éditeur) : le lien va à la première administratrice de l'organisation, la plus ancienne, active.
+// `profils` : les profils de l'organisation lus par la fonction. null si aucune.
+export function premiereAdministratrice(profils, organisation) {
+  const admins = (profils || []).filter((p) => p && p.super_admin && p.actif !== false && p.email && p.organisation_id === organisation);
+  admins.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  return admins[0] || null;
+}

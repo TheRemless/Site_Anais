@@ -40,7 +40,7 @@ async function essaie(db, userId, sql) {
 const compte = async (db, userId, sql) => { const r = await essaie(db, userId, sql); return r.ok ? r.rows.length : -1; };
 
 console.log("== Installation neuve ==");
-const db = await base([W + "schema.sql"]);
+const db = await base([W + "schema.sql", W + "donnees-ztp-depart.sql"]);
 await accorder(db);
 const E = Object.fromEntries((await db.query("select slug, id from entites")).rows.map((r) => [r.slug, r.id]));
 const roleId = async (ent, nom) => (await db.query("select id from roles where entite_id = $1 and nom = $2", [E[ent], nom])).rows[0].id;
@@ -209,7 +209,7 @@ ok(refuse, "le visiteur anonyme est refusé");
 
 console.log("Argent : numéros, remboursements, facturé");
 // Base neuve à part : les contrôles ci-dessus changent les rôles et comptent des lignes, on ne les mélange pas avec ceux-ci.
-const dbA = await base([W + "schema.sql"]);
+const dbA = await base([W + "schema.sql", W + "donnees-ztp-depart.sql"]);
 await accorder(dbA);
 const EA = Object.fromEntries((await dbA.query("select slug, id from entites")).rows.map((r) => [r.slug, r.id]));
 const uA = {};

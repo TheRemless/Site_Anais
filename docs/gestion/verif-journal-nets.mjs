@@ -25,7 +25,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 const lire = (f) => fs.readFileSync(f, "utf8").replace("create extension if not exists pgcrypto;", "");
 const db = new PGlite();
 await db.exec(harnais);
-await db.exec(lire(W + "schema.sql"));
+await db.exec(lire(W + "schema.sql")); await db.exec(lire(W + "donnees-ztp-depart.sql"));
 for (const f of ["migration-18-sur-place.sql", "migration-19-paiements.sql"]) await db.exec(lire(W + f));
 await db.exec("grant all on all tables in schema public to authenticated; grant usage, select on all sequences in schema public to authenticated; revoke insert, update, delete on journal from authenticated;");
 

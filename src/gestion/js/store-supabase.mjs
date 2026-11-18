@@ -50,7 +50,7 @@ const CATALOGUE_AGE_MAX = 15 * 60 * 1000;
 
 // Colonnes lues de l'organisation. Une colonne ajoutée par une migration pas encore passée (42703 dans Postgres, PGRST204 ou « column … does
 // not exist » via PostgREST) ne doit pas empêcher de lire les autres.
-export const COLONNES_ORGANISATION = "id, nom, fuseau, langue, statut, options";
+export const COLONNES_ORGANISATION = "id, nom, fuseau, langue, statut, options, created_at";
 export const colonneAbsente = (error, colonne) => !!error && (error.code === "42703" || error.code === "PGRST204" || new RegExp(`column [^ ]*${colonne}[^ ]* does not exist|Could not find the '${colonne}' column`, "i").test(error.message || ""));
 
 export function creer(config, { client, maintenant = () => Date.now() } = {}) {
@@ -238,6 +238,14 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         /* réponse sans JSON : fonction absente ou en panne */
       }
       return { erreur: "indisponible" };
+    },
+    // Mise en route d'un client (éditeur, migration 45) : sa première entreprise, ses rôles et son catalogue d'exemple. Renvoie l'identifiant.
+    async installerEntreprise({ organisation, nom, slug, reglages, roles, catalogue }) {
+      return verifie(await sb.rpc("installer_entreprise", { p_organisation: organisation, p_nom: nom, p_slug: slug, p_reglages: reglages, p_roles: roles, p_catalogue: catalogue || [] }));
+    },
+    // Liste des clients de l'éditeur (migration 45) : nom, entreprises, client neuf ou non, adresse de la première administratrice.
+    async clientsPlateforme() {
+      return verifie(await sb.rpc("clients_plateforme"));
     },
     // « Mot de passe oublié » sur l'écran de connexion : Supabase envoie l'e-mail (son serveur d'envoi doit être réglé, voir mise-en-route.md).
     async motDePasseOublie(email) {

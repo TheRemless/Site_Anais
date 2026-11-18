@@ -1,7 +1,7 @@
 // Administration : entreprises et accès des utilisateurs. Réservée à l'administratrice générale.
 // Lot D (17.11.2026) : inviter une personne, lien de mot de passe, supprimer un compte, langue d'une autre personne, Administrateur calculé.
 import { libelleAdmin, LIBELLE_ADMIN_NEUTRE } from "../noms-calc.mjs";
-import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, organisation, modifierOrganisation, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation } from "../etat.mjs";
+import { etat, nomRole, descriptionRole, estSuperAdmin, creerEntite, modifierEntite, organisation, modifierOrganisation, definirAcces, modifierProfil, naviguer, inserer, modifier, supprimer, invitation, installerClient } from "../etat.mjs";
 import { DEPENDANCES, completerReglages, PERMISSIONS } from "../defauts.mjs";
 import { droitsProposes, droitsDuRole, droitsRetires } from "../droits.mjs";
 import { accesChoisis, messageInvitation, messageLien } from "../compte-calc.mjs";
@@ -237,10 +237,19 @@ function modifierEntiteModal(e, apres) {
 }
 
 // Un lien d'invitation ou de mot de passe à envoyer soi-même : copier, WhatsApp (la personne choisit le contact) ou e-mail.
-// Nouveau client (éditeur du logiciel, pendant l'appel de mise en route) : le compte du futur administrateur et son organisation.
-// Le lien rendu s'envoie au client ; il choisit son mot de passe, puis crée sa première entreprise depuis un modèle métier.
-export function nouveauClientModal() {
-  const organisationNom = h("input", { id: "nc-organisation", required: true, maxlength: 120 });
+// Nouveau client (éditeur du logiciel, pendant l'appel de mise en route) : l'organisation, son administrateur et sa première entreprise,
+// prête depuis un modèle métier (migration 45). Le lien rendu s'envoie au client : il choisit son mot de passe et arrive dans son outil.
+// Si l'installation échoue, le client crée lui-même sa première entreprise depuis l'écran d'accueil (rien n'est perdu).
+export function nouveauClientModal(apres = () => {}) {
+  // Saisi pendant l'appel : le curseur va directement au nom, au doigt aussi.
+  const organisationNom = h("input", { id: "nc-organisation", required: true, maxlength: 120, "data-autofocus": true });
+  const choixModele = h("select", { id: "nc-modele" }, ...MODELES.map((m) => h("option", { value: m.id }, tr(m.nom))));
+  choixModele.value = MODELE_DEFAUT;
+  const aideModele = h("p", { class: "aide" });
+  const decrire = () => (aideModele.textContent = tr(MODELES.find((m) => m.id === choixModele.value).description));
+  choixModele.addEventListener("change", decrire);
+  decrire();
+  const devise = h("select", { id: "nc-devise", required: true }, h("option", { value: "" }, tr("Choisir")), ...DEVISES_PROPOSEES.map((d) => h("option", { value: d }, d)));
   const nom = h("input", { id: "nc-nom", maxlength: 120 });
   const email = h("input", { id: "nc-email", type: "email", required: true });
   const fuseau = h("select", { id: "nc-fuseau" }, ...fuseaux().map((z) => h("option", { value: z }, z)));
@@ -261,24 +270,97 @@ export function nouveauClientModal() {
         onsubmit: async (e) => {
           e.preventDefault();
           erreur.textContent = "";
-          const r = await invitation({ action: "creer_client", organisation: organisationNom.value.trim(), nom: nom.value.trim(), email: email.value.trim(), fuseau: fuseau.value, langue: langue.value });
-          if (r.erreur) return void (erreur.textContent = tr(messageInvitation(r.erreur)));
+          const bouton = e.submitter || e.target.querySelector("button[type=submit]");
+          if (bouton) bouton.disabled = true;
+          const nomOrg = organisationNom.value.trim();
+          const r = await invitation({ action: "creer_client", organisation: nomOrg, nom: nom.value.trim(), email: email.value.trim(), fuseau: fuseau.value, langue: langue.value });
+          if (r.erreur) {
+            if (bouton) bouton.disabled = false;
+            return void (erreur.textContent = tr(messageInvitation(r.erreur)));
+          }
+          // Première entreprise, au nom de l'organisation, depuis le modèle choisi.
+          let rate = "";
+          try {
+            await installerClient(r.organisation_id, { nom: nomOrg, modele: choixModele.value, devise: devise.value });
+          } catch (err) {
+            rate = tr("L'organisation et le compte sont créés, mais pas l'entreprise ({message}). « Reprendre » dans la liste des clients l'installe, tant que le client ne s'est pas connecté.", { message: err.message });
+          }
           fermer();
-          lienModal({ titre: tr("Client créé"), intro: tr("Envoyez ce message à {nom}. En ouvrant le lien, la personne choisit son mot de passe, puis crée sa première entreprise.", { nom: nom.value.trim() || email.value.trim() }), lien: r.lien, email: email.value.trim(), nom: nom.value.trim(), langue: langue.value, type: "invite" });
+          apres();
+          lienModal({
+            titre: tr("Client créé"),
+            intro: rate
+              ? tr("Envoyez ce message à {nom}. En ouvrant le lien, la personne choisit son mot de passe, puis crée sa première entreprise.", { nom: nom.value.trim() || email.value.trim() })
+              : tr("Envoyez ce message à {nom}. En ouvrant le lien, la personne choisit son mot de passe et trouve son entreprise prête : il lui reste ses coordonnées, son logo et ses prix.", { nom: nom.value.trim() || email.value.trim() }),
+            lien: r.lien,
+            email: email.value.trim(),
+            nom: nom.value.trim(),
+            langue: langue.value,
+            type: "invite",
+            erreur: rate,
+            pourClient: true,
+          });
         },
       },
-      champ(tr("Nom de l'organisation"), organisationNom),
-      champ(tr("Nom de l'administrateur"), nom),
-      champ(tr("E-mail de l'administrateur"), email),
+      champ(tr("Nom de l'organisation"), organisationNom, tr("C'est aussi le nom de sa première entreprise. Le client le change ensuite s'il le souhaite.")),
+      champ(tr("Type d'activité"), choixModele),
+      aideModele,
+      champ(tr("Devise des documents"), devise),
       champ(tr("Fuseau horaire"), fuseau),
       champ(tr("Langue de départ"), langue),
+      champ(tr("Nom de l'administrateur"), nom),
+      champ(tr("E-mail de l'administrateur"), email),
       erreur,
       h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Créer le client")))
     )
   );
 }
 
-function lienModal({ titre, intro, lien, email, nom, langue, type, erreur }) {
+// Reprendre un client créé à moitié (éditeur, migration 45) : tant que personne du client ne s'est connecté, on installe sa première
+// entreprise si elle manque, puis on produit un nouveau lien pour sa première administratrice.
+export function reprendreClientModal(client, apres = () => {}) {
+  const sansEntreprise = !client.entreprises;
+  const choixModele = h("select", { id: "rc-modele" }, ...MODELES.map((m) => h("option", { value: m.id }, tr(m.nom))));
+  choixModele.value = MODELE_DEFAUT;
+  const devise = h("select", { id: "rc-devise", required: true }, h("option", { value: "" }, tr("Choisir")), ...DEVISES_PROPOSEES.map((d) => h("option", { value: d }, d)));
+  const erreur = h("p", { class: "erreur", role: "alert" });
+  const fermer = modal(
+    tr("Reprendre {nom}", { nom: client.nom }),
+    h(
+      "form",
+      {
+        class: "modal-corps",
+        onsubmit: async (e) => {
+          e.preventDefault();
+          erreur.textContent = "";
+          const bouton = e.submitter || e.target.querySelector("button[type=submit]");
+          if (bouton) bouton.disabled = true;
+          try {
+            if (sansEntreprise) await installerClient(client.id, { nom: client.nom, modele: choixModele.value, devise: devise.value });
+          } catch (err) {
+            if (bouton) bouton.disabled = false;
+            return void (erreur.textContent = tr("Installation impossible : {message}", { message: err.message }));
+          }
+          const r = await invitation({ action: "reprendre_client", organisation_id: client.id });
+          if (r.erreur) {
+            if (bouton) bouton.disabled = false;
+            return void (erreur.textContent = tr(messageInvitation(r.erreur)));
+          }
+          fermer();
+          apres();
+          lienModal({ titre: tr("Nouveau lien pour {nom}", { nom: client.nom }), intro: tr("Envoyez ce message à {nom}. Il remplace le lien précédent.", { nom: r.nom || r.email }), lien: r.lien, email: r.email, nom: r.nom, langue: r.langue, type: "recovery", pourClient: true });
+        },
+      },
+      h("p", null, sansEntreprise ? tr("Personne de ce client ne s'est encore connecté et sa première entreprise n'est pas installée. Choisissez son type d'activité et sa devise, puis envoyez-lui le nouveau lien.") : tr("Personne de ce client ne s'est encore connecté. Un nouveau lien remplace le précédent pour {email}.", { email: client.admin_email || "" })),
+      sansEntreprise ? champ(tr("Type d'activité"), choixModele) : null,
+      sansEntreprise ? champ(tr("Devise des documents"), devise) : null,
+      erreur,
+      h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, sansEntreprise ? tr("Installer et créer le lien") : tr("Créer un nouveau lien")))
+    )
+  );
+}
+
+function lienModal({ titre, intro, lien, email, nom, langue, type, erreur, pourClient = false }) {
   const message = messageLien({ lien, langue, type, nom });
   const zone = h("textarea", { id: "lien-texte", rows: 7, readonly: true });
   zone.value = message;
@@ -292,7 +374,9 @@ function lienModal({ titre, intro, lien, email, nom, langue, type, erreur }) {
       erreur ? h("p", { class: "bandeau-info", role: "alert" }, erreur) : null,
       h("p", null, intro),
       champ(tr("Message à envoyer, lien compris"), zone),
-      h("p", { class: "aide" }, tr("Le lien ne sert qu'une fois et expire vite (une heure si rien n'a été réglé dans Supabase) : envoyez-le tout de suite. Expiré ? « Gérer l'accès », puis « Lien pour choisir un mot de passe ».")),
+      // Lien d'un client (éditeur) : l'ouvrir soi-même connecterait l'éditeur au compte du client et compterait comme sa première connexion.
+      pourClient ? h("p", { class: "bandeau-info", role: "note" }, tr("À envoyer au client sans l'ouvrir vous-même : ce lien connecte à son compte.")) : null,
+      h("p", { class: "aide" }, pourClient ? tr("Le lien ne sert qu'une fois et expire vite : envoyez-le tout de suite. Expiré ? « Reprendre » dans la liste des clients en crée un nouveau, tant que le client ne s'est pas connecté.") : tr("Le lien ne sert qu'une fois et expire vite (une heure si rien n'a été réglé dans Supabase) : envoyez-le tout de suite. Expiré ? « Gérer l'accès », puis « Lien pour choisir un mot de passe ».")),
       h(
         "div",
         { class: "actions" },

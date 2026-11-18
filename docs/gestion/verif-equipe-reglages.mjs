@@ -27,7 +27,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 `;
 const db = new PGlite();
 await db.exec(harnais);
-await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
+await db.exec((fs.readFileSync(W + "schema.sql", "utf8") + fs.readFileSync(W + "donnees-ztp-depart.sql", "utf8")).replace("create extension if not exists pgcrypto;", ""));
 // Toutes les migrations dans l'ordre (18 et suivantes), puis la 38 une seconde fois : elle se rejoue sans erreur ni doublon.
 const migs = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
 ok(migs.some((n) => n.startsWith("migration-38-")), "la migration 38 est trouvée");

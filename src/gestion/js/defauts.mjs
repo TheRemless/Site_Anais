@@ -357,16 +357,17 @@ export function completerReglages(brut) {
 }
 
 // Ce qu'il manque pour que les documents d'une entreprise soient présentables.
+// Textes français marqués N_ : l'accueil les traduit à l'affichage (tr), les tests comparent la valeur française.
 export function reglagesIncomplets(r) {
   const manque = [];
-  if (!r.emetteur.nom.trim()) manque.push("le nom de l'entreprise");
-  if (!r.emetteur.adresse.trim()) manque.push("l'adresse");
-  if (!r.devise.trim()) manque.push("la devise");
-  if (!r.emetteur.contact.trim()) manque.push("les coordonnées du pied de page");
+  if (!r.emetteur.nom.trim()) manque.push(N_("le nom de l'entreprise"));
+  if (!r.emetteur.adresse.trim()) manque.push(N_("l'adresse"));
+  if (!r.devise.trim()) manque.push(N_("la devise"));
+  if (!r.emetteur.contact.trim()) manque.push(N_("les coordonnées du pied de page"));
   // Taxi n'émet aucune facture : ni informations de paiement ni conditions à fournir (le client paie le chauffeur).
   if (r.fonctionnement === "taxi") return manque;
-  if (!r.paiement.texte.trim() && !r.apparence.qr_image) manque.push("les informations de paiement");
-  if (!r.textes.variantes.some((v) => v.corps.trim())) manque.push("les conditions de paiement");
+  if (!r.paiement.texte.trim() && !r.apparence.qr_image) manque.push(N_("les informations de paiement"));
+  if (!r.textes.variantes.some((v) => v.corps.trim())) manque.push(N_("les conditions de paiement"));
   return manque;
 }
 

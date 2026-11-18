@@ -22,7 +22,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 const lire = (f) => fs.readFileSync(W + f, "utf8").replace("create extension if not exists pgcrypto;", "");
 const db = new PGlite();
 await db.exec(harnais);
-await db.exec(lire("schema.sql"));
+await db.exec(lire("schema.sql")); await db.exec(lire("donnees-ztp-depart.sql"));
 for (const f of fs.readdirSync(W).filter((n) => /^migration-(1[89]|2\d|3[0-4])-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]))) await db.exec(lire(f));
 await db.exec(lire("migration-35-fusion-clients.sql"));
 await db.exec(lire("migration-35-fusion-clients.sql"));

@@ -41,6 +41,8 @@ export const ERREURS_INVITATION = {
   acces_impossible: N_("Le compte est créé, mais ses accès n'ont pas pu être enregistrés : réglez-les avec « Gérer l'accès »."),
   organisation_invalide: N_("Donnez un nom à l'organisation du client."),
   organisation_impossible: N_("L'organisation n'a pas pu être créée. Le compte a été retiré : réessayez."),
+  client_en_service: N_("Quelqu'un de ce client s'est déjà connecté : son administrateur règle la suite lui-même (« Mot de passe oublié » sur l'écran de connexion)."),
+  lien_impossible: N_("Le lien n'a pas pu être créé. Réessayez dans un moment."),
   indisponible: N_("La fonction d'invitation ne répond pas. Elle n'est peut-être pas encore installée (voir docs/gestion/mise-en-route.md)."),
 };
 export const messageInvitation = (code) => ERREURS_INVITATION[code] || N_("L'opération n'a pas abouti. Réessayez dans un moment.");
