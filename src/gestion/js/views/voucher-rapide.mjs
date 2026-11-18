@@ -8,7 +8,7 @@ import { h, icone } from "../ui.mjs";
 import { uid } from "../defauts.mjs";
 import { RETOUR_DEPART } from "../trajet-calc.mjs";
 import { TH, CHAMPS, valeursVides, erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, reservationApercu, correctionReservation, valeursDepuis, suggestionsLieux, mesVouchers, dateCourteTh, partenaireDeTaxi, chauffeurRegle, clientsRecents } from "../voucher-rapide-calc.mjs";
-import { contenuCourse, heureBooking, estTaxi } from "../taxi-calc.mjs";
+import { contenuCourse, heureBooking, estBookingConfirmation } from "../taxi-calc.mjs";
 import { numeroVoucher, nomFichierVoucher, lienWhatsApp } from "../operations-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
 import { creerDossierExcursions, refProposee, refDefinitive } from "./creation-excursions.mjs";
@@ -240,8 +240,9 @@ export function vueVoucherRapide() {
       etat_.textContent = "";
       try {
         const fait = cible ? await corriger(cible, x) : await creer(x, essai);
-        // Hors Taxi, l'image se refait avec le numéro du dossier enregistré (l'aperçu n'avait que celui proposé).
-        if (modeTaxi()) envoi(fait, blob, { essayer: true, titre: cible ? TH.modifie : TH.cree });
+        // La Booking confirmation (Taxi comme Secret) n'imprime pas de numéro : l'image de l'aperçu est celle du voucher enregistré.
+        // Un voucher qui imprime son numéro (un autre modèle) se refait avec le dossier réel.
+        if (estBookingConfirmation(fait.reservation, fait.type, reglages())) envoi(fait, blob, { essayer: true, titre: cible ? TH.modifie : TH.cree });
         else renvoyer(fait, { essayer: true, titre: cible ? TH.modifie : TH.cree });
       } catch (err) {
         console.error(err);
@@ -316,7 +317,7 @@ export function vueVoucherRapide() {
     const v = (reservationId && liste.find((y) => y.reservation.id === reservationId)) || liste[liste.length - 1] || { reservation: null, index: 1 };
     const client = etat.db.clients.find((c) => c.id === d.client_id) || {};
     // Sous un autre logo que Taxi, le nom du fichier commence par l'entreprise : Anaïs sait d'un coup d'œil de laquelle il s'agit.
-    const fichier = nomFichierVoucher(v.numero || numeroVoucher(d.ref || "", v.index), client.nom || client.prenom || "", { taxi: estTaxi(reglages()) });
+    const fichier = nomFichierVoucher(v.numero || numeroVoucher(d.ref || "", v.index), client.nom || client.prenom || "", { taxi: estBookingConfirmation(v.reservation, v.type, reglages()) });
     const prefixe = d.entite_id && d.entite_id !== origine ? `${nomEntite(d.entite_id).replace(/[\\/:*?"<>|]/g, "").trim()} - ` : "";
     return { ...v, dossier: d, client, entite_id: d.entite_id || null, nomFichier: `${prefixe}${fichier}` };
   };

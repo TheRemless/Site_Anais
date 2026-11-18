@@ -7,11 +7,12 @@ import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
 import { typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, statutPaiementVoucher, prixParPersonneVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
-import { estTaxi } from "../taxi-calc.mjs";
+import { estTaxi, estBookingSecret, estBookingConfirmation } from "../taxi-calc.mjs";
 import { estRetourDepart, dureeAnglais } from "../trajet-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
 import { prestationEnfant } from "../demande-calc.mjs";
 import { renderBookingConfirmation } from "./voucher-taxi.mjs";
+import { renderBookingSecret } from "./voucher-secret.mjs";
 
 const case_ = (coche, libelle) => h("span", { class: `v-case${coche ? " cochee" : ""}` }, h("span", { class: "v-carre", "aria-hidden": "true" }, coche ? "☒" : "☐"), ` ${libelle}`);
 const ligne = (libelle, valeur, ...suite) => h("p", { class: "v-ligne" }, h("span", { class: "v-cle" }, `${libelle}: `), valeur === null || valeur === undefined ? "" : String(valeur), ...suite);
@@ -185,6 +186,8 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const tarifJour = jours && Number(r.montant_vente) > 0 ? Math.round((Number(r.montant_vente) / jours) * 100) / 100 : null;
 
   // VIP Taxi Lanta : la « Booking confirmation » de son modèle, pas les vouchers de Secret.
+  // Secret : un transfert payé au chauffeur sans partenaire (taxi indépendant) a sa propre Booking confirmation (18.11.2026).
+  if (estBookingSecret(r, type, regl)) return renderBookingSecret({ regl, client, r, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, nomSociete, retour: retourDepart ? { programme: programmeTrajet, duree: dureeTrajet } : null });
   if (estTaxi(regl)) return renderBookingConfirmation({ regl, client, r, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, email, adresse, retour: retourDepart ? { programme: programmeTrajet, duree: dureeTrajet } : null });
 
   const cle = (texte) => h("span", { class: "v-cle" }, `${texte}: `);
@@ -241,7 +244,7 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
 export function imprimerVoucher(x) {
   const d = etat.db.dossiers.find((y) => y.id === x.reservation.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === d.client_id) || {};
-  imprimer(renderVoucher(x), `${estTaxi(reglages()) ? "Booking confirmation" : "Voucher"} ${x.numero || numeroVoucher(d.ref || "", x.index)} - ${(client.nom || "client").split(/\s+/)[0]}`);
+  imprimer(renderVoucher(x), `${estBookingConfirmation(x.reservation, x.type, reglages()) ? "Booking confirmation" : "Voucher"} ${x.numero || numeroVoucher(d.ref || "", x.index)} - ${(client.nom || "client").split(/\s+/)[0]}`);
 }
 
 export function imprimerTousLesVouchers(dossierId) {

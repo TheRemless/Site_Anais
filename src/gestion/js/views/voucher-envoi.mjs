@@ -6,7 +6,7 @@
 // Un envoi qui part se note tout seul dans le dossier (partage terminé, ou conversation ouverte avec l'image copiée) ; un partage annulé ou en
 // échec ne note rien. « Noter les envois » (envois-vouchers.mjs) reste là pour corriger.
 import { etat, nomClient, partenaireDe, resumeDossier, reglages, entiteActive, peut, naviguer } from "../etat.mjs";
-import { estTaxi } from "../taxi-calc.mjs";
+import { estTaxi, estBookingConfirmation } from "../taxi-calc.mjs";
 import { messagesDefautPour } from "../defauts.mjs";
 import { h, modal, toast } from "../ui.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
@@ -54,7 +54,7 @@ export function envoyerVoucher(x) {
   const partenaire = partenaireDe(r.partenaire_id);
   const numero = x.numero || numeroVoucher(dossier.ref || "", x.index);
   const taxi = estTaxi(reglages());
-  const nomFichier = nomFichierVoucher(numero, nomClient(client), { taxi });
+  const nomFichier = nomFichierVoucher(numero, nomClient(client), { taxi: estBookingConfirmation(r, x.type, reglages()) });
   const telClient = chiffres(client.telephone);
   const devise = ((resumeDossier(dossier.id) || {}).devise) || reglages().devise || "THB";
   const message = {
@@ -198,7 +198,7 @@ export function envoyerVoucher(x) {
       if (ferme) return;
       boutonTous.textContent = tr("Préparation des vouchers {i} sur {n}…", { i: i + 1, n: freres.length });
       const blob = y.reservation.id === r.id && fichier ? fichier : await imageVoucher(y);
-      fichiers.push(new File([blob], nomFichierVoucher(y.numero || numeroVoucher(dossier.ref || "", y.index), nomClient(client), { taxi }), { type: "image/png" }));
+      fichiers.push(new File([blob], nomFichierVoucher(y.numero || numeroVoucher(dossier.ref || "", y.index), nomClient(client), { taxi: estBookingConfirmation(y.reservation, y.type, reglages()) }), { type: "image/png" }));
     }
     fichiersTous = fichiers;
     boutonTous.disabled = false;

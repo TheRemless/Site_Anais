@@ -2691,6 +2691,8 @@ export const EN = {
   "Envoi retiré.": "Sending removed.",
   "Pas envoyé": "Not sent",
   "Textes de la Booking confirmation": "Booking confirmation texts",
+  "Booking confirmation : titre et rubriques": "Booking confirmation: title and headings",
+  "Booking confirmation des transferts payés au chauffeur": "Booking confirmation for transfers paid to the driver",
   "Textes du voucher": "Voucher texts",
   "Chaque ligne montre le texte imprimé aujourd'hui. Tapez le vôtre pour le remplacer ; un champ vide reprend le texte d'origine. Les vouchers sont en anglais.": "Each line shows the text printed today. Type yours to replace it; an empty field goes back to the original text. Vouchers are in English.",
   "Son intitulé (« TAT licence ») se change dans « Textes du voucher ».": "Its label (“TAT licence”) is changed in “Voucher texts”.",

@@ -4,7 +4,14 @@
 import { h, champ } from "../ui.mjs";
 import { etat } from "../etat.mjs";
 import { tr, N_ } from "../i18n.mjs";
-import { GROUPES_VOUCHER, GROUPES_BOOKING, textesAEnregistrer } from "../textes-voucher.mjs";
+import { GROUPES_VOUCHER, GROUPES_BOOKING, GROUPES_BOOKING_SECRET, textesAEnregistrer } from "../textes-voucher.mjs";
+
+// Secret (18.11.2026) : sa Booking confirmation des transferts payés au chauffeur reprend le titre et les rubriques de celle de Taxi (sans
+// « (all fees included) », que son modèle n'imprime pas) et a ses propres textes.
+const groupesBookingSecret = () => [
+  { titre: N_("Booking confirmation : titre et rubriques"), cles: GROUPES_BOOKING[0].cles.filter(([k]) => k !== "b_tous_frais") },
+  ...GROUPES_BOOKING_SECRET,
+];
 import { chauffeurAChoisir, partenaireDeTaxi } from "../voucher-rapide-calc.mjs";
 
 // `r` : les réglages en cours de modification. `texte`, `image` : les champs liés à un chemin des réglages (reglages.mjs).
@@ -51,7 +58,7 @@ export function sectionVouchers({ r, taxi, texte, image, marque, choixApercuVouc
     taxi ? image(N_("Photo du bandeau"), "voucher.bandeau", { maxPx: 1400, aide: tr("En haut de la Booking confirmation. Sans photo, celle du modèle d'Anaïs.") }) : null
   );
 
-  return h("div", null, entete, taxi ? blocCourses({ r, marque }) : null, blocTextes(taxi ? GROUPES_BOOKING : GROUPES_VOUCHER));
+  return h("div", null, entete, taxi ? blocCourses({ r, marque }) : null, blocTextes(taxi ? GROUPES_BOOKING : [...GROUPES_VOUCHER, ...groupesBookingSecret()]));
 }
 
 // Taxi : à qui vont les courses saisies (et leur commission), et jusqu'où remontent les commissions à demander.
