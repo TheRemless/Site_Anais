@@ -3,14 +3,36 @@
 // convenue (prise en charge et dépose presque toujours à l'hôtel, donc hors catalogue) et envoie l'image à Anaïs, qui la transmet au client.
 
 import { RETOUR_DEPART, lireDuree, dureeInvalide, libelleRetourDepart } from "./trajet-calc.mjs";
+import { estTaxi } from "./taxi-calc.mjs";
 
 // Droit d'interface : la personne qui l'a ne voit, dans une entreprise en mode taxi, que cet écran. Il n'est jamais dans « tous les droits ».
 export const DROIT_VOUCHER_SEUL = "vouchers.seul";
+
+// Logo du voucher (Jérémy, 18.11.2026) : Mook fait aussi des vouchers de transfert sous le logo de Secret Travel & Tour, pour des taxis
+// indépendants. Le dossier, la course et le voucher vont dans l'entreprise du logo choisi, avec ses réglages, sa numérotation et les droits
+// qu'elle y a. Proposées : l'entreprise Taxi de l'écran (`origine`, toujours la première, choisie par défaut), puis chaque entreprise en mode
+// excursions où la personne crée clients, dossiers et documents. Ni une autre entreprise Taxi, ni une agence de voyages sur mesure (Zwald).
+// `permissions(id)` : les droits de la personne dans l'entreprise ; `reglages(id)` : ses réglages.
+export const DROITS_CREATION_VOUCHER = ["clients.ecrire", "dossiers.ecrire", "documents.ecrire"];
+export function entreprisesVoucher({ entites = [], origine, permissions = () => [], reglages = () => null }) {
+  const o = entites.find((e) => e.id === origine);
+  if (!o) return [];
+  const autres = entites.filter((e) => {
+    if (e.id === origine || e.actif === false) return false;
+    const r = reglages(e.id) || {};
+    const droits = permissions(e.id) || [];
+    return r.fonctionnement === "excursions" && !estTaxi(r) && DROITS_CREATION_VOUCHER.every((d) => droits.includes(d));
+  });
+  return [o, ...autres].map((e) => ({ id: e.id, nom: e.nom }));
+}
 
 // Textes de l'écran, en thaï simple. Le français en commentaire sert à la relecture par Anaïs et Mook.
 export const TH = {
   titre: "วอยเชอร์ใหม่", // Nouveau voucher
   titre_modif: "แก้ไขวอยเชอร์", // Modifier le voucher
+  // Logo du voucher (18.11.2026) : VIP Taxi Lanta pour Mr. Brown, Secret Travel & Tour pour un taxi indépendant. Les noms de marque restent en anglais.
+  marque: "โลโก้บนวอยเชอร์", // Logo sur le voucher
+  marque_aide: "เลือกบริษัทที่จะอยู่บนวอยเชอร์ ลูกค้าจ่ายเงินให้คนขับเหมือนกัน", // Choisir l'entreprise qui figure sur le voucher. Dans les deux cas, le client paie le chauffeur
   nom: "ชื่อลูกค้า", // Nom du client
   telephone: "เบอร์ WhatsApp ลูกค้า", // WhatsApp du client
   telephone_aide: "ไม่บังคับ ใส่รหัสประเทศ เช่น +44 7700 900123", // Facultatif, avec l'indicatif du pays, par exemple +44 7700 900123
@@ -192,7 +214,15 @@ export const ligneVoucher = (x, { id, partenaireId = null }) => ({ id, kind: "li
 // La course est confirmée dès sa création : Mook (ou Anaïs, pour une course hors catalogue) l'a déjà convenue avec Mr. Brown
 // (décision de Jérémy, 13.11.2026). Elle n'entre pas dans « À confirmer auprès des partenaires » et ne propose ni « Demander » ni relance.
 export const STATUT_COURSE = "confirme";
-export const reservationVoucher = (x) => ({ statut: STATUT_COURSE, heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, vol: x.vol, bagages: x.bagages, sieges: x.sieges, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants }, ...(x.type_trajet ? { details: detailsFacultatifs({}, { type_trajet: x.type_trajet, programme_trajet: x.programme_trajet, duree_h: x.duree_h }) } : {}) });
+// `independant` : course d'un taxi indépendant vendue sous le logo de Secret (18.11.2026), sans partenaire. Le voucher n'imprime pas de ligne
+// « Operator » vide (views/voucher.mjs) et coche « Private Taxi » (sans cela, le voucher de Secret coche « Minivan » faute de prestation).
+// Le modèle est fixé à « transfert » : Secret déduit sinon un billet de bateau d'un trajet vers un embarcadère (« … → Speedboat pier »).
+// La fiche garde la trace de ce choix dans `details.taxi_independant`.
+const INDEPENDANT = { taxi_independant: true, type_transfert: "taxi", modele_voucher: "transfert" };
+export const reservationVoucher = (x, { independant = false } = {}) => {
+  const details = { ...(x.type_trajet ? detailsFacultatifs({}, { type_trajet: x.type_trajet, programme_trajet: x.programme_trajet, duree_h: x.duree_h }) : {}), ...(independant ? INDEPENDANT : {}) };
+  return { statut: STATUT_COURSE, heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, vol: x.vol, bagages: x.bagages, sieges: x.sieges, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants }, ...(Object.keys(details).length ? { details } : {}) };
+};
 
 // Les champs facultatifs de la course dans `details` : posés s'ils sont remplis, retirés s'ils sont vidés.
 // Un retour au point de départ garde son type, son programme et sa durée, et n'a pas de drop-off.
@@ -206,7 +236,7 @@ function detailsFacultatifs(details, x) {
 }
 
 // Réservation telle que le voucher la lit, pour l'aperçu avant création (rien n'est encore en base).
-export const reservationApercu = (x) => ({ id: "apercu", libelle: x.libelle, date_service: x.date, heure_pickup: x.heure, lieu_pickup: x.pickup, personnes: x.personnes, montant_vente: x.prix, paye_sur_place: true, statut: STATUT_COURSE, details: detailsFacultatifs({ drop_off: x.dropoff }, x) });
+export const reservationApercu = (x, { independant = false } = {}) => ({ id: "apercu", libelle: x.libelle, date_service: x.date, heure_pickup: x.heure, lieu_pickup: x.pickup, personnes: x.personnes, montant_vente: x.prix, paye_sur_place: true, statut: STATUT_COURSE, details: { ...detailsFacultatifs({ drop_off: x.dropoff }, x), ...(independant ? INDEPENDANT : {}) } });
 
 // Correction d'un voucher déjà créé : les champs de la réservation qui changent (null si rien ne change).
 export function correctionReservation(r, x) {
@@ -287,15 +317,18 @@ export function suggestionsLieux(prestations = [], reservations = []) {
 }
 
 // Derniers vouchers de la personne : les courses des dossiers qu'elle a créés, les plus récentes d'abord.
-export function mesVouchers({ reservations = [], dossiers = [], clients = [], moi, limite = 15 }) {
-  const siens = new Map(dossiers.filter((d) => d.cree_par === moi).map((d) => [d.id, d]));
+// `entites` : les entreprises de l'écran (entreprisesVoucher), pour lister ensemble ceux de Taxi et de Secret. Chaque voucher dit la sienne
+// (`entite_id`) : une correction ou un renvoi se fait dans cette entreprise.
+export function mesVouchers({ reservations = [], dossiers = [], clients = [], moi, limite = 15, entites = null }) {
+  const permises = entites ? new Set(entites) : null;
+  const siens = new Map(dossiers.filter((d) => d.cree_par === moi && (!permises || permises.has(d.entite_id))).map((d) => [d.id, d]));
   return reservations
     .filter((r) => siens.has(r.dossier_id))
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
     .slice(0, limite)
     .map((r) => {
       const d = siens.get(r.dossier_id);
-      return { reservation: r, dossier: d, client: clients.find((c) => c.id === d.client_id) || {}, annule: r.statut === "annule" || !!d.annule };
+      return { reservation: r, dossier: d, client: clients.find((c) => c.id === d.client_id) || {}, annule: r.statut === "annule" || !!d.annule, entite_id: d.entite_id || null };
     });
 }
 

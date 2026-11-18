@@ -1,4 +1,4 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher } from "./etat.mjs";
 import { MODULES, moduleDeLEcran } from "./modules.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
@@ -366,6 +366,9 @@ function ecranDeLEntreprise(cle) {
 }
 
 async function afficherVoucherSeul() {
+  // Chaque affichage repart de l'entreprise Taxi (logo VIP Taxi Lanta par défaut, 18.11.2026) : un voucher en cours sous le logo de Secret
+  // marque l'écran occupé, la relecture automatique ne le redessine pas.
+  if (etat.voucherDepuis) travaillerPourVoucher(etat.voucherDepuis);
   const cle = `simple|${etat.entiteId}|${etat.session.id}`;
   const existante = racine.querySelector(".coque-simple");
   if (!existante || existante.dataset.cle !== cle) {

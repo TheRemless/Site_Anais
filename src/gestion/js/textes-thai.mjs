@@ -10,6 +10,8 @@ import { N_ } from "./i18n.mjs";
 const FR_VOUCHER = {
   titre: "Nouveau voucher",
   titre_modif: "Modifier le voucher",
+  marque: "Logo sur le voucher",
+  marque_aide: "Choisir l'entreprise qui figure sur le voucher. Dans les deux cas, le client paie le chauffeur",
   nom: "Nom du client",
   telephone: "WhatsApp du client",
   telephone_aide: "Facultatif, avec l'indicatif du pays, par exemple +44 7700 900123",
