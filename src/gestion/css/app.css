@@ -167,9 +167,14 @@ button:active:not(:disabled), .bouton:active { filter: brightness(0.94); }
 /* Formulaires */
 .champ { margin-bottom: 14px; }
 .champ label, label.etiquette { display: block; margin-bottom: 4px; font-size: 0.88rem; font-weight: 600; }
-input, select, textarea { width: 100%; min-height: 44px; padding: 8px 12px; font: inherit; color: var(--texte); background: var(--surface); border: 1px solid var(--bord-champ); border-radius: var(--rayon); }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { width: 100%; min-height: 44px; padding: 8px 12px; font: inherit; color: var(--texte); background: var(--surface); border: 1px solid var(--bord-champ); border-radius: var(--rayon); }
 textarea { resize: vertical; line-height: 1.45; }
-input[type="checkbox"] { width: 20px; height: 20px; min-height: 0; padding: 0; accent-color: var(--teal-600); flex: none; }
+/* Cases à cocher et boutons radio : leur taille normale, jamais celle des champs de saisie ci-dessus (largeur 100 %, 44 px de haut, bordure).
+   Une seule règle pour tout Gestion (18.11.2026 : les radios « Utiliser ce client » de « Coller une confirmation » s'étiraient sur la ligne).
+   La cible tactile de 44 px vient du libellé (`.case`), pas du rond. */
+input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; min-height: 0; padding: 0; accent-color: var(--teal-600); flex: none; }
+/* La marge par défaut du navigateur décale le rond (3 px en haut, 5 px à gauche) : alignée sur son libellé. */
+input[type="radio"] { margin: 0; }
 input:disabled { background: #eef2f2; color: var(--texte-2); }
 .aide { margin: 4px 0 0; font-size: 0.85rem; color: var(--texte-2); }
 .erreur-form { margin: 0 0 12px; color: var(--danger); font-weight: 600; min-height: 0; }
@@ -1505,7 +1510,7 @@ details > summary { padding-block: 11px; margin: 0; }
 .vr-marques legend { padding: 0; margin-bottom: 4px; font-weight: 600; font-size: 1.05rem; color: var(--texte); }
 .vr-marques-choix { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .vr-marque { position: relative; display: flex; align-items: center; justify-content: center; min-height: 52px; padding: 6px 10px; border: 1.5px solid var(--bord-champ); border-radius: 10px; background: var(--surface); color: var(--texte); font-weight: 600; line-height: 1.25; text-align: center; cursor: pointer; touch-action: manipulation; }
-.vr-marque input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.vr-marque input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
 .vr-marque:has(input:checked) { background: var(--teal-700); border-color: var(--teal-700); color: #fff; }
 .vr-marque:has(input:focus-visible) { outline: 3px solid var(--teal); outline-offset: 2px; }
 .vr-marque-fixe { margin: 0; color: var(--texte-2); }
@@ -1735,7 +1740,7 @@ a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justif
 .marque-taxi.site-notice--urgent { --n-bg: #1B130D; --n-ink: #FFFDF8; --n-icon: #D9AA4E; --n-rule: #1B130D; }
 /* Dans une fenêtre, les choix courts passent à la ligne au lieu de défiler : tout se voit d'un coup d'œil à 375 px. */
 .dsite-groupe .puces { flex-wrap: wrap; overflow: visible; }
-.bsite-modele input[type="radio"] { width: 20px; height: 20px; min-height: 0; flex: none; margin: 2px 0 0; padding: 0; accent-color: var(--teal-600); }
+.bsite-modele input[type="radio"] { margin-top: 2px; }
 .bsite-modele > span { flex: 1 1 auto; min-width: 0; }
 .dsite-accueil-plus svg { transform: rotate(-90deg); }
 
@@ -1770,7 +1775,7 @@ a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justif
 .cc-groupe legend { padding: 0; margin-bottom: 6px; font-weight: 600; }
 .cc-entreprises { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .cc-entreprise { position: relative; display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 6px 10px; border: 1.5px solid var(--bord-champ); border-radius: 10px; background: var(--surface); font-weight: 600; text-align: center; cursor: pointer; }
-.cc-entreprise input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.cc-entreprise input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
 .cc-entreprise:has(input:checked) { background: var(--teal-700); border-color: var(--teal-700); color: #fff; }
 .cc-entreprise:has(input:focus-visible) { outline: 3px solid var(--teal); outline-offset: 2px; }
 .cc-entreprises .cc-erreur { grid-column: 1 / -1; }
@@ -1780,7 +1785,6 @@ a.dsite-wa { min-height: 44px; display: inline-flex; align-items: center; justif
 .cc-client { margin: 4px 0 12px; }
 .cc-client:empty { display: none; }
 .cc-client p { margin: 0 0 6px; font-weight: 600; }
-.cc-client label { display: flex; align-items: center; gap: 8px; min-height: 40px; }
 .cc-ignorees ul { margin: 4px 0 12px; padding-left: 20px; color: var(--texte-2); }
 .cc-succes { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px; font-weight: 700; color: var(--teal-700); background: var(--teal-100); border-radius: 8px; }
 .cc-image img { display: block; width: 100%; max-width: 420px; height: auto; margin: 0 auto 12px; border: 1px solid var(--bord); border-radius: 8px; }
