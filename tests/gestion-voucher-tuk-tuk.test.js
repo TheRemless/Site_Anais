@@ -65,6 +65,18 @@ test("1. le lieu de pickup n'est pas un hébergement : pas de ligne Hotel sans h
   assert.deepEqual(O.hebergementVoucher({}, { lieu_pickup: "Ayutthaya Train Station" }), { hotel: "", chambre: "" });
 });
 
+test("1 ter. fiche ZTP partagée : son adresse postale ne s'imprime jamais en hôtel, seul l'hôtel saisi sur la réservation", () => {
+  const ztp = { ...CLIENT, entite_id: "ZTP", adresse: "Avenue de Rumine 12\n1004 Lausanne, Suisse" };
+  assert.equal(ligneDe(voucher(tuk(), { client: ztp }), "Hotel / Accommodation"), undefined);
+  // Réservation sans entreprise : celle du dossier décide.
+  const sansEntite = renderVoucher({ reservation: tuk({ entite_id: undefined }), prestation: null, type: "activite", index: 1 }, { reglages: REGL, dossier: { ref: "INV-2026-035", entite_id: "SECRET" }, client: ztp, resume: { total: 1200, recu: 0 }, trajet: null }).lignes;
+  assert.equal(ligneDe(sansEntite, "Hotel / Accommodation"), undefined);
+  assert.match(ligneDe(voucher(tuk({ details: { hotel: "Sala Ayutthaya" } }), { client: ztp }), "Hotel / Accommodation"), /Sala Ayutthaya/);
+  assert.deepEqual(O.hebergementVoucher(ztp, { entite_id: "SECRET", lieu_pickup: "Ayutthaya Train Station" }), { hotel: "", chambre: "" });
+  // La même fiche dans sa propre entreprise reste un hôtel possible.
+  assert.equal(O.hebergementVoucher(ztp, { entite_id: "ZTP" }).hotel, "Avenue de Rumine 12");
+});
+
 test("1 bis. le champ Hôtel est proposé pour une activité, une excursion en bateau et une location", () => {
   for (const type of ["activite", "bateau", "location"]) assert.ok(O.champsVoucherDe(type).includes("hotel"), type);
   assert.ok(!O.champsVoucherDe("transfert").includes("hotel"));

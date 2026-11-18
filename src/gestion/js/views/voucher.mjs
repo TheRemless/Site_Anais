@@ -151,7 +151,9 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const devise = (res && res.devise) || regl.devise || "THB";
   const nomClient = [client.prenom, client.nom].filter(Boolean).join(" ");
   // L'hébergement du client : saisi sur la réservation, sinon la fiche client ; jamais le lieu de pickup (hebergementVoucher).
-  const { hotel, chambre } = hebergementVoucher(client, r);
+  // Fiche partagée par une autre entreprise (ZTP sur un service de Secret ou de Taxi, PR 234) : son adresse est postale, jamais un hôtel.
+  // L'entreprise du service : celle de la réservation, sinon du dossier, sinon l'entreprise ouverte.
+  const { hotel, chambre } = hebergementVoucher(client, { ...r, entite_id: r.entite_id || d.entite_id || etat.entiteId });
   const statut = statutPaiementVoucher({ ...(res || {}), surPlace: !!r.paye_sur_place });
   const parcAuto = fraisDeParc(p);
   const parc = dt.parc === "aucun" ? { inclus: null, texte: "" } : dt.parc === "inclus" ? { inclus: true, texte: dt.parc_texte || "" } : dt.parc === "non" ? { inclus: false, texte: dt.parc_texte || parcAuto.texte } : { ...parcAuto, texte: dt.parc_texte || parcAuto.texte };

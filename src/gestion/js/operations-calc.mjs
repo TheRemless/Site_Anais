@@ -885,7 +885,8 @@ export function cleMessageReservation(r, ajd) {
 // Hôtel et numéro de chambre d'après l'adresse du client (« Hotel Sunset, Room 12 ») ou le lieu de pickup.
 // Une fiche partagée par une autre entreprise (ZTP sur un service de Secret) ne donne jamais le lieu : voir adresseEstHotel.
 // L'hôtel imprimé dans les détails du client (« Hotel / Accommodation ») : celui saisi sur la réservation (`details.hotel`, même vide :
-// effacé exprès), sinon celui de la fiche client. Jamais le lieu de pickup (INV-2026-035, 18.11.2026 : « Ayutthaya Train Station »
+// effacé exprès), sinon celui de la fiche client si elle est de l'entreprise du service (une fiche ZTP partagée porte une adresse postale
+// en Europe, adresseEstHotel). Jamais le lieu de pickup (INV-2026-035, 18.11.2026 : « Ayutthaya Train Station »
 // s'imprimait comme hébergement). `chambre` : celle saisie, sinon celle de la fiche ou du pickup quand un hôtel s'imprime.
 export function hebergementVoucher(client = {}, reservation = {}) {
   const dt = reservation.details || {};

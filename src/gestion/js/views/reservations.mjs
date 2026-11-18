@@ -469,7 +469,7 @@ export function formulaireReservation(r, apres) {
   const dt = r.details || {};
   const dossierR = etat.db.dossiers.find((x) => x.id === r.dossier_id);
   const clientR = (dossierR && etat.db.clients.find((c) => c.id === dossierR.client_id)) || {};
-  const cv = champsVoucher({ details: dt, prefixe: "v", dateService: () => date.value, dateInitiale: r.date_service, hotelFiche: hotelEtChambre(clientR, { entite_id: r.entite_id }).hotel });
+  const cv = champsVoucher({ details: dt, prefixe: "v", dateService: () => date.value, dateInitiale: r.date_service, hotelFiche: hotelEtChambre(clientR, { entite_id: r.entite_id || (dossierR && dossierR.entite_id) || etat.entiteId }).hotel });
   // Zone de l'hôtel sur la grille de pickup du partenaire : la zone et le départ remplissent l'heure, sans écraser une heure tapée à la main.
   let heureDeGrille = "";
   const zonesPickup = blocZonesPickup({
