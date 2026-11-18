@@ -2,7 +2,7 @@ import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles,
 import { MODULES, moduleDeLEcran } from "./modules.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
-import { libelleStatut, formatMontant, aujourdhui } from "./calc.mjs";
+import { libelleStatut, formatMontant, formatDate, aujourdhui } from "./calc.mjs";
 import { sousTitreDossier } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { mesTaches } from "./views/taches.mjs";
@@ -130,6 +130,18 @@ function selecteurEntite(ou) {
   return h("div", { class: "entite-choix" }, sel);
 }
 
+// Éditeur du logiciel : les organisations créées (nom, langue, fuseau, date). Il ne voit rien d'autre de leurs données.
+function listeClients() {
+  const liste = ((etat.brut && etat.brut.organisations) || []).filter((o) => o.id !== (etat.moi && etat.moi.organisation_id)).sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+  if (!liste.length) return null;
+  return h(
+    "section",
+    { class: "liste-clients", "aria-label": tr("Clients"), style: "margin-top:1.5rem;text-align:left" },
+    h("h2", { style: "font-size:1rem;margin:0 0 .5rem" }, tr("Clients ({n})", { n: liste.length })),
+    h("ul", { style: "list-style:none;margin:0;padding:0" }, ...liste.map((o) => h("li", { style: "padding:.5rem 0;border-top:1px solid rgba(0,0,0,.08)" }, h("strong", null, o.nom), h("div", { class: "aide" }, [o.langue === "fr" ? "FR" : "EN", o.fuseau, o.created_at ? formatDate(String(o.created_at).slice(0, 10)) : ""].filter(Boolean).join(" · ")))))
+  );
+}
+
 function bandeauDemo() {
   const s = etat.store;
   const sel = h(
@@ -145,7 +157,7 @@ function bandeauDemo() {
         afficher();
       },
     },
-    s.utilisateursDemo().map((u) => h("option", { value: u.id }, u.super_admin ? tr("{nom} (voit tout)", { nom: u.nom }) : u.nom))
+    s.utilisateursDemo().map((u) => h("option", { value: u.id }, u.plateforme ? tr("{nom} (aucune donnée de client)", { nom: u.nom }) : u.organisation && u.organisation !== "Organisation démo" ? tr("{nom} ({organisation}, nouveau client)", { nom: u.nom, organisation: u.organisation }) : u.super_admin ? tr("{nom} (voit tout)", { nom: u.nom }) : u.nom))
   );
   sel.value = s.utilisateurDemo();
   return h(
@@ -598,7 +610,8 @@ async function afficher() {
         etat.moi && etat.moi.super_admin
           ? h("button", { class: "principal", type: "button", onclick: async () => (await import("./views/admin.mjs")).nouvelleEntiteModal(() => { const e = etat.brut.entites[etat.brut.entites.length - 1]; if (e) changerEntite(e.id); afficher(); }) }, tr("Créer votre première entreprise"))
           : null,
-        etat.moi && etat.moi.plateforme ? h("button", { class: "principal", type: "button", onclick: async () => (await import("./views/admin.mjs")).nouveauClientModal() }, tr("Nouveau client")) : null,
+        etat.moi && etat.moi.plateforme ? h("button", { class: "principal", type: "button", onclick: async () => (await import("./views/admin.mjs")).nouveauClientModal(() => afficher()) }, tr("Nouveau client")) : null,
+        etat.moi && etat.moi.plateforme ? listeClients() : null,
         etat.store.mode === "demo" ? bandeauDemo() : null,
         etat.store.mode === "supabase" ? h("button", { class: "secondaire", type: "button", onclick: async () => (await etat.store.deconnecter(), (etat.session = null), afficher()) }, tr("Se déconnecter")) : null
       )

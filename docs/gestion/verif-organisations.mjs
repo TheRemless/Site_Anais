@@ -24,14 +24,14 @@ alter default privileges in schema public grant execute on functions to anon, au
 `;
 const db = new PGlite();
 await db.exec(harnais);
-await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
+await db.exec((fs.readFileSync(W + "schema.sql", "utf8") + fs.readFileSync(W + "donnees-ztp-depart.sql", "utf8")).replace("create extension if not exists pgcrypto;", ""));
 const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[789]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
 // Une base qui a déjà servi : des numéros de fiduciaire et un suivi de rappels existent avant la migration 42.
 const avant41 = migrations.filter((f) => parseInt(f.split("-")[1]) < 41);
 for (const f of avant41) await db.exec(fs.readFileSync(W + f, "utf8"));
 await db.exec("insert into fiduciaire_compteurs (prefixe, annee, type, dernier) values ('COM', 2026, 'facture', 7); insert into rappels_suivi (type) values ('veille');");
 for (const f of migrations.filter((f) => !avant41.includes(f))) await db.exec(fs.readFileSync(W + f, "utf8"));
-ok(migrations.at(-1) === "migration-42-organisations.sql", "la migration 42 est appliquée en dernier");
+ok(migrations.includes("migration-42-organisations.sql"), "la migration 42 est appliquée avec les suivantes");
 await db.exec(fs.readFileSync(W + "migration-42-organisations.sql", "utf8"));
 ok(true, "la migration 42 se rejoue sans erreur");
 // Droits des tables comme sur Supabase, puis les « revoke » et « grant » de la migration 42 rejoués.

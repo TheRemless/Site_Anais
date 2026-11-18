@@ -27,7 +27,7 @@ const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.
 async function nouvelleBase(jusqua = Infinity) {
   const base = new PGlite();
   await base.exec(harnais);
-  await base.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
+  await base.exec((fs.readFileSync(W + "schema.sql", "utf8") + fs.readFileSync(W + "donnees-ztp-depart.sql", "utf8")).replace("create extension if not exists pgcrypto;", ""));
   for (const f of migrations.filter((n) => parseInt(n.split("-")[1]) <= jusqua)) await base.exec(fs.readFileSync(W + f, "utf8"));
   return base;
 }

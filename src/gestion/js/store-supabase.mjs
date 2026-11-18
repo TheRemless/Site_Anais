@@ -161,7 +161,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
 
   // L'organisation de la personne connectée (migration 42) : nom, fuseau, langue. Avant la migration la table manque : liste vide, rien ne casse.
   async function lireOrganisations() {
-    const { data, error } = await sb.from("organisations").select("id, nom, fuseau, langue, statut, options");
+    const { data, error } = await sb.from("organisations").select("id, nom, fuseau, langue, statut, options, created_at");
     if (!error) return data || [];
     if (error.code === "42P01" || error.code === "PGRST205" || /relation "[^"]*organisations" does not exist|Could not find the table/i.test(error.message || "")) return [];
     throw new Error(error.message);
@@ -231,6 +231,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         /* réponse sans JSON : fonction absente ou en panne */
       }
       return { erreur: "indisponible" };
+    },
+    // Mise en route d'un client (éditeur, migration 45) : sa première entreprise, ses rôles et son catalogue d'exemple. Renvoie l'identifiant.
+    async installerEntreprise({ organisation, nom, slug, reglages, roles, catalogue }) {
+      return verifie(await sb.rpc("installer_entreprise", { p_organisation: organisation, p_nom: nom, p_slug: slug, p_reglages: reglages, p_roles: roles, p_catalogue: catalogue || [] }));
     },
     // « Mot de passe oublié » sur l'écran de connexion : Supabase envoie l'e-mail (son serveur d'envoi doit être réglé, voir mise-en-route.md).
     async motDePasseOublie(email) {

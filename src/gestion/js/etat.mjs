@@ -6,7 +6,7 @@ import { creerStore } from "./store.mjs";
 import { resume, setDevise, setMasquerMontants, aujourdhui } from "./calc.mjs";
 import { construireCopie, CLE_HORS_LIGNE } from "./feuille-hors-ligne-calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
-import { reglagesModele } from "./modeles-metier.mjs";
+import { codeCourt, departModele } from "./modeles-metier.mjs";
 import { permissionsDans, roleDans } from "./droits.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
@@ -477,16 +477,27 @@ export const enregistrerReglages = (...a) => ecrire(() => enregistrerReglagesBru
 export async function creerEntite(nom, slug, { modele = null, devise = "" } = {}) {
   const ordre = Math.max(0, ...etat.brut.entites.map((e) => e.ordre || 0)) + 1;
   const e = await etat.store.inserer("entites", { nom, slug, actif: true, ordre });
-  const base = completerReglages(modele ? reglagesModele(modele, { nom, devise }) : { emetteur: { nom } });
+  const depart = modele ? departModele(modele, { nom, devise }) : null;
+  const base = depart ? depart.reglages : completerReglages({ emetteur: { nom } });
   await etat.store.enregistrerReglages(e.id, base);
   // `tous_droits` (migration 38) n'est écrit que si la base a déjà la colonne : avant la migration, l'insertion échouerait.
   // Sans aucun rôle chargé (première entreprise d'un nouveau client), la base a forcément la colonne : les organisations (migration 42) viennent après.
   const avecTousDroits = etat.brut.roles.some((r) => "tous_droits" in r) || (!etat.brut.roles.length && organisation() !== null);
   for (const r of ROLES_SYSTEME) etat.brut.roles.push(await etat.store.inserer("roles", { entite_id: e.id, nom: r.nom, description: r.description, portee: r.portee, permissions: r.permissions, systeme: true, ...(avecTousDroits ? { tous_droits: !!r.tous_droits } : {}) }));
+  // Catalogue d'exemple du modèle (formules sans prix), comme installer_entreprise (migration 45).
+  for (const [i, c] of ((depart && depart.catalogue) || []).entries()) etat.brut.catalogue.push(await etat.store.inserer("catalogue", { entite_id: e.id, ...c, ordre: i + 1, actif: true }));
   etat.brut.entites.push(e);
   etat.brut.reglages[e.id] = base;
   rebatir();
   return e;
+}
+
+// Mise en route d'un client (éditeur du logiciel, migration 45) : sa première entreprise, prête, depuis un modèle métier.
+// L'éditeur n'y a ensuite aucun accès : rien n'est ajouté à son état.
+export async function installerClient(organisationId, { nom, modele, devise }) {
+  if (!etat.store.installerEntreprise) throw new Error(tr("Indisponible"));
+  const depart = departModele(modele, { nom, devise });
+  return etat.store.installerEntreprise({ organisation: organisationId, nom, slug: codeCourt(nom), ...depart });
 }
 
 async function modifierEntiteBrut(id, patch) {

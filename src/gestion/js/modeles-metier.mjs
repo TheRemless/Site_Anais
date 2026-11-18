@@ -5,7 +5,7 @@
 // Les entreprises existantes ne passent jamais par ici : leurs réglages restent ceux de la base.
 
 import { N_ } from "./i18n.mjs";
-import { LIBELLES_EN, MESSAGES_DEFAUT, MOYENS_DEFAUT } from "./defauts.mjs";
+import { LIBELLES_EN, MESSAGES_DEFAUT, MOYENS_DEFAUT, ROLES_SYSTEME, completerReglages } from "./defauts.mjs";
 
 export const MODELES = [
   {
@@ -58,6 +58,13 @@ const APPARENCE_NEUTRE = { couleur: "#2f4858", couleur_clair: "#8aa1b1" };
 
 // Réglages bruts d'une nouvelle entreprise (completerReglages les complète ensuite avec les valeurs neutres).
 export function reglagesModele(id, { nom = "", devise = "" } = {}) {
+  const r = reglagesBruts(id, { nom, devise });
+  // Les devises proposées dans un document : celle du client d'abord (la liste par défaut est celle de ZTP : CHF, EUR, THB, USD).
+  if (devise) r.listes.devises = [...new Set([devise, "USD", "EUR"])];
+  return r;
+}
+
+function reglagesBruts(id, { nom, devise }) {
   const m = modele(id);
   const commun = {
     fonctionnement: m.fonctionnement,
@@ -111,5 +118,34 @@ export function reglagesModele(id, { nom = "", devise = "" } = {}) {
       },
     },
     textes: { variantes: [{ id: "standard", nom: "Standard", corps: "Payment on arrival.", cloture: "Thank you!" }] },
+  };
+}
+
+// Catalogue d'exemple (formules d'un travel planner) : des intitulés en anglais, sans prix. Le client met les siens pendant l'appel,
+// ou supprime les lignes. Les excursions et les transferts n'en ont pas : leurs prix vivent dans les partenaires.
+const CATALOGUE_TRAVEL_PLANNER = [
+  { kind: "formule", libelle: "Itinerary design", intro: "including:", puces: ["discovery call", "day-by-day itinerary", "transport options between stops"], prix: null },
+  { kind: "formule", libelle: "Full trip planning", intro: "including:", puces: ["day-by-day itinerary", "accommodation selection", "transport and activity bookings", "support during the trip"], prix: null },
+  { kind: "supplement", libelle: "Extra destination", intro: "", puces: [], prix: null },
+];
+export const catalogueModele = (id) => (modele(id).id === "travel_planner" ? CATALOGUE_TRAVEL_PLANNER.map((c) => ({ ...c, puces: [...c.puces] })) : []);
+
+// Code court de la première entreprise : tiré du nom (« Agence Bleue » donne « agence-bleue »).
+export const codeCourt = (nom) =>
+  String(nom || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "agence";
+
+// Tout le départ d'une entreprise créée depuis un modèle (migration 45) : la seule source pour la base (installer_entreprise),
+// pour l'écran « Nouvelle entreprise » et pour la démo. Réglages complets, trois rôles (Administrateur d'abord), catalogue d'exemple.
+export function departModele(id, { nom = "", devise = "" } = {}) {
+  return {
+    reglages: completerReglages(reglagesModele(id, { nom, devise })),
+    roles: ROLES_SYSTEME.map((r) => ({ nom: r.nom, description: r.description, portee: r.portee, permissions: [...r.permissions], tous_droits: !!r.tous_droits })),
+    catalogue: catalogueModele(id),
   };
 }

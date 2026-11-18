@@ -24,7 +24,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 `;
 const db = new PGlite();
 await db.exec(harnais);
-await db.exec(fs.readFileSync(W + "schema.sql", "utf8").replace("create extension if not exists pgcrypto;", ""));
+await db.exec((fs.readFileSync(W + "schema.sql", "utf8") + fs.readFileSync(W + "donnees-ztp-depart.sql", "utf8")).replace("create extension if not exists pgcrypto;", ""));
 for (const f of fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]))) await db.exec(fs.readFileSync(W + f, "utf8"));
 // Droits de table comme en production (migration 16 puis 3 : tout est fermé à anon, les politiques font le tri).
 await db.exec("revoke execute on all functions in schema public from public, anon; grant execute on all functions in schema public to authenticated;");
