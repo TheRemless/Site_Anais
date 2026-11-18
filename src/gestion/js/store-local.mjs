@@ -50,7 +50,11 @@ export function creer() {
     if (!data.organisations) data.organisations = [{ id: ORG_DEMO, nom: "Organisation démo", fuseau: "Asia/Bangkok", langue: "en", statut: "actif", options: [], created_at: aujourdhui() }];
     for (const e of data.entites) if (!e.organisation_id) e.organisation_id = ORG_DEMO;
     for (const p of data.profils) if (!("organisation_id" in p)) p.organisation_id = ORG_DEMO;
-    if (!data.profils.some((p) => p.plateforme)) data.profils.push({ user_id: uid(), email: "editeur@demo.local", nom: "Éditeur du logiciel", super_admin: false, plateforme: true, actif: true, organisation_id: null, langue: null });
+    // L'éditeur a son compte dans l'organisation de démo (comme Jérémy chez Zwald) : elle n'est pas un de ses clients.
+    if (!data.profils.some((p) => p.plateforme)) data.profils.push({ user_id: uid(), email: "editeur@demo.local", nom: "Éditeur du logiciel", super_admin: false, plateforme: true, actif: true, organisation_id: ORG_DEMO, langue: null });
+    for (const p of data.profils) if (p.plateforme && !p.organisation_id) p.organisation_id = ORG_DEMO;
+    // Dernière connexion (auth.users.last_sign_in_at) : l'équipe de démo travaille déjà ; un client neuf n'a encore personne de connecté.
+    for (const p of data.profils) if (!("connecte_le" in p)) p.connecte_le = p.organisation_id === ORG_DEMO ? aujourdhui() : null;
     let choisi = null;
     try {
       choisi = localStorage.getItem(CLE_UTILISATEUR);
@@ -97,6 +101,11 @@ export function creer() {
     utilisateur.super_admin
       ? data.entites.filter((e) => monOrg() && e.organisation_id === monOrg()).map((e) => e.id)
       : data.membres.filter((m) => m.user_id === utilisateur.user_id && (data.entites.find((e) => e.id === m.entite_id) || {}).organisation_id === monOrg()).map((m) => m.entite_id);
+  // Comme organisation_neuve (migration 45) : active, personne de connecté, aucune fiche client.
+  const organisationNeuve = (org) =>
+    data.organisations.some((o) => o.id === org && o.statut === "actif") &&
+    !data.profils.some((p) => p.organisation_id === org && p.connecte_le) &&
+    !data.clients.some((c) => (data.entites.find((e) => e.id === c.entite_id) || {}).organisation_id === org);
   const nomDe = (id) => (data.profils.find((p) => p.user_id === id) || {}).nom || null;
 
   // Comme publie_sur_le_site (migration 40) : un bandeau du site ne s'écrit qu'avec « Modifier les réglages ».
@@ -168,12 +177,20 @@ export function creer() {
         const nomOrg = String(corps.organisation || "").trim().slice(0, 120);
         if (!nomOrg) return { erreur: "organisation_invalide" };
         if (data.profils.some((p) => (p.email || "").toLowerCase() === email)) return { erreur: "deja_inscrit" };
-        const org = { id: uid(), nom: nomOrg, fuseau: corps.fuseau || "Asia/Bangkok", langue: corps.langue === "fr" ? "fr" : "en", statut: "actif", options: [], created_at: aujourdhui() };
+        const org = { id: uid(), nom: nomOrg, fuseau: corps.fuseau || "Asia/Bangkok", langue: corps.langue === "fr" ? "fr" : "en", statut: "actif", options: [], created_at: new Date().toISOString() };
         data.organisations.push(org);
-        const p = { user_id: uid(), email, nom: corps.nom || null, super_admin: true, plateforme: false, actif: true, organisation_id: org.id, langue: org.langue };
+        const p = { user_id: uid(), email, nom: corps.nom || null, super_admin: true, plateforme: false, actif: true, organisation_id: org.id, langue: org.langue, connecte_le: null, created_at: new Date().toISOString() };
         data.profils.push(p);
         sauve();
         return { user_id: p.user_id, organisation_id: org.id, lien: lienDemo("invitation") };
+      }
+      // Reprise d'un client créé à moitié (comme client_a_reprendre) : un nouveau lien pour sa première administratrice.
+      if (corps.action === "reprendre_client") {
+        if (!utilisateur.plateforme) return { erreur: "droit_manquant" };
+        if (!organisationNeuve(corps.organisation_id)) return { erreur: "client_en_service" };
+        const cible = data.profils.filter((p) => p.organisation_id === corps.organisation_id && p.super_admin && p.actif).sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))[0];
+        if (!cible) return { erreur: "personne_inconnue" };
+        return { lien: lienDemo("mot-de-passe"), email: cible.email, nom: cible.nom || "", langue: cible.langue || "en", user_id: cible.user_id };
       }
       if (!utilisateur.super_admin) return { erreur: "droit_manquant" };
       if (corps.action === "inviter") {
@@ -208,13 +225,23 @@ export function creer() {
       if (!utilisateur.plateforme) throw new Error(tr("Réservé à l'éditeur du logiciel"));
       if (!data.organisations.some((o) => o.id === organisation)) throw new Error(tr("Organisation inconnue"));
       if (data.entites.some((e) => e.organisation_id === organisation)) throw new Error(tr("Cette organisation a déjà une entreprise : son administrateur règle la suite"));
+      if (!organisationNeuve(organisation)) throw new Error(tr("Client déjà en service ou suspendu : son administrateur règle la suite"));
+      if (!roles.length || !roles[0].tous_droits || roles.slice(1).some((r) => r.tous_droits)) throw new Error(tr("Rôles invalides"));
       const e = { id: uid(), created_at: aujourdhui(), slug, nom, actif: true, ordre: 1, organisation_id: organisation };
       data.entites.push(e);
       data.reglages[e.id] = structuredClone(reglages);
-      for (const r of roles) data.roles.push({ id: uid(), created_at: aujourdhui(), entite_id: e.id, ...structuredClone(r), systeme: true });
+      // Comme la base : seul l'Administrateur (premier rôle) est un rôle système « tous droits », les autres restent modifiables par le client.
+      for (const [i, r] of roles.entries()) data.roles.push({ id: uid(), created_at: aujourdhui(), entite_id: e.id, ...structuredClone(r), systeme: i === 0, tous_droits: i === 0 });
       for (const [i, c] of (catalogue || []).entries()) data.catalogue.push({ id: uid(), created_at: aujourdhui(), entite_id: e.id, ...structuredClone(c), ordre: i + 1, actif: true });
       sauve();
       return e.id;
+    },
+    // Liste des clients de l'éditeur (comme clients_plateforme, migration 45).
+    async clientsPlateforme() {
+      if (!utilisateur.plateforme) throw new Error(tr("Réservé à l'éditeur du logiciel"));
+      return data.organisations
+        .map((o) => ({ ...o, entreprises: data.entites.filter((e) => e.organisation_id === o.id).length, neuve: organisationNeuve(o.id), admin_email: (data.profils.filter((p) => p.organisation_id === o.id && p.super_admin).sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))[0] || {}).email || null }))
+        .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
     },
     async motDePasseOublie() {},
     async changerMotDePasse() {
@@ -630,6 +657,8 @@ export function creer() {
     utilisateurDemo: () => utilisateur.user_id,
     changerUtilisateurDemo(id) {
       utilisateur = data.profils.find((p) => p.user_id === id) || utilisateur;
+      // Se connecter avec ce compte : son client n'est plus « neuf » (comme last_sign_in_at).
+      utilisateur.connecte_le = utilisateur.connecte_le || new Date().toISOString();
       sauve();
     },
   };

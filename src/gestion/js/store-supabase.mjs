@@ -236,6 +236,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async installerEntreprise({ organisation, nom, slug, reglages, roles, catalogue }) {
       return verifie(await sb.rpc("installer_entreprise", { p_organisation: organisation, p_nom: nom, p_slug: slug, p_reglages: reglages, p_roles: roles, p_catalogue: catalogue || [] }));
     },
+    // Liste des clients de l'éditeur (migration 45) : nom, entreprises, client neuf ou non, adresse de la première administratrice.
+    async clientsPlateforme() {
+      return verifie(await sb.rpc("clients_plateforme"));
+    },
     // « Mot de passe oublié » sur l'écran de connexion : Supabase envoie l'e-mail (son serveur d'envoi doit être réglé, voir mise-en-route.md).
     async motDePasseOublie(email) {
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: adresseOutil() });

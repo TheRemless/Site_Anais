@@ -2,7 +2,9 @@
 -- Ne sert qu'à la base d'Anaïs : coordonnées, réglages, rôles des trois entreprises et catalogue de ZTP, sortis de schema.sql le 18.11.2026.
 -- Sur une installation neuve : schema.sql, puis ce fichier, puis les migration-*.sql dans l'ordre. Un client du logiciel ne le reçoit jamais :
 -- ses entreprises partent d'un modèle métier (src/gestion/js/modeles-metier.mjs, migration 45).
--- Contient les coordonnées de l'entreprise : ce fichier ne doit pas être publié.
+-- Le dépôt est public : ce fichier ne contient que des coordonnées déjà publiques de ZTP (adresse, téléphone, e-mail, pseudo Wise imprimé
+-- sur ses factures) et des textes de documents. Aucune donnée privée ne doit y entrer : ni IBAN ni compte bancaire (le bloc de paiement
+-- reste « à compléter », rempli ensuite dans Réglages), ni nets de partenaires, ni clients.
 
 -- Entreprises, rôles et réglages de départ, modifiables ensuite depuis le panneau d'administration.
 insert into entites (id, slug, nom, ordre) values

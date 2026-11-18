@@ -15,7 +15,7 @@ const ok = (c, msg) => { if (!c) { echecs++; console.log("  ECHEC:", msg); } els
 const harnais = `
 create role anon; create role authenticated;
 create schema auth;
-create table auth.users (id uuid primary key default gen_random_uuid(), email text, created_at timestamptz default now(), raw_user_meta_data jsonb, raw_app_meta_data jsonb);
+create table auth.users (id uuid primary key default gen_random_uuid(), email text, created_at timestamptz default now(), raw_user_meta_data jsonb, raw_app_meta_data jsonb, last_sign_in_at timestamptz);
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 create schema storage;
 create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint);
@@ -45,6 +45,32 @@ console.log("== Schéma neutre ==");
   ok((await n("entites")) === 0 && (await n("reglages")) === 0 && (await n("catalogue")) === 0 && (await n("roles")) === 0, "schema.sql seul ne crée aucune entreprise, aucun réglage, aucun rôle, aucun catalogue");
   ok(!INTERDITS.test(lire("schema.sql").split("\n").filter((l) => !l.startsWith("--")).join("\n")), "schema.sql ne contient aucune donnée de Zwald");
   await vierge.close();
+}
+
+console.log("== Base neuve : schéma neutre puis migrations, sans les données de Zwald ==");
+{
+  const neuve = new PGlite();
+  await neuve.exec(harnais);
+  await neuve.exec(lire("schema.sql"));
+  for (const f of migrations) await neuve.exec(lire(f));
+  await neuve.exec(lire("migration-42-organisations.sql"));
+  await neuve.exec(lire("migration-45-mise-en-route.sql"));
+  ok(true, "les migrations passent sur une base neuve, la 42 et la 45 se rejouent");
+  const n = async (sql) => (await neuve.query(sql)).rows[0].n;
+  ok((await n("select count(*)::int n from organisations")) === 0, "aucune organisation, pas de Zwald");
+  ok((await n("select count(*)::int n from entites")) === 0, "aucune entreprise");
+  const premier = (await neuve.query("insert into auth.users (email) values ('premier@test') returning id")).rows[0].id;
+  const p = (await neuve.query("select organisation_id, super_admin from profils where user_id = $1", [premier])).rows[0];
+  ok(p.organisation_id === null && p.super_admin === false, "le premier compte n'est rattaché à rien et n'est pas administrateur");
+  await neuve.exec(`update profils set plateforme = true where user_id = '${premier}'`);
+  await neuve.query("insert into auth.users (email, raw_user_meta_data) values ('client@test', '{\"nouvelle_organisation\": \"true\"}')");
+  await neuve.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${premier}', false);`);
+  const o = (await neuve.query("select creer_organisation('Client Un', 'client@test') as id")).rows[0].id;
+  await neuve.exec("reset role;");
+  const second = (await neuve.query("insert into auth.users (email) values ('ajoute@test') returning id")).rows[0].id;
+  ok((await neuve.query("select organisation_id from profils where user_id = $1", [second])).rows[0].organisation_id === null, "avec un seul client, un compte ajouté à la main ne rejoint pas ce client");
+  ok((await n("select count(*)::int n from organisations where nom ilike '%zwald%'")) === 0 && !!o, "seule l'organisation du client existe");
+  await neuve.close();
 }
 
 const db = new PGlite();
@@ -115,7 +141,8 @@ ok(!v.listes.moyens.some((m) => ["twint", "postfinance"].includes(m.id)), "moyen
 ok(v.listes.devises[0] === "EUR", "la devise choisie est la première proposée");
 ok(!INTERDITS.test(valeurs(v)), "aucune donnée de Zwald dans ses réglages");
 const roles = (await essaie(lena, "select nom, tous_droits, systeme from roles order by tous_droits desc, nom")).rows;
-ok(roles.length === 3 && roles[0].nom === "Administrateur" && roles[0].tous_droits && roles.every((r) => r.systeme), "trois rôles de départ, l'Administrateur « tous droits » en premier");
+ok(roles.length === 3 && roles[0].nom === "Administrateur" && roles[0].tous_droits && roles[0].systeme, "trois rôles de départ, l'Administrateur « tous droits » et système en premier");
+ok(roles.slice(1).every((r) => !r.systeme && !r.tous_droits), "les autres rôles ne sont ni système ni « tous droits » : le client les modifie");
 const cat = (await essaie(lena, "select libelle, prix, kind from catalogue order by ordre")).rows;
 ok(cat.length === 3 && cat.every((c) => c.prix === null) && cat[0].kind === "formule", "catalogue d'exemple : trois lignes en anglais, sans prix");
 ok(!INTERDITS.test(JSON.stringify(cat)), "aucune ligne du catalogue de Zwald");
@@ -161,7 +188,8 @@ console.log("== Contrôles des entrées ==");
 const vide = async (email) => { await compte(email, { nouvelle_organisation: "true" }); return (await essaie(editeur, `select creer_organisation('Contrôle', '${email}') as id`)).rows[0].id; };
 const oC = await vide("c1@test");
 ok(!(await essaie(editeur, "select installer_entreprise($1, 'X', 'Code Invalide', '{}'::jsonb, '[]'::jsonb)", [oC])).ok, "code court invalide refusé");
-ok(!(await installer(editeur, oC, "Contrôle", "travel_planner", "EUR", (d) => ({ ...d, roles: [{ ...d.roles[0], permissions: ["clients.lire", "tout.pirater"] }] }))).ok, "permission inconnue refusée");
+ok(!(await installer(editeur, oC, "Contrôle", "travel_planner", "EUR", (d) => ({ ...d, roles: [d.roles[0], { ...d.roles[1], permissions: ["clients.lire", "tout.pirater"] }] }))).ok, "permission inconnue refusée sur un autre rôle que l'Administrateur");
+ok(!(await installer(editeur, oC, "Contrôle", "travel_planner", "EUR", (d) => ({ ...d, roles: [d.roles[0], { ...d.roles[1], tous_droits: true }] }))).ok, "« tous droits » refusé ailleurs que sur le premier rôle");
 ok(!(await installer(editeur, oC, "Contrôle", "travel_planner", "EUR", (d) => ({ ...d, roles: d.roles.slice(1) }))).ok, "sans Administrateur en premier, refusé");
 ok(!(await installer(editeur, oC, "Contrôle", "travel_planner", "EUR", (d) => ({ ...d, catalogue: [{ kind: "pirate", libelle: "x" }] }))).ok, "ligne de catalogue invalide refusée");
 ok(!(await essaie(editeur, "select installer_entreprise(gen_random_uuid(), 'X', 'x', '{}'::jsonb, '[{\"nom\":\"A\",\"portee\":\"toute\",\"permissions\":[],\"tous_droits\":true}]'::jsonb)")).ok, "organisation inconnue refusée");
@@ -171,6 +199,32 @@ await db.exec("set role anon;");
 const anon = await db.query("select installer_entreprise(gen_random_uuid(), 'X', 'x', '{}'::jsonb, '[]'::jsonb)").then(() => "", (e) => e.message);
 await db.exec("reset role;");
 ok(/permission denied/.test(anon), "la clé publique (anon) n'a pas le droit d'appeler la fonction");
+
+console.log("== Client neuf seulement ==");
+const oS = await vide("suspendu@test");
+await db.exec(`update organisations set statut = 'suspendu' where id = '${oS}'`);
+ok(!(await installer(editeur, oS, "Suspendu", "travel_planner", "EUR")).ok, "organisation suspendue : installation refusée");
+const oL = await vide("connecte@test");
+await db.exec("update auth.users set last_sign_in_at = now() where email = 'connecte@test'");
+const refusL = await installer(editeur, oL, "Connecté", "travel_planner", "EUR");
+ok(!refusL.ok && /déjà en service/.test(refusL.err || ""), "un compte du client s'est déjà connecté : installation refusée");
+ok((await un("select count(*)::int n from entites where organisation_id in ($1, $2)", [oS, oL])).n === 0, "aucune entreprise posée chez eux");
+const oA = await vide("attente@test");
+ok((await essaie(editeur, "select client_a_reprendre($1) v", [oA])).rows[0].v === true, "client créé à moitié : l'éditeur peut le reprendre");
+ok((await essaie(editeur, "select client_a_reprendre($1) v", [oL])).rows[0].v === false, "client déjà connecté : plus de reprise");
+ok((await essaie(editeur, "select client_a_reprendre($1) v", [B])).rows[0].v === false, "l'Agence Bleue, qui a déjà une fiche client, ne se reprend plus");
+const oT = await vide("tardive@test");
+ok((await installer(editeur, oT, "Tardive", "transfers", "THB")).ok && (await essaie(editeur, "select client_a_reprendre($1) v", [oT])).rows[0].v === true, "entreprise installée, personne connecté : la reprise reste possible");
+await db.exec("update auth.users set last_sign_in_at = now() where email = 'tardive@test'");
+ok((await essaie(editeur, "select client_a_reprendre($1) v", [oT])).rows[0].v === false, "dès que son administratrice s'est connectée, plus de reprise");
+ok((await essaie(editeur, "select client_a_reprendre($1) v", [ZWALD])).rows[0].v === false, "Zwald ne se reprend jamais");
+ok(!(await essaie(anais, "select client_a_reprendre($1) v", [oA])).ok, "Anaïs ne peut pas demander de reprise");
+ok(!(await essaie(lena, "select organisation_neuve($1)", [oA])).ok, "organisation_neuve n'est pas appelable directement");
+const liste = await essaie(editeur, "select id, nom, entreprises, neuve, admin_email from clients_plateforme()");
+const ligne = (id) => (liste.rows || []).find((x) => x.id === id) || {};
+ok(liste.ok && ligne(B).entreprises === 1 && ligne(B).neuve === false && ligne(B).admin_email === "lena@agence-bleue.test", "liste des clients : l'Agence Bleue, une entreprise, déjà en service");
+ok(ligne(oA).entreprises === 0 && ligne(oA).neuve === true, "liste des clients : le client créé à moitié est à reprendre");
+ok(!(await essaie(anais, "select * from clients_plateforme()")).ok && !(await essaie(lena, "select * from clients_plateforme()")).ok, "la liste des clients est réservée à l'éditeur");
 
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);

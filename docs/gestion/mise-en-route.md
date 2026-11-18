@@ -26,7 +26,7 @@ L'écran **Analyses** (rôles qui ont les droits « analyses » et « montants �
 
 1. Créer le projet Supabase (région Europe), puis **SQL Editor**, coller `docs/gestion/schema.sql`, **Run**. Ce schéma est neutre : aucune entreprise, aucun réglage. Pour la base d'Anaïs seulement, exécuter ensuite `docs/gestion/donnees-ztp-depart.sql` (ZTP, Secret, Taxi, leurs rôles, réglages et le catalogue de ZTP), puis les `migration-*.sql` dans l'ordre.
 2. **Authentication**, **Sign In / Providers** : désactiver **Allow new users to sign up**.
-3. **Authentication**, **Users**, **Add user** : créer le compte de l'administratrice (Auto Confirm User). Le tout premier compte devient automatiquement administratrice générale.
+3. **Authentication**, **Users**, **Add user** : créer le compte de l'administratrice (Auto Confirm User). Sur la base d'Anaïs, un compte créé à la main rejoint Zwald tant qu'elle est la seule organisation, puis se règle dans **Administration**. Sur une base neuve (sans `donnees-ztp-depart.sql`), la migration 42 ne crée aucune organisation et un compte n'est rattaché à rien : créer celui de l'éditeur, puis `update profils set plateforme = true where email = '…';` dans **SQL Editor**. Il crée ensuite chaque client depuis l'écran **Clients**.
 4. Renseigner l'URL du projet et la clé `anon public` dans `src/gestion/js/config.mjs`, puis publier.
 
 ## Mise à jour d'une base déjà installée
@@ -69,7 +69,8 @@ Tout se fait dans l'outil, sans ouvrir Supabase (lot D, 17.11.2026), une fois la
 
 Pendant l'appel, avec le compte éditeur (`profils.plateforme`), écran **Clients**, **Nouveau client** : nom de l'organisation, type d'activité (voyages sur mesure, excursions, transferts), devise, fuseau, langue, nom et e-mail de l'administrateur.
 L'outil crée le compte et l'organisation (fonction `invitation`, action `creer_client`), puis la première entreprise au nom de l'organisation (fonction `installer_entreprise`, migration 45) : réglages du modèle en anglais, messages types, moyens de paiement sans TWINT ni PostFinance, trois rôles, catalogue d'exemple sans prix pour un travel planner. Rien ne vient de Zwald : les données de départ sont dans `src/gestion/js/modeles-metier.mjs` (`departModele`), la même source que la démo et l'écran « Nouvelle entreprise ».
-Le lien rendu s'envoie au client. Il choisit son mot de passe et arrive sur l'accueil de son entreprise, qui lui dit ce qui manque (adresse, pied de page, paiement, conditions). L'éditeur ne voit ensuite aucune de ses données, et ne peut plus rien installer chez lui. Si l'installation échoue, le client crée sa première entreprise lui-même depuis un modèle.
+Le lien rendu s'envoie au client. Il choisit son mot de passe et arrive sur l'accueil de son entreprise, qui lui dit ce qui manque (adresse, pied de page, paiement, conditions). L'éditeur ne voit ensuite aucune de ses données. Il ne peut installer ni produire de lien que chez un client neuf : organisation active, sans entreprise pour l'installation, dont personne ne s'est encore connecté. Tant que c'est le cas, **Reprendre** dans la liste des clients installe l'entreprise qui manque et produit un nouveau lien pour la première administratrice (fonction `invitation`, action `reprendre_client`). Le lien s'envoie au client sans l'ouvrir soi-même : il connecte à son compte.
+Les taux des équivalents indicatifs partent vides (base : la devise du client) : aucun document ne propose de conversion tant qu'ils ne sont pas remplis dans **Réglages**.
 Contrôle sur un Postgres en mémoire : `docs/gestion/verif-mise-en-route.mjs`.
 
 ## Installer la fonction `invitation`
@@ -212,4 +213,4 @@ Ordre de grandeur : confortable jusqu'à quelques dizaines de milliers de dossie
 - Un projet Supabase gratuit peut être mis en pause après une semaine sans activité. Il se réactive depuis le tableau de bord Supabase.
 - Le PDF se génère par l'impression du navigateur : choisir « Enregistrer au format PDF ». Le nom de fichier est déjà rempli.
 - Import de l'historique Zwald (`historique-complet.json`) : choisir l'entreprise **Zwald Travel Planner** dans le menu, puis **Réglages**, **Sauvegarde**, **Restaurer ou importer**. L'import va dans l'entreprise active.
-- Le fichier `donnees-ztp-depart.sql` contient les coordonnées de ZTP : ne pas le publier. `schema.sql` n'en contient plus.
+- Le dépôt est public. `donnees-ztp-depart.sql` ne contient que des coordonnées déjà publiques de ZTP (adresse, téléphone, e-mail, pseudo Wise des factures). Aucune donnée privée n'y entre : ni IBAN, ni nets de partenaires, ni clients. Ces données se saisissent dans l'outil. `schema.sql` ne contient aucune donnée.

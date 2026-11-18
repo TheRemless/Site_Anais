@@ -75,6 +75,9 @@ function reglagesBruts(id, { nom, devise }) {
     apparence: { ...APPARENCE_NEUTRE },
     // La fiduciaire (factures de commission à un partenaire) est propre à la Thaïlande : éteinte au départ, le client l'allume s'il en a besoin.
     fiduciaire: { actif: false },
+    // Équivalents indicatifs : base = la devise du client, taux vides à remplir dans Réglages (jamais ceux de ZTP, base CHF).
+    // Tant qu'un taux manque, un document ne propose aucune conversion (equivalents et tauxVers ignorent un taux vide).
+    taux: { eur: null, thb: null },
   };
   if (m.id === "travel_planner")
     return {
