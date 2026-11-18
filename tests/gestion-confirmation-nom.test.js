@@ -108,3 +108,30 @@ test("5. super administrateur sans rôle de membre (Jérémy en production) : il
     delete globalThis.location;
   }
 });
+
+// ---- Nouvelle version de Gestion (18.11.2026) -------------------------------------------------------------------------------------
+// Cause probable du « Béatrice Monate » sans proposition : un onglet ouvert avant la PR 235 gardait l'ancien code, et rien ne le disait,
+// parce que seul app.mjs était surveillé et que la PR 235 ne le touchait pas.
+test("version : une empreinte de tous les fichiers de Gestion est écrite au build, et tout changement l'altère", async () => {
+  const { existsSync } = await import("node:fs");
+  const config = readFileSync(new URL("../.eleventy.js", import.meta.url), "utf8");
+  assert.match(config, /eleventyConfig\.on\("eleventy\.after"/);
+  assert.match(config, /const racine = path\.join\(__dirname, "src\/gestion"\);/, "tous les fichiers de l'outil, pas seulement app.mjs");
+  assert.match(config, /"version\.json"/);
+  // Le build (npm run build, avant npm test) l'a produite.
+  const fichier = new URL("../_site/gestion/version.json", import.meta.url);
+  assert.ok(existsSync(fichier), "_site/gestion/version.json absent : lancer le build avant les tests");
+  assert.match(JSON.parse(readFileSync(fichier, "utf8")).version, /^[0-9a-f]{16}$/);
+});
+
+test("version : vérifiée au retour sur l'onglet et toutes les 3 minutes ; recharger ne perd jamais une saisie", () => {
+  const app = lire("app.mjs");
+  assert.match(app, /const r = await fetch\("version\.json", \{ cache: "no-store" \}\);/);
+  assert.match(app, /setInterval\(verifier, 3 \* 60 \* 1000\)/);
+  assert.match(app, /actuelle\.startsWith\("v:"\) === empreinteInitiale\.startsWith\("v:"\)/, "jamais un ETag comparé à une version");
+  assert.match(app, /document\.addEventListener\("visibilitychange", verifier\);/);
+  // Le bandeau ne recharge pas d'office : avec une saisie en cours, il demande d'abord.
+  assert.match(app, /if \(saisieEnCours\(\)\) \{\n\s+const \{ confirmer \} = await import\("\.\/ui\.mjs"\);/);
+  assert.match(app, /if \(!ok\) return;\n\s+\}\n\s+location\.reload\(\);/);
+  assert.doesNotMatch(app.slice(app.indexOf("function signalerVersion"), app.indexOf("async function surveillerVersion")), /setTimeout\([^)]*location\.reload/, "aucun rechargement automatique");
+});
