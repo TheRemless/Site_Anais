@@ -174,6 +174,18 @@ const remis = await essaie(anais, "insert into partages_clients (source_id, cibl
 ok(remis.ok && remis.rows[0].organisation_id === ZWALD, "l'administration générale remet le partage ; l'organisation envoyée n'est pas crue");
 ok(!(await essaie(ztpSeul, "delete from partages_clients")).n, "un compte sans administration générale ne retire aucun partage");
 
+console.log("== Corbeille : un dossier Secret au client ZTP se restaure ==");
+const aRestaurer = (await dossier(anais, S, ztp)).rows[0].id;
+await db.query("delete from partages_clients where source_id = $1 and cible_id = $2", [Z, S]);
+const supprime = await essaie(anais, "delete from dossiers where id = $1", [aRestaurer]);
+const enCorbeille = await un("select id from corbeille where table_name = 'dossiers' and ligne->>'id' = $1", [aRestaurer]);
+ok(supprime.ok && !!enCorbeille, "le dossier supprimé part dans la corbeille");
+const restaure = await essaie(anais, "select restaurer_dossier($1) as id", [enCorbeille.id]);
+ok(restaure.ok && (await un("select client_id from dossiers where id = $1", [aRestaurer])).client_id === ztp, "il se restaure avec sa fiche ZTP, même partage retiré " + (restaure.err || ""));
+await db.query("insert into partages_clients (source_id, cible_id) values ($1, $2)", [Z, S]);
+const faux = await essaie(mook, "insert into dossiers (id, entite_id, ref, client_id) values (gen_random_uuid(), $1, 'X-FAUX', $2)", [S, ztp]);
+ok(!faux.ok, "un dossier neuf (absent de la corbeille) au client ZTP reste refusé à Mook");
+
 console.log("== Organisations ==");
 const orgB = (await un("insert into organisations (nom) values ('Agence B') returning id")).id;
 const B = (await un("insert into entites (slug, nom, organisation_id) values ('b', 'B', $1) returning id", [orgB])).id;

@@ -101,9 +101,10 @@ export function ouvrirConfirmation(texteInitial = "") {
   let clientTrouve = null;
   const dessinerClient = () => {
     const id = entrepriseChoisie();
-    // Un client de l'entreprise d'abord ; sinon une fiche partagée (ZTP pour Secret et Taxi), étiquetée.
+    // Un client de l'entreprise d'abord ; sinon une fiche partagée (ZTP pour Secret et Taxi), étiquetée, et seulement sur le même WhatsApp :
+    // un homonyme de ZTP ne doit pas recevoir la course ni le numéro de la confirmation.
     const lu = { nom: champs.nom.value, telephone: champs.telephone.value };
-    clientTrouve = id ? clientExistant({ ...lu, clients: etat.brut.clients.filter((c) => c.entite_id === id && !c.nom_seul) }) || clientExistant({ ...lu, clients: clientsPartages(id) }) : null;
+    clientTrouve = id ? clientExistant({ ...lu, clients: etat.brut.clients.filter((c) => c.entite_id === id && !c.nom_seul) }) || clientExistant({ nom: "", telephone: lu.telephone, clients: clientsPartages(id) }) : null;
     blocClient.replaceChildren(
       ...(clientTrouve
         ? [

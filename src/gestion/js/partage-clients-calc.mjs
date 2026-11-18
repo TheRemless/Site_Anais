@@ -8,15 +8,14 @@ const parId = (liste) => new Map((liste || []).map((x) => [x.id, x]));
 
 // Les entreprises dont « cible » reçoit les fiches.
 export const sourcesDe = (partages, cibleId) => new Set((partages || []).filter((p) => p.cible_id === cibleId).map((p) => p.source_id));
-// Les entreprises avec qui « source » partage ses fiches.
-export const ciblesDe = (partages, sourceId) => new Set((partages || []).filter((p) => p.source_id === sourceId).map((p) => p.cible_id));
 
 // Qui choisit une fiche de la source dans la cible : l'administration générale, ou une administratrice (« reglages.ecrire ») des deux
 // entreprises qui lit tous les clients de la source. Même règle que partage_clients_permis dans la base. L'assistante : jamais.
-export function peutUtiliserPartages({ superAdmin = false, permissionsSource = [], permissionsCible = [] } = {}) {
+// `voitToutSource` : le rôle dans la source voit tous ses dossiers et clients (portée « toute »), comme voit_tout dans la base.
+export function peutUtiliserPartages({ superAdmin = false, permissionsSource = [], permissionsCible = [], voitToutSource = false } = {}) {
   if (!permissionsCible.includes("dossiers.ecrire")) return false;
   if (superAdmin) return true;
-  return permissionsSource.includes("reglages.ecrire") && permissionsCible.includes("reglages.ecrire") && permissionsSource.includes("clients.lire");
+  return permissionsSource.includes("reglages.ecrire") && permissionsCible.includes("reglages.ecrire") && permissionsSource.includes("clients.lire") && voitToutSource;
 }
 
 // Les fiches d'une entreprise telles que ses écrans les lisent : les siennes, plus celles d'une autre entreprise que ses dossiers utilisent
@@ -86,6 +85,3 @@ export function dossiersAilleurs({ clientId, entiteId, dossiers = [], reservatio
     }))
     .sort((a, b) => String(b.date_depart || b.services[0]?.date || "").localeCompare(String(a.date_depart || a.services[0]?.date || "")) || a.ref.localeCompare(b.ref));
 }
-
-// Tous les dossiers d'un client, toutes entreprises lues confondues (une fiche ZTP utilisée par Secret ne se supprime pas).
-export const nbDossiersPartout = (clientId, dossiers = []) => dossiers.filter((d) => d.client_id === clientId).length;

@@ -1,13 +1,13 @@
 // « Coller une demande » : le client écrit à Anaïs sur WhatsApp, le message arrive à sa façon ou depuis le formulaire du site. On le colle ici :
 // l'outil reconnaît la date, les personnes, l'hôtel, le client et le service cité, cherche le prix dans la base partenaires, et crée le dossier
 // d'un tap. Tout ce qui a été reconnu se corrige sur place, et le prix suit.
-import { etat, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite, confirmationPermise, clientParId, clientsProposes, clientEtranger } from "../etat.mjs";
+import { etat, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite, confirmationPermise, clientParId, clientsProposes } from "../etat.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { lireMessage, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
 import { lignesDepuisTrajet, ligneDepuisPrestation, chiffres, quantiteParDefaut } from "../partenaires-calc.mjs";
-import { appliquerModeParDefaut } from "../operations-calc.mjs";
+import { appliquerModeParDefaut, adresseEstHotel } from "../operations-calc.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { choisirPrestation } from "./choix-prestation.mjs";
 import { blocZonesPickup } from "./pickup-zones.mjs";
@@ -86,7 +86,7 @@ function lignesBrutes(offre, d, langue, devise) {
 
 // L'hôtel du client connu : la première ligne de son adresse (« Hotel Sunset, Room 12 » → « Hotel Sunset »).
 // L'hôtel noté sur la fiche. Une fiche partagée par une autre entreprise (ZTP) porte une adresse postale : pas d'hôtel.
-const hotelDuClient = (c) => (c && clientEtranger(c) ? "" : ((c && c.adresse) || "").split("\n")[0].replace(/,?\s*Room\s+\S+\s*$/i, "").trim());
+const hotelDuClient = (c) => (c && !adresseEstHotel(c, etat.entiteId) ? "" : ((c && c.adresse) || "").split("\n")[0].replace(/,?\s*Room\s+\S+\s*$/i, "").trim());
 
 // Ce que le formulaire du site a dit en plus du prix à calculer : option, lieux, vol, âges, prix annoncé. Lu, jamais deviné.
 function lignesSite(d) {

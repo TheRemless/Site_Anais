@@ -124,7 +124,7 @@ export function creer() {
     if (!c || c.entite_id === apres.entite_id) return;
     if (!(data.partages_clients || []).some((p) => p.source_id === c.entite_id && p.cible_id === apres.entite_id)) throw new Error(tr("Ce client appartient à une autre entreprise qui ne partage pas ses clients avec celle-ci."));
     const ctx = contexte();
-    const permis = peutUtiliserPartages({ superAdmin: !!utilisateur.super_admin, permissionsSource: permissionsDans(ctx, c.entite_id), permissionsCible: permissionsDans(ctx, apres.entite_id) }) && voitTout(ctx, c.entite_id);
+    const permis = peutUtiliserPartages({ superAdmin: !!utilisateur.super_admin, permissionsSource: permissionsDans(ctx, c.entite_id), permissionsCible: permissionsDans(ctx, apres.entite_id), voitToutSource: voitTout(ctx, c.entite_id) });
     if (!permis) throw new Error(tr("Seule l'administration utilise les clients d'une autre entreprise."));
   };
   // Comme garder_entite_client (migration 46) : une fiche utilisée par des dossiers ne change pas d'entreprise.
@@ -500,7 +500,7 @@ export function creer() {
       if (!g || !a || g.id === a.id || (g.entite_id !== a.entite_id && !partage)) throw new Error(tr("Fusion impossible : les deux fiches doivent être deux clients différents de la même entreprise."));
       if (!(droit(a.entite_id, "clients.fusionner") || (droit(a.entite_id, "clients.supprimer") && droit(a.entite_id, "dossiers.ecrire")))) throw new Error(tr("Votre rôle ne permet pas de fusionner des clients."));
       if (!voitTout(contexte(), a.entite_id)) throw new Error(tr("Fusion réservée aux rôles qui voient tous les dossiers de l'entreprise."));
-      if (g.entite_id !== a.entite_id && !(peutUtiliserPartages({ superAdmin: !!utilisateur.super_admin, permissionsSource: permissionsDans(contexte(), g.entite_id), permissionsCible: permissionsDans(contexte(), a.entite_id) }) && droit(g.entite_id, "clients.ecrire"))) throw new Error(tr("Seule l'administration rattache un client à la fiche d'une autre entreprise."));
+      if (g.entite_id !== a.entite_id && !(peutUtiliserPartages({ superAdmin: !!utilisateur.super_admin, permissionsSource: permissionsDans(contexte(), g.entite_id), permissionsCible: permissionsDans(contexte(), a.entite_id), voitToutSource: voitTout(contexte(), g.entite_id) }) && droit(g.entite_id, "clients.ecrire"))) throw new Error(tr("Seule l'administration rattache un client à la fiche d'une autre entreprise."));
       for (const d of data.dossiers.filter((x) => x.client_id === absorbe)) await this.modifier("dossiers", d.id, { client_id: garder });
       if (patch && Object.keys(patch).length) await this.modifier("clients", garder, patch);
       await this.supprimer("clients", absorbe);

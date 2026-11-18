@@ -5,10 +5,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
-  sourcesDe, ciblesDe, peutUtiliserPartages, clientsDeLEntreprise, clientsPartages, clientsProposes, clientEtranger, sigleEntreprise,
-  avecNomsLies, clientsPourSauvegarde, dossiersAilleurs, nbDossiersPartout,
+  sourcesDe, peutUtiliserPartages, clientsDeLEntreprise, clientsPartages, clientsProposes, clientEtranger, sigleEntreprise,
+  avecNomsLies, clientsPourSauvegarde, dossiersAilleurs,
 } from "../src/gestion/js/partage-clients-calc.mjs";
-import { hotelEtChambre, lieuParDefaut, controlesVoucher } from "../src/gestion/js/operations-calc.mjs";
+import { hotelEtChambre, lieuParDefaut, controlesVoucher, empreinteVoucher, adresseEstHotel } from "../src/gestion/js/operations-calc.mjs";
 import { aVerifier } from "../src/gestion/js/a-verifier-calc.mjs";
 
 const source = (f) => fs.readFileSync(new URL(`../src/gestion/js/${f}`, import.meta.url), "utf8");
@@ -30,7 +30,6 @@ test("sens unique : Secret et Taxi reçoivent les fiches de ZTP, ZTP ne reçoit 
   assert.deepEqual([...sourcesDe(PARTAGES, "secret")], ["ztp"]);
   assert.deepEqual([...sourcesDe(PARTAGES, "taxi")], ["ztp"]);
   assert.deepEqual([...sourcesDe(PARTAGES, "ztp")], []);
-  assert.deepEqual([...ciblesDe(PARTAGES, "ztp")].sort(), ["secret", "taxi"]);
   const tous = () => true;
   assert.deepEqual(clientsPartages({ clients: CLIENTS, partages: PARTAGES, entiteId: "ztp", permis: tous }), [], "ZTP ne trouve jamais une fiche de Secret ou de Taxi");
   assert.deepEqual(clientsPartages({ clients: CLIENTS, partages: PARTAGES, entiteId: "secret", permis: tous }).map((c) => c.id), ["z1", "z2"]);
@@ -42,7 +41,8 @@ test("qui s'en sert : l'administration générale, ou une administratrice des de
   assert.equal(peutUtiliserPartages({ superAdmin: true, permissionsSource: [], permissionsCible: ["dossiers.ecrire"] }), true);
   assert.equal(peutUtiliserPartages({ superAdmin: false, permissionsSource: [], permissionsCible: MOOK_SECRET }), false, "Mook n'a aucun droit dans ZTP");
   assert.equal(peutUtiliserPartages({ superAdmin: false, permissionsSource: ["clients.lire"], permissionsCible: MOOK_SECRET }), false, "lire ZTP ne suffit pas sans l'administration");
-  assert.equal(peutUtiliserPartages({ superAdmin: false, permissionsSource: ["clients.lire", "reglages.ecrire"], permissionsCible: ["dossiers.ecrire", "reglages.ecrire"] }), true);
+  assert.equal(peutUtiliserPartages({ superAdmin: false, permissionsSource: ["clients.lire", "reglages.ecrire"], permissionsCible: ["dossiers.ecrire", "reglages.ecrire"], voitToutSource: true }), true);
+  assert.equal(peutUtiliserPartages({ superAdmin: false, permissionsSource: ["clients.lire", "reglages.ecrire"], permissionsCible: ["dossiers.ecrire", "reglages.ecrire"], voitToutSource: false }), false, "comme la base : une portée « ses dossiers » dans ZTP ne suffit pas");
   assert.equal(peutUtiliserPartages({ superAdmin: true, permissionsSource: [], permissionsCible: ["dossiers.lire"] }), false, "sans créer de dossier dans la cible, rien à choisir");
   const personne = clientsPartages({ clients: CLIENTS, partages: PARTAGES, entiteId: "secret", permis: () => false });
   assert.deepEqual(personne, []);
@@ -92,7 +92,7 @@ test("fiche ZTP : ses dossiers Secret et Taxi, sans aucun montant", () => {
   const texte = JSON.stringify(ailleurs);
   for (const k of ["total", "recu", "sur_place", "montant_vente", "net", "commission", "9999", "1800", "2500"]) assert.ok(!texte.includes(k), `aucun montant (${k})`);
   assert.deepEqual(dossiersAilleurs({ clientId: "z1", entiteId: "secret", dossiers: DOSSIERS.filter((d) => d.entite_id !== "ztp"), reservations: [], entites }).map((x) => x.ref), ["VT-2026-0007"]);
-  assert.equal(nbDossiersPartout("z1", DOSSIERS), 3, "une fiche ZTP utilisée par Secret ne se supprime pas depuis ZTP");
+  assert.match(source("views/clients.mjs"), /dossiers\.length \|\| etat\.brut\.dossiers\.some\(\(d\) => d\.client_id === id\)/, "une fiche ZTP utilisée par Secret ne se supprime pas depuis ZTP");
 });
 
 test("sigle de l'entreprise : « ZTP », sans nom écrit dans le code", () => {
@@ -120,6 +120,21 @@ test("une fiche ZTP a une adresse postale : jamais le lieu de pickup d'un servic
   const r = { entite_id: "secret", statut: "confirme", date_service: "2026-12-05", heure_pickup: "08:30", lieu_pickup: "" };
   assert.ok(controlesVoucher(r, ztp).includes("sans_lieu"));
   assert.ok(controlesVoucher(r, secret).includes("lieu_adresse_client"));
+  assert.equal(adresseEstHotel(ztp, "secret"), false);
+  assert.equal(adresseEstHotel(ztp, "ztp"), true);
+  assert.equal(adresseEstHotel({ adresse: "x" }, "secret"), true, "une fiche sans entreprise connue garde son adresse (comme avant)");
+  assert.match(source("views/clients.mjs"), /"adresse" in changes && !etrangere\) await suivreAdresse/, "corriger l'adresse postale ne touche pas aux lieux de pickup");
+});
+
+test("empreinte du voucher : la même pour l'administration et l'assistante, insensible à l'adresse postale ZTP", () => {
+  const r = { id: "r1", entite_id: "secret", libelle: "4 Islands", date_service: "2026-12-05", heure_pickup: "08:30", lieu_pickup: "Pimalai" };
+  const admin = empreinteVoucher({ reservation: r, client: CLIENTS[0] });
+  const mook = empreinteVoucher({ reservation: r, client: avecNomsLies([], [{ id: "z1", entite_id: "ztp", prenom: "Alex", nom: "Martin" }])[0] });
+  assert.equal(admin, mook);
+  assert.equal(empreinteVoucher({ reservation: r, client: { ...CLIENTS[0], adresse: "Autre rue 1", telephone: "+41 79 111 11 11" } }), admin, "changer l'adresse ou le WhatsApp dans ZTP ne marque pas le voucher à renvoyer");
+  assert.notEqual(empreinteVoucher({ reservation: r, client: { ...CLIENTS[0], nom: "Martin-Dupont" } }), admin, "le nom, imprimé, compte toujours");
+  const s1 = CLIENTS[2];
+  assert.notEqual(empreinteVoucher({ reservation: r, client: s1 }), empreinteVoucher({ reservation: r, client: { ...s1, telephone: "+66 1" } }), "une fiche de Secret garde son empreinte complète");
 });
 
 test("À vérifier dans Secret : ni la fiche ZTP de ses dossiers, ni le nom seul de l'assistante", () => {
@@ -139,7 +154,7 @@ test("écrans : recherche, choix du client, collages et demandes proposent les f
   assert.match(source("app.mjs"), /clientsProposes\(\)\n\s+\.filter\(\(c\) => correspond/, "recherche globale");
   assert.match(source("app.mjs"), /droite: etiquetteClient\(c\)/);
   assert.match(source("views/selecteur-client.mjs"), /nomClient\(c\), etiquette\(c\)/);
-  assert.match(source("views/confirmation.mjs"), /clientExistant\(\{ \.\.\.lu, clients: clientsPartages\(id\) \}\)/, "Coller une confirmation retrouve une fiche ZTP après les fiches de l'entreprise");
+  assert.match(source("views/confirmation.mjs"), /clientExistant\(\{ nom: "", telephone: lu\.telephone, clients: clientsPartages\(id\) \}\)/, "Coller une confirmation retrouve une fiche ZTP après celles de l'entreprise, sur le WhatsApp seulement (pas un homonyme)");
   assert.match(source("views/demande.mjs"), /clientsProches\(d, clientsProposes\(\)\)/, "demande collée et demandes du site");
   assert.match(source("views/nouveau-excursions.mjs"), /clientsProposes\(\)\)\[0\]/);
   assert.match(source("views/creation-course.mjs"), /!clientEtranger\(c\) && \[c\.prenom, c\.nom\]/, "une confirmation ne réécrit pas le nom d'une fiche ZTP");

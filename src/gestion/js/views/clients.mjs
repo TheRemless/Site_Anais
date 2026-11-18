@@ -10,7 +10,7 @@ import { verifierTelephoneClient, numerosClient, chambreDeLAdresse, adresseAvecC
 import { servicesSuivantAdresse, fusionClients } from "../dossier-gestes-calc.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
-import { dossiersAilleurs, nbDossiersPartout } from "../partage-clients-calc.mjs";
+import { dossiersAilleurs } from "../partage-clients-calc.mjs";
 
 // Fiche partagée par une autre entreprise (migration 46) : le sigle de son entreprise à côté du nom.
 const etiquette = (c) => {
@@ -66,7 +66,8 @@ function formulaireClient(client, apres) {
         }
         toast(tr("Client enregistré."));
         // Hôtel ou chambre changés : les services à venir copiés de l'ancien hôtel sont proposés à la mise à jour (vouchers, feuille du jour).
-        if (client.id && "adresse" in changes) await suivreAdresse(client, changes.adresse);
+        // Une fiche partagée (ZTP) a une adresse postale : elle ne donne pas le lieu de pickup des services d'ici.
+        if (client.id && "adresse" in changes && !etrangere) await suivreAdresse(client, changes.adresse);
         apres(c);
       },
     },
@@ -257,7 +258,8 @@ export function ficheClient(id) {
       "section",
       { class: "zone-danger" },
       h("h2", null, tr("Supprimer ce client")),
-      dossiers.length || nbDossiersPartout(id, etat.brut.dossiers)
+      // Une fiche ZTP utilisée par un dossier de Secret ou de Taxi ne se supprime pas non plus.
+      dossiers.length || etat.brut.dossiers.some((d) => d.client_id === id)
         ? h("p", { class: "aide" }, tr("Impossible tant que le client a des dossiers."))
         : h(
             "button",

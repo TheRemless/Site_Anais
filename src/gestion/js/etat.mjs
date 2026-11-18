@@ -7,7 +7,7 @@ import { resume, setDevise, setMasquerMontants, aujourdhui } from "./calc.mjs";
 import { construireCopie, CLE_HORS_LIGNE } from "./feuille-hors-ligne-calc.mjs";
 import { completerReglages, ROLES_SYSTEME } from "./defauts.mjs";
 import { codeCourt, departModele } from "./modeles-metier.mjs";
-import { permissionsDans, roleDans } from "./droits.mjs";
+import { permissionsDans, roleDans, voitTout } from "./droits.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 import { appliquerTextesThai } from "./textes-thai.mjs";
@@ -622,7 +622,7 @@ export async function chercherClients(q, limite = 8) {
 // Une entreprise « partage ses clients avec » d'autres de l'organisation (ZTP vers Secret et Taxi chez Zwald). Dans la cible,
 // l'administration trouve et choisit ces fiches (recherche, choix du client, collages) ; l'assistante jamais. La base garantit la même règle.
 export const partageClientsPermis = (sourceId, cibleId = etat.entiteId) =>
-  !!etat.brut && peutUtiliserPartages({ superAdmin: estSuperAdmin(), permissionsSource: permissionsDe(sourceId), permissionsCible: permissionsDe(cibleId) });
+  !!etat.brut && peutUtiliserPartages({ superAdmin: estSuperAdmin(), permissionsSource: permissionsDe(sourceId), permissionsCible: permissionsDe(cibleId), voitToutSource: voitTout(contexte(), sourceId) });
 // Les fiches des entreprises qui partagent avec `entiteId`, quand la personne peut s'en servir.
 export const clientsPartages = (entiteId = etat.entiteId) =>
   etat.brut ? partagesCalc({ clients: etat.brut.clients || [], partages: etat.brut.partages_clients || [], entiteId, permis: (s) => partageClientsPermis(s, entiteId) }) : [];

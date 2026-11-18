@@ -394,13 +394,17 @@ export function recalculerCommissions(reservations, { regleDe, netDe = () => nul
   return { changements, inchanges, impossibles, ecartsRecus };
 }
 
+// L'adresse de la fiche sert-elle d'hôtel pour un service de l'entreprise `entiteId` ? Non pour une fiche partagée par une autre entreprise
+// (fiche ZTP sur un service de Secret, migration 46) : son adresse est postale. Sans entreprise connue, oui (comme avant).
+export const adresseEstHotel = (client, entiteId) => !(client && client.entite_id && entiteId && client.entite_id !== entiteId);
+const adresseHotel = (client, entiteId) => (client && adresseEstHotel(client, entiteId) ? String(client.adresse || "") : "");
+
 // Lieu de pickup d'un service ajouté à un dossier : le dernier lieu saisi sur ses autres réservations, sinon la première ligne de l'adresse du client.
 // `entiteId` : l'entreprise du dossier. Une fiche partagée par une autre entreprise (ZTP) a une adresse postale, pas un lieu de pickup.
 export function lieuParDefaut(reservationsDuDossier, client = {}, entiteId = null) {
   const avecLieu = (reservationsDuDossier || []).filter((r) => String(r.lieu_pickup || "").trim()).sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
   if (avecLieu.length) return String(avecLieu[0].lieu_pickup).trim();
-  if (client && client.entite_id && entiteId && client.entite_id !== entiteId) return "";
-  return String((client && client.adresse) || "").split("\n")[0].trim();
+  return adresseHotel(client, entiteId).split("\n")[0].trim();
 }
 
 // Un partenaire a-t-il un mode et une règle de commission renseignés ? Sert à signaler ce qui reste à compléter.
@@ -724,7 +728,9 @@ export function empreinteVoucher({ reservation: r = {}, client = {}, statut = ""
     vente: r.montant_vente === null || r.montant_vente === undefined || r.montant_vente === "" ? null : Math.round(Number(r.montant_vente) * 100),
     partenaire: r.partenaire_id || null, prestation: r.prestation_id || null, trajet: r.trajet_id || null, surPlace: !!r.paye_sur_place, ref: videOuTexte(r.reference_partenaire),
     details: Object.fromEntries(CHAMPS_EMPREINTE_DETAILS.filter((k) => videOuTexte(dt[k]) !== "" && dt[k] !== undefined).map((k) => [k, videOuTexte(dt[k])])),
-    client: [videOuTexte(client.prenom), videOuTexte(client.nom), videOuTexte(client.telephone), videOuTexte(String(client.adresse || "").split("\n")[0])],
+    // Fiche partagée par une autre entreprise (ZTP sur un voucher de Secret) : son nom seulement. Le voucher n'imprime ni son WhatsApp ni son
+    // adresse postale, et l'assistante, qui n'en a que le nom, doit calculer la même empreinte que l'administration.
+    client: adresseEstHotel(client, r.entite_id) ? [videOuTexte(client.prenom), videOuTexte(client.nom), videOuTexte(client.telephone), videOuTexte(String(client.adresse || "").split("\n")[0])] : [videOuTexte(client.prenom), videOuTexte(client.nom), "", ""],
     // Le statut de paiement de l'agence ne compte pas (contrôle du 17.11.2026, D6) : un paiement reçu ne fait pas repasser les vouchers
     // « à renvoyer ». Seul ce que le client paie sur place compte (`surPlace`, ci-dessus).
     statut: statut === "sur_place" ? statut : "", devise,
@@ -850,11 +856,9 @@ export function cleMessageReservation(r, ajd) {
 }
 
 // Hôtel et numéro de chambre d'après l'adresse du client (« Hotel Sunset, Room 12 ») ou le lieu de pickup.
-// Une fiche partagée par une autre entreprise (fiche ZTP sur un service de Secret, migration 46) porte une adresse postale, pas un hôtel :
-// elle ne donne jamais le lieu de pickup.
+// Une fiche partagée par une autre entreprise (ZTP sur un service de Secret) ne donne jamais le lieu : voir adresseEstHotel.
 export function hotelEtChambre(client = {}, reservation = {}) {
-  const autre = !!client.entite_id && !!reservation.entite_id && client.entite_id !== reservation.entite_id;
-  const fiche = separerChambreLigne(autre ? "" : (client.adresse || "").split("\n")[0] || "");
+  const fiche = separerChambreLigne(adresseHotel(client, reservation.entite_id).split("\n")[0] || "");
   const lieu = separerChambreLigne(reservation.lieu_pickup || "");
   if (!lieu.hotel && !lieu.chambre) return fiche;
   // La chambre de la fiche client vaut pour un pickup à son hôtel (« Baiyok Hotel » et « Baiyok Hotel, Room 6 »), jamais pour un autre lieu.
@@ -1229,8 +1233,7 @@ export function controlesVoucher(r, client = {}, type = "") {
   if (type !== "location") {
     if (!String(r.heure_pickup || "").trim()) codes.push("sans_heure");
     // L'adresse d'une fiche partagée par une autre entreprise (ZTP) n'est pas un hôtel : le voucher n'a alors pas de lieu.
-    const adresseHotel = (client.adresse || "").trim() && !(client.entite_id && r.entite_id && client.entite_id !== r.entite_id);
-    if (!String(r.lieu_pickup || "").trim()) codes.push(adresseHotel ? "lieu_adresse_client" : "sans_lieu");
+    if (!String(r.lieu_pickup || "").trim()) codes.push(adresseHotel(client, r.entite_id).trim() ? "lieu_adresse_client" : "sans_lieu");
   }
   // Retour au point de départ sans programme : le chauffeur ne saurait pas ce qui est prévu.
   if (estRetourDepart(r) && !String((r.details || {}).programme_trajet || "").trim()) codes.push("sans_programme");

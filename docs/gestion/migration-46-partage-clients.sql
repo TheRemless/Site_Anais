@@ -88,6 +88,8 @@ begin
   if ec is null or ec = new.entite_id then return new; end if;  -- client absent : la clé étrangère répond
   -- Un dossier déjà relié à ce client garde son lien (l'assistante modifie le dossier sans voir la fiche ; partage retiré depuis).
   if tg_op = 'UPDATE' and new.client_id = old.client_id and new.entite_id = old.entite_id then return new; end if;
+  -- Un dossier de la corbeille remis tel quel (restaurer_dossier) retrouve le client qu'il avait : le lien existait déjà.
+  if tg_op = 'INSERT' and exists (select 1 from corbeille where table_name = 'dossiers' and entite_id = new.entite_id and ligne->>'id' = new.id::text and ligne->>'client_id' = new.client_id::text) then return new; end if;
   if not exists (select 1 from partages_clients where source_id = ec and cible_id = new.entite_id) then
     raise exception 'Ce client appartient à une autre entreprise qui ne partage pas ses clients avec celle-ci' using errcode = '42501';
   end if;
