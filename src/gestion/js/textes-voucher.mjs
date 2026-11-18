@@ -157,8 +157,26 @@ export const GROUPES_BOOKING = [
   },
 ];
 
+// Booking confirmation de Secret Travel & Tour (Jérémy, 18.11.2026) : le modèle « Minivan Booking Confirmation », mot pour mot, pour les transferts
+// payés au chauffeur sans partenaire (taxi indépendant, voucher de Mook). Les rubriques (NAME, DATE…), le titre et « CONTACT US: » sont ceux de
+// la Booking confirmation de Taxi (clés « b_… »). `{ENTREPRISE}` : le nom de l'entreprise du voucher, en capitales comme sur le modèle.
+export const GROUPES_BOOKING_SECRET = [
+  {
+    titre: N_("Booking confirmation des transferts payés au chauffeur"),
+    cles: [
+      ["bs_intro", "We’re happy to confirm your transport reservation details:"],
+      ["bs_info", "IMPORTANT INFORMATION & PAYMENT:"],
+      ["bs_paiement", "Payment: To be paid directly in cash to your driver upon arrival/pickup."],
+      ["bs_rencontre", "Meeting Point: Your assigned driver will be holding a sign with your name at the designated meeting area."],
+      ["bs_assistance", "Assistance: For any urgent changes or flight delays, please contact us immediately on WhatsApp."],
+      ["bs_merci", "Thank you for booking with {ENTREPRISE}!\nWe wish you a pleasant journey. ✨"],
+      ["bs_signature", "{ENTREPRISE} Team"],
+    ],
+  },
+];
+
 // Le lieu sous la signature est l'adresse du bloc d'en-tête (« Adresse sur une ligne ») ; ce texte ne sert que quand elle est vide.
-export const DEFAUTS_TEXTES = { ...Object.fromEntries([...GROUPES_VOUCHER, ...GROUPES_BOOKING].flatMap((g) => g.cles)), b_lieu: "Koh Lanta, Krabi, Thailand" };
+export const DEFAUTS_TEXTES = { ...Object.fromEntries([...GROUPES_VOUCHER, ...GROUPES_BOOKING, ...GROUPES_BOOKING_SECRET].flatMap((g) => g.cles)), b_lieu: "Koh Lanta, Krabi, Thailand" };
 
 // La fonction qui donne le texte d'une clé pour ces réglages : celui saisi dans `voucher.textes`, sinon le défaut. Un texte fait seulement
 // d'espaces vaut le défaut (un champ vidé ne doit jamais imprimer un intitulé vide).

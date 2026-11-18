@@ -13,6 +13,11 @@ export const estTaxi = (reglages) => !!reglages && reglages.fonctionnement === F
 export const lignesSurPlace = (lignes) => (lignes || []).map((l) => (l && l.kind === "ligne" ? { ...l, paye_sur_place: true } : l));
 
 // ---- Voucher « Booking confirmation » ------------------------------------------------------------------------------
+// Booking confirmation de Secret Travel & Tour (Jérémy, 18.11.2026) : le voucher d'un transfert payé au chauffeur sans partenaire (taxi indépendant,
+// voucher de Mook sous le logo de Secret, ou course saisie ainsi par Anaïs). Les autres transferts de Secret gardent le « Transfer Voucher ».
+export const estBookingSecret = (r, type, reglages) => !!r && !!reglages && reglages.fonctionnement === "excursions" && type === "transfert" && !!r.paye_sur_place && !r.partenaire_id;
+// Le voucher s'appelle « Booking confirmation » (nom du fichier, libellés) : toujours dans Taxi, et pour ces transferts de Secret.
+export const estBookingConfirmation = (r, type, reglages) => estTaxi(reglages) || estBookingSecret(r, type, reglages);
 const MOIS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 export function suffixeOrdinal(n) {
   const d = n % 100;

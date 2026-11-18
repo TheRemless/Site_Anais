@@ -114,26 +114,72 @@ const SECRET = { emetteur: { nom: "Secret Travel & Tour", adresse: "Saladan, Koh
 const TAXI = { emetteur: { nom: "VIP Taxi Lanta", adresse: "", telephone: "+66 00 000 0002" }, apparence: { logo: "logo-taxi.webp" }, voucher: {}, devise: "THB", fonctionnement: "taxi" };
 const rendu = (r, regl, ref = "EX-2026-0124") => renderVoucher({ reservation: r, prestation: null, type: "transfert", index: 1 }, { reglages: regl, dossier: { ref }, client: { prenom: "", nom: "Emma Wilson", telephone: "+44 7700 900123" }, resume: null, trajet: null });
 
-test("voucher Secret : logo, nom et coordonnées de Secret, numéro du dossier, rien de VIP Taxi ni de ligne Operator vide", () => {
-  const r = { ...V.reservationApercu(V.donneesVoucher(bon), { independant: true }), id: "R1", dossier_id: "D1" };
+test("voucher Secret : la Booking confirmation de Secret (modèle du 18.11.2026), logo et WhatsApp de Secret, rien de VIP Taxi", () => {
+  const r = { ...V.reservationApercu(V.donneesVoucher({ ...bon, enfants: "1", bagages: "yes" }), { independant: true }), id: "R1", dossier_id: "D1" };
   const v = rendu(r, SECRET);
   const l = v.lignes;
   const texte = l.join("\n");
-  assert.ok(l.includes("Transfer Voucher"), texte);
-  assert.ok(l.includes("Secret Travel & Tour"), texte);
-  assert.match(v.textContent, /Voucher No\.: EX-2026-0124-1/, "le numéro du dossier, pas « -1 »");
-  assert.ok(!/VIP Taxi|Mr\. Brown|Booking confirmation/i.test(texte), texte);
-  assert.ok(!l.some((x) => /Operator/.test(x)), "pas de ligne Operator vide pour un taxi indépendant");
-  assert.ok(l.some((x) => /Transfer Type: ☒ Private Taxi ☐ Private Minivan/.test(x)), texte);
-  assert.ok(l.some((x) => /Pay Driver Directly/.test(x)), texte);
-  // Le logo est celui des réglages de Secret.
+  assert.match(v.className, /voucher-secret/);
+  const apres = (cle) => l[l.indexOf(cle) + 1];
+  assert.equal(l[0], "BOOKINGCONFIRMATION");
+  assert.equal(apres("NAME"), "Emma Wilson");
+  assert.equal(apres("DATE"), "November 21st 2026");
+  assert.equal(apres("PICK UP LOCATION"), "Pimalai Resort");
+  assert.equal(apres("PICK UP TIME"), "9:30 am");
+  assert.equal(apres("DROP OFF LOCATION"), "Saladan Speedboat Pier");
+  assert.equal(apres("PASSENGERS"), "2 adults, 1 child + luggage");
+  assert.equal(apres("TOTAL PRICE"), "600 THB", "sans « (all fees included) » : le modèle de Secret ne l'imprime pas");
+  // Textes fixes du modèle, mot pour mot, avec le nom de l'entreprise en capitales.
+  for (const x of [
+    "We’re happy to confirm your transport reservation details:",
+    "IMPORTANT INFORMATION & PAYMENT:",
+    "Thank you for booking with SECRET TRAVEL & TOUR!We wish you a pleasant journey. ✨",
+    "SECRET TRAVEL & TOUR Team",
+    "CONTACT US:",
+    "+66 00 000 0001",
+  ]) assert.ok(l.includes(x), `${x}\n---\n${texte}`);
+  assert.match(v.textContent, /Payment: To be paid directly in cash to your driver upon arrival\/pickup\./);
+  assert.match(v.textContent, /Meeting Point: Your assigned driver will be holding a sign with your name at the designated meeting area\./);
+  assert.match(v.textContent, /Assistance: For any urgent changes or flight delays, please contact us immediately on WhatsApp\./);
+  assert.ok(!/VIP Taxi|Mr\. Brown|Wise|Voucher No|Operator/i.test(v.textContent), texte);
+  // Logo et photo : ceux des réglages de Secret, sinon ceux du modèle.
   const images = [];
   const chercher = (n) => (n instanceof El ? (n.tag === "img" && images.push(n.attrs.src), n.children.forEach(chercher)) : null);
   chercher(v);
-  assert.deepEqual(images, ["logo-secret.webp"]);
-  // Le même service sans le marquage (un transfert de Secret saisi à la main) garde sa ligne Operator à compléter.
-  const manuel = rendu({ ...r, details: { drop_off: "Saladan Speedboat Pier" } }, SECRET).lignes;
-  assert.ok(manuel.some((x) => /Operator/.test(x)));
+  assert.ok(images.includes("logo-secret.webp"), images.join(", "));
+  assert.match(v.lignes.length ? JSON.stringify(v.children[1].children[0].children[0].attrs) : "", /secret-bandeau\.webp/, "photo du modèle en arrière-plan");
+  // Un WhatsApp réglé dans le bloc Vouchers passe avant le téléphone de l'émetteur.
+  assert.ok(rendu(r, { ...SECRET, voucher: { whatsapp: "+66 95 868 38 46" } }).lignes.includes("+66 95 868 38 46"));
+  // Textes modifiés dans Réglages > Vouchers de Secret.
+  assert.ok(rendu(r, { ...SECRET, voucher: { textes: { bs_signature: "The {ENTREPRISE} crew" } } }).lignes.includes("The SECRET TRAVEL & TOUR crew"));
+});
+
+test("Booking confirmation de Secret : seulement les transferts payés au chauffeur sans partenaire ; le reste garde son voucher", async () => {
+  const { estBookingSecret, estBookingConfirmation } = await import("../src/gestion/js/taxi-calc.mjs");
+  const course = { paye_sur_place: true, partenaire_id: null };
+  assert.ok(estBookingSecret(course, "transfert", SECRET));
+  assert.ok(!estBookingSecret({ ...course, partenaire_id: "P1" }, "transfert", SECRET), "un transfert d'un partenaire garde le Transfer Voucher");
+  assert.ok(!estBookingSecret({ ...course, paye_sur_place: false }, "transfert", SECRET), "payé chez nous : Transfer Voucher");
+  assert.ok(!estBookingSecret(course, "activite", SECRET));
+  assert.ok(!estBookingSecret(course, "transfert", TAXI), "Taxi a la sienne");
+  assert.ok(!estBookingSecret(course, "transfert", { ...SECRET, fonctionnement: "voyages" }));
+  assert.ok(estBookingConfirmation(course, "transfert", TAXI) && estBookingConfirmation(course, "transfert", SECRET));
+  assert.ok(!estBookingConfirmation({ ...course, partenaire_id: "P1" }, "transfert", SECRET));
+  // Un transfert de Secret payé chez nous : le Transfer Voucher, numéro compris.
+  const avec = { ...V.reservationApercu(V.donneesVoucher(bon)), id: "R3", dossier_id: "D3", paye_sur_place: false };
+  const l = rendu(avec, SECRET);
+  assert.ok(l.lignes.includes("Transfer Voucher"));
+  assert.match(l.textContent, /Voucher No\.: EX-2026-0124-1/);
+  // Nom du fichier envoyé : « Booking confirmation … » pour ces transferts aussi.
+  const { nomFichierVoucher } = await import("../src/gestion/js/operations-calc.mjs");
+  assert.equal(nomFichierVoucher("EX-2026-0124-1", "Emma Wilson", { taxi: estBookingConfirmation(course, "transfert", SECRET) }), "Booking confirmation EX-2026-0124-1 - Emma.png");
+});
+
+test("Réglages > Vouchers de Secret : les textes de la Booking confirmation existent avec leur texte du modèle", async () => {
+  const { GROUPES_BOOKING_SECRET, DEFAUTS_TEXTES } = await import("../src/gestion/js/textes-voucher.mjs");
+  const cles = GROUPES_BOOKING_SECRET.flatMap((g) => g.cles.map(([k]) => k));
+  assert.deepEqual(cles, ["bs_intro", "bs_info", "bs_paiement", "bs_rencontre", "bs_assistance", "bs_merci", "bs_signature"]);
+  for (const k of cles) assert.ok(String(DEFAUTS_TEXTES[k]).trim(), k);
 });
 
 test("voucher Taxi : la Booking confirmation de VIP Taxi Lanta, sans rien de Secret", () => {
@@ -239,5 +285,42 @@ test("état : sous le logo de Secret, Mook reste sur l'écran voucher, écrit da
   } finally {
     delete globalThis.localStorage;
     delete globalThis.location;
+  }
+});
+
+// ---- Photo du bandeau : jamais déformée (18.11.2026) ----------------------------------------------------------------------------
+// html2canvas, qui fabrique l'image envoyée, ignore `object-fit` : une <img> était étirée dans son cadre (photo de Secret aplatie).
+// La photo est un arrière-plan « cover » (proportions gardées pour toute photo) et les photos par défaut ont exactement le format du bandeau.
+test("bandeau : arrière-plan « cover », jamais une <img> étirée ; photos par défaut au format du bandeau (210 × 90,9 mm)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const trouver = (n, pred) => (n instanceof El ? (pred(n) ? n : n.children.map((c) => trouver(c, pred)).find(Boolean) || null) : null);
+  const r = { ...V.reservationApercu(V.donneesVoucher(bon), { independant: true }), id: "R1", dossier_id: "D1" };
+  for (const [regl, defaut] of [[SECRET, "assets/secret-bandeau.webp"], [TAXI, "assets/taxi-bandeau.webp"]]) {
+    const v = rendu(r, regl);
+    assert.equal(trouver(v, (n) => n.tag === "img" && /vt-photo/.test(n.attrs.class || n.className)), null, "pas d'<img> pour la photo");
+    const photo = trouver(v, (n) => (n.attrs.class || n.className) === "vt-photo");
+    assert.ok(photo && photo.tag === "div", "la photo est un bloc");
+    assert.equal(photo.attrs.style, `background-image: url("${defaut}")`);
+    // Une photo téléversée dans les réglages passe de même, guillemets neutralisés.
+    const autre = trouver(rendu(r, { ...regl, voucher: { bandeau: 'data:image/png;base64,AA"BB' } }), (n) => (n.attrs.class || n.className) === "vt-photo");
+    assert.equal(autre.attrs.style, 'background-image: url("data:image/png;base64,AA%22BB")');
+  }
+  // La règle CSS : arrière-plan couvrant, aucun object-fit (ignoré par html2canvas).
+  const css = readFileSync(new URL("../src/gestion/css/app.css", import.meta.url), "utf8");
+  const regle = css.match(/^\.vt-photo \{([^}]*)\}/m);
+  assert.ok(regle, "règle .vt-photo");
+  assert.match(regle[1], /background-size: cover/);
+  assert.doesNotMatch(css, /\.vt-photo[^{]*\{[^}]*object-fit/);
+  // Format des photos par défaut : celui du bandeau à 1 % près (lu dans l'en-tête WebP), pour que « cover » ne coupe rien d'autre que prévu.
+  const tailleWebp = (b) => {
+    const type = b.toString("ascii", 12, 16);
+    if (type === "VP8 ") return [b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff];
+    if (type === "VP8L") { const n = b.readUInt32LE(21); return [(n & 0x3fff) + 1, ((n >> 14) & 0x3fff) + 1]; }
+    if (type === "VP8X") return [b.readUIntLE(24, 3) + 1, b.readUIntLE(27, 3) + 1];
+    throw new Error(`WebP inconnu : ${type}`);
+  };
+  for (const f of ["secret-bandeau.webp", "taxi-bandeau.webp"]) {
+    const [w, h] = tailleWebp(readFileSync(new URL(`../src/gestion/assets/${f}`, import.meta.url)));
+    assert.ok(Math.abs(w / h / (210 / 90.9) - 1) < 0.01, `${f} : ${w}×${h}`);
   }
 });

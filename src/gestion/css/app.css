@@ -1,6 +1,9 @@
 /* Raleway auto-hébergée (OFL) : pas de service externe, pas de feuille de style qui bloque l'affichage. */
 @font-face { font-family: "Raleway"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("../assets/fonts/raleway-normal-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: "Raleway"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("../assets/fonts/raleway-normal-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+/* Montserrat (SIL OFL 1.1, assets/fonts/LICENSE-montserrat.txt) : la police du modèle de Booking confirmation de Secret (18.11.2026). */
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("../assets/fonts/montserrat-normal-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Montserrat"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("../assets/fonts/montserrat-normal-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: "Raleway"; font-style: italic; font-weight: 400; font-display: swap; src: url("../assets/fonts/raleway-italic-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
 :root {
@@ -1339,13 +1342,14 @@ details > summary { padding-block: 11px; margin: 0; }
 .aide-repli > .aide { margin-top: 0; }
 
 /* ---- Session Taxi (12.11.2026) : « Booking confirmation » de VIP Taxi Lanta, d'après le modèle d'Anaïs ---- */
-.voucher.voucher-taxi { min-height: 0; height: 296mm; display: flex; flex-direction: column; --vt-bleu: #0f75a7; --vt-cle: #0b4f71; --vt-encre: #08231e; --vt-or: #d9c28a; --vt-or-clair: #ece4b8; --vt-bleu-pale: #c4e7ef; position: relative; padding: 0; overflow: hidden; color: var(--vt-encre); font-family: "Raleway", system-ui, sans-serif; line-height: 1.35; }
+.voucher.voucher-taxi { min-height: 0; height: 296mm; display: flex; flex-direction: column; --vt-bleu: #0f75a7; --vt-cle: #0b4f71; --vt-encre: #08231e; --vt-or: #d9c28a; --vt-or-clair: #ece4b8; --vt-bleu-pale: #c4e7ef; position: relative; padding: 0; overflow: hidden; color: var(--vt-encre); font-family: "Raleway", system-ui, sans-serif; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.voucher.voucher-taxi * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 /* En-tête mesuré sur le modèle d'Anaïs (1414 px pour 210 mm) : photo de 90,9 mm, vague de 3,4 mm qui descend de 85,7 mm à gauche
    à 90,9 mm vers 115 mm et remonte à 87,9 mm à droite, sceau de 77,5 mm centré à 165,2 mm et 91,6 mm. La photo est celle du modèle :
    le sceau et la vague recouvrent exactement les zones effacées (logo et vague d'origine). */
 .vt-haut { position: relative; height: 94mm; }
 .vt-bandeau { position: relative; height: 96mm; overflow: hidden; }
-.vt-photo { display: block; width: 100%; height: 90.9mm; object-fit: cover; object-position: center top; }
+.vt-photo { display: block; width: 100%; height: 90.9mm; background-repeat: no-repeat; background-size: cover; background-position: center top; }
 .vt-vague { position: absolute; left: -35mm; width: 300mm; top: 90.9mm; height: 60mm; box-sizing: border-box; border-top: 3.4mm solid var(--vt-bleu); border-radius: 50% / 14.5mm; background: #fff; }
 .vt-sceau { position: absolute; z-index: 1; right: 6.1mm; top: 52.9mm; width: 77.5mm; height: 77.5mm; box-sizing: border-box; border: 1.6mm solid var(--vt-bleu); border-radius: 50%; background: #fff; overflow: hidden; }
 .vt-sceau img { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -1370,6 +1374,31 @@ details > summary { padding-block: 11px; margin: 0; }
 .vt-contact p { margin: 0 0 3mm; font-size: 12.5pt; }
 .vt-contact p:last-child { margin-bottom: 0; }
 .vt-contact .vt-contact-titre { margin-bottom: 4mm; color: var(--vt-or-clair); font-size: 21pt; letter-spacing: 0.02em; }
+/* ---- Booking confirmation de Secret Travel & Tour (18.11.2026), modèle « Minivan Booking Confirmation » : même gabarit que Taxi,
+   mesures relevées sur le rendu du modèle (1241 px pour 210 mm). Vert #3b7c6a, rubriques #3b7c7a, liseré or #e2c27d, Montserrat. ---- */
+.voucher.voucher-secret { --vt-bleu: #3b7c6a; --vt-cle: #3b7c7a; --vt-encre: #022421; --vt-or: #e2c27d; --vt-or-clair: #ecd7a1; --vt-bleu-pale: #ecd7a1; font-family: "Montserrat", "Raleway", system-ui, sans-serif; }
+.voucher-secret > * { position: relative; z-index: 1; }
+.voucher-secret > .vs-lignes { position: absolute; z-index: 0; right: 0; bottom: 0; width: 100%; height: auto; opacity: 0.32; pointer-events: none; }
+/* Photo recadrée au format du bandeau (2,31) sur le modèle : temples juste sous le bord, voiture de gauche coupée au même endroit. */
+.voucher-secret .vt-photo { background-position: center center; }
+.voucher-secret .vt-sceau img { position: absolute; left: -11%; top: -11%; width: 122%; height: 122%; max-width: none; }
+.voucher-secret .vt-titre { padding: 3mm 0 0 12.5mm; font-size: 39pt; font-weight: 700; line-height: 1.1; letter-spacing: 0.005em; }
+.voucher-secret .vt-intro { margin-top: 1.5mm; padding-left: 8.5mm; font-size: 13pt; }
+.voucher-secret .vt-cadre { margin-top: 6mm; padding: 1.5mm 12mm 1.5mm 5mm; border-width: 0.55mm; border-radius: 5.5mm; }
+.voucher-secret .vt-rang { grid-template-columns: 88mm 1fr; padding: 2.4mm 0 2.2mm; }
+.voucher-secret .vt-rang:not(:last-child) { border-bottom-width: 0.3mm; }
+.voucher-secret .vt-cle { font-size: 17pt; font-weight: 600; letter-spacing: 0.13em; }
+.voucher-secret .vt-valeur { font-size: 15.5pt; letter-spacing: 0.02em; }
+.voucher-secret .vt-bas { grid-template-columns: 1fr 76mm; padding-top: 2mm; }
+.voucher-secret .vt-pied { padding: 0 0 3mm 8mm; font-size: 12.2pt; line-height: 1.14; }
+.voucher-secret .vt-pied p { margin-bottom: 2.4mm; }
+.voucher-secret .vs-info { margin-bottom: 1mm; font-weight: 700; font-size: 11.4pt; letter-spacing: 0.01em; }
+.vs-points { margin: 0 0 2mm; padding-left: 7mm; }
+.vs-points li { margin: 0; }
+.voucher-secret .vt-contact { padding: 9mm 7mm 9mm 8mm; border-top-left-radius: 26mm; }
+.voucher-secret .vt-contact-titre { font-size: 24pt; font-weight: 400; color: var(--vt-or-clair); }
+.voucher-secret .vs-tel { display: flex; justify-content: flex-end; align-items: center; gap: 2.5mm; font-size: 15pt; color: var(--vt-or-clair); }
+.vs-wa { width: 6mm; height: 6mm; flex: none; }
 .taxi-commission { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .taxi-commission .aide { margin: 0; }
 .taxi-commission > button { align-self: flex-start; min-height: 44px; }
