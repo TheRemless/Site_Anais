@@ -1,7 +1,7 @@
 import { h, vider, ajouter, modal, icone, saisie, puces as fabriquePuces } from "../ui.mjs";
 import { trier, tranche, compterFiltres } from "../mobile-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
-import { libelleStatut, sommePaiements, nomFichier } from "../calc.mjs";
+import { libelleStatut, sommePaiements, nomFichier, formatDate } from "../calc.mjs";
 import { etat, imprimer, nomPartenaire, nomClient, confirmationPermise } from "../etat.mjs";
 import { renderDocument } from "../document.mjs";
 
@@ -401,3 +401,43 @@ export const boutonConfirmation = () =>
   confirmationPermise()
     ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: async () => (await import("./confirmation.mjs")).ouvrirConfirmation() }, tr("Coller une confirmation"))
     : null;
+
+// Éditeur du logiciel : ses clients (clients_plateforme, migration 45), relus à chaque affichage pour qu'un client créé apparaisse tout de suite.
+// Sa propre organisation (Zwald, ou celle de la démo) n'est pas un client. « Reprendre » tant que personne du client ne s'est connecté.
+// Affichée sur l'écran d'un compte sans entreprise et dans Administration (admin : titre au format de l'écran, phrase quand la liste est vide).
+export function listeClientsPlateforme({ apres = () => {}, admin = false } = {}) {
+  // Dans Administration, le titre est là dès l'affichage : plierSections replie la section par son h2 et le contenu arrive dans « corps ».
+  const corps = h("div");
+  const section = admin ? h("section", { class: "liste-clients" }, h("h2", null, tr("Clients")), corps) : h("section", { class: "liste-clients", "aria-label": tr("Clients"), style: "margin-top:1.5rem;text-align:left" }, corps);
+  const lire = etat.store.clientsPlateforme ? etat.store.clientsPlateforme() : Promise.resolve((etat.brut && etat.brut.organisations) || []);
+  lire
+    .then((toutes) => {
+      const liste = (toutes || []).filter((o) => o.id !== (etat.moi && etat.moi.organisation_id));
+      if (!liste.length) {
+        if (admin) corps.append(h("p", { class: "aide" }, tr("Aucun client pour l'instant. « Nouveau client » crée son organisation et son administrateur.")));
+        return;
+      }
+      corps.append(
+        admin ? h("p", { class: "aide" }, pluriel(liste.length, N_("{n} client."), N_("{n} clients."))) : h("h2", { style: "font-size:1rem;margin:0 0 .5rem" }, tr("Clients ({n})", { n: liste.length })),
+        h(
+          "ul",
+          { style: "list-style:none;margin:0;padding:0" },
+          ...liste.map((o) =>
+            h(
+              "li",
+              { style: "display:flex;gap:.75rem;align-items:center;justify-content:space-between;padding:.5rem 0;border-top:1px solid rgba(0,0,0,.08)" },
+              h(
+                "div",
+                null,
+                h("strong", null, o.nom),
+                h("div", { class: "aide" }, [o.langue === "fr" ? "FR" : "EN", o.fuseau, o.created_at ? formatDate(String(o.created_at).slice(0, 10)) : "", o.neuve ? (o.entreprises ? tr("pas encore connecté") : tr("entreprise à installer")) : null].filter(Boolean).join(" · "))
+              ),
+              o.neuve ? h("button", { class: "secondaire", type: "button", onclick: async () => (await import("./admin.mjs")).reprendreClientModal(o, apres) }, tr("Reprendre")) : null
+            )
+          )
+        )
+      );
+    })
+    .catch((err) => corps.append(h("p", { class: "aide" }, tr("Liste des clients indisponible : {message}", { message: err.message }))));
+  return section;
+}

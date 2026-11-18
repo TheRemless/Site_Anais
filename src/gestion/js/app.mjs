@@ -3,7 +3,7 @@ import { MODULES, moduleDeLEcran } from "./modules.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
 import { libelleStatut, formatMontant, formatDate, aujourdhui } from "./calc.mjs";
-import { sousTitreDossier } from "./views/commun.mjs";
+import { sousTitreDossier, listeClientsPlateforme } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
 import { mesTaches } from "./views/taches.mjs";
 import { retirerALaDeconnexion } from "./rappels.mjs";
@@ -128,40 +128,6 @@ function selecteurEntite(ou) {
   } }, liste.map((e) => h("option", { value: e.id }, e.nom)));
   sel.value = etat.entiteId;
   return h("div", { class: "entite-choix" }, sel);
-}
-
-// Éditeur du logiciel : ses clients (clients_plateforme, migration 45), relus à chaque affichage pour qu'un client créé apparaisse tout de suite.
-// Sa propre organisation (Zwald, ou celle de la démo) n'est pas un client. « Reprendre » tant que personne du client ne s'est connecté.
-function listeClients() {
-  const section = h("section", { class: "liste-clients", "aria-label": tr("Clients"), style: "margin-top:1.5rem;text-align:left" });
-  const lire = etat.store.clientsPlateforme ? etat.store.clientsPlateforme() : Promise.resolve((etat.brut && etat.brut.organisations) || []);
-  lire
-    .then((toutes) => {
-      const liste = (toutes || []).filter((o) => o.id !== (etat.moi && etat.moi.organisation_id));
-      if (!liste.length) return;
-      section.append(
-        h("h2", { style: "font-size:1rem;margin:0 0 .5rem" }, tr("Clients ({n})", { n: liste.length })),
-        h(
-          "ul",
-          { style: "list-style:none;margin:0;padding:0" },
-          ...liste.map((o) =>
-            h(
-              "li",
-              { style: "display:flex;gap:.75rem;align-items:center;justify-content:space-between;padding:.5rem 0;border-top:1px solid rgba(0,0,0,.08)" },
-              h(
-                "div",
-                null,
-                h("strong", null, o.nom),
-                h("div", { class: "aide" }, [o.langue === "fr" ? "FR" : "EN", o.fuseau, o.created_at ? formatDate(String(o.created_at).slice(0, 10)) : "", o.neuve ? (o.entreprises ? tr("pas encore connecté") : tr("entreprise à installer")) : null].filter(Boolean).join(" · "))
-              ),
-              o.neuve ? h("button", { class: "secondaire", type: "button", onclick: async () => (await import("./views/admin.mjs")).reprendreClientModal(o, () => afficher()) }, tr("Reprendre")) : null
-            )
-          )
-        )
-      );
-    })
-    .catch((err) => section.append(h("p", { class: "aide" }, tr("Liste des clients indisponible : {message}", { message: err.message }))));
-  return section;
 }
 
 function bandeauDemo() {
@@ -643,7 +609,7 @@ async function afficher() {
           ? h("button", { class: "principal", type: "button", onclick: async () => (await import("./views/admin.mjs")).nouvelleEntiteModal(() => { const e = etat.brut.entites[etat.brut.entites.length - 1]; if (e) changerEntite(e.id); afficher(); }) }, tr("Créer votre première entreprise"))
           : null,
         etat.moi && etat.moi.plateforme ? h("button", { class: "principal", type: "button", onclick: async () => (await import("./views/admin.mjs")).nouveauClientModal(() => afficher()) }, tr("Nouveau client")) : null,
-        etat.moi && etat.moi.plateforme ? listeClients() : null,
+        etat.moi && etat.moi.plateforme ? listeClientsPlateforme({ apres: () => afficher() }) : null,
         etat.store.mode === "demo" ? bandeauDemo() : null,
         etat.store.mode === "supabase" ? h("button", { class: "secondaire", type: "button", onclick: async () => (await etat.store.deconnecter(), (etat.session = null), afficher()) }, tr("Se déconnecter")) : null
       )
