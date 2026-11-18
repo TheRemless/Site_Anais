@@ -248,3 +248,56 @@ test("ordinateur : « Coller une confirmation » à côté de « Coller une dema
   assert.match(demande, /\(await import\("\.\/confirmation\.mjs"\)\)\.ouvrirConfirmation\(t\)/);
   assert.match(lire("views/confirmation.mjs"), /export function ouvrirConfirmation\(texteInitial = ""\)/);
 });
+
+// ---- Fiche du client sans WhatsApp, fiches ZTP partagées (18.11.2026, après la PR 234) -------------------------------------------
+test("client : même WhatsApp -> choisi d'office ; sinon même nom -> proposé sans présélection (homonyme, Varrin)", async () => {
+  const { clientsCandidats, reperesClient, whatsappMasque, villeDe, nomARemplacer } = await import("../src/gestion/js/confirmation-calc.mjs");
+  const TAXI = "TAX";
+  const ZTP = "ZTP";
+  const propres = [
+    { id: "T1", entite_id: TAXI, prenom: "", nom: "Varrin", telephone: "", created_at: "2026-10-01" },
+    { id: "T2", entite_id: TAXI, prenom: "Emma", nom: "Wilson", telephone: "+447700900123", created_at: "2026-09-01" },
+  ];
+  const partages = [
+    { id: "Z1", entite_id: ZTP, prenom: "Jean", nom: "Varrin", telephone: "+33 6 12 34 56 78", adresse: "12 rue du Lac\n1000 Lausanne", created_at: "2026-05-01" },
+    { id: "Z2", entite_id: ZTP, prenom: "Emma", nom: "Wilson", telephone: "+41 79 000 11 22", adresse: "", created_at: "2026-06-01" },
+  ];
+  const dossiers = [{ id: "D1", client_id: "Z1", ref: "JV20260611 Thaïlande", date_depart: "2026-06-11", created_at: "2026-05-02" }];
+  // Varrin, sans WhatsApp : la fiche Taxi « Varrin » et la fiche ZTP « Jean Varrin » sont proposées, aucune choisie.
+  const varrin = clientsCandidats({ nom: "Varrin", telephone: "", propres, partages, dossiers });
+  assert.equal(varrin.parTelephone, null);
+  assert.deepEqual(varrin.parNom.map((c) => c.id).sort(), ["T1", "Z1"]);
+  // Homonyme : « Emma Wilson » existe dans Taxi et dans ZTP, avec des numéros différents ; sans numéro collé, les deux sont proposées.
+  assert.deepEqual(clientsCandidats({ nom: "emma  WILSON", propres, partages, dossiers }).parNom.map((c) => c.id).sort(), ["T2", "Z2"]);
+  // « Wilson Emma » (nom puis prénom) aussi.
+  assert.equal(clientsCandidats({ nom: "Wilson Emma", propres, partages }).parNom.length, 2);
+  // Même WhatsApp : la fiche est retrouvée (ici la ZTP) et choisie d'office, sans liste par le nom.
+  const tel = clientsCandidats({ nom: "Emma Wilson", telephone: "+41790001122", propres, partages, dossiers });
+  assert.equal(tel.parTelephone.id, "Z2");
+  assert.deepEqual(tel.parNom, []);
+  // Un numéro inconnu ne choisit rien : on retombe sur les fiches au même nom, non présélectionnées.
+  assert.equal(clientsCandidats({ nom: "Emma Wilson", telephone: "+66 81 999 0000", propres, partages }).parTelephone, null);
+  // Rien en commun : rien de proposé.
+  assert.deepEqual(clientsCandidats({ nom: "Nobody", propres, partages }), { parTelephone: null, parNom: [] });
+  // Repères : étiquette, WhatsApp masqué, ville sans code postal, dernier dossier.
+  assert.deepEqual(reperesClient(partages[0], { dossiers, sigle: "ZTP" }), { sigle: "ZTP", whatsapp: "+33 ••• 5678", ville: "Lausanne", dernier: { ref: "JV20260611 Thaïlande", date: "2026-06-11" } });
+  assert.equal(whatsappMasque(""), "");
+  assert.equal(villeDe("Villa Demo"), "", "une adresse d'une ligne ne donne pas de ville");
+  assert.equal(villeDe("Rue du Lac 12\n1204 Genève, Suisse"), "Genève, Suisse");
+  assert.equal(villeDe("12 rue du Lac, 1000 Lausanne"), "Lausanne");
+  // La fiche choisie garde son nom le plus complet : « Varrin » ne renomme pas « Jean Varrin ».
+  assert.equal(nomARemplacer("Jean Varrin", "Varrin"), false);
+  assert.equal(nomARemplacer("Emma Wilsn", "Emma Wilson"), true);
+  assert.equal(nomARemplacer("Emma Wilson", "emma wilson"), false);
+});
+
+test("client : l'écran demande un choix quand des fiches au même nom sont proposées ; les fiches ZTP restent réservées à l'administration", () => {
+  const lire = (f) => readFileSync(new URL(`../src/gestion/js/${f}`, import.meta.url), "utf8");
+  const ecran = lire("views/confirmation.mjs");
+  assert.match(ecran, /candidats\.parNom\.map\(\(c\) => ligneClient\(c, id, false\)\)/, "aucune fiche au même nom n'est cochée");
+  assert.match(ecran, /ligneClient\(candidats\.parTelephone, id, true\)/, "même WhatsApp : cochée");
+  assert.match(ecran, /if \(candidats\.parNom\.length && !choixClient\(\)\)/, "création refusée tant que rien n'est choisi");
+  // Les fiches partagées viennent de clientsPartages (règle de la PR 234 : administratrices seulement, jamais Mook).
+  assert.match(ecran, /partages: clientsPartages\(id\)/);
+  assert.match(lire("views/creation-course.mjs"), /nomARemplacer\(\[c\.prenom, c\.nom\]/);
+});

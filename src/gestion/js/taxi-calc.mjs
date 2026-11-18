@@ -65,6 +65,15 @@ export function passagersBooking(personnes = {}, bagages = "", sieges = 0) {
   return [gens, bag].filter(Boolean).join(" + ");
 }
 
+// La ligne LUGGAGE de la Booking confirmation (Jérémy, 18.11.2026) : « 3 pieces », « 1 piece », « Yes » pour un oui sans nombre, le texte saisi
+// sinon (« 2 big bags »). Vide quand il n'y a pas de bagages : la ligne ne s'imprime pas, jamais « no luggage ».
+export function bagagesBooking(bagages = "") {
+  const sac = String(bagages ?? "").trim();
+  if (!sac || /^(0|no|non|none|aucun|-|—)$/i.test(sac)) return "";
+  if (/^\d+$/.test(sac)) return `${Number(sac)} ${Number(sac) > 1 ? "pieces" : "piece"}`;
+  return /^(oui|yes|y|x|true)$/i.test(sac) ? "Yes" : sac;
+}
+
 // « 2'700 THB (all fees included) » : l'apostrophe des milliers du modèle. Sans prix, rien (la ligne reste à remplir).
 // `t` : les textes de la Booking confirmation (textesVoucher), « (all fees included) » se règle dans Réglages.
 export function prixBooking(montant, devise = "THB", t = textesVoucher(null)) {
@@ -106,7 +115,9 @@ export function champsBooking({ nom = "", date = "", pickup = "", heure = "", dr
     { cle: retour ? t("b_pickup_retour") : t("b_pickup"), valeur: pickup },
     { cle: t("b_heure"), valeur: heureBooking(heure) },
     ...(retour ? [{ cle: t("b_programme"), valeur: retour.programme || "" }, ...(retour.duree ? [{ cle: t("b_duree"), valeur: retour.duree }] : [])] : [{ cle: t("b_dropoff"), valeur: dropoff }]),
-    { cle: t("b_passagers"), valeur: passagersBooking(personnes, bagages, sieges) },
+    // Les personnes (et leurs sièges enfant), puis les bagages sur leur propre ligne, seulement s'il y en a (18.11.2026).
+    { cle: t("b_passagers"), valeur: passagersBooking(personnes, "", sieges) },
+    ...(bagagesBooking(bagages) ? [{ cle: t("b_bagages"), valeur: bagagesBooking(bagages) }] : []),
     { cle: t("b_prix"), valeur: prixBooking(montant, devise, t) },
     ...(rem ? [{ cle: t("b_remarques"), valeur: rem }] : []),
   ];

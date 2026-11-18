@@ -15,6 +15,39 @@ import { avecMarque } from "../noms-calc.mjs";
 // téléversée dans les réglages.
 export const photoBandeau = (src) => h("div", { class: "vt-photo", role: "presentation", style: `background-image: url("${String(src).replace(/["\\\n]/g, encodeURIComponent)}")` });
 
+// La page A4 doit garder son pied (paiement, signature, contact) quel que soit le contenu. Le resserrement estimé d'après le nombre de
+// caractères (serre, plus bas) ne suffit pas toujours : la police de Secret est plus grande, une remarque ou un programme long passent sur
+// trois lignes (18.11.2026, signature de Secret coupée). Une fois la page posée dans le document, on mesure : tant que le dernier texte du pied
+// dépasse le bas de la page, on resserre d'un cran (vt-serre, vt-serre-fort, vt-serre-max, vt-serre-ultra). Sert à l'image et à l'impression.
+const CRANS = ["vt-serre", "vt-serre-fort", "vt-serre-max", "vt-serre-ultra"];
+export const depassement = (v) => {
+  const derniers = [v.querySelector(".vt-pied > :last-child"), v.querySelector(".vt-contact > :last-child")].filter(Boolean);
+  if (!derniers.length) return 0;
+  return Math.max(...derniers.map((e) => e.getBoundingClientRect().bottom)) - v.getBoundingClientRect().bottom;
+};
+export function ajusterBooking(racine) {
+  const pages = racine && racine.classList && racine.classList.contains("voucher-taxi") ? [racine] : [...((racine && racine.querySelectorAll && racine.querySelectorAll(".voucher-taxi")) || [])];
+  for (const v of pages) {
+    for (const cran of CRANS) {
+      if (depassement(v) <= 0.5) break;
+      v.classList.add(cran);
+    }
+  }
+  return racine;
+}
+// Pour l'impression : la page est mesurée hors de l'écran (à la largeur A4 de l'image), puis rendue telle quelle.
+export function ajusterHorsEcran(noeud) {
+  if (typeof document === "undefined" || !document.body) return noeud;
+  const hote = h("div", { class: "hote-image", "aria-hidden": "true" }, noeud);
+  document.body.append(hote);
+  try {
+    ajusterBooking(noeud);
+  } finally {
+    hote.remove();
+  }
+  return noeud;
+}
+
 // `regl` : réglages de l'entreprise ; le reste vient de renderVoucher (pickup et dépose déjà déduits de la réservation).
 // `retour` : { programme, duree } pour un retour au point de départ (16.11.2026), sinon null.
 export function renderBookingConfirmation({ regl, client = {}, r, pickup = "", dropoff = "", bagages = "", devise = "THB", whatsapp = "", email = "", adresse = "", retour = null, nomSociete = "" }) {

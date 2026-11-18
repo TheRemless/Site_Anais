@@ -80,7 +80,8 @@ test("aperçu : la Booking confirmation lit les champs saisis tels quels", () =>
   assert.equal(champs["PICK UP LOCATION"], "Pimalai Resort");
   assert.equal(champs["PICK UP TIME"], "2:30 pm");
   assert.equal(champs["DROP OFF LOCATION"], "Krabi Airport");
-  assert.equal(champs.PASSENGERS, "2 adults, 1 child + 3 pieces of luggage");
+  assert.equal(champs.PASSENGERS, "2 adults, 1 child");
+  assert.equal(champs.LUGGAGE, "3 pieces", "les bagages sur leur propre ligne (18.11.2026)");
   assert.equal(champs["TOTAL PRICE"], "2'700 THB (all fees included)");
 });
 
@@ -158,7 +159,8 @@ test("sièges enfant ou bébé et numéro de vol (13.11.2026) : saisis par Mook,
   const r = reservationApercu(x);
   assert.deepEqual(r.details, { drop_off: "Krabi Airport", bagages: "3", vol: "fd 3217", sieges: 1 });
   const champs = Object.fromEntries(champsBooking({ nom: x.nom, date: r.date_service, pickup: r.lieu_pickup, heure: r.heure_pickup, dropoff: r.details.drop_off, personnes: r.personnes, bagages: r.details.bagages, sieges: r.details.sieges, vol: r.details.vol, montant: r.montant_vente }).map((c) => [c.cle, c.valeur]));
-  assert.equal(champs.PASSENGERS, "2 adults, 1 child (1 child seat) + 3 pieces of luggage");
+  assert.equal(champs.PASSENGERS, "2 adults, 1 child (1 child seat)", "les sièges enfant restent avec les passagers");
+  assert.equal(champs.LUGGAGE, "3 pieces");
   assert.equal(champs["PICK UP LOCATION"], "Pimalai Resort", "le vol va avec l'aéroport, pas avec l'hôtel");
   assert.equal(champs["DROP OFF LOCATION"], "Krabi Airport, flight fd 3217");
   // Correction : le vol et les sièges se corrigent et s'effacent comme les bagages ; le formulaire se rouvre avec eux.

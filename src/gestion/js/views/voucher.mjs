@@ -11,7 +11,7 @@ import { estTaxi, estBookingSecret, estBookingConfirmation } from "../taxi-calc.
 import { estRetourDepart, dureeAnglais } from "../trajet-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
 import { prestationEnfant } from "../demande-calc.mjs";
-import { renderBookingConfirmation } from "./voucher-taxi.mjs";
+import { renderBookingConfirmation, ajusterHorsEcran } from "./voucher-taxi.mjs";
 import { renderBookingSecret } from "./voucher-secret.mjs";
 
 const case_ = (coche, libelle) => h("span", { class: `v-case${coche ? " cochee" : ""}` }, h("span", { class: "v-carre", "aria-hidden": "true" }, coche ? "☒" : "☐"), ` ${libelle}`);
@@ -252,14 +252,14 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
 export function imprimerVoucher(x) {
   const d = etat.db.dossiers.find((y) => y.id === x.reservation.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === d.client_id) || {};
-  imprimer(renderVoucher(x), `${estBookingConfirmation(x.reservation, x.type, reglages()) ? "Booking confirmation" : "Voucher"} ${x.numero || numeroVoucher(d.ref || "", x.index)} - ${(client.nom || "client").split(/\s+/)[0]}`);
+  imprimer(ajusterHorsEcran(renderVoucher(x)), `${estBookingConfirmation(x.reservation, x.type, reglages()) ? "Booking confirmation" : "Voucher"} ${x.numero || numeroVoucher(d.ref || "", x.index)} - ${(client.nom || "client").split(/\s+/)[0]}`);
 }
 
 export function imprimerTousLesVouchers(dossierId) {
   const liste = vouchersDuDossier(dossierId);
   const d = etat.db.dossiers.find((y) => y.id === dossierId) || {};
   if (!liste.length) return;
-  imprimer(h("div", { class: "vouchers" }, liste.map((x) => renderVoucher(x))), `${estTaxi(reglages()) ? "Booking confirmations" : "Vouchers"} ${d.ref || ""}`);
+  imprimer(ajusterHorsEcran(h("div", { class: "vouchers" }, liste.map((x) => renderVoucher(x)))), `${estTaxi(reglages()) ? "Booking confirmations" : "Vouchers"} ${d.ref || ""}`);
 }
 
 // Voucher d'exemple pour l'aperçu des réglages : il suit les champs en cours de modification.

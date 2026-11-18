@@ -127,7 +127,8 @@ test("voucher Secret : la Booking confirmation de Secret (modèle du 18.11.2026)
   assert.equal(apres("PICK UP LOCATION"), "Pimalai Resort");
   assert.equal(apres("PICK UP TIME"), "9:30 am");
   assert.equal(apres("DROP OFF LOCATION"), "Saladan Speedboat Pier");
-  assert.equal(apres("PASSENGERS"), "2 adults, 1 child + luggage");
+  assert.equal(apres("PASSENGERS"), "2 adults, 1 child");
+  assert.equal(apres("LUGGAGE"), "Yes");
   assert.equal(apres("TOTAL PRICE"), "600 THB", "sans « (all fees included) » : le modèle de Secret ne l'imprime pas");
   // Textes fixes du modèle, mot pour mot, avec le nom de l'entreprise en capitales.
   for (const x of [

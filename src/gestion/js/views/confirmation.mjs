@@ -6,7 +6,7 @@ import { etat, naviguer, changerEntite, entitesAccessibles, reglagesDe, permissi
 import { h, modal, toast, icone } from "../ui.mjs";
 import { tr, N_ } from "../i18n.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
-import { lireConfirmation, erreursConfirmation, entreprisesConfirmation, clientExistant } from "../confirmation-calc.mjs";
+import { lireConfirmation, erreursConfirmation, entreprisesConfirmation, clientsCandidats, reperesClient } from "../confirmation-calc.mjs";
 import { donneesVoucher, valeursVides } from "../voucher-rapide-calc.mjs";
 import { RETOUR_DEPART } from "../trajet-calc.mjs";
 import { estBookingConfirmation } from "../taxi-calc.mjs";
@@ -96,23 +96,30 @@ export function ouvrirConfirmation(texteInitial = "") {
     if (introuvable) choixEntreprise.append(h("p", { class: "cc-erreur" }, tr("La confirmation est pour une entreprise où vous ne créez pas de dossier : choisissez-en une.")));
   };
 
-  // Client déjà connu dans l'entreprise choisie (même WhatsApp, sinon même nom) : proposé d'office, « Nouveau client » reste possible.
+  // Client déjà connu (18.11.2026) : même WhatsApp -> la fiche est choisie d'office, comme avant. Sinon, les fiches au même nom, de l'entreprise
+  // ou partagées (ZTP, administration seulement), avec de quoi les reconnaître, et rien de présélectionné : on choisit une fiche ou
+  // « Créer un nouveau client » (confirmations sans WhatsApp, Varrin par exemple : pas de doublon, pas d'homonyme servi d'office).
   const blocClient = h("div", { class: "cc-client", "aria-live": "polite" });
-  let clientTrouve = null;
+  let candidats = { parTelephone: null, parNom: [] };
+  const choixClient = () => (blocClient.querySelector("input[name=cc-client]:checked") || {}).value || "";
+  const repere = (c, id) => {
+    const r = reperesClient(c, { dossiers: etat.brut.dossiers || [], sigle: c.entite_id !== id ? sigleDe(c.entite_id) : "" });
+    return [r.whatsapp ? `WhatsApp ${r.whatsapp}` : tr("sans WhatsApp"), r.ville, r.dernier ? tr("dernier dossier {ref} ({date})", { ref: r.dernier.ref, date: formatDate(r.dernier.date) }) : tr("aucun dossier")].filter(Boolean).join(" · ");
+  };
+  const texteClient = (c, id) => h("span", null, h("strong", null, nomClient(c)), c.entite_id !== id ? h("span", { class: "etiquette-partage" }, sigleDe(c.entite_id)) : null, h("span", { class: "cc-repere" }, repere(c, id)));
+  const ligneClient = (c, id, coche) => h("label", { class: "case cc-candidat" }, h("input", { type: "radio", name: "cc-client", value: c.id, checked: coche }), texteClient(c, id));
   const dessinerClient = () => {
     const id = entrepriseChoisie();
-    // Un client de l'entreprise d'abord ; sinon une fiche partagée (ZTP pour Secret et Taxi), étiquetée, et seulement sur le même WhatsApp :
-    // un homonyme de ZTP ne doit pas recevoir la course ni le numéro de la confirmation.
-    const lu = { nom: champs.nom.value, telephone: champs.telephone.value };
-    clientTrouve = id ? clientExistant({ ...lu, clients: etat.brut.clients.filter((c) => c.entite_id === id && !c.nom_seul) }) || clientExistant({ nom: "", telephone: lu.telephone, clients: clientsPartages(id) }) : null;
+    candidats = id
+      ? clientsCandidats({ nom: champs.nom.value, telephone: champs.telephone.value, propres: etat.brut.clients.filter((c) => c.entite_id === id && !c.nom_seul), partages: clientsPartages(id), dossiers: etat.brut.dossiers || [] })
+      : { parTelephone: null, parNom: [] };
+    const nouveau = (coche) => h("label", { class: "case" }, h("input", { type: "radio", name: "cc-client", value: "nouveau", checked: coche }), tr("Créer un nouveau client"));
     blocClient.replaceChildren(
-      ...(clientTrouve
-        ? [
-            h("p", null, tr("Client déjà connu : {nom}", { nom: [nomClient(clientTrouve), clientTrouve.telephone].filter(Boolean).join(" · ") }), clientTrouve.entite_id !== id ? h("span", { class: "etiquette-partage" }, sigleDe(clientTrouve.entite_id)) : null),
-            h("label", { class: "case" }, h("input", { type: "radio", name: "cc-client", value: "existant", checked: true }), tr("Utiliser ce client")),
-            h("label", { class: "case" }, h("input", { type: "radio", name: "cc-client", value: "nouveau" }), tr("Créer un nouveau client")),
-          ]
-        : [])
+      ...(candidats.parTelephone
+        ? [h("p", null, tr("Client déjà connu (même WhatsApp) :")), ligneClient(candidats.parTelephone, id, true), nouveau(false)]
+        : candidats.parNom.length
+          ? [h("p", null, candidats.parNom.length > 1 ? tr("Plusieurs fiches portent ce nom : choisissez la bonne, ou un nouveau client.") : tr("Une fiche porte ce nom : est-ce le même client ?")), ...candidats.parNom.map((c) => ligneClient(c, id, false)), nouveau(false)]
+          : [])
     );
   };
   champs.nom.addEventListener("change", dessinerClient);
@@ -183,6 +190,11 @@ export function ouvrirConfirmation(texteInitial = "") {
     if (premiere) return champs[premiere].focus();
     const cible = entrepriseChoisie();
     if (!cible) return toast(tr("Choisissez l'entreprise du dossier."), true);
+    // Des fiches au même nom sont proposées sans présélection : il faut en choisir une, ou « Créer un nouveau client ».
+    if (candidats.parNom.length && !choixClient()) {
+      blocClient.scrollIntoView({ block: "center" });
+      return toast(tr("Choisissez le client : une des fiches proposées, ou « Créer un nouveau client »."), true);
+    }
     // Une autre entreprise que lors du premier essai : on repart de zéro (le client et le dossier déjà créés appartiennent à l'autre).
     if (essai.entite !== cible) essai = { clientId: null, dossierId: null, entite: cible };
     bouton.disabled = true;
@@ -192,7 +204,8 @@ export function ouvrirConfirmation(texteInitial = "") {
       // La création se fait dans l'entreprise du dossier, avec ses réglages, sa numérotation et ses droits.
       if (etat.entiteId !== cible) changerEntite(cible, { naviguer: false });
       const v = valeurs();
-      const existant = clientTrouve && (blocClient.querySelector("input[name=cc-client]:checked") || {}).value === "existant" ? clientTrouve.id : "";
+      const choix = choixClient();
+      const existant = choix && choix !== "nouveau" ? choix : "";
       const x = donneesVoucher({ ...v, client_id: existant });
       const fait = await creerCourse(x, essai, { notes: champs.notes.value.trim() });
       resultat(fait);
