@@ -31,7 +31,9 @@ declare
   i integer := 0;
 begin
   if not est_plateforme() then raise exception 'Réservé à l''éditeur du logiciel' using errcode = '42501'; end if;
-  if not exists (select 1 from organisations where id = p_organisation) then raise exception 'Organisation inconnue' using errcode = '22023'; end if;
+  -- Verrou sur l'organisation : deux installations lancées en même temps (double clic, deux onglets) passent l'une après l'autre.
+  perform 1 from organisations where id = p_organisation for update;
+  if not found then raise exception 'Organisation inconnue' using errcode = '22023'; end if;
   if exists (select 1 from entites where organisation_id = p_organisation) then
     raise exception 'Cette organisation a déjà une entreprise : son administrateur règle la suite' using errcode = '42501';
   end if;

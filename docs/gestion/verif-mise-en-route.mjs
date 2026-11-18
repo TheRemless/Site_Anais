@@ -167,6 +167,10 @@ ok(!(await installer(editeur, oC, "Contrôle", "travel_planner", "EUR", (d) => (
 ok(!(await essaie(editeur, "select installer_entreprise(gen_random_uuid(), 'X', 'x', '{}'::jsonb, '[{\"nom\":\"A\",\"portee\":\"toute\",\"permissions\":[],\"tous_droits\":true}]'::jsonb)")).ok, "organisation inconnue refusée");
 ok((await un("select count(*)::int n from entites where organisation_id = $1", [oC])).n === 0, "un refus ne laisse aucune entreprise à moitié créée");
 ok(!(await essaie(null, "select installer_entreprise($1, 'X', 'x', '{}'::jsonb, '[]'::jsonb)", [oC])).ok, "sans connexion, refusé");
+await db.exec("set role anon;");
+const anon = await db.query("select installer_entreprise(gen_random_uuid(), 'X', 'x', '{}'::jsonb, '[]'::jsonb)").then(() => "", (e) => e.message);
+await db.exec("reset role;");
+ok(/permission denied/.test(anon), "la clé publique (anon) n'a pas le droit d'appeler la fonction");
 
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);
