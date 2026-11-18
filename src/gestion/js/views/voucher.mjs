@@ -5,7 +5,7 @@
 import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, resumeDossier } from "../etat.mjs";
 import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
-import { typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, statutPaiementVoucher, prixParPersonneVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, hotelEtChambre, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
+import { typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, statutPaiementVoucher, prixParPersonneVoucher, hebergementVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 import { estTaxi, estBookingSecret, estBookingConfirmation } from "../taxi-calc.mjs";
 import { estRetourDepart, dureeAnglais } from "../trajet-calc.mjs";
@@ -150,9 +150,10 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const programme = dt.programme || "";
   const devise = (res && res.devise) || regl.devise || "THB";
   const nomClient = [client.prenom, client.nom].filter(Boolean).join(" ");
-  const auto = hotelEtChambre(client, r);
-  const hotel = auto.hotel;
-  const chambre = dt.chambre || auto.chambre;
+  // L'hébergement du client : saisi sur la réservation, sinon la fiche client ; jamais le lieu de pickup (hebergementVoucher).
+  // Fiche partagée par une autre entreprise (ZTP sur un service de Secret ou de Taxi, PR 234) : son adresse est postale, jamais un hôtel.
+  // L'entreprise du service : celle de la réservation, sinon du dossier, sinon l'entreprise ouverte.
+  const { hotel, chambre } = hebergementVoucher(client, { ...r, entite_id: r.entite_id || d.entite_id || etat.entiteId });
   const statut = statutPaiementVoucher({ ...(res || {}), surPlace: !!r.paye_sur_place });
   const parcAuto = fraisDeParc(p);
   const parc = dt.parc === "aucun" ? { inclus: null, texte: "" } : dt.parc === "inclus" ? { inclus: true, texte: dt.parc_texte || "" } : dt.parc === "non" ? { inclus: false, texte: dt.parc_texte || parcAuto.texte } : { ...parcAuto, texte: dt.parc_texte || parcAuto.texte };
@@ -163,7 +164,8 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const en_ = Number(pers.enfants) || 0;
   const operateur = libelleClient(compagnie ? compagnie.nom : nomPartenaire(r.partenaire_id));
   // Course d'un taxi indépendant vendue sous le logo de Secret (voucher rapide, 18.11.2026) : pas de partenaire, pas de ligne « Operator » vide.
-  const ligneOperateur = dt.taxi_independant && !operateur ? null : ligne(t("operateur"), operateur);
+  // Sans partenaire ni compagnie, pas de ligne « Company / Operator » vide (INV-2026-035, 18.11.2026), comme pour un taxi indépendant.
+  const ligneOperateur = ligneSi(t("operateur"), operateur);
   // La référence du partenaire s'imprime dans Remarks : l'aide du champ le dit (audit n° 61).
   const remarques = [dt.remarques, r.reference_partenaire ? `${t("ref_operateur")} ${r.reference_partenaire}` : ""].filter(Boolean).join(" · ");
   const dropOff = libelleClient(dt.drop_off || dropOffDepuisLibelle(r, p, trajet));

@@ -60,6 +60,9 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     }
     // Une base pour 1 ou 2 personnes plus des suppléments : la base compte pour deux personnes (elle est comptée une fois par sa quantité).
     if (g.supplement) g.adultes += 1;
+    // Les participants gardés sur la ligne (18.11.2026) l'emportent sur la quantité facturée : le voucher montre qui vient, pas ce qui est payé.
+    const participants = participantsDuService(g.lignes);
+    if (participants) (g.adultes = participants.adultes), (g.enfants = participants.enfants);
     const l = g.premiere;
     return {
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
@@ -69,6 +72,8 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
       net: netCompletDe(g) ? g.net : null,
       // Service payé sur place : la commission attendue se calcule d'après la règle du partenaire (`regleDe(partenaire_id)`), seulement quand elle est connue.
       ...commissionDuGroupe(g, l, regleDe),
+      // Les personnes viennent des participants gardés sur la ligne : celles du dossier ne les remplacent pas.
+      ...(participants ? { participants: true } : {}),
     };
   });
 }
@@ -469,6 +474,28 @@ export function compteDe(l) {
   return "personnes";
 }
 
+// Participants d'un service (Jérémy, 18.11.2026) : les adultes et enfants réels, gardés sur la ligne (`personnes`) quand elle est ajoutée,
+// distincts de la quantité facturée (un tuk-tuk à 1 200 pour le groupe : quantité 1, participants 2 adultes et 2 enfants).
+export function participantsLigne(l) {
+  const p = l && l.personnes;
+  if (!p) return null;
+  const a = Math.max(0, Math.floor(Number(p.adultes) || 0));
+  const e = Math.max(0, Math.floor(Number(p.enfants) || 0));
+  return a + e ? { adultes: a, enfants: e } : null;
+}
+// Une ligne seule qui facture tout le service porte ses participants : prix par groupe ou par véhicule, prestation hors catalogue, ou tarif
+// par personne dont la quantité est bien le nombre de participants (enfants au prix adulte). Sinon (ligne adulte et ligne enfant séparées,
+// quantité changée à la main) la quantité d'une ligne par personne reste son nombre de personnes, comme avant.
+export function participantsDuService(lignes) {
+  const utiles = (lignes || []).filter((l) => l && l.kind !== "texte" && l.kind !== "remise");
+  if (utiles.length !== 1) return null;
+  const l = utiles[0];
+  const p = participantsLigne(l);
+  if (!p || estLigneEnfant(l) || estLigneJours(l)) return null;
+  const qte = l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1;
+  return compteDe(l) !== "personnes" || l.libre || qte === p.adultes + p.enfants ? p : null;
+}
+
 // Nombre de jours entre la prise et le retour (dates AAAA-MM-JJ), au moins 1 ; null quand une date manque ou que le retour précède la prise.
 export function nbJoursLocation(debut, fin) {
   if (!debut || !fin) return null;
@@ -498,11 +525,11 @@ export function moteurTexte(prestation) {
 // Cinq modèles : billet de bateau (trajets des compagnies), excursion en bateau, transfert terrestre, activité, location.
 export const CHAMPS_VOUCHER = {
   billet: ["de", "vers", "depart", "arrivee", "bateau", "embarquement", "checkin", "bagages", "remarques", "remarques_paiement"],
-  bateau: ["chambre", "type_tour", "bateau", "parc", "parc_texte", "remarques", "remarques_paiement"],
+  bateau: ["hotel", "chambre", "type_tour", "bateau", "parc", "parc_texte", "remarques", "remarques_paiement"],
   // `type_trajet` : aller simple (drop-off) ou retour au point de départ (programme et durée à la place du drop-off, trajet-calc.mjs).
   transfert: ["type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "bagages", "sieges", "type_transfert", "remarques", "remarques_paiement"],
-  activite: ["chambre", "programme", "heure_service", "remarques", "remarques_paiement"],
-  location: ["chambre", "retour_date", "retour_heure", "retour_lieu", "permis", "equipement", "caution", "conditions", "remarques", "remarques_paiement"],
+  activite: ["hotel", "chambre", "programme", "heure_service", "remarques", "remarques_paiement"],
+  location: ["hotel", "chambre", "retour_date", "retour_heure", "retour_lieu", "permis", "equipement", "caution", "conditions", "remarques", "remarques_paiement"],
 };
 // Un billet lié à un trajet de la base en tire le départ, l'arrivée, les horaires et le bateau : ces champs ne se demandent que pour un billet
 // saisi à la main (partenaire ajouté sans trajet, Jérémy le 14.11.2026 : « un intitulé Route mais je ne vois pas où mettre le départ et l'arrivée »).
@@ -857,6 +884,17 @@ export function cleMessageReservation(r, ajd) {
 
 // Hôtel et numéro de chambre d'après l'adresse du client (« Hotel Sunset, Room 12 ») ou le lieu de pickup.
 // Une fiche partagée par une autre entreprise (ZTP sur un service de Secret) ne donne jamais le lieu : voir adresseEstHotel.
+// L'hôtel imprimé dans les détails du client (« Hotel / Accommodation ») : celui saisi sur la réservation (`details.hotel`, même vide :
+// effacé exprès), sinon celui de la fiche client si elle est de l'entreprise du service (une fiche ZTP partagée porte une adresse postale
+// en Europe, adresseEstHotel). Jamais le lieu de pickup (INV-2026-035, 18.11.2026 : « Ayutthaya Train Station »
+// s'imprimait comme hébergement). `chambre` : celle saisie, sinon celle de la fiche ou du pickup quand un hôtel s'imprime.
+export function hebergementVoucher(client = {}, reservation = {}) {
+  const dt = reservation.details || {};
+  const fiche = hotelEtChambre(client, { entite_id: reservation.entite_id });
+  const hotel = "hotel" in dt ? String(dt.hotel || "").trim() : fiche.hotel;
+  const chambre = String(dt.chambre || "").trim() || (hotel ? hotelEtChambre(client, reservation).chambre : "");
+  return { hotel, chambre };
+}
 export function hotelEtChambre(client = {}, reservation = {}) {
   const fiche = separerChambreLigne(adresseHotel(client, reservation.entite_id).split("\n")[0] || "");
   const lieu = separerChambreLigne(reservation.lieu_pickup || "");
@@ -872,15 +910,28 @@ export function separerChambreLigne(ligne) {
   return { hotel: m ? source.slice(0, m.index).replace(/[,\s]+$/, "").trim() : source.trim(), chambre: m ? m[1] : "" };
 }
 
-// Libellé d'une ligne de facture en mode excursions : prestation, personnes et date.
+// Libellé d'une ligne de facture en mode excursions : prestation, participants et date (Jérémy, 18.11.2026).
+// Les participants sont ceux du service, jamais la quantité facturée : « Full day tour - Tuk Tuk, 2 adults, 2 children, 22 November 2026 »
+// pour un prix par groupe (quantité 1). Une ligne par personne d'un tarif du catalogue dit ce qu'elle facture : « 2 adults » (ligne adulte),
+// « 2 children » (ligne enfant). Une location dit ses jours. Une ligne sans participants gardés (document d'avant) se lit comme avant.
 export function descriptionService(ligne, langue = "en") {
   const en = langue === "en";
   const qte = ligne.qte !== null && ligne.qte !== undefined && ligne.qte !== "" ? Number(ligne.qte) : 0;
   const enfant = /enfant|child/i.test(ligne.intro || "");
-  // La quantité n'est un nombre de personnes que pour une unité de personnes : 4 jours de location ne sont pas « 4 passengers », un véhicule ou un forfait non plus.
   const compte = compteDe(ligne);
   const jours = compte === "jours" && qte ? `${qte} ${en ? (qte > 1 ? "days" : "day") : qte > 1 ? "jours" : "jour"}` : "";
-  const pax = compte === "personnes" && qte ? `${qte} ${enfant ? (en ? (qte > 1 ? "children" : "child") : qte > 1 ? "enfants" : "enfant") : en ? (qte > 1 ? "passengers" : "passenger") : qte > 1 ? "personnes" : "personne"}` : "";
+  const participants = participantsLigne(ligne);
+  const mot = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
+  let pax = "";
+  if (compte !== "jours") {
+    if (participants && !enfant && (compte !== "personnes" || ligne.libre || qte === participants.adultes + participants.enfants)) pax = personnesTexte(participants, en ? "en" : "fr");
+    else if (compte === "personnes" && qte) {
+      if (enfant) pax = mot(qte, en ? "child" : "enfant", en ? "children" : "enfants");
+      else if (participants) pax = mot(qte, en ? "adult" : "adulte", en ? "adults" : "adultes");
+      // Ligne d'avant, sans participants gardés : le libellé d'avant (« 4 passengers »).
+      else pax = mot(qte, en ? "passenger" : "personne", en ? "passengers" : "personnes");
+    }
+  }
   return [ligne.libelle, pax, jours, ligne.date_service ? dateTexte(ligne.date_service, langue) : ""].filter(Boolean).join(", ");
 }
 
@@ -947,6 +998,8 @@ export function attenduDepuisFacture(r, doc) {
   if (!utiles.length) return { retiree: true };
   const premiere = utiles.find((l) => !estLigneEnfant(l)) || utiles[0];
   const qte = (l) => (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
+  // Mêmes participants qu'à la création (participantsDuService) : un tuk-tuk par groupe pour 2 adultes et 2 enfants n'est pas un écart.
+  const participants = participantsDuService(utiles);
   return {
     date_service: premiere.date_service || null,
     // Une location « par jour » : la quantité est un nombre de jours, la facture ne dit rien des personnes.
@@ -963,6 +1016,7 @@ export function attenduDepuisFacture(r, doc) {
     // Le tarif du catalogue de la ligne (non comparé : il ne s'affiche pas, mais l'alignement en a besoin).
     prestation_id: premiere.prestation_id || null,
     trajet_id: premiere.trajet_id || null,
+    ...(participants ? { sansPersonnes: false, personnes: participants } : {}),
   };
 }
 
@@ -1036,6 +1090,28 @@ export function contenuAvecReservation(contenu, r, avant, apres, { tarifEnfant =
       if (l.kind === "texte" && l.sur_place && (l.date_service || null) === dateAvant && cibles.some((x) => (x.prestation_id || null) === (l.prestation_id || null) && (x.trajet_id || null) === (l.trajet_id || null))) modif(l, { date_service: dateApres });
     }
   }
+  // Participants gardés sur les lignes (18.11.2026) : ils suivent la réservation, et le libellé avec eux.
+  const pApres = { adultes: nb(apres.personnes && apres.personnes.adultes), enfants: nb(apres.personnes && apres.personnes.enfants) };
+  const participantsChanges = (l) => { const p = participantsLigne(l); return !!p && pApres.adultes + pApres.enfants > 0 && (p.adultes !== pApres.adultes || p.enfants !== pApres.enfants); };
+  for (const l of cibles) if (participantsChanges(l)) modif(l, { personnes: pApres });
+  // Une ligne seule hors catalogue ou à prix de groupe : la facture ne compte pas les personnes, seul le libellé change. Un prix par personne hors
+  // catalogue suit le nombre de participants tant que la quantité était ce nombre.
+  const seule = participantsDuService(cibles) && (cibles[0].libre || compteDe(cibles[0]) !== "personnes") ? cibles[0] : null;
+  // Ligne hors catalogue d'avant ce choix (sans `par` ni participants, INV-2026-035) : lue comme un prix de groupe, le choix sûr. Les
+  // personnes changées entrent comme participants, la quantité et le total ne bougent pas (1 200 ne devient pas 2 400 avec un adulte de plus).
+  const ancienneLibre = cibles.length === 1 && cibles[0].libre && !cibles[0].par && !participantsLigne(cibles[0]) && !estLigneSupplement(cibles[0]) ? cibles[0] : null;
+  if (ancienneLibre) {
+    const pAvant = { adultes: nb(avant.personnes && avant.personnes.adultes), enfants: nb(avant.personnes && avant.personnes.enfants) };
+    if (pApres.adultes + pApres.enfants > 0 && (pAvant.adultes !== pApres.adultes || pAvant.enfants !== pApres.enfants)) modif(ancienneLibre, { personnes: pApres });
+    if (!miseAJour.size) return { contenu: null, reste };
+    return { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? avecDescription(l, { ...l, ...miseAJour.get(l) }, contenu.langue) : l)) }, reste };
+  }
+  if (seule) {
+    const p = participantsLigne(seule);
+    if (participantsChanges(seule) && compteDe(seule) === "personnes" && qte(seule) === p.adultes + p.enfants) modif(seule, { qte: pApres.adultes + pApres.enfants });
+    if (!miseAJour.size) return { contenu: null, reste };
+    return { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? avecDescription(l, { ...l, ...miseAJour.get(l) }, contenu.langue) : l)) }, reste };
+  }
   // Base pour 1 ou 2 personnes + suppléments : le nombre total de personnes règle la quantité du supplément (au-delà de deux), la base ne bouge pas.
   const supplement = cibles.find(estLigneSupplement);
   if (supplement) {
@@ -1046,7 +1122,7 @@ export function contenuAvecReservation(contenu, r, avant, apres, { tarifEnfant =
       if (qte(supplement) === Math.max(0, avantTotal - 2)) modif(supplement, { qte: Math.max(0, apresTotal - 2) });
       else reste.push({ cle: "adultes", reservation: nb(apres.personnes && apres.personnes.adultes), facture: qte(supplement) + 2 });
     }
-    return miseAJour.size ? { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? { ...l, ...miseAJour.get(l) } : l)) }, reste } : { contenu: null, reste };
+    return miseAJour.size ? { contenu: { ...contenu, lignes: lignes.map((l) => (miseAJour.has(l) ? avecDescription(l, { ...l, ...miseAJour.get(l) }, contenu.langue) : l)) }, reste } : { contenu: null, reste };
   }
   // Enfants comptés au prix adulte (pas de ligne enfant, la quantité est adultes + enfants : tarif sans prix enfant, personnes reprises du dossier,
   // contrôle du 17.11.2026, D8 et D9) : la ligne suit le nombre total de personnes.

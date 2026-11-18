@@ -101,6 +101,17 @@ export function nouveauDossierExcursions() {
     const l = [...lignes].reverse().find((x) => x.date_service);
     return { date: l ? l.date_service : "", ...(demande && demande.personnes ? demande.personnes : {}), ...(personnesSaisies() || {}) };
   };
+  // Service hors catalogue à prix de groupe (18.11.2026) : pas de quantité, le prix est le total ; ses participants restent modifiables.
+  const parGroupeLibre = (l) => !!l.libre && l.par === "grp";
+  // Prix par personne hors catalogue : la quantité suit les participants tant qu'elle était leur nombre.
+  const changerParticipants = (l, cle, valeur) => {
+    const avant = { adultes: 0, enfants: 0, ...(l.personnes || {}) };
+    const apres = { ...avant, [cle]: Math.max(0, Math.floor(Number(valeur) || 0)) };
+    if (l.par === "pp" && Number(l.qte) === avant.adultes + avant.enfants && apres.adultes + apres.enfants > 0) l.qte = apres.adultes + apres.enfants;
+    if (apres.adultes + apres.enfants) l.personnes = { adultes: apres.adultes, enfants: apres.enfants };
+    else delete l.personnes;
+    dessiner();
+  };
   const liste = h("div");
   const total = h("p", { class: "total-edition" });
   function dessiner() {
@@ -128,7 +139,8 @@ export function nouveauDossierExcursions() {
           l.kind === "texte"
             ? h("p", { class: "aide" }, l.libelle)
             : [
-                h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), h("input", { id: `s${i}-d`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), dessiner()) })), champ(tr("Quantité"), h("input", { id: `s${i}-q`, type: "number", min: "1", step: "1", inputmode: "numeric", value: l.qte, onchange: (e) => ((l.qte = Number(e.target.value) || 1), dessiner()) })), champ(tr("Prix ({devise})", { devise: regl.devise }), h("input", { id: `s${i}-p`, type: "number", min: "0", step: "1", inputmode: "numeric", value: l.unite ?? "", disabled: prixVenteFige(l, etat.db, { droitPrix: peut("partenaires.prix") }), title: prixVenteFige(l, etat.db, { droitPrix: peut("partenaires.prix") }) ? tr("Prix du catalogue : votre rôle ne permet pas de le changer.") : null, onchange: (e) => ((l.unite = e.target.value === "" ? null : Number(e.target.value)), dessiner()) }))),
+                h("div", { class: "grille-form compacte" }, champ(tr("Date du service"), h("input", { id: `s${i}-d`, type: "date", value: l.date_service || "", onchange: (e) => ((l.date_service = e.target.value || null), dessiner()) })), parGroupeLibre(l) ? null : champ(tr("Quantité"), h("input", { id: `s${i}-q`, type: "number", min: "1", step: "1", inputmode: "numeric", value: l.qte, onchange: (e) => ((l.qte = Number(e.target.value) || 1), dessiner()) })), champ(parGroupeLibre(l) ? tr("Prix du groupe ({devise})", { devise: regl.devise }) : tr("Prix ({devise})", { devise: regl.devise }), h("input", { id: `s${i}-p`, type: "number", min: "0", step: "1", inputmode: "numeric", value: l.unite ?? "", disabled: prixVenteFige(l, etat.db, { droitPrix: peut("partenaires.prix") }), title: prixVenteFige(l, etat.db, { droitPrix: peut("partenaires.prix") }) ? tr("Prix du catalogue : votre rôle ne permet pas de le changer.") : null, onchange: (e) => ((l.unite = e.target.value === "" ? null : Number(e.target.value)), dessiner()) }))),
+                l.libre && l.par ? h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), h("input", { id: `s${i}-a`, type: "number", min: "0", step: "1", inputmode: "numeric", value: (l.personnes && l.personnes.adultes) || 0, onchange: (e) => changerParticipants(l, "adultes", e.target.value) })), champ(tr("Enfants"), h("input", { id: `s${i}-e`, type: "number", min: "0", step: "1", inputmode: "numeric", value: (l.personnes && l.personnes.enfants) || 0, onchange: (e) => changerParticipants(l, "enfants", e.target.value) }))) : null,
                 champ(taxi ? tr("Libellé de la course") : tr("Description sur la facture"), h("input", { id: `s${i}-desc`, value: description(l), oninput: (e) => ((l.description = e.target.value), (l.description_fixe = true)) }), [l.partenaire_id ? nomPartenaire(l.partenaire_id) : "", tr("Texte vu par le client, en anglais. Modifiable.")].filter(Boolean).join(" · ")),
                 blocVoucher(l),
               ]

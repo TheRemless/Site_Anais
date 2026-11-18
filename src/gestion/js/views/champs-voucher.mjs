@@ -15,7 +15,8 @@ export const ERREURS_TRAJET = { e_programme: N_("Indiquez le programme : ce que 
 // `prefixe` : début des identifiants des champs (« v » dans la fiche, un par service à la création).
 // `dateService` : () => date de départ, pour compter les jours d'une location ; `dateInitiale` donne la date de retour proposée.
 // Rend { CHAMPS: { clé: () => champ }, valeurs(), majJours() }. `valeurs()` donne tous les champs, vides compris (une valeur effacée s'efface).
-export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = () => "", dateInitiale = "" } = {}) {
+// `hotelFiche` : l'hôtel de la fiche client, proposé dans le champ « Hôtel » tant que la réservation n'en a pas un à elle.
+export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = () => "", dateInitiale = "", hotelFiche = "" } = {}) {
   const id = (suffixe) => `${prefixe}-${suffixe}`;
   const texte = (suffixe, valeur, placeholder) => h("input", { id: id(suffixe), value: valeur || "", ...(placeholder ? { placeholder } : {}) });
   const zone = (suffixe, valeur, placeholder) => {
@@ -28,6 +29,10 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
     s.value = valeur || "";
     return s;
   };
+  // Hôtel imprimé dans les détails du client (18.11.2026) : modifiable et vidable. Il n'est enregistré que s'il diffère de la fiche client
+  // (ou s'il l'était déjà) : sans cela, la fiche client reste la source et ses changements suivent.
+  const hotelDepart = "hotel" in dt ? String(dt.hotel || "") : String(hotelFiche || "");
+  const hotel = texte("hotel", hotelDepart, tr("Aucun : rien ne s'imprime"));
   const chambre = texte("chambre", dt.chambre);
   const dropOff = texte("drop", dt.drop_off, tr("Hôtel, embarcadère, aéroport"));
   const vol = texte("vol", dt.vol, tr("FD 3217"));
@@ -81,6 +86,7 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
   majJours();
 
   const CHAMPS = {
+    hotel: () => champ(tr("Hôtel ou hébergement"), hotel, hotelFiche ? tr("Celui de la fiche client, modifiable. Vide : la ligne ne s'imprime pas.") : tr("Imprimé dans les détails du client. Vide : celui de la fiche client, s'il y en a un.")),
     chambre: () => champ(tr("Chambre"), chambre, tr("Sinon celle de la fiche client, si le pickup est à son hôtel.")),
     de: () => champ(tr("Départ"), de),
     vers: () => champ(tr("Arrivée"), vers),
@@ -122,6 +128,7 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
   const valeurs = () => ({
     chambre: chambre.value.trim(), drop_off: dropOff.value.trim(), vol: vol.value.trim(), bagages: bagages.value.trim(), type_tour: typeTour.value, type_transfert: typeTransfert.value, parc: parc.value, parc_texte: parcTexte.value.trim(), remarques: remarques.value.trim(), remarques_paiement: remarquesPaiement.value.trim(), heure_service: heureService.value.trim(), retour_date: retourDate.value || "", retour_heure: retourHeure.value, retour_lieu: retourLieu.value.trim(), equipement: equipement.value.trim(), conditions: conditions.value.trim(), permis: permis.value.trim(), caution: caution.value.trim(), embarquement: embarquement.value.trim(), checkin: checkin.value.trim(), bateau: bateau.value.trim(), programme: programme.value.trim(), de: de.value.trim(), vers: vers.value.trim(), depart: depart.value, arrivee: arrivee.value,
     ...(nbSieges() > 0 || "sieges" in dt ? { sieges: nbSieges() } : {}),
+    ...("hotel" in dt || hotel.value.trim() !== String(hotelFiche || "").trim() ? { hotel: hotel.value.trim() } : {}),
     // Aller simple : ni type, ni programme, ni durée ; retour au départ : pas de drop-off, la durée en nombre.
     ...detailsTrajet({ type_trajet: typeTrajet.value, programme_trajet: programmeTrajet.value, duree_h: dureeH.value }),
     ...(typeTrajet.value === RETOUR_DEPART ? {} : { drop_off: dropOff.value.trim() }),

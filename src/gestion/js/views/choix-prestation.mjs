@@ -3,10 +3,10 @@
 import { etat, nomPartenaire, partenaireDe, netPrestation, netTrajet, modeTaxi, modeExcursions, peut } from "../etat.mjs";
 import { lignesSurPlace } from "../taxi-calc.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
-import { formatMontant } from "../calc.mjs";
+import { formatMontant, SUR_PLACE } from "../calc.mjs";
 import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut, periodeSpecifique, proposable } from "../partenaires-calc.mjs";
 import { prestationEnfant } from "../demande-calc.mjs";
-import { appliquerModeParDefaut, MODELES_VOUCHER, SANS_VOUCHER, TITRES_VOUCHER, typeVoucherDeduit } from "../operations-calc.mjs";
+import { appliquerModeParDefaut, modeParDefaut, MODELES_VOUCHER, SANS_VOUCHER, TITRES_VOUCHER, typeVoucherDeduit } from "../operations-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 
 // `sansCompagnie` : le nom de la compagnie n'est pas répété dans le libellé des trajets (facture de Secret).
@@ -37,7 +37,17 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   const termine = h("button", { class: "principal", type: "button", onclick: () => fermer() }, tr("Terminé"));
   // Un tarif par personne avec des enfants au dossier : les adultes au tarif adulte, les enfants au tarif enfant de la base (une ligne chacun, comme
   // « Coller une demande »). Quantité changée à la main : une seule ligne, comme saisie. Sans tarif enfant, les enfants restent au tarif adulte.
-  const lignesPrestation = (x, quantite) => {
+  // Les participants du dossier suivent les lignes d'un tarif (18.11.2026) : le libellé dit « 2 adults, 2 children » plutôt que la quantité facturée.
+  // Pas quand la quantité d'un tarif par personne a été changée à la main (on ne sait plus qui elle compte), ni pour une location ou un supplément.
+  const avecParticipants = (lignes, x, quantite) => {
+    const p = { adultes: Math.max(0, Number(ctx.adultes) || 0), enfants: Math.max(0, Number(ctx.enfants) || 0) };
+    // Seulement les unités connues : un tarif sans unité garde la lecture d'avant (sa quantité ne dit pas qui elle compte).
+    if (!(p.adultes + p.enfants) || x.sur_place || !["pp", "ad", "ch", "grp", "boat", "veh", "ses"].includes(x.unite)) return lignes;
+    if (["pp", "ad", "ch"].includes(x.unite) && quantite !== qteDefaut(x)) return lignes;
+    return lignes.map((l) => (l.kind === "ligne" ? { ...l, personnes: p } : l));
+  };
+  const lignesPrestation = (x, quantite) => avecParticipants(lignesTarif(x, quantite), x, quantite);
+  const lignesTarif = (x, quantite) => {
     const adulte = ligneDepuisPrestation(x, netPrestation(x), { langue, date: date.value, qte: quantite, devise });
     const e = ["pp", "ad"].includes(x.unite) && ctx.enfants > 0 && quantite === qteDefaut(x) ? prestationEnfant(x, etat.db.prestations) : null;
     // Tarif par adulte sans prix enfant : les enfants ne sont pas facturés. On le dit, sans bloquer (offert ou gratuit chez le partenaire, c'est possible).
@@ -60,7 +70,31 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   // Onglet « Autre prestation » : un service qui n'est pas dans la base, saisi à la main mais avec sa réservation et son voucher.
   const libelleLibre = h("input", { id: "cp-l-nom", autocomplete: "off" });
   const prixLibre = h("input", { id: "cp-l-prix", type: "number", min: "0", step: "any", inputmode: "decimal" });
-  const qteLibre = h("input", { id: "cp-l-qte", type: "number", min: "1", step: "1", value: 1, inputmode: "numeric" });
+  const qteLibre = h("input", { id: "cp-l-qte", type: "number", min: "1", step: "1", value: 1, inputmode: "numeric", oninput: () => (qteLibreTouchee = true) });
+  // Prix par groupe ou par personne (Jérémy, 18.11.2026 : un tuk-tuk à 1 200 pour le groupe devenait 4 800 avec la quantité 4).
+  // Par groupe, le choix sûr par défaut : quantité 1, le prix saisi est le total. Par personne : la quantité suit les participants, modifiable.
+  // Les participants (adultes, enfants) sont gardés sur la ligne : ce sont eux que le libellé, le voucher et la Booking confirmation montrent.
+  let qteLibreTouchee = false;
+  const choixMode = (valeur, texte, coche) => h("label", { class: "case" }, h("input", { type: "radio", name: "cp-l-mode", value: valeur, checked: coche, onchange: () => majModePrix() }), texte);
+  const choixGroupe = choixMode("grp", tr("Prix par groupe"), true);
+  const choixPersonne = choixMode("pp", tr("Prix par personne"), false);
+  const parPersonne = choixPersonne.querySelector("input");
+  const nbLibre = (x) => Math.max(0, Math.floor(Number(x) || 0));
+  const majQteLibre = () => {
+    if (!qteLibreTouchee) qteLibre.value = Math.max(1, nbLibre(adultesLibre.value) + nbLibre(enfantsLibre.value));
+  };
+  const adultesLibre = h("input", { id: "cp-l-adultes", type: "number", min: "0", step: "1", inputmode: "numeric", value: ctx.adultes || "", oninput: majQteLibre });
+  const enfantsLibre = h("input", { id: "cp-l-enfants", type: "number", min: "0", step: "1", inputmode: "numeric", value: ctx.enfants || "", oninput: majQteLibre });
+  const aidePrixLibre = h("p", { class: "aide" });
+  const aideNetLibre = h("p", { class: "aide" });
+  const champQteLibre = champ(tr("Quantité"), qteLibre, tr("Le nombre de personnes facturées."));
+  const majModePrix = () => {
+    const pp = parPersonne.checked;
+    champQteLibre.hidden = !pp;
+    aidePrixLibre.textContent = pp ? tr("Par personne.") : tr("Le prix total pour le groupe.");
+    aideNetLibre.textContent = pp ? tr("Par personne, ce que le partenaire facture à l'agence. Vide s'il n'est pas connu.") : tr("Pour le groupe, ce que le partenaire facture à l'agence. Vide s'il n'est pas connu.");
+    majQteLibre();
+  };
   const partenaireLibre = h("select", { id: "cp-l-part" }, h("option", { value: "" }, tr("Aucun partenaire")), etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
   // Lot B (17.11.2026, audit n° 23) : le net, pour que la marge ne compte pas toute la vente, et le modèle de voucher, choisi plutôt que deviné
   // d'après les mots du libellé (« van », « speedboat »). Le net ne part jamais sur la facture : il rejoint la table protégée des nets.
@@ -77,6 +111,11 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
   majModeleLibre();
   libelleLibre.addEventListener("change", majModeleLibre);
   partenaireLibre.addEventListener("change", majModeleLibre);
+  // Payé sur place (INV-2026-035, 18.11.2026 : le voucher disait « Payment Pending » alors que les clients payaient le tuk-tuk en espèces) :
+  // la case suit le mode habituel du partenaire choisi et se change à la main. Cochée, le voucher dit « Pay on Arrival ».
+  const surPlaceLibre = h("input", { type: "checkbox", id: "cp-l-surplace" });
+  const surPlaceDuPartenaire = () => modeParDefaut(partenaireDe(partenaireLibre.value || null)) === SUR_PLACE;
+  partenaireLibre.addEventListener("change", () => (surPlaceLibre.checked = surPlaceDuPartenaire()));
   const erreurLibre = h("p", { class: "erreur-form", role: "alert" });
   const formulaireLibre = h(
     "form",
@@ -89,14 +128,23 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
         if (!libelleLibre.value.trim()) return (erreurLibre.textContent = tr("Indiquez le nom de la prestation.")), libelleLibre.focus();
         if (prixLibre.value === "" || !(Number(prixLibre.value) >= 0)) return (erreurLibre.textContent = tr("Indiquez le prix de vente, 0 si la prestation est offerte.")), prixLibre.focus();
         if (avecNetLibre && netLibre.value !== "" && !(Number(netLibre.value) >= 0)) return (erreurLibre.textContent = tr("Le net est un nombre positif, ou vide s'il n'est pas connu.")), netLibre.focus();
-        const l = ligneLibre({ libelle: libelleLibre.value, prix: prixLibre.value, qte: qteLibre.value, partenaire_id: partenaireLibre.value, date: date.value });
+        if (parPersonne.checked && !(Number(qteLibre.value) >= 1)) return (erreurLibre.textContent = tr("Indiquez la quantité, au moins 1.")), qteLibre.focus();
+        const personnes = { adultes: nbLibre(adultesLibre.value), enfants: nbLibre(enfantsLibre.value) };
+        const l = ligneLibre({ libelle: libelleLibre.value, prix: prixLibre.value, qte: qteLibre.value, partenaire_id: partenaireLibre.value, date: date.value, par: parPersonne.checked ? "pp" : "grp", personnes });
         if (avecNetLibre && netLibre.value !== "") l.net = Number(netLibre.value);
         if (avecModeleLibre && modeleLibre.value) l.modele_voucher = modeleLibre.value;
+        // Taxi : tout est payé au chauffeur (lignesSurPlace). Ailleurs, la case l'emporte sur le mode du partenaire.
+        if (!modeTaxi()) {
+          if (surPlaceLibre.checked) l.paye_sur_place = true;
+          else if (surPlaceDuPartenaire()) l.paye_sur_place = false;
+        }
         ajoute([l], l.libelle);
         libelleLibre.value = "";
         prixLibre.value = "";
-        qteLibre.value = 1;
+        qteLibreTouchee = false;
+        majQteLibre();
         netLibre.value = "";
+        surPlaceLibre.checked = surPlaceDuPartenaire();
         modeleLibre.value = "";
         majModeleLibre();
         libelleLibre.focus();
@@ -104,13 +152,17 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
     },
     h("p", { class: "aide" }, tr("Pour une prestation qui n'est pas dans la base. Elle va sur la facture avec sa réservation et son voucher. Pour la retrouver à chaque fois, créez-la plutôt dans la fiche du partenaire.")),
     champ(tr("Prestation"), libelleLibre, tr("Le nom tel que le client le lira sur la facture.")),
-    h("div", { class: "grille-form compacte" }, champ(tr("Prix de vente ({devise})", { devise }), prixLibre, tr("Par unité.")), champ(tr("Quantité"), qteLibre)),
+    h("div", { class: "choix-mode-prix", role: "radiogroup", "aria-label": tr("Prix") }, choixGroupe, choixPersonne),
+    h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), adultesLibre), champ(tr("Enfants"), enfantsLibre)),
+    h("div", { class: "grille-form compacte" }, h("div", { class: "champ" }, h("label", { for: "cp-l-prix" }, tr("Prix de vente ({devise})", { devise })), prixLibre, aidePrixLibre), champQteLibre),
     champ(tr("Partenaire (facultatif)"), partenaireLibre, tr("Celui qui réalise la prestation, s'il y en a un.")),
-    avecNetLibre ? champ(tr("Net ({devise})", { devise }), netLibre, tr("Par unité, ce que le partenaire facture à l'agence. Vide s'il n'est pas connu.")) : null,
+    modeTaxi() ? null : h("label", { class: "case" }, surPlaceLibre, tr("Payé sur place par le client, au prestataire ou au chauffeur")),
+    avecNetLibre ? h("div", { class: "champ" }, h("label", { for: "cp-l-net" }, tr("Net ({devise})", { devise })), netLibre, aideNetLibre) : null,
     avecModeleLibre ? champ(tr("Modèle de voucher"), modeleLibre, tr("Automatique : deviné d'après le nom. Choisissez-le si la déduction se trompe.")) : null,
     erreurLibre,
     h("div", { class: "actions" }, h("button", { class: "principal", type: "submit" }, tr("Ajouter")))
   );
+  majModePrix();
   const qte = (id, valeur, libelle) => h("label", { class: "choix-qte" }, h("span", null, libelle), h("input", { id, type: "number", min: "0", step: "1", value: valeur, inputmode: "numeric" }));
 
   function dessiner() {
@@ -160,7 +212,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
             { class: "choix" },
             h("div", { class: "choix-texte" }, h("strong", null, `${t.de} → ${t.vers}, ${t.depart}`), h("span", null, [nomPartenaire(t.partenaire_id), t.mode, t.duree, periodeSpecifique(t.periode)].filter(Boolean).join(" · "))),
             h("div", { class: "choix-prix" }, h("strong", null, prix(t.prix_adulte)), h("span", null, t.prix_enfant !== null && t.prix_enfant !== undefined ? tr("enfant {prix}", { prix: prix(t.prix_enfant) }) : tr("par adulte"))),
-            h("div", { class: "choix-actions" }, ad, ch, h("button", { class: "principal petit", type: "button", onclick: () => { const nbEnfants = Number(ch.querySelector("input").value) || 0; if (nbEnfants > 0 && (t.prix_enfant === null || t.prix_enfant === undefined)) return toast(tr("Ce trajet n'a pas de tarif enfant : les enfants ne seraient pas facturés. Ajoutez le tarif enfant au partenaire ou mettez-les en adultes."), true); const l = lignesDepuisTrajet(t, netTrajet(t), { langue, date: date.value, adultes: Number(ad.querySelector("input").value) || 0, enfants: Number(ch.querySelector("input").value) || 0, compagnie: sansCompagnie ? "" : nomPartenaire(t.partenaire_id) }); if (!l.length) return toast(tr("Indiquez au moins un adulte ou un enfant."), true); ajoute(l, `${t.de} → ${t.vers}`); } }, tr("Ajouter")))
+            h("div", { class: "choix-actions" }, ad, ch, h("button", { class: "principal petit", type: "button", onclick: () => { const nbEnfants = Number(ch.querySelector("input").value) || 0; if (nbEnfants > 0 && (t.prix_enfant === null || t.prix_enfant === undefined)) return toast(tr("Ce trajet n'a pas de tarif enfant : les enfants ne seraient pas facturés. Ajoutez le tarif enfant au partenaire ou mettez-les en adultes."), true); const l = lignesDepuisTrajet(t, netTrajet(t), { langue, date: date.value, adultes: Number(ad.querySelector("input").value) || 0, enfants: Number(ch.querySelector("input").value) || 0, compagnie: sansCompagnie ? "" : nomPartenaire(t.partenaire_id) }); if (!l.length) return toast(tr("Indiquez au moins un adulte ou un enfant."), true); const p = { adultes: Number(ad.querySelector("input").value) || 0, enfants: nbEnfants }; ajoute(l.map((x) => ({ ...x, personnes: p })), `${t.de} → ${t.vers}`); } }, tr("Ajouter")))
           )
         );
       }
