@@ -792,7 +792,18 @@ window.addEventListener("hashchange", async () => {
 
 // L'outil reste ouvert des journées entières dans un onglet : quand une nouvelle version est publiée, un bandeau
 // propose de recharger, sinon l'ancien code tourne jusqu'au prochain rechargement complet.
+// Identifiant de la version en ligne : gestion/version.json, écrit au build avec l'empreinte de TOUS les fichiers de l'outil (.eleventy.js).
+// Sans ce fichier (prévisualisation locale), l'ETag de app.mjs comme avant. Lu sans cache (Netlify sert /gestion/* en no-cache).
 async function empreinteVersion() {
+  try {
+    const r = await fetch("version.json", { cache: "no-store" });
+    if (r.ok) {
+      const v = await r.json().catch(() => null);
+      if (v && typeof v.version === "string" && v.version) return `v:${v.version}`;
+    }
+  } catch {
+    // réseau absent : rien à comparer cette fois-ci
+  }
   try {
     const r = await fetch("js/app.mjs", { method: "HEAD", cache: "no-store" });
     return r.ok ? r.headers.get("etag") || r.headers.get("last-modified") || "" : "";
@@ -806,20 +817,33 @@ async function versionDisponible() {
   const actuelle = await empreinteVersion();
   return !!actuelle && actuelle !== empreinteInitiale;
 }
+// Le bandeau « Nouvelle version de Gestion ». Recharger ne perd jamais une saisie en cours : une fiche, une fenêtre ouverte ou un champ
+// modifié font d'abord poser la question ; sinon le rechargement est immédiat. Le bandeau reste jusqu'au rechargement.
+let versionSignalee = false;
+function signalerVersion() {
+  if (versionSignalee) return;
+  versionSignalee = true;
+  const recharger = async () => {
+    if (saisieEnCours()) {
+      const { confirmer } = await import("./ui.mjs");
+      const ok = await confirmer(tr("Une saisie est en cours : elle sera perdue si vous rechargez maintenant. Recharger quand même ?"), tr("Recharger quand même"), true, tr("Plus tard"));
+      if (!ok) return;
+    }
+    location.reload();
+  };
+  document.body.append(h("div", { class: "bandeau-version", role: "status" }, h("span", null, tr("Nouvelle version de Gestion : rechargez pour l'avoir.")), h("button", { class: "principal petit", type: "button", onclick: recharger }, tr("Recharger"))));
+}
+// Vérifiée au retour sur l'onglet, toutes les 3 minutes et à chaque synchronisation des données.
 async function surveillerVersion() {
   const initiale = await empreinteVersion();
   empreinteInitiale = initiale;
   if (!initiale) return;
-  let signale = false;
   const verifier = async () => {
-    if (signale || document.visibilityState !== "visible") return;
-    const actuelle = await empreinteVersion();
-    if (!actuelle || actuelle === initiale) return;
-    signale = true;
-    document.body.append(h("div", { class: "bandeau-version", role: "status" }, h("span", null, tr("Une nouvelle version de l'outil est disponible.")), h("button", { class: "principal petit", type: "button", onclick: () => location.reload() }, tr("Recharger"))));
+    if (versionSignalee || document.visibilityState !== "visible") return;
+    if (await versionDisponible()) signalerVersion();
   };
   document.addEventListener("visibilitychange", verifier);
-  setInterval(verifier, 10 * 60 * 1000);
+  setInterval(verifier, 3 * 60 * 1000);
 }
 
 // Une erreur que personne n'a rattrapée (une action sans message d'erreur prévu) ne passe plus sous silence : un message apparaît, au lieu
