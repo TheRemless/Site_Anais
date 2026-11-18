@@ -12,6 +12,7 @@ import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
 import { appliquerTextesThai } from "./textes-thai.mjs";
 import { entreprisesVoucher } from "./voucher-rapide-calc.mjs";
+import { entreprisesConfirmation } from "./confirmation-calc.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
 const CLE_ENTITE = "gestion-zwald-entite";
@@ -225,6 +226,9 @@ export function changerEntite(id, { naviguer = true } = {}) {
 export const estSuperAdmin = () => !!(etat.moi && etat.moi.super_admin && etat.moi.actif);
 const contexte = () => ({ profil: etat.moi, membres: etat.brut.membres, roles: etat.brut.roles });
 export const permissionsActives = () => permissionsDans(contexte(), etat.entiteId);
+// « Coller une confirmation » (18.11.2026) : l'administratrice générale et les administratrices, quand une entreprise Taxi ou Secret leur
+// permet de créer. Mêmes règles partout : menu « + » (téléphone), boutons d'en-tête (ordinateur), recherche, raccourci « b ».
+export const confirmationPermise = () => !!etat.brut && (estSuperAdmin() || estAdmin()) && entreprisesConfirmation({ entites: entitesAccessibles(), reglages: reglagesDe, permissions: permissionsDe }).liste.length > 0;
 // Les droits de la personne dans une autre entreprise accessible (« Coller une confirmation » crée dans Taxi ou Secret depuis n'importe laquelle).
 export const permissionsDe = (id) => (etat.brut ? permissionsDans(contexte(), id) : []);
 export const peut = (code) => !!etat.brut && permissionsActives().includes(code);

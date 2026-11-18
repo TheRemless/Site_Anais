@@ -281,3 +281,19 @@ export function clientExistant({ nom = "", telephone = "", clients = [] }) {
   const n = cleNom(nom);
   return n.length >= 2 ? recents.find((c) => cleNom([c.prenom, c.nom].filter(Boolean).join(" ")) === n) || null : null;
 }
+
+// Le texte collé dans « Coller une demande » est-il une confirmation de course (Jérémy, 18.11.2026) ? L'en-tête « New booking confirmation »,
+// ou une ligne de marque (VIP TAXI LANTA, SECRET TRAVEL & TOUR) suivie d'au moins deux libellés connus, ou quatre libellés de course
+// (Name, Date, Pick-up time, Pick-up location, Drop-off location, passagers) avec un prix convenu (« Price: »). Une demande du site
+// (« Transfer request: … », « Booking request: … », « Estimated total ») n'en est jamais une : c'est le client qui demande.
+// Sert à proposer la bascule, jamais à créer d'office.
+const LIBELLES_COURSE = ["nom", "date", "heure", "pickup", "dropoff", "passagers", "prix"];
+export function ressembleAConfirmation(texte, { aujourdhui = "" } = {}) {
+  const t = String(texte || "");
+  if (!t.trim()) return false;
+  if (/new\s+booking\s+confirmation/i.test(sansEmoji(t))) return true;
+  if (/\b(transfer|booking|tour)\s+request\b/i.test(t)) return false;
+  const lu = lireConfirmation(t, { aujourdhui });
+  const course = lu.lus.filter((c) => LIBELLES_COURSE.includes(c)).length;
+  return (!!lu.marque && lu.lus.length >= 2) || (course >= 4 && lu.lus.includes("prix"));
+}

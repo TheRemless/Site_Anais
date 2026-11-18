@@ -1,6 +1,7 @@
 import { etat, resumes, inserer, modifier, nomClient, naviguer, reglages, peut, equipe, modeExcursions, modeTaxi, numeroSuivant, moduleActif } from "../etat.mjs";
 import { nouveauDossierExcursions } from "./nouveau-excursions.mjs";
 import { ouvrirDemande } from "./demande.mjs";
+import { boutonConfirmation } from "./commun.mjs";
 import { h, champ, vider, toast, erreurChamp } from "../ui.mjs";
 import { identiteDepuisSaisie, verifierNouveauClient } from "../client-calc.mjs";
 import { formatMontant, formatDate, aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero, periodeTexte, STATUTS } from "../calc.mjs";
@@ -169,7 +170,7 @@ export function listeDossiers() {
   return h(
     "div",
     { "data-titre": tr("Dossiers") },
-    h("div", { class: "entete" }, h("h1", null, tr("Dossiers")), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, moduleActif("demande_collee") ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, h("a", { class: "bouton principal seulement-bureau", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
+    h("div", { class: "entete" }, h("h1", null, tr("Dossiers")), peut("dossiers.ecrire") ? h("div", { class: "entete-actions" }, moduleActif("demande_collee") ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: ouvrirDemande }, tr("Coller une demande")) : null, boutonConfirmation(), h("a", { class: "bouton principal seulement-bureau", href: "#/dossiers/nouveau" }, tr("Nouveau dossier"))) : null),
     filtres.noeud,
     barre,
     corps

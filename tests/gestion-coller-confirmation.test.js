@@ -212,6 +212,39 @@ test("création commune : l'écran de Mook et la confirmation collée passent pa
   assert.match(lire("views/voucher-rapide.mjs"), /import \{ creerCourse, courseDuDossier, majClientCourse \} from "\.\/creation-course\.mjs"/);
   assert.match(lire("views/confirmation.mjs"), /import \{ creerCourse \} from "\.\/creation-course\.mjs"/);
   assert.doesNotMatch(lire("views/voucher-rapide.mjs"), /creerDossierExcursions/);
-  // Le « + » ne la propose qu'aux administratrices et à l'administratrice générale.
-  assert.match(lire("app.mjs"), /const confirmationPermise = \(\) => \(estSuperAdmin\(\) \|\| estAdmin\(\)\)/);
+  // Le « + » ne la propose qu'aux administratrices et à l'administratrice générale (règle commune dans etat.mjs).
+  assert.match(lire("etat.mjs"), /const confirmationPermise = \(\) => !!etat\.brut && \(estSuperAdmin\(\) \|\| estAdmin\(\)\)/);
+});
+
+// ---- Trouver l'outil sur ordinateur, et la bascule depuis « Coller une demande » (18.11.2026) -------------------------------------
+test("bascule : une confirmation collée dans « Coller une demande » est reconnue, une demande de client ne l'est jamais", async () => {
+  const { ressembleAConfirmation } = await import("../src/gestion/js/confirmation-calc.mjs");
+  assert.equal(ressembleAConfirmation(JEREMY, { aujourdhui: AJD }), true, "le texte de Jérémy");
+  assert.equal(ressembleAConfirmation("SECRET TRAVEL & TOUR\nName: Family Annet\nDate: 17/02/2027", { aujourdhui: AJD }), true, "marque et deux libellés");
+  assert.equal(ressembleAConfirmation("Name: Enzo\nDate: 22/11\nPick-up time: 4pm\nPick-up location: Manao villa\nPrice: 1000 THB", { aujourdhui: AJD }), true, "libellés de course et prix, sans marque");
+  // Demandes : un message de client, une demande du site (taxi et excursion), jamais une confirmation.
+  assert.equal(ressembleAConfirmation("Hi! Can you pick us up at Krabi airport on the 22nd at 4pm? We are 5 people. How much?", { aujourdhui: AJD }), false);
+  assert.equal(ressembleAConfirmation(["Transfer request: Krabi Airport → Koh Lanta", "Date: Sat 22 Nov 2026", "Pickup time: 14:30 (landing)", "Guests: 2 adults, 1 child (age 5)", "Pickup: Krabi Airport (KBV)", "Drop-off: Lanta Sand Resort", "Name: Paul Martin"].join("\n"), { aujourdhui: AJD }), false);
+  assert.equal(ressembleAConfirmation(["Booking request: 4 Islands – Longtail", "Date: Sat 22 Nov 2026", "Guests: 2 adults", "Pickup: Lanta Sand Resort", "Name: Paul Martin", "Estimated total: 3,000 THB"].join("\n"), { aujourdhui: AJD }), false);
+  // Quatre libellés sans prix (une demande écrite à la main) : pas de bascule proposée.
+  assert.equal(ressembleAConfirmation("Name: Enzo\nDate: 22/11\nPick-up time: 4pm\nPick-up location: Manao villa", { aujourdhui: AJD }), false);
+  assert.equal(ressembleAConfirmation("", { aujourdhui: AJD }), false);
+});
+
+test("ordinateur : « Coller une confirmation » à côté de « Coller une demande », dans la recherche et au clavier, mêmes règles qu'au téléphone", () => {
+  const lire = (f) => readFileSync(new URL(`../src/gestion/js/${f}`, import.meta.url), "utf8");
+  // Une seule règle, dans etat.mjs, pour le « + », les boutons d'en-tête, la recherche et le raccourci.
+  assert.match(lire("etat.mjs"), /export const confirmationPermise = \(\) => !!etat\.brut && \(estSuperAdmin\(\) \|\| estAdmin\(\)\)/);
+  for (const f of ["views/dashboard.mjs", "views/dossiers.mjs"]) assert.match(lire(f), /tr\("Coller une demande"\)\) : null, boutonConfirmation\(\), h\("a"/, f);
+  assert.match(lire("views/commun.mjs"), /export const boutonConfirmation = \(\) =>\s+confirmationPermise\(\)\s+\? h\("button", \{ class: "secondaire seulement-bureau"/);
+  const app = lire("app.mjs");
+  assert.match(app, /confirmationPermise\(\) \? choix\("whatsapp", tr\("Coller une confirmation"\)/, "le « + » du téléphone");
+  assert.match(app, /k === "b" && confirmationPermise\(\)/, "raccourci « b »");
+  assert.match(app, /confirmationPermise\(\) \? \[actionConfirmation\(\)\]/, "recherche sans saisie");
+  assert.match(app, /if \(r\.action\) return void r\.action\(\);/, "une action de la recherche ouvre sa fenêtre");
+  // La bascule propose, ne crée rien : elle ouvre la fenêtre avec le texte, seulement pour qui y a droit, jamais pour une demande du site.
+  const demande = lire("views/demande.mjs");
+  assert.match(demande, /const oui = !depuisSite && confirmationPermise\(\) && ressembleAConfirmation\(texte/);
+  assert.match(demande, /\(await import\("\.\/confirmation\.mjs"\)\)\.ouvrirConfirmation\(t\)/);
+  assert.match(lire("views/confirmation.mjs"), /export function ouvrirConfirmation\(texteInitial = ""\)/);
 });
