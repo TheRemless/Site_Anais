@@ -6,6 +6,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { lireMessage, decouperServices, proposerOffres, tarifsDuSite } from "../src/gestion/js/demande-calc.mjs";
 import { PRODUITS_SITE } from "../src/gestion/js/site-produits.mjs";
+import { ligneDepuisPrestation } from "../src/gestion/js/partenaires-calc.mjs";
+import fs from "node:fs";
 
 const AJD = "2026-11-18";
 const RATTANA = "p-rattana";
@@ -204,5 +206,68 @@ test("site-produits.mjs : chaque ligne de prix reliée porte un identifiant de t
   }
   assert.ok(n >= 100, `${n} lignes reliées seulement`);
   const rok = PRODUITS_SITE.find((p) => p.id === "koh-rok-koh-haa");
-  assert.deepEqual(rok.options.map((o) => o.titre), ["Day trip", "Sunset trip", "Full-day sunset trip", "Private longtail"]);
+  assert.deepEqual(rok.options.map((o) => o.titre), ["Day trip", "Sunset trip", "Full-day sunset trip", "Private longtail", "Private speedboat"]);
 });
+
+// ---- Options sans prix sur le site (« Price on WhatsApp », PR 51 et 52 du site) ------------------------------------------
+// docs/gestion/cles-options-site.json relie l'option elle-même (« slug|identifiant ») aux tarifs de Gestion, recopiée dans site-produits.mjs.
+const OCTOPUSEA = t("e1c1818e-ead0-4b8c-bc68-364fb9cf0007", "p-octopusea", "Private speedboat (custom day)", "Private speedboat OctopuSea, custom day", "grp", null, { libelle_en: "Private speedboat, custom day" });
+const AVEC_SPEEDBOAT = { ...CONTEXTE, prestations: [...PRESTATIONS, OCTOPUSEA] };
+const surDemande = (titre, gens = "4 adults, 1 child (age 6)") => `Booking request: ${titre}\nDate: Wed 25 Nov 2026\nGuests: ${gens}\nPickup: Lanta Sand Resort\nName: Anna Keller`;
+
+test("longtail privé sans prix sur le site : le tarif privé de la base, à la tranche qui contient le groupe", () => {
+  const cas = [
+    ["4 Islands – Private longtail", "4 adults, 1 child (age 6)", "1e3a5589-f9ee-56f7-acb4-387caf77167d", 7400],
+    ["4 Islands – Private longtail", "2 adults", "86089978-5c93-5713-aae4-5231d9be8f3c", 5900],
+    ["Koh Phi Phi – Private longtail", "4 adults, 1 child (age 6)", "0711f191-fe3b-587f-a28a-db415fd235e7", 9400],
+    ["Koh Rok & Koh Haa – Private longtail", "4 adults, 1 child (age 6)", "1961d3a3-783e-5c91-af21-2b93561cbc59", 7900],
+    ["Koh Rok & Koh Haa – Private longtail", "2 adults, 1 child (age 2)", "0e1f1b13-07a1-5496-ab02-02068d7f428b", 7400],
+  ];
+  for (const [titre, gens, id, total] of cas) {
+    const { offre } = premiere(surDemande(titre, gens), AVEC_SPEEDBOAT);
+    assert.equal(offre && offre.id, id, `${titre}, ${gens}`);
+    assert.equal(offre.total, total, `${titre}, ${gens}`);
+  }
+});
+
+test("longtail privé, groupe plus grand que toutes les tranches actives : la plus grande tranche devant, avec un avertissement", () => {
+  const { offre } = premiere(surDemande("4 Islands – Private longtail", "8 adults"), AVEC_SPEEDBOAT);
+  assert.equal(offre.id, "1e3a5589-f9ee-56f7-acb4-387caf77167d");
+  assert.equal(offre.avertissement, "groupe_hors_tranche");
+  // Un groupe qui tient dans une tranche n'a pas d'avertissement.
+  assert.equal(premiere(surDemande("4 Islands – Private longtail", "4 adults"), AVEC_SPEEDBOAT).offre.avertissement, "");
+});
+
+test("speedboat privé (PR 52 du site) : le tarif OctopuSea sans prix, sur les trois pages, prix vide à saisir sans erreur", () => {
+  for (const page of ["4 Islands", "Koh Phi Phi", "Koh Rok & Koh Haa"]) {
+    const { offre, offres } = premiere(surDemande(`${page} – Private speedboat`), AVEC_SPEEDBOAT);
+    assert.equal(offre && offre.id, "e1c1818e-ead0-4b8c-bc68-364fb9cf0007", page);
+    assert.equal(offre.titre, "Private speedboat, custom day");
+    // Sans prix de vente : pas de total, aucun enfant ni supplément ajouté, et jamais un autre tarif à la place.
+    assert.equal(offre.total, null, page);
+    assert.equal(offre.enfant, undefined);
+    assert.ok(offres.length >= 1);
+  }
+  // La ligne de facture garde le prix vide (à saisir), une quantité de 1 et le tarif : pas de NaN ni de 0 inventé.
+  const ligne = ligneDepuisPrestation(OCTOPUSEA, null, { langue: "en", date: "2026-11-25", qte: 1, uid: () => "l1" });
+  assert.equal(ligne.unite, null);
+  assert.equal(ligne.qte, 1);
+  assert.equal(ligne.prestation_id, OCTOPUSEA.id);
+  assert.equal(ligne.offert, undefined);
+});
+
+test("cles-options-site.json : chaque clé vise une option du site sans ligne de prix, des tarifs au bon format, ni prix ni net", () => {
+  const cles = JSON.parse(fs.readFileSync(new URL("../docs/gestion/cles-options-site.json", import.meta.url), "utf8"));
+  for (const [cle, tarifs] of Object.entries(cles)) {
+    if (cle.startsWith("_")) continue;
+    const [slug, id] = cle.split("|");
+    const option = (PRODUITS_SITE.find((p) => p.id === slug) || { options: [] }).options.find((o) => o.id === id);
+    assert.ok(option, `${cle} : option absente de site-produits.mjs`);
+    assert.deepEqual(option.tarifs, tarifs, `${cle} : site-produits.mjs à régénérer`);
+    for (const x of tarifs) {
+      assert.deepEqual(Object.keys(x).sort(), ["libelle", "ligne", "prestation"], cle);
+      assert.match(x.prestation, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, cle);
+    }
+  }
+});
+

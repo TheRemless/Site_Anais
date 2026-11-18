@@ -585,6 +585,8 @@ export function donneesDemo(ajd, ajouterJours) {
     prestation(speedTours, "excursion", groupe, libelle, prix, "pp", null, {}, { libelle_en: libelle });
     prestation(speedTours, "excursion", groupe, `${libelle}, child (4-11)`, enfant, "ch", null, {}, { libelle_en: `${libelle}, child (4-11)` });
   }
+  // Speedboat privé à la journée, sans prix de vente (prix sur WhatsApp sur le site) : le prix se saisit à la main sur la réservation.
+  prestation(speedTours, "excursion", "Private speedboat (custom day)", "Private speedboat OctopuSea, custom day", null, "grp", null, { capacite: "20 passengers plus crew" }, { libelle_en: "Private speedboat, custom day" });
   trajet(speed, "Koh Lanta", "Koh Phi Phi", "Speedboat", "10:30", "11:30", "1 h", 900, 700, 700, 500);
   trajet(speed, "Koh Lanta", "Koh Phi Phi", "Speedboat", "13:00", "14:00", "1 h", 900, 700, 700, 500);
   trajet(speed, "Koh Phi Phi", "Koh Lanta", "Speedboat", "15:00", "16:00", "1 h", 900, 700, 700, 500);
