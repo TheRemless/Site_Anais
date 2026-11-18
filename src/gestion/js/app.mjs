@@ -1,4 +1,5 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher, reglagesDe, permissionsDe } from "./etat.mjs";
+import { entreprisesConfirmation } from "./confirmation-calc.mjs";
 import { MODULES, moduleDeLEcran } from "./modules.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
@@ -311,6 +312,8 @@ function boutonPlus() {
   if (!peut("dossiers.ecrire")) return null;
   return h("button", { class: "bouton-plus", type: "button", "aria-label": tr("Nouveau"), title: tr("Nouveau"), onclick: ouvrirNouveau }, icone("ajouter", 26));
 }
+// « Coller une confirmation » : l'administratrice générale et les administratrices, quand une entreprise Taxi ou Secret leur permet de créer.
+const confirmationPermise = () => (estSuperAdmin() || estAdmin()) && entreprisesConfirmation({ entites: entitesAccessibles(), reglages: reglagesDe, permissions: permissionsDe }).liste.length > 0;
 function ouvrirNouveau() {
   let fermer;
   const va = (hash) => () => (fermer(), naviguer(hash));
@@ -321,7 +324,9 @@ function ouvrirNouveau() {
       "div",
       { class: "modal-corps" },
       choix("dossiers", tr("Nouveau dossier"), modeExcursions() ? tr("Un client, un ou plusieurs services") : tr("Un client, un voyage, un devis"), va("#/dossiers/nouveau")),
-      moduleActif("demande_collee") ? choix("messages", tr("Coller une demande"), tr("Un message WhatsApp du client devient un dossier"), async () => (fermer(), (await import("./views/demande.mjs")).ouvrirDemande())) : null
+      moduleActif("demande_collee") ? choix("messages", tr("Coller une demande"), tr("Un message WhatsApp du client devient un dossier"), async () => (fermer(), (await import("./views/demande.mjs")).ouvrirDemande())) : null,
+      // Confirmation de course collée (Jérémy, 18.11.2026) : administratrices seulement, dossier et Booking confirmation d'un bouton.
+      confirmationPermise() ? choix("whatsapp", tr("Coller une confirmation"), tr("« New booking confirmation » : le dossier et la Booking confirmation, d'un coup"), async () => (fermer(), (await import("./views/confirmation.mjs")).ouvrirConfirmation())) : null
     ),
     { protege: false }
   );

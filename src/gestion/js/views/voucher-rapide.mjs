@@ -3,25 +3,20 @@
 // puis la liste de ses derniers vouchers pour corriger une heure ou renvoyer. Le voucher reste en anglais. Logique : voucher-rapide-calc.mjs.
 // Logo du voucher (18.11.2026) : VIP Taxi Lanta (par défaut, Mr. Brown) ou Secret Travel & Tour (taxi indépendant, sans partenaire). Le dossier,
 // la course et le voucher vont dans l'entreprise du logo, avec ses réglages et ses droits (etat.mjs, travaillerPourVoucher).
-import { etat, inserer, modifier, reglages, chargerDossier, modeTaxi, travaillerPourVoucher, entitesVoucher, entiteVoucherOrigine, reglagesDe } from "../etat.mjs";
+import { etat, modifier, reglages, chargerDossier, modeTaxi, travaillerPourVoucher, entitesVoucher, entiteVoucherOrigine, reglagesDe } from "../etat.mjs";
 import { h, icone } from "../ui.mjs";
-import { uid } from "../defauts.mjs";
 import { RETOUR_DEPART } from "../trajet-calc.mjs";
-import { TH, CHAMPS, valeursVides, erreursVoucher, donneesVoucher, ligneVoucher, reservationVoucher, reservationApercu, correctionReservation, valeursDepuis, suggestionsLieux, mesVouchers, dateCourteTh, partenaireDeTaxi, chauffeurRegle, clientsRecents } from "../voucher-rapide-calc.mjs";
+import { TH, CHAMPS, valeursVides, erreursVoucher, donneesVoucher, reservationApercu, correctionReservation, valeursDepuis, suggestionsLieux, mesVouchers, dateCourteTh, clientsRecents } from "../voucher-rapide-calc.mjs";
 import { contenuCourse, heureBooking, estBookingConfirmation } from "../taxi-calc.mjs";
 import { numeroVoucher, nomFichierVoucher, lienWhatsApp } from "../operations-calc.mjs";
 import { chiffres } from "../partenaires-calc.mjs";
-import { creerDossierExcursions, refProposee, refDefinitive } from "./creation-excursions.mjs";
 import { synchroniserDatesDossier } from "./suivi-facture.mjs";
-import { vouchersDuDossier } from "./voucher.mjs";
+import { creerCourse, courseDuDossier, majClientCourse } from "./creation-course.mjs";
 import { imageVoucher } from "./voucher-envoi.mjs";
 import { moyen, partager, enregistrer, copierImage } from "./partage.mjs";
 import { noterEnvoi } from "./envois-vouchers.mjs";
 import { aujourdhui } from "../calc.mjs";
 
-// Le partenaire de la course : VIP Taxi Lanta, seul partenaire de l'entreprise (lu avec le droit « voir les partenaires »).
-// Sous le logo de Secret, aucun : c'est un taxi indépendant (décision de Jérémy, 18.11.2026), jamais un partenaire de Secret deviné par son nom.
-const partenaireTaxi = () => (modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null);
 // Le WhatsApp d'Anaïs est réglé dans Taxi : il sert aussi aux vouchers faits sous le logo de Secret.
 const telAnais = () => chiffres((reglagesDe(entiteVoucherOrigine()).voucher || {}).whatsapp_anais || "").replace("+", "");
 const independant = () => !modeTaxi();
@@ -252,41 +247,9 @@ export function vueVoucherRapide() {
     });
   }
 
-  // Création en une fois : le client (nom et WhatsApp facultatif, ou un client déjà connu), le dossier, le prix interne de la course et sa réservation payée au chauffeur.
-  // Le client, puis le dossier, sont gardés par l'aperçu (`essai`) dès qu'ils existent : si la suite échoue, un second tap reprend là.
-  async function creer(x, essai) {
-    // Un client déjà connu, choisi d'un tap, sert tel quel ; sinon un nouveau, avec son WhatsApp s'il est donné.
-    if (!essai.clientId && x.clientId && etat.db.clients.some((c) => c.id === x.clientId)) essai.clientId = x.clientId;
-    if (!essai.clientId) essai.clientId = (await inserer("clients", { civilite: "", prenom: "", nom: x.nom, adresse: "", telephone: x.telephone, email: "", notes: "" })).id;
-    else await majClient(essai.clientId, x);
-    const p = partenaireTaxi();
-    if (!essai.dossierId) {
-      const propose = refProposee();
-      const ref = await refDefinitive(propose, propose);
-      essai.dossierId = (await creerDossierExcursions({ client: { id: essai.clientId }, lignes: [ligneVoucher(x, { id: uid(), partenaireId: p ? p.id : null })], ref, parService: null, reservation: reservationVoucher(x, { independant: independant() }), silencieux: true })).id;
-    } else if (!voucherDe(essai.dossierId).reservation) {
-      // Dossier créé mais réservation refusée au premier essai : on ne pose que la réservation, liée à la ligne du prix interne.
-      await chargerDossier(essai.dossierId);
-      const doc = etat.db.documents.find((y) => y.dossier_id === essai.dossierId && y.type === "facture");
-      const ligne = doc && (doc.contenu.lignes || []).find((l) => l.kind === "ligne");
-      const r = reservationApercu(x, { independant: independant() });
-      await inserer("reservations", { dossier_id: essai.dossierId, ligne_id: ligne ? ligne.id : null, prestation_id: null, trajet_id: null, partenaire_id: p ? p.id : null, libelle: r.libelle, date_service: r.date_service, heure_pickup: r.heure_pickup, lieu_pickup: r.lieu_pickup, personnes: r.personnes, statut: r.statut, reference_partenaire: "", montant_vente: r.montant_vente, notes: "", paye_sur_place: true, details: r.details });
-    }
-    const v = voucherDe(essai.dossierId);
-    // creerReservations n'arrête pas la création quand la réservation échoue : on ne dit pas « créé » à tort.
-    if (!v.reservation) throw new Error("reservation");
-    return v;
-  }
-
-  // Le nom et le WhatsApp saisis passent sur la fiche du client ; un WhatsApp laissé vide n'efface pas celui qu'Anaïs a noté.
-  async function majClient(id, x) {
-    const c = etat.db.clients.find((y) => y.id === id) || {};
-    const patch = {
-      ...([c.prenom, c.nom].filter(Boolean).join(" ") !== x.nom ? { prenom: "", nom: x.nom } : {}),
-      ...(x.telephone && x.telephone !== (c.telephone || "") ? { telephone: x.telephone } : {}),
-    };
-    if (Object.keys(patch).length) await modifier("clients", id, patch);
-  }
+  // Création en une fois (client, dossier, prix interne, course payée au chauffeur) : creation-course.mjs, commune avec « Coller une confirmation ».
+  const creer = async (x, essai) => avecNomFichier(await creerCourse(x, essai));
+  const majClient = majClientCourse;
 
   // Correction : le nom, la course et son prix interne (jamais montré) suivent ce qui a été saisi.
   async function corriger(cible, x) {
@@ -310,15 +273,14 @@ export function vueVoucherRapide() {
   }
 
   // Le voucher tel que l'outil le numérote (référence du dossier et rang de la course), pour le nom du fichier.
-  const voucherDe = (dossierId, reservationId = null) => {
-    const d = etat.db.dossiers.find((y) => y.id === dossierId) || {};
-    const liste = vouchersDuDossier(dossierId);
-    const v = (reservationId && liste.find((y) => y.reservation.id === reservationId)) || liste[liste.length - 1] || { reservation: null, index: 1 };
-    const client = etat.db.clients.find((c) => c.id === d.client_id) || {};
+  const voucherDe = (dossierId, reservationId = null) => avecNomFichier(courseDuDossier(dossierId, reservationId));
+  const avecNomFichier = (v) => {
+    const d = v.dossier;
+    const client = v.client;
     // Sous un autre logo que Taxi, le nom du fichier commence par l'entreprise : Anaïs sait d'un coup d'œil de laquelle il s'agit.
     const fichier = nomFichierVoucher(v.numero || numeroVoucher(d.ref || "", v.index), client.nom || client.prenom || "", { taxi: estBookingConfirmation(v.reservation, v.type, reglages()) });
     const prefixe = d.entite_id && d.entite_id !== origine ? `${nomEntite(d.entite_id).replace(/[\\/:*?"<>|]/g, "").trim()} - ` : "";
-    return { ...v, dossier: d, client, entite_id: d.entite_id || null, nomFichier: `${prefixe}${fichier}` };
+    return { ...v, nomFichier: `${prefixe}${fichier}` };
   };
 
   // ---- 3. Envoi à Anaïs -------------------------------------------------------------------------------------------
