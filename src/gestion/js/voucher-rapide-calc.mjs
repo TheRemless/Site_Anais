@@ -153,6 +153,7 @@ export function erreursVoucher(v) {
   if (Number.isNaN(enf)) e.enfants = "e_nombre";
   if (contientThai(v.bagages)) e.bagages = "e_thai";
   if (contientThai(v.vol)) e.vol = "e_thai";
+  if (contientThai(v.remarques)) e.remarques = "e_thai";
   const s = entier(v.sieges);
   if (Number.isNaN(s)) e.sieges = "e_nombre";
   else if (s > 0 && !Number.isNaN(enf) && s > enf) e.sieges = "e_sieges";
@@ -188,6 +189,7 @@ export function donneesVoucher(v) {
     vol: String(v.vol || "").trim().replace(/\s+/g, " "),
     sieges: entier(v.sieges) || 0,
     prix: prixSaisi(v.prix),
+    remarques: String(v.remarques || "").trim().replace(/\s+/g, " "),
   };
 }
 
@@ -219,8 +221,11 @@ export const STATUT_COURSE = "confirme";
 // Le modèle est fixé à « transfert » : Secret déduit sinon un billet de bateau d'un trajet vers un embarcadère (« … → Speedboat pier »).
 // La fiche garde la trace de ce choix dans `details.taxi_independant`.
 const INDEPENDANT = { taxi_independant: true, type_transfert: "taxi", modele_voucher: "transfert" };
+// `x.remarques` (confirmation collée, 18.11.2026) : la remarque imprimée sur la Booking confirmation (« REMARKS »), posée seulement si elle est donnée.
+// L'écran de Mook n'en saisit pas : une correction de sa part ne l'efface jamais (correctionReservation n'y touche pas).
+const avecRemarques = (x) => (x.remarques ? { remarques: x.remarques } : {});
 export const reservationVoucher = (x, { independant = false } = {}) => {
-  const details = { ...(x.type_trajet ? detailsFacultatifs({}, { type_trajet: x.type_trajet, programme_trajet: x.programme_trajet, duree_h: x.duree_h }) : {}), ...(independant ? INDEPENDANT : {}) };
+  const details = { ...(x.type_trajet ? detailsFacultatifs({}, { type_trajet: x.type_trajet, programme_trajet: x.programme_trajet, duree_h: x.duree_h }) : {}), ...(independant ? INDEPENDANT : {}), ...avecRemarques(x) };
   return { statut: STATUT_COURSE, heure: x.heure, lieu: x.pickup, dropoff: x.dropoff, vol: x.vol, bagages: x.bagages, sieges: x.sieges, personnes: { adultes: x.personnes.adultes, enfants: x.personnes.enfants }, ...(Object.keys(details).length ? { details } : {}) };
 };
 
@@ -236,7 +241,7 @@ function detailsFacultatifs(details, x) {
 }
 
 // Réservation telle que le voucher la lit, pour l'aperçu avant création (rien n'est encore en base).
-export const reservationApercu = (x, { independant = false } = {}) => ({ id: "apercu", libelle: x.libelle, date_service: x.date, heure_pickup: x.heure, lieu_pickup: x.pickup, personnes: x.personnes, montant_vente: x.prix, paye_sur_place: true, statut: STATUT_COURSE, details: { ...detailsFacultatifs({ drop_off: x.dropoff }, x), ...(independant ? INDEPENDANT : {}) } });
+export const reservationApercu = (x, { independant = false } = {}) => ({ id: "apercu", libelle: x.libelle, date_service: x.date, heure_pickup: x.heure, lieu_pickup: x.pickup, personnes: x.personnes, montant_vente: x.prix, paye_sur_place: true, statut: STATUT_COURSE, details: { ...detailsFacultatifs({ drop_off: x.dropoff }, x), ...(independant ? INDEPENDANT : {}), ...avecRemarques(x) } });
 
 // Correction d'un voucher déjà créé : les champs de la réservation qui changent (null si rien ne change).
 export function correctionReservation(r, x) {
