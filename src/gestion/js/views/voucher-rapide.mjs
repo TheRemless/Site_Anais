@@ -392,14 +392,27 @@ export function vueVoucherRapide() {
 
   // Renvoyer un voucher déjà créé : l'image se refait (elle suit toute correction), puis le même écran d'envoi.
   // Le voucher se refait dans son entreprise, avec ses réglages, son logo et son numéro.
+  // Juste après une création (`options.titre`), « créé » s'affiche dès l'attente : une image ratée ne fait pas croire que rien n'a été enregistré,
+  // et « Refaire l'image » la refait sans recréer de dossier.
+  let tirage = 0;
   function renvoyer(v, options = {}) {
-    travaillerPourVoucher(v.entite_id || v.dossier.entite_id);
+    const entite = v.entite_id || v.dossier.entite_id;
+    travaillerPourVoucher(entite);
     occupe(true);
+    const moi = ++tirage;
+    const retour = h("button", { class: "lien vr-retour", type: "button", onclick: () => (tirage++, formulaire()) }, icone("retour", 18), TH.retour);
+    const succes = options.titre ? h("p", { class: "vr-succes" }, icone("coche", 22), options.titre) : null;
+    // L'entreprise du voucher n'est plus permise (accès retiré) : jamais une image faite avec les réglages d'une autre.
+    if (entite && etat.entiteId !== entite) return racine.replaceChildren(retour, h("p", { class: "vr-erreur" }, TH.image_echec));
     const x = voucherDe(v.dossier.id, v.reservation.id);
-    racine.replaceChildren(h("button", { class: "lien vr-retour", type: "button", onclick: () => formulaire() }, icone("retour", 18), TH.retour), h("p", { class: "vr-attente" }, TH.preparation));
+    racine.replaceChildren(retour, succes, h("p", { class: "vr-attente" }, TH.preparation));
     imageVoucher({ reservation: x.reservation || v.reservation, prestation: null, type: "transfert", index: x.index || 1, numero: x.numero }, { client: x.client, dossier: x.dossier, resume: null })
-      .then((blob) => envoi(x, blob, options))
-      .catch((err) => racine.append(h("p", { class: "vr-erreur" }, `${TH.image_echec} (${err.message})`)));
+      // Mook a pu revenir au formulaire pendant la préparation : l'image arrivée après ne remplace pas ce qu'elle fait.
+      .then((blob) => moi === tirage && envoi(x, blob, options))
+      .catch((err) => {
+        if (moi !== tirage) return;
+        racine.replaceChildren(retour, succes, h("p", { class: "vr-erreur" }, `${TH.image_echec} (${err.message})`), h("div", { class: "vr-barre" }, h("button", { class: "principal", type: "button", onclick: () => renvoyer(v, options) }, TH.reessayer)));
+      });
   }
 
   // ---- 4. Derniers vouchers --------------------------------------------------------------------------------------

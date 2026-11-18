@@ -124,7 +124,7 @@ test("voucher Secret : logo, nom et coordonnées de Secret, numéro du dossier, 
   assert.match(v.textContent, /Voucher No\.: EX-2026-0124-1/, "le numéro du dossier, pas « -1 »");
   assert.ok(!/VIP Taxi|Mr\. Brown|Booking confirmation/i.test(texte), texte);
   assert.ok(!l.some((x) => /Operator/.test(x)), "pas de ligne Operator vide pour un taxi indépendant");
-  assert.ok(l.some((x) => /Transfer Type: ☒ Private Taxi/.test(x) || /Transfer Type:.*Private Taxi/.test(x)), texte);
+  assert.ok(l.some((x) => /Transfer Type: ☒ Private Taxi ☐ Private Minivan/.test(x)), texte);
   assert.ok(l.some((x) => /Pay Driver Directly/.test(x)), texte);
   // Le logo est celui des réglages de Secret.
   const images = [];
