@@ -6,7 +6,7 @@ import { DEPENDANCES, completerReglages, PERMISSIONS } from "../defauts.mjs";
 import { droitsProposes, droitsDuRole, droitsRetires } from "../droits.mjs";
 import { accesChoisis, messageInvitation, messageLien } from "../compte-calc.mjs";
 import { h, champ, modal, toast, slug, confirmer, icone, saisie } from "../ui.mjs";
-import { vide, plierSections } from "./commun.mjs";
+import { vide, plierSections, listeClientsPlateforme } from "./commun.mjs";
 import { tr, N_, LANGUES, pluriel } from "../i18n.mjs";
 import { MODELES, MODELE_DEFAUT, DEVISES_PROPOSEES } from "../modeles-metier.mjs";
 
@@ -578,7 +578,7 @@ export function vueAdmin() {
     h(
       "section",
       null,
-      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Entreprises")), h("div", { class: "entete-actions" }, etat.moi && etat.moi.plateforme ? h("button", { class: "secondaire", type: "button", onclick: () => nouveauClientModal() }, tr("Nouveau client")) : null, h("button", { class: "secondaire", type: "button", onclick: () => nouvelleEntiteModal(rafraichir) }, tr("Nouvelle entreprise")))),
+      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Entreprises")), h("div", { class: "entete-actions" }, etat.moi && etat.moi.plateforme ? h("button", { class: "secondaire", type: "button", onclick: () => nouveauClientModal(rafraichir) }, tr("Nouveau client")) : null, h("button", { class: "secondaire", type: "button", onclick: () => nouvelleEntiteModal(rafraichir) }, tr("Nouvelle entreprise")))),
       h("p", { class: "aide" }, tr("Chaque entreprise a ses propres clients, dossiers, paiements, catalogue, réglages, logo et devise. Personne ne voit une entreprise sans y avoir accès.")),
       h(
         "table",
@@ -588,6 +588,7 @@ export function vueAdmin() {
       )
     ),
     entites.length > 1 ? blocPartageClients(entites) : null,
+    etat.moi && etat.moi.plateforme ? listeClientsPlateforme({ apres: rafraichir, admin: true }) : null,
     h(
       "section",
       null,
