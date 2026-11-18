@@ -48,6 +48,11 @@ const CATALOGUE = ["partenaires", "partenaires_prives", "prestations", "prestati
 const AVEC_DATE = ["partenaires", "prestations"];
 const CATALOGUE_AGE_MAX = 15 * 60 * 1000;
 
+// Colonnes lues de l'organisation. Une colonne ajoutée par une migration pas encore passée (42703 dans Postgres, PGRST204 ou « column … does
+// not exist » via PostgREST) ne doit pas empêcher de lire les autres.
+export const COLONNES_ORGANISATION = "id, nom, fuseau, langue, statut, options";
+export const colonneAbsente = (error, colonne) => !!error && (error.code === "42703" || error.code === "PGRST204" || new RegExp(`column [^ ]*${colonne}[^ ]* does not exist|Could not find the '${colonne}' column`, "i").test(error.message || ""));
+
 export function creer(config, { client, maintenant = () => Date.now() } = {}) {
   // Retour d'un lien d'invitation ou de mot de passe (lot D) : lu AVANT que la bibliothèque n'ouvre la session et n'efface l'adresse.
   // Une erreur (lien expiré) est effacée de l'adresse ici : elle n'est pas un écran de l'outil.
@@ -160,8 +165,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
   }
 
   // L'organisation de la personne connectée (migration 42) : nom, fuseau, langue. Avant la migration la table manque : liste vide, rien ne casse.
+  // `libelle_admin` (migration 44) : relu sans cette colonne tant que la base ne l'a pas.
   async function lireOrganisations() {
-    const { data, error } = await sb.from("organisations").select("id, nom, fuseau, langue, statut, options");
+    let { data, error } = await sb.from("organisations").select(`${COLONNES_ORGANISATION}, libelle_admin`);
+    if (error && colonneAbsente(error, "libelle_admin")) ({ data, error } = await sb.from("organisations").select(COLONNES_ORGANISATION));
     if (!error) return data || [];
     if (error.code === "42P01" || error.code === "PGRST205" || /relation "[^"]*organisations" does not exist|Could not find the table/i.test(error.message || "")) return [];
     throw new Error(error.message);

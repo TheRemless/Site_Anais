@@ -8,8 +8,7 @@ import { champsBooking, lignesEnPlus } from "../taxi-calc.mjs";
 import { textesVoucher } from "../textes-voucher.mjs";
 import { photoBandeau } from "./voucher-taxi.mjs";
 
-const LOGO_DEFAUT = "assets/logo-secret.png";
-const BANDEAU_DEFAUT = "assets/secret-bandeau.webp";
+// Plus d'image de marque par défaut (migration 44) : sans logo ni photo dans les réglages, rien. Secret d'Anaïs a les siens enregistrés.
 
 // L'icône WhatsApp du bloc « CONTACT US: » (tracé simple, sans dépendance).
 const NS = "http://www.w3.org/2000/svg";
@@ -39,7 +38,7 @@ export function renderBookingSecret({ regl, client = {}, r, pickup = "", dropoff
   const dt = r.details || {};
   const champs = champsBooking({ nom, date: r.date_service, pickup, heure: r.heure_pickup, dropoff, personnes: r.personnes || {}, bagages, sieges: dt.sieges, vol: dt.vol, montant: r.montant_vente, devise, retour, remarques: dt.remarques, t });
   const valeur = (c) => (c.date ? [`${c.date.mois} ${c.date.jour}`, h("sup", null, c.date.suffixe), ` ${c.date.annee}`] : c.valeur);
-  const logo = (regl.apparence && regl.apparence.logo) || LOGO_DEFAUT;
+  const logo = (regl.apparence && regl.apparence.logo) || "";
   const serre = lignesEnPlus(champs.map((c) => (c.date ? "" : c.valeur))) + Math.max(0, champs.length - 7);
   const lignes = (s) => remplir(s).split("\n").flatMap((l, i) => (i ? [h("br"), l] : [l]));
   return h(
@@ -49,8 +48,8 @@ export function renderBookingSecret({ regl, client = {}, r, pickup = "", dropoff
     h(
       "div",
       { class: "vt-haut" },
-      h("div", { class: "vt-bandeau" }, photoBandeau(v.bandeau || BANDEAU_DEFAUT), h("div", { class: "vt-vague", "aria-hidden": "true" })),
-      h("div", { class: "vt-sceau" }, h("img", { src: logo, alt: nomSociete || "" }))
+      h("div", { class: "vt-bandeau" }, v.bandeau ? photoBandeau(v.bandeau) : null, h("div", { class: "vt-vague", "aria-hidden": "true" })),
+      logo ? h("div", { class: "vt-sceau" }, h("img", { src: logo, alt: nomSociete || "" })) : null
     ),
     h("h1", { class: "vt-titre" }, t("b_titre_1"), h("br"), t("b_titre_2")),
     h("p", { class: "vt-intro" }, t("bs_intro")),

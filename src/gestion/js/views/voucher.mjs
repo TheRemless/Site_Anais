@@ -196,7 +196,7 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   // VIP Taxi Lanta : la « Booking confirmation » de son modèle, pas les vouchers de Secret.
   // Secret : un transfert payé au chauffeur sans partenaire (taxi indépendant) a sa propre Booking confirmation (18.11.2026).
   if (estBookingSecret(r, type, regl)) return renderBookingSecret({ regl, client, r, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, nomSociete, retour: retourDepart ? { programme: programmeTrajet, duree: dureeTrajet } : null });
-  if (estTaxi(regl)) return renderBookingConfirmation({ regl, client, r, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, email, adresse, retour: retourDepart ? { programme: programmeTrajet, duree: dureeTrajet } : null });
+  if (estTaxi(regl)) return renderBookingConfirmation({ regl, client, r, pickup: pickupTransfert, dropoff: dropOff, bagages, devise, whatsapp, email, adresse, nomSociete, retour: retourDepart ? { programme: programmeTrajet, duree: dureeTrajet } : null });
 
   const cle = (texte) => h("span", { class: "v-cle" }, `${texte}: `);
   const espace = () => h("span", { class: "v-espace" });

@@ -125,13 +125,15 @@ export function simulerLecture(texte, contexte, aujourdhui) {
 
 const fmt = (n, devise) => `${Number(n).toLocaleString("en-US")} ${devise}`;
 
-export function simulerRedaction(faits, langue) {
+// `signature` : le prénom de la personne responsable (réglages de l'entreprise), sinon le nom de l'entreprise des faits.
+export function simulerRedaction(faits, langue, signature = "") {
+  const qui = signature || faits.entreprise || "";
   const en = langue === "en";
   const lignes = faits.services.map((s) => `→ ${s.libelle}${s.date ? `, ${s.date}` : ""}${s.heure ? ` ${en ? "at" : "à"} ${s.heure}` : ""}${en ? ":" : " :"} ${s.prix === null ? (en ? "price to confirm" : "prix à confirmer") : fmt(s.prix, faits.devise)}`);
   const total = faits.total !== null && faits.services.length > 1 ? [`Total${en ? ":" : " :"} ${fmt(faits.total, faits.devise)}`] : [];
   const prenom = faits.prenom ? ` ${faits.prenom}` : "";
   const message = en
-    ? [`Hello${prenom},`, "", "Thank you for your message 😊", "", ...lignes, ...total, "", "I'll confirm availability with our partner and get back to you. Could you send me your hotel name?", "", "Have a lovely day, Anaïs"].join("\n")
-    : [`Bonjour${prenom},`, "", "Merci beaucoup pour votre message 😊", "", ...lignes, ...total, "", "Je vérifie la disponibilité auprès de notre partenaire et je reviens vers vous. Pouvez-vous m'indiquer le nom de votre hôtel ?", "", "Belle journée, Anaïs"].join("\n");
+    ? [`Hello${prenom},`, "", "Thank you for your message 😊", "", ...lignes, ...total, "", "I'll confirm availability with our partner and get back to you. Could you send me your hotel name?", "", `Have a lovely day, ${qui}`].join("\n")
+    : [`Bonjour${prenom},`, "", "Merci beaucoup pour votre message 😊", "", ...lignes, ...total, "", "Je vérifie la disponibilité auprès de notre partenaire et je reviens vers vous. Pouvez-vous m'indiquer le nom de votre hôtel ?", "", `Belle journée, ${qui}`].join("\n");
   return { ok: true, usage: "rediger", modele: "simulation", langue: en ? "en" : "fr", message, manques: [en ? "hotel name" : "nom de l'hôtel"], avertissements: [] };
 }

@@ -158,3 +158,23 @@ test("synchronisation : si le résultat d'une lecture est écarté (écriture pe
   const apres = await store.charger({ ancien: brut });
   assert.equal(apres.prestations.length, 3, "le changement d'un autre n'est pas perdu parce qu'une lecture a été écartée");
 });
+
+// Migration 44 : l'organisation est lue avec son libellé d'administration ; une base sans la colonne est relue sans elle.
+test("organisation : libelle_admin lu, et relu sans la colonne avant la migration 44", async () => {
+  for (const [avecColonne, attendu] of [[true, "Administratrice générale"], [false, undefined]]) {
+    const sb = faux();
+    const base = sb.from;
+    const vues = [];
+    const client = {
+      ...sb,
+      from: (nom) => {
+        if (nom !== "organisations") return base(nom);
+        const q = { select(c) { q.c = c; return q; }, then(ok, ko) { vues.push(q.c); const r = /libelle_admin/.test(q.c) && !avecColonne ? { data: null, error: { code: "42703", message: "column organisations.libelle_admin does not exist" } } : { data: [{ id: "o1", nom: "Zwald", ...(avecColonne ? { libelle_admin: attendu } : {}) }], error: null }; return Promise.resolve(r).then(ok, ko); } };
+        return q;
+      },
+    };
+    const out = await creer({}, { client }).charger();
+    assert.equal(out.organisations[0].libelle_admin, attendu);
+    assert.equal(vues.length, avecColonne ? 1 : 2, "une seule relecture, sans la colonne");
+  }
+});

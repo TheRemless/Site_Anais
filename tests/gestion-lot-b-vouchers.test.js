@@ -154,7 +154,7 @@ test("textes réglables : un défaut par clé, le texte saisi le remplace, un te
   assert.equal(new Set(cles).size, cles.length, "aucune clé en double");
   const t = textesVoucher({ voucher: { textes: { nom_client: "Name", licence: "  ", b_tous_frais: "(fees included)" } } });
   assert.equal(t("nom_client"), "Name");
-  assert.equal(t("licence"), "TAT licence", "espaces seuls : le défaut");
+  assert.equal(t("licence"), "Licence", "espaces seuls : le défaut (neutre depuis la migration 44, « TAT licence » est dans les réglages d’Anaïs)");
   assert.equal(t("titre_bateau"), "Boat Tour Voucher");
   assert.equal(textesVoucher(null)("en_attente"), "Payment Pending");
   assert.equal(PIED_BOOKING.paiement_wise, DEFAUTS_TEXTES.b_paiement_wise, "la mention Wise reste telle quelle (décision 6)");

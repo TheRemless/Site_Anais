@@ -15,7 +15,7 @@ export const GROUPES_VOUCHER = [
       ["titre_location", "Rental Voucher"],
       ["numero", "Voucher No."],
       ["date_emission", "Date"],
-      ["licence", "TAT licence"],
+      ["licence", "Licence"],
       ["whatsapp", "Whatsapp"],
       ["email", "E-mail"],
       ["rubrique_client", "CUSTOMER DETAILS"],
@@ -119,8 +119,9 @@ export const GROUPES_VOUCHER = [
   },
 ];
 
-// Booking confirmation de VIP Taxi Lanta : le modèle d'Anaïs (12.11.2026), mot pour mot. `paiement_wise` reste tel quel (décision 6 du
-// 17.11.2026) ; il est seulement modifiable comme le reste.
+// Booking confirmation du mode taxi : le modèle d'Anaïs (12.11.2026). `paiement_wise` reste tel quel (décision 6 du 17.11.2026) ; il est
+// seulement modifiable comme le reste. `{ENTREPRISE}` : le nom de l'entreprise du voucher, en capitales (migration 44 : les textes d'Anaïs,
+// avec sa marque écrite en toutes lettres, sont dans ses réglages).
 export const GROUPES_BOOKING = [
   {
     titre: N_("Titre et rubriques"),
@@ -150,9 +151,9 @@ export const GROUPES_BOOKING = [
       ["b_paiement_wise", "(or you can pay through Wise with a 3% fee, please inform us before)"],
       ["b_attente", "Your driver will be waiting for you at the meeting point."],
       ["b_changement", "If your plan changes, please let us know as soon as possible."],
-      ["b_merci", "Thank you for choosing VIP TAXI LANTA – we look forward to driving you safely and comfortably to your destination! 🚐✨"],
+      ["b_merci", "Thank you for choosing {ENTREPRISE} – we look forward to driving you safely and comfortably to your destination! 🚐✨"],
       ["b_salutation", "Kind regards,"],
-      ["b_signature", "VIP TAXI LANTA Team"],
+      ["b_signature", "{ENTREPRISE} Team"],
     ],
   },
 ];
@@ -176,7 +177,7 @@ export const GROUPES_BOOKING_SECRET = [
 ];
 
 // Le lieu sous la signature est l'adresse du bloc d'en-tête (« Adresse sur une ligne ») ; ce texte ne sert que quand elle est vide.
-export const DEFAUTS_TEXTES = { ...Object.fromEntries([...GROUPES_VOUCHER, ...GROUPES_BOOKING, ...GROUPES_BOOKING_SECRET].flatMap((g) => g.cles)), b_lieu: "Koh Lanta, Krabi, Thailand" };
+export const DEFAUTS_TEXTES = { ...Object.fromEntries([...GROUPES_VOUCHER, ...GROUPES_BOOKING, ...GROUPES_BOOKING_SECRET].flatMap((g) => g.cles)), b_lieu: "" };
 
 // La fonction qui donne le texte d'une clé pour ces réglages : celui saisi dans `voucher.textes`, sinon le défaut. Un texte fait seulement
 // d'espaces vaut le défaut (un champ vidé ne doit jamais imprimer un intitulé vide).

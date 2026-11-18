@@ -15,7 +15,9 @@ export const TYPES_BANDEAU = {
   urgent: { libelle: N_("Perturbation importante"), aide: N_("Fond sombre, très visible") },
 };
 
-export const SECTIONS_SITE = { islands: N_("Sorties en bateau"), activities: N_("Activités"), transfers: N_("Transferts et bateaux"), rental: N_("Location"), taxi: N_("VIP Taxi Lanta") };
+export const SECTIONS_SITE = { islands: N_("Sorties en bateau"), activities: N_("Activités"), transfers: N_("Transferts et bateaux"), rental: N_("Location"), taxi: N_("Taxi") };
+// La section « taxi » s'affiche sous le nom de l'entreprise qui publie (migration 44) : voir nomSection.
+export const nomSection = (k, noms = {}) => (k === "taxi" && noms.taxi) || SECTIONS_SITE[k] || k;
 
 // Champs d'un modèle : trip (une sortie du site), option (une option de cette sortie), date, date2, de, a (heures), texte (anglais libre).
 // `fin` : la fin automatique proposée ; `etiquette` : le mot court posé sur la carte des sorties visées (mer, saison).
@@ -120,25 +122,27 @@ const PAGES_SECTIONS = [
   { href: "/", libelle: "See all trips", nom: N_("Accueil de Secret") },
   { href: "/tours/", libelle: "See all trips", nom: N_("Toutes les sorties") },
   { href: "/transfers/", libelle: "See transfers", nom: N_("Transferts") },
-  { href: "/taxi/", libelle: "See VIP Taxi Lanta", nom: N_("Accueil de VIP Taxi Lanta") },
+  { href: "/taxi/", libelle: null, nom: N_("Accueil de {marque}"), marque: "taxi" },
 ];
 export function pagesLien(marques) {
   const sections = PAGES_SECTIONS.filter((p) => (p.href === "/taxi/" ? marques.includes("taxi") : marques.includes("secret")));
-  return [...sections.map((p) => ({ href: p.href, nom: p.nom, section: true })), ...produitsDeMarques(marques).map((p) => ({ href: p.url, nom: p.nom, section: false }))];
+  return [...sections.map((p) => ({ href: p.href, nom: p.nom, section: true, marque: p.marque || null })), ...produitsDeMarques(marques).map((p) => ({ href: p.url, nom: p.nom, section: false }))];
 }
-export function libelleLien(href) {
+// `noms` : le nom de chaque entreprise qui publie, par slug ({ taxi: "…" }) ; la page d'accueil du taxi porte son nom (migration 44).
+export function libelleLien(href, noms = {}) {
   const p = PRODUITS_SITE.find((x) => x.url === href);
   if (p) return `See ${p.nom}`.slice(0, 40);
   const s = PAGES_SECTIONS.find((x) => x.href === href);
+  if (s && s.marque) return noms[s.marque] ? `See ${noms[s.marque]}`.slice(0, 40) : "See the page";
   return s ? s.libelle : "See the page";
 }
 
 // Ligne prête à enregistrer, avec tout ce qui est calculé (texte, lien, étiquette).
-export function ligneBandeau(b, aujourdhui) {
+export function ligneBandeau(b, aujourdhui, noms = {}) {
   const m = modele(b.modele);
   const { texte } = texteBandeau(b.modele, b.valeurs, aujourdhui);
   const valeurs = { ...b.valeurs };
-  if (b.lien === "page") valeurs.lien_libelle = libelleLien(b.lien_page);
+  if (b.lien === "page") valeurs.lien_libelle = libelleLien(b.lien_page, noms);
   else delete valeurs.lien_libelle;
   const etiquette = etiquetteCarte(b.modele, b.valeurs);
   if (etiquette) valeurs.etiquette = etiquette;

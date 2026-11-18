@@ -64,11 +64,11 @@ export const TH = {
   anglais_aide: "พิมพ์เป็นภาษาอังกฤษ", // Écrire en anglais
   apercu: "ดูตัวอย่าง", // Voir l'aperçu
   modifier: "แก้ไข", // Modifier
-  creer: "สร้างและส่งให้ Anaïs", // Créer et envoyer à Anaïs
-  enregistrer: "บันทึกและส่งให้ Anaïs", // Enregistrer et envoyer à Anaïs
-  envoyer: "ส่งรูปให้ Anaïs", // Envoyer l'image à Anaïs
+  creer: "สร้างและส่งให้ {responsable}", // Créer et envoyer à {responsable}
+  enregistrer: "บันทึกและส่งให้ {responsable}", // Enregistrer et envoyer à {responsable}
+  envoyer: "ส่งรูปให้ {responsable}", // Envoyer l'image à {responsable}
   enregistrer_image: "บันทึกรูป", // Enregistrer l'image
-  ouvrir_chat: "เปิดแชท Anaïs", // Ouvrir la conversation d'Anaïs
+  ouvrir_chat: "เปิดแชท {responsable}", // Ouvrir la conversation {de_responsable}
   nouveau: "สร้างใบใหม่", // Faire un nouveau voucher
   annuler: "ยกเลิก", // Annuler
   retour: "กลับ", // Retour
@@ -80,10 +80,10 @@ export const TH = {
   preparation: "กำลังทำรูป…", // Préparation de l'image…
   cree: "สร้างวอยเชอร์แล้ว", // Voucher créé
   modifie: "บันทึกแล้ว", // Enregistré
-  choisir_anais: "ใน WhatsApp เลือก Anaïs แล้วกดส่ง", // Dans WhatsApp, choisir Anaïs puis envoyer
+  choisir_anais: "ใน WhatsApp เลือก {responsable} แล้วกดส่ง", // Dans WhatsApp, choisir {responsable} puis envoyer
   partage_impossible: "โทรศัพท์นี้ส่งรูปตรงๆ ไม่ได้ กดบันทึกรูป แล้วส่งใน WhatsApp", // Ce téléphone ne peut pas envoyer l'image directement : enregistrer l'image puis l'envoyer dans WhatsApp
   partage_echec: "ส่งรูปไม่สำเร็จ กดบันทึกรูป แล้วส่งใน WhatsApp", // L'envoi de l'image a échoué : enregistrer l'image puis l'envoyer dans WhatsApp
-  image_copiee: "คัดลอกรูปแล้ว วางในแชท Anaïs", // Image copiée, la coller dans la conversation d'Anaïs
+  image_copiee: "คัดลอกรูปแล้ว วางในแชท {responsable}", // Image copiée, la coller dans la conversation {de_responsable}
   echec: "ไม่สำเร็จ ลองอีกครั้ง", // Échec, réessayer
   image_echec: "ทำรูปไม่สำเร็จ", // L'image n'a pas pu être faite
   reessayer: "ลองทำรูปอีกครั้ง", // Refaire l'image
