@@ -4,8 +4,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { ecranDeLecture, momentDeRecharger, nouvellesDemandes, TABLES_EN_DIRECT, INACTIF_MS, CALME_MS } from "../src/gestion/js/direct-calc.mjs";
 
 const RACINE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -23,15 +23,19 @@ test("rechargement d'une nouvelle version : jamais pendant une saisie, au premie
   assert.equal(momentDeRecharger({ nouvelle: true, saisie: true, cache: true, retour: true, inactifMs: 10 * INACTIF_MS }), false, "une saisie bloque tout");
   assert.equal(momentDeRecharger({ nouvelle: true, cache: true }), true, "onglet caché");
   assert.equal(momentDeRecharger({ nouvelle: true, retour: true }), true, "onglet revenu au premier plan");
-  assert.equal(momentDeRecharger({ nouvelle: true, inactifMs: INACTIF_MS }), true, "inactif depuis une minute");
-  assert.equal(momentDeRecharger({ nouvelle: true, inactifMs: 5000 }), false, "pendant qu'on travaille sans saisie, on attend");
+  assert.equal(momentDeRecharger({ nouvelle: true, inactifMs: INACTIF_MS }), true, "inactif depuis un moment");
+  assert.equal(INACTIF_MS, 5 * 60 * 1000, "cinq minutes : une lecture d'une minute n'est pas coupée");
+  assert.equal(momentDeRecharger({ nouvelle: true, inactifMs: 90 * 1000 }), false, "pendant qu'on lit sans saisie, on attend");
   assert.equal(momentDeRecharger({ nouvelle: true, apresSaisie: true, inactifMs: CALME_MS }), true, "dès que la saisie est enregistrée ou abandonnée");
   assert.equal(momentDeRecharger({ nouvelle: true, apresSaisie: true, inactifMs: 500 }), false, "le temps de lire « enregistré »");
 });
 
 test("app.mjs : rechargement automatique câblé sur le moment sûr, écrans de saisie et garde des réglages compris, bouton gardé", () => {
   const app = source("app.mjs");
-  assert.match(app, /const saisie = saisieEnCours\(\) \|\| !ecranDeLecture\(location\.hash\) \|\| !!\(etat\.garde && etat\.garde\(\)\);/);
+  assert.match(app, /const saisie = saisieEnCours\(\) \|\| choixModifies\(\) \|\| !ecranDeLecture\(location\.hash\) \|\| !!\(etat\.garde && etat\.garde\(\)\);/);
+  assert.match(app, /\[\.\.\.s\.options\]\.some\(\(o\) => o\.selected !== o\.defaultSelected\)/, "une liste changée bloque le rechargement");
+  assert.match(app, /c\.checked !== c\.defaultChecked/, "un bouton radio ou une case changés aussi");
+  assert.match(app, /const apresSaisie = !!finSaisie && Date\.now\(\) - finSaisie < 30 \* 1000;/, "« juste après une saisie » ne dure que trente secondes");
   assert.match(app, /if \(ok\) location\.reload\(\);/, "location.reload garde l'adresse : l'écran et le dossier ouverts restent");
   assert.match(app, /setInterval\(\(\) => rechargerSiSur\(\), 2000\);/);
   assert.match(app, /if \(versionSignalee\) return void rechargerSiSur\(\{ retour \}\);/);
@@ -44,9 +48,10 @@ test("demandes du site en direct : Realtime sur demandes_site, compteur à chaqu
   assert.match(app, /etat\.store\.ecouter\(TABLES_EN_DIRECT, changementDistant\)/);
   assert.match(app, /attente = setTimeout\(\(\) => \(\(derniere = 0\), actualiser\(true\)\), 800\);/, "plusieurs événements, une relecture");
   assert.match(app, /if \(etat\.session && document\.querySelector\("\.coque"\)\) majBadges\(\);/, "le compteur suit même sans redessiner");
-  assert.equal(nouvellesDemandes(2, 3), 1);
-  assert.equal(nouvellesDemandes(3, 2), 0);
-  assert.equal(nouvellesDemandes(undefined, 1), 1);
+  assert.equal(nouvellesDemandes({ entite: "s", ids: ["a", "b"] }, { entite: "s", ids: ["a", "b", "c"] }), 1);
+  assert.equal(nouvellesDemandes({ entite: "s", ids: ["a", "b"] }, { entite: "s", ids: ["b", "c"] }), 1, "une traitée et une arrivée en même temps : l'arrivée s'annonce");
+  assert.equal(nouvellesDemandes({ entite: "s", ids: ["a"] }, { entite: "t", ids: ["x", "y"] }), 0, "changement d'entreprise pendant la relecture : rien à annoncer");
+  assert.equal(nouvellesDemandes({ entite: "s", ids: ["a", "b"] }, { entite: "s", ids: ["a"] }), 0);
 });
 
 test("store Supabase : un canal postgres_changes par table suivie, refait sans doublon", async () => {
@@ -113,25 +118,30 @@ test("synchroniser : une démo sans relecture (ancien magasin) reste ignorée", 
 });
 
 test("empreinte de version : le contenu des fichiers de l'outil seulement, pas la date ni un fichier caché", () => {
+  const { empreinteGestion } = createRequire(import.meta.url)("../scripts/empreinte-gestion.cjs");
   const eleventy = fs.readFileSync(path.join(RACINE, ".eleventy.js"), "utf8");
-  assert.match(eleventy, /if \(n\.name\.startsWith\("\."\)\) continue;/);
-  assert.ok(!/Date\.now|new Date|process\.env/.test(eleventy.slice(eleventy.indexOf("Identifiant de version"), eleventy.indexOf("return {", eleventy.indexOf("Identifiant de version")))), "rien qui change d'un build à l'autre");
-  // Même calcul que le build, refait ici : le fichier publié (après npm run build) doit lui être égal.
-  const racine = path.join(RACINE, "src/gestion");
-  const fichiers = [];
-  const parcourir = (d) => {
-    for (const n of fs.readdirSync(d, { withFileTypes: true })) {
-      if (n.name.startsWith(".")) continue;
-      const p = path.join(d, n.name);
-      if (n.isDirectory()) parcourir(p);
-      else fichiers.push(p);
-    }
-  };
-  parcourir(racine);
-  const h = crypto.createHash("sha256");
-  for (const f of fichiers.sort()) h.update(path.relative(racine, f)).update("\0").update(fs.readFileSync(f));
+  assert.match(eleventy, /require\("\.\/scripts\/empreinte-gestion\.cjs"\)/, "le build et ce test calculent avec la même fonction");
+  const code = fs.readFileSync(path.join(RACINE, "scripts/empreinte-gestion.cjs"), "utf8");
+  assert.ok(!/Date\.now|new Date|process\.env|Math\.random/.test(code), "rien qui change d'un build à l'autre");
+  // Un dossier d'essai : même contenu, même empreinte ; un fichier caché ne compte pas ; un octet changé la change.
+  const tmp = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR || "/tmp"), "empreinte-"));
+  try {
+    fs.mkdirSync(path.join(tmp, "js"));
+    fs.writeFileSync(path.join(tmp, "index.html"), "<p>a</p>");
+    fs.writeFileSync(path.join(tmp, "js/app.mjs"), "export {};");
+    const a = empreinteGestion(tmp).version;
+    assert.equal(empreinteGestion(tmp).version, a, "deux builds du même contenu : même empreinte");
+    fs.writeFileSync(path.join(tmp, ".DS_Store"), "x");
+    assert.equal(empreinteGestion(tmp).version, a, "un fichier caché ne la change pas");
+    fs.writeFileSync(path.join(tmp, "js/app.mjs"), "export { };");
+    assert.notEqual(empreinteGestion(tmp).version, a, "un fichier de l'outil changé la change");
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  // Après npm run build (comme dans la CI), le fichier publié est l'empreinte de src/gestion. Un build plus ancien que les sources n'est pas jugé.
   const publie = path.join(RACINE, "_site/gestion/version.json");
-  if (fs.existsSync(publie)) assert.equal(JSON.parse(fs.readFileSync(publie, "utf8")).version, h.digest("hex").slice(0, 16), "version.json = empreinte du contenu de src/gestion");
+  const { version, fichiers } = empreinteGestion(path.join(RACINE, "src/gestion"));
+  if (fs.existsSync(publie) && fichiers.every((f) => fs.statSync(f).mtimeMs <= fs.statSync(publie).mtimeMs)) assert.equal(JSON.parse(fs.readFileSync(publie, "utf8")).version, version);
 });
 
 test("migration 47 : demandes_site dans la publication Realtime, protégée et rejouable", () => {

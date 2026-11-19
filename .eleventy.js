@@ -75,24 +75,10 @@ module.exports = async function (eleventyConfig) {
   eleventyConfig.on("eleventy.after", ({ dir }) => {
     const fs = require("node:fs");
     const path = require("node:path");
-    const crypto = require("node:crypto");
-    const racine = path.join(__dirname, "src/gestion");
-    const fichiers = [];
-    const parcourir = (d) => {
-      for (const n of fs.readdirSync(d, { withFileTypes: true })) {
-        // Fichiers cachés (.DS_Store d'un build local) : jamais servis comme une partie de l'outil, ils ne changent pas l'empreinte.
-        if (n.name.startsWith(".")) continue;
-        const p = path.join(d, n.name);
-        if (n.isDirectory()) parcourir(p);
-        else fichiers.push(p);
-      }
-    };
-    parcourir(racine);
-    const h = crypto.createHash("sha256");
-    for (const f of fichiers.sort()) h.update(path.relative(racine, f)).update("\0").update(fs.readFileSync(f));
+    const { empreinteGestion } = require("./scripts/empreinte-gestion.cjs");
     const sortie = path.join(dir.output, "gestion");
     fs.mkdirSync(sortie, { recursive: true });
-    fs.writeFileSync(path.join(sortie, "version.json"), JSON.stringify({ version: h.digest("hex").slice(0, 16) }) + "\n");
+    fs.writeFileSync(path.join(sortie, "version.json"), JSON.stringify({ version: empreinteGestion(path.join(__dirname, "src/gestion")).version }) + "\n");
   });
 
   return {
