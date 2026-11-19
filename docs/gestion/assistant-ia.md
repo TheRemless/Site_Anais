@@ -40,6 +40,17 @@ La zone gardée pour un hôtel (« Relax Bay ») sert aussi à proposer la zone 
 
 Chaque appel compte dans la limite de 40 par personne et par jour : une demande complète en fait trois.
 
+## Jeu d'essai (20.11.2026)
+
+Pour mesurer l'assistant avant et après chaque changement, et demain l'agent conversationnel.
+
+- Jeu privé, hors dépôt : `~/Desktop/Gestion-Test/eval-assistant/cas.json`, relecture dans `cas.md`. 56 messages anonymisés : 10 demandes du site réelles, 2 cas transmis par Jérémy, 8 essais des mémoires, 36 écrits d'après eux. Dont 5 cas de planification (arriver à une heure donnée) et 5 conversations à plusieurs messages. Une copie du catalogue sans aucun net est dans `catalogue/`, les résultats dans `resultats/`.
+- Script : `scripts/eval-assistant/run-eval.mjs` (squelette du skill claude-api, build-eval). Il appelle Claude avec exactement les paramètres de la fonction (mêmes prompts, schémas, modèle, effort, contrôles). Seuls la session, le journal et la lecture de la base sont remplacés par le jeu et sa copie du catalogue.
+- Clé : `ANTHROPIC_API_KEY`, sinon le trousseau macOS (service « Eval assistant Gestion », ajoutée par Jérémy avec `security add-generic-password -s "Eval assistant Gestion" -a anthropic -w`). Jamais dans un fichier.
+- Lancer : `node scripts/eval-assistant/run-eval.mjs --flow ~/Desktop/Gestion-Test/eval-assistant/resultats --variant baseline --reps 3`. Options `--usages lire,itineraire` et `--cas R01,M02`. Vérifier le câblage sans dépense : `--simulation oracle` doit donner 100 %, `--simulation vide` presque 0.
+- Notation (`notes.mjs`, sans juge IA) : champs exacts pour `lire` et `itineraire` (nom, téléphone, hôtel, dates, heures, personnes, ligne du catalogue, étapes). Pour `repondre_itineraire` et `rediger` : aucun montant ni horaire hors des faits, aucun nom de compagnie ni mot interne, pas de signature chez Secret et Taxi, tous les prix et horaires présents, langue, vouvoiement. Pour le futur agent (`noterAgent`, champ « agent » des cas) : un départ qui arrive à temps, aucun qui arrive trop tard, aucune heure de pickup inventée quand le catalogue ne donne pas la durée, aucun prix de catalogue inapplicable, les questions manquantes posées. `noterTrier` note le type d'un message.
+- Coût : environ 0,12 $ par passage sur Claude Haiku 5.5 (d'après le journal de production).
+
 ## Données qui partent chez Anthropic
 
 | Usage | Envoyé | Jamais envoyé |
