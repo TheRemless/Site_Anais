@@ -37,6 +37,8 @@ export function propositionVersDemande(p, contexte) {
   const services = (p.services || []).map((s) => {
     // Les personnes du service si le message les donne, sinon celles du groupe.
     const pax = paxDe(s.adultes || s.enfants ? s : c);
+    // Transfert privé hors catalogue (« Lanta Sand → The Scene, Ao Nang ») : pas de ligne de la base, un prix à taper dans l'écran.
+    if (s.hors_catalogue) return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.de || "", vers: s.vers || "" }, confiance: s.confiance || "moyenne" };
     const offres = [s.offre, ...(s.alternatives || [])].map((r) => offreDepuisBase(r, pax, contexte)).filter(Boolean);
     return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres, copie: false, inconnu: !offres.length, confiance: offres.length ? s.confiance : "basse" };
   });
@@ -110,13 +112,20 @@ export function simulerLecture(texte, contexte, aujourdhui) {
   if (!d) return { erreur: "invalide" };
   const offres = offresPour(d, texte, contexte);
   const ref = (o) => (o ? { genre: o.genre, id: o.id } : null);
+  // Un trajet lu (départ ou arrivée) sans tarif, et pas en partagé : un transfert privé hors catalogue, comme le rendrait l'assistant.
+  const prive = !/\b(shared|join|partag)/i.test(texte);
+  // « from Lanta Sand Resort to The Scene in Ao Nang on the 21/11 » : les deux bouts, comme l'assistant les recopie.
+  const m = /\bfrom\s+(.+?)\s+to\s+(.+?)(?=\s+on\b|[.,!?\n]|$)/i.exec(texte);
+  const de = d.de || (m ? m[1].trim() : "");
+  const vers = d.vers || (m ? m[2].trim() : "");
+  const libre = !offres.length && prive && !!(de || vers);
   return {
     ok: true,
     usage: "lire",
     modele: "simulation",
     proposition: {
       client: { nom: d.nom || "", telephone: d.telephone || "", hotel: d.hotel || "", langue: /\b(bonjour|merci|nous|je)\b/i.test(texte) ? "fr" : "en", adultes: d.adultes || 0, enfants: d.enfants || 0, ages_enfants: d.ages || [], bebes: d.bebes || 0 },
-      services: [{ texte: texte.split(/\n|[.!?]\s/).find((l) => offres.length && l.length > 8) || "", date: d.date || "", heure: d.heure || "", adultes: d.adultes || 0, enfants: d.enfants || 0, offre: ref(offres[0]), alternatives: offres.slice(1, 3).map(ref), confiance: offres.length ? confianceDe(offres[0].score || 0) : "basse" }],
+      services: [{ texte: texte.split(/\n|[.!?]\s/).find((l) => offres.length && l.length > 8) || "", date: d.date || "", heure: d.heure || "", adultes: d.adultes || 0, enfants: d.enfants || 0, de, vers, prive, hors_catalogue: libre, offre: ref(offres[0]), alternatives: offres.slice(1, 3).map(ref), confiance: libre ? "moyenne" : offres.length ? confianceDe(offres[0].score || 0) : "basse" }],
       remarques: "Réponse simulée (mode démo) : aucun appel à Claude.",
     },
     avertissements: [],

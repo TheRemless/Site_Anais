@@ -322,3 +322,50 @@ test("démo : réponses simulées dans la forme de la fonction", () => {
   assert.match(r.message, /1,200 THB/);
   assert.equal(validerRedaction(r, verifierFaits(f).faits).avertissements.length, 0, "la simulation ne cite que des prix de la base");
 });
+
+// ---- Transfert privé hors catalogue (19.11.2026) ------------------------------------------------------------------------------------
+
+test("lecture : un transfert privé sans tarif pour ce trajet devient un transfert hors catalogue, prix à taper", async () => {
+  const message = "Hi. We need to go from Lanta Sand Resort & Spa to The Scene Cliff View Villas in Ao Nang on the 21/11. 2 adults, 2 kids, 1 baby. Pick up 11am.";
+  const refs = construireCatalogue({ prestations: PRESTATIONS, trajets: TRAJETS, partenaires: PARTENAIRES }).refs;
+  const service = { texte: "Lanta Sand to Ao Nang", date: "2026-11-21", heure: "11:00", adultes: 2, enfants: 2, de: "Lanta Sand Resort & Spa", vers: "The Scene Cliff View Villas, Ao Nang", prive: true, hors_catalogue: true, ref: "T1", alternatives: ["T1"], confiance: "haute" };
+  const v = validerLecture({ ...CLAUDE_LECTURE, services: [service] }, { refs, message, aujourdhui: AJD });
+  const s = v.proposition.services[0];
+  assert.equal(s.hors_catalogue, true);
+  assert.equal(s.offre, null, "aucune ligne de la base imposée, même si Claude en cite une");
+  assert.deepEqual(s.alternatives, []);
+  assert.equal(s.de, "Lanta Sand Resort & Spa");
+  assert.equal(s.vers, "The Scene Cliff View Villas, Ao Nang");
+  assert.ok(!v.avertissements.includes("reference_inconnue"));
+  // Un transport partagé n'est jamais une course privée hors catalogue : la référence du catalogue reste.
+  const partage = validerLecture({ ...CLAUDE_LECTURE, services: [{ ...service, prive: false }] }, { refs, message, aujourdhui: AJD }).proposition.services[0];
+  assert.equal(partage.hors_catalogue, false);
+  assert.deepEqual(partage.offre, refs.get("T1"));
+
+  const { d, services } = propositionVersDemande(v.proposition, CTX);
+  assert.deepEqual(services[0].transfertLibre, { de: "Lanta Sand Resort & Spa", vers: "The Scene Cliff View Villas, Ao Nang" });
+  assert.deepEqual(services[0].offres, []);
+  assert.equal(services[0].inconnu, false, "pas « à préciser » : c'est un transfert, il ne manque que le prix");
+  assert.equal(d.adultes, 2);
+
+  const { ligneTransfertPrive } = await import("../src/gestion/js/creation-voucher-calc.mjs");
+  const l = ligneTransfertPrive({ de: "Lanta Sand Resort & Spa", vers: "The Scene, Ao Nang", prix: 3500, date: "2026-11-21", partenaireId: "pa9" }, null, { uid: () => "l1" });
+  assert.equal(l.libelle, "Lanta Sand Resort & Spa → The Scene, Ao Nang");
+  assert.equal(l.unite, 3500);
+  assert.equal(l.par, "veh", "prix de la course, pas par personne");
+  assert.equal(l.date_service, "2026-11-21");
+  const l2 = ligneTransfertPrive({ de: "Lanta Sand", vers: "Ao Nang", prix: 3800, date: "2026-11-21" }, l);
+  assert.equal(l2.id, l.id, "même ligne mise à jour");
+  assert.equal(l2.unite, 3800);
+});
+
+test("consignes de lecture : âge qui décide, fil de messages, privé par défaut, hors catalogue, sens des tarifs", () => {
+  const t = promptLecture({ entreprise: "x", catalogue: "", aujourdhui: AJD, message: "m", lieu: "Koh Lanta (Thaïlande)" }).system[0].text;
+  assert.match(t, /12 ans et plus compte comme adulte/);
+  assert.match(t, /la dernière version l'emporte/);
+  assert.match(t, /« prive » est vrai sauf si le message demande un transport partagé/);
+  assert.match(t, /« hors_catalogue » à vrai/);
+  assert.match(t, /ne vaut que dans ce sens/);
+  assert.match(t, /entre ce lieu et Koh Lanta, dans les deux sens/);
+  assert.ok(SCHEMA_LECTURE.properties.services.items.required.includes("hors_catalogue"));
+});

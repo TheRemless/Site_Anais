@@ -129,6 +129,13 @@ export function ligneRetourDepart({ lieu = "", programme = "", prix, date = "", 
   return Object.assign(base, { libelle: libelleRetourDepart(lieu, programme), unite: Number(prix), qte: 1, date_service: date || null, par: "veh" });
 }
 
+// Transfert privé hors catalogue lu par l'assistant (« Lanta Sand Resort → The Scene Cliff View Villas, Ao Nang ») : la ligne du prix tapé à la
+// main. Prix de la course (« par: veh »), comme un retour au point de départ. `ligne` : la ligne déjà faite, mise à jour (même identifiant).
+export function ligneTransfertPrive({ de = "", vers = "", prix, date = "", partenaireId = null }, ligne = null, { uid } = {}) {
+  const base = ligne || ligneLibre({ libelle: "-", prix, qte: 1, partenaire_id: partenaireId, date }, uid ? { uid } : {});
+  return Object.assign(base, { libelle: libelleTrajet(de || "?", vers || "?"), unite: Number(prix), qte: 1, date_service: date || null, par: "veh" });
+}
+
 // ---- Taxi : une course hors catalogue (pickup et drop-off saisis), comme l'écran « Nouveau voucher » de l'assistante ---------------------
 // Le contrôle et le calcul sont ceux de voucher-rapide-calc.mjs ; seul le nom manque ici, il vient du client choisi dans l'écran.
 export const erreursCourse = (v) => {

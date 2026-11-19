@@ -14,7 +14,7 @@ import { blocZonesPickup } from "./pickup-zones.mjs";
 import { heureAPoser } from "../pickup-calc.mjs";
 import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDefinitive } from "./creation-excursions.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, ligneRetourDepart } from "../creation-voucher-calc.mjs";
+import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, ligneRetourDepart, ligneTransfertPrive } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
 import { boutonLireIA, badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees } from "../assistant-calc.mjs";
@@ -144,7 +144,7 @@ export function ouvrirDemande(depuisSite = null) {
   // ---- Les services --------------------------------------------------------------------------------------------------------------
   // Un service lu par l'assistant garde les lignes de la base qu'il a choisies, recalculées pour ses personnes.
   // Retour au point de départ : aucune grille, le prix se saisit à la main sur le service (décision de Jérémy, 16.11.2026).
-  const offresDe = (sv) => (sv.lignesCustom || sv.retourDepart ? [] : sv.offresIA ? offresRecalculees(sv.offresIA, sv, contexte()) : offresDuService(d, texte, sv, contexte()));
+  const offresDe = (sv) => (sv.lignesCustom || sv.retourDepart || sv.transfertLibre ? [] : sv.offresIA ? offresRecalculees(sv.offresIA, sv, contexte()) : offresDuService(d, texte, sv, contexte()));
   const choisie = (sv, offres) => offres.find((o) => clefOffre(o) === sv.offreId) || offres[0] || null;
   const sommeCustom = (sv) => sv.lignesCustom.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
   // Ce que le service donne : son offre choisie, ou les lignes prises à la main dans la base.
@@ -190,6 +190,8 @@ export function ouvrirDemande(depuisSite = null) {
     n.titre.replaceChildren();
     // Retour au point de départ à prix tapé : le titre garde le champ du prix (les lignes prises dans la base, elles, ont le cas général).
     if (sv.retourDepart && (!sv.lignesCustom || sv.ligneRetour)) n.titre.append(h("strong", null, tr("Retour au point de départ")), h("span", { class: "dsv-detail" }, texteRetour(sv)), prixRetour(sv), h("button", { class: "lien", type: "button", onclick: () => choisirDansBase(sv) }, tr("Choisir dans la base")));
+    // Transfert privé hors catalogue lu par l'assistant : départ et arrivée déjà posés, le prix convenu se tape ici.
+    else if (sv.transfertLibre && (!sv.lignesCustom || sv.ligneLibre)) n.titre.append(h("strong", null, tr("Transfert privé hors catalogue")), h("span", { class: "dsv-detail" }, texteLibre(sv)), prixLibre(sv), h("button", { class: "lien", type: "button", onclick: () => choisirDansBase(sv) }, tr("Choisir dans la base")));
     else if (sv.lignesCustom) n.titre.append(h("strong", null, offre.titre), h("button", { class: "lien", type: "button", onclick: () => choisirDansBase(sv) }, tr("Ajouter une ligne")));
     else if (!offres.length) n.titre.append(h("strong", { class: "a-preciser" }, tr("À préciser")), h("span", { class: "dsv-phrase" }, `« ${sv.phrase.length > 90 ? `${sv.phrase.slice(0, 90)}…` : sv.phrase} »`), h("button", { class: "secondaire petit", type: "button", onclick: () => choisirDansBase(sv) }, tr("Choisir dans la base")));
     else if (offres.length === 1) n.titre.append(h("strong", null, offres[0].titre), h("span", { class: "dsv-detail" }, offres[0].detail));
@@ -222,6 +224,8 @@ export function ouvrirDemande(depuisSite = null) {
         // Le prix tapé suit le lieu et le programme (libellé de la ligne) ; le titre du service redit le programme lu.
         majLigneRetour(sv);
         if (sv.retourDepart) majTitreRetour(sv);
+        // Transfert hors catalogue : le libellé suit le pickup et le drop-off corrigés dans le bloc du voucher.
+        if (sv.transfertLibre) (majLigneLibre(sv), majTitreLibre(sv));
       } })].filter(Boolean) : []));
     }
     // Le partenaire a changé (autre offre choisie) : ses zones de pickup remplacent les précédentes.
@@ -239,6 +243,11 @@ export function ouvrirDemande(depuisSite = null) {
     const site = d.type === "transfer";
     sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: site ? Number(d.sieges) || 0 : 0, details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
     // Retour au point de départ lu dans le message : le type, le programme et la durée sont déjà posés ; le lieu de pickup est celui de la demande (ou l'hôtel).
+    if (sv.transfertLibre) {
+      sv.saisie.lieu = sv.transfertLibre.de || d.hotel || "";
+      sv.saisie.details = { ...nonVides({ ...sv.saisie.details, drop_off: sv.transfertLibre.vers || "" }) };
+      sv.saisie.ouvert = true;
+    }
     if (sv.retourDepart) {
       sv.saisie.details = { ...nonVides({ ...sv.saisie.details, drop_off: "" }), type_trajet: RETOUR_DEPART, ...nonVides({ programme_trajet: sv.retourDepart.programme || "", duree_h: sv.retourDepart.duree || "" }) };
       sv.saisie.lieu = (site && d.pickup) || d.hotel || "";
@@ -306,6 +315,37 @@ export function ouvrirDemande(depuisSite = null) {
     } });
     return input;
   }
+  // Transfert privé hors catalogue : « Lanta Sand Resort → The Scene, Ao Nang · Hors catalogue : indiquez le prix convenu. »
+  const deVersLibre = (sv) => ({ de: ((sv.saisie && sv.saisie.lieu) || sv.transfertLibre.de || "").trim(), vers: (((sv.saisie && sv.saisie.details) || {}).drop_off || sv.transfertLibre.vers || "").trim() });
+  const texteLibre = (sv) => {
+    const { de, vers } = deVersLibre(sv);
+    return [`${de || tr("Départ à préciser")} → ${vers || tr("Arrivée à préciser")}`, sv.prixLibre === null || sv.prixLibre === undefined ? tr("Hors catalogue : indiquez le prix convenu.") : ""].filter(Boolean).join(" · ");
+  };
+  const majTitreLibre = (sv) => {
+    const n = sv.noeuds && sv.noeuds.titre && sv.noeuds.titre.querySelector(".dsv-detail");
+    if (n && sv.transfertLibre && (!sv.lignesCustom || sv.ligneLibre)) n.textContent = texteLibre(sv);
+  };
+  function prixLibre(sv) {
+    return h("input", { id: `svc${sv.id}-prix`, type: "number", min: "0", step: "any", inputmode: "decimal", placeholder: tr("Prix ({devise})", { devise }), "aria-label": tr("Prix convenu ({devise})", { devise }), value: sv.prixLibre ?? "", onchange: (e) => {
+      const v = e.target.value.trim();
+      sv.prixLibre = v === "" ? null : Number(v);
+      majLigneLibre(sv);
+      majService(sv);
+      majTotal();
+    } });
+  }
+  function majLigneLibre(sv) {
+    if (!sv.transfertLibre || (sv.lignesCustom && !sv.ligneLibre)) return;
+    if (sv.prixLibre === null || sv.prixLibre === undefined || !(sv.prixLibre >= 0)) {
+      if (sv.ligneLibre) sv.lignesCustom = null;
+      sv.ligneLibre = null;
+      return;
+    }
+    const p = modeTaxi() ? partenaireDeTaxi(etat.db.partenaires, chauffeurRegle(reglages())) : null;
+    sv.ligneLibre = ligneTransfertPrive({ ...deVersLibre(sv), prix: sv.prixLibre, date: sv.date, partenaireId: p ? p.id : null }, sv.ligneLibre);
+    sv.lignesCustom = [sv.ligneLibre];
+  }
+
   // « « Old Town, the driver waits » · environ 3 h · Aucune grille… » : ce que le service porte déjà, sous son titre.
   const texteRetour = (sv) => {
     const dt = (sv.saisie && sv.saisie.details) || {};
@@ -340,8 +380,9 @@ export function ouvrirDemande(depuisSite = null) {
   // Service que la base ne propose pas tel quel : la fenêtre des tarifs reprend sa date et ses personnes, chaque ajout devient une ligne du service.
   function choisirDansBase(sv) {
     choisirPrestation({ langue, devise, sansCompagnie: true, dossierId: null, defauts: { date: sv.date, adultes: sv.adultes, enfants: sv.enfants }, onAjout: (lignes) => {
-      // Une ligne prise dans la base remplace le prix tapé d'un retour au point de départ.
+      // Une ligne prise dans la base remplace le prix tapé d'un retour au point de départ ou d'un transfert hors catalogue.
       if (sv.ligneRetour) (sv.lignesCustom = null), (sv.ligneRetour = null), (sv.prixRetour = null);
+      if (sv.ligneLibre) (sv.lignesCustom = null), (sv.ligneLibre = null), (sv.prixLibre = null);
       sv.lignesCustom = [...(sv.lignesCustom || []), ...lignes];
       const premiere = lignes.find((l) => l.date_service);
       if (!sv.date && premiere) {
@@ -453,6 +494,7 @@ export function ouvrirDemande(depuisSite = null) {
     if (nouveauClient && !peut("clients.ecrire")) return (erreur.textContent = tr("Votre rôle ne permet pas de créer un client : choisissez un client existant."));
     const b = preparer();
     if (b.manque && b.manque.retourDepart) return (erreur.textContent = tr("Indiquez le prix convenu du retour au point de départ, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
+    if (b.manque && b.manque.transfertLibre) return (erreur.textContent = tr("Indiquez le prix du transfert privé, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
     if (b.manque) return (erreur.textContent = tr("Choisissez le service de « {phrase} » ou décochez cette ligne.", { phrase: b.manque.phrase.slice(0, 60) }));
     if (b.incomplet) return montrerIncomplet(b);
     const ref = refProposee(regl);
@@ -482,6 +524,7 @@ export function ouvrirDemande(depuisSite = null) {
   function verifierAvant() {
     const b = preparer();
     if (b.manque && b.manque.retourDepart) return (erreur.textContent = tr("Indiquez le prix convenu du retour au point de départ, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
+    if (b.manque && b.manque.transfertLibre) return (erreur.textContent = tr("Indiquez le prix du transfert privé, ou décochez cette ligne.")), (document.getElementById(`svc${b.manque.id}-prix`) || {}).focus?.();
     if (b.manque) return (erreur.textContent = tr("Choisissez le service de « {phrase} » ou décochez cette ligne.", { phrase: b.manque.phrase.slice(0, 60) }));
     if (b.incomplet) return montrerIncomplet(b);
     brouillon = b;
@@ -583,7 +626,7 @@ export function ouvrirDemande(depuisSite = null) {
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
     dessinerClient();
     majTotal();
   }
