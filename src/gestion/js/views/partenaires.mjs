@@ -1,5 +1,7 @@
 // Partenaires : la liste, la fiche d'un partenaire (contact, tarifs, règles, contrat, banque, tâches) et les formulaires.
-import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie, modeTaxi, modeExcursions, moduleActif, exemple } from "../etat.mjs";
+import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie, modeTaxi, modeExcursions, moduleActif, exemple, reglages } from "../etat.mjs";
+import { assistantActif } from "../assistant-calc.mjs";
+import { DROITS_BROCHURE } from "../brochure-calc.mjs";
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
 import { TYPES_COMMISSION, SUR_PLACE, CHEZ_NOUS, modeParDefaut } from "../operations-calc.mjs";
@@ -262,7 +264,19 @@ export function fichePartenaire(id) {
     h(
       "section",
       null,
-      h("div", { class: "entete petit-entete" }, h("h2", null, tr("Tarifs")), ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirPrestation({ partenaire_id: p.id }, rafraichir) }, tr("Nouvelle prestation")) : null),
+      h(
+        "div",
+        { class: "entete petit-entete" },
+        h("h2", null, tr("Tarifs")),
+        // Sans bouton, pas de bloc d'actions (une section repliable sur téléphone cache alors l'en-tête vide).
+        (assistantActif(reglages()) && DROITS_BROCHURE.every((d) => peut(d))) || ecrit ? h(
+          "span",
+          { class: "entete-actions" },
+          // Importer une brochure (assistant allumé, droit « Modifier les prix de vente ») : tarifs et horaires lus sur la brochure, à cocher.
+          assistantActif(reglages()) && DROITS_BROCHURE.every((d) => peut(d)) ? h("button", { class: "secondaire petit", type: "button", onclick: async () => (await import("./brochure.mjs")).ouvrirImportBrochure(p, rafraichir) }, tr("Importer une brochure")) : null,
+          ecrit ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirPrestation({ partenaire_id: p.id }, rafraichir) }, tr("Nouvelle prestation")) : null
+        ) : null
+      ),
       prestations.length ? tarifs : h("p", { class: "vide-court" }, tr("Aucun tarif enregistré pour ce partenaire."))
     ),
     h(

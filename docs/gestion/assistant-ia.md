@@ -10,6 +10,7 @@ Préparé le 12.11.2026. Inactif tant que la case « Assistant IA » n'est pas c
 | 2. Rédiger la réponse au client | Retiré le 19.11.2026 (Anaïs écrit ses réponses, décision de Jérémy) : la fonction refuse l'usage, l'écran n'a plus de bouton, la logique pure reste dans `calc.js` | Rien à l'écran |
 | 3. Questions d'Anaïs sur ses données | Conception seulement (plus bas) | Rien dans le code |
 | 4. Prix et horaires d'un itinéraire (20.11.2026) | Prêt, suit la case « Assistant IA » ; mémoire des hôtels après la migration 48 | Bouton « Prix et horaires d'un itinéraire » dans Coller une demande |
+| 5. Importer une brochure de partenaire (20.11.2026) | Prêt, suit la case « Assistant IA » ; journal après la migration 50 | Bouton « Importer une brochure » dans la fiche du partenaire, section Tarifs |
 
 Fichiers : `supabase/functions/assistant/index.ts` (fonction), `supabase/functions/assistant/calc.js` (logique pure, testée), `src/gestion/js/assistant-calc.mjs` et `views/assistant-demande.mjs` (outil), `docs/gestion/migration-27-assistant.sql` (journal), `tests/gestion-assistant.test.js`.
 
@@ -39,6 +40,20 @@ Le client donne ses hôtels et ses dates (« du 21 au 25 Breizh Cape Beach Bunga
 La zone gardée pour un hôtel (« Relax Bay ») sert aussi à proposer la zone de pickup dans Coller une demande, après la mémoire des réservations et l'adresse.
 
 Chaque appel compte dans la limite de 40 par personne et par jour : une demande complète en fait trois.
+
+## Usage 5 : importer une brochure de partenaire
+
+Nani (Secret, Taxi) ou Anaïs (Zwald) reçoit la brochure d'un partenaire. Dans la fiche du partenaire, « Importer une brochure » :
+
+1. **Fichiers** : photos, captures ou PDF, six au plus, 10 Mo en tout. Une photo est réduite dans le navigateur à 2 000 pixels de côté (JPEG) ; un PDF part tel quel (8 Mo au plus).
+2. **Lire** (`brochure`) : Claude Opus 5.5 (`claude-opus-5-5`, effort `medium`, repli côté serveur `fallbacks: "default"`), sortie JSON imposée. Seuls partent les fichiers et le lieu de l'entreprise : ni le catalogue, ni un prix de la base, ni un net, ni le nom du partenaire. Rendu : par programme le libellé, le prix de vente adulte et enfant, l'âge enfant, l'unité, les horaires, le déroulé, les inclus, les conditions, les frais de parc, le bateau, la capacité ; par départ régulier de bateau le trajet, les heures, la période et ses dates, les prix. Un passage de 110 secondes au plus, sans nouvel essai. Opus plutôt que Haiku : lire des chiffres sur une photo doit être juste et l'usage est rare. Coût estimé 0,05 à 0,15 $ la brochure (une image fait jusqu'à 4 800 jetons), à relire dans `assistant_journal`.
+3. **Contrôle dans la fonction** (`brochure.js`) : Claude recopie les mots imprimés des prix (« Adult: 3,900.- Child (4-11 yrs old): 2,900.- ») ; un prix rendu qui n'y figure pas fait passer la ligne en « illisible », ses prix vidés. Un net n'est gardé que s'il est imprimé comme tel (« net », « agent rate ») et recopié ; sinon il est retiré et signalé. « Sur demande » : aucun prix. Une heure de départ invalide rend le trajet illisible. Une ligne que Claude dit illisible le reste.
+4. **Comparer** (dans l'outil, `brochure-calc.mjs`) : chaque ligne face au catalogue du partenaire. Même libellé ou mêmes mots : le tarif est reconnu (« Inchangé » ou « Prix changé », l'écart affiché « 3 900 → 4 200 ») ; mots proches : rapproché « à vérifier », non coché d'office ; sinon « Nouveau ». Le prix enfant d'un ancien tarif se lit sur sa ligne enfant séparée (comme Lazy Day du 17.11.2026). Les tarifs du catalogue absents de la brochure sont listés, rien n'y change. La personne peut viser un autre tarif ou « Nouvelle prestation ».
+5. **Enregistrer** : seulement les lignes cochées, avec la session de la personne (règles RLS et déclencheur `garder_prix_vente`). Nouveau tarif : prix de vente et prix enfant de la brochure, détails imprimés seulement (le déroulé et les inclus en puces dans « Inclus », l'âge enfant dans « Conditions »), une remarque interne « Importé de la brochure le … (prix imprimé : « … ») ». Tarif existant : les prix suivent la brochure (règle de Jérémy), les textes déjà remplis ne changent pas, seuls les champs vides se complètent, la remarque interne garde la trace. L'unité d'un tarif existant ne change pas ici. Nouveau départ de bateau : créé avec sa période et ses dates (fenêtre de circulation). Une ligne illisible ne s'enregistre jamais : elle se saisit à la main.
+
+Droits : `partenaires.lire`, `partenaires.ecrire` et `partenaires.prix` (l'administratrice les a tous ; le rôle de Mook chez Secret n'a pas le droit prix, il ne voit pas le bouton). Les nets ne s'affichent et ne s'écrivent qu'avec `partenaires.nets`, jamais en Taxi et seulement s'ils sont imprimés : un net n'est jamais déduit, il reste vide sinon. Démonstration : la réponse est simulée depuis le catalogue (`simulerBrochure`), aucun fichier ne part.
+
+Mise en service : migration 50 (`docs/gestion/migration-50-assistant-brochure.sql`, ajoute `brochure` à la contrainte du journal sans retirer `trier` ni les autres usages), puis déploiement de la fonction depuis une branche qui contient tout master. Tests : `tests/gestion-brochure.test.js`, dont les cas réels Lazy Day (Rattana, 3 900 / 2 900) et Maryz (OctopuSea, prix sur demande).
 
 ## Suivi de l'assistant : coût, usage et qualité (20.11.2026)
 
@@ -87,6 +102,7 @@ Les résultats et transcriptions sont dans `~/Desktop/Gestion-Test/eval-assistan
 | Lire | Le message collé tel quel (il peut contenir nom, téléphone, hôtel, dates, âges des enfants). Le nom de l'entreprise. Les libellés, groupes, modes, horaires de départ et périodes des prestations et trajets, le nom des prestataires. | Prix nets, commissions, marges, coordonnées bancaires, autres clients, dossiers |
 | Itinéraire, lire | Le message collé tel quel. Le lieu de l'entreprise. | Catalogue, prix, nets |
 | Itinéraire, situer | Les noms d'hôtels, la liste des lieux des trajets de l'entreprise. Claude les envoie au moteur de recherche d'Anthropic. | Nom du client, téléphone, dates, prix |
+| Brochure | Les fichiers de la brochure choisis par la personne (images réduites, PDF). Le lieu de l'entreprise. Une grille de prix nets d'agent envoyée par erreur partirait aussi : l'écran demande la brochure publique. | Catalogue, prix et nets de la base, nom du partenaire, clients |
 | Itinéraire, rédiger | Prénom du client, personnes, pour chaque trajet : date, lieux, mode, durée, horaires, prix de vente. La voix de l'entreprise. | Nets, marges, compagnies, nom de famille, téléphone |
 | Rédiger (retiré le 19.11.2026, plus rien n'est envoyé) | Le prénom du client, chaque service retenu (libellé, date, heure, personnes, prix de vente, horaires, durée, frais de parc, lieu), le total, le téléphone de l'entreprise, les messages types de l'entreprise, et le message du client s'il a été collé. | Idem, et le nom de famille du client |
 
