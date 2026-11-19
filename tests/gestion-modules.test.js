@@ -81,3 +81,18 @@ test("le menu se refait quand un module s'allume ou s'éteint, sans recharger la
   const app = fs.readFileSync("src/gestion/js/app.mjs", "utf8");
   assert.match(app, /const cle = `\$\{etat\.entiteId\}\|\$\{roleActif\(\)\}\|\$\{etat\.session\.id\}\|\$\{langueActive\(\)\}\|\$\{MODULES\.filter\(\(m\) => moduleActif\(m\.id\)\)/);
 });
+
+test("agence cliente (19.11.2026) : Trajets et règles masqués au départ, fiduciaire hors du menu tant qu'elle est éteinte", async () => {
+  const { reglagesModele } = await import("../src/gestion/js/modeles-metier.mjs");
+  const { reglagesFid } = await import("../src/gestion/js/fiduciaire-calc.mjs");
+  const r = reglagesModele("tour_agency", { nom: "Agence", devise: "USD" });
+  assert.equal(moduleAllume("trajets", { reglages: r }), false, "Routes et Rules masqués");
+  assert.equal(moduleAllume("partenaires", { reglages: r }), true);
+  assert.equal(moduleAllume("trajets", { reglages: { ...r, modules: { ...r.modules, trajets: true } } }), true, "le client les rallume dans Écrans");
+  assert.ok(modulesReglables({ reglages: r }).some((m) => m.id === "trajets"), "Trajets reste proposé dans Écrans");
+  assert.equal(reglagesFid(r).actif, false);
+  assert.equal(reglagesFid({ fonctionnement: "excursions" }).actif, true, "Secret (aucun réglage fiduciaire) garde ses factures");
+  const app = fs.readFileSync("src/gestion/js/app.mjs", "utf8");
+  assert.match(app, /const fiduciaireAuMenu = \(\) => peut\("fiduciaire\.preparer"\) && moduleActif\("fiduciaire"\) && reglagesFid\(etat\.db\.reglages\)\.actif;/);
+  assert.match(fs.readFileSync("src/gestion/js/views/reglages.mjs", "utf8"), /moduleActif\("fiduciaire"\) && peut\("fiduciaire\.gerer"\) && peut\("reglages\.ecrire"\) && !reglagesFid/, "l'écran se rouvre depuis Réglages");
+});

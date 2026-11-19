@@ -3528,6 +3528,7 @@ export const EN = {
   "Envoyez ce message à {nom}. En ouvrant le lien, la personne choisit son mot de passe et trouve son entreprise prête : il lui reste ses coordonnées, son logo et ses prix.": "Send this message to {nom}. When they open the link, they choose a password and find their business ready: they only need to add their contact details, logo and prices.",
   "C'est aussi le nom de sa première entreprise. Le client le change ensuite s'il le souhaite.": "It is also the name of their first business. The client can change it later.",
   "Clients ({n})": "Clients ({n})",
+  "Factures de commission adressées à un partenaire, pour une fiduciaire en Thaïlande. Éteintes au départ et absentes du menu : ouvrez l'écran pour les allumer si vous en avez besoin.": "Commission invoices to a partner, for an accounting firm in Thailand. Off at the start and not in the menu: open the screen to turn them on if you need them.",
   "{n} client.": "{n} client.",
   "{n} clients.": "{n} clients.",
   "Aucun client pour l'instant. « Nouveau client » crée son organisation et son administrateur.": "No clients yet. “New client” creates their organisation and administrator.",
