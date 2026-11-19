@@ -1,6 +1,6 @@
 // Agent de Gestion : calcul des heures d'une course (pickup à rebours, ferry, marge, vol). Logique pure, sans dépendance.
 // Le modèle ne calcule aucune heure : il donne les points et les contraintes, ce fichier rend le planning. Les temps de route viennent de la
-// table de référence de l'entreprise, d'openrouteservice ou de la personne (temps.js) ; en démonstration, d'une table toujours marquée « simulation ».
+// d'openrouteservice, de la table de référence de l'entreprise ou de la personne (temps.js) ; en démonstration, d'une table toujours marquée « simulation ».
 //
 // Ce fichier existe en deux exemplaires identiques : supabase/functions/agent/planifier.js (fonction Supabase) et
 // src/gestion/js/agent-planifier.mjs (écran, démonstration). tests/gestion-agent.test.js vérifie qu'ils ne divergent pas.
@@ -32,7 +32,7 @@ export function reglagesPlanning(reglages) {
   };
 }
 
-// D'où vient la durée d'un trajet (temps.js) : table vérifiée, openrouteservice, table à vérifier, donnée par la personne, estimation web, démo.
+// D'où vient la durée d'un trajet (temps.js) : openrouteservice, table, table à vérifier, donnée par la personne, estimation web, démo.
 export const SOURCES = ["table", "ors", "table_a_verifier", "personne", "estimation_web", "simulation"];
 
 // ---- Heures ---------------------------------------------------------------------------------------------------------------------------
@@ -176,7 +176,7 @@ export function planifierCourse({ date, points = [], trajets = [], vol = null, r
     ...durees[i],
     ferry: !!t.ferry,
     source: SOURCES.includes(t.source) ? t.source : "personne",
-    a_verifier: t.a_verifier === true || ["ors", "table_a_verifier", "estimation_web", "simulation"].includes(t.source),
+    a_verifier: t.a_verifier === true || ["table_a_verifier", "estimation_web", "simulation"].includes(t.source),
     ...(t.de_trouve || t.vers_trouve ? { de_trouve: String(t.de_trouve || "").slice(0, 200), vers_trouve: String(t.vers_trouve || "").slice(0, 200) } : {}),
     ...(t.source_url ? { source_url: String(t.source_url).slice(0, 500) } : {}),
     ...(Array.isArray(t.morceaux) ? { morceaux: t.morceaux.slice(0, 3).map((m) => ({ genre: m.genre === "ferry" ? "ferry" : "route", ...(m.genre === "ferry" ? { nom: String(m.nom || "").slice(0, 120) } : { de: String(m.de || "").slice(0, 160), vers: String(m.vers || "").slice(0, 160), source: SOURCES.includes(m.source) ? m.source : "personne" }), duree_min: Math.round(Number(m.duree_min) || 0), a_verifier: !!m.a_verifier })) } : {}),
@@ -230,8 +230,8 @@ const cle = (s) =>
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
 const ZONES = [
-  ["port_continent", /ferry.*(continent|mainland)|(continent|mainland).*ferry/],
-  ["port_lanta", /ferry.*lanta|lanta.*ferry/],
+  ["port_continent", /ferry.*(continent|mainland)|(continent|mainland).*ferry|กระบี่-เกาะลันตา|hua hin pier/],
+  ["port_lanta", /ferry.*lanta|lanta.*ferry|khlong mak|klong mak|คลองหมาก/],
   ["aeroport_krabi", /krabi.*(airport|aeroport|kbv)|(airport|aeroport).*krabi/],
   ["aeroport_phuket", /phuket.*(airport|aeroport|hkt)|(airport|aeroport).*phuket/],
   ["ao_nang", /ao nang/],

@@ -112,7 +112,7 @@ export const OUTILS = [
   {
     name: "temps_de_route",
     description:
-      "Durée en voiture entre deux lieux : d'abord la table de temps de référence de l'entreprise, sinon openrouteservice (OpenStreetMap), avec le ferry et la marge conseillée. Dit d'où vient la durée et si elle est à vérifier. Pour une course avec horaires, utilise planifier_course.",
+      "Durée en voiture entre deux lieux : d'abord OpenStreetMap (openrouteservice), sinon la table de temps de référence de l'entreprise, avec le ferry et la marge conseillée. Dit d'où vient la durée et si elle est à vérifier. Pour une course avec horaires, utilise planifier_course.",
     strict: true,
     input_schema: obj({ de: S("Nom de lieu précis, avec l'île ou la ville (« Jai Tiki Retreat, Koh Lanta »)."), vers: S("Idem.") }),
   },
@@ -371,7 +371,7 @@ export async function situerHotels(e, ctx) {
 
 // ---- Temps de route et planning --------------------------------------------------------------------------------------------------
 
-// La durée d'un trajet en voiture, dans l'ordre de temps.js : table vérifiée, openrouteservice, table à vérifier, démo. ctx.ors et
+// La durée d'un trajet en voiture, dans l'ordre de temps.js : openrouteservice, table, table à vérifier, démo. ctx.ors et
 // ctx.simule ne sont posés que si la fonction les a (clé ORS, démonstration).
 // Un trajet qui passe par un ferry de la table se calcule en trois morceaux (temps.js, dureeAvecFerry) ; { manque } dit le morceau sans durée.
 const dureeDe = async (ctx, de, vers) => dureeAvecFerry(de, vers, { lignes: (await ctx.charger("temps_trajets")) || [], liaisons: (await ctx.charger("liaisons_ferry")) || [], hotels: (await ctx.charger("hotels_lieux")) || [], ors: ctx.ors || null, simule: ctx.simule || null });
@@ -428,7 +428,7 @@ export async function estimerTempsWeb(e, ctx, memo) {
   const de = texte(e.de, 160);
   const vers = texte(e.vers, 160);
   const connue = await dureeDe(ctx, de, vers);
-  if (connue && !connue.manque) return { resultat: { erreur: "duree_deja_connue", duree_min: connue.duree_min, source: connue.source, conseil: "La table ou ORS donnent déjà cette durée : utilise planifier_course." } };
+  if (connue && !connue.manque) return { resultat: { erreur: "duree_deja_connue", duree_min: connue.duree_min, source: connue.source, conseil: "OpenStreetMap ou la table donnent déjà cette durée : utilise planifier_course." } };
   const r = ctx.estimerWeb ? await ctx.estimerWeb(de, vers) : null;
   if (!r || !(r.duree_min > 0) || !r.source_url) return { resultat: { erreur: "estimation_impossible", conseil: "Aucune source fiable trouvée : demande la durée à la personne." } };
   if (memo && memo.estimations) memo.estimations.set(cleEstimation(de, vers), r);

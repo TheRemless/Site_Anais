@@ -328,7 +328,7 @@ export async function vueAgent(idOuvert = "") {
   // ---- Frise d'une course -------------------------------------------------------------------------------------------------------
   function frise(plan) {
     const points = lignesFrise(plan);
-    const ORIGINE_DUREE = { table: N_("table des temps"), ors: N_("OpenStreetMap, à vérifier"), table_a_verifier: N_("table, ligne à vérifier"), personne: N_("durée donnée par vous"), estimation_web: N_("estimation trouvée sur le web"), simulation: N_("simulée") };
+    const ORIGINE_DUREE = { table: N_("table des temps"), ors: N_("OpenStreetMap"), table_a_verifier: N_("table, ligne à vérifier"), personne: N_("durée donnée par vous"), estimation_web: N_("estimation trouvée sur le web"), simulation: N_("simulée") };
     const sousTrajet = (t) =>
       [
         tr("{d} de route ({source})", { d: texteDuree(t.route_min), source: tr(ORIGINE_DUREE[t.source] || N_("source inconnue")) }),

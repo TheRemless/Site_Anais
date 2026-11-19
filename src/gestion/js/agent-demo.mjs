@@ -103,7 +103,7 @@ export async function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = 
   const manque = [!comp.heureVol && course.aeroport ? "l'heure du vol" : "", !comp.personnes ? "le nombre de personnes" : "", comp.bagages === undefined || comp.bagages === null ? "les bagages" : ""].filter(Boolean);
   if (manque.length) phrases.push("", `Pour finir, il me faut ${manque.join(", ").replace(/, ([^,]*)$/, " et $1")}.`);
   phrases.push("", "Le prix de la course reste à fixer par vous : je ne le propose pas.");
-  if (plan.alertes.includes("temps_simules")) phrases.push("", "Temps de route simulés pour la démo : en service, ils viennent de la table des temps de trajet, puis d'OpenStreetMap.");
+  if (plan.alertes.includes("temps_simules")) phrases.push("", "Temps de route simulés pour la démo : en service, ils viennent d'OpenStreetMap, sinon de la table des temps de trajet.");
   else if (plan.alertes.includes("temps_a_verifier")) phrases.push("", "Une durée vient d'une ligne de la table encore à vérifier.");
   ev.push({ t: "texte", delta: phrases.join("\n") });
 

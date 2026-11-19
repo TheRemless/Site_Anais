@@ -9,21 +9,7 @@ import { clePaire, lignesDuSite, lignesDesBateaux, lignesDesZones, lignesNouvell
 import { texteDuree } from "../agent-planifier.mjs";
 import { grillesDe } from "../pickup-calc.mjs";
 import { estLanta } from "../exemples.mjs";
-import { ROUTES_SITE } from "../temps-site.mjs";
-
-// La liaison de ferry de Koh Lanta, pré-remplie pour l'organisation de Lanta seulement (règle de Jérémy du 19.11.2026 : 1 h fixe). Les noms
-// des embarcadères restent à confirmer par Nani : c'est une ligne « à vérifier ».
-export const LIAISON_LANTA = {
-  nom: "Ferry de Koh Lanta",
-  cote_ile: "Koh Lanta",
-  port_ile: "Embarcadère du ferry de Koh Lanta Noi",
-  port_continent: "Embarcadère du ferry, côté continent",
-  port_ile_coord: "",
-  port_continent_coord: "",
-  duree_min: 60,
-  source: "Règle de Jérémy (1 h, traversée et attente comprises) ; noms des embarcadères à confirmer",
-  a_verifier: true,
-};
+import { ROUTES_SITE, LIAISON_LANTA } from "../temps-site.mjs";
 
 const ORIGINES = { saisie: N_("saisie"), site: N_("page taxi du site"), bateau: N_("catalogue des trajets"), zones: N_("grille de pickup"), agent: N_("conversation avec l'assistant") };
 
@@ -188,7 +174,7 @@ export async function vueTempsTrajets() {
         h("div", { class: "grille-form" }, champ(tr("De"), de), champ(tr("Vers"), vers), champ(tr("Durée (minutes)"), duree), champ(tr("Marge conseillée (minutes)"), marge)),
         h("label", { class: "case", for: "tt-ferry" }, ferry, tr("Le trajet prend le ferry")),
         h("div", { class: "grille-form" }, champ(tr("Source"), source), champ(tr("Date"), date)),
-        h("p", { class: "aide" }, tr("Enregistrer confirme la durée : elle passe avant toute autre source pour l'assistant.")),
+        h("p", { class: "aide" }, tr("Enregistrer confirme la durée. L'assistant s'en sert quand OpenStreetMap ne donne rien, et toujours pour la marge conseillée.")),
         erreur,
         h("div", { class: "actions" }, l && supprime ? h("button", { class: "danger", type: "button", onclick: async () => { if (!(await confirmer(tr("Supprimer cette durée ?"), tr("Supprimer"), true))) return; await etat.store.supprimerTempsTrajet(l.id); lignes = lignes.filter((x) => x.id !== l.id); ferme(); dessiner(); } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
       ),
@@ -203,7 +189,7 @@ export async function vueTempsTrajets() {
     const proposees = lignesAPreremplir({ trajets: etat.db.trajets, partenaires: etat.db.partenaires, lanta, existantes: lignes || [], date: aujourdhui() });
     if (!proposees.length && !liaison) return toast(tr("Rien de nouveau à pré-remplir."));
     const parOrigine = (o) => proposees.filter((l) => l.origine === o).length;
-    const detail = [["site", N_("depuis les pages taxi du site")], ["bateau", N_("depuis les durées des trajets")], ["zones", N_("depuis les grilles de pickup")]].filter(([o]) => parOrigine(o)).map(([o, t]) => `${parOrigine(o)} ${tr(t)}`).concat(liaison ? [tr("la liaison de ferry de Koh Lanta (1 h)")] : []).join(", ");
+    const detail = [["site", N_("depuis les pages taxi du site")], ["bateau", N_("depuis les durées des trajets")], ["zones", N_("depuis les grilles de pickup")]].filter(([o]) => parOrigine(o)).map(([o, t]) => `${parOrigine(o)} ${tr(t)}`).concat(liaison ? [tr("la liaison de ferry de Koh Lanta (Khlong Mak, 1 h)")] : []).join(", ");
     if (!(await confirmer(tr("Ajouter {n} éléments à vérifier ({detail}) ? Aucune ligne existante n'est modifiée.", { n: proposees.length + (liaison ? 1 : 0), detail }), tr("Pré-remplir")))) return;
     try {
       if (liaison) liaisons = [...liaisons, await etat.store.enregistrerLiaisonFerry(etat.entiteId, liaison)];
@@ -223,7 +209,7 @@ export async function vueTempsTrajets() {
   );
   racine.append(
     h("div", { class: "entete" }, h("h1", null, tr("Temps de trajet")), ecrit ? h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: preremplir }, tr("Pré-remplir")), h("button", { class: "principal", type: "button", onclick: () => (mode === "ferry" ? editerLiaison() : editer()) }, icone("ajouter", 18), tr("Ajouter"))) : null),
-    h("p", { class: "aide" }, tr("Les durées de référence de zone à zone. L'assistant s'en sert d'abord pour calculer les heures de pickup, avant OpenStreetMap. Une ligne « à vérifier » n'est confirmée qu'une fois enregistrée par vous.")),
+    h("p", { class: "aide" }, tr("Les durées de référence de zone à zone. L'assistant prend d'abord OpenStreetMap ; la table sert quand OpenStreetMap ne trouve pas un lieu, et pour la marge conseillée. Une ligne « à vérifier » n'est confirmée qu'une fois enregistrée par vous.")),
     onglets,
     h("div", { class: "temps-recherche" }, h("label", { for: "temps-q", class: "visuellement-cache" }, tr("Filtrer par lieu")), recherche),
     liste

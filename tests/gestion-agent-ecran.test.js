@@ -125,7 +125,8 @@ test("pré-remplissage : pages taxi seulement pour l'organisation de Lanta, gril
 });
 
 test("démo : avec la liaison de ferry de la table, le trajet se calcule en trois morceaux et le détail est dit", async () => {
-  const liaisons = [{ nom: "Ferry de Koh Lanta", cote_ile: "Koh Lanta", port_ile: "Embarcadère du ferry de Koh Lanta Noi", port_continent: "Embarcadère du ferry, côté continent", duree_min: 60, a_verifier: true }];
+  const { LIAISON_LANTA } = await import("../src/gestion/js/temps-site.mjs");
+  const liaisons = [LIAISON_LANTA];
   const r = await repondreDemo("Client taxi : pickup à Jai Tiki Retreat, Koh Lanta samedi, il doit être au Krabi Nakharin International Hospital vers 16h00, puis aéroport de Krabi.", { aujourdhui: "2026-11-19", liaisons });
   const plan = r.evenements.find((e) => e.t === "planning").planning;
   assert.deepEqual(plan.trajets[0].morceaux.map((m) => m.duree_min), [25, 60, 70]);

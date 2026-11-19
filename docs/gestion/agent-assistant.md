@@ -35,14 +35,16 @@ Un trajet dont un seul bout est sur l'île d'une liaison de ferry se calcule tou
 2. ferry : durée fixe de la liaison, traversée et attente comprises, 60 min par défaut, modifiable par Nani (Temps de trajet > Ferries) ;
 3. route du port d'arrivée jusqu'au point d'arrivée (table, sinon OpenStreetMap).
 
-Les ports et la liaison sont des données de la table, jamais une supposition du modèle. L'agent montre le détail, par exemple « Jai Tiki → embarcadère de Lanta Noi : 25 min, ferry : 1 h, embarcadère côté continent → Krabi Nakharin : 1 h 10, marge 20 min », puis le pickup (ici 13:05 pour 16:00). La liaison de Koh Lanta se pré-remplit « à vérifier » : noms exacts des deux embarcadères à confirmer par Nani, coordonnées facultatives.
+Les ports et la liaison sont des données de la table, jamais une supposition du modèle. L'agent montre le détail, par exemple « Jai Tiki → ท่าเรือคลองหมาก : 25 min, ferry : 1 h, ท่าเรือกระบี่-เกาะลันตา → Krabi Nakharin : 1 h 10, marge 20 min », puis le pickup (ici 13:05 pour 16:00). La liaison de Koh Lanta se pré-remplit avec les ports donnés par Jérémy le 19.11.2026 : ท่าเรือคลองหมาก (Khlong Mak Pier) sur Koh Lanta Noi et ท่าเรือกระบี่-เกาะลันตา côté continent, 1 h. Les coordonnées restent vides : OpenStreetMap cherche chaque port par son nom thaï puis latin, et montre ce qu'il a trouvé ; Nani pose les coordonnées si ce n'est pas le bon.
 
 ### D'où viennent les durées (décision de Jérémy du 19.11.2026 : pas de Google Maps)
 
+Ordre décidé par Jérémy le 19.11.2026 (« fie-toi plutôt à OpenStreetMap, c'est plus précis ») :
+
 | Ordre | Source | Affiché |
 |---|---|---|
-| 1 | La **table des temps de trajet** de l'entreprise (Partenaires > Temps de trajet), ligne confirmée par Nani ou Mr. Brown : elle l'emporte toujours | « table des temps » |
-| 2 | **openrouteservice** (OpenStreetMap, gratuit), avec le ferry et la marge de la ligne de la table pour ces zones s'il y en a une ; ce qu'ORS a compris de chaque lieu est montré | « OpenStreetMap, à vérifier » |
+| 1 | **openrouteservice** (OpenStreetMap, gratuit), avec la marge conseillée et le ferry de la ligne de la table pour ces zones s'il y en a une ; ce qu'OpenStreetMap a compris de chaque lieu est montré | « OpenStreetMap » |
+| 2 | La **table des temps de trajet** (Partenaires > Temps de trajet), ligne confirmée, quand OpenStreetMap ne donne rien (pas de clé, lieu introuvable, quota) | « table des temps » |
 | 3 | Une ligne de la table encore **à vérifier** (pré-remplie) | « table, ligne à vérifier » |
 | 4 | Rien : l'agent le dit et demande la durée. Quand Nani la donne, il propose une carte « Ajouter à la table » | « durée donnée par vous » |
 | 5 | En dernier recours, une **estimation par la recherche web**, avec sa source, marquée comme telle | « estimation trouvée sur le web » |

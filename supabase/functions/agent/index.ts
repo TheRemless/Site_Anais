@@ -12,7 +12,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, PLAFOND_MOIS_USD_DEFAUT, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { memoDepuis, refDe, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
-import { ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, clePaire, cleZone, corpsItineraire, lireGeocode, lireItineraire, parametresGeocode } from "./temps.js";
+import { ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, clePaire, cleZone, corpsItineraire, lireGeocode, lireItineraire, parametresGeocode, variantesLieu } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
@@ -167,7 +167,12 @@ Deno.serve(async (req) => {
     const connu = await sb.from("lieux_geo").select("lon, lat, label").eq("entite_id", entiteId).eq("cle", k).maybeSingle();
     if (connu.data) g = { lon: Number(connu.data.lon), lat: Number(connu.data.lat), label: connu.data.label };
     else {
-      const r = lireGeocode(await appelOrs(`${ORS_GEOCODE}?${parametresGeocode(lieu)}`, { method: "GET" }));
+      // Plusieurs écritures du même lieu (nom thaï, nom latin) : la première trouvée par OpenStreetMap.
+      let r = null;
+      for (const v of variantesLieu(lieu)) {
+        r = lireGeocode(await appelOrs(`${ORS_GEOCODE}?${parametresGeocode(v)}`, { method: "GET" }));
+        if (r) break;
+      }
       if (r) {
         g = r;
         await sb.from("lieux_geo").upsert({ entite_id: entiteId, cle: k, nom: lieu.slice(0, 160), lon: r.lon, lat: r.lat, label: r.label, origine: "ors", a_verifier: true }, { onConflict: "entite_id,cle" });

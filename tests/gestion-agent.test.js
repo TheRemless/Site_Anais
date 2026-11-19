@@ -120,16 +120,29 @@ test("table de temps : zone la plus précise, aller et retour, hôtel connu par 
   assert.equal(ligneDeLaTable("Phuket", "Krabi Airport", lignes), null);
 });
 
-test("ordre des durées : table vérifiée, puis ORS, puis table à vérifier, puis rien ; jamais inventée", async () => {
+test("ordre des durées (Jérémy, 19.11.2026) : OpenStreetMap d'abord, puis la table, puis la table à vérifier, puis rien ; jamais inventée", async () => {
   const lignes = [{ de: "Koh Lanta", vers: "Krabi Airport", duree_min: 150, ferry: true, marge_min: 20, a_verifier: false }, { de: "Koh Lanta", vers: "Krabi Town", duree_min: 180, ferry: true, a_verifier: true }];
   const ors = async () => ({ duree_min: 140, distance_km: 110, ferry: false, de_trouve: "Koh Lanta, TH", vers_trouve: "Krabi, TH" });
-  assert.equal((await dureeEntre("Koh Lanta", "Krabi Airport", { lignes, ors })).source, "table");
-  const t = await dureeEntre("Koh Lanta", "Krabi Town", { lignes, ors });
-  assert.equal(t.source, "ors");
-  assert.equal(t.ferry, true, "le ferry de la ligne de la table s'ajoute à ORS");
-  assert.equal(t.de_trouve, "Koh Lanta, TH");
+  const o = await dureeEntre("Koh Lanta", "Krabi Airport", { lignes, ors });
+  assert.equal(o.source, "ors");
+  assert.equal(o.duree_min, 140);
+  assert.equal(o.marge_min, 20, "la marge conseillée de la table s'ajoute à OpenStreetMap");
+  assert.equal(o.ferry, true, "le ferry de la ligne de la table aussi");
+  assert.equal(o.de_trouve, "Koh Lanta, TH");
+  assert.equal((await dureeEntre("Koh Lanta", "Krabi Airport", { lignes, ors: async () => null })).source, "table");
   assert.equal((await dureeEntre("Koh Lanta", "Krabi Town", { lignes, ors: async () => null })).source, "table_a_verifier");
   assert.equal(await dureeEntre("Phuket", "Hat Yai", { lignes, ors: async () => null }), null);
+});
+
+test("ports du ferry de Lanta en thaï : variantes de recherche et île reconnue", async () => {
+  const { variantesLieu, liaisonPour } = await import("../supabase/functions/agent/temps.js");
+  assert.deepEqual(variantesLieu("ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi"), ["ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi", "ท่าเรือคลองหมาก, Koh Lanta Noi", "Khlong Mak Pier, Koh Lanta Noi"]);
+  assert.deepEqual(variantesLieu("ท่าเรือกระบี่-เกาะลันตา, Krabi"), ["ท่าเรือกระบี่-เกาะลันตา, Krabi"]);
+  const l = { nom: "Ferry de Koh Lanta", cote_ile: "Koh Lanta", port_ile: "ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi", port_continent: "ท่าเรือกระบี่-เกาะลันตา, Krabi", duree_min: 60 };
+  // Le port côté continent n'est pas sur l'île, celui de Khlong Mak l'est.
+  assert.equal(liaisonPour(l.port_continent, "Krabi Airport", [l]), null);
+  assert.equal(liaisonPour(l.port_ile, "Jai Tiki Retreat, Koh Lanta", [l]), null);
+  assert.equal(liaisonPour("Jai Tiki Retreat, Koh Lanta", "Krabi Airport", [l]).depuisIle, true);
 });
 
 test("durées écrites : fourchette à sa borne haute, durées tapées par la personne", () => {

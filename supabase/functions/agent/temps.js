@@ -1,7 +1,8 @@
 // Temps de trajet de l'agent (décision de Jérémy du 19.11.2026 : pas de Google Maps). Logique pure, sans dépendance.
-// D'où vient la durée d'un trajet en voiture, dans cet ordre :
-//   1. la table de référence de l'entreprise (temps_trajets), quand la ligne est vérifiée (corrigée par Nani ou Mr. Brown) : elle l'emporte toujours ;
-//   2. sinon openrouteservice (ORS, OpenStreetMap, gratuit), avec le ferry et la marge conseillée de la ligne de la table s'il y en a une ;
+// D'où vient la durée d'un trajet en voiture, dans cet ordre (Jérémy, 19.11.2026 : « fie-toi plutôt à OpenStreetMap, c'est plus précis ») :
+//   1. openrouteservice (ORS, OpenStreetMap, gratuit), avec la marge conseillée de la ligne de la table s'il y en a une ; ce qu'ORS a compris
+//      de chaque lieu est toujours montré ;
+//   2. sinon (pas de clé, lieu introuvable, quota) la table de référence de l'entreprise (temps_trajets), ligne confirmée ;
 //   3. sinon une ligne de la table encore « à vérifier » (pré-remplie) ;
 //   4. sinon rien : l'agent le dit et demande la durée. En dernier recours, une estimation par la recherche web, marquée comme telle.
 // Jamais de durée inventée. Rien d'un client ne part chez ORS : seulement des noms de lieux ou des coordonnées.
@@ -66,9 +67,9 @@ export function ligneDeLaTable(de, vers, lignes = [], hotels = []) {
 export async function dureeEntre(de, vers, { lignes = [], hotels = [], ors = null, simule = null, coords = null } = {}) {
   const l = ligneDeLaTable(de, vers, lignes, hotels);
   const deLigne = (x, a_verifier) => ({ duree_min: x.duree_min, ferry: !!x.ferry, marge_min: x.marge_min || 0, source: a_verifier ? "table_a_verifier" : "table", a_verifier, ligne: { de: x.de, vers: x.vers, source: x.source || "", source_date: x.source_date || "" } });
-  if (l && !l.a_verifier && l.duree_min > 0) return deLigne(l, false);
   const r = ors ? await ors(de, vers, coords) : null;
-  if (r && r.duree_min > 0) return { duree_min: r.duree_min, distance_km: r.distance_km ?? null, ferry: !!(r.ferry || (l && l.ferry)), marge_min: l ? l.marge_min || 0 : 0, source: "ors", a_verifier: true, de_trouve: r.de_trouve || "", vers_trouve: r.vers_trouve || "" };
+  if (r && r.duree_min > 0) return { duree_min: r.duree_min, distance_km: r.distance_km ?? null, ferry: !!(r.ferry || (l && l.ferry)), marge_min: l ? l.marge_min || 0 : 0, source: "ors", a_verifier: false, de_trouve: r.de_trouve || "", vers_trouve: r.vers_trouve || "" };
+  if (l && !l.a_verifier && l.duree_min > 0) return deLigne(l, false);
   if (l && l.duree_min > 0) return deLigne(l, true);
   const s = simule ? simule(de, vers) : null;
   return s ? { ...s, marge_min: 0, a_verifier: true } : null;
@@ -102,7 +103,7 @@ export function liaisonPour(de, vers, liaisons = [], hotels = []) {
 }
 
 // Du moins sûr au plus sûr : la source affichée pour un trajet en morceaux est celle de son morceau le moins sûr.
-const FIABILITE = ["simulation", "estimation_web", "table_a_verifier", "ors", "personne", "table"];
+const FIABILITE = ["simulation", "estimation_web", "table_a_verifier", "personne", "table", "ors"];
 const moinsSure = (sources) => sources.slice().sort((a, b) => FIABILITE.indexOf(a) - FIABILITE.indexOf(b))[0];
 
 // La durée d'un trajet, en trois morceaux s'il passe par un ferry de la table. Rend la durée (route seule dans duree_min, ferry dans
@@ -240,6 +241,20 @@ export function lignesNouvelles(proposees = [], existantes = []) {
 export const ORS_BASE = "https://api.heigit.org";
 export const ORS_ITINERAIRE = "/openrouteservice/v2/directions/driving-car/json";
 export const ORS_GEOCODE = "/pelias/v1/search";
+
+// Les noms à essayer pour géocoder un lieu, du plus précis au plus simple : tel qu'écrit, sans la partie entre parenthèses, puis la partie
+// entre parenthèses suivie du reste (« ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi » → « ท่าเรือคลองหมาก, Koh Lanta Noi »,
+// « Khlong Mak Pier, Koh Lanta Noi »).
+export function variantesLieu(lieu) {
+  const t = String(lieu || "").replace(/\s+/g, " ").trim();
+  const m = /^(.*?)\s*\(([^)]+)\)\s*(.*)$/.exec(t);
+  const out = [t];
+  if (m) {
+    const reste = m[3].replace(/^[,\s]+/, "");
+    out.push([m[1], reste].filter(Boolean).join(", "), [m[2], reste].filter(Boolean).join(", "));
+  }
+  return [...new Set(out.filter(Boolean))].slice(0, 3);
+}
 
 // Requête de géocodage : le nom du lieu seul (jamais un nom de client), en Thaïlande, un résultat.
 export const parametresGeocode = (lieu) => new URLSearchParams({ text: String(lieu || "").slice(0, 200), "boundary.country": "TH", size: "1" });
