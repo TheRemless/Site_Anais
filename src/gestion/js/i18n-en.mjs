@@ -2827,7 +2827,6 @@ export const EN = {
   "Monter « {libelle} »": "Move “{libelle}” up",
   "Descendre « {libelle} »": "Move “{libelle}” down",
   "Retirer cette ligne": "Remove this line",
-  "081-000-0000": "081-000-0000",
   "Réservations, bureau…": "Bookings, office…",
   "Libellé du numéro": "Number label",
   "Ajouter un numéro": "Add a number",

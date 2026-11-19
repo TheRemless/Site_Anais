@@ -447,7 +447,7 @@ function lignesRepetees(depart, faire, { ajouter = tr("Ajouter une ligne"), vide
 // Un téléphone par ligne : numéro, libellé et une vraie case WhatsApp (audit n° 56 : « | WhatsApp » écrit en libellé laissait la case décochée).
 function ligneTelephone(t = {}) {
   const k = Math.random().toString(36).slice(2, 8);
-  const numero = h("input", { id: `tel-n-${k}`, type: "tel", value: t.numero || "", placeholder: tr("081-000-0000"), "aria-label": tr("Numéro") });
+  const numero = h("input", { id: `tel-n-${k}`, type: "tel", value: t.numero || "", placeholder: exemple("telephone_partenaire"), "aria-label": tr("Numéro") });
   const libelle = h("input", { id: `tel-l-${k}`, value: t.libelle || "", placeholder: tr("Réservations, bureau…"), "aria-label": tr("Libellé du numéro") });
   const wa = h("input", { id: `tel-w-${k}`, type: "checkbox", checked: !!t.whatsapp });
   return { noeud: h("div", { class: "ligne-saisie tel-ligne" }, numero, libelle, h("label", { class: "case", for: wa.id }, wa, tr("WhatsApp"))), valeur: () => ({ numero: numero.value.trim(), libelle: libelle.value.trim(), whatsapp: wa.checked }) };
