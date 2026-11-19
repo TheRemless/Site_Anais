@@ -237,6 +237,18 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { data, error } = await sb.from("rappels_suivi").select("id, cree_le, type, cible, abonnements, envoyes, retires, echecs, erreur, duree_ms").order("cree_le", { ascending: false }).limit(20);
       return error ? null : data;
     },
+    // Hôtels situés (migration 48) : lus à la demande par l'écran « Prix et horaires ». null tant que la table manque (avant la migration) :
+    // l'écran le dit et fonctionne sans mémoire des hôtels.
+    async hotelsLieux(entiteId) {
+      const { data, error } = await sb.from("hotels_lieux").select("id, entite_id, cle, nom, lieu, zone, localite, source_url, source_titre, certitude, verifie, maj_le").eq("entite_id", entiteId).limit(5000);
+      return error ? null : data || [];
+    },
+    // Un hôtel situé par la recherche ou corrigé par la personne : une ligne par hôtel et par entreprise, remplacée à chaque correction.
+    async enregistrerHotelLieu(entiteId, ligne) {
+      const { data, error } = await sb.from("hotels_lieux").upsert({ ...ligne, entite_id: entiteId }, { onConflict: "entite_id,cle" }).select("id, entite_id, cle, nom, lieu, zone, localite, source_url, source_titre, certitude, verifie, maj_le").single();
+      if (error) throw new Error(error.message);
+      return data;
+    },
     // Assistant IA (fonction « assistant ») : appelé avec la session de la personne, qui vérifie ses droits côté serveur.
     // Renvoie toujours un objet : la réponse, ou { erreur } avec le code rendu par la fonction (droit, limite, indisponible).
     async assistant(corps) {

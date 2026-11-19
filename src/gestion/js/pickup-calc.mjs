@@ -80,9 +80,10 @@ export function cleDeZoneGardee(grilles, gardee) {
   return meme;
 }
 
-// La zone proposée pour un hôtel : celle d'une réservation précédente du même hôtel (la plus récente), sinon un nom de zone écrit dans l'adresse.
+// La zone proposée pour un hôtel : celle d'une réservation précédente du même hôtel (la plus récente), sinon un nom de zone écrit dans l'adresse,
+// sinon la plage ou le quartier noté pour cet hôtel dans la table des hôtels situés (`zoneConnue`, migration 48, « Relax Bay »).
 // Jamais d'heure ici : seulement une zone à confirmer.
-export function zoneProposee(hotel, grilles, reservations = []) {
+export function zoneProposee(hotel, grilles, reservations = [], zoneConnue = "") {
   const h = norm(hotel);
   if (!h || !grilles.length) return null;
   const avant = reservations
@@ -99,7 +100,16 @@ export function zoneProposee(hotel, grilles, reservations = []) {
       if (n && ` ${h} `.includes(` ${n} `) && (!meilleure || n.length > meilleure.longueur)) meilleure = { cle: z.cle, origine: "adresse", longueur: n.length };
     }
   }
-  return meilleure ? { cle: meilleure.cle, origine: "adresse" } : null;
+  if (meilleure) return { cle: meilleure.cle, origine: "adresse" };
+  const zc = norm(zoneConnue);
+  if (!zc) return null;
+  for (const g of grilles) {
+    for (const z of g.zones) {
+      const n = norm(z.nom);
+      if (n && (` ${zc} `.includes(` ${n} `) || ` ${n} `.includes(` ${zc} `)) && (!meilleure || n.length > meilleure.longueur)) meilleure = { cle: z.cle, longueur: n.length };
+    }
+  }
+  return meilleure ? { cle: meilleure.cle, origine: "fiche" } : null;
 }
 
 // Le départ de la grille qui correspond à un trajet : l'heure du bateau écrite dans la colonne (« Bateau 10h30 », « Lanta vers Lipe 10h30 ») doit être celle du

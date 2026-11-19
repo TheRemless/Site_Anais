@@ -13,6 +13,7 @@ import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.
 import { exempleDe } from "./exemples.mjs";
 import { appliquerTextesThai } from "./textes-thai.mjs";
 import { reglerCompagnies } from "./partenaires-calc.mjs";
+import { hotelConnu } from "./itineraire-calc.mjs";
 import { responsableDe, libelleAdmin } from "./noms-calc.mjs";
 import { entreprisesVoucher } from "./voucher-rapide-calc.mjs";
 import { entreprisesConfirmation } from "./confirmation-calc.mjs";
@@ -679,6 +680,43 @@ export const netPrestation = (p) => etat.db.prestations_nets.find((n) => n.prest
 export const netTrajet = (t) => etat.db.trajets_nets.find((n) => n.trajet_id === t.id) || null;
 export const privePartenaire = (p) => etat.db.partenaires_prives.find((n) => n.partenaire_id === p.id) || null;
 export const netReservation = (r) => etat.db.reservations_nets.find((n) => n.reservation_id === r.id) || null;
+
+// ---- Hôtels situés (migration 48) ------------------------------------------------------------------------------------------------
+// Lus à la demande (écran « Prix et horaires », « Coller une demande ») et gardés pour l'entreprise active. `disponible` faux : la table
+// manque (migration pas encore appliquée), l'outil marche sans mémoire des hôtels.
+const hotels = { entiteId: null, lignes: [], disponible: true, enCours: null };
+export async function chargerHotelsLieux({ force = false } = {}) {
+  const e = etat.entiteId;
+  if (!e || !etat.store || typeof etat.store.hotelsLieux !== "function") return [];
+  if (!force && hotels.entiteId === e) return hotels.lignes;
+  if (hotels.enCours && hotels.enCours.e === e) return hotels.enCours.p;
+  const p = etat.store
+    .hotelsLieux(e)
+    .then((lignes) => {
+      Object.assign(hotels, { entiteId: e, lignes: lignes || [], disponible: lignes !== null, enCours: null });
+      return hotels.lignes;
+    })
+    .catch(() => {
+      Object.assign(hotels, { entiteId: e, lignes: [], disponible: false, enCours: null });
+      return [];
+    });
+  hotels.enCours = { e, p };
+  return p;
+}
+export const hotelsLieux = () => (hotels.entiteId === etat.entiteId ? hotels.lignes : []);
+export const tableHotelsDisponible = () => hotels.disponible;
+// La plage ou le quartier noté pour un hôtel, pour proposer la zone de pickup (« Relax Bay »).
+export const zoneDeHotel = (nom) => {
+  const l = hotelConnu(nom, hotelsLieux());
+  return l ? l.zone || "" : "";
+};
+// Enregistre un hôtel situé (par la recherche ou par la personne) et garde la ligne rendue par la base.
+export async function enregistrerHotelLieu(ligne) {
+  const e = etat.entiteId;
+  const l = await etat.store.enregistrerHotelLieu(e, ligne);
+  if (hotels.entiteId === e) hotels.lignes = [...hotels.lignes.filter((x) => x.cle !== l.cle), l];
+  return l;
+}
 
 // Enregistre ou crée la ligne liée d'un élément (net d'une prestation, net d'un trajet, données privées d'un partenaire).
 export async function enregistrerLie(table, cle, parentId, valeurs) {

@@ -1,7 +1,7 @@
 // « Coller une demande » : le client écrit à Anaïs sur WhatsApp, le message arrive à sa façon ou depuis le formulaire du site. On le colle ici :
 // l'outil reconnaît la date, les personnes, l'hôtel, le client et le service cité, cherche le prix dans la base partenaires, et crée le dossier
 // d'un tap. Tout ce qui a été reconnu se corrige sur place, et le prix suit.
-import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite, confirmationPermise, clientParId, clientsProposes } from "../etat.mjs";
+import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite, confirmationPermise, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
@@ -16,7 +16,7 @@ import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDef
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, ligneRetourDepart, ligneTransfertPrive } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
-import { boutonLireIA, badgeConfiance } from "./assistant-demande.mjs";
+import { boutonLireIA, badgeConfiance, assistantDisponible } from "./assistant-demande.mjs";
 import { offresRecalculees } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
@@ -109,7 +109,9 @@ function lignesSite(d) {
 // `depuisSite` (boîte « Demandes du site ») : { texte, titre, telephone, prixImpose, surCree }. Le message vient de la demande, pas du presse-papiers ni du brouillon
 // de l'appareil ; « Vérifier avant de créer », la réponse et le passage à une autre entreprise sont retirés (la demande appartient à son entreprise,
 // la réponse au client se prépare après la création) ; une fois le dossier créé, `surCree({ dossier, services, total })` prend la suite.
-export function ouvrirDemande(depuisSite = null) {
+// `depuisItineraire` (écran « Prix et horaires ») : { texte, d, services } déjà prêts, un service par trajet dont l'horaire est choisi, avec l'hôtel
+// de départ (`hotelDepart`) comme lieu de pickup. Le message du client est repris tel quel, les services ne sont pas relus.
+export function ouvrirDemande(depuisSite = null, depuisItineraire = null) {
   // Branchée directement sur un bouton (`onclick: ouvrirDemande`), la fonction reçoit l'événement du clic : ce n'est pas une demande du site.
   if (!depuisSite || typeof depuisSite.texte !== "string") depuisSite = null;
   const regl = reglages();
@@ -166,7 +168,8 @@ export function ouvrirDemande(depuisSite = null) {
     const siteTransfert = d.type === "transfer";
     const lieu = siteTransfert ? d.pickup || "" : offre && !estTransfert(offre) && d.hotel && d.hotel !== hotelDuClient(c) ? d.hotel : "";
     // Une zone de pickup choisie veut dire un pickup à l'hôtel : le lieu est l'hôtel, ce qui permet de retrouver la zone au prochain séjour.
-    const lieuFinal = lieu || (sv.zonePickup && d.hotel ? d.hotel : "");
+    const hotelPickup = sv.hotelDepart || d.hotel;
+    const lieuFinal = lieu || (sv.zonePickup && hotelPickup ? hotelPickup : "");
     // Les champs du voucher remplis dans la fenêtre l'emportent ; un lieu laissé vide reste celui de la demande.
     const v = sv.saisie || saisieVide();
     return { heure: sv.heure || "", lieu: (v.lieu || "").trim() || lieuFinal, bebes: v.bebes, personnes: { adultes: sv.adultes, enfants: sv.enfants }, sieges: v.sieges, details: nonVides(v.details), zonePickup: sv.zonePickup || null };
@@ -243,6 +246,8 @@ export function ouvrirDemande(depuisSite = null) {
     const site = d.type === "transfer";
     sv.saisie = { ...saisieVide(), bebes: d.bebes || 0, sieges: site ? Number(d.sieges) || 0 : 0, details: site ? nonVides({ drop_off: d.dropoff || "", vol: d.vol || "", bagages: d.bagages ? String(d.bagages) : "" }) : {} };
     // Retour au point de départ lu dans le message : le type, le programme et la durée sont déjà posés ; le lieu de pickup est celui de la demande (ou l'hôtel).
+    // Trajet venu de « Prix et horaires » : le pickup se fait à l'hôtel où le client dort la veille.
+    if (sv.hotelDepart) sv.saisie.lieu = sv.hotelDepart;
     if (sv.transfertLibre) {
       sv.saisie.lieu = sv.transfertLibre.de || d.hotel || "";
       sv.saisie.details = { ...nonVides({ ...sv.saisie.details, drop_off: sv.transfertLibre.vers || "" }) };
@@ -262,7 +267,9 @@ export function ouvrirDemande(depuisSite = null) {
     sv.zones = blocZonesPickup({
       id: `svc${sv.id}-zones`,
       partenaire: () => partenaireDe(partenaireDuService(sv)),
-      hotel: () => (d && d.hotel) || "",
+      hotel: () => sv.hotelDepart || (d && d.hotel) || "",
+      // La plage ou le quartier noté pour cet hôtel (table des hôtels situés, migration 48).
+      zoneHotel: () => zoneDeHotel(sv.hotelDepart || (d && d.hotel) || ""),
       trajet: () => {
         const { offre } = etatDe(sv);
         return offre && offre.genre === "trajet" ? offre.source : null;
@@ -626,13 +633,23 @@ export function ouvrirDemande(depuisSite = null) {
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, hotelDepart: t.hotelDepart || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
     dessinerClient();
     majTotal();
   }
 
   // Lecture par l'assistant IA (si l'entreprise l'a allumé) : ses services remplacent ceux des règles, tout reste corrigeable avant de créer.
   const lireIA = boutonLireIA({ texte: () => zone.value, surResultat: (lu) => appliquer(lu.d, lu.services.map((t) => ({ ...t, offresIA: t.offres.map((o) => ({ genre: o.genre, id: o.id })) }))) });
+
+  // Demande de prix et d'horaires d'un itinéraire (plusieurs hôtels) : un écran à part, qui reprend le message collé ici.
+  const versItineraire =
+    !depuisSite && !depuisItineraire && assistantDisponible()
+      ? h("button", { class: "secondaire assistant-bouton", type: "button", onclick: async () => {
+          const t = zone.value;
+          fermer();
+          (await import("./itineraire.mjs")).ouvrirItineraire(t);
+        } }, tr("Prix et horaires d'un itinéraire"))
+      : null;
 
   const coller = h("button", { class: "secondaire", type: "button", onclick: async () => {
     try {
@@ -673,6 +690,7 @@ export function ouvrirDemande(depuisSite = null) {
     h("div", { class: "champ demande-message" }, h("label", { for: "demande-texte" }, tr("Message du client")), zone),
     ...(depuisSite ? [] : [h("div", { class: "actions gauche" }, coller, effacer)]),
     ...(lireIA ? [lireIA] : []),
+    ...(versItineraire ? [h("div", { class: "actions gauche" }, versItineraire)] : []),
     versConfirmation,
     reconnu
   );
@@ -685,6 +703,17 @@ export function ouvrirDemande(depuisSite = null) {
     setTimeout(() => ouvrirDemande(), 300);
   }
 
+  // Hôtels situés (migration 48) : lus en arrière-plan, leurs zones complètent ensuite les propositions de zone de pickup.
+  chargerHotelsLieux().then(() => services.forEach((sv) => sv.zones && sv.zones.rafraichir()));
+
+  // Venue de « Prix et horaires » : le message et les trajets choisis, sans relecture (les services sont déjà ceux qu'Anaïs a choisis).
+  if (depuisItineraire) {
+    zone.value = depuisItineraire.texte || "";
+    texte = zone.value;
+    garde.ecrire(texte.trim());
+    appliquer(depuisItineraire.d, depuisItineraire.services.map((s) => ({ ...s, offresIA: s.offres })));
+    return;
+  }
   // Demande du site : son message, jamais le brouillon de l'appareil. Sinon, message gardé d'un passage précédent, repris tel quel.
   const reprise = depuisSite ? depuisSite.texte : garde.lire();
   if (reprise) {
