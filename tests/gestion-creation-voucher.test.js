@@ -35,9 +35,10 @@ test("champs à la création : ceux du modèle de voucher pour Secret, ceux de l
   assert.deepEqual(champsCreation({ type: null }), ["heure", "lieu", "bebes"], "une option sans voucher garde heure, lieu et bébés, comme la fiche");
   // Taxi : prix par véhicule, les passagers se saisissent ; jamais de champ de Secret (type de tour, frais de parc).
   const taxi = champsCreation({ type: "transfert", personnes: { adultes: 0, enfants: 0 } }, { taxi: true });
-  assert.deepEqual(taxi, ["heure", "lieu", "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "adultes", "enfants", "bagages", "sieges"]);
+  // La remarque imprimée (« REMARKS ») se saisit dès la création (19.11.2026).
+  assert.deepEqual(taxi, ["heure", "lieu", "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", "adultes", "enfants", "bagages", "sieges", "remarques"]);
   assert.ok(!champsCreation({ type: "transfert", personnes: { adultes: 2, enfants: 0 } }, { taxi: true }).includes("adultes"), "déjà comptés par la ligne");
-  for (const c of ["type_tour", "parc", "chambre", "remarques"]) assert.ok(!taxi.includes(c), c);
+  for (const c of ["type_tour", "parc", "chambre", "remarques_paiement"]) assert.ok(!taxi.includes(c), c);
 });
 
 test("une demande collée préremplit la saisie de son service, et la saisie part sur la bonne réservation", () => {

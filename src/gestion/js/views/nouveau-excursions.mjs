@@ -154,6 +154,7 @@ export function nouveauDossierExcursions() {
 
   const ref = h("input", { id: "ref", value: refPropose(regl) });
   const refProposee = ref.value;
+  // Note interne du dossier (`dossiers.notes`, 19.11.2026) : la même que « Coller une confirmation » et l'écran de Mook, jamais imprimée.
   const notes = h("textarea", { id: "notes", rows: 2, placeholder: tr("Vol, allergies, demande particulière") });
   if (demande) notes.value = demande.notes;
   const erreur = h("p", { class: "erreur-form", role: "alert" });
@@ -211,7 +212,7 @@ export function nouveauDossierExcursions() {
       { class: "formulaire", onsubmit: creer },
       h("fieldset", null, h("legend", null, tr("Client")), selClient.noeud, doublon, blocNouveau),
       h("fieldset", null, h("legend", null, tr("Services")), taxi ? null : h("div", { class: "grille-form compacte" }, champ(tr("Adultes"), nbAdultes), champ(tr("Enfants"), nbEnfants, tr("Le prix enfant du catalogue sert dès l'ajout d'un service."))), liste, h("div", { class: "ajouts" }, h("button", { class: "principal petit", type: "button", onclick: () => choisirPrestation({ langue, devise: regl.devise, sansCompagnie: true, defauts: defautsAjout(), onAjout: (nouvelles) => { nouvelles.forEach((l) => lignes.push({ ...l, titre: l.kind === "texte" ? undefined : l.libelle })); dernierAjout = (nouvelles.find((l) => l.kind !== "texte") || {}).id || dernierAjout; dessiner(); } }) }, taxi ? tr("Course du catalogue") : tr("Ajouter un service")), taxi ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirCourseLibre({ date: defautsAjout().date, onAjout: ({ ligne, saisie }) => { lignes.push(ligne); saisies.set(ligne.id, saisie); coursesLibres.add(ligne.id); dernierAjout = ligne.id; dessiner(); } }) }, tr("Course hors catalogue")) : null), total),
-      h("fieldset", null, h("legend", null, taxi ? tr("Réservation") : tr("Facture")), h("div", { class: "grille-form" }, champ(tr("Numéro"), ref, tr("Numéro suivant de l'année pour cette entreprise, modifiable.")), champ(tr("Notes internes"), notes))),
+      h("fieldset", null, h("legend", null, taxi ? tr("Réservation") : tr("Facture")), h("div", { class: "grille-form" }, champ(tr("Numéro"), ref, tr("Numéro suivant de l'année pour cette entreprise, modifiable.")), champ(tr("Note interne du dossier (jamais imprimée)"), notes, taxi ? tr("La remarque imprimée sur la Booking confirmation se saisit avec chaque course.") : tr("La remarque imprimée sur le voucher se saisit avec chaque service.")))),
       erreur,
       h("div", { class: "actions" }, h("a", { class: "bouton secondaire", href: "#/dossiers" }, tr("Annuler")), bouton)
     )

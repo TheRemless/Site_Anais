@@ -28,7 +28,8 @@ export function champsCreation(service, { taxi = false } = {}) {
   if (taxi) {
     const sansPersonnes = !((service.personnes || {}).adultes || (service.personnes || {}).enfants);
     // Type de trajet : un retour au point de départ remplace le drop-off par un programme et une durée (16.11.2026).
-    return ["heure", "lieu", "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", ...(sansPersonnes ? ["adultes", "enfants"] : []), "bagages", "sieges"];
+    // La remarque imprimée (« REMARKS », `details.remarques`, 19.11.2026) : la même que celle que la réservation modifie ensuite.
+    return ["heure", "lieu", "type_trajet", "drop_off", "programme_trajet", "duree_h", "vol", ...(sansPersonnes ? ["adultes", "enfants"] : []), "bagages", "sieges", "remarques"];
   }
   const t = service.type;
   return ["heure", "lieu", ...(t === null || t === "billet" ? ["bebes"] : []), ...champsVoucherDe(t, { trajet: !!service.trajet })];

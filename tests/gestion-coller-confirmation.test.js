@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { lireConfirmation, erreursConfirmation, lireDate, lireHeure, lirePassagers, lireAllerRetour, lireMarque, entreprisesConfirmation, clientExistant } from "../src/gestion/js/confirmation-calc.mjs";
-import { donneesVoucher, reservationVoucher, reservationApercu, correctionReservation } from "../src/gestion/js/voucher-rapide-calc.mjs";
+import { donneesVoucher, reservationVoucher, reservationApercu, correctionReservation, valeursDepuis } from "../src/gestion/js/voucher-rapide-calc.mjs";
 import { RETOUR_DEPART } from "../src/gestion/js/trajet-calc.mjs";
 
 const AJD = "2026-11-18";
@@ -199,12 +199,15 @@ test("client déjà connu : même WhatsApp, sinon même nom ; le plus récent", 
   assert.equal(clientExistant({ nom: "Nobody", clients }), null);
 });
 
-test("remarque : posée à la création, jamais effacée par une correction de Mook (son écran n'en saisit pas)", () => {
+test("remarque : posée à la création, reprise dans la correction de Mook, changée ou effacée comme saisie (19.11.2026)", () => {
   const x = donneesVoucher({ nom: "A", date: "2026-11-22", pickup: "Hotel", heure: "10:00", dropoff: "Airport", adultes: "2", prix: "500", remarques: "Birthday" });
   const r = { ...reservationApercu(x), id: "R1" };
   assert.equal(r.details.remarques, "Birthday");
-  const mook = donneesVoucher({ nom: "A", date: "2026-11-22", pickup: "Hotel", heure: "11:00", dropoff: "Airport", adultes: "2", prix: "500" });
-  assert.equal(correctionReservation(r, mook).details.remarques, "Birthday");
+  // L'écran de Mook montre la remarque (valeursDepuis) : une correction qui ne la touche pas la garde.
+  const garde = donneesVoucher({ ...valeursDepuis(r, { nom: "A" }), heure: "11:00" });
+  assert.equal(correctionReservation(r, garde).details.remarques, "Birthday");
+  assert.equal(correctionReservation(r, { ...garde, remarques: "50th birthday" }).details.remarques, "50th birthday");
+  assert.equal("remarques" in correctionReservation(r, { ...garde, remarques: "" }).details, false);
 });
 
 test("création commune : l'écran de Mook et la confirmation collée passent par creation-course.mjs", () => {

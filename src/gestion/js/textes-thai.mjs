@@ -77,6 +77,10 @@ const FR_VOUCHER = {
   e_sieges: "Plus de sièges que d'enfants",
   e_tel: "Numéro incorrect",
   e_duree: "Écrire le nombre d'heures en chiffres, par exemple 3",
+  remarques: "Remarque sur la Booking confirmation",
+  remarques_aide: "Facultatif. Le client la voit. Écrire en anglais, par exemple 50th birthday",
+  notes: "Note interne",
+  notes_aide: "Facultatif. Jamais imprimée, le client ne la voit pas. Le thaï est accepté",
 };
 
 // Textes de départ, relevés une fois au chargement, avant tout changement.
