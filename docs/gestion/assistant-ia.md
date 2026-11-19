@@ -57,6 +57,29 @@ Chaque appel compte dans la limite de 40 par personne et par jour : une demande 
 
 Pour un nouvel usage qui rédige (brochure…) : l'ajouter à `USAGES_REDIGES` et appeler `etat.store.noterRetouche({ entiteId, usage, part: partModifiee(brouillon, texteCopie) })` à la copie.
 
+## Jeu d'essai (20.11.2026)
+
+Pour mesurer l'assistant avant et après chaque changement, et demain l'agent conversationnel.
+
+- Jeu privé, hors dépôt : `~/Desktop/Gestion-Test/eval-assistant/cas.json`, relecture dans `cas.md`. 56 messages anonymisés : 10 demandes du site réelles, 2 cas transmis par Jérémy, 8 essais des mémoires, 36 écrits d'après eux. Dont 5 cas de planification (arriver à une heure donnée) et 5 conversations à plusieurs messages. Une copie du catalogue sans aucun net est dans `catalogue/`, les résultats dans `resultats/`.
+- Script : `scripts/eval-assistant/run-eval.mjs` (squelette du skill claude-api, build-eval). Il appelle Claude avec exactement les paramètres de la fonction (mêmes prompts, schémas, modèle, effort, contrôles). Seuls la session, le journal et la lecture de la base sont remplacés par le jeu et sa copie du catalogue.
+- Clé : `ANTHROPIC_API_KEY`, sinon le trousseau macOS (service « Eval assistant Gestion », ajoutée par Jérémy avec `security add-generic-password -s "Eval assistant Gestion" -a anthropic -w`). Jamais dans un fichier.
+- Lancer : `node scripts/eval-assistant/run-eval.mjs --flow ~/Desktop/Gestion-Test/eval-assistant/resultats --variant baseline --reps 3`. Options `--usages lire,itineraire` et `--cas R01,M02`. Vérifier le câblage sans dépense : `--simulation oracle` doit donner 100 %, `--simulation vide` presque 0.
+- Notation (`notes.mjs`, sans juge IA) : champs exacts pour `lire` et `itineraire` (nom, téléphone, hôtel, dates, heures, personnes, ligne du catalogue, étapes). Pour `repondre_itineraire` et `rediger` : aucun montant ni horaire hors des faits, aucun nom de compagnie ni mot interne, pas de signature chez Secret et Taxi, tous les prix et horaires présents, langue, vouvoiement. Pour le futur agent (`noterAgent`, champ « agent » des cas) : un départ qui arrive à temps, aucun qui arrive trop tard, aucune heure de pickup inventée quand le catalogue ne donne pas la durée, aucun prix de catalogue inapplicable, les questions manquantes posées. `noterTrier` note le type d'un message.
+- Coût mesuré : 0,065 $ par passage complet (101 appels sur Claude Haiku 5.5).
+
+### Scores de départ (19.11.2026, 3 passages, 0,19 $)
+
+| Usage | Cas | Exact | Ce qui rate |
+|---|---|---|---|
+| `lire` | 26 | 91 % (± 6) | Taxi Krabi Airport du catalogue Secret jugé hors catalogue ; message en français lu en anglais ; prénom en signature (« Lea ») laissé vide |
+| `itineraire` | 7 | 86 % (± 15) | Dernière étape sans hôtel (« then on Feb 12 we go to Langkawi ») mise en remarque : le trajet vers Langkawi manque |
+| `repondre_itineraire` | 7 | 100 % | Rien |
+| `rediger` (retiré) | 5 | 47 % (± 25) | Signe « Have a lovely day, Anaïs » : la voix de Secret dans les réglages dit « You write as Anaïs » et finit par une formule signée |
+| `trier` (branche à part, non fusionnée) | 56 | 93 % (± 4) | « 3 février » daté 2026 au lieu de 2027 ; nom oublié ; message d'un prestataire lu comme un changement ; trois trajets taxi lus comme un itinéraire |
+
+Les résultats et transcriptions sont dans `~/Desktop/Gestion-Test/eval-assistant/resultats/` (`report.html`).
+
 ## Données qui partent chez Anthropic
 
 | Usage | Envoyé | Jamais envoyé |
