@@ -790,15 +790,26 @@ async function versionDisponible() {
 // et le rechargement attend que la saisie soit enregistrée ou abandonnée. Jamais de perte de saisie.
 let versionSignalee = false;
 let derniereActivite = Date.now();
-let saisieVue = false;
-for (const ev of ["pointerdown", "keydown", "input", "wheel", "touchstart"]) window.addEventListener(ev, () => (derniereActivite = Date.now()), { capture: true, passive: true });
+let enSaisie = false;
+let finSaisie = 0;
+for (const ev of ["pointerdown", "keydown", "input", "wheel", "touchstart", "scroll"]) window.addEventListener(ev, () => (derniereActivite = Date.now()), { capture: true, passive: true });
+// Pour recharger, plus prudent que pour redessiner : une liste, un bouton radio ou une case changés et pas encore enregistrés comptent aussi
+// (le logo et le chauffeur choisis dans « Nouveau voucher », sans texte tapé).
+const choixModifies = () => {
+  const principal = document.getElementById("principal");
+  if (!principal) return false;
+  return [...principal.querySelectorAll("select")].some((s) => [...s.options].some((o) => o.selected !== o.defaultSelected)) || [...principal.querySelectorAll("input[type=checkbox], input[type=radio]")].some((c) => c.checked !== c.defaultChecked);
+};
 function rechargerSiSur({ retour = false } = {}) {
   if (!versionSignalee) return false;
-  // Un écran de saisie (nouveau dossier, éditeur de document, réglages) compte comme une saisie tant qu'on y est : un choix dans une liste
-  // ou une case cochée n'y laisse pas toujours de trace visible. Le rechargement attend qu'on le quitte (enregistré ou abandonné).
-  const saisie = saisieEnCours() || !ecranDeLecture(location.hash) || !!(etat.garde && etat.garde());
-  if (saisie) saisieVue = true;
-  const ok = momentDeRecharger({ nouvelle: true, saisie, cache: document.visibilityState === "hidden", retour, inactifMs: Date.now() - derniereActivite, apresSaisie: saisieVue });
+  // Un écran de saisie (nouveau dossier, éditeur de document, réglages) compte comme une saisie tant qu'on y est. Le rechargement attend
+  // qu'on le quitte (enregistré ou abandonné).
+  const saisie = saisieEnCours() || choixModifies() || !ecranDeLecture(location.hash) || !!(etat.garde && etat.garde());
+  // « Juste après une saisie » : les trente secondes qui suivent sa fin, pas pour toute la suite de la journée.
+  if (enSaisie && !saisie) finSaisie = Date.now();
+  enSaisie = saisie;
+  const apresSaisie = !!finSaisie && Date.now() - finSaisie < 30 * 1000;
+  const ok = momentDeRecharger({ nouvelle: true, saisie, cache: document.visibilityState === "hidden", retour, inactifMs: Date.now() - derniereActivite, apresSaisie });
   if (ok) location.reload();
   return ok;
 }
@@ -853,7 +864,7 @@ window.addEventListener("error", (e) => signalerErreur(e.message));
 // Une demande du site arrivée se dit comme telle (« Nouvelle demande du site. »), sans le chiffre devant quand il n'y en a qu'une.
 const annoncerArrivees = (n) => toast(n > 1 ? tr("{n} nouvelles demandes du site.", { n }) : tr("Nouvelle demande du site."));
 // Demandes du site à traiter dans l'entreprise affichée (pour annoncer une arrivée).
-const demandesATraiter = () => (etat.db && siteVisible() ? aTraiter(etat.db.demandes_site || []).length : 0);
+const demandesATraiter = () => ({ entite: etat.entiteId, ids: etat.db && siteVisible() ? aTraiter(etat.db.demandes_site || []).map((d) => d.id) : [] });
 // Une fenêtre ouverte, un champ en cours de saisie ou une saisie pas encore enregistrée : rien ne doit être redessiné ni déclenché par-dessus.
 function saisieEnCours() {
   if (document.querySelector(".modal-fond")) return true;

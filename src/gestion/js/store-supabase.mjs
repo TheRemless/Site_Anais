@@ -193,7 +193,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     if (canal) sb.removeChannel(canal);
     canal = sb.channel("gestion-direct");
     for (const t of tables) canal.on("postgres_changes", { event: "*", schema: "public", table: t }, () => rappel(t));
-    canal.subscribe();
+    // Un refus (migration 47 absente, droits) ou une coupure se voit dans la console ; la relecture de chaque minute continue.
+    canal.subscribe((statut, err) => {
+      if (statut === "CHANNEL_ERROR" || statut === "TIMED_OUT") console.warn(`Gestion en direct indisponible (${statut})`, err || "");
+    });
     return () => {
       if (canal) sb.removeChannel(canal);
       canal = null;

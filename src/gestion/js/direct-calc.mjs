@@ -14,10 +14,10 @@ export const TABLES_EN_DIRECT = ["demandes_site"];
 // Sinon, au premier moment sûr :
 //   * l'onglet est caché (personne ne le regarde) ;
 //   * l'onglet revient au premier plan ;
-//   * personne n'a touché l'outil depuis `inactif` (une minute) ;
-//   * une saisie qui bloquait vient d'être enregistrée ou abandonnée (`apresSaisie`) et rien n'a bougé depuis `calme` (trois secondes,
-//     le temps de lire le message « enregistré »).
-export const INACTIF_MS = 60 * 1000;
+//   * personne n'a touché l'outil depuis `inactif` (cinq minutes : une lecture n'est pas coupée) ;
+//   * une saisie qui bloquait vient d'être enregistrée ou abandonnée (`apresSaisie`, dans les trente secondes) et rien n'a bougé depuis
+//     `calme` (trois secondes, le temps de lire le message « enregistré »).
+export const INACTIF_MS = 5 * 60 * 1000;
 export const CALME_MS = 3 * 1000;
 export function momentDeRecharger({ nouvelle = false, saisie = false, cache = false, retour = false, inactifMs = 0, apresSaisie = false } = {}) {
   if (!nouvelle || saisie) return false;
@@ -26,5 +26,10 @@ export function momentDeRecharger({ nouvelle = false, saisie = false, cache = fa
   return apresSaisie && inactifMs >= CALME_MS;
 }
 
-// Nombre de demandes à traiter avant et après une relecture : une demande de plus s'annonce (« Nouvelle demande du site »).
-export const nouvellesDemandes = (avant, apres) => Math.max(0, (Number(apres) || 0) - (Number(avant) || 0));
+// Demandes à traiter avant et après une relecture, dans la même entreprise : celles qui n'y étaient pas s'annoncent (« Nouvelle demande du
+// site »). Par identifiant, pas par compte : une demande traitée ailleurs pendant qu'une autre arrive n'efface pas l'arrivée.
+export const nouvellesDemandes = (avant, apres) => {
+  if (!avant || !apres || avant.entite !== apres.entite) return 0;
+  const vues = new Set(avant.ids || []);
+  return (apres.ids || []).filter((id) => !vues.has(id)).length;
+};
