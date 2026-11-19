@@ -1029,12 +1029,17 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
 // titre, au même bout. Le titre d'une page est son propre trajet, d'où un petit avantage quand il lui correspond mot pour mot.
 const VIDES_BOUT = new Set(["koh", "ko", "and", "the", "of", "to", "on", "in", "at", "your", "kbv", "hkt", "urt"]);
 const motsBout = (lieu) => cleTexte(String(lieu || "")).split(" ").filter((w) => w && !VIDES_BOUT.has(w));
+// Mots qui disent la sorte de lieu, pas le lieu : seuls, ils ne font rien trouver (« Nakhon Si Thammarat Airport » n'est pas Phuket Airport).
+const GENERIQUES_BOUT = new Set(["airport", "pier", "town", "station", "terminal", "bus", "city", "international"]);
 // Part des mots du lieu de la page présents dans le texte, et part des mots du texte que la page explique (pour départager « Phuket » et « Phuket Airport »).
+// Au moins un mot propre au lieu doit y être.
 function citeBout(lieu, texte) {
   const a = motsBout(lieu);
   const t = motsBout(texte);
   if (!a.length || !t.length) return null;
-  const part = a.filter((m) => t.some((x) => memeMot(x, m))).length / a.length;
+  const trouves = a.filter((m) => t.some((x) => memeMot(x, m)));
+  if (!trouves.some((m) => !GENERIQUES_BOUT.has(m))) return null;
+  const part = trouves.length / a.length;
   const couvert = t.filter((x) => a.some((m) => memeMot(x, m))).length / t.length;
   return part >= 0.5 ? { part, couvert } : null;
 }
@@ -1086,7 +1091,7 @@ export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPar
   // Les lieux de la prise en charge et de la dépose comptent avant ceux du titre (« Koh Lanta to Phuket » cite Phuket, la dépose cite Patong).
   const lieux = motsBout(`${d.pickup} ${d.dropoff}`);
   const titre = motsBout(`${d.de} ${d.vers}`);
-  const cites = (ligne, dans) => motsBout(ligne).filter((m) => dans.some((x) => memeMot(x, m))).length;
+  const cites = (ligne, dans) => motsBout(ligne).filter((m) => !GENERIQUES_BOUT.has(m) && dans.some((x) => memeMot(x, m))).length;
   const offres = [];
   page.tarifs.forEach((t, i) => {
     const p = tarifDeLigne(t, prestations, partenaires);

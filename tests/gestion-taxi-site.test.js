@@ -185,6 +185,29 @@ Name: Client Essai`);
   assert.deepEqual(services[0].offres, []);
 });
 
+test("trajet sans page : un mot comme « Airport » ou « Pier » ne suffit pas à prendre le tarif d'une autre page", () => {
+  const msg = (pickup, depose) => `Transfer request: ${pickup} to ${depose}
+Date: Fri 20 Nov 2026
+Pickup time: 18:00
+Guests: 2 adults
+Pickup: ${pickup}
+Drop-off: ${depose}
+Name: Client Essai`;
+  for (const [pickup, depose] of [["Lanta Sand Resort", "Nakhon Si Thammarat Airport"], ["Lanta Sand Resort", "Tam Malang Pier"], ["Krabi Town", "Krabi Airport (KBV)"]]) {
+    const d = lireMessage(msg(pickup, depose), AJD);
+    assert.equal(pageTaxiDuSite(d), null, `${pickup} → ${depose}`);
+  }
+  // « Patong Town Hotel » : le mot Town ne tire pas la ligne Phuket Town devant celle de Patong.
+  const patong = offresDe(`Transfer request: Koh Lanta to Phuket
+Date: Fri 20 Nov 2026
+Pickup time: 18:00
+Guests: 2 adults
+Pickup: Lanta Sand Resort
+Drop-off: Patong Town Hotel
+Name: Client Essai`).services[0].offres;
+  assert.equal(patong[0].titre, "Patong, Kata and Karon");
+});
+
 test("tarif masqué ou partenaire masqué : la page ne l'impose pas", () => {
   const d = lireMessage(DEMANDE_PROD, AJD);
   const masque = PRESTATIONS.map((p) => (p.libelle === "Krabi Airport" ? { ...p, actif: false } : p));
