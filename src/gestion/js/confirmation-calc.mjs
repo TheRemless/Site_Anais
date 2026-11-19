@@ -20,7 +20,8 @@ import { RETOUR_DEPART } from "./trajet-calc.mjs";
 const MOIS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12, janv: 1, fev: 2, fevr: 2, mars: 3, avr: 4, mai: 5, juin: 6, juil: 7, aout: 8, déc: 12 };
 const sansAccents = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
 // Emoji et pictogrammes (📢, ✨, 🚐…) et caractères invisibles : retirés avant toute lecture.
-const sansEmoji = (s) => String(s || "").replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}‍️⃣]/gu, "");
+// Les teintes de peau (🫶🏼 : 🏼 n'est pas un pictogramme à lui seul) partent avec leur emoji.
+const sansEmoji = (s) => String(s || "").replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}‍️⃣]/gu, "");
 const propre = (s) => sansEmoji(s).replace(/\s+/g, " ").trim();
 const pad = (n) => String(n).padStart(2, "0");
 const dateValide = (a, m, j) => {
@@ -38,7 +39,9 @@ const LIBELLES = [
   [/^(number ?of ?passengers|passengers?|pax|people|persons|guests|number ?of ?people|nb ?of ?passengers)$/, "passagers"],
   [/^(luggage|luggages|bags?|baggage|suitcases?)$/, "bagages"],
   [/^(price|total ?price|total|amount|fare|prix)$/, "prix"],
-  [/^(remarks?|notes?|comments?|special ?requests?|request|remarque)$/, "remarques"],
+  // Remarque imprimée (19.11.2026, « Remark/other: » de Jérémy) : Remark, Remarks, Remark/other, Other, Note(s), Comment(s), Special request(s),
+  // Request, Extra, Info, Additional info…, seuls ou accolés, en ignorant espaces, « / », « (s) » et majuscules (le libellé est déjà réduit à ses lettres).
+  [/^(?:remarks?|remarques?|others?|notes?|comments?|special|requests?|extras?|infos?|information|additional)(?: ?(?:remarks?|remarques?|others?|notes?|comments?|special|requests?|extras?|infos?|information|additional|and|or|s)){0,3}$/, "remarques"],
   [/^(flight|flight ?number|flight ?no|boat|ferry)$/, "vol"],
   [/^(phone|whats ?app|tel|telephone|mobile|contact|phone ?number)$/, "telephone"],
   [/^(child ?seats?|car ?seats?|baby ?seats?)$/, "sieges"],
@@ -146,7 +149,8 @@ export function lirePassagers(texte) {
   else {
     const n = compte(new RegExp(`\\b${N}\\s*(?:pieces?\\s*of\\s*)?(?:luggages?|bags?|baggages?|suitcases?|pieces?)\\b`, "g"));
     if (n !== null) bagages = n ? String(n) : "";
-    else if (/\b(luggages?|bags?|baggages?|suitcases?)\b/.test(sansSieges)) bagages = "yes";
+    // Des bagages sans nombre (« + luggage », « with luggage ») : « Yes », comme la ligne LUGGAGE l'imprime (19.11.2026).
+    else if (/\b(luggages?|bags?|baggages?|suitcases?)\b/.test(sansSieges)) bagages = "Yes";
   }
   return { adultes: adultes === null ? "" : String(adultes), enfants: enfants ? String(enfants) : "", bagages, sieges: sieges ? String(sieges) : "" };
 }
@@ -162,12 +166,27 @@ export function lireAllerRetour(texte) {
 }
 
 // La ligne de marque : « VIP TAXI LANTA » -> « taxi », « SECRET TRAVEL & TOUR » -> « secret » ; null si aucune ligne ne la dit.
+// Seulement une ligne qui ne dit que la marque (19.11.2026) : « VIP », « VIP Taxi », « VIP TAXI LANTA », « Taxi Lanta » -> taxi ;
+// « Secret », « Secret Travel », « SECRET TRAVEL & TOUR » -> secret ; majuscules, ponctuation et « : » final indifférents.
 export function lireMarque(ligne) {
-  const t = sansAccents(propre(ligne)).toLowerCase();
-  if (/\bsecret\b|travel\s*(?:&|and)\s*tours?/.test(t)) return "secret";
-  if (/\bvip\b.*\btaxi\b|\btaxi\s+lanta\b|\bvip\s+taxi\b/.test(t)) return "taxi";
+  const t = sansAccents(propre(ligne)).toLowerCase().replace(/&/g, " and ").replace(/[^a-z ]+/g, " ").replace(/\s+/g, " ").trim();
+  if (/^secret(?: travel)?(?: and)?(?: tours?)?$/.test(t)) return "secret";
+  if (/^(?:vip(?: taxi)?(?: lanta)?|taxi lanta)$/.test(t)) return "taxi";
   return null;
 }
+
+// Ligne de politesse (« ขอบคุณค่ะ », « Thank you! », « Merci ») : elle ne va nulle part, ni remarque ni « Lignes non reprises ».
+const POLITESSE_THAI = /ขอบคุณ|สวัสดี|มากๆ|มาก|ค่ะ|คะ|ครับ|นะ|จ้า|ค่า/g;
+export const estPolitesse = (ligne) => {
+  const t = propre(ligne);
+  if (/^(?:thanks?(?: a lot| so much)?|thank you(?: so much| very much)?|thx|ty|merci(?: beaucoup)?|cheers|kind regards|best regards|regards)[\s!.,]*$/i.test(t)) return true;
+  return /[฀-๿]/.test(t) && !t.replace(POLITESSE_THAI, "").replace(/[\s!.,~^_()-]/g, "");
+};
+// « Libellé: valeur » d'une ligne : le libellé doit contenir une lettre (« 13:00 » ou « https://… » n'en sont pas).
+const libelleEtValeur = (ligne) => {
+  const m = /^([^:：]{1,40})[:：]\s*(.*)$/.exec(ligne);
+  return m && /\p{L}/u.test(m[1]) && !/^\/\//.test(m[2]) ? m : null;
+};
 
 // Une ligne qui ressemble à un nom de personne : des lettres (accents compris), espaces, apostrophes, points ou tirets, 2 à 60 caractères,
 // 5 mots au plus, sans chiffre ni « : ». « Julien Rochat », « Mr. Varrin », « Anne-Sophie O'Neil ».
@@ -176,6 +195,8 @@ export const ressembleANom = (ligne) => {
   if (/^(hi|hello|hey|dear|bonjour|salut|coucou|thanks?|thank you|merci|good (morning|afternoon|evening)|sawa?dee|ok|okay|confirmed?|booking|new booking|round trip)\b/i.test(t)) return false;
   return /^\p{L}[\p{L}'’. -]{1,59}$/u.test(t) && t.split(/\s+/).length <= 5 && !lireMarque(t);
 };
+
+const ajouterRemarque = (avant, texte) => [avant, texte].filter(Boolean).join("; ");
 
 // Lecture du texte collé. `aujourdhui` : AAAA-MM-JJ (année d'une date qui n'en a pas).
 // Renvoie { marque, valeurs, lus, ignorees } : `valeurs` a la forme de l'écran de Mook, plus `remarques` ; `lus` : les champs trouvés ;
@@ -192,7 +213,7 @@ export function lireConfirmation(texte, { aujourdhui = "" } = {}) {
   let premiereUtile = null;
   const lignes = String(texte || "").replace(/\r/g, "").split("\n").map(propre).filter(Boolean);
   for (const ligne of lignes) {
-    const m = /^([^:：]{1,40})[:：]\s*(.*)$/.exec(ligne);
+    const m = libelleEtValeur(ligne);
     const champ = m ? champDuLibelle(m[1]) : null;
     if (!champ) {
       // Ligne sans libellé connu : la marque, l'en-tête « New booking confirmation », « Round trip », ou la suite d'une remarque.
@@ -207,11 +228,22 @@ export function lireConfirmation(texte, { aujourdhui = "" } = {}) {
         retourVu = true;
         continue;
       }
-      if (dernier === "remarques") {
+      // La politesse d'abord : « ขอบคุณค่ะ » sous la remarque n'en est pas la suite.
+      if (!m && estPolitesse(ligne)) continue;
+      if (dernier === "remarques" && !m) {
         valeurs.remarques = `${valeurs.remarques} ${ligne}`.trim();
         continue;
       }
-      if (!m && premiereUtile === null) premiereUtile = ligne;
+      // « Libellé: valeur » inconnu (19.11.2026) : jamais perdu en silence. Il rejoint la remarque proposée, que l'aperçu montre et que
+      // l'utilisateur peut corriger ; « Lignes non reprises » ne garde que les lignes sans libellé.
+      // Ni `lus` (ressembleAConfirmation ne compte que les champs reconnus), ni la première ligne utile (un nom collé seul reste lu), ni
+      // de suite : seule une vraie remarque (« Remark: ») se prolonge sur la ligne d'après.
+      if (m) {
+        if (m[2].trim()) valeurs.remarques = ajouterRemarque(valeurs.remarques, `${m[1].trim()}: ${m[2].trim()}`);
+        dernier = null;
+        continue;
+      }
+      if (premiereUtile === null) premiereUtile = ligne;
       ignorees.push(ligne);
       dernier = null;
       continue;
@@ -231,8 +263,10 @@ export function lireConfirmation(texte, { aujourdhui = "" } = {}) {
       if (p.sieges) valeurs.sieges = p.sieges;
     } else if (champ === "bagages") {
       const p = lirePassagers(/\d/.test(v) && !/(luggage|bag|suitcase|piece)/i.test(v) ? `${v} luggage` : v);
-      valeurs.bagages = p.bagages || (/^(yes|y|oui)$/i.test(v) ? "yes" : "");
+      valeurs.bagages = p.bagages || (/^(yes|y|oui)$/i.test(v) ? "Yes" : "");
     } else if (champ === "sieges") valeurs.sieges = (/\d+/.exec(v) || [""])[0];
+    // Plusieurs remarques (« Remark: … », « Other: … ») s'ajoutent, dans l'ordre du texte.
+    else if (champ === "remarques") valeurs.remarques = ajouterRemarque(valeurs.remarques, v);
     else if (champ === "prix") {
       // Un seul montant : lu. Plusieurs nombres (« 2 cars x 1500 THB ») : gardé tel quel, l'écran demande le total au lieu de deviner.
       const nombres = v.match(/\d[\d.,'’]*/g) || [];
