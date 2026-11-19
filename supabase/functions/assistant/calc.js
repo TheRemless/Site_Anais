@@ -132,9 +132,10 @@ Règles :
 - Enfants : moins de 12 ans sauf si le message dit autre chose. Bébés : moins de 3 ans, comptés à part. « ages_enfants » liste les âges donnés, dans l'ordre.
 - Un service par prestation demandée, avec sa date, son heure et ses personnes. Si le message ne précise pas les personnes d'un service, reprends celles du groupe.
 - Pour chaque service, choisis dans le catalogue la référence (P… ou T…) qui correspond le mieux, et jusqu'à deux autres plausibles dans « alternatives ». Si rien ne correspond, « ref » est vide.
+- Un tarif de famille « transfert » nommé par un seul lieu est un transfert privé entre ce lieu et ${lieuCourt(lieu) || "le lieu de l'entreprise"}, dans les deux sens.
 - Confiance : « haute » quand le service et la ligne du catalogue se correspondent sans doute possible, « moyenne » quand il reste un choix (privé ou partagé, horaire, point de départ), « basse » quand c'est une supposition.
 - « texte » reprend les mots du message qui décrivent le service.
-- « remarques » : ce ${que_(responsable || "l'équipe")} doit savoir et que les champs ne disent pas (vol, bagages, siège enfant, demande floue), en français, en une ou deux phrases. Vide sinon.`;
+- « remarques » : ce ${que_(responsable || "l'équipe")} doit savoir et que les champs ne disent pas (vol, bagages, siège enfant, demande floue), en français, en une ou deux phrases. Vide sinon. N'y cite jamais une référence (P…, T…) : nomme le service.`;
 
 export function promptLecture({ entreprise, catalogue, aujourdhui, message, lieu = "", responsable = "" }) {
   const court = lieuCourt(lieu);
