@@ -8,7 +8,7 @@ import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant, aujourdhui } from "../calc.mjs";
 import { libelleUnite } from "../partenaires-calc.mjs";
 import { assistantActif } from "../assistant-calc.mjs";
-import { tr, N_, pluriel } from "../i18n.mjs";
+import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { DROITS_BROCHURE, comparerBrochure, changerCible, compter, planBrochure, ciblesPossibles, phraseAgeEnfant, memePartenaire } from "../brochure-calc.mjs";
 import { messageErreur } from "./assistant-demande.mjs";
 
@@ -55,6 +55,29 @@ const enBase64 = (blob) =>
     r.readAsDataURL(blob);
   });
 
+// Décode une image : createImageBitmap (avec l'orientation de la photo, puis sans option pour un navigateur qui la refuse), sinon un élément
+// <img>. Rend un objet qui a une largeur, une hauteur et se dessine sur une toile.
+async function decoder(fichier) {
+  for (const options of [{ imageOrientation: "from-image" }, undefined]) {
+    try {
+      if (typeof createImageBitmap === "function") return await createImageBitmap(fichier, options);
+    } catch {
+      /* essai suivant */
+    }
+  }
+  const adresse = URL.createObjectURL(fichier);
+  try {
+    const img = new Image();
+    img.src = adresse;
+    await img.decode();
+    return { width: img.naturalWidth, height: img.naturalHeight, image: img, close: null };
+  } catch {
+    throw new Error("fichier_illisible");
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(adresse), 0);
+  }
+}
+
 // Une photo de téléphone (4 000 pixels, plusieurs Mo) est réduite à 2 000 pixels de côté en JPEG : les chiffres restent nets et l'envoi léger.
 async function preparer(fichier) {
   if (fichier.type === "application/pdf") {
@@ -62,12 +85,7 @@ async function preparer(fichier) {
     return { media_type: "application/pdf", data: await enBase64(fichier) };
   }
   if (!fichier.type.startsWith("image/")) throw new Error("fichier_type");
-  let image;
-  try {
-    image = await createImageBitmap(fichier, { imageOrientation: "from-image" });
-  } catch {
-    throw new Error("fichier_illisible");
-  }
+  const image = await decoder(fichier);
   const echelle = Math.min(1, COTE_MAX / Math.max(image.width, image.height));
   const toile = document.createElement("canvas");
   toile.width = Math.max(1, Math.round(image.width * echelle));
@@ -76,14 +94,18 @@ async function preparer(fichier) {
   // Fond blanc : une capture PNG transparente ne devient pas noire en JPEG.
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, toile.width, toile.height);
-  ctx.drawImage(image, 0, 0, toile.width, toile.height);
-  image.close && image.close();
+  ctx.drawImage(image.image || image, 0, 0, toile.width, toile.height);
+  if (image.close) image.close();
   const blob = await new Promise((ok) => toile.toBlob(ok, "image/jpeg", 0.86));
   if (!blob) throw new Error("fichier_illisible");
   return { media_type: "image/jpeg", data: await enBase64(blob) };
 }
 
-const tailleTexte = (octets) => (octets >= 1024 * 1024 ? tr("{n} Mo", { n: (octets / 1024 / 1024).toFixed(1).replace(".", ",") }) : tr("{n} ko", { n: Math.max(1, Math.round(octets / 1024)) }));
+const tailleTexte = (octets) => {
+  if (octets < 1024 * 1024) return tr("{n} ko", { n: Math.max(1, Math.round(octets / 1024)) });
+  const mo = (octets / 1024 / 1024).toFixed(1);
+  return tr("{n} Mo", { n: langueActive() === "en" ? mo : mo.replace(".", ",") });
+};
 
 // ---- Écran --------------------------------------------------------------------------------------------------------------------------------
 
@@ -163,12 +185,14 @@ function ecranBrochure(p, { aEcrit, fini }) {
     }
   }
 
-  function afficher(r) {
+  // `echecs` : après un enregistrement en partie refusé, ce qui n'est pas passé. Les lignes sont recomparées au catalogue mis à jour : ce qui a été
+  // créé devient « inchangé », rien ne peut être créé deux fois.
+  function afficher(r, { faits = 0, echecs = [] } = {}) {
     const b = r.brochure;
     const comp = comparerBrochure(b, { partenaireId: p.id, prestations: etat.db.prestations, trajets: etat.db.trajets });
     const lignes = [...comp.tarifs, ...comp.trajets];
     const cibles = ciblesPossibles(p.id, etat.db.prestations).sort((a, c) => a.libelle.localeCompare(c.libelle));
-    const erreur = h("p", { class: "erreur-form", role: "alert" });
+    const erreur = h("div", { class: "erreur-form", role: "alert" });
     const enregistrer = h("button", { class: "principal", type: "button", onclick: () => ecrire() });
     const plan = () =>
       planBrochure(lignes, {
@@ -227,13 +251,15 @@ function ecranBrochure(p, { aEcrit, fini }) {
       const selecteur =
         l.genre === "prestation" && l.statut !== "illisible"
           ? (() => {
-              const s = h("select", { id: `${id}-cible` }, h("option", { value: "" }, tr("Nouvelle prestation")), cibles.map((c) => h("option", { value: c.id }, c.actif === false ? tr("{nom} (masqué)", { nom: c.libelle }) : c.libelle)));
+              // Un tarif déjà visé par une autre ligne ne se propose pas : deux lignes ne modifient jamais le même tarif.
+              const prises = new Set(comp.tarifs.filter((x) => x !== l && x.cible).map((x) => x.cible.id));
+              const s = h("select", { id: `${id}-cible` }, h("option", { value: "" }, tr("Nouvelle prestation")), cibles.filter((c) => !prises.has(c.id)).map((c) => h("option", { value: c.id }, c.actif === false ? tr("{nom} (masqué)", { nom: c.libelle }) : c.libelle)));
               s.value = l.cible ? l.cible.id : "";
               s.addEventListener("change", () => {
                 const neuve = changerCible(l, cibles.find((c) => c.id === s.value) || null, etat.db.prestations);
                 Object.assign(l, neuve);
-                const ancien = noeuds.get(l.cle);
-                ancien.replaceWith(dessinerLigne(l));
+                // Les autres sélecteurs perdent ou retrouvent ce tarif : toutes les lignes de tarif sont redessinées.
+                for (const x of comp.tarifs) noeuds.get(x.cle).replaceWith(dessinerLigne(x));
                 majBouton();
               });
               return champ(tr("Dans le catalogue"), s);
@@ -242,7 +268,15 @@ function ecranBrochure(p, { aEcrit, fini }) {
       const notes = [
         l.confiance === "probable" ? h("p", { class: "brochure-note" }, tr("Rapproché de « {libelle} » par les mots du nom : vérifiez que c'est le même programme avant de cocher.", { libelle: l.cible.libelle })) : null,
         l.proche ? h("p", { class: "brochure-note" }, tr("Proche de « {libelle} » : choisissez-le ci-dessous si c'est le même programme.", { libelle: l.proche.libelle })) : null,
-        ...l.infos.map((x) => h("p", { class: "brochure-note" }, tr("Unité imprimée « {apres} », au catalogue « {avant} » : l'unité ne change pas ici.", { apres: libelleUnite(x.apres), avant: libelleUnite(x.avant) }))),
+        ...l.infos.map((x) =>
+          h(
+            "p",
+            { class: "brochure-note" },
+            x.champ === "prix_enfant"
+              ? tr("Prix enfant imprimé {prix} : ce tarif n'a pas de prix enfant (unité « {unite} »), il n'est pas repris.", { prix: prix(x.apres), unite: libelleUnite(l.cible.unite) })
+              : tr("Unité imprimée « {apres} », au catalogue « {avant} » : l'unité ne change pas ici.", { apres: libelleUnite(x.apres), avant: libelleUnite(x.avant) })
+          )
+        ),
         l.statut === "illisible" ? h("p", { class: "brochure-illisible" }, lu.illisible || tr("Ligne illisible."), " ", tr("À saisir à la main dans la fiche.")) : null,
       ];
       const imprime = lu.prix_texte ? h("p", { class: "brochure-imprime" }, tr("Imprimé : « {texte} »", { texte: lu.prix_texte })) : null;
@@ -290,11 +324,8 @@ function ecranBrochure(p, { aEcrit, fini }) {
         toast(pluriel(faits, N_("{n} ligne enregistrée."), N_("{n} lignes enregistrées.")));
         return fini();
       }
-      // Échec partiel : ce qui est passé reste, l'écran dit ce qui manque. Fermer rafraîchit la fiche.
-      for (const l of lignes) l.coche = false;
-      erreur.replaceChildren(h("span", null, pluriel(faits, N_("{n} ligne enregistrée, les autres non :"), N_("{n} lignes enregistrées, les autres non :"))), h("ul", null, echecs.map((e) => h("li", null, e))));
-      enregistrer.textContent = tr("Rien à enregistrer");
-      enregistrer.disabled = true;
+      // Échec partiel : ce qui est passé reste, l'écran se refait sur le catalogue à jour et dit ce qui manque. Fermer rafraîchit la fiche.
+      afficher(r, { faits, echecs });
     }
 
     const n = compter(lignes);
@@ -304,6 +335,7 @@ function ecranBrochure(p, { aEcrit, fini }) {
       !memePartenaire(b.partenaire_lu, p.nom) ? tr("La brochure porte le nom « {nom} » : vérifiez que c'est bien celle de {partenaire}.", { nom: b.partenaire_lu, partenaire: p.nom }) : "",
       b.devise && b.devise !== "THB" ? tr("Prix imprimés en {devise} : la base de prix compte en THB, vérifiez avant d'enregistrer.", { devise: b.devise }) : "",
     ].filter(Boolean);
+    if (echecs.length) erreur.replaceChildren(h("span", null, pluriel(faits, N_("{n} ligne enregistrée, les autres non :"), N_("{n} lignes enregistrées, les autres non :"))), h("ul", null, echecs.map((e) => h("li", null, e))));
     const section = (titre, ls) => (ls.length ? h("section", { class: "brochure-section" }, h("h3", null, tr(titre)), h("ul", { class: "brochure-lignes" }, ls.map(dessinerLigne))) : null);
     majBouton();
     // replaceChildren écrit « null » pour un enfant absent : on ne garde que les nœuds.

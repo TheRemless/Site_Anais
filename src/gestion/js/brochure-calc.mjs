@@ -76,7 +76,9 @@ export function comparerTarif(lu, cible, prestations = []) {
   const avant = nombre(cible.prix_vente);
   if (lu.prix_adulte !== null && lu.prix_adulte !== avant) ecarts.push({ champ: "prix_adulte", avant, apres: lu.prix_adulte });
   const enfant = enfantDuCatalogue(cible, prestations);
-  if (lu.prix_enfant !== null && lu.prix_enfant !== enfant.prix) ecarts.push({ champ: "prix_enfant", avant: enfant.prix, apres: lu.prix_enfant });
+  // Un prix enfant ne s'écrit que sur un tarif par personne ou par adulte, ou sur sa ligne enfant séparée : sinon il est montré, pas repris.
+  const enfantInscriptible = !!enfant.separee || ["pp", "ad"].includes(cible.unite);
+  if (lu.prix_enfant !== null && lu.prix_enfant !== enfant.prix) (enfantInscriptible ? ecarts : infos).push({ champ: "prix_enfant", avant: enfant.prix, apres: lu.prix_enfant });
   if (lu.unite && cible.unite && lu.unite !== cible.unite) infos.push({ champ: "unite", avant: cible.unite, apres: lu.unite });
   return { statut: ecarts.length ? "prix_change" : "inchange", ecarts, infos };
 }

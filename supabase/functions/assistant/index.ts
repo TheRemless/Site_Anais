@@ -110,8 +110,9 @@ Deno.serve(async (req) => {
   if (!cle) return json({ erreur: "non_configure" }, 503);
   // Situer plusieurs hôtels enchaîne des recherches web : sans nouvel essai (une recherche refaite se paie deux fois). Deux passages au plus
   // (reprise après « pause_turn ») de 65 secondes chacun restent sous la limite de 150 secondes d'une fonction Supabase : le journal s'écrit toujours.
-  // Une brochure (images, PDF, Claude Opus 5.5) se lit en un seul passage de 140 secondes au plus, sans nouvel essai.
-  const anthropic = new Anthropic({ apiKey: cle, timeout: usage === "brochure" ? 140_000 : 65_000, maxRetries: usage === "situer" || usage === "brochure" ? 0 : 1 });
+  // Une brochure (images, PDF, Claude Opus 5.5) se lit en un seul passage de 110 secondes au plus, sans nouvel essai : la lecture du corps
+  // (jusqu'à 13 Mo), les lectures de la base et le journal tiennent dans le reste des 150 secondes.
+  const anthropic = new Anthropic({ apiKey: cle, timeout: usage === "brochure" ? 110_000 : 65_000, maxRetries: usage === "situer" || usage === "brochure" ? 0 : 1 });
 
   const aujourdhui = dateBangkok();
   const message = typeof demande.texte === "string" ? demande.texte.trim() : "";

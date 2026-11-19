@@ -198,11 +198,12 @@ const multiligne = (x, max = 1500) =>
 const prixOuNul = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 && v < 1e7 ? Math.round(v * 100) / 100 : null);
 
 // Les nombres écrits dans un texte imprimé : « 3,900.- » → 3900, « 1.200 ฿ » → 1200, « 2 900 » → 2900, « 450.50 » → 450.5.
-// Une virgule ou un point suivi de trois chiffres sépare les milliers ; suivi d'un ou deux chiffres, ce sont des décimales.
+// Une virgule ou un point suivi de trois chiffres sépare les milliers ; suivi d'un ou deux chiffres, ce sont des décimales. Une espace ne sépare
+// les milliers qu'après un groupe d'un à trois chiffres : « 2 900 » vaut 2900, « 1500 900 » reste deux prix.
 export function nombresDuTexte(t) {
   const out = [];
   for (const m of String(t || "").matchAll(/\d[\d,.   ]*\d|\d/g)) {
-    const brut = m[0].replace(/[   ](?=\d{3}(\D|$))/g, "");
+    const brut = m[0].replace(/(?<![\d,.])(\d{1,3})[\u00a0\u202f ](?=\d{3}(\D|$))/g, "$1");
     // Plusieurs nombres collés par des espaces (« 3900 2900 ») : chacun compte.
     for (const morceau of brut.split(/[   ]+/)) {
       const sansMilliers = morceau.replace(/[.,](?=\d{3}(\D|$))/g, "");

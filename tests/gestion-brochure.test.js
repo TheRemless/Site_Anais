@@ -127,6 +127,10 @@ test("nombres imprimés : séparateurs de milliers, décimales, intervalles", ()
   assert.deepEqual(nombresDuTexte("Adult: 3,900.- Child (4-11 yrs old): 2,900.-"), [3900, 4, 11, 2900]);
   assert.deepEqual(nombresDuTexte("1.200 ฿ / 2 900 THB / 450.50"), [1200, 2900, 450.5]);
   assert.deepEqual(nombresDuTexte("3900 2900"), [3900, 2900]);
+  // Deux prix en colonnes : une espace après plus de trois chiffres ne sépare pas des milliers.
+  assert.deepEqual(nombresDuTexte("1500 900"), [1500, 900]);
+  assert.deepEqual(nombresDuTexte("1,500 900"), [1500, 900]);
+  assert.deepEqual(nombresDuTexte("12 500 000"), [12500000]);
   assert.deepEqual(nombresDuTexte(""), []);
 });
 
@@ -358,4 +362,13 @@ test("nom imprimé sur la brochure : un mot commun suffit, sinon l'écran prévi
   assert.equal(memePartenaire("OctopuSea", "Maryz (OctopuSea)"), true);
   assert.equal(memePartenaire("", "Rattana"), true);
   assert.equal(memePartenaire("Satun Pakbara Speedboat", "Rattana"), false);
+});
+
+test("prix enfant imprimé pour un tarif par bateau sans ligne enfant : montré en information, jamais compté comme un changement", () => {
+  const bateau = { id: "b1", partenaire_id: RATTANA, actif: true, famille: "excursion", groupe: "", libelle: "Private longtail, full day", libelle_en: "", prix_vente: 6000, unite: "boat", details: {} };
+  const { brochure } = lire({ partenaire_lu: "", devise: "THB", tarifs: [{ ...vide, libelle: "Private longtail, full day", unite: "boat", prix_texte: "6,000 per boat, child 500", prix_adulte: 6000, prix_enfant: 500 }], trajets: [], remarques: "" });
+  const c = comparerBrochure(brochure, { partenaireId: RATTANA, prestations: [bateau], trajets: [] });
+  assert.equal(c.tarifs[0].statut, "inchange");
+  assert.deepEqual(c.tarifs[0].infos, [{ champ: "prix_enfant", avant: null, apres: 500 }]);
+  assert.deepEqual(planBrochure(c.tarifs, { partenaireId: RATTANA, prestations: [bateau], aujourdhui: AJD }), []);
 });

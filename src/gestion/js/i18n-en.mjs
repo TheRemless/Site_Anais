@@ -3725,6 +3725,7 @@ export const EN = {
   "Proche de « {libelle} » : choisissez-le ci-dessous si c'est le même programme.": "Close to “{libelle}”: choose it below if it is the same programme.",
   "Unité imprimée « {apres} », au catalogue « {avant} » : l'unité ne change pas ici.": "Printed unit “{apres}”, price list unit “{avant}”: the unit does not change here.",
   "Ligne illisible.": "Unreadable line.",
+  "Prix enfant imprimé {prix} : ce tarif n'a pas de prix enfant (unité « {unite} »), il n'est pas repris.": "Printed child price {prix}: this rate has no child price (unit “{unite}”), it is not taken over.",
   "À saisir à la main dans la fiche.": "Enter it by hand in the partner sheet.",
   "Imprimé : « {texte} »": "Printed: “{texte}”",
   "Net imprimé : {adulte} adulte, {enfant} enfant": "Printed net: {adulte} adult, {enfant} child",
