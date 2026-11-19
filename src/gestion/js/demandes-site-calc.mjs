@@ -9,6 +9,12 @@ export const MOTIFS_REFUS = { complet: N_("Complet ce jour-là"), mer: N_("Mer t
 
 export const produitSite = (id) => PRODUITS_SITE.find((p) => p.id === id) || null;
 export const nomProduit = (d) => d.produit || (produitSite(d.produit_id) || {}).nom || d.produit_id;
+// Ce que le client demande, pour l'écran et les réponses. Une page taxi sert les deux sens : son nom (« Krabi Airport to Koh Lanta ») peut être
+// l'inverse du trajet demandé. Le trajet est alors celui du message (« Transfer request: Koh Lanta to Krabi Airport », demande du 18.11.2026).
+export function titreDemande(d) {
+  const m = d.marque === "taxi" ? /^Transfer request:\s*(.+)$/m.exec(d.message || "") : null;
+  return (m && m[1].trim()) || nomProduit(d);
+}
 export function titreOption(d) {
   if (d.option_titre) return d.option_titre;
   const p = produitSite(d.produit_id);
@@ -144,7 +150,7 @@ export function reponseConfirmation(d, final, { aujourdhui = "" } = {}) {
   const salut = prenom(d.nom) ? `Hi ${prenom(d.nom)},` : "Hi,";
   const quoi = taxi ? "transfer" : "booking";
   const tete = ch.length === 0 ? `Your ${quoi} is confirmed.` : `Your ${quoi} is confirmed with ${ch.length === 1 ? "one change" : "these changes"}:`;
-  const titre = [nomProduit(d), final.option_titre || titreOption(d)].filter(Boolean).join(" – ");
+  const titre = [titreDemande(d), final.option_titre || titreOption(d)].filter(Boolean).join(" – ");
   const quand = [final.date ? dateAnglaise(final.date, aujourdhui) : "", final.heure ? `pickup ${final.heure}` : ""].filter(Boolean).join(", ");
   const ligneService = (s) => [s.titre, s.date ? dateAnglaise(s.date, aujourdhui) : "", s.heure ? `pickup ${s.heure}` : "", personnesAnglais(s.adultes || 0, s.enfants || 0)].filter(Boolean).join(", ");
   const total = final.total !== null && final.total !== undefined && final.total !== "" ? `Total: ${montantAnglais(final.total, devise)}` : "";
@@ -169,7 +175,7 @@ export function reponseRefus(d, { motif = "autre", alternative = {} } = {}, { au
   const autre = alternative.produit_id ? (produitSite(alternative.produit_id) || { nom: alternative.produit_id }).nom : "";
   const autreDate = alternative.date ? dateAnglaise(alternative.date, aujourdhui) : "";
   const offre = autre && autreDate ? `We can offer ${autre} on ${autreDate} instead.` : autre ? `We can offer ${autre} instead.` : autreDate ? `We can offer ${autreDate} instead.` : "";
-  return [salut, "", `Thank you for your request for ${nomProduit(d)}${quand}.`, PHRASE_MOTIF[motif] || PHRASE_MOTIF.autre, ...(offre ? [offre, "Would that work for you?"] : ["We hope to see you another time."]), ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");
+  return [salut, "", `Thank you for your request for ${titreDemande(d)}${quand}.`, PHRASE_MOTIF[motif] || PHRASE_MOTIF.autre, ...(offre ? [offre, "Would that work for you?"] : ["We hope to see you another time."]), ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");
 }
 
 // « Il n'a pas écrit » : la demande est arrivée dans Gestion mais pas son message WhatsApp. Un mot poli pour demander si elle tient toujours.
@@ -178,7 +184,7 @@ export function reponseSansMessage(d, { aujourdhui = "" } = {}) {
   const salut = prenom(d.nom) ? `Hi ${prenom(d.nom)},` : "Hi,";
   const quoi = d.marque === "taxi" ? "transfer request" : "booking request";
   const quand = d.date_service ? ` on ${dateAnglaise(d.date_service, aujourdhui)}` : "";
-  return [salut, "", `We received your ${quoi} from our website for ${nomProduit(d)}${quand}, but your WhatsApp message didn't reach us.`, "Is it still on? Just reply here and we'll take care of it.", ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");
+  return [salut, "", `We received your ${quoi} from our website for ${titreDemande(d)}${quand}, but your WhatsApp message didn't reach us.`, "Is it still on? Just reply here and we'll take care of it.", ...(d.ref ? ["", `Reference: ${d.ref}`] : [])].join("\n");
 }
 
 // Total réservé imposé (prix convenu dans « Modifier ») : l'écart va sur la première ligne chiffrée, par unité si la division tombe juste,
