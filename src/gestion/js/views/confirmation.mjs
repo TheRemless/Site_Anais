@@ -2,7 +2,8 @@
 // (« 📢 New booking confirmation: VIP TAXI LANTA, Name:…, Date:… ») devient un dossier et sa Booking confirmation, d'un collage et d'un bouton.
 // Lecture : confirmation-calc.mjs. Création : creation-course.mjs, la même que l'écran « Nouveau voucher » de Mook. Rien n'est envoyé tout seul :
 // l'image se partage ou se télécharge d'un geste, le dossier s'ouvre d'un lien.
-import { etat, naviguer, changerEntite, entitesAccessibles, reglagesDe, permissionsDe, nomClient, clientsPartages, sigleDe } from "../etat.mjs";
+import { etat, naviguer, changerEntite, entitesAccessibles, reglagesDe, permissionsDe, nomClient, clientsPartages, sigleDe, organisationActiveId } from "../etat.mjs";
+import { confirmationExemple } from "../exemples.mjs";
 import { h, modal, toast, icone } from "../ui.mjs";
 import { tr, N_ } from "../i18n.mjs";
 import { aujourdhui, formatDate } from "../calc.mjs";
@@ -15,7 +16,7 @@ import { creerCourse } from "./creation-course.mjs";
 import { imageVoucher } from "./voucher-envoi.mjs";
 import { moyen, partager, enregistrer, copierImage } from "./partage.mjs";
 
-const EXEMPLE = "📢 New booking confirmation:\nVIP TAXI LANTA\nName: Enzo\nDate: November 22nd 2026\nPick-up time: 4:30pm\nPick-up location: Manao villa no 24\nDrop-off location: Rock bar restaurant (and round trip)\nNumber of passengers: 5 people no luggage\nPrice: 1000 THB\nRemark: 50th birthday";
+// Exemple en gris : le vrai message de VIP Taxi Lanta chez Anaïs, un message neutre ailleurs (exemples.mjs).
 
 // Les erreurs de l'écran de Mook, en français pour qui colle la confirmation.
 const ERREURS = {
@@ -40,7 +41,7 @@ export function ouvrirConfirmation(texteInitial = "") {
   let fermer;
   let essai = { clientId: null, dossierId: null, entite: null };
   let lu = null;
-  const zone = h("textarea", { id: "cc-texte", rows: 9, placeholder: EXEMPLE, autocomplete: "off", spellcheck: "false" });
+  const zone = h("textarea", { id: "cc-texte", rows: 9, placeholder: confirmationExemple(organisationActiveId(), { marque: (entitesAccessibles().find((e) => e.id === etat.entiteId) || {}).nom, devise: (reglagesDe(etat.entiteId) || {}).devise }), autocomplete: "off", spellcheck: "false" });
   const apercu = h("div", { class: "cc-apercu", "aria-live": "polite" });
 
   // ---- Champs modifiables -------------------------------------------------------------------------------------------------

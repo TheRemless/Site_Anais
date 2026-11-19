@@ -6,7 +6,7 @@
 import { CONTENU_DEFAUT, nouvelleLigne, REGLES_PARTENAIRE_NEUTRES, ROLES_SYSTEME, uid } from "./defauts.mjs";
 import { departModele } from "./modeles-metier.mjs";
 
-export const ORG_AGENCE = "demo-organisation";
+export const ORG_AGENCE = "demo-agence"; // distinct de la démo d'Anaïs : les exemples de Lanta (exemples.mjs) ne s'y affichent pas
 export const NOM_AGENCE = "Blue Lagoon Tours";
 
 const PRENOMS = ["Emma", "Lucas", "Mia", "Noah", "Olivia", "Liam", "Sofia", "Hugo", "Lena", "Tom", "Alba", "Finn", "Nora", "Max", "Elsa", "Jonas", "Clara", "Paul", "Ida", "Leo"];

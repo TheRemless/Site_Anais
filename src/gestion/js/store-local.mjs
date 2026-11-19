@@ -8,13 +8,13 @@ import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
 import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
-import { donneesDemoAgence } from "./demo-agence.mjs";
+import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
 import { avecNomsLies, peutUtiliserPartages } from "./partage-clients-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
 // /gestion/?demo=agence (19.11.2026) : la démo des prospects, une agence fictive sans rien de Koh Lanta (demo-agence.mjs), gardée à part.
 const AGENCE = typeof location !== "undefined" && new URLSearchParams(location.search).get("demo") === "agence";
-const CLE = AGENCE ? "gestion-demo-agence-v1" : "gestion-zwald-demo-v13";
+const CLE = AGENCE ? "gestion-demo-agence-v2" : "gestion-zwald-demo-v13";
 const CLE_UTILISATEUR = AGENCE ? "gestion-demo-agence-utilisateur" : "gestion-zwald-demo-utilisateur";
 // Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
 const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches", "demandes_site", "bandeaux_site"];
@@ -725,7 +725,7 @@ export function creer() {
       charge();
       sauve();
     },
-    utilisateursDemo: () => data.profils.map((p) => ({ id: p.user_id, nom: p.nom || p.email, super_admin: p.super_admin, plateforme: !!p.plateforme, organisation: (data.organisations.find((o) => o.id === p.organisation_id) || {}).nom || "", client: p.organisation_id !== ORG_DEMO })),
+    utilisateursDemo: () => data.profils.map((p) => ({ id: p.user_id, nom: p.nom || p.email, super_admin: p.super_admin, plateforme: !!p.plateforme, organisation: (data.organisations.find((o) => o.id === p.organisation_id) || {}).nom || "", client: p.organisation_id !== (AGENCE ? ORG_AGENCE : ORG_DEMO) })),
     utilisateurDemo: () => utilisateur.user_id,
     changerUtilisateurDemo(id) {
       utilisateur = data.profils.find((p) => p.user_id === id) || utilisateur;

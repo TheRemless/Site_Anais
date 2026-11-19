@@ -1,7 +1,7 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
 import { modulesReglables, moduleAllume, moduleDe } from "../modules.mjs";
 import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
-import { etat, moduleActif, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages, equipe } from "../etat.mjs";
+import { etat, exemple, moduleActif, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages, equipe } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
 import { sectionVouchers } from "./reglages-vouchers.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
@@ -439,7 +439,7 @@ export function vueReglages() {
           // Jamais supprimées : une facture qui les cite basculerait en silence sur le compte principal. Archivées, elles ne sont plus proposées (audit n° 37).
           h("div", { class: "carte-ligne-tete" }, h("strong", null, m.archive ? tr("{nom} (archivées)", { nom: m.nom || tr("Informations {x}", { x: i + 2 }) }) : m.nom || tr("Informations {x}", { x: i + 2 })), h("span", { class: "outils" }, h("button", { class: "lien", type: "button", onclick: () => ((m.archive = !m.archive), dessinerAutres(), marque()) }, m.archive ? tr("Réactiver") : tr("Archiver")))),
           m.archive ? h("p", { class: "aide" }, tr("Plus proposées aux nouveaux documents. Ceux qui les utilisent les impriment toujours.")) : null,
-          texte(N_("Nom (visible dans la liste du document)"), `paiement.autres.${i}.nom`, { placeholder: tr("Par exemple : Banque thaïlandaise (THB)") }),
+          texte(N_("Nom (visible dans la liste du document)"), `paiement.autres.${i}.nom`, { placeholder: exemple("banque", { devise: r.devise || "USD" }) }),
           texte(N_("Informations de paiement du pied de page"), `paiement.autres.${i}.texte`, { multi: true, rows: 5, aide: tr("Une ligne par information. **gras** possible.") }),
           image(N_("QR code (facultatif)"), `paiement.autres.${i}.qr_image`, { maxPx: 700 }),
           texte(N_("Texte à côté du QR code"), `paiement.autres.${i}.qr_pseudo`)
@@ -831,7 +831,7 @@ export function vueReglages() {
         h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre et rédiger la réponse")),
         h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous.")),
         h("p", { class: "aide" }, tr("Sa voix : comment il écrit les brouillons de réponse. Vide : une voix neutre, sobre et chaleureuse, signée du nom de l'entreprise. {entreprise} est remplacé par le nom de l'entreprise.")),
-        texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: tr("Par exemple « Phuket (Thaïlande) ». Il sert à lire les dates (« demain ») et à situer l'agence.") }),
+        texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: exemple("lieu_entreprise") }),
         texte(N_("Voix en français"), "assistant_voix.fr", { multi: true, rows: 6 }),
         texte(N_("Voix en anglais"), "assistant_voix.en", { multi: true, rows: 6 })
       ),

@@ -43,7 +43,7 @@ test("démo agence : des services aujourd'hui et un historique, toujours les mê
 test("démo agence : servie par ?demo=agence, à part de la démo d'Anaïs", () => {
   const s = fs.readFileSync(new URL("../src/gestion/js/store-local.mjs", import.meta.url), "utf8");
   assert.match(s, /get\("demo"\) === "agence"/);
-  assert.match(s, /AGENCE \? "gestion-demo-agence-v1" : "gestion-zwald-demo-v13"/);
+  assert.match(s, /AGENCE \? "gestion-demo-agence-v2" : "gestion-zwald-demo-v13"/);
   const p = fs.readFileSync(new URL("../src/gestion/js/views/partenaires.mjs", import.meta.url), "utf8");
   assert.ok(!p.includes('modeTaxi() ? null : h("a", { class: "bouton secondaire", href: "#/trajets" }'));
 });
