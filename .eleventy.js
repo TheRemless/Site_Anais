@@ -72,25 +72,17 @@ module.exports = async function (eleventyConfig) {
   // Identifiant de version de l'outil de gestion (18.11.2026) : une empreinte de tous ses fichiers, écrite dans gestion/version.json à chaque
   // build. Un onglet ouvert la compare à la sienne et propose de recharger dès que n'importe quel fichier a changé (avant : seul app.mjs était
   // surveillé, et une mise en ligne qui ne le touchait pas laissait tourner l'ancien code).
-  eleventyConfig.on("eleventy.after", ({ dir }) => {
+  // Puis le JS de l'outil est regroupé en fichiers aux noms empreintés (scripts/regrouper-gestion.cjs, ouverture rapide du 19.11.2026).
+  eleventyConfig.on("eleventy.after", async ({ dir }) => {
     const fs = require("node:fs");
     const path = require("node:path");
-    const crypto = require("node:crypto");
-    const racine = path.join(__dirname, "src/gestion");
-    const fichiers = [];
-    const parcourir = (d) => {
-      for (const n of fs.readdirSync(d, { withFileTypes: true })) {
-        const p = path.join(d, n.name);
-        if (n.isDirectory()) parcourir(p);
-        else fichiers.push(p);
-      }
-    };
-    parcourir(racine);
-    const h = crypto.createHash("sha256");
-    for (const f of fichiers.sort()) h.update(path.relative(racine, f)).update("\0").update(fs.readFileSync(f));
+    const { empreinteGestion, versionPubliee } = require("./scripts/empreinte-gestion.cjs");
+    const { regrouperGestion } = require("./scripts/regrouper-gestion.cjs");
+    const regroupe = await regrouperGestion({ source: path.join(__dirname, "src/gestion"), sortie: path.join(dir.output, "gestion") });
     const sortie = path.join(dir.output, "gestion");
     fs.mkdirSync(sortie, { recursive: true });
-    fs.writeFileSync(path.join(sortie, "version.json"), JSON.stringify({ version: h.digest("hex").slice(0, 16) }) + "\n");
+    // La version suit les sources ET les fichiers regroupés (un esbuild ou un script de regroupement changés renomment les fichiers servis).
+    fs.writeFileSync(path.join(sortie, "version.json"), JSON.stringify({ version: versionPubliee(empreinteGestion(path.join(__dirname, "src/gestion")).version, regroupe && regroupe.versionSw) }) + "\n");
   });
 
   return {

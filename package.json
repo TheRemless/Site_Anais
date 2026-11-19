@@ -10,7 +10,8 @@
   },
   "devDependencies": {
     "@11ty/eleventy": "^3.0.0",
-    "@11ty/eleventy-img": "^7.1.1"
+    "@11ty/eleventy-img": "^7.1.1",
+    "esbuild": "0.28.2"
   },
   "dependencies": {
     "nodemailer": "^9.0.3"

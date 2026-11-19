@@ -101,7 +101,7 @@ test("clé VAPID : la clé publique en base64url devient 65 octets, point non co
   assert.equal(cle[0], 4);
 });
 
-test("service worker : affiche les rappels et ouvre l'outil ; ne garde en cache que la page hors connexion, jamais l'application", () => {
+test("service worker : affiche les rappels et ouvre l'outil ; garde la page hors connexion et les seuls fichiers regroupés à nom empreinté", () => {
   const sw = fs.readFileSync("src/gestion/sw.js", "utf8");
   assert.match(sw, /addEventListener\("push"/);
   assert.match(sw, /addEventListener\("notificationclick"/);
@@ -110,11 +110,13 @@ test("service worker : affiche les rappels et ouvre l'outil ; ne garde en cache 
   assert.deepEqual([...liste.matchAll(/"([^"]+)"/g)].map((m) => m[1]), ["hors-ligne.html", "hors-ligne.css", "hors-ligne.mjs", "js/feuille-hors-ligne-lecture.mjs"]);
   // Réseau d'abord : le cache ne sert que si la requête échoue ; une navigation réussie n'est jamais stockée.
   assert.match(sw, /fetch\(req\)\.catch/);
-  // Seules les réponses de ces quatre fichiers sont écrites dans le cache (mise à jour de la page hors connexion), jamais une page ou un script de l'application.
-  assert.equal((sw.match(/\.put\(/g) || []).length, 1);
+  // Deux écritures dans le cache : les quatre fichiers de la page hors connexion, et un fichier regroupé de b/ (nom empreinté, ouverture rapide
+  // du 19.11.2026). Jamais la page de l'outil ni ses sources : une ancienne version ne peut pas revenir.
+  assert.equal((sw.match(/\.put\(/g) || []).length, 2);
   assert.match(sw, /FICHIERS\.includes\(req\.url\)\)\s*\{[^}]*c\.put\(req/s);
-  // Un seul cache, ouvert sous son nom fixe (à l'installation et pour la mise à jour des quatre fichiers).
-  assert.deepEqual([...sw.matchAll(/caches\.open\(([^)]*)\)/g)].map((m) => m[1]), ["CACHE", "CACHE"]);
+  assert.match(sw, /if \(req\.url\.startsWith\(RACINE_APP\)\)/);
+  // Deux caches : la page hors connexion (nom fixe) et les fichiers regroupés de la version (nom qui suit leur liste).
+  assert.deepEqual([...sw.matchAll(/caches\.open\(([^)]*)\)/g)].map((m) => m[1]), ["CACHE", "CACHE_APP", "CACHE_APP", "CACHE"]);
 });
 
 test("page hors connexion : n'importe que le module de lecture, ce que le service worker garde", () => {

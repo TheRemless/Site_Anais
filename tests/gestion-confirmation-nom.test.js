@@ -116,7 +116,7 @@ test("version : une empreinte de tous les fichiers de Gestion est écrite au bui
   const { existsSync } = await import("node:fs");
   const config = readFileSync(new URL("../.eleventy.js", import.meta.url), "utf8");
   assert.match(config, /eleventyConfig\.on\("eleventy\.after"/);
-  assert.match(config, /const racine = path\.join\(__dirname, "src\/gestion"\);/, "tous les fichiers de l'outil, pas seulement app.mjs");
+  assert.match(config, /empreinteGestion\(path\.join\(__dirname, "src\/gestion"\)\)/, "tous les fichiers de l'outil, pas seulement app.mjs (calcul dans scripts/empreinte-gestion.cjs)");
   assert.match(config, /"version\.json"/);
   // Le build (npm run build, avant npm test) l'a produite.
   const fichier = new URL("../_site/gestion/version.json", import.meta.url);
@@ -133,5 +133,7 @@ test("version : vérifiée au retour sur l'onglet et toutes les 3 minutes ; rech
   // Le bandeau ne recharge pas d'office : avec une saisie en cours, il demande d'abord.
   assert.match(app, /if \(saisieEnCours\(\)\) \{\n\s+const \{ confirmer \} = await import\("\.\/ui\.mjs"\);/);
   assert.match(app, /if \(!ok\) return;\n\s+\}\n\s+location\.reload\(\);/);
-  assert.doesNotMatch(app.slice(app.indexOf("function signalerVersion"), app.indexOf("async function surveillerVersion")), /setTimeout\([^)]*location\.reload/, "aucun rechargement automatique");
+  // Depuis le 19.11.2026, le rechargement automatique passe seulement par rechargerSiSur (jamais pendant une saisie, voir gestion-direct.test.js).
+  assert.doesNotMatch(app.slice(app.indexOf("function signalerVersion"), app.indexOf("async function surveillerVersion")), /setTimeout\([^)]*location\.reload/, "aucun rechargement à l'aveugle");
+  assert.match(app, /if \(ok\) location\.reload\(\);/, "le rechargement automatique est celui du moment sûr");
 });

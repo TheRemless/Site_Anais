@@ -8,6 +8,7 @@ import { tableauDeBord } from "./views/dashboard.mjs";
 import { mesTaches } from "./views/taches.mjs";
 import { retirerALaDeconnexion } from "./rappels.mjs";
 import { aTraiter } from "./demandes-site-calc.mjs";
+import { ecranDeLecture, TABLES_EN_DIRECT, momentDeRecharger, nouvellesDemandes } from "./direct-calc.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
 
@@ -654,6 +655,7 @@ async function afficher() {
   } catch (err) {
     if (moi !== rendu) return;
     console.error(err);
+    if (rechargerSiFichierDisparu(err && err.message)) return;
     noeud = h("div", { class: "vide" }, h("h1", null, tr("Cet écran n'a pas pu s'afficher")), h("p", null, err.message), h("a", { href: "#/" }, tr("Retour à l'accueil")));
   } finally {
     clearTimeout(attente);
@@ -784,12 +786,40 @@ async function versionDisponible() {
   // Seulement deux empreintes de même nature : un version.json manqué une fois (réseau) ne doit pas faire comparer un ETag à une version.
   return !!actuelle && actuelle.startsWith("v:") === empreinteInitiale.startsWith("v:") && actuelle !== empreinteInitiale;
 }
-// Le bandeau « Nouvelle version de Gestion ». Recharger ne perd jamais une saisie en cours : une fiche, une fenêtre ouverte ou un champ
-// modifié font d'abord poser la question ; sinon le rechargement est immédiat. Le bandeau reste jusqu'au rechargement.
+// Une nouvelle version est en ligne : l'outil se recharge tout seul au premier moment sûr (momentDeRecharger, direct-calc.mjs), en gardant
+// l'écran et le dossier ouverts (l'adresse et l'entreprise restent). Pendant une saisie, le bandeau « Nouvelle version de Gestion » reste
+// et le rechargement attend que la saisie soit enregistrée ou abandonnée. Jamais de perte de saisie.
 let versionSignalee = false;
-function signalerVersion() {
+let derniereActivite = Date.now();
+let enSaisie = false;
+let finSaisie = 0;
+for (const ev of ["pointerdown", "keydown", "input", "wheel", "touchstart", "scroll"]) window.addEventListener(ev, () => (derniereActivite = Date.now()), { capture: true, passive: true });
+// Pour recharger, plus prudent que pour redessiner : une liste, un bouton radio ou une case changés et pas encore enregistrés comptent aussi
+// (le logo et le chauffeur choisis dans « Nouveau voucher », sans texte tapé).
+const choixModifies = () => {
+  const principal = document.getElementById("principal");
+  if (!principal) return false;
+  return [...principal.querySelectorAll("select")].some((s) => [...s.options].some((o) => o.selected !== o.defaultSelected)) || [...principal.querySelectorAll("input[type=checkbox], input[type=radio]")].some((c) => c.checked !== c.defaultChecked);
+};
+function rechargerSiSur({ retour = false } = {}) {
+  if (!versionSignalee) return false;
+  // Un écran de saisie (nouveau dossier, éditeur de document, réglages) compte comme une saisie tant qu'on y est. Le rechargement attend
+  // qu'on le quitte (enregistré ou abandonné).
+  const saisie = saisieEnCours() || choixModifies() || !ecranDeLecture(location.hash) || !!(etat.garde && etat.garde());
+  // « Juste après une saisie » : les trente secondes qui suivent sa fin, pas pour toute la suite de la journée.
+  if (enSaisie && !saisie) finSaisie = Date.now();
+  enSaisie = saisie;
+  const apresSaisie = !!finSaisie && Date.now() - finSaisie < 30 * 1000;
+  const ok = momentDeRecharger({ nouvelle: true, saisie, cache: document.visibilityState === "hidden", retour, inactifMs: Date.now() - derniereActivite, apresSaisie });
+  if (ok) location.reload();
+  return ok;
+}
+// Le bouton du bandeau, pour qui ne veut pas attendre : une saisie en cours fait d'abord poser la question.
+function signalerVersion({ retour = false } = {}) {
   if (versionSignalee) return;
   versionSignalee = true;
+  setInterval(() => rechargerSiSur(), 2000);
+  if (rechargerSiSur({ retour })) return;
   const recharger = async () => {
     if (saisieEnCours()) {
       const { confirmer } = await import("./ui.mjs");
@@ -800,17 +830,36 @@ function signalerVersion() {
   };
   document.body.append(h("div", { class: "bandeau-version", role: "status" }, h("span", null, tr("Nouvelle version de Gestion : rechargez pour l'avoir.")), h("button", { class: "principal petit", type: "button", onclick: recharger }, tr("Recharger"))));
 }
-// Vérifiée au retour sur l'onglet, toutes les 3 minutes et à chaque synchronisation des données.
+// Vérifiée au retour sur l'onglet et toutes les 3 minutes, onglet caché compris.
 async function surveillerVersion() {
   const initiale = await empreinteVersion();
   empreinteInitiale = initiale;
   if (!initiale) return;
-  const verifier = async () => {
-    if (versionSignalee || document.visibilityState !== "visible") return;
-    if (await versionDisponible()) signalerVersion();
+  // Onglet caché aussi : une nouvelle version s'y installe sans que personne ne la voie arriver.
+  const verifier = async (e) => {
+    const retour = !!e && e.type === "visibilitychange" && document.visibilityState === "visible";
+    if (versionSignalee) return void rechargerSiSur({ retour });
+    if (await versionDisponible()) signalerVersion({ retour });
   };
   document.addEventListener("visibilitychange", verifier);
   setInterval(verifier, 3 * 60 * 1000);
+}
+
+// Un écran chargé à la demande dont le fichier n'existe plus : la page ouverte est d'une version précédente (les fichiers regroupés portent
+// l'empreinte de leur contenu, une mise en ligne les remplace). On recharge la version en ligne, une fois par minute au plus, jamais pendant une
+// saisie (l'erreur s'affiche alors comme avant, et le rechargement automatique de la nouvelle version prendra le relais).
+const FICHIER_DISPARU = /dynamically imported module|Importing a module script failed|error loading dynamically imported|Failed to load module script/i;
+function rechargerSiFichierDisparu(message) {
+  if (!FICHIER_DISPARU.test(String(message || "")) || saisieEnCours()) return false;
+  try {
+    const dernier = Number(sessionStorage.getItem("gestion-recharge-fichier")) || 0;
+    if (Date.now() - dernier < 60 * 1000) return false;
+    sessionStorage.setItem("gestion-recharge-fichier", String(Date.now()));
+  } catch {
+    return false;
+  }
+  location.reload();
+  return true;
 }
 
 // Une erreur que personne n'a rattrapée (une action sans message d'erreur prévu) ne passe plus sous silence : un message apparaît, au lieu
@@ -818,6 +867,7 @@ async function surveillerVersion() {
 let derniereErreur = { message: "", quand: 0 };
 function signalerErreur(message) {
   if (!message || /ResizeObserver|^Script error\.?$|AbortError/i.test(message)) return;
+  if (rechargerSiFichierDisparu(message)) return;
   if (message === derniereErreur.message && Date.now() - derniereErreur.quand < 5000) return;
   derniereErreur = { message, quand: Date.now() };
   console.error(message);
@@ -829,7 +879,11 @@ window.addEventListener("error", (e) => signalerErreur(e.message));
 // Ce que fait une autre personne (un dossier créé, un paiement noté) apparaît sans recharger : l'outil relit la base en silence
 // au retour sur l'onglet puis chaque minute. L'écran n'est redessiné que s'il n'y a rien à perdre : pas de fenêtre ouverte,
 // pas de champ en cours de saisie, pas d'éditeur de document. Dans les autres cas les données sont déjà à jour pour l'écran suivant.
-const ECRANS_DE_LECTURE = /^#?\/?$|^#\/(dossiers|clients|taches|reservations|du|partenaires|trajets|tarifs|catalogue|analyses|groupe|journal)(\?.*)?$|^#\/analyses(\/[a-z]+)?(\?.*)?$|^#\/(dossier|client|partenaire)\/[\w-]+$/;
+// La liste des écrans de lecture est dans direct-calc.mjs (Demandes du site y compris, 19.11.2026).
+// Une demande du site arrivée se dit comme telle (« Nouvelle demande du site. »), sans le chiffre devant quand il n'y en a qu'une.
+const annoncerArrivees = (n) => toast(n > 1 ? tr("{n} nouvelles demandes du site.", { n }) : tr("Nouvelle demande du site."));
+// Demandes du site à traiter dans l'entreprise affichée (pour annoncer une arrivée).
+const demandesATraiter = () => ({ entite: etat.entiteId, ids: etat.db && siteVisible() ? aTraiter(etat.db.demandes_site || []).map((d) => d.id) : [] });
 // Une fenêtre ouverte, un champ en cours de saisie ou une saisie pas encore enregistrée : rien ne doit être redessiné ni déclenché par-dessus.
 function saisieEnCours() {
   if (document.querySelector(".modal-fond")) return true;
@@ -841,7 +895,7 @@ function saisieEnCours() {
   return !!principal && [...principal.querySelectorAll("input, textarea")].some((c) => !["checkbox", "radio", "button", "submit"].includes(c.type) && c.value !== c.defaultValue);
 }
 function ecranLibre() {
-  return ECRANS_DE_LECTURE.test(location.hash || "#/") && !saisieEnCours();
+  return ecranDeLecture(location.hash) && !saisieEnCours();
 }
 function surveillerDonnees() {
   let derniere = 0;
@@ -867,6 +921,7 @@ function surveillerDonnees() {
     derniere = Date.now();
     let resultat = "ignore";
     let erreur = null;
+    const demandesAvant = demandesATraiter();
     try {
       resultat = await synchroniser();
       if (resultat !== "ignore") (echecs = 0), (derniereReussite = Date.now());
@@ -878,14 +933,43 @@ function surveillerDonnees() {
       erreur = err;
     }
     majPastille();
+    // Le compteur des demandes du site, des tâches et des retards suit chaque relecture, même quand l'écran ne peut pas être redessiné
+    // (une saisie en cours) : avant le 19.11.2026, il fallait rafraîchir la page pour le voir changer.
+    if (etat.session && document.querySelector(".coque")) majBadges();
+    const arrivees = resultat === "modifie" ? nouvellesDemandes(demandesAvant, demandesATraiter()) : 0;
     if (aRedessiner && etat.session && ecranLibre()) {
       aRedessiner = false;
       window.dispatchEvent(new HashChangeEvent("hashchange"));
-      if (annoncer && !force) toast(tr("Données mises à jour."));
+      // Une demande du site arrivée se dit comme telle ; un autre changement reste « Données mises à jour ».
+      if (arrivees) annoncerArrivees(arrivees);
+      else if (annoncer && !force) toast(tr("Données mises à jour."));
       annoncer = false;
-    }
+    } else if (arrivees) annoncerArrivees(arrivees);
     return { resultat, erreur };
   };
+  // Un redessin retenu par une saisie (fenêtre ouverte, champ en cours) se fait dès qu'elle est finie, sans attendre la relecture suivante.
+  setInterval(() => {
+    if (!aRedessiner || !etat.session || !ecranLibre()) return;
+    aRedessiner = false;
+    annoncer = false;
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  }, 2000);
+  // En direct (Supabase Realtime, migration 47) : une ligne ajoutée ou changée dans une table suivie fait relire la base tout de suite, avec les
+  // droits de la personne (la base ne prévient que celles qui peuvent lire la ligne, et la relecture passe par les mêmes règles).
+  // Plusieurs événements rapprochés ne font qu'une relecture.
+  let attente = null;
+  const changementDistant = () => {
+    clearTimeout(attente);
+    attente = setTimeout(() => ((derniere = 0), actualiser(true)), 800);
+  };
+  if (etat.store.ecouter) {
+    try {
+      etat.store.ecouter(TABLES_EN_DIRECT, changementDistant);
+    } catch (err) {
+      // Pas de direct (réseau, migration 47 pas appliquée) : la relecture de chaque minute reste.
+      console.warn(err);
+    }
+  }
   document.addEventListener("visibilitychange", () => actualiser());
   window.addEventListener("online", () => ((hors = false), majPastille(), actualiser()));
   window.addEventListener("offline", () => ((hors = true), majPastille()));
@@ -913,6 +997,11 @@ function installerTirer(actualiser) {
 
 init()
   .then(afficher)
+  // Repère de mesure : le premier écran est affiché et utilisable (temps d'ouverture, voir docs/gestion/mise-en-route.md).
+  .then(() => performance.mark && performance.mark("gestion-pret"))
+  // Le service worker (rappels, page hors connexion, fichiers regroupés gardés) s'installe pour tout le monde, après le premier écran.
+  // Avant le 19.11.2026, seulement en activant les rappels : les autres rechargeaient tout à chaque ouverture.
+  .then(() => { if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {}); })
   .then(surveillerVersion)
   .then(surveillerDonnees)
   .then(installerTirer)

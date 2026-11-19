@@ -118,7 +118,8 @@ const signer = (brut) =>
 // Renvoie « inchange », « propre » (seules nos écritures ont changé la base), « modifie » (quelqu'un d'autre a écrit)
 // ou « ignore » (démo, lecture déjà en cours, ou écriture de notre part pendant la lecture : on réessaiera).
 export async function synchroniser() {
-  if (!etat.session || !etat.brut || etat.store.mode !== "supabase" || enCours || ecritures) return "ignore";
+  // La démo se relit aussi quand son magasin le permet (`synchronisable`) : une demande simulée dans un autre onglet arrive comme en vrai.
+  if (!etat.session || !etat.brut || (etat.store.mode !== "supabase" && !etat.store.synchronisable) || enCours || ecritures) return "ignore";
   enCours = true;
   try {
     const avant = modifications;
