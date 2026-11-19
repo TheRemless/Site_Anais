@@ -118,7 +118,9 @@ test("synchroniser : une démo sans relecture (ancien magasin) reste ignorée", 
 });
 
 test("empreinte de version : le contenu des fichiers de l'outil seulement, pas la date ni un fichier caché", () => {
-  const { empreinteGestion } = createRequire(import.meta.url)("../scripts/empreinte-gestion.cjs");
+  const exiger = createRequire(import.meta.url);
+  const { empreinteGestion, versionPubliee } = exiger("../scripts/empreinte-gestion.cjs");
+  const { empreinteRegroupes } = exiger("../scripts/regrouper-gestion.cjs");
   const eleventy = fs.readFileSync(path.join(RACINE, ".eleventy.js"), "utf8");
   assert.match(eleventy, /require\("\.\/scripts\/empreinte-gestion\.cjs"\)/, "le build et ce test calculent avec la même fonction");
   const code = fs.readFileSync(path.join(RACINE, "scripts/empreinte-gestion.cjs"), "utf8");
@@ -141,7 +143,13 @@ test("empreinte de version : le contenu des fichiers de l'outil seulement, pas l
   // Après npm run build (comme dans la CI), le fichier publié est l'empreinte de src/gestion. Un build plus ancien que les sources n'est pas jugé.
   const publie = path.join(RACINE, "_site/gestion/version.json");
   const { version, fichiers } = empreinteGestion(path.join(RACINE, "src/gestion"));
-  if (fs.existsSync(publie) && fichiers.every((f) => fs.statSync(f).mtimeMs <= fs.statSync(publie).mtimeMs)) assert.equal(JSON.parse(fs.readFileSync(publie, "utf8")).version, version);
+  // Depuis l'ouverture rapide (19.11.2026), la version suit aussi les fichiers regroupés de gestion/b/ (un esbuild changé les renomme).
+  if (fs.existsSync(publie) && fichiers.every((f) => fs.statSync(f).mtimeMs <= fs.statSync(publie).mtimeMs)) {
+    const regroupes = fs.existsSync(path.join(RACINE, "_site/gestion/b")) ? empreinteRegroupes(path.join(RACINE, "_site/gestion")).version : null;
+    assert.equal(JSON.parse(fs.readFileSync(publie, "utf8")).version, versionPubliee(version, regroupes));
+  }
+  assert.equal(versionPubliee("abc", null), "abc", "sans regroupement (serveur de développement), l'empreinte des sources");
+  assert.notEqual(versionPubliee("abc", "x1"), versionPubliee("abc", "x2"), "d'autres fichiers regroupés, une autre version");
 });
 
 test("migration 47 : demandes_site dans la publication Realtime, protégée et rejouable", () => {

@@ -21,4 +21,11 @@ function empreinteGestion(racine) {
   return { version: h.digest("hex").slice(0, 16), fichiers };
 }
 
-module.exports = { empreinteGestion };
+// Version publiée dans version.json : l'empreinte des sources, et celle des fichiers regroupés quand le build en a produit (ouverture rapide,
+// 19.11.2026). Sans regroupement (serveur de développement), l'empreinte des sources seule, comme avant.
+function versionPubliee(sources, regroupes) {
+  if (!regroupes) return sources;
+  return crypto.createHash("sha256").update(`${sources}:${regroupes}`).digest("hex").slice(0, 16);
+}
+
+module.exports = { empreinteGestion, versionPubliee };

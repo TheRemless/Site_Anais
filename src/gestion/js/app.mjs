@@ -655,6 +655,7 @@ async function afficher() {
   } catch (err) {
     if (moi !== rendu) return;
     console.error(err);
+    if (rechargerSiFichierDisparu(err && err.message)) return;
     noeud = h("div", { class: "vide" }, h("h1", null, tr("Cet écran n'a pas pu s'afficher")), h("p", null, err.message), h("a", { href: "#/" }, tr("Retour à l'accueil")));
   } finally {
     clearTimeout(attente);
@@ -844,11 +845,29 @@ async function surveillerVersion() {
   setInterval(verifier, 3 * 60 * 1000);
 }
 
+// Un écran chargé à la demande dont le fichier n'existe plus : la page ouverte est d'une version précédente (les fichiers regroupés portent
+// l'empreinte de leur contenu, une mise en ligne les remplace). On recharge la version en ligne, une fois par minute au plus, jamais pendant une
+// saisie (l'erreur s'affiche alors comme avant, et le rechargement automatique de la nouvelle version prendra le relais).
+const FICHIER_DISPARU = /dynamically imported module|Importing a module script failed|error loading dynamically imported|Failed to load module script/i;
+function rechargerSiFichierDisparu(message) {
+  if (!FICHIER_DISPARU.test(String(message || "")) || saisieEnCours()) return false;
+  try {
+    const dernier = Number(sessionStorage.getItem("gestion-recharge-fichier")) || 0;
+    if (Date.now() - dernier < 60 * 1000) return false;
+    sessionStorage.setItem("gestion-recharge-fichier", String(Date.now()));
+  } catch {
+    return false;
+  }
+  location.reload();
+  return true;
+}
+
 // Une erreur que personne n'a rattrapée (une action sans message d'erreur prévu) ne passe plus sous silence : un message apparaît, au lieu
 // d'un bouton qui ne fait rien. Les alertes sans importance des navigateurs sont ignorées.
 let derniereErreur = { message: "", quand: 0 };
 function signalerErreur(message) {
   if (!message || /ResizeObserver|^Script error\.?$|AbortError/i.test(message)) return;
+  if (rechargerSiFichierDisparu(message)) return;
   if (message === derniereErreur.message && Date.now() - derniereErreur.quand < 5000) return;
   derniereErreur = { message, quand: Date.now() };
   console.error(message);
@@ -978,6 +997,11 @@ function installerTirer(actualiser) {
 
 init()
   .then(afficher)
+  // Repère de mesure : le premier écran est affiché et utilisable (temps d'ouverture, voir docs/gestion/mise-en-route.md).
+  .then(() => performance.mark && performance.mark("gestion-pret"))
+  // Le service worker (rappels, page hors connexion, fichiers regroupés gardés) s'installe pour tout le monde, après le premier écran.
+  // Avant le 19.11.2026, seulement en activant les rappels : les autres rechargeaient tout à chaque ouverture.
+  .then(() => { if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {}); })
   .then(surveillerVersion)
   .then(surveillerDonnees)
   .then(installerTirer)

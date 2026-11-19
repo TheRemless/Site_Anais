@@ -4,6 +4,7 @@ import { CONFIG } from "./config.mjs";
 // L'adresse /gestion/?demo force la démonstration, avec de faux clients, sans rien lire de la vraie base.
 export async function creerStore() {
   const reel = CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY && !new URLSearchParams(location.search).has("demo");
-  const module = await import(reel ? "./store-supabase.mjs" : "./store-local.mjs");
+  // Deux imports écrits en entier : le regroupement du build (scripts/regrouper-gestion.cjs) les suit, une adresse calculée lui échapperait.
+  const module = reel ? await import("./store-supabase.mjs") : await import("./store-local.mjs");
   return module.creer(CONFIG);
 }
