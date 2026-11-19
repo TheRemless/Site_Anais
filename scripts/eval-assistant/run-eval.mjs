@@ -208,10 +208,12 @@ async function anthropic() {
   if (!cle) {
     try { cle = execFileSync('security', ['find-generic-password', '-s', 'Eval assistant Gestion', '-w'], { encoding: 'utf8' }).trim(); } catch { /* absente */ }
   }
+  if (cle && !/^sk-ant-/.test(cle)) throw Object.assign(new Error('la clé rangée ne ressemble pas à une clé API Anthropic (sk-ant-…) : à refaire dans le trousseau'), { failure_class: 'harness' });
   if (!cle) throw Object.assign(new Error('clé absente : ANTHROPIC_API_KEY ou trousseau « Eval assistant Gestion »'), { failure_class: 'harness' });
   const req = createRequire(join(EVAL_DIR, 'package.json'));
   const { default: Anthropic } = await import(req.resolve('@anthropic-ai/sdk'));
-  client = new Anthropic({ apiKey: cle, timeout: 65_000, maxRetries: 0 });
+  // Adresse officielle imposée : une variable ANTHROPIC_BASE_URL de l'environnement (proxy d'un outil) ne doit jamais recevoir la clé.
+  client = new Anthropic({ apiKey: cle, baseURL: 'https://api.anthropic.com', timeout: 65_000, maxRetries: 0 });
   return client;
 }
 
