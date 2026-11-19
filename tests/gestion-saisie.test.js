@@ -137,6 +137,43 @@ test("saisie.mjs exécuté : fiche ouverte intacte, champ changé, recherche, fe
   assert.ok(principal.isConnected);
 });
 
+test("« Aujourd'hui » de Taxi (Jérémy, 19.11.2026) : la date « Reçue le » préremplie et masquée des commissions à demander n'est pas une saisie", async () => {
+  // La carte « Commissions à demander » pose, pour chaque course, une date de réception remplie par l'outil (aujourd'hui) dans un libellé masqué
+  // tant que « Déjà reçue » n'est pas cochée. L'ancienne règle comparait à defaultValue (vide) sans regarder la visibilité : l'accueil de Taxi
+  // comptait comme une saisie en cours dès qu'une commission était à demander.
+  const taxi = fs.readFileSync(new URL("../src/gestion/js/views/taxi-hier.mjs", import.meta.url), "utf8");
+  assert.match(taxi, /const date = h\("input", \{ id: `com-le-\$\{r\.id\}`, type: "date", value: \(edition && x\.recueLe\) \|\| ajd/);
+  assert.match(taxi, /h\("label", \{ class: "taxi-commission-champ", hidden: !recue\.checked \}/);
+  const { champsModifies } = await import("../src/gestion/js/saisie.mjs");
+  const date = new El("input", { id: "com-le-r1", type: "date", value: "2026-11-19" });
+  const montant = new El("input", { id: "com-r1", type: "text" });
+  const recue = new El("input", { id: "com-recue-r1", type: "checkbox" });
+  const libelleDate = new El("label", { class: "taxi-commission-champ", hidden: "" }, [date]);
+  // L'écran affiché (#principal) ne porte plus que l'accueil de Taxi.
+  const ecran = racine.enfants.find((e) => e.id === "principal");
+  ecran.enfants = [];
+  ecran.ajouter(new El("section", {}, [montant, recue, libelleDate]));
+  assert.deepEqual(champsModifies(doc), [], "accueil de Taxi affiché, rien touché");
+  // La personne coche « Déjà reçue » (la date apparaît) et laisse la date du jour : toujours rien à perdre… sauf la case cochée.
+  geste("pointerdown", recue); recue.checked = true; delete libelleDate.attrs.hidden;
+  assert.deepEqual(champsModifies(doc).map((c) => c.id), ["com-recue-r1"]);
+  // Elle tape la commission et enregistre : la carte est redessinée (nouveaux champs), plus rien.
+  geste("keydown", montant); montant.value = "150";
+  assert.deepEqual(champsModifies(doc).map((c) => c.id).sort(), ["com-r1", "com-recue-r1"]);
+  ecran.enfants = []; ecran.ajouter(new El("section", {}, [new El("input", { id: "com-r1", type: "text", value: "150" })]));
+  assert.deepEqual(champsModifies(doc), [], "après « Enregistrer », la carte redessinée est propre");
+});
+
+test("« Aujourd'hui » : cases de « Mes tâches », carte des demandes du site, Appeler et WhatsApp ne sont jamais une saisie au rendu", async () => {
+  const { champsModifies } = await import("../src/gestion/js/saisie.mjs");
+  const ecran = racine.enfants.find((e) => e.id === "principal");
+  ecran.enfants = [];
+  ecran.ajouter(new El("section", {}, [new El("input", { id: "t1", type: "checkbox" }), new El("input", { id: "t2", type: "checkbox", checked: true })]));
+  ecran.ajouter(new El("section", { class: "dsite-accueil" }, [new El("a", { href: "#/demandes" })]));
+  ecran.ajouter(new El("section", {}, [new El("a", { href: "tel:+66" }), new El("a", { href: "https://wa.me/66" })]));
+  assert.deepEqual(champsModifies(doc), []);
+});
+
 test("app.mjs : une saisie, c'est un champ changé et pas enregistré ; une fenêtre ouverte, un curseur ou un écran de saisie vide ne le sont pas", () => {
   const app = source("app.mjs");
   const fonction = app.slice(app.indexOf("function saisieEnCours()"), app.indexOf("function ecranLibre()"));
