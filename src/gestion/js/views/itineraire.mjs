@@ -13,6 +13,7 @@ import { formatMontant, aujourdhui } from "../calc.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { lieuxDuCatalogue, trajetsEntreEtapes, departsDuTrajet, faitsReponse, servicesDepuisChoix, hotelsAChercher, completerEtape, ligneHotel, cleLieu, cleHotel, choixValables } from "../itineraire-calc.mjs";
 import { messageErreur, texteAvertissement } from "./assistant-demande.mjs";
+import { partModifiee } from "../assistant-suivi-calc.mjs";
 
 const CERTITUDE = { sure: N_("Sûr"), probable: N_("Probable"), inconnue: N_("Non tranché") };
 const CLASSE = { sure: "haute", probable: "moyenne", inconnue: "basse" };
@@ -277,7 +278,17 @@ export function ouvrirItineraire(texteInitial = "") {
 
   // ---- 4. La réponse au client ------------------------------------------------------------------------------------------------------
   const sortie = h("textarea", { id: "iti-reponse", rows: 12, "aria-label": tr("Réponse au client") });
+  // Copie à la main (presse-papiers refusé au bouton) : la mesure se prend au moment où le texte part, retouches comprises.
+  sortie.addEventListener("copy", () => noterRetouche());
   const etatReponse = h("div", { class: "assistant-etat", role: "status", "aria-live": "polite" });
+  // Qualité (migration 51) : à la première copie d'un brouillon, la part de mots changés est notée, jamais le texte.
+  let brouillon = null;
+  function noterRetouche() {
+    if (brouillon === null) return;
+    const part = partModifiee(brouillon, sortie.value);
+    brouillon = null;
+    Promise.resolve(etat.store.noterRetouche && etat.store.noterRetouche({ entiteId: etat.entiteId, usage: "repondre_itineraire", part })).catch(() => {});
+  }
   function dessinerReponse() {
     blocReponse.hidden = false;
     blocCreer.hidden = !ecrit;
@@ -287,6 +298,7 @@ export function ouvrirItineraire(texteInitial = "") {
     const copier = h("button", { class: "secondaire", type: "button", onclick: async () => {
       try {
         await navigator.clipboard.writeText(sortie.value);
+        noterRetouche();
         toast(tr("Réponse copiée."));
       } catch {
         sortie.select();
@@ -324,6 +336,7 @@ export function ouvrirItineraire(texteInitial = "") {
         return;
       }
       sortie.value = r.message;
+      brouillon = r.message;
       const avert = (r.avertissements || []).map(texteAvertissement).filter(Boolean);
       dessinerReponse();
       etatReponse.replaceChildren(
