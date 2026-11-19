@@ -319,7 +319,7 @@ export function ouvrirDemande(depuisSite = null) {
   const deVersLibre = (sv) => ({ de: ((sv.saisie && sv.saisie.lieu) || sv.transfertLibre.de || "").trim(), vers: (((sv.saisie && sv.saisie.details) || {}).drop_off || sv.transfertLibre.vers || "").trim() });
   const texteLibre = (sv) => {
     const { de, vers } = deVersLibre(sv);
-    return [`${de || tr("Départ à préciser")} → ${vers || tr("Arrivée à préciser")}`, tr("Hors catalogue : indiquez le prix convenu.")].join(" · ");
+    return [`${de || tr("Départ à préciser")} → ${vers || tr("Arrivée à préciser")}`, sv.prixLibre === null || sv.prixLibre === undefined ? tr("Hors catalogue : indiquez le prix convenu.") : ""].filter(Boolean).join(" · ");
   };
   const majTitreLibre = (sv) => {
     const n = sv.noeuds && sv.noeuds.titre && sv.noeuds.titre.querySelector(".dsv-detail");
