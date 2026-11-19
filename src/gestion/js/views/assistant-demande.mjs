@@ -14,6 +14,13 @@ const ERREURS = {
   occupe: N_("L'assistant est très demandé : réessayez dans une minute."),
   refus: N_("L'assistant n'a pas traité ce message."),
   faits_cle_interdite: N_("Le dossier contient une donnée qui ne peut pas partir à l'assistant."),
+  faits_invalides: N_("Aucun trajet à envoyer à l'assistant."),
+  hotels_invalides: N_("Aucun nom d'hôtel à chercher (huit au plus à la fois)."),
+  catalogue_vide: N_("Aucun trajet dans la base de prix : rien sur quoi situer les hôtels."),
+  sans_reponse: N_("La recherche n'a rien donné : choisissez les lieux à la main."),
+  pause: N_("La recherche a pris trop de temps : relancez-la."),
+  coupe: N_("La réponse de l'assistant était trop longue : relancez-le."),
+  message_invalide: N_("Le message est vide ou trop long."),
 };
 const AVERTISSEMENTS = {
   nom_non_cite: N_("Le nom proposé n'était pas dans le message : il a été retiré."),
@@ -22,6 +29,8 @@ const AVERTISSEMENTS = {
   reference_inconnue: N_("Un service proposé n'existe pas dans la base : choisissez-le à la main."),
   date_illisible: N_("Une date n'a pas pu être lue."),
   date_passee: N_("Une date proposée est déjà passée."),
+  dates_inversees: N_("Une étape part avant d'arriver : vérifiez ses dates."),
+  signature_retiree: N_("La signature en bas du brouillon a été retirée : la réponse ne signe pas."),
 };
 const CONFIANCE = { haute: N_("Sûr"), moyenne: N_("À vérifier"), basse: N_("Supposé") };
 
@@ -33,6 +42,7 @@ export function texteAvertissement(a) {
   const [code, valeur] = [a.slice(0, a.indexOf(":")), a.slice(a.indexOf(":") + 1)];
   if (code === "montant_hors_base") return tr("Montant absent de la base : {valeur}. Corrigez-le avant d'envoyer.", { valeur });
   if (code === "heure_hors_base") return tr("Heure absente du dossier : {valeur}. Vérifiez-la avant d'envoyer.", { valeur });
+  if (code === "mot_interne") return tr("Le brouillon parle de « {valeur} » : retirez toute raison interne avant d'envoyer.", { valeur });
   return "";
 }
 

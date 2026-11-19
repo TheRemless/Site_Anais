@@ -22,11 +22,12 @@ function reservationsAvecZone() {
 // `trajet` : () => { depart, vers } du trajet réservé ou null : son heure de bateau désigne le départ de la grille sans qu'on le choisisse.
 // `surChoix({ heure, gardee })` : appelée à chaque choix de la personne (heure vide quand la grille n'en donne pas, gardee null quand la zone est retirée).
 // Rend { noeud, rafraichir, valeur, heure }. `rafraichir()` après un changement de partenaire ou d'hôtel ; `valeur()` donne la zone à garder sur la réservation, `heure()` l'heure de la grille pour la zone et le départ choisis.
-export function blocZonesPickup({ id, partenaire, hotel = () => "", gardee = null, trajet = () => null, surChoix = () => {} }) {
+// `zoneHotel` : () => la plage ou le quartier noté pour cet hôtel dans la table des hôtels situés (migration 48), ou "".
+export function blocZonesPickup({ id, partenaire, hotel = () => "", zoneHotel = () => "", gardee = null, trajet = () => null, surChoix = () => {} }) {
   let grilles = [];
   let cle = "";
   let depart = "";
-  let origine = ""; // « memoire » | « adresse » : zone proposée, pas choisie
+  let origine = ""; // « memoire » | « adresse » | « fiche » : zone proposée, pas choisie
   let initiale = gardee;
   const noeud = h("div", { class: "zones-pickup", id });
   noeud.hidden = true;
@@ -86,10 +87,10 @@ export function blocZonesPickup({ id, partenaire, hotel = () => "", gardee = nul
     let texte = "";
     if (r) {
       const heure = heureActuelle();
-      if (origine && heure) texte = origine === "memoire" ? tr("Zone retenue d'après une réservation précédente de cet hôtel : touchez-la pour poser l'heure {heure}.", { heure }) : tr("Zone lue dans l'adresse de l'hôtel : touchez-la pour poser l'heure {heure}.", { heure });
+      if (origine && heure) texte = origine === "memoire" ? tr("Zone retenue d'après une réservation précédente de cet hôtel : touchez-la pour poser l'heure {heure}.", { heure }) : origine === "fiche" ? tr("Zone notée pour cet hôtel (Prix et horaires) : touchez-la pour poser l'heure {heure}.", { heure }) : tr("Zone lue dans l'adresse de l'hôtel : touchez-la pour poser l'heure {heure}.", { heure });
       else if (heure) texte = tr("Grille de {partenaire} : {zone}, {depart}, {heure}.", { partenaire: p ? p.nom : "", zone: r.zone.nom, depart: depart, heure });
       else if (depart) texte = tr("La grille n'a pas de pickup pour cette zone et ce départ : l'heure reste à fixer.");
-      else if (r.grille.colonnes.length > 1) texte = origine === "memoire" ? tr("Zone retenue d'après une réservation précédente de cet hôtel. Choisissez le départ pour l'heure.") : origine === "adresse" ? tr("Zone lue dans l'adresse de l'hôtel. Choisissez le départ pour l'heure.") : tr("Choisissez le départ pour voir l'heure.");
+      else if (r.grille.colonnes.length > 1) texte = origine === "memoire" ? tr("Zone retenue d'après une réservation précédente de cet hôtel. Choisissez le départ pour l'heure.") : origine === "adresse" ? tr("Zone lue dans l'adresse de l'hôtel. Choisissez le départ pour l'heure.") : origine === "fiche" ? tr("Zone notée pour cet hôtel (Prix et horaires). Choisissez le départ pour l'heure.") : tr("Choisissez le départ pour voir l'heure.");
     }
     if (texte) noeud.append(h("p", { class: "aide", "aria-live": "polite" }, texte));
   }
@@ -110,7 +111,7 @@ export function blocZonesPickup({ id, partenaire, hotel = () => "", gardee = nul
     if (cle && !depart && avant.depart) depart = avant.depart;
     // Pas de zone choisie : celle d'une réservation précédente du même hôtel ou un nom de zone dans l'adresse est proposé, sans heure (la personne confirme).
     if (!cle && grilles.length) {
-      const prop = zoneProposee(hotel(), grilles, reservationsAvecZone());
+      const prop = zoneProposee(hotel(), grilles, reservationsAvecZone(), zoneHotel());
       if (prop) {
         cle = prop.cle;
         origine = prop.origine;

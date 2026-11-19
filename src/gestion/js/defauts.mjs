@@ -627,6 +627,9 @@ export function donneesDemo(ajd, ajouterJours) {
   trajet(speed, "Koh Lanta", "Phuket", "Speedboat", "10:30", "13:00", "2 h 30", 1700, 1300, 1300, 1000);
   trajet(ferry, "Koh Lanta", "Koh Phi Phi", "Ferry", "11:00", "12:30", "1 h 30", 800, 650, 600, 500);
   trajet(ferry, "Koh Phi Phi", "Koh Lanta", "Ferry", "14:30", "16:00", "1 h 30", 800, 650, 600, 500);
+  // Phi Phi → Koh Mook : deux compagnies à la même marge (400 par adulte, 300 par enfant), pour montrer « Prix et horaires » qui garde tous les horaires.
+  trajet(speed, "Koh Phi Phi", "Koh Mook", "Speedboat", "11:30", "13:00", "1 h 30", 1500, 1100, 1100, 800);
+  trajet(ferry, "Koh Phi Phi", "Koh Mook", "Ferry", "13:30", "16:00", "2 h 30", 1300, 900, 1000, 700);
 
   // Réservations auprès des partenaires pour les dossiers de l'entreprise 2.
   const reservations = [];

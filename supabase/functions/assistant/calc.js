@@ -30,8 +30,14 @@ export const PRIX = {
 
 // Ce qu'il faut pour chaque usage. Les droits sont ceux des tables : lire la base de prix et créer un dossier. « rediger » n'y est plus : la
 // fonction le refuse (usage_inconnu). Effort « medium », le défaut de Haiku 5.5 : la lecture doit être juste, et ce niveau coûte peu.
+// Demande de prix et d'horaires (20.11.2026, itineraire.js) : trois usages de plus, mêmes droits que « lire ». « itineraire » lit les étapes du
+// message (sans catalogue), « situer » place les hôtels par une recherche web (nom de l'hôtel seulement), « repondre_itineraire » rédige la
+// réponse depuis les faits calculés dans l'outil (prix de vente et horaires, jamais un net ni un nom de compagnie).
 export const USAGES = {
   lire: { permissions: ["partenaires.lire", "dossiers.ecrire"], effort: "medium", maxTokens: 16000 },
+  itineraire: { permissions: ["partenaires.lire", "dossiers.ecrire"], effort: "medium", maxTokens: 8000 },
+  situer: { permissions: ["partenaires.lire", "dossiers.ecrire"], effort: "low", maxTokens: 8000 },
+  repondre_itineraire: { permissions: ["partenaires.lire", "dossiers.ecrire"], effort: "medium", maxTokens: 8000 },
 };
 
 const DECALAGE_BANGKOK = 7 * 3600 * 1000;
@@ -40,11 +46,11 @@ export const dateBangkok = (d = new Date()) => new Date(d.getTime() + DECALAGE_B
 export const debutJourBangkok = (d = new Date()) => new Date(Date.parse(`${dateBangkok(d)}T00:00:00Z`) - DECALAGE_BANGKOK).toISOString();
 
 const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
-const jourSemaine = (iso) => JOURS[new Date(`${iso}T12:00:00Z`).getUTCDay()];
+export const jourSemaine = (iso) => JOURS[new Date(`${iso}T12:00:00Z`).getUTCDay()];
 
-const estUuid = (x) => typeof x === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
-const texte = (x, max = 300) => (typeof x === "string" ? x.replace(/\s+/g, " ").trim().slice(0, max) : "");
-const entier = (x, max = 60) => (Number.isInteger(x) && x >= 0 ? Math.min(x, max) : 0);
+export const estUuid = (x) => typeof x === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
+export const texte = (x, max = 300) => (typeof x === "string" ? x.replace(/\s+/g, " ").trim().slice(0, max) : "");
+export const entier = (x, max = 60) => (Number.isInteger(x) && x >= 0 ? Math.min(x, max) : 0);
 
 // ---- Droits et limite ---------------------------------------------------------------------------------------------------------------
 
@@ -109,7 +115,7 @@ export function construireCatalogue({ prestations = [], trajets = [], partenaire
 const VOYELLE = /^[aeiouyhàâäéèêëîïôöûüœæ]/i;
 const de_ = (nom) => (VOYELLE.test(nom) ? `d'${nom}` : `de ${nom}`);
 const que_ = (nom) => (VOYELLE.test(nom) ? `qu'${nom}` : `que ${nom}`);
-const lieuCourt = (lieu) => String(lieu || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+export const lieuCourt = (lieu) => String(lieu || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
 
 // Ce que l'assistant lit des réglages de l'entreprise : sa voix par langue, son lieu et la personne responsable.
 export function reglagesAssistant(reglages) {
@@ -211,12 +217,12 @@ export function lireReponse(message) {
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const dateValide = (s) => DATE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
-const heureValide = (s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
-const sansAccents = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+export const dateValide = (s) => DATE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+export const heureValide = (s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+export const sansAccents = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 // Un nom ou un hôtel n'est gardé que si chacun de ses mots est dans le message : Claude ne doit rien ajouter que le client n'a pas écrit.
-function citeDansMessage(valeur, message) {
+export function citeDansMessage(valeur, message) {
   const m = sansAccents(message);
   const mots = sansAccents(valeur).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
   return mots.length > 0 && mots.every((w) => m.includes(w));
@@ -454,11 +460,14 @@ export function validerRedaction(v, faits) {
 // ---- Coût et journal --------------------------------------------------------------------------------------------------------------------
 
 // Coût estimé d'un appel en dollars, d'après le modèle qui a servi (un repli est compté au prix du modèle de secours).
+// Recherche web (outil serveur web_search) : 10 $ les 1 000 recherches, en plus des jetons (documentation de l'outil, relevé du 19.11.2026).
+export const PRIX_RECHERCHE_WEB = 0.01;
 export function coutEstime(usage, modele = MODELE) {
   const p = PRIX[modele] || PRIX[MODELE];
   const u = usage || {};
   const n = (x) => Number(x) || 0;
-  return (n(u.input_tokens) * p.entree + n(u.output_tokens) * p.sortie + n(u.cache_read_input_tokens) * p.cacheLu + n(u.cache_creation_input_tokens) * p.cacheEcrit) / 1e6;
+  const recherches = n(u.server_tool_use && u.server_tool_use.web_search_requests);
+  return (n(u.input_tokens) * p.entree + n(u.output_tokens) * p.sortie + n(u.cache_read_input_tokens) * p.cacheLu + n(u.cache_creation_input_tokens) * p.cacheEcrit) / 1e6 + recherches * PRIX_RECHERCHE_WEB;
 }
 
 // Ligne du journal : qui, quoi, combien, jamais le contenu du message ni la réponse.

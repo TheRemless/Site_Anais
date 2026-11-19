@@ -41,6 +41,8 @@ export function creer() {
     if (!data.bandeaux_site) data.bandeaux_site = bandeauxDemo({ entites: data.entites, ajd: aujourdhui(), uid });
     for (const t of TABLES) data[t] = data[t] || [];
     data.fiduciaire_factures = data.fiduciaire_factures || [];
+    // Hôtels situés (migration 48), comme la base : une ligne par hôtel et par entreprise.
+    data.hotels_lieux = data.hotels_lieux || [];
     // Corbeille des documents et compteurs de numéros, comme la base (migration 34). L'acompte figé du dossier existe comme colonne.
     data.corbeille_documents = data.corbeille_documents || [];
     data.compteurs_ref = data.compteurs_ref || {};
@@ -344,18 +346,41 @@ export function creer() {
       setTimeout(() => ecouteurs.forEach((f) => f()), 0);
       return structuredClone(ligne);
     },
-    // Démonstration : rien ne part chez Anthropic, la réponse est simulée à partir de la lecture par règles (assistant-calc.mjs).
+    // Hôtels situés (migration 48) : mêmes droits que la base. Lire avec la base de prix, ajouter ou corriger avec « dossiers.ecrire » en plus.
+    async hotelsLieux(entiteId) {
+      if (!permissionsDans(contexte(), entiteId).includes("partenaires.lire")) return [];
+      return structuredClone(data.hotels_lieux.filter((l) => l.entite_id === entiteId));
+    },
+    async enregistrerHotelLieu(entiteId, ligne) {
+      const perms = permissionsDans(contexte(), entiteId);
+      if (!perms.includes("partenaires.lire") || !perms.includes("dossiers.ecrire")) throw new Error("Droit insuffisant");
+      const avant = data.hotels_lieux.find((l) => l.entite_id === entiteId && l.cle === ligne.cle);
+      const maj = { ...ligne, entite_id: entiteId, maj_le: new Date().toISOString(), maj_par: utilisateur.user_id };
+      if (avant) Object.assign(avant, maj);
+      else data.hotels_lieux.push({ id: uid(), cree_le: maj.maj_le, ...maj });
+      sauve();
+      return structuredClone(data.hotels_lieux.find((l) => l.entite_id === entiteId && l.cle === ligne.cle));
+    },
+    // Démonstration : rien ne part chez Anthropic, la réponse est simulée (assistant-calc.mjs pour la lecture, itineraire-calc.mjs pour la demande
+    // de prix et d'horaires), dans la forme exacte que renvoie la fonction.
     async assistant(corps) {
       await new Promise((r) => setTimeout(r, 700));
-      const { simulerLecture } = await import("./assistant-calc.mjs");
       const e = corps.entite_id;
       if (!(data.reglages[e] || {}).assistant_ia) return { erreur: "assistant_eteint" };
       // Mêmes droits que la fonction : la base de prix et créer un dossier. « rediger » est refusé comme par la fonction (retiré le 19.11.2026).
-      if (corps.usage !== "lire") return { erreur: "usage_inconnu" };
+      if (!["lire", "itineraire", "situer", "repondre_itineraire"].includes(corps.usage)) return { erreur: "usage_inconnu" };
       const perms = permissionsDans(contexte(), e);
       const requis = ["partenaires.lire", "dossiers.ecrire"];
       if (requis.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };
-      return simulerLecture(corps.texte || "", { prestations: data.prestations.filter((p) => p.entite_id === e), trajets: data.trajets.filter((t) => t.entite_id === e), nomPartenaire: (id) => (data.partenaires.find((p) => p.id === id) || {}).nom || "" }, aujourdhui());
+      const trajets = data.trajets.filter((t) => t.entite_id === e);
+      if (corps.usage !== "lire") {
+        const it = await import("./itineraire-calc.mjs");
+        if (corps.usage === "itineraire") return it.simulerItineraire(corps.texte || "", aujourdhui());
+        if (corps.usage === "situer") return it.simulerSituer((corps.hotels || []).slice(0, 8), it.lieuxDuCatalogue(trajets, data.partenaires.filter((p) => p.entite_id === e)));
+        return it.simulerReponse(corps.faits || { langue: "fr", trajets: [] });
+      }
+      const { simulerLecture } = await import("./assistant-calc.mjs");
+      return simulerLecture(corps.texte || "", { prestations: data.prestations.filter((p) => p.entite_id === e), trajets, nomPartenaire: (id) => (data.partenaires.find((p) => p.id === id) || {}).nom || "" }, aujourdhui());
     },
     async charger() {
       const ids = new Set(accessibles());

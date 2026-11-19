@@ -1458,6 +1458,33 @@ details > summary { padding-block: 11px; margin: 0; }
 .assistant-confiance.haute { color: var(--teal-700); border-color: var(--teal); background: var(--teal-100); }
 .assistant-confiance.moyenne { color: #6b4a00; border-color: #d9b45a; background: #fff4d6; }
 .assistant-confiance.basse { color: var(--danger); border-color: #d9a3a3; background: var(--danger-fond); }
+/* Prix et horaires d'un itinéraire : étapes, trajets et réponse, une colonne au téléphone. */
+.iti-section { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--bord); }
+.iti-section h3 { font-size: 1.05rem; margin-bottom: 10px; }
+.iti-personnes { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 14px; }
+.iti-personnes .champ { width: 7.5em; }
+.iti-personnes input { min-height: 44px; font-size: 16px; }
+.iti-etapes, .iti-trajets { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 10px; }
+.iti-etape, .iti-trajet { padding: 12px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface); }
+.iti-etape-champs { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(10em, 1fr) minmax(10em, 1fr) minmax(0, 1.3fr); gap: 0 10px; }
+.iti-etape-champs .champ { margin-bottom: 8px; min-width: 0; }
+.iti-etape-champs input, .iti-etape-champs select { width: 100%; min-height: 44px; font-size: 16px; }
+@media (max-width: 900px) { .iti-etape-champs { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .iti-etape-champs .champ:first-child, .iti-etape-champs .champ:last-child { grid-column: 1 / -1; } }
+.iti-origine { margin: 0 0 4px; font-size: 0.9rem; color: var(--texte-2); overflow-wrap: anywhere; }
+.iti-origine a { color: var(--teal-700); }
+.iti-trajet-titre { margin: 0 0 6px; }
+.iti-departs { margin: 0; padding: 0; border: 0; display: grid; gap: 4px; }
+.iti-depart { align-items: flex-start; padding: 8px 10px; border-radius: var(--rayon); font-weight: 400; }
+.iti-depart:hover { background: var(--surface-2); }
+.iti-depart input { margin-top: 3px; }
+.iti-interne { margin: 6px 0 0; font-size: 0.88rem; color: var(--teal-700); }
+.iti-autres { margin-top: 4px; font-size: 0.88rem; color: var(--texte-2); }
+.iti-autres summary { cursor: pointer; min-height: 32px; }
+.iti-autres ul { margin: 4px 0 0; padding-left: 20px; }
+.iti-langue { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 12px; }
+.iti-langue select { min-height: 44px; font-size: 16px; }
+.iti-langue .assistant-bouton { margin-bottom: 14px; }
+#iti-reponse { width: 100%; font-size: 16px; line-height: 1.5; margin-top: 8px; }
 
 /* ---- Écran « Nouveau voucher » de Taxi (assistante, en thaï) ---------------------------------------------------------------------
    Un seul écran au téléphone : grands champs, une action principale en bas, l'image du voucher comme pièce maîtresse.
