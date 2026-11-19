@@ -173,6 +173,13 @@ export function parametres({ modele = MODELE_DEFAUT, systeme, contexte, messages
 // Les messages enregistrés (agent_messages) vers l'historique de l'API : rôle et contenu tels quels, dans l'ordre.
 export const historique = (lignes) => (lignes || []).filter((l) => l && (l.role === "user" || l.role === "assistant") && l.contenu).map((l) => ({ role: l.role, content: l.contenu }));
 
+// Un historique coupé (les 400 derniers messages) repart d'un message de la personne qui n'est pas un résultat d'outil : sinon la première
+// ligne serait une réponse de Claude ou un résultat sans son appel, que l'API refuse.
+export function debutValide(lignes = []) {
+  const i = lignes.findIndex((l) => l.role === "user" && Array.isArray(l.contenu) && l.contenu.some((b) => b.type === "text") && !l.contenu.some((b) => b.type === "tool_result"));
+  return i < 0 ? [] : lignes.slice(i);
+}
+
 // Le texte visible d'un message de Claude (sans réflexion ni appels d'outils).
 export const texteVisible = (contenu) =>
   (Array.isArray(contenu) ? contenu : [])

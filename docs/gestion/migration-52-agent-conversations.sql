@@ -14,6 +14,7 @@
 -- Retour en arrière :
 --   drop table if exists agent_cartes; drop table if exists agent_messages; drop table if exists agent_conversations;
 --   drop function if exists purger_agent_conversations(integer); drop function if exists noter_agent_conversation();
+--   drop function if exists agent_ma_conversation(uuid); drop function if exists figer_agent_carte(); drop function if exists assistant_cout_depuis(timestamptz);
 --   alter table assistant_journal drop constraint if exists assistant_journal_usage_check;
 --   alter table assistant_journal add constraint assistant_journal_usage_check check (usage in ('lire', 'rediger', 'itineraire', 'situer', 'repondre_itineraire', 'trier', 'brochure'));
 
@@ -130,6 +131,14 @@ create or replace function purger_agent_conversations(jours integer default 90) 
 $$;
 revoke all on function purger_agent_conversations(integer) from public, anon;
 grant execute on function purger_agent_conversations(integer) to authenticated;
+
+-- Dépense de l'assistant depuis une date (plafond du mois de la fonction « agent ») : la somme se fait dans la base, sans limite de lignes.
+-- Pour la fonction seulement (clé de service), comme le journal.
+create or replace function assistant_cout_depuis(debut timestamptz) returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce(sum(cout_estime_usd), 0) from assistant_journal where cree_le >= debut;
+$$;
+revoke all on function assistant_cout_depuis(timestamptz) from public, anon, authenticated;
+grant execute on function assistant_cout_depuis(timestamptz) to service_role;
 
 -- Le journal de l'assistant accepte l'agent (contrainte de la migration 27, élargie par la 48).
 alter table assistant_journal drop constraint if exists assistant_journal_usage_check;

@@ -388,7 +388,7 @@ export async function vueAgent(idOuvert = "") {
     if (c.genre === "dossier") {
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
       corps.push(h("ul", { class: "agent-services" }, (d.services || []).map((s) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.remarque].filter(Boolean).join(", "))), prixTexte(s)))));
-      action = { libelle: tr("Préparer le dossier"), faire: () => ouvrirDossier(c) };
+      action = ouvertes.has(c.id) ? { libelle: tr("Le dossier est créé"), faire: () => decider(c, "validee"), puis: { libelle: tr("Rouvrir la création"), faire: () => ouvrirDossier(c) } } : { libelle: tr("Préparer le dossier"), faire: () => ouvrirDossier(c) };
     } else if (c.genre === "reservation") {
       const s = d.service || {};
       corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup })].filter(Boolean).join(", "))), prixTexte(s))));
@@ -413,7 +413,14 @@ export async function vueAgent(idOuvert = "") {
       avert,
       decidee
         ? h("p", { class: "agent-carte-sort" }, icone(c.statut === "validee" ? "coche" : "fermer", 16), c.statut === "validee" ? tr("Validée") : tr("Écartée"))
-        : h("div", { class: "actions gauche" }, h("button", { class: "principal", type: "button", onclick: () => action.faire() }, action.libelle), h("button", { class: "secondaire", type: "button", onclick: () => decider(c, "ecartee") }, tr("Écarter")))
+        : h(
+            "div",
+            { class: "actions gauche" },
+            ouvertes.has(c.id) ? h("p", { class: "aide pleine-largeur" }, tr("Ouvert dans « Coller une demande » : dites ici quand le dossier est créé.")) : null,
+            h("button", { class: "principal", type: "button", onclick: () => action.faire() }, action.libelle),
+            action.puis ? h("button", { class: "secondaire", type: "button", onclick: () => action.puis.faire() }, action.puis.libelle) : null,
+            h("button", { class: "secondaire", type: "button", onclick: () => decider(c, "ecartee") }, tr("Écarter"))
+          )
     );
   }
 
@@ -426,11 +433,15 @@ export async function vueAgent(idOuvert = "") {
     if (ancien) ancien.replaceWith(carte(maj));
   }
 
+  // La création reste dans « Coller une demande » : ouvrir n'est pas valider. La carte attend que la personne dise que le dossier est créé.
+  const ouvertes = new Set();
   async function ouvrirDossier(c) {
     const contexte = { prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire, taxi: modeTaxi() };
     const prep = propositionVersDemande(propositionDepuisCarte(c.donnees), contexte);
     (await import("./demande.mjs")).ouvrirDemande(null, { texte: "", ...prep });
-    await decider(c, "validee");
+    ouvertes.add(c.id);
+    const ancien = zoneFil.querySelector(`[data-carte="${c.id}"]`);
+    if (ancien) ancien.replaceWith(carte(c));
   }
   async function ouvrirReservation(c) {
     const { formulaireReservation } = await import("./reservations.mjs");

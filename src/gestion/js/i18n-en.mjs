@@ -3688,6 +3688,9 @@ export const EN = {
   "Le client a choisi : cochez ses horaires dans « Trajets et horaires », puis préparez le dossier.": "The client has chosen: tick their times under “Trips and times”, then prepare the file.",
   "La signature en bas du brouillon a été retirée : la réponse ne signe pas.": "The sign-off at the bottom of the draft was removed: the reply is not signed.",
   // Onglet « Assistant » (agent, 19.11.2026)
+  "Le dossier est créé": "The file is created",
+  "Rouvrir la création": "Reopen the creation",
+  "Ouvert dans « Coller une demande » : dites ici quand le dossier est créé.": "Opened in “Paste a request”: say here when the file is created.",
   "Ajouter au dossier": "Add to the file",
   "Arrivée entre {a} et {b}": "Arrival between {a} and {b}",
   "Assistant": "Assistant",

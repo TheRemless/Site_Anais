@@ -331,3 +331,16 @@ test("réponse chez Secret ou Taxi : un prénom de l'équipe dans le message est
   assert.ok(controlerReponse(msg, { prenoms: ["Anaïs"] }).avertissements.includes("prenom_equipe"));
   assert.deepEqual(controlerReponse(msg, { signer: true, prenoms: ["Anaïs"] }).avertissements, []);
 });
+
+test("revue : unités de la base, Krabi distinct de Krabi Airport, montants tapés sans années ni références, historique coupé", async () => {
+  const { debutValide } = await import("../supabase/functions/agent/prompt.js");
+  const ref = refDe("P", "a1000000-0000-4000-8000-000000000001");
+  const r = await executer("proposer_dossier", { titre: "t", client_nom: "", client_telephone: "", hotel: "", langue: "en", adultes: 2, enfants: 1, bebes: 0, services: [service({ ref, adultes: 2, enfants: 1 })] }, ctxDe({ charger: async (n) => (n === "prestations" ? [{ ...donnees.prestations[0], unite: "pp" }] : donnees[n] || []) }), nouveauMemo());
+  assert.equal(r.carte.donnees.services[0].prix, 4500);
+  const krabi = { ...donnees, trajets: [{ ...donnees.trajets[0], vers: "Krabi Airport" }] };
+  const h = await executer("horaires_trajet", { de: "Koh Lanta", vers: "Krabi", date: "", adultes: 1, enfants: 0 }, ctxDe({ charger: async (n) => krabi[n] || [] }), nouveauMemo());
+  assert.equal(h.contenu.trouve, false);
+  assert.deepEqual([...montantsTapes(["dossier T2026-0207, en 2026, mets 3 500"])], [3500]);
+  const lignes = [{ role: "user", contenu: [{ type: "tool_result" }] }, { role: "assistant", contenu: [] }, { role: "user", contenu: [{ type: "text", text: "a" }] }];
+  assert.equal(debutValide(lignes).length, 1);
+});

@@ -832,7 +832,7 @@ export function vueReglages() {
         h("label", { class: "case", for: "agent-ia" }, h("input", { id: "agent-ia", type: "checkbox", checked: r.agent_ia === true, onchange: (e) => ((r.agent_ia = e.target.checked), marque()) }), tr("Onglet « Assistant » : discuter avec l'assistant, qui planifie et propose dossiers, services et réponses à valider")),
         h("p", { class: "aide" }, tr("L'assistant lit le catalogue (prix de vente seulement), les horaires, les clients et les dossiers de l'entreprise. Jamais un net, une marge ni un nom de prestataire. Chaque proposition attend votre clic.")),
         ztp ? null : h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre du client")),
-        h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé et la liste des tarifs de vente, sans les prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous.")),
+        ztp ? null : h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé et la liste des tarifs de vente, sans les prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous.")),
         texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: exemple("lieu_entreprise") })
       ),
       // Fiduciaire éteinte (Taxi, décision 5 ; agence cliente du logiciel, 19.11.2026) : pas au menu, elle se rouvre d'ici pour être allumée (D10).

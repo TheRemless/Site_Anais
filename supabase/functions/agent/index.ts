@@ -9,7 +9,7 @@
 // Réponse en flux NDJSON (une ligne JSON par événement) : { t: "conversation" | "etape" | "texte" | "planning" | "carte" | "fin" | "erreur" }.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, PLAFOND_MOIS_USD_DEFAUT, consignes, contexteDuJour, controlerAcces, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
+import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, PLAFOND_MOIS_USD_DEFAUT, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { memoDepuis, refDe, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { CHAMPS_ROUTES, URL_ROUTES, lireRoutes, requeteRoutes } from "./planifier.js";
@@ -60,12 +60,12 @@ Deno.serve(async (req) => {
     sb.rpc("permissions_dans", { e: entiteId }),
     admin.from("assistant_journal").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("usage", "agent").gte("cree_le", debutJourBangkok()),
     // Le plafond du mois compte toute la dépense de l'assistant (tous usages, toutes personnes) : il protège le crédit.
-    admin.from("assistant_journal").select("cout_estime_usd").gte("cree_le", debutMoisBangkok()).limit(20000),
+    admin.rpc("assistant_cout_depuis", { debut: debutMoisBangkok() }),
     sb.from("entites").select("nom").eq("id", entiteId).maybeSingle(),
   ]);
   if (regl.error || perms.error || echanges.error || mois.error) return json({ erreur: "base" }, 500);
   const reglages = regl.data ? regl.data.valeur : null;
-  const coutDuMois = (mois.data || []).reduce((s: number, l: { cout_estime_usd: number }) => s + (Number(l.cout_estime_usd) || 0), 0);
+  const coutDuMois = Number(mois.data) || 0;
   const acces = controlerAcces({
     entiteId,
     permissions: perms.data || [],
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
     if (c.error) return json({ erreur: c.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
     conv = c.data;
   }
-  const anciens = await sb.from("agent_messages").select("role, contenu").eq("conversation_id", conv!.id).order("id", { ascending: true }).limit(400);
+  const anciens = await sb.from("agent_messages").select("role, contenu").eq("conversation_id", conv!.id).order("id", { ascending: false }).limit(400);
   if (anciens.error) return json({ erreur: "base" }, 500);
   // Conservation : mes conversations sans message depuis 90 jours partent (sans attendre, une erreur ne bloque rien).
   sb.rpc("purger_agent_conversations", { jours: CONSERVATION_JOURS }).then(() => {}, () => {});
@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
   const prestataires = ((await charger("partenaires")) as { nom: string }[]).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
   const systeme = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable });
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
-  const messages = historique(anciens.data);
+  const messages = historique(debutValide([...(anciens.data || [])].reverse()));
   const memo = memoDepuis([...messages, { role: "user", content: message }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
   const ctx = { charger, reglages, tempsRoute, situerWeb, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;

@@ -282,7 +282,8 @@ export async function horairesTrajet(e, ctx) {
   const de = cleLieu(e.de);
   const vers = cleLieu(e.vers);
   const date = dateValide(e.date) ? e.date : "";
-  const pareil = (a, b) => a === b || (a.length > 3 && b.length > 3 && (a.includes(b) || b.includes(a)));
+  // Clé souple, sans inclusion : « Krabi » n'est pas « Krabi Airport » (même règle que departsDuTrajet). Sinon, les lieux connus aident à corriger.
+  const pareil = (a, b) => a === b;
   const ok = (trajets || []).filter((t) => proposable(t, masques) && pareil(cleLieu(t.de), de) && pareil(cleLieu(t.vers), vers) && disponible(t, date));
   if (!ok.length) {
     const lieux = [...new Set((trajets || []).filter((t) => proposable(t, masques)).flatMap((t) => [texte(t.de, 80), texte(t.vers, 80)]))].sort();
@@ -451,7 +452,12 @@ export async function lireDossier(e, ctx) {
 // Les montants que la personne a tapés dans la conversation : seuls montants admis en plus de ceux des outils.
 export function montantsTapes(messagesPersonne = []) {
   const out = new Set();
-  for (const m of messagesPersonne) for (const x of String(m || "").matchAll(/(\d{1,3}(?:[ ,']\d{3})+|\d{3,6})(?!\s*(?:km|min|h\b|:))/g)) out.add(Number(x[1].replace(/[ ,']/g, "")));
+  // Ni un nombre collé à une lettre ou à un tiret (référence « T2026-0207 »), ni une année seule, ni une durée ou une heure.
+  for (const m of messagesPersonne)
+    for (const x of String(m || "").matchAll(/(?<![\p{L}\d\-/])(\d{1,3}(?:[ ,']\d{3})+|\d{3,6})(?![\p{L}\d\-/]|\s*(?:km|min|h\b|:))/gu)) {
+      const n = Number(x[1].replace(/[ ,']/g, ""));
+      if (!/^20[2-3]\d$/.test(x[1])) out.add(n);
+    }
   return out;
 }
 
@@ -474,7 +480,9 @@ async function serviceDepuis(s, ctx, tapes) {
       origine = "saisi";
     } else avert.push("prix_non_tape");
   } else if (p && nombre(p.prix_vente) !== null) {
-    prix = Number(p.prix_vente) * (["pers", "personne", "pax", "adulte"].includes(String(p.unite)) ? Math.max(1, adultes + enfants) : 1);
+    // Mêmes quantités que l'outil (partenaires-calc.mjs, quantiteParDefaut) : par personne, par adulte, par enfant, sinon une fois.
+    const q = p.unite === "pp" ? adultes + enfants : p.unite === "ad" ? adultes : p.unite === "ch" ? enfants : 1;
+    prix = Number(p.prix_vente) * (q || 1);
     origine = "catalogue";
   } else if (t && nombre(t.prix_adulte) !== null) {
     prix = Number(t.prix_adulte) * Math.max(1, adultes) + (enfants && nombre(t.prix_enfant) !== null ? Number(t.prix_enfant) * enfants : 0);
