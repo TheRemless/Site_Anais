@@ -341,12 +341,13 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       let nouvelle = empreinte;
       // Marqueur lu avant le catalogue : un changement survenu pendant la lecture sera vu à la synchronisation suivante.
       // Un marqueur illisible (coupure, droit retiré) ne fait pas échouer la synchronisation : on relit simplement le catalogue.
-      try {
-        nouvelle = await empreinteCatalogue();
-        relire = relire || nouvelle !== empreinte;
-      } catch {
-        nouvelle = null;
-        relire = true;
+      // Au premier chargement, tout est relu de toute façon : le marqueur part en même temps que les tables (un aller-retour de moins à
+      // l'ouverture, 19.11.2026), toujours lancé avant elles.
+      const marqueur = empreinteCatalogue().then((e) => e, () => null);
+      const ouverture = !reutilisable;
+      if (!ouverture) {
+        nouvelle = await marqueur;
+        relire = relire || nouvelle === null || nouvelle !== empreinte;
       }
       const tables = ["entites", "profils", "roles", "membres", ...CHARGEES.filter((t) => relire || !CATALOGUE.includes(t))];
       // Toutes les lectures partent ensemble (elles étaient faites l'une après l'autre).
@@ -368,6 +369,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       out.partages_clients = partages.partages_clients;
       out.clients = avecNomsLies(out.clients, partages.lies);
       Object.assign(out, site);
+      if (ouverture) nouvelle = await marqueur;
       if (!relire) for (const t of CATALOGUE) out[t] = ancien[t];
       else {
         empreinte = nouvelle;
