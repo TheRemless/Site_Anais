@@ -16,7 +16,7 @@ import { CONTENU_DEFAUT } from "../defauts.mjs";
 import { vide, barreFiltres, lienDossier } from "./commun.mjs";
 import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
-import { tr, N_, pluriel } from "../i18n.mjs";
+import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, prixVenteFige } from "../partenaires-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { champsNetsChanges } from "../nets-reservation-calc.mjs";
@@ -199,7 +199,7 @@ export function carteReservation(r, { avecDossier = true, apres = () => {}, ecar
     { class: "carte-lien statique" },
     h("span", { class: "carte-titre" }, avecDossier ? lienDossier(r.libelle, r.dossier_id) : r.libelle),
     h("span", { class: "carte-droite" }, h("strong", null, r.date_service ? formatDate(r.date_service) : tr("Date à fixer")), r.heure_pickup ? h("span", null, tr("pickup {heure_pickup}", { heure_pickup: r.heure_pickup })) : null),
-    h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes), r.lieu_pickup, resumeTrajet(r)].filter(Boolean).join(" · ")),
+    h("span", { class: "carte-sous" }, [avecDossier && c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes, langueActive()), r.lieu_pickup, resumeTrajet(r)].filter(Boolean).join(" · ")),
     r.notes ? h("span", { class: "carte-sous" }, r.notes) : null,
     // Une location commencée et pas encore rendue : ni en retard ni à confirmer, l'avis et la commission attendent le retour.
     enCours ? h("div", { class: "etat-en-cours", role: "status" }, dateFinService(r) === aujourdhui() ? tr("Location en cours, retour aujourd'hui") : tr("Location en cours jusqu'au {date}", { date: formatDate(dateFinService(r)) })) : null,

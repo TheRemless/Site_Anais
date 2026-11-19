@@ -5,7 +5,7 @@ import { etat, peut, modeTaxi, netReservation, enregistrerLie } from "../etat.mj
 import { h, toast, saisie, erreurChamp } from "../ui.mjs";
 import { champSaisieRapide, montantSaisi } from "../nets-reservation-calc.mjs";
 import { personnesTexte } from "../operations-calc.mjs";
-import { tr } from "../i18n.mjs";
+import { tr, langueActive } from "../i18n.mjs";
 
 export const droitsSaisieRapide = () => ({ nets: peut("partenaires.nets"), ecrit: peut("dossiers.ecrire"), taxi: modeTaxi() });
 
@@ -21,7 +21,7 @@ export function saisieRapideNet(r, { apres = () => {} } = {}) {
   const id = `sr-${net ? "net" : "com"}-${r.id}`;
   const entree = saisie(h("input", { id, placeholder: net ? tr("Net total") : tr("Commission") }), "montant");
   const bouton = h("button", { class: "principal petit", type: "submit" }, tr("Enregistrer"));
-  const personnes = personnesTexte(r.personnes || {});
+  const personnes = personnesTexte(r.personnes || {}, langueActive());
   const aide = net
     ? tr("Le net du prestataire pour tout le service{personnes}.", { personnes: personnes ? ` (${personnes})` : "" })
     : tr("Ce que le prestataire reverse pour ce service payé sur place.");

@@ -9,13 +9,13 @@ import { formatMontant, formatDate, totaux, montantSurPlace } from "../calc.mjs"
 import { contenuAvecSurPlace, contenuAvecReservation, contenuAvecService, contenuSansReservation, attenduDepuisFacture, ecartReservation, personnesTexte, datesDepuisReservations, descriptionService } from "../operations-calc.mjs";
 import { prestationEnfant, prixEnfantDe } from "../demande-calc.mjs";
 import { contenuAvecEnfants, lignesIdsAvec } from "../dossier-gestes-calc.mjs";
-import { tr } from "../i18n.mjs";
+import { tr, langueActive } from "../i18n.mjs";
 
 export const lieeFacture = (r) => !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
 
 // Texte d'un écart entre la réservation et la facture : « Date : 12 déc. sur la réservation, 14 déc. sur la facture ».
 export function texteEcart(c, devise) {
-  const v = (x) => (c.cle === "date_service" ? (x ? formatDate(x) : tr("à fixer")) : c.cle === "personnes" ? personnesTexte(x) || "0" : c.cle === "paye_sur_place" ? (x ? tr("sur place") : tr("chez nous")) : c.cle === "libelle" ? `« ${x} »` : c.cle === "partenaire_id" ? (x ? nomPartenaire(x) : tr("sans partenaire")) : formatMontant(x, devise));
+  const v = (x) => (c.cle === "date_service" ? (x ? formatDate(x) : tr("à fixer")) : c.cle === "personnes" ? personnesTexte(x, langueActive()) || "0" : c.cle === "paye_sur_place" ? (x ? tr("sur place") : tr("chez nous")) : c.cle === "libelle" ? `« ${x} »` : c.cle === "partenaire_id" ? (x ? nomPartenaire(x) : tr("sans partenaire")) : formatMontant(x, devise));
   const nom = c.cle === "date_service" ? tr("Date") : c.cle === "personnes" ? tr("Personnes") : c.cle === "paye_sur_place" ? tr("Paiement") : c.cle === "libelle" ? tr("Prestation") : c.cle === "partenaire_id" ? tr("Partenaire") : tr("Montant vendu");
   return tr("{nom} : {reservation} sur la réservation, {document} sur la facture", { nom, reservation: v(c.reservation), document: v(c.document) });
 }

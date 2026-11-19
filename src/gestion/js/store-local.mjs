@@ -8,11 +8,14 @@ import { tr } from "./i18n.mjs";
 import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, facturesVisibles } from "./fiduciaire-local.mjs";
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
 import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
+import { donneesDemoAgence } from "./demo-agence.mjs";
 import { avecNomsLies, peutUtiliserPartages } from "./partage-clients-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
-const CLE = "gestion-zwald-demo-v13";
-const CLE_UTILISATEUR = "gestion-zwald-demo-utilisateur";
+// /gestion/?demo=agence (19.11.2026) : la démo des prospects, une agence fictive sans rien de Koh Lanta (demo-agence.mjs), gardée à part.
+const AGENCE = typeof location !== "undefined" && new URLSearchParams(location.search).get("demo") === "agence";
+const CLE = AGENCE ? "gestion-demo-agence-v1" : "gestion-zwald-demo-v13";
+const CLE_UTILISATEUR = AGENCE ? "gestion-demo-agence-utilisateur" : "gestion-zwald-demo-utilisateur";
 // Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
 const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches", "demandes_site", "bandeaux_site"];
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
@@ -32,7 +35,7 @@ export function creer() {
     }
     // Une démo neuve est gardée tout de suite : un second onglet de ce navigateur ouvre la même (sinon il en créerait une autre, aux autres identifiants).
     const neuve = !data;
-    if (!data) data = donneesDemo(aujourdhui(), ajouterJours);
+    if (!data) data = AGENCE ? donneesDemoAgence(aujourdhui(), ajouterJours) : donneesDemo(aujourdhui(), ajouterJours);
     // Demandes et bandeau du site : posés aussi dans une démo déjà enregistrée dans ce navigateur (créée avant la migration 30).
     if (!data.demandes_site) data.demandes_site = demandesDemo({ entites: data.entites, ajd: aujourdhui(), ajouterJours, uid });
     if (!data.bandeaux_site) data.bandeaux_site = bandeauxDemo({ entites: data.entites, ajd: aujourdhui(), uid });
@@ -54,7 +57,8 @@ export function creer() {
     for (const e of data.entites) if (!e.organisation_id) e.organisation_id = ORG_DEMO;
     for (const p of data.profils) if (!("organisation_id" in p)) p.organisation_id = ORG_DEMO;
     // L'éditeur a son compte dans l'organisation de démo (comme Jérémy chez Zwald) : elle n'est pas un de ses clients.
-    if (!data.profils.some((p) => p.plateforme)) data.profils.push({ user_id: uid(), email: "editeur@demo.local", nom: "Éditeur du logiciel", super_admin: false, plateforme: true, actif: true, organisation_id: ORG_DEMO, langue: null });
+    // La démo des prospects n'a pas de compte d'éditeur : elle montre l'outil d'une agence, pas l'écran de Jérémy.
+    if (!AGENCE && !data.profils.some((p) => p.plateforme)) data.profils.push({ user_id: uid(), email: "editeur@demo.local", nom: "Éditeur du logiciel", super_admin: false, plateforme: true, actif: true, organisation_id: ORG_DEMO, langue: null });
     for (const p of data.profils) if (p.plateforme && !p.organisation_id) p.organisation_id = ORG_DEMO;
     // Dernière connexion (auth.users.last_sign_in_at) : l'équipe de démo travaille déjà ; un client neuf n'a encore personne de connecté.
     for (const p of data.profils) if (!("connecte_le" in p)) p.connecte_le = p.organisation_id === ORG_DEMO ? aujourdhui() : null;
@@ -721,7 +725,7 @@ export function creer() {
       charge();
       sauve();
     },
-    utilisateursDemo: () => data.profils.map((p) => ({ id: p.user_id, nom: p.nom || p.email, super_admin: p.super_admin, plateforme: !!p.plateforme, organisation: (data.organisations.find((o) => o.id === p.organisation_id) || {}).nom || "" })),
+    utilisateursDemo: () => data.profils.map((p) => ({ id: p.user_id, nom: p.nom || p.email, super_admin: p.super_admin, plateforme: !!p.plateforme, organisation: (data.organisations.find((o) => o.id === p.organisation_id) || {}).nom || "", client: p.organisation_id !== ORG_DEMO })),
     utilisateurDemo: () => utilisateur.user_id,
     changerUtilisateurDemo(id) {
       utilisateur = data.profils.find((p) => p.user_id === id) || utilisateur;
