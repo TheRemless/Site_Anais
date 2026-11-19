@@ -79,6 +79,13 @@ test("catalogue : seulement ce qui se propose, ni net ni identifiant, ordre stab
   assert.equal(inverse.texte, c.texte, "même base, même texte : le cache sert d'un appel à l'autre");
 });
 
+test("catalogue : un tarif d'un partenaire masqué ne part pas, comme dans la lecture par règles", () => {
+  const masque = [...PARTENAIRES.map((p) => (p.id === "pa2" ? { ...p, actif: false } : p))];
+  const c = construireCatalogue({ prestations: PRESTATIONS, trajets: TRAJETS, partenaires: masque });
+  assert.doesNotMatch(c.texte, /Kayak/, "partenaire masqué : son kayak n'est plus proposé");
+  assert.match(c.texte, /4 Islands by longtail/, "les autres partenaires restent");
+});
+
 test("prompt de lecture : consignes et catalogue en cache, date et message après", () => {
   const c = construireCatalogue({ prestations: PRESTATIONS, trajets: TRAJETS, partenaires: PARTENAIRES });
   const p = promptLecture({ entreprise: "Secret Travel & Tour", catalogue: c.texte, aujourdhui: AJD, message: "kayak tomorrow for 2" });
