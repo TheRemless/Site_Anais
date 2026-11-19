@@ -97,7 +97,8 @@ function reglagesBruts(id, { nom, devise }) {
       numerotation: { mode: "sequence", prefixe: "", chiffres: 4 },
       dossier: { modele_bandeau: "{PAYS} - {PERIODE}", libelle_pays: "Service" },
       listes: { pays: ["Tour", "Transfer"], civilites: CIVILITES_EN, moyens: moyens(["especes", "virement", "paypal", "wise", "autre"]) },
-      modules: { partenaires: true, reservations: true, messages: true, catalogue: null },
+      // Trajets et règles (horaires des bateaux, parc national) viennent de Koh Lanta : masqués au départ, le client les rallume dans Réglages, Écrans.
+      modules: { partenaires: true, reservations: true, messages: true, catalogue: null, trajets: false },
       voucher: { nom },
       textes: { variantes: [{ id: "standard", nom: "Standard", corps: "Payment is due before the service.", cloture: "Thank you for booking with us!" }] },
     };

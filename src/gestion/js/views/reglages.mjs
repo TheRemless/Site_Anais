@@ -1,7 +1,7 @@
 // Réglages de l'entreprise active : tout ce qui apparaît sur les documents et le fonctionnement des dossiers.
 import { modulesReglables, moduleAllume, moduleDe } from "../modules.mjs";
 import { rappelAvantActif, modeRappel } from "../rappel-h1-calc.mjs";
-import { etat, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages, equipe } from "../etat.mjs";
+import { etat, moduleActif, enregistrerReglages, corbeilleDossiers, restaurerDossier, recharger, resumes, resumeDossier, nomClient, naviguer, reglages, estAdmin, entiteActive, estSuperAdmin, peut, tousPaiements, tousDocuments, toutesTaches, historiqueReglages, equipe } from "../etat.mjs";
 import { voucherExemple } from "./voucher.mjs";
 import { sectionVouchers } from "./reglages-vouchers.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
@@ -835,9 +835,9 @@ export function vueReglages() {
         texte(N_("Voix en français"), "assistant_voix.fr", { multi: true, rows: 6 }),
         texte(N_("Voix en anglais"), "assistant_voix.en", { multi: true, rows: 6 })
       ),
-      // Taxi : la fiduciaire n'est plus au menu (décision 5). Elle se rouvre d'ici pour être réactivée un jour (contrôle du 17.11.2026, D10).
-      taxi && peut("fiduciaire.gerer") && peut("reglages.ecrire") && !reglagesFid(etat.db.reglages).actif
-        ? h("fieldset", null, h("legend", null, tr("Factures pour la fiduciaire")), h("p", { class: "aide" }, tr("{entreprise} n'émet pas de factures pour la fiduciaire : l'écran n'est plus dans le menu. Il reste ouvert ici, pour revoir ce qui a déjà été facturé ou réactiver ces factures un jour.", { entreprise: entiteActive().nom })), h("a", { class: "bouton secondaire petit", href: "#/fiduciaire" }, tr("Ouvrir l'écran Fiduciaire")))
+      // Fiduciaire éteinte (Taxi, décision 5 ; agence cliente du logiciel, 19.11.2026) : pas au menu, elle se rouvre d'ici pour être allumée (D10).
+      moduleActif("fiduciaire") && peut("fiduciaire.gerer") && peut("reglages.ecrire") && !reglagesFid(etat.db.reglages).actif
+        ? h("fieldset", null, h("legend", null, tr("Factures pour la fiduciaire")), h("p", { class: "aide" }, taxi ? tr("{entreprise} n'émet pas de factures pour la fiduciaire : l'écran n'est plus dans le menu. Il reste ouvert ici, pour revoir ce qui a déjà été facturé ou réactiver ces factures un jour.", { entreprise: entiteActive().nom }) : tr("Factures de commission adressées à un partenaire, pour une fiduciaire en Thaïlande. Éteintes au départ et absentes du menu : ouvrez l'écran pour les allumer si vous en avez besoin.")), h("a", { class: "bouton secondaire petit", href: "#/fiduciaire" }, tr("Ouvrir l'écran Fiduciaire")))
         : null,
       // État des rappels sur téléphone (avant dans l'onglet Compte, devenu « Mon compte » pour chacun).
       sectionRappels

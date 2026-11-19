@@ -355,10 +355,9 @@ function coqueSimple() {
   );
 }
 
-// Fiduciaire au menu : dans une entreprise qui émet ces factures (Secret) ; dans une autre (Taxi, 17.11.2026), seulement pour qui peut la réactiver.
-// Taxi n'émet pas de factures pour la fiduciaire (décision 5) : l'entrée sort du menu tant qu'elle n'y est pas réactivée, ce qui se fait depuis les
-// Réglages (onglet « Écrans », contrôle du 17.11.2026, D10).
-const fiduciaireAuMenu = () => peut("fiduciaire.preparer") && moduleActif("fiduciaire") && (reglagesFid(etat.db.reglages).actif || (!modeTaxi() && peut("fiduciaire.gerer") && peut("reglages.ecrire")));
+// Fiduciaire au menu : seulement dans une entreprise qui émet ces factures (Secret). Taxi (décision 5, 17.11.2026) et une agence cliente du logiciel
+// (propre à la Thaïlande, éteinte au départ, Jérémy 19.11.2026) ne l'ont pas au menu : l'écran se rouvre depuis les Réglages pour l'allumer (D10).
+const fiduciaireAuMenu = () => peut("fiduciaire.preparer") && moduleActif("fiduciaire") && reglagesFid(etat.db.reglages).actif;
 
 // Écrans propres à un module (modules.mjs) : fermés si le module n'existe pas ou est masqué pour cette entreprise.
 function ecranDeLEntreprise(cle) {
