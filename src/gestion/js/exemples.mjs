@@ -14,6 +14,7 @@ export const estLanta = (organisationId) => !organisationId || ORGS_LANTA.includ
 // [exemple de Lanta, exemple neutre]. Les deux passent par tr() à l'affichage.
 const EXEMPLES = {
   hotel: [N_("Hotel Sunset, Klong Dao"), N_("Hotel Sunset, Beach Road")],
+  telephone_partenaire: ["081-000-0000", "+1 202 555 0100"],
   aeroport: [N_("Krabi Airport"), N_("City Airport")],
   lieu: [N_("Koh Lanta"), N_("Plage nord")],
   point_embarquement: [N_("Saladan Pier, comptoir n° 3"), N_("Port principal, comptoir n° 3")],
