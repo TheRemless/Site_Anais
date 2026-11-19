@@ -1,6 +1,6 @@
 // Nouveau dossier en mode excursions (Secret Travel & Tour) : le client, ses services pris dans la base partenaires,
 // et la facture créée dans la foulée avec une réservation par service. Pas de devis, pas d'acompte.
-import { etat, naviguer, reglages, peut, nomPartenaire, nomClient, clientsProposes } from "../etat.mjs";
+import { etat, exemple, naviguer, reglages, peut, nomPartenaire, nomClient, clientsProposes } from "../etat.mjs";
 import { h, champ, toast, vider, erreurChamp } from "../ui.mjs";
 import { formatMontant, formatDate } from "../calc.mjs";
 import { descriptionService, personnesTexte } from "../operations-calc.mjs";
@@ -31,7 +31,7 @@ export function nouveauDossierExcursions() {
   const nvPrenom = h("input", { id: "prenom", autocomplete: "given-name" });
   const nvNom = h("input", { id: "nom", autocomplete: "family-name" });
   const nvTel = h("input", { id: "tel", type: "tel", inputmode: "tel", autocomplete: "off", placeholder: "+33 6 00 00 00 00" });
-  const nvHotel = h("input", { id: "hotel", autocomplete: "off", placeholder: tr("Hotel Sunset, Klong Dao") });
+  const nvHotel = h("input", { id: "hotel", autocomplete: "off", placeholder: exemple("hotel") });
   const nvChambre = h("input", { id: "chambre", autocomplete: "off" });
   const blocNouveau = h("div", { class: "grille-form" }, champ(tr("Prénom"), nvPrenom), champ(tr("Nom"), nvNom), champ(tr("WhatsApp"), nvTel), champ(tr("Hôtel"), nvHotel), champ(tr("Chambre"), nvChambre));
   // Un client qui existe déjà (même téléphone ou même nom) : on le propose avant d'en créer un second.

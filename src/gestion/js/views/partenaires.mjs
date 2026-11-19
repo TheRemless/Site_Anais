@@ -1,5 +1,5 @@
 // Partenaires : la liste, la fiche d'un partenaire (contact, tarifs, règles, contrat, banque, tâches) et les formulaires.
-import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie, modeTaxi, modeExcursions, moduleActif } from "../etat.mjs";
+import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie, modeTaxi, modeExcursions, moduleActif, exemple } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
 import { TYPES_COMMISSION, SUR_PLACE, CHEZ_NOUS, modeParDefaut } from "../operations-calc.mjs";
@@ -578,8 +578,8 @@ export function formulaireEmbarquementPickup(p, apres) {
   const k = () => Math.random().toString(36).slice(2, 8);
   const points = lignesRepetees(r.points_embarquement || [], (x = {}) => {
     const i = k();
-    const lieu = h("input", { id: `pe-l-${i}`, value: x.lieu || "", placeholder: tr("Koh Lanta"), "aria-label": tr("Lieu") });
-    const ou = h("input", { id: `pe-o-${i}`, value: x.ou || "", placeholder: tr("Saladan Pier, comptoir n° 3"), "aria-label": tr("Point d'embarquement") });
+    const lieu = h("input", { id: `pe-l-${i}`, value: x.lieu || "", placeholder: exemple("lieu"), "aria-label": tr("Lieu") });
+    const ou = h("input", { id: `pe-o-${i}`, value: x.ou || "", placeholder: exemple("point_embarquement"), "aria-label": tr("Point d'embarquement") });
     return { noeud: h("div", { class: "ligne-saisie fenetre" }, lieu, ou), valeur: () => ({ lieu: lieu.value.trim(), ou: ou.value.trim() }) };
   }, { ajouter: tr("Ajouter un point d'embarquement") });
 
@@ -587,7 +587,7 @@ export function formulaireEmbarquementPickup(p, apres) {
   const grilles = [];
   const ajouterGrille = (g = { titre: "", colonnes: [], lignes: [] }) => {
     const i = k();
-    const titre = h("input", { id: `pg-t-${i}`, value: g.titre || "", placeholder: tr("Pickup à Lanta") });
+    const titre = h("input", { id: `pg-t-${i}`, value: g.titre || "", placeholder: exemple("titre_pickup") });
     const colonnes = h("input", { id: `pg-c-${i}`, value: (g.colonnes || []).join(", "), placeholder: tr("Bateau 10h30, Bateau 13h00") });
     let lignes = (g.lignes || []).map((l) => [...l]);
     const zones = h("div", { class: "lignes-saisie" });
@@ -601,7 +601,7 @@ export function formulaireEmbarquementPickup(p, apres) {
       champsZones = [];
       zones.style.setProperty("--colonnes", String(Math.max(1, cols.length)));
       lignes.forEach((l, li) => {
-        const z = { nom: h("input", { value: l[0] || "", placeholder: tr("Klong Dao"), "aria-label": tr("Zone") }), heures: cols.map((c, ci) => h("input", { value: l[ci + 1] || "", placeholder: "09:40", inputmode: "numeric", "aria-label": tr("Heure de pickup, {zone}, {depart}", { zone: l[0] || tr("zone"), depart: c }) })) };
+        const z = { nom: h("input", { value: l[0] || "", placeholder: exemple("zone"), "aria-label": tr("Zone") }), heures: cols.map((c, ci) => h("input", { value: l[ci + 1] || "", placeholder: "09:40", inputmode: "numeric", "aria-label": tr("Heure de pickup, {zone}, {depart}", { zone: l[0] || tr("zone"), depart: c }) })) };
         champsZones.push(z);
         zones.append(h("div", { class: "ligne-saisie zone" }, z.nom, ...z.heures, h("button", { class: "bouton-icone secondaire", type: "button", "aria-label": tr("Retirer cette zone"), title: tr("Retirer"), onclick: () => { lire(); lignes.splice(li, 1); dessinerZones(); } }, icone("fermer"))));
       });

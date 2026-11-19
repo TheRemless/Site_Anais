@@ -1,7 +1,7 @@
 // « Coller une demande » : le client écrit à Anaïs sur WhatsApp, le message arrive à sa façon ou depuis le formulaire du site. On le colle ici :
 // l'outil reconnaît la date, les personnes, l'hôtel, le client et le service cité, cherche le prix dans la base partenaires, et crée le dossier
 // d'un tap. Tout ce qui a été reconnu se corrige sur place, et le prix suit.
-import { etat, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite, confirmationPermise, clientParId, clientsProposes } from "../etat.mjs";
+import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite, confirmationPermise, clientParId, clientsProposes } from "../etat.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
@@ -513,7 +513,7 @@ export function ouvrirDemande(depuisSite = null) {
     champs.replaceChildren(
       saisie("nom", tr("Nom du client"), d.nom, (v) => modifier("nom", v.trim())),
       saisie("tel", tr("WhatsApp"), d.telephone || "", (v) => modifier("telephone", v.trim()), { type: "tel", inputmode: "tel", placeholder: "+33 6 00 00 00 00" }),
-      saisie("hotel", tr("Hôtel"), d.hotel || "", (v) => modifier("hotel", v.trim()), { placeholder: tr("Hotel Sunset, Klong Dao") })
+      saisie("hotel", tr("Hôtel"), d.hotel || "", (v) => modifier("hotel", v.trim()), { placeholder: exemple("hotel") })
     );
   }
 

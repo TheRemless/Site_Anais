@@ -1,7 +1,7 @@
 // VIP Taxi Lanta : une course hors catalogue (pickup et drop-off saisis à la main) depuis l'écran « Nouveau dossier » (13.11.2026).
 // Les mêmes champs que l'écran thaï « Nouveau voucher » de l'assistante, en français et anglais ; le contrôle et le calcul sont ceux
 // de voucher-rapide-calc.mjs (voir courseHorsCatalogue). Le client vient du sélecteur de l'écran, pas de cette fenêtre.
-import { etat, reglages } from "../etat.mjs";
+import { etat, reglages, exemple } from "../etat.mjs";
 import { h, champ, modal, saisie, erreurChamp, focusPremiereErreur } from "../ui.mjs";
 import { uid } from "../defauts.mjs";
 import { valeursVides, suggestionsLieux, partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
@@ -19,11 +19,11 @@ export function ouvrirCourseLibre({ date = "", onAjout }) {
   const entree = (cle, attrs = {}) => h("input", { id: `cl-${cle}`, value: v[cle], autocomplete: "off", ...attrs });
   const c = {
     date: entree("date", { type: "date" }),
-    pickup: entree("pickup", { list: "cl-lieux", placeholder: tr("Hotel Sunset, Klong Dao") }),
+    pickup: entree("pickup", { list: "cl-lieux", placeholder: exemple("hotel") }),
     heure: entree("heure", { type: "time" }),
     // Aller simple ou retour au point de départ (16.11.2026) : le second remplace le drop-off par le programme et la durée.
     trajet: h("select", { id: "cl-trajet" }, h("option", { value: "" }, tr("Aller simple")), h("option", { value: RETOUR_DEPART }, tr("Retour au point de départ"))),
-    dropoff: entree("dropoff", { list: "cl-lieux", placeholder: tr("Krabi Airport") }),
+    dropoff: entree("dropoff", { list: "cl-lieux", placeholder: exemple("aeroport") }),
     programme: (() => {
       const t = h("textarea", { id: "cl-programme", rows: 2, placeholder: tr("Old Town and viewpoint tour, the driver waits") });
       t.value = v.programme;

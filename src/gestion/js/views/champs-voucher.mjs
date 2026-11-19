@@ -6,6 +6,7 @@ import { ajouterJours } from "../calc.mjs";
 import { nbJoursLocation, TITRES_VOUCHER } from "../operations-calc.mjs";
 import { champsCreation, resumeSaisie } from "../creation-voucher-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
+import { exemple } from "../etat.mjs";
 import { RETOUR_DEPART, detailsTrajet, erreursTrajet } from "../trajet-calc.mjs";
 
 // Codes d'erreur de erreursTrajet (trajet-calc.mjs).
@@ -42,9 +43,9 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
   const typeTour = choix("tour", dt.type_tour, [auto, ["join", tr("Join tour")], ["prive", tr("Private tour")]]);
   const typeTransfert = choix("transfert", dt.type_transfert, [auto, ["taxi", tr("Private taxi")], ["minivan", tr("Private minivan")], ["partage", tr("Shared minivan")]]);
   const parc = choix("parc", dt.parc, [auto, ["inclus", tr("Included")], ["non", tr("Not included")], ["aucun", tr("Ne rien afficher")]]);
-  const parcTexte = texte("parc-texte", dt.parc_texte, tr("400 THB per adult, 200 THB per child, cash on the island"));
+  const parcTexte = texte("parc-texte", dt.parc_texte, exemple("parc"));
   const remarques = zone("remarques", dt.remarques, tr("Vu par le client et le prestataire, en anglais"));
-  const remarquesPaiement = texte("rem-paiement", dt.remarques_paiement, tr("Deposit 1,000 THB received, balance at the pier"));
+  const remarquesPaiement = texte("rem-paiement", dt.remarques_paiement, exemple("paiement"));
   const heureService = texte("heure-service", dt.heure_service, "10:00 - 12:00");
   // Sans date de retour saisie, celle que dit la facture : la date de départ plus les jours loués.
   const retourDate = h("input", { id: id("retour-date"), type: "date", value: dt.retour_date || (dateInitiale && Number(dt.jours) > 0 ? ajouterJours(dateInitiale, Number(dt.jours)) : "") });
@@ -53,8 +54,8 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
   const equipement = texte("equipement", dt.equipement, tr("2 casques, siège enfant"));
   const conditions = zone("conditions", dt.conditions, tr("Assurance, carburant, conditions du loueur, en anglais"));
   const permis = texte("permis", dt.permis, tr("International driving licence shown"));
-  const caution = texte("caution", dt.caution, tr("3,000 THB, returned at drop-off"));
-  const embarquement = texte("embarquement", dt.embarquement, tr("Saladan Pier"));
+  const caution = texte("caution", dt.caution, exemple("caution"));
+  const embarquement = texte("embarquement", dt.embarquement, exemple("embarquement"));
   const checkin = zone("checkin", dt.checkin, tr("Check-in at the pier 45 minutes before departure…"));
   const bateau = texte("bateau", dt.bateau, tr("Longtail, speedboat"));
   const programme = texte("programme", dt.programme, tr("Program A, 10 min session"));
@@ -71,8 +72,8 @@ export function champsVoucher({ details: dt = {}, prefixe = "v", dateService = (
   typeTrajet.addEventListener("change", majTrajet);
   const selon = (genre, noeud) => (noeudsTrajet[genre].push(noeud), majTrajet(), noeud);
   for (const x of [programmeTrajet, dureeH]) x.addEventListener("input", () => erreurChamp(x, null));
-  const de = texte("de", dt.de, "Koh Lanta");
-  const vers = texte("vers", dt.vers, "Phuket");
+  const de = texte("de", dt.de, exemple("de"));
+  const vers = texte("vers", dt.vers, exemple("vers"));
   const depart = h("input", { id: id("depart"), type: "time", value: dt.depart || "" });
   const arrivee = h("input", { id: id("arrivee"), type: "time", value: dt.arrivee || "" });
 
