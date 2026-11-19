@@ -21,13 +21,27 @@ Les nets sont lus par la fonction (avec les droits de la personne) pour poser un
 
 `planifier_course` reçoit les points dans l'ordre (pickup, arrêts, destination), un rendez-vous (« à l'hôpital à 16:00 »), les attentes et l'heure du vol. Il calcule :
 
-- le pickup **à rebours** : temps de route Google Maps (trafic prévu à l'heure du trajet), plus 30 min d'attente au ferry si la route en prend un, plus une marge de 10 % du temps de route (10 min au moins), arrondi aux 5 min inférieures ;
+- le pickup **à rebours** : durée de route, plus 30 min d'attente au ferry si le trajet en prend un, plus une marge de 10 % de la durée (10 min au moins, ou la marge conseillée par la table si elle est plus grande), arrondi aux 5 min inférieures ;
 - l'heure d'arrivée à chaque point, prévue et au plus tard ;
 - si le vol est **tenable** (arrivée à l'aéroport 2 h avant un vol intérieur, 3 h avant un international), **juste** (tenable seulement sans les marges) ou **pas tenable**.
 
-Ces valeurs sont réglables par entreprise (`reglages.agent_planning` : `marge_pct`, `marge_min`, `ferry_attente_min`, `avance_vol_domestique_min`, `avance_vol_international_min`, `arrondi_min`) et toujours affichées sous « Hypothèses du calcul ».
+Ces valeurs sont réglables par entreprise (`reglages.agent_planning`) et toujours affichées sous « Hypothèses du calcul ».
 
-Sans clé Google, l'agent n'invente aucune durée : il la demande. En démonstration, des temps simulés sont marqués « Temps simulés ».
+### D'où viennent les durées (décision de Jérémy du 19.11.2026 : pas de Google Maps)
+
+| Ordre | Source | Affiché |
+|---|---|---|
+| 1 | La **table des temps de trajet** de l'entreprise (Partenaires > Temps de trajet), ligne confirmée par Nani ou Mr. Brown : elle l'emporte toujours | « table des temps » |
+| 2 | **openrouteservice** (OpenStreetMap, gratuit), avec le ferry et la marge de la ligne de la table pour ces zones s'il y en a une ; ce qu'ORS a compris de chaque lieu est montré | « OpenStreetMap, à vérifier » |
+| 3 | Une ligne de la table encore **à vérifier** (pré-remplie) | « table, ligne à vérifier » |
+| 4 | Rien : l'agent le dit et demande la durée. Quand Nani la donne, il propose une carte « Ajouter à la table » | « durée donnée par vous » |
+| 5 | En dernier recours, une **estimation par la recherche web**, avec sa source, marquée comme telle | « estimation trouvée sur le web » |
+
+Une durée n'entre dans le calcul que si elle vient d'une de ces sources : une durée donnée par Nani doit être écrite dans la conversation (« compte 2h30 »), une estimation doit sortir de l'outil d'estimation. Sinon le calcul est refusé.
+
+La table se pré-remplit d'un bouton, chaque ligne « à vérifier » : durées des pages taxi du site (borne haute des fourchettes, organisation de Koh Lanta seulement), durées des trajets du catalogue (onglet « En bateau »), grilles de pickup des partenaires (temps entre le passage du véhicule et le départ du bateau, enregistrement compris, sans nom de partenaire). Aucune ligne existante n'est écrasée.
+
+**openrouteservice** : `https://api.heigit.org/openrouteservice/v2/directions/driving-car/json` et `/pelias/v1/search` (adresses relevées dans le client officiel, 19.11.2026), clé dans l'en-tête `Authorization`. Quota gratuit : 2 000 itinéraires par jour, 40 par minute (FAQ d'ORS). Chaque résultat est gardé en base (`lieux_geo`, `trajets_ors`) et n'est pas recalculé. Seuls partent des noms de lieux et des coordonnées, jamais une donnée de client. **Conditions d'usage commercial et d'attribution : non vérifiées**, la page https://account.heigit.org/info/tos ne se lit qu'avec un navigateur. À lire par Jérémy avant la mise en service.
 
 ## Fichiers
 
@@ -37,7 +51,10 @@ Sans clé Google, l'agent n'invente aucune durée : il la demande. En démonstra
 | `supabase/functions/agent/boucle.js` | La boucle d'outils d'un échange (aussi utilisée par le jeu d'essai) |
 | `supabase/functions/agent/outils.js` | Les 11 outils, leurs contrôles, les cartes |
 | `supabase/functions/agent/prompt.js` | Consignes, voix, modèle, coût, accès |
-| `supabase/functions/agent/planifier.js` | Calcul des heures, Google Routes, temps simulés (copie identique : `src/gestion/js/agent-planifier.mjs`) |
+| `supabase/functions/agent/planifier.js` | Calcul des heures, temps simulés de la démo (copie identique : `src/gestion/js/agent-planifier.mjs`) |
+| `supabase/functions/agent/temps.js` | Ordre des sources de durée, zones, openrouteservice, pré-remplissage (copie identique : `src/gestion/js/agent-temps.mjs`) |
+| `supabase/functions/agent/estimation.js` | Estimation d'une durée par la recherche web (dernier recours) |
+| `src/gestion/js/views/temps-trajets.mjs` | Écran de la table des temps de trajet |
 | `src/gestion/js/views/agent.mjs`, `agent-calc.mjs`, `agent-demo.mjs` | Écran, logique pure, démonstration |
 | `docs/gestion/migration-52-agent-conversations.sql` | Conversations, messages, cartes, RLS, conservation |
 | `scripts/eval-agent/` | Jeu d'essai (cas privés dans `~/Desktop/Gestion-Test/eval-assistant/cas-agent.json`) |
@@ -49,7 +66,7 @@ Sans clé Google, l'agent n'invente aucune durée : il la demande. En démonstra
 - Estimation Opus 5.5 : 0,03 à 0,06 $ par échange, 0,08 à 0,10 $ pour le cas Jai Tiki complet (deux échanges). Haiku 5.5 : environ 40 fois moins.
 - Limites : 60 échanges par personne et par jour (`AGENT_LIMITE_JOUR`), plafond du mois pour **toute** la dépense de l'assistant (`AGENT_PLAFOND_MOIS_USD`, 40 $ par défaut).
 - Journal : une ligne par échange dans `assistant_journal` (usage `agent`), jetons et coût, jamais le contenu. Le tableau de bord du lot 7 l'affiche sans changement.
-- Google Routes : environ 10 $ les 1 000 requêtes (deux requêtes par trajet calculé à rebours), à plafonner dans la console Google.
+- openrouteservice : gratuit. Estimation web : environ 0,01 $ par recherche, plus quelques jetons Haiku, comptés dans le journal de l'échange.
 
 ## Conservation
 
@@ -58,10 +75,10 @@ Une conversation sans nouveau message depuis 90 jours est supprimée avec ses me
 ## Mise en service (chaque étape avec le oui de Jérémy)
 
 1. Sauvegarde forcée, puis migration 52 (SQL Editor).
-2. Clé Google Maps (Routes API seulement, limite de dépense posée dans Google Cloud), saisie sans l'afficher :
+2. Clé openrouteservice gratuite (compte sur account.heigit.org), posée par Jérémy sans l'afficher. Sans clé, l'agent s'en tient à la table.
 
    ```bash
-   read -s CLE && supabase secrets set GOOGLE_MAPS_API_KEY="$CLE" --project-ref lkxqcmzeidlyssoqmqkh; unset CLE
+   read -s "K?Clé openrouteservice : " && echo && supabase secrets set ORS_API_KEY="$K" --remote=lkxqcmzeidlyssoqmqkh; unset K
    ```
 
 3. Vérifier que la branche contient tout master, puis déployer :

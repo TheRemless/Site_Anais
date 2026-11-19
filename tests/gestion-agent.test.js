@@ -3,7 +3,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { planifierCourse, tempsSimule, lireRoutes, requeteRoutes, reglagesPlanning, instantBangkok, versHeure } from "../supabase/functions/agent/planifier.js";
+import { planifierCourse, tempsSimule, reglagesPlanning, versHeure } from "../supabase/functions/agent/planifier.js";
+import { dureeEntre, ligneDeLaTable, zoneDuLieu, minutesDe, dureesTapees, lignesDuSite, lignesDesBateaux, lignesDesZones, lignesNouvelles, clePaire, lireItineraire, lireGeocode, corpsItineraire, parametresGeocode } from "../supabase/functions/agent/temps.js";
+import { lireEstimation } from "../supabase/functions/agent/estimation.js";
 import { OUTILS, executer, entreeValide, memoDepuis, refDe, trouverRef, controlerReponse, montantsTapes } from "../supabase/functions/agent/outils.js";
 import { consignes, controlerAcces, parametres, ligneJournal, coutEchange, historique, titreDepuis, signe } from "../supabase/functions/agent/prompt.js";
 
@@ -39,8 +41,8 @@ const donnees = {
   dossiers: [{ id: "d1000000-0000-4000-8000-000000000001", ref: "2026-0142", client_id: "c1000000-0000-4000-8000-000000000001", date_depart: "2026-11-21", date_retour: "2026-11-28", annule: false }],
   reservations: [{ id: "e1000000-0000-4000-8000-000000000001", dossier_id: "d1000000-0000-4000-8000-000000000001", libelle: "Transfert Lanta → Krabi Airport", date_service: "2026-11-28", heure_pickup: "09:00", lieu_pickup: "Hotel Sunset", personnes: { adultes: 2 }, statut: "confirme", montant_vente: 2800 }],
 };
-const ctxDe = (extra = {}) => ({ charger: async (nom) => donnees[nom] || [], reglages: {}, tempsRoute: async ({ de, vers }) => tempsSimule(de, vers), ...extra });
-const nouveauMemo = (o = {}) => ({ prix: new Set(), heures: new Set(), tapes: new Set(), signer: false, prestataires: donnees.partenaires.map((p) => p.nom), entreprise: "VIP Taxi Lanta", ...o });
+const ctxDe = (extra = {}) => ({ charger: async (nom) => donnees[nom] || [], reglages: {}, simule: tempsSimule, ...extra });
+const nouveauMemo = (o = {}) => ({ prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), signer: false, prestataires: donnees.partenaires.map((p) => p.nom), entreprise: "VIP Taxi Lanta", ...o });
 // Ce qui repart chez Claude, en texte : aucune trace d'un net ni d'un nom de prestataire.
 const sansFuite = (contenu) => {
   const t = JSON.stringify(contenu);
@@ -94,15 +96,73 @@ test("planning refusé sans durée, sans heure ou sans date ; réglages bornés"
   assert.equal(reglagesPlanning({ agent_planning: { ferry_attente_min: "x" } }).ferry_attente_min, 30);
 });
 
-test("Google Routes : requête et lecture (trafic, distance, ferry)", () => {
-  const q = requeteRoutes({ de: "Jai Tiki Retreat, Koh Lanta", vers: "Krabi Airport", departIso: instantBangkok("2026-11-21", 12 * 60 + 30) });
-  assert.equal(q.departureTime, "2026-11-21T05:30:00Z");
-  assert.equal(q.travelMode, "DRIVE");
-  assert.equal(q.origin.address, "Jai Tiki Retreat, Koh Lanta");
-  const r = lireRoutes({ routes: [{ duration: "9300s", staticDuration: "8700s", distanceMeters: 104500, legs: [{ steps: [{ navigationInstruction: { maneuver: "STRAIGHT" }, staticDuration: "600s" }, { navigationInstruction: { maneuver: "FERRY" }, staticDuration: "900s" }] }] }] });
-  assert.deepEqual(r, { duree_min: 155, sans_trafic_min: 145, distance_km: 104.5, ferry: true, ferry_min: 15, source: "google" });
-  assert.equal(lireRoutes({ routes: [] }), null);
+test("openrouteservice : corps de l'itinéraire, lecture de la durée et du ferry, géocodage du seul nom de lieu", () => {
+  assert.deepEqual(corpsItineraire({ lon: 99.1, lat: 7.5 }, { lon: 98.9, lat: 8.1 }), { coordinates: [[99.1, 7.5], [98.9, 8.1]], extra_info: ["waycategory"] });
+  const r = lireItineraire({ routes: [{ summary: { duration: 9300, distance: 104500 }, extras: { waycategory: { values: [[0, 10, 0], [10, 12, 8]] } } }] });
+  assert.deepEqual(r, { duree_min: 155, distance_km: 104.5, ferry: true });
+  assert.equal(lireItineraire({ routes: [] }), null);
+  assert.equal(parametresGeocode("Jai Tiki Retreat, Koh Lanta").get("boundary.country"), "TH");
+  assert.deepEqual(lireGeocode({ features: [{ geometry: { coordinates: [99.05, 7.55] }, properties: { label: "Jai Tiki, Koh Lanta, TH", confidence: 0.8 } }] }), { lon: 99.05, lat: 7.55, label: "Jai Tiki, Koh Lanta, TH", confiance: 0.8 });
   assert.equal(versHeure("2026-11-21", 25 * 60).date, "2026-11-22");
+});
+
+test("table de temps : zone la plus précise, aller et retour, hôtel connu par sa zone", () => {
+  const lignes = [
+    { de: "Koh Lanta", vers: "Krabi Airport", duree_min: 150, ferry: true, a_verifier: false },
+    { de: "Koh Lanta", vers: "Krabi Town", duree_min: 165, ferry: true, a_verifier: true },
+  ];
+  const zones = ["Koh Lanta", "Krabi Airport", "Krabi Town", "Krabi"];
+  assert.equal(zoneDuLieu("Krabi International Airport", zones), "Krabi Airport");
+  assert.equal(zoneDuLieu("Krabi town centre", zones), "Krabi Town");
+  assert.equal(ligneDeLaTable("Krabi Airport", "Lanta Sand Resort, Koh Lanta", lignes).duree_min, 150);
+  const hotels = [{ cle: "jai tiki retreat", lieu: "Koh Lanta", zone: "Klong Nin" }];
+  assert.equal(ligneDeLaTable("Jai Tiki Retreat", "Krabi Airport", lignes, hotels).duree_min, 150);
+  assert.equal(ligneDeLaTable("Phuket", "Krabi Airport", lignes), null);
+});
+
+test("ordre des durées : table vérifiée, puis ORS, puis table à vérifier, puis rien ; jamais inventée", async () => {
+  const lignes = [{ de: "Koh Lanta", vers: "Krabi Airport", duree_min: 150, ferry: true, marge_min: 20, a_verifier: false }, { de: "Koh Lanta", vers: "Krabi Town", duree_min: 180, ferry: true, a_verifier: true }];
+  const ors = async () => ({ duree_min: 140, distance_km: 110, ferry: false, de_trouve: "Koh Lanta, TH", vers_trouve: "Krabi, TH" });
+  assert.equal((await dureeEntre("Koh Lanta", "Krabi Airport", { lignes, ors })).source, "table");
+  const t = await dureeEntre("Koh Lanta", "Krabi Town", { lignes, ors });
+  assert.equal(t.source, "ors");
+  assert.equal(t.ferry, true, "le ferry de la ligne de la table s'ajoute à ORS");
+  assert.equal(t.de_trouve, "Koh Lanta, TH");
+  assert.equal((await dureeEntre("Koh Lanta", "Krabi Town", { lignes, ors: async () => null })).source, "table_a_verifier");
+  assert.equal(await dureeEntre("Phuket", "Hat Yai", { lignes, ors: async () => null }), null);
+});
+
+test("durées écrites : fourchette à sa borne haute, durées tapées par la personne", () => {
+  assert.equal(minutesDe("about 2 to 3 hours"), 180);
+  assert.equal(minutesDe("about 1h30 to 2 hours"), 120);
+  assert.equal(minutesDe("1 h 30"), 90);
+  assert.equal(minutesDe("50 min"), 50);
+  assert.equal(minutesDe("about 45 minutes"), 45);
+  assert.equal(minutesDe("à voir"), null);
+  assert.deepEqual([...dureesTapees(["Compte 2h30 jusqu'à l'hôpital, puis 25 min"])].sort(), [150, 25]);
+  assert.deepEqual([...dureesTapees(["Vol à 20h00, rendez-vous vers 16h, compte 3h"])], [180]);
+});
+
+test("pré-remplissage : pages taxi, durées des bateaux, grilles de pickup, toutes à vérifier, sans écraser la table", () => {
+  const site = lignesDuSite([{ from: "Krabi Airport", to: "Koh Lanta", drive: "about 2 to 3 hours" }, { from: "Krabi Airport", to: "Khao Lak", drive: null }]);
+  assert.deepEqual(site.map((l) => [l.duree_min, l.ferry, l.a_verifier, l.origine]), [[180, true, true, "site"]]);
+  const bateaux = lignesDesBateaux(donnees.trajets);
+  assert.equal(bateaux.length, 1);
+  assert.equal(bateaux[0].duree_min, 90);
+  assert.ok(!JSON.stringify(bateaux).includes("Blue Ocean"));
+  const zones = lignesDesZones([{ colonnes: ["Bateau 10h30"], zones: [{ nom: "Klong Dao", heures: ["09:40"] }, { nom: "Klong Nin", heures: ["09:10"] }] }], "Koh Lanta");
+  assert.deepEqual(zones.map((l) => [l.de, l.vers, l.duree_min]), [["Klong Dao", "Embarcadère, Koh Lanta", 50], ["Klong Nin", "Embarcadère, Koh Lanta", 80]]);
+  const nouvelles = lignesNouvelles(site, [{ de: "Koh Lanta", vers: "Krabi Airport", mode: "route" }]);
+  assert.equal(nouvelles.length, 0, "une ligne déjà dans la table (dans un sens ou l'autre) n'est pas reprise");
+  assert.equal(clePaire("Krabi Airport", "Koh Lanta"), clePaire("Lanta", "aéroport de Krabi"));
+});
+
+test("estimation web : gardée seulement avec une source tirée de la recherche, durée plausible", () => {
+  const base = { stop_reason: "tool_use", content: [{ type: "web_search_tool_result", content: [{ type: "web_search_result", url: "https://x.test/route", title: "Lanta to Trang" }] }] };
+  const avec = (input) => ({ ...base, content: [...base.content, { type: "tool_use", name: "rendre_duree", input }] });
+  assert.equal(lireEstimation(avec({ duree_min: 180, ferry: true, source_url: "https://x.test/route", explication: "3 h" })).duree_min, 180);
+  assert.equal(lireEstimation(avec({ duree_min: 180, ferry: true, source_url: "https://invente.test", explication: "" })), null);
+  assert.equal(lireEstimation(avec({ duree_min: 0, ferry: false, source_url: "", explication: "" })), null);
 });
 
 // ---- Outils ------------------------------------------------------------------------------------------------------------------
@@ -171,12 +231,19 @@ test("hôtels : connus dans la table, sinon recherche web, sinon à demander", a
 
 test("planifier_course : temps de route lus, heures calculées en code et retenues pour le contrôle", async () => {
   const memo = nouveauMemo();
-  const r = await executer("planifier_course", { date: "2026-11-21", points: [{ lieu: "Jai Tiki Retreat, Koh Lanta", arrivee_voulue: "", attente_min: 0 }, { lieu: "Krabi Nakharin International Hospital", arrivee_voulue: "16:00", attente_min: 60 }, { lieu: "Krabi Airport", arrivee_voulue: "", attente_min: 0 }], heure_depart: "", heure_vol: "", vol_international: false }, ctxDe(), memo);
+  const r = await executer("planifier_course", { date: "2026-11-21", points: [{ lieu: "Jai Tiki Retreat, Koh Lanta", arrivee_voulue: "", attente_min: 0, duree_vers_suivant_min: 0, source_duree: "" }, { lieu: "Krabi Nakharin International Hospital", arrivee_voulue: "16:00", attente_min: 60, duree_vers_suivant_min: 0, source_duree: "" }, { lieu: "Krabi Airport", arrivee_voulue: "", attente_min: 0, duree_vers_suivant_min: 0, source_duree: "" }], heure_depart: "", heure_vol: "", vol_international: false }, ctxDe(), memo);
   assert.equal(r.contenu.ok, true);
   assert.equal(r.contenu.pickup.heure, "12:30");
   assert.ok(r.contenu.alertes.includes("temps_simules"));
   assert.ok(memo.heures.has("12:30") && memo.heures.has("17:25"));
-  const sansTemps = await executer("planifier_course", { date: "2026-11-21", points: [{ lieu: "Nulle part", arrivee_voulue: "", attente_min: 0 }, { lieu: "Ailleurs", arrivee_voulue: "10:00", attente_min: 0 }], heure_depart: "", heure_vol: "", vol_international: false }, ctxDe({ tempsRoute: async () => null }), nouveauMemo());
+  const sansTemps = await executer("planifier_course", { date: "2026-11-21", points: [{ lieu: "Nulle part", arrivee_voulue: "", attente_min: 0, duree_vers_suivant_min: 0, source_duree: "" }, { lieu: "Ailleurs", arrivee_voulue: "10:00", attente_min: 0, duree_vers_suivant_min: 0, source_duree: "" }], heure_depart: "", heure_vol: "", vol_international: false }, ctxDe({ simule: null }), nouveauMemo());
+  assert.equal(sansTemps.contenu.erreur, "temps_indisponible");
+  // Une durée tapée par la personne passe ; une durée qu'elle n'a pas écrite est refusée.
+  const pts = (d) => [{ lieu: "Nulle part", arrivee_voulue: "", attente_min: 0, duree_vers_suivant_min: d, source_duree: "personne" }, { lieu: "Ailleurs", arrivee_voulue: "10:00", attente_min: 0, duree_vers_suivant_min: 0, source_duree: "" }];
+  const donnee = await executer("planifier_course", { date: "2026-11-21", points: pts(150), heure_depart: "", heure_vol: "", vol_international: false }, ctxDe({ simule: null }), nouveauMemo({ durees: new Set([150]) }));
+  assert.equal(donnee.contenu.pickup.heure, "07:15");
+  const inventee = await executer("planifier_course", { date: "2026-11-21", points: pts(120), heure_depart: "", heure_vol: "", vol_international: false }, ctxDe({ simule: null }), nouveauMemo({ durees: new Set([150]) }));
+  assert.equal(inventee.contenu.erreur, "duree_sans_source");
   assert.equal(sansTemps.contenu.erreur, "temps_indisponible");
   assert.equal(sansTemps.erreur, true);
 });
@@ -312,9 +379,11 @@ test("historique et titre", () => {
 });
 
 test("le calcul des heures est le même fichier côté fonction et côté écran", () => {
-  const a = readFileSync(new URL("../supabase/functions/agent/planifier.js", import.meta.url), "utf8");
-  const b = readFileSync(new URL("../src/gestion/js/agent-planifier.mjs", import.meta.url), "utf8");
-  assert.equal(a, b);
+  for (const [f, g] of [["planifier.js", "agent-planifier.mjs"], ["temps.js", "agent-temps.mjs"]]) {
+    const a = readFileSync(new URL(`../supabase/functions/agent/${f}`, import.meta.url), "utf8");
+    const b = readFileSync(new URL(`../src/gestion/js/${g}`, import.meta.url), "utf8");
+    assert.equal(a, b, f);
+  }
 });
 
 test("migration 52 : RLS par personne et entreprise, messages sans modification, journal « agent »", () => {

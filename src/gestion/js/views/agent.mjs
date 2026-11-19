@@ -7,6 +7,7 @@ import { h, toast, confirmer, modal, icone, vider, ajouter } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
+import { clePaire } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
 
 const ERREURS = {
@@ -57,6 +58,8 @@ const ETAPES = {
   proposer_reservation: N_("Je prépare le service"),
   proposer_modification: N_("Je prépare la modification"),
   proposer_reponse: N_("Je prépare la réponse"),
+  estimer_temps_web: N_("Je cherche une estimation sur le web"),
+  proposer_temps_trajet: N_("Je prépare la durée pour la table"),
 };
 
 const disponible = () => agentActif(reglages()) && peut("partenaires.lire") && peut("dossiers.ecrire");
@@ -325,9 +328,10 @@ export async function vueAgent(idOuvert = "") {
   // ---- Frise d'une course -------------------------------------------------------------------------------------------------------
   function frise(plan) {
     const points = lignesFrise(plan);
+    const ORIGINE_DUREE = { table: N_("table des temps"), ors: N_("OpenStreetMap, à vérifier"), table_a_verifier: N_("table, ligne à vérifier"), personne: N_("durée donnée par vous"), estimation_web: N_("estimation trouvée sur le web"), simulation: N_("simulée") };
     const sousTrajet = (t) =>
       [
-        tr("{d} de route", { d: texteDuree(t.route_min) }),
+        tr("{d} de route ({source})", { d: texteDuree(t.route_min), source: tr(ORIGINE_DUREE[t.source] || N_("source inconnue")) }),
         t.ferry ? tr("ferry, {m} min d'attente comptées", { m: t.ferry_attente_min }) : "",
         tr("{m} min de marge", { m: t.marge_min }),
       ]
@@ -350,7 +354,7 @@ export async function vueAgent(idOuvert = "") {
     return h(
       "figure",
       { class: "agent-frise" },
-      h("figcaption", null, tr("Course du {date}", { date }), plan.alertes.includes("temps_simules") ? h("span", { class: "agent-simule" }, tr("Temps simulés")) : null),
+      h("figcaption", null, tr("Course du {date}", { date }), plan.alertes.includes("temps_simules") ? h("span", { class: "agent-simule" }, tr("Temps simulés")) : plan.alertes.includes("estimation_web") ? h("span", { class: "agent-simule" }, tr("Estimation web")) : plan.alertes.includes("temps_a_verifier") ? h("span", { class: "agent-simule" }, tr("Durée à vérifier")) : null),
       h(
         "ol",
         null,
@@ -366,7 +370,9 @@ export async function vueAgent(idOuvert = "") {
               i === 0 ? h("span", null, tr("Pickup")) : null,
               p.rendezVous ? h("span", null, p.fourchette ? tr("Rendez-vous, arrivée prévue vers {h}", { h: p.fourchette[0] }) : tr("Rendez-vous")) : p.fourchette ? h("span", null, tr("Arrivée entre {a} et {b}", { a: p.fourchette[0], b: p.fourchette[1] })) : null,
               p.attente ? h("span", null, tr("{m} min sur place, départ à {h}", { m: p.attente, h: p.depart })) : null,
-              p.trajet ? h("span", { class: "agent-trajet" }, sousTrajet(p.trajet)) : null
+              p.trajet ? h("span", { class: "agent-trajet" }, sousTrajet(p.trajet)) : null,
+              p.trajet && p.trajet.de_trouve ? h("span", { class: "agent-trajet" }, tr("OpenStreetMap a compris : {a} → {b}", { a: p.trajet.de_trouve, b: p.trajet.vers_trouve })) : null,
+              p.trajet && p.trajet.source_url ? h("a", { class: "agent-trajet", href: p.trajet.source_url, target: "_blank", rel: "noopener noreferrer" }, tr("Source de l'estimation")) : null
             )
           )
         )
@@ -396,6 +402,9 @@ export async function vueAgent(idOuvert = "") {
     } else if (c.genre === "modification") {
       corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
       action = { libelle: tr("Ouvrir la modification"), faire: () => ouvrirModification(c) };
+    } else if (c.genre === "temps") {
+      corps.push(h("p", { class: "agent-modif" }, h("strong", null, d.de), " ", icone("inverser", 16), " ", h("strong", null, d.vers), " ", h("span", null, texteDuree(d.duree_min))), h("p", { class: "aide" }, [d.ferry ? tr("ferry") : "", d.marge_min ? tr("marge {m} min", { m: d.marge_min }) : "", d.source].filter(Boolean).join(", ")));
+      action = { libelle: tr("Ajouter à la table"), faire: () => ajouterTemps(c) };
     } else if (c.genre === "reponse") {
       const zone = h("textarea", { class: "agent-reponse", rows: 8, "aria-label": tr("Réponse au client"), lang: d.langue === "en" ? "en" : "fr" });
       zone.value = d.message || "";
@@ -403,7 +412,7 @@ export async function vueAgent(idOuvert = "") {
       action = { libelle: tr("Copier la réponse"), faire: () => copier(c, zone.value) };
     }
     const avert = (c.avertissements || []).length ? h("ul", { class: "assistant-avertissements" }, c.avertissements.map((a) => h("li", null, texteAvertissement(a)))) : null;
-    const libelles = { dossier: N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: N_("Réponse au client") };
+    const libelles = { dossier: N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: N_("Réponse au client"), temps: N_("Temps de trajet") };
     const decidee = c.statut !== "proposee";
     return h(
       "article",
@@ -452,6 +461,17 @@ export async function vueAgent(idOuvert = "") {
     if (!r) return toast(tr("Ce service n'existe plus."), true);
     const { formulaireReservation } = await import("./reservations.mjs");
     const ferme = modal(tr("Modifier la réservation"), formulaireReservation(reservationModifiee(r, c.donnees), async () => (ferme(), toast(tr("Service modifié.")), await decider(c, "validee"))));
+  }
+  // Une durée donnée dans la conversation entre dans la table de référence, confirmée (Nani l'a donnée elle-même).
+  async function ajouterTemps(c) {
+    const d = c.donnees;
+    try {
+      await etat.store.enregistrerTempsTrajets(etat.entiteId, [{ de: d.de, vers: d.vers, cle: clePaire(d.de, d.vers), mode: "route", duree_min: d.duree_min, ferry: !!d.ferry, marge_min: d.marge_min || 0, source: d.source || "", source_date: new Date().toISOString().slice(0, 10), a_verifier: false, origine: "agent" }]);
+      toast(tr("Durée ajoutée à la table des temps de trajet."));
+      await decider(c, "validee");
+    } catch (err) {
+      toast(err.message, true);
+    }
   }
   async function copier(c, texte) {
     try {

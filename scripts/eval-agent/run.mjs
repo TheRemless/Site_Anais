@@ -96,6 +96,7 @@ async function jouer(c, client) {
     prestations_nets: [],
     trajets_nets: [],
     hotels_lieux: c.hotels_lieux || [],
+    temps_trajets: c.temps_trajets || [],
     clients: [],
     dossiers: [],
     reservations: [],
@@ -103,7 +104,8 @@ async function jouer(c, client) {
   };
   const prestataires = donnees.partenaires.map((p) => p.nom).filter((n) => n && n.length > 2);
   const prenoms = [regl.responsable && regl.responsable.prenom, "Anaïs", "Nani"].filter(Boolean);
-  const ctx = { charger: async (n) => donnees[n] || [], reglages, tempsRoute: async ({ de, vers }) => (c.routes === "simule" ? tempsSimule(de, vers) : null), situerWeb: null, maintenant: () => Date.parse(`${c.aujourdhui}T03:00:00Z`) };
+  // Ni ORS ni recherche web dans le jeu d'essai : la table du cas, et les temps de démo si le cas le demande.
+  const ctx = { charger: async (n) => donnees[n] || [], reglages, ors: null, simule: c.routes === "simule" ? tempsSimule : null, estimerWeb: null, situerWeb: null, maintenant: () => Date.parse(`${c.aujourdhui}T03:00:00Z`) };
   const systeme = consignes({ entreprise: regl.nom || "", reglages, lieu: "Koh Lanta (Thaïlande)", prenomEquipe: regl.responsable ? regl.responsable.prenom : "" });
   const contexte = contexteDuJour({ aujourdhui: c.aujourdhui, jour: JOURS[new Date(`${c.aujourdhui}T12:00:00Z`).getUTCDay()], lieuCourt: "Koh Lanta" });
   const messages = [];

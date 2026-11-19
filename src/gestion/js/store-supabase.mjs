@@ -277,6 +277,20 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async agentCarte(id, statut) {
       return verifie(await sb.from("agent_cartes").update({ statut }).eq("id", id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single());
     },
+    // Table des temps de trajet de référence (migration 52). null tant que la table manque.
+    async tempsTrajets(entiteId) {
+      const { data, error } = await sb.from("temps_trajets").select("id, entite_id, de, vers, cle, mode, duree_min, ferry, marge_min, source, source_date, a_verifier, origine, maj_le").eq("entite_id", entiteId).order("de").limit(2000);
+      return error ? null : data || [];
+    },
+    // Une ou plusieurs lignes, ajoutées ou remplacées (une par paire et par mode).
+    async enregistrerTempsTrajets(entiteId, lignes) {
+      const { data, error } = await sb.from("temps_trajets").upsert(lignes.map((l) => ({ ...l, entite_id: entiteId })), { onConflict: "entite_id,mode,cle" }).select("id, entite_id, de, vers, cle, mode, duree_min, ferry, marge_min, source, source_date, a_verifier, origine, maj_le");
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+    async supprimerTempsTrajet(id) {
+      verifie(await sb.from("temps_trajets").delete().eq("id", id).select("id"));
+    },
     // Un message à l'agent : la réponse arrive en flux (une ligne JSON par événement), passée à `surEvenement` au fil de l'eau.
     // Rend { ok } ou { erreur } (droit, limite, plafond, indisponible), comme l'assistant.
     async agentEnvoyer(corps, surEvenement) {

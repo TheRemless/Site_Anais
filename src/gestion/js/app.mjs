@@ -19,6 +19,7 @@ const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
 const ROUTES = [
   [/^#\/reservations(?:\?.*)?$/, "reservations", vers(() => import("./views/reservations.mjs"), "vueReservations")],
   [/^#\/reservation\/([\w-]+)(?:\?.*)?$/, "reservation", vers(() => import("./views/reservation-rappel.mjs"), "vueReservation")],
+  [/^#\/temps-trajets$/, "temps-trajets", vers(() => import("./views/temps-trajets.mjs"), "vueTempsTrajets")],
   [/^#\/agent(?:\/([\w-]+))?$/, "agent", vers(() => import("./views/agent.mjs"), "vueAgent")],
   [/^#\/messages$/, "messages", vers(() => import("./views/messages.mjs"), "vueMessages")],
   [/^#\/fiduciaire$/, "fiduciaire", vers(() => import("./views/fiduciaire.mjs"), "vueFiduciaire")],
@@ -210,6 +211,8 @@ function ecrans() {
             // Modules « Trajets et règles » et « Dû aux partenaires » : excursions seulement (Taxi n'a ni horaires de bateaux ni dû, tout se paie au chauffeur).
             ...si(moduleActif("trajets"), { href: "#/trajets", libelle: tr("Trajets"), cle: "trajets", icone: "bateau" }),
             ...si(moduleActif("trajets"), { href: "#/regles", libelle: tr("Règles"), cle: "regles", icone: "regles" }),
+            // Temps de trajet de référence : ce que l'assistant lit d'abord pour calculer un pickup (Taxi compris, qui n'a pas le module Trajets).
+            ...si(agentVisible(), { href: "#/temps-trajets", libelle: tr("Temps de trajet"), cle: "temps-trajets", icone: "horloge" }),
             ...si(peut("partenaires.nets") && moduleActif("du"), { href: "#/du", libelle: tr("Dû aux partenaires"), cle: "du", icone: "du" }),
           ]
         : [],

@@ -1,7 +1,8 @@
 // Démonstration de l'onglet « Assistant » : rien ne part chez Anthropic ni chez Google. Un agent simulé répond au cas type d'une course
 // avec rendez-vous (pickup à un hôtel, arrivée à une heure donnée, attente, puis aéroport), avec le vrai calcul des heures
-// (agent-planifier.mjs) et des temps de route simulés, toujours signalés comme tels. Il émet les mêmes événements que la fonction « agent ».
+// (agent-planifier.mjs) : les durées de la table de temps de l'entreprise d'abord, sinon des temps simulés, toujours signalés comme tels. Il émet les mêmes événements que la fonction « agent ».
 import { planifierCourse, tempsSimule, decalerDate } from "./agent-planifier.mjs";
+import { dureeEntre } from "./agent-temps.mjs";
 
 const JOURS = { dimanche: 0, sunday: 0, lundi: 1, monday: 1, mardi: 2, tuesday: 2, mercredi: 3, wednesday: 3, jeudi: 4, thursday: 4, vendredi: 5, friday: 5, samedi: 6, saturday: 6 };
 const sans = (s) =>
@@ -48,7 +49,7 @@ const dateAnglaise = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("e
 
 // Un tour de conversation simulé. `etat` : ce que la démo a retenu de la conversation (course lue, compléments). Rend les événements et le
 // nouvel état. Les cartes rendues n'ont pas encore d'identifiant : le magasin de démo les enregistre.
-export function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = "", signer = false } = {}) {
+export async function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = "", signer = false, lignes = [] } = {}) {
   const ev = [];
   let course = etat.course || null;
   const nouvelle = lireCourse(texte, aujourdhui);
@@ -67,9 +68,10 @@ export function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = "", si
   ev.push({ t: "etape", outil: "planifier_course", texte: "Je calcule les horaires de la course" });
   const points = [{ lieu: course.pickup || "Point de prise en charge" }, { lieu: course.rdv, arrivee_voulue: course.heureRdv, attente_min: course.attente }];
   if (course.aeroport) points.push({ lieu: course.aeroport });
-  const trajets = points.slice(1).map((p, i) => tempsSimule(points[i].lieu, p.lieu));
+  const trajets = await Promise.all(points.slice(1).map((p, i) => dureeEntre(points[i].lieu, p.lieu, { lignes, simule: tempsSimule })));
   if (trajets.some((x) => !x)) {
-    ev.push({ t: "texte", delta: "Je n'ai pas de temps de route pour ce trajet en démonstration. Avec la clé Google Maps, il viendrait de Google (trafic prévu compris)." });
+    const i = trajets.findIndex((x) => !x);
+    ev.push({ t: "texte", delta: `Je n'ai aucune durée pour ${points[i].lieu} → ${points[i + 1].lieu} : ni dans la table des temps de trajet, ni en démonstration. Combien de temps comptez-vous ? Je pourrai l'ajouter à la table.` });
     return { evenements: ev, etat: { ...etat, course, complements: comp } };
   }
   const plan = planifierCourse({ date: course.date, points, trajets, vol: comp.heureVol ? { heure: comp.heureVol, international: !!comp.international } : null });
@@ -80,14 +82,14 @@ export function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = "", si
   ev.push({ t: "planning", planning: plan });
   const rdv = plan.etapes[1];
   const fin = plan.etapes[plan.etapes.length - 1];
-  const lignes = [
+  const phrases = [
     `Pour être à ${course.rdv} à ${course.heureRdv} le ${dateLongue(course.date)}, pickup à ${plan.pickup.heure} à ${course.pickup || "l'hôtel"}.`,
     `Arrivée prévue vers ${rdv.arrivee_prevue.heure}${course.attente ? `, puis ${course.attente} min d'attente et départ à ${rdv.depart.heure}` : ""}.`,
     course.aeroport ? `Arrivée à l'aéroport vers ${fin.arrivee_prevue.heure}, au plus tard ${fin.arrivee_au_plus_tard.heure}.` : "",
   ].filter(Boolean);
   if (plan.vol) {
     const v = plan.vol;
-    lignes.push(
+    phrases.push(
       v.verdict === "tenable"
         ? `Le vol de ${v.heure} est tenable : il reste ${v.marge_restante_min} min de marge sur l'arrivée limite de ${v.arrivee_limite.heure}.`
         : v.verdict === "juste"
@@ -96,10 +98,11 @@ export function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = "", si
     );
   }
   const manque = [!comp.heureVol && course.aeroport ? "l'heure du vol" : "", !comp.personnes ? "le nombre de personnes" : "", comp.bagages === undefined || comp.bagages === null ? "les bagages" : ""].filter(Boolean);
-  if (manque.length) lignes.push("", `Pour finir, il me faut ${manque.join(", ").replace(/, ([^,]*)$/, " et $1")}.`);
-  lignes.push("", "Le prix de la course reste à fixer par vous : je ne le propose pas.");
-  lignes.push("", "Temps de route simulés pour la démo : avec la clé Google Maps, ils viendront de Google.");
-  ev.push({ t: "texte", delta: lignes.join("\n") });
+  if (manque.length) phrases.push("", `Pour finir, il me faut ${manque.join(", ").replace(/, ([^,]*)$/, " et $1")}.`);
+  phrases.push("", "Le prix de la course reste à fixer par vous : je ne le propose pas.");
+  if (plan.alertes.includes("temps_simules")) phrases.push("", "Temps de route simulés pour la démo : en service, ils viennent de la table des temps de trajet, puis d'OpenStreetMap.");
+  else if (plan.alertes.includes("temps_a_verifier")) phrases.push("", "Une durée vient d'une ligne de la table encore à vérifier.");
+  ev.push({ t: "texte", delta: phrases.join("\n") });
 
   if (!manque.length && (!plan.vol || plan.vol.verdict !== "pas_tenable")) {
     ev.push({ t: "etape", outil: "proposer_dossier", texte: "Je prépare le dossier" });

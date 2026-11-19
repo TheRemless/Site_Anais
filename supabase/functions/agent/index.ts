@@ -12,7 +12,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, PLAFOND_MOIS_USD_DEFAUT, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { memoDepuis, refDe, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
-import { CHAMPS_ROUTES, URL_ROUTES, lireRoutes, requeteRoutes } from "./planifier.js";
+import { ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, clePaire, cleZone, corpsItineraire, lireGeocode, lireItineraire, parametresGeocode } from "./temps.js";
+import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
 
@@ -117,6 +118,7 @@ Deno.serve(async (req) => {
     prestations_nets: "prestation_id, net",
     trajets_nets: "trajet_id, net_adulte, net_enfant",
     hotels_lieux: "cle, nom, lieu, zone, localite, source_url, certitude, verifie",
+    temps_trajets: "de, vers, mode, duree_min, ferry, marge_min, source, source_date, a_verifier",
     dossiers: "id, ref, client_id, date_depart, date_retour, annule",
     reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente",
   };
@@ -142,25 +144,63 @@ Deno.serve(async (req) => {
   const anthropic = new Anthropic({ apiKey: cle, timeout: 60_000, maxRetries: 1 });
   const appels: { usage: Record<string, unknown>; modele: string }[] = [];
 
-  // Temps de route : Google Maps si la clé est posée, la table de démonstration si AGENT_TRAJETS_SIMULES=1, sinon rien (l'agent demande).
-  const cleMaps = Deno.env.get("GOOGLE_MAPS_API_KEY");
+  // Durées de route : la table de l'entreprise (lue par les outils), puis openrouteservice si la clé ORS_API_KEY est posée, avec ses résultats
+  // gardés en base (lieux_geo, trajets_ors) ; temps simulés seulement si AGENT_TRAJETS_SIMULES=1. Rien d'un client ne part chez ORS :
+  // seulement le nom d'un lieu (géocodage) ou des coordonnées (itinéraire).
+  const cleOrs = Deno.env.get("ORS_API_KEY");
   const simules = Deno.env.get("AGENT_TRAJETS_SIMULES") === "1";
-  const routes = new Map<string, unknown>();
-  const tempsRoute = async ({ de, vers, departIso }: { de: string; vers: string; departIso: string | null }) => {
-    const k = `${de}|${vers}|${departIso || ""}`;
-    if (routes.has(k)) return routes.get(k);
-    let r: unknown = null;
-    if (cleMaps) {
-      try {
-        const rep = await fetch(URL_ROUTES, { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": cleMaps, "X-Goog-FieldMask": CHAMPS_ROUTES }, body: JSON.stringify(requeteRoutes({ de, vers, departIso })), signal: AbortSignal.timeout(10_000) });
-        r = rep.ok ? lireRoutes(await rep.json()) : null;
-        if (!rep.ok) console.error("agent : routes", rep.status);
-      } catch (err) {
-        console.error("agent : routes", err instanceof Error ? err.message.slice(0, 120) : "");
+  const orsUrl = Deno.env.get("ORS_URL") || ORS_BASE;
+  const appelOrs = async (chemin: string, init: RequestInit = {}) => {
+    const rep = await fetch(`${orsUrl}${chemin}`, { ...init, headers: { Authorization: cleOrs!, "Content-Type": "application/json", ...(init.headers || {}) }, signal: AbortSignal.timeout(10_000) });
+    if (!rep.ok) {
+      console.error("agent : ORS", rep.status);
+      return null;
+    }
+    return rep.json();
+  };
+  const geo = new Map<string, { lon: number; lat: number; label: string } | null>();
+  const situerOrs = async (lieu: string) => {
+    const k = cleZone(lieu);
+    if (geo.has(k)) return geo.get(k)!;
+    let g: { lon: number; lat: number; label: string } | null = null;
+    const connu = await sb.from("lieux_geo").select("lon, lat, label").eq("entite_id", entiteId).eq("cle", k).maybeSingle();
+    if (connu.data) g = { lon: Number(connu.data.lon), lat: Number(connu.data.lat), label: connu.data.label };
+    else {
+      const r = lireGeocode(await appelOrs(`${ORS_GEOCODE}?${parametresGeocode(lieu)}`, { method: "GET" }));
+      if (r) {
+        g = r;
+        await sb.from("lieux_geo").upsert({ entite_id: entiteId, cle: k, nom: lieu.slice(0, 160), lon: r.lon, lat: r.lat, label: r.label, origine: "ors", a_verifier: true }, { onConflict: "entite_id,cle" });
       }
-    } else if (simules) r = tempsSimule(de, vers);
-    routes.set(k, r);
-    return r;
+    }
+    geo.set(k, g);
+    return g;
+  };
+  const ors = cleOrs
+    ? async (de: string, vers: string) => {
+        try {
+          const cle = clePaire(de, vers);
+          const cache = await sb.from("trajets_ors").select("duree_min, distance_km, ferry, de_trouve, vers_trouve").eq("entite_id", entiteId).eq("cle", cle).maybeSingle();
+          if (cache.data) return cache.data;
+          const [a, b] = await Promise.all([situerOrs(de), situerOrs(vers)]);
+          if (!a || !b) return null;
+          const r = lireItineraire(await appelOrs(ORS_ITINERAIRE, { method: "POST", body: JSON.stringify(corpsItineraire(a, b)) }));
+          if (!r) return null;
+          const ligne = { ...r, de_trouve: a.label, vers_trouve: b.label };
+          await sb.from("trajets_ors").upsert({ entite_id: entiteId, cle, ...ligne }, { onConflict: "entite_id,cle" });
+          return ligne;
+        } catch (err) {
+          console.error("agent : ORS", err instanceof Error ? err.message.slice(0, 120) : "");
+          return null;
+        }
+      }
+    : null;
+
+  // Dernier recours : une durée trouvée par la recherche web (Haiku, sources contrôlées), toujours marquée estimation.
+  const estimerWeb = async (de: string, vers: string) => {
+    const p = parametresEstimation(de, vers);
+    const m = await anthropic.beta.messages.create(p as Anthropic.Beta.MessageCreateParamsNonStreaming);
+    appels.push({ usage: m.usage as unknown as Record<string, unknown>, modele: m.model });
+    return lireEstimation(m);
   };
 
   // Situer des hôtels inconnus : l'usage « situer » de l'assistant (Haiku, recherche web, sources contrôlées), puis gardés dans hotels_lieux.
@@ -203,7 +243,7 @@ Deno.serve(async (req) => {
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
   const messages = historique(debutValide([...(anciens.data || [])].reverse()));
   const memo = memoDepuis([...messages, { role: "user", content: message }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
-  const ctx = { charger, reglages, tempsRoute, situerWeb, maintenant: () => Date.now() };
+  const ctx = { charger, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

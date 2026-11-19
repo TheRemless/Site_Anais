@@ -47,6 +47,7 @@ export function creer() {
     data.agent_conversations = data.agent_conversations || [];
     data.agent_messages = data.agent_messages || [];
     data.agent_cartes = data.agent_cartes || [];
+    data.temps_trajets = data.temps_trajets || [];
     // Corbeille des documents et compteurs de numéros, comme la base (migration 34). L'acompte figé du dossier existe comme colonne.
     data.corbeille_documents = data.corbeille_documents || [];
     data.compteurs_ref = data.compteurs_ref || {};
@@ -398,6 +399,27 @@ export function creer() {
       sauve();
       return structuredClone(c);
     },
+    async tempsTrajets(entiteId) {
+      return structuredClone(data.temps_trajets.filter((l) => l.entite_id === entiteId));
+    },
+    async enregistrerTempsTrajets(entiteId, lignes) {
+      const perms = permissionsDans(contexte(), entiteId);
+      if (!perms.includes("partenaires.lire") || !perms.includes("dossiers.ecrire")) throw new Error("Droit insuffisant");
+      const out = [];
+      for (const l of lignes) {
+        const maj = { ...l, entite_id: entiteId, maj_le: new Date().toISOString(), maj_par: utilisateur.user_id };
+        const avant = data.temps_trajets.find((x) => x.entite_id === entiteId && x.mode === l.mode && x.cle === l.cle);
+        if (avant) Object.assign(avant, maj);
+        else data.temps_trajets.push({ id: uid(), cree_le: maj.maj_le, ...maj });
+        out.push(structuredClone(data.temps_trajets.find((x) => x.entite_id === entiteId && x.mode === l.mode && x.cle === l.cle)));
+      }
+      sauve();
+      return out;
+    },
+    async supprimerTempsTrajet(id) {
+      data.temps_trajets = data.temps_trajets.filter((l) => l.id !== id);
+      sauve();
+    },
     async agentEnvoyer(corps, surEvenement) {
       const e = corps.entite_id;
       const regl = data.reglages[e] || {};
@@ -418,7 +440,7 @@ export function creer() {
       message("user", [{ type: "text", text: texte }]);
       const { repondreDemo } = await import("./agent-demo.mjs");
       const entite = data.entites.find((x) => x.id === e) || {};
-      const r = repondreDemo(texte, { aujourdhui: aujourdhui(), etat: conv.demo_etat || {}, entreprise: entite.nom || "", signer: !regl.fonctionnement || regl.fonctionnement === "sur_mesure" });
+      const r = await repondreDemo(texte, { aujourdhui: aujourdhui(), etat: conv.demo_etat || {}, entreprise: entite.nom || "", signer: !regl.fonctionnement || regl.fonctionnement === "sur_mesure", lignes: data.temps_trajets.filter((l) => l.entite_id === e) });
       conv.demo_etat = r.etat;
       let dernier = "";
       for (const ev of r.evenements) {

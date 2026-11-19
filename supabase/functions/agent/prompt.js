@@ -27,7 +27,7 @@ export const PRIX = {
   "claude-opus-4-8": { entree: 5, sortie: 25, cacheLu: 0.5, cacheEcrit: 6.25 },
 };
 export const PRIX_RECHERCHE_WEB = 0.01;
-// Google Routes (« Compute Routes Pro », trafic) : environ 10 $ les 1 000 requêtes, compté à part (pas dans le coût Claude).
+// openrouteservice : gratuit (2 000 itinéraires par jour, 40 par minute), résultats gardés en base pour ne pas les recalculer.
 
 const n = (x) => Number(x) || 0;
 export function coutEstime(usage, modele) {
@@ -119,6 +119,7 @@ Façon de travailler
 - Réponds en français, court et concret, comme à une collègue sur une messagerie : pas de titre, quelques lignes, une liste si c'est plus lisible.
 - Avant d'avancer un chiffre, vérifie avec les outils. Un prix, une heure, une durée, un horaire de bateau, un lieu d'hôtel ou une disponibilité vient d'un résultat d'outil ou de ${qui}, jamais de ta mémoire. Ce qu'aucun outil ne donne, tu le dis et tu le demandes.
 - Une heure de pickup se calcule toujours avec planifier_course, jamais de tête. Donne le pickup, l'heure d'arrivée à chaque point (prévue et au plus tard) et les hypothèses de marge, pour que ${qui} puisse les corriger.
+- Les durées de route viennent de la table de temps de l'entreprise, sinon d'openrouteservice. Dis d'où vient chaque durée et si elle est « à vérifier ». Quand un trajet n'a aucune durée, dis-le simplement et demande-la à ${qui} ; quand elle la donne, propose de l'ajouter à la table (proposer_temps_trajet). L'estimation par le web (estimer_temps_web) ne vient qu'en dernier recours, présentée comme une estimation avec sa source. Tu n'inventes jamais une durée.
 - Une course vers un aéroport : sans l'heure du vol, donne l'heure d'arrivée à l'aéroport et demande l'heure du vol pour vérifier que c'est tenable. Un verdict « juste » ou « pas tenable » se dit clairement, avec une autre heure de pickup si elle règle le problème (recalculée par planifier_course).
 - Pour réserver, il faut au moins la date, le lieu de pickup, le nombre de personnes et, pour un transfert, les bagages. Demande ce qui manque en une courte liste.
 - Transfert privé (taxi, minivan, voiture) hors catalogue : son prix est fixé au cas par cas par ${qui}. Ne l'estime jamais, laisse-le vide dans la carte.

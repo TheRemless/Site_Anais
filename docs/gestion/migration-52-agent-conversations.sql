@@ -8,10 +8,17 @@
 -- « agent » lit et écrit avec la session de la personne : les mêmes règles s'appliquent.
 -- Conservation : une conversation sans nouveau message depuis 90 jours est supprimée avec ses messages et ses cartes (fonction
 -- purger_agent_conversations, appelée par la fonction « agent » à chaque échange ; les dossiers créés restent, bien sûr).
--- 4. Journal de l'assistant : la colonne « usage » accepte « agent » (et les usages des lots 1 et 5, trier et brochure, pour ne pas les
+-- 4. temps_trajets : la table de temps de trajet de référence de chaque entreprise (décision de Jérémy du 19.11.2026, pas de Google Maps) :
+--    de zone à zone, durée en minutes, ferry ou non, marge conseillée, source et date, « à vérifier » tant que Nani ou Mr. Brown ne l'ont pas
+--    confirmée. Pré-remplie depuis l'écran (pages taxi du site, durées des trajets, grilles de pickup), chaque ligne marquée à vérifier.
+--    Lire : « partenaires.lire ». Ajouter ou corriger : « dossiers.ecrire » et « partenaires.lire ». Supprimer : « partenaires.ecrire ».
+-- 5. lieux_geo et trajets_ors : ce qu'openrouteservice a trouvé (coordonnées d'un lieu, durée entre deux lieux), gardé pour ne pas le
+--    recalculer (quota gratuit). Aucune donnée de client : un nom de lieu, des coordonnées, une durée. Mêmes droits que temps_trajets.
+-- 6. Journal de l'assistant : la colonne « usage » accepte « agent » (et les usages des lots 1 et 5, trier et brochure, pour ne pas les
 --    perdre si cette migration passe après les leurs).
 -- Ne modifie aucune donnée existante. Se rejoue sans effet.
 -- Retour en arrière :
+--   drop table if exists temps_trajets; drop table if exists lieux_geo; drop table if exists trajets_ors; drop function if exists noter_temps_trajet();
 --   drop table if exists agent_cartes; drop table if exists agent_messages; drop table if exists agent_conversations;
 --   drop function if exists purger_agent_conversations(integer); drop function if exists noter_agent_conversation();
 --   drop function if exists agent_ma_conversation(uuid); drop function if exists figer_agent_carte(); drop function if exists assistant_cout_depuis(timestamptz);
@@ -45,7 +52,7 @@ create index if not exists agent_messages_conversation on agent_messages (conver
 create table if not exists agent_cartes (
   id uuid primary key default gen_random_uuid(),
   conversation_id uuid not null references agent_conversations (id) on delete cascade,
-  genre text not null check (genre in ('dossier', 'reservation', 'modification', 'reponse')),
+  genre text not null check (genre in ('dossier', 'reservation', 'modification', 'reponse', 'temps')),
   titre text not null default '' check (length(titre) <= 120),
   donnees jsonb not null default '{}',
   avertissements jsonb not null default '[]',
@@ -131,6 +138,106 @@ create or replace function purger_agent_conversations(jours integer default 90) 
 $$;
 revoke all on function purger_agent_conversations(integer) from public, anon;
 grant execute on function purger_agent_conversations(integer) to authenticated;
+
+-- ---- Temps de trajet de référence ----------------------------------------------------------------------------------------------
+create table if not exists temps_trajets (
+  id uuid primary key default gen_random_uuid(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  de text not null check (length(de) between 1 and 120),
+  vers text not null check (length(vers) between 1 and 120),
+  -- Clé de la paire, la même dans les deux sens (temps.js, clePaire) : une ligne Koh Lanta ↔ Krabi Airport sert à l'aller et au retour.
+  cle text not null check (length(cle) between 1 and 250),
+  mode text not null default 'route' check (mode in ('route', 'bateau')),
+  duree_min integer not null check (duree_min between 1 and 1440),
+  ferry boolean not null default false,
+  marge_min integer not null default 0 check (marge_min between 0 and 240),
+  source text not null default '' check (length(source) <= 200),
+  source_date date,
+  a_verifier boolean not null default true,
+  origine text not null default 'saisie' check (origine in ('saisie', 'site', 'bateau', 'zones', 'agent')),
+  cree_le timestamptz not null default now(),
+  maj_le timestamptz not null default now(),
+  maj_par uuid default auth.uid(),
+  unique (entite_id, mode, cle)
+);
+create index if not exists temps_trajets_entite on temps_trajets (entite_id);
+
+create table if not exists lieux_geo (
+  id uuid primary key default gen_random_uuid(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  cle text not null check (length(cle) between 1 and 160),
+  nom text not null check (length(nom) between 1 and 160),
+  lon double precision not null check (lon between -180 and 180),
+  lat double precision not null check (lat between -90 and 90),
+  label text not null default '' check (length(label) <= 200),
+  origine text not null default 'ors' check (origine in ('ors', 'saisie')),
+  a_verifier boolean not null default true,
+  maj_le timestamptz not null default now(),
+  maj_par uuid default auth.uid(),
+  unique (entite_id, cle)
+);
+
+create table if not exists trajets_ors (
+  id uuid primary key default gen_random_uuid(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  cle text not null check (length(cle) between 1 and 250),
+  duree_min integer not null check (duree_min between 1 and 1440),
+  distance_km numeric(8, 1),
+  ferry boolean not null default false,
+  de_trouve text not null default '' check (length(de_trouve) <= 200),
+  vers_trouve text not null default '' check (length(vers_trouve) <= 200),
+  maj_le timestamptz not null default now(),
+  unique (entite_id, cle)
+);
+
+-- Date et auteur de la dernière modification, posés par la base ; l'entreprise d'une ligne ne change pas.
+create or replace function noter_temps_trajet() returns trigger language plpgsql set search_path = public as $$
+begin
+  new.maj_le := now();
+  if tg_table_name <> 'trajets_ors' then new.maj_par := auth.uid(); end if;
+  if tg_op = 'UPDATE' then new.entite_id := old.entite_id; end if;
+  return new;
+end
+$$;
+drop trigger if exists noter_temps_trajet on temps_trajets;
+create trigger noter_temps_trajet before insert or update on temps_trajets for each row execute function noter_temps_trajet();
+drop trigger if exists noter_temps_trajet on lieux_geo;
+create trigger noter_temps_trajet before insert or update on lieux_geo for each row execute function noter_temps_trajet();
+drop trigger if exists noter_temps_trajet on trajets_ors;
+create trigger noter_temps_trajet before insert or update on trajets_ors for each row execute function noter_temps_trajet();
+
+alter table temps_trajets enable row level security;
+alter table lieux_geo enable row level security;
+alter table trajets_ors enable row level security;
+revoke all on temps_trajets, lieux_geo, trajets_ors from anon, authenticated;
+grant select, insert, update, delete on temps_trajets, lieux_geo, trajets_ors to authenticated;
+
+drop policy if exists "lire les temps de trajet" on temps_trajets;
+create policy "lire les temps de trajet" on temps_trajets for select to authenticated using (a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "ajouter un temps de trajet" on temps_trajets;
+create policy "ajouter un temps de trajet" on temps_trajets for insert to authenticated with check (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "corriger un temps de trajet" on temps_trajets;
+create policy "corriger un temps de trajet" on temps_trajets for update to authenticated using (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire')) with check (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "supprimer un temps de trajet" on temps_trajets;
+create policy "supprimer un temps de trajet" on temps_trajets for delete to authenticated using (a_permission(entite_id, 'partenaires.ecrire'));
+
+drop policy if exists "lire les lieux situés" on lieux_geo;
+create policy "lire les lieux situés" on lieux_geo for select to authenticated using (a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "ajouter un lieu situé" on lieux_geo;
+create policy "ajouter un lieu situé" on lieux_geo for insert to authenticated with check (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "corriger un lieu situé" on lieux_geo;
+create policy "corriger un lieu situé" on lieux_geo for update to authenticated using (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire')) with check (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "supprimer un lieu situé" on lieux_geo;
+create policy "supprimer un lieu situé" on lieux_geo for delete to authenticated using (a_permission(entite_id, 'partenaires.ecrire'));
+
+drop policy if exists "lire les trajets ORS" on trajets_ors;
+create policy "lire les trajets ORS" on trajets_ors for select to authenticated using (a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "ajouter un trajet ORS" on trajets_ors;
+create policy "ajouter un trajet ORS" on trajets_ors for insert to authenticated with check (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "corriger un trajet ORS" on trajets_ors;
+create policy "corriger un trajet ORS" on trajets_ors for update to authenticated using (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire')) with check (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "supprimer un trajet ORS" on trajets_ors;
+create policy "supprimer un trajet ORS" on trajets_ors for delete to authenticated using (a_permission(entite_id, 'partenaires.ecrire'));
 
 -- Dépense de l'assistant depuis une date (plafond du mois de la fonction « agent ») : la somme se fait dans la base, sans limite de lignes.
 -- Pour la fonction seulement (clé de service), comme le journal.

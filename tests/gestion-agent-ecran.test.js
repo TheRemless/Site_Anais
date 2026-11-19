@@ -77,7 +77,7 @@ test("frise : pickup, rendez-vous avec arrivée prévue, attente, fourchette à 
   assert.deepEqual(l[2].fourchette, ["17:25", "17:35"]);
 });
 
-test("démo, cas Jai Tiki : lecture de la demande, puis vol, personnes et bagages, cartes sans prix ni signature", () => {
+test("démo, cas Jai Tiki : lecture de la demande, puis vol, personnes et bagages, cartes sans prix ni signature", async () => {
   const texte = "Client taxi : pickup à Jai Tiki Retreat, Koh Lanta samedi, il doit être au Krabi Nakharin International Hospital vers 16h00, attente d’environ 1 h, puis aéroport de Krabi.";
   const c = lireCourse(texte, "2026-11-19");
   assert.equal(c.pickup, "Jai Tiki Retreat");
@@ -87,12 +87,12 @@ test("démo, cas Jai Tiki : lecture de la demande, puis vol, personnes et bagage
   assert.equal(c.date, "2026-11-21");
   // « International Hospital » ne fait pas un vol international.
   assert.equal(lireComplements(texte).international, false);
-  const un = repondreDemo(texte, { aujourdhui: "2026-11-19" });
+  const un = await repondreDemo(texte, { aujourdhui: "2026-11-19" });
   const plan = un.evenements.find((e) => e.t === "planning").planning;
   assert.equal(plan.pickup.heure, "12:30");
   assert.ok(!un.evenements.some((e) => e.t === "carte"), "pas de carte tant que le vol et les personnes manquent");
   assert.match(un.evenements.find((e) => e.t === "texte").delta, /l'heure du vol, le nombre de personnes et les bagages/);
-  const deux = repondreDemo("Vol à 20h00. 2 personnes, 3 valises.", { aujourdhui: "2026-11-19", etat: un.etat });
+  const deux = await repondreDemo("Vol à 20h00. 2 personnes, 3 valises.", { aujourdhui: "2026-11-19", etat: un.etat });
   assert.equal(deux.evenements.find((e) => e.t === "planning").planning.vol.verdict, "tenable");
   const dossier = deux.evenements.find((e) => e.carte && e.carte.genre === "dossier").carte;
   assert.ok(dossier.donnees.services.every((s) => s.prix === null));
@@ -101,10 +101,25 @@ test("démo, cas Jai Tiki : lecture de la demande, puis vol, personnes et bagage
   assert.ok(rep.includes("12:30"));
 });
 
-test("démo : vol pas tenable, pas de carte ; demande sans course, explication", () => {
-  const un = repondreDemo("pickup à Jai Tiki Retreat, Koh Lanta samedi, Krabi Nakharin International Hospital vers 16h00, attente d’environ 1 h, puis aéroport de Krabi", { aujourdhui: "2026-11-19" });
-  const deux = repondreDemo("vol à 18h30, 2 personnes, 1 valise", { aujourdhui: "2026-11-19", etat: un.etat });
+test("démo : vol pas tenable, pas de carte ; demande sans course, explication", async () => {
+  const un = await repondreDemo("pickup à Jai Tiki Retreat, Koh Lanta samedi, Krabi Nakharin International Hospital vers 16h00, attente d’environ 1 h, puis aéroport de Krabi", { aujourdhui: "2026-11-19" });
+  const deux = await repondreDemo("vol à 18h30, 2 personnes, 1 valise", { aujourdhui: "2026-11-19", etat: un.etat });
   assert.equal(deux.evenements.find((e) => e.t === "planning").planning.vol.verdict, "pas_tenable");
   assert.ok(!deux.evenements.some((e) => e.t === "carte"));
-  assert.match(repondreDemo("Bonjour", { aujourdhui: "2026-11-19" }).evenements[0].delta, /démonstration/);
+  assert.match((await repondreDemo("Bonjour", { aujourdhui: "2026-11-19" })).evenements[0].delta, /démonstration/);
+});
+
+test("démo : une durée de la table de l'entreprise passe avant les temps simulés", async () => {
+  const lignes = [{ de: "Koh Lanta", vers: "Krabi", mode: "route", duree_min: 120, ferry: true, marge_min: 0, a_verifier: false }];
+  const r = await repondreDemo("pickup à Lanta Sand Resort Koh Lanta samedi, Krabi Nakharin International Hospital vers 16h00", { aujourdhui: "2026-11-19", lignes });
+  const plan = r.evenements.find((e) => e.t === "planning").planning;
+  assert.equal(plan.trajets[0].source, "table");
+  assert.equal(plan.trajets[0].route_min, 120);
+});
+
+test("pré-remplissage : pages taxi seulement pour l'organisation de Lanta, grilles de pickup sans nom de partenaire", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { ROUTES_SITE } = await import("../src/gestion/js/temps-site.mjs");
+  const site = JSON.parse(readFileSync(new URL("../src/_data/taxiRoutes.json", import.meta.url), "utf8")).routes.filter((r) => typeof r.drive === "string").map((r) => ({ from: r.from, to: r.to, drive: r.drive }));
+  assert.deepEqual(ROUTES_SITE, site, "temps-site.mjs suit src/_data/taxiRoutes.json");
 });

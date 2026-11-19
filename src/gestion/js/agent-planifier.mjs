@@ -1,6 +1,6 @@
 // Agent de Gestion : calcul des heures d'une course (pickup à rebours, ferry, marge, vol). Logique pure, sans dépendance.
-// Le modèle ne calcule aucune heure : il donne les points et les contraintes, ce fichier rend le planning. Les temps de route viennent de
-// Google Maps (Routes API, trafic prévu) ou, sans clé, d'une table de démonstration toujours marquée « simulation ».
+// Le modèle ne calcule aucune heure : il donne les points et les contraintes, ce fichier rend le planning. Les temps de route viennent de la
+// table de référence de l'entreprise, d'openrouteservice ou de la personne (temps.js) ; en démonstration, d'une table toujours marquée « simulation ».
 //
 // Ce fichier existe en deux exemplaires identiques : supabase/functions/agent/planifier.js (fonction Supabase) et
 // src/gestion/js/agent-planifier.mjs (écran, démonstration). tests/gestion-agent.test.js vérifie qu'ils ne divergent pas.
@@ -32,6 +32,9 @@ export function reglagesPlanning(reglages) {
   };
 }
 
+// D'où vient la durée d'un trajet (temps.js) : table vérifiée, openrouteservice, table à vérifier, donnée par la personne, estimation web, démo.
+export const SOURCES = ["table", "ors", "table_a_verifier", "personne", "estimation_web", "simulation"];
+
 // ---- Heures ---------------------------------------------------------------------------------------------------------------------------
 
 export const heureValide = (s) => typeof s === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
@@ -53,18 +56,18 @@ export function versHeure(date, minutes) {
   return { date: jours ? decalerDate(date, jours) : date, heure: `${deux(Math.floor(reste / 60))}:${deux(reste % 60)}` };
 }
 
-// Heure locale de Thaïlande (UTC+7, sans heure d'été) vers un instant ISO, pour Google.
+// Heure locale de Thaïlande (UTC+7, sans heure d'été) vers un instant ISO.
 export function instantBangkok(date, minutes) {
   return new Date(Date.parse(`${date}T00:00:00Z`) + (Math.round(minutes) - 7 * 60) * 60000).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 // ---- Durées d'un trajet ------------------------------------------------------------------------------------------------------------
 
-// Temps compté pour un trajet : route (trafic compris), attente au ferry s'il y en a un, marge de sécurité.
+// Temps compté pour un trajet : route, attente au ferry s'il y en a un, marge de sécurité (la marge conseillée par la table si elle est plus grande).
 export function dureeAvecMarges(trajet, r = PLANNING_DEFAUT) {
   const route = Math.max(0, Math.round(Number(trajet.duree_min) || 0));
   const ferry = trajet.ferry ? r.ferry_attente_min : 0;
-  const marge = Math.max(r.marge_min, Math.round((route * r.marge_pct) / 100));
+  const marge = Math.max(r.marge_min, Math.round((route * r.marge_pct) / 100), Math.round(Number(trajet.marge_min) || 0));
   return { route_min: route, ferry_attente_min: ferry, marge_min: marge, total_min: route + ferry + marge };
 }
 
@@ -169,12 +172,17 @@ export function planifierCourse({ date, points = [], trajets = [], vol = null, r
     vers: etapes[i + 1].lieu,
     ...durees[i],
     ferry: !!t.ferry,
-    source: ["google", "simulation", "saisie"].includes(t.source) ? t.source : "saisie",
+    source: SOURCES.includes(t.source) ? t.source : "personne",
+    a_verifier: t.a_verifier === true || ["ors", "table_a_verifier", "estimation_web", "simulation"].includes(t.source),
+    ...(t.de_trouve || t.vers_trouve ? { de_trouve: String(t.de_trouve || "").slice(0, 200), vers_trouve: String(t.vers_trouve || "").slice(0, 200) } : {}),
+    ...(t.source_url ? { source_url: String(t.source_url).slice(0, 500) } : {}),
     distance_km: Number.isFinite(Number(t.distance_km)) && t.distance_km !== null ? Math.round(Number(t.distance_km)) : null,
   }));
 
   const alertes = [];
   if (lignes.some((l) => l.source === "simulation")) alertes.push("temps_simules");
+  if (lignes.some((l) => l.source === "estimation_web")) alertes.push("estimation_web");
+  if (lignes.some((l) => l.a_verifier && l.source !== "simulation")) alertes.push("temps_a_verifier");
   const pk = versHeure(date, pickup);
   if (pk.date !== date) alertes.push("pickup_la_veille");
   if (pickup % 1440 < 5 * 60 && pk.date === date) alertes.push("pickup_avant_5h");
@@ -209,59 +217,7 @@ export function planifierCourse({ date, points = [], trajets = [], vol = null, r
   return { ok: true, date, pickup: pk, etapes, trajets: lignes, vol: verifVol, hypotheses, alertes };
 }
 
-// ---- Google Maps (Routes API) -------------------------------------------------------------------------------------------------------
-
-export const URL_ROUTES = "https://routes.googleapis.com/directions/v2:computeRoutes";
-// Seuls ces champs sont demandés (et facturés) : durée avec trafic, durée sans trafic, distance, et les manœuvres pour repérer un ferry.
-export const CHAMPS_ROUTES = "routes.duration,routes.staticDuration,routes.distanceMeters,routes.legs.steps.navigationInstruction.maneuver,routes.legs.steps.staticDuration";
-
-// Le corps de la requête : adresses en texte (Google les géocode), en voiture, trafic prévu à l'heure de départ (dans le futur).
-export function requeteRoutes({ de, vers, departIso }) {
-  return {
-    origin: { address: String(de).slice(0, 200) },
-    destination: { address: String(vers).slice(0, 200) },
-    travelMode: "DRIVE",
-    routingPreference: "TRAFFIC_AWARE",
-    ...(departIso ? { departureTime: departIso } : {}),
-    languageCode: "fr",
-    regionCode: "th",
-    units: "METRIC",
-  };
-}
-
-const secondes = (s) => {
-  const m = /^(\d+(?:\.\d+)?)s$/.exec(String(s || ""));
-  return m ? Number(m[1]) : null;
-};
-
-// La réponse de Google : minutes avec trafic, distance, présence et durée du ferry. null si aucune route.
-export function lireRoutes(json) {
-  const route = json && Array.isArray(json.routes) ? json.routes[0] : null;
-  if (!route) return null;
-  const duree = secondes(route.duration) ?? secondes(route.staticDuration);
-  if (duree === null) return null;
-  let ferrySec = 0;
-  let ferry = false;
-  for (const leg of route.legs || []) {
-    for (const st of leg.steps || []) {
-      const m = st && st.navigationInstruction && st.navigationInstruction.maneuver;
-      if (m === "FERRY" || m === "FERRY_TRAIN") {
-        ferry = true;
-        ferrySec += secondes(st.staticDuration) || 0;
-      }
-    }
-  }
-  return {
-    duree_min: Math.round(duree / 60),
-    sans_trafic_min: secondes(route.staticDuration) !== null ? Math.round(secondes(route.staticDuration) / 60) : null,
-    distance_km: Number.isFinite(route.distanceMeters) ? Math.round(route.distanceMeters / 100) / 10 : null,
-    ferry,
-    ferry_min: Math.round(ferrySec / 60),
-    source: "google",
-  };
-}
-
-// ---- Temps simulés (démonstration, ou fonction sans clé Google avec AGENT_TRAJETS_SIMULES=1) ---------------------------------------------
+// ---- Temps simulés (démonstration seulement, ou fonction avec AGENT_TRAJETS_SIMULES=1) ---------------------------------------------------
 // Ordres de grandeur pour faire tourner la démo, jamais montrés comme réels : le planning porte l'alerte « temps_simules ».
 const cle = (s) =>
   String(s || "")

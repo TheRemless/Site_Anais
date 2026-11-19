@@ -7,7 +7,8 @@
 //   - aucune écriture : les outils « proposer_* » rendent une carte que la personne valide dans l'écran (rien n'est écrit sans son clic) ;
 //   - un prix proposé vient du catalogue (par sa référence) ou d'un montant tapé par la personne dans la conversation, jamais du modèle ;
 //   - les heures d'une course sont calculées par planifier.js, pas par le modèle.
-import { planifierCourse, reglagesPlanning, heureValide, instantBangkok, enMinutes, tempsSimule } from "./planifier.js";
+import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
+import { dureeEntre, clePaire, dureesTapees } from "./temps.js";
 
 // ---- Petits outils de texte -----------------------------------------------------------------------------------------------------------
 
@@ -109,9 +110,17 @@ export const OUTILS = [
   },
   {
     name: "temps_de_route",
-    description: "Temps de route en voiture entre deux adresses (Google Maps, trafic prévu), avec la distance et le ferry éventuel. Pour une course complète avec horaires, utilise plutôt planifier_course.",
+    description:
+      "Durée en voiture entre deux lieux : d'abord la table de temps de référence de l'entreprise, sinon openrouteservice (OpenStreetMap), avec le ferry et la marge conseillée. Dit d'où vient la durée et si elle est à vérifier. Pour une course avec horaires, utilise planifier_course.",
     strict: true,
-    input_schema: obj({ de: S("Adresse ou nom de lieu précis, avec l'île ou la ville."), vers: S("Idem."), date: S("AAAA-MM-JJ."), heure_depart: S("HH:MM ou \"\" (maintenant).") }),
+    input_schema: obj({ de: S("Nom de lieu précis, avec l'île ou la ville (« Jai Tiki Retreat, Koh Lanta »)."), vers: S("Idem.") }),
+  },
+  {
+    name: "estimer_temps_web",
+    description:
+      "Dernier recours, seulement quand temps_de_route ou planifier_course n'ont aucune durée et que la personne ne la connaît pas : cherche une durée de trajet en voiture sur le web, avec sa source. Le résultat est une estimation, à présenter comme telle.",
+    strict: true,
+    input_schema: obj({ de: S("Lieu de départ."), vers: S("Lieu d'arrivée.") }),
   },
   {
     name: "planifier_course",
@@ -127,6 +136,8 @@ export const OUTILS = [
           lieu: S("Nom précis avec l'île ou la ville (« Jai Tiki Retreat, Koh Lanta »)."),
           arrivee_voulue: S("HH:MM si le client doit y être à une heure donnée (rendez-vous), sinon \"\". Une seule dans la course."),
           attente_min: I("Minutes d'attente sur place avant de repartir, 0 sinon."),
+          duree_vers_suivant_min: I("0 en général : la durée vient de la table. Seulement une durée donnée par la personne dans la conversation, ou rendue par estimer_temps_web."),
+          source_duree: { type: "string", enum: ["", "personne", "estimation_web"], description: "D'où vient duree_vers_suivant_min, \"\" si 0." },
         }),
       },
       heure_depart: S("HH:MM si l'heure de pickup est déjà fixée (sans rendez-vous), sinon \"\"."),
@@ -182,6 +193,20 @@ export const OUTILS = [
     }),
   },
   {
+    name: "proposer_temps_trajet",
+    description: "Propose d'ajouter (ou de corriger) une durée dans la table de temps de référence de l'entreprise, après que la personne l'a donnée. Carte à valider.",
+    strict: true,
+    input_schema: obj({
+      titre: S("Titre court de la carte."),
+      de: S("Zone ou lieu de départ (« Koh Lanta », « Krabi Town »)."),
+      vers: S("Zone ou lieu d'arrivée."),
+      duree_min: I("Durée en minutes, telle que donnée par la personne."),
+      ferry: B("Vrai si le trajet prend le ferry."),
+      marge_min: I("Marge conseillée en minutes, 0 si non donnée."),
+      source: S("Qui l'a donnée (« Nani, d'après Mr. Brown »)."),
+    }),
+  },
+  {
     name: "proposer_reponse",
     description:
       "Propose le message à envoyer au client, prêt à copier. La personne le relit, le modifie et l'envoie elle-même. Chaque prix et chaque heure du message doivent venir d'un résultat d'outil ou d'un montant tapé par la personne.",
@@ -190,7 +215,7 @@ export const OUTILS = [
   },
 ];
 export const NOMS_OUTILS = OUTILS.map((o) => o.name);
-export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse"];
+export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet"];
 
 // ---- Contrôle des entrées ---------------------------------------------------------------------------------------------------------
 // Le mode strict garantit la forme ; on revérifie quand même (types, tailles) avant d'exécuter, comme pour une entrée d'utilisateur.
@@ -345,56 +370,63 @@ export async function situerHotels(e, ctx) {
 
 // ---- Temps de route et planning --------------------------------------------------------------------------------------------------
 
-// ctx.tempsRoute({ de, vers, departIso }) : { duree_min, ferry, distance_km, source } ou null. Sans fonction (pas de clé Google), null.
-async function tempsEntre(ctx, de, vers, date, minutes) {
-  const depart = minutes === null ? null : instantBangkok(date, minutes);
-  // Google refuse un départ dans le passé en voiture : on demande alors « maintenant ».
-  const futur = depart && ctx.maintenant && Date.parse(depart) < ctx.maintenant() ? null : depart;
-  const r = ctx.tempsRoute ? await ctx.tempsRoute({ de, vers, departIso: futur }) : null;
-  return r && r.duree_min > 0 ? r : null;
-}
+// La durée d'un trajet en voiture, dans l'ordre de temps.js : table vérifiée, openrouteservice, table à vérifier, démo. ctx.ors et
+// ctx.simule ne sont posés que si la fonction les a (clé ORS, démonstration).
+const dureeDe = async (ctx, de, vers) => dureeEntre(de, vers, { lignes: (await ctx.charger("temps_trajets")) || [], hotels: (await ctx.charger("hotels_lieux")) || [], ors: ctx.ors || null, simule: ctx.simule || null });
+const cleEstimation = (de, vers) => clePaire(de, vers);
 
 export async function tempsDeRoute(e, ctx) {
-  const date = dateValide(e.date) ? e.date : null;
-  const r = await tempsEntre(ctx, texte(e.de, 200), texte(e.vers, 200), date || "2000-01-01", date && heureValide(e.heure_depart) ? enMinutes(e.heure_depart) : null);
-  if (!r) return { resultat: { erreur: "temps_indisponible", conseil: "Pas de temps de route : demande la durée à la personne." } };
-  return { resultat: { de: texte(e.de, 200), vers: texte(e.vers, 200), duree_min: r.duree_min, distance_km: r.distance_km ?? null, ferry: !!r.ferry, source: r.source } };
+  const r = await dureeDe(ctx, texte(e.de, 200), texte(e.vers, 200));
+  if (!r) return { resultat: { erreur: "temps_indisponible", conseil: "Aucune durée connue pour ce trajet : dis-le et demande la durée à la personne (elle pourra l'ajouter à la table)." } };
+  return { resultat: { de: texte(e.de, 200), vers: texte(e.vers, 200), duree_min: r.duree_min, distance_km: r.distance_km ?? null, ferry: !!r.ferry, marge_conseillee_min: r.marge_min || 0, source: r.source, a_verifier: r.a_verifier, ...(r.de_trouve ? { de_trouve: r.de_trouve, vers_trouve: r.vers_trouve } : {}) } };
 }
 
-// Les temps de chaque trajet, à l'heure où il se fera : à rebours, une première estimation puis une seconde au départ ainsi trouvé.
-export async function planifier(e, ctx) {
+// Le planning d'une course. Pour chaque trajet : la durée donnée par la personne (si elle l'a tapée dans la conversation) ou une estimation
+// web déjà rendue par estimer_temps_web, sinon la durée de la table ou d'ORS. Une durée qui ne vient de nulle part est refusée.
+export async function planifier(e, ctx, memo = { durees: new Set(), estimations: new Map() }) {
   if (!dateValide(e.date)) return { resultat: { erreur: "date_manquante", conseil: "Demande la date de la course." } };
-  const points = (e.points || []).slice(0, 8).map((p) => ({ lieu: texte(p.lieu, 160), arrivee_voulue: heureValide(p.arrivee_voulue) ? p.arrivee_voulue : "", attente_min: Math.min(entier(p.attente_min, 720), 720) }));
+  const points = (e.points || []).slice(0, 8).map((p) => ({ lieu: texte(p.lieu, 160), arrivee_voulue: heureValide(p.arrivee_voulue) ? p.arrivee_voulue : "", attente_min: Math.min(entier(p.attente_min, 720), 720), duree: entier(p.duree_vers_suivant_min, 1440), source: p.source_duree || "" }));
   if (points.length < 2) return { resultat: { erreur: "deux_points_au_moins" } };
   if (points.filter((p) => p.arrivee_voulue).length > 1) return { resultat: { erreur: "un_seul_rendez_vous", conseil: "Garde un seul rendez-vous ; les autres heures se calculent." } };
   if (!points.some((p) => p.arrivee_voulue) && heureValide(e.heure_depart)) points[0].depart_voulu = e.heure_depart;
   if (!points.some((p) => p.arrivee_voulue || p.depart_voulu)) return { resultat: { erreur: "heure_manquante", conseil: "Il faut soit l'heure du rendez-vous, soit l'heure de pickup." } };
-  const regl = reglagesPlanning(ctx.reglages);
-  const ancre = points.findIndex((p) => p.arrivee_voulue);
-  const trajets = new Array(points.length - 1).fill(null);
-  if (ancre > 0) {
-    // À rebours : le trajet qui arrive au rendez-vous part à peu près « rendez-vous moins durée ».
-    let fin = enMinutes(points[ancre].arrivee_voulue);
-    for (let i = ancre - 1; i >= 0; i--) {
-      const essai = await tempsEntre(ctx, points[i].lieu, points[i + 1].lieu, e.date, fin - 180);
-      const r = essai ? (await tempsEntre(ctx, points[i].lieu, points[i + 1].lieu, e.date, fin - essai.duree_min)) || essai : null;
-      trajets[i] = r;
-      fin -= (r ? r.duree_min : 0) + 30 + points[i].attente_min;
+  const trajets = [];
+  const refusees = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p = points[i];
+    const nom = `${p.lieu} → ${points[i + 1].lieu}`;
+    if (p.duree && p.source === "personne") {
+      if (memo.durees && memo.durees.has(p.duree)) trajets.push({ duree_min: p.duree, ferry: false, source: "personne" });
+      else (refusees.push(nom), trajets.push(null));
+      continue;
     }
+    if (p.duree && p.source === "estimation_web") {
+      const est = memo.estimations && memo.estimations.get(cleEstimation(p.lieu, points[i + 1].lieu));
+      if (est && est.duree_min === p.duree) trajets.push({ duree_min: p.duree, ferry: !!est.ferry, source: "estimation_web", source_url: est.source_url });
+      else (refusees.push(nom), trajets.push(null));
+      continue;
+    }
+    trajets.push(await dureeDe(ctx, p.lieu, points[i + 1].lieu));
   }
-  // Vers l'avant : une estimation à l'heure de départ du point d'ancrage, assez juste pour des trajets courts après le rendez-vous.
-  const debut = ancre > 0 ? enMinutes(points[ancre].arrivee_voulue) + points[ancre].attente_min : ancre === 0 ? enMinutes(points[0].arrivee_voulue) : enMinutes(points[0].depart_voulu);
-  let t = debut;
-  for (let i = Math.max(ancre, 0); i < points.length - 1; i++) {
-    trajets[i] = await tempsEntre(ctx, points[i].lieu, points[i + 1].lieu, e.date, t);
-    t += (trajets[i] ? trajets[i].duree_min : 0) + points[i + 1].attente_min;
-  }
+  if (refusees.length) return { resultat: { erreur: "duree_sans_source", trajets: refusees, conseil: "Une durée ne compte que si la personne l'a écrite dans la conversation, ou si estimer_temps_web l'a rendue pour ce trajet." } };
   const manque = trajets.findIndex((x) => !x);
-  if (manque >= 0) return { resultat: { erreur: "temps_indisponible", trajet: `${points[manque].lieu} → ${points[manque + 1].lieu}`, conseil: "Pas de temps de route pour ce trajet : précise l'adresse ou demande la durée à la personne." } };
-  const plan = planifierCourse({ date: e.date, points, trajets, vol: heureValide(e.heure_vol) ? { heure: e.heure_vol, international: !!e.vol_international } : null, reglages: regl });
+  if (manque >= 0) return { resultat: { erreur: "temps_indisponible", trajet: `${points[manque].lieu} → ${points[manque + 1].lieu}`, conseil: "Aucune durée connue pour ce trajet : dis-le simplement et demande la durée à la personne. Quand elle l'a donnée, propose de l'ajouter à la table (proposer_temps_trajet). L'estimation web ne vient qu'en dernier recours." } };
+  const plan = planifierCourse({ date: e.date, points, trajets, vol: heureValide(e.heure_vol) ? { heure: e.heure_vol, international: !!e.vol_international } : null, reglages: reglagesPlanning(ctx.reglages) });
   if (!plan.ok) return { resultat: { erreur: plan.erreur } };
   const heures = [plan.pickup.heure, ...plan.etapes.flatMap((x) => [x.arrivee_prevue && x.arrivee_prevue.heure, x.arrivee_au_plus_tard && x.arrivee_au_plus_tard.heure, x.depart && x.depart.heure, x.rendez_vous]), plan.vol && plan.vol.arrivee_limite.heure, plan.vol && plan.vol.heure].filter(Boolean);
   return { resultat: plan, heures, planning: plan };
+}
+
+// Dernier recours : une durée trouvée par la recherche web (ctx.estimerWeb, appel séparé avec sources contrôlées), toujours marquée estimation.
+export async function estimerTempsWeb(e, ctx, memo) {
+  const de = texte(e.de, 160);
+  const vers = texte(e.vers, 160);
+  const connue = await dureeDe(ctx, de, vers);
+  if (connue) return { resultat: { erreur: "duree_deja_connue", duree_min: connue.duree_min, source: connue.source, conseil: "La table ou ORS donnent déjà cette durée : utilise planifier_course." } };
+  const r = ctx.estimerWeb ? await ctx.estimerWeb(de, vers) : null;
+  if (!r || !(r.duree_min > 0) || !r.source_url) return { resultat: { erreur: "estimation_impossible", conseil: "Aucune source fiable trouvée : demande la durée à la personne." } };
+  if (memo && memo.estimations) memo.estimations.set(cleEstimation(de, vers), r);
+  return { resultat: { de, vers, duree_min: r.duree_min, ferry: !!r.ferry, estimation: true, source_url: r.source_url, source_titre: r.source_titre || "", explication: r.explication || "", conseil: "C'est une estimation : dis-le à la personne avec sa source, et ne l'utilise dans planifier_course (source_duree « estimation_web ») qu'avec son accord." } };
 }
 
 // ---- Clients et dossiers ---------------------------------------------------------------------------------------------------------
@@ -587,6 +619,12 @@ export async function proposer(nom, e, ctx, memo) {
     const avant = { date: r.date_service || "", heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "", adultes: String((r.personnes || {}).adultes ?? ""), enfants: String((r.personnes || {}).enfants ?? ""), remarque: "" }[e.champ];
     return { genre: "modification", titre: texte(e.titre, 120), donnees: { reservation_id: r.id, dossier_id: r.dossier_id, libelle: texte(r.libelle, 160), champ: e.champ, avant, valeur: v, raison: texte(e.raison, 240) } };
   }
+  if (nom === "proposer_temps_trajet") {
+    const d = entier(e.duree_min, 1440);
+    if (!d || !(memo.durees || new Set()).has(d)) return { erreur: "duree_sans_source" };
+    if (!texte(e.de, 120) || !texte(e.vers, 120)) return { erreur: "lieu_manquant" };
+    return { genre: "temps", titre: texte(e.titre, 120), donnees: { de: texte(e.de, 120), vers: texte(e.vers, 120), duree_min: d, ferry: !!e.ferry, marge_min: entier(e.marge_min, 240), source: texte(e.source, 200) } };
+  }
   if (nom === "proposer_reponse") {
     const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires: memo.prestataires || [], entreprise: memo.entreprise || "", prenoms: memo.prenoms || [] });
     if (!c.ok) return { erreur: "message_vide" };
@@ -614,8 +652,8 @@ export async function executer(nom, entree, ctx, memo) {
       const prix = carte.genre === "dossier" ? carte.donnees.services.map((s) => ({ service: s.texte, prix: s.prix, origine: s.origine_prix })) : carte.genre === "reservation" ? [{ service: carte.donnees.service.texte, prix: carte.donnees.service.prix, origine: carte.donnees.service.origine_prix }] : undefined;
       return { contenu: { carte_affichee: true, etat: "en attente de validation par la personne", ...(prix ? { prix } : {}), ...(carte.avertissements && carte.avertissements.length ? { avertissements: carte.avertissements } : {}) }, carte };
     }
-    const f = { chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier }[nom];
-    const r = await f(entree, ctx);
+    const f = { chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier }[nom];
+    const r = await f(entree, ctx, memo);
     ajouter(r);
     return { contenu: r.resultat, ...(r.planning ? { planning: r.planning } : {}), erreur: !!(r.resultat && r.resultat.erreur) };
   } catch (err) {
@@ -626,7 +664,7 @@ export async function executer(nom, entree, ctx, memo) {
 // Ce que la conversation sait déjà : les prix et heures rendus par les outils des échanges précédents (relus depuis les messages enregistrés)
 // et les montants tapés par la personne. Sert à contrôler la réponse au client.
 export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", prenoms = [] } = {}) {
-  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), signer, prestataires, entreprise, prenoms };
+  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), signer, prestataires, entreprise, prenoms };
   const parcourir = (v) => {
     if (Array.isArray(v)) return v.forEach(parcourir);
     if (!v || typeof v !== "object") return;
@@ -654,10 +692,24 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
       }
     }
   }
-  // Les heures tapées par la personne sont admises aussi (« vol à 19:30 »).
+  // Les heures tapées par la personne sont admises aussi (« vol à 19:30 »), et ses durées (« compte 2h30 »).
   for (const m of messages) {
     const t = m.role === "user" ? (typeof m.content === "string" ? m.content : (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ")) : "";
     for (const x of t.matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)) memo.heures.add(`${x[1].padStart(2, "0")}:${x[2]}`);
+    for (const d of dureesTapees([t])) memo.durees.add(d);
+  }
+  // Les estimations web déjà rendues dans la conversation restent utilisables (résultats d'estimer_temps_web).
+  const outils = new Map();
+  for (const m of messages) for (const b of Array.isArray(m.content) ? m.content : []) {
+    if (m.role === "assistant" && b.type === "tool_use") outils.set(b.id, b.name);
+    if (m.role === "user" && b.type === "tool_result" && outils.get(b.tool_use_id) === "estimer_temps_web" && !b.is_error) {
+      try {
+        const r = JSON.parse(typeof b.content === "string" ? b.content : "");
+        if (r && r.estimation && r.duree_min > 0) memo.estimations.set(clePaire(r.de, r.vers), { duree_min: r.duree_min, ferry: !!r.ferry, source_url: r.source_url });
+      } catch {
+        /* résultat illisible */
+      }
+    }
   }
   return memo;
 }
