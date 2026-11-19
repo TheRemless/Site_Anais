@@ -13,7 +13,7 @@ import { ouvrirDemande } from "./demande.mjs";
 import { copierTexte } from "./partage.mjs";
 import { vide } from "./commun.mjs";
 import {
-  STATUTS_DEMANDE, MOTIFS_REFUS, nomProduit, titreOption, optionsProduit, texteDemande, changements, reponseConfirmation, reponseRefus,
+  STATUTS_DEMANDE, MOTIFS_REFUS, titreDemande, titreOption, optionsProduit, texteDemande, changements, reponseConfirmation, reponseRefus,
   trierDemandes, aTraiter, chiffresDemandes, cheminPage, numeroWhatsApp, lienWhatsAppClient, numeroAffiche, reponseSansMessage,
 } from "../demandes-site-calc.mjs";
 import { PRODUITS_SITE } from "../site-produits.mjs";
@@ -96,7 +96,7 @@ function dejaTraitee(d) {
   return actuelle && actuelle.statut !== "nouvelle" ? actuelle : null;
 }
 function confirmer_(d, modifs = {}) {
-  const ref = d.ref || nomProduit(d);
+  const ref = d.ref || titreDemande(d);
   if (dejaTraitee(d)) return void (toast(tr("Cette demande a déjà été traitée."), true), rafraichir());
   ouvrirDemande({
     titre: Object.keys(modifs).length ? tr("Confirmer {ref} avec les changements", { ref }) : tr("Confirmer {ref}", { ref }),
@@ -157,7 +157,7 @@ function ouvrirModifier(d) {
     confirmer_(d, modifs);
   };
   fermer = modal(
-    tr("Modifier {ref}", { ref: d.ref || nomProduit(d) }),
+    tr("Modifier {ref}", { ref: d.ref || titreDemande(d) }),
     h(
       "div",
       { class: "modal-corps dsite-modifier" },
@@ -282,7 +282,7 @@ function carte(d) {
     "li",
     { class: `dsite-carte s-${d.statut}`, "data-id": d.id },
     h("div", { class: "dsite-tete" }, blocReference(d), h("span", { class: "dsite-recue" }, recue(d.created_at))),
-    h("h3", { class: "dsite-produit" }, nomProduit(d), option ? h("span", null, option) : null),
+    h("h3", { class: "dsite-produit" }, titreDemande(d), option ? h("span", null, option) : null),
     h("p", { class: "dsite-quand" }, [quand || tr("Date à préciser"), personnes(d)].filter(Boolean).join(" · ")),
     h("p", { class: "dsite-client" }, [d.nom, d.pickup].filter(Boolean).join(" · ") || tr("Nom non donné")),
     d.total_estime ? h("p", { class: "dsite-detail" }, tr("Prix indiqué sur le site : {prix}", { prix: formatMontant(d.total_estime, d.devise || "THB") })) : null,
@@ -392,7 +392,7 @@ export function sectionDemandesAccueil() {
     h(
       "a",
       { class: "dsite-accueil-lien", href: "#/demandes" },
-      h("span", null, h("strong", null, d.ref || nomProduit(d)), " ", [nomProduit(d), jourCourt(d.date_service), personnes(d)].filter(Boolean).join(" · ")),
+      h("span", null, h("strong", null, d.ref || titreDemande(d)), " ", [titreDemande(d), jourCourt(d.date_service), personnes(d)].filter(Boolean).join(" · ")),
       h("span", { class: "dsite-accueil-plus" }, nouvelles.length > 1 ? tr("Voir les {n} demandes", { n: nouvelles.length }) : tr("Traiter la demande"), icone("chevron", 16))
     )
   );

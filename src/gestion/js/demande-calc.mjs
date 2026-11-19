@@ -975,8 +975,10 @@ export function optionDuSite(d) {
 
 // Le tarif de Gestion d'une ligne du site : par son identifiant, sinon (démonstration, tarif recréé) par son libellé quand un seul tarif actif le porte.
 // Un tarif trouvé par son identifiant mais masqué ne se remplace pas par un autre du même nom.
+// Un tarif recopié d'une autre entreprise (le catalogue de VIP Taxi Lanta, copie de celui de Secret) garde l'identifiant de l'original dans
+// details.copie_de : c'est cet identifiant que portent les clés du site.
 function tarifDeLigne(t, prestations, partenaires) {
-  const parId = prestations.find((p) => p.id === t.prestation);
+  const parId = prestations.find((p) => p.id === t.prestation) || prestations.find((p) => p.details && p.details.copie_de === t.prestation);
   if (parId) return proposable(parId, partenaires) ? parId : null;
   const l = cleTexte(t.libelle);
   const memes = l ? prestations.filter((p) => proposable(p, partenaires) && (cleTexte(p.libelle_en) === l || cleTexte(p.libelle) === l)) : [];
@@ -1006,19 +1008,7 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
     const ligneEnfant = enfants.length === 1 ? enfants[0] : enfants.find((e) => fondLigne(e.ligne) === fondLigne(t.ligne));
     const enfant = ligneEnfant ? tarifDeLigne(ligneEnfant, prestations, partenaires) : null;
     const score = 10 + (citee ? 1 : 0) + (tranche && groupe >= tranche[0] && groupe <= tranche[1] ? 0.5 : 0) - i / 1000;
-    offres.push({
-      genre: "prestation",
-      id: p.id,
-      source: p,
-      titre: p.libelle_en || libelleClient(p.libelle),
-      detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "),
-      total: prixPrestation(p, pax),
-      avertissement: p.sur_place ? "sur_place" : "",
-      score,
-      ligneSite: t.ligne,
-      ...(tranche ? { tranche } : {}),
-      ...(enfant && enfant.unite === "ch" ? { enfantSite: enfant } : {}),
-    });
+    offres.push(offreSite(p, t, score, pax, nomPartenaire, { ...(tranche ? { tranche } : {}), ...(enfant && enfant.unite === "ch" ? { enfantSite: enfant } : {}) }));
   });
   // Bateau privé : un groupe plus grand que toutes les tranches actives ne prend pas le prix de la plus petite. La plus grande tranche passe
   // devant et l'offre le dit, le prix est à vérifier avec le prestataire.
@@ -1031,6 +1021,82 @@ export function tarifsDuSite(d, { prestations = [], partenaires = [], nomPartena
   return offres.sort((a, b) => b.score - a.score);
 }
 
+// ---- Pages trajet de VIP Taxi Lanta ---------------------------------------------------------------------------------------
+// Une demande de trajet du site (« Transfer request: Koh Lanta to Krabi Airport ») vient d'une page /taxi/ qui porte son tarif (site-produits.mjs,
+// clés « taxi|trajet|ligne » du site). Le catalogue Taxi nomme le seul bout qui n'est pas Koh Lanta (« Krabi Airport ») : le recouvrement de mots
+// ne le trouvait pas et la demande restait « À préciser » (19.11.2026). La page est celle dont les deux bouts sont la prise en charge et la dépose
+// du message, dans un sens ou dans l'autre (une page sert les deux sens). Un lieu que la page ne connaît pas (le nom d'un hôtel) se lit dans le
+// titre, au même bout. Le titre d'une page est son propre trajet, d'où un petit avantage quand il lui correspond mot pour mot.
+const VIDES_BOUT = new Set(["koh", "ko", "and", "the", "of", "to", "on", "in", "at", "your", "kbv", "hkt", "urt"]);
+const motsBout = (lieu) => cleTexte(String(lieu || "")).split(" ").filter((w) => w && !VIDES_BOUT.has(w));
+// Part des mots du lieu de la page présents dans le texte, et part des mots du texte que la page explique (pour départager « Phuket » et « Phuket Airport »).
+function citeBout(lieu, texte) {
+  const a = motsBout(lieu);
+  const t = motsBout(texte);
+  if (!a.length || !t.length) return null;
+  const part = a.filter((m) => t.some((x) => memeMot(x, m))).length / a.length;
+  const couvert = t.filter((x) => a.some((m) => memeMot(x, m))).length / t.length;
+  return part >= 0.5 ? { part, couvert } : null;
+}
+const scoreBout = (lieu, ligne, titre) => {
+  const l = citeBout(lieu, ligne);
+  const t = citeBout(lieu, titre);
+  return Math.max(l ? 2 + l.part + l.couvert / 100 : 0, t ? 1 + t.part + t.couvert / 100 : 0);
+};
+
+// La page taxi du site d'une demande de trajet, ou null (message libre, retour au point de départ, minivan partagé, songthaew, trajet inconnu).
+export function pageTaxiDuSite(d) {
+  if (!d || !d.site || d.libre || d.type !== "transfer" || d.retourDepart || d.mode === "shared" || d.vehicule === "speedboat" || /songthaew/i.test(d.option || "")) return null;
+  const journee = /\bday trip\b/i.test(d.option || "");
+  const titre = cleTexte(`${d.de} ${d.vers}`);
+  let meilleure = null;
+  for (const page of PRODUITS_SITE) {
+    if (page.marque !== "taxi" || !page.de || !page.vers || !!page.journee !== journee) continue;
+    for (const [a, b] of [[page.de, page.vers], [page.vers, page.de]]) {
+      const sa = scoreBout(a, d.pickup, d.de);
+      const sb = scoreBout(b, d.dropoff, d.vers);
+      if (!sa || !sb) continue;
+      const score = sa + sb + (titre === cleTexte(`${a} ${b}`) ? 0.5 : 0);
+      if (!meilleure || score > meilleure.score) meilleure = { page, score };
+    }
+  }
+  return meilleure ? meilleure.page : null;
+}
+
+// Une offre tirée d'une ligne de prix du site (option d'une sortie ou page taxi).
+const offreSite = (p, t, score, pax, nomPartenaire, extra = {}) => ({
+  genre: "prestation",
+  id: p.id,
+  source: p,
+  titre: p.libelle_en || libelleClient(p.libelle),
+  detail: [p.groupe, libelleUnite(p.unite, true), nomPartenaire(p.partenaire_id)].filter(Boolean).join(" · "),
+  total: prixPrestation(p, pax),
+  avertissement: p.sur_place ? "sur_place" : "",
+  score,
+  ligneSite: t.ligne,
+  ...extra,
+});
+
+// Les tarifs de la page taxi, la ligne de prix du lieu cité en tête (« Patong, Kata and Karon » pour une dépose à Patong), sinon dans l'ordre de la page.
+// Le prix est celui du catalogue (par véhicule) ; un tarif sans prix dans le catalogue laisse le prix à saisir.
+export function tarifsTaxiDuSite(d, { prestations = [], partenaires = [], nomPartenaire = () => "" } = {}) {
+  const page = pageTaxiDuSite(d);
+  if (!page || !(page.tarifs || []).length) return [];
+  const pax = { adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants || 0 };
+  // Les lieux de la prise en charge et de la dépose comptent avant ceux du titre (« Koh Lanta to Phuket » cite Phuket, la dépose cite Patong).
+  const lieux = motsBout(`${d.pickup} ${d.dropoff}`);
+  const titre = motsBout(`${d.de} ${d.vers}`);
+  const cites = (ligne, dans) => motsBout(ligne).filter((m) => dans.some((x) => memeMot(x, m))).length;
+  const offres = [];
+  page.tarifs.forEach((t, i) => {
+    const p = tarifDeLigne(t, prestations, partenaires);
+    if (!p || offres.some((o) => o.id === p.id)) return;
+    const score = t.ligne === "from" ? 0 : cites(t.ligne, lieux) / 100 + cites(t.ligne, titre) / 10000;
+    offres.push(offreSite(p, t, 10 + score - i / 100000, pax, nomPartenaire, { pageSite: page.id }));
+  });
+  return offres.sort((a, b) => b.score - a.score);
+}
+
 // Offres de la base qui correspondent à la demande, la plus proche en premier. Au plus six.
 // `nomPartenaire(id)` renvoie le nom du partenaire.
 // `partenaires` : un partenaire masqué ne se propose plus (ses tarifs et trajets non plus).
@@ -1038,6 +1104,10 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
   const pax = { adultes: d.adultes || (d.enfants ? 0 : 1), enfants: d.enfants };
   const offres = [];
   if (d.type === "transfer" || (d.de && d.vers)) {
+    // Demande d'une page taxi du site : son tarif passe devant, les autres offres viennent après (sans doublon).
+    const site = tarifsTaxiDuSite(d, { prestations, partenaires, nomPartenaire });
+    offres.push(...site);
+    const deja = new Set(site.map((o) => o.id));
     for (const t of trajets) {
       if (!proposable(t, partenaires) || (d.date && !trajetDisponible(t, d.date))) continue;
       const direct = Math.min(recouvrement(d.de, t.de), recouvrement(d.vers, t.vers));
@@ -1056,7 +1126,7 @@ export function proposerOffres(d, { prestations = [], trajets = [], nomPartenair
       offres.push({ genre: "trajet", id: t.id, source: t, titre: `${t.de} → ${t.vers}${t.depart ? `, ${t.depart}` : ""}`, detail: [t.mode, nomPartenaire(t.partenaire_id)].filter(Boolean).join(" · "), total, avertissement, score });
     }
     for (const p of prestations) {
-      if (!proposable(p, partenaires) || p.famille !== "transfert" || p.unite === "sup") continue;
+      if (deja.has(p.id) || !proposable(p, partenaires) || p.famille !== "transfert" || p.unite === "sup") continue;
       const texte = `${p.libelle} ${p.libelle_en || ""} ${p.groupe || ""}`;
       const score = Math.min(recouvrement(d.de, texte), recouvrement(d.vers, texte));
       if (score < 0.5) continue;

@@ -12,6 +12,7 @@
 //     Une option sans ligne de prix (« Price on WhatsApp ») prend ses tarifs dans docs/gestion/cles-options-site.json de ce dépôt
 //     (clé « slug|identifiant de l'option »), où `ligne` est la tranche de groupe du tarif.
 //   - `anciens` : les titres que l'option a portés avant (historique git du site), pour lire un message envoyé avant un changement de nom.
+// Les pages taxi n'ont pas d'option : chacune porte ses `tarifs` et les deux bouts de son trajet (voir pagesTaxi plus bas).
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -54,7 +55,33 @@ for (const commit of git("log", "--format=%H", ref, "--", "src/_data/products").
   }
 }
 
-const produits = fichiers.map((f) => {
+// Pages trajet de VIP Taxi Lanta (/taxi/<trajet>/) : la liste et l'ordre de taxiRoutes.json, les faits de products/taxi/<trajet>.json ou, pour les
+// trajets regroupés, de products/taxi/southern-thailand.json (même découpage que src/_data/taxiPages.js du site). Plus l'excursion à Krabi
+// (krabiDayTrip.json). Pas d'option : la page porte elle-même ses `tarifs`, reliés par les clés « taxi|trajet|ligne » de gestion-keys.json
+// (« from » pour le prix d'appel, sinon le lieu de la ligne de prix : « Phuket Town », « Donsak Pier »). `de` et `vers` : les deux bouts du trajet.
+const DOSSIER_TAXI = "src/_data/products/taxi";
+const routesTaxi = (lireJson(`${ref}:src/_data/taxiRoutes.json`) || { routes: [] }).routes || [];
+const regroupes = (lireJson(`${ref}:${DOSSIER_TAXI}/southern-thailand.json`) || { routes: [] }).routes || [];
+const tarifsTaxi = (id, lignes) =>
+  lignes
+    .map((ligne) => ({ ligne, cle: cles[`taxi|${id}|${ligne}`] }))
+    .filter((x) => x.cle && x.cle.prestation)
+    .map((x) => ({ ligne: x.ligne, prestation: x.cle.prestation, libelle: x.cle.gestion || "" }));
+const pagesTaxi = routesTaxi.map(({ id }) => {
+  const fiche = lireJson(`${ref}:${DOSSIER_TAXI}/${id}.json`);
+  const r = fiche ? fiche.route || {} : regroupes.find((x) => x.id === id);
+  if (!r) throw new Error(`Trajet taxi ${id} : ni fiche ni trajet regroupé sur le site (${ref}).`);
+  const tarifs = tarifsTaxi(id, ["from", ...((fiche && fiche.pricePoints) || []).map((x) => x.label)]);
+  return { id, nom: fiche ? fiche.name : `${r.from} to ${r.to}`, marque: "taxi", section: "taxi", url: fiche ? fiche.url : `/taxi/${id}/`, de: r.from, vers: r.to, options: [], ...(tarifs.length ? { tarifs } : {}) };
+});
+const excursion = lireJson(`${ref}:src/_data/krabiDayTrip.json`);
+if (excursion) {
+  // Même bouts que la demande du site (« Transfer request: Koh Lanta to Krabi – Day trip », taxiPages.js).
+  const tarifs = tarifsTaxi(excursion.slug, ["from"]);
+  pagesTaxi.push({ id: excursion.slug, nom: excursion.name, marque: "taxi", section: "taxi", url: excursion.url, de: "Koh Lanta", vers: "Krabi", journee: true, options: [], ...(tarifs.length ? { tarifs } : {}) });
+}
+
+const produits = fichiers.filter((f) => !f.startsWith(`${DOSSIER_TAXI}/`)).map((f) => {
   const p = JSON.parse(git("show", `${ref}:${f}`));
   const dossier = f.split("/").slice(-2, -1)[0];
   const marque = p.brand === "vip" ? "taxi" : "secret";
@@ -87,6 +114,7 @@ const produits = fichiers.map((f) => {
     }),
   };
 });
+produits.push(...pagesTaxi);
 produits.sort((a, b) => a.marque.localeCompare(b.marque) || a.section.localeCompare(b.section) || a.nom.localeCompare(b.nom));
 const commit = git("rev-parse", "--short", ref).trim();
 
@@ -99,10 +127,17 @@ writeFileSync(
 // marque : « secret » (Secret Travel & Tour) ou « taxi » (VIP Taxi Lanta, /taxi/). section : islands, activities, transfers, rental, taxi.
 // options[].tarifs : chaque ligne de prix du site et le tarif de Gestion qui lui correspond (src/_data/gestion-keys.json du site), sans prix ni net.
 // options[].anciens : les titres que l'option a portés avant sur le site.
+// Pages taxi : de et vers (les deux bouts du trajet), tarifs au niveau de la page (« from » ou le lieu de la ligne de prix), journee pour l'excursion.
 export const PRODUITS_SITE = [
 ${produits.map((p) => `  ${JSON.stringify(p)},`).join("\n")}
 ];
 `
 );
-const n = produits.reduce((t, p) => t + p.options.reduce((u, o) => u + (o.tarifs || []).length, 0), 0);
+const n = produits.reduce((t, p) => t + (p.tarifs || []).length + p.options.reduce((u, o) => u + (o.tarifs || []).length, 0), 0);
+for (const k of Object.keys(cles).filter((k) => k.startsWith("taxi|"))) {
+  const [, id, ligne] = k.split("|");
+  const page = pagesTaxi.find((p) => p.id === id);
+  if (!page) console.warn(`${k} : aucune page taxi de ce nom sur le site (${ref}).`);
+  else if (cles[k].prestation && !(page.tarifs || []).some((t) => t.ligne === ligne)) console.warn(`${k} : ligne de prix absente de la page.`);
+}
 console.log(`${produits.length} produits et ${n} lignes de prix reliées à Gestion écrits dans ${path.relative(process.cwd(), sortie)}`);
