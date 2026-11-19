@@ -99,6 +99,11 @@ export const TH = {
   e_sieges: "คาร์ซีทมากกว่าจำนวนเด็ก", // Plus de sièges que d'enfants
   e_tel: "เบอร์ไม่ถูกต้อง", // Numéro incorrect
   e_duree: "กรุณากรอกจำนวนชั่วโมงเป็นตัวเลข เช่น 3", // Écrire le nombre d'heures en chiffres, par exemple 3
+  // Remarque et note interne (19.11.2026), à relire par Mook comme les autres textes thaïs.
+  remarques: "หมายเหตุบนใบยืนยัน", // Remarque sur la Booking confirmation
+  remarques_aide: "ไม่บังคับ ลูกค้าจะเห็น พิมพ์เป็นภาษาอังกฤษ เช่น 50th birthday", // Facultatif. Le client la voit. Écrire en anglais, par exemple 50th birthday
+  notes: "บันทึกภายใน", // Note interne
+  notes_aide: "ไม่บังคับ ไม่พิมพ์บนวอยเชอร์ ลูกค้าไม่เห็น เขียนภาษาไทยได้", // Facultatif. Jamais imprimée, le client ne la voit pas. Le thaï est accepté
 };
 
 // Le voucher est en anglais : un mot en écriture thaïe y serait illisible pour le client.
@@ -123,11 +128,12 @@ const entier = (v) => {
 // Le numéro de vol ou de bateau et les sièges enfant ou bébé (13.11.2026) : ce que le formulaire taxi du site demande au client.
 // Le WhatsApp du client et le client déjà connu choisi d'un tap (13.11.2026) : plus de nouveau client à chaque course.
 // `trajet` : vide pour un aller simple, « retour_depart » pour un retour au point de départ (programme et durée à la place du drop-off).
-export const valeursVides = () => ({ nom: "", telephone: "", client_id: "", date: "", pickup: "", heure: "", trajet: "", dropoff: "", programme: "", duree: "", vol: "", adultes: "2", enfants: "", bagages: "", sieges: "", prix: "" });
+// `remarques` : imprimée sur la Booking confirmation (« REMARKS »), en anglais ; `notes` : la note interne du dossier, jamais imprimée (19.11.2026).
+export const valeursVides = () => ({ nom: "", telephone: "", client_id: "", date: "", pickup: "", heure: "", trajet: "", dropoff: "", programme: "", duree: "", vol: "", adultes: "2", enfants: "", bagages: "", sieges: "", prix: "", remarques: "", notes: "" });
 export const estRetour = (v) => (v && v.trajet) === RETOUR_DEPART;
 
 // Dans l'ordre de l'écran : la première erreur reçoit le focus.
-export const CHAMPS = ["nom", "telephone", "date", "pickup", "heure", "trajet", "dropoff", "programme", "duree", "vol", "adultes", "enfants", "bagages", "sieges", "prix"];
+export const CHAMPS = ["nom", "telephone", "date", "pickup", "heure", "trajet", "dropoff", "programme", "duree", "vol", "adultes", "enfants", "bagages", "sieges", "prix", "remarques", "notes"];
 
 // WhatsApp facultatif : vide, ou un numéro d'au moins 8 chiffres, sans lettres (« +66 81 234 5678 », « 0812345678 »).
 export const telephoneValide = (t) => {
@@ -189,7 +195,11 @@ export function donneesVoucher(v) {
     vol: String(v.vol || "").trim().replace(/\s+/g, " "),
     sieges: entier(v.sieges) || 0,
     prix: prixSaisi(v.prix),
-    remarques: String(v.remarques || "").trim().replace(/\s+/g, " "),
+    // Les espaces en trop se replient, les retours à la ligne restent : une remarque sur deux lignes écrite dans la réservation n'est pas
+    // réécrite quand Mook corrige autre chose.
+    remarques: String(v.remarques || "").split("\n").map((l) => l.trim().replace(/\s+/g, " ")).filter(Boolean).join("\n"),
+    // La note interne garde ses retours à la ligne ; le thaï y est accepté (jamais imprimée).
+    notes: String(v.notes || "").trim(),
   };
 }
 
@@ -221,8 +231,9 @@ export const STATUT_COURSE = "confirme";
 // Le modèle est fixé à « transfert » : Secret déduit sinon un billet de bateau d'un trajet vers un embarcadère (« … → Speedboat pier »).
 // La fiche garde la trace de ce choix dans `details.taxi_independant`.
 const INDEPENDANT = { taxi_independant: true, type_transfert: "taxi", modele_voucher: "transfert" };
-// `x.remarques` (confirmation collée, 18.11.2026) : la remarque imprimée sur la Booking confirmation (« REMARKS »), posée seulement si elle est donnée.
-// L'écran de Mook n'en saisit pas : une correction de sa part ne l'efface jamais (correctionReservation n'y touche pas).
+// `x.remarques` (confirmation collée, 18.11.2026 ; écran de Mook, 19.11.2026) : la remarque imprimée sur la Booking confirmation (« REMARKS »),
+// dans `details.remarques`, la même clé que « Remarques sur le voucher » de la réservation. Posée seulement si elle est donnée ; une correction
+// la change ou l'efface comme les autres champs facultatifs (detailsFacultatifs).
 const avecRemarques = (x) => (x.remarques ? { remarques: x.remarques } : {});
 export const reservationVoucher = (x, { independant = false } = {}) => {
   const details = { ...(x.type_trajet ? detailsFacultatifs({}, { type_trajet: x.type_trajet, programme_trajet: x.programme_trajet, duree_h: x.duree_h }) : {}), ...(independant ? INDEPENDANT : {}), ...avecRemarques(x) };
@@ -232,7 +243,7 @@ export const reservationVoucher = (x, { independant = false } = {}) => {
 // Les champs facultatifs de la course dans `details` : posés s'ils sont remplis, retirés s'ils sont vidés.
 // Un retour au point de départ garde son type, son programme et sa durée, et n'a pas de drop-off.
 function detailsFacultatifs(details, x) {
-  for (const [cle, val] of [["bagages", x.bagages], ["vol", x.vol], ["sieges", x.sieges], ["type_trajet", x.type_trajet], ["programme_trajet", x.programme_trajet], ["duree_h", x.duree_h]]) {
+  for (const [cle, val] of [["bagages", x.bagages], ["vol", x.vol], ["sieges", x.sieges], ["type_trajet", x.type_trajet], ["programme_trajet", x.programme_trajet], ["duree_h", x.duree_h], ["remarques", x.remarques]]) {
     if (val) details[cle] = val;
     else delete details[cle];
   }
@@ -251,8 +262,8 @@ export function correctionReservation(r, x) {
   return pareil ? null : suite;
 }
 
-// Valeurs du formulaire d'après un voucher déjà créé, pour le corriger.
-export function valeursDepuis(r, client = {}) {
+// Valeurs du formulaire d'après un voucher déjà créé, pour le corriger. `dossier` : pour sa note interne.
+export function valeursDepuis(r, client = {}, dossier = {}) {
   const p = r.personnes || {};
   return {
     nom: [client.prenom, client.nom].filter(Boolean).join(" "),
@@ -271,6 +282,8 @@ export function valeursDepuis(r, client = {}) {
     bagages: (r.details && r.details.bagages) || "",
     sieges: r.details && Number(r.details.sieges) > 0 ? String(r.details.sieges) : "",
     prix: r.montant_vente === null || r.montant_vente === undefined ? "" : String(r.montant_vente),
+    remarques: (r.details && r.details.remarques) || "",
+    notes: (dossier && dossier.notes) || "",
   };
 }
 

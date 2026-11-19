@@ -1691,6 +1691,8 @@ export const EN = {
   "Prix (payé au chauffeur)": "Price (paid to the driver)",
   "Remarque imprimée sur la Booking confirmation": "Remark printed on the Booking confirmation",
   "Note interne du dossier (jamais imprimée)": "Internal file note (never printed)",
+  "La remarque imprimée sur la Booking confirmation se saisit avec chaque course.": "The remark printed on the Booking confirmation is entered with each ride.",
+  "La remarque imprimée sur le voucher se saisit avec chaque service.": "The remark printed on the voucher is entered with each service.",
   "La confirmation est pour une entreprise où vous ne créez pas de dossier : choisissez-en une.": "This confirmation is for a company where you can't create files: choose one.",
   "Créer le dossier et la Booking confirmation": "Create the file and the Booking confirmation",
   "Lignes non reprises (à recopier dans un champ si besoin) :": "Lines not used (copy them into a field if needed):",

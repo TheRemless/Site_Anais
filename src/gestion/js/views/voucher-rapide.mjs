@@ -146,7 +146,10 @@ export function vueVoucherRapide() {
       champ("vol", TH.vol, texte({ autocapitalize: "characters" }), TH.vol_aide),
       h("div", { class: "vr-trio" }, champ("adultes", TH.adultes, nombre()), champ("enfants", TH.enfants, nombre()), champ("bagages", TH.bagages, texte({ inputmode: "text", autocapitalize: "off" }), TH.bagages_aide)),
       champ("sieges", TH.sieges, nombre(), TH.sieges_aide, "vr-court"),
-      champ("prix", TH.prix, h("input", { type: "text", inputmode: "decimal", autocomplete: "off", enterkeyhint: "done" }), TH.prix_aide, "vr-prix"),
+      champ("prix", TH.prix, h("input", { type: "text", inputmode: "decimal", autocomplete: "off", enterkeyhint: "next" }), TH.prix_aide, "vr-prix"),
+      // Remarque imprimée (en anglais, refusée en thaï) et note interne du dossier (jamais imprimée, thaï accepté), comme « Coller une confirmation ».
+      champ("remarques", TH.remarques, h("textarea", { rows: 2, autocomplete: "off", autocapitalize: "sentences", spellcheck: "false" }), TH.remarques_aide),
+      champ("notes", TH.notes, h("textarea", { rows: 2, autocomplete: "off", autocapitalize: "sentences" }), TH.notes_aide),
       liste,
       h(
         "div",
@@ -248,7 +251,7 @@ export function vueVoucherRapide() {
   }
 
   // Création en une fois (client, dossier, prix interne, course payée au chauffeur) : creation-course.mjs, commune avec « Coller une confirmation ».
-  const creer = async (x, essai) => avecNomFichier(await creerCourse(x, essai));
+  const creer = async (x, essai) => avecNomFichier(await creerCourse(x, essai, { notes: x.notes }));
   const majClient = majClientCourse;
 
   // Correction : le nom, la course et son prix interne (jamais montré) suivent ce qui a été saisi.
@@ -258,6 +261,8 @@ export function vueVoucherRapide() {
     const d = etat.db.dossiers.find((y) => y.id === cible.dossier.id) || cible.dossier;
     const client = etat.db.clients.find((y) => y.id === cible.client.id) || cible.client;
     await majClient(client.id, x);
+    // La note interne du dossier : changée ou effacée comme saisie.
+    if ((d.notes || "") !== (x.notes || "")) await modifier("dossiers", d.id, { notes: x.notes || "" });
     const suite = correctionReservation(r, x);
     if (suite) {
       await modifier("reservations", r.id, suite);
@@ -408,7 +413,7 @@ export function vueVoucherRapide() {
                   : h(
                       "div",
                       { class: "vr-ligne-actions" },
-                      h("button", { class: "secondaire", type: "button", onclick: () => formulaire(valeursDepuis(r, v.client), v) }, TH.modifier),
+                      h("button", { class: "secondaire", type: "button", onclick: () => formulaire(valeursDepuis(r, v.client, etat.db.dossiers.find((y) => y.id === v.dossier.id) || v.dossier), v) }, TH.modifier),
                       h("button", { class: "secondaire", type: "button", onclick: () => renvoyer(v) }, TH.renvoyer)
                     )
               );
