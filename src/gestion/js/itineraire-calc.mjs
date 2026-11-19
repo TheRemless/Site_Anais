@@ -166,9 +166,13 @@ export function departsDuTrajet(leg, { trajets = [], partenaires = [], netDe = (
 // Les faits envoyés à la fonction pour rédiger. Seuls ces champs (la fonction refuse toute autre clé) : pas de net, pas de marge, pas de
 // compagnie. Les départs retenus de même prix et même mode forment un trajet ; des prix différents (deux compagnies à marge égale) en font deux.
 // `propositions` : [{ leg, departs }] avec `departs` = departsDuTrajet(leg). Les trajets « même lieu » ne sont pas dans la réponse.
-export function faitsReponse({ itineraire = {}, propositions = [], devise = "THB", langue = "fr" }) {
+// `compagnies` : les noms des prestataires, retirés du mode s'ils y sont écrits (« Satun speedboat » devient « speedboat »).
+export function faitsReponse({ itineraire = {}, propositions = [], devise = "THB", langue = "fr", compagnies = [] }) {
   const en = langue === "en";
   const lieu = (l) => (en ? libelleClient(l) : l);
+  const echappe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const noms = compagnies.map((c) => String(c || "").trim()).filter((c) => c.length > 1).sort((a, b) => b.length - a.length);
+  const sansCompagnie = (m) => noms.reduce((t, n) => t.replace(new RegExp(echappe(n), "gi"), " "), String(m || "")).replace(/\s+/g, " ").replace(/^[\s,·+-]+|[\s,·+-]+$/g, "").trim();
   const trajets = [];
   for (const { leg, departs } of propositions) {
     if (!leg || leg.memeLieu || leg.incomplet) continue;
@@ -179,7 +183,8 @@ export function faitsReponse({ itineraire = {}, propositions = [], devise = "THB
     const groupes = new Map();
     for (const { trajet: t } of departs.retenus) {
       const cle = [nombre(t.prix_adulte), nombre(t.prix_enfant), t.mode || "", t.duree || ""].join("|");
-      const g = groupes.get(cle) || { date: leg.date, de: lieu(leg.de), vers: lieu(leg.vers), au_catalogue: true, mode: en ? libelleClient(t.mode || "") : t.mode || "", duree: t.duree || "", horaires: [], prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), a_payer_sur_place: false };
+      const mode = sansCompagnie(t.mode);
+      const g = groupes.get(cle) || { date: leg.date, de: lieu(leg.de), vers: lieu(leg.vers), au_catalogue: true, mode: en ? libelleClient(mode) : mode, duree: t.duree || "", horaires: [], prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), a_payer_sur_place: false };
       if (t.depart && !g.horaires.some((h) => h.depart === heure(t.depart))) g.horaires.push({ depart: heure(t.depart), arrivee: heure(t.arrivee) });
       groupes.set(cle, g);
     }
@@ -189,6 +194,17 @@ export function faitsReponse({ itineraire = {}, propositions = [], devise = "THB
 }
 
 // ---- 4. Création du dossier ----------------------------------------------------------------------------------------------------------
+
+// Les choix encore valables : un horaire par trajet existant, parmi ceux affichés (`propositions` : [{ leg, departs }]). Un choix devenu caché
+// (autre compagnie devenue la meilleure après un changement de personnes) ou d'un trajet disparu (étape retirée) est oublié.
+export function choixValables(choix = {}, propositions = []) {
+  const out = {};
+  for (const { leg, departs } of propositions) {
+    const id = choix[leg.index];
+    if (id && departs.retenus.some((c) => c.trajet.id === id)) out[leg.index] = id;
+  }
+  return out;
+}
 
 // Les services à ouvrir dans « Coller une demande » : un par trajet dont Anaïs a choisi l'horaire (`choix[index]` = id du trajet), avec l'hôtel
 // de départ comme lieu de pickup. Les trajets absents du catalogue ou sans choix ne deviennent pas des services.

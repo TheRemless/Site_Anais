@@ -11,7 +11,7 @@ import { etat, reglages, nomPartenaire, netTrajet, peut, chargerHotelsLieux, hot
 import { h, modal, toast, champ } from "../ui.mjs";
 import { formatMontant, aujourdhui } from "../calc.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { lieuxDuCatalogue, trajetsEntreEtapes, departsDuTrajet, faitsReponse, servicesDepuisChoix, hotelsAChercher, completerEtape, ligneHotel, cleLieu } from "../itineraire-calc.mjs";
+import { lieuxDuCatalogue, trajetsEntreEtapes, departsDuTrajet, faitsReponse, servicesDepuisChoix, hotelsAChercher, completerEtape, ligneHotel, cleLieu, cleHotel, choixValables } from "../itineraire-calc.mjs";
 import { messageErreur, texteAvertissement } from "./assistant-demande.mjs";
 
 const CERTITUDE = { sure: N_("Sûr"), probable: N_("Probable"), inconnue: N_("Non tranché") };
@@ -196,10 +196,14 @@ export function ouvrirItineraire(texteInitial = "") {
       for (const res of r.hotels) {
         // Situé hors des lieux du catalogue (« Koh Libong »), avec une source : ce lieu est retenu, le trajet sera « pas au catalogue ».
         const lieu = res.lieu || (res.certitude !== "inconnue" ? res.localite : "");
-        for (const e of etapes.filter((x) => x.hotel.trim() === res.nom && !x.lieu)) Object.assign(e, { lieu, zone: res.zone, localite: res.localite, source: res.source, certitude: res.certitude, explication: res.explication, verifie: false, origine: "recherche" });
-        // Gardé tel quel, même non tranché : l'hôtel ne se recherche pas à chaque demande ; Anaïs peut relancer ou choisir.
-        if (ecrit && tableHotelsDisponible()) await enregistrerHotelLieu(ligneHotel({ nom: res.nom, lieu, zone: res.zone, localite: res.localite, source: res.source, certitude: res.certitude, verifie: false })).catch(() => null);
+        // Comparés par clé : la fonction rend le nom nettoyé (espaces, téléphone collé), l'étape garde le nom tapé.
+        for (const e of etapes.filter((x) => cleHotel(x.hotel) === cleHotel(res.nom) && !x.lieu)) Object.assign(e, { lieu, zone: res.zone, localite: res.localite, source: res.source, certitude: res.certitude, explication: res.explication, verifie: false, origine: "recherche" });
       }
+      // Gardés tels quels, même non tranchés : un hôtel ne se recherche pas à chaque demande ; Anaïs peut relancer ou choisir. En une fois.
+      if (ecrit && tableHotelsDisponible())
+        await Promise.all(
+          r.hotels.map((res) => enregistrerHotelLieu(ligneHotel({ nom: res.nom, lieu: res.lieu || (res.certitude !== "inconnue" ? res.localite : ""), zone: res.zone, localite: res.localite, source: res.source, certitude: res.certitude, verifie: false })).catch(() => null))
+        );
       const nonTranches = r.hotels.filter((x) => !x.lieu).length;
       etatSituer.textContent = nonTranches ? pluriel(nonTranches, N_("{n} hôtel reste à situer : choisissez son lieu."), N_("{n} hôtels restent à situer : choisissez leur lieu.")) : tr("Hôtels situés : vérifiez les sources.");
       dessinerEtapes();
@@ -223,11 +227,8 @@ export function ouvrirItineraire(texteInitial = "") {
     if (!itineraire) return;
     const props = propositions();
     blocTrajets.hidden = !props.length;
-    // Un départ retenu par défaut : le premier de la proposition ; un choix devenu impossible (lieu ou date changé) est retiré.
-    for (const { leg, departs } of props) {
-      const ids = departs.candidats.map((c) => c.trajet.id);
-      if (choix[leg.index] && !ids.includes(choix[leg.index])) delete choix[leg.index];
-    }
+    // Un choix devenu caché (autre compagnie devenue la meilleure, lieu ou date changé, étape retirée) est oublié : rien ne se crée sans être vu.
+    choix = choixValables(choix, props);
     blocTrajets.replaceChildren(
       ...[
       h("h3", { id: "iti-trajets-titre" }, tr("Trajets et horaires")),
@@ -304,7 +305,7 @@ export function ouvrirItineraire(texteInitial = "") {
       etatReponse.textContent = tr("Choisissez d'abord le lieu de chaque hôtel.");
       return;
     }
-    const faits = faitsReponse({ itineraire, propositions: props, devise, langue });
+    const faits = faitsReponse({ itineraire, propositions: props, devise, langue, compagnies: etat.db.partenaires.map((p) => p.nom) });
     if (!faits.trajets.length) {
       etatReponse.classList.add("erreur");
       etatReponse.textContent = tr("Aucun trajet à proposer : vérifiez les étapes.");
@@ -346,6 +347,7 @@ export function ouvrirItineraire(texteInitial = "") {
   async function creer() {
     erreur.textContent = "";
     const legs = trajetsEntreEtapes(etapes);
+    choix = choixValables(choix, propositions());
     if (!Object.keys(choix).length) return (erreur.textContent = tr("Choisissez l'horaire d'au moins un trajet, celui que le client a retenu."));
     const prep = servicesDepuisChoix({ itineraire, legs, choix });
     fermer();

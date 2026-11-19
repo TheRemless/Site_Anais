@@ -307,8 +307,8 @@ export const SCHEMA_REPONSE_ITINERAIRE = {
   properties: { message: { type: "string" }, prix_cites: { type: "array", items: { type: "number" } }, manques: { type: "array", items: { type: "string" } } },
 };
 
-// Mots qui trahiraient une raison interne dans la réponse au client.
-const INTERNE = /\b(marges?|margins?|commissions?|nets?\b|prix d'achat|net price|partenaires?|partners?)\b/i;
+// Mots qui trahiraient une raison interne dans la réponse au client. « Partenaire » n'en est pas un : la voix de l'entreprise le dit au client.
+const INTERNE = /\b(marges?|margins?|commissions?|nets?\b|prix d'achat|net price)\b/i;
 
 // Contrôle du brouillon : un montant ou une heure absents des faits, un mot interne, et le brouillon est marqué à vérifier.
 export function validerReponseItineraire(v, faits) {
@@ -321,7 +321,8 @@ export function validerReponseItineraire(v, faits) {
     for (const h of t.horaires) for (const x of [h.depart, h.arrivee]) if (x) heures.add(x);
   }
   const inconnus = [...new Set([...montantsDuTexte(message), ...(Array.isArray(v.prix_cites) ? v.prix_cites : []).filter((n) => typeof n === "number" && n >= 100)])].filter((n) => !permis.has(n));
-  const heuresInconnues = [...new Set([...message.matchAll(/\b([01]?\d|2[0-3])[:h.]([0-5]\d)\b/g)].map((m) => `${m[1].padStart(2, "0")}:${m[2]}`))].filter((h) => !heures.has(h));
+  // « 09:30 », « 9h30 » ; pas le point, qui écrit aussi une date (« le 21.01 »).
+  const heuresInconnues = [...new Set([...message.matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)].map((m) => `${m[1].padStart(2, "0")}:${m[2]}`))].filter((h) => !heures.has(h));
   const interne = INTERNE.exec(message);
   return {
     ok: true,

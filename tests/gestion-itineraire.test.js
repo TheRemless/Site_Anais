@@ -27,6 +27,7 @@ import {
   departsDuTrajet,
   faitsReponse,
   servicesDepuisChoix,
+  choixValables,
   hotelsAChercher,
   completerEtape,
   ligneHotel,
@@ -296,6 +297,23 @@ test("réponse : prompt avec la voix de l'entreprise et la règle « je peux me 
   const mauvais = validerReponseItineraire({ message: "Total 1 800 THB, départ 08:15 avec la meilleure marge.", prix_cites: [], manques: [] }, faits);
   assert.deepEqual(mauvais.avertissements, ["montant_hors_base:1800", "heure_hors_base:08:15", "mot_interne:marge"]);
   assert.equal(validerReponseItineraire({ message: "" }, faits).ok, false);
+  const dates = validerReponseItineraire({ message: "Le 21.01 et le 12.02 : départ à 9h30, je vérifie avec notre partenaire.", prix_cites: [] }, faits);
+  assert.deepEqual(dates.avertissements, [], "une date « 21.01 » n'est pas une heure, « partenaire » n'est pas une raison interne");
+});
+
+test("faits : un nom de compagnie écrit dans le mode du trajet est retiré", () => {
+  const avecNom = TRAJETS.map((t) => (t.id === "s1" || t.id === "s2" ? { ...t, mode: "Satun Pakbara speedboat" } : t));
+  const props = trajetsEntreEtapes(ETAPES.slice(1, 3)).map((leg) => ({ leg, departs: departsDuTrajet(leg, { trajets: avecNom, partenaires: PARTENAIRES, netDe, adultes: 2, enfants: 1 }) }));
+  const f = faitsReponse({ itineraire: { adultes: 2, enfants: 1 }, propositions: props, compagnies: PARTENAIRES.map((p) => p.nom) });
+  assert.equal(f.trajets[0].mode, "speedboat");
+  assert.ok(!JSON.stringify(f).includes("Satun"));
+});
+
+test("choix : un horaire devenu caché (autre compagnie meilleure) ou d'un trajet disparu est oublié", () => {
+  const props = (pax, etapes = ETAPES) => trajetsEntreEtapes(etapes).map((leg) => ({ leg, departs: departsDuTrajet(leg, { trajets: TRAJETS, partenaires: PARTENAIRES, netDe, ...pax }) }));
+  assert.deepEqual(choixValables({ 1: "b1", 2: "p2" }, props({ adultes: 2 })), { 1: "b1", 2: "p2" }, "à marge égale, Bundhaya reste proposé");
+  assert.deepEqual(choixValables({ 1: "b1", 2: "p2" }, props({ adultes: 2, enfants: 1 })), { 2: "p2" }, "avec un enfant, Bundhaya passe dans les compagnies écartées : son horaire n'est plus choisi");
+  assert.deepEqual(choixValables({ 3: "x", 2: "p1" }, props({ adultes: 2 }, ETAPES.slice(0, 4))), { 2: "p1" }, "le trajet 3 n'existe plus");
 });
 
 // ---- 4. Hôtels gardés, création du dossier ---------------------------------------------------------------------------------------------

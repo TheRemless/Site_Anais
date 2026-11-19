@@ -105,8 +105,9 @@ Deno.serve(async (req) => {
 
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
   if (!cle) return json({ erreur: "non_configure" }, 503);
-  // Situer plusieurs hôtels enchaîne des recherches web : plus de temps, sans nouvel essai (une recherche refaite se paie deux fois).
-  const anthropic = new Anthropic({ apiKey: cle, timeout: usage === "situer" ? 120_000 : 60_000, maxRetries: usage === "situer" ? 0 : 1 });
+  // Situer plusieurs hôtels enchaîne des recherches web : sans nouvel essai (une recherche refaite se paie deux fois). Deux passages au plus
+  // (reprise après « pause_turn ») de 65 secondes chacun restent sous la limite de 150 secondes d'une fonction Supabase : le journal s'écrit toujours.
+  const anthropic = new Anthropic({ apiKey: cle, timeout: 65_000, maxRetries: usage === "situer" ? 0 : 1 });
 
   const aujourdhui = dateBangkok();
   const message = typeof demande.texte === "string" ? demande.texte.trim() : "";
