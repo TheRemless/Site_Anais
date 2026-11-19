@@ -21,6 +21,8 @@ import { envoyerDocument } from "./document-envoi.mjs";
 import { numeroVoucher, TITRES_VOUCHER, etatEnvoisVouchers } from "../operations-calc.mjs";
 import { ouvrirEnvois } from "./envois-vouchers.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { demandesDuDossier } from "../demandes-site-calc.mjs";
+import { boutonMessageClient, jourRecu } from "./message-client.mjs";
 import { ouvrirSansSuite, rouvrirDevis, baseDistante } from "./sans-suite.mjs";
 import { peutClasser, disponible as sansSuiteDisponible } from "../sans-suite-calc.mjs";
 import { ouvrirCarnet, baseDistante as baseDistanteCarnet } from "./carnet.mjs";
@@ -28,6 +30,19 @@ import { disponible as carnetDisponible, peutNoter } from "../carnet-calc.mjs";
 import { typePaiement, paiementEnDouble, ecartASolder, TYPES_PAIEMENT, reservationsAReactiver, reactivation } from "../dossier-gestes-calc.mjs";
 
 const rafraichir = () => naviguer(location.hash);
+
+// Le dossier vient d'une demande du site : « Demande du site du 19 nov. 2026 » et son message, tel que le client l'a envoyé (19.11.2026).
+// Mêmes droits que l'écran des demandes : les lignes ne sont chargées que pour qui peut les lire (lit_demandes_site), avec le module actif.
+function blocDemandesSite(d) {
+  if (!moduleActif("demandes_site")) return null;
+  const demandes = demandesDuDossier(etat.db.demandes_site, d.id);
+  if (!demandes.length) return null;
+  return h(
+    "div",
+    { class: "dossier-demandes-site" },
+    demandes.map((x) => h("p", { class: "dossier-demande-site" }, h("span", null, tr("Demande du site du {date}", { date: jourRecu(x.created_at) }), x.ref ? ` · ${x.ref}` : ""), boutonMessageClient(x)))
+  );
+}
 
 // Réactiver les réservations d'un dossier qu'on vient de réactiver. Celles annulées avec le dossier sont cochées ; celles annulées une à une
 // avant restent décochées (leur service avait peut-être été retiré de la facture). Rien n'est envoyé au prestataire.
@@ -689,6 +704,7 @@ function ficheDossierVue(id) {
       h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, excursions && rsDossier.length > 1 ? [d.ref, pluriel(rsDossier.filter((x) => x.statut !== "annule").length, N_("{n} service"), N_("{n} services"))].join(" · ") : sousTitreDossier(d), responsable)),
       h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, tr("Dupliquer")) : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, tr("Modifier le dossier")) : null)
     ),
+    blocDemandesSite(d),
     resume,
     h(
       "section",

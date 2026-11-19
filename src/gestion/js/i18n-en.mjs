@@ -3585,4 +3585,11 @@ export const EN = {
   "Fiche de {source} : la modifier ici la modifie aussi dans {source}.": "{source} record: changing it here also changes it in {source}.",
   "fiche {sigle}": "{sigle} record",
   "Fiche client": "Client record",
+  "Voir le message du client": "See the client's message",
+  "Demande": "Request",
+  "Date inconnue": "Unknown date",
+  "Page d'origine": "Source page",
+  "Le message tel que le client l'a envoyé depuis le site, sans les changements faits ensuite.": "The message as the client sent it from the website, without any later changes.",
+  "Le message de cette demande n'a pas été gardé (envoyée avant que le site le transmette).": "The message of this request was not kept (sent before the website passed it on).",
+  "Demande du site du {date}": "Website request of {date}",
 };

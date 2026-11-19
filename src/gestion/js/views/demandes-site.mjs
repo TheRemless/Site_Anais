@@ -17,6 +17,7 @@ import {
   trierDemandes, aTraiter, chiffresDemandes, cheminPage, numeroWhatsApp, lienWhatsAppClient, numeroAffiche, reponseSansMessage,
 } from "../demandes-site-calc.mjs";
 import { PRODUITS_SITE } from "../site-produits.mjs";
+import { boutonMessageClient } from "./message-client.mjs";
 
 let onglet = "a_traiter";
 let periode = "30";
@@ -287,6 +288,8 @@ function carte(d) {
     h("p", { class: "dsite-client" }, [d.nom, d.pickup].filter(Boolean).join(" · ") || tr("Nom non donné")),
     d.total_estime ? h("p", { class: "dsite-detail" }, tr("Prix indiqué sur le site : {prix}", { prix: formatMontant(d.total_estime, d.devise || "THB") })) : null,
     d.page_url ? h("p", { class: "dsite-detail" }, tr("Page : {page}", { page: cheminPage(d.page_url) })) : null,
+    // Sur chaque carte, traitée ou non : le message du client tel qu'il l'a envoyé (Jérémy, 19.11.2026).
+    h("p", { class: "dsite-voir-message" }, boutonMessageClient(d)),
     d.statut !== "nouvelle"
       ? h(
           "p",
