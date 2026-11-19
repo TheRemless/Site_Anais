@@ -1171,7 +1171,10 @@ th[aria-sort="ascending"] .st-tri, th[aria-sort="descending"] .st-tri { color: v
 .st-table td a { color: var(--teal-700); font-weight: 600; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .st-pied td { font-weight: 700; background: #fafcfc; border-top: 2px solid var(--bord-fort); }
 @media (max-width: 719px) {
-  .st-table tfoot, .st-table tfoot tr, .st-table tfoot td { display: block; width: 100%; }
+  .st-table tfoot, .st-table tfoot tr { display: block; width: 100%; }
+  /* Total : libellé à gauche, valeur à droite comme les autres lignes (« Appels 290 », pas « Appels290 »), un seul trait au-dessus. */
+  .st-table tfoot td { display: flex; width: 100%; border-top: 0; background: none; }
+  .st-table tfoot td:empty { display: none; }
   .st-table tfoot tr { padding: 10px 14px; border-top: 2px solid var(--bord-fort); background: #fafcfc; }
   .st-table td:first-child { justify-content: flex-start; font-size: 1rem; font-weight: 700; }
   .st-table td:first-child::before { content: none; }
@@ -1867,3 +1870,16 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .cc-candidat input[type="radio"] { margin-top: 2px; }
 .cc-candidat > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
 .cc-repere { flex-basis: 100%; color: var(--texte-2); font-size: 0.9rem; font-weight: 400; overflow-wrap: anywhere; }
+
+/* Suivi de l'assistant (#/assistant, 20.11.2026) : mêmes tuiles, graphique et tableaux que les statistiques. */
+.st-entreprise { max-width: 320px; margin-bottom: 20px; }
+.st-tuile.as-alerte { border-color: var(--danger); box-shadow: inset 4px 0 0 var(--danger); }
+.as-limite { color: var(--danger); font-weight: 700; }
+.as-limite-texte { font-size: 0.85rem; }
+.as-statuts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
+.as-statuts li { padding: 6px 12px; border: 1px solid var(--bord); border-radius: 999px; background: var(--surface); }
+.as-statuts li.as-refus { border-color: var(--bord-fort); background: var(--surface-2); }
+.as-statuts li.as-erreur { border-color: var(--danger); background: var(--danger-fond); }
+.as-derniers { margin: 8px 0 0; padding-left: 18px; }
+.as-derniers li { margin-bottom: 4px; overflow-wrap: anywhere; }
+.as-quand { font-variant-numeric: tabular-nums; color: var(--texte-2); }

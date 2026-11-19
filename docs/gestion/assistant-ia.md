@@ -40,6 +40,23 @@ La zone gardée pour un hôtel (« Relax Bay ») sert aussi à proposer la zone 
 
 Chaque appel compte dans la limite de 40 par personne et par jour : une demande complète en fait trois.
 
+## Suivi de l'assistant : coût, usage et qualité (20.11.2026)
+
+Écran `#/assistant`, ouvert depuis Réglages (bouton en haut, et lien sous la case « Assistant IA »). Réservé aux personnes qui ont dans une entreprise les droits « réglages » et « journal » (les administratrices) ; l'administratrice générale voit toutes les entreprises, avec un choix d'entreprise. Fichiers : `views/assistant-suivi.mjs` (écran), `assistant-suivi-calc.mjs` (calculs, testés dans `tests/gestion-assistant-suivi.test.js`), `demo-assistant.mjs` (journal fictif de la démo).
+
+| Bloc | Source | Règle |
+|---|---|---|
+| Coût du jour, du mois, projection | `assistant_journal.cout_estime_usd` | Jours de Bangkok. Projection : coût moyen par jour écoulé × jours du mois, dès le 3. La facture d'Anthropic fait foi. |
+| Appels par usage, par personne, par entreprise | `assistant_journal` | Mois en cours. Un usage nouveau (`trier`, `brochure`) apparaît seul, sous son code tant qu'il n'a pas de libellé dans `USAGES_SUIVIS`. |
+| Échecs | `statut` du journal | « refus » = refus de Claude ; tout autre statut que « ok » = erreur. Les demandes arrêtées avant Claude (éteint, droit, limite) ne sont pas notées. |
+| Limite du jour | nombre de lignes du jour par personne | 40 (`LIMITE_JOUR`, égal à `LIMITE_JOUR_DEFAUT`, un test le vérifie). Comptée toutes entreprises confondues, comme la fonction. |
+| Tendance 30 jours | `assistant_journal` | Coût par jour ; toucher une colonne donne appels et échecs. |
+| Qualité | `assistant_retouches` (migration 51) | Part des réponses rédigées copiées sans retouche, et part moyenne de mots changés. |
+
+**Mesure de qualité (migration 51, `docs/gestion/migration-51-assistant-retouches.sql`).** Le journal ne dit pas si une réponse rédigée a été retouchée. À la première copie d'un brouillon (bouton « Copier » de la réponse d'itinéraire), l'outil calcule dans le navigateur la part de mots changés entre le brouillon et le texte copié (distance d'édition sur les mots, 0 à 100) et n'envoie que ce nombre, avec l'entreprise et l'usage. Jamais le texte. Une retouche faite ensuite dans WhatsApp n'est pas vue. Avant la migration, rien n'est noté et l'écran l'indique.
+
+Pour un nouvel usage qui rédige (brochure…) : l'ajouter à `USAGES_REDIGES` et appeler `etat.store.noterRetouche({ entiteId, usage, part: partModifiee(brouillon, texteCopie) })` à la copie.
+
 ## Jeu d'essai (20.11.2026)
 
 Pour mesurer l'assistant avant et après chaque changement, et demain l'agent conversationnel.
