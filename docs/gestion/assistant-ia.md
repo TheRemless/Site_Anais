@@ -60,11 +60,15 @@ Pour 10 messages lus et 10 réponses rédigées par jour : environ 1 $ par jour,
 
 ## Activer l'assistant
 
-1. Jérémy crée une clé sur console.anthropic.com (Settings > API Keys), avec une limite de dépense mensuelle (Settings > Limits), par exemple 50 $.
+1. Jérémy crée une clé sur console.anthropic.com dans l'organisation ZTP (Settings > API Keys), avec une limite de dépense mensuelle (Settings > Limits), 30 $ proposés.
 2. Jérémy la donne à Supabase lui-même, sans la coller dans le chat :
    `supabase secrets set ANTHROPIC_API_KEY=… --project-ref lkxqcmzeidlyssoqmqkh`
-3. Claude vérifie la migration 27 en lecture puis l'applique après l'accord de Jérémy.
-4. Claude déploie la fonction après l'accord de Jérémy : `supabase functions deploy assistant --project-ref lkxqcmzeidlyssoqmqkh`.
+3. Claude fait une sauvegarde forcée de la base, vérifie la migration 27 en lecture puis l'applique après l'accord de Jérémy.
+4. Claude déploie la fonction après l'accord de Jérémy : `npx -y supabase@3.0.0 functions deploy assistant --remote=lkxqcmzeidlyssoqmqkh --use-api --yes`.
+
+Le dossier `supabase/` ne déclenche pas de build Netlify (`scripts/netlify-ignore.sh`, 19.11.2026) : la fonction se déploie à part, une modification de la fonction seule ne coûte pas de minutes de build.
+
+Vérifié le 19.11.2026 avec le skill claude-api : modèle `claude-opus-5-5`, effort explicite (`low` pour lire, `medium` pour rédiger, le défaut d'Opus 5.5 étant `medium`), réflexion adaptative implicite, `fallbacks: "default"` sous l'en-tête `server-side-fallback-2026-07-01` (replis possibles : Claude Opus 5, Claude Opus 4.8, tous deux dans la table des prix), SDK `@anthropic-ai/sdk@1.3.0` déjà sur la version d'API `2026-10-21`, aucun paramètre retiré par cette version. Le catalogue envoyé exclut aussi les tarifs d'un partenaire masqué, comme la lecture par règles.
 5. Jérémy coche « Assistant IA » dans Réglages > Écrans de Secret (et de Zwald s'il le veut).
 6. Premier essai réel sur un vrai message, lecture de la ligne du journal et du coût.
 

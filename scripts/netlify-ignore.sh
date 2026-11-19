@@ -5,9 +5,10 @@ if [ "$CONTEXT" = "deploy-preview" ]; then
   if git log -1 --pretty=%B | grep -q "\[preview\]"; then echo "Aperçu demandé ([preview]) : build."; exit 1; fi
   echo "Aperçu non demandé : build ignoré (ajouter [preview] au message du commit pour en avoir un)."; exit 0
 fi
-# 2. Production : pas de build si rien de ce qui part en ligne n'a changé (tests, docs, notes, workflows, taux de change).
+# 2. Production : pas de build si rien de ce qui part en ligne n'a changé (tests, docs, notes, workflows, taux de change, et supabase/ :
+#    fonctions et migrations de la base, déployées à part sur Supabase, jamais servies par Netlify).
 if [ -n "$CACHED_COMMIT_REF" ] && [ "$CACHED_COMMIT_REF" != "$COMMIT_REF" ] && \
-   git diff --quiet "$CACHED_COMMIT_REF" "$COMMIT_REF" -- . ':!tests' ':!docs' ':!*.md' ':!.github' ':!data/currency-rates.json'; then
+   git diff --quiet "$CACHED_COMMIT_REF" "$COMMIT_REF" -- . ':!tests' ':!docs' ':!*.md' ':!.github' ':!data/currency-rates.json' ':!supabase'; then
   echo "Aucun changement publié : build ignoré."; exit 0
 fi
 exit 1

@@ -66,13 +66,16 @@ const prestationProposable = (p) => p.actif !== false && !["option", "frais"].in
 /** @param {{ prestations?: any[], trajets?: any[], partenaires?: any[] }} lignes */
 export function construireCatalogue({ prestations = [], trajets = [], partenaires = [] }) {
   const nom = new Map(partenaires.map((p) => [p.id, texte(p.nom, 60)]));
+  // Un partenaire masqué ne se propose plus, ni ses tarifs (même règle que `proposable`, partenaires-calc.mjs) : sinon Claude pourrait choisir
+  // une ligne que l'outil refuse ensuite, et le service resterait à choisir à la main.
+  const masques = new Set(partenaires.filter((p) => p.actif === false).map((p) => p.id));
   const tri = (a, b) => (a.cle < b.cle ? -1 : a.cle > b.cle ? 1 : 0);
   const ps = prestations
-    .filter(prestationProposable)
+    .filter((p) => prestationProposable(p) && !masques.has(p.partenaire_id))
     .map((p) => ({ p, cle: `${texte(p.libelle_en || p.libelle)}|${p.id}` }))
     .sort(tri);
   const ts = trajets
-    .filter((t) => t.actif !== false)
+    .filter((t) => t.actif !== false && !masques.has(t.partenaire_id))
     .map((t) => ({ t, cle: `${texte(t.de)}|${texte(t.vers)}|${texte(t.depart)}|${t.id}` }))
     .sort(tri);
   const refs = new Map();

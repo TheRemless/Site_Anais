@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
     const [ps, ts, pa, en] = await Promise.all([
       sb.from("prestations").select("id, famille, groupe, libelle, libelle_en, unite, sur_place, actif, partenaire_id").eq("entite_id", entiteId),
       sb.from("trajets").select("id, de, vers, mode, depart, periode, actif, partenaire_id").eq("entite_id", entiteId),
-      sb.from("partenaires").select("id, nom").eq("entite_id", entiteId),
+      sb.from("partenaires").select("id, nom, actif").eq("entite_id", entiteId),
       sb.from("entites").select("nom").eq("id", entiteId).maybeSingle(),
     ]);
     if (ps.error || ts.error || pa.error) return json({ erreur: "base" }, 500);
