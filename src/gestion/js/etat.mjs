@@ -10,7 +10,7 @@ import { codeCourt, departModele } from "./modeles-metier.mjs";
 import { permissionsDans, roleDans, voitTout } from "./droits.mjs";
 import { fusionner, appliquerChoix } from "./conflit-calc.mjs";
 import { tr, definirLangue, langueStockee, estLangue, pretLangue } from "./i18n.mjs";
-import { exempleDe, estLanta } from "./exemples.mjs";
+import { exempleDe } from "./exemples.mjs";
 import { appliquerTextesThai } from "./textes-thai.mjs";
 import { reglerCompagnies } from "./partenaires-calc.mjs";
 import { responsableDe, libelleAdmin } from "./noms-calc.mjs";
@@ -550,7 +550,6 @@ export const modifierOrganisation = (...a) => ecrire(() => modifierOrganisationB
 
 // Organisation de l'entreprise ouverte (celle de la personne connectée à défaut) : choisit les exemples de Lanta ou neutres (exemples.mjs).
 export const organisationActiveId = () => (etat.brut && (entiteActive() || {}).organisation_id) || (organisation() || {}).id || null;
-export const exemplesLanta = () => estLanta(organisationActiveId());
 export const exemple = (cle, vars) => tr(exempleDe(cle, organisationActiveId()), vars);
 
 // « Partage ses clients avec » (migration 46), réglé dans Administration par l'administration générale.
