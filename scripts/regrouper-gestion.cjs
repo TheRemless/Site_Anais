@@ -16,6 +16,9 @@ const DOSSIER = "b";
 const empreinte = (contenu) => crypto.createHash("sha256").update(contenu).digest("hex").slice(0, 10);
 
 async function regrouperGestion({ source, sortie }) {
+  // Serveur de développement d'Eleventy (npm run serve) : les copies peuvent être servies depuis src/ sans être écrites dans _site.
+  // Sans page ni service worker publiés, il n'y a rien à regrouper : l'outil y tourne sur ses sources, comme avant.
+  if (!fs.existsSync(path.join(sortie, "index.html")) || !fs.existsSync(path.join(sortie, "sw.js"))) return null;
   const esbuild = require("esbuild");
   const dossier = path.join(sortie, DOSSIER);
   fs.rmSync(dossier, { recursive: true, force: true });
@@ -61,16 +64,23 @@ async function regrouperGestion({ source, sortie }) {
   if (!index.includes(nom(entree))) throw new Error("regrouper-gestion : balise du point d'entrée introuvable dans index.html");
   fs.writeFileSync(fichierIndex, index);
 
-  // Service worker : la liste des fichiers empreintés à garder, et une version qui change avec eux (le navigateur installe alors le nouveau
-  // service worker, qui garde les nouveaux fichiers et efface les anciens).
-  const fichiers = fs.readdirSync(dossier).sort().map((f) => `${DOSSIER}/${f}`);
-  const versionSw = empreinte(fichiers.join("\n"));
+  // Service worker : il garde d'avance ce qu'il faut pour le premier écran (point d'entrée, morceaux annoncés, feuilles de style) ; un écran
+  // chargé à la demande est gardé la première fois qu'il sert (pas de téléchargement d'écrans jamais ouverts sur un téléphone en 4G).
+  // Sa version suit TOUS les fichiers regroupés : le navigateur installe le nouveau service worker, qui efface les fichiers d'avant.
+  const { fichiers, version: versionSw } = empreinteRegroupes(sortie);
+  const precharge = [nom(entree), ...premiers, ...Object.values(css)];
   const fichierSw = path.join(sortie, "sw.js");
   const sw = fs.readFileSync(fichierSw, "utf8");
   const marque = /const PRECHARGE = \[\];\nconst VERSION_APP = "source";/;
   if (!marque.test(sw)) throw new Error("regrouper-gestion : marque PRECHARGE / VERSION_APP introuvable dans sw.js");
-  fs.writeFileSync(fichierSw, sw.replace(marque, `const PRECHARGE = ${JSON.stringify(fichiers)};\nconst VERSION_APP = "${versionSw}";`));
-  return { entree: nom(entree), premiers, css: Object.values(css), fichiers, versionSw };
+  fs.writeFileSync(fichierSw, sw.replace(marque, `const PRECHARGE = ${JSON.stringify(precharge)};\nconst VERSION_APP = "${versionSw}";`));
+  return { entree: nom(entree), premiers, css: Object.values(css), fichiers, precharge, versionSw };
 }
 
-module.exports = { regrouperGestion, DOSSIER };
+// L'empreinte de la liste des fichiers regroupés publiés (leurs noms portent déjà l'empreinte de leur contenu).
+function empreinteRegroupes(sortie) {
+  const fichiers = fs.readdirSync(path.join(sortie, DOSSIER)).sort().map((f) => `${DOSSIER}/${f}`);
+  return { fichiers, version: empreinte(fichiers.join("\n")) };
+}
+
+module.exports = { regrouperGestion, empreinteRegroupes, DOSSIER };
