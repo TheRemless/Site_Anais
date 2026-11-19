@@ -41,6 +41,7 @@ export function noterTour(att = {}, t, memo, contexte = {}) {
   if (c.reponse_sans_signature) v.reponse_sans_signature = reponses.every((m) => !FIN_SIGNEE.test(m) && !(contexte.prenoms || []).some((p) => new RegExp(`\\b${sansAccents(p)}\\b`).test(sansAccents(m))));
   if (c.reponse_sans_prestataire) v.reponse_sans_prestataire = reponses.every((m) => !(contexte.prestataires || []).some((p) => p.length > 3 && sansAccents(m).includes(sansAccents(p))));
   if (c.reponse_vouvoiement) v.reponse_vouvoiement = reponses.length > 0 && reponses.every((m) => /\bvous\b/i.test(m) && !/\btu\b|\bte\b|\bton\b|\bta\b/i.test(m));
+  if (att.ferry_en_trois) v.ferry_en_trois = !!plan && plan.trajets.some((x) => Array.isArray(x.morceaux) && x.morceaux.length === 3) && /ferry/i.test(t.textes);
   if (att.source_duree) v.source_duree = !!plan && plan.trajets.every((x) => x.source === att.source_duree);
   if (att.carte_temps) v.carte_temps = t.cartes.some((x) => x.genre === "temps" && x.donnees.duree_min === att.carte_temps);
   if (att.modification) v.modification = t.cartes.some((x) => x.genre === "modification" && x.donnees.champ === att.modification.champ && x.donnees.valeur === att.modification.valeur);

@@ -7,7 +7,7 @@ import { h, toast, confirmer, modal, icone, vider, ajouter } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
-import { clePaire } from "../agent-temps.mjs";
+import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
 
 const ERREURS = {
@@ -370,7 +370,8 @@ export async function vueAgent(idOuvert = "") {
               i === 0 ? h("span", null, tr("Pickup")) : null,
               p.rendezVous ? h("span", null, p.fourchette ? tr("Rendez-vous, arrivée prévue vers {h}", { h: p.fourchette[0] }) : tr("Rendez-vous")) : p.fourchette ? h("span", null, tr("Arrivée entre {a} et {b}", { a: p.fourchette[0], b: p.fourchette[1] })) : null,
               p.attente ? h("span", null, tr("{m} min sur place, départ à {h}", { m: p.attente, h: p.depart })) : null,
-              p.trajet ? h("span", { class: "agent-trajet" }, sousTrajet(p.trajet)) : null,
+              p.trajet ? h("span", { class: "agent-trajet" }, p.trajet.morceaux ? detailMorceaux(p.trajet.morceaux, texteDuree) : sousTrajet(p.trajet)) : null,
+              p.trajet && p.trajet.morceaux ? h("span", { class: "agent-trajet" }, tr("{m} min de marge", { m: p.trajet.marge_min })) : null,
               p.trajet && p.trajet.de_trouve ? h("span", { class: "agent-trajet" }, tr("OpenStreetMap a compris : {a} → {b}", { a: p.trajet.de_trouve, b: p.trajet.vers_trouve })) : null,
               p.trajet && p.trajet.source_url ? h("a", { class: "agent-trajet", href: p.trajet.source_url, target: "_blank", rel: "noopener noreferrer" }, tr("Source de l'estimation")) : null
             )

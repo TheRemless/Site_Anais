@@ -11,6 +11,20 @@ import { grillesDe } from "../pickup-calc.mjs";
 import { estLanta } from "../exemples.mjs";
 import { ROUTES_SITE } from "../temps-site.mjs";
 
+// La liaison de ferry de Koh Lanta, pré-remplie pour l'organisation de Lanta seulement (règle de Jérémy du 19.11.2026 : 1 h fixe). Les noms
+// des embarcadères restent à confirmer par Nani : c'est une ligne « à vérifier ».
+export const LIAISON_LANTA = {
+  nom: "Ferry de Koh Lanta",
+  cote_ile: "Koh Lanta",
+  port_ile: "Embarcadère du ferry de Koh Lanta Noi",
+  port_continent: "Embarcadère du ferry, côté continent",
+  port_ile_coord: "",
+  port_continent_coord: "",
+  duree_min: 60,
+  source: "Règle de Jérémy (1 h, traversée et attente comprises) ; noms des embarcadères à confirmer",
+  a_verifier: true,
+};
+
 const ORIGINES = { saisie: N_("saisie"), site: N_("page taxi du site"), bateau: N_("catalogue des trajets"), zones: N_("grille de pickup"), agent: N_("conversation avec l'assistant") };
 
 // Les lignes à proposer au pré-remplissage, à partir de ce que l'entreprise a déjà : jamais une ligne de la table écrasée.
@@ -34,12 +48,83 @@ export async function vueTempsTrajets() {
   const ecrit = peut("dossiers.ecrire") && peut("partenaires.lire");
   const supprime = peut("partenaires.ecrire");
   let lignes = await etat.store.tempsTrajets(etat.entiteId);
+  let liaisons = (await etat.store.liaisonsFerry(etat.entiteId)) || [];
   let filtre = "";
   let mode = "route";
   const liste = h("div", { class: "temps-liste" });
   const recherche = h("input", { id: "temps-q", type: "search", placeholder: tr("Lieu"), autocomplete: "off", oninput: (e) => ((filtre = e.target.value.trim().toLowerCase()), dessiner()) });
 
+  function dessinerFerries() {
+    liste.replaceChildren(
+      h("p", { class: "aide" }, tr("Un trajet dont un seul bout est sur l'île passe par sa liaison : route jusqu'au port, ferry (durée fixe, traversée et attente comprises), route depuis le port en face. Les durées entre les ports et les lieux se mettent dans « En voiture ».")),
+      liaisons.length
+        ? h(
+            "ul",
+            { class: "temps-lignes" },
+            liaisons.map((l) =>
+              h(
+                "li",
+                null,
+                h(
+                  "button",
+                  { type: "button", class: `temps-ligne${l.a_verifier ? " a-verifier" : ""}`, onclick: () => editerLiaison(l), disabled: !ecrit },
+                  h("span", { class: "temps-paire" }, h("strong", null, l.nom)),
+                  h("span", { class: "temps-duree" }, texteDuree(l.duree_min)),
+                  h("span", { class: "temps-details" }, tr("{ile} : {a} ↔ {b}", { ile: l.cote_ile, a: l.port_ile, b: l.port_continent })),
+                  l.a_verifier ? h("span", { class: "assistant-confiance moyenne" }, tr("À vérifier")) : null
+                )
+              )
+            )
+          )
+        : h("p", { class: "aide" }, tr("Aucune liaison de ferry."))
+    );
+  }
+
+  function editerLiaison(l = null) {
+    const n = l || { nom: "", cote_ile: "", port_ile: "", port_continent: "", port_ile_coord: "", port_continent_coord: "", duree_min: 60, source: "", source_date: aujourdhui() };
+    const c = (id, v, o = {}) => h("input", { id, value: v ?? "", maxlength: 160, ...o });
+    const nom = c("lf-nom", n.nom, { required: true, maxlength: 120 });
+    const ile = c("lf-ile", n.cote_ile, { required: true, maxlength: 120 });
+    const portIle = c("lf-port-ile", n.port_ile, { required: true });
+    const portCont = c("lf-port-cont", n.port_continent, { required: true });
+    const coordIle = c("lf-coord-ile", n.port_ile_coord, { maxlength: 60, placeholder: tr("latitude, longitude"), inputmode: "decimal" });
+    const coordCont = c("lf-coord-cont", n.port_continent_coord, { maxlength: 60, placeholder: tr("latitude, longitude"), inputmode: "decimal" });
+    const duree = h("input", { id: "lf-duree", type: "number", min: 1, max: 600, inputmode: "numeric", value: n.duree_min || 60, required: true });
+    const source = c("lf-source", n.source, { maxlength: 200 });
+    const erreur = h("p", { class: "erreur-form", role: "alert" });
+    const ferme = modal(
+      l ? tr("Corriger la liaison de ferry") : tr("Ajouter une liaison de ferry"),
+      h(
+        "form",
+        {
+          onsubmit: async (e) => {
+            e.preventDefault();
+            const d = Math.round(Number(duree.value));
+            if (![nom, ile, portIle, portCont].every((x) => x.value.trim()) || !(d >= 1 && d <= 600)) return (erreur.textContent = tr("Indiquez le nom, l'île, les deux ports et la durée du ferry."));
+            try {
+              const r = await etat.store.enregistrerLiaisonFerry(etat.entiteId, { nom: nom.value.trim(), cote_ile: ile.value.trim(), port_ile: portIle.value.trim(), port_continent: portCont.value.trim(), port_ile_coord: coordIle.value.trim(), port_continent_coord: coordCont.value.trim(), duree_min: d, source: source.value.trim(), source_date: aujourdhui(), a_verifier: false });
+              liaisons = [...liaisons.filter((x) => x.id !== r.id && !(l && x.id === l.id)), r];
+              ferme();
+              toast(tr("Liaison enregistrée."));
+              dessinerFerries();
+            } catch (err) {
+              erreur.textContent = err.message;
+            }
+          },
+        },
+        h("div", { class: "grille-form" }, champ(tr("Nom"), nom), champ(tr("Île desservie"), ile), champ(tr("Port sur l'île"), portIle), champ(tr("Port en face"), portCont)),
+        h("div", { class: "grille-form" }, champ(tr("Coordonnées du port sur l'île (facultatif)"), coordIle), champ(tr("Coordonnées du port en face (facultatif)"), coordCont)),
+        h("div", { class: "grille-form" }, champ(tr("Ferry, attente comprise (minutes)"), duree), champ(tr("Source"), source)),
+        h("p", { class: "aide" }, tr("Enregistrer confirme la liaison. Les coordonnées « latitude, longitude » aident OpenStreetMap à trouver le bon port.")),
+        erreur,
+        h("div", { class: "actions" }, l && supprime ? h("button", { class: "danger", type: "button", onclick: async () => { if (!(await confirmer(tr("Supprimer cette liaison de ferry ?"), tr("Supprimer"), true))) return; await etat.store.supprimerLiaisonFerry(l.id); liaisons = liaisons.filter((x) => x.id !== l.id); ferme(); dessinerFerries(); } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
+      ),
+      { protege: false }
+    );
+  }
+
   function dessiner() {
+    if (mode === "ferry") return dessinerFerries();
     if (lignes === null) return liste.replaceChildren(h("p", { class: "aide" }, tr("La table des temps de trajet n'est pas encore installée dans la base.")));
     const visibles = lignes.filter((l) => (l.mode || "route") === mode && (!filtre || `${l.de} ${l.vers}`.toLowerCase().includes(filtre))).sort((a, b) => Number(b.a_verifier) - Number(a.a_verifier) || a.de.localeCompare(b.de) || a.vers.localeCompare(b.vers));
     const aVerifier = visibles.filter((l) => l.a_verifier).length;
@@ -112,15 +197,19 @@ export async function vueTempsTrajets() {
   }
 
   async function preremplir() {
-    const proposees = lignesAPreremplir({ trajets: etat.db.trajets, partenaires: etat.db.partenaires, lanta: estLanta(organisationActiveId()), existantes: lignes || [], date: aujourdhui() });
-    if (!proposees.length) return toast(tr("Rien de nouveau à pré-remplir."));
+    const lanta = estLanta(organisationActiveId());
+    // La liaison de Lanta (organisation de Koh Lanta seulement), si elle n'est pas déjà là.
+    const liaison = lanta && !liaisons.some((l) => l.cote_ile === LIAISON_LANTA.cote_ile) ? { ...LIAISON_LANTA, source_date: aujourdhui() } : null;
+    const proposees = lignesAPreremplir({ trajets: etat.db.trajets, partenaires: etat.db.partenaires, lanta, existantes: lignes || [], date: aujourdhui() });
+    if (!proposees.length && !liaison) return toast(tr("Rien de nouveau à pré-remplir."));
     const parOrigine = (o) => proposees.filter((l) => l.origine === o).length;
-    const detail = [["site", N_("depuis les pages taxi du site")], ["bateau", N_("depuis les durées des trajets")], ["zones", N_("depuis les grilles de pickup")]].filter(([o]) => parOrigine(o)).map(([o, t]) => `${parOrigine(o)} ${tr(t)}`).join(", ");
-    if (!(await confirmer(tr("Ajouter {n} durées à vérifier ({detail}) ? Aucune ligne existante n'est modifiée.", { n: proposees.length, detail }), tr("Pré-remplir")))) return;
+    const detail = [["site", N_("depuis les pages taxi du site")], ["bateau", N_("depuis les durées des trajets")], ["zones", N_("depuis les grilles de pickup")]].filter(([o]) => parOrigine(o)).map(([o, t]) => `${parOrigine(o)} ${tr(t)}`).concat(liaison ? [tr("la liaison de ferry de Koh Lanta (1 h)")] : []).join(", ");
+    if (!(await confirmer(tr("Ajouter {n} éléments à vérifier ({detail}) ? Aucune ligne existante n'est modifiée.", { n: proposees.length + (liaison ? 1 : 0), detail }), tr("Pré-remplir")))) return;
     try {
-      const r = await etat.store.enregistrerTempsTrajets(etat.entiteId, proposees);
+      if (liaison) liaisons = [...liaisons, await etat.store.enregistrerLiaisonFerry(etat.entiteId, liaison)];
+      const r = proposees.length ? await etat.store.enregistrerTempsTrajets(etat.entiteId, proposees) : [];
       lignes = [...lignes, ...r];
-      toast(pluriel(r.length, N_("{n} durée ajoutée, à vérifier."), N_("{n} durées ajoutées, à vérifier.")));
+      toast(pluriel(r.length + (liaison ? 1 : 0), N_("{n} élément ajouté, à vérifier."), N_("{n} éléments ajoutés, à vérifier.")));
       dessiner();
     } catch (err) {
       toast(err.message, true);
@@ -130,10 +219,10 @@ export async function vueTempsTrajets() {
   const onglets = h(
     "div",
     { class: "onglets-simple temps-modes", role: "tablist" },
-    [["route", N_("En voiture")], ["bateau", N_("En bateau")]].map(([m, t]) => h("button", { type: "button", role: "tab", "aria-selected": String(m === mode), onclick: (e) => ((mode = m), onglets.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b === e.currentTarget))), dessiner()) }, tr(t)))
+    [["route", N_("En voiture")], ["ferry", N_("Ferries")], ["bateau", N_("En bateau")]].map(([m, t]) => h("button", { type: "button", role: "tab", "aria-selected": String(m === mode), onclick: (e) => ((mode = m), onglets.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b === e.currentTarget))), dessiner()) }, tr(t)))
   );
   racine.append(
-    h("div", { class: "entete" }, h("h1", null, tr("Temps de trajet")), ecrit ? h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: preremplir }, tr("Pré-remplir")), h("button", { class: "principal", type: "button", onclick: () => editer() }, icone("ajouter", 18), tr("Ajouter"))) : null),
+    h("div", { class: "entete" }, h("h1", null, tr("Temps de trajet")), ecrit ? h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: preremplir }, tr("Pré-remplir")), h("button", { class: "principal", type: "button", onclick: () => (mode === "ferry" ? editerLiaison() : editer()) }, icone("ajouter", 18), tr("Ajouter"))) : null),
     h("p", { class: "aide" }, tr("Les durées de référence de zone à zone. L'assistant s'en sert d'abord pour calculer les heures de pickup, avant OpenStreetMap. Une ligne « à vérifier » n'est confirmée qu'une fois enregistrée par vous.")),
     onglets,
     h("div", { class: "temps-recherche" }, h("label", { for: "temps-q", class: "visuellement-cache" }, tr("Filtrer par lieu")), recherche),

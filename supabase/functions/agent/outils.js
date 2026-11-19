@@ -8,7 +8,8 @@
 //   - un prix proposé vient du catalogue (par sa référence) ou d'un montant tapé par la personne dans la conversation, jamais du modèle ;
 //   - les heures d'une course sont calculées par planifier.js, pas par le modèle.
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
-import { dureeEntre, clePaire, dureesTapees } from "./temps.js";
+import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
+import { texteDuree } from "./planifier.js";
 
 // ---- Petits outils de texte -----------------------------------------------------------------------------------------------------------
 
@@ -372,13 +373,14 @@ export async function situerHotels(e, ctx) {
 
 // La durée d'un trajet en voiture, dans l'ordre de temps.js : table vérifiée, openrouteservice, table à vérifier, démo. ctx.ors et
 // ctx.simule ne sont posés que si la fonction les a (clé ORS, démonstration).
-const dureeDe = async (ctx, de, vers) => dureeEntre(de, vers, { lignes: (await ctx.charger("temps_trajets")) || [], hotels: (await ctx.charger("hotels_lieux")) || [], ors: ctx.ors || null, simule: ctx.simule || null });
+// Un trajet qui passe par un ferry de la table se calcule en trois morceaux (temps.js, dureeAvecFerry) ; { manque } dit le morceau sans durée.
+const dureeDe = async (ctx, de, vers) => dureeAvecFerry(de, vers, { lignes: (await ctx.charger("temps_trajets")) || [], liaisons: (await ctx.charger("liaisons_ferry")) || [], hotels: (await ctx.charger("hotels_lieux")) || [], ors: ctx.ors || null, simule: ctx.simule || null });
 const cleEstimation = (de, vers) => clePaire(de, vers);
 
 export async function tempsDeRoute(e, ctx) {
   const r = await dureeDe(ctx, texte(e.de, 200), texte(e.vers, 200));
-  if (!r) return { resultat: { erreur: "temps_indisponible", conseil: "Aucune durée connue pour ce trajet : dis-le et demande la durée à la personne (elle pourra l'ajouter à la table)." } };
-  return { resultat: { de: texte(e.de, 200), vers: texte(e.vers, 200), duree_min: r.duree_min, distance_km: r.distance_km ?? null, ferry: !!r.ferry, marge_conseillee_min: r.marge_min || 0, source: r.source, a_verifier: r.a_verifier, ...(r.de_trouve ? { de_trouve: r.de_trouve, vers_trouve: r.vers_trouve } : {}) } };
+  if (!r || r.manque) return { resultat: { erreur: "temps_indisponible", ...(r && r.manque ? { morceau_sans_duree: r.manque } : {}), conseil: "Aucune durée connue pour ce trajet (ou ce morceau) : dis-le et demande la durée à la personne (elle pourra l'ajouter à la table)." } };
+  return { resultat: { de: texte(e.de, 200), vers: texte(e.vers, 200), duree_route_min: r.duree_min, ...(r.ferry_fixe_min ? { ferry_min: r.ferry_fixe_min, detail: detailMorceaux(r.morceaux, texteDuree) } : {}), distance_km: r.distance_km ?? null, ferry: !!r.ferry, marge_conseillee_min: r.marge_min || 0, source: r.source, a_verifier: r.a_verifier, ...(r.de_trouve ? { de_trouve: r.de_trouve, vers_trouve: r.vers_trouve } : {}) } };
 }
 
 // Le planning d'une course. Pour chaque trajet : la durée donnée par la personne (si elle l'a tapée dans la conversation) ou une estimation
@@ -409,11 +411,15 @@ export async function planifier(e, ctx, memo = { durees: new Set(), estimations:
     trajets.push(await dureeDe(ctx, p.lieu, points[i + 1].lieu));
   }
   if (refusees.length) return { resultat: { erreur: "duree_sans_source", trajets: refusees, conseil: "Une durée ne compte que si la personne l'a écrite dans la conversation, ou si estimer_temps_web l'a rendue pour ce trajet." } };
-  const manque = trajets.findIndex((x) => !x);
-  if (manque >= 0) return { resultat: { erreur: "temps_indisponible", trajet: `${points[manque].lieu} → ${points[manque + 1].lieu}`, conseil: "Aucune durée connue pour ce trajet : dis-le simplement et demande la durée à la personne. Quand elle l'a donnée, propose de l'ajouter à la table (proposer_temps_trajet). L'estimation web ne vient qu'en dernier recours." } };
+  const manque = trajets.findIndex((x) => !x || x.manque);
+  if (manque >= 0) return { resultat: { erreur: "temps_indisponible", trajet: (trajets[manque] && trajets[manque].manque) || `${points[manque].lieu} → ${points[manque + 1].lieu}`, conseil: "Aucune durée connue pour ce trajet : dis-le simplement et demande la durée à la personne. Quand elle l'a donnée, propose de l'ajouter à la table (proposer_temps_trajet). L'estimation web ne vient qu'en dernier recours." } };
   const plan = planifierCourse({ date: e.date, points, trajets, vol: heureValide(e.heure_vol) ? { heure: e.heure_vol, international: !!e.vol_international } : null, reglages: reglagesPlanning(ctx.reglages) });
   if (!plan.ok) return { resultat: { erreur: plan.erreur } };
   const heures = [plan.pickup.heure, ...plan.etapes.flatMap((x) => [x.arrivee_prevue && x.arrivee_prevue.heure, x.arrivee_au_plus_tard && x.arrivee_au_plus_tard.heure, x.depart && x.depart.heure, x.rendez_vous]), plan.vol && plan.vol.arrivee_limite.heure, plan.vol && plan.vol.heure].filter(Boolean);
+  // Le détail de chaque trajet, prêt à montrer à la personne (route, ferry, route, marge).
+  plan.trajets.forEach((t) => {
+    if (t.morceaux) t.detail = `${detailMorceaux(t.morceaux, texteDuree)}, marge ${t.marge_min} min`;
+  });
   return { resultat: plan, heures, planning: plan };
 }
 
@@ -422,7 +428,7 @@ export async function estimerTempsWeb(e, ctx, memo) {
   const de = texte(e.de, 160);
   const vers = texte(e.vers, 160);
   const connue = await dureeDe(ctx, de, vers);
-  if (connue) return { resultat: { erreur: "duree_deja_connue", duree_min: connue.duree_min, source: connue.source, conseil: "La table ou ORS donnent déjà cette durée : utilise planifier_course." } };
+  if (connue && !connue.manque) return { resultat: { erreur: "duree_deja_connue", duree_min: connue.duree_min, source: connue.source, conseil: "La table ou ORS donnent déjà cette durée : utilise planifier_course." } };
   const r = ctx.estimerWeb ? await ctx.estimerWeb(de, vers) : null;
   if (!r || !(r.duree_min > 0) || !r.source_url) return { resultat: { erreur: "estimation_impossible", conseil: "Aucune source fiable trouvée : demande la durée à la personne." } };
   if (memo && memo.estimations) memo.estimations.set(cleEstimation(de, vers), r);

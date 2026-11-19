@@ -27,6 +27,16 @@ Les nets sont lus par la fonction (avec les droits de la personne) pour poser un
 
 Ces valeurs sont réglables par entreprise (`reglages.agent_planning`) et toujours affichées sous « Hypothèses du calcul ».
 
+### Trajets avec ferry : trois morceaux (règle de Jérémy du 19.11.2026)
+
+Un trajet dont un seul bout est sur l'île d'une liaison de ferry se calcule toujours en trois morceaux, puis la marge :
+
+1. route du départ jusqu'au port de départ du ferry (table, sinon OpenStreetMap) ;
+2. ferry : durée fixe de la liaison, traversée et attente comprises, 60 min par défaut, modifiable par Nani (Temps de trajet > Ferries) ;
+3. route du port d'arrivée jusqu'au point d'arrivée (table, sinon OpenStreetMap).
+
+Les ports et la liaison sont des données de la table, jamais une supposition du modèle. L'agent montre le détail, par exemple « Jai Tiki → embarcadère de Lanta Noi : 25 min, ferry : 1 h, embarcadère côté continent → Krabi Nakharin : 1 h 10, marge 20 min », puis le pickup (ici 13:05 pour 16:00). La liaison de Koh Lanta se pré-remplit « à vérifier » : noms exacts des deux embarcadères à confirmer par Nani, coordonnées facultatives.
+
 ### D'où viennent les durées (décision de Jérémy du 19.11.2026 : pas de Google Maps)
 
 | Ordre | Source | Affiché |

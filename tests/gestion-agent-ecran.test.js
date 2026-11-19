@@ -80,7 +80,7 @@ test("frise : pickup, rendez-vous avec arrivée prévue, attente, fourchette à 
 test("démo, cas Jai Tiki : lecture de la demande, puis vol, personnes et bagages, cartes sans prix ni signature", async () => {
   const texte = "Client taxi : pickup à Jai Tiki Retreat, Koh Lanta samedi, il doit être au Krabi Nakharin International Hospital vers 16h00, attente d’environ 1 h, puis aéroport de Krabi.";
   const c = lireCourse(texte, "2026-11-19");
-  assert.equal(c.pickup, "Jai Tiki Retreat");
+  assert.equal(c.pickup, "Jai Tiki Retreat, Koh Lanta");
   assert.equal(c.rdv, "Krabi Nakharin International Hospital");
   assert.equal(c.heureRdv, "16:00");
   assert.equal(c.attente, 60);
@@ -122,4 +122,14 @@ test("pré-remplissage : pages taxi seulement pour l'organisation de Lanta, gril
   const { ROUTES_SITE } = await import("../src/gestion/js/temps-site.mjs");
   const site = JSON.parse(readFileSync(new URL("../src/_data/taxiRoutes.json", import.meta.url), "utf8")).routes.filter((r) => typeof r.drive === "string").map((r) => ({ from: r.from, to: r.to, drive: r.drive }));
   assert.deepEqual(ROUTES_SITE, site, "temps-site.mjs suit src/_data/taxiRoutes.json");
+});
+
+test("démo : avec la liaison de ferry de la table, le trajet se calcule en trois morceaux et le détail est dit", async () => {
+  const liaisons = [{ nom: "Ferry de Koh Lanta", cote_ile: "Koh Lanta", port_ile: "Embarcadère du ferry de Koh Lanta Noi", port_continent: "Embarcadère du ferry, côté continent", duree_min: 60, a_verifier: true }];
+  const r = await repondreDemo("Client taxi : pickup à Jai Tiki Retreat, Koh Lanta samedi, il doit être au Krabi Nakharin International Hospital vers 16h00, puis aéroport de Krabi.", { aujourdhui: "2026-11-19", liaisons });
+  const plan = r.evenements.find((e) => e.t === "planning").planning;
+  assert.deepEqual(plan.trajets[0].morceaux.map((m) => m.duree_min), [25, 60, 70]);
+  // 25 + 60 + 70 de route et de ferry, marge 10 min : 2 h 45 avant 16:00.
+  assert.equal(plan.pickup.heure, "13:15");
+  assert.match(r.evenements.find((e) => e.t === "texte").delta, /ferry : 1 h/);
 });

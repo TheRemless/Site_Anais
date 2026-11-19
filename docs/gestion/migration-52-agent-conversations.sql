@@ -14,11 +14,14 @@
 --    Lire : « partenaires.lire ». Ajouter ou corriger : « dossiers.ecrire » et « partenaires.lire ». Supprimer : « partenaires.ecrire ».
 -- 5. lieux_geo et trajets_ors : ce qu'openrouteservice a trouvé (coordonnées d'un lieu, durée entre deux lieux), gardé pour ne pas le
 --    recalculer (quota gratuit). Aucune donnée de client : un nom de lieu, des coordonnées, une durée. Mêmes droits que temps_trajets.
--- 6. Journal de l'assistant : la colonne « usage » accepte « agent » (et les usages des lots 1 et 5, trier et brochure, pour ne pas les
+-- 6. liaisons_ferry : règle de Jérémy du 19.11.2026, un trajet qui passe par un ferry se calcule en trois morceaux (route jusqu'au port,
+--    ferry à durée fixe, route depuis le port d'arrivée). Chaque liaison dit quelle île elle dessert, ses deux ports (et leurs coordonnées si
+--    on les connaît) et la durée du ferry, traversée et attente comprises (60 min par défaut), modifiable par Nani. Mêmes droits que temps_trajets.
+-- 7. Journal de l'assistant : la colonne « usage » accepte « agent » (et les usages des lots 1 et 5, trier et brochure, pour ne pas les
 --    perdre si cette migration passe après les leurs).
 -- Ne modifie aucune donnée existante. Se rejoue sans effet.
 -- Retour en arrière :
---   drop table if exists temps_trajets; drop table if exists lieux_geo; drop table if exists trajets_ors; drop function if exists noter_temps_trajet();
+--   drop table if exists liaisons_ferry; drop table if exists temps_trajets; drop table if exists lieux_geo; drop table if exists trajets_ors; drop function if exists noter_temps_trajet();
 --   drop table if exists agent_cartes; drop table if exists agent_messages; drop table if exists agent_conversations;
 --   drop function if exists purger_agent_conversations(integer); drop function if exists noter_agent_conversation();
 --   drop function if exists agent_ma_conversation(uuid); drop function if exists figer_agent_carte(); drop function if exists assistant_cout_depuis(timestamptz);
@@ -190,6 +193,26 @@ create table if not exists trajets_ors (
   unique (entite_id, cle)
 );
 
+create table if not exists liaisons_ferry (
+  id uuid primary key default gen_random_uuid(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  nom text not null check (length(nom) between 1 and 120),
+  -- La zone desservie côté île (« Koh Lanta ») : un trajet dont un seul bout est sur cette île passe par cette liaison.
+  cote_ile text not null check (length(cote_ile) between 1 and 120),
+  port_ile text not null check (length(port_ile) between 1 and 160),
+  port_continent text not null check (length(port_continent) between 1 and 160),
+  -- Coordonnées « latitude, longitude » des ports, facultatives : sans elles, openrouteservice cherche le port par son nom.
+  port_ile_coord text not null default '' check (length(port_ile_coord) <= 60),
+  port_continent_coord text not null default '' check (length(port_continent_coord) <= 60),
+  duree_min integer not null default 60 check (duree_min between 1 and 600),
+  source text not null default '' check (length(source) <= 200),
+  source_date date,
+  a_verifier boolean not null default true,
+  maj_le timestamptz not null default now(),
+  maj_par uuid default auth.uid(),
+  unique (entite_id, cote_ile)
+);
+
 -- Date et auteur de la dernière modification, posés par la base ; l'entreprise d'une ligne ne change pas.
 create or replace function noter_temps_trajet() returns trigger language plpgsql set search_path = public as $$
 begin
@@ -201,16 +224,28 @@ end
 $$;
 drop trigger if exists noter_temps_trajet on temps_trajets;
 create trigger noter_temps_trajet before insert or update on temps_trajets for each row execute function noter_temps_trajet();
+drop trigger if exists noter_temps_trajet on liaisons_ferry;
+create trigger noter_temps_trajet before insert or update on liaisons_ferry for each row execute function noter_temps_trajet();
 drop trigger if exists noter_temps_trajet on lieux_geo;
 create trigger noter_temps_trajet before insert or update on lieux_geo for each row execute function noter_temps_trajet();
 drop trigger if exists noter_temps_trajet on trajets_ors;
 create trigger noter_temps_trajet before insert or update on trajets_ors for each row execute function noter_temps_trajet();
 
 alter table temps_trajets enable row level security;
+alter table liaisons_ferry enable row level security;
 alter table lieux_geo enable row level security;
 alter table trajets_ors enable row level security;
-revoke all on temps_trajets, lieux_geo, trajets_ors from anon, authenticated;
-grant select, insert, update, delete on temps_trajets, lieux_geo, trajets_ors to authenticated;
+revoke all on temps_trajets, liaisons_ferry, lieux_geo, trajets_ors from anon, authenticated;
+grant select, insert, update, delete on temps_trajets, liaisons_ferry, lieux_geo, trajets_ors to authenticated;
+
+drop policy if exists "lire les liaisons de ferry" on liaisons_ferry;
+create policy "lire les liaisons de ferry" on liaisons_ferry for select to authenticated using (a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "ajouter une liaison de ferry" on liaisons_ferry;
+create policy "ajouter une liaison de ferry" on liaisons_ferry for insert to authenticated with check (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "corriger une liaison de ferry" on liaisons_ferry;
+create policy "corriger une liaison de ferry" on liaisons_ferry for update to authenticated using (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire')) with check (a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire'));
+drop policy if exists "supprimer une liaison de ferry" on liaisons_ferry;
+create policy "supprimer une liaison de ferry" on liaisons_ferry for delete to authenticated using (a_permission(entite_id, 'partenaires.ecrire'));
 
 drop policy if exists "lire les temps de trajet" on temps_trajets;
 create policy "lire les temps de trajet" on temps_trajets for select to authenticated using (a_permission(entite_id, 'partenaires.lire'));

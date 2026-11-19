@@ -97,6 +97,7 @@ async function jouer(c, client) {
     trajets_nets: [],
     hotels_lieux: c.hotels_lieux || [],
     temps_trajets: c.temps_trajets || [],
+    liaisons_ferry: c.liaisons_ferry || [],
     clients: [],
     dossiers: [],
     reservations: [],

@@ -291,6 +291,19 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async supprimerTempsTrajet(id) {
       verifie(await sb.from("temps_trajets").delete().eq("id", id).select("id"));
     },
+    // Liaisons de ferry (migration 52) : une par île desservie.
+    async liaisonsFerry(entiteId) {
+      const { data, error } = await sb.from("liaisons_ferry").select("id, entite_id, nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, source, source_date, a_verifier, maj_le").eq("entite_id", entiteId).order("nom");
+      return error ? null : data || [];
+    },
+    async enregistrerLiaisonFerry(entiteId, l) {
+      const { data, error } = await sb.from("liaisons_ferry").upsert({ ...l, entite_id: entiteId }, { onConflict: "entite_id,cote_ile" }).select("id, entite_id, nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, source, source_date, a_verifier, maj_le").single();
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    async supprimerLiaisonFerry(id) {
+      verifie(await sb.from("liaisons_ferry").delete().eq("id", id).select("id"));
+    },
     // Un message à l'agent : la réponse arrive en flux (une ligne JSON par événement), passée à `surEvenement` au fil de l'eau.
     // Rend { ok } ou { erreur } (droit, limite, plafond, indisponible), comme l'assistant.
     async agentEnvoyer(corps, surEvenement) {

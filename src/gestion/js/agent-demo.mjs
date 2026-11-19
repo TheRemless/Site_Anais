@@ -1,8 +1,8 @@
 // Démonstration de l'onglet « Assistant » : rien ne part chez Anthropic ni chez Google. Un agent simulé répond au cas type d'une course
 // avec rendez-vous (pickup à un hôtel, arrivée à une heure donnée, attente, puis aéroport), avec le vrai calcul des heures
 // (agent-planifier.mjs) : les durées de la table de temps de l'entreprise d'abord, sinon des temps simulés, toujours signalés comme tels. Il émet les mêmes événements que la fonction « agent ».
-import { planifierCourse, tempsSimule, decalerDate } from "./agent-planifier.mjs";
-import { dureeEntre } from "./agent-temps.mjs";
+import { planifierCourse, tempsSimule, decalerDate, texteDuree } from "./agent-planifier.mjs";
+import { dureeAvecFerry, detailMorceaux } from "./agent-temps.mjs";
 
 const JOURS = { dimanche: 0, sunday: 0, lundi: 1, monday: 1, mardi: 2, tuesday: 2, mercredi: 3, wednesday: 3, jeudi: 4, thursday: 4, vendredi: 5, friday: 5, samedi: 6, saturday: 6 };
 const sans = (s) =>
@@ -16,7 +16,7 @@ const heure = (h, m) => `${String(h).padStart(2, "0")}:${String(m || 0).padStart
 export function lireCourse(texte, aujourdhui) {
   const t = String(texte || "");
   const s = sans(t);
-  const pickup = (/(?:pick ?up|prise en charge|depuis|from)\s*(?:a|à|at|au|:)?\s*([^,\n.;]+?)(?=\s*(?:,|\n|\.|;| samedi| dimanche| lundi| mardi| mercredi| jeudi| vendredi| saturday| sunday| monday| tuesday| wednesday| thursday| friday| pour | to |$))/i.exec(t) || [])[1] || "";
+  const pickup = (/(?:pick ?up|prise en charge|depuis|from)\s*(?:a|à|at|au|:)?\s*([^,\n.;]+?(?:,\s*(?:Koh|Ko)\s+\w+)?)(?=\s*(?:,|\n|\.|;| samedi| dimanche| lundi| mardi| mercredi| jeudi| vendredi| saturday| sunday| monday| tuesday| wednesday| thursday| friday| pour | to |$))/i.exec(t) || [])[1] || "";
   const rdv = (/((?:[A-Z][\w'-]*\s+){0,4}(?:International\s+)?(?:Hospital|Hôpital|Clinic|Clinique)(?:\s+[A-Z][\w'-]*){0,3}|(?:hôpital|hopital|clinique)\s+[^,\n.;]+)/.exec(t) || [])[1] || "";
   const hRdv = /(?:vers|à|a|at|around|arriv\w*\s+(?:vers|à|a|at)?)\s*(\d{1,2})\s*(?:h|:)\s*(\d{2})?/i.exec(t);
   const attente = /attente\s+(?:d['’]?\s*environ\s+|de\s+|d['’]\s*)?(?:environ\s+)?(\d+(?:[.,]\d+)?)\s*(h|heure|min)/i.exec(t) || /wait(?:ing)?\s+(?:about\s+|around\s+)?(\d+(?:[.,]\d+)?)\s*(h|hour|min)/i.exec(t);
@@ -49,7 +49,7 @@ const dateAnglaise = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("e
 
 // Un tour de conversation simulé. `etat` : ce que la démo a retenu de la conversation (course lue, compléments). Rend les événements et le
 // nouvel état. Les cartes rendues n'ont pas encore d'identifiant : le magasin de démo les enregistre.
-export async function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = "", signer = false, lignes = [] } = {}) {
+export async function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = "", signer = false, lignes = [], liaisons = [], hotels = [] } = {}) {
   const ev = [];
   let course = etat.course || null;
   const nouvelle = lireCourse(texte, aujourdhui);
@@ -68,10 +68,10 @@ export async function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = 
   ev.push({ t: "etape", outil: "planifier_course", texte: "Je calcule les horaires de la course" });
   const points = [{ lieu: course.pickup || "Point de prise en charge" }, { lieu: course.rdv, arrivee_voulue: course.heureRdv, attente_min: course.attente }];
   if (course.aeroport) points.push({ lieu: course.aeroport });
-  const trajets = await Promise.all(points.slice(1).map((p, i) => dureeEntre(points[i].lieu, p.lieu, { lignes, simule: tempsSimule })));
-  if (trajets.some((x) => !x)) {
-    const i = trajets.findIndex((x) => !x);
-    ev.push({ t: "texte", delta: `Je n'ai aucune durée pour ${points[i].lieu} → ${points[i + 1].lieu} : ni dans la table des temps de trajet, ni en démonstration. Combien de temps comptez-vous ? Je pourrai l'ajouter à la table.` });
+  const trajets = await Promise.all(points.slice(1).map((p, i) => dureeAvecFerry(points[i].lieu, p.lieu, { lignes, liaisons, hotels, simule: tempsSimule })));
+  if (trajets.some((x) => !x || x.manque)) {
+    const i = trajets.findIndex((x) => !x || x.manque);
+    ev.push({ t: "texte", delta: `Je n'ai aucune durée pour ${(trajets[i] && trajets[i].manque) || `${points[i].lieu} → ${points[i + 1].lieu}`} : ni dans la table des temps de trajet, ni en démonstration. Combien de temps comptez-vous ? Je pourrai l'ajouter à la table.` });
     return { evenements: ev, etat: { ...etat, course, complements: comp } };
   }
   const plan = planifierCourse({ date: course.date, points, trajets, vol: comp.heureVol ? { heure: comp.heureVol, international: !!comp.international } : null });
@@ -80,9 +80,12 @@ export async function repondreDemo(texte, { aujourdhui, etat = {}, entreprise = 
     return { evenements: ev, etat: { ...etat, course, complements: comp } };
   }
   ev.push({ t: "planning", planning: plan });
+  for (const t of plan.trajets) if (t.morceaux) t.detail = `${detailMorceaux(t.morceaux, texteDuree)}, marge ${t.marge_min} min`;
   const rdv = plan.etapes[1];
   const fin = plan.etapes[plan.etapes.length - 1];
+  const details = plan.trajets.filter((t) => t.detail).map((t) => `${t.detail}.`);
   const phrases = [
+    ...details,
     `Pour être à ${course.rdv} à ${course.heureRdv} le ${dateLongue(course.date)}, pickup à ${plan.pickup.heure} à ${course.pickup || "l'hôtel"}.`,
     `Arrivée prévue vers ${rdv.arrivee_prevue.heure}${course.attente ? `, puis ${course.attente} min d'attente et départ à ${rdv.depart.heure}` : ""}.`,
     course.aeroport ? `Arrivée à l'aéroport vers ${fin.arrivee_prevue.heure}, au plus tard ${fin.arrivee_au_plus_tard.heure}.` : "",

@@ -63,15 +63,76 @@ export function ligneDeLaTable(de, vers, lignes = [], hotels = []) {
 
 // Choisit la durée d'un trajet. `ors(de, vers)` : { duree_min, distance_km, ferry, de_trouve, vers_trouve } ou null (sans clé, quota, lieu introuvable).
 // `simule(de, vers)` : temps de démonstration, seulement si la fonction l'autorise. Rend { duree_min, ferry, marge_min, source, a_verifier, … } ou null.
-export async function dureeEntre(de, vers, { lignes = [], hotels = [], ors = null, simule = null } = {}) {
+export async function dureeEntre(de, vers, { lignes = [], hotels = [], ors = null, simule = null, coords = null } = {}) {
   const l = ligneDeLaTable(de, vers, lignes, hotels);
   const deLigne = (x, a_verifier) => ({ duree_min: x.duree_min, ferry: !!x.ferry, marge_min: x.marge_min || 0, source: a_verifier ? "table_a_verifier" : "table", a_verifier, ligne: { de: x.de, vers: x.vers, source: x.source || "", source_date: x.source_date || "" } });
   if (l && !l.a_verifier && l.duree_min > 0) return deLigne(l, false);
-  const r = ors ? await ors(de, vers) : null;
+  const r = ors ? await ors(de, vers, coords) : null;
   if (r && r.duree_min > 0) return { duree_min: r.duree_min, distance_km: r.distance_km ?? null, ferry: !!(r.ferry || (l && l.ferry)), marge_min: l ? l.marge_min || 0 : 0, source: "ors", a_verifier: true, de_trouve: r.de_trouve || "", vers_trouve: r.vers_trouve || "" };
   if (l && l.duree_min > 0) return deLigne(l, true);
   const s = simule ? simule(de, vers) : null;
   return s ? { ...s, marge_min: 0, a_verifier: true } : null;
+}
+
+// ---- Ferry : trois morceaux (règle de Jérémy du 19.11.2026) --------------------------------------------------------------------------
+// Un trajet dont un seul bout est sur l'île d'une liaison de ferry se calcule toujours en trois morceaux : route jusqu'au port de départ,
+// ferry à durée fixe (traversée et attente comprises, 60 min par défaut, réglée par liaison dans la table), route depuis le port d'arrivée.
+// Les ports et la liaison sont des données de la table (liaisons_ferry), jamais une supposition du modèle. La marge vient ensuite (planifier.js).
+
+export const FERRY_DEFAUT_MIN = 60;
+
+// « 7.6213, 99.0402 » → { lat, lon } ; autre chose → null.
+export function coordDe(texte) {
+  const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(String(texte || ""));
+  if (!m) return null;
+  const lat = Number(m[1]);
+  const lon = Number(m[2]);
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+}
+
+// La liaison à prendre entre deux lieux : celle dont l'île porte un seul des deux bouts. Rend { liaison, depuisIle } ou null.
+export function liaisonPour(de, vers, liaisons = [], hotels = []) {
+  for (const l of liaisons) {
+    if (!l || !l.cote_ile) continue;
+    const a = !!zoneDuLieu(de, [l.cote_ile], hotels);
+    const b = !!zoneDuLieu(vers, [l.cote_ile], hotels);
+    if (a !== b) return { liaison: l, depuisIle: a };
+  }
+  return null;
+}
+
+// Du moins sûr au plus sûr : la source affichée pour un trajet en morceaux est celle de son morceau le moins sûr.
+const FIABILITE = ["simulation", "estimation_web", "table_a_verifier", "ors", "personne", "table"];
+const moinsSure = (sources) => sources.slice().sort((a, b) => FIABILITE.indexOf(a) - FIABILITE.indexOf(b))[0];
+
+// La durée d'un trajet, en trois morceaux s'il passe par un ferry de la table. Rend la durée (route seule dans duree_min, ferry dans
+// ferry_fixe_min, et le détail dans « morceaux »), { manque: "A → B" } quand un morceau n'a pas de durée, ou null sans aucune durée.
+export async function dureeAvecFerry(de, vers, opts = {}) {
+  const lf = liaisonPour(de, vers, opts.liaisons || [], opts.hotels || []);
+  if (!lf) return dureeEntre(de, vers, opts);
+  const l = lf.liaison;
+  const [portDepart, portArrivee] = lf.depuisIle ? [l.port_ile, l.port_continent] : [l.port_continent, l.port_ile];
+  const [coordDepart, coordArrivee] = (lf.depuisIle ? [l.port_ile_coord, l.port_continent_coord] : [l.port_continent_coord, l.port_ile_coord]).map(coordDe);
+  const avant = await dureeEntre(de, portDepart, { ...opts, coords: coordDepart ? { vers: coordDepart } : null });
+  if (!avant) return { manque: `${de} → ${portDepart}` };
+  const apres = await dureeEntre(portArrivee, vers, { ...opts, coords: coordArrivee ? { de: coordArrivee } : null });
+  if (!apres) return { manque: `${portArrivee} → ${vers}` };
+  const ferry = Number(l.duree_min) > 0 ? Math.round(Number(l.duree_min)) : FERRY_DEFAUT_MIN;
+  const morceau = (de_, vers_, r) => ({ genre: "route", de: de_, vers: vers_, duree_min: r.duree_min, source: r.source, a_verifier: !!r.a_verifier });
+  return {
+    duree_min: avant.duree_min + apres.duree_min,
+    ferry: true,
+    ferry_fixe_min: ferry,
+    marge_min: Math.max(avant.marge_min || 0, apres.marge_min || 0),
+    source: moinsSure([avant.source, apres.source]),
+    a_verifier: !!(avant.a_verifier || apres.a_verifier || l.a_verifier),
+    morceaux: [morceau(de, portDepart, avant), { genre: "ferry", nom: l.nom, duree_min: ferry, a_verifier: !!l.a_verifier }, morceau(portArrivee, vers, apres)],
+  };
+}
+
+// Le détail d'un trajet pour Nani : « Jai Tiki → port de Lanta : 25 min, ferry : 1 h, port en face → Krabi Nakharin : 1 h 10 ».
+export function detailMorceaux(morceaux = [], texteDuree = (m) => `${m} min`) {
+  return morceaux.map((m) => (m.genre === "ferry" ? `ferry : ${texteDuree(m.duree_min)}` : `${m.de} → ${m.vers} : ${texteDuree(m.duree_min)}`)).join(", ");
 }
 
 // ---- Durées écrites -------------------------------------------------------------------------------------------------------------

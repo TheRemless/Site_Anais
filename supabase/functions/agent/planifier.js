@@ -63,10 +63,13 @@ export function instantBangkok(date, minutes) {
 
 // ---- Durées d'un trajet ------------------------------------------------------------------------------------------------------------
 
-// Temps compté pour un trajet : route, attente au ferry s'il y en a un, marge de sécurité (la marge conseillée par la table si elle est plus grande).
+// Temps compté pour un trajet : route, ferry, marge de sécurité (la marge conseillée par la table si elle est plus grande). Un trajet en trois
+// morceaux (temps.js) porte la durée fixe de sa liaison de ferry, traversée et attente comprises ; sans liaison connue, un ferry compte
+// l'attente réglée (ferry_attente_min), sa traversée étant déjà dans la durée de route.
 export function dureeAvecMarges(trajet, r = PLANNING_DEFAUT) {
   const route = Math.max(0, Math.round(Number(trajet.duree_min) || 0));
-  const ferry = trajet.ferry ? r.ferry_attente_min : 0;
+  const fixe = Math.round(Number(trajet.ferry_fixe_min) || 0);
+  const ferry = fixe > 0 ? fixe : trajet.ferry ? r.ferry_attente_min : 0;
   const marge = Math.max(r.marge_min, Math.round((route * r.marge_pct) / 100), Math.round(Number(trajet.marge_min) || 0));
   return { route_min: route, ferry_attente_min: ferry, marge_min: marge, total_min: route + ferry + marge };
 }
@@ -176,6 +179,7 @@ export function planifierCourse({ date, points = [], trajets = [], vol = null, r
     a_verifier: t.a_verifier === true || ["ors", "table_a_verifier", "estimation_web", "simulation"].includes(t.source),
     ...(t.de_trouve || t.vers_trouve ? { de_trouve: String(t.de_trouve || "").slice(0, 200), vers_trouve: String(t.vers_trouve || "").slice(0, 200) } : {}),
     ...(t.source_url ? { source_url: String(t.source_url).slice(0, 500) } : {}),
+    ...(Array.isArray(t.morceaux) ? { morceaux: t.morceaux.slice(0, 3).map((m) => ({ genre: m.genre === "ferry" ? "ferry" : "route", ...(m.genre === "ferry" ? { nom: String(m.nom || "").slice(0, 120) } : { de: String(m.de || "").slice(0, 160), vers: String(m.vers || "").slice(0, 160), source: SOURCES.includes(m.source) ? m.source : "personne" }), duree_min: Math.round(Number(m.duree_min) || 0), a_verifier: !!m.a_verifier })) } : {}),
     distance_km: Number.isFinite(Number(t.distance_km)) && t.distance_km !== null ? Math.round(Number(t.distance_km)) : null,
   }));
 
@@ -210,7 +214,8 @@ export function planifierCourse({ date, points = [], trajets = [], vol = null, r
 
   const hypotheses = [
     `marge de sécurité ${r.marge_pct} % du temps de route, ${r.marge_min} min au moins par trajet`,
-    ...(lignes.some((l) => l.ferry) ? [`${r.ferry_attente_min} min d'attente au ferry`] : []),
+    ...(lignes.some((l) => l.morceaux) ? ["un trajet avec ferry compte trois morceaux : route jusqu'au port, ferry (durée fixe de la liaison, traversée et attente comprises), route depuis le port d'arrivée"] : []),
+    ...(lignes.some((l) => l.ferry && !l.morceaux) ? [`${r.ferry_attente_min} min d'attente au ferry`] : []),
     ...(verifVol ? [`arrivée à l'aéroport ${texteDuree(verifVol.avance_min)} avant un vol ${verifVol.international ? "international" : "intérieur"}`] : []),
     `pickup arrondi aux ${r.arrondi_min} min inférieures`,
   ];
@@ -225,6 +230,8 @@ const cle = (s) =>
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
 const ZONES = [
+  ["port_continent", /ferry.*(continent|mainland)|(continent|mainland).*ferry/],
+  ["port_lanta", /ferry.*lanta|lanta.*ferry/],
   ["aeroport_krabi", /krabi.*(airport|aeroport|kbv)|(airport|aeroport).*krabi/],
   ["aeroport_phuket", /phuket.*(airport|aeroport|hkt)|(airport|aeroport).*phuket/],
   ["ao_nang", /ao nang/],
@@ -243,6 +250,12 @@ const TABLE_SIMULEE = {
   "ao_nang|aeroport_krabi": { duree_min: 40, ferry: false, distance_km: 30 },
   "ao_nang|krabi_ville": { duree_min: 30, ferry: false, distance_km: 20 },
   "lanta|lanta": { duree_min: 20, ferry: false, distance_km: 10 },
+  "lanta|port_lanta": { duree_min: 25, ferry: false, distance_km: 18 },
+  "port_continent|krabi_ville": { duree_min: 70, ferry: false, distance_km: 75 },
+  "port_continent|aeroport_krabi": { duree_min: 65, ferry: false, distance_km: 70 },
+  "port_continent|ao_nang": { duree_min: 90, ferry: false, distance_km: 95 },
+  "port_continent|aeroport_phuket": { duree_min: 200, ferry: false, distance_km: 230 },
+  "port_continent|phuket": { duree_min: 215, ferry: false, distance_km: 245 },
   "krabi_ville|krabi_ville": { duree_min: 15, ferry: false, distance_km: 6 },
 };
 export function tempsSimule(de, vers) {

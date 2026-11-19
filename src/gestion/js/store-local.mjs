@@ -48,6 +48,7 @@ export function creer() {
     data.agent_messages = data.agent_messages || [];
     data.agent_cartes = data.agent_cartes || [];
     data.temps_trajets = data.temps_trajets || [];
+    data.liaisons_ferry = data.liaisons_ferry || [];
     // Corbeille des documents et compteurs de numéros, comme la base (migration 34). L'acompte figé du dossier existe comme colonne.
     data.corbeille_documents = data.corbeille_documents || [];
     data.compteurs_ref = data.compteurs_ref || {};
@@ -420,6 +421,23 @@ export function creer() {
       data.temps_trajets = data.temps_trajets.filter((l) => l.id !== id);
       sauve();
     },
+    async liaisonsFerry(entiteId) {
+      return structuredClone(data.liaisons_ferry.filter((l) => l.entite_id === entiteId));
+    },
+    async enregistrerLiaisonFerry(entiteId, l) {
+      const perms = permissionsDans(contexte(), entiteId);
+      if (!perms.includes("partenaires.lire") || !perms.includes("dossiers.ecrire")) throw new Error("Droit insuffisant");
+      const maj = { ...l, entite_id: entiteId, maj_le: new Date().toISOString() };
+      const avant = data.liaisons_ferry.find((x) => x.entite_id === entiteId && x.cote_ile === l.cote_ile);
+      if (avant) Object.assign(avant, maj);
+      else data.liaisons_ferry.push({ id: uid(), ...maj });
+      sauve();
+      return structuredClone(data.liaisons_ferry.find((x) => x.entite_id === entiteId && x.cote_ile === l.cote_ile));
+    },
+    async supprimerLiaisonFerry(id) {
+      data.liaisons_ferry = data.liaisons_ferry.filter((l) => l.id !== id);
+      sauve();
+    },
     async agentEnvoyer(corps, surEvenement) {
       const e = corps.entite_id;
       const regl = data.reglages[e] || {};
@@ -440,7 +458,7 @@ export function creer() {
       message("user", [{ type: "text", text: texte }]);
       const { repondreDemo } = await import("./agent-demo.mjs");
       const entite = data.entites.find((x) => x.id === e) || {};
-      const r = await repondreDemo(texte, { aujourdhui: aujourdhui(), etat: conv.demo_etat || {}, entreprise: entite.nom || "", signer: !regl.fonctionnement || regl.fonctionnement === "sur_mesure", lignes: data.temps_trajets.filter((l) => l.entite_id === e) });
+      const r = await repondreDemo(texte, { aujourdhui: aujourdhui(), etat: conv.demo_etat || {}, entreprise: entite.nom || "", signer: !regl.fonctionnement || regl.fonctionnement === "sur_mesure", lignes: data.temps_trajets.filter((l) => l.entite_id === e), liaisons: data.liaisons_ferry.filter((l) => l.entite_id === e), hotels: data.hotels_lieux.filter((l) => l.entite_id === e) });
       conv.demo_etat = r.etat;
       let dernier = "";
       for (const ev of r.evenements) {

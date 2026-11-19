@@ -413,3 +413,34 @@ test("revue : unités de la base, Krabi distinct de Krabi Airport, montants tap�
   const lignes = [{ role: "user", contenu: [{ type: "tool_result" }] }, { role: "assistant", contenu: [] }, { role: "user", contenu: [{ type: "text", text: "a" }] }];
   assert.equal(debutValide(lignes).length, 1);
 });
+
+// Règle de Jérémy (19.11.2026) : un trajet avec ferry se calcule en trois morceaux, route jusqu'au port, ferry 1 h fixe, route depuis le
+// port en face, puis la marge. Exemple : Jai Tiki → port de Lanta 25 min, ferry 1 h, port en face → Krabi Nakharin 1 h 10, marge 20 min.
+test("ferry en trois morceaux : Jai Tiki → Krabi Nakharin pour 16:00, détail montré à Nani", async () => {
+  const liaison = { nom: "Ferry de Koh Lanta", cote_ile: "Koh Lanta", port_ile: "Embarcadère du ferry de Koh Lanta Noi", port_continent: "Embarcadère du ferry, côté continent", port_ile_coord: "", port_continent_coord: "", duree_min: 60, a_verifier: false };
+  const lignes = [
+    { de: "Jai Tiki", vers: "Embarcadère du ferry de Koh Lanta Noi", mode: "route", duree_min: 25, ferry: false, marge_min: 0, a_verifier: false },
+    { de: "Embarcadère du ferry, côté continent", vers: "Krabi", mode: "route", duree_min: 70, ferry: false, marge_min: 20, a_verifier: false },
+    // Une ligne directe avec ferry ne sert plus : la règle des trois morceaux l'emporte.
+    { de: "Koh Lanta", vers: "Krabi", mode: "route", duree_min: 180, ferry: true, marge_min: 0, a_verifier: false },
+  ];
+  const ctx = ctxDe({ simule: null, charger: async (n) => ({ temps_trajets: lignes, liaisons_ferry: [liaison] })[n] || donnees[n] || [] });
+  const point = (lieu, rdv = "") => ({ lieu, arrivee_voulue: rdv, attente_min: 0, duree_vers_suivant_min: 0, source_duree: "" });
+  const r = await executer("planifier_course", { date: "2026-11-21", points: [point("Jai Tiki Retreat, Koh Lanta"), point("Krabi Nakharin International Hospital, Krabi", "16:00")], heure_depart: "", heure_vol: "", vol_international: false }, ctx, nouveauMemo());
+  const t = r.contenu.trajets[0];
+  assert.deepEqual(t.morceaux.map((m) => [m.genre, m.duree_min]), [["route", 25], ["ferry", 60], ["route", 70]]);
+  assert.equal(t.route_min, 95);
+  assert.equal(t.ferry_attente_min, 60, "le ferry compte sa durée fixe, traversée et attente comprises");
+  assert.equal(t.marge_min, 20);
+  // 25 + 60 + 70 + 20 = 175 min avant 16:00.
+  assert.equal(r.contenu.pickup.heure, "13:05");
+  assert.equal(t.detail, "Jai Tiki Retreat, Koh Lanta → Embarcadère du ferry de Koh Lanta Noi : 25 min, ferry : 1 h, Embarcadère du ferry, côté continent → Krabi Nakharin International Hospital, Krabi : 1 h 10, marge 20 min");
+  // Dans l'autre sens, les ports s'inversent ; sur l'île seulement, pas de ferry.
+  const retour = await executer("temps_de_route", { de: "Krabi Nakharin International Hospital, Krabi", vers: "Jai Tiki Retreat, Koh Lanta" }, ctx, nouveauMemo());
+  assert.equal(retour.contenu.ferry_min, 60);
+  assert.match(retour.contenu.detail, /^Krabi Nakharin International Hospital, Krabi → Embarcadère du ferry, côté continent : 1 h 10, ferry : 1 h, Embarcadère du ferry de Koh Lanta Noi → Jai Tiki Retreat, Koh Lanta : 25 min$/);
+  // Un morceau sans durée est nommé, pour que l'agent le demande.
+  const sansPort = await executer("planifier_course", { date: "2026-11-21", points: [point("Lanta Sand Resort, Koh Lanta"), point("Krabi Nakharin International Hospital, Krabi", "16:00")], heure_depart: "", heure_vol: "", vol_international: false }, ctx, nouveauMemo());
+  assert.equal(sansPort.contenu.erreur, "temps_indisponible");
+  assert.equal(sansPort.contenu.trajet, "Lanta Sand Resort, Koh Lanta → Embarcadère du ferry de Koh Lanta Noi");
+});

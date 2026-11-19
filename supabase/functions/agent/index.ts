@@ -119,6 +119,7 @@ Deno.serve(async (req) => {
     trajets_nets: "trajet_id, net_adulte, net_enfant",
     hotels_lieux: "cle, nom, lieu, zone, localite, source_url, certitude, verifie",
     temps_trajets: "de, vers, mode, duree_min, ferry, marge_min, source, source_date, a_verifier",
+    liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",
     dossiers: "id, ref, client_id, date_depart, date_retour, annule",
     reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente",
   };
@@ -176,12 +177,13 @@ Deno.serve(async (req) => {
     return g;
   };
   const ors = cleOrs
-    ? async (de: string, vers: string) => {
+    ? async (de: string, vers: string, coords: { de?: { lat: number; lon: number }; vers?: { lat: number; lon: number } } | null = null) => {
         try {
           const cle = clePaire(de, vers);
           const cache = await sb.from("trajets_ors").select("duree_min, distance_km, ferry, de_trouve, vers_trouve").eq("entite_id", entiteId).eq("cle", cle).maybeSingle();
           if (cache.data) return cache.data;
-          const [a, b] = await Promise.all([situerOrs(de), situerOrs(vers)]);
+          // Les coordonnées d'un port données dans la table passent avant le géocodage.
+          const [a, b] = await Promise.all([coords && coords.de ? { ...coords.de, label: de } : situerOrs(de), coords && coords.vers ? { ...coords.vers, label: vers } : situerOrs(vers)]);
           if (!a || !b) return null;
           const r = lireItineraire(await appelOrs(ORS_ITINERAIRE, { method: "POST", body: JSON.stringify(corpsItineraire(a, b)) }));
           if (!r) return null;
