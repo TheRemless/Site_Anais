@@ -10,7 +10,7 @@ import { mesTaches, listeTaches } from "./taches.mjs";
 import { contratsAEcheance, chiffres as numeroDe } from "../partenaires-calc.mjs";
 import { agenda, personnesTexte, cleMessageReservation, avisParClient } from "../operations-calc.mjs";
 import { listeReservations, pastilleReservation, messageClient } from "./reservations.mjs";
-import { tr, N_, pluriel, dateLongue } from "../i18n.mjs";
+import { tr, N_, pluriel, dateLongue, langueActive } from "../i18n.mjs";
 import { ouvrirSansSuite, baseDistante } from "./sans-suite.mjs";
 import { disponible as sansSuiteDisponible } from "../sans-suite-calc.mjs";
 import { resumeTrajet } from "../trajet-calc.mjs";
@@ -37,7 +37,7 @@ function carteService(r) {
   const c = d && etat.db.clients.find((x) => x.id === d.client_id);
   const tel = c ? numeroDe(c.telephone) : "";
   const wa = tel.replace(/\D/g, "");
-  const detail = [c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes)].filter(Boolean).join(" · ");
+  const detail = [c ? nomClient(c) : "", nomPartenaire(r.partenaire_id), personnesTexte(r.personnes, langueActive())].filter(Boolean).join(" · ");
   return h(
     "li",
     { class: "service" },

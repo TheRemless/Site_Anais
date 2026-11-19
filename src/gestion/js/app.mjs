@@ -147,7 +147,7 @@ function bandeauDemo() {
         afficher();
       },
     },
-    s.utilisateursDemo().map((u) => h("option", { value: u.id }, u.plateforme ? tr("{nom} (aucune donnée de client)", { nom: u.nom }) : u.organisation && u.organisation !== "Organisation démo" ? tr("{nom} ({organisation}, nouveau client)", { nom: u.nom, organisation: u.organisation }) : u.super_admin ? tr("{nom} (voit tout)", { nom: u.nom }) : u.nom))
+    s.utilisateursDemo().map((u) => h("option", { value: u.id }, u.plateforme ? tr("{nom} (aucune donnée de client)", { nom: u.nom }) : u.client ? tr("{nom} ({organisation}, nouveau client)", { nom: u.nom, organisation: u.organisation }) : u.super_admin ? tr("{nom} (voit tout)", { nom: u.nom }) : u.nom))
   );
   sel.value = s.utilisateurDemo();
   return h(

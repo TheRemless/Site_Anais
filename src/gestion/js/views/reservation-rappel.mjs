@@ -5,7 +5,7 @@
 import { etat, modifier, peut, reglages, entiteActive, nomClient, partenaireDe, dossiersAnnules, organisation } from "../etat.mjs";
 import { h, icone } from "../ui.mjs";
 import { formatDate } from "../calc.mjs";
-import { tr, localeActive } from "../i18n.mjs";
+import { tr, localeActive, langueActive } from "../i18n.mjs";
 import { carteReservation } from "./reservations.mjs";
 import { copierTexte } from "./partage.mjs";
 import { vide, lienDossier } from "./commun.mjs";
@@ -83,7 +83,7 @@ export function blocRappel(r) {
               : ligne(tr("Téléphone"), tr("non renseigné")),
             ligne(tr("Service"), p.service),
             ligne(tr("Quand"), [p.date ? formatDate(p.date) : "", p.heure ? tr("pickup {heure}", { heure: p.heure }) : ""].filter(Boolean).join(", ")),
-            ligne(tr("Personnes"), personnesTexte(p.personnes)),
+            ligne(tr("Personnes"), personnesTexte(p.personnes, langueActive())),
             ligne(tr("Prise en charge"), p.lieu)
           ),
           caseFait(r, "rappel_partenaire_le", tr("Rappel fait au partenaire"))
@@ -128,7 +128,7 @@ export function sectionProchainsServices() {
             { class: "carte-lien", href: `#/reservation/${r.id}` },
             h("span", { class: "carte-titre" }, r.libelle),
             h("span", { class: "carte-droite" }, h("strong", null, heureService(r)), h("span", null, minutes > 0 ? tr("dans {n} min", { n: minutes }) : tr("commencé"))),
-            h("span", { class: "carte-sous" }, [personnesTexte(r.personnes), r.lieu_pickup].filter(Boolean).join(" · ")),
+            h("span", { class: "carte-sous" }, [personnesTexte(r.personnes, langueActive()), r.lieu_pickup].filter(Boolean).join(" · ")),
             h("span", { class: "carte-pied" }, h("span", null, pastille(e.client, tr("Client")), r.partenaire_id ? pastille(e.partenaire, tr("Partenaire")) : null), h("span", { class: "rappel-ouvrir" }, tr("Rappel"), icone("chevron", 16)))
           )
         );

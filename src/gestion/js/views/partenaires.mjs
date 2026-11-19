@@ -1,5 +1,5 @@
 // Partenaires : la liste, la fiche d'un partenaire (contact, tarifs, règles, contrat, banque, tâches) et les formulaires.
-import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie, modeTaxi, modeExcursions } from "../etat.mjs";
+import { etat, peut, inserer, modifier, supprimer, naviguer, partenaireDe, nomPartenaire, netPrestation, privePartenaire, enregistrerLie, modeTaxi, modeExcursions, moduleActif } from "../etat.mjs";
 import { h, champ, modal, confirmer, toast, icone, num } from "../ui.mjs";
 import { formatMontant, formatDate, aujourdhui } from "../calc.mjs";
 import { TYPES_COMMISSION, SUR_PLACE, CHEZ_NOUS, modeParDefaut } from "../operations-calc.mjs";
@@ -149,7 +149,7 @@ export function listePartenaires() {
   return h(
     "div",
     { "data-titre": tr("Partenaires") },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Partenaires")), h("p", { class: "sous" }, [pluriel(nbActifs, N_("{n} partenaire"), N_("{n} partenaires")), pluriel(nbTarifs, N_("{n} tarif"), N_("{n} tarifs")), modeTaxi() ? "" : pluriel(nbTrajets, N_("{n} trajet"), N_("{n} trajets"))].filter(Boolean).join(", "))), h("div", { class: "entete-actions" }, h("a", { class: "bouton secondaire", href: "#/tarifs" }, tr("Tarifs")), modeTaxi() ? null : h("a", { class: "bouton secondaire", href: "#/trajets" }, tr("Trajets")), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, tr("Nouveau partenaire")) : null)),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Partenaires")), h("p", { class: "sous" }, [pluriel(nbActifs, N_("{n} partenaire"), N_("{n} partenaires")), pluriel(nbTarifs, N_("{n} tarif"), N_("{n} tarifs")), !moduleActif("trajets") ? "" : pluriel(nbTrajets, N_("{n} trajet"), N_("{n} trajets"))].filter(Boolean).join(", "))), h("div", { class: "entete-actions" }, h("a", { class: "bouton secondaire", href: "#/tarifs" }, tr("Tarifs")), !moduleActif("trajets") ? null : h("a", { class: "bouton secondaire", href: "#/trajets" }, tr("Trajets")), peut("partenaires.ecrire") ? h("button", { class: "principal", type: "button", onclick: () => ouvrirFormulaire({}) }, tr("Nouveau partenaire")) : null)),
     h("div", { class: "barre-outils" }, h("div", { class: "champ recherche" }, h("label", { for: "rech-partenaires" }, tr("Rechercher")), q), caseMasques),
     corps
   );
@@ -256,7 +256,7 @@ export function fichePartenaire(id) {
             )
           : null,
         p.notes ? bloc(N_("Notes"), paragraphes(p.notes)) : null,
-        trajets.length ? bloc(N_("Trajets"), h("p", null, pluriel(trajetsActifs.length, N_("{n} trajet proposé"), N_("{n} trajets proposés")), trajets.length > trajetsActifs.length ? [", ", pluriel(trajets.length - trajetsActifs.length, N_("{n} masqué"), N_("{n} masqués"))] : "", ". ", h("a", { href: `#/trajets?partenaire=${p.id}${trajets.length > trajetsActifs.length ? "&masques=1" : ""}` }, tr("Voir les trajets")))) : null
+        trajets.length && moduleActif("trajets") ? bloc(N_("Trajets"), h("p", null, pluriel(trajetsActifs.length, N_("{n} trajet proposé"), N_("{n} trajets proposés")), trajets.length > trajetsActifs.length ? [", ", pluriel(trajets.length - trajetsActifs.length, N_("{n} masqué"), N_("{n} masqués"))] : "", ". ", h("a", { href: `#/trajets?partenaire=${p.id}${trajets.length > trajetsActifs.length ? "&masques=1" : ""}` }, tr("Voir les trajets")))) : null
       )
     ),
     h(
