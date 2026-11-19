@@ -5,7 +5,7 @@
 import { etat, reglages, entiteActive, imprimer, nomPartenaire, partenaireDe, resumeDossier } from "../etat.mjs";
 import { h } from "../ui.mjs";
 import { formatDate, formatNombre, aujourdhui } from "../calc.mjs";
-import { typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, statutPaiementVoucher, prixParPersonneVoucher, hebergementVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
+import { rolesDuService, typeVoucherDeduit, modeleChoisi, numeroVoucher, numerosVouchers, statutPaiementVoucher, prixParPersonneVoucher, hebergementVoucher, empreinteVoucher, voucherFige, valeursFigees, SANS_VOUCHER, estPrive, fraisDeParc, typeTransfert, dateTexte, remplirGabarit, embarcadereFiche, consigneCheckinFiche, estTarifZone, estPickupHotel, bateauEtQuai, horairesTexte, dureeTexte, concerneUnVol, nbJoursLocation, categorieVehicule, moteurTexte, siegesVoucher, pickupDepuisLibelle, dropOffDepuisLibelle } from "../operations-calc.mjs";
 import { libelleClient, modeEn } from "../partenaires-calc.mjs";
 import { estTaxi, estBookingSecret, estBookingConfirmation, bagagesBooking } from "../taxi-calc.mjs";
 import { estRetourDepart, dureeAnglais } from "../trajet-calc.mjs";
@@ -134,7 +134,11 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   const brut = (x) => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
   // Un service à rôles (ATV) dit au partenaire combien de conducteurs et de passagers : « P3: ATV 1h + Kayak 1h, 1 driver + 1 passenger » (19.11.2026).
   const nomService = p && p.libelle_en && [p.libelle, p.libelle_en].some((x) => brut(x) === brut(r.libelle)) ? p.libelle_en : libelleClient(r.libelle);
-  const titrePrestation = dt.roles && !brut(nomService).includes(brut(dt.roles)) ? `${nomService}, ${dt.roles}` : nomService;
+  // La composition se relit sur la facture (une ligne de passager retirée ou changée la suit), sinon celle gardée à la création.
+  const idsService = new Set([r.ligne_id, ...((dt.lignes_ids) || [])].filter(Boolean));
+  const lignesService = r.dossier_id && etat.db ? (etat.db.documents || []).filter((x) => x.dossier_id === r.dossier_id && x.type !== "devis").flatMap((x) => (x.contenu && x.contenu.lignes) || []).filter((l) => idsService.has(l.id)) : [];
+  const roles = lignesService.length ? rolesDuService(lignesService) : dt.roles || "";
+  const titrePrestation = roles && !brut(nomService).includes(brut(roles)) ? `${nomService}, ${roles}` : nomService;
   // Billet : ce qui est saisi sur la réservation passe avant le trajet de la base ; sans trajet (partenaire ajouté à la main), seulement la saisie
   // et un libellé « A → B ». L'heure de pickup n'est jamais prise pour l'heure de départ du bateau quand le pickup s'imprime à part.
   const dBillet = { de: libelleClient(dt.de || (trajet && trajet.de) || pickupDepuisLibelle(r, p, trajet)), vers: libelleClient(dt.vers || (trajet && trajet.vers) || dropOffDepuisLibelle(r, p)), depart: dt.depart || (trajet && trajet.depart) || (trajet ? r.heure_pickup || "" : ""), arrivee: dt.arrivee || (trajet && trajet.arrivee) || "", mode: dt.bateau || (trajet && trajet.mode ? modeEn(trajet.mode) : "") };

@@ -1483,6 +1483,7 @@ export const EN = {
   "Toutes les compagnies": "All boat companies",
   "Toutes les entreprises, en administratrice": "All companies, as administrator",
   "Toutes les lignes de partenaires ont déjà leur réservation.": "All partner lines already have their reservation.",
+  "Une réservation n'a pas pu être mise à jour : {message}": "A reservation could not be updated: {message}",
   "Le service ajouté rejoint sa réservation : un seul voucher.": "The added service joins its reservation: one voucher.",
   "Les services ajoutés rejoignent leur réservation : un seul voucher chacun.": "The added services join their reservations: one voucher each.",
   "Toutes les règles": "All rules",

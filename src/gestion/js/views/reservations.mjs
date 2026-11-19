@@ -684,15 +684,21 @@ export async function creerReservations(doc, { silencieux = false, personnesDuDo
       const roles = rolesDuService((doc.contenu.lignes || []).filter((l) => lignes_ids.includes(l.id)));
       if (roles) details.roles = roles;
       const champs = { details };
+      // Ce qui a été saisi à la main sur la réservation (remise, participants) est gardé : seul l'apport des nouvelles lignes s'ajoute.
+      const avant = attenduDepuisFacture(r, doc);
+      const nb = (x) => Number(x) || 0;
       if (attendu && !attendu.retiree) {
-        if (!attendu.sansPersonnes) champs.personnes = { ...(r.personnes || {}), adultes: attendu.personnes.adultes, enfants: attendu.personnes.enfants };
-        if (attendu.montant_vente !== null) champs.montant_vente = attendu.montant_vente;
+        if (!attendu.sansPersonnes) {
+          const plus = (k) => nb(attendu.personnes[k]) - (avant && !avant.retiree && !avant.sansPersonnes ? nb(avant.personnes[k]) : 0);
+          champs.personnes = { ...(r.personnes || {}), adultes: nb(r.personnes && r.personnes.adultes) + plus("adultes"), enfants: nb(r.personnes && r.personnes.enfants) + plus("enfants") };
+        }
+        if (attendu.montant_vente !== null) champs.montant_vente = Math.round((nb(r.montant_vente) + nb(attendu.montant_vente) - (avant && !avant.retiree ? nb(avant.montant_vente) : 0)) * 100) / 100;
         champs.paye_sur_place = attendu.paye_sur_place;
       }
       await modifier("reservations", r.id, champs);
       rattachees++;
     } catch (err) {
-      toast(tr("Une réservation n'a pas pu être créée : {message}", { message: err.message }), true);
+      toast(tr("Une réservation n'a pas pu être mise à jour : {message}", { message: err.message }), true);
     }
   }
   const existantes = etat.db.reservations.filter((r) => r.dossier_id === doc.dossier_id);
