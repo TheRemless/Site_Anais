@@ -368,8 +368,19 @@ export function creer() {
       const e = corps.entite_id;
       if (!(data.reglages[e] || {}).assistant_ia) return { erreur: "assistant_eteint" };
       // Mêmes droits que la fonction : la base de prix et créer un dossier. « rediger » est refusé comme par la fonction (retiré le 19.11.2026).
-      if (!["lire", "itineraire", "situer", "repondre_itineraire"].includes(corps.usage)) return { erreur: "usage_inconnu" };
+      if (!["lire", "itineraire", "situer", "repondre_itineraire", "brochure"].includes(corps.usage)) return { erreur: "usage_inconnu" };
       const perms = permissionsDans(contexte(), e);
+      // Brochure : droits de la fonction (créer les tarifs et leurs prix de vente), fichiers contrôlés comme par elle, réponse tirée du catalogue.
+      if (corps.usage === "brochure") {
+        const b = await import("./brochure-calc.mjs");
+        if (b.DROITS_BROCHURE.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };
+        const fichiers = Array.isArray(corps.fichiers) ? corps.fichiers : [];
+        if (!fichiers.length) return { erreur: "fichiers_absents" };
+        if (fichiers.length > 6) return { erreur: "trop_de_fichiers" };
+        if (fichiers.some((f) => !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(f && f.media_type))) return { erreur: "fichier_type" };
+        if (!data.partenaires.some((p) => p.id === corps.partenaire_id && p.entite_id === e)) return { erreur: "partenaire_invalide" };
+        return b.simulerBrochure({ partenaireId: corps.partenaire_id, prestations: data.prestations.filter((p) => p.entite_id === e), trajets: data.trajets.filter((t) => t.entite_id === e) });
+      }
       const requis = ["partenaires.lire", "dossiers.ecrire"];
       if (requis.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };
       const trajets = data.trajets.filter((t) => t.entite_id === e);
