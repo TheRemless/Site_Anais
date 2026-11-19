@@ -1,0 +1,138 @@
+-- Gestion : migration 52, conversations de l'agent (onglet « Assistant », 19.11.2026).
+-- 1. agent_conversations : une conversation par client ou par demande, plusieurs ouvertes en parallèle, reliable à un dossier.
+-- 2. agent_messages : l'historique tel qu'il part chez Claude (texte, appels d'outils et leurs résultats, blocs de réflexion), dans l'ordre.
+--    Jamais un net : les outils n'en rendent pas (supabase/functions/agent/outils.js).
+-- 3. agent_cartes : les propositions de l'agent (dossier, service, modification, réponse au client) et leur sort (proposée, validée, écartée).
+--    Une carte n'écrit rien : « Valider » ouvre l'écran habituel de l'outil, déjà rempli, et c'est lui qui enregistre.
+-- Droits : chaque personne ne voit que ses conversations, dans une entreprise où elle a « dossiers.ecrire » (règles RLS). La fonction
+-- « agent » lit et écrit avec la session de la personne : les mêmes règles s'appliquent.
+-- Conservation : une conversation sans nouveau message depuis 90 jours est supprimée avec ses messages et ses cartes (fonction
+-- purger_agent_conversations, appelée par la fonction « agent » à chaque échange ; les dossiers créés restent, bien sûr).
+-- 4. Journal de l'assistant : la colonne « usage » accepte « agent » (et les usages des lots 1 et 5, trier et brochure, pour ne pas les
+--    perdre si cette migration passe après les leurs).
+-- Ne modifie aucune donnée existante. Se rejoue sans effet.
+-- Retour en arrière :
+--   drop table if exists agent_cartes; drop table if exists agent_messages; drop table if exists agent_conversations;
+--   drop function if exists purger_agent_conversations(integer); drop function if exists noter_agent_conversation();
+--   alter table assistant_journal drop constraint if exists assistant_journal_usage_check;
+--   alter table assistant_journal add constraint assistant_journal_usage_check check (usage in ('lire', 'rediger', 'itineraire', 'situer', 'repondre_itineraire', 'trier', 'brochure'));
+
+begin;
+
+create table if not exists agent_conversations (
+  id uuid primary key default gen_random_uuid(),
+  entite_id uuid not null references entites (id) on delete cascade,
+  user_id uuid not null default auth.uid(),
+  titre text not null default '' check (length(titre) <= 120),
+  apercu text not null default '' check (length(apercu) <= 200),
+  dossier_id uuid references dossiers (id) on delete set null,
+  statut text not null default 'ouverte' check (statut in ('ouverte', 'archivee')),
+  cree_le timestamptz not null default now(),
+  maj_le timestamptz not null default now()
+);
+create index if not exists agent_conversations_personne on agent_conversations (user_id, entite_id, maj_le desc);
+
+create table if not exists agent_messages (
+  id bigint generated always as identity primary key,
+  conversation_id uuid not null references agent_conversations (id) on delete cascade,
+  role text not null check (role in ('user', 'assistant')),
+  contenu jsonb not null,
+  cree_le timestamptz not null default now()
+);
+create index if not exists agent_messages_conversation on agent_messages (conversation_id, id);
+
+create table if not exists agent_cartes (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references agent_conversations (id) on delete cascade,
+  genre text not null check (genre in ('dossier', 'reservation', 'modification', 'reponse')),
+  titre text not null default '' check (length(titre) <= 120),
+  donnees jsonb not null default '{}',
+  avertissements jsonb not null default '[]',
+  statut text not null default 'proposee' check (statut in ('proposee', 'validee', 'ecartee')),
+  cree_le timestamptz not null default now(),
+  decide_le timestamptz
+);
+create index if not exists agent_cartes_conversation on agent_cartes (conversation_id, cree_le);
+
+-- La conversation est à la personne qui la crée ; son entreprise et sa date de création ne changent plus.
+create or replace function noter_agent_conversation() returns trigger language plpgsql set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    new.user_id := auth.uid();
+  else
+    new.user_id := old.user_id;
+    new.entite_id := old.entite_id;
+    new.cree_le := old.cree_le;
+  end if;
+  return new;
+end
+$$;
+drop trigger if exists noter_agent_conversation on agent_conversations;
+create trigger noter_agent_conversation before insert or update on agent_conversations for each row execute function noter_agent_conversation();
+
+-- Ma conversation : à moi, dans une entreprise où j'ai encore le droit d'écrire des dossiers.
+create or replace function agent_ma_conversation(c uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from agent_conversations a where a.id = c and a.user_id = auth.uid() and a_permission(a.entite_id, 'dossiers.ecrire'));
+$$;
+revoke all on function agent_ma_conversation(uuid) from public, anon;
+grant execute on function agent_ma_conversation(uuid) to authenticated;
+
+alter table agent_conversations enable row level security;
+alter table agent_messages enable row level security;
+alter table agent_cartes enable row level security;
+revoke all on agent_conversations, agent_messages, agent_cartes from anon, authenticated;
+grant select, insert, update, delete on agent_conversations to authenticated;
+grant select, insert on agent_messages to authenticated;
+grant select, insert, update on agent_cartes to authenticated;
+grant usage on sequence agent_messages_id_seq to authenticated;
+
+drop policy if exists "mes conversations" on agent_conversations;
+create policy "mes conversations" on agent_conversations for all to authenticated
+  using (user_id = auth.uid() and a_permission(entite_id, 'dossiers.ecrire'))
+  with check (user_id = auth.uid() and a_permission(entite_id, 'dossiers.ecrire') and a_permission(entite_id, 'partenaires.lire')
+    -- Un dossier relié doit être de la même entreprise.
+    and (dossier_id is null or exists (select 1 from dossiers d where d.id = dossier_id and d.entite_id = agent_conversations.entite_id)));
+
+-- Messages : lus et ajoutés dans mes conversations, jamais modifiés (l'historique repart tel quel chez Claude).
+drop policy if exists "lire mes messages" on agent_messages;
+create policy "lire mes messages" on agent_messages for select to authenticated using (agent_ma_conversation(conversation_id));
+drop policy if exists "ajouter mes messages" on agent_messages;
+create policy "ajouter mes messages" on agent_messages for insert to authenticated with check (agent_ma_conversation(conversation_id));
+
+-- Cartes : ajoutées par la fonction (avec ma session), et leur sort décidé par moi.
+drop policy if exists "lire mes cartes" on agent_cartes;
+create policy "lire mes cartes" on agent_cartes for select to authenticated using (agent_ma_conversation(conversation_id));
+drop policy if exists "ajouter mes cartes" on agent_cartes;
+create policy "ajouter mes cartes" on agent_cartes for insert to authenticated with check (agent_ma_conversation(conversation_id) and statut = 'proposee');
+drop policy if exists "décider de mes cartes" on agent_cartes;
+create policy "décider de mes cartes" on agent_cartes for update to authenticated using (agent_ma_conversation(conversation_id)) with check (agent_ma_conversation(conversation_id));
+
+-- Une carte décidée ne change plus que de sort ; son contenu reste celui que l'agent a proposé.
+create or replace function figer_agent_carte() returns trigger language plpgsql set search_path = public as $$
+begin
+  new.conversation_id := old.conversation_id;
+  new.genre := old.genre;
+  new.titre := old.titre;
+  new.donnees := old.donnees;
+  new.avertissements := old.avertissements;
+  new.cree_le := old.cree_le;
+  new.decide_le := case when new.statut <> old.statut then now() else old.decide_le end;
+  return new;
+end
+$$;
+drop trigger if exists figer_agent_carte on agent_cartes;
+create trigger figer_agent_carte before update on agent_cartes for each row execute function figer_agent_carte();
+
+-- Conservation : supprime MES conversations sans message depuis `jours` jours (90 par défaut). Rend le nombre supprimé.
+create or replace function purger_agent_conversations(jours integer default 90) returns integer language sql security invoker set search_path = public as $$
+  with s as (delete from agent_conversations where user_id = auth.uid() and maj_le < now() - make_interval(days => greatest(jours, 7)) returning 1)
+  select count(*)::integer from s;
+$$;
+revoke all on function purger_agent_conversations(integer) from public, anon;
+grant execute on function purger_agent_conversations(integer) to authenticated;
+
+-- Le journal de l'assistant accepte l'agent (contrainte de la migration 27, élargie par la 48).
+alter table assistant_journal drop constraint if exists assistant_journal_usage_check;
+alter table assistant_journal add constraint assistant_journal_usage_check check (usage in ('lire', 'rediger', 'itineraire', 'situer', 'repondre_itineraire', 'trier', 'brochure', 'agent'));
+
+commit;

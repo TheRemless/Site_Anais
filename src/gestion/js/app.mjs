@@ -12,12 +12,14 @@ import { ecranDeLecture, TABLES_EN_DIRECT, momentDeRecharger, nouvellesDemandes 
 import { suivreSaisies, champsModifies, curseurDansUnChamp, nouvelEcran, ecranTouche } from "./saisie.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
+import { agentActif } from "./agent-calc.mjs";
 
 // Chaque écran se charge à sa première visite : le premier affichage n'attend que l'accueil.
 const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
 const ROUTES = [
   [/^#\/reservations(?:\?.*)?$/, "reservations", vers(() => import("./views/reservations.mjs"), "vueReservations")],
   [/^#\/reservation\/([\w-]+)(?:\?.*)?$/, "reservation", vers(() => import("./views/reservation-rappel.mjs"), "vueReservation")],
+  [/^#\/agent(?:\/([\w-]+))?$/, "agent", vers(() => import("./views/agent.mjs"), "vueAgent")],
   [/^#\/messages$/, "messages", vers(() => import("./views/messages.mjs"), "vueMessages")],
   [/^#\/fiduciaire$/, "fiduciaire", vers(() => import("./views/fiduciaire.mjs"), "vueFiduciaire")],
   [/^#\/demandes(?:\?.*)?$/, "demandes", vers(() => import("./views/demandes-site.mjs"), "vueDemandesSite")],
@@ -198,7 +200,7 @@ function ecrans() {
   return [
     { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
     { titre: tr("Site"), items: [...si(siteVisible(), { href: "#/demandes", libelle: tr("Demandes du site"), cle: "demandes", icone: "messages", badge: demandes, badgeLibelle: tr("{badge} à traiter", { badge: demandes }) }), ...si(bandeauVisible(), { href: "#/bandeau", libelle: tr("Bandeau du site"), cle: "bandeau", icone: "alerte" })] },
-    { titre: tr("Ventes"), items: [{ href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(fiduciaireAuMenu(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
+    { titre: tr("Ventes"), items: [...si(agentVisible(), { href: "#/agent", libelle: tr("Assistant"), cle: "agent", icone: "assistant" }), { href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(fiduciaireAuMenu(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
       titre: tr("Partenaires"),
       items: si(peut("partenaires.lire") && moduleActif("partenaires"), null).length
@@ -226,7 +228,9 @@ function ecrans() {
   ].filter((s) => s.items.length);
 }
 // Les écrans qui ont leur onglet sur téléphone (cinq au plus, « Plus » compris) : ce qu'Anaïs ouvre chaque jour. Le reste passe par « Plus ».
-const ongletsMobiles = () => ["tableau", "dossiers", moduleActif("reservations") ? "reservations" : null, "clients"].filter(Boolean);
+// L'onglet « Assistant » prend la place de « Clients » quand l'agent est allumé (Clients reste dans « Plus » et dans la recherche).
+const agentVisible = () => agentActif(etat.db && etat.db.reglages) && peut("partenaires.lire") && peut("dossiers.ecrire");
+const ongletsMobiles = () => ["tableau", "dossiers", moduleActif("reservations") ? "reservations" : null, agentVisible() ? "agent" : "clients"].filter(Boolean);
 const tousEcrans = () => ecrans().flatMap((s) => s.items);
 
 const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": e.badgeLibelle || tr("{badge} en retard", { badge: e.badge }) }, e.badge) : null);

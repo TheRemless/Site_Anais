@@ -249,6 +249,67 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       if (error) throw new Error(error.message);
       return data;
     },
+    // ---- Agent de l'onglet « Assistant » (migration 52, fonction « agent ») ---------------------------------------------------------------
+    // Les conversations se lisent et se rangent ici, avec la session de la personne (RLS : seulement les siennes). null avant la migration.
+    async agentConversations(entiteId) {
+      const { data, error } = await sb.from("agent_conversations").select("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le").eq("entite_id", entiteId).order("maj_le", { ascending: false }).limit(300);
+      return error ? null : data || [];
+    },
+    async agentAttente(entiteId) {
+      const { data, error } = await sb.from("agent_cartes").select("conversation_id, agent_conversations!inner(entite_id)").eq("statut", "proposee").eq("agent_conversations.entite_id", entiteId).limit(1000);
+      return error ? [] : (data || []).map((c) => ({ conversation_id: c.conversation_id }));
+    },
+    async agentFil(id) {
+      const [m, c] = await Promise.all([
+        sb.from("agent_messages").select("id, role, contenu, cree_le").eq("conversation_id", id).order("id", { ascending: true }).limit(400),
+        sb.from("agent_cartes").select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").eq("conversation_id", id).order("cree_le", { ascending: true }),
+      ]);
+      if (m.error || c.error) throw new Error((m.error || c.error).message);
+      return { messages: m.data || [], cartes: c.data || [] };
+    },
+    async agentMajConversation(id, patch) {
+      const valeurs = Object.fromEntries(Object.entries(patch).filter(([k]) => ["titre", "statut", "dossier_id"].includes(k)));
+      return verifie(await sb.from("agent_conversations").update(valeurs).eq("id", id).select("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le").single());
+    },
+    async agentSupprimerConversation(id) {
+      verifie(await sb.from("agent_conversations").delete().eq("id", id).select("id"));
+    },
+    async agentCarte(id, statut) {
+      return verifie(await sb.from("agent_cartes").update({ statut }).eq("id", id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single());
+    },
+    // Un message à l'agent : la réponse arrive en flux (une ligne JSON par événement), passée à `surEvenement` au fil de l'eau.
+    // Rend { ok } ou { erreur } (droit, limite, plafond, indisponible), comme l'assistant.
+    async agentEnvoyer(corps, surEvenement) {
+      const { data: s } = await sb.auth.getSession();
+      const jeton = s && s.session && s.session.access_token;
+      if (!jeton) return { erreur: "non_connecte" };
+      let rep;
+      try {
+        rep = await fetch(`${config.SUPABASE_URL}/functions/v1/agent`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify(corps) });
+      } catch {
+        return { erreur: "hors_ligne" };
+      }
+      if (!rep.ok || !rep.body) {
+        const detail = await rep.json().catch(() => null);
+        return { erreur: (detail && detail.erreur) || "indisponible" };
+      }
+      const { lireMorceau } = await import("./agent-calc.mjs");
+      const lecteur = rep.body.getReader();
+      const dec = new TextDecoder();
+      let tampon = "";
+      let fini = false;
+      for (;;) {
+        const { value, done } = await lecteur.read();
+        const r = lireMorceau(tampon, done ? "\n" : dec.decode(value, { stream: true }));
+        tampon = r.tampon;
+        for (const ev of r.evenements) {
+          if (ev.t === "fin") fini = true;
+          surEvenement(ev);
+        }
+        if (done) break;
+      }
+      return fini ? { ok: true } : { erreur: "coupure" };
+    },
     // Assistant IA (fonction « assistant ») : appelé avec la session de la personne, qui vérifie ses droits côté serveur.
     // Renvoie toujours un objet : la réponse, ou { erreur } avec le code rendu par la fonction (droit, limite, indisponible).
     async assistant(corps) {
