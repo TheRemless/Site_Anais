@@ -76,12 +76,13 @@ module.exports = async function (eleventyConfig) {
   eleventyConfig.on("eleventy.after", async ({ dir }) => {
     const fs = require("node:fs");
     const path = require("node:path");
-    const { empreinteGestion } = require("./scripts/empreinte-gestion.cjs");
+    const { empreinteGestion, versionPubliee } = require("./scripts/empreinte-gestion.cjs");
     const { regrouperGestion } = require("./scripts/regrouper-gestion.cjs");
-    await regrouperGestion({ source: path.join(__dirname, "src/gestion"), sortie: path.join(dir.output, "gestion") });
+    const regroupe = await regrouperGestion({ source: path.join(__dirname, "src/gestion"), sortie: path.join(dir.output, "gestion") });
     const sortie = path.join(dir.output, "gestion");
     fs.mkdirSync(sortie, { recursive: true });
-    fs.writeFileSync(path.join(sortie, "version.json"), JSON.stringify({ version: empreinteGestion(path.join(__dirname, "src/gestion")).version }) + "\n");
+    // La version suit les sources ET les fichiers regroupés (un esbuild ou un script de regroupement changés renomment les fichiers servis).
+    fs.writeFileSync(path.join(sortie, "version.json"), JSON.stringify({ version: versionPubliee(empreinteGestion(path.join(__dirname, "src/gestion")).version, regroupe && regroupe.versionSw) }) + "\n");
   });
 
   return {
