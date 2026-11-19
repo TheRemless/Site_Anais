@@ -6,14 +6,16 @@
 [functions]
   directory = "netlify/functions"
 
-# Outil de gestion privé : jamais indexé, jamais intégré dans une autre page, toujours revalidé.
+# Outil de gestion privé : jamais indexé, jamais intégré dans une autre page.
+# Cache (ouverture rapide, 19.11.2026) : pas de Cache-Control ici, sinon il se combinerait avec celui des fichiers empreintés ci-dessous.
+# Sans lui, Netlify revalide à chaque ouverture (public, max-age=0, must-revalidate) ; la page, version.json et le service worker le disent
+# en plus explicitement plus bas. Seuls les fichiers regroupés de /gestion/b/, dont le nom porte l'empreinte du contenu, se gardent un an.
 [[headers]]
   for = "/gestion/*"
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
     X-Frame-Options = "DENY"
     Referrer-Policy = "no-referrer"
-    Cache-Control = "no-cache"
     # Politique de sécurité du contenu : scripts de l'outil seulement (aucun script ni gestionnaire en ligne dans index.html), polices et images locales ou en data:/blob:
     # (aperçus, PDF, captures html2canvas), réseau vers Supabase seulement, aucune intégration dans une autre page. Les styles en ligne sont permis : l'interface en pose
     # par attribut (largeurs, variables). Toute nouvelle origine (autre API, CDN, police) doit être ajoutée ici, sinon le navigateur la bloque.
@@ -47,3 +49,30 @@
   for = "/js/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# Gestion : fichiers regroupés au build (scripts/regrouper-gestion.cjs). Un nom = un contenu, pour toujours : cache d'un an sans revalidation.
+[[headers]]
+  for = "/gestion/b/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Gestion : ce qui désigne la version en ligne est relu à chaque ouverture.
+[[headers]]
+  for = "/gestion/"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/gestion/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/gestion/version.json"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/gestion/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

@@ -1,20 +1,33 @@
 // Service worker de Gestion : il reçoit les rappels (Web Push) et les affiche, et garde la petite page hors connexion (voir plus bas).
-// L'outil se charge toujours depuis le réseau, jamais depuis une ancienne copie.
-// Hors connexion : le service worker garde UNIQUEMENT la petite page « hors-ligne » (quatre fichiers) pour afficher la copie de la feuille du jour gardée sur le téléphone quand le
-// réseau manque. L'application elle-même n'est jamais mise en cache : elle se charge toujours depuis le réseau, jamais depuis une ancienne copie, donc les mises à jour
-// arrivent comme avant. Une navigation vers /gestion/ qui échoue faute de réseau (et seulement elle) reçoit cette page.
+// La page de l'outil se charge toujours depuis le réseau, jamais depuis une ancienne copie : c'est elle qui désigne les fichiers de la version en ligne.
+// Hors connexion : le service worker garde la petite page « hors-ligne » (quatre fichiers) pour afficher la copie de la feuille du jour gardée sur le
+// téléphone quand le réseau manque. Une navigation vers /gestion/ qui échoue faute de réseau (et seulement elle) reçoit cette page.
+// Depuis le 19.11.2026, il garde aussi les fichiers regroupés aux noms empreintés (voir PRECHARGE) : une ancienne version ne peut pas
+// revenir, puisqu'un autre contenu porte toujours un autre nom.
 const CACHE = "gestion-hors-ligne-v2";
 const FICHIERS = ["hors-ligne.html", "hors-ligne.css", "hors-ligne.mjs", "js/feuille-hors-ligne-lecture.mjs"].map((f) => new URL(f, self.registration.scope).href);
+// Ouverture rapide (19.11.2026) : les fichiers regroupés au build (dossier b/, scripts/regrouper-gestion.cjs) portent l'empreinte de leur contenu
+// dans leur nom. Un même nom ne change donc jamais de contenu : ils sont gardés ici dès l'installation et servis sans réseau à l'ouverture suivante.
+// index.html, version.json et sw.js ne sont jamais gardés : chaque ouverture lit la page du réseau, qui désigne les fichiers de la version en ligne.
+// La liste et la version sont écrites par le build ; dans les sources (prévisualisation sans build) elles sont vides et rien n'est gardé.
+const PRECHARGE = [];
+const VERSION_APP = "source";
+const CACHE_APP = `gestion-app-${VERSION_APP}`;
+const RACINE_APP = new URL("b/", self.registration.scope).href;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     // Un fichier à la fois : un 404 passager sur l'un n'empêche pas de garder les autres. Les fichiers sont aussi remis à jour à chaque lecture réussie (ci-dessous).
-    caches.open(CACHE).then((c) => Promise.all(FICHIERS.map((f) => c.add(f).catch(() => {})))).then(() => self.skipWaiting())
+    Promise.all([
+      caches.open(CACHE).then((c) => Promise.all(FICHIERS.map((f) => c.add(f).catch(() => {})))),
+      PRECHARGE.length ? caches.open(CACHE_APP).then((c) => Promise.all(PRECHARGE.map((f) => c.add(new URL(f, self.registration.scope).href).catch(() => {})))) : null,
+    ]).then(() => self.skipWaiting())
   );
 });
 self.addEventListener("activate", (event) =>
   event.waitUntil(
-    caches.keys().then((noms) => Promise.all(noms.filter((n) => n.startsWith("gestion-hors-ligne-") && n !== CACHE).map((n) => caches.delete(n)))).then(() => self.clients.claim())
+    // Les caches d'une version précédente (page hors connexion ou fichiers regroupés) sont effacés.
+    caches.keys().then((noms) => Promise.all(noms.filter((n) => (n.startsWith("gestion-hors-ligne-") && n !== CACHE) || (n.startsWith("gestion-app-") && n !== CACHE_APP)).map((n) => caches.delete(n)))).then(() => self.clients.claim())
   )
 );
 
@@ -24,6 +37,15 @@ self.addEventListener("fetch", (event) => {
   if (req.mode === "navigate") {
     // Réseau d'abord, toujours ; la page hors connexion seulement si la requête échoue.
     event.respondWith(fetch(req).catch(async () => (await caches.match(FICHIERS[0])) || Response.error()));
+    return;
+  }
+  // Fichier regroupé (nom empreinté) : le cache d'abord, le réseau sinon (et il est gardé pour la fois suivante).
+  if (req.url.startsWith(RACINE_APP)) {
+    event.respondWith(
+      caches.open(CACHE_APP).then((c) =>
+        c.match(req).then((garde) => garde || fetch(req).then((rep) => { if (rep.ok) c.put(req, rep.clone()).catch(() => {}); return rep; }))
+      )
+    );
     return;
   }
   if (FICHIERS.includes(req.url)) {

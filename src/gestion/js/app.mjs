@@ -978,6 +978,11 @@ function installerTirer(actualiser) {
 
 init()
   .then(afficher)
+  // Repère de mesure : le premier écran est affiché et utilisable (temps d'ouverture, voir docs/gestion/mise-en-route.md).
+  .then(() => performance.mark && performance.mark("gestion-pret"))
+  // Le service worker (rappels, page hors connexion, fichiers regroupés gardés) s'installe pour tout le monde, après le premier écran.
+  // Avant le 19.11.2026, seulement en activant les rappels : les autres rechargeaient tout à chaque ouverture.
+  .then(() => { if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {}); })
   .then(surveillerVersion)
   .then(surveillerDonnees)
   .then(installerTirer)

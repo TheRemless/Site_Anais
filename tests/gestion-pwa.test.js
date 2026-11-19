@@ -54,14 +54,15 @@ test("manifeste : les raccourcis restent dans le périmètre de l'outil et ont l
   }
 });
 
-test("service worker : l'application n'est jamais mise en cache (seule la page hors connexion l'est), réseau d'abord", () => {
+test("service worker : réseau d'abord pour la page, seuls les fichiers regroupés à nom empreinté et la page hors connexion sont gardés", () => {
   const sw = fs.readFileSync(path.join(dossier, "sw.js"), "utf8").replace(/\/\/.*$/gm, "");
-  // Un seul cache, rempli seulement par la liste fixe des fichiers de la page hors connexion, jamais par une réponse réseau.
-  // Un seul cache, ouvert sous son nom fixe (à l'installation et pour la mise à jour des quatre fichiers).
-  assert.deepEqual([...sw.matchAll(/caches\.open\(([^)]*)\)/g)].map((m) => m[1]), ["CACHE", "CACHE"]);
-  assert.equal((sw.match(/\.put\(/g) || []).length, 1, "une seule écriture dans le cache, pour les quatre fichiers de la page hors connexion");
-  assert.match(sw, /respondWith\(fetch\(req\)\.catch/, "réseau d'abord : le cache ne sert que si la requête échoue");
-  for (const f of ["js/app.mjs", "js/etat.mjs", "index.html", "css/app.css"]) assert.ok(!sw.includes(`"${f}"`), `${f} n'est pas mis en cache`);
+  // Deux caches : la page hors connexion (nom fixe) et les fichiers regroupés de la version (nom qui change avec eux).
+  assert.deepEqual([...sw.matchAll(/caches\.open\(([^)]*)\)/g)].map((m) => m[1]), ["CACHE", "CACHE_APP", "CACHE_APP", "CACHE"]);
+  assert.equal((sw.match(/\.put\(/g) || []).length, 2, "deux écritures : un fichier regroupé lu du réseau, un fichier de la page hors connexion");
+  assert.match(sw, /respondWith\(fetch\(req\)\.catch/, "navigation : réseau d'abord, la page hors connexion seulement si la requête échoue");
+  assert.match(sw, /const RACINE_APP = new URL\("b\/", self\.registration\.scope\)\.href;/, "seul le dossier b/ (noms empreintés) passe par le cache");
+  assert.match(sw, /const PRECHARGE = \[\];\nconst VERSION_APP = "source";/, "dans les sources, rien n'est gardé : la liste est écrite au build");
+  for (const f of ["js/app.mjs", "js/etat.mjs", "index.html", "css/app.css", "version.json"]) assert.ok(!sw.includes(`"${f}"`), `${f} n'est pas mis en cache`);
 });
 
 test("modulepreload : chaque module annoncé existe", () => {
