@@ -281,7 +281,8 @@ export function verifierFaitsItineraire(f) {
   };
 }
 
-const consignesReponse = (responsable) => `Tu rédiges un brouillon de réponse WhatsApp à un client qui a demandé les prix et les horaires de ses trajets entre ses hôtels. ${responsable || "L'équipe"} le relira avant de l'envoyer : c'est la suite d'une conversation déjà commencée.
+// Pas de prénom de la personne responsable dans ce prompt : chez Secret et Taxi elle n'écrit pas sous son prénom, et la réponse ne signe pas.
+const consignesReponse = () => `Tu rédiges un brouillon de réponse WhatsApp à un client qui a demandé les prix et les horaires de ses trajets entre ses hôtels. L'équipe le relira avant de l'envoyer : c'est la suite d'une conversation WhatsApp déjà commencée.
 
 Règles absolues :
 - Chaque date, lieu, horaire, durée et prix vient des faits fournis, à l'identique. Aucun autre chiffre, aucun total, aucune remise, aucune disponibilité promise.
@@ -289,13 +290,22 @@ Règles absolues :
 - Un trajet marqué « au_catalogue » faux : dis que nous ne proposons pas ce trajet, mais que tu peux te renseigner. Rien d'autre sur ce trajet.
 - Jamais de nom de compagnie ni de bateau, jamais de raison interne (prix d'achat, marge, commission, partenaire).
 - Un prix « a_payer_sur_place » se paie sur place, dis-le.
-- Vouvoiement en français. Pas de signature ni de nom d'entreprise en bas : c'est une conversation en cours.
+- Vouvoiement en français.
+- Aucune signature : ni prénom, ni nom d'entreprise, ni formule de fin signée (« Belle journée, … », « Have a nice day, … ») en bas. Le message s'arrête sur la dernière phrase utile. Cette règle l'emporte sur la voix ci-dessous.
 - « prix_cites » liste chaque montant écrit dans le message, en nombre. « manques » liste en français ce qu'il faudrait encore demander au client pour réserver (nombre de personnes s'il vaut 0, choix des horaires), vide si rien.
 - Le message est prêt à coller : pas de titre, pas de note pour l'équipe, pas de crochets à remplir.`;
 
-export function promptReponseItineraire({ faits, voix = null, responsable = "", entreprise = "" }) {
+// Voix par défaut de cette réponse quand l'entreprise n'a pas écrit la sienne : celle de la lecture neutre, sans sa formule de fin signée.
+const VOIX_CONVERSATION = {
+  fr: `Ton chaleureux et simple, phrases concrètes. Ouverture « Bonjour Prénom, » puis un merci pour le message. Un emoji par paragraphe au plus, jamais en rafale. Pas de superlatif touristique, pas de pression commerciale. Quand une information manque, demande-la simplement.`,
+  en: `Warm, short and practical, in plain English. Open with "Hello Firstname," and a thank-you for the message. One emoji per paragraph at most, never in bursts. No tourist superlatives, no sales pressure. When something is missing, ask for it simply.`,
+};
+
+// `responsable` n'est plus lu : la réponse ne nomme personne (Secret et Taxi, décision de Jérémy du 19.11.2026).
+export function promptReponseItineraire({ faits, voix = null, entreprise = "" }) {
+  const reglee = voix && voix[faits.langue] ? voixPour(faits.langue, voix, entreprise) : VOIX_CONVERSATION[faits.langue] || VOIX_CONVERSATION.fr;
   return {
-    system: [{ type: "text", text: `${consignesReponse(responsable)}\n\nVoix :\n${voixPour(faits.langue, voix, entreprise)}`, cache_control: { type: "ephemeral" } }],
+    system: [{ type: "text", text: `${consignesReponse()}\n\nVoix :\n${reglee}`, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: `Langue de la réponse : ${faits.langue === "en" ? "anglais" : "français"}.\n\nFaits (seule source autorisée) :\n${JSON.stringify(faits, null, 1)}` }],
   };
 }
@@ -310,10 +320,31 @@ export const SCHEMA_REPONSE_ITINERAIRE = {
 // Mots qui trahiraient une raison interne dans la réponse au client. « Partenaire » n'en est pas un : la voix de l'entreprise le dit au client.
 const INTERNE = /\b(marges?|margins?|commissions?|nets?\b|prix d'achat|net price)\b/i;
 
-// Contrôle du brouillon : un montant ou une heure absents des faits, un mot interne, et le brouillon est marqué à vérifier.
-export function validerReponseItineraire(v, faits) {
+// Formule de fin signée : « Belle journée, Nani », « Have a nice day », un prénom ou le nom de l'entreprise seuls sur la dernière ligne.
+const FIN_SIGNEE = /^(?:(?:belle|bonne|excellente) (?:journée|soirée|fin de journée)|have an? (?:nice|lovely|great|good) (?:day|evening|trip)|best regards|kind regards|cordialement|bien à vous|à bientôt|see you soon)\b/i;
+const NOMS_SIGNATURE = /^(?:nani|anaïs|anais)\b/i;
+export function retirerSignature(message, entreprise = "") {
+  const lignes = message.replace(/\s+$/, "").split("\n");
+  const nom = sansAccents(entreprise).replace(/[^a-z0-9]+/g, " ").trim();
+  let retire = false;
+  while (lignes.length > 1) {
+    const l = lignes[lignes.length - 1].trim();
+    const cle = sansAccents(l).replace(/[^a-z0-9]+/g, " ").trim();
+    const signature = !l || FIN_SIGNEE.test(l) || NOMS_SIGNATURE.test(l) || (nom && cle && (cle === nom || nom.includes(cle) || cle.includes(nom)) && cle.length <= nom.length + 20);
+    if (!signature) break;
+    if (l) retire = true;
+    lignes.pop();
+  }
+  return { message: lignes.join("\n").trim(), retire };
+}
+
+// Contrôle du brouillon : une signature en bas est retirée (et signalée) ; un montant ou une heure absents des faits, un mot interne, et le
+// brouillon est marqué à vérifier.
+export function validerReponseItineraire(v, faits, { entreprise = "" } = {}) {
   if (!v || typeof v !== "object" || typeof v.message !== "string" || !v.message.trim()) return { ok: false, statut: "invalide" };
-  const message = v.message.trim().slice(0, 4000);
+  const sig = retirerSignature(v.message.trim().slice(0, 4000), entreprise);
+  if (!sig.message) return { ok: false, statut: "invalide" };
+  const message = sig.message;
   const permis = new Set();
   const heures = new Set();
   for (const t of faits.trajets) {
@@ -328,6 +359,6 @@ export function validerReponseItineraire(v, faits) {
     ok: true,
     message,
     manques: (Array.isArray(v.manques) ? v.manques : []).map((x) => texte(x, 160)).filter(Boolean).slice(0, 6),
-    avertissements: [...(inconnus.length ? [`montant_hors_base:${inconnus.join(",")}`] : []), ...(heuresInconnues.length ? [`heure_hors_base:${heuresInconnues.join(",")}`] : []), ...(interne ? [`mot_interne:${interne[0]}`] : [])],
+    avertissements: [...(sig.retire ? ["signature_retiree"] : []), ...(inconnus.length ? [`montant_hors_base:${inconnus.join(",")}`] : []), ...(heuresInconnues.length ? [`heure_hors_base:${heuresInconnues.join(",")}`] : []), ...(interne ? [`mot_interne:${interne[0]}`] : [])],
   };
 }

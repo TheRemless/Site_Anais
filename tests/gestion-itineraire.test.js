@@ -287,8 +287,11 @@ test("faits : la fonction refuse toute clé en plus (net, compagnie), même cach
 
 test("réponse : prompt avec la voix de l'entreprise et la règle « je peux me renseigner » ; contrôle des montants, heures et mots internes", () => {
   const faits = verifierFaitsItineraire(faitsReponse({ itineraire: { adultes: 2 }, propositions: propositionsDe(ETAPES.slice(1), { adultes: 2 }), langue: "fr" })).faits;
-  const p = promptReponseItineraire({ faits, voix: { fr: "Voix de {entreprise}.", en: "" }, responsable: "Nani", entreprise: "Secret Travel & Tour" });
+  const p = promptReponseItineraire({ faits, voix: { fr: "Voix de {entreprise}.", en: "" }, entreprise: "Secret Travel & Tour" });
   assert.match(p.system[0].text, /Voix de Secret Travel & Tour\./);
+  assert.match(p.system[0].text, /Aucune signature/);
+  const neutre = promptReponseItineraire({ faits, voix: { fr: "", en: "" }, entreprise: "Secret Travel & Tour" }).system[0].text.split("Voix :")[1];
+  assert.doesNotMatch(neutre, /Belle journée|Have a nice day/, "la voix neutre de cette réponse n'a pas de formule de fin signée");
   assert.match(p.system[0].text, /nous ne proposons pas ce trajet, mais que tu peux te renseigner/);
   assert.match(p.system[0].text, /Jamais de nom de compagnie/);
   assert.match(p.messages[0].content, /Langue de la réponse : français/);
@@ -299,6 +302,17 @@ test("réponse : prompt avec la voix de l'entreprise et la règle « je peux me 
   assert.equal(validerReponseItineraire({ message: "" }, faits).ok, false);
   const dates = validerReponseItineraire({ message: "Le 21.01 et le 12.02 : départ à 9h30, je vérifie avec notre partenaire.", prix_cites: [] }, faits);
   assert.deepEqual(dates.avertissements, [], "une date « 21.01 » n'est pas une heure, « partenaire » n'est pas une raison interne");
+});
+
+test("réponse : une signature en bas (formule de fin, Nani, nom de l'entreprise) est retirée et signalée", () => {
+  const faits = verifierFaitsItineraire(faitsReponse({ itineraire: { adultes: 2 }, propositions: propositionsDe(ETAPES.slice(1, 3), { adultes: 2 }), langue: "fr" })).faits;
+  const r = validerReponseItineraire({ message: "Bonjour,\nKoh Lanta → Koh Phi Phi : 09:30, 900 THB par adulte.\n\nBelle journée,\nNani\nSecret Travel & Tour", prix_cites: [] }, faits, { entreprise: "Secret Travel & Tour" });
+  assert.equal(r.message, "Bonjour,\nKoh Lanta → Koh Phi Phi : 09:30, 900 THB par adulte.");
+  assert.deepEqual(r.avertissements, ["signature_retiree"]);
+  const en = validerReponseItineraire({ message: "Hello,\nTimes below.\nHave a lovely day, Nani 🌴", prix_cites: [] }, faits, { entreprise: "Secret Travel & Tour" });
+  assert.equal(en.message, "Hello,\nTimes below.");
+  const sans = validerReponseItineraire({ message: "Bonjour,\nDites-moi quels horaires vous conviennent 😊", prix_cites: [] }, faits, { entreprise: "Secret Travel & Tour" });
+  assert.deepEqual(sans.avertissements, [], "une dernière phrase utile reste");
 });
 
 test("faits : un nom de compagnie écrit dans le mode du trajet est retiré", () => {

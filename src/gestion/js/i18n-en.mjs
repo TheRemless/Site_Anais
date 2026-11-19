@@ -3686,4 +3686,5 @@ export const EN = {
   "Anglais": "English",
   "Hors catalogue : aucun trajet proposé depuis ou vers ce lieu.": "Not in the price list: no trip offered from or to this place.",
   "Le client a choisi : cochez ses horaires dans « Trajets et horaires », puis préparez le dossier.": "The client has chosen: tick their times under “Trips and times”, then prepare the file.",
+  "La signature en bas du brouillon a été retirée : la réponse ne signe pas.": "The sign-off at the bottom of the draft was removed: the reply is not signed.",
 };

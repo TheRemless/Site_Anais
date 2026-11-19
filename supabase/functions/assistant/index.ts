@@ -150,8 +150,8 @@ Deno.serve(async (req) => {
     const f = verifierFaitsItineraire(demande.faits);
     if (!f.ok) return json({ erreur: f.erreur, ...(f.cles ? { cles: f.cles } : {}) }, 400);
     const en = await sb.from("entites").select("nom").eq("id", entiteId).maybeSingle();
-    parametres = parametresAppel(usage, promptReponseItineraire({ faits: f.faits, voix: ra.voix, responsable: ra.responsable, entreprise: en.data?.nom || "" }), SCHEMA_REPONSE_ITINERAIRE);
-    valider = (v) => validerReponseItineraire(v, f.faits);
+    parametres = parametresAppel(usage, promptReponseItineraire({ faits: f.faits, voix: ra.voix, entreprise: en.data?.nom || "" }), SCHEMA_REPONSE_ITINERAIRE);
+    valider = (v) => validerReponseItineraire(v, f.faits, { entreprise: en.data?.nom || "" });
   }
 
   const debut = Date.now();

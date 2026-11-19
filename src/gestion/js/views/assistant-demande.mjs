@@ -30,6 +30,7 @@ const AVERTISSEMENTS = {
   date_illisible: N_("Une date n'a pas pu être lue."),
   date_passee: N_("Une date proposée est déjà passée."),
   dates_inversees: N_("Une étape part avant d'arriver : vérifiez ses dates."),
+  signature_retiree: N_("La signature en bas du brouillon a été retirée : la réponse ne signe pas."),
 };
 const CONFIANCE = { haute: N_("Sûr"), moyenne: N_("À vérifier"), basse: N_("Supposé") };
 
