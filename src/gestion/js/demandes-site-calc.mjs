@@ -15,6 +15,12 @@ export function titreDemande(d) {
   const m = d.marque === "taxi" ? /^Transfer request:\s*(.+)$/m.exec(d.message || "") : null;
   return (m && m[1].trim()) || nomProduit(d);
 }
+// Le message du client tel que le site l'a envoyé (d.message), sans rien y changer : ni les changements d'Anaïs, ni une reconstruction.
+// Vide pour une demande dont le message n'a pas été gardé (ancien site).
+export const messageClient = (d) => (d && typeof d.message === "string" ? d.message : "");
+// Les demandes du site qui ont créé ce dossier, la plus récente en premier (demandes_site.dossier_id).
+export const demandesDuDossier = (demandes, dossierId) =>
+  dossierId ? (demandes || []).filter((x) => x.dossier_id === dossierId).sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))) : [];
 export function titreOption(d) {
   if (d.option_titre) return d.option_titre;
   const p = produitSite(d.produit_id);
