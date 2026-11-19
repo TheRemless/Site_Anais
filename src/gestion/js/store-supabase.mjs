@@ -185,8 +185,24 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     return { partages_clients: p.error ? [] : p.data || [], lies: l.error ? [] : l.data || [] };
   }
 
+  // En direct (Supabase Realtime, migration 47) : `rappel(table)` à chaque ligne ajoutée, changée ou retirée dans ces tables. La base ne
+  // prévient que les personnes qui peuvent lire la ligne (règles RLS) ; l'outil s'en sert seulement pour relire, jamais pour écrire le contenu reçu.
+  // Sans la migration, aucun événement n'arrive et la relecture de chaque minute reste. Renvoie de quoi se désabonner.
+  let canal = null;
+  function ecouter(tables, rappel) {
+    if (canal) sb.removeChannel(canal);
+    canal = sb.channel("gestion-direct");
+    for (const t of tables) canal.on("postgres_changes", { event: "*", schema: "public", table: t }, () => rappel(t));
+    canal.subscribe();
+    return () => {
+      if (canal) sb.removeChannel(canal);
+      canal = null;
+    };
+  }
+
   return {
     mode: "supabase",
+    ecouter,
     async session() {
       const { data, error } = await sb.auth.getSession();
       if (!data.session) {

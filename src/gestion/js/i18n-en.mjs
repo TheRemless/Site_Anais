@@ -1600,6 +1600,8 @@ export const EN = {
   "Partenaire (facultatif)": "Partner (optional)",
   "Celui qui réalise la prestation, s'il y en a un.": "The one who provides the service, if any.",
   "Données mises à jour.": "Data updated.",
+  "Nouvelle demande du site.": "New request from the website.",
+  "{n} nouvelles demandes du site.": "{n} new requests from the website.",
   "Phrase sur les conditions générales, facture": "Sentence on the terms and conditions, invoice",
   "Trop-perçu de {montant} à rembourser": "Overpayment of {montant} to refund",
   "Paiement reçu": "Payment received",
