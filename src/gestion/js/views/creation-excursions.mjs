@@ -4,7 +4,7 @@ import { etat, inserer, modifier, reglages, nomPartenaire, numeroSuivant } from 
 import { estTaxi, lignesSurPlace } from "../taxi-calc.mjs";
 import { aujourdhui, nouvelleRef, sequenceRef, refDepuisNumero } from "../calc.mjs";
 import { CONTENU_DEFAUT } from "../defauts.mjs";
-import { descriptionService, langueClient } from "../operations-calc.mjs";
+import { descriptionService, langueClient, nomSansEnfant } from "../operations-calc.mjs";
 import { creerReservations } from "./reservations.mjs";
 import { nonVides } from "../creation-voucher-calc.mjs";
 import { verifierTelephoneClient } from "../client-calc.mjs";
@@ -58,7 +58,7 @@ export async function creerDossierExcursions({ client, lignes: brutes, notes = "
   const dates = lignes.map((l) => l.date_service).filter(Boolean).sort();
   const services = lignes.filter((l) => l.kind !== "texte");
   const partenaires = [...new Set(services.map((l) => nomPartenaire(l.partenaire_id)).filter(Boolean))];
-  const d = await inserer("dossiers", { ref: ref.trim(), client_id: clientId, pays: "", bandeau: services.filter((l) => !/,\s*(child|enfant)\b/i.test(l.libelle)).map((l) => l.libelle).join(" · ").slice(0, 120), date_depart: dates[0] || null, date_retour: dates.length > 1 ? dates[dates.length - 1] : null, accepte_le: aujourdhui(), annule: false, notes: notes.trim() });
+  const d = await inserer("dossiers", { ref: ref.trim(), client_id: clientId, pays: "", bandeau: [...new Set(services.map((l) => nomSansEnfant({ libelle: l.libelle }) || l.libelle))].join(" · ").slice(0, 120), date_depart: dates[0] || null, date_retour: dates.length > 1 ? dates[dates.length - 1] : null, accepte_le: aujourdhui(), annule: false, notes: notes.trim() });
   const contenu = { ...CONTENU_DEFAUT(), bandeau: "", colonnes: "total", langue, prestataire: partenaires.join(", "), variante: (regl.textes.variantes[0] || {}).id || "", equivalents: { actif: false }, lignes: lignes.map(({ description, description_fixe, ...l }) => ({ ...l, titre: l.kind === "texte" ? undefined : l.titre, libelle: l.kind === "texte" ? l.libelle : (description_fixe && description.trim()) || descriptionService({ ...l, libelle: l.titre }, langue), intro: "" })) };
   const doc = await inserer("documents", { dossier_id: d.id, type: "facture", date_emission: aujourdhui(), envoye_le: null, updated_at: new Date().toISOString(), contenu });
   await creerReservations(doc, { silencieux, personnesDossier: personnes });
