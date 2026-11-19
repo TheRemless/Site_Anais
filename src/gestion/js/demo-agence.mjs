@@ -141,7 +141,7 @@ export function donneesDemoAgence(ajd, ajouterJours) {
     const lignes = choisis.map((s) => ({ ...nouvelleLigne("ligne", { libelle: s.p.libelle, unite: s.p.prix_vente, qte: s.pers ? pax : 1 }), paye_sur_place: !!s.place, _s: s }));
     documents.push({ id: uid(), created_at: creeLe, updated_at: creeLe, entite_id: e.id, dossier_id: d.id, type: "facture", date_emission: creeLe, envoye_le: creeLe, contenu: contenu(lignes.map(({ _s, ...l }) => l)) });
     const aPayer = lignes.filter((l) => !l.paye_sur_place).reduce((t, l) => t + l.unite * l.qte, 0);
-    if (paye && !annule && aPayer) paiements.push({ id: uid(), created_at: creeLe, entite_id: e.id, dossier_id: d.id, date: ajouterJours(creeLe, entre(0, 3)) > ajd ? ajd : ajouterJours(creeLe, entre(0, 3)), montant: aPayer, type: "solde", moyen: choix(["virement", "paypal", "especes"]), origine_montant: null, origine_devise: "", note: "" });
+    if (paye && !annule && aPayer) paiements.push({ id: uid(), created_at: creeLe, entite_id: e.id, dossier_id: d.id, date: [ajouterJours(creeLe, entre(0, 3)), ajd].sort()[0], montant: aPayer, type: "solde", moyen: choix(["virement", "paypal", "especes"]), origine_montant: null, origine_devise: "", note: "" });
     lignes.forEach((l, k) => {
       const s = l._s;
       const vente = l.unite * l.qte;
