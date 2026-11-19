@@ -16,7 +16,7 @@ import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDef
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, ligneRetourDepart } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
-import { boutonLireIA, boutonRedigerIA, badgeConfiance } from "./assistant-demande.mjs";
+import { boutonLireIA, badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
@@ -537,7 +537,6 @@ export function ouvrirDemande(depuisSite = null) {
         listeBloc,
         h("button", { class: "secondaire petit", type: "button", onclick: () => { const sv = nouveauService({ phrase: tr("Service ajouté") }); choisirDansBase(sv); } }, tr("Ajouter un service")),
         totalBloc,
-        redigerIA,
         erreur,
         h("div", { class: "barre-modal" }, ...[ecrit ? bouton : null, depuisSite ? null : reponse, ecrit && !depuisSite ? h("button", { class: "lien", type: "button", onclick: () => verifierAvant() }, tr("Vérifier avant de créer")) : null].filter(Boolean)),
       ].filter(Boolean)
@@ -562,7 +561,6 @@ export function ouvrirDemande(depuisSite = null) {
     clientId = "";
     refuse = new Set();
     services = [];
-    if (redigerIA) redigerIA.vider();
     listeBloc.replaceChildren();
     reconnu.replaceChildren();
   }
@@ -592,8 +590,6 @@ export function ouvrirDemande(depuisSite = null) {
 
   // Lecture par l'assistant IA (si l'entreprise l'a allumé) : ses services remplacent ceux des règles, tout reste corrigeable avant de créer.
   const lireIA = boutonLireIA({ texte: () => zone.value, surResultat: (lu) => appliquer(lu.d, lu.services.map((t) => ({ ...t, offresIA: t.offres.map((o) => ({ genre: o.genre, id: o.id })) }))) });
-  // Brouillon de réponse : un seul bloc par fenêtre, replacé à chaque lecture, pour qu'une correction de champ ne le perde pas.
-  const redigerIA = boutonRedigerIA({ contexte: () => ({ d, services: coches().map((sv) => ({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, choisie: etatDe(sv).offre })), texte }) });
 
   const coller = h("button", { class: "secondaire", type: "button", onclick: async () => {
     try {

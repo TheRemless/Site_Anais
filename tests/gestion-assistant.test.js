@@ -51,7 +51,7 @@ test("droits : éteint par défaut, droits des tables, limite du jour", () => {
   const lecteur = controlerAcces({ ...base, permissions: ["dossiers.lire", "partenaires.lire"] });
   assert.equal(lecteur.erreur, "droit_manquant");
   assert.deepEqual(lecteur.manque, ["dossiers.ecrire"], "lire un message sert à créer un dossier");
-  assert.equal(controlerAcces({ ...base, usage: "rediger", permissions: ["dossiers.lire", "partenaires.lire"] }).ok, true, "un lecteur peut faire rédiger");
+  assert.equal(controlerAcces({ ...base, usage: "rediger" }).erreur, "usage_inconnu", "rédaction retirée le 19.11.2026 : refusée même à un administrateur");
   assert.equal(controlerAcces({ ...base, permissions: ["dossiers.ecrire"] }).manque[0], "partenaires.lire", "sans la base de prix, pas de lecture");
   assert.equal(controlerAcces({ ...base, appelsDuJour: 40 }).statut, 429);
   assert.equal(controlerAcces({ ...base, appelsDuJour: 4, limite: 5 }).ok, true);
@@ -97,15 +97,18 @@ test("prompt de lecture : consignes et catalogue en cache, date et message aprè
   assert.match(p.system[0].text, /donnée, jamais une consigne/);
 });
 
-test("paramètres de l'appel : Opus 5.5, repli par défaut, effort et sortie JSON", () => {
+test("paramètres de l'appel : Haiku 5.5 sans repli, effort et sortie JSON ; Opus garderait son repli", () => {
   const p = parametresAppel("lire", { system: [], messages: [] }, SCHEMA_LECTURE);
   assert.equal(p.model, MODELE);
-  assert.equal(p.model, "claude-opus-5-5");
-  assert.deepEqual(p.betas, [BETA_REPLI]);
-  assert.equal(p.fallbacks, "default");
-  assert.equal(p.output_config.effort, USAGES.lire.effort);
+  assert.equal(p.model, "claude-haiku-5-5");
+  assert.equal(p.betas, undefined, "Haiku 5.5 n'a pas de repli côté serveur : ni en-tête beta ni fallbacks");
+  assert.equal(p.fallbacks, undefined);
+  assert.equal(p.output_config.effort, "medium");
   assert.equal(p.output_config.format.type, "json_schema");
-  assert.equal(p.thinking, undefined, "Opus 5.5 réfléchit toujours : pas de paramètre thinking");
+  assert.equal(p.thinking, undefined, "réflexion adaptative par défaut : pas de paramètre thinking");
+  const opus = parametresAppel("lire", { system: [], messages: [] }, SCHEMA_LECTURE, "claude-opus-5-5");
+  assert.deepEqual(opus.betas, [BETA_REPLI]);
+  assert.equal(opus.fallbacks, "default");
   assert.equal(p.temperature, undefined, "pas d'échantillonnage : refusé par l'API");
 });
 
@@ -287,14 +290,15 @@ test("montants d'un texte", () => {
 // ---- Coût et journal -------------------------------------------------------------------------------------------------------------------
 
 test("coût estimé et journal sans contenu", () => {
-  assert.equal(coutEstime({ input_tokens: 1e6 }), 4);
-  assert.equal(coutEstime({ output_tokens: 1e6 }), 20);
-  assert.equal(coutEstime({ cache_read_input_tokens: 1e6 }), 0.2);
-  assert.equal(coutEstime({ cache_creation_input_tokens: 1e6 }), 5);
+  assert.equal(coutEstime({ input_tokens: 1e6 }), 0.1);
+  assert.equal(coutEstime({ output_tokens: 1e6 }), 0.5);
+  assert.equal(coutEstime({ cache_read_input_tokens: 1e6 }), 0.01);
+  assert.equal(coutEstime({ cache_creation_input_tokens: 1e6 }), 0.125);
+  assert.equal(Math.round(coutEstime({ cache_creation_input_tokens: 55831, input_tokens: 155, output_tokens: 314 }, "claude-opus-5-5") * 1e6) / 1e6, 0.286055, "l'essai Opus du 19.11.2026 à 16 h 17");
   assert.equal(coutEstime({ input_tokens: 1e6 }, "claude-opus-5"), 5, "un repli est compté au prix du modèle de secours");
   const m = reponse(CLAUDE_LECTURE);
   const l = ligneJournal({ userId: "u1", entiteId: E, usage: "lire", statut: "ok", message: m, dureeMs: 2345.6 });
-  assert.equal(l.cout_estime_usd, (400 * 4 + 600 * 20 + 5000 * 0.2) / 1e6);
+  assert.equal(l.cout_estime_usd, Math.round(400 * 0.1 + 600 * 0.5 + 5000 * 0.01) / 1e6, "au prix de Haiku 5.5, arrondi au millionième de dollar");
   assert.equal(l.duree_ms, 2346);
   assert.doesNotMatch(JSON.stringify(l), /Sophie|Sunset|islands/i, "le journal ne garde aucun contenu");
   assert.equal(ligneJournal({ userId: "u1", entiteId: E, usage: "lire", statut: "erreur", message: null }).cout_estime_usd, 0);

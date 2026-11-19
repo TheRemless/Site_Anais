@@ -2,28 +2,36 @@
 // Aucune dépendance : le même fichier sert à la fonction Supabase (Deno) et aux tests (node --test), avec des réponses de Claude simulées.
 //
 // Ce qui part chez Anthropic : le message du client tel qu'Anaïs l'a collé (usage « lire »), la liste des prestations et trajets de vente de
-// l'entreprise (libellés, groupes, modes, horaires, noms des prestataires), et pour « rediger » les faits du dossier choisis par l'outil (prénom du
-// client, services, dates, heures, personnes, prix de vente). Jamais un net, une commission, une marge ni une coordonnée bancaire : les tables de nets
-// ne sont pas lues, et `verifierFaits` refuse toute clé hors de sa liste.
+// l'entreprise (libellés, groupes, modes, horaires, noms des prestataires). Jamais un net, une commission, une marge ni une coordonnée bancaire :
+// les tables de nets ne sont pas lues.
+//
+// Un seul usage en service depuis le 19.11.2026 : « lire ». La rédaction de la réponse est retirée (Anaïs écrit ses réponses, décision de Jérémy) :
+// la fonction la refuse, l'écran n'a plus de bouton. Sa logique pure (promptRedaction, validerRedaction…) reste ici, testée, pour un retour éventuel.
 
-export const MODELE = "claude-opus-5-5";
-// Repli côté serveur si le modèle refuse pour une raison de sécurité : Anthropic choisit le modèle de secours selon la catégorie du refus.
+// Claude Haiku 5.5 pour lire (décision de Jérémy du 19.11.2026) : environ 0,01 $ par lecture à froid au lieu de 0,29 $ avec Opus 5.5, pour un
+// catalogue Secret d'environ 56 000 jetons. Au-delà de 100 000 jetons de prompt, Haiku passe à 0,50 $ / 2,50 $ par million : à surveiller si le
+// catalogue grossit.
+export const MODELE = "claude-haiku-5-5";
+// Repli côté serveur si le modèle refuse pour une raison de sécurité, quand le modèle en a un (Opus 5.5 oui, Haiku 5.5 non) : Anthropic choisit le
+// modèle de secours selon la catégorie du refus. Sans repli, un refus laisse la lecture par règles affichée.
 export const BETA_REPLI = "server-side-fallback-2026-07-01";
+const AVEC_REPLI = new Set(["claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
 export const LIMITE_JOUR_DEFAUT = 40;
 export const LONGUEUR_MAX_MESSAGE = 6000;
 
 // Prix en dollars par million de jetons (skill claude-api, relevé du 03.11.2026). Écriture du cache à 5 minutes : 1,25 fois l'entrée.
 // Les deux modèles de secours sont listés pour qu'un appel servi par l'un d'eux soit compté à son prix.
 export const PRIX = {
+  "claude-haiku-5-5": { entree: 0.1, sortie: 0.5, cacheLu: 0.01, cacheEcrit: 0.125 },
   "claude-opus-5-5": { entree: 4, sortie: 20, cacheLu: 0.2, cacheEcrit: 5 },
   "claude-opus-5": { entree: 5, sortie: 25, cacheLu: 0.5, cacheEcrit: 6.25 },
   "claude-opus-4-8": { entree: 5, sortie: 25, cacheLu: 0.5, cacheEcrit: 6.25 },
 };
 
-// Ce qu'il faut pour chaque usage. Les droits sont ceux des tables : lire la base de prix, et créer un dossier ou au moins le voir.
+// Ce qu'il faut pour chaque usage. Les droits sont ceux des tables : lire la base de prix et créer un dossier. « rediger » n'y est plus : la
+// fonction le refuse (usage_inconnu). Effort « medium », le défaut de Haiku 5.5 : la lecture doit être juste, et ce niveau coûte peu.
 export const USAGES = {
-  lire: { permissions: ["partenaires.lire", "dossiers.ecrire"], effort: "low", maxTokens: 16000 },
-  rediger: { permissions: ["partenaires.lire", "dossiers.lire"], effort: "medium", maxTokens: 16000 },
+  lire: { permissions: ["partenaires.lire", "dossiers.ecrire"], effort: "medium", maxTokens: 16000 },
 };
 
 const DECALAGE_BANGKOK = 7 * 3600 * 1000;
@@ -124,9 +132,10 @@ Règles :
 - Enfants : moins de 12 ans sauf si le message dit autre chose. Bébés : moins de 3 ans, comptés à part. « ages_enfants » liste les âges donnés, dans l'ordre.
 - Un service par prestation demandée, avec sa date, son heure et ses personnes. Si le message ne précise pas les personnes d'un service, reprends celles du groupe.
 - Pour chaque service, choisis dans le catalogue la référence (P… ou T…) qui correspond le mieux, et jusqu'à deux autres plausibles dans « alternatives ». Si rien ne correspond, « ref » est vide.
+- Un tarif de famille « transfert » nommé par un seul lieu est un transfert privé entre ce lieu et ${lieuCourt(lieu) || "le lieu de l'entreprise"}, dans les deux sens.
 - Confiance : « haute » quand le service et la ligne du catalogue se correspondent sans doute possible, « moyenne » quand il reste un choix (privé ou partagé, horaire, point de départ), « basse » quand c'est une supposition.
 - « texte » reprend les mots du message qui décrivent le service.
-- « remarques » : ce ${que_(responsable || "l'équipe")} doit savoir et que les champs ne disent pas (vol, bagages, siège enfant, demande floue), en français, en une ou deux phrases. Vide sinon.`;
+- « remarques » : ce ${que_(responsable || "l'équipe")} doit savoir et que les champs ne disent pas (vol, bagages, siège enfant, demande floue), en français, en une ou deux phrases. Vide sinon. N'y cite jamais une référence (P…, T…) : nomme le service.`;
 
 export function promptLecture({ entreprise, catalogue, aujourdhui, message, lieu = "", responsable = "" }) {
   const court = lieuCourt(lieu);
@@ -458,14 +467,13 @@ export function ligneJournal({ userId, entiteId, usage, statut, message, dureeMs
   };
 }
 
-// Paramètres de l'appel à Claude, communs aux deux usages : modèle, repli en cas de refus, effort, sortie JSON imposée.
-export function parametresAppel(usage, prompt, schema) {
+// Paramètres de l'appel à Claude : modèle, effort, sortie JSON imposée, et le repli en cas de refus quand le modèle en a un.
+export function parametresAppel(usage, prompt, schema, modele = MODELE) {
   const u = USAGES[usage];
   return {
-    model: MODELE,
+    model: modele,
     max_tokens: u.maxTokens,
-    betas: [BETA_REPLI],
-    fallbacks: "default",
+    ...(AVEC_REPLI.has(modele) ? { betas: [BETA_REPLI], fallbacks: "default" } : {}),
     output_config: { effort: u.effort, format: { type: "json_schema", schema } },
     system: prompt.system,
     messages: prompt.messages,
