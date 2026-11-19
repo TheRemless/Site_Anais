@@ -9,7 +9,7 @@ import { mesTaches } from "./views/taches.mjs";
 import { retirerALaDeconnexion } from "./rappels.mjs";
 import { aTraiter } from "./demandes-site-calc.mjs";
 import { ecranDeLecture, TABLES_EN_DIRECT, momentDeRecharger, nouvellesDemandes } from "./direct-calc.mjs";
-import { suivreSaisies, champsModifies, curseurDansUnChamp } from "./saisie.mjs";
+import { suivreSaisies, champsModifies, curseurDansUnChamp, nouvelEcran, ecranTouche } from "./saisie.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
 
@@ -661,6 +661,8 @@ async function afficher() {
     clearTimeout(attente);
   }
   principal.replaceChildren(noeud);
+  // Un nouvel écran : rien n'y est encore touché (un écran de saisie vide ne retient pas le rechargement d'une nouvelle version).
+  nouvelEcran();
   principal.className = [noeud.dataset && noeud.dataset.large ? "large" : "", noeud.dataset && noeud.dataset.plein ? "plein" : ""].filter(Boolean).join(" ");
   document.title = `${(noeud.dataset && noeud.dataset.titre) || tr("Gestion")} - ${entiteActive().nom}`;
   // Les pages à deux volets prennent exactement la hauteur restante de la fenêtre, bandeaux éventuels compris.
@@ -796,9 +798,9 @@ let finSaisie = 0;
 for (const ev of ["pointerdown", "keydown", "input", "wheel", "touchstart", "scroll"]) window.addEventListener(ev, () => (derniereActivite = Date.now()), { capture: true, passive: true });
 function rechargerSiSur({ retour = false } = {}) {
   if (!versionSignalee) return false;
-  // Une saisie en cours (champ changé par la personne, pas encore enregistré) ou des réglages non enregistrés : le rechargement attend.
-  // Un écran de saisie vide (Nouveau dossier, Coller…), une recherche, un filtre ou une fenêtre de lecture ne retiennent rien (19.11.2026).
-  const saisie = saisieEnCours() || !!(etat.garde && etat.garde());
+  // Le rechargement attend tant qu'il y a quelque chose à perdre (rienAPerdre). Un écran de saisie vide et intouché (Nouveau dossier, Coller…),
+  // une recherche, un filtre ou une fenêtre de lecture ne retiennent rien (19.11.2026).
+  const saisie = !rienAPerdre();
   // « Juste après une saisie » : les trente secondes qui suivent sa fin, pas pour toute la suite de la journée.
   if (enSaisie && !saisie) finSaisie = Date.now();
   enSaisie = saisie;
@@ -814,7 +816,7 @@ function signalerVersion({ retour = false } = {}) {
   setInterval(() => rechargerSiSur(), 2000);
   if (rechargerSiSur({ retour })) return;
   const recharger = async () => {
-    if (saisieEnCours()) {
+    if (!rienAPerdre()) {
       const { confirmer } = await import("./ui.mjs");
       const ok = await confirmer(tr("Une saisie est en cours : elle sera perdue si vous rechargez maintenant. Recharger quand même ?"), tr("Recharger quand même"), true, tr("Plus tard"));
       if (!ok) return;
@@ -843,7 +845,7 @@ async function surveillerVersion() {
 // saisie (l'erreur s'affiche alors comme avant, et le rechargement automatique de la nouvelle version prendra le relais).
 const FICHIER_DISPARU = /dynamically imported module|Importing a module script failed|error loading dynamically imported|Failed to load module script/i;
 function rechargerSiFichierDisparu(message) {
-  if (!FICHIER_DISPARU.test(String(message || "")) || saisieEnCours()) return false;
+  if (!FICHIER_DISPARU.test(String(message || "")) || !rienAPerdre()) return false;
   try {
     const dernier = Number(sessionStorage.getItem("gestion-recharge-fichier")) || 0;
     if (Date.now() - dernier < 60 * 1000) return false;
@@ -888,6 +890,13 @@ function saisieEnCours() {
 }
 // Redessiner un écran : seulement un écran de lecture, sans saisie, sans fenêtre ouverte par-dessus et sans curseur dans un champ
 // (une recherche ou un filtre en cours de frappe garde son texte).
+// Rien à perdre en rechargeant : pas de saisie, pas de réglages non enregistrés, et pas d'écran de saisie que la personne a commencé à remplir
+// (un service ajouté par un bouton n'est dans aucun champ). Même règle pour le rechargement automatique, le bouton du bandeau et un écran disparu.
+function rienAPerdre() {
+  if (saisieEnCours()) return false;
+  if (etat.garde && etat.garde()) return false;
+  return ecranDeLecture(location.hash) || !ecranTouche();
+}
 function ecranLibre() {
   return ecranDeLecture(location.hash) && !saisieEnCours() && !document.querySelector(".modal-fond") && !curseurDansUnChamp();
 }

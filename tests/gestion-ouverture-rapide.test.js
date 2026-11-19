@@ -74,7 +74,7 @@ test("netlify.toml : b/ un an sans revalidation, la page, version.json et le ser
 
 test("ancienne page après une mise en ligne : un écran dont le fichier a disparu fait recharger la version en ligne, jamais pendant une saisie", () => {
   const app = fs.readFileSync(path.join(RACINE, "src/gestion/js/app.mjs"), "utf8");
-  assert.match(app, /if \(!FICHIER_DISPARU\.test\(String\(message \|\| ""\)\) \|\| saisieEnCours\(\)\) return false;/);
+  assert.match(app, /if \(!FICHIER_DISPARU\.test\(String\(message \|\| ""\)\) \|\| !rienAPerdre\(\)\) return false;/);
   assert.match(app, /if \(Date\.now\(\) - dernier < 60 \* 1000\) return false;/, "une fois par minute au plus : pas de boucle");
   assert.match(app, /if \(rechargerSiFichierDisparu\(err && err\.message\)\) return;/, "écran qui ne se charge pas");
   assert.match(app, /if \(rechargerSiFichierDisparu\(message\)\) return;/, "toute autre erreur non rattrapée");

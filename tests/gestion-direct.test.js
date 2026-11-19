@@ -33,13 +33,13 @@ test("rechargement d'une nouvelle version : jamais pendant une saisie, au premie
 test("app.mjs : rechargement automatique câblé sur le moment sûr, saisie réelle et garde des réglages, bouton gardé", () => {
   const app = source("app.mjs");
   // Depuis le 19.11.2026 : seule une saisie réelle retient le rechargement (saisie.mjs), plus un écran de saisie vide ni une liste réglée par l'outil.
-  assert.match(app, /const saisie = saisieEnCours\(\) \|\| !!\(etat\.garde && etat\.garde\(\)\);/);
+  assert.match(app, /const saisie = !rienAPerdre\(\);/);
   assert.ok(!/choixModifies|defaultSelected|defaultValue/.test(app), "plus de comparaison à la valeur « d'origine » du navigateur, que l'outil ne tient pas");
   assert.match(app, /const apresSaisie = !!finSaisie && Date\.now\(\) - finSaisie < 30 \* 1000;/, "« juste après une saisie » ne dure que trente secondes");
   assert.match(app, /if \(ok\) location\.reload\(\);/, "location.reload garde l'adresse : l'écran et le dossier ouverts restent");
   assert.match(app, /setInterval\(\(\) => rechargerSiSur\(\), 2000\);/);
   assert.match(app, /if \(versionSignalee\) return void rechargerSiSur\(\{ retour \}\);/);
-  assert.match(app, /if \(saisieEnCours\(\)\) \{\n\s+const \{ confirmer \} = await import\("\.\/ui\.mjs"\);/, "le bouton du bandeau demande toujours avant de perdre une saisie");
+  assert.match(app, /if \(!rienAPerdre\(\)\) \{\n\s+const \{ confirmer \} = await import\("\.\/ui\.mjs"\);/, "le bouton du bandeau demande toujours avant de perdre une saisie");
 });
 
 test("demandes du site en direct : Realtime sur demandes_site, compteur à chaque relecture, annonce des arrivées", () => {
