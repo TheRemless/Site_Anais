@@ -39,6 +39,7 @@ const ROUTES = [
   [/^#\/client\/([\w-]+)$/, "clients", vers(() => import("./views/clients.mjs"), "ficheClient")],
   [/^#\/catalogue$/, "catalogue", vers(() => import("./views/catalogue.mjs"), "catalogue")],
   [/^#\/reglages$/, "reglages", vers(() => import("./views/reglages.mjs"), "vueReglages")],
+  [/^#\/assistant(?:\?.*)?$/, "reglages", vers(() => import("./views/assistant-suivi.mjs"), "vueAssistantSuivi")],
   [/^#\/admin$/, "admin", vers(() => import("./views/admin.mjs"), "vueAdmin")],
   [/^#\/journal$/, "journal", vers(() => import("./views/journal.mjs"), "vueJournal")],
   [/^#\/analyses(?:\/([a-z]+))?(?:\?.*)?$/, "analyses", vers(() => import("./views/analyses.mjs"), "vueAnalyses")],

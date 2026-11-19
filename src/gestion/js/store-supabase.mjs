@@ -262,6 +262,34 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       return { erreur: "indisponible" };
     },
+    // Suivi de l'assistant (écran #/assistant) : le journal des entreprises demandées depuis `depuis`, par pages de 1 000 (limite de la base),
+    // les retouches (migration 51 ; null tant qu'elle manque) et les noms de l'équipe. Aucune colonne de contenu : il n'y en a pas.
+    async assistantSuivi({ entiteIds, depuis }) {
+      const tout = async (table, colonnes) => {
+        const lignes = [];
+        for (let de = 0; de < 50000; de += 1000) {
+          const { data, error } = await sb.from(table).select(colonnes).in("entite_id", entiteIds).gte("cree_le", depuis).order("cree_le").order("id").range(de, de + 999);
+          if (error) return { error };
+          lignes.push(...(data || []));
+          if (!data || data.length < 1000) break;
+        }
+        return { data: lignes };
+      };
+      const [journal, retouches, equipes] = await Promise.all([
+        tout("assistant_journal", "cree_le, user_id, entite_id, usage, statut, cout_estime_usd"),
+        tout("assistant_retouches", "cree_le, user_id, entite_id, usage, part_modifiee"),
+        Promise.all(entiteIds.map((e) => sb.rpc("equipe_de", { e }))),
+      ]);
+      if (journal.error) throw new Error(journal.error.message);
+      const noms = {};
+      for (const r of equipes) for (const p of r.data || []) noms[p.user_id] = p.nom || p.email;
+      return { lignes: journal.data, retouches: retouches.error ? null : retouches.data, noms };
+    },
+    // Une réponse rédigée copiée : la part de mots changés (0 à 100), rien d'autre. Sans la migration 51, rien n'est noté et rien ne se voit.
+    async noterRetouche({ entiteId, usage, part }) {
+      const { error } = await sb.from("assistant_retouches").insert({ entite_id: entiteId, usage, part_modifiee: part });
+      return !error;
+    },
     // ---- Comptes (lot D, 17.11.2026) ----
     // Ce que le lien ouvert a demandé (« invite » ou « recovery ») ou son erreur ; rendu une seule fois.
     retourLien() {
