@@ -123,7 +123,7 @@ test("assistant IA : prompts identiques pour Anaïs (ZTP, Secret, Taxi), sans so
   // Lieu et responsable réglés : insérés tels quels.
   const p = promptLecture({ entreprise: "x", catalogue: "", aujourdhui: "2026-11-18", message: "m", lieu: "Phuket (Thaïlande)", responsable: "Mook" });
   assert.match(p.system[0].text, /transferts à Phuket \(Thaïlande\), par WhatsApp/);
-  assert.match(p.system[0].text, /ce que Mook doit savoir/);
+  assert.match(p.system[0].text, /ce que Mook doit vérifier/);
   assert.match(p.messages[0].content, /^Date du jour à Phuket : /);
 });
 

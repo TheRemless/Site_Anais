@@ -2736,6 +2736,11 @@ export const EN = {
   "Aucune grille : indiquez le prix convenu pour ce programme.": "No price list: enter the price agreed for this plan.",
   "Prix convenu ({devise})": "Agreed price ({devise})",
   "Indiquez le prix convenu du retour au point de départ, ou décochez cette ligne.": "Enter the agreed price for the trip back to the pickup place, or untick this line.",
+  "Transfert privé hors catalogue": "Private transfer, not in the rates",
+  "Départ à préciser": "Pick-up to confirm",
+  "Arrivée à préciser": "Drop-off to confirm",
+  "Hors catalogue : indiquez le prix convenu.": "Not in the rates: enter the agreed price.",
+  "Indiquez le prix du transfert privé, ou décochez cette ligne.": "Enter the price of the private transfer, or untick this line.",
   "Retour au point de départ sans programme : le client et le chauffeur ne sauront pas ce qui est prévu.": "Back to the pickup place without a plan: the client and the driver will not know what is planned.",
   // Lot B (17.11.2026) : vouchers figés à l'envoi, modèle choisi, textes réglables, chauffeur Taxi
   "Titres et en-tête": "Titles and header",
