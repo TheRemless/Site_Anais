@@ -132,7 +132,9 @@ export function renderVoucher({ reservation: r, prestation: pLive, type, index, 
   // Voucher en anglais : le libellé anglais de la prestation quand la réservation porte encore le nom d'origine de la base (français ou déjà traduit),
   // sinon le nom saisi sur la réservation, passé par la traduction.
   const brut = (x) => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
-  const titrePrestation = p && p.libelle_en && [p.libelle, p.libelle_en].some((x) => brut(x) === brut(r.libelle)) ? p.libelle_en : libelleClient(r.libelle);
+  // Un service à rôles (ATV) dit au partenaire combien de conducteurs et de passagers : « P3: ATV 1h + Kayak 1h, 1 driver + 1 passenger » (19.11.2026).
+  const nomService = p && p.libelle_en && [p.libelle, p.libelle_en].some((x) => brut(x) === brut(r.libelle)) ? p.libelle_en : libelleClient(r.libelle);
+  const titrePrestation = dt.roles && !brut(nomService).includes(brut(dt.roles)) ? `${nomService}, ${dt.roles}` : nomService;
   // Billet : ce qui est saisi sur la réservation passe avant le trajet de la base ; sans trajet (partenaire ajouté à la main), seulement la saisie
   // et un libellé « A → B ». L'heure de pickup n'est jamais prise pour l'heure de départ du bateau quand le pickup s'imprime à part.
   const dBillet = { de: libelleClient(dt.de || (trajet && trajet.de) || pickupDepuisLibelle(r, p, trajet)), vers: libelleClient(dt.vers || (trajet && trajet.vers) || dropOffDepuisLibelle(r, p)), depart: dt.depart || (trajet && trajet.depart) || (trajet ? r.heure_pickup || "" : ""), arrivee: dt.arrivee || (trajet && trajet.arrivee) || "", mode: dt.bateau || (trajet && trajet.mode ? modeEn(trajet.mode) : "") };

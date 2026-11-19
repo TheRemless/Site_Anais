@@ -21,9 +21,28 @@ const brut = (l) => (l.unite !== null && l.unite !== undefined && l.unite !== ""
 // Le net prévu est renvoyé à part : il va dans la table protégée.
 // Les lignes adulte et enfant d'un même bateau ou d'une même excursion (même partenaire, même date, même nom
 // sans le suffixe enfant) donnent une seule réservation, avec les adultes et les enfants réunis.
-const estLigneEnfant = (l) => /enfant|child/i.test(l.intro || "") || /,\s*(child|enfant)\b/i.test(l.titre || l.libelle || "");
+// « , driver child (6-12) », « , passenger child (4-12) » (ATV, 19.11.2026) : des tarifs enfant aussi.
+export const estLigneEnfant = (l) => /enfant|child/i.test(l.intro || "") || /,\s*(?:(?:driver|passenger|conducteur|passager)\s+)?(child|enfant)\b/i.test(l.titre || l.libelle || "");
 // Le nom du service sans ses variantes : « , enfant », « , Personne supplémentaire », « , Base 1-2 pers » : le prix de base, le supplément et les enfants font une seule réservation.
-const nomSansEnfant = (l) => String(l.titre || l.libelle || "").replace(/,\s*(?:child|enfant|personne suppl[ée]mentaire|extra person|additional person|base\s*1\s*[-–]\s*2)\b.*$/i, "").trim();
+// Les rôles d'un même véhicule (ATV : « , driver », « , passenger », 19.11.2026) sont aussi des variantes : conducteur et passager font un seul voucher.
+export const nomSansEnfant = (l) => String(l.titre || l.libelle || "").replace(/,\s*(?:child|enfant|driver|passenger|conducteur|passager|personne suppl[ée]mentaire|extra person|additional person|base\s*1\s*[-–]\s*2)\b.*$/i, "").trim();
+// Le rôle d'une ligne (conducteur ou passager), ou "" : « P1: ATV 30 mins, passenger child (4-12) » → passenger.
+const roleDeLigne = (l) => {
+  const m = String(l.titre || l.libelle || "").match(/,\s*(driver|passenger|conducteur|passager)\b/i);
+  return m ? (/^(driver|conducteur)$/i.test(m[1]) ? "driver" : "passenger") : "";
+};
+// Ce que le partenaire doit savoir d'un service à rôles : « 1 driver + 1 passenger » (le nombre de véhicules). "" sans rôle.
+export function rolesDuService(lignes, langue = "en") {
+  const compte = { driver: 0, passenger: 0 };
+  for (const l of lignes || []) {
+    if (l.kind === "texte" || l.kind === "remise") continue;
+    const r = roleDeLigne(l);
+    if (r) compte[r] += l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) || 0 : 1;
+  }
+  const fr = langue === "fr";
+  const mots = { driver: fr ? ["conducteur", "conducteurs"] : ["driver", "drivers"], passenger: fr ? ["passager", "passagers"] : ["passenger", "passengers"] };
+  return ["driver", "passenger"].filter((k) => compte[k] > 0).map((k) => `${compte[k]} ${mots[k][compte[k] > 1 ? 1 : 0]}`).join(" + ");
+}
 export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelId, regleDe = null } = {}) {
   const deja = new Set(existantes.flatMap((r) => [r.ligne_id, ...((r.details && r.details.lignes_ids) || [])]));
   const groupes = new Map();
@@ -66,7 +85,7 @@ export function reservationsDepuisDocument(doc, { existantes = [], uid = nouvelI
     const l = g.premiere;
     return {
       // `titre` : le nom court de la prestation quand le libellé de la ligne porte aussi les personnes et la date.
-      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: { ...(g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {}), ...(g.jours ? { jours: g.jours } : {}), ...(modeleDeLigne(l) ? { modele_voucher: modeleDeLigne(l) } : {}) } },
+      reservation: { id: uid(), dossier_id: doc.dossier_id, ligne_id: l.id, prestation_id: l.prestation_id || null, trajet_id: l.trajet_id || null, partenaire_id: l.partenaire_id || null, libelle: nomSansEnfant(l), date_service: l.date_service || null, heure_pickup: "", lieu_pickup: "", personnes: { adultes: g.adultes, enfants: g.enfants, bebes: 0 }, statut: "confirme", reference_partenaire: "", montant_vente: g.lignes.some((x) => brut(x) !== null) ? Math.round(g.vente * 100) / 100 : null, notes: "", paye_sur_place: g.lignes.some((x) => !!x.paye_sur_place), details: { ...(g.lignes.length > 1 ? { lignes_ids: g.lignes.map((x) => x.id) } : {}), ...(g.jours ? { jours: g.jours } : {}), ...(rolesDuService(g.lignes) ? { roles: rolesDuService(g.lignes) } : {}), ...(modeleDeLigne(l) ? { modele_voucher: modeleDeLigne(l) } : {}) } },
       // Net partiel laissé vide (Jérémy, 17.11.2026 : « on mettra le net final au cas par cas ») : quand une ligne à prix du service n'a pas de net,
       // le net prévu reste vide plutôt que la somme des seuls nets connus. Le service apparaît alors dans « À vérifier ».
       net: netCompletDe(g) ? g.net : null,
@@ -982,6 +1001,38 @@ export function lienWhatsApp(telephone, message, options) {
   return `https://wa.me/${numero}?text=${encodeURIComponent(message)}`;
 }
 
+// ---- Variante ajoutée après coup à un service ------------------------------------------------------------------
+// Un passager d'ATV (ou un enfant) ajouté à un dossier dont le service a déjà sa réservation : la nouvelle ligne rejoint cette réservation au lieu
+// d'en créer une deuxième, avec un deuxième voucher (Jérémy, 19.11.2026). Seules les variantes (enfant, conducteur, passager, supplément) se
+// rattachent : deux lignes identiques du même service restent deux réservations, comme avant.
+// Renvoie [{ reservation, lignes_ids }] : la réservation existante et toutes ses lignes une fois la nouvelle ajoutée.
+export function rattachementsDepuisDocument(doc, existantes = []) {
+  const lignesDoc = (doc && doc.contenu && doc.contenu.lignes) || [];
+  const idsDe = (r) => [r.ligne_id, ...((r.details && r.details.lignes_ids) || [])].filter(Boolean);
+  const deja = new Set(existantes.flatMap(idsDe));
+  const cle = (l) => `${l.trajet_id || ""}|${l.partenaire_id || ""}|${l.date_service || ""}|${sansAccentsMin(nomSansEnfant(l))}`;
+  const parCle = new Map();
+  for (const r of existantes) {
+    if (r.statut === "annule") continue;
+    const ids = new Set(idsDe(r));
+    const siennes = lignesDoc.filter((l) => ids.has(l.id) && l.kind !== "texte" && l.kind !== "remise");
+    const premiere = siennes.find((l) => !estLigneEnfant(l)) || siennes[0];
+    // Les lignes de la réservation, sans doublon : `lignes_ids` compte déjà `ligne_id` quand il existe (lignesIdsAvec).
+    const actuelles = r.details && r.details.lignes_ids && r.details.lignes_ids.length ? r.details.lignes_ids : [r.ligne_id].filter(Boolean);
+    if (premiere && !parCle.has(cle(premiere))) parCle.set(cle(premiere), { reservation: r, lignes_ids: [...new Set(actuelles)] });
+  }
+  const touchees = new Map();
+  for (const l of lignesDoc) {
+    if (l.kind === "texte" || l.kind === "remise" || !(l.prestation_id || l.trajet_id || l.libre) || deja.has(l.id)) continue;
+    const variante = nomSansEnfant(l) !== String(l.titre || l.libelle || "").trim();
+    const cible = variante && parCle.get(cle(l));
+    if (!cible) continue;
+    cible.lignes_ids = [...cible.lignes_ids, l.id];
+    touchees.set(cible.reservation.id, cible);
+  }
+  return [...touchees.values()];
+}
+
 // ---- Écart entre une réservation et sa facture ------------------------------------------------------------------
 // La réservation est créée d'après les lignes de la facture, puis modifiée à part : une quantité, une date ou un montant changé d'un côté
 // laisse l'autre en retard. Renvoie null (rien à signaler), { retiree: true } (la ligne n'est plus dans le document) ou { champs: [...] }.
@@ -1040,7 +1091,8 @@ export function ecartReservation(r, doc) {
   if (!!r.paye_sur_place !== a.paye_sur_place) champs.push({ cle: "paye_sur_place", reservation: !!r.paye_sur_place, document: a.paye_sur_place });
   // Libellé et partenaire changés dans la réservation sans que la facture suive (16.11.2026 : la facture gardait le service et le partenaire d'avant).
   // Comparés seulement quand la réservation les porte (toute réservation enregistrée a ces deux champs).
-  if (typeof r.libelle === "string" && r.libelle.trim() && r.libelle.trim() !== a.libelle) champs.push({ cle: "libelle", reservation: r.libelle.trim(), document: a.libelle });
+  // Une réservation créée avant le 19.11.2026 garde sa variante dans son nom (« P2: ATV 1 hour, driver ») : ce n'est pas un écart.
+  if (typeof r.libelle === "string" && r.libelle.trim() && r.libelle.trim() !== a.libelle && nomSansEnfant({ libelle: r.libelle }) !== a.libelle) champs.push({ cle: "libelle", reservation: r.libelle.trim(), document: a.libelle });
   if (r.partenaire_id !== undefined && a.partenaire_id !== undefined && (r.partenaire_id || null) !== a.partenaire_id) champs.push({ cle: "partenaire_id", reservation: r.partenaire_id || null, document: a.partenaire_id });
   return champs.length ? { retiree: false, champs, attendu: a } : null;
 }

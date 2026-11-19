@@ -1,7 +1,7 @@
 // Gestes du dossier et de la fiche client qui se vérifient sans écran (testés avec node --test) :
 // paiements (type, doublon, écart à solder), réactivation d'un dossier annulé, hôtel changé sur la fiche client,
 // personnes d'un service ajouté, fusion de deux clients, ligne enfant ajoutée à la facture.
-import { separerChambreLigne } from "./operations-calc.mjs";
+import { separerChambreLigne, estLigneEnfant } from "./operations-calc.mjs";
 import { estLigneSupplement } from "./partenaires-calc.mjs";
 
 const arr = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -136,7 +136,7 @@ export function fusionClients(garde, absorbe) {
 // Renvoie { contenu, ajoutee, retiree, raison } : `contenu` vaut null quand rien ne change ; `raison` dit pourquoi la facture ne suit pas :
 //   « sans_tarif » (pas de tarif enfant), « prix_global » (prix par véhicule ou forfait, l'enfant ne change rien), « plusieurs_lignes ».
 const qteDe = (l) => (l.qte !== null && l.qte !== undefined && l.qte !== "" ? Number(l.qte) : 1);
-const estEnfant = (l) => /enfant|child/i.test(l.intro || "") || /,\s*(child|enfant)\b/i.test(l.titre || l.libelle || "");
+const estEnfant = estLigneEnfant;
 const parPersonne = (l) => !["boat", "veh", "day", "ses", "grp"].includes(l.par) && !/bateau|v[ée]hicule|jour|session|groupe|boat|vehicle|day|group/i.test(l.intro || "");
 export function contenuAvecEnfants(contenu, r, avant, apres, { tarifEnfant = () => null, uid = () => crypto.randomUUID(), decrire = null, langue = "" } = {}) {
   const rien = (raison = "") => ({ contenu: null, ajoutee: null, retiree: null, raison });
