@@ -30,6 +30,8 @@ export function creer() {
     } catch {
       data = null;
     }
+    // Une démo neuve est gardée tout de suite : un second onglet de ce navigateur ouvre la même (sinon il en créerait une autre, aux autres identifiants).
+    const neuve = !data;
     if (!data) data = donneesDemo(aujourdhui(), ajouterJours);
     // Demandes et bandeau du site : posés aussi dans une démo déjà enregistrée dans ce navigateur (créée avant la migration 30).
     if (!data.demandes_site) data.demandes_site = demandesDemo({ entites: data.entites, ajd: aujourdhui(), ajouterJours, uid });
@@ -69,6 +71,7 @@ export function creer() {
       // stockage refusé : on reste sur l'administratrice de démo
     }
     utilisateur = data.profils.find((p) => p.user_id === choisi) || data.profils.find((p) => p.super_admin);
+    if (neuve) sauve();
   };
   const sauve = () => {
     try {
@@ -79,6 +82,7 @@ export function creer() {
     }
   };
   charge();
+  const ecouteurs = new Set();
 
   // Résumé d'un dossier, comme le tient la base : seul le droit « montants » donne accès aux chiffres.
   const avecResume = (d, finances) => {
@@ -306,6 +310,26 @@ export function creer() {
       return null;
     },
     // Démonstration : une demande arrive du site, comme l'écrirait la fonction « demande-site ».
+    // En direct, comme Supabase Realtime : une demande simulée ici, ou une écriture de la démo dans un autre onglet de ce navigateur
+    // (événement « storage »), prévient l'outil, qui relit (synchroniser) au lieu d'attendre la minute suivante.
+    synchronisable: true,
+    ecouter(tables, rappel) {
+      const prevenir = () => tables.forEach((t) => rappel(t));
+      ecouteurs.add(prevenir);
+      const autreOnglet = (e) => {
+        if (e.key !== CLE) return;
+        // Les données de l'autre onglet, sans changer l'utilisatrice de démo choisie ici.
+        const ici = utilisateur.user_id;
+        charge();
+        utilisateur = data.profils.find((p) => p.user_id === ici) || utilisateur;
+        prevenir();
+      };
+      if (typeof window !== "undefined") window.addEventListener("storage", autreOnglet);
+      return () => {
+        ecouteurs.delete(prevenir);
+        if (typeof window !== "undefined") window.removeEventListener("storage", autreOnglet);
+      };
+    },
     async simulerDemandeSite(entiteId) {
       const e = data.entites.find((x) => x.id === entiteId);
       const modele = demandesDemo({ entites: data.entites, ajd: aujourdhui(), ajouterJours, uid }).find((d) => d.entite_id === entiteId && d.statut === "nouvelle");
@@ -313,6 +337,7 @@ export function creer() {
       const ligne = { ...modele, id: uid(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ref: `${modele.ref.split("-")[0]}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` };
       data.demandes_site.push(ligne);
       sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
       return structuredClone(ligne);
     },
     // Démonstration : rien ne part chez Anthropic, la réponse est simulée à partir de la lecture par règles (assistant-calc.mjs).

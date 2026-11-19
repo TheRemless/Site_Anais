@@ -80,6 +80,8 @@ module.exports = async function (eleventyConfig) {
     const fichiers = [];
     const parcourir = (d) => {
       for (const n of fs.readdirSync(d, { withFileTypes: true })) {
+        // Fichiers cachés (.DS_Store d'un build local) : jamais servis comme une partie de l'outil, ils ne changent pas l'empreinte.
+        if (n.name.startsWith(".")) continue;
         const p = path.join(d, n.name);
         if (n.isDirectory()) parcourir(p);
         else fichiers.push(p);

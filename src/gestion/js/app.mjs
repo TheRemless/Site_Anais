@@ -8,6 +8,7 @@ import { tableauDeBord } from "./views/dashboard.mjs";
 import { mesTaches } from "./views/taches.mjs";
 import { retirerALaDeconnexion } from "./rappels.mjs";
 import { aTraiter } from "./demandes-site-calc.mjs";
+import { ecranDeLecture, TABLES_EN_DIRECT, momentDeRecharger, nouvellesDemandes } from "./direct-calc.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
 
@@ -784,12 +785,29 @@ async function versionDisponible() {
   // Seulement deux empreintes de même nature : un version.json manqué une fois (réseau) ne doit pas faire comparer un ETag à une version.
   return !!actuelle && actuelle.startsWith("v:") === empreinteInitiale.startsWith("v:") && actuelle !== empreinteInitiale;
 }
-// Le bandeau « Nouvelle version de Gestion ». Recharger ne perd jamais une saisie en cours : une fiche, une fenêtre ouverte ou un champ
-// modifié font d'abord poser la question ; sinon le rechargement est immédiat. Le bandeau reste jusqu'au rechargement.
+// Une nouvelle version est en ligne : l'outil se recharge tout seul au premier moment sûr (momentDeRecharger, direct-calc.mjs), en gardant
+// l'écran et le dossier ouverts (l'adresse et l'entreprise restent). Pendant une saisie, le bandeau « Nouvelle version de Gestion » reste
+// et le rechargement attend que la saisie soit enregistrée ou abandonnée. Jamais de perte de saisie.
 let versionSignalee = false;
-function signalerVersion() {
+let derniereActivite = Date.now();
+let saisieVue = false;
+for (const ev of ["pointerdown", "keydown", "input", "wheel", "touchstart"]) window.addEventListener(ev, () => (derniereActivite = Date.now()), { capture: true, passive: true });
+function rechargerSiSur({ retour = false } = {}) {
+  if (!versionSignalee) return false;
+  // Un écran de saisie (nouveau dossier, éditeur de document, réglages) compte comme une saisie tant qu'on y est : un choix dans une liste
+  // ou une case cochée n'y laisse pas toujours de trace visible. Le rechargement attend qu'on le quitte (enregistré ou abandonné).
+  const saisie = saisieEnCours() || !ecranDeLecture(location.hash) || !!(etat.garde && etat.garde());
+  if (saisie) saisieVue = true;
+  const ok = momentDeRecharger({ nouvelle: true, saisie, cache: document.visibilityState === "hidden", retour, inactifMs: Date.now() - derniereActivite, apresSaisie: saisieVue });
+  if (ok) location.reload();
+  return ok;
+}
+// Le bouton du bandeau, pour qui ne veut pas attendre : une saisie en cours fait d'abord poser la question.
+function signalerVersion({ retour = false } = {}) {
   if (versionSignalee) return;
   versionSignalee = true;
+  setInterval(() => rechargerSiSur(), 2000);
+  if (rechargerSiSur({ retour })) return;
   const recharger = async () => {
     if (saisieEnCours()) {
       const { confirmer } = await import("./ui.mjs");
@@ -800,14 +818,16 @@ function signalerVersion() {
   };
   document.body.append(h("div", { class: "bandeau-version", role: "status" }, h("span", null, tr("Nouvelle version de Gestion : rechargez pour l'avoir.")), h("button", { class: "principal petit", type: "button", onclick: recharger }, tr("Recharger"))));
 }
-// Vérifiée au retour sur l'onglet, toutes les 3 minutes et à chaque synchronisation des données.
+// Vérifiée au retour sur l'onglet et toutes les 3 minutes, onglet caché compris.
 async function surveillerVersion() {
   const initiale = await empreinteVersion();
   empreinteInitiale = initiale;
   if (!initiale) return;
-  const verifier = async () => {
-    if (versionSignalee || document.visibilityState !== "visible") return;
-    if (await versionDisponible()) signalerVersion();
+  // Onglet caché aussi : une nouvelle version s'y installe sans que personne ne la voie arriver.
+  const verifier = async (e) => {
+    const retour = !!e && e.type === "visibilitychange" && document.visibilityState === "visible";
+    if (versionSignalee) return void rechargerSiSur({ retour });
+    if (await versionDisponible()) signalerVersion({ retour });
   };
   document.addEventListener("visibilitychange", verifier);
   setInterval(verifier, 3 * 60 * 1000);
@@ -829,7 +849,11 @@ window.addEventListener("error", (e) => signalerErreur(e.message));
 // Ce que fait une autre personne (un dossier créé, un paiement noté) apparaît sans recharger : l'outil relit la base en silence
 // au retour sur l'onglet puis chaque minute. L'écran n'est redessiné que s'il n'y a rien à perdre : pas de fenêtre ouverte,
 // pas de champ en cours de saisie, pas d'éditeur de document. Dans les autres cas les données sont déjà à jour pour l'écran suivant.
-const ECRANS_DE_LECTURE = /^#?\/?$|^#\/(dossiers|clients|taches|reservations|du|partenaires|trajets|tarifs|catalogue|analyses|groupe|journal)(\?.*)?$|^#\/analyses(\/[a-z]+)?(\?.*)?$|^#\/(dossier|client|partenaire)\/[\w-]+$/;
+// La liste des écrans de lecture est dans direct-calc.mjs (Demandes du site y compris, 19.11.2026).
+// Une demande du site arrivée se dit comme telle (« Nouvelle demande du site. »), sans le chiffre devant quand il n'y en a qu'une.
+const annoncerArrivees = (n) => toast(n > 1 ? tr("{n} nouvelles demandes du site.", { n }) : tr("Nouvelle demande du site."));
+// Demandes du site à traiter dans l'entreprise affichée (pour annoncer une arrivée).
+const demandesATraiter = () => (etat.db && siteVisible() ? aTraiter(etat.db.demandes_site || []).length : 0);
 // Une fenêtre ouverte, un champ en cours de saisie ou une saisie pas encore enregistrée : rien ne doit être redessiné ni déclenché par-dessus.
 function saisieEnCours() {
   if (document.querySelector(".modal-fond")) return true;
@@ -841,7 +865,7 @@ function saisieEnCours() {
   return !!principal && [...principal.querySelectorAll("input, textarea")].some((c) => !["checkbox", "radio", "button", "submit"].includes(c.type) && c.value !== c.defaultValue);
 }
 function ecranLibre() {
-  return ECRANS_DE_LECTURE.test(location.hash || "#/") && !saisieEnCours();
+  return ecranDeLecture(location.hash) && !saisieEnCours();
 }
 function surveillerDonnees() {
   let derniere = 0;
@@ -867,6 +891,7 @@ function surveillerDonnees() {
     derniere = Date.now();
     let resultat = "ignore";
     let erreur = null;
+    const demandesAvant = demandesATraiter();
     try {
       resultat = await synchroniser();
       if (resultat !== "ignore") (echecs = 0), (derniereReussite = Date.now());
@@ -878,14 +903,43 @@ function surveillerDonnees() {
       erreur = err;
     }
     majPastille();
+    // Le compteur des demandes du site, des tâches et des retards suit chaque relecture, même quand l'écran ne peut pas être redessiné
+    // (une saisie en cours) : avant le 19.11.2026, il fallait rafraîchir la page pour le voir changer.
+    if (etat.session && document.querySelector(".coque")) majBadges();
+    const arrivees = resultat === "modifie" ? nouvellesDemandes(demandesAvant, demandesATraiter()) : 0;
     if (aRedessiner && etat.session && ecranLibre()) {
       aRedessiner = false;
       window.dispatchEvent(new HashChangeEvent("hashchange"));
-      if (annoncer && !force) toast(tr("Données mises à jour."));
+      // Une demande du site arrivée se dit comme telle ; un autre changement reste « Données mises à jour ».
+      if (arrivees) annoncerArrivees(arrivees);
+      else if (annoncer && !force) toast(tr("Données mises à jour."));
       annoncer = false;
-    }
+    } else if (arrivees) annoncerArrivees(arrivees);
     return { resultat, erreur };
   };
+  // Un redessin retenu par une saisie (fenêtre ouverte, champ en cours) se fait dès qu'elle est finie, sans attendre la relecture suivante.
+  setInterval(() => {
+    if (!aRedessiner || !etat.session || !ecranLibre()) return;
+    aRedessiner = false;
+    annoncer = false;
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  }, 2000);
+  // En direct (Supabase Realtime, migration 47) : une ligne ajoutée ou changée dans une table suivie fait relire la base tout de suite, avec les
+  // droits de la personne (la base ne prévient que celles qui peuvent lire la ligne, et la relecture passe par les mêmes règles).
+  // Plusieurs événements rapprochés ne font qu'une relecture.
+  let attente = null;
+  const changementDistant = () => {
+    clearTimeout(attente);
+    attente = setTimeout(() => ((derniere = 0), actualiser(true)), 800);
+  };
+  if (etat.store.ecouter) {
+    try {
+      etat.store.ecouter(TABLES_EN_DIRECT, changementDistant);
+    } catch (err) {
+      // Pas de direct (réseau, migration 47 pas appliquée) : la relecture de chaque minute reste.
+      console.warn(err);
+    }
+  }
   document.addEventListener("visibilitychange", () => actualiser());
   window.addEventListener("online", () => ((hors = false), majPastille(), actualiser()));
   window.addEventListener("offline", () => ((hors = true), majPastille()));

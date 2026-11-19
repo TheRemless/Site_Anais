@@ -152,5 +152,15 @@ ok((await comme("anais", `update bandeaux_site set fin = debut - interval '1 hou
 console.log("== Fonctions ==");
 ok((await essaie("anon", null, `select lit_demandes_site('${ent.secret}')`)).ok === false, "anon n'appelle pas la fonction de droits");
 
+console.log("== En direct (migration 47) ==");
+// Les migrations ont déjà tourné sans publication Realtime (base neuve, PGlite) : la 47 n'y a rien fait. Avec la publication de Supabase, elle y
+// ajoute demandes_site, une seule fois.
+ok(!(await db.query("select 1 from pg_publication_tables where tablename = 'demandes_site'")).rows.length, "sans publication Realtime, la migration 47 ne fait rien et ne bloque pas");
+await db.exec("create publication supabase_realtime;");
+await db.exec(fs.readFileSync(W + "migration-47-demandes-direct.sql", "utf8"));
+await db.exec(fs.readFileSync(W + "migration-47-demandes-direct.sql", "utf8"));
+const publiees = (await db.query("select schemaname, tablename from pg_publication_tables where pubname = 'supabase_realtime'")).rows;
+ok(publiees.length === 1 && publiees[0].tablename === "demandes_site" && publiees[0].schemaname === "public", "demandes_site entre dans la publication Realtime, seule, et la migration se rejoue");
+
 console.log(echecs ? `\n${echecs} ÉCHEC(S)` : "\nTOUT EST BON");
 process.exit(echecs ? 1 : 0);
