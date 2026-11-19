@@ -14,7 +14,7 @@ const source = (f) => fs.readFileSync(path.join(RACINE, "src/gestion/js", f), "u
 test("écrans redessinés par la synchronisation : Demandes du site en fait partie, jamais un écran de saisie", () => {
   for (const h of ["", "#/", "#/demandes", "#/demandes?entite=e1", "#/dossiers", "#/dossier/abc-1", "#/dossier/abc-1?entite=e2", "#/client/x", "#/reservations?jour=2026-11-19"]) assert.ok(ecranDeLecture(h), h);
   for (const h of ["#/dossiers/nouveau", "#/reglages", "#/document/abc", "#/bandeau", "#/admin", "#/demandes/nouveau-x"]) assert.ok(!ecranDeLecture(h), h);
-  assert.match(source("app.mjs"), /return ecranDeLecture\(location\.hash\) && !saisieEnCours\(\);/);
+  assert.match(source("app.mjs"), /return ecranDeLecture\(location\.hash\) && !saisieEnCours\(\) && !document\.querySelector\("\.modal-fond"\) && !curseurDansUnChamp\(\);/);
   assert.ok(!/const ECRANS_DE_LECTURE = /.test(source("app.mjs")), "une seule liste, celle de direct-calc.mjs");
 });
 
@@ -30,11 +30,11 @@ test("rechargement d'une nouvelle version : jamais pendant une saisie, au premie
   assert.equal(momentDeRecharger({ nouvelle: true, apresSaisie: true, inactifMs: 500 }), false, "le temps de lire « enregistré »");
 });
 
-test("app.mjs : rechargement automatique câblé sur le moment sûr, écrans de saisie et garde des réglages compris, bouton gardé", () => {
+test("app.mjs : rechargement automatique câblé sur le moment sûr, saisie réelle et garde des réglages, bouton gardé", () => {
   const app = source("app.mjs");
-  assert.match(app, /const saisie = saisieEnCours\(\) \|\| choixModifies\(\) \|\| !ecranDeLecture\(location\.hash\) \|\| !!\(etat\.garde && etat\.garde\(\)\);/);
-  assert.match(app, /\[\.\.\.s\.options\]\.some\(\(o\) => o\.selected !== o\.defaultSelected\)/, "une liste changée bloque le rechargement");
-  assert.match(app, /c\.checked !== c\.defaultChecked/, "un bouton radio ou une case changés aussi");
+  // Depuis le 19.11.2026 : seule une saisie réelle retient le rechargement (saisie.mjs), plus un écran de saisie vide ni une liste réglée par l'outil.
+  assert.match(app, /const saisie = saisieEnCours\(\) \|\| !!\(etat\.garde && etat\.garde\(\)\);/);
+  assert.ok(!/choixModifies|defaultSelected|defaultValue/.test(app), "plus de comparaison à la valeur « d'origine » du navigateur, que l'outil ne tient pas");
   assert.match(app, /const apresSaisie = !!finSaisie && Date\.now\(\) - finSaisie < 30 \* 1000;/, "« juste après une saisie » ne dure que trente secondes");
   assert.match(app, /if \(ok\) location\.reload\(\);/, "location.reload garde l'adresse : l'écran et le dossier ouverts restent");
   assert.match(app, /setInterval\(\(\) => rechargerSiSur\(\), 2000\);/);
