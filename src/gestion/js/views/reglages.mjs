@@ -828,12 +828,9 @@ export function vueReglages() {
         "fieldset",
         null,
         h("legend", null, tr("Assistant IA")),
-        h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre et rédiger la réponse")),
-        h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé, la liste des tarifs de vente et, pour une réponse, le prénom du client et les services avec leurs prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous.")),
-        h("p", { class: "aide" }, tr("Sa voix : comment il écrit les brouillons de réponse. Vide : une voix neutre, sobre et chaleureuse, signée du nom de l'entreprise. {entreprise} est remplacé par le nom de l'entreprise.")),
-        texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: exemple("lieu_entreprise") }),
-        texte(N_("Voix en français"), "assistant_voix.fr", { multi: true, rows: 6 }),
-        texte(N_("Voix en anglais"), "assistant_voix.en", { multi: true, rows: 6 })
+        h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre du client")),
+        h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé et la liste des tarifs de vente, sans les prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous.")),
+        texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: exemple("lieu_entreprise") })
       ),
       // Fiduciaire éteinte (Taxi, décision 5 ; agence cliente du logiciel, 19.11.2026) : pas au menu, elle se rouvre d'ici pour être allumée (D10).
       moduleActif("fiduciaire") && peut("fiduciaire.gerer") && peut("reglages.ecrire") && !reglagesFid(etat.db.reglages).actif

@@ -7,7 +7,7 @@ Préparé le 12.11.2026. Inactif tant que la case « Assistant IA » n'est pas c
 | Usage | État | Où |
 |---|---|---|
 | 1. Lire un message libre de client | Prêt, éteint | Bouton « Lire avec l'assistant » dans Coller une demande |
-| 2. Rédiger la réponse au client | Prêt, éteint | Bouton « Rédiger la réponse » sous le service retenu |
+| 2. Rédiger la réponse au client | Retiré le 19.11.2026 (Anaïs écrit ses réponses, décision de Jérémy) : la fonction refuse l'usage, l'écran n'a plus de bouton, la logique pure reste dans `calc.js` | Rien à l'écran |
 | 3. Questions d'Anaïs sur ses données | Conception seulement (plus bas) | Rien dans le code |
 
 Fichiers : `supabase/functions/assistant/index.ts` (fonction), `supabase/functions/assistant/calc.js` (logique pure, testée), `src/gestion/js/assistant-calc.mjs` et `views/assistant-demande.mjs` (outil), `docs/gestion/migration-27-assistant.sql` (journal), `tests/gestion-assistant.test.js`.
@@ -15,10 +15,10 @@ Fichiers : `supabase/functions/assistant/index.ts` (fonction), `supabase/functio
 ## Comment ça marche
 
 1. L'outil appelle la fonction `assistant` avec la session de la personne connectée. La passerelle Supabase vérifie le jeton.
-2. La fonction lit les réglages de l'entreprise et les droits de la personne avec cette même session (`permissions_dans`, la fonction qui protège les tables). Il faut la case allumée, `partenaires.lire`, et `dossiers.ecrire` pour lire un message ou `dossiers.lire` pour rédiger.
+2. La fonction lit les réglages de l'entreprise et les droits de la personne avec cette même session (`permissions_dans`, la fonction qui protège les tables). Il faut la case allumée, `partenaires.lire` et `dossiers.ecrire`.
 3. Limite : 40 appels par personne et par jour (heure de Bangkok), réglable avec le secret `ASSISTANT_LIMITE_JOUR`.
 4. Elle lit le catalogue avec la session de la personne (règles RLS appliquées). Les tables de nets ne sont jamais lues.
-5. Elle appelle Claude Opus 5.5 (`claude-opus-5-5`) avec le SDK officiel, une sortie JSON imposée, le repli `fallbacks: "default"` en cas de refus, le cache sur les consignes et le catalogue.
+5. Elle appelle Claude Haiku 5.5 (`claude-haiku-5-5`, depuis le 19.11.2026, avant Claude Opus 5.5) avec le SDK officiel, effort `medium`, une sortie JSON imposée, le cache sur les consignes et le catalogue. Haiku n'a pas de repli côté serveur : un refus laisse la lecture par règles affichée.
 6. Elle contrôle la réponse : référence absente du catalogue retirée, nom, téléphone ou hôtel absent du message retiré, date ou heure invalide vidée, montant ou heure du brouillon absent des faits signalé en orange.
 7. Elle note l'appel dans `assistant_journal` (personne, entreprise, usage, statut, modèle, jetons, coût estimé). Jamais le message ni la réponse.
 8. L'outil affiche la proposition. Les prix sont recalculés dans l'outil depuis la base, comme la lecture par règles. Anaïs corrige, crée le dossier, relit le brouillon. Rien n'est créé ni envoyé sans elle.
@@ -30,7 +30,7 @@ Si l'assistant ne répond pas (éteint, limite, refus, panne), la lecture par r�
 | Usage | Envoyé | Jamais envoyé |
 |---|---|---|
 | Lire | Le message collé tel quel (il peut contenir nom, téléphone, hôtel, dates, âges des enfants). Le nom de l'entreprise. Les libellés, groupes, modes, horaires de départ et périodes des prestations et trajets, le nom des prestataires. | Prix nets, commissions, marges, coordonnées bancaires, autres clients, dossiers |
-| Rédiger | Le prénom du client, chaque service retenu (libellé, date, heure, personnes, prix de vente, horaires, durée, frais de parc, lieu), le total, le téléphone de l'entreprise, les messages types de l'entreprise, et le message du client s'il a été collé. | Idem, et le nom de famille du client |
+| Rédiger (retiré le 19.11.2026, plus rien n'est envoyé) | Le prénom du client, chaque service retenu (libellé, date, heure, personnes, prix de vente, horaires, durée, frais de parc, lieu), le total, le téléphone de l'entreprise, les messages types de l'entreprise, et le message du client s'il a été collé. | Idem, et le nom de famille du client |
 
 Anthropic traite ces données pour répondre. Ses conditions commerciales de l'API excluent par défaut l'entraînement des modèles sur ces données. La durée de conservation et le lieu de traitement ne sont pas vérifiés ici : à relire dans les conditions et la politique de confidentialité d'Anthropic avant l'activation, puis à reporter dans le texte ci-dessous.
 
@@ -44,19 +44,17 @@ Texte à faire passer par `redaction-fr` (Zwald, en français) et en anglais pou
 
 Clients suisses et européens (nLPD, RGPD) : le registre des traitements doit mentionner ce sous-traitant. Le droit thaïlandais (PDPA) demande aussi d'informer du transfert à l'étranger.
 
-## Coût estimé
+## Coût mesuré
 
-Prix du skill claude-api (relevé du 03.11.2026), Claude Opus 5.5 : 4 $ par million de jetons en entrée, 20 $ en sortie, 0,20 $ en lecture de cache, 5 $ en écriture de cache.
+Essais réels du 19.11.2026 (messages fictifs, journal `assistant_journal`), avec Claude Opus 5.5 :
 
-Hypothèse non vérifiée sur la vraie base (la lecture de production n'était pas autorisée) : environ 150 prestations et 120 trajets proposables pour Secret, soit 7 000 à 8 000 jetons de catalogue et de consignes.
+| Appel | Jetons entrée / sortie / cache écrit | Coût |
+|---|---|---|
+| Lire Secret, à froid | 155 / 314 / 55 831 | 0,286 $ |
+| Lire Taxi, à froid | 140 / 228 / 2 756 | 0,019 $ |
+| Rédiger (retiré depuis) | 400 à 680 / 570 à 940 / 830 à 1 290 | 0,019 à 0,026 $ |
 
-| Appel | Entrée | Sortie (réflexion comprise) | Coût |
-|---|---|---|---|
-| Lire un message, cache froid | 8 000 en écriture de cache, 300 de message | environ 900 | environ 0,06 $ |
-| Lire un message, cache chaud (moins de 5 minutes après le précédent) | 8 000 en lecture de cache, 300 | environ 900 | environ 0,02 $ |
-| Rédiger une réponse | environ 2 000 | environ 1 300 | environ 0,035 $ |
-
-Pour 10 messages lus et 10 réponses rédigées par jour : environ 1 $ par jour, 25 à 30 $ par mois. Le coût réel se lit dans `assistant_journal` (colonne `cout_estime_usd`).
+Le catalogue Secret (327 prestations, 538 trajets) fait environ 56 000 jetons : avec Opus, 10 lectures par jour coûtaient environ 85 $ par mois. D'où le passage à Claude Haiku 5.5 pour lire (0,10 $ par million en entrée, 0,125 $ en écriture de cache, 0,50 $ en sortie, tant que le prompt reste sous 100 000 jetons) : environ 0,01 $ par lecture Secret à froid. Le coût réel se lit dans `assistant_journal` (colonne `cout_estime_usd`).
 
 ## Activer l'assistant
 
@@ -68,7 +66,7 @@ Pour 10 messages lus et 10 réponses rédigées par jour : environ 1 $ par jour,
 
 Le dossier `supabase/` ne déclenche pas de build Netlify (`scripts/netlify-ignore.sh`, 19.11.2026) : la fonction se déploie à part, une modification de la fonction seule ne coûte pas de minutes de build.
 
-Vérifié le 19.11.2026 avec le skill claude-api : modèle `claude-opus-5-5`, effort explicite (`low` pour lire, `medium` pour rédiger, le défaut d'Opus 5.5 étant `medium`), réflexion adaptative implicite, `fallbacks: "default"` sous l'en-tête `server-side-fallback-2026-07-01` (replis possibles : Claude Opus 5, Claude Opus 4.8, tous deux dans la table des prix), SDK `@anthropic-ai/sdk@1.3.0` déjà sur la version d'API `2026-10-21`, aucun paramètre retiré par cette version. Le catalogue envoyé exclut aussi les tarifs d'un partenaire masqué, comme la lecture par règles.
+Vérifié le 19.11.2026 avec le skill claude-api : modèle `claude-haiku-5-5` (avant `claude-opus-5-5`), effort `medium` explicite, réflexion adaptative implicite, pas de `fallbacks` (Haiku 5.5 n'a pas de repli côté serveur ; `parametresAppel` le remet pour Opus ou Sonnet si on y revient), SDK `@anthropic-ai/sdk@1.3.0` déjà sur la version d'API `2026-10-21`, aucun paramètre retiré par cette version. Le catalogue envoyé exclut aussi les tarifs d'un partenaire masqué, comme la lecture par règles.
 5. Jérémy coche « Assistant IA » dans Réglages > Écrans de Secret (et de Zwald s'il le veut).
 6. Premier essai réel sur un vrai message, lecture de la ligne du journal et du coût.
 

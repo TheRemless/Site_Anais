@@ -1,12 +1,10 @@
-// Assistant IA dans l'écran « Coller une demande » : deux boutons, « Lire avec l'assistant » et « Rédiger la réponse ».
-// Ils n'apparaissent que si l'entreprise a allumé l'assistant (Réglages) et si le rôle a les droits que la fonction exige.
+// Assistant IA dans l'écran « Coller une demande » : le bouton « Lire avec l'assistant » (la rédaction de la réponse est retirée depuis le
+// 19.11.2026 : Anaïs écrit ses réponses). Il n'apparaît que si l'entreprise a allumé l'assistant (Réglages) et si le rôle a les droits exigés.
 // L'assistant propose, Anaïs vérifie : rien n'est créé ni envoyé sans elle, et la lecture par règles reste affichée quand il ne répond pas.
-import { etat, reglages, peut, nomPartenaire, entiteActive } from "../etat.mjs";
-import { h, toast } from "../ui.mjs";
+import { etat, reglages, peut, nomPartenaire } from "../etat.mjs";
+import { h } from "../ui.mjs";
 import { tr, N_ } from "../i18n.mjs";
-import { assistantActif, propositionVersDemande, faitsPourReponse } from "../assistant-calc.mjs";
-import { lienWhatsApp } from "../operations-calc.mjs";
-import { chiffres } from "../partenaires-calc.mjs";
+import { assistantActif, propositionVersDemande } from "../assistant-calc.mjs";
 
 const ERREURS = {
   assistant_eteint: N_("L'assistant est éteint pour cette entreprise (Réglages)."),
@@ -46,12 +44,12 @@ const listeAvertissements = (liste) => {
   return textes.length ? h("ul", { class: "assistant-avertissements" }, textes.map((t) => h("li", null, t))) : null;
 };
 
-export const assistantDisponible = (usage) => assistantActif(reglages()) && peut("partenaires.lire") && peut(usage === "lire" ? "dossiers.ecrire" : "dossiers.lire");
+export const assistantDisponible = () => assistantActif(reglages()) && peut("partenaires.lire") && peut("dossiers.ecrire");
 
 // « Lire avec l'assistant » : envoie le message collé, rend `{ d, services, avertissements, remarques }` dans la forme de la lecture par règles.
 // `texte()` lit la zone de saisie au moment du tap. Renvoie null quand l'assistant n'est pas disponible : l'écran reste celui d'avant.
 export function boutonLireIA({ texte, surResultat }) {
-  if (!assistantDisponible("lire")) return null;
+  if (!assistantDisponible()) return null;
   const ligne = h("div", { class: "assistant-etat", role: "status", "aria-live": "polite" });
   const bouton = h("button", { class: "secondaire assistant-bouton", type: "button", onclick: () => lancer() }, tr("Lire avec l'assistant"));
   async function lancer() {
@@ -84,60 +82,4 @@ export function boutonLireIA({ texte, surResultat }) {
     }
   }
   return h("div", { class: "assistant-lire" }, bouton, ligne);
-}
-
-// « Rédiger la réponse » : un brouillon dans la voix d'Anaïs, à partir des services retenus et des prix de la base, toujours modifiable.
-// `contexte()` rend `{ d, services, texte }` au moment du tap (services avec `choisie` ou leurs offres, la première étant retenue).
-export function boutonRedigerIA({ contexte, surTexte }) {
-  if (!assistantDisponible("rediger")) return null;
-  const regl = reglages();
-  const zone = h("div", { class: "assistant-brouillon", "aria-live": "polite" });
-  const bouton = h("button", { class: "secondaire assistant-bouton", type: "button", onclick: () => lancer() }, tr("Rédiger la réponse"));
-  let tour = 0;
-  async function lancer() {
-    const { d, services, texte } = contexte();
-    const ce = ++tour;
-    const faits = faitsPourReponse({ d, services, entreprise: (entiteActive() || {}).nom || "", devise: regl.devise || "THB", telephone: (regl.emetteur && regl.emetteur.telephone) || "" });
-    if (!faits.services.length) return toast(tr("Choisissez d'abord un service de la base."), true);
-    bouton.disabled = true;
-    bouton.setAttribute("aria-busy", "true");
-    bouton.textContent = tr("Rédaction…");
-    try {
-      const r = await etat.store.assistant({ usage: "rediger", entite_id: etat.entiteId, faits, langue: d.langue || "", texte: texte || "" });
-      if (ce !== tour) return;
-      if (!r || r.erreur || !r.message) return zone.replaceChildren(h("p", { class: "erreur-form", role: "alert" }, `${messageErreur(r && r.erreur)} ${tr("Écrivez la réponse vous-même ou utilisez la réponse type.")}`));
-      afficher(r, d);
-      if (surTexte) surTexte(r.message, r);
-    } catch {
-      zone.replaceChildren(h("p", { class: "erreur-form", role: "alert" }, messageErreur("")));
-    } finally {
-      bouton.disabled = false;
-      bouton.removeAttribute("aria-busy");
-      bouton.textContent = tr("Rédiger à nouveau");
-    }
-  }
-  function afficher(r, d) {
-    const tel = chiffres(d.telephone);
-    const champTexte = h("textarea", { id: "assistant-reponse", rows: 9, oninput: () => lien && (lien.href = lienWhatsApp(tel, champTexte.value)) });
-    champTexte.value = r.message;
-    const lien = tel ? h("a", { class: "bouton secondaire", href: lienWhatsApp(tel, r.message), target: "_blank", rel: "noopener" }, tr("Ouvrir dans WhatsApp")) : null;
-    const copier = h("button", { class: "secondaire", type: "button", onclick: () => navigator.clipboard.writeText(champTexte.value).then(() => toast(tr("Réponse copiée : collez-la dans WhatsApp.")), () => toast(tr("La copie a échoué : sélectionnez le texte et copiez-le."), true)) }, tr("Copier"));
-    zone.replaceChildren(
-      ...[
-        h("p", { class: "aide" }, tr("Brouillon de l'assistant : relisez-le et modifiez-le avant de l'envoyer.")),
-        listeAvertissements(r.avertissements),
-        h("div", { class: "champ" }, h("label", { for: "assistant-reponse" }, tr("Réponse au client")), champTexte),
-        r.manques && r.manques.length ? h("p", { class: "aide" }, tr("Reste à demander : {liste}", { liste: r.manques.join(", ") })) : null,
-        h("div", { class: "actions gauche" }, ...[lien, copier].filter(Boolean)),
-      ].filter(Boolean)
-    );
-  }
-  const bloc = h("div", { class: "assistant-rediger" }, bouton, zone);
-  // Un autre message collé : l'ancien brouillon ne vaut plus, et une réponse encore attendue est ignorée.
-  bloc.vider = () => {
-    tour++;
-    zone.replaceChildren();
-    bouton.textContent = tr("Rédiger la réponse");
-  };
-  return bloc;
 }

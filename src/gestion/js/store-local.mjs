@@ -347,16 +347,15 @@ export function creer() {
     // Démonstration : rien ne part chez Anthropic, la réponse est simulée à partir de la lecture par règles (assistant-calc.mjs).
     async assistant(corps) {
       await new Promise((r) => setTimeout(r, 700));
-      const { simulerLecture, simulerRedaction } = await import("./assistant-calc.mjs");
+      const { simulerLecture } = await import("./assistant-calc.mjs");
       const e = corps.entite_id;
       if (!(data.reglages[e] || {}).assistant_ia) return { erreur: "assistant_eteint" };
-      // Mêmes droits que la fonction : la base de prix, et créer un dossier pour « lire » ou le voir pour « rediger ».
+      // Mêmes droits que la fonction : la base de prix et créer un dossier. « rediger » est refusé comme par la fonction (retiré le 19.11.2026).
+      if (corps.usage !== "lire") return { erreur: "usage_inconnu" };
       const perms = permissionsDans(contexte(), e);
-      const requis = corps.usage === "lire" ? ["partenaires.lire", "dossiers.ecrire"] : ["partenaires.lire", "dossiers.lire"];
+      const requis = ["partenaires.lire", "dossiers.ecrire"];
       if (requis.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };
-      if (corps.usage === "lire") return simulerLecture(corps.texte || "", { prestations: data.prestations.filter((p) => p.entite_id === e), trajets: data.trajets.filter((t) => t.entite_id === e), nomPartenaire: (id) => (data.partenaires.find((p) => p.id === id) || {}).nom || "" }, aujourdhui());
-      if (corps.usage === "rediger") return simulerRedaction(corps.faits, ["excursions", "taxi"].includes((data.reglages[e] || {}).fonctionnement) ? "en" : corps.langue, (((data.reglages[e] || {}).responsable || {}).prenom || ""));
-      return { erreur: "usage_inconnu" };
+      return simulerLecture(corps.texte || "", { prestations: data.prestations.filter((p) => p.entite_id === e), trajets: data.trajets.filter((t) => t.entite_id === e), nomPartenaire: (id) => (data.partenaires.find((p) => p.id === id) || {}).nom || "" }, aujourdhui());
     },
     async charger() {
       const ids = new Set(accessibles());
