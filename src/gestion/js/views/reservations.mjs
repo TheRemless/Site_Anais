@@ -29,6 +29,7 @@ import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { gestePrincipal, entreesMenu } from "../carte-reservation-calc.mjs";
 import { commissionARecalculer, recalculerUneCommission, ecartCommissionRecue } from "./recalcul-commission.mjs";
 import { saisieRapideNet } from "./saisie-net.mjs";
+import { proposerAnnulationDossier } from "./annulation-dossier.mjs";
 
 export const pastilleReservation = (code) => h("span", { class: `statut r-${code}` }, h("span", { class: "point", "aria-hidden": "true" }), (STATUTS_RESERVATION[code] ? tr(STATUTS_RESERVATION[code]) : code));
 const dossierDe = (r) => etat.db.dossiers.find((d) => d.id === r.dossier_id) || null;
@@ -67,6 +68,8 @@ async function annulerService(r, apres) {
     }
     await modifier("reservations", r.id, { statut: "annule" });
     await synchroniserDatesDossier(r.dossier_id);
+    // Dernier service actif du dossier : le dossier lui-même est proposé à l'annulation.
+    await proposerAnnulationDossier(r);
     apres();
     return true;
   } catch (err) {
@@ -396,7 +399,7 @@ export function formulaireReservation(r, apres) {
   const payeLe = h("input", { id: "r-paye-le", type: "date", value: (n && n.paye_le) || "" });
   // Service payé directement au prestataire : pas de net à lui verser, c'est lui qui reverse une commission. Quand la réservation vient d'une ligne
   // de facture, la case change aussi les lignes du document (avec confirmation du nouveau total).
-  const lieeFacture = !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
+  const liee = !!(r.ligne_id || (r.details && r.details.lignes_ids && r.details.lignes_ids.length));
   const surPlace = puceMode({ id: "r-place", valeur: modeReglement(r), onchange: () => (majCommission(), proposerCommission()) });
   const estSurPlace = () => surPlace.valeur() === SUR_PLACE;
   const commissionPrevue = saisie(h("input", { id: "r-com", value: n && n.commission_prevue != null ? n.commission_prevue : "" }), "montant");
@@ -448,7 +451,7 @@ export function formulaireReservation(r, apres) {
   // Prix figé d'un service saisi à la main : il suit les adultes et les enfants (prix du tarif, prix enfant compris), puisque la personne ne peut
   // pas le corriger (revue de la PR 217). Lié à une facture, le montant suit déjà la facture (suivreFacture).
   const venteSelonPersonnes = () => {
-    if (!vente.disabled || lieeFacture) return;
+    if (!vente.disabled || liee) return;
     const prestation = tarif.value.startsWith("p:") ? etat.db.prestations.find((x) => x.id === tarif.value.slice(2)) || null : null;
     const trajet = tarif.value.startsWith("t:") ? etat.db.trajets.find((x) => x.id === tarif.value.slice(2)) || null : null;
     const v = venteDuTarif({ prestation, trajet, adultes: nb(adultes.value) || 0, enfants: nb(enfants.value) || 0, jours: details().jours, prestations: etat.db.prestations });
@@ -644,6 +647,8 @@ export function formulaireReservation(r, apres) {
           if (Object.keys(netsChanges).length) await enregistrerLie("reservations_nets", "reservation_id", res.id, netsChanges);
           if (r.id && (dateChangee || annulee)) await synchroniserDatesDossier(r.dossier_id);
           toast(ecartRestant && ecartRestant.length ? `${tr("Réservation enregistrée.")} ${tr("La facture garde l'ancienne valeur, à corriger dans la facture :")} ${ecartRestant.join(" ; ")}` : tr("Réservation enregistrée."));
+          // Dernier service actif du dossier : le dossier lui-même est proposé à l'annulation (après le message de l'enregistrement).
+          if (annulee) await proposerAnnulationDossier(res);
           apres(res);
         } catch (err) {
           if (nouvelEssaiNets) await enregistrerLie("reservations_nets", "reservation_id", r.id, nouvelEssaiNets).catch(() => {});
