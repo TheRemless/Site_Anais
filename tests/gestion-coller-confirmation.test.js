@@ -69,7 +69,7 @@ Flight: FD3217`;
   assert.equal(v.dropoff, "Krabi Airport");
   assert.equal(v.adultes, "2");
   assert.equal(v.enfants, "1");
-  assert.equal(v.bagages, "yes");
+  assert.equal(v.bagages, "Yes");
   assert.equal(v.prix, "2700");
   assert.equal(v.vol, "FD3217");
   assert.deepEqual(r.ignorees, [], "l’en-tête « Booking confirmed » est sauté");
@@ -146,7 +146,7 @@ test("heures : 4:30pm, 4.30 pm, 4pm, 12pm, 12am, 16:30, 16h30, 9 am ; rien de de
 
 test("passagers et bagages", () => {
   assert.deepEqual(lirePassagers("5 people no luggage"), { adultes: "5", enfants: "", bagages: "", sieges: "" });
-  assert.deepEqual(lirePassagers("2 adults + 1 kid + luggage"), { adultes: "2", enfants: "1", bagages: "yes", sieges: "" });
+  assert.deepEqual(lirePassagers("2 adults + 1 kid + luggage"), { adultes: "2", enfants: "1", bagages: "Yes", sieges: "" });
   assert.deepEqual(lirePassagers("4 pax, 3 bags"), { adultes: "4", enfants: "", bagages: "3", sieges: "" });
   assert.deepEqual(lirePassagers("2 adults, 2 children (1 child seat)"), { adultes: "2", enfants: "2", bagages: "", sieges: "1" });
   assert.deepEqual(lirePassagers("two adults and one baby"), { adultes: "2", enfants: "1", bagages: "", sieges: "" });
