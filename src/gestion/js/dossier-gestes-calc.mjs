@@ -43,6 +43,14 @@ export function reservationsAReactiver(reservations, dossierId) {
   const avec = annulees.filter((r) => r.details && r.details.annule_avec_dossier);
   return { cochees: avec, autres: annulees.filter((r) => !avec.includes(r)) };
 }
+// Le dernier service actif d'un dossier vient d'être annulé : le dossier lui-même est proposé à l'annulation (19.11.2026, dossier resté
+// « Accepté, paiement attendu » sans aucun service). Vrai quand le dossier n'est pas déjà annulé, qu'il a au moins une réservation et
+// qu'elles sont toutes annulées. `reservations` : la liste après l'annulation du service.
+export function dossierSansServiceActif(reservations, dossier) {
+  if (!dossier || dossier.annule) return false;
+  const siennes = (reservations || []).filter((r) => r.dossier_id === dossier.id);
+  return siennes.length > 0 && siennes.every((r) => r.statut === "annule");
+}
 // Champs d'une réservation qu'on réactive : confirmée (statut d'une réservation saisie), sans la marque de l'annulation groupée.
 export function reactivation(r) {
   const { annule_avec_dossier, ...details } = r.details || {};
