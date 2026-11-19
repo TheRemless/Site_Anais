@@ -830,7 +830,8 @@ export function vueReglages() {
         h("legend", null, tr("Assistant IA")),
         h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre du client")),
         h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé et la liste des tarifs de vente, sans les prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous.")),
-        texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: exemple("lieu_entreprise") })
+        texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: exemple("lieu_entreprise") }),
+        peut("journal.voir") ? h("p", null, h("a", { class: "bouton secondaire petit", href: "#/assistant" }, tr("Suivi de l'assistant : coût, usage et qualité"))) : null
       ),
       // Fiduciaire éteinte (Taxi, décision 5 ; agence cliente du logiciel, 19.11.2026) : pas au menu, elle se rouvre d'ici pour être allumée (D10).
       moduleActif("fiduciaire") && peut("fiduciaire.gerer") && peut("reglages.ecrire") && !reglagesFid(etat.db.reglages).actif
@@ -939,7 +940,7 @@ export function vueReglages() {
   const racine = h(
     "div",
     { "data-titre": tr("Réglages"), "data-large": "1", "data-plein": "1" },
-    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réglages")), h("p", { class: "sous" }, entiteActive().nom)), estSuperAdmin() ? h("a", { class: "bouton secondaire", href: "#/admin" }, tr("Administration : entreprises et accès")) : null),
+    h("div", { class: "entete" }, h("div", null, h("h1", null, tr("Réglages")), h("p", { class: "sous" }, entiteActive().nom)), h("div", { class: "entete-actions" }, peut("journal.voir") ? h("a", { class: "bouton secondaire", href: "#/assistant" }, tr("Suivi de l'assistant")) : null, estSuperAdmin() ? h("a", { class: "bouton secondaire", href: "#/admin" }, tr("Administration : entreprises et accès")) : null)),
     barre,
     recherche,
     h("form", { class: "reglages-grille", onsubmit: enregistrer }, h("div", { class: "reglages-colonne" }, aucun, ...Object.values(sections), h("div", { class: "actions barre-fixe" }, indicateur, boutonEnregistrer)), zoneApercu, zoneVoucher)
