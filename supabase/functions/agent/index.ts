@@ -10,9 +10,9 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, PLAFOND_MOIS_USD_DEFAUT, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
-import { memoDepuis, refDe, tempsSimule } from "./outils.js";
+import { clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
-import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, clePaire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu } from "./temps.js";
+import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
@@ -125,23 +125,72 @@ Deno.serve(async (req) => {
     reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente",
   };
   const charger = (nom: string): Promise<unknown[]> => {
-    if (!cache.has(nom)) {
-      if (nom === "clients") {
-        cache.set(
-          nom,
-          (async () => {
-            const propres = (await paginer("clients", "id, prenom, nom, telephone", (q) => q.eq("entite_id", entiteId))) as { id: string }[];
-            // Les clients partagés d'une autre entreprise qui ont un dossier ici.
-            const ids = new Set(propres.map((c) => c.id));
-            const manquants = [...new Set(((await charger("dossiers")) as { client_id: string }[]).map((d) => d.client_id))].filter((id) => id && !ids.has(id));
-            for (let i = 0; i < manquants.length; i += 200) propres.push(...((await paginer("clients", "id, prenom, nom, telephone", (q) => q.in("id", manquants.slice(i, i + 200)))) as { id: string }[]));
-            return propres;
-          })()
-        );
-      } else cache.set(nom, paginer(nom, COLONNES[nom], (q) => q.eq("entite_id", entiteId)));
-    }
+    if (!cache.has(nom)) cache.set(nom, paginer(nom, COLONNES[nom], (q) => q.eq("entite_id", entiteId)));
     return cache.get(nom)!;
   };
+  const lire = async (requete: any, table: string) => {
+    const { data, error } = await requete;
+    if (error) throw new Error(`${table} : ${error.message}`);
+    return (data || []) as Record<string, any>[];
+  };
+
+  // Clients, dossiers, réservations, hôtels : cherchés dans la base (quelques lignes), jamais chargés entiers (20.11.2026, pensé pour des
+  // milliers de dossiers). Les outils refont le tri fin (accents, mots, téléphone) sur ces candidats.
+  const COL_CLIENT = "id, prenom, nom, telephone, entite_id";
+  // Une ligne par sa référence courte (« D-1a2b3c4d ») : les huit premiers caractères de l'identifiant, lus comme un intervalle d'uuid.
+  const parRef = async (table: string, ref: string) => {
+    const p = prefixeRef(ref);
+    if (!p) return [];
+    return lire(sb.from(table).select(COLONNES[table]).eq("entite_id", entiteId).gte("id", `${p}-0000-0000-0000-000000000000`).lte("id", `${p}-ffff-ffff-ffff-ffffffffffff`).limit(5), table);
+  };
+  const chercherClients = async (recherche: string) => {
+    const mots = sansAccents(recherche).trim().split(/\s+/).filter((m) => m.length >= 2).slice(0, 5);
+    const chiffres = String(recherche || "").replace(/\D/g, "");
+    if (!mots.length && chiffres.length < 6) return [[], []];
+    const parNom = (q: any) => mots.reduce((r, m) => r.or(`prenom.ilike.${motifNom(m)},nom.ilike.${motifNom(m)}`), q);
+    const [propres, autres, parTel, parDossier] = await Promise.all([
+      mots.length ? lire(parNom(sb.from("clients").select(COL_CLIENT).eq("entite_id", entiteId)).limit(100), "clients") : [],
+      // Les clients partagés d'une autre entreprise : gardés plus bas seulement s'ils ont un dossier ici.
+      mots.length ? lire(parNom(sb.from("clients").select(COL_CLIENT).neq("entite_id", entiteId)).limit(100), "clients") : [],
+      chiffres.length >= 6 ? lire(sb.from("clients").select(COL_CLIENT).ilike("telephone", motifTelephone(chiffres)).limit(50), "clients") : [],
+      mots.length ? lire(sb.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).or(mots.map((m) => `ref.ilike.${motifNom(m)}`).join(",")).limit(50), "dossiers") : [],
+    ]);
+    const clients = new Map<string, Record<string, any>>();
+    for (const c of [...propres, ...autres, ...parTel]) clients.set(c.id, c);
+    const manquants = [...new Set(parDossier.map((d) => d.client_id))].filter((id) => id && !clients.has(id));
+    if (manquants.length) for (const c of await lire(sb.from("clients").select(COL_CLIENT).in("id", manquants.slice(0, 50)), "clients")) clients.set(c.id, c);
+    const ids = [...clients.keys()].slice(0, 250);
+    const dossiers = ids.length ? await lire(sb.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).in("client_id", ids).limit(1000), "dossiers") : [];
+    const ici = new Set(dossiers.map((d) => d.client_id));
+    return [[...clients.values()].filter((c) => c.entite_id === entiteId || ici.has(c.id)), dossiers];
+  };
+  // Un dossier par sa référence courte ou son numéro (« 2026-0142 »), avec son client et ses services.
+  const dossierPour = async (ref: string) => {
+    let dossiers = await parRef("dossiers", ref);
+    const t = String(ref || "").trim();
+    if (!dossiers.length && t.length >= 2 && t.length <= 30) dossiers = await lire(sb.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).ilike("ref", t.replace(/[\\%_]/g, "\\$&")).limit(5), "dossiers");
+    const d = dossiers[0];
+    if (!d) return [[], [], []];
+    const [clients, reservations] = await Promise.all([
+      d.client_id ? lire(sb.from("clients").select(COL_CLIENT).eq("id", d.client_id), "clients") : [],
+      lire(sb.from("reservations").select(COLONNES.reservations).eq("entite_id", entiteId).eq("dossier_id", d.id).limit(200), "reservations"),
+    ]);
+    return [dossiers, clients, reservations];
+  };
+  // Les hôtels connus dont le nom figure dans ces lieux (clés possibles, lues par la table), gardés pour l'échange.
+  const hotelsVus = new Map<string, Record<string, any> | null>();
+  const hotelsPour = async (lieux: string[]) => {
+    const cles = [...new Set(lieux.flatMap((l) => clesHotelPossibles(l)))];
+    const aLire = cles.filter((c) => !hotelsVus.has(c));
+    for (let i = 0; i < aLire.length; i += 100) {
+      const lot = aLire.slice(i, i + 100);
+      const lignes = await lire(sb.from("hotels_lieux").select(COLONNES.hotels_lieux).eq("entite_id", entiteId).in("cle", lot), "hotels_lieux");
+      for (const c of lot) hotelsVus.set(c, lignes.find((h) => h.cle === c) || null);
+    }
+    return cles.map((c) => hotelsVus.get(c)).filter(Boolean) as Record<string, any>[];
+  };
+  // Lieux et itinéraires calculés plus vieux que six mois : relus comme absents, donc recalculés (et réécrits par-dessus).
+  const valideDepuis = new Date(Date.now() - VALIDITE_JOURS * 86_400_000).toISOString();
 
   const anthropic = new Anthropic({ apiKey: cle, timeout: 60_000, maxRetries: 1 });
   const appels: { usage: Record<string, unknown>; modele: string }[] = [];
@@ -182,13 +231,13 @@ Deno.serve(async (req) => {
     const k = cleZone(lieu);
     if (geo.has(k)) return geo.get(k)!;
     let g: { lon: number; lat: number; label: string } | null = null;
-    const connu = await sb.from("lieux_geo").select("lon, lat, label").eq("entite_id", entiteId).eq("cle", k).maybeSingle();
+    const connu = await sb.from("lieux_geo").select("lon, lat, label").eq("entite_id", entiteId).eq("cle", k).or(`origine.eq.saisie,maj_le.gte."${valideDepuis}"`).maybeSingle();
     if (connu.data) g = { lon: Number(connu.data.lon), lat: Number(connu.data.lat), label: connu.data.label };
     else {
       // Plusieurs écritures du même lieu (nom thaï, nom latin), puis, pour un hôtel absent d'OpenStreetMap, sa plage trouvée par le web.
       g = await situerLieu(lieu, {
         chercher,
-        hotels: (await charger("hotels_lieux")) as { cle: string; zone: string; lieu: string }[],
+        hotels: (await hotelsPour([lieu])) as { cle: string; zone: string; lieu: string }[],
         situerHotel: async (nom: string) => {
           const r = await situerWeb([nom]);
           return r && r[0] ? r[0] : null;
@@ -202,14 +251,14 @@ Deno.serve(async (req) => {
   const ors = moteur
     ? async (de: string, vers: string, coords: { de?: { lat: number; lon: number }; vers?: { lat: number; lon: number } } | null = null) => {
         try {
-          // Clé dans le sens du trajet : les libellés trouvés (de, vers) restent dans le bon ordre au retour.
-          const cle = `${cleZone(de)} > ${cleZone(vers)}`.slice(0, 250);
-          const cache = await sb.from("trajets_ors").select("duree_min, distance_km, ferry, de_trouve, vers_trouve, moteur").eq("entite_id", entiteId).eq("cle", cle).maybeSingle();
-          if (cache.data) return cache.data;
           // Les coordonnées d'un port données dans la table passent avant la recherche ; deux recherches l'une après l'autre (cadence).
           const a = coords && coords.de ? { ...coords.de, label: de } : await situer(de);
           const b = coords && coords.vers ? { ...coords.vers, label: vers } : await situer(vers);
           if (!a || !b) return null;
+          // Gardé par position, dans le sens du trajet ; les libellés rendus sont ceux de cette demande.
+          const cle = cleItineraire(a, b);
+          const cache = await sb.from("trajets_ors").select("duree_min, distance_km, ferry, moteur").eq("entite_id", entiteId).eq("cle", cle).gte("maj_le", valideDepuis).maybeSingle();
+          if (cache.data) return { ...cache.data, de_trouve: a.label, vers_trouve: b.label };
           const r = moteur === "ors" ? lireItineraire(await appel(`${orsUrl}${ORS_ITINERAIRE}`, { method: "POST", body: JSON.stringify(corpsItineraire(a, b)) })) : lireOsrm(await appel(`${OSRM_BASE}${cheminOsrm(a, b)}`));
           if (!r) return null;
           const ligne = { ...r, de_trouve: a.label, vers_trouve: b.label, moteur };
@@ -271,7 +320,7 @@ Deno.serve(async (req) => {
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
   const messages = historique(debutValide([...(anciens.data || [])].reverse()));
   const memo = memoDepuis([...messages, { role: "user", content: message }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
-  const ctx = { charger, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
+  const ctx = { charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

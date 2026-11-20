@@ -46,10 +46,34 @@ const masquesDe = (partenaires) => new Set((partenaires || []).filter((p) => p.a
 // R- (réservation), C- (client). Huit caractères de l'identifiant suffisent dans une entreprise ; la fonction relit l'identifiant complet.
 export const refDe = (genre, id) => `${genre}-${String(id || "").replace(/-/g, "").slice(0, 8)}`;
 export const trouverRef = (ref, lignes) => {
-  const m = /^([A-Z])-([0-9a-f]{8})$/i.exec(String(ref || "").trim());
-  if (!m) return null;
-  return (lignes || []).find((l) => String(l.id).replace(/-/g, "").toLowerCase().startsWith(m[2].toLowerCase())) || null;
+  const p = prefixeRef(ref);
+  if (!p) return null;
+  return (lignes || []).find((l) => String(l.id).replace(/-/g, "").toLowerCase().startsWith(p)) || null;
 };
+export function prefixeRef(ref) {
+  const m = /^([A-Z])-([0-9a-f]{8})$/i.exec(String(ref || "").trim());
+  return m ? m[2].toLowerCase() : null;
+}
+
+// ---- Recherche dans la base (20.11.2026, pensé pour des milliers de clients) -----------------------------------------------------------
+// La fonction ne charge plus des tables entières : elle demande à la base une liste courte de candidats, que les outils filtrent ensuite
+// avec leurs règles habituelles (accents, mots, téléphone). Les motifs sont larges exprès : une voyelle ou un « c » peut être accentué dans
+// la base (« Jérôme », « François »), il devient « _ » (un caractère quelconque). Rien d'autre que [a-z0-9_%] n'entre dans un motif.
+export const motifNom = (mot) => `%${sansAccents(mot).replace(/[^a-z0-9]/g, "_").replace(/[aeiouyc]/g, "_")}%`;
+// Le téléphone est souvent écrit avec des espaces ou des points : les 8 derniers chiffres, n'importe quoi entre eux.
+export const motifTelephone = (chiffres) => `%${String(chiffres || "").replace(/\D/g, "").slice(-8).split("").join("%")}%`;
+// Les clés d'hôtel possibles d'un lieu : chaque suite de mots (« Jai Tiki Retreat, Klong Nin » → « jai tiki retreat », « klong nin »…).
+// La table des hôtels se lit par ces clés, au lieu d'être chargée entière.
+export function clesHotelPossibles(lieu, maxMots = 8) {
+  const mots = cleHotel(String(lieu || "").slice(0, 300)).split(" ").filter(Boolean).slice(0, 24);
+  const cles = new Set();
+  for (let i = 0; i < mots.length; i++) for (let j = i + 1; j <= Math.min(mots.length, i + maxMots); j++) cles.add(mots.slice(i, j).join(" "));
+  // Le nom entier et le nom avant la virgule, même longs.
+  cles.add(cleHotel(String(lieu || "").slice(0, 300)));
+  cles.add(cleHotel(String(lieu || "").split(",")[0].slice(0, 300)));
+  return [...cles].filter((c) => c.length >= 3 && c.length <= 160);
+}
+const hotelsDe = async (ctx, lieux) => (ctx.hotelsPour ? await ctx.hotelsPour(lieux) : (await ctx.charger("hotels_lieux")) || []);
 
 // Les noms des prestataires retirés d'un mode (« Satun speedboat » → « speedboat ») : aucun nom de compagnie ne part.
 function sansNoms(t, noms) {
@@ -365,7 +389,7 @@ export async function horairesTrajet(e, ctx) {
 export async function situerHotels(e, ctx) {
   const noms = [...new Set((e.noms || []).map((n) => texte(String(n).split("\n")[0], 120)).filter(Boolean))].slice(0, 8);
   if (!noms.length) return { resultat: { erreur: "aucun_nom" } };
-  const connus = (await ctx.charger("hotels_lieux")) || [];
+  const connus = (await hotelsDe(ctx, noms)) || [];
   const hotels = [];
   const aChercher = [];
   for (const nom of noms) {
@@ -388,7 +412,7 @@ export async function situerHotels(e, ctx) {
 // La durée d'un trajet en voiture, dans l'ordre de temps.js : openrouteservice, table, table à vérifier, démo. ctx.ors et
 // ctx.simule ne sont posés que si la fonction les a (clé ORS, démonstration).
 // Un trajet qui passe par un ferry de la table se calcule en trois morceaux (temps.js, dureeAvecFerry) ; { manque } dit le morceau sans durée.
-const dureeDe = async (ctx, de, vers) => dureeAvecFerry(de, vers, { lignes: (await ctx.charger("temps_trajets")) || [], liaisons: (await ctx.charger("liaisons_ferry")) || [], hotels: (await ctx.charger("hotels_lieux")) || [], ors: ctx.ors || null, simule: ctx.simule || null });
+const dureeDe = async (ctx, de, vers) => dureeAvecFerry(de, vers, { lignes: (await ctx.charger("temps_trajets")) || [], liaisons: (await ctx.charger("liaisons_ferry")) || [], hotels: await hotelsDe(ctx, [de, vers]), ors: ctx.ors || null, simule: ctx.simule || null });
 const cleEstimation = (de, vers) => clePaire(de, vers);
 // Ce qui a manqué côté OpenStreetMap (serveur et code d'erreur, rien d'un client), pour comprendre une panne en relisant l'historique.
 const diagnostic = (ctx) => ({ ...(ctx.moteur === undefined ? {} : { moteur: ctx.moteur || "aucun" }), ...(ctx.notes && ctx.notes.length ? { pannes: ctx.notes.slice(-4) } : {}) });
@@ -454,7 +478,8 @@ export async function estimerTempsWeb(e, ctx, memo) {
 // ---- Clients et dossiers ---------------------------------------------------------------------------------------------------------
 
 export async function chercherClients(e, ctx) {
-  const [clients, dossiers] = await Promise.all([ctx.charger("clients"), ctx.charger("dossiers")]);
+  // ctx.chercherClients : candidats lus dans la base par la fonction ; sinon (essais) les tables entières.
+  const [clients, dossiers] = ctx.chercherClients ? await ctx.chercherClients(e.recherche) : await Promise.all([ctx.charger("clients"), ctx.charger("dossiers")]);
   const q = sansAccents(e.recherche).trim();
   const chiffres = String(e.recherche || "").replace(/\D/g, "");
   if (q.length < 2) return { resultat: { erreur: "recherche_trop_courte" } };
@@ -482,7 +507,7 @@ export async function chercherClients(e, ctx) {
 }
 
 export async function lireDossier(e, ctx) {
-  const [dossiers, clients, reservations] = await Promise.all([ctx.charger("dossiers"), ctx.charger("clients"), ctx.charger("reservations")]);
+  const [dossiers, clients, reservations] = ctx.dossierPour ? await ctx.dossierPour(e.dossier) : await Promise.all([ctx.charger("dossiers"), ctx.charger("clients"), ctx.charger("reservations")]);
   const d = trouverRef(e.dossier, dossiers) || (dossiers || []).find((x) => sansAccents(x.ref) === sansAccents(e.dossier).trim());
   if (!d) return { resultat: { erreur: "dossier_introuvable" } };
   const c = (clients || []).find((x) => x.id === d.client_id);
@@ -628,12 +653,12 @@ export async function proposer(nom, e, ctx, memo) {
     return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services } };
   }
   if (nom === "proposer_reservation") {
-    const d = trouverRef(e.dossier, await ctx.charger("dossiers"));
+    const d = trouverRef(e.dossier, ctx.parRef ? await ctx.parRef("dossiers", e.dossier) : await ctx.charger("dossiers"));
     if (!d) return { erreur: "dossier_introuvable" };
     return { genre: "reservation", titre: texte(e.titre, 120), donnees: { dossier_id: d.id, dossier_ref: texte(d.ref, 30), service: await serviceDepuis(e.service, ctx, tapes) } };
   }
   if (nom === "proposer_modification") {
-    const r = trouverRef(e.reservation, await ctx.charger("reservations"));
+    const r = trouverRef(e.reservation, ctx.parRef ? await ctx.parRef("reservations", e.reservation) : await ctx.charger("reservations"));
     if (!r) return { erreur: "reservation_introuvable" };
     const v = texte(e.valeur, 300);
     const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), remarque: !!v }[e.champ];

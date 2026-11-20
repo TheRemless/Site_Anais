@@ -28,6 +28,11 @@ export function motsLieu(s) {
 export const cleZone = (s) => [...new Set(motsLieu(s))].sort().join(" ");
 // Clé d'une paire, la même dans les deux sens : une ligne « Koh Lanta → Krabi Airport » sert aussi au retour.
 export const clePaire = (a, b) => [cleZone(a), cleZone(b)].sort().join(" | ");
+// Un itinéraire calculé (trajets_ors) se garde par la position de ses deux bouts, arrondie à 0,001° (environ 110 m), dans le sens du
+// trajet : deux écritures du même hôtel (« Jai Tiki », « Jai Tiki Retreat, Klong Nin ») retrouvent le même itinéraire.
+export const cleItineraire = (a, b) => `${Number(a.lat).toFixed(3)},${Number(a.lon).toFixed(3)} > ${Number(b.lat).toFixed(3)},${Number(b.lon).toFixed(3)}`;
+// Ce qu'OpenStreetMap a calculé (lieux, itinéraires) est recalculé après six mois : routes et données changent. Jamais un lieu saisi à la main.
+export const VALIDITE_JOURS = 180;
 
 // La zone de la table qui correspond le mieux à un lieu : tous les mots de la zone sont dans le lieu, la zone la plus précise l'emporte
 // (« Krabi Airport » plutôt que « Krabi » pour « Krabi International Airport »). Un hôtel connu (hotels_lieux) passe par sa zone puis son lieu.

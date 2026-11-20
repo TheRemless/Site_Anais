@@ -57,7 +57,21 @@ La table se pré-remplit d'un bouton, chaque ligne « à vérifier » : durées 
 
 Les coordonnées des deux ports du ferry de Lanta viennent d'OpenStreetMap (bac pour voitures, way 45897552) : 7.6823683, 99.0900688 côté île (Khlong Mak) et 7.6930427, 99.0992049 côté continent. Le côté a été vérifié avec OSRM : depuis l'hôpital de Krabi, le bout continent s'atteint sans ferry (73 min), le bout île avec (92 min).
 
-**openrouteservice** : `https://api.heigit.org/openrouteservice/v2/directions/driving-car/json` et `/pelias/v1/search` (adresses relevées dans le client officiel, 19.11.2026), clé dans l'en-tête `Authorization`. Quota gratuit : 2 000 itinéraires par jour, 40 par minute (FAQ d'ORS). Chaque résultat est gardé en base (`lieux_geo`, `trajets_ors`) et n'est pas recalculé. Seuls partent des noms de lieux et des coordonnées, jamais une donnée de client. **Conditions d'usage commercial et d'attribution : non vérifiées**, la page https://account.heigit.org/info/tos ne se lit qu'avec un navigateur. À lire par Jérémy avant la mise en service.
+**openrouteservice** : `https://api.heigit.org/openrouteservice/v2/directions/driving-car/json` et `/pelias/v1/search` (adresses relevées dans le client officiel, 19.11.2026), clé dans l'en-tête `Authorization`. Quota gratuit : 2 000 itinéraires par jour, 40 par minute (FAQ d'ORS). Chaque résultat est gardé en base (`lieux_geo`, `trajets_ors`) et recalculé après six mois (un lieu posé à la main ne l'est jamais). Seuls partent des noms de lieux et des coordonnées, jamais une donnée de client. **Conditions d'usage commercial et d'attribution : non vérifiées**, la page https://account.heigit.org/info/tos ne se lit qu'avec un navigateur. À lire par Jérémy avant la mise en service.
+
+## Tenir dans la durée (20.11.2026)
+
+Question de Jérémy : dans deux ans, avec des milliers de demandes, la base ne sera-t-elle pas trop lente ou trop chère à lire ? Réponse retenue :
+
+| Donnée | Comment elle grandit | Comment elle se lit |
+|---|---|---|
+| Table des temps de trajet (`temps_trajets`) | Seulement par Nani (ou le pré-remplissage) : quelques centaines de lignes | Chargée entière, une fois par échange, jamais envoyée à Claude |
+| Itinéraires calculés (`trajets_ors`) | Une ligne par paire de positions (arrondies à 110 m environ), pas par écriture du nom | Une ligne lue par sa clé ; recalculée après six mois |
+| Lieux trouvés (`lieux_geo`) | Une ligne par écriture d'un lieu | Une ligne lue par sa clé ; recalculée après six mois |
+| Hôtels (`hotels_lieux`) | Une ligne par hôtel situé | Lue par les noms de la demande, jamais entière |
+| Clients, dossiers, services | Avec l'activité | Cherchés dans la base (nom, téléphone, référence), quelques lignes |
+
+Claude ne reçoit que le résultat d'un outil (huit clients au plus, une durée), jamais une table : le nombre de lignes en base ne change pas le coût en jetons.
 
 ## Fichiers
 

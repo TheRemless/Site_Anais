@@ -7,7 +7,8 @@ import { planifierCourse, tempsSimule, reglagesPlanning, versHeure } from "../su
 import { dureeEntre, ligneDeLaTable, zoneDuLieu, minutesDe, dureesTapees, lignesDuSite, lignesDesBateaux, lignesDesZones, lignesNouvelles, clePaire, lireItineraire, lireGeocode, corpsItineraire, parametresGeocode } from "../supabase/functions/agent/temps.js";
 import { lireEstimation } from "../supabase/functions/agent/estimation.js";
 import { dureeAvecFerry as dureeAvecFerryDe } from "../supabase/functions/agent/temps.js";
-import { OUTILS, executer, entreeValide, memoDepuis, refDe, trouverRef, controlerReponse, montantsTapes } from "../supabase/functions/agent/outils.js";
+import { OUTILS, executer, entreeValide, memoDepuis, refDe, trouverRef, controlerReponse, montantsTapes, motifNom, motifTelephone, clesHotelPossibles, prefixeRef } from "../supabase/functions/agent/outils.js";
+import { cleItineraire, VALIDITE_JOURS } from "../supabase/functions/agent/temps.js";
 import { consignes, controlerAcces, parametres, ligneJournal, coutEchange, historique, titreDepuis, signe } from "../supabase/functions/agent/prompt.js";
 
 const ENT = "11111111-1111-4111-8111-111111111111";
@@ -290,6 +291,53 @@ test("clients et dossiers : recherche par nom ou téléphone, services sans pres
   assert.equal(d.contenu.services[0].heure_pickup, "09:00");
   assert.ok(!JSON.stringify(d.contenu).includes("partenaire"));
   assert.equal((await executer("lire_dossier", { dossier: "2026-0142" }, ctxDe(), nouveauMemo())).contenu.reference, "2026-0142");
+});
+
+test("recherche dans la base : motifs larges, clés d'hôtel, référence courte", () => {
+  assert.equal(motifNom("Jérôme"), "%j_r_m_%");
+  assert.equal(motifNom("50%_x"), "%50__x%");
+  assert.match(motifNom("o'neil,(x)"), /^%[a-z0-9_]+%$/);
+  assert.equal(motifTelephone("+66 81 234 5678"), "%1%2%3%4%5%6%7%8%");
+  const cles = clesHotelPossibles("Jai Tiki Retreat, Klong Nin");
+  for (const c of ["jai tiki retreat", "klong nin", "jai tiki retreat klong nin", "tiki"]) assert.ok(cles.includes(c), c);
+  assert.ok(!cles.includes("ji"));
+  const long = "Un Hotel Au Nom Vraiment Tres Tres Long Sur La Plage De Klong Dao";
+  assert.ok(clesHotelPossibles(long).includes(long.toLowerCase()));
+  assert.equal(prefixeRef("D-1A2B3C4D"), "1a2b3c4d");
+  assert.equal(prefixeRef("2026-0142"), null);
+});
+
+test("itinéraires gardés par position : même clé pour deux écritures, sens du trajet gardé, six mois", () => {
+  const a = { lat: 7.5612341, lon: 99.0398762 };
+  const b = { lat: 8.0995, lon: 98.9061 };
+  assert.equal(cleItineraire(a, b), "7.561,99.040 > 8.100,98.906");
+  assert.equal(cleItineraire({ lat: 7.56125, lon: 99.03991 }, b), cleItineraire(a, b));
+  assert.notEqual(cleItineraire(b, a), cleItineraire(a, b));
+  assert.equal(VALIDITE_JOURS, 180);
+});
+
+test("clients, dossiers et hôtels lus par la fonction : aucune table entière chargée", async () => {
+  const charges = [];
+  const recherches = [];
+  const ctx = ctxDe({
+    charger: async (n) => (charges.push(n), donnees[n] || []),
+    chercherClients: async (q) => (recherches.push(q), [donnees.clients, donnees.dossiers]),
+    dossierPour: async () => [donnees.dossiers, donnees.clients, donnees.reservations],
+    parRef: async (table) => donnees[table],
+    hotelsPour: async (lieux) => donnees.hotels_lieux.filter((h) => lieux.some((l) => clesHotelPossibles(l).includes(h.cle))),
+  });
+  const c = await executer("chercher_clients", { recherche: "Martin" }, ctx, nouveauMemo());
+  assert.equal(c.contenu.clients[0].dossiers[0].reference, "2026-0142");
+  assert.deepEqual(recherches, ["Martin"]);
+  const d = await executer("lire_dossier", { dossier: "2026-0142" }, ctx, nouveauMemo());
+  assert.equal(d.contenu.services[0].heure_pickup, "09:00");
+  const memo = nouveauMemo();
+  const r = await executer("proposer_reservation", { titre: "Ajout", dossier: refDe("D", donnees.dossiers[0].id), service: service({}) }, ctx, memo);
+  assert.equal(r.carte.donnees.dossier_id, donnees.dossiers[0].id);
+  const h = await executer("situer_hotels", { noms: ["Paradise Resort Phi Phi"] }, ctx, nouveauMemo());
+  assert.equal(h.contenu.hotels[0].zone, "Loh Dalum");
+  await executer("temps_de_route", { de: "Paradise Resort Phi Phi", vers: "Krabi Airport" }, ctx, nouveauMemo());
+  for (const t of ["clients", "dossiers", "reservations", "hotels_lieux"]) assert.ok(!charges.includes(t), t);
 });
 
 // ---- Propositions ------------------------------------------------------------------------------------------------------------
