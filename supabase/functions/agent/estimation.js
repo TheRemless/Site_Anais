@@ -33,7 +33,7 @@ export function parametresEstimation(de, vers) {
     model: MODELE_ESTIMATION,
     max_tokens: 4000,
     output_config: { effort: "low" },
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2, user_location: { type: "approximate", country: "TH", timezone: "Asia/Bangkok" } }, OUTIL_DUREE],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2 }, OUTIL_DUREE],
     tool_choice: { type: "auto" },
     system: [{ type: "text", text: consignes }],
     messages: [{ role: "user", content: `<de>${String(de).slice(0, 160)}</de>\n<vers>${String(vers).slice(0, 160)}</vers>` }],

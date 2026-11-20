@@ -237,7 +237,15 @@ Deno.serve(async (req) => {
     }
   };
   // Sans clé ORS : Nominatim, puis Photon quand Nominatim ne rend rien (refus des serveurs de Supabase, lieu introuvable).
+  // Chaque écriture essayée (nom, plage de l'hôtel) se lit d'abord dans les lieux connus de l'entreprise : Nominatim et Photon refusent les
+  // serveurs de Supabase (403, 20.11.2026), les lieux habituels (plages, ports, aéroports, hôpitaux) sont relevés depuis un poste et posés
+  // en base (scripts/lieux-geo).
   const chercher = async (v: string) => {
+    const k = cleZone(v);
+    if (k) {
+      const connu = await sb.from("lieux_geo").select("lon, lat, label").eq("entite_id", entiteId).eq("cle", k).or(`origine.eq.saisie,maj_le.gte."${valideDepuis}"`).maybeSingle();
+      if (connu.data) return { lon: Number(connu.data.lon), lat: Number(connu.data.lat), label: connu.data.label };
+    }
     if (moteur === "ors") return lireGeocode(await appel(`${orsUrl}${ORS_GEOCODE}?${parametresGeocode(v)}`, { method: "GET" }));
     return lireNominatim(await appel(`${NOMINATIM_BASE}/search?${parametresNominatim(v)}`)) || lirePhoton(await appel(`${PHOTON_BASE}/api/?${parametresPhoton(v)}`), v);
   };

@@ -146,7 +146,8 @@ test("situer : recherche web de base (Haiku 5.5), deux recherches par hôtel au 
   const web = params.tools.find((t) => t.name === "web_search");
   assert.equal(web.type, "web_search_20250305");
   assert.equal(web.max_uses, 7);
-  assert.deepEqual(web.user_location, { type: "approximate", country: "TH", timezone: "Asia/Bangkok" });
+  // Refusé par l'API le 20.11.2026 (« Country code TH is not supported ») : aucune localisation, la Thaïlande est dans les consignes.
+  assert.equal(web.user_location, undefined);
   assert.equal(params.tools.find((t) => t.name === "situer_hotels").strict, true);
   assert.deepEqual(params.tool_choice, { type: "auto" });
   assert.equal(params.output_config.format, undefined, "pas de sortie JSON imposée avec la recherche web : l'outil strict tient ce rôle");
