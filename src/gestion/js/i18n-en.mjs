@@ -3858,6 +3858,7 @@ export const EN = {
   "la liaison de ferry de Koh Lanta (Khlong Mak, 1 h)": "the Koh Lanta ferry link (Khlong Mak, 1 h)",
   "OpenStreetMap": "OpenStreetMap",
   "Itinéraire OSRM, données © contributeurs OpenStreetMap": "Route by OSRM, data © OpenStreetMap contributors",
+  "Itinéraire Google Maps": "Route by Google Maps",
   "Itinéraire openrouteservice, données © contributeurs OpenStreetMap": "Route by openrouteservice, data © OpenStreetMap contributors",
   // Importer une brochure (20.11.2026)
   "Choisissez d'abord la photo, la capture ou le PDF de la brochure.": "First choose the photo, screenshot or PDF of the brochure.",

@@ -16,7 +16,7 @@ export const sansAccents = (s) =>
     .toLowerCase();
 
 // Mots d'un lieu, sans les mots qui ne le distinguent pas (« Koh », « Island ») ; « aéroport » s'écrit « airport », « ville » « town ».
-const SYNONYMES = { aeroport: "airport", ville: "town", hopital: "hospital", embarcadere: "pier", jetee: "pier", ko: "koh" };
+const SYNONYMES = { aeroport: "airport", ville: "town", hopital: "hospital", embarcadere: "pier", jetee: "pier", ko: "koh", bkk: "suvarnabhumi", muang: "mueang", train: "railway", gare: "railway" };
 export function motsLieu(s) {
   return sansAccents(s)
     .replace(/[^a-z0-9]+/g, " ")
@@ -73,7 +73,7 @@ export async function dureeEntre(de, vers, { lignes = [], hotels = [], ors = nul
   const l = ligneDeLaTable(de, vers, lignes, hotels);
   const deLigne = (x, a_verifier) => ({ duree_min: x.duree_min, ferry: !!x.ferry, marge_min: x.marge_min || 0, source: a_verifier ? "table_a_verifier" : "table", a_verifier, ligne: { de: x.de, vers: x.vers, source: x.source || "", source_date: x.source_date || "" } });
   const r = ors ? await ors(de, vers, coords) : null;
-  if (r && r.duree_min > 0) return { duree_min: r.duree_min, distance_km: r.distance_km ?? null, ferry: !!(r.ferry || (l && l.ferry)), marge_min: l ? l.marge_min || 0 : 0, source: "ors", moteur: r.moteur === "osrm" ? "osrm" : "ors", a_verifier: false, de_trouve: r.de_trouve || "", vers_trouve: r.vers_trouve || "" };
+  if (r && r.duree_min > 0) return { duree_min: r.duree_min, distance_km: r.distance_km ?? null, ferry: !!(r.ferry || (l && l.ferry)), marge_min: l ? l.marge_min || 0 : 0, source: "ors", moteur: MOTEURS.includes(r.moteur) ? r.moteur : "ors", a_verifier: false, de_trouve: r.de_trouve || "", vers_trouve: r.vers_trouve || "" };
   if (l && !l.a_verifier && l.duree_min > 0) return deLigne(l, false);
   if (l && l.duree_min > 0) return deLigne(l, true);
   const s = simule ? simule(de, vers) : null;
@@ -353,8 +353,62 @@ export function lireNominatim(json) {
   return { lon, lat, label: String(r.display_name || r.name || "").slice(0, 200), confiance: Number.isFinite(Number(r.importance)) ? Number(r.importance) : null };
 }
 
+// ---- Google Maps (décision de Jérémy du 20.11.2026) -------------------------------------------------------------------------------
+// Test sur les 48 lieux de pickup réels : OpenStreetMap en place juste une vingtaine, Photon se trompe une fois sur trois, et Nominatim
+// comme Photon refusent les serveurs de Supabase. Google Places (Text Search, « Pro » : 5 000 gratuits par mois) situe le lieu, Google
+// Routes (Compute Routes « Essentials », sans trafic : 10 000 gratuits par mois) donne la durée. Clé GOOGLE_MAPS_API_KEY, quotas bloqués
+// sous le gratuit dans la console Google. Coordonnées gardées 30 jours au plus (conditions de Google), jamais au-delà.
+export const MOTEURS = ["ors", "osrm", "google"];
+export const GOOGLE_PLACES = "https://places.googleapis.com/v1/places:searchText";
+export const GOOGLE_ROUTES = "https://routes.googleapis.com/directions/v2:computeRoutes";
+export const CHAMPS_PLACES = "places.displayName,places.formattedAddress,places.location";
+export const CHAMPS_ROUTES = "routes.duration,routes.distanceMeters,routes.legs.steps.navigationInstruction.maneuver";
+export const VALIDITE_GOOGLE_JOURS = 30;
+// Thaïlande entière en biais (pas en limite) : Google préfère ces résultats sans exclure le reste.
+export const corpsPlaces = (texte) => ({ textQuery: String(texte || "").slice(0, 200), languageCode: "en", regionCode: "TH", pageSize: 1, locationBias: { rectangle: { low: { latitude: 5.6, longitude: 97.3 }, high: { latitude: 20.5, longitude: 105.7 } } } });
+// Un résultat n'est gardé que si son nom concorde avec le lieu demandé : tous les mots distinctifs d'un nom court (« Seahorse » ne suffit pas
+// pour « Kantiang Seahorse »), les deux tiers d'un nom plus long ; un mot qui en prolonge un autre compte (« Baiyok », « Baiyoke »), de
+// même qu'un mot long à une lettre près (« Chili », « Chilli »).
+const MOTS_VAGUES_LIEU = new Set(["hotel", "resort", "beach", "retreat", "villa", "villas", "bungalow", "bungalows", "house", "road", "town", "province", "spa", "pier", "lanta", "krabi", "thailand", "suite", "suites", "boutique", "residence", "hostel", "lodge", "bay", "bangkok", "phuket", "samui", "station"]);
+// Deux mots à une lettre près (ajoutée, retirée ou changée) : « Chili » et « Chilli ».
+function unPres(a, b) {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  return a.slice(i + 1) === b.slice(i + 1) || a.slice(i) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i);
+}
+export function nomConcorde(demande, trouve) {
+  const t = new Set(motsLieu(trouve));
+  const mots = [...new Set(motsLieu(String(demande || "").split(",")[0]))].filter((w) => w.length >= 3 && !MOTS_VAGUES_LIEU.has(w));
+  const vu = (w) => t.has(w) || (w.length >= 4 && [...t].some((x) => x.length >= 4 && (x.startsWith(w) || w.startsWith(x) || (w.length >= 5 && unPres(w, x)))));
+  if (!mots.length) return motsLieu(demande).some((w) => w.length >= 4 && vu(w));
+  const n = mots.filter(vu).length;
+  return mots.length <= 2 ? n === mots.length : n * 3 >= mots.length * 2;
+}
+export function lirePlaces(json, texte = "") {
+  const p = json && Array.isArray(json.places) ? json.places[0] : null;
+  const lat = p && p.location ? Number(p.location.latitude) : NaN;
+  const lon = p && p.location ? Number(p.location.longitude) : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const nom = p.displayName && p.displayName.text ? String(p.displayName.text) : "";
+  const label = [nom, p.formattedAddress].filter(Boolean).join(", ").slice(0, 200);
+  if (texte && !nomConcorde(texte, label)) return null;
+  return { lon, lat, label, confiance: null };
+}
+export const corpsRoutes = (a, b) => ({ origin: { location: { latLng: { latitude: a.lat, longitude: a.lon } } }, destination: { location: { latLng: { latitude: b.lat, longitude: b.lon } } }, travelMode: "DRIVE", routingPreference: "TRAFFIC_UNAWARE", languageCode: "en", units: "METRIC" });
+// « 4380s » → 73 min (arrondi au-dessus), un ferry repéré par la manœuvre FERRY d'une étape.
+export function lireRoutes(json) {
+  const r = json && Array.isArray(json.routes) ? json.routes[0] : null;
+  const sec = r ? Number(String(r.duration || "").replace(/s$/, "")) : NaN;
+  if (!Number.isFinite(sec) || sec <= 0) return null;
+  const etapes = (r.legs || []).flatMap((l) => l.steps || []);
+  const ferry = etapes.some((e) => /FERRY/.test(String((e.navigationInstruction && e.navigationInstruction.maneuver) || "")));
+  return { duree_min: Math.max(1, Math.ceil(sec / 60)), distance_km: Number.isFinite(Number(r.distanceMeters)) ? Math.round(Number(r.distanceMeters) / 100) / 10 : null, ferry };
+}
+
 // Relais de Nominatim (20.11.2026) : Nominatim refuse les serveurs de Supabase (403 à chaque requête, vu en production). Photon (Komoot,
 // mêmes données OpenStreetMap, sans clé) répond. GET /api/?q=…&limit=1&lang=en, limité à la Thaïlande (bbox), réponse GeoJSON.
+// Plus appelé depuis le 20.11.2026 : refusé aux serveurs de Supabase, et un résultat faux une fois sur trois sur les lieux réels.
 export const PHOTON_BASE = "https://photon.komoot.io";
 export const parametresPhoton = (texte) => new URLSearchParams({ q: String(texte || "").slice(0, 160), limit: "1", lang: "en", bbox: "97.3,5.6,105.7,20.5" }).toString();
 // Photon cherche large : un résultat n'est gardé que s'il partage un vrai mot (pas « hotel », « beach »…) avec le lieu demandé.

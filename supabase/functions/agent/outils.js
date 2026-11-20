@@ -420,7 +420,7 @@ const diagnostic = (ctx) => ({ ...(ctx.moteur === undefined ? {} : { moteur: ctx
 export async function tempsDeRoute(e, ctx) {
   const r = await dureeDe(ctx, texte(e.de, 200), texte(e.vers, 200));
   if (!r || r.manque) return { resultat: { erreur: "temps_indisponible", ...(r && r.manque ? { morceau_sans_duree: r.manque } : {}), ...diagnostic(ctx), conseil: "Aucune durée pour ce trajet (ou ce morceau), même après avoir cherché l'hôtel sur le web : utilise estimer_temps_web sans demander. Ne demande la durée à la personne que si l'estimation échoue aussi." } };
-  return { resultat: { de: texte(e.de, 200), vers: texte(e.vers, 200), duree_route_min: r.duree_min, ...(r.ferry_fixe_min ? { ferry_min: r.ferry_fixe_min, detail: detailMorceaux(r.morceaux, texteDuree) } : {}), distance_km: r.distance_km ?? null, ferry: !!r.ferry, marge_conseillee_min: r.marge_min || 0, source: r.source, a_verifier: r.a_verifier, ...(r.de_trouve ? { de_trouve: r.de_trouve, vers_trouve: r.vers_trouve } : {}) } };
+  return { resultat: { de: texte(e.de, 200), vers: texte(e.vers, 200), duree_route_min: r.duree_min, ...(r.ferry_fixe_min ? { ferry_min: r.ferry_fixe_min, detail: detailMorceaux(r.morceaux, texteDuree) } : {}), distance_km: r.distance_km ?? null, ferry: !!r.ferry, marge_conseillee_min: r.marge_min || 0, source: r.source, ...(r.moteur ? { moteur: r.moteur } : {}), a_verifier: r.a_verifier, ...(r.de_trouve ? { de_trouve: r.de_trouve, vers_trouve: r.vers_trouve } : {}) } };
 }
 
 // Le planning d'une course. Pour chaque trajet : la durée donnée par la personne (si elle l'a tapée dans la conversation) ou une estimation

@@ -12,7 +12,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, PLAFOND_MOIS_USD_DEFAUT, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
-import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, lirePhoton, parametresGeocode, parametresNominatim, parametresPhoton, PHOTON_BASE, situerLieu, VALIDITE_JOURS } from "./temps.js";
+import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
@@ -98,6 +98,7 @@ Deno.serve(async (req) => {
   if (anciens.error) return json({ erreur: "base" }, 500);
   // Conservation : mes conversations sans message depuis 90 jours partent (sans attendre, une erreur ne bloque rien).
   sb.rpc("purger_agent_conversations", { jours: CONSERVATION_JOURS }).then(() => {}, () => {});
+  sb.rpc("purger_google_agent").then(() => {}, () => {});
 
   // ---- Données lues à la demande des outils, une fois par échange, avec la session de la personne -----------------------------------
   const cache = new Map<string, Promise<unknown[]>>();
@@ -198,6 +199,10 @@ Deno.serve(async (req) => {
   };
   // Lieux et itinéraires calculés plus vieux que six mois : relus comme absents, donc recalculés (et réécrits par-dessus).
   const valideDepuis = new Date(Date.now() - VALIDITE_JOURS * 86_400_000).toISOString();
+  // Ce qui vient de Google ne se garde que 30 jours (conditions de Google Maps Platform).
+  const valideGoogle = new Date(Date.now() - VALIDITE_GOOGLE_JOURS * 86_400_000).toISOString();
+  const lieuValide = `origine.eq.saisie,and(origine.eq.google,maj_le.gte."${valideGoogle}"),and(origine.in.(ors,nominatim),maj_le.gte."${valideDepuis}")`;
+  const trajetValide = `and(moteur.eq.google,maj_le.gte."${valideGoogle}"),and(moteur.in.(ors,osrm),maj_le.gte."${valideDepuis}")`;
 
   const anthropic = new Anthropic({ apiKey: cle, timeout: 60_000, maxRetries: 1 });
   const appels: { usage: Record<string, unknown>; modele: string }[] = [];
@@ -210,7 +215,10 @@ Deno.serve(async (req) => {
   const simules = Deno.env.get("AGENT_TRAJETS_SIMULES") === "1";
   const orsUrl = Deno.env.get("ORS_URL") || ORS_BASE;
   const osrmPermis = ORGANISATIONS_OSRM.includes(ent.data?.organisation_id || "") && Deno.env.get("AGENT_OSRM") !== "0";
-  const moteur: "ors" | "osrm" | null = cleOrs ? "ors" : osrmPermis ? "osrm" : null;
+  // Google Maps passe devant dès que sa clé est posée (Jérémy, 20.11.2026) : OpenStreetMap ne situe qu'un hôtel sur deux et refuse Supabase.
+  const cleGoogle = Deno.env.get("GOOGLE_MAPS_API_KEY");
+  const moteur: "google" | "ors" | "osrm" | null = cleGoogle ? "google" : cleOrs ? "ors" : osrmPermis ? "osrm" : null;
+  const hoteGoogle = (h: string) => h === "places.googleapis.com" || h === "routes.googleapis.com";
   const derniers = new Map<string, number>();
   // Les pannes des serveurs d'OpenStreetMap (serveur et code, rien d'un client) : rendues avec l'erreur de l'outil, gardées dans l'historique.
   const notes: string[] = [];
@@ -221,7 +229,7 @@ Deno.serve(async (req) => {
     if (refuses.has(hote)) return null;
     const attente = delaiAvant(derniers, hote, Date.now());
     if (attente) await new Promise((ok) => setTimeout(ok, attente));
-    const entetes = moteur === "ors" && hote === new URL(orsUrl).host ? { Authorization: cleOrs!, "Content-Type": "application/json" } : { "User-Agent": USER_AGENT, Accept: "application/json" };
+    const entetes = hoteGoogle(hote) && cleGoogle ? { "X-Goog-Api-Key": cleGoogle, "Content-Type": "application/json" } : moteur === "ors" && hote === new URL(orsUrl).host ? { Authorization: cleOrs!, "Content-Type": "application/json" } : { "User-Agent": USER_AGENT, Accept: "application/json" };
     try {
       const rep = await fetch(url, { ...init, headers: { ...entetes, ...(init.headers || {}) }, signal: AbortSignal.timeout(10_000) });
       if (!rep.ok) {
@@ -236,25 +244,27 @@ Deno.serve(async (req) => {
       return null;
     }
   };
-  // Sans clé ORS : Nominatim, puis Photon quand Nominatim ne rend rien (refus des serveurs de Supabase, lieu introuvable).
+  // Google Places si sa clé est posée, sinon openrouteservice, sinon Nominatim.
   // Chaque écriture essayée (nom, plage de l'hôtel) se lit d'abord dans les lieux connus de l'entreprise : Nominatim et Photon refusent les
   // serveurs de Supabase (403, 20.11.2026), les lieux habituels (plages, ports, aéroports, hôpitaux) sont relevés depuis un poste et posés
   // en base (scripts/lieux-geo).
   const chercher = async (v: string) => {
     const k = cleZone(v);
     if (k) {
-      const connu = await sb.from("lieux_geo").select("lon, lat, label").eq("entite_id", entiteId).eq("cle", k).or(`origine.eq.saisie,maj_le.gte."${valideDepuis}"`).maybeSingle();
+      const connu = await sb.from("lieux_geo").select("lon, lat, label").eq("entite_id", entiteId).eq("cle", k).or(lieuValide).maybeSingle();
       if (connu.data) return { lon: Number(connu.data.lon), lat: Number(connu.data.lat), label: connu.data.label };
     }
+    if (moteur === "google") return lirePlaces(await appel(GOOGLE_PLACES, { method: "POST", headers: { "X-Goog-FieldMask": CHAMPS_PLACES }, body: JSON.stringify(corpsPlaces(v)) }), v);
     if (moteur === "ors") return lireGeocode(await appel(`${orsUrl}${ORS_GEOCODE}?${parametresGeocode(v)}`, { method: "GET" }));
-    return lireNominatim(await appel(`${NOMINATIM_BASE}/search?${parametresNominatim(v)}`)) || lirePhoton(await appel(`${PHOTON_BASE}/api/?${parametresPhoton(v)}`), v);
+    // Photon n'est plus appelé : refusé à Supabase et faux une fois sur trois sur les lieux réels (20.11.2026).
+    return lireNominatim(await appel(`${NOMINATIM_BASE}/search?${parametresNominatim(v)}`));
   };
   const geo = new Map<string, { lon: number; lat: number; label: string } | null>();
   const situer = async (lieu: string) => {
     const k = cleZone(lieu);
     if (geo.has(k)) return geo.get(k)!;
     let g: { lon: number; lat: number; label: string } | null = null;
-    const connu = await sb.from("lieux_geo").select("lon, lat, label").eq("entite_id", entiteId).eq("cle", k).or(`origine.eq.saisie,maj_le.gte."${valideDepuis}"`).maybeSingle();
+    const connu = await sb.from("lieux_geo").select("lon, lat, label").eq("entite_id", entiteId).eq("cle", k).or(lieuValide).maybeSingle();
     if (connu.data) g = { lon: Number(connu.data.lon), lat: Number(connu.data.lat), label: connu.data.label };
     else {
       // Plusieurs écritures du même lieu (nom thaï, nom latin), puis, pour un hôtel absent d'OpenStreetMap, sa plage trouvée par le web.
@@ -266,7 +276,7 @@ Deno.serve(async (req) => {
           return r && r[0] ? r[0] : null;
         },
       });
-      if (g) await sb.from("lieux_geo").upsert({ entite_id: entiteId, cle: k, nom: lieu.slice(0, 160), lon: g.lon, lat: g.lat, label: g.label, origine: moteur === "ors" ? "ors" : "nominatim", a_verifier: true }, { onConflict: "entite_id,cle" });
+      if (g) await sb.from("lieux_geo").upsert({ entite_id: entiteId, cle: k, nom: lieu.slice(0, 160), lon: g.lon, lat: g.lat, label: g.label, origine: moteur === "google" ? "google" : moteur === "ors" ? "ors" : "nominatim", a_verifier: true }, { onConflict: "entite_id,cle" });
     }
     geo.set(k, g);
     return g;
@@ -280,9 +290,9 @@ Deno.serve(async (req) => {
           if (!a || !b) return null;
           // Gardé par position, dans le sens du trajet ; les libellés rendus sont ceux de cette demande.
           const cle = cleItineraire(a, b);
-          const cache = await sb.from("trajets_ors").select("duree_min, distance_km, ferry, moteur").eq("entite_id", entiteId).eq("cle", cle).gte("maj_le", valideDepuis).maybeSingle();
+          const cache = await sb.from("trajets_ors").select("duree_min, distance_km, ferry, moteur").eq("entite_id", entiteId).eq("cle", cle).or(trajetValide).maybeSingle();
           if (cache.data) return { ...cache.data, de_trouve: a.label, vers_trouve: b.label };
-          const r = moteur === "ors" ? lireItineraire(await appel(`${orsUrl}${ORS_ITINERAIRE}`, { method: "POST", body: JSON.stringify(corpsItineraire(a, b)) })) : lireOsrm(await appel(`${OSRM_BASE}${cheminOsrm(a, b)}`));
+          const r = moteur === "google" ? lireRoutes(await appel(GOOGLE_ROUTES, { method: "POST", headers: { "X-Goog-FieldMask": CHAMPS_ROUTES }, body: JSON.stringify(corpsRoutes(a, b)) })) : moteur === "ors" ? lireItineraire(await appel(`${orsUrl}${ORS_ITINERAIRE}`, { method: "POST", body: JSON.stringify(corpsItineraire(a, b)) })) : lireOsrm(await appel(`${OSRM_BASE}${cheminOsrm(a, b)}`));
           if (!r) return null;
           const ligne = { ...r, de_trouve: a.label, vers_trouve: b.label, moteur };
           await sb.from("trajets_ors").upsert({ entite_id: entiteId, cle, ...ligne }, { onConflict: "entite_id,cle" });

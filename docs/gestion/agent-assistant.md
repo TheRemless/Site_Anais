@@ -59,6 +59,19 @@ Les coordonnées des deux ports du ferry de Lanta viennent d'OpenStreetMap (bac 
 
 **openrouteservice** : `https://api.heigit.org/openrouteservice/v2/directions/driving-car/json` et `/pelias/v1/search` (adresses relevées dans le client officiel, 19.11.2026), clé dans l'en-tête `Authorization`. Quota gratuit : 2 000 itinéraires par jour, 40 par minute (FAQ d'ORS). Chaque résultat est gardé en base (`lieux_geo`, `trajets_ors`) et recalculé après six mois (un lieu posé à la main ne l'est jamais). Seuls partent des noms de lieux et des coordonnées, jamais une donnée de client. **Conditions d'usage commercial et d'attribution : non vérifiées**, la page https://account.heigit.org/info/tos ne se lit qu'avec un navigateur. À lire par Jérémy avant la mise en service.
 
+## Google Maps (décision de Jérémy du 20.11.2026)
+
+Test sur les 48 lieux de pickup réels : OpenStreetMap en situe juste une vingtaine. Photon se trompe une fois sur trois (« Kantiang Seahorse » placé à Hua Hin, « BKK Airport » au Laos). Nominatim comme Photon refusent les serveurs de Supabase (403). Google Places en situe 44 sur 48, au bon endroit, dont Jai Tiki, Pimalai, Kulraya et Ilmare.
+
+| Service | Usage | Gratuit par mois | Au-delà |
+|---|---|---|---|
+| Places API (New), Text Search Pro | situer un hôtel ou une activité | 5 000 | 32 $ les 1 000 |
+| Routes API, Compute Routes Essentials (sans trafic) | durée en voiture | 10 000 | 5 $ les 1 000 |
+
+Clé `GOOGLE_MAPS_API_KEY` (secret de la fonction, posée par Jérémy le 20.11.2026, aussi dans le trousseau du Mac sous « Google Maps Gestion » pour les essais). La clé est limitée à ces deux API et les quotas journaliers sont bloqués sous le gratuit (150 recherches, 300 itinéraires). Un résultat n'est gardé que si son nom concorde avec le lieu demandé (`nomConcorde` dans `temps.js`). Les coordonnées de Google ne se gardent que 30 jours (conditions de Google) : migration 53 et `purger_google_agent()`. Les lieux relevés à la main (`saisie`) passent toujours avant Google.
+
+Essai du 20.11.2026, outil `planifier_course` tel quel depuis le Mac : Jai Tiki (Sala Dan, près de Klong Dao, et non Klong Nin) → Khlong Mak 16 min, ferry 1 h, embarcadère → Krabi Nakharin 1 h 14, marge 10 min. Pickup 13:20 pour 16:00 ; départ 17:00 après l'attente ; aéroport 17:18.
+
 ## Tenir dans la durée (20.11.2026)
 
 Question de Jérémy : dans deux ans, avec des milliers de demandes, la base ne sera-t-elle pas trop lente ou trop chère à lire ? Réponse retenue :
