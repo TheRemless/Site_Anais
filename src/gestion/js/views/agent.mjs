@@ -302,7 +302,7 @@ export async function vueAgent(idOuvert = "") {
         bulle = null;
         texteRecu = "";
       } else if (ev.t === "erreur") {
-        etape.before(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(ev.erreur)));
+        etape.before(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(ev.erreur), ev.detail ? h("small", { class: "agent-erreur-detail" }, ev.detail) : null));
       }
       descendre();
     });

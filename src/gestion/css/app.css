@@ -2053,3 +2053,4 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .as-derniers { margin: 8px 0 0; padding-left: 18px; }
 .as-derniers li { margin-bottom: 4px; overflow-wrap: anywhere; }
 .as-quand { font-variant-numeric: tabular-nums; color: var(--texte-2); }
+.agent-erreur-detail { display: block; margin-top: 4px; font-size: 0.8rem; opacity: 0.85; overflow-wrap: anywhere; }
