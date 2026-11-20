@@ -83,33 +83,6 @@ Deno.serve(async (req) => {
   const admin = createClient(URL_SB, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   const { data: qui, error: errQui } = await sb.auth.getUser();
   if (errQui || !qui?.user) return json({ erreur: "non_connecte" }, 401);
-  let waDossier: string | null = null;
-  if (waId) {
-    // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle.
-    const wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id").eq("id", waId).maybeSingle();
-    if (wc.error) return json({ erreur: "base" }, 500);
-    if (!wc.data || (wc.data.entite_id && wc.data.entite_id !== entiteId)) return json({ erreur: "whatsapp_introuvable" }, 404);
-    const wm = await sb.from("whatsapp_messages").select("sens, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waId).order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA);
-    if (wm.error) return json({ erreur: "base" }, 500);
-    const messagesWa = wm.data || [];
-    // Les photos et PDF copiés, téléchargés avec la session (politique du stockage « whatsapp ») ; un fichier illisible est sauté.
-    const fichiers: { nom: string; media_type: string; data: string }[] = [];
-    for (const f of mediasAJoindre(messagesWa)) {
-      const { data: blob, error } = await sb.storage.from("whatsapp").download(f.chemin);
-      if (error || !blob) continue;
-      const octets = new Uint8Array(await blob.arrayBuffer());
-      let bin = "";
-      for (let i = 0; i < octets.length; i += 0x8000) bin += String.fromCharCode(...octets.subarray(i, i + 0x8000));
-      fichiers.push({ nom: f.nom, media_type: f.media_type, data: btoa(bin) });
-    }
-    const dossierWa = waMode === "maj" && wc.data.dossier_id ? (await sb.from("dossiers").select("id, ref").eq("id", wc.data.dossier_id).maybeSingle()).data : null;
-    if (waMode === "maj" && !dossierWa) return json({ erreur: "dossier_introuvable" }, 404);
-    const verif = verifierPieces(fichiers);
-    demande.fichiers = verif.ok ? fichiers : [];
-    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: demande.fichiers.length }).slice(0, LONGUEUR_MAX);
-    controle = verifierPieces(demande.fichiers);
-    waDossier = dossierWa ? dossierWa.id : null;
-  }
   const userId = qui.user.id;
 
   const [regl, perms, echanges, mois, ent, budget] = await Promise.all([
@@ -144,6 +117,41 @@ Deno.serve(async (req) => {
   }
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
   if (!cle) return json({ erreur: "non_configure" }, 503);
+  let waDossier: string | null = null;
+  if (waId) {
+    // Après les contrôles d'accès (agent allumé, droits, limites) : rien n'est lu ni téléchargé pour une demande refusée.
+    // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle. Elle doit être rangée dans
+    // l'entreprise de l'Assistant (l'écran la range avant) : une conversation à trier n'entre jamais dans une autre entreprise.
+    const wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id").eq("id", waId).maybeSingle();
+    if (wc.error) return json({ erreur: "base" }, 500);
+    if (!wc.data || wc.data.entite_id !== entiteId) return json({ erreur: "whatsapp_introuvable" }, 404);
+    const wm = await sb.from("whatsapp_messages").select("sens, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waId).order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA);
+    if (wm.error) return json({ erreur: "base" }, 500);
+    const messagesWa = wm.data || [];
+    // Seulement les pièces cochées par la personne dans l'écran (rien par défaut) : une capture de virement ou de compte ne part jamais
+    // d'office chez Anthropic. Téléchargées avec la session (politique du stockage « whatsapp ») ; chaque fichier est contrôlé seul.
+    const fichiers: { nom: string; media_type: string; data: string }[] = [];
+    let ecartes = 0;
+    for (const f of mediasAJoindre(messagesWa, { choisis: demande.whatsapp_pieces })) {
+      const { data: blob, error } = await sb.storage.from("whatsapp").download(f.chemin);
+      if (error || !blob) {
+        ecartes++;
+        continue;
+      }
+      const octets = new Uint8Array(await blob.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < octets.length; i += 0x8000) bin += String.fromCharCode(...octets.subarray(i, i + 0x8000));
+      const piece = { nom: f.nom, media_type: f.media_type, data: btoa(bin) };
+      if (verifierPieces([...fichiers, piece]).ok) fichiers.push(piece);
+      else ecartes++;
+    }
+    const dossierWa = waMode === "maj" && wc.data.dossier_id ? (await sb.from("dossiers").select("id, ref").eq("id", wc.data.dossier_id).eq("entite_id", entiteId).maybeSingle()).data : null;
+    if (waMode === "maj" && !dossierWa) return json({ erreur: "dossier_introuvable" }, 404);
+    demande.fichiers = fichiers;
+    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX });
+    controle = verifierPieces(demande.fichiers);
+    waDossier = dossierWa ? dossierWa.id : null;
+  }
 
   // La conversation : nouvelle, ou une des miennes (RLS : une conversation d'une autre personne n'est pas lisible).
   let conv: { id: string; titre: string; dossier_id: string | null; cree_le?: string } | null = null;

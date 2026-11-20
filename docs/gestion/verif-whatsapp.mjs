@@ -235,6 +235,8 @@ r = await essaie(u.adminTaxi, `insert into agent_conversations (entite_id, whats
 ok(r.ok, "l'administrateur de Taxi ouvre l'Assistant depuis sa conversation WhatsApp" + (r.ok ? "" : ` (${r.err})`));
 r = await essaie(u.mook, `insert into agent_conversations (entite_id, whatsapp_conversation_id) values ('${ent.secret}', '${r1.conversation_id}') returning id`);
 ok(!r.ok, "personne ne relie l'Assistant à une conversation WhatsApp qu'elle ne voit pas");
+r = await essaie(u.both, `insert into agent_conversations (entite_id, whatsapp_conversation_id) values ('${ent.secret}', '${r1.conversation_id}') returning id`);
+ok(!r.ok, "une conversation de l'Assistant de Secret ne se relie pas à une conversation WhatsApp rangée chez Taxi");
 
 console.log(echecs ? `${echecs} échec(s)` : "tout est ok");
 process.exit(echecs ? 1 : 0);

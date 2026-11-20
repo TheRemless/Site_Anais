@@ -13,7 +13,8 @@ create index if not exists agent_conversations_whatsapp on agent_conversations (
 create or replace function agent_whatsapp_lisible() returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if new.whatsapp_conversation_id is not null and (tg_op = 'INSERT' or new.whatsapp_conversation_id is distinct from old.whatsapp_conversation_id) then
-    if auth.uid() is not null and not exists (select 1 from whatsapp_conversations c where c.id = new.whatsapp_conversation_id and whatsapp_lit(c.entite_id, c.organisation_id)) then
+    -- Lisible par la personne et rangée dans la même entreprise que la conversation de l'Assistant.
+    if auth.uid() is not null and not exists (select 1 from whatsapp_conversations c where c.id = new.whatsapp_conversation_id and c.entite_id = new.entite_id and whatsapp_lit(c.entite_id, c.organisation_id)) then
       raise exception 'Conversation WhatsApp introuvable.' using errcode = '42501';
     end if;
   end if;
