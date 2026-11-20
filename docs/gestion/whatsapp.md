@@ -54,6 +54,20 @@ La purge tourne dans la fonction, au plus une fois par heure. Aucun message ne s
 - **Ce qui part chez Anthropic** : le texte des 30 derniers messages de la conversation (ceux du client et de Nani), les numéros de téléphone, de compte et les IBAN masqués ; le prénom du client ; le dossier relié (services, dates, heures, prix de vente, prénom) ; ce que rendent le catalogue, les horaires et les durées. Jamais un numéro de téléphone, un nom de famille, un net, une commission ni un nom de partenaire. L'API Anthropic n'entraîne pas ses modèles sur ces données.
 - **Conservation** : une proposition part avec sa conversation, au plus tard 90 jours après sa création. Une préparation interrompue passe « échec » après 3 minutes.
 
+## Tri des messages et classement protégé (migration 60)
+
+Demande de Jérémy du 20.11.2026 : ne jamais toucher à ce que Nani a classé, et ne pas préparer de réponse à tous les messages.
+
+- **Classement protégé.** La fonction ne change jamais l'entreprise, le client, le dossier ni l'interrupteur d'une conversation déjà posés : le déclencheur `whatsapp_proteger_classement` remet l'ancienne valeur. Une conversation rangée à la main reste rangée. Seule Nani change son classement depuis l'outil. Les étiquettes de l'app WhatsApp Business ne passent pas par Gestion (Meta ne les transmet pas en coexistence) : Gestion ne les lit ni ne les modifie.
+- **Interrupteur par contact** (`reponses`) : « Automatiques » ou « Jamais pour ce contact » (ami, famille, partenaire, chauffeur).
+- **Tri, du moins cher au plus cher.** Une réponse n'est préparée que si tout passe :
+  1. le contact n'est pas réglé sur « jamais » ;
+  2. le message n'est pas une réaction, un emoji seul, un « ok », un merci, ni une photo ou un vocal sans texte (aucun appel à Claude) ;
+  3. le numéro n'est pas celui d'une fiche partenaire (téléphones du contact) ;
+  4. le budget et les limites du jour le permettent ;
+  5. Claude Haiku lit les derniers messages et répond en JSON : préparer ou non, motif, entreprise suggérée. Il faut à la fois « oui » et un motif de demande (`demande_client` ou `suivi_reservation`) ; dans le doute, non.
+- **Décision visible.** Le motif est gardé sur la conversation (`tri`) et affiché dans l'écran. Un bouton « Préparer une réponse » (fonction `whatsapp-preparer`) prépare quand même, dans les mêmes limites.
+
 ## Étapes de Jérémy (une seule fois)
 
 ### 1. Clé publique de signature

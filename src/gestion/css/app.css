@@ -2259,3 +2259,12 @@ button.agent-joint { cursor: pointer; }
 @media (max-width: 559px) { .wa-ouvrir-texte { display: none; } .wa-ouvrir-tete { width: 44px; height: 44px; padding: 0; justify-content: center; } }
 /* Réponse préparée pour une autre entreprise que celle de la conversation (à trier, ou rangée ailleurs depuis). */
 .wa-pour { margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: #fff4d6; color: #5a4300; font-size: 0.8rem; font-weight: 600; }
+/* Tri des messages (migration 60) : réglage des réponses préparées par contact, raison quand rien n'est préparé. */
+.wa-reponses { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.wa-reponses-libelle { font-size: 0.86rem; font-weight: 600; color: var(--texte-2); }
+.wa-reponses .wa-segment { min-height: 36px; padding: 0 12px; font-size: 0.86rem; }
+.wa-sans-reponse { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; margin: 12px 0 0; }
+.wa-sans-reponse .wa-prop-fait { margin: 0; }
+.wa-sans-reponse .secondaire { min-height: 40px; }
+.wa-conv-etat.sans { color: var(--texte-2); font-style: italic; }
+@media (min-width: 900px) { .wa-sans-reponse { margin: 0; padding: 10px 28px; border-top: 1px solid var(--bord); } .wa-sans-reponse .wa-prop-fait { border-top: 0; padding: 0; } }

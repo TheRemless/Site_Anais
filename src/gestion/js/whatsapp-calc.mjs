@@ -63,8 +63,55 @@ export function propositionsCourantes(propositions = []) {
 }
 export const propositionCourante = (propositions, conversationId) => propositionsCourantes((propositions || []).filter((p) => p && p.conversation_id === conversationId)).get(conversationId) || null;
 
-// Une conversation demande quelque chose : des messages non lus, ou une réponse prête à copier.
-export const aTraiter = (conv, prop) => !!conv && ((Number(conv.non_lus) || 0) > 0 || (!!prop && prop.statut === "a_faire"));
+// ---- Tri (migration 60) ------------------------------------------------------------------------------------------------------------
+// tri : { preparer, motif, entreprise, le }, écrit par la fonction « whatsapp » à chaque message du client. reponses : « auto » ou « jamais ».
+// Le tri a dit non (pas de réponse à préparer) : la conversation n'est pas « à répondre ». Une proposition créée après la décision du tri
+// (Nani a touché « Préparer une réponse ») compte de nouveau.
+export const REPONSES = ["auto", "jamais"];
+export const reponsesDe = (conv) => (conv && conv.reponses === "jamais" ? "jamais" : "auto");
+export function triDitNon(conv, prop = null) {
+  const t = conv && conv.tri && typeof conv.tri === "object" ? conv.tri : null;
+  if (!t || t.preparer !== false) return false;
+  if (prop && t.le && Date.parse(prop.cree_le || "") > Date.parse(t.le)) return false;
+  return true;
+}
+// Pourquoi aucune réponse n'est préparée pour le dernier message du client, en clair. null : pas de raison connue (tri absent, ou plus ancien
+// que le dernier message du client, qui n'est donc pas encore trié).
+export const MOTIFS_TRI = {
+  demande_client: N_("Pas de réponse préparée pour cette demande"),
+  suivi_reservation: N_("Pas de réponse préparée : suivi d'une réservation"),
+  remerciement: N_("Pas de réponse préparée : un remerciement"),
+  personnel: N_("Pas de réponse préparée : message personnel"),
+  partenaire: N_("Pas de réponse préparée : un partenaire"),
+  publicite: N_("Pas de réponse préparée : publicité"),
+  media_seul: N_("Pas de réponse préparée : photo ou vocal sans texte"),
+  contact_jamais: N_("Pas de réponse préparée : contact réglé sur Jamais"),
+  limite: N_("Pas de réponse préparée : limite du jour atteinte"),
+  tri_illisible: N_("Pas de réponse préparée : le tri n'a pas abouti, touchez Préparer une réponse"),
+  autre: N_("Pas de réponse préparée : rien à répondre"),
+};
+// Pourquoi l'agent n'a pas préparé de réponse (whatsapp_propositions.erreur), en clair.
+export const ERREURS_PROPOSITION = {
+  a_trier: N_("Conversation à trier : rangez-la dans Secret ou Taxi, puis touchez Préparer une réponse."),
+  agent_eteint: N_("L'assistant est éteint pour cette entreprise (Réglages)."),
+  interrompue: N_("La préparation a été interrompue."),
+  pas_de_reponse: N_("L'agent n'a pas proposé de réponse."),
+  credit_epuise: N_("Le crédit de l'assistant est épuisé."),
+};
+export const libelleErreurProposition = (code) => ERREURS_PROPOSITION[code] || (String(code || "").startsWith("erreur") ? N_("Erreur de l'assistant.") : null);
+export function raisonSansReponse(conv, messages = []) {
+  const t = conv && conv.tri && typeof conv.tri === "object" ? conv.tri : null;
+  const dernier = dernierEntrant(messages);
+  const aJour = !!t && t.preparer === false && (!dernier || !t.le || Date.parse(t.le) >= Date.parse(dernier));
+  // Contact repassé sur « Automatiques » depuis : le motif « Jamais » ne vaut plus, la raison générale reprend.
+  if (aJour && t.motif === "contact_jamais" && reponsesDe(conv) === "auto") return null;
+  if (aJour) return MOTIFS_TRI[t.motif] || MOTIFS_TRI.autre;
+  if (reponsesDe(conv) === "jamais") return MOTIFS_TRI.contact_jamais;
+  return null;
+}
+
+// Une conversation demande quelque chose : des messages non lus, ou une réponse prête à copier (sauf si le tri a dit non).
+export const aTraiter = (conv, prop) => !!conv && ((Number(conv.non_lus) || 0) > 0 || (!!prop && prop.statut === "a_faire" && !triDitNon(conv, prop)));
 // Badge du menu : le nombre de conversations qui demandent quelque chose.
 export function badgeWhatsApp(conversations = [], propositions = []) {
   const props = propositionsCourantes(propositions);
@@ -105,10 +152,12 @@ export const filtreDeDepart = (conversations = []) => (conversations.some((c) =>
 
 // Ligne d'état sous le nom dans la liste.
 export function etatConversation(conv, prop) {
-  if (prop && prop.statut === "a_faire") return { cle: "prete", libelle: N_("Réponse prête") };
+  if (prop && prop.statut === "a_faire" && !triDitNon(conv, prop)) return { cle: "prete", libelle: N_("Réponse prête") };
   if (prop && prop.statut === "en_cours") return { cle: "en_cours", libelle: N_("Réponse en préparation") };
   if (prop && prop.statut === "envoi") return { cle: "envoi", libelle: N_("Envoi en cours") };
   if (prop && prop.statut === "echec") return { cle: "echec", libelle: N_("Pas de réponse préparée") };
+  // Le tri a écarté le dernier message (personnel, partenaire, remerciement, contact réglé sur « Jamais ») : rien à répondre ici.
+  if (conv && conv.dernier_sens === "entrant" && triDitNon(conv, prop) && !(prop && ["en_cours", "envoi"].includes(prop.statut))) return { cle: "sans", libelle: N_("Pas de réponse à préparer") };
   if (conv && conv.dernier_sens === "sortant") return { cle: "repondu", libelle: N_("Répondu") };
   if (conv && conv.dernier_sens === "entrant") return { cle: "attend", libelle: N_("Le client attend une réponse") };
   return { cle: "", libelle: "" };
@@ -209,6 +258,16 @@ export const ERREURS_ENVOI = {
 // code inconnu) laissent un doute : le bouton Envoyer reste éteint et l'écran demande de vérifier dans WhatsApp.
 const RIEN_PARTI = new Set(["non_connecte", "droit_manquant", "contenu_interne", "fenetre_fermee", "non_configure", "numero_inconnu", "telnyx_refuse", "base", "deja_traitee"]);
 export const envoiIncertain = (code) => !RIEN_PARTI.has(code);
+// « Préparer une réponse » (fonction whatsapp-preparer, 202 puis préparation en tâche de fond).
+export const ERREURS_PREPARER = {
+  non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),
+  droit_manquant: N_("Votre rôle ne permet pas de préparer une réponse pour cette conversation."),
+  rien_a_repondre: N_("Le dernier message n'est pas du client. Rien à préparer."),
+  limite: N_("Limite atteinte (plafond du mois ou limite du jour). Répondez depuis l'app."),
+  agent_eteint: N_("L'assistant est éteint pour cette entreprise. Allumez-le dans les Réglages."),
+  non_configure: N_("La préparation des réponses n'est pas encore configurée."),
+};
+export const erreurPreparer = (code) => ERREURS_PREPARER[code] || N_("Préparation impossible pour l'instant. Réessayez dans un instant.");
 export const erreurEnvoi = (code) => (envoiIncertain(code) ? ERREURS_ENVOI.verifier_whatsapp : ERREURS_ENVOI[code]);
 
 // Adresse de l'écran : « #/whatsapp?c=<conversation>&entite=<entreprise> » (la notification l'ouvre ainsi).

@@ -198,5 +198,33 @@ ok(!r.ok, "l'outil ne peut pas purger les propositions");
 await db.query("update whatsapp_propositions set cree_le = now() - interval '91 days' where id = $1", [P]);
 ok((await db.query("select purger_whatsapp_propositions($1) n", [ORG])).rows[0].n === 1, "une proposition de plus de 90 jours est supprimée");
 
+// ---- Migration 60 : classement de Nani protégé, interrupteur par contact, tri ------------------------------------------------------
+ok(migrations.includes("migration-60-whatsapp-tri.sql"), "la migration 60 passe après la 59");
+await db.exec(lire("migration-60-whatsapp-tri.sql"));
+ok(true, "la migration 60 se rejoue sans erreur");
+const service = async (sql) => { await db.exec("select set_config('request.jwt.claim.sub', '', false)"); return db.query(sql); };
+// r1 : conversation de Taxi, client C et dossier D (relus par le numéro). r3 : rangée chez Secret à la main (source manuel).
+const avant1 = (await db.query("select entite_id, client_id, dossier_id from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0];
+await service(`update whatsapp_conversations set entite_id = '${ent.secret}', client_id = null, dossier_id = null, reponses = 'jamais' where id = '${r1.conversation_id}'`);
+const apres1 = (await db.query("select entite_id, client_id, dossier_id, reponses from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0];
+ok(apres1.entite_id === avant1.entite_id && apres1.client_id === avant1.client_id && apres1.dossier_id === avant1.dossier_id && apres1.reponses === "auto", "la fonction ne change jamais une entreprise, un client, un dossier ni l'interrupteur déjà posés");
+const c3m = (await db.query("select entite_id, entite_source from whatsapp_conversations where id = $1", [r3.conversation_id])).rows[0];
+await service(`update whatsapp_conversations set entite_id = null where id = '${r3.conversation_id}'`);
+const c3b = (await db.query("select entite_id, entite_source from whatsapp_conversations where id = $1", [r3.conversation_id])).rows[0];
+ok(c3m.entite_source === "manuel" && c3b.entite_id === c3m.entite_id, "une conversation rangée par Nani reste rangée");
+await service(`update whatsapp_conversations set tri = '{"preparer": false, "motif": "personnel"}' where id = '${r3.conversation_id}'`);
+ok((await db.query("select tri->>'motif' m from whatsapp_conversations where id = $1", [r3.conversation_id])).rows[0].m === "personnel", "la fonction note la décision du tri");
+r = await essaie(u.adminSecret, `update whatsapp_conversations set reponses = 'jamais' where id = '${r3.conversation_id}'`);
+ok(r.ok && r.n === 1 && (await db.query("select reponses from whatsapp_conversations where id = $1", [r3.conversation_id])).rows[0].reponses === "jamais", "Nani règle un contact sur « jamais »");
+r = await essaie(u.adminSecret, `update whatsapp_conversations set reponses = 'toujours' where id = '${r3.conversation_id}'`);
+ok(!r.ok, "une autre valeur de l'interrupteur est refusée");
+r = await essaie(u.adminSecret, `update whatsapp_conversations set tri = '{"preparer": true}' where id = '${r3.conversation_id}'`);
+ok(!r.ok || (await db.query("select tri->>'motif' m from whatsapp_conversations where id = $1", [r3.conversation_id])).rows[0].m === "personnel", "personne ne réécrit la décision du tri depuis l'outil");
+r = await essaie(u.mook, `update whatsapp_conversations set reponses = 'auto' where id = '${r3.conversation_id}'`);
+ok(r.ok && r.n === 0, "Mook ne touche pas à l'interrupteur");
+// Une personne garde la main sur son classement (migration 59 inchangée).
+r = await essaie(u.both, `update whatsapp_conversations set entite_id = '${ent.taxi}' where id = '${r3.conversation_id}'`);
+ok(r.ok && (await db.query("select entite_id from whatsapp_conversations where id = $1", [r3.conversation_id])).rows[0].entite_id === ent.taxi, "Nani peut toujours changer elle-même l'entreprise");
+
 console.log(echecs ? `${echecs} échec(s)` : "tout est ok");
 process.exit(echecs ? 1 : 0);

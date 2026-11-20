@@ -14,25 +14,49 @@ import { clesHotelPossibles, memoDepuis, prefixeRef } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
-import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, demandeAgent, demandeTri, langueSure, lireTri, outilsWhatsapp, promptPreparation } from "./proposer.js";
+import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, parametresTri, langueSure, numerosPartenaires, outilsWhatsapp, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
-const MODELE_TRI = "claude-haiku-5-5";
 
-type Conv = { id: string; organisation_id: string; telephone: string; nom: string | null; entite_id: string | null; entite_source: string; client_id: string | null; dossier_id: string | null };
+type Conv = { id: string; organisation_id: string; telephone: string; nom: string | null; entite_id: string | null; entite_source: string; client_id: string | null; dossier_id: string | null; reponses?: string; tri?: Record<string, any> };
 
-// Point d'entrée : un message entrant vient d'être rangé (nouveau). Attend un peu (le client écrit souvent en plusieurs fois), puis prépare
-// la réponse si ce message est toujours le dernier. Aucune notification Web Push. Ne lève jamais : une panne laisse la conversation lisible.
-// Tout tient dans DUREE_BOITE_MS (attente comprise), sous la limite de 150 s d'une fonction Supabase.
+// Point d'entrée : un message entrant vient d'être rangé (nouveau). Attend un peu (le client écrit souvent en plusieurs fois), trie le
+// dernier message (proposer.js) et ne prépare une réponse que pour une vraie demande de client. Ne lève jamais. La décision du tri est
+// gardée sur la conversation (colonne tri, migration 60). Aucune notification Web Push (PR 282). Tout tient dans DUREE_BOITE_MS, sous la limite de 150 s d'une fonction Supabase.
 export async function apresMessageClient(db: SupabaseClient, conversationId: string, messageId: string) {
   const t0 = Date.now();
   try {
     await new Promise((ok) => setTimeout(ok, ATTENTE_MS));
     const lu = await lireConversation(db, conversationId);
     if (!lu || !aRepondre(lu.messages, messageId)) return;
-    // Aucune notification sur le téléphone (Jérémy, 20.11.2026 : Nani serait débordée). Le compteur de non-lus de l'écran suffit ; l'app
-    // WhatsApp de Nani sonne déjà pour chaque message.
-    await preparer(db, lu.conv, lu.messages, messageId, t0).catch((err) => {
+    const { conv, messages } = lu;
+    let decision = triSansAppel({ conv, messages, numerosPartenaires: await partenairesDe(db, conv.organisation_id) });
+    if (!decision && !(await budgetOuvert(db, conv))) decision = { preparer: false, motif: "limite" };
+    const cle = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!decision && !cle) {
+      console.error("whatsapp : ANTHROPIC_API_KEY absente, aucun tri possible");
+      decision = { preparer: false, motif: "tri_illisible" };
+    }
+    const anthropic = cle ? new Anthropic({ apiKey: cle, timeout: 40_000, maxRetries: 0 }) : null;
+    const appels: { usage: Record<string, unknown>; modele: string }[] = [];
+    const j = journalEnCours(db, appels);
+    if (!decision) {
+      try {
+        // deno-lint-ignore no-explicit-any
+        const m = await anthropic!.messages.create(parametresTri(messages, { aTrier: !conv.entite_id }) as any);
+        appels.push({ usage: m.usage as unknown as Record<string, unknown>, modele: m.model });
+        decision = decisionDepuisReponse(m);
+        if (decision.motif === "tri_illisible") console.error("whatsapp : tri illisible", m.stop_reason, (m.usage as { output_tokens?: number })?.output_tokens);
+      } catch (err) {
+        console.error("whatsapp : tri en panne", err instanceof Error ? err.message.slice(0, 200) : "");
+        decision = { preparer: false, motif: "tri_illisible" };
+      }
+      await j.noter(conv.entite_id, decision.motif === "tri_illisible" ? "tri_illisible" : "tri");
+    }
+    await garderTri(db, conv.id, decision);
+    if (!decision.preparer) return;
+    // Aucune notification sur le téléphone (Jérémy, 20.11.2026 : Nani serait débordée). Le compteur de non-lus de l'écran suffit.
+    await preparer(db, conv, messages, messageId, t0, { anthropic: anthropic!, appels, j, suggestion: decision.entreprise || null }).catch((err) => {
       console.error("whatsapp : réponse non préparée", String(err?.message || err).slice(0, 200));
       return false;
     });
@@ -41,8 +65,54 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
   }
 }
 
+// « Préparer une réponse » touché par Nani (fonction whatsapp-preparer) : sans tri, même pour un contact réglé sur « jamais », mais dans
+// les limites du budget. Rend un code pour l'écran ; la préparation continue en tâche de fond.
+export async function preparerALaDemande(db: SupabaseClient, conversationId: string) {
+  const lu = await lireConversation(db, conversationId);
+  if (!lu) return { erreur: "droit_manquant" };
+  const dernier = lu.messages.filter((m) => !m.supprime_le).reduce((a: any, m: any) => (!a || String(m.envoye_le) >= String(a.envoye_le) ? m : a), null);
+  if (!dernier || dernier.sens !== "entrant") return { erreur: "rien_a_repondre" };
+  const cle = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!cle) return { erreur: "non_configure" };
+  if (!(await budgetOuvert(db, lu.conv))) return { erreur: "limite" };
+  const suggestion = lu.conv.tri && (lu.conv.tri.entreprise === "secret" || lu.conv.tri.entreprise === "taxi") ? lu.conv.tri.entreprise : null;
+  // Une conversation à trier sans entreprise suggérée : Nani la range d'abord (on ne prend pas un catalogue au hasard).
+  const { data: ents } = await db.from("entites").select("id, slug").eq("organisation_id", lu.conv.organisation_id).in("slug", ["secret", "taxi"]);
+  const ent = (ents || []).find((e) => e.id === lu.conv.entite_id) || (ents || []).find((e) => e.slug === suggestion);
+  if (!ent) return { erreur: "a_trier" };
+  const { data: regl } = await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle();
+  if (!regl || !regl.valeur || regl.valeur.agent_ia !== true) return { erreur: "agent_eteint" };
+  const t0 = Date.now() + ATTENTE_MS; // pas d'attente ici : tout le temps de la boîte va à la préparation
+  const anthropic = new Anthropic({ apiKey: cle, timeout: 40_000, maxRetries: 0 });
+  const appels: { usage: Record<string, unknown>; modele: string }[] = [];
+  const j = journalEnCours(db, appels);
+  const tache = preparer(db, lu.conv, lu.messages, dernier.id, t0, { anthropic, appels, j, suggestion }).catch((err) => {
+    console.error("whatsapp : préparation à la demande", String(err?.message || err).slice(0, 200));
+    return false;
+  });
+  return { tache };
+}
+
+async function garderTri(db: SupabaseClient, conversationId: string, decision: { preparer: boolean; motif: string; entreprise?: string | null }) {
+  // Seule la colonne tri : le déclencheur de la migration 60 garde de toute façon le classement de Nani.
+  const { error } = await db.from("whatsapp_conversations").update({ tri: triGarde(decision) }).eq("id", conversationId);
+  if (error && error.code !== "42703") console.error("whatsapp : tri non gardé", error.message);
+}
+
+// Numéros des fiches partenaires de l'organisation (relu au plus toutes les 10 minutes par instance).
+let partenairesLus: { quand: number; org: string; numeros: Set<string> } | null = null;
+async function partenairesDe(db: SupabaseClient, org: string) {
+  if (partenairesLus && partenairesLus.org === org && Date.now() - partenairesLus.quand < 600_000) return partenairesLus.numeros;
+  const { data: ents } = await db.from("entites").select("id").eq("organisation_id", org);
+  const ids = (ents || []).map((e) => e.id);
+  const { data, error } = ids.length ? await db.from("partenaires").select("contact").in("entite_id", ids).limit(5000) : { data: [], error: null };
+  if (error) return new Set<string>();
+  partenairesLus = { quand: Date.now(), org, numeros: numerosPartenaires(data || []) };
+  return partenairesLus.numeros;
+}
+
 async function lireConversation(db: SupabaseClient, conversationId: string) {
-  const { data: conv } = await db.from("whatsapp_conversations").select("id, organisation_id, telephone, nom, entite_id, entite_source, client_id, dossier_id").eq("id", conversationId).maybeSingle();
+  const { data: conv } = await db.from("whatsapp_conversations").select("*").eq("id", conversationId).maybeSingle();
   if (!conv) return null;
   const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(40);
   return { conv: conv as Conv, messages: [...(msgs || [])].reverse() as Record<string, any>[] };
@@ -67,35 +137,27 @@ async function budgetOuvert(db: SupabaseClient, conv: Conv) {
 }
 
 // Rend true si une réponse est prête à copier (et toujours utile : le client n'a pas réécrit, Nani n'a pas répondu).
-async function preparer(db: SupabaseClient, conv: Conv, messages: Record<string, any>[], messageId: string, t0: number) {
-  const cle = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!cle) return false;
-  if (!(await budgetOuvert(db, conv))) return false;
-  const anthropic = new Anthropic({ apiKey: cle, timeout: 40_000, maxRetries: 0 });
-  const appels: { usage: Record<string, unknown>; modele: string }[] = [];
-  const j = journalEnCours(db, appels);
-
+// suggestion : l'entreprise proposée par le tri pour une conversation à trier (la conversation, elle, reste à trier).
+async function preparer(
+  db: SupabaseClient,
+  conv: Conv,
+  messages: Record<string, any>[],
+  messageId: string,
+  t0: number,
+  { anthropic, appels, j, suggestion }: { anthropic: Anthropic; appels: { usage: Record<string, unknown>; modele: string }[]; j: ReturnType<typeof journalEnCours>; suggestion: string | null },
+) {
   const { data: entites } = await db.from("entites").select("id, slug, nom").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
   const parSlug = new Map((entites || []).map((e) => [e.slug, e]));
-  let ent = (entites || []).find((e) => e.id === conv.entite_id) || null;
-  let proposee: string | null = null;
-  // À trier : l'agent suggère Secret ou Taxi (un appel court) ; la conversation reste à trier, Nani décide d'un tap. La réponse se prépare
-  // avec les données de l'entreprise suggérée et seuls ses administrateurs la lisent (migration 59). Sans suggestion, pas de réponse.
-  if (!ent) {
-    const m = await anthropic.messages.create({ model: MODELE_TRI, max_tokens: 10, messages: [{ role: "user", content: demandeTri(messages) }] });
-    appels.push({ usage: m.usage as unknown as Record<string, unknown>, modele: m.model });
-    await j.noter(null, "tri");
-    proposee = lireTri(m.content.map((b) => (b.type === "text" ? b.text : "")).join(" "));
-    ent = (proposee && parSlug.get(proposee)) || null;
-    if (!ent) return false;
-  }
-
+  const ent = (entites || []).find((e) => e.id === conv.entite_id) || (suggestion ? parSlug.get(suggestion) : null) || null;
+  const proposee = conv.entite_id ? null : suggestion;
+  // À trier sans entreprise suggérée : pas de réponse (on ne prend pas le catalogue d'une entreprise au hasard), mais une trace visible.
+  if (!ent) return echecVisible(db, conv.id, messageId, null, "a_trier");
   const { data: regl } = await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle();
   const reglages = regl ? regl.valeur : null;
   // L'agent s'allume dans les réglages de l'entreprise : éteint, pas de proposition.
   if (!reglages || reglages.agent_ia !== true) {
     await j.noter(ent.id, "agent_eteint");
-    return false;
+    return echecVisible(db, conv.id, messageId, ent.id, "agent_eteint");
   }
 
   // La proposition encore à faire est remplacée ; la nouvelle naît « en_cours » (l'écran affiche « en préparation »).
@@ -160,6 +222,16 @@ async function preparer(db: SupabaseClient, conv: Conv, messages: Record<string,
   const { data: maj } = await db.from("whatsapp_propositions").update(champs).eq("id", prop.id).eq("statut", "en_cours").select("id");
   await j.noter(ent.id, message ? statut : statut === "ok" ? "pas_de_reponse" : statut);
   return utile && !!message && !!(maj && maj.length);
+}
+
+// Une préparation qui s'arrête avant l'agent laisse toujours une trace : une proposition « echec » avec son motif (l'écran l'explique) et une
+// ligne dans les journaux de la fonction. Rend false (rien à copier).
+async function echecVisible(db: SupabaseClient, conversationId: string, messageId: string, entiteId: string | null, motif: string) {
+  console.warn("whatsapp : pas de réponse préparée,", motif);
+  await db.from("whatsapp_propositions").update({ statut: "remplacee" }).eq("conversation_id", conversationId).in("statut", ["a_faire", "en_cours"]);
+  const { error } = await db.from("whatsapp_propositions").insert({ conversation_id: conversationId, message_id: messageId, entite_id: entiteId, statut: "echec", erreur: motif });
+  if (error) console.error("whatsapp : trace d'échec non écrite", error.message);
+  return false;
 }
 
 // Le journal de l'assistant pour une préparation : une ligne créée au premier appel, mise à jour à chaque tour (coût à jour même si la

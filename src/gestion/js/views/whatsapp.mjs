@@ -14,7 +14,7 @@ import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
   grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, propositionCourante,
-  propositionAJour, entrepriseProposee,
+  propositionAJour, entrepriseProposee, reponsesDe, raisonSansReponse, erreurPreparer, libelleErreurProposition,
 } from "../whatsapp-calc.mjs";
 
 let filtre = null;
@@ -90,6 +90,33 @@ function selecteurEntreprise(c, prop) {
   );
 }
 
+// Réponses préparées pour ce contact (migration 60) : automatiques (le tri décide) ou jamais (ami, famille, partenaire, chauffeur).
+// Un tap, enregistré tout de suite. Seule Nani change ce réglage : la fonction ne le touche jamais.
+function reglageReponses(c) {
+  if (etat.brut.whatsapp_tri_disponible === false) return null;
+  const actuel = reponsesDe(c);
+  const choisir = async (valeur, bouton) => {
+    if (valeur === actuel || bouton.disabled) return;
+    bouton.disabled = true;
+    try {
+      await modifier("whatsapp_conversations", c.id, { reponses: valeur });
+      toast(valeur === "jamais" ? tr("Plus de réponse préparée pour ce contact.") : tr("Réponses préparées automatiques pour ce contact."));
+      rafraichir();
+    } catch (err) {
+      bouton.disabled = false;
+      toast(err.message, true);
+    }
+  };
+  const segment = (valeur, libelle) => h("button", { type: "button", class: "wa-segment", "aria-pressed": valeur === actuel ? "true" : "false", onclick: (e) => choisir(valeur, e.currentTarget) }, libelle);
+  return h(
+    "div",
+    { class: "wa-reponses", "data-pas-saisie": "" },
+    h("span", { class: "wa-reponses-libelle", id: `wa-rep-${c.id}` }, tr("Réponses préparées")),
+    h("div", { class: "wa-segments", role: "group", "aria-labelledby": `wa-rep-${c.id}` }, segment("auto", tr("Automatiques")), segment("jamais", tr("Jamais pour ce contact"))),
+    h("span", { class: "wa-note" }, tr("Jamais : ami, famille, partenaire, chauffeur"))
+  );
+}
+
 // Client et dossier reliés, avec le lien vers leur fiche. Relier un client se fait dans l'entreprise ouverte (celle de la conversation).
 function blocRelations(c) {
   if (!c.entite_id) return h("p", { class: "wa-relations aide" }, tr("Rangez la conversation pour la relier à un client."));
@@ -147,7 +174,7 @@ function enTete(c, prop) {
       h("div", { class: "wa-fil-titre" }, h("h2", null, nomConversation(c, clientDe(c))), h("p", { class: "wa-numero" }, numeroAffiche(c.telephone), c.nom && clientDe(c) ? h("span", null, tr("profil « {nom} »", { nom: c.nom })) : null)),
       wa ? h("a", { class: "bouton secondaire petit wa-ouvrir-tete", href: wa, target: "_blank", rel: "noopener", "aria-label": tr("Ouvrir dans WhatsApp") }, icone("whatsapp", 18), h("span", { class: "wa-ouvrir-texte" }, tr("Ouvrir dans WhatsApp"))) : null
     ),
-    h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), blocRelations(c)),
+    h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), blocRelations(c), reglageReponses(c)),
   ];
 }
 
@@ -284,17 +311,36 @@ async function envoyer(c, p, zone, bouton, apres) {
 
 const TRAITEE_PAR = { app: N_("Répondu depuis l'app"), gestion: N_("Envoyé depuis Gestion"), outil: N_("Marquée traitée dans Gestion") };
 
-const ligneSansReponse = () => h("p", { class: "wa-prop-fait" }, icone("alerte", 16), tr("Pas de réponse préparée. Répondez depuis l'app."));
+// Demander une réponse quand le tri n'en a pas préparé (fonction whatsapp-preparer) : elle arrive « en_cours » puis « à faire » par Realtime.
+async function preparer(c, bouton) {
+  if (bouton.disabled) return;
+  bouton.disabled = true;
+  const r = await etat.store.whatsappPreparer(c.id);
+  if (r && r.ok) {
+    bouton.replaceChildren(tr("Préparation demandée…"));
+    return toast(tr("Préparation demandée. La réponse arrive dans un instant."));
+  }
+  bouton.disabled = false;
+  toast(tr(erreurPreparer(r && r.erreur)), true);
+}
+
+// Aucune réponse préparée pour le dernier message du client : la raison du tri en clair, et de quoi en demander une.
+function ligneSansReponse(c, messages) {
+  const dernier = messages.length ? messages[messages.length - 1] : null;
+  const bouton = dernier && dernier.sens === "entrant" && etat.store.whatsappPreparer ? h("button", { class: "secondaire petit", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, tr("Préparer une réponse")) : null;
+  const raison = raisonSansReponse(c, messages);
+  return h("div", { class: "wa-sans-reponse" }, h("p", { class: "wa-prop-fait" }, icone("alerte", 16), raison ? tr(raison) : tr("Pas de réponse préparée. Répondez depuis l'app.")), bouton);
+}
 
 function carteProposition(c, p, messages) {
-  // Le client attend et aucune réponse n'est préparée (l'agent n'a pas su trier) : on le dit.
-  if (!p) return etat.brut.whatsapp_propositions_disponible !== false && messages.length && messages[messages.length - 1].sens === "entrant" ? ligneSansReponse() : null;
+  // Le client attend et aucune réponse n'est préparée (tri, contact réglé sur « Jamais », agent qui n'a pas su trier) : on le dit.
+  if (!p) return etat.brut.whatsapp_propositions_disponible !== false && messages.length && messages[messages.length - 1].sens === "entrant" ? ligneSansReponse(c, messages) : null;
   if (p.statut === "envoi") return h("section", { class: "wa-prop en-cours", "aria-live": "polite" }, h("p", { class: "agent-etape" }, h("span", { class: "agent-point", "aria-hidden": "true" }), tr("Envoi en cours depuis Gestion…")));
   // « Fait » ne vaut que pour une proposition au moins aussi récente que le dernier message du client.
-  if ((p.statut === "traitee" || p.statut === "ignoree") && !propositionAJour(p, messages)) return ligneSansReponse();
+  if ((p.statut === "traitee" || p.statut === "ignoree") && !propositionAJour(p, messages)) return ligneSansReponse(c, messages);
   if (p.statut === "en_cours") return h("section", { class: "wa-prop en-cours", "aria-live": "polite" }, h("p", { class: "agent-etape" }, h("span", { class: "agent-point", "aria-hidden": "true" }), tr("Réponse en préparation…")));
   if (p.statut === "echec")
-    return h("section", { class: "wa-prop echec", role: "status" }, h("p", null, h("strong", null, tr("L'agent n'a pas pu préparer de réponse.")), " ", tr("Répondez depuis l'app comme d'habitude.")), p.erreur ? h("p", { class: "wa-detail" }, p.erreur) : null);
+    return h("section", { class: "wa-prop echec", role: "status" }, h("p", null, h("strong", null, tr("L'agent n'a pas pu préparer de réponse.")), " ", tr("Répondez depuis l'app comme d'habitude.")), p.erreur ? h("p", { class: "wa-detail" }, libelleErreurProposition(p.erreur) ? tr(libelleErreurProposition(p.erreur)) : p.erreur) : null);
   if (p.statut === "traitee" || p.statut === "ignoree")
     return h("p", { class: "wa-prop-fait" }, icone(p.statut === "traitee" ? "coche" : "fermer", 16), p.statut === "ignoree" ? tr("Réponse préparée ignorée") : tr(TRAITEE_PAR[p.traitee_par_quoi] || N_("Répondu")), p.traitee_le ? h("time", { datetime: p.traitee_le }, ` ${quand(p.traitee_le, { langue: langueActive() })}`) : null);
   if (p.statut !== "a_faire") return null;
