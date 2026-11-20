@@ -83,8 +83,17 @@ export function demandeAgent({ messages = [], nomProfil = "", client = null, dos
 //   3. le numéro est celui d'un partenaire (fiche partenaire, téléphones) ;
 //   4. budget ou limites du jour ;
 //   5. tri par Claude Haiku : demande de client ou non, et Secret ou Taxi pour une conversation à trier.
-export const MOTIFS = ["demande_client", "suivi_reservation", "remerciement", "personnel", "partenaire", "publicite", "media_seul", "contact_jamais", "limite", "tri_illisible", "autre"];
+export const MOTIFS = ["demande_client", "suivi_reservation", "remerciement", "personnel", "partenaire", "publicite", "media_seul", "contact_jamais", "limite", "tri_illisible", "ia_coupee", "autre"];
 export const MOTIFS_A_PREPARER = ["demande_client", "suivi_reservation"];
+
+// Audit sécurité n° 1 (20.11.2026) : rien ne part chez Anthropic, même pour le tri, si la réception est suspendue, si le contact est réglé
+// sur « jamais » ou si l'assistant est éteint. Conversation rangée : l'assistant de son entreprise. À trier : au moins celui de Secret ou
+// de Taxi. `agents` : { entite_id: true | false } lus dans reglages.valeur.agent_ia ; une valeur absente ou illisible ferme.
+export function iaPermise({ receptionActive, conv, agents = {} }) {
+  if (receptionActive !== true || !conv || conv.reponses === "jamais") return false;
+  if (conv.entite_id) return agents[conv.entite_id] === true;
+  return Object.values(agents).some((v) => v === true);
+}
 
 // Ce que l'on sait sans appeler Claude : null si le message mérite le tri par Haiku.
 export function triSansAppel({ conv, messages, numerosPartenaires = new Set() }) {
