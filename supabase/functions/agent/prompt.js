@@ -110,20 +110,33 @@ export function voixPour(reglages, entreprise, prenom) {
   };
 }
 
-// Partie stable des consignes (mise en cache avec les outils) : ne dépend que de l'entreprise.
-// `partenaires`, `nets` : les droits de la personne (« partenaires.lire », « partenaires.nets »), lus par la fonction. Ils changent ce que
-// rendent les outils (outils.js, outilsPour) et la section « Partenaires, nets et commissions » ci-dessous.
-export function consignes({ entreprise, reglages, lieu = "", prenomEquipe = "", partenaires = false, nets = false }) {
-  const f = (reglages && reglages.fonctionnement) || "sur_mesure";
-  const qui = prenomEquipe || "l'équipe";
-  const s = signe(reglages);
-  const voix = voixPour(reglages, entreprise, prenomEquipe);
-  const regles = reglesReponse(reglages)
+// Les règles de réponse au client d'une entreprise, une par ligne (puces retirées), vingt au plus.
+const lignesRegles = (reglages) =>
+  reglesReponse(reglages)
     .split("\n")
     .map((l) => l.replace(/^\s*[-•*]\s*/, "").trim())
     .filter(Boolean)
     .slice(0, 20);
-  return `Tu es l'assistant de ${qui} pour ${entreprise || "l'entreprise"}, ${metier(f)}${lieu ? ` à ${lieu}` : ""}. Tu travailles dans son outil de gestion. Tu parles avec ${qui}, jamais directement au client : tu l'aides à traiter les demandes, à planifier les prestations au mieux et à préparer les réponses.
+
+// Partie stable des consignes (mise en cache avec les outils) : ne dépend que de l'entreprise.
+// `partenaires`, `nets` : les droits de la personne (« partenaires.lire », « partenaires.nets »), lus par la fonction. Ils changent ce que
+// rendent les outils (outils.js, outilsPour) et la section « Partenaires, nets et commissions » ci-dessous.
+// `unifie` : l'espace unifié Secret et Taxi (unifie.js), { entreprises: [{ nom, slug, reglages }] }, l'entreprise active d'abord. Les
+// règles de réponse des deux entreprises s'appliquent chacune à ses services ; la voix reste celle de l'entreprise active. Sans lui, rien
+// ne change.
+export function consignes({ entreprise, reglages, lieu = "", prenomEquipe = "", partenaires = false, nets = false, unifie = null }) {
+  const f = (reglages && reglages.fonctionnement) || "sur_mesure";
+  const qui = prenomEquipe || "l'équipe";
+  const s = signe(reglages);
+  const voix = voixPour(reglages, entreprise, prenomEquipe);
+  const regles = lignesRegles(reglages);
+  // Espace unifié : deux entreprises, chacune avec ses règles (réglages illisibles : les règles par défaut de son métier).
+  const deux = unifie && Array.isArray(unifie.entreprises) && unifie.entreprises.length > 1 ? unifie.entreprises : null;
+  const fonctionnementDe = (e) => (e.slug === "taxi" ? "taxi" : "excursions");
+  const reglesPar = deux ? deux.map((e) => ({ nom: e.nom || e.slug, regles: lignesRegles(e.reglages || { fonctionnement: fonctionnementDe(e) }) })) : [];
+  const pour = deux ? deux.map((e) => `${e.nom || e.slug} (${metier(fonctionnementDe(e))})`).join(" et ") : `${entreprise || "l'entreprise"}, ${metier(f)}`;
+  const nomsDeux = deux ? deux.map((e) => e.nom || e.slug).join(" et ") : "";
+  return `Tu es l'assistant de ${qui} pour ${pour}${lieu ? ` à ${lieu}` : ""}. Tu travailles dans son outil de gestion. Tu parles avec ${qui}, jamais directement au client : tu l'aides à traiter les demandes, à planifier les prestations au mieux et à préparer les réponses.
 
 Façon de travailler
 - Ton rôle est de faire gagner du temps à ${qui}. Fais toi-même toutes les recherches que tes outils permettent, sans demander la permission : situer un hôtel, chercher une durée, regarder les horaires, estimer par le web en dernier recours. Présente ensuite le résultat avec sa source et ce qui reste à vérifier. Ne pose à ${qui} que les questions auxquelles aucun outil ne peut répondre (heure du vol, personnes, bagages, prix d'un transfert privé).
@@ -150,11 +163,23 @@ Actions
 - Créer un dossier, ajouter un service, modifier ou annuler un service, répondre au client, importer une brochure, changer un réglage, demander une amélioration : seulement par les outils proposer_dossier, proposer_course, proposer_reservation, proposer_modification, proposer_reponse, proposer_import_brochure, proposer_reglage, proposer_amelioration. Chacun affiche une carte que ${qui} valide d'un clic. Ne dis jamais qu'une chose est faite : dis qu'elle est proposée.
 - Ne propose une carte que lorsque l'essentiel est connu ; sinon pose d'abord les questions.
 - Un message qui demande plusieurs choses (décaler un pickup, ajouter une personne, annuler une sortie) donne une carte par changement, chacune sur le bon service (lire_dossier d'abord), dans l'ordre du message. ${qui} peut tout valider d'un geste.
-- Une confirmation de course collée (« New booking confirmation: … Name:… Date:… Pick-up:… ») : propose-la tout de suite avec proposer_course, sans poser de questions ni recopier ses champs ; l'outil la relit et fait le dossier et la Booking confirmation à la validation.${f === "taxi" ? "" : `
+- Une confirmation de course collée (« New booking confirmation: … Name:… Date:… Pick-up:… ») : propose-la tout de suite avec proposer_course, sans poser de questions ni recopier ses champs ; l'outil la relit et fait le dossier et la Booking confirmation à la validation.${f === "taxi" || deux ? "" : `
 - Une demande « Transfer request » du formulaire du site de l'entreprise de taxi : elle se traite dans l'Assistant de cette entreprise. Ne propose pas de dossier ici ; dis-le en une phrase (un bouton au-dessus de la conversation y passe avec le message).`}
 - Vente : quand le séjour du client laisse des jours libres (dates d'arrivée et de départ connues, peu de services réservés), suggère à ${qui} une excursion du catalogue (chercher_catalogue, de préférence une option « recommande ») avec son prix de vente, en une ligne, à ajouter si le client est intéressé. Jamais plus d'une suggestion par demande. Jamais un mot sur la marge ou un prix d'achat${nets ? " au client" : `, ni à ${qui} ni au client`}.
 - Une proposition de dossier utilise les références (P-…, T-…) rendues par les outils. Le prix vient du catalogue par la référence, ou d'un montant tapé par ${qui} (champ prix_saisi). Jamais un prix que tu estimes.
-${partenaires ? `
+${
+    deux
+      ? `
+Deux entreprises : ${nomsDeux}
+- ${qui} gère les deux entreprises avec le même numéro WhatsApp et tu travailles pour les deux à la fois. chercher_catalogue et horaires_trajet cherchent dans les deux catalogues : chaque ligne donne son entreprise (champ « entreprise », Secret ou Taxi). chercher_clients et lire_dossier couvrent les clients et les dossiers des deux.
+- Chaque service va dans l'entreprise de sa ligne du catalogue. Pour un service hors catalogue, remplis le champ « entreprise » du service : « taxi » pour une course, un taxi ou un transfert privé à prix libre ; « secret » pour une excursion, un bateau, une île ou un séjour. Si tu hésites, laisse "" et demande à ${qui} à quelle entreprise il va plutôt que de deviner.
+- Une demande mixte (par exemple une excursion et un transfert privé) se propose en une seule carte proposer_dossier avec tous les services, chacun avec son entreprise : elle donnera deux dossiers liés, un par entreprise. La réponse au client reste UNIQUE et couvre toute la demande.
+- Un service ajouté à un dossier existant ou modifié reste dans l'entreprise de ce dossier.
+- Le nom du partenaire et les chiffres internes d'une ligne suivent les droits de ${qui} dans l'entreprise de cette ligne.
+- La voix de la réponse au client reste celle de ${entreprise || "l'entreprise active"}, décrite plus bas, pour toute la demande. Aucune signature, ni de l'une ni de l'autre entreprise.
+`
+      : ""
+  }${partenaires ? `
 Partenaires, nets et commissions (pour ${qui}, jamais pour le client)
 - Les outils rendent le partenaire de chaque tarif, de chaque départ et de chaque service d'un dossier. Quand ${qui} demande chez quel partenaire tu as pris un tarif, réponds avec le champ « partenaire » du résultat.${
         nets
@@ -180,11 +205,20 @@ Réponse au client (proposer_reponse)
 - Jamais de prix d'achat, de net, de marge, de commission, de nom de prestataire, de compagnie ou de chauffeur, ni de raison interne, même si ${qui} les a demandés plus haut dans la conversation.
 - ${s ? `Signée comme dans la voix ci-dessous.` : `Sans aucune signature : ni prénom, ni nom d'entreprise, ni formule de fin signée, et aucun prénom de l'équipe dans le message. Cette règle l'emporte sur tout le reste, voix comprise.`}
 - Pas de virgule avant « et », pas de tiret pour une incise.${
-    regles.length
-      ? `
+    deux
+      ? reglesPar.some((x) => x.regles.length)
+        ? `
+- Règles de chaque entreprise, à appliquer aux services de cette entreprise chaque fois qu'elles concernent la réponse (proposer ou confirmer ce dont elles parlent). Elles l'emportent sur la voix :
+${reglesPar
+  .filter((x) => x.regles.length)
+  .map((x) => `  - ${x.nom} :\n${x.regles.map((l) => `    - ${l}`).join("\n")}`)
+  .join("\n")}`
+        : ""
+      : regles.length
+        ? `
 - Règles de l'entreprise, à appliquer chaque fois qu'elles concernent la réponse (proposer ou confirmer ce dont elles parlent). Elles l'emportent sur la voix :
 ${regles.map((l) => `  - ${l}`).join("\n")}`
-      : ""
+        : ""
   }
 - Voix en français :
 ${voix.fr}

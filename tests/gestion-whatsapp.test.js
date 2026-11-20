@@ -272,7 +272,7 @@ test("whatsapp : la réponse préparée suit les règles de réponse de l'entrep
   const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   // L'appel des consignes ne passe ni partenaires ni nets ; le contexte des outils n'a aucun droit.
   const proposer = fs.readFileSync(new URL("../supabase/functions/whatsapp/proposer.js", import.meta.url), "utf8");
-  assert.match(proposer, /consignes\(\{ entreprise, reglages, lieu: ra\.lieu, prenomEquipe: qui \}\)/);
+  assert.match(proposer, /consignes\(\{ entreprise, reglages, lieu: ra\.lieu, prenomEquipe: qui, unifie \}\)/);
   assert.match(reponse, /permissions: \[\]/);
   const s = consignes({ entreprise: "Secret Travel & Tour", reglages: { fonctionnement: "excursions", agent_ia: true }, prenomEquipe: "Nani" });
   assert.ok(s.includes(REGLE_BATEAUX), "la règle des bateaux de la PR 280, au texte du moment");
@@ -380,7 +380,9 @@ test("whatsapp : la réponse préparée reçoit les règles de réponse d'Anaïs
   assert.match(p.texte, /proposer_reponse une seule fois/);
   const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   assert.match(reponse, /promptPreparation\(\{ entreprise: ent\.nom, reglages, apprentissages:/);
-  assert.match(reponse, /\.from\("agent_apprentissages"\)\.select\([^)]*\)\.eq\("entite_id", ent\.id\)/);
+  // L'entreprise de la conversation, plus l'autre en espace unifié (migration 63).
+  assert.match(reponse, /\.from\("agent_apprentissages"\)\.select\([^)]*\)\.in\("entite_id", ids\)/);
+  assert.match(reponse, /const ids = unifie \? unifie\.entites\.map\(\(e\) => e\.id\) : \[ent\.id\];/);
 });
 
 // ---- Tri des messages (migration 60, demande de Jérémy : « faut vraiment faire un bon tri ») ----------------------------------------

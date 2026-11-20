@@ -7,11 +7,15 @@
 // Secret et Taxi, anglais sauf client francophone. Une seule carte possible : proposer_reponse. Ce qui part chez Anthropic : le texte des
 // derniers messages, le prénom du client, ce que rendent les outils de lecture. Jamais le numéro de téléphone.
 // Budget : compté dans le plafond du mois de l'assistant (assistant_journal, usage « whatsapp »), l'agent doit être allumé (agent_ia).
+// Espace unifié (migration 63, agent/unifie.js) : quand l'agent est allumé chez Secret ET chez Taxi, la préparation cherche dans les deux
+// catalogues et lit les corrections des deux, toujours limitée à ces deux entreprises et sans aucun droit sur les partenaires ni les nets
+// (ctx.permissions et permissionsPar vides). Les dossiers lus restent ceux reliés à la conversation.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { DUREE_MAX_MS, MODELE_DEFAUT, ligneJournal, signe } from "../agent/prompt.js";
 import { clesHotelPossibles, memoDepuis, prefixeRef } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
+import { modeUnifieSansDroits } from "../agent/unifie.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
@@ -170,6 +174,12 @@ async function preparer(
     return echecVisible(db, conv.id, messageId, ent.id, "agent_eteint");
   }
 
+  // Espace unifié : l'autre entreprise (Secret ou Taxi) entre seulement si son agent est allumé aussi.
+  const autre = (entites || []).find((e) => e.id !== ent.id) || null;
+  const reglagesAutre = autre ? ((await db.from("reglages").select("valeur").eq("entite_id", autre.id).maybeSingle()).data || { valeur: null }).valeur : null;
+  const unifie = autre && reglagesAutre && reglagesAutre.agent_ia === true ? modeUnifieSansDroits({ active: ent, autre }) : null;
+  const ids = unifie ? unifie.entites.map((e) => e.id) : [ent.id];
+
   // La proposition encore à faire est remplacée ; la nouvelle naît « en_cours » (l'écran affiche « en préparation »).
   await db.from("whatsapp_propositions").update({ statut: "remplacee" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours"]);
   const { data: prop, error: errProp } = await db.from("whatsapp_propositions").insert({ conversation_id: conv.id, message_id: messageId, entite_id: ent.id, statut: "en_cours", entreprise_proposee: proposee }).select("id").single();
@@ -177,21 +187,22 @@ async function preparer(
   let statut = "ok";
   let carte: { titre?: string; donnees?: { message?: string; langue?: string }; avertissements?: string[] } | null = null;
   try {
-    const ctx = contexteOutils(db, ent.id, reglages, conv.entite_id === ent.id ? { clientId: conv.client_id, dossierId: conv.dossier_id } : { clientId: null, dossierId: null });
+    const ctx = contexteOutils(db, ent.id, reglages, conv.entite_id === ent.id ? { clientId: conv.client_id, dossierId: conv.dossier_id } : { clientId: null, dossierId: null }, unifie);
     const client = conv.client_id && conv.entite_id === ent.id ? (await db.from("clients").select("prenom").eq("id", conv.client_id).eq("entite_id", ent.id).maybeSingle()).data : null;
     const dossier = conv.dossier_id && conv.entite_id === ent.id ? (await db.from("dossiers").select("id, ref").eq("id", conv.dossier_id).eq("entite_id", ent.id).maybeSingle()).data : null;
     const prestataires = ((await ctx.charger("partenaires")) as { nom: string }[]).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
-    const lus = await db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", ent.id).order("cree_le", { ascending: false }).limit(80);
+    const lus = await db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").in("entite_id", ids).order("cree_le", { ascending: false }).limit(80);
     if (lus.error && !tableAbsente(lus.error)) console.error("whatsapp : apprentissages", lus.error.message);
     // Mêmes consignes, voix, règles de réponse et corrections apprises que l'onglet Assistant (proposer.js, promptPreparation).
     const ton = await tonDeNani(db, ent.id, conv.id, messages).catch((err) => {
       console.error("whatsapp : ton de Nani", String(err?.message || err).slice(0, 120));
       return "";
     });
-    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lus.data || [], messages, nomProfil: conv.nom || "", client, dossier, aujourdhui: dateBangkok(), ton });
+    const unifieConsignes = unifie && autre ? { entreprises: [{ nom: ent.nom, slug: ent.slug, reglages }, { nom: autre.nom, slug: autre.slug, reglages: reglagesAutre }] } : null;
+    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lus.data || [], messages, nomProfil: conv.nom || "", client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
-    const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
+    const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, entreprises: unifie && autre ? [autre.nom] : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
     // Garde-fou de la PR 278 : un montant égal à un net de l'entreprise (et à aucun prix de vente) est signalé « montant_interne » et bloque
     // la copie dans l'écran. Les nets restent ici, dans la fonction : ils ne partent jamais chez Claude.
     memo.internes = await netsDe(ctx);
@@ -204,7 +215,7 @@ async function preparer(
       messages: historique,
       ctx,
       memo,
-      outils: outilsWhatsapp(),
+      outils: outilsWhatsapp({ unifie: !!unifie }),
       garder: async (role: string, contenu: unknown) => {
         historique.push({ role, content: contenu });
         // Le coût est noté à chaque tour : une fonction coupée par la limite de temps garde ce qu'elle a dépensé dans le plafond.
@@ -294,16 +305,19 @@ async function netsDe(ctx: any) {
   return s;
 }
 
-// Les lectures des outils de l'agent, avec la clé de service mais toujours limitées à une entreprise. Un message de client ne doit jamais
+// Les lectures des outils de l'agent, avec la clé de service mais toujours limitées à une entreprise (aux deux, Secret et Taxi, en espace
+// unifié : seulement le catalogue, les horaires, les durées et les hôtels ; les dossiers restent ceux de l'entreprise de la conversation). Un message de client ne doit jamais
 // faire lire les données d'un autre client : aucun dossier sauf celui relié à la conversation (ou un dossier de son client relié), aucune
 // recherche de clients, et jamais un numéro de téléphone (le client se lit sans téléphone ni nom de famille).
 // deno-lint-ignore no-explicit-any
-function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any, { clientId, dossierId }: { clientId: string | null; dossierId: string | null }) {
+function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any, { clientId, dossierId }: { clientId: string | null; dossierId: string | null }, unifie: { entites: { id: string; slug: string; nom: string }[]; permissionsPar: Record<string, string[]> } | null = null) {
+  const ids = unifie ? unifie.entites.map((e) => e.id) : [entiteId];
   // Seules tables chargées entières : le catalogue, les horaires, les durées et les hôtels. Pas de dossiers, réservations ni clients.
   const COLONNES: Record<string, string> = {
-    prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id",
-    trajets: "id, de, vers, mode, depart, arrivee, duree, prix_adulte, prix_enfant, bebe, periode, fenetres, actif, partenaire_id",
-    partenaires: "id, nom, actif, regles",
+    // entite_id : l'entreprise de chaque ligne (espace unifié), jamais renvoyé tel quel par les outils.
+    prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id, entite_id",
+    trajets: "id, de, vers, mode, depart, arrivee, duree, prix_adulte, prix_enfant, bebe, periode, fenetres, actif, partenaire_id, entite_id",
+    partenaires: "id, nom, actif, regles, entite_id",
     // Les nets : lus seulement par le contrôle de la réponse (netsDe). Les outils ne les rendent jamais ici : ctx.permissions est vide,
     // donc ni partenaire ni net ni commission ne partent chez Claude (outils.js, voitPartenaires et voitNets).
     prestations_nets: "prestation_id, net, net_enfant",
@@ -332,7 +346,7 @@ function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any, { c
         (async () => {
           const lignes: unknown[] = [];
           for (let de = 0; de < 20000; de += 1000) {
-            const page = await lire(db.from(nom).select(COLONNES[nom]).eq("entite_id", entiteId).range(de, de + 999), nom);
+            const page = await lire(db.from(nom).select(COLONNES[nom]).in("entite_id", ids).range(de, de + 999), nom);
             lignes.push(...page);
             if (page.length < 1000) break;
           }
@@ -376,9 +390,9 @@ function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any, { c
   const hotelsPour = async (lieux: string[]) => {
     const cles = [...new Set(lieux.flatMap((l) => clesHotelPossibles(l)))].slice(0, 100);
     if (!cles.length) return [];
-    return lire(db.from("hotels_lieux").select(COLONNES.hotels_lieux).eq("entite_id", entiteId).in("cle", cles), "hotels_lieux");
+    return lire(db.from("hotels_lieux").select(COLONNES.hotels_lieux).in("entite_id", ids).in("cle", cles), "hotels_lieux");
   };
   // Pas de moteur d'itinéraire ni de recherche web ici : les durées viennent de la table de l'entreprise, sinon l'agent le dit.
   // chercherClients rend toujours vide (l'outil n'est pas proposé, et refusé par tourner s'il est appelé quand même).
-  return { historique: [], entreprise: "", fichiers: [], permissions: [], charger, chercherClients: async () => [[], []], dossierPour, parRef, hotelsPour, reglages, ors: null, simule: null, estimerWeb: null, situerWeb: null, notes: [] as string[], moteur: null, maintenant: () => Date.now() };
+  return { historique: [], entreprise: "", fichiers: [], permissions: [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients: async () => [[], []], dossierPour, parRef, hotelsPour, reglages, ors: null, simule: null, estimerWeb: null, situerWeb: null, notes: [] as string[], moteur: null, maintenant: () => Date.now() };
 }

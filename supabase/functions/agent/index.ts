@@ -6,12 +6,17 @@
 // dossiers de l'entreprise). Jamais un net, une marge ni un nom de prestataire : les outils les retirent (outils.js). Rien n'est écrit dans
 // les dossiers : les propositions sont des cartes que la personne valide dans l'écran.
 //
+// Espace unifié Secret et Taxi (unifie.js, migration 63) : quand la conversation est rangée chez Secret ou Taxi et que la personne a aussi
+// « partenaires.lire » et « dossiers.ecrire » dans l'autre, le catalogue, les clients et les dossiers se lisent dans les deux entreprises,
+// toujours avec sa session (la RLS limite ce qu'elle voit). La conversation reste sous l'entreprise active. ZTP n'y entre jamais.
+//
 // Réponse en flux NDJSON (une ligne JSON par événement) : { t: "conversation" | "etape" | "texte" | "planning" | "carte" | "fin" | "erreur" }.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
+import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils } from "./unifie.js";
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
@@ -91,7 +96,7 @@ Deno.serve(async (req) => {
     admin.from("assistant_journal").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("usage", "agent").gte("cree_le", debutJourBangkok()),
     // Le plafond du mois compte toute la dépense de l'assistant (tous usages, toutes personnes) : il protège le crédit.
     admin.rpc("assistant_cout_depuis", { debut: debutMois() }),
-    sb.from("entites").select("nom, organisation_id").eq("id", entiteId).maybeSingle(),
+    sb.from("entites").select("nom, organisation_id, slug").eq("id", entiteId).maybeSingle(),
     // Le plafond réglé par Jérémy (migration 54) ; sans la table, le secret AGENT_PLAFOND_MOIS_USD, sinon 50 $.
     admin.from("assistant_budget").select("plafond_mois_usd, seuil_alerte_pct").maybeSingle(),
   ]);
@@ -117,6 +122,22 @@ Deno.serve(async (req) => {
   }
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
   if (!cle) return json({ erreur: "non_configure" }, 503);
+  // Espace unifié : l'autre entreprise (Secret ou Taxi) de la même organisation, ses droits et ses réglages, lus avec la session. Une lecture
+  // refusée ou des droits manquants laissent l'Assistant tel qu'avant, limité à l'entreprise active.
+  let unifie: { entites: { id: string; slug: string; nom: string }[]; permissionsPar: Record<string, string[]> } | null = null;
+  let reglagesAutre: Record<string, unknown> | null = null;
+  if (ent.data && ENTREPRISES_UNIFIEES.includes(ent.data.slug) && ent.data.organisation_id) {
+    const autres = await sb.from("entites").select("id, slug, nom, organisation_id").eq("organisation_id", ent.data.organisation_id).in("slug", ENTREPRISES_UNIFIEES).neq("id", entiteId);
+    const autre = autres.error ? null : (autres.data || []).find((x) => x.slug !== ent.data!.slug) || null;
+    if (autre) {
+      const [pa, ra] = await Promise.all([sb.rpc("permissions_dans", { e: autre.id }), sb.from("reglages").select("valeur").eq("entite_id", autre.id).maybeSingle()]);
+      if (!pa.error) unifie = modeUnifie({ active: { id: entiteId, ...ent.data }, autre, permissions: perms.data || [], permissionsAutre: pa.data || [] });
+      if (unifie && !ra.error && ra.data) reglagesAutre = ra.data.valeur;
+    }
+  }
+  const idsEntites = unifie ? unifie.entites.map((e) => e.id) : [entiteId];
+  // Le filtre d'entreprise d'une lecture : les deux entreprises en mode unifié, sinon l'entreprise active comme avant.
+  const dans = (q: any, colonne = "entite_id") => (unifie ? q.in(colonne, idsEntites) : q.eq(colonne, entiteId));
   let waDossier: string | null = null;
   if (waId) {
     // Après les contrôles d'accès (agent allumé, droits, limites) : rien n'est lu ni téléchargé pour une demande refusée.
@@ -221,27 +242,37 @@ Deno.serve(async (req) => {
     return lignes;
   };
   const droitsNets = (perms.data || []).includes("partenaires.lire") && (perms.data || []).includes("partenaires.nets");
+  // Le droit nets dans l'entreprise d'un dossier : en mode unifié, les droits de la personne dans CETTE entreprise.
+  const netsDans = (id: string) => {
+    if (!unifie) return droitsNets;
+    const p = unifie.permissionsPar[id] || [];
+    return p.includes("partenaires.lire") && p.includes("partenaires.nets");
+  };
   const NETS_RES_AVANT_57 = "reservation_id, net_prevu, net_paye, paye_le, commission_prevue, commission_recue, commission_recue_le";
   const COLONNES: Record<string, string> = {
-    prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id",
-    trajets: "id, de, vers, mode, depart, arrivee, duree, prix_adulte, prix_enfant, bebe, periode, fenetres, actif, partenaire_id",
+    // entite_id : l'entreprise de chaque ligne, pour l'espace unifié (outils.js : entreprise du service, droits de la ligne). Les outils
+    // ne le renvoient jamais tel quel.
+    prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id, entite_id",
+    trajets: "id, de, vers, mode, depart, arrivee, duree, prix_adulte, prix_enfant, bebe, periode, fenetres, actif, partenaire_id, entite_id",
     // regles : le mode de règlement du partenaire (« sur place » ou chez nous), lu par les outils, jamais renvoyé tel quel.
-    partenaires: "id, nom, actif, regles",
+    partenaires: "id, nom, actif, regles, entite_id",
     // Les nets et la règle de commission : vides pour qui n'a pas le droit « partenaires.nets » (RLS), et les outils ne les lisent qu'avec ce
     // droit (outils.js, voitNets). Avec lui, ils partent chez Claude (décision de Jérémy du 20.11.2026), jamais vers un client.
     prestations_nets: "prestation_id, net, net_enfant",
     trajets_nets: "trajet_id, net_adulte, net_enfant",
     partenaires_prives: "partenaire_id, commission_regle, commissions",
-    hotels_lieux: "cle, nom, lieu, zone, localite, source_url, certitude, verifie",
+    hotels_lieux: "cle, nom, lieu, zone, localite, source_url, certitude, verifie, entite_id",
     temps_trajets: "de, vers, mode, duree_min, ferry, marge_min, source, source_date, a_verifier",
     liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",
-    dossiers: "id, ref, client_id, date_depart, date_retour, annule",
-    reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place",
+    dossiers: "id, ref, client_id, date_depart, date_retour, annule, entite_id",
+    reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place, entite_id",
     // Le net et la commission d'un service (migrations 11, 18 et 57). Sans la migration 57, repli sur les colonnes d'avant (NETS_RES_AVANT_57).
     reservations_nets: "reservation_id, net_prevu, net_paye, paye_le, commission_prevue, commission_recue, commission_recue_le, commission_recue_moyen, commission_partielle_le, commission_ecart_motif, commission_ecart_note",
   };
   const charger = (nom: string): Promise<unknown[]> => {
-    if (!cache.has(nom)) cache.set(nom, paginer(nom, COLONNES[nom], (q) => q.eq("entite_id", entiteId)));
+    // En mode unifié, les deux entreprises (catalogue, partenaires, nets, hôtels, temps de trajet, ferries) : la RLS ne rend que ce que la
+    // personne peut lire, les nets seulement avec le droit.
+    if (!cache.has(nom)) cache.set(nom, paginer(nom, COLONNES[nom], (q) => dans(q)));
     return cache.get(nom)!;
   };
   const lire = async (requete: any, table: string) => {
@@ -253,11 +284,13 @@ Deno.serve(async (req) => {
   // Clients, dossiers, réservations, hôtels : cherchés dans la base (quelques lignes), jamais chargés entiers (20.11.2026, pensé pour des
   // milliers de dossiers). Les outils refont le tri fin (accents, mots, téléphone) sur ces candidats.
   const COL_CLIENT = "id, prenom, nom, telephone, entite_id";
+  // Les fiches d'une autre entreprise (ZTP en mode unifié, toute autre sinon) : gardées seulement si elles ont un dossier ici.
+  const horsEntites = (q: any) => (unifie ? q.not("entite_id", "in", `(${idsEntites.join(",")})`) : q.neq("entite_id", entiteId));
   // Une ligne par sa référence courte (« D-1a2b3c4d ») : les huit premiers caractères de l'identifiant, lus comme un intervalle d'uuid.
   const parRef = async (table: string, ref: string) => {
     const p = prefixeRef(ref);
     if (!p) return [];
-    return lire(sb.from(table).select(COLONNES[table]).eq("entite_id", entiteId).gte("id", `${p}-0000-0000-0000-000000000000`).lte("id", `${p}-ffff-ffff-ffff-ffffffffffff`).limit(5), table);
+    return lire(dans(sb.from(table).select(COLONNES[table])).gte("id", `${p}-0000-0000-0000-000000000000`).lte("id", `${p}-ffff-ffff-ffff-ffffffffffff`).limit(5), table);
   };
   const chercherClients = async (recherche: string) => {
     const mots = sansAccents(recherche).trim().split(/\s+/).filter((m) => m.length >= 2).slice(0, 5);
@@ -265,16 +298,16 @@ Deno.serve(async (req) => {
     if (!mots.length && chiffres.length < 6) return [[], []];
     const parNom = (q: any) => mots.reduce((r, m) => r.or(`prenom.ilike.${motifNom(m)},nom.ilike.${motifNom(m)}`), q);
     const [propres, autres, parTel, parDossier] = await Promise.all([
-      mots.length ? lire(parNom(sb.from("clients").select(COL_CLIENT).eq("entite_id", entiteId)).limit(100), "clients") : [],
+      mots.length ? lire(parNom(dans(sb.from("clients").select(COL_CLIENT))).limit(100), "clients") : [],
       // Les clients partagés d'une autre entreprise qui ont un dossier ici (jointure sur la clé du partage, migration 46). Sans cette clé,
       // repli : les clients des autres entreprises, gardés plus bas seulement s'ils ont un dossier ici.
       mots.length
-        ? lire(parNom(sb.from("clients").select(`${COL_CLIENT}, dossiers!dossiers_client_fkey!inner(entite_id)`).neq("entite_id", entiteId).eq("dossiers.entite_id", entiteId)).limit(100), "clients").catch(() =>
-            lire(parNom(sb.from("clients").select(COL_CLIENT).neq("entite_id", entiteId)).limit(100), "clients")
+        ? lire(parNom(dans(horsEntites(sb.from("clients").select(`${COL_CLIENT}, dossiers!dossiers_client_fkey!inner(entite_id)`)), "dossiers.entite_id")).limit(100), "clients").catch(() =>
+            lire(parNom(horsEntites(sb.from("clients").select(COL_CLIENT))).limit(100), "clients")
           )
         : [],
       chiffres.length >= 6 ? lire(sb.from("clients").select(COL_CLIENT).ilike("telephone", motifTelephone(chiffres)).limit(50), "clients") : [],
-      mots.length ? lire(sb.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).or(mots.map((m) => `ref.ilike.${motifNom(m)}`).join(",")).limit(50), "dossiers") : [],
+      mots.length ? lire(dans(sb.from("dossiers").select(COLONNES.dossiers)).or(mots.map((m) => `ref.ilike.${motifNom(m)}`).join(",")).limit(50), "dossiers") : [],
     ]);
     const clients = new Map<string, Record<string, any>>();
     for (const c of [...propres, ...autres, ...parTel]) clients.set(c.id, c);
@@ -283,26 +316,27 @@ Deno.serve(async (req) => {
     const ids = [...clients.keys()].slice(0, 250);
     // Par lots de 100 identifiants : une adresse trop longue serait refusée.
     const dossiers: Record<string, any>[] = [];
-    for (let i = 0; i < ids.length; i += 100) dossiers.push(...(await lire(sb.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).in("client_id", ids.slice(i, i + 100)).limit(500), "dossiers")));
+    for (let i = 0; i < ids.length; i += 100) dossiers.push(...(await lire(dans(sb.from("dossiers").select(COLONNES.dossiers)).in("client_id", ids.slice(i, i + 100)).limit(500), "dossiers")));
     const ici = new Set(dossiers.map((d) => d.client_id));
-    return [[...clients.values()].filter((c) => c.entite_id === entiteId || ici.has(c.id)), dossiers];
+    return [[...clients.values()].filter((c) => idsEntites.includes(c.entite_id) || ici.has(c.id)), dossiers];
   };
   // Un dossier par sa référence courte ou son numéro (« 2026-0142 »), avec son client et ses services.
   const dossierPour = async (ref: string) => {
     let dossiers = await parRef("dossiers", ref);
     const t = String(ref || "").trim();
-    if (!dossiers.length && t.length >= 2 && t.length <= 30) dossiers = await lire(sb.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).ilike("ref", t.replace(/[\\%_]/g, "\\$&")).limit(5), "dossiers");
+    if (!dossiers.length && t.length >= 2 && t.length <= 30) dossiers = await lire(dans(sb.from("dossiers").select(COLONNES.dossiers)).ilike("ref", t.replace(/[\\%_]/g, "\\$&")).limit(5), "dossiers");
     const d = dossiers[0];
     if (!d) return [[], [], []];
     const [clients, reservations] = await Promise.all([
       d.client_id ? lire(sb.from("clients").select(COL_CLIENT).eq("id", d.client_id), "clients") : [],
-      lire(sb.from("reservations").select(COLONNES.reservations).eq("entite_id", entiteId).eq("dossier_id", d.id).limit(200), "reservations"),
+      lire(sb.from("reservations").select(COLONNES.reservations).eq("entite_id", d.entite_id).eq("dossier_id", d.id).limit(200), "reservations"),
     ]);
-    // Les nets et commissions des services : seulement avec le droit « partenaires.nets » (la base les refuse aussi sans lui).
+    // Les nets et commissions des services : seulement avec le droit « partenaires.nets » dans l'entreprise du dossier (la base les refuse
+    // aussi sans lui).
     const ids = reservations.map((r) => r.id);
     let nets: Record<string, any>[] = [];
-    if (ids.length && droitsNets) {
-      const q = (colonnes: string) => sb.from("reservations_nets").select(colonnes).eq("entite_id", entiteId).in("reservation_id", ids.slice(0, 200));
+    if (ids.length && netsDans(d.entite_id)) {
+      const q = (colonnes: string) => sb.from("reservations_nets").select(colonnes).eq("entite_id", d.entite_id).in("reservation_id", ids.slice(0, 200));
       const r = await q(COLONNES.reservations_nets);
       // 42703 : colonne absente (migration 57 pas encore passée) : les colonnes d'avant suffisent.
       nets = r.error && r.error.code === "42703" ? await lire(q(NETS_RES_AVANT_57), "reservations_nets") : await lire(r, "reservations_nets");
@@ -316,8 +350,9 @@ Deno.serve(async (req) => {
     const aLire = cles.filter((c) => !hotelsVus.has(c));
     for (let i = 0; i < aLire.length; i += 100) {
       const lot = aLire.slice(i, i + 100);
-      const lignes = await lire(sb.from("hotels_lieux").select(COLONNES.hotels_lieux).eq("entite_id", entiteId).in("cle", lot), "hotels_lieux");
-      for (const c of lot) hotelsVus.set(c, lignes.find((h) => h.cle === c) || null);
+      const lignes = await lire(dans(sb.from("hotels_lieux").select(COLONNES.hotels_lieux)).in("cle", lot), "hotels_lieux");
+      // Le même hôtel connu des deux entreprises (mode unifié) : la ligne de l'entreprise active d'abord.
+      for (const c of lot) hotelsVus.set(c, lignes.find((h) => h.cle === c && h.entite_id === entiteId) || lignes.find((h) => h.cle === c) || null);
     }
     return cles.map((c) => hotelsVus.get(c)).filter(Boolean) as Record<string, any>[];
   };
@@ -473,8 +508,11 @@ Deno.serve(async (req) => {
     if (d.data) dossierRelie = { ref_courte: refDe("D", d.data.id), reference: d.data.ref };
   }
   const prestataires = ((await charger("partenaires")) as { nom: string }[]).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
-  const droits: string[] = perms.data || [];
-  const systeme = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable, partenaires: droits.includes("partenaires.lire"), nets: droits.includes("partenaires.lire") && droits.includes("partenaires.nets") });
+  // En mode unifié, les droits tenus dans l'une des deux entreprises règlent les consignes (les champs internes, eux, ne sortent que pour
+  // les lignes de l'entreprise où la personne a le droit : outils.js).
+  const droits: string[] = unifie ? permissionsOutils(unifie) : perms.data || [];
+  const entreprisesUnifiees = unifie ? { entreprises: unifie.entites.map((e) => ({ nom: e.nom, slug: e.slug, reglages: e.id === entiteId ? reglages : reglagesAutre })) } : null;
+  const systeme = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable, partenaires: droits.includes("partenaires.lire"), nets: droits.includes("partenaires.lire") && droits.includes("partenaires.nets"), unifie: entreprisesUnifiees });
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
   // L'historique tel qu'il est gardé (blocs « fichier »), puis tel qu'il part chez Claude (images et documents).
   const gardes = historique(debutValide([...(anciens.data || [])].reverse()));
@@ -485,15 +523,17 @@ Deno.serve(async (req) => {
     const m = (gardes as { role: string; content: unknown }[]).find((x) => x.role === "user" && Array.isArray(x.content) && x.content.some((b: { type: string }) => b.type === "text"));
     return m ? (m.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join(" ") : message;
   })();
-  const lus = await sb.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", entiteId).lte("cree_le", conv!.cree_le || new Date().toISOString()).order("cree_le", { ascending: false }).limit(80);
+  // En mode unifié, celles des deux entreprises.
+  const lus = await dans(sb.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le")).lte("cree_le", conv!.cree_le || new Date().toISOString()).order("cree_le", { ascending: false }).limit(80);
   if (lus.error && !tableAbsente(lus.error)) console.error("agent : apprentissages", lus.error.message);
   const appris = lus.error ? "" : blocApprentissages(lus.data || [], { qui: ra.responsable, premierMessage: premierTexte });
-  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
+  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
   // Les pièces jointes que l'agent peut citer (proposer_import_brochure) et les droits de la personne (l'import demande « partenaires.ecrire »
   // et « partenaires.prix »).
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange
   // complète en place : une pièce jointe ou un nom de client vus plus tôt dans la conversation y sont.
-  const ctx = { historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
+  // Espace unifié : entites et permissionsPar (unifie.js). ctx.permissions reste celles de l'entreprise active (import de brochure, réglages).
+  const ctx = { historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

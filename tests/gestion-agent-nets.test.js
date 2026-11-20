@@ -188,13 +188,15 @@ test("consignes : la section des chiffres internes suit les droits, et rien ne v
 test("fonction : nets lus avec la session et seulement avec le droit, repli sans la migration 57", () => {
   const src = readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
   assert.match(src, /const droitsNets = \(perms\.data \|\| \[\]\)\.includes\("partenaires\.lire"\) && \(perms\.data \|\| \[\]\)\.includes\("partenaires\.nets"\)/);
-  assert.match(src, /if \(ids\.length && droitsNets\)/);
+  // Le droit dans l'entreprise du dossier (espace unifié, migration 63) ; hors de ce mode, droitsNets comme avant.
+  assert.match(src, /if \(ids\.length && netsDans\(d\.entite_id\)\)/);
+  assert.match(src, /if \(!unifie\) return droitsNets;/);
   assert.match(src, /sb\.from\("reservations_nets"\)/);
   assert.doesNotMatch(src, /admin\.from\("(?:reservations_nets|prestations_nets|trajets_nets|partenaires_prives)"\)/);
   assert.match(src, /42703/);
   assert.match(src, /partenaires: droits\.includes\("partenaires\.lire"\), nets: droits\.includes\("partenaires\.lire"\) && droits\.includes\("partenaires\.nets"\)/);
   const boucle = readFileSync(new URL("../supabase/functions/agent/boucle.js", import.meta.url), "utf8");
-  assert.match(boucle, /outils: outilsPour\(\(ctx && ctx\.permissions\) \|\| \[\]\)/);
+  assert.match(boucle, /outils: outilsDuContexte\(ctx\)/);
   void ENT;
   void collecterInternes;
 });

@@ -1,6 +1,6 @@
 // Boîte WhatsApp (phase 2) : logique pure de la réponse préparée par l'agent et du tri Secret ou Taxi. Aucune notification.
 // Aucune dépendance réseau : la fonction « whatsapp » (index.ts) et les tests (tests/gestion-whatsapp.test.js) l'importent.
-import { OUTILS, refDe } from "../agent/outils.js";
+import { OUTILS, OUTILS_UNIFIES, refDe } from "../agent/outils.js";
 import { consignes, contexteDuJour, blocApprentissages } from "../agent/prompt.js";
 import { jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 
@@ -23,7 +23,8 @@ export const LIMITE_BOITE_JOUR = 80;
 export const PLAFOND_WHATSAPP_MOIS_USD = 15;
 // Temps total d'une préparation, attente comprise, sous la limite de 150 s d'une fonction Supabase.
 export const DUREE_BOITE_MS = 75_000;
-export const outilsWhatsapp = () => OUTILS.filter((o) => OUTILS_WHATSAPP.includes(o.name));
+// `unifie` : espace unifié Secret et Taxi (les deux catalogues, chaque ligne avec son entreprise).
+export const outilsWhatsapp = ({ unifie = false } = {}) => (unifie ? OUTILS_UNIFIES : OUTILS).filter((o) => OUTILS_WHATSAPP.includes(o.name));
 
 const court = (t, n) => {
   const x = String(t || "").replace(/\s+/g, " ").trim();
@@ -215,7 +216,8 @@ export const langueSure = (l) => (typeof l === "string" && /^[a-z]{2}$/.test(l) 
 //   - contexte : la date du jour et le dossier relié ;
 //   - texte : la demande WhatsApp (demandeAgent).
 // Testé par tests/gestion-whatsapp.test.js : ce que l'on règle pour l'Assistant s'applique aux réponses WhatsApp.
-export function promptPreparation({ entreprise, reglages, apprentissages = [], messages = [], nomProfil = "", client = null, dossier = null, aujourdhui, ton = "" }) {
+// `unifie` : l'espace unifié Secret et Taxi, { entreprises: [{ nom, slug, reglages }] } (consignes, agent/prompt.js), ou null.
+export function promptPreparation({ entreprise, reglages, apprentissages = [], messages = [], nomProfil = "", client = null, dossier = null, aujourdhui, ton = "", unifie = null }) {
   const ra = reglagesAssistant(reglages);
   const qui = ra.responsable || "Nani";
   const derniersClient = messages.filter((m) => m.sens === "entrant").slice(-3).map((m) => m.texte || "").join(" ");
@@ -223,7 +225,7 @@ export function promptPreparation({ entreprise, reglages, apprentissages = [], m
   return {
     qui,
     ra,
-    systeme: consignes({ entreprise, reglages, lieu: ra.lieu, prenomEquipe: qui }),
+    systeme: consignes({ entreprise, reglages, lieu: ra.lieu, prenomEquipe: qui, unifie }),
     // Les corrections de l'Assistant, puis le ton de Nani (ton.js : ses vraies réponses et ses réécritures), dans le bloc mis en cache.
     appris: [blocApprentissages(apprentissages, { qui, premierMessage: derniersClient }), ton].filter(Boolean).join("\n\n"),
     contexte: contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: relie }),
