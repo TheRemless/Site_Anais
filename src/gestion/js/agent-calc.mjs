@@ -4,6 +4,8 @@
 //   - la liste des conversations, rangée comme une messagerie ;
 //   - une carte « dossier » vers l'écran « Coller une demande » déjà rempli (la création reste celle de l'outil).
 
+import { reglesReponse } from "./defauts.mjs";
+
 // L'agent est proposé quand l'entreprise l'a allumé (Réglages), indépendamment de l'assistant de « Coller une demande » ; l'écran vérifie en
 // plus que le rôle peut lire les tarifs et écrire des dossiers.
 export const agentActif = (regl) => !!(regl && regl.agent_ia === true);
@@ -194,7 +196,7 @@ const lireChemin = (o, chemin) => chemin.split(".").reduce((v, k) => (v && typeo
 const moduleTexte = (v) => (v === true ? "oui" : v === false ? "non" : "auto");
 const ENTIERS = ["conditions.delai_jours", "conditions.relance_jours", "conditions.solde_jours", "conditions.acompte_pct"];
 const MODULES = ["modules.partenaires", "modules.reservations", "modules.messages", "modules.catalogue"];
-const TEXTES_VOUCHER = ["voucher.merci", "voucher.merci_transfert", "voucher.note_transfert"];
+const TEXTES_VOUCHER = ["voucher.merci", "voucher.merci_transfert", "voucher.note_transfert", "assistant_voix.regles_reponse"];
 
 // Les réglages après la carte (voix, texte type, réglage), ou { erreur }. `nouvelId` : l'identifiant d'un nouveau texte type.
 export function reglageApplique(reglages, d = {}, { nouvelId = "" } = {}) {
@@ -221,7 +223,8 @@ export function reglageApplique(reglages, d = {}, { nouvelId = "" } = {}) {
   }
   if (d.sujet === "reglage") {
     const [groupe, cle] = String(d.champ || "").split(".");
-    const avant = lireChemin(r, d.champ);
+    // Les règles de réponse : leur valeur par défaut (Secret, Taxi) tant qu'elles n'ont jamais été enregistrées, comme les lit l'agent.
+    const avant = d.champ === "assistant_voix.regles_reponse" ? reglesReponse(r) : lireChemin(r, d.champ);
     if (MODULES.includes(d.champ)) {
       if (moduleTexte(avant) !== d.avant) return { erreur: "change" };
       const v = { oui: true, non: false, auto: null }[d.valeur];

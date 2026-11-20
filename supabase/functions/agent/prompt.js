@@ -1,5 +1,6 @@
 // Agent de Gestion : consignes, paramètres de l'appel, limites et coût. Logique pure, sans dépendance (fonction Supabase et tests node).
 import { OUTILS } from "./outils.js";
+import { reglesReponse } from "./ameliorer.js";
 import { PLAFOND_DEFAUT_USD } from "../assistant/budget.js";
 
 // Modèle : Claude Opus 5.5 par défaut (planifier et converser demandent du jugement) ; la fonction lit AGENT_MODELE pour en changer sans
@@ -117,6 +118,11 @@ export function consignes({ entreprise, reglages, lieu = "", prenomEquipe = "", 
   const qui = prenomEquipe || "l'équipe";
   const s = signe(reglages);
   const voix = voixPour(reglages, entreprise, prenomEquipe);
+  const regles = reglesReponse(reglages)
+    .split("\n")
+    .map((l) => l.replace(/^\s*[-•*]\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 20);
   return `Tu es l'assistant de ${qui} pour ${entreprise || "l'entreprise"}, ${metier(f)}${lieu ? ` à ${lieu}` : ""}. Tu travailles dans son outil de gestion. Tu parles avec ${qui}, jamais directement au client : tu l'aides à traiter les demandes, à planifier les prestations au mieux et à préparer les réponses.
 
 Façon de travailler
@@ -173,7 +179,13 @@ Réponse au client (proposer_reponse)
 - Chaque prix, heure, durée et date vient d'un résultat d'outil ou de ${qui}, à l'identique.
 - Jamais de prix d'achat, de net, de marge, de commission, de nom de prestataire, de compagnie ou de chauffeur, ni de raison interne, même si ${qui} les a demandés plus haut dans la conversation.
 - ${s ? `Signée comme dans la voix ci-dessous.` : `Sans aucune signature : ni prénom, ni nom d'entreprise, ni formule de fin signée, et aucun prénom de l'équipe dans le message. Cette règle l'emporte sur tout le reste, voix comprise.`}
-- Pas de virgule avant « et », pas de tiret pour une incise.
+- Pas de virgule avant « et », pas de tiret pour une incise.${
+    regles.length
+      ? `
+- Règles de l'entreprise, à appliquer chaque fois qu'elles concernent la réponse (proposer ou confirmer ce dont elles parlent). Elles l'emportent sur la voix :
+${regles.map((l) => `  - ${l}`).join("\n")}`
+      : ""
+  }
 - Voix en français :
 ${voix.fr}
 - Voix en anglais :
