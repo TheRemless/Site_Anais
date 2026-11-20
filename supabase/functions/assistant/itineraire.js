@@ -196,7 +196,7 @@ export function parametresSituer(prompt, nbHotels, modele = MODELE) {
     model: modele,
     max_tokens: USAGES.situer.maxTokens,
     output_config: { effort: USAGES.situer.effort },
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: Math.min(2 * nbHotels + 1, 12), user_location: { type: "approximate", country: "TH", timezone: "Asia/Bangkok" } }, OUTIL_SITUER],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: Math.min(2 * nbHotels + 1, 12) }, OUTIL_SITUER],
     tool_choice: { type: "auto" },
     system: prompt.system,
     messages: prompt.messages,

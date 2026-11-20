@@ -380,7 +380,7 @@ export async function vueAgent(idOuvert = "") {
       ),
       verdict,
       // Mention exigée par OpenStreetMap et OSRM quand un itinéraire vient d'eux.
-      plan.trajets.some((t) => t.source === "ors" || (t.morceaux || []).some((m) => m.source === "ors")) ? h("p", { class: "agent-mention" }, plan.trajets.some((t) => t.moteur === "osrm" || (t.morceaux || []).some((m) => m.moteur === "osrm")) ? tr("Itinéraire OSRM, données © contributeurs OpenStreetMap") : tr("Itinéraire openrouteservice, données © contributeurs OpenStreetMap")) : null,
+      plan.trajets.some((t) => t.source === "ors" || (t.morceaux || []).some((m) => m.source === "ors")) ? h("p", { class: "agent-mention" }, ((m) => (plan.trajets.some((t) => t.moteur === m || (t.morceaux || []).some((x) => x.moteur === m))))("google") ? tr("Itinéraire Google Maps") : plan.trajets.some((t) => t.moteur === "osrm" || (t.morceaux || []).some((m) => m.moteur === "osrm")) ? tr("Itinéraire OSRM, données © contributeurs OpenStreetMap") : tr("Itinéraire openrouteservice, données © contributeurs OpenStreetMap")) : null,
       h("details", { class: "agent-hypotheses" }, h("summary", null, tr("Hypothèses du calcul")), h("ul", null, plan.hypotheses.map((x) => h("li", null, x))))
     );
   }

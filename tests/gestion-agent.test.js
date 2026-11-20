@@ -8,7 +8,7 @@ import { dureeEntre, ligneDeLaTable, zoneDuLieu, minutesDe, dureesTapees, lignes
 import { lireEstimation } from "../supabase/functions/agent/estimation.js";
 import { dureeAvecFerry as dureeAvecFerryDe } from "../supabase/functions/agent/temps.js";
 import { OUTILS, executer, entreeValide, memoDepuis, refDe, trouverRef, controlerReponse, montantsTapes, motifNom, motifTelephone, clesHotelPossibles, prefixeRef } from "../supabase/functions/agent/outils.js";
-import { cleItineraire, VALIDITE_JOURS, lirePhoton, parametresPhoton } from "../supabase/functions/agent/temps.js";
+import { cleItineraire, VALIDITE_JOURS, lirePhoton, parametresPhoton, lirePlaces, lireRoutes, corpsPlaces, corpsRoutes, nomConcorde, VALIDITE_GOOGLE_JOURS } from "../supabase/functions/agent/temps.js";
 import { consignes, controlerAcces, parametres, ligneJournal, coutEchange, historique, titreDepuis, signe } from "../supabase/functions/agent/prompt.js";
 
 const ENT = "11111111-1111-4111-8111-111111111111";
@@ -360,6 +360,34 @@ test("outil en panne : le motif de l'erreur reste dans le résultat", async () =
   const r = await executer("estimer_temps_web", { de: "A", vers: "B" }, ctxDe({ estimerWeb: async () => { throw new Error("400 web search is not enabled"); } }), nouveauMemo());
   assert.equal(r.contenu.erreur, "outil_en_panne");
   assert.equal(r.contenu.motif, "400 web search is not enabled");
+});
+
+test("Google Maps : lieu gardé seulement si le nom concorde, durée lue en secondes, ferry repéré, 30 jours", () => {
+  const place = (nom, adresse, lat = 7.5, lon = 99.05) => ({ places: [{ displayName: { text: nom }, formattedAddress: adresse, location: { latitude: lat, longitude: lon } }] });
+  const g = lirePlaces(place("Jai Tiki Retreat", "Klong Nin, Ko Lanta District, Krabi 81150, Thailand"), "Jai Tiki Retreat, Koh Lanta");
+  assert.equal(g.lat, 7.5);
+  assert.equal(g.label, "Jai Tiki Retreat, Klong Nin, Ko Lanta District, Krabi 81150, Thailand");
+  // Les erreurs vues avec Photon sur les lieux réels sont refusées.
+  assert.equal(lirePlaces(place("Seahorse Resort", "Hua Hin, Thailand"), "Kantiang Seahorse Resort"), null);
+  assert.equal(lirePlaces(place("Lanta Nakara Long Beach Resort", "Ko Lanta"), "Lanta Ilmare Beach Resort"), null);
+  assert.equal(lirePlaces(place("Green Park Bungalow", "Ao Nang"), "Green Chili Bungalow"), null);
+  assert.ok(lirePlaces(place("Green Chilli Bungalows", "Haad Khlong Khong"), "Green Chili Bungalow"));
+  // Faute de frappe d'une lettre (réservation réelle) : retrouvé, et le nom trouvé est montré.
+  assert.equal(lirePlaces(place("Treeya Lanta", "Sala Dan"), "Treeya Manta Hotel").label, "Treeya Lanta, Sala Dan");
+  assert.equal(lirePlaces(place("Lanta Sand Resort", "Sala Dan"), "Pimalai Resort"), null);
+  assert.ok(nomConcorde("BKK Airport", "Suvarnabhumi Airport, Bang Phli"));
+  assert.ok(nomConcorde("Don Muang Airport", "Don Mueang International Airport, Bangkok"));
+  assert.equal(lirePlaces({ places: [] }, "x"), null);
+  const c = corpsPlaces("Jai Tiki Retreat");
+  assert.equal(c.regionCode, "TH");
+  assert.equal(c.pageSize, 1);
+  const r = corpsRoutes({ lat: 7.5, lon: 99.05 }, { lat: 8.08, lon: 98.9 });
+  assert.equal(r.routingPreference, "TRAFFIC_UNAWARE");
+  assert.equal(r.origin.location.latLng.latitude, 7.5);
+  assert.deepEqual(lireRoutes({ routes: [{ duration: "4381s", distanceMeters: 76312, legs: [{ steps: [{ navigationInstruction: { maneuver: "STRAIGHT" } }] }] }] }), { duree_min: 74, distance_km: 76.3, ferry: false });
+  assert.equal(lireRoutes({ routes: [{ duration: "5000s", distanceMeters: 1, legs: [{ steps: [{ navigationInstruction: { maneuver: "FERRY" } }] }] }] }).ferry, true);
+  assert.equal(lireRoutes({}), null);
+  assert.equal(VALIDITE_GOOGLE_JOURS, 30);
 });
 
 // ---- Propositions ------------------------------------------------------------------------------------------------------------

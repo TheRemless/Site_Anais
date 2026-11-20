@@ -32,6 +32,10 @@ for (const f of migrations) await db.exec(fs.readFileSync(W + f, "utf8"));
 ok(migrations.includes("migration-52-agent-conversations.sql"), "la migration 52 est appliquée, après les autres");
 await db.exec(fs.readFileSync(W + "migration-52-agent-conversations.sql", "utf8"));
 ok(true, "la migration 52 se rejoue sans erreur");
+await db.exec(fs.readFileSync(W + "migration-53-agent-google.sql", "utf8"));
+ok(true, "la migration 53 se rejoue sans erreur");
+ok(/google/.test((await db.query("select pg_get_constraintdef(oid) d from pg_constraint where conname = 'trajets_ors_moteur_check'")).rows[0].d), "trajets_ors accepte le moteur google");
+ok(/google/.test((await db.query("select pg_get_constraintdef(oid) d from pg_constraint where conname = 'lieux_geo_origine_check'")).rows[0].d), "lieux_geo accepte l'origine google");
 
 const un = async (sql, p = []) => (await db.query(sql, p)).rows[0];
 const ent = {};
