@@ -2076,3 +2076,24 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .as-appris-modif ins { text-decoration: none; font-weight: 600; }
 .agent-arret { border-left: 4px solid var(--danger); }
 .dossier-agent a { white-space: nowrap; }
+/* Assistant : pièces jointes (20.11.2026). Trombone à gauche du champ, vignettes au-dessus, contour pendant un glisser-déposer. */
+.agent-saisie { flex-wrap: wrap; }
+.agent-joindre { flex: none; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; }
+/* Le champ fichier caché précède le trombone : son focus clavier se voit sur le trombone. */
+.agent-saisie input[type="file"]:focus-visible + .agent-joindre { outline: 2px solid var(--teal-600); outline-offset: 2px; }
+.agent-joints { flex: 1 0 100%; list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.agent-joints:empty { display: none; }
+.agent-joint { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 44px; padding: 2px 4px 2px 2px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface); color: inherit; font: inherit; font-weight: 400; text-align: left; }
+.agent-joint img, .agent-joint-type { flex: none; width: 40px; height: 40px; border-radius: 4px; object-fit: cover; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: var(--teal-700); }
+.agent-joint-nom { display: flex; flex-direction: column; min-width: 0; max-width: 16rem; font-size: 0.9rem; overflow-wrap: anywhere; }
+.agent-joint-nom small { color: var(--texte-2); }
+.agent-joint .bouton-icone { width: 36px; height: 36px; }
+button.agent-joint { cursor: pointer; }
+.agent-joints-erreur { flex: 1 0 100%; margin: 0; color: var(--danger); font-size: 0.9rem; }
+.agent-joints-erreur:empty { display: none; }
+.agent-bulle.agent-pieces { padding: 6px; background: transparent; }
+.agent-joints.envoyes { justify-content: flex-end; }
+.agent-carte .agent-joints.envoyes { justify-content: flex-start; margin-bottom: 10px; }
+.agent-fil.agent-depot { outline: 2px dashed var(--teal-600); outline-offset: -6px; }
+.agent-apercu img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.brochure-nouveau { padding: 10px 12px; border: 1px solid var(--bord); border-left: 4px solid var(--teal); border-radius: var(--rayon); background: var(--surface); }

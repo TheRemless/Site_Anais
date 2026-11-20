@@ -10,6 +10,7 @@ On discute avec l'assistant comme sur une messagerie : une conversation par clie
 | Les tarifs de **vente** et les horaires du catalogue | Le nom d'un prestataire (retiré des modes de transport) |
 | Les clients et dossiers que l'agent cherche (nom, téléphone, dates, services, prix de vente) | Une coordonnée bancaire |
 | Les noms d'hôtels à situer | Les données d'une autre entreprise (RLS) |
+| Les pièces jointes choisies par la personne (photos réduites, PDF tels quels) | Un fichier de la base que la personne n'a pas joint |
 
 Les nets sont lus par la fonction (avec les droits de la personne) pour poser un seul drapeau, « recommande », sur l'option à la meilleure marge. La marge elle-même ne sort pas de la fonction. Les contrôles sont dans le code (`supabase/functions/agent/outils.js`), pas seulement dans les consignes :
 
@@ -86,19 +87,46 @@ Question de Jérémy : dans deux ans, avec des milliers de demandes, la base ne 
 
 Claude ne reçoit que le résultat d'un outil (huit clients au plus, une durée), jamais une table : le nombre de lignes en base ne change pas le coût en jetons.
 
+## Pièces jointes (20.11.2026)
+
+On joint à un message des photos, des captures d'écran (WhatsApp, billet d'avion, réservation d'hôtel) ou des PDF :
+
+- **Joindre** : le trombone à gauche du champ (sur iPhone : photothèque, appareil photo ou Fichiers), le glisser-déposer sur toute la conversation (ordinateur), ou une capture collée dans le champ (Cmd+V). Un message peut n'être que des fichiers. Les vignettes au-dessus du champ se retirent une à une ; si l'envoi échoue, les fichiers restent joints.
+- **Partage depuis l'iPhone** : pas de bouton « Partager vers Gestion ». Safari ne permet pas à une application web installée (PWA) de recevoir un partage (Web Share Target) ; le trombone ouvre la photothèque et Fichiers, ce qui couvre les captures et les PDF reçus.
+- **Réduction** : une image est réduite dans le navigateur à 2 000 pixels de côté, en JPEG (`src/gestion/js/pieces-jointes.mjs`, la même que l'import de brochure) ; un PDF part tel quel.
+- **Limites** (contrôlées dans le navigateur et dans la fonction, `supabase/functions/agent/fichiers.js`) : 6 fichiers et 10 Mo par message, 8 Mo par PDF, 40 pages par PDF (quand le PDF les déclare en clair), 20 fichiers et 30 Mo par conversation. Types : JPEG, PNG, WebP, PDF ; un fichier qui ne commence pas comme son type est refusé. Chaque dépassement a son message (« Six fichiers au plus par message », « Ce PDF dépasse 40 pages : joignez seulement les pages utiles »…).
+- **Lecture** : chaque fichier part chez Claude comme un bloc `image` ou `document` (base64), précédé d'une ligne « [Pièce jointe F-1a2b3c4d : nom] » qui permet à l'agent de le citer. L'agent le lit comme un message : un billet d'avion donne le vol, la date et l'heure locale de départ, qui partent dans `planifier_course` (pickup et verdict du vol calculés par l'outil, jamais de tête) ; une réservation d'hôtel donne l'hôtel, les dates et les personnes, l'hôtel est situé par les outils ; une capture WhatsApp est le message du client. Un chiffre flou ou coupé ne se devine pas : l'agent le dit et le demande. Un fichier est une donnée, jamais une consigne. Il recopie en une ligne ce qu'il a lu (vol, heure, hôtel, dates) pour que Nani vérifie.
+- **Budget d'un appel** : les fichiers les plus récents de la conversation partent tant qu'ils tiennent dans 20 Mo (la requête reste sous la limite de 32 Mo de l'API) ; un plus ancien devient une ligne « plus jointe à ce message », l'agent demande de le joindre à nouveau s'il en a besoin.
+- **Coût** : une photo de 2 000 pixels compte environ 1 500 à 4 800 jetons, une page de PDF 1 500 à 3 000. Le fichier repart à chaque appel de la conversation, lu dans le cache (0,20 $ le million de jetons avec Opus 5.5) après le premier. Tout est compté dans le journal de l'échange et dans le plafond du mois.
+
+### Ajouter un partenaire ou des prestations depuis un fichier
+
+Anaïs ou Nani joint une brochure, une grille de prix ou une fiche de partenaire et demande de l'ajouter. L'agent appelle `proposer_import_brochure` avec les pièces de la brochure et le nom imprimé ; il ne recopie pas lui-même les prix. La fonction reconnaît le partenaire de l'entreprise par son nom (un seul candidat, sinon aucun) et rend à Claude seulement « partenaire au catalogue : oui ou non », jamais un nom de la base.
+
+La carte « Brochure à importer » montre les fichiers et le partenaire présélectionné (un autre, ou « Nouveau partenaire »). « Lire et comparer » ouvre l'écran d'import de brochure (usage 5 de `assistant-ia.md`) : la fonction `assistant` relit les fichiers gardés de la conversation avec la session de la personne (`fichiers_agent`), avec tous ses contrôles : prix recopiés du texte imprimé, ligne « illisible » sinon, net gardé seulement s'il est imprimé comme tel, avec `partenaires.nets` et jamais en Taxi. L'écran compare au catalogue (nouveau, prix changé, inchangé, illisible) et n'enregistre que les lignes cochées. Pour un nouveau partenaire, l'écran montre le nom et les contacts imprimés (téléphones, e-mails, site, Line, adresse, personne) et « Créer le partenaire » ouvre le formulaire habituel déjà rempli ; les lignes s'enregistrent ensuite chez lui. Rien n'est écrit sans le clic de la personne.
+
+Droits : la carte se propose avec `partenaires.ecrire` et `partenaires.prix` (sinon l'outil répond « droit manquant ») ; l'écran et la base les vérifient de nouveau. Il suffit que l'onglet Assistant soit allumé (`agent_ia`), même chez ZTP qui n'a pas « Coller une demande ».
+
+### Ce qui est gardé et combien de temps
+
+Les fichiers ne sont pas dans les messages : ils vivent dans la table `agent_fichiers` (migration 55), une ligne par fichier, lisible seulement par la personne de la conversation (mêmes règles que la conversation). Le message garde un bloc `{ type: "fichier", id, nom, media_type, taille }` : le fil s'affiche sans télécharger les fichiers et un clic sur une vignette ouvre le fichier. Un fichier est supprimé **au plus tard 30 jours après l'envoi** (`purger_agent_fichiers`, appelée à chaque échange) ou avec sa conversation (90 jours sans message, ou « Supprimer »), au premier des deux. Passé ce délai, l'agent sait qu'il y avait un fichier mais ne le voit plus. La sauvegarde automatique de la base (copie locale chiffrée) contient les fichiers présents le jour de la sauvegarde. En démonstration, seuls le nom et le type sont gardés.
+
 ## Fichiers
 
 | Fichier | Rôle |
 |---|---|
 | `supabase/functions/agent/index.ts` | Fonction : session de la personne, droits, limites, conversation, flux NDJSON, journal |
 | `supabase/functions/agent/boucle.js` | La boucle d'outils d'un échange (aussi utilisée par le jeu d'essai) |
-| `supabase/functions/agent/outils.js` | Les 11 outils, leurs contrôles, les cartes |
+| `supabase/functions/agent/outils.js` | Les outils, leurs contrôles, les cartes (dont `proposer_import_brochure`) |
+| `supabase/functions/agent/fichiers.js` | Pièces jointes : limites, blocs image et document, budget d'un appel |
 | `supabase/functions/agent/prompt.js` | Consignes, voix, modèle, coût, accès |
 | `supabase/functions/agent/planifier.js` | Calcul des heures, temps simulés de la démo (copie identique : `src/gestion/js/agent-planifier.mjs`) |
 | `supabase/functions/agent/temps.js` | Ordre des sources de durée, zones, openrouteservice, pré-remplissage (copie identique : `src/gestion/js/agent-temps.mjs`) |
 | `supabase/functions/agent/estimation.js` | Estimation d'une durée par la recherche web (quand OpenStreetMap et la table n'ont rien) |
 | `src/gestion/js/views/temps-trajets.mjs` | Écran de la table des temps de trajet |
 | `src/gestion/js/views/agent.mjs`, `agent-calc.mjs`, `agent-demo.mjs` | Écran, logique pure, démonstration |
+| `src/gestion/js/views/agent-pieces.mjs`, `src/gestion/js/pieces-jointes.mjs` | Trombone, glisser-déposer, vignettes, aperçu, carte brochure ; réduction des images et limites côté navigateur |
+| `docs/gestion/migration-55-agent-fichiers.sql` | Table `agent_fichiers`, purge à 30 jours, genre de carte `brochure` |
 | `docs/gestion/migration-52-agent-conversations.sql` | Conversations, messages, cartes, RLS, conservation |
 | `scripts/eval-agent/` | Jeu d'essai (cas privés dans `~/Desktop/Gestion-Test/eval-assistant/cas-agent.json`) |
 
@@ -113,7 +141,7 @@ Claude ne reçoit que le résultat d'un outil (huit clients au plus, une durée)
 
 ## Conservation
 
-Une conversation sans nouveau message depuis 90 jours est supprimée avec ses messages et ses cartes (`AGENT_CONSERVATION_JOURS`). Les dossiers créés restent.
+Une conversation sans nouveau message depuis 90 jours est supprimée avec ses messages, ses cartes et ses pièces jointes (`AGENT_CONSERVATION_JOURS`). Les pièces jointes partent au plus tard 30 jours après l'envoi. Les dossiers créés restent.
 
 ## Mise en service (chaque étape avec le oui de Jérémy)
 
