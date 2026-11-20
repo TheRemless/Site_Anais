@@ -320,7 +320,7 @@ export function etatCompte(code) {
   return { cle: "autre", libelle: N_("État reçu de Telnyx ({code})"), vars: { code: c } };
 }
 
-// ---- Aperçu de la liste (migration 64, lot 2 du 20.11.2026) ---------------------------------------------------------------------------
+// ---- Aperçu de la liste (migration 65, lot 2 du 20.11.2026) ---------------------------------------------------------------------------
 // Ce que la base tient à jour (whatsapp_apercu) : le début du dernier message, son type, et depuis quand le client attend. Même calcul que
 // le déclencheur, pour la démonstration et les tests.
 export const APERCU_MAX = 140;
@@ -336,7 +336,7 @@ export function apercuDepuisMessages(messages = []) {
   return { dernier_texte: texte || null, dernier_type: dernier ? (dernier.supprime_le ? "supprime" : dernier.type || "text") : null, attend_depuis: attente ? attente.envoye_le : null };
 }
 // La deuxième ligne d'une conversation dans la liste, comme dans WhatsApp : le début du dernier message, « Vous : » quand c'est Nani.
-// Un média sans texte se dit par son type. `texte` vide : rien à montrer (base sans la migration 64).
+// Un média sans texte se dit par son type. `texte` vide : rien à montrer (base sans la migration 65).
 export function apercuConversation(conv) {
   if (!conv) return { texte: "", deNani: false, type: null };
   const deNani = conv.dernier_sens === "sortant";
@@ -345,7 +345,7 @@ export function apercuConversation(conv) {
   return { texte: "", deNani, type: conv.dernier_type || null };
 }
 export const LIBELLE_SUPPRIME = N_("Message supprimé");
-// Depuis combien de temps le client attend une réponse : son premier message resté sans réponse (attend_depuis, migration 64 ; à défaut
+// Depuis combien de temps le client attend une réponse : son premier message resté sans réponse (attend_depuis, migration 65 ; à défaut
 // son dernier message). null quand Nani a répondu ou que le tri a vu un message sans réponse à faire (merci, emoji). `urgent` au-delà de
 // ATTENTE_URGENTE_MIN minutes.
 export const ATTENTE_URGENTE_MIN = 30;

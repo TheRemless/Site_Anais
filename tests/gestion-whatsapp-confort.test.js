@@ -28,10 +28,10 @@ test("aperçu : le début du dernier message, son type, et le premier message re
   assert.equal(apercuDepuisMessages([msg(0, "entrant", "Hi"), msg(1, "entrant", "👍", { type: "reaction" })]).dernier_texte, "Hi", "une réaction ne remplace pas l'aperçu");
   assert.deepEqual(apercuDepuisMessages([]), { dernier_texte: null, dernier_type: null, attend_depuis: null });
   assert.equal(apercuDepuisMessages([msg(0, "entrant", null, { type: "image", medias: [{ type: "image", legende: "This is our hotel" }] })]).dernier_texte, "This is our hotel", "une photo légendée : sa légende");
-  assert.match(source("docs/gestion/migration-64-whatsapp-apercu.sql"), /x->>'legende'/, "même règle en base");
+  assert.match(source("docs/gestion/migration-65-whatsapp-apercu.sql"), /x->>'legende'/, "même règle en base");
 });
 
-test("liste : « Vous : » quand c'est Nani, le type pour un média, rien sans la migration 64", async () => {
+test("liste : « Vous : » quand c'est Nani, le type pour un média, rien sans la migration 65", async () => {
   const { apercuConversation } = await W();
   assert.deepEqual(apercuConversation({ dernier_texte: "See you", dernier_sens: "sortant" }), { texte: "See you", deNani: true, type: null });
   assert.deepEqual(apercuConversation({ dernier_texte: null, dernier_type: "audio", dernier_sens: "entrant" }), { texte: "", deNani: false, type: "audio" });
@@ -44,7 +44,7 @@ test("attente : depuis le premier message sans réponse, en couleur au-delà de 
   const maintenant = Date.parse("2026-11-20T13:00:00Z");
   const conv = { dernier_sens: "entrant", attend_depuis: "2026-11-20T12:15:00Z", dernier_message_le: "2026-11-20T12:55:00Z" };
   assert.deepEqual(attenteClient(conv, null, maintenant), { minutes: 45, texte: "45 min", urgent: true });
-  assert.equal(attenteClient({ ...conv, attend_depuis: null }, null, maintenant).minutes, 5, "sans la migration 64 : le dernier message");
+  assert.equal(attenteClient({ ...conv, attend_depuis: null }, null, maintenant).minutes, 5, "sans la migration 65 : le dernier message");
   assert.equal(attenteClient({ ...conv, dernier_sens: "sortant" }, null, maintenant), null);
   assert.equal(attenteClient({ ...conv, tri: { preparer: false, motif: "remerciement", le: "2026-11-20T12:56:00Z" } }, null, maintenant), null, "un merci n'attend rien");
   assert.equal(dureeCourte(4), "4 min");
@@ -223,16 +223,18 @@ test("clavier iPhone, texte de 13 px au moins, un seul mot « assistant »", () 
   }
 });
 
-test("migration 64 : aperçu tenu par un déclencheur, rempli pour l'existant, retour en arrière", () => {
-  const m = source("docs/gestion/migration-64-whatsapp-apercu.sql");
+test("migration 65 : aperçu tenu par un déclencheur, rempli pour l'existant, retour en arrière", () => {
+  const m = source("docs/gestion/migration-65-whatsapp-apercu.sql");
   assert.match(m, /add column if not exists dernier_texte text/);
   assert.match(m, /add column if not exists attend_depuis timestamptz/);
-  assert.match(m, /create trigger apercu after insert or update of texte, supprime_le on whatsapp_messages/);
+  assert.match(m, /create trigger apercu after insert or update of texte, supprime_le or delete on whatsapp_messages/, "un envoi retiré (migration 64) change aussi l'aperçu");
+  assert.match(m, /whatsapp_apercu\(coalesce\(new\.conversation_id, old\.conversation_id\)\)/);
+  assert.match(m, /^-- Suit la 64/m);
   assert.match(m, /security definer set search_path = public, pg_temp/);
   assert.match(m, /revoke all on function whatsapp_apercu\(uuid\) from public, anon, authenticated;/);
   assert.match(m, /select whatsapp_apercu\(id\) from whatsapp_conversations;/);
   assert.doesNotMatch(m, /function whatsapp_ranger/, "la réception ne change pas");
-  const r = source("docs/gestion/retour-64-whatsapp-apercu.sql");
+  const r = source("docs/gestion/retour-65-whatsapp-apercu.sql");
   assert.match(r, /drop column if exists dernier_texte, drop column if exists dernier_type, drop column if exists attend_depuis/);
   const s = source("src/gestion/js/store-supabase.mjs");
   assert.match(s, /if \(r\.error && APERCU\.split\(", "\)\.some\(\(c\) => colonneAbsente\(r\.error, c\)\)\) r = await requete/, "lu sans la migration");

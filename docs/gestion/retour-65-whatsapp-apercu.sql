@@ -1,4 +1,4 @@
--- Retour en arrière de la migration 64 (aperçu du dernier message WhatsApp). L'écran relit la liste sans ces colonnes.
+-- Retour en arrière de la migration 65 (aperçu du dernier message WhatsApp). L'écran relit la liste sans ces colonnes.
 begin;
 drop trigger if exists apercu on whatsapp_messages;
 drop function if exists whatsapp_apercu_message();

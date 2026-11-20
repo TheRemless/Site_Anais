@@ -53,7 +53,7 @@ const dossierDe = (c) => (c && c.dossier_id ? (etat.brut.dossiers || []).find((x
 
 // ---- Liste ----------------------------------------------------------------------------------------------------------------------
 // Comme dans WhatsApp (lot 2, design n° 2) : le nom et l'heure, puis le début du dernier message. À droite, depuis combien de temps le client
-// attend (en couleur au-delà de 30 min), l'icône d'une réponse prête et les non-lus. Sans aperçu en base (migration 64 pas encore passée),
+// attend (en couleur au-delà de 30 min), l'icône d'une réponse prête et les non-lus. Sans aperçu en base (migration 65 pas encore passée),
 // l'état d'avant.
 function ligneConversation(c, prop, ouverte) {
   const e = c.entite_id ? entite(c.entite_id) : null;

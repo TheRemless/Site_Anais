@@ -181,7 +181,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     const COLONNES = "id, created_at, updated_at, organisation_id, telephone, nom, entite_id, entite_source, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus";
     // resume, resume_le, paiement_signale, promesse_le (migration 62) : relues sans elles tant que la migration n'est pas appliquée.
     const SUIVI = "resume, resume_le, paiement_signale, promesse_le";
-    // dernier_texte, dernier_type, attend_depuis (migration 64, aperçu de la liste) : relues sans elles tant que la migration n'est pas appliquée.
+    // dernier_texte, dernier_type, attend_depuis (migration 65, aperçu de la liste) : relues sans elles tant que la migration n'est pas appliquée.
     const APERCU = "dernier_texte, dernier_type, attend_depuis";
     let triDisponible = true;
     let suiviDisponible = true;

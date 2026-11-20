@@ -29,7 +29,7 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     const m = { id: uid(), conversation_id: c.id, sens, origine: sens === "entrant" ? "client" : "app", type: "text", texte, medias: [], envoye_le: il_y_a(minutes), recu_le: il_y_a(minutes), modifie_le: null, supprime_le: null, ...o };
     out.whatsapp_messages.push(m);
     if (!c.dernier_message_le || Date.parse(m.envoye_le) > Date.parse(c.dernier_message_le)) Object.assign(c, { dernier_message_le: m.envoye_le, dernier_sens: sens });
-    // Aperçu de la liste (migration 64) : le même calcul que le déclencheur de la base.
+    // Aperçu de la liste (migration 65) : le même calcul que le déclencheur de la base.
     Object.assign(c, apercuDepuisMessages(out.whatsapp_messages.filter((x) => x.conversation_id === c.id)));
     return m;
   };
