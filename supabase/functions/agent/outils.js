@@ -520,7 +520,8 @@ export async function horairesTrajet(e, ctx) {
     const a = adultes || enfants ? adultes : 1;
     const pa = nombre(t.prix_adulte);
     const pe = nombre(t.prix_enfant);
-    const vente = pa === null ? null : a * pa + (enfants > 0 && pe !== null ? enfants * pe : 0);
+    // Un prix enfant manquant laisse la vente du groupe inconnue : jamais une commission calculée sur une partie du groupe.
+    const vente = pa === null || (enfants > 0 && pe === null) ? null : a * pa + (enfants > 0 ? enfants * pe : 0);
     const na = n ? nombre(n.net_adulte) : null;
     const ne = n ? nombre(n.net_enfant) : null;
     const net = na === null || (enfants > 0 && pe !== null && ne === null) ? null : a * na + (enfants > 0 && ne !== null ? enfants * ne : 0);
@@ -724,7 +725,8 @@ export async function lireDossier(e, ctx) {
             ? {
                 commission_attendue: attendue,
                 commission_recue: recue ?? 0,
-                commission_reste: attendue === null ? null : arrondi2(Math.max(0, attendue - (recue || 0))),
+                // Comme « À encaisser » (encaisser-calc.mjs) : un service dont la réception est datée est réglé, même avec un écart.
+                commission_reste: attendue === null ? null : somme((s) => (s.reglement === "sur_place" && s.commission_etat !== "reglee" && s.commission_prevue !== null ? Math.max(0, s.commission_prevue - (s.commission_recue || 0)) : null)) ?? 0,
                 commission_etat: etats.size === 1 ? [...etats][0] : etats.has("attendue") || etats.has("partielle") ? "en_cours" : "mixte",
                 ...(surPlaceS.some((s) => s.commission_etat === "sans_commission") ? { services_sans_commission: surPlaceS.filter((s) => s.commission_etat === "sans_commission").length } : {}),
               }

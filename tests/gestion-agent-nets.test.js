@@ -120,7 +120,8 @@ test("dossier avec les nets : marge chez nous, commission attendue, reçue, part
   assert.equal(r.marge_chez_nous, 400);
   assert.equal(r.commission_attendue, 1040);
   assert.equal(r.commission_recue, 750);
-  assert.equal(r.commission_reste, 290);
+  // Le service réglé avec un rabais n'est plus dû : il reste 400 − 150 du service payé en partie.
+  assert.equal(r.commission_reste, 250);
   assert.equal(r.commission_etat, "en_cours");
 });
 
