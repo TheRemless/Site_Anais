@@ -422,6 +422,8 @@ export function creer() {
       data.temps_trajets = data.temps_trajets.filter((l) => l.id !== id);
       sauve();
     },
+    // La démonstration ne garde aucun itinéraire OpenStreetMap : rien à effacer.
+    async oublierItineraires() {},
     async liaisonsFerry(entiteId) {
       return structuredClone(data.liaisons_ferry.filter((l) => l.entite_id === entiteId));
     },

@@ -65,7 +65,8 @@ test("cas Jai Tiki : pickup à rebours, rendez-vous à 16:00, une heure d'attent
   assert.equal(p.etapes[1].depart.heure, "17:00");
   assert.equal(p.etapes[2].arrivee_prevue.heure, "17:25");
   assert.equal(p.etapes[2].arrivee_au_plus_tard.heure, "17:35");
-  assert.deepEqual(p.alertes, []);
+  // Ferry sans liaison de la table : signalé (sans liaison, l'attente réglée compte, 30 min).
+  assert.deepEqual(p.alertes, ["ferry_sans_liaison"]);
   assert.ok(p.hypotheses.some((h) => h.includes("ferry")));
 });
 
@@ -461,8 +462,11 @@ test("ferry en trois morceaux : Jai Tiki → Krabi Nakharin pour 16:00, détail 
 
 test("OSRM public et Nominatim (organisation de Lanta) : adresses, lecture, cadence d'une requête par seconde", async () => {
   const t = await import("../supabase/functions/agent/temps.js");
-  assert.equal(t.cheminOsrm({ lon: 98.9058189, lat: 8.0807978 }, { lon: 99.0992049, lat: 7.6930427 }), "/route/v1/driving/98.9058189,8.0807978;99.0992049,7.6930427?overview=false");
-  assert.deepEqual(t.lireOsrm({ code: "Ok", routes: [{ duration: 4380, distance: 74000 }] }), { duree_min: 73, distance_km: 74, ferry: false });
+  assert.equal(t.cheminOsrm({ lon: 98.9058189, lat: 8.0807978 }, { lon: 99.0992049, lat: 7.6930427 }), "/route/v1/driving/98.9058189,8.0807978;99.0992049,7.6930427?overview=false&steps=true");
+  assert.deepEqual(t.lireOsrm({ code: "Ok", routes: [{ duration: 4380, distance: 74000, legs: [{ steps: [{ mode: "driving" }] }] }] }), { duree_min: 73, distance_km: 74, ferry: false });
+  assert.equal(t.lireOsrm({ code: "Ok", routes: [{ duration: 5520, distance: 76000, legs: [{ steps: [{ mode: "driving" }, { mode: "ferry" }] }] }] }).ferry, true);
+  // Un ferry sur la route sans liaison de la table : signalé, pour que l'agent demande où est le lieu.
+  assert.ok(planifierCourse({ date: "2026-11-21", points: [{ lieu: "Pimalai Resort" }, { lieu: "Krabi Airport", arrivee_voulue: "12:00" }], trajets: [{ duree_min: 140, ferry: true, source: "ors" }] }).alertes.includes("ferry_sans_liaison"));
   assert.equal(t.lireOsrm({ code: "NoRoute", routes: [] }), null);
   assert.equal(t.parametresNominatim("Krabi Nakharin International Hospital, Krabi").get("countrycodes"), "th");
   assert.deepEqual(t.lireNominatim([{ lat: "8.0807978", lon: "98.9058189", display_name: "โรงพยาบาลกระบี่นครินทร์" }]), { lon: 98.9058189, lat: 8.0807978, label: "โรงพยาบาลกระบี่นครินทร์", confiance: null });

@@ -188,6 +188,8 @@ export function planifierCourse({ date, points = [], trajets = [], vol = null, r
   if (lignes.some((l) => l.source === "simulation")) alertes.push("temps_simules");
   if (lignes.some((l) => l.source === "estimation_web")) alertes.push("estimation_web");
   if (lignes.some((l) => l.a_verifier && l.source !== "simulation")) alertes.push("temps_a_verifier");
+  // Un ferry sur la route sans liaison de la table : un bout du trajet n'a pas été reconnu sur l'île. Le ferry compte alors l'attente réglée.
+  if (lignes.some((l) => l.ferry && !l.morceaux)) alertes.push("ferry_sans_liaison");
   const pk = versHeure(date, pickup);
   if (pk.date !== date) alertes.push("pickup_la_veille");
   if (pickup % 1440 < 5 * 60 && pk.date === date) alertes.push("pickup_avant_5h");

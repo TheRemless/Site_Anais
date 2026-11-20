@@ -3857,8 +3857,6 @@ export const EN = {
   "Île desservie": "Island served",
   "latitude, longitude": "latitude, longitude",
   "la liaison de ferry de Koh Lanta (Khlong Mak, 1 h)": "the Koh Lanta ferry link (Khlong Mak, 1 h)",
-  "Les durées de référence de zone à zone. L'assistant prend d'abord OpenStreetMap ; la table sert quand OpenStreetMap ne trouve pas un lieu, et pour la marge conseillée. Une ligne « à vérifier » n'est confirmée qu'une fois enregistrée par vous.": "Reference durations from area to area. The assistant uses OpenStreetMap first; the table is used when OpenStreetMap cannot find a place, and for the advised margin. A line “to check” is confirmed only once you save it.",
-  "Enregistrer confirme la durée. L'assistant s'en sert quand OpenStreetMap ne donne rien, et toujours pour la marge conseillée.": "Saving confirms the duration. The assistant uses it when OpenStreetMap gives nothing, and always for the advised margin.",
   "OpenStreetMap": "OpenStreetMap",
   "Itinéraire OSRM, données © contributeurs OpenStreetMap": "Route by OSRM, data © OpenStreetMap contributors",
   "Itinéraire openrouteservice, données © contributeurs OpenStreetMap": "Route by openrouteservice, data © OpenStreetMap contributors",
@@ -4006,4 +4004,9 @@ export const EN = {
   "Suivi de l'assistant : coût, usage et qualité": "Assistant monitoring: cost, usage and quality",
   "Onglet Assistant (conversation)": "Assistant tab (conversation)",
   "Échange trop long, arrêté": "Exchange too long, stopped",
+  "Enregistrer confirme la durée. L'assistant s'en sert quand OpenStreetMap ne donne rien ; il prend toujours la marge conseillée.": "Saving confirms the duration. The assistant uses it when OpenStreetMap gives nothing; it always uses the advised margin.",
+  "Les durées de référence de zone à zone. L'assistant prend d'abord OpenStreetMap ; la table sert quand OpenStreetMap ne trouve pas un lieu, ainsi que pour la marge conseillée. Une ligne « à vérifier » n'est confirmée qu'une fois enregistrée par vous.": "Reference durations from area to area. The assistant uses OpenStreetMap first; the table is used when OpenStreetMap cannot find a place, as well as for the advised margin. A line “to check” is confirmed only once you save it.",
+  "Oublier les itinéraires calculés": "Forget calculated routes",
+  "Effacer les lieux et les itinéraires déjà trouvés par OpenStreetMap ? Ils seront recherchés à nouveau au prochain calcul. La table n'est pas touchée.": "Clear the places and routes already found by OpenStreetMap? They will be looked up again at the next calculation. The table is not touched.",
+  "Lieux et itinéraires effacés.": "Places and routes cleared.",
 };

@@ -296,13 +296,15 @@ export const USER_AGENT = "Gestion-agent-planification/1.0 (outil interne d'agen
 export const MENTION_OSM = "Itinéraire OSRM, données © contributeurs OpenStreetMap";
 
 // Itinéraire en voiture : GET /route/v1/driving/{lon},{lat};{lon},{lat}?overview=false (documentation OSRM v5).
-export const cheminOsrm = (a, b) => `/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`;
-// Réponse : code « Ok », routes[0].duration (secondes), routes[0].distance (mètres). Le ferry n'est pas lu : la règle des trois morceaux
-// et les liaisons de la table s'en chargent.
+// Avec les étapes, pour repérer un ferry (mode « ferry » d'une étape).
+export const cheminOsrm = (a, b) => `/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false&steps=true`;
+// Réponse : code « Ok », routes[0].duration (secondes), routes[0].distance (mètres), legs[].steps[].mode. Un ferry repéré ici alors qu'aucune
+// liaison de la table n'a servi veut dire qu'un bout du trajet n'a pas été reconnu sur l'île : le planning le signale (ferry_sans_liaison).
 export function lireOsrm(json) {
   const r = json && json.code === "Ok" && Array.isArray(json.routes) ? json.routes[0] : null;
   if (!r || !Number.isFinite(r.duration) || r.duration <= 0) return null;
-  return { duree_min: Math.round(r.duration / 60), distance_km: Number.isFinite(r.distance) ? Math.round(r.distance / 100) / 10 : null, ferry: false };
+  const ferry = (r.legs || []).some((l) => (l.steps || []).some((s) => s && s.mode === "ferry"));
+  return { duree_min: Math.round(r.duration / 60), distance_km: Number.isFinite(r.distance) ? Math.round(r.distance / 100) / 10 : null, ferry };
 }
 
 // Recherche d'un lieu par Nominatim : le nom seul, en Thaïlande, un résultat. Jamais une recherche à la frappe (interdite par Nominatim).

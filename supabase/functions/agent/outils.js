@@ -126,7 +126,7 @@ export const OUTILS = [
   {
     name: "planifier_course",
     description:
-      "Calcule les heures d'une course privée en voiture : pickup à rebours depuis un rendez-vous (route avec trafic, ferry, marge de sécurité), heures d'arrivée à chaque point, et si un vol est tenable. Toujours utiliser cet outil pour donner une heure de pickup : ne calcule jamais une heure toi-même.",
+      "Calcule les heures d'une course privée en voiture : pickup à rebours depuis un rendez-vous (route, ferry en trois morceaux, marge de sécurité), heures d'arrivée à chaque point, et si un vol est tenable. Toujours utiliser cet outil pour donner une heure de pickup : ne calcule jamais une heure toi-même.",
     strict: true,
     input_schema: obj({
       date: S("Date de la course, AAAA-MM-JJ."),

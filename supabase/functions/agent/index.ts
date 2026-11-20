@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
     sb.from("entites").select("nom, organisation_id").eq("id", entiteId).maybeSingle(),
   ]);
   if (regl.error || perms.error || echanges.error || mois.error) return json({ erreur: "base" }, 500);
+  if (ent.error) console.error("agent : entreprise", ent.error.message);
   const reglages = regl.data ? regl.data.valeur : null;
   const coutDuMois = Number(mois.data) || 0;
   const acces = controlerAcces({
@@ -190,7 +191,8 @@ Deno.serve(async (req) => {
   const ors = moteur
     ? async (de: string, vers: string, coords: { de?: { lat: number; lon: number }; vers?: { lat: number; lon: number } } | null = null) => {
         try {
-          const cle = clePaire(de, vers);
+          // Clé dans le sens du trajet : les libellés trouvés (de, vers) restent dans le bon ordre au retour.
+          const cle = `${cleZone(de)} > ${cleZone(vers)}`.slice(0, 250);
           const cache = await sb.from("trajets_ors").select("duree_min, distance_km, ferry, de_trouve, vers_trouve, moteur").eq("entite_id", entiteId).eq("cle", cle).maybeSingle();
           if (cache.data) return cache.data;
           // Les coordonnées d'un port données dans la table passent avant la recherche ; deux recherches l'une après l'autre (cadence).

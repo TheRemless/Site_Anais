@@ -174,12 +174,23 @@ export async function vueTempsTrajets() {
         h("div", { class: "grille-form" }, champ(tr("De"), de), champ(tr("Vers"), vers), champ(tr("Durée (minutes)"), duree), champ(tr("Marge conseillée (minutes)"), marge)),
         h("label", { class: "case", for: "tt-ferry" }, ferry, tr("Le trajet prend le ferry")),
         h("div", { class: "grille-form" }, champ(tr("Source"), source), champ(tr("Date"), date)),
-        h("p", { class: "aide" }, tr("Enregistrer confirme la durée. L'assistant s'en sert quand OpenStreetMap ne donne rien, et toujours pour la marge conseillée.")),
+        h("p", { class: "aide" }, tr("Enregistrer confirme la durée. L'assistant s'en sert quand OpenStreetMap ne donne rien ; il prend toujours la marge conseillée.")),
         erreur,
         h("div", { class: "actions" }, l && supprime ? h("button", { class: "danger", type: "button", onclick: async () => { if (!(await confirmer(tr("Supprimer cette durée ?"), tr("Supprimer"), true))) return; await etat.store.supprimerTempsTrajet(l.id); lignes = lignes.filter((x) => x.id !== l.id); ferme(); dessiner(); } }, tr("Supprimer")) : null, h("button", { class: "principal", type: "submit" }, tr("Enregistrer")))
       ),
       { protege: false }
     );
+  }
+
+  // Un lieu mal compris par OpenStreetMap reste en mémoire : l'effacer fait recalculer les lieux et les itinéraires au prochain calcul.
+  async function oublier() {
+    if (!(await confirmer(tr("Effacer les lieux et les itinéraires déjà trouvés par OpenStreetMap ? Ils seront recherchés à nouveau au prochain calcul. La table n'est pas touchée."), tr("Effacer"), true))) return;
+    try {
+      await etat.store.oublierItineraires(etat.entiteId);
+      toast(tr("Lieux et itinéraires effacés."));
+    } catch (err) {
+      toast(err.message, true);
+    }
   }
 
   async function preremplir() {
@@ -208,8 +219,9 @@ export async function vueTempsTrajets() {
     [["route", N_("En voiture")], ["ferry", N_("Ferries")], ["bateau", N_("En bateau")]].map(([m, t]) => h("button", { type: "button", role: "tab", "aria-selected": String(m === mode), onclick: (e) => ((mode = m), onglets.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b === e.currentTarget))), dessiner()) }, tr(t)))
   );
   racine.append(
-    h("div", { class: "entete" }, h("h1", null, tr("Temps de trajet")), ecrit ? h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: preremplir }, tr("Pré-remplir")), h("button", { class: "principal", type: "button", onclick: () => (mode === "ferry" ? editerLiaison() : editer()) }, icone("ajouter", 18), tr("Ajouter"))) : null),
-    h("p", { class: "aide" }, tr("Les durées de référence de zone à zone. L'assistant prend d'abord OpenStreetMap ; la table sert quand OpenStreetMap ne trouve pas un lieu, et pour la marge conseillée. Une ligne « à vérifier » n'est confirmée qu'une fois enregistrée par vous.")),
+    h("div", { class: "entete" }, h("h1", null, tr("Temps de trajet")), ecrit ? h("div", { class: "entete-actions" }, h("button", { class: "secondaire", type: "button", onclick: preremplir }, tr("Pré-remplir")),
+        supprime ? h("button", { class: "secondaire", type: "button", onclick: oublier }, tr("Oublier les itinéraires calculés")) : null, h("button", { class: "principal", type: "button", onclick: () => (mode === "ferry" ? editerLiaison() : editer()) }, icone("ajouter", 18), tr("Ajouter"))) : null),
+    h("p", { class: "aide" }, tr("Les durées de référence de zone à zone. L'assistant prend d'abord OpenStreetMap ; la table sert quand OpenStreetMap ne trouve pas un lieu, ainsi que pour la marge conseillée. Une ligne « à vérifier » n'est confirmée qu'une fois enregistrée par vous.")),
     onglets,
     h("div", { class: "temps-recherche" }, h("label", { for: "temps-q", class: "visuellement-cache" }, tr("Filtrer par lieu")), recherche),
     liste

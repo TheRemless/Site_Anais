@@ -291,6 +291,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async supprimerTempsTrajet(id) {
       verifie(await sb.from("temps_trajets").delete().eq("id", id).select("id"));
     },
+    // Lieux et itinéraires trouvés par OpenStreetMap (caches de la fonction « agent ») : effacés pour être recherchés à nouveau.
+    async oublierItineraires(entiteId) {
+      verifie(await sb.from("trajets_ors").delete().eq("entite_id", entiteId).select("id"));
+      verifie(await sb.from("lieux_geo").delete().eq("entite_id", entiteId).select("id"));
+    },
     // Liaisons de ferry (migration 52) : une par île desservie.
     async liaisonsFerry(entiteId) {
       const { data, error } = await sb.from("liaisons_ferry").select("id, entite_id, nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, source, source_date, a_verifier, maj_le").eq("entite_id", entiteId).order("nom");
