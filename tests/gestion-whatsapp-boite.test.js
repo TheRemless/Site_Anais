@@ -185,7 +185,10 @@ test("démo : quatre conversations inventées, des propositions dans plusieurs s
   const connu = d.whatsapp_conversations.find((c) => c.client_id === "c1");
   assert.equal(connu.dossier_id, "d1", "un client connu de Taxi avec son dossier");
   assert.ok(d.whatsapp_conversations.some((c) => !c.entite_id), "un inconnu à trier");
-  assert.ok(d.whatsapp_conversations.some((c) => c.entite_source === "agent"), "une conversation rangée par l'agent");
+  assert.ok(!d.whatsapp_conversations.some((c) => c.entite_source === "agent"), "l'agent ne range plus une conversation (migration 59)");
+  const aTrier = d.whatsapp_conversations.find((c) => !c.entite_id);
+  const propAT = d.whatsapp_propositions.find((p) => p.conversation_id === aTrier.id);
+  assert.equal(propAT.entite_id, "e2", "la réponse d'une conversation à trier est préparée pour l'entreprise proposée");
   assert.deepEqual([...new Set(d.whatsapp_propositions.map((p) => p.statut))].sort(), ["a_faire", "en_cours", "traitee"]);
   assert.ok(d.whatsapp_propositions.some((p) => p.entreprise_proposee === "secret"));
   assert.ok(d.whatsapp_messages.some((m) => m.origine === "app") && d.whatsapp_messages.some((m) => m.origine === "gestion"));
@@ -252,7 +255,9 @@ test("branchement : route, menu avec badge, direct sur un canal à part, réglag
   const vue = source("views/whatsapp.mjs");
   assert.match(vue, /navigator\.clipboard\.writeText/);
   assert.match(vue, /En démo, rien n'est envoyé\./);
-  assert.match(vue, /modifier\("whatsapp_conversations", aLire\.id, \{ non_lus: 0 \}\)/, "ouvrir la conversation la marque lue");
+  assert.match(vue, /modifier\("whatsapp_conversations", c\.id, \{ non_lus: 0 \}\)/, "ouvrir la conversation la marque lue");
+  assert.match(vue, /if \(!c \|\| document\.visibilityState !== "visible"\) return false;/, "seulement l'onglet visible");
+  assert.match(vue, /document\.addEventListener\("visibilitychange"/, "marquée au retour sur l'onglet");
   assert.doesNotMatch(vue, /[\u{1F300}-\u{1FAFF}]/u, "pas d'emoji dans l'interface");
 });
 
@@ -286,4 +291,118 @@ test("whatsapp écran : un montant interne ou un partenaire bloque la copie tant
   const vue = fs.readFileSync(new URL("../src/gestion/js/views/whatsapp.mjs", import.meta.url), "utf8");
   assert.match(vue, /boutonCopier\.disabled = !zone\.value\.trim\(\) \|\| reste\.length > 0/);
   assert.match(vue, /boutonEnvoyer\.disabled = !ok\.ok \|\| reste\.length > 0/);
+});
+
+// ---- Deuxième passe (revue du 20.11.2026, contrat serveur de la migration 59) -----------------------------------------------------------
+test("envoi : erreurs du serveur, résultat inconnu sans « réessayez », contenu interne", () => {
+  assert.equal(W.erreurEnvoi("contenu_interne"), "Le texte contient un net, une commission ou un nom de partenaire. Retirez-le, rien n'est parti.");
+  assert.equal(W.erreurEnvoi("verifier_whatsapp"), "Délai dépassé : le message est peut-être parti. Vérifiez dans WhatsApp avant de réessayer.");
+  assert.ok(W.erreurEnvoi("deja_traitee"));
+  assert.equal(W.ERREURS_ENVOI.telnyx_injoignable, undefined, "telnyx_injoignable n'existe plus");
+  for (const code of ["verifier_whatsapp", "hors_ligne", "inconnu", "jamais_vu", undefined]) {
+    assert.equal(W.envoiIncertain(code), true, String(code));
+    assert.equal(W.erreurEnvoi(code), W.ERREURS_ENVOI.verifier_whatsapp, String(code));
+  }
+  for (const code of ["non_connecte", "droit_manquant", "contenu_interne", "fenetre_fermee", "non_configure", "numero_inconnu", "telnyx_refuse", "base", "deja_traitee"]) assert.equal(W.envoiIncertain(code), false, code);
+  for (const code of Object.keys(W.ERREURS_ENVOI)) if (W.envoiIncertain(code)) assert.doesNotMatch(W.ERREURS_ENVOI[code], /[Rr]éessayez(?! )|réessayez dans/, code);
+  const vue = source("views/whatsapp.mjs");
+  assert.match(vue, /if \(envoiIncertain\(code\)\) envoisIncertains\.add\(p\.id\);\s+else bouton\.disabled = false;/, "après un résultat inconnu, Envoyer ne se rallume pas");
+  assert.match(vue, /boutonEnvoyer\.disabled = !ok\.ok \|\| reste\.length > 0 \|\| incertain;/);
+  assert.match(vue, /aRetirer\.set\(p\.id, \(r && r\.a_retirer\) \|\| \[\]\)/, "a_retirer gardé et affiché sous le texte");
+  assert.match(source("store-supabase.mjs"), /a_retirer: lu && Array\.isArray\(lu\.a_retirer\)/);
+  assert.match(source("store-supabase.mjs"), /erreur: \(lu && lu\.erreur\) \|\| "inconnu"/, "une réponse illisible est un résultat inconnu");
+});
+
+test("envoi refusé à l'écran quand la proposition n'est plus la courante", () => {
+  const props = [{ id: "vieille", conversation_id: "a", statut: "a_faire", cree_le: "2026-11-20T08:00:00Z" }, { id: "neuve", conversation_id: "a", statut: "a_faire", cree_le: "2026-11-20T09:00:00Z" }];
+  assert.equal(W.propositionCourante(props, "a").id, "neuve");
+  assert.equal(W.etatConversation(conv("a"), { statut: "envoi" }).cle, "envoi", "statut « envoi » pendant whatsapp-envoi");
+  assert.match(source("views/whatsapp.mjs"), /if \(!toujoursCourante\(c, p\)\) return perimee\(\);[\s\S]*await confirmer[\s\S]*if \(!toujoursCourante\(c, p\)\) return perimee\(\);/, "vérifié avant et après la confirmation");
+});
+
+test("ligne « fait » seulement pour une proposition au moins aussi récente que le dernier message du client", () => {
+  const messages = [{ sens: "entrant", envoye_le: "2026-11-20T10:00:00Z" }, { sens: "sortant", envoye_le: "2026-11-20T10:05:00Z" }];
+  assert.equal(W.propositionAJour({ cree_le: "2026-11-20T10:00:01Z" }, messages), true);
+  assert.equal(W.propositionAJour({ cree_le: "2026-11-20T10:00:00Z" }, messages), true, "égale : à jour");
+  assert.equal(W.propositionAJour({ cree_le: "2026-11-20T09:59:00Z" }, messages), false);
+  assert.equal(W.propositionAJour(null, messages), false);
+  assert.equal(W.propositionAJour({ cree_le: "2026-11-20T09:00:00Z" }, []), true, "sans message du client, rien à contredire");
+  assert.match(source("views/whatsapp.mjs"), /!propositionAJour\(p, messages\)\) return ligneSansReponse\(\);/);
+});
+
+test("entreprise proposée par l'agent : entreprise_proposee, sinon l'entreprise de la proposition", () => {
+  const entites = [SECRET, TAXI];
+  assert.equal(W.entrepriseProposee({ entreprise_proposee: "taxi" }, entites).id, "t");
+  assert.equal(W.entrepriseProposee({ entite_id: "s" }, entites).id, "s");
+  assert.equal(W.entrepriseProposee(null, entites), null);
+  const vue = source("views/whatsapp.mjs");
+  assert.match(vue, /const proposee = !c\.entite_id \? entrepriseProposee\(prop, choix\) : null;/);
+  assert.match(vue, /tr\("préparée pour \{nom\}"/, "réponse préparée pour une autre entreprise : signalé");
+  assert.match(vue, /brouillons\.has\(prop\.id\) && prop\.entite_id !== e\.id && !\(await confirmer\(/, "changer d'entreprise avec une réponse modifiée : confirmation");
+});
+
+test("texte modifié gardé par proposition entre deux rendus, plus de data-pas-saisie après Copier", () => {
+  const vue = source("views/whatsapp.mjs");
+  assert.match(vue, /zone\.value = brouillons\.has\(p\.id\) \? brouillons\.get\(p\.id\) : p\.texte \|\| "";/);
+  assert.match(vue, /if \(zone\.value !== \(p\.texte \|\| ""\)\) brouillons\.set\(p\.id, zone\.value\);/);
+  assert.doesNotMatch(vue, /data-pas-saisie", ""\)/, "la zone de réponse n'est jamais sortie du suivi des saisies");
+});
+
+test("défilement replacé seulement à l'ouverture ou à un nouveau message, liste gardée", () => {
+  const vue = source("views/whatsapp.mjs");
+  assert.match(vue, /const replacer = !avant \|\| avant\.dataset\.conversation !== ouverte\.id \|\| avant\.dataset\.dernier !== dernier;/);
+  assert.match(vue, /if \(!replacer\) return void \(zone && \(zone\.scrollTop = defilMessages\)\);/);
+  assert.match(vue, /colonne\.scrollTop = defilListe/);
+});
+
+test("Marquer traitée et Ignorer : éteints pendant l'écriture, « déjà traitée » seulement après relecture", () => {
+  const vue = source("views/whatsapp.mjs");
+  assert.match(vue, /boutons\.forEach\(\(b\) => \(b\.disabled = true\)\);/);
+  assert.match(vue, /relue = await etat\.store\.whatsappProposition\(p\.id\);/);
+  assert.match(vue, /if \(relue && relue\.statut !== "a_faire"\) \{/);
+});
+
+test("relier un client : seulement les fiches de l'entreprise de la conversation, et on prévient si la base l'a retiré", () => {
+  const vue = source("views/whatsapp.mjs");
+  assert.match(vue, /filtre: \(x\) => x\.entite_id === c\.entite_id/);
+  assert.match(vue, /\(\(r && r\.client_id\) \|\| null\) !== choisi/);
+  assert.match(source("views/selecteur-client.mjs"), /resultats = filtre \? r\.filter\(filtre\)\.slice\(0, 8\) : r;/);
+});
+
+test("notification d'une conversation à trier depuis ZTP : passage dans la première entreprise du numéro", () => {
+  const app = source("app.mjs");
+  assert.match(app, /if \(\/\^#\\\/whatsapp\(\\\?\|\$\)\/\.test\(location\.hash\) && etat\.brut\.whatsapp_disponible === true && !whatsappVisible\(\)\) \{/);
+  // Placé avant le contrôle de l'écran de l'entreprise, qui ramènerait sinon à l'accueil.
+  assert.ok(app.indexOf("!whatsappVisible()) {") < app.indexOf("if (!ecranDeLEntreprise(cleRoute))"));
+});
+
+test("démo : changer d'entreprise remplace les propositions ouvertes d'une autre entreprise, lecture réservée à leur entreprise", async () => {
+  const stockage = new Map();
+  globalThis.localStorage = { getItem: (k) => stockage.get(k) ?? null, setItem: (k, v) => stockage.set(k, String(v)), removeItem: (k) => stockage.delete(k) };
+  try {
+    const { creer } = await import(`../src/gestion/js/store-local.mjs?wa2=${Date.now()}`);
+    const store = creer();
+    const brut = await store.charger();
+    const aTrier = brut.whatsapp_conversations.find((c) => !c.entite_id);
+    const prop = brut.whatsapp_propositions.find((p) => p.conversation_id === aTrier.id);
+    const taxi = brut.entites.find((e) => e.slug === "taxi");
+    assert.notEqual(prop.entite_id, taxi.id);
+    await store.modifier("whatsapp_conversations", aTrier.id, { entite_id: taxi.id });
+    const apres = await store.charger();
+    assert.equal(apres.whatsapp_propositions.find((p) => p.id === prop.id).statut, "remplacee");
+    assert.deepEqual(await store.whatsappProposition(prop.id), { id: prop.id, statut: "remplacee" });
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
+test("suivi de l'assistant : la Boîte WhatsApp n'a pas de limite par personne", () => {
+  const lignes = Array.from({ length: 60 }, (_, i) => ({ cree_le: `2026-11-20T0${i % 9}:00:00Z`, user_id: UTILISATEUR_WHATSAPP, entite_id: "s", usage: "whatsapp", statut: "ok", cout_estime_usd: 0.01 }));
+  const s = suiviAssistant({ lignes, jour: "2026-11-20", limite: 40 });
+  const p = s.personnes.find((x) => x.user_id === UTILISATEUR_WHATSAPP);
+  assert.equal(p.aujourdhui, 60);
+  assert.equal(p.limiteAtteinte, false);
+  assert.equal(p.joursLimite, 0);
+  assert.equal(s.limiteAtteinte, 0);
+  assert.match(source("views/assistant-suivi.mjs"), /l\.systeme \? String\(l\.aujourdhui\) : `\$\{l\.aujourdhui\} \/ \$\{S\.limite\}`/);
 });

@@ -13,7 +13,8 @@ const etiquette = (c) => {
 
 // Renvoie { noeud, valeur, nouveau } : `valeur` est l'identifiant du client choisi, `nouveau` vaut true si
 // la personne a demandé à créer un client.
-export function selecteurClient({ id = "client", libelle = tr("Client"), valeur = "", avecNouveau = false, surChangement = () => {} } = {}) {
+// `filtre(client)` : ne propose que certaines fiches (la boîte WhatsApp ne relie que les clients de l'entreprise de la conversation).
+export function selecteurClient({ id = "client", libelle = tr("Client"), valeur = "", avecNouveau = false, surChangement = () => {}, filtre = null } = {}) {
   let choisi = valeur ? clientParId(valeur) : null;
   let nouveau = false;
   let texteNouveau = ""; // ce qui était tapé quand « Créer un nouveau client » a été choisi
@@ -58,9 +59,9 @@ export function selecteurClient({ id = "client", libelle = tr("Client"), valeur 
   const chercher = async () => {
     const q = saisie.value;
     const mien = ++sequence;
-    const r = await chercherClients(q, 8);
+    const r = await chercherClients(q, filtre ? 200 : 8);
     if (mien !== sequence) return; // une recherche plus récente a pris le relais
-    resultats = r;
+    resultats = filtre ? r.filter(filtre).slice(0, 8) : r;
     actif = q.trim() && r.length ? 0 : -1;
     dessiner(q);
     marquerActif();

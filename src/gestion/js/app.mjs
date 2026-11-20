@@ -1,4 +1,4 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, permissionsDe, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher, clientsProposes, clientEtranger, etiquetteClient } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, permissionsDe, voitToutDans, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher, clientsProposes, clientEtranger, etiquetteClient } from "./etat.mjs";
 import { MODULES, moduleDeLEcran } from "./modules.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons, confirmer } from "./ui.mjs";
@@ -631,6 +631,12 @@ async function afficher() {
   // Une notification ouvre l'écran dans l'entreprise qu'elle concerne (« ?entite=… ») : on y passe si la personne y a accès.
   const entiteDemandee = new URLSearchParams(location.hash.split("?")[1] || "").get("entite");
   if (entiteDemandee && entiteDemandee !== etat.entiteId && entitesAccessibles().some((e) => e.id === entiteDemandee)) changerEntite(entiteDemandee, { naviguer: false });
+  // Une notification WhatsApp d'une conversation à trier n'a pas d'entreprise : depuis ZTP, on passe dans la première entreprise du numéro
+  // où la personne lit la boîte, au lieu de retomber sur l'accueil.
+  if (/^#\/whatsapp(\?|$)/.test(location.hash) && etat.brut.whatsapp_disponible === true && !whatsappVisible()) {
+    const e = entitesAccessibles().find((x) => lecteurWhatsApp({ entite: x, superAdmin: estSuperAdmin(), permissions: permissionsDe(x.id), voitTout: voitToutDans(x.id) }));
+    if (e) changerEntite(e.id, { naviguer: false });
+  }
   if (ecranVoucherSeul()) return afficherVoucherSeul();
   // Le menu dépend de l'entreprise active, des droits et des modules allumés (Réglages, Écrans) : on le refait quand l'un d'eux change.
   // Ses badges, eux, suivent à chaque affichage (majBadges).

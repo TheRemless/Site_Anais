@@ -158,6 +158,8 @@ export function creer() {
     if (apres.client_id && !client) patch.client_id = null;
     const dossierOk = apres.dossier_id && data.dossiers.some((d) => d.id === apres.dossier_id && d.entite_id === apres.entite_id && (!client || d.client_id === client.id));
     if (apres.dossier_id && !dossierOk) patch.dossier_id = null;
+    // Comme la base (migration 59) : les propositions encore ouvertes, préparées pour une autre entreprise, sont remplacées.
+    if (patch.entite_source === "manuel") for (const p of data.whatsapp_propositions) if (p.conversation_id === ligne.id && ["a_faire", "en_cours"].includes(p.statut) && p.entite_id !== apres.entite_id) p.statut = "remplacee";
     if (patch.entite_source === "manuel" && apres.entite_id && !client) {
       const n = (t) => String(t || "").replace(/\D/g, "");
       const tel = n(ligne.telephone);
@@ -410,6 +412,10 @@ export function creer() {
     async whatsappMessages(conversationId) {
       if (!conversationLue(conversationId)) return [];
       return structuredClone(data.whatsapp_messages.filter((m) => m.conversation_id === conversationId).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)));
+    },
+    async whatsappProposition(id) {
+      const p = data.whatsapp_propositions.find((x) => x.id === id);
+      return p && conversationLue(p.conversation_id) ? { id: p.id, statut: p.statut } : null;
     },
     // Le navigateur de démo ne garde aucun fichier : pas de lien, l'écran le dit.
     async whatsappLienMedia() {
@@ -745,7 +751,8 @@ export function creer() {
       // Boîte WhatsApp : mêmes règles que la base (whatsapp_lit). Les messages se lisent à l'ouverture d'une conversation.
       out.whatsapp_conversations = data.whatsapp_conversations.filter((c) => c.organisation_id === monOrg() && litWhatsApp(c.entite_id));
       const convs = new Set(out.whatsapp_conversations.map((c) => c.id));
-      out.whatsapp_propositions = data.whatsapp_propositions.filter((p) => convs.has(p.conversation_id));
+      // Une proposition se lit par les administrateurs de l'entreprise pour laquelle elle a été préparée (migration 59).
+      out.whatsapp_propositions = data.whatsapp_propositions.filter((p) => convs.has(p.conversation_id) && (!p.entite_id || adminWhatsApp(p.entite_id)));
       out.whatsapp_reglages = data.whatsapp_reglages.filter((r) => r.organisation_id === monOrg() && litWhatsApp(null));
       out.whatsapp_disponible = !AGENCE;
       out.whatsapp_propositions_disponible = !AGENCE;

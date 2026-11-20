@@ -1,9 +1,9 @@
 // Démonstration de la boîte WhatsApp : quatre conversations inventées, pour essayer l'écran sans Telnyx ni base.
 // Numéros pris dans des plages réservées à la fiction (+44 7700 900…, +1 202 555 01…). Aucun nom, prix ni horaire ne vient d'un vrai client.
 //   1. un client connu de Taxi avec son dossier, réponse prête (avec deux avertissements) ;
-//   2. un inconnu à trier qui demande une excursion, réponse prête et entreprise proposée par l'agent (Secret) ;
+//   2. un inconnu à trier qui demande une excursion, réponse prête préparée pour Secret, l'entreprise que l'agent propose ;
 //   3. une conversation déjà répondue depuis l'app, fenêtre de 24 h fermée, une photo expirée ;
-//   4. un client rangé par l'agent dans Taxi, réponse en préparation.
+//   4. un client rangé par Nani dans Taxi, réponse en préparation.
 const SECRET = ["excursions", "secret"];
 const TAXI = ["taxi"];
 
@@ -46,7 +46,8 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     const c = conversation({ telephone: "+12025550147", nom: "Lucia", non_lus: 1 });
     message(c, 9, "entrant", "Hi! Do you still have places for the 4 Islands tour on Saturday? We are 2 adults and 1 child (6 years).");
     const photo = message(c, 8, "entrant", "This is our hotel", { type: "image", texte: null, medias: [{ type: "image", mime: "image/jpeg", legende: "This is our hotel", nom: "photo.jpg", chemin: "demo/hotel.jpg", statut: "copie", taille: 182000 }] });
-    proposition(c, photo, { entreprise_proposee: "secret", texte: "Hi Lucia,\n\nYes, there are still places on the 4 Islands tour this Saturday. For 2 adults and 1 child the price is 3,000 THB, pickup from your hotel included.\nShall I book it for you? I just need the name of your hotel and a first name for the booking.", avertissements: ["montant_non_source:3000"] });
+    // L'agent ne range pas la conversation : il propose Secret et prépare la réponse avec les données de Secret.
+    proposition(c, photo, { entite_id: secret.id, entreprise_proposee: "secret", texte: "Hi Lucia,\n\nYes, there are still places on the 4 Islands tour this Saturday. For 2 adults and 1 child the price is 3,000 THB, pickup from your hotel included.\nShall I book it for you? I just need the name of your hotel and a first name for the booking.", avertissements: ["montant_non_source:3000"] });
   }
 
   // 3. Déjà répondue depuis l'app par Nani, il y a plus de 24 h : la fenêtre est fermée, la photo a expiré.
@@ -59,9 +60,9 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     proposition(c, m, { statut: "traitee", texte: "Thank you so much, we are happy the kids enjoyed it. Have a safe trip home!", traitee_le: il_y_a(60 * 29), traitee_par_quoi: "app" });
   }
 
-  // 4. Rangée par l'agent dans Taxi, la réponse se prépare.
+  // 4. Rangée par Nani dans Taxi, la réponse se prépare.
   if (taxi) {
-    const c = conversation({ telephone: "+447700900733", nom: "Sven", entite_id: taxi.id, entite_source: "agent", non_lus: 1 });
+    const c = conversation({ telephone: "+447700900733", nom: "Sven", entite_id: taxi.id, entite_source: "manuel", non_lus: 1 });
     message(c, 60 * 3, "entrant", "Hello, how much is a taxi from Saladan pier to Long Beach?");
     message(c, 60 * 2 + 50, "sortant", "Hi Sven, it is a short ride, I will send you the price in a minute.", { origine: "gestion" });
     const m = message(c, 1, "entrant", "Great, and can you also do Old Town tomorrow morning?");

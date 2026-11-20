@@ -107,6 +107,7 @@ export const filtreDeDepart = (conversations = []) => (conversations.some((c) =>
 export function etatConversation(conv, prop) {
   if (prop && prop.statut === "a_faire") return { cle: "prete", libelle: N_("Réponse prête") };
   if (prop && prop.statut === "en_cours") return { cle: "en_cours", libelle: N_("Réponse en préparation") };
+  if (prop && prop.statut === "envoi") return { cle: "envoi", libelle: N_("Envoi en cours") };
   if (prop && prop.statut === "echec") return { cle: "echec", libelle: N_("Pas de réponse préparée") };
   if (conv && conv.dernier_sens === "sortant") return { cle: "repondu", libelle: N_("Répondu") };
   if (conv && conv.dernier_sens === "entrant") return { cle: "attend", libelle: N_("Le client attend une réponse") };
@@ -194,22 +195,44 @@ export function grouperParJour(messages = []) {
 export const ERREURS_ENVOI = {
   non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),
   droit_manquant: N_("Votre rôle ne permet pas d'envoyer depuis Gestion pour cette conversation."),
-  contenu_interne: N_("La réponse contient un net, une commission ou un nom de partenaire. Retirez-le avant d'envoyer."),
+  contenu_interne: N_("Le texte contient un net, une commission ou un nom de partenaire. Retirez-le, rien n'est parti."),
   fenetre_fermee: N_("Le client a écrit il y a plus de 24 h et WhatsApp refuse alors un message libre. Répondez depuis l'app."),
   non_configure: N_("L'envoi depuis Gestion n'est pas encore configuré. Copiez la réponse et envoyez-la depuis l'app."),
   numero_inconnu: N_("Le numéro de l'entreprise n'est pas encore connu de Gestion. Copiez la réponse et envoyez-la depuis l'app."),
   telnyx_refuse: N_("WhatsApp a refusé le message. Copiez la réponse et envoyez-la depuis l'app."),
-  telnyx_injoignable: N_("WhatsApp ne répond pas pour l'instant. Réessayez ou envoyez depuis l'app."),
-  hors_ligne: N_("Pas de réseau. Rien n'est parti."),
   base: N_("Erreur de la base. Rien n'est parti, réessayez dans un instant."),
+  deja_traitee: N_("Cette réponse n'est plus à faire. Rien n'est parti depuis Gestion."),
+  // Résultat inconnu : jamais de « réessayez », le message est peut-être parti (whatsapp-envoi, délai dépassé ou connexion coupée).
+  verifier_whatsapp: N_("Délai dépassé : le message est peut-être parti. Vérifiez dans WhatsApp avant de réessayer."),
 };
-export const erreurEnvoi = (code) => ERREURS_ENVOI[code] || N_("Envoi impossible. Copiez la réponse et envoyez-la depuis l'app.");
+// Erreurs après lesquelles rien n'est parti à coup sûr. Toutes les autres (délai dépassé, connexion coupée pendant l'envoi, réponse illisible,
+// code inconnu) laissent un doute : le bouton Envoyer reste éteint et l'écran demande de vérifier dans WhatsApp.
+const RIEN_PARTI = new Set(["non_connecte", "droit_manquant", "contenu_interne", "fenetre_fermee", "non_configure", "numero_inconnu", "telnyx_refuse", "base", "deja_traitee"]);
+export const envoiIncertain = (code) => !RIEN_PARTI.has(code);
+export const erreurEnvoi = (code) => (envoiIncertain(code) ? ERREURS_ENVOI.verifier_whatsapp : ERREURS_ENVOI[code]);
 
 // Adresse de l'écran : « #/whatsapp?c=<conversation>&entite=<entreprise> » (la notification l'ouvre ainsi).
 export function lireAdresse(hash = "") {
   const q = new URLSearchParams(String(hash).split("?")[1] || "");
   return { conversation: q.get("c") || "", entite: q.get("entite") || "" };
 }
+// La ligne « fait » (traitée, ignorée, répondu depuis l'app) ne vaut que pour le dernier message du client : une proposition plus ancienne
+// que lui ne dit rien de la réponse à ce message. Sans date, on ne conclut rien.
+export function propositionAJour(prop, messages = []) {
+  if (!prop) return false;
+  const dernier = dernierEntrant(messages);
+  if (!dernier) return true;
+  return Date.parse(prop.cree_le || "") >= Date.parse(dernier);
+}
+
+// L'entreprise que l'agent propose pour une conversation à trier : « entreprise_proposee » (secret ou taxi), sinon l'entreprise pour laquelle
+// la proposition a été préparée (p.entite_id).
+export function entrepriseProposee(prop, entites = []) {
+  if (!prop) return null;
+  if (prop.entreprise_proposee) return entites.find((e) => marqueEntite(e) === prop.entreprise_proposee) || null;
+  return prop.entite_id ? entites.find((e) => e.id === prop.entite_id) || null : null;
+}
+
 export const adresseConversation = (conv) => (conv ? `#/whatsapp?c=${conv.id}${conv.entite_id ? `&entite=${conv.entite_id}` : ""}` : "#/whatsapp");
 
 // ---- Réglages -------------------------------------------------------------------------------------------------------------------------

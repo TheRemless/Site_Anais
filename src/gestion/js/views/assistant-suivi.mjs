@@ -113,7 +113,7 @@ function rendre(S, { plusieurs }) {
     tableauTrie({
       colonnes: [
         { cle: "nom", titre: N_("Personne"), rendu: (l) => (l.systeme ? tr(l.nom) : l.nom || tr("Personne inconnue")) },
-        { cle: "aujourdhui", titre: N_("Aujourd'hui"), num: true, rendu: (l) => h("span", { class: l.limiteAtteinte ? "as-limite" : "" }, `${l.aujourdhui} / ${S.limite}`, l.limiteAtteinte ? h("span", { class: "as-limite-texte" }, ` ${tr("limite atteinte")}`) : null) },
+        { cle: "aujourdhui", titre: N_("Aujourd'hui"), num: true, rendu: (l) => h("span", { class: l.limiteAtteinte ? "as-limite" : "" }, l.systeme ? String(l.aujourdhui) : `${l.aujourdhui} / ${S.limite}`, l.limiteAtteinte ? h("span", { class: "as-limite-texte" }, ` ${tr("limite atteinte")}`) : null) },
         { ...colAppels, titre: N_("Appels du mois") },
         { ...colCout, titre: N_("Coût du mois") },
         { cle: "joursLimite", titre: N_("Jours à la limite (30 j)"), num: true },

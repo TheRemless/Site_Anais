@@ -270,7 +270,15 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       const lu = await rep.json().catch(() => null);
       if (rep.ok && lu && lu.ok) return lu;
-      return { erreur: (lu && lu.erreur) || "base" };
+      // Sans code lisible (passerelle, coupure), le résultat est inconnu : l'écran demande de vérifier dans WhatsApp.
+      // « a_retirer » (contenu_interne) : les montants et les noms que la fonction a trouvés dans le texte.
+      return { erreur: (lu && lu.erreur) || "inconnu", a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [] };
+    },
+    // Le statut d'une proposition, relu après un refus d'écriture (déjà traitée ailleurs, ou une autre erreur).
+    async whatsappProposition(id) {
+      const { data, error } = await sb.from("whatsapp_propositions").select("id, statut").eq("id", id).maybeSingle();
+      if (error) throw new Error(error.message);
+      return data || null;
     },
     // L'interrupteur « Recevoir les messages WhatsApp » (Réglages), seule colonne des réglages WhatsApp ouverte à l'outil.
     async whatsappReception(organisationId, actif) {

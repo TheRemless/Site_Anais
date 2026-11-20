@@ -150,7 +150,9 @@ export function suiviAssistant({ lignes = [], retouches = null, jour, limite = L
     // Jours des 30 derniers où la personne a atteint la limite (toutes entreprises confondues).
     let joursLimite = 0;
     for (const j of jours30) if ((parJourPersonne.get(`${j}|${id}`) || 0) >= limite) joursLimite += 1;
-    return { user_id: id, nom: nomPersonne(id), systeme: systeme(id), aujourdhui: aujourd, limiteAtteinte: aujourd >= limite, joursLimite, ...fini(personnes.get(id) || compteur()) };
+    // La Boîte WhatsApp n'est pas une personne : la fonction « whatsapp » n'a pas de limite d'appels par jour.
+    if (systeme(id)) return { user_id: id, nom: nomPersonne(id), systeme: true, aujourdhui: aujourd, limiteAtteinte: false, joursLimite: 0, ...fini(personnes.get(id) || compteur()) };
+    return { user_id: id, nom: nomPersonne(id), systeme: false, aujourdhui: aujourd, limiteAtteinte: aujourd >= limite, joursLimite, ...fini(personnes.get(id) || compteur()) };
   });
   lignesPersonnes.sort((a, b) => b.aujourdhui - a.aujourdhui || b.appels - a.appels || a.nom.localeCompare(b.nom));
 
