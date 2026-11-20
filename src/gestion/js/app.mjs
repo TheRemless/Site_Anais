@@ -101,6 +101,9 @@ function vueConnexion() {
         try {
           await etat.store.connecter(email.value.trim(), mdp.value);
           etat.session = await etat.store.session();
+          // Rechargement complet après la connexion : le temps réel (WhatsApp compris) et son repli ne se branchent qu'au démarrage, avec
+          // une session. Sans lui, la boîte WhatsApp ne se mettait plus à jour qu'une fois par minute, sans rien dire (audit I9).
+          if (etat.store.ecouterWhatsApp) return void location.reload();
           await recharger();
           afficher();
         } catch (err) {
@@ -1065,9 +1068,17 @@ function surveillerDonnees() {
     repliMs = ms;
     if (ms) repli = setInterval(() => document.visibilityState === "visible" && relireWhatsApp(), ms);
   };
+  // Le canal revient (« abonné » après une coupure ou une reconnexion forcée) : rien de ce qui est arrivé entre-temps n'a été annoncé, on
+  // relit (audit I10). Le canal ne signale que les changements : un « abonné » après le premier est toujours un retour.
+  let etatPrecedent = null;
+  const surEtatWhatsApp = (e) => {
+    if (e === "abonne" && etatPrecedent !== null) relireWhatsApp({ redessiner: true });
+    etatPrecedent = e;
+    majRepli();
+  };
   if (etat.store.ecouterWhatsApp && lecteurQuelquePart()) {
     try {
-      etat.store.ecouterWhatsApp(TABLES_WHATSAPP, changementWhatsApp, { surEtat: majRepli });
+      etat.store.ecouterWhatsApp(TABLES_WHATSAPP, changementWhatsApp, { surEtat: surEtatWhatsApp });
     } catch (err) {
       console.warn(err);
     }
@@ -1076,12 +1087,17 @@ function surveillerDonnees() {
   }
   // Retour sur l'onglet, réseau revenu, page restaurée (iPhone) : jeton rafraîchi, canaux refaits s'ils ne sont pas « joined », et une relecture
   // ciblée immédiate pour rattraper ce qui est arrivé pendant l'absence.
+  // Après plus de 20 s en arrière-plan (iPhone en veille), le WebSocket peut sembler ouvert alors qu'il est mort jusqu'au prochain battement :
+  // les canaux sont refaits de force, et leur retour à « abonné » relit la boîte (audit I10).
+  let cacheLe = null;
   const reveiller = () => {
     if (!etat.session) return;
-    if (etat.store.reveillerDirect) etat.store.reveillerDirect().catch((err) => console.warn(err));
+    const longue = cacheLe !== null && Date.now() - cacheLe > 20_000;
+    cacheLe = null;
+    if (etat.store.reveillerDirect) etat.store.reveillerDirect({ forcer: longue }).catch((err) => console.warn(err));
     relireWhatsApp({ redessiner: true });
   };
-  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && reveiller());
+  document.addEventListener("visibilitychange", () => (document.visibilityState === "visible" ? reveiller() : (cacheLe = Date.now())));
   window.addEventListener("online", reveiller);
   window.addEventListener("pageshow", (e) => e.persisted && reveiller());
   document.addEventListener("visibilitychange", () => actualiser());

@@ -4,13 +4,17 @@
 //   2. réception suspendue (Réglages) : 200 sans rien écrire ;
 //   3. l'événement brut est écrit une fois (clé = id Telnyx), puis 200 tout de suite (Telnyx attend 2 secondes au plus) ;
 //   4. ensuite, hors de la réponse : le message est rangé dans sa conversation et ses médias copiés dans le stockage « whatsapp ».
-//      Un traitement qui échoue laisse l'événement « à traiter » ; il est repris au prochain appel de Telnyx (renvoi ou autre message).
+//      Un traitement qui échoue laisse l'événement « à traiter » ; il est repris au prochain appel de Telnyx et par la reprise.
+//   5. Reprise (migration 64) : pg_cron appelle la fonction toutes les 5 minutes avec { "mode": "reprise" } et le jeton de « rappels »
+//      (RAPPELS_SECRET ou clé de service) : événements en échec, envois au résultat inconnu passés en échec après 5 minutes.
+//   6. Statuts d'envoi (message.sent, message.finalized, message.read) d'un message envoyé depuis Gestion : remis, lu ou échec.
 // Secrets : TELNYX_PUBLIC_KEY (obligatoire), TELNYX_API_KEY (médias sans lien direct ; facultatif), WHATSAPP_ORGANISATION (Zwald par défaut).
 // Doc : docs/gestion/whatsapp.md. Logique pure : ./calc.js (tests/gestion-whatsapp.test.js). Base : migration 58.
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { apresMessageClient } from "./reponse.ts";
 import { suiviApresMessage } from "./suivi.ts";
 import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, mediaApresErreur, resteACopier, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
+import { interpreterStatut, statutsRemplacables, aReprendre, limiteEnvoi, ESSAIS_MAX, STATUT_FENETRE_MS, ATTENTE } from "./fiabilite.js";
 
 const ORGANISATION = Deno.env.get("WHATSAPP_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
 const entetes = { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
@@ -50,8 +54,38 @@ async function lireCorps(req: Request) {
   return tout;
 }
 
+// Comparaison en temps constant (comme « rappels ») : la durée ne révèle pas combien de caractères du jeton sont justes.
+async function memeSecret(a: string, b: string) {
+  const empreinte = async (x: string) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(x)));
+  const [ha, hb] = await Promise.all([empreinte(a), empreinte(b)]);
+  let ecart = 0;
+  for (let i = 0; i < ha.length; i++) ecart |= ha[i] ^ hb[i];
+  return ecart === 0;
+}
+async function appelCron(req: Request) {
+  const jeton = (req.headers.get("authorization") || "").replace(/^Bearer /, "");
+  if (!jeton) return false;
+  for (const nom of ["RAPPELS_SECRET", "SUPABASE_SERVICE_ROLE_KEY"]) {
+    const secret = Deno.env.get(nom);
+    if (secret && (await memeSecret(jeton, secret))) return true;
+  }
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return repondre(REPONSES.methode);
+  // La reprise (pg_cron « whatsapp-reprise ») : pas de signature Telnyx, le jeton du cron. Un appel sans signature ni bon jeton : 401.
+  if (!req.headers.get("telnyx-signature-ed25519") && req.headers.get("authorization")) {
+    if (!(await appelCron(req))) return repondre(REPONSES.signature);
+    await req.body?.cancel();
+    try {
+      const bilan = await traiterEnAttente(base(), null);
+      return new Response(JSON.stringify({ ok: true, ...bilan }), { status: 200, headers: entetes });
+    } catch (err) {
+      console.error("reprise :", String((err as Error)?.message || err).slice(0, 200));
+      return repondre(REPONSES.serveur);
+    }
+  }
   if (Number(req.headers.get("content-length") || 0) > TAILLE_MAX) return repondre(REPONSES.trop_gros);
   const corps = await lireCorps(req);
   if (corps === null) return repondre(REPONSES.trop_gros);
@@ -94,39 +128,59 @@ Deno.serve(async (req) => {
   return repondre(REPONSES.ok);
 });
 
-// Traite l'événement reçu, puis jusqu'à 10 autres restés à traiter (panne passée), du plus ancien au plus récent ; purge au plus une fois par heure.
-async function traiterEnAttente(db: SupabaseClient, idCourant: string) {
-  const { data: enAttente } = await db.from("whatsapp_evenements").select("id").is("traite_le", null).lt("essais", 5).eq("organisation_id", ORGANISATION).order("recu_le").limit(11);
-  const ids = [idCourant, ...((enAttente || []).map((e) => e.id).filter((id) => id !== idCourant))].slice(0, 11);
-  for (const id of ids) await traiterUn(db, id);
+// Traite l'événement reçu (aucun pour la reprise), puis jusqu'à 10 autres restés à traiter (25 pour la reprise), du plus ancien au plus
+// récent ; purge au plus une fois par heure.
+async function traiterEnAttente(db: SupabaseClient, idCourant: string | null) {
+  const max = idCourant ? 11 : 25;
+  const { data: enAttente, error } = await db.from("whatsapp_evenements").select("id").is("traite_le", null).lt("essais", 5).eq("organisation_id", ORGANISATION).order("recu_le").limit(max);
+  if (error) console.error("événements à reprendre illisibles :", error.message);
+  const ids = [...(idCourant ? [idCourant] : []), ...((enAttente || []).map((e) => e.id).filter((id) => id !== idCourant))].slice(0, max);
+  let traites = 0;
+  for (const id of ids) if (await traiterUn(db, id)) traites++;
   // Une préparation arrêtée en route (limite de temps de la fonction) ne reste pas « en préparation » : échec après 3 minutes.
   await db.from("whatsapp_propositions").update({ statut: "echec", erreur: "interrompue" }).eq("statut", "en_cours").lt("cree_le", new Date(Date.now() - 180_000).toISOString()).then(() => {}, () => {});
+  // Un envoi depuis Gestion sans réponse sûre de Telnyx depuis 5 minutes : échec visible, Nani vérifie dans WhatsApp (migration 64).
+  const { data: expires, error: errE } = await db.from("whatsapp_messages").update({ statut_envoi: "echec", erreur_envoi: "sans_confirmation", statut_le: new Date().toISOString() }).eq("statut_envoi", "envoi").lt("envoye_le", limiteEnvoi()).select("id");
+  if (errE) console.error("envois à vérifier :", errE.message);
   const r = await reglages(db);
   if (!r.purge_le || Date.now() - new Date(r.purge_le).getTime() > 3600_000) {
     reglagesLus = null;
     await purger(db);
   }
+  return { essayes: ids.length, traites, envois_expires: (expires || []).length };
 }
 
+// Rend true si l'événement a été traité (rangé, ou classé avec sa raison).
 async function traiterUn(db: SupabaseClient, id: string) {
-  // Réserve l'événement : un seul traitement à la fois, même si Telnyx l'a envoyé deux fois en même temps. Une réservation de plus de
-  // 2 minutes (instance arrêtée en route) se reprend.
-  const avant = new Date(Date.now() - 120_000).toISOString();
-  const { data: pris } = await db.from("whatsapp_evenements").update({ pris_le: new Date().toISOString() }).eq("id", id).is("traite_le", null).or(`pris_le.is.null,pris_le.lt.${avant}`).select("id, type, survenu_le, brut, essais").maybeSingle();
-  if (!pris) return;
+  // Réserve l'événement et compte l'essai tout de suite (migration 64) : un seul traitement à la fois, même si Telnyx l'a envoyé deux fois en
+  // même temps ; une réservation de plus de 2 minutes (instance arrêtée en route) se reprend, et cet essai interrompu compte aussi.
+  const { data: lignes, error: errR } = await db.rpc("whatsapp_reserver_evenement", { p_id: id });
+  if (errR) throw new Error(`réservation : ${errR.message}`);
+  const pris = Array.isArray(lignes) ? lignes[0] : lignes;
+  if (!pris) return false;
+  const fermer = async (champs: Record<string, unknown>) => {
+    const { error } = await db.from("whatsapp_evenements").update(champs).eq("id", id);
+    if (error) console.error("événement", id, "non clos :", error.message);
+  };
   try {
     const d = pris.brut?.data || {};
-    const action = interpreter({ id: pris.id, type: pris.type, survenu_le: pris.survenu_le, payload: d.payload || {} });
+    const ev = { id: pris.id, type: pris.type, survenu_le: pris.survenu_le, payload: d.payload || {} };
+    const action = interpreterStatut(ev) || interpreter(ev);
     await appliquer(db, action);
-    await db.from("whatsapp_evenements").update({ traite_le: new Date().toISOString(), erreur: null }).eq("id", id);
+    await fermer({ traite_le: new Date().toISOString(), erreur: null });
+    return true;
   } catch (err) {
-    if (err instanceof SansNumero) {
-      await db.from("whatsapp_evenements").update({ traite_le: new Date().toISOString(), erreur: err.message }).eq("id", id);
-      return;
+    // Expéditeur sans numéro, ou cible jamais trouvée (message d'origine absent depuis 30 minutes ou après le dernier essai) : classé avec
+    // sa raison, sans compter comme une erreur.
+    if (err instanceof Classe || (err instanceof CibleAbsente && (!aReprendre(pris.recu_le, Date.now(), err.fenetre) || pris.essais >= ESSAIS_MAX))) {
+      await fermer({ traite_le: new Date().toISOString(), erreur: err.message });
+      return true;
     }
-    const msg = String((err as Error)?.message || err).slice(0, 500);
+    // Une cible absente n'est pas une panne : préfixe « attente: », hors du compteur d'erreurs de Réglages.
+    const msg = `${err instanceof CibleAbsente ? ATTENTE : ""}${String((err as Error)?.message || err)}`.slice(0, 500);
     console.error("événement", id, ":", msg);
-    await db.from("whatsapp_evenements").update({ pris_le: null, erreur: msg, essais: Math.min((pris.essais || 0) + 1, 100) }).eq("id", id);
+    await fermer({ pris_le: null, erreur: msg });
+    return false;
   }
 }
 
@@ -140,16 +194,36 @@ async function appliquer(db: SupabaseClient, a: any) {
   }
   // Un expéditeur sans numéro (identifiant WhatsApp sans téléphone) : rien à ranger, la raison reste visible sur l'événement brut.
   if (a.action === "ignorer") {
-    if (a.raison === "numero") throw new SansNumero();
+    if (a.raison === "numero") throw new Classe("expediteur_sans_numero");
+    return;
+  }
+  // Statut d'envoi (migration 64) : sur le message sortant qui porte cet id, sans jamais revenir en arrière (remis puis « sent » en retard).
+  if (a.action === "statut") {
+    const ids = [a.telnyx_id ? `telnyx_id.eq.${filtre(a.telnyx_id)}` : null, a.meta_id ? `meta_id.eq.${filtre(a.meta_id)}` : null].filter(Boolean).join(",");
+    const { data: msgs, error } = await db.from("whatsapp_messages").select("id, statut_envoi").eq("sens", "sortant").or(ids).limit(5);
+    if (error) throw new Error(error.message);
+    // Message inconnu : statut arrivé avant que whatsapp-envoi note l'id Telnyx (repris), ou message hors de Gestion.
+    if (!msgs || !msgs.length) throw new CibleAbsente("statut_message_inconnu", STATUT_FENETRE_MS);
+    const avant = statutsRemplacables(a.statut);
+    for (const m of msgs) {
+      if (m.statut_envoi !== null && !avant.includes(m.statut_envoi)) continue;
+      // Écriture conditionnelle : un autre statut écrit entre-temps n'est pas écrasé.
+      const q = db.from("whatsapp_messages").update({ statut_envoi: a.statut, erreur_envoi: a.erreur, statut_le: a.quand || maintenant }).eq("id", m.id);
+      const { error: errU } = await (m.statut_envoi === null ? q.is("statut_envoi", null) : q.in("statut_envoi", avant));
+      if (errU) throw new Error(errU.message);
+    }
     return;
   }
   if (a.action === "modifier" || a.action === "supprimer") {
     const champs = a.action === "modifier" ? { texte: a.texte, modifie_le: a.quand } : { texte: null, supprime_le: a.quand };
     // L'id d'origine est celui de Telnyx s'il le connaît, sinon le wamid de Meta : on cherche les deux, dans la conversation du client.
-    const { data: conv } = await db.from("whatsapp_conversations").select("id").eq("organisation_id", ORGANISATION).eq("telephone", a.telephone).maybeSingle();
-    if (!conv) return;
+    // Message d'origine pas encore rangé (en échec, repris plus tard) : l'événement est repris aussi, au lieu d'être clos sans rien toucher.
+    const { data: conv, error: errC } = await db.from("whatsapp_conversations").select("id").eq("organisation_id", ORGANISATION).eq("telephone", a.telephone).maybeSingle();
+    if (errC) throw new Error(errC.message);
+    if (!conv) throw new CibleAbsente("original_introuvable");
     const { data: cible, error } = await db.from("whatsapp_messages").update(champs).eq("conversation_id", conv.id).or(`telnyx_id.eq.${filtre(a.original)},meta_id.eq.${filtre(a.original)}`).select("id, medias");
     if (error) throw new Error(error.message);
+    if (!cible || !cible.length) throw new CibleAbsente("original_introuvable");
     // Supprimé par le client : ses médias aussi.
     if (a.action === "supprimer") for (const m of cible || []) await effacerMedias(db, m.id, m.medias || []);
     return;
@@ -187,9 +261,14 @@ async function appliquer(db: SupabaseClient, a: any) {
   await copierMedias(db, data.conversation_id, data.message_id, medias, a.entreprise || r.numero);
 }
 
-class SansNumero extends Error {
-  constructor() {
-    super("expediteur_sans_numero");
+// Événement classé sans rien ranger, avec sa raison (expéditeur sans numéro) : traité, ne compte pas comme une erreur.
+class Classe extends Error {}
+// La cible de l'événement manque encore : repris pendant sa fenêtre (30 minutes, 10 pour un statut), puis classé avec sa raison.
+class CibleAbsente extends Error {
+  fenetre: number | undefined;
+  constructor(message: string, fenetre?: number) {
+    super(message);
+    this.fenetre = fenetre;
   }
 }
 

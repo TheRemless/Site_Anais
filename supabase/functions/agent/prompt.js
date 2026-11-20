@@ -333,6 +333,34 @@ export function debutValide(lignes = []) {
   return i < 0 ? [] : lignes.slice(i);
 }
 
+// Un appel d'outil sans son résultat (fonction coupée pendant l'outil, écriture du résultat en échec) : l'API refuserait toute la conversation
+// (400) à chaque message suivant (audit I6). Chaque tool_use orphelin reçoit, juste après son message, un résultat d'erreur « interrompu ».
+// La base n'est pas réécrite : la réparation est refaite, identique, à chaque chargement (le cache de l'historique reste valable).
+export function completerOrphelins(messages = []) {
+  const sortie = [];
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    sortie.push(m);
+    if (!m || m.role !== "assistant" || !Array.isArray(m.content)) continue;
+    const ids = m.content.filter((b) => b && b.type === "tool_use" && b.id).map((b) => b.id);
+    if (!ids.length) continue;
+    const suivant = messages[i + 1];
+    const recus = new Set(suivant && suivant.role === "user" && Array.isArray(suivant.content) ? suivant.content.filter((b) => b && b.type === "tool_result").map((b) => b.tool_use_id) : []);
+    const manquants = ids.filter((id) => !recus.has(id));
+    if (!manquants.length) continue;
+    const resultats = manquants.map((id) => ({ type: "tool_result", tool_use_id: id, content: JSON.stringify({ erreur: "interrompu" }), is_error: true }));
+    // Les résultats ouvrent le message de la personne qui suit (l'API veut les tool_result en premier) ; sinon un message à eux.
+    if (suivant && suivant.role === "user") {
+      const contenu = Array.isArray(suivant.content) ? suivant.content : [{ type: "text", text: String(suivant.content ?? "") }];
+      const deja = contenu.filter((b) => b && b.type === "tool_result");
+      messages = [...messages.slice(0, i + 1), { ...suivant, content: [...deja, ...resultats, ...contenu.filter((b) => !b || b.type !== "tool_result")] }, ...messages.slice(i + 2)];
+    } else {
+      sortie.push({ role: "user", content: resultats });
+    }
+  }
+  return sortie;
+}
+
 // Le texte visible d'un message de Claude (sans réflexion ni appels d'outils).
 export const texteVisible = (contenu) =>
   (Array.isArray(contenu) ? contenu : [])

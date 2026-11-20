@@ -21,6 +21,7 @@ import {
   grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, propositionCourante,
   propositionAJour, entrepriseProposee, reponsesDe, preparationAuto, raisonSansReponse, erreurPreparer, libelleErreurProposition,
 } from "../whatsapp-calc.mjs";
+import { envoiAVerifier, envoiEnDoute, statutEnvoi, prochainChangement } from "../whatsapp-fiabilite-calc.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -407,14 +408,17 @@ function blocMedia(media) {
 function bulle(m) {
   const medias = Array.isArray(m.medias) ? m.medias : [];
   const texte = m.texte && !(medias.length && medias.some((x) => x.legende === m.texte)) ? m.texte : "";
+  // Statut d'envoi (migration 64) : envoyé, remis, lu, ou non remis avec la raison de WhatsApp. Discret, à la suite de l'heure.
+  const statut = statutEnvoi(m);
   const meta = [heureBangkok(m.envoye_le), m.sens === "sortant" && ORIGINES[m.origine] ? tr(ORIGINES[m.origine]) : "", m.modifie_le ? tr("modifié") : ""].filter(Boolean).join(" · ");
   return h(
     "div",
-    { class: `wa-bulle ${m.sens}${m.supprime_le ? " supprime" : ""}${m.type === "reaction" ? " reaction" : ""}` },
+    { class: `wa-bulle ${m.sens}${m.supprime_le ? " supprime" : ""}${m.type === "reaction" ? " reaction" : ""}${statut && statut.cle === "echec" ? " non-remis" : ""}` },
     m.supprime_le ? h("p", { class: "wa-supprime" }, tr("Supprimé par le client")) : null,
     medias.map(blocMedia),
     texte ? h("p", { class: "wa-texte" }, m.type === "reaction" ? `${tr("Réaction")} ${texte}` : texte) : !medias.length ? h("p", { class: "wa-texte wa-type" }, tr(libelleType(m.type))) : null,
-    h("p", { class: "wa-meta" }, meta)
+    h("p", { class: "wa-meta" }, meta, statut ? h("span", { class: `wa-statut ${statut.cle}` }, ` · ${tr(statut.libelle)}`) : null),
+    statut && statut.cle === "echec" && m.statut_envoi === "echec" && m.erreur_envoi !== "sans_confirmation" ? h("p", { class: "wa-statut-detail" }, statut.detail ? tr(statut.detail) : m.erreur_envoi || tr("WhatsApp n'a pas remis ce message.")) : null
   );
 }
 
@@ -488,8 +492,14 @@ async function envoyer(c, p, zone, bouton, apres) {
   if (!r || !r.ok) {
     const code = r && r.erreur;
     // Résultat inconnu (délai dépassé, connexion coupée) : le bouton reste éteint et l'écran dit de vérifier dans WhatsApp, jamais « réessayez ».
-    if (envoiIncertain(code)) envoisIncertains.add(p.id);
-    else bouton.disabled = false;
+    // Le message est déjà dans le fil (rangé « envoi » avant l'appel, migration 64) : après 30 secondes, « C'est parti » ou « Pas parti ».
+    if (envoiIncertain(code)) {
+      envoisIncertains.add(p.id);
+      if (p.statut === "a_faire") p.statut = "envoi";
+      toast(tr(erreurEnvoi(code)), true);
+      return rafraichir();
+    }
+    bouton.disabled = false;
     if (code === "contenu_interne") aRetirer.set(p.id, (r && r.a_retirer) || []);
     toast(tr(erreurEnvoi(code)), true);
     if (code === "deja_traitee") return rafraichir();
@@ -518,6 +528,44 @@ async function preparer(c, bouton) {
   toast(tr(erreurPreparer(r && r.erreur)), true);
 }
 
+// ---- Envoi au résultat inconnu (migration 64) --------------------------------------------------------------------------------------
+// Le message est rangé avant l'appel à Telnyx. Sans réponse sûre après 30 secondes, Nani vérifie dans WhatsApp et le dit : « C'est parti »
+// garde le message et solde la réponse ; « Pas parti » retire le message du fil et la réponse revient, prête à renvoyer.
+let minuterieEnvoi = null;
+async function confirmerEnvoi(c, parti, boutons) {
+  if (boutons.some((b) => b.disabled)) return;
+  boutons.forEach((b) => (b.disabled = true));
+  try {
+    await etat.store.whatsappConfirmerEnvoi(c.id, parti);
+    const maintenant = new Date().toISOString();
+    for (const x of etat.brut.whatsapp_propositions || []) {
+      if (x.conversation_id !== c.id) continue;
+      if (parti && ["a_faire", "en_cours", "envoi"].includes(x.statut)) Object.assign(x, { statut: "traitee", traitee_le: maintenant, traitee_par_quoi: "gestion" });
+      else if (!parti && x.statut === "envoi") (x.statut = "a_faire", envoisIncertains.delete(x.id));
+    }
+    toast(parti ? tr("Noté : le message est parti.") : tr("Noté : rien n'est parti. La réponse est de nouveau prête."));
+    return rafraichir();
+  } catch (err) {
+    toast(err.message, true);
+    boutons.forEach((b) => (b.disabled = false));
+  }
+}
+function carteVerifier(c, doute) {
+  const expire = !!doute && envoiAVerifier(doute) === "expire";
+  const oui = h("button", { class: "principal petit", type: "button" }, icone("coche", 16), tr("C'est parti"));
+  const non = h("button", { class: "secondaire petit", type: "button" }, tr("Pas parti"));
+  oui.addEventListener("click", () => confirmerEnvoi(c, true, [oui, non]));
+  non.addEventListener("click", () => confirmerEnvoi(c, false, [oui, non]));
+  const wa = lienWhatsApp(c.telephone);
+  return h(
+    "section",
+    { class: `wa-prop wa-verifier${expire ? " echec" : ""}`, role: "status", "aria-label": tr("Vérifiez dans WhatsApp") },
+    h("p", null, icone("alerte", 16), h("strong", null, tr("Vérifiez dans WhatsApp")), " ", expire ? tr("WhatsApp n'a jamais confirmé cet envoi depuis Gestion.") : tr("L'envoi depuis Gestion n'est pas confirmé.")),
+    h("p", { class: "wa-detail" }, tr("Si le message est dans la conversation de l'app, touchez « C'est parti ». Sinon « Pas parti » : il sort du fil et la réponse revient pour un nouvel essai.")),
+    lectureSeule ? null : h("div", { class: "wa-prop-actions" }, oui, non, wa ? h("a", { class: "bouton secondaire wa-ouvrir", href: wa, target: "_blank", rel: "noopener" }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null)
+  );
+}
+
 // Aucune réponse préparée pour le dernier message du client : l'état normal depuis le 20.11.2026 (réponses sur demande). Le bouton
 // « Préparer une réponse », et à côté ce que le tri a vu, sans icône d'alerte.
 function ligneSansReponse(c, messages) {
@@ -531,7 +579,12 @@ function ligneSansReponse(c, messages) {
 function carteProposition(c, p, messages) {
   // Le client attend et aucune réponse n'est préparée (tri, contact réglé sur « Jamais », agent qui n'a pas su trier) : on le dit.
   if (!p) return etat.brut.whatsapp_propositions_disponible !== false && messages.length && messages[messages.length - 1].sens === "entrant" ? ligneSansReponse(c, messages) : null;
-  if (p.statut === "envoi") return h("section", { class: "wa-prop en-cours", "aria-live": "polite" }, h("p", { class: "agent-etape" }, h("span", { class: "agent-point", "aria-hidden": "true" }), tr("Envoi en cours depuis Gestion…")));
+  if (p.statut === "envoi") {
+    // Moins de 30 secondes : l'appel est peut-être encore en cours. Au-delà, la carte « Vérifiez dans WhatsApp » du fil prend le relais ;
+    // une réponse restée « envoi » sans message (avant la migration 64) l'a aussi.
+    if (messages.some((m) => envoiAVerifier(m) === "attente")) return h("section", { class: "wa-prop en-cours", "aria-live": "polite" }, h("p", { class: "agent-etape" }, h("span", { class: "agent-point", "aria-hidden": "true" }), tr("Envoi en cours depuis Gestion…")));
+    return envoiEnDoute(messages) ? null : carteVerifier(c, null);
+  }
   // « Fait » ne vaut que pour une proposition au moins aussi récente que le dernier message du client.
   // Nani a déjà répondu depuis (dernier message sortant) : rien à dire.
   const repondu = messages.length > 0 && messages[messages.length - 1].sens === "sortant";
@@ -614,6 +667,11 @@ async function fil(c, prop) {
   }
   const jours = grouperParJour(messages);
   lectureSeule = !peutEcrire(c);
+  const doute = envoiEnDoute(messages);
+  // Un envoi qui passera « à vérifier » (30 s) ou « expiré » (5 min) : l'écran se redessine à ce moment-là, une seule minuterie à la fois.
+  clearTimeout(minuterieEnvoi);
+  const delai = prochainChangement(messages);
+  if (delai !== null) minuterieEnvoi = setTimeout(() => /^#\/whatsapp/.test(location.hash) && rafraichir(), delai);
   const noeud = h(
     "section",
     { class: "wa-fil", "aria-label": tr("Conversation") },
@@ -627,6 +685,7 @@ async function fil(c, prop) {
       lignesTaches(c),
       cartePaiement(c)
     ),
+    doute ? carteVerifier(c, doute) : null,
     carteProposition(c, prop, messages)
   );
   return { noeud, messages };
