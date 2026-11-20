@@ -12,7 +12,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, PLAFOND_MOIS_USD_DEFAUT, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { memoDepuis, refDe, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
-import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, clePaire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, variantesLieu } from "./temps.js";
+import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, clePaire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
@@ -156,17 +156,25 @@ Deno.serve(async (req) => {
   const osrmPermis = ORGANISATIONS_OSRM.includes(ent.data?.organisation_id || "") && Deno.env.get("AGENT_OSRM") !== "0";
   const moteur: "ors" | "osrm" | null = cleOrs ? "ors" : osrmPermis ? "osrm" : null;
   const derniers = new Map<string, number>();
+  // Les pannes des serveurs d'OpenStreetMap (serveur et code, rien d'un client) : rendues avec l'erreur de l'outil, gardées dans l'historique.
+  const notes: string[] = [];
   const appel = async (url: string, init: RequestInit = {}) => {
     const hote = new URL(url).host;
     const attente = delaiAvant(derniers, hote, Date.now());
     if (attente) await new Promise((ok) => setTimeout(ok, attente));
     const entetes = moteur === "ors" && hote === new URL(orsUrl).host ? { Authorization: cleOrs!, "Content-Type": "application/json" } : { "User-Agent": USER_AGENT, Accept: "application/json" };
-    const rep = await fetch(url, { ...init, headers: { ...entetes, ...(init.headers || {}) }, signal: AbortSignal.timeout(10_000) });
-    if (!rep.ok) {
-      console.error("agent : itinéraire", hote, rep.status);
+    try {
+      const rep = await fetch(url, { ...init, headers: { ...entetes, ...(init.headers || {}) }, signal: AbortSignal.timeout(10_000) });
+      if (!rep.ok) {
+        notes.push(`${hote} ${rep.status}`);
+        console.error("agent : itinéraire", hote, rep.status);
+        return null;
+      }
+      return await rep.json();
+    } catch (err) {
+      notes.push(`${hote} ${err instanceof Error ? err.name : "erreur"}`);
       return null;
     }
-    return rep.json();
   };
   const chercher = (v: string) => (moteur === "ors" ? appel(`${orsUrl}${ORS_GEOCODE}?${parametresGeocode(v)}`, { method: "GET" }).then(lireGeocode) : appel(`${NOMINATIM_BASE}/search?${parametresNominatim(v)}`).then(lireNominatim));
   const geo = new Map<string, { lon: number; lat: number; label: string } | null>();
@@ -177,12 +185,15 @@ Deno.serve(async (req) => {
     const connu = await sb.from("lieux_geo").select("lon, lat, label").eq("entite_id", entiteId).eq("cle", k).maybeSingle();
     if (connu.data) g = { lon: Number(connu.data.lon), lat: Number(connu.data.lat), label: connu.data.label };
     else {
-      // Plusieurs écritures du même lieu (nom thaï, nom latin) : la première trouvée par OpenStreetMap.
-      for (const v of variantesLieu(lieu, (await charger("hotels_lieux")) as { cle: string; zone: string; lieu: string }[])) {
-        g = await chercher(v);
-        if (g) break;
-      }
-      // Trouvé par la plage de l'hôtel (variante) : le libellé le dit, pour que la personne voie que c'est approché.
+      // Plusieurs écritures du même lieu (nom thaï, nom latin), puis, pour un hôtel absent d'OpenStreetMap, sa plage trouvée par le web.
+      g = await situerLieu(lieu, {
+        chercher,
+        hotels: (await charger("hotels_lieux")) as { cle: string; zone: string; lieu: string }[],
+        situerHotel: async (nom: string) => {
+          const r = await situerWeb([nom]);
+          return r && r[0] ? r[0] : null;
+        },
+      });
       if (g) await sb.from("lieux_geo").upsert({ entite_id: entiteId, cle: k, nom: lieu.slice(0, 160), lon: g.lon, lat: g.lat, label: g.label, origine: moteur === "ors" ? "ors" : "nominatim", a_verifier: true }, { onConflict: "entite_id,cle" });
     }
     geo.set(k, g);
@@ -224,7 +235,8 @@ Deno.serve(async (req) => {
     const hotels = noms.map(nomPourRecherche).filter(Boolean);
     const [trajets, partenaires] = await Promise.all([charger("trajets"), charger("partenaires")]);
     const lieux = lieuxDuCatalogue({ trajets, partenaires });
-    if (!hotels.length || !lieux.length) return null;
+    // Sans trajet au catalogue (Taxi), la recherche rend quand même la plage et la localité de l'hôtel.
+    if (!hotels.length) return null;
     const ra = reglagesAssistant(reglages);
     const p = parametresSituer(promptSituer({ hotels, lieux, lieu: ra.lieu }), hotels.length);
     let m = await anthropic.beta.messages.create(p as Anthropic.Beta.MessageCreateParamsNonStreaming);
@@ -259,7 +271,7 @@ Deno.serve(async (req) => {
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
   const messages = historique(debutValide([...(anciens.data || [])].reverse()));
   const memo = memoDepuis([...messages, { role: "user", content: message }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
-  const ctx = { charger, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, maintenant: () => Date.now() };
+  const ctx = { charger, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

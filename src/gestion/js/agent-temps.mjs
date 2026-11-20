@@ -256,6 +256,8 @@ export function variantesLieu(lieu, hotels = []) {
     const reste = m[3].replace(/^[,\s]+/, "");
     out.push([m[1], reste].filter(Boolean).join(", "), [m[2], reste].filter(Boolean).join(", "));
   }
+  // Le nom seul, avant la première virgule (« Krabi Nakharin International Hospital ») : un lieu précis se trouve souvent mieux ainsi.
+  if (/,/.test(t)) out.push(t.split(",")[0].trim());
   // OpenStreetMap écrit « Ko Lanta », pas « Koh Lanta » (vérifié avec Nominatim le 20.11.2026).
   for (const v of [...out]) if (/\bKoh\s/i.test(v)) out.push(v.replace(/\bKoh\s/gi, "Ko "));
   const brut = sansAccents(t).replace(/[^a-z0-9]+/g, " ").trim();
@@ -263,6 +265,35 @@ export function variantesLieu(lieu, hotels = []) {
   // La plage ou le quartier de l'hôtel, seul : « Klong Nin » se trouve, « Klong Nin, Koh Lanta » non.
   if (h) out.push(h.zone);
   return [...new Set(out.filter(Boolean))].slice(0, 6);
+}
+
+// Les coordonnées d'un lieu. D'abord par son nom (variantesLieu). Introuvable (un hôtel absent d'OpenStreetMap, comme Jai Tiki) : l'hôtel est
+// situé par une recherche web sur son nom seul (situerHotel, sources contrôlées), puis sa plage ou son quartier est cherché dans OpenStreetMap.
+// Jamais l'île seule. Le libellé dit que la position vient du web et d'où, pour que la personne la vérifie d'un coup d'œil.
+// Demande de Jérémy (20.11.2026) : l'agent cherche lui-même où est l'hôtel, sans demander, pour faire gagner du temps à Anaïs.
+const hoteDe = (url) => {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+};
+export async function situerLieu(lieu, { chercher, hotels = [], situerHotel = null }) {
+  for (const v of variantesLieu(lieu, hotels)) {
+    const g = await chercher(v);
+    if (g) return { ...g, par: "nom" };
+  }
+  if (!situerHotel) return null;
+  const nom = String(lieu || "").split(",")[0].trim();
+  if (nom.length < 3) return null;
+  const h = await situerHotel(nom);
+  if (!h || !h.source || !h.source.url || !h.zone) return null;
+  const essais = [...new Set([h.localite ? `${h.zone}, ${h.localite}` : "", h.localite ? `${h.zone}, ${String(h.localite).replace(/\bKoh\s/gi, "Ko ")}` : "", h.zone].filter(Boolean))];
+  for (const v of essais) {
+    const g = await chercher(v);
+    if (g) return { ...g, label: `${nom} : ${h.zone}${h.localite ? `, ${h.localite}` : ""} d'après le web (${hoteDe(h.source.url)})`.slice(0, 200), par: "web", source_url: h.source.url };
+  }
+  return null;
 }
 
 // Requête de géocodage : le nom du lieu seul (jamais un nom de client), en Thaïlande, un résultat.

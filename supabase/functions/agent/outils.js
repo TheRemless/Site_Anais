@@ -117,7 +117,7 @@ export const OUTILS = [
   {
     name: "estimer_temps_web",
     description:
-      "Dernier recours, seulement quand temps_de_route ou planifier_course n'ont aucune durée et que la personne ne la connaît pas : cherche une durée de trajet en voiture sur le web, avec sa source. Le résultat est une estimation, à présenter comme telle.",
+      "Quand temps_de_route ou planifier_course n'ont aucune durée (même après avoir situé l'hôtel) : cherche une durée de trajet en voiture sur le web, avec sa source. Utilise-le directement, sans demander la permission. Le résultat est une estimation, à présenter comme telle avec sa source.",
     input_schema: obj({ de: S("Lieu de départ."), vers: S("Lieu d'arrivée.") }),
   },
   {
@@ -390,10 +390,12 @@ export async function situerHotels(e, ctx) {
 // Un trajet qui passe par un ferry de la table se calcule en trois morceaux (temps.js, dureeAvecFerry) ; { manque } dit le morceau sans durée.
 const dureeDe = async (ctx, de, vers) => dureeAvecFerry(de, vers, { lignes: (await ctx.charger("temps_trajets")) || [], liaisons: (await ctx.charger("liaisons_ferry")) || [], hotels: (await ctx.charger("hotels_lieux")) || [], ors: ctx.ors || null, simule: ctx.simule || null });
 const cleEstimation = (de, vers) => clePaire(de, vers);
+// Ce qui a manqué côté OpenStreetMap (serveur et code d'erreur, rien d'un client), pour comprendre une panne en relisant l'historique.
+const diagnostic = (ctx) => ({ ...(ctx.moteur === undefined ? {} : { moteur: ctx.moteur || "aucun" }), ...(ctx.notes && ctx.notes.length ? { pannes: ctx.notes.slice(-4) } : {}) });
 
 export async function tempsDeRoute(e, ctx) {
   const r = await dureeDe(ctx, texte(e.de, 200), texte(e.vers, 200));
-  if (!r || r.manque) return { resultat: { erreur: "temps_indisponible", ...(r && r.manque ? { morceau_sans_duree: r.manque } : {}), conseil: "Aucune durée connue pour ce trajet (ou ce morceau) : dis-le et demande la durée à la personne (elle pourra l'ajouter à la table)." } };
+  if (!r || r.manque) return { resultat: { erreur: "temps_indisponible", ...(r && r.manque ? { morceau_sans_duree: r.manque } : {}), ...diagnostic(ctx), conseil: "Aucune durée pour ce trajet (ou ce morceau), même après avoir cherché l'hôtel sur le web : utilise estimer_temps_web sans demander. Ne demande la durée à la personne que si l'estimation échoue aussi." } };
   return { resultat: { de: texte(e.de, 200), vers: texte(e.vers, 200), duree_route_min: r.duree_min, ...(r.ferry_fixe_min ? { ferry_min: r.ferry_fixe_min, detail: detailMorceaux(r.morceaux, texteDuree) } : {}), distance_km: r.distance_km ?? null, ferry: !!r.ferry, marge_conseillee_min: r.marge_min || 0, source: r.source, a_verifier: r.a_verifier, ...(r.de_trouve ? { de_trouve: r.de_trouve, vers_trouve: r.vers_trouve } : {}) } };
 }
 
@@ -426,7 +428,7 @@ export async function planifier(e, ctx, memo = { durees: new Set(), estimations:
   }
   if (refusees.length) return { resultat: { erreur: "duree_sans_source", trajets: refusees, conseil: "Une durée ne compte que si la personne l'a écrite dans la conversation, ou si estimer_temps_web l'a rendue pour ce trajet." } };
   const manque = trajets.findIndex((x) => !x || x.manque);
-  if (manque >= 0) return { resultat: { erreur: "temps_indisponible", trajet: (trajets[manque] && trajets[manque].manque) || `${points[manque].lieu} → ${points[manque + 1].lieu}`, conseil: "Aucune durée connue pour ce trajet : dis-le simplement et demande la durée à la personne. Quand elle l'a donnée, propose de l'ajouter à la table (proposer_temps_trajet). L'estimation web ne vient qu'en dernier recours." } };
+  if (manque >= 0) return { resultat: { erreur: "temps_indisponible", trajet: (trajets[manque] && trajets[manque].manque) || `${points[manque].lieu} → ${points[manque + 1].lieu}`, ...diagnostic(ctx), conseil: "Aucune durée pour ce trajet, même après avoir cherché l'hôtel sur le web : appelle tout de suite estimer_temps_web pour ce trajet (sans demander la permission), puis relance planifier_course avec cette estimation (source_duree « estimation_web »). Ne demande la durée à la personne que si l'estimation échoue aussi ; quand elle la donne, propose de l'ajouter à la table (proposer_temps_trajet)." } };
   const plan = planifierCourse({ date: e.date, points, trajets, vol: heureValide(e.heure_vol) ? { heure: e.heure_vol, international: !!e.vol_international } : null, reglages: reglagesPlanning(ctx.reglages) });
   if (!plan.ok) return { resultat: { erreur: plan.erreur } };
   const heures = [plan.pickup.heure, ...plan.etapes.flatMap((x) => [x.arrivee_prevue && x.arrivee_prevue.heure, x.arrivee_au_plus_tard && x.arrivee_au_plus_tard.heure, x.depart && x.depart.heure, x.rendez_vous]), plan.vol && plan.vol.arrivee_limite.heure, plan.vol && plan.vol.heure].filter(Boolean);
@@ -446,7 +448,7 @@ export async function estimerTempsWeb(e, ctx, memo) {
   const r = ctx.estimerWeb ? await ctx.estimerWeb(de, vers) : null;
   if (!r || !(r.duree_min > 0) || !r.source_url) return { resultat: { erreur: "estimation_impossible", conseil: "Aucune source fiable trouvée : demande la durée à la personne." } };
   if (memo && memo.estimations) memo.estimations.set(cleEstimation(de, vers), r);
-  return { resultat: { de, vers, duree_min: r.duree_min, ferry: !!r.ferry, estimation: true, source_url: r.source_url, source_titre: r.source_titre || "", explication: r.explication || "", conseil: "C'est une estimation : dis-le à la personne avec sa source, et ne l'utilise dans planifier_course (source_duree « estimation_web ») qu'avec son accord." } };
+  return { resultat: { de, vers, duree_min: r.duree_min, ferry: !!r.ferry, estimation: true, source_url: r.source_url, source_titre: r.source_titre || "", explication: r.explication || "", conseil: "C'est une estimation : utilise-la tout de suite dans planifier_course (duree_vers_suivant_min, source_duree « estimation_web ») et dis à la personne que c'est une estimation, avec sa source." } };
 }
 
 // ---- Clients et dossiers ---------------------------------------------------------------------------------------------------------
