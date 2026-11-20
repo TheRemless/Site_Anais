@@ -96,18 +96,16 @@ export function creer() {
     const sansWhatsApp = !data.whatsapp_conversations;
     if (sansWhatsApp && AGENCE) Object.assign(data, Object.fromEntries(TABLES_WHATSAPP_DEMO.map((t) => [t, []])));
     else if (sansWhatsApp) {
-      // Suivi (migrations 61 et 62) : un dossier d'excursions non soldé avec son client, et un trajet en bateau pour le ferry à relancer.
+      // Suivi (migrations 61 et 62) : un dossier d'excursions non soldé avec son client.
       const secret = data.entites.find((e) => e.slug === "excursions" || e.slug === "secret");
       const nonSolde = (d) => {
         const total = totalDossier(data.documents.filter((x) => x.dossier_id === d.id));
         return total > 0 && sommePaiements(data.paiements.filter((x) => x.dossier_id === d.id)) < total;
       };
       const dossier = secret ? data.dossiers.find((d) => d.entite_id === secret.id && !d.annule && d.client_id && nonSolde(d)) : null;
-      const trajet = secret ? data.trajets.find((t) => t.entite_id === secret.id && /ferry/i.test(t.mode || "")) || data.trajets.find((t) => t.entite_id === secret.id) : null;
-      const suivi = dossier ? { dossier, client: data.clients.find((x) => x.id === dossier.client_id) || null, trajet, ajd: aujourdhui(), ajouterJours } : null;
-      const { reservations: resWa = [], taches: tachesWa = [], ...wa } = whatsappDemo({ entites: data.entites, clients: data.clients, dossiers: data.dossiers, uid, organisation: ORG_DEMO, suivi });
+      const suivi = dossier ? { dossier, client: data.clients.find((x) => x.id === dossier.client_id) || null, ajd: aujourdhui(), ajouterJours } : null;
+      const { taches: tachesWa = [], ...wa } = whatsappDemo({ entites: data.entites, clients: data.clients, dossiers: data.dossiers, uid, organisation: ORG_DEMO, suivi });
       Object.assign(data, wa);
-      data.reservations = [...data.reservations.filter((r) => !(r.details && r.details.demo_whatsapp)), ...resWa];
       data.taches = [...(data.taches || []).filter((t) => !String(t.titre || "").startsWith("WhatsApp, ")), ...tachesWa];
     }
     for (const t of TABLES_WHATSAPP_DEMO) data[t] = data[t] || [];

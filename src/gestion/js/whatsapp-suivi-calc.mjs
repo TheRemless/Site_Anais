@@ -1,5 +1,5 @@
 // Suivi des conversations WhatsApp (migrations 61 et 62, 20.11.2026, « Lance tout » de Jérémy) : créer ou mettre à jour le dossier depuis
-// l'échange, voucher, signal de paiement, ferrys payés d'avance à relancer, promesses en tâches, résumé. Logique pure, testée par
+// l'échange, voucher, signal de paiement, promesses en tâches, résumé. Logique pure, testée par
 // tests/gestion-whatsapp-fonctions.test.js.
 import { N_ } from "./i18n.mjs";
 
@@ -78,63 +78,6 @@ export const MOTIFS_PAIEMENT = {
   texte: N_("D'après son message."),
   piece: N_("D'après la photo ou le PDF qu'il a envoyé."),
 };
-
-// ---- Ferrys payés d'avance à relancer ----------------------------------------------------------------------------------------------------
-// Un bateau : le mode du trajet contient l'un de ces mots, sans tenir compte de la casse.
-export const BATEAU = /ferry|speedboat|expressboat|boat|catamaran|longtail/i;
-export const estBateau = (trajet) => !!trajet && BATEAU.test(String(trajet.mode || ""));
-// Les réservations confirmées, à venir, pas payées sur place, dont le trajet est un bateau, dans un dossier non soldé (reçu < total).
-// dossiers : avec leur résumé (total, recu). Un dossier sans total connu (droit « montants » absent) n'est jamais compté.
-export function ferrysARelancer({ reservations = [], trajets = [], dossiers = [], aujourdhui = "" } = {}) {
-  const parTrajet = new Map(trajets.map((t) => [t.id, t]));
-  const parDossier = new Map(dossiers.map((d) => [d.id, d]));
-  const out = [];
-  for (const r of reservations) {
-    if (!r || r.statut !== "confirme" || r.paye_sur_place || !r.date_service || r.date_service < aujourdhui) continue;
-    const t = parTrajet.get(r.trajet_id);
-    if (!estBateau(t)) continue;
-    const d = parDossier.get(r.dossier_id);
-    if (!d || d.annule) continue;
-    const total = Number(d.total);
-    const recu = Number(d.recu) || 0;
-    if (!(total > 0) || !(recu < total)) continue;
-    out.push({ reservation: r, trajet: t, dossier: d });
-  }
-  return out.sort((a, b) => String(a.reservation.date_service).localeCompare(String(b.reservation.date_service)));
-}
-// Les ferrys de chaque conversation WhatsApp, par son dossier relié.
-export function ferrysParConversation(conversations = [], ferrys = []) {
-  const out = new Map();
-  for (const c of conversations) {
-    if (!c.dossier_id) continue;
-    const liste = ferrys.filter((f) => f.dossier.id === c.dossier_id);
-    if (liste.length) out.set(c.id, liste);
-  }
-  return out;
-}
-// « ferry from Koh Lanta to Koh Phi Phi » : le mode du trajet en minuscules, ou « boat » s'il manque.
-export function nomTrajet(trajet, reservation = null) {
-  const mode = String((trajet && trajet.mode) || "boat").trim().toLowerCase();
-  if (trajet && trajet.de && trajet.vers) return `${mode} from ${trajet.de} to ${trajet.vers}`;
-  return (reservation && reservation.libelle) || mode;
-}
-// « Saturday 22 November », en anglais : le message part au client.
-export function dateAnglaise(iso) {
-  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
-}
-// Le message de relance, en anglais, sans signature ni coordonnée bancaire (Nani les envoie quand le client a choisi).
-export function messageRelanceFerry({ prenom = "", trajet = null, reservation = null } = {}) {
-  const salut = String(prenom || "").trim() ? `Hi ${String(prenom).trim()},` : "Hi,";
-  const date = dateAnglaise(reservation && reservation.date_service);
-  return `${salut} just a reminder that your ${nomTrajet(trajet, reservation)}${date ? ` on ${date}` : ""} is confirmed once payment is received. You can pay in advance by Wise, international bank transfer or in cash at our office. Let me know which you prefer and I'll send you the payment details.`;
-}
-// Prénom pour le message : celui du client relié, sinon le premier mot du nom WhatsApp.
-export function prenomPourMessage(conv, client = null) {
-  if (client && client.prenom) return String(client.prenom).trim();
-  const n = String((conv && conv.nom) || "").trim().split(/\s+/)[0] || "";
-  return /^[\p{L}'-]{2,}$/u.test(n) ? n : "";
-}
 
 // ---- Résumé --------------------------------------------------------------------------------------------------------------------------------
 // Les trois lignes du résumé, sans lignes vides ni puces.

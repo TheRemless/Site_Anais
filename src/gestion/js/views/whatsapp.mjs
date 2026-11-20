@@ -9,10 +9,8 @@ import { etat, modifier, entitesAccessibles, estSuperAdmin, permissionsDe, voitT
 import { h, toast, confirmer, icone, puces, modal, champ } from "../ui.mjs";
 import { tr, N_, langueActive, localeActive } from "../i18n.mjs";
 import { quand, bloquantsReponse, resteBloque, agentActif } from "../agent-calc.mjs";
-import { aujourdhui } from "../calc.mjs";
 import {
-  CLE_DEMANDE_AGENT, modeDossier, paiementSignale, MOTIFS_PAIEMENT, ferrysARelancer, ferrysParConversation, messageRelanceFerry, prenomPourMessage,
-  nomTrajet, lignesResume, tachesPromesse, piecesProposees, basculerPiece, PIECES_MAX, resumeEnRetard,
+  CLE_DEMANDE_AGENT, modeDossier, paiementSignale, MOTIFS_PAIEMENT, lignesResume, tachesPromesse, piecesProposees, basculerPiece, PIECES_MAX, resumeEnRetard,
 } from "../whatsapp-suivi-calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { directCoupe } from "../direct-reprise-calc.mjs";
@@ -30,8 +28,6 @@ const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"))
 //   envoisIncertains : un envoi au résultat inconnu (délai dépassé, coupure), le bouton Envoyer ne se rallume pas ;
 //   aRetirer : les montants et les noms que whatsapp-envoi a trouvés dans le texte (contenu_interne).
 const brouillons = new Map();
-// Relances de ferry modifiées, par réservation.
-const brouillonsFerry = new Map();
 const envoisIncertains = new Set();
 const aRetirer = new Map();
 
@@ -46,7 +42,7 @@ const clientDe = (c) => (c && c.client_id ? (etat.brut.clients || []).find((x) =
 const dossierDe = (c) => (c && c.dossier_id ? (etat.brut.dossiers || []).find((x) => x.id === c.dossier_id) || null : null);
 
 // ---- Liste ----------------------------------------------------------------------------------------------------------------------
-function ligneConversation(c, prop, ouverte, ferry = false) {
+function ligneConversation(c, prop, ouverte) {
   const e = c.entite_id ? entite(c.entite_id) : null;
   const et = etatConversation(c, prop);
   const nonLus = Number(c.non_lus) || 0;
@@ -61,7 +57,7 @@ function ligneConversation(c, prop, ouverte, ferry = false) {
         "span",
         { class: "wa-conv-ligne" },
         h("span", { class: `wa-conv-etat ${et.cle}` }, et.cle === "prete" ? icone("copier", 14) : null, et.libelle ? tr(et.libelle) : ""),
-        h("span", { class: "wa-conv-droite" }, ferry ? h("span", { class: "wa-marque ferry" }, tr("Ferry à régler")) : null, h("span", { class: `wa-marque${e ? "" : " a-trier"}` }, e ? e.nom : tr("À trier")), nonLus ? h("span", { class: "agent-pastille", "aria-label": tr("{n} non lus", { n: nonLus }) }, nonLus) : null)
+        h("span", { class: "wa-conv-droite" }, h("span", { class: `wa-marque${e ? "" : " a-trier"}` }, e ? e.nom : tr("À trier")), nonLus ? h("span", { class: "agent-pastille", "aria-label": tr("{n} non lus", { n: nonLus }) }, nonLus) : null)
       )
     )
   );
@@ -350,38 +346,10 @@ function cartePaiement(c) {
   );
 }
 
-// « Ferry à régler » : un trajet en bateau payé d'avance, confirmé, à venir, dans un dossier pas encore soldé. Message de relance anglais
-// prêt à copier, sans signature ni coordonnées bancaires.
-function cartesFerry(c, ferrys) {
-  if (!ferrys || !ferrys.length) return null;
-  const prenom = prenomPourMessage(c, clientDe(c));
-  const wa = lienWhatsApp(c.telephone);
-  return ferrys.map((f) => {
-    // Modifiable avant copie, comme la réponse préparée : le texte changé survit au redessin, par réservation.
-    const base = messageRelanceFerry({ prenom, trajet: f.trajet, reservation: f.reservation });
-    const zone = h("textarea", { class: "wa-ferry-texte", rows: 4, lang: "en", "aria-label": tr("Message de relance") });
-    zone.value = brouillonsFerry.has(f.reservation.id) ? brouillonsFerry.get(f.reservation.id) : base;
-    zone.addEventListener("input", () => (zone.value !== base ? brouillonsFerry.set(f.reservation.id, zone.value) : brouillonsFerry.delete(f.reservation.id)));
-    return h(
-      "section",
-      { class: "wa-suivi wa-ferry", "aria-label": tr("Ferry à régler") },
-      h("h3", null, icone("bateau", 18), tr("Ferry à régler"), h("span", { class: "wa-ferry-quoi" }, `${nomTrajet(f.trajet, f.reservation)} · ${f.reservation.date_service}`)),
-      zone,
-      h("div", { class: "wa-prop-actions" }, h("button", { class: "principal wa-copier", type: "button", onclick: (e) => copier(zone, e.currentTarget, tr("Relance copiée. Collez-la dans WhatsApp.")) }, icone("copier", 20), tr("Copier")), wa ? h("a", { class: "bouton secondaire wa-ouvrir", href: wa, target: "_blank", rel: "noopener" }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null),
-      h("p", { class: "wa-detail" }, tr("D'après la règle des bateaux de l'Assistant (Réglages). Vérifiez avant d'envoyer."))
-    );
-  });
-}
-
 // Promesses de Nani devenues des tâches (« WhatsApp, Prénom : … ») : une ligne et un lien vers Tâches.
 function lignesTaches(c) {
   const t = tachesPromesse(etat.brut.taches || [], c, clientDe(c));
   return t.map((x) => h("p", { class: "wa-tache" }, icone("taches", 16), h("span", null, tr("Tâche créée : {titre}", { titre: x.titre.replace(/^WhatsApp, /, "") })), h("a", { href: "#/taches" }, tr("Tâches"))));
-}
-// Les ferrys à relancer de toutes les conversations (liste, filtre et cartes).
-function ferrysDesConversations(conversations) {
-  const ferrys = ferrysARelancer({ reservations: etat.brut.reservations || [], trajets: etat.brut.trajets || [], dossiers: etat.brut.dossiers || [], aujourdhui: aujourdhui() });
-  return ferrysParConversation(conversations, ferrys);
 }
 
 // ---- Conversation : messages ----------------------------------------------------------------------------------------------------
@@ -436,14 +404,14 @@ function bulle(m) {
 }
 
 // ---- Proposition de l'agent -------------------------------------------------------------------------------------------------------
-async function copier(zone, bouton, message = null) {
+async function copier(zone, bouton) {
   if (bouton.disabled) return;
   try {
     await navigator.clipboard.writeText(zone.value);
     bouton.classList.add("fait");
     bouton.replaceChildren(icone("coche", 20), tr("Copié"));
     setTimeout(() => bouton.isConnected && (bouton.classList.remove("fait"), bouton.replaceChildren(icone("copier", 20), tr("Copier"))), 2500);
-    toast(message || tr("Réponse copiée. Collez-la dans WhatsApp."));
+    toast(tr("Réponse copiée. Collez-la dans WhatsApp."));
   } catch {
     zone.focus();
     zone.select();
@@ -605,7 +573,7 @@ function carteProposition(c, p, messages) {
   );
 }
 
-async function fil(c, prop, ferrys = null) {
+async function fil(c, prop) {
   let messages = [];
   let erreur = null;
   try {
@@ -625,8 +593,7 @@ async function fil(c, prop, ferrys = null) {
       !erreur && !messages.length ? h("p", { class: "aide" }, tr("Aucun message gardé pour cette conversation.")) : null,
       jours.map((g) => h("div", { class: "wa-jour" }, h("p", { class: "wa-jour-titre" }, h("span", null, libelleJour(g.jour))), g.messages.map(bulle))),
       lignesTaches(c),
-      cartePaiement(c),
-      cartesFerry(c, ferrys)
+      cartePaiement(c)
     ),
     carteProposition(c, prop, messages)
   );
@@ -688,18 +655,15 @@ export async function vueWhatsApp() {
   for (const id of [...envoisIncertains]) if (!aFaire.has(id)) envoisIncertains.delete(id);
   for (const id of [...aRetirer.keys()]) if (!aFaire.has(id)) aRetirer.delete(id);
   const ouverte = idOuvert ? conversations.find((c) => c.id === idOuvert) || null : null;
-  // Ferrys payés d'avance à relancer (dossier relié non soldé) : un filtre à part, en tête, quand il y en a.
-  const ferrys = ferrysDesConversations(conversations);
-  const filtrer = (liste, f) => (f === "ferrys" ? liste.filter((c) => ferrys.has(c.id)) : filtrerConversations(liste, f, marqueDe));
+  const filtrer = (liste, f) => filtrerConversations(liste, f, marqueDe);
   if (filtre === null) filtre = filtreDeDepart(conversations);
-  if (filtre === "ferrys" && !ferrys.size) filtre = "toutes";
   // La conversation ouverte (notification, lien) reste visible dans la liste, quel que soit le filtre choisi.
   if (ouverte && !filtrer([ouverte], filtre).length) filtre = "toutes";
   const liste = filtrer(conversations, filtre);
-  const nombres = { ...chiffresFiltres(conversations, propositions, marqueDe), ferrys: ferrys.size };
+  const nombres = chiffresFiltres(conversations, propositions, marqueDe);
   const reglage = (etat.brut.whatsapp_reglages || [])[0] || null;
 
-  const choix = puces({ libelle: tr("Afficher"), valeur: filtre, options: [...(ferrys.size ? [{ valeur: "ferrys", libelle: tr("Ferrys à relancer") }] : []), ...FILTRES].map((f) => ({ valeur: f.valeur, libelle: f.valeur === "ferrys" ? f.libelle : tr(f.libelle), nombre: nombres[f.valeur] || null })), onchange: (v) => ((filtre = v), rafraichir()) });
+  const choix = puces({ libelle: tr("Afficher"), valeur: filtre, options: FILTRES.map((f) => ({ valeur: f.valeur, libelle: tr(f.libelle), nombre: nombres[f.valeur] || null })), onchange: (v) => ((filtre = v), rafraichir()) });
   const colonneListe = h(
     "section",
     { class: "wa-liste", "aria-label": tr("Conversations") },
@@ -715,7 +679,7 @@ export async function vueWhatsApp() {
     etat.brut.whatsapp_propositions_disponible === false ? h("p", { class: "bandeau-info", role: "status" }, tr("Les réponses préparées arriveront avec la migration 59.")) : null,
     choix.noeud,
     liste.length
-      ? h("ul", { class: "wa-conversations" }, liste.map((c) => ligneConversation(c, courantes.get(c.id), c.id === idOuvert, ferrys.has(c.id))))
+      ? h("ul", { class: "wa-conversations" }, liste.map((c) => ligneConversation(c, courantes.get(c.id), c.id === idOuvert)))
       : h("p", { class: "aide wa-liste-vide" }, filtre === "a_trier" ? tr("Rien à trier. Les conversations d'un numéro inconnu arrivent ici.") : tr("Aucune conversation. Les messages reçus sur le numéro arrivent ici, avec une notification si la cloche est activée."))
   );
   racine.append(colonneListe);
@@ -724,7 +688,7 @@ export async function vueWhatsApp() {
     racine.append(h("section", { class: "wa-fil wa-fil-vide" }, h("a", { class: "bouton-icone lien wa-retour", href: "#/whatsapp", "aria-label": tr("Retour aux conversations") }, icone("retour", 22)), h("p", { class: "aide" }, tr("Cette conversation n'existe plus ou n'est pas dans vos entreprises."))));
   } else if (ouverte) {
     racine.classList.add("avec-fil");
-    const { noeud, messages } = await fil(ouverte, courantes.get(ouverte.id) || null, ferrys.get(ouverte.id) || null);
+    const { noeud, messages } = await fil(ouverte, courantes.get(ouverte.id) || null);
     racine.append(noeud);
     // Le défilement ne se replace qu'au premier affichage de la conversation ou à l'arrivée d'un nouveau message. Un redessin pour autre
     // chose (synchronisation, Realtime) laisse Nani où elle lisait.
