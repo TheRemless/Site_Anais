@@ -5,10 +5,15 @@
 // conversation à droite (même mise en page que l'onglet Assistant).
 // Réservé aux administrateurs de Secret et de Taxi (la base l'impose, le menu aussi) : Mook ne voit ni l'écran ni le menu.
 // Une notification ouvre « #/whatsapp?c=<conversation>&entite=<entreprise> » : app.mjs passe dans l'entreprise, l'écran ouvre la conversation.
-import { etat, modifier, entitesAccessibles, estSuperAdmin, permissionsDe, voitToutDans, nomClient, naviguer } from "../etat.mjs";
+import { etat, modifier, entitesAccessibles, estSuperAdmin, permissionsDe, voitToutDans, nomClient, naviguer, changerEntite, reglagesDe, peut, modeTaxi } from "../etat.mjs";
 import { h, toast, confirmer, icone, puces, modal, champ } from "../ui.mjs";
 import { tr, N_, langueActive, localeActive } from "../i18n.mjs";
-import { quand, bloquantsReponse, resteBloque } from "../agent-calc.mjs";
+import { quand, bloquantsReponse, resteBloque, agentActif } from "../agent-calc.mjs";
+import { aujourdhui } from "../calc.mjs";
+import {
+  CLE_DEMANDE_AGENT, modeDossier, paiementSignale, MOTIFS_PAIEMENT, ferrysARelancer, ferrysParConversation, messageRelanceFerry, prenomPourMessage,
+  nomTrajet, lignesResume, tachesPromesse,
+} from "../whatsapp-suivi-calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { directCoupe } from "../direct-reprise-calc.mjs";
 import {
@@ -39,7 +44,7 @@ const clientDe = (c) => (c && c.client_id ? (etat.brut.clients || []).find((x) =
 const dossierDe = (c) => (c && c.dossier_id ? (etat.brut.dossiers || []).find((x) => x.id === c.dossier_id) || null : null);
 
 // ---- Liste ----------------------------------------------------------------------------------------------------------------------
-function ligneConversation(c, prop, ouverte) {
+function ligneConversation(c, prop, ouverte, ferry = false) {
   const e = c.entite_id ? entite(c.entite_id) : null;
   const et = etatConversation(c, prop);
   const nonLus = Number(c.non_lus) || 0;
@@ -54,7 +59,7 @@ function ligneConversation(c, prop, ouverte) {
         "span",
         { class: "wa-conv-ligne" },
         h("span", { class: `wa-conv-etat ${et.cle}` }, et.cle === "prete" ? icone("copier", 14) : null, et.libelle ? tr(et.libelle) : ""),
-        h("span", { class: "wa-conv-droite" }, h("span", { class: `wa-marque${e ? "" : " a-trier"}` }, e ? e.nom : tr("À trier")), nonLus ? h("span", { class: "agent-pastille", "aria-label": tr("{n} non lus", { n: nonLus }) }, nonLus) : null)
+        h("span", { class: "wa-conv-droite" }, ferry ? h("span", { class: "wa-marque ferry" }, tr("Ferry à régler")) : null, h("span", { class: `wa-marque${e ? "" : " a-trier"}` }, e ? e.nom : tr("À trier")), nonLus ? h("span", { class: "agent-pastille", "aria-label": tr("{n} non lus", { n: nonLus }) }, nonLus) : null)
       )
     )
   );
@@ -175,8 +180,142 @@ function enTete(c, prop) {
       h("div", { class: "wa-fil-titre" }, h("h2", null, nomConversation(c, clientDe(c))), h("p", { class: "wa-numero" }, numeroAffiche(c.telephone), c.nom && clientDe(c) ? h("span", null, tr("profil « {nom} »", { nom: c.nom })) : null)),
       wa ? h("a", { class: "bouton secondaire petit wa-ouvrir-tete", href: wa, target: "_blank", rel: "noopener", "aria-label": tr("Ouvrir dans WhatsApp") }, icone("whatsapp", 18), h("span", { class: "wa-ouvrir-texte" }, tr("Ouvrir dans WhatsApp"))) : null
     ),
-    h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), blocRelations(c), reglageReponses(c)),
+    h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), blocRelations(c), reglageReponses(c), actionsDossier(c, prop)),
+    blocResume(c),
   ];
+}
+
+// ---- Suivi (migrations 61 et 62) ------------------------------------------------------------------------------------------------------
+// « Créer le dossier » ou « Mettre à jour le dossier » : l'Assistant de l'entreprise de la conversation s'ouvre et lit l'échange lui-même
+// (texte, photos, PDF). Proposé seulement là où l'Assistant est allumé et permis (comme son onglet).
+const assistantDans = (id) => !!id && agentActif(reglagesDe(id)) && ["partenaires.lire", "dossiers.ecrire"].every((d) => permissionsDe(id).includes(d));
+function choisirEntreprise(c, prop) {
+  const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
+  const proposee = entrepriseProposee(prop, choix);
+  return new Promise((resoudre) => {
+    let fermer;
+    // Résolue avant de fermer : la fermeture rend « null » (fenêtre fermée sans choix), sans effet après un choix.
+    const prendre = (e) => (resoudre(e), fermer());
+    fermer = modal(
+      tr("Dans quelle entreprise ?"),
+      h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("La conversation est à trier. Elle sera rangée dans l'entreprise choisie, puis l'Assistant prépare le dossier.")), h("div", { class: "barre-modal" }, choix.map((e) => h("button", { class: proposee && proposee.id === e.id ? "principal" : "secondaire", type: "button", onclick: () => prendre(e) }, e.nom)))),
+      { protege: false, ferme: () => resoudre(null) }
+    );
+  });
+}
+async function versAssistant(c, prop) {
+  let entiteId = c.entite_id;
+  if (!entiteId) {
+    const e = await choisirEntreprise(c, prop);
+    if (!e) return;
+    if (prop && prop.statut === "a_faire" && brouillons.has(prop.id) && prop.entite_id !== e.id && !(await confirmer(tr("Vous avez modifié la réponse préparée. La ranger dans {nom} la remplace et vos changements seront perdus. Continuer ?", { nom: e.nom }), tr("Ranger dans {nom}", { nom: e.nom }), true))) return;
+    try {
+      await modifier("whatsapp_conversations", c.id, { entite_id: e.id });
+    } catch (err) {
+      return toast(err.message, true);
+    }
+    entiteId = e.id;
+  }
+  try {
+    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: modeDossier(c), entite: entiteId }));
+  } catch {
+    return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
+  }
+  if (entiteId !== etat.entiteId) changerEntite(entiteId, { naviguer: false });
+  naviguer("#/agent/nouvelle");
+}
+// Le voucher du dossier relié (Booking confirmation chez Taxi), par l'écran d'envoi habituel (partage de l'image sur iPhone).
+async function envoyerVoucherDuDossier(dossierId) {
+  const [{ courseDuDossier }, { envoyerVoucher }] = await Promise.all([import("./creation-course.mjs"), import("./voucher-envoi.mjs")]);
+  const x = courseDuDossier(dossierId);
+  if (!x.reservation) return toast(tr("Ce dossier n'a pas encore de service à mettre sur un voucher."), true);
+  envoyerVoucher(x);
+}
+function actionsDossier(c, prop) {
+  const ici = c.entite_id && c.entite_id === etat.entiteId;
+  const dossier = ici ? dossierDe(c) : null;
+  const assistant = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
+  const boutons = [
+    assistant && (!c.entite_id || ici) ? h("button", { type: "button", class: "secondaire petit", onclick: () => versAssistant(c, prop) }, icone("assistant", 16), dossier ? tr("Mettre à jour le dossier") : tr("Créer le dossier")) : null,
+    dossier ? h("button", { type: "button", class: "secondaire petit", onclick: () => envoyerVoucherDuDossier(dossier.id) }, icone("whatsapp", 16), modeTaxi() ? tr("Envoyer la Booking confirmation") : tr("Envoyer le voucher")) : null,
+  ].filter(Boolean);
+  return boutons.length ? h("div", { class: "wa-actions-dossier", "data-pas-saisie": "" }, boutons) : null;
+}
+
+// Le résumé en trois lignes (fonction « whatsapp », Claude Haiku), repliable ; replié ou non est gardé pour la session.
+const resumesReplies = new Set();
+function blocResume(c) {
+  const lignes = lignesResume(c.resume);
+  if (!lignes.length) return null;
+  const bloc = h(
+    "details",
+    { class: "wa-resume", open: !resumesReplies.has(c.id) },
+    h("summary", null, h("span", null, tr("Résumé")), c.resume_le ? h("span", { class: "wa-resume-le" }, tr("mis à jour à {heure}", { heure: heureBangkok(c.resume_le) })) : null),
+    h("ul", null, lignes.map((l) => h("li", null, l)))
+  );
+  bloc.addEventListener("toggle", () => (bloc.open ? resumesReplies.delete(c.id) : resumesReplies.add(c.id)));
+  return bloc;
+}
+
+// « Le client a peut-être envoyé une preuve de paiement » : noter le paiement dans le dossier relié (formulaire habituel, prérempli avec le
+// reste à payer), ou ignorer (le signal est remis à vide). Nani décide, rien n'est noté seul.
+function cartePaiement(c) {
+  const p = paiementSignale(c);
+  if (!p) return null;
+  const ici = c.entite_id === etat.entiteId;
+  const dossier = ici ? dossierDe(c) : null;
+  const peutNoter = !!dossier && peut("paiements.ecrire") && peut("finances.voir") && !modeTaxi();
+  const ignorer = async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      await modifier("whatsapp_conversations", c.id, { paiement_signale: null });
+      rafraichir();
+    } catch (err) {
+      e.target.disabled = false;
+      toast(err.message, true);
+    }
+  };
+  return h(
+    "section",
+    { class: "wa-suivi wa-suivi-paiement", "aria-label": tr("Paiement") },
+    h("p", null, icone("du", 16), h("strong", null, tr("Le client a peut-être envoyé une preuve de paiement.")), " ", tr(MOTIFS_PAIEMENT[p.motif])),
+    h(
+      "div",
+      { class: "wa-suivi-actions", "data-pas-saisie": "" },
+      peutNoter ? h("button", { class: "secondaire petit", type: "button", onclick: () => naviguer(`#/dossier/${dossier.id}?paiement=1`) }, tr("Noter un paiement")) : null,
+      h("button", { class: "lien", type: "button", onclick: ignorer }, tr("Ignorer"))
+    )
+  );
+}
+
+// « Ferry à régler » : un trajet en bateau payé d'avance, confirmé, à venir, dans un dossier pas encore soldé. Message de relance anglais
+// prêt à copier, sans signature ni coordonnées bancaires.
+function cartesFerry(c, ferrys) {
+  if (!ferrys || !ferrys.length) return null;
+  const prenom = prenomPourMessage(c, clientDe(c));
+  const wa = lienWhatsApp(c.telephone);
+  return ferrys.map((f) => {
+    const zone = h("textarea", { class: "wa-ferry-texte", rows: 4, lang: "en", "aria-label": tr("Message de relance") });
+    zone.value = messageRelanceFerry({ prenom, trajet: f.trajet, reservation: f.reservation });
+    return h(
+      "section",
+      { class: "wa-suivi wa-ferry", "aria-label": tr("Ferry à régler") },
+      h("h3", null, icone("bateau", 18), tr("Ferry à régler"), h("span", { class: "wa-ferry-quoi" }, `${nomTrajet(f.trajet, f.reservation)} · ${f.reservation.date_service}`)),
+      zone,
+      h("div", { class: "wa-prop-actions" }, h("button", { class: "principal wa-copier", type: "button", onclick: (e) => copier(zone, e.currentTarget, tr("Relance copiée. Collez-la dans WhatsApp.")) }, icone("copier", 20), tr("Copier")), wa ? h("a", { class: "bouton secondaire wa-ouvrir", href: wa, target: "_blank", rel: "noopener" }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null)
+    );
+  });
+}
+
+// Promesses de Nani devenues des tâches (« WhatsApp, Prénom : … ») : une ligne et un lien vers Tâches.
+function lignesTaches(c) {
+  const t = tachesPromesse(etat.brut.taches || [], c, clientDe(c));
+  return t.map((x) => h("p", { class: "wa-tache" }, icone("taches", 16), h("span", null, tr("Tâche créée : {titre}", { titre: x.titre.replace(/^WhatsApp, /, "") })), h("a", { href: "#/taches" }, tr("Tâches"))));
+}
+// Les ferrys à relancer de toutes les conversations (liste, filtre et cartes).
+function ferrysDesConversations(conversations) {
+  const ferrys = ferrysARelancer({ reservations: etat.brut.reservations || [], trajets: etat.brut.trajets || [], dossiers: etat.brut.dossiers || [], aujourdhui: aujourdhui() });
+  return ferrysParConversation(conversations, ferrys);
 }
 
 // ---- Conversation : messages ----------------------------------------------------------------------------------------------------
@@ -231,14 +370,14 @@ function bulle(m) {
 }
 
 // ---- Proposition de l'agent -------------------------------------------------------------------------------------------------------
-async function copier(zone, bouton) {
+async function copier(zone, bouton, message = null) {
   if (bouton.disabled) return;
   try {
     await navigator.clipboard.writeText(zone.value);
     bouton.classList.add("fait");
     bouton.replaceChildren(icone("coche", 20), tr("Copié"));
     setTimeout(() => bouton.isConnected && (bouton.classList.remove("fait"), bouton.replaceChildren(icone("copier", 20), tr("Copier"))), 2500);
-    toast(tr("Réponse copiée. Collez-la dans WhatsApp."));
+    toast(message || tr("Réponse copiée. Collez-la dans WhatsApp."));
   } catch {
     zone.focus();
     zone.select();
@@ -338,6 +477,9 @@ function carteProposition(c, p, messages) {
   if (!p) return etat.brut.whatsapp_propositions_disponible !== false && messages.length && messages[messages.length - 1].sens === "entrant" ? ligneSansReponse(c, messages) : null;
   if (p.statut === "envoi") return h("section", { class: "wa-prop en-cours", "aria-live": "polite" }, h("p", { class: "agent-etape" }, h("span", { class: "agent-point", "aria-hidden": "true" }), tr("Envoi en cours depuis Gestion…")));
   // « Fait » ne vaut que pour une proposition au moins aussi récente que le dernier message du client.
+  // Nani a déjà répondu depuis (dernier message sortant) : rien à dire.
+  const repondu = messages.length > 0 && messages[messages.length - 1].sens === "sortant";
+  if ((p.statut === "traitee" || p.statut === "ignoree") && repondu && !propositionAJour(p, messages)) return null;
   if ((p.statut === "traitee" || p.statut === "ignoree") && !propositionAJour(p, messages)) return ligneSansReponse(c, messages);
   if (p.statut === "en_cours") return h("section", { class: "wa-prop en-cours", "aria-live": "polite" }, h("p", { class: "agent-etape" }, h("span", { class: "agent-point", "aria-hidden": "true" }), tr("Réponse en préparation…")));
   if (p.statut === "echec")
@@ -397,7 +539,7 @@ function carteProposition(c, p, messages) {
   );
 }
 
-async function fil(c, prop) {
+async function fil(c, prop, ferrys = null) {
   let messages = [];
   let erreur = null;
   try {
@@ -415,7 +557,10 @@ async function fil(c, prop) {
       { class: "wa-messages" },
       erreur ? h("p", { class: "agent-erreur" }, tr("Les messages n'ont pas pu être lus ({message})", { message: erreur.message })) : null,
       !erreur && !messages.length ? h("p", { class: "aide" }, tr("Aucun message gardé pour cette conversation.")) : null,
-      jours.map((g) => h("div", { class: "wa-jour" }, h("p", { class: "wa-jour-titre" }, h("span", null, libelleJour(g.jour))), g.messages.map(bulle)))
+      jours.map((g) => h("div", { class: "wa-jour" }, h("p", { class: "wa-jour-titre" }, h("span", null, libelleJour(g.jour))), g.messages.map(bulle))),
+      lignesTaches(c),
+      cartePaiement(c),
+      cartesFerry(c, ferrys)
     ),
     carteProposition(c, prop, messages)
   );
@@ -477,14 +622,18 @@ export async function vueWhatsApp() {
   for (const id of [...envoisIncertains]) if (!aFaire.has(id)) envoisIncertains.delete(id);
   for (const id of [...aRetirer.keys()]) if (!aFaire.has(id)) aRetirer.delete(id);
   const ouverte = idOuvert ? conversations.find((c) => c.id === idOuvert) || null : null;
+  // Ferrys payés d'avance à relancer (dossier relié non soldé) : un filtre à part, en tête, quand il y en a.
+  const ferrys = ferrysDesConversations(conversations);
+  const filtrer = (liste, f) => (f === "ferrys" ? liste.filter((c) => ferrys.has(c.id)) : filtrerConversations(liste, f, marqueDe));
   if (filtre === null) filtre = filtreDeDepart(conversations);
+  if (filtre === "ferrys" && !ferrys.size) filtre = "toutes";
   // La conversation ouverte (notification, lien) reste visible dans la liste, quel que soit le filtre choisi.
-  if (ouverte && !filtrerConversations([ouverte], filtre, marqueDe).length) filtre = "toutes";
-  const liste = filtrerConversations(conversations, filtre, marqueDe);
-  const nombres = chiffresFiltres(conversations, propositions, marqueDe);
+  if (ouverte && !filtrer([ouverte], filtre).length) filtre = "toutes";
+  const liste = filtrer(conversations, filtre);
+  const nombres = { ...chiffresFiltres(conversations, propositions, marqueDe), ferrys: ferrys.size };
   const reglage = (etat.brut.whatsapp_reglages || [])[0] || null;
 
-  const choix = puces({ libelle: tr("Afficher"), valeur: filtre, options: FILTRES.map((f) => ({ valeur: f.valeur, libelle: tr(f.libelle), nombre: nombres[f.valeur] || null })), onchange: (v) => ((filtre = v), rafraichir()) });
+  const choix = puces({ libelle: tr("Afficher"), valeur: filtre, options: [...(ferrys.size ? [{ valeur: "ferrys", libelle: tr("Ferrys à relancer") }] : []), ...FILTRES].map((f) => ({ valeur: f.valeur, libelle: f.valeur === "ferrys" ? f.libelle : tr(f.libelle), nombre: nombres[f.valeur] || null })), onchange: (v) => ((filtre = v), rafraichir()) });
   const colonneListe = h(
     "section",
     { class: "wa-liste", "aria-label": tr("Conversations") },
@@ -500,7 +649,7 @@ export async function vueWhatsApp() {
     etat.brut.whatsapp_propositions_disponible === false ? h("p", { class: "bandeau-info", role: "status" }, tr("Les réponses préparées arriveront avec la migration 59.")) : null,
     choix.noeud,
     liste.length
-      ? h("ul", { class: "wa-conversations" }, liste.map((c) => ligneConversation(c, courantes.get(c.id), c.id === idOuvert)))
+      ? h("ul", { class: "wa-conversations" }, liste.map((c) => ligneConversation(c, courantes.get(c.id), c.id === idOuvert, ferrys.has(c.id))))
       : h("p", { class: "aide wa-liste-vide" }, filtre === "a_trier" ? tr("Rien à trier. Les conversations d'un numéro inconnu arrivent ici.") : tr("Aucune conversation. Les messages reçus sur le numéro arrivent ici, avec une notification si la cloche est activée."))
   );
   racine.append(colonneListe);
@@ -509,7 +658,7 @@ export async function vueWhatsApp() {
     racine.append(h("section", { class: "wa-fil wa-fil-vide" }, h("a", { class: "bouton-icone lien wa-retour", href: "#/whatsapp", "aria-label": tr("Retour aux conversations") }, icone("retour", 22)), h("p", { class: "aide" }, tr("Cette conversation n'existe plus ou n'est pas dans vos entreprises."))));
   } else if (ouverte) {
     racine.classList.add("avec-fil");
-    const { noeud, messages } = await fil(ouverte, courantes.get(ouverte.id) || null);
+    const { noeud, messages } = await fil(ouverte, courantes.get(ouverte.id) || null, ferrys.get(ouverte.id) || null);
     racine.append(noeud);
     // Le défilement ne se replace qu'au premier affichage de la conversation ou à l'arrivée d'un nouveau message. Un redessin pour autre
     // chose (synchronisation, Realtime) laisse Nani où elle lisait.

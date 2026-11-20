@@ -94,7 +94,22 @@ export function creer() {
     // Boîte WhatsApp : posée aussi dans une démo déjà enregistrée dans ce navigateur (créée avant la migration 58).
     // Gardée tout de suite : les identifiants des conversations restent les mêmes d'un rechargement à l'autre (adresse « ?c=… »).
     const sansWhatsApp = !data.whatsapp_conversations;
-    if (sansWhatsApp) Object.assign(data, AGENCE ? Object.fromEntries(TABLES_WHATSAPP_DEMO.map((t) => [t, []])) : whatsappDemo({ entites: data.entites, clients: data.clients, dossiers: data.dossiers, uid, organisation: ORG_DEMO }));
+    if (sansWhatsApp && AGENCE) Object.assign(data, Object.fromEntries(TABLES_WHATSAPP_DEMO.map((t) => [t, []])));
+    else if (sansWhatsApp) {
+      // Suivi (migrations 61 et 62) : un dossier d'excursions non soldé avec son client, et un trajet en bateau pour le ferry à relancer.
+      const secret = data.entites.find((e) => e.slug === "excursions" || e.slug === "secret");
+      const nonSolde = (d) => {
+        const total = totalDossier(data.documents.filter((x) => x.dossier_id === d.id));
+        return total > 0 && sommePaiements(data.paiements.filter((x) => x.dossier_id === d.id)) < total;
+      };
+      const dossier = secret ? data.dossiers.find((d) => d.entite_id === secret.id && !d.annule && d.client_id && nonSolde(d)) : null;
+      const trajet = secret ? data.trajets.find((t) => t.entite_id === secret.id && /ferry/i.test(t.mode || "")) || data.trajets.find((t) => t.entite_id === secret.id) : null;
+      const suivi = dossier ? { dossier, client: data.clients.find((x) => x.id === dossier.client_id) || null, trajet, ajd: aujourdhui(), ajouterJours } : null;
+      const { reservations: resWa = [], taches: tachesWa = [], ...wa } = whatsappDemo({ entites: data.entites, clients: data.clients, dossiers: data.dossiers, uid, organisation: ORG_DEMO, suivi });
+      Object.assign(data, wa);
+      data.reservations = [...data.reservations.filter((r) => !(r.details && r.details.demo_whatsapp)), ...resWa];
+      data.taches = [...(data.taches || []).filter((t) => !String(t.titre || "").startsWith("WhatsApp, ")), ...tachesWa];
+    }
     for (const t of TABLES_WHATSAPP_DEMO) data[t] = data[t] || [];
     if (neuve || sansWhatsApp) sauve();
   };
@@ -147,7 +162,9 @@ export function creer() {
     }
     if (table !== "whatsapp_conversations") return;
     if (!conversationLue(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
-    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses"].includes(k)) delete patch[k];
+    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale"].includes(k)) delete patch[k];
+    // Signal de paiement (migration 62) : depuis l'outil, seulement remis à vide (« Ignorer »).
+    if ("paiement_signale" in patch && patch.paiement_signale !== null) delete patch.paiement_signale;
     // Interrupteur par contact (migration 60) : « auto » ou « jamais », rien d'autre.
     if ("reponses" in patch && !["auto", "jamais"].includes(patch.reponses)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
     if ("non_lus" in patch && !(patch.non_lus <= ligne.non_lus)) patch.non_lus = ligne.non_lus;
@@ -624,8 +641,18 @@ export function creer() {
       if (!regl.agent_ia) return { erreur: "agent_eteint" };
       const perms = permissionsDans(contexte(), e);
       if (!["partenaires.lire", "dossiers.ecrire"].every((p) => perms.includes(p))) return { erreur: "droit_manquant" };
-      const texte = String(corps.texte || "").trim();
+      let texte = String(corps.texte || "").trim();
       const pieces = Array.isArray(corps.fichiers) ? corps.fichiers : [];
+      // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (migration 61), comme la fonction : la conversation est lue
+      // avec les droits de la personne, le message est construit depuis l'échange. En démonstration, seulement le texte des messages du client.
+      const wc = corps.whatsapp_conversation_id && !corps.conversation_id ? conversationLue(corps.whatsapp_conversation_id) : null;
+      const modeWa = corps.whatsapp_mode === "maj" ? "maj" : "creer";
+      if (corps.whatsapp_conversation_id && !corps.conversation_id) {
+        if (!wc || (wc.entite_id && wc.entite_id !== e)) return { erreur: "whatsapp_introuvable" };
+        if (modeWa === "maj" && !data.dossiers.some((d) => d.id === wc.dossier_id)) return { erreur: "dossier_introuvable" };
+        const lignes = data.whatsapp_messages.filter((m) => m.conversation_id === wc.id && m.sens === "entrant" && !m.supprime_le && m.texte).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)).map((m) => m.texte);
+        texte = lignes.join("\n") || "Bonjour";
+      }
       if (!texte && !pieces.length) return { erreur: "message_invalide" };
       if (pieces.length > 6) return { erreur: "trop_de_fichiers" };
       if (pieces.some((f) => !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(f && f.media_type))) return { erreur: "fichier_type" };
@@ -633,11 +660,12 @@ export function creer() {
       const maintenant = () => new Date(Date.now() + data.agent_messages.length).toISOString();
       if (!conv) {
         const { titreDepuis } = await import("./agent-calc.mjs");
-        conv = { id: uid(), entite_id: e, user_id: utilisateur.user_id, titre: titreDepuis(texte || (pieces[0] && pieces[0].nom) || ""), apercu: "", dossier_id: corps.dossier_id || null, statut: "ouverte", cree_le: maintenant(), maj_le: maintenant(), demo_etat: {} };
+        const titre = wc ? (modeWa === "maj" ? "Mise à jour depuis WhatsApp" : "Dossier depuis WhatsApp") : titreDepuis(texte || (pieces[0] && pieces[0].nom) || "");
+        conv = { id: uid(), entite_id: e, user_id: utilisateur.user_id, titre, apercu: "", dossier_id: (wc && modeWa === "maj" ? wc.dossier_id : null) || corps.dossier_id || null, statut: "ouverte", cree_le: maintenant(), maj_le: maintenant(), demo_etat: {}, ...(wc ? { whatsapp_conversation_id: wc.id } : {}) };
         data.agent_conversations.push(conv);
       }
       const message = (role, contenu) => data.agent_messages.push({ id: data.agent_messages.length + 1, conversation_id: conv.id, role, contenu, cree_le: maintenant() });
-      surEvenement({ t: "conversation", id: conv.id, titre: conv.titre, dossier_id: conv.dossier_id });
+      surEvenement({ t: "conversation", id: conv.id, titre: conv.titre, dossier_id: conv.dossier_id, ...(conv.whatsapp_conversation_id ? { whatsapp_conversation_id: conv.whatsapp_conversation_id } : {}) });
       const blocs = pieces.map((f) => {
         const ligne = { id: uid(), conversation_id: conv.id, nom: String(f.nom || "").slice(0, 120), media_type: f.media_type, taille: String(f.data || "").length, cree_le: maintenant() };
         data.agent_fichiers.push(ligne);
@@ -791,6 +819,7 @@ export function creer() {
       out.whatsapp_disponible = !AGENCE;
       out.whatsapp_propositions_disponible = !AGENCE;
       out.whatsapp_tri_disponible = !AGENCE;
+      out.whatsapp_suivi_disponible = !AGENCE;
       // Comme la base après la migration 42 : sa propre organisation, toutes pour l'éditeur du logiciel ; l'administrateur voit les comptes de la sienne.
       out.organisations = utilisateur.plateforme ? data.organisations : data.organisations.filter((o) => o.id === monOrg());
       out.profils = utilisateur.super_admin ? data.profils.filter((p) => p.organisation_id === monOrg()) : data.profils.filter((p) => p.user_id === uidCourant);
