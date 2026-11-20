@@ -2103,6 +2103,9 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .as-credit-barre span { display: block; height: 100%; background: var(--teal-600); border-radius: 999px; }
 .as-alerte .as-credit-barre span { background: var(--danger); }
 .as-credit-barre i { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--texte-2); }
+.as-credit-reste { margin: 8px 0 0; font-weight: 600; }
+.as-credit-reste.atteint { color: var(--danger); }
+.as-credit-reste .as-credit-mention { font-weight: 400; }
 .as-plafond { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-end; margin-top: 12px; }
 .as-plafond .champ { flex: 0 1 160px; margin: 0; }
 .as-plafond .aide, .as-plafond .erreur-form { flex-basis: 100%; margin: 0; }

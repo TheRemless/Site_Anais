@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { alertesBudget, debutMois, destinatairesBudget, estCreditEpuise, etatBudget, messageBudget, plafondRetenu, reprise } from "../supabase/functions/assistant/budget.js";
 import { blocApprentissages, choisirAppris, parametres } from "../supabase/functions/agent/prompt.js";
 import { anonymiser, apparier, correctionsDepuisCarte, dossierDeLaCarte } from "../src/gestion/js/agent-apprendre.mjs";
-import { etatCredit } from "../src/gestion/js/assistant-suivi-calc.mjs";
+import { etatCredit, resteDuMois } from "../src/gestion/js/assistant-suivi-calc.mjs";
 
 const lire = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
 const NOV = Date.parse("2026-11-20T05:00:00Z");
@@ -97,6 +97,24 @@ test("écran : crédit du mois pour les administratrices", () => {
   assert.equal(C.reste, 4.5);
   assert.equal(C.peutRegler, true);
   assert.equal(etatCredit({ cout_mois: 50, plafond: 50, seuil: 80 }).atteint, true);
+});
+
+test("écran : reste du mois sous le plafond, 0 $ restant et plafond atteint au-delà", () => {
+  assert.equal(resteDuMois(null), null);
+  const r = resteDuMois(etatCredit({ cout_mois: "12.34", plafond: "50", seuil: 80 }));
+  assert.deepEqual(r, { reste: 37.66, atteint: false, texte: "Reste ce mois-ci : {reste}", mention: null });
+  const juste = resteDuMois(etatCredit({ cout_mois: 50, plafond: 50, seuil: 80 }));
+  assert.deepEqual(juste, { reste: 0, atteint: true, texte: "{reste} restant", mention: "plafond atteint" });
+  // Dépassé : jamais un reste négatif.
+  const depasse = resteDuMois(etatCredit({ cout_mois: 61.2, plafond: 50, seuil: 80 }));
+  assert.equal(depasse.reste, 0);
+  assert.equal(depasse.atteint, true);
+  // Rien dépensé : tout le plafond reste.
+  assert.equal(resteDuMois(etatCredit({ cout_mois: 0, plafond: 75, seuil: 80 })).reste, 75);
+  // L'écran pose la ligne sous la barre du plafond, en dollars.
+  const v = lire("src/gestion/js/views/assistant-suivi.mjs");
+  assert.match(v, /t\.append\(barre\);[\s\S]{0,200}const R = resteDuMois\(C\);/);
+  assert.match(v, /tr\(R\.texte, \{ reste: dollars\(R\.reste\) \}\)/);
 });
 
 // ---- Apprentissages ----------------------------------------------------------------------------------------------------------
