@@ -12,7 +12,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, PLAFOND_MOIS_USD_DEFAUT, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
-import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS } from "./temps.js";
+import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, lirePhoton, parametresGeocode, parametresNominatim, parametresPhoton, PHOTON_BASE, situerLieu, VALIDITE_JOURS } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
@@ -214,8 +214,11 @@ Deno.serve(async (req) => {
   const derniers = new Map<string, number>();
   // Les pannes des serveurs d'OpenStreetMap (serveur et code, rien d'un client) : rendues avec l'erreur de l'outil, gardées dans l'historique.
   const notes: string[] = [];
+  // Un serveur qui nous a refusés (403, 429) n'est plus appelé pendant l'échange.
+  const refuses = new Set<string>();
   const appel = async (url: string, init: RequestInit = {}) => {
     const hote = new URL(url).host;
+    if (refuses.has(hote)) return null;
     const attente = delaiAvant(derniers, hote, Date.now());
     if (attente) await new Promise((ok) => setTimeout(ok, attente));
     const entetes = moteur === "ors" && hote === new URL(orsUrl).host ? { Authorization: cleOrs!, "Content-Type": "application/json" } : { "User-Agent": USER_AGENT, Accept: "application/json" };
@@ -223,6 +226,7 @@ Deno.serve(async (req) => {
       const rep = await fetch(url, { ...init, headers: { ...entetes, ...(init.headers || {}) }, signal: AbortSignal.timeout(10_000) });
       if (!rep.ok) {
         notes.push(`${hote} ${rep.status}`);
+        if (rep.status === 403 || rep.status === 429) refuses.add(hote);
         console.error("agent : itinéraire", hote, rep.status);
         return null;
       }
@@ -232,7 +236,11 @@ Deno.serve(async (req) => {
       return null;
     }
   };
-  const chercher = (v: string) => (moteur === "ors" ? appel(`${orsUrl}${ORS_GEOCODE}?${parametresGeocode(v)}`, { method: "GET" }).then(lireGeocode) : appel(`${NOMINATIM_BASE}/search?${parametresNominatim(v)}`).then(lireNominatim));
+  // Sans clé ORS : Nominatim, puis Photon quand Nominatim ne rend rien (refus des serveurs de Supabase, lieu introuvable).
+  const chercher = async (v: string) => {
+    if (moteur === "ors") return lireGeocode(await appel(`${orsUrl}${ORS_GEOCODE}?${parametresGeocode(v)}`, { method: "GET" }));
+    return lireNominatim(await appel(`${NOMINATIM_BASE}/search?${parametresNominatim(v)}`)) || lirePhoton(await appel(`${PHOTON_BASE}/api/?${parametresPhoton(v)}`), v);
+  };
   const geo = new Map<string, { lon: number; lat: number; label: string } | null>();
   const situer = async (lieu: string) => {
     const k = cleZone(lieu);
