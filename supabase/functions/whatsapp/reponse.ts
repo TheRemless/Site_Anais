@@ -10,12 +10,12 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import webpush from "npm:web-push@3.6.7";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { DUREE_MAX_MS, MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, ligneJournal, signe } from "../agent/prompt.js";
-import { clesHotelPossibles, memoDepuis, prefixeRef, refDe } from "../agent/outils.js";
+import { DUREE_MAX_MS, MODELE_DEFAUT, ligneJournal, signe } from "../agent/prompt.js";
+import { clesHotelPossibles, memoDepuis, prefixeRef } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
-import { dateBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
-import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, demandeAgent, demandeTri, destinatairesWhatsapp, langueSure, lireTri, notificationWhatsapp, outilsWhatsapp, prenomSur } from "./proposer.js";
+import { dateBangkok } from "../assistant/calc.js";
+import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, demandeAgent, demandeTri, destinatairesWhatsapp, langueSure, lireTri, notificationWhatsapp, outilsWhatsapp, prenomSur, promptPreparation } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
 const MODELE_TRI = "claude-haiku-5-5";
@@ -106,19 +106,13 @@ async function preparer(db: SupabaseClient, conv: Conv, messages: Record<string,
   let carte: { titre?: string; donnees?: { message?: string; langue?: string }; avertissements?: string[] } | null = null;
   try {
     const ctx = contexteOutils(db, ent.id, reglages, conv.entite_id === ent.id ? { clientId: conv.client_id, dossierId: conv.dossier_id } : { clientId: null, dossierId: null });
-    const ra = reglagesAssistant(reglages);
-    const qui = ra.responsable || "Nani";
     const client = conv.client_id && conv.entite_id === ent.id ? (await db.from("clients").select("prenom").eq("id", conv.client_id).eq("entite_id", ent.id).maybeSingle()).data : null;
-    const d = conv.dossier_id && conv.entite_id === ent.id ? (await db.from("dossiers").select("id, ref").eq("id", conv.dossier_id).eq("entite_id", ent.id).maybeSingle()).data : null;
-    const dossier = d ? { ref_courte: refDe("D", d.id), reference: d.ref } : null;
+    const dossier = conv.dossier_id && conv.entite_id === ent.id ? (await db.from("dossiers").select("id, ref").eq("id", conv.dossier_id).eq("entite_id", ent.id).maybeSingle()).data : null;
     const prestataires = ((await ctx.charger("partenaires")) as { nom: string }[]).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
-    const systeme = consignes({ entreprise: ent.nom, reglages, lieu: ra.lieu, prenomEquipe: qui });
-    const aujourdhui = dateBangkok();
-    const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier });
     const lus = await db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", ent.id).order("cree_le", { ascending: false }).limit(80);
-    const derniersClient = messages.filter((m) => m.sens === "entrant").slice(-3).map((m) => m.texte || "").join(" ");
-    const appris = lus.error && !tableAbsente(lus.error) ? "" : blocApprentissages(lus.data || [], { qui, premierMessage: derniersClient });
-    const texte = demandeAgent({ messages, nomProfil: conv.nom || "", client, dossier, qui, entreprise: ent.nom });
+    if (lus.error && !tableAbsente(lus.error)) console.error("whatsapp : apprentissages", lus.error.message);
+    // Mêmes consignes, voix, règles de réponse et corrections apprises que l'onglet Assistant (proposer.js, promptPreparation).
+    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lus.data || [], messages, nomProfil: conv.nom || "", client, dossier, aujourdhui: dateBangkok() });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
     const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });

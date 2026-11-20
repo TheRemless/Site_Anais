@@ -1,6 +1,8 @@
 // Boîte WhatsApp (phase 2) : logique pure de la réponse préparée par l'agent, du tri Secret ou Taxi et de la notification.
 // Aucune dépendance réseau : la fonction « whatsapp » (index.ts) et les tests (tests/gestion-whatsapp.test.js) l'importent.
-import { OUTILS } from "../agent/outils.js";
+import { OUTILS, refDe } from "../agent/outils.js";
+import { consignes, contexteDuJour, blocApprentissages } from "../agent/prompt.js";
+import { jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 
 // Attente après un message du client avant de préparer la réponse : un client écrit souvent en deux ou trois messages de suite.
 export const ATTENTE_MS = 8000;
@@ -146,3 +148,25 @@ export function notificationWhatsapp({ nom = "", telephone = "", pret = false, e
 // Avertissements de la carte de l'agent, gardés tels quels (bornés).
 export const avertissementsSurs = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === "string").map((x) => x.slice(0, 120)).slice(0, 20) : []);
 export const langueSure = (l) => (typeof l === "string" && /^[a-z]{2}$/.test(l) ? l : null);
+
+// Tout ce qui part chez Claude pour une réponse préparée, construit comme dans l'onglet Assistant (agent/index.ts) :
+//   - systeme : consignes() de l'agent, avec les réglages de l'entreprise, donc sa voix (assistant_voix), ses règles de réponse au client
+//     (assistant_voix.regles_reponse, PR 280) et la règle « sans signature » de Secret et Taxi ; sans droits partenaires ni nets (PR 278) ;
+//   - appris : les corrections apprises de l'entreprise (agent_apprentissages, PR 269), choisies comme dans l'Assistant ;
+//   - contexte : la date du jour et le dossier relié ;
+//   - texte : la demande WhatsApp (demandeAgent).
+// Testé par tests/gestion-whatsapp.test.js : ce que l'on règle pour l'Assistant s'applique aux réponses WhatsApp.
+export function promptPreparation({ entreprise, reglages, apprentissages = [], messages = [], nomProfil = "", client = null, dossier = null, aujourdhui }) {
+  const ra = reglagesAssistant(reglages);
+  const qui = ra.responsable || "Nani";
+  const derniersClient = messages.filter((m) => m.sens === "entrant").slice(-3).map((m) => m.texte || "").join(" ");
+  const relie = dossier ? { ref_courte: refDe("D", dossier.id), reference: dossier.ref } : null;
+  return {
+    qui,
+    ra,
+    systeme: consignes({ entreprise, reglages, lieu: ra.lieu, prenomEquipe: qui }),
+    appris: blocApprentissages(apprentissages, { qui, premierMessage: derniersClient }),
+    contexte: contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: relie }),
+    texte: demandeAgent({ messages, nomProfil, client, dossier: relie, qui, entreprise }),
+  };
+}

@@ -272,7 +272,8 @@ import { controlerReponse, outilsPour } from "../supabase/functions/agent/outils
 test("whatsapp : la réponse préparée suit les règles de réponse de l'entreprise (PR 280), sans droits partenaires ni nets (PR 278)", () => {
   const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   // L'appel des consignes ne passe ni partenaires ni nets ; le contexte des outils n'a aucun droit.
-  assert.match(reponse, /consignes\(\{ entreprise: ent\.nom, reglages, lieu: ra\.lieu, prenomEquipe: qui \}\)/);
+  const proposer = fs.readFileSync(new URL("../supabase/functions/whatsapp/proposer.js", import.meta.url), "utf8");
+  assert.match(proposer, /consignes\(\{ entreprise, reglages, lieu: ra\.lieu, prenomEquipe: qui \}\)/);
   assert.match(reponse, /permissions: \[\]/);
   const s = consignes({ entreprise: "Secret Travel & Tour", reglages: { fonctionnement: "excursions", agent_ia: true }, prenomEquipe: "Nani" });
   assert.match(s, /Ferry ou speedboat/);
@@ -352,4 +353,41 @@ test("whatsapp : lectures de la boîte limitées au dossier relié, sans télép
   assert.ok(envoi.indexOf('update({ statut: "envoi" })') < envoi.indexOf("api.telnyx.com/v2/messages/whatsapp"));
   assert.match(envoi, /"verifier_whatsapp"/);
   assert.match(envoi, /"deja_traitee"/);
+});
+
+// ---- Les consignes de l'Assistant s'appliquent aux réponses WhatsApp (demande de Jérémy, 20.11.2026) -----------------------------
+import { promptPreparation } from "../supabase/functions/whatsapp/proposer.js";
+import { consignes as consignesAssistant, blocApprentissages as appritsAssistant } from "../supabase/functions/agent/prompt.js";
+
+test("whatsapp : la réponse préparée reçoit les règles de réponse d'Anaïs, sa voix, les corrections apprises, sans net ni partenaire", () => {
+  const reglages = {
+    fonctionnement: "excursions",
+    agent_ia: true,
+    responsable: { prenom: "Nani" },
+    assistant_voix: { en: "Short and friendly, always say we pick up at the hotel lobby.", regles_reponse: "Toujours rappeler de prendre de la crème solaire.\n- Jamais de réservation sans le nom de l'hôtel." },
+  };
+  const apprentissages = [{ id: "a1", genre: "reponse", contexte: "4 islands tour price question", avant: "The tour costs 1500.", apres: "The 4 Islands tour is 1,500 THB per adult, pickup included.", cree_le: "2026-11-19T10:00:00Z" }];
+  const messages = [{ id: "m1", sens: "entrant", origine: "client", type: "text", texte: "Hi, price of the 4 islands tour?", medias: [], envoye_le: "2026-11-20T03:00:00.000Z" }];
+  const p = promptPreparation({ entreprise: "Secret Travel & Tour", reglages, apprentissages, messages, nomProfil: "Anna", aujourdhui: "2026-11-20" });
+  // Règles de réponse au client de l'entreprise (assistant_voix.regles_reponse, PR 280) : chaque ligne, telle qu'Anaïs l'a écrite.
+  assert.match(p.systeme, /Toujours rappeler de prendre de la crème solaire\./);
+  assert.match(p.systeme, /Jamais de réservation sans le nom de l'hôtel\./);
+  assert.match(p.systeme, /Elles l'emportent sur la voix/);
+  // Voix réglée par l'entreprise, sans signature chez Secret et Taxi, et Nani comme prénom de l'équipe.
+  assert.match(p.systeme, /always say we pick up at the hotel lobby/);
+  assert.match(p.systeme, /Sans aucune signature/);
+  assert.match(p.systeme, /Tu es l'assistant de Nani pour Secret Travel & Tour/);
+  // Corrections apprises (PR 269), choisies comme dans l'Assistant.
+  assert.match(p.appris, /1,500 THB per adult, pickup included/);
+  // Identique à ce que construit l'onglet Assistant pour une personne sans droit partenaires ni nets (PR 278).
+  assert.equal(p.systeme, consignesAssistant({ entreprise: "Secret Travel & Tour", reglages, lieu: p.ra.lieu, prenomEquipe: "Nani" }));
+  assert.equal(p.appris, appritsAssistant(apprentissages, { qui: "Nani", premierMessage: "Hi, price of the 4 islands tour?" }));
+  assert.doesNotMatch(p.systeme, /Avec tes droits/);
+  // Sans règle enregistrée, Secret garde la règle des bateaux de la PR 280 (paiement d'avance).
+  assert.match(promptPreparation({ entreprise: "Secret Travel & Tour", reglages: { fonctionnement: "excursions" }, messages, aujourdhui: "2026-11-20" }).systeme, /Ferry ou speedboat/);
+  // La demande WhatsApp elle-même.
+  assert.match(p.texte, /proposer_reponse une seule fois/);
+  const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  assert.match(reponse, /promptPreparation\(\{ entreprise: ent\.nom, reglages, apprentissages:/);
+  assert.match(reponse, /\.from\("agent_apprentissages"\)\.select\([^)]*\)\.eq\("entite_id", ent\.id\)/);
 });
