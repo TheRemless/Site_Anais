@@ -10,6 +10,7 @@ Préparé le 12.11.2026. Inactif tant que la case « Assistant IA » n'est pas c
 | 2. Rédiger la réponse au client | Retiré le 19.11.2026 (Anaïs écrit ses réponses, décision de Jérémy) : la fonction refuse l'usage, l'écran n'a plus de bouton, la logique pure reste dans `calc.js` | Rien à l'écran |
 | 3. Questions d'Anaïs sur ses données | Conception seulement (plus bas) | Rien dans le code |
 | 4. Prix et horaires d'un itinéraire (20.11.2026) | Prêt, suit la case « Assistant IA » ; mémoire des hôtels après la migration 48 | Bouton « Prix et horaires d'un itinéraire » dans Coller une demande |
+| 5. Importer une brochure de partenaire (20.11.2026) | Prêt, suit la case « Assistant IA » ; journal après la migration 50 | Bouton « Importer une brochure » dans la fiche du partenaire, section Tarifs |
 
 Fichiers : `supabase/functions/assistant/index.ts` (fonction), `supabase/functions/assistant/calc.js` (logique pure, testée), `src/gestion/js/assistant-calc.mjs` et `views/assistant-demande.mjs` (outil), `docs/gestion/migration-27-assistant.sql` (journal), `tests/gestion-assistant.test.js`.
 
@@ -40,6 +41,60 @@ La zone gardée pour un hôtel (« Relax Bay ») sert aussi à proposer la zone 
 
 Chaque appel compte dans la limite de 40 par personne et par jour : une demande complète en fait trois.
 
+## Usage 5 : importer une brochure de partenaire
+
+Nani (Secret, Taxi) ou Anaïs (Zwald) reçoit la brochure d'un partenaire. Dans la fiche du partenaire, « Importer une brochure » :
+
+1. **Fichiers** : photos, captures ou PDF, six au plus, 10 Mo en tout. Une photo est réduite dans le navigateur à 2 000 pixels de côté (JPEG) ; un PDF part tel quel (8 Mo au plus).
+2. **Lire** (`brochure`) : Claude Opus 5.5 (`claude-opus-5-5`, effort `medium`, repli côté serveur `fallbacks: "default"`), sortie JSON imposée. Seuls partent les fichiers et le lieu de l'entreprise : ni le catalogue, ni un prix de la base, ni un net, ni le nom du partenaire. Rendu : par programme le libellé, le prix de vente adulte et enfant, l'âge enfant, l'unité, les horaires, le déroulé, les inclus, les conditions, les frais de parc, le bateau, la capacité ; par départ régulier de bateau le trajet, les heures, la période et ses dates, les prix. Un passage de 110 secondes au plus, sans nouvel essai. Opus plutôt que Haiku : lire des chiffres sur une photo doit être juste et l'usage est rare. Coût estimé 0,05 à 0,15 $ la brochure (une image fait jusqu'à 4 800 jetons), à relire dans `assistant_journal`.
+3. **Contrôle dans la fonction** (`brochure.js`) : Claude recopie les mots imprimés des prix (« Adult: 3,900.- Child (4-11 yrs old): 2,900.- ») ; un prix rendu qui n'y figure pas fait passer la ligne en « illisible », ses prix vidés. Un net n'est gardé que s'il est imprimé comme tel (« net », « agent rate ») et recopié ; sinon il est retiré et signalé. « Sur demande » : aucun prix. Une heure de départ invalide rend le trajet illisible. Une ligne que Claude dit illisible le reste.
+4. **Comparer** (dans l'outil, `brochure-calc.mjs`) : chaque ligne face au catalogue du partenaire. Même libellé ou mêmes mots : le tarif est reconnu (« Inchangé » ou « Prix changé », l'écart affiché « 3 900 → 4 200 ») ; mots proches : rapproché « à vérifier », non coché d'office ; sinon « Nouveau ». Le prix enfant d'un ancien tarif se lit sur sa ligne enfant séparée (comme Lazy Day du 17.11.2026). Les tarifs du catalogue absents de la brochure sont listés, rien n'y change. La personne peut viser un autre tarif ou « Nouvelle prestation ».
+5. **Enregistrer** : seulement les lignes cochées, avec la session de la personne (règles RLS et déclencheur `garder_prix_vente`). Nouveau tarif : prix de vente et prix enfant de la brochure, détails imprimés seulement (le déroulé et les inclus en puces dans « Inclus », l'âge enfant dans « Conditions »), une remarque interne « Importé de la brochure le … (prix imprimé : « … ») ». Tarif existant : les prix suivent la brochure (règle de Jérémy), les textes déjà remplis ne changent pas, seuls les champs vides se complètent, la remarque interne garde la trace. L'unité d'un tarif existant ne change pas ici. Nouveau départ de bateau : créé avec sa période et ses dates (fenêtre de circulation). Une ligne illisible ne s'enregistre jamais : elle se saisit à la main.
+
+Droits : `partenaires.lire`, `partenaires.ecrire` et `partenaires.prix` (l'administratrice les a tous ; le rôle de Mook chez Secret n'a pas le droit prix, il ne voit pas le bouton). Les nets ne s'affichent et ne s'écrivent qu'avec `partenaires.nets`, jamais en Taxi et seulement s'ils sont imprimés : un net n'est jamais déduit, il reste vide sinon. Démonstration : la réponse est simulée depuis le catalogue (`simulerBrochure`), aucun fichier ne part.
+
+Mise en service : migration 50 (`docs/gestion/migration-50-assistant-brochure.sql`, ajoute `brochure` à la contrainte du journal sans retirer `trier` ni les autres usages), puis déploiement de la fonction depuis une branche qui contient tout master. Tests : `tests/gestion-brochure.test.js`, dont les cas réels Lazy Day (Rattana, 3 900 / 2 900) et Maryz (OctopuSea, prix sur demande).
+
+## Suivi de l'assistant : coût, usage et qualité (20.11.2026)
+
+Écran `#/assistant`, ouvert depuis Réglages (bouton en haut, et lien sous la case « Assistant IA »). Réservé aux personnes qui ont dans une entreprise les droits « réglages » et « journal » (les administratrices) ; l'administratrice générale voit toutes les entreprises, avec un choix d'entreprise. Fichiers : `views/assistant-suivi.mjs` (écran), `assistant-suivi-calc.mjs` (calculs, testés dans `tests/gestion-assistant-suivi.test.js`), `demo-assistant.mjs` (journal fictif de la démo).
+
+| Bloc | Source | Règle |
+|---|---|---|
+| Coût du jour, du mois, projection | `assistant_journal.cout_estime_usd` | Jours de Bangkok. Projection : coût moyen par jour écoulé × jours du mois, dès le 3. La facture d'Anthropic fait foi. |
+| Appels par usage, par personne, par entreprise | `assistant_journal` | Mois en cours. Un usage nouveau (`trier`, `brochure`) apparaît seul, sous son code tant qu'il n'a pas de libellé dans `USAGES_SUIVIS`. |
+| Échecs | `statut` du journal | « refus » = refus de Claude ; tout autre statut que « ok » = erreur. Les demandes arrêtées avant Claude (éteint, droit, limite) ne sont pas notées. |
+| Limite du jour | nombre de lignes du jour par personne | 40 (`LIMITE_JOUR`, égal à `LIMITE_JOUR_DEFAUT`, un test le vérifie). Comptée toutes entreprises confondues, comme la fonction. |
+| Tendance 30 jours | `assistant_journal` | Coût par jour ; toucher une colonne donne appels et échecs. |
+| Qualité | `assistant_retouches` (migration 51) | Part des réponses rédigées copiées sans retouche, et part moyenne de mots changés. |
+
+**Mesure de qualité (migration 51, `docs/gestion/migration-51-assistant-retouches.sql`).** Le journal ne dit pas si une réponse rédigée a été retouchée. À la première copie d'un brouillon (bouton « Copier » de la réponse d'itinéraire), l'outil calcule dans le navigateur la part de mots changés entre le brouillon et le texte copié (distance d'édition sur les mots, 0 à 100) et n'envoie que ce nombre, avec l'entreprise et l'usage. Jamais le texte. Une retouche faite ensuite dans WhatsApp n'est pas vue. Avant la migration, rien n'est noté et l'écran l'indique.
+
+Pour un nouvel usage qui rédige (brochure…) : l'ajouter à `USAGES_REDIGES` et appeler `etat.store.noterRetouche({ entiteId, usage, part: partModifiee(brouillon, texteCopie) })` à la copie.
+
+## Jeu d'essai (20.11.2026)
+
+Pour mesurer l'assistant avant et après chaque changement, et demain l'agent conversationnel.
+
+- Jeu privé, hors dépôt : `~/Desktop/Gestion-Test/eval-assistant/cas.json`, relecture dans `cas.md`. 56 messages anonymisés : 10 demandes du site réelles, 2 cas transmis par Jérémy, 8 essais des mémoires, 36 écrits d'après eux. Dont 5 cas de planification (arriver à une heure donnée) et 5 conversations à plusieurs messages. Une copie du catalogue sans aucun net est dans `catalogue/`, les résultats dans `resultats/`.
+- Script : `scripts/eval-assistant/run-eval.mjs` (squelette du skill claude-api, build-eval). Il appelle Claude avec exactement les paramètres de la fonction (mêmes prompts, schémas, modèle, effort, contrôles). Seuls la session, le journal et la lecture de la base sont remplacés par le jeu et sa copie du catalogue.
+- Clé : `ANTHROPIC_API_KEY`, sinon le trousseau macOS (service « Eval assistant Gestion », ajoutée par Jérémy avec `security add-generic-password -s "Eval assistant Gestion" -a anthropic -w`). Jamais dans un fichier.
+- Lancer : `node scripts/eval-assistant/run-eval.mjs --flow ~/Desktop/Gestion-Test/eval-assistant/resultats --variant baseline --reps 3`. Options `--usages lire,itineraire` et `--cas R01,M02`. Vérifier le câblage sans dépense : `--simulation oracle` doit donner 100 %, `--simulation vide` presque 0.
+- Notation (`notes.mjs`, sans juge IA) : champs exacts pour `lire` et `itineraire` (nom, téléphone, hôtel, dates, heures, personnes, ligne du catalogue, étapes). Pour `repondre_itineraire` et `rediger` : aucun montant ni horaire hors des faits, aucun nom de compagnie ni mot interne, pas de signature chez Secret et Taxi, tous les prix et horaires présents, langue, vouvoiement. Pour le futur agent (`noterAgent`, champ « agent » des cas) : un départ qui arrive à temps, aucun qui arrive trop tard, aucune heure de pickup inventée quand le catalogue ne donne pas la durée, aucun prix de catalogue inapplicable, les questions manquantes posées. `noterTrier` note le type d'un message.
+- Coût mesuré : 0,065 $ par passage complet (101 appels sur Claude Haiku 5.5).
+
+### Scores de départ (19.11.2026, 3 passages, 0,19 $)
+
+| Usage | Cas | Exact | Ce qui rate |
+|---|---|---|---|
+| `lire` | 26 | 91 % (± 6) | Taxi Krabi Airport du catalogue Secret jugé hors catalogue ; message en français lu en anglais ; prénom en signature (« Lea ») laissé vide |
+| `itineraire` | 7 | 86 % (± 15) | Dernière étape sans hôtel (« then on Feb 12 we go to Langkawi ») mise en remarque : le trajet vers Langkawi manque |
+| `repondre_itineraire` | 7 | 100 % | Rien |
+| `rediger` (retiré) | 5 | 47 % (± 25) | Signe « Have a lovely day, Anaïs » : la voix de Secret dans les réglages dit « You write as Anaïs » et finit par une formule signée |
+| `trier` (branche à part, non fusionnée) | 56 | 93 % (± 4) | « 3 février » daté 2026 au lieu de 2027 ; nom oublié ; message d'un prestataire lu comme un changement ; trois trajets taxi lus comme un itinéraire |
+
+Les résultats et transcriptions sont dans `~/Desktop/Gestion-Test/eval-assistant/resultats/` (`report.html`).
+
 ## Données qui partent chez Anthropic
 
 | Usage | Envoyé | Jamais envoyé |
@@ -47,6 +102,7 @@ Chaque appel compte dans la limite de 40 par personne et par jour : une demande 
 | Lire | Le message collé tel quel (il peut contenir nom, téléphone, hôtel, dates, âges des enfants). Le nom de l'entreprise. Les libellés, groupes, modes, horaires de départ et périodes des prestations et trajets, le nom des prestataires. | Prix nets, commissions, marges, coordonnées bancaires, autres clients, dossiers |
 | Itinéraire, lire | Le message collé tel quel. Le lieu de l'entreprise. | Catalogue, prix, nets |
 | Itinéraire, situer | Les noms d'hôtels, la liste des lieux des trajets de l'entreprise. Claude les envoie au moteur de recherche d'Anthropic. | Nom du client, téléphone, dates, prix |
+| Brochure | Les fichiers de la brochure choisis par la personne (images réduites, PDF). Le lieu de l'entreprise. Une grille de prix nets d'agent envoyée par erreur partirait aussi : l'écran demande la brochure publique. | Catalogue, prix et nets de la base, nom du partenaire, clients |
 | Itinéraire, rédiger | Prénom du client, personnes, pour chaque trajet : date, lieux, mode, durée, horaires, prix de vente. La voix de l'entreprise. | Nets, marges, compagnies, nom de famille, téléphone |
 | Rédiger (retiré le 19.11.2026, plus rien n'est envoyé) | Le prénom du client, chaque service retenu (libellé, date, heure, personnes, prix de vente, horaires, durée, frais de parc, lieu), le total, le téléphone de l'entreprise, les messages types de l'entreprise, et le message du client s'il a été collé. | Idem, et le nom de famille du client |
 

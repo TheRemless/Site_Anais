@@ -1171,7 +1171,10 @@ th[aria-sort="ascending"] .st-tri, th[aria-sort="descending"] .st-tri { color: v
 .st-table td a { color: var(--teal-700); font-weight: 600; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .st-pied td { font-weight: 700; background: #fafcfc; border-top: 2px solid var(--bord-fort); }
 @media (max-width: 719px) {
-  .st-table tfoot, .st-table tfoot tr, .st-table tfoot td { display: block; width: 100%; }
+  .st-table tfoot, .st-table tfoot tr { display: block; width: 100%; }
+  /* Total : libellé à gauche, valeur à droite comme les autres lignes (« Appels 290 », pas « Appels290 »), un seul trait au-dessus. */
+  .st-table tfoot td { display: flex; width: 100%; border-top: 0; background: none; }
+  .st-table tfoot td:empty { display: none; }
   .st-table tfoot tr { padding: 10px 14px; border-top: 2px solid var(--bord-fort); background: #fafcfc; }
   .st-table td:first-child { justify-content: flex-start; font-size: 1rem; font-weight: 700; }
   .st-table td:first-child::before { content: none; }
@@ -1991,3 +1994,62 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .temps-details { grid-column: 1; font-size: 0.86rem; color: var(--texte-2); }
 .temps-ligne .assistant-confiance { grid-column: 2; justify-self: end; align-self: start; }
 .agent-mention { margin: 8px 0 0; font-size: 0.78rem; color: var(--texte-2); }
+/* ==== Importer une brochure (20.11.2026) ======================================================================== */
+/* Une ligne par tarif ou horaire lu : case, statut, puis les prix. L'écart de prix (« 3 900 → 4 200 ») est ce que l'œil doit trouver d'abord. */
+.brochure-choix { flex-wrap: wrap; }
+.brochure-fichiers { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.brochure-fichiers:empty { display: none; }
+.brochure-fichier { display: flex; align-items: center; gap: 12px; padding: 6px 8px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface); }
+.brochure-fichier img, .brochure-pdf { flex: none; width: 56px; height: 56px; border-radius: 4px; object-fit: cover; background: var(--surface-2); }
+.brochure-pdf { display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; color: var(--teal-700); }
+.brochure-fichier-nom { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.brochure-resultat:empty { display: none; }
+.brochure-resultat { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--bord); }
+.brochure-resume { margin: 0 0 4px; font-weight: 600; }
+.brochure-section { margin-top: 18px; }
+.brochure-section h3 { font-size: 1.05rem; margin: 0 0 10px; }
+.brochure-lignes { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.brochure-ligne { padding: 10px 12px 12px; border: 1px solid var(--bord); border-left-width: 4px; border-radius: var(--rayon); background: var(--surface); }
+.brochure-ligne.nouveau { border-left-color: var(--teal); }
+.brochure-ligne.prix_change { border-left-color: #c79a2b; }
+.brochure-ligne.inchange { border-left-color: var(--bord-fort); }
+.brochure-ligne.illisible { border-left-color: var(--danger); background: #fffafa; }
+.brochure-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.brochure-case { min-height: 44px; min-width: 32px; margin: 0; padding: 0; }
+.brochure-case input { width: 22px; height: 22px; margin: 0; }
+.brochure-tete strong { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; }
+.brochure-libelle { flex: 1 1 16em; min-width: 0; min-height: 44px; font-size: 16px; font-weight: 600; }
+.brochure-statut { flex: none; display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid; font-size: 0.82rem; font-weight: 600; line-height: 1.5; }
+.brochure-statut.nouveau { color: var(--teal-700); border-color: var(--teal); background: var(--teal-100); }
+.brochure-statut.prix_change { color: #6b4a00; border-color: #d9b45a; background: #fff4d6; }
+.brochure-statut.inchange { color: var(--texte-2); border-color: var(--bord-fort); background: var(--surface-2); }
+.brochure-statut.illisible { color: var(--danger); border-color: #d9a3a3; background: var(--danger-fond); }
+.brochure-corps { padding-left: 42px; }
+.brochure-prix { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+.brochure-prix .sous-ligne { display: inline; }
+.brochure-ecart { font-weight: 700; }
+.brochure-ecart del { color: var(--texte-2); font-weight: 400; }
+.brochure-ecart ins { text-decoration: none; color: #6b4a00; background: #fff4d6; padding: 0 4px; border-radius: 3px; }
+.brochure-imprime { margin: 2px 0; font-size: 0.88rem; color: var(--texte-2); overflow-wrap: anywhere; }
+.brochure-note { margin: 6px 0 0; font-size: 0.9rem; color: #5a4300; }
+.brochure-illisible { margin: 6px 0 0; color: var(--danger); font-size: 0.92rem; }
+.brochure-corps .champ { margin: 8px 0 0; max-width: 34em; }
+.brochure-corps select { width: 100%; min-height: 44px; font-size: 16px; }
+.brochure-texte { white-space: pre-line; }
+.brochure-absents { margin-top: 16px; color: var(--texte-2); }
+.brochure-absents summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.brochure-actions { margin-top: 16px; }
+@media (max-width: 600px) { .brochure-corps { padding-left: 0; } }
+
+/* Suivi de l'assistant (#/assistant, 20.11.2026) : mêmes tuiles, graphique et tableaux que les statistiques. */
+.st-entreprise { max-width: 320px; margin-bottom: 20px; }
+.st-tuile.as-alerte { border-color: var(--danger); box-shadow: inset 4px 0 0 var(--danger); }
+.as-limite { color: var(--danger); font-weight: 700; }
+.as-limite-texte { font-size: 0.85rem; }
+.as-statuts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
+.as-statuts li { padding: 6px 12px; border: 1px solid var(--bord); border-radius: 999px; background: var(--surface); }
+.as-statuts li.as-refus { border-color: var(--bord-fort); background: var(--surface-2); }
+.as-statuts li.as-erreur { border-color: var(--danger); background: var(--danger-fond); }
+.as-derniers { margin: 8px 0 0; padding-left: 18px; }
+.as-derniers li { margin-bottom: 4px; overflow-wrap: anywhere; }
+.as-quand { font-variant-numeric: tabular-nums; color: var(--texte-2); }

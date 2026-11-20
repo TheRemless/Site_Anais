@@ -10,6 +10,7 @@ import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
 import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
 import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
 import { avecNomsLies, peutUtiliserPartages } from "./partage-clients-calc.mjs";
+import { journalAssistantDemo } from "./demo-assistant.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
 // /gestion/?demo=agence (19.11.2026) : la démo des prospects, une agence fictive sans rien de Koh Lanta (demo-agence.mjs), gardée à part.
@@ -486,6 +487,27 @@ export function creer() {
       surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "simulation" });
       return { ok: true };
     },
+    // Suivi de l'assistant : comme la base, les lignes des entreprises où la personne lit le journal, plus les siennes. Le journal fictif est
+    // créé à la première ouverture de l'écran (demo-assistant.mjs).
+    async assistantSuivi({ entiteIds, depuis }) {
+      if (!data.assistant_journal) {
+        // Toutes les entreprises de la démo : chaque utilisateur de démo n'en voit ensuite que ce que ses droits lui montrent.
+        const { lignes, retouches } = journalAssistantDemo({ entites: data.entites, profils: data.profils, ajd: aujourdhui() });
+        data.assistant_journal = lignes;
+        data.assistant_retouches = [...(data.assistant_retouches || []), ...retouches];
+        sauve();
+      }
+      const voit = (l) => entiteIds.includes(l.entite_id) && l.cree_le >= depuis && (l.user_id === utilisateur.user_id || permissionsDans(contexte(), l.entite_id).includes("journal.voir"));
+      const noms = {};
+      for (const p of data.profils) noms[p.user_id] = p.nom || p.email;
+      return { lignes: structuredClone(data.assistant_journal.filter(voit)), retouches: structuredClone((data.assistant_retouches || []).filter(voit)), noms };
+    },
+    async noterRetouche({ entiteId, usage, part }) {
+      if (!Number.isInteger(part) || part < 0 || part > 100) return false;
+      (data.assistant_retouches = data.assistant_retouches || []).push({ cree_le: new Date().toISOString(), user_id: utilisateur.user_id, entite_id: entiteId, usage, part_modifiee: part });
+      sauve();
+      return true;
+    },
     // Démonstration : rien ne part chez Anthropic, la réponse est simulée (assistant-calc.mjs pour la lecture, itineraire-calc.mjs pour la demande
     // de prix et d'horaires), dans la forme exacte que renvoie la fonction.
     async assistant(corps) {
@@ -493,8 +515,19 @@ export function creer() {
       const e = corps.entite_id;
       if (!(data.reglages[e] || {}).assistant_ia) return { erreur: "assistant_eteint" };
       // Mêmes droits que la fonction : la base de prix et créer un dossier. « rediger » est refusé comme par la fonction (retiré le 19.11.2026).
-      if (!["lire", "itineraire", "situer", "repondre_itineraire"].includes(corps.usage)) return { erreur: "usage_inconnu" };
+      if (!["lire", "itineraire", "situer", "repondre_itineraire", "brochure"].includes(corps.usage)) return { erreur: "usage_inconnu" };
       const perms = permissionsDans(contexte(), e);
+      // Brochure : droits de la fonction (créer les tarifs et leurs prix de vente), fichiers contrôlés comme par elle, réponse tirée du catalogue.
+      if (corps.usage === "brochure") {
+        const b = await import("./brochure-calc.mjs");
+        if (b.DROITS_BROCHURE.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };
+        const fichiers = Array.isArray(corps.fichiers) ? corps.fichiers : [];
+        if (!fichiers.length) return { erreur: "fichiers_absents" };
+        if (fichiers.length > 6) return { erreur: "trop_de_fichiers" };
+        if (fichiers.some((f) => !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(f && f.media_type))) return { erreur: "fichier_type" };
+        if (!data.partenaires.some((p) => p.id === corps.partenaire_id && p.entite_id === e)) return { erreur: "partenaire_invalide" };
+        return b.simulerBrochure({ partenaireId: corps.partenaire_id, prestations: data.prestations.filter((p) => p.entite_id === e), trajets: data.trajets.filter((t) => t.entite_id === e) });
+      }
       const requis = ["partenaires.lire", "dossiers.ecrire"];
       if (requis.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };
       const trajets = data.trajets.filter((t) => t.entite_id === e);

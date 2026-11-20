@@ -95,7 +95,8 @@ function pasRond(x) {
 
 // cases : [{ cle, libelle }] ; series : [{ nom, valeurs: [], classe: "s1"|"s2"|"ref" }].
 // lecture(i) → nœud affiché sous le graphique pour la colonne choisie ; lien(i) → adresse de la liste derrière la colonne.
-export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien, etiquettes = true, hauteur = 230 }) {
+// format(v) : texte de l'axe et des valeurs (par défaut « 12,4 k ») ; le suivi de l'assistant y écrit des dollars à quelques centimes.
+export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien, etiquettes = true, hauteur = 230, format = compact }) {
   const n = cases.length;
   const enveloppe = h("div", { class: "st-graphe" });
   const defile = h("div", { class: "st-graphe-defile", role: "group", "aria-label": titre });
@@ -108,8 +109,9 @@ export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien,
   const lire = (i) => {
     choisi = i;
     vider(lectureEl);
-    if (i < 0) return lectureEl.append(h("p", { class: "aide" }, tr("Touchez une colonne pour lire ses chiffres et ouvrir la liste.")));
-    lectureEl.append(lecture(i), lien && lien(i) ? h("a", { class: "bouton secondaire petit", href: lien(i) }, tr("Voir la liste")) : null);
+    if (i < 0) return lectureEl.append(h("p", { class: "aide" }, lien ? tr("Touchez une colonne pour lire ses chiffres et ouvrir la liste.") : tr("Touchez une colonne pour lire ses chiffres.")));
+    // Sans liste derrière la colonne (suivi de l'assistant), rien après la lecture : append() écrirait « null ».
+    lectureEl.append(...[lecture(i), lien && lien(i) ? h("a", { class: "bouton secondaire petit", href: lien(i) }, tr("Voir la liste")) : null].filter(Boolean));
   };
 
   const dessiner = () => {
@@ -136,7 +138,7 @@ export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien,
     const svgAxe = s("svg", { class: "st-svg", viewBox: `0 0 ${largeurAxe} ${H}`, width: String(largeurAxe), height: String(H), "aria-hidden": "true" });
     for (const v of graduations) {
       svg.append(s("line", { x1: 0, x2: W - droite, y1: y(v), y2: y(v), class: "st-grille" }));
-      svgAxe.append(s("text", { x: largeurAxe - 8, y: y(v) + 4, class: "st-axe", "text-anchor": "end" }, compact(v)));
+      svgAxe.append(s("text", { x: largeurAxe - 8, y: y(v) + 4, class: "st-axe", "text-anchor": "end" }, format(v)));
     }
     vider(axe).append(svgAxe);
     const sautEtiquette = largeurCase < 40 ? Math.ceil(40 / largeurCase) : 1;
@@ -145,14 +147,14 @@ export function graphiqueColonnes({ cases, series, devise, titre, lecture, lien,
       const centre = x0 + largeurCase / 2;
       const total = series.length * bw + (series.length - 1) * 2;
       const fond = s("rect", { x: x0 + 1, y: haut - 4, width: largeurCase - 2, height: hh + 8, class: `st-fond${i === choisi ? " actif" : ""}`, rx: "6" });
-      const groupe = s("g", { class: "st-colonne", tabindex: "0", role: "button", "aria-pressed": i === choisi ? "true" : "false", "aria-label": `${c.libelle} : ${series.map((x) => `${tr(x.nom)} ${formatNombre(x.valeurs[i])}`).join(", ")}` }, fond);
+      const groupe = s("g", { class: "st-colonne", tabindex: "0", role: "button", "aria-pressed": i === choisi ? "true" : "false", "aria-label": `${c.libelle} : ${series.map((x) => `${tr(x.nom)} ${format === compact ? formatNombre(x.valeurs[i]) : format(x.valeurs[i])}`).join(", ")}` }, fond);
       series.forEach((x, k) => {
         const v = x.valeurs[i];
         const bx = centre - total / 2 + k * (bw + 2);
         const top = v >= 0 ? y(v) : ligneZero;
         const hauteurBarre = Math.abs(y(v) - ligneZero);
         groupe.append(s("path", { d: chemin(bx, top, bw, hauteurBarre, 4), class: `st-barre ${x.classe}` }));
-        if (etiquettes && v !== 0 && x.classe !== "ref" && bw >= 20) groupe.append(s("text", { x: bx + bw / 2, y: Math.max(11, top - 5), class: "st-valeur", "text-anchor": "middle" }, compact(v)));
+        if (etiquettes && v !== 0 && x.classe !== "ref" && bw >= 20) groupe.append(s("text", { x: bx + bw / 2, y: Math.max(11, top - 5), class: "st-valeur", "text-anchor": "middle" }, format(v)));
       });
       if (i % sautEtiquette === 0) groupe.append(s("text", { x: centre, y: H - 10, class: "st-axe", "text-anchor": "middle" }, c.court || c.libelle));
       // Zone de toucher : toute la colonne, bien plus large que la barre.

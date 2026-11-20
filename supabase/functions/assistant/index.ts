@@ -2,7 +2,8 @@
 // Elle vérifie qui appelle et ses droits avec les fonctions de la base (les mêmes que celles des tables), lit seulement ce qu'il faut avec
 // cette même session (les règles RLS s'appliquent), appelle Claude avec la clé gardée dans les secrets Supabase et rend un JSON contrôlé.
 // Usages : « lire » (message libre du client vers une proposition de dossier) et, depuis le 20.11.2026, la demande de prix et d'horaires
-// (« itineraire », « situer », « repondre_itineraire », voir itineraire.js). « rediger » est retiré depuis le 19.11.2026 et refusé.
+// (« itineraire », « situer », « repondre_itineraire », voir itineraire.js), la lecture d'une brochure de partenaire (« brochure », brochure.js).
+// « rediger » est retiré depuis le 19.11.2026 et refusé.
 // Rien n'est écrit dans les dossiers : la personne vérifie et valide dans l'outil. Le journal note l'appel (jetons, coût), jamais son contenu.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -37,8 +38,9 @@ import {
   validerSituer,
   verifierFaitsItineraire,
 } from "./itineraire.js";
+import { controlerAccesBrochure, parametresBrochure, promptBrochure, validerBrochure, verifierFichiers } from "./brochure.js";
 
-const USAGES_CONNUS = ["lire", "itineraire", "situer", "repondre_itineraire"];
+const USAGES_CONNUS = ["lire", "itineraire", "situer", "repondre_itineraire", "brochure"];
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
 
@@ -100,14 +102,17 @@ Deno.serve(async (req) => {
   // Lieu et personne responsable de l'entreprise (migration 44).
   const ra = reglagesAssistant(reglages);
   const limite = Number(Deno.env.get("ASSISTANT_LIMITE_JOUR")) || LIMITE_JOUR_DEFAUT;
-  const acces = controlerAcces({ usage, entiteId, permissions: perms.data || [], reglages, appelsDuJour: appels.count || 0, limite });
+  const controle = usage === "brochure" ? controlerAccesBrochure : controlerAcces;
+  const acces = controle({ usage, entiteId, permissions: perms.data || [], reglages, appelsDuJour: appels.count || 0, limite });
   if (!acces.ok) return json({ erreur: acces.erreur, ...(acces.manque ? { manque: acces.manque } : {}), ...(acces.limite ? { limite: acces.limite } : {}) }, acces.statut);
 
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
   if (!cle) return json({ erreur: "non_configure" }, 503);
   // Situer plusieurs hôtels enchaîne des recherches web : sans nouvel essai (une recherche refaite se paie deux fois). Deux passages au plus
   // (reprise après « pause_turn ») de 65 secondes chacun restent sous la limite de 150 secondes d'une fonction Supabase : le journal s'écrit toujours.
-  const anthropic = new Anthropic({ apiKey: cle, timeout: 65_000, maxRetries: usage === "situer" ? 0 : 1 });
+  // Une brochure (images, PDF, Claude Opus 5.5) se lit en un seul passage de 110 secondes au plus, sans nouvel essai : la lecture du corps
+  // (jusqu'à 13 Mo), les lectures de la base et le journal tiennent dans le reste des 150 secondes.
+  const anthropic = new Anthropic({ apiKey: cle, timeout: usage === "brochure" ? 110_000 : 65_000, maxRetries: usage === "situer" || usage === "brochure" ? 0 : 1 });
 
   const aujourdhui = dateBangkok();
   const message = typeof demande.texte === "string" ? demande.texte.trim() : "";
@@ -145,6 +150,16 @@ Deno.serve(async (req) => {
     parametres = parametresSituer(promptSituer({ hotels, lieux, lieu: ra.lieu }), hotels.length);
     lire = lireSituer;
     valider = (v, lu) => validerSituer(v, { hotels, lieux, sources: (lu && lu.sources) || [] });
+  } else if (usage === "brochure") {
+    // Les fichiers de la brochure seuls (ni catalogue, ni prix de la base, ni nom du partenaire). Le partenaire doit être un de ceux de
+    // l'entreprise, lu avec la session de la personne : chaque entreprise garde ses partenaires.
+    const f = verifierFichiers(demande.fichiers);
+    if (!f.ok) return json({ erreur: f.erreur }, 400);
+    if (typeof demande.partenaire_id !== "string") return json({ erreur: "partenaire_invalide" }, 400);
+    const pa = await sb.from("partenaires").select("id").eq("entite_id", entiteId).eq("id", demande.partenaire_id).maybeSingle();
+    if (pa.error || !pa.data) return json({ erreur: "partenaire_invalide" }, 400);
+    parametres = parametresBrochure(promptBrochure({ fichiers: f.fichiers, aujourdhui, lieu: ra.lieu }));
+    valider = (v) => validerBrochure(v);
   } else {
     // repondre_itineraire : les faits calculés dans l'outil, aux clés fermées (aucun net, aucune compagnie).
     const f = verifierFaitsItineraire(demande.faits);
