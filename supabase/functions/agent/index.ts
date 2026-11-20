@@ -150,8 +150,13 @@ Deno.serve(async (req) => {
     const parNom = (q: any) => mots.reduce((r, m) => r.or(`prenom.ilike.${motifNom(m)},nom.ilike.${motifNom(m)}`), q);
     const [propres, autres, parTel, parDossier] = await Promise.all([
       mots.length ? lire(parNom(sb.from("clients").select(COL_CLIENT).eq("entite_id", entiteId)).limit(100), "clients") : [],
-      // Les clients partagés d'une autre entreprise : gardés plus bas seulement s'ils ont un dossier ici.
-      mots.length ? lire(parNom(sb.from("clients").select(COL_CLIENT).neq("entite_id", entiteId)).limit(100), "clients") : [],
+      // Les clients partagés d'une autre entreprise qui ont un dossier ici (jointure sur la clé du partage, migration 46). Sans cette clé,
+      // repli : les clients des autres entreprises, gardés plus bas seulement s'ils ont un dossier ici.
+      mots.length
+        ? lire(parNom(sb.from("clients").select(`${COL_CLIENT}, dossiers!dossiers_client_fkey!inner(entite_id)`).neq("entite_id", entiteId).eq("dossiers.entite_id", entiteId)).limit(100), "clients").catch(() =>
+            lire(parNom(sb.from("clients").select(COL_CLIENT).neq("entite_id", entiteId)).limit(100), "clients")
+          )
+        : [],
       chiffres.length >= 6 ? lire(sb.from("clients").select(COL_CLIENT).ilike("telephone", motifTelephone(chiffres)).limit(50), "clients") : [],
       mots.length ? lire(sb.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).or(mots.map((m) => `ref.ilike.${motifNom(m)}`).join(",")).limit(50), "dossiers") : [],
     ]);
@@ -160,7 +165,9 @@ Deno.serve(async (req) => {
     const manquants = [...new Set(parDossier.map((d) => d.client_id))].filter((id) => id && !clients.has(id));
     if (manquants.length) for (const c of await lire(sb.from("clients").select(COL_CLIENT).in("id", manquants.slice(0, 50)), "clients")) clients.set(c.id, c);
     const ids = [...clients.keys()].slice(0, 250);
-    const dossiers = ids.length ? await lire(sb.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).in("client_id", ids).limit(1000), "dossiers") : [];
+    // Par lots de 100 identifiants : une adresse trop longue serait refusée.
+    const dossiers: Record<string, any>[] = [];
+    for (let i = 0; i < ids.length; i += 100) dossiers.push(...(await lire(sb.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).in("client_id", ids.slice(i, i + 100)).limit(500), "dossiers")));
     const ici = new Set(dossiers.map((d) => d.client_id));
     return [[...clients.values()].filter((c) => c.entite_id === entiteId || ici.has(c.id)), dossiers];
   };

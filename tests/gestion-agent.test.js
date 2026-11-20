@@ -295,6 +295,7 @@ test("clients et dossiers : recherche par nom ou téléphone, services sans pres
 
 test("recherche dans la base : motifs larges, clés d'hôtel, référence courte", () => {
   assert.equal(motifNom("Jérôme"), "%j_r_m_%");
+  assert.equal(motifNom("Muñoz"), "%m____%");
   assert.equal(motifNom("50%_x"), "%50__x%");
   assert.match(motifNom("o'neil,(x)"), /^%[a-z0-9_]+%$/);
   assert.equal(motifTelephone("+66 81 234 5678"), "%1%2%3%4%5%6%7%8%");

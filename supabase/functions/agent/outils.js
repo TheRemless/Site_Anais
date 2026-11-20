@@ -58,8 +58,8 @@ export function prefixeRef(ref) {
 // ---- Recherche dans la base (20.11.2026, pensé pour des milliers de clients) -----------------------------------------------------------
 // La fonction ne charge plus des tables entières : elle demande à la base une liste courte de candidats, que les outils filtrent ensuite
 // avec leurs règles habituelles (accents, mots, téléphone). Les motifs sont larges exprès : une voyelle ou un « c » peut être accentué dans
-// la base (« Jérôme », « François »), il devient « _ » (un caractère quelconque). Rien d'autre que [a-z0-9_%] n'entre dans un motif.
-export const motifNom = (mot) => `%${sansAccents(mot).replace(/[^a-z0-9]/g, "_").replace(/[aeiouyc]/g, "_")}%`;
+// la base (« Jérôme », « François », « Muñoz », « Łukasz »), elle devient « _ » (un caractère quelconque). Rien d'autre que [a-z0-9_%] n'entre dans un motif.
+export const motifNom = (mot) => `%${sansAccents(mot).replace(/[^a-z0-9]/g, "_").replace(/[aeiouycnszl]/g, "_")}%`;
 // Le téléphone est souvent écrit avec des espaces ou des points : les 8 derniers chiffres, n'importe quoi entre eux.
 export const motifTelephone = (chiffres) => `%${String(chiffres || "").replace(/\D/g, "").slice(-8).split("").join("%")}%`;
 // Les clés d'hôtel possibles d'un lieu : chaque suite de mots (« Jai Tiki Retreat, Klong Nin » → « jai tiki retreat », « klong nin »…).
@@ -479,10 +479,10 @@ export async function estimerTempsWeb(e, ctx, memo) {
 
 export async function chercherClients(e, ctx) {
   // ctx.chercherClients : candidats lus dans la base par la fonction ; sinon (essais) les tables entières.
-  const [clients, dossiers] = ctx.chercherClients ? await ctx.chercherClients(e.recherche) : await Promise.all([ctx.charger("clients"), ctx.charger("dossiers")]);
   const q = sansAccents(e.recherche).trim();
   const chiffres = String(e.recherche || "").replace(/\D/g, "");
   if (q.length < 2) return { resultat: { erreur: "recherche_trop_courte" } };
+  const [clients, dossiers] = ctx.chercherClients ? await ctx.chercherClients(e.recherche) : await Promise.all([ctx.charger("clients"), ctx.charger("dossiers")]);
   const mots = q.split(/\s+/).filter(Boolean);
   const parClient = new Map();
   for (const d of dossiers || []) parClient.set(d.client_id, [...(parClient.get(d.client_id) || []), d]);
