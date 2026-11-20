@@ -1068,10 +1068,11 @@ function surveillerDonnees() {
     repliMs = ms;
     if (ms) repli = setInterval(() => document.visibilityState === "visible" && relireWhatsApp(), ms);
   };
-  // Le canal revient (« abonné » après une coupure) : rien de ce qui est arrivé pendant la coupure n'a été annoncé, on relit (audit I10).
+  // Le canal revient (« abonné » après une coupure ou une reconnexion forcée) : rien de ce qui est arrivé entre-temps n'a été annoncé, on
+  // relit (audit I10). Le canal ne signale que les changements : un « abonné » après le premier est toujours un retour.
   let etatPrecedent = null;
   const surEtatWhatsApp = (e) => {
-    if (e === "abonne" && etatPrecedent && etatPrecedent !== "abonne") relireWhatsApp({ redessiner: true });
+    if (e === "abonne" && etatPrecedent !== null) relireWhatsApp({ redessiner: true });
     etatPrecedent = e;
     majRepli();
   };

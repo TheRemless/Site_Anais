@@ -53,6 +53,8 @@ test("reprise : une cible absente est reprise 30 minutes, puis classée", () => 
   assert.equal(F.aReprendre("2026-11-20T09:45:00Z", t), true);
   assert.equal(F.aReprendre("2026-11-20T09:29:00Z", t), false);
   assert.equal(F.aReprendre(null, t), true, "date illisible : on reprend plutôt que perdre");
+  assert.equal(F.aReprendre("2026-11-20T09:45:00Z", t, F.STATUT_FENETRE_MS), false, "un statut : 10 minutes");
+  assert.equal(F.ATTENTE, "attente: ");
   assert.equal(F.limiteEnvoi(t), "2026-11-20T09:55:00.000Z");
   assert.equal(F.ESSAIS_MAX, 5);
 });
@@ -120,7 +122,7 @@ test("whatsapp-envoi : message rangé avant l'appel, complété après, retiré 
   assert.match(src, /catch \{[\s\S]{0,400}return json\(\{ erreur: "verifier_whatsapp", message_id: messageId \}, 504\);/, "délai dépassé : le message reste dans le fil");
   assert.match(src, /lu\.statut >= 500 \|\| \(lu\.statut >= 200 && lu\.statut < 300\)/, "5xx ou 2xx illisible : doute, rien n'est retiré");
   assert.match(src, /await retirer\(\);\s+console\.error\("whatsapp-envoi : refus Telnyx"/, "refus sûr : message retiré du fil");
-  assert.match(src, /update\(\{ telnyx_id: lu\.id, statut_envoi: "envoye"[\s\S]{0,120}\.eq\("statut_envoi", "envoi"\)/, "complété avec l'id Telnyx");
+  assert.match(src, /update\(\{ telnyx_id: lu\.id, statut_envoi: "envoye"[\s\S]{0,120}\.in\("statut_envoi", \["envoi", "echec"\]\)/, "complété avec l'id Telnyx");
   assert.match(src, /if \(errM\) return json\(\{ erreur: "base" \}, 500\);/, "une lecture en échec n'est pas une fenêtre fermée (M4)");
   assert.match(src, /webhook: `\$\{URL_SB\}\/functions\/v1\/whatsapp`/);
 });
@@ -137,7 +139,10 @@ test("fonction whatsapp : reprise par le cron, essai compté à la réservation,
   assert.match(src, /if \(!conv\) throw new CibleAbsente\("original_introuvable"\);/, "I5 : conversation absente, repris");
   assert.match(src, /if \(!cible \|\| !cible\.length\) throw new CibleAbsente\("original_introuvable"\);/, "I5 : 0 ligne touchée, repris");
   assert.match(src, /if \(errC\) throw new Error\(errC\.message\);/, "I5 : erreur de lecture levée");
-  assert.match(src, /err instanceof CibleAbsente && \(!aReprendre\(pris\.recu_le\) \|\| pris\.essais >= ESSAIS_MAX\)/, "classé après 30 min ou au dernier essai");
+  assert.match(src, /err instanceof CibleAbsente && \(!aReprendre\(pris\.recu_le, Date\.now\(\), err\.fenetre\) \|\| pris\.essais >= ESSAIS_MAX\)/, "classé après sa fenêtre ou au dernier essai");
+  assert.match(src, /throw new CibleAbsente\("statut_message_inconnu", STATUT_FENETRE_MS\)/, "un statut inconnu attend 10 minutes, pas 30");
+  assert.match(src, /\$\{err instanceof CibleAbsente \? ATTENTE : ""\}/, "attente hors du compteur d'erreurs");
+  assert.match(lire("supabase/functions/whatsapp-envoi/index.ts"), /if \(!maj \|\| !maj\.length\) \{[\s\S]{0,300}whatsapp_ranger[\s\S]{0,400}statut_envoi: "envoye"/, "parti mais retiré entre-temps : rangé de nouveau");
   assert.match(src, /m\.statut_envoi === null \? q\.is\("statut_envoi", null\) : q\.in\("statut_envoi", avant\)/, "écriture conditionnelle du statut");
 });
 
@@ -186,7 +191,7 @@ test("Assistant I6 : un appel d'outil sans résultat reçoit un résultat « int
 
 test("Assistant I7 : une coupure du flux (iPhone en arrière-plan) rend « coupure » et rallume l'écran", () => {
   const store = lire("src/gestion/js/store-supabase.mjs");
-  assert.match(store, /try \{\s+for \(;;\) \{\s+const \{ value, done \} = await lecteur\.read\(\);[\s\S]{0,400}\} catch \{\s+return fini \? \{ ok: true \} : \{ erreur: "coupure" \};/);
+  assert.match(store, /try \{\s+lu = await lecteur\.read\(\);\s+\} catch \{\s+return fini \? \{ ok: true \} : \{ erreur: "coupure" \};/, "seule la lecture est protégée");
   const vue = lire("src/gestion/js/views/agent.mjs");
   assert.match(vue, /\}\)\.catch\(\(\) => \(\{ erreur: "coupure" \}\)\);\s+etape\.remove\(\);/, "jamais « L'assistant réfléchit » sans fin");
   assert.match(vue, /if \(\(!conv \|\| r\.erreur !== "coupure"\) && !champ\.value\.trim\(\)\) champ\.value = texte;/, "texte remis après une erreur propre, même dans une conversation existante");
@@ -195,7 +200,8 @@ test("Assistant I7 : une coupure du flux (iPhone en arrière-plan) rend « coupu
 test("temps réel I9 et I10 : rechargement après connexion, relecture au retour du canal, canaux refaits après une longue veille", () => {
   const app = lire("src/gestion/js/app.mjs");
   assert.match(app, /if \(etat\.store\.ecouterWhatsApp\) return void location\.reload\(\);/, "I9 : après la connexion, le temps réel se branche");
-  assert.match(app, /if \(e === "abonne" && etatPrecedent && etatPrecedent !== "abonne"\) relireWhatsApp\(\{ redessiner: true \}\);/, "I10 : retour à « abonné » = relecture");
+  assert.match(app, /if \(e === "abonne" && etatPrecedent !== null\) relireWhatsApp\(\{ redessiner: true \}\);/, "I10 : retour à « abonné » = relecture");
+  assert.match(lire("src/gestion/js/store-supabase.mjs"), /if \(forcer\) etatCourant = "reconnexion";/, "reconnexion forcée : le retour à « abonné » est annoncé");
   assert.match(app, /etat\.store\.reveillerDirect\(\{ forcer: longue \}\)/);
   assert.match(lire("src/gestion/js/store-supabase.mjs"), /if \(ch && !forcer && !doitReabonner\(ch\.state\)\) return void/, "forcé : refait même « joined »");
 });

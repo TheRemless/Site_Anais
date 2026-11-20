@@ -105,13 +105,17 @@ language sql security definer set search_path = public as $$
   returning e.id, e.type, e.survenu_le, e.brut, e.essais, e.recu_le
 $$;
 
--- Dernier message d'une conversation recalculé (un envoi retiré ne doit pas la laisser « répondue »).
+-- Dernier message d'une conversation recalculé (un envoi retiré ne doit pas la laisser « répondue »). Les non-lus reviennent aussi : les
+-- messages du client arrivés après la dernière réponse restante (l'envoi retiré les avait remis à zéro).
 create or replace function whatsapp_recalculer_dernier(p_conversation uuid) returns void language sql security definer set search_path = public as $$
   update whatsapp_conversations c set
     dernier_message_le = d.envoye_le,
-    dernier_sens = coalesce(d.sens, c.dernier_sens)
+    dernier_sens = coalesce(d.sens, c.dernier_sens),
+    non_lus = greatest(c.non_lus, d.attente)
   from (select (select envoye_le from whatsapp_messages where conversation_id = p_conversation order by envoye_le desc, recu_le desc limit 1) as envoye_le,
-               (select sens from whatsapp_messages where conversation_id = p_conversation order by envoye_le desc, recu_le desc limit 1) as sens) d
+               (select sens from whatsapp_messages where conversation_id = p_conversation order by envoye_le desc, recu_le desc limit 1) as sens,
+               (select count(*)::integer from whatsapp_messages e where e.conversation_id = p_conversation and e.sens = 'entrant'
+                  and e.envoye_le > coalesce((select max(s.envoye_le) from whatsapp_messages s where s.conversation_id = p_conversation and s.sens = 'sortant'), '-infinity'::timestamptz)) as attente) d
   where c.id = p_conversation
 $$;
 
@@ -134,11 +138,12 @@ create or replace function whatsapp_etat_reception() returns jsonb language sql 
     select r.organisation_id from whatsapp_reglages r where whatsapp_lit(null, r.organisation_id)
   )
   select case when not exists (select 1 from orgs) then null else jsonb_build_object(
-    'en_erreur', (select count(*) from whatsapp_evenements e where e.organisation_id in (select organisation_id from orgs) and e.traite_le is null and e.erreur is not null and e.essais < 5),
+    -- « attente: » : la cible manque encore (statut arrivé avant l'id Telnyx, modification avant son message), ce n'est pas une panne.
+    'en_erreur', (select count(*) from whatsapp_evenements e where e.organisation_id in (select organisation_id from orgs) and e.traite_le is null and e.erreur is not null and e.erreur not like 'attente: %' and e.essais < 5),
     'abandonnes', (select count(*) from whatsapp_evenements e where e.organisation_id in (select organisation_id from orgs) and e.traite_le is null and e.essais >= 5),
     'en_retard', (select count(*) from whatsapp_evenements e where e.organisation_id in (select organisation_id from orgs) and e.traite_le is null and e.erreur is null and e.recu_le < now() - interval '10 minutes'),
     'plus_ancien', (select min(e.recu_le) from whatsapp_evenements e where e.organisation_id in (select organisation_id from orgs) and e.traite_le is null and (e.erreur is not null or e.recu_le < now() - interval '10 minutes')),
-    'derniere_erreur', (select left(e.erreur, 200) from whatsapp_evenements e where e.organisation_id in (select organisation_id from orgs) and e.traite_le is null and e.erreur is not null order by e.recu_le desc limit 1),
+    'derniere_erreur', (select left(e.erreur, 200) from whatsapp_evenements e where e.organisation_id in (select organisation_id from orgs) and e.traite_le is null and e.erreur is not null and e.erreur not like 'attente: %' order by e.recu_le desc limit 1),
     'envois_a_verifier', (select count(*) from whatsapp_messages m join whatsapp_conversations c on c.id = m.conversation_id
       where c.organisation_id in (select organisation_id from orgs) and (m.statut_envoi = 'envoi' or (m.statut_envoi = 'echec' and m.erreur_envoi = 'sans_confirmation')))
   ) end

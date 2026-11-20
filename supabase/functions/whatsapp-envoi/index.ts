@@ -116,9 +116,17 @@ Deno.serve(async (req) => {
   const maintenant = new Date().toISOString();
   let complete = false;
   for (let i = 0; i < 2 && !complete; i++) {
-    const { error } = await admin.from("whatsapp_messages").update({ telnyx_id: lu.id, statut_envoi: "envoye", statut_le: maintenant }).eq("id", messageId).eq("statut_envoi", "envoi");
-    if (!error) complete = true;
-    else console.error("whatsapp-envoi : message parti, id Telnyx non noté", error.message);
+    const { data: maj, error } = await admin.from("whatsapp_messages").update({ telnyx_id: lu.id, statut_envoi: "envoye", statut_le: maintenant }).eq("id", messageId).in("statut_envoi", ["envoi", "echec"]).select("id");
+    if (error) {
+      console.error("whatsapp-envoi : message parti, id Telnyx non noté", error.message);
+      continue;
+    }
+    complete = true;
+    // Plus de ligne à compléter : retiré entre-temps par « Pas parti » (appel très lent). Il est pourtant parti : on le range de nouveau.
+    if (!maj || !maj.length) {
+      const { error: errN } = await admin.rpc("whatsapp_ranger", { org: conv.organisation_id, tel: conv.telephone, nom_profil: null, m: { telnyx_id: lu.id, sens: "sortant", origine: "gestion", type: "text", texte: demande.texte, medias: [], envoye_le: maintenant, statut_envoi: "envoye" } });
+      if (errN) console.error("whatsapp-envoi : message parti mais non rangé de nouveau", errN.message);
+    }
   }
   // Toutes les propositions ouvertes de la conversation sont soldées, comme pour une réponse depuis l'app.
   const { error: errP2 } = await admin.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par: qui.user.id, traitee_par_quoi: "gestion" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours", "envoi"]);

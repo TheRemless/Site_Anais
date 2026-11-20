@@ -95,7 +95,8 @@ if [ -z "$A_DEPLOYER" ]; then echo "Rien à déployer."; exit 0; fi
 if [ "$ESSAI" = 1 ]; then echo "Essai : rien n'est parti."; exit 0; fi
 if [ "$OUI" != 1 ]; then
   printf 'Déployer%s depuis %s ? [o/N] ' "$A_DEPLOYER" "$(git rev-parse --short HEAD)"
-  read -r reponse
+  [ -t 0 ] || arreter "pas de terminal pour répondre : relancer avec --oui (seulement après le oui de Jérémy)"
+  read -r reponse || reponse=""
   [ "$reponse" = "o" ] || [ "$reponse" = "O" ] || arreter "annulé"
 fi
 

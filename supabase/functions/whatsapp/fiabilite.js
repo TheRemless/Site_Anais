@@ -10,12 +10,16 @@
 // Un envoi depuis Gestion sans réponse sûre de Telnyx : à vérifier dans WhatsApp après 30 secondes, en échec visible après 5 minutes.
 export const ENVOI_A_VERIFIER_MS = 30_000;
 export const ENVOI_EXPIRE_MS = 5 * 60_000;
-// Une modification ou un statut dont le message n'est pas (encore) rangé est repris pendant 30 minutes, puis classé.
+// Une modification dont le message n'est pas (encore) rangé est reprise pendant 30 minutes, puis classée. Un statut d'envoi, 10 minutes
+// seulement : il n'attend que l'id Telnyx noté par whatsapp-envoi (quelques secondes), et un statut d'un message inconnu ne doit pas traîner.
 export const REPRISE_FENETRE_MS = 30 * 60_000;
+export const STATUT_FENETRE_MS = 10 * 60_000;
+// Préfixe de l'erreur d'un événement qui attend sa cible : ce n'est pas une panne, le compteur de Réglages ne le compte pas.
+export const ATTENTE = "attente: ";
 export const ESSAIS_MAX = 5;
 
 const TYPES_STATUT = new Set(["message.sent", "message.finalized", "message.read"]);
-const ATTENTE = new Set(["queued", "sending", "delivery_unconfirmed"]);
+const EN_FILE = new Set(["queued", "sending", "delivery_unconfirmed"]);
 const ETATS = { sent: "envoye", delivered: "remis", read: "lu" };
 // Ordre d'un statut : un statut plus ancien arrivé en retard n'en écrase jamais un plus avancé (Telnyx n'ordonne pas ses webhooks).
 const RANG = { envoi: 0, envoye: 1, echec: 2, remis: 3, lu: 4 };
@@ -38,7 +42,7 @@ export function interpreterStatut(ev) {
   let statut;
   if (ev.type === "message.read" || brut === "read") statut = "lu";
   else if (ETATS[brut]) statut = ETATS[brut];
-  else if (!brut || ATTENTE.has(brut)) return { action: "ignorer", raison: "statut_attente" };
+  else if (!brut || EN_FILE.has(brut)) return { action: "ignorer", raison: "statut_attente" };
   else statut = "echec";
   const erreurs = Array.isArray(p.errors) ? p.errors : [];
   const e = erreurs[0] && typeof erreurs[0] === "object" ? erreurs[0] : null;
@@ -55,9 +59,9 @@ export function statutsRemplacables(statut) {
 
 // Un événement dont la cible manque encore (statut arrivé avant que l'id Telnyx soit noté, modification d'un message pas encore rangé) :
 // on le reprend tant qu'il est récent, sinon on le classe avec une raison (il ne compte plus comme une erreur).
-export function aReprendre(recuLe, maintenant = Date.now()) {
+export function aReprendre(recuLe, maintenant = Date.now(), fenetre = REPRISE_FENETRE_MS) {
   const t = Date.parse(recuLe || "");
-  return !Number.isFinite(t) || maintenant - t < REPRISE_FENETRE_MS;
+  return !Number.isFinite(t) || maintenant - t < fenetre;
 }
 
 // Seuil des envois « envoi » à passer en échec (date ISO).

@@ -14,7 +14,7 @@ import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { apresMessageClient } from "./reponse.ts";
 import { suiviApresMessage } from "./suivi.ts";
 import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, mediaApresErreur, resteACopier, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
-import { interpreterStatut, statutsRemplacables, aReprendre, limiteEnvoi, ESSAIS_MAX } from "./fiabilite.js";
+import { interpreterStatut, statutsRemplacables, aReprendre, limiteEnvoi, ESSAIS_MAX, STATUT_FENETRE_MS, ATTENTE } from "./fiabilite.js";
 
 const ORGANISATION = Deno.env.get("WHATSAPP_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
 const entetes = { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
@@ -172,11 +172,12 @@ async function traiterUn(db: SupabaseClient, id: string) {
   } catch (err) {
     // Expéditeur sans numéro, ou cible jamais trouvée (message d'origine absent depuis 30 minutes ou après le dernier essai) : classé avec
     // sa raison, sans compter comme une erreur.
-    if (err instanceof Classe || (err instanceof CibleAbsente && (!aReprendre(pris.recu_le) || pris.essais >= ESSAIS_MAX))) {
+    if (err instanceof Classe || (err instanceof CibleAbsente && (!aReprendre(pris.recu_le, Date.now(), err.fenetre) || pris.essais >= ESSAIS_MAX))) {
       await fermer({ traite_le: new Date().toISOString(), erreur: err.message });
       return true;
     }
-    const msg = String((err as Error)?.message || err).slice(0, 500);
+    // Une cible absente n'est pas une panne : préfixe « attente: », hors du compteur d'erreurs de Réglages.
+    const msg = `${err instanceof CibleAbsente ? ATTENTE : ""}${String((err as Error)?.message || err)}`.slice(0, 500);
     console.error("événement", id, ":", msg);
     await fermer({ pris_le: null, erreur: msg });
     return false;
@@ -202,7 +203,7 @@ async function appliquer(db: SupabaseClient, a: any) {
     const { data: msgs, error } = await db.from("whatsapp_messages").select("id, statut_envoi").eq("sens", "sortant").or(ids).limit(5);
     if (error) throw new Error(error.message);
     // Message inconnu : statut arrivé avant que whatsapp-envoi note l'id Telnyx (repris), ou message hors de Gestion.
-    if (!msgs || !msgs.length) throw new CibleAbsente("statut_message_inconnu");
+    if (!msgs || !msgs.length) throw new CibleAbsente("statut_message_inconnu", STATUT_FENETRE_MS);
     const avant = statutsRemplacables(a.statut);
     for (const m of msgs) {
       if (m.statut_envoi !== null && !avant.includes(m.statut_envoi)) continue;
@@ -262,8 +263,14 @@ async function appliquer(db: SupabaseClient, a: any) {
 
 // Événement classé sans rien ranger, avec sa raison (expéditeur sans numéro) : traité, ne compte pas comme une erreur.
 class Classe extends Error {}
-// La cible de l'événement manque encore : repris pendant 30 minutes (REPRISE_FENETRE_MS), puis classé avec sa raison.
-class CibleAbsente extends Error {}
+// La cible de l'événement manque encore : repris pendant sa fenêtre (30 minutes, 10 pour un statut), puis classé avec sa raison.
+class CibleAbsente extends Error {
+  fenetre: number | undefined;
+  constructor(message: string, fenetre?: number) {
+    super(message);
+    this.fenetre = fenetre;
+  }
+}
 
 // Une tâche de fond gardée en vie par le runtime après la réponse à Telnyx.
 function enFond(p: Promise<unknown>) {

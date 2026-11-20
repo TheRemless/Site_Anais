@@ -317,6 +317,8 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       async verifier({ forcer = false } = {}) {
         if (arrete) return;
         if (ch && !forcer && !doitReabonner(ch.state)) return void (await rafraichirJeton());
+        // Reconnexion forcée : l'état repart de zéro sans rien annoncer, pour que le retour à « abonné » soit signalé (et la boîte relue).
+        if (forcer) etatCourant = "reconnexion";
         if (minuteur) clearTimeout(minuteur), (minuteur = null);
         essai = 0;
         await relancer();
@@ -646,19 +648,22 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       let fini = false;
       // iPhone : passer dans une autre app coupe la connexion et read() lève (« Load failed ») ; c'est une coupure, pas une panne de l'écran
       // (audit I7). La réponse continue côté serveur et se relit à la réouverture.
-      try {
-        for (;;) {
-          const { value, done } = await lecteur.read();
-          const r = lireMorceau(tampon, done ? "\n" : dec.decode(value, { stream: true }));
-          tampon = r.tampon;
-          for (const ev of r.evenements) {
-            if (ev.t === "fin") fini = true;
-            surEvenement(ev);
-          }
-          if (done) break;
+      // Seule la lecture est protégée : une erreur de l'écran (surEvenement) reste une vraie erreur, visible dans la console.
+      for (;;) {
+        let lu;
+        try {
+          lu = await lecteur.read();
+        } catch {
+          return fini ? { ok: true } : { erreur: "coupure" };
         }
-      } catch {
-        return fini ? { ok: true } : { erreur: "coupure" };
+        const { value, done } = lu;
+        const r = lireMorceau(tampon, done ? "\n" : dec.decode(value, { stream: true }));
+        tampon = r.tampon;
+        for (const ev of r.evenements) {
+          if (ev.t === "fin") fini = true;
+          surEvenement(ev);
+        }
+        if (done) break;
       }
       return fini ? { ok: true } : { erreur: "coupure" };
     },

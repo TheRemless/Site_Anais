@@ -79,9 +79,15 @@ ok(erreur && /statut_envoi_check/.test(erreur), "un statut inconnu est refusé p
 
 // Refus sûr de Telnyx : le message est retiré et la conversation redevient « client en attente ».
 ok((await db.query("select dernier_sens from whatsapp_conversations where id = $1", [C])).rows[0].dernier_sens === "sortant", "l'envoi rangé marque la conversation répondue");
+ok((await db.query("select non_lus from whatsapp_conversations where id = $1", [C])).rows[0].non_lus === 0, "l'envoi rangé remet les non-lus à zéro");
+// Le client réécrit après la réponse de l'app : sa question doit redevenir non lue si l'envoi est retiré.
+await ranger("+66811111111", { ...base, evenement_id: "ev-b", texte: "And tomorrow?", envoye_le: "2026-11-20T09:02:00Z" });
+await db.exec(`update whatsapp_conversations set non_lus = 0 where id = '${C}'`);
 ok((await db.query("select whatsapp_retirer_envoi($1) r", [e1.message_id])).rows[0].r === true, "un envoi refusé se retire");
+const nl = (await db.query("select non_lus, dernier_sens from whatsapp_conversations where id = $1", [C])).rows[0];
+ok(nl.non_lus === 1 && nl.dernier_sens === "entrant", "… la question du client redevient non lue");
 const cv = (await db.query("select dernier_sens, dernier_message_le from whatsapp_conversations where id = $1", [C])).rows[0];
-ok(cv.dernier_sens === "sortant" && new Date(cv.dernier_message_le).toISOString() === "2026-11-20T09:01:00.000Z", "… et le dernier message redevient le précédent");
+ok(new Date(cv.dernier_message_le).toISOString() === "2026-11-20T09:02:00.000Z", "… et le dernier message redevient le précédent");
 ok((await db.query("select whatsapp_retirer_envoi($1) r", [app.message_id])).rows[0].r === false, "un message de l'app ne se retire jamais");
 r = await essaie(u.adminTaxi, "select whatsapp_retirer_envoi($1)", [app.message_id]);
 ok(!r.ok, "whatsapp_retirer_envoi n'est pas ouverte à l'outil");
@@ -121,6 +127,7 @@ ok((await db.query("select * from whatsapp_reserver_evenement('ev-1')")).rows.le
 await db.exec("insert into whatsapp_evenements (id, type, organisation_id, brut, erreur, essais) values ('ev-2', 'message.received', '" + ORG + "', '{}'::jsonb, 'délai', 2)");
 await db.exec("insert into whatsapp_evenements (id, type, organisation_id, brut, recu_le) values ('ev-3', 'message.received', '" + ORG + "', '{}'::jsonb, now() - interval '20 minutes')");
 await db.exec("insert into whatsapp_evenements (id, type, organisation_id, brut, traite_le) values ('ev-4', 'message.received', '" + ORG + "', '{}'::jsonb, now())");
+await db.exec("insert into whatsapp_evenements (id, type, organisation_id, brut, erreur, essais) values ('ev-5', 'message.sent', '" + ORG + "', '{}'::jsonb, 'attente: statut_message_inconnu', 1)");
 r = await essaie(u.adminTaxi, "select whatsapp_etat_reception() e");
 const et = r.ok ? r.rows[0].e : {};
 ok(r.ok && et.abandonnes === 1 && et.en_erreur === 1 && et.en_retard === 1 && et.derniere_erreur === "délai", "compteur : 1 abandonné, 1 en erreur, 1 en retard, dernière erreur lisible");
