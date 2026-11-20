@@ -14,6 +14,7 @@ import { clesHotelPossibles, memoDepuis, prefixeRef } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
+import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
 import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, parametresTri, langueSure, numerosPartenaires, outilsWhatsapp, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
@@ -183,7 +184,11 @@ async function preparer(
     const lus = await db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", ent.id).order("cree_le", { ascending: false }).limit(80);
     if (lus.error && !tableAbsente(lus.error)) console.error("whatsapp : apprentissages", lus.error.message);
     // Mêmes consignes, voix, règles de réponse et corrections apprises que l'onglet Assistant (proposer.js, promptPreparation).
-    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lus.data || [], messages, nomProfil: conv.nom || "", client, dossier, aujourdhui: dateBangkok() });
+    const ton = await tonDeNani(db, ent.id, conv.id, messages).catch((err) => {
+      console.error("whatsapp : ton de Nani", String(err?.message || err).slice(0, 120));
+      return "";
+    });
+    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lus.data || [], messages, nomProfil: conv.nom || "", client, dossier, aujourdhui: dateBangkok(), ton });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
     const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
@@ -231,6 +236,21 @@ async function preparer(
   const { data: maj } = await db.from("whatsapp_propositions").update(champs).eq("id", prop.id).eq("statut", "en_cours").select("id");
   await j.noter(ent.id, message ? statut : statut === "ok" ? "pas_de_reponse" : statut);
   return utile && !!message && !!(maj && maj.length);
+}
+
+// Le ton de Nani (ton.js) : ses réponses envoyées depuis l'app dans les autres conversations de cette entreprise (les 400 derniers messages de
+// ses 60 conversations les plus récentes), et ses réécritures des réponses préparées. Lu avec la clé de service, limité à l'entreprise.
+async function tonDeNani(db: SupabaseClient, entiteId: string, conversationId: string, messages: Record<string, any>[]) {
+  const { data: convs } = await db.from("whatsapp_conversations").select("id").eq("entite_id", entiteId).order("dernier_message_le", { ascending: false }).limit(60);
+  const ids = (convs || []).map((c) => c.id);
+  if (!ids.length) return "";
+  const [msgs, props] = await Promise.all([
+    db.from("whatsapp_messages").select("conversation_id, sens, origine, texte, envoye_le, supprime_le").in("conversation_id", ids).order("envoye_le", { ascending: false }).limit(400),
+    db.from("whatsapp_propositions").select("conversation_id, cree_le, texte, statut").in("conversation_id", ids).not("texte", "is", null).order("cree_le", { ascending: false }).limit(60),
+  ]);
+  const tous = msgs.data || [];
+  const texteClient = messages.filter((m) => m.sens === "entrant").slice(-3).map((m) => m.texte || "").join(" ");
+  return blocTon({ paires: pairesReponses(tous, { exclure: conversationId }), corrections: pairesCorrections(props.data || [], tous), texteClient });
 }
 
 // Une préparation qui s'arrête avant l'agent laisse toujours une trace : une proposition « echec » avec son motif (l'écran l'explique) et une

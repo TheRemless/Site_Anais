@@ -215,7 +215,7 @@ export const langueSure = (l) => (typeof l === "string" && /^[a-z]{2}$/.test(l) 
 //   - contexte : la date du jour et le dossier relié ;
 //   - texte : la demande WhatsApp (demandeAgent).
 // Testé par tests/gestion-whatsapp.test.js : ce que l'on règle pour l'Assistant s'applique aux réponses WhatsApp.
-export function promptPreparation({ entreprise, reglages, apprentissages = [], messages = [], nomProfil = "", client = null, dossier = null, aujourdhui }) {
+export function promptPreparation({ entreprise, reglages, apprentissages = [], messages = [], nomProfil = "", client = null, dossier = null, aujourdhui, ton = "" }) {
   const ra = reglagesAssistant(reglages);
   const qui = ra.responsable || "Nani";
   const derniersClient = messages.filter((m) => m.sens === "entrant").slice(-3).map((m) => m.texte || "").join(" ");
@@ -224,7 +224,8 @@ export function promptPreparation({ entreprise, reglages, apprentissages = [], m
     qui,
     ra,
     systeme: consignes({ entreprise, reglages, lieu: ra.lieu, prenomEquipe: qui }),
-    appris: blocApprentissages(apprentissages, { qui, premierMessage: derniersClient }),
+    // Les corrections de l'Assistant, puis le ton de Nani (ton.js : ses vraies réponses et ses réécritures), dans le bloc mis en cache.
+    appris: [blocApprentissages(apprentissages, { qui, premierMessage: derniersClient }), ton].filter(Boolean).join("\n\n"),
     contexte: contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: relie }),
     texte: demandeAgent({ messages, nomProfil, client, dossier: relie, qui, entreprise }),
   };
