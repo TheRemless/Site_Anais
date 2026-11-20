@@ -2268,3 +2268,6 @@ button.agent-joint { cursor: pointer; }
 .wa-sans-reponse .secondaire { min-height: 40px; }
 .wa-conv-etat.sans { color: var(--texte-2); font-style: italic; }
 @media (min-width: 900px) { .wa-sans-reponse { margin: 0; padding: 10px 28px; border-top: 1px solid var(--bord); } .wa-sans-reponse .wa-prop-fait { border-top: 0; padding: 0; } }
+/* Temps réel coupé (canal Realtime en erreur) : discret, à côté du titre, tant que l'écran se relit toutes les 5 s. */
+.wa-direct { align-self: center; padding: 1px 8px; border: 1px solid #e8d49a; border-radius: 999px; background: #fff4d6; color: #5a4300; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.wa-direct[hidden] { display: none; }

@@ -2,6 +2,8 @@
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
   // Boîte WhatsApp (migrations 58 et 59, 20.11.2026)
+  "Le temps réel est coupé : l'écran se met à jour toutes les 5 secondes en attendant qu'il revienne.": "Real time is cut: the screen refreshes every 5 seconds until it comes back.",
+  "Direct coupé": "Live cut",
   // Tri des messages WhatsApp (migration 60)
   "Plus de réponse préparée pour ce contact.": "No more prepared replies for this contact.",
   "Réponses préparées automatiques pour ce contact.": "Automatic prepared replies for this contact.",

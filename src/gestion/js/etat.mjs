@@ -163,6 +163,16 @@ export async function synchroniser() {
   }
 }
 
+// Relecture ciblée de la boîte WhatsApp (temps réel, 20.11.2026) : les lignes WhatsApp relues remplacent les anciennes sans toucher au reste.
+// La signature suit, sinon la synchronisation suivante prendrait ce changement pour celui d'une autre personne (« Données mises à jour »).
+// Rien n'est appliqué pendant une écriture ou une relecture complète : elle apportera les mêmes lignes.
+export function appliquerWhatsApp(neuf) {
+  if (!etat.brut || !neuf || enCours || ecritures) return false;
+  for (const [k, v] of Object.entries(neuf)) if (k.startsWith("whatsapp_")) etat.brut[k] = v;
+  signature = signer(etat.brut);
+  return true;
+}
+
 // Langue de l'interface : celle du compte (elle suit la personne d'un appareil à l'autre). Un compte qui n'en a pas encore
 // reprend celle de ce navigateur, y compris un choix fait sur l'écran de connexion, et l'enregistre.
 export const connexion = { langueChoisie: false };

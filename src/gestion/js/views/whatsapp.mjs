@@ -10,6 +10,7 @@ import { h, toast, confirmer, icone, puces, modal, champ } from "../ui.mjs";
 import { tr, N_, langueActive, localeActive } from "../i18n.mjs";
 import { quand, bloquantsReponse, resteBloque } from "../agent-calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
+import { directCoupe } from "../direct-reprise-calc.mjs";
 import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
@@ -487,7 +488,14 @@ export async function vueWhatsApp() {
   const colonneListe = h(
     "section",
     { class: "wa-liste", "aria-label": tr("Conversations") },
-    h("div", { class: "wa-liste-tete" }, h("h1", null, tr("WhatsApp")), reglage && reglage.numero ? h("p", { class: "sous" }, numeroAffiche(reglage.numero)) : null),
+    h(
+      "div",
+      { class: "wa-liste-tete" },
+      h("h1", null, tr("WhatsApp")),
+      reglage && reglage.numero ? h("p", { class: "sous" }, numeroAffiche(reglage.numero)) : null,
+      // Le canal temps réel est coupé : l'écran se relit toutes les 5 s en attendant (app.mjs). La pastille suit l'état du canal sur place.
+      h("span", { class: "wa-direct", role: "status", title: tr("Le temps réel est coupé : l'écran se met à jour toutes les 5 secondes en attendant qu'il revienne."), hidden: !directCoupe(etat.store.etatDirect ? etat.store.etatDirect().whatsapp : "abonne") }, tr("Direct coupé"))
+    ),
     reglage && reglage.reception_active === false ? h("p", { class: "bandeau-info", role: "status" }, tr("Réception coupée dans les Réglages. Les nouveaux messages n'arrivent plus ici.")) : null,
     etat.brut.whatsapp_propositions_disponible === false ? h("p", { class: "bandeau-info", role: "status" }, tr("Les réponses préparées arriveront avec la migration 59.")) : null,
     choix.noeud,

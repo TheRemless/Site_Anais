@@ -6,6 +6,7 @@ import { separerNets, fusionnerNets } from "./nets-documents.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { lireRetourLien } from "./compte-calc.mjs";
 import { avecNomsLies } from "./partage-clients-calc.mjs";
+import { estCoupure, delaiReabonnement, doitReabonner } from "./direct-reprise-calc.mjs";
 
 // La copie de la feuille du jour gardée sur ce téléphone ne survit pas à une déconnexion.
 const effacerCopieHorsLigne = () => {
@@ -223,35 +224,122 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     return { partages_clients: p.error ? [] : p.data || [], lies: l.error ? [] : l.data || [] };
   }
 
+  // Fiabilité du direct (20.11.2026) : sur CHANNEL_ERROR, TIMED_OUT ou CLOSED, le canal est retiré, le jeton de session rafraîchi et passé à
+  // Realtime, puis le canal refait après 1, 2, 5, 10 puis 30 s (direct-reprise-calc.mjs). Un jeton expiré pendant que l'iPhone dormait est la
+  // cause la plus fréquente : sans réabonnement, la page restait sourde jusqu'au prochain rechargement.
+  async function rafraichirJeton() {
+    try {
+      const { data } = await sb.auth.getSession();
+      const jeton = data && data.session && data.session.access_token;
+      if (jeton && sb.realtime && typeof sb.realtime.setAuth === "function") await sb.realtime.setAuth(jeton);
+    } catch (err) {
+      console.warn(err);
+    }
+  }
+  // Un jeton renouvelé par la bibliothèque (ou une nouvelle connexion) part aussi vers Realtime. Inscrit une seule fois.
+  let jetonSuivi = false;
+  function suivreJeton() {
+    if (jetonSuivi || !sb.auth || typeof sb.auth.onAuthStateChange !== "function") return;
+    jetonSuivi = true;
+    sb.auth.onAuthStateChange((evenement, session) => {
+      if ((evenement === "TOKEN_REFRESHED" || evenement === "SIGNED_IN") && session && session.access_token && sb.realtime && typeof sb.realtime.setAuth === "function") {
+        Promise.resolve(sb.realtime.setAuth(session.access_token)).catch(() => {});
+      }
+    });
+  }
+  // Un canal qui se répare seul. `surEtat(etat)` : « connexion », « abonne » ou « coupe ». Renvoie { arreter, verifier, etat }.
+  function canalFiable(nom, tables, rappel, surEtat = () => {}) {
+    let ch = null;
+    let arrete = false;
+    let essai = 0;
+    let minuteur = null;
+    let etatCourant = "connexion";
+    const poser = (e) => {
+      if (e === etatCourant) return;
+      etatCourant = e;
+      surEtat(e);
+    };
+    const creer = () => {
+      const moi = sb.channel(nom);
+      ch = moi;
+      for (const t of tables) moi.on("postgres_changes", { event: "*", schema: "public", table: t }, () => rappel(t));
+      moi.subscribe((statut, err) => {
+        // Un canal retiré par nous (réabonnement, arrêt) envoie CLOSED : ce n'est plus le canal courant, on l'ignore.
+        if (arrete || moi !== ch) return;
+        if (statut === "SUBSCRIBED") {
+          essai = 0;
+          return poser("abonne");
+        }
+        if (estCoupure(statut)) {
+          console.warn(`${nom === "gestion-whatsapp" ? "WhatsApp" : "Gestion"} en direct indisponible (${statut}), nouvel essai dans ${delaiReabonnement(essai) / 1000} s`, err || "");
+          poser("coupe");
+          planifier();
+        }
+      });
+    };
+    const retirer = async () => {
+      const vieux = ch;
+      ch = null;
+      if (vieux) await Promise.resolve(sb.removeChannel(vieux)).catch(() => {});
+    };
+    const relancer = async () => {
+      clearTimeout(minuteur);
+      minuteur = null;
+      await retirer();
+      if (arrete) return;
+      await rafraichirJeton();
+      if (arrete || ch) return;
+      creer();
+    };
+    function planifier() {
+      if (minuteur || arrete) return;
+      minuteur = setTimeout(relancer, delaiReabonnement(essai++));
+    }
+    suivreJeton();
+    creer();
+    return {
+      arreter() {
+        arrete = true;
+        clearTimeout(minuteur);
+        const vieux = ch;
+        ch = null;
+        if (vieux) sb.removeChannel(vieux);
+      },
+      // Retour sur l'onglet, réseau revenu, page restaurée : un canal qui n'est pas « joined » est refait tout de suite (jeton rafraîchi).
+      async verifier() {
+        if (arrete) return;
+        if (ch && !doitReabonner(ch.state)) return void (await rafraichirJeton());
+        if (minuteur) clearTimeout(minuteur), (minuteur = null);
+        essai = 0;
+        await relancer();
+      },
+      etat: () => etatCourant,
+    };
+  }
+
   // En direct (Supabase Realtime, migration 47) : `rappel(table)` à chaque ligne ajoutée, changée ou retirée dans ces tables. La base ne
   // prévient que les personnes qui peuvent lire la ligne (règles RLS) ; l'outil s'en sert seulement pour relire, jamais pour écrire le contenu reçu.
   // Sans la migration, aucun événement n'arrive et la relecture de chaque minute reste. Renvoie de quoi se désabonner.
   let canal = null;
   function ecouter(tables, rappel) {
-    if (canal) sb.removeChannel(canal);
-    canal = sb.channel("gestion-direct");
-    for (const t of tables) canal.on("postgres_changes", { event: "*", schema: "public", table: t }, () => rappel(t));
-    // Un refus (migration 47 absente, droits) ou une coupure se voit dans la console ; la relecture de chaque minute continue.
-    canal.subscribe((statut, err) => {
-      if (statut === "CHANNEL_ERROR" || statut === "TIMED_OUT") console.warn(`Gestion en direct indisponible (${statut})`, err || "");
-    });
+    if (canal) canal.arreter();
+    const moi = canalFiable("gestion-direct", tables, rappel);
+    canal = moi;
     return () => {
-      if (canal) sb.removeChannel(canal);
-      canal = null;
+      moi.arreter();
+      if (canal === moi) canal = null;
     };
   }
   // Boîte WhatsApp en direct : un canal à part, pour ne pas toucher à celui des demandes du site. Même règle, seul le nom de la table remonte.
+  // `surEtat` : l'état du canal (« connexion », « abonne », « coupe »), pour le repli et la pastille « Direct coupé ».
   let canalWhatsApp = null;
-  function ecouterWhatsApp(tables, rappel) {
-    if (canalWhatsApp) sb.removeChannel(canalWhatsApp);
-    canalWhatsApp = sb.channel("gestion-whatsapp");
-    for (const t of tables) canalWhatsApp.on("postgres_changes", { event: "*", schema: "public", table: t }, () => rappel(t));
-    canalWhatsApp.subscribe((statut, err) => {
-      if (statut === "CHANNEL_ERROR" || statut === "TIMED_OUT") console.warn(`WhatsApp en direct indisponible (${statut})`, err || "");
-    });
+  function ecouterWhatsApp(tables, rappel, { surEtat = () => {} } = {}) {
+    if (canalWhatsApp) canalWhatsApp.arreter();
+    const moi = canalFiable("gestion-whatsapp", tables, rappel, surEtat);
+    canalWhatsApp = moi;
     return () => {
-      if (canalWhatsApp) sb.removeChannel(canalWhatsApp);
-      canalWhatsApp = null;
+      moi.arreter();
+      if (canalWhatsApp === moi) canalWhatsApp = null;
     };
   }
 
@@ -259,6 +347,15 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     mode: "supabase",
     ecouter,
     ecouterWhatsApp,
+    // L'état des deux canaux, pour le repli et la pastille « Direct coupé » de l'écran WhatsApp.
+    etatDirect: () => ({ direct: canal ? canal.etat() : "ferme", whatsapp: canalWhatsApp ? canalWhatsApp.etat() : "ferme" }),
+    // Retour sur l'onglet, réseau revenu, page restaurée : jeton rafraîchi, canaux refaits s'ils ne sont pas « joined ».
+    async reveillerDirect() {
+      await Promise.all([canal ? canal.verifier() : null, canalWhatsApp ? canalWhatsApp.verifier() : null]);
+    },
+    // Relecture ciblée de la boîte WhatsApp (conversations, propositions, réglage), sans les dossiers ni les clients. Les messages de la
+    // conversation ouverte sont relus par l'écran à son redessin (whatsappMessages).
+    chargerWhatsApp: () => lireWhatsApp(),
     // Les messages d'une conversation, les 500 plus récents, dans l'ordre d'envoi.
     async whatsappMessages(conversationId) {
       const lignes = verifie(await sb.from("whatsapp_messages").select("id, conversation_id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(500));
