@@ -1,4 +1,4 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher, clientsProposes, clientEtranger, etiquetteClient } from "./etat.mjs";
+import { init, etat, appliquerWhatsApp, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, permissionsDe, voitToutDans, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher, clientsProposes, clientEtranger, etiquetteClient } from "./etat.mjs";
 import { MODULES, moduleDeLEcran } from "./modules.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons, confirmer } from "./ui.mjs";
@@ -14,6 +14,8 @@ import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
 import { agentActif } from "./agent-calc.mjs";
 import { bandeauCredit } from "./views/bandeau-credit.mjs";
+import { lecteurWhatsApp, badgeWhatsApp, TABLES_WHATSAPP } from "./whatsapp-calc.mjs";
+import { ATTENTE_WHATSAPP_MS, intervalleRepli, signatureWhatsApp, directCoupe } from "./direct-reprise-calc.mjs";
 
 // Chaque écran se charge à sa première visite : le premier affichage n'attend que l'accueil.
 const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
@@ -25,6 +27,7 @@ const ROUTES = [
   [/^#\/messages$/, "messages", vers(() => import("./views/messages.mjs"), "vueMessages")],
   [/^#\/fiduciaire$/, "fiduciaire", vers(() => import("./views/fiduciaire.mjs"), "vueFiduciaire")],
   [/^#\/demandes(?:\?.*)?$/, "demandes", vers(() => import("./views/demandes-site.mjs"), "vueDemandesSite")],
+  [/^#\/whatsapp(?:\?.*)?$/, "whatsapp", vers(() => import("./views/whatsapp.mjs"), "vueWhatsApp")],
   [/^#\/bandeau$/, "bandeau", vers(() => import("./views/bandeau-site.mjs"), "vueBandeauSite")],
   [/^#\/du$/, "du", vers(() => import("./views/du.mjs"), "vueDu")],
   [/^#\/encaisser$/, "encaisser", vers(() => import("./views/encaisser.mjs"), "vueEncaisser")],
@@ -187,6 +190,10 @@ const voitLeSite = () => peut("dossiers.lire") && voitToutActif();
 const siteVisible = () => moduleActif("demandes_site") && voitLeSite();
 // Le bandeau du site public ne se change qu'avec « Modifier les réglages » (Jérémy, 17.11.2026 : Mook ne change pas les bandeaux ; migration 40).
 const bandeauVisible = () => moduleActif("bandeau_site") && voitLeSite() && peut("dossiers.ecrire") && peut("reglages.ecrire");
+// Boîte WhatsApp (migrations 58 et 59) : le numéro de Nani, pour Secret et Taxi. Seulement pour un administrateur de l'entreprise ouverte qui voit
+// toute l'entreprise (comme whatsapp_admin), jamais pour l'écran « Nouveau voucher » seul (Mook). Le badge compte les conversations qui
+// attendent : des messages non lus ou une réponse prête à copier.
+const whatsappVisible = () => !!etat.brut && etat.brut.whatsapp_disponible === true && lecteurWhatsApp({ entite: entiteActive(), superAdmin: estSuperAdmin(), permissions: permissionsDe(etat.entiteId), voitTout: voitToutActif(), voucherSeul: ecranVoucherSeul() });
 function voitToutActif() {
   if (estSuperAdmin()) return true;
   const m = etat.brut.membres.find((x) => x.user_id === etat.session.id && x.entite_id === etat.entiteId);
@@ -200,8 +207,9 @@ function ecrans() {
   const enRetard = mesTaches().filter((t) => t.echeance && t.echeance <= ajd).length;
   const si = (ok, item) => (ok ? [item] : []);
   const demandes = siteVisible() ? aTraiter(etat.db.demandes_site || []).length : 0;
+  const whatsapp = whatsappVisible() ? badgeWhatsApp(etat.brut.whatsapp_conversations || [], etat.brut.whatsapp_propositions || []) : 0;
   return [
-    { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
+    { titre: tr("Opérations"), items: [{ href: "#/", libelle: tr("Aujourd'hui"), cle: "tableau", icone: "soleil" }, ...si(moduleActif("reservations"), { href: "#/reservations", libelle: tr("Réservations"), cle: "reservations", icone: "reservations" }), { href: "#/taches", libelle: tr("Tâches"), cle: "taches", icone: "taches", badge: enRetard }, ...si(whatsappVisible(), { href: "#/whatsapp", libelle: tr("WhatsApp"), cle: "whatsapp", icone: "whatsapp", badge: whatsapp, badgeLibelle: tr("{badge} à traiter", { badge: whatsapp }) }), ...si(moduleActif("messages"), { href: "#/messages", libelle: tr("Messages"), cle: "messages", icone: "messages" })] },
     { titre: tr("Site"), items: [...si(siteVisible(), { href: "#/demandes", libelle: tr("Demandes du site"), cle: "demandes", icone: "messages", badge: demandes, badgeLibelle: tr("{badge} à traiter", { badge: demandes }) }), ...si(bandeauVisible(), { href: "#/bandeau", libelle: tr("Bandeau du site"), cle: "bandeau", icone: "alerte" })] },
     { titre: tr("Ventes"), items: [...si(agentVisible(), { href: "#/agent", libelle: tr("Assistant"), cle: "agent", icone: "assistant" }), { href: "#/dossiers", libelle: tr("Dossiers"), cle: "dossiers", icone: "dossiers" }, { href: "#/clients", libelle: tr("Clients"), cle: "clients", icone: "clients" }, ...si((peut("finances.voir") && !modeTaxi()) || (peut("partenaires.nets") && modeExcursions()), { href: "#/encaisser", libelle: tr("À encaisser"), cle: "encaisser", icone: "du" }), ...si(fiduciaireAuMenu(), { href: "#/fiduciaire", libelle: tr("Fiduciaire"), cle: "fiduciaire", icone: "reservations" }), ...si(moduleActif("catalogue"), { href: "#/catalogue", libelle: tr("Catalogue"), cle: "catalogue", icone: "catalogue" })] },
     {
@@ -372,6 +380,7 @@ const fiduciaireAuMenu = () => peut("fiduciaire.preparer") && moduleActif("fiduc
 function ecranDeLEntreprise(cle) {
   if (cle === "demandes") return siteVisible();
   if (cle === "bandeau") return bandeauVisible();
+  if (cle === "whatsapp") return whatsappVisible();
   const m = moduleDeLEcran(cle);
   return !m || moduleActif(m.id);
 }
@@ -623,10 +632,16 @@ async function afficher() {
   // Une notification ouvre l'écran dans l'entreprise qu'elle concerne (« ?entite=… ») : on y passe si la personne y a accès.
   const entiteDemandee = new URLSearchParams(location.hash.split("?")[1] || "").get("entite");
   if (entiteDemandee && entiteDemandee !== etat.entiteId && entitesAccessibles().some((e) => e.id === entiteDemandee)) changerEntite(entiteDemandee, { naviguer: false });
+  // Une notification WhatsApp d'une conversation à trier n'a pas d'entreprise : depuis ZTP, on passe dans la première entreprise du numéro
+  // où la personne lit la boîte, au lieu de retomber sur l'accueil.
+  if (/^#\/whatsapp(\?|$)/.test(location.hash) && etat.brut.whatsapp_disponible === true && !whatsappVisible()) {
+    const e = entitesAccessibles().find((x) => lecteurWhatsApp({ entite: x, superAdmin: estSuperAdmin(), permissions: permissionsDe(x.id), voitTout: voitToutDans(x.id) }));
+    if (e) changerEntite(e.id, { naviguer: false });
+  }
   if (ecranVoucherSeul()) return afficherVoucherSeul();
   // Le menu dépend de l'entreprise active, des droits et des modules allumés (Réglages, Écrans) : on le refait quand l'un d'eux change.
   // Ses badges, eux, suivent à chaque affichage (majBadges).
-  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}|${MODULES.filter((m) => moduleActif(m.id)).map((m) => m.id).join(",")}|${fiduciaireAuMenu()}`;
+  const cle = `${etat.entiteId}|${roleActif()}|${etat.session.id}|${langueActive()}|${MODULES.filter((m) => moduleActif(m.id)).map((m) => m.id).join(",")}|${fiduciaireAuMenu()}|${whatsappVisible()}`;
   const existante = racine.querySelector(".coque");
   if (!existante || existante.dataset.cle !== cle) {
     vider(racine).append(coque());
@@ -882,6 +897,9 @@ window.addEventListener("error", (e) => signalerErreur(e.message));
 const annoncerArrivees = (n) => toast(n > 1 ? tr("{n} nouvelles demandes du site.", { n }) : tr("Nouvelle demande du site."));
 // Demandes du site à traiter dans l'entreprise affichée (pour annoncer une arrivée).
 const demandesATraiter = () => ({ entite: etat.entiteId, ids: etat.db && siteVisible() ? aTraiter(etat.db.demandes_site || []).map((d) => d.id) : [] });
+// Messages WhatsApp non lus (conversation et nombre) : un message de plus dans une conversation déjà non lue s'annonce aussi.
+const whatsappNonLus = () => ({ entite: "whatsapp", ids: etat.brut && whatsappVisible() ? (etat.brut.whatsapp_conversations || []).filter((c) => c.non_lus > 0).map((c) => `${c.id}:${c.non_lus}`) : [] });
+const annoncerWhatsApp = (n) => toast(n > 1 ? tr("{n} nouveaux messages WhatsApp.", { n }) : tr("Nouveau message WhatsApp."));
 // Une fenêtre ouverte, un champ en cours de saisie ou une saisie pas encore enregistrée : rien ne doit être redessiné ni déclenché par-dessus.
 // Une saisie est en cours si un champ visible (écran ou fenêtre ouverte) a été changé par la personne et pas encore enregistré (saisie.mjs,
 // 19.11.2026). Avant, une fiche dossier ou client ouverte sans rien toucher comptait déjà : « Une saisie est en cours… » sans raison, et la
@@ -929,6 +947,7 @@ function surveillerDonnees() {
     let resultat = "ignore";
     let erreur = null;
     const demandesAvant = demandesATraiter();
+    const whatsappAvant = whatsappNonLus();
     try {
       resultat = await synchroniser();
       if (resultat !== "ignore") (echecs = 0), (derniereReussite = Date.now());
@@ -944,6 +963,9 @@ function surveillerDonnees() {
     // (une saisie en cours) : avant le 19.11.2026, il fallait rafraîchir la page pour le voir changer.
     if (etat.session && document.querySelector(".coque")) majBadges();
     const arrivees = resultat === "modifie" ? nouvellesDemandes(demandesAvant, demandesATraiter()) : 0;
+    // Sur l'écran WhatsApp, la conversation se redessine sous les yeux : pas d'annonce en plus.
+    const messagesWa = resultat === "modifie" && !/^#\/whatsapp/.test(location.hash) ? nouvellesDemandes(whatsappAvant, whatsappNonLus()) : 0;
+    if (messagesWa) annoncerWhatsApp(messagesWa);
     if (aRedessiner && etat.session && ecranLibre()) {
       aRedessiner = false;
       window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -977,6 +999,87 @@ function surveillerDonnees() {
       console.warn(err);
     }
   }
+  // Boîte WhatsApp en temps réel (20.11.2026, « comme WhatsApp Web ») : un événement sur une table WhatsApp fait relire seulement la boîte
+  // (conversations, propositions, réglage) après 200 ms, sans les dossiers ni les clients, puis redessine l'écran WhatsApp ouvert (brouillon et
+  // défilement gardés par l'écran), le badge et les non-lus. Un message modifié ou supprimé ne change pas la liste : l'écran ouvert se redessine
+  // quand même, il relit les messages de la conversation à son rendu.
+  const surWhatsApp = () => /^#\/whatsapp/.test(location.hash);
+  const lecteurQuelquePart = () => !!etat.brut && etat.brut.whatsapp_disponible === true && entitesAccessibles().some((x) => lecteurWhatsApp({ entite: x, superAdmin: estSuperAdmin(), permissions: permissionsDe(x.id), voitTout: voitToutDans(x.id) }));
+  let lectureWhatsApp = false;
+  let encoreWhatsApp = null;
+  async function relireWhatsApp({ redessiner = false } = {}) {
+    if (!etat.session || !etat.store.chargerWhatsApp || !lecteurQuelquePart()) return;
+    // Une relecture à la fois ; ce qui arrive pendant la lecture la fait refaire juste après (rien n'est perdu).
+    if (lectureWhatsApp) return void (encoreWhatsApp = { redessiner: redessiner || (encoreWhatsApp && encoreWhatsApp.redessiner) });
+    lectureWhatsApp = true;
+    const signatureAvant = signatureWhatsApp(etat.brut);
+    const nonLusAvant = whatsappNonLus();
+    let applique = false;
+    let panne = false;
+    try {
+      applique = appliquerWhatsApp(await etat.store.chargerWhatsApp());
+    } catch (err) {
+      // Réseau coupé ou base injoignable : pas de nouvel essai rapproché (le repli et le retour du réseau relisent).
+      console.warn(err);
+      panne = true;
+    } finally {
+      lectureWhatsApp = false;
+    }
+    if (panne) return;
+    // Une écriture était en cours (marquer lu, ranger) : on relit un peu plus tard plutôt que de perdre l'événement.
+    if (!applique) return void setTimeout(() => relireWhatsApp({ redessiner }), 300);
+    if (document.querySelector(".coque")) majBadges();
+    const arrivees = surWhatsApp() ? 0 : nouvellesDemandes(nonLusAvant, whatsappNonLus());
+    if (arrivees) annoncerWhatsApp(arrivees);
+    if (surWhatsApp() && (redessiner || signatureWhatsApp(etat.brut) !== signatureAvant)) {
+      // Rien à perdre : tout de suite. Une saisie en cours (réponse modifiée, curseur dans la zone) : dès qu'elle est finie (voir plus haut).
+      if (ecranLibre()) window.dispatchEvent(new HashChangeEvent("hashchange"));
+      else aRedessiner = true;
+    }
+    if (encoreWhatsApp) {
+      const suite = encoreWhatsApp;
+      encoreWhatsApp = null;
+      relireWhatsApp(suite);
+    }
+  }
+  let attenteWhatsApp = null;
+  const changementWhatsApp = () => {
+    clearTimeout(attenteWhatsApp);
+    attenteWhatsApp = setTimeout(() => relireWhatsApp({ redessiner: true }), ATTENTE_WHATSAPP_MS);
+  };
+  // Repli tant que le canal WhatsApp n'est pas SUBSCRIBED : relecture ciblée toutes les 5 s sur l'écran WhatsApp, toutes les 20 s ailleurs
+  // (badge). La pastille « Direct coupé » de l'écran suit l'état du canal.
+  let repli = null;
+  let repliMs = null;
+  const etatWhatsApp = () => (etat.store.etatDirect ? etat.store.etatDirect().whatsapp : "abonne");
+  const majRepli = () => {
+    const ms = intervalleRepli({ abonne: etatWhatsApp() === "abonne", ecranWhatsApp: surWhatsApp(), actif: lecteurQuelquePart() });
+    for (const p of document.querySelectorAll(".wa-direct")) p.hidden = !directCoupe(etatWhatsApp());
+    if (ms === repliMs) return;
+    clearInterval(repli);
+    repli = null;
+    repliMs = ms;
+    if (ms) repli = setInterval(() => document.visibilityState === "visible" && relireWhatsApp(), ms);
+  };
+  if (etat.store.ecouterWhatsApp && lecteurQuelquePart()) {
+    try {
+      etat.store.ecouterWhatsApp(TABLES_WHATSAPP, changementWhatsApp, { surEtat: majRepli });
+    } catch (err) {
+      console.warn(err);
+    }
+    majRepli();
+    window.addEventListener("hashchange", () => setTimeout(majRepli, 0));
+  }
+  // Retour sur l'onglet, réseau revenu, page restaurée (iPhone) : jeton rafraîchi, canaux refaits s'ils ne sont pas « joined », et une relecture
+  // ciblée immédiate pour rattraper ce qui est arrivé pendant l'absence.
+  const reveiller = () => {
+    if (!etat.session) return;
+    if (etat.store.reveillerDirect) etat.store.reveillerDirect().catch((err) => console.warn(err));
+    relireWhatsApp({ redessiner: true });
+  };
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && reveiller());
+  window.addEventListener("online", reveiller);
+  window.addEventListener("pageshow", (e) => e.persisted && reveiller());
   document.addEventListener("visibilitychange", () => actualiser());
   window.addEventListener("online", () => ((hors = false), majPastille(), actualiser()));
   window.addEventListener("offline", () => ((hors = true), majPastille()));

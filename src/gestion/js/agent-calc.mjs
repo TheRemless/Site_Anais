@@ -4,6 +4,8 @@
 //   - la liste des conversations, rangée comme une messagerie ;
 //   - une carte « dossier » vers l'écran « Coller une demande » déjà rempli (la création reste celle de l'outil).
 
+import { reglesReponse } from "./defauts.mjs";
+
 // L'agent est proposé quand l'entreprise l'a allumé (Réglages), indépendamment de l'assistant de « Coller une demande » ; l'écran vérifie en
 // plus que le rôle peut lire les tarifs et écrire des dossiers.
 export const agentActif = (regl) => !!(regl && regl.agent_ia === true);
@@ -194,7 +196,7 @@ const lireChemin = (o, chemin) => chemin.split(".").reduce((v, k) => (v && typeo
 const moduleTexte = (v) => (v === true ? "oui" : v === false ? "non" : "auto");
 const ENTIERS = ["conditions.delai_jours", "conditions.relance_jours", "conditions.solde_jours", "conditions.acompte_pct"];
 const MODULES = ["modules.partenaires", "modules.reservations", "modules.messages", "modules.catalogue"];
-const TEXTES_VOUCHER = ["voucher.merci", "voucher.merci_transfert", "voucher.note_transfert"];
+const TEXTES_VOUCHER = ["voucher.merci", "voucher.merci_transfert", "voucher.note_transfert", "assistant_voix.regles_reponse"];
 
 // Les réglages après la carte (voix, texte type, réglage), ou { erreur }. `nouvelId` : l'identifiant d'un nouveau texte type.
 export function reglageApplique(reglages, d = {}, { nouvelId = "" } = {}) {
@@ -221,7 +223,8 @@ export function reglageApplique(reglages, d = {}, { nouvelId = "" } = {}) {
   }
   if (d.sujet === "reglage") {
     const [groupe, cle] = String(d.champ || "").split(".");
-    const avant = lireChemin(r, d.champ);
+    // Les règles de réponse : leur valeur par défaut (Secret, Taxi) tant qu'elles n'ont jamais été enregistrées, comme les lit l'agent.
+    const avant = d.champ === "assistant_voix.regles_reponse" ? reglesReponse(r) : lireChemin(r, d.champ);
     if (MODULES.includes(d.champ)) {
       if (moduleTexte(avant) !== d.avant) return { erreur: "change" };
       const v = { oui: true, non: false, auto: null }[d.valeur];
@@ -256,4 +259,47 @@ export function prestationModifiee(p, d = {}) {
 export function listeAmeliorations(lignes = []) {
   const enCours = (l) => (["envoyee", "pr_prete", "echec"].includes(l.statut) ? 0 : 1);
   return [...(lignes || [])].sort((a, b) => enCours(a) - enCours(b) || String(b.cree_le).localeCompare(String(a.cree_le)));
+}
+
+// ---- Réponse au client : garde-fou des chiffres internes (20.11.2026) -----------------------------------------------------------------
+// L'agent voit les partenaires, les nets et les commissions (décision de Jérémy). La fonction signale dans une réponse au client chaque montant
+// égal à un net, une marge ou une commission, et chaque nom de partenaire (avertissements « montant_interne:1200,300 » et
+// « nom_prestataire:Lazy Day », outils.js, controlerReponse). L'écran bloque la copie tant que le texte corrigé contient encore l'un d'eux.
+
+// Montants d'un texte, dates, heures et téléphones exclus : même règle que outils.js (montantsDuTexte).
+export function montantsDuTexte(t) {
+  const propre = String(t || "")
+    .replace(/\+?\d[\d\s]{7,}\d/g, " ")
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
+    .replace(/\b(jan|feb|fev|fév|mar|apr|avr|may|mai|jun|juin|jul|juil|aug|aou|aoû|sep|oct|nov|dec|déc)[\p{L}.]*\s+20[2-3]\d\b/giu, " ")
+    .replace(/\b\d{1,2}[/.]\d{1,2}[/.]20[2-3]\d\b/g, " ")
+    .replace(/\b\d{1,2}[:h.]\d{2}\b/g, " ")
+    .replace(/\b\d{1,2}\s*(?:am|pm)\b/gi, " ");
+  const out = [];
+  for (const m of propre.matchAll(/(?:฿|THB|CHF|EUR|€)?\s*(\d{1,3}(?:[ ,']\d{3})+|\d{3,})(?:\s*(?:฿|THB|CHF|EUR|€|baht))?/gi)) out.push(Number(m[1].replace(/[ ,']/g, "")));
+  return out;
+}
+const plat = (s) =>
+  String(s || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+// Ce qui bloque une réponse : { montants: [nombres], noms: [textes] }, lu dans les avertissements de la carte.
+export function bloquantsReponse(avertissements = []) {
+  const montants = new Set();
+  const noms = [];
+  for (const a of avertissements || []) {
+    const [code, valeur = ""] = String(a).split(/:(.*)/s);
+    if (code === "montant_interne") for (const x of valeur.split(",")) if (x.trim() && Number.isFinite(Number(x))) montants.add(Number(x));
+    if (code === "nom_prestataire" && valeur.trim()) noms.push(valeur.trim());
+  }
+  return { montants: [...montants], noms };
+}
+// Ce qui reste dans le texte (montants et noms encore présents) ; vide : la copie est permise.
+export function resteBloque(texte, { montants = [], noms = [] } = {}) {
+  const vus = new Set(montantsDuTexte(texte));
+  const p = ` ${plat(texte)} `;
+  return [...montants.filter((n) => vus.has(n)).map(String), ...noms.filter((n) => plat(n).length >= 3 && p.includes(` ${plat(n)} `))];
 }

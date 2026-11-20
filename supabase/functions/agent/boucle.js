@@ -1,7 +1,7 @@
 // Agent de Gestion : la boucle d'outils d'un échange (un message de la personne). Sans dépendance : le client Anthropic, la base et
 // l'écran sont passés en paramètres. Le même code sert à la fonction Supabase (index.ts) et au jeu d'essai (scripts/eval-agent).
 import { DUREE_MAX_MS, TOURS_MAX, parametres, texteVisible } from "./prompt.js";
-import { executer } from "./outils.js";
+import { executer, outilsDuContexte } from "./outils.js";
 
 // anthropic : le client du SDK (anthropic.beta.messages.stream).
 // messages  : l'historique au format de l'API, complété en place (message de la personne déjà ajouté par l'appelant).
@@ -9,7 +9,9 @@ import { executer } from "./outils.js";
 // garderCarte(carte)    : enregistre une proposition et la rend avec son identifiant, ou null.
 // envoyer(evenement)    : vers l'écran (texte au fil de l'eau, étape, frise, carte, erreur).
 // Rend { statut, dernierTexte } ; les erreurs du SDK remontent à l'appelant, qui les classe.
-export async function tourner({ anthropic, modele, systeme, appris = "", contexte, messages, ctx, memo, garder, garderCarte, envoyer, appels, debut = Date.now(), maintenant = () => Date.now() }) {
+// outils : facultatif, la liste envoyée à Claude (celle des droits par défaut). Passée, elle borne aussi l'exécution : un outil absent de
+// la liste est refusé, même si le modèle l'appelle.
+export async function tourner({ anthropic, modele, systeme, appris = "", contexte, messages, ctx, memo, garder, garderCarte, envoyer, appels, debut = Date.now(), maintenant = () => Date.now(), outils }) {
   let statut = "ok";
   let dernierTexte = "";
   for (let tour = 0; tour < TOURS_MAX; tour++) {
@@ -17,7 +19,9 @@ export async function tourner({ anthropic, modele, systeme, appris = "", context
       await envoyer({ t: "erreur", erreur: "trop_long" });
       return { statut: "trop_long", dernierTexte };
     }
-    const stream = anthropic.beta.messages.stream(parametres({ modele, systeme, appris, contexte, messages }));
+    // La boîte WhatsApp passe sa propre liste (outils) : elle remplace celle des droits. Sinon, celle des droits de la personne ; en espace
+    // unifié Secret et Taxi, celle des deux entreprises (outils.js, outilsDuContexte).
+    const stream = anthropic.beta.messages.stream(parametres({ modele, systeme, appris, contexte, messages, outils: outilsDuContexte(ctx), ...(outils ? { outils } : {}) }));
     for await (const ev of stream) {
       if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") await envoyer({ t: "texte", delta: ev.delta.text });
     }
@@ -43,6 +47,7 @@ export async function tourner({ anthropic, modele, systeme, appris = "", context
     // Les outils d'un même tour s'exécutent ensemble ; leurs résultats repartent dans un seul message.
     const resultats = await Promise.all(
       appelsOutils.map(async (b) => {
+        if (outils && !outils.some((o) => o.name === b.name)) return { type: "tool_result", tool_use_id: b.id, content: JSON.stringify({ erreur: "outil_non_permis" }), is_error: true };
         await envoyer({ t: "etape", outil: b.name });
         const r = await executer(b.name, b.input, ctx, memo);
         if (r.panne) console.error("agent : outil", b.name, r.panne);

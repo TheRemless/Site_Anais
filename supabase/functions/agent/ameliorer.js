@@ -10,6 +10,7 @@
 // vient d'un montant tapé par la personne ; aucune coordonnée de paiement n'est lue ; une demande de code ne part pas d'une conversation qui
 // contient une pièce jointe ; son texte (public) ne cite ni client, ni prestataire, ni montant.
 import { controlerTexte, texteDemande, TITRE_MAX, TEXTE_MAX } from "../ameliorations/calc.js";
+import { entrepriseActive } from "./unifie.js";
 
 const texte = (x, max = 300) => (typeof x === "string" ? x.replace(/\s+/g, " ").trim().slice(0, max) : "");
 // Un texte long (voix, message type) garde ses retours à la ligne.
@@ -30,7 +31,20 @@ export const REGLAGES_PERMIS = {
   "voucher.merci": { nom: "Remerciement du voucher", type: "texte", max: 600 },
   "voucher.merci_transfert": { nom: "Remerciement du voucher de transfert", type: "texte", max: 600 },
   "voucher.note_transfert": { nom: "Note du voucher de transfert", type: "texte", max: 600 },
+  "assistant_voix.regles_reponse": { nom: "Règles de réponse au client", type: "texte", max: 2000 },
 };
+
+// Règles de réponse au client (20.11.2026), une par ligne, modifiables par entreprise dans Réglages ou par une carte « reglage ». Tant que
+// l'entreprise ne les a jamais enregistrées, Secret et Taxi ont la règle de paiement d'avance des bateaux, demandée par Jérémy le 20.11.2026 ;
+// un texte vide enregistré veut dire « aucune règle ». Même texte que defauts.mjs (REGLE_BATEAUX), vérifié par les tests.
+export const CHEMIN_REGLES = "assistant_voix.regles_reponse";
+export const REGLE_BATEAUX = "Trajet en ferry ou en speedboat d'un lieu à un autre (pas une excursion à la journée) : dis que la réservation n'est confirmée qu'après paiement et que le paiement se fait à l'avance, par Wise, par virement international ou en cash à notre office. Ajoute que nous envoyons les détails de paiement. Jamais de coordonnées bancaires, de lien Wise ni d'adresse de l'office : tu ne les as pas, ne les invente pas.";
+export function reglesReponse(reglages) {
+  const v = reglages && reglages.assistant_voix ? reglages.assistant_voix.regles_reponse : undefined;
+  if (typeof v === "string") return v.trim();
+  return reglages && ["excursions", "taxi"].includes(reglages.fonctionnement) ? REGLE_BATEAUX : "";
+}
+const valeurReglage = (r, chemin) => (chemin === CHEMIN_REGLES ? reglesReponse(r) : lire(r, chemin));
 const VOIX = { fr: "Voix de l'assistant en français", en: "Voix de l'assistant en anglais", lieu: "Lieu de l'entreprise" };
 const CHAMPS_CATALOGUE = { libelle: "Libellé", libelle_en: "Libellé en anglais", prix_vente: "Prix de vente", actif: "Proposé à la vente" };
 
@@ -43,7 +57,7 @@ export const OUTILS_AMELIORER = [
   {
     name: "lire_reglages",
     description:
-      "Lit ce qui se règle sans code dans l'outil : la voix de l'assistant, les textes types (messages), les conditions, les écrans affichés et les textes des vouchers. À appeler avant de proposer un réglage. Le catalogue se lit avec chercher_catalogue.",
+      "Lit ce qui se règle sans code dans l'outil : la voix de l'assistant, les textes types (messages), les conditions, les écrans affichés, les textes des vouchers et les règles de réponse au client. À appeler avant de proposer un réglage. Le catalogue se lit avec chercher_catalogue.",
     input_schema: obj({ sujet: { type: "string", enum: ["tout", "voix", "messages", "reglages"], description: "Ce qu'il faut lire." } }),
   },
   {
@@ -90,7 +104,7 @@ export function lireReglages({ sujet = "tout" } = {}, ctx = {}) {
       .filter((m) => m && m.pour !== "partenaire")
       .slice(0, 60)
       .map((m) => ({ id: String(m.id || ""), titre: texte(m.titre, 120), langue: m.langue || "", corps: bloc(m.corps, 1200) }));
-  if (sujet === "tout" || sujet === "reglages") out.reglages = Object.fromEntries(Object.entries(REGLAGES_PERMIS).map(([k, d]) => [k, { libelle: d.nom, valeur: d.type === "module" ? moduleTexte(lire(r, k)) : (lire(r, k) ?? "") }]));
+  if (sujet === "tout" || sujet === "reglages") out.reglages = Object.fromEntries(Object.entries(REGLAGES_PERMIS).map(([k, d]) => [k, { libelle: d.nom, valeur: d.type === "module" ? moduleTexte(lire(r, k)) : (valeurReglage(r, k) ?? "") }]));
   return { resultat: { ...out, note: "Le catalogue (libellés, prix de vente, mise en vente) se lit avec chercher_catalogue ; les références P-… servent à proposer_reglage." } };
 }
 
@@ -110,6 +124,10 @@ export async function proposerReglage(e, ctx, memo = {}) {
     const p = /^P-([0-9a-f]{8})$/i.exec(String(e.cle || "").trim());
     const ligne = p && ((await ctx.charger("prestations")) || []).find((x) => String(x.id).replace(/-/g, "").toLowerCase().startsWith(p[1].toLowerCase()));
     if (!ligne) return refuse("tarif_introuvable", "Cherche d'abord le tarif avec chercher_catalogue et reprends sa référence P-….");
+    // Espace unifié : le catalogue chargé couvre les deux entreprises, mais catalogue.ecrire n'est vérifié que dans l'entreprise active.
+    // Un tarif de l'autre entreprise se change depuis une conversation de celle-ci.
+    const active = entrepriseActive(ctx);
+    if (active && ligne.entite_id !== active.id) return refuse("autre_entreprise", "Ce tarif est dans l'autre entreprise : dis à la personne de le changer depuis une conversation de cette entreprise.");
     let valeur = texte(e.valeur, 160);
     if (e.champ === "prix_vente") {
       const n = Number(valeur.replace(/[\s,']/g, ""));
@@ -162,8 +180,8 @@ export async function proposerReglage(e, ctx, memo = {}) {
       valeur = String(Number(valeur));
     }
     if (d.type === "module" && !["oui", "non", "auto"].includes(valeur)) return refuse("valeur_invalide", "oui, non ou auto.");
-    if (!valeur && d.type === "texte") return refuse("valeur_invalide");
-    const brut = lire(r, e.champ);
+    if (!valeur && d.type === "texte" && e.champ !== CHEMIN_REGLES) return refuse("valeur_invalide");
+    const brut = valeurReglage(r, e.champ);
     const avant = d.type === "module" ? moduleTexte(brut) : String(brut ?? "");
     if (avant === valeur) return refuse("rien_ne_change");
     return { genre: "reglage", ...base, donnees: { sujet: "reglage", champ: e.champ, nom: d.nom, avant, valeur, raison: base.raison } };

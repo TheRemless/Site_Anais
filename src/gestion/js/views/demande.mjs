@@ -88,7 +88,7 @@ function lignesSite(d) {
 // la réponse au client se prépare après la création) ; une fois le dossier créé, `surCree({ dossier, services, total })` prend la suite.
 // `depuisItineraire` (écran « Prix et horaires », carte de l'onglet Assistant) : { texte, d, services, surCree? } déjà prêts, un service par trajet dont l'horaire est choisi, avec l'hôtel
 // de départ (`hotelDepart`) comme lieu de pickup. Le message du client est repris tel quel, les services ne sont pas relus.
-// `options` (carte de l'agent) : { titre, auto, surCree }. `auto` crée sans afficher la fiche et rend { ok, dossier } ; s'il manque quelque
+// `options` (carte de l'agent) : { titre, auto, surCree, essai, clientId, clientAVenir }. `auto` crée sans afficher la fiche et rend { ok, dossier } ; s'il manque quelque
 // chose (prix d'un transfert privé, service à choisir, retour sans programme…), rien n'est créé et la fiche rend { ok: false, motif }.
 // `surCree({ dossier, services, total })` prend la suite d'une création, d'un geste ou depuis la fiche affichée.
 export function ouvrirDemande(depuisSite = null, depuisItineraire = null, options = {}) {
@@ -103,7 +103,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   const contexte = () => ({ prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire, taxi: modeTaxi() });
   let d = null;
   let texte = "";
-  let clientId = ""; // client existant retenu ; vide pour un nouveau client
+  // `options.clientId` (espace unifié, migration 63) : le second dossier d'une demande mixte reprend la fiche créée pour le premier.
+  let clientId = options.clientId || ""; // client existant retenu ; vide pour un nouveau client
   let refuse = new Set(); // clients proposés que la personne a écartés
   let creation = false;
   const prixImpose = depuisSite && depuisSite.prixImpose !== null && depuisSite.prixImpose !== undefined && depuisSite.prixImpose !== "" ? Number(depuisSite.prixImpose) : null;
@@ -400,7 +401,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   // ---- Client, champs et message de réponse --------------------------------------------------------------------------------------
   function retenirClient() {
     const proches = clientsConnus();
-    if (clientId && !proches.some((x) => x.client.id === clientId)) clientId = "";
+    if (clientId && clientId !== options.clientId && !proches.some((x) => x.client.id === clientId)) clientId = "";
     if (!clientId && proches[0] && proches[0].raison === "telephone") clientId = proches[0].client.id;
     const c = clientId ? clientParId(clientId) : null;
     if (c && !d.hotel && !d.hotelSaisi) d.hotel = hotelDuClient(c);
@@ -488,7 +489,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
       return { ok: false, motif };
     }
     erreur.textContent = "";
-    const nouveauClient = !clientId;
+    // `options.clientAVenir` (passe à blanc du second dossier d'une carte mixte) : la fiche viendra du premier dossier, pas de contrôle de fiche.
+    const nouveauClient = !clientId && !options.clientAVenir;
     if (nouveauClient && !d.nom.trim()) return (erreur.textContent = tr("Indiquez le nom du client.")), document.getElementById("dem-nom").focus();
     if (nouveauClient && !peut("clients.ecrire")) return (erreur.textContent = tr("Votre rôle ne permet pas de créer un client : choisissez un client existant."));
     const b = preparer();
@@ -498,6 +500,11 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
     if (b.incomplet) return montrerIncomplet(b);
     const ref = refProposee(regl);
     if (!ref.trim() || refExiste(ref)) return (erreur.textContent = tr("Le numéro de facture n'a pas pu être proposé : créez le dossier depuis « Nouveau dossier »."));
+    // `options.essai` (espace unifié, migration 63) : passe à blanc, tous les contrôles ont passé, rien n'est écrit.
+    if (options.essai) {
+      fermer();
+      return { ok: true, essai: true };
+    }
     creation = true;
     btn.disabled = true;
     btn.textContent = tr("Création…");
@@ -603,7 +610,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   }
 
   function vider() {
-    clientId = "";
+    clientId = options.clientId || "";
     refuse = new Set();
     services = [];
     listeBloc.replaceChildren();

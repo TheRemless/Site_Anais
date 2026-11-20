@@ -19,8 +19,14 @@ export const USAGES_SUIVIS = [
   ["trier", N_("Trier")],
   ["brochure", N_("Brochure")],
   ["agent", N_("Onglet Assistant (conversation)")],
+  ["whatsapp", N_("Boîte WhatsApp (réponses préparées)")],
   ["rediger", N_("Rédiger (retiré le 19.11.2026)")],
 ];
+
+// Les réponses préparées de la boîte WhatsApp (migration 59) sont notées sans personne : la fonction « whatsapp » écrit cet identifiant.
+// L'écran l'appelle « Boîte WhatsApp » au lieu d'une personne inconnue.
+export const UTILISATEUR_WHATSAPP = "00000000-0000-0000-0000-000000000000";
+export const NOM_WHATSAPP = N_("Boîte WhatsApp");
 
 // Usages qui rédigent un texte destiné au client : ce sont eux que mesure la qualité.
 export const USAGES_REDIGES = ["repondre_itineraire", "rediger"];
@@ -134,7 +140,9 @@ export function suiviAssistant({ lignes = [], retouches = null, jour, limite = L
   const ordreUsage = USAGES_SUIVIS.map(([k]) => k);
   const libelleUsage = (k) => (USAGES_SUIVIS.find(([c]) => c === k) || [k, k])[1];
   const nomEntite = (id) => (entites.find((e) => e.id === id) || {}).nom || "";
-  const nomPersonne = (id) => noms[id] || "";
+  const nomPersonne = (id) => (id === UTILISATEUR_WHATSAPP ? NOM_WHATSAPP : noms[id] || "");
+  // Un nom de l'outil (à traduire à l'affichage), pas celui d'une personne.
+  const systeme = (id) => id === UTILISATEUR_WHATSAPP;
 
   const idsPersonnes = new Set([...personnes.keys(), ...L.filter((l) => l.jour === jour).map((l) => l.user_id)]);
   const lignesPersonnes = [...idsPersonnes].map((id) => {
@@ -142,14 +150,16 @@ export function suiviAssistant({ lignes = [], retouches = null, jour, limite = L
     // Jours des 30 derniers où la personne a atteint la limite (toutes entreprises confondues).
     let joursLimite = 0;
     for (const j of jours30) if ((parJourPersonne.get(`${j}|${id}`) || 0) >= limite) joursLimite += 1;
-    return { user_id: id, nom: nomPersonne(id), aujourdhui: aujourd, limiteAtteinte: aujourd >= limite, joursLimite, ...fini(personnes.get(id) || compteur()) };
+    // La Boîte WhatsApp n'est pas une personne : la fonction « whatsapp » n'a pas de limite d'appels par jour.
+    if (systeme(id)) return { user_id: id, nom: nomPersonne(id), systeme: true, aujourdhui: aujourd, limiteAtteinte: false, joursLimite: 0, ...fini(personnes.get(id) || compteur()) };
+    return { user_id: id, nom: nomPersonne(id), systeme: false, aujourdhui: aujourd, limiteAtteinte: aujourd >= limite, joursLimite, ...fini(personnes.get(id) || compteur()) };
   });
   lignesPersonnes.sort((a, b) => b.aujourdhui - a.aujourdhui || b.appels - a.appels || a.nom.localeCompare(b.nom));
 
   const echecs = L.filter((l) => l.statut !== "ok")
     .sort((a, b) => (a.cree_le < b.cree_le ? 1 : -1))
     .slice(0, 10)
-    .map((l) => ({ cree_le: l.cree_le, usage: l.usage, libelleUsage: libelleUsage(l.usage), statut: l.statut, libelleStatut: STATUTS[l.statut] || l.statut, categorie: categorie(l.statut), personne: nomPersonne(l.user_id), entreprise: nomEntite(l.entite_id) }));
+    .map((l) => ({ cree_le: l.cree_le, usage: l.usage, libelleUsage: libelleUsage(l.usage), statut: l.statut, libelleStatut: STATUTS[l.statut] || l.statut, categorie: categorie(l.statut), personne: nomPersonne(l.user_id), personneSysteme: systeme(l.user_id), entreprise: nomEntite(l.entite_id) }));
 
   return {
     jour,

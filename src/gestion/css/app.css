@@ -869,25 +869,51 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .s-sur_place { color: #25653d; }
 .ecart-reception { min-height: 1.4em; margin: 0 0 8px; font-weight: 600; }
 .modal-corps > .aide { margin: 0 0 14px; }
-.detail-services { margin: 6px 0 0; }
-.detail-services summary { display: flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--teal-700); cursor: pointer; }
-.detail-services ul { list-style: none; margin: 0 0 6px; padding: 0; }
-.detail-services li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--bord); font-size: 0.92rem; }
-/* À encaisser : la liste à cocher d'un virement ou d'une réception à annuler, et le bandeau « Recalculer » toujours présent. */
-.liste-reception { list-style: none; margin: 0 0 8px; padding: 0; max-height: 45vh; overflow: auto; }
-.liste-reception li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 2px 0; border-top: 1px solid var(--bord); font-size: 0.92rem; }
-.liste-reception .case { flex: 1; min-width: 0; font-weight: 400; }
-.liste-reception .case input { flex: none; width: 20px; height: 20px; }
-.liste-reception .case .tag { margin-left: 6px; }
-.liste-reception strong { flex: none; }
 .bandeau-recalcul { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin: 0 0 20px; padding: 8px 14px; border: 1px solid var(--bord); border-radius: var(--rayon); font-size: 0.92rem; }
 .bandeau-recalcul.a-faire { background: #fff4d6; border-color: #e8d49a; color: #5a4300; }
 .bandeau-recalcul button { min-height: 44px; }
 .commissions-recues > summary { display: flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--teal-700); cursor: pointer; }
-.commissions-recevoir .carte-actions, .commissions-recues .carte-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-@media (max-width: 719px) {
-  .commissions-recevoir .carte-actions .principal, .commissions-recues .carte-actions .principal { order: -1; flex: 1 1 100%; }
-}
+/* À encaisser, commissions (20.11.2026) : un partenaire, ses dossiers à cocher dessous, le total coché sous son nom et en bas de l'écran. */
+.enc-partenaire { margin: 0 0 16px; padding: 4px 16px 8px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; box-shadow: var(--ombre); }
+.enc-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 10px 0 8px; }
+.enc-tete h3 { margin: 0; font-size: 1.05rem; }
+.droite-pile .enc-coche { font-weight: 700; color: var(--teal-700); }
+.enc-coche:empty { display: none; }
+.enc-liste { list-style: none; margin: 0; padding: 0; }
+.enc-dossier { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; border-top: 1px solid var(--bord); }
+.enc-case { flex: 1 1 260px; display: flex; align-items: flex-start; gap: 12px; min-height: 56px; padding: 10px 0; cursor: pointer; }
+div.enc-case { cursor: default; }
+.enc-case input[type="checkbox"] { flex: none; width: 22px; height: 22px; margin: 2px 0 0; }
+.enc-case:has(input:checked) .enc-montant { color: var(--teal-700); }
+.enc-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.enc-client { font-weight: 600; }
+.enc-detail { font-size: 0.88rem; color: var(--texte-2); overflow-wrap: anywhere; }
+.enc-tags .tag { margin: 2px 6px 0 0; }
+.enc-montant { flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.enc-dossier > .lien { margin-left: auto; }
+.enc-pied { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0 6px; border-top: 1px solid var(--bord); }
+.enc-pied .aide { margin: 0; }
+.enc-barre { display: flex; gap: 8px 12px; flex-wrap: wrap; }
+@media (max-width: 719px) { .enc-barre > .principal { flex: 1 1 100%; } }
+.enc-barre[hidden] { display: none; }
+.enc-barre-texte { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.enc-feuille-liste { list-style: none; margin: 0; padding: 0; }
+.enc-feuille-dossier { padding: 12px 0; border-top: 1px solid var(--bord); }
+.enc-feuille-titre { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 0 0 2px; }
+.enc-feuille-titre span { color: var(--texte-2); font-size: 0.9rem; }
+.enc-feuille-dossier > .aide { margin: 0 0 8px; }
+.enc-choix, .enc-motif { margin: 8px 0 0; padding: 0; border: 0; }
+.enc-choix legend, .enc-motif legend { padding: 0; margin: 0 0 4px; font-weight: 600; font-size: 0.92rem; }
+.enc-choix .aide { display: block; margin: -6px 0 4px 32px; }
+.enc-motif .puces { margin: 0 0 8px; padding: 0; flex-wrap: wrap; overflow: visible; }
+.enc-motif .puce { display: inline-flex; align-items: center; cursor: pointer; }
+.enc-motif .puce input { position: absolute; opacity: 0; pointer-events: none; }
+.enc-motif .puce:has(input:checked) { background: var(--teal-100); border-color: var(--teal-600); color: var(--teal-700); box-shadow: inset 0 0 0 1px var(--teal-600); }
+.enc-motif .puce:has(input:focus-visible) { outline: 2px solid var(--teal-600); outline-offset: 2px; }
+.enc-feuille .ecart-reception:empty { display: none; }
+.enc-feuille .ecart-reception { margin: 8px 0 0; }
+.enc-total { flex: 1 1 auto; margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (forced-colors: active) { .enc-motif .puce:has(input:checked) { outline: 2px solid Highlight; } }
 
 /* ==== Session C (mobile) : navigation et accueil ============================================================== */
 /* Bouton « + » : un geste pour créer, au-dessus de la barre d'onglets, jamais par-dessus une barre d'action ni le clavier. */
@@ -1206,7 +1232,6 @@ th[aria-sort="ascending"] .st-tri, th[aria-sort="descending"] .st-tri { color: v
 .formulaire-reservation .actions:not(.gauche) { flex-wrap: nowrap; }
 .formulaire-reservation .actions:not(.gauche) button { flex: 1 1 0; }
 @media (min-width: 720px) { .formulaire-reservation .actions:not(.gauche) button { flex: 0 0 auto; min-width: 120px; } }
-.carte .detail-services { margin: 0; }
 
 /* ---- Session F : recalcul des commissions ---- */
 .recalcul-commission { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: space-between; padding: 8px 10px; margin: 6px 0; border-radius: var(--rayon); background: var(--surface-2); font-size: 14px; }
@@ -2114,3 +2139,188 @@ button.agent-joint { cursor: pointer; }
 .agent-fil.agent-depot { outline: 2px dashed var(--teal-600); outline-offset: -6px; }
 .agent-apercu img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .brochure-nouveau { padding: 10px 12px; border: 1px solid var(--bord); border-left: 4px solid var(--teal); border-radius: var(--rayon); background: var(--surface); }
+
+/* ---- Écran « WhatsApp » (migrations 58 et 59, 20.11.2026) ----------------------------------------------------------------------
+   Même mise en page que l'onglet Assistant : téléphone, la liste puis la conversation en plein écran ; ordinateur, liste à gauche.
+   L'élément fort est la réponse préparée : un texte modifiable et un gros bouton Copier, en bas sous le pouce. Le reste reste discret. */
+.wa-liste-tete { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; }
+.wa-liste-tete h1 { margin: 0; }
+.wa-liste-tete .sous { margin: 0; font-variant-numeric: tabular-nums; }
+.wa-liste .puces { margin-bottom: 8px; }
+.wa-conversations { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--bord); }
+.wa-conv { display: grid; gap: 4px; padding: 12px 4px; min-height: 64px; border-bottom: 1px solid var(--bord); color: var(--texte); text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.wa-conv:hover { background: var(--surface-2); color: var(--texte); }
+.wa-conv[aria-current] { background: var(--teal-100); }
+.wa-conv-ligne { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.wa-conv-ligne strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.wa-conv.non-lue strong { font-weight: 800; }
+.wa-conv time { flex: none; font-size: 0.82rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.wa-conv.non-lue time { color: var(--teal-700); font-weight: 700; }
+.wa-conv-etat { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; color: var(--texte-2); }
+.wa-conv-etat.prete { color: var(--teal-700); font-weight: 700; }
+.wa-conv-etat.echec { color: var(--danger); }
+.wa-conv-droite { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.wa-marque { padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.wa-marque.a-trier { background: #fff4d6; color: #5a4300; }
+.wa-liste-vide { margin-top: 16px; }
+
+.wa-fil { display: none; }
+.wa.avec-fil .wa-liste { display: none; }
+.wa.avec-fil .wa-fil { display: flex; flex-direction: column; min-height: calc(100dvh - var(--haut-barre) - var(--barre-basse) - 40px); }
+.wa-fil-tete { position: sticky; top: var(--haut-barre); z-index: 5; display: flex; align-items: center; gap: 6px; min-width: 0; margin: -16px -16px 0; padding: 6px 12px 6px 8px; background: rgba(245, 248, 248, 0.96); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-bottom: 1px solid var(--bord); }
+.wa-fil-infos { display: grid; gap: 8px; margin: 0 -16px; padding: 10px 16px; border-bottom: 1px solid var(--bord); }
+.wa-retour { flex: none; width: 44px; height: 44px; }
+.wa-fil-titre { flex: 1; min-width: 0; }
+.wa-fil-titre h2 { margin: 0; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-numero { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0; font-size: 0.85rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.wa-ouvrir-tete { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.wa-ouvrir-tete svg, .wa-ouvrir svg { color: #128c4a; }
+.wa-entreprise { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.wa-segments { display: inline-flex; border: 1px solid var(--bord-champ); border-radius: 999px; padding: 2px; background: var(--surface); }
+.wa-segment { min-height: 40px; padding: 0 14px; border: 0; border-radius: 999px; background: none; color: var(--texte); font-weight: 600; font-size: 0.9rem; }
+.wa-segment[aria-pressed="true"] { background: var(--teal-600); color: #fff; }
+.wa-segment.propose:not([aria-pressed="true"]) { box-shadow: inset 0 0 0 2px var(--teal-600); color: var(--teal-700); }
+.wa-note { font-size: 0.84rem; color: var(--texte-2); }
+.wa-note.propose { color: var(--teal-700); font-weight: 600; }
+.wa-relations { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 0; font-size: 0.9rem; }
+.wa-relations .lien { min-height: 36px; padding: 0; }
+.wa-lien-fiche { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; font-weight: 600; }
+.wa-sans { color: var(--texte-2); }
+
+.wa-messages { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; flex: 1; }
+.wa-jour { display: flex; flex-direction: column; gap: 6px; }
+.wa-jour-titre { display: flex; justify-content: center; margin: 10px 0 4px; }
+.wa-jour-titre span { padding: 2px 10px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.78rem; font-weight: 600; }
+.wa-bulle { max-width: min(80%, 34rem); padding: 8px 12px 6px; border-radius: 14px; overflow-wrap: anywhere; }
+.wa-bulle.entrant { align-self: flex-start; background: var(--surface); border: 1px solid var(--bord); border-bottom-left-radius: 4px; }
+.wa-bulle.sortant { align-self: flex-end; background: var(--teal-100); border-bottom-right-radius: 4px; }
+.wa-bulle.reaction { padding: 4px 10px; font-size: 0.9rem; }
+.wa-bulle.supprime .wa-texte { color: var(--texte-2); text-decoration: line-through; }
+.wa-texte { margin: 0; white-space: pre-wrap; line-height: 1.45; }
+.wa-type { color: var(--texte-2); font-style: italic; }
+.wa-supprime { margin: 0 0 2px; font-size: 0.8rem; font-weight: 700; color: var(--danger); }
+.wa-meta { margin: 2px 0 0; text-align: right; font-size: 0.74rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.wa-image, .wa-fichier { margin: 0 0 6px; }
+.wa-image figcaption, .wa-fichier figcaption { margin-top: 4px; font-size: 0.92rem; white-space: pre-wrap; }
+.wa-vignette { display: block; padding: 0; border: 0; background: none; border-radius: 10px; overflow: hidden; min-height: 0; }
+.wa-vignette img { display: block; max-width: 100%; max-height: 280px; width: auto; height: auto; border-radius: 10px; }
+.wa-vignette-vide { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 220px; max-width: 100%; height: 140px; border-radius: 10px; background: var(--surface-2); color: var(--texte-2); font-size: 0.82rem; font-weight: 500; text-align: center; padding: 8px; }
+.wa-fichier button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+.wa-media-absent { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); color: var(--texte-2); font-size: 0.86rem; }
+
+/* La réponse préparée : en bas de la conversation, le bouton Copier collé au-dessus des onglets sur téléphone. */
+.wa-prop { margin: 8px -16px 0; padding: 14px 16px 12px; background: var(--surface); border-top: 2px solid var(--teal-600); }
+.wa-prop h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0 0 8px; font-size: 1rem; }
+.wa-prop textarea { width: 100%; min-height: 9.5em; font: inherit; font-size: 16px; line-height: 1.45; resize: vertical; }
+.wa-avertissements { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.wa-avertissements li { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border-radius: 8px; font-size: 0.9rem; line-height: 1.4; }
+.wa-avertissements svg { flex: none; margin-top: 2px; }
+.wa-avertissements .alerte { background: #fff4d6; color: #5a4300; }
+.wa-avertissements .info { color: var(--texte-2); padding-top: 0; padding-bottom: 0; }
+.wa-prop-actions { position: sticky; bottom: var(--barre-basse); z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; margin: 10px -16px 0; padding: 8px 16px; background: var(--surface); }
+.wa-copier { flex: 1 1 100%; min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 1.08rem; font-weight: 700; border-radius: 12px; }
+.wa-copier.fait { background: var(--teal-700); }
+.wa-ouvrir { flex: 1 1 100%; min-height: 48px; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; }
+.wa-prop-suite { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; margin-top: 4px; }
+.wa-prop-suite .lien { min-height: 44px; padding: 0; }
+.wa-prop-suite .secondaire { margin-left: auto; }
+.wa-detail { margin: 4px 0 0; font-size: 0.84rem; color: var(--texte-2); }
+.wa-prop.en-cours, .wa-prop.echec { border-top-color: var(--bord-fort); }
+.wa-prop.echec { color: var(--texte); }
+.wa-prop.echec p { margin: 0; }
+.wa-prop-fait { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 12px 0 0; font-size: 0.86rem; color: var(--texte-2); }
+.wa-reglages-etat { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 10px 0 0; font-size: 0.92rem; }
+.wa-reglages-etat dt { color: var(--texte-2); }
+.wa-reglages-etat dd { margin: 0; }
+.wa-compte.connecte { color: var(--teal-700); font-weight: 600; }
+.wa-compte.deconnecte, .wa-compte.retire { color: var(--danger); font-weight: 600; }
+
+@media (min-width: 560px) {
+  .wa-copier { flex: 2 1 0; }
+  .wa-ouvrir { flex: 1 1 0; }
+}
+@media (min-width: 900px) {
+  .wa:not(.wa-indisponible) { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 0; height: calc(100dvh - var(--decalage, 80px)); margin: -32px -40px -48px; border-top: 1px solid var(--bord); }
+  .wa-liste .puces { flex-wrap: nowrap; gap: 6px; margin: 0; padding: 2px 0 8px; }
+  .wa-liste .puce { padding: 0 9px; font-size: 0.88rem; }
+  .wa-liste, .wa.avec-fil .wa-liste { display: block; overflow-y: auto; padding: 20px 16px; border-right: 1px solid var(--bord); background: var(--surface); }
+  .wa-fil, .wa.avec-fil .wa-fil { display: flex; flex-direction: column; min-height: 0; }
+  .wa-fil-vide { align-items: center; justify-content: center; }
+  .wa-fil-tete { position: static; margin: 0; padding: 10px 24px 4px; border-bottom: 0; }
+  .wa-fil-infos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 0; padding: 4px 24px 10px; }
+  .wa-retour { display: none; }
+  /* Un bandeau au-dessus (démonstration, crédit) : la boîte commence sous lui, sans le recouvrir. */
+  .contenu > :not(main) ~ main .wa:not(.wa-indisponible) { margin-top: 0; height: calc(100dvh - var(--decalage, 80px) + 48px); }
+  .wa-messages { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 28px; }
+  /* Le bouton Copier reste toujours visible : c'est le texte qui rétrécit quand la place manque. */
+  .wa-prop { flex: none; display: flex; flex-direction: column; margin: 0; padding: 12px 28px 10px; max-height: 68%; overflow-y: auto; border-top-width: 2px; }
+  .wa-prop textarea { flex: 1 1 8em; min-height: 5.5em; font-size: 0.98rem; }
+  .wa-messages { min-height: 120px; }
+  .wa-prop-actions { position: static; margin: 10px 0 0; padding: 0; }
+  .wa-prop-fait { margin: 0; padding: 10px 28px; border-top: 1px solid var(--bord); }
+}
+@media (max-width: 559px) { .wa-ouvrir-texte { display: none; } .wa-ouvrir-tete { width: 44px; height: 44px; padding: 0; justify-content: center; } }
+/* Réponse préparée pour une autre entreprise que celle de la conversation (à trier, ou rangée ailleurs depuis). */
+.wa-pour { margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: #fff4d6; color: #5a4300; font-size: 0.8rem; font-weight: 600; }
+/* Tri des messages (migration 60) : réglage des réponses préparées par contact, raison quand rien n'est préparé. */
+.wa-reponses { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.wa-reponses-libelle { font-size: 0.86rem; font-weight: 600; color: var(--texte-2); }
+.wa-reponses .wa-segment { min-height: 36px; padding: 0 12px; font-size: 0.86rem; }
+.wa-sans-reponse { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; margin: 12px 0 0; }
+.wa-sans-reponse .wa-prop-fait { margin: 0; }
+.wa-sans-reponse .secondaire { min-height: 40px; }
+.wa-conv-etat.sans { color: var(--texte-2); font-style: italic; }
+@media (min-width: 900px) { .wa-sans-reponse { margin: 0; padding: 10px 28px; border-top: 1px solid var(--bord); } .wa-sans-reponse .wa-prop-fait { border-top: 0; padding: 0; } }
+/* Temps réel coupé (canal Realtime en erreur) : discret, à côté du titre, tant que l'écran se relit toutes les 5 s. */
+.wa-direct { align-self: center; padding: 1px 8px; border: 1px solid #e8d49a; border-radius: 999px; background: #fff4d6; color: #5a4300; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.wa-direct[hidden] { display: none; }
+/* Suivi des conversations WhatsApp (migrations 61 et 62) : dossier et voucher, résumé, paiement signalé, promesses. */
+.wa-actions-dossier { display: flex; flex-wrap: wrap; gap: 8px; }
+.wa-actions-dossier button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
+.wa-resume { margin: 0 -16px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--bord); font-size: 0.9rem; }
+.wa-resume summary { display: flex; align-items: baseline; gap: 8px; min-height: 32px; cursor: pointer; font-weight: 700; color: var(--texte); }
+.wa-resume-le { font-weight: 400; font-size: 0.8rem; color: var(--texte-2); }
+.wa-resume ul { margin: 2px 0 2px; padding-left: 18px; color: var(--texte); line-height: 1.45; }
+.wa-suivi { margin: 10px 0 0; padding: 10px 12px; border: 1px solid var(--bord); border-radius: 10px; background: var(--surface); }
+.wa-suivi p { margin: 0; font-size: 0.92rem; line-height: 1.45; }
+.wa-suivi p svg { display: inline; vertical-align: -3px; margin-right: 6px; color: var(--teal-700); }
+.wa-suivi-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 6px; }
+.wa-suivi-actions .lien { min-height: 40px; padding: 0; }
+.wa-tache { margin: 10px 0 0; font-size: 0.86rem; line-height: 1.45; color: var(--texte-2); }
+.wa-tache svg { display: inline; vertical-align: -3px; margin-right: 6px; }
+.wa-tache a { margin-left: 8px; }
+@media (min-width: 900px) {
+  .wa-resume { margin: 0; padding: 8px 24px; }
+}
+/* Pièces à joindre pour l'Assistant : rien de coché d'office, six au plus. */
+.wa-pieces .bandeau-info { margin-bottom: 10px; font-weight: 600; }
+.wa-pieces-liste { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.wa-piece { display: grid; grid-template-columns: auto 56px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 64px; padding: 6px 8px; border: 1px solid var(--bord); border-radius: 10px; cursor: pointer; }
+.wa-piece:has(input:checked) { border-color: var(--teal-600); background: var(--teal-100); }
+.wa-piece:has(input:disabled) { opacity: 0.6; cursor: not-allowed; }
+.wa-piece input { width: 22px; height: 22px; margin: 0; }
+.wa-piece-vignette { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 8px; overflow: hidden; background: var(--surface-2); color: var(--texte-2); }
+.wa-piece-vignette img { width: 100%; height: 100%; object-fit: cover; }
+.wa-piece-texte { display: grid; gap: 2px; min-width: 0; font-size: 0.9rem; }
+.wa-piece-texte strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.wa-piece-texte span { color: var(--texte-2); font-size: 0.82rem; }
+/* Espace unifié (migration 63) : conversation WhatsApp d'une entreprise que la personne n'administre pas. */
+.wa-lecture-seule { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.86rem; font-weight: 600; }
+.dossier-lie { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: 0.92rem; }
+.dossier-lie svg { color: var(--teal-700); flex: none; }
+.dossier-lie a { font-weight: 600; }
+/* Espace unifié Secret et Taxi (migration 63) : entreprise de chaque service, conversations des deux entreprises, doublons. */
+.agent-badge-entreprise { display: inline-flex; align-items: center; justify-content: center; margin-top: 4px; min-height: 28px; padding: 0 10px; border: 1px solid var(--bord-champ); border-radius: 999px; background: var(--surface); color: var(--texte); font-size: 0.78rem; font-weight: 700; width: fit-content; }
+button.agent-badge-entreprise { cursor: pointer; }
+.agent-badge-entreprise.secret { border-color: var(--teal-600); background: var(--teal-100); color: var(--teal-700); }
+.agent-badge-entreprise.taxi { border-color: #c9a227; background: #fff4d6; color: #5a4300; }
+.agent-badge-entreprise.a-choisir { border-style: dashed; border-color: var(--danger); background: var(--danger-fond); color: var(--danger); }
+@media (pointer: coarse) { button.agent-badge-entreprise { min-height: 36px; padding: 0 14px; } }
+.agent-conv-entreprise { justify-self: start; padding: 0 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.72rem; font-weight: 700; }
+.agent-conv-entreprise.secret { background: var(--teal-100); color: var(--teal-700); }
+.agent-conv-entreprise.taxi { background: #fff4d6; color: #5a4300; }
+.doublons { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.doublons li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 10px; border: 1px solid var(--bord); border-radius: 8px; background: var(--surface); }
+.doublons-paire { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 1 1 260px; }
+.doublons-paire .tag { margin-left: 0; }
+.doublons-raison { font-size: 0.84rem; color: var(--texte-2); }

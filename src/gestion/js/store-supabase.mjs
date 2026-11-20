@@ -6,6 +6,7 @@ import { separerNets, fusionnerNets } from "./nets-documents.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { lireRetourLien } from "./compte-calc.mjs";
 import { avecNomsLies } from "./partage-clients-calc.mjs";
+import { estCoupure, delaiReabonnement, doitReabonner } from "./direct-reprise-calc.mjs";
 
 // La copie de la feuille du jour gardée sur ce téléphone ne survit pas à une déconnexion.
 const effacerCopieHorsLigne = () => {
@@ -165,6 +166,52 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     return { demandes_site: demandes || [], bandeaux_site: bandeaux || [], site_disponible: demandes !== null && bandeaux !== null };
   }
 
+  // Boîte WhatsApp (migrations 58 et 59) : conversations, propositions de l'agent et réglage de réception. La base ne rend rien à qui n'est pas
+  // administrateur de Secret ou de Taxi. Tant qu'une migration manque, on le dit à l'écran (`whatsapp_disponible`, `whatsapp_propositions_disponible`)
+  // au lieu d'échouer. Les messages se lisent à l'ouverture d'une conversation (whatsappMessages), comme les documents d'un dossier.
+  async function lireWhatsApp() {
+    const lire = async (table, requete) => {
+      const { data, error } = await requete;
+      if (!error) return data || [];
+      if (error.code === "42P01" || error.code === "PGRST205" || new RegExp(`relation "[^"]*${table}" does not exist|Could not find the table`, "i").test(error.message || "")) return null;
+      throw new Error(error.message);
+    };
+    // Les 1 000 propositions les plus récentes suffisent : seule la plus récente de chaque conversation compte à l'écran.
+    // reponses et tri (migration 60) : relues sans ces colonnes tant que la migration n'est pas appliquée.
+    const COLONNES = "id, created_at, updated_at, organisation_id, telephone, nom, entite_id, entite_source, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus";
+    // resume, resume_le, paiement_signale, promesse_le (migration 62) : relues sans elles tant que la migration n'est pas appliquée.
+    const SUIVI = "resume, resume_le, paiement_signale, promesse_le";
+    let triDisponible = true;
+    let suiviDisponible = true;
+    const lireConversations = async () => {
+      const requete = (colonnes) => sb.from("whatsapp_conversations").select(colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
+      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}`);
+      if (r.error && SUIVI.split(", ").some((c) => colonneAbsente(r.error, c))) {
+        suiviDisponible = false;
+        r = await requete(`${COLONNES}, reponses, tri`);
+      }
+      if (r.error && (colonneAbsente(r.error, "reponses") || colonneAbsente(r.error, "tri"))) {
+        triDisponible = false;
+        return lire("whatsapp_conversations", requete(COLONNES));
+      }
+      return lire("whatsapp_conversations", Promise.resolve(r));
+    };
+    const [conversations, propositions, reglages] = await Promise.all([
+      lireConversations(),
+      lire("whatsapp_propositions", sb.from("whatsapp_propositions").select("id, cree_le, conversation_id, message_id, entite_id, statut, texte, langue, avertissements, entreprise_proposee, erreur, traitee_le, traitee_par_quoi").order("cree_le", { ascending: false }).limit(1000)),
+      lire("whatsapp_reglages", sb.from("whatsapp_reglages").select("organisation_id, reception_active, numero, etat_compte, etat_le, dernier_evenement_le, updated_at")),
+    ]);
+    return {
+      whatsapp_conversations: conversations || [],
+      whatsapp_propositions: propositions || [],
+      whatsapp_reglages: reglages || [],
+      whatsapp_disponible: conversations !== null && reglages !== null,
+      whatsapp_propositions_disponible: propositions !== null,
+      whatsapp_tri_disponible: conversations !== null && triDisponible,
+      whatsapp_suivi_disponible: conversations !== null && suiviDisponible,
+    };
+  }
+
   // L'organisation de la personne connectée (migration 42) : nom, fuseau, langue. Avant la migration la table manque : liste vide, rien ne casse.
   // `libelle_admin` (migration 44) : relu sans cette colonne tant que la base ne l'a pas.
   async function lireOrganisations() {
@@ -185,27 +232,208 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     return { partages_clients: p.error ? [] : p.data || [], lies: l.error ? [] : l.data || [] };
   }
 
+  // Fiabilité du direct (20.11.2026) : sur CHANNEL_ERROR, TIMED_OUT ou CLOSED, le canal est retiré, le jeton de session rafraîchi et passé à
+  // Realtime, puis le canal refait après 1, 2, 5, 10 puis 30 s (direct-reprise-calc.mjs). Un jeton expiré pendant que l'iPhone dormait est la
+  // cause la plus fréquente : sans réabonnement, la page restait sourde jusqu'au prochain rechargement.
+  async function rafraichirJeton() {
+    try {
+      const { data } = await sb.auth.getSession();
+      const jeton = data && data.session && data.session.access_token;
+      if (jeton && sb.realtime && typeof sb.realtime.setAuth === "function") await sb.realtime.setAuth(jeton);
+    } catch (err) {
+      console.warn(err);
+    }
+  }
+  // Un jeton renouvelé par la bibliothèque (ou une nouvelle connexion) part aussi vers Realtime. Inscrit une seule fois.
+  let jetonSuivi = false;
+  function suivreJeton() {
+    if (jetonSuivi || !sb.auth || typeof sb.auth.onAuthStateChange !== "function") return;
+    jetonSuivi = true;
+    sb.auth.onAuthStateChange((evenement, session) => {
+      if ((evenement === "TOKEN_REFRESHED" || evenement === "SIGNED_IN") && session && session.access_token && sb.realtime && typeof sb.realtime.setAuth === "function") {
+        Promise.resolve(sb.realtime.setAuth(session.access_token)).catch(() => {});
+      }
+    });
+  }
+  // Un canal qui se répare seul. `surEtat(etat)` : « connexion », « abonne » ou « coupe ». Renvoie { arreter, verifier, etat }.
+  function canalFiable(nom, tables, rappel, surEtat = () => {}) {
+    let ch = null;
+    let arrete = false;
+    let essai = 0;
+    let minuteur = null;
+    let etatCourant = "connexion";
+    const poser = (e) => {
+      if (e === etatCourant) return;
+      etatCourant = e;
+      surEtat(e);
+    };
+    const creer = () => {
+      const moi = sb.channel(nom);
+      ch = moi;
+      for (const t of tables) moi.on("postgres_changes", { event: "*", schema: "public", table: t }, () => rappel(t));
+      moi.subscribe((statut, err) => {
+        // Un canal retiré par nous (réabonnement, arrêt) envoie CLOSED : ce n'est plus le canal courant, on l'ignore.
+        if (arrete || moi !== ch) return;
+        if (statut === "SUBSCRIBED") {
+          essai = 0;
+          return poser("abonne");
+        }
+        if (estCoupure(statut)) {
+          console.warn(`${nom === "gestion-whatsapp" ? "WhatsApp" : "Gestion"} en direct indisponible (${statut}), nouvel essai dans ${delaiReabonnement(essai) / 1000} s`, err || "");
+          poser("coupe");
+          planifier();
+        }
+      });
+    };
+    const retirer = async () => {
+      const vieux = ch;
+      ch = null;
+      if (vieux) await Promise.resolve(sb.removeChannel(vieux)).catch(() => {});
+    };
+    const relancer = async () => {
+      clearTimeout(minuteur);
+      minuteur = null;
+      await retirer();
+      if (arrete) return;
+      await rafraichirJeton();
+      if (arrete || ch) return;
+      creer();
+    };
+    function planifier() {
+      if (minuteur || arrete) return;
+      minuteur = setTimeout(relancer, delaiReabonnement(essai++));
+    }
+    suivreJeton();
+    creer();
+    return {
+      arreter() {
+        arrete = true;
+        clearTimeout(minuteur);
+        const vieux = ch;
+        ch = null;
+        if (vieux) sb.removeChannel(vieux);
+      },
+      // Retour sur l'onglet, réseau revenu, page restaurée : un canal qui n'est pas « joined » est refait tout de suite (jeton rafraîchi).
+      async verifier() {
+        if (arrete) return;
+        if (ch && !doitReabonner(ch.state)) return void (await rafraichirJeton());
+        if (minuteur) clearTimeout(minuteur), (minuteur = null);
+        essai = 0;
+        await relancer();
+      },
+      etat: () => etatCourant,
+    };
+  }
+
   // En direct (Supabase Realtime, migration 47) : `rappel(table)` à chaque ligne ajoutée, changée ou retirée dans ces tables. La base ne
   // prévient que les personnes qui peuvent lire la ligne (règles RLS) ; l'outil s'en sert seulement pour relire, jamais pour écrire le contenu reçu.
   // Sans la migration, aucun événement n'arrive et la relecture de chaque minute reste. Renvoie de quoi se désabonner.
   let canal = null;
   function ecouter(tables, rappel) {
-    if (canal) sb.removeChannel(canal);
-    canal = sb.channel("gestion-direct");
-    for (const t of tables) canal.on("postgres_changes", { event: "*", schema: "public", table: t }, () => rappel(t));
-    // Un refus (migration 47 absente, droits) ou une coupure se voit dans la console ; la relecture de chaque minute continue.
-    canal.subscribe((statut, err) => {
-      if (statut === "CHANNEL_ERROR" || statut === "TIMED_OUT") console.warn(`Gestion en direct indisponible (${statut})`, err || "");
-    });
+    if (canal) canal.arreter();
+    const moi = canalFiable("gestion-direct", tables, rappel);
+    canal = moi;
     return () => {
-      if (canal) sb.removeChannel(canal);
-      canal = null;
+      moi.arreter();
+      if (canal === moi) canal = null;
+    };
+  }
+  // Boîte WhatsApp en direct : un canal à part, pour ne pas toucher à celui des demandes du site. Même règle, seul le nom de la table remonte.
+  // `surEtat` : l'état du canal (« connexion », « abonne », « coupe »), pour le repli et la pastille « Direct coupé ».
+  let canalWhatsApp = null;
+  function ecouterWhatsApp(tables, rappel, { surEtat = () => {} } = {}) {
+    if (canalWhatsApp) canalWhatsApp.arreter();
+    const moi = canalFiable("gestion-whatsapp", tables, rappel, surEtat);
+    canalWhatsApp = moi;
+    return () => {
+      moi.arreter();
+      if (canalWhatsApp === moi) canalWhatsApp = null;
     };
   }
 
   return {
     mode: "supabase",
     ecouter,
+    ecouterWhatsApp,
+    // L'état des deux canaux, pour le repli et la pastille « Direct coupé » de l'écran WhatsApp.
+    etatDirect: () => ({ direct: canal ? canal.etat() : "ferme", whatsapp: canalWhatsApp ? canalWhatsApp.etat() : "ferme" }),
+    // Retour sur l'onglet, réseau revenu, page restaurée : jeton rafraîchi, canaux refaits s'ils ne sont pas « joined ».
+    async reveillerDirect() {
+      await Promise.all([canal ? canal.verifier() : null, canalWhatsApp ? canalWhatsApp.verifier() : null]);
+    },
+    // Relecture ciblée de la boîte WhatsApp (conversations, propositions, réglage), sans les dossiers ni les clients. Les messages de la
+    // conversation ouverte sont relus par l'écran à son redessin (whatsappMessages).
+    chargerWhatsApp: () => lireWhatsApp(),
+    // Les messages d'une conversation, les 500 plus récents, dans l'ordre d'envoi.
+    async whatsappMessages(conversationId) {
+      const lignes = verifie(await sb.from("whatsapp_messages").select("id, conversation_id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(500));
+      return lignes.reverse();
+    },
+    // Lien court (5 minutes) vers une photo ou un document copié dans le stockage privé « whatsapp ». null si le fichier n'est plus là.
+    async whatsappLienMedia(media, { telecharger = false } = {}) {
+      if (!media || !media.chemin) return null;
+      const { data, error } = await sb.storage.from("whatsapp").createSignedUrl(media.chemin, 300, telecharger ? { download: media.nom || true } : undefined);
+      return error || !data ? null : data.signedUrl;
+    },
+    // Envoi depuis Gestion (fonction « whatsapp-envoi », avec le jeton de la personne). Rend { ok, message_id } ou { erreur }.
+    async whatsappEnvoyer(corps) {
+      const { data: s } = await sb.auth.getSession();
+      const jeton = s && s.session && s.session.access_token;
+      if (!jeton) return { erreur: "non_connecte" };
+      let rep;
+      try {
+        rep = await fetch(`${config.SUPABASE_URL}/functions/v1/whatsapp-envoi`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify(corps) });
+      } catch {
+        return { erreur: "hors_ligne" };
+      }
+      const lu = await rep.json().catch(() => null);
+      if (rep.ok && lu && lu.ok) return lu;
+      // Sans code lisible (passerelle, coupure), le résultat est inconnu : l'écran demande de vérifier dans WhatsApp.
+      // « a_retirer » (contenu_interne) : les montants et les noms que la fonction a trouvés dans le texte.
+      return { erreur: (lu && lu.erreur) || "inconnu", a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [] };
+    },
+    // « Préparer une réponse » (fonction whatsapp-preparer, migration 60) : 202 { ok } puis la proposition « en_cours » arrive par Realtime.
+    async whatsappPreparer(conversationId) {
+      const { data: s } = await sb.auth.getSession();
+      const jeton = s && s.session && s.session.access_token;
+      if (!jeton) return { erreur: "non_connecte" };
+      let rep;
+      try {
+        rep = await fetch(`${config.SUPABASE_URL}/functions/v1/whatsapp-preparer`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ conversation_id: conversationId }) });
+      } catch {
+        return { erreur: "hors_ligne" };
+      }
+      const lu = await rep.json().catch(() => null);
+      if (rep.ok && lu && lu.ok) return lu;
+      return { erreur: (lu && lu.erreur) || "inconnu" };
+    },
+    // Fiches en double entre Secret et Taxi (migration 63). null tant que la fonction manque.
+    async doublonsClients() {
+      const { data, error } = await sb.rpc("doublons_clients_partages");
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || "")) return null;
+        throw new Error(error.message);
+      }
+      return data || [];
+    },
+    // Une conversation WhatsApp relue en base (liaison après validation d'un dossier dans l'Assistant). null : introuvable ou illisible.
+    async whatsappConversation(id) {
+      const { data, error } = await sb.from("whatsapp_conversations").select("id, entite_id, client_id, dossier_id").eq("id", id).maybeSingle();
+      if (error) throw new Error(error.message);
+      return data || null;
+    },
+    // Le statut d'une proposition, relu après un refus d'écriture (déjà traitée ailleurs, ou une autre erreur).
+    async whatsappProposition(id) {
+      const { data, error } = await sb.from("whatsapp_propositions").select("id, statut").eq("id", id).maybeSingle();
+      if (error) throw new Error(error.message);
+      return data || null;
+    },
+    // L'interrupteur « Recevoir les messages WhatsApp » (Réglages), seule colonne des réglages WhatsApp ouverte à l'outil.
+    async whatsappReception(organisationId, actif) {
+      const lignes = verifie(await sb.from("whatsapp_reglages").update({ reception_active: !!actif }).eq("organisation_id", organisationId).select());
+      if (!lignes.length) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      return lignes[0];
+    },
     async session() {
       const { data, error } = await sb.auth.getSession();
       if (!data.session) {
@@ -252,7 +480,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // ---- Agent de l'onglet « Assistant » (migration 52, fonction « agent ») ---------------------------------------------------------------
     // Les conversations se lisent et se rangent ici, avec la session de la personne (RLS : seulement les siennes). null avant la migration.
     async agentConversations(entiteId) {
-      const { data, error } = await sb.from("agent_conversations").select("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le").eq("entite_id", entiteId).order("maj_le", { ascending: false }).limit(300);
+      // whatsapp_conversation_id (migration 61) : relue sans elle tant que la migration n'est pas appliquée.
+      const requete = (colonnes) => sb.from("agent_conversations").select(colonnes).eq("entite_id", entiteId).order("maj_le", { ascending: false }).limit(300);
+      let { data, error } = await requete("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le, whatsapp_conversation_id");
+      if (error && colonneAbsente(error, "whatsapp_conversation_id")) ({ data, error } = await requete("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le"));
       return error ? null : data || [];
     },
     async agentAttente(entiteId) {
@@ -538,7 +769,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       const tables = ["entites", "profils", "roles", "membres", ...CHARGEES.filter((t) => relire || !CATALOGUE.includes(t))];
       // Toutes les lectures partent ensemble (elles étaient faites l'une après l'autre).
-      const [lues, resumeLignes, taches, reglagesLignes, site, organisations, partages] = await Promise.all([
+      const [lues, resumeLignes, taches, reglagesLignes, site, organisations, partages, whatsapp] = await Promise.all([
         Promise.all(tables.map((t) => toutes(t))),
         toutes("dossiers_resume"),
         (() => {
@@ -550,12 +781,13 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         lireSite(),
         lireOrganisations(),
         lirePartages(),
+        lireWhatsApp(),
       ]);
       tables.forEach((t, i) => (out[t] = lues[i]));
       out.organisations = organisations;
       out.partages_clients = partages.partages_clients;
       out.clients = avecNomsLies(out.clients, partages.lies);
-      Object.assign(out, site);
+      Object.assign(out, site, whatsapp);
       if (ouverture) nouvelle = await marqueur;
       if (!relire) for (const t of CATALOGUE) out[t] = ancien[t];
       else {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { modeReglement, SUR_PLACE, CHEZ_NOUS, statutDepuis, resume } from "../src/gestion/js/calc.mjs";
-import { modeParDefaut, appliquerModeParDefaut, commissionPrevue, regleDeCommissionComplete, reservationsDepuisDocument, repartirReception, commissionsARecevoir } from "../src/gestion/js/operations-calc.mjs";
+import { modeParDefaut, appliquerModeParDefaut, commissionPrevue, regleDeCommissionComplete, reservationsDepuisDocument, commissionsARecevoir } from "../src/gestion/js/operations-calc.mjs";
 
 const lignePartenaire = (id, extra = {}) => ({ id, kind: "ligne", libelle: "4 Islands", unite: 1000, qte: 2, prestation_id: "p1", partenaire_id: "rattana", date_service: "2026-12-01", ...extra });
 
@@ -69,30 +69,6 @@ test("réservation créée d'après la facture : la commission se calcule pour u
 
 const netsParId = (table) => (r) => table[r.id] || null;
 const resa = (id, extra = {}) => ({ id, dossier_id: "d", partenaire_id: "rattana", date_service: "2026-12-05", statut: "confirme", montant_vente: 1000, paye_sur_place: true, ...extra });
-
-test("rapprochement : le virement se répartit au prorata de la commission prévue et le dernier prend l'arrondi", () => {
-  const rs = [resa("a"), resa("b"), resa("c")];
-  const nets = netsParId({ a: { commission_prevue: 100 }, b: { commission_prevue: 200 }, c: { commission_prevue: 300 } });
-  const exact = repartirReception(rs, nets, 600);
-  assert.deepEqual(exact.repartition.map((x) => x.commission_recue), [100, 200, 300]);
-  assert.equal(exact.ecart, 0);
-  const moins = repartirReception(rs, nets, 500);
-  assert.equal(moins.ecart, -100);
-  assert.equal(moins.attendu, 600);
-  assert.equal(moins.repartition.reduce((s, x) => s + x.commission_recue, 0), 500, "la somme répartie est exactement le montant reçu");
-  const plus = repartirReception(rs, nets, 700.01);
-  assert.equal(plus.ecart, 100.01);
-  assert.equal(Math.round(plus.repartition.reduce((s, x) => s + x.commission_recue, 0) * 100) / 100, 700.01);
-});
-
-test("rapprochement : sans commission prévue la répartition est égale, et une réservation déjà réglée n'est pas touchée", () => {
-  const rs = [resa("a"), resa("b")];
-  const egal = repartirReception(rs, netsParId({}), 300);
-  assert.deepEqual(egal.repartition.map((x) => x.commission_recue), [150, 150]);
-  const deja = repartirReception(rs, netsParId({ a: { commission_prevue: 100, commission_recue: 100, commission_recue_le: "2026-12-20" }, b: { commission_prevue: 80 } }), 80);
-  assert.deepEqual(deja.repartition, [{ reservation_id: "b", commission_recue: 80 }]);
-  assert.deepEqual(repartirReception([], netsParId({}), 50).repartition, []);
-});
 
 test("commissions à recevoir : une réception datée solde la réservation, l'écart reste visible", () => {
   const rs = [resa("a"), resa("b"), resa("c", { paye_sur_place: false })];

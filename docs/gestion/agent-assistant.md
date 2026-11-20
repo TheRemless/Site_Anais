@@ -25,17 +25,68 @@ L'agent propose aussi, quand le séjour laisse des jours libres, une excursion d
 
 | Part | Ne part jamais |
 |---|---|
-| Les messages tapés dans la conversation | Un net, une marge, une commission |
-| Les tarifs de **vente** et les horaires du catalogue | Le nom d'un prestataire (retiré des modes de transport) |
-| Les clients et dossiers que l'agent cherche (nom, téléphone, dates, services, prix de vente) | Une coordonnée bancaire |
-| Les noms d'hôtels à situer | Les données d'une autre entreprise (RLS) |
-| Les pièces jointes choisies par la personne (photos réduites, PDF tels quels) | Un fichier de la base que la personne n'a pas joint |
+| Les messages tapés dans la conversation | Une coordonnée bancaire |
+| Les tarifs de **vente** et les horaires du catalogue | Les données d'une autre entreprise (RLS) |
+| Avec le droit `partenaires.lire` : le nom du partenaire de chaque tarif, départ et service | Un fichier de la base que la personne n'a pas joint |
+| Avec le droit `partenaires.nets` : les nets (adulte et enfant), le règlement (chez nous ou sur place), la règle de commission du partenaire, la marge, la commission prévue et le gain ; sur un dossier, la commission attendue, reçue, partielle, l'écart et son motif | Sans ces droits : aucun nom de partenaire, aucun net, aucune marge, aucune commission |
+| Les clients et dossiers que l'agent cherche (nom, téléphone, dates, services, prix de vente) | |
+| Les noms d'hôtels à situer | |
+| Les pièces jointes choisies par la personne (photos réduites, PDF tels quels) | |
 
-Les nets sont lus par la fonction (avec les droits de la personne) pour poser un seul drapeau, « recommande », sur l'option à la meilleure marge. La marge elle-même ne sort pas de la fonction. Les contrôles sont dans le code (`supabase/functions/agent/outils.js`), pas seulement dans les consignes :
+**Décision de Jérémy du 20.11.2026 (« L'IA voit tout ») :** l'agent voit le partenaire, les nets et les commissions, pour répondre à « chez quel partenaire ? », « quelle commission ? » ou « lequel rapporte le plus ? » sans que l'équipe cherche ailleurs. Jusque-là, rien de cela ne partait chez Anthropic. Les conditions commerciales de l'API d'Anthropic excluent par défaut l'entraînement des modèles sur ces données (voir `assistant-ia.md`, « Données qui partent chez Anthropic »).
+
+Les droits sont vérifiés côté serveur, jamais par le prompt seul : la fonction lit les nets avec la session de la personne (règles RLS, `partenaires.nets`), et `outils.js` vérifie le droit en plus (`voitPartenaires`, `voitNets`). Sans le droit, les champs n'existent pas, ni dans les résultats ni dans la définition des outils (`outilsPour`) : le rôle de Mook chez Secret voit le partenaire et aucun chiffre interne. Le gain est ce que l'entreprise gagne sur une vente : la marge (vente moins net) pour un service réglé chez nous, la commission (règle chiffrée du partenaire, même calcul que `operations-calc.mjs`) pour un service payé sur place. Le drapeau « recommande » reste posé sur la meilleure marge.
+
+Les contrôles sont dans le code (`supabase/functions/agent/outils.js`), pas seulement dans les consignes :
 
 - un prix proposé vient du catalogue (par sa référence) ou d'un montant tapé par la personne dans la conversation ; sinon il reste vide (transfert privé : Nani le fixe) ;
 - les heures d'une course sont calculées par `planifier.js`, jamais par le modèle ;
-- la réponse au client est contrôlée : signature retirée chez Secret et Taxi, montant ou heure sans source signalés, mot interne, prestataire ou prénom de l'équipe signalés.
+- la réponse au client est contrôlée : signature retirée chez Secret et Taxi, montant ou heure sans source signalés, mot interne ou prénom de l'équipe signalés ;
+- **garde-fou client** : tout montant égal à un net, une marge, une commission ou un gain rendu par un outil dans la conversation (`montant_interne`) et tout nom de partenaire en mot entier (`nom_prestataire`) sont signalés avec leur valeur. L'écran bloque « Copier la réponse » tant que le texte corrigé en contient encore un (`agent-calc.mjs`, `resteBloque`). Un montant interne égal à un prix de vente rendu par un outil n'est pas signalé : rien ne permet de dire lequel est cité. Le voucher, la Booking confirmation et le message WhatsApp sont faits par Gestion depuis le dossier, pas par l'agent : ils ne contiennent ni net ni commission.
+
+## Règles de réponse au client (20.11.2026)
+
+Réglages, section « Assistant IA », champ « Règles de réponse au client » : une règle par ligne, que l'agent applique dans chaque réponse au client qu'il prépare quand elle concerne ce qu'il propose. Elles se changent aussi par une carte « reglage » (`assistant_voix.regles_reponse`, `ameliorer.js`). Tant qu'une entreprise ne les a jamais enregistrées, Secret et Taxi ont la règle demandée par Jérémy le 20.11.2026 : pour un trajet en ferry ou en speedboat d'un lieu à un autre (pas une excursion à la journée, précision de Jérémy du 20.11.2026), la réservation n'est confirmée qu'après paiement, le paiement se fait à l'avance, par Wise, par virement international ou en cash à l'office, et l'équipe envoie les détails de paiement. Aucune coordonnée bancaire, aucun lien Wise ni aucune adresse ne sont donnés à l'agent : il ne les écrit jamais. Un champ vidé et enregistré retire toutes les règles. Le jeu d'essai privé a le cas A12 (ferry Lanta → Phi Phi, vérification `paiement_avance`).
+
+## Espace unifié Secret et Taxi (migration 63, 20.11.2026)
+
+Nani gère Secret Travel & Tour et VIP Taxi Lanta avec le même numéro WhatsApp. Jérémy veut un espace unifié : l'Assistant cherche dans les deux catalogues à la fois et décide l'entreprise de chaque service. Une demande mixte deviendra deux dossiers liés (`dossiers.dossier_lie_id`), un chez Secret et un chez Taxi ; l'écran qui les crée viendra ensuite. Côté serveur, chaque service porte déjà sa bonne entreprise. ZTP reste toujours à part.
+
+**Interrupteur `AGENT_UNIFIE` (éteint par défaut).** Le mode ne s'allume que si le secret `AGENT_UNIFIE` des fonctions `agent` et `whatsapp` vaut `1`. L'écran actuel ne lit encore ni `entite_id` ni `entreprises` : une carte mixte validée aujourd'hui créerait un seul dossier faux. Le secret ne se pose qu'une fois l'écran des dossiers liés en ligne (PR suivante), avec le oui de Jérémy :
+
+```bash
+npx -y supabase@3.0.0 secrets set AGENT_UNIFIE=1 --remote=lkxqcmzeidlyssoqmqkh
+```
+
+**Quand le mode s'allume** (`supabase/functions/agent/unifie.js`, `modeUnifie`) : l'interrupteur est à `1`, l'entreprise de la conversation est Secret ou Taxi, l'agent est allumé dans l'autre (`reglages.agent_ia` vrai ; réglages illisibles : éteint) et la personne y a aussi `partenaires.lire` et `dossiers.ecrire` (`permissions_dans`, lu avec sa session). La conversation, le journal et le budget restent ceux de l'entreprise active. Sinon, ou chez ZTP, rien ne change.
+
+| Lecture | En mode unifié |
+|---|---|
+| Catalogue, horaires, partenaires, nets, règles de commission, hôtels connus, temps de trajet, ferries | Les deux entreprises (`.in("entite_id", …)`), avec la session de la personne : la RLS ne rend que ce qu'elle peut lire |
+| Clients | Les fiches des deux entreprises (partagées par la migration 63) ; une fiche de ZTP seulement si elle a un dossier chez Secret ou Taxi, comme avant |
+| Dossiers et services (`lire_dossier`, références D- et R-) | Les deux entreprises, jamais ZTP. Un numéro de dossier n'est unique que dans une entreprise : celui de l'entreprise active passe d'abord ; s'il reste plusieurs candidats, l'outil rend `plusieurs_dossiers` avec leurs références D-… et leur entreprise : l'agent demande lequel |
+| Corrections apprises (`agent_apprentissages`) | 60 de l'entreprise active ; de l'autre, seulement les réponses au client (20 lues, 3 retenues au plus). Chaque ligne du bloc est marquée de son entreprise entre crochets |
+| Réglage du catalogue (`proposer_reglage`) et import de brochure | L'entreprise active seulement : un tarif de l'autre est refusé (`autre_entreprise`), le partenaire d'une brochure se cherche chez l'active |
+| Lieux et itinéraires calculés (`lieux_geo`, `trajets_ors`) et écritures (hôtels situés) | L'entreprise active, comme avant |
+
+**Droits par ligne** : le nom du partenaire et les chiffres internes d'une ligne ne partent chez Claude que si la personne a le droit dans l'entreprise de CETTE ligne (`voitPartenaires` et `voitNets` reçoivent l'entreprise de la ligne). Le drapeau « recommande » se calcule par entreprise, dans le catalogue comme dans les horaires : une marge de Secret ne se compare pas à une de Taxi. Une ligne dont l'entreprise est inconnue ne montre rien. La description des outils et les consignes annoncent les nets dès qu'un droit les montre dans l'une des deux entreprises. Le garde-fou de la réponse au client ne change pas et couvre les partenaires et les nets des deux entreprises.
+
+**Entreprise de chaque service** :
+
+| Où | Ce que la fonction rend |
+|---|---|
+| `chercher_catalogue`, `horaires_trajet` | chaque ligne porte `entreprise` : « Secret » ou « Taxi » ; `chercher_clients` et `lire_dossier` aussi pour les dossiers |
+| `proposer_dossier` | chaque service porte `entite_id` et `entreprise` (`secret`, `taxi` ou vide) : l'entreprise de sa ligne du catalogue ; hors catalogue, le champ `entreprise` du service rempli par le modèle (une course, un taxi ou un transfert privé à prix libre va chez Taxi) ; la carte porte `entreprises`, la liste des entreprises de ses services (`["secret", "taxi"]` pour une demande mixte) |
+| `proposer_reservation` | l'entreprise du dossier visé, sur la carte et sur le service |
+| `proposer_modification` | l'entreprise du service modifié (`entite_id`, `entreprise`) |
+
+Deux nouveaux avertissements, sur le service et sur la carte : `entreprise_a_choisir` (le modèle a hésité et a laissé le champ vide : la personne choisit, la consigne lui dit de demander plutôt que de deviner) et `catalogue_autre_entreprise` (un tarif de l'autre entreprise ajouté à un dossier). L'écran devra leur donner un texte (`views/agent.mjs`, `AVERTISSEMENTS`) ; d'ici là, il affiche « À vérifier ».
+
+**Consignes** (`prompt.js`, paramètre `unifie`) : un paragraphe « Deux entreprises » dit que l'Assistant travaille pour les deux, que chaque service va dans l'entreprise de sa ligne, qu'une demande mixte se propose en une seule carte qui donnera deux dossiers liés. La réponse au client reste unique. Les règles de réponse au client des deux entreprises (`assistant_voix.regles_reponse`) sont listées sous le nom de leur entreprise et s'appliquent chacune à ses services ; des réglages illisibles donnent les règles par défaut du métier. La voix reste celle de l'entreprise active, sans signature. La signature de l'autre entreprise est aussi retirée d'une réponse. Le renvoi d'une « Transfer request » vers l'Assistant de Taxi disparaît : la demande se traite ici.
+
+**Boîte WhatsApp** (`whatsapp/reponse.ts`) : avec l'interrupteur à `1` et l'agent allumé chez Secret ET chez Taxi, la réponse préparée cherche aussi dans les deux catalogues et lit les corrections comme ci-dessus, avec les mêmes consignes. Clé de service limitée à ces deux entreprises, aucun droit sur les partenaires ni les nets (`modeUnifieSansDroits`). Les outils ne chargent aucune table de nets (aucun drapeau « recommande » tiré d'un net sans droit) ; les nets se lisent à part (`netsDe`), seulement pour le contrôle `montant_interne`. Les dossiers lus restent ceux reliés à la conversation. Le ton de Nani se lit toujours dans l'entreprise de la conversation.
+
+Tests : `tests/gestion-agent-unifie.test.js`.
 
 ## Planifier une course
 
@@ -139,6 +190,7 @@ Les fichiers ne sont pas dans les messages : ils vivent dans la table `agent_fic
 | `supabase/functions/agent/outils.js` | Les outils, leurs contrôles, les cartes (dont `proposer_import_brochure`) |
 | `supabase/functions/agent/fichiers.js` | Pièces jointes : limites, blocs image et document, budget d'un appel |
 | `supabase/functions/agent/prompt.js` | Consignes, voix, modèle, coût, accès |
+| `supabase/functions/agent/unifie.js` | Espace unifié Secret et Taxi : détection du mode, droits par entreprise, entreprise d'une ligne |
 | `supabase/functions/agent/planifier.js` | Calcul des heures, temps simulés de la démo (copie identique : `src/gestion/js/agent-planifier.mjs`) |
 | `supabase/functions/agent/temps.js` | Ordre des sources de durée, zones, openrouteservice, pré-remplissage (copie identique : `src/gestion/js/agent-temps.mjs`) |
 | `supabase/functions/agent/estimation.js` | Estimation d'une durée par la recherche web (quand OpenStreetMap et la table n'ont rien) |

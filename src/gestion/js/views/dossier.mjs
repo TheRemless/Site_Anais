@@ -15,6 +15,7 @@ import { margeDocument, chiffres as numeroDe } from "../partenaires-calc.mjs";
 import { supprimerDocument } from "./document-suppression.mjs";
 import { sectionReservationsDossier, formulaireReservation, ajouterServices } from "./reservations.mjs";
 import { etatsServices, personnesDossier, commissionDossier, actionSuivante, varianteFacture } from "../dossier-resume-calc.mjs";
+import { MOTIFS_ECART } from "../encaisser-calc.mjs";
 import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { envoyerDocument } from "./document-envoi.mjs";
@@ -22,6 +23,7 @@ import { numeroVoucher, TITRES_VOUCHER, etatEnvoisVouchers } from "../operations
 import { ouvrirEnvois } from "./envois-vouchers.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { agentActif } from "../agent-calc.mjs";
+import { dossierLie } from "../espace-unifie-calc.mjs";
 import { demandesDuDossier } from "../demandes-site-calc.mjs";
 import { boutonMessageClient, jourRecu } from "./message-client.mjs";
 import { ouvrirSansSuite, rouvrirDevis, baseDistante } from "./sans-suite.mjs";
@@ -83,6 +85,14 @@ function proposerReactivation(d) {
 const dernier = (docs, type) => docs.filter((d) => d.type === type).sort((a, b) => (a.created_at > b.created_at ? 1 : -1)).pop();
 
 // Les documents et paiements d'un dossier se chargent à son ouverture.
+// Espace unifié (migration 63) : « Dossier lié : Taxi T-2026-… » vers l'autre dossier de la même demande, quand la personne peut le lire.
+// L'adresse porte l'entreprise du dossier lié : l'ouvrir bascule l'entreprise active (app.mjs).
+function lienDossierLie(d) {
+  const l = dossierLie(d, etat.brut.dossiers || [], etat.brut.entites || []);
+  if (!l) return null;
+  return h("p", { class: "dossier-lie" }, icone("dossiers", 16), h("a", { href: `#/dossier/${l.id}?entite=${l.entite_id}` }, tr("Dossier lié : {entreprise} {ref}", { entreprise: l.entreprise, ref: l.ref })));
+}
+
 export async function ficheDossier(id) {
   await chargerDossier(id);
   return ficheDossierVue(id);
@@ -701,6 +711,7 @@ function ficheDossierVue(id) {
             { class: "resume-bloc resume-commission" },
             h("p", { class: "resume-libelle" }, tr("Commission")),
             h("dl", null, ligne(tr("Prévue"), fm(commission.prevue)), ligne(tr("Reçue"), fm(commission.recue)), ligne(tr("À recevoir"), fm(commission.reste), commission.reste > 0 ? "resume-reste" : "resume-ok"), commission.ecart ? ligne(tr("Écart sur les commissions réglées"), fm(commission.ecart)) : null),
+            commission.motifs.length ? h("p", { class: "resume-detail" }, tr("Motif de l'écart : {motifs}", { motifs: commission.motifs.map((m) => [tr((MOTIFS_ECART.find(([k]) => k === m.motif) || [, m.motif])[1]), m.note].filter(Boolean).join(", ")).join(" ; ") })) : null,
             commission.sansCommission > 0 ? h("p", { class: "resume-detail" }, pluriel(commission.sansCommission, N_("{n} service payé sur place sans commission renseignée"), N_("{n} services payés sur place sans commission renseignée"))) : null,
             h("a", { class: "resume-lien-bas", href: "#services", onclick: aller("services") }, tr("Voir dans les services"), icone("fleche", 14))
           )
@@ -715,7 +726,7 @@ function ficheDossierVue(id) {
     h(
       "div",
       { class: "entete" },
-      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, excursions && rsDossier.length > 1 ? [d.ref, pluriel(rsDossier.filter((x) => x.statut !== "annule").length, N_("{n} service"), N_("{n} services"))].join(" · ") : sousTitreDossier(d), responsable, lienAgent)),
+      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, excursions && rsDossier.length > 1 ? [d.ref, pluriel(rsDossier.filter((x) => x.statut !== "annule").length, N_("{n} service"), N_("{n} services"))].join(" · ") : sousTitreDossier(d), responsable, lienAgent), lienDossierLie(d)),
       h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, tr("Dupliquer")) : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, tr("Modifier le dossier")) : null)
     ),
     blocDemandesSite(d),
@@ -852,5 +863,17 @@ function ficheDossierVue(id) {
     barre.classList.add("seulement-mobile", "barre-dossier");
     racine.append(barre);
   }
+  // « Noter un paiement » depuis l'écran WhatsApp (preuve de paiement envoyée par le client) : « #/dossier/<id>?paiement=1 » ouvre la section
+  // des paiements et met le curseur sur le montant, déjà prérempli avec ce qui reste à payer. Après le placement du défilement par app.mjs.
+  if (/[?&]paiement=1(&|$)/.test(location.hash) && droit.paiements)
+    setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+      const form = document.getElementById("form-paiement");
+      if (!form || !form.isConnected) return;
+      const section = form.closest("details");
+      if (section) section.open = true;
+      form.scrollIntoView({ block: "center" });
+      const montant = document.getElementById("p-montant");
+      if (montant) montant.focus({ preventScroll: true });
+    })), 0);
   return racine;
 }

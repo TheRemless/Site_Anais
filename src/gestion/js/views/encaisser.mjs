@@ -1,16 +1,14 @@
 // À encaisser : ce que les clients doivent encore à l'agence, et les commissions que les prestataires reversent après les services payés sur place.
 // Chaque entreprise ne voit que ce qui la concerne : Zwald les clients seulement, Secret les deux, Taxi les commissions seulement (le client paie toujours le chauffeur).
-// Le geste central est le rapprochement : « Rattana m'a viré 5 400 ce mois-ci » se saisit une fois pour le partenaire et le mois.
-import { etat, peut, naviguer, nomPartenaire, nomClient, netReservation, enregistrerLie, dossiersAnnules, resumes, reglages, modeExcursions, modeTaxi } from "../etat.mjs";
-import { h, modal, confirmer, toast, num } from "../ui.mjs";
-import { aujourdhui, formatMontant, formatSommes, formatDate, arrondi } from "../calc.mjs";
-import { commissionsARecevoir, repartirReception, servicesAReceptionner, nomMoisCourt } from "../operations-calc.mjs";
+// Les commissions se rapprochent dossier par dossier : Anaïs coche ce que le partenaire a payé et encaisse la sélection (encaisser-commissions.mjs).
+import { peut, naviguer, nomClient, resumes, reglages, modeExcursions, modeTaxi } from "../etat.mjs";
+import { h } from "../ui.mjs";
+import { formatMontant, formatSommes, formatDate } from "../calc.mjs";
 import { vide, listeAdaptative } from "./commun.mjs";
 import { voitNets, prix } from "./partenaires.mjs";
+import { sectionCommissions } from "./encaisser-commissions.mjs";
 import { bandeauRecalcul } from "./recalcul-commission.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
-
-const signe = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + prix(Math.abs(n));
 
 export function vueEncaisser() {
   const voitClients = peut("finances.voir") && !modeTaxi();
@@ -23,177 +21,10 @@ export function vueEncaisser() {
   const dus = voitClients ? resumes().filter((r) => (r.statut === "accepte" || r.statut === "acompte") && r.reste > 0).sort((a, b) => (a.dossier.date_depart || "9999").localeCompare(b.dossier.date_depart || "9999") || b.reste - a.reste) : [];
   const devise = reglages().devise;
 
-  // ---- Les commissions ----
-  const groupes = voitCommissions ? commissionsARecevoir(etat.db.reservations, netReservation, dossiersAnnules()) : [];
-  const aRecevoir = groupes.filter((g) => g.nbARecevoir > 0);
-  const recues = groupes.filter((g) => g.nbARecevoir === 0);
-  const totalCom = aRecevoir.reduce((s, g) => s + g.reste, 0);
-  const lien = (g) => `#/reservations?periode=toutes&partenaire=${g.partenaire_id || ""}`;
-
-  const ajd = aujourdhui();
-  const decrire = (r) => {
-    const d = etat.db.dossiers.find((x) => x.id === r.dossier_id);
-    const client = d ? nomClient(etat.db.clients.find((c) => c.id === d.client_id)) : "";
-    return [client, r.libelle, r.date_service ? formatDate(r.date_service) : ""].filter(Boolean).join(" · ");
-  };
-  const enregistrerReception = (x, date) => enregistrerLie("reservations_nets", "reservation_id", x.reservation_id, { commission_recue: x.commission_recue, commission_recue_le: date });
-
-  // « J'ai reçu un virement » : on coche d'abord les services que le virement solde (d'avance, les services passés avec une commission prévue),
-  // puis le montant et la date. « Reçu comme prévu » prend la somme prévue des services cochés ; « Autre montant » laisse saisir le montant reçu.
-  const recevoir = (g, commePrevu) => {
-    const services = servicesAReceptionner(g.reservations, netReservation, ajd);
-    const cases = services.map((x) => ({ x, input: h("input", { type: "checkbox", checked: x.coche, "data-reservation": x.reservation.id }) }));
-    const cochees = () => cases.filter((c) => c.input.checked).map((c) => c.x);
-    const attenduCoche = () => arrondi(cochees().reduce((s, x) => s + (x.prevue || 0), 0));
-    const montant = h("input", { id: "enc-montant", type: "number", min: "0", step: "any", inputmode: "decimal", value: String(attenduCoche()), required: true });
-    const date = h("input", { id: "enc-date", type: "date", value: ajd, max: ajd, required: true });
-    const ecart = h("p", { class: "ecart-reception", "aria-live": "polite" });
-    const resume = h("p", { class: "aide", "aria-live": "polite" });
-    const bouton = h("button", { class: "principal", type: "submit" }, commePrevu ? tr("Marquer reçu") : tr("Enregistrer"));
-    let montantSaisi = false;
-    const majEcart = () => {
-      const attendu = attenduCoche();
-      const v = commePrevu ? attendu : num(montant.value);
-      const e = v === null ? 0 : arrondi(v - attendu);
-      ecart.textContent = !cochees().length ? "" : e === 0 ? tr("Comme prévu.") : e > 0 ? tr("{ecart} de plus que prévu.", { ecart: prix(e) }) : tr("{ecart} de moins que prévu.", { ecart: prix(-e) });
-    };
-    const maj = () => {
-      const n = cochees().length;
-      if (!montantSaisi) montant.value = String(attenduCoche());
-      resume.textContent = n ? tr("À marquer reçus : {services}. Attendu pour eux : {attendu}.", { services: pluriel(n, N_("{n} service"), N_("{n} services")), attendu: prix(attenduCoche()) }) : tr("Cochez les services que ce virement règle.");
-      bouton.disabled = !n;
-      majEcart();
-    };
-    montant.addEventListener("input", () => { montantSaisi = true; majEcart(); });
-    cases.forEach((c) => c.input.addEventListener("change", maj));
-    const ligne = ({ x, input }) =>
-      h(
-        "li",
-        null,
-        h("label", { class: "case" }, input, h("span", null, decrire(x.reservation), !x.passe ? h("span", { class: "tag" }, x.reservation.date_service ? tr("à venir") : tr("sans date")) : null, x.prevue === null ? h("span", { class: "tag" }, tr("sans commission prévue")) : null)),
-        h("strong", null, x.prevue === null ? "—" : prix(x.prevue))
-      );
-    const fermer = modal(
-      tr("Virement de {partenaire}", { partenaire: nomPartenaire(g.partenaire_id) || tr("ce partenaire") }),
-      h(
-        "form",
-        {
-          class: "modal-corps",
-          onsubmit: async (e) => {
-            e.preventDefault();
-            const choisis = cochees();
-            if (!choisis.length) return toast(tr("Cochez les services que ce virement règle."), true);
-            const v = commePrevu ? attenduCoche() : num(montant.value);
-            if (v === null || v < 0) return toast(tr("Saisissez le montant reçu."), true);
-            if (!date.value) return toast(tr("Indiquez la date de réception."), true);
-            const { repartition } = repartirReception(g.reservations, netReservation, v, { ids: new Set(choisis.map((x) => x.reservation.id)) });
-            if (!repartition.length) return toast(tr("Rien à marquer : tout est déjà reçu."));
-            bouton.disabled = true;
-            try {
-              for (const x of repartition) await enregistrerReception(x, date.value);
-              fermer();
-              toast(tr("Commission notée."));
-              rafraichir();
-            } catch (err) {
-              toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
-              bouton.disabled = false;
-            }
-          },
-        },
-        h("p", { class: "aide" }, tr("{mois}. Sont cochés d'avance les services déjà passés qui ont une commission prévue. Un service à venir ou sans commission ne se marque reçu que si vous le cochez.", { mois: nomMoisCourt(g.mois) })),
-        h("ul", { class: "liste-reception" }, cases.map(ligne)),
-        resume,
-        h("div", { class: "grille-form compacte" }, commePrevu ? null : h("div", { class: "champ" }, h("label", { for: "enc-montant" }, tr("Montant reçu")), montant), h("div", { class: "champ" }, h("label", { for: "enc-date" }, tr("Reçu le")), date)),
-        ecart,
-        commePrevu ? null : h("p", { class: "aide" }, tr("Le montant se répartit sur les services cochés, selon leur commission prévue.")),
-        h("div", { class: "actions" }, h("button", { class: "secondaire", type: "button", onclick: () => fermer() }, tr("Annuler")), bouton)
-      ),
-      { feuille: true }
-    );
-    maj();
-  };
-
-  // Un service marqué reçu par erreur : on efface le montant et la date de réception, il revient dans les commissions à recevoir.
-  const annulerReception = (g) => {
-    const recues = g.reservations.filter((r) => (netReservation(r) || {}).commission_recue_le);
-    const cases = recues.map((r) => ({ r, input: h("input", { type: "checkbox", "data-reservation": r.id }) }));
-    const bouton = h("button", { class: "danger", type: "submit", disabled: true }, tr("Annuler la réception"));
-    cases.forEach((c) => c.input.addEventListener("change", () => (bouton.disabled = !cases.some((x) => x.input.checked))));
-    const ligne = ({ r, input }) => {
-      const n = netReservation(r) || {};
-      return h("li", null, h("label", { class: "case" }, input, h("span", null, decrire(r), h("span", { class: "tag" }, tr("reçue le {date}", { date: formatDate(n.commission_recue_le) })))), h("strong", null, n.commission_recue === null || n.commission_recue === undefined ? "—" : prix(Number(n.commission_recue))));
-    };
-    const fermer = modal(
-      tr("Annuler une réception · {partenaire}", { partenaire: nomPartenaire(g.partenaire_id) || tr("ce partenaire") }),
-      h(
-        "form",
-        {
-          class: "modal-corps",
-          onsubmit: async (e) => {
-            e.preventDefault();
-            const choisis = cases.filter((c) => c.input.checked).map((c) => c.r);
-            if (!choisis.length) return;
-            bouton.disabled = true;
-            try {
-              for (const r of choisis) await enregistrerLie("reservations_nets", "reservation_id", r.id, { commission_recue: null, commission_recue_le: null });
-              fermer();
-              toast(pluriel(choisis.length, N_("{n} service revient dans les commissions à recevoir."), N_("{n} services reviennent dans les commissions à recevoir.")));
-              rafraichir();
-            } catch (err) {
-              toast(tr("Enregistrement impossible : {message}", { message: err.message }), true);
-              bouton.disabled = false;
-            }
-          },
-        },
-        h("p", { class: "aide" }, tr("{mois}. Cochez les services marqués reçus par erreur : le montant reçu et sa date sont effacés, la commission prévue ne change pas et le service revient dans les commissions à recevoir.", { mois: nomMoisCourt(g.mois) })),
-        h("ul", { class: "liste-reception" }, cases.map(ligne)),
-        modeTaxi() ? null : h("p", { class: "bandeau-info" }, tr("Si une facture pour la fiduciaire a déjà été créée pour ce service, elle ne s'annule pas d'ici : vérifiez l'écran Fiduciaire.")),
-        h("div", { class: "actions" }, h("button", { class: "secondaire", type: "button", onclick: () => fermer() }, tr("Fermer")), bouton)
-      ),
-      { feuille: true }
-    );
-  };
-
-  const actionsGroupe = (g) =>
-    h(
-      "span",
-      { class: "carte-actions" },
-      h("a", { class: "bouton secondaire petit", href: lien(g) }, tr("Voir")),
-      ecrit && g.nb > g.nbARecevoir ? h("button", { class: "secondaire petit", type: "button", onclick: () => annulerReception(g) }, tr("Annuler une réception")) : null,
-      ecrit && g.nbARecevoir > 0 ? h("button", { class: "secondaire petit", type: "button", onclick: () => recevoir(g, false) }, tr("Autre montant")) : null,
-      ecrit && g.reste > 0 ? h("button", { class: "principal petit", type: "button", onclick: () => recevoir(g, true) }, tr("Reçu comme prévu")) : null
-    );
-
-  const detailServices = (g) =>
-    h(
-      "details",
-      { class: "detail-services" },
-      h("summary", null, pluriel(g.nb, N_("{n} service"), N_("{n} services"))),
-      h(
-        "ul",
-        null,
-        g.reservations.map((r) => {
-          const n = netReservation(r);
-          const d = etat.db.dossiers.find((x) => x.id === r.dossier_id);
-          const client = d ? nomClient(etat.db.clients.find((c) => c.id === d.client_id)) : "";
-          return h("li", null, h("span", null, [client, r.libelle, r.date_service ? formatDate(r.date_service) : ""].filter(Boolean).join(" · ")), h("strong", null, n && n.commission_prevue != null ? prix(n.commission_prevue) : "—"));
-        })
-      )
-    );
-
-  const nom = (g) => nomPartenaire(g.partenaire_id) || tr("Sans partenaire");
+  // ---- Les commissions : par partenaire puis par dossier, voir encaisser-commissions.mjs ----
+  const commissions = voitCommissions ? sectionCommissions({ rafraichir, ecrit }) : null;
   // Deux lignes pour le montant d'une carte : la valeur, puis ce qu'elle représente.
   const pile = (valeur, legende) => h("span", { class: "droite-pile" }, h("strong", null, valeur), h("span", null, legende));
-  const colonnesCommissions = (recues) => [
-    { cle: "mois", titre: tr("Mois"), rendu: (g) => nomMoisCourt(g.mois), tri: (g) => g.mois, mobile: "sous" },
-    { cle: "partenaire", titre: tr("Partenaire"), rendu: (g) => (g.partenaire_id ? h("a", { href: `#/partenaire/${g.partenaire_id}` }, nom(g)) : nom(g)), rendu_mobile: (g) => nom(g), tri: (g) => nom(g).toLowerCase(), mobile: "titre" },
-    { cle: "nb", titre: tr("Services"), num: true, tri: (g) => g.nb, rendu: (g) => [String(g.nb), g.sansCommission ? h("span", { class: "tag" }, tr("{n} sans commission", { n: g.sansCommission })) : null], rendu_mobile: (g) => `${tr("services payés sur place {vente}", { vente: prix(g.vente) })}${g.sansCommission ? `, ${tr("{n} sans commission", { n: g.sansCommission })}` : ""}`, mobile: "sous" },
-    { cle: "prevue", titre: tr("Prévue"), num: true, rendu: (g) => prix(g.commission_prevue), mobile: false },
-    { cle: "recue", titre: tr("Reçue"), num: true, rendu: (g) => [prix(g.commission_recue), g.ecart ? h("span", { class: "tag" }, tr("écart {ecart}", { ecart: signe(g.ecart) })) : null], mobile: false },
-    { cle: "reste", titre: tr("Reste"), num: true, tri: (g) => g.reste, rendu: (g) => h("strong", null, prix(g.reste)), rendu_mobile: (g) => (recues ? pile(prix(g.commission_recue), g.ecart ? tr("reçu, écart {ecart}", { ecart: signe(g.ecart) }) : tr("reçu")) : pile(prix(g.reste), tr("à recevoir"))), mobile: "droite" },
-    { cle: "detail", titre: tr("Services"), tableau: false, rendu: () => null, rendu_mobile: (g) => detailServices(g), mobile: "pied" },
-  ];
-  const listeCommissions = (items, recues) => listeAdaptative({ items, colonnes: colonnesCommissions(recues), actions: actionsGroupe, tri: { cle: "mois", decroissant: true } }).noeud;
 
   const listeClients = () =>
     listeAdaptative({
@@ -211,7 +42,7 @@ export function vueEncaisser() {
     }).noeud;
 
   const chiffre = (libelle, valeur, detail) => h("div", { class: "chiffre" }, h("p", { class: "chiffre-libelle" }, libelle), h("p", { class: "chiffre-valeur" }, valeur), h("p", { class: "chiffre-detail" }, detail || " "));
-  const rienADire = !dus.length && !groupes.length;
+  const rienADire = !dus.length && (!commissions || commissions.rien);
 
   return h(
     "div",
@@ -221,15 +52,12 @@ export function vueEncaisser() {
       "div",
       { class: "chiffres compacts" },
       voitClients ? chiffre(tr("Clients"), formatSommes(dus.map((r) => ({ montant: r.reste, devise: r.devise })), devise), pluriel(dus.length, N_("dossier à régler"), N_("dossiers à régler"))) : null,
-      voitCommissions ? chiffre(tr("Commissions"), prix(totalCom), pluriel(aRecevoir.length, N_("partenaire à rapprocher"), N_("partenaires à rapprocher"))) : null
+      commissions ? chiffre(tr("Commissions"), prix(commissions.total), pluriel(commissions.nbPartenaires, N_("partenaire à rapprocher"), N_("partenaires à rapprocher"))) : null
     ),
     // Toujours là, même sans commission en attente : une règle de partenaire posée ou changée après coup se rattrape d'ici (pas en Taxi, où la commission se saisit à la main).
     voitCommissions && ecrit && !modeTaxi() ? bandeauRecalcul(rafraichir) : null,
     rienADire ? vide(tr("Rien à encaisser"), modeTaxi() ? tr("Aucune commission n'est en attente.") : modeExcursions() ? tr("Les clients ont tout payé et aucune commission n'est en attente.") : tr("Les clients ont tout payé.")) : null,
     dus.length ? h("section", null, h("h2", null, tr("Les clients doivent")), listeClients()) : null,
-    aRecevoir.length
-      ? h("section", { class: "commissions-recevoir" }, h("h2", null, tr("Commissions des prestataires")), h("p", { class: "aide" }, tr("Services payés sur place : le prestataire reverse une commission après la prestation. Un virement reçu se saisit une fois pour le partenaire et le mois.")), listeCommissions(aRecevoir, false))
-      : null,
-    recues.length ? h("details", { class: "commissions-recues" }, h("summary", null, tr("Déjà reçues ({n})", { n: recues.length })), listeCommissions(recues, true)) : null
+    commissions ? commissions.noeud : null
   );
 }
