@@ -676,7 +676,7 @@ export function donneesDemo(ajd, ajouterJours) {
 
 // Règles de réponse au client lues par l'agent (20.11.2026), une par ligne. Tant que l'entreprise ne les a jamais enregistrées, Secret et Taxi
 // ont la règle de paiement d'avance des bateaux demandée par Jérémy. Même texte que supabase/functions/agent/ameliorer.js, vérifié par les tests.
-export const REGLE_BATEAUX = "Ferry ou speedboat : dis que la réservation n'est confirmée qu'après paiement et que le paiement se fait à l'avance, par Wise, par virement international ou en cash à notre office. Ajoute que nous envoyons les détails de paiement. Jamais de coordonnées bancaires, de lien Wise ni d'adresse de l'office : tu ne les as pas, ne les invente pas.";
+export const REGLE_BATEAUX = "Trajet en ferry ou en speedboat d'un lieu à un autre (pas une excursion à la journée) : dis que la réservation n'est confirmée qu'après paiement et que le paiement se fait à l'avance, par Wise, par virement international ou en cash à notre office. Ajoute que nous envoyons les détails de paiement. Jamais de coordonnées bancaires, de lien Wise ni d'adresse de l'office : tu ne les as pas, ne les invente pas.";
 export function reglesReponse(reglages) {
   const v = reglages && reglages.assistant_voix ? reglages.assistant_voix.regles_reponse : undefined;
   if (typeof v === "string") return v.trim();

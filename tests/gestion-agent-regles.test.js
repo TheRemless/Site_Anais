@@ -22,7 +22,7 @@ test("règle des bateaux : préremplie chez Secret et Taxi, absente chez ZTP, un
   assert.equal(REGLE_ECRAN, REGLE_BATEAUX);
   for (const r of [SECRET, TAXI, ZTP, null, { ...SECRET, assistant_voix: { regles_reponse: "" } }]) assert.equal(reglesEcran(r), reglesReponse(r));
   // Le contenu demandé par Jérémy : confirmée après paiement, à l'avance, trois moyens, aucune coordonnée inventée.
-  for (const m of [/confirmée qu'après paiement/, /à l'avance/, /Wise/, /virement international/, /cash à notre office/, /détails de paiement/, /ne les invente pas/]) assert.match(REGLE_BATEAUX, m);
+  for (const m of [/^Trajet en ferry ou en speedboat/, /pas une excursion à la journée/, /confirmée qu'après paiement/, /à l'avance/, /Wise/, /virement international/, /cash à notre office/, /détails de paiement/, /ne les invente pas/]) assert.match(REGLE_BATEAUX, m);
   assert.doesNotMatch(REGLE_BATEAUX, /, et /);
 });
 
@@ -30,7 +30,7 @@ test("consignes : les règles de l'entreprise entrent dans la réponse au client
   const s = consignes({ entreprise: "Secret Travel & Tour", reglages: SECRET, prenomEquipe: "Nani" });
   const section = s.slice(s.indexOf("Réponse au client (proposer_reponse)"));
   assert.match(section, /Règles de l'entreprise, à appliquer chaque fois/);
-  assert.match(section, /  - Ferry ou speedboat : dis que la réservation n'est confirmée qu'après paiement/);
+  assert.match(section, /  - Trajet en ferry ou en speedboat d'un lieu à un autre \(pas une excursion à la journée\) : dis que la réservation n'est confirmée qu'après paiement/);
   assert.doesNotMatch(consignes({ entreprise: "Zwald Travel Planner", reglages: ZTP, prenomEquipe: "Anaïs" }), /Règles de l'entreprise/);
   const deux = consignes({ entreprise: "Secret", reglages: { ...SECRET, assistant_voix: { regles_reponse: "- Règle un\n\n• Règle deux" } } });
   assert.match(deux, /  - Règle un\n  - Règle deux/);
