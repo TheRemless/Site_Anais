@@ -215,7 +215,7 @@ test("fonction rappels : appel horaire « auto », lieu et langue lus, entrepris
   // Les trois crons de la production restent acceptés tels quels (rattrapage de master, 17.11.2026) : veille, lendemain, h1, plus l'appel horaire.
   assert.match(index, /const type = demande\.type \|\| demande\.mode;/);
   // Le passage « h1 » regarde aussi le crédit de l'assistant (migration 54) avant le rappel.
-  assert.match(index, /if \(type === "h1"\) \{[^}]*verifierBudget[\s\S]{0,200}return rappelH1\(demande\);/);
+  assert.match(index, /if \(type === "h1"\) \{[\s\S]{0,400}verifierBudget\(\{\}\)[\s\S]{0,300}await rappelH1\(demande\)[\s\S]{0,60}return reponse;/);
   assert.match(index, /for \(const t of type === "auto" \? TYPES : \[type\]\)/);
   assert.match(index, /lieu_pickup/);
   assert.match(index, /super_admin, langue/);

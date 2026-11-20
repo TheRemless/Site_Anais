@@ -480,7 +480,10 @@ export async function vueAgent(idOuvert = "") {
       const dossier = idNoms ? etat.db.dossiers.find((d) => d.id === idNoms) : null;
       const client = dossier ? etat.db.clients.find((x) => x.id === dossier.client_id) : null;
       const vu = enregistre || (c.genre === "dossier" && id ? { reservations: etat.db.reservations.filter((r) => r.dossier_id === id) } : null);
-      const lignes = correctionsDepuisCarte(c, vu, { noms: client ? [client.prenom, client.nom] : [] });
+      // Aussi les noms donnés dans les cartes « dossier » de la conversation : une réponse copiée avant que la conversation ait un dossier
+      // ne garde pas le nom du client.
+      const noms = [client && client.prenom, client && client.nom, ...fil.cartes.filter((x) => x.genre === "dossier").map((x) => ((x.donnees || {}).client || {}).nom)].filter(Boolean);
+      const lignes = correctionsDepuisCarte(c, vu, { noms });
       if (lignes.length && (await etat.store.agentNoterApprentissages(etat.entiteId, c.id, lignes))) toast(lignes.length === 1 ? tr("Correction notée : l'assistant s'en servira la prochaine fois.") : tr("{n} corrections notées : l'assistant s'en servira la prochaine fois.", { n: lignes.length }));
     } catch (err) {
       console.error("agent : après la validation", err);

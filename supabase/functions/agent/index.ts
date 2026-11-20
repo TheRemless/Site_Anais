@@ -14,7 +14,7 @@ import { clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, r
 import { tourner } from "./boucle.js";
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
-import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise } from "../assistant/budget.js";
+import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
 
@@ -35,6 +35,16 @@ function entetes(req: Request, type = "application/json") {
 
 // Le seuil d'alerte ou le plafond du mois passé, ou le crédit d'Anthropic épuisé : la fonction « rappels » prévient les administratrices
 // (notification, une fois par alerte). Appelée avec la clé de service ; une panne ne gêne pas l'échange.
+// Lancée en tâche de fond : la réponse n'attend pas, et le runtime garde la fonction en vie jusqu'à la fin de l'appel (EdgeRuntime.waitUntil).
+function alerterEnFond(corps: Record<string, unknown>) {
+  const tache = alerterBudget(corps);
+  try {
+    (globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil(tache);
+  } catch {
+    // Hors de Supabase (essais) : la promesse suit son cours.
+  }
+  return tache;
+}
 async function alerterBudget(corps: Record<string, unknown>) {
   try {
     await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/rappels`, { method: "POST", headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" }, body: JSON.stringify({ type: "budget", ...corps }), signal: AbortSignal.timeout(8000) });
@@ -78,7 +88,7 @@ Deno.serve(async (req) => {
   if (ent.error) console.error("agent : entreprise", ent.error.message);
   const reglages = regl.data ? regl.data.valeur : null;
   const coutDuMois = Number(mois.data) || 0;
-  if (budget.error && budget.error.code !== "42P01") console.error("agent : plafond", budget.error.message);
+  if (budget.error && !tableAbsente(budget.error)) console.error("agent : plafond", budget.error.message);
   const { plafond, seuil } = plafondRetenu(budget.error ? null : budget.data, Deno.env.get("AGENT_PLAFOND_MOIS_USD"));
   const acces = controlerAcces({
     entiteId,
@@ -91,7 +101,7 @@ Deno.serve(async (req) => {
   });
   if (!acces.ok) {
     // Plafond atteint : l'alerte part (une seule fois par mois) si aucun échange ne l'a encore envoyée.
-    if (acces.erreur === "plafond_du_mois") await alerterBudget({});
+    if (acces.erreur === "plafond_du_mois") alerterEnFond({});
     return json({ erreur: acces.erreur, ...(acces.manque ? { manque: acces.manque } : {}), ...(acces.limite ? { limite: acces.limite } : {}), ...(acces.plafond ? { plafond: acces.plafond, depense: acces.depense, reprise: reprise() } : {}) }, acces.statut);
   }
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
@@ -375,7 +385,7 @@ Deno.serve(async (req) => {
     return m ? (m.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join(" ") : message;
   })();
   const lus = await sb.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", entiteId).lte("cree_le", conv!.cree_le || new Date().toISOString()).order("cree_le", { ascending: false }).limit(80);
-  if (lus.error && lus.error.code !== "42P01") console.error("agent : apprentissages", lus.error.message);
+  if (lus.error && !tableAbsente(lus.error)) console.error("agent : apprentissages", lus.error.message);
   const appris = lus.error ? "" : blocApprentissages(lus.data || [], { qui: ra.responsable, premierMessage: premierTexte });
   const memo = memoDepuis([...messages, { role: "user", content: message }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
   const ctx = { charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
@@ -430,10 +440,10 @@ Deno.serve(async (req) => {
     const ligne = ligneJournal({ userId, entiteId, statut, appels, dureeMs: Date.now() - debut });
     const { error: errJ } = await admin.from("assistant_journal").insert(ligne);
     if (errJ) console.error("journal de l'agent non écrit :", errJ.message);
+    // Seuil d'alerte passé avec cet échange (ou crédit épuisé) : la fonction « rappels » prévient, une fois par alerte, en tâche de fond.
+    if (statut === "credit_epuise" || etatBudget({ cout: coutDuMois + (Number(ligne.cout_estime_usd) || 0), plafond, seuil }).alerte) alerterEnFond(statut === "credit_epuise" ? { credit_epuise: true } : {});
     await envoyer({ t: "fin", statut, cout_usd: ligne.cout_estime_usd, modele: ligne.modele });
     await ecrivain.close().catch(() => {});
-    // Seuil d'alerte passé avec cet échange (ou crédit épuisé) : la fonction « rappels » prévient, une fois par alerte.
-    if (statut === "credit_epuise" || etatBudget({ cout: coutDuMois + (Number(ligne.cout_estime_usd) || 0), plafond, seuil }).alerte) await alerterBudget(statut === "credit_epuise" ? { credit_epuise: true } : {});
   })();
 
   return new Response(flux.readable, { headers: { ...entetes(req, "application/x-ndjson; charset=utf-8"), "Cache-Control": "no-store" } });

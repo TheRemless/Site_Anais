@@ -1,11 +1,12 @@
 // L'agent apprend des corrections (20.11.2026, migration 54). Quand la personne change une proposition de l'agent avant de la valider
 // (heure de pickup, libellé, prix de vente, lieu, date, texte de la réponse au client), la différence est gardée par entreprise et relue par
 // l'agent comme exemple dans les conversations suivantes (supabase/functions/agent/prompt.js, blocApprentissages).
-// Ce qui ne part jamais : un net, une commission, une marge, une coordonnée bancaire (la correction entière est écartée), ni le nom, le
-// téléphone ou l'e-mail d'un client (masqués avant l'écriture). Logique pure, testée (tests/gestion-agent-apprendre.test.js).
+// Ce qui ne part jamais : un net, une commission, une marge commerciale, une coordonnée bancaire (la correction entière est écartée), ni le nom, le
+// téléphone ou l'e-mail d'un client (masqués avant l'écriture). « Marge » seule reste permise : c'est d'abord la marge de sécurité d'un
+// pickup, ce que l'agent doit justement apprendre. Logique pure, testée (tests/gestion-agent-apprendre.test.js).
 import { partModifiee } from "./assistant-suivi-calc.mjs";
 
-export const MOT_INTERNE = /\b(?:nets?|commissions?|marges?|prix d'achat|co[uû]t d'achat|cost price|net price|iban|swift|bic|compte bancaire|bank account|routing)\b/i;
+export const MOT_INTERNE = /\b(?:nets?|commissions?|marges? commerciales?|prix d'achat|co[uû]t d'achat|cost price|net price|iban|swift|bic|compte bancaire|bank account|routing)\b/i;
 
 const sansAccents = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
 const propre = (t) => String(t ?? "").replace(/\s+/g, " ").trim();
@@ -58,19 +59,20 @@ function ligne(genre, contexte, avant, apres, noms) {
 const contexteService = (s) => [propre(s.libelle || s.texte), s.de && s.vers ? `${propre(s.de)} → ${propre(s.vers)}` : "", s.lieu_pickup ? `pickup ${propre(s.lieu_pickup)}` : ""].filter(Boolean).join(", ");
 
 // Les écarts entre un service proposé (carte) et ce qui a été enregistré (réservation).
-// `libelle` : faux pour un dossier créé par l'écran de création, qui écrit lui-même le libellé (titre du catalogue, trajet) : un écart n'y
-// serait pas une correction de la personne.
-function ecartsService(s, r, noms, { libelle: avecLibelle = true } = {}) {
+// `creation` : vrai pour un dossier créé par l'écran de création, qui écrit lui-même le libellé (titre du catalogue, trajet), le lieu de
+// pickup (hôtel du client) et le prix d'une offre du catalogue (recalculé) : un écart n'y serait pas une correction de la personne. Seuls
+// l'heure, la date et le prix d'un service hors catalogue (tapé par elle) comptent alors.
+function ecartsService(s, r, noms, { creation = false } = {}) {
   if (!s || !r) return [];
   const ctx = contexteService(s);
   const out = [];
   if (s.heure_pickup && r.heure_pickup && s.heure_pickup !== String(r.heure_pickup).slice(0, 5)) out.push(ligne("pickup", ctx, s.heure_pickup, String(r.heure_pickup).slice(0, 5), noms));
   const libelle = propre(s.libelle || s.texte);
-  if (avecLibelle && libelle && propre(r.libelle) && !memeTexte(libelle, r.libelle)) out.push(ligne("libelle", s.de && s.vers ? `${propre(s.de)} → ${propre(s.vers)}` : "", libelle, r.libelle, noms));
+  if (!creation && libelle && propre(r.libelle) && !memeTexte(libelle, r.libelle)) out.push(ligne("libelle", s.de && s.vers ? `${propre(s.de)} → ${propre(s.vers)}` : "", libelle, r.libelle, noms));
   const pv = nombre(s.prix);
   const pr = nombre(r.montant_vente);
-  if (pv !== null && pr !== null && pv !== pr) out.push(ligne("prix", ctx, String(pv), String(pr), noms));
-  if (s.lieu_pickup && r.lieu_pickup && !memeTexte(s.lieu_pickup, r.lieu_pickup)) out.push(ligne("lieu", propre(s.libelle || s.texte), s.lieu_pickup, r.lieu_pickup, noms));
+  if (pv !== null && pr !== null && pv !== pr && !(creation && s.offre)) out.push(ligne("prix", ctx, String(pv), String(pr), noms));
+  if (!creation && s.lieu_pickup && r.lieu_pickup && !memeTexte(s.lieu_pickup, r.lieu_pickup)) out.push(ligne("lieu", propre(s.libelle || s.texte), s.lieu_pickup, r.lieu_pickup, noms));
   if (s.date && r.date_service && s.date !== r.date_service) out.push(ligne("date", ctx, s.date, r.date_service, noms));
   return out.filter(Boolean);
 }
@@ -106,7 +108,7 @@ export function correctionsDepuisCarte(carte, enregistre, { noms = [] } = {}) {
     const services = d.services || [];
     const reservations = Array.isArray(enregistre.reservations) ? enregistre.reservations : [];
     const paires = apparier(services, reservations);
-    return services.flatMap((s, i) => ecartsService(s, paires[i], masques, { libelle: false }));
+    return services.flatMap((s, i) => ecartsService(s, paires[i], masques, { creation: true }));
   }
   if (carte.genre === "reservation") return ecartsService(d.service || {}, enregistre.reservation, masques);
   if (carte.genre === "modification") {

@@ -76,7 +76,10 @@ test("budget : l'agent et l'assistant refusent au plafond, avec la dépense et l
   assert.match(agent, /plafondRetenu\(budget\.error \? null : budget\.data/);
   assert.match(agent, /depense: acces\.depense, reprise: reprise\(\)/);
   assert.match(agent, /estCreditEpuise\(err\)\) statut = "credit_epuise"/);
-  assert.match(agent, /alerterBudget\(/);
+  // L'alerte part en tâche de fond (EdgeRuntime.waitUntil) avant la fermeture du flux : la réponse n'attend pas, la fonction reste en vie.
+  assert.match(agent, /EdgeRuntime\?\.waitUntil\(tache\)/);
+  assert.match(agent, /alerterEnFond\([^)]*\);\s*await envoyer\(\{ t: "fin"/);
+  assert.ok(!/await alerterBudget\(\{\}\)/.test(agent));
   const assistant = lire("supabase/functions/assistant/index.ts");
   assert.match(assistant, /erreur: "plafond_du_mois", plafond, depense/);
   assert.match(assistant, /estCreditEpuise\(err\)/);
@@ -124,6 +127,9 @@ test("apprendre : pickup et prix corrigés sur un dossier créé, libellé de l'
     ]
   );
   assert.match(l[0].contexte, /Jai Tiki → Krabi Nakharin/);
+  // L'écran de création pose lui-même le lieu (hôtel du client) et le prix d'une offre du catalogue : pas une correction.
+  const avecOffre = { ...carteDossier, donnees: { ...carteDossier.donnees, services: [{ ...carteDossier.donnees.services[0], offre: { genre: "trajet", id: "t1" }, lieu_pickup: "Hôpital" }] } };
+  assert.deepEqual(correctionsDepuisCarte(avecOffre, { reservations: [{ ...reservations[1], heure_pickup: "12:55", lieu_pickup: "Jai Tiki" }] }), []);
   // Rien de changé : rien à apprendre.
   assert.deepEqual(correctionsDepuisCarte(carteDossier, { reservations: [{ ...reservations[1], heure_pickup: "12:55", montant_vente: 2500 }, reservations[0]] }), []);
 });
@@ -157,6 +163,12 @@ test("apprendre : jamais un net, une commission ni une banque", () => {
   assert.deepEqual(correctionsDepuisCarte(carte, { message: "Le prix est 2 500 THB. IBAN CH93 0076 2011 6238 5295 7." }), []);
   const modif = { genre: "reservation", donnees: { service: { libelle: "Bateau", prix: 1000 } } };
   assert.deepEqual(correctionsDepuisCarte(modif, { reservation: { libelle: "Bateau commission 20 %", montant_vente: 1000 } }), []);
+});
+
+test("apprendre : la marge d'un pickup s'apprend, la marge commerciale non", () => {
+  const carte = { genre: "reponse", donnees: { message: "Pickup à 12:55." } };
+  assert.equal(correctionsDepuisCarte(carte, { message: "Pickup à 12:40 pour garder une marge avec le ferry." }).length, 1);
+  assert.deepEqual(correctionsDepuisCarte(carte, { message: "Pickup à 12:40, marge commerciale de 300." }), []);
 });
 
 test("apprendre : masquer noms, e-mail, téléphone et lien, garder dates et heures", () => {

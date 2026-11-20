@@ -13,7 +13,7 @@
 // puis envoie une notification Web Push à chacun de ses appareils abonnés. Les résumés de la veille et du lendemain ne contiennent aucun nom de client.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
-import { alertesBudget, debutMois, destinatairesBudget, etatBudget, messageBudget, plafondRetenu } from "../assistant/budget.js";
+import { alertesBudget, debutMois, destinatairesBudget, etatBudget, messageBudget, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateDans, heureDans, fuseauValide, dateCible, entitesLisibles, rappelDuType, entitesDuRappel, entitesDuDepart, restreindre, TYPES, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
@@ -64,9 +64,12 @@ Deno.serve(async (req) => {
     }
   }
   if (type === "h1") {
-    // Toutes les 5 minutes : la dépense de l'assistant est aussi regardée (les usages de la fonction « assistant » n'appellent pas l'alerte).
-    await verifierBudget({}).catch((err) => console.error("budget de l'assistant :", String((err && err.message) || err).slice(0, 200)));
-    return rappelH1(demande);
+    // Toutes les 5 minutes : la dépense de l'assistant est aussi regardée (les usages de la fonction « assistant » n'appellent pas l'alerte),
+    // en même temps que les rappels, pour ne jamais les retarder.
+    const budget = verifierBudget({}).catch((err) => console.error("budget de l'assistant :", String((err && err.message) || err).slice(0, 200)));
+    const reponse = await rappelH1(demande);
+    await budget;
+    return reponse;
   }
   if (type !== "auto" && !TYPES.includes(type)) return json({ erreur: "type inconnu" }, 400);
   // `date`, `heure` et `user_id` ne servent qu'aux essais : sans eux, c'est la date et l'heure locales de chaque organisation et tous les abonnés.
@@ -457,7 +460,7 @@ async function executerDeparts(db: ReturnType<typeof createClient>, demain: stri
 async function verifierBudget({ creditEpuise = false }: { creditEpuise?: boolean }) {
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   const [budget, mois] = await Promise.all([db.from("assistant_budget").select("plafond_mois_usd, seuil_alerte_pct").maybeSingle(), db.rpc("assistant_cout_depuis", { debut: debutMois() })]);
-  if (budget.error) return budget.error.code === "42P01" ? { alertes: [] } : Promise.reject(new Error(budget.error.message));
+  if (budget.error) return tableAbsente(budget.error) ? { alertes: [] } : Promise.reject(new Error(budget.error.message));
   if (mois.error) throw new Error(mois.error.message);
   const { plafond, seuil } = plafondRetenu(budget.data, Deno.env.get("AGENT_PLAFOND_MOIS_USD"));
   const etatMois = etatBudget({ cout: Number(mois.data) || 0, plafond, seuil });

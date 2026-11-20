@@ -159,7 +159,7 @@ export function contexteDuJour({ aujourdhui, jour, lieuCourt = "", dossier = nul
 // en cache. Une ligne qui parle de net, de commission, de marge ou de banque est écartée ici aussi (l'outil ne l'écrit déjà pas).
 export const APPRIS_MAX = 10;
 export const APPRIS_CARACTERES = 3000;
-export const MOT_INTERNE_APPRIS = /\b(?:nets?|commissions?|marges?|prix d'achat|co[uû]t d'achat|cost price|net price|iban|swift|bic|compte bancaire|bank account|routing)\b/i;
+export const MOT_INTERNE_APPRIS = /\b(?:nets?|commissions?|marges? commerciales?|prix d'achat|co[uû]t d'achat|cost price|net price|iban|swift|bic|compte bancaire|bank account|routing)\b/i;
 const motsDe = (t) => new Set(String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/[^a-z0-9]+/).filter((m) => m.length >= 4));
 const court = (t, n) => {
   const x = String(t || "").replace(/\s+/g, " ").trim();

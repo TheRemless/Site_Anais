@@ -1,14 +1,17 @@
 // Plafond mensuel de l'assistant IA (20.11.2026) : la dépense du mois, toutes entreprises et tous usages confondus (fonction « assistant » et
 // fonction « agent »), comparée au plafond que règle Jérémy (table assistant_budget, migration 54 ; 50 $ par défaut, pour un crédit API de 200 $).
 // À 80 % du plafond, une alerte part chez les administrateurs (fonction « rappels », type « budget ») ; à 100 %, l'assistant refuse avec un
-// message clair. Logique pure, sans dépendance : utilisée par les fonctions agent, assistant et rappels, et par les tests node.
+// message clair. Logique pure : utilisée par les fonctions agent, assistant et rappels, et par les tests node.
+import { dateBangkok } from "./calc.js";
 
 export const PLAFOND_DEFAUT_USD = 50;
 export const SEUIL_DEFAUT_PCT = 80;
 export const PLAFOND_MAX_USD = 1000;
 
 const DECALAGE_BANGKOK = 7 * 3600 * 1000;
-const jourBangkok = (ms) => new Date(ms + DECALAGE_BANGKOK).toISOString().slice(0, 10);
+const jourBangkok = (ms) => dateBangkok(new Date(ms));
+// Une table absente (migration pas encore appliquée) : Postgres 42P01, ou PGRST205 dans le cache de PostgREST.
+export const tableAbsente = (error) => !!error && (error.code === "42P01" || error.code === "PGRST205");
 
 // Début du mois à Bangkok, en heure UTC (ISO) : la dépense se compte depuis cet instant.
 export const debutMois = (maintenant = Date.now()) => new Date(Date.parse(`${jourBangkok(maintenant).slice(0, 8)}01T00:00:00Z`) - DECALAGE_BANGKOK).toISOString();
