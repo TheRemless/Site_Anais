@@ -29,3 +29,8 @@ verify_jwt = true
 # Appelée par Telnyx (événements WhatsApp du numéro de Nani) sans compte : la fonction vérifie elle-même la signature Ed25519 (TELNYX_PUBLIC_KEY).
 [functions.whatsapp]
 verify_jwt = false
+
+# Appelée par l'outil avec la session de la personne (boîte WhatsApp, « Envoyer depuis Gestion ») : la passerelle vérifie le jeton, la
+# fonction lit la conversation avec cette session (RLS : administrateurs de Secret et Taxi).
+[functions.whatsapp-envoi]
+verify_jwt = true

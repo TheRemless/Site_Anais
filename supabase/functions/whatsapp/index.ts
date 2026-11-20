@@ -8,6 +8,7 @@
 // Secrets : TELNYX_PUBLIC_KEY (obligatoire), TELNYX_API_KEY (médias sans lien direct ; facultatif), WHATSAPP_ORGANISATION (Zwald par défaut).
 // Doc : docs/gestion/whatsapp.md. Logique pure : ./calc.js (tests/gestion-whatsapp.test.js). Base : migration 58.
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { apresMessageClient } from "./reponse.ts";
 import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
 
 const ORGANISATION = Deno.env.get("WHATSAPP_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
@@ -97,6 +98,8 @@ async function traiterEnAttente(db: SupabaseClient, idCourant: string) {
   const { data: enAttente } = await db.from("whatsapp_evenements").select("id").is("traite_le", null).lt("essais", 5).eq("organisation_id", ORGANISATION).order("recu_le").limit(11);
   const ids = [idCourant, ...((enAttente || []).map((e) => e.id).filter((id) => id !== idCourant))].slice(0, 11);
   for (const id of ids) await traiterUn(db, id);
+  // Une préparation arrêtée en route (limite de temps de la fonction) ne reste pas « en préparation » : échec après 3 minutes.
+  await db.from("whatsapp_propositions").update({ statut: "echec", erreur: "interrompue" }).eq("statut", "en_cours").lt("cree_le", new Date(Date.now() - 180_000).toISOString()).then(() => {}, () => {});
   const r = await reglages(db);
   if (!r.purge_le || Date.now() - new Date(r.purge_le).getTime() > 3600_000) {
     reglagesLus = null;
@@ -159,6 +162,16 @@ async function appliquer(db: SupabaseClient, a: any) {
   const { data, error } = await db.rpc("whatsapp_ranger", { org: ORGANISATION, tel: a.telephone, nom_profil: a.nom, m: a.message });
   if (error) throw new Error(error.message);
   await db.from("whatsapp_reglages").update({ dernier_evenement_le: maintenant }).eq("organisation_id", ORGANISATION);
+  if (data?.nouveau && data.message_id) {
+    // Un message du client : la réponse se prépare et l'équipe est prévenue, hors de ce traitement (il ne retarde pas les autres événements).
+    if (a.message.sens === "entrant") enFond(apresMessageClient(db, data.conversation_id, data.message_id));
+    // Nani a répondu depuis l'app : la proposition en attente est traitée (plus de doublon possible).
+    else if (a.message.origine === "app") {
+      const { error: e } = await db.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par_quoi: "app" }).eq("conversation_id", data.conversation_id).in("statut", ["a_faire", "en_cours", "envoi"]);
+      // Table absente (migration 59 pas encore passée) : rien à marquer.
+      if (e && e.code !== "42P01") throw new Error(e.message);
+    }
+  }
   if (!a.message.medias.length || !data?.message_id) return;
   // Nouveau message : ses médias. Déjà rangé (événement rejoué après une panne) : seulement les médias restés « a_copier ».
   let medias = a.message.medias;
@@ -175,6 +188,14 @@ class SansNumero extends Error {
   constructor() {
     super("expediteur_sans_numero");
   }
+}
+
+// Une tâche de fond gardée en vie par le runtime après la réponse à Telnyx.
+function enFond(p: Promise<unknown>) {
+  const tache = p.catch((err) => console.error("tâche de fond :", String((err as Error)?.message || err).slice(0, 200)));
+  // deno-lint-ignore no-explicit-any
+  const runtime = (globalThis as any).EdgeRuntime;
+  if (runtime?.waitUntil) runtime.waitUntil(tache);
 }
 
 // Valeur sûre dans un filtre PostgREST « or » (les ids Telnyx et Meta n'ont ni virgule ni parenthèse ; on le garantit).
@@ -280,6 +301,8 @@ async function effacerMedias(db: SupabaseClient, message: string, medias: Record
 async function purger(db: SupabaseClient) {
   const { data, error } = await db.rpc("purger_whatsapp", { org: ORGANISATION });
   if (error) throw new Error(error.message);
+  // Propositions de plus de 90 jours (migration 59 ; sans elle, rien).
+  await db.rpc("purger_whatsapp_propositions", { org: ORGANISATION }).then(() => {}, () => {});
   for (const ligne of data || []) {
     const { data: msg } = await db.from("whatsapp_messages").select("medias").eq("id", ligne.message_id).maybeSingle();
     if (msg) await effacerMedias(db, ligne.message_id, msg.medias || []);

@@ -11,6 +11,8 @@ import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
 import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
 import { avecNomsLies, peutUtiliserPartages } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
+import { whatsappDemo } from "./demo-whatsapp.mjs";
+import { marqueEntite, lecteurWhatsApp } from "./whatsapp-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
 // /gestion/?demo=agence (19.11.2026) : la démo des prospects, une agence fictive sans rien de Koh Lanta (demo-agence.mjs), gardée à part.
@@ -18,7 +20,9 @@ const AGENCE = typeof location !== "undefined" && new URLSearchParams(location.s
 const CLE = AGENCE ? "gestion-demo-agence-v2" : "gestion-zwald-demo-v13";
 const CLE_UTILISATEUR = AGENCE ? "gestion-demo-agence-utilisateur" : "gestion-zwald-demo-utilisateur";
 // Tables dont chaque modification pose une nouvelle version (comme le déclencheur tenir_a_jour de la base).
-const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches", "demandes_site", "bandeaux_site"];
+const VERSIONNEES = ["clients", "documents", "reservations", "partenaires", "prestations", "dossiers", "paiements", "taches", "demandes_site", "bandeaux_site", "whatsapp_conversations"];
+// Boîte WhatsApp (migrations 58 et 59) : la démo des prospects n'en a pas, comme une agence qui n'a pas relié son numéro.
+const TABLES_WHATSAPP_DEMO = ["whatsapp_conversations", "whatsapp_messages", "whatsapp_propositions", "whatsapp_reglages"];
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
 const PARTENAIRES_PUBLIC = ["partenaires", "prestations", "trajets"];
 const PARTENAIRES_NETS = ["partenaires_prives", "prestations_nets", "trajets_nets", "reservations_nets"];
@@ -87,7 +91,12 @@ export function creer() {
       // stockage refusé : on reste sur l'administratrice de démo
     }
     utilisateur = data.profils.find((p) => p.user_id === choisi) || data.profils.find((p) => p.super_admin);
-    if (neuve) sauve();
+    // Boîte WhatsApp : posée aussi dans une démo déjà enregistrée dans ce navigateur (créée avant la migration 58).
+    // Gardée tout de suite : les identifiants des conversations restent les mêmes d'un rechargement à l'autre (adresse « ?c=… »).
+    const sansWhatsApp = !data.whatsapp_conversations;
+    if (sansWhatsApp) Object.assign(data, AGENCE ? Object.fromEntries(TABLES_WHATSAPP_DEMO.map((t) => [t, []])) : whatsappDemo({ entites: data.entites, clients: data.clients, dossiers: data.dossiers, uid, organisation: ORG_DEMO }));
+    for (const t of TABLES_WHATSAPP_DEMO) data[t] = data[t] || [];
+    if (neuve || sansWhatsApp) sauve();
   };
   const sauve = () => {
     try {
@@ -120,6 +129,46 @@ export function creer() {
   // Même périmètre que les dossiers : « toute » voit tout, « mes dossiers » les dossiers créés ou dont la personne est responsable.
   const voit = (entiteId, dossierId) => voitTout(contexte(), entiteId) || data.dossiers.some((d) => d.id === dossierId && (d.cree_par === utilisateur.user_id || d.responsable_id === utilisateur.user_id));
   const financesDe = (entiteId) => permissionsDans(contexte(), entiteId).includes("finances.voir");
+  // Boîte WhatsApp, comme whatsapp_admin et whatsapp_lit (migration 58) : un administrateur de Secret ou de Taxi lit les conversations de son
+  // entreprise ; une conversation à trier se lit par un administrateur de l'une des deux.
+  const adminWhatsApp = (entiteId) => {
+    const e = data.entites.find((x) => x.id === entiteId);
+    return !!e && accessibles().includes(entiteId) && lecteurWhatsApp({ entite: e, superAdmin: false, permissions: permissionsDans(contexte(), entiteId), voitTout: voitTout(contexte(), entiteId) });
+  };
+  const litWhatsApp = (entiteId) => (entiteId ? adminWhatsApp(entiteId) : data.entites.some((e) => marqueEntite(e) && adminWhatsApp(e.id)));
+  const conversationLue = (id) => data.whatsapp_conversations.find((c) => c.id === id && c.organisation_id === monOrg() && litWhatsApp(c.entite_id)) || null;
+  // Comme whatsapp_reclasser (migration 59) : les non-lus ne remontent jamais, un changement d'entreprise est « manuel » et retire le client et le
+  // dossier d'une autre entreprise, puis cherche le client par le numéro dans la nouvelle.
+  const garderWhatsApp = (table, ligne, patch) => {
+    if (table === "whatsapp_propositions") {
+      if (ligne.statut !== "a_faire" || !["traitee", "ignoree"].includes(patch.statut)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      Object.assign(patch, { traitee_le: new Date().toISOString(), traitee_par: utilisateur.user_id, traitee_par_quoi: "outil" });
+      return;
+    }
+    if (table !== "whatsapp_conversations") return;
+    if (!conversationLue(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus"].includes(k)) delete patch[k];
+    if ("non_lus" in patch && !(patch.non_lus <= ligne.non_lus)) patch.non_lus = ligne.non_lus;
+    const apres = { ...ligne, ...patch };
+    if ("entite_id" in patch && patch.entite_id !== ligne.entite_id) {
+      if (apres.entite_id && !adminWhatsApp(apres.entite_id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      patch.entite_source = "manuel";
+    }
+    const client = apres.client_id ? data.clients.find((c) => c.id === apres.client_id && c.entite_id === apres.entite_id) : null;
+    if (apres.client_id && !client) patch.client_id = null;
+    const dossierOk = apres.dossier_id && data.dossiers.some((d) => d.id === apres.dossier_id && d.entite_id === apres.entite_id && (!client || d.client_id === client.id));
+    if (apres.dossier_id && !dossierOk) patch.dossier_id = null;
+    // Comme la base (migration 59) : les propositions encore ouvertes, préparées pour une autre entreprise, sont remplacées.
+    if (patch.entite_source === "manuel") for (const p of data.whatsapp_propositions) if (p.conversation_id === ligne.id && ["a_faire", "en_cours"].includes(p.statut) && p.entite_id !== apres.entite_id) p.statut = "remplacee";
+    if (patch.entite_source === "manuel" && apres.entite_id && !client) {
+      const n = (t) => String(t || "").replace(/\D/g, "");
+      const tel = n(ligne.telephone);
+      const trouve = data.clients.find((c) => c.entite_id === apres.entite_id && n(c.telephone).length >= 9 && (n(c.telephone) === tel || n(c.telephone).slice(-9) === tel.slice(-9)));
+      patch.client_id = trouve ? trouve.id : null;
+      const d = trouve ? data.dossiers.find((x) => x.client_id === trouve.id && x.entite_id === apres.entite_id && !x.annule) : null;
+      patch.dossier_id = patch.dossier_id || (d ? d.id : null);
+    }
+  };
 
   const contexte = () => ({ profil: utilisateur, membres: data.membres, roles: data.roles });
   // Comme la base (migration 42) : l'administrateur ne voit que les entreprises de son organisation, l'éditeur du logiciel aucune.
@@ -355,6 +404,34 @@ export function creer() {
       sauve();
       setTimeout(() => ecouteurs.forEach((f) => f()), 0);
       return structuredClone(ligne);
+    },
+    // Boîte WhatsApp. En direct comme le reste de la démo (même liste d'écouteurs, prévenue à chaque écriture d'un autre onglet).
+    ecouterWhatsApp(tables, rappel) {
+      return this.ecouter(tables, rappel);
+    },
+    async whatsappMessages(conversationId) {
+      if (!conversationLue(conversationId)) return [];
+      return structuredClone(data.whatsapp_messages.filter((m) => m.conversation_id === conversationId).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)));
+    },
+    async whatsappProposition(id) {
+      const p = data.whatsapp_propositions.find((x) => x.id === id);
+      return p && conversationLue(p.conversation_id) ? { id: p.id, statut: p.statut } : null;
+    },
+    // Le navigateur de démo ne garde aucun fichier : pas de lien, l'écran le dit.
+    async whatsappLienMedia() {
+      return null;
+    },
+    // Rien ne part en démonstration.
+    async whatsappEnvoyer() {
+      await new Promise((r) => setTimeout(r, 200));
+      return { demo: true };
+    },
+    async whatsappReception(organisationId, actif) {
+      const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);
+      if (!r || organisationId !== monOrg() || !litWhatsApp(null)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      Object.assign(r, { reception_active: !!actif, updated_at: new Date().toISOString() });
+      sauve();
+      return structuredClone(r);
     },
     // Hôtels situés (migration 48) : mêmes droits que la base. Lire avec la base de prix, ajouter ou corriger avec « dossiers.ecrire » en plus.
     async hotelsLieux(entiteId) {
@@ -671,6 +748,14 @@ export function creer() {
       out.demandes_site = data.demandes_site.filter((d) => ids.has(d.entite_id) && litDemandes(d.entite_id));
       out.bandeaux_site = data.bandeaux_site.filter((b) => ids.has(b.entite_id) && droit(b.entite_id, "dossiers.lire"));
       out.site_disponible = true;
+      // Boîte WhatsApp : mêmes règles que la base (whatsapp_lit). Les messages se lisent à l'ouverture d'une conversation.
+      out.whatsapp_conversations = data.whatsapp_conversations.filter((c) => c.organisation_id === monOrg() && litWhatsApp(c.entite_id));
+      const convs = new Set(out.whatsapp_conversations.map((c) => c.id));
+      // Une proposition se lit par les administrateurs de l'entreprise pour laquelle elle a été préparée (migration 59).
+      out.whatsapp_propositions = data.whatsapp_propositions.filter((p) => convs.has(p.conversation_id) && (!p.entite_id || adminWhatsApp(p.entite_id)));
+      out.whatsapp_reglages = data.whatsapp_reglages.filter((r) => r.organisation_id === monOrg() && litWhatsApp(null));
+      out.whatsapp_disponible = !AGENCE;
+      out.whatsapp_propositions_disponible = !AGENCE;
       // Comme la base après la migration 42 : sa propre organisation, toutes pour l'éditeur du logiciel ; l'administrateur voit les comptes de la sienne.
       out.organisations = utilisateur.plateforme ? data.organisations : data.organisations.filter((o) => o.id === monOrg());
       out.profils = utilisateur.super_admin ? data.profils.filter((p) => p.organisation_id === monOrg()) : data.profils.filter((p) => p.user_id === uidCourant);
@@ -721,6 +806,7 @@ export function creer() {
       if (VERSIONNEES.includes(table)) patch.updated_at = new Date().toISOString();
       // Comme le déclencheur de la migration 30 : un changement de statut note qui et quand.
       if (table === "demandes_site" && patch.statut && patch.statut !== ligne.statut) Object.assign(patch, { traitee_le: new Date().toISOString(), traitee_par: utilisateur.user_id });
+      garderWhatsApp(table, ligne, patch);
       const details = {};
       for (const [k, v] of Object.entries(patch)) {
         if (["updated_at", "modifie_par"].includes(k) || JSON.stringify(ligne[k]) === JSON.stringify(v)) continue;

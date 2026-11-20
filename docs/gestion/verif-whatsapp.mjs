@@ -125,5 +125,78 @@ ok(!ids.includes("vieux") && ids.includes("recent"), "les événements de plus d
 ok((await db.query("select count(*)::int n from whatsapp_messages where telnyx_id = 'tx-5'")).rows[0].n === 0, "les messages de plus de 365 jours sont supprimés");
 ok((await db.query("select count(*)::int n from whatsapp_conversations")).rows[0].n === 2, "les conversations récentes restent");
 
+// ---- Migration 59 : propositions, classement, rattachement ------------------------------------------------------------------------
+ok(migrations.includes("migration-59-whatsapp-boite.sql"), "la migration 59 passe après la 58");
+await db.exec(lire("migration-59-whatsapp-boite.sql"));
+ok(true, "la migration 59 se rejoue sans erreur");
+u.both = (await db.query("insert into auth.users (email) values ('both@test') returning id")).rows[0].id;
+await db.exec(`update profils set organisation_id = '${ORG}' where organisation_id is null`);
+await membre("both", ent.secret, "Administrateur");
+await membre("both", ent.taxi, "Administrateur");
+
+const P = (await db.query("insert into whatsapp_propositions (conversation_id, entite_id, statut, texte, entreprise_proposee) values ($1, $2, 'a_faire', 'Hi! The 4 islands tour leaves at 8:30.', 'secret') returning id", [r3.conversation_id, ent.secret])).rows[0].id;
+ok(await compter(u.adminSecret, "whatsapp_propositions") === 1, "l'administrateur de Secret lit la proposition d'une conversation à trier");
+ok(await compter(u.mook, "whatsapp_propositions") === 0, "Mook ne lit aucune proposition");
+r = await essaie(u.adminSecret, `update whatsapp_propositions set texte = 'autre' where id = '${P}'`);
+ok(!r.ok, "le texte d'une proposition ne se change pas en base depuis l'outil");
+r = await essaie(u.adminSecret, `update whatsapp_propositions set statut = 'a_faire' where id = '${P}'`);
+ok(!r.ok, "une proposition ne repasse pas « à faire »");
+r = await essaie(u.adminSecret, `update whatsapp_propositions set statut = 'traitee' where id = '${P}'`);
+const pt = (await db.query("select statut, traitee_par, traitee_par_quoi, traitee_le from whatsapp_propositions where id = $1", [P])).rows[0];
+ok(r.ok && r.n === 1 && pt.statut === "traitee" && pt.traitee_par === u.adminSecret && pt.traitee_par_quoi === "outil" && pt.traitee_le, "marquée traitée à la main : qui, quand et comment sont notés");
+r = await essaie(u.adminSecret, `update whatsapp_propositions set statut = 'ignoree' where id = '${P}'`);
+ok(r.ok && r.n === 0, "une proposition déjà traitée ne change plus");
+
+// Classement : un tap, dans une entreprise dont on est administrateur.
+r = await essaie(u.adminSecret, `update whatsapp_conversations set entite_id = '${ent.secret}' where id = '${r3.conversation_id}'`);
+let c3 = (await db.query("select entite_id, entite_source from whatsapp_conversations where id = $1", [r3.conversation_id])).rows[0];
+ok(r.ok && r.n === 1 && c3.entite_id === ent.secret && c3.entite_source === "manuel", "l'administrateur de Secret range la conversation à trier chez Secret (source manuel)");
+r = await essaie(u.adminSecret, `update whatsapp_conversations set entite_id = '${ent.taxi}' where id = '${r3.conversation_id}'`);
+ok(!r.ok, "il ne peut pas la ranger chez Taxi, où il n'est pas administrateur");
+r = await essaie(u.adminTaxi, `update whatsapp_conversations set entite_id = '${ent.secret}' where id = '${r1.conversation_id}'`);
+ok(!r.ok, "l'administrateur de Taxi ne déplace pas sa conversation chez Secret");
+r = await essaie(u.both, `update whatsapp_conversations set entite_id = '${ent.secret}' where id = '${r1.conversation_id}'`);
+const c1 = (await db.query("select entite_id, client_id, dossier_id from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0];
+ok(r.ok && c1.entite_id === ent.secret && c1.client_id === null && c1.dossier_id === null, "déplacée chez Secret, elle perd le client et le dossier de Taxi");
+r = await essaie(u.both, `update whatsapp_conversations set entite_id = '${ent.taxi}' where id = '${r1.conversation_id}'`);
+const c1b = (await db.query("select client_id, dossier_id from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0];
+ok(r.ok && c1b.client_id === C && c1b.dossier_id === D, "revenue chez Taxi, le client est retrouvé par le numéro avec son dossier");
+const Cs = (await db.query("insert into clients (entite_id, prenom, nom) values ($1, 'X', 'Y') returning id", [ent.secret])).rows[0].id;
+r = await essaie(u.both, `update whatsapp_conversations set client_id = '${Cs}' where id = '${r1.conversation_id}'`);
+ok((await db.query("select client_id from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0].client_id !== Cs, "un client d'une autre entreprise n'est jamais relié");
+await db.exec(`select set_config('request.jwt.claim.sub', '', false); update whatsapp_conversations set non_lus = 3 where id = '${r1.conversation_id}'`);
+r = await essaie(u.adminTaxi, `update whatsapp_conversations set non_lus = 9 where id = '${r1.conversation_id}'`);
+ok((await db.query("select non_lus from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0].non_lus === 3, "les non-lus ne remontent pas depuis l'outil");
+r = await essaie(u.adminTaxi, `update whatsapp_conversations set non_lus = 0 where id = '${r1.conversation_id}'`);
+ok(r.ok && (await db.query("select non_lus from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0].non_lus === 0, "ouvrir la conversation la marque lue");
+r = await essaie(u.adminTaxi, `update whatsapp_conversations set telephone = '+41790000099' where id = '${r1.conversation_id}'`);
+ok(!r.ok, "le numéro du client ne se change pas");
+r = await essaie(u.mook, `update whatsapp_conversations set entite_id = '${ent.secret}' where id = '${r1.conversation_id}'`);
+ok(r.ok && r.n === 0, "Mook ne range rien");
+
+// Revue de sécurité : une proposition préparée avec les données d'une entreprise ne se lit que par ses administrateurs ; changer
+// d'entreprise la remplace ; une proposition restée « envoi » se marque traitée.
+const r9 = await ranger("+41790000077", null, msg({ evenement_id: "e9", telnyx_id: "tx-9", meta_id: "wamid.9", texte: "Taxi to the airport?" }));
+const PT = (await db.query("insert into whatsapp_propositions (conversation_id, entite_id, statut, texte, entreprise_proposee) values ($1, $2, 'a_faire', 'Hi!', 'taxi') returning id", [r9.conversation_id, ent.taxi])).rows[0].id;
+r = await essaie(u.adminSecret, `select count(*)::int n from whatsapp_propositions where id = '${PT}'`);
+ok(r.ok && r.rows[0].n === 0, "à trier, la proposition préparée pour Taxi ne se lit pas par l'administrateur de Secret");
+r = await essaie(u.adminTaxi, `select count(*)::int n from whatsapp_propositions where id = '${PT}'`);
+ok(r.ok && r.rows[0].n === 1, "… mais par celui de Taxi");
+r = await essaie(u.both, `update whatsapp_conversations set entite_id = '${ent.secret}' where id = '${r9.conversation_id}'`);
+ok(r.ok && (await db.query("select statut from whatsapp_propositions where id = $1", [PT])).rows[0].statut === "remplacee", "rangée chez Secret, la réponse préparée pour Taxi est remplacée");
+const PE = (await db.query("insert into whatsapp_propositions (conversation_id, entite_id, statut, texte) values ($1, $2, 'envoi', 'Hi!') returning id", [r9.conversation_id, ent.secret])).rows[0].id;
+r = await essaie(u.adminSecret, `update whatsapp_propositions set statut = 'traitee' where id = '${PE}'`);
+ok(r.ok && r.n === 1, "une proposition restée « envoi » (délai dépassé) se marque traitée après vérification");
+
+// Journal : usage « whatsapp » admis, sans personne.
+r = await db.query("insert into assistant_journal (user_id, entite_id, usage, statut) values ('00000000-0000-0000-0000-000000000000', $1, 'whatsapp', 'ok') returning id", [ent.secret]).then(() => ({ ok: true }), (e) => ({ ok: false, err: e.message }));
+ok(r.ok, "le journal de l'assistant accepte l'usage « whatsapp »" + (r.ok ? "" : ` (${r.err})`));
+r = await db.query("insert into assistant_journal (user_id, usage, statut) values ('00000000-0000-0000-0000-000000000000', 'agent', 'ok')").then(() => ({ ok: true }), () => ({ ok: false }));
+ok(r.ok, "l'usage « agent » reste admis");
+r = await essaie(u.both, `select purger_whatsapp_propositions('${ORG}')`);
+ok(!r.ok, "l'outil ne peut pas purger les propositions");
+await db.query("update whatsapp_propositions set cree_le = now() - interval '91 days' where id = $1", [P]);
+ok((await db.query("select purger_whatsapp_propositions($1) n", [ORG])).rows[0].n === 1, "une proposition de plus de 90 jours est supprimée");
+
 console.log(echecs ? `${echecs} échec(s)` : "tout est ok");
 process.exit(echecs ? 1 : 0);
