@@ -869,25 +869,51 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .s-sur_place { color: #25653d; }
 .ecart-reception { min-height: 1.4em; margin: 0 0 8px; font-weight: 600; }
 .modal-corps > .aide { margin: 0 0 14px; }
-.detail-services { margin: 6px 0 0; }
-.detail-services summary { display: flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--teal-700); cursor: pointer; }
-.detail-services ul { list-style: none; margin: 0 0 6px; padding: 0; }
-.detail-services li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--bord); font-size: 0.92rem; }
-/* À encaisser : la liste à cocher d'un virement ou d'une réception à annuler, et le bandeau « Recalculer » toujours présent. */
-.liste-reception { list-style: none; margin: 0 0 8px; padding: 0; max-height: 45vh; overflow: auto; }
-.liste-reception li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 2px 0; border-top: 1px solid var(--bord); font-size: 0.92rem; }
-.liste-reception .case { flex: 1; min-width: 0; font-weight: 400; }
-.liste-reception .case input { flex: none; width: 20px; height: 20px; }
-.liste-reception .case .tag { margin-left: 6px; }
-.liste-reception strong { flex: none; }
 .bandeau-recalcul { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin: 0 0 20px; padding: 8px 14px; border: 1px solid var(--bord); border-radius: var(--rayon); font-size: 0.92rem; }
 .bandeau-recalcul.a-faire { background: #fff4d6; border-color: #e8d49a; color: #5a4300; }
 .bandeau-recalcul button { min-height: 44px; }
 .commissions-recues > summary { display: flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--teal-700); cursor: pointer; }
-.commissions-recevoir .carte-actions, .commissions-recues .carte-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-@media (max-width: 719px) {
-  .commissions-recevoir .carte-actions .principal, .commissions-recues .carte-actions .principal { order: -1; flex: 1 1 100%; }
-}
+/* À encaisser, commissions (20.11.2026) : un partenaire, ses dossiers à cocher dessous, le total coché sous son nom et en bas de l'écran. */
+.enc-partenaire { margin: 0 0 16px; padding: 4px 16px 8px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; box-shadow: var(--ombre); }
+.enc-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 10px 0 8px; }
+.enc-tete h3 { margin: 0; font-size: 1.05rem; }
+.enc-coche { font-weight: 700; color: var(--teal-700) !important; }
+.enc-coche:empty { display: none; }
+.enc-liste { list-style: none; margin: 0; padding: 0; }
+.enc-dossier { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; border-top: 1px solid var(--bord); }
+.enc-case { flex: 1 1 260px; display: flex; align-items: flex-start; gap: 12px; min-height: 56px; padding: 10px 0; cursor: pointer; }
+div.enc-case { cursor: default; }
+.enc-case input[type="checkbox"] { flex: none; width: 22px; height: 22px; margin: 2px 0 0; }
+.enc-case:has(input:checked) .enc-montant { color: var(--teal-700); }
+.enc-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.enc-client { font-weight: 600; }
+.enc-detail { font-size: 0.88rem; color: var(--texte-2); overflow-wrap: anywhere; }
+.enc-tags .tag { margin: 2px 6px 0 0; }
+.enc-montant { flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.enc-dossier > .lien { margin-left: auto; }
+.enc-pied { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0 6px; border-top: 1px solid var(--bord); }
+.enc-pied .aide { margin: 0; }
+.enc-barre { display: flex; gap: 8px 12px; flex-wrap: wrap; }
+@media (max-width: 719px) { .enc-barre > .principal { flex: 1 1 100%; } }
+.enc-barre[hidden] { display: none; }
+.enc-barre-texte { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.enc-feuille-liste { list-style: none; margin: 0; padding: 0; }
+.enc-feuille-dossier { padding: 12px 0; border-top: 1px solid var(--bord); }
+.enc-feuille-titre { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 0 0 2px; }
+.enc-feuille-titre span { color: var(--texte-2); font-size: 0.9rem; }
+.enc-feuille-dossier > .aide { margin: 0 0 8px; }
+.enc-choix, .enc-motif { margin: 8px 0 0; padding: 0; border: 0; }
+.enc-choix legend, .enc-motif legend { padding: 0; margin: 0 0 4px; font-weight: 600; font-size: 0.92rem; }
+.enc-choix .aide { display: block; margin: -6px 0 4px 32px; }
+.enc-motif .puces { margin: 0 0 8px; padding: 0; flex-wrap: wrap; overflow: visible; }
+.enc-motif .puce { display: inline-flex; align-items: center; cursor: pointer; }
+.enc-motif .puce input { position: absolute; opacity: 0; pointer-events: none; }
+.enc-motif .puce:has(input:checked) { background: var(--teal-100); border-color: var(--teal-600); color: var(--teal-700); box-shadow: inset 0 0 0 1px var(--teal-600); }
+.enc-motif .puce:has(input:focus-visible) { outline: 2px solid var(--teal-600); outline-offset: 2px; }
+.enc-feuille .ecart-reception:empty { display: none; }
+.enc-feuille .ecart-reception { margin: 8px 0 0; }
+.enc-total { flex: 1 1 auto; margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (forced-colors: active) { .enc-motif .puce:has(input:checked) { outline: 2px solid Highlight; } }
 
 /* ==== Session C (mobile) : navigation et accueil ============================================================== */
 /* Bouton « + » : un geste pour créer, au-dessus de la barre d'onglets, jamais par-dessus une barre d'action ni le clavier. */
@@ -1206,7 +1232,6 @@ th[aria-sort="ascending"] .st-tri, th[aria-sort="descending"] .st-tri { color: v
 .formulaire-reservation .actions:not(.gauche) { flex-wrap: nowrap; }
 .formulaire-reservation .actions:not(.gauche) button { flex: 1 1 0; }
 @media (min-width: 720px) { .formulaire-reservation .actions:not(.gauche) button { flex: 0 0 auto; min-width: 120px; } }
-.carte .detail-services { margin: 0; }
 
 /* ---- Session F : recalcul des commissions ---- */
 .recalcul-commission { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: space-between; padding: 8px 10px; margin: 6px 0; border-radius: var(--rayon); background: var(--surface-2); font-size: 14px; }

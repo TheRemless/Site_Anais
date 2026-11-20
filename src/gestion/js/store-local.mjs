@@ -182,7 +182,7 @@ export function creer() {
       Object.assign(n, valeurs);
       if (Object.keys(details).length) journaliser("reservations_nets", "update", n, details);
     } else {
-      const ligne = { id: uid(), created_at: aujourdhui(), entite_id: r.entite_id, reservation_id: r.id, net_paye: null, paye_le: null, commission_recue: null, commission_recue_le: null, ...valeurs };
+      const ligne = { id: uid(), created_at: aujourdhui(), entite_id: r.entite_id, reservation_id: r.id, net_paye: null, paye_le: null, commission_recue: null, commission_recue_le: null, commission_recue_moyen: null, commission_partielle_le: null, commission_ecart_motif: null, commission_ecart_note: null, ...valeurs };
       data.reservations_nets.push(ligne);
       journaliser("reservations_nets", "insert", ligne, Object.fromEntries(["net_prevu", "commission_prevue"].filter((k) => valeurs[k] !== null).map((k) => [k, { avant: null, apres: valeurs[k] }])));
     }

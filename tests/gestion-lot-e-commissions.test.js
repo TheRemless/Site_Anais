@@ -55,14 +55,12 @@ test("point 10 : « Autre montant » se répartit sur les seuls services cochés
   assert.equal(repartirReception(rs, nets, 900).repartition.length, 3);
 });
 
-test("point 10 : l'écran coche d'avance, demande la liste avant d'enregistrer et laisse annuler une réception", () => {
-  const s = source("views/encaisser.mjs");
-  assert.match(s, /servicesAReceptionner\(g\.reservations, netReservation, ajd\)/);
-  assert.match(s, /repartirReception\(g\.reservations, netReservation, v, \{ ids: new Set\(/, "la répartition reçoit la liste cochée");
-  assert.doesNotMatch(s, /repartirReception\(g\.reservations, netReservation, g\.reste\)/, "plus de marquage de tout le groupe d'un tap");
-  assert.match(s, /commission_recue: null, commission_recue_le: null/, "annuler une réception efface montant et date");
-  assert.match(s, /tr\("Annuler une réception"\)/);
-  assert.match(s, /g\.nb > g\.nbARecevoir \? h\("button"/, "le bouton d'annulation apparaît dès qu'un service du groupe est réglé, y compris dans « Déjà reçues »");
+test("point 10 : l'écran encaisse dossier par dossier (voir gestion-encaisser-dossiers.test.js) et laisse annuler une réception", () => {
+  const s = source("views/encaisser-commissions.mjs");
+  assert.match(s, /aRecevoirParPartenaire\(etat\.db\.reservations, netReservation, \{ ecartees, ajd \}\)/);
+  assert.match(s, /ecrituresEncaissement\(b\.d, netReservation, \{/, "chaque dossier coché a ses propres écritures");
+  assert.match(s, /VALEURS_ANNULATION/, "annuler une réception efface montant, dates, moyen et motif");
+  assert.match(s, /tr\("Annuler la réception"\)/);
 });
 
 test("bandeau « Recalculer » : affiché hors de la liste des commissions en attente, sauf en Taxi", () => {
