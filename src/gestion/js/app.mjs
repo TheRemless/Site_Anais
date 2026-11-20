@@ -1015,13 +1015,17 @@ function surveillerDonnees() {
     const signatureAvant = signatureWhatsApp(etat.brut);
     const nonLusAvant = whatsappNonLus();
     let applique = false;
+    let panne = false;
     try {
       applique = appliquerWhatsApp(await etat.store.chargerWhatsApp());
     } catch (err) {
+      // Réseau coupé ou base injoignable : pas de nouvel essai rapproché (le repli et le retour du réseau relisent).
       console.warn(err);
+      panne = true;
     } finally {
       lectureWhatsApp = false;
     }
+    if (panne) return;
     // Une écriture était en cours (marquer lu, ranger) : on relit un peu plus tard plutôt que de perdre l'événement.
     if (!applique) return void setTimeout(() => relireWhatsApp({ redessiner }), 300);
     if (document.querySelector(".coque")) majBadges();
