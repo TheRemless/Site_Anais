@@ -67,7 +67,6 @@ Demande de Jérémy du 20.11.2026 : ne jamais toucher à ce que Nani a classé, 
   4. le budget et les limites du jour le permettent ;
   5. Claude Haiku lit les derniers messages et répond en JSON : préparer ou non, motif, entreprise suggérée. Il faut à la fois « oui » et un motif de demande (`demande_client` ou `suivi_reservation`) ; dans le doute, non.
 - **Décision visible.** Le motif est gardé sur la conversation (`tri`) et affiché dans l'écran. Un bouton « Préparer une réponse » (fonction `whatsapp-preparer`) prépare quand même, dans les mêmes limites.
-- **Notifications.** Gestion ne prévient que pour une demande de client. Pour le reste, l'app WhatsApp de Nani sonne déjà.
 
 ## Étapes de Jérémy (une seule fois)
 
