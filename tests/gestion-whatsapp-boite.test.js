@@ -243,10 +243,10 @@ test("branchement : route, menu avec badge, direct sur un canal à part, réglag
   assert.match(app, /\[\/\^#\\\/whatsapp\(\?:\\\?\.\*\)\?\$\/, "whatsapp", vers\(\(\) => import\("\.\/views\/whatsapp\.mjs"\), "vueWhatsApp"\)\]/);
   assert.match(app, /if \(cle === "whatsapp"\) return whatsappVisible\(\);/, "une adresse tapée n'ouvre pas l'écran sans le droit");
   assert.match(app, /href: "#\/whatsapp", libelle: tr\("WhatsApp"\), cle: "whatsapp", icone: "whatsapp", badge: whatsapp/);
-  assert.match(app, /etat\.store\.ecouterWhatsApp\(TABLES_WHATSAPP, changementWhatsApp\)/);
+  assert.match(app, /etat\.store\.ecouterWhatsApp\(TABLES_WHATSAPP, changementWhatsApp, \{ surEtat: majRepli \}\)/);
   assert.deepEqual(W.TABLES_WHATSAPP, ["whatsapp_conversations", "whatsapp_messages", "whatsapp_propositions"]);
   const sb = source("store-supabase.mjs");
-  assert.match(sb, /sb\.channel\("gestion-whatsapp"\)/, "un canal à part, celui des demandes du site ne change pas");
+  assert.match(sb, /canalFiable\("gestion-whatsapp", tables, rappel, surEtat\)/, "un canal à part, celui des demandes du site ne change pas");
   assert.match(sb, /createSignedUrl\(media\.chemin, 300/, "lien court vers le stockage privé");
   assert.match(sb, /functions\/v1\/whatsapp-envoi/);
   assert.match(sb, /whatsapp_disponible: conversations !== null/, "tolérant à une table absente");
@@ -485,6 +485,126 @@ test("démo : réglage Jamais par contact et « Préparer une réponse » qui cr
     assert.ok(prevenu >= 2, "annoncée comme par Realtime");
     const repondue = brut.whatsapp_conversations.find((c) => c.dernier_sens === "sortant");
     assert.deepEqual(await store.whatsappPreparer(repondue.id), { erreur: "rien_a_repondre" });
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
+// ---- Quatrième passe : temps réel fiable (20.11.2026, « comme WhatsApp Web ») -------------------------------------------------------
+import * as R from "../src/gestion/js/direct-reprise-calc.mjs";
+
+test("temps réel : délai croissant de réabonnement 1, 2, 5, 10 puis 30 s, coupures reconnues", () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 12].map(R.delaiReabonnement), [1000, 2000, 5000, 10000, 30000, 30000, 30000]);
+  assert.equal(R.delaiReabonnement(-3), 1000);
+  assert.equal(R.delaiReabonnement(undefined), 1000);
+  for (const s of ["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"]) assert.equal(R.estCoupure(s), true, s);
+  for (const s of ["SUBSCRIBED", "joined", undefined]) assert.equal(R.estCoupure(s), false, String(s));
+  assert.equal(R.doitReabonner("joined"), false);
+  for (const e of ["closed", "errored", "joining", "leaving", undefined]) assert.equal(R.doitReabonner(e), true, String(e));
+});
+
+test("temps réel : relecture ciblée pour les seules tables WhatsApp, repli 5 s sur l'écran, 20 s ailleurs, rien quand le direct marche", () => {
+  assert.equal(R.relectureCiblee(["whatsapp_messages"]), true);
+  assert.equal(R.relectureCiblee(["whatsapp_conversations", "whatsapp_propositions"]), true);
+  assert.equal(R.relectureCiblee(["demandes_site"]), false);
+  assert.equal(R.relectureCiblee(["whatsapp_messages", "dossiers"]), false);
+  assert.equal(R.relectureCiblee([]), false);
+  assert.equal(R.ATTENTE_WHATSAPP_MS, 200);
+  assert.equal(R.intervalleRepli({ abonne: false, ecranWhatsApp: true }), 5000);
+  assert.equal(R.intervalleRepli({ abonne: false, ecranWhatsApp: false }), 20000);
+  assert.equal(R.intervalleRepli({ abonne: true, ecranWhatsApp: true }), null, "dès que le canal repasse SUBSCRIBED, plus de repli");
+  assert.equal(R.intervalleRepli({ abonne: false, ecranWhatsApp: true, actif: false }), null, "personne qui ne lit pas la boîte");
+  assert.equal(R.directCoupe("coupe"), true);
+  assert.equal(R.directCoupe("connexion"), false, "pas de pastille pendant la première connexion");
+  const brut = { whatsapp_conversations: [{ id: "a", non_lus: 1 }], whatsapp_propositions: [], whatsapp_reglages: [], dossiers: [{ id: "d" }] };
+  const s1 = R.signatureWhatsApp(brut);
+  assert.equal(R.signatureWhatsApp({ ...brut, dossiers: [] }), s1, "un dossier changé ne redessine pas l'écran WhatsApp");
+  assert.notEqual(R.signatureWhatsApp({ ...brut, whatsapp_conversations: [{ id: "a", non_lus: 2 }] }), s1);
+});
+
+test("temps réel : canal Supabase qui se répare (retrait, jeton rafraîchi, réabonnement), relecture ciblée sans les dossiers", async () => {
+  const canaux = [];
+  const retires = [];
+  const jetons = [];
+  let surAuth = null;
+  const lus = [];
+  const requete = (table) => {
+    lus.push(table);
+    const q = { select() { return q; }, order() { return q; }, limit() { return q; }, eq() { return q; }, then(ok) { return Promise.resolve({ data: [], error: null }).then(ok); } };
+    return q;
+  };
+  const sb = {
+    auth: { onAuthStateChange: (cb) => ((surAuth = cb), { data: { subscription: { unsubscribe() {} } } }), getSession: async () => ({ data: { session: { access_token: "jeton-neuf" } } }) },
+    realtime: { setAuth: (t) => jetons.push(t) },
+    channel(nom) {
+      const c = { nom, state: "joining", ecoutes: [], cbs: [], on(type, filtre, cb) { this.ecoutes.push({ type, filtre, cb }); return this; }, subscribe(cb) { this.cbs.push(cb); return this; } };
+      canaux.push(c);
+      return c;
+    },
+    removeChannel: async (c) => void retires.push(c),
+    from: (t) => requete(t),
+  };
+  const { creer } = await import("../src/gestion/js/store-supabase.mjs");
+  const store = creer({}, { client: sb });
+  const etats = [];
+  const arreter = store.ecouterWhatsApp(["whatsapp_messages"], () => {}, { surEtat: (e) => etats.push(e) });
+  assert.equal(canaux.length, 1);
+  canaux[0].cbs[0]("SUBSCRIBED");
+  assert.equal(store.etatDirect().whatsapp, "abonne");
+  canaux[0].cbs[0]("CHANNEL_ERROR", new Error("jeton expiré"));
+  assert.equal(store.etatDirect().whatsapp, "coupe");
+  await new Promise((r) => setTimeout(r, 1100));
+  assert.equal(retires[0], canaux[0], "l'ancien canal est retiré avant d'en refaire un");
+  assert.deepEqual(jetons, ["jeton-neuf"], "le jeton rafraîchi part vers Realtime");
+  assert.equal(canaux.length, 2, "réabonné après 1 s");
+  canaux[0].cbs[0]("CLOSED");
+  assert.equal(canaux.length, 2, "le CLOSED de l'ancien canal retiré est ignoré");
+  canaux[1].cbs[0]("SUBSCRIBED");
+  assert.deepEqual(etats, ["abonne", "coupe", "abonne"]);
+  surAuth("TOKEN_REFRESHED", { access_token: "jeton-renouvele" });
+  assert.equal(jetons[jetons.length - 1], "jeton-renouvele", "TOKEN_REFRESHED : setAuth");
+  // Retour sur l'onglet : un canal pas « joined » est refait, un canal « joined » garde son abonnement.
+  canaux[1].state = "joined";
+  await store.reveillerDirect();
+  assert.equal(canaux.length, 2);
+  canaux[1].state = "closed";
+  await store.reveillerDirect();
+  assert.equal(canaux.length, 3);
+  arreter();
+  assert.equal(retires[retires.length - 1], canaux[2]);
+  lus.length = 0;
+  const w = await store.chargerWhatsApp();
+  assert.deepEqual([...new Set(lus)].sort(), ["whatsapp_conversations", "whatsapp_propositions", "whatsapp_reglages"], "relecture ciblée : ni dossiers ni clients");
+  assert.equal(w.whatsapp_disponible, true);
+});
+
+test("temps réel : branchement dans l'outil (attente courte, relecture ciblée, repli, réveil, pastille)", () => {
+  const app = source("app.mjs");
+  assert.match(app, /attenteWhatsApp = setTimeout\(\(\) => relireWhatsApp\(\{ redessiner: true \}\), ATTENTE_WHATSAPP_MS\);/);
+  assert.match(app, /appliquerWhatsApp\(await etat\.store\.chargerWhatsApp\(\)\)/);
+  assert.doesNotMatch(app.slice(app.indexOf("async function relireWhatsApp")), /^\s*const r = await actualiser\(true\);/m, "plus de relecture complète pour un événement WhatsApp");
+  assert.match(app, /repli = setInterval\(\(\) => document\.visibilityState === "visible" && relireWhatsApp\(\), ms\);/);
+  assert.match(app, /window\.addEventListener\("online", reveiller\);/);
+  assert.match(app, /window\.addEventListener\("pageshow", \(e\) => e\.persisted && reveiller\(\)\);/);
+  assert.match(source("views/whatsapp.mjs"), /tr\("Direct coupé"\)/);
+  assert.match(source("etat.mjs"), /export function appliquerWhatsApp\(neuf\)/);
+});
+
+test("temps réel en démo : relecture ciblée et état « abonné » sans Realtime", async () => {
+  const stockage = new Map();
+  globalThis.localStorage = { getItem: (k) => stockage.get(k) ?? null, setItem: (k, v) => stockage.set(k, String(v)), removeItem: (k) => stockage.delete(k) };
+  try {
+    const { creer } = await import(`../src/gestion/js/store-local.mjs?wa4=${Date.now()}`);
+    const store = creer();
+    const etats = [];
+    store.ecouterWhatsApp(W.TABLES_WHATSAPP, () => {}, { surEtat: (e) => etats.push(e) });
+    await new Promise((r) => setTimeout(r, 5));
+    assert.deepEqual(etats, ["abonne"]);
+    assert.deepEqual(store.etatDirect(), { direct: "abonne", whatsapp: "abonne" });
+    await store.reveillerDirect();
+    const w = await store.chargerWhatsApp();
+    assert.ok(w.whatsapp_conversations.length >= 4);
+    assert.ok(Object.keys(w).every((k) => k.startsWith("whatsapp_")), "seulement la boîte WhatsApp");
   } finally {
     delete globalThis.localStorage;
   }

@@ -408,8 +408,18 @@ export function creer() {
       return structuredClone(ligne);
     },
     // Boîte WhatsApp. En direct comme le reste de la démo (même liste d'écouteurs, prévenue à chaque écriture d'un autre onglet).
-    ecouterWhatsApp(tables, rappel) {
-      return this.ecouter(tables, rappel);
+    ecouterWhatsApp(tables, rappel, { surEtat = () => {} } = {}) {
+      const arreter = this.ecouter(tables, rappel);
+      // Pas de Realtime en démonstration : le « canal » est toujours là, aucun repli ni pastille.
+      setTimeout(() => surEtat("abonne"), 0);
+      return arreter;
+    },
+    etatDirect: () => ({ direct: "abonne", whatsapp: "abonne" }),
+    async reveillerDirect() {},
+    // Relecture ciblée de la boîte WhatsApp, avec les mêmes droits que le chargement complet.
+    async chargerWhatsApp() {
+      const tout = await this.charger();
+      return Object.fromEntries(Object.entries(tout).filter(([k]) => k.startsWith("whatsapp_")));
     },
     async whatsappMessages(conversationId) {
       if (!conversationLue(conversationId)) return [];
