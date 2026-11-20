@@ -2,6 +2,18 @@
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
   // Suivi des conversations WhatsApp (migrations 61 et 62)
+  "Remplacer le dossier relié ? La conversation WhatsApp est déjà reliée à un autre client ou un autre dossier. Elle sera reliée au dossier {ref}.": "Replace the linked file? The WhatsApp conversation is already linked to another client or file. It will be linked to file {ref}.",
+  "Remplacer": "Replace",
+  "{n} sur {max} cochées": "{n} of {max} ticked",
+  "Envoyé par le client": "Sent by the client",
+  "Envoyé par Nani": "Sent by Nani",
+  "Pièces à joindre": "Attachments",
+  "Ne cochez jamais une capture de virement, de compte ou de QR de paiement.": "Never tick a screenshot of a transfer, an account or a payment QR code.",
+  "Cochez les photos et PDF utiles au dossier (billet, passeport, réservation d'hôtel), {max} au plus. Rien n'est joint sans votre choix.": "Tick the photos and PDFs useful for the file (ticket, passport, hotel booking), {max} at most. Nothing is attached without your choice.",
+  "Continuer": "Continue",
+  "Résumé automatique, à vérifier": "Automatic summary, to check",
+  "(avant le dernier message)": "(before the last message)",
+  "D'après la règle des bateaux de l'Assistant (Réglages). Vérifiez avant d'envoyer.": "Based on the Assistant's boat rule (Settings). Check before sending.",
   "Mettre à jour le dossier d'après la conversation WhatsApp.": "Update the file from the WhatsApp conversation.",
   "Créer le dossier d'après la conversation WhatsApp.": "Create the file from the WhatsApp conversation.",
   "Conversation WhatsApp reliée au dossier {ref}.": "WhatsApp conversation linked to file {ref}.",
@@ -11,7 +23,6 @@ export const EN = {
   "La conversation est à trier. Elle sera rangée dans l'entreprise choisie, puis l'Assistant prépare le dossier.": "The conversation is unsorted. It will be filed under the chosen company, then the Assistant prepares the file.",
   "Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange.": "This browser refuses page storage: open the Assistant and paste the conversation.",
   "Mettre à jour le dossier": "Update the file",
-  "Résumé": "Summary",
   "mis à jour à {heure}": "updated at {heure}",
   "Le client a peut-être envoyé une preuve de paiement.": "The client may have sent a proof of payment.",
   "Noter un paiement": "Record a payment",

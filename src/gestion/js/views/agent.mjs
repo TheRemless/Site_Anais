@@ -408,7 +408,7 @@ export async function vueAgent(idOuvert = "") {
     let texteRecu = "";
     zoneFil.append(etape);
     descendre();
-    const corps = whatsapp ? { entite_id: etat.entiteId, whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, texte: "" } : { entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) };
+    const corps = whatsapp ? { entite_id: etat.entiteId, whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, whatsapp_pieces: whatsapp.whatsapp_pieces || [], texte: "" } : { entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) };
     const r = await etat.store.agentEnvoyer(corps, (ev) => {
       if (ev.t === "conversation" && !conv) {
         conv = { id: ev.id, entite_id: etat.entiteId, titre: ev.titre, apercu: "", dossier_id: ev.dossier_id || null, statut: "ouverte", maj_le: new Date().toISOString(), whatsapp_conversation_id: ev.whatsapp_conversation_id || null };
@@ -714,10 +714,12 @@ export async function vueAgent(idOuvert = "") {
   async function relierWhatsApp(dossier) {
     const waId = conv && conv.whatsapp_conversation_id;
     if (!waId) return;
-    const wc = (etat.brut.whatsapp_conversations || []).find((x) => x.id === waId) || { id: waId };
-    const patch = liaisonApresDossier(wc, dossier, etat.entiteId);
-    if (!patch) return;
     try {
+      // Relue en base juste avant : quelqu'un a pu la relier ou la ranger ailleurs pendant la conversation avec l'Assistant.
+      const wc = etat.store.whatsappConversation ? await etat.store.whatsappConversation(waId) : null;
+      const { action, patch } = liaisonApresDossier(wc, dossier, etat.entiteId);
+      if (action === "rien") return;
+      if (action === "demander" && !(await confirmer(tr("Remplacer le dossier relié ? La conversation WhatsApp est déjà reliée à un autre client ou un autre dossier. Elle sera reliée au dossier {ref}.", { ref: dossier.ref || "" }), tr("Remplacer"), true))) return;
       await modifier("whatsapp_conversations", waId, patch);
       toast(tr("Conversation WhatsApp reliée au dossier {ref}.", { ref: dossier.ref || "" }));
     } catch (err) {

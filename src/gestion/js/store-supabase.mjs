@@ -407,6 +407,12 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       if (rep.ok && lu && lu.ok) return lu;
       return { erreur: (lu && lu.erreur) || "inconnu" };
     },
+    // Une conversation WhatsApp relue en base (liaison après validation d'un dossier dans l'Assistant). null : introuvable ou illisible.
+    async whatsappConversation(id) {
+      const { data, error } = await sb.from("whatsapp_conversations").select("id, entite_id, client_id, dossier_id").eq("id", id).maybeSingle();
+      if (error) throw new Error(error.message);
+      return data || null;
+    },
     // Le statut d'une proposition, relu après un refus d'écriture (déjà traitée ailleurs, ou une autre erreur).
     async whatsappProposition(id) {
       const { data, error } = await sb.from("whatsapp_propositions").select("id, statut").eq("id", id).maybeSingle();

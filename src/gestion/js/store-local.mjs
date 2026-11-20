@@ -464,6 +464,10 @@ export function creer() {
       }, delai);
       return { ok: true };
     },
+    async whatsappConversation(id) {
+      const c = conversationLue(id);
+      return c ? { id: c.id, entite_id: c.entite_id, client_id: c.client_id, dossier_id: c.dossier_id } : null;
+    },
     async whatsappProposition(id) {
       const p = data.whatsapp_propositions.find((x) => x.id === id);
       return p && conversationLue(p.conversation_id) ? { id: p.id, statut: p.statut } : null;
@@ -648,7 +652,9 @@ export function creer() {
       const wc = corps.whatsapp_conversation_id && !corps.conversation_id ? conversationLue(corps.whatsapp_conversation_id) : null;
       const modeWa = corps.whatsapp_mode === "maj" ? "maj" : "creer";
       if (corps.whatsapp_conversation_id && !corps.conversation_id) {
-        if (!wc || (wc.entite_id && wc.entite_id !== e)) return { erreur: "whatsapp_introuvable" };
+        // Comme la fonction : la conversation doit être rangée dans l'entreprise de l'Assistant. Les pièces cochées (whatsapp_pieces) ne sont
+        // pas lues en démonstration.
+        if (!wc || wc.entite_id !== e) return { erreur: "whatsapp_introuvable" };
         if (modeWa === "maj" && !data.dossiers.some((d) => d.id === wc.dossier_id)) return { erreur: "dossier_introuvable" };
         const lignes = data.whatsapp_messages.filter((m) => m.conversation_id === wc.id && m.sens === "entrant" && !m.supprime_le && m.texte).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)).map((m) => m.texte);
         texte = lignes.join("\n") || "Bonjour";

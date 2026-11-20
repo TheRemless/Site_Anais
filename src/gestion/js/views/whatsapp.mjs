@@ -12,7 +12,7 @@ import { quand, bloquantsReponse, resteBloque, agentActif } from "../agent-calc.
 import { aujourdhui } from "../calc.mjs";
 import {
   CLE_DEMANDE_AGENT, modeDossier, paiementSignale, MOTIFS_PAIEMENT, ferrysARelancer, ferrysParConversation, messageRelanceFerry, prenomPourMessage,
-  nomTrajet, lignesResume, tachesPromesse,
+  nomTrajet, lignesResume, tachesPromesse, piecesProposees, basculerPiece, PIECES_MAX, resumeEnRetard,
 } from "../whatsapp-suivi-calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { directCoupe } from "../direct-reprise-calc.mjs";
@@ -30,6 +30,8 @@ const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"))
 //   envoisIncertains : un envoi au résultat inconnu (délai dépassé, coupure), le bouton Envoyer ne se rallume pas ;
 //   aRetirer : les montants et les noms que whatsapp-envoi a trouvés dans le texte (contenu_interne).
 const brouillons = new Map();
+// Relances de ferry modifiées, par réservation.
+const brouillonsFerry = new Map();
 const envoisIncertains = new Set();
 const aRetirer = new Map();
 
@@ -203,21 +205,76 @@ function choisirEntreprise(c, prop) {
     );
   });
 }
+// Les photos et PDF à joindre pour l'Assistant : la personne les coche elle-même, aucun par défaut, six au plus. Une capture de virement, de
+// compte ou de QR de paiement contient des coordonnées bancaires : elle ne part jamais chez Anthropic. Rend la liste des chemins cochés
+// (vide : sans pièce), ou null si la personne a fermé la feuille. Sans photo ni PDF dans la conversation, rien à demander.
+async function choisirPieces(c) {
+  let messages = [];
+  try {
+    messages = await etat.store.whatsappMessages(c.id);
+  } catch {
+    messages = [];
+  }
+  const pieces = piecesProposees(messages);
+  if (!pieces.length) return [];
+  let cochees = [];
+  return new Promise((resoudre) => {
+    const compte = h("p", { class: "aide wa-pieces-compte", "aria-live": "polite" });
+    const cases = [];
+    const maj = () => {
+      compte.textContent = tr("{n} sur {max} cochées", { n: cochees.length, max: PIECES_MAX });
+      for (const x of cases) x.disabled = !x.checked && cochees.length >= PIECES_MAX;
+    };
+    const ligne = (p, i) => {
+      const id = `wa-piece-${i}`;
+      const caseP = h("input", { type: "checkbox", id, onchange: () => ((cochees = basculerPiece(cochees, p.chemin)), (caseP.checked = cochees.includes(p.chemin)), maj()) });
+      cases.push(caseP);
+      const vignette = h("span", { class: "wa-piece-vignette", "aria-hidden": "true" }, icone(p.media_type === "application/pdf" ? "regles" : "image", 22));
+      if (p.media_type !== "application/pdf")
+        etat.store.whatsappLienMedia(p.media).then((lien) => lien && vignette.replaceChildren(h("img", { src: lien, alt: "" })), () => {});
+      const qui = p.sens === "entrant" ? tr("Envoyé par le client") : tr("Envoyé par Nani");
+      return h("li", null, h("label", { class: "wa-piece", for: id }, caseP, vignette, h("span", { class: "wa-piece-texte" }, h("strong", null, p.legende || p.nom), h("span", null, `${qui} · ${new Date(p.envoye_le).toLocaleString(localeActive(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" })}`))));
+    };
+    let fermer;
+    const fin = (valeur) => (resoudre(valeur), fermer());
+    fermer = modal(
+      tr("Pièces à joindre"),
+      h(
+        "div",
+        { class: "modal-corps wa-pieces" },
+        h("p", { class: "bandeau-info", role: "note" }, tr("Ne cochez jamais une capture de virement, de compte ou de QR de paiement.")),
+        h("p", { class: "aide" }, tr("Cochez les photos et PDF utiles au dossier (billet, passeport, réservation d'hôtel), {max} au plus. Rien n'est joint sans votre choix.", { max: PIECES_MAX })),
+        h("ul", { class: "wa-pieces-liste" }, pieces.map(ligne)),
+        compte,
+        h("div", { class: "barre-modal" }, h("button", { class: "principal", type: "button", onclick: () => fin([...cochees]) }, tr("Continuer")))
+      ),
+      { protege: false, ferme: () => resoudre(null) }
+    );
+    maj();
+  });
+}
+
 async function versAssistant(c, prop) {
   let entiteId = c.entite_id;
+  let entreprise = null;
   if (!entiteId) {
-    const e = await choisirEntreprise(c, prop);
-    if (!e) return;
-    if (prop && prop.statut === "a_faire" && brouillons.has(prop.id) && prop.entite_id !== e.id && !(await confirmer(tr("Vous avez modifié la réponse préparée. La ranger dans {nom} la remplace et vos changements seront perdus. Continuer ?", { nom: e.nom }), tr("Ranger dans {nom}", { nom: e.nom }), true))) return;
+    entreprise = await choisirEntreprise(c, prop);
+    if (!entreprise) return;
+    if (prop && prop.statut === "a_faire" && brouillons.has(prop.id) && prop.entite_id !== entreprise.id && !(await confirmer(tr("Vous avez modifié la réponse préparée. La ranger dans {nom} la remplace et vos changements seront perdus. Continuer ?", { nom: entreprise.nom }), tr("Ranger dans {nom}", { nom: entreprise.nom }), true))) return;
+  }
+  // Les pièces d'abord : fermer la feuille annule tout, sans ranger la conversation.
+  const pieces = await choisirPieces(c);
+  if (pieces === null) return;
+  if (entreprise) {
     try {
-      await modifier("whatsapp_conversations", c.id, { entite_id: e.id });
+      await modifier("whatsapp_conversations", c.id, { entite_id: entreprise.id });
     } catch (err) {
       return toast(err.message, true);
     }
-    entiteId = e.id;
+    entiteId = entreprise.id;
   }
   try {
-    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: modeDossier(c), entite: entiteId }));
+    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: modeDossier(c), entite: entiteId, pieces }));
   } catch {
     return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
   }
@@ -250,7 +307,12 @@ function blocResume(c) {
   const bloc = h(
     "details",
     { class: "wa-resume", open: !resumesReplies.has(c.id) },
-    h("summary", null, h("span", null, tr("Résumé")), c.resume_le ? h("span", { class: "wa-resume-le" }, tr("mis à jour à {heure}", { heure: heureBangkok(c.resume_le) })) : null),
+    h(
+      "summary",
+      null,
+      h("span", null, tr("Résumé automatique, à vérifier")),
+      c.resume_le ? h("span", { class: "wa-resume-le" }, tr("mis à jour à {heure}", { heure: heureBangkok(c.resume_le) }), resumeEnRetard(c) ? ` ${tr("(avant le dernier message)")}` : null) : null
+    ),
     h("ul", null, lignes.map((l) => h("li", null, l)))
   );
   bloc.addEventListener("toggle", () => (bloc.open ? resumesReplies.delete(c.id) : resumesReplies.add(c.id)));
@@ -295,14 +357,18 @@ function cartesFerry(c, ferrys) {
   const prenom = prenomPourMessage(c, clientDe(c));
   const wa = lienWhatsApp(c.telephone);
   return ferrys.map((f) => {
+    // Modifiable avant copie, comme la réponse préparée : le texte changé survit au redessin, par réservation.
+    const base = messageRelanceFerry({ prenom, trajet: f.trajet, reservation: f.reservation });
     const zone = h("textarea", { class: "wa-ferry-texte", rows: 4, lang: "en", "aria-label": tr("Message de relance") });
-    zone.value = messageRelanceFerry({ prenom, trajet: f.trajet, reservation: f.reservation });
+    zone.value = brouillonsFerry.has(f.reservation.id) ? brouillonsFerry.get(f.reservation.id) : base;
+    zone.addEventListener("input", () => (zone.value !== base ? brouillonsFerry.set(f.reservation.id, zone.value) : brouillonsFerry.delete(f.reservation.id)));
     return h(
       "section",
       { class: "wa-suivi wa-ferry", "aria-label": tr("Ferry à régler") },
       h("h3", null, icone("bateau", 18), tr("Ferry à régler"), h("span", { class: "wa-ferry-quoi" }, `${nomTrajet(f.trajet, f.reservation)} · ${f.reservation.date_service}`)),
       zone,
-      h("div", { class: "wa-prop-actions" }, h("button", { class: "principal wa-copier", type: "button", onclick: (e) => copier(zone, e.currentTarget, tr("Relance copiée. Collez-la dans WhatsApp.")) }, icone("copier", 20), tr("Copier")), wa ? h("a", { class: "bouton secondaire wa-ouvrir", href: wa, target: "_blank", rel: "noopener" }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null)
+      h("div", { class: "wa-prop-actions" }, h("button", { class: "principal wa-copier", type: "button", onclick: (e) => copier(zone, e.currentTarget, tr("Relance copiée. Collez-la dans WhatsApp.")) }, icone("copier", 20), tr("Copier")), wa ? h("a", { class: "bouton secondaire wa-ouvrir", href: wa, target: "_blank", rel: "noopener" }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null),
+      h("p", { class: "wa-detail" }, tr("D'après la règle des bateaux de l'Assistant (Réglages). Vérifiez avant d'envoyer."))
     );
   });
 }

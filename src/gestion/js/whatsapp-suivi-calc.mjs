@@ -18,14 +18,49 @@ export function demandeAgent(valeur) {
     }
   }
   if (!v || typeof v !== "object" || typeof v.id !== "string" || !v.id || !MODES_DOSSIER.includes(v.mode)) return null;
-  return { whatsapp_conversation_id: v.id, whatsapp_mode: v.mode, entite_id: typeof v.entite === "string" ? v.entite : null };
+  const pieces = Array.isArray(v.pieces) ? [...new Set(v.pieces.filter((x) => typeof x === "string" && x))].slice(0, PIECES_MAX) : [];
+  return { whatsapp_conversation_id: v.id, whatsapp_mode: v.mode, entite_id: typeof v.entite === "string" ? v.entite : null, whatsapp_pieces: pieces };
 }
-// Après validation d'une carte « dossier » : ce qu'on écrit sur la conversation WhatsApp (client et dossier créés ; entreprise si elle était
-// à trier). null : rien à écrire (pas de dossier, ou déjà relié à ce dossier).
+
+// ---- Pièces à joindre (fonction « agent », 20.11.2026 : rien n'est joint d'office) -----------------------------------------------------------
+// Une capture de virement ou de compte contient des coordonnées bancaires : la personne coche elle-même les photos et PDF à joindre, aucun
+// par défaut, six au plus. Mêmes règles que la fonction (agent/whatsapp.js, candidatsPieces) : copiés, jpeg, png, webp ou pdf, image ≤ 4,5 Mo.
+export const TYPES_PIECES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+export const PIECES_MAX = 6;
+const OCTETS_IMAGE_MAX = 4.5 * 1024 * 1024;
+export function piecesProposees(messages = []) {
+  const out = [];
+  const recents = [...messages].filter((m) => m && !m.supprime_le).sort((a, b) => String(b.envoye_le).localeCompare(String(a.envoye_le)));
+  for (const m of recents) {
+    for (const x of m.medias || []) {
+      const type = String(x.mime || "").split(";")[0].trim().toLowerCase();
+      if (x.statut !== "copie" || !x.chemin || !TYPES_PIECES.includes(type)) continue;
+      const taille = Number(x.taille) || 0;
+      if (taille <= 0 || (type !== "application/pdf" && taille > OCTETS_IMAGE_MAX)) continue;
+      out.push({ chemin: x.chemin, media_type: type, nom: x.nom || (type === "application/pdf" ? "document.pdf" : "photo.jpg"), legende: x.legende || "", sens: m.sens, envoye_le: m.envoye_le, media: x });
+    }
+  }
+  return out;
+}
+// Cocher ou décocher une pièce : jamais plus de six.
+export function basculerPiece(cochees = [], chemin) {
+  if (cochees.includes(chemin)) return cochees.filter((c) => c !== chemin);
+  return cochees.length >= PIECES_MAX ? cochees : [...cochees, chemin];
+}
+
+// Après validation d'une carte « dossier » : ce qu'on écrit sur la conversation WhatsApp, relue en base juste avant (conv).
+//   « rien » : introuvable, dans une autre entreprise, ou déjà reliée à ce client et ce dossier ;
+//   « ecrire » : client et dossier vides remplis (jamais l'entreprise : la fonction exige une conversation rangée) ;
+//   « demander » : un autre client ou un autre dossier est déjà relié, la personne décide avant de le remplacer.
 export function liaisonApresDossier(conv, dossier, entiteId) {
-  if (!conv || !dossier || !dossier.id) return null;
-  if (conv.dossier_id === dossier.id && conv.client_id === dossier.client_id) return null;
-  return { ...(conv.entite_id ? {} : { entite_id: entiteId }), client_id: dossier.client_id || null, dossier_id: dossier.id };
+  if (!conv || !dossier || !dossier.id || conv.entite_id !== entiteId) return { action: "rien", patch: null };
+  const client = dossier.client_id || null;
+  const conflit = (conv.client_id && client && conv.client_id !== client) || (conv.dossier_id && conv.dossier_id !== dossier.id);
+  if (conflit) return { action: "demander", patch: { client_id: client, dossier_id: dossier.id } };
+  const patch = {};
+  if (!conv.client_id && client) patch.client_id = client;
+  if (!conv.dossier_id) patch.dossier_id = dossier.id;
+  return Object.keys(patch).length ? { action: "ecrire", patch } : { action: "rien", patch: null };
 }
 export const ERREURS_AGENT_WHATSAPP = {
   whatsapp_introuvable: N_("Cette conversation WhatsApp n'est plus lisible ou appartient à une autre entreprise."),
@@ -106,10 +141,14 @@ export function prenomPourMessage(conv, client = null) {
 export function lignesResume(resume) {
   return String(resume || "")
     .split(/\r?\n/)
-    .map((l) => l.replace(/^\s*[-•*\d.)]+\s*/, "").trim())
+    // Seulement les puces (« - », « • », « * ») et les numéros de liste (« 1. », « 2) ») : une date ou un nombre en tête reste (« 22.11 : ferry »).
+    .map((l) => l.trim().replace(/^[-•*]\s+/, "").replace(/^\d+[.)]\s+/, "").trim())
     .filter(Boolean)
     .slice(0, 3);
 }
+
+// Le résumé est plus ancien que le dernier message de la conversation : « (avant le dernier message) ».
+export const resumeEnRetard = (conv) => !!conv && !!conv.resume_le && !!conv.dernier_message_le && Date.parse(conv.resume_le) < Date.parse(conv.dernier_message_le);
 
 // ---- Promesses en tâches --------------------------------------------------------------------------------------------------------------------
 // Les tâches créées par la fonction pour une promesse de Nani (« WhatsApp, Prénom : … »), encore à faire, liées à la conversation : par son
