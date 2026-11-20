@@ -62,8 +62,10 @@ const nomsPrestataires = (partenaires) =>
     .filter((n) => n.length > 2)
     .sort((a, b) => b.length - a.length);
 
-// ---- Définitions des outils (format de l'API, strict) ---------------------------------------------------------------------------------
-// Tous les champs sont requis (mode strict) : « vide » s'écrit "" ou 0. Les bornes se vérifient dans le code.
+// ---- Définitions des outils (format de l'API) ------------------------------------------------------------------------------------------
+// Pas de mode « strict » : le 20.11.2026, avec 13 outils stricts, l'API refusait chaque requête (« The compiled grammar is too large »).
+// Les schémas restent fermés et listent tous les champs ; le code pose la valeur vide d'un champ oublié et contrôle le reste
+// (normaliserEntree). « Vide » s'écrit "" ou 0. Les bornes se vérifient dans le code.
 
 const obj = (properties, description) => ({ type: "object", additionalProperties: false, required: Object.keys(properties), properties, ...(description ? { description } : {}) });
 const S = (description) => ({ type: "string", description });
@@ -89,7 +91,6 @@ export const OUTILS = [
     name: "chercher_catalogue",
     description:
       "Cherche dans le catalogue de l'entreprise (excursions, activités, locations, transferts, trajets) par mots-clés. Rend les tarifs de vente avec leur référence, et « recommande » sur l'option à garder quand plusieurs se valent. N'invente jamais un tarif absent de ce résultat.",
-    strict: true,
     input_schema: obj({
       recherche: S("Mots-clés en anglais ou en français (« 4 islands », « Phi Phi speedboat », « airport »)."),
       famille: { type: "string", enum: ["tout", "excursion", "activite", "location", "transfert", "trajet", "autre"], description: "Restreint la recherche, « tout » sinon." },
@@ -99,35 +100,30 @@ export const OUTILS = [
     name: "horaires_trajet",
     description:
       "Les départs du catalogue entre deux lieux un jour donné (bateaux, ferries, minivans partagés) : heures, durée, prix de vente par adulte et par enfant. « recommande » marque les départs à proposer d'abord. Si rien n'est trouvé, l'outil rend les lieux connus pour corriger l'orthographe.",
-    strict: true,
     input_schema: obj({ de: S("Lieu de départ (île, ville, embarcadère)."), vers: S("Lieu d'arrivée."), date: S("AAAA-MM-JJ, ou \"\" si inconnue."), adultes: I("0 si inconnu."), enfants: I("0 si inconnu.") }),
   },
   {
     name: "situer_hotels",
     description:
       "Situe des hôtels (île ou ville, plage ou quartier) : d'abord dans les hôtels déjà connus de l'entreprise, sinon par une recherche web sur le nom seul. Rend la source et la certitude. Un hôtel non tranché reste à demander.",
-    strict: true,
     input_schema: obj({ noms: { type: "array", items: { type: "string" }, description: "Noms d'hôtels tels qu'écrits par le client (8 au plus)." } }),
   },
   {
     name: "temps_de_route",
     description:
       "Durée en voiture entre deux lieux : d'abord OpenStreetMap (openrouteservice), sinon la table de temps de référence de l'entreprise, avec le ferry et la marge conseillée. Dit d'où vient la durée et si elle est à vérifier. Pour une course avec horaires, utilise planifier_course.",
-    strict: true,
     input_schema: obj({ de: S("Nom de lieu précis, avec l'île ou la ville (« Jai Tiki Retreat, Koh Lanta »)."), vers: S("Idem.") }),
   },
   {
     name: "estimer_temps_web",
     description:
       "Dernier recours, seulement quand temps_de_route ou planifier_course n'ont aucune durée et que la personne ne la connaît pas : cherche une durée de trajet en voiture sur le web, avec sa source. Le résultat est une estimation, à présenter comme telle.",
-    strict: true,
     input_schema: obj({ de: S("Lieu de départ."), vers: S("Lieu d'arrivée.") }),
   },
   {
     name: "planifier_course",
     description:
       "Calcule les heures d'une course privée en voiture : pickup à rebours depuis un rendez-vous (route, ferry en trois morceaux, marge de sécurité), heures d'arrivée à chaque point, et si un vol est tenable. Toujours utiliser cet outil pour donner une heure de pickup : ne calcule jamais une heure toi-même.",
-    strict: true,
     input_schema: obj({
       date: S("Date de la course, AAAA-MM-JJ."),
       points: {
@@ -149,20 +145,17 @@ export const OUTILS = [
   {
     name: "chercher_clients",
     description: "Cherche des clients de l'entreprise par nom, prénom, téléphone ou référence de dossier. Rend leurs dossiers (référence, dates, annulé ou non).",
-    strict: true,
     input_schema: obj({ recherche: S("Nom, téléphone ou référence.") }),
   },
   {
     name: "lire_dossier",
     description: "Lit un dossier : client, dates et services réservés (date, heure et lieu de pickup, personnes, statut, prix de vente). Chaque service a une référence R-… pour proposer une modification.",
-    strict: true,
     input_schema: obj({ dossier: S("Référence D-… rendue par chercher_clients, ou la référence du dossier (« 2026-0142 »).") }),
   },
   {
     name: "proposer_dossier",
     description:
       "Propose de créer un dossier pour un nouveau client. Affiche une carte que la personne vérifie et valide : rien n'est créé sans son clic. Le prix vient du catalogue par la référence, ou reste vide pour qu'elle le fixe.",
-    strict: true,
     input_schema: obj({
       titre: S("Titre court de la carte (« Dossier Mme Martin, 3 transferts »)."),
       client_nom: S("Nom tel qu'écrit par le client, ou \"\"."),
@@ -178,13 +171,11 @@ export const OUTILS = [
   {
     name: "proposer_reservation",
     description: "Propose d'ajouter un service à un dossier existant (carte à valider).",
-    strict: true,
     input_schema: obj({ titre: S("Titre court de la carte."), dossier: S("Référence D-… du dossier."), service: SERVICE }),
   },
   {
     name: "proposer_modification",
     description: "Propose de modifier un service réservé (carte à valider) : sa date, son heure ou son lieu de pickup, ses personnes ou une remarque.",
-    strict: true,
     input_schema: obj({
       titre: S("Titre court de la carte."),
       reservation: S("Référence R-… rendue par lire_dossier."),
@@ -196,7 +187,6 @@ export const OUTILS = [
   {
     name: "proposer_temps_trajet",
     description: "Propose d'ajouter (ou de corriger) une durée dans la table de temps de référence de l'entreprise, après que la personne l'a donnée. Carte à valider.",
-    strict: true,
     input_schema: obj({
       titre: S("Titre court de la carte."),
       de: S("Zone ou lieu de départ (« Koh Lanta », « Krabi Town »)."),
@@ -211,7 +201,6 @@ export const OUTILS = [
     name: "proposer_reponse",
     description:
       "Propose le message à envoyer au client, prêt à copier. La personne le relit, le modifie et l'envoie elle-même. Chaque prix et chaque heure du message doivent venir d'un résultat d'outil ou d'un montant tapé par la personne.",
-    strict: true,
     input_schema: obj({ titre: S("Titre court de la carte."), langue: { type: "string", enum: ["fr", "en"] }, message: S("Le message au client, prêt à coller dans WhatsApp.") }),
   },
 ];
@@ -219,20 +208,45 @@ export const NOMS_OUTILS = OUTILS.map((o) => o.name);
 export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet"];
 
 // ---- Contrôle des entrées ---------------------------------------------------------------------------------------------------------
-// Le mode strict garantit la forme ; on revérifie quand même (types, tailles) avant d'exécuter, comme pour une entrée d'utilisateur.
-export function entreeValide(nom, e) {
-  const def = OUTILS.find((o) => o.name === nom);
-  if (!def || !e || typeof e !== "object" || Array.isArray(e)) return false;
-  const verifier = (schema, v) => {
-    if (schema.type === "object") return v && typeof v === "object" && !Array.isArray(v) && schema.required.every((k) => k in v && verifier(schema.properties[k], v[k])) && Object.keys(v).every((k) => k in schema.properties);
-    if (schema.type === "array") return Array.isArray(v) && v.length <= 12 && v.every((x) => verifier(schema.items, x));
-    if (schema.type === "string") return typeof v === "string" && v.length <= 4000 && (!schema.enum || schema.enum.includes(v));
-    if (schema.type === "integer") return Number.isInteger(v) && v >= 0 && v <= 10000;
-    if (schema.type === "boolean") return typeof v === "boolean";
-    return false;
-  };
-  return verifier(def.input_schema, e);
+// Comme une entrée d'utilisateur : un champ oublié prend sa valeur vide ("" ou 0, faux, liste vide ; pour une liste fermée, la première
+// valeur seulement si "" n'y est pas et que la liste n'a pas de sens vide, sinon refus), un champ inconnu est ignoré, un type faux est refusé.
+// Rend l'entrée propre, ou null.
+const VIDE = Symbol("vide");
+function normaliser(schema, v, oublie = false) {
+  if (oublie || v === undefined || v === null) {
+    if (schema.type === "string") return schema.enum ? (schema.enum.includes("") ? "" : schema.enum.includes("tout") ? "tout" : VIDE) : "";
+    if (schema.type === "integer") return 0;
+    if (schema.type === "boolean") return false;
+    if (schema.type === "array") return [];
+    return VIDE;
+  }
+  if (schema.type === "object") {
+    if (typeof v !== "object" || Array.isArray(v)) return VIDE;
+    const out = {};
+    for (const k of schema.required) {
+      const x = normaliser(schema.properties[k], v[k], !(k in v));
+      if (x === VIDE) return VIDE;
+      out[k] = x;
+    }
+    return out;
+  }
+  if (schema.type === "array") {
+    if (!Array.isArray(v) || v.length > 12) return VIDE;
+    const out = v.map((x) => normaliser(schema.items, x));
+    return out.includes(VIDE) ? VIDE : out;
+  }
+  if (schema.type === "string") return typeof v === "string" && v.length <= 4000 && (!schema.enum || schema.enum.includes(v)) ? v : VIDE;
+  if (schema.type === "integer") return Number.isInteger(v) && v >= 0 && v <= 10000 ? v : VIDE;
+  if (schema.type === "boolean") return typeof v === "boolean" ? v : VIDE;
+  return VIDE;
 }
+export function normaliserEntree(nom, e) {
+  const def = OUTILS.find((o) => o.name === nom);
+  if (!def || !e || typeof e !== "object" || Array.isArray(e)) return null;
+  const r = normaliser(def.input_schema, e);
+  return r === VIDE ? null : r;
+}
+export const entreeValide = (nom, e) => normaliserEntree(nom, e) !== null;
 
 // ---- Catalogue -------------------------------------------------------------------------------------------------------------------
 
@@ -645,7 +659,9 @@ export async function proposer(nom, e, ctx, memo) {
 // Une erreur d'outil n'arrête pas la conversation : elle repart chez Claude marquée comme telle.
 export async function executer(nom, entree, ctx, memo) {
   if (!NOMS_OUTILS.includes(nom)) return { contenu: { erreur: "outil_inconnu" }, erreur: true };
-  if (!entreeValide(nom, entree)) return { contenu: { erreur: "entree_invalide", conseil: "Reprends l'appel avec tous les champs, au bon format." }, erreur: true };
+  const propre = normaliserEntree(nom, entree);
+  if (!propre) return { contenu: { erreur: "entree_invalide", conseil: "Reprends l'appel avec des valeurs au bon format (textes, nombres entiers positifs, valeurs des listes fermées)." }, erreur: true };
+  entree = propre;
   const ajouter = (r) => {
     for (const p of r.prix || []) memo.prix.add(Number(p));
     for (const h of r.heures || []) memo.heures.add(h);

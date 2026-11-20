@@ -182,9 +182,11 @@ test("estimation web : gardée seulement avec une source tirée de la recherche,
 
 // ---- Outils ------------------------------------------------------------------------------------------------------------------
 
-test("définitions : strictes, tous les champs requis, sans bornes non prises en charge", () => {
+// Panne du 20.11.2026 : avec 13 outils « strict », l'API refusait chaque requête (400 « The compiled grammar is too large, which would cause
+// performance issues. Simplify your tool schemas or reduce the number… »). Les outils ne sont plus stricts : le code normalise et contrôle.
+test("définitions : aucun outil strict (grammaire trop grande), schémas fermés, sans bornes non prises en charge", () => {
   for (const o of OUTILS) {
-    assert.equal(o.strict, true, o.name);
+    assert.ok(!("strict" in o), `${o.name} ne doit pas être strict`);
     const verifier = (s) => {
       assert.ok(!("minimum" in s) && !("maxLength" in s) && !("minItems" in s), o.name);
       if (s.type === "object") {
@@ -196,9 +198,25 @@ test("définitions : strictes, tous les champs requis, sans bornes non prises en
     };
     verifier(o.input_schema);
   }
-  assert.equal(entreeValide("horaires_trajet", { de: "Lanta", vers: "Phi Phi", date: "", adultes: 2, enfants: 0 }), true);
-  assert.equal(entreeValide("horaires_trajet", { de: "Lanta", vers: "Phi Phi" }), false);
-  assert.equal(entreeValide("horaires_trajet", { de: "Lanta", vers: "Phi Phi", date: "", adultes: -1, enfants: 0, x: 1 }), false);
+});
+
+test("entrées : un champ oublié prend sa valeur vide, un champ inconnu est ignoré, une valeur fausse est refusée", async () => {
+  const { normaliserEntree } = await import("../supabase/functions/agent/outils.js");
+  assert.deepEqual(normaliserEntree("horaires_trajet", { de: "Lanta", vers: "Phi Phi", x: 1 }), { de: "Lanta", vers: "Phi Phi", date: "", adultes: 0, enfants: 0 });
+  assert.equal(normaliserEntree("horaires_trajet", { de: "Lanta", vers: "Phi Phi", adultes: -1 }), null);
+  assert.equal(normaliserEntree("horaires_trajet", { de: 3, vers: "Phi Phi" }), null);
+  assert.deepEqual(normaliserEntree("chercher_catalogue", { recherche: "4 islands" }), { recherche: "4 islands", famille: "tout" });
+  // Une langue de réponse manquante n'a pas de valeur vide admise : refusé, l'agent doit la donner.
+  assert.equal(normaliserEntree("proposer_reponse", { titre: "R", message: "Hello" }), null);
+  const p = normaliserEntree("planifier_course", { date: "2026-11-21", points: [{ lieu: "A" }, { lieu: "B", arrivee_voulue: "16:00" }] });
+  assert.deepEqual(p.points[1], { lieu: "B", arrivee_voulue: "16:00", attente_min: 0, duree_vers_suivant_min: 0, source_duree: "" });
+  assert.equal(p.heure_vol, "");
+  assert.equal(p.vol_international, false);
+  assert.equal(entreeValide("horaires_trajet", { de: "Lanta", vers: "Phi Phi" }), true);
+  assert.equal(entreeValide("inconnu", {}), false);
+  // De bout en bout : un appel sans les champs facultatifs passe.
+  const r = await executer("planifier_course", { date: "2026-11-21", points: [{ lieu: "Jai Tiki Retreat, Koh Lanta" }, { lieu: "Krabi Nakharin International Hospital", arrivee_voulue: "16:00", attente_min: 60 }] }, ctxDe(), nouveauMemo());
+  assert.equal(r.contenu.ok, true);
 });
 
 test("catalogue : prix de vente et drapeau « recommande », jamais un net ni un prestataire", async () => {
