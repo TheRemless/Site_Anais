@@ -1,0 +1,178 @@
+// Réception WhatsApp (migration 58, fonction « whatsapp ») : signature Telnyx, lecture des événements, messages et médias.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { webcrypto } from "node:crypto";
+import { verifierSignature, cleBrute, lireEnveloppe, interpreter, e164, mediasDe, texteDe, sourceMedia, hoteTelnyx, cheminMedia, extension, mediaCopie, dateMessage, REPONSES, TOLERANCE_S } from "../supabase/functions/whatsapp/calc.js";
+
+const subtle = webcrypto.subtle;
+const b64 = (o) => Buffer.from(o).toString("base64");
+async function paire() {
+  const k = await subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+  const brute = new Uint8Array(await subtle.exportKey("raw", k.publicKey));
+  const spki = new Uint8Array(await subtle.exportKey("spki", k.publicKey));
+  return { prive: k.privateKey, cle: b64(brute), spki: b64(spki) };
+}
+async function signer(prive, horodatage, corps) {
+  return b64(new Uint8Array(await subtle.sign({ name: "Ed25519" }, prive, new TextEncoder().encode(`${horodatage}|${corps}`))));
+}
+const MAINTENANT = Date.UTC(2026, 10, 20, 10, 0, 0);
+const T = String(MAINTENANT / 1000);
+
+// Enveloppes au format de la doc Telnyx (coexistence/webhooks), valeurs inventées pour le test.
+const NANI = "+66800000001";
+const CLIENT = "+41790000002";
+const recu = (body, extra = {}) => ({ data: { id: "evt-1", event_type: "message.received", occurred_at: "2026-11-20T09:59:58.000Z", record_type: "event", payload: { record_type: "message", direction: "inbound", id: "tx-1", type: "WHATSAPP", from: { phone_number: CLIENT }, to: NANI, body: { from: CLIENT.slice(1), id: "wamid.AAA", foreign_id: "wamid.AAA", timestamp: "1763632798", ...body }, ...extra } } });
+const echo = (body) => ({ data: { id: "evt-2", event_type: "message.echo", occurred_at: "2026-11-20T10:01:00.000Z", payload: { record_type: "message", direction: "outbound", origin: "whatsapp_business_app", id: "tx-2", type: "WHATSAPP", from: { phone_number: NANI }, to: CLIENT, body: { from: NANI.slice(1), id: "x", foreign_id: "wamid.BBB", timestamp: "1763632860", type: "text", text: { body: "Hi! Yes we have seats tomorrow." }, ...body } } } });
+const ev = (j) => lireEnveloppe(JSON.stringify(j));
+
+test("whatsapp : une signature Telnyx valide passe, avec la clé brute ou SPKI", async () => {
+  const { prive, cle, spki } = await paire();
+  const corps = JSON.stringify(recu({ type: "text", text: { body: "Hello" } }));
+  const signature = await signer(prive, T, corps);
+  assert.deepEqual(await verifierSignature({ subtle, cle, signature, horodatage: T, corps, maintenant: MAINTENANT }), { ok: true });
+  assert.deepEqual(await verifierSignature({ subtle, cle: spki, signature, horodatage: T, corps: new TextEncoder().encode(corps), maintenant: MAINTENANT }), { ok: true });
+});
+
+test("whatsapp : corps modifié, autre clé, horodatage ancien ou absent : refusé", async () => {
+  const { prive, cle } = await paire();
+  const autre = await paire();
+  const corps = JSON.stringify(recu({ type: "text", text: { body: "Hello" } }));
+  const signature = await signer(prive, T, corps);
+  const v = (o) => verifierSignature({ subtle, cle, signature, horodatage: T, corps, maintenant: MAINTENANT, ...o });
+  assert.equal((await v({ corps: corps.replace("Hello", "Hellp") })).raison, "signature");
+  assert.equal((await v({ cle: autre.cle })).raison, "signature");
+  assert.equal((await v({ maintenant: MAINTENANT + (TOLERANCE_S + 1) * 1000 })).raison, "perime");
+  assert.equal((await v({ horodatage: null })).raison, "horodatage");
+  assert.equal((await v({ signature: "" })).raison, "signature");
+  assert.equal((await v({ signature: "pas du base64 !" })).raison, "signature");
+  assert.equal((await v({ cle: "" })).raison, "cle");
+  assert.equal((await v({ cle: "KEY0123456789" })).raison, "cle");
+  // L'horodatage fait partie du message signé : le changer invalide la signature.
+  const T2 = String(Number(T) + 1);
+  assert.equal((await v({ horodatage: T2, maintenant: MAINTENANT })).raison, "signature");
+});
+
+test("whatsapp : cleBrute refuse une clé d'une autre taille", () => {
+  assert.equal(cleBrute(b64(new Uint8Array(31))), null);
+  assert.equal(cleBrute(b64(new Uint8Array(44))), null);
+  assert.equal(cleBrute(b64(new Uint8Array(32))).length, 32);
+});
+
+test("whatsapp : l'enveloppe donne id, type, date ; un corps qui n'est pas un événement est refusé", () => {
+  const e = ev(recu({ type: "text", text: { body: "Hi" } }));
+  assert.equal(e.id, "evt-1");
+  assert.equal(e.type, "message.received");
+  assert.equal(e.survenu_le, "2026-11-20T09:59:58.000Z");
+  for (const c of ["", "{", "[]", "{}", '{"data":{}}', '{"data":{"id":"a b","event_type":"x"}}', '{"data":{"id":"a","event_type":""}}']) assert.throws(() => lireEnveloppe(c), undefined, c);
+});
+
+test("whatsapp : un texte reçu devient un message entrant du client, avec wamid et heure Meta", () => {
+  const a = interpreter(ev(recu({ type: "text", text: { body: "Hi, is the 4 islands tour on tomorrow?" }, contacts: [{ profile: { name: "Anna" } }] })));
+  assert.equal(a.action, "message");
+  assert.equal(a.telephone, CLIENT);
+  assert.equal(a.entreprise, NANI);
+  assert.equal(a.nom, "Anna");
+  assert.deepEqual(a.message, { evenement_id: "evt-1", telnyx_id: "tx-1", meta_id: "wamid.AAA", sens: "entrant", origine: "client", type: "text", texte: "Hi, is the 4 islands tour on tomorrow?", medias: [], envoye_le: new Date(1763632798000).toISOString(), repond_a: null });
+});
+
+test("whatsapp : une réponse de Nani depuis l'app (écho) est un message sortant, rangé chez le client destinataire", () => {
+  const a = interpreter(ev(echo({})));
+  assert.equal(a.action, "message");
+  assert.equal(a.telephone, CLIENT);
+  assert.equal(a.entreprise, NANI);
+  assert.equal(a.nom, null);
+  assert.equal(a.message.sens, "sortant");
+  assert.equal(a.message.origine, "app");
+  assert.equal(a.message.meta_id, "wamid.BBB");
+  assert.equal(a.message.texte, "Hi! Yes we have seats tomorrow.");
+});
+
+test("whatsapp : destinataire sous forme de liste (format SMS) aussi compris", () => {
+  const j = recu({ type: "text", text: { body: "x" } });
+  j.data.payload.to = [{ phone_number: NANI }];
+  assert.equal(interpreter(ev(j)).entreprise, NANI);
+});
+
+test("whatsapp : photo avec lien Telnyx ou id Meta seulement, légende gardée", () => {
+  const a = interpreter(ev(recu({ type: "image", image: { url: "https://media.telnyx.com/abc", mime_type: "image/jpeg", sha256: "h", caption: "Our hotel" } })));
+  assert.equal(a.message.texte, "Our hotel");
+  assert.deepEqual(a.message.medias, [{ type: "image", mime: "image/jpeg", sha256: "h", legende: "Our hotel", nom: null, source_url: "https://media.telnyx.com/abc", source_id: null, statut: "a_copier" }]);
+  const b = interpreter(ev(recu({ type: "document", document: { id: "123456", mime_type: "application/pdf", filename: "passport.pdf" } })));
+  assert.equal(b.message.medias[0].source_id, "123456");
+  assert.equal(b.message.medias[0].nom, "passport.pdf");
+  // Lien non https : pas de source, échec noté (jamais un téléchargement en clair).
+  assert.equal(mediasDe({ image: { url: "http://x/y" } })[0].statut, "echec");
+});
+
+test("whatsapp : modification et suppression d'un message par le client", () => {
+  const m = interpreter(ev(recu({ type: "edit", edit: { original_message_id: "wamid.AAA", message: { type: "text", text: { body: "Make it 3 people" } } } })));
+  assert.deepEqual({ action: m.action, original: m.original, texte: m.texte, telephone: m.telephone }, { action: "modifier", original: "wamid.AAA", texte: "Make it 3 people", telephone: CLIENT });
+  const s = interpreter(ev(recu({ type: "revoke", revoke: { original_message_id: "tx-1" } })));
+  assert.deepEqual({ action: s.action, original: s.original }, { action: "supprimer", original: "tx-1" });
+  assert.equal(interpreter(ev(recu({ type: "edit", edit: {} }))).action, "ignorer");
+});
+
+test("whatsapp : état du compte et événements sans message", () => {
+  const compte = { data: { id: "evt-3", event_type: "whatsapp.account.update", payload: { record_type: "whatsapp_account", waba_id: "1", event: "ACCOUNT_OFFBOARDED" } } };
+  assert.deepEqual(interpreter(ev(compte)), { action: "compte", etat: "ACCOUNT_OFFBOARDED" });
+  assert.equal(interpreter(ev({ data: { id: "e", event_type: "whatsapp.account.update", payload: { event: "drop table" } } })).action, "ignorer");
+  assert.equal(interpreter(ev({ data: { id: "e", event_type: "message.finalized", payload: {} } })).action, "ignorer");
+  const sms = recu({ type: "text", text: { body: "x" } });
+  sms.data.payload.type = "SMS";
+  assert.equal(interpreter(ev(sms)).action, "ignorer");
+  const sansNumero = recu({ type: "text", text: { body: "x" } });
+  sansNumero.data.payload.from = { phone_number: "inconnu" };
+  sansNumero.data.payload.body.from = "abc";
+  assert.equal(interpreter(ev(sansNumero)).action, "ignorer");
+});
+
+test("whatsapp : textes des autres types (réaction, bouton, lieu, contact)", () => {
+  assert.equal(texteDe({ type: "reaction", reaction: { emoji: "👍" } }), "👍");
+  assert.equal(texteDe({ type: "interactive", interactive: { button_reply: { title: "Yes" } } }), "Yes");
+  assert.equal(texteDe({ type: "location", location: { latitude: 7.6, longitude: 99.03, name: "Pier" } }), "Pier https://maps.google.com/?q=7.6,99.03");
+  assert.equal(texteDe({ type: "contacts", contacts: [{ name: { formatted_name: "Bo" }, phones: [{ phone: "+66 81" }] }] }), "Bo +66 81");
+  assert.equal(texteDe({ type: "text", text: { body: "  " } }), null);
+  assert.equal(texteDe({ type: "text", text: { body: "a\u0000b" } }), "ab");
+  assert.equal(Array.from(texteDe({ type: "text", text: { body: "é".repeat(9000) } })).length, 8000);
+});
+
+test("whatsapp : numéros E.164", () => {
+  assert.equal(e164("+66812345678"), "+66812345678");
+  assert.equal(e164("66812345678"), "+66812345678");
+  assert.equal(e164({ phone_number: "+41 79 000 00 02" }), "+41790000002");
+  for (const v of [null, "", "abc", "+0123456789", "12", {}]) assert.equal(e164(v), null, String(v));
+});
+
+test("whatsapp : la clé API Telnyx ne part jamais vers une autre machine", () => {
+  assert.equal(hoteTelnyx("https://media.telnyx.com/x"), true);
+  assert.equal(hoteTelnyx("https://api.telnyx.com/v2"), true);
+  for (const u of ["https://telnyx.com.evil.example/x", "https://eviltelnyx.com/x", "http://api.telnyx.com/x", "pas une url"]) assert.equal(hoteTelnyx(u), false, u);
+  assert.deepEqual(sourceMedia({ source_url: "https://cdn.example/x" }, NANI), { url: "https://cdn.example/x", cle: false });
+  assert.deepEqual(sourceMedia({ source_id: "99" }, NANI), { url: "https://api.telnyx.com/v2/whatsapp/media/%2B66800000001/99", cle: true });
+  assert.equal(sourceMedia({ source_id: "99" }, null), null);
+});
+
+test("whatsapp : chemin du média sans le nom du client, extension tirée du type", () => {
+  assert.equal(cheminMedia("org", "conv", "msg", 1, "image/jpeg; q=1"), "org/conv/msg-1.jpg");
+  assert.equal(extension("application/x-sh"), "bin");
+  const copie = mediaCopie({ type: "image", source_url: "https://media.telnyx.com/a", source_id: null, statut: "a_copier" }, { statut: "copie", chemin: "o/c/m-1.jpg" });
+  assert.deepEqual(copie, { type: "image", statut: "copie", chemin: "o/c/m-1.jpg" });
+});
+
+test("whatsapp : heure du message, celle de Meta d'abord", () => {
+  assert.equal(dateMessage({ timestamp: "1763632798" }, "2026-01-01T00:00:00.000Z"), "2025-11-20T09:59:58.000Z");
+  assert.equal(dateMessage({}, "2026-11-20T10:00:00.000Z"), "2026-11-20T10:00:00.000Z");
+});
+
+test("whatsapp : Telnyx reçoit 200 dès que l'événement est gardé ; la fonction est déclarée sans JWT", () => {
+  assert.equal(REPONSES.ok.status, 200);
+  assert.equal(REPONSES.signature.status, 401);
+  const config = fs.readFileSync(new URL("../supabase/config.toml", import.meta.url), "utf8");
+  assert.match(config, /\[functions\.whatsapp\]\nverify_jwt = false/);
+  const index = fs.readFileSync(new URL("../supabase/functions/whatsapp/index.ts", import.meta.url), "utf8");
+  // La signature est vérifiée avant toute lecture de la base.
+  assert.ok(index.indexOf("verifierSignature(") < index.indexOf("const db = base()"));
+  // Aucune bibliothèque WhatsApp non officielle.
+  assert.doesNotMatch(index, /npm:(whatsapp|baileys|venom|wppconnect)/i);
+});
