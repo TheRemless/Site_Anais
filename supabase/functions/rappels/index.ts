@@ -506,7 +506,7 @@ async function suivreAmeliorations() {
   if (!jeton) return json({ ignore: "GITHUB_ISSUES_TOKEN absent" });
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   const lignes = await db.from("ameliorations").select("id, user_id, titre, statut, issue_numero, issue_url, pr_url, sensible").in("statut", STATUTS_SUIVIS).not("issue_numero", "is", null).order("maj_le", { ascending: true }).limit(30);
-  // Avant la migration 55, la table manque : rien à suivre, sans erreur toutes les 10 minutes.
+  // Avant la migration 56, la table manque : rien à suivre, sans erreur toutes les 10 minutes.
   if (lignes.error) return ["42P01", "PGRST205"].includes(lignes.error.code) ? json({ suivies: 0, note: "table ameliorations absente" }) : json({ erreur: lignes.error.message }, 500);
   if (!(lignes.data || []).length) return json({ suivies: 0 });
   const gh = (chemin: string) =>

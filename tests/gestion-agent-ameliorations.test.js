@@ -252,8 +252,8 @@ test("les règles de l'amélioration existent en deux exemplaires identiques (fo
 
 // ---- Migration et workflow -----------------------------------------------------------------------------------------------------
 
-test("migration 55 : table lisible par les administratrices seulement, écrite par les fonctions ; genres de cartes", () => {
-  const sql = lire("docs/gestion/migration-55-ameliorations.sql");
+test("migration 56 : table lisible par les administratrices seulement, écrite par les fonctions ; genres de cartes", () => {
+  const sql = lire("docs/gestion/migration-56-ameliorations.sql");
   assert.match(sql, /alter table ameliorations enable row level security/);
   assert.match(sql, /revoke all on ameliorations from anon, authenticated/);
   assert.match(sql, /grant select on ameliorations to authenticated;/);

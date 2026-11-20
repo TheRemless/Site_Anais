@@ -312,7 +312,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { error } = await sb.rpc("regler_plafond_assistant", { plafond, seuil });
       if (error) throw new Error(error.message);
     },
-    // Demandes d'amélioration de l'outil (migration 55) : lues par les administratrices de l'entreprise. null tant que la table manque.
+    // Demandes d'amélioration de l'outil (migration 56) : lues par les administratrices de l'entreprise. null tant que la table manque.
     async ameliorations(entiteId) {
       const { data, error } = await sb.from("ameliorations").select("id, entite_id, carte_id, titre, texte, statut, issue_url, pr_url, sensible, cree_le, maj_le").eq("entite_id", entiteId).order("cree_le", { ascending: false }).limit(50);
       return error ? null : data || [];

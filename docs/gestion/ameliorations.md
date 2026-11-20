@@ -27,7 +27,7 @@ Code : `supabase/functions/agent/ameliorer.js` (outils `lire_reglages`, `propose
    change pas), résume ce qui changera et attend son accord. Puis il propose la carte **Amélioration de l'outil** : titre et texte
    modifiables, bouton « Demander cette amélioration ».
 2. **Fonction `ameliorations`.** Contrôles (administratrice, carte à elle et pas encore décidée, 3 demandes par jour au plus, texte
-   public sans nom, téléphone, e-mail, lien, montant ni accès), ligne dans la table `ameliorations` (migration 55), puis issue sur
+   public sans nom, téléphone, e-mail, lien, montant ni accès), ligne dans la table `ameliorations` (migration 56), puis issue sur
    `TheRemless/Site_Anais` avec le label `amelioration-gestion`, ouverte avec le jeton `GITHUB_ISSUES_TOKEN` (droits Issues seulement).
 3. **Action `.github/workflows/amelioration-gestion.yml`.** `anthropics/claude-code-action@v1.0.284` (vérifiée le 20.11.2026) fait le
    changement en suivant `docs/gestion/ameliorations-consignes.md`, avec un jeton GitHub en lecture seule et sans pouvoir exécuter de
@@ -93,7 +93,7 @@ Claude ne pose aucun secret. Dans l'ordre :
    ```
 
 4. **Label.** `gh label create amelioration-gestion --color 0b9999 --description "Demande d'amélioration envoyée depuis Gestion" -R TheRemless/Site_Anais`
-5. **Base et fonctions** (Claude, après sauvegarde et accord) : migration 55, déploiement de `ameliorations`, `agent` et `rappels`, job
+5. **Base et fonctions** (mise en service groupée depuis master, après sauvegarde et accord de Jérémy) : migration 56, déploiement de `ameliorations`, `agent` et `rappels`, job
    pg_cron du suivi copié de `rappels-h1` sans manipuler son secret :
 
    ```sql
@@ -103,4 +103,4 @@ Claude ne pose aucun secret. Dans l'ordre :
 6. Activer les notifications sur le téléphone de Jérémy (cloche du menu) s'il ne l'a pas fait : c'est là qu'arrive « Amélioration prête à relire ».
 
 Retour arrière : `select cron.unschedule('ameliorations-suivi');`, supprimer le secret GitHub et révoquer le jeton, puis le retour arrière
-de la migration 55 (en tête du fichier).
+de la migration 56 (en tête du fichier).

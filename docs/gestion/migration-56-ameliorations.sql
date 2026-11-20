@@ -1,4 +1,4 @@
--- Migration 55 (20.11.2026) : demandes d'amélioration de Gestion depuis l'Assistant.
+-- Migration 56 (20.11.2026) : demandes d'amélioration de Gestion depuis l'Assistant.
 --
 -- 1. ameliorations : une ligne par demande envoyée (autrice, entreprise, titre, texte public, statut, issue et PR GitHub). Écrite seulement par
 --    les fonctions « ameliorations » (envoi) et « rappels » (suivi), avec la clé de service ; lue par les administratrices de l'entreprise.
