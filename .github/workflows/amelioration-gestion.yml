@@ -87,10 +87,13 @@ jobs:
         with:
           node-version: '20'
 
-      # Le SDK officiel, à une version fixée, installé hors du dépôt et sans script d'installation : aucune dépendance du dépôt n'est
-      # installée ni exécutée dans ce job.
+      # Le SDK officiel et ses dépendances aux versions verrouillées (scripts/amelioration-agent/sdk/package-lock.json, vérifiées par leur
+      # empreinte), installés hors du dépôt et sans script d'installation : aucune dépendance du dépôt n'est installée ni exécutée ici.
       - name: SDK Anthropic
-        run: npm i --prefix "$RUNNER_TEMP/sdk" --ignore-scripts --no-audit --no-fund --no-package-lock @anthropic-ai/sdk@1.3.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/sdk"
+          cp scripts/amelioration-agent/sdk/package.json scripts/amelioration-agent/sdk/package-lock.json "$RUNNER_TEMP/sdk/"
+          npm ci --prefix "$RUNNER_TEMP/sdk" --ignore-scripts --no-audit --no-fund
 
       # L'agent de scripts/amelioration-agent (version de master, celle de cette exécution) appelle l'API Claude directement : le crédit
       # promotionnel de l'organisation couvre l'API, pas Claude Code. Claude ne peut que lire, chercher et modifier des fichiers.

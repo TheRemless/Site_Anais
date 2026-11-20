@@ -272,8 +272,9 @@ test("workflow : Claude en lecture seule, plafonds, aucun secret sauf la clé An
   assert.match(impl, /contents: read/);
   assert.ok(!/: write/.test(impl), "le job de Claude n'a aucun droit d'écriture");
   assert.match(impl, /persist-credentials: false/);
-  for (const a of ['PLAFOND_USD: "5"', 'TOURS_MAX: "60"', "run: node scripts/amelioration-agent/agent.mjs", "--ignore-scripts", "@anthropic-ai/sdk@1.3.0", '--prefix "$RUNNER_TEMP/sdk"']) assert.ok(impl.includes(a), a);
-  assert.ok(!/npm ci|npm test|npm run|cache: 'npm'/.test(impl), "aucune dépendance ni aucun code du dépôt ne tourne dans le job qui tient la clé");
+  for (const a of ['PLAFOND_USD: "5"', 'TOURS_MAX: "60"', "run: node scripts/amelioration-agent/agent.mjs", "--ignore-scripts", "npm ci --prefix \"$RUNNER_TEMP/sdk\"", "scripts/amelioration-agent/sdk/package-lock.json"]) assert.ok(impl.includes(a), a);
+  assert.ok(!/npm ci\n|npm ci$|npm test|npm run|cache: 'npm'/m.test(impl.replace(/npm ci --prefix "\$RUNNER_TEMP\/sdk"[^\n]*/, "")), "aucune dépendance ni aucun code du dépôt ne tourne dans le job qui tient la clé");
+  assert.equal(JSON.parse(lire("scripts/amelioration-agent/sdk/package-lock.json")).packages["node_modules/@anthropic-ai/sdk"].version, "1.3.0");
   assert.ok(!/issues: |pull-requests: /.test(impl), "le job de Claude ne lit que le contenu du dépôt");
   const testeur = y.split("  tester:")[1].split("  ouvrir-pr:")[0];
   assert.ok(!/secrets\./.test(testeur) && !/: write/.test(testeur), "les tests tournent sans secret ni écriture");

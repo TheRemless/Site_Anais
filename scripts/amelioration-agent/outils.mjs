@@ -9,13 +9,17 @@ import fs from "node:fs";
 import path from "node:path";
 
 // Lecture interdite : l'historique git et les dossiers générés (rien d'utile, beaucoup de bruit).
-const CACHES = /^(\.git|node_modules|_site|\.amelioration)(\/|$)/;
+// À tous les niveaux pour .git et node_modules (un sous-dossier peut avoir les siens).
+const CACHES = /(^|\/)(\.git|node_modules)(\/|$)|^(_site|\.amelioration)(\/|$)/;
 // Écriture interdite, en plus des caches.
 export const INTERDITS = /^(\.github\/|\.claude\/|\.husky\/|scripts\/amelioration-agent\/|scripts\/netlify-ignore\.sh$|netlify\.toml$|package\.json$|package-lock\.json$|\.npmrc$|\.nvmrc$|supabase\/config\.toml$|CLAUDE(\.local)?\.md$|AGENTS\.md$|\.mcp\.json$)|(^|\/)\.gitattributes$|(^|\/)\.gitmodules$/;
 
 export const LIGNES_MAX = 600; // par lecture
 export const OCTETS_MAX_FICHIER = 1_000_000; // au-delà, le fichier n'est ni lu ni cherché
 export const RESULTATS_MAX = 120;
+export const MOTIF_MAX = 200;
+// Une recherche s'arrête au bout de ce temps : un motif à retour arrière catastrophique ne bloque pas le job.
+export const RECHERCHE_MS = 15_000;
 
 // Le chemin relatif propre d'un chemin donné par Claude, ou une erreur.
 export function cheminPermis(racine, chemin, { ecriture = false } = {}) {
@@ -154,6 +158,7 @@ export function executer(nom, entree, { racine }) {
     }
     if (nom === "chercher") {
       let re;
+      if (e.motif.length > MOTIF_MAX) return { contenu: "Motif trop long.", erreur: true };
       try {
         re = new RegExp(e.motif);
       } catch {
@@ -162,15 +167,25 @@ export function executer(nom, entree, { racine }) {
       const d = e.dossier ? cheminPermis(racine, e.dossier) : { rel: "" };
       if (d.erreur) return { contenu: `Refusé : ${d.erreur}`, erreur: true };
       const trouves = [];
+      const limite = Date.now() + RECHERCHE_MS;
+      let coupee = false;
       for (const f of fichiersDuDepot(racine, d.rel)) {
         const l = lireTexte(path.join(racine, f));
         if (l.erreur) continue;
-        l.texte.split("\n").forEach((ligne, i) => {
-          if (trouves.length <= RESULTATS_MAX && re.test(ligne)) trouves.push(`${f}:${i + 1}: ${ligne.slice(0, 240)}`);
-        });
+        // Lignes de plus de 2 000 caractères (fichiers minifiés) ignorées : c'est là qu'un motif s'emballe.
+        for (const [i, ligne] of l.texte.split("\n").entries()) {
+          if (ligne.length > 2000) continue;
+          if (re.test(ligne)) trouves.push(`${f}:${i + 1}: ${ligne.slice(0, 240)}`);
+          if (trouves.length > RESULTATS_MAX) break;
+        }
         if (trouves.length > RESULTATS_MAX) break;
+        if (Date.now() > limite) {
+          coupee = true;
+          break;
+        }
       }
-      return { contenu: trouves.length ? `${trouves.slice(0, RESULTATS_MAX).join("\n")}${trouves.length > RESULTATS_MAX ? "\n… d'autres résultats : précise le motif ou le dossier." : ""}` : "Aucun résultat." };
+      const fin = trouves.length > RESULTATS_MAX ? "\n… d'autres résultats : précise le motif ou le dossier." : coupee ? "\n… recherche arrêtée (trop longue) : précise le dossier ou simplifie le motif." : "";
+      return { contenu: trouves.length ? `${trouves.slice(0, RESULTATS_MAX).join("\n")}${fin}` : `Aucun résultat.${fin}` };
     }
     if (nom === "remplacer") {
       const c = cheminPermis(racine, e.chemin, { ecriture: true });

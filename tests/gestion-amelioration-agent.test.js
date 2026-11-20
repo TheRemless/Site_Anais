@@ -18,6 +18,7 @@ function depot() {
   ecrire("scripts/amelioration-agent/agent.mjs", "// agent\n");
   ecrire("node_modules/x/index.js", "x\n");
   ecrire(".git/config", "[core]\n");
+  ecrire("scripts/outil/node_modules/y/index.js", "y\n");
   fs.symlinkSync("/etc", path.join(r, "lien"));
   return r;
 }
@@ -37,7 +38,7 @@ test("cheminPermis : dans le dépôt, sans lien symbolique, fichiers fermés en 
 test("fichiersDuDepot ignore .git, node_modules et les liens", () => {
   const f = fichiersDuDepot(depot());
   assert.ok(f.includes("src/gestion/js/agent-calc.mjs"));
-  assert.ok(!f.some((x) => x.startsWith(".git/") || x.startsWith("node_modules/") || x.startsWith("lien")));
+  assert.ok(!f.some((x) => x.startsWith(".git/") || x.includes("node_modules/") || x.startsWith("lien")), "node_modules exclu à tous les niveaux");
 });
 
 test("outils : lister, lire, chercher, remplacer, écrire, terminer", () => {
@@ -47,6 +48,7 @@ test("outils : lister, lire, chercher, remplacer, écrire, terminer", () => {
   assert.match(x("lire_fichier", { chemin: "src/gestion/js/agent-calc.mjs", debut: 2 }).contenu, /^2\texport const b = 2;/);
   assert.match(x("chercher", { motif: "const b", dossier: "" }).contenu, /src\/gestion\/js\/agent-calc\.mjs:2:/);
   assert.equal(x("chercher", { motif: "(", dossier: "" }).erreur, true);
+  assert.equal(x("chercher", { motif: "a".repeat(201), dossier: "" }).erreur, true, "motif trop long refusé");
   // Remplacer : passage unique exigé, « $ » du nouveau texte gardé tel quel.
   assert.match(x("remplacer", { chemin: "src/gestion/js/agent-calc.mjs", ancien: "export const", nouveau: "x" }).contenu, /2 fois/);
   const ok = x("remplacer", { chemin: "src/gestion/js/agent-calc.mjs", ancien: "export const b = 2;", nouveau: "export const b = `$&`;" });

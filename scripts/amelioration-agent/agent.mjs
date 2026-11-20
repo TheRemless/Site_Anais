@@ -7,7 +7,8 @@
 // n'est exécuté dans ce job, qui tient la clé Anthropic. Plafonds : TOURS_MAX appels et PLAFOND_USD dollars (coût estimé d'après l'usage
 // rendu par l'API) ; au-delà, l'agent s'arrête en échec et ne propose rien.
 //
-// Lancé par le workflow : node scripts/amelioration-agent/agent.mjs, avec ANTHROPIC_API_KEY, SDK_DIR (le SDK installé hors du dépôt),
+// Lancé par le workflow : node scripts/amelioration-agent/agent.mjs, avec ANTHROPIC_API_KEY, SDK_DIR (le SDK installé hors du dépôt par
+// npm ci depuis sdk/package-lock.json),
 // DEMANDE_TITRE, DEMANDE_CORPS, NUMERO. Écrit le résumé dans .amelioration/resume.md.
 import fs from "node:fs";
 import path from "node:path";
@@ -121,7 +122,8 @@ const masquer = (t) => String(t || "").replace(/sk-ant-[A-Za-z0-9_-]+/g, "sk-ant
 async function principal() {
   const racine = process.cwd();
   const Anthropic = await chargerSdk(process.env.SDK_DIR || racine);
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 15 * 60 * 1000, maxRetries: 2 });
+  // 10 minutes par appel et une nouvelle tentative : un appel bloqué rend la main bien avant le timeout du job (40 min).
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 10 * 60 * 1000, maxRetries: 1 });
   const conventions = fs.readFileSync(path.join(racine, "docs/gestion/ameliorations-consignes.md"), "utf8");
   const demande = `<demande>\n${String(process.env.DEMANDE_TITRE || "").slice(0, 200)}\n\n${String(process.env.DEMANDE_CORPS || "").slice(0, 6000)}\n</demande>\n\nIssue n° ${process.env.NUMERO || "?"}.`;
   const sortie = path.join(racine, ".amelioration");
