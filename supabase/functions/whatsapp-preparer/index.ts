@@ -38,6 +38,9 @@ Deno.serve(async (req) => {
   const { data: conv, error } = await sb.from("whatsapp_conversations").select("id").eq("id", id).maybeSingle();
   if (error) return json({ erreur: "base" }, 500);
   if (!conv) return json({ erreur: "droit_manquant" }, 403);
+  // Lire ne suffit pas (migration 63 : WhatsApp commun en lecture) : préparer demande d'être administrateur de l'entreprise de la conversation.
+  const peut = await sb.rpc("whatsapp_peut_ecrire", { p_conversation: conv.id });
+  if (peut.error ? !/whatsapp_peut_ecrire|PGRST202|42883/.test(`${peut.error.code} ${peut.error.message}`) : peut.data !== true) return json({ erreur: "droit_manquant" }, 403);
 
   const admin = createClient(URL_SB, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   const r = await preparerALaDemande(admin, conv.id);
