@@ -284,7 +284,7 @@ export function planBrochure(lignes, { partenaireId, prestations = [], prestatio
 
 // Réponse simulée de la fonction pour la démonstration (aucune brochure n'est lue) : tirée du catalogue du partenaire pour montrer les quatre
 // statuts. Un tarif inchangé, un prix changé, un tarif nouveau, une ligne illisible, et un horaire de bateau s'il en a.
-export function simulerBrochure({ partenaireId, prestations = [], trajets = [] }) {
+export function simulerBrochure({ partenaireId, prestations = [], trajets = [], nouveau = false }) {
   const siens = ciblesPossibles(partenaireId, prestations).filter((p) => p.actif !== false && nombre(p.prix_vente) !== null);
   const vide = { groupe: "", famille: "excursion", unite: "pp", prix_enfant: null, age_enfant: "", sur_demande: false, net_texte: "", net_adulte: null, net_enfant: null, horaires: "", duree: "", programme: "", inclus: "", conditions: "", parc: "", bateau: "", capacite: "", lisible: true, illisible: "" };
   const fmt = (n) => Math.round(n).toLocaleString("en-US");
@@ -310,7 +310,8 @@ export function simulerBrochure({ partenaireId, prestations = [], trajets = [] }
     const plusTard = `${String((h + 3) % 24).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`;
     lignesTrajets.push({ ...vide2, arrivee: "", de: t.de, vers: t.vers, depart: plusTard, prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), prix_texte: [t.prix_adulte, t.prix_enfant].filter((x) => nombre(x) !== null).map((x) => fmt(x)).join(" / ") });
   }
-  return { ok: true, usage: "brochure", modele: "demo", brochure: { partenaire_lu: "", devise: "THB", tarifs, trajets: lignesTrajets, remarques: "Démonstration : aucune brochure n'a été lue, ces lignes sont tirées du catalogue." }, avertissements: [] };
+  const contacts = { telephones: [], emails: [], web: "", line: "", adresse: "", personne: "" };
+  return { ok: true, usage: "brochure", modele: "demo", brochure: { partenaire_lu: nouveau ? "Partenaire de démonstration" : "", contacts, devise: "THB", tarifs, trajets: lignesTrajets, remarques: "Démonstration : aucune brochure n'a été lue, ces lignes sont tirées du catalogue." }, avertissements: [] };
 }
 
 // Le nom imprimé sur la brochure ressemble-t-il à celui du partenaire ? Faux seulement quand aucun mot ne se retrouve : l'écran prévient alors

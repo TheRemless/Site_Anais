@@ -11,6 +11,8 @@ import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
 import { correctionsDepuisCarte, dossierDeLaCarte } from "../agent-apprendre.mjs";
 import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
+import { piecesSaisie, bullePieces, carteBrochure } from "./agent-pieces.mjs";
+import { erreurFichier } from "../pieces-jointes.mjs";
 
 const ERREURS = {
   assistant_eteint: N_("L'assistant est éteint pour cette entreprise (Réglages)."),
@@ -37,7 +39,7 @@ function erreurTexte(code, detail = null) {
     const jour = new Date(`${detail.reprise}T12:00:00Z`).toLocaleDateString(langueActive() === "en" ? "en-GB" : "fr-FR", { day: "numeric", month: "long", timeZone: "UTC" });
     return tr("Le plafond du mois de l'assistant est atteint ({depense} dépensés sur {plafond}). Il reprend le {jour}, ou plus tôt si l'administration relève le plafond dans « Suivi de l'assistant ».", { depense: montant(detail.depense ?? detail.plafond), plafond: montant(detail.plafond), jour });
   }
-  return tr(ERREURS[code] || N_("L'assistant ne répond pas."));
+  return erreurFichier(code) || tr(ERREURS[code] || N_("L'assistant ne répond pas."));
 }
 
 const AVERTISSEMENTS = {
@@ -71,6 +73,7 @@ const ETAPES = {
   proposer_reponse: N_("Je prépare la réponse"),
   estimer_temps_web: N_("Je cherche une estimation sur le web"),
   proposer_temps_trajet: N_("Je prépare la durée pour la table"),
+  proposer_import_brochure: N_("Je prépare l'import de la brochure"),
 };
 
 const disponible = () => agentActif(reglages()) && peut("partenaires.lire") && peut("dossiers.ecrire");
@@ -140,7 +143,11 @@ export async function vueAgent(idOuvert = "") {
   const zoneFil = h("div", { class: "agent-messages" });
   const champ = h("textarea", { id: "agent-message", rows: 1, maxlength: 8000, "aria-label": tr("Message à l'assistant"), placeholder: tr("Écrire à l'assistant") });
   const envoyerBouton = h("button", { class: "principal agent-envoyer", type: "submit", "aria-label": tr("Envoyer") }, icone("fleche", 20));
-  const formulaire = h("form", { class: "agent-saisie", onsubmit: (e) => (e.preventDefault(), envoyer()) }, champ, envoyerBouton);
+  // Pièces jointes : trombone à gauche du champ, vignettes au-dessus, dépôt sur toute la colonne, capture collée dans le champ.
+  const pieces = piecesSaisie();
+  const formulaire = h("form", { class: "agent-saisie", onsubmit: (e) => (e.preventDefault(), envoyer()) }, pieces.liste, pieces.erreur, pieces.entree, pieces.bouton, champ, envoyerBouton);
+  pieces.attacher(colonneFil);
+  pieces.coller(champ);
   const ajuster = () => {
     champ.style.height = "auto";
     champ.style.height = `${Math.min(champ.scrollHeight, 220)}px`;
@@ -264,6 +271,7 @@ export async function vueAgent(idOuvert = "") {
   function element(it) {
     if (it.genre === "personne") return h("div", { class: "agent-bulle de-personne" }, paragraphes(it.texte));
     if (it.genre === "agent") return h("div", { class: "agent-bulle de-agent" }, paragraphes(it.texte));
+    if (it.genre === "pieces") return bullePieces(it.fichiers);
     if (it.genre === "planning") return frise(it.planning);
     return carte(it.carte);
   }
@@ -272,20 +280,39 @@ export async function vueAgent(idOuvert = "") {
   // ---- Envoi ------------------------------------------------------------------------------------------------------------------
   async function envoyer() {
     const texte = champ.value.trim();
-    if (!texte || enCours) return;
+    const joints = pieces.noms();
+    if ((!texte && !joints.length) || enCours) return;
+    // Bloqué dès maintenant : un second appui pendant la réduction des images n'envoie pas deux fois.
     enCours = true;
+    // Les fichiers sont préparés (images réduites) avant l'envoi ; une erreur les garde joints et dit quoi faire.
+    let fichiers = [];
+    if (joints.length) {
+      try {
+        envoyerBouton.setAttribute("aria-busy", "true");
+        fichiers = await pieces.prets();
+      } catch (err) {
+        envoyerBouton.removeAttribute("aria-busy");
+        pieces.erreur.textContent = erreurFichier(err && err.message) || erreurFichier("fichier_illisible");
+        enCours = false;
+        return;
+      }
+    }
     envoyerBouton.disabled = true;
     envoyerBouton.setAttribute("aria-busy", "true");
     champ.value = "";
     ajuster();
     if (!zoneFil.querySelector(".agent-bulle, .agent-frise, .agent-carte")) zoneFil.replaceChildren();
-    zoneFil.append(h("div", { class: "agent-bulle de-personne" }, paragraphes(texte)));
+    if (joints.length) zoneFil.append(bullePieces(joints));
+    if (texte) zoneFil.append(h("div", { class: "agent-bulle de-personne" }, paragraphes(texte)));
+    // Les fichiers choisis restent en mémoire : si l'envoi échoue, ils reviennent dans la zone de saisie.
+    const choisis = pieces.fichiers();
+    pieces.vider();
     const etape = h("p", { class: "agent-etape", role: "status" }, h("span", { class: "agent-point", "aria-hidden": "true" }), tr("L'assistant réfléchit"));
     let bulle = null;
     let texteRecu = "";
     zoneFil.append(etape);
     descendre();
-    const r = await etat.store.agentEnvoyer({ entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte }, (ev) => {
+    const r = await etat.store.agentEnvoyer({ entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) }, (ev) => {
       if (ev.t === "conversation" && !conv) {
         conv = { id: ev.id, entite_id: etat.entiteId, titre: ev.titre, apercu: "", dossier_id: ev.dossier_id || null, statut: "ouverte", maj_le: new Date().toISOString() };
         conversations = [conv, ...(conversations || [])];
@@ -324,6 +351,7 @@ export async function vueAgent(idOuvert = "") {
       if (r.erreur === "plafond_du_mois" || r.erreur === "credit_epuise") zoneFil.append(h("div", { class: "agent-bulle de-agent agent-arret", role: "alert" }, h("p", null, erreurTexte(r.erreur, r))));
       else zoneFil.append(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(r.erreur)));
       if (!conv) champ.value = texte;
+      if (choisis.length) pieces.ajouter(choisis);
     }
     enCours = false;
     // La dépense vient de bouger : le bandeau du crédit (administratrices) se relit.
@@ -429,9 +457,13 @@ export async function vueAgent(idOuvert = "") {
       zone.value = d.message || "";
       corps.push(zone);
       action = { libelle: tr("Copier la réponse"), faire: () => copier(c, zone.value) };
+    } else if (c.genre === "brochure") {
+      const b = carteBrochure(c, { valider: () => decider(c, "validee") });
+      corps.push(...b.corps);
+      action = b.action;
     }
     const avert = (c.avertissements || []).length ? h("ul", { class: "assistant-avertissements" }, c.avertissements.map((a) => h("li", null, texteAvertissement(a)))) : null;
-    const libelles = { dossier: N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: N_("Réponse au client"), temps: N_("Temps de trajet") };
+    const libelles = { dossier: N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: N_("Réponse au client"), temps: N_("Temps de trajet"), brochure: N_("Brochure à importer") };
     const decidee = c.statut !== "proposee";
     return h(
       "article",
@@ -445,8 +477,8 @@ export async function vueAgent(idOuvert = "") {
             "div",
             { class: "actions gauche" },
             ouvertes.has(c.id) ? h("p", { class: "aide pleine-largeur" }, tr("Ouvert dans « Coller une demande » : dites ici quand le dossier est créé.")) : null,
-            h("button", { class: "principal", type: "button", onclick: () => action.faire() }, action.libelle),
-            action.puis ? h("button", { class: "secondaire", type: "button", onclick: () => action.puis.faire() }, action.puis.libelle) : null,
+            action ? h("button", { class: "principal", type: "button", onclick: () => action.faire() }, action.libelle) : null,
+            action && action.puis ? h("button", { class: "secondaire", type: "button", onclick: () => action.puis.faire() }, action.puis.libelle) : null,
             h("button", { class: "secondaire", type: "button", onclick: () => decider(c, "ecartee") }, tr("Écarter"))
           )
     );

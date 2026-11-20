@@ -11,6 +11,7 @@ import { assistantActif } from "../assistant-calc.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { DROITS_BROCHURE, comparerBrochure, changerCible, compter, planBrochure, ciblesPossibles, phraseAgeEnfant, memePartenaire } from "../brochure-calc.mjs";
 import { messageErreur } from "./assistant-demande.mjs";
+import { preparer, tailleTexte, erreurFichier, LIMITES } from "../pieces-jointes.mjs";
 
 export const importBrochureDisponible = () => assistantActif(reglages()) && DROITS_BROCHURE.every((d) => peut(d));
 
@@ -24,7 +25,7 @@ const ERREURS = {
   invalide: N_("L'assistant n'a trouvé ni tarif ni horaire dans ces fichiers."),
   coupe: N_("La brochure est trop longue pour une seule lecture : envoyez-la en deux fois."),
 };
-const erreurTexte = (code) => (ERREURS[code] ? tr(ERREURS[code]) : messageErreur(code));
+const erreurTexte = (code) => (ERREURS[code] ? tr(ERREURS[code]) : erreurFichier(code) || messageErreur(code));
 
 const AVERTISSEMENTS = {
   prix_non_imprime: N_("« {nom} » : le prix rendu ne figure pas dans le texte imprimé, la ligne est marquée illisible."),
@@ -43,79 +44,21 @@ const STATUTS = { nouveau: N_("Nouveau"), prix_change: N_("Prix changé"), incha
 const badge = (statut) => h("span", { class: `brochure-statut ${statut}` }, tr(STATUTS[statut]));
 const prix = (n) => (n === null || n === undefined ? "—" : formatMontant(n));
 
-// ---- Fichiers ------------------------------------------------------------------------------------------------------------------------------
-
-const COTE_MAX = 2000;
-const PDF_MAX = 8 * 1024 * 1024;
-const enBase64 = (blob) =>
-  new Promise((ok, ko) => {
-    const r = new FileReader();
-    r.onload = () => ok(String(r.result).slice(String(r.result).indexOf(",") + 1));
-    r.onerror = () => ko(new Error("lecture"));
-    r.readAsDataURL(blob);
-  });
-
-// Décode une image : createImageBitmap (avec l'orientation de la photo, puis sans option pour un navigateur qui la refuse), sinon un élément
-// <img>. Rend un objet qui a une largeur, une hauteur et se dessine sur une toile.
-async function decoder(fichier) {
-  for (const options of [{ imageOrientation: "from-image" }, undefined]) {
-    try {
-      if (typeof createImageBitmap === "function") return await createImageBitmap(fichier, options);
-    } catch {
-      /* essai suivant */
-    }
-  }
-  const adresse = URL.createObjectURL(fichier);
-  try {
-    const img = new Image();
-    img.src = adresse;
-    await img.decode();
-    return { width: img.naturalWidth, height: img.naturalHeight, image: img, close: null };
-  } catch {
-    throw new Error("fichier_illisible");
-  } finally {
-    setTimeout(() => URL.revokeObjectURL(adresse), 0);
-  }
-}
-
-// Une photo de téléphone (4 000 pixels, plusieurs Mo) est réduite à 2 000 pixels de côté en JPEG : les chiffres restent nets et l'envoi léger.
-async function preparer(fichier) {
-  if (fichier.type === "application/pdf") {
-    if (fichier.size > PDF_MAX) throw new Error("fichier_trop_lourd");
-    return { media_type: "application/pdf", data: await enBase64(fichier) };
-  }
-  if (!fichier.type.startsWith("image/")) throw new Error("fichier_type");
-  const image = await decoder(fichier);
-  const echelle = Math.min(1, COTE_MAX / Math.max(image.width, image.height));
-  const toile = document.createElement("canvas");
-  toile.width = Math.max(1, Math.round(image.width * echelle));
-  toile.height = Math.max(1, Math.round(image.height * echelle));
-  const ctx = toile.getContext("2d");
-  // Fond blanc : une capture PNG transparente ne devient pas noire en JPEG.
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, toile.width, toile.height);
-  ctx.drawImage(image.image || image, 0, 0, toile.width, toile.height);
-  if (image.close) image.close();
-  const blob = await new Promise((ok) => toile.toBlob(ok, "image/jpeg", 0.86));
-  if (!blob) throw new Error("fichier_illisible");
-  return { media_type: "image/jpeg", data: await enBase64(blob) };
-}
-
-const tailleTexte = (octets) => {
-  if (octets < 1024 * 1024) return tr("{n} ko", { n: Math.max(1, Math.round(octets / 1024)) });
-  const mo = (octets / 1024 / 1024).toFixed(1);
-  return tr("{n} Mo", { n: langueActive() === "en" ? mo : mo.replace(".", ",") });
-};
-
 // ---- Écran --------------------------------------------------------------------------------------------------------------------------------
 
 // `apres` rafraîchit la fiche du partenaire quand quelque chose a été enregistré, à la fermeture.
-export function ouvrirImportBrochure(p, apres = () => {}) {
+// Depuis une carte de l'onglet Assistant (`depuisAgent`) : les fichiers sont ceux joints à la conversation (identifiants de agent_fichiers),
+// relus par la fonction ; la lecture part tout de suite. `p` peut être null : la brochure est celle d'un nouveau partenaire, que l'écran
+// fait créer (formulaire habituel, prérempli du nom et des contacts imprimés) avant d'enregistrer les lignes.
+export function ouvrirImportBrochure(p, apres = () => {}, depuisAgent = null) {
   let ecrit = false;
-  const fermer = modal(tr("Importer une brochure"), ecranBrochure(p, { aEcrit: () => (ecrit = true), fini: () => fermer() }), { large: true, ferme: () => ecrit && apres() });
+  const fermer = modal(tr("Importer une brochure"), ecranBrochure(p, { aEcrit: () => (ecrit = true), fini: () => fermer(), depuisAgent }), { large: true, ferme: () => ecrit && apres() });
 }
 
-function ecranBrochure(p, { aEcrit, fini }) {
+function ecranBrochure(p, { aEcrit, fini, depuisAgent = null }) {
+  let partenaire = p;
+  // Depuis l'Assistant, « fichiers absents » veut dire qu'ils ne sont plus gardés (30 jours) : le message le dit.
+  const erreurLecture = (code) => (depuisAgent && erreurFichier(code)) || erreurTexte(code);
   const fichiers = [];
   const droitNets = peut("partenaires.nets") && !modeTaxi();
   const langue = modeExcursions() ? "en" : "fr";
@@ -143,7 +86,7 @@ function ecranBrochure(p, { aEcrit, fini }) {
   choix.addEventListener("change", () => {
     let laisses = 0;
     for (const f of choix.files) {
-      if (fichiers.length >= 6) laisses++;
+      if (fichiers.length >= LIMITES.fichiers) laisses++;
       else fichiers.push({ fichier: f, apercu: f.type.startsWith("image/") ? URL.createObjectURL(f) : "" });
     }
     etatLecture.classList.remove("erreur");
@@ -160,26 +103,29 @@ function ecranBrochure(p, { aEcrit, fini }) {
     boutonLire.textContent = tr("Lecture…");
     etatLecture.textContent = tr("Préparation des fichiers…");
     try {
-      let prets;
-      try {
-        prets = await Promise.all(fichiers.map((f) => preparer(f.fichier)));
-      } catch (err) {
-        throw Object.assign(new Error(err.message), { code: err.message });
+      let corps;
+      if (depuisAgent) corps = { fichiers_agent: depuisAgent.fichiers.map((f) => f.id), ...(partenaire ? { partenaire_id: partenaire.id } : { nouveau_partenaire: true }) };
+      else {
+        try {
+          corps = { partenaire_id: partenaire.id, fichiers: await Promise.all(fichiers.map((f) => preparer(f.fichier))) };
+        } catch (err) {
+          throw Object.assign(new Error(err.message), { code: err.message });
+        }
       }
       etatLecture.textContent = tr("L'assistant lit la brochure. Comptez une minute environ.");
-      const r = await etat.store.assistant({ usage: "brochure", entite_id: etat.entiteId, partenaire_id: p.id, fichiers: prets });
+      const r = await etat.store.assistant({ usage: "brochure", entite_id: etat.entiteId, ...corps });
       if (!r || r.erreur || !r.brochure) {
         etatLecture.classList.add("erreur");
-        etatLecture.textContent = erreurTexte(r && r.erreur);
+        etatLecture.textContent = erreurLecture(r && r.erreur);
         return;
       }
       etatLecture.textContent = "";
       afficher(r);
     } catch (err) {
       etatLecture.classList.add("erreur");
-      etatLecture.textContent = erreurTexte(err && err.code);
+      etatLecture.textContent = erreurLecture(err && err.code);
     } finally {
-      boutonLire.disabled = !fichiers.length;
+      boutonLire.disabled = !fichiers.length && !depuisAgent;
       boutonLire.removeAttribute("aria-busy");
       boutonLire.textContent = tr("Relire la brochure");
     }
@@ -189,14 +135,15 @@ function ecranBrochure(p, { aEcrit, fini }) {
   // créé devient « inchangé », rien ne peut être créé deux fois.
   function afficher(r, { faits = 0, echecs = [] } = {}) {
     const b = r.brochure;
-    const comp = comparerBrochure(b, { partenaireId: p.id, prestations: etat.db.prestations, trajets: etat.db.trajets });
+    const partenaireId = partenaire ? partenaire.id : null;
+    const comp = comparerBrochure(b, { partenaireId, prestations: etat.db.prestations, trajets: etat.db.trajets });
     const lignes = [...comp.tarifs, ...comp.trajets];
-    const cibles = ciblesPossibles(p.id, etat.db.prestations).sort((a, c) => a.libelle.localeCompare(c.libelle));
+    const cibles = ciblesPossibles(partenaireId, etat.db.prestations).sort((a, c) => a.libelle.localeCompare(c.libelle));
     const erreur = h("div", { class: "erreur-form", role: "alert" });
     const enregistrer = h("button", { class: "principal", type: "button", onclick: () => ecrire() });
     const plan = () =>
       planBrochure(lignes, {
-        partenaireId: p.id,
+        partenaireId,
         prestations: etat.db.prestations,
         prestationsNets: droitNets ? etat.db.prestations_nets : [],
         trajetsNets: droitNets ? etat.db.trajets_nets : [],
@@ -207,6 +154,12 @@ function ecranBrochure(p, { aEcrit, fini }) {
         numeroMax: Math.max(0, ...etat.db.trajets.map((x) => x.numero || 0)),
       });
     const majBouton = () => {
+      // Nouveau partenaire : les lignes s'enregistrent une fois le partenaire créé.
+      if (!partenaire) {
+        enregistrer.disabled = true;
+        enregistrer.textContent = tr("Créez d'abord le partenaire");
+        return;
+      }
       const n = plan().length;
       enregistrer.disabled = !n;
       enregistrer.textContent = n ? pluriel(n, N_("Enregistrer {n} ligne"), N_("Enregistrer {n} lignes")) : tr("Rien à enregistrer");
@@ -332,7 +285,7 @@ function ecranBrochure(p, { aEcrit, fini }) {
     const resume = [n.nouveau ? pluriel(n.nouveau, N_("{n} nouvelle"), N_("{n} nouvelles")) : "", n.prix_change ? pluriel(n.prix_change, N_("{n} prix changé"), N_("{n} prix changés")) : "", n.inchange ? pluriel(n.inchange, N_("{n} inchangée"), N_("{n} inchangées")) : "", n.illisible ? pluriel(n.illisible, N_("{n} illisible"), N_("{n} illisibles")) : ""].filter(Boolean).join(", ");
     const avertissements = [
       ...(r.avertissements || []).map(texteAvertissement),
-      !memePartenaire(b.partenaire_lu, p.nom) ? tr("La brochure porte le nom « {nom} » : vérifiez que c'est bien celle de {partenaire}.", { nom: b.partenaire_lu, partenaire: p.nom }) : "",
+      partenaire && !memePartenaire(b.partenaire_lu, partenaire.nom) ? tr("La brochure porte le nom « {nom} » : vérifiez que c'est bien celle de {partenaire}.", { nom: b.partenaire_lu, partenaire: partenaire.nom }) : "",
       b.devise && b.devise !== "THB" ? tr("Prix imprimés en {devise} : la base de prix compte en THB, vérifiez avant d'enregistrer.", { devise: b.devise }) : "",
     ].filter(Boolean);
     if (echecs.length) erreur.replaceChildren(h("span", null, pluriel(faits, N_("{n} ligne enregistrée, les autres non :"), N_("{n} lignes enregistrées, les autres non :"))), h("ul", null, echecs.map((e) => h("li", null, e))));
@@ -340,6 +293,8 @@ function ecranBrochure(p, { aEcrit, fini }) {
     majBouton();
     // replaceChildren écrit « null » pour un enfant absent : on ne garde que les nœuds.
     const enfants = [
+      // Créer le partenaire ne valide pas la carte de l'Assistant : seules les lignes enregistrées comptent.
+      partenaire ? null : nouveauPartenaire(b, (cree) => ((partenaire = cree), afficher(r))),
       h("p", { class: "brochure-resume" }, pluriel(lignes.length, N_("{n} ligne lue"), N_("{n} lignes lues")), resume ? ` : ${resume}.` : "."),
       h("p", { class: "aide" }, tr("Cochez ce que vous gardez. Les prix de vente suivent la brochure ; les textes déjà remplis au catalogue ne changent pas ; un net n'est écrit que s'il est imprimé.")),
       b.remarques ? h("p", { class: "assistant-remarque" }, b.remarques) : null,
@@ -360,14 +315,44 @@ function ecranBrochure(p, { aEcrit, fini }) {
     resultat.replaceChildren(...enfants.filter(Boolean));
   }
 
+  if (depuisAgent) {
+    queueMicrotask(lire);
+    return h(
+      "div",
+      { class: "modal-corps brochure" },
+      h("p", null, partenaire ? tr("L'assistant relit les fichiers joints à la conversation et les compare aux tarifs de {partenaire}. Vous choisissez ensuite ce qui entre dans le catalogue.", { partenaire: partenaire.nom }) : tr("L'assistant relit les fichiers joints à la conversation : nouveau partenaire, contacts imprimés, tarifs et horaires. Vous choisissez ensuite ce qui entre dans le catalogue.")),
+      h("ul", { class: "brochure-fichiers" }, depuisAgent.fichiers.map((f) => h("li", { class: "brochure-fichier" }, h("span", { class: "brochure-pdf", "aria-hidden": "true" }, f.media_type === "application/pdf" ? "PDF" : tr("Photo")), h("span", { class: "brochure-fichier-nom" }, f.nom)))),
+      etatLecture,
+      resultat
+    );
+  }
   return h(
     "div",
     { class: "modal-corps brochure" },
-    h("p", null, tr("Envoyez la photo, la capture ou le PDF de la brochure de {partenaire}. L'assistant relève les tarifs et les horaires imprimés ; vous choisissez ensuite ce qui entre dans le catalogue.", { partenaire: p.nom })),
+    h("p", null, tr("Envoyez la photo, la capture ou le PDF de la brochure de {partenaire}. L'assistant relève les tarifs et les horaires imprimés ; vous choisissez ensuite ce qui entre dans le catalogue.", { partenaire: partenaire.nom })),
     h("p", { class: "aide" }, tr("Les fichiers partent chez Anthropic pour être lus, rien d'autre : ni le catalogue, ni les nets de la base. Envoyez la brochure publique, pas une grille de prix nets. Six fichiers au plus.")),
     h("div", { class: "actions gauche brochure-choix" }, choix, boutonChoisir, boutonLire),
     liste,
     etatLecture,
     resultat
+  );
+}
+
+// Le partenaire d'une brochure qui n'est pas encore au catalogue : son nom, ses contacts imprimés et le formulaire habituel pour le créer,
+// déjà rempli. Rien n'est créé sans « Enregistrer » dans ce formulaire.
+function nouveauPartenaire(b, cree) {
+  const c = b.contacts || {};
+  const contact = { personne: c.personne || "", telephones: (c.telephones || []).map((numero) => ({ numero, libelle: "", whatsapp: false })), emails: c.emails || [], line: c.line || "", web: c.web || "", adresse: c.adresse || "" };
+  const lus = [[N_("Nom imprimé"), b.partenaire_lu], [N_("Téléphone"), (c.telephones || []).join(", ")], [N_("E-mail"), (c.emails || []).join(", ")], [N_("Site"), c.web], [N_("Line"), c.line], [N_("Adresse"), c.adresse], [N_("Personne"), c.personne]].filter(([, v]) => v);
+  const ouvrir = async () => {
+    const { formulairePartenaire } = await import("./partenaires.mjs");
+    const fermer = modal(tr("Nouveau partenaire"), formulairePartenaire({ nom: b.partenaire_lu || "", contact }, (res) => (fermer(), cree(res))), { large: true });
+  };
+  return h(
+    "section",
+    { class: "brochure-section brochure-nouveau" },
+    h("h3", null, tr("Nouveau partenaire")),
+    lus.length ? lus.map(([k, v]) => h("div", { class: "ligne-info" }, h("span", { class: "ligne-libelle" }, tr(k)), h("span", { class: "brochure-texte" }, v))) : h("p", { class: "aide" }, tr("Aucun nom ni contact imprimé : remplissez-les dans le formulaire.")),
+    peut("partenaires.ecrire") ? h("div", { class: "actions gauche" }, h("button", { class: "principal", type: "button", onclick: ouvrir }, tr("Créer le partenaire"))) : h("p", { class: "aide" }, tr("Votre rôle ne permet pas de créer un partenaire."))
   );
 }

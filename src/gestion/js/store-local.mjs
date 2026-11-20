@@ -48,6 +48,8 @@ export function creer() {
     data.agent_conversations = data.agent_conversations || [];
     data.agent_messages = data.agent_messages || [];
     data.agent_cartes = data.agent_cartes || [];
+    // Pièces jointes (migration 55) : en démonstration, seulement leur nom et leur type (le navigateur ne garde pas les fichiers).
+    data.agent_fichiers = data.agent_fichiers || [];
     data.temps_trajets = data.temps_trajets || [];
     data.liaisons_ferry = data.liaisons_ferry || [];
     // Corbeille des documents et compteurs de numéros, comme la base (migration 34). L'acompte figé du dossier existe comme colonne.
@@ -392,6 +394,7 @@ export function creer() {
       data.agent_conversations = data.agent_conversations.filter((x) => !(x.id === id && x.user_id === utilisateur.user_id));
       data.agent_messages = data.agent_messages.filter((m) => m.conversation_id !== id || data.agent_conversations.some((c) => c.id === id));
       data.agent_cartes = data.agent_cartes.filter((m) => m.conversation_id !== id || data.agent_conversations.some((c) => c.id === id));
+      data.agent_fichiers = data.agent_fichiers.filter((m) => m.conversation_id !== id || data.agent_conversations.some((c) => c.id === id));
       sauve();
     },
     async agentConversationsDuDossier(dossierId) {
@@ -432,6 +435,10 @@ export function creer() {
     async reglerPlafondAssistant(plafond, seuil) {
       data.assistant_budget = { plafond: Number(plafond) || 50, seuil: Number(seuil) || 80 };
       sauve();
+    },
+    // Une pièce jointe pour l'aperçu : en démonstration, le fichier n'est pas gardé.
+    async agentFichier() {
+      return null;
     },
     async agentCarte(id, statut) {
       const c = data.agent_cartes.find((x) => x.id === id);
@@ -487,17 +494,42 @@ export function creer() {
       const perms = permissionsDans(contexte(), e);
       if (!["partenaires.lire", "dossiers.ecrire"].every((p) => perms.includes(p))) return { erreur: "droit_manquant" };
       const texte = String(corps.texte || "").trim();
-      if (!texte) return { erreur: "message_invalide" };
+      const pieces = Array.isArray(corps.fichiers) ? corps.fichiers : [];
+      if (!texte && !pieces.length) return { erreur: "message_invalide" };
+      if (pieces.length > 6) return { erreur: "trop_de_fichiers" };
+      if (pieces.some((f) => !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(f && f.media_type))) return { erreur: "fichier_type" };
       let conv = corps.conversation_id ? data.agent_conversations.find((c) => c.id === corps.conversation_id && c.user_id === utilisateur.user_id) : null;
       const maintenant = () => new Date(Date.now() + data.agent_messages.length).toISOString();
       if (!conv) {
         const { titreDepuis } = await import("./agent-calc.mjs");
-        conv = { id: uid(), entite_id: e, user_id: utilisateur.user_id, titre: titreDepuis(texte), apercu: "", dossier_id: corps.dossier_id || null, statut: "ouverte", cree_le: maintenant(), maj_le: maintenant(), demo_etat: {} };
+        conv = { id: uid(), entite_id: e, user_id: utilisateur.user_id, titre: titreDepuis(texte || (pieces[0] && pieces[0].nom) || ""), apercu: "", dossier_id: corps.dossier_id || null, statut: "ouverte", cree_le: maintenant(), maj_le: maintenant(), demo_etat: {} };
         data.agent_conversations.push(conv);
       }
       const message = (role, contenu) => data.agent_messages.push({ id: data.agent_messages.length + 1, conversation_id: conv.id, role, contenu, cree_le: maintenant() });
       surEvenement({ t: "conversation", id: conv.id, titre: conv.titre, dossier_id: conv.dossier_id });
-      message("user", [{ type: "text", text: texte }]);
+      const blocs = pieces.map((f) => {
+        const ligne = { id: uid(), conversation_id: conv.id, nom: String(f.nom || "").slice(0, 120), media_type: f.media_type, taille: String(f.data || "").length, cree_le: maintenant() };
+        data.agent_fichiers.push(ligne);
+        return { type: "fichier", id: ligne.id, nom: ligne.nom, media_type: ligne.media_type, taille: ligne.taille };
+      });
+      message("user", [...blocs, ...(texte ? [{ type: "text", text: texte }] : [])]);
+      // Démonstration : les fichiers ne sont pas lus. Une demande d'ajout de partenaire montre la carte d'import, le reste une phrase.
+      if (blocs.length) {
+        const brochure = /brochure|partenaire|partner|tarif|prix|ajout|catalogue/i.test(texte);
+        const phrase = brochure ? "En démonstration, je ne lis pas les fichiers : voici la carte d'import, avec des lignes tirées du catalogue." : "En démonstration, je ne lis pas les pièces jointes. Avec l'assistant en service, je lis la photo ou le PDF comme un message (heure du vol, hôtel, dates).";
+        surEvenement({ t: "texte", delta: phrase });
+        message("assistant", [{ type: "text", text: phrase }]);
+        if (brochure) {
+          const carte = { id: uid(), conversation_id: conv.id, statut: "proposee", cree_le: maintenant(), decide_le: null, genre: "brochure", titre: "Brochure jointe", donnees: { fichiers: blocs.map(({ id, nom, media_type }) => ({ id, nom, media_type })), partenaire_lu: "", partenaire_id: null, nouveau: true }, avertissements: [] };
+          data.agent_cartes.push(carte);
+          surEvenement({ t: "carte", carte: structuredClone(carte) });
+        }
+        conv.apercu = phrase.slice(0, 200);
+        conv.maj_le = maintenant();
+        sauve();
+        surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "demo" });
+        return { ok: true };
+      }
       const { repondreDemo } = await import("./agent-demo.mjs");
       const entite = data.entites.find((x) => x.id === e) || {};
       const r = await repondreDemo(texte, { aujourdhui: aujourdhui(), etat: conv.demo_etat || {}, entreprise: entite.nom || "", signer: !regl.fonctionnement || regl.fonctionnement === "sur_mesure", lignes: data.temps_trajets.filter((l) => l.entite_id === e), liaisons: data.liaisons_ferry.filter((l) => l.entite_id === e), hotels: data.hotels_lieux.filter((l) => l.entite_id === e) });
@@ -554,7 +586,8 @@ export function creer() {
     async assistant(corps) {
       await new Promise((r) => setTimeout(r, 700));
       const e = corps.entite_id;
-      if (!(data.reglages[e] || {}).assistant_ia) return { erreur: "assistant_eteint" };
+      const depuisAgent = corps.usage === "brochure" && Array.isArray(corps.fichiers_agent);
+      if (depuisAgent ? !(data.reglages[e] || {}).agent_ia : !(data.reglages[e] || {}).assistant_ia) return { erreur: depuisAgent ? "agent_eteint" : "assistant_eteint" };
       // Mêmes droits que la fonction : la base de prix et créer un dossier. « rediger » est refusé comme par la fonction (retiré le 19.11.2026).
       if (!["lire", "itineraire", "situer", "repondre_itineraire", "brochure"].includes(corps.usage)) return { erreur: "usage_inconnu" };
       const perms = permissionsDans(contexte(), e);
@@ -562,12 +595,14 @@ export function creer() {
       if (corps.usage === "brochure") {
         const b = await import("./brochure-calc.mjs");
         if (b.DROITS_BROCHURE.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };
-        const fichiers = Array.isArray(corps.fichiers) ? corps.fichiers : [];
-        if (!fichiers.length) return { erreur: "fichiers_absents" };
+        const miennes = new Set(data.agent_conversations.filter((c) => c.entite_id === e && c.user_id === utilisateur.user_id).map((c) => c.id));
+        const fichiers = depuisAgent ? corps.fichiers_agent.map((id) => data.agent_fichiers.find((f) => f.id === id && miennes.has(f.conversation_id))) : Array.isArray(corps.fichiers) ? corps.fichiers : [];
+        if (!fichiers.length || fichiers.some((f) => !f)) return { erreur: "fichiers_absents" };
         if (fichiers.length > 6) return { erreur: "trop_de_fichiers" };
         if (fichiers.some((f) => !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(f && f.media_type))) return { erreur: "fichier_type" };
-        if (!data.partenaires.some((p) => p.id === corps.partenaire_id && p.entite_id === e)) return { erreur: "partenaire_invalide" };
-        return b.simulerBrochure({ partenaireId: corps.partenaire_id, prestations: data.prestations.filter((p) => p.entite_id === e), trajets: data.trajets.filter((t) => t.entite_id === e) });
+        const nouveau = depuisAgent && corps.nouveau_partenaire === true && !corps.partenaire_id;
+        if (!nouveau && !data.partenaires.some((p) => p.id === corps.partenaire_id && p.entite_id === e)) return { erreur: "partenaire_invalide" };
+        return b.simulerBrochure({ partenaireId: nouveau ? null : corps.partenaire_id, prestations: data.prestations.filter((p) => p.entite_id === e), trajets: data.trajets.filter((t) => t.entite_id === e), nouveau });
       }
       const requis = ["partenaires.lire", "dossiers.ecrire"];
       if (requis.some((p) => !perms.includes(p))) return { erreur: "droit_manquant" };

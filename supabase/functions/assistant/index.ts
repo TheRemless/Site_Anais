@@ -111,7 +111,9 @@ Deno.serve(async (req) => {
   const ra = reglagesAssistant(reglages);
   const limite = Number(Deno.env.get("ASSISTANT_LIMITE_JOUR")) || LIMITE_JOUR_DEFAUT;
   const controle = usage === "brochure" ? controlerAccesBrochure : controlerAcces;
-  const acces = controle({ usage, entiteId, permissions: perms.data || [], reglages, appelsDuJour: appels.count || 0, limite });
+  // Une brochure jointe à une conversation de l'onglet Assistant se lit depuis ses fichiers gardés (agent_fichiers, migration 55).
+  const depuisAgent = usage === "brochure" && Array.isArray(demande.fichiers_agent);
+  const acces = controle({ usage, entiteId, permissions: perms.data || [], reglages, appelsDuJour: appels.count || 0, limite, depuisAgent });
   if (!acces.ok) return json({ erreur: acces.erreur, ...(acces.manque ? { manque: acces.manque } : {}), ...(acces.limite ? { limite: acces.limite } : {}) }, acces.statut);
 
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
@@ -161,11 +163,29 @@ Deno.serve(async (req) => {
   } else if (usage === "brochure") {
     // Les fichiers de la brochure seuls (ni catalogue, ni prix de la base, ni nom du partenaire). Le partenaire doit être un de ceux de
     // l'entreprise, lu avec la session de la personne : chaque entreprise garde ses partenaires.
-    const f = verifierFichiers(demande.fichiers);
+    // Depuis l'agent : les fichiers sont relus dans la base avec la session de la personne (seulement ceux de ses conversations, règles RLS),
+    // et doivent venir d'une conversation de cette entreprise. Le partenaire peut ne pas exister encore (« nouveau partenaire ») : l'écran le
+    // crée avant d'enregistrer les lignes.
+    let brutes = demande.fichiers;
+    if (depuisAgent) {
+      const ids = demande.fichiers_agent.filter((x: unknown) => typeof x === "string" && /^[0-9a-f-]{36}$/i.test(x));
+      if (!ids.length || ids.length !== demande.fichiers_agent.length || ids.length > 6) return json({ erreur: "fichiers_absents" }, 400);
+      const lus = await sb.from("agent_fichiers").select("id, media_type, data, conversation_id").in("id", ids);
+      if (lus.error) return json({ erreur: lus.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
+      const convs = [...new Set((lus.data || []).map((x) => x.conversation_id))];
+      const cs = convs.length ? await sb.from("agent_conversations").select("id, entite_id").in("id", convs) : { data: [], error: null };
+      if (cs.error) return json({ erreur: "base" }, 500);
+      if ((lus.data || []).length !== ids.length || (cs.data || []).some((c) => c.entite_id !== entiteId) || (cs.data || []).length !== convs.length) return json({ erreur: "fichiers_absents" }, 400);
+      brutes = ids.map((id: string) => (lus.data || []).find((x) => x.id === id));
+    }
+    const f = verifierFichiers(brutes);
     if (!f.ok) return json({ erreur: f.erreur }, 400);
-    if (typeof demande.partenaire_id !== "string") return json({ erreur: "partenaire_invalide" }, 400);
-    const pa = await sb.from("partenaires").select("id").eq("entite_id", entiteId).eq("id", demande.partenaire_id).maybeSingle();
-    if (pa.error || !pa.data) return json({ erreur: "partenaire_invalide" }, 400);
+    const nouveauPartenaire = depuisAgent && demande.nouveau_partenaire === true && !demande.partenaire_id;
+    if (!nouveauPartenaire) {
+      if (typeof demande.partenaire_id !== "string") return json({ erreur: "partenaire_invalide" }, 400);
+      const pa = await sb.from("partenaires").select("id").eq("entite_id", entiteId).eq("id", demande.partenaire_id).maybeSingle();
+      if (pa.error || !pa.data) return json({ erreur: "partenaire_invalide" }, 400);
+    }
     parametres = parametresBrochure(promptBrochure({ fichiers: f.fichiers, aujourdhui, lieu: ra.lieu }));
     valider = (v) => validerBrochure(v);
   } else {

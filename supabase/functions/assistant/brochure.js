@@ -34,11 +34,12 @@ export const MAX_TRAJETS = 200;
 const SIGNATURES = { "image/jpeg": ["/9j/"], "image/png": ["iVBORw0KGgo"], "image/webp": ["UklGR"], "application/pdf": ["JVBERi0"] };
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
-// Mêmes contrôles que controlerAcces (calc.js), avec les droits de l'usage « brochure ».
-export function controlerAccesBrochure({ entiteId, permissions, reglages, appelsDuJour, limite }) {
+// Mêmes contrôles que controlerAcces (calc.js), avec les droits de l'usage « brochure ». Depuis une carte de l'onglet Assistant
+// (`depuisAgent`), c'est l'agent qui doit être allumé (reglages.agent_ia) : il l'est aussi chez ZTP, qui n'a pas « Coller une demande ».
+export function controlerAccesBrochure({ entiteId, permissions, reglages, appelsDuJour, limite, depuisAgent = false }) {
   if (!estUuid(entiteId)) return { ok: false, statut: 400, erreur: "entreprise_invalide" };
   if (!reglages) return { ok: false, statut: 403, erreur: "pas_membre" };
-  if (reglages.assistant_ia !== true) return { ok: false, statut: 403, erreur: "assistant_eteint" };
+  if (depuisAgent ? reglages.agent_ia !== true : reglages.assistant_ia !== true) return { ok: false, statut: 403, erreur: depuisAgent ? "agent_eteint" : "assistant_eteint" };
   const manque = USAGE_BROCHURE.permissions.filter((p) => !(permissions || []).includes(p));
   if (manque.length) return { ok: false, statut: 403, erreur: "droit_manquant", manque };
   if (appelsDuJour >= limite) return { ok: false, statut: 429, erreur: "limite_du_jour", limite };
@@ -83,6 +84,7 @@ Règles :
 - « trajets » : seulement les bateaux ou bus réguliers d'un horaire (ferry, speedboat de ligne), un trajet par départ imprimé : de, vers, départ et arrivée HH:MM sur 24 heures, mode (« Speedboat », « Ferry »), durée, période imprimée et ses dates AAAA-MM-JJ quand elles sont imprimées en entier, prix adulte et enfant avec « prix_texte ». Une excursion à la journée n'est pas un trajet.
 - « devise » : le code ISO de la devise imprimée (THB pour ฿, baht ou « .- » en Thaïlande).
 - « partenaire_lu » : le nom de l'entreprise imprimé sur la brochure, sinon vide.
+- « contacts » : seulement les coordonnées du partenaire imprimées, recopiées telles quelles : numéros de téléphone (un par élément, avec l'indicatif s'il est imprimé), e-mails, site web, identifiant Line, adresse, nom de la personne à contacter. Vide (ou liste vide) pour ce qui n'est pas imprimé ; jamais une coordonnée trouvée ailleurs.
 - « remarques » : en français, deux phrases courtes au plus, ce que la personne doit vérifier (page manquante, prix sans unité, deux prix pour le même programme). Vide si rien.`;
 
 // Le message : les fichiers d'abord (documents et images), puis la consigne. Pas de cache : chaque brochure est lue une fois.
@@ -102,9 +104,15 @@ const FAMILLES = ["excursion", "activite", "location", "transfert", "autre"];
 export const SCHEMA_BROCHURE = {
   type: "object",
   additionalProperties: false,
-  required: ["partenaire_lu", "devise", "tarifs", "trajets", "remarques"],
+  required: ["partenaire_lu", "contacts", "devise", "tarifs", "trajets", "remarques"],
   properties: {
     partenaire_lu: { type: "string" },
+    contacts: {
+      type: "object",
+      additionalProperties: false,
+      required: ["telephones", "emails", "web", "line", "adresse", "personne"],
+      properties: { telephones: { type: "array", items: { type: "string" } }, emails: { type: "array", items: { type: "string" } }, web: { type: "string" }, line: { type: "string" }, adresse: { type: "string" }, personne: { type: "string" } },
+    },
     devise: { type: "string" },
     tarifs: {
       type: "array",
@@ -244,6 +252,22 @@ function controlerPrix(x, avert, nom) {
 
 const DEVISE = /^[A-Z]{3}$/;
 
+// Les coordonnées imprimées : un numéro a au moins six chiffres, un e-mail a la forme d'un e-mail, un site la forme d'une adresse web.
+// Ce qui ne passe pas est retiré (jamais corrigé).
+export function validerContacts(c) {
+  const v = c && typeof c === "object" ? c : {};
+  const liste = (x, max, ok) => [...new Set((Array.isArray(x) ? x : []).map((y) => texte(y, 60)).filter(ok))].slice(0, max);
+  const web = texte(v.web, 200);
+  return {
+    telephones: liste(v.telephones, 5, (t) => (t.match(/\d/g) || []).length >= 6 && /^[+\d][\d\s().\-/]*$/.test(t)),
+    emails: liste(v.emails, 3, (e) => /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(e)),
+    web: /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i.test(web) ? web : "",
+    line: texte(v.line, 60),
+    adresse: texte(v.adresse, 200),
+    personne: texte(v.personne, 80),
+  };
+}
+
 // Rend { ok: true, brochure, avertissements } ou { ok: false }. Une ligne sans nom (ou sans lieux pour un trajet) est retirée ; au-delà des
 // maximums, le reste est coupé et signalé.
 export function validerBrochure(v) {
@@ -295,5 +319,5 @@ export function validerBrochure(v) {
   }
   if (!tarifs.length && !trajets.length) return { ok: false };
   const devise = texte(v.devise, 3).toUpperCase();
-  return { ok: true, brochure: { partenaire_lu: texte(v.partenaire_lu, 120), devise: DEVISE.test(devise) ? devise : "", tarifs, trajets, remarques: texte(v.remarques, 400) }, avertissements };
+  return { ok: true, brochure: { partenaire_lu: texte(v.partenaire_lu, 120), contacts: validerContacts(v.contacts), devise: DEVISE.test(devise) ? devise : "", tarifs, trajets, remarques: texte(v.remarques, 400) }, avertissements };
 }

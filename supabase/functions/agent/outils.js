@@ -227,9 +227,20 @@ export const OUTILS = [
       "Propose le message à envoyer au client, prêt à copier. La personne le relit, le modifie et l'envoie elle-même. Chaque prix et chaque heure du message doivent venir d'un résultat d'outil ou d'un montant tapé par la personne.",
     input_schema: obj({ titre: S("Titre court de la carte."), langue: { type: "string", enum: ["fr", "en"] }, message: S("Le message au client, prêt à coller dans WhatsApp.") }),
   },
+  {
+    name: "proposer_import_brochure",
+    description:
+      "Propose d'importer dans le catalogue la brochure, la grille de prix ou la fiche d'un partenaire jointe à la conversation : un nouveau partenaire avec ses contacts imprimés, de nouvelles prestations ou de nouveaux trajets, des prix changés. Carte à valider : au clic, l'outil relit les fichiers, recopie les prix imprimés, marque « illisible » ce qui ne se lit pas et compare au catalogue ; la personne coche ce qu'elle garde. Seulement quand la personne demande d'ajouter ou de mettre à jour un partenaire ou ses tarifs.",
+    input_schema: obj({
+      titre: S("Titre court de la carte (« Brochure Lazy Day »)."),
+      fichiers: { type: "array", items: S("Référence F-… d'une pièce jointe de la conversation."), description: "Les pièces jointes de la brochure, dans l'ordre des pages." },
+      partenaire: S("Le nom du partenaire tel qu'imprimé sur la brochure ou donné par la personne, ou \"\"."),
+      nouveau: B("Vrai si la personne demande de créer un nouveau partenaire."),
+    }),
+  },
 ];
 export const NOMS_OUTILS = OUTILS.map((o) => o.name);
-export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet"];
+export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet", "proposer_import_brochure"];
 
 // ---- Contrôle des entrées ---------------------------------------------------------------------------------------------------------
 // Comme une entrée d'utilisateur : un champ oublié prend sa valeur vide ("" ou 0, faux, liste vide ; pour une liste fermée, la première
@@ -672,12 +683,56 @@ export async function proposer(nom, e, ctx, memo) {
     if (!texte(e.de, 120) || !texte(e.vers, 120)) return { erreur: "lieu_manquant" };
     return { genre: "temps", titre: texte(e.titre, 120), donnees: { de: texte(e.de, 120), vers: texte(e.vers, 120), duree_min: d, ferry: !!e.ferry, marge_min: entier(e.marge_min, 240), source: texte(e.source, 200) } };
   }
+  if (nom === "proposer_import_brochure") return proposerImportBrochure(e, ctx);
   if (nom === "proposer_reponse") {
     const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires: memo.prestataires || [], entreprise: memo.entreprise || "", prenoms: memo.prenoms || [] });
     if (!c.ok) return { erreur: "message_vide" };
     return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message }, avertissements: c.avertissements };
   }
   return { erreur: "outil_inconnu" };
+}
+
+// ---- Import d'une brochure jointe (20.11.2026) ---------------------------------------------------------------------------------------
+// La carte garde les fichiers choisis et le partenaire reconnu ; au clic, l'écran d'import de brochure (usage « brochure » de l'assistant)
+// relit les fichiers avec ses contrôles (prix recopiés du texte imprimé, « illisible » sinon, net seulement s'il est imprimé) et les compare au
+// catalogue. Ce qui repart chez Claude : la carte est affichée et le partenaire est connu ou non, jamais un nom de la base.
+export const DROITS_IMPORT = ["partenaires.ecrire", "partenaires.prix"];
+const cleNom = (s) =>
+  sansAccents(s)
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter((w) => w && !["co", "ltd", "company", "the", "tour", "tours", "travel", "koh", "lanta"].includes(w))
+    .join(" ");
+// Le partenaire de l'entreprise dont le nom correspond : même nom, ou l'un contenu dans l'autre (au moins quatre lettres). Un seul, sinon aucun.
+export function partenaireDepuisNom(nom, partenaires = []) {
+  const k = cleNom(nom);
+  if (k.length < 3) return null;
+  const memes = partenaires.filter((p) => cleNom(p.nom) === k);
+  if (memes.length === 1) return memes[0];
+  if (memes.length > 1) return null;
+  const proches = partenaires.filter((p) => {
+    const q = cleNom(p.nom);
+    return q.length >= 4 && k.length >= 4 && (q.includes(k) || k.includes(q));
+  });
+  return proches.length === 1 ? proches[0] : null;
+}
+async function proposerImportBrochure(e, ctx) {
+  const manque = DROITS_IMPORT.filter((d) => !(ctx.permissions || []).includes(d));
+  if (manque.length) return { erreur: "droit_manquant" };
+  const joints = ctx.fichiers || [];
+  const fichiers = [];
+  for (const ref of e.fichiers || []) {
+    const f = trouverRef(ref, joints);
+    if (f && !fichiers.includes(f)) fichiers.push(f);
+  }
+  if (!fichiers.length) return { erreur: "fichier_introuvable" };
+  if (fichiers.length > 6) return { erreur: "trop_de_fichiers" };
+  const p = e.nouveau ? null : partenaireDepuisNom(e.partenaire, (await ctx.charger("partenaires")) || []);
+  return {
+    genre: "brochure",
+    titre: texte(e.titre, 120),
+    donnees: { fichiers: fichiers.map((f) => ({ id: f.id, nom: texte(f.nom, 120), media_type: f.media_type })), partenaire_lu: texte(e.partenaire, 120), partenaire_id: p ? p.id : null, nouveau: !p },
+  };
 }
 
 // ---- Exécution -------------------------------------------------------------------------------------------------------------------
@@ -699,7 +754,8 @@ export async function executer(nom, entree, ctx, memo) {
       if (carte.erreur) return { contenu: { erreur: carte.erreur }, erreur: true };
       // Ce qui repart chez Claude : la carte est affichée, rien n'est fait. Les prix retenus, pour qu'il ne les répète pas faux.
       const prix = carte.genre === "dossier" ? carte.donnees.services.map((s) => ({ service: s.texte, prix: s.prix, origine: s.origine_prix })) : carte.genre === "reservation" ? [{ service: carte.donnees.service.texte, prix: carte.donnees.service.prix, origine: carte.donnees.service.origine_prix }] : undefined;
-      return { contenu: { carte_affichee: true, etat: "en attente de validation par la personne", ...(prix ? { prix } : {}), ...(carte.avertissements && carte.avertissements.length ? { avertissements: carte.avertissements } : {}) }, carte };
+      const connu = carte.genre === "brochure" ? { partenaire_au_catalogue: !carte.donnees.nouveau } : {};
+      return { contenu: { carte_affichee: true, etat: "en attente de validation par la personne", ...connu, ...(prix ? { prix } : {}), ...(carte.avertissements && carte.avertissements.length ? { avertissements: carte.avertissements } : {}) }, carte };
     }
     const f = { chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier }[nom];
     const r = await f(entree, ctx, memo);

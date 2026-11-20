@@ -271,6 +271,12 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const valeurs = Object.fromEntries(Object.entries(patch).filter(([k]) => ["titre", "statut", "dossier_id"].includes(k)));
       return verifie(await sb.from("agent_conversations").update(valeurs).eq("id", id).select("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le").single());
     },
+    // Une pièce jointe d'une de mes conversations (migration 55), pour l'aperçu : null si elle n'est plus gardée.
+    async agentFichier(id) {
+      const { data, error } = await sb.from("agent_fichiers").select("id, nom, media_type, data").eq("id", id).maybeSingle();
+      if (error) throw new Error(error.message);
+      return data || null;
+    },
     async agentSupprimerConversation(id) {
       verifie(await sb.from("agent_conversations").delete().eq("id", id).select("id"));
     },

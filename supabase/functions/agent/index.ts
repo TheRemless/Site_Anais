@@ -2,7 +2,7 @@
 // temps de route, planning, clients, dossiers) pour planifier et proposer. L'outil l'appelle avec la session de la personne : toutes les
 // lectures et écritures passent par les règles RLS, comme dans l'outil. Seul le journal (compte et coût) s'écrit avec la clé de service.
 //
-// Ce qui part chez Anthropic : les messages de la personne, et ce que les outils rendent (tarifs de vente, horaires, lieux, clients et
+// Ce qui part chez Anthropic : les messages de la personne avec leurs pièces jointes (fichiers.js) et ce que les outils rendent (tarifs de vente, horaires, lieux, clients et
 // dossiers de l'entreprise). Jamais un net, une marge ni un nom de prestataire : les outils les retirent (outils.js). Rien n'est écrit dans
 // les dossiers : les propositions sont des cartes que la personne valide dans l'écran.
 //
@@ -15,6 +15,7 @@ import { tourner } from "./boucle.js";
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
+import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
 
@@ -64,8 +65,13 @@ Deno.serve(async (req) => {
   const entiteId = demande.entite_id;
   if (typeof entiteId !== "string" || !UUID.test(entiteId)) return json({ erreur: "entreprise_invalide" }, 400);
   const message = typeof demande.texte === "string" ? demande.texte.trim() : "";
-  if (!message || message.length > LONGUEUR_MAX) return json({ erreur: "message_invalide" }, 400);
+  // Un message peut n'être que des pièces jointes (photos, captures, PDF). Contrôlées une seule fois : ici pour une nouvelle conversation
+  // (rien n'est encore gardé), plus bas avec ce que garde déjà une conversation existante.
+  const avecFichiers = Array.isArray(demande.fichiers) && demande.fichiers.length > 0;
+  if ((!message && !avecFichiers) || message.length > LONGUEUR_MAX) return json({ erreur: "message_invalide" }, 400);
   const conversationId = demande.conversation_id && UUID.test(demande.conversation_id) ? demande.conversation_id : null;
+  let controle = conversationId ? null : verifierPieces(demande.fichiers);
+  if (controle && !controle.ok) return json({ erreur: controle.erreur }, 400);
 
   const URL_SB = Deno.env.get("SUPABASE_URL")!;
   const sb = createClient(URL_SB, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: autorisation } }, auth: { persistSession: false } });
@@ -116,15 +122,50 @@ Deno.serve(async (req) => {
     conv = c.data;
   } else {
     const dossierId = typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null;
-    const c = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre: titreDepuis(message), dossier_id: dossierId }).select("id, titre, dossier_id, cree_le").single();
+    const c = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre: titreDepuis(message || titreFichiers(controle?.fichiers || [])), dossier_id: dossierId }).select("id, titre, dossier_id, cree_le").single();
     if (c.error) return json({ erreur: c.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
     conv = c.data;
   }
   const anciens = await sb.from("agent_messages").select("role, contenu").eq("conversation_id", conv!.id).order("id", { ascending: false }).limit(400);
   if (anciens.error) return json({ erreur: "base" }, 500);
+  // Les pièces jointes de la conversation (migration 55) : leurs métadonnées, puis les données de celles qui partent à cet appel. Sans la
+  // table (migration pas encore passée), une conversation sans fichier marche comme avant ; un envoi de fichier est refusé.
+  // Un refus après la création d'une nouvelle conversation la retire : pas de conversation vide dans la liste.
+  const abandonner = async (corps: Record<string, unknown>, status: number) => {
+    if (!conversationId) await sb.from("agent_conversations").delete().eq("id", conv!.id);
+    return json(corps, status);
+  };
+  const meta = await sb.from("agent_fichiers").select("id, nom, media_type, taille, cree_le").eq("conversation_id", conv!.id).order("cree_le", { ascending: true }).limit(100);
+  if (meta.error && (avecFichiers || meta.error.code !== "42P01")) return abandonner({ erreur: meta.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
+  const fichiersConv: { id: string; nom: string; media_type: string; taille: number; cree_le?: string }[] = meta.data || [];
+  if (!controle) controle = verifierPieces(demande.fichiers, { nombre: fichiersConv.length, taille: fichiersConv.reduce((s, f) => s + (Number(f.taille) || 0), 0) });
+  if (!controle.ok) return abandonner({ erreur: controle.erreur }, 400);
+  const recus = (controle.fichiers || []) as { nom: string; media_type: string; data: string; taille: number }[];
+  let blocsNouveaux: Record<string, unknown>[] = [];
+  let nouveaux: { id: string; conversation_id: string; nom: string; media_type: string; taille: number; data: string }[] = [];
+  if (recus.length) {
+    // Identifiants posés ici : chaque fichier reçu garde le sien sans dépendre de l'ordre des lignes rendues par la base.
+    nouveaux = recus.map((f) => ({ id: crypto.randomUUID(), conversation_id: conv!.id, nom: f.nom, media_type: f.media_type, taille: f.taille, data: f.data }));
+    const ins = await sb.from("agent_fichiers").insert(nouveaux).select("id, cree_le");
+    // La base tient aussi les limites de la conversation (migration 55) : son refus se dit comme celui de la fonction.
+    if (ins.error && /conversation_pleine/.test(ins.error.message)) return abandonner({ erreur: "conversation_pleine" }, 400);
+    if (ins.error || !ins.data || ins.data.length !== nouveaux.length) return abandonner({ erreur: "base" }, 500);
+    fichiersConv.push(...nouveaux.map(({ data: _d, ...m }) => m));
+    blocsNouveaux = nouveaux.map(blocFichier);
+  }
+  const retenus = fichiersRetenus(fichiersConv);
+  const donnees = new Map<string, { media_type: string; data: string }>();
+  for (const f of nouveaux) if (retenus.has(f.id)) donnees.set(f.id, { media_type: f.media_type, data: f.data });
+  const aLire = [...retenus].filter((id) => !donnees.has(id));
+  if (aLire.length) {
+    const d = await sb.from("agent_fichiers").select("id, media_type, data").in("id", aLire);
+    if (d.error) return json({ erreur: "base" }, 500);
+    for (const f of d.data || []) donnees.set(f.id, { media_type: f.media_type, data: f.data });
+  }
   // Conservation : mes conversations sans message depuis 90 jours partent (sans attendre, une erreur ne bloque rien).
   sb.rpc("purger_agent_conversations", { jours: CONSERVATION_JOURS }).then(() => {}, () => {});
   sb.rpc("purger_google_agent").then(() => {}, () => {});
+  sb.rpc("purger_agent_fichiers", { jours: 30 }).then(() => {}, () => {});
 
   // ---- Données lues à la demande des outils, une fois par échange, avec la session de la personne -----------------------------------
   const cache = new Map<string, Promise<unknown[]>>();
@@ -377,18 +418,22 @@ Deno.serve(async (req) => {
   const prestataires = ((await charger("partenaires")) as { nom: string }[]).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
   const systeme = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable });
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
-  const messages = historique(debutValide([...(anciens.data || [])].reverse()));
+  // L'historique tel qu'il est gardé (blocs « fichier »), puis tel qu'il part chez Claude (images et documents).
+  const gardes = historique(debutValide([...(anciens.data || [])].reverse()));
+  const messages = historiquePourClaude(gardes, donnees);
   // Les corrections de l'équipe dans cette entreprise, d'avant l'ouverture de la conversation (le bloc reste le même d'un message à l'autre,
   // donc en cache). Sans la migration 54 ou en cas d'erreur : rien, l'agent marche comme avant.
   const premierTexte = (() => {
-    const m = messages.find((x) => x.role === "user" && Array.isArray(x.content) && x.content.some((b: { type: string }) => b.type === "text"));
+    const m = (gardes as { role: string; content: unknown }[]).find((x) => x.role === "user" && Array.isArray(x.content) && x.content.some((b: { type: string }) => b.type === "text"));
     return m ? (m.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join(" ") : message;
   })();
   const lus = await sb.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", entiteId).lte("cree_le", conv!.cree_le || new Date().toISOString()).order("cree_le", { ascending: false }).limit(80);
   if (lus.error && !tableAbsente(lus.error)) console.error("agent : apprentissages", lus.error.message);
   const appris = lus.error ? "" : blocApprentissages(lus.data || [], { qui: ra.responsable, premierMessage: premierTexte });
-  const memo = memoDepuis([...messages, { role: "user", content: message }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
-  const ctx = { charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
+  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
+  // Les pièces jointes que l'agent peut citer (proposer_import_brochure) et les droits de la personne (l'import demande « partenaires.ecrire »
+  // et « partenaires.prix »).
+  const ctx = { fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();
@@ -399,8 +444,9 @@ Deno.serve(async (req) => {
 
   // Ajoute un message à l'historique et à la base (avec la session de la personne). Un échec d'écriture arrête l'échange : sans historique
   // complet, la conversation ne pourrait pas reprendre.
-  const garder = async (role: "user" | "assistant", contenu: unknown) => {
-    messages.push({ role, content: contenu });
+  // `pourClaude` : ce qui part à l'appel quand il diffère de ce qui est gardé (les blocs « fichier » deviennent des images et des documents).
+  const garder = async (role: "user" | "assistant", contenu: unknown, pourClaude: unknown = contenu) => {
+    messages.push({ role, content: pourClaude });
     const { error } = await sb.from("agent_messages").insert({ conversation_id: conv!.id, role, contenu });
     if (error) throw new Error(`message non enregistré : ${error.message}`);
   };
@@ -411,7 +457,8 @@ Deno.serve(async (req) => {
     let motifErreur = "";
     try {
       await envoyer({ t: "conversation", id: conv!.id, titre: conv!.titre, dossier_id: conv!.dossier_id });
-      await garder("user", [{ type: "text", text: message }]);
+      const contenuPersonne = [...blocsNouveaux, ...(message ? [{ type: "text", text: message }] : [])];
+      await garder("user", contenuPersonne, contenuPourClaude(contenuPersonne, donnees));
       const garderCarte = async (carte: { genre: string; titre: string; donnees: unknown; avertissements?: string[] }) => {
         const c = await sb.from("agent_cartes").insert({ conversation_id: conv!.id, genre: carte.genre, titre: carte.titre, donnees: carte.donnees, avertissements: carte.avertissements || [] }).select("id, genre, titre, donnees, avertissements, statut, cree_le").single();
         return c.error ? null : c.data;
