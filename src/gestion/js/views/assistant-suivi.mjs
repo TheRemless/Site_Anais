@@ -7,7 +7,7 @@ import { formatDate } from "../calc.mjs";
 import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
 import { vide } from "./commun.mjs";
 import { tuile, graphiqueColonnes, tableauTrie, squelette } from "./analyses-widgets.mjs";
-import { suiviAssistant, entreprisesSuivies, debutLecture, jourBangkok, etatCredit, GENRES_APPRIS } from "../assistant-suivi-calc.mjs";
+import { suiviAssistant, entreprisesSuivies, debutLecture, jourBangkok, etatCredit, resteDuMois, GENRES_APPRIS } from "../assistant-suivi-calc.mjs";
 import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 
 // Dollars : deux décimales dès 0,10 $, sinon deux chiffres significatifs (un appel coûte souvent moins d'un centime).
@@ -163,6 +163,9 @@ function blocCredit(C, recharger) {
   });
   if (C.alerte) t.classList.add("as-alerte");
   t.append(barre);
+  // Sous le plafond : ce qui reste à dépenser ce mois-ci (0 $ restant et « plafond atteint » au-delà).
+  const R = resteDuMois(C);
+  t.append(h("p", { class: `as-credit-reste${R.atteint ? " atteint" : ""}` }, tr(R.texte, { reste: dollars(R.reste) }), R.mention ? h("span", { class: "as-credit-mention" }, ` · ${tr(R.mention)}`) : null));
   let reglage = null;
   if (C.peutRegler) {
     const plafond = h("input", { id: "as-plafond", type: "number", min: "1", max: "1000", step: "0.01", inputmode: "decimal", value: String(C.plafond) });

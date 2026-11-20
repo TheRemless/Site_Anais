@@ -214,6 +214,14 @@ export function etatCredit(budget) {
   return { cout: arrondi(cout, 4), plafond, seuil, pct, reste: arrondi(Math.max(0, plafond - cout), 4), alerte: pct >= seuil, atteint: cout >= plafond, peutRegler: budget.peut_regler === true };
 }
 
+// Ligne sous le plafond (demande n° 272) : ce qui reste à dépenser ce mois-ci, en dollars, le plafond moins la dépense depuis le 1er du mois.
+// Plafond atteint ou dépassé : 0 $ restant avec la mention « plafond atteint », jamais un reste négatif. `C` : la réponse de etatCredit().
+export function resteDuMois(C) {
+  if (!C) return null;
+  if (C.atteint) return { reste: 0, atteint: true, texte: N_("{reste} restant"), mention: N_("plafond atteint") };
+  return { reste: C.reste, atteint: false, texte: N_("Reste ce mois-ci : {reste}"), mention: null };
+}
+
 // Libellés des apprentissages de l'agent (agent-apprendre.mjs), dans l'ordre de l'écran.
 export const GENRES_APPRIS = {
   pickup: N_("Heure de pickup"),
