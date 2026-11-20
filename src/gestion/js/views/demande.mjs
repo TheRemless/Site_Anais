@@ -103,7 +103,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   const contexte = () => ({ prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire, taxi: modeTaxi() });
   let d = null;
   let texte = "";
-  let clientId = ""; // client existant retenu ; vide pour un nouveau client
+  // `options.clientId` (espace unifié, migration 63) : le second dossier d'une demande mixte reprend la fiche créée pour le premier.
+  let clientId = options.clientId || ""; // client existant retenu ; vide pour un nouveau client
   let refuse = new Set(); // clients proposés que la personne a écartés
   let creation = false;
   const prixImpose = depuisSite && depuisSite.prixImpose !== null && depuisSite.prixImpose !== undefined && depuisSite.prixImpose !== "" ? Number(depuisSite.prixImpose) : null;
@@ -400,7 +401,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   // ---- Client, champs et message de réponse --------------------------------------------------------------------------------------
   function retenirClient() {
     const proches = clientsConnus();
-    if (clientId && !proches.some((x) => x.client.id === clientId)) clientId = "";
+    if (clientId && clientId !== options.clientId && !proches.some((x) => x.client.id === clientId)) clientId = "";
     if (!clientId && proches[0] && proches[0].raison === "telephone") clientId = proches[0].client.id;
     const c = clientId ? clientParId(clientId) : null;
     if (c && !d.hotel && !d.hotelSaisi) d.hotel = hotelDuClient(c);
@@ -603,7 +604,7 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null, option
   }
 
   function vider() {
-    clientId = "";
+    clientId = options.clientId || "";
     refuse = new Set();
     services = [];
     listeBloc.replaceChildren();

@@ -23,6 +23,7 @@ import { numeroVoucher, TITRES_VOUCHER, etatEnvoisVouchers } from "../operations
 import { ouvrirEnvois } from "./envois-vouchers.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { agentActif } from "../agent-calc.mjs";
+import { dossierLie } from "../espace-unifie-calc.mjs";
 import { demandesDuDossier } from "../demandes-site-calc.mjs";
 import { boutonMessageClient, jourRecu } from "./message-client.mjs";
 import { ouvrirSansSuite, rouvrirDevis, baseDistante } from "./sans-suite.mjs";
@@ -84,6 +85,14 @@ function proposerReactivation(d) {
 const dernier = (docs, type) => docs.filter((d) => d.type === type).sort((a, b) => (a.created_at > b.created_at ? 1 : -1)).pop();
 
 // Les documents et paiements d'un dossier se chargent à son ouverture.
+// Espace unifié (migration 63) : « Dossier lié : Taxi T-2026-… » vers l'autre dossier de la même demande, quand la personne peut le lire.
+// L'adresse porte l'entreprise du dossier lié : l'ouvrir bascule l'entreprise active (app.mjs).
+function lienDossierLie(d) {
+  const l = dossierLie(d, etat.brut.dossiers || [], etat.brut.entites || []);
+  if (!l) return null;
+  return h("p", { class: "dossier-lie" }, icone("dossiers", 16), h("a", { href: `#/dossier/${l.id}?entite=${l.entite_id}` }, tr("Dossier lié : {entreprise} {ref}", { entreprise: l.entreprise, ref: l.ref })));
+}
+
 export async function ficheDossier(id) {
   await chargerDossier(id);
   return ficheDossierVue(id);
@@ -717,7 +726,7 @@ function ficheDossierVue(id) {
     h(
       "div",
       { class: "entete" },
-      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, excursions && rsDossier.length > 1 ? [d.ref, pluriel(rsDossier.filter((x) => x.statut !== "annule").length, N_("{n} service"), N_("{n} services"))].join(" · ") : sousTitreDossier(d), responsable, lienAgent)),
+      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, excursions && rsDossier.length > 1 ? [d.ref, pluriel(rsDossier.filter((x) => x.statut !== "annule").length, N_("{n} service"), N_("{n} services"))].join(" · ") : sousTitreDossier(d), responsable, lienAgent), lienDossierLie(d)),
       h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, tr("Dupliquer")) : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, tr("Modifier le dossier")) : null)
     ),
     blocDemandesSite(d),

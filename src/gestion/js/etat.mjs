@@ -17,7 +17,8 @@ import { hotelConnu } from "./itineraire-calc.mjs";
 import { responsableDe, libelleAdmin } from "./noms-calc.mjs";
 import { entreprisesVoucher } from "./voucher-rapide-calc.mjs";
 import { entreprisesConfirmation } from "./confirmation-calc.mjs";
-import { clientsDeLEntreprise, clientsPartages as partagesCalc, clientsProposes as proposesCalc, clientEtranger as etrangerCalc, sigleEntreprise, peutUtiliserPartages } from "./partage-clients-calc.mjs";
+import { clientsDeLEntreprise, clientsPartages as partagesCalc, clientsProposes as proposesCalc, clientEtranger as etrangerCalc, sigleEntreprise } from "./partage-clients-calc.mjs";
+import { partageClientsPermisUnifie, partageReciproque, marqueUnifiee } from "./espace-unifie-calc.mjs";
 
 const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "taches", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "demandes_site", "bandeaux_site"];
 const CLE_ENTITE = "gestion-zwald-entite";
@@ -640,8 +641,15 @@ export async function chercherClients(q, limite = 8) {
 // ---- Fiches clients partagées (migration 46) -------------------------------------------------------------------------------
 // Une entreprise « partage ses clients avec » d'autres de l'organisation (ZTP vers Secret et Taxi chez Zwald). Dans la cible,
 // l'administration trouve et choisit ces fiches (recherche, choix du client, collages) ; l'assistante jamais. La base garantit la même règle.
+// Migration 63 : entre Secret et Taxi, le partage réciproque ouvre aussi la fiche à qui lit tous les clients de la source et écrit des dossiers
+// dans la cible (Mook comprise, dans ses droits). ZTP reste réservé à l'administration.
+const reciproqueUnifie = (a, b) => {
+  const ea = etat.brut.entites.find((e) => e.id === a);
+  const eb = etat.brut.entites.find((e) => e.id === b);
+  return !!marqueUnifiee(ea) && !!marqueUnifiee(eb) && marqueUnifiee(ea) !== marqueUnifiee(eb) && partageReciproque(etat.brut.partages_clients || [], a, b);
+};
 export const partageClientsPermis = (sourceId, cibleId = etat.entiteId) =>
-  !!etat.brut && peutUtiliserPartages({ superAdmin: estSuperAdmin(), permissionsSource: permissionsDe(sourceId), permissionsCible: permissionsDe(cibleId), voitToutSource: voitTout(contexte(), sourceId) });
+  !!etat.brut && partageClientsPermisUnifie({ superAdmin: estSuperAdmin(), permissionsSource: permissionsDe(sourceId), permissionsCible: permissionsDe(cibleId), voitToutSource: voitTout(contexte(), sourceId), reciproque: reciproqueUnifie(sourceId, cibleId) });
 // Les fiches des entreprises qui partagent avec `entiteId`, quand la personne peut s'en servir.
 export const clientsPartages = (entiteId = etat.entiteId) =>
   etat.brut ? partagesCalc({ clients: etat.brut.clients || [], partages: etat.brut.partages_clients || [], entiteId, permis: (s) => partageClientsPermis(s, entiteId) }) : [];

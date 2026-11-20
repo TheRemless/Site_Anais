@@ -2301,3 +2301,23 @@ button.agent-joint { cursor: pointer; }
 .wa-piece-texte { display: grid; gap: 2px; min-width: 0; font-size: 0.9rem; }
 .wa-piece-texte strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .wa-piece-texte span { color: var(--texte-2); font-size: 0.82rem; }
+/* Espace unifié (migration 63) : conversation WhatsApp d'une entreprise que la personne n'administre pas. */
+.wa-lecture-seule { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.86rem; font-weight: 600; }
+.dossier-lie { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: 0.92rem; }
+.dossier-lie svg { color: var(--teal-700); flex: none; }
+.dossier-lie a { font-weight: 600; }
+/* Espace unifié Secret et Taxi (migration 63) : entreprise de chaque service, conversations des deux entreprises, doublons. */
+.agent-badge-entreprise { display: inline-flex; align-items: center; justify-content: center; margin-top: 4px; min-height: 28px; padding: 0 10px; border: 1px solid var(--bord-champ); border-radius: 999px; background: var(--surface); color: var(--texte); font-size: 0.78rem; font-weight: 700; width: fit-content; }
+button.agent-badge-entreprise { cursor: pointer; }
+.agent-badge-entreprise.secret { border-color: var(--teal-600); background: var(--teal-100); color: var(--teal-700); }
+.agent-badge-entreprise.taxi { border-color: #c9a227; background: #fff4d6; color: #5a4300; }
+.agent-badge-entreprise.a-choisir { border-style: dashed; border-color: var(--danger); background: var(--danger-fond); color: var(--danger); }
+@media (pointer: coarse) { button.agent-badge-entreprise { min-height: 36px; padding: 0 14px; } }
+.agent-conv-entreprise { justify-self: start; padding: 0 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.72rem; font-weight: 700; }
+.agent-conv-entreprise.secret { background: var(--teal-100); color: var(--teal-700); }
+.agent-conv-entreprise.taxi { background: #fff4d6; color: #5a4300; }
+.doublons { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.doublons li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 10px; border: 1px solid var(--bord); border-radius: 8px; background: var(--surface); }
+.doublons-paire { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 1 1 260px; }
+.doublons-paire .tag { margin-left: 0; }
+.doublons-raison { font-size: 0.84rem; color: var(--texte-2); }

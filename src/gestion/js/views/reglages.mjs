@@ -5,6 +5,7 @@ import { etat, exemple, moduleActif, enregistrerReglages, corbeilleDossiers, res
 import { voucherExemple } from "./voucher.mjs";
 import { sectionVouchers } from "./reglages-vouchers.mjs";
 import { blocReglagesWhatsApp } from "./whatsapp-reglages.mjs";
+import { sectionDoublons } from "./doublons-unifies.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
 import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne, reglesReponse } from "../defauts.mjs";
@@ -847,6 +848,8 @@ export function vueReglages() {
       ),
       // Boîte WhatsApp (migration 58) : réception, état du compte, dernier message. Administrateurs de Secret et de Taxi seulement.
       blocReglagesWhatsApp(),
+      // Espace unifié (migration 63) : les fiches en double entre Secret et Taxi, pour qui lit les clients des deux.
+      sectionDoublons(),
       // Fiduciaire éteinte (Taxi, décision 5 ; agence cliente du logiciel, 19.11.2026) : pas au menu, elle se rouvre d'ici pour être allumée (D10).
       moduleActif("fiduciaire") && peut("fiduciaire.gerer") && peut("reglages.ecrire") && !reglagesFid(etat.db.reglages).actif
         ? h("fieldset", null, h("legend", null, tr("Factures pour la fiduciaire")), h("p", { class: "aide" }, taxi ? tr("{entreprise} n'émet pas de factures pour la fiduciaire : l'écran n'est plus dans le menu. Il reste ouvert ici, pour revoir ce qui a déjà été facturé ou réactiver ces factures un jour.", { entreprise: entiteActive().nom }) : tr("Factures de commission adressées à un partenaire, pour une fiduciaire en Thaïlande. Éteintes au départ et absentes du menu : ouvrez l'écran pour les allumer si vous en avez besoin.")), h("a", { class: "bouton secondaire petit", href: "#/fiduciaire" }, tr("Ouvrir l'écran Fiduciaire")))

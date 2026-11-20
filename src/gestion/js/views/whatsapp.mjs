@@ -13,6 +13,7 @@ import {
   CLE_DEMANDE_AGENT, modeDossier, paiementSignale, MOTIFS_PAIEMENT, lignesResume, tachesPromesse, piecesProposees, basculerPiece, PIECES_MAX, resumeEnRetard,
 } from "../whatsapp-suivi-calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
+import { ecritConversation } from "../espace-unifie-calc.mjs";
 import { directCoupe } from "../direct-reprise-calc.mjs";
 import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
@@ -39,6 +40,11 @@ export function entitesWhatsApp() {
 const entite = (id) => (etat.brut.entites || []).find((e) => e.id === id) || null;
 const marqueDe = (id) => marqueEntite(entite(id));
 const clientDe = (c) => (c && c.client_id ? (etat.brut.clients || []).find((x) => x.id === c.client_id) || null : null);
+// Migration 63 : la boîte est commune en lecture. Agir sur une conversation (ranger, relier, marquer lue, traiter, envoyer, préparer) demande
+// d'administrer son entreprise ; sinon l'écran la montre en lecture seule. `lectureSeule` vaut pour la conversation en cours de dessin.
+const peutEcrire = (c) => ecritConversation(c, entitesWhatsApp().map((e) => e.id));
+let lectureSeule = false;
+const nomEntrepriseConv = (c) => (entite(c.entite_id) || {}).nom || tr("l'autre entreprise");
 const dossierDe = (c) => (c && c.dossier_id ? (etat.brut.dossiers || []).find((x) => x.id === c.dossier_id) || null : null);
 
 // ---- Liste ----------------------------------------------------------------------------------------------------------------------
@@ -67,6 +73,7 @@ function ligneConversation(c, prop, ouverte) {
 // Secret | VIP Taxi Lanta en un tap. « Proposé par l'agent » quand l'agent l'a rangée ; pour une conversation à trier, l'entreprise
 // que l'agent propose est marquée.
 function selecteurEntreprise(c, prop) {
+  if (lectureSeule) return h("p", { class: "wa-lecture-seule", role: "status" }, icone("alerte", 16), tr("Lecture seule : conversation de {entreprise}", { entreprise: nomEntrepriseConv(c) }));
   const choix = entitesWhatsApp();
   // L'agent ne range plus la conversation : il propose une entreprise et prépare la réponse avec ses données (migration 59).
   const proposee = !c.entite_id ? entrepriseProposee(prop, choix) : null;
@@ -97,7 +104,7 @@ function selecteurEntreprise(c, prop) {
 // Réponses préparées pour ce contact (migration 60) : automatiques (le tri décide) ou jamais (ami, famille, partenaire, chauffeur).
 // Un tap, enregistré tout de suite. Seule Nani change ce réglage : la fonction ne le touche jamais.
 function reglageReponses(c) {
-  if (etat.brut.whatsapp_tri_disponible === false) return null;
+  if (etat.brut.whatsapp_tri_disponible === false || lectureSeule) return null;
   const actuel = reponsesDe(c);
   const choisir = async (valeur, bouton) => {
     if (valeur === actuel || bouton.disabled) return;
@@ -127,12 +134,13 @@ function blocRelations(c) {
   const client = clientDe(c);
   const dossier = dossierDe(c);
   const ici = c.entite_id === etat.entiteId;
+  if (lectureSeule && !client && !dossier) return null;
   return h(
     "div",
     { class: "wa-relations", "data-pas-saisie": "" },
     client ? h("a", { href: `#/client/${client.id}`, class: "wa-lien-fiche" }, icone("clients", 16), nomClient(client)) : h("span", { class: "wa-sans" }, tr("Client non relié")),
     dossier ? h("a", { href: `#/dossier/${dossier.id}`, class: "wa-lien-fiche" }, icone("dossiers", 16), tr("Dossier {ref}", { ref: dossier.ref })) : null,
-    ici ? h("button", { type: "button", class: "lien", onclick: () => ouvrirRelier(c) }, client ? tr("Changer") : tr("Relier un client")) : h("a", { class: "lien", href: adresseConversation(c) }, tr("Ouvrir dans {nom}", { nom: (entite(c.entite_id) || {}).nom || "" }))
+    lectureSeule ? null : ici ? h("button", { type: "button", class: "lien", onclick: () => ouvrirRelier(c) }, client ? tr("Changer") : tr("Relier un client")) : h("a", { class: "lien", href: adresseConversation(c) }, tr("Ouvrir dans {nom}", { nom: (entite(c.entite_id) || {}).nom || "" }))
   );
 }
 
@@ -285,6 +293,7 @@ async function envoyerVoucherDuDossier(dossierId) {
   envoyerVoucher(x);
 }
 function actionsDossier(c, prop) {
+  if (lectureSeule) return null;
   const ici = c.entite_id && c.entite_id === etat.entiteId;
   const dossier = ici ? dossierDe(c) : null;
   const assistant = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
@@ -337,7 +346,9 @@ function cartePaiement(c) {
     "section",
     { class: "wa-suivi wa-suivi-paiement", "aria-label": tr("Paiement") },
     h("p", null, icone("du", 16), h("strong", null, tr("Le client a peut-être envoyé une preuve de paiement.")), " ", tr(MOTIFS_PAIEMENT[p.motif])),
-    h(
+    lectureSeule
+      ? null
+      : h(
       "div",
       { class: "wa-suivi-actions", "data-pas-saisie": "" },
       peutNoter ? h("button", { class: "secondaire petit", type: "button", onclick: () => naviguer(`#/dossier/${dossier.id}?paiement=1`) }, tr("Noter un paiement")) : null,
@@ -501,7 +512,7 @@ async function preparer(c, bouton) {
 // Aucune réponse préparée pour le dernier message du client : la raison du tri en clair, et de quoi en demander une.
 function ligneSansReponse(c, messages) {
   const dernier = messages.length ? messages[messages.length - 1] : null;
-  const bouton = dernier && dernier.sens === "entrant" && etat.store.whatsappPreparer ? h("button", { class: "secondaire petit", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, tr("Préparer une réponse")) : null;
+  const bouton = !lectureSeule && dernier && dernier.sens === "entrant" && etat.store.whatsappPreparer ? h("button", { class: "secondaire petit", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, tr("Préparer une réponse")) : null;
   const raison = raisonSansReponse(c, messages);
   return h("div", { class: "wa-sans-reponse" }, h("p", { class: "wa-prop-fait" }, icone("alerte", 16), raison ? tr(raison) : tr("Pas de réponse préparée. Répondez depuis l'app.")), bouton);
 }
@@ -568,7 +579,7 @@ function carteProposition(c, p, messages) {
     zone,
     alerte,
     h("div", { class: "wa-prop-actions" }, boutonCopier, wa ? h("a", { class: "bouton secondaire wa-ouvrir", href: wa, target: "_blank", rel: "noopener" }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null),
-    h("div", { class: "wa-prop-suite" }, boutonTraitee, boutonIgnorer, boutonEnvoyer),
+    lectureSeule ? null : h("div", { class: "wa-prop-suite" }, boutonTraitee, boutonIgnorer, boutonEnvoyer),
     pourquoi
   );
 }
@@ -582,6 +593,7 @@ async function fil(c, prop) {
     erreur = err;
   }
   const jours = grouperParJour(messages);
+  lectureSeule = !peutEcrire(c);
   const noeud = h(
     "section",
     { class: "wa-fil", "aria-label": tr("Conversation") },
@@ -605,6 +617,8 @@ async function fil(c, prop) {
 async function marquerLue(id) {
   const c = (etat.brut.whatsapp_conversations || []).find((x) => x.id === id && (Number(x.non_lus) || 0) > 0);
   if (!c || document.visibilityState !== "visible") return false;
+  // Une conversation d'une entreprise que la personne n'administre pas reste non lue (lecture seule, migration 63).
+  if (!peutEcrire(c)) return false;
   try {
     await modifier("whatsapp_conversations", c.id, { non_lus: 0 });
     return true;
