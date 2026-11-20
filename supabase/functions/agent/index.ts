@@ -279,6 +279,7 @@ Deno.serve(async (req) => {
   (async () => {
     let statut = "ok";
     let dernierTexte = "";
+    let motifErreur = "";
     try {
       await envoyer({ t: "conversation", id: conv!.id, titre: conv!.titre, dossier_id: conv!.dossier_id });
       await garder("user", [{ type: "text", text: message }]);
@@ -294,10 +295,17 @@ Deno.serve(async (req) => {
       else if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) statut = "cle_refusee";
       else if (err instanceof Anthropic.APIError) statut = "erreur_api";
       else statut = "erreur";
-      console.error("agent :", statut, err instanceof Error ? err.message.slice(0, 200) : "");
-      await envoyer({ t: "erreur", erreur: statut === "occupe" ? "occupe" : statut === "cle_refusee" ? "non_configure" : "indisponible" });
+      // Le motif d'un refus d'Anthropic (« tools.3.input_schema: … ») : aucune donnée de client, seulement la forme de la requête. Il va à
+      // l'écran et au journal (statut « erreur_api_400 »), pour qu'une panne se diagnostique sans lire les journaux de la fonction.
+      const code = err instanceof Anthropic.APIError && err.status ? `_${err.status}` : "";
+      if (statut === "erreur_api") statut = `erreur_api${code}`;
+      const detail = err instanceof Error ? err.message.replace(/\s+/g, " ").slice(0, 300) : "";
+      console.error("agent :", statut, detail);
+      if (statut.startsWith("erreur")) motifErreur = detail;
+      await envoyer({ t: "erreur", erreur: statut === "occupe" ? "occupe" : statut === "cle_refusee" ? "non_configure" : "indisponible", ...(statut.startsWith("erreur") && detail ? { detail } : {}) });
     }
-    await sb.from("agent_conversations").update({ maj_le: new Date().toISOString(), apercu: (dernierTexte || message).replace(/\s+/g, " ").slice(0, 200) }).eq("id", conv!.id);
+    // Après une panne, l'aperçu de la conversation dit son motif (le prochain échange réussi le remplace).
+    await sb.from("agent_conversations").update({ maj_le: new Date().toISOString(), apercu: (motifErreur ? `Erreur : ${motifErreur}` : dernierTexte || message).replace(/\s+/g, " ").slice(0, 200) }).eq("id", conv!.id);
     const ligne = ligneJournal({ userId, entiteId, statut, appels, dureeMs: Date.now() - debut });
     const { error: errJ } = await admin.from("assistant_journal").insert(ligne);
     if (errJ) console.error("journal de l'agent non écrit :", errJ.message);
