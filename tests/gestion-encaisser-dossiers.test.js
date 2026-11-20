@@ -211,6 +211,8 @@ test("l'écran : nets et commissions seulement avec le droit, encaissement seule
   assert.match(s, /bouton\.disabled = true;/, "le bouton est bloqué pendant l'envoi");
   assert.match(s, /if \(n && n\.commission_recue_le\) continue;/, "un service réglé entre-temps n'est pas encaissé une seconde fois");
   assert.match(s, /if \(etat\.entiteId !== entite\) \{/, "une feuille ouverte dans une entreprise n'écrit jamais dans une autre");
+  assert.match(s, /f\.reste !== b\.d\.reste \|\| f\.dejaRecu !== b\.d\.dejaRecu/, "un dossier qui a bougé depuis l'ouverture n'est pas encaissé sur des chiffres périmés");
+  assert.match(s, /if \(ecrites\) faits\+\+;/, "un dossier dont rien n'a été écrit n'est pas annoncé encaissé");
   assert.match(s, /\{ ecartees, ajd \}/, "les dossiers annulés sont écartés");
   // Le résumé de l'écran : le chiffre « Commissions » vient du même calcul que la liste.
   assert.match(s, /const total = sommeRestes\(partenaires\.flatMap\(\(p\) => p\.dossiers\)\);/);

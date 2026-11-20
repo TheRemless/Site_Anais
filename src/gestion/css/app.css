@@ -877,7 +877,7 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .enc-partenaire { margin: 0 0 16px; padding: 4px 16px 8px; background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; box-shadow: var(--ombre); }
 .enc-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 10px 0 8px; }
 .enc-tete h3 { margin: 0; font-size: 1.05rem; }
-.enc-coche { font-weight: 700; color: var(--teal-700) !important; }
+.droite-pile .enc-coche { font-weight: 700; color: var(--teal-700); }
 .enc-coche:empty { display: none; }
 .enc-liste { list-style: none; margin: 0; padding: 0; }
 .enc-dossier { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; border-top: 1px solid var(--bord); }

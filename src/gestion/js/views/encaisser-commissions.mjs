@@ -43,8 +43,11 @@ const servicesTexte = (rs) => rs.map((r) => [r.libelle, r.date_service ? formatD
 export function sectionCommissions({ rafraichir, ecrit }) {
   const ajd = aujourdhui();
   const ecartees = dossiersAnnules();
-  const partenaires = aRecevoirParPartenaire(etat.db.reservations, netReservation, { ecartees, ajd });
-  const recues = recuesParPartenaire(etat.db.reservations, netReservation, { ecartees, depuis: ajouterJours(ajd, -JOURS_RECUES) });
+  // Un index des nets par réservation, construit une fois par rendu : les deux listes le parcourent sans recherche linéaire.
+  const index = new Map(etat.db.reservations_nets.map((n) => [n.reservation_id, n]));
+  const netDe = (r) => index.get(r.id) || null;
+  const partenaires = aRecevoirParPartenaire(etat.db.reservations, netDe, { ecartees, ajd });
+  const recues = recuesParPartenaire(etat.db.reservations, netDe, { ecartees, depuis: ajouterJours(ajd, -JOURS_RECUES) });
   const total = sommeRestes(partenaires.flatMap((p) => p.dossiers));
   const moyens = (reglages().listes.moyens || []).filter((m) => !m.archive);
   const nomMoyen = (id) => {
@@ -62,7 +65,7 @@ export function sectionCommissions({ rafraichir, ecrit }) {
   const maj = () => {
     const choisis = [...coches].map((c) => parCle.get(c)).filter(Boolean);
     barre.hidden = !choisis.length;
-    barreTexte.textContent = choisis.length ? tr("{dossiers} cochés : {total}", { dossiers: pluriel(choisis.length, N_("{n} dossier"), N_("{n} dossiers")), total: prix(sommeRestes(choisis)) }) : "";
+    barreTexte.textContent = choisis.length ? pluriel(choisis.length, N_("{n} dossier coché, {total}"), N_("{n} dossiers cochés, {total}"), { total: prix(sommeRestes(choisis)) }) : "";
     for (const p of partenaires) {
       const el = sousTotaux.get(p.partenaire_id || "");
       if (!el) continue;
@@ -88,7 +91,7 @@ export function sectionCommissions({ rafraichir, ecrit }) {
     );
     const montant = h("strong", { class: "enc-montant" }, sans ? "—" : prix(d.reste));
     if (!ecrit) return h("li", { class: "enc-dossier" }, h("div", { class: "enc-case" }, texte, montant));
-    const input = h("input", { type: "checkbox", "data-dossier": d.dossier_id, "aria-label": tr("Encaisser le dossier {ref}", { ref: (dossier && dossier.ref) || "" }) });
+    const input = h("input", { type: "checkbox", "data-dossier": d.dossier_id });
     input.addEventListener("change", () => {
       if (input.checked) coches.add(d.cle);
       else coches.delete(d.cle);
@@ -115,8 +118,9 @@ export function sectionCommissions({ rafraichir, ecrit }) {
         ? h(
             "div",
             { class: "enc-pied" },
-            h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirFeuille(dus) }, dus.length === p.dossiers.length ? tr("Tout encaisser") : tr("Encaisser les dossiers passés")),
-            h("span", { class: "aide" }, dus.length > 1 ? tr("{n} dossiers passés : {total}", { n: dus.length, total: prix(sommeRestes(dus)) }) : null)
+            // Les dossiers passés avec une commission prévue : ceux d'un « tout encaisser » au prévu. Les autres se cochent à la main.
+            h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirFeuille(dus) }, dus.length === p.dossiers.length ? tr("Tout encaisser") : pluriel(dus.length, N_("Encaisser {n} dossier passé"), N_("Encaisser {n} dossiers passés"))),
+            h("span", { class: "aide" }, tr("soit {total}", { total: prix(sommeRestes(dus)) }))
           )
         : null
     );
@@ -206,6 +210,14 @@ export function sectionCommissions({ rafraichir, ecrit }) {
               toast(tr("L'entreprise a changé : rien n'a été encaissé. Rouvrez la liste."), true);
               return;
             }
+            // Un dossier qui a bougé depuis l'ouverture (versement noté sur un autre appareil, synchronisation) : on n'écrit rien, la liste se relit.
+            const frais = new Map(aRecevoirParPartenaire(etat.db.reservations, netReservation, { ecartees: dossiersAnnules(), ajd }).flatMap((p) => p.dossiers.map((d) => [d.cle, d])));
+            if (blocs.some((b) => { const f = frais.get(b.d.cle); return !f || f.reste !== b.d.reste || f.dejaRecu !== b.d.dejaRecu || f.reservations.length !== b.d.reservations.length; })) {
+              fermer();
+              toast(tr("Un dossier a changé depuis l'ouverture : rien n'a été encaissé. Vérifiez la liste."), true);
+              rafraichir();
+              return;
+            }
             // Tout se vérifie avant d'écrire quoi que ce soit : un dossier mal rempli n'en laisse pas d'autres à moitié encaissés.
             const plan = [];
             [date, ...blocs.flatMap((b) => Object.values(b.champs))].forEach((c) => erreurChamp(c, null));
@@ -226,19 +238,21 @@ export function sectionCommissions({ rafraichir, ecrit }) {
             let faits = 0;
             try {
               for (const r of plan) {
+                let ecrites = 0;
                 for (const x of r.ecritures) {
                   // Un service réglé entre-temps (autre appareil, synchronisation) n'est pas encaissé une seconde fois.
                   const n = netReservation({ id: x.reservation_id });
                   if (n && n.commission_recue_le) continue;
                   await enregistrerLie("reservations_nets", "reservation_id", x.reservation_id, x.valeurs);
+                  ecrites++;
                 }
-                faits++;
+                if (ecrites) faits++;
               }
               fermer();
-              toast(pluriel(faits, N_("{n} dossier encaissé."), N_("{n} dossiers encaissés.")));
+              toast(faits ? pluriel(faits, N_("{n} dossier encaissé."), N_("{n} dossiers encaissés.")) : tr("Rien à encaisser : ces dossiers étaient déjà réglés."));
             } catch (err) {
               fermer();
-              toast(faits ? tr("{n} dossiers encaissés, puis arrêt : {message}", { n: faits, message: err.message }) : tr("Enregistrement impossible : {message}", { message: err.message }), true);
+              toast(faits ? `${pluriel(faits, N_("{n} dossier encaissé."), N_("{n} dossiers encaissés."))} ${tr("Arrêt : {message}", { message: err.message })}` : tr("Enregistrement impossible : {message}", { message: err.message }), true);
             } finally {
               envoiEnCours = false;
               rafraichir();
@@ -302,7 +316,7 @@ export function sectionCommissions({ rafraichir, ecrit }) {
           "section",
           { class: "commissions-recevoir" },
           h("h2", null, tr("Commissions des prestataires")),
-          h("p", { class: "aide" }, ecrit ? tr("Cochez les dossiers que le partenaire vous a payés : le total coché s'affiche sous son nom. Un montant différent se corrige avant d'encaisser.") : tr("Ce que chaque partenaire doit encore, dossier par dossier.")),
+          h("p", { class: "aide" }, ecrit ? tr("Cochez les dossiers que le partenaire vous a payés. Le total coché s'affiche sous son nom et un montant différent se corrige avant d'encaisser.") : tr("Ce que chaque partenaire doit encore, dossier par dossier.")),
           partenaires.map(cartePartenaire),
           ecrit ? barre : null
         )
