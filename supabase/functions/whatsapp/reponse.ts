@@ -101,7 +101,7 @@ async function garderTri(db: SupabaseClient, conversationId: string, decision: {
 
 // Numéros des fiches partenaires de l'organisation (relu au plus toutes les 10 minutes par instance).
 let partenairesLus: { quand: number; org: string; numeros: Set<string> } | null = null;
-async function partenairesDe(db: SupabaseClient, org: string) {
+export async function partenairesDe(db: SupabaseClient, org: string) {
   if (partenairesLus && partenairesLus.org === org && Date.now() - partenairesLus.quand < 600_000) return partenairesLus.numeros;
   const { data: ents } = await db.from("entites").select("id").eq("organisation_id", org);
   const ids = (ents || []).map((e) => e.id);

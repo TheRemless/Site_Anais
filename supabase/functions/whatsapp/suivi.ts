@@ -5,8 +5,9 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { dateBangkok } from "../assistant/calc.js";
-import { journalEnCours, plafondsOuverts } from "./reponse.ts";
-import { lirePromesse, lireResume, parametresPromesse, parametresResume, peutEtrePromesse, resumeAFaire, signalPaiement, tachePromesse } from "./suivi.js";
+import { journalEnCours, partenairesDe, plafondsOuverts } from "./reponse.ts";
+import { cleNumero } from "./proposer.js";
+import { RESUME_ATTENTE_MS, lirePromesse, lireResume, parametresPromesse, parametresResume, peutEtrePromesse, resumeAFaire, signalPaiement, tachePromesse } from "./suivi.js";
 
 const absente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 
@@ -19,19 +20,32 @@ async function lire(db: SupabaseClient, conversationId: string) {
 
 export async function suiviApresMessage(db: SupabaseClient, conversationId: string, messageId: string) {
   try {
-    const lu = await lire(db, conversationId);
+    let lu = await lire(db, conversationId);
     if (!lu) return;
-    const { conv, messages } = lu;
-    const message = messages.find((m) => m.id === messageId);
-    if (message && message.sens === "entrant") await paiement(db, conv, message);
+    const message = lu.messages.find((m) => m.id === messageId);
+    // Sans IA, toujours : le signal de paiement.
+    if (message && message.sens === "entrant") await paiement(db, lu.conv, message);
+    // Avant tout appel à Claude, les mêmes garde-fous que la réponse préparée : contact réglé sur « jamais » (ami, partenaire, chauffeur),
+    // numéro d'une fiche partenaire, conversation à trier, agent éteint dans l'entreprise. Rien d'autre ne part alors chez Anthropic.
+    if (!(await iaPermise(db, lu.conv))) return;
     const cle = Deno.env.get("ANTHROPIC_API_KEY");
     if (!cle) return;
     const anthropic = new Anthropic({ apiKey: cle, timeout: 30_000, maxRetries: 0 });
-    if (message && message.sens === "sortant" && peutEtrePromesse(message.texte)) await promesse(db, anthropic, conv, message);
-    if (resumeAFaire(conv, messages)) await resumer(db, anthropic, conv, messages);
+    if (message && message.sens === "sortant" && peutEtrePromesse(message.texte)) await promesse(db, anthropic, lu.conv, message);
+    // Le résumé attend la fin d'une rafale : seulement si ce message est toujours le dernier après l'attente.
+    await new Promise((ok) => setTimeout(ok, RESUME_ATTENTE_MS));
+    lu = await lire(db, conversationId);
+    if (lu && resumeAFaire(lu.conv, lu.messages, messageId)) await resumer(db, anthropic, lu.conv, lu.messages);
   } catch (err) {
     console.error("whatsapp : suivi", String((err as Error)?.message || err).slice(0, 200));
   }
+}
+
+async function iaPermise(db: SupabaseClient, conv: Record<string, any>) {
+  if (conv.reponses === "jamais" || !conv.entite_id) return false;
+  if ((await partenairesDe(db, conv.organisation_id)).has(cleNumero(conv.telephone))) return false;
+  const { data } = await db.from("reglages").select("valeur").eq("entite_id", conv.entite_id).maybeSingle();
+  return !!(data && data.valeur && data.valeur.agent_ia === true);
 }
 
 async function paiement(db: SupabaseClient, conv: Record<string, any>, message: Record<string, any>) {
@@ -48,9 +62,14 @@ async function paiement(db: SupabaseClient, conv: Record<string, any>, message: 
 
 async function promesse(db: SupabaseClient, anthropic: Anthropic, conv: Record<string, any>, message: Record<string, any>) {
   const ajd = dateBangkok();
-  // Une tâche par conversation et par jour ; seulement dans une conversation rangée (la tâche appartient à une entreprise).
+  // Une tâche par conversation et par jour ; seulement dans une conversation rangée (la tâche appartient à une entreprise). Le jour est
+  // réservé avant l'appel à Claude, en une écriture : deux messages rapprochés ne créent jamais deux tâches.
   if (!conv.entite_id || conv.promesse_le === ajd) return;
   if (!(await plafondsOuverts(db))) return;
+  const avant = conv.promesse_le ?? null;
+  const { data: reserve } = await db.from("whatsapp_conversations").update({ promesse_le: ajd }).eq("id", conv.id).or(`promesse_le.is.null,promesse_le.neq.${ajd}`).select("id");
+  if (!reserve || !reserve.length) return;
+  const rendre = () => db.from("whatsapp_conversations").update({ promesse_le: avant }).eq("id", conv.id).eq("promesse_le", ajd);
   const appels: { usage: Record<string, unknown>; modele: string }[] = [];
   const j = journalEnCours(db, appels);
   // deno-lint-ignore no-explicit-any
@@ -58,15 +77,18 @@ async function promesse(db: SupabaseClient, anthropic: Anthropic, conv: Record<s
   appels.push({ usage: r.usage as unknown as Record<string, unknown>, modele: r.model });
   await j.noter(conv.entite_id, "promesse");
   const p = lirePromesse(r, ajd);
-  if (!p) return;
+  if (!p) return void (await rendre());
   const client = conv.client_id ? (await db.from("clients").select("prenom").eq("id", conv.client_id).maybeSingle()).data : null;
   const { error } = await db.from("taches").insert(tachePromesse({ conv, quoi: p.quoi, echeance: p.echeance, prenom: client?.prenom || "" }));
-  if (error) return console.error("whatsapp : tâche de promesse", error.message);
-  await db.from("whatsapp_conversations").update({ promesse_le: ajd }).eq("id", conv.id);
+  if (error) {
+    await rendre();
+    return console.error("whatsapp : tâche de promesse", error.message);
+  }
 }
 
 async function resumer(db: SupabaseClient, anthropic: Anthropic, conv: Record<string, any>, messages: Record<string, any>[]) {
   if (!(await plafondsOuverts(db))) return;
+  const depart = new Date().toISOString();
   const appels: { usage: Record<string, unknown>; modele: string }[] = [];
   const j = journalEnCours(db, appels);
   // deno-lint-ignore no-explicit-any
@@ -75,6 +97,7 @@ async function resumer(db: SupabaseClient, anthropic: Anthropic, conv: Record<st
   await j.noter(conv.entite_id, "resume");
   const resume = lireResume(r);
   if (!resume) return console.error("whatsapp : résumé vide", r.stop_reason);
-  const { error } = await db.from("whatsapp_conversations").update({ resume, resume_le: new Date().toISOString() }).eq("id", conv.id);
+  // Écrit seulement si aucun résumé plus récent n'est arrivé entre-temps (un traitement plus lent ne remplace pas un résumé plus complet).
+  const { error } = await db.from("whatsapp_conversations").update({ resume, resume_le: depart }).eq("id", conv.id).or(`resume_le.is.null,resume_le.lt.${depart}`);
   if (error && !absente(error)) console.error("whatsapp : résumé non gardé", error.message);
 }
