@@ -5,13 +5,15 @@
 //   3. une conversation déjà répondue depuis l'app, fenêtre de 24 h fermée, une photo expirée ;
 //   4. un client rangé par Nani dans Taxi, réponse en préparation ;
 //   5. un chauffeur réglé sur « Jamais » (migration 60) : son message n'a pas de réponse préparée, « Préparer une réponse » en fait une.
+// Suivi (migrations 61 et 62) : résumé en trois lignes, signal de paiement et promesse en tâche, sur la conversation 3 reliée à un
+// dossier de Secret non soldé (`suivi` : { dossier, client, ajd, ajouterJours }). Rend aussi `taches` à ajouter à la démo.
 const SECRET = ["excursions", "secret"];
 const TAXI = ["taxi"];
 
-export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organisation, maintenant = Date.now() }) {
+export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organisation, maintenant = Date.now(), suivi = null }) {
   const secret = entites.find((e) => SECRET.includes(e.slug));
   const taxi = entites.find((e) => TAXI.includes(e.slug));
-  const out = { whatsapp_conversations: [], whatsapp_messages: [], whatsapp_propositions: [], whatsapp_reglages: [] };
+  const out = { whatsapp_conversations: [], whatsapp_messages: [], whatsapp_propositions: [], whatsapp_reglages: [], taches: [] };
   if (!secret && !taxi) return out;
   const il_y_a = (minutes) => new Date(maintenant - minutes * 60000).toISOString();
   out.whatsapp_reglages.push({ organisation_id: organisation, reception_active: true, numero: "+447700900100", etat_compte: "CONNECTED", etat_le: il_y_a(60 * 24 * 3), dernier_evenement_le: il_y_a(4), updated_at: il_y_a(60 * 24 * 3) });
@@ -60,6 +62,24 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     message(c, 60 * 30 - 1, "entrant", "Ok see you", { modifie_le: il_y_a(60 * 30 - 2), texte: "Ok see you next year" });
     message(c, 60 * 29, "sortant", "Thank you both, it was a pleasure. Have a safe trip home!", { origine: "app" });
     proposition(c, m, { statut: "traitee", texte: "Thank you so much, we are happy the kids enjoyed it. Have a safe trip home!", traitee_le: il_y_a(60 * 29), traitee_par_quoi: "app" });
+    // Suivi : reliée à un dossier de Secret non soldé, avec une preuve de paiement et une promesse de Nani.
+    if (suivi && suivi.dossier) {
+      const { dossier, client, ajd, ajouterJours } = suivi;
+      Object.assign(c, { client_id: dossier.client_id, dossier_id: dossier.id, nom: (client && client.prenom) || c.nom });
+      message(c, 60 * 2, "entrant", "Hi again! We would like to take the ferry to Koh Phi Phi on Saturday, the 2 of us.");
+      message(c, 60 * 2 - 5, "sortant", "Perfect, I booked it for you. I will confirm the pickup time tomorrow.", { origine: "app" });
+      const preuve = message(c, 25, "entrant", "Here is the transfer receipt", { type: "image", texte: null, medias: [{ type: "image", mime: "image/jpeg", legende: "Here is the transfer receipt", nom: "receipt.jpg", chemin: "demo/receipt.jpg", statut: "copie", taille: 96000 }] });
+      message(c, 20, "sortant", "Thank you, I will check and confirm.", { origine: "app" });
+      Object.assign(c, {
+        non_lus: 0,
+        resume: "Couple déjà venu au snorkelling, revient pour Koh Phi Phi.\nFerry Koh Lanta – Koh Phi Phi samedi pour 2 personnes, réservé par Nani.\nPaiement à confirmer, heure de pickup promise pour demain.",
+        resume_le: il_y_a(20),
+        paiement_signale: { message_id: preuve.id, le: il_y_a(25), motif: "piece" },
+        promesse_le: ajd,
+        tri: { preparer: false, motif: "suivi_reservation", entreprise: "secret", le: il_y_a(24) },
+      });
+      out.taches.push({ id: uid(), created_at: ajd, entite_id: dossier.entite_id, dossier_id: dossier.id, partenaire_id: null, titre: `WhatsApp, ${(client && client.prenom) || c.nom} : confirmer l'heure de pickup du ferry`, description: "Promesse faite dans WhatsApp (tâche créée par Gestion).", echeance: ajouterJours(ajd, 1), assignee_id: null, fait: false, fait_le: null, fait_par: null, cree_par: null });
+    }
   }
 
   // 4. Rangée par Nani dans Taxi, la réponse se prépare.
@@ -70,6 +90,8 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     const m = message(c, 1, "entrant", "Great, and can you also do Old Town tomorrow morning?");
     message(c, 0.5, "entrant", "Sorry wrong photo", { supprime_le: il_y_a(0.2) });
     c.tri = { preparer: true, motif: "demande_client", entreprise: "taxi", le: il_y_a(1) };
+    c.resume = "Demande le prix d'un taxi de Saladan pier à Long Beach.\nNani a promis le prix depuis Gestion.\nVeut aussi aller à Old Town demain matin.";
+    c.resume_le = il_y_a(1);
     proposition(c, m, { statut: "en_cours" });
   }
 

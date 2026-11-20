@@ -5,10 +5,13 @@
 // conversation à droite (même mise en page que l'onglet Assistant).
 // Réservé aux administrateurs de Secret et de Taxi (la base l'impose, le menu aussi) : Mook ne voit ni l'écran ni le menu.
 // Une notification ouvre « #/whatsapp?c=<conversation>&entite=<entreprise> » : app.mjs passe dans l'entreprise, l'écran ouvre la conversation.
-import { etat, modifier, entitesAccessibles, estSuperAdmin, permissionsDe, voitToutDans, nomClient, naviguer } from "../etat.mjs";
+import { etat, modifier, entitesAccessibles, estSuperAdmin, permissionsDe, voitToutDans, nomClient, naviguer, changerEntite, reglagesDe, peut, modeTaxi } from "../etat.mjs";
 import { h, toast, confirmer, icone, puces, modal, champ } from "../ui.mjs";
 import { tr, N_, langueActive, localeActive } from "../i18n.mjs";
-import { quand, bloquantsReponse, resteBloque } from "../agent-calc.mjs";
+import { quand, bloquantsReponse, resteBloque, agentActif } from "../agent-calc.mjs";
+import {
+  CLE_DEMANDE_AGENT, modeDossier, paiementSignale, MOTIFS_PAIEMENT, lignesResume, tachesPromesse, piecesProposees, basculerPiece, PIECES_MAX, resumeEnRetard,
+} from "../whatsapp-suivi-calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import { directCoupe } from "../direct-reprise-calc.mjs";
 import {
@@ -175,8 +178,178 @@ function enTete(c, prop) {
       h("div", { class: "wa-fil-titre" }, h("h2", null, nomConversation(c, clientDe(c))), h("p", { class: "wa-numero" }, numeroAffiche(c.telephone), c.nom && clientDe(c) ? h("span", null, tr("profil « {nom} »", { nom: c.nom })) : null)),
       wa ? h("a", { class: "bouton secondaire petit wa-ouvrir-tete", href: wa, target: "_blank", rel: "noopener", "aria-label": tr("Ouvrir dans WhatsApp") }, icone("whatsapp", 18), h("span", { class: "wa-ouvrir-texte" }, tr("Ouvrir dans WhatsApp"))) : null
     ),
-    h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), blocRelations(c), reglageReponses(c)),
+    h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), blocRelations(c), reglageReponses(c), actionsDossier(c, prop)),
+    blocResume(c),
   ];
+}
+
+// ---- Suivi (migrations 61 et 62) ------------------------------------------------------------------------------------------------------
+// « Créer le dossier » ou « Mettre à jour le dossier » : l'Assistant de l'entreprise de la conversation s'ouvre et lit l'échange lui-même
+// (texte, photos, PDF). Proposé seulement là où l'Assistant est allumé et permis (comme son onglet).
+const assistantDans = (id) => !!id && agentActif(reglagesDe(id)) && ["partenaires.lire", "dossiers.ecrire"].every((d) => permissionsDe(id).includes(d));
+function choisirEntreprise(c, prop) {
+  const choix = entitesWhatsApp().filter((e) => assistantDans(e.id));
+  const proposee = entrepriseProposee(prop, choix);
+  return new Promise((resoudre) => {
+    let fermer;
+    // Résolue avant de fermer : la fermeture rend « null » (fenêtre fermée sans choix), sans effet après un choix.
+    const prendre = (e) => (resoudre(e), fermer());
+    fermer = modal(
+      tr("Dans quelle entreprise ?"),
+      h("div", { class: "modal-corps" }, h("p", { class: "aide" }, tr("La conversation est à trier. Elle sera rangée dans l'entreprise choisie, puis l'Assistant prépare le dossier.")), h("div", { class: "barre-modal" }, choix.map((e) => h("button", { class: proposee && proposee.id === e.id ? "principal" : "secondaire", type: "button", onclick: () => prendre(e) }, e.nom)))),
+      { protege: false, ferme: () => resoudre(null) }
+    );
+  });
+}
+// Les photos et PDF à joindre pour l'Assistant : la personne les coche elle-même, aucun par défaut, six au plus. Une capture de virement, de
+// compte ou de QR de paiement contient des coordonnées bancaires : elle ne part jamais chez Anthropic. Rend la liste des chemins cochés
+// (vide : sans pièce), ou null si la personne a fermé la feuille. Sans photo ni PDF dans la conversation, rien à demander.
+async function choisirPieces(c) {
+  let messages = [];
+  try {
+    messages = await etat.store.whatsappMessages(c.id);
+  } catch {
+    messages = [];
+  }
+  const pieces = piecesProposees(messages);
+  if (!pieces.length) return [];
+  let cochees = [];
+  return new Promise((resoudre) => {
+    const compte = h("p", { class: "aide wa-pieces-compte", "aria-live": "polite" });
+    const cases = [];
+    const maj = () => {
+      compte.textContent = tr("{n} sur {max} cochées", { n: cochees.length, max: PIECES_MAX });
+      for (const x of cases) x.disabled = !x.checked && cochees.length >= PIECES_MAX;
+    };
+    const ligne = (p, i) => {
+      const id = `wa-piece-${i}`;
+      const caseP = h("input", { type: "checkbox", id, onchange: () => ((cochees = basculerPiece(cochees, p.chemin)), (caseP.checked = cochees.includes(p.chemin)), maj()) });
+      cases.push(caseP);
+      const vignette = h("span", { class: "wa-piece-vignette", "aria-hidden": "true" }, icone(p.media_type === "application/pdf" ? "regles" : "image", 22));
+      if (p.media_type !== "application/pdf")
+        etat.store.whatsappLienMedia(p.media).then((lien) => lien && vignette.replaceChildren(h("img", { src: lien, alt: "" })), () => {});
+      const qui = p.sens === "entrant" ? tr("Envoyé par le client") : tr("Envoyé par Nani");
+      return h("li", null, h("label", { class: "wa-piece", for: id }, caseP, vignette, h("span", { class: "wa-piece-texte" }, h("strong", null, p.legende || p.nom), h("span", null, `${qui} · ${new Date(p.envoye_le).toLocaleString(localeActive(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" })}`))));
+    };
+    let fermer;
+    const fin = (valeur) => (resoudre(valeur), fermer());
+    fermer = modal(
+      tr("Pièces à joindre"),
+      h(
+        "div",
+        { class: "modal-corps wa-pieces" },
+        h("p", { class: "bandeau-info", role: "note" }, tr("Ne cochez jamais une capture de virement, de compte ou de QR de paiement.")),
+        h("p", { class: "aide" }, tr("Cochez les photos et PDF utiles au dossier (billet, passeport, réservation d'hôtel), {max} au plus. Rien n'est joint sans votre choix.", { max: PIECES_MAX })),
+        h("ul", { class: "wa-pieces-liste" }, pieces.map(ligne)),
+        compte,
+        h("div", { class: "barre-modal" }, h("button", { class: "principal", type: "button", onclick: () => fin([...cochees]) }, tr("Continuer")))
+      ),
+      { protege: false, ferme: () => resoudre(null) }
+    );
+    maj();
+  });
+}
+
+async function versAssistant(c, prop) {
+  let entiteId = c.entite_id;
+  let entreprise = null;
+  if (!entiteId) {
+    entreprise = await choisirEntreprise(c, prop);
+    if (!entreprise) return;
+    if (prop && prop.statut === "a_faire" && brouillons.has(prop.id) && prop.entite_id !== entreprise.id && !(await confirmer(tr("Vous avez modifié la réponse préparée. La ranger dans {nom} la remplace et vos changements seront perdus. Continuer ?", { nom: entreprise.nom }), tr("Ranger dans {nom}", { nom: entreprise.nom }), true))) return;
+  }
+  // Les pièces d'abord : fermer la feuille annule tout, sans ranger la conversation.
+  const pieces = await choisirPieces(c);
+  if (pieces === null) return;
+  if (entreprise) {
+    try {
+      await modifier("whatsapp_conversations", c.id, { entite_id: entreprise.id });
+    } catch (err) {
+      return toast(err.message, true);
+    }
+    entiteId = entreprise.id;
+  }
+  try {
+    sessionStorage.setItem(CLE_DEMANDE_AGENT, JSON.stringify({ id: c.id, mode: modeDossier(c), entite: entiteId, pieces }));
+  } catch {
+    return toast(tr("Ce navigateur refuse le stockage de la page : ouvrez l'Assistant et collez l'échange."), true);
+  }
+  if (entiteId !== etat.entiteId) changerEntite(entiteId, { naviguer: false });
+  naviguer("#/agent/nouvelle");
+}
+// Le voucher du dossier relié (Booking confirmation chez Taxi), par l'écran d'envoi habituel (partage de l'image sur iPhone).
+async function envoyerVoucherDuDossier(dossierId) {
+  const [{ courseDuDossier }, { envoyerVoucher }] = await Promise.all([import("./creation-course.mjs"), import("./voucher-envoi.mjs")]);
+  const x = courseDuDossier(dossierId);
+  if (!x.reservation) return toast(tr("Ce dossier n'a pas encore de service à mettre sur un voucher."), true);
+  envoyerVoucher(x);
+}
+function actionsDossier(c, prop) {
+  const ici = c.entite_id && c.entite_id === etat.entiteId;
+  const dossier = ici ? dossierDe(c) : null;
+  const assistant = c.entite_id ? assistantDans(c.entite_id) : entitesWhatsApp().some((e) => assistantDans(e.id));
+  const boutons = [
+    assistant && (!c.entite_id || ici) ? h("button", { type: "button", class: "secondaire petit", onclick: () => versAssistant(c, prop) }, icone("assistant", 16), dossier ? tr("Mettre à jour le dossier") : tr("Créer le dossier")) : null,
+    dossier ? h("button", { type: "button", class: "secondaire petit", onclick: () => envoyerVoucherDuDossier(dossier.id) }, icone("whatsapp", 16), modeTaxi() ? tr("Envoyer la Booking confirmation") : tr("Envoyer le voucher")) : null,
+  ].filter(Boolean);
+  return boutons.length ? h("div", { class: "wa-actions-dossier", "data-pas-saisie": "" }, boutons) : null;
+}
+
+// Le résumé en trois lignes (fonction « whatsapp », Claude Haiku), repliable ; replié ou non est gardé pour la session.
+const resumesReplies = new Set();
+function blocResume(c) {
+  const lignes = lignesResume(c.resume);
+  if (!lignes.length) return null;
+  const bloc = h(
+    "details",
+    { class: "wa-resume", open: !resumesReplies.has(c.id) },
+    h(
+      "summary",
+      null,
+      h("span", null, tr("Résumé automatique, à vérifier")),
+      c.resume_le ? h("span", { class: "wa-resume-le" }, tr("mis à jour à {heure}", { heure: heureBangkok(c.resume_le) }), resumeEnRetard(c) ? ` ${tr("(avant le dernier message)")}` : null) : null
+    ),
+    h("ul", null, lignes.map((l) => h("li", null, l)))
+  );
+  bloc.addEventListener("toggle", () => (bloc.open ? resumesReplies.delete(c.id) : resumesReplies.add(c.id)));
+  return bloc;
+}
+
+// « Le client a peut-être envoyé une preuve de paiement » : noter le paiement dans le dossier relié (formulaire habituel, prérempli avec le
+// reste à payer), ou ignorer (le signal est remis à vide). Nani décide, rien n'est noté seul.
+function cartePaiement(c) {
+  const p = paiementSignale(c);
+  if (!p) return null;
+  const ici = c.entite_id === etat.entiteId;
+  const dossier = ici ? dossierDe(c) : null;
+  const peutNoter = !!dossier && peut("paiements.ecrire") && peut("finances.voir") && !modeTaxi();
+  const ignorer = async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      await modifier("whatsapp_conversations", c.id, { paiement_signale: null });
+      rafraichir();
+    } catch (err) {
+      e.target.disabled = false;
+      toast(err.message, true);
+    }
+  };
+  return h(
+    "section",
+    { class: "wa-suivi wa-suivi-paiement", "aria-label": tr("Paiement") },
+    h("p", null, icone("du", 16), h("strong", null, tr("Le client a peut-être envoyé une preuve de paiement.")), " ", tr(MOTIFS_PAIEMENT[p.motif])),
+    h(
+      "div",
+      { class: "wa-suivi-actions", "data-pas-saisie": "" },
+      peutNoter ? h("button", { class: "secondaire petit", type: "button", onclick: () => naviguer(`#/dossier/${dossier.id}?paiement=1`) }, tr("Noter un paiement")) : null,
+      h("button", { class: "lien", type: "button", onclick: ignorer }, tr("Ignorer"))
+    )
+  );
+}
+
+// Promesses de Nani devenues des tâches (« WhatsApp, Prénom : … ») : une ligne et un lien vers Tâches.
+function lignesTaches(c) {
+  const t = tachesPromesse(etat.brut.taches || [], c, clientDe(c));
+  return t.map((x) => h("p", { class: "wa-tache" }, icone("taches", 16), h("span", null, tr("Tâche créée : {titre}", { titre: x.titre.replace(/^WhatsApp, /, "") })), h("a", { href: "#/taches" }, tr("Tâches"))));
 }
 
 // ---- Conversation : messages ----------------------------------------------------------------------------------------------------
@@ -338,6 +511,9 @@ function carteProposition(c, p, messages) {
   if (!p) return etat.brut.whatsapp_propositions_disponible !== false && messages.length && messages[messages.length - 1].sens === "entrant" ? ligneSansReponse(c, messages) : null;
   if (p.statut === "envoi") return h("section", { class: "wa-prop en-cours", "aria-live": "polite" }, h("p", { class: "agent-etape" }, h("span", { class: "agent-point", "aria-hidden": "true" }), tr("Envoi en cours depuis Gestion…")));
   // « Fait » ne vaut que pour une proposition au moins aussi récente que le dernier message du client.
+  // Nani a déjà répondu depuis (dernier message sortant) : rien à dire.
+  const repondu = messages.length > 0 && messages[messages.length - 1].sens === "sortant";
+  if ((p.statut === "traitee" || p.statut === "ignoree") && repondu && !propositionAJour(p, messages)) return null;
   if ((p.statut === "traitee" || p.statut === "ignoree") && !propositionAJour(p, messages)) return ligneSansReponse(c, messages);
   if (p.statut === "en_cours") return h("section", { class: "wa-prop en-cours", "aria-live": "polite" }, h("p", { class: "agent-etape" }, h("span", { class: "agent-point", "aria-hidden": "true" }), tr("Réponse en préparation…")));
   if (p.statut === "echec")
@@ -415,7 +591,9 @@ async function fil(c, prop) {
       { class: "wa-messages" },
       erreur ? h("p", { class: "agent-erreur" }, tr("Les messages n'ont pas pu être lus ({message})", { message: erreur.message })) : null,
       !erreur && !messages.length ? h("p", { class: "aide" }, tr("Aucun message gardé pour cette conversation.")) : null,
-      jours.map((g) => h("div", { class: "wa-jour" }, h("p", { class: "wa-jour-titre" }, h("span", null, libelleJour(g.jour))), g.messages.map(bulle)))
+      jours.map((g) => h("div", { class: "wa-jour" }, h("p", { class: "wa-jour-titre" }, h("span", null, libelleJour(g.jour))), g.messages.map(bulle))),
+      lignesTaches(c),
+      cartePaiement(c)
     ),
     carteProposition(c, prop, messages)
   );
@@ -477,10 +655,11 @@ export async function vueWhatsApp() {
   for (const id of [...envoisIncertains]) if (!aFaire.has(id)) envoisIncertains.delete(id);
   for (const id of [...aRetirer.keys()]) if (!aFaire.has(id)) aRetirer.delete(id);
   const ouverte = idOuvert ? conversations.find((c) => c.id === idOuvert) || null : null;
+  const filtrer = (liste, f) => filtrerConversations(liste, f, marqueDe);
   if (filtre === null) filtre = filtreDeDepart(conversations);
   // La conversation ouverte (notification, lien) reste visible dans la liste, quel que soit le filtre choisi.
-  if (ouverte && !filtrerConversations([ouverte], filtre, marqueDe).length) filtre = "toutes";
-  const liste = filtrerConversations(conversations, filtre, marqueDe);
+  if (ouverte && !filtrer([ouverte], filtre).length) filtre = "toutes";
+  const liste = filtrer(conversations, filtre);
   const nombres = chiffresFiltres(conversations, propositions, marqueDe);
   const reglage = (etat.brut.whatsapp_reglages || [])[0] || null;
 

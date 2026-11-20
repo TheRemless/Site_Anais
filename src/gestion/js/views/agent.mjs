@@ -19,6 +19,7 @@ import { correctionsDepuisCarte, dossierDeLaCarte } from "../agent-apprendre.mjs
 import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 import { piecesSaisie, bullePieces, carteBrochure } from "./agent-pieces.mjs";
 import { erreurFichier } from "../pieces-jointes.mjs";
+import { CLE_DEMANDE_AGENT, demandeAgent, liaisonApresDossier, ERREURS_AGENT_WHATSAPP } from "../whatsapp-suivi-calc.mjs";
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -49,7 +50,7 @@ function erreurTexte(code, detail = null) {
     const jour = new Date(`${detail.reprise}T12:00:00Z`).toLocaleDateString(langueActive() === "en" ? "en-GB" : "fr-FR", { day: "numeric", month: "long", timeZone: "UTC" });
     return tr("Le plafond du mois de l'assistant est atteint ({depense} dépensés sur {plafond}). Il reprend le {jour}, ou plus tôt si l'administration relève le plafond dans « Suivi de l'assistant ».", { depense: montant(detail.depense ?? detail.plafond), plafond: montant(detail.plafond), jour });
   }
-  return erreurFichier(code) || tr(ERREURS[code] || N_("L'assistant ne répond pas."));
+  return erreurFichier(code) || tr(ERREURS[code] || ERREURS_AGENT_WHATSAPP[code] || N_("L'assistant ne répond pas."));
 }
 
 // Demandes d'amélioration (fonction « ameliorations ») : motifs d'un refus et statut de chaque demande.
@@ -255,14 +256,21 @@ export async function vueAgent(idOuvert = "") {
     dessinerListe();
     dessinerFil();
     // Message venu d'une autre entreprise (« Passer à … ») : il attend dans la zone de saisie, la personne l'envoie.
+    // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (migration 61) : la demande part aussitôt, la fonction lit
+    // elle-même l'échange (texte, photos, PDF). Seulement dans l'entreprise de la conversation, une seule fois.
+    let depuisWhatsApp = null;
     if (!conv) {
       try {
         const b = sessionStorage.getItem(CLE_BROUILLON);
         if (b) (sessionStorage.removeItem(CLE_BROUILLON), (champ.value = b), ajuster());
+        const w = demandeAgent(sessionStorage.getItem(CLE_DEMANDE_AGENT));
+        sessionStorage.removeItem(CLE_DEMANDE_AGENT);
+        if (w && (!w.entite_id || w.entite_id === etat.entiteId)) depuisWhatsApp = w;
       } catch {
         // stockage refusé
       }
     }
+    if (depuisWhatsApp) return void envoyer({ whatsapp: depuisWhatsApp });
     champ.focus({ preventScroll: true });
   }
 
@@ -365,10 +373,10 @@ export async function vueAgent(idOuvert = "") {
   const paragraphes = (t) => String(t).split(/\n{2,}/).map((p) => h("p", null, ...p.split("\n").flatMap((l, i) => (i ? [h("br"), l] : [l]))));
 
   // ---- Envoi ------------------------------------------------------------------------------------------------------------------
-  async function envoyer() {
-    const texte = champ.value.trim();
-    const joints = pieces.noms();
-    if ((!texte && !joints.length) || enCours) return;
+  async function envoyer({ whatsapp = null } = {}) {
+    const texte = whatsapp ? "" : champ.value.trim();
+    const joints = whatsapp ? [] : pieces.noms();
+    if ((!texte && !joints.length && !whatsapp) || enCours) return;
     // Bloqué dès maintenant : un second appui pendant la réduction des images n'envoie pas deux fois.
     enCours = true;
     // Les fichiers sont préparés (images réduites) avant l'envoi ; une erreur les garde joints et dit quoi faire.
@@ -391,6 +399,7 @@ export async function vueAgent(idOuvert = "") {
     if (!zoneFil.querySelector(".agent-bulle, .agent-frise, .agent-carte")) zoneFil.replaceChildren();
     if (joints.length) zoneFil.append(bullePieces(joints));
     if (texte) zoneFil.append(h("div", { class: "agent-bulle de-personne" }, paragraphes(texte)));
+    if (whatsapp) zoneFil.append(h("div", { class: "agent-bulle de-personne" }, h("p", null, whatsapp.whatsapp_mode === "maj" ? tr("Mettre à jour le dossier d'après la conversation WhatsApp.") : tr("Créer le dossier d'après la conversation WhatsApp."))));
     // Les fichiers choisis restent en mémoire : si l'envoi échoue, ils reviennent dans la zone de saisie.
     const choisis = pieces.fichiers();
     pieces.vider();
@@ -399,9 +408,10 @@ export async function vueAgent(idOuvert = "") {
     let texteRecu = "";
     zoneFil.append(etape);
     descendre();
-    const r = await etat.store.agentEnvoyer({ entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) }, (ev) => {
+    const corps = whatsapp ? { entite_id: etat.entiteId, whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, whatsapp_pieces: whatsapp.whatsapp_pieces || [], texte: "" } : { entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) };
+    const r = await etat.store.agentEnvoyer(corps, (ev) => {
       if (ev.t === "conversation" && !conv) {
-        conv = { id: ev.id, entite_id: etat.entiteId, titre: ev.titre, apercu: "", dossier_id: ev.dossier_id || null, statut: "ouverte", maj_le: new Date().toISOString() };
+        conv = { id: ev.id, entite_id: etat.entiteId, titre: ev.titre, apercu: "", dossier_id: ev.dossier_id || null, statut: "ouverte", maj_le: new Date().toISOString(), whatsapp_conversation_id: ev.whatsapp_conversation_id || null };
         conversations = [conv, ...(conversations || [])];
         idOuvert = ev.id;
         history.replaceState(null, "", `#/agent/${ev.id}`);
@@ -699,6 +709,24 @@ export async function vueAgent(idOuvert = "") {
     }
   }
 
+  // Conversation ouverte depuis l'écran WhatsApp (migration 61) : le dossier validé se relie à la conversation WhatsApp, avec son client
+  // (et l'entreprise si elle était à trier). Une panne ici ne gêne jamais la validation ; elle est dite.
+  async function relierWhatsApp(dossier) {
+    const waId = conv && conv.whatsapp_conversation_id;
+    if (!waId) return;
+    try {
+      // Relue en base juste avant : quelqu'un a pu la relier ou la ranger ailleurs pendant la conversation avec l'Assistant.
+      const wc = etat.store.whatsappConversation ? await etat.store.whatsappConversation(waId) : null;
+      const { action, patch } = liaisonApresDossier(wc, dossier, etat.entiteId);
+      if (action === "rien") return;
+      if (action === "demander" && !(await confirmer(tr("Remplacer le dossier relié ? La conversation WhatsApp est déjà reliée à un autre client ou un autre dossier. Elle sera reliée au dossier {ref}.", { ref: dossier.ref || "" }), tr("Remplacer"), true))) return;
+      await modifier("whatsapp_conversations", waId, patch);
+      toast(tr("Conversation WhatsApp reliée au dossier {ref}.", { ref: dossier.ref || "" }));
+    } catch (err) {
+      toast(tr("Dossier créé, mais la conversation WhatsApp n'a pas pu être reliée : {message}", { message: err.message }), true);
+    }
+  }
+
   // ---- Valider d'un geste ---------------------------------------------------------------------------------------------------------
   // Chaque genre passe par le code habituel de l'outil, sans le montrer ; un motif d'arrêt reste sur la carte. Rend true si c'est enregistré.
   async function valider(c, { seule = true } = {}) {
@@ -728,6 +756,7 @@ export async function vueAgent(idOuvert = "") {
   async function noterReussite(c, r) {
     const dossier = r.dossier || (r.fait && r.fait.dossier) || null;
     if (dossier) resultats.set(c.id, { dossier, course: r.fait || null });
+    if (dossier && c.genre === "dossier") await relierWhatsApp(dossier);
     if (r.fait) blocBooking = (await import("./confirmation.mjs")).blocBookingConfirmation;
     const res = r.reservation || null;
     await apresValidation(c, { dossierId: (dossier && dossier.id) || (res && res.dossier_id) || null, enregistre: res ? { reservation: res } : null });

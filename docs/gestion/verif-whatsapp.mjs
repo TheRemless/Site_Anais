@@ -238,5 +238,17 @@ ok(!r.ok, "personne ne relie l'Assistant à une conversation WhatsApp qu'elle ne
 r = await essaie(u.both, `insert into agent_conversations (entite_id, whatsapp_conversation_id) values ('${ent.secret}', '${r1.conversation_id}') returning id`);
 ok(!r.ok, "une conversation de l'Assistant de Secret ne se relie pas à une conversation WhatsApp rangée chez Taxi");
 
+// ---- Migration 62 : résumé, signal de paiement, promesses ---------------------------------------------------------------------------
+ok(migrations.includes("migration-62-whatsapp-suivi.sql"), "la migration 62 passe après la 61");
+await db.exec(lire("migration-62-whatsapp-suivi.sql"));
+ok(true, "la migration 62 se rejoue sans erreur");
+await service(`update whatsapp_conversations set resume = 'Anna veut 4 îles', paiement_signale = '{"motif": "texte"}' where id = '${r1.conversation_id}'`);
+r = await essaie(u.adminTaxi, `update whatsapp_conversations set paiement_signale = null where id = '${r1.conversation_id}'`);
+ok(r.ok && (await db.query("select paiement_signale from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0].paiement_signale === null, "Nani efface le signal de paiement (Ignorer)");
+r = await essaie(u.adminTaxi, `update whatsapp_conversations set paiement_signale = '{"motif": "faux"}' where id = '${r1.conversation_id}'`);
+ok((await db.query("select paiement_signale from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0].paiement_signale === null, "personne n'invente un signal de paiement depuis l'outil");
+r = await essaie(u.adminTaxi, `update whatsapp_conversations set resume = 'autre' where id = '${r1.conversation_id}'`);
+ok(!r.ok || (await db.query("select resume from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0].resume === "Anna veut 4 îles", "le résumé ne se réécrit pas depuis l'outil");
+
 console.log(echecs ? `${echecs} échec(s)` : "tout est ok");
 process.exit(echecs ? 1 : 0);

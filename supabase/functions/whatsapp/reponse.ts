@@ -14,6 +14,7 @@ import { clesHotelPossibles, memoDepuis, prefixeRef } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
+import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
 import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, parametresTri, langueSure, numerosPartenaires, outilsWhatsapp, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
@@ -101,7 +102,7 @@ async function garderTri(db: SupabaseClient, conversationId: string, decision: {
 
 // Numéros des fiches partenaires de l'organisation (relu au plus toutes les 10 minutes par instance).
 let partenairesLus: { quand: number; org: string; numeros: Set<string> } | null = null;
-async function partenairesDe(db: SupabaseClient, org: string) {
+export async function partenairesDe(db: SupabaseClient, org: string) {
   if (partenairesLus && partenairesLus.org === org && Date.now() - partenairesLus.quand < 600_000) return partenairesLus.numeros;
   const { data: ents } = await db.from("entites").select("id").eq("organisation_id", org);
   const ids = (ents || []).map((e) => e.id);
@@ -119,20 +120,29 @@ async function lireConversation(db: SupabaseClient, conversationId: string) {
 }
 
 // Les limites avant tout appel à Claude. Une lecture impossible ferme le budget (jamais l'inverse).
-async function budgetOuvert(db: SupabaseClient, conv: Conv) {
-  const jour = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const [mois, budget, wa, parConv, boite] = await Promise.all([
+// Plafond du mois de l'assistant et sous-plafond de la boîte. Une lecture impossible ferme (jamais l'inverse). Sert aussi au suivi (suivi.ts).
+export async function plafondsOuverts(db: SupabaseClient) {
+  const [mois, budget, wa] = await Promise.all([
     db.rpc("assistant_cout_depuis", { debut: debutMois() }),
     db.from("assistant_budget").select("plafond_mois_usd, seuil_alerte_pct").maybeSingle(),
     db.from("assistant_journal").select("cout_estime_usd").eq("usage", "whatsapp").gte("cree_le", debutMois()).limit(20000),
-    db.from("whatsapp_propositions").select("id", { count: "exact", head: true }).eq("conversation_id", conv.id).gte("cree_le", jour),
-    db.from("whatsapp_propositions").select("id", { count: "exact", head: true }).gte("cree_le", jour),
   ]);
-  if (mois.error || wa.error || parConv.error || boite.error || mois.data === null || mois.data === undefined) return false;
+  if (mois.error || wa.error || mois.data === null || mois.data === undefined) return false;
   const { plafond } = plafondRetenu(budget.error ? null : budget.data, Deno.env.get("AGENT_PLAFOND_MOIS_USD"));
   if (Number(mois.data) >= plafond) return false;
   const coutBoite = (wa.data || []).reduce((s, l) => s + (Number(l.cout_estime_usd) || 0), 0);
-  if (coutBoite >= (Number(Deno.env.get("WHATSAPP_PLAFOND_MOIS_USD")) || PLAFOND_WHATSAPP_MOIS_USD)) return false;
+  return coutBoite < (Number(Deno.env.get("WHATSAPP_PLAFOND_MOIS_USD")) || PLAFOND_WHATSAPP_MOIS_USD);
+}
+
+// Les limites avant tout appel à Claude pour une réponse : plafonds, puis réponses du jour par conversation et pour la boîte.
+async function budgetOuvert(db: SupabaseClient, conv: Conv) {
+  const jour = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const [ouverts, parConv, boite] = await Promise.all([
+    plafondsOuverts(db),
+    db.from("whatsapp_propositions").select("id", { count: "exact", head: true }).eq("conversation_id", conv.id).gte("cree_le", jour),
+    db.from("whatsapp_propositions").select("id", { count: "exact", head: true }).gte("cree_le", jour),
+  ]);
+  if (!ouverts || parConv.error || boite.error) return false;
   return (parConv.count || 0) < LIMITE_CONVERSATION_JOUR && (boite.count || 0) < LIMITE_BOITE_JOUR;
 }
 
@@ -174,7 +184,11 @@ async function preparer(
     const lus = await db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", ent.id).order("cree_le", { ascending: false }).limit(80);
     if (lus.error && !tableAbsente(lus.error)) console.error("whatsapp : apprentissages", lus.error.message);
     // Mêmes consignes, voix, règles de réponse et corrections apprises que l'onglet Assistant (proposer.js, promptPreparation).
-    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lus.data || [], messages, nomProfil: conv.nom || "", client, dossier, aujourdhui: dateBangkok() });
+    const ton = await tonDeNani(db, ent.id, conv.id, messages).catch((err) => {
+      console.error("whatsapp : ton de Nani", String(err?.message || err).slice(0, 120));
+      return "";
+    });
+    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lus.data || [], messages, nomProfil: conv.nom || "", client, dossier, aujourdhui: dateBangkok(), ton });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
     const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
@@ -224,6 +238,21 @@ async function preparer(
   return utile && !!message && !!(maj && maj.length);
 }
 
+// Le ton de Nani (ton.js) : ses réponses envoyées depuis l'app dans les autres conversations de cette entreprise (les 400 derniers messages de
+// ses 60 conversations les plus récentes), et ses réécritures des réponses préparées. Lu avec la clé de service, limité à l'entreprise.
+async function tonDeNani(db: SupabaseClient, entiteId: string, conversationId: string, messages: Record<string, any>[]) {
+  const { data: convs } = await db.from("whatsapp_conversations").select("id").eq("entite_id", entiteId).order("dernier_message_le", { ascending: false }).limit(60);
+  const ids = (convs || []).map((c) => c.id);
+  if (!ids.length) return "";
+  const [msgs, props] = await Promise.all([
+    db.from("whatsapp_messages").select("conversation_id, sens, origine, texte, envoye_le, supprime_le").in("conversation_id", ids).order("envoye_le", { ascending: false }).limit(400),
+    db.from("whatsapp_propositions").select("conversation_id, cree_le, texte, statut").in("conversation_id", ids).not("texte", "is", null).order("cree_le", { ascending: false }).limit(60),
+  ]);
+  const tous = msgs.data || [];
+  const texteClient = messages.filter((m) => m.sens === "entrant").slice(-3).map((m) => m.texte || "").join(" ");
+  return blocTon({ paires: pairesReponses(tous, { exclure: conversationId }), corrections: pairesCorrections(props.data || [], tous), texteClient });
+}
+
 // Une préparation qui s'arrête avant l'agent laisse toujours une trace : une proposition « echec » avec son motif (l'écran l'explique) et une
 // ligne dans les journaux de la fonction. Rend false (rien à copier).
 async function echecVisible(db: SupabaseClient, conversationId: string, messageId: string, entiteId: string | null, motif: string) {
@@ -236,7 +265,7 @@ async function echecVisible(db: SupabaseClient, conversationId: string, messageI
 
 // Le journal de l'assistant pour une préparation : une ligne créée au premier appel, mise à jour à chaque tour (coût à jour même si la
 // fonction est arrêtée en route).
-function journalEnCours(db: SupabaseClient, appels: { usage: Record<string, unknown>; modele: string }[]) {
+export function journalEnCours(db: SupabaseClient, appels: { usage: Record<string, unknown>; modele: string }[]) {
   const t0 = Date.now();
   let id: number | null = null;
   return {

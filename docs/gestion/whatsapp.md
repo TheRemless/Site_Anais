@@ -68,6 +68,14 @@ Demande de Jérémy du 20.11.2026 : ne jamais toucher à ce que Nani a classé, 
   5. Claude Haiku lit les derniers messages et répond en JSON : préparer ou non, motif, entreprise suggérée. Il faut à la fois « oui » et un motif de demande (`demande_client` ou `suivi_reservation`) ; dans le doute, non.
 - **Décision visible.** Le motif est gardé sur la conversation (`tri`) et affiché dans l'écran. Un bouton « Préparer une réponse » (fonction `whatsapp-preparer`) prépare quand même, dans les mêmes limites.
 
+## Le ton de Nani (20.11.2026)
+
+Demande de Jérémy : les réponses préparées doivent avoir le ton de Nani, appris de ce qu'elle écrit dans chaque situation (`whatsapp/ton.js`).
+
+- À chaque réponse préparée, l'agent reçoit jusqu'à 8 de ses vraies réponses envoyées depuis l'app, avec le message du client juste avant, dans les conversations de la même entreprise. Les situations proches du message en cours passent d'abord, puis les plus récentes.
+- Il reçoit aussi jusqu'à 5 de ses réécritures : la réponse préparée par l'agent, puis ce que Nani a vraiment envoyé à la place (dans les 6 heures, assez différent). Plus elle corrige, plus les réponses se rapprochent des siennes.
+- Ces exemples servent au ton, à la longueur, aux formules et aux emoji. Les faits (prix, heures, disponibilités) viennent toujours des outils. Numéros et IBAN masqués ; un exemple qui parle de net, de commission ou de compte bancaire est écarté.
+
 ## Étapes de Jérémy (une seule fois)
 
 ### 1. Clé publique de signature

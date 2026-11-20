@@ -854,5 +854,17 @@ function ficheDossierVue(id) {
     barre.classList.add("seulement-mobile", "barre-dossier");
     racine.append(barre);
   }
+  // « Noter un paiement » depuis l'écran WhatsApp (preuve de paiement envoyée par le client) : « #/dossier/<id>?paiement=1 » ouvre la section
+  // des paiements et met le curseur sur le montant, déjà prérempli avec ce qui reste à payer. Après le placement du défilement par app.mjs.
+  if (/[?&]paiement=1(&|$)/.test(location.hash) && droit.paiements)
+    setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+      const form = document.getElementById("form-paiement");
+      if (!form || !form.isConnected) return;
+      const section = form.closest("details");
+      if (section) section.open = true;
+      form.scrollIntoView({ block: "center" });
+      const montant = document.getElementById("p-montant");
+      if (montant) montant.focus({ preventScroll: true });
+    })), 0);
   return racine;
 }

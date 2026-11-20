@@ -179,10 +179,17 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // Les 1 000 propositions les plus récentes suffisent : seule la plus récente de chaque conversation compte à l'écran.
     // reponses et tri (migration 60) : relues sans ces colonnes tant que la migration n'est pas appliquée.
     const COLONNES = "id, created_at, updated_at, organisation_id, telephone, nom, entite_id, entite_source, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus";
+    // resume, resume_le, paiement_signale, promesse_le (migration 62) : relues sans elles tant que la migration n'est pas appliquée.
+    const SUIVI = "resume, resume_le, paiement_signale, promesse_le";
     let triDisponible = true;
+    let suiviDisponible = true;
     const lireConversations = async () => {
       const requete = (colonnes) => sb.from("whatsapp_conversations").select(colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
-      const r = await requete(`${COLONNES}, reponses, tri`);
+      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}`);
+      if (r.error && SUIVI.split(", ").some((c) => colonneAbsente(r.error, c))) {
+        suiviDisponible = false;
+        r = await requete(`${COLONNES}, reponses, tri`);
+      }
       if (r.error && (colonneAbsente(r.error, "reponses") || colonneAbsente(r.error, "tri"))) {
         triDisponible = false;
         return lire("whatsapp_conversations", requete(COLONNES));
@@ -201,6 +208,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       whatsapp_disponible: conversations !== null && reglages !== null,
       whatsapp_propositions_disponible: propositions !== null,
       whatsapp_tri_disponible: conversations !== null && triDisponible,
+      whatsapp_suivi_disponible: conversations !== null && suiviDisponible,
     };
   }
 
@@ -399,6 +407,12 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       if (rep.ok && lu && lu.ok) return lu;
       return { erreur: (lu && lu.erreur) || "inconnu" };
     },
+    // Une conversation WhatsApp relue en base (liaison après validation d'un dossier dans l'Assistant). null : introuvable ou illisible.
+    async whatsappConversation(id) {
+      const { data, error } = await sb.from("whatsapp_conversations").select("id, entite_id, client_id, dossier_id").eq("id", id).maybeSingle();
+      if (error) throw new Error(error.message);
+      return data || null;
+    },
     // Le statut d'une proposition, relu après un refus d'écriture (déjà traitée ailleurs, ou une autre erreur).
     async whatsappProposition(id) {
       const { data, error } = await sb.from("whatsapp_propositions").select("id, statut").eq("id", id).maybeSingle();
@@ -457,7 +471,10 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // ---- Agent de l'onglet « Assistant » (migration 52, fonction « agent ») ---------------------------------------------------------------
     // Les conversations se lisent et se rangent ici, avec la session de la personne (RLS : seulement les siennes). null avant la migration.
     async agentConversations(entiteId) {
-      const { data, error } = await sb.from("agent_conversations").select("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le").eq("entite_id", entiteId).order("maj_le", { ascending: false }).limit(300);
+      // whatsapp_conversation_id (migration 61) : relue sans elle tant que la migration n'est pas appliquée.
+      const requete = (colonnes) => sb.from("agent_conversations").select(colonnes).eq("entite_id", entiteId).order("maj_le", { ascending: false }).limit(300);
+      let { data, error } = await requete("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le, whatsapp_conversation_id");
+      if (error && colonneAbsente(error, "whatsapp_conversation_id")) ({ data, error } = await requete("id, entite_id, titre, apercu, dossier_id, statut, cree_le, maj_le"));
       return error ? null : data || [];
     },
     async agentAttente(entiteId) {
