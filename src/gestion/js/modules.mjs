@@ -19,7 +19,6 @@ export const MODULES = [
   { id: "du", nom: N_("Dû aux partenaires"), aide: N_("Ce qui reste à payer à chaque partenaire."), ecrans: ["du"], pour: ["excursions"], requiert: "partenaires" },
   { id: "reservations", nom: N_("Réservations et agenda du jour"), aide: N_("Une réservation par service, avec son voucher, et l'agenda sur l'accueil."), ecrans: ["reservations"], pour: ["excursions", "taxi"] },
   { id: "messages", nom: N_("Messages types"), aide: N_("Les messages à copier pour le client et le partenaire."), ecrans: ["messages"], pour: ["excursions", "taxi"] },
-  { id: "demande_collee", nom: N_("Coller une demande"), aide: N_("Un message WhatsApp du client devient un dossier."), ecrans: [], pour: ["excursions", "taxi"] },
   { id: "commissions", nom: N_("Commissions de la veille"), aide: N_("Sur l'accueil, les courses d'hier dont la commission est à demander."), ecrans: [], pour: ["taxi"], requiert: "reservations" },
   { id: "demandes_site", nom: N_("Demandes du site"), aide: N_("Les demandes envoyées par le formulaire du site."), ecrans: ["demandes"], pour: ["excursions", "taxi"], site: true },
   { id: "bandeau_site", nom: N_("Bandeau du site"), aide: N_("Le message affiché en haut des pages du site."), ecrans: ["bandeau"], pour: ["excursions", "taxi"], site: true },

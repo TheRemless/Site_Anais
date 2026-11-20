@@ -85,8 +85,9 @@ export function quand(iso, { maintenant = new Date(), langue = "fr" } = {}) {
 
 // ---- Cartes ---------------------------------------------------------------------------------------------------------------------
 
-// Une carte « dossier » dans la forme que lit « Coller une demande » (celle de la lecture par l'assistant, assistant-calc.mjs,
-// propositionVersDemande) : client, services avec leur ligne de la base, transfert privé hors catalogue à prix libre.
+// Une carte « dossier » dans la forme que lit la fiche de création (views/demande.mjs, par assistant-calc.mjs propositionVersDemande) :
+// client, services avec leur ligne de la base, transfert privé hors catalogue à prix libre. Un prix tapé par la personne dans la conversation
+// (origine « saisi ») devient le prix du transfert privé ; le lieu de pickup proposé devient celui du service.
 export function propositionDepuisCarte(donnees = {}) {
   const c = donnees.client || {};
   return {
@@ -104,6 +105,8 @@ export function propositionDepuisCarte(donnees = {}) {
       offre: s.offre || null,
       alternatives: [],
       confiance: s.offre ? "haute" : "moyenne",
+      prix_libre: !s.offre && s.origine_prix === "saisi" && s.prix !== null && s.prix !== undefined ? Number(s.prix) : null,
+      lieu_pickup: s.lieu_pickup || "",
     })),
     remarques: (donnees.services || [])
       .map((s) => s.remarque)
@@ -148,6 +151,9 @@ export function reservationModifiee(r, donnees = {}) {
       return { ...r, personnes: { ...p, enfants: Number(v) || 0 } };
     case "remarque":
       return { ...r, notes: [r.notes, v].filter(Boolean).join("\n") };
+    // Annulation : le formulaire habituel pose ensuite sa question (retirer de la facture, ou garder) si le service est facturé.
+    case "annulation":
+      return v === "annule" ? { ...r, statut: "annule" } : r;
     default:
       return r;
   }

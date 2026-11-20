@@ -49,13 +49,50 @@ test("liste : ouvertes ou archivées, la plus récente en haut, propositions en 
   assert.equal(titreDepuis("Course Jai Tiki"), "Course Jai Tiki");
 });
 
-test("carte dossier vers « Coller une demande » : transfert privé hors catalogue sans prix, ligne du catalogue gardée", () => {
+test("carte dossier vers la fiche de création : transfert privé hors catalogue sans prix, ligne du catalogue gardée", () => {
   const p = propositionDepuisCarte({ client: { nom: "Claire", hotel: "Hotel Sunset" }, adultes: 2, services: [{ texte: "Course", offre: null, date: "2026-11-21", heure_pickup: "12:30", de: "A", vers: "B", adultes: 2, remarque: "Vol à 20:00" }, { texte: "Ferry", offre: { genre: "trajet", id: "t" }, date: "2026-11-22", heure_pickup: "" }] });
   assert.equal(p.services[0].hors_catalogue, true);
   assert.equal(p.services[0].heure, "12:30");
   assert.deepEqual(p.services[1].offre, { genre: "trajet", id: "t" });
   assert.equal(p.client.adultes, 2);
   assert.equal(p.remarques, "Vol à 20:00");
+});
+
+test("carte dossier : un prix tapé par la personne et le lieu de pickup passent à la fiche, jamais un prix du modèle", async () => {
+  const { propositionVersDemande } = await import("../src/gestion/js/assistant-calc.mjs");
+  const carte = { client: { nom: "Tom" }, adultes: 2, services: [
+    { texte: "Course privée", offre: null, date: "2026-11-21", heure_pickup: "13:20", lieu_pickup: "Jai Tiki Retreat", de: "", vers: "Krabi Nakharin", adultes: 2, prix: 3500, origine_prix: "saisi" },
+    { texte: "Course sans prix", offre: null, date: "2026-11-21", prix: 9999, origine_prix: "a_fixer" },
+  ] };
+  const p = propositionDepuisCarte(carte);
+  assert.equal(p.services[0].prix_libre, 3500);
+  assert.equal(p.services[0].lieu_pickup, "Jai Tiki Retreat");
+  assert.equal(p.services[1].prix_libre, null, "un prix qui ne vient pas de la personne ne passe pas");
+  const { services } = propositionVersDemande(p, { prestations: [], trajets: [], partenaires: [] });
+  assert.equal(services[0].prixLibre, 3500);
+  assert.deepEqual(services[0].transfertLibre, { de: "Jai Tiki Retreat", vers: "Krabi Nakharin" });
+  assert.equal(services[1].prixLibre, null);
+});
+
+test("carte modification : annulation d'un service par le formulaire habituel (statut annulé)", () => {
+  const r = { id: "r", statut: "confirme", personnes: { adultes: 2 } };
+  assert.equal(reservationModifiee(r, { champ: "annulation", valeur: "annule" }).statut, "annule");
+  assert.equal(reservationModifiee(r, { champ: "annulation", valeur: "autre" }).statut, "confirme");
+});
+
+test("Assistant seule entrée : validation d'un geste par le code habituel, Tout valider, passage à l'entreprise de taxi", async () => {
+  const { readFileSync } = await import("node:fs");
+  const lire = (f) => readFileSync(new URL(`../src/gestion/js/${f}`, import.meta.url), "utf8");
+  const agent = lire("views/agent.mjs");
+  assert.match(agent, /ouvrirDemande\(null, preparation\(c\), \{ auto: true, titre: c\.titre, surCree: \(\) => \{\} \}\)/, "dossier : la fiche de création, cachée");
+  assert.match(agent, /formulaireReservation\(valeurs, /, "service et modification : le formulaire de réservation habituel");
+  assert.match(agent, /function toutValider\(btn\)/);
+  assert.match(agent, /envoyerVoucher\(x\)/, "voucher et WhatsApp après validation");
+  assert.match(agent, /demandeDeTaxi\(t, lireMessage\(t, aujourdhui\(\)\)\)/, "Transfer request : passage à Taxi");
+  const fiche = lire("views/demande.mjs");
+  assert.match(fiche, /export function ouvrirDemande\(depuisSite = null, depuisItineraire = null, options = \{\}\)/);
+  assert.match(fiche, /if \(!depuisSite && !depuisItineraire\) return null;/, "plus de saisie libre");
+  assert.match(lire("ui.mjs"), /if \(cache\) fond\.hidden = true;/);
 });
 
 test("cartes service et modification vers le formulaire de réservation", () => {

@@ -200,11 +200,11 @@ export const OUTILS = [
   },
   {
     name: "proposer_modification",
-    description: "Propose de modifier un service réservé (carte à valider) : sa date, son heure ou son lieu de pickup, ses personnes ou une remarque.",
+    description: "Propose de modifier un service réservé (carte à valider) : sa date, son heure ou son lieu de pickup, ses personnes, une remarque, ou son annulation (champ « annulation », valeur « annule »). Un message qui demande plusieurs changements donne une carte par changement, chacune sur son service.",
     input_schema: obj({
       titre: S("Titre court de la carte."),
       reservation: S("Référence R-… rendue par lire_dossier."),
-      champ: { type: "string", enum: ["date", "heure_pickup", "lieu_pickup", "adultes", "enfants", "remarque"] },
+      champ: { type: "string", enum: ["date", "heure_pickup", "lieu_pickup", "adultes", "enfants", "remarque", "annulation"] },
       valeur: S("La nouvelle valeur (AAAA-MM-JJ, HH:MM, texte ou nombre)."),
       raison: S("Pourquoi, en une phrase, pour la personne."),
     }),
@@ -221,6 +221,12 @@ export const OUTILS = [
       marge_min: I("Marge conseillée en minutes, 0 si non donnée."),
       source: S("Qui l'a donnée (« Nani, d'après Mr. Brown »)."),
     }),
+  },
+  {
+    name: "proposer_course",
+    description:
+      "Une confirmation de course de taxi collée par la personne (« New booking confirmation: VIP TAXI LANTA, Name:…, Date:…, Pick-up:… ») : propose d'en faire le dossier et la Booking confirmation. Carte à valider ; l'outil relit lui-même la confirmation (nom, date, heure, lieux, passagers, prix), tu n'as rien à recopier ni à calculer.",
+    input_schema: obj({ titre: S("Titre court de la carte (« Course M. Martin, 21 nov. »)."), debut: S("Les premiers mots de la confirmation, tels qu'ils sont écrits, pour la retrouver dans la conversation.") }),
   },
   {
     name: "proposer_reponse",
@@ -243,7 +249,18 @@ export const OUTILS = [
   ...OUTILS_AMELIORER,
 ];
 export const NOMS_OUTILS = OUTILS.map((o) => o.name);
-export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet", "proposer_import_brochure", ...PROPOSITIONS_AMELIORER];
+export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet", "proposer_import_brochure", ...PROPOSITIONS_AMELIORER, "proposer_course"];
+
+// La confirmation de course dont parle l'agent : le message de la personne qui commence par `debut` (espaces et casse ignorés), sinon le seul
+// message qui ressemble à une confirmation. Le texte part tel que la personne l'a collé, jamais réécrit par le modèle.
+export function confirmationCollee(textes = [], debut = "") {
+  const plat = (t) => String(t || "").replace(/\s+/g, " ").trim().toLowerCase();
+  const d = plat(debut).slice(0, 60);
+  const parDebut = d.length >= 8 ? textes.filter((t) => plat(t).includes(d)) : [];
+  if (parDebut.length) return parDebut[parDebut.length - 1];
+  const ressemblent = textes.filter((t) => /booking confirmation|pick-?\s?up\s*:|name\s*:/i.test(t) && /date\s*:/i.test(t));
+  return ressemblent.length === 1 ? ressemblent[0] : "";
+}
 
 // ---- Contrôle des entrées ---------------------------------------------------------------------------------------------------------
 // Comme une entrée d'utilisateur : un champ oublié prend sa valeur vide ("" ou 0, faux, liste vide ; pour une liste fermée, la première
@@ -660,6 +677,11 @@ export function controlerReponse(message, { signer = false, permisPrix = new Set
 // Construit la carte d'une proposition. `memo` : ce que la conversation a déjà établi (prix et heures rendus par les outils, montants tapés).
 export async function proposer(nom, e, ctx, memo) {
   const tapes = memo.tapes || new Set();
+  if (nom === "proposer_course") {
+    const t = confirmationCollee(memo.textes || [], e.debut);
+    if (!t) return { erreur: "confirmation_introuvable" };
+    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { course: { texte: t.slice(0, 4000) } } };
+  }
   if (nom === "proposer_dossier") {
     const services = [];
     for (const s of (e.services || []).slice(0, 10)) services.push(await serviceDepuis(s, ctx, tapes));
@@ -675,9 +697,10 @@ export async function proposer(nom, e, ctx, memo) {
     const r = trouverRef(e.reservation, ctx.parRef ? await ctx.parRef("reservations", e.reservation) : await ctx.charger("reservations"));
     if (!r) return { erreur: "reservation_introuvable" };
     const v = texte(e.valeur, 300);
-    const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), remarque: !!v }[e.champ];
+    const ok = { date: dateValide(v), heure_pickup: heureValide(v), lieu_pickup: !!v, adultes: /^\d{1,2}$/.test(v), enfants: /^\d{1,2}$/.test(v), remarque: !!v, annulation: v === "annule" }[e.champ];
     if (!ok) return { erreur: "valeur_invalide" };
-    const avant = { date: r.date_service || "", heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "", adultes: String((r.personnes || {}).adultes ?? ""), enfants: String((r.personnes || {}).enfants ?? ""), remarque: "" }[e.champ];
+    if (e.champ === "annulation" && r.statut === "annule") return { erreur: "deja_annule" };
+    const avant = { date: r.date_service || "", heure_pickup: r.heure_pickup || "", lieu_pickup: r.lieu_pickup || "", adultes: String((r.personnes || {}).adultes ?? ""), enfants: String((r.personnes || {}).enfants ?? ""), remarque: "", annulation: r.statut || "" }[e.champ];
     return { genre: "modification", titre: texte(e.titre, 120), donnees: { reservation_id: r.id, dossier_id: r.dossier_id, libelle: texte(r.libelle, 160), champ: e.champ, avant, valeur: v, raison: texte(e.raison, 240) } };
   }
   if (nom === "proposer_temps_trajet") {
@@ -758,7 +781,7 @@ export async function executer(nom, entree, ctx, memo) {
       const carte = await proposer(nom, entree, ctx, memo);
       if (carte.erreur) return { contenu: { erreur: carte.erreur, ...(carte.conseil ? { conseil: carte.conseil } : {}) }, erreur: true };
       // Ce qui repart chez Claude : la carte est affichée, rien n'est fait. Les prix retenus, pour qu'il ne les répète pas faux.
-      const prix = carte.genre === "dossier" ? carte.donnees.services.map((s) => ({ service: s.texte, prix: s.prix, origine: s.origine_prix })) : carte.genre === "reservation" ? [{ service: carte.donnees.service.texte, prix: carte.donnees.service.prix, origine: carte.donnees.service.origine_prix }] : undefined;
+      const prix = carte.genre === "dossier" && carte.donnees.services ? carte.donnees.services.map((s) => ({ service: s.texte, prix: s.prix, origine: s.origine_prix })) : carte.genre === "reservation" ? [{ service: carte.donnees.service.texte, prix: carte.donnees.service.prix, origine: carte.donnees.service.origine_prix }] : undefined;
       const connu = carte.genre === "brochure" ? { partenaire_au_catalogue: !carte.donnees.nouveau } : {};
       return { contenu: { carte_affichee: true, etat: "en attente de validation par la personne", ...connu, ...(prix ? { prix } : {}), ...(carte.avertissements && carte.avertissements.length ? { avertissements: carte.avertissements } : {}) }, carte };
     }
@@ -776,7 +799,7 @@ export async function executer(nom, entree, ctx, memo) {
 // Ce que la conversation sait déjà : les prix et heures rendus par les outils des échanges précédents (relus depuis les messages enregistrés)
 // et les montants tapés par la personne. Sert à contrôler la réponse au client.
 export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", prenoms = [] } = {}) {
-  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), signer, prestataires, entreprise, prenoms };
+  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], signer, prestataires, entreprise, prenoms };
   const parcourir = (v) => {
     if (Array.isArray(v)) return v.forEach(parcourir);
     if (!v || typeof v !== "object") return;
@@ -809,6 +832,7 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
     const t = m.role === "user" ? (typeof m.content === "string" ? m.content : (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ")) : "";
     for (const x of t.matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)) memo.heures.add(`${x[1].padStart(2, "0")}:${x[2]}`);
     for (const d of dureesTapees([t])) memo.durees.add(d);
+    if (t.trim()) memo.textes.push(t);
   }
   // Les estimations web déjà rendues dans la conversation restent utilisables (résultats d'estimer_temps_web).
   const outils = new Map();

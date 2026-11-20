@@ -1,4 +1,4 @@
-import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher, confirmationPermise, clientsProposes, clientEtranger, etiquetteClient } from "./etat.mjs";
+import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher, clientsProposes, clientEtranger, etiquetteClient } from "./etat.mjs";
 import { MODULES, moduleDeLEcran } from "./modules.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
 import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons, confirmer } from "./ui.mjs";
@@ -331,10 +331,9 @@ function ouvrirNouveau() {
     h(
       "div",
       { class: "modal-corps" },
-      choix("dossiers", tr("Nouveau dossier"), modeExcursions() ? tr("Un client, un ou plusieurs services") : tr("Un client, un voyage, un devis"), va("#/dossiers/nouveau")),
-      moduleActif("demande_collee") ? choix("messages", tr("Coller une demande"), tr("Un message WhatsApp du client devient un dossier"), async () => (fermer(), (await import("./views/demande.mjs")).ouvrirDemande())) : null,
-      // Confirmation de course collée (Jérémy, 18.11.2026) : administratrices seulement, dossier et Booking confirmation d'un bouton.
-      confirmationPermise() ? choix("whatsapp", tr("Coller une confirmation"), tr("« New booking confirmation » : le dossier et la Booking confirmation, d'un coup"), async () => (fermer(), (await import("./views/confirmation.mjs")).ouvrirConfirmation())) : null
+      // L'Assistant d'abord (20.11.2026) : une demande ou une confirmation collée y devient un dossier, la seule entrée pour les deux.
+      agentVisible() ? choix("assistant", tr("Assistant"), tr("Collez une demande ou une confirmation : l'assistant prépare le dossier"), va("#/agent/nouvelle")) : null,
+      choix("dossiers", tr("Nouveau dossier"), modeExcursions() ? tr("Un client, un ou plusieurs services") : tr("Un client, un voyage, un devis"), va("#/dossiers/nouveau"))
     ),
     { protege: false }
   );
@@ -428,9 +427,6 @@ function noterRecent(r) {
     // stockage refusé : pas de récents
   }
 }
-// « Coller une confirmation » dans la recherche : une fenêtre, pas un écran (pas d'adresse, jamais dans les récents).
-const ouvrirConfirmation = async () => (await import("./views/confirmation.mjs")).ouvrirConfirmation();
-const actionConfirmation = () => ({ groupe: tr("Actions"), icone: "whatsapp", titre: tr("Coller une confirmation"), detail: tr("Dossier et Booking confirmation d'une confirmation de course"), href: "", action: ouvrirConfirmation });
 // Tous les mots saisis doivent apparaître. Sans saisie : les récents, les derniers dossiers et la liste des écrans.
 function chercher(q) {
   const mots = sansAccents(q).split(/\s+/).filter(Boolean);
@@ -439,12 +435,11 @@ function chercher(q) {
     const recents = lireRecents().map((r) => ({ ...r, groupe: tr("Récents") }));
     const dejaVus = new Set(recents.map((r) => r.href));
     const derniers = resumes().sort((a, b) => b.dossier.created_at.localeCompare(a.dossier.created_at)).slice(0, 5).map(resultatDossier).filter((r) => !dejaVus.has(r.href));
-    const action = [...(peut("dossiers.ecrire") ? [{ groupe: tr("Actions"), icone: "ajouter", titre: tr("Nouveau dossier"), href: "#/dossiers/nouveau" }] : []), ...(confirmationPermise() ? [actionConfirmation()] : [])];
+    const action = [...(peut("dossiers.ecrire") ? [{ groupe: tr("Actions"), icone: "ajouter", titre: tr("Nouveau dossier"), href: "#/dossiers/nouveau" }] : [])];
     return [...recents, ...action, ...derniers, ...tousEcrans().map(resultatEcran)];
   }
   const out = [];
   if (peut("dossiers.ecrire") && mots.every((m) => sansAccents(tr("Nouveau dossier")).includes(m))) out.push({ groupe: tr("Actions"), icone: "ajouter", titre: tr("Nouveau dossier"), href: "#/dossiers/nouveau" });
-  if (confirmationPermise() && mots.every((m) => sansAccents(`${tr("Coller une confirmation")} booking taxi`).includes(m))) out.push(actionConfirmation());
   resumes()
     .filter((r) => correspond(sansAccents(`${nomClient(r.client)} ${r.dossier.ref} ${r.dossier.pays} ${r.dossier.bandeau}`)))
     .sort((a, b) => b.dossier.created_at.localeCompare(a.dossier.created_at))
@@ -491,8 +486,6 @@ function ouvrirRecherche() {
   const ouvrir = (r) => {
     if (!r) return;
     fermer();
-    // Une action qui ouvre une fenêtre (« Coller une confirmation ») plutôt qu'un écran.
-    if (r.action) return void r.action();
     noterRecent(r);
     naviguer(r.href);
   };
@@ -715,7 +708,7 @@ function ouvrirAide() {
       "div",
       { class: "modal-corps" },
       h("h3", null, tr("Partout, hors d'un champ de saisie")),
-      tableau([ligne(["?"], N_("Afficher cette aide")), ligne(["n"], N_("Nouveau dossier")), confirmationPermise() ? ligne(["b"], N_("Coller une confirmation (Booking confirmation)")) : null, ligne(["/"], N_("Rechercher un client, un dossier ou un écran")), ligne([`${mod}+K`], N_("Rechercher (aussi dans un champ)")), ligne(["g", "t"], N_("Aujourd'hui")), ligne(["g", "d"], N_("Dossiers")), ligne(["g", "c"], N_("Clients")), moduleActif("catalogue") ? ligne(["g", "k"], N_("Catalogue")) : null, ligne(["g", "f"], N_("Tâches")), ligne(["g", "v"], N_("Vue d'ensemble des sociétés")), ligne(["g", "r"], N_("Réglages (administrateurs)")), ligne(["g", "a"], N_("Analyses")), ligne(["g", "j"], N_("Journal d'activité")), ligne(["g", "m"], N_("Administration (administratrice générale)")), ligne([tr("Échap")], N_("Fermer une fenêtre"))]),
+      tableau([ligne(["?"], N_("Afficher cette aide")), ligne(["n"], N_("Nouveau dossier")), ligne(["/"], N_("Rechercher un client, un dossier ou un écran")), ligne([`${mod}+K`], N_("Rechercher (aussi dans un champ)")), ligne(["g", "t"], N_("Aujourd'hui")), ligne(["g", "d"], N_("Dossiers")), ligne(["g", "c"], N_("Clients")), moduleActif("catalogue") ? ligne(["g", "k"], N_("Catalogue")) : null, ligne(["g", "f"], N_("Tâches")), ligne(["g", "v"], N_("Vue d'ensemble des sociétés")), ligne(["g", "r"], N_("Réglages (administrateurs)")), ligne(["g", "a"], N_("Analyses")), ligne(["g", "j"], N_("Journal d'activité")), ligne(["g", "m"], N_("Administration (administratrice générale)")), ligne([tr("Échap")], N_("Fermer une fenêtre"))]),
       // Taxi n'ouvre aucun document à modifier ; Secret n'a que des factures.
       modeTaxi() ? null : h("h3", null, modeExcursions() ? tr("Dans une facture") : tr("Dans un devis ou une facture")),
       modeTaxi() ? null : tableau([ligne([`${mod}+Z`], N_("Annuler la dernière modification")), ligne([`${mod}+${tr("Maj")}+Z`], mac ? N_("Rétablir") : N_("Rétablir (ou Ctrl+Y)")), ligne([`${mod}+S`], N_("Enregistrer tout de suite")), ligne([`${mod}+P`], N_("Télécharger le PDF"))]),
@@ -743,7 +736,6 @@ document.addEventListener("keydown", (e) => {
     sequence = "g";
     setTimeout(() => (sequence = null), 1200);
   } else if (k === "n") (e.preventDefault(), (location.hash = "#/dossiers/nouveau"));
-  else if (k === "b" && confirmationPermise()) (e.preventDefault(), ouvrirConfirmation());
   else if (k === "?") (e.preventDefault(), ouvrirAide());
   else if (k === "/") (e.preventDefault(), ouvrirRecherche());
 });

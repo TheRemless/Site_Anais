@@ -1,5 +1,6 @@
-// « Coller une confirmation » (Jérémy, 18.11.2026), pour Jérémy et les administratrices : la confirmation de course écrite sur WhatsApp
-// (« 📢 New booking confirmation: VIP TAXI LANTA, Name:…, Date:… ») devient un dossier et sa Booking confirmation, d'un collage et d'un bouton.
+// Confirmation de course (Jérémy, 18.11.2026) : la confirmation écrite sur WhatsApp (« 📢 New booking confirmation: VIP TAXI LANTA, Name:…,
+// Date:… ») devient un dossier et sa Booking confirmation. Depuis le 20.11.2026 elle n'a plus d'entrée à elle : on la colle dans l'onglet
+// Assistant, l'agent en fait une carte « Course » dont cette fenêtre est la validation (d'un geste, `auto`, ou affichée pour corriger).
 // Lecture : confirmation-calc.mjs. Création : creation-course.mjs, la même que l'écran « Nouveau voucher » de Mook. Rien n'est envoyé tout seul :
 // l'image se partage ou se télécharge d'un geste, le dossier s'ouvre d'un lien.
 import { etat, naviguer, changerEntite, entitesAccessibles, reglagesDe, permissionsDe, nomClient, clientsPartages, sigleDe, organisationActiveId } from "../etat.mjs";
@@ -35,8 +36,11 @@ const ERREURS = {
 
 const entreprises = (marque) => entreprisesConfirmation({ entites: entitesAccessibles(), reglages: (id) => reglagesDe(id), permissions: (id) => permissionsDe(id), marque });
 
-// `texteInitial` : une confirmation déjà collée ailleurs (« Coller une demande » propose la bascule), lue dès l'ouverture.
-export function ouvrirConfirmation(texteInitial = "") {
+// `texteInitial` : la confirmation collée dans l'Assistant, lue dès l'ouverture. `options` : { auto, surCree }. `auto` crée sans afficher la
+// fenêtre si tout est lu (champs valides, entreprise trouvée, client sans ambiguïté) et rend { ok, fait } ; sinon rien n'est créé et la
+// fenêtre rend { ok: false, motif }. `surCree(fait)` prend la suite d'une création.
+export function ouvrirConfirmation(texteInitial = "", options = {}) {
+  const auto = !!options.auto;
   const depart = etat.entiteId;
   let fermer;
   let essai = { clientId: null, dossierId: null, entite: null };
@@ -208,13 +212,14 @@ export function ouvrirConfirmation(texteInitial = "") {
   async function creer() {
     const e = verifier(true);
     const premiere = Object.keys(champs).find((c) => e[c]);
-    if (premiere) return champs[premiere].focus();
+    if (premiere) return champs[premiere].focus(), { ok: false, motif: tr("À compléter : {champ}.", { champ: (blocChamps.querySelector(`label[for="cc-${premiere}"]`) || {}).textContent || premiere }) };
     const cible = entrepriseChoisie();
-    if (!cible) return toast(tr("Choisissez l'entreprise du dossier."), true);
+    if (!cible) return toast(tr("Choisissez l'entreprise du dossier."), true), { ok: false, motif: tr("Choisissez l'entreprise du dossier.") };
     // Des fiches au même nom sont proposées sans présélection : il faut en choisir une, ou « Créer un nouveau client ».
     if (fichesAffichees && !choixClient()) {
       blocClient.scrollIntoView({ block: "center" });
-      return toast(tr("Choisissez le client : une des fiches proposées, ou « Créer un nouveau client »."), true);
+      toast(tr("Choisissez le client : une des fiches proposées, ou « Créer un nouveau client »."), true);
+      return { ok: false, motif: tr("Plusieurs fiches ressemblent à ce client : choisissez la bonne.") };
     }
     // Une autre entreprise que lors du premier essai : on repart de zéro (le client et le dossier déjà créés appartiennent à l'autre).
     if (essai.entite !== cible) essai = { clientId: null, dossierId: null, entite: cible };
@@ -230,12 +235,15 @@ export function ouvrirConfirmation(texteInitial = "") {
       const x = donneesVoucher({ ...v, client_id: existant });
       const fait = await creerCourse(x, essai, { notes: champs.notes.value.trim() });
       resultat(fait);
+      if (options.surCree) options.surCree(fait);
+      return { ok: true, fait };
     } catch (err) {
       console.error(err);
       const nom = (entitesAccessibles().find((x) => x.id === cible) || {}).nom || "";
       etatCreation.replaceChildren(h("p", { class: "cc-erreur" }, tr("La création dans {entreprise} n'a pas abouti : {message}. Rien n'est créé deux fois : réessayez.", { entreprise: nom, message: err.message })));
       bouton.disabled = false;
       bouton.textContent = tr("Créer le dossier et la Booking confirmation");
+      return { ok: false, motif: tr("La création dans {entreprise} n'a pas abouti : {message}.", { entreprise: nom, message: err.message }) };
     }
   }
 
@@ -243,52 +251,76 @@ export function ouvrirConfirmation(texteInitial = "") {
   function resultat(v) {
     const d = v.dossier;
     const ouvrir = h("button", { class: "principal", type: "button", onclick: () => (fermer(), naviguer(`#/dossier/${d.id}`)) }, tr("Ouvrir le dossier {ref}", { ref: d.ref || "" }));
-    const image = h("div", { class: "cc-image" }, h("p", { class: "aide" }, tr("Préparation de l'image…")));
-    const actions = h("div", { class: "actions" });
-    const message = h("div", { role: "status" });
-    corps.replaceChildren(
-      h("p", { class: "cc-succes" }, icone("coche", 20), tr("Dossier {ref} créé pour {nom}, le {date}.", { ref: d.ref || "", nom: nomClient(v.client), date: formatDate(v.reservation.date_service) })),
-      image,
-      message,
-      actions,
-      h("div", { class: "actions" }, ouvrir)
-    );
-    imageVoucher({ reservation: v.reservation, prestation: null, type: v.type || "transfert", index: v.index || 1, numero: v.numero }, { client: v.client, dossier: d, resume: null })
-      .then((blob) => {
-        const nom = nomFichierVoucher(v.numero || numeroVoucher(d.ref || "", v.index || 1), nomClient(v.client), { taxi: estBookingConfirmation(v.reservation, v.type, etat.db.reglages) });
-        const fichier = new File([blob], nom, { type: "image/png" });
-        const url = URL.createObjectURL(blob);
-        image.replaceChildren(h("img", { src: url, alt: "Booking confirmation" }));
-        const chemin = moyen([fichier]);
-        const dire = (t, erreur = false) => message.replaceChildren(h("p", { class: erreur ? "cc-erreur" : "aide" }, t));
-        // replaceChildren écrirait « null » : seulement les boutons qui ont un sens sur cet appareil.
-        actions.replaceChildren(...[
-          chemin === "natif"
-            ? h("button", { class: "secondaire", type: "button", onclick: async () => {
-                const r = await partager([fichier]);
-                if (r !== "ok" && r !== "annule") dire(tr("Le partage n'a pas abouti : téléchargez l'image."), true);
-              } }, icone("whatsapp", 18), tr("Partager (WhatsApp…)"))
-            : null,
-          chemin === "ordinateur"
-            ? h("button", { class: "secondaire", type: "button", onclick: async () => dire((await copierImage(fichier)).ok ? tr("Image copiée : collez-la dans WhatsApp.") : tr("Copie impossible : téléchargez l'image."), false) }, tr("Copier l'image"))
-            : null,
-          h("button", { class: "secondaire", type: "button", onclick: () => enregistrer([fichier]) }, tr("Télécharger l'image")),
-        ].filter(Boolean));
-      })
-      .catch((err) => image.replaceChildren(h("p", { class: "cc-erreur" }, tr("L'image n'a pas pu être faite ({message}) : elle reste disponible depuis le dossier.", { message: err.message }))));
+    corps.replaceChildren(h("p", { class: "cc-succes" }, icone("coche", 20), tr("Dossier {ref} créé pour {nom}, le {date}.", { ref: d.ref || "", nom: nomClient(v.client), date: formatDate(v.reservation.date_service) })), blocBookingConfirmation(v), h("div", { class: "actions" }, ouvrir));
   }
 
   const corps = h(
     "div",
     { class: "modal-corps confirmation-collee" },
-    h("p", { class: "aide" }, tr("Collez la confirmation de course telle qu'elle est écrite sur WhatsApp. L'entreprise se lit sur la ligne de marque (VIP TAXI LANTA, SECRET TRAVEL & TOUR), Taxi par défaut.")),
+    h("p", { class: "aide" }, tr("La confirmation de course telle qu'elle est écrite sur WhatsApp. L'entreprise se lit sur la ligne de marque (VIP TAXI LANTA, SECRET TRAVEL & TOUR), Taxi par défaut.")),
     h("div", { class: "champ" }, h("label", { for: "cc-texte" }, tr("Confirmation")), zone),
     apercu
   );
   // Fermée après une création dans une autre entreprise : l'écran se redessine dans celle du dossier.
-  fermer = modal(tr("Coller une confirmation"), corps, { large: true, protege: false, ferme: () => etat.entiteId !== depart && window.dispatchEvent(new HashChangeEvent("hashchange")) });
+  // Fermée après une création dans une autre entreprise : l'écran se redessine dans celle du dossier.
+  fermer = modal(tr("Confirmation de course"), corps, { large: true, protege: false, cache: auto, ferme: () => etat.entiteId !== depart && window.dispatchEvent(new HashChangeEvent("hashchange")) });
   if (typeof texteInitial === "string" && texteInitial.trim()) {
     zone.value = texteInitial;
     lire();
   } else zone.focus();
+  if (!auto) return Promise.resolve({ ok: false, ouverte: true });
+  // D'un geste : seulement si tout est lu sans doute. Sinon rien n'est créé, la carte garde le motif et propose d'ouvrir la fenêtre.
+  return (async () => {
+    const e = lu ? verifier(false) : { texte: "e_vide" };
+    const premiere = Object.keys(champs).find((c) => e[c]);
+    const motif = !lu
+      ? tr("Rien de lu dans cette confirmation.")
+      : premiere
+        ? tr("À compléter : {champ}.", { champ: (blocChamps.querySelector(`label[for="cc-${premiere}"]`) || {}).textContent || premiere })
+        : !entrepriseChoisie()
+          ? tr("Choisissez l'entreprise du dossier.")
+          : entrepriseChoisie() !== etat.entiteId
+            ? tr("Cette course est pour {entreprise} : passez-y pour la créer.", { entreprise: (entitesAccessibles().find((x) => x.id === entrepriseChoisie()) || {}).nom || "" })
+          : fichesAffichees && !choixClient()
+            ? tr("Plusieurs fiches ressemblent à ce client : choisissez la bonne.")
+            : "";
+    // D'un geste, jamais dans une autre entreprise que celle de la conversation : la carte propose d'y passer.
+    const autre = entrepriseChoisie() && entrepriseChoisie() !== etat.entiteId ? entitesAccessibles().find((x) => x.id === entrepriseChoisie()) || null : null;
+    const r = motif ? { ok: false, motif } : await creer();
+    fermer();
+    return r && r.ok ? r : { ok: false, motif: (r && r.motif) || motif || tr("Le dossier n'a pas pu être créé."), ...(autre ? { entreprise: { id: autre.id, nom: autre.nom } } : {}) };
+  })();
+}
+
+// La Booking confirmation d'une course créée (`fait` de creerCourse) : l'image avec de quoi la partager, la copier ou la télécharger.
+// Aussi sous la carte de l'Assistant une fois la course validée.
+export function blocBookingConfirmation(v) {
+  const d = v.dossier;
+  const image = h("div", { class: "cc-image" }, h("p", { class: "aide" }, tr("Préparation de l'image…")));
+  const actions = h("div", { class: "actions" });
+  const message = h("div", { role: "status" });
+  imageVoucher({ reservation: v.reservation, prestation: null, type: v.type || "transfert", index: v.index || 1, numero: v.numero }, { client: v.client, dossier: d, resume: null })
+    .then((blob) => {
+      const nom = nomFichierVoucher(v.numero || numeroVoucher(d.ref || "", v.index || 1), nomClient(v.client), { taxi: estBookingConfirmation(v.reservation, v.type, etat.db.reglages) });
+      const fichier = new File([blob], nom, { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      image.replaceChildren(h("img", { src: url, alt: "Booking confirmation" }));
+      const chemin = moyen([fichier]);
+      const dire = (t, erreur = false) => message.replaceChildren(h("p", { class: erreur ? "cc-erreur" : "aide" }, t));
+      // replaceChildren écrirait « null » : seulement les boutons qui ont un sens sur cet appareil.
+      actions.replaceChildren(...[
+        chemin === "natif"
+          ? h("button", { class: "secondaire", type: "button", onclick: async () => {
+              const r = await partager([fichier]);
+              if (r !== "ok" && r !== "annule") dire(tr("Le partage n'a pas abouti : téléchargez l'image."), true);
+            } }, icone("whatsapp", 18), tr("Partager (WhatsApp…)"))
+          : null,
+        chemin === "ordinateur"
+          ? h("button", { class: "secondaire", type: "button", onclick: async () => dire((await copierImage(fichier)).ok ? tr("Image copiée : collez-la dans WhatsApp.") : tr("Copie impossible : téléchargez l'image."), false) }, tr("Copier l'image"))
+          : null,
+        h("button", { class: "secondaire", type: "button", onclick: () => enregistrer([fichier]) }, tr("Télécharger l'image")),
+      ].filter(Boolean));
+    })
+    .catch((err) => image.replaceChildren(h("p", { class: "cc-erreur" }, tr("L'image n'a pas pu être faite ({message}) : elle reste disponible depuis le dossier.", { message: err.message }))));
+  return h("div", { class: "cc-resultat" }, image, message, actions);
 }

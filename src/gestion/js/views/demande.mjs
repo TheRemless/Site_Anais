@@ -1,8 +1,9 @@
-// « Coller une demande » : le client écrit à Anaïs sur WhatsApp, le message arrive à sa façon ou depuis le formulaire du site. On le colle ici :
-// l'outil reconnaît la date, les personnes, l'hôtel, le client et le service cité, cherche le prix dans la base partenaires, et crée le dossier
-// d'un tap. Tout ce qui a été reconnu se corrige sur place, et le prix suit.
-import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, entitesAccessibles, changerEntite, confirmationPermise, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
-import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
+// Fiche de création d'un dossier (ancien écran « Coller une demande », sans zone de collage depuis le 20.11.2026 : l'onglet Assistant est
+// la seule entrée, décision de Jérémy). Elle reçoit une demande déjà lue : une demande du formulaire du site (« Demandes du site ») ou une
+// carte « Nouveau dossier » de l'agent. Elle montre le client, les services avec leur prix de la base, les zones de pickup, les champs du
+// voucher. Elle crée client, dossier, facture et réservations. Tout se corrige sur place ; le prix suit. Une carte validée d'un geste passe
+// par la même fiche sans l'afficher (`auto`) : la fiche ne s'ouvre que s'il manque quelque chose, avec le motif.
+import { etat, exemple, entiteActive, reglages, modeExcursions, modeTaxi, nomPartenaire, partenaireDe, netPrestation, netTrajet, peut, naviguer, nomClient, clientParId, clientsProposes, chargerHotelsLieux, zoneDeHotel } from "../etat.mjs";
 import { h, modal, toast, champ } from "../ui.mjs";
 import { aujourdhui, formatMontant } from "../calc.mjs";
 import { lireMessage, offresDuService, decouperServices, varsReponse, langueReponse, notesDemande, separerNom, clientsProches } from "../demande-calc.mjs";
@@ -16,12 +17,11 @@ import { creerDossierExcursions, langueDocuments, refProposee, refExiste, refDef
 import { tr, N_, pluriel } from "../i18n.mjs";
 import { servicesCreation, saisieVide, nonVides, boutsDuTrajet, trajetIncomplet, ligneRetourDepart, ligneTransfertPrive } from "../creation-voucher-calc.mjs";
 import { blocServiceCreation, ERREURS_TRAJET } from "./champs-voucher.mjs";
-import { boutonLireIA, badgeConfiance, assistantDisponible } from "./assistant-demande.mjs";
+import { badgeConfiance } from "./assistant-demande.mjs";
 import { offresRecalculees } from "../assistant-calc.mjs";
 import { RETOUR_DEPART, dureeFrancais } from "../trajet-calc.mjs";
 import { partenaireDeTaxi, chauffeurRegle } from "../voucher-rapide-calc.mjs";
 import { imposerTotal } from "../demandes-site-calc.mjs";
-import { ressembleAConfirmation } from "../confirmation-calc.mjs";
 
 // Brouillon passé à l'écran « Nouveau dossier » : lu une seule fois.
 let brouillon = null;
@@ -39,29 +39,6 @@ const AVERTISSEMENTS = {
   enfant_non_compte: N_("Tarif par adulte sans prix enfant : les enfants ne sont pas comptés."),
   supplement_a_definir: N_("Prix de la personne supplémentaire à définir dans la base : le prix ne compte que la base."),
   groupe_hors_tranche: N_("Le groupe ne tient dans aucune tranche de ce tarif : prix à vérifier avec le prestataire."),
-};
-
-// Le message collé est gardé sur l'appareil jusqu'à la création du dossier : un appel ou un changement d'écran ne le perd pas.
-const CLE_BROUILLON = "gestion-brouillon-demande";
-// Au-delà de douze heures il est abandonné : « demain » ne doit pas être relu à une autre date.
-const DUREE_BROUILLON = 12 * 3600 * 1000;
-const garde = {
-  lire: () => {
-    try {
-      const b = JSON.parse(localStorage.getItem(CLE_BROUILLON) || "null");
-      return b && typeof b.texte === "string" && Date.now() - b.le < DUREE_BROUILLON ? b.texte : "";
-    } catch {
-      return "";
-    }
-  },
-  ecrire: (texte) => {
-    try {
-      if (texte) localStorage.setItem(CLE_BROUILLON, JSON.stringify({ texte, le: Date.now() }));
-      else localStorage.removeItem(CLE_BROUILLON);
-    } catch {
-      /* stockage refusé : la saisie reste dans la page */
-    }
-  },
 };
 
 // Quantité d'une prestation selon son unité (les bébés ne comptent pas).
@@ -111,9 +88,14 @@ function lignesSite(d) {
 // la réponse au client se prépare après la création) ; une fois le dossier créé, `surCree({ dossier, services, total })` prend la suite.
 // `depuisItineraire` (écran « Prix et horaires », carte de l'onglet Assistant) : { texte, d, services, surCree? } déjà prêts, un service par trajet dont l'horaire est choisi, avec l'hôtel
 // de départ (`hotelDepart`) comme lieu de pickup. Le message du client est repris tel quel, les services ne sont pas relus.
-export function ouvrirDemande(depuisSite = null, depuisItineraire = null) {
-  // Branchée directement sur un bouton (`onclick: ouvrirDemande`), la fonction reçoit l'événement du clic : ce n'est pas une demande du site.
+// `options` (carte de l'agent) : { titre, auto, surCree }. `auto` crée sans afficher la fiche et rend { ok, dossier } ; s'il manque quelque
+// chose (prix d'un transfert privé, service à choisir, retour sans programme…), rien n'est créé et la fiche rend { ok: false, motif }.
+// `surCree({ dossier, services, total })` prend la suite d'une création, d'un geste ou depuis la fiche affichée.
+export function ouvrirDemande(depuisSite = null, depuisItineraire = null, options = {}) {
   if (!depuisSite || typeof depuisSite.texte !== "string") depuisSite = null;
+  // Plus de saisie libre : sans demande du site ni demande déjà lue, il n'y a rien à créer (l'onglet Assistant lit les messages).
+  if (!depuisSite && !depuisItineraire) return null;
+  const auto = !!options.auto;
   const regl = reglages();
   const devise = regl.devise || "THB";
   const langue = langueDocuments(regl);
@@ -307,6 +289,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null) {
     const sv = { id: ++compteur, coche: true, phrase: "", date: "", heure: "", adultes: d ? d.adultes : 0, enfants: d ? d.enfants : 0, offreId: null, lignesCustom: null, copie: false, noeuds: null, ...base };
     services.push(sv);
     listeBloc.append(construireService(sv));
+    // Prix déjà convenu (tapé par la personne dans la conversation de l'Assistant) : la ligne du transfert privé se fait tout de suite.
+    if (sv.transfertLibre && sv.prixLibre !== null && sv.prixLibre !== undefined) (majLigneLibre(sv), majService(sv));
     return sv;
   }
 
@@ -494,7 +478,15 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null) {
   }
 
   // Création directe : client, dossier, facture et une réservation par service, sans passer par l'écran « Nouveau dossier ».
-  async function creerMaintenant(btn) {
+  // `auto` (carte de l'agent validée d'un geste) : la fiche n'est pas affichée ; un motif d'arrêt la ferme et revient à la carte.
+  async function creerMaintenant(btn, { auto: direct = false } = {}) {
+    if (direct) {
+      const r = await creerMaintenant(btn);
+      if (r && r.ok) return r;
+      const motif = erreur.textContent || tr("Le dossier n'a pas pu être créé.");
+      fermer();
+      return { ok: false, motif };
+    }
     erreur.textContent = "";
     const nouveauClient = !clientId;
     if (nouveauClient && !d.nom.trim()) return (erreur.textContent = tr("Indiquez le nom du client.")), document.getElementById("dem-nom").focus();
@@ -512,15 +504,18 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null) {
     try {
       const numero = await refDefinitive(ref, ref, regl);
       const dossier = await creerDossierExcursions({ client: clientId ? { id: clientId } : { prenom: b.prenom, nom: b.nom, telephone: b.telephone, hotel: b.hotel, chambre: "" }, lignes: b.lignes, notes: b.notes, ref: numero, reservation: b.reservation, parService: b.parService });
-      if (!depuisSite) garde.ecrire("");
       const finals = coches().map((sv) => ({ date: sv.date, heure: sv.heure, adultes: sv.adultes, enfants: sv.enfants, titre: (etatDe(sv).offre || {}).titre || "", total: (etatDe(sv).offre || {}).total ?? null }));
       const somme = b.lignes.filter((l) => l.kind !== "texte").reduce((t, l) => t + (Number(l.unite) || 0) * (Number(l.qte) || 0), 0);
       fermer();
       toast(tr("Dossier {ref} créé.", { ref: dossier.ref }));
-      if (depuisSite && depuisSite.surCree) return void depuisSite.surCree({ dossier, services: finals, total: Math.round(somme * 100) / 100 });
+      const total = Math.round(somme * 100) / 100;
+      if (depuisSite && depuisSite.surCree) return void depuisSite.surCree({ dossier, services: finals, total });
       // Depuis une carte de l'onglet Assistant : la conversation se relie au dossier et garde les corrections (agent.mjs).
-      if (depuisItineraire && depuisItineraire.surCree) return void depuisItineraire.surCree({ dossier });
+      if (depuisItineraire && depuisItineraire.surCree) depuisItineraire.surCree({ dossier });
+      if (options.surCree) options.surCree({ dossier, services: finals, total });
+      if ((depuisItineraire && depuisItineraire.surCree) || options.surCree) return { ok: true, dossier };
       naviguer(`#/dossier/${dossier.id}`);
+      return { ok: true, dossier };
     } catch (err) {
       erreur.textContent = /duplicate|unique|23505/i.test(err.message) ? tr("Ce numéro existe déjà. Réessayez.") : err.message;
       creation = false;
@@ -598,8 +593,6 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null) {
   // Relire le texte : tout ce qui avait été corrigé à la main est perdu, c'est un autre message.
   function lire(valeur) {
     texte = valeur;
-    majVersConfirmation();
-    if (!depuisSite) garde.ecrire(valeur.trim());
     erreur.textContent = "";
     const lu = texte.trim() ? lireMessage(texte, aujourdhui()) : null;
     if (lu) return appliquer(lu, decouperServices(texte, lu, contexte(), aujourdhui()));
@@ -629,97 +622,31 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null) {
     corps.classList.add("lu");
     construire();
     poserLesBoutons();
-    // Demande de transfert du site VIP Taxi Lanta collée dans une autre entreprise : on propose d'y passer, le message est repris là-bas.
-    const taxi = !depuisSite && demandeDeTaxi(texte, d) ? entrepriseTaxi(entitesAccessibles(), (id) => etat.brut.reglages[id], etat.entiteId) : null;
-    if (taxi && peut("dossiers.ecrire")) reconnu.append(h("div", { class: "bandeau-info demande-bascule", role: "status" }, h("p", null, tr("Demande de transfert du site de {nom} : le dossier se crée dans {nom}.", { nom: taxi.nom })), h("button", { class: "principal petit", type: "button", onclick: () => basculer(taxi) }, tr("Passer à {nom}", { nom: taxi.nom }))));
     reconnu.append(champs, dynamique);
     // Rien de reconnu comme service : une ligne « à préciser » plutôt que le silence.
     if (!trouves.length) nouveauService({ phrase: texte.trim().replace(/\s+/g, " ").slice(0, 140), date: d.date || "", heure: d.heure || "" });
-    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, hotelDepart: t.hotelDepart || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
+    for (const t of trouves) nouveauService({ phrase: t.phrase, date: t.date, heure: t.heure, adultes: t.adultes, enfants: t.enfants, vehicule: t.vehicule || "", mode: t.mode || "", copie: !!t.copie, retourDepart: t.retourDepart || null, transfertLibre: t.transfertLibre || null, prixLibre: t.prixLibre ?? null, hotelDepart: t.hotelDepart || "", ...(t.offresIA ? { offresIA: t.offresIA, confiance: t.confiance } : {}) });
     dessinerClient();
     majTotal();
   }
 
-  // Lecture par l'assistant IA (si l'entreprise l'a allumé) : ses services remplacent ceux des règles, tout reste corrigeable avant de créer.
-  const lireIA = boutonLireIA({ texte: () => zone.value, surResultat: (lu) => appliquer(lu.d, lu.services.map((t) => ({ ...t, offresIA: t.offres.map((o) => ({ genre: o.genre, id: o.id })) }))) });
-
-  // Demande de prix et d'horaires d'un itinéraire (plusieurs hôtels) : un écran à part, qui reprend le message collé ici.
-  const versItineraire =
-    !depuisSite && !depuisItineraire && assistantDisponible()
-      ? h("button", { class: "secondaire assistant-bouton", type: "button", onclick: async () => {
-          const t = zone.value;
-          fermer();
-          (await import("./itineraire.mjs")).ouvrirItineraire(t);
-        } }, tr("Prix et horaires d'un itinéraire"))
-      : null;
-
-  const coller = h("button", { class: "secondaire", type: "button", onclick: async () => {
-    try {
-      zone.value = await navigator.clipboard.readText();
-      lire(zone.value);
-    } catch {
-      toast(tr("Le navigateur ne permet pas de coller d'un geste : collez dans le cadre avec un appui long."), true);
-    }
-  } }, tr("Coller"));
-  const effacer = h("button", { class: "lien", type: "button", onclick: () => ((zone.value = ""), lire(""), zone.focus()) }, tr("Effacer"));
-
-  // Filet (18.11.2026) : une confirmation de course collée ici (« New booking confirmation », VIP TAXI LANTA…, Name:, Pick-up…) relève de
-  // « Coller une confirmation ». On le dit et on propose d'y passer avec le même texte ; rien n'est créé d'office, la lecture ici continue.
-  const versConfirmation = h("div", { class: "demande-vers-confirmation", role: "status" });
-  function majVersConfirmation() {
-    const oui = !depuisSite && confirmationPermise() && ressembleAConfirmation(texte, { aujourdhui: aujourdhui() });
-    versConfirmation.replaceChildren(
-      ...(oui
-        ? [
-            h(
-              "div",
-              { class: "bandeau-info" },
-              h("p", null, tr("Ce texte ressemble à une confirmation de course : « Coller une confirmation » en fait le dossier et la Booking confirmation.")),
-              h("button", { class: "principal", type: "button", onclick: async () => {
-                const t = texte;
-                garde.ecrire("");
-                fermer();
-                (await import("./confirmation.mjs")).ouvrirConfirmation(t);
-              } }, tr("Ouvrir « Coller une confirmation » avec ce texte"))
-            ),
-          ]
-        : [])
-    );
-  }
   const corps = h("div", { class: "modal-corps demande" });
-  corps.append(
-    h("p", { class: "aide demande-aide" }, tr("Collez le message du client, tel qu'il est arrivé sur WhatsApp. Chaque service cité est reconnu avec sa date, ses personnes et son prix, et le prix vient de la base.")),
-    h("div", { class: "champ demande-message" }, h("label", { for: "demande-texte" }, tr("Message du client")), zone),
-    ...(depuisSite ? [] : [h("div", { class: "actions gauche" }, coller, effacer)]),
-    ...(lireIA ? [lireIA] : []),
-    ...(versItineraire ? [h("div", { class: "actions gauche" }, versItineraire)] : []),
-    versConfirmation,
-    reconnu
-  );
-  const fermer = modal(depuisSite ? depuisSite.titre : tr("Coller une demande"), corps, { large: true, protege: false });
-  // Le message reste dans le brouillon de l'appareil : la fenêtre rouverte dans l'autre entreprise le relit.
-  function basculer(cible) {
-    garde.ecrire(texte.trim());
-    fermer();
-    changerEntite(cible.id);
-    setTimeout(() => ouvrirDemande(), 300);
-  }
+  // Demande du site : son message reste sous les yeux (il se relit si on le corrige). Carte de l'agent : la demande est déjà lue.
+  corps.append(...(depuisSite ? [h("div", { class: "champ demande-message" }, h("label", { for: "demande-texte" }, tr("Message du client")), zone)] : []), reconnu);
+  const fermer = modal(depuisSite ? depuisSite.titre : options.titre || tr("Créer le dossier"), corps, { large: true, protege: false, cache: auto });
 
   // Hôtels situés (migration 48) : lus en arrière-plan, leurs zones complètent ensuite les propositions de zone de pickup.
   chargerHotelsLieux().then(() => services.forEach((sv) => sv.zones && sv.zones.rafraichir()));
 
-  // Venue de « Prix et horaires » : le message et les trajets choisis, sans relecture (les services sont déjà ceux qu'Anaïs a choisis).
+  // Demande déjà lue (carte de l'agent) : le message et les services, sans relecture. `auto` crée tout de suite, la fiche reste cachée.
   if (depuisItineraire) {
     zone.value = depuisItineraire.texte || "";
     texte = zone.value;
-    garde.ecrire(texte.trim());
     appliquer(depuisItineraire.d, depuisItineraire.services.map((s) => ({ ...s, offresIA: s.offres })));
-    return;
+    if (auto) return creerMaintenant(bouton, { auto: true });
+    return Promise.resolve({ ok: false, ouverte: true });
   }
-  // Demande du site : son message, jamais le brouillon de l'appareil. Sinon, message gardé d'un passage précédent, repris tel quel.
-  const reprise = depuisSite ? depuisSite.texte : garde.lire();
-  if (reprise) {
-    zone.value = reprise;
-    lire(reprise);
-  }
+  zone.value = depuisSite.texte;
+  lire(depuisSite.texte);
+  return null;
 }

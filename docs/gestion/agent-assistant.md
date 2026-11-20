@@ -1,6 +1,25 @@
 # Onglet « Assistant » : l'agent de Gestion (19.11.2026)
 
-On discute avec l'assistant comme sur une messagerie : une conversation par client ou par demande, plusieurs ouvertes en parallèle. Il cherche dans le catalogue, regarde les horaires des bateaux, situe les hôtels, calcule les temps de route et les heures d'une course, retrouve un client ou un dossier, puis **propose** : un dossier, un service à ajouter, une modification, une réponse au client. Chaque proposition est une carte. « Valider » ouvre l'écran habituel de l'outil déjà rempli (« Coller une demande », formulaire de réservation) : c'est cet écran qui enregistre, après le clic de la personne. La réponse au client se copie ; personne n'écrit au prestataire.
+On discute avec l'assistant comme sur une messagerie : une conversation par client ou par demande, plusieurs ouvertes en parallèle. Il cherche dans le catalogue, regarde les horaires des bateaux, situe les hôtels, calcule les temps de route et les heures d'une course, retrouve un client ou un dossier, puis **propose** : un dossier, une course de taxi, un service à ajouter, une modification ou une annulation, une réponse au client. Chaque proposition est une carte. La réponse au client se copie ; personne n'écrit au prestataire.
+
+## La seule entrée (décision de Jérémy du 20.11.2026)
+
+« Coller une demande » et « Coller une confirmation » n'existent plus : on colle le message du client ou la confirmation de course dans l'Assistant. Le « + » met l'Assistant en premier ; sur ordinateur, un bouton « Assistant » remplace les deux boutons « Coller… » ; le raccourci « b », l'action de la recherche, le module « Coller une demande » et l'écran « Prix et horaires d'un itinéraire » sont retirés. L'onglet suit la case « Onglet Assistant » (`agent_ia`) de chaque entreprise.
+
+| Carte | « Valider » enregistre par | Ce qui reste après |
+|---|---|---|
+| Nouveau dossier | la fiche de création (`views/demande.mjs`, sans zone de collage), cachée : prix de la base, enfants, zones de pickup, chauffeur de Taxi, règles des partenaires, prix tapé d'un transfert privé | « Voucher et WhatsApp » (« Booking confirmation et WhatsApp » chez Taxi) : la fenêtre d'envoi habituelle, image et wa.me ; le dossier |
+| Course (confirmation collée) | la fenêtre de confirmation (`views/confirmation.mjs`), cachée ; administratrices seulement, comme avant ; jamais depuis une demande de client | la Booking confirmation (image, partager, copier, télécharger) ; le dossier |
+| Service à ajouter, modification, annulation | le formulaire de réservation habituel, caché (facture qui suit, question d'annulation d'un service facturé) | |
+| Temps de trajet | la table des temps | |
+
+S'il manque quelque chose (prix d'un transfert privé, service à choisir, fiche client ambiguë, champ illisible), rien n'est créé : la carte garde le motif et « Vérifier avant » ouvre la fenêtre pour corriger. « Tout valider » fait de même pour toutes les cartes en attente (sauf la réponse, qui se copie) : celles qui passent sont validées, celle qui échoue garde son motif. La conversation se relie au dossier créé.
+
+Une « Transfer request » du site de l'entreprise de taxi collée dans une autre entreprise : un bandeau propose de passer à l'entreprise de taxi, le message attend dans une nouvelle conversation. Une course pour une autre entreprise : la carte propose d'y passer.
+
+« Demandes du site » garde sa fiche de création (le même moteur), ouverte depuis la demande. Le tri des messages (branche `claude/assistant-trier`) n'est pas repris : il servait à choisir l'écran à ouvrir, l'agent lit le message lui-même.
+
+L'agent propose aussi, quand le séjour laisse des jours libres, une excursion du catalogue au prix de vente, en une ligne, sans jamais parler de marge.
 
 ## Ce qui part chez Anthropic, ce qui n'y part jamais
 
