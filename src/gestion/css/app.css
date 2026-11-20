@@ -1871,6 +1871,129 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .cc-candidat > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
 .cc-repere { flex-basis: 100%; color: var(--texte-2); font-size: 0.9rem; font-weight: 400; overflow-wrap: anywhere; }
 
+/* ---- Onglet « Assistant » (agent, 19.11.2026) ----------------------------------------------------------------------------------
+   Téléphone : la liste, puis le fil en plein écran, saisie collée en bas au-dessus des onglets. Ordinateur : liste à gauche, fil à droite.
+   La frise d'une course est l'élément fort : les heures alignées sur un rail, comme un tableau de départs. */
+.agent-liste-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.agent-liste-tete h1 { margin: 0; }
+.agent-liste-tete .principal { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+.agent-conversations { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--bord); }
+.agent-conv { display: grid; gap: 2px; padding: 12px 4px; min-height: 64px; border-bottom: 1px solid var(--bord); color: var(--texte); text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.agent-conv:hover { background: var(--surface-2); color: var(--texte); }
+.agent-conv[aria-current] { background: var(--teal-100); }
+.agent-conv-ligne { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.agent-conv-ligne strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-conv time { flex: none; font-size: 0.82rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.agent-conv-apercu { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92rem; color: var(--texte-2); }
+.agent-pastille { flex: none; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--teal-700); color: #fff; font-size: 0.78rem; font-weight: 700; line-height: 22px; text-align: center; }
+.agent-liste-vide { margin-top: 16px; }
+.agent-archives { margin-top: 12px; }
+
+.agent-fil { display: none; }
+.agent.avec-fil .agent-liste { display: none; }
+.agent.avec-fil .agent-fil { display: flex; flex-direction: column; min-height: calc(100dvh - var(--haut-barre) - var(--barre-basse) - 40px); }
+.agent.avec-fil .agent-messages { flex: 1; }
+.agent-fil-tete { position: sticky; top: var(--haut-barre); z-index: 5; display: flex; align-items: center; gap: 6px; margin: -16px -16px 0; padding: 6px 8px; background: rgba(245, 248, 248, 0.94); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-bottom: 1px solid var(--bord); }
+.agent-fil-titre { flex: 1; min-width: 0; }
+.agent-fil-titre h2 { margin: 0; font-size: 1.02rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-dossier { font-size: 0.86rem; }
+.agent-retour { width: 44px; height: 44px; }
+.agent-messages { display: flex; flex-direction: column; gap: 14px; padding: 16px 0 8px; }
+.agent-bulle p { margin: 0 0 0.6em; }
+.agent-bulle p:last-child { margin-bottom: 0; }
+.agent-bulle.de-personne { align-self: flex-end; max-width: 85%; padding: 10px 14px; background: var(--teal-100); border-radius: 16px 16px 4px 16px; overflow-wrap: anywhere; }
+.agent-bulle.de-agent { align-self: flex-start; max-width: 68ch; line-height: 1.55; overflow-wrap: anywhere; }
+.agent-etape { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--texte-2); font-size: 0.92rem; }
+.agent-point { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); animation: agent-pouls 1.2s ease-in-out infinite; }
+@keyframes agent-pouls { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .agent-point { animation: none; } }
+.agent-erreur { margin: 0; padding: 8px 12px; border-radius: var(--rayon); background: var(--danger-fond); color: var(--danger); }
+.agent-saisie { position: sticky; bottom: var(--barre-basse); z-index: 5; display: flex; align-items: flex-end; gap: 8px; margin: 0 -16px; padding: 8px 16px; background: rgba(245, 248, 248, 0.96); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-top: 1px solid var(--bord); }
+.agent-saisie textarea { flex: 1; min-height: 44px; max-height: 220px; padding: 10px 12px; font-size: 16px; line-height: 1.4; resize: none; border-radius: 22px; }
+.agent-envoyer { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+.agent-vide { padding: 8px 0; color: var(--texte-2); }
+.agent-suggestions { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.agent-suggestions button { width: 100%; min-height: 44px; text-align: left; font-weight: 400; white-space: normal; }
+.agent-menu { display: grid; gap: 8px; }
+.agent-menu button { min-height: 44px; }
+.agent-choix-dossier { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 6px; }
+.agent-choix-dossier button { width: 100%; text-align: left; }
+
+/* Frise d'une course */
+.agent-frise { margin: 0; padding: 14px 16px 12px; background: var(--surface); border: 1px solid var(--bord); border-radius: 10px; max-width: 34rem; }
+.agent-frise figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; font-weight: 600; }
+.agent-simule { padding: 1px 8px; border-radius: 999px; border: 1px solid #d9b45a; background: #fff4d6; color: #6b4a00; font-size: 0.8rem; font-weight: 600; }
+.agent-frise ol { list-style: none; margin: 0; padding: 0; }
+.agent-point-course { position: relative; display: grid; grid-template-columns: 4.1em 1fr; gap: 14px; padding-bottom: 18px; }
+.agent-point-course:last-child { padding-bottom: 0; }
+/* Le rail : un trait entre les points, un rond sur chaque point (plein au pickup, cerclé au rendez-vous). */
+.agent-point-course::before { content: ""; position: absolute; left: calc(4.1em + 6px); top: 0.55em; bottom: -0.55em; width: 2px; background: var(--teal-100); }
+.agent-point-course:last-child::before { display: none; }
+.agent-point-course::after { content: ""; position: absolute; left: calc(4.1em + 2px); top: 0.42em; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); border: 2px solid var(--teal-600); }
+.agent-point-course.depart::after { background: var(--teal-700); border-color: var(--teal-700); }
+.agent-point-course.rdv::after { box-shadow: 0 0 0 3px var(--teal-100); }
+.agent-heure { font-size: 1.45rem; font-weight: 700; line-height: 1.1; color: var(--texte); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.agent-point-course.depart .agent-heure { color: var(--teal-700); }
+.agent-lieu { display: grid; gap: 2px; padding-left: 14px; min-width: 0; }
+.agent-lieu strong { overflow-wrap: anywhere; }
+.agent-lieu span { font-size: 0.9rem; color: var(--texte-2); }
+.agent-lieu .agent-trajet { margin-top: 6px; font-size: 0.84rem; }
+.agent-vol { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0 0; padding: 8px 12px; border-radius: var(--rayon); font-weight: 600; }
+.agent-vol svg { flex: none; margin-top: 2px; }
+.agent-vol.tenable { background: var(--teal-100); color: var(--teal-700); }
+.agent-vol.juste { background: #fff4d6; color: #5a4300; }
+.agent-vol.pas_tenable { background: var(--danger-fond); color: var(--danger); }
+.agent-hypotheses { margin-top: 10px; font-size: 0.86rem; color: var(--texte-2); }
+.agent-hypotheses summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+.agent-hypotheses ul { margin: 4px 0 0; padding-left: 18px; }
+
+/* Cartes à valider */
+.agent-carte { max-width: 34rem; padding: 12px 16px 14px; background: var(--surface); border: 1px solid var(--bord); border-left: 3px solid var(--teal-600); border-radius: 10px; }
+.agent-carte header { margin-bottom: 8px; }
+.agent-carte-genre { font-size: 0.84rem; color: var(--teal-700); font-weight: 600; }
+.agent-carte h3 { margin: 2px 0 0; font-size: 1.02rem; }
+.agent-carte p { margin: 0 0 8px; }
+.agent-carte-client { color: var(--texte-2); }
+.agent-services { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+.agent-services li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 8px 0; border-top: 1px solid var(--bord); }
+.agent-services li > span:first-child { display: grid; gap: 2px; min-width: 0; }
+.agent-services small { color: var(--texte-2); }
+.agent-prix { flex: none; display: grid; justify-items: end; font-weight: 700; font-variant-numeric: tabular-nums; }
+.agent-prix small { font-weight: 400; font-size: 0.78rem; }
+.agent-prix.vide { padding: 1px 8px; border-radius: 999px; border: 1px dashed var(--bord-fort); color: var(--texte-2); font-weight: 600; font-size: 0.86rem; }
+.agent-modif { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-variant-numeric: tabular-nums; }
+.agent-modif del { color: var(--texte-2); }
+.agent-modif ins { text-decoration: none; font-weight: 700; }
+.agent-reponse { width: 100%; margin-bottom: 10px; font-size: 16px; line-height: 1.45; }
+.agent-carte .actions { margin-top: 4px; }
+.agent-carte .actions button { min-height: 44px; }
+.agent-carte.validee, .agent-carte.ecartee { border-left-color: var(--bord-fort); }
+.agent-carte.ecartee { opacity: 0.7; }
+.agent-carte-sort { display: flex; align-items: center; gap: 6px; margin: 4px 0 0 !important; color: var(--texte-2); font-weight: 600; }
+
+@media (min-width: 900px) {
+  .agent { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 0; height: calc(100dvh - var(--decalage, 80px)); margin: -32px -40px -48px; border-top: 1px solid var(--bord); }
+  .agent-liste, .agent.avec-fil .agent-liste { display: block; overflow-y: auto; padding: 20px 16px; border-right: 1px solid var(--bord); background: var(--surface); }
+  .agent-fil, .agent.avec-fil .agent-fil { display: flex; flex-direction: column; min-height: 0; }
+  .agent-fil-tete { position: static; margin: 0; padding: 10px 20px; }
+  .agent-retour { display: none; }
+  .agent-messages { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px 28px; }
+  .agent-saisie { position: static; margin: 0; padding: 12px 20px; }
+}
+
+/* Temps de trajet de référence (19.11.2026) */
+.temps-modes { display: flex; gap: 6px; margin: 12px 0; }
+.temps-modes button { min-height: 40px; border-radius: 999px; }
+.temps-modes button[aria-selected="true"] { background: var(--teal-100); color: var(--teal-700); box-shadow: inset 0 0 0 1.5px var(--teal-600); }
+.temps-recherche input { width: 100%; max-width: 24rem; min-height: 44px; font-size: 16px; }
+.temps-lignes { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--bord); }
+.temps-ligne { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; width: 100%; min-height: 56px; padding: 10px 4px; background: none; border: 0; border-bottom: 1px solid var(--bord); border-radius: 0; text-align: left; font-weight: 400; color: var(--texte); }
+.temps-ligne:hover { background: var(--surface-2); }
+.temps-paire { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.temps-duree { font-weight: 700; font-variant-numeric: tabular-nums; justify-self: end; }
+.temps-details { grid-column: 1; font-size: 0.86rem; color: var(--texte-2); }
+.temps-ligne .assistant-confiance { grid-column: 2; justify-self: end; align-self: start; }
+.agent-mention { margin: 8px 0 0; font-size: 0.78rem; color: var(--texte-2); }
 /* ==== Importer une brochure (20.11.2026) ======================================================================== */
 /* Une ligne par tarif ou horaire lu : case, statut, puis les prix. L'écart de prix (« 3 900 → 4 200 ») est ce que l'œil doit trouver d'abord. */
 .brochure-choix { flex-wrap: wrap; }

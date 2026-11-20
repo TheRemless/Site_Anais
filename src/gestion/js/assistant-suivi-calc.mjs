@@ -18,6 +18,7 @@ export const USAGES_SUIVIS = [
   ["repondre_itineraire", N_("Itinéraire : rédiger la réponse")],
   ["trier", N_("Trier")],
   ["brochure", N_("Brochure")],
+  ["agent", N_("Onglet Assistant (conversation)")],
   ["rediger", N_("Rédiger (retiré le 19.11.2026)")],
 ];
 
@@ -33,6 +34,7 @@ export const STATUTS = {
   coupe: N_("Réponse coupée (trop longue)"),
   sans_reponse: N_("Pas de réponse utilisable"),
   pause: N_("Recherche web interrompue"),
+  trop_long: N_("Échange trop long, arrêté"),
   occupe: N_("Anthropic occupé"),
   cle_refusee: N_("Clé API refusée"),
   erreur_api: N_("Erreur d'Anthropic"),

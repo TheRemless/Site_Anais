@@ -44,6 +44,12 @@ export function creer() {
     data.fiduciaire_factures = data.fiduciaire_factures || [];
     // Hôtels situés (migration 48), comme la base : une ligne par hôtel et par entreprise.
     data.hotels_lieux = data.hotels_lieux || [];
+    // Conversations de l'agent (migration 52), comme la base : à la personne qui les ouvre.
+    data.agent_conversations = data.agent_conversations || [];
+    data.agent_messages = data.agent_messages || [];
+    data.agent_cartes = data.agent_cartes || [];
+    data.temps_trajets = data.temps_trajets || [];
+    data.liaisons_ferry = data.liaisons_ferry || [];
     // Corbeille des documents et compteurs de numéros, comme la base (migration 34). L'acompte figé du dossier existe comme colonne.
     data.corbeille_documents = data.corbeille_documents || [];
     data.compteurs_ref = data.compteurs_ref || {};
@@ -361,6 +367,127 @@ export function creer() {
       else data.hotels_lieux.push({ id: uid(), cree_le: maj.maj_le, ...maj });
       sauve();
       return structuredClone(data.hotels_lieux.find((l) => l.entite_id === entiteId && l.cle === ligne.cle));
+    },
+    // ---- Agent de l'onglet « Assistant » (migration 52) : en démonstration, un agent simulé (agent-demo.mjs), mêmes événements que la fonction.
+    async agentConversations(entiteId) {
+      return structuredClone(data.agent_conversations.filter((c) => c.entite_id === entiteId && c.user_id === utilisateur.user_id));
+    },
+    async agentAttente(entiteId) {
+      const miennes = new Set(data.agent_conversations.filter((c) => c.entite_id === entiteId && c.user_id === utilisateur.user_id).map((c) => c.id));
+      return data.agent_cartes.filter((c) => miennes.has(c.conversation_id) && c.statut === "proposee").map((c) => ({ conversation_id: c.conversation_id }));
+    },
+    async agentFil(id) {
+      const c = data.agent_conversations.find((x) => x.id === id && x.user_id === utilisateur.user_id);
+      if (!c) return null;
+      return { messages: structuredClone(data.agent_messages.filter((m) => m.conversation_id === id)), cartes: structuredClone(data.agent_cartes.filter((x) => x.conversation_id === id)) };
+    },
+    async agentMajConversation(id, patch) {
+      const c = data.agent_conversations.find((x) => x.id === id && x.user_id === utilisateur.user_id);
+      if (!c) throw new Error("Conversation introuvable");
+      for (const k of ["titre", "statut", "dossier_id"]) if (k in patch) c[k] = patch[k];
+      sauve();
+      return structuredClone(c);
+    },
+    async agentSupprimerConversation(id) {
+      data.agent_conversations = data.agent_conversations.filter((x) => !(x.id === id && x.user_id === utilisateur.user_id));
+      data.agent_messages = data.agent_messages.filter((m) => m.conversation_id !== id || data.agent_conversations.some((c) => c.id === id));
+      data.agent_cartes = data.agent_cartes.filter((m) => m.conversation_id !== id || data.agent_conversations.some((c) => c.id === id));
+      sauve();
+    },
+    async agentCarte(id, statut) {
+      const c = data.agent_cartes.find((x) => x.id === id);
+      if (!c || !data.agent_conversations.some((v) => v.id === c.conversation_id && v.user_id === utilisateur.user_id)) throw new Error("Carte introuvable");
+      if (c.statut !== statut) (c.statut = statut), (c.decide_le = new Date().toISOString());
+      sauve();
+      return structuredClone(c);
+    },
+    async tempsTrajets(entiteId) {
+      return structuredClone(data.temps_trajets.filter((l) => l.entite_id === entiteId));
+    },
+    async enregistrerTempsTrajets(entiteId, lignes) {
+      const perms = permissionsDans(contexte(), entiteId);
+      if (!perms.includes("partenaires.lire") || !perms.includes("dossiers.ecrire")) throw new Error("Droit insuffisant");
+      const out = [];
+      for (const l of lignes) {
+        const maj = { ...l, entite_id: entiteId, maj_le: new Date().toISOString(), maj_par: utilisateur.user_id };
+        const avant = data.temps_trajets.find((x) => x.entite_id === entiteId && x.mode === l.mode && x.cle === l.cle);
+        if (avant) Object.assign(avant, maj);
+        else data.temps_trajets.push({ id: uid(), cree_le: maj.maj_le, ...maj });
+        out.push(structuredClone(data.temps_trajets.find((x) => x.entite_id === entiteId && x.mode === l.mode && x.cle === l.cle)));
+      }
+      sauve();
+      return out;
+    },
+    async supprimerTempsTrajet(id) {
+      data.temps_trajets = data.temps_trajets.filter((l) => l.id !== id);
+      sauve();
+    },
+    // La démonstration ne garde aucun itinéraire OpenStreetMap : rien à effacer.
+    async oublierItineraires() {},
+    async liaisonsFerry(entiteId) {
+      return structuredClone(data.liaisons_ferry.filter((l) => l.entite_id === entiteId));
+    },
+    async enregistrerLiaisonFerry(entiteId, l) {
+      const perms = permissionsDans(contexte(), entiteId);
+      if (!perms.includes("partenaires.lire") || !perms.includes("dossiers.ecrire")) throw new Error("Droit insuffisant");
+      const maj = { ...l, entite_id: entiteId, maj_le: new Date().toISOString() };
+      const avant = data.liaisons_ferry.find((x) => x.entite_id === entiteId && x.cote_ile === l.cote_ile);
+      if (avant) Object.assign(avant, maj);
+      else data.liaisons_ferry.push({ id: uid(), ...maj });
+      sauve();
+      return structuredClone(data.liaisons_ferry.find((x) => x.entite_id === entiteId && x.cote_ile === l.cote_ile));
+    },
+    async supprimerLiaisonFerry(id) {
+      data.liaisons_ferry = data.liaisons_ferry.filter((l) => l.id !== id);
+      sauve();
+    },
+    async agentEnvoyer(corps, surEvenement) {
+      const e = corps.entite_id;
+      const regl = data.reglages[e] || {};
+      if (!regl.agent_ia) return { erreur: "agent_eteint" };
+      const perms = permissionsDans(contexte(), e);
+      if (!["partenaires.lire", "dossiers.ecrire"].every((p) => perms.includes(p))) return { erreur: "droit_manquant" };
+      const texte = String(corps.texte || "").trim();
+      if (!texte) return { erreur: "message_invalide" };
+      let conv = corps.conversation_id ? data.agent_conversations.find((c) => c.id === corps.conversation_id && c.user_id === utilisateur.user_id) : null;
+      const maintenant = () => new Date(Date.now() + data.agent_messages.length).toISOString();
+      if (!conv) {
+        const { titreDepuis } = await import("./agent-calc.mjs");
+        conv = { id: uid(), entite_id: e, user_id: utilisateur.user_id, titre: titreDepuis(texte), apercu: "", dossier_id: corps.dossier_id || null, statut: "ouverte", cree_le: maintenant(), maj_le: maintenant(), demo_etat: {} };
+        data.agent_conversations.push(conv);
+      }
+      const message = (role, contenu) => data.agent_messages.push({ id: data.agent_messages.length + 1, conversation_id: conv.id, role, contenu, cree_le: maintenant() });
+      surEvenement({ t: "conversation", id: conv.id, titre: conv.titre, dossier_id: conv.dossier_id });
+      message("user", [{ type: "text", text: texte }]);
+      const { repondreDemo } = await import("./agent-demo.mjs");
+      const entite = data.entites.find((x) => x.id === e) || {};
+      const r = await repondreDemo(texte, { aujourdhui: aujourdhui(), etat: conv.demo_etat || {}, entreprise: entite.nom || "", signer: !regl.fonctionnement || regl.fonctionnement === "sur_mesure", lignes: data.temps_trajets.filter((l) => l.entite_id === e), liaisons: data.liaisons_ferry.filter((l) => l.entite_id === e), hotels: data.hotels_lieux.filter((l) => l.entite_id === e) });
+      conv.demo_etat = r.etat;
+      let dernier = "";
+      for (const ev of r.evenements) {
+        await new Promise((ok) => setTimeout(ok, ev.t === "etape" ? 500 : 150));
+        if (ev.t === "planning") {
+          // Comme la fonction : l'appel d'outil et son résultat restent dans l'historique, la frise se relit à la réouverture.
+          const outil = uid();
+          message("assistant", [{ type: "tool_use", id: outil, name: "planifier_course", input: {} }]);
+          message("user", [{ type: "tool_result", tool_use_id: outil, content: JSON.stringify(ev.planning) }]);
+        }
+        if (ev.t === "texte") {
+          message("assistant", [{ type: "text", text: ev.delta }]);
+          dernier = ev.delta;
+        }
+        if (ev.t === "carte") {
+          const carte = { id: uid(), conversation_id: conv.id, statut: "proposee", cree_le: maintenant(), decide_le: null, ...ev.carte };
+          data.agent_cartes.push(carte);
+          ev.carte = structuredClone(carte);
+        }
+        surEvenement(ev);
+      }
+      conv.maj_le = maintenant();
+      conv.apercu = (dernier || texte).replace(/\s+/g, " ").slice(0, 200);
+      sauve();
+      surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "simulation" });
+      return { ok: true };
     },
     // Suivi de l'assistant : comme la base, les lignes des entreprises où la personne lit le journal, plus les siennes. Le journal fictif est
     // créé à la première ouverture de l'écran (demo-assistant.mjs).
