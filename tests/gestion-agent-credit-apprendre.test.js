@@ -209,9 +209,7 @@ test("prompt : bloc des corrections choisi par le premier message, stable, en ca
 
 test("agent : les corrections lues avant l'ouverture de la conversation, dans l'entreprise", () => {
   const agent = lire("supabase/functions/agent/index.ts");
-  // Dans l'entreprise, ou dans les deux en espace unifié Secret et Taxi (migration 63).
-  assert.match(agent, /dans\(sb\.from\("agent_apprentissages"\)\.select\("id, genre, contexte, avant, apres, cree_le"\)\)\.lte\("cree_le", conv!\.cree_le/);
-  assert.match(agent, /const dans = \(q: any, colonne = "entite_id"\) => \(unifie \? q\.in\(colonne, idsEntites\) : q\.eq\(colonne, entiteId\)\)/);
+  assert.match(agent, /from\("agent_apprentissages"\)\.select\("id, genre, contexte, avant, apres, cree_le"\)\.eq\("entite_id", entiteId\)\.lte\("cree_le", conv!\.cree_le/);
   assert.match(agent, /tourner\(\{ anthropic, modele, systeme, appris, contexte/);
 });
 

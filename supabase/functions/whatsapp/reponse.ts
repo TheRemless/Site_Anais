@@ -7,15 +7,15 @@
 // Secret et Taxi, anglais sauf client francophone. Une seule carte possible : proposer_reponse. Ce qui part chez Anthropic : le texte des
 // derniers messages, le prénom du client, ce que rendent les outils de lecture. Jamais le numéro de téléphone.
 // Budget : compté dans le plafond du mois de l'assistant (assistant_journal, usage « whatsapp »), l'agent doit être allumé (agent_ia).
-// Espace unifié (migration 63, agent/unifie.js) : quand l'agent est allumé chez Secret ET chez Taxi, la préparation cherche dans les deux
+// Espace unifié (migration 63, agent/unifie.js) : avec le secret AGENT_UNIFIE=1 et l'agent allumé chez Secret ET chez Taxi, la préparation cherche dans les deux
 // catalogues et lit les corrections des deux, toujours limitée à ces deux entreprises et sans aucun droit sur les partenaires ni les nets
 // (ctx.permissions et permissionsPar vides). Les dossiers lus restent ceux reliés à la conversation.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { DUREE_MAX_MS, MODELE_DEFAUT, ligneJournal, signe } from "../agent/prompt.js";
+import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, DUREE_MAX_MS, MODELE_DEFAUT, apprentissagesUnifies, ligneJournal, signe } from "../agent/prompt.js";
 import { clesHotelPossibles, memoDepuis, prefixeRef } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
-import { modeUnifieSansDroits } from "../agent/unifie.js";
+import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
@@ -174,10 +174,12 @@ async function preparer(
     return echecVisible(db, conv.id, messageId, ent.id, "agent_eteint");
   }
 
-  // Espace unifié : l'autre entreprise (Secret ou Taxi) entre seulement si son agent est allumé aussi.
-  const autre = (entites || []).find((e) => e.id !== ent.id) || null;
-  const reglagesAutre = autre ? ((await db.from("reglages").select("valeur").eq("entite_id", autre.id).maybeSingle()).data || { valeur: null }).valeur : null;
-  const unifie = autre && reglagesAutre && reglagesAutre.agent_ia === true ? modeUnifieSansDroits({ active: ent, autre }) : null;
+  // Espace unifié : le secret AGENT_UNIFIE=1 ; l'autre entreprise (Secret ou Taxi) seulement si son agent est allumé aussi.
+  const interrupteur = Deno.env.get("AGENT_UNIFIE") || "";
+  const autre = unifieAllume(interrupteur) ? (entites || []).find((e) => e.id !== ent.id) || null : null;
+  const lu = autre ? await db.from("reglages").select("valeur").eq("entite_id", autre.id).maybeSingle() : null;
+  const reglagesAutre = lu && !lu.error && lu.data ? lu.data.valeur : null;
+  const unifie = autre ? modeUnifieSansDroits({ active: ent, autre, reglagesAutre, interrupteur }) : null;
   const ids = unifie ? unifie.entites.map((e) => e.id) : [ent.id];
 
   // La proposition encore à faire est remplacée ; la nouvelle naît « en_cours » (l'écran affiche « en préparation »).
@@ -191,7 +193,12 @@ async function preparer(
     const client = conv.client_id && conv.entite_id === ent.id ? (await db.from("clients").select("prenom").eq("id", conv.client_id).eq("entite_id", ent.id).maybeSingle()).data : null;
     const dossier = conv.dossier_id && conv.entite_id === ent.id ? (await db.from("dossiers").select("id, ref").eq("id", conv.dossier_id).eq("entite_id", ent.id).maybeSingle()).data : null;
     const prestataires = ((await ctx.charger("partenaires")) as { nom: string }[]).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
-    const lus = await db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").in("entite_id", ids).order("cree_le", { ascending: false }).limit(80);
+    // Espace unifié : 60 corrections de l'entreprise active ; de l'autre, seulement les réponses au client (20), marquées de leur entreprise.
+    const [lus, lusAutre] = await Promise.all([
+      db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", ent.id).order("cree_le", { ascending: false }).limit(unifie ? APPRIS_LUS_ACTIVE : 80),
+      unifie && autre ? db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", autre.id).eq("genre", "reponse").order("cree_le", { ascending: false }).limit(APPRIS_LUS_AUTRE) : Promise.resolve(null),
+    ]);
+    const lignesAppris = unifie && autre ? apprentissagesUnifies({ actives: lus.data || [], autres: lusAutre && !lusAutre.error ? lusAutre.data || [] : [], nomActive: ent.nom, nomAutre: autre.nom }) : lus.data || [];
     if (lus.error && !tableAbsente(lus.error)) console.error("whatsapp : apprentissages", lus.error.message);
     // Mêmes consignes, voix, règles de réponse et corrections apprises que l'onglet Assistant (proposer.js, promptPreparation).
     const ton = await tonDeNani(db, ent.id, conv.id, messages).catch((err) => {
@@ -199,13 +206,13 @@ async function preparer(
       return "";
     });
     const unifieConsignes = unifie && autre ? { entreprises: [{ nom: ent.nom, slug: ent.slug, reglages }, { nom: autre.nom, slug: autre.slug, reglages: reglagesAutre }] } : null;
-    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lus.data || [], messages, nomProfil: conv.nom || "", client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes });
+    const { systeme, appris, contexte, texte, ra } = promptPreparation({ entreprise: ent.nom, reglages, apprentissages: lus.error ? [] : lignesAppris, messages, nomProfil: conv.nom || "", client, dossier, aujourdhui: dateBangkok(), ton, unifie: unifieConsignes });
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
     const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, entreprises: unifie && autre ? [autre.nom] : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
     // Garde-fou de la PR 278 : un montant égal à un net de l'entreprise (et à aucun prix de vente) est signalé « montant_interne » et bloque
     // la copie dans l'écran. Les nets restent ici, dans la fonction : ils ne partent jamais chez Claude.
-    memo.internes = await netsDe(ctx);
+    memo.internes = await netsDe(db, ids);
     const r = await tourner({
       anthropic,
       modele: Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT,
@@ -295,10 +302,23 @@ export function journalEnCours(db: SupabaseClient, appels: { usage: Record<strin
   };
 }
 
-// Les nets de l'entreprise (prestations et trajets), en nombres : seulement pour repérer un montant interne dans la réponse.
-// deno-lint-ignore no-explicit-any
-async function netsDe(ctx: any) {
-  const [p, t] = await Promise.all([ctx.charger("prestations_nets"), ctx.charger("trajets_nets")]);
+// Les nets de l'entreprise (des deux en espace unifié), prestations et trajets, en nombres : seulement pour repérer un montant interne dans
+// la réponse. Lus par une requête à part, jamais par ctx.charger : les outils ne voient aucun net ici, donc aucun drapeau « recommande »
+// tiré d'un net (revue de la PR 288).
+async function netsDe(db: SupabaseClient, ids: string[]) {
+  // Par pages de 1000 lignes (limite d'une réponse de la base), 20 000 au plus par table.
+  const toutes = async (table: string, colonnes: string) => {
+    // deno-lint-ignore no-explicit-any
+    const lignes: any[] = [];
+    for (let de = 0; de < 20000; de += 1000) {
+      const { data, error } = await db.from(table).select(colonnes).in("entite_id", ids).range(de, de + 999);
+      if (error || !data) break;
+      lignes.push(...data);
+      if (data.length < 1000) break;
+    }
+    return lignes;
+  };
+  const [p, t] = await Promise.all([toutes("prestations_nets", "net, net_enfant"), toutes("trajets_nets", "net_adulte, net_enfant")]);
   const s = new Set<number>();
   // deno-lint-ignore no-explicit-any
   for (const n of [...(p as any[]), ...(t as any[])]) for (const v of [n.net, n.net_enfant, n.net_adulte]) if (v !== null && v !== undefined && Number(v) > 0) s.add(Number(v));
@@ -318,10 +338,8 @@ function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any, { c
     prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id, entite_id",
     trajets: "id, de, vers, mode, depart, arrivee, duree, prix_adulte, prix_enfant, bebe, periode, fenetres, actif, partenaire_id, entite_id",
     partenaires: "id, nom, actif, regles, entite_id",
-    // Les nets : lus seulement par le contrôle de la réponse (netsDe). Les outils ne les rendent jamais ici : ctx.permissions est vide,
-    // donc ni partenaire ni net ni commission ne partent chez Claude (outils.js, voitPartenaires et voitNets).
-    prestations_nets: "prestation_id, net, net_enfant",
-    trajets_nets: "trajet_id, net_adulte, net_enfant",
+    // Aucune table de nets : charger les rend vides (aucun drapeau « recommande » tiré d'un net sans droit). Le contrôle de la réponse les
+    // lit à part (netsDe). ctx.permissions est vide : ni partenaire ni net ni commission ne partent chez Claude.
     hotels_lieux: "cle, nom, lieu, zone, localite, source_url, certitude, verifie",
     temps_trajets: "de, vers, mode, duree_min, ferry, marge_min, source, source_date, a_verifier",
     liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",

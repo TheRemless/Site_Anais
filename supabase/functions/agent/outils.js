@@ -13,7 +13,7 @@
 //   - espace unifié Secret et Taxi (unifie.js, migration 63) : chaque ligne porte son entreprise, ses nets et son partenaire suivent les
 //     droits de la personne dans l'entreprise de CETTE ligne, chaque service d'une carte porte son entreprise. Sans ce mode, rien ne change.
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
-import { ENTREPRISES_UNIFIEES, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
+import { ENTREPRISES_UNIFIEES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
 import { texteDuree } from "./planifier.js";
 import { OUTILS_AMELIORER, PROPOSITIONS_AMELIORER, lireReglages, proposerReglage, proposerAmelioration } from "./ameliorer.js";
@@ -57,6 +57,28 @@ export const trouverRef = (ref, lignes) => {
   if (!p) return null;
   return (lignes || []).find((l) => String(l.id).replace(/-/g, "").toLowerCase().startsWith(p)) || null;
 };
+// Plusieurs lignes possibles pour une même référence (un numéro de dossier n'est unique que dans une entreprise) : en mode unifié, celle de
+// l'entreprise active ; s'il en reste plusieurs, { plusieurs } et l'outil demande lequel au lieu d'en choisir un au hasard. Hors de ce mode,
+// la première, comme avant. `ctx` : le contexte des outils (ou l'objet du mode unifié, côté fonction).
+export function choisirLigne(candidats = [], ctx = null) {
+  const uniques = [...new Map((candidats || []).filter(Boolean).map((c) => [c.id, c])).values()];
+  if (uniques.length <= 1 || !estUnifie(ctx)) return { ligne: uniques[0] || null };
+  const ici = uniques.filter((c) => c.entite_id === ctx.entites[0].id);
+  if (ici.length === 1) return { ligne: ici[0] };
+  return { ligne: null, plusieurs: ici.length ? ici : uniques };
+}
+// Les dossiers d'une référence : par la référence courte D-…, sinon par le numéro (« 2026-0142 »).
+export function candidatsDossier(ref, dossiers = []) {
+  const p = prefixeRef(ref);
+  const parPrefixe = p ? (dossiers || []).filter((l) => String(l.id).replace(/-/g, "").toLowerCase().startsWith(p)) : [];
+  return parPrefixe.length ? parPrefixe : (dossiers || []).filter((x) => sansAccents(x.ref) === sansAccents(ref).trim());
+}
+const plusieursDossiers = (ctx, lignes) => ({
+  erreur: "plusieurs_dossiers",
+  dossiers: lignes.slice(0, 5).map((d) => ({ dossier: refDe("D", d.id), reference: texte(d.ref, 30), ...marqueEntreprise(ctx, d.entite_id) })),
+  conseil: "Ce numéro existe dans plusieurs dossiers : demande à la personne lequel, puis relis-le par sa référence D-….",
+});
+
 export function prefixeRef(ref) {
   const m = /^([A-Z])-([0-9a-f]{8})$/i.exec(String(ref || "").trim());
   return m ? m[2].toLowerCase() : null;
@@ -546,15 +568,20 @@ export async function horairesTrajet(e, ctx) {
     const a = adultes || enfants ? adultes : 1;
     return a * (pa - na) + (enfants > 0 && pe !== null && ne !== null ? enfants * (pe - ne) : 0);
   };
+  // Par entreprise puis par compagnie (mode unifié) : la marge de Secret ne se compare pas à celle de Taxi, comme dans chercherCatalogue.
+  const cleCie = (t) => `${t.entite_id || ""}|${t.partenaire_id || ""}`;
   const parCie = new Map();
   for (const t of ok) {
     const m = marge(t);
-    const id = t.partenaire_id || "";
+    const id = cleCie(t);
     parCie.set(id, Math.max(parCie.get(id) ?? -Infinity, m ?? -Infinity));
   }
-  const connues = [...parCie.entries()].filter(([, m]) => m > -Infinity);
-  const top = connues.length ? Math.max(...connues.map(([, m]) => m)) : null;
-  const gagnantes = new Set(connues.length > 1 && !connues.every(([, m]) => m === top) ? connues.filter(([, m]) => m === top).map(([id]) => id) : []);
+  const gagnantes = new Set();
+  for (const entite of new Set(ok.map((t) => t.entite_id || ""))) {
+    const connues = [...parCie.entries()].filter(([id, m]) => id.startsWith(`${entite}|`) && m > -Infinity);
+    const top = connues.length ? Math.max(...connues.map(([, m]) => m)) : null;
+    if (connues.length > 1 && !connues.every(([, m]) => m === top)) for (const [id, m] of connues) if (m === top) gagnantes.add(id);
+  }
   // Le groupe : vente, net, marge et commission pour les personnes demandées (une personne si inconnu), même règle que marge().
   const groupe = (t) => {
     const fiche = fiches.get(t.partenaire_id);
@@ -572,7 +599,7 @@ export async function horairesTrajet(e, ctx) {
     return champsInternes(ctx, fiche, { net_adulte: na, net_enfant: ne, net_groupe: net, marge_groupe: m === null ? null : arrondi2(m), commission_groupe: commission, gain_groupe: fiche ? gainDe(fiche.sur_place, m === null ? null : arrondi2(m), commission) : null }, t.entite_id);
   };
   const departs = ok
-    .map((t) => ({ ref: refDe("T", t.id), ...marqueEntreprise(ctx, t.entite_id), de: texte(t.de, 80), vers: texte(t.vers, 80), mode: sansNoms(texte(t.mode, 60), noms), depart: texte(t.depart, 5), arrivee: texte(t.arrivee, 5), duree: texte(t.duree, 30), prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), bebe: texte(t.bebe, 40), ...(gagnantes.has(t.partenaire_id || "") ? { recommande: true } : {}), ...groupe(t) }))
+    .map((t) => ({ ref: refDe("T", t.id), ...marqueEntreprise(ctx, t.entite_id), de: texte(t.de, 80), vers: texte(t.vers, 80), mode: sansNoms(texte(t.mode, 60), noms), depart: texte(t.depart, 5), arrivee: texte(t.arrivee, 5), duree: texte(t.duree, 30), prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), bebe: texte(t.bebe, 40), ...(gagnantes.has(cleCie(t)) ? { recommande: true } : {}), ...groupe(t) }))
     .sort((a, b) => (b.recommande ? 1 : 0) - (a.recommande ? 1 : 0) || a.depart.localeCompare(b.depart));
   return { resultat: { trouve: true, date, departs: departs.slice(0, 20) }, prix: departs.flatMap((d) => [d.prix_adulte, d.prix_enfant]).filter((x) => x !== null), heures: departs.flatMap((d) => [d.depart, d.arrivee]).filter(Boolean) };
 }
@@ -731,7 +758,9 @@ function chiffresService(r, n) {
 
 export async function lireDossier(e, ctx) {
   const [dossiers, clients, reservations, netsLus] = ctx.dossierPour ? await ctx.dossierPour(e.dossier) : await Promise.all([ctx.charger("dossiers"), ctx.charger("clients"), ctx.charger("reservations"), voitNetsQuelquePart(ctx) ? ctx.charger("reservations_nets") : []]);
-  const d = trouverRef(e.dossier, dossiers) || (dossiers || []).find((x) => sansAccents(x.ref) === sansAccents(e.dossier).trim());
+  const choix = choisirLigne(candidatsDossier(e.dossier, dossiers), ctx);
+  if (choix.plusieurs) return { resultat: plusieursDossiers(ctx, choix.plusieurs) };
+  const d = choix.ligne;
   if (!d) return { resultat: { erreur: "dossier_introuvable" } };
   const c = (clients || []).find((x) => x.id === d.client_id);
   // Les droits qui comptent : ceux de l'entreprise du dossier (mode unifié), sinon ceux de la conversation.
@@ -962,7 +991,11 @@ export async function proposer(nom, e, ctx, memo) {
     return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}) }, ...(avert.length ? { avertissements: avert } : {}) };
   }
   if (nom === "proposer_reservation") {
-    const d = trouverRef(e.dossier, ctx.parRef ? await ctx.parRef("dossiers", e.dossier) : await ctx.charger("dossiers"));
+    const lus = ctx.parRef ? await ctx.parRef("dossiers", e.dossier) : await ctx.charger("dossiers");
+    const p = prefixeRef(e.dossier);
+    const choix = choisirLigne(p ? (lus || []).filter((l) => String(l.id).replace(/-/g, "").toLowerCase().startsWith(p)) : [], ctx);
+    if (choix.plusieurs) return { ...plusieursDossiers(ctx, choix.plusieurs) };
+    const d = choix.ligne;
     if (!d) return { erreur: "dossier_introuvable" };
     // Mode unifié : le service va dans l'entreprise du dossier visé.
     const ent = entrepriseDe(ctx, d.entite_id);
@@ -1033,7 +1066,9 @@ async function proposerImportBrochure(e, ctx) {
   }
   if (!fichiers.length) return { erreur: "fichier_introuvable" };
   if (fichiers.length > 6) return { erreur: "trop_de_fichiers" };
-  const p = e.nouveau ? null : partenaireDepuisNom(e.partenaire, (await ctx.charger("partenaires")) || []);
+  // Espace unifié : la brochure s'importe dans l'entreprise active, son partenaire se cherche seulement là.
+  const active = entrepriseActive(ctx);
+  const p = e.nouveau ? null : partenaireDepuisNom(e.partenaire, ((await ctx.charger("partenaires")) || []).filter((x) => !active || x.entite_id === active.id));
   return {
     genre: "brochure",
     titre: texte(e.titre, 120),
@@ -1057,7 +1092,7 @@ export async function executer(nom, entree, ctx, memo) {
   try {
     if (OUTILS_PROPOSITION.includes(nom)) {
       const carte = await proposer(nom, entree, ctx, memo);
-      if (carte.erreur) return { contenu: { erreur: carte.erreur, ...(carte.conseil ? { conseil: carte.conseil } : {}) }, erreur: true };
+      if (carte.erreur) return { contenu: { erreur: carte.erreur, ...(carte.dossiers ? { dossiers: carte.dossiers } : {}), ...(carte.conseil ? { conseil: carte.conseil } : {}) }, erreur: true };
       // Ce qui repart chez Claude : la carte est affichée, rien n'est fait. Les prix retenus, pour qu'il ne les répète pas faux.
       // Mode unifié : l'entreprise retenue pour chaque service (« » : à choisir par la personne).
       const ent = (x) => ("entreprise" in x ? { entreprise: x.entreprise } : {});

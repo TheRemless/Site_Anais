@@ -243,6 +243,20 @@ const court = (t, n) => {
   const x = String(t || "").replace(/\s+/g, " ").trim();
   return x.length > n ? `${x.slice(0, n - 1).replace(/\s+\S*$/, "")}…` : x;
 };
+// Espace unifié (revue de la PR 288) : les corrections de l'entreprise active d'abord (60 lues au plus) ; de l'autre, seulement celles des
+// réponses au client (20 lues au plus, 3 retenues au plus). Chaque ligne porte le nom de son entreprise, écrit dans le bloc.
+export const APPRIS_LUS_ACTIVE = 60;
+export const APPRIS_LUS_AUTRE = 20;
+export const APPRIS_AUTRE_MAX = 3;
+export function apprentissagesUnifies({ actives = [], autres = [], nomActive = "", nomAutre = "" } = {}) {
+  return [
+    ...(actives || []).slice(0, APPRIS_LUS_ACTIVE).map((l) => ({ ...l, entreprise: nomActive })),
+    ...(autres || [])
+      .filter((l) => l && l.genre === "reponse")
+      .slice(0, APPRIS_LUS_AUTRE)
+      .map((l) => ({ ...l, entreprise: nomAutre, autre: true })),
+  ];
+}
 export function choisirAppris(lignes = [], { premierMessage = "", max = APPRIS_MAX } = {}) {
   const cible = motsDe(premierMessage);
   const propres = (lignes || []).filter((l) => l && l.genre && !MOT_INTERNE_APPRIS.test(`${l.contexte} ${l.avant} ${l.apres}`));
@@ -251,10 +265,14 @@ export function choisirAppris(lignes = [], { premierMessage = "", max = APPRIS_M
   // Au plus quatre du même genre, pour garder des exemples variés.
   const parGenre = new Map();
   const garde = [];
+  let autres = 0;
   for (const l of [...ordre].sort((a, b) => score(b) - score(a) || ordre.indexOf(a) - ordre.indexOf(b))) {
     if (garde.length >= max) break;
     const n = parGenre.get(l.genre) || 0;
     if (n >= 4) continue;
+    // L'autre entreprise (espace unifié) : trois corrections au plus, l'entreprise active garde la place.
+    if (l.autre && autres >= APPRIS_AUTRE_MAX) continue;
+    if (l.autre) autres++;
     parGenre.set(l.genre, n + 1);
     garde.push(l);
   }
@@ -270,12 +288,13 @@ export function blocApprentissages(lignes = [], { qui = "", premierMessage = "",
   let total = 0;
   for (const l of choisis) {
     const n = l.genre === "reponse" ? 360 : 120;
-    const t = `- ${LIBELLES_APPRIS[l.genre] || l.genre}${l.contexte ? ` (${court(l.contexte, 140)})` : ""} : tu avais proposé « ${court(l.avant, n) || "rien"} », ${nom} a mis « ${court(l.apres, n) || "rien"} ».`;
+    const t = `- ${l.entreprise ? `[${court(l.entreprise, 40)}] ` : ""}${LIBELLES_APPRIS[l.genre] || l.genre}${l.contexte ? ` (${court(l.contexte, 140)})` : ""} : tu avais proposé « ${court(l.avant, n) || "rien"} », ${nom} a mis « ${court(l.apres, n) || "rien"} ».`;
     if (total + t.length > caracteres) break;
     lignesTexte.push(t);
     total += t.length;
   }
-  return `Corrections récentes de ${nom} sur tes propositions. Ce sont ses préférences : dans une situation semblable, applique la même logique (marge, arrondi, libellé, tournure). Ce ne sont pas des faits sur le client en cours : un résultat d'outil ou ce que ${nom} dit maintenant l'emporte toujours. Tu ne recopies jamais un nom ou un détail d'un autre client.\n${lignesTexte.join("\n")}`;
+  const marquees = choisis.some((l) => l.entreprise);
+  return `Corrections récentes de ${nom} sur tes propositions. Ce sont ses préférences : dans une situation semblable, applique la même logique (marge, arrondi, libellé, tournure). Ce ne sont pas des faits sur le client en cours : un résultat d'outil ou ce que ${nom} dit maintenant l'emporte toujours. Tu ne recopies jamais un nom ou un détail d'un autre client.${marquees ? " Chaque correction dit son entreprise entre crochets : celles de l'autre entreprise ne valent que pour la tournure d'une réponse au client." : ""}\n${lignesTexte.join("\n")}`;
 }
 
 // Paramètres de l'appel. `messages` : l'historique au format de l'API (blocs de réflexion compris, renvoyés tels quels).

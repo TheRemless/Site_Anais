@@ -5,9 +5,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { OUTILS, OUTILS_UNIFIES, executer, memoDepuis, normaliserEntree, outilsDuContexte, outilsPour, refDe, controlerReponse } from "../supabase/functions/agent/outils.js";
-import { modeUnifie, modeUnifieSansDroits, permissionsOutils, estUnifie } from "../supabase/functions/agent/unifie.js";
-import { consignes } from "../supabase/functions/agent/prompt.js";
-import { REGLE_BATEAUX } from "../supabase/functions/agent/ameliorer.js";
+import { modeUnifie as modeUnifieBrut, modeUnifieSansDroits as sansDroitsBrut, permissionsOutils, estUnifie, unifieAllume } from "../supabase/functions/agent/unifie.js";
+import { consignes, blocApprentissages, apprentissagesUnifies, APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, APPRIS_AUTRE_MAX } from "../supabase/functions/agent/prompt.js";
+import { REGLE_BATEAUX, proposerReglage } from "../supabase/functions/agent/ameliorer.js";
 import { outilsWhatsapp, promptPreparation } from "../supabase/functions/whatsapp/proposer.js";
 
 const ORG = "00000000-0000-0000-0000-00000000a000";
@@ -46,6 +46,10 @@ const donnees = {
   reservations: [{ id: R_TAXI, dossier_id: D_TAXI, libelle: "Lanta → Krabi Airport", date_service: "2026-11-28", heure_pickup: "09:00", lieu_pickup: "Hotel Sunset", personnes: { adultes: 2 }, statut: "confirme", montant_vente: 2500, partenaire_id: PT, paye_sur_place: false, entite_id: TAXI.id }],
   reservations_nets: [{ reservation_id: R_TAXI, net_prevu: 1900, entite_id: TAXI.id }],
 };
+// L'interrupteur allumé (AGENT_UNIFIE=1) et l'agent allumé dans l'autre entreprise : les conditions des points 1 et 2 de la revue.
+const ALLUME = { interrupteur: "1", reglagesAutre: { agent_ia: true } };
+const modeUnifie = (o) => modeUnifieBrut({ ...ALLUME, ...o });
+const modeUnifieSansDroits = (o) => sansDroitsBrut({ ...ALLUME, ...o });
 const TOUS = ["partenaires.lire", "partenaires.nets", "dossiers.lire", "dossiers.ecrire"];
 const SANS_NETS = ["partenaires.lire", "dossiers.lire", "dossiers.ecrire"];
 const charger = async (nom) => donnees[nom] || [];
@@ -243,14 +247,148 @@ test("fonctions : droits de l'autre entreprise lus avec la session, deux entrepr
   const idx = readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
   assert.match(idx, /sb\.from\("entites"\)\.select\("id, slug, nom, organisation_id"\)\.eq\("organisation_id", ent\.data\.organisation_id\)\.in\("slug", ENTREPRISES_UNIFIEES\)/);
   assert.match(idx, /sb\.rpc\("permissions_dans", \{ e: autre\.id \}\)/);
-  assert.match(idx, /modeUnifie\(\{ active: \{ id: entiteId, \.\.\.ent\.data \}, autre, permissions: perms\.data \|\| \[\], permissionsAutre: pa\.data \|\| \[\] \}\)/);
+  assert.match(idx, /modeUnifie\(\{ active: \{ id: entiteId, \.\.\.ent\.data \}, autre, permissions: perms\.data \|\| \[\], permissionsAutre: pa\.data \|\| \[\], reglagesAutre: valeurAutre, interrupteur \}\)/);
   assert.ok(idx.indexOf("if (!acces.ok)") < idx.indexOf("modeUnifie("), "les droits de l'entreprise active d'abord");
   assert.doesNotMatch(idx, /admin\.from\("(?:entites|prestations|trajets|partenaires|clients|dossiers|reservations)/);
   // La conversation reste rangée sous l'entreprise active.
   assert.match(idx, /from\("agent_conversations"\)\.insert\(\{ entite_id: entiteId,/);
   assert.match(idx, /ligneJournal\(\{ userId, entiteId,/);
   const wa = readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
-  assert.match(wa, /reglagesAutre\.agent_ia === true \? modeUnifieSansDroits\(\{ active: ent, autre \}\)/);
+  assert.match(wa, /modeUnifieSansDroits\(\{ active: ent, autre, reglagesAutre, interrupteur \}\)/);
   assert.match(wa, /permissions: \[\], \.\.\.\(unifie \? \{ entites: unifie\.entites, permissionsPar: unifie\.permissionsPar \} : \{\}\)/);
   assert.match(wa, /outils: outilsWhatsapp\(\{ unifie: !!unifie \}\)/);
+});
+
+// ---- Revue de la PR 288 ---------------------------------------------------------------------------------------------------------
+
+test("revue 1 : interrupteur AGENT_UNIFIE, éteint par défaut dans l'agent et dans la boîte WhatsApp", () => {
+  assert.equal(unifieAllume("1"), true);
+  for (const v of ["", "0", "true", "oui", undefined, null, 1]) assert.equal(unifieAllume(v), false, String(v));
+  const base = { active: SECRET, autre: TAXI, permissions: TOUS, permissionsAutre: TOUS, reglagesAutre: { agent_ia: true } };
+  assert.equal(modeUnifieBrut(base), null, "sans le secret, rien ne change");
+  assert.equal(modeUnifieBrut({ ...base, interrupteur: "0" }), null);
+  assert.ok(modeUnifieBrut({ ...base, interrupteur: "1" }));
+  assert.equal(sansDroitsBrut({ active: SECRET, autre: TAXI, reglagesAutre: { agent_ia: true } }), null);
+  const idx = readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
+  assert.match(idx, /const interrupteur = Deno\.env\.get\("AGENT_UNIFIE"\) \|\| "";\n  if \(unifieAllume\(interrupteur\) && ent\.data/);
+  const wa = readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  assert.match(wa, /const interrupteur = Deno\.env\.get\("AGENT_UNIFIE"\) \|\| "";/);
+  assert.match(wa, /const autre = unifieAllume\(interrupteur\) \?/);
+  const doc = readFileSync(new URL("../docs/gestion/agent-assistant.md", import.meta.url), "utf8");
+  assert.match(doc, /`AGENT_UNIFIE`/);
+});
+
+test("revue 2 : agent éteint ou réglages illisibles dans l'autre entreprise, mode éteint", () => {
+  const base = { active: SECRET, autre: TAXI, permissions: TOUS, permissionsAutre: TOUS, interrupteur: "1" };
+  for (const r of [null, undefined, {}, { agent_ia: false }, { agent_ia: "true" }]) {
+    assert.equal(modeUnifieBrut({ ...base, reglagesAutre: r }), null, JSON.stringify(r));
+    assert.equal(sansDroitsBrut({ active: SECRET, autre: TAXI, interrupteur: "1", reglagesAutre: r }), null);
+  }
+  const idx = readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
+  assert.match(idx, /const valeurAutre = !ra\.error && ra\.data \? ra\.data\.valeur : null;/);
+  const wa = readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  assert.match(wa, /const reglagesAutre = lu && !lu\.error && lu\.data \? lu\.data\.valeur : null;/);
+});
+
+test("revue 3 : un numéro de dossier présent dans les deux entreprises, celle de la conversation d'abord, sinon plusieurs_dossiers", async () => {
+  const dS = { id: "d3000000-0000-4000-8000-000000000003", ref: "2026-0001", client_id: null, entite_id: SECRET.id };
+  const dT = { id: "d4000000-0000-4000-8000-000000000004", ref: "2026-0001", client_id: null, entite_id: TAXI.id };
+  const dT2 = { id: "d4000000-0000-4000-8000-000000000005", ref: "2026-0001", client_id: null, entite_id: TAXI.id };
+  const avec = (ctx, dossiers) => ({ ...ctx, charger: async (nom) => (nom === "dossiers" ? dossiers : nom === "reservations" ? [] : donnees[nom] || []) });
+  const lire = async (ctx, dossiers, ref = "2026-0001") => (await executer("lire_dossier", { dossier: ref }, avec(ctx, dossiers), memoNeuf())).contenu;
+  assert.equal((await lire(ctxUnifie(), [dT, dS])).dossier, refDe("D", dS.id), "Secret actif : le dossier de Secret");
+  const depuisTaxi = { permissions: TOUS, ...modeUnifie({ active: TAXI, autre: SECRET, permissions: TOUS, permissionsAutre: TOUS }), reglages: {} };
+  assert.equal((await lire(depuisTaxi, [dS, dT])).dossier, refDe("D", dT.id), "Taxi actif : le dossier de Taxi");
+  assert.equal((await lire(ctxUnifie(), [dT])).dossier, refDe("D", dT.id), "un seul candidat : lui");
+  // Plusieurs candidats hors de l'entreprise active : rien n'est choisi au hasard.
+  const r = await lire(ctxUnifie(), [dT, dT2]);
+  assert.equal(r.erreur, "plusieurs_dossiers");
+  assert.deepEqual(r.dossiers, [{ dossier: refDe("D", dT.id), reference: "2026-0001", entreprise: "Taxi" }, { dossier: refDe("D", dT2.id), reference: "2026-0001", entreprise: "Taxi" }]);
+  // Même règle par la référence courte (deux identifiants qui commencent pareil).
+  const p = await executer("proposer_reservation", { titre: "x", dossier: refDe("D", dT.id), service: service({ texte: "Retour", entreprise: "taxi" }) }, { ...ctxUnifie(), parRef: async () => [dT, dT2] }, memoNeuf());
+  assert.equal(p.contenu.erreur, "plusieurs_dossiers");
+  assert.equal(p.contenu.dossiers.length, 2);
+  // Hors mode unifié : le premier, comme avant.
+  assert.equal((await lire(ctxSimple(), [dT, dS])).dossier, refDe("D", dT.id));
+  const idx = readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
+  assert.match(idx, /const d = choisirLigne\(dossiers, unifie\)\.ligne;\n    if \(!d\) return \[dossiers, \[\], \[\], \[\]\];/);
+});
+
+test("revue 4 : un tarif de l'autre entreprise ne se change pas depuis cette conversation", async () => {
+  const e = (id) => ({ titre: "Libellé", sujet: "catalogue", champ: "libelle", cle: refDe("P", id), valeur: "Nouveau libellé", libelle: "", langue: "", raison: "" });
+  const ctx = { ...ctxUnifie(), permissions: [...TOUS, "catalogue.ecrire"] };
+  assert.equal((await proposerReglage(e(P_TRANSFERT), ctx)).erreur, "autre_entreprise");
+  const ok = await proposerReglage(e(P_TOUR), ctx);
+  assert.equal(ok.genre, "reglage");
+  assert.equal(ok.donnees.cible_id, P_TOUR);
+  // Hors mode unifié, inchangé.
+  assert.equal((await proposerReglage(e(P_TRANSFERT), { ...ctxSimple(), permissions: ["catalogue.ecrire"] })).genre, "reglage");
+});
+
+test("revue 5 : la brochure cherche son partenaire seulement dans l'entreprise active", async () => {
+  const fichier = { id: "f1aa0000-0000-4000-8000-000000000001", nom: "brochure.pdf", media_type: "application/pdf" };
+  const ctx = { ...ctxUnifie(), permissions: [...TOUS, "partenaires.ecrire", "partenaires.prix"], fichiers: [fichier] };
+  const imp = async (partenaire, c = ctx) => (await executer("proposer_import_brochure", { titre: "B", fichiers: [refDe("F", fichier.id)], partenaire, nouveau: false }, c, memoNeuf())).carte.donnees;
+  assert.equal((await imp("Blue Ocean Speedboat")).partenaire_id, PS);
+  const taxi = await imp("Mr. Brown Transport");
+  assert.equal(taxi.partenaire_id, null);
+  assert.equal(taxi.nouveau, true);
+  assert.equal((await imp("Mr. Brown Transport", { ...ctxSimple([...TOUS, "partenaires.ecrire", "partenaires.prix"]), fichiers: [fichier] })).partenaire_id, PT, "hors mode unifié, inchangé");
+});
+
+test("revue 6 : la boîte WhatsApp ne charge aucun net pour les outils, seulement pour le contrôle de la réponse", async () => {
+  const wa = readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  const ctxSrc = wa.slice(wa.indexOf("function contexteOutils"));
+  const colonnes = ctxSrc.slice(0, ctxSrc.indexOf("};"));
+  assert.doesNotMatch(colonnes, /prestations_nets:|trajets_nets:|partenaires_prives:/);
+  assert.match(wa, /memo\.internes = await netsDe\(db, ids\);/);
+  assert.match(wa, /async function netsDe\(db: SupabaseClient, ids: string\[\]\)/);
+  assert.match(wa, /toutes\("prestations_nets", "net, net_enfant"\), toutes\("trajets_nets", "net_adulte, net_enfant"\)/);
+  // Pourquoi : avec des nets chargés, le drapeau « recommande » viendrait d'eux même sans droit ; sans eux, aucun drapeau.
+  const deux = [donnees.prestations[0], { ...donnees.prestations[0], id: "a9000000-0000-4000-8000-000000000009", prix_vente: 1500 }];
+  const nets = [{ prestation_id: deux[0].id, net: 1100 }, { prestation_id: deux[1].id, net: 900 }];
+  const boite = (avecNets) => ({ permissions: [], ...modeUnifieSansDroits({ active: SECRET, autre: TAXI }), reglages: {}, charger: async (nom) => (nom === "prestations" ? deux : nom === "prestations_nets" ? (avecNets ? nets : []) : donnees[nom] || []) });
+  const reco = async (avecNets) => (await executer("chercher_catalogue", { recherche: "4 islands", famille: "tout" }, boite(avecNets), memoNeuf())).contenu.lignes.some((l) => l.recommande);
+  assert.equal(await reco(true), true);
+  assert.equal(await reco(false), false);
+});
+
+test("revue 7 : horaires, départs recommandés par entreprise", async () => {
+  const route = { de: "Koh Lanta", vers: "Krabi Airport", mode: "minivan", arrivee: "11:00", duree: "2 h", prix_adulte: 600, prix_enfant: 400, actif: true, fenetres: [] };
+  const trajets = [
+    { ...route, id: "f5000000-0000-4000-8000-000000000001", depart: "08:00", partenaire_id: "c5000000-0000-4000-8000-000000000001", entite_id: SECRET.id },
+    { ...route, id: "f5000000-0000-4000-8000-000000000002", depart: "09:00", partenaire_id: "c5000000-0000-4000-8000-000000000002", entite_id: SECRET.id },
+    { ...route, id: "f6000000-0000-4000-8000-000000000001", depart: "10:00", partenaire_id: "c6000000-0000-4000-8000-000000000001", entite_id: TAXI.id },
+    { ...route, id: "f6000000-0000-4000-8000-000000000002", depart: "11:00", partenaire_id: "c6000000-0000-4000-8000-000000000002", entite_id: TAXI.id },
+  ];
+  // Meilleure marge : la deuxième compagnie chez Secret (200), la première chez Taxi (150), plus basse que tout ce que fait Secret.
+  const nets = [[trajets[0], 500], [trajets[1], 400], [trajets[2], 450], [trajets[3], 550]].map(([t, n]) => ({ trajet_id: t.id, net_adulte: n, net_enfant: 300 }));
+  const ctx = { ...ctxUnifie(), charger: async (nom) => (nom === "trajets" ? trajets : nom === "trajets_nets" ? nets : nom === "partenaires" ? [] : donnees[nom] || []) };
+  const r = (await executer("horaires_trajet", { de: "Koh Lanta", vers: "Krabi Airport", date: "2026-11-28", adultes: 1, enfants: 0 }, ctx, memoNeuf())).contenu;
+  const recommandes = r.departs.filter((d) => d.recommande).map((d) => [d.entreprise, d.depart]);
+  assert.deepEqual(recommandes.sort(), [["Secret", "09:00"], ["Taxi", "10:00"]]);
+});
+
+test("revue 8 : corrections marquées de leur entreprise, quota pour l'active, seulement les réponses de l'autre", () => {
+  const ligne = (i, genre, jour) => ({ id: `${genre}-${i}`, genre, contexte: `cas ${i}`, avant: "a", apres: "b", cree_le: `2026-11-${String(jour).padStart(2, "0")}T10:00:00Z` });
+  const actives = Array.from({ length: 70 }, (_, i) => ligne(i, ["pickup", "prix", "reponse"][i % 3], 10));
+  const autres = Array.from({ length: 30 }, (_, i) => ligne(100 + i, i % 2 ? "reponse" : "prix", 19));
+  const tout = apprentissagesUnifies({ actives, autres, nomActive: SECRET.nom, nomAutre: TAXI.nom });
+  assert.equal(tout.filter((l) => !l.autre).length, APPRIS_LUS_ACTIVE);
+  const deLAutre = tout.filter((l) => l.autre);
+  assert.ok(deLAutre.length <= APPRIS_LUS_AUTRE && deLAutre.length === 15);
+  assert.ok(deLAutre.every((l) => l.genre === "reponse" && l.entreprise === TAXI.nom));
+  const bloc = blocApprentissages(tout, { qui: "Nani" });
+  const lignes = bloc.split("\n").filter((l) => l.startsWith("- "));
+  assert.ok(lignes.every((l) => l.startsWith(`- [${SECRET.nom}] `) || l.startsWith(`- [${TAXI.nom}] `)));
+  // Les plus récentes sont celles de Taxi, mais l'entreprise active garde la place.
+  assert.equal(lignes.filter((l) => l.startsWith(`- [${TAXI.nom}] `)).length, APPRIS_AUTRE_MAX);
+  assert.match(bloc, /Chaque correction dit son entreprise entre crochets/);
+  // Hors mode unifié, le bloc d'avant.
+  assert.doesNotMatch(blocApprentissages(actives, { qui: "Nani" }), /\[|entre crochets/);
+  const idx = readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
+  assert.match(idx, /\.eq\("entite_id", autreEnt\.id\)\.eq\("genre", "reponse"\)[^\n]*\.limit\(APPRIS_LUS_AUTRE\)/);
+  assert.match(idx, /\.limit\(unifie \? APPRIS_LUS_ACTIVE : 80\)/);
+  const wa = readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  assert.match(wa, /\.eq\("entite_id", autre\.id\)\.eq\("genre", "reponse"\)[^\n]*\.limit\(APPRIS_LUS_AUTRE\)/);
 });

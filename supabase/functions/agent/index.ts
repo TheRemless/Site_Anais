@@ -13,10 +13,10 @@
 // Réponse en flux NDJSON (une ligne JSON par événement) : { t: "conversation" | "etape" | "texte" | "planning" | "carte" | "fin" | "erreur" }.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
-import { clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents, tempsSimule } from "./outils.js";
+import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, apprentissagesUnifies, blocApprentissages, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
+import { choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
-import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils } from "./unifie.js";
+import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
@@ -122,17 +122,20 @@ Deno.serve(async (req) => {
   }
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
   if (!cle) return json({ erreur: "non_configure" }, 503);
-  // Espace unifié : l'autre entreprise (Secret ou Taxi) de la même organisation, ses droits et ses réglages, lus avec la session. Une lecture
-  // refusée ou des droits manquants laissent l'Assistant tel qu'avant, limité à l'entreprise active.
+  // Espace unifié : l'autre entreprise (Secret ou Taxi) de la même organisation, ses droits et ses réglages, lus avec la session. Éteint
+  // sans le secret AGENT_UNIFIE=1 ; une lecture refusée, des droits manquants ou l'agent éteint dans l'autre entreprise laissent
+  // l'Assistant tel qu'avant, limité à l'entreprise active.
   let unifie: { entites: { id: string; slug: string; nom: string }[]; permissionsPar: Record<string, string[]> } | null = null;
   let reglagesAutre: Record<string, unknown> | null = null;
-  if (ent.data && ENTREPRISES_UNIFIEES.includes(ent.data.slug) && ent.data.organisation_id) {
+  const interrupteur = Deno.env.get("AGENT_UNIFIE") || "";
+  if (unifieAllume(interrupteur) && ent.data && ENTREPRISES_UNIFIEES.includes(ent.data.slug) && ent.data.organisation_id) {
     const autres = await sb.from("entites").select("id, slug, nom, organisation_id").eq("organisation_id", ent.data.organisation_id).in("slug", ENTREPRISES_UNIFIEES).neq("id", entiteId);
     const autre = autres.error ? null : (autres.data || []).find((x) => x.slug !== ent.data!.slug) || null;
     if (autre) {
       const [pa, ra] = await Promise.all([sb.rpc("permissions_dans", { e: autre.id }), sb.from("reglages").select("valeur").eq("entite_id", autre.id).maybeSingle()]);
-      if (!pa.error) unifie = modeUnifie({ active: { id: entiteId, ...ent.data }, autre, permissions: perms.data || [], permissionsAutre: pa.data || [] });
-      if (unifie && !ra.error && ra.data) reglagesAutre = ra.data.valeur;
+      const valeurAutre = !ra.error && ra.data ? ra.data.valeur : null;
+      if (!pa.error) unifie = modeUnifie({ active: { id: entiteId, ...ent.data }, autre, permissions: perms.data || [], permissionsAutre: pa.data || [], reglagesAutre: valeurAutre, interrupteur });
+      if (unifie) reglagesAutre = valeurAutre;
     }
   }
   const idsEntites = unifie ? unifie.entites.map((e) => e.id) : [entiteId];
@@ -325,8 +328,10 @@ Deno.serve(async (req) => {
     let dossiers = await parRef("dossiers", ref);
     const t = String(ref || "").trim();
     if (!dossiers.length && t.length >= 2 && t.length <= 30) dossiers = await lire(dans(sb.from("dossiers").select(COLONNES.dossiers)).ilike("ref", t.replace(/[\\%_]/g, "\\$&")).limit(5), "dossiers");
-    const d = dossiers[0];
-    if (!d) return [[], [], []];
+    // Un numéro peut exister dans les deux entreprises (mode unifié) : celle de la conversation d'abord ; s'il en reste plusieurs, l'outil
+    // reçoit les candidats seuls et demande lequel (outils.js, plusieurs_dossiers).
+    const d = choisirLigne(dossiers, unifie).ligne;
+    if (!d) return [dossiers, [], [], []];
     const [clients, reservations] = await Promise.all([
       d.client_id ? lire(sb.from("clients").select(COL_CLIENT).eq("id", d.client_id), "clients") : [],
       lire(sb.from("reservations").select(COLONNES.reservations).eq("entite_id", d.entite_id).eq("dossier_id", d.id).limit(200), "reservations"),
@@ -523,10 +528,15 @@ Deno.serve(async (req) => {
     const m = (gardes as { role: string; content: unknown }[]).find((x) => x.role === "user" && Array.isArray(x.content) && x.content.some((b: { type: string }) => b.type === "text"));
     return m ? (m.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join(" ") : message;
   })();
-  // En mode unifié, celles des deux entreprises.
-  const lus = await dans(sb.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le")).lte("cree_le", conv!.cree_le || new Date().toISOString()).order("cree_le", { ascending: false }).limit(80);
+  // En mode unifié : 60 de l'entreprise active ; de l'autre, seulement les réponses au client (20), chaque ligne marquée de son entreprise.
+  const autreEnt = unifie ? unifie.entites.find((e) => e.id !== entiteId) || null : null;
+  const [lus, lusAutre] = await Promise.all([
+    sb.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", entiteId).lte("cree_le", conv!.cree_le || new Date().toISOString()).order("cree_le", { ascending: false }).limit(unifie ? APPRIS_LUS_ACTIVE : 80),
+    autreEnt ? sb.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", autreEnt.id).eq("genre", "reponse").lte("cree_le", conv!.cree_le || new Date().toISOString()).order("cree_le", { ascending: false }).limit(APPRIS_LUS_AUTRE) : Promise.resolve(null),
+  ]);
   if (lus.error && !tableAbsente(lus.error)) console.error("agent : apprentissages", lus.error.message);
-  const appris = lus.error ? "" : blocApprentissages(lus.data || [], { qui: ra.responsable, premierMessage: premierTexte });
+  const lignesAppris = autreEnt ? apprentissagesUnifies({ actives: lus.data || [], autres: lusAutre && !lusAutre.error ? lusAutre.data || [] : [], nomActive: ent.data?.nom || "", nomAutre: autreEnt.nom }) : lus.data || [];
+  const appris = lus.error ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte });
   const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
   // Les pièces jointes que l'agent peut citer (proposer_import_brochure) et les droits de la personne (l'import demande « partenaires.ecrire »
   // et « partenaires.prix »).

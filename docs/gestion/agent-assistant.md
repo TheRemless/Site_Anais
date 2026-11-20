@@ -52,17 +52,24 @@ Réglages, section « Assistant IA », champ « Règles de réponse au client »
 
 Nani gère Secret Travel & Tour et VIP Taxi Lanta avec le même numéro WhatsApp. Jérémy veut un espace unifié : l'Assistant cherche dans les deux catalogues à la fois et décide l'entreprise de chaque service. Une demande mixte deviendra deux dossiers liés (`dossiers.dossier_lie_id`), un chez Secret et un chez Taxi ; l'écran qui les crée viendra ensuite. Côté serveur, chaque service porte déjà sa bonne entreprise. ZTP reste toujours à part.
 
-**Quand le mode s'allume** (`supabase/functions/agent/unifie.js`, `modeUnifie`) : l'entreprise de la conversation est Secret ou Taxi et la personne a aussi `partenaires.lire` et `dossiers.ecrire` dans l'autre (`permissions_dans`, lu avec sa session). La conversation, le journal et le budget restent ceux de l'entreprise active. Sans ces droits, ou chez ZTP, rien ne change.
+**Interrupteur `AGENT_UNIFIE` (éteint par défaut).** Le mode ne s'allume que si le secret `AGENT_UNIFIE` des fonctions `agent` et `whatsapp` vaut `1`. L'écran actuel ne lit encore ni `entite_id` ni `entreprises` : une carte mixte validée aujourd'hui créerait un seul dossier faux. Le secret ne se pose qu'une fois l'écran des dossiers liés en ligne (PR suivante), avec le oui de Jérémy :
+
+```bash
+npx -y supabase@3.0.0 secrets set AGENT_UNIFIE=1 --remote=lkxqcmzeidlyssoqmqkh
+```
+
+**Quand le mode s'allume** (`supabase/functions/agent/unifie.js`, `modeUnifie`) : l'interrupteur est à `1`, l'entreprise de la conversation est Secret ou Taxi, l'agent est allumé dans l'autre (`reglages.agent_ia` vrai ; réglages illisibles : éteint) et la personne y a aussi `partenaires.lire` et `dossiers.ecrire` (`permissions_dans`, lu avec sa session). La conversation, le journal et le budget restent ceux de l'entreprise active. Sinon, ou chez ZTP, rien ne change.
 
 | Lecture | En mode unifié |
 |---|---|
 | Catalogue, horaires, partenaires, nets, règles de commission, hôtels connus, temps de trajet, ferries | Les deux entreprises (`.in("entite_id", …)`), avec la session de la personne : la RLS ne rend que ce qu'elle peut lire |
 | Clients | Les fiches des deux entreprises (partagées par la migration 63) ; une fiche de ZTP seulement si elle a un dossier chez Secret ou Taxi, comme avant |
-| Dossiers et services (`lire_dossier`, références D- et R-) | Les deux entreprises, jamais ZTP |
-| Corrections apprises (`agent_apprentissages`) | Les deux entreprises |
+| Dossiers et services (`lire_dossier`, références D- et R-) | Les deux entreprises, jamais ZTP. Un numéro de dossier n'est unique que dans une entreprise : celui de l'entreprise active passe d'abord ; s'il reste plusieurs candidats, l'outil rend `plusieurs_dossiers` avec leurs références D-… et leur entreprise : l'agent demande lequel |
+| Corrections apprises (`agent_apprentissages`) | 60 de l'entreprise active ; de l'autre, seulement les réponses au client (20 lues, 3 retenues au plus). Chaque ligne du bloc est marquée de son entreprise entre crochets |
+| Réglage du catalogue (`proposer_reglage`) et import de brochure | L'entreprise active seulement : un tarif de l'autre est refusé (`autre_entreprise`), le partenaire d'une brochure se cherche chez l'active |
 | Lieux et itinéraires calculés (`lieux_geo`, `trajets_ors`) et écritures (hôtels situés) | L'entreprise active, comme avant |
 
-**Droits par ligne** : le nom du partenaire et les chiffres internes d'une ligne ne partent chez Claude que si la personne a le droit dans l'entreprise de CETTE ligne (`voitPartenaires` et `voitNets` reçoivent l'entreprise de la ligne). Une ligne dont l'entreprise est inconnue ne montre rien. La description des outils et les consignes annoncent les nets dès qu'un droit les montre dans l'une des deux entreprises. Le garde-fou de la réponse au client ne change pas et couvre les partenaires et les nets des deux entreprises.
+**Droits par ligne** : le nom du partenaire et les chiffres internes d'une ligne ne partent chez Claude que si la personne a le droit dans l'entreprise de CETTE ligne (`voitPartenaires` et `voitNets` reçoivent l'entreprise de la ligne). Le drapeau « recommande » se calcule par entreprise, dans le catalogue comme dans les horaires : une marge de Secret ne se compare pas à une de Taxi. Une ligne dont l'entreprise est inconnue ne montre rien. La description des outils et les consignes annoncent les nets dès qu'un droit les montre dans l'une des deux entreprises. Le garde-fou de la réponse au client ne change pas et couvre les partenaires et les nets des deux entreprises.
 
 **Entreprise de chaque service** :
 
@@ -77,7 +84,7 @@ Deux nouveaux avertissements, sur le service et sur la carte : `entreprise_a_cho
 
 **Consignes** (`prompt.js`, paramètre `unifie`) : un paragraphe « Deux entreprises » dit que l'Assistant travaille pour les deux, que chaque service va dans l'entreprise de sa ligne, qu'une demande mixte se propose en une seule carte qui donnera deux dossiers liés. La réponse au client reste unique. Les règles de réponse au client des deux entreprises (`assistant_voix.regles_reponse`) sont listées sous le nom de leur entreprise et s'appliquent chacune à ses services ; des réglages illisibles donnent les règles par défaut du métier. La voix reste celle de l'entreprise active, sans signature. La signature de l'autre entreprise est aussi retirée d'une réponse. Le renvoi d'une « Transfer request » vers l'Assistant de Taxi disparaît : la demande se traite ici.
 
-**Boîte WhatsApp** (`whatsapp/reponse.ts`) : quand l'agent est allumé chez Secret ET chez Taxi, la réponse préparée cherche aussi dans les deux catalogues et lit les corrections des deux, avec les consignes ci-dessus. Clé de service limitée à ces deux entreprises, aucun droit sur les partenaires ni les nets (`modeUnifieSansDroits`). Les dossiers lus restent ceux reliés à la conversation. Le ton de Nani se lit toujours dans l'entreprise de la conversation.
+**Boîte WhatsApp** (`whatsapp/reponse.ts`) : avec l'interrupteur à `1` et l'agent allumé chez Secret ET chez Taxi, la réponse préparée cherche aussi dans les deux catalogues et lit les corrections comme ci-dessus, avec les mêmes consignes. Clé de service limitée à ces deux entreprises, aucun droit sur les partenaires ni les nets (`modeUnifieSansDroits`). Les outils ne chargent aucune table de nets (aucun drapeau « recommande » tiré d'un net sans droit) ; les nets se lisent à part (`netsDe`), seulement pour le contrôle `montant_interne`. Les dossiers lus restent ceux reliés à la conversation. Le ton de Nani se lit toujours dans l'entreprise de la conversation.
 
 Tests : `tests/gestion-agent-unifie.test.js`.
 

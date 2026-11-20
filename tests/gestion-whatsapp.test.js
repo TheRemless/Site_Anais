@@ -380,9 +380,7 @@ test("whatsapp : la réponse préparée reçoit les règles de réponse d'Anaïs
   assert.match(p.texte, /proposer_reponse une seule fois/);
   const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   assert.match(reponse, /promptPreparation\(\{ entreprise: ent\.nom, reglages, apprentissages:/);
-  // L'entreprise de la conversation, plus l'autre en espace unifié (migration 63).
-  assert.match(reponse, /\.from\("agent_apprentissages"\)\.select\([^)]*\)\.in\("entite_id", ids\)/);
-  assert.match(reponse, /const ids = unifie \? unifie\.entites\.map\(\(e\) => e\.id\) : \[ent\.id\];/);
+  assert.match(reponse, /\.from\("agent_apprentissages"\)\.select\([^)]*\)\.eq\("entite_id", ent\.id\)/);
 });
 
 // ---- Tri des messages (migration 60, demande de Jérémy : « faut vraiment faire un bon tri ») ----------------------------------------
