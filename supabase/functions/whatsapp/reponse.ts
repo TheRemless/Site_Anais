@@ -1,4 +1,4 @@
-// Boîte WhatsApp (phase 2) : quand un client écrit, l'agent de Gestion prépare la réponse que Nani copiera, puis la notification part.
+// Boîte WhatsApp (phase 2) : quand un client écrit, l'agent de Gestion prépare la réponse que Nani copiera. Aucune notification.
 // Appelé par index.ts après la réponse à Telnyx (EdgeRuntime.waitUntil). Clé de service : chaque lecture est limitée à l'entreprise de la
 // conversation (entite_id), comme le fait la session de la personne dans la fonction « agent ».
 //
@@ -8,14 +8,13 @@
 // derniers messages, le prénom du client, ce que rendent les outils de lecture. Jamais le numéro de téléphone.
 // Budget : compté dans le plafond du mois de l'assistant (assistant_journal, usage « whatsapp »), l'agent doit être allumé (agent_ia).
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
-import webpush from "npm:web-push@3.6.7";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { DUREE_MAX_MS, MODELE_DEFAUT, ligneJournal, signe } from "../agent/prompt.js";
 import { clesHotelPossibles, memoDepuis, prefixeRef } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
-import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, demandeAgent, demandeTri, destinatairesWhatsapp, langueSure, lireTri, notificationWhatsapp, outilsWhatsapp, prenomSur, promptPreparation } from "./proposer.js";
+import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, demandeAgent, demandeTri, langueSure, lireTri, outilsWhatsapp, promptPreparation } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
 const MODELE_TRI = "claude-haiku-5-5";
@@ -23,7 +22,7 @@ const MODELE_TRI = "claude-haiku-5-5";
 type Conv = { id: string; organisation_id: string; telephone: string; nom: string | null; entite_id: string | null; entite_source: string; client_id: string | null; dossier_id: string | null };
 
 // Point d'entrée : un message entrant vient d'être rangé (nouveau). Attend un peu (le client écrit souvent en plusieurs fois), puis prépare
-// la réponse si ce message est toujours le dernier, et prévient l'équipe. Ne lève jamais : une panne laisse la conversation lisible.
+// la réponse si ce message est toujours le dernier. Aucune notification Web Push. Ne lève jamais : une panne laisse la conversation lisible.
 // Tout tient dans DUREE_BOITE_MS (attente comprise), sous la limite de 150 s d'une fonction Supabase.
 export async function apresMessageClient(db: SupabaseClient, conversationId: string, messageId: string) {
   const t0 = Date.now();
@@ -31,11 +30,12 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     await new Promise((ok) => setTimeout(ok, ATTENTE_MS));
     const lu = await lireConversation(db, conversationId);
     if (!lu || !aRepondre(lu.messages, messageId)) return;
-    const pret = await preparer(db, lu.conv, lu.messages, messageId, t0).catch((err) => {
+    // Aucune notification sur le téléphone (Jérémy, 20.11.2026 : Nani serait débordée). Le compteur de non-lus de l'écran suffit ; l'app
+    // WhatsApp de Nani sonne déjà pour chaque message.
+    await preparer(db, lu.conv, lu.messages, messageId, t0).catch((err) => {
       console.error("whatsapp : réponse non préparée", String(err?.message || err).slice(0, 200));
       return false;
     });
-    await prevenir(db, conversationId, pret).catch((err) => console.error("whatsapp : notification", String(err?.message || err).slice(0, 120)));
   } catch (err) {
     console.error("whatsapp : après message", String((err as Error)?.message || err).slice(0, 200));
   }
@@ -280,37 +280,4 @@ function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any, { c
   // Pas de moteur d'itinéraire ni de recherche web ici : les durées viennent de la table de l'entreprise, sinon l'agent le dit.
   // chercherClients rend toujours vide (l'outil n'est pas proposé, et refusé par tourner s'il est appelé quand même).
   return { historique: [], entreprise: "", fichiers: [], permissions: [], charger, chercherClients: async () => [[], []], dossierPour, parRef, hotelsPour, reglages, ors: null, simule: null, estimerWeb: null, situerWeb: null, notes: [] as string[], moteur: null, maintenant: () => Date.now() };
-}
-
-// Notification aux administrateurs (Web Push existant). Le contenu du message ne part jamais dans la notification.
-async function prevenir(db: SupabaseClient, conversationId: string, pret: boolean) {
-  if (!Deno.env.get("VAPID_PRIVATE_KEY")) return;
-  const { data: conv } = await db.from("whatsapp_conversations").select("id, organisation_id, telephone, nom, entite_id, client_id").eq("id", conversationId).maybeSingle();
-  if (!conv) return;
-  const { data: entites } = await db.from("entites").select("id, slug, nom").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
-  const ids = conv.entite_id ? [conv.entite_id] : (entites || []).map((e) => e.id);
-  const [profils, membres, roles] = await Promise.all([
-    db.from("profils").select("user_id, actif, super_admin").eq("organisation_id", conv.organisation_id),
-    db.from("membres").select("user_id, entite_id, role_id").in("entite_id", ids),
-    db.from("roles").select("id, portee, permissions, tous_droits").in("entite_id", ids),
-  ]);
-  for (const r of [profils, membres, roles]) if (r.error) throw new Error(r.error.message);
-  const qui = destinatairesWhatsapp({ entiteIds: ids, profils: profils.data!, membres: membres.data!, roles: roles.data! });
-  if (!qui.length) return;
-  const client = conv.client_id ? (await db.from("clients").select("prenom").eq("id", conv.client_id).maybeSingle()).data : null;
-  const ent = (entites || []).find((e) => e.id === conv.entite_id);
-  const n = notificationWhatsapp({ nom: prenomSur(client?.prenom) || conv.nom || "", telephone: conv.telephone, pret, entreprise: ent?.nom || "" });
-  const abos = await db.from("abonnements_push").select("id, endpoint, p256dh, auth").in("user_id", qui);
-  if (abos.error || !abos.data?.length) return;
-  webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
-  const charge = JSON.stringify({ ...n, url: `/gestion/#/whatsapp?c=${conv.id}${conv.entite_id ? `&entite=${conv.entite_id}` : ""}` });
-  for (const abo of abos.data) {
-    try {
-      await webpush.sendNotification({ endpoint: abo.endpoint, keys: { p256dh: abo.p256dh, auth: abo.auth } }, charge, { TTL: 6 * 3600 });
-    } catch (err) {
-      // deno-lint-ignore no-explicit-any
-      const code = (err as any)?.statusCode;
-      if (code === 404 || code === 410) await db.from("abonnements_push").delete().eq("id", abo.id);
-    }
-  }
 }
