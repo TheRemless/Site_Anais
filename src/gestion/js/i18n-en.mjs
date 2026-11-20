@@ -218,7 +218,6 @@ export const EN = {
   "Le mot interne « {valeur} » est dans le texte. Retirez-le avant d'envoyer.": "The internal word “{valeur}” is in the text. Remove it before sending.",
   "Message non trié": "Message not sorted",
   "Assistant éteint ou réception suspendue : message non trié": "Assistant off or reception paused: message not sorted",
-  "Conversation à trier : rangez-la dans Secret ou Taxi, puis touchez Préparer une réponse.": "Unsorted conversation: file it under Secret or Taxi, then tap Prepare a reply.",
   "L'assistant est éteint pour cette entreprise (Réglages).": "The assistant is off for this company (Settings).",
   "La préparation a été interrompue.": "Preparation was interrupted.",
   "Le crédit de l'assistant est épuisé.": "The assistant's credit is used up.",

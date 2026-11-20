@@ -328,7 +328,8 @@ export function apercuDepuisMessages(messages = []) {
   const tries = [...messages].filter((m) => m && m.type !== "reaction").sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le));
   const dernier = tries[tries.length - 1] || null;
   let reponse = -Infinity;
-  for (const m of tries) if (m.sens === "sortant") reponse = Math.max(reponse, Date.parse(m.envoye_le));
+  // Un envoi depuis Gestion en échec (migration 64) n'est pas une réponse.
+  for (const m of tries) if (m.sens === "sortant" && m.statut_envoi !== "echec") reponse = Math.max(reponse, Date.parse(m.envoye_le));
   const attente = tries.find((m) => m.sens === "entrant" && !m.supprime_le && Date.parse(m.envoye_le) > reponse) || null;
   // Une photo sans texte mais avec une légende : la légende.
   const legende = dernier && Array.isArray(dernier.medias) ? (dernier.medias.find((x) => x && x.legende) || {}).legende || "" : "";

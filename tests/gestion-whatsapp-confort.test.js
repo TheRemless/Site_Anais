@@ -22,6 +22,7 @@ test("aperçu : le début du dernier message, son type, et le premier message re
   assert.equal(a.attend_depuis, msg(5, "entrant").envoye_le, "le premier message après la dernière réponse de Nani");
   const b = apercuDepuisMessages([msg(0, "entrant", "x".repeat(300)), msg(1, "sortant", "ok")]);
   assert.equal(b.attend_depuis, null, "Nani a répondu");
+  assert.equal(apercuDepuisMessages([msg(0, "entrant", "Hi"), msg(1, "sortant", "ok", { origine: "gestion", statut_envoi: "echec" })]).attend_depuis, msg(0, "entrant").envoye_le, "un envoi en échec n'est pas une réponse");
   assert.equal(b.dernier_texte, "ok");
   assert.equal(apercuDepuisMessages([msg(0, "entrant", "x".repeat(300))]).dernier_texte.length, APERCU_MAX);
   assert.equal(apercuDepuisMessages([msg(0, "entrant", "Secret", { supprime_le: "2026-11-20T12:05:00Z" })]).dernier_type, "supprime", "message supprimé par le client : rien de son texte");
@@ -227,7 +228,7 @@ test("migration 65 : aperçu tenu par un déclencheur, rempli pour l'existant, r
   const m = source("docs/gestion/migration-65-whatsapp-apercu.sql");
   assert.match(m, /add column if not exists dernier_texte text/);
   assert.match(m, /add column if not exists attend_depuis timestamptz/);
-  assert.match(m, /create trigger apercu after insert or update of texte, supprime_le or delete on whatsapp_messages/, "un envoi retiré (migration 64) change aussi l'aperçu");
+  assert.match(m, /create trigger apercu after insert or update of texte, supprime_le, statut_envoi or delete on whatsapp_messages/, "un envoi retiré (migration 64) change aussi l'aperçu");
   assert.match(m, /whatsapp_apercu\(coalesce\(new\.conversation_id, old\.conversation_id\)\)/);
   assert.match(m, /^-- Suit la 64/m);
   assert.match(m, /security definer set search_path = public, pg_temp/);
