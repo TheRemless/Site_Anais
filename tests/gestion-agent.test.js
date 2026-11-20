@@ -7,7 +7,7 @@ import { planifierCourse, tempsSimule, reglagesPlanning, versHeure } from "../su
 import { dureeEntre, ligneDeLaTable, zoneDuLieu, minutesDe, dureesTapees, lignesDuSite, lignesDesBateaux, lignesDesZones, lignesNouvelles, clePaire, lireItineraire, lireGeocode, corpsItineraire, parametresGeocode } from "../supabase/functions/agent/temps.js";
 import { lireEstimation } from "../supabase/functions/agent/estimation.js";
 import { dureeAvecFerry as dureeAvecFerryDe } from "../supabase/functions/agent/temps.js";
-import { OUTILS, executer, entreeValide, memoDepuis, refDe, trouverRef, controlerReponse, montantsTapes, motifNom, motifTelephone, clesHotelPossibles, prefixeRef } from "../supabase/functions/agent/outils.js";
+import { OUTILS, executer, entreeValide, memoDepuis, refDe, trouverRef, controlerReponse, montantsTapes, confirmationCollee, motifNom, motifTelephone, clesHotelPossibles, prefixeRef } from "../supabase/functions/agent/outils.js";
 import { cleItineraire, VALIDITE_JOURS, lirePhoton, parametresPhoton, lirePlaces, lireRoutes, corpsPlaces, corpsRoutes, nomConcorde, VALIDITE_GOOGLE_JOURS } from "../supabase/functions/agent/temps.js";
 import { consignes, controlerAcces, parametres, ligneJournal, coutEchange, historique, titreDepuis, signe } from "../supabase/functions/agent/prompt.js";
 
@@ -388,6 +388,40 @@ test("Google Maps : lieu gardé seulement si le nom concorde, durée lue en seco
   assert.equal(lireRoutes({ routes: [{ duration: "5000s", distanceMeters: 1, legs: [{ steps: [{ navigationInstruction: { maneuver: "FERRY" } }] }] }] }).ferry, true);
   assert.equal(lireRoutes({}), null);
   assert.equal(VALIDITE_GOOGLE_JOURS, 30);
+});
+
+test("course de taxi : la confirmation part telle que collée, retrouvée par ses premiers mots, jamais réécrite", async () => {
+  const conf = "📢 New booking confirmation: VIP TAXI LANTA\nName: Tom Heinzler\nDate: 21/11/2026\nPick-up time: 13:20\nPick-up location: Jai Tiki Retreat\nDrop-off: Krabi Airport\nPrice: 3500 THB";
+  assert.equal(confirmationCollee(["Bonjour", conf], "New booking confirmation: VIP TAXI"), conf);
+  assert.equal(confirmationCollee(["Bonjour", conf], ""), conf, "la seule qui ressemble à une confirmation");
+  assert.equal(confirmationCollee(["Bonjour"], "New booking"), "");
+  assert.equal(confirmationCollee(["Transfer request: Krabi Airport → Koh Lanta\nDate: Sat 22 Nov 2026\nPickup: Krabi Airport\nName: Paul Martin"], ""), "", "une demande du site n'est pas une confirmation");
+  const memo = memoDepuis([{ role: "user", content: conf }]);
+  const r = await executer("proposer_course", { titre: "Course Tom", debut: "new booking confirmation" }, ctxDe(), memo);
+  assert.equal(r.carte.genre, "dossier");
+  assert.equal(r.carte.donnees.course.texte, conf);
+  assert.equal(r.contenu.carte_affichee, true);
+  const sans = await executer("proposer_course", { titre: "x", debut: "rien de tel" }, ctxDe(), memoDepuis([{ role: "user", content: "Bonjour" }]));
+  assert.equal(sans.contenu.erreur, "confirmation_introuvable");
+});
+
+test("modification : annulation proposée, refusée si le service est déjà annulé", async () => {
+  const ref = refDe("R", donnees.reservations[0].id);
+  const r = await executer("proposer_modification", { titre: "Annuler", reservation: ref, champ: "annulation", valeur: "annule", raison: "Le client annule." }, ctxDe(), nouveauMemo());
+  assert.equal(r.carte.donnees.champ, "annulation");
+  assert.equal(r.carte.donnees.avant, "confirme");
+  const deja = await executer("proposer_modification", { titre: "Annuler", reservation: ref, champ: "annulation", valeur: "annule", raison: "" }, ctxDe({ charger: async (n) => (n === "reservations" ? [{ ...donnees.reservations[0], statut: "annule" }] : donnees[n] || []) }), nouveauMemo());
+  assert.equal(deja.contenu.erreur, "deja_annule");
+});
+
+test("consignes : une carte par changement, confirmation de course, Transfer request ailleurs qu'en taxi, une excursion suggérée sans marge", () => {
+  const c = consignes({ entreprise: "Secret", reglages: { fonctionnement: "excursions" } });
+  assert.match(c, /une carte par changement/);
+  assert.match(c, /proposer_course/);
+  assert.match(c, /Transfer request/);
+  assert.match(c, /jours libres/);
+  assert.match(c, /Jamais un mot sur la marge/);
+  assert.doesNotMatch(consignes({ entreprise: "Taxi", reglages: { fonctionnement: "taxi" } }), /Transfer request/);
 });
 
 // ---- Propositions ------------------------------------------------------------------------------------------------------------

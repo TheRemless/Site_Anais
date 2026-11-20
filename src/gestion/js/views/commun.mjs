@@ -2,7 +2,8 @@ import { h, vider, ajouter, modal, icone, saisie, puces as fabriquePuces } from 
 import { trier, tranche, compterFiltres } from "../mobile-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
 import { libelleStatut, sommePaiements, nomFichier, formatDate } from "../calc.mjs";
-import { etat, imprimer, nomPartenaire, nomClient, confirmationPermise } from "../etat.mjs";
+import { etat, imprimer, nomPartenaire, nomClient, peut } from "../etat.mjs";
+import { agentActif } from "../agent-calc.mjs";
 import { renderDocument } from "../document.mjs";
 
 // Titre d'un service, d'une tâche ou d'un dossier qui mène au dossier : zone tactile de 44 px (voir .titre-lien), focus visible,
@@ -395,12 +396,10 @@ export function apercuA4(fabrique) {
   return { zone, redessiner };
 }
 
-// « Coller une confirmation » sur ordinateur (18.11.2026) : à côté de « Coller une demande » et « Nouveau dossier », mêmes règles que le « + »
-// du téléphone (confirmationPermise). La fenêtre se charge au clic.
-export const boutonConfirmation = () =>
-  confirmationPermise()
-    ? h("button", { class: "secondaire seulement-bureau", type: "button", onclick: async () => (await import("./confirmation.mjs")).ouvrirConfirmation() }, tr("Coller une confirmation"))
-    : null;
+// L'Assistant sur ordinateur (20.11.2026), à côté de « Nouveau dossier » : la seule entrée des demandes et des confirmations collées,
+// à la place de « Coller une demande » et « Coller une confirmation ». Mêmes règles que l'onglet.
+export const boutonAssistant = () =>
+  agentActif(etat.db && etat.db.reglages) && peut("partenaires.lire") && peut("dossiers.ecrire") ? h("a", { class: "bouton secondaire seulement-bureau", href: "#/agent/nouvelle" }, tr("Assistant")) : null;
 
 // Éditeur du logiciel : ses clients (clients_plateforme, migration 45), relus à chaque affichage pour qu'un client créé apparaisse tout de suite.
 // Sa propre organisation (Zwald, ou celle de la démo) n'est pas un client. « Reprendre » tant que personne du client ne s'est connecté.

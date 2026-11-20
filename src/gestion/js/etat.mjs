@@ -238,10 +238,10 @@ export function changerEntite(id, { naviguer = true } = {}) {
 export const estSuperAdmin = () => !!(etat.moi && etat.moi.super_admin && etat.moi.actif);
 const contexte = () => ({ profil: etat.moi, membres: etat.brut.membres, roles: etat.brut.roles });
 export const permissionsActives = () => permissionsDans(contexte(), etat.entiteId);
-// « Coller une confirmation » (18.11.2026) : l'administratrice générale et les administratrices, quand une entreprise Taxi ou Secret leur
-// permet de créer. Mêmes règles partout : menu « + » (téléphone), boutons d'en-tête (ordinateur), recherche, raccourci « b ».
+// Course créée depuis une confirmation collée (18.11.2026, dans l'onglet Assistant depuis le 20.11.2026) : l'administratrice générale et les
+// administratrices, quand une entreprise Taxi ou Secret leur permet de créer.
 export const confirmationPermise = () => !!etat.brut && (estSuperAdmin() || estAdmin()) && entreprisesConfirmation({ entites: entitesAccessibles(), reglages: reglagesDe, permissions: permissionsDe }).liste.length > 0;
-// Les droits de la personne dans une autre entreprise accessible (« Coller une confirmation » crée dans Taxi ou Secret depuis n'importe laquelle).
+// Les droits de la personne dans une autre entreprise accessible (une confirmation de course se crée dans Taxi ou Secret).
 export const permissionsDe = (id) => (etat.brut ? permissionsDans(contexte(), id) : []);
 export const peut = (code) => !!etat.brut && permissionsActives().includes(code);
 // Entreprises dont la personne peut voir les analyses et les montants : c'est le périmètre de la vue d'ensemble.

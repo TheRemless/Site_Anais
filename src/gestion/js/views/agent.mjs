@@ -1,18 +1,28 @@
 // Onglet « Assistant » (19.11.2026) : on discute avec l'agent comme dans une messagerie, une conversation par client ou par demande,
 // plusieurs ouvertes en parallèle. L'agent cherche, calcule et propose ; chaque proposition est une carte que la personne valide.
-// « Valider » ouvre l'écran habituel de l'outil déjà rempli (Coller une demande, formulaire de réservation) : c'est lui qui enregistre.
+// L'onglet est la seule entrée des demandes et des confirmations collées (20.11.2026, décision de Jérémy). « Valider » enregistre d'un geste
+// par le code habituel de l'outil (fiche de création du dossier, confirmation de course, formulaire de réservation), sans le réécrire : la
+// fenêtre ne s'ouvre que s'il manque quelque chose ; la carte garde alors le motif. « Tout valider » fait de même pour toutes les cartes.
 // Téléphone d'abord : la liste, puis le fil en plein écran avec la zone de saisie en bas. Ordinateur : la liste à gauche, le fil à droite.
-import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier } from "../etat.mjs";
+import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, entitesAccessibles, changerEntite, confirmationPermise } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
+import { lireMessage } from "../demande-calc.mjs";
+import { lireConfirmation, ressembleAConfirmation } from "../confirmation-calc.mjs";
+import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
+import { aujourdhui } from "../calc.mjs";
 import { correctionsDepuisCarte, dossierDeLaCarte } from "../agent-apprendre.mjs";
 import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 import { piecesSaisie, bullePieces, carteBrochure } from "./agent-pieces.mjs";
 import { erreurFichier } from "../pieces-jointes.mjs";
+
+// Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
+// l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
+const CLE_BROUILLON = "gestion-agent-brouillon";
 
 const ERREURS = {
   assistant_eteint: N_("L'assistant est éteint pour cette entreprise (Réglages)."),
@@ -105,6 +115,7 @@ const ETAPES = {
   proposer_reponse: N_("Je prépare la réponse"),
   estimer_temps_web: N_("Je cherche une estimation sur le web"),
   proposer_temps_trajet: N_("Je prépare la durée pour la table"),
+  proposer_course: N_("Je prépare la course"),
   proposer_import_brochure: N_("Je prépare l'import de la brochure"),
   lire_reglages: N_("Je lis les réglages"),
   proposer_reglage: N_("Je prépare le réglage"),
@@ -241,6 +252,15 @@ export async function vueAgent(idOuvert = "") {
     if (conv) fil = (await etat.store.agentFil(conv.id)) || fil;
     dessinerListe();
     dessinerFil();
+    // Message venu d'une autre entreprise (« Passer à … ») : il attend dans la zone de saisie, la personne l'envoie.
+    if (!conv) {
+      try {
+        const b = sessionStorage.getItem(CLE_BROUILLON);
+        if (b) (sessionStorage.removeItem(CLE_BROUILLON), (champ.value = b), ajuster());
+      } catch {
+        // stockage refusé
+      }
+    }
     champ.focus({ preventScroll: true });
   }
 
@@ -323,8 +343,9 @@ export async function vueAgent(idOuvert = "") {
 
   function dessinerFil() {
     const items = filDepuis(fil.messages, fil.cartes);
-    zoneFil.replaceChildren(...(items.length ? items.map(element) : [suggestions()]));
-    colonneFil.replaceChildren(enTete(), zoneFil, formulaire);
+    zoneFil.replaceChildren(...[bandeauAutreEntreprise(), ...(items.length ? items.map(element) : [suggestions()])].filter(Boolean));
+    majToutValider();
+    colonneFil.replaceChildren(enTete(), zoneFil, barreTout, formulaire);
     descendre();
   }
   const descendre = () => requestAnimationFrame(() => {
@@ -498,24 +519,39 @@ export async function vueAgent(idOuvert = "") {
   const jourCourt = (iso) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString(langueActive() === "en" ? "en-GB" : "fr-FR", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }) : "");
   const prixTexte = (s) => (s.prix === null || s.prix === undefined ? h("span", { class: "agent-prix vide" }, tr("Prix à fixer")) : h("span", { class: "agent-prix" }, `${Number(s.prix).toLocaleString("en-US")} ${devise()}`, h("small", null, s.origine_prix === "saisi" ? tr("donné par vous") : tr("catalogue"))));
 
+  // Ce qu'une validation a créé pendant cette visite (dossier, course) : la carte validée montre ensuite le voucher et le message.
+  const resultats = new Map();
+  // Le motif d'une carte qui n'a pas pu être enregistrée d'un geste, avec l'entreprise où la passer s'il y a lieu.
+  const motifs = new Map();
+  const estCourse = (c) => c.genre === "dossier" && !!(c.donnees && c.donnees.course);
+  // « Tout valider » : les cartes qui s'enregistrent par le code habituel. Une réponse se copie à la main (le presse-papiers n'en garde
+  // qu'une) ; un réglage, une demande d'amélioration et une brochure se relisent une à une.
+  const VALIDABLES = ["dossier", "reservation", "modification", "temps"];
+  const enAttente = () => fil.cartes.filter((c) => c.statut === "proposee" && VALIDABLES.includes(c.genre));
+
   function carte(c) {
     const d = c.donnees || {};
     const corps = [];
     let action = null;
-    if (c.genre === "dossier") {
+    if (estCourse(c)) {
+      // Course de taxi : ce que la lecture habituelle des confirmations a compris, avant de créer le dossier et la Booking confirmation.
+      const lu = lireConfirmation(d.course.texte || "", { aujourdhui: aujourdhui() }).valeurs || {};
+      corps.push(h("p", { class: "agent-carte-client" }, [lu.nom, lu.telephone].filter(Boolean).join(", ")), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, [lu.pickup, lu.dropoff].filter(Boolean).join(" → ") || lu.programme || tr("Course")), h("small", null, [jourCourt(lu.date), lu.heure && tr("pickup {h}", { h: lu.heure }), lu.adultes ? pluriel(Number(lu.adultes) || 0, N_("{n} adulte"), N_("{n} adultes")) : ""].filter(Boolean).join(", "))), lu.prix ? h("span", { class: "agent-prix" }, `${lu.prix} ${devise()}`) : h("span", { class: "agent-prix vide" }, tr("Prix à fixer")))));
+      action = { libelle: tr("Créer le dossier et la Booking confirmation"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirCourse(c) } };
+    } else if (c.genre === "dossier") {
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
       corps.push(h("ul", { class: "agent-services" }, (d.services || []).map((s) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.remarque].filter(Boolean).join(", "))), prixTexte(s)))));
-      action = ouvertes.has(c.id) ? { libelle: tr("Le dossier est créé"), faire: () => decider(c, "validee"), puis: { libelle: tr("Rouvrir la création"), faire: () => ouvrirDossier(c) } } : { libelle: tr("Préparer le dossier"), faire: () => ouvrirDossier(c) };
+      action = { libelle: tr("Créer le dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirDossier(c) } };
     } else if (c.genre === "reservation") {
       const s = d.service || {};
       corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup })].filter(Boolean).join(", "))), prixTexte(s))));
-      action = { libelle: tr("Ajouter au dossier"), faire: () => ouvrirReservation(c) };
+      action = { libelle: tr("Ajouter au dossier"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirReservation(c) } };
     } else if (c.genre === "modification") {
       corps.push(h("p", null, h("strong", null, d.libelle)), h("p", { class: "agent-modif" }, h("del", null, d.avant || tr("vide")), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)), d.raison ? h("p", { class: "aide" }, d.raison) : null);
-      action = { libelle: tr("Ouvrir la modification"), faire: () => ouvrirModification(c) };
+      action = { libelle: tr("Appliquer"), faire: () => valider(c), puis: { libelle: tr("Vérifier avant"), faire: () => ouvrirModification(c) } };
     } else if (c.genre === "temps") {
       corps.push(h("p", { class: "agent-modif" }, h("strong", null, d.de), " ", icone("inverser", 16), " ", h("strong", null, d.vers), " ", h("span", null, texteDuree(d.duree_min))), h("p", { class: "aide" }, [d.ferry ? tr("ferry") : "", d.marge_min ? tr("marge {m} min", { m: d.marge_min }) : "", d.source].filter(Boolean).join(", ")));
-      action = { libelle: tr("Ajouter à la table"), faire: () => ajouterTemps(c) };
+      action = { libelle: tr("Ajouter à la table"), faire: () => valider(c) };
     } else if (c.genre === "reglage") {
       const long = String(d.valeur || "").length > 60 || String(d.avant || "").length > 60;
       corps.push(h("p", null, h("strong", null, d.nom)));
@@ -551,10 +587,11 @@ export async function vueAgent(idOuvert = "") {
       action = b.action;
     }
     const avert = (c.avertissements || []).length && c.genre !== "amelioration" ? h("ul", { class: "assistant-avertissements" }, c.avertissements.map((a) => h("li", null, texteAvertissement(a)))) : null;
-    const libelles = { dossier: N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: N_("Réponse au client"), temps: N_("Temps de trajet"), reglage: N_("Réglage"), amelioration: N_("Amélioration de l'outil"), brochure: N_("Brochure à importer") };
+    const libelles = { dossier: estCourse(c) ? N_("Course") : N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: N_("Réponse au client"), temps: N_("Temps de trajet"), reglage: N_("Réglage"), amelioration: N_("Amélioration de l'outil"), brochure: N_("Brochure à importer") };
     // Une demande envoyée montre son suivi (envoyée, PR prête, en ligne, refusée).
     const suivi = c.genre === "amelioration" && c.statut === "validee" ? (ameliorations || []).find((a) => a.carte_id === c.id) : null;
     const decidee = c.statut !== "proposee";
+    const motif = motifs.get(c.id);
     return h(
       "article",
       { class: `agent-carte ${c.statut}`, "data-carte": c.id },
@@ -562,25 +599,52 @@ export async function vueAgent(idOuvert = "") {
       ...corps,
       avert,
       decidee
-        ? h("p", { class: "agent-carte-sort" }, icone(c.statut === "validee" ? "coche" : "fermer", 16), suivi ? tr(STATUTS_AMELIORATION[suivi.statut] || N_("Envoyée, en préparation")) : c.statut === "validee" ? (c.genre === "amelioration" ? tr("Envoyée") : c.genre === "reglage" ? tr("Appliqué") : tr("Validée")) : tr("Écartée"))
+        ? h("div", { class: "agent-carte-fin" }, h("p", { class: "agent-carte-sort" }, icone(c.statut === "validee" ? "coche" : "fermer", 16), suivi ? tr(STATUTS_AMELIORATION[suivi.statut] || N_("Envoyée, en préparation")) : c.statut === "validee" ? (c.genre === "amelioration" ? tr("Envoyée") : c.genre === "reglage" ? tr("Appliqué") : tr("Validée")) : tr("Écartée")), c.statut === "validee" ? suite(c) : null)
         : h(
             "div",
             { class: "actions gauche" },
-            ouvertes.has(c.id) ? h("p", { class: "aide pleine-largeur" }, tr("Ouvert dans « Coller une demande » : dites ici quand le dossier est créé.")) : null,
-            action ? h("button", { class: "principal", type: "button", onclick: (e) => action.faire(e.currentTarget) }, action.libelle) : null,
+            motif ? h("p", { class: "erreur-form pleine-largeur", role: "alert" }, motif.motif) : null,
+            motif && motif.entreprise ? h("button", { class: "principal", type: "button", onclick: () => passerA(motif.entreprise, d.course ? d.course.texte : "") }, tr("Passer à {nom}", { nom: motif.entreprise.nom })) : null,
+            action ? h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", onclick: (e) => action.faire(e.currentTarget) }, action.libelle) : null,
             action && action.puis ? h("button", { class: "secondaire", type: "button", onclick: () => action.puis.faire() }, action.puis.libelle) : null,
             h("button", { class: "secondaire", type: "button", onclick: () => decider(c, "ecartee") }, tr("Écarter"))
           )
     );
   }
 
+  // Après une validation : le dossier, son voucher (ou la Booking confirmation chez Taxi) et le message WhatsApp, d'un geste.
+  function suite(c) {
+    const r = resultats.get(c.id);
+    if (!r || !r.dossier) return null;
+    const dossier = r.dossier;
+    if (r.course) return h("div", { class: "agent-suite" }, blocBooking(r.course), h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: () => naviguer(`#/dossier/${dossier.id}`) }, tr("Ouvrir le dossier {ref}", { ref: dossier.ref || "" }))));
+    return h(
+      "div",
+      { class: "actions gauche agent-suite" },
+      h("button", { class: "principal", type: "button", onclick: () => voucher(dossier.id) }, icone("whatsapp", 18), modeTaxi() ? tr("Booking confirmation et WhatsApp") : tr("Voucher et WhatsApp")),
+      h("button", { class: "secondaire", type: "button", onclick: () => naviguer(`#/dossier/${dossier.id}`) }, tr("Ouvrir le dossier {ref}", { ref: dossier.ref || "" }))
+    );
+  }
+  let blocBooking = () => null;
+  async function voucher(dossierId) {
+    const [{ courseDuDossier }, { envoyerVoucher }] = await Promise.all([import("./creation-course.mjs"), import("./voucher-envoi.mjs")]);
+    const x = courseDuDossier(dossierId);
+    if (!x.reservation) return toast(tr("Ce dossier n'a pas encore de service à mettre sur un voucher."), true);
+    envoyerVoucher(x);
+  }
+
+  function redessiner(c) {
+    const ancien = zoneFil.querySelector(`[data-carte="${c.id}"]`);
+    if (ancien) ancien.replaceWith(carte(c));
+    majToutValider();
+  }
   async function decider(c, statut) {
     const maj = await etat.store.agentCarte(c.id, statut);
     fil.cartes = fil.cartes.map((x) => (x.id === maj.id ? maj : x));
     await rafraichirAttente();
     dessinerListe();
-    const ancien = zoneFil.querySelector(`[data-carte="${c.id}"]`);
-    if (ancien) ancien.replaceWith(carte(maj));
+    redessiner(maj);
+    return maj;
   }
 
   // Après chaque carte enregistrée (migration 54) : la conversation se relie au dossier qu'elle a créé ou touché (si elle n'en a pas déjà
@@ -612,21 +676,69 @@ export async function vueAgent(idOuvert = "") {
     }
   }
 
-  // La création reste dans « Coller une demande » : ouvrir n'est pas valider. La carte attend que la personne dise que le dossier est créé,
-  // ou se valide d'elle-même quand le dossier est créé depuis cette fenêtre.
-  const ouvertes = new Set();
-  async function ouvrirDossier(c) {
+  // ---- Valider d'un geste ---------------------------------------------------------------------------------------------------------
+  // Chaque genre passe par le code habituel de l'outil, sans le montrer ; un motif d'arrêt reste sur la carte. Rend true si c'est enregistré.
+  async function valider(c, { seule = true } = {}) {
+    motifs.delete(c.id);
+    let r = { ok: false, motif: "" };
+    try {
+      if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
+      else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
+      else if (c.genre === "reservation") r = await enregistrerReservation(c, reservationDepuisCarte(c.donnees), tr("Service ajouté au dossier."));
+      else if (c.genre === "modification") {
+        const ancienne = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
+        r = ancienne ? await enregistrerReservation(c, reservationModifiee(ancienne, c.donnees), tr("Service modifié."), ancienne) : { ok: false, motif: tr("Ce service n'existe plus.") };
+      } else if (c.genre === "temps") r = await ajouterTemps(c);
+    } catch (err) {
+      r = { ok: false, motif: err.message };
+    }
+    if (!r || !r.ok) {
+      motifs.set(c.id, { motif: (r && r.motif) || tr("Rien n'a été enregistré."), entreprise: (r && r.entreprise) || null });
+      redessiner(c);
+      if (seule) toast((r && r.motif) || tr("Rien n'a été enregistré."), true);
+      return false;
+    }
+    await noterReussite(c, r);
+    return true;
+  }
+  // Une carte enregistrée : la conversation se relie au dossier et les corrections sont gardées (apresValidation), puis la carte est validée.
+  async function noterReussite(c, r) {
+    const dossier = r.dossier || (r.fait && r.fait.dossier) || null;
+    if (dossier) resultats.set(c.id, { dossier, course: r.fait || null });
+    if (r.fait) blocBooking = (await import("./confirmation.mjs")).blocBookingConfirmation;
+    const res = r.reservation || null;
+    await apresValidation(c, { dossierId: (dossier && dossier.id) || (res && res.dossier_id) || null, enregistre: res ? { reservation: res } : null });
+    await decider(c, "validee");
+  }
+
+  // « Tout valider » : les cartes en attente, dans l'ordre du fil. Celles qui passent sont validées, une carte qui échoue garde son motif.
+  const barreTout = h("div", { class: "agent-tout-valider", hidden: true });
+  function majToutValider() {
+    const n = enAttente().length;
+    barreTout.hidden = n < 2;
+    barreTout.replaceChildren(h("button", { class: "principal", type: "button", onclick: (e) => toutValider(e.currentTarget) }, icone("coche", 18), tr("Tout valider ({n})", { n })));
+  }
+  async function toutValider(btn) {
+    btn.disabled = true;
+    let faites = 0;
+    let echecs = 0;
+    for (const c of enAttente()) (await valider(c, { seule: false })) ? faites++ : echecs++;
+    majToutValider();
+    toast(echecs ? tr("{ok} validées, {ko} à reprendre : le motif est sur la carte.", { ok: faites, ko: echecs }) : tr("{ok} validées.", { ok: faites }), !!echecs);
+  }
+
+  // ---- Vérifier avant : la fenêtre habituelle, affichée ------------------------------------------------------------------------
+  const preparation = (c) => {
     const contexte = { prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire, taxi: modeTaxi() };
-    const prep = propositionVersDemande(propositionDepuisCarte(c.donnees), contexte);
-    const surCree = async ({ dossier }) => {
-      ouvertes.delete(c.id);
-      await apresValidation(c, { dossierId: dossier.id });
-      await decider(c, "validee");
-    };
-    (await import("./demande.mjs")).ouvrirDemande(null, { texte: "", ...prep, surCree });
-    ouvertes.add(c.id);
-    const ancien = zoneFil.querySelector(`[data-carte="${c.id}"]`);
-    if (ancien) ancien.replaceWith(carte(c));
+    return { texte: "", ...propositionVersDemande(propositionDepuisCarte(c.donnees), contexte) };
+  };
+  async function ouvrirDossier(c) {
+    (await import("./demande.mjs")).ouvrirDemande(null, preparation(c), { titre: c.titre, surCree: ({ dossier }) => noterReussite(c, { ok: true, dossier }) });
+  }
+  async function ouvrirCourse(c) {
+    // Même règle que la validation d'un geste (et que l'ancien écran) : une course depuis une confirmation se crée par une administratrice.
+    if (!confirmationPermise()) return toast(tr("Une course depuis une confirmation se crée par une administratrice."), true);
+    (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { surCree: (fait) => noterReussite(c, { ok: true, fait }) });
   }
   async function ouvrirReservation(c) {
     const { formulaireReservation } = await import("./reservations.mjs");
@@ -635,8 +747,7 @@ export async function vueAgent(idOuvert = "") {
       ferme();
       if (!res) return;
       toast(tr("Service ajouté au dossier."));
-      await apresValidation(c, { dossierId: res.dossier_id, enregistre: { reservation: res } });
-      await decider(c, "validee");
+      await noterReussite(c, { ok: true, reservation: res });
     }));
   }
   async function ouvrirModification(c) {
@@ -647,19 +758,46 @@ export async function vueAgent(idOuvert = "") {
       ferme();
       if (!res) return;
       toast(tr("Service modifié."));
-      await apresValidation(c, { dossierId: res.dossier_id || r.dossier_id, enregistre: { reservation: res } });
-      await decider(c, "validee");
+      await noterReussite(c, { ok: true, reservation: { ...res, dossier_id: res.dossier_id || r.dossier_id } });
     }));
   }
+
+  // Le formulaire de réservation habituel, rempli et envoyé sans être montré : ses contrôles, la facture qui suit, les questions qu'il pose
+  // (annulation d'un service facturé…) restent les siens. Un champ refusé, ou rien d'enregistré, devient le motif de la carte.
+  async function enregistrerReservation(c, valeurs, message, ancienne = null) {
+    const { formulaireReservation } = await import("./reservations.mjs");
+    return new Promise((fin) => {
+      let fini = false;
+      let minuterie = null;
+      let ferme = () => {};
+      const terminer = (r) => {
+        if (fini) return;
+        fini = true;
+        clearTimeout(minuterie);
+        ferme();
+        fin(r);
+      };
+      const form = formulaireReservation(valeurs, (res) => terminer(res ? (toast(message), { ok: true, reservation: { ...res, dossier_id: res.dossier_id || (ancienne && ancienne.dossier_id) || valeurs.dossier_id } }) : { ok: false, motif: tr("Rien n'a été enregistré.") }));
+      ferme = modal(tr("Réservation"), form, { cache: true });
+      minuterie = setTimeout(() => terminer({ ok: false, motif: tr("Rien n'a été enregistré : ouvrez « Vérifier avant ».") }), 60_000);
+      form.requestSubmit();
+      // Les contrôles du formulaire passent avant tout enregistrement : un champ en erreur arrête tout de suite.
+      queueMicrotask(() => {
+        const refus = form.querySelector('[aria-invalid="true"]');
+        if (refus) terminer({ ok: false, motif: tr("À corriger : {champ}.", { champ: ((form.querySelector(`label[for="${refus.id}"]`) || {}).textContent || "").trim() || tr("un champ") }) });
+      });
+    });
+  }
+
   // Une durée donnée dans la conversation entre dans la table de référence, confirmée (Nani l'a donnée elle-même).
   async function ajouterTemps(c) {
     const d = c.donnees;
     try {
       await etat.store.enregistrerTempsTrajets(etat.entiteId, [{ de: d.de, vers: d.vers, cle: clePaire(d.de, d.vers), mode: "route", duree_min: d.duree_min, ferry: !!d.ferry, marge_min: d.marge_min || 0, source: d.source || "", source_date: new Date().toISOString().slice(0, 10), a_verifier: false, origine: "agent" }]);
       toast(tr("Durée ajoutée à la table des temps de trajet."));
-      await decider(c, "validee");
+      return { ok: true };
     } catch (err) {
-      toast(err.message, true);
+      return { ok: false, motif: err.message };
     }
   }
   // Carte « reglage » : appliquée par les écritures habituelles de l'outil (réglages de l'entreprise, fiche du tarif), sous les droits RLS.
@@ -710,6 +848,28 @@ export async function vueAgent(idOuvert = "") {
       toast(tr("Copie impossible : sélectionnez le texte et copiez-le."), true);
     }
   }
+
+  // Une demande ou une course qui relève d'une autre entreprise : on y passe, le message attend dans une nouvelle conversation.
+  function passerA(entreprise, texte) {
+    try {
+      if (texte) sessionStorage.setItem(CLE_BROUILLON, texte);
+    } catch {
+      // stockage refusé : le message reste à recoller
+    }
+    changerEntite(entreprise.id, { naviguer: false });
+    location.hash = "#/agent/nouvelle";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  }
+  // « Transfer request » du site VIP Taxi Lanta collée ailleurs : le dossier se crée chez Taxi, comme avant dans « Coller une demande ».
+  function bandeauAutreEntreprise() {
+    const premier = (fil.messages || []).find((m) => m.role === "user");
+    const t = premier ? texteDe(premier) : "";
+    if (!t || !demandeDeTaxi(t, lireMessage(t, aujourdhui()))) return null;
+    const taxi = entrepriseTaxi(entitesAccessibles(), (id) => etat.brut.reglages[id], etat.entiteId);
+    if (!taxi) return null;
+    return h("div", { class: "bandeau-info agent-bascule", role: "status" }, h("p", null, tr("Demande de transfert du site de {nom} : le dossier se crée dans {nom}.", { nom: taxi.nom })), h("button", { class: "principal petit", type: "button", onclick: () => passerA(taxi, t) }, tr("Passer à {nom}", { nom: taxi.nom })));
+  }
+  const texteDe = (m) => (typeof m.contenu === "string" ? m.contenu : Array.isArray(m.contenu) ? m.contenu.filter((b) => b && b.type === "text").map((b) => b.text).join("\n") : "");
 
   dessinerListe();
   if (idOuvert) await ouvrir(idOuvert === "nouvelle" ? "" : idOuvert);

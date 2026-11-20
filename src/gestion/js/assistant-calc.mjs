@@ -38,9 +38,11 @@ export function propositionVersDemande(p, contexte) {
     // Les personnes du service si le message les donne, sinon celles du groupe.
     const pax = paxDe(s.adultes || s.enfants ? s : c);
     // Transfert privé hors catalogue (« Lanta Sand → The Scene, Ao Nang ») : pas de ligne de la base, un prix à taper dans l'écran.
-    if (s.hors_catalogue) return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.de || "", vers: s.vers || "" }, confiance: s.confiance || "moyenne" };
+    // Carte de l'agent : un prix tapé par la personne (prix_libre) et le lieu de pickup proposé (lieu_pickup) passent à la fiche.
+    const lieu = s.lieu_pickup ? { hotelDepart: s.lieu_pickup } : {};
+    if (s.hors_catalogue) return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres: [], copie: false, inconnu: false, transfertLibre: { de: s.de || s.lieu_pickup || "", vers: s.vers || "" }, prixLibre: s.prix_libre ?? null, confiance: s.confiance || "moyenne" };
     const offres = [s.offre, ...(s.alternatives || [])].map((r) => offreDepuisBase(r, pax, contexte)).filter(Boolean);
-    return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres, copie: false, inconnu: !offres.length, confiance: offres.length ? s.confiance : "basse" };
+    return { phrase: s.texte || "", date: s.date || "", heure: s.heure || "", adultes: pax.adultes, enfants: pax.enfants, offres, copie: false, inconnu: !offres.length, confiance: offres.length ? s.confiance : "basse", ...lieu };
   });
   const premier = services[0] || {};
   const d = {

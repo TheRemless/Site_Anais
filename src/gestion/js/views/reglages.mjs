@@ -822,8 +822,8 @@ export function vueReglages() {
         ),
         h("p", { class: "aide" }, modeRappel(r) === "depart" ? tr("Le nom du client et le voyage, un tap ouvre le dossier. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche).") : tr("Le nom du client, le service, les personnes et le pickup, un tap ouvre la réservation et son rappel. Chacun peut le couper pour lui dans la fenêtre « Rappels » (la cloche)."))
       ),
-      // Assistant IA : éteint par défaut, allumé par entreprise. Il ne fonctionne qu'une fois la fonction « assistant » déployée avec sa clé.
-      // Il vit dans « Coller une demande », qui n'existe qu'en Secret et en Taxi.
+      // Assistant IA : éteint par défaut, allumé par entreprise. Il ne fonctionne qu'une fois les fonctions « agent » et « assistant » déployées
+      // avec leur clé. L'onglet Assistant est la seule entrée des demandes et des confirmations collées (20.11.2026).
       h(
         "fieldset",
         null,
@@ -831,8 +831,8 @@ export function vueReglages() {
         // Onglet « Assistant » (agent, 19.11.2026) : dans les trois entreprises, ZTP compris.
         h("label", { class: "case", for: "agent-ia" }, h("input", { id: "agent-ia", type: "checkbox", checked: r.agent_ia === true, onchange: (e) => ((r.agent_ia = e.target.checked), marque()) }), tr("Onglet « Assistant » : discuter avec l'assistant, qui planifie et propose dossiers, services et réponses à valider")),
         h("p", { class: "aide" }, tr("L'assistant lit le catalogue (prix de vente seulement), les horaires, les clients et les dossiers de l'entreprise. Jamais un net, une marge ni un nom de prestataire. Chaque proposition attend votre clic.")),
-        ztp ? null : h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Proposer l'assistant dans « Coller une demande » : lire un message libre du client")),
-        ztp ? null : h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) reçoit le message collé et la liste des tarifs de vente, sans les prix. Jamais de net, de commission ni de coordonnée bancaire. Il propose, vous vérifiez : rien n'est créé ni envoyé sans vous.")),
+        ztp ? null : h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Importer une brochure de partenaire avec l'assistant")),
+        ztp ? null : h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) lit la brochure et propose les tarifs à ajouter au catalogue. Rien n'est enregistré sans vous.")),
         texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: exemple("lieu_entreprise") }),
         peut("journal.voir") ? h("p", null, h("a", { class: "bouton secondaire petit", href: "#/assistant" }, tr("Suivi de l'assistant : coût, usage et qualité"))) : null
       ),

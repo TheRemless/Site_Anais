@@ -19,7 +19,7 @@ function ancienne(nom, fonctionnement, modules) {
     return true;
   };
   if (nom === "trajets" || nom === "du") return brut("partenaires") && !taxi;
-  if (nom === "demande_collee" || nom === "demandes_site" || nom === "bandeau_site" || nom === "fiduciaire") return exc;
+  if (nom === "demandes_site" || nom === "bandeau_site" || nom === "fiduciaire") return exc;
   if (nom === "commissions") return taxi && brut("reservations");
   return brut(nom);
 }
@@ -52,8 +52,8 @@ test("modules du site : seulement dans une entreprise qui publie sur le site", (
 test("Réglages, Écrans : seuls les modules de la façon de travailler, sans la fiduciaire (elle a son propre réglage)", () => {
   const ids = (c) => modulesReglables(c).map((m) => m.id);
   assert.deepEqual(ids(ctx("sur_mesure")), ["catalogue"]);
-  assert.deepEqual(ids(ctx("excursions", { partenaires: false }, true)), ["partenaires", "trajets", "du", "reservations", "messages", "demande_collee", "demandes_site", "bandeau_site"], "Trajets reste proposé quand Partenaires est masqué");
-  assert.deepEqual(ids(ctx("taxi", {}, false)), ["partenaires", "reservations", "messages", "demande_collee", "commissions"]);
+  assert.deepEqual(ids(ctx("excursions", { partenaires: false }, true)), ["partenaires", "trajets", "du", "reservations", "messages", "demandes_site", "bandeau_site"], "Trajets reste proposé quand Partenaires est masqué");
+  assert.deepEqual(ids(ctx("taxi", {}, false)), ["partenaires", "reservations", "messages", "commissions"]);
 });
 
 test("chaque écran de module a sa route et passe par ecranDeLEntreprise", () => {
@@ -66,12 +66,13 @@ test("chaque écran de module a sa route et passe par ecranDeLEntreprise", () =>
   assert.equal(moduleDeLEcran("dossiers"), null);
 });
 
-test("plus de test de mode pour afficher un écran du menu, du site ou de « Coller une demande »", () => {
+test("plus de test de mode pour afficher un écran du menu ou du site ; « Coller une demande » n'existe plus (20.11.2026)", () => {
   const app = fs.readFileSync("src/gestion/js/app.mjs", "utf8");
   const menu = app.slice(app.indexOf("function ecrans()"), app.indexOf("].filter((s) => s.items.length);"));
   assert.doesNotMatch(menu.slice(menu.indexOf('titre: tr("Partenaires")')), /modeTaxi\(\)|modeExcursions\(\)/);
   assert.doesNotMatch(app, /const siteVisible = \(\) => modeExcursions/);
-  for (const f of ["views/dashboard.mjs", "views/dossiers.mjs"]) assert.match(fs.readFileSync(`src/gestion/js/${f}`, "utf8"), /moduleActif\("demande_collee"\) \? h\("button"/, f);
+  for (const f of ["views/dashboard.mjs", "views/dossiers.mjs"]) assert.doesNotMatch(fs.readFileSync(`src/gestion/js/${f}`, "utf8"), /demande_collee|ouvrirDemande/, f);
+  assert.ok(!MODULES.some((m) => m.id === "demande_collee"));
   assert.match(fs.readFileSync("src/gestion/js/views/dashboard.mjs", "utf8"), /moduleActif\("commissions"\) \? sectionCommissionsHier/);
   assert.doesNotMatch(fs.readFileSync("src/gestion/js/views/bandeau-site.mjs", "utf8"), /modeTaxi|caseMarque\("secret"\)/);
   assert.doesNotMatch(fs.readFileSync("src/gestion/js/views/demandes-site.mjs", "utf8"), /d\.marque === "taxi" \? "taxi" : "secret"|secrettravelandtour\.com/);

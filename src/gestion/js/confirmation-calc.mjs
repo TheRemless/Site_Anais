@@ -433,11 +433,11 @@ export const nomARemplacer = (ancien, nouveau) => {
   return !!n && a !== n && !(a && ` ${a} `.includes(` ${n} `));
 };
 
-// Le texte collé dans « Coller une demande » est-il une confirmation de course (Jérémy, 18.11.2026) ? L'en-tête « New booking confirmation »,
+// Le texte est-il une confirmation de course (Jérémy, 18.11.2026) ? Depuis le 20.11.2026 : contrôle de la carte « Course » de l'Assistant,
+// qui ne crée jamais une course depuis une demande de client. L'en-tête « New booking confirmation »,
 // ou une ligne de marque (VIP TAXI LANTA, SECRET TRAVEL & TOUR) suivie d'au moins deux libellés connus, ou quatre libellés de course
 // (Name, Date, Pick-up time, Pick-up location, Drop-off location, passagers) avec un prix convenu (« Price: »). Une demande du site
 // (« Transfer request: … », « Booking request: … », « Estimated total ») n'en est jamais une : c'est le client qui demande.
-// Sert à proposer la bascule, jamais à créer d'office.
 const LIBELLES_COURSE = ["nom", "date", "heure", "pickup", "dropoff", "passagers", "prix"];
 export function ressembleAConfirmation(texte, { aujourdhui = "" } = {}) {
   const t = String(texte || "");

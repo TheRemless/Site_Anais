@@ -6,10 +6,10 @@ Préparé le 12.11.2026. Inactif tant que la case « Assistant IA » n'est pas c
 
 | Usage | État | Où |
 |---|---|---|
-| 1. Lire un message libre de client | Prêt, éteint | Bouton « Lire avec l'assistant » dans Coller une demande |
+| 1. Lire un message libre de client | Retiré de l'écran le 20.11.2026 : l'onglet Assistant (agent) lit les messages collés. La fonction garde l'usage (jeu d'essai) | Rien à l'écran |
 | 2. Rédiger la réponse au client | Retiré le 19.11.2026 (Anaïs écrit ses réponses, décision de Jérémy) : la fonction refuse l'usage, l'écran n'a plus de bouton, la logique pure reste dans `calc.js` | Rien à l'écran |
 | 3. Questions d'Anaïs sur ses données | Conception seulement (plus bas) | Rien dans le code |
-| 4. Prix et horaires d'un itinéraire (20.11.2026) | Prêt, suit la case « Assistant IA » ; mémoire des hôtels après la migration 48 | Bouton « Prix et horaires d'un itinéraire » dans Coller une demande |
+| 4. Prix et horaires d'un itinéraire (20.11.2026) | Écran retiré le 20.11.2026 : l'onglet Assistant planifie les itinéraires (horaires à la meilleure marge, réponse). La fonction garde les usages, `itineraire-calc.mjs` reste (hôtels connus, jeu d'essai) | Rien à l'écran |
 | 5. Importer une brochure de partenaire (20.11.2026) | Prêt, suit la case « Assistant IA » ; journal après la migration 50 | Bouton « Importer une brochure » dans la fiche du partenaire, section Tarifs |
 
 Fichiers : `supabase/functions/assistant/index.ts` (fonction), `supabase/functions/assistant/calc.js` (logique pure, testée), `src/gestion/js/assistant-calc.mjs` et `views/assistant-demande.mjs` (outil), `docs/gestion/migration-27-assistant.sql` (journal), `tests/gestion-assistant.test.js`.

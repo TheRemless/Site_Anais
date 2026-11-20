@@ -87,7 +87,8 @@ export function purgerBrouillons() {
 }
 const valeurDe = (c) => (c.type === "checkbox" || c.type === "radio" ? (c.checked ? "1" : "0") : c.value);
 const CHAMPS = "input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=file]):not([type=search]), textarea, select";
-export function modal(titre, contenu, { large = false, feuille = false, protege = true, brouillon = null, ferme: apres = null } = {}) {
+// `cache` : la fenêtre travaille sans se montrer (une carte de l'agent validée d'un geste passe par la fiche de création sans l'afficher).
+export function modal(titre, contenu, { large = false, feuille = false, protege = true, brouillon = null, ferme: apres = null, cache = false } = {}) {
   const precedent = document.activeElement;
   let close = false;
   let touche = false;
@@ -173,8 +174,9 @@ export function modal(titre, contenu, { large = false, feuille = false, protege 
     corps
   );
   const fond = h("div", { class: "modal-fond", onmousedown: (e) => e.target === fond && demanderFermeture() }, boite);
+  if (cache) fond.hidden = true;
   document.body.append(fond);
-  document.documentElement.classList.add("modal-ouverte");
+  if (!cache) document.documentElement.classList.add("modal-ouverte");
   ouvertes++;
   document.addEventListener("keydown", surTouche);
   // Ce que la personne a modifié elle-même : un champ rempli par le code à l'ouverture n'est pas une saisie à protéger.
@@ -207,6 +209,7 @@ export function modal(titre, contenu, { large = false, feuille = false, protege 
       corps.prepend(note);
     }
   }
+  if (cache) return fermer;
   // Au doigt, ouvrir le clavier tout de suite cacherait la feuille : on ne met le focus que sur un bouton, sauf champ marqué data-autofocus.
   const tactile = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
   const premier = tactile ? boite.querySelector("[data-autofocus], button.principal") : boite.querySelector("[data-autofocus], input:not([type=hidden]), select, textarea, button.principal");

@@ -67,7 +67,7 @@ Ce que la feuille sait déjà, plus le numéro WhatsApp du visiteur (depuis le 1
 | `website` | non | doit rester vide | champ piège caché de la feuille (voir plus bas) |
 | `turnstile_token` | non | texte | jeton Cloudflare Turnstile, quand Jérémy l'aura allumé |
 
-Gestion se sert surtout de `message` : c'est le texte que « Coller une demande » sait déjà lire (mêmes tests, `tests/fixtures/messages-site.json`). Les autres champs servent à la carte, à la notification et aux chiffres. Un champ inconnu est ignoré.
+Gestion se sert surtout de `message` : c'est le texte que la fiche de création (ancien « Coller une demande ») sait déjà lire (mêmes tests, `tests/fixtures/messages-site.json`). Les autres champs servent à la carte, à la notification et aux chiffres. Un champ inconnu est ignoré.
 
 ## Numéro WhatsApp et nom complet (17.11.2026)
 

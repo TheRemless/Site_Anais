@@ -216,7 +216,8 @@ test("agent : les corrections lues avant l'ouverture de la conversation, dans l'
 test("écran : la carte se valide après l'enregistrement seulement, la conversation se relie au dossier", () => {
   const v = lire("src/gestion/js/views/agent.mjs");
   assert.match(v, /async \(res\) => \{\s*ferme\(\);\s*if \(!res\) return;/);
-  assert.match(v, /apresValidation\(c, \{ dossierId: dossier\.id \}\)/);
+  // Validation d'un geste ou « Vérifier avant » (20.11.2026) : toujours par noterReussite, avec l'id du dossier créé ou touché.
+  assert.match(v, /apresValidation\(c, \{ dossierId: \(dossier && dossier\.id\) \|\| \(res && res\.dossier_id\) \|\| null/);
   assert.match(v, /apresValidation\(c, \{ enregistre: \{ message: texte \} \}\)/);
   assert.match(v, /if \(id && conv && !conv\.dossier_id\)/);
   const d = lire("src/gestion/js/views/demande.mjs");
