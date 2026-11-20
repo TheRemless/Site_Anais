@@ -120,7 +120,9 @@ const AVERTISSEMENTS = {
   montant_non_source: { texte: N_("Le montant {valeur} ne vient ni du dossier ni du catalogue. Vérifiez-le avant d'envoyer."), niveau: "alerte" },
   heure_non_source: { texte: N_("L'heure {valeur} ne vient ni du dossier ni des horaires. Vérifiez-la avant d'envoyer."), niveau: "alerte" },
   mot_interne: { texte: N_("Le mot interne « {valeur} » est dans le texte. Retirez-le avant d'envoyer."), niveau: "alerte" },
-  nom_prestataire: { texte: N_("Un nom de prestataire est dans le texte. Retirez-le avant d'envoyer."), niveau: "alerte" },
+  nom_prestataire: { texte: N_("Un nom de partenaire est dans le texte. Retirez-le avant d'envoyer."), niveau: "alerte" },
+  // PR 278 : un montant égal à un net, une marge ou une commission bloque la copie et l'envoi tant qu'il reste dans le texte.
+  montant_interne: { texte: N_("Montant interne (net, marge ou commission) dans la réponse : {valeur}. À retirer."), niveau: "alerte" },
   prenom_equipe: { texte: N_("Un prénom de l'équipe est dans le texte. Vérifiez qu'il doit y être."), niveau: "alerte" },
   signature_retiree: { texte: N_("La signature a été retirée, les messages partent sans signature."), niveau: "info" },
 };
@@ -130,6 +132,7 @@ export function libelleAvertissement(code) {
   const cle = i >= 0 ? brut.slice(0, i) : brut;
   const valeur = i >= 0 ? brut.slice(i + 1) : "";
   const def = AVERTISSEMENTS[cle];
+  if (cle === "nom_prestataire" && valeur) return { cle, texte: N_("La réponse cite le partenaire « {valeur} » : à retirer."), vars: { valeur }, niveau: "alerte" };
   if (!def) return { cle, texte: N_("Point à vérifier ({valeur})"), vars: { valeur: brut }, niveau: "alerte" };
   return { cle, texte: def.texte, vars: { valeur }, niveau: def.niveau };
 }
@@ -191,6 +194,7 @@ export function grouperParJour(messages = []) {
 export const ERREURS_ENVOI = {
   non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),
   droit_manquant: N_("Votre rôle ne permet pas d'envoyer depuis Gestion pour cette conversation."),
+  contenu_interne: N_("La réponse contient un net, une commission ou un nom de partenaire. Retirez-le avant d'envoyer."),
   fenetre_fermee: N_("Le client a écrit il y a plus de 24 h et WhatsApp refuse alors un message libre. Répondez depuis l'app."),
   non_configure: N_("L'envoi depuis Gestion n'est pas encore configuré. Copiez la réponse et envoyez-la depuis l'app."),
   numero_inconnu: N_("Le numéro de l'entreprise n'est pas encore connu de Gestion. Copiez la réponse et envoyez-la depuis l'app."),

@@ -5,6 +5,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { lireEnvoi, corpsTelnyx, lireReponseTelnyx } from "./calc.js";
 import { fenetreOuverte } from "../whatsapp/proposer.js";
+import { controlerReponse } from "../agent/outils.js";
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
 function entetes(req: Request) {
@@ -34,11 +35,15 @@ Deno.serve(async (req) => {
   if (!qui?.user) return json({ erreur: "non_connecte" }, 401);
 
   // Lue avec la session : une conversation que la personne ne peut pas lire n'existe pas pour elle.
-  const { data: conv, error } = await sb.from("whatsapp_conversations").select("id, organisation_id, telephone").eq("id", demande.conversation_id).maybeSingle();
+  const { data: conv, error } = await sb.from("whatsapp_conversations").select("id, organisation_id, telephone, entite_id").eq("id", demande.conversation_id).maybeSingle();
   if (error) return json({ erreur: "base" }, 500);
   if (!conv) return json({ erreur: "droit_manquant" }, 403);
   const { data: msgs } = await sb.from("whatsapp_messages").select("sens, envoye_le").eq("conversation_id", conv.id).eq("sens", "entrant").order("envoye_le", { ascending: false }).limit(1);
   if (!fenetreOuverte(msgs || [])) return json({ erreur: "fenetre_fermee" }, 409);
+  // Garde-fou de la PR 278, aussi côté serveur : jamais un net, une commission ni un nom de partenaire vers le client, même si l'écran a été
+  // contourné. Lu avec la clé de service dans l'entreprise de la conversation (les deux si elle est à trier).
+  const bloque = await contenuInterne(admin, conv, demande.texte);
+  if (bloque.length) return json({ erreur: "contenu_interne", a_retirer: bloque }, 422);
   const cle = Deno.env.get("TELNYX_API_KEY");
   if (!cle) return json({ erreur: "non_configure" }, 503);
   const { data: regl } = await admin.from("whatsapp_reglages").select("numero").eq("organisation_id", conv.organisation_id).maybeSingle();
@@ -68,3 +73,27 @@ Deno.serve(async (req) => {
   await (demande.proposition_id ? filtre.eq("id", demande.proposition_id) : filtre);
   return json({ ok: true, message_id: range?.message_id || null });
 });
+
+// Montants égaux à un net (et à aucun prix de vente) et noms de partenaires présents dans le texte.
+// deno-lint-ignore no-explicit-any
+async function contenuInterne(admin: any, conv: { organisation_id: string; entite_id: string | null }, texte: string) {
+  let ids: string[] = conv.entite_id ? [conv.entite_id] : [];
+  if (!ids.length) {
+    const { data } = await admin.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
+    ids = (data || []).map((e: { id: string }) => e.id);
+  }
+  if (!ids.length) return [];
+  const [pn, tn, pr, tr, pa] = await Promise.all([
+    admin.from("prestations_nets").select("net, net_enfant").in("entite_id", ids).limit(5000),
+    admin.from("trajets_nets").select("net_adulte, net_enfant").in("entite_id", ids).limit(5000),
+    admin.from("prestations").select("prix_vente").in("entite_id", ids).limit(5000),
+    admin.from("trajets").select("prix_adulte, prix_enfant").in("entite_id", ids).limit(5000),
+    admin.from("partenaires").select("nom").in("entite_id", ids).limit(2000),
+  ]);
+  const nombres = (lignes: Record<string, unknown>[] | null, cles: string[]) => new Set((lignes || []).flatMap((l) => cles.map((k) => Number(l[k]))).filter((n) => Number.isFinite(n) && n > 0));
+  const internes = new Set([...nombres(pn.data, ["net", "net_enfant"]), ...nombres(tn.data, ["net_adulte", "net_enfant"])]);
+  const ventes = new Set([...nombres(pr.data, ["prix_vente"]), ...nombres(tr.data, ["prix_adulte", "prix_enfant"])]);
+  const prestataires = (pa.data || []).map((p: { nom: string }) => String(p.nom || "").trim()).filter((x: string) => x.length > 2);
+  const c = controlerReponse(texte, { signer: true, internes, ventes, prestataires });
+  return (c.avertissements || []).filter((a: string) => a.startsWith("montant_interne") || a.startsWith("nom_prestataire"));
+}

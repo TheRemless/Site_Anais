@@ -105,6 +105,9 @@ async function preparer(db: SupabaseClient, convIn: Conv, messages: Record<strin
     const historique: Record<string, unknown>[] = [{ role: "user", content: [{ type: "text", text: texte }] }];
     // Le contrôle de la réponse ne compte comme « source » que les prix et heures rendus par les outils : pas les montants écrits par le client.
     const memo = memoDepuis([], { signer: signe(reglages), prestataires, entreprise: ent.nom, prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
+    // Garde-fou de la PR 278 : un montant égal à un net de l'entreprise (et à aucun prix de vente) est signalé « montant_interne » et bloque
+    // la copie dans l'écran. Les nets restent ici, dans la fonction : ils ne partent jamais chez Claude.
+    memo.internes = await netsDe(ctx);
     const r = await tourner({
       anthropic,
       modele: Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT,
@@ -157,21 +160,32 @@ async function journal(db: SupabaseClient, entiteId: string | null, statut: stri
   return pret;
 }
 
+// Les nets de l'entreprise (prestations et trajets), en nombres : seulement pour repérer un montant interne dans la réponse.
+// deno-lint-ignore no-explicit-any
+async function netsDe(ctx: any) {
+  const [p, t] = await Promise.all([ctx.charger("prestations_nets"), ctx.charger("trajets_nets")]);
+  const s = new Set<number>();
+  // deno-lint-ignore no-explicit-any
+  for (const n of [...(p as any[]), ...(t as any[])]) for (const v of [n.net, n.net_enfant, n.net_adulte]) if (v !== null && v !== undefined && Number(v) > 0) s.add(Number(v));
+  return s;
+}
+
 // Les lectures des outils de l'agent, avec la clé de service mais toujours limitées à une entreprise.
 // deno-lint-ignore no-explicit-any
 function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any) {
   const COLONNES: Record<string, string> = {
     prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id",
     trajets: "id, de, vers, mode, depart, arrivee, duree, prix_adulte, prix_enfant, bebe, periode, fenetres, actif, partenaire_id",
-    partenaires: "id, nom, actif",
-    // Les nets : lus pour le drapeau « recommande », jamais renvoyés à Claude (outils.js).
-    prestations_nets: "prestation_id, net",
+    partenaires: "id, nom, actif, regles",
+    // Les nets : lus seulement par le contrôle de la réponse (montants internes). Les outils ne les rendent jamais ici : ctx.permissions est
+    // vide, donc ni partenaire ni net ni commission ne partent chez Claude (outils.js, voitPartenaires et voitNets).
+    prestations_nets: "prestation_id, net, net_enfant",
     trajets_nets: "trajet_id, net_adulte, net_enfant",
     hotels_lieux: "cle, nom, lieu, zone, localite, source_url, certitude, verifie",
     temps_trajets: "de, vers, mode, duree_min, ferry, marge_min, source, source_date, a_verifier",
     liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",
     dossiers: "id, ref, client_id, date_depart, date_retour, annule",
-    reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente",
+    reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place",
   };
   // deno-lint-ignore no-explicit-any
   const lire = async (requete: any, table: string) => {

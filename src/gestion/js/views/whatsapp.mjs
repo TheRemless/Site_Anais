@@ -8,7 +8,7 @@
 import { etat, modifier, entitesAccessibles, estSuperAdmin, permissionsDe, voitToutDans, nomClient, naviguer } from "../etat.mjs";
 import { h, toast, confirmer, icone, puces, modal, champ } from "../ui.mjs";
 import { tr, N_, langueActive, localeActive } from "../i18n.mjs";
-import { quand } from "../agent-calc.mjs";
+import { quand, bloquantsReponse, resteBloque } from "../agent-calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
 import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
@@ -187,6 +187,7 @@ function bulle(m) {
 
 // ---- Proposition de l'agent -------------------------------------------------------------------------------------------------------
 async function copier(zone, bouton) {
+  if (bouton.disabled) return;
   try {
     await navigator.clipboard.writeText(zone.value);
     // Le texte est dans le presse-papiers : le redessin de l'écran ne fait plus rien perdre (saisie.mjs ignore ce champ désormais).
@@ -245,12 +246,18 @@ function carteProposition(c, p, messages) {
   const wa = lienWhatsApp(c.telephone);
   const boutonEnvoyer = h("button", { class: "secondaire petit", type: "button", onclick: (e) => envoyer(c, p, zone, e.currentTarget) }, tr("Envoyer depuis Gestion"));
   const pourquoi = h("p", { class: "wa-detail" });
+  // Garde-fou de la PR 278 : un net, une marge, une commission ou un nom de partenaire signalé bloque la copie et l'envoi tant qu'il reste.
+  const bloquants = bloquantsReponse(p.avertissements);
+  const alerte = h("p", { class: "erreur-form", role: "alert", hidden: true });
   const majEnvoi = () => {
     const ok = envoiPossible({ texte: zone.value, fenetre: f });
-    boutonEnvoyer.disabled = !ok.ok;
+    const reste = resteBloque(zone.value, bloquants);
+    alerte.hidden = !reste.length;
+    alerte.textContent = reste.length ? tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") }) : "";
+    boutonEnvoyer.disabled = !ok.ok || reste.length > 0;
     pourquoi.textContent = ok.raison === "fenetre_fermee" ? tr("Envoi depuis Gestion fermé, le client a écrit il y a plus de 24 h.") : ok.raison === "vide" ? tr("La réponse est vide.") : "";
     pourquoi.hidden = !pourquoi.textContent;
-    boutonCopier.disabled = !zone.value.trim();
+    boutonCopier.disabled = !zone.value.trim() || reste.length > 0;
   };
   zone.addEventListener("input", majEnvoi);
   majEnvoi();
@@ -261,6 +268,7 @@ function carteProposition(c, p, messages) {
     h("h3", null, tr("Réponse préparée"), p.langue ? h("span", { class: "tag" }, p.langue.toUpperCase()) : null),
     avs.length ? h("ul", { class: "wa-avertissements" }, avs.map((a) => h("li", { class: a.niveau }, icone(a.niveau === "alerte" ? "alerte" : "coche", 16), h("span", null, tr(a.texte, a.vars))))) : null,
     zone,
+    alerte,
     h("div", { class: "wa-prop-actions" }, boutonCopier, wa ? h("a", { class: "bouton secondaire wa-ouvrir", href: wa, target: "_blank", rel: "noopener" }, icone("whatsapp", 18), tr("Ouvrir dans WhatsApp")) : null),
     h("div", { class: "wa-prop-suite" }, h("button", { class: "lien", type: "button", onclick: () => traiter(p, "traitee") }, tr("Marquer traitée")), h("button", { class: "lien", type: "button", onclick: () => traiter(p, "ignoree") }, tr("Ignorer")), boutonEnvoyer),
     pourquoi
