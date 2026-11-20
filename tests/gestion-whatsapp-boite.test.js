@@ -425,16 +425,16 @@ test("tri : une conversation écartée n'a pas « Réponse prête », garde ses 
   assert.equal(W.chiffresFiltres([ecartee], [vieille], () => null).toutes, 0);
 });
 
-test("tri : la raison en clair quand rien n'est préparé, seulement si le tri a vu le dernier message", () => {
+test("tri : ce que le tri a vu, en clair, seulement s'il a vu le dernier message", () => {
   const messages = [{ sens: "entrant", envoye_le: "2026-11-20T10:00:00Z" }];
   const avec = (motif, le = "2026-11-20T10:00:05Z") => conv("a", { tri: { preparer: false, motif, le } });
-  assert.equal(W.raisonSansReponse(avec("personnel"), messages), "Pas de réponse préparée : message personnel");
-  assert.equal(W.raisonSansReponse(avec("remerciement"), messages), "Pas de réponse préparée : un remerciement");
-  assert.equal(W.raisonSansReponse({ ...avec("contact_jamais"), reponses: "jamais" }, messages), "Pas de réponse préparée : contact réglé sur Jamais");
+  assert.equal(W.raisonSansReponse(avec("personnel"), messages), "Message personnel");
+  assert.equal(W.raisonSansReponse(avec("remerciement"), messages), "Un remerciement");
+  assert.equal(W.raisonSansReponse({ ...avec("contact_jamais"), reponses: "jamais" }, messages), "Contact réglé sur Jamais");
   assert.equal(W.raisonSansReponse({ ...avec("contact_jamais"), reponses: "auto" }, messages), null, "repassé sur Automatiques depuis : plus ce motif");
-  assert.equal(W.raisonSansReponse(avec("partenaire"), messages), "Pas de réponse préparée : un partenaire");
-  assert.equal(W.raisonSansReponse(avec("media_seul"), messages), "Pas de réponse préparée : photo ou vocal sans texte");
-  assert.equal(W.raisonSansReponse(avec("limite"), messages), "Pas de réponse préparée : limite du jour atteinte");
+  assert.equal(W.raisonSansReponse(avec("partenaire"), messages), "Un partenaire");
+  assert.equal(W.raisonSansReponse(avec("media_seul"), messages), "Photo ou vocal sans texte");
+  assert.equal(W.raisonSansReponse(avec("limite"), messages), "Limite du jour des réponses atteinte");
   assert.equal(W.raisonSansReponse(avec("motif_inconnu"), messages), W.MOTIFS_TRI.autre);
   for (const m of ["demande_client", "suivi_reservation", "remerciement", "personnel", "partenaire", "publicite", "media_seul", "contact_jamais", "limite", "autre"]) assert.ok(W.MOTIFS_TRI[m], m);
   assert.equal(W.raisonSansReponse(avec("personnel", "2026-11-20T09:00:00Z"), messages), null, "tri plus ancien que le dernier message : pas encore trié");
@@ -442,6 +442,31 @@ test("tri : la raison en clair quand rien n'est préparé, seulement si le tri a
   assert.equal(W.raisonSansReponse(conv("a"), messages), null);
   assert.equal(W.reponsesDe(conv("a")), "auto");
   assert.equal(W.reponsesDe(conv("a", { reponses: "jamais" })), "jamais");
+  // Réponses sur demande (20.11.2026) : une demande de client triée sans réponse préparée est l'état normal, dit sans ton d'anomalie.
+  const demande = conv("a", { tri: { preparer: true, motif: "demande_client", le: "2026-11-20T10:00:05Z" } });
+  assert.equal(W.raisonSansReponse(demande, messages), "Demande de client");
+  for (const libelle of Object.values(W.MOTIFS_TRI)) assert.ok(!/Pas de réponse préparée/.test(libelle), libelle);
+});
+
+test("réponses WhatsApp sur demande : décochées par défaut, cochées seulement par un vrai true", async () => {
+  const { REGLAGES_NEUTRE } = await import("../src/gestion/js/defauts.mjs");
+  const { preparationAuto: cote } = await import("../supabase/functions/whatsapp/proposer.js");
+  for (const f of [W.preparationAuto, cote]) {
+    assert.equal(f(null), false);
+    assert.equal(f({}), false);
+    assert.equal(f({ whatsapp_reponses_auto: "true" }), false);
+    assert.equal(f({ whatsapp_reponses_auto: 1 }), false);
+    assert.equal(f({ whatsapp_reponses_auto: true }), true);
+  }
+  assert.equal(REGLAGES_NEUTRE.whatsapp_reponses_auto, false);
+  // La fonction : le tri est gardé, puis rien n'est rédigé sans le réglage. La préparation à la demande ne regarde pas ce réglage.
+  const rep = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  const apres = rep.slice(rep.indexOf("export async function apresMessageClient"), rep.indexOf("export async function preparerALaDemande"));
+  assert.ok(apres.indexOf("garderTri(") < apres.indexOf("preparationAutoPermise(") && apres.indexOf("preparationAutoPermise(") < apres.indexOf("await preparer("), "tri gardé, puis réglage, puis préparation");
+  const demande = rep.slice(rep.indexOf("export async function preparerALaDemande"), rep.indexOf("async function preparationAutoPermise"));
+  assert.ok(!demande.includes("preparationAuto"), "le clic de Nani prépare toujours");
+  const permise = rep.slice(rep.indexOf("async function preparationAutoPermise"), rep.indexOf("async function garderTri"));
+  assert.match(permise, /if \(error\) return false/, "réglages illisibles : sur demande");
 });
 
 test("préparer une réponse : chaque erreur de whatsapp-preparer a un libellé clair", () => {
@@ -454,7 +479,12 @@ test("préparer une réponse : chaque erreur de whatsapp-preparer a un libellé 
   const vue = source("views/whatsapp.mjs");
   assert.match(vue, /tr\("Préparer une réponse"\)/);
   assert.match(vue, /tr\(erreurPreparer\(r && r\.erreur\)\)/);
-  assert.match(vue, /segment\("auto", tr\("Automatiques"\)\), segment\("jamais", tr\("Jamais pour ce contact"\)\)/);
+  assert.match(vue, /segment\("auto", auto \? tr\("Automatiques"\) : tr\("Sur demande"\)\), segment\("jamais", tr\("Jamais pour ce contact"\)\)/);
+  assert.match(vue, /preparationAuto\(reglagesDe\(c\.entite_id \|\| suggeree\.id\)\)/, "le libellé suit le réglage que lit la fonction (entreprise de la conversation ou suggérée)");
+  // Plus d'icône d'alerte quand rien n'est préparé : le bouton, et ce que le tri a vu.
+  const ligne = vue.slice(vue.indexOf("function ligneSansReponse"), vue.indexOf("function carteProposition"));
+  assert.doesNotMatch(ligne, /alerte/);
+  assert.match(ligne, /Préparer une réponse/);
   assert.match(vue, /tr\("Jamais : ami, famille, partenaire, chauffeur"\)/);
 });
 

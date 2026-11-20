@@ -19,7 +19,7 @@ import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
   grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, propositionCourante,
-  propositionAJour, entrepriseProposee, reponsesDe, raisonSansReponse, erreurPreparer, libelleErreurProposition,
+  propositionAJour, entrepriseProposee, reponsesDe, preparationAuto, raisonSansReponse, erreurPreparer, libelleErreurProposition,
 } from "../whatsapp-calc.mjs";
 
 let filtre = null;
@@ -106,12 +106,16 @@ function selecteurEntreprise(c, prop) {
 function reglageReponses(c) {
   if (etat.brut.whatsapp_tri_disponible === false || lectureSeule) return null;
   const actuel = reponsesDe(c);
+  // Réponses sur demande (Réglages > Assistant IA, décoché par défaut) : « auto » veut dire « au clic de Nani ». Le réglage lu est celui
+  // que lit la fonction : l'entreprise de la conversation, ou pour une conversation à trier celle suggérée par le tri.
+  const suggeree = !c.entite_id && c.tri ? entitesWhatsApp().find((e) => marqueEntite(e) === c.tri.entreprise) : null;
+  const auto = !!(c.entite_id || suggeree) && preparationAuto(reglagesDe(c.entite_id || suggeree.id));
   const choisir = async (valeur, bouton) => {
     if (valeur === actuel || bouton.disabled) return;
     bouton.disabled = true;
     try {
       await modifier("whatsapp_conversations", c.id, { reponses: valeur });
-      toast(valeur === "jamais" ? tr("Plus de réponse préparée pour ce contact.") : tr("Réponses préparées automatiques pour ce contact."));
+      toast(valeur === "jamais" ? tr("Plus de réponse préparée pour ce contact.") : auto ? tr("Réponses préparées automatiques pour ce contact.") : tr("Réponses sur demande pour ce contact."));
       rafraichir();
     } catch (err) {
       bouton.disabled = false;
@@ -123,7 +127,7 @@ function reglageReponses(c) {
     "div",
     { class: "wa-reponses", "data-pas-saisie": "" },
     h("span", { class: "wa-reponses-libelle", id: `wa-rep-${c.id}` }, tr("Réponses préparées")),
-    h("div", { class: "wa-segments", role: "group", "aria-labelledby": `wa-rep-${c.id}` }, segment("auto", tr("Automatiques")), segment("jamais", tr("Jamais pour ce contact"))),
+    h("div", { class: "wa-segments", role: "group", "aria-labelledby": `wa-rep-${c.id}` }, segment("auto", auto ? tr("Automatiques") : tr("Sur demande")), segment("jamais", tr("Jamais pour ce contact"))),
     h("span", { class: "wa-note" }, tr("Jamais : ami, famille, partenaire, chauffeur"))
   );
 }
@@ -415,8 +419,13 @@ function bulle(m) {
 }
 
 // ---- Proposition de l'agent -------------------------------------------------------------------------------------------------------
-async function copier(zone, bouton) {
+async function copier(c, p, zone, bouton) {
   if (bouton.disabled) return;
+  // Comme pour l'envoi (audit dev B2) : une réponse remplacée entre-temps (le client a réécrit) ne se copie pas sans le dire.
+  if (!toujoursCourante(c, p)) {
+    toast(tr("Cette réponse n'est plus la dernière préparée. Rien n'a été copié."), true);
+    return rafraichir();
+  }
   try {
     await navigator.clipboard.writeText(zone.value);
     bouton.classList.add("fait");
@@ -509,12 +518,14 @@ async function preparer(c, bouton) {
   toast(tr(erreurPreparer(r && r.erreur)), true);
 }
 
-// Aucune réponse préparée pour le dernier message du client : la raison du tri en clair, et de quoi en demander une.
+// Aucune réponse préparée pour le dernier message du client : l'état normal depuis le 20.11.2026 (réponses sur demande). Le bouton
+// « Préparer une réponse », et à côté ce que le tri a vu, sans icône d'alerte.
 function ligneSansReponse(c, messages) {
   const dernier = messages.length ? messages[messages.length - 1] : null;
   const bouton = !lectureSeule && dernier && dernier.sens === "entrant" && etat.store.whatsappPreparer ? h("button", { class: "secondaire petit", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, tr("Préparer une réponse")) : null;
   const raison = raisonSansReponse(c, messages);
-  return h("div", { class: "wa-sans-reponse" }, h("p", { class: "wa-prop-fait" }, icone("alerte", 16), raison ? tr(raison) : tr("Pas de réponse préparée. Répondez depuis l'app.")), bouton);
+  if (!bouton && !raison) return null;
+  return h("div", { class: "wa-sans-reponse" }, bouton, raison ? h("p", { class: "wa-note" }, tr(raison)) : null);
 }
 
 function carteProposition(c, p, messages) {
@@ -537,7 +548,7 @@ function carteProposition(c, p, messages) {
   // Le texte modifié survit au redessin de l'écran (synchronisation, nouveau message dans une autre conversation).
   zone.value = brouillons.has(p.id) ? brouillons.get(p.id) : p.texte || "";
   const f = fenetre(messages);
-  const boutonCopier = h("button", { class: "principal wa-copier", type: "button", onclick: (e) => copier(zone, e.currentTarget) }, icone("copier", 20), tr("Copier"));
+  const boutonCopier = h("button", { class: "principal wa-copier", type: "button", onclick: (e) => copier(c, p, zone, e.currentTarget) }, icone("copier", 20), tr("Copier"));
   const wa = lienWhatsApp(c.telephone);
   const boutonEnvoyer = h("button", { class: "secondaire petit", type: "button", onclick: (e) => envoyer(c, p, zone, e.currentTarget, majEnvoi) }, tr("Envoyer depuis Gestion"));
   const pourquoi = h("p", { class: "wa-detail" });
@@ -561,11 +572,15 @@ function carteProposition(c, p, messages) {
     pourquoi.hidden = !pourquoi.textContent;
     boutonCopier.disabled = !zone.value.trim() || reste.length > 0;
   }
+  // Brouillon : la page ne se recharge pas seule tant qu'il existe (app.mjs, rienAPerdre).
+  const marquerBrouillon = () => zone.toggleAttribute("data-brouillon", brouillons.has(p.id));
   zone.addEventListener("input", () => {
     if (zone.value !== (p.texte || "")) brouillons.set(p.id, zone.value);
     else brouillons.delete(p.id);
+    marquerBrouillon();
     majEnvoi();
   });
+  marquerBrouillon();
   majEnvoi();
   const avs = avertissements({ ...p, avertissements: filtre.visibles });
   // Préparée avec les données d'une autre entreprise que celle de la conversation (à trier, ou rangée ailleurs depuis) : on le dit.
@@ -576,7 +591,9 @@ function carteProposition(c, p, messages) {
   boutonIgnorer.addEventListener("click", () => traiter(p, "ignoree", [boutonTraitee, boutonIgnorer]));
   return h(
     "section",
-    { class: "wa-prop", "aria-label": tr("Réponse préparée") },
+    // Hors saisie (audit dev B2) : le texte modifié survit au redessin (Map brouillons), il ne doit donc pas figer l'écran. Seul le curseur
+    // dans le champ retient le redessin (curseurDansUnChamp).
+    { class: "wa-prop", "aria-label": tr("Réponse préparée"), "data-pas-saisie": "" },
     h("h3", null, tr("Réponse préparée"), p.langue ? h("span", { class: "tag" }, p.langue.toUpperCase()) : null, pour ? h("span", { class: "wa-pour" }, tr("préparée pour {nom}", { nom: pour.nom })) : null),
     avs.length ? h("ul", { class: "wa-avertissements" }, avs.map((a) => h("li", { class: a.niveau }, icone(a.niveau === "alerte" ? "alerte" : "coche", 16), h("span", null, tr(a.texte, a.vars))))) : null,
     zone,
@@ -631,13 +648,22 @@ async function marquerLue(id) {
   }
 }
 let visibiliteSuivie = false;
+let affiche = null;
 function suivreVisibilite() {
   if (visibiliteSuivie) return;
   visibiliteSuivie = true;
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState !== "visible" || !/^#\/whatsapp/.test(location.hash)) return;
     const { conversation } = lireAdresse(location.hash);
-    if (!conversation || !(await marquerLue(conversation))) return;
+    if (!conversation) return;
+    // Laisser le temps à la relecture du retour sur l'onglet, puis marquer lu seulement si l'écran montre le dernier message de la
+    // conversation (audit dev B2). Un redessin qui attend (curseur dans la réponse) ou un message arrivé depuis le rendu : c'est le rendu
+    // suivant qui marquera la conversation (vueWhatsApp).
+    await new Promise((ok) => setTimeout(ok, 1500));
+    if (etat.redessinEnAttente || document.visibilityState !== "visible" || lireAdresse(location.hash).conversation !== conversation) return;
+    const c = (etat.brut.whatsapp_conversations || []).find((x) => x.id === conversation);
+    if (!c || !affiche || affiche.id !== conversation || affiche.dernier !== (c.dernier_message_le || null)) return;
+    if (!(await marquerLue(conversation))) return;
     // La pastille de la liste tombe sur place ; le badge du menu suit la relecture que le retour sur l'onglet déclenche.
     for (const a of document.querySelectorAll(".wa-conv[aria-current]")) {
       a.classList.remove("non-lue");
@@ -663,6 +689,9 @@ export async function vueWhatsApp() {
   const defilMessages = avant ? (avant.querySelector(".wa-messages") || {}).scrollTop || 0 : 0;
   // Ouvrir la conversation la marque lue (onglet visible), avant de dessiner la liste et le badge.
   if (idOuvert) await marquerLue(idOuvert);
+  // Ce que ce rendu montre de la conversation ouverte : le retour sur l'onglet ne marque lu que si rien n'est arrivé depuis.
+  const vue = idOuvert ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === idOuvert) : null;
+  affiche = vue ? { id: idOuvert, dernier: vue.dernier_message_le || null } : null;
   const conversations = trierConversations(etat.brut.whatsapp_conversations || []);
   const propositions = etat.brut.whatsapp_propositions || [];
   const courantes = propositionsCourantes(propositions);

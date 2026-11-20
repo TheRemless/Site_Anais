@@ -69,26 +69,29 @@ export const propositionCourante = (propositions, conversationId) => proposition
 // (Nani a touché « Préparer une réponse ») compte de nouveau.
 export const REPONSES = ["auto", "jamais"];
 export const reponsesDe = (conv) => (conv && conv.reponses === "jamais" ? "jamais" : "auto");
+// Réglages > Assistant IA : l'agent prépare-t-il seul les réponses (décoché par défaut, 20.11.2026) ?
+export const preparationAuto = (reglages) => !!(reglages && typeof reglages === "object" && reglages.whatsapp_reponses_auto === true);
 export function triDitNon(conv, prop = null) {
   const t = conv && conv.tri && typeof conv.tri === "object" ? conv.tri : null;
   if (!t || t.preparer !== false) return false;
   if (prop && t.le && Date.parse(prop.cree_le || "") > Date.parse(t.le)) return false;
   return true;
 }
-// Pourquoi aucune réponse n'est préparée pour le dernier message du client, en clair. null : pas de raison connue (tri absent, ou plus ancien
-// que le dernier message du client, qui n'est donc pas encore trié).
+// Ce que le tri a vu dans le dernier message du client, en clair et sans ton d'anomalie : depuis le 20.11.2026, aucune réponse n'est
+// préparée sans un clic de Nani (sauf réglage contraire), l'absence de réponse est donc l'état normal. null : pas de tri à jour.
 export const MOTIFS_TRI = {
-  demande_client: N_("Pas de réponse préparée pour cette demande"),
-  suivi_reservation: N_("Pas de réponse préparée : suivi d'une réservation"),
-  remerciement: N_("Pas de réponse préparée : un remerciement"),
-  personnel: N_("Pas de réponse préparée : message personnel"),
-  partenaire: N_("Pas de réponse préparée : un partenaire"),
-  publicite: N_("Pas de réponse préparée : publicité"),
-  media_seul: N_("Pas de réponse préparée : photo ou vocal sans texte"),
-  contact_jamais: N_("Pas de réponse préparée : contact réglé sur Jamais"),
-  limite: N_("Pas de réponse préparée : limite du jour atteinte"),
-  tri_illisible: N_("Pas de réponse préparée : le tri n'a pas abouti, touchez Préparer une réponse"),
-  autre: N_("Pas de réponse préparée : rien à répondre"),
+  demande_client: N_("Demande de client"),
+  suivi_reservation: N_("Suivi d'une réservation"),
+  remerciement: N_("Un remerciement"),
+  personnel: N_("Message personnel"),
+  partenaire: N_("Un partenaire"),
+  publicite: N_("Publicité"),
+  media_seul: N_("Photo ou vocal sans texte"),
+  contact_jamais: N_("Contact réglé sur Jamais"),
+  limite: N_("Limite du jour des réponses atteinte"),
+  tri_illisible: N_("Message non trié"),
+  ia_coupee: N_("Assistant éteint ou réception suspendue : message non trié"),
+  autre: N_("Rien à répondre"),
 };
 // Pourquoi l'agent n'a pas préparé de réponse (whatsapp_propositions.erreur), en clair.
 export const ERREURS_PROPOSITION = {
@@ -99,10 +102,11 @@ export const ERREURS_PROPOSITION = {
   credit_epuise: N_("Le crédit de l'assistant est épuisé."),
 };
 export const libelleErreurProposition = (code) => ERREURS_PROPOSITION[code] || (String(code || "").startsWith("erreur") ? N_("Erreur de l'assistant.") : null);
+// Le libellé du tri pour le dernier message du client (MOTIFS_TRI), ou null.
 export function raisonSansReponse(conv, messages = []) {
   const t = conv && conv.tri && typeof conv.tri === "object" ? conv.tri : null;
   const dernier = dernierEntrant(messages);
-  const aJour = !!t && t.preparer === false && (!dernier || !t.le || Date.parse(t.le) >= Date.parse(dernier));
+  const aJour = !!t && typeof t.motif === "string" && (!dernier || !t.le || Date.parse(t.le) >= Date.parse(dernier));
   // Contact repassé sur « Automatiques » depuis : le motif « Jamais » ne vaut plus, la raison générale reprend.
   if (aJour && t.motif === "contact_jamais" && reponsesDe(conv) === "auto") return null;
   if (aJour) return MOTIFS_TRI[t.motif] || MOTIFS_TRI.autre;

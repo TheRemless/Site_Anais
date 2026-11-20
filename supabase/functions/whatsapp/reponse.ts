@@ -19,14 +19,16 @@ import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
-import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, parametresTri, langueSure, numerosPartenaires, outilsWhatsapp, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
+import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, parametresTri, langueSure, numerosPartenaires, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
 
 type Conv = { id: string; organisation_id: string; telephone: string; nom: string | null; entite_id: string | null; entite_source: string; client_id: string | null; dossier_id: string | null; reponses?: string; tri?: Record<string, any> };
 
 // Point d'entrée : un message entrant vient d'être rangé (nouveau). Attend un peu (le client écrit souvent en plusieurs fois), trie le
-// dernier message (proposer.js) et ne prépare une réponse que pour une vraie demande de client. Ne lève jamais. La décision du tri est
+// dernier message (proposer.js). Sur demande seulement (Jérémy, 20.11.2026, pour économiser les crédits) : l'agent ne rédige rien tant que
+// Nani ne touche pas « Préparer une réponse », sauf si l'entreprise a coché « Préparer les réponses WhatsApp automatiquement »
+// (reglages.whatsapp_reponses_auto, décoché par défaut). Le tri, lui, tourne toujours (environ 0,0002 $). Ne lève jamais. La décision du tri est
 // gardée sur la conversation (colonne tri, migration 60). Aucune notification Web Push (PR 282). Tout tient dans DUREE_BOITE_MS, sous la limite de 150 s d'une fonction Supabase.
 export async function apresMessageClient(db: SupabaseClient, conversationId: string, messageId: string) {
   const t0 = Date.now();
@@ -36,6 +38,8 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     if (!lu || !aRepondre(lu.messages, messageId)) return;
     const { conv, messages } = lu;
     let decision = triSansAppel({ conv, messages, numerosPartenaires: await partenairesDe(db, conv.organisation_id) });
+    // Assistant éteint ou réception suspendue (audit sécurité n° 1) : pas même le tri chez Anthropic.
+    if (!decision && !(await iaOuverte(db, conv))) decision = { preparer: false, motif: "ia_coupee" };
     if (!decision && !(await budgetOuvert(db, conv))) decision = { preparer: false, motif: "limite" };
     const cle = Deno.env.get("ANTHROPIC_API_KEY");
     if (!decision && !cle) {
@@ -60,6 +64,8 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     }
     await garderTri(db, conv.id, decision);
     if (!decision.preparer) return;
+    // Réponses sur demande (défaut) : le tri est gardé pour l'écran, rien n'est rédigé.
+    if (!(await preparationAutoPermise(db, conv, decision.entreprise || null))) return;
     // Aucune notification sur le téléphone (Jérémy, 20.11.2026 : Nani serait débordée). Le compteur de non-lus de l'écran suffit.
     await preparer(db, conv, messages, messageId, t0, { anthropic: anthropic!, appels, j, suggestion: decision.entreprise || null }).catch((err) => {
       console.error("whatsapp : réponse non préparée", String(err?.message || err).slice(0, 200));
@@ -96,6 +102,31 @@ export async function preparerALaDemande(db: SupabaseClient, conversationId: str
     return false;
   });
   return { tache };
+}
+
+// Réception et assistant relus à chaque fois (pas de cache) : une lecture impossible ferme. Sert aussi au suivi (suivi.ts).
+export async function iaOuverte(db: SupabaseClient, conv: Conv) {
+  const [recep, ents] = await Promise.all([
+    db.from("whatsapp_reglages").select("reception_active").eq("organisation_id", conv.organisation_id).maybeSingle(),
+    db.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]),
+  ]);
+  if (recep.error || ents.error || !recep.data) return false;
+  const ids = (ents.data || []).map((e) => e.id);
+  const regl = ids.length ? await db.from("reglages").select("entite_id, valeur").in("entite_id", ids) : { data: [], error: null };
+  if (regl.error) return false;
+  const agents: Record<string, boolean> = {};
+  for (const l of regl.data || []) agents[l.entite_id] = !!(l.valeur && l.valeur.agent_ia === true);
+  return iaPermise({ receptionActive: recep.data.reception_active === true, conv, agents });
+}
+
+// L'entreprise de la conversation (ou celle suggérée par le tri pour une conversation à trier) a coché la préparation automatique.
+// Réglages illisibles : sur demande (jamais l'inverse).
+async function preparationAutoPermise(db: SupabaseClient, conv: Conv, suggestion: string | null) {
+  const { data: ents, error } = await db.from("entites").select("id, slug").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
+  if (error) return false;
+  const ent = (ents || []).find((e) => e.id === conv.entite_id) || (!conv.entite_id && suggestion ? (ents || []).find((e) => e.slug === suggestion) : null);
+  const lu = ent ? await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle() : null;
+  return !!lu && !lu.error && preparationAuto(lu.data ? lu.data.valeur : null);
 }
 
 async function garderTri(db: SupabaseClient, conversationId: string, decision: { preparer: boolean; motif: string; entreprise?: string | null }) {

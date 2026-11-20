@@ -915,6 +915,8 @@ function saisieEnCours() {
 // (un service ajouté par un bouton n'est dans aucun champ). Même règle pour le rechargement automatique, le bouton du bandeau et un écran disparu.
 function rienAPerdre() {
   if (saisieEnCours()) return false;
+  // Réponse WhatsApp retouchée (hors saisie pour ne pas figer l'écran, audit dev B2) : son brouillon ne vit qu'en mémoire, pas de rechargement.
+  if (document.querySelector("#principal [data-brouillon]")) return false;
   if (etat.garde && etat.garde()) return false;
   return ecranDeLecture(location.hash) || !ecranTouche();
 }
@@ -927,6 +929,8 @@ function surveillerDonnees() {
   let derniereReussite = Date.now();
   let echecs = 0;
   let aRedessiner = false;
+  // Un redessin retenu se voit de l'écran WhatsApp (audit dev B2) : tant qu'il attend, le fil affiché est en retard, rien n'est marqué lu.
+  const retenir = (v) => void ((aRedessiner = v), (etat.redessinEnAttente = v));
   let annoncer = false;
   // Pastille visible quand la relecture échoue deux fois de suite (réseau coupé, session expirée) : sans elle, l'écran vieillit sans rien dire.
   const pastille = h("div", { class: "etat-synchro", role: "status", hidden: true });
@@ -951,7 +955,7 @@ function surveillerDonnees() {
     try {
       resultat = await synchroniser();
       if (resultat !== "ignore") (echecs = 0), (derniereReussite = Date.now());
-      if (resultat === "modifie" || resultat === "propre") aRedessiner = true;
+      if (resultat === "modifie" || resultat === "propre") retenir(true);
       if (resultat === "modifie") annoncer = true;
     } catch (err) {
       console.warn(err);
@@ -967,7 +971,7 @@ function surveillerDonnees() {
     const messagesWa = resultat === "modifie" && !/^#\/whatsapp/.test(location.hash) ? nouvellesDemandes(whatsappAvant, whatsappNonLus()) : 0;
     if (messagesWa) annoncerWhatsApp(messagesWa);
     if (aRedessiner && etat.session && ecranLibre()) {
-      aRedessiner = false;
+      retenir(false);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
       // Une demande du site arrivée se dit comme telle ; un autre changement reste « Données mises à jour ».
       if (arrivees) annoncerArrivees(arrivees);
@@ -979,7 +983,7 @@ function surveillerDonnees() {
   // Un redessin retenu par une saisie (fenêtre ouverte, champ en cours) se fait dès qu'elle est finie, sans attendre la relecture suivante.
   setInterval(() => {
     if (!aRedessiner || !etat.session || !ecranLibre()) return;
-    aRedessiner = false;
+    retenir(false);
     annoncer = false;
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   }, 2000);
@@ -1034,7 +1038,7 @@ function surveillerDonnees() {
     if (surWhatsApp() && (redessiner || signatureWhatsApp(etat.brut) !== signatureAvant)) {
       // Rien à perdre : tout de suite. Une saisie en cours (réponse modifiée, curseur dans la zone) : dès qu'elle est finie (voir plus haut).
       if (ecranLibre()) window.dispatchEvent(new HashChangeEvent("hashchange"));
-      else aRedessiner = true;
+      else retenir(true);
     }
     if (encoreWhatsApp) {
       const suite = encoreWhatsApp;
