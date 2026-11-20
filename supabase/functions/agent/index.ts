@@ -12,7 +12,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, PLAFOND_MOIS_USD_DEFAUT, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { memoDepuis, refDe, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
-import { ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, clePaire, cleZone, corpsItineraire, lireGeocode, lireItineraire, parametresGeocode, variantesLieu } from "./temps.js";
+import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, clePaire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, variantesLieu } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
     admin.from("assistant_journal").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("usage", "agent").gte("cree_le", debutJourBangkok()),
     // Le plafond du mois compte toute la dépense de l'assistant (tous usages, toutes personnes) : il protège le crédit.
     admin.rpc("assistant_cout_depuis", { debut: debutMoisBangkok() }),
-    sb.from("entites").select("nom").eq("id", entiteId).maybeSingle(),
+    sb.from("entites").select("nom, organisation_id").eq("id", entiteId).maybeSingle(),
   ]);
   if (regl.error || perms.error || echanges.error || mois.error) return json({ erreur: "base" }, 500);
   const reglages = regl.data ? regl.data.valeur : null;
@@ -145,22 +145,31 @@ Deno.serve(async (req) => {
   const anthropic = new Anthropic({ apiKey: cle, timeout: 60_000, maxRetries: 1 });
   const appels: { usage: Record<string, unknown>; modele: string }[] = [];
 
-  // Durées de route : la table de l'entreprise (lue par les outils), puis openrouteservice si la clé ORS_API_KEY est posée, avec ses résultats
-  // gardés en base (lieux_geo, trajets_ors) ; temps simulés seulement si AGENT_TRAJETS_SIMULES=1. Rien d'un client ne part chez ORS :
-  // seulement le nom d'un lieu (géocodage) ou des coordonnées (itinéraire).
+  // Durées de route : OpenStreetMap d'abord (Jérémy, 19.11.2026), par openrouteservice si la clé ORS_API_KEY est posée, sinon, pour
+  // l'organisation de Koh Lanta seulement, par le serveur public OSRM et Nominatim (Jérémy, 20.11.2026 ; AGENT_OSRM=0 le coupe). Résultats
+  // gardés en base (lieux_geo, trajets_ors), une requête par seconde au plus par serveur. Puis la table de l'entreprise (lue par les outils).
+  // Rien d'un client ne part : seulement le nom d'un lieu (recherche) ou des coordonnées (itinéraire). Temps simulés si AGENT_TRAJETS_SIMULES=1.
   const cleOrs = Deno.env.get("ORS_API_KEY");
   const simules = Deno.env.get("AGENT_TRAJETS_SIMULES") === "1";
   const orsUrl = Deno.env.get("ORS_URL") || ORS_BASE;
-  const appelOrs = async (chemin: string, init: RequestInit = {}) => {
-    const rep = await fetch(`${orsUrl}${chemin}`, { ...init, headers: { Authorization: cleOrs!, "Content-Type": "application/json", ...(init.headers || {}) }, signal: AbortSignal.timeout(10_000) });
+  const osrmPermis = ORGANISATIONS_OSRM.includes(ent.data?.organisation_id || "") && Deno.env.get("AGENT_OSRM") !== "0";
+  const moteur: "ors" | "osrm" | null = cleOrs ? "ors" : osrmPermis ? "osrm" : null;
+  const derniers = new Map<string, number>();
+  const appel = async (url: string, init: RequestInit = {}) => {
+    const hote = new URL(url).host;
+    const attente = delaiAvant(derniers, hote, Date.now());
+    if (attente) await new Promise((ok) => setTimeout(ok, attente));
+    const entetes = moteur === "ors" && hote === new URL(orsUrl).host ? { Authorization: cleOrs!, "Content-Type": "application/json" } : { "User-Agent": USER_AGENT, Accept: "application/json" };
+    const rep = await fetch(url, { ...init, headers: { ...entetes, ...(init.headers || {}) }, signal: AbortSignal.timeout(10_000) });
     if (!rep.ok) {
-      console.error("agent : ORS", rep.status);
+      console.error("agent : itinéraire", hote, rep.status);
       return null;
     }
     return rep.json();
   };
+  const chercher = (v: string) => (moteur === "ors" ? appel(`${orsUrl}${ORS_GEOCODE}?${parametresGeocode(v)}`, { method: "GET" }).then(lireGeocode) : appel(`${NOMINATIM_BASE}/search?${parametresNominatim(v)}`).then(lireNominatim));
   const geo = new Map<string, { lon: number; lat: number; label: string } | null>();
-  const situerOrs = async (lieu: string) => {
+  const situer = async (lieu: string) => {
     const k = cleZone(lieu);
     if (geo.has(k)) return geo.get(k)!;
     let g: { lon: number; lat: number; label: string } | null = null;
@@ -168,35 +177,33 @@ Deno.serve(async (req) => {
     if (connu.data) g = { lon: Number(connu.data.lon), lat: Number(connu.data.lat), label: connu.data.label };
     else {
       // Plusieurs écritures du même lieu (nom thaï, nom latin) : la première trouvée par OpenStreetMap.
-      let r = null;
-      for (const v of variantesLieu(lieu)) {
-        r = lireGeocode(await appelOrs(`${ORS_GEOCODE}?${parametresGeocode(v)}`, { method: "GET" }));
-        if (r) break;
+      for (const v of variantesLieu(lieu, (await charger("hotels_lieux")) as { cle: string; zone: string; lieu: string }[])) {
+        g = await chercher(v);
+        if (g) break;
       }
-      if (r) {
-        g = r;
-        await sb.from("lieux_geo").upsert({ entite_id: entiteId, cle: k, nom: lieu.slice(0, 160), lon: r.lon, lat: r.lat, label: r.label, origine: "ors", a_verifier: true }, { onConflict: "entite_id,cle" });
-      }
+      // Trouvé par la plage de l'hôtel (variante) : le libellé le dit, pour que la personne voie que c'est approché.
+      if (g) await sb.from("lieux_geo").upsert({ entite_id: entiteId, cle: k, nom: lieu.slice(0, 160), lon: g.lon, lat: g.lat, label: g.label, origine: moteur === "ors" ? "ors" : "nominatim", a_verifier: true }, { onConflict: "entite_id,cle" });
     }
     geo.set(k, g);
     return g;
   };
-  const ors = cleOrs
+  const ors = moteur
     ? async (de: string, vers: string, coords: { de?: { lat: number; lon: number }; vers?: { lat: number; lon: number } } | null = null) => {
         try {
           const cle = clePaire(de, vers);
-          const cache = await sb.from("trajets_ors").select("duree_min, distance_km, ferry, de_trouve, vers_trouve").eq("entite_id", entiteId).eq("cle", cle).maybeSingle();
+          const cache = await sb.from("trajets_ors").select("duree_min, distance_km, ferry, de_trouve, vers_trouve, moteur").eq("entite_id", entiteId).eq("cle", cle).maybeSingle();
           if (cache.data) return cache.data;
-          // Les coordonnées d'un port données dans la table passent avant le géocodage.
-          const [a, b] = await Promise.all([coords && coords.de ? { ...coords.de, label: de } : situerOrs(de), coords && coords.vers ? { ...coords.vers, label: vers } : situerOrs(vers)]);
+          // Les coordonnées d'un port données dans la table passent avant la recherche ; deux recherches l'une après l'autre (cadence).
+          const a = coords && coords.de ? { ...coords.de, label: de } : await situer(de);
+          const b = coords && coords.vers ? { ...coords.vers, label: vers } : await situer(vers);
           if (!a || !b) return null;
-          const r = lireItineraire(await appelOrs(ORS_ITINERAIRE, { method: "POST", body: JSON.stringify(corpsItineraire(a, b)) }));
+          const r = moteur === "ors" ? lireItineraire(await appel(`${orsUrl}${ORS_ITINERAIRE}`, { method: "POST", body: JSON.stringify(corpsItineraire(a, b)) })) : lireOsrm(await appel(`${OSRM_BASE}${cheminOsrm(a, b)}`));
           if (!r) return null;
-          const ligne = { ...r, de_trouve: a.label, vers_trouve: b.label };
+          const ligne = { ...r, de_trouve: a.label, vers_trouve: b.label, moteur };
           await sb.from("trajets_ors").upsert({ entite_id: entiteId, cle, ...ligne }, { onConflict: "entite_id,cle" });
           return ligne;
         } catch (err) {
-          console.error("agent : ORS", err instanceof Error ? err.message.slice(0, 120) : "");
+          console.error("agent : itinéraire", err instanceof Error ? err.message.slice(0, 120) : "");
           return null;
         }
       }

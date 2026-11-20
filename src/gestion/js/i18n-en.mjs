@@ -3860,4 +3860,6 @@ export const EN = {
   "Les durées de référence de zone à zone. L'assistant prend d'abord OpenStreetMap ; la table sert quand OpenStreetMap ne trouve pas un lieu, et pour la marge conseillée. Une ligne « à vérifier » n'est confirmée qu'une fois enregistrée par vous.": "Reference durations from area to area. The assistant uses OpenStreetMap first; the table is used when OpenStreetMap cannot find a place, and for the advised margin. A line “to check” is confirmed only once you save it.",
   "Enregistrer confirme la durée. L'assistant s'en sert quand OpenStreetMap ne donne rien, et toujours pour la marge conseillée.": "Saving confirms the duration. The assistant uses it when OpenStreetMap gives nothing, and always for the advised margin.",
   "OpenStreetMap": "OpenStreetMap",
+  "Itinéraire OSRM, données © contributeurs OpenStreetMap": "Route by OSRM, data © OpenStreetMap contributors",
+  "Itinéraire openrouteservice, données © contributeurs OpenStreetMap": "Route by openrouteservice, data © OpenStreetMap contributors",
 };

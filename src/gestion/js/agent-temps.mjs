@@ -68,7 +68,7 @@ export async function dureeEntre(de, vers, { lignes = [], hotels = [], ors = nul
   const l = ligneDeLaTable(de, vers, lignes, hotels);
   const deLigne = (x, a_verifier) => ({ duree_min: x.duree_min, ferry: !!x.ferry, marge_min: x.marge_min || 0, source: a_verifier ? "table_a_verifier" : "table", a_verifier, ligne: { de: x.de, vers: x.vers, source: x.source || "", source_date: x.source_date || "" } });
   const r = ors ? await ors(de, vers, coords) : null;
-  if (r && r.duree_min > 0) return { duree_min: r.duree_min, distance_km: r.distance_km ?? null, ferry: !!(r.ferry || (l && l.ferry)), marge_min: l ? l.marge_min || 0 : 0, source: "ors", a_verifier: false, de_trouve: r.de_trouve || "", vers_trouve: r.vers_trouve || "" };
+  if (r && r.duree_min > 0) return { duree_min: r.duree_min, distance_km: r.distance_km ?? null, ferry: !!(r.ferry || (l && l.ferry)), marge_min: l ? l.marge_min || 0 : 0, source: "ors", moteur: r.moteur === "osrm" ? "osrm" : "ors", a_verifier: false, de_trouve: r.de_trouve || "", vers_trouve: r.vers_trouve || "" };
   if (l && !l.a_verifier && l.duree_min > 0) return deLigne(l, false);
   if (l && l.duree_min > 0) return deLigne(l, true);
   const s = simule ? simule(de, vers) : null;
@@ -119,7 +119,7 @@ export async function dureeAvecFerry(de, vers, opts = {}) {
   const apres = await dureeEntre(portArrivee, vers, { ...opts, coords: coordArrivee ? { de: coordArrivee } : null });
   if (!apres) return { manque: `${portArrivee} → ${vers}` };
   const ferry = Number(l.duree_min) > 0 ? Math.round(Number(l.duree_min)) : FERRY_DEFAUT_MIN;
-  const morceau = (de_, vers_, r) => ({ genre: "route", de: de_, vers: vers_, duree_min: r.duree_min, source: r.source, a_verifier: !!r.a_verifier });
+  const morceau = (de_, vers_, r) => ({ genre: "route", de: de_, vers: vers_, duree_min: r.duree_min, source: r.source, ...(r.moteur ? { moteur: r.moteur } : {}), a_verifier: !!r.a_verifier });
   return {
     duree_min: avant.duree_min + apres.duree_min,
     ferry: true,
@@ -128,6 +128,7 @@ export async function dureeAvecFerry(de, vers, opts = {}) {
     source: moinsSure([avant.source, apres.source]),
     a_verifier: !!(avant.a_verifier || apres.a_verifier || l.a_verifier),
     morceaux: [morceau(de, portDepart, avant), { genre: "ferry", nom: l.nom, duree_min: ferry, a_verifier: !!l.a_verifier }, morceau(portArrivee, vers, apres)],
+    ...(avant.moteur || apres.moteur ? { moteur: avant.moteur || apres.moteur } : {}),
   };
 }
 
@@ -245,7 +246,9 @@ export const ORS_GEOCODE = "/pelias/v1/search";
 // Les noms à essayer pour géocoder un lieu, du plus précis au plus simple : tel qu'écrit, sans la partie entre parenthèses, puis la partie
 // entre parenthèses suivie du reste (« ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi » → « ท่าเรือคลองหมาก, Koh Lanta Noi »,
 // « Khlong Mak Pier, Koh Lanta Noi »).
-export function variantesLieu(lieu) {
+// `hotels` (hotels_lieux) : un hôtel connu ajoute sa plage ou son quartier (« Klong Nin »), utile quand l'hôtel lui-même n'est pas dans
+// OpenStreetMap. Jamais l'île seule : un point au milieu de l'île donnerait une durée fausse, l'agent demande plutôt.
+export function variantesLieu(lieu, hotels = []) {
   const t = String(lieu || "").replace(/\s+/g, " ").trim();
   const m = /^(.*?)\s*\(([^)]+)\)\s*(.*)$/.exec(t);
   const out = [t];
@@ -253,7 +256,13 @@ export function variantesLieu(lieu) {
     const reste = m[3].replace(/^[,\s]+/, "");
     out.push([m[1], reste].filter(Boolean).join(", "), [m[2], reste].filter(Boolean).join(", "));
   }
-  return [...new Set(out.filter(Boolean))].slice(0, 3);
+  // OpenStreetMap écrit « Ko Lanta », pas « Koh Lanta » (vérifié avec Nominatim le 20.11.2026).
+  for (const v of [...out]) if (/\bKoh\s/i.test(v)) out.push(v.replace(/\bKoh\s/gi, "Ko "));
+  const brut = sansAccents(t).replace(/[^a-z0-9]+/g, " ").trim();
+  const h = hotels.find((x) => x && x.cle && x.zone && brut.includes(x.cle));
+  // La plage ou le quartier de l'hôtel, seul : « Klong Nin » se trouve, « Klong Nin, Koh Lanta » non.
+  if (h) out.push(h.zone);
+  return [...new Set(out.filter(Boolean))].slice(0, 6);
 }
 
 // Requête de géocodage : le nom du lieu seul (jamais un nom de client), en Thaïlande, un résultat.
@@ -274,3 +283,42 @@ export function lireItineraire(json) {
   const valeurs = (r.extras && r.extras.waycategory && Array.isArray(r.extras.waycategory.values) ? r.extras.waycategory.values : []).map((v) => (Array.isArray(v) ? v[2] : 0));
   return { duree_min: Math.round(s.duration / 60), distance_km: Number.isFinite(s.distance) ? Math.round(s.distance / 100) / 10 : null, ferry: valeurs.some((v) => (Number(v) & 8) === 8) };
 }
+
+// ---- OSRM public et Nominatim (décision de Jérémy du 20.11.2026, en attendant openrouteservice) -------------------------------------------
+// Pour l'organisation de Koh Lanta seulement : quelques recherches d'Anaïs, jamais pour une autre agence. Le serveur public d'OSRM se dit
+// réservé aux usages non commerciaux, sans garantie de service ; Jérémy a choisi de s'en servir à ce faible volume (20.11.2026).
+// Règles tenues : une requête par seconde au plus par serveur, l'outil identifié (User-Agent), résultats gardés en base, mention
+// d'OpenStreetMap et d'OSRM à l'écran. Nominatim (OSMF) admet ce petit volume déclenché par une personne, avec les mêmes règles.
+export const ORGANISATIONS_OSRM = ["00000000-0000-0000-0000-00000000a000"];
+export const OSRM_BASE = "https://router.project-osrm.org";
+export const NOMINATIM_BASE = "https://nominatim.openstreetmap.org";
+export const USER_AGENT = "Gestion-agent-planification/1.0 (outil interne d'agence, Koh Lanta)";
+export const MENTION_OSM = "Itinéraire OSRM, données © contributeurs OpenStreetMap";
+
+// Itinéraire en voiture : GET /route/v1/driving/{lon},{lat};{lon},{lat}?overview=false (documentation OSRM v5).
+export const cheminOsrm = (a, b) => `/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`;
+// Réponse : code « Ok », routes[0].duration (secondes), routes[0].distance (mètres). Le ferry n'est pas lu : la règle des trois morceaux
+// et les liaisons de la table s'en chargent.
+export function lireOsrm(json) {
+  const r = json && json.code === "Ok" && Array.isArray(json.routes) ? json.routes[0] : null;
+  if (!r || !Number.isFinite(r.duration) || r.duration <= 0) return null;
+  return { duree_min: Math.round(r.duration / 60), distance_km: Number.isFinite(r.distance) ? Math.round(r.distance / 100) / 10 : null, ferry: false };
+}
+
+// Recherche d'un lieu par Nominatim : le nom seul, en Thaïlande, un résultat. Jamais une recherche à la frappe (interdite par Nominatim).
+export const parametresNominatim = (lieu) => new URLSearchParams({ q: String(lieu || "").slice(0, 200), format: "jsonv2", limit: "1", countrycodes: "th" });
+export function lireNominatim(json) {
+  const r = Array.isArray(json) ? json[0] : null;
+  const lat = r ? Number(r.lat) : NaN;
+  const lon = r ? Number(r.lon) : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return { lon, lat, label: String(r.display_name || r.name || "").slice(0, 200), confiance: Number.isFinite(Number(r.importance)) ? Number(r.importance) : null };
+}
+
+// Une requête par seconde au plus vers chaque serveur : rend le temps à attendre (ms) avant le prochain appel et note celui-ci.
+export function delaiAvant(derniers, hote, maintenant, ecartMs = 1100) {
+  const attente = derniers.has(hote) ? Math.max(0, derniers.get(hote) + ecartMs - maintenant) : 0;
+  derniers.set(hote, maintenant + attente);
+  return attente;
+}
+

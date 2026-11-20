@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { planifierCourse, tempsSimule, reglagesPlanning, versHeure } from "../supabase/functions/agent/planifier.js";
 import { dureeEntre, ligneDeLaTable, zoneDuLieu, minutesDe, dureesTapees, lignesDuSite, lignesDesBateaux, lignesDesZones, lignesNouvelles, clePaire, lireItineraire, lireGeocode, corpsItineraire, parametresGeocode } from "../supabase/functions/agent/temps.js";
 import { lireEstimation } from "../supabase/functions/agent/estimation.js";
+import { dureeAvecFerry as dureeAvecFerryDe } from "../supabase/functions/agent/temps.js";
 import { OUTILS, executer, entreeValide, memoDepuis, refDe, trouverRef, controlerReponse, montantsTapes } from "../supabase/functions/agent/outils.js";
 import { consignes, controlerAcces, parametres, ligneJournal, coutEchange, historique, titreDepuis, signe } from "../supabase/functions/agent/prompt.js";
 
@@ -136,7 +137,7 @@ test("ordre des durées (Jérémy, 19.11.2026) : OpenStreetMap d'abord, puis la 
 
 test("ports du ferry de Lanta en thaï : variantes de recherche et île reconnue", async () => {
   const { variantesLieu, liaisonPour } = await import("../supabase/functions/agent/temps.js");
-  assert.deepEqual(variantesLieu("ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi"), ["ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi", "ท่าเรือคลองหมาก, Koh Lanta Noi", "Khlong Mak Pier, Koh Lanta Noi"]);
+  assert.deepEqual(variantesLieu("ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi"), ["ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi", "ท่าเรือคลองหมาก, Koh Lanta Noi", "Khlong Mak Pier, Koh Lanta Noi", "ท่าเรือคลองหมาก (Khlong Mak Pier), Ko Lanta Noi", "ท่าเรือคลองหมาก, Ko Lanta Noi", "Khlong Mak Pier, Ko Lanta Noi"]);
   assert.deepEqual(variantesLieu("ท่าเรือกระบี่-เกาะลันตา, Krabi"), ["ท่าเรือกระบี่-เกาะลันตา, Krabi"]);
   const l = { nom: "Ferry de Koh Lanta", cote_ile: "Koh Lanta", port_ile: "ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi", port_continent: "ท่าเรือกระบี่-เกาะลันตา, Krabi", duree_min: 60 };
   // Le port côté continent n'est pas sur l'île, celui de Khlong Mak l'est.
@@ -456,4 +457,31 @@ test("ferry en trois morceaux : Jai Tiki → Krabi Nakharin pour 16:00, détail 
   const sansPort = await executer("planifier_course", { date: "2026-11-21", points: [point("Lanta Sand Resort, Koh Lanta"), point("Krabi Nakharin International Hospital, Krabi", "16:00")], heure_depart: "", heure_vol: "", vol_international: false }, ctx, nouveauMemo());
   assert.equal(sansPort.contenu.erreur, "temps_indisponible");
   assert.equal(sansPort.contenu.trajet, "Lanta Sand Resort, Koh Lanta → Embarcadère du ferry de Koh Lanta Noi");
+});
+
+test("OSRM public et Nominatim (organisation de Lanta) : adresses, lecture, cadence d'une requête par seconde", async () => {
+  const t = await import("../supabase/functions/agent/temps.js");
+  assert.equal(t.cheminOsrm({ lon: 98.9058189, lat: 8.0807978 }, { lon: 99.0992049, lat: 7.6930427 }), "/route/v1/driving/98.9058189,8.0807978;99.0992049,7.6930427?overview=false");
+  assert.deepEqual(t.lireOsrm({ code: "Ok", routes: [{ duration: 4380, distance: 74000 }] }), { duree_min: 73, distance_km: 74, ferry: false });
+  assert.equal(t.lireOsrm({ code: "NoRoute", routes: [] }), null);
+  assert.equal(t.parametresNominatim("Krabi Nakharin International Hospital, Krabi").get("countrycodes"), "th");
+  assert.deepEqual(t.lireNominatim([{ lat: "8.0807978", lon: "98.9058189", display_name: "โรงพยาบาลกระบี่นครินทร์" }]), { lon: 98.9058189, lat: 8.0807978, label: "โรงพยาบาลกระบี่นครินทร์", confiance: null });
+  assert.equal(t.lireNominatim([]), null);
+  const derniers = new Map();
+  assert.equal(t.delaiAvant(derniers, "router.project-osrm.org", 1000), 0);
+  assert.equal(t.delaiAvant(derniers, "router.project-osrm.org", 1500), 600);
+  assert.equal(t.delaiAvant(derniers, "nominatim.openstreetmap.org", 1500), 0);
+  assert.ok(t.ORGANISATIONS_OSRM.includes("00000000-0000-0000-0000-00000000a000"));
+  // Un hôtel absent d'OpenStreetMap se cherche aussi par sa plage connue, jamais par l'île seule.
+  assert.deepEqual(t.variantesLieu("Jai Tiki Retreat, Koh Lanta", [{ cle: "jai tiki retreat", zone: "Klong Nin", lieu: "Koh Lanta" }]), ["Jai Tiki Retreat, Koh Lanta", "Jai Tiki Retreat, Ko Lanta", "Klong Nin"]);
+});
+
+test("ferry de Lanta : les coordonnées OpenStreetMap des ports passent à l'itinéraire, pas de recherche par nom", async () => {
+  const { LIAISON_LANTA } = await import("../src/gestion/js/temps-site.mjs");
+  const vus = [];
+  const ors = async (de, vers, coords) => (vus.push(coords), { duree_min: de.includes("Jai") ? 35 : 73, distance_km: 1, ferry: false, de_trouve: de, vers_trouve: vers, moteur: "osrm" });
+  const r = await dureeAvecFerryDe("Jai Tiki Retreat, Koh Lanta", "Krabi Nakharin International Hospital, Krabi", { liaisons: [LIAISON_LANTA], ors });
+  assert.deepEqual(vus, [{ vers: { lat: 7.6823683, lon: 99.0900688 } }, { de: { lat: 7.6930427, lon: 99.0992049 } }]);
+  assert.deepEqual(r.morceaux.map((m) => m.duree_min), [35, 60, 73]);
+  assert.equal(r.moteur, "osrm");
 });

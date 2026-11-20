@@ -85,16 +85,18 @@ export const ROUTES_SITE = [
 ];
 
 // La liaison de ferry de Koh Lanta, pré-remplie pour l'organisation de Lanta seulement. Ports et durée donnés par Jérémy le 19.11.2026 :
-// ท่าเรือคลองหมาก (Khlong Mak Pier) sur l'île, ท่าเรือกระบี่-เกาะลันตา côté continent, 1 h traversée et attente comprises. Les coordonnées
-// restent vides : OpenStreetMap cherche les ports par leur nom, et Nani peut les poser si le port trouvé n'est pas le bon.
+// ท่าเรือคลองหมาก (Khlong Mak Pier) sur l'île, ท่าเรือกระบี่-เกาะลันตา côté continent, 1 h traversée et attente comprises.
+// Coordonnées relevées le 20.11.2026 dans OpenStreetMap : les deux bouts de la ligne de bac pour voitures (way 45897552). Le côté a été
+// vérifié avec OSRM : depuis l'hôpital de Krabi, le bout continent s'atteint sans ferry (73 min), le bout île avec (92 min). La recherche par
+// nom ne les trouvait pas (« ท่าเรือกระบี่-เกาะลันตา » renvoyait l'embarcadère de Saladan, sur l'île).
 export const LIAISON_LANTA = {
   nom: "Ferry de Koh Lanta",
   cote_ile: "Koh Lanta",
   port_ile: "ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi",
   port_continent: "ท่าเรือกระบี่-เกาะลันตา, Krabi",
-  port_ile_coord: "",
-  port_continent_coord: "",
+  port_ile_coord: "7.6823683, 99.0900688",
+  port_continent_coord: "7.6930427, 99.0992049",
   duree_min: 60,
-  source: "Jérémy, 19.11.2026 : ports Khlong Mak et Krabi-Koh Lanta, 1 h traversée et attente comprises",
+  source: "Jérémy, 19.11.2026 : ports Khlong Mak et Krabi-Koh Lanta, 1 h ; coordonnées OpenStreetMap (bac 45897552)",
   a_verifier: false,
 };

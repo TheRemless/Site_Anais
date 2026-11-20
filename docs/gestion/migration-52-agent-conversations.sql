@@ -12,7 +12,7 @@
 --    de zone à zone, durée en minutes, ferry ou non, marge conseillée, source et date, « à vérifier » tant que Nani ou Mr. Brown ne l'ont pas
 --    confirmée. Pré-remplie depuis l'écran (pages taxi du site, durées des trajets, grilles de pickup), chaque ligne marquée à vérifier.
 --    Lire : « partenaires.lire ». Ajouter ou corriger : « dossiers.ecrire » et « partenaires.lire ». Supprimer : « partenaires.ecrire ».
--- 5. lieux_geo et trajets_ors : ce qu'openrouteservice a trouvé (coordonnées d'un lieu, durée entre deux lieux), gardé pour ne pas le
+-- 5. lieux_geo et trajets_ors : ce qu'openrouteservice (ou, pour l'organisation de Koh Lanta, Nominatim et OSRM) a trouvé (coordonnées d'un lieu, durée entre deux lieux), gardé pour ne pas le
 --    recalculer (quota gratuit). Aucune donnée de client : un nom de lieu, des coordonnées, une durée. Mêmes droits que temps_trajets.
 -- 6. liaisons_ferry : règle de Jérémy du 19.11.2026, un trajet qui passe par un ferry se calcule en trois morceaux (route jusqu'au port,
 --    ferry à durée fixe, route depuis le port d'arrivée). Chaque liaison dit quelle île elle dessert, ses deux ports (et leurs coordonnées si
@@ -173,7 +173,7 @@ create table if not exists lieux_geo (
   lon double precision not null check (lon between -180 and 180),
   lat double precision not null check (lat between -90 and 90),
   label text not null default '' check (length(label) <= 200),
-  origine text not null default 'ors' check (origine in ('ors', 'saisie')),
+  origine text not null default 'ors' check (origine in ('ors', 'nominatim', 'saisie')),
   a_verifier boolean not null default true,
   maj_le timestamptz not null default now(),
   maj_par uuid default auth.uid(),
@@ -189,6 +189,8 @@ create table if not exists trajets_ors (
   ferry boolean not null default false,
   de_trouve text not null default '' check (length(de_trouve) <= 200),
   vers_trouve text not null default '' check (length(vers_trouve) <= 200),
+  -- Le serveur qui a calculé l'itinéraire : openrouteservice (clé) ou OSRM public (organisation de Koh Lanta, décision du 20.11.2026).
+  moteur text not null default 'ors' check (moteur in ('ors', 'osrm')),
   maj_le timestamptz not null default now(),
   unique (entite_id, cle)
 );
