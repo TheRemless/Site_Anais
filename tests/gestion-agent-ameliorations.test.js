@@ -259,7 +259,8 @@ test("migration 56 : table lisible par les administratrices seulement, écrite p
   assert.match(sql, /grant select on ameliorations to authenticated;/);
   assert.ok(!/grant[^;]*(insert|update|delete)[^;]*on ameliorations/.test(sql));
   assert.match(sql, /a_permission\(entite_id, 'reglages\.ecrire'\)/);
-  assert.match(sql, /'reglage', 'amelioration'/);
+  assert.match(sql, /'reglage', 'amelioration'\]/);
+  assert.match(sql, /regexp_matches\(c\.def/, "les genres en place (brochure…) sont relus et gardés");
   assert.match(sql, /create unique index if not exists ameliorations_carte on ameliorations \(carte_id\)/);
 });
 

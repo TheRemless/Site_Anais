@@ -3,14 +3,15 @@
 -- 1. ameliorations : une ligne par demande envoyée (autrice, entreprise, titre, texte public, statut, issue et PR GitHub). Écrite seulement par
 --    les fonctions « ameliorations » (envoi) et « rappels » (suivi), avec la clé de service ; lue par les administratrices de l'entreprise.
 -- 2. agent_cartes : deux genres de plus, « reglage » (changement sans code : voix, texte type, catalogue, réglage) et « amelioration ».
+--    Comme la migration 55 : les genres des contraintes en place sont relus et gardés (« brochure » compris), puis remplacés par une seule
+--    contrainte agent_cartes_genre_check qui ajoute les deux nouveaux.
 --
 -- Statuts : envoyee (issue ouverte, l'Action travaille), pr_prete (PR en brouillon à relire), en_ligne (PR fusionnée, issue fermée),
 -- refusee (issue fermée « not planned »), echec (l'Action s'est arrêtée).
 --
 -- Retour arrière :
 --   drop table if exists ameliorations;
---   alter table agent_cartes drop constraint if exists agent_cartes_genre_check;
---   alter table agent_cartes add constraint agent_cartes_genre_check check (genre in ('dossier', 'reservation', 'modification', 'reponse', 'temps'));
+--   puis rejouer le bloc 2 de la migration 55 en retirant 'reglage' et 'amelioration' (seulement si aucune carte de ces genres n'existe).
 
 begin;
 
@@ -41,7 +42,26 @@ grant select on ameliorations to authenticated;
 drop policy if exists "lire les demandes d'amélioration" on ameliorations;
 create policy "lire les demandes d'amélioration" on ameliorations for select to authenticated using (a_permission(entite_id, 'reglages.ecrire'));
 
-alter table agent_cartes drop constraint if exists agent_cartes_genre_check;
-alter table agent_cartes add constraint agent_cartes_genre_check check (genre in ('dossier', 'reservation', 'modification', 'reponse', 'temps', 'reglage', 'amelioration'));
+do $$
+declare
+  c record;
+  genres text[] := array[]::text[];
+begin
+  for c in
+    select conname, pg_get_constraintdef(oid) as def from pg_constraint
+    where conrelid = 'public.agent_cartes'::regclass and contype = 'c' and pg_get_constraintdef(oid) ~ '\mgenre\M'
+  loop
+    genres := genres || array(select m[1] from regexp_matches(c.def, '''([a-z_]+)''', 'g') as m);
+    execute format('alter table public.agent_cartes drop constraint %I', c.conname);
+  end loop;
+  genres := array(
+    select distinct g from unnest(genres || array['dossier', 'reservation', 'modification', 'reponse', 'temps', 'reglage', 'amelioration']) as g order by g
+  );
+  execute format(
+    'alter table public.agent_cartes add constraint agent_cartes_genre_check check (genre in (%s))',
+    (select string_agg(quote_literal(g), ', ' order by g) from unnest(genres) as g)
+  );
+end
+$$;
 
 commit;

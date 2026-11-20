@@ -60,7 +60,8 @@ console.log("== Cartes « reglage » et « amelioration » ==");
 const c = (await conv("anais", "secret")).rows[0].id;
 for (const g of ["reglage", "amelioration"]) ok((await comme("anais", `insert into agent_cartes (conversation_id, genre, titre) values ('${c}', '${g}', 'x') returning id`)).ok, `une carte « ${g} » s'ajoute`);
 ok(!(await comme("anais", `insert into agent_cartes (conversation_id, genre, titre) values ('${c}', 'autre', 'x')`)).ok, "un genre inconnu reste refusé");
-ok((await comme("anais", `insert into agent_cartes (conversation_id, genre, titre) values ('${c}', 'temps', 'x') returning id`)).ok, "les anciens genres restent permis");
+for (const g of ["temps", "brochure"]) ok((await comme("anais", `insert into agent_cartes (conversation_id, genre, titre) values ('${c}', '${g}', 'x') returning id`)).ok, `le genre « ${g} » d'avant reste permis`);
+ok((await un("select count(*)::int n from pg_constraint where conrelid = 'agent_cartes'::regclass and contype = 'c' and pg_get_constraintdef(oid) ~ 'genre'")).n === 1, "une seule contrainte sur le genre");
 
 console.log("== Demandes : écrites par les fonctions seulement, lues par les administratrices ==");
 const carte = (await un(`select id from agent_cartes where genre = 'amelioration'`)).id;
