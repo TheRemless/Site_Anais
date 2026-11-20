@@ -456,3 +456,11 @@ test("whatsapp : chaque sortie sans réponse laisse une trace (proposition « ec
   assert.match(r, /tri en panne/);
   assert.doesNotMatch(r, /if \(!decision && !cle\) return;/);
 });
+
+test("whatsapp : envoyer et préparer demandent le droit d'écrire, pas seulement de lire (migration 63, WhatsApp commun en lecture)", () => {
+  for (const f of ["whatsapp-envoi", "whatsapp-preparer"]) {
+    const code = fs.readFileSync(new URL(`../supabase/functions/${f}/index.ts`, import.meta.url), "utf8");
+    assert.match(code, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: conv\.id \}\)/, f);
+    assert.ok(code.indexOf("whatsapp_peut_ecrire") < code.indexOf(f === "whatsapp-envoi" ? "api.telnyx.com" : "preparerALaDemande(admin"), `${f} : contrôle avant d'agir`);
+  }
+});

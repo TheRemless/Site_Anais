@@ -38,6 +38,10 @@ Deno.serve(async (req) => {
   const { data: conv, error } = await sb.from("whatsapp_conversations").select("id, organisation_id, telephone, entite_id").eq("id", demande.conversation_id).maybeSingle();
   if (error) return json({ erreur: "base" }, 500);
   if (!conv) return json({ erreur: "droit_manquant" }, 403);
+  // Lire ne suffit pas (migration 63 : WhatsApp commun en lecture) : envoyer demande d'être administrateur de l'entreprise de la conversation.
+  // Avant la migration 63, la fonction n'existe pas : la lecture faisait déjà foi.
+  const peut = await sb.rpc("whatsapp_peut_ecrire", { p_conversation: conv.id });
+  if (peut.error ? !/whatsapp_peut_ecrire|PGRST202|42883/.test(`${peut.error.code} ${peut.error.message}`) : peut.data !== true) return json({ erreur: "droit_manquant" }, 403);
   const { data: msgs } = await sb.from("whatsapp_messages").select("sens, envoye_le").eq("conversation_id", conv.id).eq("sens", "entrant").order("envoye_le", { ascending: false }).limit(1);
   if (!fenetreOuverte(msgs || [])) return json({ erreur: "fenetre_fermee" }, 409);
   // Garde-fou de la PR 278, aussi côté serveur : jamais un net, une commission ni un nom de partenaire vers le client, même si l'écran a été

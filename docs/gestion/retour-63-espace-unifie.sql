@@ -1,4 +1,6 @@
 -- Retour en arrière de la migration 63 (espace unifié Secret et Taxi). Les liens entre dossiers sont perdus ; les dossiers restent.
+-- Gardés volontairement : la fusion corrigée (plus stricte que celle de la 46) et whatsapp_ecrit / whatsapp_peut_ecrire, appelées par les
+-- fonctions « whatsapp-envoi » et « whatsapp-preparer » (whatsapp_ecrit applique déjà la règle d'avant la 63).
 begin;
 drop trigger if exists controler_dossier_lie on dossiers;
 drop function if exists controler_dossier_lie();
@@ -6,7 +8,8 @@ alter table dossiers drop column if exists dossier_lie_id;
 drop function if exists doublons_clients_partages();
 -- Partage Secret <-> Taxi retiré (celui de ZTP vers Secret et Taxi reste). Un dossier déjà relié à une fiche de l'autre entreprise garde son lien.
 delete from partages_clients p using entites s, entites c
-where s.id = p.source_id and c.id = p.cible_id and s.slug in ('secret', 'taxi') and c.slug in ('secret', 'taxi');
+where s.id = p.source_id and c.id = p.cible_id and s.slug in ('secret', 'taxi') and c.slug in ('secret', 'taxi')
+  and p.organisation_id = '00000000-0000-0000-0000-00000000a000';
 create or replace function partage_clients_permis(p_source uuid, p_cible uuid) returns boolean language sql stable security definer set search_path = public as $$
   select exists (select 1 from partages_clients where source_id = p_source and cible_id = p_cible)
     and organisation_de(p_source) = mon_organisation() and organisation_de(p_cible) = mon_organisation()

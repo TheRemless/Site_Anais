@@ -112,6 +112,56 @@ if (ent.ztp) {
   ok(r.ok && r.rows[0].n === 0, "l'administratrice de ZTP non plus");
 }
 
+// 3 bis. Revue de sécurité : écrire ne s'élargit pas.
+const P = (await un("insert into whatsapp_propositions (conversation_id, entite_id, statut, texte) values ($1, $2, 'a_faire', 'Hi') returning id", [rg.conversation_id, ent.taxi])).id;
+r = await essaie(u.adminSecret, `update whatsapp_propositions set statut = 'ignoree' where id = '${P}'`);
+ok(r.ok && r.n === 0, "l'administrateur de Secret ne traite pas une réponse d'une conversation Taxi");
+r = await essaie(u.adminSecret, `select whatsapp_peut_ecrire('${rg.conversation_id}') p`);
+ok(r.ok && r.rows[0].p === false, "ni ne peut envoyer ou préparer (whatsapp_peut_ecrire, appelé par les fonctions)");
+r = await essaie(u.adminTaxi, `select whatsapp_peut_ecrire('${rg.conversation_id}') p`);
+ok(r.ok && r.rows[0].p === true, "l'administrateur de Taxi le peut");
+
+// 4 bis. Partage réciproque coché avec ZTP : n'ouvre rien.
+if (ent.ztp) {
+  await db.query("insert into partages_clients (source_id, cible_id, organisation_id) values ($1, $2, $3) on conflict do nothing", [ent.secret, ent.ztp, ORG]);
+  await membre("mook", ent.ztp, "Administrateur");
+  await db.exec(`update roles set tous_droits = false, permissions = array['dossiers.lire', 'dossiers.ecrire', 'clients.lire', 'clients.ecrire'] where entite_id = '${ent.ztp}' and nom = 'Administrateur'`).catch(() => {});
+  r = await essaie(u.mook, `insert into dossiers (entite_id, ref, client_id) values ('${ent.secret}', 'S-ZTP', '${cZ}') returning id`);
+  ok(!r.ok, "un partage réciproque coché avec ZTP ne permet toujours pas à un non-administrateur d'utiliser une fiche ZTP");
+  await db.query("delete from partages_clients where source_id = $1 and cible_id = $2", [ent.secret, ent.ztp]);
+  await db.query("delete from membres where user_id = $1 and entite_id = $2", [u.mook, ent.ztp]);
+}
+
+// 5 bis. Liens : un rôle « mes dossiers » ne lie pas vers un dossier qu'il ne voit pas ; jamais vers ZTP ; restauration depuis la corbeille.
+await db.exec(`insert into roles (entite_id, nom, portee, permissions) values ('${ent.secret}', 'Mes dossiers', 'mes_dossiers', array['dossiers.lire', 'dossiers.ecrire', 'clients.lire'])`);
+u.partiel = (await un("insert into auth.users (email) values ('partiel@test') returning id")).id;
+await db.exec(`update profils set organisation_id = '${ORG}' where organisation_id is null`);
+await membre("partiel", ent.secret, "Mes dossiers");
+await membre("partiel", ent.taxi, "Éditeur test");
+const dT2 = (await un("insert into dossiers (entite_id, ref, client_id) values ($1, 'T-67', $2) returning id", [ent.taxi, cT])).id;
+r = await essaie(u.partiel, `update dossiers set dossier_lie_id = '${dS2}' where id = '${dT2}'`);
+ok(!r.ok, "un rôle limité à ses dossiers ne lie pas vers un dossier Secret qu'il ne voit pas");
+// Corbeille : supprimer le dossier Secret lié, puis le restaurer, garde le lien.
+const corb = async (id) => (await un("select id from corbeille where table_name = 'dossiers' and ligne->>'id' = $1", [id]))?.id;
+await db.exec(`delete from dossiers where id = '${dS}'`);
+const cb = await corb(dS);
+ok(!!cb, "le dossier lié supprimé part dans la corbeille");
+if (cb) {
+  r = await essaie(u.adminSecret, `select restaurer_dossier('${cb}')`);
+  const lien = (await un("select dossier_lie_id from dossiers where id = $1", [dS]))?.dossier_lie_id;
+  ok(r.ok && lien === dT, "restauré par l'administrateur de Secret (sans droit dans Taxi), il garde son lien" + (r.ok ? "" : ` (${r.err})`));
+}
+// Le dossier lié a disparu entre-temps : le dossier revient sans lien.
+await db.exec(`delete from dossiers where id = '${dS}'`);
+await db.exec(`update dossiers set dossier_lie_id = null where id = '${dT}'`);
+await db.exec(`delete from dossiers where id = '${dT}'`);
+const cb2 = await corb(dS);
+if (cb2) {
+  await db.exec(`delete from corbeille where table_name = 'dossiers' and ligne->>'id' = '${dT}'`);
+  r = await essaie(u.adminSecret, `select restaurer_dossier('${cb2}')`);
+  ok(r.ok && (await un("select dossier_lie_id from dossiers where id = $1", [dS])).dossier_lie_id === null, "sans le dossier lié, la restauration réussit et retire le lien" + (r.ok ? "" : ` (${r.err})`));
+}
+
 // 4. Doublons à valider.
 r = await essaie(u.mook, `select * from doublons_clients_partages()`);
 ok(r.ok && r.rows.some((x) => [x.fiche_a, x.fiche_b].includes(cS) && [x.fiche_a, x.fiche_b].includes(cT) && x.raison === "téléphone"), "la paire Secret et Taxi au même téléphone est proposée" + (r.ok ? "" : ` (${r.err})`));
@@ -122,10 +172,32 @@ ok(r.ok && r.rows[0].n === 0, "un administrateur de Secret seul (sans lire les c
 r = await essaie(u.taxiSeul, `select count(*)::int n from doublons_clients_partages()`);
 ok(r.ok && r.rows[0].n === 0, "sans lire les clients des deux entreprises, la liste est vide");
 
+// 2 bis. Fusion entre Secret et Taxi : administration seulement, rien de perdu, la conversation suit.
+await db.exec(`update clients set notes = 'allergie', telephone = '+41 79 111 11 11' where id = '${cS}'`);
+await db.exec(`update clients set telephone = '+66 81 999 9999', email = 'anna@test' where id = '${cT}'`);
+r = await essaie(u.mook, `select fusionner_clients('${cT}', '${cS}')`);
+ok(!r.ok, "Mook ne fusionne pas deux fiches d'entreprises différentes");
+u.adminDeux = (await un("insert into auth.users (email) values ('admin2@test') returning id")).id;
+await db.exec(`update profils set organisation_id = '${ORG}' where organisation_id is null`);
+await membre("adminDeux", ent.secret, "Administrateur");
+await membre("adminDeux", ent.taxi, "Administrateur");
+r = await essaie(u.adminSecret, `select fusionner_clients('${cT}', '${cS}')`);
+ok(!r.ok, "un administrateur de Secret seul ne fusionne pas vers une fiche Taxi");
+await db.exec(`update whatsapp_conversations set client_id = '${cS}', entite_id = '${ent.secret}' where id = '${rg.conversation_id}'`);
+r = await essaie(u.adminDeux, `select fusionner_clients('${cT}', '${cS}')`);
+ok(r.ok, "l'administrateur des deux entreprises fusionne" + (r.ok ? "" : ` (${r.err})`));
+const g = await un("select notes, telephone from clients where id = $1", [cT]);
+ok(g && /allergie/.test(g.notes) && /Autre téléphone : \+41 79 111 11 11/.test(g.notes), "les notes et l'autre téléphone de la fiche absorbée sont gardés");
+ok((await un("select client_id from whatsapp_conversations where id = $1", [rg.conversation_id])).client_id === null, "la conversation Secret perd seulement le client d'une autre entreprise");
+
+const org2 = (await un("insert into organisations (nom) values ('Autre agence') returning id")).id;
+const s2 = (await un("insert into entites (slug, nom, organisation_id) values ('secret', 'Autre Secret', $1) returning id", [org2])).id;
+const t2 = (await un("insert into entites (slug, nom, organisation_id) values ('taxi', 'Autre Taxi', $1) returning id", [org2])).id;
+await db.query("insert into partages_clients (source_id, cible_id, organisation_id) values ($1, $2, $3), ($2, $1, $3)", [s2, t2, org2]);
 // 5. Retour en arrière.
 await db.exec(lire("retour-63-espace-unifie.sql"));
 const apres = (await db.query("select s.slug || '>' || c.slug p from partages_clients x join entites s on s.id = x.source_id join entites c on c.id = x.cible_id order by 1")).rows.map((r) => r.p);
-ok(apres.join() === "ztp>secret,ztp>taxi", "le retour en arrière remet le partage d'avant");
+ok(apres.join() === "secret>taxi,taxi>secret,ztp>secret,ztp>taxi" && (await un("select count(*)::int n from partages_clients where organisation_id = $1", [ORG])).n === 2, "le retour en arrière remet le partage d'avant chez Zwald et ne touche pas une autre organisation");
 ok((await un("select count(*)::int n from information_schema.columns where table_name = 'dossiers' and column_name = 'dossier_lie_id'")).n === 0, "et retire la colonne des dossiers liés");
 
 console.log(echecs ? `${echecs} échec(s)` : "tout est ok");
