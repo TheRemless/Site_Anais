@@ -61,5 +61,6 @@ test("eval : la réponse ferry dit paiement d'avance et les trois moyens, sans c
   assert.ok(paiementAvance(bonne));
   assert.ok(!paiementAvance("Hi Claire,\n\nThe speedboat leaves at 09:00, 1,500 THB per adult. See you soon."));
   assert.ok(!paiementAvance(`${bonne}\nIBAN TH12 3456 7890 1234`));
+  assert.ok(!paiementAvance("Please confirm your choice. You can pay by Wise, international bank transfer or cash at our office."));
   assert.ok(!paiementAvance(`${bonne}\nPay here: https://wise.com/pay/r/abc`));
 });

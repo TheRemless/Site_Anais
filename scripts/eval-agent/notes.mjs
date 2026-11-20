@@ -13,7 +13,8 @@ const heuresDe = (t) => [...String(t).matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\
 
 export const paiementAvance = (m) =>
   /\b(?:pay|payment|paid|paiement|payer|régl)/i.test(m) &&
-  /in advance|advance payment|beforehand|prior|à l'avance|d'avance|confirm/i.test(m) &&
+  /in advance|advance payment|beforehand|à l'avance|d'avance/i.test(m) &&
+  /confirm/i.test(m) &&
   /\bwise\b/i.test(m) &&
   /(?:international|bank) (?:bank )?transfer|virement/i.test(m) &&
   /\bcash\b|espèces/i.test(m) &&
