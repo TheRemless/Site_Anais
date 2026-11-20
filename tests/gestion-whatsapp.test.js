@@ -178,7 +178,7 @@ test("whatsapp : Telnyx reçoit 200 dès que l'événement est gardé ; la fonct
 });
 
 // ---- Phase 2 : réponse préparée par l'agent, tri, notification, envoi depuis Gestion ----------------------------------------------
-import { OUTILS_WHATSAPP, outilsWhatsapp, demandeAgent, demandeTri, lireTri, aRepondre, fenetreOuverte, ligneMessage, avertissementsSurs, langueSure, FENETRE_MS } from "../supabase/functions/whatsapp/proposer.js";
+import { OUTILS_WHATSAPP, outilsWhatsapp, demandeAgent, demandeTri, aRepondre, fenetreOuverte, ligneMessage, avertissementsSurs, langueSure, FENETRE_MS } from "../supabase/functions/whatsapp/proposer.js";
 import { lireEnvoi, corpsTelnyx, lireReponseTelnyx, TEXTE_MAX_OCTETS } from "../supabase/functions/whatsapp-envoi/calc.js";
 import { parametres } from "../supabase/functions/agent/prompt.js";
 import { OUTILS } from "../supabase/functions/agent/outils.js";
@@ -211,12 +211,12 @@ test("whatsapp : la demande à l'agent porte la conversation et le client, jamai
   assert.equal(ligneMessage(M({ texte: null, type: "image", medias: [{ type: "image", legende: "hotel" }] })), "[Client 20.11 10:00] [image : hotel]");
 });
 
-test("whatsapp : tri Secret ou Taxi", () => {
-  assert.match(demandeTri([M({ texte: "Taxi to Krabi airport?" })]), /Taxi to Krabi airport/);
-  assert.equal(lireTri("taxi"), "taxi");
-  assert.equal(lireTri(" Secret."), "secret");
-  assert.equal(lireTri("inconnu"), null);
-  assert.equal(lireTri("je ne sais pas"), null);
+test("whatsapp : la consigne du tri demande du JSON et ne contient que des données", () => {
+  const t = demandeTri([M({ texte: "Taxi to Krabi airport tomorrow 9am?" })]);
+  assert.match(t, /Taxi to Krabi airport/);
+  assert.match(t, /"preparer": true\|false/);
+  assert.match(t, /Dans le doute, false/);
+  assert.match(demandeTri([M({})], { aTrier: false }), /déjà rangée/);
 });
 
 test("whatsapp : la réponse se prépare seulement si le dernier message vivant est celui du client", () => {
@@ -238,10 +238,7 @@ test("whatsapp : fenêtre de 24 h pour l'envoi depuis Gestion", () => {
 test("whatsapp : aucune notification Web Push pour WhatsApp (Jérémy, 20.11.2026), les autres notifications de Gestion restent", () => {
   const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   const index = fs.readFileSync(new URL("../supabase/functions/whatsapp/index.ts", import.meta.url), "utf8");
-  for (const code of [reponse, index]) {
-    assert.doesNotMatch(code, /web-push|webpush|sendNotification|abonnements_push|VAPID/);
-  }
-  // Rappels et demandes du site gardent leurs notifications.
+  for (const code of [reponse, index]) assert.doesNotMatch(code, /web-push|webpush|sendNotification|abonnements_push|VAPID/);
   assert.match(fs.readFileSync(new URL("../supabase/functions/rappels/index.ts", import.meta.url), "utf8"), /sendNotification/);
   assert.match(fs.readFileSync(new URL("../supabase/functions/demande-site/index.ts", import.meta.url), "utf8"), /sendNotification/);
 });
@@ -320,13 +317,6 @@ test("whatsapp : prénom affichable seulement (profil choisi par le client)", ()
   assert.equal(prenomSur("+66 81 234 5678"), "");
 });
 
-test("whatsapp : pas de réponse préparée pour une réaction, un emoji seul ou un merci", () => {
-  for (const t of ["👍", "ok", "Thanks!", "merci", "🙏🙏"]) assert.equal(aRepondre([M({ texte: t })], "m1"), false, t);
-  assert.equal(aRepondre([M({ type: "reaction", texte: "❤️" })], "m1"), false);
-  assert.equal(aRepondre([M({ texte: "ok, and what time is pickup?" })], "m1"), true);
-  assert.ok(LIMITE_CONVERSATION_JOUR > 0 && DUREE_BOITE_MS < 150_000);
-});
-
 test("whatsapp : chercher_clients n'est pas proposé, et la boucle refuse tout outil hors de la liste passée", async () => {
   assert.ok(!OUTILS_WHATSAPP.includes("chercher_clients"));
   let tour = 0;
@@ -391,4 +381,54 @@ test("whatsapp : la réponse préparée reçoit les règles de réponse d'Anaïs
   const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   assert.match(reponse, /promptPreparation\(\{ entreprise: ent\.nom, reglages, apprentissages:/);
   assert.match(reponse, /\.from\("agent_apprentissages"\)\.select\([^)]*\)\.eq\("entite_id", ent\.id\)/);
+});
+
+// ---- Tri des messages (migration 60, demande de Jérémy : « faut vraiment faire un bon tri ») ----------------------------------------
+import { triSansAppel, lireDecision, numerosPartenaires, cleNumero, triGarde, MOTIFS } from "../supabase/functions/whatsapp/proposer.js";
+
+test("whatsapp tri : sans appel à Claude, contact « jamais », merci, emoji, réaction, média seul, partenaire", () => {
+  const conv = { telephone: "+66812345678", reponses: "auto" };
+  const t = (o, c = conv, p) => triSansAppel({ conv: c, messages: [M(o)], numerosPartenaires: p });
+  assert.equal(t({ texte: "Price for 4 islands?" }, { ...conv, reponses: "jamais" }).motif, "contact_jamais");
+  for (const x of ["👍", "ok", "Thanks!", "merci", "Perfect.", "🙏🙏"]) assert.equal(t({ texte: x }).motif, "remerciement", x);
+  assert.equal(t({ type: "reaction", texte: "❤️" }).motif, "remerciement");
+  assert.equal(t({ texte: null, type: "audio", medias: [{ type: "audio" }] }).motif, "media_seul");
+  assert.equal(t({ texte: "Can you pick us up?" }, conv, new Set(["812345678"])).motif, "partenaire");
+  assert.equal(t({ texte: "Can you pick us up at 9?" }), null, "une vraie question passe au tri par Haiku");
+  assert.equal(t({ texte: null, type: "image", medias: [{ type: "image", legende: "x" }], }).motif, "media_seul");
+});
+
+test("whatsapp tri : lecture stricte de la décision de Haiku (deux signaux concordants, sinon non)", () => {
+  assert.deepEqual(lireDecision('{"preparer": true, "motif": "demande_client", "entreprise": "taxi"}'), { preparer: true, motif: "demande_client", entreprise: "taxi" });
+  assert.equal(lireDecision('Sure! {"preparer": true, "motif": "suivi_reservation", "entreprise": "inconnu"}').preparer, true);
+  assert.equal(lireDecision('{"preparer": true, "motif": "personnel", "entreprise": "secret"}').preparer, false, "oui mais motif personnel : non");
+  assert.equal(lireDecision('{"preparer": false, "motif": "demande_client"}').preparer, false);
+  assert.equal(lireDecision('{"preparer": "true", "motif": "demande_client"}').preparer, false, "un texte « true » ne suffit pas");
+  assert.deepEqual(lireDecision("je ne sais pas"), { preparer: false, motif: "autre", entreprise: null });
+  assert.equal(lireDecision('{"preparer": true, "motif": "inventé"}').motif, "autre");
+  assert.deepEqual(triGarde({ preparer: false, motif: "personnel" }, "2026-11-20T10:00:00.000Z"), { preparer: false, motif: "personnel", entreprise: "inconnu", le: "2026-11-20T10:00:00.000Z" });
+  assert.ok(MOTIFS.includes("contact_jamais") && MOTIFS.includes("limite"));
+});
+
+test("whatsapp tri : numéros des fiches partenaires reconnus quel que soit leur format", () => {
+  const n = numerosPartenaires([{ contact: { telephones: "081 234 5678 / +66 (0)89 111 2222" } }, { contact: { telephones: [{ numero: "+66 75 123 456" }, "0899998888"] } }, { contact: {} }, null]);
+  assert.ok(n.has(cleNumero("+66812345678")));
+  assert.ok(n.has(cleNumero("+66891112222")));
+  assert.ok(n.has(cleNumero("+6675123456")));
+  assert.ok(n.has(cleNumero("+66899998888")));
+  assert.ok(!n.has(cleNumero("+41790000002")));
+});
+
+test("whatsapp tri : branché avant la préparation, sans toucher au classement", () => {
+  const r = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  const debut = r.indexOf("export async function apresMessageClient");
+  const corps = r.slice(debut, r.indexOf("export async function preparerALaDemande"));
+  assert.ok(corps.indexOf("triSansAppel(") < corps.indexOf("lireDecision(") && corps.indexOf("lireDecision(") < corps.indexOf("await preparer("));
+  assert.match(r, /update\(\{ tri: triGarde\(decision\) \}\)/);
+  // Le serveur n'écrit jamais l'entreprise, le client, le dossier ni l'interrupteur d'une conversation.
+  assert.doesNotMatch(r, /whatsapp_conversations"\)\.update\(\{ (entite_id|client_id|dossier_id|reponses)/);
+  const config = fs.readFileSync(new URL("../supabase/config.toml", import.meta.url), "utf8");
+  assert.match(config, /\[functions\.whatsapp-preparer\]\nverify_jwt = true/);
+  const prep = fs.readFileSync(new URL("../supabase/functions/whatsapp-preparer/index.ts", import.meta.url), "utf8");
+  assert.ok(prep.indexOf('sb.from("whatsapp_conversations")') < prep.indexOf("preparerALaDemande(admin"), "la conversation est lue avec la session avant tout");
 });

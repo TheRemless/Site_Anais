@@ -34,3 +34,8 @@ verify_jwt = false
 # fonction lit la conversation avec cette session (RLS : administrateurs de Secret et Taxi).
 [functions.whatsapp-envoi]
 verify_jwt = true
+
+# Appelée par l'outil avec la session de la personne (boîte WhatsApp, « Préparer une réponse ») : la passerelle vérifie le jeton, la
+# fonction lit la conversation avec cette session (RLS : administrateurs de Secret et Taxi).
+[functions.whatsapp-preparer]
+verify_jwt = true
