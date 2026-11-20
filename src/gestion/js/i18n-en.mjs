@@ -3704,6 +3704,8 @@ export const EN = {
   "Le message cite un partenaire : à retirer avant d'envoyer.": "The message names a partner: remove it before sending.",
   "Montant interne (net, marge ou commission) dans la réponse : {v}. À retirer.": "Internal amount (net, margin or commission) in the reply: {v}. Remove it.",
   "La réponse cite le partenaire « {v} » : à retirer.": "The reply names the partner “{v}”: remove it.",
+  "Règles de réponse au client": "Client reply rules",
+  "Une règle par ligne. L'assistant les applique dans chaque réponse au client qu'il prépare, quand elles concernent ce qu'il propose. Jamais de coordonnées bancaires ici.": "One rule per line. The assistant applies them in every client reply it prepares, when they concern what it offers. Never bank details here.",
   "À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.": "Remove before copying: {liste}. These figures and names never go to the client.",
   "Les conversations ne sont pas encore installées dans la base.": "Conversations are not installed in the database yet.",
   "Limite d'échanges du jour atteinte : l'assistant reprend demain.": "Daily limit reached: the assistant is back tomorrow.",

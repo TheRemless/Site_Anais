@@ -11,6 +11,15 @@ const DEMANDES = {
 const FIN_SIGNEE = /(?:belle|bonne) (?:journée|soirée)|have an? (?:nice|lovely|great|good) (?:day|evening)|best regards|kind regards|cordialement/i;
 const heuresDe = (t) => [...String(t).matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)].map((m) => `${m[1].padStart(2, "0")}:${m[2]}`);
 
+export const paiementAvance = (m) =>
+  /\b(?:pay|payment|paid|paiement|payer|régl)/i.test(m) &&
+  /in advance|advance payment|beforehand|prior|à l'avance|d'avance|confirm/i.test(m) &&
+  /\bwise\b/i.test(m) &&
+  /(?:international|bank) (?:bank )?transfer|virement/i.test(m) &&
+  /\bcash\b|espèces/i.test(m) &&
+  /office|bureau|agence/i.test(m) &&
+  !/\biban\b|\bswift\b|account (?:number|no)|numéro de compte|\b\d{8,}\b|wise\.com\/pay|https?:\/\//i.test(m);
+
 // `t` : ce que le tour a produit { outils, textes, cartes, plannings, tapes } ; `memo` : la mémoire de la conversation après le tour.
 // `contexte` : { prestataires, prenoms }. Rend { verifs: { nom: booléen }, score }.
 export function noterTour(att = {}, t, memo, contexte = {}) {
@@ -40,6 +49,9 @@ export function noterTour(att = {}, t, memo, contexte = {}) {
   }
   if (c.reponse_sans_signature) v.reponse_sans_signature = reponses.every((m) => !FIN_SIGNEE.test(m) && !(contexte.prenoms || []).some((p) => new RegExp(`\\b${sansAccents(p)}\\b`).test(sansAccents(m))));
   if (c.reponse_sans_prestataire) v.reponse_sans_prestataire = reponses.every((m) => !(contexte.prestataires || []).some((p) => p.length > 3 && sansAccents(m).includes(sansAccents(p))));
+  // Bateau (ferry, speedboat) : la réservation se confirme après paiement, à l'avance, par Wise, virement international ou cash à l'office ;
+  // jamais de coordonnées bancaires ni d'adresse inventées (règle de réponse de Secret et Taxi, 20.11.2026).
+  if (c.paiement_avance) v.paiement_avance = reponses.length > 0 && reponses.every(paiementAvance);
   if (c.reponse_vouvoiement) v.reponse_vouvoiement = reponses.length > 0 && reponses.every((m) => /\bvous\b/i.test(m) && !/\btu\b|\bte\b|\bton\b|\bta\b/i.test(m));
   if (att.ferry_en_trois) v.ferry_en_trois = !!plan && plan.trajets.some((x) => Array.isArray(x.morceaux) && x.morceaux.length === 3) && /ferry/i.test(t.textes);
   if (att.source_duree) v.source_duree = !!plan && plan.trajets.every((x) => x.source === att.source_duree);

@@ -44,6 +44,10 @@ Les contrôles sont dans le code (`supabase/functions/agent/outils.js`), pas seu
 - la réponse au client est contrôlée : signature retirée chez Secret et Taxi, montant ou heure sans source signalés, mot interne ou prénom de l'équipe signalés ;
 - **garde-fou client** : tout montant égal à un net, une marge, une commission ou un gain rendu par un outil dans la conversation (`montant_interne`) et tout nom de partenaire en mot entier (`nom_prestataire`) sont signalés avec leur valeur. L'écran bloque « Copier la réponse » tant que le texte corrigé en contient encore un (`agent-calc.mjs`, `resteBloque`). Un montant interne égal à un prix de vente rendu par un outil n'est pas signalé : rien ne permet de dire lequel est cité. Le voucher, la Booking confirmation et le message WhatsApp sont faits par Gestion depuis le dossier, pas par l'agent : ils ne contiennent ni net ni commission.
 
+## Règles de réponse au client (20.11.2026)
+
+Réglages, section « Assistant IA », champ « Règles de réponse au client » : une règle par ligne, que l'agent applique dans chaque réponse au client qu'il prépare quand elle concerne ce qu'il propose. Elles se changent aussi par une carte « reglage » (`assistant_voix.regles_reponse`, `ameliorer.js`). Tant qu'une entreprise ne les a jamais enregistrées, Secret et Taxi ont la règle demandée par Jérémy le 20.11.2026 : pour un ferry ou un speedboat, la réservation n'est confirmée qu'après paiement, le paiement se fait à l'avance, par Wise, par virement international ou en cash à l'office, et l'équipe envoie les détails de paiement. Aucune coordonnée bancaire, aucun lien Wise ni aucune adresse ne sont donnés à l'agent : il ne les écrit jamais. Un champ vidé et enregistré retire toutes les règles. Le jeu d'essai privé a le cas A12 (ferry Lanta → Phi Phi, vérification `paiement_avance`).
+
 ## Planifier une course
 
 `planifier_course` reçoit les points dans l'ordre (pickup, arrêts, destination), un rendez-vous (« à l'hôpital à 16:00 »), les attentes et l'heure du vol. Il calcule :

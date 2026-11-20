@@ -6,7 +6,7 @@ import { voucherExemple } from "./voucher.mjs";
 import { sectionVouchers } from "./reglages-vouchers.mjs";
 import { h, champ, confirmer, toast, num, chargerImage, slug } from "../ui.mjs";
 import { aujourdhui, formatDate, STATUTS } from "../calc.mjs";
-import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne } from "../defauts.mjs";
+import { LIBELLES_FR, LIBELLES_EN, CGV_FACTURE, CONTENU_DEFAUT, nouvelleLigne, reglesReponse } from "../defauts.mjs";
 // Lot C1 (devis et factures) : corbeille des documents, prochain numéro, noms des devises.
 import { sectionCorbeilleDocuments } from "./corbeille-documents.mjs";
 import { blocProchainNumero } from "./prochain-numero.mjs";
@@ -301,6 +301,11 @@ export function vueReglages() {
       marque();
     });
     return champ(tr(libelle), el, aide);
+  };
+  const reglesReponseChamp = () => {
+    if (!r.assistant_voix || typeof r.assistant_voix !== "object") r.assistant_voix = { lieu: "", fr: "", en: "" };
+    if (typeof r.assistant_voix.regles_reponse !== "string") r.assistant_voix.regles_reponse = reglesReponse(r);
+    return texte(N_("Règles de réponse au client"), "assistant_voix.regles_reponse", { multi: true, rows: 5, aide: tr("Une règle par ligne. L'assistant les applique dans chaque réponse au client qu'il prépare, quand elles concernent ce qu'il propose. Jamais de coordonnées bancaires ici.") });
   };
   const liste = (libelle, chemin, aide) => {
     const el = h("textarea", { id: uid(), rows: 4 });
@@ -834,6 +839,9 @@ export function vueReglages() {
         ztp ? null : h("label", { class: "case", for: "assistant-ia" }, h("input", { id: "assistant-ia", type: "checkbox", checked: r.assistant_ia === true, onchange: (e) => ((r.assistant_ia = e.target.checked), marque()) }), tr("Importer une brochure de partenaire avec l'assistant")),
         ztp ? null : h("p", { class: "aide" }, tr("L'assistant (Claude, d'Anthropic) lit la brochure et propose les tarifs à ajouter au catalogue. Rien n'est enregistré sans vous.")),
         texte(N_("Lieu de l'entreprise"), "assistant_voix.lieu", { aide: exemple("lieu_entreprise") }),
+        // Règles de réponse au client (20.11.2026) : préremplies chez Secret et Taxi (paiement d'avance des bateaux) tant qu'elles n'ont jamais
+        // été enregistrées. Vider le champ et enregistrer retire toutes les règles.
+        reglesReponseChamp(),
         peut("journal.voir") ? h("p", null, h("a", { class: "bouton secondaire petit", href: "#/assistant" }, tr("Suivi de l'assistant : coût, usage et qualité"))) : null
       ),
       // Fiduciaire éteinte (Taxi, décision 5 ; agence cliente du logiciel, 19.11.2026) : pas au menu, elle se rouvre d'ici pour être allumée (D10).
