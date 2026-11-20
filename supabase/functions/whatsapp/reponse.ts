@@ -119,20 +119,29 @@ async function lireConversation(db: SupabaseClient, conversationId: string) {
 }
 
 // Les limites avant tout appel à Claude. Une lecture impossible ferme le budget (jamais l'inverse).
-async function budgetOuvert(db: SupabaseClient, conv: Conv) {
-  const jour = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const [mois, budget, wa, parConv, boite] = await Promise.all([
+// Plafond du mois de l'assistant et sous-plafond de la boîte. Une lecture impossible ferme (jamais l'inverse). Sert aussi au suivi (suivi.ts).
+export async function plafondsOuverts(db: SupabaseClient) {
+  const [mois, budget, wa] = await Promise.all([
     db.rpc("assistant_cout_depuis", { debut: debutMois() }),
     db.from("assistant_budget").select("plafond_mois_usd, seuil_alerte_pct").maybeSingle(),
     db.from("assistant_journal").select("cout_estime_usd").eq("usage", "whatsapp").gte("cree_le", debutMois()).limit(20000),
-    db.from("whatsapp_propositions").select("id", { count: "exact", head: true }).eq("conversation_id", conv.id).gte("cree_le", jour),
-    db.from("whatsapp_propositions").select("id", { count: "exact", head: true }).gte("cree_le", jour),
   ]);
-  if (mois.error || wa.error || parConv.error || boite.error || mois.data === null || mois.data === undefined) return false;
+  if (mois.error || wa.error || mois.data === null || mois.data === undefined) return false;
   const { plafond } = plafondRetenu(budget.error ? null : budget.data, Deno.env.get("AGENT_PLAFOND_MOIS_USD"));
   if (Number(mois.data) >= plafond) return false;
   const coutBoite = (wa.data || []).reduce((s, l) => s + (Number(l.cout_estime_usd) || 0), 0);
-  if (coutBoite >= (Number(Deno.env.get("WHATSAPP_PLAFOND_MOIS_USD")) || PLAFOND_WHATSAPP_MOIS_USD)) return false;
+  return coutBoite < (Number(Deno.env.get("WHATSAPP_PLAFOND_MOIS_USD")) || PLAFOND_WHATSAPP_MOIS_USD);
+}
+
+// Les limites avant tout appel à Claude pour une réponse : plafonds, puis réponses du jour par conversation et pour la boîte.
+async function budgetOuvert(db: SupabaseClient, conv: Conv) {
+  const jour = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const [ouverts, parConv, boite] = await Promise.all([
+    plafondsOuverts(db),
+    db.from("whatsapp_propositions").select("id", { count: "exact", head: true }).eq("conversation_id", conv.id).gte("cree_le", jour),
+    db.from("whatsapp_propositions").select("id", { count: "exact", head: true }).gte("cree_le", jour),
+  ]);
+  if (!ouverts || parConv.error || boite.error) return false;
   return (parConv.count || 0) < LIMITE_CONVERSATION_JOUR && (boite.count || 0) < LIMITE_BOITE_JOUR;
 }
 
@@ -236,7 +245,7 @@ async function echecVisible(db: SupabaseClient, conversationId: string, messageI
 
 // Le journal de l'assistant pour une préparation : une ligne créée au premier appel, mise à jour à chaque tour (coût à jour même si la
 // fonction est arrêtée en route).
-function journalEnCours(db: SupabaseClient, appels: { usage: Record<string, unknown>; modele: string }[]) {
+export function journalEnCours(db: SupabaseClient, appels: { usage: Record<string, unknown>; modele: string }[]) {
   const t0 = Date.now();
   let id: number | null = null;
   return {

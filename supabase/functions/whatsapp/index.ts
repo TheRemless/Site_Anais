@@ -9,6 +9,7 @@
 // Doc : docs/gestion/whatsapp.md. Logique pure : ./calc.js (tests/gestion-whatsapp.test.js). Base : migration 58.
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { apresMessageClient } from "./reponse.ts";
+import { suiviApresMessage } from "./suivi.ts";
 import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
 
 const ORGANISATION = Deno.env.get("WHATSAPP_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
@@ -163,6 +164,8 @@ async function appliquer(db: SupabaseClient, a: any) {
   if (error) throw new Error(error.message);
   await db.from("whatsapp_reglages").update({ dernier_evenement_le: maintenant }).eq("organisation_id", ORGANISATION);
   if (data?.nouveau && data.message_id) {
+    // Suivi (migration 62) : signal de paiement, promesse de Nani, résumé. Hors de ce traitement, comme la réponse préparée.
+    enFond(suiviApresMessage(db, data.conversation_id, data.message_id));
     // Un message du client : la réponse se prépare et l'équipe est prévenue, hors de ce traitement (il ne retarde pas les autres événements).
     if (a.message.sens === "entrant") enFond(apresMessageClient(db, data.conversation_id, data.message_id));
     // Nani a répondu depuis l'app : la proposition en attente est traitée (plus de doublon possible).
