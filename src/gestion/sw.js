@@ -76,11 +76,14 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const racine = `${self.location.origin}/gestion/`;
-  const url = new URL((event.notification.data && event.notification.data.url) || "/gestion/", self.location.origin).href;
+  let url = new URL((event.notification.data && event.notification.data.url) || "/gestion/", self.location.origin).href;
+  // Le lien d'une PR (demande d'amélioration) s'ouvre à part, sans quitter l'outil ; aucune autre adresse extérieure n'est suivie.
+  const externe = !url.startsWith(`${self.location.origin}/`);
+  if (externe && !url.startsWith("https://github.com/")) url = racine;
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((fenetres) => {
       const ouverte = fenetres.find((f) => f.url.startsWith(racine));
-      if (!ouverte) return self.clients.openWindow(url);
+      if (!ouverte || url.startsWith("https://github.com/")) return self.clients.openWindow(url);
       return ouverte.focus().then((f) => (f && "navigate" in f ? f.navigate(url) : f));
     })
   );

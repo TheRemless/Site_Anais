@@ -2,10 +2,10 @@
 // plusieurs ouvertes en parallèle. L'agent cherche, calcule et propose ; chaque proposition est une carte que la personne valide.
 // « Valider » ouvre l'écran habituel de l'outil déjà rempli (Coller une demande, formulaire de réservation) : c'est lui qui enregistre.
 // Téléphone d'abord : la liste, puis le fil en plein écran avec la zone de saisie en bas. Ordinateur : la liste à gauche, le fil à droite.
-import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi } from "../etat.mjs";
+import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise } from "../agent-calc.mjs";
+import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
@@ -42,6 +42,37 @@ function erreurTexte(code, detail = null) {
   return erreurFichier(code) || tr(ERREURS[code] || N_("L'assistant ne répond pas."));
 }
 
+// Demandes d'amélioration (fonction « ameliorations ») : motifs d'un refus et statut de chaque demande.
+const ERREURS_AMELIORATION = {
+  reserve_admin: N_("Seule une administratrice peut demander une amélioration."),
+  carte_introuvable: N_("Cette proposition n'existe plus."),
+  deja_decidee: N_("Cette demande a déjà été envoyée ou écartée."),
+  limite_du_jour: N_("Assez de demandes pour aujourd'hui : envoyez celle-ci demain."),
+  titre_vide: N_("Donnez un titre à la demande."),
+  texte_refuse: N_("Le texte sera public : retirez les noms, numéros, montants et liens, puis renvoyez."),
+  non_configure: N_("Les demandes d'amélioration ne sont pas encore activées sur le serveur."),
+  github_indisponible: N_("GitHub ne répond pas : rien n'est parti, réessayez plus tard."),
+  migration_manquante: N_("Les demandes d'amélioration ne sont pas encore installées dans la base."),
+  hors_ligne: N_("Pas de connexion : la demande n'est pas partie."),
+};
+const MOTIFS_TEXTE = {
+  courriel: N_("une adresse e-mail"),
+  telephone: N_("un numéro de téléphone"),
+  lien: N_("un lien"),
+  montant: N_("un montant ou un numéro"),
+  acces: N_("une coordonnée bancaire ou un accès"),
+  nom_propre: N_("un nom de client ou de prestataire"),
+  texte_vide: N_("un texte vide"),
+  texte_trop_long: N_("un texte trop long"),
+};
+const STATUTS_AMELIORATION = {
+  envoyee: N_("Envoyée, en préparation"),
+  pr_prete: N_("Prête, Jérémy relit"),
+  en_ligne: N_("Acceptée, en ligne"),
+  refusee: N_("Non retenue"),
+  echec: N_("En attente de Jérémy"),
+};
+
 const AVERTISSEMENTS = {
   signature_retiree: N_("La signature en bas a été retirée : la réponse ne signe pas."),
   nom_prestataire: N_("Le message cite un prestataire : à retirer avant d'envoyer."),
@@ -74,6 +105,9 @@ const ETAPES = {
   estimer_temps_web: N_("Je cherche une estimation sur le web"),
   proposer_temps_trajet: N_("Je prépare la durée pour la table"),
   proposer_import_brochure: N_("Je prépare l'import de la brochure"),
+  lire_reglages: N_("Je lis les réglages"),
+  proposer_reglage: N_("Je prépare le réglage"),
+  proposer_amelioration: N_("Je prépare la demande d'amélioration"),
 };
 
 const disponible = () => agentActif(reglages()) && peut("partenaires.lire") && peut("dossiers.ecrire");
@@ -133,7 +167,34 @@ export async function vueAgent(idOuvert = "") {
             )
           : h("p", { class: "aide agent-liste-vide" }, archives ? tr("Aucune conversation archivée.") : tr("Aucune conversation. Commencez par une demande de client : une conversation par client garde tout en ordre.")),
       conversations && conversations.some((c) => c.statut === "archivee") ? h("button", { class: "lien agent-archives", type: "button", onclick: () => ((archives = !archives), dessinerListe()) }, archives ? tr("Conversations ouvertes") : tr("Conversations archivées")) : null,
+      blocAmeliorations(),
     ]);
+  }
+
+  // Demandes d'amélioration de l'outil (administratrices) : leur statut, suivi sur GitHub par la fonction « rappels ».
+  let ameliorations = estAdmin() ? ((await etat.store.ameliorations(etat.entiteId)) ?? null) : null;
+  function blocAmeliorations() {
+    if (!ameliorations || !ameliorations.length) return null;
+    const liste = listeAmeliorations(ameliorations);
+    const enCours = liste.filter((a) => ["envoyee", "pr_prete", "echec"].includes(a.statut)).length;
+    return h(
+      "details",
+      { class: "agent-ameliorations", open: enCours ? true : null },
+      h("summary", null, tr("Améliorations demandées"), enCours ? h("span", { class: "agent-pastille" }, enCours) : null),
+      h(
+        "ul",
+        null,
+        liste.slice(0, 20).map((a) =>
+          h(
+            "li",
+            { class: `agent-amelioration ${a.statut}` },
+            h("strong", null, a.titre),
+            h("span", { class: "agent-conv-ligne" }, h("span", null, tr(STATUTS_AMELIORATION[a.statut] || N_("Envoyée, en préparation"))), h("time", { datetime: a.cree_le }, quand(a.cree_le, { langue: langueActive() }))),
+            a.pr_url ? h("a", { href: a.pr_url, target: "_blank", rel: "noopener" }, tr("Voir la PR")) : a.issue_url ? h("a", { href: a.issue_url, target: "_blank", rel: "noopener" }, tr("Voir la demande")) : null
+          )
+        )
+      )
+    );
   }
 
   // ---- Fil ------------------------------------------------------------------------------------------------------------------------
@@ -452,6 +513,30 @@ export async function vueAgent(idOuvert = "") {
     } else if (c.genre === "temps") {
       corps.push(h("p", { class: "agent-modif" }, h("strong", null, d.de), " ", icone("inverser", 16), " ", h("strong", null, d.vers), " ", h("span", null, texteDuree(d.duree_min))), h("p", { class: "aide" }, [d.ferry ? tr("ferry") : "", d.marge_min ? tr("marge {m} min", { m: d.marge_min }) : "", d.source].filter(Boolean).join(", ")));
       action = { libelle: tr("Ajouter à la table"), faire: () => ajouterTemps(c) };
+    } else if (c.genre === "reglage") {
+      const long = String(d.valeur || "").length > 60 || String(d.avant || "").length > 60;
+      corps.push(h("p", null, h("strong", null, d.nom)));
+      if (long) corps.push(d.avant ? h("details", { class: "agent-avant" }, h("summary", null, tr("Texte actuel")), h("p", { class: "agent-texte-long" }, d.avant)) : null, h("p", { class: "agent-texte-long" }, d.valeur));
+      else corps.push(h("p", { class: "agent-modif" }, h("del", null, d.avant || (d.sujet === "voix" && d.champ !== "lieu" ? tr("voix par défaut") : tr("vide"))), " ", icone("fleche", 16), " ", h("ins", null, d.valeur)));
+      if (d.raison) corps.push(h("p", { class: "aide" }, d.raison));
+      const permis = d.sujet === "catalogue" ? peut("catalogue.ecrire") : peut("reglages.ecrire");
+      action = permis ? { libelle: tr("Appliquer"), faire: () => appliquerReglage(c) } : null;
+      if (!permis) corps.push(h("p", { class: "aide" }, tr("Seule une administratrice peut appliquer ce changement.")));
+    } else if (c.genre === "amelioration" && c.statut !== "proposee") {
+      // Envoyée ou écartée : le texte tel qu'il est parti (relu et corrigé par la personne), en lecture seule.
+      const envoyee = (ameliorations || []).find((a) => a.carte_id === c.id);
+      const titreEnvoye = envoyee ? envoyee.titre : d.titre || c.titre;
+      corps.push(titreEnvoye !== c.titre ? h("p", null, h("strong", null, titreEnvoye)) : null, h("p", { class: "agent-texte-long" }, envoyee && envoyee.texte ? envoyee.texte : d.texte || ""));
+      if (envoyee && (envoyee.pr_url || envoyee.issue_url)) corps.push(h("p", null, h("a", { href: envoyee.pr_url || envoyee.issue_url, target: "_blank", rel: "noopener" }, envoyee.pr_url ? tr("Voir la PR") : tr("Voir la demande"))));
+    } else if (c.genre === "amelioration") {
+      const titre = h("input", { type: "text", class: "agent-amelioration-titre", maxlength: 80, "aria-label": tr("Titre de la demande") });
+      titre.value = d.titre || c.titre || "";
+      const zone = h("textarea", { class: "agent-reponse", rows: 9, maxlength: 3000, "aria-label": tr("Texte de la demande") });
+      zone.value = d.texte || "";
+      corps.push(titre, zone, h("p", { class: "aide" }, tr("Ce texte sera public sur GitHub, sur le dépôt du site : rien d'un client, d'un prestataire ni aucun montant. Jérémy relit l'amélioration préparée et décide de la mettre en ligne.")));
+      if ((c.avertissements || []).some((a) => String(a).startsWith("mot_interne"))) corps.push(h("p", { class: "aide" }, tr("Le texte parle d'argent interne (net, commission) : vérifiez qu'aucun chiffre n'y figure.")));
+      action = estAdmin() ? { libelle: tr("Demander cette amélioration"), faire: (bouton) => demanderAmelioration(c, titre.value, zone.value, bouton) } : null;
+      if (!estAdmin()) corps.push(h("p", { class: "aide" }, tr("Seule une administratrice peut demander une amélioration.")));
     } else if (c.genre === "reponse") {
       const zone = h("textarea", { class: "agent-reponse", rows: 8, "aria-label": tr("Réponse au client"), lang: d.langue === "en" ? "en" : "fr" });
       zone.value = d.message || "";
@@ -462,8 +547,10 @@ export async function vueAgent(idOuvert = "") {
       corps.push(...b.corps);
       action = b.action;
     }
-    const avert = (c.avertissements || []).length ? h("ul", { class: "assistant-avertissements" }, c.avertissements.map((a) => h("li", null, texteAvertissement(a)))) : null;
-    const libelles = { dossier: N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: N_("Réponse au client"), temps: N_("Temps de trajet"), brochure: N_("Brochure à importer") };
+    const avert = (c.avertissements || []).length && c.genre !== "amelioration" ? h("ul", { class: "assistant-avertissements" }, c.avertissements.map((a) => h("li", null, texteAvertissement(a)))) : null;
+    const libelles = { dossier: N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: N_("Réponse au client"), temps: N_("Temps de trajet"), reglage: N_("Réglage"), amelioration: N_("Amélioration de l'outil"), brochure: N_("Brochure à importer") };
+    // Une demande envoyée montre son suivi (envoyée, PR prête, en ligne, refusée).
+    const suivi = c.genre === "amelioration" && c.statut === "validee" ? (ameliorations || []).find((a) => a.carte_id === c.id) : null;
     const decidee = c.statut !== "proposee";
     return h(
       "article",
@@ -472,12 +559,12 @@ export async function vueAgent(idOuvert = "") {
       ...corps,
       avert,
       decidee
-        ? h("p", { class: "agent-carte-sort" }, icone(c.statut === "validee" ? "coche" : "fermer", 16), c.statut === "validee" ? tr("Validée") : tr("Écartée"))
+        ? h("p", { class: "agent-carte-sort" }, icone(c.statut === "validee" ? "coche" : "fermer", 16), suivi ? tr(STATUTS_AMELIORATION[suivi.statut] || N_("Envoyée, en préparation")) : c.statut === "validee" ? (c.genre === "amelioration" ? tr("Envoyée") : c.genre === "reglage" ? tr("Appliqué") : tr("Validée")) : tr("Écartée"))
         : h(
             "div",
             { class: "actions gauche" },
             ouvertes.has(c.id) ? h("p", { class: "aide pleine-largeur" }, tr("Ouvert dans « Coller une demande » : dites ici quand le dossier est créé.")) : null,
-            action ? h("button", { class: "principal", type: "button", onclick: () => action.faire() }, action.libelle) : null,
+            action ? h("button", { class: "principal", type: "button", onclick: (e) => action.faire(e.currentTarget) }, action.libelle) : null,
             action && action.puis ? h("button", { class: "secondaire", type: "button", onclick: () => action.puis.faire() }, action.puis.libelle) : null,
             h("button", { class: "secondaire", type: "button", onclick: () => decider(c, "ecartee") }, tr("Écarter"))
           )
@@ -571,6 +658,44 @@ export async function vueAgent(idOuvert = "") {
     } catch (err) {
       toast(err.message, true);
     }
+  }
+  // Carte « reglage » : appliquée par les écritures habituelles de l'outil (réglages de l'entreprise, fiche du tarif), sous les droits RLS.
+  async function appliquerReglage(c) {
+    const d = c.donnees || {};
+    try {
+      if (d.sujet === "catalogue") {
+        const p = (etat.db.prestations || []).find((x) => x.id === d.cible_id);
+        const r = prestationModifiee(p, d);
+        if (!r.ok) return toast(r.erreur === "change" ? tr("Ce tarif a changé depuis la proposition : demandez à l'assistant de la refaire.") : tr("Ce changement ne peut pas s'appliquer."), true);
+        await modifier("prestations", p.id, r.patch);
+      } else {
+        const r = reglageApplique(reglages(), d);
+        if (!r.ok) return toast(r.erreur === "change" ? tr("Ce réglage a changé depuis la proposition : demandez à l'assistant de la refaire.") : tr("Ce changement ne peut pas s'appliquer."), true);
+        await enregistrerReglages(r.valeur);
+      }
+      toast(tr("Changement appliqué."));
+      await decider(c, "validee");
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+  // Carte « amelioration » : envoyée telle que relue dans la carte (titre et texte), par la fonction « ameliorations ».
+  async function demanderAmelioration(c, titre, texte, bouton) {
+    if (bouton) bouton.disabled = true;
+    const r = await etat.store.demanderAmelioration({ entite_id: etat.entiteId, carte_id: c.id, titre, texte });
+    if (bouton) bouton.disabled = false;
+    if (!r || r.erreur) {
+      const motifs = r && r.motifs ? r.motifs.map((m) => tr(MOTIFS_TEXTE[m] || N_("un texte refusé"))).join(", ") : "";
+      return toast(`${tr(ERREURS_AMELIORATION[r && r.erreur] || N_("La demande n'est pas partie."))}${motifs ? ` (${motifs})` : ""}`, true);
+    }
+    ameliorations = [r.amelioration, ...(ameliorations || []).filter((a) => a.id !== r.amelioration.id)];
+    toast(tr("Demande envoyée : vous verrez son avancement ici."));
+    const maj = r.carte || { ...c, statut: "validee" };
+    fil.cartes = fil.cartes.map((x) => (x.id === maj.id ? maj : x));
+    await rafraichirAttente();
+    dessinerListe();
+    const ancien = zoneFil.querySelector(`[data-carte="${c.id}"]`);
+    if (ancien) ancien.replaceWith(carte(maj));
   }
   async function copier(c, texte) {
     try {

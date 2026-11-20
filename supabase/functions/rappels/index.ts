@@ -4,6 +4,8 @@
 //   de demain de chaque voyage ZTP (migration 31) ;
 // - { "type": "veille" } ou { "type": "lendemain" } : envoi forcé, à toute heure, pour toutes les entreprises où ce rappel n'est pas coupé
 //   (les crons de 18h et 9h posés avant le lot G, et les essais) ; la veille envoie aussi les départs ZTP de demain ;
+// - { "type": "ameliorations" } toutes les 10 minutes : le suivi des demandes d'amélioration sur GitHub (PR prête, échec, en ligne, refusée),
+//   avec une notification à l'administration générale ou à l'autrice (ameliorations/calc.js) ;
 // - { "type": "h1" } toutes les 5 minutes : le rappel une heure avant chaque service (Secret, Taxi, migration 31), et
 //   { "mode": "h1", "service_id": "…", "force": true } pour forcer celui d'un service ;
 // - { "type": "budget" } (fonction « agent », clé de service, et chaque passage « h1 ») : la dépense du mois de l'assistant IA comparée au
@@ -14,6 +16,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import { alertesBudget, debutMois, destinatairesBudget, etatBudget, messageBudget, plafondRetenu, tableAbsente } from "../assistant/budget.js";
+import { STATUTS_SUIVIS, DEPOT, changement, lireSuivi, notification } from "../ameliorations/calc.js";
 import { dateDans, heureDans, fuseauValide, dateCible, entitesLisibles, rappelDuType, entitesDuRappel, entitesDuDepart, restreindre, TYPES, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
@@ -71,6 +74,7 @@ Deno.serve(async (req) => {
     await budget;
     return reponse;
   }
+  if (type === "ameliorations") return suivreAmeliorations();
   if (type !== "auto" && !TYPES.includes(type)) return json({ erreur: "type inconnu" }, 400);
   // `date`, `heure` et `user_id` ne servent qu'aux essais : sans eux, c'est la date et l'heure locales de chaque organisation et tous les abonnés.
   const dateEssai = /^\d{4}-\d{2}-\d{2}$/.test(demande.date || "") ? demande.date : null;
@@ -492,4 +496,56 @@ async function verifierBudget({ creditEpuise = false }: { creditEpuise?: boolean
     }
   }
   return { alertes: nouvelles.map((a) => a.cle), envoyes, echecs, ...etatMois };
+}
+
+// ---- Demandes d'amélioration (20.11.2026) -------------------------------------------------------------------------------------------
+// Lit sur GitHub l'issue de chaque demande encore en cours (jeton GITHUB_ISSUES_TOKEN, droits « Issues » seulement : l'issue et ses
+// commentaires suffisent, l'Action y écrit le lien de la PR). Un changement est écrit dans la table et notifié.
+async function suivreAmeliorations() {
+  const jeton = Deno.env.get("GITHUB_ISSUES_TOKEN");
+  if (!jeton) return json({ ignore: "GITHUB_ISSUES_TOKEN absent" });
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const lignes = await db.from("ameliorations").select("id, user_id, titre, statut, issue_numero, issue_url, pr_url, sensible").in("statut", STATUTS_SUIVIS).not("issue_numero", "is", null).order("maj_le", { ascending: true }).limit(30);
+  if (lignes.error) return json({ erreur: lignes.error.message }, lignes.error.code === "42P01" ? 200 : 500);
+  if (!(lignes.data || []).length) return json({ suivies: 0 });
+  const gh = (chemin: string) =>
+    fetch(`https://api.github.com/repos/${DEPOT}${chemin}`, { headers: { Authorization: `Bearer ${jeton}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "gestion-ameliorations" }, signal: AbortSignal.timeout(10_000) }).then((r) => (r.ok ? r.json() : null), () => null);
+  webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
+  let changees = 0;
+  let envoyes = 0;
+  for (const l of lignes.data || []) {
+    const [issue, commentaires] = await Promise.all([gh(`/issues/${l.issue_numero}`), gh(`/issues/${l.issue_numero}/comments?per_page=100`)]);
+    if (!issue) continue;
+    const suivi = lireSuivi(issue, Array.isArray(commentaires) ? commentaires : []);
+    const ch = changement(l, suivi);
+    if (!ch) continue;
+    const { error } = await db.from("ameliorations").update({ ...ch.patch, maj_le: new Date().toISOString() }).eq("id", l.id);
+    if (error) {
+      console.error("ameliorations : suivi non écrit", error.message);
+      continue;
+    }
+    changees++;
+    if (!ch.prevenir) continue;
+    // Destinataires : l'administration générale (Jérémy) pour relire, ou l'autrice de la demande.
+    let ids: string[] = [];
+    if (ch.prevenir === "autrice") ids = [l.user_id];
+    else {
+      const p = await db.from("profils").select("user_id").eq("super_admin", true).eq("actif", true);
+      ids = (p.data || []).map((x) => x.user_id);
+    }
+    if (!ids.length) continue;
+    const [abos, profils] = await Promise.all([db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth").in("user_id", ids), db.from("profils").select("user_id, langue").in("user_id", ids)]);
+    for (const abo of abos.data || []) {
+      const langue = (profils.data || []).find((p) => p.user_id === abo.user_id)?.langue === "en" ? "en" : "fr";
+      const message = notification(ch.patch.statut, { ...l, ...ch.patch }, { langue, tests: suivi!.tests });
+      if (!message) continue;
+      try {
+        await webpush.sendNotification({ endpoint: abo.endpoint, keys: { p256dh: abo.p256dh, auth: abo.auth } }, JSON.stringify(message), { TTL: 24 * 3600 });
+        envoyes++;
+      } catch (err) {
+        if (err.statusCode === 404 || err.statusCode === 410) await db.from("abonnements_push").delete().eq("id", abo.id);
+      }
+    }
+  }
+  return json({ suivies: (lignes.data || []).length, changees, envoyes });
 }

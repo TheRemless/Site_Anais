@@ -43,3 +43,6 @@ sauvegarde-*.json
 
 # CLI Supabase : état local de la liaison au projet
 supabase/.temp
+
+# Résumé écrit par l'Action « Amélioration Gestion » (repris dans la PR, jamais versé au dépôt)
+/.amelioration/
