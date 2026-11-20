@@ -357,7 +357,9 @@ export function lireNominatim(json) {
 // mêmes données OpenStreetMap, sans clé) répond. GET /api/?q=…&limit=1&lang=en, limité à la Thaïlande (bbox), réponse GeoJSON.
 export const PHOTON_BASE = "https://photon.komoot.io";
 export const parametresPhoton = (texte) => new URLSearchParams({ q: String(texte || "").slice(0, 160), limit: "1", lang: "en", bbox: "97.3,5.6,105.7,20.5" }).toString();
-export function lirePhoton(json) {
+// Photon cherche large : un résultat n'est gardé que s'il partage un vrai mot (pas « hotel », « beach »…) avec le lieu demandé.
+const MOTS_VAGUES = new Set(["hotel", "resort", "beach", "retreat", "villa", "villas", "bungalow", "bungalows", "house", "road", "town", "province", "spa", "pier"]);
+export function lirePhoton(json, texte = "") {
   const f = json && Array.isArray(json.features) ? json.features[0] : null;
   const c = f && f.geometry && Array.isArray(f.geometry.coordinates) ? f.geometry.coordinates : [];
   const lon = Number(c[0]);
@@ -365,6 +367,10 @@ export function lirePhoton(json) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const p = f.properties || {};
   const label = [p.name, p.street, p.district, p.city, p.state].filter((x, i, t) => x && t.indexOf(x) === i).join(", ");
+  if (texte) {
+    const trouves = new Set(motsLieu(label));
+    if (!motsLieu(texte).some((w) => w.length >= 4 && !MOTS_VAGUES.has(w) && trouves.has(w))) return null;
+  }
   return { lon, lat, label: String(label).slice(0, 200), confiance: null };
 }
 

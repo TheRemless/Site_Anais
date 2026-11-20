@@ -347,6 +347,8 @@ test("Photon, relais de Nominatim refusé par les serveurs de Supabase : lecture
   assert.equal(g.lat, 8.0857);
   assert.equal(g.lon, 98.9162);
   assert.equal(g.label, "Krabi Nakharin International Hospital, Phisan Phop Road, Krabi");
+  assert.ok(lirePhoton(json, "Krabi Nakharin Hospital"));
+  assert.equal(lirePhoton(json, "Sunset Beach Resort"), null);
   assert.equal(lirePhoton({ features: [] }), null);
   assert.equal(lirePhoton(null), null);
   const p = new URLSearchParams(parametresPhoton("Klong Nin, Ko Lanta"));

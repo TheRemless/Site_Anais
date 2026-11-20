@@ -239,7 +239,7 @@ Deno.serve(async (req) => {
   // Sans clé ORS : Nominatim, puis Photon quand Nominatim ne rend rien (refus des serveurs de Supabase, lieu introuvable).
   const chercher = async (v: string) => {
     if (moteur === "ors") return lireGeocode(await appel(`${orsUrl}${ORS_GEOCODE}?${parametresGeocode(v)}`, { method: "GET" }));
-    return lireNominatim(await appel(`${NOMINATIM_BASE}/search?${parametresNominatim(v)}`)) || lirePhoton(await appel(`${PHOTON_BASE}/api/?${parametresPhoton(v)}`));
+    return lireNominatim(await appel(`${NOMINATIM_BASE}/search?${parametresNominatim(v)}`)) || lirePhoton(await appel(`${PHOTON_BASE}/api/?${parametresPhoton(v)}`), v);
   };
   const geo = new Map<string, { lon: number; lat: number; label: string } | null>();
   const situer = async (lieu: string) => {
