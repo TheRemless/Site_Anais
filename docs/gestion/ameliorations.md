@@ -29,11 +29,13 @@ Code : `supabase/functions/agent/ameliorer.js` (outils `lire_reglages`, `propose
 2. **Fonction `ameliorations`.** Contrôles (administratrice, carte à elle et pas encore décidée, 3 demandes par jour au plus, texte
    public sans nom, téléphone, e-mail, lien, montant ni accès), ligne dans la table `ameliorations` (migration 56), puis issue sur
    `TheRemless/Site_Anais` avec le label `amelioration-gestion`, ouverte avec le jeton `GITHUB_ISSUES_TOKEN` (droits Issues seulement).
-3. **Action `.github/workflows/amelioration-gestion.yml`.** `anthropics/claude-code-action@v1.0.284` (vérifiée le 20.11.2026) fait le
-   changement en suivant `docs/gestion/ameliorations-consignes.md`, avec un jeton GitHub en lecture seule et sans pouvoir exécuter de
-   code (un code lancé dans ce job pourrait lire la clé Anthropic). Un job sans aucun secret lance build et tests (résultat indicatif).
-   Une étape fixe, sans Claude et sans exécuter de code du dépôt, contrôle les fichiers touchés, pousse `amelioration/issue-N-…` et ouvre
-   une **PR en brouillon** (« Closes #N », résumé de Claude dans un bloc de code), avec le label `a-relire-de-pres` si elle touche `supabase/`, une migration, les droits,
+3. **Action `.github/workflows/amelioration-gestion.yml`.** L'agent de `scripts/amelioration-agent/` appelle l'API Claude directement
+   (SDK officiel `@anthropic-ai/sdk` 1.3.0, installé hors du dépôt ; `claude-opus-5-5`, effort `high`). Il ne passe pas par Claude Code,
+   que le crédit promotionnel de l'organisation ne couvre pas (essai du 20.11.2026 : « Credit balance is too low »). Claude n'a que cinq
+   outils : lister, lire, chercher, remplacer et écrire des fichiers, puis « terminer ». Il suit `docs/gestion/ameliorations-consignes.md`
+   avec un jeton GitHub en lecture seule et sans pouvoir exécuter de code (un code lancé dans ce job pourrait lire la clé Anthropic). Un
+   job sans aucun secret lance build et tests (résultat indicatif). Une étape fixe, sans Claude et sans exécuter de code du dépôt, contrôle
+   les fichiers touchés, pousse `amelioration/issue-N-…` et ouvre une **PR en brouillon** (« Closes #N », résumé de Claude dans un bloc de code), avec le label `a-relire-de-pres` si elle touche `supabase/`, une migration, les droits,
    l'authentification, les paiements ou la sauvegarde. Le lien de la PR est écrit dans l'issue.
 4. **Suivi.** La fonction `rappels` (`{"type":"ameliorations"}`, pg_cron toutes les 10 minutes) lit l'issue et ses commentaires
    (seulement ceux de `github-actions[bot]`) et met la table à jour. Notification push à Jérémy quand la PR est prête ou que l'Action
@@ -61,10 +63,10 @@ fusionner (l'issue se ferme « not planned »). Pour relancer après un échec :
 | Un message de client ou un fichier devient une demande | le texte est assemblé des mots de la personne et relu par elle ; refus si la conversation a une pièce jointe ; noms de clients vus et prestataires refusés |
 | Le dépôt est **public** | aucun nom, téléphone, e-mail, lien, montant, accès ; mots d'argent interne signalés, refusés avec un chiffre à côté ; noms de clients vus gardés dans la carte et recontrôlés par la fonction ; commentaires HTML, chevrons et mentions neutralisés |
 | Une issue ou un commentaire d'un inconnu | l'Action part seulement si l'issue et le label viennent du propriétaire et si le corps porte le repère ; le suivi ne lit que les commentaires de `github-actions[bot]` et des liens de PR du dépôt |
-| L'Action fusionne, déploie ou touche la base | Claude a un jeton en lecture seule et des outils fermés (lecture et édition seulement : ni npm, node, shell, push, `gh`, `curl`, `supabase`, réseau) ; tests dans un job sans secret ; aucun secret Supabase ni Netlify dans le dépôt ; PR en brouillon ; Netlify ignore l'aperçu sans `[preview]`, retiré du titre |
+| L'Action fusionne, déploie ou touche la base | Claude a un jeton en lecture seule et cinq outils de fichiers (aucune commande, aucun réseau) qui refusent les chemins hors du dépôt, les liens symboliques et les fichiers interdits ; tests dans un job sans secret ; aucun secret Supabase ni Netlify dans le dépôt ; PR en brouillon ; Netlify ignore l'aperçu sans `[preview]`, retiré du titre |
 | La clé Anthropic de l'Action fuit | aucun code du dépôt ne tourne dans le job qui la tient ; clé dédiée avec sa propre limite de dépense, à révoquer au moindre doute |
 | L'Action change la CI ou les dépendances | ajout, modification, suppression ou renommage de `.github/`, `.claude/`, `netlify.toml`, `scripts/netlify-ignore.sh`, `package*.json`, `.npmrc`, `supabase/config.toml`, `CLAUDE.md`, `.gitattributes` refusés (chemins lus sans renommage ni guillemets) ; liens symboliques et sous-modules refusés |
-| Coût | par demande : 60 tours, 5 $ (`--max-budget-usd`), 40 minutes ; 3 demandes par jour dans la fonction (`AMELIORATIONS_LIMITE_JOUR`), 5 issues par jour dans l'Action ; clé Anthropic à part avec sa propre limite de dépense |
+| Coût | par demande : 60 appels, 5 $ (coût estimé par l'agent d'après l'usage rendu par l'API), 40 minutes ; 3 demandes par jour dans la fonction (`AMELIORATIONS_LIMITE_JOUR`), 5 issues par jour dans l'Action ; clé Anthropic à part avec sa propre limite de dépense |
 
 ## Mise en route (Jérémy)
 

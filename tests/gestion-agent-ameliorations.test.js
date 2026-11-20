@@ -267,13 +267,14 @@ test("migration 56 : table lisible par les administratrices seulement, écrite p
 test("workflow : Claude en lecture seule, plafonds, aucun secret sauf la clé Anthropic, jamais de fusion", () => {
   const y = lire(".github/workflows/amelioration-gestion.yml");
   assert.match(y, /^permissions: \{\}$/m);
-  assert.match(y, /anthropics\/claude-code-action@v1\.0\.\d+/);
-  const impl = y.split("  implementer:")[1].split("  ouvrir-pr:")[0];
+  assert.ok(!/claude-code-action/.test(y), "Claude Code n'est pas couvert par le crédit promotionnel : l'agent appelle l'API");
+  const impl = y.split("  implementer:")[1].split("  tester:")[0];
   assert.match(impl, /contents: read/);
   assert.ok(!/: write/.test(impl), "le job de Claude n'a aucun droit d'écriture");
   assert.match(impl, /persist-credentials: false/);
-  for (const a of ["--max-turns 60", "--max-budget-usd 5", "--permission-mode acceptEdits", "Bash(git push:*)", "Bash(gh:*)", "Bash(supabase:*)", "Bash(npx:*)", "Bash(npm:*)", "Bash(node:*)"]) assert.ok(impl.includes(a), a);
-  assert.ok(!/run: npm|Bash\(npm test\)|Bash\(node --test/.test(impl), "aucun code du dépôt ne tourne dans le job qui tient la clé");
+  for (const a of ['PLAFOND_USD: "5"', 'TOURS_MAX: "60"', "run: node scripts/amelioration-agent/agent.mjs", "--ignore-scripts", "@anthropic-ai/sdk@1.3.0", '--prefix "$RUNNER_TEMP/sdk"']) assert.ok(impl.includes(a), a);
+  assert.ok(!/npm ci|npm test|npm run|cache: 'npm'/.test(impl), "aucune dépendance ni aucun code du dépôt ne tourne dans le job qui tient la clé");
+  assert.ok(!/issues: |pull-requests: /.test(impl), "le job de Claude ne lit que le contenu du dépôt");
   const testeur = y.split("  tester:")[1].split("  ouvrir-pr:")[0];
   assert.ok(!/secrets\./.test(testeur) && !/: write/.test(testeur), "les tests tournent sans secret ni écriture");
   assert.match(testeur, /npm test/);
@@ -288,8 +289,8 @@ test("workflow : Claude en lecture seule, plafonds, aucun secret sauf la clé An
   assert.ok(!/npm (ci|test|run)/.test(pr), "le job qui pousse n'exécute aucun code du dépôt");
   assert.match(pr, /core\.hooksPath \/dev\/null/);
   assert.ok(!/cut -c/.test(pr), "aucune coupe en octets du titre");
-  assert.match(impl, /CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"/);
   assert.match(pr, /core\.quotePath=false diff --cached --name-only --no-renames/);
+  assert.match(pr, /scripts\/amelioration-agent\//, "l'agent ne se modifie pas lui-même");
   assert.match(pr, / \(120000\|160000\) /);
   assert.match(pr, /~~~~text/, "le résumé de Claude va dans un bloc de code");
   // L'Action ne part que pour une issue du propriétaire, avec le label et le repère de la fonction.
