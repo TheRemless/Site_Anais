@@ -1,7 +1,7 @@
 // Agent de Gestion : la boucle d'outils d'un échange (un message de la personne). Sans dépendance : le client Anthropic, la base et
 // l'écran sont passés en paramètres. Le même code sert à la fonction Supabase (index.ts) et au jeu d'essai (scripts/eval-agent).
 import { DUREE_MAX_MS, TOURS_MAX, parametres, texteVisible } from "./prompt.js";
-import { executer } from "./outils.js";
+import { executer, outilsPour } from "./outils.js";
 
 // anthropic : le client du SDK (anthropic.beta.messages.stream).
 // messages  : l'historique au format de l'API, complété en place (message de la personne déjà ajouté par l'appelant).
@@ -17,7 +17,7 @@ export async function tourner({ anthropic, modele, systeme, appris = "", context
       await envoyer({ t: "erreur", erreur: "trop_long" });
       return { statut: "trop_long", dernierTexte };
     }
-    const stream = anthropic.beta.messages.stream(parametres({ modele, systeme, appris, contexte, messages }));
+    const stream = anthropic.beta.messages.stream(parametres({ modele, systeme, appris, contexte, messages, outils: outilsPour((ctx && ctx.permissions) || []) }));
     for await (const ev of stream) {
       if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") await envoyer({ t: "texte", delta: ev.delta.text });
     }

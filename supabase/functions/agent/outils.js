@@ -2,8 +2,11 @@
 // `ctx` (lues par la fonction avec la session de la personne, donc sous les règles RLS ; ou des tableaux en mémoire dans les tests).
 //
 // Règles tenues ici, pas dans le prompt :
-//   - jamais un net, une marge, une commission ni un nom de prestataire dans ce qui part chez Claude. Les nets servent seulement à poser le
-//     drapeau « recommande » (meilleure marge), calculé ici ;
+//   - chiffres internes selon les droits de la personne (décision de Jérémy du 20.11.2026, « L'IA voit tout ») : le nom du partenaire de
+//     chaque tarif et de chaque service avec le droit « partenaires.lire » ; les nets, la marge et la commission avec « partenaires.nets ».
+//     Sans le droit, les champs n'existent pas : ni dans les résultats, ni dans la définition des outils (outilsPour). Les nets se lisent
+//     avec la session de la personne (règles RLS), le code vérifie le droit en plus. Rien de tout cela ne part vers un client :
+//     controlerReponse repère dans une réponse au client tout montant interne et tout nom de partenaire, et l'écran bloque la copie ;
 //   - aucune écriture : les outils « proposer_* » rendent une carte que la personne valide dans l'écran (rien n'est écrit sans son clic) ;
 //   - un prix proposé vient du catalogue (par sa référence) ou d'un montant tapé par la personne dans la conversation, jamais du modèle ;
 //   - les heures d'une course sont calculées par planifier.js, pas par le modèle.
@@ -86,6 +89,69 @@ const nomsPrestataires = (partenaires) =>
     .map((p) => String(p.nom || "").trim())
     .filter((n) => n.length > 2)
     .sort((a, b) => b.length - a.length);
+
+// ---- Partenaires, nets et commissions (20.11.2026) ------------------------------------------------------------------------------------
+// Le droit se lit dans ctx.permissions (permissions_dans, avec la session de la personne). Les tables de nets sont déjà vides sans le droit
+// (RLS) : le code vérifie quand même, pour ne pas même déclarer un champ vide.
+export const DROIT_PARTENAIRES = "partenaires.lire";
+export const DROIT_NETS = "partenaires.nets";
+export const voitPartenaires = (ctx) => (ctx.permissions || []).includes(DROIT_PARTENAIRES);
+export const voitNets = (ctx) => voitPartenaires(ctx) && (ctx.permissions || []).includes(DROIT_NETS);
+const arrondi2 = (x) => Math.round(x * 100) / 100;
+// Même règle que operations-calc.mjs (commissionPrevue) : la commission attendue, ou null quand la règle ou une donnée manque.
+export const TYPES_COMMISSION = { pourcent_vente: "% du prix de vente", pourcent_net: "% du net", fixe_personne: "montant par personne", fixe_reservation: "montant par réservation", vente_moins_net: "prix de vente moins net" };
+export function commissionPrevue(regle, { vente = null, net = null, adultes = 0, enfants = 0 } = {}) {
+  if (!regle || !TYPES_COMMISSION[regle.type]) return null;
+  if (regle.type === "vente_moins_net") {
+    if (vente === null || vente === undefined || net === null || net === undefined) return null;
+    const c = arrondi2(Number(vente) - Number(net));
+    return c >= 0 ? c : null;
+  }
+  const v = Number(regle.valeur);
+  if (regle.valeur === "" || regle.valeur === null || regle.valeur === undefined || !(v >= 0)) return null;
+  if (regle.type === "pourcent_vente") return vente === null || vente === undefined ? null : arrondi2((Number(vente) * v) / 100);
+  if (regle.type === "pourcent_net") return net === null || net === undefined ? null : arrondi2((Number(net) * v) / 100);
+  if (regle.type === "fixe_personne") {
+    const n = (Number(adultes) || 0) + (Number(enfants) || 0);
+    return n > 0 ? arrondi2(v * n) : null;
+  }
+  return arrondi2(v);
+}
+const texteRegle = (regle) => (regle && TYPES_COMMISSION[regle.type] ? (regle.type === "vente_moins_net" ? TYPES_COMMISSION.vente_moins_net : `${TYPES_COMMISSION[regle.type]} : ${regle.valeur}`) : "");
+// Même règle que operations-calc.mjs (modeParDefaut) : un partenaire réglé « sur place » encaisse le client et reverse une commission.
+const surPlace = (p) => !!(p && p.regles && p.regles.mode_reglement === "sur_place");
+// Ce que l'outil sait d'un partenaire : son nom, son mode de règlement, sa règle de commission (chiffrée et en texte).
+async function fichesPartenaires(ctx) {
+  const [partenaires, prives] = await Promise.all([ctx.charger("partenaires"), voitNets(ctx) ? ctx.charger("partenaires_prives") : []]);
+  const prive = new Map((prives || []).map((x) => [x.partenaire_id, x]));
+  const fiches = new Map();
+  for (const p of partenaires || []) {
+    const x = prive.get(p.id) || {};
+    const textes = Array.isArray(x.commissions) && x.commissions.length ? x.commissions : [];
+    fiches.set(p.id, { nom: texte(p.nom, 80), sur_place: surPlace(p), regle: x.commission_regle || null, regle_texte: [texteRegle(x.commission_regle), ...textes.map((t) => texte(String(t), 160))].filter(Boolean).join(" ; ").slice(0, 300) });
+  }
+  return fiches;
+}
+// Le gain de l'entreprise sur une vente : la commission si le client paie le partenaire sur place, sinon la marge (vente moins net).
+const gainDe = (sur, marge, commission) => (sur ? commission : marge);
+// Les champs internes d'un tarif ou d'un service, selon les droits. `chiffres` n'est lu qu'avec le droit nets.
+function champsInternes(ctx, fiche, chiffres) {
+  if (!voitPartenaires(ctx) || !fiche) return {};
+  const base = { partenaire: fiche.nom };
+  if (!voitNets(ctx)) return base;
+  const propres = Object.fromEntries(Object.entries(chiffres || {}).filter(([, v]) => v !== null && v !== undefined && v !== ""));
+  return { ...base, reglement: fiche.sur_place ? "sur_place" : "chez_nous", ...(fiche.regle_texte ? { regle_commission: fiche.regle_texte } : {}), ...propres };
+}
+// Les montants internes d'un résultat d'outil (nets, marges, commissions, gains) : jamais admis dans une réponse au client.
+const CLE_INTERNE = /^(?:nets?|marges?|commissions?|gains?)(?:_|$)/;
+export function collecterInternes(v, set = new Set()) {
+  if (Array.isArray(v)) v.forEach((x) => collecterInternes(x, set));
+  else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) {
+    if (CLE_INTERNE.test(k) && typeof x === "number") set.add(x);
+    else if (x && typeof x === "object") collecterInternes(x, set);
+  }
+  return set;
+}
 
 // ---- Définitions des outils (format de l'API) ------------------------------------------------------------------------------------------
 // Pas de mode « strict » : le 20.11.2026, avec 13 outils stricts, l'API refusait chaque requête (« The compiled grammar is too large »).
@@ -249,6 +315,27 @@ export const OUTILS = [
   ...OUTILS_AMELIORER,
 ];
 export const NOMS_OUTILS = OUTILS.map((o) => o.name);
+// Les outils tels qu'ils partent pour cette personne : la description annonce le partenaire avec « partenaires.lire », les nets, marges et
+// commissions avec « partenaires.nets ». Sans le droit, rien ne change (les résultats n'ont pas ces champs non plus).
+const AJOUTS = {
+  chercher_catalogue: {
+    partenaires: " Chaque tarif donne son partenaire (champ « partenaire »).",
+    nets: " Avec tes droits, aussi : le net (adulte et enfant), le règlement (« chez_nous » ou « sur_place » : le client paie le partenaire, qui reverse une commission), la règle de commission du partenaire, et pour une personne la marge (vente moins net), la commission prévue et le gain (ce que l'entreprise gagne : la marge chez nous, la commission sur place). Ces chiffres sont pour l'équipe, jamais pour le client.",
+  },
+  horaires_trajet: {
+    partenaires: " Chaque départ donne sa compagnie (champ « partenaire »).",
+    nets: " Avec tes droits, aussi : net adulte et enfant, net, marge, commission et gain du groupe demandé (une personne si inconnu), et le règlement. Ces chiffres sont pour l'équipe, jamais pour le client.",
+  },
+  lire_dossier: {
+    partenaires: " Chaque service donne son partenaire.",
+    nets: " Avec tes droits, aussi : le règlement de chaque service ; chez nous son net prévu et payé et sa marge ; sur place sa commission prévue, reçue, son état (attendue, partielle, reglee, sans_commission), la date et le moyen de réception, l'écart et son motif ; et les totaux du dossier (marge, commission attendue, reçue et restant à recevoir). Ces chiffres sont pour l'équipe, jamais pour le client.",
+  },
+};
+export function outilsPour(permissions = []) {
+  const ctx = { permissions };
+  if (!voitPartenaires(ctx)) return OUTILS;
+  return OUTILS.map((o) => (AJOUTS[o.name] ? { ...o, description: o.description + AJOUTS[o.name].partenaires + (voitNets(ctx) ? AJOUTS[o.name].nets : "") } : o));
+}
 export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet", "proposer_import_brochure", ...PROPOSITIONS_AMELIORER, "proposer_course"];
 
 // La confirmation de course dont parle l'agent : le message de la personne qui commence par `debut` (espaces et casse ignorés), sinon le seul
@@ -325,7 +412,7 @@ function recommandes(options, margeDe) {
 }
 
 export async function chercherCatalogue(e, ctx) {
-  const [prestations, trajets, partenaires, netsP, netsT] = await Promise.all([ctx.charger("prestations"), ctx.charger("trajets"), ctx.charger("partenaires"), ctx.charger("prestations_nets"), ctx.charger("trajets_nets")]);
+  const [prestations, trajets, partenaires, netsP, netsT, fiches] = await Promise.all([ctx.charger("prestations"), ctx.charger("trajets"), ctx.charger("partenaires"), ctx.charger("prestations_nets"), ctx.charger("trajets_nets"), fichesPartenaires(ctx)]);
   const masques = masquesDe(partenaires);
   const noms = nomsPrestataires(partenaires);
   const mots = motsDe(e.recherche);
@@ -346,7 +433,14 @@ export async function chercherCatalogue(e, ctx) {
         const n = netP.get(p.id);
         return n && nombre(n.net) !== null && nombre(p.prix_vente) !== null ? Number(p.prix_vente) - Number(n.net) : null;
       });
-      for (const p of liste)
+      for (const p of liste) {
+        const n = netP.get(p.id);
+        const fiche = fiches.get(p.partenaire_id);
+        const vente = nombre(p.prix_vente);
+        const net = n ? nombre(n.net) : null;
+        const marge = vente !== null && net !== null ? arrondi2(vente - net) : null;
+        // Pour une personne (ou une unité) : la commission d'un groupe se lit sur le dossier, une fois les personnes connues.
+        const commission = fiche ? commissionPrevue(fiche.regle, { vente, net, adultes: 1 }) : null;
         lignes.push({
           ref: refDe("P", p.id),
           libelle: sansNoms(texte(p.libelle_en || p.libelle, 160), noms),
@@ -356,12 +450,21 @@ export async function chercherCatalogue(e, ctx) {
           prix_vente: nombre(p.prix_vente),
           unite: texte(p.unite, 20),
           ...(reco.has(p.id) ? { recommande: true } : {}),
+          ...champsInternes(ctx, fiche, { net, net_enfant: n ? nombre(n.net_enfant) : null, marge, commission, gain: fiche ? gainDe(fiche.sur_place, marge, commission) : null }),
         });
+      }
     }
   }
   if (e.famille === "tout" || e.famille === "trajet" || e.famille === "transfert") {
-    for (const t of (trajets || []).filter((t) => proposable(t, masques) && correspond(sansAccents([t.de, t.vers, t.mode].join(" ")), mots)))
-      lignes.push({ ref: refDe("T", t.id), trajet: `${texte(t.de, 80)} → ${texte(t.vers, 80)}`, mode: sansNoms(texte(t.mode, 60), noms), depart: texte(t.depart, 10), arrivee: texte(t.arrivee, 10), duree: texte(t.duree, 30), prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), periode: texte(t.periode, 60) });
+    for (const t of (trajets || []).filter((t) => proposable(t, masques) && correspond(sansAccents([t.de, t.vers, t.mode].join(" ")), mots))) {
+      const n = netT.get(t.id);
+      const fiche = fiches.get(t.partenaire_id);
+      const pa = nombre(t.prix_adulte);
+      const na = n ? nombre(n.net_adulte) : null;
+      const marge = pa !== null && na !== null ? arrondi2(pa - na) : null;
+      const commission = fiche ? commissionPrevue(fiche.regle, { vente: pa, net: na, adultes: 1 }) : null;
+      lignes.push({ ref: refDe("T", t.id), trajet: `${texte(t.de, 80)} → ${texte(t.vers, 80)}`, mode: sansNoms(texte(t.mode, 60), noms), depart: texte(t.depart, 10), arrivee: texte(t.arrivee, 10), duree: texte(t.duree, 30), prix_adulte: pa, prix_enfant: nombre(t.prix_enfant), periode: texte(t.periode, 60), ...champsInternes(ctx, fiche, { net_adulte: na, net_enfant: n ? nombre(n.net_enfant) : null, marge_adulte: marge, commission_adulte: commission, gain_adulte: fiche ? gainDe(fiche.sur_place, marge, commission) : null }) });
+    }
   }
   // Recommandés d'abord, puis par libellé : le même catalogue donne toujours le même résultat.
   lignes.sort((a, b) => (b.recommande ? 1 : 0) - (a.recommande ? 1 : 0) || String(a.libelle || a.trajet).localeCompare(String(b.libelle || b.trajet)));
@@ -372,7 +475,7 @@ export async function chercherCatalogue(e, ctx) {
 // ---- Horaires des trajets --------------------------------------------------------------------------------------------------------
 
 export async function horairesTrajet(e, ctx) {
-  const [trajets, partenaires, netsT] = await Promise.all([ctx.charger("trajets"), ctx.charger("partenaires"), ctx.charger("trajets_nets")]);
+  const [trajets, partenaires, netsT, fiches] = await Promise.all([ctx.charger("trajets"), ctx.charger("partenaires"), ctx.charger("trajets_nets"), fichesPartenaires(ctx)]);
   const masques = masquesDe(partenaires);
   const noms = nomsPrestataires(partenaires);
   const de = cleLieu(e.de);
@@ -410,8 +513,24 @@ export async function horairesTrajet(e, ctx) {
   const connues = [...parCie.entries()].filter(([, m]) => m > -Infinity);
   const top = connues.length ? Math.max(...connues.map(([, m]) => m)) : null;
   const gagnantes = new Set(connues.length > 1 && !connues.every(([, m]) => m === top) ? connues.filter(([, m]) => m === top).map(([id]) => id) : []);
+  // Le groupe : vente, net, marge et commission pour les personnes demandées (une personne si inconnu), même règle que marge().
+  const groupe = (t) => {
+    const fiche = fiches.get(t.partenaire_id);
+    const n = netT.get(t.id);
+    const a = adultes || enfants ? adultes : 1;
+    const pa = nombre(t.prix_adulte);
+    const pe = nombre(t.prix_enfant);
+    // Un prix enfant manquant laisse la vente du groupe inconnue : jamais une commission calculée sur une partie du groupe.
+    const vente = pa === null || (enfants > 0 && pe === null) ? null : a * pa + (enfants > 0 ? enfants * pe : 0);
+    const na = n ? nombre(n.net_adulte) : null;
+    const ne = n ? nombre(n.net_enfant) : null;
+    const net = na === null || (enfants > 0 && pe !== null && ne === null) ? null : a * na + (enfants > 0 && ne !== null ? enfants * ne : 0);
+    const m = marge(t);
+    const commission = fiche ? commissionPrevue(fiche.regle, { vente, net, adultes: a, enfants }) : null;
+    return champsInternes(ctx, fiche, { net_adulte: na, net_enfant: ne, net_groupe: net, marge_groupe: m === null ? null : arrondi2(m), commission_groupe: commission, gain_groupe: fiche ? gainDe(fiche.sur_place, m === null ? null : arrondi2(m), commission) : null });
+  };
   const departs = ok
-    .map((t) => ({ ref: refDe("T", t.id), de: texte(t.de, 80), vers: texte(t.vers, 80), mode: sansNoms(texte(t.mode, 60), noms), depart: texte(t.depart, 5), arrivee: texte(t.arrivee, 5), duree: texte(t.duree, 30), prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), bebe: texte(t.bebe, 40), ...(gagnantes.has(t.partenaire_id || "") ? { recommande: true } : {}) }))
+    .map((t) => ({ ref: refDe("T", t.id), de: texte(t.de, 80), vers: texte(t.vers, 80), mode: sansNoms(texte(t.mode, 60), noms), depart: texte(t.depart, 5), arrivee: texte(t.arrivee, 5), duree: texte(t.duree, 30), prix_adulte: nombre(t.prix_adulte), prix_enfant: nombre(t.prix_enfant), bebe: texte(t.bebe, 40), ...(gagnantes.has(t.partenaire_id || "") ? { recommande: true } : {}), ...groupe(t) }))
     .sort((a, b) => (b.recommande ? 1 : 0) - (a.recommande ? 1 : 0) || a.depart.localeCompare(b.depart));
   return { resultat: { trouve: true, date, departs: departs.slice(0, 20) }, prix: departs.flatMap((d) => [d.prix_adulte, d.prix_enfant]).filter((x) => x !== null), heures: departs.flatMap((d) => [d.depart, d.arrivee]).filter(Boolean) };
 }
@@ -538,22 +657,86 @@ export async function chercherClients(e, ctx) {
   return { resultat: { nombre: trouves.length, clients: trouves } };
 }
 
+// L'état de la commission d'un service payé sur place, d'après reservations_nets (migrations 18 et 57) : « reglee » (réception datée),
+// « partielle » (une partie reçue), « attendue » (prévue, rien reçu), « sans_commission » (aucune commission prévue).
+function etatCommission(n) {
+  if (!n) return "sans_commission";
+  if (n.commission_recue_le) return "reglee";
+  if (nombre(n.commission_recue) > 0) return "partielle";
+  return nombre(n.commission_prevue) === null ? "sans_commission" : "attendue";
+}
+// Le service vu avec le droit nets : net prévu et payé, marge (réglé chez nous) ou commission (payé sur place) avec son encaissement.
+function chiffresService(r, n) {
+  const vente = nombre(r.montant_vente);
+  const net = n ? nombre(n.net_prevu) : null;
+  if (!r.paye_sur_place) return { net_prevu: net, net_paye: n ? nombre(n.net_paye) : null, net_paye_le: n && n.paye_le ? n.paye_le : null, marge: vente !== null && net !== null ? arrondi2(vente - net) : null };
+  const prevue = n ? nombre(n.commission_prevue) : null;
+  const recue = n ? nombre(n.commission_recue) : null;
+  const etat = etatCommission(n);
+  const ecart = etat === "reglee" && prevue !== null && recue !== null && Math.round(prevue * 100) !== Math.round(recue * 100);
+  return {
+    net_prevu: net,
+    commission_prevue: prevue,
+    commission_recue: recue,
+    commission_etat: etat,
+    commission_recue_le: n && n.commission_recue_le ? n.commission_recue_le : null,
+    commission_partielle_le: n && n.commission_partielle_le ? n.commission_partielle_le : null,
+    commission_moyen: n && n.commission_recue_moyen ? texte(n.commission_recue_moyen, 40) : null,
+    ...(ecart ? { commission_ecart: arrondi2(recue - prevue), commission_ecart_motif: n.commission_ecart_motif || null, commission_ecart_note: n.commission_ecart_note ? texte(n.commission_ecart_note, 300) : null } : {}),
+  };
+}
+
 export async function lireDossier(e, ctx) {
-  const [dossiers, clients, reservations] = ctx.dossierPour ? await ctx.dossierPour(e.dossier) : await Promise.all([ctx.charger("dossiers"), ctx.charger("clients"), ctx.charger("reservations")]);
+  const [dossiers, clients, reservations, netsLus] = ctx.dossierPour ? await ctx.dossierPour(e.dossier) : await Promise.all([ctx.charger("dossiers"), ctx.charger("clients"), ctx.charger("reservations"), voitNets(ctx) ? ctx.charger("reservations_nets") : []]);
   const d = trouverRef(e.dossier, dossiers) || (dossiers || []).find((x) => sansAccents(x.ref) === sansAccents(e.dossier).trim());
   if (!d) return { resultat: { erreur: "dossier_introuvable" } };
   const c = (clients || []).find((x) => x.id === d.client_id);
-  const services = (reservations || [])
+  const fiches = voitPartenaires(ctx) ? await fichesPartenaires(ctx) : new Map();
+  const nets = new Map((voitNets(ctx) ? netsLus || [] : []).map((n) => [n.reservation_id, n]));
+  const lignes = (reservations || [])
     .filter((r) => r.dossier_id === d.id)
     .sort((a, b) => String(a.date_service || "").localeCompare(String(b.date_service || "")) || String(a.heure_pickup).localeCompare(String(b.heure_pickup)))
-    .slice(0, 30)
-    .map((r) => {
-      const p = r.personnes || {};
-      return { reservation: refDe("R", r.id), libelle: texte(r.libelle, 160), date: r.date_service || "", heure_pickup: texte(r.heure_pickup, 10), lieu_pickup: texte(r.lieu_pickup, 120), adultes: entier(p.adultes), enfants: entier(p.enfants), statut: r.statut, prix_vente: nombre(r.montant_vente) };
-    });
+    .slice(0, 30);
+  const services = lignes.map((r) => {
+    const p = r.personnes || {};
+    const fiche = fiches.get(r.partenaire_id) || (voitPartenaires(ctx) ? { nom: "", sur_place: false } : null);
+    const internes = champsInternes(ctx, fiche, voitNets(ctx) ? chiffresService(r, nets.get(r.id)) : {});
+    // Le règlement d'un service est celui de la réservation (choisi sur le document), pas le mode par défaut du partenaire.
+    if (internes.reglement) internes.reglement = r.paye_sur_place ? "sur_place" : "chez_nous";
+    return { reservation: refDe("R", r.id), libelle: texte(r.libelle, 160), date: r.date_service || "", heure_pickup: texte(r.heure_pickup, 10), lieu_pickup: texte(r.lieu_pickup, 120), adultes: entier(p.adultes), enfants: entier(p.enfants), statut: r.statut, prix_vente: nombre(r.montant_vente), ...internes };
+  });
+  // Les totaux du dossier, services annulés exclus.
+  const actifs = services.filter((s) => s.statut !== "annule");
+  const somme = (f) => {
+    const v = actifs.map(f).filter((x) => x !== null && x !== undefined);
+    return v.length ? arrondi2(v.reduce((a, b) => a + b, 0)) : null;
+  };
+  const totaux = !voitNets(ctx)
+    ? {}
+    : (() => {
+        const surPlaceS = actifs.filter((s) => s.reglement === "sur_place");
+        const attendue = somme((s) => (s.reglement === "sur_place" ? s.commission_prevue : null));
+        const recue = somme((s) => (s.reglement === "sur_place" ? s.commission_recue : null));
+        const etats = new Set(surPlaceS.map((s) => s.commission_etat));
+        const t = {
+          marge_chez_nous: somme((s) => (s.reglement === "chez_nous" ? s.marge : null)),
+          net_total: somme((s) => s.net_prevu),
+          ...(surPlaceS.length
+            ? {
+                commission_attendue: attendue,
+                commission_recue: recue ?? 0,
+                // Comme « À encaisser » (encaisser-calc.mjs) : un service dont la réception est datée est réglé, même avec un écart.
+                commission_reste: attendue === null ? null : somme((s) => (s.reglement === "sur_place" && s.commission_etat !== "reglee" && s.commission_prevue !== null ? Math.max(0, s.commission_prevue - (s.commission_recue || 0)) : null)) ?? 0,
+                commission_etat: etats.size === 1 ? [...etats][0] : etats.has("attendue") || etats.has("partielle") ? "en_cours" : "mixte",
+                ...(surPlaceS.some((s) => s.commission_etat === "sans_commission") ? { services_sans_commission: surPlaceS.filter((s) => s.commission_etat === "sans_commission").length } : {}),
+              }
+            : {}),
+        };
+        return Object.fromEntries(Object.entries(t).filter(([, v]) => v !== null && v !== undefined));
+      })();
   return {
-    resultat: { dossier: refDe("D", d.id), reference: texte(d.ref, 30), client: c ? texte([c.prenom, c.nom].filter(Boolean).join(" "), 80) : "", telephone: c ? texte(c.telephone, 30) : "", du: d.date_depart || "", au: d.date_retour || "", annule: !!d.annule, services },
-    prix: services.map((s) => s.prix_vente).filter((x) => x !== null),
+    resultat: { dossier: refDe("D", d.id), reference: texte(d.ref, 30), client: c ? texte([c.prenom, c.nom].filter(Boolean).join(" "), 80) : "", telephone: c ? texte(c.telephone, 30) : "", du: d.date_depart || "", au: d.date_retour || "", annule: !!d.annule, services, ...(actifs.length ? { total_vente: somme((s) => s.prix_vente) } : {}), ...totaux },
+    prix: [...services.map((s) => s.prix_vente), somme((s) => s.prix_vente)].filter((x) => x !== null),
     heures: services.map((s) => s.heure_pickup).filter(heureValide),
   };
 }
@@ -653,7 +836,10 @@ export function montantsDuTexte(t) {
 
 // Contrôle de la réponse au client : signature retirée chez Secret et Taxi, tout montant ou heure absent des faits signalé, mot interne ou nom
 // de prestataire signalé. La carte montre ces avertissements ; la personne décide.
-export function controlerReponse(message, { signer = false, permisPrix = new Set(), permisHeures = new Set(), prestataires = [], entreprise = "", prenoms = [] }) {
+// Un montant interne (net, marge, commission rendus par un outil) ou un nom de partenaire bloque la copie à l'écran tant qu'il reste dans le
+// texte : l'avertissement porte la valeur, pour que l'écran la recherche dans le texte corrigé. Un montant interne qui est aussi un prix de
+// vente rendu par un outil n'est pas signalé (même chiffre, rien ne permet de dire lequel est cité).
+export function controlerReponse(message, { signer = false, permisPrix = new Set(), permisHeures = new Set(), prestataires = [], entreprise = "", prenoms = [], internes = new Set(), ventes = new Set() }) {
   let m = texte(message, 4000) ? String(message).trim().slice(0, 4000) : "";
   const avert = [];
   if (!m) return { ok: false };
@@ -662,17 +848,31 @@ export function controlerReponse(message, { signer = false, permisPrix = new Set
     if (s.retire) avert.push("signature_retiree");
     m = s.message;
   }
-  const inconnus = [...new Set(montantsDuTexte(m))].filter((n) => !permisPrix.has(n));
+  const montants = [...new Set(montantsDuTexte(m))];
+  const caches = montants.filter((n) => internes.has(n) && !ventes.has(n));
+  if (caches.length) avert.push(`montant_interne:${caches.join(",")}`);
+  const inconnus = montants.filter((n) => !permisPrix.has(n) && !caches.includes(n));
   if (inconnus.length) avert.push(`montant_non_source:${inconnus.join(",")}`);
   const heures = [...new Set([...m.matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)].map((x) => `${x[1].padStart(2, "0")}:${x[2]}`))].filter((h) => !permisHeures.has(h));
   if (heures.length) avert.push(`heure_non_source:${heures.join(",")}`);
   const interne = INTERNE.exec(m);
   if (interne) avert.push(`mot_interne:${interne[0]}`);
-  const cite = prestataires.find((n) => n.length > 2 && sansAccents(m).includes(sansAccents(n)));
-  if (cite) avert.push("nom_prestataire");
+  for (const n of partenairesCites(m, prestataires)) avert.push(`nom_prestataire:${n}`);
   // Chez Secret et Taxi, la réponse ne nomme personne de l'équipe (la responsable y écrit sous un autre prénom que dans l'outil).
   if (!signer && prenoms.some((p) => p.length > 1 && new RegExp(`\\b${sansAccents(p)}\\b`).test(sansAccents(m)))) avert.push("prenom_equipe");
   return { ok: true, message: m, avertissements: avert };
+}
+
+// Les noms de partenaires cités dans un texte, en mots entiers, accents et casse ignorés (« Lazy Day » oui, « Ann » dans « Annual » non).
+export function partenairesCites(t, noms = []) {
+  const plat = ` ${sansAccents(t).replace(/[^a-z0-9]+/g, " ")} `;
+  const vus = new Set();
+  return noms.filter((n) => {
+    const k = sansAccents(n).replace(/[^a-z0-9]+/g, " ").trim();
+    if (k.length < 3 || vus.has(k) || !plat.includes(` ${k} `)) return false;
+    vus.add(k);
+    return true;
+  });
 }
 
 // Construit la carte d'une proposition. `memo` : ce que la conversation a déjà établi (prix et heures rendus par les outils, montants tapés).
@@ -712,7 +912,7 @@ export async function proposer(nom, e, ctx, memo) {
   }
   if (nom === "proposer_import_brochure") return proposerImportBrochure(e, ctx);
   if (nom === "proposer_reponse") {
-    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires: memo.prestataires || [], entreprise: memo.entreprise || "", prenoms: memo.prenoms || [] });
+    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires: memo.prestataires || [], entreprise: memo.entreprise || "", prenoms: memo.prenoms || [], internes: memo.internes || new Set(), ventes: memo.prix || new Set() });
     if (!c.ok) return { erreur: "message_vide" };
     return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message }, avertissements: c.avertissements };
   }
@@ -789,6 +989,7 @@ export async function executer(nom, entree, ctx, memo) {
     const f = { lire_reglages: (e, c) => lireReglages(e, c), chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier }[nom];
     const r = await f(entree, ctx, memo);
     ajouter(r);
+    if (memo.internes) collecterInternes(r.resultat, memo.internes);
     return { contenu: r.resultat, ...(r.planning ? { planning: r.planning } : {}), erreur: !!(r.resultat && r.resultat.erreur) };
   } catch (err) {
     // Le motif (message d'erreur, jamais une donnée de client) part avec le résultat : il reste dans l'historique pour diagnostiquer.
@@ -800,12 +1001,13 @@ export async function executer(nom, entree, ctx, memo) {
 // Ce que la conversation sait déjà : les prix et heures rendus par les outils des échanges précédents (relus depuis les messages enregistrés)
 // et les montants tapés par la personne. Sert à contrôler la réponse au client.
 export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", prenoms = [] } = {}) {
-  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], signer, prestataires, entreprise, prenoms };
+  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), signer, prestataires, entreprise, prenoms };
   const parcourir = (v) => {
     if (Array.isArray(v)) return v.forEach(parcourir);
     if (!v || typeof v !== "object") return;
     for (const [k, x] of Object.entries(v)) {
-      if (["prix_vente", "prix_adulte", "prix_enfant", "prix"].includes(k) && typeof x === "number") memo.prix.add(x);
+      if (["prix_vente", "prix_adulte", "prix_enfant", "prix", "total_vente"].includes(k) && typeof x === "number") memo.prix.add(x);
+      else if (CLE_INTERNE.test(k) && typeof x === "number") memo.internes.add(x);
       else if (typeof x === "string" && heureValide(x)) memo.heures.add(x);
       else if (x && typeof x === "object") parcourir(x);
     }

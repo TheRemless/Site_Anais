@@ -7,7 +7,7 @@
 import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, entitesAccessibles, changerEntite, confirmationPermise } from "../etat.mjs";
 import { h, toast, confirmer, modal, icone, vider, ajouter } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations } from "../agent-calc.mjs";
+import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
@@ -86,7 +86,7 @@ const STATUTS_AMELIORATION = {
 
 const AVERTISSEMENTS = {
   signature_retiree: N_("La signature en bas a été retirée : la réponse ne signe pas."),
-  nom_prestataire: N_("Le message cite un prestataire : à retirer avant d'envoyer."),
+  nom_prestataire: N_("Le message cite un partenaire : à retirer avant d'envoyer."),
   prenom_equipe: N_("Le message nomme quelqu'un de l'équipe : à retirer, la réponse ne signe pas."),
   prix_non_tape: N_("Un prix proposé ne venait ni du catalogue ni de vous : il a été laissé vide."),
   reference_inconnue: N_("Un service proposé n'existe pas au catalogue : choisissez-le à la main."),
@@ -97,6 +97,8 @@ function texteAvertissement(a) {
   if (code === "montant_non_source") return tr("Montant sans source dans la conversation : {v}. À vérifier.", { v: valeur });
   if (code === "heure_non_source") return tr("Heure sans source dans la conversation : {v}. À vérifier.", { v: valeur });
   if (code === "mot_interne") return tr("Mot interne dans la réponse : « {v} ». À retirer.", { v: valeur });
+  if (code === "montant_interne") return tr("Montant interne (net, marge ou commission) dans la réponse : {v}. À retirer.", { v: valeur });
+  if (code === "nom_prestataire" && valeur) return tr("La réponse cite le partenaire « {v} » : à retirer.", { v: valeur });
   return tr(AVERTISSEMENTS[code] || N_("À vérifier."));
 }
 
@@ -579,8 +581,24 @@ export async function vueAgent(idOuvert = "") {
     } else if (c.genre === "reponse") {
       const zone = h("textarea", { class: "agent-reponse", rows: 8, "aria-label": tr("Réponse au client"), lang: d.langue === "en" ? "en" : "fr" });
       zone.value = d.message || "";
-      corps.push(zone);
-      action = { libelle: tr("Copier la réponse"), faire: () => copier(c, zone.value) };
+      // Un montant interne ou un nom de partenaire signalé bloque la copie tant qu'il reste dans le texte (agent-calc.mjs, resteBloque).
+      const bloquants = bloquantsReponse(c.avertissements);
+      const alerte = h("p", { class: "erreur-form", role: "alert", hidden: true });
+      corps.push(zone, alerte);
+      action = {
+        libelle: tr("Copier la réponse"),
+        faire: () => (resteBloque(zone.value, bloquants).length ? null : copier(c, zone.value)),
+        lier: (bouton) => {
+          const maj = () => {
+            const reste = resteBloque(zone.value, bloquants);
+            bouton.disabled = reste.length > 0;
+            alerte.hidden = !reste.length;
+            alerte.textContent = reste.length ? tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") }) : "";
+          };
+          zone.addEventListener("input", maj);
+          maj();
+        },
+      };
     } else if (c.genre === "brochure") {
       const b = carteBrochure(c, { valider: () => decider(c, "validee") });
       corps.push(...b.corps);
@@ -605,11 +623,16 @@ export async function vueAgent(idOuvert = "") {
             { class: "actions gauche" },
             motif ? h("p", { class: "erreur-form pleine-largeur", role: "alert" }, motif.motif) : null,
             motif && motif.entreprise ? h("button", { class: "principal", type: "button", onclick: () => passerA(motif.entreprise, d.course ? d.course.texte : "") }, tr("Passer à {nom}", { nom: motif.entreprise.nom })) : null,
-            action ? h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", onclick: (e) => action.faire(e.currentTarget) }, action.libelle) : null,
+            action ? lierBouton(h("button", { class: motif && motif.entreprise ? "secondaire" : "principal", type: "button", onclick: (e) => action.faire(e.currentTarget) }, action.libelle), action) : null,
             action && action.puis ? h("button", { class: "secondaire", type: "button", onclick: () => action.puis.faire() }, action.puis.libelle) : null,
             h("button", { class: "secondaire", type: "button", onclick: () => decider(c, "ecartee") }, tr("Écarter"))
           )
     );
+  }
+
+  function lierBouton(bouton, action) {
+    if (action.lier) action.lier(bouton);
+    return bouton;
   }
 
   // Après une validation : le dossier, son voucher (ou la Booking confirmation chez Taxi) et le message WhatsApp, d'un geste.

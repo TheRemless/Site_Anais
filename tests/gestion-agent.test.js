@@ -466,7 +466,7 @@ test("réponse au client chez Taxi : signature retirée, montant et heure non so
   assert.ok(r.carte.avertissements.includes("signature_retiree"));
   assert.ok(r.carte.avertissements.includes("montant_non_source:3200"));
   assert.ok(r.carte.avertissements.includes("heure_non_source:13:15"));
-  assert.ok(r.carte.avertissements.includes("nom_prestataire"));
+  assert.ok(r.carte.avertissements.includes("nom_prestataire:Satun Lines"));
   const propre = controlerReponse("Hello Claire,\n\nPickup at 12:30, 2,400 THB for the transfer 😊", { permisPrix: new Set([2400]), permisHeures: new Set(["12:30"]) });
   assert.deepEqual(propre.avertissements, []);
   // Chez Zwald Travel Planner, la signature d'Anaïs reste.
