@@ -1,7 +1,7 @@
 import { init, etat, choisirLangue, recharger, synchroniser, entitesAccessibles, entiteActive, changerEntite, estAdmin, estSuperAdmin, roleActif, peut, resumes, nomClient, naviguer, nomPartenaire, entitesAnalysables, moduleActif, modeExcursions, modeTaxi, ecranVoucherSeul, travaillerPourVoucher, confirmationPermise, clientsProposes, clientEtranger, etiquetteClient } from "./etat.mjs";
 import { MODULES, moduleDeLEcran } from "./modules.mjs";
 import { CLE_HORS_LIGNE } from "./feuille-hors-ligne-lecture.mjs";
-import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons } from "./ui.mjs";
+import { h, vider, toast, modal, icone, saisie, squelette, purgerBrouillons, confirmer } from "./ui.mjs";
 import { libelleStatut, formatMontant, formatDate, aujourdhui } from "./calc.mjs";
 import { sousTitreDossier, listeClientsPlateforme } from "./views/commun.mjs";
 import { tableauDeBord } from "./views/dashboard.mjs";
@@ -751,7 +751,6 @@ document.addEventListener("keydown", (e) => {
 // le bouton retour demande d'abord ; « Rester » remet l'adresse de l'écran ouvert sans le redessiner.
 async function peutQuitter() {
   if (!etat.garde || !etat.garde()) return true;
-  const { confirmer } = await import("./ui.mjs");
   const ok = await confirmer(tr("Les réglages modifiés ne sont pas enregistrés. Quitter sans enregistrer ?"), tr("Quitter sans enregistrer"), true, tr("Rester"));
   if (ok) etat.garde = null;
   return ok;
@@ -823,11 +822,14 @@ function signalerVersion({ retour = false } = {}) {
   versionSignalee = true;
   setInterval(() => rechargerSiSur(), 2000);
   if (rechargerSiSur({ retour })) return;
+  // confirmer vient de l'import statique de ui.mjs : un import à la demande visait un fichier regroupé à empreinte (b/ui-XXXX.js) que la mise en
+  // ligne suivante supprime, et le bouton plantait sans jamais recharger (20.11.2026). Si la question échoue quand même, on recharge :
+  // la personne a cliqué elle-même.
   const recharger = async () => {
-    if (!rienAPerdre()) {
-      const { confirmer } = await import("./ui.mjs");
-      const ok = await confirmer(tr("Une saisie est en cours : elle sera perdue si vous rechargez maintenant. Recharger quand même ?"), tr("Recharger quand même"), true, tr("Plus tard"));
-      if (!ok) return;
+    try {
+      if (!rienAPerdre() && !(await confirmer(tr("Une saisie est en cours : elle sera perdue si vous rechargez maintenant. Recharger quand même ?"), tr("Recharger quand même"), true, tr("Plus tard")))) return;
+    } catch (err) {
+      console.error(err);
     }
     location.reload();
   };

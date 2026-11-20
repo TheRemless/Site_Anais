@@ -183,7 +183,7 @@ test("app.mjs : une saisie, c'est un champ changé et pas enregistré ; une fen�
   // Rien à perdre : ni saisie, ni réglages non enregistrés, ni écran de saisie commencé (un service ajouté par un bouton n'est dans aucun champ).
   const rien = app.slice(app.indexOf("function rienAPerdre()"), app.indexOf("function ecranLibre()"));
   assert.match(rien, /if \(saisieEnCours\(\)\) return false;\n\s+if \(etat\.garde && etat\.garde\(\)\) return false;\n\s+return ecranDeLecture\(location\.hash\) \|\| !ecranTouche\(\);/);
-  assert.match(app, /if \(!rienAPerdre\(\)\) \{\n\s+const \{ confirmer \}/, "le bouton du bandeau suit la même règle, réglages non enregistrés compris");
+  assert.match(app, /if \(!rienAPerdre\(\) && !\(await confirmer\(/, "le bouton du bandeau suit la même règle, réglages non enregistrés compris");
   assert.match(app, /principal\.replaceChildren\(noeud\);\n[^\n]*\n\s+nouvelEcran\(\);/, "chaque écran affiché repart intouché");
   // Redessiner reste plus prudent : pas sous une fenêtre ouverte, pas pendant la frappe d'une recherche.
   assert.match(app, /return ecranDeLecture\(location\.hash\) && !saisieEnCours\(\) && !document\.querySelector\("\.modal-fond"\) && !curseurDansUnChamp\(\);/);

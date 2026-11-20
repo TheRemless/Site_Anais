@@ -39,7 +39,7 @@ test("app.mjs : rechargement automatique câblé sur le moment sûr, saisie rée
   assert.match(app, /if \(ok\) location\.reload\(\);/, "location.reload garde l'adresse : l'écran et le dossier ouverts restent");
   assert.match(app, /setInterval\(\(\) => rechargerSiSur\(\), 2000\);/);
   assert.match(app, /if \(versionSignalee\) return void rechargerSiSur\(\{ retour \}\);/);
-  assert.match(app, /if \(!rienAPerdre\(\)\) \{\n\s+const \{ confirmer \} = await import\("\.\/ui\.mjs"\);/, "le bouton du bandeau demande toujours avant de perdre une saisie");
+  assert.match(app, /if \(!rienAPerdre\(\) && !\(await confirmer\(/, "le bouton du bandeau demande toujours avant de perdre une saisie");
 });
 
 test("demandes du site en direct : Realtime sur demandes_site, compteur à chaque relecture, annonce des arrivées", () => {

@@ -131,8 +131,8 @@ test("version : vérifiée au retour sur l'onglet et toutes les 3 minutes ; rech
   assert.match(app, /actuelle\.startsWith\("v:"\) === empreinteInitiale\.startsWith\("v:"\)/, "jamais un ETag comparé à une version");
   assert.match(app, /document\.addEventListener\("visibilitychange", verifier\);/);
   // Le bandeau ne recharge pas d'office : avec une saisie en cours, il demande d'abord.
-  assert.match(app, /if \(!rienAPerdre\(\)\) \{\n\s+const \{ confirmer \} = await import\("\.\/ui\.mjs"\);/);
-  assert.match(app, /if \(!ok\) return;\n\s+\}\n\s+location\.reload\(\);/);
+  assert.match(app, /if \(!rienAPerdre\(\) && !\(await confirmer\(/);
+  assert.match(app, /tr\(\"Plus tard\"\)\)\)\) return;\n\s+\} catch \(err\) \{\n\s+console\.error\(err\);\n\s+\}\n\s+location\.reload\(\);/);
   // Depuis le 19.11.2026, le rechargement automatique passe seulement par rechargerSiSur (jamais pendant une saisie, voir gestion-direct.test.js).
   assert.doesNotMatch(app.slice(app.indexOf("function signalerVersion"), app.indexOf("async function surveillerVersion")), /setTimeout\([^)]*location\.reload/, "aucun rechargement à l'aveugle");
   assert.match(app, /if \(ok\) location\.reload\(\);/, "le rechargement automatique est celui du moment sûr");
