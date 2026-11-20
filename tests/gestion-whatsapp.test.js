@@ -267,6 +267,7 @@ test("whatsapp-envoi : demande, corps Telnyx et réponse", () => {
 
 // ---- Règles des PR 278 et 280 appliquées aux réponses WhatsApp ---------------------------------------------------------------------
 import { consignes } from "../supabase/functions/agent/prompt.js";
+import { REGLE_BATEAUX } from "../supabase/functions/agent/ameliorer.js";
 import { controlerReponse, outilsPour } from "../supabase/functions/agent/outils.js";
 
 test("whatsapp : la réponse préparée suit les règles de réponse de l'entreprise (PR 280), sans droits partenaires ni nets (PR 278)", () => {
@@ -276,7 +277,7 @@ test("whatsapp : la réponse préparée suit les règles de réponse de l'entrep
   assert.match(proposer, /consignes\(\{ entreprise, reglages, lieu: ra\.lieu, prenomEquipe: qui \}\)/);
   assert.match(reponse, /permissions: \[\]/);
   const s = consignes({ entreprise: "Secret Travel & Tour", reglages: { fonctionnement: "excursions", agent_ia: true }, prenomEquipe: "Nani" });
-  assert.match(s, /Ferry ou speedboat/);
+  assert.ok(s.includes(REGLE_BATEAUX), "la règle des bateaux de la PR 280, au texte du moment");
   assert.match(s, /Sans aucune signature/);
   assert.doesNotMatch(s, /Avec tes droits/);
   // Sans droits, aucun outil n'annonce de net ni de partenaire.
@@ -384,7 +385,7 @@ test("whatsapp : la réponse préparée reçoit les règles de réponse d'Anaïs
   assert.equal(p.appris, appritsAssistant(apprentissages, { qui: "Nani", premierMessage: "Hi, price of the 4 islands tour?" }));
   assert.doesNotMatch(p.systeme, /Avec tes droits/);
   // Sans règle enregistrée, Secret garde la règle des bateaux de la PR 280 (paiement d'avance).
-  assert.match(promptPreparation({ entreprise: "Secret Travel & Tour", reglages: { fonctionnement: "excursions" }, messages, aujourdhui: "2026-11-20" }).systeme, /Ferry ou speedboat/);
+  assert.match(promptPreparation({ entreprise: "Secret Travel & Tour", reglages: { fonctionnement: "excursions" }, messages, aujourdhui: "2026-11-20" }).systeme.includes(REGLE_BATEAUX) ? "ok" : "absente", /ok/);
   // La demande WhatsApp elle-même.
   assert.match(p.texte, /proposer_reponse une seule fois/);
   const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
