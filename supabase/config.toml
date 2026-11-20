@@ -25,3 +25,7 @@ verify_jwt = false
 # fonction vérifie ensuite le droit reglages.ecrire et la carte.
 [functions.ameliorations]
 verify_jwt = true
+
+# Appelée par Telnyx (événements WhatsApp du numéro de Nani) sans compte : la fonction vérifie elle-même la signature Ed25519 (TELNYX_PUBLIC_KEY).
+[functions.whatsapp]
+verify_jwt = false
