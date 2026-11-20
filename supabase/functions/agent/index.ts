@@ -179,18 +179,25 @@ Deno.serve(async (req) => {
     }
     return lignes;
   };
+  const droitsNets = (perms.data || []).includes("partenaires.lire") && (perms.data || []).includes("partenaires.nets");
+  const NETS_RES_AVANT_57 = "reservation_id, net_prevu, net_paye, paye_le, commission_prevue, commission_recue, commission_recue_le";
   const COLONNES: Record<string, string> = {
     prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id",
     trajets: "id, de, vers, mode, depart, arrivee, duree, prix_adulte, prix_enfant, bebe, periode, fenetres, actif, partenaire_id",
-    partenaires: "id, nom, actif",
-    // Les nets : lus ici pour poser le drapeau « recommande », jamais renvoyés. Vides pour qui n'a pas le droit « partenaires.nets ».
-    prestations_nets: "prestation_id, net",
+    // regles : le mode de règlement du partenaire (« sur place » ou chez nous), lu par les outils, jamais renvoyé tel quel.
+    partenaires: "id, nom, actif, regles",
+    // Les nets et la règle de commission : vides pour qui n'a pas le droit « partenaires.nets » (RLS), et les outils ne les lisent qu'avec ce
+    // droit (outils.js, voitNets). Avec lui, ils partent chez Claude (décision de Jérémy du 20.11.2026), jamais vers un client.
+    prestations_nets: "prestation_id, net, net_enfant",
     trajets_nets: "trajet_id, net_adulte, net_enfant",
+    partenaires_prives: "partenaire_id, commission_regle, commissions",
     hotels_lieux: "cle, nom, lieu, zone, localite, source_url, certitude, verifie",
     temps_trajets: "de, vers, mode, duree_min, ferry, marge_min, source, source_date, a_verifier",
     liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",
     dossiers: "id, ref, client_id, date_depart, date_retour, annule",
-    reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente",
+    reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place",
+    // Le net et la commission d'un service (migrations 11, 18 et 57). Sans la migration 57, repli sur les colonnes d'avant (NETS_RES_AVANT_57).
+    reservations_nets: "reservation_id, net_prevu, net_paye, paye_le, commission_prevue, commission_recue, commission_recue_le, commission_recue_moyen, commission_partielle_le, commission_ecart_motif, commission_ecart_note",
   };
   const charger = (nom: string): Promise<unknown[]> => {
     if (!cache.has(nom)) cache.set(nom, paginer(nom, COLONNES[nom], (q) => q.eq("entite_id", entiteId)));
@@ -250,7 +257,16 @@ Deno.serve(async (req) => {
       d.client_id ? lire(sb.from("clients").select(COL_CLIENT).eq("id", d.client_id), "clients") : [],
       lire(sb.from("reservations").select(COLONNES.reservations).eq("entite_id", entiteId).eq("dossier_id", d.id).limit(200), "reservations"),
     ]);
-    return [dossiers, clients, reservations];
+    // Les nets et commissions des services : seulement avec le droit « partenaires.nets » (la base les refuse aussi sans lui).
+    const ids = reservations.map((r) => r.id);
+    let nets: Record<string, any>[] = [];
+    if (ids.length && droitsNets) {
+      const q = (colonnes: string) => sb.from("reservations_nets").select(colonnes).eq("entite_id", entiteId).in("reservation_id", ids.slice(0, 200));
+      const r = await q(COLONNES.reservations_nets);
+      // 42703 : colonne absente (migration 57 pas encore passée) : les colonnes d'avant suffisent.
+      nets = r.error && r.error.code === "42703" ? await lire(q(NETS_RES_AVANT_57), "reservations_nets") : await lire(r, "reservations_nets");
+    }
+    return [dossiers, clients, reservations, nets];
   };
   // Les hôtels connus dont le nom figure dans ces lieux (clés possibles, lues par la table), gardés pour l'échange.
   const hotelsVus = new Map<string, Record<string, any> | null>();
@@ -416,7 +432,8 @@ Deno.serve(async (req) => {
     if (d.data) dossierRelie = { ref_courte: refDe("D", d.data.id), reference: d.data.ref };
   }
   const prestataires = ((await charger("partenaires")) as { nom: string }[]).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
-  const systeme = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable });
+  const droits: string[] = perms.data || [];
+  const systeme = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable, partenaires: droits.includes("partenaires.lire"), nets: droits.includes("partenaires.lire") && droits.includes("partenaires.nets") });
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
   // L'historique tel qu'il est gardé (blocs « fichier »), puis tel qu'il part chez Claude (images et documents).
   const gardes = historique(debutValide([...(anciens.data || [])].reverse()));

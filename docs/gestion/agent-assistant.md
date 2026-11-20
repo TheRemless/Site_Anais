@@ -25,17 +25,24 @@ L'agent propose aussi, quand le séjour laisse des jours libres, une excursion d
 
 | Part | Ne part jamais |
 |---|---|
-| Les messages tapés dans la conversation | Un net, une marge, une commission |
-| Les tarifs de **vente** et les horaires du catalogue | Le nom d'un prestataire (retiré des modes de transport) |
-| Les clients et dossiers que l'agent cherche (nom, téléphone, dates, services, prix de vente) | Une coordonnée bancaire |
-| Les noms d'hôtels à situer | Les données d'une autre entreprise (RLS) |
-| Les pièces jointes choisies par la personne (photos réduites, PDF tels quels) | Un fichier de la base que la personne n'a pas joint |
+| Les messages tapés dans la conversation | Une coordonnée bancaire |
+| Les tarifs de **vente** et les horaires du catalogue | Les données d'une autre entreprise (RLS) |
+| Avec le droit `partenaires.lire` : le nom du partenaire de chaque tarif, départ et service | Un fichier de la base que la personne n'a pas joint |
+| Avec le droit `partenaires.nets` : les nets (adulte et enfant), le règlement (chez nous ou sur place), la règle de commission du partenaire, la marge, la commission prévue et le gain ; sur un dossier, la commission attendue, reçue, partielle, l'écart et son motif | Sans ces droits : aucun nom de partenaire, aucun net, aucune marge, aucune commission |
+| Les clients et dossiers que l'agent cherche (nom, téléphone, dates, services, prix de vente) | |
+| Les noms d'hôtels à situer | |
+| Les pièces jointes choisies par la personne (photos réduites, PDF tels quels) | |
 
-Les nets sont lus par la fonction (avec les droits de la personne) pour poser un seul drapeau, « recommande », sur l'option à la meilleure marge. La marge elle-même ne sort pas de la fonction. Les contrôles sont dans le code (`supabase/functions/agent/outils.js`), pas seulement dans les consignes :
+**Décision de Jérémy du 20.11.2026 (« L'IA voit tout ») :** l'agent voit le partenaire, les nets et les commissions, pour répondre à « chez quel partenaire ? », « quelle commission ? » ou « lequel rapporte le plus ? » sans que l'équipe cherche ailleurs. Jusque-là, rien de cela ne partait chez Anthropic. Les conditions commerciales de l'API d'Anthropic excluent par défaut l'entraînement des modèles sur ces données (voir `assistant-ia.md`, « Données qui partent chez Anthropic »).
+
+Les droits sont vérifiés côté serveur, jamais par le prompt seul : la fonction lit les nets avec la session de la personne (règles RLS, `partenaires.nets`), et `outils.js` vérifie le droit en plus (`voitPartenaires`, `voitNets`). Sans le droit, les champs n'existent pas, ni dans les résultats ni dans la définition des outils (`outilsPour`) : le rôle de Mook chez Secret voit le partenaire et aucun chiffre interne. Le gain est ce que l'entreprise gagne sur une vente : la marge (vente moins net) pour un service réglé chez nous, la commission (règle chiffrée du partenaire, même calcul que `operations-calc.mjs`) pour un service payé sur place. Le drapeau « recommande » reste posé sur la meilleure marge.
+
+Les contrôles sont dans le code (`supabase/functions/agent/outils.js`), pas seulement dans les consignes :
 
 - un prix proposé vient du catalogue (par sa référence) ou d'un montant tapé par la personne dans la conversation ; sinon il reste vide (transfert privé : Nani le fixe) ;
 - les heures d'une course sont calculées par `planifier.js`, jamais par le modèle ;
-- la réponse au client est contrôlée : signature retirée chez Secret et Taxi, montant ou heure sans source signalés, mot interne, prestataire ou prénom de l'équipe signalés.
+- la réponse au client est contrôlée : signature retirée chez Secret et Taxi, montant ou heure sans source signalés, mot interne ou prénom de l'équipe signalés ;
+- **garde-fou client** : tout montant égal à un net, une marge, une commission ou un gain rendu par un outil dans la conversation (`montant_interne`) et tout nom de partenaire en mot entier (`nom_prestataire`) sont signalés avec leur valeur. L'écran bloque « Copier la réponse » tant que le texte corrigé en contient encore un (`agent-calc.mjs`, `resteBloque`). Un montant interne égal à un prix de vente rendu par un outil n'est pas signalé : rien ne permet de dire lequel est cité. Le voucher, la Booking confirmation et le message WhatsApp sont faits par Gestion depuis le dossier, pas par l'agent : ils ne contiennent ni net ni commission.
 
 ## Planifier une course
 
