@@ -85,6 +85,7 @@ jobs:
           persist-credentials: false
 
       - name: Claude fait l'amélioration
+        id: claude
         uses: anthropics/claude-code-action@v1.0.284
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
@@ -127,6 +128,15 @@ jobs:
             6. Pour finir, écris en français dans .amelioration/resume.md : ce qui a changé et dans quels fichiers, comment le vérifier dans
                l'outil, ce qui reste à décider, la migration s'il y en a une. Sans virgule avant « et » ni tiret d'incise.
             Si la demande est impossible ou trop floue, ne change aucun fichier du dépôt et explique pourquoi dans .amelioration/resume.md.
+
+      # L'action cache la sortie de Claude (journal public). En cas d'échec, seul le message d'erreur du résultat est montré : sans la clé,
+      # sans le contenu de la session.
+      - name: Motif de l'échec de Claude
+        if: failure() && steps.claude.outcome == 'failure'
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          if [ ! -f "$f" ]; then echo "Pas de fichier de sortie."; exit 0; fi
+          jq -r '[.[] | select(.type == "result")] | last | "sous-type : \(.subtype)\nstatut API : \(.api_error_status // "-")\nmessage : \((.result // (.errors // [] | join(", ")) // "-") | tostring | .[0:500])"' "$f" | sed -E 's/sk-ant-[A-Za-z0-9_-]+/sk-ant-…/g'
 
       # Aucun code du dépôt n'a tourné dans ce job : le patch est celui que Claude a écrit.
       - name: Patch du changement
