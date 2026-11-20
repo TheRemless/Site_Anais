@@ -2054,3 +2054,25 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .as-derniers li { margin-bottom: 4px; overflow-wrap: anywhere; }
 .as-quand { font-variant-numeric: tabular-nums; color: var(--texte-2); }
 .agent-erreur-detail { display: block; margin-top: 4px; font-size: 0.8rem; opacity: 0.85; overflow-wrap: anywhere; }
+
+/* Crédit de l'assistant (migration 54) : bandeau des administratrices, tuile et réglage du plafond, apprentissages de l'agent. */
+.bandeau-credit { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 0 0 16px; padding: 10px 14px; background: var(--surface-2); border: 1px solid var(--bord-fort); border-left: 4px solid #b7791f; border-radius: var(--rayon); font-size: 0.92rem; }
+.bandeau-credit.atteint { border-left-color: var(--danger); background: var(--danger-fond); }
+.bandeau-credit > span { flex: 1 1 240px; }
+.bandeau-credit .bouton-icone { font-size: 1.2rem; line-height: 1; }
+.as-credit-barre { position: relative; height: 8px; margin-top: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.as-credit-barre span { display: block; height: 100%; background: var(--teal-600); border-radius: 999px; }
+.as-alerte .as-credit-barre span { background: var(--danger); }
+.as-credit-barre i { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--texte-2); }
+.as-plafond { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-end; margin-top: 12px; }
+.as-plafond .champ { flex: 0 1 160px; margin: 0; }
+.as-plafond .aide, .as-plafond .erreur-form { flex-basis: 100%; margin: 0; }
+.as-appris-liste { margin: 8px 0 0; padding: 0; list-style: none; }
+.as-appris-liste li { padding: 10px 0; border-top: 1px solid var(--bord); }
+.as-appris-tete { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.as-appris-contexte { margin: 4px 0 0; color: var(--texte-2); font-size: 0.9rem; }
+.as-appris-modif { margin: 4px 0; overflow-wrap: anywhere; }
+.as-appris-modif del { color: var(--texte-2); }
+.as-appris-modif ins { text-decoration: none; font-weight: 600; }
+.agent-arret { border-left: 4px solid var(--danger); }
+.dossier-agent a { white-space: nowrap; }

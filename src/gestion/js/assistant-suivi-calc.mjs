@@ -37,6 +37,7 @@ export const STATUTS = {
   trop_long: N_("Échange trop long, arrêté"),
   occupe: N_("Anthropic occupé"),
   cle_refusee: N_("Clé API refusée"),
+  credit_epuise: N_("Crédit Anthropic épuisé"),
   erreur_api: N_("Erreur d'Anthropic"),
   erreur: N_("Erreur"),
 };
@@ -201,3 +202,24 @@ export function entreprisesSuivies({ entites, permissionsDe }) {
     return p.includes("reglages.ecrire") && p.includes("journal.voir");
   });
 }
+
+// Crédit du mois (migration 54) : la dépense de tout l'assistant (toutes entreprises) face au plafond réglé par Jérémy. `budget` : la réponse
+// de assistant_budget_etat() ({ cout_mois, plafond, seuil }), ou null pour qui n'administre pas (et avant la migration).
+export function etatCredit(budget) {
+  if (!budget) return null;
+  const cout = Math.max(0, Number(budget.cout_mois) || 0);
+  const plafond = Number(budget.plafond) > 0 ? Number(budget.plafond) : 50;
+  const seuil = Number(budget.seuil) >= 50 && Number(budget.seuil) <= 99 ? Number(budget.seuil) : 80;
+  const pct = Math.floor((cout / plafond) * 100);
+  return { cout: arrondi(cout, 4), plafond, seuil, pct, reste: arrondi(Math.max(0, plafond - cout), 4), alerte: pct >= seuil, atteint: cout >= plafond, peutRegler: budget.peut_regler === true };
+}
+
+// Libellés des apprentissages de l'agent (agent-apprendre.mjs), dans l'ordre de l'écran.
+export const GENRES_APPRIS = {
+  pickup: N_("Heure de pickup"),
+  libelle: N_("Libellé"),
+  prix: N_("Prix de vente"),
+  lieu: N_("Lieu de pickup"),
+  date: N_("Date"),
+  reponse: N_("Réponse au client"),
+};

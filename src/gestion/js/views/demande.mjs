@@ -109,7 +109,7 @@ function lignesSite(d) {
 // `depuisSite` (boîte « Demandes du site ») : { texte, titre, telephone, prixImpose, surCree }. Le message vient de la demande, pas du presse-papiers ni du brouillon
 // de l'appareil ; « Vérifier avant de créer », la réponse et le passage à une autre entreprise sont retirés (la demande appartient à son entreprise,
 // la réponse au client se prépare après la création) ; une fois le dossier créé, `surCree({ dossier, services, total })` prend la suite.
-// `depuisItineraire` (écran « Prix et horaires ») : { texte, d, services } déjà prêts, un service par trajet dont l'horaire est choisi, avec l'hôtel
+// `depuisItineraire` (écran « Prix et horaires », carte de l'onglet Assistant) : { texte, d, services, surCree? } déjà prêts, un service par trajet dont l'horaire est choisi, avec l'hôtel
 // de départ (`hotelDepart`) comme lieu de pickup. Le message du client est repris tel quel, les services ne sont pas relus.
 export function ouvrirDemande(depuisSite = null, depuisItineraire = null) {
   // Branchée directement sur un bouton (`onclick: ouvrirDemande`), la fonction reçoit l'événement du clic : ce n'est pas une demande du site.
@@ -518,6 +518,8 @@ export function ouvrirDemande(depuisSite = null, depuisItineraire = null) {
       fermer();
       toast(tr("Dossier {ref} créé.", { ref: dossier.ref }));
       if (depuisSite && depuisSite.surCree) return void depuisSite.surCree({ dossier, services: finals, total: Math.round(somme * 100) / 100 });
+      // Depuis une carte de l'onglet Assistant : la conversation se relie au dossier et garde les corrections (agent.mjs).
+      if (depuisItineraire && depuisItineraire.surCree) return void depuisItineraire.surCree({ dossier });
       naviguer(`#/dossier/${dossier.id}`);
     } catch (err) {
       erreur.textContent = /duplicate|unique|23505/i.test(err.message) ? tr("Ce numéro existe déjà. Réessayez.") : err.message;

@@ -9,11 +9,12 @@
 // Réponse en flux NDJSON (une ligne JSON par événement) : { t: "conversation" | "etape" | "texte" | "planning" | "carte" | "fin" | "erreur" }.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, PLAFOND_MOIS_USD_DEFAUT, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
+import { LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, controlerAcces, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
+import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
 
@@ -32,8 +33,25 @@ function entetes(req: Request, type = "application/json") {
   };
 }
 
-// Début du mois à Bangkok, en heure UTC : pour le plafond du mois.
-const debutMoisBangkok = () => new Date(Date.parse(`${dateBangkok().slice(0, 8)}01T00:00:00Z`) - 7 * 3600 * 1000).toISOString();
+// Le seuil d'alerte ou le plafond du mois passé, ou le crédit d'Anthropic épuisé : la fonction « rappels » prévient les administratrices
+// (notification, une fois par alerte). Appelée avec la clé de service ; une panne ne gêne pas l'échange.
+// Lancée en tâche de fond : la réponse n'attend pas, et le runtime garde la fonction en vie jusqu'à la fin de l'appel (EdgeRuntime.waitUntil).
+function alerterEnFond(corps: Record<string, unknown>) {
+  const tache = alerterBudget(corps);
+  try {
+    (globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil(tache);
+  } catch {
+    // Hors de Supabase (essais) : la promesse suit son cours.
+  }
+  return tache;
+}
+async function alerterBudget(corps: Record<string, unknown>) {
+  try {
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/rappels`, { method: "POST", headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" }, body: JSON.stringify({ type: "budget", ...corps }), signal: AbortSignal.timeout(8000) });
+  } catch (err) {
+    console.error("agent : alerte du budget", err instanceof Error ? err.message.slice(0, 120) : "");
+  }
+}
 
 Deno.serve(async (req) => {
   const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: entetes(req) });
@@ -56,18 +74,22 @@ Deno.serve(async (req) => {
   if (errQui || !qui?.user) return json({ erreur: "non_connecte" }, 401);
   const userId = qui.user.id;
 
-  const [regl, perms, echanges, mois, ent] = await Promise.all([
+  const [regl, perms, echanges, mois, ent, budget] = await Promise.all([
     sb.from("reglages").select("valeur").eq("entite_id", entiteId).maybeSingle(),
     sb.rpc("permissions_dans", { e: entiteId }),
     admin.from("assistant_journal").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("usage", "agent").gte("cree_le", debutJourBangkok()),
     // Le plafond du mois compte toute la dépense de l'assistant (tous usages, toutes personnes) : il protège le crédit.
-    admin.rpc("assistant_cout_depuis", { debut: debutMoisBangkok() }),
+    admin.rpc("assistant_cout_depuis", { debut: debutMois() }),
     sb.from("entites").select("nom, organisation_id").eq("id", entiteId).maybeSingle(),
+    // Le plafond réglé par Jérémy (migration 54) ; sans la table, le secret AGENT_PLAFOND_MOIS_USD, sinon 50 $.
+    admin.from("assistant_budget").select("plafond_mois_usd, seuil_alerte_pct").maybeSingle(),
   ]);
   if (regl.error || perms.error || echanges.error || mois.error) return json({ erreur: "base" }, 500);
   if (ent.error) console.error("agent : entreprise", ent.error.message);
   const reglages = regl.data ? regl.data.valeur : null;
   const coutDuMois = Number(mois.data) || 0;
+  if (budget.error && !tableAbsente(budget.error)) console.error("agent : plafond", budget.error.message);
+  const { plafond, seuil } = plafondRetenu(budget.error ? null : budget.data, Deno.env.get("AGENT_PLAFOND_MOIS_USD"));
   const acces = controlerAcces({
     entiteId,
     permissions: perms.data || [],
@@ -75,22 +97,26 @@ Deno.serve(async (req) => {
     echangesDuJour: echanges.count || 0,
     limiteJour: Number(Deno.env.get("AGENT_LIMITE_JOUR")) || LIMITE_JOUR_DEFAUT,
     coutDuMois,
-    plafondMois: Number(Deno.env.get("AGENT_PLAFOND_MOIS_USD")) || PLAFOND_MOIS_USD_DEFAUT,
+    plafondMois: plafond,
   });
-  if (!acces.ok) return json({ erreur: acces.erreur, ...(acces.manque ? { manque: acces.manque } : {}), ...(acces.limite ? { limite: acces.limite } : {}), ...(acces.plafond ? { plafond: acces.plafond } : {}) }, acces.statut);
+  if (!acces.ok) {
+    // Plafond atteint : l'alerte part (une seule fois par mois) si aucun échange ne l'a encore envoyée.
+    if (acces.erreur === "plafond_du_mois") alerterEnFond({});
+    return json({ erreur: acces.erreur, ...(acces.manque ? { manque: acces.manque } : {}), ...(acces.limite ? { limite: acces.limite } : {}), ...(acces.plafond ? { plafond: acces.plafond, depense: acces.depense, reprise: reprise() } : {}) }, acces.statut);
+  }
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
   if (!cle) return json({ erreur: "non_configure" }, 503);
 
   // La conversation : nouvelle, ou une des miennes (RLS : une conversation d'une autre personne n'est pas lisible).
-  let conv: { id: string; titre: string; dossier_id: string | null } | null = null;
+  let conv: { id: string; titre: string; dossier_id: string | null; cree_le?: string } | null = null;
   if (conversationId) {
-    const c = await sb.from("agent_conversations").select("id, titre, dossier_id, entite_id").eq("id", conversationId).maybeSingle();
+    const c = await sb.from("agent_conversations").select("id, titre, dossier_id, entite_id, cree_le").eq("id", conversationId).maybeSingle();
     if (c.error) return json({ erreur: "base" }, 500);
     if (!c.data || c.data.entite_id !== entiteId) return json({ erreur: "conversation_introuvable" }, 404);
     conv = c.data;
   } else {
     const dossierId = typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null;
-    const c = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre: titreDepuis(message), dossier_id: dossierId }).select("id, titre, dossier_id").single();
+    const c = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre: titreDepuis(message), dossier_id: dossierId }).select("id, titre, dossier_id, cree_le").single();
     if (c.error) return json({ erreur: c.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
     conv = c.data;
   }
@@ -352,6 +378,15 @@ Deno.serve(async (req) => {
   const systeme = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable });
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
   const messages = historique(debutValide([...(anciens.data || [])].reverse()));
+  // Les corrections de l'équipe dans cette entreprise, d'avant l'ouverture de la conversation (le bloc reste le même d'un message à l'autre,
+  // donc en cache). Sans la migration 54 ou en cas d'erreur : rien, l'agent marche comme avant.
+  const premierTexte = (() => {
+    const m = messages.find((x) => x.role === "user" && Array.isArray(x.content) && x.content.some((b: { type: string }) => b.type === "text"));
+    return m ? (m.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text || "").join(" ") : message;
+  })();
+  const lus = await sb.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", entiteId).lte("cree_le", conv!.cree_le || new Date().toISOString()).order("cree_le", { ascending: false }).limit(80);
+  if (lus.error && !tableAbsente(lus.error)) console.error("agent : apprentissages", lus.error.message);
+  const appris = lus.error ? "" : blocApprentissages(lus.data || [], { qui: ra.responsable, premierMessage: premierTexte });
   const memo = memoDepuis([...messages, { role: "user", content: message }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
   const ctx = { charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
@@ -381,11 +416,13 @@ Deno.serve(async (req) => {
         const c = await sb.from("agent_cartes").insert({ conversation_id: conv!.id, genre: carte.genre, titre: carte.titre, donnees: carte.donnees, avertissements: carte.avertissements || [] }).select("id, genre, titre, donnees, avertissements, statut, cree_le").single();
         return c.error ? null : c.data;
       };
-      const r = await tourner({ anthropic, modele, systeme, contexte, messages, ctx, memo, garder, garderCarte, envoyer, appels, debut });
+      const r = await tourner({ anthropic, modele, systeme, appris, contexte, messages, ctx, memo, garder, garderCarte, envoyer, appels, debut });
       statut = r.statut;
       dernierTexte = r.dernierTexte;
     } catch (err) {
-      if (err instanceof Anthropic.RateLimitError) statut = "occupe";
+      // Crédit d'Anthropic épuisé (HTTP 402, « billing_error ») : un message clair à l'écran et une alerte aux administratrices.
+      if (estCreditEpuise(err)) statut = "credit_epuise";
+      else if (err instanceof Anthropic.RateLimitError) statut = "occupe";
       else if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) statut = "cle_refusee";
       else if (err instanceof Anthropic.APIError) statut = "erreur_api";
       else statut = "erreur";
@@ -396,13 +433,15 @@ Deno.serve(async (req) => {
       const detail = err instanceof Error ? err.message.replace(/\s+/g, " ").slice(0, 300) : "";
       console.error("agent :", statut, detail);
       if (statut.startsWith("erreur")) motifErreur = detail;
-      await envoyer({ t: "erreur", erreur: statut === "occupe" ? "occupe" : statut === "cle_refusee" ? "non_configure" : "indisponible", ...(statut.startsWith("erreur") && detail ? { detail } : {}) });
+      await envoyer({ t: "erreur", erreur: statut === "credit_epuise" ? "credit_epuise" : statut === "occupe" ? "occupe" : statut === "cle_refusee" ? "non_configure" : "indisponible", ...(statut.startsWith("erreur") && detail ? { detail } : {}) });
     }
     // Après une panne, l'aperçu de la conversation dit son motif (le prochain échange réussi le remplace).
     await sb.from("agent_conversations").update({ maj_le: new Date().toISOString(), apercu: (motifErreur ? `Erreur : ${motifErreur}` : dernierTexte || message).replace(/\s+/g, " ").slice(0, 200) }).eq("id", conv!.id);
     const ligne = ligneJournal({ userId, entiteId, statut, appels, dureeMs: Date.now() - debut });
     const { error: errJ } = await admin.from("assistant_journal").insert(ligne);
     if (errJ) console.error("journal de l'agent non écrit :", errJ.message);
+    // Seuil d'alerte passé avec cet échange (ou crédit épuisé) : la fonction « rappels » prévient, une fois par alerte, en tâche de fond.
+    if (statut === "credit_epuise" || etatBudget({ cout: coutDuMois + (Number(ligne.cout_estime_usd) || 0), plafond, seuil }).alerte) alerterEnFond(statut === "credit_epuise" ? { credit_epuise: true } : {});
     await envoyer({ t: "fin", statut, cout_usd: ligne.cout_estime_usd, modele: ligne.modele });
     await ecrivain.close().catch(() => {});
   })();

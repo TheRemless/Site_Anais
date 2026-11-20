@@ -13,6 +13,7 @@ import { suivreSaisies, champsModifies, curseurDansUnChamp, nouvelEcran, ecranTo
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
 import { agentActif } from "./agent-calc.mjs";
+import { bandeauCredit } from "./views/bandeau-credit.mjs";
 
 // Chaque écran se charge à sa première visite : le premier affichage n'attend que l'accueil.
 const vers = (charge, nom) => async (...args) => (await charge())[nom](...args);
@@ -400,7 +401,7 @@ async function afficherVoucherSeul() {
 }
 
 function coque() {
-  return h("div", { class: "coque" }, menu(), h("div", { class: "contenu-coque" }, barreHaut(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, h("main", { id: "principal", tabindex: "-1" }))), barreOnglets(), boutonPlus());
+  return h("div", { class: "coque" }, menu(), h("div", { class: "contenu-coque" }, barreHaut(), h("div", { class: "contenu" }, etat.store.mode === "demo" ? bandeauDemo() : null, bandeauCredit(), h("main", { id: "principal", tabindex: "-1" }))), barreOnglets(), boutonPlus());
 }
 
 // ---- Recherche globale ----------------------------------------------------------------------------------------

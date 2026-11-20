@@ -486,7 +486,13 @@ test("accès : agent allumé à part, droits, limite du jour et plafond du mois"
   assert.equal(controlerAcces({ ...base, reglages: { assistant_ia: true } }).erreur, "agent_eteint");
   assert.equal(controlerAcces({ ...base, permissions: ["partenaires.lire"] }).erreur, "droit_manquant");
   assert.equal(controlerAcces({ ...base, echangesDuJour: 60 }).erreur, "limite_du_jour");
-  assert.equal(controlerAcces({ ...base, coutDuMois: 40 }).erreur, "plafond_du_mois");
+  // Plafond par défaut : 50 $ (Jérémy, 20.11.2026) ; la réponse dit la dépense, pour un message clair.
+  assert.equal(controlerAcces({ ...base, coutDuMois: 49.99 }).ok, true);
+  const arret = controlerAcces({ ...base, coutDuMois: 50.123 });
+  assert.equal(arret.erreur, "plafond_du_mois");
+  assert.equal(arret.plafond, 50);
+  assert.equal(arret.depense, 50.12);
+  assert.equal(controlerAcces({ ...base, coutDuMois: 20, plafondMois: 20 }).erreur, "plafond_du_mois");
 });
 
 test("journal : usage « agent », jetons additionnés, coût par modèle, aucun contenu", () => {

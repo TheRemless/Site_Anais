@@ -9,7 +9,7 @@ import { executer } from "./outils.js";
 // garderCarte(carte)    : enregistre une proposition et la rend avec son identifiant, ou null.
 // envoyer(evenement)    : vers l'écran (texte au fil de l'eau, étape, frise, carte, erreur).
 // Rend { statut, dernierTexte } ; les erreurs du SDK remontent à l'appelant, qui les classe.
-export async function tourner({ anthropic, modele, systeme, contexte, messages, ctx, memo, garder, garderCarte, envoyer, appels, debut = Date.now(), maintenant = () => Date.now() }) {
+export async function tourner({ anthropic, modele, systeme, appris = "", contexte, messages, ctx, memo, garder, garderCarte, envoyer, appels, debut = Date.now(), maintenant = () => Date.now() }) {
   let statut = "ok";
   let dernierTexte = "";
   for (let tour = 0; tour < TOURS_MAX; tour++) {
@@ -17,7 +17,7 @@ export async function tourner({ anthropic, modele, systeme, contexte, messages, 
       await envoyer({ t: "erreur", erreur: "trop_long" });
       return { statut: "trop_long", dernierTexte };
     }
-    const stream = anthropic.beta.messages.stream(parametres({ modele, systeme, contexte, messages }));
+    const stream = anthropic.beta.messages.stream(parametres({ modele, systeme, appris, contexte, messages }));
     for await (const ev of stream) {
       if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") await envoyer({ t: "texte", delta: ev.delta.text });
     }

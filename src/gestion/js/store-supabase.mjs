@@ -277,6 +277,35 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     async agentCarte(id, statut) {
       return verifie(await sb.from("agent_cartes").update({ statut }).eq("id", id).select("id, conversation_id, genre, titre, donnees, avertissements, statut, cree_le, decide_le").single());
     },
+    // Mes conversations reliées à un dossier (fiche du dossier) : la plus récente d'abord. Vide avant la migration 52.
+    async agentConversationsDuDossier(dossierId) {
+      const { data, error } = await sb.from("agent_conversations").select("id, titre, maj_le").eq("dossier_id", dossierId).order("maj_le", { ascending: false }).limit(10);
+      return error ? [] : data || [];
+    },
+    // ---- Apprentissages de l'agent (migration 54) ----
+    // Les corrections d'une carte validée. Sans la migration, rien n'est noté (false).
+    async agentNoterApprentissages(entiteId, carteId, lignes) {
+      if (!lignes.length) return true;
+      const { error } = await sb.from("agent_apprentissages").insert(lignes.map((l) => ({ entite_id: entiteId, carte_id: carteId || null, genre: l.genre, contexte: l.contexte, avant: l.avant, apres: l.apres })));
+      return !error;
+    },
+    // Tableau de l'assistant : les apprentissages des entreprises suivies (null tant que la migration manque).
+    async agentApprentissages(entiteIds) {
+      const { data, error } = await sb.from("agent_apprentissages").select("id, entite_id, user_id, genre, contexte, avant, apres, cree_le").in("entite_id", entiteIds).order("cree_le", { ascending: false }).limit(500);
+      return error ? null : data || [];
+    },
+    async agentSupprimerApprentissage(id) {
+      verifie(await sb.from("agent_apprentissages").delete().eq("id", id).select("id"));
+    },
+    // Crédit de l'assistant (migration 54) : dépense du mois, plafond et seuil, pour les administratrices ; null pour les autres ou sans la migration.
+    async assistantBudget() {
+      const { data, error } = await sb.rpc("assistant_budget_etat");
+      return error ? null : data || null;
+    },
+    async reglerPlafondAssistant(plafond, seuil) {
+      const { error } = await sb.rpc("regler_plafond_assistant", { plafond, seuil });
+      if (error) throw new Error(error.message);
+    },
     // Table des temps de trajet de référence (migration 52). null tant que la table manque.
     async tempsTrajets(entiteId) {
       const { data, error } = await sb.from("temps_trajets").select("id, entite_id, de, vers, cle, mode, duree_min, ferry, marge_min, source, source_date, a_verifier, origine, maj_le").eq("entite_id", entiteId).order("de").limit(2000);
@@ -322,8 +351,9 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         return { erreur: "hors_ligne" };
       }
       if (!rep.ok || !rep.body) {
+        // Le détail sert au message : plafond, dépense et date de reprise quand le plafond du mois est atteint.
         const detail = await rep.json().catch(() => null);
-        return { erreur: (detail && detail.erreur) || "indisponible" };
+        return { ...(detail && typeof detail === "object" ? detail : {}), erreur: (detail && detail.erreur) || "indisponible" };
       }
       const { lireMorceau } = await import("./agent-calc.mjs");
       const lecteur = rep.body.getReader();

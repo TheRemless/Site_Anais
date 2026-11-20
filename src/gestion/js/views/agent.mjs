@@ -9,13 +9,16 @@ import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCart
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
+import { correctionsDepuisCarte, dossierDeLaCarte } from "../agent-apprendre.mjs";
+import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 
 const ERREURS = {
   assistant_eteint: N_("L'assistant est éteint pour cette entreprise (Réglages)."),
   agent_eteint: N_("L'onglet Assistant est éteint pour cette entreprise (Réglages)."),
   droit_manquant: N_("Votre rôle ne permet pas d'utiliser l'assistant ici."),
   limite_du_jour: N_("Limite d'échanges du jour atteinte : l'assistant reprend demain."),
-  plafond_du_mois: N_("Le budget du mois de l'assistant est atteint : demandez à l'administration de le relever."),
+  plafond_du_mois: N_("Le plafond du mois de l'assistant est atteint : il reprend le 1er du mois prochain, ou plus tôt si l'administration relève le plafond."),
+  credit_epuise: N_("Le crédit Anthropic de l'assistant est épuisé : l'administration doit le recharger. Le reste de l'outil marche normalement."),
   non_configure: N_("L'assistant n'est pas encore activé sur le serveur."),
   occupe: N_("L'assistant est très demandé : réessayez dans une minute."),
   refus: N_("L'assistant n'a pas traité ce message."),
@@ -27,7 +30,15 @@ const ERREURS = {
   conversation_introuvable: N_("Cette conversation n'existe plus."),
   message_invalide: N_("Le message est vide ou trop long."),
 };
-const erreurTexte = (code) => tr(ERREURS[code] || N_("L'assistant ne répond pas."));
+// Le plafond du mois atteint : la fonction dit combien a été dépensé et quand l'assistant reprend.
+function erreurTexte(code, detail = null) {
+  if (code === "plafond_du_mois" && detail && Number(detail.plafond) > 0 && detail.reprise) {
+    const montant = (x) => `${Number(x).toLocaleString(langueActive() === "en" ? "en-US" : "fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+    const jour = new Date(`${detail.reprise}T12:00:00Z`).toLocaleDateString(langueActive() === "en" ? "en-GB" : "fr-FR", { day: "numeric", month: "long", timeZone: "UTC" });
+    return tr("Le plafond du mois de l'assistant est atteint ({depense} dépensés sur {plafond}). Il reprend le {jour}, ou plus tôt si l'administration relève le plafond dans « Suivi de l'assistant ».", { depense: montant(detail.depense ?? detail.plafond), plafond: montant(detail.plafond), jour });
+  }
+  return tr(ERREURS[code] || N_("L'assistant ne répond pas."));
+}
 
 const AVERTISSEMENTS = {
   signature_retiree: N_("La signature en bas a été retirée : la réponse ne signe pas."),
@@ -302,16 +313,21 @@ export async function vueAgent(idOuvert = "") {
         bulle = null;
         texteRecu = "";
       } else if (ev.t === "erreur") {
-        etape.before(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(ev.erreur), ev.detail ? h("small", { class: "agent-erreur-detail" }, ev.detail) : null));
+        if (ev.erreur === "credit_epuise") etape.before(h("div", { class: "agent-bulle de-agent agent-arret", role: "alert" }, h("p", null, erreurTexte(ev.erreur))));
+        else etape.before(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(ev.erreur), ev.detail ? h("small", { class: "agent-erreur-detail" }, ev.detail) : null));
       }
       descendre();
     });
     etape.remove();
     if (r && r.erreur) {
-      zoneFil.append(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(r.erreur)));
+      // Plafond ou crédit : l'assistant le dit dans le fil, comme une réponse, pour que ce soit clair et non une panne obscure.
+      if (r.erreur === "plafond_du_mois" || r.erreur === "credit_epuise") zoneFil.append(h("div", { class: "agent-bulle de-agent agent-arret", role: "alert" }, h("p", null, erreurTexte(r.erreur, r))));
+      else zoneFil.append(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(r.erreur)));
       if (!conv) champ.value = texte;
     }
     enCours = false;
+    // La dépense vient de bouger : le bandeau du crédit (administratrices) se relit.
+    rafraichirBandeauCredit();
     envoyerBouton.disabled = false;
     envoyerBouton.removeAttribute("aria-busy");
     if (conv) {
@@ -445,25 +461,73 @@ export async function vueAgent(idOuvert = "") {
     if (ancien) ancien.replaceWith(carte(maj));
   }
 
-  // La création reste dans « Coller une demande » : ouvrir n'est pas valider. La carte attend que la personne dise que le dossier est créé.
+  // Après chaque carte enregistrée (migration 54) : la conversation se relie au dossier qu'elle a créé ou touché (si elle n'en a pas déjà
+  // un), et ce que la personne a changé par rapport à la proposition est gardé pour l'entreprise. `enregistre` : ce qui a vraiment été
+  // enregistré ({ reservations } pour un dossier, { reservation } pour un service, { message } pour une réponse) ; pour un dossier sans
+  // `enregistre`, ses réservations sont relues. Une panne ici ne gêne jamais la validation.
+  async function apresValidation(c, { dossierId = null, enregistre = null } = {}) {
+    try {
+      const id = dossierDeLaCarte(c, { dossierId });
+      if (id && conv && !conv.dossier_id) {
+        const maj = await etat.store.agentMajConversation(conv.id, { dossier_id: id });
+        conversations = (conversations || []).map((x) => (x.id === maj.id ? { ...x, ...maj } : x));
+        conv = conversations.find((x) => x.id === maj.id) || { ...conv, ...maj };
+        const tete = colonneFil.querySelector(".agent-fil-tete");
+        if (tete) tete.replaceWith(enTete());
+      }
+      // Les noms du client à masquer : ceux du dossier de la carte, ou du dossier déjà relié à la conversation (réponse au client).
+      const idNoms = id || (conv && conv.dossier_id);
+      const dossier = idNoms ? etat.db.dossiers.find((d) => d.id === idNoms) : null;
+      const client = dossier ? etat.db.clients.find((x) => x.id === dossier.client_id) : null;
+      const vu = enregistre || (c.genre === "dossier" && id ? { reservations: etat.db.reservations.filter((r) => r.dossier_id === id) } : null);
+      // Aussi les noms donnés dans les cartes « dossier » de la conversation : une réponse copiée avant que la conversation ait un dossier
+      // ne garde pas le nom du client.
+      const noms = [client && client.prenom, client && client.nom, ...fil.cartes.filter((x) => x.genre === "dossier").map((x) => ((x.donnees || {}).client || {}).nom)].filter(Boolean);
+      const lignes = correctionsDepuisCarte(c, vu, { noms });
+      if (lignes.length && (await etat.store.agentNoterApprentissages(etat.entiteId, c.id, lignes))) toast(lignes.length === 1 ? tr("Correction notée : l'assistant s'en servira la prochaine fois.") : tr("{n} corrections notées : l'assistant s'en servira la prochaine fois.", { n: lignes.length }));
+    } catch (err) {
+      console.error("agent : après la validation", err);
+    }
+  }
+
+  // La création reste dans « Coller une demande » : ouvrir n'est pas valider. La carte attend que la personne dise que le dossier est créé,
+  // ou se valide d'elle-même quand le dossier est créé depuis cette fenêtre.
   const ouvertes = new Set();
   async function ouvrirDossier(c) {
     const contexte = { prestations: etat.db.prestations, trajets: etat.db.trajets, partenaires: etat.db.partenaires, nomPartenaire, taxi: modeTaxi() };
     const prep = propositionVersDemande(propositionDepuisCarte(c.donnees), contexte);
-    (await import("./demande.mjs")).ouvrirDemande(null, { texte: "", ...prep });
+    const surCree = async ({ dossier }) => {
+      ouvertes.delete(c.id);
+      await apresValidation(c, { dossierId: dossier.id });
+      await decider(c, "validee");
+    };
+    (await import("./demande.mjs")).ouvrirDemande(null, { texte: "", ...prep, surCree });
     ouvertes.add(c.id);
     const ancien = zoneFil.querySelector(`[data-carte="${c.id}"]`);
     if (ancien) ancien.replaceWith(carte(c));
   }
   async function ouvrirReservation(c) {
     const { formulaireReservation } = await import("./reservations.mjs");
-    const ferme = modal(tr("Nouvelle réservation"), formulaireReservation(reservationDepuisCarte(c.donnees), async () => (ferme(), toast(tr("Service ajouté au dossier.")), await decider(c, "validee"))));
+    // « Annuler » rend null : la carte reste à valider.
+    const ferme = modal(tr("Nouvelle réservation"), formulaireReservation(reservationDepuisCarte(c.donnees), async (res) => {
+      ferme();
+      if (!res) return;
+      toast(tr("Service ajouté au dossier."));
+      await apresValidation(c, { dossierId: res.dossier_id, enregistre: { reservation: res } });
+      await decider(c, "validee");
+    }));
   }
   async function ouvrirModification(c) {
     const r = etat.db.reservations.find((x) => x.id === c.donnees.reservation_id);
     if (!r) return toast(tr("Ce service n'existe plus."), true);
     const { formulaireReservation } = await import("./reservations.mjs");
-    const ferme = modal(tr("Modifier la réservation"), formulaireReservation(reservationModifiee(r, c.donnees), async () => (ferme(), toast(tr("Service modifié.")), await decider(c, "validee"))));
+    const ferme = modal(tr("Modifier la réservation"), formulaireReservation(reservationModifiee(r, c.donnees), async (res) => {
+      ferme();
+      if (!res) return;
+      toast(tr("Service modifié."));
+      await apresValidation(c, { dossierId: res.dossier_id || r.dossier_id, enregistre: { reservation: res } });
+      await decider(c, "validee");
+    }));
   }
   // Une durée donnée dans la conversation entre dans la table de référence, confirmée (Nani l'a donnée elle-même).
   async function ajouterTemps(c) {
@@ -480,6 +544,7 @@ export async function vueAgent(idOuvert = "") {
     try {
       await navigator.clipboard.writeText(texte);
       toast(tr("Réponse copiée : collez-la dans WhatsApp."));
+      await apresValidation(c, { enregistre: { message: texte } });
       await decider(c, "validee");
     } catch {
       toast(tr("Copie impossible : sélectionnez le texte et copiez-le."), true);

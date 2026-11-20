@@ -2,12 +2,13 @@
 // tendance sur 30 jours et qualité des réponses rédigées. Réservé aux administratrices (réglages et journal) ; l'administratrice générale voit
 // toutes les entreprises. Les chiffres viennent du journal de l'assistant, qui ne garde jamais le message ni la réponse (calculs : assistant-suivi-calc.mjs).
 import { etat, entitesAccessibles, permissionsDe } from "../etat.mjs";
-import { h, vider } from "../ui.mjs";
+import { h, vider, toast, confirmer } from "../ui.mjs";
 import { formatDate } from "../calc.mjs";
 import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
 import { vide } from "./commun.mjs";
 import { tuile, graphiqueColonnes, tableauTrie, squelette } from "./analyses-widgets.mjs";
-import { suiviAssistant, entreprisesSuivies, debutLecture, jourBangkok } from "../assistant-suivi-calc.mjs";
+import { suiviAssistant, entreprisesSuivies, debutLecture, jourBangkok, etatCredit, GENRES_APPRIS } from "../assistant-suivi-calc.mjs";
+import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 
 // Dollars : deux décimales dès 0,10 $, sinon deux chiffres significatifs (un appel coûte souvent moins d'un centime).
 export function dollars(v) {
@@ -24,6 +25,7 @@ const AIDES = {
   mois: [N_("Coût du mois"), N_("Somme du coût estimé des appels depuis le 1er du mois. La projection prolonge le coût moyen par jour écoulé jusqu'à la fin du mois, à partir du 3 du mois.")],
   echecs: [N_("Échecs du mois"), N_("Appels qui n'ont rien rendu d'utilisable : refus de Claude, réponse coupée ou rejetée par les contrôles, clé refusée, Anthropic occupé ou en panne. Les demandes arrêtées avant Claude (assistant éteint, droit manquant, limite du jour atteinte) ne sont pas notées dans le journal.")],
   limite: [N_("Limite du jour"), N_("Chaque personne a droit à un nombre fixe d'appels par jour (heure de Bangkok), toutes entreprises confondues. Au-delà, l'assistant refuse et la lecture par règles reste affichée. Cet écran ne compte que les appels des entreprises que vous suivez : pour une personne qui travaille aussi ailleurs, la limite peut être atteinte plus tôt.")],
+  credit: [N_("Crédit du mois"), N_("Dépense estimée de tout l'assistant depuis le 1er du mois (heure de Bangkok), toutes entreprises confondues, face au plafond réglé par l'administratrice générale. À partir du seuil, les administratrices reçoivent une notification ; au plafond, l'assistant s'arrête jusqu'au 1er du mois suivant. La facture d'Anthropic fait foi.")],
   qualite: [N_("Réponses sans retouche"), N_("À la copie d'une réponse rédigée par l'assistant, l'outil note la part de mots changés avant la copie, jamais le texte. La tuile donne la part des réponses copiées telles quelles. Une retouche faite ensuite dans WhatsApp n'est pas vue.")],
 };
 
@@ -42,9 +44,14 @@ export function vueAssistantSuivi() {
     vider(corps).append(squelette({ tuiles: 5, graphique: true }));
     try {
       const jour = jourBangkok(new Date().toISOString());
-      const r = await etat.store.assistantSuivi({ entiteIds: suivies.map((e) => e.id), depuis: debutLecture(jour) });
+      const [r, budget, appris] = await Promise.all([
+        etat.store.assistantSuivi({ entiteIds: suivies.map((e) => e.id), depuis: debutLecture(jour) }),
+        etat.store.assistantBudget ? etat.store.assistantBudget() : null,
+        etat.store.agentApprentissages ? etat.store.agentApprentissages(entiteId ? [entiteId] : suivies.map((e) => e.id)) : null,
+      ]);
       const S = suiviAssistant({ ...r, jour, entites: suivies, entiteId });
-      vider(corps).append(...rendre(S, { plusieurs: suivies.length > 1 && !entiteId }));
+      const plusieurs = suivies.length > 1 && !entiteId;
+      vider(corps).append(blocCredit(etatCredit(budget), charger), ...rendre(S, { plusieurs }), blocAppris(appris, { entites: suivies, noms: r.noms || {}, plusieurs, recharger: charger }));
     } catch (err) {
       const manque = /assistant_journal|schema cache|does not exist/i.test(err.message || "");
       vider(corps).append(h("p", { class: "erreur-form", role: "alert" }, manque ? tr("Le journal de l'assistant n'existe pas encore dans la base (migration 27).") : tr("Impossible de lire le journal de l'assistant : {message}", { message: err.message })), h("button", { class: "secondaire", type: "button", onclick: charger }, tr("Réessayer")));
@@ -141,4 +148,95 @@ function rendre(S, { plusieurs }) {
   );
 
   return [tuiles, tendance, usages, personnes, entreprises, echecsBloc, qualite];
+}
+
+// ---- Crédit du mois (migration 54) -------------------------------------------------------------------------------------------
+function blocCredit(C, recharger) {
+  if (!C) return h("p", { class: "aide" }, tr("Le plafond du mois s'installe avec la mise à jour 54 de la base."));
+  const barre = h("div", { class: "as-credit-barre", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.min(100, C.pct)), "aria-label": tr("Part du plafond dépensée") }, h("span", { style: `width:${Math.min(100, C.pct)}%` }), h("i", { style: `left:${C.seuil}%`, "aria-hidden": "true" }));
+  const t = tuile({
+    libelle: tr("Crédit du mois"),
+    valeur: tr("{cout} sur {plafond}", { cout: dollars(C.cout), plafond: dollars(C.plafond) }),
+    detail: C.atteint ? tr("Plafond atteint : l'assistant est arrêté jusqu'au 1er du mois prochain.") : tr("{pct} % du plafond, alerte à {seuil} %, reste {reste}", { pct: C.pct, seuil: C.seuil, reste: dollars(C.reste) }),
+    aide: AIDES.credit,
+    grande: true,
+  });
+  if (C.alerte) t.classList.add("as-alerte");
+  t.append(barre);
+  let reglage = null;
+  if (C.peutRegler) {
+    const plafond = h("input", { id: "as-plafond", type: "number", min: "1", max: "1000", step: "0.01", inputmode: "decimal", value: String(C.plafond) });
+    const seuil = h("input", { id: "as-seuil", type: "number", min: "50", max: "99", step: "1", inputmode: "numeric", value: String(C.seuil) });
+    const erreur = h("p", { class: "erreur-form", role: "alert" });
+    reglage = h(
+      "form",
+      {
+        class: "as-plafond",
+        onsubmit: async (e) => {
+          e.preventDefault();
+          const p = Number(plafond.value);
+          const s = Number(seuil.value);
+          if (!(p >= 1 && p <= 1000)) return (erreur.textContent = tr("Le plafond va de 1 à 1 000 $."));
+          if (!(Number.isInteger(s) && s >= 50 && s <= 99)) return (erreur.textContent = tr("L'alerte se règle entre 50 et 99 %."));
+          try {
+            await etat.store.reglerPlafondAssistant(p, s);
+            toast(tr("Plafond du mois enregistré."));
+            rafraichirBandeauCredit();
+            recharger();
+          } catch (err) {
+            erreur.textContent = err.message;
+          }
+        },
+      },
+      h("div", { class: "champ" }, h("label", { for: "as-plafond" }, tr("Plafond du mois ($)")), plafond),
+      h("div", { class: "champ" }, h("label", { for: "as-seuil" }, tr("Alerte à (%)")), seuil),
+      h("button", { class: "principal", type: "submit" }, tr("Enregistrer")),
+      erreur,
+      h("p", { class: "aide pleine-largeur" }, tr("Le crédit API se recharge dans la console Anthropic : le plafond protège ce crédit, il ne le remplace pas."))
+    );
+  }
+  return h("section", { class: "st-bloc as-credit" }, h("h2", { class: "st-titre" }, tr("Crédit de l'assistant")), h("div", { class: "st-tuiles" }, t), reglage);
+}
+
+// ---- Ce que l'agent a appris (migration 54) ------------------------------------------------------------------------------------
+function blocAppris(lignes, { entites, noms, plusieurs, recharger }) {
+  const titre = h("h2", { class: "st-titre" }, tr("Ce que l'assistant a appris"));
+  if (!Array.isArray(lignes)) return h("section", { class: "st-bloc" }, titre, h("p", { class: "aide" }, tr("Les apprentissages de l'assistant s'installent avec la mise à jour 54 de la base.")));
+  const nomEntite = (id) => (entites.find((e) => e.id === id) || {}).nom || "";
+  const supprimer = async (l) => {
+    if (!(await confirmer(tr("Oublier cette correction ? L'assistant ne s'en servira plus."), tr("Oublier"), true))) return;
+    try {
+      await etat.store.agentSupprimerApprentissage(l.id);
+      toast(tr("Correction oubliée."));
+      recharger();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  };
+  const peutSupprimer = (l) => {
+    const p = permissionsDe(l.entite_id) || [];
+    return p.includes("reglages.ecrire") && p.includes("journal.voir");
+  };
+  return h(
+    "section",
+    { class: "st-bloc as-appris" },
+    titre,
+    h("p", { class: "aide" }, tr("Quand une proposition de l'assistant est changée avant d'être validée, la correction est gardée pour l'entreprise et relue comme exemple dans les conversations suivantes. Jamais un net ni les coordonnées d'un client : les noms, téléphones et e-mails sont masqués.")),
+    lignes.length
+      ? h(
+          "ul",
+          { class: "as-appris-liste" },
+          lignes.slice(0, 200).map((l) =>
+            h(
+              "li",
+              null,
+              h("div", { class: "as-appris-tete" }, h("strong", null, tr(GENRES_APPRIS[l.genre] || l.genre)), h("span", { class: "as-quand" }, `${formatDate(jourBangkok(l.cree_le))}${noms[l.user_id] ? ` · ${noms[l.user_id]}` : ""}${plusieurs ? ` · ${nomEntite(l.entite_id)}` : ""}`)),
+              l.contexte ? h("p", { class: "as-appris-contexte" }, l.contexte) : null,
+              h("p", { class: "as-appris-modif" }, h("del", null, l.avant || tr("vide")), " → ", h("ins", null, l.apres || tr("vide"))),
+              peutSupprimer(l) ? h("button", { class: "lien danger", type: "button", onclick: () => supprimer(l) }, tr("Oublier")) : null
+            )
+          )
+        )
+      : h("p", { class: "vide-court" }, tr("Aucune correction pour l'instant."))
+  );
 }
