@@ -50,7 +50,9 @@ export async function imageVoucher(x, contexte = undefined) {
 
 let adresseApercu = null;
 
-export function envoyerVoucher(x) {
+// `avantNavigation` (espace unifié, migration 63) : appelé à la fermeture de la fenêtre, avant toute navigation (retour dans l'entreprise de
+// la conversation de l'Assistant).
+export function envoyerVoucher(x, { avantNavigation = null } = {}) {
   const r = x.reservation;
   const dossier = etat.db.dossiers.find((d) => d.id === r.dossier_id) || {};
   const client = etat.db.clients.find((c) => c.id === dossier.client_id) || {};
@@ -280,6 +282,7 @@ export function envoyerVoucher(x) {
       protege: false,
       ferme: () => {
         ferme = true;
+        if (avantNavigation) avantNavigation();
         if (note) naviguer(location.hash);
       },
     }

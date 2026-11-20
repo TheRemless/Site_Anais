@@ -9,9 +9,10 @@ import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, 
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
 import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
 import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
-import { avecNomsLies, peutUtiliserPartages } from "./partage-clients-calc.mjs";
+import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
 import { whatsappDemo } from "./demo-whatsapp.mjs";
+import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp } from "./whatsapp-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
@@ -109,8 +110,37 @@ export function creer() {
       data.taches = [...(data.taches || []).filter((t) => !String(t.titre || "").startsWith("WhatsApp, ")), ...tachesWa];
     }
     for (const t of TABLES_WHATSAPP_DEMO) data[t] = data[t] || [];
-    if (neuve || sansWhatsApp) sauve();
+    // Espace unifié Secret et Taxi (migration 63) : fiches partagées dans les deux sens, deux dossiers liés, une fiche en double et une
+    // conversation de l'Assistant dans chaque entreprise. Posé une fois, aussi dans une démo déjà enregistrée.
+    const sansUnifie = !AGENCE && !data.demo_unifie;
+    if (sansUnifie) semerUnifie();
+    if (neuve || sansWhatsApp || sansUnifie) sauve();
   };
+  // Le partage réciproque Secret et Taxi (migration 63) : posé par la base pour l'organisation de Zwald seulement. La démonstration le pose à la
+  // première carte mixte, comme une organisation qui l'a coché dans ses réglages ; l'outil le relit aussitôt.
+  function partageReciproqueDemo(a, b) {
+    data.partages_clients = data.partages_clients || [];
+    let pose = false;
+    for (const [s, c] of [[a.id, b.id], [b.id, a.id]]) if (!data.partages_clients.some((p) => p.source_id === s && p.cible_id === c)) (data.partages_clients.push({ source_id: s, cible_id: c, organisation_id: a.organisation_id }), (pose = true));
+    return pose;
+  }
+  function semerUnifie() {
+    data.demo_unifie = 1;
+    const secret = data.entites.find((e) => e.slug === "excursions" || e.slug === "secret");
+    const taxi = data.entites.find((e) => e.slug === "taxi");
+    if (!secret || !taxi) return;
+    // Deux dossiers liés de la même demande : un dossier d'excursions et une course de Taxi, sur la même fiche.
+    const dExc = data.dossiers.find((d) => d.entite_id === secret.id && !d.annule && d.client_id && !d.dossier_lie_id);
+    const dTaxi = data.dossiers.find((d) => d.entite_id === taxi.id && !d.annule && !d.dossier_lie_id);
+    if (dExc && dTaxi) Object.assign(dTaxi, { client_id: dExc.client_id }), (dTaxi.dossier_lie_id = dExc.id), (dExc.dossier_lie_id = dTaxi.id);
+    // Une fiche en double : le même client noté une seconde fois chez Taxi (même téléphone, même nom).
+    const autre = data.clients.find((c) => c.entite_id === secret.id && c.telephone && (!dExc || c.id !== dExc.client_id));
+    if (autre) data.clients.push({ ...structuredClone(autre), id: uid(), entite_id: taxi.id, created_at: aujourdhui(), notes: "" });
+    // Une conversation de l'Assistant chez Taxi, pour la liste des deux entreprises.
+    const admin = data.profils.find((p) => p.super_admin);
+    data.agent_conversations = data.agent_conversations || [];
+    if (admin) data.agent_conversations.push({ id: uid(), entite_id: taxi.id, user_id: admin.user_id, titre: "Transfert aéroport de Krabi", apercu: "Course pour 2 personnes, pickup à calculer.", dossier_id: null, statut: "ouverte", cree_le: new Date(Date.now() - 3600000).toISOString(), maj_le: new Date(Date.now() - 3600000).toISOString(), demo_etat: {} });
+  }
   const sauve = () => {
     try {
       localStorage.setItem(CLE, JSON.stringify(data));
@@ -148,18 +178,23 @@ export function creer() {
     const e = data.entites.find((x) => x.id === entiteId);
     return !!e && accessibles().includes(entiteId) && lecteurWhatsApp({ entite: e, superAdmin: false, permissions: permissionsDans(contexte(), entiteId), voitTout: voitTout(contexte(), entiteId) });
   };
-  const litWhatsApp = (entiteId) => (entiteId ? adminWhatsApp(entiteId) : data.entites.some((e) => marqueEntite(e) && adminWhatsApp(e.id)));
+  // Migration 63 : la boîte est commune en LECTURE (un administrateur de Secret ou de Taxi lit toutes les conversations de l'organisation) ;
+  // les écritures demandent toujours d'administrer l'entreprise de la conversation (whatsapp_ecrit).
+  const adminUneDesDeux = () => data.entites.some((e) => e.organisation_id === monOrg() && marqueEntite(e) && adminWhatsApp(e.id));
+  const litWhatsApp = (entiteId) => (!entiteId || (data.entites.find((e) => e.id === entiteId) || {}).organisation_id === monOrg()) && adminUneDesDeux();
+  const ecritWhatsApp = (entiteId) => (entiteId ? adminWhatsApp(entiteId) : adminUneDesDeux());
   const conversationLue = (id) => data.whatsapp_conversations.find((c) => c.id === id && c.organisation_id === monOrg() && litWhatsApp(c.entite_id)) || null;
+  const conversationEcrite = (id) => data.whatsapp_conversations.find((c) => c.id === id && c.organisation_id === monOrg() && ecritWhatsApp(c.entite_id)) || null;
   // Comme whatsapp_reclasser (migration 59) : les non-lus ne remontent jamais, un changement d'entreprise est « manuel » et retire le client et le
   // dossier d'une autre entreprise, puis cherche le client par le numéro dans la nouvelle.
   const garderWhatsApp = (table, ligne, patch) => {
     if (table === "whatsapp_propositions") {
-      if (ligne.statut !== "a_faire" || !["traitee", "ignoree"].includes(patch.statut)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      if (ligne.statut !== "a_faire" || !["traitee", "ignoree"].includes(patch.statut) || !conversationEcrite(ligne.conversation_id) || (ligne.entite_id && !adminWhatsApp(ligne.entite_id))) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
       Object.assign(patch, { traitee_le: new Date().toISOString(), traitee_par: utilisateur.user_id, traitee_par_quoi: "outil" });
       return;
     }
     if (table !== "whatsapp_conversations") return;
-    if (!conversationLue(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+    if (!conversationEcrite(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
     for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale"].includes(k)) delete patch[k];
     // Signal de paiement (migration 62) : depuis l'outil, seulement remis à vide (« Ignorer »).
     if ("paiement_signale" in patch && patch.paiement_signale !== null) delete patch.paiement_signale;
@@ -188,6 +223,24 @@ export function creer() {
   };
 
   const contexte = () => ({ profil: utilisateur, membres: data.membres, roles: data.roles });
+  // La carte mixte de la démonstration : seulement quand la personne travaille dans les deux entreprises (comme modeUnifie) et que la demande
+  // cite une excursion en bateau et un transfert.
+  function carteMixteDemo(entiteId, texte) {
+    const ent = data.entites.find((x) => x.id === entiteId);
+    const autre = data.entites.find((x) => x.id !== entiteId && marqueUnifiee(x) && marqueUnifiee(x) !== marqueUnifiee(ent));
+    if (!marqueUnifiee(ent) || !autre || !["partenaires.lire", "dossiers.ecrire"].every((d) => droit(entiteId, d) && droit(autre.id, d))) return null;
+    if (!/(4 islands|four islands|koh rok|phi phi|îles)/i.test(texte) || !/(airport|aéroport|aeroport|transfer|transfert|taxi)/i.test(texte)) return null;
+    const secret = marqueUnifiee(ent) === "secret" ? ent : autre;
+    const taxi = secret === ent ? autre : ent;
+    const exc = data.prestations.find((p) => p.entite_id === secret.id && /4 islands/i.test(p.libelle)) || data.prestations.find((p) => p.entite_id === secret.id);
+    const course = data.prestations.find((p) => p.entite_id === taxi.id && /airport/i.test(p.libelle)) || data.prestations.find((p) => p.entite_id === taxi.id);
+    if (!exc || !course) return null;
+    const j = (n) => ajouterJours(aujourdhui(), n);
+    const service = (p, ent2, date, extra = {}) => ({ texte: p ? p.libelle : "", offre: p ? { genre: "prestation", id: p.id } : null, libelle: p ? p.libelle : "", date, heure_pickup: "", lieu_pickup: "Lanta Sand Resort", de: "", vers: "", adultes: 2, enfants: 0, prix: p ? Number(p.prix_vente) * (p.unite === "pp" ? 2 : 1) : null, origine_prix: p ? "catalogue" : "a_fixer", remarque: "", entite_id: ent2 ? ent2.id : null, entreprise: ent2 ? marqueUnifiee(ent2) : "", avertissements: ent2 ? [] : ["entreprise_a_choisir"], ...extra });
+    const services = [service(course, taxi, j(2)), service(exc, secret, j(3)), service(null, null, j(4), { texte: "Sunset dinner boat pickup", libelle: "Sunset dinner boat pickup", prix: 1500, origine_prix: "saisi" })];
+    if (partageReciproqueDemo(secret, taxi)) setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+    return { genre: "dossier", titre: "Séjour de Clara : excursion et transfert", donnees: { client: { nom: "Clara Martin", telephone: "+447700900966", hotel: "Lanta Sand Resort", langue: "en" }, adultes: 2, enfants: 0, bebes: 0, services, entreprises: ["secret", "taxi"] }, avertissements: ["entreprise_a_choisir"] };
+  }
   // Comme la base (migration 42) : l'administrateur ne voit que les entreprises de son organisation, l'éditeur du logiciel aucune.
   const monOrg = () => utilisateur.organisation_id || null;
   const accessibles = () =>
@@ -210,7 +263,11 @@ export function creer() {
     if (!c || c.entite_id === apres.entite_id) return;
     if (!(data.partages_clients || []).some((p) => p.source_id === c.entite_id && p.cible_id === apres.entite_id)) throw new Error(tr("Ce client appartient à une autre entreprise qui ne partage pas ses clients avec celle-ci."));
     const ctx = contexte();
-    const permis = peutUtiliserPartages({ superAdmin: !!utilisateur.super_admin, permissionsSource: permissionsDans(ctx, c.entite_id), permissionsCible: permissionsDans(ctx, apres.entite_id), voitToutSource: voitTout(ctx, c.entite_id) });
+    // Comme partage_clients_permis (migration 63) : entre Secret et Taxi, le partage réciproque suffit à qui lit tous les clients de la source.
+    const ea = data.entites.find((e) => e.id === c.entite_id);
+    const eb = data.entites.find((e) => e.id === apres.entite_id);
+    const reciproque = !!marqueUnifiee(ea) && !!marqueUnifiee(eb) && marqueUnifiee(ea) !== marqueUnifiee(eb) && partageReciproque(data.partages_clients || [], c.entite_id, apres.entite_id);
+    const permis = partageClientsPermisUnifie({ superAdmin: !!utilisateur.super_admin, permissionsSource: permissionsDans(ctx, c.entite_id), permissionsCible: permissionsDans(ctx, apres.entite_id), voitToutSource: voitTout(ctx, c.entite_id), reciproque });
     if (!permis) throw new Error(tr("Seule l'administration utilise les clients d'une autre entreprise."));
   };
   // Comme garder_entite_client (migration 46) : une fiche utilisée par des dossiers ne change pas d'entreprise.
@@ -443,7 +500,7 @@ export function creer() {
     // « Préparer une réponse » en démonstration : une proposition « en_cours » tout de suite, puis une réponse fictive après un court délai,
     // annoncées comme le ferait Realtime. Prépare même pour un contact réglé sur « Jamais » ou un message que le tri a écarté, comme la fonction.
     async whatsappPreparer(conversationId, { delai = 1500 } = {}) {
-      const c = conversationLue(conversationId);
+      const c = conversationEcrite(conversationId);
       if (!c) return { erreur: "droit_manquant" };
       const derniers = data.whatsapp_messages.filter((m) => m.conversation_id === c.id).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le));
       const dernier = derniers[derniers.length - 1];
@@ -461,6 +518,17 @@ export function creer() {
         ecouteurs.forEach((f) => f());
       }, delai);
       return { ok: true };
+    },
+    // Comme doublons_clients_partages (migration 63) : seulement pour qui lit tous les clients de Secret et de Taxi.
+    async doublonsClients() {
+      const ids = new Set(accessibles());
+      const unifiees = data.entites.filter((e) => ids.has(e.id) && e.organisation_id === monOrg() && marqueUnifiee(e));
+      if (unifiees.length !== 2 || !unifiees.every((e) => droit(e.id, "clients.lire") && voitTout(contexte(), e.id))) return [];
+      // Le partage réciproque Secret et Taxi que la migration 63 pose en base, posé ici à la première lecture de la liste (et à la première
+      // carte mixte) : la fusion du doublon semé en dépend. Pas au chargement, la démo de départ ne partage que les clients de l'agence
+      // (gestion-partage-clients).
+      if (partageReciproqueDemo(unifiees[0], unifiees[1])) (sauve(), setTimeout(() => ecouteurs.forEach((f) => f()), 0));
+      return doublonsLocaux(data.clients, unifiees);
     },
     async whatsappConversation(id) {
       const c = conversationLue(id);
@@ -693,6 +761,22 @@ export function creer() {
         surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "demo" });
         return { ok: true };
       }
+      // Espace unifié (migration 63) : une demande qui mêle une excursion et un transfert donne une seule carte, chaque service avec son
+      // entreprise (le troisième, hors catalogue, sans entreprise : la personne choisit), comme la fonction en mode unifié.
+      const carteMixte = carteMixteDemo(e, texte);
+      if (carteMixte) {
+        const phrase = "Une seule carte pour les deux entreprises : l'excursion chez Secret, le transfert chez Taxi. Le dîner en bateau n'a pas d'entreprise, choisissez-la sur le service. À la validation, deux dossiers liés sont créés.";
+        surEvenement({ t: "texte", delta: phrase });
+        message("assistant", [{ type: "text", text: phrase }]);
+        const carte = { id: uid(), conversation_id: conv.id, statut: "proposee", cree_le: maintenant(), decide_le: null, ...carteMixte };
+        data.agent_cartes.push(carte);
+        surEvenement({ t: "carte", carte: structuredClone(carte) });
+        conv.apercu = phrase.slice(0, 200);
+        conv.maj_le = maintenant();
+        sauve();
+        surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "demo" });
+        return { ok: true };
+      }
       const { repondreDemo } = await import("./agent-demo.mjs");
       const entite = data.entites.find((x) => x.id === e) || {};
       const r = await repondreDemo(texte, { aujourdhui: aujourdhui(), etat: conv.demo_etat || {}, entreprise: entite.nom || "", signer: !regl.fonctionnement || regl.fonctionnement === "sur_mesure", lignes: data.temps_trajets.filter((l) => l.entite_id === e), liaisons: data.liaisons_ferry.filter((l) => l.entite_id === e), hotels: data.hotels_lieux.filter((l) => l.entite_id === e) });
@@ -818,7 +902,7 @@ export function creer() {
       out.whatsapp_conversations = data.whatsapp_conversations.filter((c) => c.organisation_id === monOrg() && litWhatsApp(c.entite_id));
       const convs = new Set(out.whatsapp_conversations.map((c) => c.id));
       // Une proposition se lit par les administrateurs de l'entreprise pour laquelle elle a été préparée (migration 59).
-      out.whatsapp_propositions = data.whatsapp_propositions.filter((p) => convs.has(p.conversation_id) && (!p.entite_id || adminWhatsApp(p.entite_id)));
+      out.whatsapp_propositions = data.whatsapp_propositions.filter((p) => convs.has(p.conversation_id));
       out.whatsapp_reglages = data.whatsapp_reglages.filter((r) => r.organisation_id === monOrg() && litWhatsApp(null));
       out.whatsapp_disponible = !AGENCE;
       out.whatsapp_propositions_disponible = !AGENCE;
@@ -897,6 +981,10 @@ export function creer() {
       if (table === "dossiers") {
         data.documents = data.documents.filter((d) => d.dossier_id !== id);
         data.paiements = data.paiements.filter((p) => p.dossier_id !== id);
+        // Comme la base (migration 11, on delete cascade) : les réservations du dossier et leurs nets partent avec lui.
+        const resas = new Set(data.reservations.filter((r) => r.dossier_id === id).map((r) => r.id));
+        data.reservations = data.reservations.filter((r) => !resas.has(r.id));
+        data.reservations_nets = data.reservations_nets.filter((n) => !resas.has(n.reservation_id));
       }
       if (ligne) journaliser(table, "delete", ligne);
       sauve();
@@ -961,7 +1049,9 @@ export function creer() {
       if (!g || !a || g.id === a.id || (g.entite_id !== a.entite_id && !partage)) throw new Error(tr("Fusion impossible : les deux fiches doivent être deux clients différents de la même entreprise."));
       if (!(droit(a.entite_id, "clients.fusionner") || (droit(a.entite_id, "clients.supprimer") && droit(a.entite_id, "dossiers.ecrire")))) throw new Error(tr("Votre rôle ne permet pas de fusionner des clients."));
       if (!voitTout(contexte(), a.entite_id)) throw new Error(tr("Fusion réservée aux rôles qui voient tous les dossiers de l'entreprise."));
-      if (g.entite_id !== a.entite_id && !(peutUtiliserPartages({ superAdmin: !!utilisateur.super_admin, permissionsSource: permissionsDans(contexte(), g.entite_id), permissionsCible: permissionsDans(contexte(), a.entite_id), voitToutSource: voitTout(contexte(), g.entite_id) }) && droit(g.entite_id, "clients.ecrire"))) throw new Error(tr("Seule l'administration rattache un client à la fiche d'une autre entreprise."));
+      // Comme fusionner_clients (migration 63) : entre deux entreprises, l'administration des deux, qui écrit et lit tous les clients de la
+      // fiche gardée.
+      if (g.entite_id !== a.entite_id && !(monOrg() && [g, a].every((x) => (data.entites.find((e) => e.id === x.entite_id) || {}).organisation_id === monOrg()) && peutFusionnerPaire({ superAdmin: !!utilisateur.super_admin, garder: { entite_id: g.entite_id, permissions: permissionsDans(contexte(), g.entite_id), voitTout: voitTout(contexte(), g.entite_id) }, absorbe: { entite_id: a.entite_id, permissions: permissionsDans(contexte(), a.entite_id), voitTout: voitTout(contexte(), a.entite_id) }, partage: () => partage }))) throw new Error(tr("Seule l'administration rattache un client à la fiche d'une autre entreprise."));
       for (const d of data.dossiers.filter((x) => x.client_id === absorbe)) await this.modifier("dossiers", d.id, { client_id: garder });
       if (patch && Object.keys(patch).length) await this.modifier("clients", garder, patch);
       await this.supprimer("clients", absorbe);

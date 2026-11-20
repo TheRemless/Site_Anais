@@ -407,6 +407,15 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       if (rep.ok && lu && lu.ok) return lu;
       return { erreur: (lu && lu.erreur) || "inconnu" };
     },
+    // Fiches en double entre Secret et Taxi (migration 63). null tant que la fonction manque.
+    async doublonsClients() {
+      const { data, error } = await sb.rpc("doublons_clients_partages");
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || "")) return null;
+        throw new Error(error.message);
+      }
+      return data || [];
+    },
     // Une conversation WhatsApp relue en base (liaison après validation d'un dossier dans l'Assistant). null : introuvable ou illisible.
     async whatsappConversation(id) {
       const { data, error } = await sb.from("whatsapp_conversations").select("id, entite_id, client_id, dossier_id").eq("id", id).maybeSingle();
