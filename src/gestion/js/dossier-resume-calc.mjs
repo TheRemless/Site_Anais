@@ -32,6 +32,8 @@ export function commissionDossier(reservations, netDe) {
     ecart: somme("ecart"),
     sansCommission: groupes.reduce((s, g) => s + g.sansCommission, 0),
     aRecevoir: groupes.reduce((s, g) => s + g.nbARecevoir, 0),
+    // Le motif d'un écart noté à l'encaissement (migration 57) : rabais au client, vendu plus cher, autre, avec la note. Une fois par motif et note.
+    motifs: [...new Map(actives(reservations).map((r) => netDe(r) || {}).filter((n) => n.commission_recue_le && n.commission_ecart_motif).map((n) => [`${n.commission_ecart_motif}|${n.commission_ecart_note || ""}`, { motif: n.commission_ecart_motif, note: n.commission_ecart_note || "" }])).values()],
   };
 }
 

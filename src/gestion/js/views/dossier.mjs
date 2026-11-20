@@ -15,6 +15,7 @@ import { margeDocument, chiffres as numeroDe } from "../partenaires-calc.mjs";
 import { supprimerDocument } from "./document-suppression.mjs";
 import { sectionReservationsDossier, formulaireReservation, ajouterServices } from "./reservations.mjs";
 import { etatsServices, personnesDossier, commissionDossier, actionSuivante, varianteFacture } from "../dossier-resume-calc.mjs";
+import { MOTIFS_ECART } from "../encaisser-calc.mjs";
 import { vouchersDuDossier, imprimerTousLesVouchers } from "./voucher.mjs";
 import { envoyerVoucher } from "./voucher-envoi.mjs";
 import { envoyerDocument } from "./document-envoi.mjs";
@@ -701,6 +702,7 @@ function ficheDossierVue(id) {
             { class: "resume-bloc resume-commission" },
             h("p", { class: "resume-libelle" }, tr("Commission")),
             h("dl", null, ligne(tr("Prévue"), fm(commission.prevue)), ligne(tr("Reçue"), fm(commission.recue)), ligne(tr("À recevoir"), fm(commission.reste), commission.reste > 0 ? "resume-reste" : "resume-ok"), commission.ecart ? ligne(tr("Écart sur les commissions réglées"), fm(commission.ecart)) : null),
+            commission.motifs.length ? h("p", { class: "resume-detail" }, tr("Motif de l'écart : {motifs}", { motifs: commission.motifs.map((m) => [tr((MOTIFS_ECART.find(([k]) => k === m.motif) || [, m.motif])[1]), m.note].filter(Boolean).join(", ")).join(" ; ") })) : null,
             commission.sansCommission > 0 ? h("p", { class: "resume-detail" }, pluriel(commission.sansCommission, N_("{n} service payé sur place sans commission renseignée"), N_("{n} services payés sur place sans commission renseignée"))) : null,
             h("a", { class: "resume-lien-bas", href: "#services", onclick: aller("services") }, tr("Voir dans les services"), icone("fleche", 14))
           )

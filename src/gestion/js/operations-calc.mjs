@@ -434,48 +434,6 @@ export function lieuParDefaut(reservationsDuDossier, client = {}, entiteId = nul
 // Un partenaire a-t-il un mode et une règle de commission renseignés ? Sert à signaler ce qui reste à compléter.
 export const regleDeCommissionComplete = (regle) => commissionPrevue(regle, { vente: 1, net: 1, adultes: 1 }) !== null;
 
-// Les services d'un groupe (partenaire et mois) qu'un virement peut solder, ceux dont la réception n'est pas encore datée. Seuls les services
-// passés (avant `ajd`) avec une commission prévue sont cochés d'avance : un service à venir ou sans commission ne se marque reçu que si
-// quelqu'un le coche. Renvoie [{ reservation, prevue (nombre ou null), passe, coche }], dans l'ordre des dates.
-export function servicesAReceptionner(reservations, netDe, ajd) {
-  return (reservations || [])
-    .filter((r) => !(netDe(r) || {}).commission_recue_le)
-    .map((r) => {
-      const n = netDe(r) || {};
-      const prevue = n.commission_prevue !== null && n.commission_prevue !== undefined ? Number(n.commission_prevue) : null;
-      const passe = !!r.date_service && r.date_service < ajd;
-      return { reservation: r, prevue, passe, coche: passe && prevue !== null };
-    })
-    .sort((a, b) => String(a.reservation.date_service || "9999").localeCompare(String(b.reservation.date_service || "9999")));
-}
-
-// Le partenaire a versé `montant` pour ce groupe (partenaire et mois) : on le répartit sur ses réservations, proportionnellement à la commission
-// prévue (à parts égales quand rien n'est prévu), et on date la réception. Le dernier prend l'arrondi. `ids` : seulement ces réservations (la
-// liste cochée), sinon toutes celles qui ne sont pas encore réglées. Renvoie [{ reservation_id, commission_recue }] et l'écart avec ce qui était
-// attendu (positif : le partenaire a versé plus).
-export function repartirReception(reservations, netDe, montant, { ids = null } = {}) {
-  const m = Math.round(Number(montant) * 100) / 100;
-  const cibles = reservations.filter((r) => {
-    const n = netDe(r);
-    return !(n && n.commission_recue_le) && (!ids || ids.has(r.id));
-  });
-  const prevue = (r) => {
-    const n = netDe(r);
-    return n && n.commission_prevue !== null && n.commission_prevue !== undefined ? Number(n.commission_prevue) : 0;
-  };
-  const attendu = Math.round(cibles.reduce((s, r) => s + prevue(r), 0) * 100) / 100;
-  if (!cibles.length || !(m >= 0)) return { repartition: [], ecart: 0, attendu };
-  const poids = attendu > 0 ? cibles.map(prevue) : cibles.map(() => 1);
-  const somme = poids.reduce((s, x) => s + x, 0);
-  let reste = m;
-  const repartition = cibles.map((r, i) => {
-    const part = i === cibles.length - 1 ? reste : Math.round(((m * poids[i]) / somme) * 100) / 100;
-    reste = Math.round((reste - part) * 100) / 100;
-    return { reservation_id: r.id, commission_recue: part };
-  });
-  return { repartition, ecart: Math.round((m - attendu) * 100) / 100, attendu };
-}
-
 // ---- Locations (voiture, moto, scooter) ----------------------------------------------------------------------
 // Une ligne louée « par jour » a pour quantité un nombre de jours, pas de personnes.
 export const estLigneJours = (l) => !!l && (l.par === "day" || /par jour|per day/i.test(l.intro || ""));
