@@ -258,7 +258,8 @@ export function confirmationCollee(textes = [], debut = "") {
   const d = plat(debut).slice(0, 60);
   const parDebut = d.length >= 8 ? textes.filter((t) => plat(t).includes(d)) : [];
   if (parDebut.length) return parDebut[parDebut.length - 1];
-  const ressemblent = textes.filter((t) => /booking confirmation|pick-?\s?up\s*:|name\s*:/i.test(t) && /date\s*:/i.test(t));
+  // Une demande du site (« Transfer request », « Booking request ») n'est jamais une confirmation : c'est le client qui demande.
+  const ressemblent = textes.filter((t) => /booking confirmation|pick-?\s?up\s*:|name\s*:/i.test(t) && /date\s*:/i.test(t) && !/\b(transfer|booking|tour)\s+request\b/i.test(t));
   return ressemblent.length === 1 ? ressemblent[0] : "";
 }
 

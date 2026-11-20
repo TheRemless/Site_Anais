@@ -395,6 +395,7 @@ test("course de taxi : la confirmation part telle que collée, retrouvée par se
   assert.equal(confirmationCollee(["Bonjour", conf], "New booking confirmation: VIP TAXI"), conf);
   assert.equal(confirmationCollee(["Bonjour", conf], ""), conf, "la seule qui ressemble à une confirmation");
   assert.equal(confirmationCollee(["Bonjour"], "New booking"), "");
+  assert.equal(confirmationCollee(["Transfer request: Krabi Airport → Koh Lanta\nDate: Sat 22 Nov 2026\nPickup: Krabi Airport\nName: Paul Martin"], ""), "", "une demande du site n'est pas une confirmation");
   const memo = memoDepuis([{ role: "user", content: conf }]);
   const r = await executer("proposer_course", { titre: "Course Tom", debut: "new booking confirmation" }, ctxDe(), memo);
   assert.equal(r.carte.genre, "dossier");
