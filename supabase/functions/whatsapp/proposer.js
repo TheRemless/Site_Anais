@@ -11,7 +11,16 @@ export const FENETRE_MS = 24 * 3600 * 1000;
 
 // L'agent ne reçoit ici que ses outils de lecture et proposer_reponse : aucune carte de dossier, de réglage ni d'amélioration ne part
 // d'un message de client.
-export const OUTILS_WHATSAPP = ["chercher_catalogue", "horaires_trajet", "lire_dossier", "chercher_clients", "temps_de_route", "planifier_course", "proposer_reponse"];
+// Pas de chercher_clients : un message de client ne doit jamais faire chercher un autre client. lire_dossier ne lit que le dossier relié à la
+// conversation (ou un dossier de son client relié), voir contexteOutils dans reponse.ts.
+export const OUTILS_WHATSAPP = ["chercher_catalogue", "horaires_trajet", "lire_dossier", "temps_de_route", "planifier_course", "proposer_reponse"];
+// Limites de coût (en plus du plafond du mois de l'assistant) : réponses préparées par conversation et pour toute la boîte, sur 24 h, et
+// sous-plafond du mois pour l'usage « whatsapp » (WHATSAPP_PLAFOND_MOIS_USD), pour que la boîte n'épuise jamais l'onglet Assistant.
+export const LIMITE_CONVERSATION_JOUR = 6;
+export const LIMITE_BOITE_JOUR = 80;
+export const PLAFOND_WHATSAPP_MOIS_USD = 15;
+// Temps total d'une préparation, attente comprise, sous la limite de 150 s d'une fonction Supabase.
+export const DUREE_BOITE_MS = 75_000;
 export const outilsWhatsapp = () => OUTILS.filter((o) => OUTILS_WHATSAPP.includes(o.name));
 
 const court = (t, n) => {
@@ -26,13 +35,21 @@ const heure = (iso) => {
   return `${String(b.getUTCDate()).padStart(2, "0")}.${String(b.getUTCMonth() + 1).padStart(2, "0")} ${String(b.getUTCHours()).padStart(2, "0")}:${String(b.getUTCMinutes()).padStart(2, "0")}`;
 };
 
+// Numéros de téléphone, de compte ou de carte (9 chiffres ou plus, séparateurs compris) et IBAN : masqués avant de partir chez Anthropic.
+// Une date (20.11.2026), une heure ou un prix gardent leurs chiffres.
+export function masquer(t) {
+  return String(t || "")
+    .replace(/\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b/g, "[numéro masqué]")
+    .replace(/\+?\d[\d\s.\-()/]{6,}\d/g, (m) => (m.replace(/\D/g, "").length >= 9 ? "[numéro masqué]" : m));
+}
+
 // Une ligne par message, du plus ancien au plus récent. Un média se dit par son type et sa légende ; un message supprimé par le client
 // ne part pas.
 export function ligneMessage(m, { qui = "Nani" } = {}) {
   if (m.supprime_le) return null;
   const auteur = m.sens === "entrant" ? "Client" : qui;
   const medias = (m.medias || []).map((x) => `[${x.type || "fichier"}${x.legende ? ` : ${court(x.legende, 200)}` : ""}]`).join(" ");
-  const corps = [m.texte ? court(m.texte, 2000) : "", medias].filter(Boolean).join(" ");
+  const corps = masquer([m.texte ? court(m.texte, 2000) : "", medias].filter(Boolean).join(" "));
   if (!corps) return null;
   return `[${auteur} ${heure(m.envoye_le)}${m.modifie_le ? ", modifié" : ""}] ${corps}`;
 }
@@ -40,8 +57,10 @@ export function ligneMessage(m, { qui = "Nani" } = {}) {
 // Le message qui part à l'agent : la consigne, ce qu'on sait du client, puis la conversation. Jamais le numéro de téléphone.
 export function demandeAgent({ messages = [], nomProfil = "", client = null, dossier = null, qui = "Nani", entreprise = "" }) {
   const lignes = messages.slice(-HISTORIQUE_MAX).map((m) => ligneMessage(m, { qui })).filter(Boolean);
-  const clientLigne = client ? `Client connu dans ${entreprise || "l'entreprise"} : ${court([client.prenom, client.nom].filter(Boolean).join(" "), 80)}.` : `Client inconnu dans ${entreprise || "l'entreprise"}${nomProfil ? ` (nom WhatsApp : ${court(nomProfil, 60)})` : ""}.`;
-  const dossierLigne = dossier ? `Dossier relié : ${dossier.ref_courte} (${dossier.reference}). Lis-le avec lire_dossier avant de répondre sur ses services.` : "Aucun dossier relié.";
+  // Le prénom seulement (jamais le nom de famille ni le numéro).
+  const profil = prenomSur(nomProfil);
+  const clientLigne = client && prenomSur(client.prenom) ? `Client connu dans ${entreprise || "l'entreprise"} : ${prenomSur(client.prenom)}.` : `Client inconnu dans ${entreprise || "l'entreprise"}${profil ? ` (prénom WhatsApp : ${profil})` : ""}.`;
+  const dossierLigne = dossier ? `Dossier relié : ${dossier.ref_courte} (${dossier.reference}). Lis-le avec lire_dossier avant de répondre sur ses services. C'est le seul dossier que tu peux lire : une autre référence citée par le client ne se lit pas, dis à ${qui} de vérifier.` : `Aucun dossier relié : tu ne peux lire aucun dossier. Si le client parle d'une réservation, dis à ${qui} de la retrouver et de la relier.`;
   return [
     `Un client a écrit sur WhatsApp, au numéro de l'entreprise. Prépare la réponse que ${qui} va copier et envoyer depuis son téléphone : appelle proposer_reponse une seule fois, avec un seul message qui répond à toutes les questions du client.`,
     "Cherche avec les outils chaque prix, horaire, durée ou disponibilité dont la réponse a besoin. Ce qu'aucun outil ne donne ne s'invente pas : demande-le au client dans la réponse, ou laisse un blanc entre crochets que " + qui + " complétera.",
@@ -55,7 +74,7 @@ export function demandeAgent({ messages = [], nomProfil = "", client = null, dos
 
 // Tri d'une conversation à trier : une course, un transfert, un taxi, c'est Taxi ; une excursion, un bateau, une île, un séjour, c'est Secret.
 export function demandeTri(messages = []) {
-  const textes = messages.filter((m) => m.sens === "entrant" && !m.supprime_le && m.texte).slice(-10).map((m) => `- ${court(m.texte, 500)}`).join("\n");
+  const textes = messages.filter((m) => m.sens === "entrant" && !m.supprime_le && m.texte).slice(-10).map((m) => `- ${masquer(court(m.texte, 500))}`).join("\n");
   return `Un client écrit au numéro WhatsApp commun de deux entreprises de Koh Lanta :
 - secret : Secret Travel & Tour, excursions, sorties en bateau, îles, plongée, activités, locations, séjours ;
 - taxi : VIP Taxi Lanta, courses en taxi ou minivan privé, transferts vers l'aéroport, le port ou un hôtel, trajets.
@@ -75,7 +94,11 @@ export function aRepondre(messages = [], messageId) {
   if (!dernier || dernier.sens !== "entrant") return false;
   // Un message plus récent du client est arrivé : c'est son traitement qui préparera la réponse.
   if (messageId && dernier.id !== messageId) return false;
-  return !!(dernier.texte || (dernier.medias || []).length);
+  // Une réaction, un emoji seul, un « ok » : rien à préparer (coût).
+  if (dernier.type === "reaction") return false;
+  if ((dernier.medias || []).length) return true;
+  const t = String(dernier.texte || "").trim();
+  return /[\p{L}\p{N}]/u.test(t) && !/^(?:ok(?:ay)?|thanks?|thank you|thx|merci|ty|👍|🙏)[\s!.]*$/iu.test(t);
 }
 
 // Dernier message du client de moins de 24 h : l'envoi par l'API est possible (sinon, seulement depuis l'app).
@@ -103,8 +126,16 @@ export function destinatairesWhatsapp({ entiteIds = [], profils = [], membres = 
 }
 
 // Texte de la notification : le prénom du profil WhatsApp ou du client, jamais le contenu du message ni le numéro complet.
+// Prénom affichable : lettres, espaces, apostrophes et traits d'union seulement (un nom de profil choisi par le client peut contenir un
+// numéro ou « URGENT »), 30 caractères au plus.
+export function prenomSur(v) {
+  const t = String(v || "").normalize("NFC").replace(/[^\p{L}\s'-]/gu, " ").replace(/\s+/g, " ").trim();
+  if (!/\p{L}{2}/u.test(t) || /^(urgent|important|call|appel)\b/i.test(t)) return "";
+  return Array.from(t).slice(0, 30).join("").trim();
+}
+// nom : le prénom du client relié d'abord, sinon le nom de profil nettoyé ; à défaut, les 4 derniers chiffres.
 export function notificationWhatsapp({ nom = "", telephone = "", pret = false, entreprise = "" }) {
-  const qui = court(nom, 40) || (telephone ? `…${String(telephone).slice(-4)}` : "un client");
+  const qui = prenomSur(nom) || (telephone ? `…${String(telephone).slice(-4)}` : "un client");
   return {
     titre: entreprise ? `WhatsApp ${entreprise}` : "WhatsApp",
     corps: pret ? `${qui} a écrit. Réponse prête à copier.` : `${qui} a écrit.`,

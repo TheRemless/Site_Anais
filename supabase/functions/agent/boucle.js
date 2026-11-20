@@ -9,7 +9,8 @@ import { executer, outilsPour } from "./outils.js";
 // garderCarte(carte)    : enregistre une proposition et la rend avec son identifiant, ou null.
 // envoyer(evenement)    : vers l'écran (texte au fil de l'eau, étape, frise, carte, erreur).
 // Rend { statut, dernierTexte } ; les erreurs du SDK remontent à l'appelant, qui les classe.
-// outils : facultatif, la liste envoyée à Claude (toutes par défaut). executer() refuse de toute façon un nom inconnu.
+// outils : facultatif, la liste envoyée à Claude (celle des droits par défaut). Passée, elle borne aussi l'exécution : un outil absent de
+// la liste est refusé, même si le modèle l'appelle.
 export async function tourner({ anthropic, modele, systeme, appris = "", contexte, messages, ctx, memo, garder, garderCarte, envoyer, appels, debut = Date.now(), maintenant = () => Date.now(), outils }) {
   let statut = "ok";
   let dernierTexte = "";
@@ -45,6 +46,7 @@ export async function tourner({ anthropic, modele, systeme, appris = "", context
     // Les outils d'un même tour s'exécutent ensemble ; leurs résultats repartent dans un seul message.
     const resultats = await Promise.all(
       appelsOutils.map(async (b) => {
+        if (outils && !outils.some((o) => o.name === b.name)) return { type: "tool_result", tool_use_id: b.id, content: JSON.stringify({ erreur: "outil_non_permis" }), is_error: true };
         await envoyer({ t: "etape", outil: b.name });
         const r = await executer(b.name, b.input, ctx, memo);
         if (r.panne) console.error("agent : outil", b.name, r.panne);

@@ -174,6 +174,20 @@ ok(!r.ok, "le numéro du client ne se change pas");
 r = await essaie(u.mook, `update whatsapp_conversations set entite_id = '${ent.secret}' where id = '${r1.conversation_id}'`);
 ok(r.ok && r.n === 0, "Mook ne range rien");
 
+// Revue de sécurité : une proposition préparée avec les données d'une entreprise ne se lit que par ses administrateurs ; changer
+// d'entreprise la remplace ; une proposition restée « envoi » se marque traitée.
+const r9 = await ranger("+41790000077", null, msg({ evenement_id: "e9", telnyx_id: "tx-9", meta_id: "wamid.9", texte: "Taxi to the airport?" }));
+const PT = (await db.query("insert into whatsapp_propositions (conversation_id, entite_id, statut, texte, entreprise_proposee) values ($1, $2, 'a_faire', 'Hi!', 'taxi') returning id", [r9.conversation_id, ent.taxi])).rows[0].id;
+r = await essaie(u.adminSecret, `select count(*)::int n from whatsapp_propositions where id = '${PT}'`);
+ok(r.ok && r.rows[0].n === 0, "à trier, la proposition préparée pour Taxi ne se lit pas par l'administrateur de Secret");
+r = await essaie(u.adminTaxi, `select count(*)::int n from whatsapp_propositions where id = '${PT}'`);
+ok(r.ok && r.rows[0].n === 1, "… mais par celui de Taxi");
+r = await essaie(u.both, `update whatsapp_conversations set entite_id = '${ent.secret}' where id = '${r9.conversation_id}'`);
+ok(r.ok && (await db.query("select statut from whatsapp_propositions where id = $1", [PT])).rows[0].statut === "remplacee", "rangée chez Secret, la réponse préparée pour Taxi est remplacée");
+const PE = (await db.query("insert into whatsapp_propositions (conversation_id, entite_id, statut, texte) values ($1, $2, 'envoi', 'Hi!') returning id", [r9.conversation_id, ent.secret])).rows[0].id;
+r = await essaie(u.adminSecret, `update whatsapp_propositions set statut = 'traitee' where id = '${PE}'`);
+ok(r.ok && r.n === 1, "une proposition restée « envoi » (délai dépassé) se marque traitée après vérification");
+
 // Journal : usage « whatsapp » admis, sans personne.
 r = await db.query("insert into assistant_journal (user_id, entite_id, usage, statut) values ('00000000-0000-0000-0000-000000000000', $1, 'whatsapp', 'ok') returning id", [ent.secret]).then(() => ({ ok: true }), (e) => ({ ok: false, err: e.message }));
 ok(r.ok, "le journal de l'assistant accepte l'usage « whatsapp »" + (r.ok ? "" : ` (${r.err})`));

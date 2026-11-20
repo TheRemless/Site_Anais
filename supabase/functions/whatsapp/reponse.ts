@@ -10,12 +10,12 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import webpush from "npm:web-push@3.6.7";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, ligneJournal, signe } from "../agent/prompt.js";
-import { clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents } from "../agent/outils.js";
+import { DUREE_MAX_MS, MODELE_DEFAUT, blocApprentissages, consignes, contexteDuJour, ligneJournal, signe } from "../agent/prompt.js";
+import { clesHotelPossibles, memoDepuis, prefixeRef, refDe } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
-import { ATTENTE_MS, aRepondre, avertissementsSurs, demandeAgent, demandeTri, destinatairesWhatsapp, langueSure, lireTri, notificationWhatsapp, outilsWhatsapp } from "./proposer.js";
+import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, demandeAgent, demandeTri, destinatairesWhatsapp, langueSure, lireTri, notificationWhatsapp, outilsWhatsapp, prenomSur } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
 const MODELE_TRI = "claude-haiku-5-5";
@@ -24,15 +24,14 @@ type Conv = { id: string; organisation_id: string; telephone: string; nom: strin
 
 // Point d'entrée : un message entrant vient d'être rangé (nouveau). Attend un peu (le client écrit souvent en plusieurs fois), puis prépare
 // la réponse si ce message est toujours le dernier, et prévient l'équipe. Ne lève jamais : une panne laisse la conversation lisible.
+// Tout tient dans DUREE_BOITE_MS (attente comprise), sous la limite de 150 s d'une fonction Supabase.
 export async function apresMessageClient(db: SupabaseClient, conversationId: string, messageId: string) {
+  const t0 = Date.now();
   try {
     await new Promise((ok) => setTimeout(ok, ATTENTE_MS));
-    const { data: conv } = await db.from("whatsapp_conversations").select("id, organisation_id, telephone, nom, entite_id, entite_source, client_id, dossier_id").eq("id", conversationId).maybeSingle();
-    if (!conv) return;
-    const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(40);
-    const messages = [...(msgs || [])].reverse();
-    if (!aRepondre(messages, messageId)) return;
-    const pret = await preparer(db, conv as Conv, messages, messageId).catch((err) => {
+    const lu = await lireConversation(db, conversationId);
+    if (!lu || !aRepondre(lu.messages, messageId)) return;
+    const pret = await preparer(db, lu.conv, lu.messages, messageId, t0).catch((err) => {
       console.error("whatsapp : réponse non préparée", String(err?.message || err).slice(0, 200));
       return false;
     });
@@ -42,57 +41,75 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
   }
 }
 
-// Rend true si une réponse est prête à copier.
-async function preparer(db: SupabaseClient, convIn: Conv, messages: Record<string, any>[], messageId: string) {
-  let conv = convIn;
+async function lireConversation(db: SupabaseClient, conversationId: string) {
+  const { data: conv } = await db.from("whatsapp_conversations").select("id, organisation_id, telephone, nom, entite_id, entite_source, client_id, dossier_id").eq("id", conversationId).maybeSingle();
+  if (!conv) return null;
+  const { data: msgs } = await db.from("whatsapp_messages").select("id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(40);
+  return { conv: conv as Conv, messages: [...(msgs || [])].reverse() as Record<string, any>[] };
+}
+
+// Les limites avant tout appel à Claude. Une lecture impossible ferme le budget (jamais l'inverse).
+async function budgetOuvert(db: SupabaseClient, conv: Conv) {
+  const jour = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const [mois, budget, wa, parConv, boite] = await Promise.all([
+    db.rpc("assistant_cout_depuis", { debut: debutMois() }),
+    db.from("assistant_budget").select("plafond_mois_usd, seuil_alerte_pct").maybeSingle(),
+    db.from("assistant_journal").select("cout_estime_usd").eq("usage", "whatsapp").gte("cree_le", debutMois()).limit(20000),
+    db.from("whatsapp_propositions").select("id", { count: "exact", head: true }).eq("conversation_id", conv.id).gte("cree_le", jour),
+    db.from("whatsapp_propositions").select("id", { count: "exact", head: true }).gte("cree_le", jour),
+  ]);
+  if (mois.error || wa.error || parConv.error || boite.error || mois.data === null || mois.data === undefined) return false;
+  const { plafond } = plafondRetenu(budget.error ? null : budget.data, Deno.env.get("AGENT_PLAFOND_MOIS_USD"));
+  if (Number(mois.data) >= plafond) return false;
+  const coutBoite = (wa.data || []).reduce((s, l) => s + (Number(l.cout_estime_usd) || 0), 0);
+  if (coutBoite >= (Number(Deno.env.get("WHATSAPP_PLAFOND_MOIS_USD")) || PLAFOND_WHATSAPP_MOIS_USD)) return false;
+  return (parConv.count || 0) < LIMITE_CONVERSATION_JOUR && (boite.count || 0) < LIMITE_BOITE_JOUR;
+}
+
+// Rend true si une réponse est prête à copier (et toujours utile : le client n'a pas réécrit, Nani n'a pas répondu).
+async function preparer(db: SupabaseClient, conv: Conv, messages: Record<string, any>[], messageId: string, t0: number) {
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
   if (!cle) return false;
-  const anthropic = new Anthropic({ apiKey: cle, timeout: 60_000, maxRetries: 1 });
+  if (!(await budgetOuvert(db, conv))) return false;
+  const anthropic = new Anthropic({ apiKey: cle, timeout: 40_000, maxRetries: 0 });
   const appels: { usage: Record<string, unknown>; modele: string }[] = [];
-
-  // Budget du mois (toute la dépense de l'assistant) : au plafond, pas de proposition, la notification part quand même.
-  const [mois, budget] = await Promise.all([db.rpc("assistant_cout_depuis", { debut: debutMois() }), db.from("assistant_budget").select("plafond_mois_usd, seuil_alerte_pct").maybeSingle()]);
-  const { plafond } = plafondRetenu(budget.error ? null : budget.data, Deno.env.get("AGENT_PLAFOND_MOIS_USD"));
-  if ((Number(mois.data) || 0) >= plafond) return false;
+  const j = journalEnCours(db, appels);
 
   const { data: entites } = await db.from("entites").select("id, slug, nom").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
   const parSlug = new Map((entites || []).map((e) => [e.slug, e]));
-  let entreprise = (entites || []).find((e) => e.id === conv.entite_id) || null;
+  let ent = (entites || []).find((e) => e.id === conv.entite_id) || null;
   let proposee: string | null = null;
-
-  // À trier : l'agent dit Secret ou Taxi (un appel court), la conversation est rangée « proposé par l'agent » ; Nani corrige d'un tap.
-  if (!entreprise) {
+  // À trier : l'agent suggère Secret ou Taxi (un appel court) ; la conversation reste à trier, Nani décide d'un tap. La réponse se prépare
+  // avec les données de l'entreprise suggérée et seuls ses administrateurs la lisent (migration 59). Sans suggestion, pas de réponse.
+  if (!ent) {
     const m = await anthropic.messages.create({ model: MODELE_TRI, max_tokens: 10, messages: [{ role: "user", content: demandeTri(messages) }] });
     appels.push({ usage: m.usage as unknown as Record<string, unknown>, modele: m.model });
+    await j.noter(null, "tri");
     proposee = lireTri(m.content.map((b) => (b.type === "text" ? b.text : "")).join(" "));
-    if (proposee && parSlug.get(proposee)) {
-      entreprise = parSlug.get(proposee)!;
-      const { data } = await db.from("whatsapp_conversations").update({ entite_id: entreprise.id, entite_source: "agent" }).eq("id", conv.id).is("entite_id", null).select("id, organisation_id, telephone, nom, entite_id, entite_source, client_id, dossier_id").maybeSingle();
-      if (data) conv = data as Conv;
-    }
+    ent = (proposee && parSlug.get(proposee)) || null;
+    if (!ent) return false;
   }
-  // Sans entreprise sûre, la réponse se prépare avec le catalogue de Secret (le plus fréquent) ; la conversation reste à trier.
-  const ent = entreprise || parSlug.get("secret");
-  if (!ent) return journal(db, null, "sans_entreprise", appels, false);
 
   const { data: regl } = await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle();
   const reglages = regl ? regl.valeur : null;
   // L'agent s'allume dans les réglages de l'entreprise : éteint, pas de proposition.
-  if (!reglages || reglages.agent_ia !== true) return journal(db, ent.id, "agent_eteint", appels, false);
+  if (!reglages || reglages.agent_ia !== true) {
+    await j.noter(ent.id, "agent_eteint");
+    return false;
+  }
 
   // La proposition encore à faire est remplacée ; la nouvelle naît « en_cours » (l'écran affiche « en préparation »).
   await db.from("whatsapp_propositions").update({ statut: "remplacee" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours"]);
   const { data: prop, error: errProp } = await db.from("whatsapp_propositions").insert({ conversation_id: conv.id, message_id: messageId, entite_id: ent.id, statut: "en_cours", entreprise_proposee: proposee }).select("id").single();
   if (errProp || !prop) throw new Error(`proposition : ${errProp?.message}`);
-  const debut = Date.now();
   let statut = "ok";
   let carte: { titre?: string; donnees?: { message?: string; langue?: string }; avertissements?: string[] } | null = null;
   try {
-    const ctx = contexteOutils(db, ent.id, reglages);
+    const ctx = contexteOutils(db, ent.id, reglages, conv.entite_id === ent.id ? { clientId: conv.client_id, dossierId: conv.dossier_id } : { clientId: null, dossierId: null });
     const ra = reglagesAssistant(reglages);
     const qui = ra.responsable || "Nani";
-    const client = conv.client_id ? (await db.from("clients").select("prenom, nom").eq("id", conv.client_id).eq("entite_id", ent.id).maybeSingle()).data : null;
-    const d = conv.dossier_id ? (await db.from("dossiers").select("id, ref").eq("id", conv.dossier_id).eq("entite_id", ent.id).maybeSingle()).data : null;
+    const client = conv.client_id && conv.entite_id === ent.id ? (await db.from("clients").select("prenom").eq("id", conv.client_id).eq("entite_id", ent.id).maybeSingle()).data : null;
+    const d = conv.dossier_id && conv.entite_id === ent.id ? (await db.from("dossiers").select("id, ref").eq("id", conv.dossier_id).eq("entite_id", ent.id).maybeSingle()).data : null;
     const dossier = d ? { ref_courte: refDe("D", d.id), reference: d.ref } : null;
     const prestataires = ((await ctx.charger("partenaires")) as { nom: string }[]).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
     const systeme = consignes({ entreprise: ent.nom, reglages, lieu: ra.lieu, prenomEquipe: qui });
@@ -120,6 +137,8 @@ async function preparer(db: SupabaseClient, convIn: Conv, messages: Record<strin
       outils: outilsWhatsapp(),
       garder: async (role: string, contenu: unknown) => {
         historique.push({ role, content: contenu });
+        // Le coût est noté à chaque tour : une fonction coupée par la limite de temps garde ce qu'elle a dépensé dans le plafond.
+        if (role === "assistant") await j.noter(ent!.id, "en_cours");
       },
       garderCarte: async (c: typeof carte & { genre: string }) => {
         // Une seule réponse : la première carte « reponse » est gardée, les suivantes refusées.
@@ -129,7 +148,8 @@ async function preparer(db: SupabaseClient, convIn: Conv, messages: Record<strin
       },
       envoyer: async () => {},
       appels,
-      debut,
+      // tourner() s'arrête DUREE_MAX_MS après `debut` : ce départ fictif l'arrête DUREE_BOITE_MS après l'arrivée du message.
+      debut: t0 - (DUREE_MAX_MS - DUREE_BOITE_MS),
     });
     statut = r.statut;
   } catch (err) {
@@ -138,26 +158,35 @@ async function preparer(db: SupabaseClient, convIn: Conv, messages: Record<strin
   }
   const c = carte as typeof carte;
   const message = c?.donnees?.message ? String(c.donnees.message).slice(0, 4000) : "";
-  // Seulement une proposition encore « en_cours » : si Nani a déjà répondu depuis l'app pendant ce temps, elle reste « traitee ».
-  await db
-    .from("whatsapp_propositions")
-    .update(message ? { statut: "a_faire", texte: message, langue: langueSure(c?.donnees?.langue), avertissements: avertissementsSurs(c?.avertissements) } : { statut: "echec", erreur: (statut === "ok" ? "pas_de_reponse" : statut).slice(0, 200) })
-    .eq("id", prop.id)
-    .eq("statut", "en_cours");
-  if (message) {
-    // Si Nani a répondu pendant la préparation, la proposition garde son texte pour mémoire.
-    await db.from("whatsapp_propositions").update({ texte: message, langue: langueSure(c?.donnees?.langue), avertissements: avertissementsSurs(c?.avertissements) }).eq("id", prop.id).neq("statut", "a_faire");
-  }
-  return journal(db, ent.id, message ? statut : statut === "ok" ? "pas_de_reponse" : statut, appels, !!message, Date.now() - debut);
+  // Toujours utile ? Le client a pu réécrire (son traitement prépare la suivante) ou Nani répondre depuis l'app pendant la préparation.
+  const apres = await lireConversation(db, conv.id);
+  const utile = !!apres && aRepondre(apres.messages, messageId);
+  const champs = !utile ? { statut: "remplacee" } : message ? { statut: "a_faire", texte: message, langue: langueSure(c?.donnees?.langue), avertissements: avertissementsSurs(c?.avertissements) } : { statut: "echec", erreur: (statut === "ok" ? "pas_de_reponse" : statut).slice(0, 200) };
+  // Seulement une proposition encore « en_cours » : traitée entre-temps (écho de l'app), elle le reste.
+  const { data: maj } = await db.from("whatsapp_propositions").update(champs).eq("id", prop.id).eq("statut", "en_cours").select("id");
+  await j.noter(ent.id, message ? statut : statut === "ok" ? "pas_de_reponse" : statut);
+  return utile && !!message && !!(maj && maj.length);
 }
 
-async function journal(db: SupabaseClient, entiteId: string | null, statut: string, appels: { usage: Record<string, unknown>; modele: string }[], pret: boolean, dureeMs = 0) {
-  if (appels.length) {
-    const ligne = { ...ligneJournal({ userId: AUCUN, entiteId, statut, appels, dureeMs }), usage: "whatsapp" };
-    const { error } = await db.from("assistant_journal").insert(ligne);
-    if (error) console.error("whatsapp : journal", error.message);
-  }
-  return pret;
+// Le journal de l'assistant pour une préparation : une ligne créée au premier appel, mise à jour à chaque tour (coût à jour même si la
+// fonction est arrêtée en route).
+function journalEnCours(db: SupabaseClient, appels: { usage: Record<string, unknown>; modele: string }[]) {
+  const t0 = Date.now();
+  let id: number | null = null;
+  return {
+    async noter(entiteId: string | null, statut: string) {
+      if (!appels.length) return;
+      const ligne = { ...ligneJournal({ userId: AUCUN, entiteId, statut, appels, dureeMs: Date.now() - t0 }), usage: "whatsapp" };
+      if (id === null) {
+        const { data, error } = await db.from("assistant_journal").insert(ligne).select("id").single();
+        if (error) console.error("whatsapp : journal", error.message);
+        else id = data.id;
+      } else {
+        const { error } = await db.from("assistant_journal").update(ligne).eq("id", id);
+        if (error) console.error("whatsapp : journal", error.message);
+      }
+    },
+  };
 }
 
 // Les nets de l'entreprise (prestations et trajets), en nombres : seulement pour repérer un montant interne dans la réponse.
@@ -170,23 +199,26 @@ async function netsDe(ctx: any) {
   return s;
 }
 
-// Les lectures des outils de l'agent, avec la clé de service mais toujours limitées à une entreprise.
+// Les lectures des outils de l'agent, avec la clé de service mais toujours limitées à une entreprise. Un message de client ne doit jamais
+// faire lire les données d'un autre client : aucun dossier sauf celui relié à la conversation (ou un dossier de son client relié), aucune
+// recherche de clients, et jamais un numéro de téléphone (le client se lit sans téléphone ni nom de famille).
 // deno-lint-ignore no-explicit-any
-function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any) {
+function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any, { clientId, dossierId }: { clientId: string | null; dossierId: string | null }) {
+  // Seules tables chargées entières : le catalogue, les horaires, les durées et les hôtels. Pas de dossiers, réservations ni clients.
   const COLONNES: Record<string, string> = {
     prestations: "id, famille, groupe, libelle, libelle_en, prix_vente, unite, sur_place, actif, partenaire_id",
     trajets: "id, de, vers, mode, depart, arrivee, duree, prix_adulte, prix_enfant, bebe, periode, fenetres, actif, partenaire_id",
     partenaires: "id, nom, actif, regles",
-    // Les nets : lus seulement par le contrôle de la réponse (montants internes). Les outils ne les rendent jamais ici : ctx.permissions est
-    // vide, donc ni partenaire ni net ni commission ne partent chez Claude (outils.js, voitPartenaires et voitNets).
+    // Les nets : lus seulement par le contrôle de la réponse (netsDe). Les outils ne les rendent jamais ici : ctx.permissions est vide,
+    // donc ni partenaire ni net ni commission ne partent chez Claude (outils.js, voitPartenaires et voitNets).
     prestations_nets: "prestation_id, net, net_enfant",
     trajets_nets: "trajet_id, net_adulte, net_enfant",
     hotels_lieux: "cle, nom, lieu, zone, localite, source_url, certitude, verifie",
     temps_trajets: "de, vers, mode, duree_min, ferry, marge_min, source, source_date, a_verifier",
     liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",
-    dossiers: "id, ref, client_id, date_depart, date_retour, annule",
-    reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place",
   };
+  const COL_DOSSIER = "id, ref, client_id, date_depart, date_retour, annule";
+  const COL_RESA = "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place";
   // deno-lint-ignore no-explicit-any
   const lire = async (requete: any, table: string) => {
     const { data, error } = await requete;
@@ -214,40 +246,37 @@ function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any) {
       );
     return cache.get(nom)!;
   };
-  const COL_CLIENT = "id, prenom, nom, telephone, entite_id";
+  // Les dossiers permis : celui relié, sinon ceux du client relié. Lus une fois.
+  let permis: Promise<Record<string, any>[]> | null = null;
+  const dossiersPermis = () =>
+    (permis ??= (async () => {
+      if (dossierId) return lire(db.from("dossiers").select(COL_DOSSIER).eq("entite_id", entiteId).eq("id", dossierId), "dossiers");
+      if (clientId) return lire(db.from("dossiers").select(COL_DOSSIER).eq("entite_id", entiteId).eq("client_id", clientId).limit(20), "dossiers");
+      return [];
+    })());
   const parRef = async (table: string, ref: string) => {
     const p = prefixeRef(ref);
-    if (!p) return [];
-    return lire(db.from(table).select(COLONNES[table]).eq("entite_id", entiteId).gte("id", `${p}-0000-0000-0000-000000000000`).lte("id", `${p}-ffff-ffff-ffff-ffffffffffff`).limit(5), table);
-  };
-  // Clients de cette entreprise seulement (la clé de service ne passe pas par RLS : le filtre est ici).
-  const chercherClients = async (recherche: string) => {
-    const mots = sansAccents(recherche).trim().split(/\s+/).filter((m: string) => m.length >= 2).slice(0, 5);
-    const chiffres = String(recherche || "").replace(/\D/g, "");
-    if (!mots.length && chiffres.length < 6) return [[], []];
-    // deno-lint-ignore no-explicit-any
-    const parNom = (q: any) => mots.reduce((r: any, m: string) => r.or(`prenom.ilike.${motifNom(m)},nom.ilike.${motifNom(m)}`), q);
-    const [propres, parTel] = await Promise.all([
-      mots.length ? lire(parNom(db.from("clients").select(COL_CLIENT).eq("entite_id", entiteId)).limit(100), "clients") : [],
-      chiffres.length >= 6 ? lire(db.from("clients").select(COL_CLIENT).eq("entite_id", entiteId).ilike("telephone", motifTelephone(chiffres)).limit(50), "clients") : [],
-    ]);
-    const clients = new Map<string, Record<string, any>>();
-    for (const c of [...propres, ...parTel]) clients.set(c.id, c);
-    const ids = [...clients.keys()].slice(0, 100);
-    const dossiers = ids.length ? await lire(db.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).in("client_id", ids).limit(500), "dossiers") : [];
-    return [[...clients.values()], dossiers];
+    const dossiers = await dossiersPermis();
+    if (!p || !dossiers.length) return [];
+    if (table === "dossiers") return dossiers.filter((d) => String(d.id).startsWith(p));
+    if (table === "reservations") {
+      const resas = await lire(db.from("reservations").select(COL_RESA).eq("entite_id", entiteId).in("dossier_id", dossiers.map((d) => d.id)).limit(200), "reservations");
+      return resas.filter((r) => String(r.id).startsWith(p));
+    }
+    return [];
   };
   const dossierPour = async (ref: string) => {
-    let dossiers = await parRef("dossiers", ref);
-    const t = String(ref || "").trim();
-    if (!dossiers.length && t.length >= 2 && t.length <= 30) dossiers = await lire(db.from("dossiers").select(COLONNES.dossiers).eq("entite_id", entiteId).ilike("ref", t.replace(/[\\%_]/g, "\\$&")).limit(5), "dossiers");
-    const d = dossiers[0];
+    const dossiers = await dossiersPermis();
+    const t = String(ref || "").trim().toLowerCase();
+    const p = prefixeRef(ref);
+    const d = dossiers.find((x) => (p && String(x.id).startsWith(p)) || String(x.ref || "").toLowerCase() === t);
     if (!d) return [[], [], []];
     const [clients, reservations] = await Promise.all([
-      d.client_id ? lire(db.from("clients").select(COL_CLIENT).eq("id", d.client_id).eq("entite_id", entiteId), "clients") : [],
-      lire(db.from("reservations").select(COLONNES.reservations).eq("entite_id", entiteId).eq("dossier_id", d.id).limit(200), "reservations"),
+      // Ni téléphone ni nom de famille : rien de cela ne part chez Claude.
+      d.client_id ? lire(db.from("clients").select("id, prenom, entite_id").eq("id", d.client_id).eq("entite_id", entiteId), "clients") : [],
+      lire(db.from("reservations").select(COL_RESA).eq("entite_id", entiteId).eq("dossier_id", d.id).limit(200), "reservations"),
     ]);
-    return [dossiers, clients, reservations];
+    return [[d], clients, reservations];
   };
   const hotelsPour = async (lieux: string[]) => {
     const cles = [...new Set(lieux.flatMap((l) => clesHotelPossibles(l)))].slice(0, 100);
@@ -255,7 +284,8 @@ function contexteOutils(db: SupabaseClient, entiteId: string, reglages: any) {
     return lire(db.from("hotels_lieux").select(COLONNES.hotels_lieux).eq("entite_id", entiteId).in("cle", cles), "hotels_lieux");
   };
   // Pas de moteur d'itinéraire ni de recherche web ici : les durées viennent de la table de l'entreprise, sinon l'agent le dit.
-  return { historique: [], entreprise: "", fichiers: [], permissions: [], charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors: null, simule: null, estimerWeb: null, situerWeb: null, notes: [] as string[], moteur: null, maintenant: () => Date.now() };
+  // chercherClients rend toujours vide (l'outil n'est pas proposé, et refusé par tourner s'il est appelé quand même).
+  return { historique: [], entreprise: "", fichiers: [], permissions: [], charger, chercherClients: async () => [[], []], dossierPour, parRef, hotelsPour, reglages, ors: null, simule: null, estimerWeb: null, situerWeb: null, notes: [] as string[], moteur: null, maintenant: () => Date.now() };
 }
 
 // Notification aux administrateurs (Web Push existant). Le contenu du message ne part jamais dans la notification.
@@ -275,7 +305,7 @@ async function prevenir(db: SupabaseClient, conversationId: string, pret: boolea
   if (!qui.length) return;
   const client = conv.client_id ? (await db.from("clients").select("prenom").eq("id", conv.client_id).maybeSingle()).data : null;
   const ent = (entites || []).find((e) => e.id === conv.entite_id);
-  const n = notificationWhatsapp({ nom: client?.prenom || conv.nom || "", telephone: conv.telephone, pret, entreprise: ent?.nom || "" });
+  const n = notificationWhatsapp({ nom: prenomSur(client?.prenom) || conv.nom || "", telephone: conv.telephone, pret, entreprise: ent?.nom || "" });
   const abos = await db.from("abonnements_push").select("id, endpoint, p256dh, auth").in("user_id", qui);
   if (abos.error || !abos.data?.length) return;
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);

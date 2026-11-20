@@ -49,6 +49,20 @@ Deno.serve(async (req) => {
   const { data: regl } = await admin.from("whatsapp_reglages").select("numero").eq("organisation_id", conv.organisation_id).maybeSingle();
   if (!regl?.numero) return json({ erreur: "numero_inconnu" }, 503);
 
+  // Verrou contre le double envoi (double tap, nouvel essai après un délai) :
+  //  - avec une proposition, elle passe de « a_faire » à « envoi » en une écriture ; si elle n'est plus à faire, rien ne part ;
+  //  - sans proposition, le même texte envoyé depuis Gestion dans la dernière minute ne repart pas.
+  if (demande.proposition_id) {
+    const { data: pris, error: errP } = await admin.from("whatsapp_propositions").update({ statut: "envoi" }).eq("id", demande.proposition_id).eq("conversation_id", conv.id).eq("statut", "a_faire").select("id");
+    if (errP) return json({ erreur: "base" }, 500);
+    if (!pris || !pris.length) return json({ erreur: "deja_traitee" }, 409);
+  } else {
+    const { data: recent } = await admin.from("whatsapp_messages").select("id").eq("conversation_id", conv.id).eq("origine", "gestion").eq("texte", demande.texte).gte("envoye_le", new Date(Date.now() - 60_000).toISOString()).limit(1);
+    if (recent && recent.length) return json({ erreur: "deja_traitee" }, 409);
+  }
+  // En cas d'échec sûr (rien n'est parti), la proposition redevient « a_faire ».
+  const relacher = () => (demande.proposition_id ? admin.from("whatsapp_propositions").update({ statut: "a_faire" }).eq("id", demande.proposition_id).eq("statut", "envoi") : Promise.resolve());
+
   let rep: Response;
   try {
     rep = await fetch("https://api.telnyx.com/v2/messages/whatsapp", {
@@ -59,18 +73,21 @@ Deno.serve(async (req) => {
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
-    return json({ erreur: "telnyx_injoignable" }, 502);
+    // Délai dépassé : Telnyx a peut-être envoyé. La proposition reste « envoi » (pas de nouvel essai possible depuis Gestion) : Nani vérifie
+    // dans WhatsApp, puis la marque traitée ou répond depuis l'app (l'écho la soldera).
+    return json({ erreur: "verifier_whatsapp" }, 504);
   }
   const lu = lireReponseTelnyx(rep.status, await rep.json().catch(() => null));
   if (!lu.ok) {
+    await relacher();
     console.error("whatsapp-envoi : refus Telnyx", lu.statut, lu.code);
     return json({ erreur: "telnyx_refuse", code: lu.code }, 502);
   }
   const maintenant = new Date().toISOString();
   const { data: range, error: errR } = await admin.rpc("whatsapp_ranger", { org: conv.organisation_id, tel: conv.telephone, nom_profil: null, m: { telnyx_id: lu.id, sens: "sortant", origine: "gestion", type: "text", texte: demande.texte, medias: [], envoye_le: maintenant } });
   if (errR) console.error("whatsapp-envoi : message envoyé mais non rangé", errR.message);
-  const filtre = admin.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par: qui.user.id, traitee_par_quoi: "gestion" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours"]);
-  await (demande.proposition_id ? filtre.eq("id", demande.proposition_id) : filtre);
+  // Toutes les propositions ouvertes de la conversation sont soldées, comme pour une réponse depuis l'app.
+  await admin.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par: qui.user.id, traitee_par_quoi: "gestion" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours", "envoi"]);
   return json({ ok: true, message_id: range?.message_id || null });
 });
 

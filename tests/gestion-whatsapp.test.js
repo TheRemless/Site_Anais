@@ -204,7 +204,9 @@ test("whatsapp : la demande à l'agent porte la conversation et le client, jamai
   assert.doesNotMatch(t, /ignore previous/);
   assert.doesNotMatch(t, /\+41|\+66/);
   const avecDossier = demandeAgent({ messages: [M({})], client: { prenom: "Bo", nom: "Test" }, dossier: { ref_courte: "D-1a2b3c4d", reference: "T-58" }, entreprise: "VIP Taxi Lanta" });
-  assert.match(avecDossier, /Client connu dans VIP Taxi Lanta : Bo Test/);
+  assert.match(avecDossier, /Client connu dans VIP Taxi Lanta : Bo\./);
+  assert.doesNotMatch(avecDossier, /Test/, "jamais le nom de famille");
+  assert.match(avecDossier, /seul dossier que tu peux lire/);
   assert.match(avecDossier, /D-1a2b3c4d \(T-58\)/);
   assert.equal(ligneMessage(M({ texte: null, type: "image", medias: [{ type: "image", legende: "hotel" }] })), "[Client 20.11 10:00] [image : hotel]");
 });
@@ -293,4 +295,61 @@ test("whatsapp-envoi : le serveur refuse un texte avec un net ou un partenaire (
   const index = fs.readFileSync(new URL("../supabase/functions/whatsapp-envoi/index.ts", import.meta.url), "utf8");
   assert.ok(index.indexOf("contenuInterne(") < index.indexOf("api.telnyx.com/v2/messages/whatsapp"));
   assert.match(index, /"contenu_interne"/);
+});
+
+// ---- Corrections de la revue de sécurité ----------------------------------------------------------------------------------------------
+import { masquer, prenomSur, LIMITE_CONVERSATION_JOUR, DUREE_BOITE_MS } from "../supabase/functions/whatsapp/proposer.js";
+import { tourner } from "../supabase/functions/agent/boucle.js";
+
+test("whatsapp : numéros de téléphone, de compte et IBAN masqués avant Anthropic, dates, heures et prix gardés", () => {
+  const t = masquer("Call +66 81 234 5678, KBank 123-4-56789-0, IBAN CH93 0076 2011 6238 5295 7, on 20.11.2026 at 08:30 for 3,000 THB");
+  assert.doesNotMatch(t, /234 5678|56789|6238/);
+  assert.match(t, /20\.11\.2026/);
+  assert.match(t, /08:30/);
+  assert.match(t, /3,000 THB/);
+  assert.match(ligneMessage(M({ sens: "sortant", origine: "app", texte: "Pay to 123-4-56789-0 please" }), { qui: "Nani" }), /\[numéro masqué\]/);
+  assert.match(demandeTri([M({ texte: "my number 0812345678" })]), /\[numéro masqué\]/);
+});
+
+test("whatsapp : prénom affichable seulement (profil choisi par le client)", () => {
+  assert.equal(prenomSur("Anna-Lena 🌴"), "Anna-Lena");
+  assert.equal(prenomSur("URGENT call +66 81"), "");
+  assert.equal(prenomSur("+66 81 234 5678"), "");
+  assert.equal(notificationWhatsapp({ nom: "URGENT call +66", telephone: "+41790000002" }).corps, "…0002 a écrit.");
+});
+
+test("whatsapp : pas de réponse préparée pour une réaction, un emoji seul ou un merci", () => {
+  for (const t of ["👍", "ok", "Thanks!", "merci", "🙏🙏"]) assert.equal(aRepondre([M({ texte: t })], "m1"), false, t);
+  assert.equal(aRepondre([M({ type: "reaction", texte: "❤️" })], "m1"), false);
+  assert.equal(aRepondre([M({ texte: "ok, and what time is pickup?" })], "m1"), true);
+  assert.ok(LIMITE_CONVERSATION_JOUR > 0 && DUREE_BOITE_MS < 150_000);
+});
+
+test("whatsapp : chercher_clients n'est pas proposé, et la boucle refuse tout outil hors de la liste passée", async () => {
+  assert.ok(!OUTILS_WHATSAPP.includes("chercher_clients"));
+  let tour = 0;
+  const reponses = [
+    { content: [{ type: "tool_use", id: "t1", name: "lire_reglages", input: {} }], stop_reason: "tool_use", usage: {}, model: "m" },
+    { content: [{ type: "text", text: "fin" }], stop_reason: "end_turn", usage: {}, model: "m" },
+  ];
+  const anthropic = { beta: { messages: { stream: () => { const r = reponses[tour++]; return { async *[Symbol.asyncIterator]() {}, finalMessage: async () => r }; } } } };
+  const messages = [{ role: "user", content: [{ type: "text", text: "x" }] }];
+  const etapes = [];
+  await tourner({ anthropic, modele: "m", systeme: "s", contexte: "c", messages, ctx: { permissions: [] }, memo: memoVide(), garder: async (role, contenu) => messages.push({ role, content: contenu }), garderCarte: async () => null, envoyer: async (e) => etapes.push(e), appels: [], outils: outilsWhatsapp() });
+  const resultat = messages.find((m) => m.role === "user" && Array.isArray(m.content) && m.content[0].type === "tool_result");
+  assert.match(resultat.content[0].content, /outil_non_permis/);
+  assert.ok(!etapes.some((e) => e.t === "etape"), "l'outil n'a pas été lancé");
+});
+function memoVide() { return { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set() }; }
+
+test("whatsapp : lectures de la boîte limitées au dossier relié, sans téléphone ; envoi verrouillé", () => {
+  const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  assert.match(reponse, /chercherClients: async \(\) => \[\[\], \[\]\]/);
+  assert.match(reponse, /select\("id, prenom, entite_id"\)/);
+  assert.doesNotMatch(reponse.slice(reponse.indexOf("function contexteOutils"), reponse.indexOf("// Notification aux administrateurs")), /telephone/);
+  assert.doesNotMatch(reponse, /update\(\{ entite_id: /, "le tri ne range jamais la conversation");
+  const envoi = fs.readFileSync(new URL("../supabase/functions/whatsapp-envoi/index.ts", import.meta.url), "utf8");
+  assert.ok(envoi.indexOf('update({ statut: "envoi" })') < envoi.indexOf("api.telnyx.com/v2/messages/whatsapp"));
+  assert.match(envoi, /"verifier_whatsapp"/);
+  assert.match(envoi, /"deja_traitee"/);
 });

@@ -2,12 +2,14 @@
 --   1. whatsapp_propositions : la réponse préparée par l'agent quand un client écrit. Nani la copie, l'ajuste et l'envoie depuis l'app
 --      WhatsApp ; dès que sa réponse revient (message.echo), la proposition passe « traitee ». Elle peut aussi l'envoyer depuis Gestion
 --      (fonction « whatsapp-envoi ») ou l'ignorer. Un nouveau message du client remplace la proposition encore à faire.
+--      Le tri de l'agent ne range jamais une conversation : il note l'entreprise suggérée (entreprise_proposee) et prépare la réponse
+--      avec les données de celle-ci. Cette proposition ne se lit que par les administrateurs de cette entreprise.
 --   2. Classement et rattachement : un administrateur de Secret ou de Taxi range une conversation dans l'une des deux entreprises (un tap),
 --      la relie à un client ou un dossier de cette entreprise et la marque lue. Rien d'autre ne change depuis l'outil.
 --      Changer d'entreprise retire le client et le dossier d'une autre entreprise, puis cherche le client par le numéro dans la nouvelle.
 --   3. Journal de l'assistant : l'usage « whatsapp » (coût des propositions, compté dans le plafond du mois).
 --
--- Ce qui part chez Anthropic pour une proposition : les derniers messages de la conversation (texte seulement), le prénom du client, le
+-- Ce qui part chez Anthropic pour une proposition : les derniers messages de la conversation (texte seulement, numéros masqués), le prénom du client, le
 -- dossier relié (services, dates, heures, prix de vente) et ce que rendent les outils de lecture de l'agent (catalogue, horaires, durées).
 -- Jamais un net, une commission, une marge, un nom de prestataire ni une coordonnée bancaire. Les données ne servent pas à entraîner un modèle
 -- (API Anthropic, conditions commerciales).
@@ -32,7 +34,8 @@ create table if not exists whatsapp_propositions (
   -- Le dernier message du client pris en compte.
   message_id uuid references whatsapp_messages (id) on delete set null,
   entite_id uuid references entites (id) on delete set null,
-  statut text not null default 'a_faire' check (statut in ('en_cours', 'a_faire', 'traitee', 'remplacee', 'ignoree', 'echec')),
+  -- envoi : réservée par « whatsapp-envoi » le temps de l'envoi (un double tap n'envoie pas deux fois).
+  statut text not null default 'a_faire' check (statut in ('en_cours', 'a_faire', 'envoi', 'traitee', 'remplacee', 'ignoree', 'echec')),
   texte text check (length(texte) <= 4000),
   langue text check (langue is null or langue ~ '^[a-z]{2}$'),
   -- Contrôles de l'agent (montant ou heure sans source, mot interne, signature retirée) : la carte les montre, Nani décide.
@@ -54,11 +57,15 @@ grant select on whatsapp_propositions to authenticated;
 grant update (statut) on whatsapp_propositions to authenticated;
 drop policy if exists "lire les propositions WhatsApp" on whatsapp_propositions;
 create policy "lire les propositions WhatsApp" on whatsapp_propositions for select to authenticated
-  using (exists (select 1 from whatsapp_conversations c where c.id = conversation_id and whatsapp_lit(c.entite_id, c.organisation_id)));
--- Depuis l'outil : seulement « traitee » (copiée et envoyée à la main) ou « ignoree », et seulement une proposition encore à faire.
+  using (exists (select 1 from whatsapp_conversations c where c.id = conversation_id and whatsapp_lit(c.entite_id, c.organisation_id))
+    -- Une proposition préparée avec les données d'une entreprise ne se lit que par ses administrateurs (chaque entreprise ses éléments).
+    and (entite_id is null or whatsapp_admin(entite_id)));
+-- Depuis l'outil : seulement « traitee » (copiée et envoyée à la main) ou « ignoree », et seulement une proposition encore à faire ou
+-- restée « envoi » après un délai dépassé (Nani a vérifié dans WhatsApp).
 drop policy if exists "traiter une proposition WhatsApp" on whatsapp_propositions;
 create policy "traiter une proposition WhatsApp" on whatsapp_propositions for update to authenticated
-  using (statut = 'a_faire' and exists (select 1 from whatsapp_conversations c where c.id = conversation_id and whatsapp_lit(c.entite_id, c.organisation_id)))
+  using (statut in ('a_faire', 'envoi') and (entite_id is null or whatsapp_admin(entite_id))
+    and exists (select 1 from whatsapp_conversations c where c.id = conversation_id and whatsapp_lit(c.entite_id, c.organisation_id)))
   with check (statut in ('traitee', 'ignoree'));
 
 create or replace function whatsapp_proposition_traitee() returns trigger language plpgsql security definer set search_path = public as $$
@@ -101,6 +108,11 @@ begin
   end if;
   if new.dossier_id is not null and (new.entite_id is null or not exists (select 1 from dossiers where id = new.dossier_id and entite_id = new.entite_id and (new.client_id is null or client_id = new.client_id))) then
     new.dossier_id := null;
+  end if;
+  -- Changement d'entreprise : la réponse préparée avec les données de l'autre entreprise n'est plus proposée.
+  if new.entite_id is distinct from old.entite_id then
+    update whatsapp_propositions set statut = 'remplacee'
+    where conversation_id = new.id and statut in ('a_faire', 'en_cours') and entite_id is distinct from new.entite_id;
   end if;
   if new.entite_id is distinct from old.entite_id and new.entite_id is not null and new.client_id is null then
     select t.client_id, t.dossier_id into trouve from whatsapp_trouver_client(new.organisation_id, new.telephone) t where t.entite_id = new.entite_id;

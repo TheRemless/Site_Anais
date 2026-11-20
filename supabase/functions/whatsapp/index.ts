@@ -98,6 +98,8 @@ async function traiterEnAttente(db: SupabaseClient, idCourant: string) {
   const { data: enAttente } = await db.from("whatsapp_evenements").select("id").is("traite_le", null).lt("essais", 5).eq("organisation_id", ORGANISATION).order("recu_le").limit(11);
   const ids = [idCourant, ...((enAttente || []).map((e) => e.id).filter((id) => id !== idCourant))].slice(0, 11);
   for (const id of ids) await traiterUn(db, id);
+  // Une préparation arrêtée en route (limite de temps de la fonction) ne reste pas « en préparation » : échec après 3 minutes.
+  await db.from("whatsapp_propositions").update({ statut: "echec", erreur: "interrompue" }).eq("statut", "en_cours").lt("cree_le", new Date(Date.now() - 180_000).toISOString()).then(() => {}, () => {});
   const r = await reglages(db);
   if (!r.purge_le || Date.now() - new Date(r.purge_le).getTime() > 3600_000) {
     reglagesLus = null;
@@ -165,7 +167,7 @@ async function appliquer(db: SupabaseClient, a: any) {
     if (a.message.sens === "entrant") enFond(apresMessageClient(db, data.conversation_id, data.message_id));
     // Nani a répondu depuis l'app : la proposition en attente est traitée (plus de doublon possible).
     else if (a.message.origine === "app") {
-      const { error: e } = await db.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par_quoi: "app" }).eq("conversation_id", data.conversation_id).in("statut", ["a_faire", "en_cours"]);
+      const { error: e } = await db.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par_quoi: "app" }).eq("conversation_id", data.conversation_id).in("statut", ["a_faire", "en_cours", "envoi"]);
       // Table absente (migration 59 pas encore passée) : rien à marquer.
       if (e && e.code !== "42P01") throw new Error(e.message);
     }
