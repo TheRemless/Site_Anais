@@ -156,14 +156,12 @@ test("erreurs d'envoi : chaque code de whatsapp-envoi a son message, un code inc
   assert.ok(W.erreurEnvoi("jamais_vu"));
 });
 
-test("adresse de la notification : « #/whatsapp?c=…&entite=… » ouvre la conversation", () => {
+test("adresse d'une conversation : « #/whatsapp?c=…&entite=… » l'ouvre directement", () => {
   assert.deepEqual(W.lireAdresse("#/whatsapp?c=abc&entite=t"), { conversation: "abc", entite: "t" });
   assert.deepEqual(W.lireAdresse("#/whatsapp"), { conversation: "", entite: "" });
   assert.equal(W.adresseConversation({ id: "abc", entite_id: "t" }), "#/whatsapp?c=abc&entite=t");
   assert.equal(W.adresseConversation({ id: "abc", entite_id: null }), "#/whatsapp?c=abc");
   assert.ok(ecranDeLecture("#/whatsapp") && ecranDeLecture("#/whatsapp?c=abc&entite=t"), "écran de lecture : redessiné en direct");
-  const fn = fs.readFileSync(path.join(RACINE, "supabase/functions/whatsapp/reponse.ts"), "utf8");
-  assert.match(fn, /\/gestion\/#\/whatsapp\?c=\$\{conv\.id\}/, "la notification vise bien cette adresse");
 });
 
 test("état du compte Telnyx en clair", () => {

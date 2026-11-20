@@ -1,4 +1,4 @@
-// Boîte WhatsApp (phase 2) : logique pure de la réponse préparée par l'agent, du tri Secret ou Taxi et de la notification.
+// Boîte WhatsApp (phase 2) : logique pure de la réponse préparée par l'agent et du tri Secret ou Taxi. Aucune notification.
 // Aucune dépendance réseau : la fonction « whatsapp » (index.ts) et les tests (tests/gestion-whatsapp.test.js) l'importent.
 import { OUTILS, refDe } from "../agent/outils.js";
 import { consignes, contexteDuJour, blocApprentissages } from "../agent/prompt.js";
@@ -109,25 +109,6 @@ export function fenetreOuverte(messages = [], maintenant = Date.now()) {
   return t.length > 0 && maintenant - Math.max(...t) < FENETRE_MS;
 }
 
-// Destinataires de la notification : administrateurs de l'entreprise de la conversation (de Secret et de Taxi si elle est à trier), de
-// l'organisation. Même règle que la base (whatsapp_admin) : « reglages.ecrire » sur toute l'entreprise, rôle « tous droits » ou super admin.
-export function destinatairesWhatsapp({ entiteIds = [], profils = [], membres = [], roles = [] }) {
-  const roleDe = new Map(roles.map((r) => [r.id, r]));
-  const cibles = new Set(entiteIds);
-  return profils
-    .filter((p) => p.actif)
-    .filter((p) => {
-      if (p.super_admin) return true;
-      return membres.some((m) => {
-        if (m.user_id !== p.user_id || !cibles.has(m.entite_id)) return false;
-        const r = roleDe.get(m.role_id);
-        return !!r && r.portee === "toute" && (r.tous_droits === true || (r.permissions || []).includes("reglages.ecrire"));
-      });
-    })
-    .map((p) => p.user_id);
-}
-
-// Texte de la notification : le prénom du profil WhatsApp ou du client, jamais le contenu du message ni le numéro complet.
 // Prénom affichable : lettres, espaces, apostrophes et traits d'union seulement (un nom de profil choisi par le client peut contenir un
 // numéro ou « URGENT »), 30 caractères au plus.
 export function prenomSur(v) {
@@ -135,16 +116,6 @@ export function prenomSur(v) {
   if (!/\p{L}{2}/u.test(t) || /^(urgent|important|call|appel)\b/i.test(t)) return "";
   return Array.from(t).slice(0, 30).join("").trim();
 }
-// nom : le prénom du client relié d'abord, sinon le nom de profil nettoyé ; à défaut, les 4 derniers chiffres.
-export function notificationWhatsapp({ nom = "", telephone = "", pret = false, entreprise = "" }) {
-  const qui = prenomSur(nom) || (telephone ? `…${String(telephone).slice(-4)}` : "un client");
-  return {
-    titre: entreprise ? `WhatsApp ${entreprise}` : "WhatsApp",
-    corps: pret ? `${qui} a écrit. Réponse prête à copier.` : `${qui} a écrit.`,
-    tag: "whatsapp",
-  };
-}
-
 // Avertissements de la carte de l'agent, gardés tels quels (bornés).
 export const avertissementsSurs = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === "string").map((x) => x.slice(0, 120)).slice(0, 20) : []);
 export const langueSure = (l) => (typeof l === "string" && /^[a-z]{2}$/.test(l) ? l : null);

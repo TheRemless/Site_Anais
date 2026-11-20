@@ -178,7 +178,7 @@ test("whatsapp : Telnyx reçoit 200 dès que l'événement est gardé ; la fonct
 });
 
 // ---- Phase 2 : réponse préparée par l'agent, tri, notification, envoi depuis Gestion ----------------------------------------------
-import { OUTILS_WHATSAPP, outilsWhatsapp, demandeAgent, demandeTri, lireTri, aRepondre, fenetreOuverte, destinatairesWhatsapp, notificationWhatsapp, ligneMessage, avertissementsSurs, langueSure, FENETRE_MS } from "../supabase/functions/whatsapp/proposer.js";
+import { OUTILS_WHATSAPP, outilsWhatsapp, demandeAgent, demandeTri, lireTri, aRepondre, fenetreOuverte, ligneMessage, avertissementsSurs, langueSure, FENETRE_MS } from "../supabase/functions/whatsapp/proposer.js";
 import { lireEnvoi, corpsTelnyx, lireReponseTelnyx, TEXTE_MAX_OCTETS } from "../supabase/functions/whatsapp-envoi/calc.js";
 import { parametres } from "../supabase/functions/agent/prompt.js";
 import { OUTILS } from "../supabase/functions/agent/outils.js";
@@ -235,14 +235,15 @@ test("whatsapp : fenêtre de 24 h pour l'envoi depuis Gestion", () => {
   assert.equal(fenetreOuverte([], t), false);
 });
 
-test("whatsapp : notification aux administrateurs seulement, sans le contenu du message", () => {
-  const roles = [{ id: "rA", portee: "toute", permissions: ["reglages.ecrire"] }, { id: "rM", portee: "toute", permissions: ["dossiers.lire"] }, { id: "rT", portee: "toute", permissions: [], tous_droits: true }, { id: "rP", portee: "mes_dossiers", permissions: ["reglages.ecrire"] }];
-  const membres = [{ user_id: "admin", entite_id: "S", role_id: "rA" }, { user_id: "mook", entite_id: "S", role_id: "rM" }, { user_id: "tous", entite_id: "T", role_id: "rT" }, { user_id: "partiel", entite_id: "S", role_id: "rP" }, { user_id: "autre", entite_id: "Z", role_id: "rA" }];
-  const profils = ["admin", "mook", "tous", "partiel", "autre", "nani"].map((u) => ({ user_id: u, actif: true, super_admin: u === "nani" })).concat([{ user_id: "parti", actif: false, super_admin: true }]);
-  assert.deepEqual(destinatairesWhatsapp({ entiteIds: ["S"], profils, membres, roles }).sort(), ["admin", "nani"]);
-  assert.deepEqual(destinatairesWhatsapp({ entiteIds: ["S", "T"], profils, membres, roles }).sort(), ["admin", "nani", "tous"]);
-  assert.deepEqual(notificationWhatsapp({ nom: "Anna", telephone: "+41790000002", pret: true, entreprise: "Secret Travel & Tour" }), { titre: "WhatsApp Secret Travel & Tour", corps: "Anna a écrit. Réponse prête à copier.", tag: "whatsapp" });
-  assert.equal(notificationWhatsapp({ telephone: "+41790000002" }).corps, "…0002 a écrit.");
+test("whatsapp : aucune notification Web Push pour WhatsApp (Jérémy, 20.11.2026), les autres notifications de Gestion restent", () => {
+  const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  const index = fs.readFileSync(new URL("../supabase/functions/whatsapp/index.ts", import.meta.url), "utf8");
+  for (const code of [reponse, index]) {
+    assert.doesNotMatch(code, /web-push|webpush|sendNotification|abonnements_push|VAPID/);
+  }
+  // Rappels et demandes du site gardent leurs notifications.
+  assert.match(fs.readFileSync(new URL("../supabase/functions/rappels/index.ts", import.meta.url), "utf8"), /sendNotification/);
+  assert.match(fs.readFileSync(new URL("../supabase/functions/demande-site/index.ts", import.meta.url), "utf8"), /sendNotification/);
 });
 
 test("whatsapp : garde-fous sur la carte de l'agent", () => {
@@ -317,7 +318,6 @@ test("whatsapp : prénom affichable seulement (profil choisi par le client)", ()
   assert.equal(prenomSur("Anna-Lena 🌴"), "Anna-Lena");
   assert.equal(prenomSur("URGENT call +66 81"), "");
   assert.equal(prenomSur("+66 81 234 5678"), "");
-  assert.equal(notificationWhatsapp({ nom: "URGENT call +66", telephone: "+41790000002" }).corps, "…0002 a écrit.");
 });
 
 test("whatsapp : pas de réponse préparée pour une réaction, un emoji seul ou un merci", () => {
