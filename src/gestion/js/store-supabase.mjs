@@ -312,6 +312,24 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { error } = await sb.rpc("regler_plafond_assistant", { plafond, seuil });
       if (error) throw new Error(error.message);
     },
+    // Demandes d'amélioration de l'outil (migration 56) : lues par les administratrices de l'entreprise. null tant que la table manque.
+    async ameliorations(entiteId) {
+      const { data, error } = await sb.from("ameliorations").select("id, entite_id, carte_id, titre, texte, statut, issue_url, pr_url, sensible, cree_le, maj_le").eq("entite_id", entiteId).order("cree_le", { ascending: false }).limit(50);
+      return error ? null : data || [];
+    },
+    // Envoi d'une demande validée (fonction « ameliorations ») : rend { amelioration, carte } ou { erreur, motifs? }.
+    async demanderAmelioration(corps) {
+      const { data: s } = await sb.auth.getSession();
+      const jeton = s && s.session && s.session.access_token;
+      if (!jeton) return { erreur: "non_connecte" };
+      try {
+        const rep = await fetch(`${config.SUPABASE_URL}/functions/v1/ameliorations`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ action: "demander", ...corps }) });
+        const r = await rep.json().catch(() => null);
+        return rep.ok && r ? r : { erreur: (r && r.erreur) || "indisponible", ...(r && r.motifs ? { motifs: r.motifs } : {}) };
+      } catch {
+        return { erreur: "hors_ligne" };
+      }
+    },
     // Table des temps de trajet de référence (migration 52). null tant que la table manque.
     async tempsTrajets(entiteId) {
       const { data, error } = await sb.from("temps_trajets").select("id, entite_id, de, vers, cle, mode, duree_min, ferry, marge_min, source, source_date, a_verifier, origine, maj_le").eq("entite_id", entiteId).order("de").limit(2000);

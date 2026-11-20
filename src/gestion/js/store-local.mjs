@@ -50,6 +50,7 @@ export function creer() {
     data.agent_cartes = data.agent_cartes || [];
     // Pièces jointes (migration 55) : en démonstration, seulement leur nom et leur type (le navigateur ne garde pas les fichiers).
     data.agent_fichiers = data.agent_fichiers || [];
+    data.ameliorations = data.ameliorations || [];
     data.temps_trajets = data.temps_trajets || [];
     data.liaisons_ferry = data.liaisons_ferry || [];
     // Corbeille des documents et compteurs de numéros, comme la base (migration 34). L'acompte figé du dossier existe comme colonne.
@@ -446,6 +447,25 @@ export function creer() {
       if (c.statut !== statut) (c.statut = statut), (c.decide_le = new Date().toISOString());
       sauve();
       return structuredClone(c);
+    },
+    // Demandes d'amélioration : en démonstration, la demande reste ici (aucune issue n'est ouverte), statut « envoyée ».
+    async ameliorations(entiteId) {
+      return structuredClone(data.ameliorations.filter((a) => a.entite_id === entiteId)).sort((a, b) => String(b.cree_le).localeCompare(String(a.cree_le)));
+    },
+    async demanderAmelioration({ entite_id, carte_id, titre, texte }) {
+      if (!permissionsDans(contexte(), entite_id).includes("reglages.ecrire")) return { erreur: "reserve_admin" };
+      const { controlerDemande } = await import("./ameliorations-calc.mjs");
+      const c = data.agent_cartes.find((x) => x.id === carte_id);
+      const conv = c && data.agent_conversations.find((v) => v.id === c.conversation_id && v.user_id === utilisateur.user_id);
+      const r = controlerDemande({ permissions: permissionsDans(contexte(), entite_id), carte: c && conv ? { ...c, entite_id: conv.entite_id } : null, entiteId: entite_id, titre, texte, demandesDuJour: 0 });
+      if (!r.ok) return { erreur: r.erreur, ...(r.motifs ? { motifs: r.motifs } : {}) };
+      const maintenant = new Date().toISOString();
+      const a = { id: uid(), entite_id, user_id: utilisateur.user_id, carte_id, conversation_id: c.conversation_id, titre: r.titre, texte: r.texte, statut: "envoyee", issue_url: null, pr_url: null, sensible: false, cree_le: maintenant, maj_le: maintenant };
+      data.ameliorations.push(a);
+      c.statut = "validee";
+      c.decide_le = maintenant;
+      sauve();
+      return { amelioration: structuredClone(a), carte: structuredClone(c) };
     },
     async tempsTrajets(entiteId) {
       return structuredClone(data.temps_trajets.filter((l) => l.entite_id === entiteId));

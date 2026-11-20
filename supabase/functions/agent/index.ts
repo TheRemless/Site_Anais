@@ -433,7 +433,9 @@ Deno.serve(async (req) => {
   const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
   // Les pièces jointes que l'agent peut citer (proposer_import_brochure) et les droits de la personne (l'import demande « partenaires.ecrire »
   // et « partenaires.prix »).
-  const ctx = { fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
+  // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange
+  // complète en place : une pièce jointe ou un nom de client vus plus tôt dans la conversation y sont.
+  const ctx = { historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], charger, chercherClients, dossierPour, parRef, hotelsPour, reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

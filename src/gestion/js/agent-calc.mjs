@@ -180,3 +180,74 @@ export const titreDepuis = (t) => {
   const l = String(t || "").replace(/\s+/g, " ").trim();
   return l.length > 60 ? `${l.slice(0, 57).replace(/\s+\S*$/, "")}…` : l || "Nouvelle conversation";
 };
+
+// ---- Faire évoluer l'outil (20.11.2026) ---------------------------------------------------------------------------------------------
+// Carte « reglage » : l'avant affiché doit être encore la valeur en place, sinon la carte est périmée (quelqu'un l'a changée entre-temps).
+
+const lireChemin = (o, chemin) => chemin.split(".").reduce((v, k) => (v && typeof v === "object" ? v[k] : undefined), o);
+const moduleTexte = (v) => (v === true ? "oui" : v === false ? "non" : "auto");
+const ENTIERS = ["conditions.delai_jours", "conditions.relance_jours", "conditions.solde_jours", "conditions.acompte_pct"];
+const MODULES = ["modules.partenaires", "modules.reservations", "modules.messages", "modules.catalogue"];
+const TEXTES_VOUCHER = ["voucher.merci", "voucher.merci_transfert", "voucher.note_transfert"];
+
+// Les réglages après la carte (voix, texte type, réglage), ou { erreur }. `nouvelId` : l'identifiant d'un nouveau texte type.
+export function reglageApplique(reglages, d = {}, { nouvelId = "" } = {}) {
+  const r = structuredClone(reglages || {});
+  if (d.sujet === "voix") {
+    if (!["fr", "en", "lieu"].includes(d.champ)) return { erreur: "inconnu" };
+    const voix = { lieu: "", fr: "", en: "", ...(r.assistant_voix || {}) };
+    if (String(voix[d.champ] || "") !== String(d.avant || "")) return { erreur: "change" };
+    voix[d.champ] = d.valeur;
+    return { ok: true, valeur: { ...r, assistant_voix: voix } };
+  }
+  if (d.sujet === "message") {
+    const liste = Array.isArray(r.messages) ? r.messages : [];
+    if (d.champ === "nouveau") {
+      if (!d.libelle || !d.valeur || !["fr", "en", "th"].includes(d.langue)) return { erreur: "inconnu" };
+      return { ok: true, valeur: { ...r, messages: [...liste, { id: nouvelId || `perso-${Date.now().toString(36)}`, pour: "client", titre: d.libelle, langue: d.langue, corps: d.valeur }] } };
+    }
+    if (!["corps", "titre"].includes(d.champ)) return { erreur: "inconnu" };
+    const i = liste.findIndex((m) => String(m.id) === String(d.cle));
+    if (i < 0) return { erreur: "introuvable" };
+    if (String(liste[i][d.champ] || "") !== String(d.avant || "")) return { erreur: "change" };
+    const messages = liste.map((m, j) => (j === i ? { ...m, [d.champ]: d.valeur } : m));
+    return { ok: true, valeur: { ...r, messages } };
+  }
+  if (d.sujet === "reglage") {
+    const [groupe, cle] = String(d.champ || "").split(".");
+    const avant = lireChemin(r, d.champ);
+    if (MODULES.includes(d.champ)) {
+      if (moduleTexte(avant) !== d.avant) return { erreur: "change" };
+      const v = { oui: true, non: false, auto: null }[d.valeur];
+      if (v === undefined) return { erreur: "inconnu" };
+      return { ok: true, valeur: { ...r, modules: { ...(r.modules || {}), [cle]: v } } };
+    }
+    if (ENTIERS.includes(d.champ) || TEXTES_VOUCHER.includes(d.champ)) {
+      if (String(avant ?? "") !== String(d.avant ?? "")) return { erreur: "change" };
+      const v = ENTIERS.includes(d.champ) ? Number(d.valeur) : String(d.valeur || "");
+      if (ENTIERS.includes(d.champ) && !(Number.isInteger(v) && v >= 0 && v <= (cle === "acompte_pct" ? 100 : 365))) return { erreur: "inconnu" };
+      return { ok: true, valeur: { ...r, [groupe]: { ...(r[groupe] || {}), [cle]: v } } };
+    }
+  }
+  return { erreur: "inconnu" };
+}
+
+// Carte « reglage » du catalogue : le changement d'un tarif (libellé, libellé anglais, prix de vente, mis en vente), ou { erreur }.
+export function prestationModifiee(p, d = {}) {
+  if (!p) return { erreur: "introuvable" };
+  const avant = d.champ === "actif" ? (p.actif === false ? "non" : "oui") : String(p[d.champ] ?? "");
+  if (avant !== String(d.avant ?? "")) return { erreur: "change" };
+  if (d.champ === "prix_vente") {
+    const n = Number(d.valeur);
+    return Number.isFinite(n) && n >= 0 ? { ok: true, patch: { prix_vente: n } } : { erreur: "inconnu" };
+  }
+  if (d.champ === "actif") return ["oui", "non"].includes(d.valeur) ? { ok: true, patch: { actif: d.valeur === "oui" } } : { erreur: "inconnu" };
+  if (["libelle", "libelle_en"].includes(d.champ) && String(d.valeur || "").trim()) return { ok: true, patch: { [d.champ]: String(d.valeur).trim() } };
+  return { erreur: "inconnu" };
+}
+
+// Demandes d'amélioration : en cours d'abord, puis les plus récentes.
+export function listeAmeliorations(lignes = []) {
+  const enCours = (l) => (["envoyee", "pr_prete", "echec"].includes(l.statut) ? 0 : 1);
+  return [...(lignes || [])].sort((a, b) => enCours(a) - enCours(b) || String(b.cree_le).localeCompare(String(a.cree_le)));
+}

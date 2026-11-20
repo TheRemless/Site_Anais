@@ -10,6 +10,7 @@
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
 import { texteDuree } from "./planifier.js";
+import { OUTILS_AMELIORER, PROPOSITIONS_AMELIORER, lireReglages, proposerReglage, proposerAmelioration } from "./ameliorer.js";
 
 // ---- Petits outils de texte -----------------------------------------------------------------------------------------------------------
 
@@ -238,9 +239,11 @@ export const OUTILS = [
       nouveau: B("Vrai si la personne demande de créer un nouveau partenaire."),
     }),
   },
+  // Faire évoluer l'outil (réglages sans code, demandes d'amélioration) : ameliorer.js.
+  ...OUTILS_AMELIORER,
 ];
 export const NOMS_OUTILS = OUTILS.map((o) => o.name);
-export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet", "proposer_import_brochure"];
+export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet", "proposer_import_brochure", ...PROPOSITIONS_AMELIORER];
 
 // ---- Contrôle des entrées ---------------------------------------------------------------------------------------------------------
 // Comme une entrée d'utilisateur : un champ oublié prend sa valeur vide ("" ou 0, faux, liste vide ; pour une liste fermée, la première
@@ -689,6 +692,8 @@ export async function proposer(nom, e, ctx, memo) {
     if (!c.ok) return { erreur: "message_vide" };
     return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message }, avertissements: c.avertissements };
   }
+  if (nom === "proposer_reglage") return proposerReglage(e, ctx, memo);
+  if (nom === "proposer_amelioration") return proposerAmelioration(e, ctx);
   return { erreur: "outil_inconnu" };
 }
 
@@ -751,13 +756,13 @@ export async function executer(nom, entree, ctx, memo) {
   try {
     if (OUTILS_PROPOSITION.includes(nom)) {
       const carte = await proposer(nom, entree, ctx, memo);
-      if (carte.erreur) return { contenu: { erreur: carte.erreur }, erreur: true };
+      if (carte.erreur) return { contenu: { erreur: carte.erreur, ...(carte.conseil ? { conseil: carte.conseil } : {}) }, erreur: true };
       // Ce qui repart chez Claude : la carte est affichée, rien n'est fait. Les prix retenus, pour qu'il ne les répète pas faux.
       const prix = carte.genre === "dossier" ? carte.donnees.services.map((s) => ({ service: s.texte, prix: s.prix, origine: s.origine_prix })) : carte.genre === "reservation" ? [{ service: carte.donnees.service.texte, prix: carte.donnees.service.prix, origine: carte.donnees.service.origine_prix }] : undefined;
       const connu = carte.genre === "brochure" ? { partenaire_au_catalogue: !carte.donnees.nouveau } : {};
       return { contenu: { carte_affichee: true, etat: "en attente de validation par la personne", ...connu, ...(prix ? { prix } : {}), ...(carte.avertissements && carte.avertissements.length ? { avertissements: carte.avertissements } : {}) }, carte };
     }
-    const f = { chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier }[nom];
+    const f = { lire_reglages: (e, c) => lireReglages(e, c), chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier }[nom];
     const r = await f(entree, ctx, memo);
     ajouter(r);
     return { contenu: r.resultat, ...(r.planning ? { planning: r.planning } : {}), erreur: !!(r.resultat && r.resultat.erreur) };

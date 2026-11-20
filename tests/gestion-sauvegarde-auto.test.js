@@ -97,7 +97,9 @@ test("sauvegarde du jour : fichier chiffré (droits 600) et une ligne de journal
   const fichier = path.join(o.destination, "gestion-2026-11-12.gsb");
   assert.ok(fs.existsSync(fichier));
   assert.equal(fs.statSync(fichier).mode & 0o777, 0o600);
-  assert.ok(!fs.readFileSync(fichier).includes("d1"), "contenu chiffré");
+  // Un fragment assez long du clair : deux octets (« d1 ») apparaissaient parfois par hasard dans le chiffré (CI du 20.11.2026).
+  const chiffre = fs.readFileSync(fichier);
+  assert.ok(!chiffre.includes('{"id":"d1"}') && !chiffre.includes('"public.dossiers"'), "contenu chiffré");
   assert.ok(!fs.readdirSync(o.destination).some((n) => n.endsWith(".tmp")), "aucun fichier temporaire laissé");
   const journal = fs.readFileSync(path.join(o.destination, "journal.log"), "utf8");
   assert.match(journal, /^2026-11-12 09:30:00 OK gestion-2026-11-12\.gsb 1 lignes, 1 tables/m);

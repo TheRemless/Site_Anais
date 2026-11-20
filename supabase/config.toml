@@ -20,3 +20,8 @@ verify_jwt = false
 # Lecture publique des bandeaux en ligne (aucune donnée privée), mise en cache une minute.
 [functions.bandeau-site]
 verify_jwt = false
+
+# Appelée par l'outil avec la session de la personne (Assistant, « Demander cette amélioration ») : la passerelle vérifie le jeton, la
+# fonction vérifie ensuite le droit reglages.ecrire et la carte.
+[functions.ameliorations]
+verify_jwt = true
