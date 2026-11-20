@@ -8,7 +8,7 @@ import { dureeEntre, ligneDeLaTable, zoneDuLieu, minutesDe, dureesTapees, lignes
 import { lireEstimation } from "../supabase/functions/agent/estimation.js";
 import { dureeAvecFerry as dureeAvecFerryDe } from "../supabase/functions/agent/temps.js";
 import { OUTILS, executer, entreeValide, memoDepuis, refDe, trouverRef, controlerReponse, montantsTapes, motifNom, motifTelephone, clesHotelPossibles, prefixeRef } from "../supabase/functions/agent/outils.js";
-import { cleItineraire, VALIDITE_JOURS } from "../supabase/functions/agent/temps.js";
+import { cleItineraire, VALIDITE_JOURS, lirePhoton, parametresPhoton } from "../supabase/functions/agent/temps.js";
 import { consignes, controlerAcces, parametres, ligneJournal, coutEchange, historique, titreDepuis, signe } from "../supabase/functions/agent/prompt.js";
 
 const ENT = "11111111-1111-4111-8111-111111111111";
@@ -339,6 +339,25 @@ test("clients, dossiers et hôtels lus par la fonction : aucune table entière c
   assert.equal(h.contenu.hotels[0].zone, "Loh Dalum");
   await executer("temps_de_route", { de: "Paradise Resort Phi Phi", vers: "Krabi Airport" }, ctx, nouveauMemo());
   for (const t of ["clients", "dossiers", "reservations", "hotels_lieux"]) assert.ok(!charges.includes(t), t);
+});
+
+test("Photon, relais de Nominatim refusé par les serveurs de Supabase : lecture GeoJSON, Thaïlande seulement", () => {
+  const json = { features: [{ geometry: { coordinates: [98.9162, 8.0857] }, properties: { name: "Krabi Nakharin International Hospital", street: "Phisan Phop Road", city: "Krabi", state: "Krabi" } }] };
+  const g = lirePhoton(json);
+  assert.equal(g.lat, 8.0857);
+  assert.equal(g.lon, 98.9162);
+  assert.equal(g.label, "Krabi Nakharin International Hospital, Phisan Phop Road, Krabi");
+  assert.equal(lirePhoton({ features: [] }), null);
+  assert.equal(lirePhoton(null), null);
+  const p = new URLSearchParams(parametresPhoton("Klong Nin, Ko Lanta"));
+  assert.equal(p.get("q"), "Klong Nin, Ko Lanta");
+  assert.equal(p.get("bbox"), "97.3,5.6,105.7,20.5");
+});
+
+test("outil en panne : le motif de l'erreur reste dans le résultat", async () => {
+  const r = await executer("estimer_temps_web", { de: "A", vers: "B" }, ctxDe({ estimerWeb: async () => { throw new Error("400 web search is not enabled"); } }), nouveauMemo());
+  assert.equal(r.contenu.erreur, "outil_en_panne");
+  assert.equal(r.contenu.motif, "400 web search is not enabled");
 });
 
 // ---- Propositions ------------------------------------------------------------------------------------------------------------

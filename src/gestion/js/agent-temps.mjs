@@ -353,6 +353,21 @@ export function lireNominatim(json) {
   return { lon, lat, label: String(r.display_name || r.name || "").slice(0, 200), confiance: Number.isFinite(Number(r.importance)) ? Number(r.importance) : null };
 }
 
+// Relais de Nominatim (20.11.2026) : Nominatim refuse les serveurs de Supabase (403 à chaque requête, vu en production). Photon (Komoot,
+// mêmes données OpenStreetMap, sans clé) répond. GET /api/?q=…&limit=1&lang=en, limité à la Thaïlande (bbox), réponse GeoJSON.
+export const PHOTON_BASE = "https://photon.komoot.io";
+export const parametresPhoton = (texte) => new URLSearchParams({ q: String(texte || "").slice(0, 160), limit: "1", lang: "en", bbox: "97.3,5.6,105.7,20.5" }).toString();
+export function lirePhoton(json) {
+  const f = json && Array.isArray(json.features) ? json.features[0] : null;
+  const c = f && f.geometry && Array.isArray(f.geometry.coordinates) ? f.geometry.coordinates : [];
+  const lon = Number(c[0]);
+  const lat = Number(c[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const p = f.properties || {};
+  const label = [p.name, p.street, p.district, p.city, p.state].filter((x, i, t) => x && t.indexOf(x) === i).join(", ");
+  return { lon, lat, label: String(label).slice(0, 200), confiance: null };
+}
+
 // Une requête par seconde au plus vers chaque serveur : rend le temps à attendre (ms) avant le prochain appel et note celui-ci.
 export function delaiAvant(derniers, hote, maintenant, ecartMs = 1100) {
   const attente = derniers.has(hote) ? Math.max(0, derniers.get(hote) + ecartMs - maintenant) : 0;

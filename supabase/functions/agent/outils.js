@@ -706,7 +706,9 @@ export async function executer(nom, entree, ctx, memo) {
     ajouter(r);
     return { contenu: r.resultat, ...(r.planning ? { planning: r.planning } : {}), erreur: !!(r.resultat && r.resultat.erreur) };
   } catch (err) {
-    return { contenu: { erreur: "outil_en_panne" }, erreur: true, panne: err instanceof Error ? err.message.slice(0, 200) : "" };
+    // Le motif (message d'erreur, jamais une donnée de client) part avec le résultat : il reste dans l'historique pour diagnostiquer.
+    const motif = err instanceof Error ? err.message.replace(/\s+/g, " ").slice(0, 200) : "";
+    return { contenu: { erreur: "outil_en_panne", ...(motif ? { motif } : {}) }, erreur: true, panne: motif };
   }
 }
 
