@@ -5,28 +5,18 @@ import { etat, peut, organisationActiveId } from "../etat.mjs";
 import { h, modal, toast, confirmer, champ, icone } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { aujourdhui } from "../calc.mjs";
-import { clePaire, lignesDuSite, lignesDesBateaux, lignesDesZones, lignesNouvelles } from "../agent-temps.mjs";
+import { clePaire, lignesDuSite, lignesDesBateaux, lignesNouvelles } from "../agent-temps.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
-import { grillesDe } from "../pickup-calc.mjs";
 import { estLanta } from "../exemples.mjs";
 import { ROUTES_SITE, LIAISON_LANTA } from "../temps-site.mjs";
 
 const ORIGINES = { saisie: N_("saisie"), site: N_("page taxi du site"), bateau: N_("catalogue des trajets"), zones: N_("grille de pickup"), agent: N_("conversation avec l'assistant") };
 
 // Les lignes à proposer au pré-remplissage, à partir de ce que l'entreprise a déjà : jamais une ligne de la table écrasée.
-export function lignesAPreremplir({ trajets = [], partenaires = [], lanta = false, existantes = [], date = "" }) {
-  const zones = [];
-  for (const p of partenaires) {
-    if (p.actif === false) continue;
-    const grilles = grillesDe(p);
-    if (!grilles.length) continue;
-    // Le lieu de départ des bateaux de ce partenaire, le plus fréquent de ses trajets ; sans trajet, « Embarcadère » seul.
-    const compte = new Map();
-    for (const t of trajets) if (t.partenaire_id === p.id && t.actif !== false) compte.set(t.de, (compte.get(t.de) || 0) + 1);
-    const depart = [...compte.entries()].sort((a, b) => b[1] - a[1])[0];
-    zones.push(...lignesDesZones(grilles, depart ? depart[0] : "", date));
-  }
-  return lignesNouvelles([...(lanta ? lignesDuSite(ROUTES_SITE) : []), ...lignesDesBateaux(trajets, date), ...zones], existantes);
+// Pas les grilles de pickup (20.11.2026) : elles donnent l'heure de passage avant un bateau, sans dire de quel embarcadère il part ni combien
+// dure la route (enregistrement et attente compris). Le premier essai donnait « Kantiang → Embarcadère, Koh Lipe, 100 min ».
+export function lignesAPreremplir({ trajets = [], lanta = false, existantes = [], date = "" }) {
+  return lignesNouvelles([...(lanta ? lignesDuSite(ROUTES_SITE) : []), ...lignesDesBateaux(trajets, date)], existantes);
 }
 
 export async function vueTempsTrajets() {
@@ -197,10 +187,10 @@ export async function vueTempsTrajets() {
     const lanta = estLanta(organisationActiveId());
     // La liaison de Lanta (organisation de Koh Lanta seulement), si elle n'est pas déjà là.
     const liaison = lanta && !liaisons.some((l) => l.cote_ile === LIAISON_LANTA.cote_ile) ? { ...LIAISON_LANTA, source_date: aujourdhui() } : null;
-    const proposees = lignesAPreremplir({ trajets: etat.db.trajets, partenaires: etat.db.partenaires, lanta, existantes: lignes || [], date: aujourdhui() });
+    const proposees = lignesAPreremplir({ trajets: etat.db.trajets, lanta, existantes: lignes || [], date: aujourdhui() });
     if (!proposees.length && !liaison) return toast(tr("Rien de nouveau à pré-remplir."));
     const parOrigine = (o) => proposees.filter((l) => l.origine === o).length;
-    const detail = [["site", N_("depuis les pages taxi du site")], ["bateau", N_("depuis les durées des trajets")], ["zones", N_("depuis les grilles de pickup")]].filter(([o]) => parOrigine(o)).map(([o, t]) => `${parOrigine(o)} ${tr(t)}`).concat(liaison ? [tr("la liaison de ferry de Koh Lanta (Khlong Mak, 1 h)")] : []).join(", ");
+    const detail = [["site", N_("depuis les pages taxi du site")], ["bateau", N_("depuis les durées des trajets")]].filter(([o]) => parOrigine(o)).map(([o, t]) => `${parOrigine(o)} ${tr(t)}`).concat(liaison ? [tr("la liaison de ferry de Koh Lanta (Khlong Mak, 1 h)")] : []).join(", ");
     if (!(await confirmer(tr("Ajouter {n} éléments à vérifier ({detail}) ? Aucune ligne existante n'est modifiée.", { n: proposees.length + (liaison ? 1 : 0), detail }), tr("Pré-remplir")))) return;
     try {
       if (liaison) liaisons = [...liaisons, await etat.store.enregistrerLiaisonFerry(etat.entiteId, liaison)];

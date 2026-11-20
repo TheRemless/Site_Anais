@@ -46,18 +46,32 @@ Ordre décidé par Jérémy le 19.11.2026 (« fie-toi plutôt à OpenStreetMap, 
 | 1 | **openrouteservice** (OpenStreetMap, gratuit), avec la marge conseillée et le ferry de la ligne de la table pour ces zones s'il y en a une ; ce qu'OpenStreetMap a compris de chaque lieu est montré | « OpenStreetMap » |
 | 2 | La **table des temps de trajet** (Partenaires > Temps de trajet), ligne confirmée, quand OpenStreetMap ne donne rien (pas de clé, lieu introuvable, quota) | « table des temps » |
 | 3 | Une ligne de la table encore **à vérifier** (pré-remplie) | « table, ligne à vérifier » |
-| 4 | Rien : l'agent le dit et demande la durée. Quand Nani la donne, il propose une carte « Ajouter à la table » | « durée donnée par vous » |
-| 5 | En dernier recours, une **estimation par la recherche web**, avec sa source, marquée comme telle | « estimation trouvée sur le web » |
+| 4 | Une **estimation par la recherche web**, avec sa source, marquée comme telle. L'agent la lance lui-même, sans demander (Jérémy, 20.11.2026 : « faut vraiment qu'il fasse gagner du temps à Anaïs ») | « estimation trouvée sur le web » |
+| 5 | Rien : l'agent le dit et demande la durée. Quand Nani la donne, il propose une carte « Ajouter à la table » | « durée donnée par vous » |
 
 Une durée n'entre dans le calcul que si elle vient d'une de ces sources : une durée donnée par Nani doit être écrite dans la conversation (« compte 2h30 »), une estimation doit sortir de l'outil d'estimation. Sinon le calcul est refusé.
 
-La table se pré-remplit d'un bouton, chaque ligne « à vérifier » : durées des pages taxi du site (borne haute des fourchettes, organisation de Koh Lanta seulement), durées des trajets du catalogue (onglet « En bateau »), grilles de pickup des partenaires (temps entre le passage du véhicule et le départ du bateau, enregistrement compris, sans nom de partenaire). Aucune ligne existante n'est écrasée.
+La table se pré-remplit d'un bouton, chaque ligne « à vérifier » : durées des pages taxi du site (borne haute des fourchettes, organisation de Koh Lanta seulement) et durées des trajets du catalogue (onglet « En bateau »). Les grilles de pickup des partenaires n'y entrent plus (20.11.2026) : c'est l'heure de passage avant un bateau, pas une durée de route. Aucune ligne existante n'est écrasée.
 
 **OSRM public et Nominatim (organisation de Koh Lanta, décision de Jérémy du 20.11.2026)** : en attendant la clé openrouteservice (inscription en panne le 20.11), l'itinéraire vient du serveur public OSRM (`router.project-osrm.org`) et la recherche des lieux de Nominatim. Le serveur public OSRM se dit réservé aux usages non commerciaux et sans garantie de service ; Jérémy a choisi de s'en servir pour les quelques recherches d'Anaïs. Seule l'organisation de Koh Lanta y passe (jamais une autre agence) ; `AGENT_OSRM=0` le coupe ; dès que `ORS_API_KEY` est posée, openrouteservice le remplace. Règles tenues : une requête par seconde au plus par serveur, outil identifié par son User-Agent, résultats gardés en base, mention « Itinéraire OSRM, données © contributeurs OpenStreetMap » sous la frise. Nominatim ne connaît pas « Koh Lanta » (OpenStreetMap écrit « Ko Lanta ») ni la plupart des hôtels : la recherche essaie aussi la plage de l'hôtel connue (« Klong Nin »). Introuvable, l'agent demande. Essai réel du 20.11.2026 : Jai Tiki → Khlong Mak 38 min, ferry 1 h, embarcadère Krabi-Koh Lanta → Krabi Nakharin 1 h 15, marge 11 min, pickup 12:55 pour 16:00.
 
 Les coordonnées des deux ports du ferry de Lanta viennent d'OpenStreetMap (bac pour voitures, way 45897552) : 7.6823683, 99.0900688 côté île (Khlong Mak) et 7.6930427, 99.0992049 côté continent. Le côté a été vérifié avec OSRM : depuis l'hôpital de Krabi, le bout continent s'atteint sans ferry (73 min), le bout île avec (92 min).
 
-**openrouteservice** : `https://api.heigit.org/openrouteservice/v2/directions/driving-car/json` et `/pelias/v1/search` (adresses relevées dans le client officiel, 19.11.2026), clé dans l'en-tête `Authorization`. Quota gratuit : 2 000 itinéraires par jour, 40 par minute (FAQ d'ORS). Chaque résultat est gardé en base (`lieux_geo`, `trajets_ors`) et n'est pas recalculé. Seuls partent des noms de lieux et des coordonnées, jamais une donnée de client. **Conditions d'usage commercial et d'attribution : non vérifiées**, la page https://account.heigit.org/info/tos ne se lit qu'avec un navigateur. À lire par Jérémy avant la mise en service.
+**openrouteservice** : `https://api.heigit.org/openrouteservice/v2/directions/driving-car/json` et `/pelias/v1/search` (adresses relevées dans le client officiel, 19.11.2026), clé dans l'en-tête `Authorization`. Quota gratuit : 2 000 itinéraires par jour, 40 par minute (FAQ d'ORS). Chaque résultat est gardé en base (`lieux_geo`, `trajets_ors`) et recalculé après six mois (un lieu posé à la main ne l'est jamais). Seuls partent des noms de lieux et des coordonnées, jamais une donnée de client. **Conditions d'usage commercial et d'attribution : non vérifiées**, la page https://account.heigit.org/info/tos ne se lit qu'avec un navigateur. À lire par Jérémy avant la mise en service.
+
+## Tenir dans la durée (20.11.2026)
+
+Question de Jérémy : dans deux ans, avec des milliers de demandes, la base ne sera-t-elle pas trop lente ou trop chère à lire ? Réponse retenue :
+
+| Donnée | Comment elle grandit | Comment elle se lit |
+|---|---|---|
+| Table des temps de trajet (`temps_trajets`) | Seulement par Nani (ou le pré-remplissage) : quelques centaines de lignes | Chargée entière, une fois par échange, jamais envoyée à Claude |
+| Itinéraires calculés (`trajets_ors`) | Une ligne par paire de positions (arrondies à 110 m environ), pas par écriture du nom | Une ligne lue par sa clé ; recalculée après six mois |
+| Lieux trouvés (`lieux_geo`) | Une ligne par écriture d'un lieu | Une ligne lue par sa clé ; recalculée après six mois |
+| Hôtels (`hotels_lieux`) | Une ligne par hôtel situé | Lue par les noms de la demande, jamais entière |
+| Clients, dossiers, services | Avec l'activité | Cherchés dans la base (nom, téléphone, référence), quelques lignes |
+
+Claude ne reçoit que le résultat d'un outil (huit clients au plus, une durée), jamais une table : le nombre de lignes en base ne change pas le coût en jetons.
 
 ## Fichiers
 
@@ -69,7 +83,7 @@ Les coordonnées des deux ports du ferry de Lanta viennent d'OpenStreetMap (bac 
 | `supabase/functions/agent/prompt.js` | Consignes, voix, modèle, coût, accès |
 | `supabase/functions/agent/planifier.js` | Calcul des heures, temps simulés de la démo (copie identique : `src/gestion/js/agent-planifier.mjs`) |
 | `supabase/functions/agent/temps.js` | Ordre des sources de durée, zones, openrouteservice, pré-remplissage (copie identique : `src/gestion/js/agent-temps.mjs`) |
-| `supabase/functions/agent/estimation.js` | Estimation d'une durée par la recherche web (dernier recours) |
+| `supabase/functions/agent/estimation.js` | Estimation d'une durée par la recherche web (quand OpenStreetMap et la table n'ont rien) |
 | `src/gestion/js/views/temps-trajets.mjs` | Écran de la table des temps de trajet |
 | `src/gestion/js/views/agent.mjs`, `agent-calc.mjs`, `agent-demo.mjs` | Écran, logique pure, démonstration |
 | `docs/gestion/migration-52-agent-conversations.sql` | Conversations, messages, cartes, RLS, conservation |

@@ -7,7 +7,8 @@ import { planifierCourse, tempsSimule, reglagesPlanning, versHeure } from "../su
 import { dureeEntre, ligneDeLaTable, zoneDuLieu, minutesDe, dureesTapees, lignesDuSite, lignesDesBateaux, lignesDesZones, lignesNouvelles, clePaire, lireItineraire, lireGeocode, corpsItineraire, parametresGeocode } from "../supabase/functions/agent/temps.js";
 import { lireEstimation } from "../supabase/functions/agent/estimation.js";
 import { dureeAvecFerry as dureeAvecFerryDe } from "../supabase/functions/agent/temps.js";
-import { OUTILS, executer, entreeValide, memoDepuis, refDe, trouverRef, controlerReponse, montantsTapes } from "../supabase/functions/agent/outils.js";
+import { OUTILS, executer, entreeValide, memoDepuis, refDe, trouverRef, controlerReponse, montantsTapes, motifNom, motifTelephone, clesHotelPossibles, prefixeRef } from "../supabase/functions/agent/outils.js";
+import { cleItineraire, VALIDITE_JOURS } from "../supabase/functions/agent/temps.js";
 import { consignes, controlerAcces, parametres, ligneJournal, coutEchange, historique, titreDepuis, signe } from "../supabase/functions/agent/prompt.js";
 
 const ENT = "11111111-1111-4111-8111-111111111111";
@@ -138,8 +139,8 @@ test("ordre des durées (Jérémy, 19.11.2026) : OpenStreetMap d'abord, puis la 
 
 test("ports du ferry de Lanta en thaï : variantes de recherche et île reconnue", async () => {
   const { variantesLieu, liaisonPour } = await import("../supabase/functions/agent/temps.js");
-  assert.deepEqual(variantesLieu("ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi"), ["ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi", "ท่าเรือคลองหมาก, Koh Lanta Noi", "Khlong Mak Pier, Koh Lanta Noi", "ท่าเรือคลองหมาก (Khlong Mak Pier), Ko Lanta Noi", "ท่าเรือคลองหมาก, Ko Lanta Noi", "Khlong Mak Pier, Ko Lanta Noi"]);
-  assert.deepEqual(variantesLieu("ท่าเรือกระบี่-เกาะลันตา, Krabi"), ["ท่าเรือกระบี่-เกาะลันตา, Krabi"]);
+  assert.deepEqual(variantesLieu("ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi"), ["ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi", "ท่าเรือคลองหมาก, Koh Lanta Noi", "Khlong Mak Pier, Koh Lanta Noi", "ท่าเรือคลองหมาก (Khlong Mak Pier)", "ท่าเรือคลองหมาก (Khlong Mak Pier), Ko Lanta Noi", "ท่าเรือคลองหมาก, Ko Lanta Noi"]);
+  assert.deepEqual(variantesLieu("ท่าเรือกระบี่-เกาะลันตา, Krabi"), ["ท่าเรือกระบี่-เกาะลันตา, Krabi", "ท่าเรือกระบี่-เกาะลันตา"]);
   const l = { nom: "Ferry de Koh Lanta", cote_ile: "Koh Lanta", port_ile: "ท่าเรือคลองหมาก (Khlong Mak Pier), Koh Lanta Noi", port_continent: "ท่าเรือกระบี่-เกาะลันตา, Krabi", duree_min: 60 };
   // Le port côté continent n'est pas sur l'île, celui de Khlong Mak l'est.
   assert.equal(liaisonPour(l.port_continent, "Krabi Airport", [l]), null);
@@ -290,6 +291,54 @@ test("clients et dossiers : recherche par nom ou téléphone, services sans pres
   assert.equal(d.contenu.services[0].heure_pickup, "09:00");
   assert.ok(!JSON.stringify(d.contenu).includes("partenaire"));
   assert.equal((await executer("lire_dossier", { dossier: "2026-0142" }, ctxDe(), nouveauMemo())).contenu.reference, "2026-0142");
+});
+
+test("recherche dans la base : motifs larges, clés d'hôtel, référence courte", () => {
+  assert.equal(motifNom("Jérôme"), "%j_r_m_%");
+  assert.equal(motifNom("Muñoz"), "%m____%");
+  assert.equal(motifNom("50%_x"), "%50__x%");
+  assert.match(motifNom("o'neil,(x)"), /^%[a-z0-9_]+%$/);
+  assert.equal(motifTelephone("+66 81 234 5678"), "%1%2%3%4%5%6%7%8%");
+  const cles = clesHotelPossibles("Jai Tiki Retreat, Klong Nin");
+  for (const c of ["jai tiki retreat", "klong nin", "jai tiki retreat klong nin", "tiki"]) assert.ok(cles.includes(c), c);
+  assert.ok(!cles.includes("ji"));
+  const long = "Un Hotel Au Nom Vraiment Tres Tres Long Sur La Plage De Klong Dao";
+  assert.ok(clesHotelPossibles(long).includes(long.toLowerCase()));
+  assert.equal(prefixeRef("D-1A2B3C4D"), "1a2b3c4d");
+  assert.equal(prefixeRef("2026-0142"), null);
+});
+
+test("itinéraires gardés par position : même clé pour deux écritures, sens du trajet gardé, six mois", () => {
+  const a = { lat: 7.5612341, lon: 99.0398762 };
+  const b = { lat: 8.0995, lon: 98.9061 };
+  assert.equal(cleItineraire(a, b), "7.561,99.040 > 8.100,98.906");
+  assert.equal(cleItineraire({ lat: 7.56125, lon: 99.03991 }, b), cleItineraire(a, b));
+  assert.notEqual(cleItineraire(b, a), cleItineraire(a, b));
+  assert.equal(VALIDITE_JOURS, 180);
+});
+
+test("clients, dossiers et hôtels lus par la fonction : aucune table entière chargée", async () => {
+  const charges = [];
+  const recherches = [];
+  const ctx = ctxDe({
+    charger: async (n) => (charges.push(n), donnees[n] || []),
+    chercherClients: async (q) => (recherches.push(q), [donnees.clients, donnees.dossiers]),
+    dossierPour: async () => [donnees.dossiers, donnees.clients, donnees.reservations],
+    parRef: async (table) => donnees[table],
+    hotelsPour: async (lieux) => donnees.hotels_lieux.filter((h) => lieux.some((l) => clesHotelPossibles(l).includes(h.cle))),
+  });
+  const c = await executer("chercher_clients", { recherche: "Martin" }, ctx, nouveauMemo());
+  assert.equal(c.contenu.clients[0].dossiers[0].reference, "2026-0142");
+  assert.deepEqual(recherches, ["Martin"]);
+  const d = await executer("lire_dossier", { dossier: "2026-0142" }, ctx, nouveauMemo());
+  assert.equal(d.contenu.services[0].heure_pickup, "09:00");
+  const memo = nouveauMemo();
+  const r = await executer("proposer_reservation", { titre: "Ajout", dossier: refDe("D", donnees.dossiers[0].id), service: service({}) }, ctx, memo);
+  assert.equal(r.carte.donnees.dossier_id, donnees.dossiers[0].id);
+  const h = await executer("situer_hotels", { noms: ["Paradise Resort Phi Phi"] }, ctx, nouveauMemo());
+  assert.equal(h.contenu.hotels[0].zone, "Loh Dalum");
+  await executer("temps_de_route", { de: "Paradise Resort Phi Phi", vers: "Krabi Airport" }, ctx, nouveauMemo());
+  for (const t of ["clients", "dossiers", "reservations", "hotels_lieux"]) assert.ok(!charges.includes(t), t);
 });
 
 // ---- Propositions ------------------------------------------------------------------------------------------------------------
@@ -495,7 +544,7 @@ test("OSRM public et Nominatim (organisation de Lanta) : adresses, lecture, cade
   assert.equal(t.delaiAvant(derniers, "nominatim.openstreetmap.org", 1500), 0);
   assert.ok(t.ORGANISATIONS_OSRM.includes("00000000-0000-0000-0000-00000000a000"));
   // Un hôtel absent d'OpenStreetMap se cherche aussi par sa plage connue, jamais par l'île seule.
-  assert.deepEqual(t.variantesLieu("Jai Tiki Retreat, Koh Lanta", [{ cle: "jai tiki retreat", zone: "Klong Nin", lieu: "Koh Lanta" }]), ["Jai Tiki Retreat, Koh Lanta", "Jai Tiki Retreat, Ko Lanta", "Klong Nin"]);
+  assert.deepEqual(t.variantesLieu("Jai Tiki Retreat, Koh Lanta", [{ cle: "jai tiki retreat", zone: "Klong Nin", lieu: "Koh Lanta" }]), ["Jai Tiki Retreat, Koh Lanta", "Jai Tiki Retreat", "Jai Tiki Retreat, Ko Lanta", "Klong Nin"]);
 });
 
 test("ferry de Lanta : les coordonnées OpenStreetMap des ports passent à l'itinéraire, pas de recherche par nom", async () => {
@@ -506,4 +555,34 @@ test("ferry de Lanta : les coordonnées OpenStreetMap des ports passent à l'iti
   assert.deepEqual(vus, [{ vers: { lat: 7.6823683, lon: 99.0900688 } }, { de: { lat: 7.6930427, lon: 99.0992049 } }]);
   assert.deepEqual(r.morceaux.map((m) => m.duree_min), [35, 60, 73]);
   assert.equal(r.moteur, "osrm");
+});
+
+// Demande de Jérémy (20.11.2026) : l'agent cherche lui-même où est l'hôtel quand OpenStreetMap ne le connaît pas, sans demander.
+test("hôtel absent d'OpenStreetMap : situé par le web (sa plage), jamais par l'île seule, source montrée", async () => {
+  const { situerLieu } = await import("../supabase/functions/agent/temps.js");
+  const cherches = [];
+  const chercher = async (q) => (cherches.push(q), q === "Klong Nin" ? { lon: 99.048, lat: 7.538, label: "หาดคลองนิน" } : null);
+  const web = async (nom) => (nom === "Jai Tiki Retreat" ? { zone: "Klong Nin", localite: "Koh Lanta", lieu: "Koh Lanta", source: { url: "https://www.exemple.test/jai-tiki" } } : null);
+  const g = await situerLieu("Jai Tiki Retreat, Koh Lanta", { chercher, situerHotel: web });
+  assert.equal(g.par, "web");
+  assert.equal(g.lat, 7.538);
+  assert.equal(g.label, "Jai Tiki Retreat : Klong Nin, Koh Lanta d'après le web (exemple.test)");
+  assert.ok(cherches.includes("Jai Tiki Retreat"), "le nom seul est essayé avant le web");
+  assert.ok(!cherches.includes("Koh Lanta"), "jamais l'île seule");
+  // Sans plage trouvée par le web, ou sans source : rien plutôt qu'un point au milieu de l'île.
+  assert.equal(await situerLieu("Hôtel Inconnu, Koh Lanta", { chercher, situerHotel: async () => ({ zone: "", localite: "Koh Lanta", source: { url: "https://x.test" } }) }), null);
+  assert.equal(await situerLieu("Hôtel Inconnu, Koh Lanta", { chercher, situerHotel: async () => ({ zone: "Klong Nin", localite: "Koh Lanta", source: null }) }), null);
+  // Trouvé par son nom : pas de recherche web.
+  let webAppele = false;
+  const h = await situerLieu("Krabi Nakharin International Hospital, Krabi", { chercher: async (q) => (q === "Krabi Nakharin International Hospital" ? { lon: 98.9, lat: 8.08, label: "รพ." } : null), situerHotel: async () => ((webAppele = true), null) });
+  assert.equal(h.par, "nom");
+  assert.equal(webAppele, false);
+});
+
+test("panne d'OpenStreetMap : le serveur et son code sont rendus avec l'erreur de l'outil, rien d'un client", async () => {
+  const r = await executer("temps_de_route", { de: "Nulle part", vers: "Ailleurs" }, ctxDe({ simule: null, moteur: "osrm", notes: ["nominatim.openstreetmap.org 403"] }), nouveauMemo());
+  assert.equal(r.contenu.erreur, "temps_indisponible");
+  assert.deepEqual(r.contenu.pannes, ["nominatim.openstreetmap.org 403"]);
+  assert.equal(r.contenu.moteur, "osrm");
+  assert.match(r.contenu.conseil, /estimer_temps_web/);
 });
