@@ -31,7 +31,8 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
   };
   const proposition = (c, m, o) => out.whatsapp_propositions.push({ id: uid(), cree_le: m ? m.envoye_le : il_y_a(1), conversation_id: c.id, message_id: m ? m.id : null, entite_id: c.entite_id, statut: "a_faire", texte: "", langue: "en", avertissements: [], entreprise_proposee: null, erreur: null, traitee_le: null, traitee_par: null, traitee_par_quoi: null, ...o });
 
-  // 1. Client connu de Taxi, avec son dossier : il demande l'heure de prise en charge.
+  // 1. Client connu de Taxi, avec son dossier : il demande l'heure de prise en charge. Réponses sur demande (défaut du 20.11.2026) : le tri
+  // a vu une demande de client, rien n'est rédigé tant que Nani ne touche pas « Préparer une réponse ».
   if (taxi) {
     const client = clients.find((x) => x.entite_id === taxi.id && dossiers.some((d) => d.client_id === x.id && !d.annule)) || null;
     const dossier = client ? dossiers.find((d) => d.client_id === client.id && !d.annule) : null;
@@ -40,8 +41,8 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     message(c, 60 * 20, "entrant", "Hello, we booked the taxi to Krabi airport with you.");
     message(c, 60 * 20 - 6, "sortant", `Hi ${prenom}, yes all good, see you on the day.`, { origine: "app" });
     message(c, 14, "entrant", "Hi again! Our flight is at 13:40, what time will the driver pick us up?");
-    const m = message(c, 13, "entrant", "And can we bring 3 big suitcases?");
-    proposition(c, m, { texte: `Hi ${prenom},\n\nThe driver will pick you up at your hotel at 08:30, which leaves plenty of time for your 13:40 flight.\n3 big suitcases are fine in the van.\n\nSee you tomorrow!`, avertissements: ["heure_non_source:08:30", "signature_retiree"] });
+    message(c, 13, "entrant", "And can we bring 3 big suitcases?");
+    c.tri = { preparer: true, motif: "demande_client", entreprise: "taxi", le: il_y_a(12) };
   }
 
   // 2. Numéro inconnu, à trier : il demande une excursion. L'agent propose Secret.

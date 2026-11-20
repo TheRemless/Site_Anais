@@ -284,6 +284,9 @@ export const REGLAGES_NEUTRE = {
   assistant_ia: false,
   // Agent de l'onglet « Assistant » (conversation, planification, propositions à valider) : éteint tant que l'entreprise ne l'allume pas.
   agent_ia: false,
+  // Boîte WhatsApp (Secret et Taxi) : l'agent ne rédige une réponse qu'au clic sur « Préparer une réponse ». Coché, il la prépare dès qu'un
+  // client écrit (environ 0,06 $ par réponse, mesuré le 20.11.2026). Le tri des messages tourne dans les deux cas.
+  whatsapp_reponses_auto: false,
   // Vouchers (mode excursions) : en-tête et textes fixes, en anglais.
   voucher: { nom: "", sous_titre: "", adresse: "", whatsapp: "", email: "", licence: "", merci: "Thank you for booking with {entreprise}!\nWe wish you a wonderful day.", merci_transfert: "Thank you for booking with {entreprise}!\nWe wish you a wonderful journey.", note_transfert: "Your driver will be waiting for you at the meeting point.\nIf your plan changes, please let us know as soon as possible.", whatsapp_anais: "" },
   emetteur: { nom: "", sous_titre: "", adresse: "", telephone: "", licence: "", licence_libelle: "", licence_libelle_en: "", contact: "" },

@@ -178,6 +178,9 @@ export function lireDecision(texte) {
   return { preparer: j.preparer === true && MOTIFS_A_PREPARER.includes(motif), motif, entreprise };
 }
 
+// Préparation automatique des réponses (Réglages > Assistant IA) : décochée par défaut, l'agent ne rédige qu'au clic de Nani. Même règle
+// côté écran (src/gestion/js/whatsapp-calc.mjs), un test les compare.
+export const preparationAuto = (reglages) => !!(reglages && typeof reglages === "object" && reglages.whatsapp_reponses_auto === true);
 // La décision gardée sur la conversation (colonne tri) : courte, sans texte du client.
 export const triGarde = (d, maintenant = new Date().toISOString()) => ({ preparer: !!d.preparer, motif: MOTIFS.includes(d.motif) ? d.motif : "autre", entreprise: d.entreprise || "inconnu", le: maintenant });
 

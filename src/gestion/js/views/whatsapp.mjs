@@ -19,7 +19,7 @@ import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
   grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, propositionCourante,
-  propositionAJour, entrepriseProposee, reponsesDe, raisonSansReponse, erreurPreparer, libelleErreurProposition,
+  propositionAJour, entrepriseProposee, reponsesDe, preparationAuto, raisonSansReponse, erreurPreparer, libelleErreurProposition,
 } from "../whatsapp-calc.mjs";
 
 let filtre = null;
@@ -106,12 +106,16 @@ function selecteurEntreprise(c, prop) {
 function reglageReponses(c) {
   if (etat.brut.whatsapp_tri_disponible === false || lectureSeule) return null;
   const actuel = reponsesDe(c);
+  // Réponses sur demande (Réglages > Assistant IA, décoché par défaut) : « auto » veut dire « au clic de Nani ». Le réglage lu est celui
+  // que lit la fonction : l'entreprise de la conversation, ou pour une conversation à trier celle suggérée par le tri.
+  const suggeree = !c.entite_id && c.tri ? entitesWhatsApp().find((e) => marqueEntite(e) === c.tri.entreprise) : null;
+  const auto = !!(c.entite_id || suggeree) && preparationAuto(reglagesDe(c.entite_id || suggeree.id));
   const choisir = async (valeur, bouton) => {
     if (valeur === actuel || bouton.disabled) return;
     bouton.disabled = true;
     try {
       await modifier("whatsapp_conversations", c.id, { reponses: valeur });
-      toast(valeur === "jamais" ? tr("Plus de réponse préparée pour ce contact.") : tr("Réponses préparées automatiques pour ce contact."));
+      toast(valeur === "jamais" ? tr("Plus de réponse préparée pour ce contact.") : auto ? tr("Réponses préparées automatiques pour ce contact.") : tr("Réponses sur demande pour ce contact."));
       rafraichir();
     } catch (err) {
       bouton.disabled = false;
@@ -123,7 +127,7 @@ function reglageReponses(c) {
     "div",
     { class: "wa-reponses", "data-pas-saisie": "" },
     h("span", { class: "wa-reponses-libelle", id: `wa-rep-${c.id}` }, tr("Réponses préparées")),
-    h("div", { class: "wa-segments", role: "group", "aria-labelledby": `wa-rep-${c.id}` }, segment("auto", tr("Automatiques")), segment("jamais", tr("Jamais pour ce contact"))),
+    h("div", { class: "wa-segments", role: "group", "aria-labelledby": `wa-rep-${c.id}` }, segment("auto", auto ? tr("Automatiques") : tr("Sur demande")), segment("jamais", tr("Jamais pour ce contact"))),
     h("span", { class: "wa-note" }, tr("Jamais : ami, famille, partenaire, chauffeur"))
   );
 }
@@ -509,12 +513,14 @@ async function preparer(c, bouton) {
   toast(tr(erreurPreparer(r && r.erreur)), true);
 }
 
-// Aucune réponse préparée pour le dernier message du client : la raison du tri en clair, et de quoi en demander une.
+// Aucune réponse préparée pour le dernier message du client : l'état normal depuis le 20.11.2026 (réponses sur demande). Le bouton
+// « Préparer une réponse », et à côté ce que le tri a vu, sans icône d'alerte.
 function ligneSansReponse(c, messages) {
   const dernier = messages.length ? messages[messages.length - 1] : null;
   const bouton = !lectureSeule && dernier && dernier.sens === "entrant" && etat.store.whatsappPreparer ? h("button", { class: "secondaire petit", type: "button", onclick: (e) => preparer(c, e.currentTarget) }, tr("Préparer une réponse")) : null;
   const raison = raisonSansReponse(c, messages);
-  return h("div", { class: "wa-sans-reponse" }, h("p", { class: "wa-prop-fait" }, icone("alerte", 16), raison ? tr(raison) : tr("Pas de réponse préparée. Répondez depuis l'app.")), bouton);
+  if (!bouton && !raison) return null;
+  return h("div", { class: "wa-sans-reponse" }, bouton, raison ? h("p", { class: "wa-note" }, tr(raison)) : null);
 }
 
 function carteProposition(c, p, messages) {
