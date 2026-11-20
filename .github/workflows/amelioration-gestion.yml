@@ -3,15 +3,16 @@
 # La fonction Supabase « ameliorations » ouvre une issue avec le label « amelioration-gestion » (jeton de Jérémy, droits Issues seulement).
 # Ce workflow :
 #   1. verifier    : l'issue vient bien de la fonction (auteur et label posés par le propriétaire, repère dans le corps), plafond du jour ;
-#   2. implementer : Claude (anthropics/claude-code-action) fait le changement et lance les tests, avec un jeton en LECTURE seule : il ne
-#                    peut ni pousser, ni fusionner, ni ouvrir de PR. Son seul secret est la clé Anthropic ; aucun secret Supabase ni Netlify
-#                    n'existe dans ce dépôt ;
-#   3. ouvrir-pr   : sans Claude, une étape fixe contrôle les fichiers touchés (refuse .github/, netlify.toml, dépendances…), relance build et
-#                    tests, pousse une branche amelioration/issue-N-… et ouvre une PR en brouillon, marquée « à relire de près » si elle
+#   2. implementer : Claude (anthropics/claude-code-action) fait le changement avec un jeton en LECTURE seule : il ne peut ni pousser, ni
+#                    fusionner, ni ouvrir de PR, ni exécuter de code (lecture et édition seulement : un code exécuté dans ce job pourrait lire
+#                    la clé Anthropic). Son seul secret est cette clé ; aucun secret Supabase ni Netlify n'existe dans ce dépôt ;
+#   3. tester      : sans aucun secret, build et tests du patch (résultat indicatif : le code testé peut écrire ce qu'il veut) ;
+#   4. ouvrir-pr   : sans Claude et sans exécuter de code du dépôt, une étape fixe contrôle les fichiers touchés (refuse .github/,
+#                    netlify.toml, dépendances, liens symboliques…), pousse une branche amelioration/issue-N-… et ouvre une PR en brouillon, marquée « à relire de près » si elle
 #                    touche supabase/, une migration, les droits, l'authentification ou les paiements. Elle écrit le lien dans l'issue :
 #                    la fonction « rappels » le lit et prévient Jérémy ;
-#   4. echec       : l'issue reçoit le repère d'échec (Jérémy est prévenu de la même façon) ;
-#   5. fermer      : une PR d'amélioration fermée sans fusion ferme son issue « not planned » (la demande passe à « refusée »).
+#   5. echec       : l'issue reçoit le repère d'échec (Jérémy est prévenu de la même façon) ;
+#   6. fermer      : une PR d'amélioration fermée sans fusion ferme son issue « not planned » (la demande passe à « refusée »).
 # Rien ne fusionne, rien ne se déploie, aucune migration ne s'applique : c'est Jérémy, ou une session Claude Code après /code-review.
 # Doc : docs/gestion/ameliorations.md.
 name: Amélioration Gestion
@@ -83,31 +84,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - run: npm ci
-
-      - run: npm run build
-
       - name: Claude fait l'amélioration
         uses: anthropics/claude-code-action@v1.0.284
         env:
-          # Les commandes que Claude lance (npm test, npm run build) ne voient pas la clé Anthropic ni les jetons (docs/security.md de l'action).
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
-          # Plafonds par demande : 60 tours, 5 dollars, 40 minutes (timeout du job). Mode strict : ce qu'aucune règle n'autorise est refusé.
+          # Plafonds par demande : 60 tours, 5 dollars, 40 minutes (timeout du job). Mode strict : ce qu'aucune règle n'autorise est refusé ;
+          # aucune commande qui exécute du code du dépôt (ni npm, ni node) : le job « tester » s'en charge, sans secret.
           claude_args: |
             --model claude-opus-5-5
             --max-turns 60
             --max-budget-usd 5
             --permission-mode acceptEdits
-            --allowedTools "Bash(npm test),Bash(npm run build),Bash(node --test:*),Bash(git diff:*),Bash(git status:*),Bash(ls:*)"
-            --disallowedTools "WebFetch,WebSearch,Bash(git push:*),Bash(git commit:*),Bash(gh:*),Bash(curl:*),Bash(wget:*),Bash(npx:*),Bash(supabase:*),Bash(netlify:*)"
+            --allowedTools "Bash(git diff:*),Bash(git status:*),Bash(ls:*)"
+            --disallowedTools "WebFetch,WebSearch,Bash(git push:*),Bash(git commit:*),Bash(gh:*),Bash(curl:*),Bash(wget:*),Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(bash:*),Bash(sh:*),Bash(python:*),Bash(python3:*),Bash(supabase:*),Bash(netlify:*)"
           prompt: |
             Tu travailles dans le dépôt ${{ github.repository }} : le site Eleventy de Zwald Travel Planner et Gestion, l'outil interne de trois
             entreprises (src/gestion/, fonctions Supabase dans supabase/functions/, base décrite dans docs/gestion/).
@@ -130,19 +122,13 @@ jobs:
                scripts/netlify-ignore.sh, package.json, package-lock.json, supabase/config.toml ni .claude/.
             4. Base de données : tu n'appliques rien. Si un changement de la base est indispensable, écris une migration
                docs/gestion/migration-NN-nom.sql (NN = le plus grand numéro existant plus un) avec son retour arrière en commentaire.
-            5. Ajoute ou complète un test node (tests/gestion-*.test.js) qui couvre le changement. Lance npm run build puis npm test et
-               corrige ce qui casse.
+            5. Ajoute ou complète un test node (tests/gestion-*.test.js) qui couvre le changement. Tu ne peux pas lancer les tests ici :
+               relis ton code avec soin (imports, noms, traductions). Le build et les tests tournent juste après, dans un job à part.
             6. Pour finir, écris en français dans .amelioration/resume.md : ce qui a changé et dans quels fichiers, comment le vérifier dans
                l'outil, ce qui reste à décider, la migration s'il y en a une. Sans virgule avant « et » ni tiret d'incise.
             Si la demande est impossible ou trop floue, ne change aucun fichier du dépôt et explique pourquoi dans .amelioration/resume.md.
 
-      # Build et tests ici, avec le jeton en lecture seule et sans la clé Anthropic : le job qui pousse n'exécute jamais le code du patch.
-      - name: Build et tests du changement
-        run: |
-          mkdir -p "$RUNNER_TEMP/sortie"
-          if npm run build > "$RUNNER_TEMP/tests.log" 2>&1 && npm test >> "$RUNNER_TEMP/tests.log" 2>&1; then echo ok > "$RUNNER_TEMP/sortie/tests.txt"; else echo echec > "$RUNNER_TEMP/sortie/tests.txt"; fi
-          tail -n 40 "$RUNNER_TEMP/tests.log"
-
+      # Aucun code du dépôt n'a tourné dans ce job : le patch est celui que Claude a écrit.
       - name: Patch du changement
         run: |
           set -euo pipefail
@@ -159,8 +145,41 @@ jobs:
           path: ${{ runner.temp }}/sortie/
           retention-days: 7
 
-  ouvrir-pr:
+  # Build et tests du patch, sans aucun secret ni droit d'écriture. Le résultat est indicatif : le code testé tourne ici et peut écrire ce
+  # qu'il veut dans la sortie. La relecture humaine (/code-review) relance les tests.
+  tester:
     needs: implementer
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      tests: ${{ steps.tests.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: amelioration
+          path: ${{ runner.temp }}/sortie
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Build et tests
+        id: tests
+        run: |
+          if [ -s "$RUNNER_TEMP/sortie/amelioration.patch" ]; then git apply "$RUNNER_TEMP/sortie/amelioration.patch"; fi
+          npm ci
+          if npm run build > "$RUNNER_TEMP/tests.log" 2>&1 && npm test >> "$RUNNER_TEMP/tests.log" 2>&1; then echo "tests=ok" >> "$GITHUB_OUTPUT"; else echo "tests=echec" >> "$GITHUB_OUTPUT"; fi
+          tail -n 60 "$RUNNER_TEMP/tests.log"
+
+  ouvrir-pr:
+    needs: [implementer, tester]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -182,11 +201,16 @@ jobs:
           patch="$RUNNER_TEMP/sortie/amelioration.patch"
           if [ ! -s "$patch" ]; then echo "Aucun changement : voir le résumé."; exit 1; fi
           git apply --index "$patch"
-          git diff --cached --name-only > "$RUNNER_TEMP/fichiers.txt"
+          # Tous les chemins, sans renommage (l'ancien et le nouveau nom apparaissent) ni guillemets (accents en clair).
+          git -c core.quotePath=false diff --cached --name-only --no-renames > "$RUNNER_TEMP/fichiers.txt"
           cat "$RUNNER_TEMP/fichiers.txt"
-          # Interdits : ce qui change ce que font la CI, Netlify, les dépendances ou Claude Code.
-          if grep -E '^(\.github/|\.claude/|netlify\.toml$|scripts/netlify-ignore\.sh$|package\.json$|package-lock\.json$|supabase/config\.toml$|\.amelioration/)' "$RUNNER_TEMP/fichiers.txt"; then
+          # Interdits : ce qui change ce que font la CI, Netlify, les dépendances ou Claude Code (ajout, modification, suppression ou renommage).
+          if grep -E '^(\.github/|\.claude/|\.husky/|netlify\.toml$|scripts/netlify-ignore\.sh$|package\.json$|package-lock\.json$|\.npmrc$|\.nvmrc$|supabase/config\.toml$|\.amelioration/|CLAUDE(\.local)?\.md$|AGENTS\.md$|\.mcp\.json$)|(^|/)\.gitattributes$|(^|/)\.gitmodules$' "$RUNNER_TEMP/fichiers.txt"; then
             echo "Fichier interdit touché : PR non ouverte."; exit 1
+          fi
+          # Ni lien symbolique ni sous-module.
+          if git diff --cached --raw --no-renames | grep -E ' (120000|160000) '; then
+            echo "Lien symbolique ou sous-module : PR non ouverte."; exit 1
           fi
           # À relire de près : base, fonctions, droits, authentification, paiements.
           if grep -Ei '^supabase/|^netlify/functions/|^docs/gestion/.*\.sql$|droits|auth|connexion|invitation|compte|securite|paiement|fiduciaire|sauvegarde|store-supabase' "$RUNNER_TEMP/fichiers.txt" >/dev/null; then
@@ -195,14 +219,6 @@ jobs:
             echo "sensible=0" >> "$GITHUB_OUTPUT"
           fi
 
-      # Résultat des tests du job précédent (une PR ouverte avec le jeton du workflow ne lance pas la CI, règle de GitHub). Ce job n'exécute
-      # aucun code du dépôt : il applique le patch, commite et pousse.
-      - name: Résultat des tests
-        id: tests
-        run: |
-          r=$(cat "$RUNNER_TEMP/sortie/tests.txt" 2>/dev/null || echo echec)
-          [ "$r" = "ok" ] && echo "tests=ok" >> "$GITHUB_OUTPUT" || echo "tests=echec" >> "$GITHUB_OUTPUT"
-
       - name: Branche, PR en brouillon, lien dans l'issue
         env:
           GH_TOKEN: ${{ github.token }}
@@ -210,7 +226,9 @@ jobs:
           NUMERO: ${{ github.event.issue.number }}
           TITRE: ${{ github.event.issue.title }}
           SENSIBLE: ${{ steps.controle.outputs.sensible }}
-          TESTS: ${{ steps.tests.outputs.tests }}
+          # Résultat du job « tester » (une PR ouverte avec le jeton du workflow ne lance pas la CI, règle de GitHub). Ce job n'exécute
+          # aucun code du dépôt : il applique le patch, commite et pousse.
+          TESTS: ${{ needs.tester.outputs.tests == 'ok' && 'ok' || 'echec' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -230,9 +248,12 @@ jobs:
           gh label create amelioration-pr-prete --color 0e8a16 --description "La PR de cette demande est prête" -R "$DEPOT" 2>/dev/null || true
           {
             [ "$SENSIBLE" = "1" ] && printf '> **À relire de près** : cette PR touche la base, les fonctions, les droits, l'"'"'authentification ou les paiements.\n\n'
-            [ "$TESTS" = "ok" ] && printf 'Build et tests : OK dans [le run](%s).\n\n' "$RUN_URL" || printf '**Build ou tests en échec** : voir [le run](%s).\n\n' "$RUN_URL"
+            [ "$TESTS" = "ok" ] && printf 'Build et tests : OK dans [le run](%s) (indicatif : à relancer à la relecture).\n\n' "$RUN_URL" || printf '**Build ou tests en échec** : voir [le run](%s).\n\n' "$RUN_URL"
             printf 'Closes #%s\n\n## Résumé de Claude\n\n' "$NUMERO"
-            cat "$RUNNER_TEMP/sortie/resume.md"
+            # Dans un bloc de code : ni mention, ni « Closes #… », ni image du résumé n'agissent.
+            printf '~~~~text\n'
+            grep -v '^~~~~' "$RUNNER_TEMP/sortie/resume.md" || true
+            printf '\n~~~~\n'
             printf '\n\n## Avant de fusionner\n\n- Relire le diff, lancer `/code-review` (et `/security-review` si la PR est à relire de près).\n- La CI ne part pas seule sur une PR ouverte par l'"'"'Action : fermer puis rouvrir la PR la lance.\n- Aucune migration n'\''est appliquée et rien n'\''est déployé.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n'
           } > "$RUNNER_TEMP/corps.md"
           labels="amelioration-gestion"
@@ -243,7 +264,7 @@ jobs:
           gh issue edit "$NUMERO" -R "$DEPOT" --add-label amelioration-pr-prete
 
   echec:
-    needs: [verifier, implementer, ouvrir-pr]
+    needs: [verifier, implementer, tester, ouvrir-pr]
     if: failure() && needs.verifier.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5

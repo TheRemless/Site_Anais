@@ -61,6 +61,7 @@ const MOTIFS_TEXTE = {
   lien: N_("un lien"),
   montant: N_("un montant ou un numéro"),
   acces: N_("une coordonnée bancaire ou un accès"),
+  montant_interne: N_("un chiffre près d'un net ou d'une commission"),
   nom_propre: N_("un nom de client ou de prestataire"),
   texte_vide: N_("un texte vide"),
   texte_trop_long: N_("un texte trop long"),

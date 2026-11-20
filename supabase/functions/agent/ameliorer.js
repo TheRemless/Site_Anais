@@ -221,5 +221,7 @@ export async function proposerAmelioration(e, ctx) {
   const c = controlerTexte(`${titre}\n${corps}`, { noms: [...prestataires, ...nomsVus(ctx.historique)] });
   if (!c.ok)
     return refuse("texte_refuse", `Le texte sera public sur GitHub : retire ce qui pose problème (${c.erreurs.join(", ")}). Décris l'outil, jamais un client, un prestataire, un montant, un numéro ou un lien.`);
-  return { genre: "amelioration", titre, donnees: { titre, texte: corps, portee: e.portee === "toutes" ? "toutes" : "cette_entreprise" }, avertissements: c.avertissements };
+  // Les noms de clients vus dans la conversation restent dans la carte (base privée, RLS) : la fonction « ameliorations » les refuse encore
+  // dans le texte que la personne a pu corriger avant l'envoi.
+  return { genre: "amelioration", titre, donnees: { titre, texte: corps, portee: e.portee === "toutes" ? "toutes" : "cette_entreprise", noms_proteges: nomsVus(ctx.historique).slice(0, 200) }, avertissements: c.avertissements };
 }

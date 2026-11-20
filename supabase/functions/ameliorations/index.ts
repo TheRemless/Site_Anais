@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
   const [perms, carte, jour, ent, partenaires, reglages, deja] = await Promise.all([
     sb.rpc("permissions_dans", { e: d.entite_id }),
     // Lue avec la session : une carte d'une autre personne n'est pas lisible.
-    sb.from("agent_cartes").select("id, conversation_id, genre, statut, agent_conversations!inner(entite_id)").eq("id", d.carte_id).maybeSingle(),
+    sb.from("agent_cartes").select("id, conversation_id, genre, statut, donnees, agent_conversations!inner(entite_id)").eq("id", d.carte_id).maybeSingle(),
     admin.from("ameliorations").select("id", { count: "exact", head: true }).gte("cree_le", debutJourBangkok()),
     sb.from("entites").select("nom").eq("id", d.entite_id).maybeSingle(),
     sb.from("partenaires").select("nom").eq("entite_id", d.entite_id).limit(2000),
@@ -67,7 +67,8 @@ Deno.serve(async (req) => {
     texte: d.texte,
     demandesDuJour: jour.count || 0,
     limiteJour: Number(Deno.env.get("AMELIORATIONS_LIMITE_JOUR")) || LIMITE_JOUR_DEFAUT,
-    noms: (partenaires.data || []).map((p) => String(p.nom || "").trim()).filter((n) => n.length > 2),
+    // Prestataires de l'entreprise et noms de clients vus dans la conversation (gardés dans la carte, que la personne ne peut pas modifier).
+    noms: [...(partenaires.data || []).map((p) => String(p.nom || "").trim()), ...((((carte.data as any)?.donnees?.noms_proteges) || []) as unknown[]).map((n) => String(n || "").trim())].filter((n) => n.length > 2),
   });
   if (!controle.ok) return json({ erreur: controle.erreur, ...(controle.motifs ? { motifs: controle.motifs } : {}), ...(controle.limite ? { limite: controle.limite } : {}) }, controle.statut);
   const jeton = Deno.env.get("GITHUB_ISSUES_TOKEN");

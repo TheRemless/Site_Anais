@@ -17,6 +17,7 @@ export const EN = {
   "un lien": "a link",
   "un montant ou un numéro": "an amount or a number",
   "une coordonnée bancaire ou un accès": "bank details or an access code",
+  "un chiffre près d'un net ou d'une commission": "a figure next to a net or a commission",
   "un nom de client ou de prestataire": "a client or supplier name",
   "un texte vide": "an empty text",
   "un texte trop long": "a text that is too long",

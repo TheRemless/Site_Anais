@@ -39,6 +39,9 @@ export function nettoyerTexte(texte) {
   return String(texte || "")
     .replace(/\r\n?/g, "\n")
     .replace(/<!--|-->/g, "")
+    // Ni balise ni fin de bloc (« </demande> » dans le prompt de l'Action) : les chevrons deviennent des guillemets simples.
+    .replace(/</g, "‹")
+    .replace(/>/g, "›")
     .replace(/@(?=[A-Za-z0-9])/g, "@​")
     .split("\n")
     .map((l) => l.replace(/[ \t]+/g, " ").trimEnd())
@@ -47,8 +50,9 @@ export function nettoyerTexte(texte) {
     .trim();
 }
 
-// Mots d'argent interne : la demande peut parler de la fonction (« une colonne commission »), jamais d'une valeur. Signalés à la personne.
-const INTERNE = /\b(nets?|net price|commissions?|marges?|margins?|prix d'achat|cost price)\b/i;
+// Mots d'argent interne : la demande peut parler de la fonction (« une colonne commission »), jamais d'une valeur. Signalés à la personne ;
+// un chiffre tout près (« commission de 15 % », « net 80 ») est refusé.
+const INTERNE = /\b(nets?|net price|commissions?|marges?|margins?|prix d'achat|cost price)\b/gi;
 // Coordonnées bancaires et accès : jamais dans une issue publique.
 const ACCES = /\b(iban|swift|bic|num[eé]ro de compte|account number|mot de passe|password|cl[eé] d'api|api key|token)\b/i;
 const COURRIEL = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
@@ -74,8 +78,10 @@ export function controlerTexte(texte, { noms = [] } = {}) {
   const plat = ` ${sansAccents(t).replace(/[^a-z0-9]+/g, " ")} `;
   const nom = noms.map((n) => sansAccents(n).replace(/[^a-z0-9]+/g, " ").trim()).find((n) => n.length > 2 && plat.includes(` ${n} `));
   if (nom) erreurs.push("nom_propre");
-  const interne = INTERNE.exec(sansAccents(t));
-  if (interne) avertissements.push(`mot_interne:${interne[0]}`);
+  const plat2 = sansAccents(t);
+  const internes = [...plat2.matchAll(INTERNE)];
+  if (internes.some((m) => /\d/.test(plat2.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30)))) erreurs.push("montant_interne");
+  if (internes.length) avertissements.push(`mot_interne:${internes[0][0]}`);
   return { ok: !erreurs.length, erreurs, avertissements };
 }
 
