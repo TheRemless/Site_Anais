@@ -3818,7 +3818,6 @@ export const EN = {
   "catalogue des trajets": "trip price list",
   "conversation avec l'assistant": "conversation with the assistant",
   "depuis les durées des trajets": "from the trip durations",
-  "depuis les grilles de pickup": "from the pickup grids",
   "depuis les pages taxi du site": "from the website's taxi pages",
   "durée donnée par vous": "duration given by you",
   "estimation trouvée sur le web": "estimate found on the web",
