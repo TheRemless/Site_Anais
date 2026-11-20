@@ -246,6 +246,7 @@ export function blocApprentissages(lignes = [], { qui = "", premierMessage = "",
 
 // Paramètres de l'appel. `messages` : l'historique au format de l'API (blocs de réflexion compris, renvoyés tels quels).
 // `appris` : le bloc des corrections (vide sans correction), mis en cache après les consignes.
+// outils : la liste par défaut (OUTILS) ; la boîte WhatsApp passe une partie seulement (lecture et proposer_reponse).
 export function parametres({ modele = MODELE_DEFAUT, systeme, appris = "", contexte, messages, outils = OUTILS }) {
   return {
     model: modele,

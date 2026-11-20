@@ -40,6 +40,19 @@ Les messages envoyés depuis l'app restent gratuits. `message.echo` n'arrive que
 
 La purge tourne dans la fonction, au plus une fois par heure. Aucun message ne sert à entraîner un modèle. L'IA ne reçoit jamais de net, de commission ni de coordonnées bancaires.
 
+## Boîte WhatsApp (phase 2, migration 59)
+
+Écran « WhatsApp » de Gestion, visible des administrateurs de Secret et Taxi.
+
+- **Un seul numéro, deux entreprises.** Un client connu par son numéro range la conversation dans son entreprise. Sinon l'agent la trie (un appel court à Claude Haiku : une course ou un transfert, c'est Taxi ; une excursion ou un séjour, c'est Secret) et la marque « proposé par l'agent ». Nani corrige d'un tap. Changer d'entreprise retire le client et le dossier de l'autre, puis cherche le client par le numéro dans la nouvelle.
+- **Réponse préparée.** 8 secondes après le dernier message du client (il écrit souvent en plusieurs fois), la fonction `whatsapp` lance l'agent de l'onglet Assistant avec ses consignes, ses apprentissages et seulement ses outils de lecture (catalogue, horaires, dossier, clients, durées) et `proposer_reponse`. Mêmes contrôles que dans l'Assistant : prix et heures seulement des outils, aucun net, aucune commission, aucun nom de prestataire, aucune signature chez Secret et Taxi, anglais sauf client francophone. Une réponse encore à faire est remplacée par la nouvelle.
+- **Notification.** La notification Web Push existante part aux administrateurs une fois la réponse prête (ou tout de suite si l'agent est éteint ou au plafond). Elle donne le prénom, jamais le contenu du message.
+- **Copier puis répondre depuis l'app.** Gros bouton « Copier », lien qui ouvre la conversation dans WhatsApp. Dès que Nani répond depuis l'app (`message.echo`), la proposition passe « traitée ».
+- **Envoi depuis Gestion** (secondaire) : fonction `whatsapp-envoi`, session de la personne, dans les 24 h qui suivent le dernier message du client (règle de Meta), numéro `active` chez Telnyx et `TELNYX_API_KEY` posée.
+- **Coût.** Chaque proposition compte dans le plafond du mois de l'assistant (`assistant_journal`, usage « whatsapp »). Au plafond ou agent éteint (`agent_ia`), pas de proposition.
+- **Ce qui part chez Anthropic** : le texte des 30 derniers messages, le prénom du client, le dossier relié et ce que rendent les outils de lecture. Jamais le numéro, un net, une commission ni une coordonnée bancaire. L'API Anthropic n'entraîne pas ses modèles sur ces données.
+- **Conservation** : une proposition part avec sa conversation, au plus tard 90 jours après sa création.
+
 ## Étapes de Jérémy (une seule fois)
 
 ### 1. Clé publique de signature
