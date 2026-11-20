@@ -226,5 +226,17 @@ ok(r.ok && r.n === 0, "Mook ne touche pas à l'interrupteur");
 r = await essaie(u.both, `update whatsapp_conversations set entite_id = '${ent.taxi}' where id = '${r3.conversation_id}'`);
 ok(r.ok && (await db.query("select entite_id from whatsapp_conversations where id = $1", [r3.conversation_id])).rows[0].entite_id === ent.taxi, "Nani peut toujours changer elle-même l'entreprise");
 
+// ---- Migration 61 : conversation de l'Assistant ouverte depuis WhatsApp ------------------------------------------------------------
+ok(migrations.includes("migration-61-whatsapp-dossier.sql"), "la migration 61 passe après la 60");
+await db.exec(lire("migration-61-whatsapp-dossier.sql"));
+ok(true, "la migration 61 se rejoue sans erreur");
+// r1 est chez Taxi : l'administrateur de Taxi peut y relier une conversation de l'Assistant, Mook (Secret, sans réglages) non.
+r = await essaie(u.adminTaxi, `insert into agent_conversations (entite_id, whatsapp_conversation_id) values ('${ent.taxi}', '${r1.conversation_id}') returning id`);
+ok(r.ok, "l'administrateur de Taxi ouvre l'Assistant depuis sa conversation WhatsApp" + (r.ok ? "" : ` (${r.err})`));
+r = await essaie(u.mook, `insert into agent_conversations (entite_id, whatsapp_conversation_id) values ('${ent.secret}', '${r1.conversation_id}') returning id`);
+ok(!r.ok, "personne ne relie l'Assistant à une conversation WhatsApp qu'elle ne voit pas");
+r = await essaie(u.both, `insert into agent_conversations (entite_id, whatsapp_conversation_id) values ('${ent.secret}', '${r1.conversation_id}') returning id`);
+ok(!r.ok, "une conversation de l'Assistant de Secret ne se relie pas à une conversation WhatsApp rangée chez Taxi");
+
 console.log(echecs ? `${echecs} échec(s)` : "tout est ok");
 process.exit(echecs ? 1 : 0);

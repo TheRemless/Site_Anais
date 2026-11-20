@@ -15,6 +15,7 @@ import { tourner } from "./boucle.js";
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
+import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES as MODES_WA, mediasAJoindre, texteDepuisWhatsApp } from "./whatsapp.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
@@ -64,11 +65,15 @@ Deno.serve(async (req) => {
   if (!demande || typeof demande !== "object") return json({ erreur: "demande_invalide" }, 400);
   const entiteId = demande.entite_id;
   if (typeof entiteId !== "string" || !UUID.test(entiteId)) return json({ erreur: "entreprise_invalide" }, 400);
-  const message = typeof demande.texte === "string" ? demande.texte.trim() : "";
+  let message = typeof demande.texte === "string" ? demande.texte.trim() : "";
+  // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (agent/whatsapp.js) : le message et les pièces jointes sont
+  // construits ici, plus bas, depuis la conversation WhatsApp lue avec la session de la personne.
+  const waId = typeof demande.whatsapp_conversation_id === "string" && UUID.test(demande.whatsapp_conversation_id) && !demande.conversation_id ? demande.whatsapp_conversation_id : null;
+  const waMode = MODES_WA.includes(demande.whatsapp_mode) ? demande.whatsapp_mode : "creer";
   // Un message peut n'être que des pièces jointes (photos, captures, PDF). Contrôlées une seule fois : ici pour une nouvelle conversation
   // (rien n'est encore gardé), plus bas avec ce que garde déjà une conversation existante.
   const avecFichiers = Array.isArray(demande.fichiers) && demande.fichiers.length > 0;
-  if ((!message && !avecFichiers) || message.length > LONGUEUR_MAX) return json({ erreur: "message_invalide" }, 400);
+  if (((!message && !avecFichiers) || message.length > LONGUEUR_MAX) && !waId) return json({ erreur: "message_invalide" }, 400);
   const conversationId = demande.conversation_id && UUID.test(demande.conversation_id) ? demande.conversation_id : null;
   let controle = conversationId ? null : verifierPieces(demande.fichiers);
   if (controle && !controle.ok) return json({ erreur: controle.erreur }, 400);
@@ -112,6 +117,41 @@ Deno.serve(async (req) => {
   }
   const cle = Deno.env.get("ANTHROPIC_API_KEY");
   if (!cle) return json({ erreur: "non_configure" }, 503);
+  let waDossier: string | null = null;
+  if (waId) {
+    // Après les contrôles d'accès (agent allumé, droits, limites) : rien n'est lu ni téléchargé pour une demande refusée.
+    // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle. Elle doit être rangée dans
+    // l'entreprise de l'Assistant (l'écran la range avant) : une conversation à trier n'entre jamais dans une autre entreprise.
+    const wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id").eq("id", waId).maybeSingle();
+    if (wc.error) return json({ erreur: "base" }, 500);
+    if (!wc.data || wc.data.entite_id !== entiteId) return json({ erreur: "whatsapp_introuvable" }, 404);
+    const wm = await sb.from("whatsapp_messages").select("sens, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waId).order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA);
+    if (wm.error) return json({ erreur: "base" }, 500);
+    const messagesWa = wm.data || [];
+    // Seulement les pièces cochées par la personne dans l'écran (rien par défaut) : une capture de virement ou de compte ne part jamais
+    // d'office chez Anthropic. Téléchargées avec la session (politique du stockage « whatsapp ») ; chaque fichier est contrôlé seul.
+    const fichiers: { nom: string; media_type: string; data: string }[] = [];
+    let ecartes = 0;
+    for (const f of mediasAJoindre(messagesWa, { choisis: demande.whatsapp_pieces })) {
+      const { data: blob, error } = await sb.storage.from("whatsapp").download(f.chemin);
+      if (error || !blob) {
+        ecartes++;
+        continue;
+      }
+      const octets = new Uint8Array(await blob.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < octets.length; i += 0x8000) bin += String.fromCharCode(...octets.subarray(i, i + 0x8000));
+      const piece = { nom: f.nom, media_type: f.media_type, data: btoa(bin) };
+      if (verifierPieces([...fichiers, piece]).ok) fichiers.push(piece);
+      else ecartes++;
+    }
+    const dossierWa = waMode === "maj" && wc.data.dossier_id ? (await sb.from("dossiers").select("id, ref").eq("id", wc.data.dossier_id).eq("entite_id", entiteId).maybeSingle()).data : null;
+    if (waMode === "maj" && !dossierWa) return json({ erreur: "dossier_introuvable" }, 404);
+    demande.fichiers = fichiers;
+    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX });
+    controle = verifierPieces(demande.fichiers);
+    waDossier = dossierWa ? dossierWa.id : null;
+  }
 
   // La conversation : nouvelle, ou une des miennes (RLS : une conversation d'une autre personne n'est pas lisible).
   let conv: { id: string; titre: string; dossier_id: string | null; cree_le?: string } | null = null;
@@ -121,8 +161,9 @@ Deno.serve(async (req) => {
     if (!c.data || c.data.entite_id !== entiteId) return json({ erreur: "conversation_introuvable" }, 404);
     conv = c.data;
   } else {
-    const dossierId = typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null;
-    const c = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre: titreDepuis(message || titreFichiers(controle?.fichiers || [])), dossier_id: dossierId }).select("id, titre, dossier_id, cree_le").single();
+    const dossierId = waDossier || (typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null);
+    const titre = waId ? (waMode === "maj" ? "Mise à jour depuis WhatsApp" : "Dossier depuis WhatsApp") : titreDepuis(message || titreFichiers(controle?.fichiers || []));
+    const c = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre, dossier_id: dossierId, ...(waId ? { whatsapp_conversation_id: waId } : {}) }).select("id, titre, dossier_id, cree_le").single();
     if (c.error) return json({ erreur: c.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
     conv = c.data;
   }
@@ -475,7 +516,7 @@ Deno.serve(async (req) => {
     let dernierTexte = "";
     let motifErreur = "";
     try {
-      await envoyer({ t: "conversation", id: conv!.id, titre: conv!.titre, dossier_id: conv!.dossier_id });
+      await envoyer({ t: "conversation", id: conv!.id, titre: conv!.titre, dossier_id: conv!.dossier_id, ...(waId ? { whatsapp_conversation_id: waId } : {}) });
       const contenuPersonne = [...blocsNouveaux, ...(message ? [{ type: "text", text: message }] : [])];
       await garder("user", contenuPersonne, contenuPourClaude(contenuPersonne, donnees));
       const garderCarte = async (carte: { genre: string; titre: string; donnees: unknown; avertissements?: string[] }) => {

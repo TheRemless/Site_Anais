@@ -39,10 +39,11 @@ const heure = (iso) => {
 
 // Numéros de téléphone, de compte ou de carte (9 chiffres ou plus, séparateurs compris) et IBAN : masqués avant de partir chez Anthropic.
 // Une date (20.11.2026), une heure ou un prix gardent leurs chiffres.
+const DATE = /\b\d{1,2}[./]\d{1,2}[./](?:\d{4}|\d{2})\b/;
 export function masquer(t) {
   return String(t || "")
     .replace(/\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b/g, "[numéro masqué]")
-    .replace(/\+?\d[\d\s.\-()/]{6,}\d/g, (m) => (m.replace(/\D/g, "").length >= 9 ? "[numéro masqué]" : m));
+    .replace(/\+?\d[\d\s.\-()/]{6,}\d/g, (m) => (m.replace(/\D/g, "").length >= 9 && !DATE.test(m) ? "[numéro masqué]" : m));
 }
 
 // Une ligne par message, du plus ancien au plus récent. Un média se dit par son type et sa légende ; un message supprimé par le client
