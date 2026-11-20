@@ -281,8 +281,8 @@ create policy "supprimer un trajet ORS" on trajets_ors for delete to authenticat
 create or replace function assistant_cout_depuis(debut timestamptz) returns numeric language sql stable security definer set search_path = public as $$
   select coalesce(sum(cout_estime_usd), 0) from assistant_journal where cree_le >= debut;
 $$;
+-- La clé de service garde le droit d'exécuter que Supabase lui donne par défaut ; personne d'autre ne l'a.
 revoke all on function assistant_cout_depuis(timestamptz) from public, anon, authenticated;
-grant execute on function assistant_cout_depuis(timestamptz) to service_role;
 
 -- Le journal de l'assistant accepte l'agent (contrainte de la migration 27, élargie par la 48).
 alter table assistant_journal drop constraint if exists assistant_journal_usage_check;
