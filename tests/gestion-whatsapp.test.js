@@ -262,3 +262,35 @@ test("whatsapp-envoi : demande, corps Telnyx et réponse", () => {
   const config = fs.readFileSync(new URL("../supabase/config.toml", import.meta.url), "utf8");
   assert.match(config, /\[functions\.whatsapp-envoi\]\nverify_jwt = true/);
 });
+
+// ---- Règles des PR 278 et 280 appliquées aux réponses WhatsApp ---------------------------------------------------------------------
+import { consignes } from "../supabase/functions/agent/prompt.js";
+import { controlerReponse, outilsPour } from "../supabase/functions/agent/outils.js";
+
+test("whatsapp : la réponse préparée suit les règles de réponse de l'entreprise (PR 280), sans droits partenaires ni nets (PR 278)", () => {
+  const reponse = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  // L'appel des consignes ne passe ni partenaires ni nets ; le contexte des outils n'a aucun droit.
+  assert.match(reponse, /consignes\(\{ entreprise: ent\.nom, reglages, lieu: ra\.lieu, prenomEquipe: qui \}\)/);
+  assert.match(reponse, /permissions: \[\]/);
+  const s = consignes({ entreprise: "Secret Travel & Tour", reglages: { fonctionnement: "excursions", agent_ia: true }, prenomEquipe: "Nani" });
+  assert.match(s, /Ferry ou speedboat/);
+  assert.match(s, /Sans aucune signature/);
+  assert.doesNotMatch(s, /Avec tes droits/);
+  // Sans droits, aucun outil n'annonce de net ni de partenaire.
+  for (const o of outilsPour([])) assert.doesNotMatch(o.description, /Avec tes droits/);
+});
+
+test("whatsapp : un net dans la réponse est signalé « montant_interne », un prix de vente égal reste permis", () => {
+  const c = controlerReponse("Hi! The tour is 1200 THB per adult.", { signer: false, internes: new Set([1200]), ventes: new Set(), permisPrix: new Set([1200]) });
+  assert.ok(c.avertissements.includes("montant_interne:1200"));
+  const v = controlerReponse("Hi! The tour is 1200 THB per adult.", { signer: false, internes: new Set([1200]), ventes: new Set([1200]), permisPrix: new Set([1200]) });
+  assert.ok(!v.avertissements.some((a) => a.startsWith("montant_interne")));
+  const p = controlerReponse("Our partner Lazy Day will pick you up.", { signer: false, prestataires: ["Lazy Day"] });
+  assert.ok(p.avertissements.some((a) => a.startsWith("nom_prestataire")));
+});
+
+test("whatsapp-envoi : le serveur refuse un texte avec un net ou un partenaire (contenu_interne)", () => {
+  const index = fs.readFileSync(new URL("../supabase/functions/whatsapp-envoi/index.ts", import.meta.url), "utf8");
+  assert.ok(index.indexOf("contenuInterne(") < index.indexOf("api.telnyx.com/v2/messages/whatsapp"));
+  assert.match(index, /"contenu_interne"/);
+});

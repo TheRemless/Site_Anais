@@ -272,3 +272,18 @@ test("suivi de l'assistant : l'usage « whatsapp » et la Boîte WhatsApp au lie
   if (s.echecs.length) assert.equal(s.echecs[0].personneSysteme, true);
   assert.match(source("views/assistant-suivi.mjs"), /l\.systeme \? tr\(l\.nom\)/);
 });
+
+// Garde-fou de la PR 278 dans l'écran WhatsApp : mêmes fonctions que l'onglet Assistant.
+import { bloquantsReponse, resteBloque } from "../src/gestion/js/agent-calc.mjs";
+import { libelleAvertissement as libelleAv, erreurEnvoi as erreurEnv } from "../src/gestion/js/whatsapp-calc.mjs";
+test("whatsapp écran : un montant interne ou un partenaire bloque la copie tant qu'il reste dans le texte", () => {
+  const b = bloquantsReponse(["montant_interne:900", "nom_prestataire:Lazy Day", "signature_retiree"]);
+  assert.deepEqual(resteBloque("Price 900 THB with Lazy Day", b).sort(), ["900", "Lazy Day"]);
+  assert.deepEqual(resteBloque("Price 1,500 THB", b), []);
+  assert.equal(libelleAv("montant_interne:900").niveau, "alerte");
+  assert.equal(libelleAv("nom_prestataire:Lazy Day").vars.valeur, "Lazy Day");
+  assert.match(erreurEnv("contenu_interne"), /net, une commission ou un nom de partenaire/);
+  const vue = fs.readFileSync(new URL("../src/gestion/js/views/whatsapp.mjs", import.meta.url), "utf8");
+  assert.match(vue, /boutonCopier\.disabled = !zone\.value\.trim\(\) \|\| reste\.length > 0/);
+  assert.match(vue, /boutonEnvoyer\.disabled = !ok\.ok \|\| reste\.length > 0/);
+});

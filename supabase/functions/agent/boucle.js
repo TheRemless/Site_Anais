@@ -18,7 +18,8 @@ export async function tourner({ anthropic, modele, systeme, appris = "", context
       await envoyer({ t: "erreur", erreur: "trop_long" });
       return { statut: "trop_long", dernierTexte };
     }
-    const stream = anthropic.beta.messages.stream(parametres({ modele, systeme, appris, contexte, messages, outils: outils || outilsPour((ctx && ctx.permissions) || []) }));
+    // La boîte WhatsApp passe sa propre liste (outils) : elle remplace celle des droits.
+    const stream = anthropic.beta.messages.stream(parametres({ modele, systeme, appris, contexte, messages, outils: outilsPour((ctx && ctx.permissions) || []), ...(outils ? { outils } : {}) }));
     for await (const ev of stream) {
       if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") await envoyer({ t: "texte", delta: ev.delta.text });
     }
