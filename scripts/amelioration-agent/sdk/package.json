@@ -1,0 +1,8 @@
+{
+  "name": "amelioration-agent-sdk",
+  "private": true,
+  "description": "SDK Anthropic de l'agent de l'Action « Amélioration Gestion », versions verrouillées (package-lock.json), installé hors du dépôt par npm ci.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0"
+  }
+}
