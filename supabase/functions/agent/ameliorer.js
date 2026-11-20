@@ -10,6 +10,7 @@
 // vient d'un montant tapé par la personne ; aucune coordonnée de paiement n'est lue ; une demande de code ne part pas d'une conversation qui
 // contient une pièce jointe ; son texte (public) ne cite ni client, ni prestataire, ni montant.
 import { controlerTexte, texteDemande, TITRE_MAX, TEXTE_MAX } from "../ameliorations/calc.js";
+import { entrepriseActive } from "./unifie.js";
 
 const texte = (x, max = 300) => (typeof x === "string" ? x.replace(/\s+/g, " ").trim().slice(0, max) : "");
 // Un texte long (voix, message type) garde ses retours à la ligne.
@@ -123,6 +124,10 @@ export async function proposerReglage(e, ctx, memo = {}) {
     const p = /^P-([0-9a-f]{8})$/i.exec(String(e.cle || "").trim());
     const ligne = p && ((await ctx.charger("prestations")) || []).find((x) => String(x.id).replace(/-/g, "").toLowerCase().startsWith(p[1].toLowerCase()));
     if (!ligne) return refuse("tarif_introuvable", "Cherche d'abord le tarif avec chercher_catalogue et reprends sa référence P-….");
+    // Espace unifié : le catalogue chargé couvre les deux entreprises, mais catalogue.ecrire n'est vérifié que dans l'entreprise active.
+    // Un tarif de l'autre entreprise se change depuis une conversation de celle-ci.
+    const active = entrepriseActive(ctx);
+    if (active && ligne.entite_id !== active.id) return refuse("autre_entreprise", "Ce tarif est dans l'autre entreprise : dis à la personne de le changer depuis une conversation de cette entreprise.");
     let valeur = texte(e.valeur, 160);
     if (e.champ === "prix_vente") {
       const n = Number(valeur.replace(/[\s,']/g, ""));
