@@ -2774,7 +2774,6 @@ export const EN = {
   "Demande de transfert du site de {nom} : le dossier se crée dans {nom}.": "Transfer request from the {nom} website: the file is created in {nom}.",
   "Passer à {nom}": "Switch to {nom}",
   // Session assistant IA : lecture d'un message et brouillon de réponse
-  "L'assistant est éteint pour cette entreprise (Réglages).": "The assistant is off for this company (Settings).",
   "Votre rôle ne permet pas d'utiliser l'assistant ici.": "Your role does not allow using the assistant here.",
   "Limite d'appels du jour atteinte.": "Today's call limit has been reached.",
   "L'assistant n'est pas encore activé sur le serveur.": "The assistant is not enabled on the server yet.",
