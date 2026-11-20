@@ -74,6 +74,7 @@ ok(((await comme("ztp", "select id from ameliorations")).rows || []).length === 
 ok(!(await essaie("postgres", null, `insert into ameliorations (entite_id, user_id, titre, texte, statut) values ('${ent.secret}', '${U.anais}', 'x', 'y', 'fusionnee')`)).ok, "un statut inconnu est refusé");
 ok(!(await essaie("postgres", null, `insert into ameliorations (entite_id, user_id, titre, texte, pr_url) values ('${ent.secret}', '${U.anais}', 'x', 'y', 'https://evil.example/pull/1')`)).ok, "un lien de PR hors GitHub est refusé");
 ok(!(await essaie("postgres", null, `insert into ameliorations (entite_id, user_id, titre, texte) values ('${ent.secret}', '${U.anais}', '${"x".repeat(81)}', 'y')`)).ok, "un titre de plus de 80 caractères est refusé");
+ok(!(await essaie("postgres", null, `insert into ameliorations (entite_id, user_id, carte_id, titre, texte) values ('${ent.secret}', '${U.anais}', '${carte}', 'Encore', 'y')`)).ok, "une carte n'envoie qu'une demande");
 const sup = await essaie("postgres", null, `delete from agent_cartes where id = '${carte}'`);
 ok(sup.ok && (await un("select carte_id from ameliorations")).carte_id === null, "la carte supprimée (conservation) laisse la demande, sans lien");
 

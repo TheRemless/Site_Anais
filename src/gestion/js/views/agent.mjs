@@ -125,7 +125,9 @@ export async function vueAgent(idOuvert = "") {
   }
 
   const racine = h("div", { class: "agent", "data-titre": tr("Assistant") });
-  let conversations = (await etat.store.agentConversations(etat.entiteId)) ?? null;
+  // Conversations et demandes d'amélioration (administratrices) lues ensemble.
+  const [convLues, ameliorationsLues] = await Promise.all([etat.store.agentConversations(etat.entiteId), estAdmin() ? etat.store.ameliorations(etat.entiteId) : null]);
+  let conversations = convLues ?? null;
   let attente = new Map();
   let archives = false;
   const rafraichirAttente = async () => {
@@ -172,7 +174,7 @@ export async function vueAgent(idOuvert = "") {
   }
 
   // Demandes d'amélioration de l'outil (administratrices) : leur statut, suivi sur GitHub par la fonction « rappels ».
-  let ameliorations = estAdmin() ? ((await etat.store.ameliorations(etat.entiteId)) ?? null) : null;
+  let ameliorations = ameliorationsLues ?? null;
   function blocAmeliorations() {
     if (!ameliorations || !ameliorations.length) return null;
     const liste = listeAmeliorations(ameliorations);

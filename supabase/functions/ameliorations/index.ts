@@ -44,16 +44,20 @@ Deno.serve(async (req) => {
   const { data: qui, error: errQui } = await sb.auth.getUser();
   if (errQui || !qui?.user) return json({ erreur: "non_connecte" }, 401);
 
-  const [perms, carte, jour, ent, partenaires] = await Promise.all([
+  const [perms, carte, jour, ent, partenaires, reglages, deja] = await Promise.all([
     sb.rpc("permissions_dans", { e: d.entite_id }),
     // Lue avec la session : une carte d'une autre personne n'est pas lisible.
     sb.from("agent_cartes").select("id, conversation_id, genre, statut, agent_conversations!inner(entite_id)").eq("id", d.carte_id).maybeSingle(),
     admin.from("ameliorations").select("id", { count: "exact", head: true }).gte("cree_le", debutJourBangkok()),
     sb.from("entites").select("nom").eq("id", d.entite_id).maybeSingle(),
     sb.from("partenaires").select("nom").eq("entite_id", d.entite_id).limit(2000),
+    sb.from("reglages").select("valeur").eq("entite_id", d.entite_id).maybeSingle(),
+    // Une carte n'envoie qu'une demande, même si sa mise à jour a échoué après l'issue ou si l'appui a été doublé.
+    admin.from("ameliorations").select("id", { count: "exact", head: true }).eq("carte_id", d.carte_id),
   ]);
-  if (perms.error || carte.error || jour.error) return json({ erreur: jour.error && jour.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
-  const reglages = await sb.from("reglages").select("valeur").eq("entite_id", d.entite_id).maybeSingle();
+  const manquante = (e: { code?: string } | null) => !!e && (e.code === "42P01" || e.code === "PGRST205");
+  if (perms.error || carte.error || jour.error || deja.error) return json({ erreur: manquante(jour.error) || manquante(deja.error) ? "migration_manquante" : "base" }, 500);
+  if ((deja.count || 0) > 0) return json({ erreur: "deja_decidee" }, 409);
   const c = carte.data ? { ...carte.data, entite_id: (carte.data as any).agent_conversations?.entite_id } : null;
   const controle = controlerDemande({
     permissions: perms.data || [],
@@ -74,7 +78,7 @@ Deno.serve(async (req) => {
     .insert({ entite_id: d.entite_id, user_id: qui.user.id, conversation_id: c!.conversation_id, carte_id: c!.id, titre: controle.titre, texte: controle.texte, statut: "envoyee" })
     .select("id, entite_id, titre, texte, statut, issue_numero, issue_url, pr_url, sensible, cree_le, maj_le")
     .single();
-  if (ligne.error) return json({ erreur: ligne.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
+  if (ligne.error) return json({ erreur: manquante(ligne.error) ? "migration_manquante" : ligne.error.code === "23505" ? "deja_decidee" : "base" }, ligne.error.code === "23505" ? 409 : 500);
 
   const fonctionnement = (reglages.data?.valeur as { fonctionnement?: string } | null)?.fonctionnement || "sur_mesure";
   let issue: { number?: number; html_url?: string } | null = null;

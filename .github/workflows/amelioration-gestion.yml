@@ -94,6 +94,9 @@ jobs:
 
       - name: Claude fait l'amélioration
         uses: anthropics/claude-code-action@v1.0.284
+        env:
+          # Les commandes que Claude lance (npm test, npm run build) ne voient pas la clé Anthropic ni les jetons (docs/security.md de l'action).
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
@@ -132,6 +135,13 @@ jobs:
             6. Pour finir, écris en français dans .amelioration/resume.md : ce qui a changé et dans quels fichiers, comment le vérifier dans
                l'outil, ce qui reste à décider, la migration s'il y en a une. Sans virgule avant « et » ni tiret d'incise.
             Si la demande est impossible ou trop floue, ne change aucun fichier du dépôt et explique pourquoi dans .amelioration/resume.md.
+
+      # Build et tests ici, avec le jeton en lecture seule et sans la clé Anthropic : le job qui pousse n'exécute jamais le code du patch.
+      - name: Build et tests du changement
+        run: |
+          mkdir -p "$RUNNER_TEMP/sortie"
+          if npm run build > "$RUNNER_TEMP/tests.log" 2>&1 && npm test >> "$RUNNER_TEMP/tests.log" 2>&1; then echo ok > "$RUNNER_TEMP/sortie/tests.txt"; else echo echec > "$RUNNER_TEMP/sortie/tests.txt"; fi
+          tail -n 40 "$RUNNER_TEMP/tests.log"
 
       - name: Patch du changement
         run: |
@@ -185,18 +195,13 @@ jobs:
             echo "sensible=0" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      # Les tests tournent ici : une PR ouverte avec le jeton du workflow ne lance pas la CI (règle de GitHub).
-      - name: Build et tests
+      # Résultat des tests du job précédent (une PR ouverte avec le jeton du workflow ne lance pas la CI, règle de GitHub). Ce job n'exécute
+      # aucun code du dépôt : il applique le patch, commite et pousse.
+      - name: Résultat des tests
         id: tests
         run: |
-          npm ci
-          if npm run build > "$RUNNER_TEMP/tests.log" 2>&1 && npm test >> "$RUNNER_TEMP/tests.log" 2>&1; then echo "tests=ok" >> "$GITHUB_OUTPUT"; else echo "tests=echec" >> "$GITHUB_OUTPUT"; fi
-          tail -n 40 "$RUNNER_TEMP/tests.log"
+          r=$(cat "$RUNNER_TEMP/sortie/tests.txt" 2>/dev/null || echo echec)
+          [ "$r" = "ok" ] && echo "tests=ok" >> "$GITHUB_OUTPUT" || echo "tests=echec" >> "$GITHUB_OUTPUT"
 
       - name: Branche, PR en brouillon, lien dans l'issue
         env:
@@ -210,8 +215,11 @@ jobs:
         run: |
           set -euo pipefail
           # Ni crochets ni mention dans le titre : « [preview] » lancerait un build Netlify.
-          titre=$(printf '%s' "$TITRE" | tr -d '[]{}<>`@' | cut -c1-90)
+          # Le titre est déjà borné par la fonction (« Gestion : » et 80 caractères) : pas de coupe ici, qui couperait un caractère accentué.
+          titre=$(printf '%s' "$TITRE" | tr -d '[]{}<>`@')
           branche="amelioration/issue-${NUMERO}-${GITHUB_RUN_NUMBER}"
+          # Aucun crochet git actif : le patch ne peut pas en poser (.git n'est pas dans l'arbre suivi) et rien du dépôt n'a tourné ici.
+          git config core.hooksPath /dev/null
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branche"

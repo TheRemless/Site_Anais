@@ -38,7 +38,7 @@ const memo = (textes = []) => memoDepuis(textes.map((t) => ({ role: "user", cont
 
 // ---- Outils --------------------------------------------------------------------------------------------------------------------
 
-test("les trois outils sont déclarés, avec des schémas fermés, et les propositions sont des cartes", () => {
+test("les trois outils sont déclarés avec des schémas fermés ; les propositions sont des cartes", () => {
   for (const n of ["lire_reglages", "proposer_reglage", "proposer_amelioration"]) {
     const o = OUTILS.find((x) => x.name === n);
     assert.ok(o, n);
@@ -256,6 +256,7 @@ test("migration 54 : table lisible par les administratrices seulement, écrite p
   assert.ok(!/grant[^;]*(insert|update|delete)[^;]*on ameliorations/.test(sql));
   assert.match(sql, /a_permission\(entite_id, 'reglages\.ecrire'\)/);
   assert.match(sql, /'reglage', 'amelioration'/);
+  assert.match(sql, /create unique index if not exists ameliorations_carte on ameliorations \(carte_id\)/);
 });
 
 test("workflow : Claude en lecture seule, plafonds, aucun secret sauf la clé Anthropic, jamais de fusion", () => {
@@ -274,6 +275,12 @@ test("workflow : Claude en lecture seule, plafonds, aucun secret sauf la clé An
   assert.match(y, /gh pr create[^\n]*--draft/);
   assert.match(y, /a-relire-de-pres/);
   assert.match(y, /\^\(\\\.github\/\|/, "les fichiers interdits sont contrôlés");
+  const pr = y.split("  ouvrir-pr:")[1].split("  echec:")[0];
+  assert.ok(!/npm (ci|test|run)/.test(pr), "le job qui pousse n'exécute aucun code du dépôt");
+  assert.match(pr, /core\.hooksPath \/dev\/null/);
+  assert.ok(!/cut -c/.test(pr), "aucune coupe en octets du titre");
+  assert.match(impl, /CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"/);
+  assert.match(impl, /npm test >> /, "build et tests dans le job en lecture seule");
   // L'Action ne part que pour une issue du propriétaire, avec le label et le repère de la fonction.
   assert.match(y, /github\.event\.issue\.user\.login == github\.repository_owner/);
   assert.match(y, /"<!-- gestion-amelioration id="\*\)/);

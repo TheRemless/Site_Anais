@@ -506,7 +506,8 @@ async function suivreAmeliorations() {
   if (!jeton) return json({ ignore: "GITHUB_ISSUES_TOKEN absent" });
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   const lignes = await db.from("ameliorations").select("id, user_id, titre, statut, issue_numero, issue_url, pr_url, sensible").in("statut", STATUTS_SUIVIS).not("issue_numero", "is", null).order("maj_le", { ascending: true }).limit(30);
-  if (lignes.error) return json({ erreur: lignes.error.message }, lignes.error.code === "42P01" ? 200 : 500);
+  // Avant la migration 54, la table manque : rien à suivre, sans erreur toutes les 10 minutes.
+  if (lignes.error) return ["42P01", "PGRST205"].includes(lignes.error.code) ? json({ suivies: 0, note: "table ameliorations absente" }) : json({ erreur: lignes.error.message }, 500);
   if (!(lignes.data || []).length) return json({ suivies: 0 });
   const gh = (chemin: string) =>
     fetch(`https://api.github.com/repos/${DEPOT}${chemin}`, { headers: { Authorization: `Bearer ${jeton}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "gestion-ameliorations" }, signal: AbortSignal.timeout(10_000) }).then((r) => (r.ok ? r.json() : null), () => null);

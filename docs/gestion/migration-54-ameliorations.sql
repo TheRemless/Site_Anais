@@ -31,6 +31,8 @@ create table if not exists ameliorations (
   maj_le timestamptz not null default now()
 );
 create index if not exists ameliorations_entite on ameliorations (entite_id, cree_le desc);
+-- Une carte n'envoie qu'une demande (double appui, nouvel essai après une panne).
+create unique index if not exists ameliorations_carte on ameliorations (carte_id) where carte_id is not null;
 create index if not exists ameliorations_suivies on ameliorations (maj_le) where statut in ('envoyee', 'pr_prete', 'echec');
 
 alter table ameliorations enable row level security;
