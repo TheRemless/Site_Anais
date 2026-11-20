@@ -131,3 +131,25 @@ Une conversation sans nouveau message depuis 90 jours est supprimée avec ses me
    ```
 
 4. Fusion de la PR (un seul build Netlify), puis Réglages > Assistant IA > « Onglet Assistant » dans chaque entreprise.
+
+## Crédit, conversation reliée et apprentissages (migration 54, 20.11.2026)
+
+- **Plafond du mois** : table `assistant_budget` (une ligne, 50 $ par défaut, alerte à 80 %), réglée par l'administratrice générale dans
+  « Suivi de l'assistant ». Il compte toute la dépense du journal (fonctions `agent` et `assistant`, toutes entreprises). Logique pure dans
+  `supabase/functions/assistant/budget.js`. Sans la table : le secret `AGENT_PLAFOND_MOIS_USD`, sinon 50 $.
+- **À 80 %** : la fonction `agent` appelle `rappels` (`{ "type": "budget" }`, clé de service) ; le passage `h1` (toutes les 5 minutes) le
+  fait aussi. Une notification par niveau et par mois (verrou `assistant_alertes`), aux administratrices générales et aux rôles qui règlent
+  et lisent le journal. Bandeau en haut de l'outil pour les mêmes personnes (`views/bandeau-credit.mjs`).
+- **À 100 %** : l'agent et l'assistant refusent (`plafond_du_mois`, avec la dépense et la date de reprise) ; l'écran le dit dans le fil.
+- **Crédit Anthropic épuisé** (HTTP 402 `billing_error`, ou l'ancien 400 « credit balance is too low ») : statut `credit_epuise`, message
+  clair, notification une fois par jour.
+- **Conversation reliée** : après une carte enregistrée (dossier créé, service ajouté ou modifié), la conversation se relie au dossier si
+  elle n'en a pas. La fiche du dossier montre « Conversation avec l'assistant » (les miennes seulement, comme dans l'onglet).
+- **Apprentissages** : `agent_apprentissages`, une ligne par écart entre la carte et ce qui est enregistré (pickup, prix de vente, lieu,
+  date, libellé d'un service ajouté, phrases changées d'une réponse). Masqués : noms du client, téléphone, e-mail, lien. Écartés : net,
+  commission, marge, banque. L'agent en relit dix au plus (quatre par genre), choisies à l'ouverture de la conversation d'après son premier
+  message, dans un bloc mis en cache. Les administratrices les voient et les oublient dans « Suivi de l'assistant ».
+- **Point d'accroche pour les écrans de validation** : `apresValidation(c, { dossierId, enregistre })` dans `views/agent.mjs`, à appeler
+  après chaque carte enregistrée.
+
+Mise en production : sauvegarde forcée, migration 54, puis déploiement de `agent`, `assistant` et `rappels` depuis master à jour.

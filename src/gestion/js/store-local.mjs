@@ -394,6 +394,45 @@ export function creer() {
       data.agent_cartes = data.agent_cartes.filter((m) => m.conversation_id !== id || data.agent_conversations.some((c) => c.id === id));
       sauve();
     },
+    async agentConversationsDuDossier(dossierId) {
+      return structuredClone(data.agent_conversations.filter((c) => c.dossier_id === dossierId && c.user_id === utilisateur.user_id).sort((a, b) => String(b.maj_le).localeCompare(String(a.maj_le))).slice(0, 10));
+    },
+    // Apprentissages (migration 54), comme la base : notés par qui utilise l'agent, lus par l'entreprise, supprimés par l'administration.
+    async agentNoterApprentissages(entiteId, carteId, lignes) {
+      const perms = permissionsDans(contexte(), entiteId);
+      if (!perms.includes("partenaires.lire") || !perms.includes("dossiers.ecrire")) return false;
+      data.agent_apprentissages = data.agent_apprentissages || [];
+      for (const l of lignes) data.agent_apprentissages.push({ id: uid(), entite_id: entiteId, user_id: utilisateur.user_id, carte_id: carteId || null, genre: l.genre, contexte: l.contexte, avant: l.avant, apres: l.apres, cree_le: new Date().toISOString() });
+      sauve();
+      return true;
+    },
+    async agentApprentissages(entiteIds) {
+      return structuredClone((data.agent_apprentissages || []).filter((l) => entiteIds.includes(l.entite_id)).sort((a, b) => String(b.cree_le).localeCompare(String(a.cree_le))));
+    },
+    async agentSupprimerApprentissage(id) {
+      const l = (data.agent_apprentissages || []).find((x) => x.id === id);
+      if (!l) return;
+      const perms = permissionsDans(contexte(), l.entite_id);
+      if (!perms.includes("reglages.ecrire") || !perms.includes("journal.voir")) throw new Error("Droit insuffisant");
+      data.agent_apprentissages = data.agent_apprentissages.filter((x) => x.id !== id);
+      sauve();
+    },
+    // Crédit de l'assistant : en démonstration, la dépense du journal fictif et un plafond gardé dans le navigateur.
+    async assistantBudget() {
+      const admin = (utilisateur && utilisateur.super_admin) || data.entites.some((e) => {
+        const p = permissionsDans(contexte(), e.id);
+        return p.includes("reglages.ecrire") && p.includes("journal.voir");
+      });
+      if (!admin) return null;
+      const debut = new Date(Date.parse(`${new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 8)}01T00:00:00Z`) - 7 * 3600e3).toISOString();
+      const cout = (data.assistant_journal || []).filter((l) => l.cree_le >= debut).reduce((t, l) => t + (Number(l.cout_estime_usd) || 0), 0);
+      const b = data.assistant_budget || { plafond: 50, seuil: 80 };
+      return { cout_mois: Math.round(cout * 1e6) / 1e6, plafond: b.plafond, seuil: b.seuil, debut, peut_regler: !!(utilisateur && utilisateur.super_admin) };
+    },
+    async reglerPlafondAssistant(plafond, seuil) {
+      data.assistant_budget = { plafond: Number(plafond) || 50, seuil: Number(seuil) || 80 };
+      sauve();
+    },
     async agentCarte(id, statut) {
       const c = data.agent_cartes.find((x) => x.id === id);
       if (!c || !data.agent_conversations.some((v) => v.id === c.conversation_id && v.user_id === utilisateur.user_id)) throw new Error("Carte introuvable");

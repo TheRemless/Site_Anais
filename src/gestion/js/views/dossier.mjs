@@ -21,6 +21,7 @@ import { envoyerDocument } from "./document-envoi.mjs";
 import { numeroVoucher, TITRES_VOUCHER, etatEnvoisVouchers } from "../operations-calc.mjs";
 import { ouvrirEnvois } from "./envois-vouchers.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { agentActif } from "../agent-calc.mjs";
 import { demandesDuDossier } from "../demandes-site-calc.mjs";
 import { boutonMessageClient, jourRecu } from "./message-client.mjs";
 import { ouvrirSansSuite, rouvrirDevis, baseDistante } from "./sans-suite.mjs";
@@ -99,6 +100,18 @@ function ficheDossierVue(id) {
     const p = gens.find((x) => x.user_id === d.responsable_id);
     responsable.textContent = p ? tr(" · Responsable : {x}", { x: p.nom || p.email }) : "";
   });
+  // La conversation de l'onglet Assistant qui a préparé ou touché ce dossier (migration 54) : un lien pour la rouvrir et retrouver le
+  // pourquoi d'une heure ou d'un prix. Seulement les miennes (comme dans l'onglet), et seulement si l'agent est allumé ici.
+  const lienAgent = h("span", { class: "dossier-agent" });
+  if (agentActif(reglages()) && peut("dossiers.ecrire") && peut("partenaires.lire") && etat.store.agentConversationsDuDossier) {
+    etat.store.agentConversationsDuDossier(d.id).then((liste) => {
+      if (!liste.length) return;
+      lienAgent.replaceChildren(
+        " · ",
+        h("a", { href: `#/agent/${liste[0].id}`, title: liste[0].titre || "" }, liste.length > 1 ? tr("Conversations avec l'assistant ({n})", { n: liste.length }) : tr("Conversation avec l'assistant"))
+      );
+    }, () => {});
+  }
   const regl = reglages();
   // Un moyen archivé (lot D) garde son nom sur les paiements déjà enregistrés, mais n'est plus proposé pour un nouveau.
   const MOYENS = regl.listes.moyens.map((m) => [m.id, tr(m.label), !!m.archive]);
@@ -702,7 +715,7 @@ function ficheDossierVue(id) {
     h(
       "div",
       { class: "entete" },
-      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, excursions && rsDossier.length > 1 ? [d.ref, pluriel(rsDossier.filter((x) => x.statut !== "annule").length, N_("{n} service"), N_("{n} services"))].join(" · ") : sousTitreDossier(d), responsable)),
+      h("div", null, h("h1", null, nomClient(client)), h("p", { class: "sous" }, excursions && rsDossier.length > 1 ? [d.ref, pluriel(rsDossier.filter((x) => x.statut !== "annule").length, N_("{n} service"), N_("{n} services"))].join(" · ") : sousTitreDossier(d), responsable, lienAgent)),
       h("div", { class: "entete-actions" }, pastille(r.statut), droit.dossiers && droit.docs && !excursions ? h("button", { class: "secondaire", type: "button", onclick: dupliquer }, tr("Dupliquer")) : null, droit.dossiers ? h("button", { class: "secondaire", type: "button", onclick: modifierDossier }, tr("Modifier le dossier")) : null)
     ),
     blocDemandesSite(d),

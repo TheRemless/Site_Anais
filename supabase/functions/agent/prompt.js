@@ -1,5 +1,6 @@
 // Agent de Gestion : consignes, paramètres de l'appel, limites et coût. Logique pure, sans dépendance (fonction Supabase et tests node).
 import { OUTILS } from "./outils.js";
+import { PLAFOND_DEFAUT_USD } from "../assistant/budget.js";
 
 // Modèle : Claude Opus 5.5 par défaut (planifier et converser demandent du jugement) ; la fonction lit AGENT_MODELE pour en changer sans
 // toucher au code (claude-haiku-5-5 coûte environ 40 fois moins, à mesurer avec le jeu d'essai). Effort « medium », le défaut d'Opus 5.5,
@@ -14,9 +15,10 @@ export const LONGUEUR_MAX = 8000;
 export const BETA_REPLI = "server-side-fallback-2026-07-01";
 const AVEC_REPLI = new Set(["claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
 
-// Limites : par personne et par jour (échanges), et pour tout l'outil par mois (dollars). Réglables par variables de la fonction.
+// Limites : par personne et par jour (échanges), et pour tout l'outil par mois (dollars). La limite du jour se règle par variable de la
+// fonction ; le plafond du mois se règle dans « Suivi de l'assistant » (table assistant_budget, migration 54 ; assistant/budget.js).
 export const LIMITE_JOUR_DEFAUT = 60;
-export const PLAFOND_MOIS_USD_DEFAUT = 40;
+export const PLAFOND_MOIS_USD_DEFAUT = PLAFOND_DEFAUT_USD;
 
 // Prix en dollars par million de jetons (skill claude-api, relevé du 03.11.2026). Écriture du cache à 5 minutes : 1,25 fois l'entrée.
 export const PRIX = {
@@ -65,7 +67,7 @@ export function ligneJournal({ userId, entiteId, statut, appels, dureeMs }) {
 // ---- Droits et limites ------------------------------------------------------------------------------------------------------------
 
 export const PERMISSIONS = ["partenaires.lire", "dossiers.ecrire"];
-export function controlerAcces({ entiteId, permissions, reglages, echangesDuJour, limiteJour = LIMITE_JOUR_DEFAUT, coutDuMois, plafondMois = PLAFOND_MOIS_USD_DEFAUT }) {
+export function controlerAcces({ entiteId, permissions, reglages, echangesDuJour, limiteJour = LIMITE_JOUR_DEFAUT, coutDuMois, plafondMois = PLAFOND_DEFAUT_USD }) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(entiteId || ""))) return { ok: false, statut: 400, erreur: "entreprise_invalide" };
   if (!reglages) return { ok: false, statut: 403, erreur: "pas_membre" };
   // L'agent s'allume à part (reglages.agent_ia), indépendamment de l'assistant de « Coller une demande » (assistant_ia), qui n'existe pas chez ZTP.
@@ -73,7 +75,8 @@ export function controlerAcces({ entiteId, permissions, reglages, echangesDuJour
   const manque = PERMISSIONS.filter((p) => !(permissions || []).includes(p));
   if (manque.length) return { ok: false, statut: 403, erreur: "droit_manquant", manque };
   if (echangesDuJour >= limiteJour) return { ok: false, statut: 429, erreur: "limite_du_jour", limite: limiteJour };
-  if (coutDuMois >= plafondMois) return { ok: false, statut: 429, erreur: "plafond_du_mois", plafond: plafondMois };
+  // Le plafond du mois atteint : la réponse dit combien a été dépensé et jusqu'à quand, l'écran l'affiche tel quel.
+  if (coutDuMois >= plafondMois) return { ok: false, statut: 429, erreur: "plafond_du_mois", plafond: plafondMois, depense: Math.round(coutDuMois * 100) / 100 };
   return { ok: true };
 }
 
@@ -150,8 +153,56 @@ export function contexteDuJour({ aujourdhui, jour, lieuCourt = "", dossier = nul
   return `Date du jour${lieuCourt ? ` à ${lieuCourt}` : ""} : ${aujourdhui} (${jour}). Les dates sans année sont la prochaine occurrence.${dossier ? `\nCette conversation est reliée au dossier ${dossier.ref_courte} (${dossier.reference}) : lis-le avec lire_dossier avant d'y toucher.` : ""}`;
 }
 
+// ---- Apprentissages (migration 54) ------------------------------------------------------------------------------------------------
+// Les corrections de l'équipe sur les propositions de l'agent, relues comme exemples. Choisies une fois par conversation (celles d'avant
+// son ouverture, les plus proches de son premier message puis les plus récentes) : le bloc ne change pas d'un message à l'autre et reste
+// en cache. Une ligne qui parle de net, de commission, de marge ou de banque est écartée ici aussi (l'outil ne l'écrit déjà pas).
+export const APPRIS_MAX = 10;
+export const APPRIS_CARACTERES = 3000;
+export const MOT_INTERNE_APPRIS = /\b(?:nets?|commissions?|marges?|prix d'achat|co[uû]t d'achat|cost price|net price|iban|swift|bic|compte bancaire|bank account|routing)\b/i;
+const motsDe = (t) => new Set(String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/[^a-z0-9]+/).filter((m) => m.length >= 4));
+const court = (t, n) => {
+  const x = String(t || "").replace(/\s+/g, " ").trim();
+  return x.length > n ? `${x.slice(0, n - 1).replace(/\s+\S*$/, "")}…` : x;
+};
+export function choisirAppris(lignes = [], { premierMessage = "", max = APPRIS_MAX } = {}) {
+  const cible = motsDe(premierMessage);
+  const propres = (lignes || []).filter((l) => l && l.genre && !MOT_INTERNE_APPRIS.test(`${l.contexte} ${l.avant} ${l.apres}`));
+  const ordre = [...propres].sort((a, b) => String(b.cree_le).localeCompare(String(a.cree_le)) || String(a.id || "").localeCompare(String(b.id || "")));
+  const score = (l) => [...motsDe(`${l.contexte} ${l.avant}`)].filter((m) => cible.has(m)).length;
+  // Au plus quatre du même genre, pour garder des exemples variés.
+  const parGenre = new Map();
+  const garde = [];
+  for (const l of [...ordre].sort((a, b) => score(b) - score(a) || ordre.indexOf(a) - ordre.indexOf(b))) {
+    if (garde.length >= max) break;
+    const n = parGenre.get(l.genre) || 0;
+    if (n >= 4) continue;
+    parGenre.set(l.genre, n + 1);
+    garde.push(l);
+  }
+  // Dans l'ordre du plus ancien au plus récent, pour un texte stable.
+  return garde.sort((a, b) => ordre.indexOf(b) - ordre.indexOf(a));
+}
+const LIBELLES_APPRIS = { pickup: "Heure de pickup", libelle: "Libellé du service", prix: "Prix de vente", lieu: "Lieu de pickup", date: "Date", reponse: "Réponse au client" };
+export function blocApprentissages(lignes = [], { qui = "", premierMessage = "", max = APPRIS_MAX, caracteres = APPRIS_CARACTERES } = {}) {
+  const choisis = choisirAppris(lignes, { premierMessage, max });
+  if (!choisis.length) return "";
+  const nom = qui || "l'équipe";
+  const lignesTexte = [];
+  let total = 0;
+  for (const l of choisis) {
+    const n = l.genre === "reponse" ? 360 : 120;
+    const t = `- ${LIBELLES_APPRIS[l.genre] || l.genre}${l.contexte ? ` (${court(l.contexte, 140)})` : ""} : tu avais proposé « ${court(l.avant, n) || "rien"} », ${nom} a mis « ${court(l.apres, n) || "rien"} ».`;
+    if (total + t.length > caracteres) break;
+    lignesTexte.push(t);
+    total += t.length;
+  }
+  return `Corrections récentes de ${nom} sur tes propositions. Ce sont ses préférences : dans une situation semblable, applique la même logique (marge, arrondi, libellé, tournure). Ce ne sont pas des faits sur le client en cours : un résultat d'outil ou ce que ${nom} dit maintenant l'emporte toujours. Tu ne recopies jamais un nom ou un détail d'un autre client.\n${lignesTexte.join("\n")}`;
+}
+
 // Paramètres de l'appel. `messages` : l'historique au format de l'API (blocs de réflexion compris, renvoyés tels quels).
-export function parametres({ modele = MODELE_DEFAUT, systeme, contexte, messages }) {
+// `appris` : le bloc des corrections (vide sans correction), mis en cache après les consignes.
+export function parametres({ modele = MODELE_DEFAUT, systeme, appris = "", contexte, messages }) {
   return {
     model: modele,
     max_tokens: MAX_TOKENS,
@@ -165,6 +216,7 @@ export function parametres({ modele = MODELE_DEFAUT, systeme, contexte, messages
     tool_choice: { type: "auto" },
     system: [
       { type: "text", text: systeme, cache_control: { type: "ephemeral" } },
+      ...(appris ? [{ type: "text", text: appris, cache_control: { type: "ephemeral" } }] : []),
       { type: "text", text: contexte },
     ],
     messages,

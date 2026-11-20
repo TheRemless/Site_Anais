@@ -39,6 +39,7 @@ import {
   verifierFaitsItineraire,
 } from "./itineraire.js";
 import { controlerAccesBrochure, parametresBrochure, promptBrochure, validerBrochure, verifierFichiers } from "./brochure.js";
+import { debutMois, estCreditEpuise, plafondRetenu, reprise } from "./budget.js";
 
 const USAGES_CONNUS = ["lire", "itineraire", "situer", "repondre_itineraire", "brochure"];
 
@@ -92,12 +93,19 @@ Deno.serve(async (req) => {
   if (errQui || !qui?.user) return json({ erreur: "non_connecte" }, 401);
   const userId = qui.user.id;
 
-  const [regl, perms, appels] = await Promise.all([
+  const [regl, perms, appels, mois, budget] = await Promise.all([
     sb.from("reglages").select("valeur").eq("entite_id", entiteId).maybeSingle(),
     sb.rpc("permissions_dans", { e: entiteId }),
     admin.from("assistant_journal").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("cree_le", debutJourBangkok()),
+    // Le plafond du mois (migration 54) vaut aussi ici : toute la dépense de l'assistant compte, cette fonction comme l'agent.
+    admin.rpc("assistant_cout_depuis", { debut: debutMois() }),
+    admin.from("assistant_budget").select("plafond_mois_usd, seuil_alerte_pct").maybeSingle(),
   ]);
   if (regl.error || perms.error || appels.error) return json({ erreur: "base" }, 500);
+  // Sans la fonction de somme (migration 52) ou la table du plafond (migration 54) : pas de plafond ici, comme avant.
+  const { plafond } = plafondRetenu(budget.error ? null : budget.data, Deno.env.get("AGENT_PLAFOND_MOIS_USD"));
+  const coutDuMois = mois.error ? 0 : Number(mois.data) || 0;
+  if (!budget.error && coutDuMois >= plafond) return json({ erreur: "plafond_du_mois", plafond, depense: Math.round(coutDuMois * 100) / 100, reprise: reprise() }, 429);
   const reglages = regl.data ? regl.data.valeur : null;
   // Lieu et personne responsable de l'entreprise (migration 44).
   const ra = reglagesAssistant(reglages);
@@ -201,8 +209,12 @@ Deno.serve(async (req) => {
       } else reponse = { ...v, usage, modele: reponseClaude.model };
     }
   } catch (err) {
-    // Du plus précis au plus général : une limite d'Anthropic se réessaie plus tard, une clé refusée est à corriger par Jérémy.
-    if (err instanceof Anthropic.RateLimitError) {
+    // Du plus précis au plus général : le crédit épuisé est à recharger, une limite d'Anthropic se réessaie plus tard, une clé refusée est à corriger par Jérémy.
+    if (estCreditEpuise(err)) {
+      statut = "credit_epuise";
+      reponse = { erreur: "credit_epuise" };
+      code = 503;
+    } else if (err instanceof Anthropic.RateLimitError) {
       statut = "occupe";
       reponse = { erreur: "occupe" };
       code = 429;

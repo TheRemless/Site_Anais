@@ -5,11 +5,15 @@
 // - { "type": "veille" } ou { "type": "lendemain" } : envoi forcé, à toute heure, pour toutes les entreprises où ce rappel n'est pas coupé
 //   (les crons de 18h et 9h posés avant le lot G, et les essais) ; la veille envoie aussi les départs ZTP de demain ;
 // - { "type": "h1" } toutes les 5 minutes : le rappel une heure avant chaque service (Secret, Taxi, migration 31), et
-//   { "mode": "h1", "service_id": "…", "force": true } pour forcer celui d'un service.
+//   { "mode": "h1", "service_id": "…", "force": true } pour forcer celui d'un service ;
+// - { "type": "budget" } (fonction « agent », clé de service, et chaque passage « h1 ») : la dépense du mois de l'assistant IA comparée au
+//   plafond (migration 54). Au seuil (80 %) puis au plafond, une notification part chez les administratrices, une fois par mois et par
+//   niveau ; { "type": "budget", "credit_epuise": true } quand Anthropic refuse faute de crédit (une fois par jour).
 // Elle lit les réservations avec la clé de service, calcule le texte de chaque personne selon les entreprises qu'elle voit et dans sa langue,
 // puis envoie une notification Web Push à chacun de ses appareils abonnés. Les résumés de la veille et du lendemain ne contiennent aucun nom de client.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
+import { alertesBudget, debutMois, destinatairesBudget, etatBudget, messageBudget, plafondRetenu } from "../assistant/budget.js";
 import { dateDans, heureDans, fuseauValide, dateCible, entitesLisibles, rappelDuType, entitesDuRappel, entitesDuDepart, restreindre, TYPES, rappelAvantActif, modeRappel, servicesH1, datesH1, messageH1, destinatairesH1, nomClient, departsDemain, messageDepart, serviceForce } from "./calc.js";
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
@@ -52,7 +56,18 @@ Deno.serve(async (req) => {
   if (type === "h1" && demande.force) return rappelForce(demande, qui === "admin" ? await organisationAppelant(fourni) : null);
   // Une administratrice connectée n'a que l'envoi forcé : les passages planifiés restent au cron et à la clé de service.
   if (qui === "admin") return json({ erreur: "non autorisé" }, 401);
-  if (type === "h1") return rappelH1(demande);
+  if (type === "budget") {
+    try {
+      return json(await verifierBudget({ creditEpuise: demande.credit_epuise === true }));
+    } catch (err) {
+      return json({ erreur: String((err && err.message) || err).slice(0, 300) }, 500);
+    }
+  }
+  if (type === "h1") {
+    // Toutes les 5 minutes : la dépense de l'assistant est aussi regardée (les usages de la fonction « assistant » n'appellent pas l'alerte).
+    await verifierBudget({}).catch((err) => console.error("budget de l'assistant :", String((err && err.message) || err).slice(0, 200)));
+    return rappelH1(demande);
+  }
   if (type !== "auto" && !TYPES.includes(type)) return json({ erreur: "type inconnu" }, 400);
   // `date`, `heure` et `user_id` ne servent qu'aux essais : sans eux, c'est la date et l'heure locales de chaque organisation et tous les abonnés.
   const dateEssai = /^\d{4}-\d{2}-\d{2}$/.test(demande.date || "") ? demande.date : null;
@@ -434,4 +449,44 @@ async function executerDeparts(db: ReturnType<typeof createClient>, demain: stri
     }
   }
   return { abonnements: abos.data!.length, envoyes, retires, echecs };
+}
+
+// ---- Crédit de l'assistant IA ----------------------------------------------------------------------------------------------------------
+// La dépense du mois (toutes entreprises) et le plafond réglé par Jérémy. Chaque alerte pose d'abord sa clé dans assistant_alertes : une clé déjà là
+// veut dire « déjà envoyée », rien ne repart. Sans la migration 54, rien n'est fait.
+async function verifierBudget({ creditEpuise = false }: { creditEpuise?: boolean }) {
+  const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const [budget, mois] = await Promise.all([db.from("assistant_budget").select("plafond_mois_usd, seuil_alerte_pct").maybeSingle(), db.rpc("assistant_cout_depuis", { debut: debutMois() })]);
+  if (budget.error) return budget.error.code === "42P01" ? { alertes: [] } : Promise.reject(new Error(budget.error.message));
+  if (mois.error) throw new Error(mois.error.message);
+  const { plafond, seuil } = plafondRetenu(budget.data, Deno.env.get("AGENT_PLAFOND_MOIS_USD"));
+  const etatMois = etatBudget({ cout: Number(mois.data) || 0, plafond, seuil });
+  const aEnvoyer = alertesBudget({ cout: etatMois.cout, plafond, seuil, creditEpuise });
+  if (!aEnvoyer.length) return { alertes: [], ...etatMois };
+  const { data: posees, error } = await db.from("assistant_alertes").upsert(aEnvoyer.map((a) => ({ cle: a.cle })), { onConflict: "cle", ignoreDuplicates: true }).select("cle");
+  if (error) throw new Error(error.message);
+  const nouvelles = aEnvoyer.filter((a) => (posees || []).some((p) => p.cle === a.cle));
+  if (!nouvelles.length) return { alertes: [], ...etatMois };
+  const [abos, profils, membres, roles] = await Promise.all([db.from("abonnements_push").select("id, user_id, endpoint, p256dh, auth"), db.from("profils").select("user_id, actif, super_admin, langue"), db.from("membres").select("user_id, entite_id, role_id"), db.from("roles").select("id, permissions, tous_droits")]);
+  for (const r of [abos, profils, membres, roles]) if (r.error) throw new Error(r.error.message);
+  webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
+  const ids = destinatairesBudget({ profils: profils.data!, membres: membres.data!, roles: roles.data! });
+  let envoyes = 0;
+  let echecs = 0;
+  for (const a of nouvelles) {
+    for (const userId of ids) {
+      const profil = profils.data!.find((p) => p.user_id === userId);
+      const charge = JSON.stringify({ ...messageBudget(a.niveau, { ...etatMois, langue: profil && profil.langue === "en" ? "en" : "fr" }), url: "/gestion/#/assistant" });
+      for (const abo of abos.data!.filter((x) => x.user_id === userId)) {
+        try {
+          await webpush.sendNotification({ endpoint: abo.endpoint, keys: { p256dh: abo.p256dh, auth: abo.auth } }, charge, { TTL: 24 * 3600 });
+          envoyes++;
+        } catch (err) {
+          if (err.statusCode === 404 || err.statusCode === 410) await db.from("abonnements_push").delete().eq("id", abo.id);
+          else echecs++;
+        }
+      }
+    }
+  }
+  return { alertes: nouvelles.map((a) => a.cle), envoyes, echecs, ...etatMois };
 }
