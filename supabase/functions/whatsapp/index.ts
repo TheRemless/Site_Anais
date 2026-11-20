@@ -116,6 +116,10 @@ async function traiterUn(db: SupabaseClient, id: string) {
     await appliquer(db, action);
     await db.from("whatsapp_evenements").update({ traite_le: new Date().toISOString(), erreur: null }).eq("id", id);
   } catch (err) {
+    if (err instanceof SansNumero) {
+      await db.from("whatsapp_evenements").update({ traite_le: new Date().toISOString(), erreur: err.message }).eq("id", id);
+      return;
+    }
     const msg = String((err as Error)?.message || err).slice(0, 500);
     console.error("événement", id, ":", msg);
     await db.from("whatsapp_evenements").update({ pris_le: null, erreur: msg, essais: Math.min((pris.essais || 0) + 1, 100) }).eq("id", id);
@@ -130,7 +134,11 @@ async function appliquer(db: SupabaseClient, a: any) {
     if (error) throw new Error(error.message);
     return;
   }
-  if (a.action === "ignorer") return;
+  // Un expéditeur sans numéro (identifiant WhatsApp sans téléphone) : rien à ranger, la raison reste visible sur l'événement brut.
+  if (a.action === "ignorer") {
+    if (a.raison === "numero") throw new SansNumero();
+    return;
+  }
   if (a.action === "modifier" || a.action === "supprimer") {
     const champs = a.action === "modifier" ? { texte: a.texte, modifie_le: a.quand } : { texte: null, supprime_le: a.quand };
     // L'id d'origine est celui de Telnyx s'il le connaît, sinon le wamid de Meta : on cherche les deux, dans la conversation du client.
@@ -151,7 +159,22 @@ async function appliquer(db: SupabaseClient, a: any) {
   const { data, error } = await db.rpc("whatsapp_ranger", { org: ORGANISATION, tel: a.telephone, nom_profil: a.nom, m: a.message });
   if (error) throw new Error(error.message);
   await db.from("whatsapp_reglages").update({ dernier_evenement_le: maintenant }).eq("organisation_id", ORGANISATION);
-  if (data?.nouveau && a.message.medias.length) await copierMedias(db, data.conversation_id, data.message_id, a.message.medias, a.entreprise || r.numero);
+  if (!a.message.medias.length || !data?.message_id) return;
+  // Nouveau message : ses médias. Déjà rangé (événement rejoué après une panne) : seulement les médias restés « a_copier ».
+  let medias = a.message.medias;
+  if (!data.nouveau) {
+    const { data: deja } = await db.from("whatsapp_messages").select("medias").eq("id", data.message_id).maybeSingle();
+    medias = deja?.medias || [];
+    // deno-lint-ignore no-explicit-any
+    if (!medias.some((m: any) => m.statut === "a_copier")) return;
+  }
+  await copierMedias(db, data.conversation_id, data.message_id, medias, a.entreprise || r.numero);
+}
+
+class SansNumero extends Error {
+  constructor() {
+    super("expediteur_sans_numero");
+  }
 }
 
 // Valeur sûre dans un filtre PostgREST « or » (les ids Telnyx et Meta n'ont ni virgule ni parenthèse ; on le garantit).
@@ -162,16 +185,22 @@ async function copierMedias(db: SupabaseClient, conversation: string, message: s
   const resultat = [];
   for (let i = 0; i < medias.length; i++) {
     const m = medias[i];
+    if (m.statut !== "a_copier") {
+      resultat.push(m);
+      continue;
+    }
     const src = sourceMedia(m, numero);
     if (!src) {
       resultat.push(mediaCopie(m, { statut: "echec" }));
       continue;
     }
     try {
-      let rep = await fetch(src.url, { signal: AbortSignal.timeout(20_000) });
-      if ((rep.status === 401 || rep.status === 403) && src.cle && cleApi) {
+      // L'API Telnyx exige la clé : envoyée d'emblée. Une adresse Telnyx d'un média est d'abord essayée sans (lien déjà signé).
+      const api = src.cle && cleApi && src.url.startsWith("https://api.telnyx.com/");
+      let rep = api ? await avecCle(src.url, cleApi) : await fetch(src.url, { signal: AbortSignal.timeout(20_000) });
+      if (!api && (rep.status === 401 || rep.status === 403) && src.cle && cleApi) {
         await rep.body?.cancel();
-        rep = await fetch(src.url, { headers: { Authorization: `Bearer ${cleApi}` }, signal: AbortSignal.timeout(20_000) });
+        rep = await avecCle(src.url, cleApi);
       }
       if (!rep.ok) {
         await rep.body?.cancel();
@@ -183,8 +212,8 @@ async function copierMedias(db: SupabaseClient, conversation: string, message: s
         resultat.push(mediaCopie(m, { statut: "trop_gros" }));
         continue;
       }
-      const octets = new Uint8Array(await rep.arrayBuffer());
-      if (octets.length > MEDIA_MAX) {
+      const octets = await lireBorne(rep, MEDIA_MAX);
+      if (!octets) {
         resultat.push(mediaCopie(m, { statut: "trop_gros" }));
         continue;
       }
@@ -199,6 +228,42 @@ async function copierMedias(db: SupabaseClient, conversation: string, message: s
   }
   const { error } = await db.from("whatsapp_messages").update({ medias: resultat }).eq("id", message);
   if (error) throw new Error(error.message);
+}
+
+// Requête avec la clé API : les redirections ne sont pas suivies automatiquement, pour que la clé n'aille jamais ailleurs que chez Telnyx.
+// Une redirection (lien de stockage signé) est suivie une fois, sans la clé.
+async function avecCle(url: string, cle: string) {
+  const rep = await fetch(url, { headers: { Authorization: `Bearer ${cle}` }, redirect: "manual", signal: AbortSignal.timeout(20_000) });
+  const vers = rep.headers.get("location");
+  if (rep.status >= 300 && rep.status < 400 && vers) {
+    await rep.body?.cancel();
+    const cible = new URL(vers, url);
+    if (cible.protocol !== "https:") return new Response(null, { status: 502 });
+    return fetch(cible, { signal: AbortSignal.timeout(20_000) });
+  }
+  return rep;
+}
+
+// Lit une réponse sans jamais garder plus de `max` octets en mémoire (un Content-Length peut manquer). null si c'est plus gros.
+async function lireBorne(rep: Response, max: number) {
+  const lecteur = rep.body?.getReader();
+  if (!lecteur) return new Uint8Array();
+  const morceaux: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await lecteur.read();
+    if (done) break;
+    total += value.length;
+    if (total > max) {
+      await lecteur.cancel();
+      return null;
+    }
+    morceaux.push(value);
+  }
+  const tout = new Uint8Array(total);
+  let i = 0;
+  for (const x of morceaux) (tout.set(x, i), (i += x.length));
+  return tout;
 }
 
 async function effacerMedias(db: SupabaseClient, message: string, medias: Record<string, unknown>[]) {

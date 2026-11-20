@@ -72,6 +72,12 @@ await ranger("+66812345678", null, msg({ evenement_id: "e2", telnyx_id: "tx-2", 
 const conv2 = (await db.query("select non_lus, dernier_sens, nom from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0];
 ok(conv2.non_lus === 0 && conv2.dernier_sens === "sortant" && conv2.nom === "Bo", "la réponse de Nani depuis l'app remet les non-lus à zéro sans effacer le nom");
 
+// Un client écrit encore, puis un écho en retard (plus ancien) arrive : la question reste non lue.
+await ranger("+66812345678", null, msg({ evenement_id: "e2b", telnyx_id: "tx-2b", meta_id: "wamid.2b", texte: "And back at 17?", envoye_le: "2026-11-20T09:10:00Z" }));
+await ranger("+66812345678", null, msg({ evenement_id: "e2c", telnyx_id: "tx-2c", meta_id: "wamid.2c", sens: "sortant", origine: "app", texte: "ok", envoye_le: "2026-11-20T09:06:00Z" }));
+const conv3 = (await db.query("select non_lus, dernier_sens from whatsapp_conversations where id = $1", [r1.conversation_id])).rows[0];
+ok(conv3.non_lus === 1 && conv3.dernier_sens === "entrant", "un écho en retard ne marque pas la dernière question comme lue");
+
 // Inconnu : à trier.
 const r3 = await ranger("+41790000002", "Anna", msg({ evenement_id: "e3", telnyx_id: "tx-3", meta_id: "wamid.3", texte: "Hello, 4 islands tomorrow?" }));
 const inconnu = (await db.query("select entite_id, client_id from whatsapp_conversations where id = $1", [r3.conversation_id])).rows[0];

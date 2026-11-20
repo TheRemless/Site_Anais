@@ -40,7 +40,7 @@ create table if not exists whatsapp_reglages (
   organisation_id uuid primary key references organisations (id) on delete cascade,
   reception_active boolean not null default true,
   -- Numéro de l'entreprise (E.164), noté par la fonction au premier message : sert au lien « Ouvrir dans WhatsApp » et à l'envoi par l'API.
-  numero text check (numero is null or numero ~ '^\+[1-9][0-9]{7,14}$'),
+  numero text check (numero is null or numero ~ '^\+[1-9][0-9]{6,15}$'),
   -- Dernier état du compte annoncé par Telnyx (ACCOUNT_OFFBOARDED, ACCOUNT_RECONNECTED, PARTNER_REMOVED).
   etat_compte text check (etat_compte is null or etat_compte ~ '^[A-Z_]{1,40}$'),
   etat_le timestamptz,
@@ -59,7 +59,8 @@ create table if not exists whatsapp_evenements (
   type text not null check (length(type) between 1 and 60),
   survenu_le timestamptz,
   organisation_id uuid references organisations (id) on delete cascade,
-  brut jsonb not null check (length(brut::text) <= 1000000),
+  -- Le texte d'un jsonb est un peu plus long que le corps reçu (espaces ajoutés) : marge du double sur la limite de la fonction (1 Mo).
+  brut jsonb not null check (length(brut::text) <= 2000000),
   -- Pris par une instance de la fonction (2 minutes au plus) ; traité quand le message est rangé.
   pris_le timestamptz,
   traite_le timestamptz,
@@ -141,8 +142,8 @@ $$;
 create or replace function whatsapp_lit_chemin(chemin text) returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from whatsapp_conversations c
-    where split_part(chemin, '/', 2) ~ '^[0-9a-f-]{36}$'
-      and c.id = split_part(chemin, '/', 2)::uuid
+    -- Comparaison en texte : aucun cast d'un nom mal formé, donc jamais d'erreur, seulement « non ».
+    where c.id::text = split_part(chemin, '/', 2)
       and c.organisation_id::text = split_part(chemin, '/', 1)
       and whatsapp_lit(c.entite_id, c.organisation_id)
   )
@@ -229,7 +230,8 @@ begin
     dernier_message_le = greatest(coalesce(dernier_message_le, quand), quand),
     dernier_sens = case when dernier_message_le is null or quand >= dernier_message_le then m->>'sens' else dernier_sens end,
     -- Un message du client ajoute un non-lu ; une réponse de Nani (app ou Gestion) remet le compteur à zéro.
-    non_lus = case when m->>'sens' = 'entrant' then non_lus + 1 else 0 end
+    -- Un écho en retard (plus ancien que le dernier message) ne remet pas le compteur à zéro.
+    non_lus = case when m->>'sens' = 'entrant' then non_lus + 1 when dernier_message_le is null or quand >= dernier_message_le then 0 else non_lus end
   where id = conv;
   return jsonb_build_object('conversation_id', conv, 'message_id', msg, 'nouveau', true);
 end
@@ -239,8 +241,7 @@ $$;
 -- du stockage (la fonction les efface puis marque le média « efface ») ; seulement ceux d'une organisation.
 create or replace function purger_whatsapp(org uuid) returns table (message_id uuid, chemins text[]) language plpgsql security definer set search_path = public as $$
 begin
-  delete from whatsapp_evenements where organisation_id is not distinct from org and recu_le < now() - interval '30 days';
-  delete from whatsapp_evenements where organisation_id is null and recu_le < now() - interval '30 days';
+  delete from whatsapp_evenements where (organisation_id = org or organisation_id is null) and recu_le < now() - interval '30 days';
   delete from whatsapp_messages w using whatsapp_conversations c
     where c.id = w.conversation_id and c.organisation_id = org and w.envoye_le < now() - interval '365 days';
   delete from whatsapp_conversations where organisation_id = org and coalesce(dernier_message_le, created_at) < now() - interval '365 days';
