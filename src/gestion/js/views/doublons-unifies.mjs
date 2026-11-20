@@ -5,25 +5,46 @@
 import { etat, entitesAccessibles, permissionsDe, voitToutDans, estSuperAdmin, recharger, nomClient, corbeilleDossiers } from "../etat.mjs";
 import { h, toast, modal, confirmer } from "../ui.mjs";
 import { tr } from "../i18n.mjs";
-import { voitDoublons, peutFusionnerEntreprises, LIBELLES_MARQUES } from "../espace-unifie-calc.mjs";
+import { voitDoublons, peutFusionnerPaire, LIBELLES_MARQUES } from "../espace-unifie-calc.mjs";
 import { fusionClients } from "../dossier-gestes-calc.mjs";
 
 export const doublonsVisibles = () => !!etat.brut && voitDoublons(entitesAccessibles(), permissionsDe, voitToutDans);
 
+// Les conditions exactes de fusionner_clients (migration 63) quand `garde` reste et `absorbe` disparaît.
+const fiche = (id) => (etat.brut.clients || []).find((c) => c.id === id) || null;
+const cote = (c) => ({ entite_id: c.entite_id, permissions: permissionsDe(c.entite_id), voitTout: voitToutDans(c.entite_id) });
+const partage = (source, cible) => (etat.brut.partages_clients || []).some((p) => p.source_id === source && p.cible_id === cible);
+export const fusionPermise = (garde, absorbe) => !!garde && !!absorbe && peutFusionnerPaire({ superAdmin: estSuperAdmin(), garder: cote(garde), absorbe: cote(absorbe), partage });
+// La paire se fusionne-t-elle dans au moins un sens ?
+const unSensPermis = (p) => {
+  const a = fiche(p.fiche_a);
+  const b = fiche(p.fiche_b);
+  return fusionPermise(a, b) || fusionPermise(b, a);
+};
+
 function ouvrirFusion(paire, apres) {
-  const fiche = (id) => (etat.brut.clients || []).find((c) => c.id === id) || null;
   const a = fiche(paire.fiche_a);
   const b = fiche(paire.fiche_b);
   if (!a || !b) return toast(tr("Une des deux fiches n'est plus lisible : rechargez la page."), true);
-  let garder = a.id;
+  // La fiche gardée par défaut : la plus ancienne, si la fusion est permise dans ce sens, sinon l'autre.
+  let garder = fusionPermise(a, b) ? a.id : b.id;
+  const bouton = h("button", { class: "principal", type: "button", onclick: (e) => fusionner(e.currentTarget) }, tr("Fusionner"));
+  const refus = h("p", { class: "aide", role: "status", hidden: true });
+  const majChoix = () => {
+    const ok = garder === a.id ? fusionPermise(a, b) : fusionPermise(b, a);
+    bouton.disabled = !ok;
+    refus.hidden = ok;
+    refus.textContent = ok ? "" : tr("Vos droits ne permettent pas de garder cette fiche : choisissez l'autre.");
+  };
   const choix = (c, marque) => {
     const id = `doublon-garder-${c.id}`;
-    return h("label", { class: "case", for: id }, h("input", { type: "radio", name: "doublon-garder", id, checked: c.id === garder, onchange: () => (garder = c.id) }), h("span", null, h("strong", null, nomClient(c)), ` · ${LIBELLES_MARQUES[marque] || marque}`, c.telephone ? ` · ${c.telephone}` : ""));
+    return h("label", { class: "case", for: id }, h("input", { type: "radio", name: "doublon-garder", id, checked: c.id === garder, onchange: () => ((garder = c.id), majChoix()) }), h("span", null, h("strong", null, nomClient(c)), ` · ${LIBELLES_MARQUES[marque] || marque}`, c.telephone ? ` · ${c.telephone}` : ""));
   };
   let fermer;
   const fusionner = async (bouton) => {
     const garde = garder === a.id ? a : b;
     const absorbe = garder === a.id ? b : a;
+    if (!fusionPermise(garde, absorbe)) return toast(tr("Vos droits ne permettent pas de garder cette fiche : choisissez l'autre."), true);
     if (!(await confirmer(tr("Fusionner « {absorbe} » dans « {garde} » ? Les dossiers des deux entreprises passent sur la fiche gardée, l'autre fiche disparaît. Cette fusion ne se défait pas.", { absorbe: nomClient(absorbe), garde: nomClient(garde) }), tr("Fusionner"), true))) return;
     bouton.disabled = true;
     try {
@@ -49,17 +70,17 @@ function ouvrirFusion(paire, apres) {
       { class: "modal-corps" },
       h("p", { class: "aide" }, tr("Choisissez la fiche gardée. Le téléphone et l'e-mail de l'autre, s'ils diffèrent, sont gardés dans les notes.")),
       h("fieldset", null, h("legend", null, tr("Fiche gardée")), choix(a, paire.entreprise_a), choix(b, paire.entreprise_b)),
-      h("div", { class: "barre-modal" }, h("button", { class: "principal", type: "button", onclick: (e) => fusionner(e.currentTarget) }, tr("Fusionner")))
+      refus,
+      h("div", { class: "barre-modal" }, bouton)
     ),
     { protege: false }
   );
+  majChoix();
 }
 
 // La section, chargée à l'ouverture. null si la personne ne lit pas les clients des deux entreprises.
 export function sectionDoublons() {
   if (!doublonsVisibles()) return null;
-  const unifiees = entitesAccessibles().filter((e) => ["secret", "excursions", "taxi"].includes(e.slug));
-  const fusion = peutFusionnerEntreprises({ superAdmin: estSuperAdmin(), a: permissionsDe((unifiees[0] || {}).id), b: permissionsDe((unifiees[1] || {}).id) });
   const liste = h("div", { class: "doublons-liste", "aria-live": "polite" }, h("p", { class: "aide" }, tr("Chargement…")));
   const charger = async () => {
     let paires = null;
@@ -70,6 +91,8 @@ export function sectionDoublons() {
     }
     if (paires === null) return liste.replaceChildren(h("p", { class: "aide" }, tr("La base n'a pas encore les fiches partagées Secret et Taxi (migration 63 à appliquer).")));
     if (!paires.length) return liste.replaceChildren(h("p", { class: "aide" }, tr("Aucune fiche en double.")));
+    // Le bouton suit exactement fusionner_clients : montré si la paire se fusionne dans au moins un sens.
+    const fusion = paires.some(unSensPermis);
     // replaceChildren écrirait « null » : le texte d'aide n'est ajouté que s'il y a lieu.
     liste.replaceChildren(
       h(
@@ -81,7 +104,7 @@ export function sectionDoublons() {
             null,
             h("span", { class: "doublons-paire" }, h("strong", null, p.nom_a), h("span", { class: "tag" }, LIBELLES_MARQUES[p.entreprise_a] || p.entreprise_a), h("span", { "aria-hidden": "true" }, " / "), h("strong", null, p.nom_b), h("span", { class: "tag" }, LIBELLES_MARQUES[p.entreprise_b] || p.entreprise_b)),
             h("span", { class: "doublons-raison" }, p.raison === "téléphone" ? tr("même téléphone") : tr("même nom")),
-            fusion ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirFusion(p, charger) }, tr("Fusionner")) : null
+            unSensPermis(p) ? h("button", { class: "secondaire petit", type: "button", onclick: () => ouvrirFusion(p, charger) }, tr("Fusionner")) : null
           )
         )
       ),

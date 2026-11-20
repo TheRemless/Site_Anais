@@ -13,7 +13,7 @@ import {
   CLE_DEMANDE_AGENT, modeDossier, paiementSignale, MOTIFS_PAIEMENT, lignesResume, tachesPromesse, piecesProposees, basculerPiece, PIECES_MAX, resumeEnRetard,
 } from "../whatsapp-suivi-calc.mjs";
 import { selecteurClient } from "./selecteur-client.mjs";
-import { ecritConversation } from "../espace-unifie-calc.mjs";
+import { ecritConversation, avertissementsVisibles } from "../espace-unifie-calc.mjs";
 import { directCoupe } from "../direct-reprise-calc.mjs";
 import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
@@ -544,6 +544,9 @@ function carteProposition(c, p, messages) {
   // Garde-fou de la PR 278 : un net, une marge, une commission ou un nom de partenaire signalé bloque la copie et l'envoi tant qu'il reste.
   // S'y ajoute ce que whatsapp-envoi a trouvé dans le texte (contenu_interne, « a_retirer »).
   const bloquants = bloquantsReponse(p.avertissements);
+  // Lecture seule d'une réponse d'une autre entreprise (migration 63) : un net ou un nom de partenaire n'est montré qu'à qui a le droit de le
+  // voir dans l'entreprise de la réponse. La copie reste bloquée, sans dire ce qui est caché.
+  const filtre = lectureSeule ? avertissementsVisibles(p.avertissements || [], permissionsDe(p.entite_id || c.entite_id)) : { visibles: p.avertissements || [], masques: 0 };
   const alerte = h("p", { class: "erreur-form", role: "alert", hidden: true });
   function majEnvoi() {
     const ok = envoiPossible({ texte: zone.value, fenetre: f });
@@ -552,7 +555,7 @@ function carteProposition(c, p, messages) {
     const reste = [...new Set([...resteBloque(zone.value, bloquants), ...duServeur])];
     const incertain = envoisIncertains.has(p.id);
     alerte.hidden = !reste.length;
-    alerte.textContent = reste.length ? tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") }) : "";
+    alerte.textContent = !reste.length ? "" : filtre.masques ? tr("Un montant ou un nom interne est dans la réponse : à retirer avant de copier.") : tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") });
     boutonEnvoyer.disabled = !ok.ok || reste.length > 0 || incertain;
     pourquoi.textContent = incertain ? tr(erreurEnvoi("verifier_whatsapp")) : ok.raison === "fenetre_fermee" ? tr("Envoi depuis Gestion fermé, le client a écrit il y a plus de 24 h.") : ok.raison === "vide" ? tr("La réponse est vide.") : "";
     pourquoi.hidden = !pourquoi.textContent;
@@ -564,7 +567,7 @@ function carteProposition(c, p, messages) {
     majEnvoi();
   });
   majEnvoi();
-  const avs = avertissements(p);
+  const avs = avertissements({ ...p, avertissements: filtre.visibles });
   // Préparée avec les données d'une autre entreprise que celle de la conversation (à trier, ou rangée ailleurs depuis) : on le dit.
   const pour = p.entite_id && p.entite_id !== c.entite_id ? entite(p.entite_id) : null;
   const boutonTraitee = h("button", { class: "lien", type: "button" }, tr("Marquer traitée"));

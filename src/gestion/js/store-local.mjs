@@ -9,10 +9,10 @@ import { aPreparerLocal, emettreLocal, envoyerLocal, calculLocal, annulerLocal, 
 import { calculerNets, suiviDeclencheur } from "./nets-base-local.mjs";
 import { demandesDemo, bandeauxDemo } from "./demo-site.mjs";
 import { donneesDemoAgence, ORG_AGENCE } from "./demo-agence.mjs";
-import { avecNomsLies, peutUtiliserPartages } from "./partage-clients-calc.mjs";
+import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
 import { whatsappDemo } from "./demo-whatsapp.mjs";
-import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux } from "./espace-unifie-calc.mjs";
+import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp } from "./whatsapp-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
@@ -524,6 +524,10 @@ export function creer() {
       const ids = new Set(accessibles());
       const unifiees = data.entites.filter((e) => ids.has(e.id) && e.organisation_id === monOrg() && marqueUnifiee(e));
       if (unifiees.length !== 2 || !unifiees.every((e) => droit(e.id, "clients.lire") && voitTout(contexte(), e.id))) return [];
+      // Le partage réciproque Secret et Taxi que la migration 63 pose en base, posé ici à la première lecture de la liste (et à la première
+      // carte mixte) : la fusion du doublon semé en dépend. Pas au chargement, la démo de départ ne partage que les clients de l'agence
+      // (gestion-partage-clients).
+      if (partageReciproqueDemo(unifiees[0], unifiees[1])) (sauve(), setTimeout(() => ecouteurs.forEach((f) => f()), 0));
       return doublonsLocaux(data.clients, unifiees);
     },
     async whatsappConversation(id) {
@@ -977,6 +981,10 @@ export function creer() {
       if (table === "dossiers") {
         data.documents = data.documents.filter((d) => d.dossier_id !== id);
         data.paiements = data.paiements.filter((p) => p.dossier_id !== id);
+        // Comme la base (migration 11, on delete cascade) : les réservations du dossier et leurs nets partent avec lui.
+        const resas = new Set(data.reservations.filter((r) => r.dossier_id === id).map((r) => r.id));
+        data.reservations = data.reservations.filter((r) => !resas.has(r.id));
+        data.reservations_nets = data.reservations_nets.filter((n) => !resas.has(n.reservation_id));
       }
       if (ligne) journaliser(table, "delete", ligne);
       sauve();
@@ -1041,7 +1049,9 @@ export function creer() {
       if (!g || !a || g.id === a.id || (g.entite_id !== a.entite_id && !partage)) throw new Error(tr("Fusion impossible : les deux fiches doivent être deux clients différents de la même entreprise."));
       if (!(droit(a.entite_id, "clients.fusionner") || (droit(a.entite_id, "clients.supprimer") && droit(a.entite_id, "dossiers.ecrire")))) throw new Error(tr("Votre rôle ne permet pas de fusionner des clients."));
       if (!voitTout(contexte(), a.entite_id)) throw new Error(tr("Fusion réservée aux rôles qui voient tous les dossiers de l'entreprise."));
-      if (g.entite_id !== a.entite_id && !(peutUtiliserPartages({ superAdmin: !!utilisateur.super_admin, permissionsSource: permissionsDans(contexte(), g.entite_id), permissionsCible: permissionsDans(contexte(), a.entite_id), voitToutSource: voitTout(contexte(), g.entite_id) }) && droit(g.entite_id, "clients.ecrire"))) throw new Error(tr("Seule l'administration rattache un client à la fiche d'une autre entreprise."));
+      // Comme fusionner_clients (migration 63) : entre deux entreprises, l'administration des deux, qui écrit et lit tous les clients de la
+      // fiche gardée.
+      if (g.entite_id !== a.entite_id && !(monOrg() && [g, a].every((x) => (data.entites.find((e) => e.id === x.entite_id) || {}).organisation_id === monOrg()) && peutFusionnerPaire({ superAdmin: !!utilisateur.super_admin, garder: { entite_id: g.entite_id, permissions: permissionsDans(contexte(), g.entite_id), voitTout: voitTout(contexte(), g.entite_id) }, absorbe: { entite_id: a.entite_id, permissions: permissionsDans(contexte(), a.entite_id), voitTout: voitTout(contexte(), a.entite_id) }, partage: () => partage }))) throw new Error(tr("Seule l'administration rattache un client à la fiche d'une autre entreprise."));
       for (const d of data.dossiers.filter((x) => x.client_id === absorbe)) await this.modifier("dossiers", d.id, { client_id: garder });
       if (patch && Object.keys(patch).length) await this.modifier("clients", garder, patch);
       await this.supprimer("clients", absorbe);
