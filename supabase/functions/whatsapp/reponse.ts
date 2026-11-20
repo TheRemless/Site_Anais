@@ -19,7 +19,7 @@ import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
-import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, parametresTri, langueSure, numerosPartenaires, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
+import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, parametresTri, langueSure, numerosPartenaires, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
 
@@ -38,6 +38,8 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     if (!lu || !aRepondre(lu.messages, messageId)) return;
     const { conv, messages } = lu;
     let decision = triSansAppel({ conv, messages, numerosPartenaires: await partenairesDe(db, conv.organisation_id) });
+    // Assistant éteint ou réception suspendue (audit sécurité n° 1) : pas même le tri chez Anthropic.
+    if (!decision && !(await iaOuverte(db, conv))) decision = { preparer: false, motif: "ia_coupee" };
     if (!decision && !(await budgetOuvert(db, conv))) decision = { preparer: false, motif: "limite" };
     const cle = Deno.env.get("ANTHROPIC_API_KEY");
     if (!decision && !cle) {
@@ -100,6 +102,21 @@ export async function preparerALaDemande(db: SupabaseClient, conversationId: str
     return false;
   });
   return { tache };
+}
+
+// Réception et assistant relus à chaque fois (pas de cache) : une lecture impossible ferme. Sert aussi au suivi (suivi.ts).
+export async function iaOuverte(db: SupabaseClient, conv: Conv) {
+  const [recep, ents] = await Promise.all([
+    db.from("whatsapp_reglages").select("reception_active").eq("organisation_id", conv.organisation_id).maybeSingle(),
+    db.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]),
+  ]);
+  if (recep.error || ents.error || !recep.data) return false;
+  const ids = (ents.data || []).map((e) => e.id);
+  const regl = ids.length ? await db.from("reglages").select("entite_id, valeur").in("entite_id", ids) : { data: [], error: null };
+  if (regl.error) return false;
+  const agents: Record<string, boolean> = {};
+  for (const l of regl.data || []) agents[l.entite_id] = !!(l.valeur && l.valeur.agent_ia === true);
+  return iaPermise({ receptionActive: recep.data.reception_active === true, conv, agents });
 }
 
 // L'entreprise de la conversation (ou celle suggérée par le tri pour une conversation à trier) a coché la préparation automatique.

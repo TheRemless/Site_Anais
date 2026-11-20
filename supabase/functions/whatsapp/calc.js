@@ -266,6 +266,19 @@ export function mediaCopie(media, resultat) {
   return { ...reste, ...resultat };
 }
 
+// Audit dev I3 (20.11.2026) : un média qui échoue une fois n'est plus perdu. Erreur passagère (réseau, délai, 408, 429, 5xx, envoi au
+// stockage) : le média reste « a_copier » avec sa source et un compteur, l'événement est repris. « echec » seulement sur un autre 4xx
+// (lien expiré, refusé) ou au 3e essai. `http` : le code HTTP reçu, ou null pour une erreur sans réponse.
+export const ESSAIS_MEDIA = 3;
+export const erreurPassagere = (http) => http === null || http === undefined || http === 408 || http === 429 || http >= 500;
+export function mediaApresErreur(media, { http = null, erreur = "" } = {}) {
+  const essais = (Number(media.essais) || 0) + 1;
+  const motif = http ? `http_${http}` : String(erreur || "erreur").slice(0, 80);
+  if (!erreurPassagere(http) || essais >= ESSAIS_MEDIA) return mediaCopie({ ...media, essais }, { statut: "echec", erreur: motif });
+  return { ...media, statut: "a_copier", essais, erreur: motif };
+}
+export const resteACopier = (medias = []) => medias.some((m) => m && m.statut === "a_copier");
+
 // Réponses : Telnyx ne lit que le code. 200 dès que l'événement est gardé, même si son traitement échoue ensuite (il sera rejoué).
 export const REPONSES = {
   ok: { status: 200, corps: { ok: true } },

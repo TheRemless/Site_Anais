@@ -90,6 +90,7 @@ export const MOTIFS_TRI = {
   contact_jamais: N_("Contact réglé sur Jamais"),
   limite: N_("Limite du jour des réponses atteinte"),
   tri_illisible: N_("Message non trié"),
+  ia_coupee: N_("Assistant éteint ou réception suspendue : message non trié"),
   autre: N_("Rien à répondre"),
 };
 // Pourquoi l'agent n'a pas préparé de réponse (whatsapp_propositions.erreur), en clair.

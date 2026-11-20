@@ -5,7 +5,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { dateBangkok } from "../assistant/calc.js";
-import { journalEnCours, partenairesDe, plafondsOuverts } from "./reponse.ts";
+import { iaOuverte, journalEnCours, partenairesDe, plafondsOuverts } from "./reponse.ts";
 import { cleNumero } from "./proposer.js";
 import { RESUME_ATTENTE_MS, lirePromesse, lireResume, parametresPromesse, parametresResume, peutEtrePromesse, resumeAFaire, signalPaiement, tachePromesse } from "./suivi.js";
 
@@ -44,8 +44,8 @@ export async function suiviApresMessage(db: SupabaseClient, conversationId: stri
 async function iaPermise(db: SupabaseClient, conv: Record<string, any>) {
   if (conv.reponses === "jamais" || !conv.entite_id) return false;
   if ((await partenairesDe(db, conv.organisation_id)).has(cleNumero(conv.telephone))) return false;
-  const { data } = await db.from("reglages").select("valeur").eq("entite_id", conv.entite_id).maybeSingle();
-  return !!(data && data.valeur && data.valeur.agent_ia === true);
+  // Réception suspendue ou assistant éteint dans l'entreprise de la conversation : rien chez Anthropic (audit sécurité n° 1).
+  return await iaOuverte(db, conv as any);
 }
 
 async function paiement(db: SupabaseClient, conv: Record<string, any>, message: Record<string, any>) {

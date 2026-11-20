@@ -40,7 +40,8 @@ Deno.serve(async (req) => {
   if (!conv) return json({ erreur: "droit_manquant" }, 403);
   // Lire ne suffit pas (migration 63 : WhatsApp commun en lecture) : préparer demande d'être administrateur de l'entreprise de la conversation.
   const peut = await sb.rpc("whatsapp_peut_ecrire", { p_conversation: conv.id });
-  if (peut.error ? !/whatsapp_peut_ecrire|PGRST202|42883/.test(`${peut.error.code} ${peut.error.message}`) : peut.data !== true) return json({ erreur: "droit_manquant" }, 403);
+  // Toute erreur ferme (audit sécurité n° 7) : la migration 63 est en production, le repli « fonction absente » ne sert plus.
+  if (peut.error || peut.data !== true) return json({ erreur: "droit_manquant" }, 403);
 
   const admin = createClient(URL_SB, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   const r = await preparerALaDemande(admin, conv.id);

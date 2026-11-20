@@ -10,7 +10,7 @@
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { apresMessageClient } from "./reponse.ts";
 import { suiviApresMessage } from "./suivi.ts";
-import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
+import { verifierSignature, lireEnveloppe, interpreter, cheminMedia, sourceMedia, mediaCopie, mediaApresErreur, resteACopier, REPONSES, TAILLE_MAX, MEDIA_MAX } from "./calc.js";
 
 const ORGANISATION = Deno.env.get("WHATSAPP_ORGANISATION") || "00000000-0000-0000-0000-00000000a000";
 const entetes = { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
@@ -228,7 +228,7 @@ async function copierMedias(db: SupabaseClient, conversation: string, message: s
       }
       if (!rep.ok) {
         await rep.body?.cancel();
-        resultat.push(mediaCopie(m, { statut: "echec", erreur: `http_${rep.status}` }));
+        resultat.push(mediaApresErreur(m, { http: rep.status }));
         continue;
       }
       if (Number(rep.headers.get("content-length") || 0) > MEDIA_MAX) {
@@ -247,11 +247,14 @@ async function copierMedias(db: SupabaseClient, conversation: string, message: s
       if (error) throw new Error(error.message);
       resultat.push(mediaCopie(m, { statut: "copie", chemin, taille: octets.length, mime }));
     } catch (err) {
-      resultat.push(mediaCopie(m, { statut: "echec", erreur: String((err as Error)?.message || err).slice(0, 80) }));
+      // Délai dépassé, réseau ou stockage : passager, la source reste pour un nouvel essai.
+      resultat.push(mediaApresErreur(m, { erreur: String((err as Error)?.message || err) }));
     }
   }
   const { error } = await db.from("whatsapp_messages").update({ medias: resultat }).eq("id", message);
   if (error) throw new Error(error.message);
+  // Un média à reprendre : l'événement reste à traiter (essais + 1) et sera repris, seuls les médias « a_copier » sont recopiés.
+  if (resteACopier(resultat)) throw new Error("medias_a_reprendre");
 }
 
 // Requête avec la clé API : les redirections ne sont pas suivies automatiquement, pour que la clé n'aille jamais ailleurs que chez Telnyx.

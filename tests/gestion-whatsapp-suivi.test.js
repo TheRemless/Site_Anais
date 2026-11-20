@@ -75,7 +75,7 @@ test("suivi : aucun appel à Claude pour un contact « jamais », un partenaire,
   assert.ok(corps.indexOf("iaPermise(") < corps.indexOf("new Anthropic("));
   assert.match(code, /conv\.reponses === "jamais" \|\| !conv\.entite_id/);
   assert.match(code, /partenairesDe\(db, conv\.organisation_id\)\)\.has\(cleNumero\(conv\.telephone\)\)/);
-  assert.match(code, /agent_ia === true/);
+  assert.match(code, /return await iaOuverte\(db, conv as any\)/, "assistant de l'entreprise et réception relus (reponse.ts)");
   const p = code.slice(code.indexOf("async function promesse"), code.indexOf("async function resumer"));
   assert.ok(p.indexOf("update({ promesse_le: ajd })") < p.indexOf("messages.create("), "le jour est réservé avant l'appel");
   assert.match(code, /resume_le\.is\.null,resume_le\.lt\.\$\{depart\}/);
