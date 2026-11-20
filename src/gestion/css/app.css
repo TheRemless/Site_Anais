@@ -2200,6 +2200,18 @@ button.agent-joint { cursor: pointer; }
 .wa-type { color: var(--texte-2); font-style: italic; }
 .wa-supprime { margin: 0 0 2px; font-size: 0.8rem; font-weight: 700; color: var(--danger); }
 .wa-meta { margin: 2px 0 0; text-align: right; font-size: 0.74rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+/* Statut d'envoi (migration 64) : discret à la suite de l'heure ; « lu » en teal, un échec en rouge avec sa raison sous la bulle. */
+.wa-statut.lu { color: var(--teal-700); font-weight: 600; }
+.wa-statut.echec, .wa-statut.doute { color: var(--danger); font-weight: 600; }
+.wa-bulle.non-remis { box-shadow: inset 0 0 0 1px var(--danger); }
+.wa-statut-detail { margin: 4px 0 0; font-size: 0.84rem; color: var(--danger); text-align: right; }
+.wa-verifier { border-top-color: var(--danger); }
+.wa-verifier > p:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0; }
+.wa-verifier > p:first-child svg { color: var(--danger); flex: none; }
+.wa-verifier .wa-prop-actions .principal, .wa-verifier .wa-prop-actions .secondaire.petit { flex: 1 1 40%; min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 12px; }
+.wa-reception { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.wa-reception.attention { color: #5a4300; }
+.wa-reception.alerte { color: var(--danger); font-weight: 600; }
 .wa-image, .wa-fichier { margin: 0 0 6px; }
 .wa-image figcaption, .wa-fichier figcaption { margin-top: 4px; font-size: 0.92rem; white-space: pre-wrap; }
 .wa-vignette { display: block; padding: 0; border: 0; background: none; border-radius: 10px; overflow: hidden; min-height: 0; }

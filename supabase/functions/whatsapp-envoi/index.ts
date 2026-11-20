@@ -1,7 +1,11 @@
 // Fonction « whatsapp-envoi » : envoie depuis Gestion la réponse à un client WhatsApp (usage secondaire : Nani répond surtout depuis l'app).
 // Appelée par l'outil avec la session de la personne (verify_jwt = true). La conversation se lit avec cette session : seul un administrateur
 // de Secret ou de Taxi la voit (RLS, migration 58). L'envoi passe par Telnyx (TELNYX_API_KEY), dans la fenêtre de 24 h de Meta seulement.
-// Le message envoyé est rangé dans la conversation (origine « gestion ») et la proposition passe « traitee ».
+// Le message est rangé dans la conversation AVANT l'appel à Telnyx (origine « gestion », statut « envoi », migration 64), puis complété avec
+// l'id Telnyx (« envoye ») : un délai dépassé ne fait plus disparaître un message parti. La proposition passe « traitee ».
+// Sans réponse sûre, le message reste « envoi » : l'écran demande de vérifier dans WhatsApp après 30 secondes (whatsapp_confirmer_envoi),
+// la reprise de la fonction « whatsapp » le passe en échec visible après 5 minutes. Les statuts de Telnyx (remis, lu, échec) arrivent
+// ensuite sur la fonction « whatsapp » (webhook_url de l'envoi).
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { lireEnvoi, corpsTelnyx, lireReponseTelnyx } from "./calc.js";
 import { fenetreOuverte } from "../whatsapp/proposer.js";
@@ -42,7 +46,9 @@ Deno.serve(async (req) => {
   const peut = await sb.rpc("whatsapp_peut_ecrire", { p_conversation: conv.id });
   // Toute erreur ferme (audit sécurité n° 7) : la migration 63 est en production, le repli « fonction absente » ne sert plus.
   if (peut.error || peut.data !== true) return json({ erreur: "droit_manquant" }, 403);
-  const { data: msgs } = await sb.from("whatsapp_messages").select("sens, envoye_le").eq("conversation_id", conv.id).eq("sens", "entrant").order("envoye_le", { ascending: false }).limit(1);
+  const { data: msgs, error: errM } = await sb.from("whatsapp_messages").select("sens, envoye_le").eq("conversation_id", conv.id).eq("sens", "entrant").order("envoye_le", { ascending: false }).limit(1);
+  // Une lecture en échec n'est pas une fenêtre fermée (audit M4).
+  if (errM) return json({ erreur: "base" }, 500);
   if (!fenetreOuverte(msgs || [])) return json({ erreur: "fenetre_fermee" }, 409);
   // Garde-fou de la PR 278, aussi côté serveur : jamais un net, une commission ni un nom de partenaire vers le client, même si l'écran a été
   // contourné. Lu avec la clé de service dans l'entreprise de la conversation (les deux si elle est à trier).
@@ -67,32 +73,57 @@ Deno.serve(async (req) => {
   // En cas d'échec sûr (rien n'est parti), la proposition redevient « a_faire ».
   const relacher = () => (demande.proposition_id ? admin.from("whatsapp_propositions").update({ statut: "a_faire" }).eq("id", demande.proposition_id).eq("statut", "envoi") : Promise.resolve());
 
+  // 1. Le message est rangé avant l'appel (audit I1) : s'il ne peut pas l'être, rien ne part.
+  const { data: range, error: errR } = await admin.rpc("whatsapp_ranger", { org: conv.organisation_id, tel: conv.telephone, nom_profil: null, m: { sens: "sortant", origine: "gestion", type: "text", texte: demande.texte, medias: [], envoye_le: new Date().toISOString(), statut_envoi: "envoi" } });
+  const messageId: string | null = range?.message_id || null;
+  if (errR || !messageId) {
+    await relacher();
+    console.error("whatsapp-envoi : message non rangé, rien n'est parti", errR?.message || "sans id");
+    return json({ erreur: "base" }, 500);
+  }
+  // Refus sûr de Telnyx : le message sort du fil (rien n'est parti) et la proposition redevient à faire.
+  const retirer = async () => {
+    const { error } = await admin.rpc("whatsapp_retirer_envoi", { p_message: messageId });
+    if (error) console.error("whatsapp-envoi : envoi refusé mais message non retiré", error.message);
+    await relacher();
+  };
+
+  // 2. L'appel. webhook_url : les statuts de ce message (envoyé, remis, lu, échec) reviennent à la fonction « whatsapp ».
   let rep: Response;
   try {
     rep = await fetch("https://api.telnyx.com/v2/messages/whatsapp", {
       method: "POST",
       headers: { Authorization: `Bearer ${cle}`, "Content-Type": "application/json" },
-      body: JSON.stringify(corpsTelnyx({ de: regl.numero, vers: conv.telephone, texte: demande.texte })),
+      body: JSON.stringify(corpsTelnyx({ de: regl.numero, vers: conv.telephone, texte: demande.texte, webhook: `${URL_SB}/functions/v1/whatsapp` })),
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
-    // Délai dépassé : Telnyx a peut-être envoyé. La proposition reste « envoi » (pas de nouvel essai possible depuis Gestion) : Nani vérifie
-    // dans WhatsApp, puis la marque traitée ou répond depuis l'app (l'écho la soldera).
-    return json({ erreur: "verifier_whatsapp" }, 504);
+    // Délai dépassé ou coupure : Telnyx a peut-être envoyé. Le message reste « envoi » dans le fil et la proposition « envoi » : après
+    // 30 secondes, l'écran propose « C'est parti » ou « Pas parti » ; après 5 minutes, il passe en échec visible.
+    return json({ erreur: "verifier_whatsapp", message_id: messageId }, 504);
   }
   const lu = lireReponseTelnyx(rep.status, await rep.json().catch(() => null));
   if (!lu.ok) {
-    await relacher();
+    // Un 5xx de Telnyx, ou un 2xx illisible, ne prouve pas que rien n'est parti : même doute qu'un délai dépassé.
+    if (lu.statut >= 500 || (lu.statut >= 200 && lu.statut < 300)) return json({ erreur: "verifier_whatsapp", message_id: messageId }, 504);
+    await retirer();
     console.error("whatsapp-envoi : refus Telnyx", lu.statut, lu.code);
     return json({ erreur: "telnyx_refuse", code: lu.code }, 502);
   }
+
+  // 3. Parti : le message est complété avec l'id Telnyx (les statuts s'y accrochent). Deux essais ; sinon il reste « envoi » et Nani confirme.
   const maintenant = new Date().toISOString();
-  const { data: range, error: errR } = await admin.rpc("whatsapp_ranger", { org: conv.organisation_id, tel: conv.telephone, nom_profil: null, m: { telnyx_id: lu.id, sens: "sortant", origine: "gestion", type: "text", texte: demande.texte, medias: [], envoye_le: maintenant } });
-  if (errR) console.error("whatsapp-envoi : message envoyé mais non rangé", errR.message);
+  let complete = false;
+  for (let i = 0; i < 2 && !complete; i++) {
+    const { error } = await admin.from("whatsapp_messages").update({ telnyx_id: lu.id, statut_envoi: "envoye", statut_le: maintenant }).eq("id", messageId).eq("statut_envoi", "envoi");
+    if (!error) complete = true;
+    else console.error("whatsapp-envoi : message parti, id Telnyx non noté", error.message);
+  }
   // Toutes les propositions ouvertes de la conversation sont soldées, comme pour une réponse depuis l'app.
-  await admin.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par: qui.user.id, traitee_par_quoi: "gestion" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours", "envoi"]);
-  return json({ ok: true, message_id: range?.message_id || null });
+  const { error: errP2 } = await admin.from("whatsapp_propositions").update({ statut: "traitee", traitee_le: maintenant, traitee_par: qui.user.id, traitee_par_quoi: "gestion" }).eq("conversation_id", conv.id).in("statut", ["a_faire", "en_cours", "envoi"]);
+  if (errP2) console.error("whatsapp-envoi : propositions non soldées", errP2.message);
+  return json({ ok: true, message_id: messageId, complet: complete });
 });
 
 // Montants égaux à un net (et à aucun prix de vente) et noms de partenaires présents dans le texte.

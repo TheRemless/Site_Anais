@@ -547,6 +547,33 @@ export function creer() {
       await new Promise((r) => setTimeout(r, 200));
       return { demo: true };
     },
+    // Comme whatsapp_confirmer_envoi (migration 64) : parti, le message reste et la réponse est soldée ; pas parti, il sort du fil.
+    async whatsappConfirmerEnvoi(conversationId, parti) {
+      const c = conversationEcrite(conversationId);
+      if (!c) throw new Error(tr("Votre rôle ne permet pas d'écrire dans cette conversation."));
+      const enDoute = (m) => m.conversation_id === c.id && m.origine === "gestion" && (m.statut_envoi === "envoi" || (m.statut_envoi === "echec" && m.erreur_envoi === "sans_confirmation"));
+      const msgs = data.whatsapp_messages.filter(enDoute);
+      const maintenant = new Date().toISOString();
+      let propositions = 0;
+      if (parti) {
+        for (const m of msgs) Object.assign(m, { statut_envoi: "envoye", erreur_envoi: null, statut_le: maintenant });
+        for (const p of data.whatsapp_propositions) if (p.conversation_id === c.id && ["a_faire", "en_cours", "envoi"].includes(p.statut)) (Object.assign(p, { statut: "traitee", traitee_le: maintenant, traitee_par_quoi: "gestion" }), propositions++);
+      } else {
+        data.whatsapp_messages = data.whatsapp_messages.filter((m) => !enDoute(m));
+        for (const p of data.whatsapp_propositions) if (p.conversation_id === c.id && p.statut === "envoi") (p.statut = "a_faire", propositions++);
+      }
+      sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+      return { messages: msgs.length, propositions };
+    },
+    // La démonstration n'a pas de file d'événements : tout est rangé.
+    async whatsappEtatReception() {
+      if (!litWhatsApp(null)) return null;
+      return { en_erreur: 0, abandonnes: 0, en_retard: 0, plus_ancien: null, derniere_erreur: null, envois_a_verifier: data.whatsapp_messages.filter((m) => m.origine === "gestion" && m.statut_envoi === "envoi").length };
+    },
+    async whatsappRelancerEvenements() {
+      return 0;
+    },
     async whatsappReception(organisationId, actif) {
       const r = data.whatsapp_reglages.find((x) => x.organisation_id === organisationId);
       if (!r || organisationId !== monOrg() || !litWhatsApp(null)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));

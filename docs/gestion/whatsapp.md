@@ -18,7 +18,7 @@ Les messages envoyés depuis l'app restent gratuits. `message.echo` n'arrive que
 
 - Adresse : `https://lkxqcmzeidlyssoqmqkh.supabase.co/functions/v1/whatsapp`, sans JWT (`supabase/config.toml`).
 - Chaque appel est vérifié : signature Ed25519 de Telnyx (en-têtes `telnyx-signature-ed25519` et `telnyx-timestamp`, message signé `horodatage|corps brut`), horodatage de moins de 5 minutes, 1 Mo au plus. Sinon 401.
-- L'événement brut est écrit une fois dans `whatsapp_evenements` (clé = `data.id`), puis la fonction répond 200 tout de suite. Le rangement du message et la copie des médias se font ensuite. Un traitement raté reste « à traiter » et se reprend à l'appel suivant (5 essais).
+- L'événement brut est écrit une fois dans `whatsapp_evenements` (clé = `data.id`), puis la fonction répond 200 tout de suite. Le rangement du message et la copie des médias se font ensuite. Un traitement raté reste « à traiter » et se reprend à l'appel suivant et toutes les 5 minutes par le cron `whatsapp-reprise` (5 essais, comptés dès la réservation). Voir « Fiabilité » plus bas.
 - Médias : copiés dans le stockage privé `whatsapp` dès réception (20 Mo au plus par fichier), parce que les liens expirent. Si Telnyx ne donne qu'un id Meta, la fonction passe par `GET /v2/whatsapp/media/{numéro}/{id}` avec `TELNYX_API_KEY`. La clé ne part jamais vers une autre machine que `*.telnyx.com`.
 - Interrupteur : `whatsapp_reglages.reception_active`. Éteint, la fonction répond 200 sans rien écrire.
 - Secrets : `TELNYX_PUBLIC_KEY` (obligatoire), `TELNYX_API_KEY` (médias sans lien direct, puis envoi depuis Gestion), `WHATSAPP_ORGANISATION` (Zwald par défaut).
@@ -76,6 +76,16 @@ Demande de Jérémy : les réponses préparées doivent avoir le ton de Nani, ap
 - À chaque réponse préparée, l'agent reçoit jusqu'à 8 de ses vraies réponses envoyées depuis l'app, avec le message du client juste avant, dans les conversations de la même entreprise. Les situations proches du message en cours passent d'abord, puis les plus récentes.
 - Il reçoit aussi jusqu'à 5 de ses réécritures : la réponse préparée par l'agent, puis ce que Nani a vraiment envoyé à la place (dans les 6 heures, assez différent). Plus elle corrige, plus les réponses se rapprochent des siennes.
 - Ces exemples servent au ton, à la longueur, aux formules et aux emoji. Les faits (prix, heures, disponibilités) viennent toujours des outils. Numéros et IBAN masqués ; un exemple qui parle de net, de commission ou de compte bancaire est écarté.
+
+## Fiabilité (migration 64, lot 3 des audits du 20.11.2026)
+
+- **Envoi depuis Gestion.** `whatsapp-envoi` range le message avant d'appeler Telnyx (`statut_envoi = 'envoi'`), puis le complète avec l'id Telnyx (`envoye`). Un refus sûr de Telnyx (4xx) retire le message du fil et rend la réponse préparée. Un délai dépassé, une coupure, un 5xx ou une réponse illisible laissent le message dans le fil : après 30 secondes, la carte « Vérifiez dans WhatsApp » propose « C'est parti » (le message reste, la réponse est soldée) ou « Pas parti » (le message sort du fil, la réponse revient). Après 5 minutes sans confirmation, la reprise le passe en échec visible (`erreur_envoi = 'sans_confirmation'`). La confirmation passe par `whatsapp_confirmer_envoi`, réservée à qui peut écrire dans la conversation.
+- **Statuts d'envoi.** Telnyx envoie `message.sent`, `message.finalized` (état `delivered`, ou un échec avec `errors[]`) et `message.read` pour un message envoyé par l'API. L'envoi passe `webhook_url` = la fonction `whatsapp` : aucun réglage du portail n'est nécessaire. Le statut s'écrit sur le message par son id Telnyx, sans jamais revenir en arrière (`remis` puis un `sent` en retard ne change rien). L'écran l'affiche à la suite de l'heure : envoyé, remis, lu, ou non remis avec la raison de Meta en clair (24 h dépassées, numéro sans WhatsApp…). Un statut arrivé avant que l'id soit noté est repris 30 minutes, puis classé.
+- **Reprise.** Le cron `whatsapp-reprise` (toutes les 5 minutes, posé par `cron-whatsapp-reprise.sql`) appelle la fonction avec `{ "mode": "reprise" }` et le jeton de `rappels`. Elle reprend jusqu'à 25 événements en attente, passe en échec les envois sans confirmation et purge au plus une fois par heure. `whatsapp_reserver_evenement` compte l'essai dès la réservation : une instance tuée en route compte aussi.
+- **Modification ou suppression par le client.** Si le message d'origine n'est pas encore rangé (en erreur, repris plus tard), l'événement est repris lui aussi pendant 30 minutes au lieu d'être clos sans rien toucher.
+- **Doublon.** Un événement ne range qu'un message (index unique sur `evenement_id`), même sans id Telnyx ni Meta.
+- **Réglages > WhatsApp, ligne « Réception ».** `whatsapp_etat_reception()` (administrateurs de Secret ou de Taxi, lecture seule) : messages en erreur (repris toutes les 5 minutes), abandonnés après 5 essais (bouton « Relancer », `whatsapp_relancer_evenements`), en attente depuis plus de 10 minutes (cron arrêté ?), envois à vérifier.
+- **Conservation.** Un événement jamais rangé reste 90 jours au lieu de 30, pour pouvoir être relancé.
 
 ## Étapes de Jérémy (une seule fois)
 

@@ -314,9 +314,9 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         if (vieux) sb.removeChannel(vieux);
       },
       // Retour sur l'onglet, réseau revenu, page restaurée : un canal qui n'est pas « joined » est refait tout de suite (jeton rafraîchi).
-      async verifier() {
+      async verifier({ forcer = false } = {}) {
         if (arrete) return;
-        if (ch && !doitReabonner(ch.state)) return void (await rafraichirJeton());
+        if (ch && !forcer && !doitReabonner(ch.state)) return void (await rafraichirJeton());
         if (minuteur) clearTimeout(minuteur), (minuteur = null);
         essai = 0;
         await relancer();
@@ -358,16 +358,21 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     // L'état des deux canaux, pour le repli et la pastille « Direct coupé » de l'écran WhatsApp.
     etatDirect: () => ({ direct: canal ? canal.etat() : "ferme", whatsapp: canalWhatsApp ? canalWhatsApp.etat() : "ferme" }),
     // Retour sur l'onglet, réseau revenu, page restaurée : jeton rafraîchi, canaux refaits s'ils ne sont pas « joined ».
-    async reveillerDirect() {
-      await Promise.all([canal ? canal.verifier() : null, canalWhatsApp ? canalWhatsApp.verifier() : null]);
+    // forcer : après une longue absence, les canaux sont refaits même s'ils se disent « joined » (socket mort au réveil).
+    async reveillerDirect({ forcer = false } = {}) {
+      await Promise.all([canal ? canal.verifier({ forcer }) : null, canalWhatsApp ? canalWhatsApp.verifier({ forcer }) : null]);
     },
     // Relecture ciblée de la boîte WhatsApp (conversations, propositions, réglage), sans les dossiers ni les clients. Les messages de la
     // conversation ouverte sont relus par l'écran à son redessin (whatsappMessages).
     chargerWhatsApp: () => lireWhatsApp(),
     // Les messages d'une conversation, les 500 plus récents, dans l'ordre d'envoi.
+    // statut_envoi, erreur_envoi (migration 64) : relus sans eux tant que la migration n'est pas appliquée.
     async whatsappMessages(conversationId) {
-      const lignes = verifie(await sb.from("whatsapp_messages").select("id, conversation_id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(500));
-      return lignes.reverse();
+      const requete = (colonnes) => sb.from("whatsapp_messages").select(colonnes).eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(500);
+      const base = "id, conversation_id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le";
+      let r = await requete(`${base}, statut_envoi, erreur_envoi, statut_le`);
+      if (colonneAbsente(r.error, "statut_envoi")) r = await requete(base);
+      return verifie(r).reverse();
     },
     // Lien court (5 minutes) vers une photo ou un document copié dans le stockage privé « whatsapp ». null si le fichier n'est plus là.
     async whatsappLienMedia(media, { telecharger = false } = {}) {
@@ -382,7 +387,9 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       if (!jeton) return { erreur: "non_connecte" };
       let rep;
       try {
-        rep = await fetch(`${config.SUPABASE_URL}/functions/v1/whatsapp-envoi`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify(corps) });
+        // 40 secondes au plus (Telnyx en a 15 côté fonction) : une fonction muette ne laisse pas le bouton éteint sans fin (audit M19).
+        // Délai dépassé ou coupure : résultat inconnu, l'écran demande de vérifier dans WhatsApp (le message est déjà rangé « envoi »).
+        rep = await fetch(`${config.SUPABASE_URL}/functions/v1/whatsapp-envoi`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify(corps), signal: AbortSignal.timeout(40_000) });
       } catch {
         return { erreur: "hors_ligne" };
       }
@@ -421,6 +428,28 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const { data, error } = await sb.from("whatsapp_conversations").select("id, entite_id, client_id, dossier_id").eq("id", id).maybeSingle();
       if (error) throw new Error(error.message);
       return data || null;
+    },
+    // Un envoi au résultat inconnu, vérifié par Nani dans WhatsApp (migration 64) : parti (le message reste, la réponse est soldée) ou pas
+    // parti (le message sort du fil, la réponse redevient à faire).
+    async whatsappConfirmerEnvoi(conversationId, parti) {
+      const { data, error } = await sb.rpc("whatsapp_confirmer_envoi", { p_conversation: conversationId, p_parti: !!parti });
+      if (error) throw new Error(/droit_manquant|42501/.test(`${error.code} ${error.message}`) ? tr("Votre rôle ne permet pas d'écrire dans cette conversation.") : error.message);
+      return data || { messages: 0, propositions: 0 };
+    },
+    // Réglages > WhatsApp : événements en erreur, abandonnés, en retard (migration 64). null tant que la fonction manque ou sans le droit.
+    async whatsappEtatReception() {
+      const { data, error } = await sb.rpc("whatsapp_etat_reception");
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || "")) return null;
+        throw new Error(error.message);
+      }
+      return data || null;
+    },
+    // Remet en file les événements abandonnés après 5 essais. Rend le nombre remis.
+    async whatsappRelancerEvenements() {
+      const { data, error } = await sb.rpc("whatsapp_relancer_evenements");
+      if (error) throw new Error(error.message);
+      return Number(data) || 0;
     },
     // Le statut d'une proposition, relu après un refus d'écriture (déjà traitée ailleurs, ou une autre erreur).
     async whatsappProposition(id) {
@@ -615,15 +644,21 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       const dec = new TextDecoder();
       let tampon = "";
       let fini = false;
-      for (;;) {
-        const { value, done } = await lecteur.read();
-        const r = lireMorceau(tampon, done ? "\n" : dec.decode(value, { stream: true }));
-        tampon = r.tampon;
-        for (const ev of r.evenements) {
-          if (ev.t === "fin") fini = true;
-          surEvenement(ev);
+      // iPhone : passer dans une autre app coupe la connexion et read() lève (« Load failed ») ; c'est une coupure, pas une panne de l'écran
+      // (audit I7). La réponse continue côté serveur et se relit à la réouverture.
+      try {
+        for (;;) {
+          const { value, done } = await lecteur.read();
+          const r = lireMorceau(tampon, done ? "\n" : dec.decode(value, { stream: true }));
+          tampon = r.tampon;
+          for (const ev of r.evenements) {
+            if (ev.t === "fin") fini = true;
+            surEvenement(ev);
+          }
+          if (done) break;
         }
-        if (done) break;
+      } catch {
+        return fini ? { ok: true } : { erreur: "coupure" };
       }
       return fini ? { ok: true } : { erreur: "coupure" };
     },

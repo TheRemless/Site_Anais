@@ -243,7 +243,7 @@ test("branchement : route, menu avec badge, direct sur un canal à part, réglag
   assert.match(app, /\[\/\^#\\\/whatsapp\(\?:\\\?\.\*\)\?\$\/, "whatsapp", vers\(\(\) => import\("\.\/views\/whatsapp\.mjs"\), "vueWhatsApp"\)\]/);
   assert.match(app, /if \(cle === "whatsapp"\) return whatsappVisible\(\);/, "une adresse tapée n'ouvre pas l'écran sans le droit");
   assert.match(app, /href: "#\/whatsapp", libelle: tr\("WhatsApp"\), cle: "whatsapp", icone: "whatsapp", badge: whatsapp/);
-  assert.match(app, /etat\.store\.ecouterWhatsApp\(TABLES_WHATSAPP, changementWhatsApp, \{ surEtat: majRepli \}\)/);
+  assert.match(app, /etat\.store\.ecouterWhatsApp\(TABLES_WHATSAPP, changementWhatsApp, \{ surEtat: surEtatWhatsApp \}\)/);
   assert.deepEqual(W.TABLES_WHATSAPP, ["whatsapp_conversations", "whatsapp_messages", "whatsapp_propositions"]);
   const sb = source("store-supabase.mjs");
   assert.match(sb, /canalFiable\("gestion-whatsapp", tables, rappel, surEtat\)/, "un canal à part, celui des demandes du site ne change pas");
@@ -305,7 +305,7 @@ test("envoi : erreurs du serveur, résultat inconnu sans « réessayez », conte
   for (const code of ["non_connecte", "droit_manquant", "contenu_interne", "fenetre_fermee", "non_configure", "numero_inconnu", "telnyx_refuse", "base", "deja_traitee"]) assert.equal(W.envoiIncertain(code), false, code);
   for (const code of Object.keys(W.ERREURS_ENVOI)) if (W.envoiIncertain(code)) assert.doesNotMatch(W.ERREURS_ENVOI[code], /[Rr]éessayez(?! )|réessayez dans/, code);
   const vue = source("views/whatsapp.mjs");
-  assert.match(vue, /if \(envoiIncertain\(code\)\) envoisIncertains\.add\(p\.id\);\s+else bouton\.disabled = false;/, "après un résultat inconnu, Envoyer ne se rallume pas");
+  assert.match(vue, /if \(envoiIncertain\(code\)\) \{\s+envoisIncertains\.add\(p\.id\);[\s\S]{0,200}return rafraichir\(\);\s+\}\s+bouton\.disabled = false;/, "après un résultat inconnu, Envoyer ne se rallume pas et le fil montre le message à vérifier");
   assert.match(vue, /boutonEnvoyer\.disabled = !ok\.ok \|\| reste\.length > 0 \|\| incertain;/);
   assert.match(vue, /aRetirer\.set\(p\.id, \(r && r\.a_retirer\) \|\| \[\]\)/, "a_retirer gardé et affiché sous le texte");
   assert.match(source("store-supabase.mjs"), /a_retirer: lu && Array\.isArray\(lu\.a_retirer\)/);

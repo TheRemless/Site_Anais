@@ -14,7 +14,13 @@ export function lireEnvoi(d) {
 }
 
 // Corps de POST https://api.telnyx.com/v2/messages/whatsapp (texte libre, possible dans la fenêtre de 24 h).
-export const corpsTelnyx = ({ de, vers, texte }) => ({ from: de, to: vers, whatsapp_message: { type: "text", text: { body: texte, preview_url: false } } });
+// webhook : adresse des statuts de ce message (message.sent, message.finalized, message.read), sinon celle du profil de messagerie.
+export const corpsTelnyx = ({ de, vers, texte, webhook }) => ({
+  from: de,
+  to: vers,
+  whatsapp_message: { type: "text", text: { body: texte, preview_url: false } },
+  ...(typeof webhook === "string" && /^https:\/\//.test(webhook) ? { webhook_url: webhook } : {}),
+});
 
 // Réponse de Telnyx : l'id du message, ou l'erreur (code court, jamais la clé).
 export function lireReponseTelnyx(statut, corps) {

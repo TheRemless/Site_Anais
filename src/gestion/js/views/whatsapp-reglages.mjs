@@ -1,10 +1,13 @@
 // Réglages, bloc « WhatsApp » (migration 58) : l'interrupteur de réception, l'état du compte et l'heure du dernier message reçu.
 // Visible seulement pour un administrateur de Secret ou de Taxi (whatsapp_admin). L'interrupteur s'enregistre tout de suite, à part du
 // bouton « Enregistrer les réglages » : il vit dans whatsapp_reglages, pas dans les réglages de l'entreprise.
+// Ligne « Réception » (migration 64) : les messages reçus mais pas encore rangés (en erreur, abandonnés après 5 essais, en retard), lus par
+// whatsapp_etat_reception() à l'ouverture des Réglages, avec « Relancer » pour les abandonnés.
 import { etat, entiteActive, estSuperAdmin, permissionsDe, voitToutDans, ecranVoucherSeul, organisationActiveId } from "../etat.mjs";
 import { h, toast, confirmer } from "../ui.mjs";
 import { tr, localeActive } from "../i18n.mjs";
 import { lecteurWhatsApp, etatCompte, numeroAffiche } from "../whatsapp-calc.mjs";
+import { resumeReception } from "../whatsapp-fiabilite-calc.mjs";
 
 const date = (iso) => (iso ? new Date(iso).toLocaleString(localeActive(), { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }) : "");
 
@@ -48,7 +51,42 @@ export function blocReglagesWhatsApp() {
       h("dt", null, tr("Compte")),
       h("dd", { class: `wa-compte ${compte.cle}` }, tr(compte.libelle, compte.vars), r.etat_le ? h("span", { class: "aide" }, ` ${date(r.etat_le)}`) : null),
       h("dt", null, tr("Dernier message reçu")),
-      h("dd", null, r.dernier_evenement_le ? date(r.dernier_evenement_le) : tr("Aucun pour l'instant"))
+      h("dd", null, r.dernier_evenement_le ? date(r.dernier_evenement_le) : tr("Aucun pour l'instant")),
+      ligneReception()
     )
   );
+}
+
+// « Réception » : lue à part (une requête à l'ouverture), la ligne se remplit quand la réponse arrive. Rien tant que la migration 64 manque.
+function ligneReception() {
+  if (!etat.store.whatsappEtatReception) return null;
+  const dt = h("dt", { hidden: true }, tr("Réception"));
+  const dd = h("dd", { class: "wa-reception", hidden: true });
+  const remplir = (e) => {
+    const res = resumeReception(e);
+    if (!res) return;
+    const relancer = h("button", { class: "lien", type: "button" }, tr("Relancer"));
+    relancer.addEventListener("click", async () => {
+      relancer.disabled = true;
+      try {
+        const n = await etat.store.whatsappRelancerEvenements();
+        toast(n ? tr("{n} message(s) remis en file : repris dans les 5 minutes.", { n }) : tr("Rien à relancer."));
+        remplir(await etat.store.whatsappEtatReception());
+      } catch (err) {
+        toast(err.message, true);
+        relancer.disabled = false;
+      }
+    });
+    dd.className = `wa-reception ${res.niveau}`;
+    // replaceChildren écrirait « null » en texte : seulement les morceaux présents.
+    dd.replaceChildren(...[
+      h("span", null, tr(res.texte, res.vars)),
+      e.derniere_erreur && res.niveau !== "ok" ? h("span", { class: "aide", title: e.derniere_erreur }, tr("Dernière erreur : {message}", { message: String(e.derniere_erreur).slice(0, 80) })) : null,
+      res.envois ? h("span", { class: "aide" }, tr("{n} envoi(s) depuis Gestion à vérifier dans WhatsApp.", { n: res.envois })) : null,
+      res.relancer ? relancer : null
+    ].filter(Boolean));
+    dt.hidden = dd.hidden = false;
+  };
+  etat.store.whatsappEtatReception().then(remplir, () => {});
+  return [dt, dd];
 }

@@ -425,6 +425,7 @@ export async function vueAgent(idOuvert = "") {
     zoneFil.append(etape);
     descendre();
     const corps = whatsapp ? { entite_id: etat.entiteId, whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, whatsapp_pieces: whatsapp.whatsapp_pieces || [], texte: "" } : { entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) };
+    // Une exception (connexion coupée, écran qui lève) ne laisse jamais « L'assistant réfléchit » ni le bouton éteint (audit I7).
     const r = await etat.store.agentEnvoyer(corps, (ev) => {
       if (ev.t === "conversation" && !conv) {
         conv = { id: ev.id, entite_id: etat.entiteId, titre: ev.titre, apercu: "", dossier_id: ev.dossier_id || null, statut: "ouverte", maj_le: new Date().toISOString(), whatsapp_conversation_id: ev.whatsapp_conversation_id || null };
@@ -457,13 +458,14 @@ export async function vueAgent(idOuvert = "") {
         else etape.before(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(ev.erreur), ev.detail ? h("small", { class: "agent-erreur-detail" }, ev.detail) : null));
       }
       descendre();
-    });
+    }).catch(() => ({ erreur: "coupure" }));
     etape.remove();
     if (r && r.erreur) {
       // Plafond ou crédit : l'assistant le dit dans le fil, comme une réponse, pour que ce soit clair et non une panne obscure.
       if (r.erreur === "plafond_du_mois" || r.erreur === "credit_epuise") zoneFil.append(h("div", { class: "agent-bulle de-agent agent-arret", role: "alert" }, h("p", null, erreurTexte(r.erreur, r))));
       else zoneFil.append(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(r.erreur)));
-      if (!conv) champ.value = texte;
+      // Le texte revient dans la zone, sauf après une coupure en cours de réponse : le serveur l'a déjà gardé, la relecture le montre.
+      if ((!conv || r.erreur !== "coupure") && !champ.value.trim()) champ.value = texte;
       if (choisis.length) pieces.ajouter(choisis);
     }
     enCours = false;
