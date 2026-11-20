@@ -14,10 +14,9 @@ import { clesHotelPossibles, memoDepuis, prefixeRef } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
-import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, demandeTri, langueSure, lireDecision, numerosPartenaires, outilsWhatsapp, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
+import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, parametresTri, langueSure, numerosPartenaires, outilsWhatsapp, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
-const MODELE_TRI = "claude-haiku-5-5";
 
 type Conv = { id: string; organisation_id: string; telephone: string; nom: string | null; entite_id: string | null; entite_source: string; client_id: string | null; dossier_id: string | null; reponses?: string; tri?: Record<string, any> };
 
@@ -34,15 +33,25 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     let decision = triSansAppel({ conv, messages, numerosPartenaires: await partenairesDe(db, conv.organisation_id) });
     if (!decision && !(await budgetOuvert(db, conv))) decision = { preparer: false, motif: "limite" };
     const cle = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!decision && !cle) return;
+    if (!decision && !cle) {
+      console.error("whatsapp : ANTHROPIC_API_KEY absente, aucun tri possible");
+      decision = { preparer: false, motif: "tri_illisible" };
+    }
     const anthropic = cle ? new Anthropic({ apiKey: cle, timeout: 40_000, maxRetries: 0 }) : null;
     const appels: { usage: Record<string, unknown>; modele: string }[] = [];
     const j = journalEnCours(db, appels);
     if (!decision) {
-      const m = await anthropic!.messages.create({ model: MODELE_TRI, max_tokens: 60, messages: [{ role: "user", content: demandeTri(messages, { aTrier: !conv.entite_id }) }] });
-      appels.push({ usage: m.usage as unknown as Record<string, unknown>, modele: m.model });
-      await j.noter(conv.entite_id, "tri");
-      decision = lireDecision(m.content.map((b) => (b.type === "text" ? b.text : "")).join(" "));
+      try {
+        // deno-lint-ignore no-explicit-any
+        const m = await anthropic!.messages.create(parametresTri(messages, { aTrier: !conv.entite_id }) as any);
+        appels.push({ usage: m.usage as unknown as Record<string, unknown>, modele: m.model });
+        decision = decisionDepuisReponse(m);
+        if (decision.motif === "tri_illisible") console.error("whatsapp : tri illisible", m.stop_reason, (m.usage as { output_tokens?: number })?.output_tokens);
+      } catch (err) {
+        console.error("whatsapp : tri en panne", err instanceof Error ? err.message.slice(0, 200) : "");
+        decision = { preparer: false, motif: "tri_illisible" };
+      }
+      await j.noter(conv.entite_id, decision.motif === "tri_illisible" ? "tri_illisible" : "tri");
     }
     await garderTri(db, conv.id, decision);
     if (!decision.preparer) return;
@@ -141,14 +150,14 @@ async function preparer(
   const parSlug = new Map((entites || []).map((e) => [e.slug, e]));
   const ent = (entites || []).find((e) => e.id === conv.entite_id) || (suggestion ? parSlug.get(suggestion) : null) || null;
   const proposee = conv.entite_id ? null : suggestion;
-  // À trier sans entreprise suggérée : pas de réponse (on ne prend pas le catalogue d'une entreprise au hasard).
-  if (!ent) return false;
+  // À trier sans entreprise suggérée : pas de réponse (on ne prend pas le catalogue d'une entreprise au hasard), mais une trace visible.
+  if (!ent) return echecVisible(db, conv.id, messageId, null, "a_trier");
   const { data: regl } = await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle();
   const reglages = regl ? regl.valeur : null;
   // L'agent s'allume dans les réglages de l'entreprise : éteint, pas de proposition.
   if (!reglages || reglages.agent_ia !== true) {
     await j.noter(ent.id, "agent_eteint");
-    return false;
+    return echecVisible(db, conv.id, messageId, ent.id, "agent_eteint");
   }
 
   // La proposition encore à faire est remplacée ; la nouvelle naît « en_cours » (l'écran affiche « en préparation »).
@@ -213,6 +222,16 @@ async function preparer(
   const { data: maj } = await db.from("whatsapp_propositions").update(champs).eq("id", prop.id).eq("statut", "en_cours").select("id");
   await j.noter(ent.id, message ? statut : statut === "ok" ? "pas_de_reponse" : statut);
   return utile && !!message && !!(maj && maj.length);
+}
+
+// Une préparation qui s'arrête avant l'agent laisse toujours une trace : une proposition « echec » avec son motif (l'écran l'explique) et une
+// ligne dans les journaux de la fonction. Rend false (rien à copier).
+async function echecVisible(db: SupabaseClient, conversationId: string, messageId: string, entiteId: string | null, motif: string) {
+  console.warn("whatsapp : pas de réponse préparée,", motif);
+  await db.from("whatsapp_propositions").update({ statut: "remplacee" }).eq("conversation_id", conversationId).in("statut", ["a_faire", "en_cours"]);
+  const { error } = await db.from("whatsapp_propositions").insert({ conversation_id: conversationId, message_id: messageId, entite_id: entiteId, statut: "echec", erreur: motif });
+  if (error) console.error("whatsapp : trace d'échec non écrite", error.message);
+  return false;
 }
 
 // Le journal de l'assistant pour une préparation : une ligne créée au premier appel, mise à jour à chaque tour (coût à jour même si la

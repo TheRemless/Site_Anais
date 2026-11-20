@@ -87,8 +87,18 @@ export const MOTIFS_TRI = {
   media_seul: N_("Pas de réponse préparée : photo ou vocal sans texte"),
   contact_jamais: N_("Pas de réponse préparée : contact réglé sur Jamais"),
   limite: N_("Pas de réponse préparée : limite du jour atteinte"),
+  tri_illisible: N_("Pas de réponse préparée : le tri n'a pas abouti, touchez Préparer une réponse"),
   autre: N_("Pas de réponse préparée : rien à répondre"),
 };
+// Pourquoi l'agent n'a pas préparé de réponse (whatsapp_propositions.erreur), en clair.
+export const ERREURS_PROPOSITION = {
+  a_trier: N_("Conversation à trier : rangez-la dans Secret ou Taxi, puis touchez Préparer une réponse."),
+  agent_eteint: N_("L'assistant est éteint pour cette entreprise (Réglages)."),
+  interrompue: N_("La préparation a été interrompue."),
+  pas_de_reponse: N_("L'agent n'a pas proposé de réponse."),
+  credit_epuise: N_("Le crédit de l'assistant est épuisé."),
+};
+export const libelleErreurProposition = (code) => ERREURS_PROPOSITION[code] || (String(code || "").startsWith("erreur") ? N_("Erreur de l'assistant.") : null);
 export function raisonSansReponse(conv, messages = []) {
   const t = conv && conv.tri && typeof conv.tri === "object" ? conv.tri : null;
   const dernier = dernierEntrant(messages);

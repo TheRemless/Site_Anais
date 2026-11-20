@@ -423,7 +423,7 @@ test("whatsapp tri : branché avant la préparation, sans toucher au classement"
   const r = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
   const debut = r.indexOf("export async function apresMessageClient");
   const corps = r.slice(debut, r.indexOf("export async function preparerALaDemande"));
-  assert.ok(corps.indexOf("triSansAppel(") < corps.indexOf("lireDecision(") && corps.indexOf("lireDecision(") < corps.indexOf("await preparer("));
+  assert.ok(corps.indexOf("triSansAppel(") < corps.indexOf("decisionDepuisReponse(") && corps.indexOf("decisionDepuisReponse(") < corps.indexOf("await preparer("));
   assert.match(r, /update\(\{ tri: triGarde\(decision\) \}\)/);
   // Le serveur n'écrit jamais l'entreprise, le client, le dossier ni l'interrupteur d'une conversation.
   assert.doesNotMatch(r, /whatsapp_conversations"\)\.update\(\{ (entite_id|client_id|dossier_id|reponses)/);
@@ -431,4 +431,28 @@ test("whatsapp tri : branché avant la préparation, sans toucher au classement"
   assert.match(config, /\[functions\.whatsapp-preparer\]\nverify_jwt = true/);
   const prep = fs.readFileSync(new URL("../supabase/functions/whatsapp-preparer/index.ts", import.meta.url), "utf8");
   assert.ok(prep.indexOf('sb.from("whatsapp_conversations")') < prep.indexOf("preparerALaDemande(admin"), "la conversation est lue avec la session avant tout");
+});
+
+// ---- Bug du 20.11.2026 (07:32 UTC) : tri muet, aucune réponse préparée, aucune trace ------------------------------------------------
+import { parametresTri, decisionDepuisReponse } from "../supabase/functions/whatsapp/proposer.js";
+test("whatsapp tri : Haiku 5.5 ne réfléchit pas pour le tri et a la place d'écrire sa réponse", () => {
+  const p = parametresTri([M({ texte: "Hello I would like to know the price for a 4 islands trip for 2 adults and 2 children please" })], { aTrier: true });
+  assert.equal(p.model, "claude-haiku-5-5");
+  assert.deepEqual(p.thinking, { type: "disabled" }, "sans cela, la réflexion adaptative mange les jetons (10 jetons de sortie en production)");
+  assert.ok(p.max_tokens >= 256);
+  assert.match(p.messages[0].content, /4 islands trip/);
+});
+test("whatsapp tri : une réponse vide ou coupée devient « tri_illisible », jamais un silence", () => {
+  // Ce qu'a rendu la production : la réflexion seule, coupée à max_tokens, aucun bloc de texte.
+  assert.equal(decisionDepuisReponse({ stop_reason: "max_tokens", content: [{ type: "thinking", thinking: "" }] }).motif, "tri_illisible");
+  assert.equal(decisionDepuisReponse({ stop_reason: "end_turn", content: [{ type: "text", text: "secret" }] }).motif, "tri_illisible");
+  assert.deepEqual(decisionDepuisReponse({ stop_reason: "end_turn", content: [{ type: "text", text: '{"preparer": true, "motif": "demande_client", "entreprise": "secret"}' }] }), { preparer: true, motif: "demande_client", entreprise: "secret" });
+});
+test("whatsapp : chaque sortie sans réponse laisse une trace (proposition « echec » ou motif du tri)", () => {
+  const r = fs.readFileSync(new URL("../supabase/functions/whatsapp/reponse.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(r, /if \(!ent\) return false;/);
+  assert.match(r, /echecVisible\(db, conv\.id, messageId, null, "a_trier"\)/);
+  assert.match(r, /echecVisible\(db, conv\.id, messageId, ent\.id, "agent_eteint"\)/);
+  assert.match(r, /tri en panne/);
+  assert.doesNotMatch(r, /if \(!decision && !cle\) return;/);
 });
