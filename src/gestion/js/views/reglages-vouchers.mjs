@@ -18,8 +18,8 @@ import { chauffeurAChoisir, partenaireDeTaxi } from "../voucher-rapide-calc.mjs"
 // Le champ du WhatsApp qui reçoit les vouchers de l'assistante (clé historique `voucher.whatsapp_anais`), au nom de la personne responsable.
 function whatsappResponsable(texte, prenom) {
   const nom = prenom || tr("la personne responsable");
-  const libelle = voyelle(nom) ? tr("WhatsApp d'{responsable} (reçoit les vouchers de l'assistante)", { responsable: nom }) : tr("WhatsApp de {responsable} (reçoit les vouchers de l'assistante)", { responsable: nom });
-  return texte(libelle, "voucher.whatsapp_anais", { type: "tel", placeholder: "+66 …", aide: tr("Avec l'indicatif. Sur ordinateur, l'image est copiée et cette conversation s'ouvre ; sur téléphone, un bouton ouvre la conversation après l'envoi de l'image. Vide : l'assistante choisit {responsable} dans WhatsApp.", { responsable: nom }) });
+  const libelle = voyelle(nom) ? tr("WhatsApp d'{responsable} (reçoit les vouchers saisis)", { responsable: nom }) : tr("WhatsApp de {responsable} (reçoit les vouchers saisis)", { responsable: nom });
+  return texte(libelle, "voucher.whatsapp_anais", { type: "tel", placeholder: "+66 …", aide: tr("Avec l'indicatif. Sur ordinateur, l'image est copiée et cette conversation s'ouvre ; sur téléphone, un bouton ouvre la conversation après l'envoi de l'image. Vide : la personne à la saisie choisit {responsable} dans WhatsApp.", { responsable: nom }) });
 }
 
 // « Numéro de licence TAT » : le libellé de licence de l'entreprise (migration 44), « Numéro de licence » sans libellé.
@@ -111,7 +111,7 @@ function blocCourses({ r, marque }) {
     "fieldset",
     null,
     h("legend", null, tr("Courses et commissions")),
-    champ(tr("Chauffeur des courses"), chauffeur, tr("Le partenaire qui reçoit les courses saisies par l'assistante, les courses hors catalogue et les demandes collées. Sa commission est demandée chaque jour.")),
+    champ(tr("Chauffeur des courses"), chauffeur, tr("Le partenaire qui reçoit les courses saisies sur l'écran de saisie, les courses hors catalogue et les demandes collées. Sa commission est demandée chaque jour.")),
     alerte,
     champ(tr("Commissions à demander : jusqu'à combien de jours en arrière"), jours, tr("Vide : toutes les courses passées sans commission saisie restent dans la liste, même anciennes.")),
     erreur

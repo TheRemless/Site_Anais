@@ -5,16 +5,16 @@
 // fenêtre ne s'ouvre que s'il manque quelque chose ; la carte garde alors le motif. « Tout valider » fait de même pour toutes les cartes.
 // Téléphone d'abord : la liste, puis le fil en plein écran avec la zone de saisie en bas. Ordinateur : la liste à gauche, le fil à droite.
 import { etat, reglages, peut, naviguer, exemple, nomPartenaire, modeTaxi, estAdmin, enregistrerReglages, modifier, supprimer as supprimerLigne, entitesAccessibles, changerEntite, confirmationPermise, permissionsDe, partageClientsPermis, reglagesDe } from "../etat.mjs";
-import { h, toast, confirmer, modal, icone, vider, ajouter } from "../ui.mjs";
+import { h, toast, confirmer, modal, icone, vider, ajouter, squelette } from "../ui.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
-import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque } from "../agent-calc.mjs";
+import { agentActif, filDepuis, listeConversations, quand, propositionDepuisCarte, reservationDepuisCarte, reservationModifiee, lignesFrise, reglageApplique, prestationModifiee, listeAmeliorations, bloquantsReponse, resteBloque, titreConversation, titreAutomatique, nomDepuisCartes, chercherConversations, echangeWhatsApp, dossiersDeLaCarte } from "../agent-calc.mjs";
 import { texteDuree } from "../agent-planifier.mjs";
 import { clePaire, detailMorceaux } from "../agent-temps.mjs";
 import { propositionVersDemande } from "../assistant-calc.mjs";
 import { lireMessage } from "../demande-calc.mjs";
 import { lireConfirmation, ressembleAConfirmation } from "../confirmation-calc.mjs";
 import { demandeDeTaxi, entrepriseTaxi } from "../taxi-calc.mjs";
-import { aujourdhui } from "../calc.mjs";
+import { aujourdhui, formatMontant } from "../calc.mjs";
 import { correctionsDepuisCarte, dossierDeLaCarte } from "../agent-apprendre.mjs";
 import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 import { piecesSaisie, bullePieces, carteBrochure } from "./agent-pieces.mjs";
@@ -162,43 +162,71 @@ export async function vueAgent(idOuvert = "") {
   const colonneListe = h("section", { class: "agent-liste", "aria-label": tr("Conversations") });
   const colonneFil = h("section", { class: "agent-fil", "aria-live": "off" });
   racine.append(colonneListe, colonneFil);
+  // Le titre montré : le nom du client dès qu'il est connu (lot 2, design n° 9). Le client du dossier relié, lu dans les dossiers chargés.
+  const clientDuDossier = (id) => {
+    const d = id ? (etat.brut.dossiers || []).find((x) => x.id === id) : null;
+    return d ? (etat.brut.clients || []).find((x) => x.id === d.client_id) || null : null;
+  };
+  const titreDe = (c) => titreConversation(c, { client: clientDuDossier(c.dossier_id) });
+  const refDe = (c) => ((c.dossier_id && (etat.brut.dossiers || []).find((x) => x.id === c.dossier_id)) || {}).ref || "";
+  let recherche = "";
+  const champRecherche = h("input", { type: "search", class: "agent-recherche", placeholder: tr("Nom du client ou dossier"), "aria-label": tr("Chercher une conversation"), autocomplete: "off", enterkeyhint: "search" });
+  champRecherche.addEventListener("input", () => {
+    recherche = champRecherche.value;
+    const liste = colonneListe.querySelector(".agent-conversations, .agent-liste-vide");
+    if (liste) liste.replaceWith(listeDessinee());
+  });
   racine.classList.toggle("avec-fil", !!idOuvert);
 
   // ---- Liste ----------------------------------------------------------------------------------------------------------------------
-  function dessinerListe() {
+  function listeDessinee() {
     const propres = conversations ? listeConversations(conversations, { enAttente: attente, archives }) : [];
-    const liste = unifie ? conversationsDesDeux([{ entite: unifie.active, conversations: propres }, { entite: unifie.autre, conversations: listeConversations(conversationsAutre, { archives }) }]) : propres;
-    // Une conversation de l'autre entreprise : on y passe (entreprise active), puis elle s'ouvre.
+    const toutes = unifie ? conversationsDesDeux([{ entite: unifie.active, conversations: propres }, { entite: unifie.autre, conversations: listeConversations(conversationsAutre, { archives }) }]) : propres;
+    const liste = chercherConversations(toutes, recherche, (c) => `${titreDe(c)} ${c.titre || ""} ${c.apercu || ""} ${refDe(c)}`);
+    // Une conversation de l'autre entreprise : on y passe (entreprise active), puis elle s'ouvre. La ligne touchée se marque tout de suite.
     const allerA = (c) => (e) => {
+      for (const a of colonneListe.querySelectorAll(".agent-conv[aria-current]")) a.removeAttribute("aria-current");
+      e.currentTarget.setAttribute("aria-current", "page");
       if (!unifie || c.entite_id === etat.entiteId) return;
       e.preventDefault();
       changerEntite(c.entite_id, { naviguer: false });
       naviguer(`#/agent/${c.id}`);
     };
+    if (conversations === null) return h("p", { class: "aide agent-liste-vide" }, erreurTexte("migration_manquante"));
+    if (!liste.length) return h("p", { class: "aide agent-liste-vide" }, recherche.trim() ? tr("Aucune conversation pour « {q} ».", { q: recherche.trim() }) : archives ? tr("Aucune conversation archivée.") : tr("Aucune conversation. Commencez par une demande de client : une conversation par client garde tout en ordre."));
+    return h(
+      "ul",
+      { class: "agent-conversations" },
+      liste.map((c) =>
+        h(
+          "li",
+          null,
+          h(
+            "a",
+            { href: `#/agent/${c.id}`, class: "agent-conv", "aria-current": c.id === idOuvert ? "page" : null, onclick: allerA(c) },
+            h("span", { class: "agent-conv-ligne" }, h("strong", null, titreDe(c) || tr("Nouvelle conversation")), h("time", { datetime: c.maj_le }, quand(c.maj_le, { langue: langueActive() }))),
+            unifie || c.whatsapp_conversation_id
+              ? h(
+                  "span",
+                  { class: "agent-conv-marques" },
+                  unifie ? h("span", { class: `agent-conv-entreprise ${marqueUnifiee(entitesAccessibles().find((x) => x.id === c.entite_id)) || ""}` }, c.entreprise) : null,
+                  c.whatsapp_conversation_id ? h("span", { class: "agent-conv-wa" }, icone("whatsapp", 14), tr("WhatsApp")) : null
+                )
+              : null,
+            h("span", { class: "agent-conv-ligne" }, h("span", { class: "agent-conv-apercu" }, c.apercu || ""), c.attente ? h("span", { class: "agent-pastille", "aria-label": pluriel(c.attente, N_("{n} proposition à valider"), N_("{n} propositions à valider")) }, c.attente) : null)
+          )
+        )
+      )
+    );
+  }
+  function dessinerListe() {
     vider(colonneListe);
+    // La recherche dès deux conversations (design n° 9).
+    const avecRecherche = !!conversations && conversations.length + conversationsAutre.length > 1;
     ajouter(colonneListe, [
       h("div", { class: "agent-liste-tete" }, h("h1", null, tr("Assistant")), h("button", { class: "principal", type: "button", onclick: () => ouvrir("") }, icone("ajouter", 18), tr("Nouvelle"))),
-      conversations === null
-        ? h("p", { class: "aide" }, erreurTexte("migration_manquante"))
-        : liste.length
-          ? h(
-              "ul",
-              { class: "agent-conversations" },
-              liste.map((c) =>
-                h(
-                  "li",
-                  null,
-                  h(
-                    "a",
-                    { href: `#/agent/${c.id}`, class: "agent-conv", "aria-current": c.id === idOuvert ? "page" : null, onclick: allerA(c) },
-                    h("span", { class: "agent-conv-ligne" }, h("strong", null, c.titre || tr("Nouvelle conversation")), h("time", { datetime: c.maj_le }, quand(c.maj_le, { langue: langueActive() }))),
-                    unifie ? h("span", { class: `agent-conv-entreprise ${marqueUnifiee(entitesAccessibles().find((x) => x.id === c.entite_id)) || ""}` }, c.entreprise) : null,
-                    h("span", { class: "agent-conv-ligne" }, h("span", { class: "agent-conv-apercu" }, c.apercu || ""), c.attente ? h("span", { class: "agent-pastille", "aria-label": pluriel(c.attente, N_("{n} proposition à valider"), N_("{n} propositions à valider")) }, c.attente) : null)
-                  )
-                )
-              )
-            )
-          : h("p", { class: "aide agent-liste-vide" }, archives ? tr("Aucune conversation archivée.") : tr("Aucune conversation. Commencez par une demande de client : une conversation par client garde tout en ordre.")),
+      avecRecherche ? champRecherche : null,
+      listeDessinee(),
       conversations && conversations.some((c) => c.statut === "archivee") ? h("button", { class: "lien agent-archives", type: "button", onclick: () => ((archives = !archives), dessinerListe()) }, archives ? tr("Conversations ouvertes") : tr("Conversations archivées")) : null,
       blocAmeliorations(),
     ]);
@@ -232,6 +260,8 @@ export async function vueAgent(idOuvert = "") {
 
   // ---- Fil ------------------------------------------------------------------------------------------------------------------------
   let enCours = false;
+  // La conversation a été ouverte depuis l'écran WhatsApp (« Créer le dossier ») : la flèche retour y ramène.
+  let depuisWhatsAppEcran = false;
   let conv = null; // la conversation ouverte (null : nouvelle)
   let fil = { messages: [], cartes: [] };
   const zoneFil = h("div", { class: "agent-messages" });
@@ -256,6 +286,7 @@ export async function vueAgent(idOuvert = "") {
   });
 
   async function ouvrir(id) {
+    depuisWhatsAppEcran = false;
     if (id !== idOuvert) {
       idOuvert = id;
       history.replaceState(null, "", id ? `#/agent/${id}` : "#/agent/nouvelle");
@@ -268,7 +299,13 @@ export async function vueAgent(idOuvert = "") {
       zoneFil.replaceChildren(h("p", { class: "aide" }, erreurTexte("conversation_introuvable")));
       return;
     }
-    if (conv) fil = (await etat.store.agentFil(conv.id)) || fil;
+    if (conv) {
+      // Un squelette tient la place du fil pendant sa lecture (lot 2, design n° 13) : le toucher montre tout de suite quelque chose.
+      dessinerListe();
+      colonneFil.replaceChildren(enTete(), zoneFil, formulaire);
+      zoneFil.replaceChildren(squelette(3, { cartes: false }));
+      fil = (await etat.store.agentFil(conv.id)) || fil;
+    }
     dessinerListe();
     dessinerFil();
     // Message venu d'une autre entreprise (« Passer à … ») : il attend dans la zone de saisie, la personne l'envoie.
@@ -286,7 +323,10 @@ export async function vueAgent(idOuvert = "") {
         // stockage refusé
       }
     }
-    if (depuisWhatsApp) return void envoyer({ whatsapp: depuisWhatsApp });
+    if (depuisWhatsApp) {
+      depuisWhatsAppEcran = true;
+      return void envoyer({ whatsapp: depuisWhatsApp });
+    }
     champ.focus({ preventScroll: true });
   }
 
@@ -302,8 +342,24 @@ export async function vueAgent(idOuvert = "") {
     return h(
       "header",
       { class: "agent-fil-tete" },
-      h("button", { class: "bouton-icone agent-retour", type: "button", onclick: fermer, "aria-label": tr("Retour aux conversations") }, icone("retour", 22)),
-      h("div", { class: "agent-fil-titre" }, h("h2", null, conv ? conv.titre : tr("Nouvelle conversation")), dossier ? h("a", { class: "agent-dossier", href: `#/dossier/${dossier.id}` }, tr("Dossier {ref}", { ref: dossier.ref })) : null),
+      // Venue de WhatsApp, la flèche y ramène (design n° 4) ; sinon, à la liste.
+      conv && conv.whatsapp_conversation_id && depuisWhatsAppEcran
+        ? h("a", { class: "bouton-icone lien agent-retour", href: `#/whatsapp?c=${conv.whatsapp_conversation_id}`, "aria-label": tr("Retour à la conversation WhatsApp") }, icone("retour", 22))
+        : h("button", { class: "bouton-icone agent-retour", type: "button", onclick: fermer, "aria-label": tr("Retour aux conversations") }, icone("retour", 22)),
+      h(
+        "div",
+        { class: "agent-fil-titre" },
+        h("h2", null, conv ? titreDe(conv) : tr("Nouvelle conversation")),
+        dossier || (conv && conv.whatsapp_conversation_id)
+          ? h(
+              "p",
+              { class: "agent-fil-liens" },
+              dossier ? h("a", { class: "agent-dossier", href: `#/dossier/${dossier.id}` }, tr("Dossier {ref}", { ref: dossier.ref })) : null,
+              // Depuis WhatsApp (design n° 4) : un lien pour revenir à la conversation du client.
+              conv && conv.whatsapp_conversation_id ? h("a", { class: "agent-dossier", href: `#/whatsapp?c=${conv.whatsapp_conversation_id}` }, icone("whatsapp", 14), tr("Conversation WhatsApp")) : null
+            )
+          : null
+      ),
       conv ? h("button", { class: "bouton-icone secondaire", type: "button", onclick: menuConversation, "aria-label": tr("Options de la conversation") }, icone("ellipsis", 20)) : null
     );
   }
@@ -369,7 +425,7 @@ export async function vueAgent(idOuvert = "") {
 
   function dessinerFil() {
     const items = filDepuis(fil.messages, fil.cartes);
-    zoneFil.replaceChildren(...[bandeauAutreEntreprise(), ...(items.length ? items.map(element) : [suggestions()])].filter(Boolean));
+    zoneFil.replaceChildren(...[bandeauAutreEntreprise(), ...(items.length ? items.map((it, i) => element(it, i)) : [suggestions()])].filter(Boolean));
     majToutValider();
     colonneFil.replaceChildren(enTete(), zoneFil, barreTout, formulaire);
     descendre();
@@ -379,14 +435,28 @@ export async function vueAgent(idOuvert = "") {
     if (!matchMedia("(min-width: 900px)").matches) window.scrollTo({ top: document.documentElement.scrollHeight });
   });
 
-  function element(it) {
-    if (it.genre === "personne") return h("div", { class: "agent-bulle de-personne" }, paragraphes(it.texte));
+  function element(it, i) {
+    if (it.genre === "personne") {
+      // Le premier message d'une conversation ouverte depuis WhatsApp : l'échange du client, à gauche et replié (design n° 4).
+      const echange = i === 0 && conv && conv.whatsapp_conversation_id ? echangeWhatsApp(it.texte, { depuisWhatsApp: true }) : echangeWhatsApp(it.texte);
+      if (echange) return bulleWhatsApp(echange);
+      return h("div", { class: "agent-bulle de-personne" }, paragraphes(it.texte));
+    }
     if (it.genre === "agent") return h("div", { class: "agent-bulle de-agent" }, paragraphes(it.texte));
     if (it.genre === "pieces") return bullePieces(it.fichiers);
     if (it.genre === "planning") return frise(it.planning);
     return carte(it.carte);
   }
   const paragraphes = (t) => String(t).split(/\n{2,}/).map((p) => h("p", null, ...p.split("\n").flatMap((l, i) => (i ? [h("br"), l] : [l]))));
+  function bulleWhatsApp(echange, { nom = conv ? titreDe(conv) : "" } = {}) {
+    const n = echange.messages.length;
+    return h(
+      "details",
+      { class: "agent-bulle agent-whatsapp" },
+      h("summary", null, icone("whatsapp", 16), h("span", null, pluriel(n, N_("Échange WhatsApp avec {nom}, {n} message"), N_("Échange WhatsApp avec {nom}, {n} messages"), { nom: nom || tr("le client") }))),
+      h("ol", { class: "agent-whatsapp-fil" }, echange.messages.map((m) => h("li", { class: m.deClient ? "client" : "nani" }, h("span", { class: "agent-whatsapp-qui" }, m.deClient ? tr("Client") : tr("Vous"), m.heure ? ` ${m.heure.slice(-5)}` : ""), h("span", null, m.texte))))
+    );
+  }
 
   // ---- Envoi ------------------------------------------------------------------------------------------------------------------
   async function envoyer({ whatsapp = null } = {}) {
@@ -415,7 +485,7 @@ export async function vueAgent(idOuvert = "") {
     if (!zoneFil.querySelector(".agent-bulle, .agent-frise, .agent-carte")) zoneFil.replaceChildren();
     if (joints.length) zoneFil.append(bullePieces(joints));
     if (texte) zoneFil.append(h("div", { class: "agent-bulle de-personne" }, paragraphes(texte)));
-    if (whatsapp) zoneFil.append(h("div", { class: "agent-bulle de-personne" }, h("p", null, whatsapp.whatsapp_mode === "maj" ? tr("Mettre à jour le dossier d'après la conversation WhatsApp.") : tr("Créer le dossier d'après la conversation WhatsApp."))));
+    if (whatsapp) zoneFil.append(h("p", { class: "agent-etape-wa" }, icone("whatsapp", 16), whatsapp.whatsapp_mode === "maj" ? tr("Mise à jour du dossier d'après la conversation WhatsApp") : tr("Dossier d'après la conversation WhatsApp")));
     // Les fichiers choisis restent en mémoire : si l'envoi échoue, ils reviennent dans la zone de saisie.
     const choisis = pieces.fichiers();
     pieces.vider();
@@ -476,6 +546,9 @@ export async function vueAgent(idOuvert = "") {
     if (conv) {
       // Relecture depuis la base : le fil affiché est exactement celui qui repartira chez l'assistant.
       fil = (await etat.store.agentFil(conv.id)) || fil;
+      // Le titre devient le nom du client dès qu'une carte le donne (design n° 9), sauf si la personne a renommé la conversation.
+      const nom = titreAutomatique(conv.titre) ? nomDepuisCartes(fil.cartes) : "";
+      if (nom && nom !== conv.titre) await etat.store.agentMajConversation(conv.id, { titre: nom }).catch(() => null);
       conversations = (await etat.store.agentConversations(etat.entiteId)) || conversations;
       conv = conversations.find((c) => c.id === conv.id) || conv;
       await rafraichirAttente();
@@ -513,7 +586,7 @@ export async function vueAgent(idOuvert = "") {
     return h(
       "figure",
       { class: "agent-frise" },
-      h("figcaption", null, tr("Course du {date}", { date }), plan.alertes.includes("temps_simules") ? h("span", { class: "agent-simule" }, tr("Temps simulés")) : plan.alertes.includes("estimation_web") ? h("span", { class: "agent-simule" }, tr("Estimation web")) : plan.alertes.includes("temps_a_verifier") ? h("span", { class: "agent-simule" }, tr("Durée à vérifier")) : null),
+      h("figcaption", null, tr("Course du {date}", { date }), plan.alertes.includes("temps_simules") ? h("span", { class: "agent-simule" }, tr("Durées de démonstration")) : plan.alertes.includes("estimation_web") ? h("span", { class: "agent-simule" }, tr("Durée trouvée sur le web")) : plan.alertes.includes("temps_a_verifier") ? h("span", { class: "agent-simule" }, tr("Durée à vérifier")) : null),
       h(
         "ol",
         null,
@@ -531,7 +604,6 @@ export async function vueAgent(idOuvert = "") {
               p.attente ? h("span", null, tr("{m} min sur place, départ à {h}", { m: p.attente, h: p.depart })) : null,
               p.trajet ? h("span", { class: "agent-trajet" }, p.trajet.morceaux ? detailMorceaux(p.trajet.morceaux, texteDuree) : sousTrajet(p.trajet)) : null,
               p.trajet && p.trajet.morceaux ? h("span", { class: "agent-trajet" }, tr("{m} min de marge", { m: p.trajet.marge_min })) : null,
-              p.trajet && p.trajet.de_trouve ? h("span", { class: "agent-trajet" }, tr("OpenStreetMap a compris : {a} → {b}", { a: p.trajet.de_trouve, b: p.trajet.vers_trouve })) : null,
               p.trajet && p.trajet.source_url ? h("a", { class: "agent-trajet", href: p.trajet.source_url, target: "_blank", rel: "noopener noreferrer" }, tr("Source de l'estimation")) : null
             )
           )
@@ -540,14 +612,18 @@ export async function vueAgent(idOuvert = "") {
       verdict,
       // Mention exigée par OpenStreetMap et OSRM quand un itinéraire vient d'eux.
       plan.trajets.some((t) => t.source === "ors" || (t.morceaux || []).some((m) => m.source === "ors")) ? h("p", { class: "agent-mention" }, ((m) => (plan.trajets.some((t) => t.moteur === m || (t.morceaux || []).some((x) => x.moteur === m))))("google") ? tr("Itinéraire Google Maps") : plan.trajets.some((t) => t.moteur === "osrm" || (t.morceaux || []).some((m) => m.moteur === "osrm")) ? tr("Itinéraire OSRM, données © contributeurs OpenStreetMap") : tr("Itinéraire openrouteservice, données © contributeurs OpenStreetMap")) : null,
-      h("details", { class: "agent-hypotheses" }, h("summary", null, tr("Hypothèses du calcul")), h("ul", null, plan.hypotheses.map((x) => h("li", null, x))))
+      // Le détail du calcul, replié : les hypothèses et les lieux tels que la carte les a compris (lot 2, design n° 12).
+      h("details", { class: "agent-hypotheses" }, h("summary", null, tr("Comment les heures sont calculées")), h("ul", null, plan.hypotheses.map((x) => h("li", null, x)), plan.trajets.filter((t) => t.de_trouve).map((t) => h("li", null, tr("Lieux compris par la carte : {a} vers {b}", { a: t.de_trouve, b: t.vers_trouve }))))) 
     );
   }
 
   // ---- Cartes ---------------------------------------------------------------------------------------------------------------------
   const devise = () => reglages().devise || "THB";
   const jourCourt = (iso) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString(langueActive() === "en" ? "en-GB" : "fr-FR", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }) : "");
-  const prixTexte = (s) => (s.prix === null || s.prix === undefined ? h("span", { class: "agent-prix vide" }, tr("Prix à fixer")) : h("span", { class: "agent-prix" }, `${Number(s.prix).toLocaleString("en-US")} ${devise()}`, h("small", null, s.origine_prix === "saisi" ? tr("donné par vous") : tr("catalogue"))));
+  // Les prix comme partout dans Gestion (formatMontant, design n° 15) : « THB 2'300 ».
+  const prixTexte = (s) => (s.prix === null || s.prix === undefined ? h("span", { class: "agent-prix vide" }, tr("Prix à fixer")) : h("span", { class: "agent-prix" }, formatMontant(Number(s.prix), devise()), h("small", null, s.origine_prix === "saisi" ? tr("donné par vous") : tr("catalogue"))));
+  // L'heure de pickup manque : dit sur la carte, comme « Prix à fixer », avant de créer le dossier (design n° 5).
+  const pickupTexte = (s) => (s.heure_pickup ? tr("pickup {h}", { h: s.heure_pickup }) : h("span", { class: "agent-a-fixer" }, tr("heure de pickup à fixer")));
 
   // Ce qu'une validation a créé pendant cette visite (dossier, course) : la carte validée montre ensuite le voucher et le message.
   const resultats = new Map();
@@ -605,7 +681,7 @@ export async function vueAgent(idOuvert = "") {
       const u = carteUnifiee(d);
       const du = donneesCarte(c);
       corps.push(h("p", { class: "agent-carte-client" }, [d.client && d.client.nom, d.client && d.client.hotel, pluriel(d.adultes || 0, N_("{n} adulte"), N_("{n} adultes")), d.enfants ? pluriel(d.enfants, N_("{n} enfant"), N_("{n} enfants")) : ""].filter(Boolean).join(", ")));
-      corps.push(h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup }), s.remarque].filter(Boolean).join(", ")), u ? badgeEntreprise(c, s, i) : null), prixTexte(s)))));
+      corps.push(h("ul", { class: "agent-services" }, (du.services || []).map((s, i) => h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, ...[jourCourt(s.date), pickupTexte(s), s.remarque].filter(Boolean).flatMap((x, j) => (j ? [", ", x] : [x]))), u ? badgeEntreprise(c, s, i) : null), prixTexte(s)))));
       // Espace unifié : deux entreprises, deux dossiers liés ; une seule autre entreprise, le dossier se crée chez elle.
       const ids = [...new Set((du.services || []).map((s) => s.entite_id).filter(Boolean))];
       const mixte = u && ids.length > 1;
@@ -708,9 +784,11 @@ export async function vueAgent(idOuvert = "") {
     return bouton;
   }
 
-  // Après une validation : le dossier, son voucher (ou la Booking confirmation chez Taxi) et le message WhatsApp, d'un geste.
+  // Après une validation : le dossier, son voucher (ou la Booking confirmation chez Taxi) et le message WhatsApp, d'un geste. Après un
+  // rechargement ou un retour, la suite se retrouve par les dossiers réellement créés (dossier relié, dossier lié), pas par la mémoire de
+  // la visite (design n° 5). Un bouton principal par document, « Ouvrir le dossier » en lien.
   function suite(c) {
-    const r = resultats.get(c.id);
+    const r = resultats.get(c.id) || dossiersDeLaCarte(c, { conv, dossiers: etat.brut.dossiers || [], cartes: fil.cartes });
     if (!r || !r.dossier) return null;
     const dossier = r.dossier;
     // Deux dossiers liés (Secret et Taxi) ou un dossier créé dans l'autre entreprise : le voucher de Secret d'abord, puis la Booking
@@ -723,17 +801,17 @@ export async function vueAgent(idOuvert = "") {
         { class: "actions gauche agent-suite" },
         ordreEnvois(autres, entites).map((d, i) => {
           const taxi = marqueUnifiee(entites.find((e) => e.id === d.entite_id)) === "taxi";
-          return h("button", { class: i === 0 ? "principal" : "secondaire", type: "button", onclick: () => voucherDans(d) }, icone("whatsapp", 18), taxi ? tr("Booking confirmation Taxi {ref}", { ref: d.ref || "" }) : tr("Voucher Secret {ref}", { ref: d.ref || "" }));
+          return h("button", { class: "principal", type: "button", onclick: () => voucherDans(d) }, icone("whatsapp", 18), taxi ? tr("Envoyer la Booking confirmation") : tr("Envoyer le voucher Secret"));
         }),
-        ordreEnvois(autres, entites).map((d) => h("a", { class: "bouton secondaire", href: `#/dossier/${d.id}?entite=${d.entite_id}` }, tr("Ouvrir le dossier {ref}", { ref: d.ref || "" })))
+        h("p", { class: "agent-suite-liens" }, ordreEnvois(autres, entites).map((d) => h("a", { href: `#/dossier/${d.id}?entite=${d.entite_id}` }, tr("Ouvrir le dossier {ref}", { ref: d.ref || "" }))))
       );
     }
-    if (r.course) return h("div", { class: "agent-suite" }, blocBooking(r.course), h("div", { class: "actions gauche" }, h("button", { class: "secondaire", type: "button", onclick: () => naviguer(`#/dossier/${dossier.id}`) }, tr("Ouvrir le dossier {ref}", { ref: dossier.ref || "" }))));
+    if (r.course) return h("div", { class: "agent-suite" }, blocBooking(r.course), h("p", { class: "agent-suite-liens" }, h("a", { href: `#/dossier/${dossier.id}` }, tr("Ouvrir le dossier {ref}", { ref: dossier.ref || "" }))));
     return h(
       "div",
       { class: "actions gauche agent-suite" },
-      h("button", { class: "principal", type: "button", onclick: () => voucher(dossier.id) }, icone("whatsapp", 18), modeTaxi() ? tr("Booking confirmation et WhatsApp") : tr("Voucher et WhatsApp")),
-      h("button", { class: "secondaire", type: "button", onclick: () => naviguer(`#/dossier/${dossier.id}`) }, tr("Ouvrir le dossier {ref}", { ref: dossier.ref || "" }))
+      h("button", { class: "principal", type: "button", onclick: () => voucher(dossier.id) }, icone("whatsapp", 18), modeTaxi() ? tr("Envoyer la Booking confirmation") : tr("Envoyer le voucher")),
+      h("p", { class: "agent-suite-liens" }, h("a", { href: `#/dossier/${dossier.id}` }, tr("Ouvrir le dossier {ref}", { ref: dossier.ref || "" })))
     );
   }
   let blocBooking = () => null;

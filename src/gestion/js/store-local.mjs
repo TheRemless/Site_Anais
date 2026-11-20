@@ -513,7 +513,7 @@ export function creer() {
       setTimeout(() => ecouteurs.forEach((f) => f()), 0);
       setTimeout(() => {
         const prenom = String(c.nom || "").split(/\s+/)[0];
-        Object.assign(p, { statut: "a_faire", texte: `${prenom ? `Hi ${prenom},` : "Hi,"}\n\nThank you for your message. We will get back to you shortly with the details.` });
+        Object.assign(p, { statut: "a_faire", texte: `${prenom ? `Hi ${prenom}!` : "Hi!"} I check and come back to you in a few minutes 🙏\n\nWhich hotel are you staying at?` });
         sauve();
         ecouteurs.forEach((f) => f());
       }, delai);
@@ -745,9 +745,9 @@ export function creer() {
       const wc = corps.whatsapp_conversation_id && !corps.conversation_id ? conversationLue(corps.whatsapp_conversation_id) : null;
       const modeWa = corps.whatsapp_mode === "maj" ? "maj" : "creer";
       if (corps.whatsapp_conversation_id && !corps.conversation_id) {
-        // Comme la fonction : la conversation doit être rangée dans l'entreprise de l'Assistant. Les pièces cochées (whatsapp_pieces) ne sont
-        // pas lues en démonstration.
-        if (!wc || wc.entite_id !== e) return { erreur: "whatsapp_introuvable" };
+        // Comme la fonction : la conversation est rangée dans l'entreprise de l'Assistant, ou encore à trier (lot 2). Les pièces cochées
+        // (whatsapp_pieces) ne sont pas lues en démonstration.
+        if (!wc || (wc.entite_id !== e && wc.entite_id !== null)) return { erreur: "whatsapp_introuvable" };
         if (modeWa === "maj" && !data.dossiers.some((d) => d.id === wc.dossier_id)) return { erreur: "dossier_introuvable" };
         const lignes = data.whatsapp_messages.filter((m) => m.conversation_id === wc.id && m.sens === "entrant" && !m.supprime_le && m.texte).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)).map((m) => m.texte);
         texte = lignes.join("\n") || "Bonjour";
@@ -759,7 +759,8 @@ export function creer() {
       const maintenant = () => new Date(Date.now() + data.agent_messages.length).toISOString();
       if (!conv) {
         const { titreDepuis } = await import("./agent-calc.mjs");
-        const titre = wc ? (modeWa === "maj" ? "Mise à jour depuis WhatsApp" : "Dossier depuis WhatsApp") : titreDepuis(texte || (pieces[0] && pieces[0].nom) || "");
+        // Lot 2 : le titre est le nom du contact WhatsApp, comme la fonction (agent/whatsapp.js, titreWhatsApp).
+        const titre = wc ? (wc.nom ? String(wc.nom).slice(0, 60) : `WhatsApp ${wc.telephone || ""}`.trim()) : titreDepuis(texte || (pieces[0] && pieces[0].nom) || "");
         conv = { id: uid(), entite_id: e, user_id: utilisateur.user_id, titre, apercu: "", dossier_id: (wc && modeWa === "maj" ? wc.dossier_id : null) || corps.dossier_id || null, statut: "ouverte", cree_le: maintenant(), maj_le: maintenant(), demo_etat: {}, ...(wc ? { whatsapp_conversation_id: wc.id } : {}) };
         data.agent_conversations.push(conv);
       }

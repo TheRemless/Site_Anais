@@ -438,7 +438,7 @@ function inviterModal(apres) {
       },
       champ(tr("Adresse e-mail"), email, tr("Elle sert d'identifiant pour se connecter.")),
       champ(tr("Nom affiché"), nom),
-      champ(tr("Langue de l'outil"), langue, tr("Français ou anglais. L'écran simple de l'assistante reste en thaï.")),
+      champ(tr("Langue de l'outil"), langue, tr("Français ou anglais. L'écran de saisie des vouchers reste en thaï.")),
       h("fieldset", null, h("legend", null, tr("Accès par entreprise")), h("div", { class: "acces-grille" }, selects.map(([e, sel]) => champ(e.actif ? e.nom : tr("{nom} (désactivée)", { nom: e.nom }), sel)))),
       h("p", { class: "aide" }, tr("Rien n'est envoyé par l'outil : il vous donne un lien à transmettre vous-même, par WhatsApp ou par e-mail.")),
       erreur,

@@ -24,7 +24,9 @@ test("créer ou mettre à jour le dossier : mode, demande transmise à l'Assista
   assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: "t", client_id: "c9", dossier_id: "d9" }, dossier, "t"), { action: "rien", patch: null }, "déjà reliée");
   assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: "t", client_id: "c1", dossier_id: null }, dossier, "t"), { action: "demander", patch: { client_id: "c9", dossier_id: "d9" } }, "un autre client : on demande");
   assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: "t", client_id: "c9", dossier_id: "d1" }, dossier, "t").action, "demander", "un autre dossier : on demande");
-  assert.equal(S.liaisonApresDossier({ id: "w", entite_id: null }, dossier, "t").action, "rien", "à trier : jamais rangée ici");
+  // Lot 2 : à trier, la conversation se range dans l'entreprise du dossier validé, avec son client et son dossier.
+  assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: null }, { ...dossier, entite_id: "s" }, "t"), { action: "ecrire", patch: { entite_id: "s", client_id: "c9", dossier_id: "d9" } }, "à trier : rangée chez le dossier");
+  assert.deepEqual(S.liaisonApresDossier({ id: "w", entite_id: null }, dossier, "t").patch.entite_id, "t", "sans entreprise sur le dossier : celle de l'Assistant");
   assert.equal(S.liaisonApresDossier({ id: "w", entite_id: "s" }, dossier, "t").action, "rien", "autre entreprise");
   assert.equal(S.liaisonApresDossier(null, dossier, "t").action, "rien", "introuvable en base");
   assert.equal(S.liaisonApresDossier({ id: "w", entite_id: "t" }, null, "t").action, "rien");
@@ -117,12 +119,14 @@ test("démo : l'Assistant crée le dossier depuis une conversation WhatsApp, sig
     const r = await store.modifier("whatsapp_conversations", reliee.id, { paiement_signale: { motif: "texte" } });
     assert.ok(r.paiement_signale, "le signal ne s'écrit pas depuis l'outil");
     assert.equal((await store.modifier("whatsapp_conversations", reliee.id, { paiement_signale: null })).paiement_signale, null, "seulement remis à vide");
-    // L'Assistant de la démo (allumé pour l'essai) reçoit la conversation à trier de Lucia, une fois rangée (comme la fonction).
+    // L'Assistant de la démo (allumé pour l'essai) reçoit la conversation à trier de Lucia sans qu'on la range (lot 2, comme la fonction).
+    // Une conversation rangée dans une autre entreprise reste refusée.
     const aTrier = brut.whatsapp_conversations.find((c) => !c.entite_id);
     const excursions = brut.entites.find((e) => e.slug === "excursions");
     const reglages = (await store.charger()).reglages[excursions.id];
     await store.enregistrerReglages(excursions.id, { ...reglages, agent_ia: true });
-    assert.deepEqual(await store.agentEnvoyer({ entite_id: excursions.id, whatsapp_conversation_id: aTrier.id, whatsapp_mode: "creer", texte: "" }, () => {}), { erreur: "whatsapp_introuvable" }, "pas rangée : refusée");
+    const autre = brut.whatsapp_conversations.find((c) => c.entite_id && c.entite_id !== excursions.id);
+    if (autre) assert.deepEqual(await store.agentEnvoyer({ entite_id: excursions.id, whatsapp_conversation_id: autre.id, whatsapp_mode: "creer", texte: "" }, () => {}), { erreur: "whatsapp_introuvable" }, "rangée ailleurs : refusée");
     await store.modifier("whatsapp_conversations", aTrier.id, { entite_id: excursions.id });
     assert.deepEqual(await store.whatsappConversation(aTrier.id), { id: aTrier.id, entite_id: excursions.id, client_id: null, dossier_id: null }, "relue en base pour la liaison");
     const evenements = [];
@@ -130,7 +134,7 @@ test("démo : l'Assistant crée le dossier depuis une conversation WhatsApp, sig
     assert.deepEqual(rep, { ok: true });
     const conv = evenements.find((e) => e.t === "conversation");
     assert.equal(conv.whatsapp_conversation_id, aTrier.id);
-    assert.equal(conv.titre, "Dossier depuis WhatsApp");
+    assert.equal(conv.titre, "Lucia");
     assert.deepEqual(await store.agentEnvoyer({ entite_id: excursions.id, whatsapp_conversation_id: aTrier.id, whatsapp_mode: "maj", texte: "" }, () => {}), { erreur: "dossier_introuvable" });
     assert.deepEqual(await store.agentEnvoyer({ entite_id: excursions.id, whatsapp_conversation_id: "inconnue", whatsapp_mode: "creer", texte: "" }, () => {}), { erreur: "whatsapp_introuvable" });
     const convs = await store.agentConversations(excursions.id);
@@ -142,13 +146,13 @@ test("démo : l'Assistant crée le dossier depuis une conversation WhatsApp, sig
 
 test("branchement : boutons de l'en-tête, Assistant, voucher, paiement, résumé, tâches, aucune relance de ferry", () => {
   const vue = source("views/whatsapp.mjs");
-  assert.match(vue, /dossier \? tr\("Mettre à jour le dossier"\) : tr\("Créer le dossier"\)/);
+  assert.match(vue, /relie \? tr\("Mettre à jour le dossier"\) : tr\("Créer le dossier"\)/);
   assert.match(vue, /sessionStorage\.setItem\(CLE_DEMANDE_AGENT, JSON\.stringify\(\{ id: c\.id, mode: modeDossier\(c\), entite: entiteId, pieces \}\)\)/);
   assert.match(vue, /const pieces = await choisirPieces\(c\);\n\s+if \(pieces === null\) return;/, "la feuille des pièces avant l'Assistant, fermer annule");
   assert.match(vue, /tr\("Résumé automatique, à vérifier"\)/);
   assert.match(vue, /resumeEnRetard\(c\) \? ` \$\{tr\("\(avant le dernier message\)"\)\}`/);
   assert.match(vue, /naviguer\("#\/agent\/nouvelle"\)/);
-  assert.match(vue, /entreprise = await choisirEntreprise\(c, prop\);/, "à trier : l'entreprise d'abord");
+  assert.match(vue, /entreprisePourAssistant\(\{ conv: c, prop, choix, activeId: etat\.entiteId \}\) \|\| \(await choisirEntreprise\(c, prop\)\)/, "à trier : la question seulement si rien ne permet de choisir");
   assert.match(vue, /envoyerVoucher\(x\)/, "écran d'envoi du voucher habituel");
   assert.match(vue, /naviguer\(`#\/dossier\/\$\{dossier\.id\}\?paiement=1`\)/);
   assert.match(vue, /peut\("paiements\.ecrire"\)/);
@@ -159,7 +163,7 @@ test("branchement : boutons de l'en-tête, Assistant, voucher, paiement, résum�
   assert.match(vue, /tr\("Tâche créée : \{titre\}"/);
   const agent = source("views/agent.mjs");
   assert.match(agent, /whatsapp_conversation_id: whatsapp\.whatsapp_conversation_id, whatsapp_mode: whatsapp\.whatsapp_mode, whatsapp_pieces: whatsapp\.whatsapp_pieces \|\| \[\], texte: ""/);
-  assert.match(agent, /if \(depuisWhatsApp\) return void envoyer\(\{ whatsapp: depuisWhatsApp \}\);/);
+  assert.match(agent, /if \(depuisWhatsApp\) \{\n\s+depuisWhatsAppEcran = true;\n\s+return void envoyer\(\{ whatsapp: depuisWhatsApp \}\);/);
   assert.match(agent, /if \(dossier && c\.genre === "dossier"\) await relierWhatsApp\(dossier\);/);
   assert.match(agent, /await modifier\("whatsapp_conversations", waId, patch\);/);
   assert.match(agent, /const wc = etat\.store\.whatsappConversation \? await etat\.store\.whatsappConversation\(waId\) : null;/, "relue en base, pas dans etat.brut");

@@ -303,3 +303,69 @@ export function resteBloque(texte, { montants = [], noms = [] } = {}) {
   const p = ` ${plat(texte)} `;
   return [...montants.filter((n) => vus.has(n)).map(String), ...noms.filter((n) => plat(n).length >= 3 && p.includes(` ${plat(n)} `))];
 }
+
+// ---- Lot 2 des audits du 20.11.2026 (Assistant) ---------------------------------------------------------------------------------------
+// Le titre montré d'une conversation : le nom du client dès qu'on le connaît (design n° 9). Un titre tapé par la personne (Renommer) est
+// gardé ; seul un titre automatique (début du premier message coupé, anciens titres fixes de WhatsApp, « Nouvelle conversation ») cède la
+// place au nom du client du dossier relié, ou à celui de la première carte « dossier ».
+const TITRES_FIXES = ["Dossier depuis WhatsApp", "Mise à jour depuis WhatsApp", "Nouvelle conversation", ""];
+export const titreAutomatique = (titre) => TITRES_FIXES.includes(String(titre || "").trim()) || /…$/.test(String(titre || "").trim());
+export function titreConversation(conv, { client = null, carteClient = "" } = {}) {
+  const titre = String((conv && conv.titre) || "").trim();
+  if (!titreAutomatique(titre)) return titre;
+  const nom = client ? [client.prenom, client.nom].filter(Boolean).join(" ").trim() : "";
+  return nom || String(carteClient || "").trim() || titre || "Nouvelle conversation";
+}
+// Le nom du client donné par la première carte « dossier » d'un fil, pour renommer la conversation.
+export function nomDepuisCartes(cartes = []) {
+  for (const c of cartes) {
+    const nom = c && c.genre === "dossier" && c.donnees && c.donnees.client && c.donnees.client.nom;
+    if (nom && String(nom).trim()) return String(nom).trim().slice(0, 120);
+  }
+  return "";
+}
+// Recherche dans la liste : titre montré, aperçu et référence du dossier relié, sans accents ni casse. Tous les mots doivent y être.
+export function chercherConversations(liste = [], q = "", texteDe = (c) => `${c.titre || ""} ${c.apercu || ""}`) {
+  const mots = plat(q).split(/\s+/).filter(Boolean);
+  if (!mots.length) return liste;
+  return liste.filter((c) => {
+    const t = plat(texteDe(c));
+    return mots.every((m) => t.includes(m));
+  });
+}
+
+// Le message de départ d'une conversation ouverte depuis WhatsApp (« Créer le dossier ») : l'échange avec le client, à montrer à gauche dans
+// une bulle repliable (design n° 4), jamais comme si Nani l'avait écrit. La fonction « agent » l'écrit entre <conversation> et
+// </conversation>, une ligne « [Client 20.11.2026 10:00] texte » par message. Rend null pour un message ordinaire.
+export function echangeWhatsApp(texte = "", { depuisWhatsApp = false } = {}) {
+  const t = String(texte || "");
+  const debut = t.indexOf("<conversation>");
+  const fin = t.indexOf("</conversation>");
+  if (debut < 0 || fin < debut) {
+    // Démonstration (et anciens messages) : le texte des messages du client, une ligne par message.
+    if (!depuisWhatsApp) return null;
+    return { messages: t.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => ({ deClient: true, heure: "", texte: l })) };
+  }
+  const messages = [];
+  for (const ligne of t.slice(debut + 14, fin).split("\n")) {
+    const m = /^\[(Client|[^\]\s]+) ([0-9.]+ [0-9:]+)(?:, modifié)?\] (.*)$/.exec(ligne.trim());
+    if (m) messages.push({ deClient: m[1] === "Client", heure: m[2], texte: m[3] });
+  }
+  return { messages };
+}
+
+// Ce qu'une carte « dossier » validée a créé, retrouvé sans la mémoire de la visite (design n° 5) : le dossier relié à la conversation (la
+// validation l'y relie), ou celui de la carte, puis son dossier lié dans l'autre entreprise (espace unifié). `dossiers` : ceux que la
+// personne voit. Rend { dossier, dossiers } ou null.
+// La conversation n'est reliée qu'au premier dossier créé : son dossier ne vaut que pour la première carte « dossier » validée (`cartes` :
+// celles du fil), jamais pour une seconde carte d'un autre client.
+export function dossiersDeLaCarte(carte, { conv = null, dossiers = [], cartes = [] } = {}) {
+  if (!carte || carte.statut !== "validee" || !["dossier", "reservation", "modification"].includes(carte.genre)) return null;
+  const d = carte.donnees || {};
+  const premiere = cartes.find((x) => x && x.genre === "dossier" && x.statut === "validee");
+  const id = d.dossier_id || (carte.genre === "dossier" && conv && (!premiere || premiere.id === carte.id) ? conv.dossier_id : null);
+  const dossier = id ? dossiers.find((x) => x.id === id && !x.annule) || null : null;
+  if (!dossier) return null;
+  const lie = dossier.dossier_lie_id ? dossiers.find((x) => x.id === dossier.dossier_lie_id && !x.annule) || null : null;
+  return { dossier, dossiers: lie ? [dossier, lie] : [dossier] };
+}

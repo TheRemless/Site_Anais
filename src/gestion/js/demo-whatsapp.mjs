@@ -7,6 +7,8 @@
 //   5. un chauffeur réglé sur « Jamais » (migration 60) : son message n'a pas de réponse préparée, « Préparer une réponse » en fait une.
 // Suivi (migrations 61 et 62) : résumé en trois lignes, signal de paiement et promesse en tâche, sur la conversation 3 reliée à un
 // dossier de Secret non soldé (`suivi` : { dossier, client, ajd, ajouterJours }). Rend aussi `taches` à ajouter à la démo.
+import { apercuDepuisMessages } from "./whatsapp-calc.mjs";
+
 const SECRET = ["excursions", "secret"];
 const TAXI = ["taxi"];
 
@@ -27,6 +29,8 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     const m = { id: uid(), conversation_id: c.id, sens, origine: sens === "entrant" ? "client" : "app", type: "text", texte, medias: [], envoye_le: il_y_a(minutes), recu_le: il_y_a(minutes), modifie_le: null, supprime_le: null, ...o };
     out.whatsapp_messages.push(m);
     if (!c.dernier_message_le || Date.parse(m.envoye_le) > Date.parse(c.dernier_message_le)) Object.assign(c, { dernier_message_le: m.envoye_le, dernier_sens: sens });
+    // Aperçu de la liste (migration 64) : le même calcul que le déclencheur de la base.
+    Object.assign(c, apercuDepuisMessages(out.whatsapp_messages.filter((x) => x.conversation_id === c.id)));
     return m;
   };
   const proposition = (c, m, o) => out.whatsapp_propositions.push({ id: uid(), cree_le: m ? m.envoye_le : il_y_a(1), conversation_id: c.id, message_id: m ? m.id : null, entite_id: c.entite_id, statut: "a_faire", texte: "", langue: "en", avertissements: [], entreprise_proposee: null, erreur: null, traitee_le: null, traitee_par: null, traitee_par_quoi: null, ...o });

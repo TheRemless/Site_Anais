@@ -20,7 +20,7 @@ import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } fro
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
-import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES as MODES_WA, mediasAJoindre, texteDepuisWhatsApp } from "./whatsapp.js";
+import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES as MODES_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
 import { lieuxDuCatalogue, lireSituer, nomPourRecherche, parametresSituer, promptSituer, validerSituer } from "../assistant/itineraire.js";
@@ -142,13 +142,19 @@ Deno.serve(async (req) => {
   // Le filtre d'entreprise d'une lecture : les deux entreprises en mode unifié, sinon l'entreprise active comme avant.
   const dans = (q: any, colonne = "entite_id") => (unifie ? q.in(colonne, idsEntites) : q.eq(colonne, entiteId));
   let waDossier: string | null = null;
+  let waConv: { nom: string | null; telephone: string } | null = null;
   if (waId) {
     // Après les contrôles d'accès (agent allumé, droits, limites) : rien n'est lu ni téléchargé pour une demande refusée.
-    // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle. Elle doit être rangée dans
-    // l'entreprise de l'Assistant (l'écran la range avant) : une conversation à trier n'entre jamais dans une autre entreprise.
+    // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle. Elle est rangée dans
+    // l'entreprise de l'Assistant, ou encore à trier (lot 2 du 20.11.2026 : on crée le dossier sans ranger d'abord, la conversation se range
+    // à la validation). Une conversation à trier n'entre que dans l'Assistant de Secret ou de Taxi, jamais dans celui d'une autre entreprise.
     const wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id").eq("id", waId).maybeSingle();
     if (wc.error) return json({ erreur: "base" }, 500);
-    if (!wc.data || wc.data.entite_id !== entiteId) return json({ erreur: "whatsapp_introuvable" }, 404);
+    if (!wc.data) return json({ erreur: "whatsapp_introuvable" }, 404);
+    if (wc.data.entite_id !== entiteId) {
+      const ent = wc.data.entite_id === null ? await sb.from("entites").select("slug").eq("id", entiteId).maybeSingle() : null;
+      if (!ent || ent.error || !ent.data || !["secret", "taxi"].includes(ent.data.slug)) return json({ erreur: "whatsapp_introuvable" }, 404);
+    }
     const wm = await sb.from("whatsapp_messages").select("sens, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", waId).order("envoye_le", { ascending: false }).limit(MESSAGES_MAX_WA);
     if (wm.error) return json({ erreur: "base" }, 500);
     const messagesWa = wm.data || [];
@@ -175,6 +181,7 @@ Deno.serve(async (req) => {
     message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX });
     controle = verifierPieces(demande.fichiers);
     waDossier = dossierWa ? dossierWa.id : null;
+    waConv = wc.data;
   }
 
   // La conversation : nouvelle, ou une des miennes (RLS : une conversation d'une autre personne n'est pas lisible).
@@ -186,7 +193,7 @@ Deno.serve(async (req) => {
     conv = c.data;
   } else {
     const dossierId = waDossier || (typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null);
-    const titre = waId ? (waMode === "maj" ? "Mise à jour depuis WhatsApp" : "Dossier depuis WhatsApp") : titreDepuis(message || titreFichiers(controle?.fichiers || []));
+    const titre = waId ? titreWhatsApp(waConv) : titreDepuis(message || titreFichiers(controle?.fichiers || []));
     const c = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre, dossier_id: dossierId, ...(waId ? { whatsapp_conversation_id: waId } : {}) }).select("id, titre, dossier_id, cree_le").single();
     if (c.error) return json({ erreur: c.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
     conv = c.data;

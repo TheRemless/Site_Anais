@@ -245,8 +245,13 @@ function ecrans() {
 }
 // Les écrans qui ont leur onglet sur téléphone (cinq au plus, « Plus » compris) : ce qu'Anaïs ouvre chaque jour. Le reste passe par « Plus ».
 // L'onglet « Assistant » prend la place de « Clients » quand l'agent est allumé (Clients reste dans « Plus » et dans la recherche).
+// Pour qui a la boîte WhatsApp (lot 2 du 20.11.2026, design n° 1) : Aujourd'hui, WhatsApp, Assistant, Dossiers ; Réservations passe dans
+// « Plus ». Le badge WhatsApp reste sur son onglet, séparé de celui de « Plus » (demandes du site, tâches).
 const agentVisible = () => agentActif(etat.db && etat.db.reglages) && peut("partenaires.lire") && peut("dossiers.ecrire");
-const ongletsMobiles = () => ["tableau", "dossiers", moduleActif("reservations") ? "reservations" : null, agentVisible() ? "agent" : "clients"].filter(Boolean);
+const ongletsMobiles = () =>
+  whatsappVisible()
+    ? ["tableau", "whatsapp", agentVisible() ? "agent" : null, "dossiers", agentVisible() ? null : moduleActif("reservations") ? "reservations" : "clients"].filter(Boolean)
+    : ["tableau", "dossiers", moduleActif("reservations") ? "reservations" : null, agentVisible() ? "agent" : "clients"].filter(Boolean);
 const tousEcrans = () => ecrans().flatMap((s) => s.items);
 
 const lienEcran = (e, apres) => h("a", { href: e.href, "data-cle": e.cle, class: "lien-ecran", onclick: apres }, icone(e.icone, 20), h("span", null, e.libelle), e.badge ? h("span", { class: "badge", "aria-label": e.badgeLibelle || tr("{badge} en retard", { badge: e.badge }) }, e.badge) : null);
@@ -311,7 +316,7 @@ function barreOnglets() {
     h(
       "ul",
       null,
-      onglets.map((cle) => tous.find((e) => e.cle === cle)).filter(Boolean).map((e) => h("li", null, h("a", { href: e.href, "data-cle": e.cle, class: "onglet" }, onglet(e, e.badge ? h("span", { class: "badge" }, e.badge) : null), h("span", null, e.libelle)))),
+      onglets.map((cle) => tous.find((e) => e.cle === cle)).filter(Boolean).map((e) => h("li", null, h("a", { href: e.href, "data-cle": e.cle, class: "onglet" }, onglet(e, e.badge ? h("span", { class: "badge", "aria-label": e.badgeLibelle || null }, e.badge) : null), h("span", null, e.libelle)))),
       h("li", null, h("button", { type: "button", class: "onglet", "data-cle": "plus", onclick: ouvrirPlus }, onglet({ icone: "plus" }, badgePlus ? h("span", { class: "badge" }, badgePlus) : null), h("span", null, tr("Plus"))))
     )
   );

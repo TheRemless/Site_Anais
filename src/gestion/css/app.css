@@ -729,7 +729,7 @@ html.a-barre-action #toasts, html.a-barre-action .bandeau-version, html.a-barre-
 .puces::-webkit-scrollbar { display: none; }
 .puce { flex: none; min-height: 44px; padding: 0 16px; background: var(--surface); border: 1px solid var(--bord-champ); border-radius: 999px; color: var(--texte); font-weight: 600; font-size: 0.92rem; scroll-snap-align: start; }
 .puce[aria-pressed="true"] { background: var(--teal-100); border-color: var(--teal-600); color: var(--teal-700); box-shadow: inset 0 0 0 1px var(--teal-600); }
-.puce-nombre { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.78rem; font-weight: 700; }
+.puce-nombre { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.8125rem; font-weight: 700; }
 .puce[aria-pressed="true"] .puce-nombre, .bouton-filtrer .puce-nombre { background: var(--teal-600); color: #fff; }
 @media (min-width: 720px) { .puces { margin: 0; padding: 0 0 6px; flex-wrap: wrap; overflow: visible; } }
 
@@ -1905,7 +1905,7 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .agent-conv-ligne strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-conv time { flex: none; font-size: 0.82rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
 .agent-conv-apercu { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92rem; color: var(--texte-2); }
-.agent-pastille { flex: none; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--teal-700); color: #fff; font-size: 0.78rem; font-weight: 700; line-height: 22px; text-align: center; }
+.agent-pastille { flex: none; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--teal-700); color: #fff; font-size: 0.8125rem; font-weight: 700; line-height: 22px; text-align: center; }
 .agent-liste-vide { margin-top: 16px; }
 .agent-archives { margin-top: 12px; }
 
@@ -1942,7 +1942,7 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 /* Frise d'une course */
 .agent-frise { margin: 0; padding: 14px 16px 12px; background: var(--surface); border: 1px solid var(--bord); border-radius: 10px; max-width: 34rem; }
 .agent-frise figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; font-weight: 600; }
-.agent-simule { padding: 1px 8px; border-radius: 999px; border: 1px solid #d9b45a; background: #fff4d6; color: #6b4a00; font-size: 0.8rem; font-weight: 600; }
+.agent-simule { padding: 1px 8px; border-radius: 999px; border: 1px solid #d9b45a; background: #fff4d6; color: #6b4a00; font-size: 0.8125rem; font-weight: 600; }
 .agent-frise ol { list-style: none; margin: 0; padding: 0; }
 .agent-point-course { position: relative; display: grid; grid-template-columns: 4.1em 1fr; gap: 14px; padding-bottom: 18px; }
 .agent-point-course:last-child { padding-bottom: 0; }
@@ -1979,7 +1979,7 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .agent-services li > span:first-child { display: grid; gap: 2px; min-width: 0; }
 .agent-services small { color: var(--texte-2); }
 .agent-prix { flex: none; display: grid; justify-items: end; font-weight: 700; font-variant-numeric: tabular-nums; }
-.agent-prix small { font-weight: 400; font-size: 0.78rem; }
+.agent-prix small { font-weight: 400; font-size: 0.8125rem; }
 .agent-prix.vide { padding: 1px 8px; border-radius: 999px; border: 1px dashed var(--bord-fort); color: var(--texte-2); font-weight: 600; font-size: 0.86rem; }
 .agent-modif { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-variant-numeric: tabular-nums; }
 .agent-modif del { color: var(--texte-2); }
@@ -2032,7 +2032,7 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .temps-duree { font-weight: 700; font-variant-numeric: tabular-nums; justify-self: end; }
 .temps-details { grid-column: 1; font-size: 0.86rem; color: var(--texte-2); }
 .temps-ligne .assistant-confiance { grid-column: 2; justify-self: end; align-self: start; }
-.agent-mention { margin: 8px 0 0; font-size: 0.78rem; color: var(--texte-2); }
+.agent-mention { margin: 8px 0 0; font-size: 0.8125rem; color: var(--texte-2); }
 /* ==== Importer une brochure (20.11.2026) ======================================================================== */
 /* Une ligne par tarif ou horaire lu : case, statut, puis les prix. L'écart de prix (« 3 900 → 4 200 ») est ce que l'œil doit trouver d'abord. */
 .brochure-choix { flex-wrap: wrap; }
@@ -2092,7 +2092,7 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .as-derniers { margin: 8px 0 0; padding-left: 18px; }
 .as-derniers li { margin-bottom: 4px; overflow-wrap: anywhere; }
 .as-quand { font-variant-numeric: tabular-nums; color: var(--texte-2); }
-.agent-erreur-detail { display: block; margin-top: 4px; font-size: 0.8rem; opacity: 0.85; overflow-wrap: anywhere; }
+.agent-erreur-detail { display: block; margin-top: 4px; font-size: 0.8125rem; opacity: 0.85; overflow-wrap: anywhere; }
 
 /* Crédit de l'assistant (migration 54) : bandeau des administratrices, tuile et réglage du plafond, apprentissages de l'agent. */
 .bandeau-credit { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 0 0 16px; padding: 10px 14px; background: var(--surface-2); border: 1px solid var(--bord-fort); border-left: 4px solid #b7791f; border-radius: var(--rayon); font-size: 0.92rem; }
@@ -2126,7 +2126,7 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .agent-joints { flex: 1 0 100%; list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .agent-joints:empty { display: none; }
 .agent-joint { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 44px; padding: 2px 4px 2px 2px; border: 1px solid var(--bord); border-radius: var(--rayon); background: var(--surface); color: inherit; font: inherit; font-weight: 400; text-align: left; }
-.agent-joint img, .agent-joint-type { flex: none; width: 40px; height: 40px; border-radius: 4px; object-fit: cover; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: var(--teal-700); }
+.agent-joint img, .agent-joint-type { flex: none; width: 40px; height: 40px; border-radius: 4px; object-fit: cover; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; font-size: 0.8125rem; font-weight: 700; color: var(--teal-700); }
 .agent-joint-nom { display: flex; flex-direction: column; min-width: 0; max-width: 16rem; font-size: 0.9rem; overflow-wrap: anywhere; }
 .agent-joint-nom small { color: var(--texte-2); }
 .agent-joint .bouton-icone { width: 36px; height: 36px; }
@@ -2160,7 +2160,9 @@ button.agent-joint { cursor: pointer; }
 .wa-conv-etat.prete { color: var(--teal-700); font-weight: 700; }
 .wa-conv-etat.echec { color: var(--danger); }
 .wa-conv-droite { flex: none; display: inline-flex; align-items: center; gap: 6px; }
-.wa-marque { padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.wa-marque { flex: none; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.wa-marque.secret { background: var(--teal-100); color: var(--teal-700); }
+.wa-marque.taxi { background: #fff4d6; color: #5a4300; }
 .wa-marque.a-trier { background: #fff4d6; color: #5a4300; }
 .wa-liste-vide { margin-top: 16px; }
 
@@ -2190,7 +2192,7 @@ button.agent-joint { cursor: pointer; }
 .wa-messages { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; flex: 1; }
 .wa-jour { display: flex; flex-direction: column; gap: 6px; }
 .wa-jour-titre { display: flex; justify-content: center; margin: 10px 0 4px; }
-.wa-jour-titre span { padding: 2px 10px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.78rem; font-weight: 600; }
+.wa-jour-titre span { padding: 2px 10px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.8125rem; font-weight: 600; }
 .wa-bulle { max-width: min(80%, 34rem); padding: 8px 12px 6px; border-radius: 14px; overflow-wrap: anywhere; }
 .wa-bulle.entrant { align-self: flex-start; background: var(--surface); border: 1px solid var(--bord); border-bottom-left-radius: 4px; }
 .wa-bulle.sortant { align-self: flex-end; background: var(--teal-100); border-bottom-right-radius: 4px; }
@@ -2198,8 +2200,8 @@ button.agent-joint { cursor: pointer; }
 .wa-bulle.supprime .wa-texte { color: var(--texte-2); text-decoration: line-through; }
 .wa-texte { margin: 0; white-space: pre-wrap; line-height: 1.45; }
 .wa-type { color: var(--texte-2); font-style: italic; }
-.wa-supprime { margin: 0 0 2px; font-size: 0.8rem; font-weight: 700; color: var(--danger); }
-.wa-meta { margin: 2px 0 0; text-align: right; font-size: 0.74rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.wa-supprime { margin: 0 0 2px; font-size: 0.8125rem; font-weight: 700; color: var(--danger); }
+.wa-meta { margin: 2px 0 0; text-align: right; font-size: 0.8125rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
 /* Statut d'envoi (migration 64) : discret à la suite de l'heure ; « lu » en teal, un échec en rouge avec sa raison sous la bulle. */
 .wa-statut.lu { color: var(--teal-700); font-weight: 600; }
 .wa-statut.echec, .wa-statut.doute { color: var(--danger); font-weight: 600; }
@@ -2229,10 +2231,17 @@ button.agent-joint { cursor: pointer; }
 .wa-avertissements svg { flex: none; margin-top: 2px; }
 .wa-avertissements .alerte { background: #fff4d6; color: #5a4300; }
 .wa-avertissements .info { color: var(--texte-2); padding-top: 0; padding-bottom: 0; }
-.wa-prop-actions { position: sticky; bottom: var(--barre-basse); z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; margin: 10px -16px 0; padding: 8px 16px; background: var(--surface); }
-.wa-copier { flex: 1 1 100%; min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 1.08rem; font-weight: 700; border-radius: 12px; }
-.wa-copier.fait { background: var(--teal-700); }
-.wa-ouvrir { flex: 1 1 100%; min-height: 48px; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; }
+.wa-prop-actions { position: sticky; bottom: var(--barre-basse); z-index: 4; display: flex; gap: 8px; margin: 10px -16px 0; padding: 8px 16px; background: var(--surface); border-top: 1px solid var(--bord); }
+/* « Ouvrir dans WhatsApp » avec la réponse déjà écrite : le geste principal. « Copier » à côté, plus petit. */
+.wa-ouvrir { flex: 2 1 0; min-height: 54px; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; font-size: 1.05rem; font-weight: 700; text-decoration: none; }
+.wa-ouvrir.principal svg { color: #fff; }
+.wa-ouvrir[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+.wa-copier { flex: 1 1 0; min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; border-radius: 12px; }
+.wa-copier.fait { background: var(--teal-100); color: var(--teal-700); border-color: var(--teal-600); }
+.wa-morceaux { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; margin: 6px 0 0; }
+.wa-morceaux[hidden] { display: none; }
+.wa-morceaux .lien { min-height: 40px; padding: 0; }
+.wa-morceaux .copie { color: var(--teal-700); }
 .wa-prop-suite { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; margin-top: 4px; }
 .wa-prop-suite .lien { min-height: 44px; padding: 0; }
 .wa-prop-suite .secondaire { margin-left: auto; }
@@ -2247,10 +2256,7 @@ button.agent-joint { cursor: pointer; }
 .wa-compte.connecte { color: var(--teal-700); font-weight: 600; }
 .wa-compte.deconnecte, .wa-compte.retire { color: var(--danger); font-weight: 600; }
 
-@media (min-width: 560px) {
-  .wa-copier { flex: 2 1 0; }
-  .wa-ouvrir { flex: 1 1 0; }
-}
+
 @media (min-width: 900px) {
   .wa:not(.wa-indisponible) { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 0; height: calc(100dvh - var(--decalage, 80px)); margin: -32px -40px -48px; border-top: 1px solid var(--bord); }
   .wa-liste .puces { flex-wrap: nowrap; gap: 6px; margin: 0; padding: 2px 0 8px; }
@@ -2271,27 +2277,33 @@ button.agent-joint { cursor: pointer; }
   .wa-prop-actions { position: static; margin: 10px 0 0; padding: 0; }
   .wa-prop-fait { margin: 0; padding: 10px 28px; border-top: 1px solid var(--bord); }
 }
-@media (max-width: 559px) { .wa-ouvrir-texte { display: none; } .wa-ouvrir-tete { width: 44px; height: 44px; padding: 0; justify-content: center; } }
+
 /* Réponse préparée pour une autre entreprise que celle de la conversation (à trier, ou rangée ailleurs depuis). */
-.wa-pour { margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: #fff4d6; color: #5a4300; font-size: 0.8rem; font-weight: 600; }
+.wa-pour { margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: #fff4d6; color: #5a4300; font-size: 0.8125rem; font-weight: 600; }
 /* Tri des messages (migration 60) : réglage des réponses préparées par contact, raison quand rien n'est préparé. */
 .wa-reponses { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .wa-reponses-libelle { font-size: 0.86rem; font-weight: 600; color: var(--texte-2); }
 .wa-reponses .wa-segment { min-height: 36px; padding: 0 12px; font-size: 0.86rem; }
 .wa-sans-reponse { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; margin: 12px 0 0; }
+/* « Préparer une réponse » : le geste principal depuis le 20.11.2026, plein et collé en bas sous le pouce comme Copier (lot 2, design n° 3). */
+.wa-sans-reponse.avec-bouton { position: sticky; bottom: var(--barre-basse); z-index: 4; flex-direction: column; align-items: stretch; gap: 6px; margin: 12px -16px 0; padding: 8px 16px 10px; background: var(--surface); border-top: 1px solid var(--bord); }
+.wa-sans-reponse.avec-bouton .wa-note { text-align: center; }
+.wa-preparer { width: 100%; min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 1.05rem; font-weight: 700; border-radius: 12px; }
+.wa-preparer svg { color: #fff; }
+.wa-prop.echec .wa-sans-reponse.avec-bouton { margin-top: 10px; }
 .wa-sans-reponse .wa-prop-fait, .wa-sans-reponse .wa-note { margin: 0; }
 .wa-sans-reponse .secondaire { min-height: 40px; }
 .wa-conv-etat.sans { color: var(--texte-2); font-style: italic; }
 @media (min-width: 900px) { .wa-sans-reponse { margin: 0; padding: 10px 28px; border-top: 1px solid var(--bord); } .wa-sans-reponse .wa-prop-fait { border-top: 0; padding: 0; } }
 /* Temps réel coupé (canal Realtime en erreur) : discret, à côté du titre, tant que l'écran se relit toutes les 5 s. */
-.wa-direct { align-self: center; padding: 1px 8px; border: 1px solid #e8d49a; border-radius: 999px; background: #fff4d6; color: #5a4300; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.wa-direct { align-self: center; padding: 1px 8px; border: 1px solid #e8d49a; border-radius: 999px; background: #fff4d6; color: #5a4300; font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
 .wa-direct[hidden] { display: none; }
 /* Suivi des conversations WhatsApp (migrations 61 et 62) : dossier et voucher, résumé, paiement signalé, promesses. */
 .wa-actions-dossier { display: flex; flex-wrap: wrap; gap: 8px; }
 .wa-actions-dossier button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
 .wa-resume { margin: 0 -16px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--bord); font-size: 0.9rem; }
 .wa-resume summary { display: flex; align-items: baseline; gap: 8px; min-height: 32px; cursor: pointer; font-weight: 700; color: var(--texte); }
-.wa-resume-le { font-weight: 400; font-size: 0.8rem; color: var(--texte-2); }
+.wa-resume-le { font-weight: 400; font-size: 0.8125rem; color: var(--texte-2); }
 .wa-resume ul { margin: 2px 0 2px; padding-left: 18px; color: var(--texte); line-height: 1.45; }
 .wa-suivi { margin: 10px 0 0; padding: 10px 12px; border: 1px solid var(--bord); border-radius: 10px; background: var(--surface); }
 .wa-suivi p { margin: 0; font-size: 0.92rem; line-height: 1.45; }
@@ -2322,13 +2334,13 @@ button.agent-joint { cursor: pointer; }
 .dossier-lie svg { color: var(--teal-700); flex: none; }
 .dossier-lie a { font-weight: 600; }
 /* Espace unifié Secret et Taxi (migration 63) : entreprise de chaque service, conversations des deux entreprises, doublons. */
-.agent-badge-entreprise { display: inline-flex; align-items: center; justify-content: center; margin-top: 4px; min-height: 28px; padding: 0 10px; border: 1px solid var(--bord-champ); border-radius: 999px; background: var(--surface); color: var(--texte); font-size: 0.78rem; font-weight: 700; width: fit-content; }
+.agent-badge-entreprise { display: inline-flex; align-items: center; justify-content: center; margin-top: 4px; min-height: 28px; padding: 0 10px; border: 1px solid var(--bord-champ); border-radius: 999px; background: var(--surface); color: var(--texte); font-size: 0.8125rem; font-weight: 700; width: fit-content; }
 button.agent-badge-entreprise { cursor: pointer; }
 .agent-badge-entreprise.secret { border-color: var(--teal-600); background: var(--teal-100); color: var(--teal-700); }
 .agent-badge-entreprise.taxi { border-color: #c9a227; background: #fff4d6; color: #5a4300; }
 .agent-badge-entreprise.a-choisir { border-style: dashed; border-color: var(--danger); background: var(--danger-fond); color: var(--danger); }
 @media (pointer: coarse) { button.agent-badge-entreprise { min-height: 36px; padding: 0 14px; } }
-.agent-conv-entreprise { justify-self: start; padding: 0 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.72rem; font-weight: 700; }
+.agent-conv-entreprise { justify-self: start; padding: 0 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.8125rem; font-weight: 700; }
 .agent-conv-entreprise.secret { background: var(--teal-100); color: var(--teal-700); }
 .agent-conv-entreprise.taxi { background: #fff4d6; color: #5a4300; }
 .doublons { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
@@ -2336,3 +2348,78 @@ button.agent-badge-entreprise { cursor: pointer; }
 .doublons-paire { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 1 1 260px; }
 .doublons-paire .tag { margin-left: 0; }
 .doublons-raison { font-size: 0.84rem; color: var(--texte-2); }
+
+/* ---- Lot 2 des audits du 20.11.2026 : confort de Nani (WhatsApp et Assistant, iPhone d'abord) ------------------------------------------ */
+/* Liste WhatsApp : le début du dernier message, comme dans WhatsApp, et depuis combien de temps le client attend. */
+.wa-conv-nom { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.wa-conv-nom strong { min-width: 0; }
+.wa-conv-apercu { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95rem; color: var(--texte-2); }
+.wa-conv.non-lue .wa-conv-apercu { color: var(--texte); }
+.wa-conv-vous { color: var(--texte-2); }
+.wa-conv-prete { display: inline-flex; color: var(--teal-700); }
+.wa-attente { display: inline-flex; align-items: center; gap: 3px; font-size: 0.8125rem; font-weight: 600; color: var(--texte-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wa-attente.urgente { padding: 1px 7px; border-radius: 999px; background: #fff4d6; color: #6b4a00; }
+.wa-conv.en-ouverture { background: var(--teal-100); }
+/* Les quatre filtres tiennent en 390 px (design n° 14). */
+.wa-liste .puces { gap: 6px; }
+.wa-liste .puce { padding: 0 10px; font-size: 0.9rem; }
+.wa-liste .puce-nombre { min-width: 20px; padding: 0 5px; }
+.wa-jamais { padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.8125rem; font-weight: 600; }
+.wa-menu { flex: none; width: 44px; height: 44px; }
+/* Faits du client : le dossier, les dates, l'hôtel, le prochain pickup, les prix donnés, le reste à payer. Un tap copie le fait. */
+.wa-faits { margin: 0 -16px; padding: 8px 16px 12px; background: var(--surface); border-bottom: 1px solid var(--bord); }
+.wa-faits > summary { display: flex; align-items: baseline; gap: 8px; min-height: 36px; cursor: pointer; font-weight: 700; }
+.wa-faits-aide { font-weight: 400; font-size: 0.8125rem; color: var(--texte-2); }
+.wa-faits-tete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 2px 0 8px; font-size: 0.92rem; }
+section.wa-faits .wa-faits-tete { margin: 0; }
+.wa-faits-liste { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.wa-fait { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; justify-content: stretch; gap: 1px; width: 100%; min-height: 56px; padding: 7px 30px 7px 10px; border: 1px solid var(--bord); border-radius: 10px; background: var(--fond); color: var(--texte); font: inherit; font-weight: 400; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color 0.15s ease, border-color 0.15s ease; }
+.wa-fait:hover { border-color: var(--bord-fort); }
+.wa-fait:active { background: var(--surface-2); }
+.wa-fait-libelle { font-size: 0.8125rem; color: var(--texte-2); }
+.wa-fait-valeur { font-size: 0.98rem; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.wa-fait-sous { font-size: 0.8125rem; color: var(--texte-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-fait-copier { position: absolute; top: 8px; right: 8px; color: var(--texte-2); display: inline-flex; }
+.wa-fait.a-voir { border-color: #d9b45a; background: #fffaf0; }
+.wa-fait.copie { border-color: var(--teal-600); background: var(--teal-100); }
+.wa-fait.copie .wa-fait-copier { color: var(--teal-700); }
+@media (prefers-reduced-motion: reduce) { .wa-fait { transition: none; } }
+/* Le clavier de l'iPhone ne cache ni la saisie de l'Assistant ni les boutons de la réponse (design n° 10). */
+html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans-reponse.avec-bouton { bottom: var(--clavier); }
+@media (max-width: 899px) {
+  /* Plus de bande vide entre la saisie (ou les boutons) et la barre du bas : la page s'arrête au bas de la conversation. */
+  .contenu:has(> main .agent.avec-fil), .contenu:has(> main .wa.avec-fil), .contenu:has(.agent.avec-fil), .contenu:has(.wa.avec-fil) { padding-bottom: var(--barre-basse); }
+  .agent.avec-fil .agent-fil, .wa.avec-fil .wa-fil { min-height: calc(100dvh - var(--haut-barre) - var(--barre-basse) - 16px); margin-bottom: 0; }
+  html.clavier .contenu:has(.agent.avec-fil), html.clavier .contenu:has(.wa.avec-fil) { padding-bottom: var(--clavier); }
+}
+@media (min-width: 900px) {
+  /* Les messages gardent au moins la moitié de la colonne (design n° 6) : faits et résumé défilent dans leur propre hauteur. */
+  .wa-faits { flex: none; margin: 0; padding: 4px 24px 8px; }
+  .wa-faits-liste { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 2px; }
+  .wa-fait { min-height: 0; padding: 5px 28px 5px 9px; }
+  .wa-resume { flex: none; max-height: 18vh; overflow-y: auto; }
+  .wa-sans-reponse.avec-bouton { position: static; flex-direction: row; justify-content: flex-end; margin: 0; padding: 10px 28px; }
+  .wa-sans-reponse.avec-bouton .wa-note { flex: 1; text-align: left; }
+  .wa-preparer { width: auto; min-width: 260px; }
+}
+/* Assistant : recherche, conversation venue de WhatsApp, échange du client à gauche, suite d'une carte validée. */
+.agent-recherche { width: 100%; min-height: 44px; margin: 0 0 10px; font-size: 16px; }
+.agent-conv-marques { display: flex; flex-wrap: wrap; gap: 6px; }
+.agent-conv-wa { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.8125rem; font-weight: 600; }
+.agent-conv-wa svg { color: #128c4a; }
+.agent-fil-liens { display: flex; flex-wrap: wrap; gap: 0 14px; margin: 0; }
+.agent-fil-liens a { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; }
+.agent-fil-liens svg { color: #128c4a; }
+.agent-bulle.agent-whatsapp { align-self: flex-start; max-width: min(92%, 34rem); padding: 8px 12px; background: var(--surface); border: 1px solid var(--bord); border-radius: 16px 16px 16px 4px; }
+.agent-whatsapp summary { display: flex; align-items: center; gap: 6px; min-height: 36px; cursor: pointer; font-weight: 600; }
+.agent-whatsapp summary svg { flex: none; color: #128c4a; }
+.agent-whatsapp-fil { list-style: none; margin: 6px 0 2px; padding: 0; display: grid; gap: 6px; }
+.agent-whatsapp-fil li { display: grid; gap: 1px; padding: 6px 10px; border-radius: 10px; background: var(--fond); font-size: 0.95rem; line-height: 1.4; overflow-wrap: anywhere; }
+.agent-whatsapp-fil li.nani { background: var(--teal-100); }
+.agent-whatsapp-qui { font-size: 0.8125rem; font-weight: 700; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.agent-etape-wa { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--texte-2); font-size: 0.92rem; }
+.agent-etape-wa svg { color: #128c4a; }
+.agent-suite-liens { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 2px 0 0; }
+.agent-suite-liens a { display: inline-flex; align-items: center; min-height: 40px; font-weight: 600; }
+.agent-a-fixer { color: #6b4a00; font-weight: 600; }
+.agent-conv[aria-current] { transition: background-color 0.1s ease; }

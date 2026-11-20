@@ -50,10 +50,16 @@ export function basculerPiece(cochees = [], chemin) {
 
 // Après validation d'une carte « dossier » : ce qu'on écrit sur la conversation WhatsApp, relue en base juste avant (conv).
 //   « rien » : introuvable, dans une autre entreprise, ou déjà reliée à ce client et ce dossier ;
-//   « ecrire » : client et dossier vides remplis (jamais l'entreprise : la fonction exige une conversation rangée) ;
+//   « ecrire » : client et dossier vides remplis ; une conversation à trier (lot 2 du 20.11.2026 : on crée le dossier sans ranger d'abord)
+//     est rangée en même temps dans l'entreprise du dossier ;
 //   « demander » : un autre client ou un autre dossier est déjà relié, la personne décide avant de le remplacer.
 export function liaisonApresDossier(conv, dossier, entiteId) {
-  if (!conv || !dossier || !dossier.id || conv.entite_id !== entiteId) return { action: "rien", patch: null };
+  if (!conv || !dossier || !dossier.id) return { action: "rien", patch: null };
+  if (!conv.entite_id) {
+    const ent = dossier.entite_id || entiteId;
+    return ent ? { action: "ecrire", patch: { entite_id: ent, client_id: dossier.client_id || null, dossier_id: dossier.id } } : { action: "rien", patch: null };
+  }
+  if (conv.entite_id !== entiteId) return { action: "rien", patch: null };
   const client = dossier.client_id || null;
   const conflit = (conv.client_id && client && conv.client_id !== client) || (conv.dossier_id && conv.dossier_id !== dossier.id);
   if (conflit) return { action: "demander", patch: { client_id: client, dossier_id: dossier.id } };
