@@ -147,7 +147,9 @@ export function creer() {
     }
     if (table !== "whatsapp_conversations") return;
     if (!conversationLue(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
-    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus"].includes(k)) delete patch[k];
+    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses"].includes(k)) delete patch[k];
+    // Interrupteur par contact (migration 60) : « auto » ou « jamais », rien d'autre.
+    if ("reponses" in patch && !["auto", "jamais"].includes(patch.reponses)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
     if ("non_lus" in patch && !(patch.non_lus <= ligne.non_lus)) patch.non_lus = ligne.non_lus;
     const apres = { ...ligne, ...patch };
     if ("entite_id" in patch && patch.entite_id !== ligne.entite_id) {
@@ -412,6 +414,28 @@ export function creer() {
     async whatsappMessages(conversationId) {
       if (!conversationLue(conversationId)) return [];
       return structuredClone(data.whatsapp_messages.filter((m) => m.conversation_id === conversationId).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)));
+    },
+    // « Préparer une réponse » en démonstration : une proposition « en_cours » tout de suite, puis une réponse fictive après un court délai,
+    // annoncées comme le ferait Realtime. Prépare même pour un contact réglé sur « Jamais » ou un message que le tri a écarté, comme la fonction.
+    async whatsappPreparer(conversationId, { delai = 1500 } = {}) {
+      const c = conversationLue(conversationId);
+      if (!c) return { erreur: "droit_manquant" };
+      const derniers = data.whatsapp_messages.filter((m) => m.conversation_id === c.id).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le));
+      const dernier = derniers[derniers.length - 1];
+      if (!dernier || dernier.sens !== "entrant") return { erreur: "rien_a_repondre" };
+      const entite = data.entites.find((e) => e.id === c.entite_id) || data.entites.find((e) => marqueEntite(e) === "secret") || null;
+      for (const p of data.whatsapp_propositions) if (p.conversation_id === c.id && ["a_faire", "en_cours"].includes(p.statut)) p.statut = "remplacee";
+      const p = { id: uid(), cree_le: new Date().toISOString(), conversation_id: c.id, message_id: dernier.id, entite_id: entite ? entite.id : null, statut: "en_cours", texte: null, langue: "en", avertissements: [], entreprise_proposee: c.entite_id ? null : marqueEntite(entite), erreur: null, traitee_le: null, traitee_par: null, traitee_par_quoi: null };
+      data.whatsapp_propositions.push(p);
+      sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+      setTimeout(() => {
+        const prenom = String(c.nom || "").split(/\s+/)[0];
+        Object.assign(p, { statut: "a_faire", texte: `${prenom ? `Hi ${prenom},` : "Hi,"}\n\nThank you for your message. We will get back to you shortly with the details.` });
+        sauve();
+        ecouteurs.forEach((f) => f());
+      }, delai);
+      return { ok: true };
     },
     async whatsappProposition(id) {
       const p = data.whatsapp_propositions.find((x) => x.id === id);
@@ -756,6 +780,7 @@ export function creer() {
       out.whatsapp_reglages = data.whatsapp_reglages.filter((r) => r.organisation_id === monOrg() && litWhatsApp(null));
       out.whatsapp_disponible = !AGENCE;
       out.whatsapp_propositions_disponible = !AGENCE;
+      out.whatsapp_tri_disponible = !AGENCE;
       // Comme la base après la migration 42 : sa propre organisation, toutes pour l'éditeur du logiciel ; l'administrateur voit les comptes de la sienne.
       out.organisations = utilisateur.plateforme ? data.organisations : data.organisations.filter((o) => o.id === monOrg());
       out.profils = utilisateur.super_admin ? data.profils.filter((p) => p.organisation_id === monOrg()) : data.profils.filter((p) => p.user_id === uidCourant);

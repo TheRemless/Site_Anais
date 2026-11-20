@@ -172,14 +172,15 @@ test("état du compte Telnyx en clair", () => {
   assert.deepEqual(W.etatCompte("QUELQUE_CHOSE").vars, { code: "QUELQUE_CHOSE" });
 });
 
-test("démo : quatre conversations inventées, des propositions dans plusieurs statuts, numéros de fiction", () => {
+test("démo : cinq conversations inventées, des propositions dans plusieurs statuts, numéros de fiction", () => {
   let n = 0;
   const uid = () => `id${++n}`;
   const entites = [{ id: "e2", slug: "excursions" }, { id: "e3", slug: "taxi" }];
   const clients = [{ id: "c1", entite_id: "e3", prenom: "Tom", nom: "Démo" }];
   const dossiers = [{ id: "d1", entite_id: "e3", client_id: "c1", ref: "T-1", annule: false }];
   const d = whatsappDemo({ entites, clients, dossiers, uid, organisation: "org", maintenant: Date.parse("2026-11-20T12:00:00Z") });
-  assert.equal(d.whatsapp_conversations.length, 4);
+  assert.equal(d.whatsapp_conversations.length, 5);
+  assert.ok(d.whatsapp_conversations.some((c) => c.reponses === "jamais" && c.tri.preparer === false), "un contact réglé sur Jamais, sans réponse préparée");
   const connu = d.whatsapp_conversations.find((c) => c.client_id === "c1");
   assert.equal(connu.dossier_id, "d1", "un client connu de Taxi avec son dossier");
   assert.ok(d.whatsapp_conversations.some((c) => !c.entite_id), "un inconnu à trier");
@@ -202,7 +203,7 @@ test("démo : droits comme la base, marquer lu, ranger, traiter, rien n'est envo
     const store = creer();
     const brut = await store.charger();
     assert.equal(brut.whatsapp_disponible, true);
-    assert.equal(brut.whatsapp_conversations.length, 4, "l'administratrice voit tout");
+    assert.equal(brut.whatsapp_conversations.length, 5, "l'administratrice voit tout");
     const nonLue = brut.whatsapp_conversations.find((c) => c.non_lus > 0 && c.entite_id);
     const lue = await store.modifier("whatsapp_conversations", nonLue.id, { non_lus: 0 });
     assert.equal(lue.non_lus, 0);
@@ -325,7 +326,7 @@ test("ligne « fait » seulement pour une proposition au moins aussi récente qu
   assert.equal(W.propositionAJour({ cree_le: "2026-11-20T09:59:00Z" }, messages), false);
   assert.equal(W.propositionAJour(null, messages), false);
   assert.equal(W.propositionAJour({ cree_le: "2026-11-20T09:00:00Z" }, []), true, "sans message du client, rien à contredire");
-  assert.match(source("views/whatsapp.mjs"), /!propositionAJour\(p, messages\)\) return ligneSansReponse\(\);/);
+  assert.match(source("views/whatsapp.mjs"), /!propositionAJour\(p, messages\)\) return ligneSansReponse\(c, messages\);/);
 });
 
 test("entreprise proposée par l'agent : entreprise_proposee, sinon l'entreprise de la proposition", () => {
@@ -403,4 +404,88 @@ test("suivi de l'assistant : la Boîte WhatsApp n'a pas de limite par personne",
   assert.equal(p.joursLimite, 0);
   assert.equal(s.limiteAtteinte, 0);
   assert.match(source("views/assistant-suivi.mjs"), /l\.systeme \? String\(l\.aujourdhui\) : `\$\{l\.aujourdhui\} \/ \$\{S\.limite\}`/);
+});
+
+// ---- Troisième passe : tri des messages (migration 60) -------------------------------------------------------------------------------
+test("tri : une conversation écartée n'a pas « Réponse prête », garde ses non-lus, et le badge ne la compte qu'avec des non-lus", () => {
+  const le = "2026-11-20T10:00:00Z";
+  const non = { preparer: false, motif: "personnel", entreprise: "secret", le };
+  const vieille = { id: "p0", conversation_id: "a", statut: "a_faire", cree_le: "2026-11-20T09:00:00Z" };
+  assert.equal(W.triDitNon(conv("a", { tri: non }), null), true);
+  assert.equal(W.triDitNon(conv("a", { tri: non }), vieille), true, "une proposition antérieure à la décision du tri ne compte pas");
+  assert.equal(W.triDitNon(conv("a", { tri: non }), { ...vieille, cree_le: "2026-11-20T10:05:00Z" }), false, "« Préparer une réponse » après le tri : elle compte");
+  assert.equal(W.triDitNon(conv("a", { tri: { preparer: true, le } }), null), false);
+  assert.equal(W.triDitNon(conv("a", { tri: {} }), null), false, "sans tri (avant la migration 60), rien ne change");
+  assert.equal(W.triDitNon(conv("a"), null), false);
+  const ecartee = conv("a", { tri: non, dernier_sens: "entrant" });
+  assert.notEqual(W.etatConversation(ecartee, vieille).cle, "prete");
+  assert.equal(W.etatConversation(ecartee, null).cle, "sans");
+  assert.equal(W.badgeWhatsApp([ecartee], [vieille]), 0, "sans non-lus, le badge ne la compte pas");
+  assert.equal(W.badgeWhatsApp([{ ...ecartee, non_lus: 2 }], [vieille]), 1, "avec des non-lus, si");
+  assert.equal(W.chiffresFiltres([ecartee], [vieille], () => null).toutes, 0);
+});
+
+test("tri : la raison en clair quand rien n'est préparé, seulement si le tri a vu le dernier message", () => {
+  const messages = [{ sens: "entrant", envoye_le: "2026-11-20T10:00:00Z" }];
+  const avec = (motif, le = "2026-11-20T10:00:05Z") => conv("a", { tri: { preparer: false, motif, le } });
+  assert.equal(W.raisonSansReponse(avec("personnel"), messages), "Pas de réponse préparée : message personnel");
+  assert.equal(W.raisonSansReponse(avec("remerciement"), messages), "Pas de réponse préparée : un remerciement");
+  assert.equal(W.raisonSansReponse({ ...avec("contact_jamais"), reponses: "jamais" }, messages), "Pas de réponse préparée : contact réglé sur Jamais");
+  assert.equal(W.raisonSansReponse({ ...avec("contact_jamais"), reponses: "auto" }, messages), null, "repassé sur Automatiques depuis : plus ce motif");
+  assert.equal(W.raisonSansReponse(avec("partenaire"), messages), "Pas de réponse préparée : un partenaire");
+  assert.equal(W.raisonSansReponse(avec("media_seul"), messages), "Pas de réponse préparée : photo ou vocal sans texte");
+  assert.equal(W.raisonSansReponse(avec("limite"), messages), "Pas de réponse préparée : limite du jour atteinte");
+  assert.equal(W.raisonSansReponse(avec("motif_inconnu"), messages), W.MOTIFS_TRI.autre);
+  for (const m of ["demande_client", "suivi_reservation", "remerciement", "personnel", "partenaire", "publicite", "media_seul", "contact_jamais", "limite", "autre"]) assert.ok(W.MOTIFS_TRI[m], m);
+  assert.equal(W.raisonSansReponse(avec("personnel", "2026-11-20T09:00:00Z"), messages), null, "tri plus ancien que le dernier message : pas encore trié");
+  assert.equal(W.raisonSansReponse(conv("a", { reponses: "jamais" }), messages), W.MOTIFS_TRI.contact_jamais, "contact réglé sur Jamais sans tri lisible");
+  assert.equal(W.raisonSansReponse(conv("a"), messages), null);
+  assert.equal(W.reponsesDe(conv("a")), "auto");
+  assert.equal(W.reponsesDe(conv("a", { reponses: "jamais" })), "jamais");
+});
+
+test("préparer une réponse : chaque erreur de whatsapp-preparer a un libellé clair", () => {
+  for (const code of ["non_connecte", "droit_manquant", "rien_a_repondre", "limite", "agent_eteint", "non_configure"]) assert.ok(W.ERREURS_PREPARER[code], code);
+  assert.ok(W.erreurPreparer("hors_ligne"));
+  const sb = source("store-supabase.mjs");
+  assert.match(sb, /functions\/v1\/whatsapp-preparer/);
+  assert.match(sb, /JSON\.stringify\(\{ conversation_id: conversationId \}\)/);
+  assert.match(sb, /colonneAbsente\(r\.error, "reponses"\) \|\| colonneAbsente\(r\.error, "tri"\)/, "avant la migration 60, relu sans les colonnes");
+  const vue = source("views/whatsapp.mjs");
+  assert.match(vue, /tr\("Préparer une réponse"\)/);
+  assert.match(vue, /tr\(erreurPreparer\(r && r\.erreur\)\)/);
+  assert.match(vue, /segment\("auto", tr\("Automatiques"\)\), segment\("jamais", tr\("Jamais pour ce contact"\)\)/);
+  assert.match(vue, /tr\("Jamais : ami, famille, partenaire, chauffeur"\)/);
+});
+
+test("démo : réglage Jamais par contact et « Préparer une réponse » qui crée une proposition fictive", async () => {
+  const stockage = new Map();
+  globalThis.localStorage = { getItem: (k) => stockage.get(k) ?? null, setItem: (k, v) => stockage.set(k, String(v)), removeItem: (k) => stockage.delete(k) };
+  try {
+    const { creer } = await import(`../src/gestion/js/store-local.mjs?wa3=${Date.now()}`);
+    const store = creer();
+    let prevenu = 0;
+    store.ecouterWhatsApp(W.TABLES_WHATSAPP, () => prevenu++);
+    const brut = await store.charger();
+    assert.equal(brut.whatsapp_tri_disponible, true);
+    const chauffeur = brut.whatsapp_conversations.find((c) => c.reponses === "jamais");
+    assert.equal(W.raisonSansReponse(chauffeur, await store.whatsappMessages(chauffeur.id)), W.MOTIFS_TRI.contact_jamais);
+    const r = await store.modifier("whatsapp_conversations", chauffeur.id, { reponses: "auto" });
+    assert.equal(r.reponses, "auto");
+    await assert.rejects(store.modifier("whatsapp_conversations", chauffeur.id, { reponses: "parfois" }));
+    await store.modifier("whatsapp_conversations", chauffeur.id, { tri: { preparer: true } });
+    assert.equal((await store.charger()).whatsapp_conversations.find((c) => c.id === chauffeur.id).tri.preparer, false, "le tri ne s'écrit pas depuis l'outil");
+    assert.deepEqual(await store.whatsappPreparer(chauffeur.id, { delai: 10 }), { ok: true });
+    let p = (await store.charger()).whatsapp_propositions.find((x) => x.conversation_id === chauffeur.id);
+    assert.equal(p.statut, "en_cours");
+    await new Promise((res) => setTimeout(res, 30));
+    p = (await store.charger()).whatsapp_propositions.find((x) => x.conversation_id === chauffeur.id && x.statut !== "remplacee");
+    assert.equal(p.statut, "a_faire");
+    assert.ok(p.texte.length > 10);
+    assert.ok(prevenu >= 2, "annoncée comme par Realtime");
+    const repondue = brut.whatsapp_conversations.find((c) => c.dernier_sens === "sortant");
+    assert.deepEqual(await store.whatsappPreparer(repondue.id), { erreur: "rien_a_repondre" });
+  } finally {
+    delete globalThis.localStorage;
+  }
 });

@@ -1,9 +1,10 @@
-// Démonstration de la boîte WhatsApp : quatre conversations inventées, pour essayer l'écran sans Telnyx ni base.
+// Démonstration de la boîte WhatsApp : cinq conversations inventées, pour essayer l'écran sans Telnyx ni base.
 // Numéros pris dans des plages réservées à la fiction (+44 7700 900…, +1 202 555 01…). Aucun nom, prix ni horaire ne vient d'un vrai client.
 //   1. un client connu de Taxi avec son dossier, réponse prête (avec deux avertissements) ;
 //   2. un inconnu à trier qui demande une excursion, réponse prête préparée pour Secret, l'entreprise que l'agent propose ;
 //   3. une conversation déjà répondue depuis l'app, fenêtre de 24 h fermée, une photo expirée ;
-//   4. un client rangé par Nani dans Taxi, réponse en préparation.
+//   4. un client rangé par Nani dans Taxi, réponse en préparation ;
+//   5. un chauffeur réglé sur « Jamais » (migration 60) : son message n'a pas de réponse préparée, « Préparer une réponse » en fait une.
 const SECRET = ["excursions", "secret"];
 const TAXI = ["taxi"];
 
@@ -16,7 +17,7 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
   out.whatsapp_reglages.push({ organisation_id: organisation, reception_active: true, numero: "+447700900100", etat_compte: "CONNECTED", etat_le: il_y_a(60 * 24 * 3), dernier_evenement_le: il_y_a(4), updated_at: il_y_a(60 * 24 * 3) });
 
   const conversation = (o) => {
-    const c = { id: uid(), created_at: il_y_a(60 * 24 * 2), updated_at: il_y_a(5), organisation_id: organisation, nom: null, entite_id: null, entite_source: "auto", client_id: null, dossier_id: null, dernier_message_le: null, dernier_sens: null, non_lus: 0, ...o };
+    const c = { id: uid(), created_at: il_y_a(60 * 24 * 2), updated_at: il_y_a(5), organisation_id: organisation, nom: null, entite_id: null, entite_source: "auto", client_id: null, dossier_id: null, dernier_message_le: null, dernier_sens: null, non_lus: 0, reponses: "auto", tri: {}, ...o };
     out.whatsapp_conversations.push(c);
     return c;
   };
@@ -47,6 +48,7 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     message(c, 9, "entrant", "Hi! Do you still have places for the 4 Islands tour on Saturday? We are 2 adults and 1 child (6 years).");
     const photo = message(c, 8, "entrant", "This is our hotel", { type: "image", texte: null, medias: [{ type: "image", mime: "image/jpeg", legende: "This is our hotel", nom: "photo.jpg", chemin: "demo/hotel.jpg", statut: "copie", taille: 182000 }] });
     // L'agent ne range pas la conversation : il propose Secret et prépare la réponse avec les données de Secret.
+    c.tri = { preparer: true, motif: "demande_client", entreprise: "secret", le: il_y_a(8) };
     proposition(c, photo, { entite_id: secret.id, entreprise_proposee: "secret", texte: "Hi Lucia,\n\nYes, there are still places on the 4 Islands tour this Saturday. For 2 adults and 1 child the price is 3,000 THB, pickup from your hotel included.\nShall I book it for you? I just need the name of your hotel and a first name for the booking.", avertissements: ["montant_non_source:3000"] });
   }
 
@@ -67,7 +69,16 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
     message(c, 60 * 2 + 50, "sortant", "Hi Sven, it is a short ride, I will send you the price in a minute.", { origine: "gestion" });
     const m = message(c, 1, "entrant", "Great, and can you also do Old Town tomorrow morning?");
     message(c, 0.5, "entrant", "Sorry wrong photo", { supprime_le: il_y_a(0.2) });
+    c.tri = { preparer: true, motif: "demande_client", entreprise: "taxi", le: il_y_a(1) };
     proposition(c, m, { statut: "en_cours" });
+  }
+
+  // 5. Un chauffeur, contact réglé sur « Jamais » : le tri n'a rien préparé, le message reste non lu.
+  if (taxi) {
+    const c = conversation({ telephone: "+447700900844", nom: "Driver Somchai", entite_id: taxi.id, entite_source: "manuel", reponses: "jamais", non_lus: 1 });
+    message(c, 60 * 5, "sortant", "Pickup Lanta Sand 14:00 tomorrow, 2 pax, airport.", { origine: "app" });
+    message(c, 42, "entrant", "Ok, I am at the pier in 5 min");
+    c.tri = { preparer: false, motif: "contact_jamais", entreprise: "taxi", le: il_y_a(42) };
   }
   return out;
 }

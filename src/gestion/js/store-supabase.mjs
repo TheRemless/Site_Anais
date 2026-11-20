@@ -176,8 +176,20 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       throw new Error(error.message);
     };
     // Les 1 000 propositions les plus récentes suffisent : seule la plus récente de chaque conversation compte à l'écran.
+    // reponses et tri (migration 60) : relues sans ces colonnes tant que la migration n'est pas appliquée.
+    const COLONNES = "id, created_at, updated_at, organisation_id, telephone, nom, entite_id, entite_source, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus";
+    let triDisponible = true;
+    const lireConversations = async () => {
+      const requete = (colonnes) => sb.from("whatsapp_conversations").select(colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
+      const r = await requete(`${COLONNES}, reponses, tri`);
+      if (r.error && (colonneAbsente(r.error, "reponses") || colonneAbsente(r.error, "tri"))) {
+        triDisponible = false;
+        return lire("whatsapp_conversations", requete(COLONNES));
+      }
+      return lire("whatsapp_conversations", Promise.resolve(r));
+    };
     const [conversations, propositions, reglages] = await Promise.all([
-      lire("whatsapp_conversations", sb.from("whatsapp_conversations").select("id, created_at, updated_at, organisation_id, telephone, nom, entite_id, entite_source, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus").order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500)),
+      lireConversations(),
       lire("whatsapp_propositions", sb.from("whatsapp_propositions").select("id, cree_le, conversation_id, message_id, entite_id, statut, texte, langue, avertissements, entreprise_proposee, erreur, traitee_le, traitee_par_quoi").order("cree_le", { ascending: false }).limit(1000)),
       lire("whatsapp_reglages", sb.from("whatsapp_reglages").select("organisation_id, reception_active, numero, etat_compte, etat_le, dernier_evenement_le, updated_at")),
     ]);
@@ -187,6 +199,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       whatsapp_reglages: reglages || [],
       whatsapp_disponible: conversations !== null && reglages !== null,
       whatsapp_propositions_disponible: propositions !== null,
+      whatsapp_tri_disponible: conversations !== null && triDisponible,
     };
   }
 
@@ -273,6 +286,21 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       // Sans code lisible (passerelle, coupure), le résultat est inconnu : l'écran demande de vérifier dans WhatsApp.
       // « a_retirer » (contenu_interne) : les montants et les noms que la fonction a trouvés dans le texte.
       return { erreur: (lu && lu.erreur) || "inconnu", a_retirer: lu && Array.isArray(lu.a_retirer) ? lu.a_retirer.map(String) : [] };
+    },
+    // « Préparer une réponse » (fonction whatsapp-preparer, migration 60) : 202 { ok } puis la proposition « en_cours » arrive par Realtime.
+    async whatsappPreparer(conversationId) {
+      const { data: s } = await sb.auth.getSession();
+      const jeton = s && s.session && s.session.access_token;
+      if (!jeton) return { erreur: "non_connecte" };
+      let rep;
+      try {
+        rep = await fetch(`${config.SUPABASE_URL}/functions/v1/whatsapp-preparer`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ conversation_id: conversationId }) });
+      } catch {
+        return { erreur: "hors_ligne" };
+      }
+      const lu = await rep.json().catch(() => null);
+      if (rep.ok && lu && lu.ok) return lu;
+      return { erreur: (lu && lu.erreur) || "inconnu" };
     },
     // Le statut d'une proposition, relu après un refus d'écriture (déjà traitée ailleurs, ou une autre erreur).
     async whatsappProposition(id) {
