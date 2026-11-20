@@ -165,6 +165,31 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     return { demandes_site: demandes || [], bandeaux_site: bandeaux || [], site_disponible: demandes !== null && bandeaux !== null };
   }
 
+  // Boîte WhatsApp (migrations 58 et 59) : conversations, propositions de l'agent et réglage de réception. La base ne rend rien à qui n'est pas
+  // administrateur de Secret ou de Taxi. Tant qu'une migration manque, on le dit à l'écran (`whatsapp_disponible`, `whatsapp_propositions_disponible`)
+  // au lieu d'échouer. Les messages se lisent à l'ouverture d'une conversation (whatsappMessages), comme les documents d'un dossier.
+  async function lireWhatsApp() {
+    const lire = async (table, requete) => {
+      const { data, error } = await requete;
+      if (!error) return data || [];
+      if (error.code === "42P01" || error.code === "PGRST205" || new RegExp(`relation "[^"]*${table}" does not exist|Could not find the table`, "i").test(error.message || "")) return null;
+      throw new Error(error.message);
+    };
+    // Les 1 000 propositions les plus récentes suffisent : seule la plus récente de chaque conversation compte à l'écran.
+    const [conversations, propositions, reglages] = await Promise.all([
+      lire("whatsapp_conversations", sb.from("whatsapp_conversations").select("id, created_at, updated_at, organisation_id, telephone, nom, entite_id, entite_source, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus").order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500)),
+      lire("whatsapp_propositions", sb.from("whatsapp_propositions").select("id, cree_le, conversation_id, message_id, entite_id, statut, texte, langue, avertissements, entreprise_proposee, erreur, traitee_le, traitee_par_quoi").order("cree_le", { ascending: false }).limit(1000)),
+      lire("whatsapp_reglages", sb.from("whatsapp_reglages").select("organisation_id, reception_active, numero, etat_compte, etat_le, dernier_evenement_le, updated_at")),
+    ]);
+    return {
+      whatsapp_conversations: conversations || [],
+      whatsapp_propositions: propositions || [],
+      whatsapp_reglages: reglages || [],
+      whatsapp_disponible: conversations !== null && reglages !== null,
+      whatsapp_propositions_disponible: propositions !== null,
+    };
+  }
+
   // L'organisation de la personne connectée (migration 42) : nom, fuseau, langue. Avant la migration la table manque : liste vide, rien ne casse.
   // `libelle_admin` (migration 44) : relu sans cette colonne tant que la base ne l'a pas.
   async function lireOrganisations() {
@@ -202,10 +227,57 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       canal = null;
     };
   }
+  // Boîte WhatsApp en direct : un canal à part, pour ne pas toucher à celui des demandes du site. Même règle, seul le nom de la table remonte.
+  let canalWhatsApp = null;
+  function ecouterWhatsApp(tables, rappel) {
+    if (canalWhatsApp) sb.removeChannel(canalWhatsApp);
+    canalWhatsApp = sb.channel("gestion-whatsapp");
+    for (const t of tables) canalWhatsApp.on("postgres_changes", { event: "*", schema: "public", table: t }, () => rappel(t));
+    canalWhatsApp.subscribe((statut, err) => {
+      if (statut === "CHANNEL_ERROR" || statut === "TIMED_OUT") console.warn(`WhatsApp en direct indisponible (${statut})`, err || "");
+    });
+    return () => {
+      if (canalWhatsApp) sb.removeChannel(canalWhatsApp);
+      canalWhatsApp = null;
+    };
+  }
 
   return {
     mode: "supabase",
     ecouter,
+    ecouterWhatsApp,
+    // Les messages d'une conversation, les 500 plus récents, dans l'ordre d'envoi.
+    async whatsappMessages(conversationId) {
+      const lignes = verifie(await sb.from("whatsapp_messages").select("id, conversation_id, sens, origine, type, texte, medias, envoye_le, modifie_le, supprime_le").eq("conversation_id", conversationId).order("envoye_le", { ascending: false }).limit(500));
+      return lignes.reverse();
+    },
+    // Lien court (5 minutes) vers une photo ou un document copié dans le stockage privé « whatsapp ». null si le fichier n'est plus là.
+    async whatsappLienMedia(media, { telecharger = false } = {}) {
+      if (!media || !media.chemin) return null;
+      const { data, error } = await sb.storage.from("whatsapp").createSignedUrl(media.chemin, 300, telecharger ? { download: media.nom || true } : undefined);
+      return error || !data ? null : data.signedUrl;
+    },
+    // Envoi depuis Gestion (fonction « whatsapp-envoi », avec le jeton de la personne). Rend { ok, message_id } ou { erreur }.
+    async whatsappEnvoyer(corps) {
+      const { data: s } = await sb.auth.getSession();
+      const jeton = s && s.session && s.session.access_token;
+      if (!jeton) return { erreur: "non_connecte" };
+      let rep;
+      try {
+        rep = await fetch(`${config.SUPABASE_URL}/functions/v1/whatsapp-envoi`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, apikey: config.SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify(corps) });
+      } catch {
+        return { erreur: "hors_ligne" };
+      }
+      const lu = await rep.json().catch(() => null);
+      if (rep.ok && lu && lu.ok) return lu;
+      return { erreur: (lu && lu.erreur) || "base" };
+    },
+    // L'interrupteur « Recevoir les messages WhatsApp » (Réglages), seule colonne des réglages WhatsApp ouverte à l'outil.
+    async whatsappReception(organisationId, actif) {
+      const lignes = verifie(await sb.from("whatsapp_reglages").update({ reception_active: !!actif }).eq("organisation_id", organisationId).select());
+      if (!lignes.length) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+      return lignes[0];
+    },
     async session() {
       const { data, error } = await sb.auth.getSession();
       if (!data.session) {
@@ -538,7 +610,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       const tables = ["entites", "profils", "roles", "membres", ...CHARGEES.filter((t) => relire || !CATALOGUE.includes(t))];
       // Toutes les lectures partent ensemble (elles étaient faites l'une après l'autre).
-      const [lues, resumeLignes, taches, reglagesLignes, site, organisations, partages] = await Promise.all([
+      const [lues, resumeLignes, taches, reglagesLignes, site, organisations, partages, whatsapp] = await Promise.all([
         Promise.all(tables.map((t) => toutes(t))),
         toutes("dossiers_resume"),
         (() => {
@@ -550,12 +622,13 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         lireSite(),
         lireOrganisations(),
         lirePartages(),
+        lireWhatsApp(),
       ]);
       tables.forEach((t, i) => (out[t] = lues[i]));
       out.organisations = organisations;
       out.partages_clients = partages.partages_clients;
       out.clients = avecNomsLies(out.clients, partages.lies);
-      Object.assign(out, site);
+      Object.assign(out, site, whatsapp);
       if (ouverture) nouvelle = await marqueur;
       if (!relire) for (const t of CATALOGUE) out[t] = ancien[t];
       else {

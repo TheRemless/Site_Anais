@@ -2136,3 +2136,124 @@ button.agent-joint { cursor: pointer; }
 .agent-fil.agent-depot { outline: 2px dashed var(--teal-600); outline-offset: -6px; }
 .agent-apercu img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .brochure-nouveau { padding: 10px 12px; border: 1px solid var(--bord); border-left: 4px solid var(--teal); border-radius: var(--rayon); background: var(--surface); }
+
+/* ---- Écran « WhatsApp » (migrations 58 et 59, 20.11.2026) ----------------------------------------------------------------------
+   Même mise en page que l'onglet Assistant : téléphone, la liste puis la conversation en plein écran ; ordinateur, liste à gauche.
+   L'élément fort est la réponse préparée : un texte modifiable et un gros bouton Copier, en bas sous le pouce. Le reste reste discret. */
+.wa-liste-tete { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; }
+.wa-liste-tete h1 { margin: 0; }
+.wa-liste-tete .sous { margin: 0; font-variant-numeric: tabular-nums; }
+.wa-liste .puces { margin-bottom: 8px; }
+.wa-conversations { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--bord); }
+.wa-conv { display: grid; gap: 4px; padding: 12px 4px; min-height: 64px; border-bottom: 1px solid var(--bord); color: var(--texte); text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.wa-conv:hover { background: var(--surface-2); color: var(--texte); }
+.wa-conv[aria-current] { background: var(--teal-100); }
+.wa-conv-ligne { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.wa-conv-ligne strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.wa-conv.non-lue strong { font-weight: 800; }
+.wa-conv time { flex: none; font-size: 0.82rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.wa-conv.non-lue time { color: var(--teal-700); font-weight: 700; }
+.wa-conv-etat { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; color: var(--texte-2); }
+.wa-conv-etat.prete { color: var(--teal-700); font-weight: 700; }
+.wa-conv-etat.echec { color: var(--danger); }
+.wa-conv-droite { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.wa-marque { padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.wa-marque.a-trier { background: #fff4d6; color: #5a4300; }
+.wa-liste-vide { margin-top: 16px; }
+
+.wa-fil { display: none; }
+.wa.avec-fil .wa-liste { display: none; }
+.wa.avec-fil .wa-fil { display: flex; flex-direction: column; min-height: calc(100dvh - var(--haut-barre) - var(--barre-basse) - 40px); }
+.wa-fil-tete { position: sticky; top: var(--haut-barre); z-index: 5; display: flex; align-items: center; gap: 6px; min-width: 0; margin: -16px -16px 0; padding: 6px 12px 6px 8px; background: rgba(245, 248, 248, 0.96); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-bottom: 1px solid var(--bord); }
+.wa-fil-infos { display: grid; gap: 8px; margin: 0 -16px; padding: 10px 16px; border-bottom: 1px solid var(--bord); }
+.wa-retour { flex: none; width: 44px; height: 44px; }
+.wa-fil-titre { flex: 1; min-width: 0; }
+.wa-fil-titre h2 { margin: 0; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-numero { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0; font-size: 0.85rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.wa-ouvrir-tete { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.wa-ouvrir-tete svg, .wa-ouvrir svg { color: #128c4a; }
+.wa-entreprise { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.wa-segments { display: inline-flex; border: 1px solid var(--bord-champ); border-radius: 999px; padding: 2px; background: var(--surface); }
+.wa-segment { min-height: 40px; padding: 0 14px; border: 0; border-radius: 999px; background: none; color: var(--texte); font-weight: 600; font-size: 0.9rem; }
+.wa-segment[aria-pressed="true"] { background: var(--teal-600); color: #fff; }
+.wa-segment.propose:not([aria-pressed="true"]) { box-shadow: inset 0 0 0 2px var(--teal-600); color: var(--teal-700); }
+.wa-note { font-size: 0.84rem; color: var(--texte-2); }
+.wa-note.propose { color: var(--teal-700); font-weight: 600; }
+.wa-relations { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 0; font-size: 0.9rem; }
+.wa-relations .lien { min-height: 36px; padding: 0; }
+.wa-lien-fiche { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; font-weight: 600; }
+.wa-sans { color: var(--texte-2); }
+
+.wa-messages { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; flex: 1; }
+.wa-jour { display: flex; flex-direction: column; gap: 6px; }
+.wa-jour-titre { display: flex; justify-content: center; margin: 10px 0 4px; }
+.wa-jour-titre span { padding: 2px 10px; border-radius: 999px; background: var(--surface-2); color: var(--texte-2); font-size: 0.78rem; font-weight: 600; }
+.wa-bulle { max-width: min(80%, 34rem); padding: 8px 12px 6px; border-radius: 14px; overflow-wrap: anywhere; }
+.wa-bulle.entrant { align-self: flex-start; background: var(--surface); border: 1px solid var(--bord); border-bottom-left-radius: 4px; }
+.wa-bulle.sortant { align-self: flex-end; background: var(--teal-100); border-bottom-right-radius: 4px; }
+.wa-bulle.reaction { padding: 4px 10px; font-size: 0.9rem; }
+.wa-bulle.supprime .wa-texte { color: var(--texte-2); text-decoration: line-through; }
+.wa-texte { margin: 0; white-space: pre-wrap; line-height: 1.45; }
+.wa-type { color: var(--texte-2); font-style: italic; }
+.wa-supprime { margin: 0 0 2px; font-size: 0.8rem; font-weight: 700; color: var(--danger); }
+.wa-meta { margin: 2px 0 0; text-align: right; font-size: 0.74rem; color: var(--texte-2); font-variant-numeric: tabular-nums; }
+.wa-image, .wa-fichier { margin: 0 0 6px; }
+.wa-image figcaption, .wa-fichier figcaption { margin-top: 4px; font-size: 0.92rem; white-space: pre-wrap; }
+.wa-vignette { display: block; padding: 0; border: 0; background: none; border-radius: 10px; overflow: hidden; min-height: 0; }
+.wa-vignette img { display: block; max-width: 100%; max-height: 280px; width: auto; height: auto; border-radius: 10px; }
+.wa-vignette-vide { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 220px; max-width: 100%; height: 140px; border-radius: 10px; background: var(--surface-2); color: var(--texte-2); font-size: 0.82rem; font-weight: 500; text-align: center; padding: 8px; }
+.wa-fichier button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+.wa-media-absent { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); color: var(--texte-2); font-size: 0.86rem; }
+
+/* La réponse préparée : en bas de la conversation, le bouton Copier collé au-dessus des onglets sur téléphone. */
+.wa-prop { margin: 8px -16px 0; padding: 14px 16px 12px; background: var(--surface); border-top: 2px solid var(--teal-600); }
+.wa-prop h3 { display: flex; align-items: center; gap: 4px; margin: 0 0 8px; font-size: 1rem; }
+.wa-prop textarea { width: 100%; min-height: 9.5em; font: inherit; font-size: 16px; line-height: 1.45; resize: vertical; }
+.wa-avertissements { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.wa-avertissements li { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border-radius: 8px; font-size: 0.9rem; line-height: 1.4; }
+.wa-avertissements svg { flex: none; margin-top: 2px; }
+.wa-avertissements .alerte { background: #fff4d6; color: #5a4300; }
+.wa-avertissements .info { color: var(--texte-2); padding-top: 0; padding-bottom: 0; }
+.wa-prop-actions { position: sticky; bottom: var(--barre-basse); z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; margin: 10px -16px 0; padding: 8px 16px; background: var(--surface); }
+.wa-copier { flex: 1 1 100%; min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 1.08rem; font-weight: 700; border-radius: 12px; }
+.wa-copier.fait { background: var(--teal-700); }
+.wa-ouvrir { flex: 1 1 100%; min-height: 48px; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; }
+.wa-prop-suite { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; margin-top: 4px; }
+.wa-prop-suite .lien { min-height: 44px; padding: 0; }
+.wa-prop-suite .secondaire { margin-left: auto; }
+.wa-detail { margin: 4px 0 0; font-size: 0.84rem; color: var(--texte-2); }
+.wa-prop.en-cours, .wa-prop.echec { border-top-color: var(--bord-fort); }
+.wa-prop.echec { color: var(--texte); }
+.wa-prop.echec p { margin: 0; }
+.wa-prop-fait { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 12px 0 0; font-size: 0.86rem; color: var(--texte-2); }
+.wa-reglages-etat { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 10px 0 0; font-size: 0.92rem; }
+.wa-reglages-etat dt { color: var(--texte-2); }
+.wa-reglages-etat dd { margin: 0; }
+.wa-compte.connecte { color: var(--teal-700); font-weight: 600; }
+.wa-compte.deconnecte, .wa-compte.retire { color: var(--danger); font-weight: 600; }
+
+@media (min-width: 560px) {
+  .wa-copier { flex: 2 1 0; }
+  .wa-ouvrir { flex: 1 1 0; }
+}
+@media (min-width: 900px) {
+  .wa:not(.wa-indisponible) { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 0; height: calc(100dvh - var(--decalage, 80px)); margin: -32px -40px -48px; border-top: 1px solid var(--bord); }
+  .wa-liste .puces { flex-wrap: nowrap; gap: 6px; margin: 0; padding: 2px 0 8px; }
+  .wa-liste .puce { padding: 0 9px; font-size: 0.88rem; }
+  .wa-liste, .wa.avec-fil .wa-liste { display: block; overflow-y: auto; padding: 20px 16px; border-right: 1px solid var(--bord); background: var(--surface); }
+  .wa-fil, .wa.avec-fil .wa-fil { display: flex; flex-direction: column; min-height: 0; }
+  .wa-fil-vide { align-items: center; justify-content: center; }
+  .wa-fil-tete { position: static; margin: 0; padding: 10px 24px 4px; border-bottom: 0; }
+  .wa-fil-infos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 0; padding: 4px 24px 10px; }
+  .wa-retour { display: none; }
+  /* Un bandeau au-dessus (démonstration, crédit) : la boîte commence sous lui, sans le recouvrir. */
+  .contenu > :not(main) ~ main .wa:not(.wa-indisponible) { margin-top: 0; height: calc(100dvh - var(--decalage, 80px) + 48px); }
+  .wa-messages { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 28px; }
+  /* Le bouton Copier reste toujours visible : c'est le texte qui rétrécit quand la place manque. */
+  .wa-prop { flex: none; display: flex; flex-direction: column; margin: 0; padding: 12px 28px 10px; max-height: 68%; overflow-y: auto; border-top-width: 2px; }
+  .wa-prop textarea { flex: 1 1 8em; min-height: 5.5em; font-size: 0.98rem; }
+  .wa-messages { min-height: 120px; }
+  .wa-prop-actions { position: static; margin: 10px 0 0; padding: 0; }
+  .wa-prop-fait { margin: 0; padding: 10px 28px; border-top: 1px solid var(--bord); }
+}
+@media (max-width: 559px) { .wa-ouvrir-texte { display: none; } .wa-ouvrir-tete { width: 44px; height: 44px; padding: 0; justify-content: center; } }

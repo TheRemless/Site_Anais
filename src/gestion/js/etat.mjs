@@ -244,6 +244,8 @@ export const confirmationPermise = () => !!etat.brut && (estSuperAdmin() || estA
 // Les droits de la personne dans une autre entreprise accessible (une confirmation de course se crée dans Taxi ou Secret).
 export const permissionsDe = (id) => (etat.brut ? permissionsDans(contexte(), id) : []);
 export const peut = (code) => !!etat.brut && permissionsActives().includes(code);
+// Le rôle de la personne voit-il toute une autre entreprise accessible (portée « toute ») ? La boîte WhatsApp se lit à ce prix (migration 58).
+export const voitToutDans = (id) => !!etat.brut && voitTout(contexte(), id);
 // Entreprises dont la personne peut voir les analyses et les montants : c'est le périmètre de la vue d'ensemble.
 export const entitesAnalysables = () =>
   entitesAccessibles().filter((e) => {

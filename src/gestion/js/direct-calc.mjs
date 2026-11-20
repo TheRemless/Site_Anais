@@ -3,8 +3,8 @@
 
 // Écrans de lecture : la synchronisation peut les redessiner quand la base a changé (aucune saisie possible hors des fenêtres et des champs,
 // que saisieEnCours surveille à part). « Demandes du site » en fait partie : avant le 19.11.2026, une nouvelle demande n'y arrivait qu'en
-// rafraîchissant la page.
-export const ECRANS_DE_LECTURE = /^#?\/?$|^#\/(dossiers|clients|taches|reservations|du|partenaires|trajets|tarifs|catalogue|analyses|groupe|journal|demandes)(\?.*)?$|^#\/analyses(\/[a-z]+)?(\?.*)?$|^#\/(dossier|client|partenaire)\/[\w-]+(\?.*)?$/;
+// rafraîchissant la page. « WhatsApp » aussi (20.11.2026) : la réponse préparée en cours de modification est une saisie, que saisieEnCours protège.
+export const ECRANS_DE_LECTURE = /^#?\/?$|^#\/(dossiers|clients|taches|reservations|du|partenaires|trajets|tarifs|catalogue|analyses|groupe|journal|demandes|whatsapp)(\?.*)?$|^#\/analyses(\/[a-z]+)?(\?.*)?$|^#\/(dossier|client|partenaire)\/[\w-]+(\?.*)?$/;
 export const ecranDeLecture = (hash) => ECRANS_DE_LECTURE.test(hash || "#/");
 
 // Tables suivies en direct (Supabase Realtime, migration 47). Les autres changements arrivent par la relecture de chaque minute.

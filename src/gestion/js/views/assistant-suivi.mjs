@@ -112,7 +112,7 @@ function rendre(S, { plusieurs }) {
     tr("Par personne"),
     tableauTrie({
       colonnes: [
-        { cle: "nom", titre: N_("Personne"), rendu: (l) => l.nom || tr("Personne inconnue") },
+        { cle: "nom", titre: N_("Personne"), rendu: (l) => (l.systeme ? tr(l.nom) : l.nom || tr("Personne inconnue")) },
         { cle: "aujourdhui", titre: N_("Aujourd'hui"), num: true, rendu: (l) => h("span", { class: l.limiteAtteinte ? "as-limite" : "" }, `${l.aujourdhui} / ${S.limite}`, l.limiteAtteinte ? h("span", { class: "as-limite-texte" }, ` ${tr("limite atteinte")}`) : null) },
         { ...colAppels, titre: N_("Appels du mois") },
         { ...colCout, titre: N_("Coût du mois") },
@@ -133,7 +133,7 @@ function rendre(S, { plusieurs }) {
       ? h("ul", { class: "as-statuts" }, S.statuts.map((x) => h("li", { class: `as-${x.categorie}` }, h("strong", null, String(x.nombre)), ` ${tr(x.libelle)}`)))
       : h("p", { class: "vide-court" }, tr("Aucun échec ce mois-ci.")),
     S.echecs.length
-      ? h("details", { class: "st-defs" }, h("summary", null, tr("Les {n} derniers sur 30 jours", { n: S.echecs.length })), h("ul", { class: "as-derniers" }, S.echecs.map((x) => h("li", null, h("span", { class: "as-quand" }, `${formatDate(jourBangkok(x.cree_le))} ${heureBangkok(x.cree_le)}`), ` ${tr(x.libelleStatut)} · ${tr(x.libelleUsage)}`, x.personne ? ` · ${x.personne}` : "", plusieurs && x.entreprise ? ` · ${x.entreprise}` : ""))))
+      ? h("details", { class: "st-defs" }, h("summary", null, tr("Les {n} derniers sur 30 jours", { n: S.echecs.length })), h("ul", { class: "as-derniers" }, S.echecs.map((x) => h("li", null, h("span", { class: "as-quand" }, `${formatDate(jourBangkok(x.cree_le))} ${heureBangkok(x.cree_le)}`), ` ${tr(x.libelleStatut)} · ${tr(x.libelleUsage)}`, x.personne ? ` · ${x.personneSysteme ? tr(x.personne) : x.personne}` : "", plusieurs && x.entreprise ? ` · ${x.entreprise}` : ""))))
       : null,
     h("p", { class: "aide" }, tr("Les demandes arrêtées avant Claude (assistant éteint, droit manquant, limite du jour atteinte) ne sont pas notées dans le journal."))
   );
