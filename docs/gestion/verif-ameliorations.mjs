@@ -1,4 +1,4 @@
-// Vérifie la migration 54 (demandes d'amélioration depuis l'Assistant) sur un Postgres en mémoire : la table ne se lit que par les
+// Vérifie la migration 55 (demandes d'amélioration depuis l'Assistant) sur un Postgres en mémoire : la table ne se lit que par les
 // administratrices de l'entreprise, ne s'écrit par personne avec une session (seulement par les fonctions, clé de service) ; les cartes
 // acceptent les genres « reglage » et « amelioration ».
 //   mkdir /tmp/verif && cd /tmp/verif && npm init -y && npm i @electric-sql/pglite@0.2.17
@@ -28,9 +28,9 @@ await db.exec(harnais);
 await db.exec((fs.readFileSync(W + "schema.sql", "utf8") + fs.readFileSync(W + "donnees-ztp-depart.sql", "utf8")).replace("create extension if not exists pgcrypto;", ""));
 const migrations = fs.readdirSync(W).filter((n) => /^migration-(1[89]|[2-9]\d)-.*\.sql$/.test(n)).sort((a, b) => parseInt(a.split("-")[1]) - parseInt(b.split("-")[1]));
 for (const f of migrations) await db.exec(fs.readFileSync(W + f, "utf8"));
-ok(migrations.includes("migration-54-ameliorations.sql"), "la migration 54 est appliquée, après les autres");
-await db.exec(fs.readFileSync(W + "migration-54-ameliorations.sql", "utf8"));
-ok(true, "la migration 54 se rejoue sans erreur");
+ok(migrations.includes("migration-55-ameliorations.sql"), "la migration 55 est appliquée, après les autres");
+await db.exec(fs.readFileSync(W + "migration-55-ameliorations.sql", "utf8"));
+ok(true, "la migration 55 se rejoue sans erreur");
 
 const un = async (sql, p = []) => (await db.query(sql, p)).rows[0];
 const ent = {};
