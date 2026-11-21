@@ -36,7 +36,7 @@
 // Réponse en flux NDJSON (une ligne JSON par événement) : { t: "conversation" | "etape" | "texte" | "planning" | "vouchers" | "carte" | "fin" | "erreur" }.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, apprentissagesUnifies, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
+import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, apprentissagesUnifies, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, sansReflexionPassee, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
 import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
@@ -874,7 +874,8 @@ Deno.serve(async (req) => {
   // (bloc <conversation>) est retiré, comme les lectures de la boîte (retirerConversationsJointes).
   const gardesBruts = completerOrphelins(historique(debutValide([...(anciens.data || [])].reverse())));
   const gardes = waLue && waLue.reponses === "jamais" ? retirerConversationsJointes(gardesBruts) : gardesBruts;
-  const messages = historiquePourClaude(retirerLecturesWhatsApp(gardes), donnees);
+  // La réflexion des tours terminés ne repart pas (prompt.js, sansReflexionPassee) : sinon la réécriture ci-dessus casse sa signature (400).
+  const messages = sansReflexionPassee(historiquePourClaude(retirerLecturesWhatsApp(gardes), donnees));
   // Les corrections de l'équipe dans cette entreprise, d'avant l'ouverture de la conversation (le bloc reste le même d'un message à l'autre,
   // donc en cache). Sans la migration 54 ou en cas d'erreur : rien, l'agent marche comme avant.
   const premierTexte = (() => {

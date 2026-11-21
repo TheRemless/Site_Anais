@@ -551,7 +551,7 @@ test("historique : les lectures WhatsApp des messages précédents sont retirée
   assert.equal(apres[4].content.filter((b) => b.content === L.RESULTAT_RETIRE).length, 2);
   assert.equal(apres[0], hist[0]);
   const ts = lireFichier("supabase/functions/agent/index.ts");
-  assert.match(ts, /const messages = historiquePourClaude\(retirerLecturesWhatsApp\(gardes\), donnees\);/, "appliqué au chargement de l'historique, avant l'envoi à Claude");
+  assert.match(ts, /const messages = sansReflexionPassee\(historiquePourClaude\(retirerLecturesWhatsApp\(gardes\), donnees\)\);/, "appliqué au chargement de l'historique, avant l'envoi à Claude");
 });
 
 test("migration 69 : partenaire, chauffeur, hôtel et apporteur sont cherchés, lus et à faire comme un client ; un contact personnel jamais", () => {

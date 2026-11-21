@@ -351,6 +351,21 @@ export function debutValide(lignes = []) {
   return i < 0 ? [] : lignes.slice(i);
 }
 
+// Les blocs de réflexion (thinking, redacted_thinking) des tours terminés ne repartent pas. L'API lie la signature d'un bloc au préfixe exact
+// qui le précède : toute réécriture d'un message déjà envoyé (lecture WhatsApp retirée, résultat « interrompu » ajouté, historique coupé aux
+// 400 derniers, pièces jointes reconverties) rendait la conversation inutilisable (400 « Invalid `signature` in `thinking` block », 21.11.2026).
+// L'API accepte un historique sans la réflexion des tours précédents. La réflexion du tour en cours (boucle d'outils, boucle.js) reste
+// intacte : elle est ajoutée après cet appel. Un message réduit à sa seule réflexion garde un texte neutre (l'API refuse un contenu vide).
+// Rend un nouveau tableau, la base n'est pas réécrite : les conversations déjà cassées repartent d'elles-mêmes.
+const REFLEXION = new Set(["thinking", "redacted_thinking"]);
+export function sansReflexionPassee(messages = []) {
+  return (messages || []).map((m) => {
+    if (!m || m.role !== "assistant" || !Array.isArray(m.content) || !m.content.some((b) => b && REFLEXION.has(b.type))) return m;
+    const reste = m.content.filter((b) => !b || !REFLEXION.has(b.type));
+    return { ...m, content: reste.length ? reste : [{ type: "text", text: "…" }] };
+  });
+}
+
 // Un appel d'outil sans son résultat (fonction coupée pendant l'outil, écriture du résultat en échec) : l'API refuserait toute la conversation
 // (400) à chaque message suivant (audit I6). Chaque tool_use orphelin reçoit, juste après son message, un résultat d'erreur « interrompu ».
 // La base n'est pas réécrite : la réparation est refaite, identique, à chaque chargement (le cache de l'historique reste valable).
