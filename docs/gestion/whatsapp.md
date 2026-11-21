@@ -157,6 +157,17 @@ Constaté en production : aucune des 25 conversations n'avait de nom. Telnyx n'e
 
 - **Fonctions à redéployer** : `agent`, `whatsapp` et `whatsapp-envoi`. Contrôle : `verif-whatsapp-nom.mjs`. Retour : `retour-70-whatsapp-nom.sql` (les noms saisis restent dans `nom`, sans leur source).
 
+## Voucher envoyé dans la conversation du client (migration 73, 21.11.2026)
+
+Demande de Jérémy : l'image du voucher part par Telnyx dans la conversation WhatsApp du client, depuis Gestion. Nani la voit aussi sur son téléphone (coexistence). L'envoi habituel depuis le téléphone reste.
+
+- **Écran.** « Envoyer dans la conversation WhatsApp » dans la fenêtre d'envoi du voucher et sur la carte voucher de l'Assistant, seulement si la conversation du client existe (`conversationDuVoucher`, `whatsapp-voucher-calc.mjs`) : reliée au dossier ou à son client, de type client ou pas encore typée, jamais un contact personnel ni un prestataire, dans une entreprise que la personne administre. Rien ne part sans la confirmation : nom, numéro masqué en partie, image, message sous l'image modifiable (1024 octets au plus), état de la fenêtre de 24 h.
+- **Fonction.** `whatsapp-envoi`, en multipart (`voucher.js`), plutôt qu'une nouvelle fonction : même session, mêmes droits, même `contenuInterne`, même verrou et même résultat incertain que le texte, un seul déploiement. Ordre : conversation et `whatsapp_peut_ecrire`, réservation et dossier lus avec la session, `whatsapp_admin` de l'entreprise de la réservation (ni ZTP ni Mook), contact du client, fenêtre vue par la base, légende contrôlée, coexistence lue chez Telnyx (`coexistence_state`, cache de 3 minutes, seul `active` envoie), fenêtre relue chez Telnyx (`conversation_window`, en cas de doute rien ne part), verrou de 2 minutes (lecture, puis clé unique `evenement_id`).
+- **Image.** Le navigateur l'envoie avec la demande ; la fonction la dépose dans le bucket privé `whatsapp-sortant` seulement après tous les contrôles (aucune politique de stockage : personne n'y lit ni n'y écrit depuis l'outil). URL signée de 15 minutes avec `?v=` contre le cache de Meta, puis l'appel. Le fichier est effacé tout de suite sur un refus sûr, sinon au statut « remis », « lu » ou « échec » (fonction `whatsapp`), et au plus tard par la purge de la fonction `whatsapp` une heure après le dépôt (à chaque passage de la reprise, toutes les 5 minutes). Pas d'effacement juste après le 200 : Telnyx ne dit pas quand il télécharge le lien.
+- **Fil.** Le message est rangé avant l'appel (`whatsapp_ranger`, origine « gestion », type image, légende en texte), avec un média `{ statut: "voucher", chemin_sortant }` affiché « Voucher envoyé depuis Gestion (image non gardée) ». Un résultat inconnu suit le chemin du texte : « C'est parti » ou « Pas parti » après 30 secondes. Un envoi réussi est noté dans le dossier comme un partage.
+- **Démo.** Simulé, sans réseau : un message image apparaît dans le fil.
+- **Fonctions à redéployer** : `whatsapp-envoi` et `whatsapp`. Contrôle : `verif-whatsapp-voucher.mjs`. Retour : `retour-73-whatsapp-voucher.sql`.
+
 ## Étapes de Jérémy (une seule fois)
 
 ### 1. Clé publique de signature

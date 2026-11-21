@@ -507,6 +507,15 @@ input.couleur { width: 72px; padding: 2px; }
 .envoi-voucher .envoi-actions { flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
 @media (max-width: 719px) { .envoi-voucher .envoi-actions { flex-direction: column; align-items: stretch; } .envoi-voucher .envoi-actions button { width: 100%; } }
 .envoi-voucher .aide { margin: 12px 0 0; }
+/* Voucher envoyé dans la conversation WhatsApp du client (voucher-whatsapp.mjs) : destinataire, image plus petite, message modifiable. */
+.wa-voucher .wa-voucher-a { margin: 0 0 12px; overflow-wrap: anywhere; }
+.wa-voucher .wa-voucher-numero { color: var(--texte-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wa-voucher .envoi-apercu img { max-height: 34vh; }
+.wa-voucher .champ { margin: 14px 0 0; }
+.wa-voucher .champ .aide { margin: 4px 0 0; }
+.wa-voucher .champ .aide.erreur-form { color: var(--danger); }
+.wa-voucher > .actions { margin-top: 14px; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 719px) { .wa-voucher > .actions { flex-direction: column-reverse; align-items: stretch; } .wa-voucher > .actions button { width: 100%; } }
 
 /* Sélecteur de prestation dans l'éditeur */
 .choix-liste { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--bord); border-radius: 8px; }

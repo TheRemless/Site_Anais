@@ -6,8 +6,12 @@
 // Sans réponse sûre, le message reste « envoi » : l'écran demande de vérifier dans WhatsApp après 30 secondes (whatsapp_confirmer_envoi),
 // la reprise de la fonction « whatsapp » le passe en échec visible après 5 minutes. Les statuts de Telnyx (remis, lu, échec) arrivent
 // ensuite sur la fonction « whatsapp » (webhook_url de l'envoi).
+// Voucher en image (21.11.2026) : une demande en multipart (conversation_id, reservation_id, legende, fichier) part dans la conversation du
+// client par voucher.js, avec les mêmes garde-fous (session, whatsapp_peut_ecrire, fenêtre, contenuInterne, verrou, résultat incertain)
+// et en plus la coexistence et la fenêtre relues chez Telnyx. Même fonction que le texte : mêmes secrets, mêmes origines, un seul déploiement.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { lireEnvoi, corpsTelnyx, lireReponseTelnyx } from "./calc.js";
+import { lireEnvoi, corpsTelnyx, lireReponseTelnyx, lireEnvoiVoucher, imageAcceptee, IMAGE_MAX_OCTETS } from "./calc.js";
+import { envoyerVoucherImage } from "./voucher.js";
 import { fenetreOuverte } from "../whatsapp/proposer.js";
 import { controlerReponse } from "../agent/outils.js";
 import { contactApporteur, fichesDuContact, nomsABloquer, nomsContactsTypes } from "../agent/apporteur.js";
@@ -30,6 +34,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ erreur: "methode" }, 405);
   const autorisation = req.headers.get("authorization") || "";
   if (!/^Bearer .+/.test(autorisation)) return json({ erreur: "non_connecte" }, 401);
+  if ((req.headers.get("content-type") || "").startsWith("multipart/form-data")) return json(...(await voucher(req, autorisation)));
   const demande = lireEnvoi(await req.json().catch(() => null));
   if ("erreur" in demande) return json({ erreur: demande.erreur }, 400);
 
@@ -137,6 +142,34 @@ Deno.serve(async (req) => {
   if (errP2) console.error("whatsapp-envoi : propositions non soldées", errP2.message);
   return json({ ok: true, message_id: messageId, complet: complete });
 });
+
+// Voucher en image : lecture de la demande, puis voucher.js. Rend [corps, statut].
+async function voucher(req: Request, autorisation: string): Promise<[unknown, number]> {
+  // L'image fait 5 Mo au plus ; les champs texte, quelques Ko.
+  if (Number(req.headers.get("content-length") || 0) > IMAGE_MAX_OCTETS + 64 * 1024) return [{ erreur: "image_trop_grosse" }, 413];
+  const form = await req.formData().catch(() => null);
+  if (!form) return [{ erreur: "demande_invalide" }, 400];
+  const champ = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
+  const demande = lireEnvoiVoucher({ conversation_id: champ("conversation_id"), reservation_id: champ("reservation_id"), legende: champ("legende") });
+  if ("erreur" in demande) return [{ erreur: demande.erreur }, 400];
+  const fichier = form.get("fichier");
+  if (!(fichier instanceof File)) return [{ erreur: "image_invalide" }, 400];
+  if (fichier.size > IMAGE_MAX_OCTETS) return [{ erreur: "image_trop_grosse" }, 413];
+  const octets = new Uint8Array(await fichier.arrayBuffer());
+  const image = imageAcceptee(octets);
+  if (!("ok" in image)) return [{ erreur: image.erreur }, 400];
+
+  const URL_SB = Deno.env.get("SUPABASE_URL")!;
+  const sb = createClient(URL_SB, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: autorisation } }, auth: { persistSession: false } });
+  const admin = createClient(URL_SB, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const { data: qui } = await sb.auth.getUser();
+  if (!qui?.user) return [{ erreur: "non_connecte" }, 401];
+  const r = await envoyerVoucherImage(
+    { sb, admin, fetch, cle: Deno.env.get("TELNYX_API_KEY") || "", webhook: `${URL_SB}/functions/v1/whatsapp`, contenuInterne, uuid: () => crypto.randomUUID(), maintenant: () => Date.now(), journal: console.error },
+    { ...demande, octets, mime: image.mime, nom: String(fichier.name || "voucher.png").replace(/[^\p{L}\p{N} ._-]/gu, "").slice(0, 120) }
+  );
+  return [r.corps, r.status];
+}
 
 // Montants égaux à un net (et à aucun prix de vente) et noms de partenaires présents dans le texte. Le contact est un apporteur : ses propres
 // fiches sortent de la liste des noms (agent/apporteur.js, fichesDuContact), la réponse lui est adressée ; tout autre nom reste bloqué.

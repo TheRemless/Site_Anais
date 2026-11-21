@@ -813,6 +813,27 @@ export function creer() {
       await new Promise((r) => setTimeout(r, 200));
       return { demo: true };
     },
+    // Voucher en image : simulé, sans appel réseau. Mêmes refus que la fonction (droit d'écrire, conversation du client du dossier, fenêtre de
+    // 24 h), puis un message image « envoyé » apparaît dans le fil de la démo, sans fichier gardé.
+    async whatsappEnvoyerVoucher({ conversation_id, reservation_id, legende = "", fichier }) {
+      await new Promise((r) => setTimeout(r, 400));
+      const c = conversationEcrite(conversation_id);
+      const r = data.reservations.find((x) => x.id === reservation_id && accessibles().includes(x.entite_id));
+      if (!c || !r || !adminWhatsApp(r.entite_id)) return { erreur: "droit_manquant" };
+      const { contactVoucher, legendeValide } = await import("./whatsapp-voucher-calc.mjs");
+      const { fenetre, apercuDepuisMessages } = await import("./whatsapp-calc.mjs");
+      const contact = contactVoucher(c, data.dossiers.find((d) => d.id === r.dossier_id) || null);
+      if (!contact.ok) return { erreur: contact.erreur };
+      if (!fenetre(data.whatsapp_messages.filter((m) => m.conversation_id === c.id)).ouverte) return { erreur: "fenetre_fermee" };
+      if (!legendeValide(legende)) return { erreur: "legende_trop_longue" };
+      const maintenant = new Date().toISOString();
+      const texte = String(legende || "").trim() || null;
+      data.whatsapp_messages.push({ id: uid(), conversation_id: c.id, sens: "sortant", origine: "gestion", type: "image", texte, medias: [{ type: "image", mime: "image/png", taille: (fichier && fichier.size) || null, nom: (fichier && fichier.name) || "voucher.png", statut: "voucher", chemin_sortant: null, reservation_id }], envoye_le: maintenant, recu_le: maintenant, modifie_le: null, supprime_le: null, statut_envoi: "envoye", erreur_envoi: null, statut_le: maintenant });
+      Object.assign(c, { dernier_message_le: maintenant, dernier_sens: "sortant", non_lus: 0 }, apercuDepuisMessages(data.whatsapp_messages.filter((m) => m.conversation_id === c.id)));
+      sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+      return { ok: true, demo: true };
+    },
     // Comme whatsapp_confirmer_envoi (migration 64) : parti, le message reste et la réponse est soldée ; pas parti, il sort du fil.
     async whatsappConfirmerEnvoi(conversationId, parti) {
       const c = conversationEcrite(conversationId);
