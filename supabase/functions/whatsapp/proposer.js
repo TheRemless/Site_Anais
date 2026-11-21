@@ -39,12 +39,19 @@ const heure = (iso) => {
 };
 
 // Numéros de téléphone, de compte ou de carte (9 chiffres ou plus, séparateurs compris) et IBAN : masqués avant de partir chez Anthropic.
-// Une date (20.11.2026), une heure ou un prix gardent leurs chiffres.
-const DATE = /\b\d{1,2}[./]\d{1,2}[./](?:\d{4}|\d{2})\b/;
+// Une date (20.11.2026), une heure ou un prix gardent leurs chiffres. Revue de sécurité de la PR 295 : une date collée à un numéro
+// (« 23.11.2026 / 0812345678 ») laissait passer tout le numéro. Les dates sont mises de côté (un jeton), puis le reste est masqué, puis
+// elles reviennent. Seule une date entière compte : « 06.12.34.56.78 » (un numéro à la française) n'en est pas une.
+const DATE = /(?<![\d./])\d{1,2}[./]\d{1,2}[./](?:\d{4}|\d{2})(?![./]?\d)/g;
 export function masquer(t) {
-  return String(t || "")
+  const dates = [];
+  const sans = String(t || "")
+    .replace(/\u0000/g, "")
+    .replace(DATE, (d) => `\u0000${dates.push(d) - 1}\u0000`);
+  return sans
     .replace(/\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b/g, "[numéro masqué]")
-    .replace(/\+?\d[\d\s.\-()/]{6,}\d/g, (m) => (m.replace(/\D/g, "").length >= 9 && !DATE.test(m) ? "[numéro masqué]" : m));
+    .replace(/\+?\d[\d\s.\-()/]{6,}\d/g, (m) => (m.replace(/\D/g, "").length >= 9 ? "[numéro masqué]" : m))
+    .replace(/\u0000(\d+)\u0000/g, (_, i) => dates[Number(i)] || "");
 }
 
 // Une ligne par message, du plus ancien au plus récent. Un média se dit par son type et sa légende ; un message supprimé par le client
@@ -52,8 +59,9 @@ export function masquer(t) {
 export function ligneMessage(m, { qui = "Nani" } = {}) {
   if (m.supprime_le) return null;
   const auteur = m.sens === "entrant" ? "Client" : qui;
-  const medias = (m.medias || []).map((x) => `[${x.type || "fichier"}${x.legende ? ` : ${court(x.legende, 200)}` : ""}]`).join(" ");
-  const corps = masquer([m.texte ? court(m.texte, 2000) : "", medias].filter(Boolean).join(" "));
+  // Masqué sur le texte entier, puis coupé : un numéro coupé avant le masquage passait en morceaux (revue de la PR 295).
+  const medias = (m.medias || []).map((x) => `[${x.type || "fichier"}${x.legende ? ` : ${court(masquer(x.legende), 200)}` : ""}]`).join(" ");
+  const corps = [m.texte ? court(masquer(m.texte), 2000) : "", medias].filter(Boolean).join(" ");
   if (!corps) return null;
   return `[${auteur} ${heure(m.envoye_le)}${m.modifie_le ? ", modifié" : ""}] ${corps}`;
 }
@@ -115,9 +123,12 @@ export const cleNumero = (v) => {
   return n.length >= 8 ? n.slice(-9) : "";
 };
 // Numéros des fiches partenaires (contact.telephones : texte ou liste), toutes entreprises de l'organisation.
+// Une fiche « apporteur » (migration 68) n'en fait pas partie : la travel planner qui envoie des clients écrit comme une cliente, sa fiche ne
+// coupe ni le tri, ni la réponse préparée, ni le suivi.
 export function numerosPartenaires(partenaires = []) {
   const out = new Set();
   for (const p of partenaires) {
+    if (p && p.categorie === "apporteur") continue;
     const t = p && p.contact ? p.contact.telephones : null;
     const liste = Array.isArray(t) ? t : typeof t === "string" ? t.split(/[,;/\n]|\s{2,}/) : [];
     for (const x of liste) {

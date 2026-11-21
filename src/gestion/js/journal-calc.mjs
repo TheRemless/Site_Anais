@@ -15,7 +15,8 @@ export function valeurJournal(cle, v, ctx = {}) {
   };
   if (cle === "prestation_id") return chercher(ctx.prestations, (x) => x.libelle || "");
   if (cle === "trajet_id") return chercher(ctx.trajets, (x) => `${x.de} → ${x.vers}${x.depart ? `, ${x.depart}` : ""}`);
-  if (cle === "partenaire_id") return chercher(ctx.partenaires, (x) => x.nom || "");
+  // apporteur_id (migration 68) : la fiche apporteur est un partenaire, son nom s'affiche comme celui d'un partenaire.
+  if (cle === "partenaire_id" || cle === "apporteur_id") return chercher(ctx.partenaires, (x) => x.nom || "");
   if (cle === "client_id") return chercher(ctx.clients, (x) => [x.prenom, x.nom].filter(Boolean).join(" "));
   if (["responsable_id", "assignee_id", "fait_par"].includes(cle)) return (ctx.personnes && ctx.personnes.get(v)) || tr("une personne");
   if (cle === "personnes" && typeof v === "object") return personnesTexte(v) || "0";

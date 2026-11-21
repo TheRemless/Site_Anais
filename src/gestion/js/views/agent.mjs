@@ -20,7 +20,10 @@ import { rafraichirBandeauCredit } from "./bandeau-credit.mjs";
 import { piecesSaisie, bullePieces, carteBrochure } from "./agent-pieces.mjs";
 import { erreurFichier } from "../pieces-jointes.mjs";
 import { espaceUnifie, carteUnifiee, avecCorrections, entrepriseSuivante, badgeModifiable, planCreation, creerDossiersLies, lierDossiers, carteDeLEntreprise, ouvrirDansEntreprise, conversationsDesDeux, ordreEnvois, marqueUnifiee, LIBELLES_MARQUES } from "../espace-unifie-calc.mjs";
-import { CLE_DEMANDE_AGENT, demandeAgent, liaisonApresDossier, ERREURS_AGENT_WHATSAPP } from "../whatsapp-suivi-calc.mjs";
+import { CLE_DEMANDE_AGENT, liaisonApresDossier, ERREURS_AGENT_WHATSAPP } from "../whatsapp-suivi-calc.mjs";
+import { morceauxCitations, nomConversation } from "../whatsapp-calc.mjs";
+import { lienWhatsApp as lienBoiteWhatsApp } from "../agent-whatsapp-lecture.mjs";
+import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, questionBoiteAOuvrir, questionsProposees } from "../whatsapp-relie-calc.mjs";
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -127,6 +130,9 @@ const ETAPES = {
   lire_reglages: N_("Je lis les réglages"),
   proposer_reglage: N_("Je prépare le réglage"),
   proposer_amelioration: N_("Je prépare la demande d'amélioration"),
+  chercher_conversations: N_("Je cherche dans WhatsApp"),
+  lire_conversation: N_("Je lis la conversation WhatsApp"),
+  a_faire_whatsapp: N_("Je regarde ce qui attend dans WhatsApp"),
 };
 
 const disponible = () => agentActif(reglages()) && peut("partenaires.lire") && peut("dossiers.ecrire");
@@ -262,6 +268,9 @@ export async function vueAgent(idOuvert = "") {
   let enCours = false;
   // La conversation a été ouverte depuis l'écran WhatsApp (« Créer le dossier ») : la flèche retour y ramène.
   let depuisWhatsAppEcran = false;
+  // « Demander à l'assistant » depuis une conversation WhatsApp (PR B) : la question attend que la personne la tape ou la choisisse.
+  // { whatsapp_conversation_id, entite_id, agent_conversation_id } ; null ailleurs.
+  let questionWa = null;
   let conv = null; // la conversation ouverte (null : nouvelle)
   let fil = { messages: [], cartes: [] };
   const zoneFil = h("div", { class: "agent-messages" });
@@ -285,8 +294,9 @@ export async function vueAgent(idOuvert = "") {
     }
   });
 
-  async function ouvrir(id) {
+  async function ouvrir(id, { question = null } = {}) {
     depuisWhatsAppEcran = false;
+    questionWa = question;
     if (id !== idOuvert) {
       idOuvert = id;
       history.replaceState(null, "", id ? `#/agent/${id}` : "#/agent/nouvelle");
@@ -312,21 +322,37 @@ export async function vueAgent(idOuvert = "") {
     // « Créer le dossier » ou « Mettre à jour le dossier » depuis l'écran WhatsApp (migration 61) : la demande part aussitôt, la fonction lit
     // elle-même l'échange (texte, photos, PDF). Seulement dans l'entreprise de la conversation, une seule fois.
     let depuisWhatsApp = null;
-    if (!conv) {
-      try {
+    let questionBoite = "";
+    try {
+      // La demande de l'écran WhatsApp est retirée à chaque lecture, qu'elle serve ou non (revue de sécurité de la PR 297) ; elle ne vaut que
+      // deux minutes et pour la conversation ouverte (demandeAOuvrir).
+      const brut = sessionStorage.getItem(CLE_DEMANDE_AGENT);
+      sessionStorage.removeItem(CLE_DEMANDE_AGENT);
+      const d = demandeAOuvrir(brut, { conv, entiteId: etat.entiteId });
+      // « Demander à l'assistant » (PR B) : dans la nouvelle conversation, ou dans celle déjà liée à cette conversation WhatsApp.
+      if (d && d.question) questionWa = d.question;
+      if (d && d.dossier) depuisWhatsApp = d.dossier;
+      const brutQ = sessionStorage.getItem(CLE_QUESTION_AGENT);
+      sessionStorage.removeItem(CLE_QUESTION_AGENT);
+      if (!conv) {
         const b = sessionStorage.getItem(CLE_BROUILLON);
         if (b) (sessionStorage.removeItem(CLE_BROUILLON), (champ.value = b), ajuster());
-        const w = demandeAgent(sessionStorage.getItem(CLE_DEMANDE_AGENT));
-        sessionStorage.removeItem(CLE_DEMANDE_AGENT);
-        if (w && (!w.entite_id || w.entite_id === etat.entiteId)) depuisWhatsApp = w;
-      } catch {
-        // stockage refusé
+        // La vue « À faire » de WhatsApp : sa question part au clic de la personne, une seule fois.
+        questionBoite = questionBoiteAOuvrir(brutQ, { entiteId: etat.entiteId });
       }
+    } catch {
+      // stockage refusé
     }
+    saisieQuestion();
     if (depuisWhatsApp) {
       depuisWhatsAppEcran = true;
       return void envoyer({ whatsapp: depuisWhatsApp });
     }
+    if (questionWa) {
+      depuisWhatsAppEcran = true;
+      dessinerFil();
+    }
+    if (questionBoite) return void envoyer({ texte: questionBoite });
     champ.focus({ preventScroll: true });
   }
 
@@ -337,26 +363,39 @@ export async function vueAgent(idOuvert = "") {
     dessinerListe();
   }
 
+  // La conversation WhatsApp liée (migration 61) ou en attente de la première question (PR B), et son lien, construit par lienWhatsApp
+  // (identifiants contrôlés) : jamais une adresse libre.
+  const waLiee = () => (conv && conv.whatsapp_conversation_id) || (questionWa && questionWa.whatsapp_conversation_id) || "";
+  const lienWaLiee = () => {
+    const id = waLiee();
+    const wc = id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === id) : null;
+    return lienBoiteWhatsApp({ conversation: id, entite: (wc && wc.entite_id) || "" });
+  };
+  const nomWaLiee = () => {
+    const wc = (etat.brut.whatsapp_conversations || []).find((x) => x.id === waLiee());
+    return wc ? nomConversation(wc, wc.client_id ? (etat.brut.clients || []).find((x) => x.id === wc.client_id) || null : null) : "";
+  };
   function enTete() {
     const dossier = conv && conv.dossier_id ? etat.db.dossiers.find((d) => d.id === conv.dossier_id) : null;
+    const lienWa = waLiee() ? lienWaLiee() : "";
     return h(
       "header",
       { class: "agent-fil-tete" },
       // Venue de WhatsApp, la flèche y ramène (design n° 4) ; sinon, à la liste.
-      conv && conv.whatsapp_conversation_id && depuisWhatsAppEcran
-        ? h("a", { class: "bouton-icone lien agent-retour", href: `#/whatsapp?c=${conv.whatsapp_conversation_id}`, "aria-label": tr("Retour à la conversation WhatsApp") }, icone("retour", 22))
+      lienWa && depuisWhatsAppEcran
+        ? h("a", { class: "bouton-icone lien agent-retour", href: lienWa, "aria-label": tr("Retour à la conversation WhatsApp") }, icone("retour", 22))
         : h("button", { class: "bouton-icone agent-retour", type: "button", onclick: fermer, "aria-label": tr("Retour aux conversations") }, icone("retour", 22)),
       h(
         "div",
         { class: "agent-fil-titre" },
-        h("h2", null, conv ? titreDe(conv) : tr("Nouvelle conversation")),
-        dossier || (conv && conv.whatsapp_conversation_id)
+        h("h2", null, conv ? titreDe(conv) : questionWa ? nomWaLiee() || tr("Nouvelle conversation") : tr("Nouvelle conversation")),
+        dossier || lienWa
           ? h(
               "p",
               { class: "agent-fil-liens" },
               dossier ? h("a", { class: "agent-dossier", href: `#/dossier/${dossier.id}` }, tr("Dossier {ref}", { ref: dossier.ref })) : null,
-              // Depuis WhatsApp (design n° 4) : un lien pour revenir à la conversation du client.
-              conv && conv.whatsapp_conversation_id ? h("a", { class: "agent-dossier", href: `#/whatsapp?c=${conv.whatsapp_conversation_id}` }, icone("whatsapp", 14), tr("Conversation WhatsApp")) : null
+              // Liée à WhatsApp (design n° 4, PR B) : un lien pour revenir à la conversation du client.
+              lienWa ? h("a", { class: "agent-dossier", href: lienWa }, icone("whatsapp", 14), tr("Voir la conversation WhatsApp")) : null
             )
           : null
       ),
@@ -423,9 +462,39 @@ export async function vueAgent(idOuvert = "") {
     return h("div", { class: "agent-vide" }, h("p", null, tr("Une conversation par client. Écrivez la demande comme à une collègue, ou collez le message du client.")), h("ul", { class: "agent-suggestions" }, s.map((x) => h("li", null, h("button", { class: "secondaire", type: "button", onclick: () => ((champ.value = x), ajuster(), champ.focus()) }, x)))));
   }
 
+  // Les questions rapides sur la conversation WhatsApp (PR B) : un tap envoie la question. Dans une conversation déjà liée, une nouvelle
+  // conversation sur ce contact reste possible.
+  function questionsRapides() {
+    if (!questionWa) return null;
+    const nouvelle = conv ? h("button", { class: "lien agent-wa-nouvelle", type: "button", onclick: () => ouvrir("", { question: { ...questionWa, agent_conversation_id: null } }) }, tr("Nouvelle conversation sur ce contact")) : null;
+    return h(
+      "div",
+      { class: "agent-vide agent-wa-questions" },
+      h("p", null, icone("whatsapp", 16), " ", tr("Les derniers messages de la conversation sont joints. Posez votre question ou choisissez :")),
+      // En lecture seule (entreprise que la personne n'administre pas), aucune carte : « Prépare les dossiers » n'est pas proposé.
+      h("ul", { class: "agent-wa-rapides" }, questionsProposees(questionWa).map((q) => h("li", null, h("button", { class: "secondaire", type: "button", onclick: () => envoyer({ texte: tr(q) }) }, tr(q))))),
+      questionWa.lecture_seule ? h("p", { class: "aide" }, tr("Lecture seule : l'assistant répond, sans proposer de dossier.")) : null,
+      nouvelle
+    );
+  }
+  // La zone de saisie pendant qu'une question WhatsApp attend (revue de sécurité de la PR 297) : pas de pièce jointe (la question part avec
+  // l'échange, sans fichier) et QUESTION_MAX caractères au plus, avec un message clair à la limite. Sinon, la saisie habituelle.
+  const avertissementLongueur = h("p", { class: "agent-joints-erreur agent-wa-longueur", role: "status" });
+  function saisieQuestion() {
+    const attente = !!questionWa;
+    pieces.bloquer(attente ? tr("Pièces jointes indisponibles pour une question sur WhatsApp : la question part avec les derniers messages. Joignez les photos dans le message suivant.") : "");
+    champ.maxLength = attente ? QUESTION_MAX : 8000;
+    if (!attente) avertissementLongueur.textContent = "";
+    else if (!avertissementLongueur.isConnected) pieces.erreur.after(avertissementLongueur);
+    verifierLongueur();
+  }
+  function verifierLongueur() {
+    avertissementLongueur.textContent = questionWa && champ.value.length >= QUESTION_MAX ? tr("Une question sur WhatsApp tient en {max} caractères au plus.", { max: QUESTION_MAX }) : "";
+  }
+  champ.addEventListener("input", verifierLongueur);
   function dessinerFil() {
     const items = filDepuis(fil.messages, fil.cartes);
-    zoneFil.replaceChildren(...[bandeauAutreEntreprise(), ...(items.length ? items.map((it, i) => element(it, i)) : [suggestions()])].filter(Boolean));
+    zoneFil.replaceChildren(...[bandeauAutreEntreprise(), ...(items.length ? items.map((it, i) => element(it, i)) : questionWa ? [] : [suggestions()]), questionsRapides()].filter(Boolean));
     majToutValider();
     colonneFil.replaceChildren(enTete(), zoneFil, barreTout, formulaire);
     descendre();
@@ -439,6 +508,8 @@ export async function vueAgent(idOuvert = "") {
     if (it.genre === "personne") {
       // Le premier message d'une conversation ouverte depuis WhatsApp : l'échange du client, à gauche et replié (design n° 4).
       const echange = i === 0 && conv && conv.whatsapp_conversation_id ? echangeWhatsApp(it.texte, { depuisWhatsApp: true }) : echangeWhatsApp(it.texte);
+      // « Demander à l'assistant » (PR B) : l'échange replié, puis la question de la personne, à droite comme ses messages.
+      if (echange && echange.question) return h("div", { class: "agent-question-wa" }, bulleWhatsApp(echange), h("div", { class: "agent-bulle de-personne" }, paragraphes(echange.question)));
       if (echange) return bulleWhatsApp(echange);
       return h("div", { class: "agent-bulle de-personne" }, paragraphes(it.texte));
     }
@@ -447,7 +518,9 @@ export async function vueAgent(idOuvert = "") {
     if (it.genre === "planning") return frise(it.planning);
     return carte(it.carte);
   }
-  const paragraphes = (t) => String(t).split(/\n{2,}/).map((p) => h("p", null, ...p.split("\n").flatMap((l, i) => (i ? [h("br"), l] : [l]))));
+  // Les citations de la boîte WhatsApp (#/whatsapp?c=…&m=…) deviennent des liens ; le reste du texte reste du texte.
+  const avecCitations = (l) => morceauxCitations(l).map((m) => (m.lien ? h("a", { class: "agent-citation", href: m.lien }, m.message ? tr("voir le message") : tr("voir la conversation")) : m.texte));
+  const paragraphes = (t) => String(t).split(/\n{2,}/).map((p) => h("p", null, ...p.split("\n").flatMap((l, i) => (i ? [h("br"), ...avecCitations(l)] : avecCitations(l)))));
   function bulleWhatsApp(echange, { nom = conv ? titreDe(conv) : "" } = {}) {
     const n = echange.messages.length;
     return h(
@@ -459,10 +532,14 @@ export async function vueAgent(idOuvert = "") {
   }
 
   // ---- Envoi ------------------------------------------------------------------------------------------------------------------
-  async function envoyer({ whatsapp = null } = {}) {
-    const texte = whatsapp ? "" : champ.value.trim();
-    const joints = whatsapp ? [] : pieces.noms();
+  async function envoyer({ whatsapp = null, texte: donne = "" } = {}) {
+    const texte = whatsapp ? "" : (donne || champ.value).trim();
+    // La première question sur une conversation WhatsApp (PR B) : la fonction joint l'échange elle-même, sans pièce jointe tapée ici.
+    // Dans une conversation déjà liée et rouverte depuis WhatsApp (point 4 de la revue de la PR 297) : la fonction joint aussi l'échange frais.
+    const question = questionWa && !whatsapp ? questionWa : null;
+    const joints = whatsapp || question ? [] : pieces.noms();
     if ((!texte && !joints.length && !whatsapp) || enCours) return;
+    if (question && texte.length > QUESTION_MAX) return void (avertissementLongueur.textContent = tr("Une question sur WhatsApp tient en {max} caractères au plus.", { max: QUESTION_MAX }));
     // Bloqué dès maintenant : un second appui pendant la réduction des images n'envoie pas deux fois.
     enCours = true;
     // Les fichiers sont préparés (images réduites) avant l'envoi ; une erreur les garde joints et dit quoi faire.
@@ -480,12 +557,20 @@ export async function vueAgent(idOuvert = "") {
     }
     envoyerBouton.disabled = true;
     envoyerBouton.setAttribute("aria-busy", "true");
-    champ.value = "";
+    if (!donne) champ.value = "";
     ajuster();
+    // Les questions rapides disparaissent dès qu'une question part.
+    if (questionWa) {
+      questionWa = null;
+      const q = zoneFil.querySelector(".agent-wa-questions");
+      if (q) q.remove();
+      saisieQuestion();
+    }
     if (!zoneFil.querySelector(".agent-bulle, .agent-frise, .agent-carte")) zoneFil.replaceChildren();
     if (joints.length) zoneFil.append(bullePieces(joints));
     if (texte) zoneFil.append(h("div", { class: "agent-bulle de-personne" }, paragraphes(texte)));
     if (whatsapp) zoneFil.append(h("p", { class: "agent-etape-wa" }, icone("whatsapp", 16), whatsapp.whatsapp_mode === "maj" ? tr("Mise à jour du dossier d'après la conversation WhatsApp") : tr("Dossier d'après la conversation WhatsApp")));
+    if (question) zoneFil.append(h("p", { class: "agent-etape-wa" }, icone("whatsapp", 16), tr("Avec les derniers messages de la conversation WhatsApp")));
     // Les fichiers choisis restent en mémoire : si l'envoi échoue, ils reviennent dans la zone de saisie.
     const choisis = pieces.fichiers();
     pieces.vider();
@@ -494,7 +579,11 @@ export async function vueAgent(idOuvert = "") {
     let texteRecu = "";
     zoneFil.append(etape);
     descendre();
-    const corps = whatsapp ? { entite_id: etat.entiteId, whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, whatsapp_pieces: whatsapp.whatsapp_pieces || [], texte: "" } : { entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) };
+    const corps = whatsapp
+      ? { entite_id: etat.entiteId, whatsapp_conversation_id: whatsapp.whatsapp_conversation_id, whatsapp_mode: whatsapp.whatsapp_mode, whatsapp_pieces: whatsapp.whatsapp_pieces || [], texte: "" }
+      : question
+        ? { entite_id: etat.entiteId, ...(conv ? { conversation_id: conv.id } : {}), whatsapp_conversation_id: question.whatsapp_conversation_id, whatsapp_mode: "question", whatsapp_pieces: [], texte }
+        : { entite_id: etat.entiteId, conversation_id: conv ? conv.id : null, texte, ...(fichiers.length ? { fichiers } : {}) };
     // Une exception (connexion coupée, écran qui lève) ne laisse jamais « L'assistant réfléchit » ni le bouton éteint (audit I7).
     const r = await etat.store.agentEnvoyer(corps, (ev) => {
       if (ev.t === "conversation" && !conv) {
@@ -536,6 +625,8 @@ export async function vueAgent(idOuvert = "") {
       else zoneFil.append(h("p", { class: "agent-erreur", role: "alert" }, erreurTexte(r.erreur)));
       // Le texte revient dans la zone, sauf après une coupure en cours de réponse : le serveur l'a déjà gardé, la relecture le montre.
       if ((!conv || r.erreur !== "coupure") && !champ.value.trim()) champ.value = texte;
+      // La question n'est pas partie : elle reste liée à WhatsApp pour le prochain essai (sauf contact personnel ou lecture seule refusée).
+      if (question && !["contact_personnel", "whatsapp_introuvable"].includes(r.erreur)) (questionWa = question), saisieQuestion();
       if (choisis.length) pieces.ajouter(choisis);
     }
     enCours = false;

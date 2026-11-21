@@ -286,9 +286,10 @@ export const erreurPreparer = (code) => ERREURS_PREPARER[code] || N_("Préparati
 export const erreurEnvoi = (code) => (envoiIncertain(code) ? ERREURS_ENVOI.verifier_whatsapp : ERREURS_ENVOI[code]);
 
 // Adresse de l'écran : « #/whatsapp?c=<conversation>&entite=<entreprise> » (la notification l'ouvre ainsi).
+// `m` : le message cité par l'Assistant (lien #/whatsapp?c=…&m=…, agent/whatsapp-lecture.js). L'écran défilera jusqu'à lui (PR suivante).
 export function lireAdresse(hash = "") {
   const q = new URLSearchParams(String(hash).split("?")[1] || "");
-  return { conversation: q.get("c") || "", entite: q.get("entite") || "" };
+  return { conversation: q.get("c") || "", entite: q.get("entite") || "", message: q.get("m") || "" };
 }
 // La ligne « fait » (traitée, ignorée, répondu depuis l'app) ne vaut que pour le dernier message du client : une proposition plus ancienne
 // que lui ne dit rien de la réponse à ce message. Sans date, on ne conclut rien.
@@ -305,6 +306,24 @@ export function entrepriseProposee(prop, entites = []) {
   if (!prop) return null;
   if (prop.entreprise_proposee) return entites.find((e) => marqueEntite(e) === prop.entreprise_proposee) || null;
   return prop.entite_id ? entites.find((e) => e.id === prop.entite_id) || null : null;
+}
+
+// Les liens que l'Assistant cite (#/whatsapp?c=…&m=…&entite=…, agent/whatsapp-lecture.js, lienWhatsApp), découpés dans un texte pour que
+// l'écran de l'Assistant les rende cliquables. Seulement la forme exacte des liens de l'outil, identifiants compris : rien d'autre ne
+// devient un lien. Rend [{ texte }] et [{ lien, message }] dans l'ordre.
+const UUID_LIEN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const LIEN_CITATION = new RegExp(`#/whatsapp\\?c=${UUID_LIEN}(?:&m=${UUID_LIEN})?(?:&entite=${UUID_LIEN})?(?![0-9a-z&=-])`, "gi");
+export function morceauxCitations(texte = "") {
+  const t = String(texte || "");
+  const out = [];
+  let i = 0;
+  for (const m of t.matchAll(LIEN_CITATION)) {
+    if (m.index > i) out.push({ texte: t.slice(i, m.index) });
+    out.push({ lien: m[0], message: /&m=/.test(m[0]) });
+    i = m.index + m[0].length;
+  }
+  if (i < t.length || !out.length) out.push({ texte: t.slice(i) });
+  return out;
 }
 
 export const adresseConversation = (conv) => (conv ? `#/whatsapp?c=${conv.id}${conv.entite_id ? `&entite=${conv.entite_id}` : ""}` : "#/whatsapp");

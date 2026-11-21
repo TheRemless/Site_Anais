@@ -7,7 +7,7 @@ import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { dateBangkok } from "../assistant/calc.js";
 import { iaOuverte, journalEnCours, partenairesDe, plafondsOuverts } from "./reponse.ts";
 import { cleNumero } from "./proposer.js";
-import { RESUME_ATTENTE_MS, lirePromesse, lireResume, parametresPromesse, parametresResume, peutEtrePromesse, resumeAFaire, signalPaiement, tachePromesse } from "./suivi.js";
+import { RESUME_ATTENTE_MS, lirePromesse, lireResume, parametresPromesse, parametresResume, peutEtrePromesse, resumeAFaire, sansColonneConversation, signalPaiement, tachePromesse } from "./suivi.js";
 
 const absente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 
@@ -79,7 +79,13 @@ async function promesse(db: SupabaseClient, anthropic: Anthropic, conv: Record<s
   const p = lirePromesse(r, ajd);
   if (!p) return void (await rendre());
   const client = conv.client_id ? (await db.from("clients").select("prenom").eq("id", conv.client_id).maybeSingle()).data : null;
-  const { error } = await db.from("taches").insert(tachePromesse({ conv, quoi: p.quoi, echeance: p.echeance, prenom: client?.prenom || "" }));
+  const tache = tachePromesse({ conv, quoi: p.quoi, echeance: p.echeance, prenom: client?.prenom || "" });
+  let { error } = await db.from("taches").insert(tache);
+  // Migration 67 pas encore passée : la tâche s'écrit sans le lien vers la conversation (rapprochée comme avant par l'Assistant).
+  if (error && sansColonneConversation(error)) {
+    const { whatsapp_conversation_id: _c, ...sansLien } = tache as Record<string, unknown>;
+    ({ error } = await db.from("taches").insert(sansLien));
+  }
   if (error) {
     await rendre();
     return console.error("whatsapp : tâche de promesse", error.message);

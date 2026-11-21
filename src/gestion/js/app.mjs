@@ -12,7 +12,7 @@ import { ecranDeLecture, TABLES_EN_DIRECT, momentDeRecharger, nouvellesDemandes 
 import { suivreSaisies, champsModifies, curseurDansUnChamp, nouvelEcran, ecranTouche } from "./saisie.mjs";
 import { tr, N_, pluriel, LANGUES, langueActive } from "./i18n.mjs";
 import { reglagesFid } from "./fiduciaire-calc.mjs";
-import { agentActif } from "./agent-calc.mjs";
+import { agentActif, quand } from "./agent-calc.mjs";
 import { bandeauCredit } from "./views/bandeau-credit.mjs";
 import { bandeauSauvegarde } from "./views/bandeau-sauvegarde.mjs";
 import { lecteurWhatsApp, badgeWhatsApp, TABLES_WHATSAPP } from "./whatsapp-calc.mjs";
@@ -34,7 +34,7 @@ const ROUTES = [
   [/^#\/encaisser$/, "encaisser", vers(() => import("./views/encaisser.mjs"), "vueEncaisser")],
   [/^#\/a-verifier$/, "a-verifier", vers(() => import("./views/a-verifier.mjs"), "vueAVerifier")],
   [/^#\/partenaires$/, "partenaires", vers(() => import("./views/partenaires.mjs"), "listePartenaires")],
-  [/^#\/partenaire\/([\w-]+)$/, "partenaires", vers(() => import("./views/partenaires.mjs"), "fichePartenaire")],
+  [/^#\/partenaire\/([\w-]+)(?:\?.*)?$/, "partenaires", vers(() => import("./views/partenaires.mjs"), "fichePartenaire")],
   [/^#\/tarifs(?:\?.*)?$/, "tarifs", vers(() => import("./views/tarifs.mjs"), "vueTarifs")],
   [/^#\/trajets(?:\?.*)?$/, "trajets", vers(() => import("./views/trajets.mjs"), "vueTrajets")],
   [/^#\/regles$/, "regles", vers(() => import("./views/regles.mjs"), "vueRegles")],
@@ -496,7 +496,29 @@ function ouvrirRecherche() {
   const liste = h("ul", { id: "palette-liste", class: "palette-liste", role: "listbox" });
   let resultats = [];
   let actif = 0;
+  // Messages WhatsApp (PR B, whatsapp_rechercher) : seulement pour qui lit la boîte ici, 300 ms après la dernière frappe, deux caractères au
+  // moins. Sans IA. Une réponse arrivée après une autre frappe est ignorée.
+  const wa = { q: "", resultats: [], attente: false, minuterie: null, tour: 0 };
+  const chercherWhatsApp = () => {
+    clearTimeout(wa.minuterie);
+    const q = champ.value.trim();
+    const tour = ++wa.tour;
+    if (!whatsappVisible() || !etat.store.whatsappRechercher || q.length < 2) return void Object.assign(wa, { q: "", resultats: [], attente: false });
+    wa.attente = true;
+    wa.minuterie = setTimeout(async () => {
+      try {
+        const [{ resultatsRechercheWhatsApp, morceauxSurlignes }, trouves] = await Promise.all([import("./whatsapp-relie-calc.mjs"), etat.store.whatsappRechercher(q, { lim: 20 })]);
+        if (tour !== wa.tour || !fond.isConnected) return;
+        const lignes = resultatsRechercheWhatsApp(trouves, { conversations: etat.brut.whatsapp_conversations || [], clients: etat.brut.clients || [], q });
+        Object.assign(wa, { q, attente: false, resultats: lignes.map((r) => ({ groupe: tr("WhatsApp"), icone: "whatsapp", titre: r.nom, detail: r.extrait, morceaux: morceauxSurlignes(r.extrait, q), droite: r.le ? quand(r.le, { langue: langueActive() }) : "", href: r.lien })) });
+      } catch {
+        if (tour === wa.tour) Object.assign(wa, { q, attente: false, resultats: [] });
+      }
+      if (tour === wa.tour && fond.isConnected) dessiner({ garder: true });
+    }, 300);
+  };
   const fermer = () => {
+    clearTimeout(wa.minuterie);
     fond.remove();
     document.removeEventListener("keydown", touche);
     if (precedent && precedent.focus) precedent.focus();
@@ -519,12 +541,12 @@ function ouvrirRecherche() {
       }
     });
   };
-  function dessiner() {
-    resultats = chercher(champ.value);
-    actif = 0;
+  function dessiner({ garder = false } = {}) {
+    resultats = [...chercher(champ.value), ...(wa.q && wa.q === champ.value.trim() ? wa.resultats : [])];
+    if (!garder || actif >= resultats.length) actif = 0;
     vider(liste);
     if (!resultats.length) {
-      liste.append(h("li", { class: "palette-vide" }, tr("Rien pour « {trim} ». Essayez un nom, une référence de dossier ou le nom d'un écran.", { trim: champ.value.trim() })));
+      liste.append(h("li", { class: "palette-vide" }, wa.attente ? tr("Recherche dans WhatsApp…") : tr("Rien pour « {trim} ». Essayez un nom, une référence de dossier ou le nom d'un écran.", { trim: champ.value.trim() })));
       return;
     }
     let groupe = null;
@@ -538,14 +560,14 @@ function ouvrirRecherche() {
           "li",
           { role: "option", id: `palette-${i}`, "aria-selected": i === actif ? "true" : "false", onmousedown: (e) => e.preventDefault(), onclick: () => ouvrir(r), onmousemove: () => actif !== i && ((actif = i), marquer()) },
           icone(r.icone, 18),
-          h("span", { class: "palette-texte" }, h("strong", null, r.titre), r.detail ? h("span", null, r.detail) : null),
+          h("span", { class: "palette-texte" }, h("strong", null, r.titre), r.detail ? h("span", null, r.morceaux ? r.morceaux.map((m) => (m.trouve ? h("mark", null, m.texte) : m.texte)) : r.detail) : null),
           r.droite ? h("span", { class: "palette-droite" }, r.droite) : null
         )
       );
     });
     marquer();
   }
-  champ.addEventListener("input", dessiner);
+  champ.addEventListener("input", () => (chercherWhatsApp(), dessiner()));
   champ.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();

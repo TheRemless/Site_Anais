@@ -5,6 +5,7 @@ import { lignesSurPlace } from "../taxi-calc.mjs";
 import { h, champ, modal, toast } from "../ui.mjs";
 import { formatMontant, SUR_PLACE } from "../calc.mjs";
 import { FAMILLES, nomFamille, libelleUnite, correspond, filtrerTrajets, ligneDepuisPrestation, lignesDepuisTrajet, ligneLibre, quantiteParDefaut, periodeSpecifique, proposable } from "../partenaires-calc.mjs";
+import { prestataires } from "../apporteurs-calc.mjs";
 import { prestationEnfant } from "../demande-calc.mjs";
 import { appliquerModeParDefaut, modeParDefaut, MODELES_VOUCHER, SANS_VOUCHER, TITRES_VOUCHER, typeVoucherDeduit } from "../operations-calc.mjs";
 import { tr, pluriel, N_ } from "../i18n.mjs";
@@ -95,7 +96,7 @@ export function choisirPrestation({ langue = "", devise = "THB", onAjout, sansCo
     aideNetLibre.textContent = pp ? tr("Par personne, ce que le partenaire facture à l'agence. Vide s'il n'est pas connu.") : tr("Pour le groupe, ce que le partenaire facture à l'agence. Vide s'il n'est pas connu.");
     majQteLibre();
   };
-  const partenaireLibre = h("select", { id: "cp-l-part" }, h("option", { value: "" }, tr("Aucun partenaire")), etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
+  const partenaireLibre = h("select", { id: "cp-l-part" }, h("option", { value: "" }, tr("Aucun partenaire")), prestataires(etat.db.partenaires).filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.nom)));
   // Lot B (17.11.2026, audit n° 23) : le net, pour que la marge ne compte pas toute la vente, et le modèle de voucher, choisi plutôt que deviné
   // d'après les mots du libellé (« van », « speedboat »). Le net ne part jamais sur la facture : il rejoint la table protégée des nets.
   const avecNetLibre = peut("partenaires.nets");

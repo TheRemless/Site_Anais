@@ -87,6 +87,24 @@ Demande de Jérémy : les réponses préparées doivent avoir le ton de Nani, ap
 - **Réglages > WhatsApp, ligne « Réception ».** `whatsapp_etat_reception()` (administrateurs de Secret ou de Taxi, lecture seule) : messages en erreur (repris toutes les 5 minutes), abandonnés après 5 essais (bouton « Relancer », `whatsapp_relancer_evenements`), en attente depuis plus de 10 minutes (cron arrêté ?), envois à vérifier.
 - **Conservation.** Un événement jamais rangé reste 90 jours au lieu de 30, pour pouvoir être relancé.
 
+## L'Assistant lit la boîte (migration 67, 21.11.2026)
+
+Dans l'onglet Assistant de Secret ou de Taxi, l'agent a trois outils de lecture (`agent/whatsapp-lecture.js`), sans aucun appel à l'IA en plus :
+
+| Outil | Ce qu'il rend |
+|---|---|
+| `chercher_conversations` | 20 conversations au plus : par nom, client ou dossier relié, numéro, période, non-lus, client qui attend ; recherche plein texte dans les messages (`whatsapp_rechercher`, mots et préfixes, configuration « simple ») |
+| `lire_conversation` | les messages dans l'ordre (40 par défaut, 200 au plus, 20 000 caractères), « depuis » un jour ou « avant » un jour, le reste compté ; médias décrits par leur type et leur légende |
+| `a_faire_whatsapp` | clients qui attendent (durée), promesses de Nani échues, paiements signalés pas encore notés, trajets en ferry ou en speedboat d'un dossier relié pas encore payés, trié par urgence |
+
+- **Droits.** Les outils ne sont proposés et exécutés que pour qui administre l'entreprise active, Secret ou Taxi (`whatsapp_admin`). Tout se lit avec la session de la personne, jamais avec la clé de service ; les numéros des fiches partenaires sont reconnus par `whatsapp_partenaires_parmi`, sans être lus. ZTP et Mook ne les voient pas. La préparation automatique des réponses ne les reçoit jamais.
+- **Contact personnel et partenaires.** Un contact réglé « jamais » et la conversation d'un numéro de fiche partenaire (sauf catégorie « apporteur ») ne sont ni cherchés ni lus : rien d'eux ne part chez Anthropic. Les résultats de ces outils ne repartent pas au message suivant : l'agent relit, sous les règles du moment.
+- **Recherche.** Préfixe dès 3 lettres, chiffres cherchés sur les 90 derniers jours, 3 secondes au plus. La base rend le texte entier : l'agent masque d'abord, coupe ensuite.
+- **Promesses.** `taches.whatsapp_conversation_id` relie la tâche à sa conversation ; une promesse sans conversation retrouvée n'est jamais envoyée.
+- **Citations.** Chaque conversation et chaque message rendu porte son lien `#/whatsapp?c=…&m=…&entite=…`. L'agent cite ses sources avec ces liens, une ligne par point ; l'écran de l'Assistant les rend cliquables.
+- **Contenu non fiable.** Le texte des messages est masqué (numéros, comptes, IBAN), neutralisé (crochets, chevrons) et traité comme une donnée. Il n'est jamais une source de prix ni d'heure pour une réponse au client.
+- **Ce qui part chez Anthropic** : le nom de profil, le client relié (prénom, nom), la référence du dossier relié, le texte des messages lus et des extraits (un prix écrit par le client peut y figurer), le type et la légende des médias, le titre des promesses échues, le libellé et la date des trajets en bateau, le solde dû. Jamais un numéro de téléphone, un fichier, un net, une commission ni une fiche partenaire. Les pièces jointes ne partent que cochées par la personne (« Créer le dossier »).
+
 ## Étapes de Jérémy (une seule fois)
 
 ### 1. Clé publique de signature
