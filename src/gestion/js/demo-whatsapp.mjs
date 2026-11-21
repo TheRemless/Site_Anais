@@ -85,7 +85,7 @@ export function whatsappDemo({ entites, clients = [], dossiers = [], uid, organi
         promesse_le: ajd,
         tri: { preparer: false, motif: "suivi_reservation", entreprise: "secret", le: il_y_a(24) },
       });
-      out.taches.push({ id: uid(), created_at: ajd, entite_id: dossier.entite_id, dossier_id: dossier.id, partenaire_id: null, titre: `WhatsApp, ${(client && client.prenom) || c.nom} : confirmer l'heure de pickup du ferry`, description: "Promesse faite dans WhatsApp (tâche créée par Gestion).", echeance: ajouterJours(ajd, 1), assignee_id: null, fait: false, fait_le: null, fait_par: null, cree_par: null });
+      out.taches.push({ id: uid(), created_at: ajd, entite_id: dossier.entite_id, dossier_id: dossier.id, partenaire_id: null, titre: `WhatsApp, ${(client && client.prenom) || c.nom} : confirmer l'heure de pickup du ferry`, description: "Promesse faite dans WhatsApp (tâche créée par Gestion).", echeance: ajouterJours(ajd, 1), whatsapp_conversation_id: c.id, assignee_id: null, fait: false, fait_le: null, fait_par: null, cree_par: null });
     }
   }
 

@@ -196,16 +196,20 @@ export function creer() {
   const ecritWhatsApp = (entiteId) => (entiteId ? adminWhatsApp(entiteId) : adminUneDesDeux());
   const conversationLue = (id) => data.whatsapp_conversations.find((c) => c.id === id && c.organisation_id === monOrg() && litWhatsApp(c.entite_id)) || null;
   // L'Assistant lit la boîte (PR A, agent-whatsapp-lecture.mjs) : les mêmes lignes que la base rendrait à la fonction « agent » avec la
-  // session de la personne. Seulement dans l'Assistant de Secret ou de Taxi et pour qui lit la boîte, comme whatsapp_lit ; sinon null.
-  const sourceWhatsApp = (entiteId) => {
+  // session de la personne. Seulement dans l'Assistant de Secret ou de Taxi et pour qui administre CETTE entreprise (whatsapp_admin) ;
+  // sinon null. Les conversations des fiches partenaires (sauf « apporteur ») sont écartées, comme la fonction.
+  const sourceWhatsApp = async (entiteId) => {
     const active = data.entites.find((e) => e.id === entiteId);
-    if (!active || !marqueEntite(active) || !litWhatsApp(null)) return null;
+    if (!active || !marqueEntite(active) || !adminWhatsApp(entiteId)) return null;
+    const { numerosAExclure } = await import("./agent-whatsapp-lecture.mjs");
+    const exclus = numerosAExclure((data.partenaires || []).filter((p) => data.entites.some((e) => e.id === p.entite_id && e.organisation_id === monOrg())));
     const entitesWa = data.entites.filter((e) => e.organisation_id === monOrg() && marqueEntite(e)).map((e) => ({ id: e.id, slug: marqueEntite(e) }));
     const visibles = () => data.whatsapp_conversations.filter((c) => c.organisation_id === monOrg() && litWhatsApp(c.entite_id));
     const autour = (convs) => ({
       clients: structuredClone(data.clients.filter((c) => convs.some((v) => v.client_id === c.id))),
       dossiers: structuredClone(data.dossiers.filter((d) => convs.some((v) => v.dossier_id === d.id))),
       entites: entitesWa,
+      exclus,
     });
     return {
       permis: true,
@@ -213,14 +217,20 @@ export function creer() {
       qui: "Nani",
       candidats: async (e) => {
         const { rechercheDemo } = await import("./agent-whatsapp-demo.mjs");
+        const { sansAccents } = await import("./agent-whatsapp-lecture.mjs");
         const convs = visibles().filter((c) => c.reponses !== "jamais");
         const ids = new Set(convs.map((c) => c.id));
-        return { conversations: structuredClone(convs), trouves: rechercheDemo(e.texte, convs, data.whatsapp_messages.filter((m) => ids.has(m.conversation_id))), ...autour(convs) };
+        const messages = data.whatsapp_messages.filter((m) => ids.has(m.conversation_id));
+        // Comme la fonction : toute la recherche, puis chaque mot seul (« Tom ferry »).
+        const mots = sansAccents(String(e.texte || "")).split(/\s+/).filter((m) => m.length >= 2).slice(0, 5);
+        const trouves = [...rechercheDemo(e.texte, convs, messages), ...(mots.length > 1 ? mots.flatMap((m) => rechercheDemo(m, convs, messages).map((t) => ({ ...t, mot: m }))) : [])];
+        return { conversations: structuredClone(convs), trouves, ...autour(convs) };
       },
       conversation: async (id) => {
         const c = conversationLue(id);
         if (!c || c.reponses === "jamais") return { conversation: c ? structuredClone(c) : null, messages: [] };
-        return { conversation: structuredClone(c), messages: structuredClone(data.whatsapp_messages.filter((m) => m.conversation_id === id)), ...autour([c]) };
+        // L'outil choisit la fenêtre (depuis, avant, derniers) et compte le reste sur ces messages.
+        return { conversation: structuredClone(c), messages: structuredClone(data.whatsapp_messages.filter((m) => m.conversation_id === id && !m.supprime_le)), ...autour([c]) };
       },
       aFaire: async () => {
         const { MARQUE_PROMESSE } = await import("./agent-whatsapp-lecture.mjs");
@@ -873,7 +883,7 @@ export function creer() {
       }
       // L'Assistant lit la boîte WhatsApp (PR A) : en démonstration, les vrais outils sur les données de la démo, puis une réponse qui cite
       // chaque point avec son lien.
-      const sourceWa = sourceWhatsApp(e);
+      const sourceWa = await sourceWhatsApp(e);
       const { questionWhatsApp, repondreWhatsAppDemo } = await import("./agent-whatsapp-demo.mjs");
       if (sourceWa && !wc && questionWhatsApp(texte)) {
         const evs = await repondreWhatsAppDemo(texte, sourceWa);

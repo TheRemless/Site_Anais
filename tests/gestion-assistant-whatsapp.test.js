@@ -4,7 +4,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as L from "../supabase/functions/agent/whatsapp-lecture.js";
-import { masquer as masquerProposer, outilsWhatsapp } from "../supabase/functions/whatsapp/proposer.js";
+import { masquer as masquerProposer, outilsWhatsapp, cleNumero as cleProposer, numerosPartenaires as numerosProposer, ligneMessage } from "../supabase/functions/whatsapp/proposer.js";
+import { tachePromesse, sansColonneConversation, parametresResume, parametresPromesse } from "../supabase/functions/whatsapp/suivi.js";
 import { OUTILS, OUTILS_WHATSAPP_LECTURE, executer, memoDepuis, normaliserEntree, outilsDuContexte, outilsPour, peutLireWhatsApp, proposer } from "../supabase/functions/agent/outils.js";
 import { consignes } from "../supabase/functions/agent/prompt.js";
 import { lireAdresse, morceauxCitations } from "../src/gestion/js/whatsapp-calc.mjs";
@@ -29,10 +30,39 @@ test("le module de lecture existe en deux exemplaires identiques (fonction et d�
   assert.doesNotMatch(lireFichier("supabase/functions/agent/whatsapp-lecture.js"), /^import /m);
 });
 
-test("masquer est celui de whatsapp/proposer.js : même code, même résultat", () => {
-  const corps = (src) => src.slice(src.indexOf("export function masquer"), src.indexOf("}", src.indexOf("export function masquer")) + 1);
+test("masquer est celui de whatsapp/proposer.js : même code (date comprise), même résultat", () => {
+  const corps = (src) => src.slice(src.indexOf("const DATE = "), src.indexOf("\n}\n", src.indexOf("export function masquer")) + 2);
+  assert.ok(corps(lireFichier("supabase/functions/whatsapp/proposer.js")).length > 300);
   assert.equal(corps(lireFichier("supabase/functions/agent/whatsapp-lecture.js")), corps(lireFichier("supabase/functions/whatsapp/proposer.js")));
-  for (const t of ["Call me +66 81 234 5678", "IBAN CH93 0076 2011 6238 5295 7", "Booking 20.11.2026 at 14:30 for 3,000 THB", "acct 123-456-789-0", "", null]) assert.equal(L.masquer(t), masquerProposer(t), String(t));
+  for (const t of ["Call me +66 81 234 5678", "IBAN CH93 0076 2011 6238 5295 7", "Booking 20.11.2026 at 14:30 for 3,000 THB", "acct 123-456-789-0", "Pickup 23.11.2026 / 0812345678", "06.12.34.56.78", "", null]) assert.equal(L.masquer(t), masquerProposer(t), String(t));
+});
+
+test("masquer : une date collée à un numéro ne le laisse plus passer (revue de la PR 295)", () => {
+  for (const m of [L.masquer, masquerProposer]) {
+    assert.equal(m("Pickup 23.11.2026 / 0812345678"), "Pickup 23.11.2026 / [numéro masqué]");
+    assert.equal(m("20/11/2026-0812345678 ok"), "20/11/2026-[numéro masqué] ok");
+    assert.equal(m("0812345678 le 23.11.2026"), "[numéro masqué] le 23.11.2026");
+    assert.equal(m("06.12.34.56.78"), "[numéro masqué]", "un numéro à la française n'est pas une date");
+    assert.equal(m("Booking 20.11.2026 at 14:30, 2 pax, 3,000 THB, 1/2/26"), "Booking 20.11.2026 at 14:30, 2 pax, 3,000 THB, 1/2/26", "dates, heures et prix restent");
+    assert.doesNotMatch(m("a\u00000\u0000 0812345678"), /0812345678/, "un faux jeton dans le texte ne fait rien revenir");
+  }
+});
+
+test("extrait : le texte entier est masqué avant d'être coupé, aucun numéro ni IBAN en morceaux (revue de la PR 295)", () => {
+  const plein = `${"blah ".repeat(60)}call 081 234 5678 or IBAN CH93 0076 2011 6238 5295 7 for the ferry ${"blah ".repeat(60)}`;
+  for (const mots of [["5678"], ["081", "234"], ["0076"], ["ferry"], []]) {
+    const x = L.extraitAutour(plein, mots);
+    assert.ok(x.length <= 245, String(mots));
+    assert.doesNotMatch(x, /081|234|5678|CH93|0076|2011|6238|5295/, String(mots));
+  }
+  assert.match(L.extraitAutour(plein, ["ferry"]), /ferry/, "coupé autour du mot cherché");
+  assert.doesNotMatch(L.extraitAutour("«081 234» «5678»", ["5678"]), /[«»]|5678/, "marqueurs retirés avant le masquage");
+  // L'aperçu de la base (140 caractères, coupé avant le masquage) : la fin d'un numéro coupé ne sort pas.
+  const coupe = `${"x".repeat(125)} call 081 234 56`.slice(0, 140);
+  assert.doesNotMatch(L.apercuSur(coupe), /081|234|56$/);
+  assert.equal(L.apercuSur("Hello, call 0812345678"), "Hello, call (numéro masqué)");
+  const c = conv({ dernier_texte: coupe });
+  assert.doesNotMatch(JSON.stringify(L.chercherConversations(VIDE, { conversations: [c], entites: ENTITES })), /081 234/);
 });
 
 test("texte neutralisé comme texteDepuisWhatsApp : numéros masqués, ni crochets ni chevrons, une ligne", () => {
@@ -142,7 +172,7 @@ test("lire_conversation : dans l'ordre, 40 par défaut, 200 au plus, chaque mess
   assert.ok(r.messages.length > 40 && r.messages.length <= 200);
   assert.equal(r.messages_plus_anciens, 250 - r.messages.length);
   assert.equal(r.messages.at(-1).texte, "Message 249");
-  assert.deepEqual(L.messagesAPrendre({ derniers: 5000 }), { depuis: "", derniers: 200 });
+  assert.deepEqual(L.messagesAPrendre({ derniers: 5000 }), { depuis: "", avant: "", derniers: 200, ordre: "decroissant" });
   r = L.lireConversation({ conversation: c.id, depuis: "2026-11-21", derniers: 0 }, { conversation: c, messages, entites: ENTITES });
   assert.ok(r.messages.length > 0 && r.messages.every((m) => Date.parse(m.le) >= Date.parse("2026-11-21T00:00:00+07:00")), "depuis ce jour, heure de Koh Lanta");
 });
@@ -305,9 +335,10 @@ test("outils : absents par défaut (ZTP, Mook, boîte de préparation), ajoutés
   for (const slug of ["ztp", "agence", "", "excursions_x"]) assert.equal(peutLireWhatsApp({ whatsapp: { ...sourceFausse(j), slug } }), false, slug);
   assert.equal(peutLireWhatsApp({ whatsapp: { ...sourceFausse(j), permis: "oui" } }), false);
   assert.equal(peutLireWhatsApp({ whatsapp: { ...sourceFausse(j), aFaire: null } }), false);
-  assert.equal(L.whatsappPermis({ slug: "taxi", lit: true }), true);
-  assert.equal(L.whatsappPermis({ slug: "ztp", lit: true }), false);
-  assert.equal(L.whatsappPermis({ slug: "secret", lit: false }), false);
+  assert.equal(L.whatsappPermis({ slug: "taxi", admin: true }), true);
+  assert.equal(L.whatsappPermis({ slug: "ztp", admin: true }), false);
+  assert.equal(L.whatsappPermis({ slug: "secret", admin: false }), false);
+  assert.equal(L.whatsappPermis({ slug: "secret", lit: true }), false, "lire la boîte ne suffit plus : il faut administrer l'entreprise active");
   // La préparation de la boîte (clé de service) a sa liste fermée : jamais ces outils.
   for (const unifie of [false, true]) assert.ok(!outilsWhatsapp({ unifie }).some((o) => L.NOMS_OUTILS_WHATSAPP.includes(o.name)));
   for (const o of OUTILS_WHATSAPP_LECTURE) assert.match(o.description, /lien/, o.name);
@@ -330,7 +361,7 @@ test("outils : exécutés avec le droit, entrée normalisée, a_faire sans param
   const ctx = { whatsapp: sourceFausse(j), maintenant: () => MAINTENANT };
   const memo = memoDepuis([]);
   assert.deepEqual(normaliserEntree("a_faire_whatsapp", {}), {});
-  assert.deepEqual(normaliserEntree("lire_conversation", { conversation: "x" }), { conversation: "x", depuis: "", derniers: 0 });
+  assert.deepEqual(normaliserEntree("lire_conversation", { conversation: "x" }), { conversation: "x", depuis: "", avant: "", derniers: 0 });
   const a = await executer("a_faire_whatsapp", {}, ctx, memo);
   assert.equal(a.erreur, false);
   assert.equal(a.contenu.urgents, 4);
@@ -370,18 +401,28 @@ test("fonction « agent » : lecture avec la session de la personne, jamais avec
   const ts = lireFichier("supabase/functions/agent/index.ts");
   const bloc = ts.slice(ts.indexOf("---- Boîte WhatsApp (PR A"), ts.indexOf("// Lieux et itinéraires calculés"));
   assert.ok(bloc.length > 1000);
-  assert.match(bloc, /sb\.rpc\("whatsapp_lit", \{ e: null, org: orgWa \}\)/);
-  assert.match(bloc, /whatsappPermis\(\{ slug: ent\.data\.slug, lit: lit\.data === true \}\)/);
+  // Revue de la PR 295 : administrer l'entreprise active (whatsapp_admin de la migration 58), pas seulement lire la boîte.
+  assert.match(bloc, /sb\.rpc\("whatsapp_admin", \{ e: entiteId \}\)/);
+  assert.doesNotMatch(bloc, /whatsapp_lit/);
+  assert.match(bloc, /whatsappPermis\(\{ slug: ent\.data\.slug, admin: adminWa\.data === true \}\)/);
   assert.match(bloc, /sb\.rpc\("whatsapp_rechercher"/);
   assert.match(bloc, /\.neq\("reponses", "jamais"\)/);
   assert.match(bloc, /conv\.reponses === "jamais"\) return \{ conversation: conv, messages: \[\] \}/, "les messages d'un contact personnel ne sont pas même lus");
-  assert.doesNotMatch(bloc, /\badmin\./, "jamais la clé de service");
+  assert.match(bloc, /if \(contactExclu\(conv, liste\)\) return \{ conversation: conv, messages: \[\], exclus: liste \}/, "ni ceux d'un partenaire");
+  // Jamais la clé de service : les fiches partenaires sont reconnues par la base (whatsapp_partenaires_parmi), sans être lues.
+  assert.doesNotMatch(bloc, /\badmin\./);
+  assert.match(bloc, /sb\.rpc\("whatsapp_partenaires_parmi", \{ tels: lot \}\)/);
+  assert.match(bloc, /if \(r\.error\) throw new Error\(`fiches partenaires/, "une réponse impossible ferme les outils");
+  assert.match(bloc, /if \(clientId\) q = q\.eq\("client_id", clientId\)/, "un client par son identifiant complet");
+  assert.match(bloc, /mots\.map\(\(m\) => rechercher\(m, m\)\)/, "chaque mot cherché seul aussi");
+  assert.match(bloc, /\{ count: "exact", head: true \}/, "messages restants comptés par la base");
+  assert.match(bloc, /order\("envoye_le", \{ ascending: !!depuis \}\)/, "« depuis » lit les plus anciens d'abord");
   assert.doesNotMatch(bloc, /storage|download|createSignedUrl/, "aucun fichier");
   assert.doesNotMatch(bloc, /reservations_nets|prestations_nets|trajets_nets|partenaires_prives|partenaire_id/, "aucun net ni partenaire");
   assert.match(ts, /whatsapp: !!whatsapp \}\);/, "les consignes savent si la boîte est lisible");
   assert.match(ts, /\.\.\.\(whatsapp \? \{ whatsapp \} : \{\}\)/);
   // Aucun appel à l'IA dans les outils : ils sont du SQL et du JS.
-  assert.doesNotMatch(lireFichier("supabase/functions/agent/whatsapp-lecture.js"), /anthropic|messages\.create|fetch\(/i);
+  assert.doesNotMatch(lireFichier("supabase/functions/agent/whatsapp-lecture.js"), /new Anthropic|messages\.create|fetch\(/);
 });
 
 // ---- Migration 67 ------------------------------------------------------------------------------------------------------------------
@@ -389,14 +430,14 @@ test("migration 67 : recherche plein texte « simple », SECURITY INVOKER, conta
   const sql = lireFichier("docs/gestion/migration-67-assistant-whatsapp.sql");
   for (const m of [/^begin;$/m, /^commit;$/m, /Ne modifie aucune donnée existante\. Se rejoue sans effet\./, /Retour en arrière : docs\/gestion\/retour-67-assistant-whatsapp\.sql/, /Contrôle :/]) assert.match(sql, m);
   assert.match(sql, /create index if not exists whatsapp_messages_recherche on whatsapp_messages\s+using gin \(to_tsvector\('simple'::regconfig/);
-  assert.match(sql, /security invoker/);
-  assert.doesNotMatch(sql, /security definer/);
-  assert.match(sql, /c\.reponses <> 'jamais'/);
-  assert.match(sql, /whatsapp_lit\(c\.entite_id, c\.organisation_id\)/);
+  const rechercher = sql.slice(sql.indexOf("create function whatsapp_rechercher"), sql.indexOf("revoke all on function whatsapp_rechercher"));
+  assert.match(rechercher, /security invoker/);
+  assert.doesNotMatch(rechercher, /security definer/);
+  assert.equal((rechercher.match(/c\.reponses <> 'jamais'/g) || []).length, 3, "dans chaque branche");
+  assert.equal((rechercher.match(/c\.organisation_id = org/g) || []).length, 3, "l'organisation de la personne, dans chaque branche");
   assert.match(sql, /left\(coalesce\(q, ''\), 100\)/);
   assert.match(sql, /least\(greatest\(coalesce\(lim, 20\), 1\), 50\)/);
   assert.match(sql, /':\*'/, "recherche par préfixe");
-  assert.match(sql, /ts_headline/);
   assert.match(sql, /revoke all on function whatsapp_rechercher\(text, integer\) from public, anon;/);
   assert.match(sql, /grant execute on function whatsapp_rechercher\(text, integer\) to authenticated;/);
   // L'expression de l'index et celle de la recherche sont les mêmes (sinon l'index ne sert pas).
@@ -483,4 +524,170 @@ test("démonstration : l'Assistant de Secret lit la boîte et cite ses liens ; Z
   } finally {
     delete globalThis.localStorage;
   }
+});
+
+// ---- Revue de sécurité de la PR 295 -----------------------------------------------------------------------------------------------
+test("historique : les lectures WhatsApp des messages précédents sont retirées, le reste ne change pas", () => {
+  const c = conv();
+  const hist = [
+    { role: "user", content: [{ type: "text", text: "Lis Tom" }] },
+    { role: "assistant", content: [{ type: "tool_use", id: "a", name: "lire_conversation", input: { conversation: c.id } }, { type: "tool_use", id: "b", name: "lire_dossier", input: {} }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "a", content: JSON.stringify({ messages: [{ texte: "secret de Tom" }] }) }, { type: "tool_result", tool_use_id: "b", content: '{"dossier":"D-1"}' }] },
+    { role: "assistant", content: [{ type: "tool_use", id: "c", name: "a_faire_whatsapp", input: {} }, { type: "tool_use", id: "d", name: "chercher_conversations", input: {} }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "c", content: "[]", is_error: false }, { type: "tool_result", tool_use_id: "d", content: '{"x":1}' }] },
+  ];
+  const avant = JSON.stringify(hist);
+  const apres = L.retirerLecturesWhatsApp(hist);
+  assert.equal(JSON.stringify(hist), avant, "l'historique reçu n'est pas modifié");
+  assert.doesNotMatch(JSON.stringify(apres), /secret de Tom|"x":1/);
+  assert.deepEqual(JSON.parse(apres[2].content[0].content), { retire: true, raison: "relire avec l'outil" });
+  assert.equal(apres[2].content[1].content, '{"dossier":"D-1"}', "les autres outils gardent leur résultat");
+  assert.equal(apres[2].content[0].tool_use_id, "a", "l'appel garde son identifiant (l'API veut chaque résultat)");
+  assert.equal(apres[4].content.filter((b) => b.content === L.RESULTAT_RETIRE).length, 2);
+  assert.equal(apres[0], hist[0]);
+  const ts = lireFichier("supabase/functions/agent/index.ts");
+  assert.match(ts, /const messages = historiquePourClaude\(retirerLecturesWhatsApp\(gardes\), donnees\);/, "appliqué au chargement de l'historique, avant l'envoi à Claude");
+});
+
+test("partenaires : leur conversation n'est ni cherchée, ni lue, ni à faire ; un apporteur reste lisible", () => {
+  const fiches = [
+    { categorie: "Ferries et speedboats", contact: { telephones: [{ numero: "+44 7700 900666" }] } },
+    { categorie: "Apporteur d'affaires", contact: { telephones: ["+44 7700 900955"] } },
+  ];
+  const exclus = L.numerosAExclure(fiches);
+  assert.deepEqual([...exclus], ["700900666"]);
+  assert.ok(L.estApporteur({ categorie: "apporteurs" }) && L.estApporteur({ categorie: "Apporteur" }) && !L.estApporteur({ categorie: "Excursions bateaux" }));
+  const prestataire = conv({ nom: "Speedboat", telephone: "+447700900666", dernier_texte: "Net 700, commission 200", attend_depuis: il_y_a(300), dossier_id: null, paiement_signale: null });
+  const jade = conv({ nom: "Jade, travel planner", telephone: "+447700900955", attend_depuis: il_y_a(35) });
+  const d = { conversations: [prestataire, jade], entites: ENTITES, exclus, trouves: [{ conversation_id: prestataire.id, message_id: id(), extrait: "net 700", envoye_le: il_y_a(5) }] };
+  for (const e of [VIDE, { ...VIDE, texte: "net" }, { ...VIDE, texte: "Speedboat" }, { ...VIDE, attend_reponse: true }]) {
+    const r = L.chercherConversations(e, d);
+    assert.ok(!JSON.stringify(r).includes(prestataire.id), JSON.stringify(e));
+  }
+  assert.deepEqual(L.chercherConversations(VIDE, d).conversations.map((x) => x.nom), ["Jade, travel planner"], "l'apporteur reste lisible");
+  assert.equal(L.lireConversation({ conversation: prestataire.id }, { conversation: prestataire, messages: [msg(prestataire, 1, "entrant", "net 700")], exclus }).erreur, "contact_partenaire");
+  assert.doesNotMatch(JSON.stringify(L.lireConversation({ conversation: prestataire.id }, { conversation: prestataire, messages: [msg(prestataire, 1, "entrant", "net 700")], exclus })), /700|Speedboat/);
+  assert.ok(!L.lireConversation({ conversation: jade.id }, { conversation: jade, messages: [msg(jade, 1, "entrant", "Two bookings")], exclus }).erreur);
+  const t = JSON.stringify(L.aFaireWhatsApp({ ...d, taches: [{ id: id(), entite_id: TAXI.id, titre: "WhatsApp, Speedboat : prix", description: L.MARQUE_PROMESSE, echeance: "2026-11-19", fait: false, whatsapp_conversation_id: prestataire.id }] }, { maintenant: MAINTENANT }));
+  assert.ok(!t.includes(prestataire.id) && !/Speedboat|commission/.test(t));
+  assert.match(t, /Jade/);
+  // Même comparaison que la boîte (whatsapp/proposer.js) : même code, même résultat.
+  const code = (src, debut, fin) => src.slice(src.indexOf(debut), src.indexOf(fin, src.indexOf(debut)));
+  const lect = lireFichier("supabase/functions/agent/whatsapp-lecture.js");
+  const prop = lireFichier("supabase/functions/whatsapp/proposer.js");
+  assert.equal(code(lect, "export const cleNumero", "\n};\n"), code(prop, "export const cleNumero", "\n};\n"));
+  assert.equal(code(lect, "export function numerosPartenaires", "\n  return out;"), code(prop, "export function numerosPartenaires", "\n  return out;"));
+  assert.deepEqual([...L.numerosPartenaires(fiches)], [...numerosProposer(fiches)]);
+  assert.equal(L.cleNumero("081 234 5678"), cleProposer("081 234 5678"));
+  // L'invite et le commentaire disent ce qui part.
+  assert.match(consignes({ entreprise: "Secret", reglages: { fonctionnement: "excursions" }, whatsapp: true }), /la conversation d'un partenaire \(numéro d'une fiche partenaire, sauf un apporteur\) ne sont jamais lus/);
+  assert.match(lireFichier("supabase/functions/agent/index.ts"), /Ce qui part alors chez Anthropic/);
+});
+
+test("lire_conversation : « depuis » lit les plus anciens d'abord, « avant » les derniers avant ce jour, le reste est compté", () => {
+  const c = conv();
+  // 100 messages, un par heure, du 17.11 au 21.11.
+  const messages = Array.from({ length: 100 }, (_, i) => msg(c, (100 - i) * 60, "entrant", `M${i}`));
+  let r = L.lireConversation({ conversation: c.id, depuis: "2026-11-17", avant: "", derniers: 10 }, { conversation: c, messages });
+  assert.deepEqual(r.messages.map((m) => m.texte), ["M0", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9"], "les plus anciens depuis ce jour");
+  assert.equal(r.messages_plus_recents, 90);
+  assert.ok(!r.messages_plus_anciens);
+  r = L.lireConversation({ conversation: c.id, depuis: "", avant: "2026-11-20", derniers: 5 }, { conversation: c, messages });
+  assert.ok(r.messages.every((m) => Date.parse(m.le) < Date.parse("2026-11-20T00:00:00+07:00")));
+  const dernier = messages.filter((m) => Date.parse(m.envoye_le) < Date.parse("2026-11-20T00:00:00+07:00")).at(-1);
+  assert.equal(r.messages.at(-1).message, dernier.id, "les derniers avant ce jour");
+  assert.ok(r.messages_plus_anciens > 0 && r.messages_plus_recents > 0);
+  // La fonction donne ses comptes (count exact) : ils sont repris tels quels.
+  r = L.lireConversation({ conversation: c.id, depuis: "", avant: "", derniers: 3 }, { conversation: c, messages: messages.slice(-3), compte: { avant: 997, apres: 0 } });
+  assert.equal(r.messages_plus_anciens, 997);
+  assert.deepEqual(L.messagesAPrendre({ depuis: "2026-11-17", avant: "2026-11-20", derniers: 0 }), { depuis: "2026-11-17", avant: "", derniers: 40, ordre: "croissant" });
+  assert.equal(L.lireConversation({ conversation: c.id, avant: "hier" }, { conversation: c, messages }).erreur, "date_illisible");
+  assert.equal(L.borneJour("2026-11-20"), "2026-11-20T00:00:00+07:00");
+  assert.match(OUTILS_WHATSAPP_LECTURE.find((o) => o.name === "lire_conversation").description, /avant/);
+});
+
+test("chercher_conversations : client par son identifiant complet, « Tom ferry » (nom et message)", () => {
+  const { marco, client, d } = jeu();
+  assert.deepEqual(L.chercherConversations({ ...VIDE, client: client.id }, d).conversations.map((c) => c.conversation), [marco.id]);
+  const tom = conv({ nom: "Tom" });
+  const m = id();
+  const base = { conversations: [tom, conv({ nom: "Tim" })], entites: ENTITES };
+  // La recherche entière ne trouve rien (aucun message ne dit « Tom » et « ferry ») ; le mot « ferry » seul trouve le message de Tom.
+  let r = L.chercherConversations({ ...VIDE, texte: "Tom ferry" }, { ...base, trouves: [{ conversation_id: tom.id, message_id: m, extrait: "We want the ferry", envoye_le: il_y_a(5), mot: "ferry" }] });
+  assert.deepEqual(r.conversations.map((c) => c.nom), ["Tom"]);
+  assert.equal(r.conversations[0].extraits[0].message, m);
+  r = L.chercherConversations({ ...VIDE, texte: "Tom ferry" }, base);
+  assert.equal(r.nombre, 0, "sans message « ferry », Tom ne sort pas");
+  r = L.chercherConversations({ ...VIDE, texte: "Tim ferry" }, { ...base, trouves: [{ conversation_id: tom.id, message_id: m, extrait: "ferry", envoye_le: il_y_a(5), mot: "ferry" }] });
+  assert.equal(r.nombre, 0, "le mot trouvé chez Tom ne fait pas sortir Tim");
+});
+
+test("promesses : reliées par whatsapp_conversation_id ; sans conversation retrouvée, jamais envoyées", () => {
+  const ferry = conv({ nom: "Mark", entite_id: SECRET.id, attend_depuis: null, promesse_le: "2026-11-19" });
+  const perso = conv({ nom: "Somchai", reponses: "jamais", attend_depuis: null });
+  const t = (o) => ({ id: id(), entite_id: SECRET.id, dossier_id: null, titre: "WhatsApp, X : rappeler", description: L.MARQUE_PROMESSE, echeance: "2026-11-19", fait: false, created_at: "2026-11-18T03:00:00Z", ...o });
+  const taches = [t({ titre: "WhatsApp, Mark : confirmer", whatsapp_conversation_id: ferry.id }), t({ titre: "WhatsApp, Somchai : rappeler", whatsapp_conversation_id: perso.id }), t({ titre: "WhatsApp, Inconnu : rappeler", whatsapp_conversation_id: id() }), t({ titre: "WhatsApp, Sans lien : rappeler", entite_id: TAXI.id })];
+  const r = L.aFaireWhatsApp({ conversations: [ferry, perso], taches, entites: ENTITES }, { maintenant: MAINTENANT });
+  assert.deepEqual(r.elements.map((x) => [x.genre, x.conversation]), [["promesse", ferry.id]]);
+  assert.doesNotMatch(JSON.stringify(r), /Somchai|Inconnu|Sans lien|#\/taches/);
+  // Une ancienne tâche (sans la colonne) se rapproche comme avant, seulement vers une conversation qui n'est pas « jamais ».
+  const ancienne = t({ titre: "WhatsApp, Mark : vieux" });
+  delete ancienne.whatsapp_conversation_id;
+  assert.equal(L.aFaireWhatsApp({ conversations: [ferry], taches: [ancienne], entites: ENTITES }, { maintenant: MAINTENANT }).elements[0].conversation, ferry.id);
+  const perso2 = conv({ nom: "Mark", reponses: "jamais", entite_id: SECRET.id, promesse_le: "2026-11-19", attend_depuis: null });
+  assert.equal(L.aFaireWhatsApp({ conversations: [perso2], taches: [ancienne], entites: ENTITES }, { maintenant: MAINTENANT }).nombre, 0);
+  // La tâche née d'une promesse porte sa conversation ; sans la migration 67, la fonction l'écrit sans elle.
+  assert.equal(tachePromesse({ conv: { id: ferry.id, entite_id: SECRET.id, nom: "Mark" }, quoi: "confirmer", echeance: "2026-11-22" }).whatsapp_conversation_id, ferry.id);
+  assert.ok(sansColonneConversation({ code: "PGRST204", message: "Could not find the 'whatsapp_conversation_id' column of 'taches'" }));
+  assert.ok(!sansColonneConversation({ code: "23505", message: "doublon" }));
+  assert.match(lireFichier("supabase/functions/whatsapp/suivi.ts"), /if \(error && sansColonneConversation\(error\)\)/);
+});
+
+test("PostgREST : aucune référence de dossier avec joker dans un ilike", () => {
+  const ts = lireFichier("supabase/functions/agent/index.ts");
+  assert.doesNotMatch(ts, /\.ilike\("ref", (?!sur\)|ref\))/, "chaque ilike sur la référence passe par refSansJoker");
+  assert.match(ts, /const refSansJoker = \(v: unknown\) => \{\n  const t = String\(v \|\| ""\)\.trim\(\);\n  return t\.length >= 2 && t\.length <= 30 && !\/\[\*%_\\\\,\(\)\]\/\.test\(t\) \? t : "";/);
+  // Même règle, essayée ici.
+  const refSansJoker = (v) => {
+    const t = String(v || "").trim();
+    return t.length >= 2 && t.length <= 30 && !/[*%_\\,()]/.test(t) ? t : "";
+  };
+  for (const x of ["*", "2026*", "%", "S_0", "a\\b", "x,y"]) assert.equal(refSansJoker(x), "", x);
+  assert.equal(refSansJoker(" 2026-0142 "), "2026-0142");
+});
+
+test("migration 67 : préfixe dès 3 lettres, chiffres sur 90 jours, 3 secondes, texte entier sans marqueur, lien des tâches", () => {
+  const sql = lireFichier("docs/gestion/migration-67-assistant-whatsapp.sql");
+  assert.match(sql, /set statement_timeout = '3s'/);
+  assert.match(sql, /case when length\(m\) >= 3 then ':\*' else '' end/);
+  assert.match(sql, /m\.envoye_le > now\(\) - interval '90 days'/);
+  assert.match(sql, /par_mots as \(/);
+  assert.match(sql, /par_chiffres as \(/);
+  assert.doesNotMatch(sql, /ts_headline|StartSel/, "aucun extrait coupé ni marqué par la base");
+  assert.match(sql, /if org is null or not whatsapp_lit\(null, org\) then/);
+  assert.match(sql, /revoke all on function whatsapp_rechercher\(text, integer\) from service_role/);
+  assert.match(sql, /alter table taches add column if not exists whatsapp_conversation_id uuid references whatsapp_conversations \(id\) on delete set null;/);
+  assert.match(sql, /create trigger taches_whatsapp_lien before insert or update of whatsapp_conversation_id on taches/);
+  const retour = lireFichier("docs/gestion/retour-67-assistant-whatsapp.sql");
+  assert.match(retour, /alter table taches drop column if exists whatsapp_conversation_id;/);
+  assert.match(retour, /drop function if exists taches_whatsapp_lien\(\);/);
+});
+
+test("boîte : le résumé, la promesse et la réponse préparée masquent aussi avant de couper", () => {
+  const avant = (n) => `${"a".repeat(n)} 081 234 5678 fin`;
+  const tel = /081|234 5678|5678/;
+  assert.doesNotMatch(ligneMessage({ sens: "entrant", texte: avant(1990), medias: [{ type: "image", legende: `${"b".repeat(190)} 081 234 5678` }], envoye_le: "2026-11-20T08:00:00Z" }), tel);
+  assert.doesNotMatch(parametresResume([1, 2, 3, 4].map((i) => ({ id: `m${i}`, sens: "entrant", texte: avant(590), envoye_le: `2026-11-20T0${i}:00:00Z` }))).messages[0].content, tel);
+  assert.doesNotMatch(parametresPromesse(avant(990), "2026-11-20").messages[0].content, tel);
+});
+
+test("migration 67 : whatsapp_partenaires_parmi ne rend que des clés de numéros déjà donnés, réservée à qui lit la boîte", () => {
+  const sql = lireFichier("docs/gestion/migration-67-assistant-whatsapp.sql");
+  const f = sql.slice(sql.indexOf("create or replace function whatsapp_partenaires_parmi"), sql.indexOf("grant execute on function whatsapp_partenaires_parmi"));
+  assert.match(f, /returns text\[\]/);
+  assert.match(f, /from demandes d\s+where whatsapp_lit\(null, mon_organisation\(\)\) and d\.k in \(select k from cles\)/, "seulement les numéros demandés");
+  assert.match(f, /not like '%apporteu%'/, "sauf les apporteurs");
+  assert.match(f, /e\.organisation_id = mon_organisation\(\)/);
+  assert.match(sql, /revoke all on function whatsapp_partenaires_parmi\(text\[\]\) from public, anon;/);
+  assert.match(lireFichier("docs/gestion/retour-67-assistant-whatsapp.sql"), /drop function if exists whatsapp_partenaires_parmi\(text\[\]\);/);
 });

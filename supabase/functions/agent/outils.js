@@ -12,9 +12,10 @@
 //   - les heures d'une course sont calculées par planifier.js, pas par le modèle ;
 //   - espace unifié Secret et Taxi (unifie.js, migration 63) : chaque ligne porte son entreprise, ses nets et son partenaire suivent les
 //     droits de la personne dans l'entreprise de CETTE ligne, chaque service d'une carte porte son entreprise. Sans ce mode, rien ne change ;
-//   - boîte WhatsApp (whatsapp-lecture.js, migration 67) : trois outils de lecture, proposés et exécutés seulement pour qui lit la boîte
-//     (whatsapp_lit) dans l'Assistant de Secret ou de Taxi. Jamais un contact personnel ; le texte des messages n'est jamais une source de
-//     prix ni d'heure (memoDepuis).
+//   - boîte WhatsApp (whatsapp-lecture.js, migration 67) : trois outils de lecture, proposés et exécutés seulement pour qui administre
+//     l'entreprise active (whatsapp_admin), Secret ou Taxi. Jamais un contact personnel ni la conversation d'un partenaire (sauf un apporteur) ;
+//     le texte des messages n'est jamais une source de prix ni d'heure (memoDepuis) ; leurs résultats sont retirés de l'historique au
+//     message suivant (retirerLecturesWhatsApp).
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
 import { ENTREPRISES_UNIFIEES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
@@ -369,7 +370,7 @@ export const OUTILS_WHATSAPP_LECTURE = [
   {
     name: "chercher_conversations",
     description:
-      "Cherche dans la boîte WhatsApp de Nani (Secret et Taxi) : par nom du contact ou du client, numéro, mots des messages (recherche plein texte, préfixes compris), client ou dossier relié, période, non-lus, client qui attend une réponse. Rend 20 conversations au plus, des plus récentes aux plus anciennes : entreprise, client et dossier reliés, extrait du dernier message, non-lus ; pour une recherche, les extraits trouvés. Les contacts personnels n'y sont jamais." + LIEN + DONNEE,
+      "Cherche dans la boîte WhatsApp de Nani (Secret et Taxi) : par nom du contact ou du client, numéro, mots des messages (recherche plein texte, préfixes dès 3 lettres), client ou dossier relié, période, non-lus, client qui attend une réponse. « Tom ferry » trouve Tom s'il a écrit « ferry ». Rend 20 conversations au plus, des plus récentes aux plus anciennes : entreprise, client et dossier reliés, extrait du dernier message, non-lus ; pour une recherche, les extraits trouvés. Les contacts personnels et les conversations des partenaires (sauf un apporteur) n'y sont jamais." + LIEN + DONNEE,
     input_schema: obj({
       texte: S("Prénom, nom, numéro, ou mots cherchés dans les messages (« ferry Phi Phi », « receipt »), ou \"\"."),
       client: S("Référence C-… d'un client rendue par chercher_clients, ou \"\"."),
@@ -383,11 +384,12 @@ export const OUTILS_WHATSAPP_LECTURE = [
   {
     name: "lire_conversation",
     description:
-      `Lit les messages d'une conversation WhatsApp dans l'ordre : date, qui écrit (client ou Nani), texte (numéros et IBAN masqués), type, photos et documents décrits par leur type et leur légende (jamais le fichier). Les ${MESSAGES_DEFAUT} derniers par défaut, ${MESSAGES_MAX} au plus, les plus récents gardés si c'est trop long.` + LIEN + DONNEE,
+      `Lit les messages d'une conversation WhatsApp dans l'ordre : date, qui écrit (client ou Nani), texte (numéros et IBAN masqués), type, photos et documents décrits par leur type et leur légende (jamais le fichier). Sans date : les ${MESSAGES_DEFAUT} derniers par défaut (${MESSAGES_MAX} au plus). Avec « depuis » : les premiers à partir de ce jour. Avec « avant » : les derniers avant ce jour. « messages_plus_anciens » et « messages_plus_recents » disent ce qui reste à lire.` + LIEN + DONNEE,
     input_schema: obj({
       conversation: S("L'identifiant de la conversation (champ « conversation » de chercher_conversations ou de a_faire_whatsapp)."),
-      depuis: S("AAAA-MM-JJ pour lire depuis ce jour, ou \"\"."),
-      derniers: I(`Nombre de derniers messages à lire, 0 pour ${MESSAGES_DEFAUT} (${MESSAGES_MAX} au plus).`),
+      depuis: S("AAAA-MM-JJ pour lire à partir de ce jour (les plus anciens d'abord), ou \"\"."),
+      avant: S("AAAA-MM-JJ pour lire les derniers messages avant ce jour, ou \"\". Ignoré avec « depuis »."),
+      derniers: I(`Nombre de messages à lire, 0 pour ${MESSAGES_DEFAUT} (${MESSAGES_MAX} au plus).`),
     }),
   },
   {
@@ -397,8 +399,8 @@ export const OUTILS_WHATSAPP_LECTURE = [
     input_schema: obj({}),
   },
 ];
-// La personne lit-elle la boîte, dans l'Assistant de Secret ou de Taxi ? ctx.whatsapp n'est posé par la fonction qu'avec whatsapp_lit
-// vrai (session de la personne) ; le slug de l'entreprise active est contrôlé ici aussi.
+// La personne administre-t-elle l'entreprise active, Secret ou Taxi ? ctx.whatsapp n'est posé par la fonction qu'avec whatsapp_admin de
+// l'entreprise active vrai (session de la personne) ; le slug de l'entreprise active est contrôlé ici aussi.
 export const peutLireWhatsApp = (ctx) =>
   !!(ctx && ctx.whatsapp && ctx.whatsapp.permis === true && ENTREPRISES_WHATSAPP.includes(marqueWhatsApp(ctx.whatsapp.slug)) && ["candidats", "conversation", "aFaire"].every((f) => typeof ctx.whatsapp[f] === "function"));
 async function executerWhatsApp(nom, e, ctx) {

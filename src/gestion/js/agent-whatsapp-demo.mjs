@@ -7,8 +7,8 @@ import { aFaireWhatsApp, chercherConversations, lireConversation, sansAccents } 
 export const questionWhatsApp = (texte) => /whatsapp|conversation (?:de|d'|avec)|qui (?:m'|nous )?a [ée]crit|qu(?:i|'est-ce qui) attend|pas (?:encore )?r[ée]pondu/i.test(String(texte || ""));
 const demandeAFaire = (texte) => /[àa] faire|attend|en retard|promesse|urgent|pas r[ée]pondu|qui (?:m'|nous |a )?(?:a )?[ée]crit/i.test(String(texte || ""));
 
-// Même recherche que whatsapp_rechercher (migration 67), en mémoire : chaque mot en préfixe d'un mot du message (texte et légende), six
-// chiffres ou plus dans les chiffres du message. Les contacts « jamais », les messages supprimés et les réactions n'y sont jamais.
+// Même recherche que whatsapp_rechercher (migration 67), en mémoire : chaque mot de 3 lettres ou plus en préfixe d'un mot du message
+// (texte et légende), un mot de 2 lettres en entier, six chiffres ou plus dans les chiffres du message. Les contacts « jamais », les messages supprimés et les réactions n'y sont jamais.
 export function rechercheDemo(q, conversations = [], messages = [], lim = 50) {
   const propre = String(q || "").slice(0, 100);
   const mots = sansAccents(propre).split(/\s+/).map((m) => m.replace(/[^\p{L}\p{N}]+/gu, "")).filter((m) => m.length >= 2).slice(0, 6);
@@ -20,13 +20,14 @@ export function rechercheDemo(q, conversations = [], messages = [], lim = 50) {
     .filter((m) => m && permises.has(m.conversation_id) && !m.supprime_le && m.type !== "reaction")
     .filter((m) => {
       const jetons = sansAccents(doc(m)).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-      const parMots = mots.length > 0 && mots.every((x) => jetons.some((j) => j.startsWith(x)));
+      const parMots = mots.length > 0 && mots.every((x) => jetons.some((j) => (x.length >= 3 ? j.startsWith(x) : j === x)));
       const parChiffres = chiffres.length >= 6 && String(m.texte || "").replace(/\D/g, "").includes(chiffres);
       return parMots || parChiffres;
     })
     .sort((a, b) => String(b.envoye_le).localeCompare(String(a.envoye_le)))
     .slice(0, lim)
-    .map((m) => ({ conversation_id: m.conversation_id, message_id: m.id, extrait: doc(m).trim().slice(0, 160), envoye_le: m.envoye_le }));
+    // Le texte entier, comme whatsapp_rechercher : l'outil le masque avant de couper l'extrait.
+    .map((m) => ({ conversation_id: m.conversation_id, message_id: m.id, extrait: doc(m).trim(), envoye_le: m.envoye_le }));
 }
 
 // Ce qu'on cherche dans la question : les mots en majuscule (un prénom), sinon les mots qui restent sans les mots de la question.
