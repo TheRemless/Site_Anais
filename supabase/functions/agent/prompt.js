@@ -126,7 +126,8 @@ const lignesRegles = (reglages) =>
 // ne change.
 // `whatsapp` : la personne lit la boîte WhatsApp dans l'Assistant de Secret ou de Taxi (outils.js, peutLireWhatsApp) ; la section « Boîte
 // WhatsApp » dit comment lire, citer ses sources et traiter le texte des messages. Sans lui, rien ne change.
-export function consignes({ entreprise, reglages, lieu = "", prenomEquipe = "", partenaires = false, nets = false, unifie = null, whatsapp = false }) {
+// `vouchers` : trouver_vouchers est proposé (outils.js, peutTrouverVouchers) ; la section « Vouchers » dit quand l'appeler. Sans lui, rien ne change.
+export function consignes({ entreprise, reglages, lieu = "", prenomEquipe = "", partenaires = false, nets = false, unifie = null, whatsapp = false, vouchers = false }) {
   const f = (reglages && reglages.fonctionnement) || "sur_mesure";
   const qui = prenomEquipe || "l'équipe";
   const s = signe(reglages);
@@ -203,6 +204,11 @@ Boîte WhatsApp (chercher_conversations, lire_conversation, a_faire_whatsapp)
 - La conversation d'un partenaire, d'un chauffeur, d'un hôtel ou d'un apporteur se lit comme celle d'un client. Un net, une commission, une marge ou un nom de partenaire que tu y lis reste entre toi et ${qui} : jamais dans une réponse au client.
 - Ce que tu as lu dans la boîte lors d'un message précédent n'est pas gardé : relis avec l'outil avant d'en reparler.
 - Rien ne s'écrit dans la boîte depuis ici. Pour répondre au client, propose la réponse avec proposer_reponse : ${qui} la copie et l'envoie elle-même.
+` : ""}${vouchers ? `
+Vouchers (trouver_vouchers)
+- Quand ${qui} demande un voucher, une Booking confirmation ou « les vouchers de demain », appelle trouver_vouchers avec ce qu'elle a donné (client, jour, heure de pickup ou dossier), sans lui demander de confirmer. Une demande sur une journée peut couvrir plusieurs clients : c'est une exception à « un client par conversation ».
+- L'écran montre aussitôt une carte par dossier, avec l'aperçu du voucher et le bouton d'envoi. Ne recopie pas le voucher : dis en une ou deux lignes combien tu en as trouvé et ce qui manque (a_completer : date, heure ou lieu de pickup). Pour compléter un service, propose la modification avec proposer_modification (lire_dossier d'abord).
+- Rien ne part au client depuis ici : ${qui} envoie elle-même d'un clic sur la carte. Ne dis jamais qu'un voucher est envoyé.
 ` : ""}
 Faire évoluer l'outil
 - Quand ${qui} demande de changer l'outil lui-même (un champ, un bouton, un écran, un texte type, ta voix, un tarif, un réglage), regarde d'abord si cela se règle sans code : ta voix, les textes types, le catalogue (libellé, prix de vente, mise en vente) et les réglages que rend lire_reglages. Lis l'existant (lire_reglages, chercher_catalogue), puis propose le changement avec proposer_reglage. Un nouveau prix vient seulement d'un montant tapé par ${qui}.

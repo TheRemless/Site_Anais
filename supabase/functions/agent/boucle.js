@@ -52,6 +52,8 @@ export async function tourner({ anthropic, modele, systeme, appris = "", context
         const r = await executer(b.name, b.input, ctx, memo);
         if (r.panne) console.error("agent : outil", b.name, r.panne);
         if (r.planning) await envoyer({ t: "planning", planning: r.planning });
+        // Les vouchers trouvés (trouver_vouchers) : l'écran en fait les cartes, avec l'aperçu fabriqué dans le navigateur.
+        if (r.vouchers) await envoyer({ t: "vouchers", vouchers: r.vouchers });
         if (r.carte) {
           const c = await garderCarte(r.carte);
           if (!c) return { type: "tool_result", tool_use_id: b.id, content: JSON.stringify({ erreur: "carte_non_enregistree" }), is_error: true };

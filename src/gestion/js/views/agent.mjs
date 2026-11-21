@@ -25,6 +25,7 @@ import { morceauxCitations, nomConversation } from "../whatsapp-calc.mjs";
 import { lienWhatsApp as lienBoiteWhatsApp } from "../agent-whatsapp-lecture.mjs";
 import { apporteurConfirme, entreprisesSansFiche, lierDossierConversation, nomsApporteurAMasquer, poseApporteur } from "../apporteurs-calc.mjs";
 import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, questionBoiteAOuvrir, questionsProposees } from "../whatsapp-relie-calc.mjs";
+import { cartesVouchers } from "./agent-cartes-voucher.mjs";
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
 // l'Assistant de l'autre entreprise, dans une nouvelle conversation, prêt à être envoyé.
@@ -140,6 +141,7 @@ const ETAPES = {
   chercher_conversations: N_("Je cherche dans WhatsApp"),
   lire_conversation: N_("Je lis la conversation WhatsApp"),
   a_faire_whatsapp: N_("Je regarde ce qui attend dans WhatsApp"),
+  trouver_vouchers: N_("Je cherche les vouchers"),
 };
 
 const disponible = () => agentActif(reglages()) && peut("partenaires.lire") && peut("dossiers.ecrire");
@@ -525,6 +527,8 @@ export async function vueAgent(idOuvert = "") {
     if (it.genre === "agent") return h("div", { class: "agent-bulle de-agent" }, paragraphes(it.texte));
     if (it.genre === "pieces") return bullePieces(it.fichiers);
     if (it.genre === "planning") return frise(it.planning);
+    // Les vouchers trouvés (trouver_vouchers) : une carte par dossier, avec l'aperçu et le bouton d'envoi.
+    if (it.genre === "vouchers") return cartesVouchers(it.vouchers);
     return carte(it.carte);
   }
   // Les citations de la boîte WhatsApp (#/whatsapp?c=…&m=…) deviennent des liens ; le reste du texte reste du texte.
@@ -620,6 +624,10 @@ export async function vueAgent(idOuvert = "") {
         bulle.replaceChildren(...paragraphes(texteRecu));
       } else if (ev.t === "planning") {
         etape.before(frise(ev.planning));
+        bulle = null;
+        texteRecu = "";
+      } else if (ev.t === "vouchers") {
+        etape.before(cartesVouchers(ev.vouchers));
         bulle = null;
         texteRecu = "";
       } else if (ev.t === "carte") {

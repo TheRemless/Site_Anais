@@ -19,7 +19,8 @@ import { chiffres } from "../partenaires-calc.mjs";
 import { moyen, partageFichiers, partager, enregistrer, copierTexte, copierImage, raccourci, zoneEnvoi } from "./partage.mjs";
 import { tr, N_ } from "../i18n.mjs";
 
-const AVERTISSEMENTS = {
+// Ce qui manque à un voucher (controlesVoucher), dit aussi sur les cartes « Voucher » de l'Assistant (agent-cartes-voucher.mjs).
+export const AVERTISSEMENTS = {
   non_confirmee: N_("La réservation n'est pas confirmée par le partenaire."),
   sans_date: N_("La date du service n'est pas renseignée."),
   sans_heure: N_("L'heure de pickup n'est pas renseignée."),
@@ -31,8 +32,14 @@ const AVERTISSEMENTS = {
 // Image PNG d'un voucher, à deux fois la taille de l'écran pour rester nette. Sans la hauteur minimale d'une page A4 : l'image s'arrête au contenu.
 // `contexte` (facultatif) : client et dossier pas encore en base, pour l'aperçu de l'écran « Nouveau voucher » (voir renderVoucher).
 export async function imageVoucher(x, contexte = undefined) {
+  return imageDuRendu(renderVoucher(x, contexte));
+}
+
+// La même image depuis un voucher déjà rendu (renderVoucher) : les cartes de l'Assistant rendent le voucher d'une autre entreprise dans
+// son entreprise, d'un trait, puis en font l'image une fois revenues (agent-cartes-voucher.mjs).
+export async function imageDuRendu(noeud) {
   const { default: html2canvas } = await import("../../vendor/html2canvas.mjs");
-  const hote = h("div", { class: "hote-image", "aria-hidden": "true" }, renderVoucher(x, contexte));
+  const hote = h("div", { class: "hote-image", "aria-hidden": "true" }, noeud);
   document.body.append(hote);
   try {
     if (document.fonts && document.fonts.ready) await document.fonts.ready;

@@ -3979,6 +3979,9 @@ export const EN = {
   "Je cherche dans WhatsApp": "Searching WhatsApp",
   "Je lis la conversation WhatsApp": "Reading the WhatsApp chat",
   "Je regarde ce qui attend dans WhatsApp": "Checking what is waiting in WhatsApp",
+  // L'Assistant donne les vouchers (21.11.2026)
+  "Je cherche les vouchers": "Looking for the vouchers",
+  "Ce service n'est pas encore chargé sur cet appareil : rechargez la page pour voir son voucher.": "This service isn't loaded on this device yet: reload the page to see its voucher.",
   "voir le message": "see the message",
   "voir le message ({nom})": "see the message ({nom})",
   "voir la conversation": "see the chat",

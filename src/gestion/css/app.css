@@ -2021,6 +2021,16 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 .agent-suite { margin-top: 10px; }
 .agent-suite .cc-image img { max-width: 320px; margin: 0 0 8px; }
 .agent-carte .erreur-form { margin: 0 0 4px; }
+/* Cartes « Voucher » de l'Assistant (trouver_vouchers, 21.11.2026) : une par dossier, l'aperçu en image de chaque service puis l'envoi habituel. */
+.agent-vouchers { display: grid; gap: 12px; }
+.agent-voucher-service { padding: 10px 0 4px; border-top: 1px solid var(--bord); }
+.agent-voucher-service:first-of-type { padding-top: 0; border-top: 0; }
+.agent-voucher-titre { display: grid; gap: 2px; }
+.agent-voucher-titre small { color: var(--texte-2); }
+.agent-voucher .avertissements-voucher { margin: 0 0 8px; }
+.agent-voucher-apercu { display: block; width: 100%; max-width: 320px; min-height: 96px; margin: 0 0 8px; padding: 0; background: var(--surface-2); border: 1px solid var(--bord); border-radius: 8px; overflow: hidden; font-weight: 400; }
+.agent-voucher-apercu img { display: block; width: 100%; height: auto; }
+.agent-voucher-apercu > .aide, .agent-voucher-apercu > .erreur-form { display: block; margin: 0; padding: 36px 12px; text-align: center; }
 .agent-tout-valider { display: flex; justify-content: flex-end; padding: 8px 0 0; }
 .agent-tout-valider button { min-height: 44px; }
 .agent-bascule { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
