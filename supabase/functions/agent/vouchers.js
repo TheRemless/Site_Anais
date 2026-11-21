@@ -10,8 +10,11 @@
 //     thaï à part) ne donne rien ici : ni outil, ni ligne de cette entreprise ;
 //   - en espace unifié, une ligne d'une entreprise où la personne n'a pas ces droits est écartée (permises) ;
 //   - ce qui repart chez Claude : référence, date, heure, service, prénom et nom du client, dossier, ce qui manque au voucher. Jamais un net,
-//     une commission, un prix ni le nom du prestataire (retiré du libellé du service) ;
-//   - 20 réservations au plus.
+//     une commission, un prix ni le nom du prestataire ou d'une compagnie (retiré du libellé, toute fin « by … » coupée) ;
+//   - revue de sécurité de la PR 303 : le service n'est jamais le libellé saisi (chez Taxi, « pickup → dropoff » avec l'adresse) mais celui
+//     du catalogue, sinon un mot générique ; le lieu de pickup et le lieu de dépose en sont retirés. Client, service et dossier passent par
+//     neutre (numéros masqués, crochets et chevrons remplacés), comme les textes de la boîte WhatsApp ;
+//   - 20 réservations au plus ; sans jour demandé, les services à venir d'abord.
 
 export const NOM_OUTIL_VOUCHERS = "trouver_vouchers";
 export const VOUCHERS_MAX = 20;
@@ -89,17 +92,59 @@ const motsClient = (t) =>
     .split(" ")
     .filter((w) => w.length >= 2 && !CIVILITES.has(w));
 
-// Les noms des prestataires retirés d'un libellé (« 4 Islands by Satun Speedboat » → « 4 Islands ») : aucun nom de compagnie ne part.
+// ---- Texte neutre ---------------------------------------------------------------------------------------------------------------------
+// Copie de masquer et neutre de whatsapp-lecture.js (un test compare les deux blocs) : ce fichier reste sans import, il tourne tel quel dans
+// Deno et dans le navigateur. Numéros de 9 chiffres ou plus et IBAN masqués, dates gardées ; crochets et chevrons remplacés, une ligne.
+const DATE = /(?<![\d./])\d{1,2}[./]\d{1,2}[./](?:\d{4}|\d{2})(?![./]?\d)/g;
+export function masquer(t) {
+  const dates = [];
+  const sans = String(t || "")
+    .replace(/\u0000/g, "")
+    .replace(DATE, (d) => `\u0000${dates.push(d) - 1}\u0000`);
+  return sans
+    .replace(/\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b/g, "[numéro masqué]")
+    .replace(/\+?\d[\d\s.\-()/]{6,}\d/g, (m) => (m.replace(/\D/g, "").length >= 9 ? "[numéro masqué]" : m))
+    .replace(/\u0000(\d+)\u0000/g, (_, i) => dates[Number(i)] || "");
+}
+const court = (t, n) => {
+  const x = String(t || "").replace(/\s+/g, " ").trim();
+  return x.length > n ? `${x.slice(0, n - 1)}…` : x;
+};
+export const neutre = (t, n = 2000) => court(masquer(String(t || "")).replace(/[\[\]<>]/g, (c) => ({ "[": "(", "]": ")", "<": "‹", ">": "›" })[c]), n);
+
+// ---- Service -----------------------------------------------------------------------------------------------------------------------
+// Les noms retirés d'un libellé (prestataires, compagnies des réglages) et toute fin « by … », « par … » : « 4 Islands by Satun Speedboat »
+// → « 4 Islands », « Ferry Lanta → Phi Phi par Lomprayah » → « Ferry Lanta → Phi Phi ».
+const echappe = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function sansNoms(t, noms) {
-  const echappe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return (noms || [])
     .filter((n) => typeof n === "string" && n.trim().length > 2)
     .sort((a, b) => b.length - a.length)
     .reduce((acc, n) => acc.replace(new RegExp(echappe(n.trim()), "gi"), " "), String(t || ""))
+    .replace(/\s(?:by|par|with|avec|chez|from)\s.+$/i, "")
     .replace(/\s+/g, " ")
-    .replace(/^[\s,·+-]+|[\s,·+-]+$/g, "")
+    // Un lieu retiré laisse une flèche orpheline (« Private minivan: → Krabi Airport »).
+    .replace(/([:(])\s*(?:→|->)\s*/g, "$1 ")
+    .replace(/(?:→|->)\s*(?=→|->|$)/g, "")
+    .replace(/^[\s,·+→-]+|[\s,·+→-]+$/g, "")
     .replace(/\s+(?:by|par|with|avec|chez|from)$/i, "")
     .trim();
+}
+// Le mot générique d'un service sans libellé du catalogue.
+const GENERIQUES = { transfert: "Transfert", excursion: "Excursion", activite: "Excursion", location: "Location" };
+function generique(r, p) {
+  if (p && GENERIQUES[p.famille]) return GENERIQUES[p.famille];
+  if (r.trajet_id || /→|->|\btransfer|\btransfert|\btaxi\b|\bvan\b|minivan|airport|a[ée]roport/i.test(r.libelle || "")) return "Transfert";
+  return "Service";
+}
+// Le service tel qu'il part chez Claude : le libellé du catalogue (anglais d'abord, comme le voucher), sans les lieux de la réservation ni
+// les noms, sinon le mot générique. Jamais le libellé saisi sur la réservation.
+export function serviceDe(r, p, noms = []) {
+  const lieux = [r.lieu_pickup, r.drop_off, r.details && r.details.drop_off].filter((x) => typeof x === "string" && x.trim().length > 2);
+  const catalogue = p ? String(p.libelle_en || p.libelle || "") : "";
+  const sansLieux = lieux.reduce((acc, l) => acc.replace(new RegExp(echappe(l.trim()), "gi"), " "), catalogue);
+  const propre = sansNoms(neutre(sansLieux, 300), noms);
+  return court(propre && /[\p{L}]/u.test(propre) ? propre : generique(r, p), 160);
 }
 
 // Un service sans voucher, comme l'écran (operations-calc.mjs, modeleChoisi et typeVoucherDeduit) : « Pas de voucher » choisi sur la
@@ -118,7 +163,8 @@ const aCompleter = (r) => [!r.date_service && "date", !heureDe(r.heure_pickup) &
 // `e` : l'entrée contrôlée (client, date, heure, dossier). Les lignes lues : reservations, dossiers, clients. `aujourdhui` : AAAA-MM-JJ à
 // Koh Lanta. `permises` : les entreprises où la personne lit les vouchers (Set d'identifiants), null pour ne pas filtrer (essais).
 // `marque(entiteId)` : le champ « entreprise » d'une ligne en espace unifié ({} sinon). `noms` : les noms des prestataires à retirer.
-// `prestations` : { id, famille, unite, groupe, libelle } des services, pour écarter ceux qui n'ont pas de voucher.
+// `prestations` : { id, famille, unite, groupe, libelle, libelle_en } des services : le libellé qui part et ceux qui n'ont pas de voucher.
+// `limite` : vrai quand une lecture de la base a atteint sa limite (le résultat dit alors « tronque »).
 // Rend { resultat } ; resultat.reservations est ce que l'écran transforme en cartes (groupesVouchers).
 export function criteresVouchers(e = {}, aujourdhui = "") {
   const date = dateVoucher(e.date, aujourdhui);
@@ -133,7 +179,7 @@ export function criteresVouchers(e = {}, aujourdhui = "") {
   return { client, dossier, date: supposee ? aujourdhui : date, heure: h.heure, minutes: h.minutes, date_supposee: supposee };
 }
 
-export function trouverVouchers(e = {}, { reservations = [], dossiers = [], clients = [], prestations = [], aujourdhui = "", permises = null, marque = () => ({}), noms = [] } = {}) {
+export function trouverVouchers(e = {}, { reservations = [], dossiers = [], clients = [], prestations = [], aujourdhui = "", permises = null, marque = () => ({}), noms = [], limite = false } = {}) {
   const c = criteresVouchers(e, aujourdhui);
   if (c.erreur) return { resultat: { erreur: c.erreur, ...(c.erreur === "critere_manquant" ? { conseil: "Demande à la personne quel client, quel jour, quelle heure ou quel dossier." } : {}) } };
   const parDossier = new Map((dossiers || []).filter(Boolean).map((d) => [d.id, d]));
@@ -169,13 +215,18 @@ export function trouverVouchers(e = {}, { reservations = [], dossiers = [], clie
     const exactes = lisibles.filter((r) => heureDe(r.heure_pickup) === c.heure);
     trouves = exactes.length && c.minutes ? exactes : lisibles.filter((r) => heureDe(r.heure_pickup).slice(0, 2) === c.heure.slice(0, 2));
   }
-  trouves = [...trouves].sort(
-    (a, b) =>
-      String(a.date_service || "9999").localeCompare(String(b.date_service || "9999")) ||
-      (heureDe(a.heure_pickup) || "99").localeCompare(heureDe(b.heure_pickup) || "99") ||
-      String((parDossier.get(a.dossier_id) || {}).ref || "").localeCompare(String((parDossier.get(b.dossier_id) || {}).ref || "")) ||
-      String(a.id).localeCompare(String(b.id))
-  );
+  // L'ordre : sans jour demandé, les services à venir (à partir d'aujourd'hui à Koh Lanta) d'abord, du plus proche au plus lointain, puis
+  // ceux sans date, puis les passés du plus récent au plus ancien. Avec un jour, par heure.
+  const rang = (r) => (!r.date_service ? 1 : dateValide(aujourdhui) && r.date_service < aujourdhui ? 2 : 0);
+  const cle = (r) => `${r.date_service || ""} ${heureDe(r.heure_pickup) || "99:99"}`;
+  const ref = (r) => String((parDossier.get(r.dossier_id) || {}).ref || "");
+  trouves = [...trouves].sort((a, b) => {
+    const ra = rang(a);
+    const rb = rang(b);
+    if (ra !== rb) return ra - rb;
+    const ordre = ra === 2 ? cle(b).localeCompare(cle(a)) : cle(a).localeCompare(cle(b));
+    return ordre || ref(a).localeCompare(ref(b)) || String(a.id).localeCompare(String(b.id));
+  });
   const lignes = trouves.slice(0, VOUCHERS_MAX).map((r) => {
     const d = parDossier.get(r.dossier_id);
     const cl = parClient.get(d.client_id) || {};
@@ -184,10 +235,10 @@ export function trouverVouchers(e = {}, { reservations = [], dossiers = [], clie
       reservation: refCourte("R", r.id),
       date: r.date_service || "",
       heure_pickup: heureDe(r.heure_pickup),
-      service: sansNoms(texte(r.libelle, 160), noms),
-      client: texte([cl.prenom, cl.nom].filter(Boolean).join(" "), 80),
+      service: serviceDe(r, parPrestation.get(r.prestation_id), noms),
+      client: neutre([cl.prenom, cl.nom].filter(Boolean).join(" "), 80),
       dossier: refCourte("D", d.id),
-      reference: texte(d.ref, 30),
+      reference: neutre(d.ref, 30),
       ...marque(r.entite_id),
       ...(manque.length ? { a_completer: manque } : {}),
     };
@@ -200,7 +251,7 @@ export function trouverVouchers(e = {}, { reservations = [], dossiers = [], clie
       ...(c.date_supposee ? { date_supposee: "aujourdhui" } : {}),
       ...(c.heure ? { heure: c.heure } : {}),
       reservations: lignes,
-      ...(trouves.length > VOUCHERS_MAX ? { tronque: true } : {}),
+      ...(trouves.length > VOUCHERS_MAX || limite === true ? { tronque: true } : {}),
       ...(lignes.length ? { cartes_affichees: cartes } : { conseil: "Aucune réservation ne correspond (les services annulés, les frais et les options n'ont pas de voucher). Vérifie le nom, le jour ou l'heure avec la personne." }),
     },
     heures: lignes.map((l) => l.heure_pickup).filter(Boolean),

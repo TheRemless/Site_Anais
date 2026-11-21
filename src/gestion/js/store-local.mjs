@@ -414,10 +414,11 @@ export function creer() {
       reservations: structuredClone(data.reservations.filter((r) => ids.includes(r.entite_id) && visibles.has(r.dossier_id))),
       dossiers: structuredClone(dossiers),
       clients: structuredClone(data.clients.filter((c) => dossiers.some((d) => d.client_id === c.id))),
-      prestations: data.prestations.filter((p) => ids.includes(p.entite_id)).map(({ id, famille, unite, groupe, libelle }) => ({ id, famille, unite, groupe, libelle })),
+      prestations: data.prestations.filter((p) => ids.includes(p.entite_id)).map(({ id, famille, unite, groupe, libelle, libelle_en }) => ({ id, famille, unite, groupe, libelle, libelle_en })),
       permises: new Set(ids),
       marque: (id) => (autre && libelle(id) ? { entreprise: libelle(id) } : {}),
-      noms: data.partenaires.filter((p) => ids.includes(p.entite_id)).map((p) => p.nom),
+      // Partenaires et compagnies des réglages (non partenaires), comme la fonction.
+      noms: [...data.partenaires.filter((p) => ids.includes(p.entite_id)).map((p) => p.nom), ...ids.flatMap((id) => ((data.reglages || {})[id] || {}).compagnies || [])],
     };
   }
   // Les cartes d'un apporteur (agent-whatsapp-demo.mjs) : l'espace unifié comme carteMixteDemo (la personne travaille dans les deux).

@@ -475,8 +475,8 @@ Deno.serve(async (req) => {
   // Comme l'écran (completerReglages) : sans fonctionnement réglé, « sur_mesure », donc pas de voucher.
   const fonctionnementDe = (r: Record<string, unknown> | null) => (r && typeof r.fonctionnement === "string" ? r.fonctionnement : "sur_mesure");
   const entitesVoucher = [{ id: entiteId, fonctionnement: fonctionnementDe(reglages) }, ...(unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => ({ id: e.id, fonctionnement: fonctionnementDe(reglagesAutre) })) : [])];
-  // modele_voucher : seulement le modèle choisi sur la réservation (« aucun » : pas de voucher), pas le reste de `details`.
-  const COL_RES_VOUCHER = "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, statut, entite_id, modele_voucher:details->>modele_voucher";
+  // De `details`, seulement le modèle choisi (« aucun » : pas de voucher) et le lieu de dépose (retiré du service, jamais envoyé).
+  const COL_RES_VOUCHER = "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, statut, entite_id, modele_voucher:details->>modele_voucher, drop_off:details->>drop_off";
   const COL_DOS_VOUCHER = "id, ref, client_id, annule, entite_id";
   const COL_CLI_VOUCHER = "id, prenom, nom, entite_id";
   // Une ligne par sa référence courte (D-…, R-…, C-…), avec ces colonnes seulement.
@@ -485,19 +485,30 @@ Deno.serve(async (req) => {
     if (!p) return Promise.resolve([] as Record<string, any>[]);
     return lire(filtre(sb.from(table).select(colonnes)).gte("id", `${p}-0000-0000-0000-000000000000`).lte("id", `${p}-ffff-ffff-ffff-ffffffffffff`).limit(5), table);
   };
-  // Par lots de 100 identifiants (une adresse trop longue serait refusée).
-  const parLots = async (table: string, colonnes: string, colonne: string, ids: string[], plus: (q: any) => any = (q) => q, max = 500) => {
-    const uniques = [...new Set(ids.filter(Boolean))].slice(0, max);
+  // Par lots de 100 identifiants (une adresse trop longue serait refusée). Une lecture qui atteint sa limite le note (`limite`) : le résultat
+  // dit alors « tronque » (revue de sécurité de la PR 303).
+  // `lu` : l'état d'une recherche (une par appel d'outil, même quand deux appels tournent ensemble).
+  const parLots = async (lu: { limite: boolean }, table: string, colonnes: string, colonne: string, ids: string[], plus: (q: any) => any = (q) => q, max = 500) => {
+    const tous = [...new Set(ids.filter(Boolean))];
+    if (tous.length > max) lu.limite = true;
+    const uniques = tous.slice(0, max);
     const out: Record<string, any>[] = [];
-    for (let i = 0; i < uniques.length; i += 100) out.push(...(await lire(plus(sb.from(table).select(colonnes).in(colonne, uniques.slice(i, i + 100))).limit(1000), table)));
+    for (let i = 0; i < uniques.length; i += 100) {
+      const lot = await lire(plus(sb.from(table).select(colonnes).in(colonne, uniques.slice(i, i + 100))).limit(1000), table);
+      if (lot.length >= 1000) lu.limite = true;
+      out.push(...lot);
+    }
     return out;
   };
   const vouchers = {
     permis: true,
     entites: entitesVoucher,
+    // Les compagnies (non partenaires) des réglages de l'autre entreprise, retirées du service comme celles de l'entreprise active.
+    compagniesAutre: unifie && reglagesAutre && Array.isArray(reglagesAutre.compagnies) ? reglagesAutre.compagnies : [],
     // Les candidats d'une recherche ; l'outil refait tout le tri (droits par entreprise, date, heure, mots du nom, annulés).
     candidats: async (c: { client: string; dossier: string; date: string; entites: string[] }) => {
       const ids = (c.entites || []).filter((x) => idsEntites.includes(x));
+      const lu = { limite: false };
       if (!ids.length) return { reservations: [], dossiers: [], clients: [] };
       const ici = (q: any, colonne = "entite_id") => q.in(colonne, ids);
       const parDate = (q: any) => (c.date ? q.eq("date_service", c.date) : q);
@@ -517,19 +528,23 @@ Deno.serve(async (req) => {
         else if (genre === "C") {
           // Une fiche partagée d'une autre entreprise se lit aussi (la RLS décide) ; ses dossiers, seulement ceux de Secret ou de Taxi.
           const cs = await parRefVoucher("clients", c.client, COL_CLI_VOUCHER, (q) => q);
-          dossiersVises = await parLots("dossiers", COL_DOS_VOUCHER, "client_id", cs.map((x) => x.id), ici);
+          dossiersVises = await parLots(lu, "dossiers", COL_DOS_VOUCHER, "client_id", cs.map((x) => x.id), ici);
         } else {
-          const [, ds] = (await chercherClients(c.client)) as [Record<string, any>[], Record<string, any>[]];
+          const [cs, ds] = (await chercherClients(c.client)) as [Record<string, any>[], Record<string, any>[]];
+          if (cs.length >= 250 || ds.length >= 500) lu.limite = true;
           dossiersVises = ds.filter((d) => ids.includes(d.entite_id));
         }
       }
-      if (dossiersVises) reservations = await parLots("reservations", COL_RES_VOUCHER, "dossier_id", dossiersVises.map((d) => d.id), (q) => parDate(ici(q)).neq("statut", "annule"), 250);
-      else if (!c.client && c.date) reservations = await lire(ici(sb.from("reservations").select(COL_RES_VOUCHER)).eq("date_service", c.date).neq("statut", "annule").order("heure_pickup", { ascending: true }).limit(300), "reservations");
-      const dossiers = await parLots("dossiers", COL_DOS_VOUCHER, "id", reservations.map((r) => r.dossier_id));
-      const clients = await parLots("clients", COL_CLI_VOUCHER, "id", dossiers.map((d) => d.client_id));
+      if (dossiersVises) reservations = await parLots(lu, "reservations", COL_RES_VOUCHER, "dossier_id", dossiersVises.map((d) => d.id), (q) => parDate(ici(q)).neq("statut", "annule"), 250);
+      else if (!c.client && c.date) {
+        reservations = await lire(ici(sb.from("reservations").select(COL_RES_VOUCHER)).eq("date_service", c.date).neq("statut", "annule").order("heure_pickup", { ascending: true }).limit(300), "reservations");
+        if (reservations.length >= 300) lu.limite = true;
+      }
+      const dossiers = await parLots(lu, "dossiers", COL_DOS_VOUCHER, "id", reservations.map((r) => r.dossier_id));
+      const clients = await parLots(lu, "clients", COL_CLI_VOUCHER, "id", dossiers.map((d) => d.client_id));
       // La famille des services (frais et options n'ont pas de voucher) ; illisible, l'écran fait le tri seul.
-      const prestations = await parLots("prestations", "id, famille, unite, groupe, libelle", "id", reservations.map((r) => r.prestation_id)).catch(() => []);
-      return { reservations, dossiers, clients, prestations };
+      const prestations = await parLots(lu, "prestations", "id, famille, unite, groupe, libelle, libelle_en", "id", reservations.map((r) => r.prestation_id)).catch(() => []);
+      return { reservations, dossiers, clients, prestations, limite: lu.limite };
     },
   };
   // ---- Boîte WhatsApp (PR A, migration 67), lue avec la session de la personne -----------------------------------------------------

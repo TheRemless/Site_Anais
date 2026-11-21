@@ -443,7 +443,10 @@ async function executerVouchers(e, ctx) {
   if (c.erreur) return trouverVouchersLus(e, { aujourdhui });
   const ids = permises.map((x) => x.id);
   const [lus, partenaires] = await Promise.all([ctx.vouchers.candidats({ ...c, entites: ids }), ctx.charger("partenaires")]);
-  return trouverVouchersLus(e, { ...(lus || {}), aujourdhui, permises: new Set(ids), marque: (id) => marqueEntreprise(ctx, id), noms: nomsPrestataires(partenaires) });
+  // Les noms retirés du service : les partenaires, et les compagnies des réglages (non partenaires) de l'entreprise active et, en espace
+  // unifié, de l'autre (revue de sécurité de la PR 303).
+  const compagnies = [...((ctx.reglages && ctx.reglages.compagnies) || []), ...(estUnifie(ctx) ? ctx.vouchers.compagniesAutre || [] : [])].filter((x) => typeof x === "string");
+  return trouverVouchersLus(e, { ...(lus || {}), aujourdhui, permises: new Set(ids), marque: (id) => marqueEntreprise(ctx, id), noms: [...nomsPrestataires(partenaires), ...compagnies] });
 }
 
 // Les mêmes outils en mode unifié (Secret et Taxi) : les recherches couvrent les deux entreprises et un service porte son entreprise.
