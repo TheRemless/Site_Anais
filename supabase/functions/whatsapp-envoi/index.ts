@@ -155,6 +155,8 @@ async function contenuInterne(admin: any, conv: { organisation_id: string; entit
     admin.from("trajets").select("prix_adulte, prix_enfant").in("entite_id", ids).limit(5000),
     admin.from("partenaires").select("id, nom, categorie, contact").in("entite_id", ids).limit(2000),
   ]);
+  // Revue de la PR 298 : sans les fiches partenaires, aucun nom ne peut être contrôlé. On ferme : rien ne part.
+  if (pa.error) return ["nom_prestataire:lecture_impossible"];
   const nombres = (lignes: Record<string, unknown>[] | null, cles: string[]) => new Set((lignes || []).flatMap((l) => cles.map((k) => Number(l[k]))).filter((n) => Number.isFinite(n) && n > 0));
   const internes = new Set([...nombres(pn.data, ["net", "net_enfant"]), ...nombres(tn.data, ["net_adulte", "net_enfant"])]);
   const ventes = new Set([...nombres(pr.data, ["prix_vente"]), ...nombres(tr.data, ["prix_adulte", "prix_enfant"])]);

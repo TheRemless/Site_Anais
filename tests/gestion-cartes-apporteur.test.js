@@ -110,17 +110,21 @@ test("fonction agent : type et fiche lus avec la session, repli sans la colonne,
 });
 
 // ---- Fiches et contrôle --------------------------------------------------------------------------------------------------------
-test("fiches : la reliée dans son entreprise, l'autre par le même numéro ou le même nom, jamais une fiche qui n'est pas apporteur", () => {
+test("fiches : la reliée dans son entreprise, l'autre seulement au numéro de la conversation (point 7), jamais une fiche qui n'est pas apporteur", () => {
   const ids = (i) => Object.fromEntries(i.fiches.map((f) => [f.entreprise, f.id]));
   // Reliée chez Secret, rien chez Taxi.
   let i = infoApporteur({ conv, reliee: jadeSecret, candidats: [jadeSecret, bateau], entites: unifie.entites });
   assert.deepEqual(ids(i), { secret: JADE_S });
   assert.equal(i.nom, "Jade");
-  // La fiche de Taxi au même numéro (écrit autrement) ; puis au même nom sans numéro.
+  // La fiche de Taxi au numéro de la conversation (écrit autrement).
   i = infoApporteur({ conv, reliee: jadeSecret, candidats: [jadeSecret, jadeTaxi], entites: unifie.entites });
   assert.deepEqual(ids(i), { secret: JADE_S, taxi: JADE_T });
+  // Revue PR 298, point 7 : le même nom sans le numéro ne suffit pas, ni un autre numéro de la fiche reliée.
   i = infoApporteur({ conv, reliee: jadeSecret, candidats: [{ ...jadeTaxi, contact: {} }], entites: unifie.entites });
-  assert.deepEqual(ids(i), { secret: JADE_S, taxi: JADE_T });
+  assert.deepEqual(ids(i), { secret: JADE_S }, "« pas de fiche chez Taxi »");
+  const jadeDeuxNumeros = { ...jadeSecret, contact: { telephones: [{ numero: "+44 7700 900955" }, { numero: "+66 81 999 0000" }] } };
+  i = infoApporteur({ conv, reliee: jadeDeuxNumeros, candidats: [{ ...jadeTaxi, contact: { telephones: [{ numero: "+66 81 999 0000" }] } }], entites: unifie.entites });
+  assert.deepEqual(ids(i), { secret: JADE_S });
   // Deux fiches au même numéro chez Taxi : aucune (Nani choisit). Une fiche masquée ou d'une autre catégorie : jamais.
   i = infoApporteur({ conv, reliee: jadeSecret, candidats: [jadeTaxi, { ...jadeTaxi, id: "3ade0000-0000-4000-8000-000000000003", nom: "Jade B" }], entites: unifie.entites });
   assert.deepEqual(ids(i), { secret: JADE_S });
@@ -141,10 +145,10 @@ test("apporteur de la carte : posé d'office dans le contexte, la référence du
   const attendu = { nom: "Jade", fiches: { [SECRET.id]: JADE_S } };
   // Le modèle oublie le champ : l'apporteur du contexte est posé quand même.
   assert.deepEqual(apporteurDeCarte("", info, { entitesCarte: [SECRET.id] }), { apporteur: attendu, resume: { note_chez: ["Secret"], sans_fiche_chez: [] } });
-  // Une référence qui n'est pas celle du contact (un partenaire, une autre fiche) : ignorée, avec l'avertissement ; l'apporteur du contexte reste.
+  // Revue PR 298, point 3 : une référence qui n'est pas celle du contact est ignorée sans avertissement ; l'apporteur du contexte reste.
   const autre = apporteurDeCarte(refApporteur(BATEAU), info, { entitesCarte: [SECRET.id] });
   assert.deepEqual(autre.apporteur, attendu);
-  assert.equal(autre.avertissement, "apporteur_inconnu");
+  assert.equal(autre.avertissement, undefined);
   // Hors contexte (pas de contact apporteur, ou aucune fiche) : rien n'est posé ; une référence donnée reste un avertissement.
   assert.deepEqual(apporteurDeCarte("", null), {});
   assert.deepEqual(apporteurDeCarte(refApporteur(JADE_S), null), { avertissement: "apporteur_inconnu" }, "sans contact apporteur");
@@ -179,10 +183,14 @@ test("proposer_dossier : une carte par client, la bonne entreprise, l'apporteur 
     assert.doesNotMatch(t, /Jade/);
     assert.ok(!t.includes(JADE_S) && !t.includes(SECRET.id));
   }
-  // Une référence inventée : ignorée avec un avertissement, l'apporteur du contexte est posé quand même.
+  // Une référence inventée : ignorée sans avertissement (point 3), l'apporteur du contexte est posé quand même.
   const faux = await executer("proposer_dossier", { titre: "x", client_nom: "Léa", services: [service({ texte: "Koh Rok", ref: refDe("P", P_SNORKEL) })], apporteur: "A-12345678" }, ctx, memo());
   assert.deepEqual(faux.carte.donnees.apporteur, { nom: "Jade", fiches: { [SECRET.id]: JADE_S } });
-  assert.ok(faux.carte.avertissements.includes("apporteur_inconnu"));
+  assert.ok(!(faux.carte.avertissements || []).includes("apporteur_inconnu"));
+  // Hors contexte, une référence donnée reste signalée, avec le texte de la revue.
+  const horsContexte = await executer("proposer_dossier", { titre: "x", client_nom: "Léa", services: [service({ texte: "Koh Rok", ref: refDe("P", P_SNORKEL) })], apporteur: "A-12345678" }, { permissions: TOUS, charger, reglages: {} }, memo());
+  assert.ok(horsContexte.carte.avertissements.includes("apporteur_inconnu"));
+  assert.match(source("src/gestion/js/views/agent.mjs"), /apporteur_inconnu: N_\("La référence donnée par l'assistant ne correspond à aucune fiche apporteur\."\)/);
   // Le modèle oublie le champ : posé d'office, chaque entreprise avec sa fiche (Marco chez Taxi : aucune).
   const oubli = await executer("proposer_dossier", { titre: "Marco", client_nom: "Marco", services: [service({ texte: "Taxi", ref: refDe("P", P_AEROPORT) })] }, ctx, memo());
   assert.deepEqual(oubli.carte.donnees.apporteur, { nom: "Jade", fiches: { [SECRET.id]: JADE_S } });
@@ -253,8 +261,13 @@ test("réponse à l'apporteur lui-même : « Hi Jade » passe vers Jade ; vers E
   const { fichesDuContact, nomsABloquer } = await import("../supabase/functions/agent/apporteur.js");
   const partenaires = [jadeSecret, jadeTaxi, bateau, { id: "4ade0000-0000-4000-8000-000000000004", nom: "Lucie", categorie: "apporteur", entite_id: SECRET.id, contact: { telephones: [{ numero: "+44 7700 900111" }] } }];
   const bloques = (texte, c) => controlerReponse(texte, { signer: true, prestataires: nomsABloquer(partenaires, fichesDuContact(c, partenaires)) }).avertissements.filter((a) => a.startsWith("nom_prestataire"));
-  // Vers Jade, dans sa conversation : son nom passe (sa fiche reliée et sa fiche de Taxi, la même personne).
+  // Vers Jade, dans sa conversation : son nom passe (sa fiche reliée et sa fiche de Taxi au numéro de la conversation).
   assert.deepEqual([...fichesDuContact(conv, partenaires)].sort(), [JADE_S, JADE_T].sort());
+  // Revue PR 298, point 6 : seulement le numéro de la conversation. Une fiche au même nom, ou à un autre numéro de la fiche reliée, n'est pas exemptée.
+  const autreNumero = { ...jadeTaxi, contact: { telephones: [{ numero: "+66 81 999 0000" }] } };
+  const reliee2 = { ...jadeSecret, contact: { telephones: [{ numero: "+44 7700 900955" }, { numero: "+66 81 999 0000" }] } };
+  assert.deepEqual([...fichesDuContact(conv, [reliee2, autreNumero])], [JADE_S]);
+  assert.deepEqual([...fichesDuContact(conv, [jadeSecret, { ...jadeTaxi, contact: {} }])], [JADE_S]);
   assert.deepEqual(bloques("Hi Jade! Both bookings are noted.", conv), []);
   // Vers Emma (une cliente) : le nom de Jade reste bloqué.
   const emma = { id: "c2", telephone: "+447700900412", reponses: "auto", type_contact: "client", partenaire_id: null };
@@ -272,7 +285,9 @@ test("réponse à l'apporteur lui-même : « Hi Jade » passe vers Jade ; vers E
   assert.match(envoi, /select\("id, organisation_id, telephone, entite_id, reponses, type_contact, partenaire_id"\)/);
   assert.match(envoi, /if \(lue\.error && lue\.error\.code === "42703"\) lue = await sb\.from\("whatsapp_conversations"\)\.select\("id, organisation_id, telephone, entite_id"\)/);
   assert.match(envoi, /const prestataires = nomsABloquer\(pa\.data \|\| \[\], fichesDuContact\(conv, pa\.data \|\| \[\]\)\);/);
-  assert.match(source("supabase/functions/agent/index.ts"), /const prestataires = nomsABloquer\(\(await charger\("partenaires"\)\) as \{ id: string; nom: string \}\[\], new Set\(apporteur \?/);
+  const idx = source("supabase/functions/agent/index.ts");
+  assert.match(idx, /const prestataires = nomsABloquer\(partenairesLus\);/, "agent : tous les noms bloqués par défaut");
+  assert.match(idx, /const prestatairesVersApporteur = apporteur \? nomsABloquer\(partenairesLus, new Set\(/);
 });
 
 test("jamais d'apporteur sur un document du client (reprise de la PR 296)", () => {
@@ -369,4 +384,97 @@ test("démo : « Prépare les dossiers » sur Jade donne deux cartes, sans la ca
     delete globalThis.localStorage;
     delete globalThis.location;
   }
+});
+
+// ---- Revue de sécurité de la PR 298 ---------------------------------------------------------------------------------------------------
+test("revue 298, point 1 : proposer_reponse dit à qui va la réponse ; vers le client (ou par défaut) le nom de Jade reste bloqué", async () => {
+  const { OUTILS, outilsDuContexte } = await import("../supabase/functions/agent/outils.js");
+  const apporteur = infoApporteur({ conv, reliee: jadeSecret, candidats: [jadeSecret], entites: [SECRET] });
+  const ctx = { permissions: TOUS, charger, reglages: {}, apporteur };
+  const m = memo();
+  m.prestataires = ["Blue Ocean", "Jade"];
+  m.prestatairesApporteur = ["Blue Ocean"];
+  // Le champ n'existe qu'avec un contact apporteur.
+  const schema = (c) => outilsDuContexte(c).find((o) => o.name === "proposer_reponse").input_schema.properties;
+  assert.ok("destinataire" in schema(ctx));
+  assert.ok(!("destinataire" in schema({ permissions: TOUS, charger, reglages: {} })));
+  assert.ok(!("destinataire" in OUTILS.find((o) => o.name === "proposer_reponse").input_schema.properties));
+  const rep = (destinataire, message, c = ctx) => executer("proposer_reponse", { titre: "x", langue: "en", message, ...(destinataire === undefined ? {} : { destinataire }) }, c, m);
+  // Par défaut et vers le client : bloqué.
+  for (const d of [undefined, "", "client"]) {
+    const r = await rep(d, "Jade gave us your details, see you on Friday.");
+    assert.ok(r.carte.avertissements.includes("nom_prestataire:Jade"), String(d));
+    assert.equal(r.carte.donnees.destinataire, "client");
+    assert.equal(r.carte.donnees.apporteur_nom, undefined);
+  }
+  // Vers l'apporteur : « Hi Jade » passe, un autre partenaire reste bloqué.
+  const versJade = await rep("apporteur", "Hi Jade! Both bookings are noted.");
+  assert.ok(!versJade.carte.avertissements.some((a) => a.startsWith("nom_prestataire")));
+  assert.deepEqual([versJade.carte.donnees.destinataire, versJade.carte.donnees.apporteur_nom], ["apporteur", "Jade"]);
+  assert.doesNotMatch(JSON.stringify(versJade.contenu), /"Jade"|apporteur_nom/, "le nom ne repart pas chez Claude");
+  assert.ok((await rep("apporteur", "Hi Jade, the boat is Blue Ocean.")).carte.avertissements.includes("nom_prestataire:Blue Ocean"));
+  // Sans ctx.apporteur : le champ est ignoré, rien ne change (Jade bloquée, aucune mention de destinataire).
+  const sans = await rep("apporteur", "Hi Jade", { permissions: TOUS, charger, reglages: {} });
+  assert.ok(sans.carte.avertissements.includes("nom_prestataire:Jade"));
+  assert.equal(sans.carte.donnees.destinataire, undefined);
+  // L'écran dit à qui va la réponse.
+  const vue = source("src/gestion/js/views/agent.mjs");
+  assert.match(vue, /tr\("Réponse à \{nom\} \(apporteur\)", \{ nom: d\.apporteur_nom \|\| tr\("l'apporteur"\) \}\) : tr\("Réponse au client"\)/);
+  assert.match(source("supabase/functions/agent/apporteur.js"), /destinataire « apporteur » quand elle s'adresse à l'apporteur, « client » pour un message destiné au client final/);
+});
+
+test("revue 298, point 2 : aucun nom d'apporteur dans les apprentissages", async () => {
+  const { nomsApporteurAMasquer } = await import("../src/gestion/js/apporteurs-calc.mjs");
+  const { correctionsDepuisCarte } = await import("../src/gestion/js/agent-apprendre.mjs");
+  const lucie = { id: "l", nom: "Lucie", categorie: "apporteur", entite_id: TAXI.id };
+  const reliee = { id: "r", nom: "Agence Soleil", categorie: "Partenaire", entite_id: SECRET.id };
+  const noms = nomsApporteurAMasquer({ partenaires: [jadeSecret, lucie, reliee, bateau], conversationWa: { partenaire_id: "r" }, cartes: [{ donnees: { apporteur: { nom: "Jade" } } }, { donnees: { apporteur_nom: "Jady" } }] });
+  assert.deepEqual(noms.sort(), ["Agence Soleil", "Jade", "Jady", "Lucie"]);
+  // Une réponse corrigée qui cite Jade et Lucie : leurs noms sont masqués avant de partir chez Anthropic.
+  const carte = { genre: "reponse", donnees: { langue: "en", message: "Hi! Thanks for the booking." } };
+  const lignes = correctionsDepuisCarte(carte, { message: "Hi! Thanks for the booking, Jade and Lucie told us about you." }, { noms });
+  assert.ok(lignes.length === 1);
+  assert.doesNotMatch(JSON.stringify(lignes), /Jade|Lucie|Soleil/);
+  const vue = source("src/gestion/js/views/agent.mjs");
+  assert.match(vue, /\.\.\.nomsApporteurAMasquer\(\{ partenaires: etat\.brut\.partenaires \|\| \[\], conversationWa: waLiee, cartes: \[c, \.\.\.fil\.cartes\] \}\)/);
+});
+
+test("revue 298, points 4 et 9 : pas de dossier_id pour un apporteur ; le type est relu avant de poser l'apporteur", async () => {
+  const { apporteurConfirme, lierDossierConversation } = await import("../src/gestion/js/apporteurs-calc.mjs");
+  assert.equal(lierDossierConversation({ donnees: { apporteur: { nom: "Jade", fiches: {} } } }, null), false);
+  assert.equal(lierDossierConversation({ donnees: {} }, "apporteur"), false);
+  assert.equal(lierDossierConversation({ donnees: {} }, "client"), true);
+  assert.equal(lierDossierConversation({ donnees: {} }, null), true);
+  assert.equal(apporteurConfirme({ type_contact: "apporteur" }), true);
+  for (const wc of [null, {}, { type_contact: "client" }, { type_contact: null }, { type_contact: "partenaire" }]) assert.equal(apporteurConfirme(wc), false);
+  const vue = source("src/gestion/js/views/agent.mjs");
+  assert.match(vue, /if \(id && conv && !conv\.dossier_id && lierDossierConversation\(c, typeLie\)\)/);
+  assert.match(vue, /const typeLie = await typeContactLie\(\);/);
+  assert.match(vue, /if \(typeLie === "apporteur"\) await noterApporteur\(c\.donnees\.apporteur, r\.dossiers \|\| \[dossier\]\);/);
+  assert.match(vue, /const wc = await etat\.store\.whatsappConversation\(waId\);/);
+});
+
+test("revue 298, point 5 : repli de la conversation liée seulement sans demande WhatsApp, et seulement si la personne y écrit", () => {
+  const ts = source("supabase/functions/agent/index.ts");
+  assert.match(ts, /if \(!waLiee && !waId && typeof lieeId === "string" && UUID\.test\(lieeId\)\)/);
+  assert.match(ts, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: lieeId \}\)/);
+  assert.match(ts, /if \(!w\.error && !peutLiee\.error && peutLiee\.data === true\) waLiee = w\.data \|\| null;/);
+});
+
+test("revue 298, point 8 : whatsapp-envoi ferme si les fiches sont illisibles, l'écran le dit clairement", async () => {
+  const envoi = source("supabase/functions/whatsapp-envoi/index.ts");
+  assert.match(envoi, /if \(pa\.error\) return \["nom_prestataire:lecture_impossible"\];/);
+  assert.ok(envoi.indexOf("if (pa.error)") < envoi.indexOf("const c = controlerReponse"));
+  const W = await import("../src/gestion/js/whatsapp-calc.mjs");
+  assert.equal(W.codeEnvoi("contenu_interne", ["nom_prestataire:lecture_impossible"]), "partenaires_illisibles");
+  assert.equal(W.codeEnvoi("contenu_interne", ["nom_prestataire:Jade"]), "contenu_interne");
+  assert.equal(W.codeEnvoi("base", []), "base");
+  assert.equal(W.envoiIncertain("partenaires_illisibles"), false, "rien n'est parti");
+  assert.match(W.erreurEnvoi("partenaires_illisibles"), /fiches partenaires n'ont pas pu être relues/);
+  assert.match(source("src/gestion/js/views/whatsapp.mjs"), /toast\(tr\(erreurEnvoi\(codeEnvoi\(code, r && r\.a_retirer\)\)\), true\);/);
+});
+
+test("envoi refusé (contenu_interne) : les valeurs à retirer sont cherchées sans leur code", () => {
+  const vue = source("src/gestion/js/views/whatsapp.mjs");
+  assert.match(vue, /const b = bloquantsReponse\(brut\);\n\s+aRetirer\.set\(p\.id, \[\.\.\.b\.montants\.map\(String\), \.\.\.b\.noms, \.\.\.brut\.filter/);
 });

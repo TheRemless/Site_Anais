@@ -22,7 +22,7 @@
 //
 // Apporteur d'affaires (apporteur.js, PR D, migration 68) : quand la conversation de l'Assistant est liée à une conversation WhatsApp dont le
 // contact est de type « apporteur », l'agent reçoit une consigne (un dossier par client, au nom du client, jamais d'accord ni de commission)
-// et une référence de fiche. Le type, la fiche reliée et la fiche « apporteur » de l'autre entreprise (même numéro ou même nom) se lisent
+// et une référence de fiche. Le type, la fiche reliée et la fiche « apporteur » de l'autre entreprise (même numéro) se lisent
 // avec la session de la personne, jamais partenaires_prives. Ce qui part en plus chez Anthropic : cette consigne, la référence « A-… » et
 // les noms d'entreprise (Secret, Taxi) où la fiche manque ; jamais le nom ni le numéro de la fiche.
 //
@@ -250,11 +250,14 @@ Deno.serve(async (req) => {
     if (!c.data || c.data.entite_id !== entiteId) return json({ erreur: "conversation_introuvable" }, 404);
     conv = c.data;
     // Une conversation déjà liée (message suivant, sans échange joint) : son contact WhatsApp relu avec la session. Illisible : rien.
+    // Revue de la PR 298 : jamais quand la demande porte déjà une conversation WhatsApp (lecture seule comprise), et seulement si la personne
+    // écrit encore dans cette conversation (whatsapp_peut_ecrire) ; sinon ni consigne apporteur, ni exemption.
     const lieeId = c.data.whatsapp_conversation_id;
-    if (!waLiee && typeof lieeId === "string" && UUID.test(lieeId)) {
-      const w = await lireWa(lieeId);
+    if (!waLiee && !waId && typeof lieeId === "string" && UUID.test(lieeId)) {
+      const [w, peutLiee] = await Promise.all([lireWa(lieeId), sb.rpc("whatsapp_peut_ecrire", { p_conversation: lieeId })]);
       if (w.error) console.error("agent : conversation WhatsApp liée", w.error.message);
-      else waLiee = w.data || null;
+      if (peutLiee.error) console.error("agent : whatsapp_peut_ecrire (conversation liée)", peutLiee.error.message);
+      if (!w.error && !peutLiee.error && peutLiee.data === true) waLiee = w.data || null;
     }
   } else {
     const dossierId = waDossier || (typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null);
@@ -773,9 +776,12 @@ Deno.serve(async (req) => {
     const d = await sb.from("dossiers").select("id, ref").eq("id", conv!.dossier_id).maybeSingle();
     if (d.data) dossierRelie = { ref_courte: refDe("D", d.data.id), reference: d.data.ref };
   }
-  // Les noms de partenaires bloqués dans une réponse au client. Conversation liée à un apporteur : la réponse lui est adressée, ses propres
-  // fiches (apporteur.js) sortent de la liste ; tout autre partenaire reste bloqué.
-  const prestataires = nomsABloquer((await charger("partenaires")) as { id: string; nom: string }[], new Set(apporteur ? (apporteur.fiches as { id: string }[]).map((f) => f.id) : []));
+  // Les noms de partenaires bloqués dans une réponse. Tous, y compris l'apporteur, pour une réponse au client. Conversation liée à un
+  // apporteur : une réponse marquée « destinataire apporteur » (outils.js, proposer_reponse) lui est adressée, ses propres fiches
+  // (apporteur.js) sortent alors de la liste ; tout autre partenaire reste bloqué.
+  const partenairesLus = (await charger("partenaires")) as { id: string; nom: string }[];
+  const prestataires = nomsABloquer(partenairesLus);
+  const prestatairesVersApporteur = apporteur ? nomsABloquer(partenairesLus, new Set((apporteur.fiches as { id: string }[]).map((f) => f.id))) : null;
   // En mode unifié, les droits tenus dans l'une des deux entreprises règlent les consignes (les champs internes, eux, ne sortent que pour
   // les lignes de l'entreprise où la personne a le droit : outils.js).
   const droits: string[] = unifie ? permissionsOutils(unifie) : perms.data || [];
@@ -805,6 +811,7 @@ Deno.serve(async (req) => {
   const lignesAppris = autreEnt ? apprentissagesUnifies({ actives: lus.data || [], autres: lusAutre && !lusAutre.error ? lusAutre.data || [] : [], nomActive: ent.data?.nom || "", nomAutre: autreEnt.nom }) : lus.data || [];
   const appris = lus.error ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte });
   const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean) });
+  if (prestatairesVersApporteur) (memo as Record<string, unknown>).prestatairesApporteur = prestatairesVersApporteur;
   // Les pièces jointes que l'agent peut citer (proposer_import_brochure) et les droits de la personne (l'import demande « partenaires.ecrire »
   // et « partenaires.prix »).
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange

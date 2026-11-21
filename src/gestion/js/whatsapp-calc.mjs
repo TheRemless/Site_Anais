@@ -260,6 +260,8 @@ export const ERREURS_ENVOI = {
   non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),
   droit_manquant: N_("Votre rôle ne permet pas d'envoyer depuis Gestion pour cette conversation."),
   contenu_interne: N_("Le texte contient un net, une commission ou un nom de partenaire. Retirez-le, rien n'est parti."),
+  // whatsapp-envoi n'a pas pu relire les fiches partenaires (revue PR 298) : il ferme, le texte n'est pas en cause.
+  partenaires_illisibles: N_("Les fiches partenaires n'ont pas pu être relues pour contrôler le texte. Rien n'est parti, réessayez dans un instant."),
   fenetre_fermee: N_("Le client a écrit il y a plus de 24 h et WhatsApp refuse alors un message libre. Répondez depuis l'app."),
   non_configure: N_("L'envoi depuis Gestion n'est pas encore configuré. Copiez la réponse et envoyez-la depuis l'app."),
   numero_inconnu: N_("Le numéro de l'entreprise n'est pas encore connu de Gestion. Copiez la réponse et envoyez-la depuis l'app."),
@@ -271,8 +273,12 @@ export const ERREURS_ENVOI = {
 };
 // Erreurs après lesquelles rien n'est parti à coup sûr. Toutes les autres (délai dépassé, connexion coupée pendant l'envoi, réponse illisible,
 // code inconnu) laissent un doute : le bouton Envoyer reste éteint et l'écran demande de vérifier dans WhatsApp.
-const RIEN_PARTI = new Set(["non_connecte", "droit_manquant", "contenu_interne", "fenetre_fermee", "non_configure", "numero_inconnu", "telnyx_refuse", "base", "deja_traitee"]);
+const RIEN_PARTI = new Set(["non_connecte", "droit_manquant", "contenu_interne", "partenaires_illisibles", "fenetre_fermee", "non_configure", "numero_inconnu", "telnyx_refuse", "base", "deja_traitee"]);
 export const envoiIncertain = (code) => !RIEN_PARTI.has(code);
+// Le code à afficher après un refus « contenu_interne » : « partenaires_illisibles » quand la fonction n'a pas pu relire les fiches
+// (a_retirer « nom_prestataire:lecture_impossible »), sinon le code tel quel.
+export const LECTURE_IMPOSSIBLE = "nom_prestataire:lecture_impossible";
+export const codeEnvoi = (code, aRetirer = []) => (code === "contenu_interne" && (aRetirer || []).includes(LECTURE_IMPOSSIBLE) ? "partenaires_illisibles" : code);
 // « Préparer une réponse » (fonction whatsapp-preparer, 202 puis préparation en tâche de fond).
 export const ERREURS_PREPARER = {
   non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),

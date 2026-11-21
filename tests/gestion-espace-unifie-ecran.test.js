@@ -304,7 +304,7 @@ test("6. apprentissages : chaque dossier dans son entreprise, avec seulement ses
   assert.deepEqual(U.carteDeLEntreprise(c, donnees, "t").donnees.services.map((s) => s.libelle), ["Airport"]);
   assert.deepEqual(U.carteDeLEntreprise(c, donnees, "s").donnees.services.map((s) => s.libelle), ["4 Islands"]);
   const agent = source("views/agent.mjs");
-  assert.match(agent, /await apresValidation\(carteDeLEntreprise\(c, donnees, d\.entite_id\), \{ dossierId: d\.id, entiteId: d\.entite_id \}\);/);
+  assert.match(agent, /await apresValidation\(carteDeLEntreprise\(c, donnees, d\.entite_id\), \{ dossierId: d\.id, entiteId: d\.entite_id, typeLie \}\);/);
   assert.match(agent, /agentNoterApprentissages\(entiteId, c\.id, lignes\)/);
 });
 

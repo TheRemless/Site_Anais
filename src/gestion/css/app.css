@@ -1977,6 +1977,9 @@ h1 .etiquette-partage { font-size: 0.8rem; vertical-align: 4px; }
 /* Carte d'un apporteur (PR D) : « Envoyé par Jade », et l'entreprise où il n'a pas de fiche. */
 .agent-carte-apporteur { display: flex; align-items: center; gap: 6px; color: var(--texte-2); font-size: 0.9rem; }
 .agent-carte-apporteur.sans-fiche { font-size: 0.84rem; }
+/* Réponse dans une conversation d'apporteur : à qui elle va (revue PR 298). */
+.agent-destinataire { font-weight: 600; color: var(--teal-700); }
+.agent-destinataire.apporteur { color: var(--texte); }
 .agent-services { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
 .agent-services li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 8px 0; border-top: 1px solid var(--bord); }
 .agent-services li > span:first-child { display: grid; gap: 2px; min-width: 0; }

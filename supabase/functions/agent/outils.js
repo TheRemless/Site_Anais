@@ -429,6 +429,17 @@ export const OUTILS_UNIFIES = OUTILS.map((o) => {
     : o.input_schema;
   return { ...o, description: o.description + UNIFIE[o.name], input_schema: schema };
 });
+// Conversation liée à un contact apporteur (PR D, revue de la PR 298) : proposer_reponse dit à qui va la réponse. « client » ou vide (par
+// défaut) : le nom de l'apporteur reste bloqué comme tout nom de partenaire ; « apporteur » : la réponse va à l'apporteur, son nom est permis.
+const DESTINATAIRE = {
+  type: "string",
+  enum: ["", "client", "apporteur"],
+  description: "« apporteur » seulement si la réponse va à l'apporteur lui-même, dans cette conversation ; « client » (ou \"\") pour un message qui sera envoyé au client final.",
+};
+function avecDestinataire(liste, apporteur) {
+  if (!apporteur) return liste;
+  return liste.map((o) => (o.name === "proposer_reponse" ? { ...o, description: `${o.description} Ici le contact est un apporteur d'affaires : dis à qui va la réponse (destinataire).`, input_schema: { ...o.input_schema, required: [...o.input_schema.required, "destinataire"], properties: { ...o.input_schema.properties, destinataire: DESTINATAIRE } } } : o));
+}
 // Les outils tels qu'ils partent pour cette personne : la description annonce le partenaire avec « partenaires.lire », les nets, marges et
 // commissions avec « partenaires.nets ». Sans le droit, rien ne change (les résultats n'ont pas ces champs non plus).
 const AJOUTS = {
@@ -449,15 +460,16 @@ const AJOUTS = {
 // (permissionsOutils), les champs ne sortant que pour les lignes de l'entreprise où la personne a le droit.
 // `whatsapp` : la personne lit la boîte WhatsApp dans l'Assistant de Secret ou de Taxi (peutLireWhatsApp) ; les trois outils de lecture
 // s'ajoutent alors à la fin. Sinon ils n'existent pas pour le modèle.
-export function outilsPour(permissions = [], { unifie = false, whatsapp = false } = {}) {
-  const base = unifie ? OUTILS_UNIFIES : OUTILS;
+// `apporteur` : la conversation est liée à un contact apporteur (ctx.apporteur) ; proposer_reponse reçoit alors le champ « destinataire ».
+export function outilsPour(permissions = [], { unifie = false, whatsapp = false, apporteur = false } = {}) {
+  const base = avecDestinataire(unifie ? OUTILS_UNIFIES : OUTILS, apporteur);
   const ctx = { permissions };
   const avecWa = (liste) => (whatsapp === true ? [...liste, ...OUTILS_WHATSAPP_LECTURE] : liste);
   if (!voitPartenaires(ctx)) return avecWa(base);
   return avecWa(base.map((o) => (AJOUTS[o.name] ? { ...o, description: o.description + AJOUTS[o.name].partenaires + (voitNets(ctx) ? AJOUTS[o.name].nets : "") } : o)));
 }
 // Les outils d'un échange, d'après le contexte (droits, mode unifié, boîte WhatsApp). Utilisé par la boucle (boucle.js).
-export const outilsDuContexte = (ctx) => outilsPour(permissionsOutils(ctx), { unifie: estUnifie(ctx), whatsapp: peutLireWhatsApp(ctx) });
+export const outilsDuContexte = (ctx) => outilsPour(permissionsOutils(ctx), { unifie: estUnifie(ctx), whatsapp: peutLireWhatsApp(ctx), apporteur: !!(ctx && ctx.apporteur) });
 export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet", "proposer_import_brochure", ...PROPOSITIONS_AMELIORER, "proposer_course"];
 
 // La confirmation de course dont parle l'agent : le message de la personne qui commence par `debut` (espaces et casse ignorés), sinon le seul
@@ -505,8 +517,8 @@ function normaliser(schema, v, oublie = false) {
   if (schema.type === "boolean") return typeof v === "boolean" ? v : VIDE;
   return VIDE;
 }
-export function normaliserEntree(nom, e, { unifie = false } = {}) {
-  const def = [...(unifie ? OUTILS_UNIFIES : OUTILS), ...OUTILS_WHATSAPP_LECTURE].find((o) => o.name === nom);
+export function normaliserEntree(nom, e, { unifie = false, apporteur = false } = {}) {
+  const def = [...avecDestinataire(unifie ? OUTILS_UNIFIES : OUTILS, apporteur), ...OUTILS_WHATSAPP_LECTURE].find((o) => o.name === nom);
   if (!def || !e || typeof e !== "object" || Array.isArray(e)) return null;
   const r = normaliser(def.input_schema, e);
   return r === VIDE ? null : r;
@@ -1087,9 +1099,14 @@ export async function proposer(nom, e, ctx, memo) {
   }
   if (nom === "proposer_import_brochure") return proposerImportBrochure(e, ctx);
   if (nom === "proposer_reponse") {
-    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires: memo.prestataires || [], entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: memo.internes || new Set(), ventes: memo.prix || new Set() });
+    // Contact apporteur : le nom de l'apporteur n'est permis que dans une réponse qui lui est adressée (destinataire « apporteur »). Par défaut,
+    // une réponse va au client et tout nom de partenaire, apporteur compris, reste bloqué. Sans ctx.apporteur, rien ne change.
+    const versApporteur = !!ctx.apporteur && e.destinataire === "apporteur";
+    const prestataires = versApporteur && Array.isArray(memo.prestatairesApporteur) ? memo.prestatairesApporteur : memo.prestataires || [];
+    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: memo.internes || new Set(), ventes: memo.prix || new Set() });
     if (!c.ok) return { erreur: "message_vide" };
-    return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message }, avertissements: c.avertissements };
+    const pour = ctx.apporteur ? { destinataire: versApporteur ? "apporteur" : "client", ...(versApporteur && ctx.apporteur.nom ? { apporteur_nom: texte(ctx.apporteur.nom, 80) } : {}) } : {};
+    return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message, ...pour }, avertissements: c.avertissements };
   }
   if (nom === "proposer_reglage") return proposerReglage(e, ctx, memo);
   if (nom === "proposer_amelioration") return proposerAmelioration(e, ctx);
@@ -1150,7 +1167,7 @@ export async function executer(nom, entree, ctx, memo) {
   if (!NOMS_OUTILS.includes(nom) && !whatsapp) return { contenu: { erreur: "outil_inconnu" }, erreur: true };
   // Boîte WhatsApp : refusée à l'exécution aussi pour qui ne la lit pas, ou hors de Secret et Taxi (ZTP, Mook, boîte de préparation).
   if (whatsapp && !peutLireWhatsApp(ctx)) return { contenu: { erreur: "outil_non_permis" }, erreur: true };
-  const propre = normaliserEntree(nom, entree, { unifie: estUnifie(ctx) });
+  const propre = normaliserEntree(nom, entree, { unifie: estUnifie(ctx), apporteur: !!ctx.apporteur });
   if (!propre) return { contenu: { erreur: "entree_invalide", conseil: "Reprends l'appel avec des valeurs au bon format (textes, nombres entiers positifs, valeurs des listes fermées)." }, erreur: true };
   entree = propre;
   const ajouter = (r) => {

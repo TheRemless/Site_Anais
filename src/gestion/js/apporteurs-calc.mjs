@@ -88,3 +88,18 @@ export const entreprisesSansFiche = (apporteur, entiteIds = []) => (apporteur &&
 // Les dossiers créés par une carte et la fiche à poser sur chacun : [{ dossier, apporteur_id }], seulement ceux qui en ont une.
 export const poseApporteur = (apporteur, dossiers = [], partenaires = []) =>
   (dossiers || []).filter((d) => d && d.id).map((d) => ({ dossier: d, apporteur_id: apporteurDuDossier(apporteur, d.entite_id, partenaires) })).filter((x) => x.apporteur_id && x.dossier.apporteur_id !== x.apporteur_id);
+
+// ---- Revue de la PR 298 ------------------------------------------------------------------------------------------------------------
+// Avant de poser l'apporteur : le contact de la conversation WhatsApp liée, relu en base, est toujours de type « apporteur ». Retypé
+// (client, partenaire, personnel) ou illisible : rien n'est posé.
+export const apporteurConfirme = (wc) => !!wc && typeof wc === "object" && wc.type_contact === CATEGORIE_APPORTEUR;
+// La conversation de l'Assistant se relie au dossier d'une carte (dossier_id), sauf pour un apporteur : la carte porte `apporteur`, ou le
+// contact WhatsApp lié est un apporteur. Il envoie plusieurs clients ; la conversation n'est celle d'aucun de leurs dossiers.
+export const lierDossierConversation = (carte, typeContactLie = null) => !(carte && carte.donnees && carte.donnees.apporteur) && typeContactLie !== CATEGORIE_APPORTEUR;
+// Les noms d'apporteur à masquer dans les apprentissages (correctionsDepuisCarte), qui partent chez Anthropic : la fiche reliée à la
+// conversation WhatsApp, toutes les fiches de catégorie « apporteur » que la personne voit, et le nom porté par les cartes du fil.
+export function nomsApporteurAMasquer({ partenaires = [], conversationWa = null, cartes = [] } = {}) {
+  const reliee = conversationWa && conversationWa.partenaire_id ? (partenaires || []).find((p) => p && p.id === conversationWa.partenaire_id) : null;
+  const noms = [reliee && reliee.nom, ...(partenaires || []).filter(estApporteur).map((p) => p.nom), ...(cartes || []).flatMap((c) => [c && c.donnees && c.donnees.apporteur && c.donnees.apporteur.nom, c && c.donnees && c.donnees.apporteur_nom])];
+  return [...new Set(noms.map((x) => String(x || "").trim()).filter(Boolean))];
+}

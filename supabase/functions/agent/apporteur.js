@@ -8,9 +8,9 @@
 //   - une seule référence de fiche (« A-1a2b3c4d »), à passer dans le champ « apporteur » de proposer_dossier. Ni le nom de la fiche, ni ses
 //     numéros, ni aucune donnée privée des partenaires ne partent chez Anthropic.
 // Les fiches : celle reliée à la conversation (partenaire_id, toujours dans l'entreprise de la conversation, whatsapp_type_coherent) et, pour
-// l'autre entreprise de l'espace unifié, la fiche « apporteur » de cette entreprise au même numéro ou au même nom. Une par entreprise au plus ;
+// l'autre entreprise de l'espace unifié, la fiche « apporteur » de cette entreprise au même numéro que la conversation (un nom seul ne suffit pas). Une par entreprise au plus ;
 // sans fiche dans une entreprise, rien n'est posé sur ses dossiers (le déclencheur controler_apporteur_dossier refuse une fiche d'ailleurs).
-import { cleNumero, sansAccents } from "./whatsapp-lecture.js";
+import { cleNumero } from "./whatsapp-lecture.js";
 
 export const CATEGORIE_APPORTEUR = "apporteur";
 // Exactement la catégorie que contrôle la base (controler_apporteur_dossier, migration 68).
@@ -37,17 +37,16 @@ function telephonesDe(p) {
   }
   return out;
 }
-const cleNom = (s) => sansAccents(s).replace(/[^a-z0-9]+/g, " ").trim();
 
 // Ce que l'agent sait de l'apporteur. `conv` : la conversation WhatsApp (telephone) ; `reliee` : la fiche reliée (partenaire_id), lue avec
 // la session ; `candidats` : les fiches « apporteur » des entreprises, lues avec la session ; `entites` : [{ id, slug, nom }], l'entreprise
 // active d'abord (les deux en espace unifié, sinon l'active seule).
 // Rend { nom, ref, fiches: [{ id, entite_id, entreprise }], entites } : `ref` est la référence de la fiche reliée (sinon de la première
-// trouvée), null sans aucune fiche. Plusieurs fiches au même numéro dans une entreprise : aucune (Nani choisit sur le dossier).
+// trouvée), null sans aucune fiche. Hors de la fiche reliée, seulement une fiche au numéro de la conversation ; plusieurs : aucune (Nani choisit).
 export function infoApporteur({ conv = null, reliee = null, candidats = [], entites = [] } = {}) {
   const base = estFicheApporteur(reliee) ? reliee : null;
-  const tels = new Set([cleNumero(conv && conv.telephone), ...(base ? telephonesDe(base) : [])].filter(Boolean));
-  const nom = base ? cleNom(base.nom) : "";
+  // Revue de la PR 298 : la fiche d'une autre entreprise exige le numéro de la conversation. Un nom seul ne suffit pas (« pas de fiche »).
+  const tel = cleNumero(conv && conv.telephone);
   const propres = (entites || []).filter((e) => e && e.id).map((e) => ({ id: e.id, slug: e.slug || "", nom: String(e.nom || "") }));
   const fiches = [];
   for (const e of propres) {
@@ -55,9 +54,8 @@ export function infoApporteur({ conv = null, reliee = null, candidats = [], enti
     if (base && base.entite_id === e.id) choix = base;
     else {
       const ici = (candidats || []).filter((p) => estFicheApporteur(p) && p.entite_id === e.id && p.actif !== false && (!base || p.id !== base.id));
-      const parTel = ici.filter((p) => [...telephonesDe(p)].some((k) => tels.has(k)));
-      const parNom = nom.length >= 2 ? ici.filter((p) => cleNom(p.nom) === nom) : [];
-      choix = parTel.length === 1 ? parTel[0] : parTel.length > 1 ? null : parNom.length === 1 ? parNom[0] : null;
+      const parTel = tel ? ici.filter((p) => telephonesDe(p).has(tel)) : [];
+      choix = parTel.length === 1 ? parTel[0] : null;
     }
     if (choix) fiches.push({ id: choix.id, entite_id: e.id, entreprise: e.slug, nom: String(choix.nom || "").slice(0, 80) });
   }
@@ -86,13 +84,14 @@ Apporteur d'affaires (le contact de cette conversation WhatsApp)
   }
 ${fiche}
 - Ne demande jamais d'accord ni de commission et n'en parle jamais, ni à ${qui} ni à l'apporteur.
-- Ne parle jamais de l'apporteur au client : ni dans une réponse, ni dans un dossier, ni sur un document. Une réponse préparée ici (proposer_reponse) s'adresse à l'apporteur.`;
+- Ne parle jamais de l'apporteur au client : ni dans une réponse, ni dans un dossier, ni sur un document.
+- Une réponse préparée ici (proposer_reponse) dit à qui elle va : destinataire « apporteur » quand elle s'adresse à l'apporteur, « client » pour un message destiné au client final. Le nom de l'apporteur n'est permis que vers l'apporteur.`;
 }
 
 // L'apporteur d'une carte proposer_dossier. Posé d'office quand la conversation est liée à un contact apporteur (`info`, lu avec la session) :
 // chaque entreprise reçoit SA fiche, jamais celle d'une autre (clé : l'entreprise de la fiche elle-même), même si le modèle oublie le champ.
-// Le champ du modèle (`ref`) ne sert qu'à confirmer : une référence qui n'est pas celle d'une fiche du contact est ignorée, avec
-// l'avertissement « apporteur_inconnu ». Hors de ce contexte, rien n'est posé ; une référence donnée quand même reste un avertissement.
+// Le champ du modèle (`ref`) ne sert qu'à confirmer : une référence qui n'est pas celle d'une fiche du contact est ignorée, sans
+// avertissement. Hors de ce contexte (aucune fiche), rien n'est posé ; une référence donnée quand même donne « apporteur_inconnu ».
 // `entitesCarte` : les entreprises des services de la carte (l'entreprise active hors espace unifié).
 // Rend { apporteur?, resume?, avertissement? } :
 //   apporteur : { nom, fiches: { [entite_id]: partenaire_id } } dans la carte (jamais renvoyé chez Anthropic) ;
@@ -100,9 +99,8 @@ ${fiche}
 export function apporteurDeCarte(ref, info, { entitesCarte = [] } = {}) {
   const r = String(ref || "").trim().toLowerCase();
   const fiches = info && Array.isArray(info.fiches) ? info.fiches.filter((f) => f && f.id && f.entite_id) : [];
-  const reconnue = !!r && fiches.some((f) => refApporteur(f.id).toLowerCase() === r);
-  const avert = r && !reconnue ? { avertissement: "apporteur_inconnu" } : {};
-  if (!fiches.length) return avert;
+  // Revue de la PR 298 : avec les fiches du contexte, la référence n'est qu'une confirmation, jamais un avertissement.
+  if (!fiches.length) return r ? { avertissement: "apporteur_inconnu" } : {};
   const par = {};
   for (const f of fiches) if (!par[f.entite_id]) par[f.entite_id] = f.id;
   const nom = String(info.nom || fiches[0].nom || "").slice(0, 80);
@@ -112,7 +110,6 @@ export function apporteurDeCarte(ref, info, { entitesCarte = [] } = {}) {
   return {
     apporteur: { nom, fiches: par },
     resume: { note_chez: ids.filter((id) => par[id]).map(nomDe).filter(Boolean), sans_fiche_chez: ids.filter((id) => !par[id]).map(nomDe).filter(Boolean) },
-    ...avert,
   };
 }
 
@@ -120,16 +117,16 @@ export function apporteurDeCarte(ref, info, { entitesCarte = [] } = {}) {
 // Le contrôle des noms de partenaires (controlerReponse, « nom_prestataire » ; whatsapp-envoi, « contenu_interne ») bloque tout nom de fiche
 // dans une réponse. Une réponse à Jade, dans SA conversation, peut pourtant dire « Hi Jade ». Seules ses propres fiches sortent de la liste :
 // la fiche reliée à la conversation, et seulement quand le contact de cette conversation est de type « apporteur » (jamais un contact
-// personnel), plus ses fiches « apporteur » des autres entreprises au même nom ou au même numéro (la même personne). Tout autre partenaire ou
+// personnel), plus ses fiches « apporteur » des autres entreprises au numéro de la conversation (la même personne). Tout autre partenaire ou
 // apporteur reste bloqué ; dans la conversation d'un client, le nom de Jade aussi.
 // `conv` : { type_contact, reponses, partenaire_id, telephone } ; `partenaires` : [{ id, nom, categorie, contact }]. Rend un Set d'identifiants.
 export function fichesDuContact(conv, partenaires = []) {
   if (!contactApporteur(conv) || !conv.partenaire_id) return new Set();
   const reliee = (partenaires || []).find((p) => p && p.id === conv.partenaire_id && estFicheApporteur(p));
   if (!reliee) return new Set();
-  const nom = cleNom(reliee.nom);
-  const tels = new Set([cleNumero(conv.telephone), ...telephonesDe(reliee)].filter(Boolean));
-  const memes = (partenaires || []).filter((p) => estFicheApporteur(p) && p.id !== reliee.id && ((nom.length >= 2 && cleNom(p.nom) === nom) || [...telephonesDe(p)].some((k) => tels.has(k))));
+  // Revue de la PR 298 : seulement le numéro de la conversation, jamais les autres numéros de la fiche ni le nom.
+  const tel = cleNumero(conv.telephone);
+  const memes = tel ? (partenaires || []).filter((p) => estFicheApporteur(p) && p.id !== reliee.id && telephonesDe(p).has(tel)) : [];
   return new Set([reliee.id, ...memes.map((p) => p.id)]);
 }
 // Les noms de partenaires à bloquer dans une réponse : tous, sauf ceux des fiches `exemptes` (fichesDuContact, ou les fiches de l'apporteur
