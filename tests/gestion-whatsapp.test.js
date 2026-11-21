@@ -384,16 +384,16 @@ test("whatsapp : la réponse préparée reçoit les règles de réponse d'Anaïs
 });
 
 // ---- Tri des messages (migration 60, demande de Jérémy : « faut vraiment faire un bon tri ») ----------------------------------------
-import { triSansAppel, lireDecision, numerosPartenaires, cleNumero, triGarde, MOTIFS } from "../supabase/functions/whatsapp/proposer.js";
+import { triSansAppel, lireDecision, triGarde, MOTIFS, iaPermise as iaPermiseTri } from "../supabase/functions/whatsapp/proposer.js";
+import { MOTIFS_TRI } from "../src/gestion/js/whatsapp-calc.mjs";
 
-test("whatsapp tri : sans appel à Claude, contact « jamais », merci, emoji, réaction, média seul, partenaire", () => {
+test("whatsapp tri : sans appel à Claude, contact « jamais », merci, emoji, réaction, média seul", () => {
   const conv = { telephone: "+66812345678", reponses: "auto" };
-  const t = (o, c = conv, p) => triSansAppel({ conv: c, messages: [M(o)], numerosPartenaires: p });
+  const t = (o, c = conv) => triSansAppel({ conv: c, messages: [M(o)] });
   assert.equal(t({ texte: "Price for 4 islands?" }, { ...conv, reponses: "jamais" }).motif, "contact_jamais");
   for (const x of ["👍", "ok", "Thanks!", "merci", "Perfect.", "🙏🙏"]) assert.equal(t({ texte: x }).motif, "remerciement", x);
   assert.equal(t({ type: "reaction", texte: "❤️" }).motif, "remerciement");
   assert.equal(t({ texte: null, type: "audio", medias: [{ type: "audio" }] }).motif, "media_seul");
-  assert.equal(t({ texte: "Can you pick us up?" }, conv, new Set(["812345678"])).motif, "partenaire");
   assert.equal(t({ texte: "Can you pick us up at 9?" }), null, "une vraie question passe au tri par Haiku");
   assert.equal(t({ texte: null, type: "image", medias: [{ type: "image", legende: "x" }], }).motif, "media_seul");
 });
@@ -410,13 +410,26 @@ test("whatsapp tri : lecture stricte de la décision de Haiku (deux signaux conc
   assert.ok(MOTIFS.includes("contact_jamais") && MOTIFS.includes("limite"));
 });
 
-test("whatsapp tri : numéros des fiches partenaires reconnus quel que soit leur format", () => {
-  const n = numerosPartenaires([{ contact: { telephones: "081 234 5678 / +66 (0)89 111 2222" } }, { contact: { telephones: [{ numero: "+66 75 123 456" }, "0899998888"] } }, { contact: {} }, null]);
-  assert.ok(n.has(cleNumero("+66812345678")));
-  assert.ok(n.has(cleNumero("+66891112222")));
-  assert.ok(n.has(cleNumero("+6675123456")));
-  assert.ok(n.has(cleNumero("+66899998888")));
-  assert.ok(!n.has(cleNumero("+41790000002")));
+test("whatsapp tri (migration 69) : partenaire, chauffeur, hôtel et apporteur passent au tri par Haiku comme un client ; un contact personnel jamais", () => {
+  const question = [M({ texte: "Can you confirm the pickup at 9 tomorrow?" })];
+  const agents = { e1: true };
+  for (const type of ["client", "partenaire", "chauffeur", "hotel", "apporteur"]) {
+    const conv = { telephone: "+66812345678", reponses: "auto", type_contact: type, entite_id: "e1" };
+    assert.equal(triSansAppel({ conv, messages: question }), null, `${type} : le tri par Haiku a lieu`);
+    assert.equal(iaPermiseTri({ receptionActive: true, conv, agents }), true, `${type} : l'IA est permise`);
+  }
+  // Le numéro d'une fiche partenaire ne coupe plus rien (l'ancien paramètre est ignoré).
+  assert.equal(triSansAppel({ conv: { telephone: "+66812345678", reponses: "auto" }, messages: question, numerosPartenaires: new Set(["812345678"]) }), null);
+  for (const conv of [{ reponses: "jamais", type_contact: null, entite_id: "e1" }, { reponses: "jamais", type_contact: "partenaire", entite_id: "e1" }]) {
+    assert.equal(triSansAppel({ conv, messages: question }).motif, "contact_jamais", "un contact personnel n'est jamais trié");
+    assert.equal(iaPermiseTri({ receptionActive: true, conv, agents }), false, "ni rien envoyé à l'IA");
+  }
+  // Le motif « partenaire » ne vient plus du numéro, mais Haiku peut encore le donner et les anciennes lignes le portent : il reste lisible.
+  assert.ok(MOTIFS.includes("partenaire"));
+  assert.equal(lireDecision('{"preparer": false, "motif": "partenaire"}').motif, "partenaire");
+  assert.equal(MOTIFS_TRI.partenaire, "Un partenaire");
+  const src = fs.readFileSync(new URL("../supabase/functions/whatsapp/proposer.js", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /numerosPartenaires|cleNumero/);
 });
 
 test("whatsapp tri : branché avant la préparation, sans toucher au classement", () => {
@@ -463,4 +476,29 @@ test("whatsapp : envoyer et préparer demandent le droit d'écrire, pas seulemen
     assert.match(code, /sb\.rpc\("whatsapp_peut_ecrire", \{ p_conversation: conv\.id \}\)/, f);
     assert.ok(code.indexOf("whatsapp_peut_ecrire") < code.indexOf(f === "whatsapp-envoi" ? "api.telnyx.com" : "preparerALaDemande(admin"), `${f} : contrôle avant d'agir`);
   }
+});
+
+// ---- Migration 69 : l'IA lit tous les contacts, le contrôle bloquant vers le client ne bouge pas -----------------------------------
+test("migration 69 : vers un client, un nom de partenaire ou d'apporteur et un net restent bloqués ; l'exemption de l'apporteur lui-même reste", async () => {
+  const { controlerReponse } = await import("../supabase/functions/agent/outils.js");
+  const { nomsABloquer, fichesDuContact } = await import("../supabase/functions/agent/apporteur.js");
+  const fiches = [
+    { id: "b0000000-0000-4000-8000-000000000001", nom: "Blue Ocean", categorie: "Excursions bateaux", entite_id: "e0000000-0000-4000-8000-000000000001", contact: { telephones: ["+66 81 234 5678"] } },
+    { id: "a0000000-0000-4000-8000-000000000002", nom: "Jade", categorie: "apporteur", entite_id: "e0000000-0000-4000-8000-000000000001", contact: { telephones: ["+44 7700 900955"] } },
+  ];
+  const bloques = (texte, conv) => controlerReponse(texte, { signer: true, prestataires: nomsABloquer(fiches, fichesDuContact(conv, fiches)), internes: new Set([700]), permisPrix: new Set([1800]) }).avertissements;
+  const client = { telephone: "+447700900412", reponses: "auto", type_contact: "client", partenaire_id: null };
+  let a = bloques("Hello, Blue Ocean picks you up, sent by Jade. Price 1,800 THB (net 700).", client);
+  assert.ok(a.includes("nom_prestataire:Blue Ocean") && a.includes("nom_prestataire:Jade"), "vers un client : les deux noms bloqués");
+  assert.ok(a.some((x) => x.startsWith("montant_interne:") && x.includes("700")), "vers un client : le net bloqué");
+  // Lire un partenaire ne l'exempte pas : une réponse qui cite Blue Ocean reste bloquée, même dans sa propre conversation.
+  const partenaire = { telephone: "+66812345678", reponses: "auto", type_contact: "partenaire", partenaire_id: fiches[0].id };
+  assert.ok(bloques("Thanks Blue Ocean", partenaire).includes("nom_prestataire:Blue Ocean"));
+  // PR 298 : la réponse à l'apporteur lui-même peut le nommer, un autre partenaire reste bloqué.
+  const jade = { telephone: "+447700900955", reponses: "auto", type_contact: "apporteur", partenaire_id: fiches[1].id };
+  a = bloques("Hi Jade, Blue Ocean is free on Friday", jade);
+  assert.ok(!a.includes("nom_prestataire:Jade") && a.includes("nom_prestataire:Blue Ocean"));
+  // whatsapp-envoi refuse toujours côté serveur.
+  const envoi = fs.readFileSync(new URL("../supabase/functions/whatsapp-envoi/index.ts", import.meta.url), "utf8");
+  assert.match(envoi, /const bloque = await contenuInterne\(admin, conv, demande\.texte\);\n  if \(bloque\.length\) return json\(\{ erreur: "contenu_interne", a_retirer: bloque \}, 422\);/);
 });

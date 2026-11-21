@@ -86,16 +86,18 @@ export function demandeAgent({ messages = [], nomProfil = "", client = null, dos
 
 // ---- Tri des messages (migration 60) ------------------------------------------------------------------------------------------------
 // Une réponse n'est préparée que pour une vraie demande de client. Ordre, du moins cher au plus cher :
-//   1. le contact est réglé sur « jamais » par Nani ;
+//   1. le contact est réglé sur « jamais » par Nani (Contact personnel) ;
 //   2. réaction, emoji seul, « ok », « merci », photo ou vocal sans texte : rien à préparer, sans appel à Claude ;
-//   3. le numéro est celui d'un partenaire (fiche partenaire, téléphones) ;
-//   4. budget ou limites du jour ;
-//   5. tri par Claude Haiku : demande de client ou non, et Secret ou Taxi pour une conversation à trier.
+//   3. budget ou limites du jour ;
+//   4. tri par Claude Haiku : demande de client ou non ; Secret ou Taxi pour une conversation à trier.
+// Partenaire, chauffeur, hôtel et apporteur passent le tri comme un client (demande de Jérémy du 21.11.2026, migration 69) : ni le type du
+// contact ni le numéro d'une fiche partenaire ne coupent plus l'IA. Le motif « partenaire » reste dans la liste : Haiku peut encore le
+// donner (un partenaire qui s'organise avec Nani n'attend pas de réponse préparée) et les anciennes lignes le portent.
 export const MOTIFS = ["demande_client", "suivi_reservation", "remerciement", "personnel", "partenaire", "publicite", "media_seul", "contact_jamais", "limite", "tri_illisible", "ia_coupee", "autre"];
 export const MOTIFS_A_PREPARER = ["demande_client", "suivi_reservation"];
 
 // Audit sécurité n° 1 (20.11.2026) : rien ne part chez Anthropic, même pour le tri, si la réception est suspendue, si le contact est réglé
-// sur « jamais » ou si l'assistant est éteint. Conversation rangée : l'assistant de son entreprise. À trier : au moins celui de Secret ou
+// sur « jamais » ou si l'assistant est éteint. Le type du contact ne compte pas (migration 69). Conversation rangée : l'assistant de son entreprise. À trier : au moins celui de Secret ou
 // de Taxi. `agents` : { entite_id: true | false } lus dans reglages.valeur.agent_ia ; une valeur absente ou illisible ferme.
 export function iaPermise({ receptionActive, conv, agents = {} }) {
   if (receptionActive !== true || !conv || conv.reponses === "jamais") return false;
@@ -104,7 +106,7 @@ export function iaPermise({ receptionActive, conv, agents = {} }) {
 }
 
 // Ce que l'on sait sans appeler Claude : null si le message mérite le tri par Haiku.
-export function triSansAppel({ conv, messages, numerosPartenaires = new Set() }) {
+export function triSansAppel({ conv, messages }) {
   if (conv && conv.reponses === "jamais") return { preparer: false, motif: "contact_jamais" };
   const dernier = dernierClient(messages);
   if (!dernier) return { preparer: false, motif: "autre" };
@@ -112,35 +114,9 @@ export function triSansAppel({ conv, messages, numerosPartenaires = new Set() })
   if (dernier.type === "reaction") return { preparer: false, motif: "remerciement" };
   if (!t && (dernier.medias || []).length) return { preparer: false, motif: "media_seul" };
   if (!/[\p{L}\p{N}]/u.test(t) || /^(?:ok(?:ay)?|okey|thanks?|thank you|thx|merci|ty|cool|great|perfect|super|parfait|👍|🙏)[\s!.]*$/iu.test(t)) return { preparer: false, motif: "remerciement" };
-  if (conv && numerosPartenaires.has(cleNumero(conv.telephone))) return { preparer: false, motif: "partenaire" };
   return null;
 }
 const dernierClient = (messages = []) => messages.filter((m) => !m.supprime_le).reduce((a, m) => (!a || String(m.envoye_le) >= String(a.envoye_le) ? m : a), null);
-
-// Les 9 derniers chiffres d'un numéro : un numéro noté « 081 234 5678 » ou « +66 81 234 5678 » donne la même clé.
-export const cleNumero = (v) => {
-  const n = String(v || "").replace(/\D/g, "");
-  return n.length >= 8 ? n.slice(-9) : "";
-};
-// Numéros des fiches partenaires (contact.telephones : texte ou liste), toutes entreprises de l'organisation.
-// Une fiche « apporteur » (migration 68) n'en fait pas partie : la travel planner qui envoie des clients écrit comme une cliente, sa fiche ne
-// coupe ni le tri, ni la réponse préparée, ni le suivi.
-export function numerosPartenaires(partenaires = []) {
-  const out = new Set();
-  for (const p of partenaires) {
-    if (p && p.categorie === "apporteur") continue;
-    const t = p && p.contact ? p.contact.telephones : null;
-    const liste = Array.isArray(t) ? t : typeof t === "string" ? t.split(/[,;/\n]|\s{2,}/) : [];
-    for (const x of liste) {
-      const v = typeof x === "string" ? x : x && typeof x === "object" ? x.numero || x.telephone || x.valeur || "" : "";
-      for (const morceau of String(v).match(/\+?\d[\d\s.\-()]{6,}\d/g) || []) {
-        const k = cleNumero(morceau);
-        if (k) out.add(k);
-      }
-    }
-  }
-  return out;
-}
 
 // Consigne du tri par Haiku. Le client parle à deux entreprises qui partagent un numéro. Rend du JSON seulement.
 export function demandeTri(messages = [], { aTrier = true } = {}) {

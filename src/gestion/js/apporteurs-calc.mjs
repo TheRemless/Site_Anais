@@ -1,8 +1,9 @@
 // Contacts WhatsApp typés et apporteurs d'affaires (migration 68, décisions de Jérémy du 21.11.2026). Logique pure, sans navigateur,
 // testée dans tests/gestion-apporteurs.test.js. Le cas de départ : une travel planner envoie des clients à Nani, sans aucun accord.
 //   * Type d'une conversation : client, apporteur, partenaire, chauffeur, hôtel, personnel. « Personnel » n'est pas stocké dans type_contact :
-//     c'est reponses = 'jamais' sans type (migration 60). Typer ne rouvre jamais l'IA : en base, type et réponses sont indépendants ; l'écran
-//     les couple au tap (patchType). Nani change toujours le réglage des réponses à part.
+//     c'est reponses = 'jamais' sans type (migration 60). Le type ne coupe plus l'IA (demande de Jérémy du 21.11.2026, migration 69) :
+//     partenaire, chauffeur, hôtel et apporteur se lisent comme un client. Seul « Personnel » ferme (patchType). Nani change toujours le
+//     réglage des réponses à part, dans le menu « … ».
 //   * Apporteur : une fiche partenaire de catégorie « apporteur », dans Secret ou Taxi. Aucune rémunération : personne n'est payé en commission
 //     aujourd'hui (Jérémy, 21.11.2026).
 //   * Jamais de nom d'apporteur sur un document client : ce module ne sert qu'aux écrans internes.
@@ -30,17 +31,20 @@ export function typeContact(conv) {
   return conv.reponses === "jamais" ? "personnel" : null;
 }
 
-// Les contacts qui parlent de nets et de commissions : l'IA ne lit pas leurs messages.
-const SANS_IA = new Set(["partenaire", "chauffeur", "hotel", "personnel"]);
-// Ce que l'écran écrit au tap d'un type : client et apporteur ouvrent l'assistant (« auto ») ; partenaire, chauffeur et hôtel le ferment
-// (« jamais ») ; personnel ferme et vide le type.
-export function patchType(type) {
+// Ce que l'écran écrit au tap d'un type (migration 69). Personnel ferme l'IA et vide le type. Un autre type ne touche pas aux réponses : il
+// écrit seulement type_contact. Seule exception, quitter la puce « Personnel » (reponses = 'jamais' sans type) : c'est cette puce qui avait
+// fermé l'IA, la quitter la rouvre (« auto »). Un contact typé que Nani a réglé « rien envoyé à l'IA » dans le menu « … » le reste.
+export function patchType(type, conv = null) {
   if (type === "personnel") return { reponses: "jamais", type_contact: null };
   if (!TYPES_STOCKES.has(type)) throw new Error(`type de contact inconnu : ${type}`);
-  return { type_contact: type, reponses: SANS_IA.has(type) ? "jamais" : "auto" };
+  return typeContact(conv) === "personnel" ? { type_contact: type, reponses: "auto" } : { type_contact: type };
 }
-// Le message du toast après un tap : ce que l'IA lit désormais.
-export const toastType = (type) => (patchType(type).reponses === "jamais" ? N_("Contact noté : rien envoyé à l'IA") : N_("Contact noté : l'assistant peut lire"));
+// Le message du toast après un tap : ce que l'IA lit désormais (les réponses après le tap, sinon celles du contact).
+export function toastType(type, conv = null) {
+  const p = patchType(type, conv);
+  const reponses = "reponses" in p ? p.reponses : conv && conv.reponses === "jamais" ? "jamais" : "auto";
+  return reponses === "jamais" ? N_("Contact noté : rien envoyé à l'IA") : N_("Contact noté : l'assistant peut lire");
+}
 
 export const estApporteur = (p) => !!p && p.categorie === CATEGORIE_APPORTEUR;
 // Les prestataires seulement : une fiche apporteur n'est jamais proposée pour un service, un tarif, une course ni comme chauffeur.

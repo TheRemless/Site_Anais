@@ -191,7 +191,8 @@ ok((await db.query("select whatsapp_conversation_id w from taches where id = $1"
 await db.query("delete from whatsapp_conversations where id = $1", [lucia.conversation_id]);
 ok((await db.query("select whatsapp_conversation_id w from taches where id = $1", [t1])).rows[0].w === null, "la conversation purgée : la tâche reste, sans le lien");
 
-// ---- Fiches partenaires : leurs conversations sont écartées, sauf un apporteur (même comparaison que la boîte) -------------------------
+// ---- whatsapp_partenaires_parmi (migration 67) : plus appelée depuis la 69 (l'IA lit aussi les partenaires), gardée en base. Ses droits ---
+// ne bougent pas : elle ne rend que des clés de numéros déjà donnés, rien à Mook ni sans personne connectée.
 const fiches = [
   [ent.taxi, "Chauffeurs", { telephones: [{ numero: "+66 81 111 2222" }, "089-333-4444"] }],
   [ent.secret, "Ferries et speedboats", { telephones: "075 123 4567, 076 765 4321  02 999 8888" }],
@@ -200,9 +201,10 @@ const fiches = [
 ];
 for (const [e, categorie, contact] of fiches) await db.query("insert into partenaires (entite_id, nom, categorie, contact) values ($1, $2, $3, $4::jsonb)", [e, `Fiche ${categorie}`, categorie, JSON.stringify(contact)]);
 const tels = ["+66811112222", "+66893334444", "+66751234567", "+66767654321", "+6629998888", "+447700900955", "+41790000001", "+447700900311"];
-const attendu = [...L.numerosAExclure(fiches.map(([, categorie, contact]) => ({ categorie, contact })))].filter((k) => tels.some((t) => t.replace(/\D/g, "").endsWith(k))).sort();
+// Les 9 derniers chiffres des numéros des fiches (sauf l'apporteur), parmi ceux donnés.
+const attendu = ["751234567", "767654321", "790000001", "811112222", "893334444"];
 r = await essaie(u.adminTaxi, "select whatsapp_partenaires_parmi($1::text[]) p", [tels]);
-ok(r.ok && JSON.stringify(r.rows[0].p) === JSON.stringify(attendu), `numéros des fiches partenaires : même résultat que la boîte (${attendu.length} sur ${tels.length})`);
+ok(r.ok && JSON.stringify(r.rows[0].p) === JSON.stringify(attendu), `numéros des fiches partenaires (${attendu.length} sur ${tels.length})`);
 ok(r.ok && !r.rows[0].p.includes("700900955") && !r.rows[0].p.includes("700900311"), "… sauf l'apporteur et un client");
 ok(r.ok && r.rows[0].p.includes("790000001"), "… fiches de toute l'organisation (même d'une entreprise que la personne ne lit pas)");
 r = await essaie(u.mook, "select whatsapp_partenaires_parmi($1::text[]) p", [tels]);

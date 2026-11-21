@@ -12,13 +12,14 @@
 //
 // Boîte WhatsApp (whatsapp-lecture.js, migration 67) : dans l'Assistant de Secret ou de Taxi, pour qui administre cette entreprise
 // (whatsapp_admin, lu avec sa session), trois outils de lecture : chercher_conversations, lire_conversation, a_faire_whatsapp. Les
-// conversations et les messages se lisent avec `sb` : la RLS de la migration 63 décide, jamais avec la clé de service. Les numéros des
-// fiches partenaires sont reconnus par whatsapp_partenaires_parmi (migration 67), sans être lus. Un contact réglé « jamais » et la conversation d'un partenaire (sauf un
-// apporteur) ne sont ni cherchés ni lus. Ce qui part alors chez Anthropic : le nom de profil et le client relié (prénom, nom, référence),
-// la référence du dossier relié, le texte des messages lus et des extraits trouvés (numéros, comptes et IBAN masqués sur le texte entier,
-// avant toute coupe ; un prix écrit par le client peut y figurer), le type et la légende des médias, le titre des promesses échues, le
-// libellé et la date des trajets en bateau et le solde dû (prix de vente moins reçu). Jamais un numéro de téléphone, un fichier, un net,
-// une commission ni une fiche partenaire. Ces résultats ne repartent pas au message suivant (retirerLecturesWhatsApp).
+// conversations et les messages se lisent avec `sb` : la RLS de la migration 63 décide, jamais avec la clé de service. Seul un contact réglé
+// « jamais » (Contact personnel) n'est ni cherché ni lu. Partenaire, chauffeur, hôtel et apporteur se lisent comme un client (demande de
+// Jérémy du 21.11.2026, migration 69 : plus d'exclusion par type ni par numéro de fiche partenaire). Ce qui part alors chez Anthropic : le
+// nom de profil et le client relié (prénom, nom, référence), la référence du dossier relié, le texte des messages lus et des extraits
+// trouvés (numéros, comptes et IBAN masqués sur le texte entier, avant toute coupe ; un prix écrit par le client, ou un net et une
+// commission écrits par un partenaire, peuvent y figurer), le type et la légende des médias, le titre des promesses échues, le libellé et
+// la date des trajets en bateau et le solde dû (prix de vente moins reçu). Jamais un numéro de téléphone, un fichier, ni un net, une
+// commission ou une fiche partenaire lus dans les tables. Ces résultats ne repartent pas au message suivant (retirerLecturesWhatsApp).
 //
 // Apporteur d'affaires (apporteur.js, PR D, migration 68) : quand la conversation de l'Assistant est liée à une conversation WhatsApp dont le
 // contact est de type « apporteur », l'agent reçoit une consigne (un dossier par client, au nom du client, jamais d'accord ni de commission)
@@ -33,7 +34,7 @@ import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, 
 import { choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, prefixeRef, refDe, sansAccents, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
-import { MARQUE_PROMESSE, borneJour, cleNumero, contactExclu, dateBangkok as jourBangkok, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
+import { MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
@@ -463,22 +464,6 @@ Deno.serve(async (req) => {
     if (!adminWa.error && whatsappPermis({ slug: ent.data.slug, admin: adminWa.data === true })) {
       const entitesWa = (await lire(sb.from("entites").select("id, slug").eq("organisation_id", orgWa).in("slug", ENTREPRISES_UNIFIEES), "entites")) as { id: string; slug: string }[];
       const idsWa = entitesWa.map((e) => e.id);
-      // Les conversations des fiches partenaires de l'organisation (sauf « apporteur ») ne sont jamais lues par ces outils : on y parle de nets
-      // et de commissions. whatsapp_partenaires_parmi (migration 67) dit lesquels de ces numéros, déjà lisibles par la personne, sont ceux
-      // d'une fiche partenaire, toutes entreprises de l'organisation comprises, sans rien rendre d'autre (même comparaison que la boîte,
-      // whatsapp/proposer.js : les 9 derniers chiffres). Une réponse impossible ferme les outils : aucune conversation rendue.
-      const vusPartenaires = new Map<string, boolean>();
-      const exclusPour = async (convs: Record<string, any>[]) => {
-        const cles = [...new Set(convs.map((c) => cleNumero(c.telephone)).filter((k) => k && !vusPartenaires.has(k)))];
-        for (let i = 0; i < cles.length; i += 200) {
-          const lot = cles.slice(i, i + 200);
-          const r = await sb.rpc("whatsapp_partenaires_parmi", { tels: lot });
-          if (r.error) throw new Error(`fiches partenaires : ${r.error.message}`);
-          const oui = new Set((r.data || []) as string[]);
-          for (const k of lot) vusPartenaires.set(k, oui.has(k));
-        }
-        return new Set([...vusPartenaires].filter(([, v]) => v).map(([k]) => k));
-      };
       const COL_CONV = "id, created_at, organisation_id, telephone, nom, entite_id, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus, reponses, tri, paiement_signale, promesse_le";
       // Colonnes des migrations 68 (type du contact) et 65 (aperçu, attente) : sans elles, l'outil lit ce qui existe (le type reste vide,
       // l'attente se lit au sens du dernier message).
@@ -502,12 +487,11 @@ Deno.serve(async (req) => {
         return out;
       };
       const autour = async (convs: Record<string, any>[]) => {
-        const [clients, dossiers, liste] = await Promise.all([
+        const [clients, dossiers] = await Promise.all([
           parIds("clients", "id, prenom, nom", "id", convs.map((c) => c.client_id)),
           parIds("dossiers", "id, ref, annule, entite_id", "id", convs.map((c) => c.dossier_id)),
-          exclusPour(convs),
         ]);
-        return { clients, dossiers, entites: entitesWa, exclus: liste };
+        return { clients, dossiers, entites: entitesWa };
       };
       const intervalle = (p: string) => [`${p.slice(0, 8)}-0000-0000-0000-000000000000`, `${p.slice(0, 8)}-ffff-ffff-ffff-ffffffffffff`];
       const rechercher = async (q: string, mot: string | null) => {
@@ -567,7 +551,7 @@ Deno.serve(async (req) => {
           }
           return { conversations: convs, trouves, ...(await autour(convs)) };
         },
-        // Une conversation et ses messages. Un contact « jamais » ou un partenaire : ses messages ne sont pas même lus.
+        // Une conversation et ses messages. Un contact « jamais » : ses messages ne sont pas même lus.
         // « depuis » : les premiers à partir de ce jour (ordre croissant) ; sinon les derniers, avant « avant » s'il est donné. Les messages
         // restant de part et d'autre sont comptés par la base (count exact).
         conversation: async (id: string, { depuis = "", avant = "", derniers = 40 }: { depuis?: string; avant?: string; derniers?: number } = {}) => {
@@ -575,8 +559,6 @@ Deno.serve(async (req) => {
           const convs = await conversations((q) => q.eq("id", id).limit(1));
           const conv = convs[0] || null;
           if (!conv || conv.reponses === "jamais") return { conversation: conv, messages: [] };
-          const liste = await exclusPour([conv]);
-          if (contactExclu(conv, liste)) return { conversation: conv, messages: [], exclus: liste };
           const n = Math.min(200, Math.max(1, Number(derniers) || 40));
           const base = (cols: string, opts?: any) => sb.from("whatsapp_messages").select(cols, opts).eq("conversation_id", id).is("supprime_le", null);
           let q = base("id, conversation_id, sens, type, texte, medias, envoye_le, modifie_le, supprime_le");
@@ -597,8 +579,7 @@ Deno.serve(async (req) => {
         // Ce qui attend : conversations à suivre, promesses échues, paiements et ferrys des dossiers reliés.
         aFaire: async () => {
           const convs = await conversations((q) => q.limit(300));
-          const liste = await exclusPour(convs);
-          const suivies = convs.filter((c) => !contactExclu(c, liste));
+          const suivies = convs.filter((c) => c.reponses !== "jamais");
           const dossierIds = suivies.map((c) => c.dossier_id).filter(Boolean);
           // La colonne whatsapp_conversation_id (migration 67) ; sans elle, le rapprochement d'avant.
           const tachesDe = async (cols: string) => sb.from("taches").select(cols).in("entite_id", idsWa).eq("fait", false).eq("description", MARQUE_PROMESSE).lt("echeance", jourBangkok(Date.now())).limit(100);

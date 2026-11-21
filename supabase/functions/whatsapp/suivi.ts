@@ -5,8 +5,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { dateBangkok } from "../assistant/calc.js";
-import { iaOuverte, journalEnCours, partenairesDe, plafondsOuverts } from "./reponse.ts";
-import { cleNumero } from "./proposer.js";
+import { iaOuverte, journalEnCours, plafondsOuverts } from "./reponse.ts";
 import { RESUME_ATTENTE_MS, lirePromesse, lireResume, parametresPromesse, parametresResume, peutEtrePromesse, resumeAFaire, sansColonneConversation, signalPaiement, tachePromesse } from "./suivi.js";
 
 const absente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
@@ -25,8 +24,9 @@ export async function suiviApresMessage(db: SupabaseClient, conversationId: stri
     const message = lu.messages.find((m) => m.id === messageId);
     // Sans IA, toujours : le signal de paiement.
     if (message && message.sens === "entrant") await paiement(db, lu.conv, message);
-    // Avant tout appel à Claude, les mêmes garde-fous que la réponse préparée : contact réglé sur « jamais » (ami, partenaire, chauffeur),
-    // numéro d'une fiche partenaire, conversation à trier, agent éteint dans l'entreprise. Rien d'autre ne part alors chez Anthropic.
+    // Avant tout appel à Claude, les mêmes garde-fous que la réponse préparée : contact réglé sur « jamais » (Contact personnel), conversation
+    // à trier, agent éteint dans l'entreprise. Rien ne part alors chez Anthropic. Partenaire, chauffeur, hôtel et apporteur sont suivis
+    // comme un client (migration 69) : ni leur type ni le numéro d'une fiche partenaire ne coupent le résumé ou la promesse.
     if (!(await iaPermise(db, lu.conv))) return;
     const cle = Deno.env.get("ANTHROPIC_API_KEY");
     if (!cle) return;
@@ -43,7 +43,6 @@ export async function suiviApresMessage(db: SupabaseClient, conversationId: stri
 
 async function iaPermise(db: SupabaseClient, conv: Record<string, any>) {
   if (conv.reponses === "jamais" || !conv.entite_id) return false;
-  if ((await partenairesDe(db, conv.organisation_id)).has(cleNumero(conv.telephone))) return false;
   // Réception suspendue ou assistant éteint dans l'entreprise de la conversation : rien chez Anthropic (audit sécurité n° 1).
   return await iaOuverte(db, conv as any);
 }

@@ -69,12 +69,15 @@ test("suivi : branché après chaque nouveau message, hors du traitement de Teln
   assert.match(idx, /enFond\(suiviApresMessage\(db, data\.conversation_id, data\.message_id\)\)/);
 });
 
-test("suivi : aucun appel à Claude pour un contact « jamais », un partenaire, une conversation à trier ou un agent éteint ; promesse réservée d'un coup", () => {
+test("suivi : aucun appel à Claude pour un contact « jamais », une conversation à trier ou un agent éteint ; un partenaire est suivi (migration 69) ; promesse réservée d'un coup", () => {
   const code = fs.readFileSync(new URL("../supabase/functions/whatsapp/suivi.ts", import.meta.url), "utf8");
   const corps = code.slice(code.indexOf("export async function suiviApresMessage"), code.indexOf("async function paiement"));
   assert.ok(corps.indexOf("iaPermise(") < corps.indexOf("new Anthropic("));
   assert.match(code, /conv\.reponses === "jamais" \|\| !conv\.entite_id/);
-  assert.match(code, /partenairesDe\(db, conv\.organisation_id\)\)\.has\(cleNumero\(conv\.telephone\)\)/);
+  // Migration 69 : ni le type ni le numéro d'une fiche partenaire ne coupent le résumé ou la promesse.
+  assert.doesNotMatch(code, /partenairesDe|cleNumero|type_contact/);
+  const garde = code.slice(code.indexOf("async function iaPermise"), code.indexOf("async function paiement"));
+  assert.match(garde, /^async function iaPermise\(db: SupabaseClient, conv: Record<string, any>\) \{\n  if \(conv\.reponses === "jamais" \|\| !conv\.entite_id\) return false;\n  \/\/ [^\n]*\n  return await iaOuverte\(db, conv as any\);\n\}/, "seuls le contact personnel, la conversation à trier et l'assistant éteint ferment");
   assert.match(code, /return await iaOuverte\(db, conv as any\)/, "assistant de l'entreprise et réception relus (reponse.ts)");
   const p = code.slice(code.indexOf("async function promesse"), code.indexOf("async function resumer"));
   assert.ok(p.indexOf("update({ promesse_le: ajd })") < p.indexOf("messages.create("), "le jour est réservé avant l'appel");

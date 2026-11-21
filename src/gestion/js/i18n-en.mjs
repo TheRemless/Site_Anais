@@ -4368,7 +4368,6 @@ export const EN = {
   "Relancer": "Retry",
   "{n} message(s) remis en file : repris dans les 5 minutes.": "{n} message(s) queued again: retried within 5 minutes.",
   "Rien à relancer.": "Nothing to retry.",
-  "Dernière erreur : {message}": "Last error: {message}",
   "{n} envoi(s) depuis Gestion à vérifier dans WhatsApp.": "{n} message(s) sent from Gestion to check in WhatsApp.",
   "WhatsApp n'a pas remis ce message.": "WhatsApp did not deliver this message.",
   "Noté : le message est parti.": "Noted: the message went out.",

@@ -20,7 +20,7 @@ import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
-import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, entrepriseParDefaut, parametresTri, langueSure, numerosPartenaires, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
+import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, entrepriseParDefaut, parametresTri, langueSure, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
 
@@ -38,7 +38,8 @@ export async function apresMessageClient(db: SupabaseClient, conversationId: str
     const lu = await lireConversation(db, conversationId);
     if (!lu || !aRepondre(lu.messages, messageId)) return;
     const { conv, messages } = lu;
-    let decision = triSansAppel({ conv, messages, numerosPartenaires: await partenairesDe(db, conv.organisation_id) });
+    // Partenaire, chauffeur, hôtel et apporteur sont triés comme un client (migration 69) : seul le Contact personnel coupe l'IA.
+    let decision = triSansAppel({ conv, messages });
     // Assistant éteint ou réception suspendue (audit sécurité n° 1) : pas même le tri chez Anthropic.
     if (!decision && !(await iaOuverte(db, conv))) decision = { preparer: false, motif: "ia_coupee" };
     if (!decision && !(await budgetOuvert(db, conv))) decision = { preparer: false, motif: "limite" };
@@ -142,19 +143,6 @@ async function garderTri(db: SupabaseClient, conversationId: string, decision: {
   // Seule la colonne tri : le déclencheur de la migration 60 garde de toute façon le classement de Nani.
   const { error } = await db.from("whatsapp_conversations").update({ tri: triGarde(decision) }).eq("id", conversationId);
   if (error && error.code !== "42703") console.error("whatsapp : tri non gardé", error.message);
-}
-
-// Numéros des fiches partenaires de l'organisation (relu au plus toutes les 10 minutes par instance). La catégorie écarte les fiches
-// « apporteur » (numerosPartenaires, migration 68).
-let partenairesLus: { quand: number; org: string; numeros: Set<string> } | null = null;
-export async function partenairesDe(db: SupabaseClient, org: string) {
-  if (partenairesLus && partenairesLus.org === org && Date.now() - partenairesLus.quand < 600_000) return partenairesLus.numeros;
-  const { data: ents } = await db.from("entites").select("id").eq("organisation_id", org);
-  const ids = (ents || []).map((e) => e.id);
-  const { data, error } = ids.length ? await db.from("partenaires").select("contact, categorie").in("entite_id", ids).limit(5000) : { data: [], error: null };
-  if (error) return new Set<string>();
-  partenairesLus = { quand: Date.now(), org, numeros: numerosPartenaires(data || []) };
-  return partenairesLus.numeros;
 }
 
 async function lireConversation(db: SupabaseClient, conversationId: string) {

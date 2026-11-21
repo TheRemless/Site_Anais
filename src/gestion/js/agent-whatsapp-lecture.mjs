@@ -9,14 +9,14 @@
 // Règles tenues ici (en plus de la base) :
 //   - un contact réglé sur « jamais » (« Contact personnel : rien envoyé à l'IA », migration 60) n'existe pas pour ces outils : ni liste, ni
 //     recherche, ni lecture, ni tâche à faire ;
-//   - une conversation dont le numéro est celui d'une fiche partenaire (prestataire, compagnie, chauffeur) n'existe pas non plus : on y parle
-//     de nets, de commissions et de noms de partenaires. Seule exception, une fiche de catégorie « apporteur » (travel planner qui envoie des
-//     clients, PR C). Même comparaison que la boîte (whatsapp/proposer.js, cleNumero et numerosPartenaires) ;
+//   - partenaire, chauffeur, hôtel et apporteur se lisent comme un client (demande de Jérémy du 21.11.2026, migration 69) : ni le type du
+//     contact ni le numéro d'une fiche partenaire n'écartent plus une conversation. Seul le réglage « Contact personnel » coupe l'IA ;
 //   - le texte d'un message est une donnée : numéros, comptes et IBAN masqués sur le texte entier AVANT toute coupe (masquer, même règle que
 //     whatsapp/proposer.js), crochets et chevrons remplacés, comme texteDepuisWhatsApp (agent/whatsapp.js) ;
 //   - aucun fichier ni lien de média : son type et sa légende seulement. Les pièces jointes ne partent chez Claude que cochées par la personne ;
-//   - aucun net, aucune commission, aucune marge : ces lignes n'en lisent pas. Le texte écrit par un client peut citer un prix, il reste une
-//     donnée (jamais une source pour la réponse au client, outils.js, memoDepuis) ;
+//   - aucun net, aucune commission, aucune marge : ces lignes n'en lisent pas. Le texte écrit par un client ou par un partenaire peut citer
+//     un prix ou un net, il reste une donnée (jamais une source pour la réponse au client, outils.js, memoDepuis). Une réponse au client qui
+//     reprend un net de l'entreprise ou un nom de partenaire reste bloquée (controlerReponse, whatsapp-envoi contenuInterne) ;
 //   - les résultats de ces outils ne restent pas dans l'historique : au message suivant ils sont retirés (retirerLecturesWhatsApp), l'agent
 //     relit avec l'outil. Un contact passé en « jamais » entre-temps n'est donc plus relu.
 //
@@ -48,35 +48,13 @@ export const MARQUE_PROMESSE = "Promesse faite dans WhatsApp (tâche créée par
 export const whatsappPermis = ({ slug = "", admin = false } = {}) => admin === true && ENTREPRISES_WHATSAPP.includes(marqueWhatsApp(slug));
 export const contactPersonnel = (c) => !c || c.reponses === "jamais";
 
-// ---- Fiches partenaires (copie de whatsapp/proposer.js, un test compare le code) -----------------------------------------------------
-// Les 9 derniers chiffres d'un numéro : un numéro noté « 081 234 5678 » ou « +66 81 234 5678 » donne la même clé.
+// ---- Numéros ------------------------------------------------------------------------------------------------------------------------
+// Les 9 derniers chiffres d'un numéro : un numéro noté « 081 234 5678 » ou « +66 81 234 5678 » donne la même clé (fiches apporteur,
+// agent/apporteur.js).
 export const cleNumero = (v) => {
   const n = String(v || "").replace(/\D/g, "");
   return n.length >= 8 ? n.slice(-9) : "";
 };
-// Numéros des fiches partenaires (contact.telephones : texte ou liste), toutes entreprises de l'organisation.
-export function numerosPartenaires(partenaires = []) {
-  const out = new Set();
-  for (const p of partenaires) {
-    if (p && p.categorie === "apporteur") continue;
-    const t = p && p.contact ? p.contact.telephones : null;
-    const liste = Array.isArray(t) ? t : typeof t === "string" ? t.split(/[,;/\n]|\s{2,}/) : [];
-    for (const x of liste) {
-      const v = typeof x === "string" ? x : x && typeof x === "object" ? x.numero || x.telephone || x.valeur || "" : "";
-      for (const morceau of String(v).match(/\+?\d[\d\s.\-()]{6,}\d/g) || []) {
-        const k = cleNumero(morceau);
-        if (k) out.add(k);
-      }
-    }
-  }
-  return out;
-}
-// Les numéros à écarter : ceux des fiches partenaires, sauf une fiche « apporteur » (sa catégorie, accents et casse ignorés).
-export const estApporteur = (p) => /apporteu/.test(sansAccents((p && p.categorie) || ""));
-export const numerosAExclure = (partenaires = []) => numerosPartenaires((partenaires || []).filter((p) => p && !estApporteur(p)));
-// `exclus` : un Set de clés (numerosAExclure). Un contact personnel ou un partenaire n'existe pas pour ces outils.
-export const contactExclu = (c, exclus = null) => contactPersonnel(c) || !!(exclus && typeof exclus.has === "function" && exclus.has(cleNumero(c.telephone)));
-const exclusDe = (d) => (d && d.exclus instanceof Set ? d.exclus : new Set(Array.isArray(d && d.exclus) ? d.exclus : []));
 
 // ---- Texte ---------------------------------------------------------------------------------------------------------------------------
 // Même règle que masquer de whatsapp/proposer.js (un test compare les deux blocs, date comprise).
@@ -203,7 +181,7 @@ export const attendReponse = (conv) => !!conv && ("attend_depuis" in conv ? !!co
 
 // ---- chercher_conversations ------------------------------------------------------------------------------------------------------------
 // `e` : { texte, client, dossier, du, au, non_lus, attend_reponse } (entrée normalisée par l'agent).
-// `d` : { conversations, clients, dossiers, trouves, entites, exclus } ; trouves : [{ conversation_id, message_id, extrait, envoye_le, mot? }]
+// `d` : { conversations, clients, dossiers, trouves, entites } ; trouves : [{ conversation_id, message_id, extrait, envoye_le, mot? }]
 // rendus par whatsapp_rechercher (extrait : le texte entier du message, masqué et coupé ici) ; `mot` : le mot cherché seul (« Tom ferry » :
 // « Tom » dans le nom, « ferry » dans un message). Rend { nombre, conversations, tronque? } ou { erreur }.
 export function chercherConversations(e = {}, d = {}) {
@@ -225,7 +203,6 @@ export function chercherConversations(e = {}, d = {}) {
     if (!t || !t.conversation_id || ((du || au) && !dans(t.envoye_le))) continue;
     parConv.set(t.conversation_id, [...(parConv.get(t.conversation_id) || []), t]);
   }
-  const exclus = exclusDe(d);
   const cle = sansAccents(texte);
   const mots = cle.split(/\s+/).filter((m) => m.length >= 2);
   const chiffres = texte.replace(/\D/g, "");
@@ -233,7 +210,7 @@ export function chercherConversations(e = {}, d = {}) {
   const refDossier = prefixe(e.dossier);
   const texteDossier = !refDossier && String(e.dossier || "").trim() ? sansAccents(String(e.dossier).trim()) : "";
   const choisies = (d.conversations || []).filter((c) => {
-    if (!c || !c.id || contactExclu(c, exclus)) return false;
+    if (!c || !c.id || contactPersonnel(c)) return false;
     if (e.non_lus && !(Number(c.non_lus) > 0)) return false;
     if (e.attend_reponse && !attendReponse(c)) return false;
     if (refClient && !(refClient.genre === "C" && commencePar(c.client_id, refClient.p))) return false;
@@ -277,7 +254,7 @@ export function chercherConversations(e = {}, d = {}) {
 }
 
 // ---- lire_conversation -----------------------------------------------------------------------------------------------------------------
-// `e` : { conversation, depuis, avant, derniers }. `d` : { conversation, messages, clients, dossiers, entites, exclus, compte }, avec `qui`
+// `e` : { conversation, depuis, avant, derniers }. `d` : { conversation, messages, clients, dossiers, entites, compte }, avec `qui`
 // (le prénom de l'équipe dans la boîte, Nani). Rend les messages du plus ancien au plus récent, dans la limite de CARACTERES_MAX :
 //   - sans date ou avec « avant » : les N derniers (avant ce jour), les plus récents gardés ;
 //   - avec « depuis » : les N premiers depuis ce jour, les plus anciens gardés (sinon un vieux jour ne serait jamais atteint).
@@ -295,8 +272,6 @@ export function lireConversation(e = {}, d = {}, { qui = "Nani" } = {}) {
   if (!conv || !idSur(conv.id)) return { erreur: "conversation_introuvable", conseil: "Cherche d'abord la conversation avec chercher_conversations." };
   // Contact personnel : rien de lui ne part chez Claude, pas même son nom.
   if (contactPersonnel(conv)) return { erreur: "contact_personnel", conseil: "Ce contact est réglé « Contact personnel : rien envoyé à l'IA ». Dis-le simplement, sans rien deviner." };
-  // Le numéro d'une fiche partenaire : on y parle de nets et de commissions, rien ne part chez Claude.
-  if (contactExclu(conv, exclusDe(d))) return { erreur: "contact_partenaire", conseil: "Cette conversation est celle d'un partenaire (numéro d'une fiche partenaire) : elle ne se lit pas ici. Dis-le simplement." };
   if ((e.depuis && !dateValide(e.depuis)) || (e.avant && !dateValide(e.avant))) return { erreur: "date_illisible", conseil: "Écris la date au format AAAA-MM-JJ." };
   const { depuis, avant, derniers, ordre } = messagesAPrendre(e);
   const clients = index(d.clients);
@@ -374,7 +349,7 @@ export function clientsApporteurs({ conversations = [], typeContact = () => null
 }
 
 const ORDRE = ["promesse", "client_attend", "apporteur", "ferry_non_paye", "paiement_signale"];
-// `d` : { conversations, taches, paiements, reservations, trajets, prestations, resumes, dossiers, clients, entites, exclus }.
+// `d` : { conversations, taches, paiements, reservations, trajets, prestations, resumes, dossiers, clients, entites }.
 //   taches : les tâches nées d'une promesse (description MARQUE_PROMESSE), non faites, avec whatsapp_conversation_id (migration 67) ;
 //   paiements : ceux des dossiers reliés (dossier_id, created_at) ; resumes : dossiers_resume (dossier_id, total, recu, devise).
 // Rend { nombre, elements, tronque? } : chaque élément a son genre, son niveau (« urgent » ou « a_faire »), ce qui attend et son lien.
@@ -384,8 +359,7 @@ export function aFaireWhatsApp(d = {}, { maintenant = Date.now(), typeContact = 
   const dossiers = index(d.dossiers);
   const entites = d.entites || [];
   const toutes = (d.conversations || []).filter((c) => c && idSur(c.id));
-  const exclus = exclusDe(d);
-  const convs = toutes.filter((c) => !contactExclu(c, exclus));
+  const convs = toutes.filter((c) => !contactPersonnel(c));
   const permises = new Map(convs.map((c) => [c.id, c]));
   const base = (c, messageId = "") => ({ conversation: c.id, lien: lienDe(c, messageId), nom: nomDe(c, c.client_id ? clients.get(c.client_id) : null), entreprise: entrepriseDe(c, entites) });
   const elements = [];
@@ -413,7 +387,7 @@ export function aFaireWhatsApp(d = {}, { maintenant = Date.now(), typeContact = 
 
   // 2. Les promesses échues de Nani : tâche née d'une promesse, non faite, échéance passée. Reliée à sa conversation par la colonne
   // whatsapp_conversation_id (migration 67). Une tâche d'avant la colonne se rapproche comme avant (même entreprise, même dossier, réservée
-  // le jour de la tâche : promesse_le, migration 62). Une promesse sans conversation retrouvée, ou d'un contact personnel ou partenaire, est
+  // le jour de la tâche : promesse_le, migration 62). Une promesse sans conversation retrouvée, ou d'un contact personnel, est
   // écartée : son titre porte le nom du contact, il ne part jamais seul.
   for (const t of d.taches || []) {
     if (!t || t.fait || t.description !== MARQUE_PROMESSE || !dateValide(t.echeance) || t.echeance >= aujourdhui) continue;
@@ -505,7 +479,7 @@ export function aFaireWhatsApp(d = {}, { maintenant = Date.now(), typeContact = 
 
 // ---- Historique de l'agent -------------------------------------------------------------------------------------------------------------
 // Les résultats des outils WhatsApp des échanges précédents ne repartent pas : remplacés par { retire, raison } au chargement de
-// l'historique (fonction « agent »). Un contact réglé « jamais » ou devenu partenaire après une lecture n'est donc jamais renvoyé ; l'agent
+// l'historique (fonction « agent »). Un contact réglé « jamais » après une lecture n'est donc jamais renvoyé ; l'agent
 // relit avec l'outil, sous les règles du moment. La base n'est pas réécrite. Rend un nouveau tableau, l'entrée n'est pas modifiée.
 export const RESULTAT_RETIRE = JSON.stringify({ retire: true, raison: "relire avec l'outil" });
 export function retirerLecturesWhatsApp(messages = []) {

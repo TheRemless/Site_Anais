@@ -138,10 +138,10 @@ function selecteurEntreprise(c, prop) {
   );
 }
 
-// Type du contact (migration 68), d'un tap : client, apporteur, partenaire, chauffeur, hôtel ou personnel. Le tap règle aussi les réponses :
-// client et apporteur ouvrent l'assistant, partenaire, chauffeur et hôtel le ferment (ils parlent de nets et de commissions), personnel le ferme
-// sans type. Le réglage des réponses reste dans le menu « … ». La fonction « whatsapp » ne change jamais un type posé ici. Une conversation
-// typée « apporteur » propose de créer ou de relier sa fiche apporteur.
+// Type du contact (migration 68), d'un tap : client, apporteur, partenaire, chauffeur, hôtel ou personnel. Depuis la migration 69, le type ne
+// coupe plus l'IA : partenaire, chauffeur, hôtel et apporteur se lisent comme un client. Seul « Personnel » ferme (rien envoyé à l'IA) et
+// vide le type ; quitter « Personnel » pour un type rouvre (patchType). Le réglage des réponses reste dans le menu « … ». La fonction
+// « whatsapp » ne change jamais un type posé ici. Une conversation typée « apporteur » propose de créer ou de relier sa fiche apporteur.
 function selecteurType(c) {
   if (etat.brut.whatsapp_contacts_disponible !== true) return null;
   const actuel = typeContact(c);
@@ -150,9 +150,9 @@ function selecteurType(c) {
   const choisir = async (t) => {
     if (t === actuel) return;
     try {
-      await modifier("whatsapp_conversations", c.id, patchType(t));
-      // Le toast dit si l'IA lit ce contact désormais : client et apporteur oui, les autres non.
-      toast(tr(toastType(t)));
+      await modifier("whatsapp_conversations", c.id, patchType(t, c));
+      // Le toast dit si l'IA lit ce contact désormais : oui pour tout type, sauf « Personnel » ou un contact réglé « rien envoyé à l'IA ».
+      toast(tr(toastType(t, c)));
       rafraichir();
     } catch (err) {
       toast(err.message, true);
@@ -166,8 +166,8 @@ function selecteurType(c) {
   );
 }
 
-// Réponses préparées pour ce contact (migration 60) : sur demande ou automatiques (selon Réglages), ou jamais (ami, famille, partenaire,
-// chauffeur). Rangé dans le menu « … » de l'en-tête (lot 2, design n° 7) : il ne sert que pour quelques contacts. Seule Nani le change.
+// Réponses préparées pour ce contact (migration 60) : sur demande ou automatiques (selon Réglages), ou jamais (Contact personnel : ami,
+// famille). Rangé dans le menu « … » de l'en-tête (lot 2, design n° 7) : il ne sert que pour quelques contacts. Seule Nani le change.
 async function basculerReponses(c) {
   const valeur = reponsesDe(c) === "jamais" ? "auto" : "jamais";
   const suggeree = !c.entite_id && c.tri ? entitesWhatsApp().find((e) => marqueEntite(e) === c.tri.entreprise) : null;

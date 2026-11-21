@@ -13,9 +13,9 @@
 //   - espace unifié Secret et Taxi (unifie.js, migration 63) : chaque ligne porte son entreprise, ses nets et son partenaire suivent les
 //     droits de la personne dans l'entreprise de CETTE ligne, chaque service d'une carte porte son entreprise. Sans ce mode, rien ne change ;
 //   - boîte WhatsApp (whatsapp-lecture.js, migration 67) : trois outils de lecture, proposés et exécutés seulement pour qui administre
-//     l'entreprise active (whatsapp_admin), Secret ou Taxi. Jamais un contact personnel ni la conversation d'un partenaire (sauf un apporteur) ;
-//     le texte des messages n'est jamais une source de prix ni d'heure (memoDepuis) ; leurs résultats sont retirés de l'historique au
-//     message suivant (retirerLecturesWhatsApp) ;
+//     l'entreprise active (whatsapp_admin), Secret ou Taxi. Jamais un contact personnel ; partenaire, chauffeur, hôtel et apporteur se
+//     lisent comme un client (migration 69) ; le texte des messages n'est jamais une source de prix ni d'heure (memoDepuis) ; leurs
+//     résultats sont retirés de l'historique au message suivant (retirerLecturesWhatsApp) ;
 //   - contact WhatsApp de type « apporteur » (apporteur.js, PR D) : proposer_dossier note la fiche apporteur de chaque entreprise (ctx.apporteur,
 //     lue avec la session), jamais celle d'une autre ; rien de la fiche ne repart chez Claude.
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";

@@ -252,19 +252,17 @@ export function creer() {
   const conversationLue = (id) => data.whatsapp_conversations.find((c) => c.id === id && c.organisation_id === monOrg() && litWhatsApp(c.entite_id)) || null;
   // L'Assistant lit la boîte (PR A, agent-whatsapp-lecture.mjs) : les mêmes lignes que la base rendrait à la fonction « agent » avec la
   // session de la personne. Seulement dans l'Assistant de Secret ou de Taxi et pour qui administre CETTE entreprise (whatsapp_admin) ;
-  // sinon null. Les conversations des fiches partenaires (sauf « apporteur ») sont écartées, comme la fonction.
+  // sinon null. Seuls les contacts personnels (reponses = 'jamais') sont écartés, comme la fonction (migration 69 : partenaire, chauffeur,
+  // hôtel et apporteur se lisent comme un client).
   const sourceWhatsApp = async (entiteId) => {
     const active = data.entites.find((e) => e.id === entiteId);
     if (!active || !marqueEntite(active) || !adminWhatsApp(entiteId)) return null;
-    const { numerosAExclure } = await import("./agent-whatsapp-lecture.mjs");
-    const exclus = numerosAExclure((data.partenaires || []).filter((p) => data.entites.some((e) => e.id === p.entite_id && e.organisation_id === monOrg())));
     const entitesWa = data.entites.filter((e) => e.organisation_id === monOrg() && marqueEntite(e)).map((e) => ({ id: e.id, slug: marqueEntite(e) }));
     const visibles = () => data.whatsapp_conversations.filter((c) => c.organisation_id === monOrg() && litWhatsApp(c.entite_id));
     const autour = (convs) => ({
       clients: structuredClone(data.clients.filter((c) => convs.some((v) => v.client_id === c.id))),
       dossiers: structuredClone(data.dossiers.filter((d) => convs.some((v) => v.dossier_id === d.id))),
       entites: entitesWa,
-      exclus,
     });
     return {
       permis: true,
