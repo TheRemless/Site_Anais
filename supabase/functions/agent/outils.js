@@ -909,7 +909,8 @@ export function retenuDeLecture(resultat) {
   const voir = (v) => {
     if (Array.isArray(v)) return v.forEach(voir);
     if (!v || typeof v !== "object") return;
-    if (CONTACTS_NOMMES.includes(v.contact)) {
+    // Revue de la PR 300 : une conversation reliée à une fiche partenaire sans type nommé (fiche_reliee) : son nom aussi.
+    if (CONTACTS_NOMMES.includes(v.contact) || v.fiche_reliee === true) {
       for (const n of [v.nom_whatsapp, v.nom]) if (typeof n === "string" && n.trim() && n !== "Contact sans nom") noms.push({ conversation: v.conversation || null, nom: n.trim() });
       if (CONTACTS_INTERNES.includes(v.contact)) for (const x of montantsTapes(textesDe(v))) internes.add(x);
       return;

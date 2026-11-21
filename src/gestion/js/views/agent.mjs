@@ -374,10 +374,12 @@ export async function vueAgent(idOuvert = "") {
     const wc = id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === id) : null;
     return lienBoiteWhatsApp({ conversation: id, entite: (wc && wc.entite_id) || "" });
   };
-  const nomWaLiee = () => {
-    const wc = (etat.brut.whatsapp_conversations || []).find((x) => x.id === waLiee());
+  // Le nom d'une conversation WhatsApp chargée pour la personne (migration 70 : le nom saisi par Nani d'abord), ou "".
+  const nomWa = (id) => {
+    const wc = id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === id) : null;
     return wc ? nomConversation(wc, wc.client_id ? (etat.brut.clients || []).find((x) => x.id === wc.client_id) || null : null) : "";
   };
+  const nomWaLiee = () => nomWa(waLiee());
   function enTete() {
     const dossier = conv && conv.dossier_id ? etat.db.dossiers.find((d) => d.id === conv.dossier_id) : null;
     const lienWa = waLiee() ? lienWaLiee() : "";
@@ -398,7 +400,7 @@ export async function vueAgent(idOuvert = "") {
               { class: "agent-fil-liens" },
               dossier ? h("a", { class: "agent-dossier", href: `#/dossier/${dossier.id}` }, tr("Dossier {ref}", { ref: dossier.ref })) : null,
               // Liée à WhatsApp (design n° 4, PR B) : un lien pour revenir à la conversation du client.
-              lienWa ? h("a", { class: "agent-dossier", href: lienWa }, icone("whatsapp", 14), tr("Voir la conversation WhatsApp")) : null
+              lienWa ? h("a", { class: "agent-dossier", href: lienWa }, icone("whatsapp", 14), nomWaLiee() ? tr("Voir la conversation WhatsApp de {nom}", { nom: nomWaLiee() }) : tr("Voir la conversation WhatsApp")) : null
             )
           : null
       ),
@@ -522,9 +524,15 @@ export async function vueAgent(idOuvert = "") {
     return carte(it.carte);
   }
   // Les citations de la boîte WhatsApp (#/whatsapp?c=…&m=…) deviennent des liens ; le reste du texte reste du texte.
-  const avecCitations = (l) => morceauxCitations(l).map((m) => (m.lien ? h("a", { class: "agent-citation", href: m.lien }, m.message ? tr("voir le message") : tr("voir la conversation")) : m.texte));
+  // Avec le nom de la conversation citée quand elle est chargée (migration 70).
+  const libelleCitation = (m) => {
+    const nom = nomWa(m.conversation);
+    if (m.message) return nom ? tr("voir le message ({nom})", { nom }) : tr("voir le message");
+    return nom ? tr("voir la conversation ({nom})", { nom }) : tr("voir la conversation");
+  };
+  const avecCitations = (l) => morceauxCitations(l).map((m) => (m.lien ? h("a", { class: "agent-citation", href: m.lien }, libelleCitation(m)) : m.texte));
   const paragraphes = (t) => String(t).split(/\n{2,}/).map((p) => h("p", null, ...p.split("\n").flatMap((l, i) => (i ? [h("br"), ...avecCitations(l)] : avecCitations(l)))));
-  function bulleWhatsApp(echange, { nom = conv ? titreDe(conv) : "" } = {}) {
+  function bulleWhatsApp(echange, { nom = nomWaLiee() || (conv ? titreDe(conv) : "") } = {}) {
     const n = echange.messages.length;
     return h(
       "details",

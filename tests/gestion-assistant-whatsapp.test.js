@@ -90,7 +90,8 @@ test("citations cliquables : seulement la forme exacte des liens de l'outil", ()
   const c = id();
   const m = id();
   const morceaux = morceauxCitations(`- Lucia attend depuis 2 h #/whatsapp?c=${c}&m=${m}\n- rien ici`);
-  assert.deepEqual(morceaux.filter((x) => x.lien), [{ lien: `#/whatsapp?c=${c}&m=${m}`, message: true }]);
+  // La conversation citée sert à mettre son nom à côté du lien (migration 70).
+  assert.deepEqual(morceaux.filter((x) => x.lien), [{ lien: `#/whatsapp?c=${c}&m=${m}`, message: true, conversation: c }]);
   assert.equal(morceaux.map((x) => x.texte || x.lien).join(""), `- Lucia attend depuis 2 h #/whatsapp?c=${c}&m=${m}\n- rien ici`);
   for (const faux of ["#/whatsapp?c=abc", `#/dossier/${c}`, `https://x.test/#/whatsapp?c=${c}x`, `#/whatsapp?c=${c}&next=evil`]) assert.ok(!morceauxCitations(faux).some((x) => x.lien && x.lien.length > 50 && !faux.startsWith(x.lien)), faux);
   assert.ok(!morceauxCitations(`#/whatsapp?c=${c}&next=evil`).some((x) => x.lien), "un paramètre en plus : pas un lien de l'outil");
@@ -419,7 +420,10 @@ test("fonction « agent » : lecture avec la session de la personne, jamais avec
   assert.match(bloc, /\{ count: "exact", head: true \}/, "messages restants comptés par la base");
   assert.match(bloc, /order\("envoye_le", \{ ascending: !!depuis \}\)/, "« depuis » lit les plus anciens d'abord");
   assert.doesNotMatch(bloc, /storage|download|createSignedUrl/, "aucun fichier");
-  assert.doesNotMatch(bloc, /reservations_nets|prestations_nets|trajets_nets|partenaires_prives|partenaire_id/, "aucun net ni partenaire");
+  // Revue de la PR 300 : partenaire_id est lu seulement dans les colonnes des conversations, pour marquer « fiche_reliee » (nom bloqué vers
+  // un client). L'identifiant ne sort jamais de la lecture (tests/gestion-whatsapp-nom.test.js) ; aucune table de partenaire n'est lue.
+  assert.doesNotMatch(bloc.replace(/const NIVEAUX_CONV = \[[^\n]*\];/, ""), /reservations_nets|prestations_nets|trajets_nets|partenaires_prives|partenaire_id/, "aucun net ni partenaire");
+  assert.doesNotMatch(bloc, /from\("partenaires"\)/);
   assert.match(ts, /whatsapp: !!whatsapp \}\);/, "les consignes savent si la boîte est lisible");
   assert.match(ts, /\.\.\.\(whatsapp \? \{ whatsapp \} : \{\}\)/);
   // Aucun appel à l'IA dans les outils : ils sont du SQL et du JS.

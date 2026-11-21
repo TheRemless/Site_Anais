@@ -190,12 +190,19 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     let triDisponible = true;
     let suiviDisponible = true;
     let contactsDisponible = true;
+    // nom_source (migration 70, nom saisi à la main) : relue sans elle tant que la migration n'est pas appliquée ; l'écran n'offre pas le crayon.
+    let nomDisponible = true;
     const lireConversations = async () => {
       const requete = (colonnes) => sb.from("whatsapp_conversations").select(colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
-      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}`);
+      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}, nom_source`);
+      if (r.error && colonneAbsente(r.error, "nom_source")) {
+        nomDisponible = false;
+        r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}`);
+      }
       // Une colonne manque : la 68 n'est pas passée (elle suit toutes les autres), on relit comme avant elle.
       if (r.error && [...CONTACTS.split(", "), ...APERCU.split(", "), ...SUIVI.split(", "), "reponses", "tri"].some((c) => colonneAbsente(r.error, c))) {
         contactsDisponible = false;
+        nomDisponible = false;
         r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}`);
       }
       if (r.error && APERCU.split(", ").some((c) => colonneAbsente(r.error, c))) r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}`);
@@ -223,6 +230,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       whatsapp_tri_disponible: conversations !== null && triDisponible,
       whatsapp_suivi_disponible: conversations !== null && suiviDisponible,
       whatsapp_contacts_disponible: conversations !== null && contactsDisponible,
+      whatsapp_nom_disponible: conversations !== null && nomDisponible,
     };
   }
 

@@ -9,6 +9,7 @@ import { formatMontant } from "../calc.mjs";
 import { agentActif } from "../agent-calc.mjs";
 import { donneesAFaire, aFaireEcran, detailAFaire, GENRES_A_FAIRE, QUESTION_A_FAIRE_BOITE, CLE_QUESTION_AGENT } from "../whatsapp-relie-calc.mjs";
 import { typeContact } from "../apporteurs-calc.mjs";
+import { nomConversation } from "../whatsapp-calc.mjs";
 
 const jourCourt = (iso) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString(localeActive(), { day: "numeric", month: "short", timeZone: "UTC" }) : "");
 
@@ -44,6 +45,14 @@ function marqueDe(x, entites) {
   if (e) return h("span", { class: `wa-marque ${x.entreprise === "secret" || x.entreprise === "taxi" ? x.entreprise : ""}` }, e.nom);
   return x.entreprise === "a_trier" ? h("span", { class: "wa-marque a-trier" }, tr("À trier")) : null;
 }
+// Le nom comme dans la liste (migration 70) : saisi par Nani, sinon le client relié, sinon le profil, sinon le numéro. Le calcul de l'outil
+// (x.nom) n'a jamais le numéro : il ne sert que si la conversation n'est plus chargée.
+function nomDeLigne(x) {
+  const c = x.conversation ? (etat.brut.whatsapp_conversations || []).find((v) => v.id === x.conversation) : null;
+  if (!c) return x.nom || "";
+  const client = c.client_id ? (etat.brut.clients || []).find((v) => v.id === c.client_id) || null : null;
+  return nomConversation(c, client);
+}
 function ligne(x, ouverte, entites) {
   const marque = marqueDe(x, entites);
   const details = detailAFaire(x, { montant: (n, d) => formatMontant(n, d || undefined), jour: jourCourt }).map((d) => (d.brut ? d.texte : tr(d.texte, d.vars || {})));
@@ -56,7 +65,7 @@ function ligne(x, ouverte, entites) {
       h(
         "span",
         { class: "wa-conv-ligne" },
-        h("span", { class: "wa-conv-nom" }, h("strong", null, x.nom || tr(GENRES_A_FAIRE[x.genre])), marque),
+        h("span", { class: "wa-conv-nom" }, h("strong", null, nomDeLigne(x) || tr(GENRES_A_FAIRE[x.genre])), marque),
         x.niveau === "urgent" ? h("span", { class: "wa-attente urgente" }, tr("Urgent")) : null
       ),
       h("span", { class: "wa-afaire-quoi" }, h("strong", null, tr(GENRES_A_FAIRE[x.genre])), details.length ? h("span", null, details.join(", ")) : null),
