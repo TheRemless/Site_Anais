@@ -10,7 +10,7 @@ import { h, toast, confirmer, icone, puces, modal, champ } from "../ui.mjs";
 import { formatMontant, aujourdhui } from "../calc.mjs";
 import { clientPourFaits, dossierPourFaits, faitsClient } from "../whatsapp-faits-calc.mjs";
 import { tr, N_, langueActive, localeActive } from "../i18n.mjs";
-import { quand, bloquantsReponse, resteBloque, agentActif } from "../agent-calc.mjs";
+import { quand, bloquantsReponse, resteBloque, agentActif, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE } from "../agent-calc.mjs";
 import {
   CLE_DEMANDE_AGENT, modeDossier, paiementSignale, MOTIFS_PAIEMENT, lignesResume, tachesPromesse, piecesProposees, basculerPiece, PIECES_MAX, resumeEnRetard,
 } from "../whatsapp-suivi-calc.mjs";
@@ -20,7 +20,7 @@ import { directCoupe } from "../direct-reprise-calc.mjs";
 import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
-  grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, codeEnvoi, LECTURE_IMPOSSIBLE, propositionCourante,
+  grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, codeEnvoi, aConfirmerEnvoi, ficheAMettreAJour, LECTURE_IMPOSSIBLE, propositionCourante,
   propositionAJour, entrepriseProposee, reponsesDe, preparationAuto, raisonSansReponse, erreurPreparer, libelleErreurProposition,
   apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant, nomSaisi, patchNom, NOM_MAX,
 } from "../whatsapp-calc.mjs";
@@ -36,7 +36,7 @@ const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"))
 // Ce qui doit survivre à un redessin de l'écran (synchronisation, Realtime), par identifiant de proposition :
 //   brouillons : le texte modifié par Nani, remis dans la zone au rendu suivant ;
 //   envoisIncertains : un envoi au résultat inconnu (délai dépassé, coupure), le bouton Envoyer ne se rallume pas ;
-//   aRetirer : les montants et les noms que whatsapp-envoi a trouvés dans le texte (contenu_interne).
+//   aRetirer : ce que whatsapp-envoi a trouvé dans le texte (contenu_interne), lu par bloquantsReponse (montants, empreintes, noms).
 const brouillons = new Map();
 const envoisIncertains = new Set();
 const aRetirer = new Map();
@@ -247,11 +247,13 @@ function titreNom(c) {
     h("button", { type: "button", class: "wa-nom-bouton", "aria-label": tr("Changer le nom de {nom}", { nom }), onclick: (e) => editerNom(c, e.currentTarget.closest(".wa-fil-titre")) }, h("span", { class: "wa-nom-texte" }, nom), icone("crayon", 16))
   );
 }
+// Un nom de source « whatsapp » est celui que le contact a écrit (tri de la fonction, 21.11.2026) : une mention discrète le dit.
 function sousTitreNom(c) {
   const client = clientDe(c);
-  if (!client) return null;
+  const ecrit = !!c.nom && c.nom_source === "whatsapp";
+  if (!client) return ecrit ? h("span", { class: "wa-nom-source" }, tr("écrit par le contact")) : null;
   if (nomSaisi(c)) return h("span", null, tr("fiche « {nom} »", { nom: nomClient(client) }));
-  return c.nom ? h("span", null, tr("profil « {nom} »", { nom: c.nom })) : null;
+  return c.nom ? h("span", { class: ecrit ? "wa-nom-source" : null }, ecrit ? tr("« {nom} » écrit par le contact", { nom: c.nom }) : tr("profil « {nom} »", { nom: c.nom })) : null;
 }
 function editerNom(c, zone) {
   if (!zone) return;
@@ -311,9 +313,38 @@ function enTete(c, prop) {
       h("button", { class: "bouton-icone secondaire wa-menu", type: "button", "aria-label": tr("Options de la conversation"), onclick: () => menuConversation(c) }, icone("ellipsis", 20))
     ),
     h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), selecteurType(c)),
+    bandeauFiche(c),
     blocFaits(c, prop),
     blocResume(c),
   ];
+}
+
+// ---- Nom écrit par le client (21.11.2026) -------------------------------------------------------------------------------------------
+// La fonction « whatsapp » a noté sur la conversation le nom que le client a écrit ; la fiche reliée n'a pas de nom de famille. L'écran le
+// propose, Nani décide : rien n'est écrit sur la fiche sans son clic. « Pas maintenant » le cache jusqu'au rechargement de la page.
+const fichesIgnorees = new Set();
+function bandeauFiche(c) {
+  const client = clientDe(c);
+  const maj = !lectureSeule && peut("clients.ecrire") && !fichesIgnorees.has(c.id) ? ficheAMettreAJour(c, client) : null;
+  if (!maj) return null;
+  const oui = h("button", { class: "secondaire petit", type: "button" }, tr("Mettre à jour la fiche"));
+  const non = h("button", { class: "lien", type: "button" }, tr("Pas maintenant"));
+  oui.addEventListener("click", async () => {
+    oui.disabled = non.disabled = true;
+    try {
+      await modifier("clients", client.id, maj);
+      toast(tr("Fiche du client mise à jour."));
+      rafraichir();
+    } catch (err) {
+      oui.disabled = non.disabled = false;
+      toast(err.message, true);
+    }
+  });
+  non.addEventListener("click", () => {
+    fichesIgnorees.add(c.id);
+    rafraichir();
+  });
+  return h("div", { class: "bandeau-info wa-fiche-nom", role: "status" }, h("p", null, tr("{prenom} a écrit {nom} : mettre à jour la fiche ?", { prenom: client.prenom || maj.prenom, nom: c.nom })), h("div", { class: "wa-prop-suite" }, oui, non));
 }
 
 // ---- Faits du client (lot 2, usage n° 2) --------------------------------------------------------------------------------------------
@@ -737,7 +768,20 @@ async function envoyer(c, p, zone, bouton, apres) {
   if (!(await confirmer(tr("Envoyer cette réponse à {nom} depuis Gestion ? Elle part tout de suite du numéro de l'entreprise.", { nom: nomConversation(c, clientDe(c)) }), tr("Envoyer")))) return;
   if (!toujoursCourante(c, p)) return perimee();
   bouton.disabled = true;
-  const r = await etat.store.whatsappEnvoyer({ conversation_id: c.id, texte: zone.value, proposition_id: p.id });
+  let r = await etat.store.whatsappEnvoyer({ conversation_id: c.id, texte: zone.value, proposition_id: p.id });
+  // Un montant égal au net d'un autre service du catalogue (whatsapp-envoi, 409) : rien n'est parti. Nani confirme d'un clic, le même texte
+  // repart avec cette liste, que la fonction revérifie.
+  const texte = zone.value;
+  const question = aConfirmerEnvoi(r, texte);
+  if (question) {
+    if (!(await confirmer(tr(question.texte, question.vars), tr("Envoyer quand même")))) {
+      bouton.disabled = false;
+      toast(tr("Rien n'est parti."));
+      return apres();
+    }
+    if (!toujoursCourante(c, p)) return perimee();
+    r = await etat.store.whatsappEnvoyer({ conversation_id: c.id, texte, proposition_id: p.id, montants_confirmes: question.renvoi });
+  }
   if (r && r.demo) {
     bouton.disabled = false;
     return toast(tr("En démo, rien n'est envoyé."));
@@ -756,9 +800,10 @@ async function envoyer(c, p, zone, bouton, apres) {
     // Fiches partenaires illisibles côté serveur (revue PR 298) : un message clair, rien à retirer du texte.
     // « montant_interne:1500 » ou « nom_prestataire:Jade » : la valeur seule, cherchée dans le texte (une valeur sans code reste telle quelle).
     if (code === "contenu_interne") {
-      const brut = ((r && r.a_retirer) || []).filter((x) => x !== LECTURE_IMPOSSIBLE);
+      const brut = ((r && r.a_retirer) || []).filter((x) => x !== LECTURE_IMPOSSIBLE && x !== CONTROLE_IMPOSSIBLE);
       const b = bloquantsReponse(brut);
-      aRetirer.set(p.id, [...b.montants.map(String), ...b.noms, ...brut.filter((x) => !/^[a-z_]+:/.test(String(x)))]);
+      // Les codes tels quels (une empreinte de montant masqué se recalcule sur le texte, revue de la PR 306), plus les valeurs sans code.
+      aRetirer.set(p.id, { ...b, noms: [...b.noms, ...brut.filter((x) => !/^[a-z_]+:/.test(String(x)))] });
     }
     toast(tr(erreurEnvoi(codeEnvoi(code, r && r.a_retirer))), true);
     if (code === "deja_traitee") return rafraichir();
@@ -894,12 +939,11 @@ function carteProposition(c, p, messages) {
   const alerte = h("p", { class: "erreur-form", role: "alert", hidden: true });
   function majEnvoi() {
     const ok = envoiPossible({ texte: zone.value, fenetre: f });
-    const serveur = aRetirer.get(p.id) || [];
-    const duServeur = resteBloque(zone.value, { montants: serveur.filter((x) => Number.isFinite(Number(x))).map(Number), noms: serveur.filter((x) => !Number.isFinite(Number(x))) });
+    const duServeur = resteBloque(zone.value, aRetirer.get(p.id) || {});
     const reste = [...new Set([...resteBloque(zone.value, bloquants), ...duServeur])];
     const incertain = envoisIncertains.has(p.id);
     alerte.hidden = !reste.length;
-    alerte.textContent = !reste.length ? "" : filtre.masques ? tr("Un montant ou un nom interne est dans la réponse : à retirer avant de copier.") : tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") });
+    alerte.textContent = !reste.length ? "" : reste.includes(CONTROLE_IMPOSSIBLE) ? tr("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.") : filtre.masques ? tr("Un montant ou un nom interne est dans la réponse : à retirer avant de copier.") : tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.map((x) => (x === MONTANT_MASQUE ? tr("un montant égal à un net interne") : x)).join(", ") });
     boutonEnvoyer.disabled = !ok.ok || reste.length > 0 || incertain;
     pourquoi.textContent = incertain ? tr(erreurEnvoi("verifier_whatsapp")) : ok.raison === "fenetre_fermee" ? tr("Envoi depuis Gestion fermé, le client a écrit il y a plus de 24 h.") : ok.raison === "vide" ? tr("La réponse est vide.") : "";
     pourquoi.hidden = !pourquoi.textContent;

@@ -10,10 +10,10 @@
 // client par voucher.js, avec les mêmes garde-fous (session, whatsapp_peut_ecrire, fenêtre, contenuInterne, verrou, résultat incertain)
 // et en plus la coexistence et la fenêtre relues chez Telnyx. Même fonction que le texte : mêmes secrets, mêmes origines, un seul déploiement.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { lireEnvoi, corpsTelnyx, lireReponseTelnyx, lireEnvoiVoucher, imageAcceptee, IMAGE_MAX_OCTETS, CORPS_MAX_OCTETS } from "./calc.js";
+import { lireEnvoi, corpsTelnyx, lireReponseTelnyx, lireEnvoiVoucher, imageAcceptee, controleEnvoi, refusEnvoi, IMAGE_MAX_OCTETS, CORPS_MAX_OCTETS } from "./calc.js";
 import { envoyerVoucherImage } from "./voucher.js";
-import { fenetreOuverte } from "../whatsapp/proposer.js";
-import { controlerReponse } from "../agent/outils.js";
+import { fenetreOuverte, servicesDeProposition } from "../whatsapp/proposer.js";
+import { dossierPourControle, netsPourControle } from "../agent/outils.js";
 import { contactApporteur, fichesDuContact, nomsABloquer, nomsContactsTypes } from "../agent/apporteur.js";
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
@@ -46,8 +46,9 @@ Deno.serve(async (req) => {
 
   // Lue avec la session : une conversation que la personne ne peut pas lire n'existe pas pour elle.
   // type_contact et partenaire_id (migration 68) : une réponse à un apporteur peut porter son propre nom. Sans les colonnes, la lecture d'avant.
-  let lue: any = await sb.from("whatsapp_conversations").select("id, organisation_id, telephone, entite_id, reponses, type_contact, partenaire_id").eq("id", demande.conversation_id).maybeSingle();
-  if (lue.error && lue.error.code === "42703") lue = await sb.from("whatsapp_conversations").select("id, organisation_id, telephone, entite_id").eq("id", demande.conversation_id).maybeSingle();
+  // dossier_id : le dossier relié, dont les nets bloquent (contenuInterne).
+  let lue: any = await sb.from("whatsapp_conversations").select("id, organisation_id, telephone, entite_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", demande.conversation_id).maybeSingle();
+  if (lue.error && lue.error.code === "42703") lue = await sb.from("whatsapp_conversations").select("id, organisation_id, telephone, entite_id, dossier_id").eq("id", demande.conversation_id).maybeSingle();
   const { data: conv, error } = lue;
   if (error) return json({ erreur: "base" }, 500);
   if (!conv) return json({ erreur: "droit_manquant" }, 403);
@@ -60,9 +61,10 @@ Deno.serve(async (req) => {
   if (errM) return json({ erreur: "base" }, 500);
   if (!fenetreOuverte(msgs || [])) return json({ erreur: "fenetre_fermee" }, 409);
   // Garde-fou de la PR 278, aussi côté serveur : jamais un net, une commission ni un nom de partenaire vers le client, même si l'écran a été
-  // contourné. Lu avec la clé de service dans l'entreprise de la conversation (les deux si elle est à trier).
-  const bloque = await contenuInterne(admin, conv, demande.texte);
-  if (bloque.length) return json({ erreur: "contenu_interne", a_retirer: bloque }, 422);
+  // contourné. Lu avec la clé de service dans l'entreprise de la conversation (les deux si elle est à trier). Un montant égal au net d'un
+  // autre service du catalogue : 409 « montant_a_confirmer », la personne confirme et l'écran renvoie la même liste (refusEnvoi).
+  const refus = refusEnvoi(await contenuInterne(admin, conv, demande.texte, { sb, propositionId: demande.proposition_id }), demande.montants_confirmes);
+  if (refus) return json(refus.corps, refus.status);
   const cle = Deno.env.get("TELNYX_API_KEY");
   if (!cle) return json({ erreur: "non_configure" }, 503);
   const { data: regl } = await admin.from("whatsapp_reglages").select("numero").eq("organisation_id", conv.organisation_id).maybeSingle();
@@ -161,7 +163,7 @@ async function voucher(req: Request, autorisation: string): Promise<[unknown, nu
     const form = await new Response(brut, { headers: { "content-type": req.headers.get("content-type") || "" } }).formData().catch(() => null);
     if (!form) return [{ erreur: "demande_invalide" }, 400];
     const champ = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
-    const demande = lireEnvoiVoucher({ conversation_id: champ("conversation_id"), reservation_id: champ("reservation_id"), essai_id: champ("essai_id"), legende: champ("legende"), numero_confirme: champ("numero_confirme") });
+    const demande = lireEnvoiVoucher({ conversation_id: champ("conversation_id"), reservation_id: champ("reservation_id"), essai_id: champ("essai_id"), legende: champ("legende"), numero_confirme: champ("numero_confirme"), montants_confirmes: champ("montants_confirmes") });
     if ("erreur" in demande) return [{ erreur: demande.erreur }, 400];
     const fichier = form.get("fichier");
     if (!(fichier instanceof File)) return [{ erreur: "image_invalide" }, 400];
@@ -209,37 +211,50 @@ async function lireBorne(req: Request, max: number) {
   return tout;
 }
 
-// Montants égaux à un net (et à aucun prix de vente) et noms de partenaires présents dans le texte. Le contact est un apporteur : ses propres
-// fiches sortent de la liste des noms (agent/apporteur.js, fichesDuContact), la réponse lui est adressée ; tout autre nom reste bloqué.
-// Revue de sécurité de la PR 299 : aussi les noms des conversations typées de l'organisation (partenaire, chauffeur, hôtel, apporteur), sauf
-// celui de l'apporteur à qui l'on répond. Chaque nom se compare aussi sans « co, ltd, company, tour, travel » (partenairesCites, agent/outils.js).
+// Ce que le texte contient de bloquant ou d'à confirmer (controleEnvoi, calc.js) : { a_retirer, a_confirmer }.
+//   - bloquent : le net d'un service du dossier relié à la conversation, les nets, marges et commissions de ce dossier, les noms de
+//     partenaires ; un montant égal à un prix de vente du catalogue ou du dossier ne bloque pas ;
+//   - à confirmer : un montant égal au net d'un autre service du catalogue (faux blocage du 21.11.2026 : « 10,000 THB » pour deux minivans,
+//     égal au net d'une prestation sans rapport).
+// Les services de la proposition envoyée (références gardées par la préparation, servicesDeProposition) bloquent aussi, même sans dossier
+// relié (revue de sécurité de la PR 306). Sans dossier ni proposition, chaque net du catalogue est à confirmer (« net du catalogue »).
+// Nets illisibles : controle_impossible, rien ne part. Sans le droit de voir les nets (permissions_dans, session de la personne) dans
+// chaque entreprise contrôlée, le 409 ne dit pas la valeur. Le contact est un apporteur : ses
+// propres fiches sortent de la liste des noms (agent/apporteur.js, fichesDuContact), la réponse lui est adressée ; tout autre nom reste
+// bloqué. Revue de sécurité de la PR 299 : aussi les noms des conversations typées de l'organisation (partenaire, chauffeur, hôtel,
+// apporteur), sauf celui de l'apporteur à qui l'on répond. Chaque nom se compare aussi sans « co, ltd, company, tour, travel »
+// (partenairesCites, agent/outils.js).
 // deno-lint-ignore no-explicit-any
-async function contenuInterne(admin: any, conv: { id?: string; organisation_id: string; entite_id: string | null; telephone?: string; reponses?: string; type_contact?: string | null; partenaire_id?: string | null }, texte: string) {
+async function contenuInterne(admin: any, conv: { id?: string; organisation_id: string; entite_id: string | null; dossier_id?: string | null; telephone?: string; reponses?: string; type_contact?: string | null; partenaire_id?: string | null }, texte: string, { sb = null, propositionId = null }: { sb?: any; propositionId?: string | null } = {}) {
+  const ferme = { a_retirer: ["nom_prestataire:lecture_impossible"], a_confirmer: [] as number[] };
   let ids: string[] = conv.entite_id ? [conv.entite_id] : [];
   // Conversation à trier : le texte est contrôlé dans Secret et Taxi ensemble. Sans cette liste, rien n'est contrôlable : on ferme
   // (revue de sécurité de la PR 304).
   if (!ids.length) {
     const { data, error } = await admin.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
-    if (error) return ["nom_prestataire:lecture_impossible"];
+    if (error) return ferme;
     ids = (data || []).map((e: { id: string }) => e.id);
   }
-  if (!ids.length) return [];
-  const [pn, tn, pr, tr, pa] = await Promise.all([
-    admin.from("prestations_nets").select("net, net_enfant").in("entite_id", ids).limit(5000),
-    admin.from("trajets_nets").select("net_adulte, net_enfant").in("entite_id", ids).limit(5000),
+  if (!ids.length) return { a_retirer: [], a_confirmer: [] };
+  const [lusNets, relie, pr, tr, pa, prop, droits] = await Promise.all([
+    netsPourControle(admin, ids),
+    dossierPourControle(admin, conv.dossier_id || null, ids),
     admin.from("prestations").select("prix_vente").in("entite_id", ids).limit(5000),
     admin.from("trajets").select("prix_adulte, prix_enfant").in("entite_id", ids).limit(5000),
     admin.from("partenaires").select("id, nom, categorie, contact").in("entite_id", ids).limit(2000),
+    propositionId && conv.id ? admin.from("whatsapp_propositions").select("avertissements").eq("id", propositionId).eq("conversation_id", conv.id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    Promise.all(ids.map((e) => (sb ? sb.rpc("permissions_dans", { e }) : Promise.resolve({ data: [], error: null })))),
   ]);
+  const refs = servicesDeProposition(prop.data ? prop.data.avertissements : []);
+  // deno-lint-ignore no-explicit-any
+  const masquer = droits.some((d: any) => d.error || !Array.isArray(d.data) || !d.data.includes("partenaires.lire") || !d.data.includes("partenaires.nets"));
   // Revue de la PR 298 : sans les fiches partenaires, aucun nom ne peut être contrôlé. On ferme : rien ne part. Même chose sans les noms
   // des conversations typées (revue de la PR 299).
-  if (pa.error) return ["nom_prestataire:lecture_impossible"];
+  if (pa.error) return ferme;
   const types = await nomsContactsTypes(admin, conv.organisation_id, { sauf: contactApporteur(conv) ? (conv as { id?: string }).id || null : null });
-  if (types.erreur) return ["nom_prestataire:lecture_impossible"];
+  if (types.erreur) return ferme;
   const nombres = (lignes: Record<string, unknown>[] | null, cles: string[]) => new Set((lignes || []).flatMap((l) => cles.map((k) => Number(l[k]))).filter((n) => Number.isFinite(n) && n > 0));
-  const internes = new Set([...nombres(pn.data, ["net", "net_enfant"]), ...nombres(tn.data, ["net_adulte", "net_enfant"])]);
   const ventes = new Set([...nombres(pr.data, ["prix_vente"]), ...nombres(tr.data, ["prix_adulte", "prix_enfant"])]);
   const prestataires = [...new Set([...nomsABloquer(pa.data || [], fichesDuContact(conv, pa.data || [])), ...types.noms])];
-  const c = controlerReponse(texte, { signer: true, internes, ventes, prestataires });
-  return (c.avertissements || []).filter((a: string) => a.startsWith("montant_interne") || a.startsWith("nom_prestataire"));
+  return controleEnvoi(texte, { nets: lusNets.nets, refs, servicesEnCours: relie.services, internes: relie.internes, ventes, ventesDossier: relie.ventes, prestataires, masquer, controleImpossible: lusNets.erreur || !!prop.error });
 }

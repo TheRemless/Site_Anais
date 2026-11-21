@@ -5,6 +5,7 @@
 import { N_ } from "./i18n.mjs";
 import { numeroAffiche } from "./demandes-site-calc.mjs";
 import { nomContact, nomSaisi } from "./agent-whatsapp-lecture.mjs";
+import { montantsDuTexte } from "./agent-calc.mjs";
 
 export { numeroAffiche };
 
@@ -70,6 +71,24 @@ export function nettoyerNom(v) {
   const t = Array.from(String(v ?? "").replace(INVISIBLES, "").replace(/[\s\u0000-\u001f\u007f]+/g, " ").trim()).slice(0, NOM_MAX).join("").trim();
   return t || null;
 }
+// Le nom écrit par le client (tri de la fonction « whatsapp », 21.11.2026, nom_source 'whatsapp') et une fiche client reliée sans nom de
+// famille : l'écran propose de mettre la fiche à jour, jamais seul. Rend { prenom, nom } ou null. Seulement une conversation de client, une
+// fiche de la même entreprise (une fiche partagée garde son nom), un nom d'au moins deux mots dont le prénom de la fiche fait partie.
+const motsPlats = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/\s+/).filter(Boolean);
+export function ficheAMettreAJour(conv, client) {
+  if (!conv || !client || conv.nom_source !== "whatsapp" || conv.reponses === "jamais" || (conv.type_contact && conv.type_contact !== "client") || conv.partenaire_id) return null;
+  if (String(client.nom || "").trim() || (conv.entite_id && client.entite_id && client.entite_id !== conv.entite_id)) return null;
+  const mots = String(conv.nom || "").trim().split(/\s+/).filter(Boolean);
+  if (mots.length < 2) return null;
+  const prenom = String(client.prenom || "").trim();
+  if (!prenom) return { prenom: mots[0], nom: mots.slice(1).join(" ") };
+  const p = motsPlats(prenom);
+  const plats = motsPlats(conv.nom);
+  const i = plats.findIndex((m, k) => p.every((x, j) => plats[k + j] === x));
+  if (i !== 0 || p.length >= mots.length) return null;
+  return { prenom, nom: mots.slice(p.length).join(" ") };
+}
+
 // Ce que l'écran envoie à la base, ou null s'il n'y a rien à changer : le même nom manuel, ou un champ vide sans nom manuel. Un nom de profil
 // retapé à l'identique s'envoie : la base le marque alors manuel (protégé de la fonction « whatsapp »).
 export function patchNom(conv, saisie) {
@@ -207,6 +226,11 @@ const AVERTISSEMENTS = {
   nom_prestataire: { texte: N_("Un nom de partenaire est dans le texte. Retirez-le avant d'envoyer."), niveau: "alerte" },
   // PR 278 : un montant égal à un net, une marge ou une commission bloque la copie et l'envoi tant qu'il reste dans le texte.
   montant_interne: { texte: N_("Montant interne (net, marge ou commission) dans la réponse : {valeur}. À retirer."), niveau: "alerte" },
+  // 21.11.2026 : un montant égal au net d'un autre service du catalogue ne bloque pas (coïncidence fréquente sur un chiffre rond).
+  montant_egal_net: { texte: N_("Le montant {valeur} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente."), niveau: "info" },
+  // Revue de sécurité de la PR 306 : un montant illisible ou des nets illisibles ferment le contrôle (copie et envoi bloqués).
+  montant_illisible: { texte: N_("Un montant de la réponse n'a pas pu être lu. Écrivez-le avec des chiffres simples, par exemple 1,000."), niveau: "alerte" },
+  controle_impossible: { texte: N_("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau."), niveau: "alerte" },
   prenom_equipe: { texte: N_("Un prénom de l'équipe est dans le texte. Vérifiez qu'il doit y être."), niveau: "alerte" },
   signature_retiree: { texte: N_("La signature a été retirée, les messages partent sans signature."), niveau: "info" },
 };
@@ -217,11 +241,15 @@ export function libelleAvertissement(code) {
   const valeur = i >= 0 ? brut.slice(i + 1) : "";
   const def = AVERTISSEMENTS[cle];
   if (cle === "nom_prestataire" && valeur) return { cle, texte: N_("La réponse cite le partenaire « {valeur} » : à retirer."), vars: { valeur }, niveau: "alerte" };
+  // Sans le droit de voir les nets, la fonction ne donne pas la valeur (revue de la PR 306).
+  if (cle === "montant_interne" && valeur.startsWith("#")) return { cle, texte: N_("Un montant interne (net, marge ou commission) est dans la réponse. À retirer."), vars: {}, niveau: "alerte" };
+  if (cle === "montant_egal_net" && !valeur) return { cle, texte: N_("Un montant de la réponse est égal à un net interne. Vérifiez que c'est bien un prix de vente."), vars: {}, niveau: "info" };
   if (!def) return { cle, texte: N_("Point à vérifier ({valeur})"), vars: { valeur: brut }, niveau: "alerte" };
   return { cle, texte: def.texte, vars: { valeur }, niveau: def.niveau };
 }
-// Les alertes d'abord, puis les informations.
-export const avertissements = (prop) => ((prop && prop.avertissements) || []).map(libelleAvertissement).sort((a, b) => (a.niveau === b.niveau ? 0 : a.niveau === "alerte" ? -1 : 1));
+// Les alertes d'abord, puis les informations. L'élément « services: » (références gardées pour l'envoi, whatsapp/proposer.js) ne se montre pas.
+export const SERVICES_PROPOSITION = "services:";
+export const avertissements = (prop) => ((prop && prop.avertissements) || []).filter((a) => !String(a).trim().toLowerCase().startsWith(SERVICES_PROPOSITION)).map(libelleAvertissement).sort((a, b) => (a.niveau === b.niveau ? 0 : a.niveau === "alerte" ? -1 : 1));
 
 // ---- Messages ---------------------------------------------------------------------------------------------------------------------------
 // Ce que montre un média : une vignette (image copiée), un lien (document, son, vidéo copiés), ou pourquoi il manque.
@@ -282,6 +310,10 @@ export const ERREURS_ENVOI = {
   non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),
   droit_manquant: N_("Votre rôle ne permet pas d'envoyer depuis Gestion pour cette conversation."),
   contenu_interne: N_("Le texte contient un net, une commission ou un nom de partenaire. Retirez-le, rien n'est parti."),
+  // whatsapp-envoi (409) : un montant égal à un net du catalogue, à confirmer avant de partir.
+  montant_a_confirmer: N_("Un montant du texte est égal à un net interne. Confirmez-le pour envoyer, rien n'est parti."),
+  // whatsapp-envoi n'a pas pu relire les nets (revue de la PR 306) : il ferme.
+  controle_impossible: N_("Les nets n'ont pas pu être relus pour contrôler le texte. Rien n'est parti, réessayez dans un instant."),
   // whatsapp-envoi n'a pas pu relire les fiches partenaires (revue PR 298) : il ferme, le texte n'est pas en cause.
   partenaires_illisibles: N_("Les fiches partenaires n'ont pas pu être relues pour contrôler le texte. Rien n'est parti, réessayez dans un instant."),
   fenetre_fermee: N_("Le client a écrit il y a plus de 24 h et WhatsApp refuse alors un message libre. Répondez depuis l'app."),
@@ -295,12 +327,28 @@ export const ERREURS_ENVOI = {
 };
 // Erreurs après lesquelles rien n'est parti à coup sûr. Toutes les autres (délai dépassé, connexion coupée pendant l'envoi, réponse illisible,
 // code inconnu) laissent un doute : le bouton Envoyer reste éteint et l'écran demande de vérifier dans WhatsApp.
-const RIEN_PARTI = new Set(["non_connecte", "droit_manquant", "contenu_interne", "partenaires_illisibles", "fenetre_fermee", "non_configure", "numero_inconnu", "telnyx_refuse", "base", "deja_traitee"]);
+const RIEN_PARTI = new Set(["non_connecte", "droit_manquant", "contenu_interne", "montant_a_confirmer", "controle_impossible", "partenaires_illisibles", "fenetre_fermee", "non_configure", "numero_inconnu", "telnyx_refuse", "base", "deja_traitee"]);
 export const envoiIncertain = (code) => !RIEN_PARTI.has(code);
 // Le code à afficher après un refus « contenu_interne » : « partenaires_illisibles » quand la fonction n'a pas pu relire les fiches
 // (a_retirer « nom_prestataire:lecture_impossible »), sinon le code tel quel.
 export const LECTURE_IMPOSSIBLE = "nom_prestataire:lecture_impossible";
-export const codeEnvoi = (code, aRetirer = []) => (code === "contenu_interne" && (aRetirer || []).includes(LECTURE_IMPOSSIBLE) ? "partenaires_illisibles" : code);
+// Refus « montant_a_confirmer » (whatsapp-envoi, 409) : ce que la personne confirme d'un clic et le texte de la question, ou null.
+//   - valeurs connues : les montants rendus, renvoyés tels quels (montants_confirmes) ;
+//   - valeurs masquées (pas le droit de voir les nets) : tous les montants du texte, même règle de lecture que la fonction ;
+//   - « catalogue » (ni dossier relié ni proposition) : le texte dit « net du catalogue », pas « autre service ».
+export function aConfirmerEnvoi(r, texte = "") {
+  if (!r || r.erreur !== "montant_a_confirmer") return null;
+  if (r.masque) {
+    const tous = [...new Set(montantsDuTexte(texte))].filter((x) => x > 0);
+    return tous.length ? { renvoi: tous, texte: N_("Un montant du texte est égal à un net interne. Envoyez-le seulement si c'est bien le prix de vente pour ce client."), vars: {} } : null;
+  }
+  const liste = (Array.isArray(r.a_confirmer) ? r.a_confirmer : []).map(Number).filter((x) => Number.isFinite(x) && x > 0);
+  if (!liste.length) return null;
+  const texteQuestion = r.portee === "autre_service" ? N_("Le montant {liste} est aussi le net d'un autre service du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.") : N_("Le montant {liste} est aussi un net du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.");
+  return { renvoi: liste, texte: texteQuestion, vars: { liste: liste.join(", ") } };
+}
+export const montantsAConfirmer = (r, texte = "") => (aConfirmerEnvoi(r, texte) || { renvoi: [] }).renvoi;
+export const codeEnvoi = (code, aRetirer = []) => (code === "contenu_interne" && (aRetirer || []).includes("controle_impossible") ? "controle_impossible" : (code === "contenu_interne" && (aRetirer || []).includes(LECTURE_IMPOSSIBLE) ? "partenaires_illisibles" : code));
 // « Préparer une réponse » (fonction whatsapp-preparer, 202 puis préparation en tâche de fond).
 export const ERREURS_PREPARER = {
   non_connecte: N_("Session expirée. Reconnectez-vous puis réessayez."),

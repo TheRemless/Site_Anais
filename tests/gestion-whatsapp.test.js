@@ -251,7 +251,7 @@ test("whatsapp : garde-fous sur la carte de l'agent", () => {
 
 test("whatsapp-envoi : demande, corps Telnyx et réponse", () => {
   const C = "3f2a1b4c-0000-4000-8000-000000000001";
-  assert.deepEqual(lireEnvoi({ conversation_id: C, texte: "  Hi!\r\nSee you  " }), { conversation_id: C, texte: "Hi!\nSee you", proposition_id: null });
+  assert.deepEqual(lireEnvoi({ conversation_id: C, texte: "  Hi!\r\nSee you  " }), { conversation_id: C, texte: "Hi!\nSee you", proposition_id: null, montants_confirmes: [] });
   assert.equal(lireEnvoi({ conversation_id: "x", texte: "a" }).erreur, "conversation_invalide");
   assert.equal(lireEnvoi({ conversation_id: C, texte: "   " }).erreur, "texte_vide");
   assert.equal(lireEnvoi({ conversation_id: C, texte: "é".repeat(TEXTE_MAX_OCTETS) }).erreur, "texte_trop_long");
@@ -294,7 +294,10 @@ test("whatsapp : un net dans la réponse est signalé « montant_interne », un 
 test("whatsapp-envoi : le serveur refuse un texte avec un net ou un partenaire (contenu_interne)", () => {
   const index = fs.readFileSync(new URL("../supabase/functions/whatsapp-envoi/index.ts", import.meta.url), "utf8");
   assert.ok(index.indexOf("contenuInterne(") < index.indexOf("api.telnyx.com/v2/messages/whatsapp"));
-  assert.match(index, /"contenu_interne"/);
+  assert.ok(index.indexOf("refusEnvoi(") < index.indexOf("api.telnyx.com/v2/messages/whatsapp"));
+  // Le refus lui-même (422 « contenu_interne », 409 « montant_a_confirmer ») : refusEnvoi, calc.js.
+  const calc = fs.readFileSync(new URL("../supabase/functions/whatsapp-envoi/calc.js", import.meta.url), "utf8");
+  assert.match(calc, /status: 422, corps: \{ erreur: "contenu_interne"/);
 });
 
 // ---- Corrections de la revue de sécurité ----------------------------------------------------------------------------------------------
@@ -500,5 +503,5 @@ test("migration 69 : vers un client, un nom de partenaire ou d'apporteur et un n
   assert.ok(!a.includes("nom_prestataire:Jade") && a.includes("nom_prestataire:Blue Ocean"));
   // whatsapp-envoi refuse toujours côté serveur.
   const envoi = fs.readFileSync(new URL("../supabase/functions/whatsapp-envoi/index.ts", import.meta.url), "utf8");
-  assert.match(envoi, /const bloque = await contenuInterne\(admin, conv, demande\.texte\);\n  if \(bloque\.length\) return json\(\{ erreur: "contenu_interne", a_retirer: bloque \}, 422\);/);
+  assert.match(envoi, /const refus = refusEnvoi\(await contenuInterne\(admin, conv, demande\.texte, \{ sb, propositionId: demande\.proposition_id \}\), demande\.montants_confirmes\);\n  if \(refus\) return json\(refus\.corps, refus\.status\);/);
 });

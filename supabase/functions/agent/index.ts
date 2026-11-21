@@ -37,7 +37,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, LIMITE_JOUR_DEFAUT, LONGUEUR_MAX, MODELE_DEFAUT, apprentissagesUnifies, blocApprentissages, consignes, contexteDuJour, controlerAcces, completerOrphelins, sansReflexionPassee, debutValide, historique, ligneJournal, signe, titreDepuis } from "./prompt.js";
-import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, tempsSimule } from "./outils.js";
+import { ajouterNoms, choisirLigne, clesHotelPossibles, memoDepuis, motifNom, motifTelephone, netsPourControle, peutTrouverVouchers, prefixeRef, refDe, retenirLectures, sansAccents, dossierPourControle, clientConfirme, tempsSimule } from "./outils.js";
 import { tourner } from "./boucle.js";
 import { ENTREPRISES_UNIFIEES, modeUnifie, permissionsOutils, unifieAllume } from "./unifie.js";
 import { CONTACTS_INTERNES, CONTACTS_NOMMES, MARQUE_PROMESSE, borneJour, dateBangkok as jourBangkok, retirerConversationsJointes, retirerLecturesWhatsApp, whatsappPermis } from "./whatsapp-lecture.js";
@@ -189,9 +189,9 @@ Deno.serve(async (req) => {
   // Les colonnes des migrations 70 (source du nom) et 68 (type du contact, fiche reliée) ; sans elles, la lecture d'avant (le contact n'est
   // pas typé, son nom est lu comme un nom de profil).
   const lireWa = async (id: string) => {
-    let r: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id, nom_source").eq("id", id).maybeSingle();
-    if (r.error && r.error.code === "42703") r = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", id).maybeSingle();
-    return r.error && r.error.code === "42703" ? await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses").eq("id", id).maybeSingle() : r;
+    let r: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source").eq("id", id).maybeSingle();
+    if (r.error && r.error.code === "42703") r = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", id).maybeSingle();
+    return r.error && r.error.code === "42703" ? await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses").eq("id", id).maybeSingle() : r;
   };
   // La personne n'administre pas l'entreprise de la conversation (whatsapp_peut_ecrire, migration 63) : la question passe en lecture seule,
   // sans liaison ni carte ; créer ou mettre à jour un dossier est refusé.
@@ -201,9 +201,9 @@ Deno.serve(async (req) => {
     // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle. Elle est rangée dans
     // l'entreprise de l'Assistant, ou encore à trier (lot 2 du 20.11.2026 : on crée le dossier sans ranger d'abord, la conversation se range
     // à la validation). Une conversation à trier n'entre que dans l'Assistant de Secret ou de Taxi, jamais dans celui d'une autre entreprise.
-    let wc: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id, nom_source").eq("id", waId).maybeSingle();
-    if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", waId).maybeSingle();
-    if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses").eq("id", waId).maybeSingle();
+    let wc: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id, nom_source").eq("id", waId).maybeSingle();
+    if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", waId).maybeSingle();
+    if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, client_id, dossier_id, reponses").eq("id", waId).maybeSingle();
     if (wc.error) return json({ erreur: "base" }, 500);
     if (!wc.data) return json({ erreur: "whatsapp_introuvable" }, 404);
     // Contact personnel (migration 60) : rien de lui ne part chez Anthropic, dans aucun mode. Refusé avant de lire un seul message.
@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
     liaisons_ferry: "nom, cote_ile, port_ile, port_continent, port_ile_coord, port_continent_coord, duree_min, a_verifier",
     dossiers: "id, ref, client_id, date_depart, date_retour, annule, entite_id",
     // `vol` : seulement le numéro de vol de la réservation (details->>vol), pas le reste de `details`.
-    reservations: "id, dossier_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place, entite_id, vol:details->>vol",
+    reservations: "id, dossier_id, prestation_id, trajet_id, libelle, date_service, heure_pickup, lieu_pickup, personnes, statut, montant_vente, partenaire_id, paye_sur_place, entite_id, vol:details->>vol",
     // Le net et la commission d'un service (migrations 11, 18 et 57). Sans la migration 57, repli sur les colonnes d'avant (NETS_RES_AVANT_57).
     reservations_nets: "reservation_id, net_prevu, net_paye, paye_le, commission_prevue, commission_recue, commission_recue_le, commission_recue_moyen, commission_partielle_le, commission_ecart_motif, commission_ecart_note",
   };
@@ -890,11 +890,13 @@ Deno.serve(async (req) => {
   ]);
   if (lus.error && !tableAbsente(lus.error)) console.error("agent : apprentissages", lus.error.message);
   const lignesAppris = autreEnt ? apprentissagesUnifies({ actives: lus.data || [], autres: lusAutre && !lusAutre.error ? lusAutre.data || [] : [], nomActive: ent.data?.nom || "", nomAutre: autreEnt.nom }) : lus.data || [];
-  const appris = lus.error ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte });
+  // Chez Secret et Taxi, les réponses corrigées perdent leur signature avant de servir d'exemple (prompt.js, blocApprentissages).
+  const appris = lus.error ? "" : blocApprentissages(lignesAppris, { qui: ra.responsable, premierMessage: premierTexte, signatures: signe(reglages) ? null : [ent.data?.nom || "", ...(unifie ? unifie.entites.map((e) => e.nom) : [])].filter(Boolean) });
   // Le contrôle de la réponse au client (revue de sécurité de la PR 299). Une conversation jointe ou liée de partenaire, de chauffeur ou
-  // d'hôtel : ses montants deviennent internes (memoDepuis, conversationInterne). Le texte joint n'est jamais « tapé » par la personne.
+  // d'hôtel : ses montants deviennent internes (memoDepuis, conversationInterne). Le texte joint n'est jamais « tapé » par la personne. Celle
+  // d'un client : les montants écrits par Nani y sont des prix de vente (conversationClient, 21.11.2026), jamais ceux du client.
   const typeLu = waLue && typeof waLue.type_contact === "string" ? waLue.type_contact : "";
-  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu) });
+  const memo = memoDepuis([...messages, { role: "user", content: message ? [{ type: "text", text: message }] : [] }], { signer: signe(reglages), prestataires, entreprise: ent.data?.nom || "", entreprises: unifie ? unifie.entites.filter((e) => e.id !== entiteId).map((e) => e.nom) : [], prenoms: [ra.responsable, "Anaïs", "Nani"].filter(Boolean), conversationInterne: CONTACTS_INTERNES.includes(typeLu), conversationClient: clientConfirme(waLue), conversationLiee: waLue ? waLue.id : null });
   if (prestatairesVersApporteur) (memo as Record<string, unknown>).prestatairesApporteur = prestatairesVersApporteur;
   // L'apporteur lié : son propre nom reste permis vers lui (PR 298). Tout autre nom lu ou joint est bloqué dans les deux listes.
   (memo as Record<string, unknown>).contactLie = apporteur && waLiee ? waLiee.id : null;
@@ -904,10 +906,23 @@ Deno.serve(async (req) => {
   if (!CONTACTS_NOMMES.includes(typeLu) && waLue && waLue.partenaire_id && waLue.nom) ajouterNoms(memo, [{ conversation: waLue.id, nom: String(waLue.nom) }]);
   // Les lectures de la boîte des échanges précédents (montants internes et noms lus), avant leur retrait pour Claude.
   retenirLectures(gardes, memo);
-  // Les nets de l'entreprise (des deux en espace unifié), lus avec la clé de service comme la boîte (whatsapp/reponse.ts) : seulement pour
-  // le contrôle « montant_interne ». Ils ne vont que dans memo.internes : ni dans les consignes, ni dans les messages, ni dans un résultat
-  // d'outil, ni dans le flux vers l'écran (un test le vérifie). Un net égal à un prix de vente rendu par un outil reste permis.
-  for (const n of await netsPourControle(admin, idsEntites)) memo.internes.add(n);
+  // Les nets du catalogue de l'entreprise (des deux en espace unifié), chacun avec son service, lus avec la clé de service comme la boîte
+  // (whatsapp/reponse.ts) : seulement pour le contrôle de la réponse. Ceux des services de la demande en cours (rendus par un outil de la
+  // conversation, ou du dossier relié) bloquent (montant_interne) ; ceux des autres services avertissent (montant_egal_net, faux blocage du
+  // 21.11.2026). Ils ne vont que dans memo.nets : ni dans les consignes, ni dans les messages, ni dans un résultat d'outil, ni dans le flux
+  // vers l'écran (un test le vérifie). Un net égal à un prix de vente rendu par un outil reste permis.
+  const lusNets = await netsPourControle(admin, idsEntites);
+  memo.nets = lusNets.nets;
+  // Nets illisibles : la réponse au client ne se copie pas (controle_impossible, outils.js).
+  memo.controleImpossible = lusNets.erreur;
+  // Le dossier relié : ses services (leurs nets bloquent), ses nets, marges et commissions (bloquent aussi).
+  // Le dossier de la conversation de l'Assistant et celui de la conversation WhatsApp liée (revue de sécurité de la PR 306).
+  const relie = await dossierPourControle(admin, conv!.dossier_id, idsEntites);
+  const relieWa = waLue && waLue.dossier_id && waLue.dossier_id !== conv!.dossier_id ? await dossierPourControle(admin, waLue.dossier_id, idsEntites) : null;
+  memo.servicesEnCours = new Set([...relie.services, ...(relieWa?.services ?? [])]);
+  for (const n of [...relie.internes, ...(relieWa?.internes ?? [])]) memo.internes.add(n);
+  // Ses prix de vente : seuls, avec ceux des services rendus, à lever un montant interne (outils.js, proposer_reponse).
+  memo.ventesDossier = [...relie.ventes, ...(relieWa?.ventes ?? [])];
   // Les pièces jointes que l'agent peut citer (proposer_import_brochure) et les droits de la personne (l'import demande « partenaires.ecrire »
   // et « partenaires.prix »).
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange

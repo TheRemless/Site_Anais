@@ -1,6 +1,27 @@
 // Traductions anglaises de l'interface. La clé est le texte français tel qu'il est écrit dans le code (tr("…")).
 // Un test vérifie que chaque texte du code a sa traduction et que les {variables} sont les mêmes.
 export const EN = {
+  // Faux blocage du 21.11.2026 : net d'un autre service du catalogue, avertissement et confirmation à l'envoi
+  "Le montant {valeur} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.": "The amount {valeur} is also the net of another service in the catalogue. Check that it is really a selling price.",
+  "Le montant {v} est aussi le net d'un autre service du catalogue. Vérifiez que c'est bien un prix de vente.": "The amount {v} is also the net of another service in the catalogue. Check that it is really a selling price.",
+  "Le montant {liste} est aussi le net d'un autre service du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.": "The amount {liste} is also the net of another service in the catalogue. Only send it if it really is the selling price for this client.",
+  "Envoyer quand même": "Send anyway",
+  "Rien n'est parti.": "Nothing was sent.",
+  "Le montant {liste} est aussi un net du catalogue. Envoyez-le seulement si c'est bien le prix de vente pour ce client.": "The amount {liste} is also a net in the catalogue. Only send it if it really is the selling price for this client.",
+  "Un montant du texte est égal à un net interne. Envoyez-le seulement si c'est bien le prix de vente pour ce client.": "An amount in the text equals an internal net. Only send it if it really is the selling price for this client.",
+  "Un montant du texte est égal à un net interne. Confirmez-le pour envoyer, rien n'est parti.": "An amount in the text equals an internal net. Confirm it to send, nothing was sent.",
+  "Les nets n'ont pas pu être relus pour contrôler le texte. Rien n'est parti, réessayez dans un instant.": "Nets could not be read to check the text. Nothing was sent, try again in a moment.",
+  "Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.": "Nets could not be read to check the reply: it cannot be copied. Prepare it again.",
+  "Un montant de la réponse n'a pas pu être lu. Écrivez-le avec des chiffres simples, par exemple 1,000.": "An amount in the reply could not be read. Write it with plain digits, for example 1,000.",
+  "Un montant de la réponse est égal à un net interne. Vérifiez que c'est bien un prix de vente.": "An amount in the reply equals an internal net. Check that it is really a selling price.",
+  "écrit par le contact": "written by the contact",
+  "un montant égal à un net interne": "an amount equal to an internal net",
+  "Un montant interne (net, marge ou commission) est dans la réponse. À retirer.": "An internal amount (net, margin or commission) is in the reply. Remove it.",
+  "« {nom} » écrit par le contact": "“{nom}” written by the contact",
+  "Mettre à jour la fiche": "Update the record",
+  "Pas maintenant": "Not now",
+  "Fiche du client mise à jour.": "Client record updated.",
+  "{prenom} a écrit {nom} : mettre à jour la fiche ?": "{prenom} wrote {nom}: update the record?",
   // Migration 72 : demandes du site et conversations WhatsApp reliées (21.11.2026)
   "Cette demande a été traitée entre-temps (depuis WhatsApp ou l'Assistant) : aucun dossier n'a été créé. Fermez cette fenêtre.": "This request was handled in the meantime (from WhatsApp or the Assistant): no file was created. Close this window.",
   "Reliée au dossier créé depuis WhatsApp ou l'Assistant": "Linked to the file created from WhatsApp or the Assistant",

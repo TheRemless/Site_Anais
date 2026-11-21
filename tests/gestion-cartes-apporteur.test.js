@@ -91,8 +91,8 @@ test("premier message : le numéro est celui de l'apporteur, ses messages marqu�
 
 test("fonction agent : type et fiche lus avec la session, repli sans la colonne, jamais partenaires_prives, consigne et contexte posés", () => {
   const ts = source("supabase/functions/agent/index.ts");
-  assert.match(ts, /select\("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id"\)\.eq\("id", waId\)/);
-  assert.match(ts, /if \(wc\.error && wc\.error\.code === "42703"\) wc = await sb\.from\("whatsapp_conversations"\)\.select\("id, telephone, nom, entite_id, dossier_id, reponses"\)\.eq\("id", waId\)/);
+  assert.match(ts, /select\("id, telephone, nom, entite_id, client_id, dossier_id, reponses, type_contact, partenaire_id"\)\.eq\("id", waId\)/);
+  assert.match(ts, /if \(wc\.error && wc\.error\.code === "42703"\) wc = await sb\.from\("whatsapp_conversations"\)\.select\("id, telephone, nom, entite_id, client_id, dossier_id, reponses"\)\.eq\("id", waId\)/);
   assert.match(ts, /select\(`\$\{COL_CONV_AGENT\}, whatsapp_conversation_id`\)/, "une conversation déjà liée retrouve son contact");
   assert.match(ts, /c\.error\.code === "42703"\) c = await sb\.from\("agent_conversations"\)\.select\(COL_CONV_AGENT\)/);
   const bloc = ts.slice(ts.indexOf("// Apporteur d'affaires (apporteur.js) :"), ts.indexOf('const anciens = await sb.from("agent_messages")'));
@@ -282,8 +282,8 @@ test("réponse à l'apporteur lui-même : « Hi Jade » passe vers Jade ; vers E
   assert.match(rep, /const exemptes = contactApporteur\(conv\) && conv\.partenaire_id \? fichesDuContact\(conv,/);
   assert.match(rep, /const prestataires = \[\.\.\.new Set\(\[\.\.\.nomsABloquer\(\(await ctx\.charger\("partenaires"\)\) as \{ id: string; nom: string \}\[\], exemptes\), \.\.\.types\.noms\]\)\];/);
   const envoi = source("supabase/functions/whatsapp-envoi/index.ts");
-  assert.match(envoi, /select\("id, organisation_id, telephone, entite_id, reponses, type_contact, partenaire_id"\)/);
-  assert.match(envoi, /if \(lue\.error && lue\.error\.code === "42703"\) lue = await sb\.from\("whatsapp_conversations"\)\.select\("id, organisation_id, telephone, entite_id"\)/);
+  assert.match(envoi, /select\("id, organisation_id, telephone, entite_id, dossier_id, reponses, type_contact, partenaire_id"\)/);
+  assert.match(envoi, /if \(lue\.error && lue\.error\.code === "42703"\) lue = await sb\.from\("whatsapp_conversations"\)\.select\("id, organisation_id, telephone, entite_id, dossier_id"\)/);
   assert.match(envoi, /const prestataires = \[\.\.\.new Set\(\[\.\.\.nomsABloquer\(pa\.data \|\| \[\], fichesDuContact\(conv, pa\.data \|\| \[\]\)\), \.\.\.types\.noms\]\)\];/);
   const idx = source("supabase/functions/agent/index.ts");
   assert.match(idx, /const prestataires = nomsABloquer\(partenairesLus\);/, "agent : tous les noms bloqués par défaut");
@@ -463,8 +463,9 @@ test("revue 298, point 5 : repli de la conversation liée seulement sans demande
 
 test("revue 298, point 8 : whatsapp-envoi ferme si les fiches sont illisibles, l'écran le dit clairement", async () => {
   const envoi = source("supabase/functions/whatsapp-envoi/index.ts");
-  assert.match(envoi, /if \(pa\.error\) return \["nom_prestataire:lecture_impossible"\];/);
-  assert.ok(envoi.indexOf("if (pa.error)") < envoi.indexOf("const c = controlerReponse"));
+  assert.match(envoi, /const ferme = \{ a_retirer: \["nom_prestataire:lecture_impossible"\], a_confirmer: \[\] as number\[\] \};/);
+  assert.match(envoi, /if \(pa\.error\) return ferme;/);
+  assert.ok(envoi.indexOf("if (pa.error)") < envoi.indexOf("return controleEnvoi("));
   const W = await import("../src/gestion/js/whatsapp-calc.mjs");
   assert.equal(W.codeEnvoi("contenu_interne", ["nom_prestataire:lecture_impossible"]), "partenaires_illisibles");
   assert.equal(W.codeEnvoi("contenu_interne", ["nom_prestataire:Jade"]), "contenu_interne");
@@ -476,5 +477,7 @@ test("revue 298, point 8 : whatsapp-envoi ferme si les fiches sont illisibles, l
 
 test("envoi refusé (contenu_interne) : les valeurs à retirer sont cherchées sans leur code", () => {
   const vue = source("src/gestion/js/views/whatsapp.mjs");
-  assert.match(vue, /const b = bloquantsReponse\(brut\);\n\s+aRetirer\.set\(p\.id, \[\.\.\.b\.montants\.map\(String\), \.\.\.b\.noms, \.\.\.brut\.filter/);
+  assert.match(vue, /const b = bloquantsReponse\(brut\);\n[\s\S]{0,200}aRetirer\.set\(p\.id, \{ \.\.\.b, noms: \[\.\.\.b\.noms, \.\.\.brut\.filter/);
+  // Revue de la PR 306 : l'empreinte d'un montant masqué se recalcule sur le texte corrigé.
+  assert.match(vue, /const duServeur = resteBloque\(zone\.value, aRetirer\.get\(p\.id\) \|\| \{\}\);/);
 });

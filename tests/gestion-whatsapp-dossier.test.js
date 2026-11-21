@@ -53,7 +53,7 @@ test("dossier WhatsApp : les messages les plus récents passent toujours, et un 
 
 test("dossier WhatsApp : la fonction agent lit la conversation avec la session de la personne et garde le lien", () => {
   const idx = fs.readFileSync(new URL("../supabase/functions/agent/index.ts", import.meta.url), "utf8");
-  assert.match(idx, /sb\.from\("whatsapp_conversations"\)\.select\("id, telephone, nom, entite_id, dossier_id, reponses"\)\.eq\("id", waId\)/);
+  assert.match(idx, /sb\.from\("whatsapp_conversations"\)\.select\("id, telephone, nom, entite_id, client_id, dossier_id, reponses"\)\.eq\("id", waId\)/);
   assert.match(idx, /sb\.storage\.from\("whatsapp"\)\.download\(f\.chemin\)/);
   assert.match(idx, /mediasAJoindre\(messagesWa, \{ choisis: demande\.whatsapp_pieces \}\)/);
   assert.match(idx, /wc\.data\.entite_id !== entiteId/, "une conversation à trier n'entre dans aucune entreprise");
