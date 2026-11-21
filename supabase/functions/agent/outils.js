@@ -959,7 +959,7 @@ export function retenuDeLecture(resultat) {
     // Revue de la PR 300 : une conversation reliée à une fiche partenaire sans type nommé (fiche_reliee) : son nom aussi.
     if (CONTACTS_NOMMES.includes(v.contact) || v.fiche_reliee === true) {
       for (const n of [v.nom_whatsapp, v.nom]) if (typeof n === "string" && n.trim() && n !== "Contact sans nom") noms.push({ conversation: v.conversation || null, nom: n.trim() });
-      if (CONTACTS_INTERNES.includes(v.contact)) for (const x of montantsTapes(textesDe(v))) internes.add(x);
+      if (CONTACTS_INTERNES.includes(v.contact)) for (const x of montantsInternesDe(textesDe(v))) internes.add(x);
       return;
     }
     for (const x of Object.values(v)) if (x && typeof x === "object") voir(x);
@@ -1089,6 +1089,17 @@ export function collecterRefs(v, set = new Set()) {
   }
   return set;
 }
+// Les prix de vente des services rendus avec leur référence (ligne de catalogue, départ, service d'un dossier lu) : seuls prix qui lèvent un
+// montant interne dans la réponse au client, avec ceux du dossier relié (revue de la PR 306 : un total ou un prix sans service ne lève rien).
+const CLES_PRIX_SERVICE = ["prix_vente", "prix_adulte", "prix_enfant"];
+export function collecterPrixServices(v, set = new Set()) {
+  if (Array.isArray(v)) v.forEach((x) => collecterPrixServices(x, set));
+  else if (v && typeof v === "object") {
+    if (typeof v.ref === "string" && REF_SERVICE.test(v.ref)) for (const k of CLES_PRIX_SERVICE) if (typeof v[k] === "number" && v[k] > 0) set.add(v[k]);
+    for (const x of Object.values(v)) if (x && typeof x === "object") collecterPrixServices(x, set);
+  }
+  return set;
+}
 // Les nets du catalogue (memo.nets) en deux parts (faux blocage du 21.11.2026, transfert de Stefan) :
 //   - bloquants : les nets des services de la demande en cours, une prestation ou un trajet dont la référence est apparue dans un résultat
 //     d'outil de la conversation (memo.refs), ou un service du dossier relié (memo.servicesEnCours, ids des prestations et des trajets) ;
@@ -1164,12 +1175,18 @@ export function montantsTapes(messagesPersonne = []) {
   for (const m of messagesPersonne)
     // Séparateurs de milliers : espace, virgule, apostrophe droite ou typographique (« 5’000 » d'un téléphone), espaces insécables.
     // Le point suivi d'exactement trois chiffres aussi (« 1.000 »), comme montantsDuTexte (revue de la PR 306).
-    for (const x of String(m || "").matchAll(/(?<![\p{L}\d\-/’.])(\d{1,3}(?:(?:[ ,'’\u00a0\u202f]|\.(?=\d{3}(?!\d)))\d{3})+|\d{3,6})(?![\p{L}\d\-/]|\s*(?:km|min|h\b|:))/gu)) {
-      const n = Number(x[1].replace(/[ ,'’\u00a0\u202f.]/g, ""));
+    // Chiffres de toute écriture et « 1.2k » ramenés comme montantsDuTexte, mêmes séparateurs (revue de la PR 306).
+    for (const x of enMilliers(chiffresAscii(m)).matchAll(new RegExp(`(?<![\\p{L}\\d\\-/’.])(\\d{1,3}(?:${SEP}\\d{3})+|\\d{3,6})(?![\\p{L}\\d\\-/]|\\s*(?:km|min|h\\b|:))`, "gu"))) {
+      const n = Number(x[1].replace(SEP_G, ""));
+      if (!(n > 0)) continue;
       if (!/^20[2-3]\d$/.test(x[1])) out.add(n);
     }
   return out;
 }
+
+// Les montants d'un texte de partenaire, de chauffeur ou d'hôtel, tous internes : la lecture des montants tapés et celle du contrôle
+// réunies, pour ne rien laisser passer (« net 1,350/pax » n'est pas un montant tapé mais en est un pour le contrôle).
+export const montantsInternesDe = (textes = []) => new Set([...montantsTapes(textes), ...textes.flatMap((t) => montantsDuTexte(t))].filter((n) => n > 0));
 
 // Les montants écrits par Nani (messages sortants, depuis l'app ou Gestion) dans une conversation WhatsApp de client : des prix de vente
 // donnés au client, admis comme ceux tapés par la personne (demande de Jérémy du 21.11.2026, conversation de Stefan : « 5'000 THB par
@@ -1190,22 +1207,27 @@ export function lignesDeNani(blocs = []) {
     }
   return out;
 }
+// Toutes les lignes d'un bloc joint, celles du client comprises (contact qui n'est pas un client confirmé).
+export function lignesJointes(blocs = []) {
+  const out = [];
+  for (const b of blocs)
+    for (const l of String(b || "").split("\n")) {
+      const m = LIGNE_JOINTE.exec(l);
+      if (m) out.push(m[2]);
+    }
+  return out;
+}
 export function montantsDeNani(blocs = []) {
   return new Set(lignesDeNani(blocs).flatMap((l) => [...montantsTapes([l])]));
 }
-// Dans un texte tapé ou collé par la personne (ou un échange joint), un montant à moins de trois mots de « net », « cost », « coût »,
-// « commission », « marge », « margin » ou « prix d'achat » est interne : « Rattana net 1,000/pax » (revue de sécurité de la PR 306).
-const MOT_COUT = /^(?:nets?|costs?|couts?|commissions?|marges?|margins?)$/;
+// Dans un texte tapé ou collé par la personne (ou une ligne d'un échange joint, voir memoDepuis), tout montant de la phrase ou de la ligne
+// qui parle de « net », « nett », « cost », « coût », « commission », « marge », « margin », « prix d'achat », « agent rate », « contract
+// rate », « B2B », « tarif agence » ou « prix agence » est interne : « Rattana net 1,000/pax », « Rattana tour 1,000 THB (net rate) »
+// (revue de sécurité de la PR 306).
+const MOT_COUT = /(?<![a-z0-9])(?:nets?|nett|costs?|couts?|commissions?|marges?|margins?|b2b|agent rates?|contract rates?|tarifs? agences?|prix agences?|prix d'?achat)(?![a-z0-9])/;
 export function montantsPresDuNet(t) {
-  const mots = String(t || "").split(/\s+/).filter(Boolean);
-  const plats = mots.map((m) => sansAccents(m).replace(/[^a-z']/g, ""));
   const out = new Set();
-  plats.forEach((p, i) => {
-    const achat = p === "prix" && /^d'?achat$/.test(plats[i + 1] || "");
-    if (!MOT_COUT.test(p) && !achat) return;
-    const fenetre = mots.slice(Math.max(0, i - 3), (achat ? i + 1 : i) + 4).join(" ");
-    for (const n of montantsDuTexte(fenetre)) if (n > 0) out.add(n);
-  });
+  for (const phrase of String(t || "").split(/\n+|(?<=[.!?;])\s+/)) if (MOT_COUT.test(sansAccents(phrase))) for (const n of montantsDuTexte(phrase)) if (n > 0) out.add(n);
   return out;
 }
 
@@ -1354,21 +1376,88 @@ export function retirerSignature(message, { noms = [] } = {}) {
 }
 
 const INTERNE = /\b(marges?|margins?|commissions?|nets?|prix d'achat|net price|cost price)\b/i;
-// Montants d'un texte (« 1,200 », « 1 200 THB », « ฿900 ») ; dates, heures et téléphones exclus. Même règle que calc.js (montantsDuTexte).
+// Chiffres de toute écriture (thaïs, pleine largeur, arabes…) ramenés en ASCII : un chiffre décimal Unicode (\p{Nd}) appartient à une
+// suite de dix (0 à 9) ; sa valeur est sa place dans cette suite (revue de sécurité de la PR 306).
+const CHIFFRE = /\p{Nd}/u;
+export function chiffresAscii(t) {
+  return String(t || "").replace(/\p{Nd}/gu, (c) => {
+    const cp = c.codePointAt(0);
+    if (cp >= 48 && cp <= 57) return c;
+    let debut = cp;
+    while (debut > 0 && cp - debut < 60 && CHIFFRE.test(String.fromCodePoint(debut - 1))) debut--;
+    return String((cp - debut) % 10);
+  });
+}
+// « 1.2k », « 1,2k », « 5k » : × 1000.
+const enMilliers = (t) => t.replace(/(\d+)(?:[.,](\d{1,2}))?\s?k\b/gi, (_, e, d) => String(Math.round(Number(`${e}.${d || 0}`) * 1000)));
+// Séparateurs de milliers entre des groupes de trois chiffres : toute espace (\p{Zs}, dont U+2009 et U+2007), U+200B, virgule, apostrophe
+// droite ou typographique, « · », « _ », « ˙ », virgule pleine largeur ou point suivi d'exactement trois chiffres.
+export const SEPARATEUR_MILLIERS = /(?:[\p{Zs}​,'’·_˙，]|[.．](?=\d{3}(?!\d)))/u;
+const SEP = "(?:[\\p{Zs}\\u200B,'’·_˙，]|[.．](?=\\d{3}(?!\\d)))";
+const SEP_G = /[\p{Zs}​,'’·_˙，.．]/gu;
+// Deux groupes de chiffres séparés par un signe inconnu (« 1•200 ») : le montant est illisible, il se lit 0 (le contrôle se ferme).
+const SIGNE_INCONNU = /(?<!\d)\d{1,3}[^\p{L}\p{N}\p{Zs}\s​,.'’·_˙，．:/\-+()%×*=~#&@$€฿!?;"«»[\]{}<>|\\^`]\d{3}(?!\d)/gu;
+const MONTANT = new RegExp(`(?:฿|THB|CHF|EUR|€)?\\s*(\\d{1,3}(?:${SEP}\\d{3})+|\\d{3,})(?:\\s*(?:฿|THB|CHF|EUR|€|baht))?`, "giu");
+// Montants d'un texte (« 1,200 », « 1 200 THB », « ฿900 », « ๑,๒๐๐ », « 1.2k ») ; dates, heures et téléphones exclus. Un nombre fait de
+// zéros n'est pas un montant ; un montant illisible se lit 0. Même code dans outils.js et agent-calc.mjs (un test les compare).
 export function montantsDuTexte(t) {
-  const propre = String(t || "")
+  const out = [];
+  const propre = enMilliers(chiffresAscii(t))
     .replace(/\+?\d[\d\s]{7,}\d/g, " ")
     .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
     .replace(/\b(jan|feb|fev|fév|mar|apr|avr|may|mai|jun|juin|jul|juil|aug|aou|aoû|sep|oct|nov|dec|déc)[\p{L}.]*\s+20[2-3]\d\b/giu, " ")
     .replace(/\b\d{1,2}[/.]\d{1,2}[/.]20[2-3]\d\b/g, " ")
     .replace(/\b\d{1,2}[:h.]\d{2}\b/g, " ")
-    .replace(/\b\d{1,2}\s*(?:am|pm)\b/gi, " ");
-  const out = [];
-  // Séparateurs de milliers comme montantsTapes (espace, virgule, apostrophe droite ou typographique, espaces insécables), plus le point
-  // suivi d'exactement trois chiffres (« 1.000 ») : revue de sécurité de la PR 306, « 1’000 » se lisait 0 et laissait passer un net.
-  for (const m of propre.matchAll(/(?:฿|THB|CHF|EUR|€)?\s*(\d{1,3}(?:(?:[ ,'’\u00a0\u202f]|\.(?=\d{3}(?!\d)))\d{3})+|\d{3,})(?:\s*(?:฿|THB|CHF|EUR|€|baht))?/gi)) out.push(Number(m[1].replace(/[ ,'’\u00a0\u202f.]/g, "")));
+    .replace(/\b\d{1,2}\s*(?:am|pm)\b/gi, " ")
+    .replace(SIGNE_INCONNU, () => (out.push(0), " "));
+  for (const m of propre.matchAll(MONTANT)) {
+    const n = Number(m[1].replace(SEP_G, ""));
+    if (n > 0) out.push(n);
+  }
   return out;
 }
+
+// SHA-256 synchrone (empreinte d'un montant interne sans le droit de voir les nets, revue de la PR 306) : même code dans outils.js et
+// agent-calc.mjs. Rend l'hexadécimal.
+const K256 = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+export function sha256(texte) {
+  const o = Array.from(new TextEncoder().encode(String(texte)));
+  const l = o.length * 8;
+  o.push(0x80);
+  while (o.length % 64 !== 56) o.push(0);
+  for (let i = 7; i >= 0; i--) o.push(i >= 4 ? 0 : (l >>> (i * 8)) & 0xff);
+  const h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const r = (x, n) => (x >>> n) | (x << (32 - n));
+  for (let i = 0; i < o.length; i += 64) {
+    const w = [];
+    for (let j = 0; j < 16; j++) w[j] = (o[i + 4 * j] << 24) | (o[i + 4 * j + 1] << 16) | (o[i + 4 * j + 2] << 8) | o[i + 4 * j + 3];
+    for (let j = 16; j < 64; j++) w[j] = (w[j - 16] + (r(w[j - 15], 7) ^ r(w[j - 15], 18) ^ (w[j - 15] >>> 3)) + w[j - 7] + (r(w[j - 2], 17) ^ r(w[j - 2], 19) ^ (w[j - 2] >>> 10))) | 0;
+    let [a, b, c, d, e, f, g, k] = h;
+    for (let j = 0; j < 64; j++) {
+      const t1 = (k + (r(e, 6) ^ r(e, 11) ^ r(e, 25)) + ((e & f) ^ (~e & g)) + K256[j] + w[j]) | 0;
+      const t2 = ((r(a, 2) ^ r(a, 13) ^ r(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      k = g;
+      g = f;
+      f = e;
+      e = (d + t1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) | 0;
+    }
+    h[0] = (h[0] + a) | 0;
+    h[1] = (h[1] + b) | 0;
+    h[2] = (h[2] + c) | 0;
+    h[3] = (h[3] + d) | 0;
+    h[4] = (h[4] + e) | 0;
+    h[5] = (h[5] + f) | 0;
+    h[6] = (h[6] + g) | 0;
+    h[7] = (h[7] + k) | 0;
+  }
+  return h.map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
+}
+// L'empreinte d'un montant : sha-256 du sel et du montant, 16 caractères.
+export const empreinteMontant = (sel, montant) => sha256(`${sel}:${Number(montant)}`).slice(0, 16);
 
 // Contrôle de la réponse au client : signature retirée chez Secret et Taxi, tout montant ou heure absent des faits signalé, mot interne ou nom
 // de prestataire signalé. La carte montre ces avertissements ; la personne décide.
@@ -1383,10 +1472,15 @@ export function montantsDuTexte(t) {
 // `netsAutres` : les nets des autres services du catalogue. Un montant égal à l'un d'eux, qui n'est ni un prix permis ni un total de vente,
 // donne « montant_egal_net », un avertissement qui ne bloque pas (coïncidence fréquente sur un chiffre rond).
 // `entreprises` : en mode unifié, le nom de l'autre entreprise, retiré lui aussi d'une signature.
-export function controlerReponse(message, { signer = false, permisPrix = new Set(), permisHeures = new Set(), prestataires = [], entreprise = "", entreprises = [], prenoms = [], internes = new Set(), ventes = new Set(), netsAutres = new Set(), elementsVente = [], composants = [], leveInternes = null, masquerNets = false, controleImpossible = false }) {
-  let m = texte(message, 4000) ? String(message).trim().slice(0, 4000) : "";
+// Revue de la PR 306 : le texte est contrôlé en entier, jamais coupé (un net placé après le 4000e caractère partait sans contrôle). Au-delà
+// de TEXTE_CONTROLE_MAX caractères, le contrôle se ferme (controle_impossible).
+export const TEXTE_CONTROLE_MAX = 20000;
+const selAleatoire = () => Array.from(globalThis.crypto.getRandomValues(new Uint8Array(8)), (o) => o.toString(16).padStart(2, "0")).join("");
+export function controlerReponse(message, { signer = false, permisPrix = new Set(), permisHeures = new Set(), prestataires = [], entreprise = "", entreprises = [], prenoms = [], internes = new Set(), ventes = new Set(), netsAutres = new Set(), elementsVente = [], composants = [], leveInternes = null, masquerNets = false, controleImpossible = false, sel = null }) {
+  let m = typeof message === "string" ? message.trim() : "";
   const avert = [];
-  if (!m) return { ok: false };
+  if (!m || !/\S/.test(m)) return { ok: false };
+  if (m.length > TEXTE_CONTROLE_MAX) return { ok: true, message: m.slice(0, 4000), avertissements: ["controle_impossible"] };
   if (!signer) {
     const s = retirerSignature(m, { noms: [entreprise, ...entreprises].filter(Boolean) });
     if (s.retire) avert.push("signature_retiree");
@@ -1401,7 +1495,14 @@ export function controlerReponse(message, { signer = false, permisPrix = new Set
   // seulement les prix de vente du dossier relié (revue de la PR 306).
   const leve = leveInternes || ventes;
   const caches = montants.filter((n) => n > 0 && internes.has(n) && !leve.has(n));
-  if (caches.length) avert.push(`montant_interne:${caches.join(",")}`);
+  // Sans le droit de voir les nets (`masquerNets`), le montant ne sort pas : son empreinte salée (sha-256 du sel et du montant, propre à
+  // cette réponse) et le sel, pour que l'écran garde la copie bloquée sans jamais afficher le chiffre (revue de la PR 306).
+  if (caches.length) {
+    if (masquerNets) {
+      const s = sel || selAleatoire();
+      avert.push(`montant_interne:#${s}:${caches.map((n) => empreinteMontant(s, n)).join(",")}`);
+    } else avert.push(`montant_interne:${caches.join(",")}`);
+  }
   const libres = montants.filter((n) => n > 0 && !caches.includes(n) && !permisPrix.has(n) && !ventes.has(n));
   const presents = new Set(montants);
   const totaux = totauxDeVente(libres, [...[...elementsVente].map(Number).filter((x) => presents.has(x)), ...[...composants].map(Number)]);
@@ -1506,7 +1607,7 @@ export async function proposer(nom, e, ctx, memo) {
     // Les nets du catalogue : ceux des services de la demande en cours bloquent, les autres avertissent (netsDuControle). Les totaux se
     // calculent sur les prix sourcés présents dans le texte, les lignes de la carte de dossier du même échange et les montants de Nani.
     const nets = netsDuControle(memo);
-    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: new Set([...(memo.internes || []), ...nets.bloquants]), ventes: memo.prix || new Set(), netsAutres: nets.autres, elementsVente: [...(memo.prix || []), ...tapes], composants: [...(memo.prixCarte || []), ...(memo.nani || [])], masquerNets: !voitTousLesNets(ctx), controleImpossible: memo.controleImpossible === true });
+    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: new Set([...(memo.internes || []), ...nets.bloquants]), ventes: memo.prix || new Set(), netsAutres: nets.autres, elementsVente: [...(memo.prix || []), ...tapes], composants: [...(memo.prixCarte || []), ...(memo.nani || [])], masquerNets: !voitTousLesNets(ctx), controleImpossible: memo.controleImpossible === true, leveInternes: new Set([...(memo.prixServices || []), ...(memo.ventesDossier || [])]) });
     if (!c.ok) return { erreur: "message_vide" };
     const pour = ctx.apporteur ? { destinataire: versApporteur ? "apporteur" : "client", ...(versApporteur && ctx.apporteur.nom ? { apporteur_nom: texte(ctx.apporteur.nom, 80) } : {}) } : {};
     return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message, ...pour }, avertissements: c.avertissements };
@@ -1609,6 +1710,8 @@ export async function executer(nom, entree, ctx, memo) {
     // Les prestations et trajets rendus : services de la demande en cours, leurs nets bloquent (netsDuControle).
     if (!(memo.refs instanceof Set)) memo.refs = new Set();
     collecterRefs(r.resultat, memo.refs);
+    if (!(memo.prixServices instanceof Set)) memo.prixServices = new Set();
+    collecterPrixServices(r.resultat, memo.prixServices);
     // Une conversation de partenaire, de chauffeur ou d'hôtel lue : ses montants deviennent internes, son nom bloqué (revue de la PR 299).
     if (whatsapp && r.resultat && !r.resultat.erreur) retenirLecture(r.resultat, memo, nom);
     // Les vouchers trouvés : l'écran en fait les cartes (même résultat que celui qui repart chez Claude, rien de plus).
@@ -1630,7 +1733,7 @@ export async function executer(nom, entree, ctx, memo) {
 // boîte qui donne aussi des prix de Nani (retenirLecture).
 export function memoDepuis(messages = [], { signer = false, prestataires = [], entreprise = "", entreprises = [], prenoms = [], conversationInterne = false, conversationClient = false, conversationLiee = null } = {}) {
   // refs : les prestations et trajets rendus par les outils ; nets et servicesEnCours : posés par la fonction (netsPourControle, dossier relié).
-  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), prixCarte: [], conversationClient: conversationClient === true, conversationLiee, signer, prestataires, entreprise, entreprises, prenoms };
+  const memo = { prix: new Set(), heures: new Set(), tapes: new Set(), durees: new Set(), estimations: new Map(), textes: [], internes: new Set(), refs: new Set(), prixServices: new Set(), ventesDossier: [], nets: [], servicesEnCours: new Set(), controleImpossible: false, nani: new Set(), prixCarte: [], conversationClient: conversationClient === true, conversationLiee, signer, prestataires, entreprise, entreprises, prenoms };
   const parcourir = (v) => {
     if (Array.isArray(v)) return v.forEach(parcourir);
     if (!v || typeof v !== "object") return;
@@ -1642,7 +1745,10 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
         if (!(k === "prix" && saisi)) memo.prix.add(x);
       }
       else if (CLE_INTERNE.test(k) && typeof x === "number") memo.internes.add(x);
-      else if (k === "ref" && typeof x === "string" && REF_SERVICE.test(x)) memo.refs.add(x);
+      else if (k === "ref" && typeof x === "string" && REF_SERVICE.test(x)) {
+        memo.refs.add(x);
+        for (const c of CLES_PRIX_SERVICE) if (typeof v[c] === "number" && v[c] > 0) memo.prixServices.add(v[c]);
+      }
       // Un numéro de vol rendu par lire_dossier (déjà noté sur une réservation) est une source pour le champ « vol » d'une carte.
       else if (k === "vol" && typeof x === "string" && numeroVol(x)) (memo.volsLus || (memo.volsLus = [])).push(x);
       else if (typeof x === "string" && heureValide(x)) memo.heures.add(x);
@@ -1656,10 +1762,11 @@ export function memoDepuis(messages = [], { signer = false, prestataires = [], e
   for (const m of messages) {
     const tapes = (t) => {
       memo.tapes = new Set([...memo.tapes, ...montantsTapes([sansConversation(t)])]);
-      // Seulement le texte de la personne (hors blocs joints) et les lignes de Nani d'un bloc : « cost 1,500? » écrit par un client ne rend
-      // rien interne.
-      for (const x of [sansConversation(t), ...lignesDeNani(conversationsJointes(t))]) for (const n of montantsPresDuNet(x)) memo.internes.add(n);
-      if (conversationInterne) for (const n of montantsTapes(conversationsJointes(t))) memo.internes.add(n);
+      // Le texte de la personne (hors blocs joints) et les lignes de Nani d'un bloc. Celles du client seulement quand le contact n'est pas un
+      // client confirmé : « cost 1,500? » écrit par un client confirmé ne rend rien interne.
+      const jointes = conversationClient ? lignesDeNani(conversationsJointes(t)) : lignesJointes(conversationsJointes(t));
+      for (const x of [sansConversation(t), ...jointes]) for (const n of montantsPresDuNet(x)) memo.internes.add(n);
+      if (conversationInterne) for (const n of montantsInternesDe(conversationsJointes(t))) memo.internes.add(n);
       else if (conversationClient) for (const n of montantsDeNani(conversationsJointes(t))) memo.nani.add(n);
     };
     if (m.role === "user" && typeof m.content === "string") tapes(m.content);

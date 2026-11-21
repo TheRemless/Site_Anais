@@ -3,6 +3,7 @@
 // ton sans contact personnel, « Préparer une réponse » refusé pour un contact personnel, réponse à un partenaire, promesses, historique.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { bloqueMontant } from "./aides-nets.mjs";
 import { readFileSync } from "node:fs";
 import * as L from "../supabase/functions/agent/whatsapp-lecture.js";
 import { controlerReponse, executer, memoDepuis, netsPourControle, proposer, retenirLecture, retenirLectures, retenuDeLecture, sansConversation } from "../supabase/functions/agent/outils.js";
@@ -45,14 +46,17 @@ test("point 1 : scénario Blue Ocean, « net 1,350 per pax » joint, « Hi Tom�
   const memo = memoDepuis([{ role: "user", content: [{ type: "text", text: joint }] }], { conversationInterne: true });
   assert.ok(memo.internes.has(1350));
   const a = await avert(memo, "Hi Tom, the speedboat on Friday is 1,350 THB per person.");
-  assert.ok(a.includes("montant_interne:1350"), JSON.stringify(a));
-  // Même montant égal à un prix de vente rendu par un outil : permis.
+  assert.ok(bloqueMontant(a, 1350), JSON.stringify(a));
+  // Même montant égal au prix de vente d'un service rendu par un outil (avec sa référence) : permis. Un prix sans service ne lève plus
+  // rien (revue de la PR 306).
   const vente = memoDepuis([{ role: "user", content: [{ type: "text", text: joint }] }], { conversationInterne: true });
   vente.prix.add(1350);
+  vente.prixServices.add(1350);
   assert.ok(!(await avert(vente, "Hi Tom, 1,350 THB per person.")).some((x) => x.startsWith("montant_interne")));
-  // La conversation d'un client : ses montants ne deviennent pas internes, même près de « net » (une ligne « [Client … », revue de la
-  // PR 306), mais ne sont pas sourcés non plus.
-  const client = memoDepuis([{ role: "user", content: [{ type: "text", text: joint }] }]);
+  // La conversation d'un client confirmé : ses montants ne deviennent pas internes, même près de « net » (une ligne « [Client … », revue de
+  // la PR 306), mais ne sont pas sourcés non plus. Un contact qui n'est pas un client confirmé : sa ligne compte.
+  assert.ok(memoDepuis([{ role: "user", content: [{ type: "text", text: joint }] }]).internes.has(1350));
+  const client = memoDepuis([{ role: "user", content: [{ type: "text", text: joint }] }], { conversationClient: true });
   assert.ok(!client.internes.has(1350));
   assert.ok((await avert(client, "Hi Tom, 1,350 THB per person.")).includes("montant_non_source:1350"));
 });
@@ -72,7 +76,7 @@ test("point 2 : lire_conversation et chercher_conversations d'un partenaire, d'u
     const memo2 = memoDepuis([]);
     await executer("chercher_conversations", { texte: "net" }, ctx, memo2);
     assert.ok(memo2.internes.has(950) && memo2.internes.has(1350), `${type} : extraits et dernier message`);
-    assert.ok((await avert(memo, "Hi Tom, it is 1,350 THB.")).includes("montant_interne:1350"));
+    assert.ok(bloqueMontant((await avert(memo, "Hi Tom, it is 1,350 THB.")), 1350));
   }
   // Un client ou un apporteur : ses montants ne sont pas des nets.
   for (const type of ["client", "apporteur", null]) {
@@ -128,8 +132,8 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
   // ni vers l'écran.
   const code = ts.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
   assert.deepEqual(code.match(/memo\.internes\S*/g), ["memo.internes.add(n);"], "memo.internes n'est que rempli");
-  assert.deepEqual(code.match(/memo\.(?:nets|servicesEnCours|controleImpossible)\S*/g), ["memo.nets", "memo.controleImpossible", "memo.servicesEnCours"], "memo.nets et memo.servicesEnCours ne sont que posés");
-  assert.doesNotMatch(code, /relie(?:Wa)?\??\.(?!services\b|internes\b)/, "le dossier relié ne sert qu'au contrôle");
+  assert.deepEqual(code.match(/memo\.(?:nets|servicesEnCours|controleImpossible|ventesDossier)\S*/g), ["memo.nets", "memo.controleImpossible", "memo.servicesEnCours", "memo.ventesDossier"], "memo.nets et memo.servicesEnCours ne sont que posés");
+  assert.doesNotMatch(code, /relie(?:Wa)?\??\.(?!services\b|internes\b|ventes\b)/, "le dossier relié ne sert qu'au contrôle");
   assert.doesNotMatch(code, /internes\s*:|\.\.\.memo\b|JSON\.stringify\(memo/);
   // La boucle ne fait que passer memo à executer.
   assert.equal((lire("supabase/functions/agent/boucle.js").match(/memo/g) || []).length, 2);
@@ -142,7 +146,7 @@ test("point 2 : les nets de l'Assistant sont lus pour le contrôle seulement, ja
   memo.nets = s;
   memo.servicesEnCours = new Set(["p1"]);
   const r = await repondre(memo, "Hi Tom, 1,100 THB per person.");
-  assert.ok(r.avertissements.includes("montant_interne:1100"));
+  assert.ok(bloqueMontant(r.avertissements, 1100));
   const autre = await repondre(memo, "Hi Tom, 1,350 THB per person.");
   assert.ok(!autre.avertissements.some((a) => a.startsWith("montant_interne")) && autre.avertissements.includes("montant_egal_net"), "sans le droit nets, le code sans sa valeur");
   assert.doesNotMatch(JSON.stringify(r), /550|1350/, "aucun autre net ne sort");
@@ -250,7 +254,7 @@ test("point 6 : chauffeur, hôtel ou partenaire : sans client ni dossier, consig
   assert.match(rep, /conv\.dossier_id && conv\.entite_id === ent\.id && !partenaire \?/);
   const apres = rep.slice(rep.indexOf("export async function apresMessageClient"), rep.indexOf("export async function preparerALaDemande"));
   assert.ok(apres.indexOf("if (versPartenaire(conv)) return;") > 0 && apres.indexOf("if (versPartenaire(conv)) return;") < apres.indexOf("preparationAutoPermise("), "sur demande seulement, même la case cochée");
-  assert.match(rep, /if \(partenaire\) for \(const n of montantsTapes\(messages\.map\(\(m\) => String\(m\.texte \|\| ""\)\)\)\) memo\.internes\.add\(n\);/);
+  assert.match(rep, /if \(partenaire\) for \(const n of montantsInternesDe\(messages\.map\(\(m\) => String\(m\.texte \|\| ""\)\)\)\) memo\.internes\.add\(n\);/);
 });
 
 // ---- 7. Promesses ---------------------------------------------------------------------------------------------------------------------

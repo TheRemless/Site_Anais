@@ -139,7 +139,7 @@ export function confirmerVoucherWhatsApp(x, { conversation: c, fichier, legende 
     if (code === "contenu_interne") {
       const brut = ((res && res.a_retirer) || []).filter((v) => v !== LECTURE_IMPOSSIBLE && v !== "controle_impossible");
       const b = bloquantsReponse(brut);
-      const aRetirer = [...b.montants.map(String), ...b.noms];
+      const aRetirer = [...b.montants.map(String), ...(b.empreintes ? [tr("un montant égal à un net interne")] : []), ...b.noms];
       dire(brut.length < ((res && res.a_retirer) || []).length ? tr(erreurVoucher("partenaires_illisibles")) : aRetirer.length ? tr("À retirer du message : {liste}. Rien n'est parti.", { liste: aRetirer.join(", ") }) : tr(erreurVoucher(code)));
     } else dire(tr(erreurVoucher(code, { aVerifier: !!(res && res.a_verifier) })));
     maj();

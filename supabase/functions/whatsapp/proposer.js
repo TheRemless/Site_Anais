@@ -274,7 +274,7 @@ export function prenomDuContact(nom = "", source = null) {
 }
 // Avertissements de la carte de l'agent, gardés tels quels (bornés). Un code « services: » venu de la carte est retiré : seul
 // servicesDeProposition le pose.
-export const avertissementsSurs = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === "string" && !x.startsWith(PREFIXE_SERVICES)).map((x) => x.slice(0, 120)).slice(0, 19) : []);
+export const avertissementsSurs = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === "string" && !/^\s*services:/i.test(x)).map((x) => x.slice(0, 120)).slice(0, 19) : []);
 // Les services de la proposition (revue de sécurité de la PR 306) : les références P-… et T-… rendues par les outils pendant la préparation,
 // gardées dans les avertissements de la proposition (un élément « services:P-…,T-… », sans migration). whatsapp-envoi les relit par
 // proposition_id : leurs nets restent bloquants à l'envoi, même sans dossier relié. Une référence n'est ni un net ni un nom ; l'écran ne

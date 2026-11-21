@@ -4,6 +4,7 @@
 // conversation par le tri déjà en place. Données fictives, aucun appel réseau.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { bloqueMontant } from "./aides-nets.mjs";
 import { readFileSync } from "node:fs";
 import { executer, memoDepuis, montantsDeNani, montantsDeNaniLus, montantsSortants, montantsTapes, montantsDuTexte, montantsPresDuNet, conversationDeClient, clientConfirme, controlerReponse, refDe, retenirLecture } from "../supabase/functions/agent/outils.js";
 import { montantsDuTexte as montantsEcran, bloquantsReponse, resteBloque } from "../src/gestion/js/agent-calc.mjs";
@@ -114,7 +115,7 @@ test("contrôle de la réponse : un montant de Nani est sourcé, jamais il ne l�
   memo.nets = [{ montant: 10000, prestation_id: P }];
   memo.servicesEnCours = new Set([P]);
   const net = await executer("proposer_reponse", { titre: "t", langue: "en", message: "10,000 THB in total.", destinataire: "client" }, ctx, memo);
-  assert.ok(net.carte.avertissements.includes("montant_interne:10000"));
+  assert.ok(bloqueMontant(net.carte.avertissements, 10000));
 });
 
 // ---- 2. Questions au client --------------------------------------------------------------------------------------------------------
@@ -225,11 +226,13 @@ test("PR 306, point 1 : séparateurs, montantsTapes et les deux montantsDuTexte 
   // Sonde 4c et 4d : le net écrit avec une apostrophe typographique ou un point est bloqué.
   assert.ok(controlerReponse("The tour is 1’000 THB per person", { internes: new Set([1000]) }).avertissements.includes("montant_interne:1000"));
   assert.ok(controlerReponse("Die Tour kostet 1.000 THB pro Person", { internes: new Set([1000]) }).avertissements.includes("montant_interne:1000"));
-  // Un montant lu à 0 : bloquant tant qu'il reste dans le texte.
-  const a = controlerReponse("Price 000 THB", {}).avertissements;
+  // Deux groupes de chiffres séparés par un signe inconnu : montant illisible, bloquant tant qu'il reste dans le texte. Des zéros seuls
+  // (« Room 000 ») ne sont pas un montant (sonde I).
+  const a = controlerReponse("Price 1•200 THB", {}).avertissements;
   assert.ok(a.includes("montant_illisible:0"), a.join(" | "));
-  assert.deepEqual(resteBloque("Price 000 THB", bloquantsReponse(a)), ["0"]);
-  assert.deepEqual(resteBloque("Price 1,000 THB", bloquantsReponse(a)), []);
+  assert.deepEqual(resteBloque("Price 1•200 THB", bloquantsReponse(a)), ["0"]);
+  assert.deepEqual(resteBloque("Price 1,200 THB", bloquantsReponse(a)), []);
+  assert.deepEqual(controlerReponse("Room 000, total 1,500 THB", { permisPrix: new Set([1500]) }).avertissements, []);
 });
 
 test("PR 306, point 3 : montant tapé ou de Nani égal à un net du service en cours bloque ; égal au net d'un autre service, avertit", async () => {
@@ -242,9 +245,17 @@ test("PR 306, point 3 : montant tapé ou de Nani égal à un net du service en c
   assert.deepEqual([...montantsPresDuNet("Rattana net 1,000/pax")], [1000]);
   const memo = memoDepuis([{ role: "user", content: "Rattana net 1,000/pax, réponds au client" }]);
   const r = await executer("proposer_reponse", { titre: "t", langue: "en", message: "It is 1,000 THB per person.", destinataire: "client" }, ctx, memo);
-  assert.ok(r.carte.avertissements.includes("montant_interne:1000"), r.carte.avertissements.join(" | "));
+  assert.ok(bloqueMontant(r.carte.avertissements, 1000), r.carte.avertissements.join(" | "));
   for (const t of ["cost 800 per car", "notre marge est de 300 THB", "prix d'achat 2 500 THB", "commission de 450 THB"]) assert.ok(montantsPresDuNet(t).size >= 1, t);
-  assert.equal(montantsPresDuNet("2 adults, 1,500 THB each, pickup at the hotel lobby around 9 then the net").size, 0, "à plus de trois mots");
+  // Les lignes du client comptent quand le contact n'est pas un client confirmé ; jamais pour un client confirmé.
+  const nonConfirme = memoDepuis([{ role: "user", content: bloc([msg(1, "entrant", "net 1,350 per pax")]) }]);
+  assert.ok(nonConfirme.internes.has(1350));
+  const confirme = memoDepuis([{ role: "user", content: bloc([msg(1, "entrant", "cost 1,500?")]) }], { conversationClient: true });
+  assert.ok(!confirme.internes.has(1500));
+  assert.equal(montantsPresDuNet("2 adults, 1,500 THB each, pickup at the hotel lobby.\nThe net is ready").size, 0, "une autre phrase ou une autre ligne");
+  assert.equal(montantsPresDuNet("Internet 1,500 THB").size, 0, "un mot qui contient « net » n'est pas « net »");
+  // Sonde B : la phrase entière avec les nouveaux mots.
+  for (const t of ["Nett price Rattana 1,000", "Net price for the Rattana tour is 1,000 THB", "Rattana tour 1,000 THB (net rate)", "agent rate 1,000", "prix net du tour Rattana pour adulte 1 000", "B2B 1,000 contract rate", "tarif agence 1,000", "prix agence : 1,000"]) assert.deepEqual([...montantsPresDuNet(t)], [1000], t);
   // lire_dossier rend la référence de l'offre : le service lu est de la demande en cours.
   const D = "d1000000-0000-4000-8000-000000000001";
   const c2 = { permissions: [], reglages: {}, charger: async (n) => ({ dossiers: [{ id: D, ref: "2026-1", client_id: null }], clients: [], reservations: [{ id: "e1000000-0000-4000-8000-000000000001", dossier_id: D, prestation_id: P, libelle: "Minivan", date_service: "2027-01-02", statut: "confirme", montant_vente: 5000, personnes: {} }] })[n] || [] };
@@ -253,7 +264,7 @@ test("PR 306, point 3 : montant tapé ou de Nani égal à un net du service en c
   assert.equal(lu.contenu.services[0].ref, refDe("P", P));
   m2.nets = [{ montant: 4200, prestation_id: P }];
   const r2 = await executer("proposer_reponse", { titre: "t", langue: "en", message: "4,200 THB.", destinataire: "client" }, c2, m2);
-  assert.ok(r2.carte.avertissements.includes("montant_interne:4200"));
+  assert.ok(bloqueMontant(r2.carte.avertissements, 4200));
   const idx = lire("supabase/functions/agent/index.ts");
   assert.match(idx, /reservations: "id, dossier_id, prestation_id, trajet_id, libelle,/);
   assert.match(lire("supabase/functions/whatsapp/reponse.ts"), /const COL_RESA = "id, dossier_id, prestation_id, trajet_id, libelle,/);

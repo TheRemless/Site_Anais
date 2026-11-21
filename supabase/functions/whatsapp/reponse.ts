@@ -13,7 +13,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, DUREE_MAX_MS, MODELE_DEFAUT, apprentissagesUnifies, ligneJournal, signe } from "../agent/prompt.js";
-import { clesHotelPossibles, memoDepuis, montantsSortants, montantsTapes, netsPourControle, dossierPourControle, prefixeRef } from "../agent/outils.js";
+import { clesHotelPossibles, memoDepuis, montantsInternesDe, montantsSortants, netsPourControle, dossierPourControle, prefixeRef } from "../agent/outils.js";
 import { CONTACTS_INTERNES } from "../agent/whatsapp-lecture.js";
 import { tourner } from "../agent/boucle.js";
 import { contactApporteur, fichesDuContact, nomsABloquer, nomsContactsTypes } from "../agent/apporteur.js";
@@ -300,8 +300,9 @@ async function preparer(
     const relie = await dossierPourControle(db, dossier ? dossier.id : null, [ent.id]);
     memo.servicesEnCours = relie.services;
     for (const n of relie.internes) memo.internes.add(n);
+    memo.ventesDossier = relie.ventes;
     // La conversation d'un partenaire, d'un chauffeur ou d'un hôtel : ses montants sont des nets possibles (revue de sécurité de la PR 299).
-    if (partenaire) for (const n of montantsTapes(messages.map((m) => String(m.texte || "")))) memo.internes.add(n);
+    if (partenaire) for (const n of montantsInternesDe(messages.map((m) => String(m.texte || "")))) memo.internes.add(n);
     // Une conversation de client : les montants écrits par Nani (messages sortants, app ou Gestion) sont des prix de vente donnés au client
     // (21.11.2026). Jamais ceux du client, jamais chez un partenaire, un chauffeur, un hôtel ou un apporteur (conversationDeClient).
     for (const n of montantsSortants(messages, conv)) memo.nani.add(n);

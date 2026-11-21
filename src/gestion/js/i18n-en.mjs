@@ -15,6 +15,8 @@ export const EN = {
   "Un montant de la réponse n'a pas pu être lu. Écrivez-le avec des chiffres simples, par exemple 1,000.": "An amount in the reply could not be read. Write it with plain digits, for example 1,000.",
   "Un montant de la réponse est égal à un net interne. Vérifiez que c'est bien un prix de vente.": "An amount in the reply equals an internal net. Check that it is really a selling price.",
   "écrit par le contact": "written by the contact",
+  "un montant égal à un net interne": "an amount equal to an internal net",
+  "Un montant interne (net, marge ou commission) est dans la réponse. À retirer.": "An internal amount (net, margin or commission) is in the reply. Remove it.",
   "« {nom} » écrit par le contact": "“{nom}” written by the contact",
   "Mettre à jour la fiche": "Update the record",
   "Pas maintenant": "Not now",

@@ -242,13 +242,14 @@ export function libelleAvertissement(code) {
   const def = AVERTISSEMENTS[cle];
   if (cle === "nom_prestataire" && valeur) return { cle, texte: N_("La réponse cite le partenaire « {valeur} » : à retirer."), vars: { valeur }, niveau: "alerte" };
   // Sans le droit de voir les nets, la fonction ne donne pas la valeur (revue de la PR 306).
+  if (cle === "montant_interne" && valeur.startsWith("#")) return { cle, texte: N_("Un montant interne (net, marge ou commission) est dans la réponse. À retirer."), vars: {}, niveau: "alerte" };
   if (cle === "montant_egal_net" && !valeur) return { cle, texte: N_("Un montant de la réponse est égal à un net interne. Vérifiez que c'est bien un prix de vente."), vars: {}, niveau: "info" };
   if (!def) return { cle, texte: N_("Point à vérifier ({valeur})"), vars: { valeur: brut }, niveau: "alerte" };
   return { cle, texte: def.texte, vars: { valeur }, niveau: def.niveau };
 }
 // Les alertes d'abord, puis les informations. L'élément « services: » (références gardées pour l'envoi, whatsapp/proposer.js) ne se montre pas.
 export const SERVICES_PROPOSITION = "services:";
-export const avertissements = (prop) => ((prop && prop.avertissements) || []).filter((a) => !String(a).startsWith(SERVICES_PROPOSITION)).map(libelleAvertissement).sort((a, b) => (a.niveau === b.niveau ? 0 : a.niveau === "alerte" ? -1 : 1));
+export const avertissements = (prop) => ((prop && prop.avertissements) || []).filter((a) => !String(a).trim().toLowerCase().startsWith(SERVICES_PROPOSITION)).map(libelleAvertissement).sort((a, b) => (a.niveau === b.niveau ? 0 : a.niveau === "alerte" ? -1 : 1));
 
 // ---- Messages ---------------------------------------------------------------------------------------------------------------------------
 // Ce que montre un média : une vignette (image copiée), un lien (document, son, vidéo copiés), ou pourquoi il manque.

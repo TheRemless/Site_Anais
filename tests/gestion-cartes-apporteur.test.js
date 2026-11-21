@@ -477,5 +477,7 @@ test("revue 298, point 8 : whatsapp-envoi ferme si les fiches sont illisibles, l
 
 test("envoi refusé (contenu_interne) : les valeurs à retirer sont cherchées sans leur code", () => {
   const vue = source("src/gestion/js/views/whatsapp.mjs");
-  assert.match(vue, /const b = bloquantsReponse\(brut\);\n\s+aRetirer\.set\(p\.id, \[\.\.\.b\.montants\.map\(String\), \.\.\.b\.noms, \.\.\.brut\.filter/);
+  assert.match(vue, /const b = bloquantsReponse\(brut\);\n[\s\S]{0,200}aRetirer\.set\(p\.id, \{ \.\.\.b, noms: \[\.\.\.b\.noms, \.\.\.brut\.filter/);
+  // Revue de la PR 306 : l'empreinte d'un montant masqué se recalcule sur le texte corrigé.
+  assert.match(vue, /const duServeur = resteBloque\(zone\.value, aRetirer\.get\(p\.id\) \|\| \{\}\);/);
 });

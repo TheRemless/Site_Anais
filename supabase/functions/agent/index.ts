@@ -921,6 +921,8 @@ Deno.serve(async (req) => {
   const relieWa = waLue && waLue.dossier_id && waLue.dossier_id !== conv!.dossier_id ? await dossierPourControle(admin, waLue.dossier_id, idsEntites) : null;
   memo.servicesEnCours = new Set([...relie.services, ...(relieWa?.services ?? [])]);
   for (const n of [...relie.internes, ...(relieWa?.internes ?? [])]) memo.internes.add(n);
+  // Ses prix de vente : seuls, avec ceux des services rendus, à lever un montant interne (outils.js, proposer_reponse).
+  memo.ventesDossier = [...relie.ventes, ...(relieWa?.ventes ?? [])];
   // Les pièces jointes que l'agent peut citer (proposer_import_brochure) et les droits de la personne (l'import demande « partenaires.ecrire »
   // et « partenaires.prix »).
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange

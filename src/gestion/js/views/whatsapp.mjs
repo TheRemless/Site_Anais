@@ -10,7 +10,7 @@ import { h, toast, confirmer, icone, puces, modal, champ } from "../ui.mjs";
 import { formatMontant, aujourdhui } from "../calc.mjs";
 import { clientPourFaits, dossierPourFaits, faitsClient } from "../whatsapp-faits-calc.mjs";
 import { tr, N_, langueActive, localeActive } from "../i18n.mjs";
-import { quand, bloquantsReponse, resteBloque, agentActif, CONTROLE_IMPOSSIBLE } from "../agent-calc.mjs";
+import { quand, bloquantsReponse, resteBloque, agentActif, CONTROLE_IMPOSSIBLE, MONTANT_MASQUE } from "../agent-calc.mjs";
 import {
   CLE_DEMANDE_AGENT, modeDossier, paiementSignale, MOTIFS_PAIEMENT, lignesResume, tachesPromesse, piecesProposees, basculerPiece, PIECES_MAX, resumeEnRetard,
 } from "../whatsapp-suivi-calc.mjs";
@@ -36,7 +36,7 @@ const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"))
 // Ce qui doit survivre à un redessin de l'écran (synchronisation, Realtime), par identifiant de proposition :
 //   brouillons : le texte modifié par Nani, remis dans la zone au rendu suivant ;
 //   envoisIncertains : un envoi au résultat inconnu (délai dépassé, coupure), le bouton Envoyer ne se rallume pas ;
-//   aRetirer : les montants et les noms que whatsapp-envoi a trouvés dans le texte (contenu_interne).
+//   aRetirer : ce que whatsapp-envoi a trouvé dans le texte (contenu_interne), lu par bloquantsReponse (montants, empreintes, noms).
 const brouillons = new Map();
 const envoisIncertains = new Set();
 const aRetirer = new Map();
@@ -802,7 +802,8 @@ async function envoyer(c, p, zone, bouton, apres) {
     if (code === "contenu_interne") {
       const brut = ((r && r.a_retirer) || []).filter((x) => x !== LECTURE_IMPOSSIBLE && x !== CONTROLE_IMPOSSIBLE);
       const b = bloquantsReponse(brut);
-      aRetirer.set(p.id, [...b.montants.map(String), ...b.noms, ...brut.filter((x) => !/^[a-z_]+:/.test(String(x)))]);
+      // Les codes tels quels (une empreinte de montant masqué se recalcule sur le texte, revue de la PR 306), plus les valeurs sans code.
+      aRetirer.set(p.id, { ...b, noms: [...b.noms, ...brut.filter((x) => !/^[a-z_]+:/.test(String(x)))] });
     }
     toast(tr(erreurEnvoi(codeEnvoi(code, r && r.a_retirer))), true);
     if (code === "deja_traitee") return rafraichir();
@@ -938,12 +939,11 @@ function carteProposition(c, p, messages) {
   const alerte = h("p", { class: "erreur-form", role: "alert", hidden: true });
   function majEnvoi() {
     const ok = envoiPossible({ texte: zone.value, fenetre: f });
-    const serveur = aRetirer.get(p.id) || [];
-    const duServeur = resteBloque(zone.value, { montants: serveur.filter((x) => Number.isFinite(Number(x))).map(Number), noms: serveur.filter((x) => !Number.isFinite(Number(x))) });
+    const duServeur = resteBloque(zone.value, aRetirer.get(p.id) || {});
     const reste = [...new Set([...resteBloque(zone.value, bloquants), ...duServeur])];
     const incertain = envoisIncertains.has(p.id);
     alerte.hidden = !reste.length;
-    alerte.textContent = !reste.length ? "" : reste.includes(CONTROLE_IMPOSSIBLE) ? tr("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.") : filtre.masques ? tr("Un montant ou un nom interne est dans la réponse : à retirer avant de copier.") : tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.join(", ") });
+    alerte.textContent = !reste.length ? "" : reste.includes(CONTROLE_IMPOSSIBLE) ? tr("Les nets n'ont pas pu être relus pour contrôler la réponse : elle ne se copie pas. Préparez-la de nouveau.") : filtre.masques ? tr("Un montant ou un nom interne est dans la réponse : à retirer avant de copier.") : tr("À retirer avant de copier : {liste}. Ces chiffres et ces noms ne vont jamais au client.", { liste: reste.map((x) => (x === MONTANT_MASQUE ? tr("un montant égal à un net interne") : x)).join(", ") });
     boutonEnvoyer.disabled = !ok.ok || reste.length > 0 || incertain;
     pourquoi.textContent = incertain ? tr(erreurEnvoi("verifier_whatsapp")) : ok.raison === "fenetre_fermee" ? tr("Envoi depuis Gestion fermé, le client a écrit il y a plus de 24 h.") : ok.raison === "vide" ? tr("La réponse est vide.") : "";
     pourquoi.hidden = !pourquoi.textContent;
