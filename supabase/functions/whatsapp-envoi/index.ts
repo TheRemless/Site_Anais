@@ -10,6 +10,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { lireEnvoi, corpsTelnyx, lireReponseTelnyx } from "./calc.js";
 import { fenetreOuverte } from "../whatsapp/proposer.js";
 import { controlerReponse } from "../agent/outils.js";
+import { fichesDuContact, nomsABloquer } from "../agent/apporteur.js";
 
 const ORIGINES = (Deno.env.get("ASSISTANT_ORIGINES") || "https://gestion.zwaldtravelplanner.com").split(",").map((x) => x.trim());
 function entetes(req: Request) {
@@ -39,7 +40,10 @@ Deno.serve(async (req) => {
   if (!qui?.user) return json({ erreur: "non_connecte" }, 401);
 
   // Lue avec la session : une conversation que la personne ne peut pas lire n'existe pas pour elle.
-  const { data: conv, error } = await sb.from("whatsapp_conversations").select("id, organisation_id, telephone, entite_id").eq("id", demande.conversation_id).maybeSingle();
+  // type_contact et partenaire_id (migration 68) : une réponse à un apporteur peut porter son propre nom. Sans les colonnes, la lecture d'avant.
+  let lue: any = await sb.from("whatsapp_conversations").select("id, organisation_id, telephone, entite_id, reponses, type_contact, partenaire_id").eq("id", demande.conversation_id).maybeSingle();
+  if (lue.error && lue.error.code === "42703") lue = await sb.from("whatsapp_conversations").select("id, organisation_id, telephone, entite_id").eq("id", demande.conversation_id).maybeSingle();
+  const { data: conv, error } = lue;
   if (error) return json({ erreur: "base" }, 500);
   if (!conv) return json({ erreur: "droit_manquant" }, 403);
   // Lire ne suffit pas (migration 63 : WhatsApp commun en lecture) : envoyer demande d'être administrateur de l'entreprise de la conversation.
@@ -134,9 +138,10 @@ Deno.serve(async (req) => {
   return json({ ok: true, message_id: messageId, complet: complete });
 });
 
-// Montants égaux à un net (et à aucun prix de vente) et noms de partenaires présents dans le texte.
+// Montants égaux à un net (et à aucun prix de vente) et noms de partenaires présents dans le texte. Le contact est un apporteur : ses propres
+// fiches sortent de la liste des noms (agent/apporteur.js, fichesDuContact), la réponse lui est adressée ; tout autre nom reste bloqué.
 // deno-lint-ignore no-explicit-any
-async function contenuInterne(admin: any, conv: { organisation_id: string; entite_id: string | null }, texte: string) {
+async function contenuInterne(admin: any, conv: { organisation_id: string; entite_id: string | null; telephone?: string; reponses?: string; type_contact?: string | null; partenaire_id?: string | null }, texte: string) {
   let ids: string[] = conv.entite_id ? [conv.entite_id] : [];
   if (!ids.length) {
     const { data } = await admin.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
@@ -148,12 +153,14 @@ async function contenuInterne(admin: any, conv: { organisation_id: string; entit
     admin.from("trajets_nets").select("net_adulte, net_enfant").in("entite_id", ids).limit(5000),
     admin.from("prestations").select("prix_vente").in("entite_id", ids).limit(5000),
     admin.from("trajets").select("prix_adulte, prix_enfant").in("entite_id", ids).limit(5000),
-    admin.from("partenaires").select("nom").in("entite_id", ids).limit(2000),
+    admin.from("partenaires").select("id, nom, categorie, contact").in("entite_id", ids).limit(2000),
   ]);
+  // Revue de la PR 298 : sans les fiches partenaires, aucun nom ne peut être contrôlé. On ferme : rien ne part.
+  if (pa.error) return ["nom_prestataire:lecture_impossible"];
   const nombres = (lignes: Record<string, unknown>[] | null, cles: string[]) => new Set((lignes || []).flatMap((l) => cles.map((k) => Number(l[k]))).filter((n) => Number.isFinite(n) && n > 0));
   const internes = new Set([...nombres(pn.data, ["net", "net_enfant"]), ...nombres(tn.data, ["net_adulte", "net_enfant"])]);
   const ventes = new Set([...nombres(pr.data, ["prix_vente"]), ...nombres(tr.data, ["prix_adulte", "prix_enfant"])]);
-  const prestataires = (pa.data || []).map((p: { nom: string }) => String(p.nom || "").trim()).filter((x: string) => x.length > 2);
+  const prestataires = nomsABloquer(pa.data || [], fichesDuContact(conv, pa.data || []));
   const c = controlerReponse(texte, { signer: true, internes, ventes, prestataires });
   return (c.avertissements || []).filter((a: string) => a.startsWith("montant_interne") || a.startsWith("nom_prestataire"));
 }

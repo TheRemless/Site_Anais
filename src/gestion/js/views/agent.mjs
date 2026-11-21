@@ -23,6 +23,7 @@ import { espaceUnifie, carteUnifiee, avecCorrections, entrepriseSuivante, badgeM
 import { CLE_DEMANDE_AGENT, liaisonApresDossier, ERREURS_AGENT_WHATSAPP } from "../whatsapp-suivi-calc.mjs";
 import { morceauxCitations, nomConversation } from "../whatsapp-calc.mjs";
 import { lienWhatsApp as lienBoiteWhatsApp } from "../agent-whatsapp-lecture.mjs";
+import { apporteurConfirme, entreprisesSansFiche, lierDossierConversation, nomsApporteurAMasquer, poseApporteur } from "../apporteurs-calc.mjs";
 import { QUESTIONS_RAPIDES, CLE_QUESTION_AGENT, QUESTION_MAX, demandeAOuvrir, questionBoiteAOuvrir, questionsProposees } from "../whatsapp-relie-calc.mjs";
 
 // Une demande collée dans une autre entreprise que la sienne (« Transfer request » du site VIP Taxi Lanta dans Secret) : le message passe à
@@ -99,6 +100,8 @@ const AVERTISSEMENTS = {
   // Espace unifié Secret et Taxi (migration 63).
   entreprise_a_choisir: N_("Un service n'a pas d'entreprise : choisissez Secret ou Taxi sur le service."),
   catalogue_autre_entreprise: N_("Un tarif vient du catalogue de l'autre entreprise : vérifiez le service avant de l'ajouter."),
+  // Contact WhatsApp apporteur (PR D) : la référence donnée par l'agent ne correspond à aucune fiche.
+  apporteur_inconnu: N_("La référence donnée par l'assistant ne correspond à aucune fiche apporteur."),
 };
 function texteAvertissement(a) {
   const [code, valeur] = String(a).split(/:(.*)/s);
@@ -754,6 +757,12 @@ export async function vueAgent(idOuvert = "") {
     );
   }
   const estCourse = (c) => c.genre === "dossier" && !!(c.donnees && c.donnees.course);
+  // « Envoyé par Jade », puis « Apporteur : pas de fiche chez Taxi » pour une entreprise de la carte sans fiche. Rien n'est bloqué : Nani
+  // pourra créer la fiche plus tard. Écran interne seulement, jamais un document du client.
+  const blocApporteurCarte = (apporteur, entiteIds) => [
+    h("p", { class: "agent-carte-apporteur" }, icone("partenaires", 14), tr("Envoyé par {nom}", { nom: apporteur.nom })),
+    ...entreprisesSansFiche(apporteur, entiteIds).map((id) => h("p", { class: "agent-carte-apporteur sans-fiche" }, tr("Apporteur : pas de fiche chez {nom}", { nom: libelleEntreprise(id) }))),
+  ];
   // « Tout valider » : les cartes qui s'enregistrent par le code habituel. Une réponse se copie à la main (le presse-papiers n'en garde
   // qu'une) ; un réglage, une demande d'amélioration et une brochure se relisent une à une.
   const VALIDABLES = ["dossier", "reservation", "modification", "temps"];
@@ -781,6 +790,8 @@ export async function vueAgent(idOuvert = "") {
       // tant qu'un service n'a pas d'entreprise.
       const aChoisir = u && (du.services || []).some((s) => !s.entite_id);
       action = { libelle: mixte ? tr("Créer les deux dossiers") : ailleurs ? tr("Créer le dossier chez {nom}", { nom: libelleEntreprise(ids[0]) }) : tr("Créer le dossier"), faire: () => valider(c), puis: mixte || ailleurs || aChoisir ? null : { libelle: tr("Vérifier avant"), faire: () => ouvrirDossier(c) } };
+      // Envoyé par un apporteur (PR D) : son nom, et chaque entreprise de la carte où il n'a pas de fiche (le dossier s'y crée sans lui).
+      if (d.apporteur && d.apporteur.nom) corps.push(...blocApporteurCarte(d.apporteur, u ? ids : [etat.entiteId]));
     } else if (c.genre === "reservation") {
       const s = d.service || {};
       corps.push(h("p", null, tr("Dossier {ref}", { ref: d.dossier_ref || "" })), h("ul", { class: "agent-services" }, h("li", null, h("span", null, h("strong", null, s.libelle || s.texte), h("small", null, [jourCourt(s.date), s.heure_pickup && tr("pickup {h}", { h: s.heure_pickup })].filter(Boolean).join(", "))), prixTexte(s))));
@@ -816,7 +827,10 @@ export async function vueAgent(idOuvert = "") {
       action = estAdmin() ? { libelle: tr("Demander cette amélioration"), faire: (bouton) => demanderAmelioration(c, titre.value, zone.value, bouton) } : null;
       if (!estAdmin()) corps.push(h("p", { class: "aide" }, tr("Seule une administratrice peut demander une amélioration.")));
     } else if (c.genre === "reponse") {
-      const zone = h("textarea", { class: "agent-reponse", rows: 8, "aria-label": tr("Réponse au client"), lang: d.langue === "en" ? "en" : "fr" });
+      // Conversation liée à un apporteur (revue PR 298) : la carte dit à qui va la réponse.
+      const versApporteur = d.destinataire === "apporteur";
+      if (d.destinataire) corps.push(h("p", { class: `agent-destinataire ${versApporteur ? "apporteur" : "client"}` }, versApporteur ? tr("Réponse à {nom} (apporteur)", { nom: d.apporteur_nom || tr("l'apporteur") }) : tr("Réponse au client")));
+      const zone = h("textarea", { class: "agent-reponse", rows: 8, "aria-label": versApporteur ? tr("Réponse à l'apporteur") : tr("Réponse au client"), lang: d.langue === "en" ? "en" : "fr" });
       zone.value = d.message || "";
       // Un montant interne ou un nom de partenaire signalé bloque la copie tant qu'il reste dans le texte (agent-calc.mjs, resteBloque).
       const bloquants = bloquantsReponse(c.avertissements);
@@ -845,7 +859,7 @@ export async function vueAgent(idOuvert = "") {
     const resolu = c.genre === "dossier" && carteUnifiee(d) && (c.statut !== "proposee" || (donneesCarte(c).services || []).every((s) => s.entite_id));
     const avertissements = (c.avertissements || []).filter((a) => !(resolu && a === "entreprise_a_choisir"));
     const avert = avertissements.length && c.genre !== "amelioration" ? h("ul", { class: "assistant-avertissements" }, avertissements.map((a) => h("li", null, texteAvertissement(a)))) : null;
-    const libelles = { dossier: estCourse(c) ? N_("Course") : N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: N_("Réponse au client"), temps: N_("Temps de trajet"), reglage: N_("Réglage"), amelioration: N_("Amélioration de l'outil"), brochure: N_("Brochure à importer") };
+    const libelles = { dossier: estCourse(c) ? N_("Course") : N_("Nouveau dossier"), reservation: N_("Service à ajouter"), modification: N_("Modification"), reponse: c.genre === "reponse" && d.destinataire === "apporteur" ? N_("Réponse à l'apporteur") : N_("Réponse au client"), temps: N_("Temps de trajet"), reglage: N_("Réglage"), amelioration: N_("Amélioration de l'outil"), brochure: N_("Brochure à importer") };
     // Une demande envoyée montre son suivi (envoyée, PR prête, en ligne, refusée).
     const suivi = c.genre === "amelioration" && c.statut === "validee" ? (ameliorations || []).find((a) => a.carte_id === c.id) : null;
     const decidee = c.statut !== "proposee";
@@ -940,10 +954,11 @@ export async function vueAgent(idOuvert = "") {
   // enregistré ({ reservations } pour un dossier, { reservation } pour un service, { message } pour une réponse) ; pour un dossier sans
   // `enregistre`, ses réservations sont relues. Une panne ici ne gêne jamais la validation.
   // `entiteId` : l'entreprise du dossier (espace unifié), où ses apprentissages sont gardés.
-  async function apresValidation(c, { dossierId = null, enregistre = null, entiteId = etat.entiteId } = {}) {
+  // `typeLie` : le type du contact WhatsApp lié, relu (noterReussite) ; un apporteur ne relie pas la conversation au dossier (revue PR 298).
+  async function apresValidation(c, { dossierId = null, enregistre = null, entiteId = etat.entiteId, typeLie = null } = {}) {
     try {
       const id = dossierDeLaCarte(c, { dossierId });
-      if (id && conv && !conv.dossier_id) {
+      if (id && conv && !conv.dossier_id && lierDossierConversation(c, typeLie)) {
         const maj = await etat.store.agentMajConversation(conv.id, { dossier_id: id });
         conversations = (conversations || []).map((x) => (x.id === maj.id ? { ...x, ...maj } : x));
         conv = conversations.find((x) => x.id === maj.id) || { ...conv, ...maj };
@@ -957,7 +972,9 @@ export async function vueAgent(idOuvert = "") {
       const vu = enregistre || (c.genre === "dossier" && id ? { reservations: etat.db.reservations.filter((r) => r.dossier_id === id) } : null);
       // Aussi les noms donnés dans les cartes « dossier » de la conversation : une réponse copiée avant que la conversation ait un dossier
       // ne garde pas le nom du client.
-      const noms = [client && client.prenom, client && client.nom, ...fil.cartes.filter((x) => x.genre === "dossier").map((x) => ((x.donnees || {}).client || {}).nom)].filter(Boolean);
+      // Et les noms d'apporteur (revue PR 298) : fiche reliée à la conversation WhatsApp, toutes les fiches « apporteur », noms des cartes.
+      const waLiee = conv && conv.whatsapp_conversation_id ? (etat.brut.whatsapp_conversations || []).find((x) => x.id === conv.whatsapp_conversation_id) || null : null;
+      const noms = [client && client.prenom, client && client.nom, ...fil.cartes.filter((x) => x.genre === "dossier").map((x) => ((x.donnees || {}).client || {}).nom), ...nomsApporteurAMasquer({ partenaires: etat.brut.partenaires || [], conversationWa: waLiee, cartes: [c, ...fil.cartes] })].filter(Boolean);
       const lignes = correctionsDepuisCarte(c, vu, { noms });
       if (lignes.length && (await etat.store.agentNoterApprentissages(entiteId, c.id, lignes))) toast(lignes.length === 1 ? tr("Correction notée : l'assistant s'en servira la prochaine fois.") : tr("{n} corrections notées : l'assistant s'en servira la prochaine fois.", { n: lignes.length }));
     } catch (err) {
@@ -1107,6 +1124,12 @@ export async function vueAgent(idOuvert = "") {
   async function noterReussite(c, r) {
     const dossier = r.dossier || (r.fait && r.fait.dossier) || null;
     if (dossier) resultats.set(c.id, { dossier, course: r.fait || null, dossiers: r.dossiers || null });
+    // Le contact WhatsApp lié, relu en base (revue PR 298) : l'apporteur ne se pose que s'il est toujours de type « apporteur ».
+    const typeLie = await typeContactLie();
+    if (dossier && c.genre === "dossier" && !estCourse(c) && c.donnees && c.donnees.apporteur) {
+      if (typeLie === "apporteur") await noterApporteur(c.donnees.apporteur, r.dossiers || [dossier]);
+      else toast(tr("Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur."));
+    }
     if (dossier && c.genre === "dossier") await relierWhatsApp(dossier);
     if (r.fait) blocBooking = (await import("./confirmation.mjs")).blocBookingConfirmation;
     const res = r.reservation || null;
@@ -1117,13 +1140,39 @@ export async function vueAgent(idOuvert = "") {
       for (const d of [dossier, ...r.dossiers.filter((x) => x !== dossier)]) {
         changerSansNaviguer(d.entite_id);
         try {
-          await apresValidation(carteDeLEntreprise(c, donnees, d.entite_id), { dossierId: d.id, entiteId: d.entite_id });
+          await apresValidation(carteDeLEntreprise(c, donnees, d.entite_id), { dossierId: d.id, entiteId: d.entite_id, typeLie });
         } finally {
           changerSansNaviguer(origine);
         }
       }
-    } else await apresValidation(c, { dossierId: (dossier && dossier.id) || (res && res.dossier_id) || null, enregistre: res ? { reservation: res } : null });
+    } else await apresValidation(c, { dossierId: (dossier && dossier.id) || (res && res.dossier_id) || null, enregistre: res ? { reservation: res } : null, typeLie });
     await decider(c, "validee");
+  }
+
+  // Le type du contact de la conversation WhatsApp liée, relu en base : null sans liaison, illisible ou sans type.
+  async function typeContactLie() {
+    const waId = conv && conv.whatsapp_conversation_id;
+    if (!waId || !etat.store.whatsappConversation) return null;
+    try {
+      const wc = await etat.store.whatsappConversation(waId);
+      return apporteurConfirme(wc) ? "apporteur" : (wc && wc.type_contact) || null;
+    } catch (err) {
+      console.error("agent : type du contact WhatsApp", err);
+      return null;
+    }
+  }
+  // Carte d'un apporteur (PR D) : chaque dossier créé reçoit la fiche apporteur de sa propre entreprise (apporteurs-calc.mjs, poseApporteur),
+  // après sa création. Un refus de la base (controler_apporteur_dossier, droits) laisse le dossier créé, sans apporteur : un message discret,
+  // jamais la corbeille.
+  async function noterApporteur(apporteur, dossiers) {
+    for (const { dossier, apporteur_id } of poseApporteur(apporteur, dossiers, etat.brut.partenaires || [])) {
+      try {
+        await modifier("dossiers", dossier.id, { apporteur_id });
+      } catch (err) {
+        console.error("agent : apporteur du dossier", err);
+        toast(tr("Dossier {ref} créé sans apporteur : {message}", { ref: dossier.ref || "", message: err.message }));
+      }
+    }
   }
 
   // « Tout valider » : les cartes en attente, dans l'ordre du fil. Celles qui passent sont validées, une carte qui échoue garde son motif.

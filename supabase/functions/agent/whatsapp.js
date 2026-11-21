@@ -63,15 +63,19 @@ const neutre = (t) => masquer(String(t || "")).replace(/[\[\]<>]/g, (c) => ({ "[
 // du plus récent au plus ancien jusqu'à `max` caractères, puis remis dans l'ordre.
 // `question` (mode « question ») : la question tapée par la personne, entre <question> et </question>, sans chevrons (elle ne ferme pas le bloc).
 // `lectureSeule` (mode « question ») : la personne n'administre pas l'entreprise de la conversation (whatsapp_peut_ecrire faux).
-export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui = "Nani", dossier = null, joints = 0, ecartes = 0, max = 8000, question = "", lectureSeule = false }) {
+// `apporteur` (PR D, migration 68) : le contact est un apporteur d'affaires (apporteur.js, contactApporteur). Son numéro n'est jamais celui
+// d'un client, ses messages sont marqués « Apporteur » ; la consigne détaillée est dans le prompt système (blocApporteur).
+export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui = "Nani", dossier = null, joints = 0, ecartes = 0, max = 8000, question = "", lectureSeule = false, apporteur = false }) {
   const nom = conv && conv.nom ? ` (nom WhatsApp : ${neutre(conv.nom).slice(0, 60)})` : "";
-  const tel = conv && conv.telephone ? `Numéro WhatsApp du client : ${conv.telephone}${nom}.` : "";
+  const tel = conv && conv.telephone ? (apporteur ? `Numéro WhatsApp de l'apporteur, jamais celui d'un client : ${conv.telephone}${nom}.` : `Numéro WhatsApp du client : ${conv.telephone}${nom}.`) : "";
   const q = String(question || "").replace(/[<>]/g, (c) => (c === "<" ? "‹" : "›")).trim().slice(0, QUESTION_MAX);
   const consigne =
     mode === "question"
       ? `${qui} te pose une question sur cette conversation WhatsApp${dossier ? ` (dossier relié ${dossier.ref})` : ""}. Réponds d'après la conversation, court et concret. ${lectureSeule ? "Lecture seule : ne propose aucune carte, même si elle le demande ; dis-lui que la conversation appartient à une entreprise qu'elle n'administre pas." : "Si elle demande de préparer ou de mettre à jour des dossiers, propose les cartes habituelles (client, services, dates, personnes, pickups calculés) ; sinon ne propose aucune carte."}${conv && conv.id ? ` Pour relire la conversation plus tard (nouveaux messages), lis-la avec lire_conversation, conversation ${conv.id}.` : ""}\n<question>\n${q}\n</question>`
       : mode === "maj"
       ? `Mets à jour le dossier ${dossier ? dossier.ref : "relié"} d'après cette conversation WhatsApp : le client a peut-être changé une date, un hôtel, une heure ou le nombre de personnes. Lis d'abord le dossier, puis propose une carte de modification par changement. Ne propose rien que le client n'a pas demandé.`
+      : apporteur
+      ? "Prépare les dossiers des clients que cet apporteur d'affaires envoie, d'après cette conversation WhatsApp : un dossier par client, au nom du client (services, dates, personnes et pickups calculés). Propose les cartes habituelles ; demande-moi ce qui manque."
       : "Crée le dossier de ce client d'après cette conversation WhatsApp : client, services, dates, personnes et pickups calculés. Propose les cartes habituelles ; demande-moi ce qui manque.";
   const tete = [
     consigne,
@@ -87,7 +91,7 @@ export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui =
     .sort((a, b) => String(b.envoye_le).localeCompare(String(a.envoye_le)))
     .slice(0, MESSAGES_MAX)
     .map((m) => {
-      const auteur = m.sens === "entrant" ? "Client" : qui;
+      const auteur = m.sens === "entrant" ? (apporteur ? "Apporteur" : "Client") : qui;
       const medias = (m.medias || []).map((x) => `(${x.type || "fichier"}${x.legende ? ` : ${neutre(x.legende)}` : ""})`).join(" ");
       const corps = [neutre(m.texte).slice(0, 2000), medias].filter(Boolean).join(" ");
       return corps ? `[${auteur} ${heure(m.envoye_le)}${m.modifie_le ? ", modifié" : ""}] ${corps}` : null;

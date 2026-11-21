@@ -73,8 +73,14 @@ export function basculerPiece(cochees = [], chemin) {
 //   « ecrire » : client et dossier vides remplis ; une conversation à trier (lot 2 du 20.11.2026 : on crée le dossier sans ranger d'abord)
 //     est rangée en même temps dans l'entreprise du dossier ;
 //   « demander » : un autre client ou un autre dossier est déjà relié, la personne décide avant de le remplacer.
+// Un apporteur d'affaires (type_contact « apporteur », PR D) n'est jamais le client : sa conversation ne se relie ni au client ni au dossier
+// d'un client qu'il envoie (il en envoie plusieurs). Encore à trier, elle est seulement rangée dans l'entreprise du dossier.
 export function liaisonApresDossier(conv, dossier, entiteId) {
   if (!conv || !dossier || !dossier.id) return { action: "rien", patch: null };
+  if (conv.type_contact === "apporteur") {
+    const ent = dossier.entite_id || entiteId;
+    return !conv.entite_id && ent ? { action: "ecrire", patch: { entite_id: ent } } : { action: "rien", patch: null };
+  }
   if (!conv.entite_id) {
     const ent = dossier.entite_id || entiteId;
     return ent ? { action: "ecrire", patch: { entite_id: ent, client_id: dossier.client_id || null, dossier_id: dossier.id } } : { action: "rien", patch: null };

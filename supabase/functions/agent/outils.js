@@ -15,12 +15,15 @@
 //   - boîte WhatsApp (whatsapp-lecture.js, migration 67) : trois outils de lecture, proposés et exécutés seulement pour qui administre
 //     l'entreprise active (whatsapp_admin), Secret ou Taxi. Jamais un contact personnel ni la conversation d'un partenaire (sauf un apporteur) ;
 //     le texte des messages n'est jamais une source de prix ni d'heure (memoDepuis) ; leurs résultats sont retirés de l'historique au
-//     message suivant (retirerLecturesWhatsApp).
+//     message suivant (retirerLecturesWhatsApp) ;
+//   - contact WhatsApp de type « apporteur » (apporteur.js, PR D) : proposer_dossier note la fiche apporteur de chaque entreprise (ctx.apporteur,
+//     lue avec la session), jamais celle d'une autre ; rien de la fiche ne repart chez Claude.
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
 import { ENTREPRISES_UNIFIEES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
 import { texteDuree } from "./planifier.js";
 import { OUTILS_AMELIORER, PROPOSITIONS_AMELIORER, lireReglages, proposerReglage, proposerAmelioration } from "./ameliorer.js";
+import { apporteurDeCarte } from "./apporteur.js";
 import { ENTREPRISES_WHATSAPP, MESSAGES_DEFAUT, MESSAGES_MAX, NOMS_OUTILS_WHATSAPP, aFaireWhatsApp, chercherConversations, lireConversation, marqueWhatsApp, messagesAPrendre } from "./whatsapp-lecture.js";
 
 // ---- Petits outils de texte -----------------------------------------------------------------------------------------------------------
@@ -303,6 +306,7 @@ export const OUTILS = [
       enfants: I("0 si inconnu."),
       bebes: I("0 si inconnu."),
       services: { type: "array", items: SERVICE, description: "Un service par prestation (un aller-retour fait deux services)." },
+      apporteur: S("Seulement la référence A-… donnée par les consignes quand le contact WhatsApp est un apporteur d'affaires, sinon \"\". Jamais pour le client."),
     }),
   },
   {
@@ -425,6 +429,17 @@ export const OUTILS_UNIFIES = OUTILS.map((o) => {
     : o.input_schema;
   return { ...o, description: o.description + UNIFIE[o.name], input_schema: schema };
 });
+// Conversation liée à un contact apporteur (PR D, revue de la PR 298) : proposer_reponse dit à qui va la réponse. « client » ou vide (par
+// défaut) : le nom de l'apporteur reste bloqué comme tout nom de partenaire ; « apporteur » : la réponse va à l'apporteur, son nom est permis.
+const DESTINATAIRE = {
+  type: "string",
+  enum: ["", "client", "apporteur"],
+  description: "« apporteur » seulement si la réponse va à l'apporteur lui-même, dans cette conversation ; « client » (ou \"\") pour un message qui sera envoyé au client final.",
+};
+function avecDestinataire(liste, apporteur) {
+  if (!apporteur) return liste;
+  return liste.map((o) => (o.name === "proposer_reponse" ? { ...o, description: `${o.description} Ici le contact est un apporteur d'affaires : dis à qui va la réponse (destinataire).`, input_schema: { ...o.input_schema, required: [...o.input_schema.required, "destinataire"], properties: { ...o.input_schema.properties, destinataire: DESTINATAIRE } } } : o));
+}
 // Les outils tels qu'ils partent pour cette personne : la description annonce le partenaire avec « partenaires.lire », les nets, marges et
 // commissions avec « partenaires.nets ». Sans le droit, rien ne change (les résultats n'ont pas ces champs non plus).
 const AJOUTS = {
@@ -445,15 +460,16 @@ const AJOUTS = {
 // (permissionsOutils), les champs ne sortant que pour les lignes de l'entreprise où la personne a le droit.
 // `whatsapp` : la personne lit la boîte WhatsApp dans l'Assistant de Secret ou de Taxi (peutLireWhatsApp) ; les trois outils de lecture
 // s'ajoutent alors à la fin. Sinon ils n'existent pas pour le modèle.
-export function outilsPour(permissions = [], { unifie = false, whatsapp = false } = {}) {
-  const base = unifie ? OUTILS_UNIFIES : OUTILS;
+// `apporteur` : la conversation est liée à un contact apporteur (ctx.apporteur) ; proposer_reponse reçoit alors le champ « destinataire ».
+export function outilsPour(permissions = [], { unifie = false, whatsapp = false, apporteur = false } = {}) {
+  const base = avecDestinataire(unifie ? OUTILS_UNIFIES : OUTILS, apporteur);
   const ctx = { permissions };
   const avecWa = (liste) => (whatsapp === true ? [...liste, ...OUTILS_WHATSAPP_LECTURE] : liste);
   if (!voitPartenaires(ctx)) return avecWa(base);
   return avecWa(base.map((o) => (AJOUTS[o.name] ? { ...o, description: o.description + AJOUTS[o.name].partenaires + (voitNets(ctx) ? AJOUTS[o.name].nets : "") } : o)));
 }
 // Les outils d'un échange, d'après le contexte (droits, mode unifié, boîte WhatsApp). Utilisé par la boucle (boucle.js).
-export const outilsDuContexte = (ctx) => outilsPour(permissionsOutils(ctx), { unifie: estUnifie(ctx), whatsapp: peutLireWhatsApp(ctx) });
+export const outilsDuContexte = (ctx) => outilsPour(permissionsOutils(ctx), { unifie: estUnifie(ctx), whatsapp: peutLireWhatsApp(ctx), apporteur: !!(ctx && ctx.apporteur) });
 export const OUTILS_PROPOSITION = ["proposer_dossier", "proposer_reservation", "proposer_modification", "proposer_reponse", "proposer_temps_trajet", "proposer_import_brochure", ...PROPOSITIONS_AMELIORER, "proposer_course"];
 
 // La confirmation de course dont parle l'agent : le message de la personne qui commence par `debut` (espaces et casse ignorés), sinon le seul
@@ -501,8 +517,8 @@ function normaliser(schema, v, oublie = false) {
   if (schema.type === "boolean") return typeof v === "boolean" ? v : VIDE;
   return VIDE;
 }
-export function normaliserEntree(nom, e, { unifie = false } = {}) {
-  const def = [...(unifie ? OUTILS_UNIFIES : OUTILS), ...OUTILS_WHATSAPP_LECTURE].find((o) => o.name === nom);
+export function normaliserEntree(nom, e, { unifie = false, apporteur = false } = {}) {
+  const def = [...avecDestinataire(unifie ? OUTILS_UNIFIES : OUTILS, apporteur), ...OUTILS_WHATSAPP_LECTURE].find((o) => o.name === nom);
   if (!def || !e || typeof e !== "object" || Array.isArray(e)) return null;
   const r = normaliser(def.input_schema, e);
   return r === VIDE ? null : r;
@@ -1044,7 +1060,12 @@ export async function proposer(nom, e, ctx, memo) {
     // Mode unifié : les entreprises de la demande (deux pour une demande mixte, qui donnera deux dossiers liés).
     const entreprises = estUnifie(ctx) ? ENTREPRISES_UNIFIEES.filter((slug) => services.some((x) => x.entreprise === slug)) : null;
     const avert = avertissementsEntreprise(services);
-    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}) }, ...(avert.length ? { avertissements: avert } : {}) };
+    // Contact WhatsApp de type « apporteur » (apporteur.js, PR D) : la fiche de chaque entreprise, posée d'office même si le modèle oublie le
+    // champ ; une référence qui n'est pas celle du contact est ignorée, avec un avertissement. Hors de ce contexte, rien n'est posé.
+    const entitesCarte = estUnifie(ctx) ? services.map((x) => x.entite_id) : ctx.apporteur && ctx.apporteur.entites && ctx.apporteur.entites[0] ? [ctx.apporteur.entites[0].id] : [];
+    const app = apporteurDeCarte(e.apporteur, ctx.apporteur || null, { entitesCarte });
+    if (app.avertissement) avert.push(app.avertissement);
+    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
   }
   if (nom === "proposer_reservation") {
     const lus = ctx.parRef ? await ctx.parRef("dossiers", e.dossier) : await ctx.charger("dossiers");
@@ -1078,9 +1099,14 @@ export async function proposer(nom, e, ctx, memo) {
   }
   if (nom === "proposer_import_brochure") return proposerImportBrochure(e, ctx);
   if (nom === "proposer_reponse") {
-    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires: memo.prestataires || [], entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: memo.internes || new Set(), ventes: memo.prix || new Set() });
+    // Contact apporteur : le nom de l'apporteur n'est permis que dans une réponse qui lui est adressée (destinataire « apporteur »). Par défaut,
+    // une réponse va au client et tout nom de partenaire, apporteur compris, reste bloqué. Sans ctx.apporteur, rien ne change.
+    const versApporteur = !!ctx.apporteur && e.destinataire === "apporteur";
+    const prestataires = versApporteur && Array.isArray(memo.prestatairesApporteur) ? memo.prestatairesApporteur : memo.prestataires || [];
+    const c = controlerReponse(e.message, { signer: memo.signer, permisPrix: new Set([...(memo.prix || []), ...tapes]), permisHeures: memo.heures || new Set(), prestataires, entreprise: memo.entreprise || "", entreprises: memo.entreprises || [], prenoms: memo.prenoms || [], internes: memo.internes || new Set(), ventes: memo.prix || new Set() });
     if (!c.ok) return { erreur: "message_vide" };
-    return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message }, avertissements: c.avertissements };
+    const pour = ctx.apporteur ? { destinataire: versApporteur ? "apporteur" : "client", ...(versApporteur && ctx.apporteur.nom ? { apporteur_nom: texte(ctx.apporteur.nom, 80) } : {}) } : {};
+    return { genre: "reponse", titre: texte(e.titre, 120), donnees: { langue: e.langue, message: c.message, ...pour }, avertissements: c.avertissements };
   }
   if (nom === "proposer_reglage") return proposerReglage(e, ctx, memo);
   if (nom === "proposer_amelioration") return proposerAmelioration(e, ctx);
@@ -1141,7 +1167,7 @@ export async function executer(nom, entree, ctx, memo) {
   if (!NOMS_OUTILS.includes(nom) && !whatsapp) return { contenu: { erreur: "outil_inconnu" }, erreur: true };
   // Boîte WhatsApp : refusée à l'exécution aussi pour qui ne la lit pas, ou hors de Secret et Taxi (ZTP, Mook, boîte de préparation).
   if (whatsapp && !peutLireWhatsApp(ctx)) return { contenu: { erreur: "outil_non_permis" }, erreur: true };
-  const propre = normaliserEntree(nom, entree, { unifie: estUnifie(ctx) });
+  const propre = normaliserEntree(nom, entree, { unifie: estUnifie(ctx), apporteur: !!ctx.apporteur });
   if (!propre) return { contenu: { erreur: "entree_invalide", conseil: "Reprends l'appel avec des valeurs au bon format (textes, nombres entiers positifs, valeurs des listes fermées)." }, erreur: true };
   entree = propre;
   const ajouter = (r) => {
@@ -1157,7 +1183,9 @@ export async function executer(nom, entree, ctx, memo) {
       const ent = (x) => ("entreprise" in x ? { entreprise: x.entreprise } : {});
       const prix = carte.genre === "dossier" && carte.donnees.services ? carte.donnees.services.map((s) => ({ service: s.texte, prix: s.prix, origine: s.origine_prix, ...ent(s) })) : carte.genre === "reservation" ? [{ service: carte.donnees.service.texte, prix: carte.donnees.service.prix, origine: carte.donnees.service.origine_prix, ...ent(carte.donnees.service) }] : undefined;
       const connu = carte.genre === "brochure" ? { partenaire_au_catalogue: !carte.donnees.nouveau } : {};
-      return { contenu: { carte_affichee: true, etat: "en attente de validation par la personne", ...connu, ...(prix ? { prix } : {}), ...(carte.avertissements && carte.avertissements.length ? { avertissements: carte.avertissements } : {}) }, carte };
+      // Un apporteur noté (apporteur.js) : seulement les entreprises où il l'est, jamais son nom ni sa fiche.
+      const { resume_apporteur: resumeApporteur, ...carteGardee } = carte;
+      return { contenu: { carte_affichee: true, etat: "en attente de validation par la personne", ...connu, ...(prix ? { prix } : {}), ...(resumeApporteur ? { apporteur: resumeApporteur } : {}), ...(carte.avertissements && carte.avertissements.length ? { avertissements: carte.avertissements } : {}) }, carte: carteGardee };
     }
     const f = { chercher_conversations: executerWhatsApp.bind(null, "chercher_conversations"), lire_conversation: executerWhatsApp.bind(null, "lire_conversation"), a_faire_whatsapp: executerWhatsApp.bind(null, "a_faire_whatsapp"), lire_reglages: (e, c) => lireReglages(e, c), chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier }[nom];
     const r = await f(entree, ctx, memo);

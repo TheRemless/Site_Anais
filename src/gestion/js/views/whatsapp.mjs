@@ -20,7 +20,7 @@ import { directCoupe } from "../direct-reprise-calc.mjs";
 import {
   marqueEntite, lecteurWhatsApp, trierConversations, filtrerConversations, chiffresFiltres, filtreDeDepart, FILTRES, propositionsCourantes,
   etatConversation, nomConversation, numeroAffiche, lienWhatsApp, lireAdresse, adresseConversation, fenetre, envoiPossible, avertissements,
-  grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, propositionCourante,
+  grouperParJour, heureBangkok, jourBangkok, etatMedia, LIBELLES_MEDIA, libelleType, ORIGINES, erreurEnvoi, envoiIncertain, codeEnvoi, LECTURE_IMPOSSIBLE, propositionCourante,
   propositionAJour, entrepriseProposee, reponsesDe, preparationAuto, raisonSansReponse, erreurPreparer, libelleErreurProposition,
   apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant,
 } from "../whatsapp-calc.mjs";
@@ -687,8 +687,14 @@ async function envoyer(c, p, zone, bouton, apres) {
       return rafraichir();
     }
     bouton.disabled = false;
-    if (code === "contenu_interne") aRetirer.set(p.id, (r && r.a_retirer) || []);
-    toast(tr(erreurEnvoi(code)), true);
+    // Fiches partenaires illisibles côté serveur (revue PR 298) : un message clair, rien à retirer du texte.
+    // « montant_interne:1500 » ou « nom_prestataire:Jade » : la valeur seule, cherchée dans le texte (une valeur sans code reste telle quelle).
+    if (code === "contenu_interne") {
+      const brut = ((r && r.a_retirer) || []).filter((x) => x !== LECTURE_IMPOSSIBLE);
+      const b = bloquantsReponse(brut);
+      aRetirer.set(p.id, [...b.montants.map(String), ...b.noms, ...brut.filter((x) => !/^[a-z_]+:/.test(String(x)))]);
+    }
+    toast(tr(erreurEnvoi(codeEnvoi(code, r && r.a_retirer))), true);
     if (code === "deja_traitee") return rafraichir();
     return apres();
   }

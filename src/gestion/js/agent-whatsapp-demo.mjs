@@ -146,3 +146,78 @@ export async function repondreQuestionWhatsAppDemo(question, source, id, { maint
   });
   return { evenements: ev };
 }
+
+// ---- Apporteur d'affaires (PR D, 21.11.2026) ---------------------------------------------------------------------------------------
+// « Prépare les dossiers » (ou « Créer le dossier ») sur la conversation de Jade, travel planner : une carte par client, comme la fonction
+// (agent/apporteur.js, apporteurDeCarte). Emma et Paul en snorkelling chez Secret, Jade notée ; Marco en taxi depuis l'aéroport chez Taxi, où
+// la démo n'a pas de fiche pour Jade. La carte porte `apporteur` : { nom, fiches: { [entite_id]: partenaire_id } }, une fiche par entreprise,
+// jamais celle d'une autre. `secret` et `taxi` : les entreprises de l'espace unifié (null hors de ce mode : les deux cartes restent dans
+// `active`, sans entreprise par service). Rend null si le contact n'est pas un apporteur.
+const cleNomDemo = (s) => sansAccents(s).replace(/[^a-z0-9]+/g, " ").trim();
+const neufChiffres = (t) => String(t || "").replace(/\D/g, "").slice(-9);
+const telephonesDemo = (p) => ((p && p.contact && Array.isArray(p.contact.telephones) && p.contact.telephones) || []).map((x) => neufChiffres(typeof x === "string" ? x : x && x.numero)).filter((x) => x.length >= 8);
+// Le prochain jour de la semaine (0 dimanche … 6 samedi) après `jour` (AAAA-MM-JJ), jamais le jour même.
+export function prochainJour(jour, semaine) {
+  const d = new Date(`${jour}T12:00:00Z`);
+  const ecart = ((semaine - d.getUTCDay() + 7) % 7) || 7;
+  d.setUTCDate(d.getUTCDate() + ecart);
+  return d.toISOString().slice(0, 10);
+}
+export function fichesApporteurDemo(conv, entites = [], partenaires = []) {
+  const estFiche = (p) => !!p && p.categorie === "apporteur";
+  const reliee = (partenaires || []).find((p) => p.id === conv.partenaire_id && estFiche(p)) || null;
+  const tel = neufChiffres(conv.telephone);
+  const fiches = {};
+  for (const e of entites.filter(Boolean)) {
+    const f = reliee && reliee.entite_id === e.id ? reliee : (partenaires || []).find((p) => estFiche(p) && p.entite_id === e.id && p.actif !== false && ((reliee && cleNomDemo(p.nom) === cleNomDemo(reliee.nom)) || (tel && telephonesDemo(p).includes(tel))));
+    if (f) fiches[e.id] = f.id;
+  }
+  const premiere = reliee || (partenaires || []).find((p) => Object.values(fiches).includes(p.id));
+  return premiere ? { nom: String(premiere.nom || "").slice(0, 80), fiches } : null;
+}
+export function cartesApporteurDemo({ conv, active, secret = null, taxi = null, partenaires = [], prestations = [], aujourdhui }) {
+  if (!conv || conv.reponses === "jamais" || conv.type_contact !== "apporteur" || !active) return null;
+  const unifie = !!(secret && taxi);
+  const apporteur = fichesApporteurDemo(conv, unifie ? [active, active.id === secret.id ? taxi : secret] : [active], partenaires);
+  const chez = (ent, motif) => (prestations || []).filter((p) => p.entite_id === ent.id && p.actif !== false).find((p) => motif.test(`${p.libelle} ${p.libelle_en || ""}`)) || null;
+  const service = (p, ent, o) => ({
+    texte: o.texte,
+    offre: p ? { genre: "prestation", id: p.id } : null,
+    libelle: p ? p.libelle : o.texte,
+    date: o.date,
+    heure_pickup: "",
+    lieu_pickup: o.lieu_pickup,
+    de: o.de || "",
+    vers: o.vers || "",
+    adultes: o.adultes,
+    enfants: o.enfants || 0,
+    prix: p && p.prix_vente !== null && p.prix_vente !== undefined ? Number(p.prix_vente) * (p.unite === "pp" ? o.adultes + (o.enfants || 0) : p.unite === "ad" ? o.adultes : 1) : null,
+    origine_prix: p && p.prix_vente !== null && p.prix_vente !== undefined ? "catalogue" : "a_fixer",
+    remarque: o.remarque || "",
+    ...(unifie ? { entite_id: ent.id, entreprise: ent.id === secret.id ? "secret" : "taxi" } : {}),
+    avertissements: [],
+  });
+  const entSecret = unifie ? secret : active;
+  const entTaxi = unifie ? taxi : active;
+  const snorkel = chez(entSecret, /koh rok|snorkel/i) || chez(entSecret, /4 islands|island/i);
+  const course = chez(entTaxi, /airport|aéroport/i);
+  const carte = (titre, client, adultes, enfants, s, ent) => ({ genre: "dossier", titre, donnees: { client, adultes, enfants, bebes: 0, services: [s], ...(unifie ? { entreprises: [ent.id === secret.id ? "secret" : "taxi"] } : {}), ...(apporteur ? { apporteur } : {}) }, avertissements: [] });
+  return [
+    carte(
+      "Emma et Paul : snorkelling à Koh Rok",
+      { nom: "Emma", telephone: "+447700900412", hotel: "Long Beach", langue: "en" },
+      2,
+      0,
+      service(snorkel, entSecret, { texte: "Snorkelling day, Koh Rok", date: prochainJour(aujourdhui, 3), lieu_pickup: "Long Beach", adultes: 2, remarque: "Arrivée mardi, jour à confirmer" }),
+      entSecret
+    ),
+    carte(
+      "Marco : taxi de l'aéroport de Krabi à Klong Nin",
+      { nom: "Marco", telephone: "", hotel: "Klong Nin", langue: "en" },
+      2,
+      2,
+      service(course, entTaxi, { texte: "Taxi Krabi Airport → Klong Nin", date: prochainJour(aujourdhui, 5), lieu_pickup: "Krabi Airport", de: "Krabi Airport", vers: "Klong Nin", adultes: 2, enfants: 2, remarque: "Atterrissage à 14:00, enfants de 5 et 8 ans" }),
+      entTaxi
+    ),
+  ];
+}

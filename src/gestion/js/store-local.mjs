@@ -368,6 +368,17 @@ export function creer() {
     if (partageReciproqueDemo(secret, taxi)) setTimeout(() => ecouteurs.forEach((f) => f()), 0);
     return { genre: "dossier", titre: "Séjour de Clara : excursion et transfert", donnees: { client: { nom: "Clara Martin", telephone: "+447700900966", hotel: "Lanta Sand Resort", langue: "en" }, adultes: 2, enfants: 0, bebes: 0, services, entreprises: ["secret", "taxi"] }, avertissements: ["entreprise_a_choisir"] };
   }
+  // Les cartes d'un apporteur (agent-whatsapp-demo.mjs) : l'espace unifié comme carteMixteDemo (la personne travaille dans les deux).
+  async function cartesApporteurDemoIci(entiteId, wc) {
+    const ent = data.entites.find((x) => x.id === entiteId);
+    if (!ent) return null;
+    const autre = data.entites.find((x) => x.id !== entiteId && marqueUnifiee(x) && marqueUnifiee(x) !== marqueUnifiee(ent));
+    const unifie = !!marqueUnifiee(ent) && !!autre && ["partenaires.lire", "dossiers.ecrire"].every((d) => droit(entiteId, d) && droit(autre.id, d));
+    const secret = unifie ? (marqueUnifiee(ent) === "secret" ? ent : autre) : null;
+    const taxi = unifie ? (secret === ent ? autre : ent) : null;
+    const { cartesApporteurDemo } = await import("./agent-whatsapp-demo.mjs");
+    return cartesApporteurDemo({ conv: wc, active: ent, secret, taxi, partenaires: data.partenaires, prestations: data.prestations, aujourdhui: aujourdhui() });
+  }
   // Comme la base (migration 42) : l'administrateur ne voit que les entreprises de son organisation, l'éditeur du logiciel aucune.
   const monOrg = () => utilisateur.organisation_id || null;
   const accessibles = () =>
@@ -668,7 +679,7 @@ export function creer() {
     },
     async whatsappConversation(id) {
       const c = conversationLue(id);
-      return c ? { id: c.id, entite_id: c.entite_id, client_id: c.client_id, dossier_id: c.dossier_id } : null;
+      return c ? { id: c.id, entite_id: c.entite_id, client_id: c.client_id, dossier_id: c.dossier_id, ...(c.type_contact ? { type_contact: c.type_contact } : {}) } : null;
     },
     async whatsappProposition(id) {
       const p = data.whatsapp_propositions.find((x) => x.id === id);
@@ -958,6 +969,8 @@ export function creer() {
       // Une conversation liée à WhatsApp (PR B) : la question rapide reçoit sa réponse tirée des vrais outils sur la démo. « Prépare les
       // dossiers » continue avec l'échange du client, comme « Créer le dossier ».
       const waLie = wc ? (modeWa === "question" ? wc.id : null) : conv.whatsapp_conversation_id || null;
+      // « Créer le dossier » ou « Prépare les dossiers » : la démonstration prépare des dossiers depuis l'échange (apporteur, PR D).
+      let preparerWa = !!wc && modeWa === "creer";
       if (waLie) {
         const sourceLie = await sourceWhatsApp(e);
         const { repondreQuestionWhatsAppDemo } = await import("./agent-whatsapp-demo.mjs");
@@ -980,8 +993,30 @@ export function creer() {
           return { ok: true };
         }
         if (r && r.preparer) {
+          preparerWa = true;
           texteGuide = texteDemo || data.whatsapp_messages.filter((m) => m.conversation_id === waLie && m.sens === "entrant" && !m.supprime_le && m.texte).sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le)).map((m) => m.texte).join("\n") || texte;
         }
+      }
+      // Contact apporteur (PR D, agent/apporteur.js) : une carte par client, chacune dans sa bonne entreprise, l'apporteur noté avec la fiche de
+      // chaque entreprise (ou rien), au lieu de la carte mixte générique.
+      const waApporteur = preparerWa ? wc || conversationLue(conv.whatsapp_conversation_id) : null;
+      const cartesApp = waApporteur ? await cartesApporteurDemoIci(e, waApporteur) : null;
+      if (cartesApp) {
+        const sansFiche = cartesApp.some((c) => c.donnees.apporteur && (c.donnees.services || []).some((x) => x.entite_id && !c.donnees.apporteur.fiches[x.entite_id]));
+        const nom = (cartesApp[0].donnees.apporteur || {}).nom || "Ce contact";
+        const phrase = `${nom} est un apporteur : un dossier par client, chacun à son nom. Emma et Paul en snorkelling, Marco en taxi depuis l'aéroport.${cartesApp[0].donnees.apporteur ? ` ${nom} est notée sur chaque dossier où elle a une fiche.` : ""}${sansFiche ? " Elle n'en a pas chez Taxi : ce dossier se crée sans apporteur." : ""}`;
+        surEvenement({ t: "texte", delta: phrase });
+        message("assistant", [{ type: "text", text: phrase }]);
+        for (const x of cartesApp) {
+          const carte = { id: uid(), conversation_id: conv.id, statut: "proposee", cree_le: maintenant(), decide_le: null, ...x };
+          data.agent_cartes.push(carte);
+          surEvenement({ t: "carte", carte: structuredClone(carte) });
+        }
+        conv.apercu = phrase.slice(0, 200);
+        conv.maj_le = maintenant();
+        sauve();
+        surEvenement({ t: "fin", statut: "ok", cout_usd: 0, modele: "demo" });
+        return { ok: true };
       }
       // Espace unifié (migration 63) : une demande qui mêle une excursion et un transfert donne une seule carte, chaque service avec son
       // entreprise (le troisième, hors catalogue, sans entreprise : la personne choisit), comme la fonction en mode unifié.

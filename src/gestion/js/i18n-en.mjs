@@ -4432,4 +4432,13 @@ export const EN = {
   "Apporteur actuel": "Current referrer",
   "Contact noté : rien envoyé à l'IA": "Contact saved: nothing sent to the AI",
   "Contact noté : l'assistant peut lire": "Contact saved: the assistant can read",
+  // Cartes de l'Assistant pour un apporteur (PR D).
+  "Envoyé par {nom}": "Sent by {nom}",
+  "Apporteur : pas de fiche chez {nom}": "Referrer: no record at {nom}",
+  "Dossier {ref} créé sans apporteur : {message}": "File {ref} created without a referrer: {message}",
+  "La référence donnée par l'assistant ne correspond à aucune fiche apporteur.": "The reference given by the assistant matches no referrer record.",
+  "Réponse à {nom} (apporteur)": "Reply to {nom} (referrer)",
+  "Réponse à l'apporteur": "Reply to the referrer",
+  "Les fiches partenaires n'ont pas pu être relues pour contrôler le texte. Rien n'est parti, réessayez dans un instant.": "Partner records could not be read to check the text. Nothing was sent, try again in a moment.",
+  "Dossier créé sans apporteur : le contact WhatsApp n'est plus noté comme apporteur.": "File created without a referrer: the WhatsApp contact is no longer marked as a referrer.",
 };

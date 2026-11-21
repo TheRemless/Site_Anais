@@ -237,7 +237,7 @@ test("écran : la carte se valide après l'enregistrement seulement, la conversa
   // Validation d'un geste ou « Vérifier avant » (20.11.2026) : toujours par noterReussite, avec l'id du dossier créé ou touché.
   assert.match(v, /apresValidation\(c, \{ dossierId: \(dossier && dossier\.id\) \|\| \(res && res\.dossier_id\) \|\| null/);
   assert.match(v, /apresValidation\(c, \{ enregistre: \{ message: texte \} \}\)/);
-  assert.match(v, /if \(id && conv && !conv\.dossier_id\)/);
+  assert.match(v, /if \(id && conv && !conv\.dossier_id && lierDossierConversation\(c, typeLie\)\)/);
   const d = lire("src/gestion/js/views/demande.mjs");
   assert.match(d, /depuisItineraire && depuisItineraire\.surCree/);
   const f = lire("src/gestion/js/views/dossier.mjs");
