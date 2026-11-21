@@ -49,8 +49,9 @@ test("filtres À trier / Secret / Taxi / Toutes et leurs chiffres", () => {
   assert.deepEqual(W.filtrerConversations(convs, "taxi", marqueDe).map((c) => c.id), ["t1"]);
   assert.equal(W.filtrerConversations(convs, "toutes", marqueDe).length, 5);
   assert.deepEqual(W.chiffresFiltres(convs, props, marqueDe), { a_trier: 2, secret: 1, taxi: 1, toutes: 2 });
-  assert.deepEqual(W.FILTRES.map((f) => f.valeur), ["a_trier", "secret", "taxi", "toutes"]);
-  assert.equal(W.filtreDeDepart(convs), "a_trier", "quelque chose à ranger : on commence par là");
+  // Lot 2 : Toutes d'abord, une conversation à trier se traite comme les autres.
+  assert.deepEqual(W.FILTRES.map((f) => f.valeur), ["toutes", "a_trier", "secret", "taxi"]);
+  assert.equal(W.filtreDeDepart(convs), "toutes", "rien n'oblige à ranger d'abord");
   assert.equal(W.filtreDeDepart([conv("s", { entite_id: "s" })]), "toutes");
 });
 
@@ -224,7 +225,7 @@ test("démo : droits comme la base, marquer lu, ranger, traiter, rien n'est envo
     assert.equal(r.reception_active, false);
     // Mook (écran « Nouveau voucher » seul) ne lit rien.
     // Mook (écran « Nouveau voucher » seul) et l'éditrice (sans réglages) ne lisent rien.
-    for (const motif of [/vouchers et factures/i, /^Assistante démo$/]) {
+    for (const motif of [/vouchers et factures/i, /^Saisie démo$/]) {
       const u = store.utilisateursDemo().find((x) => motif.test(x.nom));
       assert.ok(u, String(motif));
       store.changerUtilisateurDemo(u.id);
@@ -288,7 +289,10 @@ test("whatsapp écran : un montant interne ou un partenaire bloque la copie tant
   assert.equal(libelleAv("nom_prestataire:Lazy Day").vars.valeur, "Lazy Day");
   assert.match(erreurEnv("contenu_interne"), /net, une commission ou un nom de partenaire/);
   const vue = fs.readFileSync(new URL("../src/gestion/js/views/whatsapp.mjs", import.meta.url), "utf8");
-  assert.match(vue, /boutonCopier\.disabled = !zone\.value\.trim\(\) \|\| reste\.length > 0/);
+  assert.match(vue, /const bloque = !zone\.value\.trim\(\) \|\| reste\.length > 0;\n\s+boutonCopier\.disabled = bloque;/);
+  // Lot 2 : le lien « Ouvrir dans WhatsApp » ne part pas avec un texte bloqué.
+  assert.match(vue, /lienWhatsApp\(c\.telephone, bloque \? "" : zone\.value\)/);
+  assert.match(vue, /setAttribute\("aria-disabled", reste\.length > 0 \? "true" : "false"\)/);
   assert.match(vue, /boutonEnvoyer\.disabled = !ok\.ok \|\| reste\.length > 0/);
 });
 
@@ -444,7 +448,7 @@ test("tri : ce que le tri a vu, en clair, seulement s'il a vu le dernier message
   assert.equal(W.reponsesDe(conv("a", { reponses: "jamais" })), "jamais");
   // Réponses sur demande (20.11.2026) : une demande de client triée sans réponse préparée est l'état normal, dit sans ton d'anomalie.
   const demande = conv("a", { tri: { preparer: true, motif: "demande_client", le: "2026-11-20T10:00:05Z" } });
-  assert.equal(W.raisonSansReponse(demande, messages), "Demande de client");
+  assert.equal(W.raisonSansReponse(demande, messages), "Le client pose une question");
   for (const libelle of Object.values(W.MOTIFS_TRI)) assert.ok(!/Pas de réponse préparée/.test(libelle), libelle);
 });
 
@@ -479,13 +483,15 @@ test("préparer une réponse : chaque erreur de whatsapp-preparer a un libellé 
   const vue = source("views/whatsapp.mjs");
   assert.match(vue, /tr\("Préparer une réponse"\)/);
   assert.match(vue, /tr\(erreurPreparer\(r && r\.erreur\)\)/);
-  assert.match(vue, /segment\("auto", auto \? tr\("Automatiques"\) : tr\("Sur demande"\)\), segment\("jamais", tr\("Jamais pour ce contact"\)\)/);
+  // Lot 2 (design n° 7) : le réglage du contact passe dans le menu « … » de l'en-tête, avec un repère visible sur « Jamais ».
+  assert.match(vue, /tr\("Ne jamais préparer de réponse pour ce contact"\)/);
+  assert.match(vue, /reponsesDe\(c\) === "jamais" \? h\("span", \{ class: "wa-jamais" \}/);
   assert.match(vue, /preparationAuto\(reglagesDe\(c\.entite_id \|\| suggeree\.id\)\)/, "le libellé suit le réglage que lit la fonction (entreprise de la conversation ou suggérée)");
   // Plus d'icône d'alerte quand rien n'est préparé : le bouton, et ce que le tri a vu.
   const ligne = vue.slice(vue.indexOf("function ligneSansReponse"), vue.indexOf("function carteProposition"));
   assert.doesNotMatch(ligne, /alerte/);
   assert.match(ligne, /Préparer une réponse/);
-  assert.match(vue, /tr\("Jamais : ami, famille, partenaire, chauffeur"\)/);
+  assert.match(ligne, /class: "principal wa-preparer"/, "lot 2 : le geste principal, bouton plein");
 });
 
 test("démo : réglage Jamais par contact et « Préparer une réponse » qui crée une proposition fictive", async () => {
@@ -616,7 +622,7 @@ test("temps réel : branchement dans l'outil (attente courte, relecture ciblée,
   assert.match(app, /repli = setInterval\(\(\) => document\.visibilityState === "visible" && relireWhatsApp\(\), ms\);/);
   assert.match(app, /window\.addEventListener\("online", reveiller\);/);
   assert.match(app, /window\.addEventListener\("pageshow", \(e\) => e\.persisted && reveiller\(\)\);/);
-  assert.match(source("views/whatsapp.mjs"), /tr\("Direct coupé"\)/);
+  assert.match(source("views/whatsapp.mjs"), /tr\("Mise à jour toutes les 5 s"\)/);
   assert.match(source("etat.mjs"), /export function appliquerWhatsApp\(neuf\)/);
 });
 

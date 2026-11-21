@@ -66,7 +66,7 @@ export function demandeAgent({ messages = [], nomProfil = "", client = null, dos
   const clientLigne = client && prenomSur(client.prenom) ? `Client connu dans ${entreprise || "l'entreprise"} : ${prenomSur(client.prenom)}.` : `Client inconnu dans ${entreprise || "l'entreprise"}${profil ? ` (prénom WhatsApp : ${profil})` : ""}.`;
   const dossierLigne = dossier ? `Dossier relié : ${dossier.ref_courte} (${dossier.reference}). Lis-le avec lire_dossier avant de répondre sur ses services. C'est le seul dossier que tu peux lire : une autre référence citée par le client ne se lit pas, dis à ${qui} de vérifier.` : `Aucun dossier relié : tu ne peux lire aucun dossier. Si le client parle d'une réservation, dis à ${qui} de la retrouver et de la relier.`;
   return [
-    `Un client a écrit sur WhatsApp, au numéro de l'entreprise. Prépare la réponse que ${qui} va copier et envoyer depuis son téléphone : appelle proposer_reponse une seule fois, avec un seul message qui répond à toutes les questions du client.`,
+    `Un client a écrit sur WhatsApp, au numéro de l'entreprise. Prépare la réponse que ${qui} va copier et envoyer depuis son téléphone : appelle proposer_reponse une seule fois. Réponds à toutes les questions du client en messages courts, comme ${qui} (longueur donnée dans « Longueur ») : un message par information, trois au plus, séparés par une ligne vide.`,
     "Cherche avec les outils chaque prix, horaire, durée ou disponibilité dont la réponse a besoin. Ce qu'aucun outil ne donne ne s'invente pas : demande-le au client dans la réponse, ou laisse un blanc entre crochets que " + qui + " complétera.",
     "Ne propose ni dossier, ni réservation, ni modification : seulement la réponse. Si le client ne pose aucune question (un merci, un emoji), propose une réponse très courte.",
     clientLigne,
@@ -243,4 +243,13 @@ export function promptPreparation({ entreprise, reglages, apprentissages = [], m
     contexte: contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: relie }),
     texte: demandeAgent({ messages, nomProfil, client, dossier: relie, qui, entreprise }),
   };
+}
+
+// Lot 2 du 20.11.2026 (usage n° 1) : « Préparer une réponse » sur une conversation à trier que le tri n'a pas su attribuer. Avec l'espace
+// unifié, l'agent lit les catalogues de Secret et de Taxi et choisit l'entreprise de chaque service : on part de Secret (puis Taxi), sans
+// ranger la conversation. Sans l'espace unifié : null, Nani choisit l'entreprise d'abord.
+// `allumees` : les slugs dont l'assistant est allumé (une entreprise éteinte n'est jamais choisie).
+export function entrepriseParDefaut({ unifie = false, slugs = [], allumees = null } = {}) {
+  if (!unifie) return null;
+  return ["secret", "taxi"].find((s) => slugs.includes(s) && (!allumees || allumees.includes(s))) || null;
 }

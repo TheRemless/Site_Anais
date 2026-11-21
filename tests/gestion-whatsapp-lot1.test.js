@@ -78,8 +78,8 @@ test("dev I3 : un média en erreur passagère garde sa source et sera repris, é
 test("dev B2 : une réponse retouchée ne fige plus l'écran, pas de « lu » tant qu'un redessin attend, copie contrôlée", () => {
   const vue = lire("src/gestion/js/views/whatsapp.mjs");
   assert.match(vue, /\{ class: "wa-prop", "aria-label": tr\("Réponse préparée"\), "data-pas-saisie": "" \}/);
-  const copier = vue.slice(vue.indexOf("async function copier"), vue.indexOf("// Marquer traitée ou ignorer"));
-  assert.ok(copier.indexOf("toujoursCourante(c, p)") < copier.indexOf("clipboard.writeText"), "contrôle avant la copie");
+  const copier = vue.slice(vue.indexOf("async function copier("), vue.indexOf("// Marquer traitée ou ignorer"));
+  assert.ok(copier.indexOf("toujoursCourante(c, p)") < copier.indexOf("versPressePapiers("), "contrôle avant la copie (lot 2 : presse-papiers avec repli)");
   assert.match(vue, /copier\(c, p, zone, e\.currentTarget\)/);
   const visibilite = vue.slice(vue.indexOf("function suivreVisibilite"), vue.indexOf("// ---- Écran"));
   assert.ok(visibilite.indexOf("if (etat.redessinEnAttente ||") > 0 && visibilite.indexOf("if (etat.redessinEnAttente ||") < visibilite.indexOf("marquerLue("), "pas de lu tant qu'un redessin attend");

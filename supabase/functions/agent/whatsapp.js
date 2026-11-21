@@ -95,3 +95,11 @@ export function texteDepuisWhatsApp({ mode = "creer", conv, messages = [], qui =
   const coupe = gardees.length < lignes.length ? "(messages plus anciens non repris)\n" : "";
   return `${tete}\n\n<conversation>\n${coupe}${gardees.reverse().join("\n") || "(aucun texte)"}\n</conversation>`;
 }
+
+// Le titre de la conversation de l'Assistant ouverte depuis WhatsApp (lot 2 du 20.11.2026, design n° 4) : le nom du contact, pour que trois
+// clients ne donnent plus trois « Dossier depuis WhatsApp » identiques. Sans nom de profil, le numéro.
+export function titreWhatsApp(conv) {
+  const nom = conv && conv.nom ? neutre(conv.nom).slice(0, 60) : "";
+  if (nom) return nom;
+  return conv && conv.telephone ? `WhatsApp ${String(conv.telephone).slice(0, 20)}` : "WhatsApp";
+}

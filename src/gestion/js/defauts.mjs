@@ -35,7 +35,7 @@ export const PERMISSIONS = [
   { code: "fiduciaire.preparer", groupe: N_("Fiduciaire"), libelle: N_("Préparer et envoyer les factures pour la fiduciaire"), aide: N_("Voir ce qui revient à l'agence sur chaque service (jamais les prix nets), émettre la facture, la télécharger et la marquer envoyée. Secret et Taxi.") },
   { code: "fiduciaire.gerer", groupe: N_("Fiduciaire"), libelle: N_("Corriger les factures pour la fiduciaire : avoirs et revue du calcul"), aide: N_("Émettre un avoir, retirer la mention « envoyée » et revoir le calcul (les nets se voient avec le droit « nets »).") },
   // Droit d'interface, pas un droit sur les données : il réduit l'outil à un écran. Il n'entre donc jamais dans « tous les droits ».
-  { code: "vouchers.seul", groupe: N_("Interface"), libelle: N_("Ne voir que l'écran « Nouveau voucher », en thaï (entreprise en mode taxi)"), aide: N_("Pour l'assistante : un formulaire, l'aperçu du voucher et l'envoi de l'image à la personne responsable. Avec le droit « Préparer et envoyer les factures pour la fiduciaire », un second onglet ouvre ces factures. Ni menu, ni autres écrans."), interface: true },
+  { code: "vouchers.seul", groupe: N_("Interface"), libelle: N_("Ne voir que l'écran « Nouveau voucher », en thaï (entreprise en mode taxi)"), aide: N_("Pour la personne à la saisie des vouchers : un formulaire, l'aperçu du voucher et l'envoi de l'image à la personne responsable. Avec le droit « Préparer et envoyer les factures pour la fiduciaire », un second onglet ouvre ces factures. Ni menu, ni autres écrans."), interface: true },
 ];
 export const TOUTES_PERMISSIONS = PERMISSIONS.filter((p) => !p.interface).map((p) => p.code);
 
@@ -472,10 +472,10 @@ export function donneesDemo(ajd, ajouterJours) {
   const e2 = { id: uid(), created_at: j(-90), slug: "excursions", nom: "Excursions démo", actif: true, ordre: 2 };
   const e3 = { id: uid(), created_at: j(-90), slug: "taxi", nom: "Taxi démo", actif: true, ordre: 3 };
   const admin = { user_id: uid(), email: "admin@demo.local", nom: "Administratrice démo", super_admin: true, actif: true };
-  const assistante = { user_id: uid(), email: "assistante@demo.local", nom: "Assistante démo", super_admin: false, actif: true };
+  const assistante = { user_id: uid(), email: "assistante@demo.local", nom: "Saisie démo", super_admin: false, actif: true };
   const stagiaire = { user_id: uid(), email: "stagiaire@demo.local", nom: "Stagiaire démo", super_admin: false, actif: true };
   const comptable = { user_id: uid(), email: "comptable@demo.local", nom: "Comptable démo", super_admin: false, actif: true };
-  const voucheuse = { user_id: uid(), email: "vouchers@demo.local", nom: "Assistante taxi démo (vouchers et factures)", super_admin: false, actif: true };
+  const voucheuse = { user_id: uid(), email: "vouchers@demo.local", nom: "Saisie taxi démo (vouchers et factures)", super_admin: false, actif: true };
   const roles = [];
   const roleDe = {};
   for (const e of [e1, e2, e3]) {

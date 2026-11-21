@@ -594,8 +594,8 @@ export function vueReglages() {
       "fieldset",
       null,
       h("legend", null, tr("Personne responsable")),
-      h("p", { class: "aide" }, tr("Son prénom apparaît dans les textes de l'outil : « prévenez … », le WhatsApp qui reçoit les vouchers de l'assistante.")),
-      h("div", { class: "grille-form" }, champ(tr("Dans l'équipe"), choix), champ(tr("Prénom affiché"), prenom), ecransThai.length ? champ(tr("Prénom écrit en thaï (facultatif)"), prenomTh, tr("Pour l'écran en thaï de l'assistante. Vide : le prénom tel quel.")) : null)
+      h("p", { class: "aide" }, tr("Son prénom apparaît dans les textes de l'outil : « prévenez … », le WhatsApp qui reçoit les vouchers saisis.")),
+      h("div", { class: "grille-form" }, champ(tr("Dans l'équipe"), choix), champ(tr("Prénom affiché"), prenom), ecransThai.length ? champ(tr("Prénom écrit en thaï (facultatif)"), prenomTh, tr("Pour l'écran de saisie en thaï. Vide : le prénom tel quel.")) : null)
     );
   }
 
@@ -801,7 +801,7 @@ export function vueReglages() {
               const apres = e.target.value;
               e.target.value = avant;
               const ok = await confirmer(
-                tr("Passer « {nom} » de « {avant} » à « {apres} » ? Après l'enregistrement, cela change pour toute l'équipe : les écrans et le menu, les documents créés (devis ou facture directe, vouchers, Booking confirmation), les droits proposés dans les rôles, les messages types et l'écran de l'assistante. Les dossiers et documents existants ne changent pas. À ne faire que pour une entreprise qui change vraiment de métier.", { nom: entiteActive().nom, avant: NOMS[avant], apres: NOMS[apres] }),
+                tr("Passer « {nom} » de « {avant} » à « {apres} » ? Après l'enregistrement, cela change pour toute l'équipe : les écrans et le menu, les documents créés (devis ou facture directe, vouchers, Booking confirmation), les droits proposés dans les rôles, les messages types et l'écran de saisie des vouchers. Les dossiers et documents existants ne changent pas. À ne faire que pour une entreprise qui change vraiment de métier.", { nom: entiteActive().nom, avant: NOMS[avant], apres: NOMS[apres] }),
                 tr("Changer la façon de travailler"),
                 true
               );
@@ -863,7 +863,7 @@ export function vueReglages() {
     // Vouchers (Secret) ou Booking confirmation (Taxi) : un onglet à part, géré dans reglages-vouchers.mjs (lot B du 17.11.2026).
     ...(ztp ? {} : { vouchers: sectionVouchers({ r, taxi, texte, image, marque, choixApercuVoucher }) }),
     // Textes thaïs de l'écran de Mook, le français en regard (section 2 de l'audit). Secret : factures pour la fiduciaire ; Taxi : voucher et factures.
-    ...(ecransThai.length ? { thai: h("div", null, h("p", { class: "aide" }, tr("Les textes que lit l'assistante sur son écran simple. À gauche, ce qu'ils disent en français ; à droite, le texte thaï affiché. Vide : le texte de départ, en gris. Les mots entre accolades, comme {n} ou {nom}, se remplissent seuls : gardez-les tels quels.")), ...ecransThai.map(blocTextesThai)) } : {}),
+    ...(ecransThai.length ? { thai: h("div", null, h("p", { class: "aide" }, tr("Les textes de l'écran de saisie des vouchers. À gauche, ce qu'ils disent en français ; à droite, le texte thaï affiché. Vide : le texte de départ, en gris. Les mots entre accolades, comme {n} ou {nom}, se remplissent seuls : gardez-les tels quels.")), ...ecransThai.map(blocTextesThai)) } : {}),
     // Historique des réglages (migration 38) : chaque enregistrement garde la version remplacée, on peut y revenir (audit n° 39).
     historique: h("div", null, h("section", null, h("h2", null, tr("Historique des réglages")), h("p", { class: "aide" }, tr("Chaque enregistrement garde la version d'avant (les 60 dernières, les 20 plus récentes affichées ici). Revenir à une version la réenregistre telle quelle : la version actuelle entre à son tour dans l'historique, rien n'est perdu.")), blocHistorique)),
     donnees: h(

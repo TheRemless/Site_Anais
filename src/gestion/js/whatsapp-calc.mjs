@@ -41,8 +41,18 @@ export function envoiPossible({ texte = "", fenetre: f = null } = {}) {
 
 // ---- Numéro et lien ---------------------------------------------------------------------------------------------------------------
 export const chiffres = (tel) => String(tel || "").replace(/\D/g, "");
-// Ouvre la conversation du client dans WhatsApp (app de Nani sur téléphone, WhatsApp Web sur ordinateur). Le texte se colle à la main.
-export const lienWhatsApp = (tel) => (chiffres(tel).length >= 7 ? `https://wa.me/${chiffres(tel)}` : null);
+// Ouvre la conversation du client dans WhatsApp (app de Nani sur téléphone, WhatsApp Web sur ordinateur). Avec `texte`, la réponse est
+// déjà écrite dans le champ (wa.me/<numéro>?text=, lot 2 du 20.11.2026) : Nani n'a plus qu'à envoyer. Un texte trop long pour un lien
+// (TEXTE_LIEN_MAX une fois encodé) n'est pas mis : le lien ouvre la conversation et le texte se colle.
+export const TEXTE_LIEN_MAX = 1800;
+export function lienWhatsApp(tel, texte = "") {
+  if (chiffres(tel).length < 7) return null;
+  const t = String(texte || "").trim();
+  const code = t ? encodeURIComponent(t) : "";
+  return `https://wa.me/${chiffres(tel)}${code && code.length <= TEXTE_LIEN_MAX ? `?text=${code}` : ""}`;
+}
+// Une réponse en plusieurs messages courts (lot 2) : l'agent sépare ses messages par une ligne vide. Chaque morceau se copie seul.
+export const morceauxReponse = (texte) => String(texte || "").split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
 
 // Nom affiché : le client relié d'abord (fiche de Gestion), sinon le nom du profil WhatsApp, sinon le numéro.
 export function nomConversation(conv, client = null) {
@@ -80,8 +90,8 @@ export function triDitNon(conv, prop = null) {
 // Ce que le tri a vu dans le dernier message du client, en clair et sans ton d'anomalie : depuis le 20.11.2026, aucune réponse n'est
 // préparée sans un clic de Nani (sauf réglage contraire), l'absence de réponse est donc l'état normal. null : pas de tri à jour.
 export const MOTIFS_TRI = {
-  demande_client: N_("Demande de client"),
-  suivi_reservation: N_("Suivi d'une réservation"),
+  demande_client: N_("Le client pose une question"),
+  suivi_reservation: N_("Question sur sa réservation"),
   remerciement: N_("Un remerciement"),
   personnel: N_("Message personnel"),
   partenaire: N_("Un partenaire"),
@@ -95,10 +105,10 @@ export const MOTIFS_TRI = {
 };
 // Pourquoi l'agent n'a pas préparé de réponse (whatsapp_propositions.erreur), en clair.
 export const ERREURS_PROPOSITION = {
-  a_trier: N_("Conversation à trier : rangez-la dans Secret ou Taxi, puis touchez Préparer une réponse."),
+  a_trier: N_("L'assistant ne sait pas si c'est pour Secret ou Taxi : touchez l'entreprise en haut, puis Préparer une réponse."),
   agent_eteint: N_("L'assistant est éteint pour cette entreprise (Réglages)."),
   interrompue: N_("La préparation a été interrompue."),
-  pas_de_reponse: N_("L'agent n'a pas proposé de réponse."),
+  pas_de_reponse: N_("L'assistant n'a pas proposé de réponse."),
   credit_epuise: N_("Le crédit de l'assistant est épuisé."),
 };
 export const libelleErreurProposition = (code) => ERREURS_PROPOSITION[code] || (String(code || "").startsWith("erreur") ? N_("Erreur de l'assistant.") : null);
@@ -123,11 +133,12 @@ export function badgeWhatsApp(conversations = [], propositions = []) {
 }
 
 // ---- Liste ------------------------------------------------------------------------------------------------------------------------
+// Toutes d'abord (lot 2, design n° 14) : on n'attend plus de ranger une conversation pour agir. Les quatre tiennent en 390 px.
 export const FILTRES = [
+  { valeur: "toutes", libelle: N_("Toutes") },
   { valeur: "a_trier", libelle: N_("À trier") },
   { valeur: "secret", libelle: N_("Secret") },
   { valeur: "taxi", libelle: N_("Taxi") },
-  { valeur: "toutes", libelle: N_("Toutes") },
 ];
 // La plus récente en haut ; sans message (conversation neuve) en bas, par date de création.
 export function trierConversations(conversations = []) {
@@ -151,8 +162,8 @@ export function chiffresFiltres(conversations = [], propositions = [], marqueDe 
     toutes: compte(conversations),
   };
 }
-// Filtre de départ : « À trier » s'il y a quelque chose à ranger, sinon toutes.
-export const filtreDeDepart = (conversations = []) => (conversations.some((c) => !c.entite_id) ? "a_trier" : "toutes");
+// Filtre de départ : toutes (lot 2 : une conversation à trier se traite comme les autres, rien n'oblige à la ranger d'abord).
+export const filtreDeDepart = () => "toutes";
 
 // Ligne d'état sous le nom dans la liste.
 export function etatConversation(conv, prop) {
@@ -161,7 +172,7 @@ export function etatConversation(conv, prop) {
   if (prop && prop.statut === "envoi") return { cle: "envoi", libelle: N_("Envoi en cours") };
   if (prop && prop.statut === "echec") return { cle: "echec", libelle: N_("Pas de réponse préparée") };
   // Le tri a écarté le dernier message (personnel, partenaire, remerciement, contact réglé sur « Jamais ») : rien à répondre ici.
-  if (conv && conv.dernier_sens === "entrant" && triDitNon(conv, prop) && !(prop && ["en_cours", "envoi"].includes(prop.statut))) return { cle: "sans", libelle: N_("Pas de réponse à préparer") };
+  if (conv && conv.dernier_sens === "entrant" && triDitNon(conv, prop) && !(prop && ["en_cours", "envoi"].includes(prop.statut))) return { cle: "sans", libelle: N_("Pas besoin de répondre") };
   if (conv && conv.dernier_sens === "sortant") return { cle: "repondu", libelle: N_("Répondu") };
   if (conv && conv.dernier_sens === "entrant") return { cle: "attend", libelle: N_("Le client attend une réponse") };
   return { cle: "", libelle: "" };
@@ -307,4 +318,62 @@ export function etatCompte(code) {
   if (/DISCONNECT|SUSPEND|RESTRICT/.test(c)) return { cle: "deconnecte", libelle: N_("Compte déconnecté") };
   if (/CONNECT|ONBOARD|ACTIVE|VERIFIED|APPROVED/.test(c)) return { cle: "connecte", libelle: N_("Compte connecté") };
   return { cle: "autre", libelle: N_("État reçu de Telnyx ({code})"), vars: { code: c } };
+}
+
+// ---- Aperçu de la liste (migration 65, lot 2 du 20.11.2026) ---------------------------------------------------------------------------
+// Ce que la base tient à jour (whatsapp_apercu) : le début du dernier message, son type, et depuis quand le client attend. Même calcul que
+// le déclencheur, pour la démonstration et les tests.
+export const APERCU_MAX = 140;
+export function apercuDepuisMessages(messages = []) {
+  const tries = [...messages].filter((m) => m && m.type !== "reaction").sort((a, b) => Date.parse(a.envoye_le) - Date.parse(b.envoye_le));
+  const dernier = tries[tries.length - 1] || null;
+  let reponse = -Infinity;
+  // Un envoi depuis Gestion en échec (migration 64) n'est pas une réponse.
+  for (const m of tries) if (m.sens === "sortant" && m.statut_envoi !== "echec") reponse = Math.max(reponse, Date.parse(m.envoye_le));
+  const attente = tries.find((m) => m.sens === "entrant" && !m.supprime_le && Date.parse(m.envoye_le) > reponse) || null;
+  // Une photo sans texte mais avec une légende : la légende.
+  const legende = dernier && Array.isArray(dernier.medias) ? (dernier.medias.find((x) => x && x.legende) || {}).legende || "" : "";
+  const texte = dernier && !dernier.supprime_le ? String(dernier.texte || legende || "").trim().replace(/\s+/g, " ").slice(0, APERCU_MAX) : "";
+  return { dernier_texte: texte || null, dernier_type: dernier ? (dernier.supprime_le ? "supprime" : dernier.type || "text") : null, attend_depuis: attente ? attente.envoye_le : null };
+}
+// La deuxième ligne d'une conversation dans la liste, comme dans WhatsApp : le début du dernier message, « Vous : » quand c'est Nani.
+// Un média sans texte se dit par son type. `texte` vide : rien à montrer (base sans la migration 65).
+export function apercuConversation(conv) {
+  if (!conv) return { texte: "", deNani: false, type: null };
+  const deNani = conv.dernier_sens === "sortant";
+  if (conv.dernier_type === "supprime") return { texte: "", deNani, type: "supprime" };
+  if (conv.dernier_texte) return { texte: String(conv.dernier_texte), deNani, type: null };
+  return { texte: "", deNani, type: conv.dernier_type || null };
+}
+export const LIBELLE_SUPPRIME = N_("Message supprimé");
+// Depuis combien de temps le client attend une réponse : son premier message resté sans réponse (attend_depuis, migration 65 ; à défaut
+// son dernier message). null quand Nani a répondu ou que le tri a vu un message sans réponse à faire (merci, emoji). `urgent` au-delà de
+// ATTENTE_URGENTE_MIN minutes.
+export const ATTENTE_URGENTE_MIN = 30;
+export function attenteClient(conv, prop = null, maintenant = Date.now()) {
+  if (!conv || conv.dernier_sens !== "entrant" || triDitNon(conv, prop)) return null;
+  const depuis = Date.parse(conv.attend_depuis || conv.dernier_message_le || "");
+  if (!Number.isFinite(depuis)) return null;
+  const minutes = Math.max(0, Math.floor((maintenant - depuis) / 60000));
+  return { minutes, texte: dureeCourte(minutes), urgent: minutes >= ATTENTE_URGENTE_MIN };
+}
+// « 4 min », « 1 h 20 », « 3 h », « 2 j » : court, pour la liste.
+export function dureeCourte(minutes) {
+  const m = Math.max(0, Math.floor(Number(minutes) || 0));
+  if (m < 60) return `${m} min`;
+  if (m < 24 * 60) return m % 60 && m < 10 * 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}` : `${Math.floor(m / 60)} h`;
+  return `${Math.floor(m / (24 * 60))} j`;
+}
+
+// ---- Assistant depuis une conversation à trier (lot 2) ---------------------------------------------------------------------------------
+// Lot 2 (usage n° 1) : une conversation à trier ne bloque plus. L'Assistant s'ouvre sans la ranger, dans l'entreprise suggérée par le tri,
+// ou dans l'entreprise ouverte quand l'Assistant marche dans Secret et Taxi (l'espace unifié choisit l'entreprise de chaque service par le
+// catalogue). La conversation se range seule quand le dossier est validé (relierWhatsApp, agent.mjs). La question n'est posée que si rien
+// ne permet de choisir.
+export function entreprisePourAssistant({ conv, prop = null, choix = [], activeId = null }) {
+  if (conv && conv.entite_id) return choix.find((e) => e.id === conv.entite_id) || null;
+  const suggeree = entrepriseProposee(prop, choix) || (conv && conv.tri && conv.tri.entreprise ? choix.find((e) => marqueEntite(e) === conv.tri.entreprise) || null : null);
+  if (suggeree) return suggeree;
+  if (choix.length > 1) return choix.find((e) => e.id === activeId) || choix[0];
+  return choix.length === 1 ? choix[0] : null;
 }

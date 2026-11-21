@@ -19,7 +19,7 @@ import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
 import { blocTon, pairesCorrections, pairesReponses } from "./ton.js";
-import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, parametresTri, langueSure, numerosPartenaires, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
+import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR, PLAFOND_WHATSAPP_MOIS_USD, aRepondre, avertissementsSurs, decisionDepuisReponse, entrepriseParDefaut, parametresTri, langueSure, numerosPartenaires, iaPermise, outilsWhatsapp, preparationAuto, promptPreparation, triGarde, triSansAppel } from "./proposer.js";
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
 
@@ -87,9 +87,17 @@ export async function preparerALaDemande(db: SupabaseClient, conversationId: str
   if (!cle) return { erreur: "non_configure" };
   if (!(await budgetOuvert(db, lu.conv))) return { erreur: "limite" };
   const suggestion = lu.conv.tri && (lu.conv.tri.entreprise === "secret" || lu.conv.tri.entreprise === "taxi") ? lu.conv.tri.entreprise : null;
-  // Une conversation à trier sans entreprise suggérée : Nani la range d'abord (on ne prend pas un catalogue au hasard).
+  // Une conversation à trier sans entreprise suggérée : avec l'espace unifié (AGENT_UNIFIE), l'agent cherche dans les deux catalogues et
+  // choisit l'entreprise de chaque service, on part donc de Secret sans rien ranger (lot 2 du 20.11.2026 : ne plus bloquer sur « à trier »).
+  // Sans l'espace unifié, Nani choisit d'abord (on ne prend pas un catalogue au hasard).
   const { data: ents } = await db.from("entites").select("id, slug").eq("organisation_id", lu.conv.organisation_id).in("slug", ["secret", "taxi"]);
-  const ent = (ents || []).find((e) => e.id === lu.conv.entite_id) || (ents || []).find((e) => e.slug === suggestion);
+  let defaut: string | null = null;
+  if (!lu.conv.entite_id && !suggestion && unifieAllume(Deno.env.get("AGENT_UNIFIE") || "")) {
+    const { data: regls } = await db.from("reglages").select("entite_id, valeur").in("entite_id", (ents || []).map((e) => e.id));
+    const allumees = (ents || []).filter((e) => (regls || []).some((r) => r.entite_id === e.id && r.valeur && r.valeur.agent_ia === true)).map((e) => e.slug);
+    defaut = entrepriseParDefaut({ unifie: true, slugs: (ents || []).map((e) => e.slug), allumees });
+  }
+  const ent = (ents || []).find((e) => e.id === lu.conv.entite_id) || (ents || []).find((e) => e.slug === (suggestion || defaut));
   if (!ent) return { erreur: "a_trier" };
   const { data: regl } = await db.from("reglages").select("valeur").eq("entite_id", ent.id).maybeSingle();
   if (!regl || !regl.valeur || regl.valeur.agent_ia !== true) return { erreur: "agent_eteint" };
@@ -97,7 +105,7 @@ export async function preparerALaDemande(db: SupabaseClient, conversationId: str
   const anthropic = new Anthropic({ apiKey: cle, timeout: 40_000, maxRetries: 0 });
   const appels: { usage: Record<string, unknown>; modele: string }[] = [];
   const j = journalEnCours(db, appels);
-  const tache = preparer(db, lu.conv, lu.messages, dernier.id, t0, { anthropic, appels, j, suggestion }).catch((err) => {
+  const tache = preparer(db, lu.conv, lu.messages, dernier.id, t0, { anthropic, appels, j, suggestion, defaut }).catch((err) => {
     console.error("whatsapp : préparation à la demande", String(err?.message || err).slice(0, 200));
     return false;
   });
@@ -189,11 +197,11 @@ async function preparer(
   messages: Record<string, any>[],
   messageId: string,
   t0: number,
-  { anthropic, appels, j, suggestion }: { anthropic: Anthropic; appels: { usage: Record<string, unknown>; modele: string }[]; j: ReturnType<typeof journalEnCours>; suggestion: string | null },
+  { anthropic, appels, j, suggestion, defaut = null }: { anthropic: Anthropic; appels: { usage: Record<string, unknown>; modele: string }[]; j: ReturnType<typeof journalEnCours>; suggestion: string | null; defaut?: string | null },
 ) {
   const { data: entites } = await db.from("entites").select("id, slug, nom").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
   const parSlug = new Map((entites || []).map((e) => [e.slug, e]));
-  const ent = (entites || []).find((e) => e.id === conv.entite_id) || (suggestion ? parSlug.get(suggestion) : null) || null;
+  const ent = (entites || []).find((e) => e.id === conv.entite_id) || (suggestion ? parSlug.get(suggestion) : null) || (defaut ? parSlug.get(defaut) : null) || null;
   const proposee = conv.entite_id ? null : suggestion;
   // À trier sans entreprise suggérée : pas de réponse (on ne prend pas le catalogue d'une entreprise au hasard), mais une trace visible.
   if (!ent) return echecVisible(db, conv.id, messageId, null, "a_trier");

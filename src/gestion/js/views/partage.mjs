@@ -43,7 +43,7 @@ export function zoneEnvoi({ fichiers }) {
   const message = h("div", { class: "partage-etat", role: "alert", hidden: true });
   const technique = h("p", { class: "partage-technique" });
   const journal = h("p", { class: "partage-technique", hidden: true });
-  const details = h("details", { class: "partage-details" }, h("summary", null, tr("Détails techniques")), technique, journal);
+  const details = h("details", { class: "partage-details" }, h("summary", null, tr("Si l'envoi ne marche pas")), technique, journal);
   const majTechnique = () => (technique.textContent = environnement(fichiers()));
   majTechnique();
   return {
