@@ -8,6 +8,7 @@ import { tr, N_, pluriel, localeActive } from "../i18n.mjs";
 import { formatMontant } from "../calc.mjs";
 import { agentActif } from "../agent-calc.mjs";
 import { donneesAFaire, aFaireEcran, detailAFaire, GENRES_A_FAIRE, QUESTION_A_FAIRE_BOITE, CLE_QUESTION_AGENT } from "../whatsapp-relie-calc.mjs";
+import { typeContact } from "../apporteurs-calc.mjs";
 
 const jourCourt = (iso) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString(localeActive(), { day: "numeric", month: "short", timeZone: "UTC" }) : "");
 
@@ -18,7 +19,8 @@ export function aFaireDeLaBoite(entites = []) {
     resumeDe: (d) => (d.entite_id === etat.entiteId ? resumeDossier(d.id) : { total: d.total, recu: d.recu, devise: d.devise }) || {},
     finances: (id) => permissionsDe(id).includes("finances.voir"),
   });
-  return aFaireEcran(donnees);
+  // Contacts typés (migration 68) : un apporteur qui attend une réponse est « nouveau client envoyé par un apporteur ».
+  return aFaireEcran(donnees, { typeContact });
 }
 
 // L'Assistant où poser la question : l'entreprise ouverte si l'Assistant y marche, sinon la première de la boîte où il marche.

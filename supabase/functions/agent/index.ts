@@ -436,15 +436,17 @@ Deno.serve(async (req) => {
         return new Set([...vusPartenaires].filter(([, v]) => v).map(([k]) => k));
       };
       const COL_CONV = "id, created_at, organisation_id, telephone, nom, entite_id, client_id, dossier_id, dernier_message_le, dernier_sens, non_lus, reponses, tri, paiement_signale, promesse_le";
-      // La migration 65 (aperçu, attente) : sans elle, l'attente se lit au sens du dernier message.
-      let avec65 = true;
+      // Colonnes des migrations 68 (type du contact) et 65 (aperçu, attente) : sans elles, l'outil lit ce qui existe (le type reste vide,
+      // l'attente se lit au sens du dernier message).
+      const NIVEAUX_CONV = [`${COL_CONV}, dernier_texte, dernier_type, attend_depuis, type_contact`, `${COL_CONV}, dernier_texte, dernier_type, attend_depuis`];
+      let niveauConv = 0;
       const conversations = async (filtre: (q: any) => any) => {
         const q = (cols: string) => filtre(sb.from("whatsapp_conversations").select(cols).eq("organisation_id", orgWa)).order("dernier_message_le", { ascending: false, nullsFirst: false });
-        if (avec65) {
-          const r = await q(`${COL_CONV}, dernier_texte, dernier_type, attend_depuis`);
+        while (niveauConv < NIVEAUX_CONV.length) {
+          const r = await q(NIVEAUX_CONV[niveauConv]);
           if (!r.error) return (r.data || []) as Record<string, any>[];
           if (r.error.code !== "42703") throw new Error(`whatsapp_conversations : ${r.error.message}`);
-          avec65 = false;
+          niveauConv++;
         }
         return lire(q(COL_CONV), "whatsapp_conversations");
       };
@@ -476,6 +478,8 @@ Deno.serve(async (req) => {
         permis: true,
         slug: ent.data.slug,
         qui: "Nani",
+        // Contacts typés (migration 68) : « nouveau client envoyé par un apporteur » dans a_faire_whatsapp.
+        typeContact: (c: Record<string, any>) => (c && typeof c.type_contact === "string" ? c.type_contact : null),
         // Les conversations candidates : la base filtre ce qui est simple (client, dossier, non-lus, période), l'outil refait tout le tri.
         candidats: async (e: Record<string, any>) => {
           const texte = String(e.texte || "").trim().slice(0, 100);
