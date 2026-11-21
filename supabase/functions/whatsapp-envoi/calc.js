@@ -33,9 +33,12 @@ export function lireReponseTelnyx(statut, corps) {
 // ---- Voucher en image dans la conversation du client (21.11.2026, demande de Jérémy) ------------------------------------------------
 // Doc lue le 21.11.2026 : developers.telnyx.com/docs/messaging/whatsapp/send-messages (image par lien, légende de 1024 octets),
 // developers.telnyx.com/api-reference/whatsapp-phone-numbers (coexistence_state, conversation_window), Meta (PNG, JPEG ou WebP, 5 Mo,
-// cache de 10 minutes d'un média envoyé par lien). Tests : tests/gestion-whatsapp-voucher.test.js.
+// 4096 px par côté, cache de 10 minutes d'un média envoyé par lien). Tests : tests/gestion-whatsapp-voucher.test.js.
 export const LEGENDE_MAX_OCTETS = 1024;
 export const IMAGE_MAX_OCTETS = 5 * 1024 * 1024;
+// Corps d'une demande en multipart : l'image et quelques champs. Lu en flux, jamais plus (comme lireCorps de la fonction « whatsapp »).
+export const CORPS_MAX_OCTETS = 6 * 1024 * 1024;
+export const IMAGE_MAX_PX = 4096;
 // Bucket privé de la migration 73 : l'image n'y reste que le temps que Telnyx la télécharge.
 export const BUCKET_SORTANT = "whatsapp-sortant";
 // URL signée de 15 minutes : Telnyx ne dit pas quand il télécharge, Meta le fait d'ordinaire dans la minute.
@@ -44,48 +47,123 @@ export const URL_SIGNEE_S = 15 * 60;
 export const SORTANT_DUREE_MS = 3600_000;
 // L'état de coexistence du numéro est relu au plus toutes les 3 minutes par instance.
 export const COEXISTENCE_CACHE_MS = 3 * 60_000;
-// Le même voucher vers la même conversation ne repart pas pendant 2 minutes (double tap, nouvel essai après un délai).
-export const VERROU_VOUCHER_MS = 2 * 60_000;
 const MIMES_IMAGE = ["image/png", "image/jpeg", "image/webp"];
 
-// Rend { conversation_id, reservation_id, legende } ou { erreur }. La légende peut être vide (l'image part seule).
+// Rend { conversation_id, reservation_id, essai_id, legende, numero_confirme } ou { erreur }. La légende peut être vide (l'image part seule).
+// essai_id : identifiant créé par l'écran à l'ouverture de la confirmation (clé du verrou). numero_confirme : le numéro de la conversation,
+// exigé quand il diffère de celui de la fiche client.
 export function lireEnvoiVoucher(d) {
   if (!d || typeof d !== "object") return { erreur: "demande_invalide" };
   if (typeof d.conversation_id !== "string" || !UUID.test(d.conversation_id)) return { erreur: "conversation_invalide" };
   if (typeof d.reservation_id !== "string" || !UUID.test(d.reservation_id)) return { erreur: "reservation_invalide" };
+  if (typeof d.essai_id !== "string" || !UUID.test(d.essai_id)) return { erreur: "demande_invalide" };
   const legende = typeof d.legende === "string" ? d.legende.replace(/\r\n?/g, "\n").trim() : "";
   if (new TextEncoder().encode(legende).length > LEGENDE_MAX_OCTETS) return { erreur: "legende_trop_longue" };
-  return { conversation_id: d.conversation_id, reservation_id: d.reservation_id, legende };
+  const numero_confirme = typeof d.numero_confirme === "string" && /^\+[1-9][0-9]{6,15}$/.test(d.numero_confirme) ? d.numero_confirme : null;
+  return { conversation_id: d.conversation_id, reservation_id: d.reservation_id, essai_id: d.essai_id.toLowerCase(), legende, numero_confirme };
 }
 
-// Le type réel d'une image, lu dans ses premiers octets (le type annoncé par le navigateur ne compte pas). null si ce n'en est pas une.
-export function typeImage(o) {
-  if (!o || !o.length) return null;
-  if (o.length > 8 && o[0] === 0x89 && o[1] === 0x50 && o[2] === 0x4e && o[3] === 0x47 && o[4] === 0x0d && o[5] === 0x0a && o[6] === 0x1a && o[7] === 0x0a) return "image/png";
-  if (o.length > 3 && o[0] === 0xff && o[1] === 0xd8 && o[2] === 0xff) return "image/jpeg";
-  if (o.length > 12 && String.fromCharCode(...o.slice(0, 4)) === "RIFF" && String.fromCharCode(...o.slice(8, 12)) === "WEBP") return "image/webp";
+// ---- Image : type et dimensions lus dans l'en-tête, jamais ce qu'annonce le navigateur ------------------------------------------------
+const u32be = (o, i) => ((o[i] << 24) >>> 0) + (o[i + 1] << 16) + (o[i + 2] << 8) + o[i + 3];
+const u16be = (o, i) => (o[i] << 8) + o[i + 1];
+const u16le = (o, i) => o[i] + (o[i + 1] << 8);
+const u24le = (o, i) => o[i] + (o[i + 1] << 8) + (o[i + 2] << 16);
+const ascii = (o, i, n) => String.fromCharCode(...o.slice(i, i + n));
+
+// PNG : signature, IHDR en premier, des blocs bien formés jusqu'à IEND, et rien après IEND (aucun fichier caché à la suite de l'image).
+function lirePng(o) {
+  if (o.length < 33 || ascii(o, 12, 4) !== "IHDR") return null;
+  const largeur = u32be(o, 16);
+  const hauteur = u32be(o, 20);
+  let i = 8;
+  while (i + 12 <= o.length) {
+    const longueur = u32be(o, i);
+    const type = ascii(o, i + 4, 4);
+    const suite = i + 12 + longueur;
+    if (suite > o.length || !/^[A-Za-z]{4}$/.test(type)) return null;
+    if (type === "IEND") return suite === o.length ? { mime: "image/png", largeur, hauteur } : { mime: "image/png", largeur, hauteur, apresFin: true };
+    i = suite;
+  }
   return null;
 }
-// L'image reçue : PNG, JPEG ou WebP, 5 Mo au plus. Rend { ok, mime } ou { erreur }.
+// JPEG : les segments jusqu'au premier SOF (SOF0 à SOF15, sauf DHT C4, JPG C8 et DAC CC), qui porte la hauteur puis la largeur.
+function lireJpeg(o) {
+  let i = 2;
+  while (i + 4 <= o.length) {
+    if (o[i] !== 0xff) return null;
+    const m = o[i + 1];
+    if (m === 0xff) {
+      i++;
+      continue;
+    }
+    if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) {
+      i += 2;
+      continue;
+    }
+    if (m === 0xd9 || m === 0xda) return null;
+    const longueur = u16be(o, i + 2);
+    if (longueur < 2) return null;
+    if (m >= 0xc0 && m <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(m)) return i + 9 <= o.length ? { mime: "image/jpeg", hauteur: u16be(o, i + 5), largeur: u16be(o, i + 7) } : null;
+    i += 2 + longueur;
+  }
+  return null;
+}
+// WebP : le premier bloc dit le format. VP8 (avec perte), VP8L (sans perte), VP8X (étendu, taille du canevas).
+function lireWebp(o) {
+  if (o.length < 30 || ascii(o, 0, 4) !== "RIFF" || ascii(o, 8, 4) !== "WEBP") return null;
+  const bloc = ascii(o, 12, 4);
+  if (bloc === "VP8 ") {
+    if (o[23] !== 0x9d || o[24] !== 0x01 || o[25] !== 0x2a) return null;
+    return { mime: "image/webp", largeur: u16le(o, 26) & 0x3fff, hauteur: u16le(o, 28) & 0x3fff };
+  }
+  if (bloc === "VP8L") {
+    if (o[20] !== 0x2f) return null;
+    const b = o[21] + (o[22] << 8) + (o[23] << 16) + ((o[24] << 24) >>> 0);
+    return { mime: "image/webp", largeur: (b & 0x3fff) + 1, hauteur: ((b >>> 14) & 0x3fff) + 1 };
+  }
+  if (bloc === "VP8X") return { mime: "image/webp", largeur: u24le(o, 24) + 1, hauteur: u24le(o, 27) + 1 };
+  return null;
+}
+// Le type réel d'une image, lu dans ses premiers octets. null si ce n'en est pas une.
+export function typeImage(o) {
+  if (!o || !o.length) return null;
+  if (o.length > 8 && o[0] === 0x89 && ascii(o, 1, 3) === "PNG" && o[4] === 0x0d && o[5] === 0x0a && o[6] === 0x1a && o[7] === 0x0a) return "image/png";
+  if (o.length > 3 && o[0] === 0xff && o[1] === 0xd8 && o[2] === 0xff) return "image/jpeg";
+  if (o.length > 12 && ascii(o, 0, 4) === "RIFF" && ascii(o, 8, 4) === "WEBP") return "image/webp";
+  return null;
+}
+// L'image reçue : PNG, JPEG ou WebP, 5 Mo au plus, 4096 px au plus par côté, en-tête lisible. Rend { ok, mime, largeur, hauteur } ou { erreur }.
 export function imageAcceptee(octets) {
   if (!octets || !octets.length) return { erreur: "image_invalide" };
   if (octets.length > IMAGE_MAX_OCTETS) return { erreur: "image_trop_grosse" };
   const mime = typeImage(octets);
-  return mime && MIMES_IMAGE.includes(mime) ? { ok: true, mime } : { erreur: "image_invalide" };
+  if (!mime || !MIMES_IMAGE.includes(mime)) return { erreur: "image_invalide" };
+  const lu = mime === "image/png" ? lirePng(octets) : mime === "image/jpeg" ? lireJpeg(octets) : lireWebp(octets);
+  if (!lu || lu.apresFin || !(lu.largeur > 0) || !(lu.hauteur > 0)) return { erreur: "image_invalide" };
+  if (lu.largeur > IMAGE_MAX_PX || lu.hauteur > IMAGE_MAX_PX) return { erreur: "image_trop_grande" };
+  return { ok: true, mime, largeur: lu.largeur, hauteur: lu.hauteur };
 }
 
+// ---- Fichier temporaire -------------------------------------------------------------------------------------------------------------
 // Chemin dans le bucket privé : <organisation>/<horodatage>-<id>.<ext>, à plat (la purge liste un seul dossier). Rien du client dedans.
+const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 export function cheminSortant(organisation, id, mime = "image/png", maintenant = Date.now()) {
-  const ext = mime === "image/jpeg" ? "jpg" : mime === "image/webp" ? "webp" : "png";
-  return `${String(organisation).replace(/[^0-9a-f-]/gi, "")}/${maintenant}-${String(id).replace(/[^0-9a-z-]/gi, "")}.${ext}`;
+  return `${String(organisation).replace(/[^0-9a-f-]/gi, "")}/${Math.trunc(maintenant)}-${String(id).replace(/[^0-9a-f-]/gi, "")}.${EXT[mime] || "png"}`;
 }
+const UUID_TXT = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+// Seul un chemin de cette forme, dans le dossier de cette organisation, est jamais effacé (jamais « .. », jamais un autre dossier).
+export const cheminSortantValide = (chemin, organisation) =>
+  typeof chemin === "string" && UUID.test(String(organisation)) && new RegExp(`^${String(organisation).toLowerCase()}/\\d+-${UUID_TXT}\\.(png|jpg|webp)$`).test(chemin);
 
+// ---- Le bon contact -----------------------------------------------------------------------------------------------------------------
 // Seule la conversation du client du dossier peut recevoir son voucher. Jamais celle d'un prestataire ni un contact personnel.
+//   * rangée dans l'entreprise de la réservation, ou à trier (revue de sécurité de la PR 304 : la légende est contrôlée dans cette entreprise) ;
 //   * reliée au dossier (dossier_id), ou au client du dossier (client_id) ; un client relié qui n'est pas celui du dossier ferme ;
 //   * type « client », ou pas encore typée sans être un contact personnel (reponses = 'jamais' sans type, migration 68).
 // Même règle à l'écran : src/gestion/js/whatsapp-voucher-calc.mjs (un test compare les deux).
-export function contactVoucher(conv, dossier) {
+export function contactVoucher(conv, dossier, entiteVoucher = null) {
   if (!conv || !dossier || !dossier.id) return { ok: false, erreur: "conversation_autre_dossier" };
+  if (conv.entite_id && conv.entite_id !== (entiteVoucher || dossier.entite_id)) return { ok: false, erreur: "conversation_autre_entreprise" };
   const memeClient = !!conv.client_id && !!dossier.client_id && conv.client_id === dossier.client_id;
   const memeDossier = !!conv.dossier_id && conv.dossier_id === dossier.id && (!conv.client_id || memeClient);
   if (!memeClient && !memeDossier) return { ok: false, erreur: "conversation_autre_dossier" };
@@ -94,7 +172,23 @@ export function contactVoucher(conv, dossier) {
   if (type !== null && type !== "client") return { ok: false, erreur: "contact_non_client" };
   return { ok: true };
 }
+// Le téléphone de la fiche client en E.164 (« +… » ou « 00… »), sinon null (numéro local, sans indicatif : on ne peut pas comparer).
+export function e164(tel) {
+  const t = String(tel || "").trim();
+  const chiffres = t.replace(/\D/g, "");
+  if (/^\+/.test(t)) return chiffres ? `+${chiffres}` : null;
+  if (/^00/.test(t)) return chiffres.length > 2 ? `+${chiffres.slice(2)}` : null;
+  return null;
+}
+// La conversation est-elle sur un autre numéro que celui de la fiche client ? Sans téléphone sur la fiche, rien à comparer. Un numéro de
+// fiche sans indicatif compte comme différent : l'écran montre alors le numéro complet et la personne le confirme.
+export function numeroDifferent(telConversation, telFiche) {
+  if (!String(telFiche || "").trim()) return false;
+  const e = e164(telFiche);
+  return !e || e !== telConversation;
+}
 
+// ---- Telnyx -------------------------------------------------------------------------------------------------------------------------
 // Corps de POST https://api.telnyx.com/v2/messages/whatsapp pour une image par lien (seule voie documentée de bout en bout).
 export const corpsTelnyxImage = ({ de, vers, lien, legende, webhook }) => ({
   from: de,
@@ -110,24 +204,28 @@ export function lireCoexistence(statut, corps) {
   const etat = statut >= 200 && statut < 300 && corps && corps.data && typeof corps.data.coexistence_state === "string" ? corps.data.coexistence_state.slice(0, 40) : null;
   return { etat, active: etat === "active" };
 }
-// GET /v2/whatsapp/phone_numbers/{numero}/conversation_window : ouverte seulement si Telnyx le dit clairement. En cas de doute, fermée.
+// GET /v2/whatsapp/phone_numbers/{numero}/conversation_window : ouverte seulement si Telnyx le dit clairement, avec une fin dans le futur.
+// En cas de doute (fin absente ou illisible), fermée.
 export function lireFenetreTelnyx(statut, corps, maintenant = Date.now()) {
   if (!(statut >= 200 && statut < 300) || !corps || !corps.data || corps.data.window_active !== true) return false;
-  const fin = corps.data.window_expires_at ? Date.parse(corps.data.window_expires_at) : NaN;
-  return Number.isNaN(fin) ? !corps.data.window_expires_at : fin > maintenant;
+  const fin = Date.parse(corps.data.window_expires_at || "");
+  return Number.isFinite(fin) && fin > maintenant;
 }
 export const adresseCoexistence = (numero) => `https://api.telnyx.com/v2/whatsapp/phone_numbers/${encodeURIComponent(numero)}`;
 export const adresseFenetre = (numero, client) => `${adresseCoexistence(numero)}/conversation_window?destination_number=${encodeURIComponent(client)}`;
 
+// ---- Fil et purge -------------------------------------------------------------------------------------------------------------------
 // Le média rangé dans le fil : une image envoyée depuis Gestion, sans fichier gardé. `chemin_sortant` : le fichier temporaire, vidé quand
 // il est effacé (jamais « chemin » : rien ne doit le chercher dans le stockage « whatsapp »). reservation_id sert au verrou.
 export const mediaVoucher = ({ nom, taille, mime, chemin, reservation_id }) => ({ type: "image", mime, taille, nom: String(nom || "").slice(0, 120), statut: "voucher", chemin_sortant: chemin, reservation_id });
-// Les fichiers temporaires d'une liste de médias, et la liste une fois les fichiers effacés.
-export const cheminsSortants = (medias = []) => (Array.isArray(medias) ? medias : []).map((m) => m && m.chemin_sortant).filter((c) => typeof c === "string" && c);
+// Les fichiers temporaires d'une liste de médias (seulement ceux de la forme attendue, dans le dossier de l'organisation), et la liste une
+// fois les fichiers effacés.
+export const cheminsSortants = (medias = [], organisation) =>
+  (Array.isArray(medias) ? medias : []).map((m) => m && m.chemin_sortant).filter((c) => cheminSortantValide(c, organisation));
 export const sansFichierSortant = (medias = []) => (Array.isArray(medias) ? medias : []).map((m) => (m && m.chemin_sortant ? { ...m, chemin_sortant: null } : m));
 // Un statut qui prouve que Meta a pris l'image (remis, lu) ou qu'elle ne partira plus (échec) : le fichier peut être effacé.
 export const statutLibereFichier = (statut) => ["remis", "lu", "echec"].includes(statut);
-// La purge : les fichiers de plus d'une heure (liste du stockage, { name, created_at }) d'un dossier d'organisation.
+// La purge : les fichiers de plus d'une heure (liste du stockage, { name, created_at }) du dossier de l'organisation, de la forme attendue.
 export function sortantsAPurger(objets = [], dossier, maintenant = Date.now(), duree = SORTANT_DUREE_MS) {
   return (objets || [])
     .filter((o) => o && typeof o.name === "string" && o.name && o.id !== null)
@@ -135,8 +233,11 @@ export function sortantsAPurger(objets = [], dossier, maintenant = Date.now(), d
       const t = Date.parse(o.created_at || "") || Number(String(o.name).split("-")[0]) || NaN;
       return Number.isFinite(t) && maintenant - t > duree;
     })
-    .map((o) => `${dossier}/${o.name}`);
+    .map((o) => `${dossier}/${o.name}`)
+    .filter((c) => cheminSortantValide(c, dossier));
 }
-// Le verrou : un voucher de cette réservation parti de Gestion dans cette conversation depuis moins de 2 minutes.
-export const voucherRecent = (messages = [], reservationId) => (messages || []).some((m) => Array.isArray(m.medias) && m.medias.some((x) => x && x.reservation_id === reservationId));
-export const cleVerrouVoucher = (reservationId, maintenant = Date.now()) => `gestion-voucher:${reservationId}:${Math.floor(maintenant / VERROU_VOUCHER_MS)}`;
+// La clé du verrou : la réservation et l'identifiant de la confirmation ouverte par la personne (un rejeu de la même demande ne range rien).
+export const cleVerrouVoucher = (reservationId, essaiId) => `gestion-voucher:${reservationId}:${essaiId}`;
+// Refus de whatsapp_ranger_voucher (migration 73) : a_verifier (un envoi précédent du voucher au résultat inconnu, levé seulement par
+// « C'est parti » ou « Pas parti »), recent (parti depuis moins de 2 minutes), deja (même confirmation rejouée).
+export const REFUS_VERROU = ["a_verifier", "recent", "deja"];

@@ -10,8 +10,8 @@ import { tr } from "../i18n.mjs";
 import { aujourdhui } from "../calc.mjs";
 import { bloquantsReponse } from "../agent-calc.mjs";
 import { envoiANoter } from "../envoi-voucher-calc.mjs";
-import { lecteurWhatsApp, nomConversation, fenetre, LECTURE_IMPOSSIBLE } from "../whatsapp-calc.mjs";
-import { conversationDuVoucher, numeroMasque, legendeValide, octets, LEGENDE_MAX_OCTETS, erreurVoucher, voucherIncertain } from "../whatsapp-voucher-calc.mjs";
+import { lecteurWhatsApp, nomConversation, fenetre, numeroAffiche, LECTURE_IMPOSSIBLE } from "../whatsapp-calc.mjs";
+import { conversationDuVoucher, numeroMasque, numeroDifferent, legendeValide, octets, LEGENDE_MAX_OCTETS, erreurVoucher, voucherIncertain } from "../whatsapp-voucher-calc.mjs";
 import { noterEnvoi } from "./envois-vouchers.mjs";
 import { vouchersDuDossier } from "./voucher.mjs";
 
@@ -47,11 +47,24 @@ export function boutonVoucherWhatsApp({ x, conversation, fichier, legende, noter
 
 let adresseImage = null;
 
+// Identifiant de la confirmation ouverte : la clé du verrou en base (gestion-voucher:<réservation>:<id>). Un double clic ou un nouvel essai
+// de la même confirmation ne range jamais deux messages.
+const nouvelEssai = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
+
 // La confirmation, puis l'envoi. `noter` : ce que fait l'écran appelant une fois parti (sinon noterEnvoiClient).
 export function confirmerVoucherWhatsApp(x, { conversation: c, fichier, legende = "", noter = null, avantNavigation = null }) {
   const r = x.reservation;
   const client = clientDe(c);
   const nom = nomConversation(c, client);
+  const essai = nouvelEssai();
+  // Le numéro de la conversation n'est pas celui de la fiche client du dossier : numéro complet, avertissement, case à cocher.
+  const dossier = etat.db.dossiers.find((d) => d.id === r.dossier_id) || {};
+  const fiche = etat.db.clients.find((y) => y.id === dossier.client_id) || null;
+  const autreNumero = numeroDifferent(c.telephone, fiche && fiche.telephone);
+  const confirmeNumero = autreNumero ? h("input", { type: "checkbox", id: "wa-voucher-numero" }) : null;
   if (adresseImage) URL.revokeObjectURL(adresseImage);
   adresseImage = URL.createObjectURL(fichier);
 
@@ -67,9 +80,10 @@ export function confirmerVoucherWhatsApp(x, { conversation: c, fichier, legende 
     const n = octets(zone.value.trim());
     compte.textContent = tr("Longueur : {n} sur {max}", { n, max: LEGENDE_MAX_OCTETS });
     compte.classList.toggle("erreur-form", n > LEGENDE_MAX_OCTETS);
-    envoyer.disabled = bloque || !fenetreOk || !legendeValide(zone.value);
+    envoyer.disabled = bloque || !fenetreOk || !legendeValide(zone.value) || (autreNumero && !confirmeNumero.checked);
   };
   zone.addEventListener("input", maj);
+  if (confirmeNumero) confirmeNumero.addEventListener("change", maj);
   maj();
 
   const dire = (texte) => {
@@ -96,7 +110,7 @@ export function confirmerVoucherWhatsApp(x, { conversation: c, fichier, legende 
     if (envoyer.disabled) return;
     envoyer.disabled = true;
     etatEnvoi.hidden = true;
-    const res = await etat.store.whatsappEnvoyerVoucher({ conversation_id: c.id, reservation_id: r.id, legende: zone.value.trim(), fichier });
+    const res = await etat.store.whatsappEnvoyerVoucher({ conversation_id: c.id, reservation_id: r.id, essai_id: essai, legende: zone.value.trim(), numero_confirme: autreNumero && confirmeNumero.checked ? c.telephone : "", fichier });
     if (res && res.ok) {
       bloque = true;
       await (noter ? noter() : noterEnvoiClient(r));
@@ -111,13 +125,13 @@ export function confirmerVoucherWhatsApp(x, { conversation: c, fichier, legende 
       // Le message est déjà dans le fil (« envoi ») : l'écran WhatsApp propose « C'est parti » ou « Pas parti » après 30 secondes.
       return dire(tr(erreurVoucher(code)));
     }
-    if (["fenetre_fermee", "coexistence_inactive", "contact_non_client", "contact_personnel", "conversation_autre_dossier", "reservation_annulee", "droit_manquant", "deja_traitee", "image_trop_grosse"].includes(code)) bloque = true;
+    if (["fenetre_fermee", "coexistence_inactive", "contact_non_client", "contact_personnel", "conversation_autre_dossier", "conversation_autre_entreprise", "reservation_annulee", "droit_manquant", "deja_traitee", "image_trop_grosse", "image_trop_grande", "image_invalide"].includes(code)) bloque = true;
     if (code === "contenu_interne") {
       const brut = ((res && res.a_retirer) || []).filter((v) => v !== LECTURE_IMPOSSIBLE);
       const b = bloquantsReponse(brut);
       const aRetirer = [...b.montants.map(String), ...b.noms];
       dire(brut.length < ((res && res.a_retirer) || []).length ? tr(erreurVoucher("partenaires_illisibles")) : aRetirer.length ? tr("À retirer du message : {liste}. Rien n'est parti.", { liste: aRetirer.join(", ") }) : tr(erreurVoucher(code)));
-    } else dire(tr(erreurVoucher(code)));
+    } else dire(tr(erreurVoucher(code, { aVerifier: !!(res && res.a_verifier) })));
     maj();
   }
   envoyer.addEventListener("click", partir);
@@ -127,7 +141,15 @@ export function confirmerVoucherWhatsApp(x, { conversation: c, fichier, legende 
     h(
       "div",
       { class: "modal-corps envoi-voucher wa-voucher" },
-      h("p", { class: "wa-voucher-a" }, h("strong", null, nom), " · ", h("span", { class: "wa-voucher-numero" }, numeroMasque(c.telephone))),
+      h("p", { class: "wa-voucher-a" }, h("strong", null, nom), " · ", h("span", { class: "wa-voucher-numero" }, autreNumero ? numeroAffiche(c.telephone) : numeroMasque(c.telephone))),
+      autreNumero
+        ? h(
+            "div",
+            { class: "bandeau-info wa-voucher-autre-numero", role: "status" },
+            h("p", null, tr("Ce numéro n'est pas celui de la fiche client ({fiche}). Vérifiez que c'est bien la conversation du client.", { fiche: (fiche && fiche.telephone) || "" })),
+            h("label", { for: "wa-voucher-numero" }, confirmeNumero, " ", tr("C'est bien le numéro du client"))
+          )
+        : null,
       h("div", { class: "envoi-apercu" }, h("img", { src: adresseImage, alt: tr("Image du voucher") })),
       h("div", { class: "champ" }, h("label", { for: "wa-voucher-legende" }, tr("Message sous l'image")), zone, compte),
       fen,

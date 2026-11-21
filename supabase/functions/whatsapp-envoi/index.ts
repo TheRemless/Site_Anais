@@ -10,7 +10,7 @@
 // client par voucher.js, avec les mêmes garde-fous (session, whatsapp_peut_ecrire, fenêtre, contenuInterne, verrou, résultat incertain)
 // et en plus la coexistence et la fenêtre relues chez Telnyx. Même fonction que le texte : mêmes secrets, mêmes origines, un seul déploiement.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { lireEnvoi, corpsTelnyx, lireReponseTelnyx, lireEnvoiVoucher, imageAcceptee, IMAGE_MAX_OCTETS } from "./calc.js";
+import { lireEnvoi, corpsTelnyx, lireReponseTelnyx, lireEnvoiVoucher, imageAcceptee, IMAGE_MAX_OCTETS, CORPS_MAX_OCTETS } from "./calc.js";
 import { envoyerVoucherImage } from "./voucher.js";
 import { fenetreOuverte } from "../whatsapp/proposer.js";
 import { controlerReponse } from "../agent/outils.js";
@@ -143,32 +143,70 @@ Deno.serve(async (req) => {
   return json({ ok: true, message_id: messageId, complet: complete });
 });
 
-// Voucher en image : lecture de la demande, puis voucher.js. Rend [corps, statut].
+// Voucher en image : session d'abord, puis le corps lu en flux (6 Mo au plus), puis voucher.js. Rend [corps, statut].
+// Revue de sécurité de la PR 304 : aucune lecture du corps sans session valide ; toute exception avant le rangement rend « base » en JSON
+// (voucher.js prend lui-même celles d'après le rangement).
 async function voucher(req: Request, autorisation: string): Promise<[unknown, number]> {
-  // L'image fait 5 Mo au plus ; les champs texte, quelques Ko.
-  if (Number(req.headers.get("content-length") || 0) > IMAGE_MAX_OCTETS + 64 * 1024) return [{ erreur: "image_trop_grosse" }, 413];
-  const form = await req.formData().catch(() => null);
-  if (!form) return [{ erreur: "demande_invalide" }, 400];
-  const champ = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
-  const demande = lireEnvoiVoucher({ conversation_id: champ("conversation_id"), reservation_id: champ("reservation_id"), legende: champ("legende") });
-  if ("erreur" in demande) return [{ erreur: demande.erreur }, 400];
-  const fichier = form.get("fichier");
-  if (!(fichier instanceof File)) return [{ erreur: "image_invalide" }, 400];
-  if (fichier.size > IMAGE_MAX_OCTETS) return [{ erreur: "image_trop_grosse" }, 413];
-  const octets = new Uint8Array(await fichier.arrayBuffer());
-  const image = imageAcceptee(octets);
-  if (!("ok" in image)) return [{ erreur: image.erreur }, 400];
+  try {
+    if (Number(req.headers.get("content-length") || 0) > CORPS_MAX_OCTETS) return [{ erreur: "image_trop_grosse" }, 413];
+    const URL_SB = Deno.env.get("SUPABASE_URL")!;
+    const sb = createClient(URL_SB, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: autorisation } }, auth: { persistSession: false } });
+    const { data: qui } = await sb.auth.getUser();
+    if (!qui?.user) {
+      await req.body?.cancel();
+      return [{ erreur: "non_connecte" }, 401];
+    }
+    const brut = await lireBorne(req, CORPS_MAX_OCTETS);
+    if (!brut) return [{ erreur: "image_trop_grosse" }, 413];
+    const form = await new Response(brut, { headers: { "content-type": req.headers.get("content-type") || "" } }).formData().catch(() => null);
+    if (!form) return [{ erreur: "demande_invalide" }, 400];
+    const champ = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
+    const demande = lireEnvoiVoucher({ conversation_id: champ("conversation_id"), reservation_id: champ("reservation_id"), essai_id: champ("essai_id"), legende: champ("legende"), numero_confirme: champ("numero_confirme") });
+    if ("erreur" in demande) return [{ erreur: demande.erreur }, 400];
+    const fichier = form.get("fichier");
+    if (!(fichier instanceof File)) return [{ erreur: "image_invalide" }, 400];
+    if (fichier.size > IMAGE_MAX_OCTETS) return [{ erreur: "image_trop_grosse" }, 413];
+    const octets = new Uint8Array(await fichier.arrayBuffer());
+    const image = imageAcceptee(octets);
+    if (!("ok" in image)) return [{ erreur: image.erreur }, 400];
 
-  const URL_SB = Deno.env.get("SUPABASE_URL")!;
-  const sb = createClient(URL_SB, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: autorisation } }, auth: { persistSession: false } });
-  const admin = createClient(URL_SB, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  const { data: qui } = await sb.auth.getUser();
-  if (!qui?.user) return [{ erreur: "non_connecte" }, 401];
-  const r = await envoyerVoucherImage(
-    { sb, admin, fetch, cle: Deno.env.get("TELNYX_API_KEY") || "", webhook: `${URL_SB}/functions/v1/whatsapp`, contenuInterne, uuid: () => crypto.randomUUID(), maintenant: () => Date.now(), journal: console.error },
-    { ...demande, octets, mime: image.mime, nom: String(fichier.name || "voucher.png").replace(/[^\p{L}\p{N} ._-]/gu, "").slice(0, 120) }
-  );
-  return [r.corps, r.status];
+    const admin = createClient(URL_SB, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const r = await envoyerVoucherImage(
+      {
+        sb, admin, fetch, cle: Deno.env.get("TELNYX_API_KEY") || "", webhook: `${URL_SB}/functions/v1/whatsapp`, contenuInterne,
+        // L'organisation servie par la fonction « whatsapp » (même secret, même défaut) : sa purge ne parcourt que ce dossier du bucket.
+        organisation: Deno.env.get("WHATSAPP_ORGANISATION") || "00000000-0000-0000-0000-00000000a000",
+        uuid: () => crypto.randomUUID(), maintenant: () => Date.now(), journal: console.error,
+      },
+      { ...demande, octets, mime: image.mime, nom: String(fichier.name || "voucher.png").replace(/[^\p{L}\p{N} ._-]/gu, "").slice(0, 120) }
+    );
+    return [r.corps, r.status];
+  } catch (err) {
+    console.error("whatsapp-envoi : voucher, erreur avant le rangement, rien n'est parti", String((err as Error)?.message || err).slice(0, 200));
+    return [{ erreur: "base" }, 500];
+  }
+}
+
+// Lit un corps sans jamais garder plus de `max` octets en mémoire (un Content-Length peut manquer ou mentir). null si c'est plus gros.
+async function lireBorne(req: Request, max: number) {
+  const lecteur = req.body?.getReader();
+  if (!lecteur) return new Uint8Array();
+  const morceaux: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await lecteur.read();
+    if (done) break;
+    total += value.length;
+    if (total > max) {
+      await lecteur.cancel();
+      return null;
+    }
+    morceaux.push(value);
+  }
+  const tout = new Uint8Array(total);
+  let i = 0;
+  for (const m of morceaux) (tout.set(m, i), (i += m.length));
+  return tout;
 }
 
 // Montants égaux à un net (et à aucun prix de vente) et noms de partenaires présents dans le texte. Le contact est un apporteur : ses propres
@@ -178,8 +216,11 @@ async function voucher(req: Request, autorisation: string): Promise<[unknown, nu
 // deno-lint-ignore no-explicit-any
 async function contenuInterne(admin: any, conv: { id?: string; organisation_id: string; entite_id: string | null; telephone?: string; reponses?: string; type_contact?: string | null; partenaire_id?: string | null }, texte: string) {
   let ids: string[] = conv.entite_id ? [conv.entite_id] : [];
+  // Conversation à trier : le texte est contrôlé dans Secret et Taxi ensemble. Sans cette liste, rien n'est contrôlable : on ferme
+  // (revue de sécurité de la PR 304).
   if (!ids.length) {
-    const { data } = await admin.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
+    const { data, error } = await admin.from("entites").select("id").eq("organisation_id", conv.organisation_id).in("slug", ["secret", "taxi"]);
+    if (error) return ["nom_prestataire:lecture_impossible"];
     ids = (data || []).map((e: { id: string }) => e.id);
   }
   if (!ids.length) return [];

@@ -1,7 +1,8 @@
 // Vérifie la migration 73 (voucher envoyé en image depuis Gestion) sur un Postgres en mémoire : schema.sql puis toutes les migrations.
 // Le bucket « whatsapp-sortant » est privé, limité à 5 Mo, sans aucune politique : ni Nani, ni Mook, ni anon n'y lisent, n'y écrivent ni
 // n'y suppriment depuis l'outil ; une politique ajoutée par erreur est retirée au prochain passage ; la migration se rejoue ; retour en arrière.
-// Et la base tient le verrou du voucher : la même clé (evenement_id) ne range qu'un message, retiré sur un refus sûr ou par « Pas parti ».
+// Une politique de storage.objects sans bucket_id arrête la migration. Et la base tient le verrou du voucher (whatsapp_ranger_voucher, revue
+// de sécurité de la PR 304) : course entre deux demandes, envoi incertain qui bloque sans limite de durée, « C'est parti » et « Pas parti ».
 //   GESTION_SQL=<repo>/docs/gestion/ node verif-whatsapp-voucher.mjs
 import { PGlite } from "@electric-sql/pglite";
 import fs from "node:fs";
@@ -92,24 +93,81 @@ ok((await politiques()).length === 0, "la migration se rejoue : la politique ajo
 ok((await essaie(u.mook, "select name from storage.objects where bucket_id = 'whatsapp-sortant'")).rows.length === 0, "… et Mook ne lit plus rien");
 ok(!!(await un("select 1 x from pg_policies where schemaname = 'storage' and policyname = 'lire les médias WhatsApp'")), "les politiques des autres buckets restent (médias reçus)");
 
-// ---- Le verrou du voucher tenu par la base -------------------------------------------------------------------------------------------
+// ---- Garde-fou : une politique sans bucket_id vaudrait pour ce bucket ------------------------------------------------------------
+await db.exec("create policy \"tout lire par erreur\" on storage.objects for select to authenticated using (true)");
+let arret = null;
+try { await db.exec(lire("migration-73-whatsapp-voucher.sql")); } catch (e) { arret = e.message; }
+ok(!!arret && /tout lire par erreur/.test(arret) && /sans bucket_id/.test(arret), "une politique sans bucket_id arrête la migration et elle la nomme");
+await db.exec("rollback").catch(() => {});
+await db.exec("drop policy \"tout lire par erreur\" on storage.objects");
+await db.exec(lire("migration-73-whatsapp-voucher.sql"));
+ok(!!(await un("select 1 x from pg_proc where proname = 'whatsapp_ranger_voucher'")), "sans elle, la migration passe de nouveau");
+
+// ---- Le verrou du voucher tenu par la base (whatsapp_ranger_voucher) ---------------------------------------------------------------
 const tel = "+447700900311";
 const entrant = await un("select whatsapp_ranger($1, $2, null, $3::jsonb) r", [ORG, tel, JSON.stringify({ evenement_id: "e1", telnyx_id: "tx-1", sens: "entrant", origine: "client", type: "text", texte: "Hi Nani", medias: [], envoye_le: new Date(Date.now() - 600000).toISOString() })]);
 const conv = entrant.r.conversation_id;
 const resa = "11111111-1111-4111-8111-111111111111";
-const cle = `gestion-voucher:${resa}:${Math.floor(Date.now() / 120000)}`;
-const voucher = (texte = "Your voucher") => un("select whatsapp_ranger($1, $2, null, $3::jsonb) r", [ORG, tel, JSON.stringify({ evenement_id: cle, sens: "sortant", origine: "gestion", type: "image", texte, medias: [{ type: "image", mime: "image/png", taille: 1000, nom: "Voucher.png", statut: "voucher", chemin_sortant: `${ORG}/1-a.png`, reservation_id: resa }], envoye_le: new Date().toISOString(), statut_envoi: "envoi" })]);
-const v1 = (await voucher()).r;
-const v2 = (await voucher()).r;
-ok(v1.nouveau === true && v2.nouveau === false && v1.message_id === v2.message_id, "deux demandes du même voucher : un seul message rangé (clé unique)");
-const m = await un("select type, origine, statut_envoi, texte, medias from whatsapp_messages where id = $1", [v1.message_id]);
+const autreResa = "22222222-1111-4111-8111-111111111111";
+const essai = (n) => `0000000${n}-0000-4000-8000-000000000000`;
+const message = (reservation = resa, texte = "Your voucher") => ({ texte, medias: [{ type: "image", mime: "image/png", taille: 1000, nom: "Voucher.png", statut: "voucher", chemin_sortant: `${ORG}/1-a.png`, reservation_id: reservation }] });
+const verrou = async (n, reservation = resa, m = message(reservation)) =>
+  (await un("select whatsapp_ranger_voucher($1, $2, $3, $4::jsonb) r", [conv, reservation, `gestion-voucher:${reservation}:${essai(n)}`, JSON.stringify(m)])).r;
+
+// Course entre deux demandes : la fonction prend la conversation « for update » avant tout contrôle. PGlite n'a qu'une connexion, les deux
+// demandes passent donc l'une après l'autre, comme Postgres les ordonne sous ce verrou : la seconde voit le message de la première.
+const v1 = await verrou(1);
+ok(v1.nouveau === true && !!v1.message_id, "première demande : rangée");
+const v2 = await verrou(2);
+ok(v2.refus === "a_verifier" && !v2.message_id, "course : la seconde demande (autre confirmation) voit l'envoi en cours et s'arrête");
+ok((await verrou(1)).refus === "deja", "la même confirmation rejouée : rien de rangé");
+ok((await un("select count(*)::int n from whatsapp_messages where conversation_id = $1 and type = 'image'", [conv])).n === 1, "un seul message dans le fil");
+const m = await un("select type, origine, statut_envoi, texte, medias, evenement_id from whatsapp_messages where id = $1", [v1.message_id]);
 ok(m.type === "image" && m.origine === "gestion" && m.statut_envoi === "envoi" && m.texte === "Your voucher", "rangé « envoi », type image, origine gestion, légende en texte");
+ok(m.evenement_id === `gestion-voucher:${resa}:${essai(1)}`, "clé : gestion-voucher:<réservation>:<id de la confirmation>");
 ok(m.medias[0].statut === "voucher" && !m.medias[0].chemin, "le média ne cite jamais le stockage « whatsapp » (pas de chemin)");
-ok((await un("select whatsapp_retirer_envoi($1) x", [v1.message_id])).x === true, "refus sûr de Telnyx : le message est retiré");
-const v3 = (await voucher()).r;
-ok(v3.nouveau === true, "après un refus sûr, le voucher peut repartir");
+const v3 = await verrou(3, autreResa);
+ok(v3.nouveau === true, "un autre voucher du dossier part, lui");
+await un("select whatsapp_retirer_envoi($1) x", [v3.message_id]);
+
+// Sans limite de durée : passé en échec « sans_confirmation » par la reprise, et vieux de trois jours, il bloque toujours.
+await db.query("update whatsapp_messages set statut_envoi = 'echec', erreur_envoi = 'sans_confirmation', envoye_le = now() - interval '3 days' where id = $1", [v1.message_id]);
+ok((await verrou(2)).refus === "a_verifier", "envoi incertain de trois jours : toujours bloqué");
+await db.query("update whatsapp_messages set erreur_envoi = 'telnyx 131026' where id = $1", [v1.message_id]);
+ok((await verrou(2)).nouveau === true, "un échec annoncé par WhatsApp n'est pas un doute : le voucher peut repartir");
+await db.query("delete from whatsapp_messages where conversation_id = $1 and type = 'image'", [conv]);
+
+// « Pas parti » lève le verrou ; « C'est parti » aussi, puis 2 minutes de calme.
+const a = await verrou(4);
+ok((await verrou(5)).refus === "a_verifier", "envoi en cours : bloqué");
 let r = await essaie(u.nani, "select whatsapp_confirmer_envoi($1, false) x", [conv]);
-ok(r.ok && r.rows[0].x.messages === 1, "« Pas parti » sur un voucher au résultat inconnu : retiré par Nani");
+ok(r.ok && r.rows[0].x.messages === 1, "« Pas parti » : le message sort du fil");
+const b2 = await verrou(5);
+ok(b2.nouveau === true, "… et le voucher peut repartir");
+r = await essaie(u.nani, "select whatsapp_confirmer_envoi($1, true) x", [conv]);
+ok(r.ok && r.rows[0].x.messages === 1, "« C'est parti »");
+ok((await verrou(6)).refus === "recent", "parti il y a moins de 2 minutes : bloqué");
+await db.query("update whatsapp_messages set envoye_le = now() - interval '3 minutes' where id = $1", [b2.message_id]);
+ok((await verrou(6)).nouveau === true, "après 2 minutes, il peut repartir");
+ok(!!a.message_id, "(témoin)");
+
+// Entrées refusées.
+let e = null;
+try { await un("select whatsapp_ranger_voucher($1, $2, $3, $4::jsonb) r", [conv, resa, `gestion-voucher:${resa}:pas-un-uuid`, JSON.stringify(message())]); } catch (x) { e = x.message; }
+ok(/cle_invalide/.test(e || ""), "clé mal formée : refusée");
+e = null;
+try { await un("select whatsapp_ranger_voucher($1, $2, $3, $4::jsonb) r", [conv, resa, `gestion-voucher:${autreResa}:${essai(7)}`, JSON.stringify(message())]); } catch (x) { e = x.message; }
+ok(/cle_invalide/.test(e || ""), "clé d'une autre réservation : refusée");
+e = null;
+try { await un("select whatsapp_ranger_voucher($1, $2, $3, $4::jsonb) r", [conv, resa, `gestion-voucher:${resa}:${essai(7)}`, JSON.stringify(message(autreResa))]); } catch (x) { e = x.message; }
+ok(/medias_invalides/.test(e || ""), "un média d'une autre réservation : refusé");
+ok((await un("select whatsapp_ranger_voucher($1, $2, $3, $4::jsonb) r", ["99999999-1111-4111-8111-111111111111", resa, `gestion-voucher:${resa}:${essai(8)}`, JSON.stringify(message())])).r.refus === "conversation", "conversation inconnue : rien");
+
+// Droits.
+for (const qui of ["nani", "mook", "ztp"]) {
+  r = await essaie(u[qui], "select whatsapp_ranger_voucher($1, $2, $3, $4::jsonb) r", [conv, resa, `gestion-voucher:${resa}:${essai(9)}`, JSON.stringify(message())]);
+  ok(!r.ok, `${qui} n'appelle pas whatsapp_ranger_voucher (clé de service seulement)`);
+}
 r = await essaie(u.mook, "select whatsapp_confirmer_envoi($1, true) x", [conv]);
 ok(!r.ok, "Mook ne confirme pas un envoi");
 r = await essaie(u.mook, "select whatsapp_peut_ecrire($1) x", [conv]);
@@ -125,6 +183,7 @@ ok(!!(await bucket()), "retour : un bucket qui contient encore un fichier reste 
 await db.exec("delete from storage.objects where bucket_id = 'whatsapp-sortant'");
 await db.exec(lire("retour-73-whatsapp-voucher.sql"));
 ok(!(await bucket()), "retour : le bucket vide est supprimé");
+ok(!(await un("select 1 x from pg_proc where proname = 'whatsapp_ranger_voucher'")), "retour : la fonction du verrou est partie");
 await db.exec(lire("migration-73-whatsapp-voucher.sql"));
 b = await bucket();
 ok(b && b.public === false, "la migration se rejoue après le retour");

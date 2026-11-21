@@ -815,15 +815,21 @@ export function creer() {
     },
     // Voucher en image : simulé, sans appel réseau. Mêmes refus que la fonction (droit d'écrire, conversation du client du dossier, fenêtre de
     // 24 h), puis un message image « envoyé » apparaît dans le fil de la démo, sans fichier gardé.
-    async whatsappEnvoyerVoucher({ conversation_id, reservation_id, legende = "", fichier }) {
+    async whatsappEnvoyerVoucher({ conversation_id, reservation_id, legende = "", numero_confirme = "", fichier }) {
       await new Promise((r) => setTimeout(r, 400));
       const c = conversationEcrite(conversation_id);
       const r = data.reservations.find((x) => x.id === reservation_id && accessibles().includes(x.entite_id));
       if (!c || !r || !adminWhatsApp(r.entite_id)) return { erreur: "droit_manquant" };
-      const { contactVoucher, legendeValide } = await import("./whatsapp-voucher-calc.mjs");
+      const { contactVoucher, legendeValide, numeroDifferent } = await import("./whatsapp-voucher-calc.mjs");
       const { fenetre, apercuDepuisMessages } = await import("./whatsapp-calc.mjs");
-      const contact = contactVoucher(c, data.dossiers.find((d) => d.id === r.dossier_id) || null);
+      const dossier = data.dossiers.find((d) => d.id === r.dossier_id) || null;
+      const contact = contactVoucher(c, dossier, r.entite_id);
       if (!contact.ok) return { erreur: contact.erreur };
+      const fiche = dossier && data.clients.find((y) => y.id === dossier.client_id);
+      if (numeroDifferent(c.telephone, fiche && fiche.telephone) && numero_confirme !== c.telephone) return { erreur: "numero_a_confirmer" };
+      // Comme whatsapp_ranger_voucher (migration 73) : un envoi précédent de ce voucher au résultat inconnu bloque.
+      const enDoute = data.whatsapp_messages.some((m) => m.conversation_id === c.id && m.origine === "gestion" && m.type === "image" && (m.medias || []).some((x) => x && x.reservation_id === reservation_id) && (m.statut_envoi === "envoi" || (m.statut_envoi === "echec" && m.erreur_envoi === "sans_confirmation")));
+      if (enDoute) return { erreur: "deja_traitee", a_verifier: true };
       if (!fenetre(data.whatsapp_messages.filter((m) => m.conversation_id === c.id)).ouverte) return { erreur: "fenetre_fermee" };
       if (!legendeValide(legende)) return { erreur: "legende_trop_longue" };
       const maintenant = new Date().toISOString();

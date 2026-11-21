@@ -389,9 +389,10 @@ async function effacerMedias(db: SupabaseClient, message: string, medias: Record
   await db.from("whatsapp_messages").update({ medias: medias.map((m) => (m.statut === "copie" ? { ...m, statut: "efface", chemin: null } : m)) }).eq("id", message);
 }
 
-// Fichier temporaire d'un voucher envoyé depuis Gestion : effacé du bucket privé, puis le média ne le cite plus.
+// Fichier temporaire d'un voucher envoyé depuis Gestion : effacé du bucket privé, puis le média ne le cite plus. Seul un chemin de la forme
+// <organisation>/<horodatage>-<uuid>.<png|jpg|webp> du dossier de cette organisation est effacé (cheminsSortants).
 async function effacerSortant(db: SupabaseClient, message: string, medias: Record<string, unknown>[]) {
-  const chemins = cheminsSortants(medias);
+  const chemins = cheminsSortants(medias, ORGANISATION);
   if (!chemins.length) return;
   const { error } = await db.storage.from(BUCKET_SORTANT).remove(chemins);
   if (error) return console.error("voucher envoyé : fichier non effacé, la purge s'en charge", error.message);
@@ -400,7 +401,8 @@ async function effacerSortant(db: SupabaseClient, message: string, medias: Recor
 }
 
 // Purge des vouchers envoyés (migration 73) : tout fichier de plus d'une heure du dossier de l'organisation, quel que soit son message
-// (envoi au résultat inconnu, « Pas parti », statut jamais arrivé). 100 par passage, les plus anciens d'abord.
+// (envoi au résultat inconnu, « Pas parti », statut jamais arrivé). 100 par passage, les plus anciens d'abord. whatsapp-envoi refuse tout
+// dépôt pour une autre organisation que WHATSAPP_ORGANISATION : ce seul dossier suffit.
 async function purgerSortants(db: SupabaseClient) {
   const stockage = db.storage.from(BUCKET_SORTANT);
   const { data, error } = await stockage.list(ORGANISATION, { limit: 100, sortBy: { column: "created_at", order: "asc" } });

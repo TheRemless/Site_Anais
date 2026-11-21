@@ -37,6 +37,12 @@ export const EN = {
   "Ce client a déjà un dossier :": "This client already has a file:",
   "Ce client a déjà {n} dossiers récents :": "This client already has {n} recent files:",
   // Voucher envoyé dans la conversation WhatsApp du client (21.11.2026)
+  "Cette conversation est rangée dans l'autre entreprise. Rien n'est parti.": "This chat is filed under the other company. Nothing was sent.",
+  "Le numéro de la conversation n'est pas celui de la fiche client : confirmez-le avant d'envoyer.": "The chat number is not the one on the client record: confirm it before sending.",
+  "L'image dépasse 4096 pixels de côté. Envoyez depuis votre téléphone.": "The image is over 4096 pixels on one side. Send it from your phone.",
+  "Un envoi précédent de ce voucher est à vérifier dans WhatsApp. Touchez « C'est parti » ou « Pas parti » dans la conversation de Gestion. Rien n'est reparti.": "An earlier sending of this voucher needs checking in WhatsApp. Tap “It went out” or “Not sent” in the Gestion chat. Nothing was sent again.",
+  "Ce numéro n'est pas celui de la fiche client ({fiche}). Vérifiez que c'est bien la conversation du client.": "This number is not the one on the client record ({fiche}). Check that this is the client's chat.",
+  "C'est bien le numéro du client": "This is the client's number",
   "Le client n'a pas écrit depuis plus de 24 h : WhatsApp refuse alors une image envoyée par Gestion. Envoyez depuis votre téléphone.": "The client has not written for more than 24 h: WhatsApp then refuses an image sent by Gestion. Send it from your phone.",
   "Le numéro n'est pas prêt pour l'envoi depuis Gestion. Envoyez depuis votre téléphone.": "The number is not ready for sending from Gestion. Send it from your phone.",
   "Cette conversation n'est pas celle d'un client. Rien n'est parti.": "This chat is not a client's. Nothing was sent.",
