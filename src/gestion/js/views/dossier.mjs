@@ -32,6 +32,7 @@ import { peutClasser, disponible as sansSuiteDisponible } from "../sans-suite-ca
 import { ouvrirCarnet, baseDistante as baseDistanteCarnet } from "./carnet.mjs";
 import { disponible as carnetDisponible, peutNoter } from "../carnet-calc.mjs";
 import { typePaiement, paiementEnDouble, ecartASolder, TYPES_PAIEMENT, reservationsAReactiver, reactivation } from "../dossier-gestes-calc.mjs";
+import { champApporteur, patchApporteur, blocResumeApporteur } from "./apporteurs.mjs";
 
 const rafraichir = () => naviguer(location.hash);
 
@@ -338,6 +339,8 @@ function ficheDossierVue(id) {
       ref.focus();
     } }, tr("Changer le numéro"));
     const aideRef = refBloquee ? tr("Document déjà envoyé : le numéro ne change plus.") : null;
+    // Apporteur d'affaires (migration 68) : Secret et Taxi seulement, quand l'entreprise a une fiche apporteur.
+    const apporteur = excursions ? champApporteur(d) : null;
     const fermer = modal(
       tr("Modifier le dossier"),
       h(
@@ -352,7 +355,7 @@ function ficheDossierVue(id) {
               return;
             }
             ficheModifiee = false;
-            await modifier("dossiers", d.id, excursions ? { client_id: selClient.valeur || d.client_id, ref: ref.value.trim(), responsable_id: respSel.value || null } : { client_id: selClient.valeur || d.client_id, pays: pays.value.trim(), date_depart: depart.value || null, date_retour: retour.value || null, accepte_le: accepte.value || null, ref: ref.value.trim(), responsable_id: respSel.value || null });
+            await modifier("dossiers", d.id, excursions ? { client_id: selClient.valeur || d.client_id, ref: ref.value.trim(), responsable_id: respSel.value || null, ...patchApporteur(apporteur, d) } : { client_id: selClient.valeur || d.client_id, pays: pays.value.trim(), date_depart: depart.value || null, date_retour: retour.value || null, accepte_le: accepte.value || null, ref: ref.value.trim(), responsable_id: respSel.value || null });
             fermer();
             toast(tr("Dossier modifié."));
             rafraichir();
@@ -360,7 +363,7 @@ function ficheDossierVue(id) {
         },
         selClient.noeud,
         blocFiche,
-        excursions ? h("div", { class: "grille-form" }, h("div", null, champ(taxi ? tr("Numéro de réservation") : tr("Numéro de facture"), ref, aideRef), deverrouiller), champ(tr("Responsable"), respSel), h("p", { class: "aide pleine-largeur" }, tr("Les dates du dossier sont celles de ses réservations, elles se mettent à jour toutes seules."))) : h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || tr("Pays"), pays), h("div", null, champ(tr("Référence"), ref, aideRef), deverrouiller), champ(tr("Début"), depart), champ(tr("Fin"), retour), champ(tr("Date d'acceptation du devis"), accepte, tr("Laissez vide si le client n'a pas encore accepté.")), champ(tr("Responsable du dossier"), respSel, tr("Avec un rôle limité à « ses dossiers », la personne ne voit que ceux dont elle est responsable."))),
+        excursions ? h("div", { class: "grille-form" }, h("div", null, champ(taxi ? tr("Numéro de réservation") : tr("Numéro de facture"), ref, aideRef), deverrouiller), champ(tr("Responsable"), respSel), apporteur ? apporteur.noeud : null, h("p", { class: "aide pleine-largeur" }, tr("Les dates du dossier sont celles de ses réservations, elles se mettent à jour toutes seules."))) : h("div", { class: "grille-form" }, champ(regl.dossier.libelle_pays || tr("Pays"), pays), h("div", null, champ(tr("Référence"), ref, aideRef), deverrouiller), champ(tr("Début"), depart), champ(tr("Fin"), retour), champ(tr("Date d'acceptation du devis"), accepte, tr("Laissez vide si le client n'a pas encore accepté.")), champ(tr("Responsable du dossier"), respSel, tr("Avec un rôle limité à « ses dossiers », la personne ne voit que ceux dont elle est responsable."))),
         h("div", { class: "actions" }, h("button", { type: "button", class: "secondaire", onclick: () => fermer() }, tr("Annuler")), h("button", { type: "submit", class: "principal" }, tr("Enregistrer")))
       ),
       { ferme: () => ficheModifiee && rafraichir() }
@@ -716,6 +719,7 @@ function ficheDossierVue(id) {
             h("a", { class: "resume-lien-bas", href: "#services", onclick: aller("services") }, tr("Voir dans les services"), icone("fleche", 14))
           )
         : rsDossier.length ? bloc("resume-commission", tr("Commission"), h("p", { class: "resume-detail" }, tr("Aucun service payé sur place : pas de commission à recevoir."))) : null,
+    blocResumeApporteur(d),
   ].filter(Boolean);
   const resume = h("div", { class: "resume-dossier", role: "region", "aria-label": tr("Résumé du dossier") }, h("div", { class: "resume-grille" }, blocs), boutonSuivant, blocSansSuite || (boutonSansSuite || boutonCarnet ? h("div", { class: "resume-sous-action" }, boutonSansSuite || boutonCarnet) : ligneCarnet));
 

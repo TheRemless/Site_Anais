@@ -4,6 +4,7 @@
 
 import { RETOUR_DEPART, lireDuree, dureeInvalide, libelleRetourDepart } from "./trajet-calc.mjs";
 import { estTaxi } from "./taxi-calc.mjs";
+import { prestataires } from "./apporteurs-calc.mjs";
 
 // Droit d'interface : la personne qui l'a ne voit, dans une entreprise en mode taxi, que cet écran. Il n'est jamais dans « tous les droits ».
 export const DROIT_VOUCHER_SEUL = "vouchers.seul";
@@ -206,8 +207,9 @@ export function donneesVoucher(v) {
 // Le partenaire d'une course (le chauffeur, qui reçoit la commission) : celui choisi dans Réglages > Booking confirmation
 // (`reglages.taxi.chauffeur_id`, audit du 16.11.2026, n° 43), s'il est encore actif. Sans choix, la déduction d'avant sert de défaut : le seul
 // partenaire actif, sinon celui dont la fiche porte la case « Partenaire taxi par défaut » (migration 43), sinon le premier actif.
+// Une fiche apporteur (migration 68) n'est jamais le chauffeur.
 export function partenaireDeTaxi(partenaires = [], choisiId = null) {
-  const actifs = partenaires.filter((p) => p.actif !== false);
+  const actifs = prestataires(partenaires).filter((p) => p.actif !== false);
   const choisi = choisiId ? actifs.find((p) => p.id === choisiId) : null;
   return choisi || actifs.find((p) => p.taxi_defaut) || actifs[0] || null;
 }
@@ -215,7 +217,7 @@ export function partenaireDeTaxi(partenaires = [], choisiId = null) {
 export const chauffeurRegle = (reglages) => (reglages && reglages.taxi && reglages.taxi.chauffeur_id) || null;
 // Le choix est à faire quand plusieurs partenaires actifs pourraient recevoir les courses et qu'aucun n'est réglé (ou que le réglé est inactif).
 export function chauffeurAChoisir(partenaires = [], choisiId = null) {
-  const actifs = partenaires.filter((p) => p.actif !== false);
+  const actifs = prestataires(partenaires).filter((p) => p.actif !== false);
   return actifs.length > 1 && !(choisiId && actifs.some((p) => p.id === choisiId));
 }
 

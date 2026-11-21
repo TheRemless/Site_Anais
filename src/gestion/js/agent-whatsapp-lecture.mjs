@@ -58,6 +58,7 @@ export const cleNumero = (v) => {
 export function numerosPartenaires(partenaires = []) {
   const out = new Set();
   for (const p of partenaires) {
+    if (p && p.categorie === "apporteur") continue;
     const t = p && p.contact ? p.contact.telephones : null;
     const liste = Array.isArray(t) ? t : typeof t === "string" ? t.split(/[,;/\n]|\s{2,}/) : [];
     for (const x of liste) {
@@ -107,8 +108,10 @@ const MARQUEURS = /[«»\u0000-\u0008]/g;
 export function extraitAutour(texte, mots = [], n = 240) {
   const plein = neutre(String(texte || "").replace(MARQUEURS, " "), 100000);
   if (plein.length <= n) return plein;
-  const bas = plein.toLowerCase();
-  const pos = (mots || []).map((m) => bas.indexOf(String(m || "").toLowerCase())).filter((i) => i >= 0);
+  // Sans accents des deux côtés (« hotel » trouve « hôtel ») ; la position ne sert que si le texte garde sa longueur.
+  const plat = sansAccents(plein);
+  const bas = plat.length === plein.length ? plat : plein.toLowerCase();
+  const pos = (mots || []).map((m) => bas.indexOf(plat === bas ? sansAccents(m) : String(m || "").toLowerCase())).filter((i) => i >= 0);
   const debut = pos.length ? Math.max(0, Math.min(...pos) - Math.floor(n / 3)) : 0;
   const bout = plein.slice(debut, debut + n);
   return `${debut > 0 ? "…" : ""}${bout}${debut + n < plein.length ? "…" : ""}`;

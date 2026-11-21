@@ -2423,3 +2423,43 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .agent-suite-liens a { display: inline-flex; align-items: center; min-height: 40px; font-weight: 600; }
 .agent-a-fixer { color: #6b4a00; font-weight: 600; }
 .agent-conv[aria-current] { transition: background-color 0.1s ease; }
+
+/* Contacts WhatsApp typés et apporteurs d'affaires (migration 68). Les puces du type tiennent sur une ligne et défilent au doigt à 390 px. */
+.wa-contact { display: grid; gap: 6px; min-width: 0; }
+.wa-contacts { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; -webkit-overflow-scrolling: touch; }
+.wa-contacts::-webkit-scrollbar { display: none; }
+.wa-contact-puce { flex: none; min-height: 36px; padding: 0 12px; border: 1px solid var(--bord-champ); border-radius: 999px; background: var(--surface); color: var(--texte); font-weight: 600; font-size: 0.86rem; }
+.wa-contact-puce[aria-pressed="true"] { background: var(--surface-2); border-color: var(--texte-2); color: var(--texte); box-shadow: inset 0 0 0 1px var(--texte-2); }
+.wa-apporteur { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0; font-size: 0.9rem; }
+.wa-apporteur a { font-weight: 600; }
+.wa-apporteur .lien { min-height: 36px; padding: 0; }
+/* « Personnel » est une des puces du type : la pastille « Contact personnel » d'avant ne se répète pas. */
+.wa-fil-infos:has(.wa-contact) .wa-jamais { display: none; }
+@media (min-width: 900px) {
+  .wa-contacts { margin: 0; padding: 0; flex-wrap: wrap; overflow: visible; }
+}
+/* Assistant et WhatsApp reliés (PR B, 21.11.2026) : vue « À faire », message cité, questions rapides, résultats WhatsApp de la recherche. */
+.wa-afaire-tete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 8px; }
+.wa-afaire-tete .aide { margin: 0; }
+.wa-afaire-commenter { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
+.wa-afaire-quoi { display: flex; flex-wrap: wrap; gap: 0 6px; min-width: 0; font-size: 0.95rem; color: var(--texte-2); }
+.wa-afaire-quoi strong { font-weight: 600; color: var(--texte); }
+.wa-afaire.urgent .wa-afaire-quoi strong { color: #6b4a00; }
+.wa-afaire .wa-conv-apercu { font-size: 0.9rem; }
+.wa-afaire-vide .aide { margin-top: 8px; }
+.wa-bulle { transition: box-shadow 0.3s ease, background-color 0.3s ease; }
+.wa-bulle.wa-bulle-ciblee { box-shadow: 0 0 0 3px #f2c94c; background-color: #fff8dc; }
+.agent-question-wa { display: contents; }
+.agent-wa-questions p { display: flex; align-items: flex-start; gap: 6px; margin: 0; }
+.agent-wa-questions p svg { flex: none; margin-top: 3px; color: #128c4a; }
+.agent-wa-rapides { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.agent-wa-rapides button { min-height: 44px; }
+.agent-wa-nouvelle { margin-top: 10px; min-height: 40px; }
+.palette-texte mark { background: #fff4d6; color: inherit; border-radius: 3px; padding: 0 1px; }
+@media (prefers-reduced-motion: reduce) { .wa-bulle { transition: none; } }
+/* Cinq filtres avec « À faire » : sur ordinateur ils passent à la ligne au lieu de défiler. */
+@media (min-width: 900px) { .wa-liste .puces { flex-wrap: wrap; overflow: visible; } }
+/* Revue de la PR 297 : trombone éteint pendant une question WhatsApp, limite de longueur dite sous le champ. */
+.agent-joindre.desactive { opacity: 0.45; cursor: not-allowed; }
+.agent-wa-longueur:empty { display: none; }
+.agent-joints-erreur.info { color: var(--texte-2); }

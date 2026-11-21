@@ -14,6 +14,7 @@ const groupesBookingSecret = () => [
   ...GROUPES_BOOKING_SECRET,
 ];
 import { chauffeurAChoisir, partenaireDeTaxi } from "../voucher-rapide-calc.mjs";
+import { prestataires } from "../apporteurs-calc.mjs";
 
 // Le champ du WhatsApp qui reçoit les vouchers de l'assistante (clé historique `voucher.whatsapp_anais`), au nom de la personne responsable.
 function whatsappResponsable(texte, prenom) {
@@ -81,7 +82,8 @@ export function sectionVouchers({ r, taxi, texte, image, marque, choixApercuVouc
 // Taxi : à qui vont les courses saisies (et leur commission), et jusqu'où remontent les commissions à demander.
 function blocCourses({ r, marque }) {
   r.taxi = r.taxi || {};
-  const actifs = etat.db.partenaires.filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom));
+  // Une fiche apporteur (migration 68) n'est jamais le chauffeur.
+  const actifs = prestataires(etat.db.partenaires).filter((p) => p.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom));
   const deduit = partenaireDeTaxi(etat.db.partenaires, null);
   const alerte = h("p", { class: "ecart-facture", role: "status" });
   const chauffeur = h("select", { id: "taxi-chauffeur" }, h("option", { value: "" }, deduit ? tr("Automatique : {nom}", { nom: deduit.nom }) : tr("Automatique")), actifs.map((p) => h("option", { value: p.id }, p.nom)));

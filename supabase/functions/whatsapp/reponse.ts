@@ -143,13 +143,14 @@ async function garderTri(db: SupabaseClient, conversationId: string, decision: {
   if (error && error.code !== "42703") console.error("whatsapp : tri non gardé", error.message);
 }
 
-// Numéros des fiches partenaires de l'organisation (relu au plus toutes les 10 minutes par instance).
+// Numéros des fiches partenaires de l'organisation (relu au plus toutes les 10 minutes par instance). La catégorie écarte les fiches
+// « apporteur » (numerosPartenaires, migration 68).
 let partenairesLus: { quand: number; org: string; numeros: Set<string> } | null = null;
 export async function partenairesDe(db: SupabaseClient, org: string) {
   if (partenairesLus && partenairesLus.org === org && Date.now() - partenairesLus.quand < 600_000) return partenairesLus.numeros;
   const { data: ents } = await db.from("entites").select("id").eq("organisation_id", org);
   const ids = (ents || []).map((e) => e.id);
-  const { data, error } = ids.length ? await db.from("partenaires").select("contact").in("entite_id", ids).limit(5000) : { data: [], error: null };
+  const { data, error } = ids.length ? await db.from("partenaires").select("contact, categorie").in("entite_id", ids).limit(5000) : { data: [], error: null };
   if (error) return new Set<string>();
   partenairesLus = { quand: Date.now(), org, numeros: numerosPartenaires(data || []) };
   return partenairesLus.numeros;

@@ -123,9 +123,12 @@ export const cleNumero = (v) => {
   return n.length >= 8 ? n.slice(-9) : "";
 };
 // Numéros des fiches partenaires (contact.telephones : texte ou liste), toutes entreprises de l'organisation.
+// Une fiche « apporteur » (migration 68) n'en fait pas partie : la travel planner qui envoie des clients écrit comme une cliente, sa fiche ne
+// coupe ni le tri, ni la réponse préparée, ni le suivi.
 export function numerosPartenaires(partenaires = []) {
   const out = new Set();
   for (const p of partenaires) {
+    if (p && p.categorie === "apporteur") continue;
     const t = p && p.contact ? p.contact.telephones : null;
     const liste = Array.isArray(t) ? t : typeof t === "string" ? t.split(/[,;/\n]|\s{2,}/) : [];
     for (const x of liste) {

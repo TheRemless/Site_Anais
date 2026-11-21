@@ -8,6 +8,7 @@ import { MOYENS_DEFAUT } from "../defauts.mjs";
 import { STATUTS_RESERVATION, statutReservation } from "../operations-calc.mjs";
 import { nomFamille } from "../partenaires-calc.mjs";
 import { tuile, graphiqueColonnes, legende, classement, tableauTrie, blocDefinitions } from "./analyses-widgets.mjs";
+import { parApporteur } from "../apporteurs-calc.mjs";
 
 const SPECIAUX = [N_("Non renseigné"), N_("Sans responsable"), N_("Sans partenaire"), N_("Non précisé")];
 
@@ -303,6 +304,7 @@ export function clients(X) {
     ),
     bloc(titre(N_("Meilleurs clients")), classement({ lignes: parClient.map((g) => ({ libelle: g.libelle, valeur: g.montant, texte: m$(X, g.montant), detail: pluriel(g.nombre, N_("dossier"), N_("dossiers")), href: X.href("vendu", `client:${g.cle}`) })), max: 8, total: (v) => m$(X, v) })),
     bloc(titre(N_("Nouveaux et récurrents")), rang(X, "vendu", "nouveaute")),
+    blocApporteurs(X, rows),
     bloc(titre(N_("Tous les clients de la période")), tableauTrie({
       colonnes: [
         { cle: "nom", titre: N_("Client"), valeur: (l) => l.nom, rendu: (l) => l.nom, lien: (l) => X.href("vendu", `client:${l.cle}`) },
@@ -315,6 +317,28 @@ export function clients(X) {
     })),
     blocDefinitions(["vendu"], S.DEFINITIONS),
   ];
+}
+
+// Clients envoyés par apporteur (migration 68) : les dossiers vendus de la période, par apporteur. Le chiffre d'affaires est le volume vendu ;
+// sans le droit « nets », seulement les nombres, pas d'argent. `X.apporteurs` : { de: Map(dossier → apporteur), nom(id), fiches, argent }.
+function blocApporteurs(X, rows) {
+  const A = X.apporteurs;
+  if (!A) return null;
+  const { groupes, sans } = parApporteur(rows, (id) => A.de.get(id) || null);
+  if (!groupes.length && !A.fiches) return null;
+  const lignes = groupes.map((g) => ({ ...g, nom: A.nom(g.id) }));
+  for (const l of lignes) X.sortie.push([tr("Par apporteur"), l.nom, A.argent ? X.devise : "", A.argent ? l.montant : "", l.dossiers]);
+  const colonnes = [
+    { cle: "nom", titre: N_("Apporteur"), valeur: (l) => l.nom, rendu: (l) => l.nom, lien: (l) => `#/partenaire/${l.id}` },
+    { cle: "dossiers", titre: N_("Dossiers"), num: true, valeur: (l) => l.dossiers, rendu: (l) => String(l.dossiers), somme: (v) => String(v.reduce((t, l) => t + l.dossiers, 0)) },
+    { cle: "clients", titre: N_("Clients"), num: true, valeur: (l) => l.clients, rendu: (l) => String(l.clients), somme: (v) => String(v.reduce((t, l) => t + l.clients, 0)) },
+    ...(A.argent ? [{ cle: "montant", titre: N_("Chiffre d'affaires"), num: true, valeur: (l) => l.montant, rendu: (l) => m$(X, l.montant), somme: (v) => m$(X, v.reduce((t, l) => t + l.montant, 0)) }] : []),
+  ];
+  return bloc(
+    titre(N_("Clients envoyés par apporteur")),
+    h("p", { class: "aide" }, sans.dossiers ? pluriel(sans.dossiers, N_("Dossiers vendus sur la période. {n} autre dossier est venu sans apporteur."), N_("Dossiers vendus sur la période. {n} autres dossiers sont venus sans apporteur.")) : tr("Dossiers vendus sur la période.")),
+    tableauTrie({ colonnes, lignes, etatInitial: { tri: "dossiers" }, pied: lignes.length > 1, vide: tr("Aucun dossier vendu sur la période n'a d'apporteur.") })
+  );
 }
 
 // ---- Services et partenaires -----------------------------------------------------------------------------------------------------

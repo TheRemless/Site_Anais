@@ -351,7 +351,12 @@ export function echangeWhatsApp(texte = "", { depuisWhatsApp = false } = {}) {
     const m = /^\[(Client|[^\]\s]+) ([0-9.]+ [0-9:]+)(?:, modifié)?\] (.*)$/.exec(ligne.trim());
     if (m) messages.push({ deClient: m[1] === "Client", heure: m[2], texte: m[3] });
   }
-  return { messages };
+  // « Demander à l'assistant » (PR B) : la question de la personne, entre <question> et </question> avant l'échange. Montrée comme son message.
+  const tete = t.slice(0, debut);
+  const q = tete.indexOf("<question>");
+  const qFin = tete.indexOf("</question>");
+  const question = q >= 0 && qFin > q ? tete.slice(q + 10, qFin).trim() : "";
+  return question ? { messages, question } : { messages };
 }
 
 // Ce qu'une carte « dossier » validée a créé, retrouvé sans la mémoire de la visite (design n° 5) : le dossier relié à la conversation (la

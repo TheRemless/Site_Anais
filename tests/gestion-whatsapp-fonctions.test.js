@@ -147,7 +147,7 @@ test("démo : l'Assistant crée le dossier depuis une conversation WhatsApp, sig
 test("branchement : boutons de l'en-tête, Assistant, voucher, paiement, résumé, tâches, aucune relance de ferry", () => {
   const vue = source("views/whatsapp.mjs");
   assert.match(vue, /relie \? tr\("Mettre à jour le dossier"\) : tr\("Créer le dossier"\)/);
-  assert.match(vue, /sessionStorage\.setItem\(CLE_DEMANDE_AGENT, JSON\.stringify\(\{ id: c\.id, mode: modeDossier\(c\), entite: entiteId, pieces \}\)\)/);
+  assert.match(vue, /sessionStorage\.setItem\(CLE_DEMANDE_AGENT, JSON\.stringify\(\{ id: c\.id, mode: modeDossier\(c\), entite: entiteId, pieces, le: Date\.now\(\) \}\)\)/);
   assert.match(vue, /const pieces = await choisirPieces\(c\);\n\s+if \(pieces === null\) return;/, "la feuille des pièces avant l'Assistant, fermer annule");
   assert.match(vue, /tr\("Résumé automatique, à vérifier"\)/);
   assert.match(vue, /resumeEnRetard\(c\) \? ` \$\{tr\("\(avant le dernier message\)"\)\}`/);

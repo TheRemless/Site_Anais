@@ -11,6 +11,19 @@ import * as S from "../stats-calc.mjs";
 import { resumeMois } from "../analyses-resume.mjs";
 import { SECTIONS, liste, sectionVisible } from "./analyses-sections.mjs";
 import { squelette, s } from "./analyses-widgets.mjs";
+import { apporteursActifs } from "./apporteurs.mjs";
+import { apporteursDe } from "../apporteurs-calc.mjs";
+
+// Clients envoyés par apporteur (migration 68) : quel dossier vient de quel apporteur, d'après les dossiers chargés de l'entreprise.
+// L'argent (chiffre d'affaires) seulement avec le droit « nets ».
+function apporteursStats() {
+  if (!apporteursActifs()) return null;
+  const fiches = apporteursDe(etat.db.partenaires, etat.entiteId).length;
+  const de = new Map(etat.db.dossiers.filter((d) => d.apporteur_id).map((d) => [d.id, d.apporteur_id]));
+  if (!fiches && !de.size) return null;
+  const nom = (id) => (etat.db.partenaires.find((p) => p.id === id) || {}).nom || tr("Apporteur");
+  return { de, nom, fiches, argent: peut("partenaires.nets") };
+}
 
 // Taxi n'a pas de marge (le client paie le chauffeur) : certaines sections y portent un titre plus court.
 const titreSection = (v) => (modeTaxi() && v.titreTaxi ? v.titreTaxi : v.titre);
@@ -216,6 +229,7 @@ export function vueAnalyses(sectionArg) {
         faits, du, au, jour, devise, cmp, gran, nets: !!faits.nets, taxi, excursions: mode.excursions, reservations: mode.reservations, section, entite: entiteActive().nom,
         c: { du, au, jour, devise }, tri: q.get("tri"), sens: q.get("sens"), q: q.get("q") || "", surEtat, sortie: [],
         peutGroupe: entitesAnalysables().length > 1,
+        apporteurs: apporteursStats(),
         param: (extra) => adresse(section, { ...base, ...extra, liste: mesure, filtre }),
         href: (id, f, extra = {}) => adresse(section, { ...base, liste: id, filtre: f || null, ...extra }),
         lien: (nom, extra) => lien(nom, { ...extra, dev: q.get("dev") }),
