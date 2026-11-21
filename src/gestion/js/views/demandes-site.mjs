@@ -18,7 +18,7 @@ import {
 } from "../demandes-site-calc.mjs";
 import { PRODUITS_SITE } from "../site-produits.mjs";
 import { boutonMessageClient } from "./message-client.mjs";
-import { relierConversationApresDemande, avertissementDossier } from "./demandes-whatsapp.mjs";
+import { relierConversationApresDemande, avertissementDossier, accordSecondDossier, boutonDelier } from "./demandes-whatsapp.mjs";
 
 let onglet = "a_traiter";
 let periode = "30";
@@ -114,8 +114,13 @@ async function confirmer_(d, modifs = {}) {
     texte: texteDemande(d, modifs),
     telephone: numeroWhatsApp(d),
     prixImpose: modifs.prix ?? null,
-    // Juste avant d'écrire le dossier : la demande est-elle toujours à traiter ? Sinon rien n'est créé (pas de second dossier).
-    avantCreer: async () => !(await dejaTraiteeEnBase(d)),
+    // Juste avant d'écrire le dossier : la demande est-elle toujours à traiter ? Une autre demande du même client a-t-elle déjà son dossier
+    // (moins de 30 jours) ? Rend le motif d'arrêt, ou null pour créer (pas de second dossier sans l'accord de Nani).
+    avantCreer: async () => {
+      if (await dejaTraiteeEnBase(d)) return tr("Cette demande a été traitée entre-temps (depuis WhatsApp ou l'Assistant) : aucun dossier n'a été créé. Fermez cette fenêtre.");
+      if (!(await accordSecondDossier({ telephones: [numeroWhatsApp(d)], entites: [d.entite_id], exclure: d.id }))) return tr("Aucun dossier créé.");
+      return null;
+    },
     surCree: async ({ dossier, services, total }) => {
       const s = services[0] || {};
       // Plusieurs services (liste de sorties) : la réponse les reprend un par un, le total est celui de la facture.
@@ -328,6 +333,8 @@ function carte(d) {
           numeroWhatsApp(d) ? h("button", { class: "secondaire", type: "button", onclick: () => ouvrirSansMessage(d) }, icone("whatsapp", 16), tr("Il n'a pas écrit")) : null,
           h("button", { class: "lien", type: "button", onclick: () => classer(d) }, tr("Classer"))
         )
+      : d.statut === "confirmee" && d.decision && d.decision.relie && boutonDelier(d)
+        ? h("div", { class: "dsite-actions" }, boutonDelier(d))
       : (d.statut === "confirmee" && d.decision && d.decision.final) || d.statut === "refusee"
         ? h("div", { class: "dsite-actions" }, h("button", { class: "secondaire petit", type: "button", onclick: () => revoirReponse(d) }, icone("copier", 16), tr("Revoir la réponse")))
         : null

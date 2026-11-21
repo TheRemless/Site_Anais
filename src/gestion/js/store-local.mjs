@@ -15,7 +15,7 @@ import { whatsappDemo, conversationJade } from "./demo-whatsapp.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
 import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages, nettoyerNom } from "./whatsapp-calc.mjs";
 import { estApporteur, estTypeStocke } from "./apporteurs-calc.mjs";
-import { refusLienDemande, liaisonApresDemande, conversationsDuNumero, telephonesDuDossier } from "./demandes-whatsapp-calc.mjs";
+import { refusLienDemande, refusDelier, liaisonApresDemande, conversationsDuNumero, telephonesDuDossier } from "./demandes-whatsapp-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
 // /gestion/?demo=agence (19.11.2026) : la démo des prospects, une agence fictive sans rien de Koh Lanta (demo-agence.mjs), gardée à part.
@@ -317,10 +317,20 @@ export function creer() {
   };
   // Comme lit_demandes_site (migration 30) : un rôle qui voit tous les dossiers de l'entreprise, jamais l'écran « Nouveau voucher » seul.
   const demandeLue = (id) => data.demandes_site.find((d) => d.id === id && accessibles().includes(d.entite_id) && droit(d.entite_id, "dossiers.lire") && voitTout(contexte(), d.entite_id) && !droit(d.entite_id, "vouchers.seul")) || null;
-  // Comme le déclencheur une_fois (migration 72) : une demande traitée ne change plus de statut ni de dossier.
+  // Comme le déclencheur une_fois (migration 72) : la clé « relie » ne s'écrit que par demandeSiteRelier ; une demande traitée ne change plus
+  // de statut, de dossier (sauf s'il n'existe plus) ni de décision « final ».
   const garderDemande = (table, ligne, patch) => {
-    if (table !== "demandes_site" || ligne.statut === "nouvelle") return;
-    if (("statut" in patch && patch.statut !== ligne.statut) || (patch.dossier_id && patch.dossier_id !== ligne.dossier_id)) throw new Error(tr("Cette demande a déjà été traitée."));
+    if (table !== "demandes_site") return;
+    const refus = () => {
+      throw new Error(tr("Cette demande a déjà été traitée."));
+    };
+    const dec = (x) => JSON.stringify(((x || {}).relie) ?? null);
+    const fin = (x) => JSON.stringify(((x || {}).final) ?? null);
+    if ("decision" in patch && dec(patch.decision) !== dec(ligne.decision)) refus();
+    if (ligne.statut === "nouvelle") return;
+    if ("statut" in patch && patch.statut !== ligne.statut) refus();
+    if ("dossier_id" in patch && patch.dossier_id !== ligne.dossier_id && !(patch.dossier_id === null && !data.dossiers.some((x) => x.id === ligne.dossier_id))) refus();
+    if ("decision" in patch && fin(patch.decision) !== fin(ligne.decision)) refus();
   };
   const conversationEcrite = (id) => data.whatsapp_conversations.find((c) => c.id === id && c.organisation_id === monOrg() && ecritWhatsApp(c.entite_id)) || null;
   // Comme whatsapp_reclasser (migration 59) : les non-lus ne remontent jamais, un changement d'entreprise est « manuel » et retire le client et le
@@ -713,15 +723,29 @@ export function creer() {
       const dossier = data.dossiers.find((x) => x.id === dossierId) || null;
       const org = dossier ? (data.entites.find((e) => e.id === dossier.entite_id) || {}).organisation_id : null;
       const telephones = telephonesDuDossier({ dossier, clients: data.clients, conversations: (data.whatsapp_conversations || []).filter((w) => w.organisation_id === org) });
-      const motif = refusLienDemande({ demande: d, dossier, telephones, lit: !!lue, ecrit: !!lue && droit(d.entite_id, "dossiers.ecrire") });
+      const litDossier = !!dossier && accessibles().includes(dossier.entite_id) && droit(dossier.entite_id, "dossiers.lire");
+      const motif = refusLienDemande({ demande: d, dossier, telephones, lit: !!lue, ecrit: !!lue && droit(d.entite_id, "dossiers.ecrire"), litDossier });
       if (motif) return { relie: false, motif, ...(motif === "deja_traitee" ? { dossier_id: d.dossier_id } : {}) };
       const le = new Date().toISOString();
-      const decision = { ...(d.decision || {}), relie: { depuis: "dossier", le } };
+      const decision = { ...(d.decision || {}), relie: { depuis: "dossier", le, dossier_id: dossier.id } };
       Object.assign(d, { statut: "confirmee", dossier_id: dossier.id, decision, traitee_le: le, traitee_par: utilisateur.user_id, updated_at: le });
       journaliser("demandes_site", "update", d, { statut: { avant: "nouvelle", apres: "confirmee" }, dossier_id: { avant: null, apres: dossier.id } });
       sauve();
       setTimeout(() => ecouteurs.forEach((f) => f()), 0);
       return { relie: true, motif: "relie", demande: structuredClone(d) };
+    },
+    // Comme demande_site_delier : un lien posé d'office se défait 24 heures, la demande redevient « nouvelle », sans dossier ni traitement.
+    async demandeSiteDelier(demandeId) {
+      const d = demandeLue(demandeId);
+      const motif = refusDelier(d, { lit: !!d, ecrit: !!d && droit(d.entite_id, "dossiers.ecrire") });
+      if (motif) return { delie: false, motif };
+      const le = new Date().toISOString();
+      const { relie, ...reste } = d.decision || {};
+      Object.assign(d, { statut: "nouvelle", dossier_id: null, decision: { ...reste, delie: { le, dossier_id: d.dossier_id } }, traitee_le: null, traitee_par: null, updated_at: le });
+      journaliser("demandes_site", "update", d, { statut: { avant: "confirmee", apres: "nouvelle" }, dossier_id: { avant: relie && relie.dossier_id, apres: null } });
+      sauve();
+      setTimeout(() => ecouteurs.forEach((f) => f()), 0);
+      return { delie: true, motif: "delie", demande: structuredClone(d) };
     },
     async whatsappRelierApresDemande(demandeId) {
       const d = demandeLue(demandeId);
@@ -741,9 +765,10 @@ export function creer() {
       if (r.action !== "relier") return { relie: r.motif === "deja_fait", motif: r.motif };
       const w = r.conversation;
       const le = new Date().toISOString();
-      // Comme whatsapp_reclasser : une conversation rangée par une personne est « manuel », les réponses préparées pour l'autre entreprise partent.
+      // Comme la base : rangée pour le client d'une demande acceptée, la source est « client » ; les réponses préparées pour l'autre
+      // entreprise partent. Aucune fiche cherchée par le numéro : seule celle du dossier, si elle est de cette entreprise (patch).
       if (r.patch.entite_id) {
-        Object.assign(w, { entite_source: "manuel" });
+        Object.assign(w, { entite_source: "client" });
         for (const p of data.whatsapp_propositions) if (p.conversation_id === w.id && ["a_faire", "en_cours"].includes(p.statut) && p.entite_id !== r.patch.entite_id) p.statut = "remplacee";
       }
       Object.assign(w, r.patch, { updated_at: le });

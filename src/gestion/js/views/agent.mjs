@@ -1112,6 +1112,8 @@ export async function vueAgent(idOuvert = "") {
     try {
       if (volAVerifier) r = { ok: false, motif: tr("Numéro de vol lu sur une pièce jointe : vérifiez-le avec « Vérifier avant ».") };
       else if (estCourse(c)) r = !confirmationPermise() ? { ok: false, motif: tr("Une course depuis une confirmation se crée par une administratrice.") } : !ressembleAConfirmation(c.donnees.course.texte || "", { aujourdhui: aujourdhui() }) ? { ok: false, motif: tr("Ce texte n'est pas une confirmation de course : c'est une demande de client.") } : await (await import("./confirmation.mjs")).ouvrirConfirmation(c.donnees.course.texte || "", { auto: true });
+      // Migration 72 : une demande du site de ce client a déjà son dossier (moins de 30 jours) ? Nani dit « Créer quand même » ou rien n'est créé.
+      else if (c.genre === "dossier" && !(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) r = { ok: false, motif: tr("Aucun dossier créé.") };
       else if (c.genre === "dossier" && carteUnifiee(c.donnees)) r = await validerUnifie(c);
       else if (c.genre === "dossier") r = await (await import("./demande.mjs")).ouvrirDemande(null, preparation(c), { auto: true, titre: c.titre, surCree: () => {} });
       // Un service ajouté ou modifié dans un dossier de l'autre entreprise (espace unifié) : écrit dans l'entreprise du dossier visé, avec ses
@@ -1214,6 +1216,8 @@ export async function vueAgent(idOuvert = "") {
     return { texte: "", ...propositionVersDemande(propositionDepuisCarte(c.donnees), contexte) };
   };
   async function ouvrirDossier(c) {
+    // Migration 72 : même accord qu'à la validation d'un geste avant un second dossier pour ce client.
+    if (!(await (await import("./demandes-whatsapp.mjs")).accordAvantDossier(donneesCarte(c), { whatsappId: conv && conv.whatsapp_conversation_id }))) return;
     // Les entreprises corrigées d'un tap comptent aussi dans la fenêtre.
     const vue = { ...c, donnees: donneesCarte(c) };
     (await import("./demande.mjs")).ouvrirDemande(null, preparation(vue), { titre: c.titre, surCree: ({ dossier }) => noterReussite(c, { ok: true, dossier }) });

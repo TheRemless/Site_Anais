@@ -76,16 +76,20 @@ const conv = (id) => un("select entite_id, entite_source, client_id, dossier_id,
 const confirmerEcran = (user, dem, dos) => essaie(user, "update demandes_site set statut = 'confirmee', dossier_id = $2, decision = '{\"final\":{}}' where id = $1", [dem, dos]);
 
 // ---- Structure ----------------------------------------------------------------------------------------------------------------------
-for (const f of ["demande_site_relier(uuid, uuid)", "whatsapp_relier_apres_demande(uuid)"]) {
+for (const f of ["demande_site_relier(uuid, uuid)", "demande_site_delier(uuid)", "whatsapp_relier_apres_demande(uuid)"]) {
   const x = await un(`select has_function_privilege('authenticated', '${f}', 'execute') a, has_function_privilege('anon', '${f}', 'execute') b`);
   ok(x.a === true && x.b === false, `${f} : ouverte aux personnes connectées, fermée au public`);
 }
-for (const f of ["cle_telephone(text)", "demandes_site_une_fois()"]) {
+for (const f of ["meme_telephone(text, text)", "demandes_site_une_fois()"]) {
   const x = await un(`select has_function_privilege('authenticated', '${f}', 'execute') a, has_function_privilege('anon', '${f}', 'execute') b`);
   ok(x.a === false && x.b === false, `${f} : execute retiré à authenticated et anon`);
 }
-ok((await un("select cle_telephone('081 234 5678') a, cle_telephone('+66 81 234 5678') b, cle_telephone('12345') c")).a === "812345678", "cle_telephone : 9 derniers chiffres, notation thaïe comprise");
-ok((await un("select cle_telephone('12345') c")).c === null, "cle_telephone : un numéro trop court ne donne rien");
+const meme = async (a, b) => (await un("select meme_telephone($1, $2) m", [a, b])).m;
+ok(await meme("081 234 5678", "+66 81 234 5678"), "meme_telephone : sans indicatif d'un côté, les 9 derniers chiffres (notation thaïe)");
+ok(!(await meme("+33612345678", "+66612345678")), "meme_telephone : +33 et +66 aux mêmes 9 derniers chiffres ne sont pas le même numéro");
+ok(await meme("0033 6 12 34 56 78", "+33612345678") && !(await meme("0033612345678", "+66612345678")), "meme_telephone : « 00 » vaut un indicatif");
+ok(!(await meme("12345", "12345")) && !(await meme(null, null)), "meme_telephone : un numéro trop court ou vide ne compte pas");
+ok(!(await un("select 1 x from pg_proc where proname = 'cle_telephone'")), "l'ancienne cle_telephone (9 chiffres seulement) est retirée");
 let r = await essaie(u.nani, "select demande_site_relier(gen_random_uuid(), gen_random_uuid())");
 ok(r.ok, "Nani appelle la fonction");
 r = await db.query("select demande_site_relier(gen_random_uuid(), gen_random_uuid())").then(() => ({ ok: true }), (e) => ({ ok: false, err: e.message }));
@@ -129,6 +133,44 @@ await db.exec("select set_config('request.jwt.claim.sub', '', false)");
 q = await etatDemande(qJetable);
 ok(r.ok && q.statut === "confirmee" && q.dossier_id === null, "un dossier supprimé laisse la demande confirmée, sans dossier" + (r.ok ? "" : ` (${r.err})`));
 
+console.log("== Une demande traitée reste figée (sonde C) ==");
+const cC = await client("secret", "Cc", "+66 81 999 0001");
+const dC = await dossier("secret", cC);
+const qC = await demande("secret", "+66819990001");
+await relier(u.nani, qC, dC);
+r = await essaie(u.mook, "update demandes_site set dossier_id = null where id = $1", [qC]);
+ok(!r.ok, "sonde C : Mook ne vide pas le dossier d'une demande confirmée (il existe encore)");
+r = await essaie(u.mook, "update demandes_site set decision = '{}' where id = $1", [qC]);
+ok(!r.ok, "sonde C : ni la décision (clé « relie » figée)");
+r = await essaie(u.nani, "update demandes_site set decision = decision || '{\"final\":{\"total\":1}}' where id = $1", [qAnnaBis]);
+ok(!r.ok, "la clé « final » d'une demande confirmée à l'écran est figée");
+r = await essaie(u.nani, "update demandes_site set decision = decision || '{\"note\":\"vu\"}' where id = $1", [qAnnaBis]);
+ok(r.ok && r.n === 1, "le reste de la décision s'écrit encore");
+const qForge = await demande("secret", "+447700900123");
+r = await essaie(u.nani, "update demandes_site set statut = 'confirmee', dossier_id = $2, decision = jsonb_build_object('relie', jsonb_build_object('le', now())) where id = $1", [qForge, dAnna2]);
+ok(!r.ok, "une personne ne pose pas la clé « relie » elle-même (le lien défaisable vient seulement de demande_site_relier)");
+ok((await etatDemande(qC)).dossier_id === dC, "… la demande garde son dossier");
+
+console.log("== Annuler un lien (24 heures) ==");
+const delier = (user, dem) => essaie(user, "select demande_site_delier($1) r", [dem]);
+r = await delier(u.lecteur, qC);
+ok(motif(r) === "droit", "un rôle qui lit sans écrire les dossiers n'annule rien");
+r = await delier(u.ztp, qC);
+ok(motif(r) === "introuvable", "ZTP non plus");
+r = await delier(u.nani, qAnnaBis);
+ok(motif(r) === "pas_relie", "une demande confirmée à l'écran ne se délie pas ici (elle n'a pas de lien posé d'office)");
+r = await delier(u.mook, qC);
+q = await etatDemande(qC);
+ok(motif(r) === "delie" && q.statut === "nouvelle" && q.dossier_id === null && q.traitee_par === null && !q.decision.relie && q.decision.delie && q.decision.delie.dossier_id === dC, "Mook annule le lien dans ses droits : la demande redevient « nouvelle », sans dossier ni traitement");
+ok(!!(await un("select 1 x from dossiers where id = $1", [dC])), "… le dossier reste");
+r = await delier(u.nani, qC);
+ok(motif(r) === "pas_relie", "rejouée, rien ne change");
+r = await relier(u.nani, qC, dC);
+ok(motif(r) === "relie", "la demande se relie de nouveau");
+await db.query("update demandes_site set decision = jsonb_set(decision, '{relie,le}', to_jsonb(now() - interval '25 hours')) where id = $1", [qC]);
+r = await delier(u.nani, qC);
+ok(motif(r) === "trop_tard" && (await etatDemande(qC)).statut === "confirmee", "après 24 heures, le lien ne s'annule plus");
+
 console.log("== Chaque entreprise ses éléments ==");
 const cPaul = await client("taxi", "Paul", "+33 6 39 98 00 02");
 const dPaulTaxi = await dossier("taxi", cPaul);
@@ -154,6 +196,19 @@ r = await relier(u.nani, qMiaTaxi, dMiaTaxi);
 ok(motif(r) === "relie", "la demande Taxi de Mia se relie au dossier Taxi de sa fiche partagée");
 
 console.log("== Le numéro ==");
+// Sonde A : une conversation d'hôtel reliée au dossier de l'invité X ne donne pas son numéro au dossier (la réception réserve pour Y).
+const wHotel = await ranger("+6675111222");
+await essaie(u.nani, "update whatsapp_conversations set entite_id = $1, type_contact = 'hotel' where id = $2", [ent.secret, wHotel]);
+const cX = await client("secret", "InviteX", "+33 6 00 00 00 01");
+const dX = await dossier("secret", cX);
+await essaie(u.nani, "update whatsapp_conversations set client_id = $1, dossier_id = $2 where id = $3", [cX, dX, wHotel]);
+ok((await conv(wHotel)).dossier_id === dX, "sonde A : la conversation de l'hôtel est reliée au dossier de l'invité X");
+const qHotel = await demande("secret", "+6675111222");
+r = await relier(u.nani, qHotel, dX);
+ok(motif(r) === "numero" && (await etatDemande(qHotel)).statut === "nouvelle", "sonde A : la demande de l'hôtel (pour l'invité Y) n'est pas reliée au dossier de X");
+await essaie(u.nani, "update whatsapp_conversations set type_contact = null, reponses = 'jamais' where id = $1", [wHotel]);
+r = await relier(u.nani, qHotel, dX);
+ok(motif(r) === "numero", "un contact personnel relié au dossier ne donne pas son numéro non plus");
 const qAutre = await demande("secret", "+12025550199");
 r = await relier(u.nani, qAutre, dAnna2);
 ok(motif(r) === "numero", "un autre numéro ne se relie pas");
@@ -187,6 +242,14 @@ r = await relier(u.mook, qTaxiMook, dMiaTaxi);
 ok(motif(r) === "introuvable", "Mook ne relie pas une demande Taxi (pas de rôle chez Taxi)");
 r = await relier(u.adminSecret, qTaxiMook, dMiaTaxi);
 ok(motif(r) === "introuvable", "l'administratrice de Secret seule non plus");
+// Sonde D : pas d'oracle sur les dossiers d'une entreprise qu'on ne lit pas.
+const qD = await demande("secret", "+447700900200");
+r = await relier(u.adminSecret, qD, dMiaTaxi);
+ok(motif(r) === "introuvable", "sonde D : un dossier Taxi est « introuvable » pour qui ne lit pas Taxi (pas « autre_entreprise »)");
+r = await relier(u.adminSecret, qD, "00000000-0000-4000-8000-000000000000");
+ok(motif(r) === "introuvable", "sonde D : la même réponse qu'un dossier qui n'existe pas");
+r = await relier(u.nani, qD, dMiaTaxi);
+ok(motif(r) === "autre_entreprise", "Nani, qui lit Taxi, apprend que c'est l'autre entreprise");
 const qZtpEssai = await demande("secret", "+447700900123");
 r = await relier(u.ztp, qZtpEssai, dAnna2);
 ok(motif(r) === "introuvable", "l'administrateur de ZTP ne relie aucune demande de Secret");
@@ -217,6 +280,10 @@ ok((await conv(wLucia)).dossier_id === null, "… la conversation n'a pas bougé
 r = await relierWa(u.nani, qLucia);
 let c = await conv(wLucia);
 ok(motif(r) === "relie" && c.entite_id === ent.secret && c.client_id === cLucia && c.dossier_id === dLucia, "Nani : la conversation à trier se range chez Secret, reliée au client et au dossier" + ` (${motif(r)})`);
+ok(c.entite_source === "client", "sonde E : rangée pour le client d'une demande acceptée, la source est « client » (pas « manuel »)");
+const main = await essaie(u.nani, "update whatsapp_conversations set entite_id = $1 where id = $2 returning entite_source", [ent.taxi, wLucia]);
+ok(main.ok && main.rows[0].entite_source === "manuel", "… un rangement à la main par Nani reste « manuel »");
+await essaie(u.nani, "update whatsapp_conversations set entite_id = $1, client_id = $2, dossier_id = $3 where id = $4", [ent.secret, cLucia, dLucia, wLucia]);
 ok(r.rows[0].r.conversation && r.rows[0].r.conversation.id === wLucia && !("resume" in r.rows[0].r.conversation), "… la fonction rend seulement la liaison");
 r = await relierWa(u.nani, qLucia);
 ok(motif(r) === "deja_fait" && r.rows[0].r.relie === true, "rejouée, rien ne change (déjà fait)");
@@ -265,6 +332,21 @@ const dChauffeur = await dossier("taxi", await client("taxi", "Chauffeur", "+44 
 await confirmerEcran(u.nani, qChauffeur, dChauffeur);
 r = await relierWa(u.nani, qChauffeur);
 ok(motif(r) === "autre_contact" && (await conv(wChauffeur)).dossier_id === null, "un chauffeur (contact typé autre que client) non plus");
+// Sonde G : une conversation reliée à une fiche partenaire, sans type, n'est pas le client non plus.
+const pG = (await un("insert into partenaires (entite_id, nom) values ($1, 'Hotel G') returning id", [ent.taxi])).id;
+const wG = await ranger("+447700900846", "Hotel G");
+await essaie(u.nani, "update whatsapp_conversations set entite_id = $1 where id = $2", [ent.taxi, wG]);
+await essaie(u.nani, "update whatsapp_conversations set partenaire_id = $1 where id = $2", [pG, wG]);
+ok((await un("select partenaire_id, type_contact from whatsapp_conversations where id = $1", [wG])).partenaire_id === pG, "sonde G : conversation reliée à la fiche d'un hôtel, sans type");
+const dG = await dossier("taxi", await client("taxi", "Gg", null));
+await db.query("update whatsapp_conversations set dossier_id = $1 where id = $2", [dG, wG]);
+const qG = await demande("taxi", "+447700900846");
+r = await relier(u.nani, qG, dG);
+ok(motif(r) === "numero", "sonde G : son numéro ne relie pas une demande au dossier");
+const dG2 = await dossier("taxi", await client("taxi", "Gg2", "+44 7700 900846"));
+await confirmerEcran(u.nani, qG, dG2);
+r = await relierWa(u.nani, qG);
+ok(motif(r) === "autre_contact", "sonde G : ni la conversation à une demande acceptée");
 // Une conversation rangée chez Taxi n'est jamais reliée à un dossier Secret.
 const wSven = await ranger("+447700900733", "Sven");
 await essaie(u.nani, "update whatsapp_conversations set entite_id = $1 where id = $2", [ent.taxi, wSven]);
@@ -282,20 +364,43 @@ const qTrie = await demande("secret", "+447700900746");
 await confirmerEcran(u.nani, qTrie, dTrie);
 r = await relierWa(u.nani, qTrie);
 ok(motif(r) === "a_trier_par_nani" && (await conv(wTrie)).entite_id === null, "une conversation remise à trier par Nani reste à trier");
-// Deux conversations aux mêmes 9 derniers chiffres : rien au hasard.
+// Deux pays, mêmes 9 derniers chiffres : seule la conversation du même indicatif se relie (sonde B de la revue).
 const wDouble1 = await ranger("+447700900777", "Double A");
 const wDouble2 = await ranger("+337700900777", "Double B");
 const dDouble = await dossier("secret", await client("secret", "Double", "+44 7700 900777"));
 const qDouble = await demande("secret", "+447700900777");
 await confirmerEcran(u.nani, qDouble, dDouble);
 r = await relierWa(u.nani, qDouble);
-ok(motif(r) === "plusieurs" && (await conv(wDouble1)).dossier_id === null && (await conv(wDouble2)).dossier_id === null, "deux conversations au même numéro : aucune n'est choisie au hasard");
+ok(motif(r) === "relie" && (await conv(wDouble1)).dossier_id === dDouble && (await conv(wDouble2)).dossier_id === null, "+44 et +33 aux mêmes 9 chiffres : seule la conversation +44 est reliée");
+const wFr = await ranger("+33612345678", "Français");
+const cFr = await client("secret", "Francais", "+33612345678");
+const cTh = await client("secret", "Thai", "+66612345678");
+const dTh = await dossier("secret", cTh);
+const qTh = await demande("secret", "+66612345678");
+await confirmerEcran(u.nani, qTh, dTh);
+r = await relierWa(u.nani, qTh);
+ok(motif(r) === "aucune" && (await conv(wFr)).dossier_id === null, "sonde B : la demande thaïe +66 ne relie pas la conversation française +33");
+const qTh2 = await demande("secret", "+66612345678");
+r = await relier(u.nani, qTh2, await dossier("secret", cFr));
+ok(motif(r) === "numero", "sonde B : ni le dossier du client français");
 
 console.log("== Fiche partagée, conversation à trier ==");
 ok((await conv(wMia)).entite_id === null, "la conversation de Mia est à trier");
 r = await relierWa(u.nani, qMiaTaxi);
 c = await conv(wMia);
 ok(motif(r) === "relie" && c.entite_id === ent.taxi && c.dossier_id === dMiaTaxi && c.client_id === null, "Taxi : rangée chez Taxi avec le dossier, sans la fiche de Secret (chaque entreprise ses fiches)");
+// Sonde F : conversation à trier, fiche Taxi partagée dans un dossier Secret, et un doublon Secret au même numéro. whatsapp_reclasser
+// trouverait le doublon par le numéro : il est retiré, la conversation garde seulement le dossier.
+const wF = await ranger("+66814440001");
+const cTaxiF = await client("taxi", "Partagee", "+66 81 444 0001");
+const cDoublonF = await client("secret", "Doublon", "+66 81 444 0001");
+const dF = await dossier("secret", cTaxiF);
+const qF = await demande("secret", "+66814440001");
+await confirmerEcran(u.nani, qF, dF);
+r = await relierWa(u.nani, qF);
+c = await conv(wF);
+ok(motif(r) === "relie" && c.entite_id === ent.secret && c.dossier_id === dF && c.client_id === null && c.client_id !== cDoublonF, "sonde F : fiche partagée, le doublon trouvé par le numéro n'est pas posé (client vide, dossier gardé)");
+ok(r.rows[0].r.conversation.client_id === null, "… et la fonction rend la liaison finale");
 
 console.log("== ZTP n'a pas la boîte ==");
 if (ent.ztp) {
@@ -325,7 +430,8 @@ ok(!r.ok, "après le rejeu, une demande confirmée refuse toujours un second dos
 ok((await un("select count(*)::int n from pg_trigger where tgname = 'une_fois' and tgrelid = 'demandes_site'::regclass")).n === 1, "un seul déclencheur une_fois après le rejeu");
 
 await db.exec(lire("retour-72-demandes-whatsapp.sql"));
-ok(!(await un("select 1 x from pg_proc where proname in ('demande_site_relier', 'whatsapp_relier_apres_demande', 'cle_telephone', 'demandes_site_une_fois')")), "retour : les fonctions sont parties");
+ok(!(await un("select 1 x from pg_proc where proname in ('demande_site_relier', 'demande_site_delier', 'whatsapp_relier_apres_demande', 'meme_telephone', 'demandes_site_une_fois')")), "retour : les fonctions sont parties");
+ok(!/rangement_client/.test((await un("select prosrc from pg_proc where proname = 'whatsapp_reclasser'")).prosrc), "retour : whatsapp_reclasser revient à la version de la migration 59");
 ok((await photo()) === p1, "retour : les liens posés restent (aucune donnée touchée)");
 r = await essaie(u.nani, "update demandes_site set decision = '{}' where id = $1", [qAnna]);
 ok(r.ok, "retour : la règle d'avant (migration 30) reste en place");

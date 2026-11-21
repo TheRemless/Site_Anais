@@ -23,14 +23,15 @@ test("dossier créé : seulement les demandes nouvelles du même numéro, dans l
   const dossier = { id: "d1", entite_id: SECRET, client_id: "c1" };
   const clients = [{ id: "c1", entite_id: SECRET, telephone: "+44 7700 900123" }];
   const tels = C.telephonesDuDossier({ dossier, clients, conversations: [{ dossier_id: "d1", telephone: "+12025550199" }, { dossier_id: "autre", telephone: "+12025550000" }] });
-  assert.deepEqual(tels, ["700900123", "025550199"], "la fiche et la conversation reliée à ce dossier, pas les autres");
+  assert.deepEqual(tels, ["+44 7700 900123", "+12025550199"], "la fiche et la conversation reliée à ce dossier, pas les autres");
   const a = demande({ created_at: "2026-11-20T08:00:00Z" });
   const b = demande({ created_at: "2026-11-21T09:00:00Z", telephone: "+12025550199" });
   const demandes = [a, b, demande({ entite_id: TAXI }), demande({ statut: "confirmee" }), demande({ statut: "refusee" }), demande({ telephone: "+33639980002" }), demande({ telephone: null })];
   const liste = C.demandesPourDossier({ demandes, dossier, telephones: tels });
   assert.deepEqual(liste.map((x) => x.id), [b.id, a.id], "la plus récente d'abord, jamais Taxi ni une demande déjà traitée");
   assert.equal(C.choixDemandes(liste), "choisir", "plusieurs : Nani coche");
-  assert.equal(C.choixDemandes([a]), "relier", "une seule : reliée d'office");
+  assert.equal(C.choixDemandes([a]), "relier", "une seule dont un service correspond : reliée d'office");
+  assert.equal(C.choixDemandes([a], { correspond: () => false }), "choisir", "une seule sans service qui corresponde : Nani coche aussi");
   assert.equal(C.choixDemandes([]), "aucune");
   assert.deepEqual(C.demandesPourDossier({ demandes, dossier: { ...dossier, annule: true }, telephones: tels }), [], "jamais pour un dossier annulé");
   assert.deepEqual(C.demandesPourDossier({ demandes, dossier: { ...dossier, entite_id: TAXI }, telephones: tels }).map((x) => x.entite_id), [TAXI], "un dossier Taxi ne prend que les demandes de Taxi");
@@ -133,7 +134,7 @@ test("démonstration : mêmes règles que la base, Lucia, Sven (deux demandes) e
     assert.equal(r.motif, "relie");
     d = await store.charger();
     const wL = d.whatsapp_conversations.find((x) => x.telephone === "+12025550147");
-    assert.deepEqual([wL.entite_id, wL.entite_source, wL.client_id, wL.dossier_id], [secret.id, "manuel", cL.id, dL.id]);
+    assert.deepEqual([wL.entite_id, wL.entite_source, wL.client_id, wL.dossier_id], [secret.id, "client", cL.id, dL.id], "rangée pour le client de la demande : source « client »");
     assert.equal((await store.whatsappRelierApresDemande(lucia.id)).motif, "deja_fait");
     const dL2 = await store.inserer("dossiers", { entite_id: secret.id, ref: "DWA-2", client_id: cL.id });
     await assert.rejects(store.modifier("demandes_site", lucia.id, { statut: "confirmee", dossier_id: dL2.id }), /déjà été traitée/, "pas de second dossier");
@@ -172,13 +173,16 @@ test("démonstration : mêmes règles que la base, Lucia, Sven (deux demandes) e
 
 test("écran : relue avant de créer, conversation reliée après « Confirmer », avertissement, appel délimité dans l'Assistant", () => {
   const ecran = source("src/gestion/js/views/demandes-site.mjs");
-  assert.match(ecran, /avantCreer: async \(\) => !\(await dejaTraiteeEnBase\(d\)\)/, "la demande est relue juste avant d'écrire le dossier");
+  assert.match(ecran, /avantCreer: async \(\) => \{\s+if \(await dejaTraiteeEnBase\(d\)\)/, "la demande est relue juste avant d'écrire le dossier");
+  assert.match(ecran, /accordSecondDossier\(\{ telephones: \[numeroWhatsApp\(d\)\], entites: \[d\.entite_id\], exclure: d\.id \}\)/, "et l'accord avant un second dossier pour ce client");
+  assert.match(ecran, /boutonDelier\(d\)/, "« Annuler ce lien » dans l'onglet « Traitées »");
   assert.match(ecran, /if \(dejaTraitee\(d\) \|\| \(await dejaTraiteeEnBase\(d\)\)\)/, "et avant d'ouvrir la fenêtre");
   assert.match(ecran, /if \(confirmee\) await relierConversationApresDemande/, "la conversation se relie seulement si la demande est bien confirmée");
   assert.match(ecran, /avertissementDossier\(d\)/);
-  assert.match(source("src/gestion/js/views/demande.mjs"), /depuisSite\.avantCreer && !\(await depuisSite\.avantCreer\(\)/);
+  assert.match(source("src/gestion/js/views/demande.mjs"), /const arret = depuisSite && depuisSite\.avantCreer \? await depuisSite\.avantCreer\(\)/);
   const agent = source("src/gestion/js/views/agent.mjs");
-  assert.equal((agent.match(/demandes-whatsapp\.mjs/g) || []).length, 2, "l'Assistant n'a qu'un appel (et son commentaire)");
+  assert.equal((agent.match(/import\("\.\/demandes-whatsapp\.mjs"\)/g) || []).length, 3, "l'Assistant : l'accord avant (geste et fenêtre) et le lien après, rien d'autre");
+  assert.match(agent, /else if \(c\.genre === "dossier" && !\(await \(await import\("\.\/demandes-whatsapp\.mjs"\)\)\.accordAvantDossier\(donneesCarte\(c\)/, "l'accord passe avant la création d'un geste");
   assert.match(agent, /relierDemandesApresDossier\(r\.dossiers \|\| \[dossier\]\)/, "les deux dossiers d'une carte mixte");
   assert.doesNotMatch(source("supabase/functions/agent/outils.js"), /demande_site_relier|whatsapp_relier_apres_demande/, "rien dans les outils de l'agent");
   assert.doesNotMatch(source("src/gestion/js/views/demandes-whatsapp.mjs"), /whatsappEnvoyer|wa\.me|fetch\(/, "aucun envoi au client ni au prestataire");
@@ -201,4 +205,131 @@ test("migration 72 : en-tête, transaction, aucune donnée modifiée, droits ; r
   assert.match(source("docs/gestion/retour-72-demandes-whatsapp.sql"), /drop function if exists demande_site_relier\(uuid, uuid\);/);
   assert.ok(fs.existsSync(new URL("../docs/gestion/verif-demandes-whatsapp.mjs", import.meta.url)));
   assert.match(source(".github/workflows/ci.yml"), /verif-whatsapp-nom verif-demandes-whatsapp; do/);
+});
+
+// ---- Revue de sécurité de la PR 302 -----------------------------------------------------------------------------------------------
+
+test("revue 302, point 1 : un hôtel, un partenaire ou un contact personnel relié au dossier ne donne pas de numéro", () => {
+  const dossier = { id: "d1", entite_id: SECRET, client_id: "c1" };
+  const clients = [{ id: "c1", telephone: "+33 6 00 00 00 01" }];
+  const conv = (o) => ({ dossier_id: "d1", telephone: "+6675111222", reponses: "auto", ...o });
+  for (const o of [{ type_contact: "hotel" }, { type_contact: "partenaire" }, { type_contact: "chauffeur" }, { type_contact: "apporteur" }, { reponses: "jamais" }, { partenaire_id: "p1" }]) {
+    assert.deepEqual(C.telephonesDuDossier({ dossier, clients, conversations: [conv(o)] }), ["+33 6 00 00 00 01"], JSON.stringify(o));
+    assert.deepEqual(C.demandesPourDossier({ demandes: [demande({ telephone: "+6675111222" })], dossier, telephones: C.telephonesDuDossier({ dossier, clients, conversations: [conv(o)] }) }), [], "sonde A : la demande de l'hôtel n'est pas proposée");
+  }
+  assert.equal(C.telephonesDuDossier({ dossier, clients, conversations: [conv({ type_contact: "client" })] }).length, 2, "un contact client compte");
+  assert.equal(C.liaisonApresDemande({ demande: demande({ statut: "confirmee", dossier_id: "d1" }), dossier, conversations: [{ id: "w", telephone: "+447700900123", partenaire_id: "p1", reponses: "auto" }] }).motif, "autre_contact", "sonde G : une fiche partenaire reliée n'est pas le client");
+});
+
+test("revue 302, point 1 : d'office seulement si un service du dossier a la même date ou le même produit", () => {
+  const d = demande({ date_service: "2026-11-25", produit_id: "4-islands", produit: "4 Islands" });
+  const produits = [{ id: "4-islands", nom: "4 Islands", options: [{ tarifs: [{ prestation: "p-4i" }] }] }];
+  assert.ok(C.serviceCorrespond({ demande: d, reservations: [{ date_service: "2026-11-25", statut: "a_demander" }] }), "même date");
+  assert.ok(C.serviceCorrespond({ demande: d, reservations: [{ date_service: "2026-11-27", prestation_id: "p-4i" }], produits }), "même produit (prestation de la page)");
+  assert.ok(C.serviceCorrespond({ demande: d, reservations: [{ date_service: "2026-11-27", libelle: "4 Islands, join-in longtail" }], produits }), "nom du produit dans le libellé");
+  assert.ok(!C.serviceCorrespond({ demande: d, reservations: [{ date_service: "2026-11-27", libelle: "Koh Rok", prestation_id: "autre" }], produits }), "autre date, autre produit");
+  assert.ok(!C.serviceCorrespond({ demande: d, reservations: [{ date_service: "2026-11-25", statut: "annule" }] }), "un service annulé ne compte pas");
+  assert.ok(!C.serviceCorrespond({ demande: demande({ date_service: null, produit_id: null }), reservations: [{ date_service: "2026-11-25" }] }));
+  assert.ok(C.serviceCorrespond({ demande: demande({ date_service: null, produit_id: "krabi-airport-koh-lanta" }), reservations: [{ trajet_id: "t1" }], produits: [{ id: "krabi-airport-koh-lanta", nom: "Krabi Airport to Koh Lanta", tarifs: [{ trajet: "t1" }] }] }), "même trajet");
+});
+
+test("revue 302, point 1 : un lien posé d'office s'annule 24 heures, pas un autre", () => {
+  const maintenant = Date.parse("2026-11-21T12:00:00Z");
+  const reliee = (le) => demande({ statut: "confirmee", dossier_id: "d1", decision: { relie: { le, depuis: "dossier" } } });
+  assert.equal(C.refusDelier(reliee("2026-11-21T00:00:00Z"), { maintenant }), null);
+  assert.equal(C.refusDelier(reliee("2026-11-20T11:59:00Z"), { maintenant }), "trop_tard");
+  assert.equal(C.refusDelier(demande({ statut: "confirmee", decision: { final: {} } }), { maintenant }), "pas_relie", "confirmée à l'écran");
+  assert.equal(C.refusDelier(demande(), { maintenant }), "pas_relie");
+  assert.equal(C.refusDelier(reliee("2026-11-21T00:00:00Z"), { maintenant, ecrit: false }), "droit");
+  assert.equal(C.refusDelier(null), "introuvable");
+});
+
+test("revue 302, point 2 : avant un second dossier, la demande confirmée récente du même client", () => {
+  const ajd = "2026-11-21";
+  const dossiers = [{ id: "d1", ref: "TX-1", entite_id: TAXI }, { id: "d2", ref: "TX-2", entite_id: TAXI, annule: true }];
+  const conf = (o) => demande({ entite_id: TAXI, statut: "confirmee", dossier_id: "d1", traitee_le: "2026-11-20T10:00:00Z", ...o });
+  const args = (demandes, o = {}) => ({ demandes, telephones: ["+44 7700 900123"], entites: [TAXI], dossiers, aujourdhui: ajd, ...o });
+  assert.equal(C.confirmeesRecentes(args([conf()]))[0].dossier.ref, "TX-1");
+  assert.deepEqual(C.confirmeesRecentes(args([conf({ traitee_le: "2026-10-01T10:00:00Z" })])), [], "plus de 30 jours");
+  assert.deepEqual(C.confirmeesRecentes(args([conf({ dossier_id: "d2" })])), [], "dossier annulé");
+  assert.deepEqual(C.confirmeesRecentes(args([conf({ dossier_id: "disparu" })])), [], "dossier supprimé");
+  assert.deepEqual(C.confirmeesRecentes(args([conf({ entite_id: SECRET })])), [], "autre entreprise");
+  assert.deepEqual(C.confirmeesRecentes(args([conf({ telephone: "+33700900123" })])), [], "autre pays, mêmes 9 chiffres");
+  const q = conf();
+  assert.deepEqual(C.confirmeesRecentes(args([q], { exclure: q.id })), [], "la demande qu'on confirme ne compte pas");
+  assert.deepEqual(C.confirmeesRecentes(args([demande({ entite_id: TAXI })])), [], "une demande nouvelle ne demande pas d'accord (elle sera reliée)");
+});
+
+test("revue 302, point 3 : deux numéros avec indicatif se comparent en entier", () => {
+  assert.ok(!C.memeNumero("+33612345678", "+66612345678"), "sonde B : +33 et +66");
+  assert.ok(C.memeNumero("+33 6 12 34 56 78", "+33612345678"));
+  assert.ok(C.memeNumero("0033 6 12 34 56 78", "+33612345678"), "« 00 » vaut un indicatif");
+  assert.ok(!C.memeNumero("0066612345678", "+33612345678"));
+  assert.ok(C.memeNumero("081 234 5678", "+66812345678"), "sans indicatif d'un côté : 9 chiffres");
+  assert.ok(C.memeNumero("612345678", "+33612345678"));
+  const conv = [{ id: "fr", organisation_id: "o", telephone: "+33612345678" }, { id: "th", organisation_id: "o", telephone: "+66612345678" }];
+  assert.deepEqual(C.conversationsDuNumero({ conversations: conv, telephone: "+66612345678", organisationId: "o" }).map((x) => x.id), ["th"]);
+  assert.equal(C.refusLienDemande({ demande: demande({ telephone: "+66612345678" }), dossier: { id: "d", entite_id: SECRET }, telephones: ["+33612345678"] }), "numero");
+});
+
+test("revue 302, points 4, 6 et 7 : fiche partagée, une_fois et oracle dans la démonstration et le calcul", async () => {
+  assert.equal(C.refusLienDemande({ demande: demande(), dossier: { id: "d", entite_id: TAXI }, telephones: ["+447700900123"], litDossier: false }), "introuvable", "point 7 : un dossier qu'on ne lit pas est introuvable");
+  assert.equal(C.refusLienDemande({ demande: demande(), dossier: { id: "d", entite_id: TAXI }, telephones: ["+447700900123"] }), "autre_entreprise");
+  const stockage = new Map();
+  globalThis.localStorage = { getItem: (k) => stockage.get(k) ?? null, setItem: (k, v) => stockage.set(k, String(v)), removeItem: (k) => stockage.delete(k) };
+  globalThis.location = { origin: "http://localhost", pathname: "/gestion/", search: "?demo", hash: "" };
+  try {
+    const { creer } = await import(`../src/gestion/js/store-local.mjs?dwa302=${Date.now()}`);
+    const store = creer();
+    const d = await store.charger();
+    const secret = d.entites.find((e) => ["secret", "excursions"].includes(e.slug));
+    const taxi = d.entites.find((e) => e.slug === "taxi");
+    // Point 4 (sonde F) : la fiche du dossier vient de l'autre entreprise ; la conversation à trier garde seulement le dossier.
+    const lucia = d.demandes_site.find((x) => x.telephone === "+12025550147" && x.statut === "nouvelle");
+    const cT = await store.inserer("clients", { entite_id: taxi.id, prenom: "Lucia", nom: "T", telephone: "+1 202 555 0147" });
+    await store.inserer("clients", { entite_id: secret.id, prenom: "Doublon", nom: "S", telephone: "+1 202 555 0147" });
+    // Le partage réciproque Secret et Taxi : la démonstration le pose à la première lecture des doublons (comme la migration 63 en base).
+    await store.doublonsClients();
+    const dS = await store.inserer("dossiers", { entite_id: secret.id, ref: "DWA-F", client_id: cT.id });
+    await store.modifier("demandes_site", lucia.id, { statut: "confirmee", dossier_id: dS.id, decision: { final: {} } });
+    const r = await store.whatsappRelierApresDemande(lucia.id);
+    assert.deepEqual([r.motif, r.conversation.client_id, r.conversation.dossier_id, r.conversation.entite_source], ["relie", null, dS.id, "client"]);
+    // Point 6 : une demande traitée garde son dossier et sa décision.
+    await assert.rejects(store.modifier("demandes_site", lucia.id, { dossier_id: null }), /déjà été traitée/, "le dossier existe : il ne se vide pas");
+    await assert.rejects(store.modifier("demandes_site", lucia.id, { decision: {} }), /déjà été traitée/, "« final » figé");
+    const autre = d.demandes_site.find((x) => x.statut === "nouvelle" && x.id !== lucia.id);
+    await assert.rejects(store.modifier("demandes_site", autre.id, { statut: "confirmee", dossier_id: dS.id, decision: { relie: { le: new Date().toISOString() } } }), /déjà été traitée/, "« relie » ne se pose pas à la main");
+    // Point 1 : le lien posé d'office s'annule, puis la demande se relie de nouveau.
+    const sven = d.demandes_site.find((x) => x.telephone === "+447700900733" && x.statut === "nouvelle");
+    const cS = await store.inserer("clients", { entite_id: taxi.id, prenom: "Sven", nom: "B", telephone: "+44 7700 900733" });
+    const dT = await store.inserer("dossiers", { entite_id: taxi.id, ref: "DWA-S", client_id: cS.id });
+    assert.equal((await store.demandeSiteRelier(sven.id, dT.id)).motif, "relie");
+    const x = await store.demandeSiteDelier(sven.id);
+    assert.deepEqual([x.motif, x.demande.statut, x.demande.dossier_id, x.demande.traitee_le, !!x.demande.decision.relie, !!x.demande.decision.delie], ["delie", "nouvelle", null, null, false, true]);
+    assert.equal((await store.demandeSiteDelier(sven.id)).motif, "pas_relie");
+    assert.equal((await store.demandeSiteDelier(lucia.id)).motif, "pas_relie", "confirmée à l'écran : pas d'annulation ici");
+    assert.equal((await store.demandeSiteRelier(sven.id, dT.id)).motif, "relie");
+  } finally {
+    delete globalThis.localStorage;
+    delete globalThis.location;
+  }
+});
+
+test("revue 302 : migration, retour et verif couvrent les corrections", () => {
+  const sql = source("docs/gestion/migration-72-demandes-whatsapp.sql");
+  assert.match(sql, /coalesce\(w\.type_contact, 'client'\) = 'client' and w\.partenaire_id is null and w\.reponses <> 'jamais'/, "point 1 : seulement les conversations de client");
+  assert.match(sql, /create or replace function demande_site_delier\(p_demande uuid\) returns jsonb\nlanguage plpgsql security definer/);
+  assert.match(sql, /interval '24 hours'/);
+  assert.match(sql, /Limite connue : la création du dossier/, "point 2 : la course entre deux appareils est documentée");
+  assert.match(sql, /create or replace function meme_telephone\(a text, b text\)/, "point 3");
+  assert.match(sql, /if ligne\.client_id is distinct from voulu then/, "point 4 : la fiche trouvée par whatsapp_reclasser est retirée");
+  assert.match(sql, /current_setting\('gestion\.rangement_client', true\)/, "point 5 : source « client »");
+  assert.match(sql, /not exists \(select 1 from dossiers where id = old\.dossier_id\)/, "point 6 : dossier vidé seulement s'il n'existe plus");
+  assert.match(sql, /\(new\.decision -> 'final'\) is distinct from \(old\.decision -> 'final'\)/, "point 6 : « final » figé");
+  assert.match(sql, /if x\.id is null or not a_permission\(x\.entite_id, 'dossiers\.lire'\) then/, "point 7");
+  const retour = source("docs/gestion/retour-72-demandes-whatsapp.sql");
+  assert.match(retour, /drop function if exists demande_site_delier\(uuid\);/);
+  assert.match(retour, /if new\.entite_id is distinct from old\.entite_id then new\.entite_source := 'manuel'; end if;/, "whatsapp_reclasser de la migration 59");
+  const verif = source("docs/gestion/verif-demandes-whatsapp.mjs");
+  for (const sonde of ["sonde A", "sonde B", "sonde C", "sonde D", "sonde E", "sonde F", "sonde G"]) assert.ok(verif.includes(sonde), sonde);
 });

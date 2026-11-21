@@ -488,6 +488,15 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       }
       return data || null;
     },
+    // Défaire un lien posé d'office, dans les 24 heures : { delie, motif, demande }.
+    async demandeSiteDelier(demandeId) {
+      const { data, error } = await sb.rpc("demande_site_delier", { p_demande: demandeId });
+      if (error) {
+        if (error.code === "PGRST202" || error.code === "42883" || /does not exist|Could not find the function/i.test(error.message || "")) return null;
+        throw new Error(error.message);
+      }
+      return data || null;
+    },
     async whatsappRelierApresDemande(demandeId) {
       const { data, error } = await sb.rpc("whatsapp_relier_apres_demande", { p_demande: demandeId });
       if (error) {
