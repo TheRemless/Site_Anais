@@ -13,7 +13,8 @@ import { avecNomsLies } from "./partage-clients-calc.mjs";
 import { journalAssistantDemo } from "./demo-assistant.mjs";
 import { whatsappDemo, conversationJade } from "./demo-whatsapp.mjs";
 import { marqueUnifiee, partageReciproque, partageClientsPermisUnifie, doublonsLocaux, peutFusionnerPaire } from "./espace-unifie-calc.mjs";
-import { marqueEntite, lecteurWhatsApp } from "./whatsapp-calc.mjs";
+import { marqueEntite, lecteurWhatsApp, apercuDepuisMessages } from "./whatsapp-calc.mjs";
+import { estApporteur, estTypeStocke } from "./apporteurs-calc.mjs";
 
 // v13 (lot D, 17.11.2026) : rôle Administrateur calculé (tous_droits), droit « partenaires.prix », historique des réglages.
 // /gestion/?demo=agence (19.11.2026) : la démo des prospects, une agence fictive sans rien de Koh Lanta (demo-agence.mjs), gardée à part.
@@ -125,7 +126,10 @@ export function creer() {
     // conversation de l'Assistant dans chaque entreprise. Posé une fois, aussi dans une démo déjà enregistrée.
     const sansUnifie = !AGENCE && !data.demo_unifie;
     if (sansUnifie) semerUnifie();
-    if (neuve || sansWhatsApp || sansUnifie || sansJade) sauve();
+    // Apporteurs d'affaires (migration 68) : posés une fois, aussi dans une démo déjà enregistrée.
+    const sansApporteurs = !AGENCE && !data.demo_apporteurs;
+    if (sansApporteurs) semerApporteurs();
+    if (neuve || sansWhatsApp || sansUnifie || sansJade || sansApporteurs) sauve();
   };
   // Le partage réciproque Secret et Taxi (migration 63) : posé par la base pour l'organisation de Zwald seulement. La démonstration le pose à la
   // première carte mixte, comme une organisation qui l'a coché dans ses réglages ; l'outil le relit aussitôt.
@@ -152,6 +156,57 @@ export function creer() {
     data.agent_conversations = data.agent_conversations || [];
     if (admin) data.agent_conversations.push({ id: uid(), entite_id: taxi.id, user_id: admin.user_id, titre: "Transfert aéroport de Krabi", apercu: "Course pour 2 personnes, pickup à calculer.", dossier_id: null, statut: "ouverte", cree_le: new Date(Date.now() - 3600000).toISOString(), maj_le: new Date(Date.now() - 3600000).toISOString(), demo_etat: {} });
   }
+  // ---- Apporteurs d'affaires (migration 68) ------------------------------------------------------------------------------------------
+  // Jade, travel planner, envoie des clients à Nani chez Secret, sans aucun accord : sa fiche (sans rémunération),
+  // les deux derniers dossiers facturés de Secret envoyés par elle, et sa conversation WhatsApp typée « apporteur », reliée à la fiche.
+  // Numéro pris dans la plage réservée à la fiction (+44 7700 900…).
+  function semerApporteurs() {
+    data.demo_apporteurs = 1;
+    const secret = data.entites.find((e) => e.slug === "excursions" || e.slug === "secret");
+    if (!secret) return;
+    const maintenant = new Date().toISOString();
+    const jade = { id: uid(), created_at: maintenant, updated_at: maintenant, entite_id: secret.id, nom: "Jade", nom_thai: "", categorie: "apporteur", groupe: "autre", role: "Travel planner", contact: { personne: "Jade", telephones: [{ numero: "+44 7700 900955", libelle: "", whatsapp: true }] }, regles: {}, contrat: {}, notes: "Envoie ses clients sur WhatsApp pour des activités. Aucun accord entre nous.", ordre: data.partenaires.length + 1, actif: true, payer_avant_veille: false, payer_avant_veille_sauf: "", checkin_passeport: "", tarif_zone: false, taxi_defaut: false };
+    data.partenaires.push(jade);
+    const facture = (d) => data.documents.filter((x) => x.dossier_id === d.id && x.type === "facture").map((x) => x.date_emission).sort().pop() || "";
+    const envoyes = data.dossiers.filter((d) => d.entite_id === secret.id && !d.annule && facture(d)).sort((a, b) => facture(b).localeCompare(facture(a))).slice(0, 2);
+    for (const d of envoyes) d.apporteur_id = jade.id;
+    data.whatsapp_conversations = data.whatsapp_conversations || [];
+    data.whatsapp_messages = data.whatsapp_messages || [];
+    const il_y_a = (minutes) => new Date(Date.now() - minutes * 60000).toISOString();
+    // La conversation de Jade vient de demo-whatsapp.mjs (conversationJade, PR 295) : elle est typée et reliée, sans doublon.
+    const existante = data.whatsapp_conversations.find((c) => c.telephone === "+447700900955");
+    if (existante) return void Object.assign(existante, { type_contact: "apporteur", partenaire_id: jade.id, entite_id: secret.id });
+    const conv = { id: uid(), created_at: il_y_a(60 * 24 * 5), updated_at: il_y_a(40), organisation_id: ORG_DEMO, telephone: "+447700900955", nom: "Jade", entite_id: secret.id, entite_source: "manuel", client_id: null, dossier_id: null, dernier_message_le: null, dernier_sens: null, non_lus: 1, reponses: "auto", tri: {}, type_contact: "apporteur", partenaire_id: jade.id };
+    const prenoms = envoyes.map((d) => (data.clients.find((c) => c.id === d.client_id) || {}).prenom).filter(Boolean);
+    const messages = [
+      [60 * 26, "entrant", `Hi Nani! ${prenoms[0] || "My clients"} loved the island tour, thank you so much 🙏`],
+      [60 * 25, "sortant", "So happy to hear that! Send them our love 😊"],
+      [42, "entrant", "I have a couple arriving on Friday, staying in Klong Dao. Could you send me what you have for a snorkelling day?"],
+    ].map(([minutes, sens, texte]) => ({ id: uid(), conversation_id: conv.id, sens, origine: sens === "entrant" ? "client" : "app", type: "text", texte, medias: [], envoye_le: il_y_a(minutes), recu_le: il_y_a(minutes), modifie_le: null, supprime_le: null }));
+    Object.assign(conv, { dernier_message_le: messages[2].envoye_le, dernier_sens: "entrant" }, apercuDepuisMessages(messages));
+    data.whatsapp_conversations.push(conv);
+    data.whatsapp_messages.push(...messages);
+  }
+  // Comme le déclencheur controler_apporteur_dossier (migration 68) : une fiche « apporteur » de la même entreprise, chez Secret ou Taxi.
+  const garderApporteurDossier = (table, avant, apres) => {
+    if (table !== "dossiers" || !apres.apporteur_id) return;
+    if (avant && avant.apporteur_id === apres.apporteur_id && avant.entite_id === apres.entite_id) return;
+    const p = data.partenaires.find((x) => x.id === apres.apporteur_id);
+    const fonctionnement = ((data.reglages || {})[apres.entite_id] || {}).fonctionnement;
+    if (!p || p.entite_id !== apres.entite_id || !estApporteur(p) || !["excursions", "taxi"].includes(fonctionnement)) throw new Error(tr("Apporteur introuvable dans cette entreprise."));
+  };
+  // Comme whatsapp_type_coherent (migration 68) : un type connu, la fiche reliée dans l'entreprise de la conversation. Le type ne touche
+  // jamais aux réponses (typer ne rouvre pas l'IA) : l'écran envoie les deux ensemble.
+  const garderContact = (ligne, patch) => {
+    if ("type_contact" in patch && patch.type_contact !== null && !estTypeStocke(patch.type_contact)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
+    const pid = "partenaire_id" in patch ? patch.partenaire_id : ligne.partenaire_id;
+    if (!pid) return;
+    const entite = "entite_id" in patch ? patch.entite_id : ligne.entite_id;
+    if (data.partenaires.some((p) => p.id === pid && p.entite_id === entite)) return;
+    if ("partenaire_id" in patch && patch.partenaire_id !== ligne.partenaire_id) throw new Error(tr("Fiche partenaire introuvable dans l'entreprise de la conversation."));
+    patch.partenaire_id = null;
+  };
+
   const sauve = () => {
     try {
       localStorage.setItem(CLE, JSON.stringify(data));
@@ -266,7 +321,7 @@ export function creer() {
     }
     if (table !== "whatsapp_conversations") return;
     if (!conversationEcrite(ligne.id)) throw new Error(tr("Modification refusée : la fiche n'existe plus ou vos droits ne la permettent pas."));
-    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale"].includes(k)) delete patch[k];
+    for (const k of Object.keys(patch)) if (!["entite_id", "client_id", "dossier_id", "non_lus", "reponses", "paiement_signale", "type_contact", "partenaire_id"].includes(k)) delete patch[k];
     // Signal de paiement (migration 62) : depuis l'outil, seulement remis à vide (« Ignorer »).
     if ("paiement_signale" in patch && patch.paiement_signale !== null) delete patch.paiement_signale;
     // Interrupteur par contact (migration 60) : « auto » ou « jamais », rien d'autre.
@@ -291,6 +346,7 @@ export function creer() {
       const d = trouve ? data.dossiers.find((x) => x.client_id === trouve.id && x.entite_id === apres.entite_id && !x.annule) : null;
       patch.dossier_id = patch.dossier_id || (d ? d.id : null);
     }
+    garderContact(ligne, patch);
   };
 
   const contexte = () => ({ profil: utilisateur, membres: data.membres, roles: data.roles });
@@ -1033,6 +1089,9 @@ export function creer() {
       out.whatsapp_propositions_disponible = !AGENCE;
       out.whatsapp_tri_disponible = !AGENCE;
       out.whatsapp_suivi_disponible = !AGENCE;
+      // Contacts typés et apporteurs (migration 68).
+      out.whatsapp_contacts_disponible = !AGENCE;
+      out.apporteurs_disponible = true;
       // Comme la base après la migration 42 : sa propre organisation, toutes pour l'éditeur du logiciel ; l'administrateur voit les comptes de la sienne.
       out.organisations = utilisateur.plateforme ? data.organisations : data.organisations.filter((o) => o.id === monOrg());
       out.profils = utilisateur.super_admin ? data.profils.filter((p) => p.organisation_id === monOrg()) : data.profils.filter((p) => p.user_id === uidCourant);
@@ -1043,6 +1102,7 @@ export function creer() {
       const ligne = { id: uid(), created_at: aujourdhui(), ...row };
       garderPrix(table, null, ligne);
       garderClientDossier(table, null, ligne);
+      garderApporteurDossier(table, null, ligne);
       garderBandeau(table, ligne.entite_id);
       // Comme la base (migration 34) : un document écrit toujours sa devise, un dossier a sa colonne d'acompte figé.
       if (table === "documents" && ligne.contenu && !ligne.contenu.devise) ligne.contenu = { ...ligne.contenu, devise: (data.reglages[ligne.entite_id] || {}).devise || "CHF" };
@@ -1078,6 +1138,7 @@ export function creer() {
       garderPrix(table, ligne, { ...ligne, ...patch });
       garderClientDossier(table, ligne, { ...ligne, ...patch });
       garderEntiteClient(table, ligne, { ...ligne, ...patch });
+      garderApporteurDossier(table, ligne, { ...ligne, ...patch });
       garderBandeau(table, ligne.entite_id);
       delete patch.updated_at;
       if (VERSIONNEES.includes(table)) patch.updated_at = new Date().toISOString();
@@ -1103,6 +1164,11 @@ export function creer() {
       // Un devis ou une facture supprimé seul reste 90 jours restaurable (comme documents_historique en base).
       if (table === "documents" && ligne) data.corbeille_documents = [{ ligne: structuredClone(ligne), supprime_le: new Date().toISOString() }, ...data.corbeille_documents.filter((x) => x.ligne.id !== id)];
       data[table] = data[table].filter((r) => r.id !== id);
+      // Comme « on delete set null » (migration 68) : une fiche supprimée laisse ses dossiers sans apporteur et sa conversation sans fiche.
+      if (table === "partenaires") {
+        for (const d of data.dossiers) if (d.apporteur_id === id) d.apporteur_id = null;
+        for (const c of data.whatsapp_conversations || []) if (c.partenaire_id === id) c.partenaire_id = null;
+      }
       if (table === "dossiers") {
         data.documents = data.documents.filter((d) => d.dossier_id !== id);
         data.paiements = data.paiements.filter((p) => p.dossier_id !== id);
@@ -1354,6 +1420,9 @@ export function creer() {
         if (traj.has(r.trajet_id)) r.trajet_id = null;
         if (ids.has(r.partenaire_id)) r.partenaire_id = null;
       }
+      // Migration 68 : un apporteur supprimé quitte ses dossiers et sa conversation (on delete set null).
+      for (const d of data.dossiers) if (ids.has(d.apporteur_id)) d.apporteur_id = null;
+      for (const c of data.whatsapp_conversations || []) if (ids.has(c.partenaire_id)) c.partenaire_id = null;
       sauve();
     },
     async importer(tables) {

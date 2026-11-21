@@ -25,6 +25,8 @@ import {
   apercuConversation, attenteClient, LIBELLE_SUPPRIME, morceauxReponse, entreprisePourAssistant,
 } from "../whatsapp-calc.mjs";
 import { envoiAVerifier, envoiEnDoute, statutEnvoi, prochainChangement } from "../whatsapp-fiabilite-calc.mjs";
+import { TYPES_CONTACT, typeContact, patchType, toastType } from "../apporteurs-calc.mjs";
+import { blocApporteurWhatsApp } from "./apporteurs.mjs";
 
 let filtre = null;
 const rafraichir = () => window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -128,7 +130,36 @@ function selecteurEntreprise(c, prop) {
     h("div", { class: "wa-segments", role: "group", "aria-label": tr("Entreprise de la conversation") }, choix.map((e) => h("button", { type: "button", class: `wa-segment${proposee && proposee.id === e.id ? " propose" : ""}`, "aria-pressed": e.id === c.entite_id ? "true" : "false", onclick: () => ranger(e) }, e.nom))),
     c.entite_id && c.entite_source === "agent" ? h("span", { class: "wa-note" }, tr("proposé par l'assistant")) : null,
     proposee ? h("span", { class: "wa-note propose" }, tr("Suggéré : {nom}", { nom: proposee.nom })) : null,
+    // Avec les contacts typés (migration 68), « Personnel » est une des puces du type : la pastille est alors masquée par la feuille de style.
     reponsesDe(c) === "jamais" ? h("span", { class: "wa-jamais" }, tr("Contact personnel")) : null
+  );
+}
+
+// Type du contact (migration 68), d'un tap : client, apporteur, partenaire, chauffeur, hôtel ou personnel. Le tap règle aussi les réponses :
+// client et apporteur ouvrent l'assistant, partenaire, chauffeur et hôtel le ferment (ils parlent de nets et de commissions), personnel le ferme
+// sans type. Le réglage des réponses reste dans le menu « … ». La fonction « whatsapp » ne change jamais un type posé ici. Une conversation
+// typée « apporteur » propose de créer ou de relier sa fiche apporteur.
+function selecteurType(c) {
+  if (etat.brut.whatsapp_contacts_disponible !== true) return null;
+  const actuel = typeContact(c);
+  const libelle = (k) => tr((TYPES_CONTACT.find(([x]) => x === k) || [, ""])[1]);
+  if (lectureSeule) return actuel ? h("p", { class: "wa-note" }, tr("Contact : {type}", { type: libelle(actuel) })) : null;
+  const choisir = async (t) => {
+    if (t === actuel) return;
+    try {
+      await modifier("whatsapp_conversations", c.id, patchType(t));
+      // Le toast dit si l'IA lit ce contact désormais : client et apporteur oui, les autres non.
+      toast(tr(toastType(t)));
+      rafraichir();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  };
+  return h(
+    "div",
+    { class: "wa-contact", "data-pas-saisie": "" },
+    h("div", { class: "wa-contacts", role: "group", "aria-label": tr("Type de contact") }, TYPES_CONTACT.map(([k, l]) => h("button", { type: "button", class: "wa-contact-puce", "aria-pressed": k === actuel ? "true" : "false", onclick: () => choisir(k) }, tr(l)))),
+    actuel === "apporteur" ? blocApporteurWhatsApp(c, { ecrit: !lectureSeule, apres: () => rafraichir() }) : null
   );
 }
 
@@ -210,7 +241,7 @@ function enTete(c, prop) {
       h("div", { class: "wa-fil-titre" }, h("h2", null, nomConversation(c, clientDe(c))), h("p", { class: "wa-numero" }, numeroAffiche(c.telephone), c.nom && clientDe(c) ? h("span", null, tr("profil « {nom} »", { nom: c.nom })) : null)),
       h("button", { class: "bouton-icone secondaire wa-menu", type: "button", "aria-label": tr("Options de la conversation"), onclick: () => menuConversation(c) }, icone("ellipsis", 20))
     ),
-    h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop)),
+    h("div", { class: "wa-fil-infos" }, selecteurEntreprise(c, prop), selecteurType(c)),
     blocFaits(c, prop),
     blocResume(c),
   ];

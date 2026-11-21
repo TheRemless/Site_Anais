@@ -11,6 +11,11 @@ import { heureDeGrille } from "../pickup-calc.mjs";
 import { vide, cartes } from "./commun.mjs";
 import { listeTaches } from "./taches.mjs";
 import { tr, N_, pluriel } from "../i18n.mjs";
+import { CATEGORIE_APPORTEUR, estApporteur, prestataires } from "../apporteurs-calc.mjs";
+import { apporteursActifs, blocsFicheApporteur } from "./apporteurs.mjs";
+
+// Une fiche apporteur (migration 68) : sa catégorie technique « apporteur » se lit « Apporteur d'affaires ».
+const libelleCategorie = (p) => (estApporteur(p) ? tr("Apporteur d'affaires") : p.categorie);
 import { ouvrirRecalculCommissions } from "./recalcul-commission.mjs";
 
 export const GROUPES = [
@@ -130,8 +135,8 @@ export function listePartenaires() {
                   { class: "carte-lien", href: `#/partenaire/${p.id}` },
                   h("span", { class: "carte-titre" }, p.nom, masque ? h("span", { class: "tag" }, tr("masqué")) : null),
                   h("span", { class: "carte-droite" }, tel ? h("span", null, tel.numero) : null),
-                  h("span", { class: "carte-sous" }, p.role || p.categorie),
-                  h("span", { class: "carte-pied" }, modeTaxi() || masque ? h("span") : etatContrat(p), h("span", { class: "ref" }, [n ? pluriel(n, N_("{n} tarif"), N_("{n} tarifs")) : "", t ? pluriel(t, N_("{n} trajet"), N_("{n} trajets")) : ""].filter(Boolean).join(" · ")))
+                  h("span", { class: "carte-sous" }, estApporteur(p) ? [p.role, libelleCategorie(p)].filter(Boolean).join(" · ") : p.role || p.categorie),
+                  h("span", { class: "carte-pied" }, modeTaxi() || masque || estApporteur(p) ? h("span") : etatContrat(p), h("span", { class: "ref" }, [n ? pluriel(n, N_("{n} tarif"), N_("{n} tarifs")) : "", t ? pluriel(t, N_("{n} trajet"), N_("{n} trajets")) : ""].filter(Boolean).join(" · ")))
                 )
               );
             })
@@ -187,8 +192,8 @@ export function fichePartenaire(id) {
     h(
       "div",
       { class: "entete" },
-      h("div", null, h("h1", null, p.nom), h("p", { class: "sous" }, [p.role, p.categorie].filter(Boolean).join(" · "), p.nom_thai ? h("span", { class: "sous-ligne", lang: "th" }, p.nom_thai) : null)),
-      h("div", { class: "entete-actions" }, modeTaxi() ? null : etatContrat(p), ecrit ? h("button", { class: "secondaire", type: "button", onclick: () => { const fermer = modal(tr("Modifier le partenaire"), formulairePartenaire(p, () => (fermer(), rafraichir())), { large: true }); } }, tr("Modifier")) : null)
+      h("div", null, h("h1", null, p.nom), h("p", { class: "sous" }, [p.role, libelleCategorie(p)].filter(Boolean).join(" · "), p.nom_thai ? h("span", { class: "sous-ligne", lang: "th" }, p.nom_thai) : null)),
+      h("div", { class: "entete-actions" }, modeTaxi() || estApporteur(p) ? null : etatContrat(p), ecrit ? h("button", { class: "secondaire", type: "button", onclick: () => { const fermer = modal(tr("Modifier le partenaire"), formulairePartenaire(p, () => (fermer(), rafraichir())), { large: true }); } }, tr("Modifier")) : null)
     ),
     p.actif === false ? h("div", { class: "bandeau-info" }, tr("Ce partenaire est masqué : ni lui, ni ses tarifs, ni ses trajets ne sont proposés pour les nouvelles saisies. Les services déjà enregistrés, leurs factures et leurs vouchers ne changent pas."), ecrit ? h("div", { class: "actions gauche" }, h("button", { class: "principal petit", type: "button", onclick: () => basculerPartenaire(p, true, rafraichir) }, tr("Réactiver ce partenaire"))) : null) : null,
     h(
@@ -211,7 +216,9 @@ export function fichePartenaire(id) {
             ? h("div", { class: "guichets" }, h("h3", null, tr("Guichets et bureaux")), (c.guichets || []).map((g) => h("div", { class: "guichet" }, h("strong", null, g.lieu), g.adresse ? h("span", null, g.adresse) : null, (g.telephones || []).length ? h("span", { class: "tels" }, (g.telephones || []).map((n) => telephone({ numero: n }))) : null, g.line ? h("span", null, tr("Line : {line}", { line: g.line })) : null, g.email ? h("a", { href: `mailto:${g.email}` }, g.email) : null)))
             : null
         ),
-        modeTaxi() ? null : bloc(
+        // Un apporteur n'a pas de contrat de partenaire : ses clients envoyés (migration 68) prennent la place.
+        ...blocsFicheApporteur(p, { bloc }),
+        modeTaxi() || estApporteur(p) ? null : bloc(
           N_("Contrat"),
           ligne(N_("Statut"), ct.statut),
           ligne(N_("Saison"), ct.saison),
@@ -516,6 +523,9 @@ export function formulairePartenaire(p, apres) {
   const tarifZone = h("input", { id: "p-tarif-zone", type: "checkbox", checked: !!p.tarif_zone });
   const taxiDefaut = h("input", { id: "p-taxi-defaut", type: "checkbox", checked: !!p.taxi_defaut });
   const taxi = modeTaxi();
+  // Apporteur d'affaires (migration 68) : la catégorie « apporteur », Secret et Taxi seulement.
+  const apporteur = apporteursActifs() ? h("input", { id: "p-apporteur", type: "checkbox", checked: estApporteur(p), onchange: () => (categorie.disabled = apporteur.checked) }) : null;
+  if (apporteur) categorie.disabled = apporteur.checked;
   const erreur = h("p", { class: "erreur-form", role: "alert" });
   return h(
     "form",
@@ -529,7 +539,7 @@ export function formulairePartenaire(p, apres) {
         const valeurs = {
           nom: nom.value.trim(),
           nom_thai: nomThai.value.trim(),
-          categorie: categorie.value.trim(),
+          categorie: apporteur && apporteur.checked ? CATEGORIE_APPORTEUR : apporteur && estApporteur(p) && categorie.value.trim() === CATEGORIE_APPORTEUR ? "" : categorie.value.trim(),
           groupe: groupe.value,
           role: role.value.trim(),
           contact: { ...c, personne: personne.value.trim(), telephones, emails: emails.value.split(",").map((x) => x.trim()).filter(Boolean), line: line.value.trim(), web: web.value.trim(), adresse: adresse.value.trim(), embarcadere: embarcadere.value.trim(), licence: licence.value.trim() },
@@ -556,6 +566,7 @@ export function formulairePartenaire(p, apres) {
     },
     h("div", { class: "grille-form" }, champ(tr("Nom"), nom), champ(tr("Nom en thaï"), nomThai), champ(tr("Catégorie"), [categorie, cats]), champ(tr("Groupe"), groupe)),
     champ(tr("Rôle"), role),
+    apporteur ? h("label", { class: "case", for: "p-apporteur" }, apporteur, tr("Apporteur d'affaires : envoie des clients (travel planner, agence)")) : null,
     h("h3", null, tr("Contact")),
     h("div", { class: "grille-form" }, champ(tr("Personne"), personne), champ(tr("E-mails, séparés par des virgules"), emails), champ(tr("Line"), line), champ(tr("Site"), web)),
     h("div", { class: "champ" }, h("p", { class: "etiquette" }, tr("Téléphones")), tels.noeud, h("p", { class: "aide" }, tr("Un numéro par ligne. Cochez WhatsApp pour le bouton WhatsApp de la fiche."))),
@@ -705,7 +716,7 @@ export function formulairePrestation(x, apres, options = {}) {
     { id: "x-part" },
     h("option", { value: "" }, tr("Choisir le partenaire")),
     h("option", { value: AUCUN }, tr("Sans partenaire (frais de parc, divers)")),
-    etat.db.partenaires.filter((p) => p.actif !== false || p.id === x.partenaire_id).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.actif === false ? tr("{nom} (masqué)", { nom: p.nom }) : p.nom))
+    prestataires(etat.db.partenaires).filter((p) => p.actif !== false || p.id === x.partenaire_id).sort((a, b) => a.nom.localeCompare(b.nom)).map((p) => h("option", { value: p.id }, p.actif === false ? tr("{nom} (masqué)", { nom: p.nom }) : p.nom))
   );
   partenaire.value = x.partenaire_id && actuel ? x.partenaire_id : x.id || options.copie ? AUCUN : "";
   const famille = h("select", { id: "x-famille" }, FAMILLES.map(([v, l]) => h("option", { value: v }, tr(l))));

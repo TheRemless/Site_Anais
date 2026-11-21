@@ -2423,3 +2423,18 @@ html.clavier .agent-saisie, html.clavier .wa-prop-actions, html.clavier .wa-sans
 .agent-suite-liens a { display: inline-flex; align-items: center; min-height: 40px; font-weight: 600; }
 .agent-a-fixer { color: #6b4a00; font-weight: 600; }
 .agent-conv[aria-current] { transition: background-color 0.1s ease; }
+
+/* Contacts WhatsApp typés et apporteurs d'affaires (migration 68). Les puces du type tiennent sur une ligne et défilent au doigt à 390 px. */
+.wa-contact { display: grid; gap: 6px; min-width: 0; }
+.wa-contacts { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; -webkit-overflow-scrolling: touch; }
+.wa-contacts::-webkit-scrollbar { display: none; }
+.wa-contact-puce { flex: none; min-height: 36px; padding: 0 12px; border: 1px solid var(--bord-champ); border-radius: 999px; background: var(--surface); color: var(--texte); font-weight: 600; font-size: 0.86rem; }
+.wa-contact-puce[aria-pressed="true"] { background: var(--surface-2); border-color: var(--texte-2); color: var(--texte); box-shadow: inset 0 0 0 1px var(--texte-2); }
+.wa-apporteur { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0; font-size: 0.9rem; }
+.wa-apporteur a { font-weight: 600; }
+.wa-apporteur .lien { min-height: 36px; padding: 0; }
+/* « Personnel » est une des puces du type : la pastille « Contact personnel » d'avant ne se répète pas. */
+.wa-fil-infos:has(.wa-contact) .wa-jamais { display: none; }
+@media (min-width: 900px) {
+  .wa-contacts { margin: 0; padding: 0; flex-wrap: wrap; overflow: visible; }
+}

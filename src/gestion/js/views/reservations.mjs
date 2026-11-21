@@ -18,6 +18,7 @@ import { ouvrirMessage } from "./messages.mjs";
 import { prix, voitNets } from "./partenaires.mjs";
 import { tr, N_, pluriel, langueActive } from "../i18n.mjs";
 import { commissionsPartenaire, libelleClient, libelleUnite, quantiteParDefaut, prixVenteFige } from "../partenaires-calc.mjs";
+import { prestataires } from "../apporteurs-calc.mjs";
 import { puceMode, regleCommissionDe } from "./mode-reglement.mjs";
 import { champsNetsChanges } from "../nets-reservation-calc.mjs";
 import { rattacherCourseTaxi, lieeFacture, texteEcart, suivreFacture, appliquerChangements, questionAnnulation, synchroniserDatesDossier } from "./suivi-facture.mjs";
@@ -331,7 +332,7 @@ export function formulaireReservation(r, apres) {
   const n = r.id && nets ? netReservation(r) : null;
   const p = r.personnes || {};
   const libelle = h("input", { id: "r-lib", value: r.libelle || "", "aria-required": "true", autocomplete: "off" });
-  const partenaire = h("select", { id: "r-part" }, h("option", { value: "" }, tr("Sans partenaire")), etat.db.partenaires.filter((x) => x.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom)).map((x) => h("option", { value: x.id }, x.nom)));
+  const partenaire = h("select", { id: "r-part" }, h("option", { value: "" }, tr("Sans partenaire")), prestataires(etat.db.partenaires).filter((x) => x.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom)).map((x) => h("option", { value: x.id }, x.nom)));
   partenaire.value = r.partenaire_id || "";
   const date = h("input", { id: "r-date", type: "date", value: r.date_service || "" });
   const heure = h("input", { id: "r-heure", type: "time", value: r.heure_pickup || "" });

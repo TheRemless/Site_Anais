@@ -17,8 +17,9 @@ const effacerCopieHorsLigne = () => {
   }
 };
 
-// Ordre d'import imposé par les clés étrangères.
-const TABLES = ["clients", "dossiers", "documents", "paiements", "catalogue", "partenaires", "partenaires_prives", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
+// Ordre d'import imposé par les clés étrangères. Les partenaires passent avant les dossiers : un dossier porte son apporteur (dossiers.apporteur_id,
+// migration 68). Les partenaires ne dépendent que de l'entreprise, leurs données privées que d'eux.
+const TABLES = ["partenaires", "partenaires_prives", "clients", "dossiers", "documents", "paiements", "catalogue", "prestations", "prestations_nets", "trajets", "trajets_nets", "reservations", "reservations_nets", "taches"];
 // Documents et paiements ne se chargent pas à la connexion : ils sont lourds et nombreux. Chaque dossier porte un
 // résumé (total, encaissé, devise) tenu à jour par la base, le détail se charge à l'ouverture du dossier.
 // Les tables de nets reviennent vides pour qui n'a pas le droit « partenaires.nets » : la base filtre.
@@ -183,11 +184,19 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
     const SUIVI = "resume, resume_le, paiement_signale, promesse_le";
     // dernier_texte, dernier_type, attend_depuis (migration 65, aperçu de la liste) : relues sans elles tant que la migration n'est pas appliquée.
     const APERCU = "dernier_texte, dernier_type, attend_depuis";
+    // type_contact, partenaire_id (migration 68, contacts typés) : relues sans elles tant que la migration n'est pas appliquée.
+    const CONTACTS = "type_contact, partenaire_id";
     let triDisponible = true;
     let suiviDisponible = true;
+    let contactsDisponible = true;
     const lireConversations = async () => {
       const requete = (colonnes) => sb.from("whatsapp_conversations").select(colonnes).order("dernier_message_le", { ascending: false, nullsFirst: false }).limit(500);
-      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}`);
+      let r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}, ${CONTACTS}`);
+      // Une colonne manque : la 68 n'est pas passée (elle suit toutes les autres), on relit comme avant elle.
+      if (r.error && [...CONTACTS.split(", "), ...APERCU.split(", "), ...SUIVI.split(", "), "reponses", "tri"].some((c) => colonneAbsente(r.error, c))) {
+        contactsDisponible = false;
+        r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}, ${APERCU}`);
+      }
       if (r.error && APERCU.split(", ").some((c) => colonneAbsente(r.error, c))) r = await requete(`${COLONNES}, reponses, tri, ${SUIVI}`);
       if (r.error && SUIVI.split(", ").some((c) => colonneAbsente(r.error, c))) {
         suiviDisponible = false;
@@ -212,6 +221,7 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       whatsapp_propositions_disponible: propositions !== null,
       whatsapp_tri_disponible: conversations !== null && triDisponible,
       whatsapp_suivi_disponible: conversations !== null && suiviDisponible,
+      whatsapp_contacts_disponible: conversations !== null && contactsDisponible,
     };
   }
 
@@ -843,6 +853,9 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
         catalogueLuA = maintenant();
         catalogueAChange = false;
       }
+      // Apporteurs d'affaires (migration 68) : la colonne apporteur_id des dossiers dit si la migration est passée. Sans dossier lu, une
+      // lecture d'une ligne le vérifie.
+      out.apporteurs_disponible = out.dossiers.length ? out.dossiers.some((d) => "apporteur_id" in d) : !(await sb.from("dossiers").select("apporteur_id").limit(1)).error;
       const resumes = new Map(resumeLignes.map((r) => [r.dossier_id, r]));
       out.dossiers = out.dossiers.map((d) => fusion(d, resumes.get(d.id)));
       out.documents = [];
