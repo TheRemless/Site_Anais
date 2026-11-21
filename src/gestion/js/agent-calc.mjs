@@ -349,7 +349,8 @@ export function echangeWhatsApp(texte = "", { depuisWhatsApp = false } = {}) {
   const messages = [];
   for (const ligne of t.slice(debut + 14, fin).split("\n")) {
     const m = /^\[(Client|[^\]\s]+) ([0-9.]+ [0-9:]+)(?:, modifié)?\] (.*)$/.exec(ligne.trim());
-    if (m) messages.push({ deClient: m[1] === "Client", heure: m[2], texte: m[3] });
+    // « Apporteur » (PR D) : les messages d'un apporteur d'affaires sont ceux du contact, comme ceux d'un client.
+    if (m) messages.push({ deClient: m[1] === "Client" || m[1] === "Apporteur", heure: m[2], texte: m[3] });
   }
   // « Demander à l'assistant » (PR B) : la question de la personne, entre <question> et </question> avant l'échange. Montrée comme son message.
   const tete = t.slice(0, debut);

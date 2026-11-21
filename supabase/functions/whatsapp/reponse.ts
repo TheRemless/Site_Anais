@@ -15,6 +15,7 @@ import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { APPRIS_LUS_ACTIVE, APPRIS_LUS_AUTRE, DUREE_MAX_MS, MODELE_DEFAUT, apprentissagesUnifies, ligneJournal, signe } from "../agent/prompt.js";
 import { clesHotelPossibles, memoDepuis, prefixeRef } from "../agent/outils.js";
 import { tourner } from "../agent/boucle.js";
+import { contactApporteur, fichesDuContact, nomsABloquer } from "../agent/apporteur.js";
 import { modeUnifieSansDroits, unifieAllume } from "../agent/unifie.js";
 import { debutMois, estCreditEpuise, plafondRetenu, tableAbsente } from "../assistant/budget.js";
 import { dateBangkok } from "../assistant/calc.js";
@@ -23,7 +24,7 @@ import { ATTENTE_MS, DUREE_BOITE_MS, LIMITE_BOITE_JOUR, LIMITE_CONVERSATION_JOUR
 
 const AUCUN = "00000000-0000-0000-0000-000000000000"; // user_id du journal : aucune personne, la boîte WhatsApp
 
-type Conv = { id: string; organisation_id: string; telephone: string; nom: string | null; entite_id: string | null; entite_source: string; client_id: string | null; dossier_id: string | null; reponses?: string; tri?: Record<string, any> };
+type Conv = { id: string; organisation_id: string; telephone: string; nom: string | null; entite_id: string | null; entite_source: string; client_id: string | null; dossier_id: string | null; reponses?: string; tri?: Record<string, any>; type_contact?: string | null; partenaire_id?: string | null };
 
 // Point d'entrée : un message entrant vient d'être rangé (nouveau). Attend un peu (le client écrit souvent en plusieurs fois), trie le
 // dernier message (proposer.js). Sur demande seulement (Jérémy, 20.11.2026, pour économiser les crédits) : l'agent ne rédige rien tant que
@@ -232,7 +233,10 @@ async function preparer(
     const ctx = contexteOutils(db, ent.id, reglages, conv.entite_id === ent.id ? { clientId: conv.client_id, dossierId: conv.dossier_id } : { clientId: null, dossierId: null }, unifie);
     const client = conv.client_id && conv.entite_id === ent.id ? (await db.from("clients").select("prenom").eq("id", conv.client_id).eq("entite_id", ent.id).maybeSingle()).data : null;
     const dossier = conv.dossier_id && conv.entite_id === ent.id ? (await db.from("dossiers").select("id, ref").eq("id", conv.dossier_id).eq("entite_id", ent.id).maybeSingle()).data : null;
-    const prestataires = ((await ctx.charger("partenaires")) as { nom: string }[]).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
+    // Les noms de partenaires bloqués dans la réponse. Le contact est un apporteur (migration 68) : la réponse lui est adressée, ses propres
+    // fiches sortent de la liste (agent/apporteur.js) ; tout autre partenaire reste bloqué. Sans les colonnes, conv n'a pas de type : rien ne change.
+    const exemptes = contactApporteur(conv) && conv.partenaire_id ? fichesDuContact(conv, ((await db.from("partenaires").select("id, nom, categorie, contact").in("entite_id", ids).eq("categorie", "apporteur").limit(200)).data || []) as Record<string, any>[]) : new Set<string>();
+    const prestataires = nomsABloquer((await ctx.charger("partenaires")) as { id: string; nom: string }[], exemptes);
     // Espace unifié : 60 corrections de l'entreprise active ; de l'autre, seulement les réponses au client (20), marquées de leur entreprise.
     const [lus, lusAutre] = await Promise.all([
       db.from("agent_apprentissages").select("id, genre, contexte, avant, apres, cree_le").eq("entite_id", ent.id).order("cree_le", { ascending: false }).limit(unifie ? APPRIS_LUS_ACTIVE : 80),

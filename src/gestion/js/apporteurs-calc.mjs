@@ -71,3 +71,20 @@ export function parApporteur(rows, apporteurDe) {
   const groupes = [...m.values()].map((g) => ({ ...g, clients: g.clients.size })).sort((a, b) => b.dossiers - a.dossiers || b.montant - a.montant);
   return { groupes, sans: { dossiers: sans, montant: sansMontant } };
 }
+
+// ---- Cartes « dossier » de l'Assistant pour un apporteur (PR D du 21.11.2026) --------------------------------------------------------
+// La carte porte `apporteur` : { nom, fiches: { [entite_id]: partenaire_id } } (agent/apporteur.js, apporteurDeCarte). À la validation,
+// chaque dossier créé reçoit la fiche de SA propre entreprise, ou rien. `partenaires` : les fiches que la personne voit (etat.brut) ; une
+// fiche absente, d'une autre entreprise ou qui n'est pas un apporteur n'est jamais posée (le déclencheur controler_apporteur_dossier la
+// refuserait de toute façon).
+export function apporteurDuDossier(apporteur, entiteId, partenaires = []) {
+  const id = apporteur && apporteur.fiches && typeof apporteur.fiches === "object" && entiteId ? apporteur.fiches[entiteId] : null;
+  if (!id || typeof id !== "string") return null;
+  const p = (partenaires || []).find((x) => x && x.id === id);
+  return p && p.entite_id === entiteId && estApporteur(p) ? id : null;
+}
+// Les entreprises de la carte où l'apporteur n'a pas de fiche : la carte le dit (« Apporteur : pas de fiche chez Taxi »), sans rien bloquer.
+export const entreprisesSansFiche = (apporteur, entiteIds = []) => (apporteur && apporteur.fiches ? [...new Set((entiteIds || []).filter(Boolean))].filter((id) => !apporteur.fiches[id]) : []);
+// Les dossiers créés par une carte et la fiche à poser sur chacun : [{ dossier, apporteur_id }], seulement ceux qui en ont une.
+export const poseApporteur = (apporteur, dossiers = [], partenaires = []) =>
+  (dossiers || []).filter((d) => d && d.id).map((d) => ({ dossier: d, apporteur_id: apporteurDuDossier(apporteur, d.entite_id, partenaires) })).filter((x) => x.apporteur_id && x.dossier.apporteur_id !== x.apporteur_id);

@@ -20,6 +20,12 @@
 // libellé et la date des trajets en bateau et le solde dû (prix de vente moins reçu). Jamais un numéro de téléphone, un fichier, un net,
 // une commission ni une fiche partenaire. Ces résultats ne repartent pas au message suivant (retirerLecturesWhatsApp).
 //
+// Apporteur d'affaires (apporteur.js, PR D, migration 68) : quand la conversation de l'Assistant est liée à une conversation WhatsApp dont le
+// contact est de type « apporteur », l'agent reçoit une consigne (un dossier par client, au nom du client, jamais d'accord ni de commission)
+// et une référence de fiche. Le type, la fiche reliée et la fiche « apporteur » de l'autre entreprise (même numéro ou même nom) se lisent
+// avec la session de la personne, jamais partenaires_prives. Ce qui part en plus chez Anthropic : cette consigne, la référence « A-… » et
+// les noms d'entreprise (Secret, Taxi) où la fiche manque ; jamais le nom ni le numéro de la fiche.
+//
 // Réponse en flux NDJSON (une ligne JSON par événement) : { t: "conversation" | "etape" | "texte" | "planning" | "carte" | "fin" | "erreur" }.
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -31,6 +37,7 @@ import { MARQUE_PROMESSE, borneJour, cleNumero, contactExclu, dateBangkok as jou
 import { NOMINATIM_BASE, ORGANISATIONS_OSRM, ORS_BASE, ORS_GEOCODE, ORS_ITINERAIRE, OSRM_BASE, USER_AGENT, cheminOsrm, cleItineraire, cleZone, corpsItineraire, delaiAvant, lireGeocode, lireItineraire, lireNominatim, lireOsrm, parametresGeocode, parametresNominatim, situerLieu, VALIDITE_JOURS, VALIDITE_GOOGLE_JOURS, GOOGLE_PLACES, GOOGLE_ROUTES, CHAMPS_PLACES, CHAMPS_ROUTES, corpsPlaces, corpsRoutes, lirePlaces, lireRoutes } from "./temps.js";
 import { lireEstimation, parametresEstimation } from "./estimation.js";
 import { debutMois, estCreditEpuise, etatBudget, plafondRetenu, reprise, tableAbsente } from "../assistant/budget.js";
+import { blocApporteur, contactApporteur, infoApporteur, nomsABloquer } from "./apporteur.js";
 import { MESSAGES_MAX as MESSAGES_MAX_WA, MODES_DEMANDE as MODES_WA, QUESTION_MAX as QUESTION_MAX_WA, mediasAJoindre, texteDepuisWhatsApp, titreWhatsApp } from "./whatsapp.js";
 import { blocFichier, fichiersRetenus, historiquePourClaude, contenuPourClaude, titreFichiers, verifierPieces } from "./fichiers.js";
 import { dateBangkok, debutJourBangkok, jourSemaine, lieuCourt, reglagesAssistant } from "../assistant/calc.js";
@@ -167,6 +174,13 @@ Deno.serve(async (req) => {
   const dans = (q: any, colonne = "entite_id") => (unifie ? q.in(colonne, idsEntites) : q.eq(colonne, entiteId));
   let waDossier: string | null = null;
   let waConv: { nom: string | null; telephone: string } | null = null;
+  // La conversation WhatsApp liée (celle de la demande, ou celle d'une conversation de l'Assistant déjà liée), pour l'apporteur (PR D).
+  let waLiee: Record<string, any> | null = null;
+  // Les colonnes de la migration 68 (type du contact, fiche reliée) ; sans elles, la lecture d'avant (le contact n'est pas typé).
+  const lireWa = async (id: string) => {
+    const r = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", id).maybeSingle();
+    return r.error && r.error.code === "42703" ? await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses").eq("id", id).maybeSingle() : r;
+  };
   // La personne n'administre pas l'entreprise de la conversation (whatsapp_peut_ecrire, migration 63) : la question passe en lecture seule,
   // sans liaison ni carte ; créer ou mettre à jour un dossier est refusé.
   let waEcrit = false;
@@ -175,7 +189,8 @@ Deno.serve(async (req) => {
     // Lue avec la session : une conversation WhatsApp que la personne ne peut pas lire n'existe pas pour elle. Elle est rangée dans
     // l'entreprise de l'Assistant, ou encore à trier (lot 2 du 20.11.2026 : on crée le dossier sans ranger d'abord, la conversation se range
     // à la validation). Une conversation à trier n'entre que dans l'Assistant de Secret ou de Taxi, jamais dans celui d'une autre entreprise.
-    const wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses").eq("id", waId).maybeSingle();
+    let wc: any = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses, type_contact, partenaire_id").eq("id", waId).maybeSingle();
+    if (wc.error && wc.error.code === "42703") wc = await sb.from("whatsapp_conversations").select("id, telephone, nom, entite_id, dossier_id, reponses").eq("id", waId).maybeSingle();
     if (wc.error) return json({ erreur: "base" }, 500);
     if (!wc.data) return json({ erreur: "whatsapp_introuvable" }, 404);
     // Contact personnel (migration 60) : rien de lui ne part chez Anthropic, dans aucun mode. Refusé avant de lire un seul message.
@@ -216,19 +231,31 @@ Deno.serve(async (req) => {
     const dossierWa = (waMode === "maj" || waMode === "question") && wc.data.dossier_id ? (await sb.from("dossiers").select("id, ref").eq("id", wc.data.dossier_id).eq("entite_id", entiteId).maybeSingle()).data : null;
     if (waMode === "maj" && !dossierWa) return json({ erreur: "dossier_introuvable" }, 404);
     demande.fichiers = fichiers;
-    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, question: waQuestion, lectureSeule: !waEcrit });
+    message = texteDepuisWhatsApp({ mode: waMode, conv: wc.data, messages: messagesWa, dossier: dossierWa, joints: fichiers.length, ecartes, max: LONGUEUR_MAX, apporteur: waEcrit && contactApporteur(wc.data), question: waQuestion, lectureSeule: !waEcrit });
     controle = verifierPieces(demande.fichiers);
     waDossier = dossierWa ? dossierWa.id : null;
     waConv = wc.data;
+    // En lecture seule, aucune carte : l'apporteur ne sert pas.
+    if (waEcrit) waLiee = wc.data;
   }
 
   // La conversation : nouvelle, ou une des miennes (RLS : une conversation d'une autre personne n'est pas lisible).
-  let conv: { id: string; titre: string; dossier_id: string | null; cree_le?: string } | null = null;
+  let conv: { id: string; titre: string; dossier_id: string | null; cree_le?: string; whatsapp_conversation_id?: string | null } | null = null;
   if (conversationId) {
-    const c = await sb.from("agent_conversations").select("id, titre, dossier_id, entite_id, cree_le").eq("id", conversationId).maybeSingle();
+    // whatsapp_conversation_id : la migration 67 ; sans elle, la lecture d'avant.
+    const COL_CONV_AGENT = "id, titre, dossier_id, entite_id, cree_le";
+    let c: any = await sb.from("agent_conversations").select(`${COL_CONV_AGENT}, whatsapp_conversation_id`).eq("id", conversationId).maybeSingle();
+    if (c.error && c.error.code === "42703") c = await sb.from("agent_conversations").select(COL_CONV_AGENT).eq("id", conversationId).maybeSingle();
     if (c.error) return json({ erreur: "base" }, 500);
     if (!c.data || c.data.entite_id !== entiteId) return json({ erreur: "conversation_introuvable" }, 404);
     conv = c.data;
+    // Une conversation déjà liée (message suivant, sans échange joint) : son contact WhatsApp relu avec la session. Illisible : rien.
+    const lieeId = c.data.whatsapp_conversation_id;
+    if (!waLiee && typeof lieeId === "string" && UUID.test(lieeId)) {
+      const w = await lireWa(lieeId);
+      if (w.error) console.error("agent : conversation WhatsApp liée", w.error.message);
+      else waLiee = w.data || null;
+    }
   } else {
     const dossierId = waDossier || (typeof demande.dossier_id === "string" && UUID.test(demande.dossier_id) ? demande.dossier_id : null);
     const titre = waId ? titreWhatsApp(waConv) : titreDepuis(message || titreFichiers(controle?.fichiers || []));
@@ -236,6 +263,20 @@ Deno.serve(async (req) => {
     const c = await sb.from("agent_conversations").insert({ entite_id: entiteId, titre, dossier_id: dossierId, ...(waId && waEcrit ? { whatsapp_conversation_id: waId } : {}) }).select("id, titre, dossier_id, cree_le").single();
     if (c.error) return json({ erreur: c.error.code === "42P01" ? "migration_manquante" : "base" }, 500);
     conv = c.data;
+  }
+  // Apporteur d'affaires (apporteur.js) : la fiche reliée et, en espace unifié, la fiche « apporteur » de l'autre entreprise, lues avec la
+  // session (RLS : celles que la personne voit). Une lecture refusée laisse l'apporteur sans fiche : les dossiers se créent sans apporteur.
+  let apporteur: Record<string, any> | null = null;
+  if (contactApporteur(waLiee)) {
+    const entitesApp = unifie ? unifie.entites : [{ id: entiteId, slug: ent.data?.slug || "", nom: ent.data?.nom || "" }];
+    const COL_FICHE = "id, nom, categorie, entite_id, actif, contact";
+    const [rel, cand] = await Promise.all([
+      waLiee!.partenaire_id ? sb.from("partenaires").select(COL_FICHE).eq("id", waLiee!.partenaire_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+      sb.from("partenaires").select(COL_FICHE).eq("categorie", "apporteur").in("entite_id", entitesApp.map((e) => e.id)).limit(200),
+    ]);
+    if (rel.error) console.error("agent : fiche de l'apporteur", rel.error.message);
+    if (cand.error) console.error("agent : fiches apporteur", cand.error.message);
+    apporteur = infoApporteur({ conv: waLiee, reliee: rel.error ? null : rel.data, candidats: cand.error ? [] : cand.data || [], entites: entitesApp });
   }
   const anciens = await sb.from("agent_messages").select("role, contenu").eq("conversation_id", conv!.id).order("id", { ascending: false }).limit(400);
   if (anciens.error) return json({ erreur: "base" }, 500);
@@ -732,12 +773,16 @@ Deno.serve(async (req) => {
     const d = await sb.from("dossiers").select("id, ref").eq("id", conv!.dossier_id).maybeSingle();
     if (d.data) dossierRelie = { ref_courte: refDe("D", d.data.id), reference: d.data.ref };
   }
-  const prestataires = ((await charger("partenaires")) as { nom: string }[]).map((p) => String(p.nom || "").trim()).filter((x) => x.length > 2);
+  // Les noms de partenaires bloqués dans une réponse au client. Conversation liée à un apporteur : la réponse lui est adressée, ses propres
+  // fiches (apporteur.js) sortent de la liste ; tout autre partenaire reste bloqué.
+  const prestataires = nomsABloquer((await charger("partenaires")) as { id: string; nom: string }[], new Set(apporteur ? (apporteur.fiches as { id: string }[]).map((f) => f.id) : []));
   // En mode unifié, les droits tenus dans l'une des deux entreprises règlent les consignes (les champs internes, eux, ne sortent que pour
   // les lignes de l'entreprise où la personne a le droit : outils.js).
   const droits: string[] = unifie ? permissionsOutils(unifie) : perms.data || [];
   const entreprisesUnifiees = unifie ? { entreprises: unifie.entites.map((e) => ({ nom: e.nom, slug: e.slug, reglages: e.id === entiteId ? reglages : reglagesAutre })) } : null;
-  const systeme = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable, partenaires: droits.includes("partenaires.lire"), nets: droits.includes("partenaires.lire") && droits.includes("partenaires.nets"), unifie: entreprisesUnifiees, whatsapp: !!whatsapp });
+  // Un contact WhatsApp apporteur (PR D) : sa consigne s'ajoute à chaque échange de la conversation liée.
+  const systemeBase = consignes({ entreprise: ent.data?.nom || "", reglages, lieu: ra.lieu, prenomEquipe: ra.responsable, partenaires: droits.includes("partenaires.lire"), nets: droits.includes("partenaires.lire") && droits.includes("partenaires.nets"), unifie: entreprisesUnifiees, whatsapp: !!whatsapp });
+  const systeme = systemeBase + blocApporteur(apporteur, { qui: ra.responsable || "l'équipe", unifie: !!unifie });
   const contexte = contexteDuJour({ aujourdhui, jour: jourSemaine(aujourdhui), lieuCourt: lieuCourt(ra.lieu), dossier: dossierRelie });
   // L'historique tel qu'il est gardé (blocs « fichier »), puis tel qu'il part chez Claude (images et documents).
   // Les lectures de la boîte WhatsApp des messages précédents ne repartent pas (whatsapp-lecture.js, retirerLecturesWhatsApp) : l'agent
@@ -765,7 +810,7 @@ Deno.serve(async (req) => {
   // historique, entreprise : pour les cartes « reglage » et « amelioration » (ameliorer.js). L'historique est le tableau que l'échange
   // complète en place : une pièce jointe ou un nom de client vus plus tôt dans la conversation y sont.
   // Espace unifié : entites et permissionsPar (unifie.js). ctx.permissions reste celles de l'entreprise active (import de brochure, réglages).
-  const ctx = { historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
+  const ctx = { historique: messages, entreprise: ent.data?.nom || "", fichiers: fichiersConv.map((f) => ({ id: f.id, nom: f.nom, media_type: f.media_type })), permissions: perms.data || [], ...(unifie ? { entites: unifie.entites, permissionsPar: unifie.permissionsPar } : {}), charger, chercherClients, dossierPour, parRef, hotelsPour, ...(whatsapp ? { whatsapp } : {}), ...(apporteur ? { apporteur } : {}), reglages, ors, simule: simules ? tempsSimule : null, estimerWeb, situerWeb, notes, moteur, maintenant: () => Date.now() };
   const modele = Deno.env.get("AGENT_MODELE") || MODELE_DEFAUT;
 
   const debut = Date.now();

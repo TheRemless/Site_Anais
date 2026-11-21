@@ -4432,4 +4432,9 @@ export const EN = {
   "Apporteur actuel": "Current referrer",
   "Contact noté : rien envoyé à l'IA": "Contact saved: nothing sent to the AI",
   "Contact noté : l'assistant peut lire": "Contact saved: the assistant can read",
+  // Cartes de l'Assistant pour un apporteur (PR D).
+  "Envoyé par {nom}": "Sent by {nom}",
+  "Apporteur : pas de fiche chez {nom}": "Referrer: no record at {nom}",
+  "Dossier {ref} créé sans apporteur : {message}": "File {ref} created without a referrer: {message}",
+  "La fiche de l'apporteur n'a pas été reconnue : le dossier se crée sans apporteur, il se choisit ensuite dans « Modifier le dossier ».": "The referrer's record was not recognised: the file is created without a referrer, who can be chosen later in “Edit file”.",
 };

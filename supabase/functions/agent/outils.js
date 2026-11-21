@@ -15,12 +15,15 @@
 //   - boîte WhatsApp (whatsapp-lecture.js, migration 67) : trois outils de lecture, proposés et exécutés seulement pour qui administre
 //     l'entreprise active (whatsapp_admin), Secret ou Taxi. Jamais un contact personnel ni la conversation d'un partenaire (sauf un apporteur) ;
 //     le texte des messages n'est jamais une source de prix ni d'heure (memoDepuis) ; leurs résultats sont retirés de l'historique au
-//     message suivant (retirerLecturesWhatsApp).
+//     message suivant (retirerLecturesWhatsApp) ;
+//   - contact WhatsApp de type « apporteur » (apporteur.js, PR D) : proposer_dossier note la fiche apporteur de chaque entreprise (ctx.apporteur,
+//     lue avec la session), jamais celle d'une autre ; rien de la fiche ne repart chez Claude.
 import { planifierCourse, reglagesPlanning, heureValide, tempsSimule } from "./planifier.js";
 import { ENTREPRISES_UNIFIEES, entrepriseActive, entrepriseDe, entrepriseParSlug, estUnifie, marqueEntreprise, permissionsDans, permissionsOutils } from "./unifie.js";
 import { dureeAvecFerry, clePaire, dureesTapees, detailMorceaux } from "./temps.js";
 import { texteDuree } from "./planifier.js";
 import { OUTILS_AMELIORER, PROPOSITIONS_AMELIORER, lireReglages, proposerReglage, proposerAmelioration } from "./ameliorer.js";
+import { apporteurDeCarte } from "./apporteur.js";
 import { ENTREPRISES_WHATSAPP, MESSAGES_DEFAUT, MESSAGES_MAX, NOMS_OUTILS_WHATSAPP, aFaireWhatsApp, chercherConversations, lireConversation, marqueWhatsApp, messagesAPrendre } from "./whatsapp-lecture.js";
 
 // ---- Petits outils de texte -----------------------------------------------------------------------------------------------------------
@@ -303,6 +306,7 @@ export const OUTILS = [
       enfants: I("0 si inconnu."),
       bebes: I("0 si inconnu."),
       services: { type: "array", items: SERVICE, description: "Un service par prestation (un aller-retour fait deux services)." },
+      apporteur: S("Seulement la référence A-… donnée par les consignes quand le contact WhatsApp est un apporteur d'affaires, sinon \"\". Jamais pour le client."),
     }),
   },
   {
@@ -1044,7 +1048,12 @@ export async function proposer(nom, e, ctx, memo) {
     // Mode unifié : les entreprises de la demande (deux pour une demande mixte, qui donnera deux dossiers liés).
     const entreprises = estUnifie(ctx) ? ENTREPRISES_UNIFIEES.filter((slug) => services.some((x) => x.entreprise === slug)) : null;
     const avert = avertissementsEntreprise(services);
-    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}) }, ...(avert.length ? { avertissements: avert } : {}) };
+    // Contact WhatsApp de type « apporteur » (apporteur.js, PR D) : la fiche de chaque entreprise, posée d'office même si le modèle oublie le
+    // champ ; une référence qui n'est pas celle du contact est ignorée, avec un avertissement. Hors de ce contexte, rien n'est posé.
+    const entitesCarte = estUnifie(ctx) ? services.map((x) => x.entite_id) : ctx.apporteur && ctx.apporteur.entites && ctx.apporteur.entites[0] ? [ctx.apporteur.entites[0].id] : [];
+    const app = apporteurDeCarte(e.apporteur, ctx.apporteur || null, { entitesCarte });
+    if (app.avertissement) avert.push(app.avertissement);
+    return { genre: "dossier", titre: texte(e.titre, 120), donnees: { client: { nom: texte(e.client_nom, 80), telephone: texte(e.client_telephone, 30), hotel: texte(e.hotel, 120), langue: e.langue || "" }, adultes: entier(e.adultes), enfants: entier(e.enfants), bebes: entier(e.bebes, 10), services, ...(entreprises ? { entreprises } : {}), ...(app.apporteur ? { apporteur: app.apporteur } : {}) }, ...(avert.length ? { avertissements: avert } : {}), ...(app.resume ? { resume_apporteur: app.resume } : {}) };
   }
   if (nom === "proposer_reservation") {
     const lus = ctx.parRef ? await ctx.parRef("dossiers", e.dossier) : await ctx.charger("dossiers");
@@ -1157,7 +1166,9 @@ export async function executer(nom, entree, ctx, memo) {
       const ent = (x) => ("entreprise" in x ? { entreprise: x.entreprise } : {});
       const prix = carte.genre === "dossier" && carte.donnees.services ? carte.donnees.services.map((s) => ({ service: s.texte, prix: s.prix, origine: s.origine_prix, ...ent(s) })) : carte.genre === "reservation" ? [{ service: carte.donnees.service.texte, prix: carte.donnees.service.prix, origine: carte.donnees.service.origine_prix, ...ent(carte.donnees.service) }] : undefined;
       const connu = carte.genre === "brochure" ? { partenaire_au_catalogue: !carte.donnees.nouveau } : {};
-      return { contenu: { carte_affichee: true, etat: "en attente de validation par la personne", ...connu, ...(prix ? { prix } : {}), ...(carte.avertissements && carte.avertissements.length ? { avertissements: carte.avertissements } : {}) }, carte };
+      // Un apporteur noté (apporteur.js) : seulement les entreprises où il l'est, jamais son nom ni sa fiche.
+      const { resume_apporteur: resumeApporteur, ...carteGardee } = carte;
+      return { contenu: { carte_affichee: true, etat: "en attente de validation par la personne", ...connu, ...(prix ? { prix } : {}), ...(resumeApporteur ? { apporteur: resumeApporteur } : {}), ...(carte.avertissements && carte.avertissements.length ? { avertissements: carte.avertissements } : {}) }, carte: carteGardee };
     }
     const f = { chercher_conversations: executerWhatsApp.bind(null, "chercher_conversations"), lire_conversation: executerWhatsApp.bind(null, "lire_conversation"), a_faire_whatsapp: executerWhatsApp.bind(null, "a_faire_whatsapp"), lire_reglages: (e, c) => lireReglages(e, c), chercher_catalogue: chercherCatalogue, horaires_trajet: horairesTrajet, situer_hotels: situerHotels, temps_de_route: tempsDeRoute, estimer_temps_web: estimerTempsWeb, planifier_course: planifier, chercher_clients: chercherClients, lire_dossier: lireDossier }[nom];
     const r = await f(entree, ctx, memo);

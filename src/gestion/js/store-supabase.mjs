@@ -462,8 +462,11 @@ export function creer(config, { client, maintenant = () => Date.now() } = {}) {
       return data || [];
     },
     // Une conversation WhatsApp relue en base (liaison après validation d'un dossier dans l'Assistant). null : introuvable ou illisible.
+    // type_contact (migration 68) : la conversation d'un apporteur ne se relie pas au client ; sans la colonne, la lecture d'avant.
     async whatsappConversation(id) {
-      const { data, error } = await sb.from("whatsapp_conversations").select("id, entite_id, client_id, dossier_id").eq("id", id).maybeSingle();
+      const lire = (cols) => sb.from("whatsapp_conversations").select(cols).eq("id", id).maybeSingle();
+      let { data, error } = await lire("id, entite_id, client_id, dossier_id, type_contact");
+      if (error && colonneAbsente(error, "type_contact")) ({ data, error } = await lire("id, entite_id, client_id, dossier_id"));
       if (error) throw new Error(error.message);
       return data || null;
     },
